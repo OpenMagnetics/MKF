@@ -620,6 +620,48 @@ private:
     void createTurnToBobbinConnections();
 
     /**
+     * @brief ABT #1454: conduction from a wound (concentric, non-planar) winding to what encloses
+     * it: the bobbin column and flanges, or -- without a bobbin -- the core column.
+     *
+     * Sort-and-sweep (O(N log N)) over turn and insulation-layer nodes finds, for each item, the
+     * share of its column-facing face (and, with a bobbin, of its top/bottom face) that no other
+     * item shadows. That share conducts across the real gap to the enclosure surface: an air
+     * wedge plus enamel for round wire, flat conduction for rectangular wire and film, plus the
+     * plastic wall in series. Throws on overlapping geometry and on a bare round wire in line
+     * contact (the wedge conductance diverges).
+     */
+    void createWindingToEnclosureConnections();
+
+    /**
+     * @brief ABT #1454: winding faces that the convection builder left exposed and that face the
+     * core across the window (outer faces -> lateral column; top/bottom faces -> yokes when there
+     * is no bobbin) conduct their in-window share across the air gap (Rayleigh ~ 1-100 in a
+     * millimetre gap: conduction regime); the rest keeps its convection.
+     */
+    void createWindingToCoreAcrossWindowConnections(size_t ambientIdx);
+
+    /**
+     * @brief Resistance (K/W) from an item's face to a flat parallel surface a gap g away.
+     * Round turns: air wedge + enamel; rectangular turns: flat air + enamel; insulation film:
+     * flat air + half the film. @p shareOfFace is the unshadowed share of the face.
+     */
+    double faceToSurfaceResistance(size_t nodeIdx, ThermalNodeFace face, double gap, double shareOfFace) const;
+
+    /// Air thermal conductivity for enclosed gaps, at the convection model's initial film temperature.
+    double gapAirThermalConductivity() const;
+
+    /// Share of a concentric wrap that lies inside the core windows: column depth / (width + depth).
+    double inWindowFraction() const;
+
+    /// ABT #1459: exposed (room-facing) outer surface of a concentric core, from its real geometry.
+    struct CoreExteriorAreas {
+        double plateFace = 0;       // one yoke's outer plate face (top or bottom)
+        double plateSideBand = 0;   // one yoke's side band: plate perimeter x yoke thickness
+        double lateralLegs = 0;     // all lateral legs' room-facing faces over the window height
+    };
+    CoreExteriorAreas calculateConcentricCoreExteriorAreas() const;
+
+    /**
      * @brief Get set of quadrants that are already connected by conduction
      * 
      * Builds a set of (nodeId, face) pairs from existing resistance connections

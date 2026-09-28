@@ -349,7 +349,11 @@ public:
     
     // Optional reference to the actual magnetic component
     std::optional<size_t> windingIndex;
-    std::optional<size_t> turnIndex;
+    std::optional<size_t> turnIndex;              // index of the turn WITHIN its winding (labels only)
+    // ABT #1454: index of the turn in coil.turnsDescription (global). Every lookup into
+    // turnsDescription must use this, never turnIndex: on an interleaved or multi-winding coil
+    // the within-winding index names a different turn.
+    std::optional<size_t> turnDescriptionIndex;
     std::optional<size_t> coreSegmentIndex;
     std::optional<size_t> insulationLayerIndex;  // For INSULATION_LAYER nodes
     
@@ -613,6 +617,7 @@ public:
         
         if (windingIndex.has_value()) j["windingIndex"] = windingIndex.value();
         if (turnIndex.has_value()) j["turnIndex"] = turnIndex.value();
+        if (turnDescriptionIndex.has_value()) j["turnDescriptionIndex"] = turnDescriptionIndex.value();
         if (coreSegmentIndex.has_value()) j["coreSegmentIndex"] = coreSegmentIndex.value();
         
         return j;
