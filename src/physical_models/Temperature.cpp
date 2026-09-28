@@ -4939,6 +4939,224 @@ void Temperature::createPlanarConvectionConnections(size_t ambientIdx, double h_
 }
 
 // IMP-4: Concentric convection connections
+Temperature::CoreExteriorAreas Temperature::calculateConcentricCoreExteriorAreas() const {
+    // ABT #1459: the room-facing surface of the core, from its real geometry. Faces inside the
+    // winding window (column and leg inner faces, yoke inner faces) and every face the coil wraps
+    // look at the winding, not the room, and are not part of it. Each family's formula below is
+    // the bounding surface minus the window openings, hand-checked on one shape (mm2):
+    //   E 42/21/15  4233 = box 6057 - front/back window openings 2x30.1x30.3 - column... (see E group)
+    //   EP 13        675.4 = box 767.4 - front opening 10.0x9.2
+    //   EPX 9        453.6 = box 504.0 - front opening 7.2x7.0
+    //   LP 23/14    1540.7 = box 1957.6 - front opening 19.41x12.4 - back aperture 14.21x12.4
+    //   EL 11/4.0    316.1 = box 352.8 - front/back openings 2x9.17x2.0
+    //   EPC 25      1313.2 = box 2056.6 - front/back openings 2x20.65x18.0
+    //   PQ 26/25    2744.1 = box 3531.6 - front/back apertures 2x16.0x16.1 - wound column... (legs 2x(19+2x5.25)x16.1)
+    //   U 20/16/7   1508.5 = box 2077.9 - window through-openings 2x6.0x16.6 - wound leg (7.5+2x7.4)x16.6
+    //   C 8         5080   = box 7120 - window through-openings 2x13x30 - wound leg (20+2x11)x30
+    //   UT 20        832.2 = box 1670.6 - 2x7.5x32 - wound leg (4.6+2x3.3)x32
+    //   DS 26/16     see slab: two flat-cut pot halves
+    //   DRH-18X22-4C 917.0 = two flange discs (18 mm, 3.2 mm bore) + two rims 3.75 mm
+    //   DRS (semishielded) 130 = the finished J x K x L body
+    auto core = _magnetic.get_core();
+    auto processed = core.get_processed_description();
+    if (!processed) {
+        throw std::runtime_error("Temperature::calculateConcentricCoreExteriorAreas: core has no processed description.");
+    }
+    const auto family = core.get_shape_family();
+    auto dimensions = flatten_dimensions(core.resolve_shape().get_dimensions().value());
+    auto required = [&](const char* letter) {
+        if (!dimensions.count(letter) || !(dimensions.at(letter) > 0)) {
+            throw std::runtime_error("Temperature::calculateConcentricCoreExteriorAreas: shape family " +
+                                     std::string(magic_enum::enum_name(family)) + " needs dimension " + letter +
+                                     " for its exterior surface, and the shape does not give it.");
+        }
+        return dimensions.at(letter);
+    };
+    // A letter the shape family defines as optional (an aperture, a bore): absent means there is none.
+    auto optionalLetter = [&](const char* letter) {
+        return (dimensions.count(letter) && dimensions.at(letter) > 0) ? dimensions.at(letter) : 0.0;
+    };
+    const double pi = std::numbers::pi;
+    CoreExteriorAreas areas;
+
+    // Drums are one piece: the two flanges' outer faces and rims; the groove is the winding's.
+    if (family == CoreShapeFamily::DRUM) {
+        double flange = required("A");
+        double secondFlange = optionalLetter("A2") > 0 ? optionalLetter("A2") : flange;
+        double bore = optionalLetter("H");
+        areas.plateFace = pi / 4 * (flange * flange - bore * bore);
+        areas.secondPlateFace = pi / 4 * (secondFlange * secondFlange - bore * bore);
+        areas.plateSideBand = pi * flange * required("D");
+        areas.secondPlateSideBand = pi * secondFlange * required("F");
+        return areas;
+    }
+    // A semishielded drum is finished as a J x K x L body that encloses the winding.
+    if (family == CoreShapeFamily::DRUM_SEMISHIELDED) {
+        double envelopeWidth = required("J"), envelopeDepth = required("K"), envelopeHeight = required("L");
+        areas.plateFace = envelopeWidth * envelopeDepth;
+        areas.secondPlateFace = areas.plateFace;
+        areas.plateSideBand = (envelopeWidth + envelopeDepth) * envelopeHeight;
+        areas.secondPlateSideBand = areas.plateSideBand;
+        return areas;
+    }
+
+    // A moulded body is a closed A x C x B block around its cavity: the whole box faces the room.
+    if (family == CoreShapeFamily::MOLDED) {
+        double bodyWidth = required("A"), bodyHeight = required("B"), bodyDepth = required("C");
+        areas.plateFace = bodyWidth * bodyDepth;
+        areas.secondPlateFace = areas.plateFace;
+        areas.plateSideBand = (bodyWidth + bodyDepth) * bodyHeight;
+        areas.secondPlateSideBand = areas.plateSideBand;
+        return areas;
+    }
+    auto windows = processed->get_winding_windows();
+    if (windows.empty() || !windows[0].get_height()) {
+        throw std::runtime_error("Temperature::calculateConcentricCoreExteriorAreas: core winding window has no height.");
+    }
+    const double width = processed->get_width();
+    const double height = processed->get_height();
+    const double depth = processed->get_depth();
+    const double windowHeight = windows[0].get_height().value();
+    const double yokeThickness = (height - windowHeight) / 2.0;
+    if (width <= 0 || depth <= 0 || yokeThickness <= 0) {
+        throw std::runtime_error("Temperature::calculateConcentricCoreExteriorAreas: non-positive width, depth or yoke "
+                                 "thickness (height " + std::to_string(height) + ", window height " +
+                                 std::to_string(windowHeight) + ").");
+    }
+    auto setRectangularPlates = [&]() {
+        areas.plateFace = width * depth;
+        areas.plateSideBand = 2.0 * (width + depth) * yokeThickness;
+        areas.secondPlateFace = areas.plateFace;
+        areas.secondPlateSideBand = areas.plateSideBand;
+    };
+    // The window's opening in the front (and back) face of a two-leg shell.
+    auto roundWindowOpening = [&]() {
+        double aperture = optionalLetter("G");
+        if (aperture > 0) return aperture;
+        double windowDiameter = required("E"), shellDepth = required("C");
+        if (!(windowDiameter > shellDepth)) {
+            throw std::runtime_error("Temperature::calculateConcentricCoreExteriorAreas: round window E does not reach "
+                                     "the front face (E <= C) and the shape gives no aperture G.");
+        }
+        return 2.0 * std::sqrt(windowDiameter * windowDiameter / 4 - shellDepth * shellDepth / 4);
+    };
+
+    switch (family) {
+        // Two-leg shells: two legs' outer faces plus the front and back faces beside the window openings.
+        case CoreShapeFamily::E: case CoreShapeFamily::EI: case CoreShapeFamily::EF: case CoreShapeFamily::EFD:
+        case CoreShapeFamily::EL: case CoreShapeFamily::PLANAR_E: case CoreShapeFamily::PLANAR_EL:
+        case CoreShapeFamily::EPC: {
+            setRectangularPlates();
+            double opening = required("E");
+            areas.lateralLegs = (2.0 * depth + 2.0 * (width - opening)) * windowHeight;
+            break;
+        }
+        case CoreShapeFamily::EC: case CoreShapeFamily::EER: case CoreShapeFamily::ER: case CoreShapeFamily::ETD:
+        case CoreShapeFamily::EQ: case CoreShapeFamily::PLANAR_ER: case CoreShapeFamily::PQ: case CoreShapeFamily::PQI: {
+            setRectangularPlates();
+            double opening = roundWindowOpening();
+            areas.lateralLegs = (2.0 * depth + 2.0 * (width - opening)) * windowHeight;
+            break;
+        }
+        // EP-type box: a bore opening at the front (E wide), an optional aperture at the back (G wide).
+        case CoreShapeFamily::EP: case CoreShapeFamily::EPX: case CoreShapeFamily::EPQ: case CoreShapeFamily::EPT:
+        case CoreShapeFamily::EPW: case CoreShapeFamily::LEP: case CoreShapeFamily::LP: {
+            setRectangularPlates();
+            double frontOpening = required("E");
+            double backOpening = optionalLetter("G");
+            areas.lateralLegs = (2.0 * depth + (width - frontOpening) + (width - backOpening)) * windowHeight;
+            break;
+        }
+        // U-type ring: the coil wraps one leg (the column nearest the origin); the others face the room
+        // with their outer face and both ends.
+        case CoreShapeFamily::U: case CoreShapeFamily::UI: case CoreShapeFamily::UR: case CoreShapeFamily::UT:
+        case CoreShapeFamily::C: {
+            setRectangularPlates();
+            auto columns = processed->get_columns();
+            if (columns.size() < 2) {
+                throw std::runtime_error("Temperature::calculateConcentricCoreExteriorAreas: U-type core with fewer than two legs.");
+            }
+            size_t woundIndex = 0;
+            for (size_t i = 1; i < columns.size(); ++i) {
+                if (std::abs(columns[i].get_coordinates()[0]) < std::abs(columns[woundIndex].get_coordinates()[0])) woundIndex = i;
+            }
+            for (size_t i = 0; i < columns.size(); ++i) {
+                if (i == woundIndex) continue;
+                if (columns[i].get_shape() == ColumnShape::ROUND) {
+                    // A round leg shows the half of its perimeter away from the window.
+                    areas.lateralLegs += pi * columns[i].get_width() / 2.0 * windowHeight;
+                } else {
+                    areas.lateralLegs += (columns[i].get_depth() + 2.0 * columns[i].get_width()) * windowHeight;
+                }
+            }
+            break;
+        }
+        // Round pot: disc plates less the bore, the skirt less its wire slots (each slot side is a face).
+        case CoreShapeFamily::P: case CoreShapeFamily::PM: {
+            double diameter = required("A");
+            double windowDiameter = required("E");
+            double slot = optionalLetter("G");
+            double bore = optionalLetter("H");
+            areas.plateFace = pi / 4 * (diameter * diameter - bore * bore);
+            areas.plateSideBand = pi * diameter * yokeThickness;
+            areas.secondPlateFace = areas.plateFace;
+            areas.secondPlateSideBand = areas.plateSideBand;
+            double skirtThickness = (diameter - windowDiameter) / 2.0;
+            double slotAngle = 2.0 * std::asin(std::min(1.0, slot / diameter));
+            areas.lateralLegs = ((pi - slotAngle) * diameter + 4.0 * skirtThickness * (slot > 0 ? 1.0 : 0.0)) * windowHeight;
+            break;
+        }
+        // Slab pot (DS/HS) and RS: a pot cut by two flats at +-C/2 (RS pairs one such half with an
+        // uncut, unslotted round). Each half contributes its plate, its band and its half of the skirt.
+        case CoreShapeFamily::DS: case CoreShapeFamily::HS: case CoreShapeFamily::RS: {
+            double radius = required("A") / 2, windowRadius = required("E") / 2, halfFlats = required("C") / 2;
+            double bore = optionalLetter("H");
+            if (!(halfFlats < radius)) {
+                throw std::runtime_error("Temperature::calculateConcentricCoreExteriorAreas: slab flats C must lie inside the outline A.");
+            }
+            double flatHalfLength = std::sqrt(radius * radius - halfFlats * halfFlats);
+            double arcAngle = 4.0 * std::asin(halfFlats / radius);
+            double cutPlate = 2.0 * (halfFlats * flatHalfLength + radius * radius * std::asin(halfFlats / radius)) - pi * bore * bore / 4;
+            double cutBand = (arcAngle * radius + 4.0 * flatHalfLength) * yokeThickness;
+            double skirtEnd = windowRadius > halfFlats ? flatHalfLength - std::sqrt(windowRadius * windowRadius - halfFlats * halfFlats)
+                                                       : 2.0 * flatHalfLength;
+            double halfWindow = windowHeight / 2;
+            double cutSkirt = (arcAngle * radius + 4.0 * skirtEnd) * halfWindow;
+            areas.plateFace = cutPlate;
+            areas.plateSideBand = cutBand;
+            if (family == CoreShapeFamily::RS) {
+                areas.secondPlateFace = pi * radius * radius - pi * bore * bore / 4;
+                areas.secondPlateSideBand = 2.0 * pi * radius * yokeThickness;
+                areas.lateralLegs = cutSkirt + 2.0 * pi * radius * halfWindow;
+            } else {
+                areas.secondPlateFace = cutPlate;
+                areas.secondPlateSideBand = cutBand;
+                areas.lateralLegs = 2.0 * cutSkirt;
+            }
+            break;
+        }
+        // RM: the outline is not a rectangle the shape letters describe; the plates take the processed
+        // envelope and the legs their processed outer face and ends.
+        case CoreShapeFamily::RM: {
+            setRectangularPlates();
+            for (const auto& column : processed->get_columns()) {
+                if (column.get_type() != ColumnType::LATERAL) continue;
+                areas.lateralLegs += (column.get_depth() + 2.0 * column.get_width()) * windowHeight;
+            }
+            break;
+        }
+        default:
+            throw std::runtime_error("Temperature::calculateConcentricCoreExteriorAreas: the exterior surface of shape "
+                                     "family " + std::string(magic_enum::enum_name(family)) +
+                                     " is not modelled; refusing to guess its convecting area.");
+    }
+    if (!(areas.lateralLegs > 0)) {
+        throw std::runtime_error("Temperature::calculateConcentricCoreExteriorAreas: shape family " +
+                                 std::string(magic_enum::enum_name(family)) + " gave no leg exterior.");
+    }
+    return areas;
+}
+
 void Temperature::createConcentricConvectionConnections(size_t ambientIdx, double h_conv) {
     // Track initial resistance count for symmetry correction at the end
     size_t initialResistanceCount = _resistances.size();
@@ -4975,6 +5193,8 @@ void Temperature::createConcentricConvectionConnections(size_t ambientIdx, doubl
                 bool isYoke = (_nodes[i].part == ThermalNodePartType::CORE_TOP_YOKE ||
                               _nodes[i].part == ThermalNodePartType::CORE_BOTTOM_YOKE);
                 bool isTurn = (_nodes[i].part == ThermalNodePartType::TURN);
+                // ABT #1459: core exterior comes from the real core geometry, added below.
+                if (isCentralColumn || isYoke || _nodes[i].part == ThermalNodePartType::CORE_LATERAL_COLUMN) continue;
                 
                 // Check each quadrant for convection exposure
                 for (int qIdx = 0; qIdx < 4; ++qIdx) {
@@ -5141,6 +5361,46 @@ void Temperature::createConcentricConvectionConnections(size_t ambientIdx, doubl
             }
             _resistances[i].resistance /= 2.0;
             _resistances[i].area *= 2.0;
+        }
+    }
+
+    // ABT #1459: the core's room-facing surface. The core used to convect from its quarter-model
+    // quadrants doubled once (one lateral leg, half the plates, and the in-window face of the leg
+    // counted as exterior): 13.4 cm2 on PQ 26/25 against ~26 cm2 of real exterior.
+    if (hasConcentricCoreNodes) {
+        auto exterior = calculateConcentricCoreExteriorAreas();
+        size_t topYokeIdx = _nodes.size(), bottomYokeIdx = _nodes.size(), lateralIdx = _nodes.size();
+        for (size_t i = 0; i < _nodes.size(); ++i) {
+            if (_nodes[i].part == ThermalNodePartType::CORE_TOP_YOKE && topYokeIdx == _nodes.size()) topYokeIdx = i;
+            if (_nodes[i].part == ThermalNodePartType::CORE_BOTTOM_YOKE && bottomYokeIdx == _nodes.size()) bottomYokeIdx = i;
+            if (_nodes[i].part == ThermalNodePartType::CORE_LATERAL_COLUMN && lateralIdx == _nodes.size()) lateralIdx = i;
+        }
+        if (topYokeIdx == _nodes.size() || bottomYokeIdx == _nodes.size()) {
+            throw std::runtime_error("Temperature::createConcentricConvectionConnections: concentric core without top "
+                                     "or bottom yoke node.");
+        }
+        auto addExterior = [&](size_t nodeIdx, ThermalNodeFace face, double area) {
+            if (!(area > 0)) return;  // a face this family does not have (a drum's legs)
+            ThermalResistanceElement r;
+            r.nodeFromId = nodeIdx;
+            r.quadrantFrom = face;
+            r.nodeToId = ambientIdx;
+            r.quadrantTo = ThermalNodeFace::NONE;
+            r.type = _config.includeForcedConvection ? HeatTransferType::FORCED_CONVECTION
+                                                     : HeatTransferType::NATURAL_CONVECTION;
+            r.area = area;
+            r.resistance = ThermalResistance::calculateConvectionResistance(h_conv, area);
+            _resistances.push_back(r);
+        };
+        addExterior(topYokeIdx, ThermalNodeFace::TANGENTIAL_LEFT, exterior.plateFace);
+        addExterior(topYokeIdx, ThermalNodeFace::RADIAL_OUTER, exterior.plateSideBand);
+        addExterior(bottomYokeIdx, ThermalNodeFace::TANGENTIAL_RIGHT, exterior.secondPlateFace);
+        addExterior(bottomYokeIdx, ThermalNodeFace::RADIAL_OUTER, exterior.secondPlateSideBand);
+        if (lateralIdx != _nodes.size()) {
+            addExterior(lateralIdx, ThermalNodeFace::RADIAL_OUTER, exterior.lateralLegs);
+        } else if (exterior.lateralLegs > 0) {
+            throw std::runtime_error("Temperature::createConcentricConvectionConnections: the core has a leg exterior "
+                                     "but the network built no lateral column node to carry it.");
         }
     }
 }

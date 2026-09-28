@@ -655,9 +655,11 @@ private:
 
     /// ABT #1459: exposed (room-facing) outer surface of a concentric core, from its real geometry.
     struct CoreExteriorAreas {
-        double plateFace = 0;       // one yoke's outer plate face (top or bottom)
-        double plateSideBand = 0;   // one yoke's side band: plate perimeter x yoke thickness
-        double lateralLegs = 0;     // all lateral legs' room-facing faces over the window height
+        double plateFace = 0;             // top piece's outer plate face (drum: first flange)
+        double plateSideBand = 0;         // top piece's side band: plate perimeter x yoke thickness
+        double secondPlateFace = 0;       // bottom piece's outer plate face
+        double secondPlateSideBand = 0;   // bottom piece's side band
+        double lateralLegs = 0;           // room-facing faces over the window height (legs, skirt, ends)
     };
     CoreExteriorAreas calculateConcentricCoreExteriorAreas() const;
 
