@@ -383,13 +383,17 @@ TEST_CASE("Test_One_Operating_Point_Two_Generated_Windings_Turns_Ratios", "[proc
         REQUIRE_THAT(excitation_primary.get_current().value().get_harmonics().value().get_frequencies()[1], Catch::Matchers::WithinAbs(100000, max_error * 100000));
 
         REQUIRE_THAT(excitation_primary.get_voltage().value().get_processed().value().get_rms().value(), Catch::Matchers::WithinAbs(0.5, max_error * 0.5));
-        REQUIRE_THAT(excitation_primary.get_voltage().value().get_processed().value().get_thd().value(), Catch::Matchers::WithinAbs(0.95, max_error * 0.92));
-        REQUIRE_THAT(excitation_primary.get_voltage().value().get_processed().value().get_effective_frequency().value(), Catch::Matchers::WithinAbs(640900, max_error * 640900));
+        // ABT #1460: exact 64-harmonic series of the piecewise-linear waveform (previously an aliased DFT128).
+        REQUIRE_THAT(excitation_primary.get_voltage().value().get_processed().value().get_thd().value(), Catch::Matchers::WithinAbs(0.91374449406562508, max_error * 0.92));
+        // ABT #1460: exact 64-harmonic series of the piecewise-linear waveform (previously an aliased DFT128).
+        REQUIRE_THAT(excitation_primary.get_voltage().value().get_processed().value().get_effective_frequency().value(), Catch::Matchers::WithinAbs(546440.67624448077, max_error * 546440.67624448077));
         REQUIRE_THAT(excitation_primary.get_voltage().value().get_processed().value().get_peak_to_peak().value(), Catch::Matchers::WithinAbs(1, max_error * 1));
         REQUIRE_THAT(excitation_primary.get_voltage().value().get_processed().value().get_offset(), Catch::Matchers::WithinAbs(0, max_error * 0.25));
 
-        REQUIRE_THAT(excitation_primary.get_voltage().value().get_harmonics().value().get_amplitudes()[0], Catch::Matchers::WithinAbs(0.2421, max_error * 0.25));
-        REQUIRE_THAT(excitation_primary.get_voltage().value().get_harmonics().value().get_amplitudes()[1], Catch::Matchers::WithinAbs(0.439, max_error * 0.451));
+        // ABT #1460: exact 64-harmonic series of the piecewise-linear waveform (previously an aliased DFT128). The DC of the D=0.25 square is exactly 0.25 (was 31/128).
+        REQUIRE_THAT(excitation_primary.get_voltage().value().get_harmonics().value().get_amplitudes()[0], Catch::Matchers::WithinAbs(0.25, max_error * 0.25));
+        // ABT #1460: exact 64-harmonic series of the piecewise-linear waveform (previously an aliased DFT128). Fundamental = (2/pi) sin(pi/4).
+        REQUIRE_THAT(excitation_primary.get_voltage().value().get_harmonics().value().get_amplitudes()[1], Catch::Matchers::WithinAbs(0.45015815807855303, max_error * 0.451));
         REQUIRE_THAT(excitation_primary.get_voltage().value().get_harmonics().value().get_frequencies()[0], Catch::Matchers::WithinAbs(0, max_error));
         REQUIRE_THAT(excitation_primary.get_voltage().value().get_harmonics().value().get_frequencies()[1], Catch::Matchers::WithinAbs(100000, max_error * 100000));
 
@@ -1076,7 +1080,8 @@ TEST_CASE("Test_Quick_Operating_Point_No_Dc", "[processor][inputs][smoke-test]")
     REQUIRE_THAT(excitation.get_magnetizing_current().value().get_processed().value().get_thd().value(), Catch::Matchers::WithinAbs(0.3765, max_error * 0.3765));
     // ABT #1460: exact 64-harmonic series of the piecewise-linear waveform (previously an aliased DFT128).
     REQUIRE_THAT(excitation.get_magnetizing_current().value().get_processed().value().get_effective_frequency().value(), Catch::Matchers::WithinAbs(126360.81756912007, max_error * 126360.81756912007));
-    REQUIRE_THAT(excitation.get_magnetizing_current().value().get_processed().value().get_ac_effective_frequency().value(), Catch::Matchers::WithinAbs(129000, max_error * 129000));
+    // ABT #1460: exact 64-harmonic series of the piecewise-linear waveform (previously an aliased DFT128).
+    REQUIRE_THAT(excitation.get_magnetizing_current().value().get_processed().value().get_ac_effective_frequency().value(), Catch::Matchers::WithinAbs(126365.89373250987, max_error * 126365.89373250987));
     REQUIRE_THAT(excitation.get_magnetizing_current().value().get_processed().value().get_peak_to_peak().value(), Catch::Matchers::WithinAbs(1.855, max_error * 1.855));
     REQUIRE_THAT(excitation.get_magnetizing_current().value().get_processed().value().get_offset(), Catch::Matchers::WithinAbs(0, max_error));
 
@@ -1104,7 +1109,8 @@ TEST_CASE("Test_Quick_Operating_Point", "[processor][inputs][smoke-test]") {
     REQUIRE_THAT(excitation.get_magnetizing_current().value().get_processed().value().get_thd().value(), Catch::Matchers::WithinAbs(0.3765, max_error * 0.3765));
     // ABT #1460: exact 64-harmonic series of the piecewise-linear waveform (previously an aliased DFT128).
     REQUIRE_THAT(excitation.get_magnetizing_current().value().get_processed().value().get_effective_frequency().value(), Catch::Matchers::WithinAbs(9633.2324487888418, max_error * 9633.2324487888418));
-    REQUIRE_THAT(excitation.get_magnetizing_current().value().get_processed().value().get_ac_effective_frequency().value(), Catch::Matchers::WithinAbs(129000, max_error * 129000));
+    // ABT #1460: exact 64-harmonic series of the piecewise-linear waveform (previously an aliased DFT128).
+    REQUIRE_THAT(excitation.get_magnetizing_current().value().get_processed().value().get_ac_effective_frequency().value(), Catch::Matchers::WithinAbs(126365.89373250984, max_error * 126365.89373250984));
     REQUIRE_THAT(excitation.get_magnetizing_current().value().get_processed().value().get_peak_to_peak().value(), Catch::Matchers::WithinAbs(1.855, max_error * 1.855));
     REQUIRE_THAT(excitation.get_magnetizing_current().value().get_processed().value().get_offset(), Catch::Matchers::WithinAbs(0, max_error));
 
