@@ -4389,3 +4389,96 @@ TEST_CASE("Temperature: an insulation material is found under its MAS name", "[t
     REQUIRE_THAT(ThermalResistance::getMaterialThermalConductivity("mylar"),
                  Catch::Matchers::WithinAbs(0.15, 1e-12));
 }
+
+// ============================================================================
+// ABT #1454 / #1459: the wound winding's path to its enclosure and the core's real exterior
+// ============================================================================
+// The network used to leave a wound winding with no conduction path to bobbin or core, and let a
+// film BEHIND a turn claim that turn's exposed face; its temperature then followed whichever faces
+// the convection heuristics happened to leave open (PQ 26/25 flyback: P-S 59 C, P-S-P 89-101 C at
+// the same losses; E cores hotter as they got bigger). The core convected from a quarter model
+// doubled once. These tests drive the network at FIXED losses (length-proportional per-turn split,
+// as in the OMFEM battery), so only the thermal model is under test.
+namespace {
+OpenMagnetics::Magnetic abt1454Transformer(const std::string& shape, const std::vector<size_t>& pattern,
+                                           size_t repetitions, int64_t primaryTurns, int64_t secondaryTurns,
+                                           int64_t secondaryParallels, const std::string& primaryWire,
+                                           const std::string& secondaryWire) {
+    auto wires = std::vector<OpenMagnetics::Wire>({find_wire_by_name(primaryWire), find_wire_by_name(secondaryWire)});
+    auto coil = OpenMagneticsTesting::get_quick_coil({primaryTurns, secondaryTurns}, {1, secondaryParallels}, shape, 1,
+                                                     WindingOrientation::OVERLAPPING, WindingOrientation::OVERLAPPING,
+                                                     CoilAlignment::CENTERED, CoilAlignment::CENTERED, wires);
+    coil.wind({0.5, 0.5}, pattern, repetitions);
+    auto core = OpenMagneticsTesting::get_quick_core(shape, json::array(), 1, "3C95");
+    OpenMagnetics::Magnetic magnetic;
+    magnetic.set_core(core);
+    magnetic.set_coil(coil);
+    return magnetic;
+}
+
+double abt1454MaximumTemperatureAtFixedLoss(OpenMagnetics::Magnetic magnetic, double coreLosses, double windingLosses) {
+    auto turns = magnetic.get_coil().get_turns_description().value();
+    double totalLength = 0;
+    for (auto& turn : turns) totalLength += turn.get_length();
+    std::vector<WindingLossesPerElement> perTurn;
+    for (auto& turn : turns) {
+        OhmicLosses ohmic;
+        ohmic.set_losses(windingLosses * turn.get_length() / totalLength);
+        ohmic.set_origin(ResultOrigin::SIMULATION);
+        ohmic.set_method_used("fixed-loss length-proportional split");
+        WindingLossesPerElement element;
+        element.set_name(turn.get_name());
+        element.set_ohmic_losses(ohmic);
+        perTurn.push_back(element);
+    }
+    WindingLossesOutput windingLossesOutput;
+    windingLossesOutput.set_origin(ResultOrigin::SIMULATION);
+    windingLossesOutput.set_method_used("fixed-loss length-proportional split");
+    windingLossesOutput.set_winding_losses(windingLosses);
+    windingLossesOutput.set_winding_losses_per_turn(perTurn);
+
+    TemperatureConfig config;
+    config.ambientTemperature = 40.0;
+    config.coreLosses = coreLosses;
+    config.windingLosses = windingLosses;
+    config.windingLossesOutput = windingLossesOutput;
+    config.plotSchematic = false;
+    Temperature temperature(magnetic, config);
+    auto result = temperature.calculateTemperatures();
+    REQUIRE(result.converged);
+    return result.maximumTemperature;
+}
+} // namespace
+
+TEST_CASE("Temperature: ABT 1454 hottest spot falls with core size at fixed loss", "[temperature][abt-1454][smoke-test]") {
+    // Same sandwich winding, same 0.3 W core + 0.3 W copper, growing E cores: every size step adds
+    // exterior surface and window, so the hottest spot must get cooler. Before ABT #1454 it rose
+    // and fell with layer parity (E 30/15/7 hotter than E 20/10/6).
+    const std::vector<std::string> shapes = {"E 20/10/6", "E 25/13/7", "E 30/15/7", "E 32/16/9", "E 42/21/15", "E 55/28/21"};
+    double previous = std::numeric_limits<double>::max();
+    for (const auto& shape : shapes) {
+        auto magnetic = abt1454Transformer(shape, {0, 1, 0}, 1, 61, 7, 1, "Round 0.2 - Grade 1", "Round 0.90 - Grade 1");
+        double maximumTemperature = abt1454MaximumTemperatureAtFixedLoss(magnetic, 0.3, 0.3);
+        INFO(shape << ": Tmax " << maximumTemperature << " C, previous (smaller) core " << previous << " C");
+        CHECK(maximumTemperature < previous);
+        previous = maximumTemperature;
+    }
+}
+
+TEST_CASE("Temperature: ABT 1454 sandwich and plain interleave agree at fixed loss", "[temperature][abt-1454][smoke-test]") {
+    // PQ 26/25 flyback of the ticket, 0.355 W core + 0.15 W copper, 40 C ambient. OMFEM's 2D thermal
+    // FEM puts P-S, P-S-P and P-S-P-S within 0.1 K (50.4 / 50.4 / 50.3 C): the heat is mostly the
+    // core's, and the layout only moves the winding's internal gradient. That gradient is bounded
+    // by the copper loss through the winding's own conduction path: 0.15 W across a few films and
+    // layers of ~10 K/W is ~1.5 K, so layouts may differ by at most 3 K.
+    constexpr double kLayoutBandK = 3.0;
+    auto ps = abt1454Transformer("PQ 26/25", {0, 1}, 1, 35, 4, 3, "Round 0.4 - Grade 2", "Round 0.80 - Grade 2");
+    auto psp = abt1454Transformer("PQ 26/25", {0, 1, 0}, 1, 35, 4, 3, "Round 0.4 - Grade 2", "Round 0.80 - Grade 2");
+    auto psps = abt1454Transformer("PQ 26/25", {0, 1}, 2, 35, 4, 3, "Round 0.4 - Grade 2", "Round 0.80 - Grade 2");
+    double tPs = abt1454MaximumTemperatureAtFixedLoss(ps, 0.355, 0.15);
+    double tPsp = abt1454MaximumTemperatureAtFixedLoss(psp, 0.355, 0.15);
+    double tPsps = abt1454MaximumTemperatureAtFixedLoss(psps, 0.355, 0.15);
+    INFO("P-S " << tPs << " C, P-S-P " << tPsp << " C, P-S-P-S " << tPsps << " C");
+    CHECK(std::abs(tPsp - tPs) < kLayoutBandK);
+    CHECK(std::abs(tPsps - tPs) < kLayoutBandK);
+}
