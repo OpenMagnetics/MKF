@@ -7854,7 +7854,16 @@ std::pair<uint64_t, std::vector<double>> get_parallels_proportions(size_t slotIn
     if (windByConsecutiveTurns == WindingStyle::WIND_BY_CONSECUTIVE_TURNS) {
         size_t remainingPhysicalTurns = 0;
         for (size_t parallelIndex = 0; parallelIndex < numberParallels; ++parallelIndex) {
-            remainingPhysicalTurns += round(remainingParallelsProportion[parallelIndex] * numberTurns);
+            // ABT #1521: a negative remaining count is a caller bug (a parallel placed more turns than
+            // the section owns). Converting it to size_t is undefined and was the start of a heap
+            // overwrite below, so refuse it here.
+            double remainingTurnsOfParallel = round(remainingParallelsProportion[parallelIndex] * numberTurns);
+            if (remainingTurnsOfParallel < 0) {
+                throw CalculationException(ErrorCode::CALCULATION_INVALID_INPUT,
+                    "Parallel " + std::to_string(parallelIndex) + " has a negative number of turns left to place (" +
+                    std::to_string(remainingTurnsOfParallel) + ")");
+            }
+            remainingPhysicalTurns += size_t(remainingTurnsOfParallel);
         }
         if (slotAbsolutePhysicalTurns)
             physicalTurnsThisSlot = slotAbsolutePhysicalTurns.value();
@@ -7871,6 +7880,11 @@ std::pair<uint64_t, std::vector<double>> get_parallels_proportions(size_t slotIn
         }
 
         while (remainingPhysicalTurnsThisSection > 0) {
+            if (currentParallel >= numberParallels) {
+                throw CalculationException(ErrorCode::CALCULATION_INVALID_INPUT,
+                    "Slot " + std::to_string(slotIndex) + " asks for " + std::to_string(remainingPhysicalTurnsThisSection) +
+                    " more physical turns than its parallels have left");
+            }
             uint64_t numberTurnsToFitInCurrentParallel = round(remainingParallelsProportion[currentParallel] * numberTurns);
             if (remainingPhysicalTurnsThisSection >= numberTurnsToFitInCurrentParallel) {
                 remainingPhysicalTurnsThisSection -= numberTurnsToFitInCurrentParallel;
@@ -12438,6 +12452,9 @@ bool Coil::wind_by_rectangular_layers() {
                 windByConsecutiveTurns = WindingStyle::WIND_BY_CONSECUTIVE_TURNS;
             }
 
+            // Foil N-filar rotation (below): the parallel the previous layer held. Starting at the
+            // last parallel makes the first layer hold parallel 0.
+            size_t lastFoilParallel = get_number_parallels(windingIndex) - 1;
             for (size_t layerIndex = 0; layerIndex < numberLayers; ++layerIndex) {
                 Layer layer;
 
@@ -12455,10 +12472,34 @@ bool Coil::wind_by_rectangular_layers() {
                 // in a layer that holds one, so it is downgraded to CONSECUTIVE_TURNS above, which
                 // winds each parallel's turns as adjacent layers -- parallel 0 turn 0, parallel 0
                 // turn 1, parallel 1 turn 0 -- a sequential stack no foil is ever wound as.
+                //
+                // ABT #1521: the rotation runs over the parallels THIS SECTION still holds turns of,
+                // not over all N. A section may carry a single parallel (primary section 0 = parallel
+                // 0 only, section 1 = parallel 1 only, as the P-S-P split of a 2-parallel foil does);
+                // `layerIndex % N` then handed layer 1 a turn of parallel 1, which the section does not
+                // own, drove its remaining proportion negative, and the next get_parallels_proportions
+                // converted that negative count to size_t and wrote past the end of its per-parallel
+                // vector (heap corruption in the Release build). When every parallel is present this is
+                // exactly `layerIndex % N`.
                 if (wirePerWinding[windingIndex].get_type() == WireType::FOIL &&
                     get_number_parallels(windingIndex) > 1) {
                     const uint64_t nPar = get_number_parallels(windingIndex);
-                    const size_t parallelOfLayer = layerIndex % nPar;
+                    const uint64_t turnsOfWinding = get_number_turns(windingIndex);
+                    std::optional<size_t> parallelOfLayerFound;
+                    for (size_t step = 1; step <= nPar; ++step) {
+                        size_t candidate = (lastFoilParallel + step) % nPar;
+                        if (std::round(remainingParallelsProportionInSection[candidate] * double(turnsOfWinding)) >= 1) {
+                            parallelOfLayerFound = candidate;
+                            break;
+                        }
+                    }
+                    if (!parallelOfLayerFound) {
+                        throw CalculationException(ErrorCode::CALCULATION_INVALID_INPUT,
+                            "Foil winding " + partialWinding.get_winding() + ": layer " + std::to_string(layerIndex) +
+                            " of section " + sections[sectionIndex].get_name() + " has no parallel with turns left to place");
+                    }
+                    const size_t parallelOfLayer = parallelOfLayerFound.value();
+                    lastFoilParallel = parallelOfLayer;
                     std::vector<double> nfilar(nPar, 0.0);
                     nfilar[parallelOfLayer] = 1.0 / double(get_number_turns(windingIndex));
                     parallelsProportions = {uint64_t(1), nfilar};

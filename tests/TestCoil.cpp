@@ -16329,3 +16329,69 @@ TEST_CASE("Test_Wind_Toroid_Rings_Past_The_Bore_Centre_Do_Not_Fit", "[constructi
     }
     settings.reset();
 }
+
+// ABT #1521: a P-S-P foil transformer on a PQ 16/11 whose secondary (1 turn x 5 parallels of a 3 mm
+// foil) is 7.6x over-full. wind_by_rectangular_layers corrupted the heap on it (free(): invalid pointer
+// in std::vector<MAS::Layer>::~vector, Release -O3 -march=native). An over-full section is not
+// buildable: wind() must refuse it with a reason, never corrupt memory.
+TEST_CASE("Test_Wind_Over_Full_Foil_Section_Is_Refused_Not_Corrupting", "[constructive-model][coil][foil][abt-1521]") {
+    settings.reset();
+    auto foil = [](const std::string& name, double width) {
+        return json{{"name", name}, {"type", "foil"}, {"material", "copper"}, {"numberConductors", 1},
+                    {"conductingHeight", {{"maximum", 0.0072675}}}, {"outerHeight", {{"maximum", 0.0072675}}},
+                    {"conductingWidth", {{"nominal", width}}}, {"outerWidth", {{"nominal", width + 0.000025}}}};
+    };
+    json bobbinJson = {{"processedDescription", {
+        {"columnDepth", 0.00418}, {"columnShape", "round"}, {"columnThickness", 0.00093}, {"columnWidth", 0.00418},
+        {"coordinates", {0.0, 0.0, 0.0}}, {"wallThickness", 0.000775},
+        {"windingWindows", {{{"area", 2.9223e-05}, {"coordinates", {0.00609, 0.0, 0.0}}, {"height", 0.00765},
+                             {"sectionsAlignment", "centered"}, {"sectionsOrientation", "overlapping"},
+                             {"shape", "rectangular"}, {"width", 0.00382}}}}}}};
+    json functionalDescription = {
+        {{"name", "Primary"}, {"numberTurns", 4}, {"numberParallels", 2}, {"isolationSide", "primary"}, {"wire", foil("Foil 0.15", 0.00015)}},
+        {{"name", "Secondary 0"}, {"numberTurns", 1}, {"numberParallels", 5}, {"isolationSide", "secondary"}, {"wire", foil("Foil 2", 0.003)}}};
+
+    // Henry's sequence (Bench::build_magnetic): bobbin + functional description, no margins, P-S-P.
+    auto windPsp = [&](double secondaryFoilWidth) {
+        auto windings = functionalDescription;
+        windings[1]["wire"] = foil("Foil secondary", secondaryFoilWidth);
+        OpenMagnetics::Coil coil;
+        coil.set_bobbin(OpenMagnetics::Bobbin(bobbinJson));
+        coil.set_functional_description(OpenMagnetics::Coil(json{{"bobbin", bobbinJson}, {"functionalDescription", windings}}, false).get_functional_description());
+        coil.preload_margins({});
+        bool fits = coil.wind({0.5, 0.5}, {0, 1, 0}, 1);
+        return std::pair<bool, OpenMagnetics::Coil>{fits, coil};
+    };
+    // The P-S-P split puts all of primary parallel 0 in the first primary section and all of parallel 1
+    // in the second. Each foil layer of a section must hold a turn of a parallel THAT section owns.
+    auto checkFoilLayersHoldOwnParallel = [](OpenMagnetics::Coil& coil) {
+        auto layers = coil.get_layers_description();
+        REQUIRE(layers);
+        for (auto layer : layers.value()) {
+            if (layer.get_type() != MAS::ElectricalType::CONDUCTION || layer.get_partial_windings()[0].get_winding() != "Primary") {
+                continue;
+            }
+            INFO(layer.get_name());
+            auto proportions = layer.get_partial_windings()[0].get_parallels_proportion();
+            REQUIRE(proportions.size() == 2);
+            size_t ownParallel = layer.get_section().value() == "Primary section 0" ? 0 : 1;
+            CHECK_THAT(proportions[ownParallel], Catch::Matchers::WithinAbs(0.25, 1e-12));
+            CHECK(proportions[1 - ownParallel] == 0);
+        }
+    };
+
+    SECTION("the 7.6x over-full 3 mm secondary is refused, with the reason") {
+        auto [fits, coil] = windPsp(0.003);
+        CHECK_FALSE(fits);
+        UNSCOPED_INFO("reason: " << coil.get_last_fit_failure());
+        CHECK_FALSE(coil.get_last_fit_failure().empty());
+        checkFoilLayersHoldOwnParallel(coil);
+    }
+    SECTION("control: a 0.3 mm secondary fits, and the primary sections keep their own parallel") {
+        auto [fits, coil] = windPsp(0.0003);
+        CHECK(fits);
+        CHECK(coil.get_turns_description());
+        checkFoilLayersHoldOwnParallel(coil);
+    }
+    settings.reset();
+}
