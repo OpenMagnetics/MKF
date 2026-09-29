@@ -14394,6 +14394,46 @@ bool Coil::wind_by_rectangular_turns() {
     // turn count, so the finished edge is simply !startFromTop.
     std::map<std::string, bool> windingLastLayerFinishedAtTop;
     std::map<std::string, bool> windingLastLayerWasSingleTurn;
+    // ABT #1487: ordinal of each conduction layer within its (winding, section), for the U
+    // alternation of a section that starts at its own local terminal.
+    std::map<std::pair<std::string, std::string>, int64_t> sectionLayerOrderCount;
+    // ABT #1487: which window end each axially stacked section holding a local start terminal
+    // faces; nullopt for every other layer (the historical direction chain applies).
+    const bool stackedSectionsForStart = sections_stacked_axially_on_concentric_core(*this);
+    std::map<std::pair<std::string, int64_t>, std::string> wholeParallelSectionForStart;
+    if (stackedSectionsForStart) {
+        wholeParallelSectionForStart = full_parallel_section_by_conductor(*this);
+    }
+    auto local_start_section_faces_top = [&](const Layer& layer, const std::string& windingName,
+                                             int64_t sectionOrdinal) -> std::optional<bool> {
+        if (!stackedSectionsForStart || layer.get_orientation() != WindingOrientation::OVERLAPPING) {
+            return std::nullopt;
+        }
+        if (!layer.get_section() || layer.get_section()->empty()) {
+            throw CoilException(ErrorCode::COIL_WINDING_ERROR,
+                                "Real winding (ABT #1487): layer '" + layer.get_name() +
+                                    "' names no section, so the window end its start faces is unknown");
+        }
+        const std::string sectionName = layer.get_section().value();
+        bool holdsLocalStart = (sectionOrdinal == 0);   // R4 (and R1): the winding's first section
+        for (const auto& [conductor, wholeSection] : wholeParallelSectionForStart) {
+            if (conductor.first == windingName && wholeSection == sectionName) {
+                holdsLocalStart = true;                 // R1: a whole parallel starts here
+            }
+        }
+        if (!holdsLocalStart) {
+            return std::nullopt;
+        }
+        const auto section = get_section_by_name(sectionName);
+        const auto windingWindows = resolve_bobbin().get_processed_description()->get_winding_windows();
+        const auto windowIndex = resolve_section_winding_window_index(section);
+        if (windowIndex >= windingWindows.size() || !windingWindows[windowIndex].get_coordinates()) {
+            throw CoilException(ErrorCode::COIL_WINDING_ERROR,
+                                "Real winding (ABT #1487): the winding window of section '" + sectionName +
+                                    "' has no coordinates, so the window end its start faces is unknown");
+        }
+        return section.get_coordinates()[1] >= windingWindows[windowIndex].get_coordinates().value()[1];
+    };
     std::vector<Turn> turns;
     for (auto& layer : layers) {
         if (layer.get_type() == ElectricalType::CONDUCTION) {
@@ -14621,7 +14661,24 @@ bool Coil::wind_by_rectangular_turns() {
                     entranceBase = foundEdge->second;
                 }
             }
-            if (get_winding_order(layer.get_section().value()) == WindingOrder::U) {
+            // ABT #1487 (Alf, 2026-09-29): on axially stacked sections a section holding a LOCAL
+            // start terminal (R1: it holds a whole parallel; R4: it is the first section of a
+            // winding split in series) starts at the edge facing the window end it lies on, and
+            // winds away from it: "the input terminal should be on top, on the same side the
+            // section is, as it doesn't make sense it is in the bottom and wind the layers up".
+            // The lead leaves by the section's edge nearest its start turn, so placing the start
+            // turn decides the terminal's side too.
+            const std::optional<bool> localStartAtTop = local_start_section_faces_top(layer, windingNameForOrder,
+                                                                                     windingSectionOrdinal[windingNameForOrder]);
+            const int64_t sectionLayerOrdinal =
+                layer.get_section() ? sectionLayerOrderCount[{windingNameForOrder, layer.get_section().value()}]++ : 0;
+            if (localStartAtTop) {
+                startFromTop = localStartAtTop.value();
+                if (get_winding_order(layer.get_section().value()) == WindingOrder::U) {
+                    startFromTop = startFromTop != (sectionLayerOrdinal % 2 == 1);
+                }
+            }
+            else if (get_winding_order(layer.get_section().value()) == WindingOrder::U) {
                 startFromTop = entranceBase != (windingLayerOrdinal % 2 == 1);
             }
             else if (settings.get_coil_use_real_winding_geometry()) {
@@ -14643,8 +14700,11 @@ bool Coil::wind_by_rectangular_turns() {
                 int64_t(physicalTurnsInLayer) <= 2 * parallelsHere;
             const bool joinedByTurnaround =
                 singleTurnLayer || windingLastLayerWasSingleTurn[windingNameForOrder];
+            // The first layer of a section with a local start begins at that start, not where the
+            // winding's previous layer (another section, another conductor) finished.
+            const bool firstLayerOfLocalStart = localStartAtTop && sectionLayerOrdinal == 0;
             if (settings.get_coil_use_real_winding_geometry() && joinedByTurnaround &&
-                windingLayerOrdinal > 0 &&
+                windingLayerOrdinal > 0 && !firstLayerOfLocalStart &&
                 layer.get_orientation() == WindingOrientation::OVERLAPPING) {
                 startFromTop = windingLastLayerFinishedAtTop[windingNameForOrder];
             }

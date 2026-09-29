@@ -613,3 +613,81 @@ TEST_CASE("Real winding on axially stacked sections keeps links and blocked laye
     check_layers_within_own_sections(magnetic.get_coil());
     settings.reset();
 }
+
+// ABT #1487 (Alf, 2026-09-29): "the input terminal should be on top, on the same side the section
+// is, as it doesn't make sense it is in the bottom and wind the layers up". On axially stacked
+// sections every conductor's START is local (R1, R4), so its section starts at the edge facing the
+// window end the section lies on and winds away from it: the start turn sits on that edge's row and
+// its lead leaves by that edge. Here the primary's first section is the top-most primary section,
+// so its start turn is on that section's top row and its lead leaves at the top; every secondary
+// section holds a whole parallel and starts at the edge towards its own window end.
+TEST_CASE("Real winding on axially stacked sections starts each local start at the section edge facing its window end (ABT #1487)",
+          "[constructive-model][coil][real-winding][abt1487]") {
+    auto& settings = OpenMagnetics::Settings::GetInstance();
+    settings.reset();
+    auto magnetic = pq65_through_real_winding([](json& masJson) { pq65_winding(masJson, "Primary")["numberTurns"] = 18; });
+    auto& coil = magnetic.get_mutable_coil();
+    REQUIRE(coil.is_real_winding_blocking_applied());
+    const auto frame = section_frame(coil);
+    const auto turnsCopy = coil.get_turns_description().value();
+    const double windowCenterY =
+        coil.resolve_bobbin().get_processed_description()->get_winding_windows()[0].get_coordinates().value()[1];
+
+    // Precondition: the primary's first section is its top-most one.
+    auto turnNamed = [&](const std::string& name) -> const auto& {
+        for (const auto& turn : turnsCopy) {
+            if (turn.get_name() == name) {
+                return turn;
+            }
+        }
+        FAIL("no turn " << name);
+        throw std::runtime_error("unreachable");
+    };
+    const auto& primaryStart = turnNamed("Primary parallel 0 turn 0");
+    const std::string primaryStartSection = frame.sectionOfTurn.at(primaryStart.get_name());
+    for (const auto& [section, extent] : frame.axialExtent) {
+        if (section.rfind("Primary", 0) == 0) {
+            REQUIRE(extent.second <= frame.axialExtent.at(primaryStartSection).second + 1e-9);
+        }
+    }
+
+    const size_t secondaryParallels = coil.get_number_parallels(coil.get_winding_index_by_name("Secondary"));
+    std::vector<std::pair<std::string, int64_t>> starts{{"Primary", 0}};
+    for (size_t parallel = 0; parallel < secondaryParallels; ++parallel) {
+        starts.push_back({"Secondary", int64_t(parallel)});
+    }
+    for (const auto& [winding, parallel] : starts) {
+        const auto& start = turnNamed(winding + " parallel " + std::to_string(parallel) + " turn 0");
+        const std::string section = frame.sectionOfTurn.at(start.get_name());
+        const auto [low, high] = frame.axialExtent.at(section);
+        const bool sectionFacesTop = (low + high) / 2 >= windowCenterY;
+        double edgeRowY = sectionFacesTop ? std::numeric_limits<double>::lowest() : std::numeric_limits<double>::max();
+        for (const auto& turn : turnsCopy) {
+            if (turn.get_section().value() == section && turn.get_winding() == winding) {
+                edgeRowY = sectionFacesTop ? std::max(edgeRowY, turn.get_coordinates()[1]) : std::min(edgeRowY, turn.get_coordinates()[1]);
+            }
+        }
+        INFO(winding << " p" << parallel << " starts at '" << start.get_name() << "' in '" << section << "' [" << low * 1e3
+                     << ", " << high * 1e3 << "] mm, turn y " << start.get_coordinates()[1] * 1e3 << " mm, edge row y "
+                     << edgeRowY * 1e3 << " mm, facing " << (sectionFacesTop ? "top" : "bottom"));
+        CHECK(std::abs(start.get_coordinates()[1] - edgeRowY) < 1e-6);
+
+        size_t entranceRoutes = 0;
+        for (const auto& route : coil.get_connection_layout().routes) {
+            if (route.kind != OpenMagnetics::ConnectionKind::TERMINAL_ENTRANCE || route.winding != winding ||
+                route.parallel != parallel) {
+                continue;
+            }
+            ++entranceRoutes;
+            for (const auto& waypoint : route.waypoints) {
+                INFO("entrance waypoint y " << waypoint[1] * 1e3 << " mm");
+                // It leaves by the section's edge facing its window end: never towards the other half.
+                CHECK((sectionFacesTop ? waypoint[1] >= start.get_coordinates()[1] - 1e-9
+                                       : waypoint[1] <= start.get_coordinates()[1] + 1e-9));
+                CHECK((sectionFacesTop ? waypoint[1] >= (low + high) / 2 : waypoint[1] <= (low + high) / 2));
+            }
+        }
+        CHECK(entranceRoutes == 1);
+    }
+    settings.reset();
+}
