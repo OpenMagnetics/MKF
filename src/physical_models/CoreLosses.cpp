@@ -167,6 +167,16 @@ std::shared_ptr<CoreLossesModel> CoreLosses::get_core_losses_model(std::string m
 }
 
 
+// Above its Curie point a ferrite is paramagnetic: every loss model here describes the
+// ferromagnetic material, so a loss asked there is not a small number, it is no number (ABT #1485).
+// A material that carries no Curie temperature cannot be checked; it is evaluated as before.
+static void throw_if_above_curie_temperature(const CoreMaterial& coreMaterial, double temperature) {
+    auto curieTemperature = coreMaterial.get_curie_temperature();
+    if (curieTemperature && temperature >= curieTemperature.value()) {
+        throw MaterialAboveCurieTemperatureException(coreMaterial.get_name(), temperature, curieTemperature.value());
+    }
+}
+
 // DC Permeability Loss Estimator (DPLE) — Mühlethaler et al. (APEC 2025)
 // Corrects Steinmetz-family core losses for DC bias by scaling with the
 // permeability ratio: P_v(H_DC) = P_v(0) × [μ'(0) / μ'(H_DC)]
@@ -414,6 +424,7 @@ CoreLossesOutput CoreLosses::calculate_core_losses(Core core, OperatingPointExci
         return calculate_molded_core_losses(core, excitation, temperature);
     }
 
+    throw_if_above_curie_temperature(core.resolve_material(), temperature);
     auto coreLossesModelForMaterial = get_core_losses_model(core.get_material_name());
 
     CoreLossesOutput coreLossesOutput = coreLossesModelForMaterial->get_core_losses(core, excitation, temperature);
@@ -451,6 +462,7 @@ CoreLossesOutput CoreLosses::calculate_core_losses(Core core, OperatingPointExci
     return coreLossesOutput;
 }
 double CoreLosses::get_core_volumetric_losses(CoreMaterial coreMaterial, OperatingPointExcitation excitation, double temperature){
+    throw_if_above_curie_temperature(coreMaterial, temperature);
     auto coreLossesModelForMaterial = get_core_losses_model(coreMaterial.get_name());
 
     double coreVolumetricLosses = coreLossesModelForMaterial->get_core_volumetric_losses(coreMaterial, excitation, temperature);

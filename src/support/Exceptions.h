@@ -45,6 +45,7 @@ enum class ErrorCode : int {
     MATERIAL_DATA_MISSING = 301,
     MATERIAL_INVALID_PROPERTY = 302,
     MATERIAL_FREQUENCY_OUT_OF_SPAN = 303,  // f outside every fitted loss range (ABT #1456)
+    MATERIAL_ABOVE_CURIE_TEMPERATURE = 304,  // loss asked of a material hotter than its Curie point (ABT #1485)
     
     // Calculation errors (400-499)
     CALCULATION_NAN_RESULT = 400,
@@ -114,6 +115,7 @@ inline std::string to_string(ErrorCode code) {
         case ErrorCode::MATERIAL_DATA_MISSING: return "MATERIAL_DATA_MISSING";
         case ErrorCode::MATERIAL_INVALID_PROPERTY: return "MATERIAL_INVALID_PROPERTY";
         case ErrorCode::MATERIAL_FREQUENCY_OUT_OF_SPAN: return "MATERIAL_FREQUENCY_OUT_OF_SPAN";
+        case ErrorCode::MATERIAL_ABOVE_CURIE_TEMPERATURE: return "MATERIAL_ABOVE_CURIE_TEMPERATURE";
         case ErrorCode::CALCULATION_NAN_RESULT: return "CALCULATION_NAN_RESULT";
         case ErrorCode::CALCULATION_DIVERGED: return "CALCULATION_DIVERGED";
         case ErrorCode::CALCULATION_INVALID_INPUT: return "CALCULATION_INVALID_INPUT";
@@ -308,6 +310,26 @@ public:
     double frequency() const noexcept { return _frequency; }
     double span_minimum() const noexcept { return _spanMinimum; }
     double span_maximum() const noexcept { return _spanMaximum; }
+};
+
+// A ferrite above its Curie point is paramagnetic: no loss model describes it, and the magnetic
+// no longer works as designed (ABT #1485).
+class MaterialAboveCurieTemperatureException : public MaterialException {
+    std::string _materialName;
+    double _temperature;
+    double _curieTemperature;
+public:
+    MaterialAboveCurieTemperatureException(const std::string& materialName, double temperature, double curieTemperature)
+        : MaterialException(ErrorCode::MATERIAL_ABOVE_CURIE_TEMPERATURE,
+                            "Material " + materialName + ": core losses asked at " + std::to_string(temperature) +
+                            " C, at or above its Curie temperature of " + std::to_string(curieTemperature) +
+                            " C, where the material is no longer ferromagnetic",
+                            materialName),
+          _materialName(materialName), _temperature(temperature), _curieTemperature(curieTemperature) {}
+
+    const std::string& material_name() const noexcept { return _materialName; }
+    double temperature() const noexcept { return _temperature; }
+    double curie_temperature() const noexcept { return _curieTemperature; }
 };
 
 // ============================================================================

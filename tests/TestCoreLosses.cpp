@@ -2833,6 +2833,24 @@ TEST_CASE("Test_CoreLosses_Model_Nanoperm_8000", "[physical-model][core-losses][
     REQUIRE(coreLossesModel != nullptr);
 }
 
+TEST_CASE("Test_CoreLosses_Above_Curie_Temperature_Throws", "[physical-model][core-losses][smoke-test][abt-1485]") {
+    // ABT #1485: a thermal loop that overshoots Curie (240 C on a badly wound first cut) read a
+    // near-zero loss there. Above Curie the ferrite is paramagnetic; no loss model applies.
+    Core core = OpenMagneticsTesting::get_quick_core("T 20/10/7", json::array(), 1, "PC95");
+    double curieTemperature = core.resolve_material().get_curie_temperature().value();
+    auto excitation = OperatingPointExcitation(json::parse(R"({"frequency": 200000, "magneticFluxDensity": {"processed": {"label": "Sinusoidal", "peak": 0.05, "peakToPeak": 0.1, "offset": 0}}})"));
+    CoreLosses coreLosses;
+    CHECK_THROWS_AS(coreLosses.calculate_core_losses(core, excitation, curieTemperature + 1), MaterialAboveCurieTemperatureException);
+    CHECK_THROWS_AS(coreLosses.get_core_volumetric_losses(core.resolve_material(), excitation, curieTemperature), MaterialAboveCurieTemperatureException);
+    try {
+        coreLosses.get_core_volumetric_losses(core.resolve_material(), excitation, curieTemperature + 25);
+    }
+    catch (const MaterialAboveCurieTemperatureException& exception) {
+        CHECK(exception.code() == ErrorCode::MATERIAL_ABOVE_CURIE_TEMPERATURE);
+        CHECK(exception.curie_temperature() == curieTemperature);
+    }
+}
+
 TEST_CASE("Test_CoreLosses_Nanoperm_Data_Sheet_Bound_Is_Peak", "[physical-model][core-losses][smoke-test][abt-1491]") {
     // Magnetec's NANOPERM data sheet: "Material Losses (0,3 T / 100 kHz / sinus) < 110 W/kg". 0.3 T is a
     // PEAK amplitude, as every nanocrystalline data sheet quotes it (VAC VP 800 F <= 80 W/kg, Proterial
