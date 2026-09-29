@@ -329,12 +329,17 @@ TEST_CASE("Test_Impedance_Few_Turns_Larger_Core", "[physical-model][impedance][s
     OpenMagnetics::Magnetic magnetic;
     magnetic.set_core(core);
     magnetic.set_coil(coil);
+    // Expected |Z| are MKF values, re-pinned when ring cores moved to the IEC 60205 clause 5.1 effective
+    // parameters (ABT #1502): le/Ae of T 36/23/15 went 0.9506 -> 0.9350 mm^-1 (TDK publishes 0.94 for R36),
+    // so L and |Z| rose 1.67% at every point (before: 26.94 / 67.13 / 134.3 / 335.1 / 675.5 Ohm).
+    // The measured references were 21.6 / 54.1 / 108 / 300 / 600 Ohm at 2 / 5 / 10 / 25 / 50 kHz;
+    // MKF is +27% above the 2 kHz measurement and +14% above the 50 kHz one.
     std::map<double, double> expectedImpedances = {
-        {2000, 21.6},
-        {5000, 54.1},
-        {10000, 108},
-        {25000, 300},
-        {50000, 600},
+        {2000, 27.39},
+        {5000, 68.25},
+        {10000, 136.5},
+        {25000, 340.7},
+        {50000, 686.8},
     };
 
     for (auto [frequency, expectedImpedance] : expectedImpedances) {

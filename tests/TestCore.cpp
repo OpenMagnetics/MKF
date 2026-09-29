@@ -17,6 +17,7 @@
 
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
+#include <catch2/matchers/catch_matchers_string.hpp>
 #include <algorithm>
 #include <filesystem>
 #include <fstream>
@@ -2080,6 +2081,97 @@ TEST_CASE("Toroid_Effective_Parameters_Different_Standards", "[constructive-mode
     
     // At least one parameter should be different
     REQUIRE((areaDifferent || lengthDifferent || volumeDifferent));
+}
+
+TEST_CASE("Toroid_Effective_Parameters_Match_Maker_Published_IEC_60205", "[constructive-model][core][effective-parameters][abt-1502]") {
+    // ABT #1502: a ferrite ring's le/Ae/Ve are the IEC 60205:2016 clause 5.1 ring-core values,
+    // the ones the makers publish. The previous mean-circumference form gave Ve 3142 mm3 for
+    // 25/15/10 against Ferroxcube's 2944 mm3 (+6.7 %), +3.2 % to +12.6 % across this list.
+    // Sources: Ferroxcube "Ferrite toroids" product overview (2008-09-01, CBW378, Ve/Ae);
+    // TDK datasheets for the R-series cores (2023, ordering code in the comment, le/Ae/Ve);
+    // Fair-Rite toroid product page (Ve only: Ae/le are printed to 2 significant figures).
+    // Published values are rounded to 3-4 significant figures; 0.5 % covers that rounding,
+    // the old formula misses each one by 3 % or more.
+    struct Published {
+        std::string shape;
+        double effectiveLengthMm;   // 0 when the maker does not publish it
+        double effectiveAreaMm2;    // 0 when the maker does not publish it (to 3 digits)
+        double effectiveVolumeMm3;
+    };
+    std::vector<Published> published = {
+        // Ferroxcube TN rings (uncoated ferrite dimensions = the name)
+        {"T 10/6/4", 0, 7.8, 188},
+        {"T 14/9/5", 0, 12.3, 430},
+        {"T 16/9.6/6.3", 0, 19.7, 760},
+        {"T 23/14/7", 0, 30.9, 1722},
+        {"T 25/15/10", 0, 48.9, 2944},
+        {"T 50/30/19", 0, 186, 22378},
+        {"T 107/65/18", 0, 370, 96000},
+        // TDK R-series (B64290L0618, L0632, L0638, L0647, L0058, L0674, A0040, A0730)
+        {"T 25.3/14.8/10", 60.07, 51.26, 3079},
+        {"T 20/10/7", 43.55, 33.63, 1465},
+        {"T 22.1/13.7/6.3", 54.15, 26.17, 1417},
+        {"T 29.5/19/14.9", 73.78, 76.98, 5680},
+        {"T 34/20.5/10", 82.06, 66.08, 5423},
+        {"T 36/23/15", 89.65, 95.89, 8597},
+        {"T 58.3/40.8/17.6", 152.4, 152.4, 23230},
+        {"T 87/54.3/13.5", 213.9, 216.7, 46360},
+        // Fair-Rite 5978007601 (22.1 x 13.7 x 12.7 mm, Ve 2.83 cm3)
+        {"T 22.1/13.7/12.7", 0, 0, 2830},
+    };
+    const double relativeTolerance = 0.005;
+
+    for (const auto& ring : published) {
+        json coreJson;
+        coreJson["functionalDescription"] = json();
+        coreJson["name"] = "abt1502 " + ring.shape;
+        coreJson["functionalDescription"]["type"] = "toroidal";
+        coreJson["functionalDescription"]["material"] = "N97";
+        coreJson["functionalDescription"]["shape"] = ring.shape;
+        coreJson["functionalDescription"]["gapping"] = json::array();
+        coreJson["functionalDescription"]["numberStacks"] = 1;
+        Core core(coreJson, true);
+        REQUIRE(core.resolve_material().get_material() == MAS::MaterialType::FERRITE);
+
+        auto effectiveParameters = core.get_processed_description()->get_effective_parameters();
+        INFO(ring.shape << ": le " << effectiveParameters.get_effective_length() * 1e3 << " mm, Ae "
+             << effectiveParameters.get_effective_area() * 1e6 << " mm2, Ve "
+             << effectiveParameters.get_effective_volume() * 1e9 << " mm3");
+        CHECK_THAT(effectiveParameters.get_effective_volume() * 1e9,
+                   Catch::Matchers::WithinRel(ring.effectiveVolumeMm3, relativeTolerance));
+        if (ring.effectiveAreaMm2 > 0) {
+            CHECK_THAT(effectiveParameters.get_effective_area() * 1e6,
+                       Catch::Matchers::WithinRel(ring.effectiveAreaMm2, relativeTolerance));
+        }
+        if (ring.effectiveLengthMm > 0) {
+            CHECK_THAT(effectiveParameters.get_effective_length() * 1e3,
+                       Catch::Matchers::WithinRel(ring.effectiveLengthMm, relativeTolerance));
+        }
+    }
+}
+
+TEST_CASE("Toroid_Effective_Parameters_Reject_Degenerate_Rings", "[constructive-model][core][effective-parameters][abt-1502]") {
+    // Inner diameter at or above the outer one has no ring cross-section: the IEC 60205
+    // logarithm is 0 or negative. That must throw, never produce effective parameters.
+    for (auto [outerDiameter, innerDiameter, height] : std::vector<std::tuple<double, double, double>>{
+             {0.015, 0.015, 0.01}, {0.015, 0.025, 0.01}, {0.025, 0.015, 0.0}}) {
+        json coreJson;
+        coreJson["functionalDescription"] = json();
+        coreJson["name"] = "abt1502 degenerate ring";
+        coreJson["functionalDescription"]["type"] = "toroidal";
+        coreJson["functionalDescription"]["material"] = "N97";
+        coreJson["functionalDescription"]["shape"] = json();
+        coreJson["functionalDescription"]["shape"]["family"] = "t";
+        coreJson["functionalDescription"]["shape"]["type"] = "custom";
+        coreJson["functionalDescription"]["shape"]["name"] = "abt1502 degenerate ring";
+        coreJson["functionalDescription"]["shape"]["dimensions"]["A"]["nominal"] = outerDiameter;
+        coreJson["functionalDescription"]["shape"]["dimensions"]["B"]["nominal"] = innerDiameter;
+        coreJson["functionalDescription"]["shape"]["dimensions"]["C"]["nominal"] = height;
+        coreJson["functionalDescription"]["gapping"] = json::array();
+        coreJson["functionalDescription"]["numberStacks"] = 1;
+        INFO("A=" << outerDiameter << " B=" << innerDiameter << " C=" << height);
+        CHECK_THROWS_WITH(Core(coreJson, true), Catch::Matchers::ContainsSubstring("Toroid needs outer diameter"));
+    }
 }
 
 TEST_CASE("Toroid_Coating_Winding_Window_Offset", "[constructive-model][core][coating][winding-window]") {

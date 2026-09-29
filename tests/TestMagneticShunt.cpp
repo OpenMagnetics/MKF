@@ -61,7 +61,9 @@ namespace {
 // (0.0010388323822073957 / 0.00052362259152796784 = 1.98393). ABT #1240 then stored the energy of the field inside
 // the round wires, which the Energy method's field model zeroed: 0.00052362259152796784 -> 0.00058639692599301880
 // (x 1.1199 on this 12:12 toroid, whose grid and Kelvin images are unchanged). Filter code unchanged since the #1176 pin.
-const double kCmcLeakageRatioBeforeAbt1176 = 0.00058639692599301880;
+// ABT #1502 moved ring cores to the IEC 60205 clause 5.1 effective parameters: le/Ae of T 36/23/15 fell 1.6%, Lm
+// rose 1.67% and the score followed: 0.00058639692599301880 -> 0.00057678112765158684 (x 0.98360).
+const double kCmcLeakageRatioBeforeAbt1176 = 0.00057678112765158684;
 
 // Relative error against a published measurement, referred to the measurement (Catch's WithinRel
 // refers to the larger of the two values, which is looser when the model overshoots).

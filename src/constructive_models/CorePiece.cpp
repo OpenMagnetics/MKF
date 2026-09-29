@@ -1997,21 +1997,36 @@ class CorePieceT : public CorePiece {
     }
 
     std::tuple<double, double, double> get_shape_constants() {
+        // IEC 60205:2016 clause 5.1.1 (ring cores), integrated over the radius instead of taking
+        // the mean circumference and the full rectangle (ABT #1502; the mean-circumference form
+        // overstated Ve by 3-13 %, e.g. 3142 mm3 against 2944 mm3 for 25/15/10):
+        //     C1 = 2*pi / (he * ln(d1/d2))
+        //     C2 = 4*pi * (1/d2 - 1/d1) / (he^2 * ln^3(d1/d2))
+        // with d1 = outer diameter (A), d2 = inner diameter (B). MAS rings carry only A, B, C,
+        // so this is clause 5.1.2, sharp-cornered rectangular section: he = h = C, and the
+        // minimum (geometrical) cross-section Ag = h * (d1 - d2) / 2. Clauses 5.1.3/5.1.4
+        // (rounding radius r0, chamfer c0) need an edge dimension no MAS ring has.
         auto dimensions = flatten_dimensions(get_shape().get_dimensions().value());
-        std::vector<double> lengths;
-        std::vector<double> areas;
-        double columnWidth = (dimensions["A"] - dimensions["B"]) / 2;
-
-        lengths.push_back(2 * std::numbers::pi * (dimensions["B"] / 2 + columnWidth / 2));
-
-        areas.push_back(columnWidth * dimensions["C"]);
-
-        double c1 = 0, c2 = 0;
-        for (size_t i = 0; i < lengths.size(); ++i) {
-            c1 += lengths[i] / areas[i];
-            c2 += lengths[i] / pow(areas[i], 2);
+        for (const auto& key : {"A", "B", "C"}) {
+            if (dimensions.find(key) == dimensions.end()) {
+                throw InvalidInputException(ErrorCode::INVALID_CORE_DATA,
+                    std::string("Toroid shape is missing dimension ") + key);
+            }
         }
-        auto minimumArea = *min_element(areas.begin(), areas.end());
+        double outerDiameter = dimensions["A"];
+        double innerDiameter = dimensions["B"];
+        double height = dimensions["C"];
+        if (!(innerDiameter > 0) || !(outerDiameter > innerDiameter) || !(height > 0)) {
+            throw InvalidInputException(ErrorCode::INVALID_CORE_DATA,
+                "Toroid needs outer diameter A > inner diameter B > 0 and height C > 0, got A=" +
+                std::to_string(outerDiameter) + " B=" + std::to_string(innerDiameter) + " C=" + std::to_string(height));
+        }
+
+        double logarithmOfDiameterRatio = std::log(outerDiameter / innerDiameter);
+        double c1 = 2 * std::numbers::pi / (height * logarithmOfDiameterRatio);
+        double c2 = 4 * std::numbers::pi * (1 / innerDiameter - 1 / outerDiameter) /
+                    (pow(height, 2) * pow(logarithmOfDiameterRatio, 3));
+        double minimumArea = height * (outerDiameter - innerDiameter) / 2;
 
         return {c1, c2, minimumArea};
     }
