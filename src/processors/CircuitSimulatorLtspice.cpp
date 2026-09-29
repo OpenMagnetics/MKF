@@ -275,6 +275,9 @@ std::string CircuitSimulatorExporterLtspiceModel::export_magnetic_as_subcircuit(
         ? std::vector<double>{}  // the behavioural GSE element replaces the small-signal ladder
         : CircuitSimulatorExporter::calculate_core_resistance_coefficients(magnetic, temperature, coreLossTopology_lt);
     if (!coreResistanceCoefficients.empty()) {
+        auto [fitStart, fitStop] = CircuitSimulatorExporter::core_resistance_fit_window(magnetic);
+        circuitString += "* Core-loss network fitted over " + std::to_string(fitStart) + " Hz to " +
+                         std::to_string(fitStop) + " Hz (the material's fitted Steinmetz span; 1 kHz to 300 kHz for a material without one)\n";
         if (coreLossTopology_lt == CoreLossTopology::ROSANO) {
             circuitString += emit_core_rosano_spice(coreResistanceCoefficients, coil.get_functional_description().size());
         } else {

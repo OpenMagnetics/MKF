@@ -7,6 +7,7 @@
 // and shared helpers live in advisers/CoreAdviserInternal.h.
 
 #include "advisers/CoreAdviser.h"
+#include "advisers/MagneticFilter.h"
 #include "support/StableSortByIndex.h"
 #include "advisers/CoreAdviserInternal.h"
 #include "advisers/CoreMaterialCrossReferencer.h"
@@ -22,6 +23,22 @@
 #include <vector>
 
 namespace OpenMagnetics {
+
+// ABT #1456: a material whose fitted loss span does not contain every operating frequency cannot be
+// ranked by its losses there (get_steinmetz_coefficients throws instead of extrapolating). Drop it
+// through the LOSS_MODEL_FREQUENCY_SPAN filter, with the model the pools below evaluate: Steinmetz
+// when the material has it, the proprietary closed forms otherwise.
+static bool loss_model_covers_operating_frequencies(const CoreMaterial& coreMaterial, const Inputs& inputs, const std::string& pool) {
+    auto coreLossesMethods = Core::get_available_core_losses_methods(coreMaterial);
+    bool hasSteinmetz = std::find(coreLossesMethods.begin(), coreLossesMethods.end(), VolumetricCoreLossesMethodType::STEINMETZ) != coreLossesMethods.end();
+    auto model = hasSteinmetz ? CoreLossesModels::STEINMETZ : CoreLossesModels::PROPRIETARY;
+    if (MagneticFilterLossModelFrequencySpan::is_material_evaluable(coreMaterial, inputs, model)) {
+        return true;
+    }
+    logEntry(std::string("Dropping core material '") + coreMaterial.get_name() + "' from the " + pool +
+             " candidate ranking: an operating frequency lies outside its fitted Steinmetz span", "CoreAdviser");
+    return false;
+}
 
 bool CoreAdviser::should_include_powder(Inputs inputs) {
     // Check if powder cores are disabled in settings
@@ -71,6 +88,9 @@ std::vector<std::pair<Magnetic, double>> CoreAdviser::add_powder_materials(std::
         magneticFluxDensityReference, maximumCurrentDcBias, 1);
     auto [coreLossesModelSteinmetz, coreLossesModelProprietary] = make_default_core_losses_model_pair();
     for (auto coreMaterial : coreMaterialsToEvaluate) {
+        if (!loss_model_covers_operating_frequencies(coreMaterial, inputs, "powder")) {
+            continue;
+        }
         double averageVolumetricCoreLosses = 0;
         try {
             for (size_t operatingPointIndex = 0; operatingPointIndex < inputs.get_operating_points().size(); ++operatingPointIndex){
@@ -201,6 +221,9 @@ std::vector<std::pair<Magnetic, double>> CoreAdviser::add_ferrite_materials_by_l
         magneticFluxDensityReference, 0, 1);
     auto [coreLossesModelSteinmetz, coreLossesModelProprietary] = make_default_core_losses_model_pair();
     for (auto coreMaterial : coreMaterialsToEvaluate) {
+        if (!loss_model_covers_operating_frequencies(coreMaterial, inputs, "ferrite")) {
+            continue;
+        }
         double averageVolumetricCoreLosses = 0;
         try {
             for (size_t operatingPointIndex = 0; operatingPointIndex < inputs.get_operating_points().size(); ++operatingPointIndex){

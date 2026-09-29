@@ -170,6 +170,9 @@ struct FractionalPoleNetwork {
     double Cinf = 0.0;
     double Rinf = 0.0;
     FractionalPoleOptions opts;
+    // Frequency window the core resistance anchoring this network was evaluated over: the requested band
+    // clipped to the material's fitted Steinmetz span (ABT #1456). Unset for the per-winding skin networks.
+    std::optional<std::pair<double, double>> fittedSpan;
 };
 
 // Parameters for a behavioural GSE (Generalized Steinmetz Equation) core-loss element.
@@ -551,6 +554,9 @@ class CircuitSimulatorExporter {
         static std::vector<FractionalPoleNetwork> calculate_fracpole_networks_per_winding(Magnetic magnetic, double temperature, FractionalPoleOptions opts={});
         static FractionalPoleNetwork calculate_core_fracpole_network(Magnetic magnetic, double temperature, FractionalPoleOptions opts={});
         static CircuitSimulatorExporterCurveFittingModes resolve_curve_fitting_mode(CircuitSimulatorExporterCurveFittingModes mode);
+        // Window the core-resistance network is fitted over: the material's fitted Steinmetz span, or
+        // 1 kHz..300 kHz for a material with no Steinmetz method (ABT #1456).
+        static std::pair<double, double> core_resistance_fit_window(Magnetic magnetic);
         static std::vector<double> calculate_core_resistance_coefficients(Magnetic magnetic, double temperature = defaults.ambientTemperature, CoreLossTopology topology = CoreLossTopology::RIDLEY);
         static GseCoreLossParams calculate_gse_core_loss_params(Magnetic magnetic, double frequency, double temperature = defaults.ambientTemperature);
         std::string export_magnetic_as_symbol(Magnetic magnetic, std::optional<std::string> outputFilename = std::nullopt, std::optional<std::string> filePathOrFile = std::nullopt);

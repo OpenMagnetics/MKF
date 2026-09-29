@@ -4,6 +4,7 @@
 #include "processors/MagneticSimulator.h"
 #include "advisers/MagneticAdviser.h"
 #include "processors/Inputs.h"
+#include "support/Exceptions.h"
 #include "TestingUtils.h"
 #include "Fixtures.h"
 
@@ -1347,7 +1348,10 @@ namespace {
         run_example_simulation("06_llc_xfmr_eq4128_3c97.json");
     }
     TEST_CASE("Example_07_cmc", "[example][magnetic-simulator][smoke-test]") {
-        run_example_simulation("07_cmc_t2515_w800.json");
+        // ABT #1456: its operating point is at 50 Hz, below the fitted span of its ferrite's loss data. MKF no longer extrapolates a
+        // Steinmetz fit outside the frequencies it was fitted on, so simulating this example must fail
+        // with that specific error, not with any other. (Materials without low-frequency data: ABT #1494.)
+        CHECK_THROWS_AS(run_example_simulation("07_cmc_t2515_w800.json"), MaterialFrequencyOutOfSpanException);
     }
     TEST_CASE("Example_08_pq_inductor", "[example][magnetic-simulator][smoke-test]") {
         run_example_simulation("08_pq_inductor_pq5050_n27.json");
@@ -1380,7 +1384,10 @@ namespace {
         run_example_simulation("17_cllc_xfmr_e5528_3c92a.json");
     }
     TEST_CASE("Example_18_stacked_inductor", "[example][magnetic-simulator][smoke-test]") {
-        run_example_simulation("18_stacked_inductor_e7033_n27.json");
+        // ABT #1456: its operating point is at 20 kHz, below N27's published loss data (25 kHz). MKF no longer extrapolates a
+        // Steinmetz fit outside the frequencies it was fitted on, so simulating this example must fail
+        // with that specific error, not with any other. (Materials without low-frequency data: ABT #1494.)
+        CHECK_THROWS_AS(run_example_simulation("18_stacked_inductor_e7033_n27.json"), MaterialFrequencyOutOfSpanException);
     }
     TEST_CASE("Example_19_multi_op_xfmr", "[example][magnetic-simulator][smoke-test]") {
         run_example_simulation("19_multi_op_xfmr_etd3920_pc95.json");

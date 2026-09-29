@@ -7,6 +7,7 @@
 #include "processors/Inputs.h"
 #include "physical_models/MagnetizingInductance.h"
 #include "processors/CircuitSimulatorInterface.h"
+#include "processors/Sweeper.h"
 #include "physical_models/Reluctance.h"
 #include "support/MaterialValidator.h"
 #include "TestingUtils.h"
@@ -3784,7 +3785,9 @@ TEST_CASE("Test_Core_Losses_Drum_Semishielded_Per_Material_Split", "[physical-mo
     };
 
     json excitationJson = json();
-    excitationJson["frequency"] = 500000;
+    // 3C90's published loss data ends at 446.69 kHz (MagNet); since ABT #1456 MKF refuses to evaluate
+    // outside it, so the split is exercised at 200 kHz. The invariants below are ratios, not values.
+    excitationJson["frequency"] = 200000;
     excitationJson["magneticFluxDensity"]["processed"]["dutyCycle"] = 0.5;
     excitationJson["magneticFluxDensity"]["processed"]["label"] = WaveformLabel::SINUSOIDAL;
     excitationJson["magneticFluxDensity"]["processed"]["offset"] = 0;
@@ -4196,24 +4199,42 @@ TEST_CASE("Test_Material_Validator_Abt1456_Out_Of_Range_Grades", "[material-vali
     }
 }
 
-TEST_CASE("Test_Material_Validator_Abt1456_P63_Below_Envelope", "[material-validator]") {
-    // P63's first range claims 1 kHz..1 MHz; at 100 kHz / 200 mT / 100 C it gives far less than
-    // the best published MnZn power grade (PC47 250 kW/m3).
+TEST_CASE("Test_Material_Validator_Abt1456_P63_Out_Of_Range", "[material-validator]") {
+    // P63's first range used to claim 1 kHz..1 MHz because its points were stored in Hz instead of kHz,
+    // which put 100 kHz / 200 mT / 100 C far below the best published MnZn power grade. With the points
+    // corrected (ACME "40 P63.xlsx", ABT #1456) its span starts at 300 kHz, so the class primary point
+    // is simply outside the data: an out-of-range finding, not an envelope one.
     settings.reset();
     auto verdict = MaterialValidator().validate(material_record("P63"));
     INFO(describe(verdict));
-    CHECK(count_findings(verdict, "MAT_LOSS_ENVELOPE", MaterialFindingSeverity::SUSPICIOUS) >= 1);
+    CHECK(count_findings(verdict, "MAT_LOSS_OUT_OF_RANGE", MaterialFindingSeverity::SUSPICIOUS) == 1);
+    CHECK(count_findings(verdict, "MAT_LOSS_ENVELOPE", MaterialFindingSeverity::SUSPICIOUS) == 0);
 }
 
 TEST_CASE("Test_Material_Validator_Abt1456_Temperature_Coefficients_Missing", "[material-validator]") {
-    // KL11F / KL7F / KL9F carry ct0/ct1 but no ct2: MKF drops the temperature dependence.
+    // KL11F / KL7F / KL9F carry ct0/ct1 but no ct2. MKF used to drop the temperature dependence of such
+    // ranges; since ABT #1456 a missing ct term takes its schema default, so the three grades now have
+    // one and are clean. A copy of KL11F stripped of every ct term has no temperature dependence at all,
+    // and the rule must still catch that.
     settings.reset();
     MaterialValidator validator;
     for (std::string name : {"KL11F", "KL7F", "KL9F"}) {
         auto verdict = validator.validate(material_record(name));
         INFO(name << "\n" << describe(verdict));
-        CHECK(count_findings(verdict, "MAT_LOSS_TEMPERATURE", MaterialFindingSeverity::SUSPICIOUS) == 1);
+        CHECK(count_findings(verdict, "MAT_LOSS_TEMPERATURE", MaterialFindingSeverity::SUSPICIOUS) == 0);
     }
+    auto flat = material_record("KL11F");
+    for (auto& method : flat["volumetricLosses"]["default"]) {
+        if (!method.is_object() || !method.contains("ranges")) continue;
+        for (auto& range : method["ranges"]) {
+            range.erase("ct0");
+            range.erase("ct1");
+            range.erase("ct2");
+        }
+    }
+    auto verdict = validator.validate(flat);
+    INFO("KL11F without ct\n" << describe(verdict));
+    CHECK(count_findings(verdict, "MAT_LOSS_TEMPERATURE", MaterialFindingSeverity::SUSPICIOUS) == 1);
 }
 
 TEST_CASE("Test_Material_Validator_Hysteresis_Bound_P63_Points", "[material-validator]") {
@@ -4396,4 +4417,147 @@ TEST_CASE("Test_Material_Validator_Loss_Not_Positive_Inside_Span", "[material-va
     INFO(describe(verdict));
     CHECK(count_findings(verdict, "MAT_LOSS_EVAL", MaterialFindingSeverity::IMPOSSIBLE) >= 1);
     CHECK_FALSE(verdict.valid);
+}
+
+// ABT #1456: nine 0.5-5 MHz MnZn grades evaluated at 100 kHz read 2-18 % of 3C95's loss, because
+// get_steinmetz_coefficients silently returned the nearest range for a frequency outside every range,
+// i.e. extrapolated a MHz power law a decade down. Outside the fitted span it now throws, on both sides.
+TEST_CASE("Steinmetz coefficients outside the fitted span throw, below and above", "[physical-model][core-losses][abt-1456]") {
+    settings.reset();
+    clear_databases();
+
+    // TP5H: MAS fits 1-5 MHz only.
+    auto [tp5hMinimum, tp5hMaximum] = CoreLossesModel::get_steinmetz_fitted_span("TP5H");
+    REQUIRE(tp5hMinimum > 100000);
+    CHECK_THROWS_AS(CoreLossesModel::get_steinmetz_coefficients("TP5H", 100000), MaterialFrequencyOutOfSpanException);
+    CHECK_THROWS_WITH(CoreLossesModel::get_steinmetz_coefficients("TP5H", 100000),
+                      Catch::Matchers::ContainsSubstring("TP5H") && Catch::Matchers::ContainsSubstring("below"));
+    CHECK_NOTHROW(CoreLossesModel::get_steinmetz_coefficients("TP5H", tp5hMinimum));
+    CHECK_NOTHROW(CoreLossesModel::get_steinmetz_coefficients("TP5H", tp5hMaximum));
+
+    // Whole volumetric-loss path, not just the lookup.
+    auto coreLossesModel = CoreLossesModel::factory(CoreLossesModels::STEINMETZ);
+    CHECK_THROWS_AS(coreLossesModel->get_core_volumetric_losses(Core::resolve_material("TP5H"), build_sinusoidal_flux_excitation(100000, 0.2), 100),
+                    MaterialFrequencyOutOfSpanException);
+
+    // Above the highest range: 3C95 is fitted up to 3 MHz.
+    auto [c95Minimum, c95Maximum] = CoreLossesModel::get_steinmetz_fitted_span("3C95");
+    CHECK_THROWS_AS(CoreLossesModel::get_steinmetz_coefficients("3C95", 2 * c95Maximum), MaterialFrequencyOutOfSpanException);
+    CHECK_THROWS_WITH(CoreLossesModel::get_steinmetz_coefficients("3C95", 2 * c95Maximum),
+                      Catch::Matchers::ContainsSubstring("3C95") && Catch::Matchers::ContainsSubstring("above"));
+    CHECK_NOTHROW(CoreLossesModel::get_steinmetz_coefficients("3C95", 100000));
+}
+
+// ABT #1456: the temperature factor used to be applied only when ct0, ct1 AND ct2 were all present, and
+// dropped silently when it came out <= 0. The schema defaults a missing ct0/ct1/ct2 to 1/0/0; 25 ranges in
+// 17 materials carry only ct0/ct1 (Huoh Yow KL7F/KL9F/KL11F among them) and lost their temperature
+// dependence. Huoh Yow's KL11F datasheet table: 1 MHz/50 mT is 100 kW/m3 at 20 C and 180 kW/m3 at 100 C.
+TEST_CASE("Steinmetz ct terms take their schema defaults; a non-positive factor throws", "[physical-model][core-losses][abt-1456]") {
+    settings.reset();
+    clear_databases();
+
+    auto coreLossesModel = CoreLossesModel::factory(CoreLossesModels::STEINMETZ);
+    auto kl11f = Core::resolve_material("KL11F");
+    auto excitation = build_sinusoidal_flux_excitation(1e6, 0.05);
+    double lossesAt20 = coreLossesModel->get_core_volumetric_losses(kl11f, excitation, 20);
+    double lossesAt100 = coreLossesModel->get_core_volumetric_losses(kl11f, excitation, 100);
+    CHECK(lossesAt100 > 1.3 * lossesAt20);
+
+    SteinmetzCoreLossesMethodRangeDatum datum;
+    datum.set_k(1);
+    datum.set_alpha(1.5);
+    datum.set_beta(2.5);
+    datum.set_minimum_frequency(1e4);
+    datum.set_maximum_frequency(1e6);
+    datum.set_ct0(2.0);
+    CHECK(CoreLossesModel::apply_temperature_coefficients(1.0, datum, 25) == 2.0);  // ct1 = ct2 = 0 by default
+
+    datum.set_ct0(-1.0);
+    CHECK_THROWS_AS(CoreLossesModel::apply_temperature_coefficients(1.0, datum, 25), CalculationException);
+    datum.set_ct1(0.0);
+    datum.set_ct2(0.0);
+    CHECK_THROWS_AS(CoreLossesModel::apply_temperature_coefficients(1.0, datum, 25), CalculationException);
+}
+
+// ABT #1456: P63's loss points at 1/3/5 MHz were stored as 1/3/5 kHz (ACME's workbook columns are in kHz),
+// which is why its Steinmetz fit claimed to start at 1 kHz. Corrected in MAS, the fit starts at ACME's
+// lowest measured frequency, 300 kHz ("40 P63.xlsx", sheet 4data). At 1 MHz/50 mT/100 C the workbook gives
+// 80 kW/m3 (sheet 5data; sheet 4data says 67); the refit range 300 kHz-1 MHz has a mean |error| of 34.7 %
+// over its 46 points (scripts/refit-steinmetz.py), so that is the tolerance.
+TEST_CASE("P63 is fitted from 300 kHz and matches ACME's 1 MHz point", "[physical-model][core-losses][abt-1456]") {
+    settings.reset();
+    clear_databases();
+
+    auto [p63Minimum, p63Maximum] = CoreLossesModel::get_steinmetz_fitted_span("P63");
+    CHECK(p63Minimum == 300000);
+    CHECK(p63Maximum == 5000000);
+    CHECK(CoreLossesModel::is_frequency_in_steinmetz_span("P63", 1e6));
+    CHECK_FALSE(CoreLossesModel::is_frequency_in_steinmetz_span("P63", 1e5));
+
+    auto coreLossesModel = CoreLossesModel::factory(CoreLossesModels::STEINMETZ);
+    double volumetricLosses = coreLossesModel->get_core_volumetric_losses(Core::resolve_material("P63"),
+                                                                          build_sinusoidal_flux_excitation(1e6, 0.05), 100);
+    CHECK_THAT(volumetricLosses, Catch::Matchers::WithinRel(80e3, 0.347));
+}
+
+// ABT #1456: the subcircuit core-loss network was fitted over 1 kHz-300 kHz whatever the material, so it
+// evaluated the Steinmetz fit outside its span (1 kHz for N87, fitted from 25 kHz; the whole band for the MHz
+// grades). Alf's decision: fit over the material's own fitted span, so every Steinmetz material exports, and
+// state that window in the netlist.
+TEST_CASE("Subcircuit core-loss network is fitted over the material's span", "[circuit][core-losses][export][abt-1456]") {
+    settings.reset();
+    clear_databases();
+
+    std::vector<int64_t> numberTurns = {20};
+    for (std::string materialName : {"N87", "TP5H", "P63"}) {
+        INFO(materialName);
+        auto magnetic = OpenMagnetics::magnetic_autocomplete(OpenMagneticsTesting::get_quick_magnetic(
+            "E 42/21/15", OpenMagneticsTesting::get_ground_gap(0.001), numberTurns, 1, materialName));
+        auto [spanMinimum, spanMaximum] = CoreLossesModel::get_steinmetz_fitted_span(materialName);
+        auto [windowStart, windowStop] = CircuitSimulatorExporter::core_resistance_fit_window(magnetic);
+        CHECK(windowStart == spanMinimum);
+        CHECK(windowStop == spanMaximum);
+        CHECK_FALSE(CircuitSimulatorExporter::calculate_core_resistance_coefficients(magnetic, 25).empty());
+
+        auto network = CircuitSimulatorExporter::calculate_core_fracpole_network(magnetic, 25);
+        REQUIRE(network.fittedSpan);
+        CHECK(network.fittedSpan->first >= spanMinimum);
+        CHECK(network.fittedSpan->second <= spanMaximum);
+
+        for (auto model : {CircuitSimulatorExporterModels::LTSPICE, CircuitSimulatorExporterModels::NL5}) {
+            std::string subcircuit = CircuitSimulatorExporter(model).export_magnetic_as_subcircuit(magnetic, 100000, 25);
+            CHECK_THAT(subcircuit, Catch::Matchers::ContainsSubstring("Core-loss network fitted over " + std::to_string(spanMinimum)));
+        }
+    }
+
+    // A sweep asked for outside the span is clipped to it, and its title says so.
+    std::vector<int64_t> n87Turns = {20};
+    auto n87 = OpenMagnetics::magnetic_autocomplete(OpenMagneticsTesting::get_quick_magnetic(
+        "E 42/21/15", OpenMagneticsTesting::get_ground_gap(0.001), n87Turns, 1, "N87"));
+    auto [n87Minimum, n87Maximum] = CoreLossesModel::get_steinmetz_fitted_span("N87");
+    auto sweep = Sweeper::sweep_core_resistance_over_frequency(n87, 1000, 300000, 20);
+    CHECK(sweep.get_x_points().front() >= n87Minimum);
+    CHECK_THAT(sweep.get_title(), Catch::Matchers::ContainsSubstring("fitted Steinmetz span"));
+}
+
+// ABT #1456 (decision 4): the core-loss sweep evaluates Steinmetz, so it is clipped to the fitted span and the
+// title states it, like the core resistance sweep.
+TEST_CASE("Core-loss frequency sweep is clipped to the material's fitted span", "[sweeper][core-losses][abt-1456]") {
+    settings.reset();
+    clear_databases();
+    std::vector<int64_t> numberTurns = {20};
+    auto magnetic = OpenMagnetics::magnetic_autocomplete(OpenMagneticsTesting::get_quick_magnetic(
+        "E 42/21/15", OpenMagneticsTesting::get_ground_gap(0.001), numberTurns, 1, "P63"));
+    auto inputs = OpenMagneticsTesting::create_quick_test_inputs();
+    auto [spanMinimum, spanMaximum] = CoreLossesModel::get_steinmetz_fitted_span("P63");
+    REQUIRE(spanMinimum > 10000);
+    auto sweep = Sweeper::sweep_core_losses_over_frequency(magnetic, inputs.get_operating_points()[0], 10000, 1200000, 10);
+    CHECK_THAT(sweep.get_x_points().front(), Catch::Matchers::WithinRel(spanMinimum, 1e-9));
+    CHECK_THAT(sweep.get_x_points().back(), Catch::Matchers::WithinRel(1200000.0, 1e-9));
+    CHECK_THAT(sweep.get_title(), Catch::Matchers::ContainsSubstring("fitted Steinmetz span"));
+    auto [inSpanStart, inSpanStop] = Sweeper::core_resistance_frequency_window(magnetic, 400000, 1000000);
+    CHECK(inSpanStart == 400000);
+    CHECK(inSpanStop == 1000000);
+    CHECK_THROWS_AS(Sweeper::sweep_core_losses_over_frequency(magnetic, inputs.get_operating_points()[0], 10000, 100000, 10),
+                    MaterialFrequencyOutOfSpanException);
 }

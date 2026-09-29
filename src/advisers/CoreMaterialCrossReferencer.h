@@ -123,7 +123,15 @@ class CoreMaterialCrossReferencer {
                 }
             }
             std::vector<std::pair<CoreMaterial, double>> filter_core_materials(std::vector<std::pair<CoreMaterial, double>>* unfilteredCoreMaterials, CoreMaterial referenceCoreMaterial, double temperature, std::map<std::string, std::string> models, double weight=1);
-            double calculate_average_volumetric_losses(CoreMaterial coreMaterial, double temperature, std::map<std::string, std::string> models);
+            // Average over _magneticFluxDensities x frequencies. A material whose model reads fitted
+            // Steinmetz ranges and cannot be evaluated at one of the frequencies (outside its span)
+            // is uncomputable here: NaN, like a material with no model (ABT #1456).
+            double calculate_average_volumetric_losses(CoreMaterial coreMaterial, double temperature, std::map<std::string, std::string> models, const std::vector<double>& frequencies);
+            // The comparison frequencies for a reference: the _frequencies inside the span its own
+            // loss model is valid over (all of them for a model with no span).
+            std::vector<double> get_comparison_frequencies(const CoreMaterial& referenceCoreMaterial);
+        private:
+            std::shared_ptr<CoreLossesModel> select_core_losses_model(const CoreMaterial& coreMaterial);
     };
     
     class MagneticCoreFilterResistivity : public MagneticCoreFilter {

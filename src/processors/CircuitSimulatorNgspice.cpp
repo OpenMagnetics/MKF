@@ -324,8 +324,10 @@ std::string CircuitSimulatorExporterNgspiceModel::export_magnetic_as_subcircuit(
         : CircuitSimulatorExporter::calculate_core_resistance_coefficients(magnetic, temperature, coreLossTopology);
     if (!coreResistanceCoefficients.empty()) {
         // Sanity check: core loss impedance at mid-frequency must be > 10x Lmag impedance
-        // Otherwise the network shorts the magnetizing inductance instead of modeling losses
-        double fMid = std::sqrt(1000.0 * 300000.0);
+        // Otherwise the network shorts the magnetizing inductance instead of modeling losses.
+        // The mid-frequency is the middle of the window the network was fitted over (ABT #1456).
+        auto [fitStart, fitStop] = CircuitSimulatorExporter::core_resistance_fit_window(magnetic);
+        double fMid = std::sqrt(fitStart * fitStop);
         double wMid = 2 * std::numbers::pi * fMid;
         double zLmag = wMid * magnetizingInductance;
         double zCoreLoss;
@@ -337,6 +339,8 @@ std::string CircuitSimulatorExporterNgspiceModel::export_magnetic_as_subcircuit(
             zCoreLoss = CircuitSimulatorExporter::core_ladder_model(coreResistanceCoefficients.data(), fMid, dcCoreResistance);
         }
         if (zCoreLoss > zLmag * 10) {
+            circuitString += "* Core-loss network fitted over " + std::to_string(fitStart) + " Hz to " +
+                             std::to_string(fitStop) + " Hz (the material's fitted Steinmetz span; 1 kHz to 300 kHz for a material without one)\n";
             if (coreLossTopology == CoreLossTopology::ROSANO) {
                 circuitString += emit_core_rosano_spice(coreResistanceCoefficients, numWindings);
             } else {

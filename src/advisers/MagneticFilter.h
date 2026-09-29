@@ -290,6 +290,32 @@ class MagneticFilterWindability : public MagneticFilter {
         std::pair<bool, double> evaluate_magnetic(Magnetic* magnetic, Inputs* inputs, std::vector<Outputs>* outputs = nullptr);
 };
 
+/**
+ * @class MagneticFilterLossModelFrequencySpan
+ *
+ * Gate, not a score: can the core loss model MKF would use for this material be evaluated at every
+ * operating frequency? The Steinmetz ranges in MAS are fits over [minimumFrequency, maximumFrequency];
+ * outside that span CoreLossesModel::get_steinmetz_coefficients throws MaterialFrequencyOutOfSpanException
+ * rather than extrapolate (ABT #1456: nine 0.5-5 MHz grades read at 100 kHz gave 2-18 % of 3C95's loss and
+ * won every ranking). Advisers must drop such materials through this filter, which returns {false, 0},
+ * instead of letting the loss filters throw: the MagneticAdviser aborts after 8 identical throws.
+ *
+ * Only the Steinmetz family (Steinmetz, iGSE, ciGSE, Barg, Albach, MSE, NSE) has a declared span. The other
+ * methods (Magnetics / Micrometals / Poco / TDG closed forms, Roshen, loss factor) declare none in the
+ * schema, so a material evaluated with one of them always passes.
+ */
+class MagneticFilterLossModelFrequencySpan : public MagneticFilter {
+    public:
+        MagneticFilterLossModelFrequencySpan() {};
+        std::pair<bool, double> evaluate_magnetic(Magnetic* magnetic, Inputs* inputs, std::vector<Outputs>* outputs = nullptr);
+        // Needs only the core's material, so it judges parts without a coil too.
+        bool applies_to(Magnetic* magnetic) const override { return magnetic->has_core(); }
+        // The same verdict for a bare material. `model` is the core loss model the caller will evaluate it
+        // with; when absent it is the one CoreLosses picks from the settings' model order.
+        static bool is_material_evaluable(const CoreMaterial& material, const Inputs& inputs,
+                                          std::optional<CoreLossesModels> model = std::nullopt);
+};
+
 class MagneticFilterSolidInsulationRequirements : public MagneticFilter {
     private:
         double _maximumCurrent;

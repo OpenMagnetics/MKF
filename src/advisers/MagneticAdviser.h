@@ -133,6 +133,7 @@ class MagneticAdviser{
 
         std::map<MagneticFilters, std::shared_ptr<MagneticFilter>> _filters;
         std::vector<MagneticFilterOperation> _loadedFilterFlow;
+        MagneticFilterLossModelFrequencySpan _lossModelFrequencySpanFilter;  // always-on gate (ABT #1456)
         /// @brief Candidates that FAILED a non-strictly-required filter, per filter.
         ///
         /// A filter that rejects a candidate returns {false, 0.0} — a raw score of

@@ -234,7 +234,35 @@ std::vector<std::pair<CoreMaterial, double>> CoreMaterialCrossReferencer::Magnet
 // CMCR-OPT-1 NOTE: This computes losses at 25 (B,f) points per material.
 // Consider pre-computing reference losses once, then using ratio-based comparison.
 // Or use Steinmetz equation for initial screening before detailed model.
-double CoreMaterialCrossReferencer::MagneticCoreFilterVolumetricLosses::calculate_average_volumetric_losses(CoreMaterial coreMaterial, double temperature, std::map<std::string, std::string> models) {
+std::shared_ptr<CoreLossesModel> CoreMaterialCrossReferencer::MagneticCoreFilterVolumetricLosses::select_core_losses_model(const CoreMaterial& coreMaterial) {
+    auto availableMethodsForMaterial = CoreLossesModel::get_methods(coreMaterial);
+    for (auto& [modelName, coreLossesModel] : _coreLossesModels) {
+        if (std::find(availableMethodsForMaterial.begin(), availableMethodsForMaterial.end(), modelName) != availableMethodsForMaterial.end()) {
+            return coreLossesModel;
+        }
+    }
+    return nullptr;
+}
+
+std::vector<double> CoreMaterialCrossReferencer::MagneticCoreFilterVolumetricLosses::get_comparison_frequencies(const CoreMaterial& referenceCoreMaterial) {
+    auto coreLossesModel = select_core_losses_model(referenceCoreMaterial);
+    if (coreLossesModel == nullptr || !CoreLossesModel::evaluates_steinmetz_ranges(coreLossesModel.get())) {
+        return _frequencies;
+    }
+    auto [spanMinimum, spanMaximum] = CoreLossesModel::get_steinmetz_fitted_span(referenceCoreMaterial);
+    std::vector<double> frequencies;
+    for (auto frequency : _frequencies) {
+        if (frequency >= spanMinimum && frequency <= spanMaximum) {
+            frequencies.push_back(frequency);
+        }
+    }
+    return frequencies;
+}
+
+double CoreMaterialCrossReferencer::MagneticCoreFilterVolumetricLosses::calculate_average_volumetric_losses(CoreMaterial coreMaterial, double temperature, std::map<std::string, std::string> models, const std::vector<double>& frequencies) {
+    if (frequencies.empty()) {
+        throw InvalidInputException(ErrorCode::INVALID_INPUT, "calculate_average_volumetric_losses: no comparison frequencies");
+    }
     if (models.find("coreLosses") == models.end()) {
         models["coreLosses"] = to_string(Defaults().coreLossesModelDefault);
     }
@@ -245,19 +273,21 @@ double CoreMaterialCrossReferencer::MagneticCoreFilterVolumetricLosses::calculat
     magneticFluxDensityProcessed.set_label(WaveformLabel::SINUSOIDAL);
     magneticFluxDensityProcessed.set_offset(0);
     magneticFluxDensityProcessed.set_duty_cycle(0.5);
-    std::shared_ptr<CoreLossesModel> coreLossesModelForMaterial = nullptr;
-
     try {
-        auto availableMethodsForMaterial = CoreLossesModel::get_methods(coreMaterial);
-        for (auto& [modelName, coreLossesModel] : _coreLossesModels) {
-            if (std::find(availableMethodsForMaterial.begin(), availableMethodsForMaterial.end(), modelName) != availableMethodsForMaterial.end()) {
-                coreLossesModelForMaterial = coreLossesModel;
-                break;
-            }
-        }
-
+        auto coreLossesModelForMaterial = select_core_losses_model(coreMaterial);
         if (coreLossesModelForMaterial == nullptr) {
             throw ModelNotAvailableException("No model found for material: " + coreMaterial.get_name());
+        }
+        if (CoreLossesModel::evaluates_steinmetz_ranges(coreLossesModelForMaterial.get())) {
+            // A candidate fitted over a different band than the reference cannot be compared at the
+            // reference's frequencies: its model would throw MaterialFrequencyOutOfSpanException there.
+            // Uncomputable -> NaN, which the caller culls (ABT #1456).
+            auto [spanMinimum, spanMaximum] = CoreLossesModel::get_steinmetz_fitted_span(coreMaterial);
+            for (auto frequency : frequencies) {
+                if (frequency < spanMinimum || frequency > spanMaximum) {
+                    return std::numeric_limits<double>::quiet_NaN();
+                }
+            }
         }
 
         double averageVolumetricLosses = 0;
@@ -265,7 +295,7 @@ double CoreMaterialCrossReferencer::MagneticCoreFilterVolumetricLosses::calculat
             magneticFluxDensityProcessed.set_peak(magneticFluxDensityPeak);
             magneticFluxDensityProcessed.set_peak_to_peak(magneticFluxDensityPeak * 2);
             magneticFluxDensity.set_processed(magneticFluxDensityProcessed);
-            for (auto frequency : _frequencies) {
+            for (auto frequency : frequencies) {
                 magneticFluxDensity.set_waveform(Inputs::create_waveform(magneticFluxDensityProcessed, frequency));
                 excitation.set_frequency(frequency);
                 excitation.set_magnetic_flux_density(magneticFluxDensity);
@@ -273,7 +303,7 @@ double CoreMaterialCrossReferencer::MagneticCoreFilterVolumetricLosses::calculat
                 averageVolumetricLosses += coreVolumetricLosses;
             }
         }
-        averageVolumetricLosses /= _magneticFluxDensities.size() * _frequencies.size();
+        averageVolumetricLosses /= _magneticFluxDensities.size() * frequencies.size();
         return averageVolumetricLosses;
     }
     catch(const ModelNotAvailableException& re)
@@ -297,7 +327,19 @@ std::vector<std::pair<CoreMaterial, double>> CoreMaterialCrossReferencer::Magnet
     std::vector<double> newScoring;
 
     try {
-        double referenceVolumetricLossesWithTemperature = calculate_average_volumetric_losses(referenceCoreMaterial, temperature, models);
+        auto comparisonFrequencies = get_comparison_frequencies(referenceCoreMaterial);
+        if (comparisonFrequencies.empty()) {
+            // The reference's loss model is fitted entirely outside the comparison grid
+            // (20 kHz - 500 kHz), e.g. a 3-10 MHz NiZn grade: there is no frequency at which
+            // the reference itself can be evaluated, so the loss dimension cannot rank anything.
+            logEntry("CoreMaterialCrossReferencer: reference material '"
+                         + referenceCoreMaterial.get_name()
+                         + "' has a Steinmetz span outside every comparison frequency; skipping the "
+                         "loss dimension and cross-referencing on the remaining filters",
+                     "CoreMaterialCrossReferencer");
+            return *unfilteredCoreMaterials;
+        }
+        double referenceVolumetricLossesWithTemperature = calculate_average_volumetric_losses(referenceCoreMaterial, temperature, models, comparisonFrequencies);
         if (std::isnan(referenceVolumetricLossesWithTemperature)) {
             // The reference material has no usable volumetric-loss model (e.g. an
             // interference-suppression ferrite characterised only by a loss factor
@@ -323,9 +365,42 @@ std::vector<std::pair<CoreMaterial, double>> CoreMaterialCrossReferencer::Magnet
         magneticFluxDensityProcessed.set_duty_cycle(0.5);
 
         std::vector<std::pair<CoreMaterial, double>> filteredCoreMaterialsWithScoring;
+        std::map<std::vector<double>, double> referenceLossesBySharedFrequencies;
         for (size_t coreMaterialIndex = 0; coreMaterialIndex < (*unfilteredCoreMaterials).size(); ++coreMaterialIndex){
             CoreMaterial coreMaterial = (*unfilteredCoreMaterials)[coreMaterialIndex].first;
-            double volumetricLossesWithTemperature = calculate_average_volumetric_losses(coreMaterial, temperature, models);
+            // Compare where BOTH materials have loss data: the reference's in-span grid points that
+            // also lie inside the candidate's fitted span. A candidate that shares none is culled.
+            // A good equivalent must not be dropped only because its datasheet stops at 200 kHz
+            // while the reference's goes to 500 kHz (ABT #1456).
+            std::vector<double> sharedFrequencies;
+            auto candidateModel = select_core_losses_model(coreMaterial);
+            if (candidateModel != nullptr && CoreLossesModel::evaluates_steinmetz_ranges(candidateModel.get())) {
+                auto [spanMinimum, spanMaximum] = CoreLossesModel::get_steinmetz_fitted_span(coreMaterial);
+                for (auto frequency : comparisonFrequencies) {
+                    if (frequency >= spanMinimum && frequency <= spanMaximum) {
+                        sharedFrequencies.push_back(frequency);
+                    }
+                }
+            }
+            else {
+                sharedFrequencies = comparisonFrequencies;
+            }
+            if (sharedFrequencies.empty()) {
+                continue;
+            }
+            double referenceOnSharedFrequencies = referenceVolumetricLossesWithTemperature;
+            if (sharedFrequencies != comparisonFrequencies) {
+                auto cached = referenceLossesBySharedFrequencies.find(sharedFrequencies);
+                if (cached == referenceLossesBySharedFrequencies.end()) {
+                    cached = referenceLossesBySharedFrequencies.emplace(sharedFrequencies, calculate_average_volumetric_losses(referenceCoreMaterial, temperature, models, sharedFrequencies)).first;
+                }
+                referenceOnSharedFrequencies = cached->second;
+            }
+            double volumetricLossesOnSharedFrequencies = calculate_average_volumetric_losses(coreMaterial, temperature, models, sharedFrequencies);
+            // Distance measured on the shared frequencies, rescaled to the reference's full-grid
+            // magnitude so candidates compared on different subsets stay on one scale; a candidate
+            // sharing the whole grid gets exactly the unscaled distance.
+            double volumetricLossesWithTemperature = volumetricLossesOnSharedFrequencies * referenceVolumetricLossesWithTemperature / referenceOnSharedFrequencies;
             if (std::isnan(volumetricLossesWithTemperature)) {
                 // Uncomputable losses for this candidate: cull it (like the core
                 // cross-referencer) rather than assigning DBL_MAX, which would blow up the

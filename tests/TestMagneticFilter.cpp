@@ -1071,3 +1071,51 @@ TEST_CASE("Design-mode envelope fit: height strict, in-plane rotation, toroid fl
         CHECK_FALSE(MagneticFilterMaximumDimensions::core_fits(toroid, inputs_with(0.060, 0.050, 0.016)));
     }
 }
+
+// ABT #1456: a catalogue built on a MHz grade (TP5H: Steinmetz fitted over 1-5 MHz only) advised at 100 kHz.
+// Its loss filters now throw rather than extrapolate, and the catalogue path aborts after 8 identical throws
+// in a row, which a catalogue holding many parts of one material produces. The always-on
+// LOSS_MODEL_FREQUENCY_SPAN gate must drop those parts with a verdict instead: the run completes, returns
+// the N87 part, and returns no TP5H part.
+TEST_CASE("MagneticAdviser catalogue path drops parts whose material has no loss fit at the operating frequency",
+          "[adviser][magnetic-adviser][abt-1456]") {
+    settings.reset();
+    clear_databases();
+
+    auto inputs = OpenMagnetics::Inputs::create_quick_operating_point_only_current(
+        100000, 100e-6, 25, WaveformLabel::TRIANGULAR, 2, 0.5, 1);
+    auto part = [&](const std::string& material, double gap, int64_t turns, const std::string& reference) {
+        auto magnetic = OpenMagneticsTesting::get_quick_magnetic("E 42/21/15", OpenMagneticsTesting::get_ground_gap(gap),
+                                                                 std::vector<int64_t>{turns}, 1, material);
+        MAS::MagneticManufacturerInfo manufacturerInfo;
+        manufacturerInfo.set_name("ABT 1456 test");
+        manufacturerInfo.set_reference(reference);
+        magnetic.set_manufacturer_info(manufacturerInfo);
+        return OpenMagnetics::magnetic_autocomplete(magnetic);
+    };
+
+    auto tp5hPart = part("TP5H", 0.001, 20, "TP5H-0");
+    auto n87Part = part("N87", 0.001, 20, "N87-0");
+    auto spanFilter = MagneticFilter::factory(MagneticFilters::LOSS_MODEL_FREQUENCY_SPAN);
+    CHECK(spanFilter->evaluate_magnetic(&tp5hPart, &inputs) == std::pair<bool, double>{false, 0.0});
+    CHECK(spanFilter->evaluate_magnetic(&n87Part, &inputs) == std::pair<bool, double>{true, 1.0});
+
+    std::vector<OpenMagnetics::Magnetic> catalogue;
+    for (int i = 0; i < 10; ++i) {
+        catalogue.push_back(part("TP5H", 0.0005 + 0.0001 * i, 15 + i, "TP5H-" + std::to_string(i)));
+    }
+    catalogue.push_back(n87Part);
+
+    MagneticAdviser adviser;
+    std::vector<std::pair<OpenMagnetics::Mas, double>> results;
+    // A strictly-required loss filter: without the gate, each TP5H part makes it throw the same
+    // out-of-span message, and the 10 consecutive identical throws abort the run.
+    std::vector<MagneticFilterOperation> flow{MagneticFilterOperation(MagneticFilters::CORE_AND_DC_LOSSES, true, false, true, 1.0)};
+    REQUIRE_NOTHROW(results = adviser.get_advised_magnetic(inputs, catalogue, flow, 5, false));
+    REQUIRE_FALSE(results.empty());
+    for (auto& [mas, scoring] : results) {
+        INFO(mas.get_magnetic().get_reference());
+        CHECK(mas.get_magnetic().get_core().get_material_name() != "TP5H");
+    }
+    settings.reset();
+}

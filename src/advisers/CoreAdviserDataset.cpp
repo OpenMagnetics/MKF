@@ -842,22 +842,15 @@ void add_alternative_materials(std::vector<std::pair<Magnetic, double>> *magneti
             }
         }
 
-        // Phase 1: per-candidate alternatives lookup is annotational metadata.
-        // If the cross-reference can't proceed (e.g. this candidate's material
-        // has no Steinmetz coefficients at this temperature, so it can't be
-        // used as a reference for ranking others), record an empty
-        // alternatives list and continue. Named, logged, bounded scope.
+        // No catch here (ABT #1456): the cross-referencer handles the cases it can decide (a
+        // reference whose losses cannot be computed skips the loss dimension; a candidate whose
+        // model does not cover a comparison frequency is culled). Anything else is a bug, and
+        // a catch-all here once turned every N87-class candidate's alternatives into an empty
+        // list without a trace in the results.
         std::vector<std::string> coreMaterialAlternatives;
-        try {
-            auto alternatives = coreMaterialCrossReferencer.get_cross_referenced_core_material(coreMaterial, temperature);
-            for (auto [alternativeCoreMaterial, scoring] : alternatives) {
-                coreMaterialAlternatives.push_back(alternativeCoreMaterial.get_name());
-            }
-        }
-        catch (const std::exception& e) {
-            logEntry(std::string("Skipping alternative-materials lookup for candidate with material '")
-                         + coreMaterial.get_name() + "': " + e.what(),
-                     "CoreAdviser", 2);
+        auto alternatives = coreMaterialCrossReferencer.get_cross_referenced_core_material(coreMaterial, temperature);
+        for (auto [alternativeCoreMaterial, scoring] : alternatives) {
+            coreMaterialAlternatives.push_back(alternativeCoreMaterial.get_name());
         }
         if (alternativesCache != nullptr) {
             (*alternativesCache)[cacheKey] = coreMaterialAlternatives;

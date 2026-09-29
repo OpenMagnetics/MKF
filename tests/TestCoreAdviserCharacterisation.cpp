@@ -271,12 +271,15 @@ const std::vector<TopEntry> kTopAvailablePower = {
 // est now). PQ 27/15 takes slot 0 and HS 26/16 (3 x 0.40 mm distributed) and
 // EQ 25/6 enter the five. The table was already stale on main before this change
 // (it returned RM 10/ILP 0.32 mm, 3.8106, at slot 0).
+// Re-baselined 2026-09-29 (ABT #1456 with the MAS refits of ABT #1490, Alf: "finish the material part
+// without asking"): Fair-Rite 95/97/98 were refitted from Fair-Rite's own curves, and the picks move
+// from 98 to 97 on the same shapes (PQ 27/15 and RM 10/ILP keep slots 0-1); scores within 0.7 %.
 const std::vector<TopEntry> kTopStandardPower = {
-    {"98 PQ 27/15 gapped 0.80 mm",                 3.7337654648839442},
-    {"98 RM 10/ILP gapped 0.80 mm",                3.7133884725479489},
-    {"98 HS 26/16 gapped 3 x 0.40 mm",             3.6854404500368796},
-    {"98 RM 10LP gapped 0.80 mm",                  3.671448283980375},
-    {"98 EQ 25/6 gapped 0.90 mm",                  3.6606228135989283},
+    {"97 PQ 27/15 gapped 0.80 mm",                 3.733259878439477},
+    {"97 RM 10/ILP gapped 0.80 mm",                3.7202571345411686},
+    {"97 E 19/8.1/4.8 3 stacks gapped 5 x 0.20 mm", 3.6996451303855462},
+    {"97 EQ 25/6 gapped 0.90 mm",                  3.6871051530308634},
+    {"97 HS 26/16 gapped 3 x 0.40 mm",             3.6859769971171357},
 };
 
 // Refreshed 2026-06-16 (ABT #10) after landing the suppression returns-0 fix

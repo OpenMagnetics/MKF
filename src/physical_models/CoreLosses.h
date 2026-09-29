@@ -76,6 +76,14 @@ class CoreLossesModel {
     static std::shared_ptr<CoreLossesModel> factory(CoreLossesModels modelName);
     static std::shared_ptr<CoreLossesModel> factory(std::map<std::string, std::string> models);
     static std::shared_ptr<CoreLossesModel> factory(json models);
+    // Span [lowest minimumFrequency, highest maximumFrequency] over which the material's Steinmetz ranges
+    // were fitted. Throws when the material has no Steinmetz method (ABT #1456).
+    static std::pair<double, double> get_steinmetz_fitted_span(CoreMaterialDataOrNameUnion material);
+    static bool is_frequency_in_steinmetz_span(CoreMaterialDataOrNameUnion material, double frequency);
+    // True when the model evaluates the material's fitted Steinmetz ranges (Steinmetz family), and so
+    // is bounded by their span. The proprietary closed forms derive from the Steinmetz class but
+    // evaluate the maker's own formula with no declared span (ABT #1456).
+    static bool evaluates_steinmetz_ranges(const CoreLossesModel* model);
     static SteinmetzCoreLossesMethodRangeDatum get_steinmetz_coefficients(
         CoreMaterialDataOrNameUnion material,
         double frequency);
@@ -105,34 +113,36 @@ class CoreLossesModel {
         }
     }
 
+    // Steinmetz temperature factor ct(T) = ct2*T^2 - ct1*T + ct0 (ABT #1456). Each missing coefficient takes
+    // its schema default (ct0 = 1, ct1 = 0, ct2 = 0; MAS schemas/magnetic/core/material.json), so a range
+    // carrying only ct0/ct1 keeps its temperature dependence. A factor <= 0 is not a loss scale: throw.
+    static double get_temperature_factor(const SteinmetzCoreLossesMethodRangeDatum& steinmetzDatum, double temperature) {
+        double ct0 = steinmetzDatum.get_ct0() ? steinmetzDatum.get_ct0().value() : 1.0;
+        double ct1 = steinmetzDatum.get_ct1() ? steinmetzDatum.get_ct1().value() : 0.0;
+        double ct2 = steinmetzDatum.get_ct2() ? steinmetzDatum.get_ct2().value() : 0.0;
+        double scale = ct2 * pow(temperature, 2) - ct1 * temperature + ct0;
+        if (!(scale > 0)) {
+            throw CalculationException(ErrorCode::INVALID_LOSS_DATA,
+                "Steinmetz temperature factor ct(" + std::to_string(temperature) + " C) = " + std::to_string(scale) +
+                " <= 0 (ct0=" + std::to_string(ct0) + ", ct1=" + std::to_string(ct1) + ", ct2=" + std::to_string(ct2) +
+                ") for the range [" + std::to_string(steinmetzDatum.get_minimum_frequency().value_or(-1)) + ", " +
+                std::to_string(steinmetzDatum.get_maximum_frequency().value_or(-1)) + "] Hz");
+        }
+        return scale;
+    }
+
     double get_magnetic_flux_density_from_volumetric_losses(SteinmetzCoreLossesMethodRangeDatum steinmetzDatum, double volumetricLosses, double frequency, double temperature) {
-        double temperatureTerm = 1;
         double k = steinmetzDatum.get_k();
         double alpha = steinmetzDatum.get_alpha();
         double beta = steinmetzDatum.get_beta();
-        if (steinmetzDatum.get_ct0() && steinmetzDatum.get_ct1() && steinmetzDatum.get_ct2()) {
-            double ct0 = steinmetzDatum.get_ct0().value();
-            double ct1 = steinmetzDatum.get_ct1().value();
-            double ct2 = steinmetzDatum.get_ct2().value();
-            temperatureTerm = ct2 * pow(temperature, 2) - ct1 * temperature + ct0;
-        }
+        double temperatureTerm = get_temperature_factor(steinmetzDatum, temperature);
         return pow(volumetricLosses / k / pow(frequency, alpha) / temperatureTerm, 1 / beta);
     }
 
     static double apply_temperature_coefficients(double volumetricLosses,
                                                  SteinmetzCoreLossesMethodRangeDatum steinmetzDatum,
                                                  double temperature) {
-        double volumetricLossesWithTemperature = volumetricLosses;
-        if (steinmetzDatum.get_ct0() && steinmetzDatum.get_ct1() && steinmetzDatum.get_ct2()) {
-            double ct0 = steinmetzDatum.get_ct0().value();
-            double ct1 = steinmetzDatum.get_ct1().value();
-            double ct2 = steinmetzDatum.get_ct2().value();
-            double scale = (ct2 * pow(temperature, 2) - ct1 * temperature + ct0);
-            if (scale > 0) {
-                volumetricLossesWithTemperature *= scale;
-            }
-        }
-        return volumetricLossesWithTemperature;
+        return volumetricLosses * get_temperature_factor(steinmetzDatum, temperature);
     }
 
     static std::vector<std::string> get_methods_string(CoreMaterialDataOrNameUnion material) {

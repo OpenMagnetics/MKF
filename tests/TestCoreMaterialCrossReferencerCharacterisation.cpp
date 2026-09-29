@@ -145,22 +145,28 @@ void check_top_n(const std::string& label,
 // loss models and initial permeability, so neither wins by missing data. Same five
 // names; TPW30/MBT2 swap. The tie band remains ~0.1% wide; #398 still tracks making
 // the score discriminate instead of pinning a coin flip.
+// Re-baselined 2026-09-29 (ABT #1456, Alf: "finish the material part without asking"): candidates are
+// compared on the loss-grid frequencies they share with the reference instead of being culled for
+// missing one (and the MAS data moved: ABT #1456/#1490 refits, ct defaults). KL97W (Huoh Yow
+// 97-class, data to 200 kHz) now enters at slot 0; ML33D leaves the five.
 const std::vector<TopEntry> kTopFerriteDefault = {
-    {"DMR95", 2.7030235692090656},
-    {"ML33D", 2.7029322665532569},
-    {"TPW30", 2.7012756176446233},
-    {"MBT2",  2.6999765288775177},
-    {"P45",   2.6996579563546494},
+    {"KL97W", 2.7249014672682108},
+    {"DMR95", 2.7062838354523393},
+    {"P45",   2.7029715663731353},
+    {"TPW30", 2.6899236084261187},
+    {"MBT2",  2.689063419286561},
 };
 
 // Refreshed 2026-08-20 (ABT #834): identical five names and order; scores +0.27%
 // from the same normalization shift.
+// Re-baselined 2026-09-29 (ABT #1456): same cause as above. N95/PEM95 keep slots 0-1; the larger
+// candidate pool shifts the normalization, and PCL47/PC47 leave the five for N51/PEL95.
 const std::vector<TopEntry> kTopFerriteOnlyTdk = {
-    {"N95",   2.5632063030546171},
-    {"PEM95", 2.5509949258323354},
-    {"PCL47", 2.5055538730926847},
-    {"PC47",  2.4923030895288774},
-    {"N97",   2.4920803486041487},
+    {"N95",   2.483894643200923},
+    {"PEM95", 2.4718130882901406},
+    {"N97",   2.4125823626698186},
+    {"N51",   2.3872011076579112},
+    {"PEL95", 2.3819166531736888},
 };
 
 // Refreshed 2026-08-20 (ABT #834, user-approved): same normalization shift. Kool Mµ

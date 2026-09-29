@@ -145,13 +145,17 @@ std::shared_ptr<MagneticFilter> MagneticFilter::factory(MagneticFilters filterNa
             // Needs no Inputs: whether a wire can be bent around its former is a property of the
             // magnetic alone.
             return std::make_shared<MagneticFilterWindability>();
+        case MagneticFilters::LOSS_MODEL_FREQUENCY_SPAN:
+            // Needs no Inputs at construction: the span is the material's, the frequencies are read
+            // per call from the `inputs` argument of evaluate_magnetic.
+            return std::make_shared<MagneticFilterLossModelFrequencySpan>();
         case MagneticFilters::DATASHEET_LIMITS:
             // No Inputs needed at construction — datasheet limits are read per
             // call from the candidate magnetic, operating values from the
             // `inputs` argument of evaluate_magnetic.
             return std::make_shared<MagneticFilterDatasheetLimits>();
         default:
-            throw ModelNotAvailableException("Unknown filter, available options are: {AREA_PRODUCT, ENERGY_STORED, ESTIMATED_COST, COST, CORE_AND_DC_LOSSES, CORE_DC_AND_SKIN_LOSSES, LOSSES, LOSSES_NO_PROXIMITY, DIMENSIONS, CORE_MINIMUM_IMPEDANCE, AREA_NO_PARALLELS, AREA_WITH_PARALLELS, EFFECTIVE_RESISTANCE, PROXIMITY_FACTOR, SOLID_INSULATION_REQUIREMENTS, TURNS_RATIOS, MAXIMUM_DIMENSIONS, SATURATION, DC_CURRENT_DENSITY, EFFECTIVE_CURRENT_DENSITY, IMPEDANCE, MAGNETIZING_INDUCTANCE, FRINGING_FACTOR, SKIN_LOSSES_DENSITY, VOLUME, AREA, HEIGHT, TEMPERATURE_RISE, LOSSES_TIMES_VOLUME, VOLUME_TIMES_TEMPERATURE_RISE, LOSSES_TIMES_VOLUME_TIMES_TEMPERATURE_RISE, LOSSES_NO_PROXIMITY_TIMES_VOLUME, LOSSES_NO_PROXIMITY_TIMES_VOLUME_TIMES_TEMPERATURE_RISE, LEAKAGE_INDUCTANCE, TEMPERATURE, TURN_COUNT, DATASHEET_LIMITS, WINDABILITY, LEAKAGE_INDUCTANCE_TARGET}");
+            throw ModelNotAvailableException("Unknown filter, available options are: {AREA_PRODUCT, ENERGY_STORED, ESTIMATED_COST, COST, CORE_AND_DC_LOSSES, CORE_DC_AND_SKIN_LOSSES, LOSSES, LOSSES_NO_PROXIMITY, DIMENSIONS, CORE_MINIMUM_IMPEDANCE, AREA_NO_PARALLELS, AREA_WITH_PARALLELS, EFFECTIVE_RESISTANCE, PROXIMITY_FACTOR, SOLID_INSULATION_REQUIREMENTS, TURNS_RATIOS, MAXIMUM_DIMENSIONS, SATURATION, DC_CURRENT_DENSITY, EFFECTIVE_CURRENT_DENSITY, IMPEDANCE, MAGNETIZING_INDUCTANCE, FRINGING_FACTOR, SKIN_LOSSES_DENSITY, VOLUME, AREA, HEIGHT, TEMPERATURE_RISE, LOSSES_TIMES_VOLUME, VOLUME_TIMES_TEMPERATURE_RISE, LOSSES_TIMES_VOLUME_TIMES_TEMPERATURE_RISE, LOSSES_NO_PROXIMITY_TIMES_VOLUME, LOSSES_NO_PROXIMITY_TIMES_VOLUME_TIMES_TEMPERATURE_RISE, LEAKAGE_INDUCTANCE, TEMPERATURE, TURN_COUNT, DATASHEET_LIMITS, WINDABILITY, LEAKAGE_INDUCTANCE_TARGET, LOSS_MODEL_FREQUENCY_SPAN}");
     }
 }
 
@@ -162,6 +166,46 @@ std::shared_ptr<MagneticFilter> MagneticFilter::factory(MagneticFilters filterNa
 
 
 
+
+bool MagneticFilterLossModelFrequencySpan::is_material_evaluable(const CoreMaterial& material, const Inputs& inputs,
+                                                                 std::optional<CoreLossesModels> model) {
+    auto availableModels = CoreLossesModel::get_methods(material);
+    if (!model) {
+        // CoreLosses::get_core_losses_model: the first model of the settings' order the material supports.
+        for (auto modelName : Settings::GetInstance().get_core_losses_model_names()) {
+            if (std::find(availableModels.begin(), availableModels.end(), modelName) != availableModels.end()) {
+                model = modelName;
+                break;
+            }
+        }
+        if (!model) {
+            throw ModelNotAvailableException("No core loss model found for material: " + material.get_name());
+        }
+    }
+    auto coreLossesModel = CoreLossesModel::factory(model.value());
+    // Only the Steinmetz family reads the fitted ranges (see CoreLossesModel::evaluates_steinmetz_ranges).
+    if (!CoreLossesModel::evaluates_steinmetz_ranges(coreLossesModel.get())) {
+        return true;
+    }
+    auto [spanMinimum, spanMaximum] = CoreLossesModel::get_steinmetz_fitted_span(material);
+    for (auto& operatingPoint : inputs.get_operating_points()) {
+        for (auto& excitation : operatingPoint.get_excitations_per_winding()) {
+            double frequency = excitation.get_frequency();
+            if (frequency < spanMinimum || frequency > spanMaximum) {
+                return false;
+            }
+        }
+    }
+    return true;
+}
+
+std::pair<bool, double> MagneticFilterLossModelFrequencySpan::evaluate_magnetic(Magnetic* magnetic, Inputs* inputs, std::vector<Outputs>* outputs) {
+    if (inputs == nullptr) {
+        throw InvalidInputException("Inputs needed for filter LOSS_MODEL_FREQUENCY_SPAN");
+    }
+    bool valid = is_material_evaluable(magnetic->get_core().resolve_material(), *inputs);
+    return {valid, valid ? 1.0 : 0.0};
+}
 
 std::pair<bool, double> MagneticFilterWindability::evaluate_magnetic(Magnetic* magnetic, Inputs* inputs, std::vector<Outputs>* outputs) {
     auto coil = magnetic->get_mutable_coil();

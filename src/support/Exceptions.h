@@ -44,6 +44,7 @@ enum class ErrorCode : int {
     MATERIAL_NOT_FOUND = 300,
     MATERIAL_DATA_MISSING = 301,
     MATERIAL_INVALID_PROPERTY = 302,
+    MATERIAL_FREQUENCY_OUT_OF_SPAN = 303,  // f outside every fitted loss range (ABT #1456)
     
     // Calculation errors (400-499)
     CALCULATION_NAN_RESULT = 400,
@@ -112,6 +113,7 @@ inline std::string to_string(ErrorCode code) {
         case ErrorCode::MATERIAL_NOT_FOUND: return "MATERIAL_NOT_FOUND";
         case ErrorCode::MATERIAL_DATA_MISSING: return "MATERIAL_DATA_MISSING";
         case ErrorCode::MATERIAL_INVALID_PROPERTY: return "MATERIAL_INVALID_PROPERTY";
+        case ErrorCode::MATERIAL_FREQUENCY_OUT_OF_SPAN: return "MATERIAL_FREQUENCY_OUT_OF_SPAN";
         case ErrorCode::CALCULATION_NAN_RESULT: return "CALCULATION_NAN_RESULT";
         case ErrorCode::CALCULATION_DIVERGED: return "CALCULATION_DIVERGED";
         case ErrorCode::CALCULATION_INVALID_INPUT: return "CALCULATION_INVALID_INPUT";
@@ -274,6 +276,38 @@ public:
                            "Material data missing for: " + materialName + 
                            (missingData.empty() ? "" : " (missing: " + missingData + ")"), 
                            materialName) {}
+};
+
+/**
+ * @brief A loss model was asked for a frequency outside the span its coefficients were fitted on.
+ *
+ * The Steinmetz ranges in MAS are fits to measured points over [minimumFrequency,
+ * maximumFrequency]. Evaluating one outside that span is an extrapolation of a power law the data
+ * never constrained: a 1-5 MHz fit evaluated at 100 kHz gave 2-18 % of 3C95's loss for nine MHz
+ * grades (ABT #1456). Callers that sweep frequency must use get_fitted_span first; advisers drop
+ * such materials through MagneticFilterLossModelFrequencySpan instead of catching this.
+ */
+class MaterialFrequencyOutOfSpanException : public MaterialException {
+    std::string _materialName;
+    double _frequency;
+    double _spanMinimum;
+    double _spanMaximum;
+public:
+    MaterialFrequencyOutOfSpanException(const std::string& materialName, const std::string& model,
+                                        double frequency, double spanMinimum, double spanMaximum)
+        : MaterialException(ErrorCode::MATERIAL_FREQUENCY_OUT_OF_SPAN,
+                            "Material " + materialName + ": " + model + " loss coefficients are fitted over " +
+                            std::to_string(spanMinimum) + " Hz to " + std::to_string(spanMaximum) +
+                            " Hz; " + std::to_string(frequency) + " Hz is " +
+                            (frequency < spanMinimum ? "below" : "above") +
+                            " that span and would be an extrapolation of the fit",
+                            materialName),
+          _materialName(materialName), _frequency(frequency), _spanMinimum(spanMinimum), _spanMaximum(spanMaximum) {}
+
+    const std::string& material_name() const noexcept { return _materialName; }
+    double frequency() const noexcept { return _frequency; }
+    double span_minimum() const noexcept { return _spanMinimum; }
+    double span_maximum() const noexcept { return _spanMaximum; }
 };
 
 // ============================================================================

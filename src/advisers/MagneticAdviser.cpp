@@ -443,8 +443,9 @@ std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic_fast(I
     // Step 5: Evaluate each core with fast_wind + ohmic losses + core losses
     std::vector<std::pair<Mas, double>> results;
     for (auto& [magnetic, scoring] : magneticsWithScoring) {
+        Mas mas;
         try {
-            auto mas = coreAdviser.post_process_core(magnetic, inputs);
+            mas = coreAdviser.post_process_core(magnetic, inputs);
 
             // If the interleaved layout did not fit this core's window, retry the
             // non-interleaved (level-1) layout before giving up — a tighter core
@@ -474,62 +475,63 @@ std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic_fast(I
                 continue;
             }
 
-            // Apply caller-supplied strictlyRequired filters (e.g. current
-            // density) to the wound candidate. A filter that rejects DROPS the
-            // candidate — so e.g. a winding above maximumEffectiveCurrentDensity
-            // is skipped and a lower-density (larger-copper) core is returned
-            // instead. Non-strict filters do not gate here (the fast path ranks
-            // by loss). A filter that cannot evaluate this candidate is ignored
-            // rather than rejecting on the failure.
-            {
-                bool rejected = false;
-                auto magneticForFilter = mas.get_magnetic();
-                auto inputsForFilter = mas.get_inputs();
-                auto outputsForFilter = mas.get_outputs();
-                for (const auto& filterOp : filterFlow) {
-                    if (!filterOp.get_strictly_required()) {
-                        continue;
-                    }
-                    auto filterIt = _filters.find(filterOp.get_filter());
-                    if (filterIt == _filters.end()) {
-                        continue;
-                    }
-                    try {
-                        auto [valid, filterScore] = filterIt->second->evaluate_magnetic(
-                            &magneticForFilter, &inputsForFilter, &outputsForFilter);
-                        (void)filterScore;
-                        if (!valid) {
-                            rejected = true;
-                            break;
-                        }
-                    }
-                    catch (const std::exception&) {
-                        // Filter could not evaluate this candidate — do not reject on that.
-                    }
-                }
-                if (rejected) {
-                    continue;
-                }
-            }
-
-            // Score by total losses (lower is better)
-            double totalLosses = 0;
-            for (auto& output : mas.get_outputs()) {
-                if (output.get_core_losses()) {
-                    totalLosses += output.get_core_losses()->get_core_losses();
-                }
-                if (output.get_winding_losses()) {
-                    totalLosses += output.get_winding_losses()->get_winding_losses();
-                }
-            }
-
-            if (totalLosses > 0 && std::isfinite(totalLosses)) {
-                results.push_back({mas, totalLosses});
-            }
         }
         catch (const std::exception& e) {
-            logEntry(std::string("MagneticAdviser::get_advised_magnetic_fast: skipping candidate, scoring failed: ") + e.what(), "MagneticAdviser", 2);
+            logEntry(std::string("MagneticAdviser::get_advised_magnetic_fast: skipping candidate, winding it failed: ") + e.what(), "MagneticAdviser", 2);
             continue;
+        }
+
+        // Apply caller-supplied strictlyRequired filters (e.g. current
+        // density) to the wound candidate. A filter that rejects DROPS the
+        // candidate, with the filter named in the log -- so e.g. a winding above
+        // maximumEffectiveCurrentDensity is skipped and a lower-density
+        // (larger-copper) core is returned instead. Non-strict filters do not
+        // gate here (the fast path ranks by loss). A filter that THROWS is not a
+        // verdict: the exception propagates (ABT #1456; this used to be a silent
+        // catch that kept the candidate as if it had passed).
+        {
+            bool rejected = false;
+            auto magneticForFilter = mas.get_magnetic();
+            auto inputsForFilter = mas.get_inputs();
+            auto outputsForFilter = mas.get_outputs();
+            for (const auto& filterOp : filterFlow) {
+                if (!filterOp.get_strictly_required()) {
+                    continue;
+                }
+                auto filterIt = _filters.find(filterOp.get_filter());
+                if (filterIt == _filters.end()) {
+                    continue;
+                }
+                auto [valid, filterScore] = filterIt->second->evaluate_magnetic(
+                    &magneticForFilter, &inputsForFilter, &outputsForFilter);
+                (void)filterScore;
+                if (!valid) {
+                    logEntry("MagneticAdviser::get_advised_magnetic_fast: dropping candidate '"
+                             + magneticForFilter.get_core().get_name().value_or("?") + "': strict filter "
+                             + std::string(magic_enum::enum_name(filterOp.get_filter())) + " rejected it",
+                             "MagneticAdviser", 2);
+                    rejected = true;
+                    break;
+                }
+            }
+            if (rejected) {
+                continue;
+            }
+        }
+
+        // Score by total losses (lower is better)
+        double totalLosses = 0;
+        for (auto& output : mas.get_outputs()) {
+            if (output.get_core_losses()) {
+                totalLosses += output.get_core_losses()->get_core_losses();
+            }
+            if (output.get_winding_losses()) {
+                totalLosses += output.get_winding_losses()->get_winding_losses();
+            }
+        }
+
+        if (totalLosses > 0 && std::isfinite(totalLosses)) {
+            results.push_back({mas, totalLosses});
         }
     }
 
@@ -1131,6 +1133,19 @@ std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic(std::v
         auto inputs = mas.get_inputs();
         auto magnetic = mas.get_magnetic();
         bool validMagnetic = true;
+        // ABT #1456: a part whose core material has no loss coefficients at an operating frequency (outside
+        // its fitted Steinmetz span) is dropped here, before any filter computes losses. The loss filters
+        // would throw on it, and 8 identical throws in a row -- a catalogue carries many parts of one
+        // material -- abort the whole run. This gate is always hard, whatever `strict` says, and scores
+        // nothing.
+        if (_lossModelFrequencySpanFilter.applies_to(&magnetic)) {
+            auto [inSpan, spanScoring] = _lossModelFrequencySpanFilter.evaluate_magnetic(&magnetic, &inputs);
+            if (!inSpan) {
+                logEntry("MagneticAdviser: dropping " + magnetic.get_reference() +
+                         ": an operating frequency lies outside its core material's fitted loss span", "MagneticAdviser", 2);
+                continue;
+            }
+        }
         for (auto filterConfiguration : strictlyRequiredFilterFlow) {
             MagneticFilters filterEnum = filterConfiguration.get_filter();
             // A filter that cannot judge this part (e.g. a core-loss filter on a datasheet-only

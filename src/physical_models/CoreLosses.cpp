@@ -564,56 +564,84 @@ CoreLossesMethodData CoreLossesModel::get_method_data(CoreMaterial materialData,
     throw MaterialException(ErrorCode::MATERIAL_DATA_MISSING, "Material " + materialData.get_name() + " does not have method: " + method);
 }
 
-SteinmetzCoreLossesMethodRangeDatum CoreLossesModel::get_steinmetz_coefficients(CoreMaterialDataOrNameUnion material, double frequency) {
-    CoreMaterial materialData;
+static CoreMaterial resolve_core_material_for_losses(const CoreMaterialDataOrNameUnion& material) {
     // If the material is a string, we have to load its data from the database, unless it is dummy (in order to avoid
     // long loading operatings)
     if (std::holds_alternative<std::string>(material) && std::get<std::string>(material) != "dummy") {
-        materialData = find_core_material_by_name(std::get<std::string>(material));
+        return find_core_material_by_name(std::get<std::string>(material));
     }
-    else {
-        materialData = std::get<CoreMaterial>(material);
-    }
+    return std::get<CoreMaterial>(material);
+}
 
-    auto volumetricLossesMethodsVariants = materialData.get_volumetric_losses();
+std::pair<double, double> CoreLossesModel::get_steinmetz_fitted_span(CoreMaterialDataOrNameUnion material) {
+    CoreMaterial materialData = resolve_core_material_for_losses(material);
+    auto steinmetzData = CoreLossesModel::get_method_data(materialData, "Steinmetz");
+    if (!steinmetzData.get_ranges() || steinmetzData.get_ranges()->empty()) {
+        throw MaterialException(ErrorCode::MATERIAL_DATA_MISSING, "Material " + materialData.get_name() + " has a Steinmetz method with no ranges");
+    }
+    double minimumMaterialFrequency = std::numeric_limits<double>::max();
+    double maximumMaterialFrequency = std::numeric_limits<double>::lowest();
+    auto ranges = steinmetzData.get_ranges().value();  // bind a local: range-for over .value() of a temporary dangles
+    for (auto& range : ranges) {
+        if (!range.get_minimum_frequency()) {
+            throw MaterialException(ErrorCode::MATERIAL_DATA_MISSING, "Missing minimum frequency in material " + materialData.get_name());
+        }
+        if (!range.get_maximum_frequency()) {
+            throw MaterialException(ErrorCode::MATERIAL_DATA_MISSING, "Missing maximum frequency in material " + materialData.get_name());
+        }
+        minimumMaterialFrequency = std::min(minimumMaterialFrequency, range.get_minimum_frequency().value());
+        maximumMaterialFrequency = std::max(maximumMaterialFrequency, range.get_maximum_frequency().value());
+    }
+    return {minimumMaterialFrequency, maximumMaterialFrequency};
+}
+
+bool CoreLossesModel::evaluates_steinmetz_ranges(const CoreLossesModel* model) {
+    if (model == nullptr) {
+        throw InvalidInputException(ErrorCode::INVALID_INPUT, "evaluates_steinmetz_ranges: null core losses model");
+    }
+    return dynamic_cast<const CoreLossesSteinmetzModel*>(model) != nullptr &&
+           dynamic_cast<const CoreLossesProprietaryModel*>(model) == nullptr;
+}
+
+bool CoreLossesModel::is_frequency_in_steinmetz_span(CoreMaterialDataOrNameUnion material, double frequency) {
+    auto [minimumMaterialFrequency, maximumMaterialFrequency] = get_steinmetz_fitted_span(material);
+    return frequency >= minimumMaterialFrequency && frequency <= maximumMaterialFrequency;
+}
+
+SteinmetzCoreLossesMethodRangeDatum CoreLossesModel::get_steinmetz_coefficients(CoreMaterialDataOrNameUnion material, double frequency) {
+    CoreMaterial materialData = resolve_core_material_for_losses(material);
 
     auto steinmetzData = CoreLossesModel::get_method_data(materialData, "Steinmetz");
+    if (!steinmetzData.get_ranges() || steinmetzData.get_ranges()->empty()) {
+        throw MaterialException(ErrorCode::MATERIAL_DATA_MISSING, "Material " + materialData.get_name() + " has a Steinmetz method with no ranges");
+    }
     auto ranges = steinmetzData.get_ranges().value();
-    double minimumMaterialFrequency = 100000000;
-    int minimumMaterialFrequencyIndex = -1;
-    double maximumMaterialFrequency = 0;
-    int maximumMaterialFrequencyIndex = -1;
     for (size_t i = 0; i < ranges.size(); ++i) {
         if (!ranges[i].get_minimum_frequency()) {
-            throw MaterialException(ErrorCode::MATERIAL_DATA_MISSING, "Missing minimum frequency in material");
+            throw MaterialException(ErrorCode::MATERIAL_DATA_MISSING, "Missing minimum frequency in material " + materialData.get_name());
         }
         if (!ranges[i].get_maximum_frequency()) {
-            throw MaterialException(ErrorCode::MATERIAL_DATA_MISSING, "Missing maximum frequency in material");
+            throw MaterialException(ErrorCode::MATERIAL_DATA_MISSING, "Missing maximum frequency in material " + materialData.get_name());
         }
 
         if (frequency >= ranges[i].get_minimum_frequency().value() &&
             frequency <= ranges[i].get_maximum_frequency().value()) {
             return ranges[i];
         }
-
-        if (minimumMaterialFrequency > ranges[i].get_minimum_frequency().value()) {
-            minimumMaterialFrequency = ranges[i].get_minimum_frequency().value();
-            minimumMaterialFrequencyIndex = i;
-        }
-        if (maximumMaterialFrequency < ranges[i].get_maximum_frequency().value()) {
-            maximumMaterialFrequency = ranges[i].get_maximum_frequency().value();
-            maximumMaterialFrequencyIndex = i;
-        }
     }
 
-    if (frequency < minimumMaterialFrequency && minimumMaterialFrequencyIndex >= 0) {
-        return ranges[minimumMaterialFrequencyIndex];
-    }
-    if (frequency > maximumMaterialFrequency && maximumMaterialFrequencyIndex >= 0) {
-        return ranges[maximumMaterialFrequencyIndex];
+    // ABT #1456: no range contains f. Below the lowest or above the highest fitted frequency this used to
+    // return the nearest range, i.e. extrapolate a power law the data never constrained (a 1-5 MHz fit read
+    // at 100 kHz gave 2-18 % of 3C95's loss). Both sides now throw, naming the material and its span.
+    auto [minimumMaterialFrequency, maximumMaterialFrequency] = get_steinmetz_fitted_span(materialData);
+    if (frequency < minimumMaterialFrequency || frequency > maximumMaterialFrequency) {
+        throw MaterialFrequencyOutOfSpanException(materialData.get_name(), "Steinmetz", frequency,
+                                                  minimumMaterialFrequency, maximumMaterialFrequency);
     }
 
-    throw CalculationException(ErrorCode::CALCULATION_INVALID_INPUT, "Error getting Steinmetz coefficients");
+    throw CalculationException(ErrorCode::CALCULATION_INVALID_INPUT,
+                               "Material " + materialData.get_name() + ": " + std::to_string(frequency) +
+                               " Hz falls in a gap between its Steinmetz ranges");
 }
 
 
@@ -2729,7 +2757,14 @@ double CoreLossesSteinmetzModel::get_frequency_from_core_losses(Core core,
     double effectiveVolume = core.get_processed_description().value().get_effective_parameters().get_effective_volume();
 
     SteinmetzCoreLossesMethodRangeDatum steinmetzDatum;
+    // Initial guess of the fixed-point iteration: 100 kHz when the material's Steinmetz fit covers it,
+    // otherwise the geometric middle of the fitted span (ABT #1456: the coefficients are only defined
+    // there; a frequency the iteration drives out of the span throws MaterialFrequencyOutOfSpanException).
+    auto [spanMinimum, spanMaximum] = get_steinmetz_fitted_span(core.resolve_material());
     double frequency = 100000;
+    if (frequency < spanMinimum || frequency > spanMaximum) {
+        frequency = sqrt(spanMinimum * spanMaximum);
+    }
 
     steinmetzDatum = get_steinmetz_coefficients(core.resolve_material(), frequency);
     double alpha = steinmetzDatum.get_alpha();
@@ -3061,7 +3096,23 @@ double CoreLossesModel::_get_frequency_from_core_losses(Core core,
     operatingPointExcitation.set_magnetic_flux_density(magneticFluxDensity);
 
 
-    for (int frequency = 10000; frequency < 2000000; frequency+=5000)
+    // Brute-force sweep 10 kHz..2 MHz in 5 kHz steps. Models built on the Steinmetz ranges are only defined
+    // over the material's fitted span, so for them the sweep is restricted to it (ABT #1456) and it
+    // throws when fewer than two sweep points remain.
+    double sweepMinimum = 10000;
+    double sweepMaximum = 2000000;
+    if (dynamic_cast<const CoreLossesSteinmetzModel*>(this) != nullptr) {
+        auto [spanMinimum, spanMaximum] = CoreLossesModel::get_steinmetz_fitted_span(core.resolve_material());
+        sweepMinimum = std::max(sweepMinimum, 5000 * ceil(spanMinimum / 5000));
+        sweepMaximum = std::min(sweepMaximum, spanMaximum + 1);
+        if (sweepMaximum - sweepMinimum < 5000) {
+            throw CalculationException(ErrorCode::MATERIAL_FREQUENCY_OUT_OF_SPAN,
+                "Material " + core.resolve_material().get_name() + ": its Steinmetz span [" + std::to_string(spanMinimum) +
+                ", " + std::to_string(spanMaximum) + "] Hz leaves no point of the 10 kHz-2 MHz frequency search");
+        }
+    }
+
+    for (double frequency = sweepMinimum; frequency < sweepMaximum; frequency += 5000)
     {
         operatingPointExcitation.set_frequency(frequency);
 

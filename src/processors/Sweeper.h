@@ -42,7 +42,14 @@ class Sweeper {
     static Curve2D sweep_magnetizing_inductance_over_dc_bias(Magnetic magnetic, double start, double stop, size_t numberElements, double temperature = defaults.ambientTemperature, std::string mode="linear", std::string title = "Magnetizing Inductance over DC bias");
     static Curve2D sweep_winding_resistance_over_frequency(Magnetic magnetic, double start, double stop, size_t numberElements, size_t windingIndex, double temperature = defaults.ambientTemperature, std::string mode="log", std::string title = "Winding Resistance over frequency");
     static Curve2D sweep_resistance_over_frequency(Magnetic magnetic, double start, double stop, size_t numberElements, double temperature = defaults.ambientTemperature, std::string mode="log", std::string title = "Resistance over frequency");
+    // Frequency window over which the core series resistance can be evaluated for this magnetic: [start, stop]
+    // clipped to the material's fitted Steinmetz span when the material is evaluated with Steinmetz (ABT #1456).
+    // Other loss methods declare no span and get [start, stop] back unchanged. Throws when the clip is empty.
+    static std::pair<double, double> core_resistance_frequency_window(Magnetic magnetic, double start, double stop);
+    // Sweeps only inside core_resistance_frequency_window(start, stop); when that clipped the request, the
+    // returned curve's title states the fitted span.
     static Curve2D sweep_core_resistance_over_frequency(Magnetic magnetic, double start, double stop, size_t numberElements, double temperature = defaults.ambientTemperature, std::string mode="log", std::string title = "Core Resistance over frequency");
+    // Steinmetz sweep: only inside core_resistance_frequency_window(start, stop); the title states a clip (ABT #1456).
     static Curve2D sweep_core_losses_over_frequency(Magnetic magnetic, OperatingPoint operatingPoint, double start, double stop, size_t numberElements, double temperature = defaults.ambientTemperature, std::string mode="log", std::string title = "Core Losses over frequency");
     static Curve2D sweep_winding_losses_over_frequency(Magnetic magnetic, OperatingPoint operatingPoint, double start, double stop, size_t numberElements, double temperature = defaults.ambientTemperature, std::string mode="log", std::string title = "Winding Losses over frequency");
     

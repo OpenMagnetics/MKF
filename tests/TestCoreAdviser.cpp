@@ -3198,4 +3198,49 @@ TEST_CASE("Test_CoreAdviser_Standard_Cores_Respect_Every_Axis_Of_Maximum_Dimensi
     settings.reset();
 }
 
+// ABT #1456: at 100 kHz MKF used to rank nine 0.5-5 MHz MnZn grades best by far (TP5H read 2 % of 3C95's
+// loss), because their Steinmetz fits were extrapolated a decade below their fitted span. Ampere picked
+// them immediately. The ferrite pool must drop them, through the LOSS_MODEL_FREQUENCY_SPAN filter, and not
+// rank them. The pool is opened to every material in the catalogue (an unknown preferred manufacturer
+// degrades to all of them), since the default preferred brand holds none of the nine.
+TEST_CASE("Test_CoreAdviser_Ferrite_Pool_Drops_MHz_Grades_Out_Of_Span_At_100kHz", "[adviser][core-adviser][abt-1456]") {
+    settings.reset();
+    clear_databases();
+    settings.set_preferred_core_material_ferrite_manufacturer("No such manufacturer (ABT #1456)");
+
+    const std::vector<std::string> mhzGrades = {"TP5H", "KL9F", "DMR52W", "DMR51W", "KL7F", "KL11F", "DMR52", "P61", "P63"};
+    auto inputs = OpenMagneticsTesting::create_quick_test_inputs();  // 100 kHz
+    REQUIRE(inputs.get_operating_points()[0].get_excitations_per_winding()[0].get_frequency() == 100000);
+
+    for (auto& grade : mhzGrades) {
+        INFO(grade);
+        CHECK_FALSE(MagneticFilterLossModelFrequencySpan::is_material_evaluable(Core::resolve_material(grade), inputs));
+    }
+
+    std::vector<int64_t> numberTurns = {20};
+    auto magnetic = OpenMagneticsTesting::get_quick_magnetic("E 42/21/15", OpenMagneticsTesting::get_ground_gap(0.001), numberTurns, 1, "N87");
+    magnetic.get_mutable_core().get_mutable_functional_description().set_material(std::string(DUMMY_SENTINEL_NAME));
+    std::vector<std::pair<OpenMagnetics::Magnetic, double>> candidates = {{magnetic, 1.0}};
+
+    CoreAdviser coreAdviser;
+    OpenMagnetics::read_log();  // drain, so the checks below see only this ranking
+    auto withMaterials = coreAdviser.add_ferrite_materials_by_losses(&candidates, inputs);
+    REQUIRE(!withMaterials.empty());
+    // The drop is a verdict of the span filter, logged with its reason -- not the pool's generic
+    // skip-on-exception path ("Skipping core material"), which would also hide any other error.
+    auto log = OpenMagnetics::read_log();
+    CHECK(log.find("Dropping core material 'TP5H'") != std::string::npos);
+    CHECK(log.find("Skipping core material 'TP5H'") == std::string::npos);
+    for (auto& [candidate, scoring] : withMaterials) {
+        auto materialName = candidate.get_core().get_material_name();
+        INFO(materialName);
+        CHECK(std::find(mhzGrades.begin(), mhzGrades.end(), materialName) == mhzGrades.end());
+        auto methods = Core::get_available_core_losses_methods(candidate.get_core().resolve_material());
+        if (std::find(methods.begin(), methods.end(), VolumetricCoreLossesMethodType::STEINMETZ) != methods.end()) {
+            CHECK(CoreLossesModel::is_frequency_in_steinmetz_span(materialName, 100000));
+        }
+    }
+    settings.reset();
+}
+
 }  // namespace

@@ -580,14 +580,35 @@ std::vector<std::vector<double>> calculate_ac_resistance_coefficients_per_windin
     return acResistanceCoefficientsPerWinding;
 }
 
+std::pair<double, double> CircuitSimulatorExporter::core_resistance_fit_window(Magnetic magnetic) {
+    // ABT #1456 (Alf's decision): a Steinmetz material's network is fitted over the span its Steinmetz
+    // coefficients were fitted on (N87 25 kHz-1 MHz, P63 300 kHz-5 MHz), not over a fixed band: outside that
+    // span the coefficients do not exist, and a fixed band would exclude every MHz grade. Every Steinmetz
+    // material therefore exports; the exporters state the window in the netlist. A material evaluated with
+    // another loss method (loss factor, vendor closed forms) declares no span and keeps 1 kHz-300 kHz.
+    constexpr double defaultStartingFrequency = 1000;
+    constexpr double defaultEndingFrequency = 300000;
+    auto material = magnetic.get_core().resolve_material();
+    auto methods = Core::get_available_core_losses_methods(material);
+    if (std::find(methods.begin(), methods.end(), VolumetricCoreLossesMethodType::STEINMETZ) == methods.end()) {
+        return {defaultStartingFrequency, defaultEndingFrequency};
+    }
+    auto [spanMinimum, spanMaximum] = CoreLossesModel::get_steinmetz_fitted_span(material);
+    if (!(spanMaximum > spanMinimum)) {
+        throw CalculationException(ErrorCode::MATERIAL_FREQUENCY_OUT_OF_SPAN,
+            "Material " + material.get_name() + ": its Steinmetz span " + std::to_string(spanMinimum) + " Hz to " +
+            std::to_string(spanMaximum) + " Hz is empty, no core-loss network can be fitted over it");
+    }
+    return {spanMinimum, spanMaximum};
+}
+
 std::vector<double> CircuitSimulatorExporter::calculate_core_resistance_coefficients(Magnetic magnetic, double temperature, CoreLossTopology topology) {
     const size_t numberUnknowns = 6;
 
     const size_t numberElements = 20;
     const size_t numberElementsPlusOne = 21;
     size_t loopIterations = 15;
-    double startingFrequency = 1000;
-    double endingFrequency = 300000;
+    auto [startingFrequency, endingFrequency] = core_resistance_fit_window(magnetic);
     auto coil = magnetic.get_coil();
 
     std::vector<double> coreResistanceCoefficients;
@@ -2769,7 +2790,11 @@ FractionalPoleNetwork CircuitSimulatorExporter::calculate_core_fracpole_network(
     // data cannot be silently modeled as "typical ferrite" — let it throw.
     auto core = magnetic.get_core();
     auto material = core.resolve_material();
-    double refFreq = std::sqrt(opts.f0 * opts.f1);
+    // ABT #1456: the Steinmetz coefficients exist only inside the material's fitted span, so the reference
+    // frequency and the core-resistance sweep that anchors the network are taken inside
+    // [f0, f1] clipped to that span. The network itself is still synthesised over [f0, f1].
+    auto [sweepStart, sweepStop] = Sweeper::core_resistance_frequency_window(magnetic, opts.f0, opts.f1);
+    double refFreq = std::sqrt(sweepStart * sweepStop);
     auto steinmetzDatum = CoreLossesModel::get_steinmetz_coefficients(material, refFreq);
     double steinmetzAlpha = steinmetzDatum.get_alpha();
 
@@ -2780,7 +2805,7 @@ FractionalPoleNetwork CircuitSimulatorExporter::calculate_core_fracpole_network(
     opts.profile = (opts.alpha <= 0.5) ? FracpoleProfile::DD : FracpoleProfile::FF;
 
     Curve2D coreResData = Sweeper().sweep_core_resistance_over_frequency(
-        magnetic, opts.f0, opts.f1, 5, temperature);
+        magnetic, sweepStart, sweepStop, 5, temperature);
     auto coreResVec = coreResData.get_y_points();
     auto freqVec    = coreResData.get_x_points();
 
@@ -2796,7 +2821,9 @@ FractionalPoleNetwork CircuitSimulatorExporter::calculate_core_fracpole_network(
         f_ref_actual, R_ref, opts.alpha, opts.f0, opts.f1,
         opts.lumpsPerDecade, opts.profile);
 
-    return FractionalPole::generate(opts);
+    auto network = FractionalPole::generate(opts);
+    network.fittedSpan = std::make_pair(sweepStart, sweepStop);
+    return network;
 }
 
 
@@ -2809,13 +2836,15 @@ GseCoreLossParams CircuitSimulatorExporter::calculate_gse_core_loss_params(
     auto material = core.resolve_material();
     // Steinmetz k / alpha / beta for the material at this frequency band. A material without
     // Steinmetz data cannot supply a large-signal core-loss model -> report invalid and let the
-    // caller keep the linear small-signal ladder.
-    SteinmetzCoreLossesMethodRangeDatum steinmetzDatum;
-    try {
-        steinmetzDatum = CoreLossesModel::get_steinmetz_coefficients(material, frequency);
-    } catch (...) {
+    // caller keep the linear small-signal ladder. That is the ONLY case handled here: the old
+    // catch(...) also swallowed a frequency outside the fitted span (and any other error) and
+    // silently switched model (ABT #1456); get_steinmetz_coefficients now throws for those.
+    auto availableMethods = Core::get_available_core_losses_methods(material);
+    if (std::find(availableMethods.begin(), availableMethods.end(), VolumetricCoreLossesMethodType::STEINMETZ) ==
+        availableMethods.end()) {
         return p;
     }
+    SteinmetzCoreLossesMethodRangeDatum steinmetzDatum = CoreLossesModel::get_steinmetz_coefficients(material, frequency);
     double alpha = steinmetzDatum.get_alpha();
     double beta = steinmetzDatum.get_beta();
     double k = steinmetzDatum.get_k();

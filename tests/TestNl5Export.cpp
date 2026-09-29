@@ -49,3 +49,19 @@ TEST_CASE("nl5: symbol export fails loudly (not implemented)", "[circuit][export
     CircuitSimulatorExporter exporter(CircuitSimulatorExporterModels::NL5);
     CHECK_THROWS(exporter.export_magnetic_as_symbol(magnetic));
 }
+
+// ABT #1456 (Alf's decision): the NL5 exporter built the core fractional-pole network inside
+// try{}catch(...){}, so a network that could not be built was silently left out. N22 carries only a loss
+// factor, no Steinmetz, and the core fracpole network is anchored on Steinmetz: the FRACPOLE export must
+// now throw, while the ladder export (loss-factor core resistance) still works.
+TEST_CASE("nl5: fracpole export throws when the core network cannot be built", "[circuit][export][nl5][abt-1456]") {
+    auto magnetic = OpenMagneticsTesting::get_quick_magnetic("ETD 39", OpenMagneticsTesting::get_residual_gap(),
+                                                             std::vector<int64_t>{10}, 1, "N22");
+    auto coil = magnetic.get_coil();
+    coil.wind();
+    magnetic.set_coil(coil);
+    CircuitSimulatorExporter exporter(CircuitSimulatorExporterModels::NL5);
+    CHECK_NOTHROW(exporter.export_magnetic_as_subcircuit(magnetic, 100000.0, 25.0));
+    CHECK_THROWS(exporter.export_magnetic_as_subcircuit(magnetic, 100000.0, 25.0, std::nullopt, std::nullopt,
+                                                        CircuitSimulatorExporterCurveFittingModes::FRACPOLE));
+}

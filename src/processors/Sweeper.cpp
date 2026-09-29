@@ -291,7 +291,54 @@ Curve2D Sweeper::sweep_resistance_over_frequency(Magnetic magnetic, double start
     return Curve2D(frequencies, effectiveResistances, title);
 }
 
+// The loss model sweep_core_resistance_over_frequency evaluates for a material.
+static std::string core_resistance_losses_model_name(const CoreMaterial& material) {
+    // ABT #388: the model was chosen as "Steinmetz if the material has Steinmetz, else
+    // Proprietary" — a two-way choice that silently assumed every non-Steinmetz material is a
+    // vendor-proprietary one. A LOSS-FACTOR material (tan_delta/mu_i vs frequency, which is how
+    // NiZn makers publish loss and often the ONLY thing they publish) therefore landed in the
+    // proprietary branch and was rejected with "No proprietary volumetric losses method",
+    // blocking the whole subcircuit export for it — 101 of 118 shielded-drum models on just two
+    // datasheet-sourced grades. MKF already has a LossFactor model; the selection simply never
+    // offered it. Ask for the model that fits the material instead of guessing between two.
+    auto coreLossesMethods = Core::get_available_core_losses_methods(material);
+    auto hasMethod = [&](VolumetricCoreLossesMethodType method) {
+        return std::find(coreLossesMethods.begin(), coreLossesMethods.end(), method) != coreLossesMethods.end();
+    };
+    if (hasMethod(VolumetricCoreLossesMethodType::STEINMETZ)) {
+        return "Steinmetz";
+    }
+    if (hasMethod(VolumetricCoreLossesMethodType::LOSS_FACTOR)) {
+        return "LossFactor";
+    }
+    return "Proprietary";
+}
+
+std::pair<double, double> Sweeper::core_resistance_frequency_window(Magnetic magnetic, double start, double stop) {
+    auto material = magnetic.get_core().resolve_material();
+    if (core_resistance_losses_model_name(material) != "Steinmetz") {
+        return {start, stop};
+    }
+    auto [spanMinimum, spanMaximum] = CoreLossesModel::get_steinmetz_fitted_span(material);
+    double clippedStart = std::max(start, spanMinimum);
+    double clippedStop = std::min(stop, spanMaximum);
+    if (!(clippedStop > clippedStart)) {
+        throw MaterialFrequencyOutOfSpanException(material.get_name(), "Steinmetz",
+                                                  stop < spanMinimum ? stop : start, spanMinimum, spanMaximum);
+    }
+    return {clippedStart, clippedStop};
+}
+
 Curve2D Sweeper::sweep_core_resistance_over_frequency(Magnetic magnetic, double start, double stop, size_t numberElements, double temperature, std::string mode, std::string title) {
+    // ABT #1456: a Steinmetz material is only evaluated inside its fitted span; outside it the coefficients
+    // throw. Sweep the part of [start, stop] the fit covers and say so in the title.
+    auto [windowStart, windowStop] = core_resistance_frequency_window(magnetic, start, stop);
+    if (windowStart != start || windowStop != stop) {
+        title += " (restricted to the material's fitted Steinmetz span: " + std::to_string(windowStart) + " Hz to " +
+                 std::to_string(windowStop) + " Hz)";
+        start = windowStart;
+        stop = windowStop;
+    }
     std::vector<double> frequencies;
     if (mode == "linear") {
         frequencies = linear_spaced_array(start, stop, numberElements);
@@ -302,6 +349,15 @@ Curve2D Sweeper::sweep_core_resistance_over_frequency(Magnetic magnetic, double 
     else {
         throw ModelNotAvailableException("Unknown spaced array mode");
     }
+    // The window ends are the fitted span's ends: pin them exactly, since exp(log(f)) can land an ulp outside
+    // the span and throw (ABT #1456).
+    if (frequencies.empty()) {
+        throw InvalidInputException("A frequency sweep needs at least 1 point");
+    }
+    frequencies.front() = start;
+    if (frequencies.size() > 1) {
+        frequencies.back() = stop;
+    }
     auto core = magnetic.get_core();
     auto coil = magnetic.get_coil();
 
@@ -309,28 +365,7 @@ Curve2D Sweeper::sweep_core_resistance_over_frequency(Magnetic magnetic, double 
     auto magnetizingInductance = resolve_dimensional_values(magnetizingInductanceModel.calculate_inductance_from_number_turns_and_gapping(core, coil).get_magnetizing_inductance());
 
     std::vector<double> coreResistances;
-    // ABT #388: the model was chosen as "Steinmetz if the material has Steinmetz, else
-    // Proprietary" — a two-way choice that silently assumed every non-Steinmetz material is a
-    // vendor-proprietary one. A LOSS-FACTOR material (tan_delta/mu_i vs frequency, which is how
-    // NiZn makers publish loss and often the ONLY thing they publish) therefore landed in the
-    // proprietary branch and was rejected with "No proprietary volumetric losses method",
-    // blocking the whole subcircuit export for it — 101 of 118 shielded-drum models on just two
-    // datasheet-sourced grades. MKF already has a LossFactor model; the selection simply never
-    // offered it. Ask for the model that fits the material instead of guessing between two.
-    auto coreLossesMethods = Core::get_available_core_losses_methods(core.resolve_material());
-    auto hasMethod = [&](VolumetricCoreLossesMethodType method) {
-        return std::find(coreLossesMethods.begin(), coreLossesMethods.end(), method) != coreLossesMethods.end();
-    };
-    std::string coreLossesModelName;
-    if (hasMethod(VolumetricCoreLossesMethodType::STEINMETZ)) {
-        coreLossesModelName = "Steinmetz";
-    }
-    else if (hasMethod(VolumetricCoreLossesMethodType::LOSS_FACTOR)) {
-        coreLossesModelName = "LossFactor";
-    }
-    else {
-        coreLossesModelName = "Proprietary";
-    }
+    std::string coreLossesModelName = core_resistance_losses_model_name(core.resolve_material());
     auto coreLossesModel = CoreLossesModel::factory(std::map<std::string, std::string>({{"coreLosses", coreLossesModelName}}));
 
     for (auto frequency : frequencies) {
@@ -343,6 +378,16 @@ Curve2D Sweeper::sweep_core_resistance_over_frequency(Magnetic magnetic, double 
 }
 
 Curve2D Sweeper::sweep_core_losses_over_frequency(Magnetic magnetic, OperatingPoint operatingPoint, double start, double stop, size_t numberElements, double temperature, std::string mode, std::string title) {
+    // ABT #1456: this sweep evaluates the Steinmetz model, whose coefficients exist only inside the material's
+    // fitted span. Sweep the part of [start, stop] the fit covers and say so in the title, as the core
+    // resistance sweep does; a request entirely outside the span throws.
+    auto [windowStart, windowStop] = core_resistance_frequency_window(magnetic, start, stop);
+    if (windowStart != start || windowStop != stop) {
+        title += " (restricted to the material's fitted Steinmetz span: " + std::to_string(windowStart) + " Hz to " +
+                 std::to_string(windowStop) + " Hz)";
+        start = windowStart;
+        stop = windowStop;
+    }
     std::vector<double> frequencies;
     if (mode == "linear") {
         frequencies = linear_spaced_array(start, stop, numberElements);
@@ -352,6 +397,15 @@ Curve2D Sweeper::sweep_core_losses_over_frequency(Magnetic magnetic, OperatingPo
     }
     else {
         throw ModelNotAvailableException("Unknown spaced array mode");
+    }
+    // The window ends are the fitted span's ends: pin them exactly, since exp(log(f)) can land an ulp outside
+    // the span and throw (ABT #1456).
+    if (frequencies.empty()) {
+        throw InvalidInputException("A frequency sweep needs at least 1 point");
+    }
+    frequencies.front() = start;
+    if (frequencies.size() > 1) {
+        frequencies.back() = stop;
     }
     auto core = magnetic.get_core();
     auto coil = magnetic.get_coil();

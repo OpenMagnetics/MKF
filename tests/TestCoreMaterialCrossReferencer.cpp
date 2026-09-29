@@ -86,7 +86,11 @@ namespace {
         // top five today — TPW33 (2.67987) and 3C95 (2.68183) are still sound matches but
         // now sit 12th and 11th, edged out by six newer grades within 0.95% (see the band
         // above). DMR95 is the one survivor of the original pin.
-        require_shortlisted(crossReferencedCoreMaterials, {"ML33D", "DMR95", "MBT2", "TPW30", "P45"});
+        // ABT #1456 (2026-09-29): re-pinned. Candidates are now compared on the frequencies they share
+        // with the reference instead of being culled for missing one grid point, so KL97W (Huoh Yow
+        // 97-class, data to 200 kHz) is compared at 50/100 kHz and enters at the top; ML33D drops to
+        // just outside the five. DMR95, P45, TPW30 and MBT2 stay.
+        require_shortlisted(crossReferencedCoreMaterials, {"KL97W", "DMR95", "P45", "TPW30", "MBT2"});
 
         auto scorings = coreMaterialCrossReferencer.get_scorings();
         auto scoredValues = coreMaterialCrossReferencer.get_scored_values();
@@ -243,7 +247,9 @@ namespace {
         // permeability + volumetric losses puts 3C95A 1.49114, ML33D 1.48969,
         // JNP96A 1.48505, PL-13 1.48246, SMP97 1.48055 — a 0.7% spread, so the winner
         // flips on data churn. Assert the shortlist membership instead.
-        require_shortlisted(crossReferencedCoreMaterials, {"JNP96A", "3C95A", "ML33D"});
+        // ABT #1456 (2026-09-29): re-pinned. JNP96A was refitted after dropping an unsourced 25 C
+        // point (ABT #1490) and left the five; KL97W enters on the shared-frequency comparison.
+        require_shortlisted(crossReferencedCoreMaterials, {"KL97W", "3C95A", "ML33D"});
     }
 
     TEST_CASE("Test_CoreMaterialCrossReferencer_All_Core_Materials_Only_Volumetric_Losses_Powder", "[adviser][core-material-cross-referencer][smoke-test]") {
@@ -319,7 +325,58 @@ namespace {
 
         // July 2026 re-baseline: corrected volumetric-losses scoring (absolute distance, NaN cull —
         // see the note above / CoreCrossReferencer) now ranks Fair-Rite 98 (was 95) closest.
-        REQUIRE(crossReferencedCoreMaterials[0].first.get_name() == "98");
+        // ABT #1456 (2026-09-29): Fair-Rite 95 and 98 were refitted from Fair-Rite's own curves
+        // (ABT #1490) and are compared on the frequencies they share with 3C97; 95 is now closest.
+        REQUIRE(crossReferencedCoreMaterials[0].first.get_name() == "95");
+    }
+
+    // ABT #1456: a Steinmetz model now throws outside the span its ranges were fitted over. The loss
+    // dimension compares materials at a fixed grid (20 kHz - 500 kHz); it must compare only at the
+    // grid frequencies inside the REFERENCE's span, and cull a candidate that cannot be evaluated
+    // there, instead of letting the span exception abort the whole cross-reference (which the
+    // CoreAdviser swallowed into an empty alternatives list for every N87-class candidate).
+    TEST_CASE("Test_CoreMaterialCrossReferencer_Losses_Compared_Inside_Reference_Span", "[adviser][core-material-cross-referencer][abt-1456]") {
+        settings.reset();
+        clear_databases();
+        std::map<std::string, std::string> models{{"coreLosses", "STEINMETZ"}};
+        CoreMaterialCrossReferencer::MagneticCoreFilterVolumetricLosses lossFilter(CoreLossesModels::STEINMETZ);
+
+        auto reference = Core::resolve_material(std::string("N87"));
+        auto [spanMinimum, spanMaximum] = CoreLossesModel::get_steinmetz_fitted_span(reference);
+        REQUIRE(spanMinimum > 20000);   // N87 is fitted from 25 kHz: the 20 kHz grid point is out
+        auto frequencies = lossFilter.get_comparison_frequencies(reference);
+        REQUIRE(frequencies == std::vector<double>{50000, 100000, 250000, 500000});
+        REQUIRE(!std::isnan(lossFilter.calculate_average_volumetric_losses(reference, 100, models, frequencies)));
+
+        // 4F1 is fitted over 3-10 MHz only: not comparable at N87's frequencies -> NaN (culled).
+        auto nizn = Core::resolve_material(std::string("4F1"));
+        REQUIRE(std::isnan(lossFilter.calculate_average_volumetric_losses(nizn, 100, models, frequencies)));
+
+        CoreMaterialCrossReferencer crossReferencer(models);
+        auto alternatives = crossReferencer.get_cross_referenced_core_material(reference, 100, 1000);
+        REQUIRE(alternatives.size() > 0);
+        bool keptNarrowerSpan = false;
+        for (auto& [material, scoring] : alternatives) {
+            auto name = material.get_name();
+            REQUIRE(name != "4F1");
+            REQUIRE(!std::isnan(scoring));
+            auto candidateMethods = CoreLossesModel::get_methods(material);
+            if (std::find(candidateMethods.begin(), candidateMethods.end(), CoreLossesModels::STEINMETZ) != candidateMethods.end()) {
+                auto [candidateMinimum, candidateMaximum] = CoreLossesModel::get_steinmetz_fitted_span(material);
+                if (candidateMaximum < 500000) {
+                    keptNarrowerSpan = true;
+                }
+            }
+        }
+        // A candidate whose data stops below 500 kHz is compared on the frequencies it shares with
+        // N87, not culled for lacking the 500 kHz point.
+        CHECK(keptNarrowerSpan);
+
+        // A reference whose span misses the whole grid (4F1) leaves the loss dimension out and is
+        // still cross-referenced on the other properties.
+        REQUIRE(lossFilter.get_comparison_frequencies(nizn).empty());
+        CoreMaterialCrossReferencer niznCrossReferencer(models);
+        REQUIRE(niznCrossReferencer.get_cross_referenced_core_material(nizn, 25, 5).size() > 0);
     }
 
 }  // namespace
