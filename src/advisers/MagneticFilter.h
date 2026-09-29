@@ -310,8 +310,9 @@ class MagneticFilterLossModelFrequencySpan : public MagneticFilter {
         std::pair<bool, double> evaluate_magnetic(Magnetic* magnetic, Inputs* inputs, std::vector<Outputs>* outputs = nullptr);
         // Needs only the core's material, so it judges parts without a coil too.
         bool applies_to(Magnetic* magnetic) const override { return magnetic->has_core(); }
-        // The same verdict for a bare material. `model` is the core loss model the caller will evaluate it
-        // with; when absent it is the one CoreLosses picks from the settings' model order.
+        // The same verdict for a bare material. `model` is the caller's requested core loss model; like
+        // CoreLosses, it heads the settings' model order and the first model the material supports is
+        // the one judged. A material no model can evaluate is not evaluable (false).
         static bool is_material_evaluable(const CoreMaterial& material, const Inputs& inputs,
                                           std::optional<CoreLossesModels> model = std::nullopt);
 };

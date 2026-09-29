@@ -170,19 +170,27 @@ std::shared_ptr<MagneticFilter> MagneticFilter::factory(MagneticFilters filterNa
 bool MagneticFilterLossModelFrequencySpan::is_material_evaluable(const CoreMaterial& material, const Inputs& inputs,
                                                                  std::optional<CoreLossesModels> model) {
     auto availableModels = CoreLossesModel::get_methods(material);
-    if (!model) {
-        // CoreLosses::get_core_losses_model: the first model of the settings' order the material supports.
-        for (auto modelName : Settings::GetInstance().get_core_losses_model_names()) {
-            if (std::find(availableModels.begin(), availableModels.end(), modelName) != availableModels.end()) {
-                model = modelName;
-                break;
-            }
-        }
-        if (!model) {
-            throw ModelNotAvailableException("No core loss model found for material: " + material.get_name());
+    // The model CoreLosses will actually run: the first of its order the material supports. A caller's
+    // model heads that order exactly as CoreLosses::set_core_losses_model_name puts it there, so asking
+    // IGSE of a Roshen-only material judges the Roshen model that will run, not a Steinmetz span the
+    // material does not have (ABT #1497 tracks whether that substitution should throw instead).
+    auto modelOrder = Settings::GetInstance().get_core_losses_model_names();
+    if (model) {
+        modelOrder.front() = model.value();
+    }
+    std::optional<CoreLossesModels> modelThatRuns;
+    for (auto modelName : modelOrder) {
+        if (std::find(availableModels.begin(), availableModels.end(), modelName) != availableModels.end()) {
+            modelThatRuns = modelName;
+            break;
         }
     }
-    auto coreLossesModel = CoreLossesModel::factory(model.value());
+    if (!modelThatRuns) {
+        // No model can evaluate this material at all (e.g. raw loss points only): not evaluable. The
+        // loss calculation itself still throws for it.
+        return false;
+    }
+    auto coreLossesModel = CoreLossesModel::factory(modelThatRuns.value());
     // Only the Steinmetz family reads the fitted ranges (see CoreLossesModel::evaluates_steinmetz_ranges).
     if (!CoreLossesModel::evaluates_steinmetz_ranges(coreLossesModel.get())) {
         return true;

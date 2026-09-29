@@ -3198,6 +3198,24 @@ TEST_CASE("Test_CoreAdviser_Standard_Cores_Respect_Every_Axis_Of_Maximum_Dimensi
     settings.reset();
 }
 
+// Ampere (2026-09-29): asking the span filter about a caller's explicit model (IGSE) threw "does not have
+// method: STEINMETZ" for materials without Steinmetz data, although CoreLosses would run their own model.
+// The filter must judge the model CoreLosses actually runs; a material no model can evaluate (NP7, raw
+// loss points only) is simply not evaluable.
+TEST_CASE("Test_Loss_Model_Frequency_Span_Judges_The_Model_That_Runs", "[adviser][core-adviser][abt-1456]") {
+    settings.reset();
+    auto inputs = OpenMagneticsTesting::create_quick_test_inputs();  // 100 kHz
+    for (std::string grade : {"2HM4", "75-Series 26"}) {
+        INFO(grade);
+        CHECK(MagneticFilterLossModelFrequencySpan::is_material_evaluable(Core::resolve_material(grade), inputs, CoreLossesModels::IGSE));
+        CHECK(MagneticFilterLossModelFrequencySpan::is_material_evaluable(Core::resolve_material(grade), inputs));
+    }
+    CHECK(MagneticFilterLossModelFrequencySpan::is_material_evaluable(Core::resolve_material("N87"), inputs, CoreLossesModels::IGSE));
+    CHECK_FALSE(MagneticFilterLossModelFrequencySpan::is_material_evaluable(Core::resolve_material("TP5H"), inputs, CoreLossesModels::IGSE));
+    CHECK_FALSE(MagneticFilterLossModelFrequencySpan::is_material_evaluable(Core::resolve_material("NP7"), inputs));
+    CHECK_FALSE(MagneticFilterLossModelFrequencySpan::is_material_evaluable(Core::resolve_material("NP7"), inputs, CoreLossesModels::IGSE));
+}
+
 // ABT #1456: at 100 kHz MKF used to rank nine 0.5-5 MHz MnZn grades best by far (TP5H read 2 % of 3C95's
 // loss), because their Steinmetz fits were extrapolated a decade below their fitted span. Ampere picked
 // them immediately. The ferrite pool must drop them, through the LOSS_MODEL_FREQUENCY_SPAN filter, and not
