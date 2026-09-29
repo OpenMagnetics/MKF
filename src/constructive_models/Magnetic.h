@@ -24,6 +24,24 @@ class Magnetic : public MAS::Magnetic {
         std::optional<MagneticManufacturerInfo> manufacturer_info;
         std::optional<std::vector<double>> _maximumDimensions;
         std::optional<Coil> coil;
+
+        // ABT #1533: the coil needs the core it is wound on -- its columns for turns around
+        // non-main columns (Coil::set_core_columns) and the core outline for the room of the
+        // ABT #1487 outside series links (Coil::set_core_geometry). Those are transient coil state,
+        // not part of the MAS coil, so a Magnetic built any other way than magnetic_autocomplete
+        // (from JSON, from a MAS document, set_core/set_coil) used to hand the loss and simulation
+        // models a coil with no core, and real winding threw there. Whenever this Magnetic holds
+        // both, the coil gets this core. A core replaced through get_mutable_core() is not seen
+        // here: give it back with set_core (magnetic_autocomplete re-gives it after processing).
+        void give_coil_its_core() {
+            if (!coil || !core) {
+                return;
+            }
+            if (core->get_processed_description()) {
+                coil->set_core_columns(core->get_processed_description()->get_columns());
+            }
+            coil->set_core_geometry(core.value());
+        }
     public:
         Magnetic() = default;
         virtual ~Magnetic() = default;
@@ -42,7 +60,10 @@ class Magnetic : public MAS::Magnetic {
             if (!coil) throw std::runtime_error("Magnetic has no coil (e.g. a chip-bead datasheet entry with no winding construction)");
             return coil.value();
         }
-        void set_coil(const Coil & value) { this->coil = value; }
+        void set_coil(const Coil & value) {
+            this->coil = value;
+            give_coil_its_core();
+        }
 
         /**
          * Data describing the magnetic core.
@@ -55,7 +76,10 @@ class Magnetic : public MAS::Magnetic {
             if (!core) throw std::runtime_error("Magnetic has no core (e.g. a chip-bead datasheet entry with no core construction)");
             return core.value();
         }
-        void set_core(const Core & value) { this->core = value; }
+        void set_core(const Core & value) {
+            this->core = value;
+            give_coil_its_core();
+        }
 
         Magnetic(const MAS::Magnetic magnetic) {
             if (magnetic.get_core()) {

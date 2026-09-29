@@ -1,5 +1,6 @@
 #pragma once
 
+#include <memory>
 #include "constructive_models/MasMigration.h"
 #include "constructive_models/Insulation.h"
 #include "constructive_models/Core.h"
@@ -610,8 +611,10 @@ class Coil : public MAS::Coil {
         // (not part of the MAS coil); winding a section placed in a non-main
         // winding window without it throws.
         std::optional<std::vector<ColumnElement>> _coreColumns;
-        // ABT #1487 (R3): see set_core_geometry.
-        std::optional<Core> _coreGeometry;
+        // ABT #1487 (R3): see set_core_geometry. Shared (ABT #1533): every Magnetic that holds a
+        // core gives it to its coil, and coils are copied freely (loss models take them by value),
+        // so a copy shares the one immutable core instead of duplicating it.
+        std::shared_ptr<const Core> _coreGeometry;
         // ABT #1487 (R5): see preload_stored_section_heights_from_sections.
         std::map<std::string, double> _storedSectionHeights;
         // Hand-drawn section rectangles (winding studio): section name ->
@@ -799,8 +802,10 @@ class Coil : public MAS::Coil {
         // outline at its angle -- where the core has no outer leg it may run beyond the window up to
         // the core outline. Callers that hold the core (autocomplete, advisers) set it; winding such
         // a link without it throws. Transient, like set_core_columns: not part of the MAS coil.
-        void set_core_geometry(Core core) { _coreGeometry = std::move(core); }
-        const std::optional<Core>& get_core_geometry() const { return _coreGeometry; }
+        // ABT #1533: a Magnetic gives its coil its core (Magnetic::set_core / set_coil); only a
+        // coil used on its own has to be given one here.
+        void set_core_geometry(Core core) { _coreGeometry = std::make_shared<const Core>(std::move(core)); }
+        const std::shared_ptr<const Core>& get_core_geometry() const { return _coreGeometry; }
         // Serialized wound coils always carry their sections/layers/turns at the
         // FINAL multi-window positions (the +x winding frame exists only
         // transiently inside wind()). Entry points that install descriptions

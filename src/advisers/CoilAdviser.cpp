@@ -635,6 +635,9 @@ namespace OpenMagnetics {
                 lateralCoil.set_bobbin(lateralBobbin);
                 lateralCoil.get_mutable_functional_description()[1].set_winding_window(static_cast<int64_t>(lateralWindowIndex.value()));
                 lateralCoil.set_core_columns(lateralCore.get_columns());
+                // ABT #1533: the core was re-processed in place (get_mutable_core), which the coil
+                // does not see; give it the re-processed core as well as its columns.
+                lateralCoil.set_core_geometry(lateralCore);
                 lateralCoil.unwind();
 
                 std::vector<size_t> lateralPattern = {0, 1};
