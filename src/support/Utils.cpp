@@ -3255,6 +3255,11 @@ Magnetic magnetic_autocomplete(Magnetic magnetic, json configuration, std::optio
         if (inputs) {
             magnetic.get_mutable_coil().set_inputs(inputs.value());
         }
+        // ABT #1487: a stored design keeps the way its parallels were wound through the
+        // real-winding re-wind (see Coil::preload_winding_style_overrides_from_stored_sections).
+        if (rewindForRealWinding) {
+            magnetic.get_mutable_coil().preload_winding_style_overrides_from_stored_sections();
+        }
         if (configuration.contains("interleavingLevel")) {
             uint8_t interleavingLevel = configuration["interleavingLevel"];
             magnetic.get_mutable_coil().set_interleaving_level(interleavingLevel);

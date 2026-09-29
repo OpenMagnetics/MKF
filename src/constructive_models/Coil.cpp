@@ -3015,7 +3015,7 @@ void Coil::redistribute_section_turns_for_blocking() {
         // physical capacity divided by the parallel count. We redistribute in per-parallel turns
         // (matching get_number_turns, which is per parallel) so interior sections end on whole blocked
         // layers and the remainder is pushed to the outermost section. (K=1 keeps the previous result.)
-        int64_t numberParallels = int64_t(get_number_parallels(windingIndex));
+        const size_t numberParallelsInWinding = get_number_parallels(windingIndex);
 
         // This winding's conduction sections, in wound (radial) order. ABT #427: both layer
         // orientations block, so both redistribute; the per-layer capacity below reads the section
@@ -3031,73 +3031,159 @@ void Coil::redistribute_section_turns_for_blocking() {
             continue;  // nothing to redistribute
         }
 
-        uint64_t totalTurns = get_number_turns(windingIndex);  // per parallel
-        uint64_t remaining = totalTurns;
-
-        // Per-parallel capacity ("rows") of a blocked layer: physical capacity (maxTpl − blocked) split
-        // evenly across the parallels wound side by side.
-        auto rowsCapacity = [&](const std::string& sectionName, size_t layer, uint64_t maximumTurnsPerLayer) -> uint64_t {
-            uint64_t blocked = std::min<uint64_t>(blockedFor(sectionName, layer), maximumTurnsPerLayer - 1);
-            return uint64_t((maximumTurnsPerLayer - blocked) / numberParallels);
-        };
-
-        for (size_t k = 0; k < windingSections.size(); ++k) {
-            auto& section = sections[windingSections[k]];
-            // Physical turns per layer; at least one row of every parallel. The turns run along the
-            // section's HEIGHT when its layers overlap and along its WIDTH when they are contiguous, so
-            // both the section extent and the wire dimension are read on that same axis.
-            size_t turnAxis = (section.get_layers_orientation() == WindingOrientation::OVERLAPPING) ? 1 : 0;
-            double wirePitch = (turnAxis == 1) ? wirePerWinding[windingIndex].get_maximum_outer_height()
-                                               : wirePerWinding[windingIndex].get_maximum_outer_width();
-            if (wirePitch <= 0) {
+        // ABT #1487: TWO WAYS OF WINDING PARALLELS, BOTH LEGITIMATE (Alf, 2026-09-29: "the user can
+        // choose one or the other; if he doesn't, we must choose the logical option"). Side by side
+        // (every section carries every parallel, N-filar) or one whole parallel per section ("one
+        // section is a full parallel and another section another parallel", the ABT #849
+        // exception). The sections arrive here already split by that choice; this pass must move
+        // turns only between sections carrying the SAME parallels, or it silently turns the second
+        // way into the first. That override is what the web's PQ 65/60 hit: 3 turns x 4 parallels
+        // of an edge-wound 10 mm strip, one parallel per interleaved section, re-spread so every
+        // parallel spanned every layer, was charged a crossing station in each, and the station
+        // raise diverged ("... 76 layers ...").
+        //
+        // Whichever way the sections were split -- by a winding-studio override, or by the
+        // winding-style heuristic fed the declared turns (get_number_turns_for_winding_style) --
+        // the split IS the decision, and it is kept. Sections that all carry every parallel form
+        // one group, which is exactly the whole-winding side-by-side redistribution this pass
+        // always did.
+        std::vector<std::vector<size_t>> groupSections;
+        std::vector<std::vector<size_t>> groupParallels;
+        bool sideBySide = true;
+        for (size_t sectionIndex : windingSections) {
+            const auto proportion = sections[sectionIndex].get_partial_windings()[0].get_parallels_proportion();
+            std::vector<size_t> carried;
+            for (size_t parallelIndex = 0; parallelIndex < proportion.size(); ++parallelIndex) {
+                if (proportion[parallelIndex] > 0) {
+                    carried.push_back(parallelIndex);
+                }
+            }
+            for (size_t parallelIndex : carried) {
+                if (std::abs(proportion[parallelIndex] - proportion[carried.front()]) > 1e-9) {
+                    sideBySide = false;
+                }
+            }
+            if (carried.empty()) {
+                // An empty section is filled by the whole-winding redistribution, as it always was.
+                sideBySide = false;
                 continue;
             }
-            uint64_t maximumTurnsPerLayer = std::max<uint64_t>(numberParallels, uint64_t(std::floor(section.get_dimensions()[turnAxis] / wirePitch)));
-            size_t sectionsRemaining = windingSections.size() - k;
-
-            uint64_t sectionTurns;  // per parallel
-            if (sectionsRemaining == 1) {
-                // Outermost section of the winding absorbs whatever is left (a partial outer layer
-                // is acceptable; only interior orphans are the problem).
-                sectionTurns = remaining;
+            size_t group = 0;
+            while (group < groupParallels.size() && groupParallels[group] != carried) {
+                ++group;
             }
-            else {
-                // Fill complete blocked layers up to this section's fair share, so it ends on a layer
-                // boundary (no interior orphan). Always leave at least one turn for each later section.
-                uint64_t fairShare = uint64_t(std::round(double(remaining) / double(sectionsRemaining)));
-                uint64_t turns = 0;
-                size_t layer = 0;
-                while (true) {
-                    uint64_t capacity = rowsCapacity(section.get_name(), layer, maximumTurnsPerLayer);
-                    if (capacity == 0) {
-                        break;  // layer too thin to hold one row of every parallel
-                    }
-                    if (turns + capacity <= fairShare && (remaining - (turns + capacity)) >= (sectionsRemaining - 1)) {
-                        turns += capacity;
-                        layer++;
-                    }
-                    else {
-                        break;
-                    }
+            if (group == groupParallels.size()) {
+                groupParallels.push_back(carried);
+                groupSections.push_back({});
+            }
+            groupSections[group].push_back(sectionIndex);
+        }
+        // Groups must hold disjoint parallels: a parallel shared by two groups continues from one
+        // set of sections into another (a consecutive-turns split such as [0.6, 0.4] / [0, 0.6]),
+        // and sections with unequal shares are not laid side by side. Neither is a partition this
+        // model can move turns within, so such a winding keeps the whole-winding side-by-side
+        // redistribution it always had.
+        std::vector<size_t> parallelOwner(numberParallelsInWinding, groupParallels.size());
+        for (size_t group = 0; group < groupParallels.size() && sideBySide; ++group) {
+            for (size_t parallelIndex : groupParallels[group]) {
+                if (parallelOwner[parallelIndex] != groupParallels.size()) {
+                    sideBySide = false;
                 }
-                if (turns == 0) {
-                    // Even a single full layer exceeds the fair share: take one layer anyway so this
-                    // interior section is not left with a fractional layer.
-                    uint64_t capacity0 = std::max<uint64_t>(rowsCapacity(section.get_name(), 0, maximumTurnsPerLayer), 1);
-                    turns = std::min<uint64_t>(capacity0, remaining - (sectionsRemaining - 1));
+                parallelOwner[parallelIndex] = group;
+            }
+        }
+        for (size_t parallelIndex = 0; parallelIndex < numberParallelsInWinding && sideBySide; ++parallelIndex) {
+            if (parallelOwner[parallelIndex] == groupParallels.size()) {
+                sideBySide = false;
+            }
+        }
+        if (!sideBySide) {
+            groupSections = {windingSections};
+            groupParallels = {{}};
+            for (size_t parallelIndex = 0; parallelIndex < numberParallelsInWinding; ++parallelIndex) {
+                groupParallels[0].push_back(parallelIndex);
+            }
+        }
+
+        const uint64_t totalTurns = get_number_turns(windingIndex);  // per parallel
+
+        for (size_t group = 0; group < groupSections.size(); ++group) {
+            const auto& sectionsOfGroup = groupSections[group];
+            if (sectionsOfGroup.size() < 2) {
+                continue;  // a parallel wound in one section has nowhere else to go
+            }
+            const int64_t numberParallels = int64_t(groupParallels[group].size());
+            uint64_t remaining = totalTurns;
+
+            // Per-parallel capacity ("rows") of a blocked layer: physical capacity (maxTpl − blocked)
+            // split evenly across the parallels wound side by side.
+            auto rowsCapacity = [&](const std::string& sectionName, size_t layer, uint64_t maximumTurnsPerLayer) -> uint64_t {
+                uint64_t blocked = std::min<uint64_t>(blockedFor(sectionName, layer), maximumTurnsPerLayer - 1);
+                return uint64_t((maximumTurnsPerLayer - blocked) / numberParallels);
+            };
+
+            for (size_t k = 0; k < sectionsOfGroup.size(); ++k) {
+                auto& section = sections[sectionsOfGroup[k]];
+                // Physical turns per layer; at least one row of every parallel. The turns run along the
+                // section's HEIGHT when its layers overlap and along its WIDTH when they are contiguous, so
+                // both the section extent and the wire dimension are read on that same axis.
+                size_t turnAxis = (section.get_layers_orientation() == WindingOrientation::OVERLAPPING) ? 1 : 0;
+                double wirePitch = (turnAxis == 1) ? wirePerWinding[windingIndex].get_maximum_outer_height()
+                                                   : wirePerWinding[windingIndex].get_maximum_outer_width();
+                if (wirePitch <= 0) {
+                    continue;
+                }
+                uint64_t maximumTurnsPerLayer = std::max<uint64_t>(numberParallels, uint64_t(std::floor(section.get_dimensions()[turnAxis] / wirePitch)));
+                size_t sectionsRemaining = sectionsOfGroup.size() - k;
+
+                uint64_t sectionTurns;  // per parallel
+                if (sectionsRemaining == 1) {
+                    // Outermost section of the group absorbs whatever is left (a partial outer layer
+                    // is acceptable; only interior orphans are the problem).
+                    sectionTurns = remaining;
+                }
+                else {
+                    // Fill complete blocked layers up to this section's fair share, so it ends on a layer
+                    // boundary (no interior orphan). Always leave at least one turn for each later section.
+                    uint64_t fairShare = uint64_t(std::round(double(remaining) / double(sectionsRemaining)));
+                    uint64_t turns = 0;
+                    size_t layer = 0;
+                    while (true) {
+                        uint64_t capacity = rowsCapacity(section.get_name(), layer, maximumTurnsPerLayer);
+                        if (capacity == 0) {
+                            break;  // layer too thin to hold one row of every parallel
+                        }
+                        if (turns + capacity <= fairShare && (remaining - (turns + capacity)) >= (sectionsRemaining - 1)) {
+                            turns += capacity;
+                            layer++;
+                        }
+                        else {
+                            break;
+                        }
+                    }
                     if (turns == 0) {
-                        turns = 1;
+                        // Even a single full layer exceeds the fair share: take one layer anyway so this
+                        // interior section is not left with a fractional layer.
+                        uint64_t capacity0 = std::max<uint64_t>(rowsCapacity(section.get_name(), 0, maximumTurnsPerLayer), 1);
+                        turns = std::min<uint64_t>(capacity0, remaining - (sectionsRemaining - 1));
+                        if (turns == 0) {
+                            turns = 1;
+                        }
                     }
+                    sectionTurns = turns;
                 }
-                sectionTurns = turns;
-            }
-            remaining -= sectionTurns;
+                remaining -= sectionTurns;
 
-            // Side by side: every parallel gets the same per-parallel share of this section.
-            std::vector<double> proportion(numberParallels, double(sectionTurns) / double(totalTurns));
-            auto partialWindings = section.get_partial_windings();
-            partialWindings[0].set_parallels_proportion(proportion);
-            section.set_partial_windings(partialWindings);
+                // Side by side: every parallel of the group gets the same per-parallel share of this
+                // section; the parallels of other groups have none of it.
+                std::vector<double> proportion(numberParallelsInWinding, 0.0);
+                for (size_t parallelIndex : groupParallels[group]) {
+                    proportion[parallelIndex] = double(sectionTurns) / double(totalTurns);
+                }
+                auto partialWindings = section.get_partial_windings();
+                partialWindings[0].set_parallels_proportion(proportion);
+                section.set_partial_windings(partialWindings);
+            }
         }
     }
     set_sections_description(sections);
@@ -5752,7 +5838,10 @@ bool Coil::wind_inner(std::vector<double> proportionPerWinding, std::vector<size
         // Deliberately NOT gated on the wind's fitting result: with windEvenIfNotFit the
         // caller consumes the not-fitting turns and still needs the station carrying no length.
         bool turnsAreFresh = false;
-        explicit RealWindingCrossingBump(Coil& c) : coil(c) {}
+        // ABT #1487: what the coil advertised before this wind, restored on exit, so the style
+        // choice of any enclosing wind is left exactly as it was.
+        std::vector<size_t> previousStations;
+        explicit RealWindingCrossingBump(Coil& c) : coil(c), previousStations(c._realWindingStationsPerWinding) {}
         void arm() {
             if (active || !settings.get_coil_use_real_winding_geometry()) return;
             // CONCENTRIC CORES ONLY. ABT #685 (Alf, 2026-08-18): "make sure that the N_layer + 1
@@ -5824,6 +5913,7 @@ bool Coil::wind_inner(std::vector<double> proportionPerWinding, std::vector<size
                     armWindings[windingIndex].get_number_turns() + 1);
             }
             active = true;
+            coil._realWindingStationsPerWinding = extraPerWinding;
         }
         // Raise winding `windingIndex` to `layers` extra crossings. Monotone: the extra never
         // shrinks, which is what makes the enclosing fixpoint converge (the same argument the
@@ -5839,6 +5929,7 @@ bool Coil::wind_inner(std::vector<double> proportionPerWinding, std::vector<size
                 windings[windingIndex].get_number_turns() +
                 int64_t(layers - extraPerWinding[windingIndex]));
             extraPerWinding[windingIndex] = layers;
+            coil._realWindingStationsPerWinding = extraPerWinding;
             return true;
         }
         // Roll the extra back to `snapshot`. Needed when a re-wind AFTER a raise fails to produce
@@ -5855,6 +5946,7 @@ bool Coil::wind_inner(std::vector<double> proportionPerWinding, std::vector<size
                     int64_t(extraPerWinding[windingIndex] - snapshot[windingIndex]));
                 extraPerWinding[windingIndex] = snapshot[windingIndex];
             }
+            coil._realWindingStationsPerWinding = extraPerWinding;
         }
         // The layer count each winding's parallels actually occupy, from the wound layout: the
         // most layers any one parallel of that winding spans. Per PARALLEL, because every
@@ -5878,6 +5970,7 @@ bool Coil::wind_inner(std::vector<double> proportionPerWinding, std::vector<size
             return observed;
         }
         ~RealWindingCrossingBump() {
+            coil._realWindingStationsPerWinding = previousStations;
             if (active) {
                 auto& windings = coil.get_mutable_functional_description();
                 for (size_t windingIndex = 0; windingIndex < windings.size(); ++windingIndex) {
@@ -6926,6 +7019,71 @@ std::optional<WindingStyle> Coil::get_winding_style_override(size_t windingIndex
     return it->second;
 }
 
+void Coil::preload_winding_style_overrides_from_stored_sections() {
+    if (!get_sections_description()) {
+        return;
+    }
+    auto overrides = _windingStyleOverridePerWinding;
+    const auto sections = get_sections_description().value();
+    for (size_t windingIndex = 0; windingIndex < get_functional_description().size(); ++windingIndex) {
+        const auto& windingName = get_functional_description()[windingIndex].get_name();
+        const size_t numberParallels = get_number_parallels(windingIndex);
+        if (numberParallels < 2 || overrides.contains(windingName)) {
+            continue;
+        }
+        std::vector<std::vector<size_t>> carriedPerSection;
+        bool everySectionCarriesAllEqually = true;
+        for (const auto& section : sections) {
+            if (section.get_type() != ElectricalType::CONDUCTION) {
+                continue;
+            }
+            for (const auto& partialWinding : section.get_partial_windings()) {
+                if (partialWinding.get_winding() != windingName) {
+                    continue;
+                }
+                const auto& proportion = partialWinding.get_parallels_proportion();
+                if (proportion.size() != numberParallels) {
+                    throw InvalidInputException(ErrorCode::INVALID_COIL_CONFIGURATION,
+                        "section '" + section.get_name() + "' stores " + std::to_string(proportion.size()) +
+                        " parallels proportions for winding '" + windingName + "', which has " +
+                        std::to_string(numberParallels) + " parallels");
+                }
+                std::vector<size_t> carried;
+                for (size_t parallelIndex = 0; parallelIndex < numberParallels; ++parallelIndex) {
+                    if (proportion[parallelIndex] > 0) {
+                        carried.push_back(parallelIndex);
+                    }
+                    if (std::abs(proportion[parallelIndex] - proportion[0]) > 1e-9) {
+                        everySectionCarriesAllEqually = false;
+                    }
+                }
+                carriedPerSection.push_back(carried);
+            }
+        }
+        if (carriedPerSection.size() < 2) {
+            continue;  // one section: there is no split to keep
+        }
+        if (everySectionCarriesAllEqually) {
+            overrides[windingName] = WindingStyle::WIND_BY_CONSECUTIVE_PARALLELS;
+            continue;
+        }
+        std::vector<bool> seen(numberParallels, false);
+        bool disjoint = true;
+        for (const auto& carried : carriedPerSection) {
+            for (size_t parallelIndex : carried) {
+                if (seen[parallelIndex]) {
+                    disjoint = false;
+                }
+                seen[parallelIndex] = true;
+            }
+        }
+        if (disjoint) {
+            overrides[windingName] = WindingStyle::WIND_BY_CONSECUTIVE_TURNS;
+        }
+    }
+    _windingStyleOverridePerWinding = overrides;
+}
+
 std::vector<WindingStyle> Coil::wind_by_consecutive_turns(std::vector<uint64_t> numberTurns, std::vector<uint64_t> numberParallels, std::vector<size_t> numberSlots) {
     std::vector<WindingStyle> windByConsecutiveTurns;
     for (size_t i = 0; i < numberTurns.size(); ++i) {
@@ -7074,6 +7232,36 @@ WindingStyle Coil::wind_by_consecutive_turns(uint64_t numberTurns, uint64_t numb
 
 uint64_t Coil::get_number_turns(size_t windingIndex) const {
     return get_functional_description()[windingIndex].get_number_turns();
+}
+
+// ABT #1487. Under real winding, wind_inner inflates numberTurns by the crossing stations (one per
+// layer and parallel) for the whole wind. The winding-style heuristic reads turn counts against
+// slot counts ("turns < slots", "turns == slots"), so a station could flip it: 3 turns x 4
+// parallels in 4 sections is one parallel per section (turns < slots), but 3 + 1 station == 4
+// slots read as "one turn per slot" and spread every parallel across every section -- after which
+// each parallel spans every layer, is charged a station in each, and the raise diverges. The style
+// describes how the DECLARED turns are laid, so it is chosen on them.
+uint64_t Coil::get_number_turns_for_winding_style(size_t windingIndex) const {
+    const uint64_t numberTurns = get_number_turns(windingIndex);
+    if (windingIndex >= _realWindingStationsPerWinding.size()) {
+        return numberTurns;
+    }
+    const uint64_t stations = _realWindingStationsPerWinding[windingIndex];
+    if (stations >= numberTurns) {
+        throw CoilException(ErrorCode::COIL_WINDING_ERROR,
+                            "Real winding: winding '" + get_functional_description()[windingIndex].get_name() +
+                                "' carries " + std::to_string(stations) + " crossing station(s) but only " +
+                                std::to_string(numberTurns) + " turn(s) in total, so it declares no turn of its own");
+    }
+    return numberTurns - stations;
+}
+
+std::vector<uint64_t> Coil::get_number_turns_for_winding_style() const {
+    std::vector<uint64_t> numberTurns;
+    for (size_t windingIndex = 0; windingIndex < get_functional_description().size(); ++windingIndex) {
+        numberTurns.push_back(get_number_turns_for_winding_style(windingIndex));
+    }
+    return numberTurns;
 }
 
 uint64_t Coil::get_number_parallels(size_t windingIndex) const {
@@ -11045,7 +11233,7 @@ Coil::SectionGroupPlan Coil::plan_section_group(Group group, const std::vector<d
         }
     }
 
-    plan.windByConsecutiveTurns = wind_by_consecutive_turns(get_number_turns(), get_number_parallels(), plan.numberSectionsPerWinding);
+    plan.windByConsecutiveTurns = wind_by_consecutive_turns(get_number_turns_for_winding_style(), get_number_parallels(), plan.numberSectionsPerWinding);
 
     // ABT #724 (owner ruling): margins recovered from a previous wind follow the WINDING.
     // Before the tape floors are applied, walk this group's upcoming conduction ordinals: an
@@ -11930,7 +12118,7 @@ bool Coil::wind_by_planar_sections(std::vector<size_t> stackUpForThisGroup, std:
         double sectionHeight = sectionHeightPerWinding[windingIndex];
         currentSectionCenterHeight -= sectionHeight / 2;
 
-        WindingStyle windByConsecutiveTurns = wind_by_consecutive_turns(get_number_turns(windingIndex), get_number_parallels(windingIndex), numberSections, windingIndex);
+        WindingStyle windByConsecutiveTurns = wind_by_consecutive_turns(get_number_turns_for_winding_style(windingIndex), get_number_parallels(windingIndex), numberSections, windingIndex);
 
         std::pair<uint64_t, std::vector<double>> parallelsProportions;
         const auto numberParallels = get_number_parallels(windingIndex);

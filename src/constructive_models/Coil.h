@@ -608,6 +608,11 @@ class Coil : public MAS::Coil {
         std::map<std::string, std::pair<std::vector<double>, std::vector<double>>> _customSectionRects;
         // Winding-style overrides (winding studio), keyed by winding name.
         std::map<std::string, WindingStyle> _windingStyleOverridePerWinding;
+        // ABT #1487: real-winding crossing stations currently added to each winding's numberTurns
+        // for the duration of a wind (mirrors wind_inner's RealWindingCrossingBump; empty outside
+        // a real-winding wind). A station is a cross-section, not a turn, so the winding-style
+        // choice must not see it -- see get_number_turns_for_winding_style.
+        std::vector<size_t> _realWindingStationsPerWinding;
         Bobbin _bobbin;
         BobbinDataOrNameUnion bobbin;
         // MAS coil.bobbin ARRAY form (Convention A: element i is mounted on
@@ -859,6 +864,17 @@ class Coil : public MAS::Coil {
         // physical must-case (turns < slots with parallels > 1) still wins —
         // honoring the override there would leave slots empty.
         void preload_winding_style_overrides(std::map<std::string, WindingStyle> overrides) { _windingStyleOverridePerWinding = std::move(overrides); }
+        const std::map<std::string, WindingStyle>& get_winding_style_overrides() const { return _windingStyleOverridePerWinding; }
+        // ABT #1487: re-winding a STORED design (the real-winding re-wind of magnetic_autocomplete)
+        // must keep the way its parallels were wound, whoever chose it -- a winding-studio override
+        // is transient and never saved, so the stored sections are the only record of it. Read from
+        // the stored parallelsProportion, not the windingStyle label (MKF stamps a label on every
+        // section, and it does not decide the split: E16's sections read windByConsecutiveTurns yet
+        // carry both parallels): sections that each carry every parallel in equal share are side by
+        // side (WIND_BY_CONSECUTIVE_PARALLELS); sections splitting the parallels between them
+        // (disjoint sets) are one parallel after another (WIND_BY_CONSECUTIVE_TURNS). A mix of the
+        // two is neither, and is left to the heuristic. Overrides already preloaded win.
+        void preload_winding_style_overrides_from_stored_sections();
         std::optional<WindingStyle> get_winding_style_override(size_t windingIndex) const;
         std::vector<std::pair<size_t, double>> get_ordered_sections(double spaceForSections, std::vector<double> proportionPerWinding, std::vector<size_t> pattern, size_t repetitions=1);
         std::vector<std::pair<ElectricalType, std::pair<size_t, double>>> add_insulation_to_sections(std::vector<std::pair<size_t, double>> orderedSections);
@@ -1053,6 +1069,10 @@ class Coil : public MAS::Coil {
 
         std::vector<uint64_t> get_number_turns() const;
         uint64_t get_number_turns(size_t windingIndex) const;
+        // The declared (electrical) turn count, without the real-winding crossing stations a wind
+        // in progress has added: what the winding-style choice is made on (ABT #1487).
+        uint64_t get_number_turns_for_winding_style(size_t windingIndex) const;
+        std::vector<uint64_t> get_number_turns_for_winding_style() const;
         uint64_t get_number_turns(Section section);
         uint64_t get_number_turns(Layer layer);
         void set_number_turns(std::vector<uint64_t> numberTurns);

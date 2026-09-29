@@ -11989,6 +11989,12 @@ TEST_CASE("Test_Real_Geometry_Bifilar_Interleaved", "[constructive-model][coil][
 
     settings.set_coil_use_real_winding_geometry(true);
     auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, "PQ 40/40", interleavingLevel);
+    // ABT #1487: side by side is STATED. Unstated, the winding-style heuristic winds 2 parallels
+    // in 2 interleaved sections one parallel per section (the ideal wind always did), and real
+    // winding now keeps that instead of re-spreading them; this test is about the side-by-side
+    // bifilar layout, so it asks for it the way the winding studio does.
+    coil.preload_winding_style_overrides({{"winding 0", WindingStyle::WIND_BY_CONSECUTIVE_PARALLELS}});
+    REQUIRE(coil.wind());
 
     REQUIRE(coil.get_turns_description());
     // Real winding: one extra crossing per parallel ((20+1)*2 + (20+1)*1).
@@ -12151,6 +12157,12 @@ TEST_CASE("Test_Real_Geometry_Z_Interleaved_Return_Dragback_Bifilar", "[construc
 
     settings.set_coil_use_real_winding_geometry(true);
     auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, "PQ 28/20", interleavingLevel);
+    // ABT #1487: side by side is STATED. Unstated, the winding-style heuristic winds 2 parallels
+    // in 2 interleaved sections one parallel per section (the ideal wind always did), and real
+    // winding now keeps that instead of re-spreading them; this test is about the side-by-side
+    // bifilar layout, so it asks for it the way the winding studio does.
+    coil.preload_winding_style_overrides({{"winding 0", WindingStyle::WIND_BY_CONSECUTIVE_PARALLELS}});
+    REQUIRE(coil.wind());
 
     REQUIRE(coil.get_turns_description());
     REQUIRE(coil.get_winding_order(coil.get_sections_description_conduction()[0].get_name()) == WindingOrder::Z);
