@@ -1624,13 +1624,19 @@ TEST_CASE("An edge-wound rectangular lead ramps on the axis the ramp bends, not 
         "outerWidth": {"nominal": 0.010085}, "outerHeight": {"nominal": 0.000885},
         "coating": {"type": "enamelled", "grade": 1, "breakdownVoltage": 750}})");
     OpenMagnetics::Wire rectangular(rectangularJson);
-    // As the web lays it out: sections stacked axially, turns concentric inside each.
-    auto coil = OpenMagneticsTesting::get_quick_coil({45, 3}, {1, 4}, "PQ 65/60", 1,
-                                                     WindingOrientation::CONTIGUOUS, WindingOrientation::OVERLAPPING,
+    // ABT #1487: this fixture used to lay the sections out as the web does, stacked axially. There
+    // the secondary's section holds every one of its parallels whole, and its terminals are now
+    // LOCAL to that section (Alf, 2026-09-29): a one-layer section's leads leave radially at their
+    // own turns' height, with no stub and so no ramp at all -- the premise below no longer arises
+    // in that layout. The same wire and turns stacked RADIALLY, the rectangular winding innermost,
+    // keep what this test is about: its leads cross the primary's layer to the window edge, climb a
+    // stub shorter than their two bends, and ramp on the edge-wound wire.
+    auto coil = OpenMagneticsTesting::get_quick_coil({3, 45}, {4, 1}, "PQ 65/60", 1,
+                                                     WindingOrientation::OVERLAPPING, WindingOrientation::OVERLAPPING,
                                                      CoilAlignment::CENTERED, CoilAlignment::CENTERED,
-                                                     {find_wire_by_name("Round 0.5 - Grade 1"), rectangular});
+                                                     {rectangular, find_wire_by_name("Round 0.5 - Grade 1")});
     // Wound by consecutive turns, as the web does, so each parallel's end turn is off its own row.
-    const std::string secondaryName = coil.get_functional_description()[1].get_name();
+    const std::string secondaryName = coil.get_functional_description()[0].get_name();
     coil.preload_winding_style_overrides({{secondaryName, WindingStyle::WIND_BY_CONSECUTIVE_TURNS}});
     REQUIRE(coil.wind());
     REQUIRE(coil.is_real_winding_blocking_applied());

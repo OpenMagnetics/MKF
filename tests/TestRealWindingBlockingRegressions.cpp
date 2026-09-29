@@ -5,14 +5,19 @@
 #include "constructive_models/Coil.h"
 #include "constructive_models/Core.h"
 #include "constructive_models/Magnetic.h"
+#include "constructive_models/Mas.h"
 #include "support/Utils.h"
 #include "support/Settings.h"
 
 #include <catch2/catch_test_macros.hpp>
 
+#include <algorithm>
 #include <filesystem>
+#include <functional>
+#include <limits>
 #include <fstream>
 #include <set>
+#include <optional>
 #include <source_location>
 
 #include "TestingUtils.h"
@@ -187,5 +192,424 @@ TEST_CASE("magnetic_autocomplete keeps a stored design's parallel layout through
         REQUIRE(enriched.get_coil().is_real_winding_blocking_applied());
         CHECK(parallels_per_section(enriched.get_coil(), primary) == expected);
     }
+    settings.reset();
+}
+
+namespace {
+
+// The PQ 65/60 field design of ABT #1487: seven CONTIGUOUS (axially stacked) sections S,P,S,P,S,P,S.
+// Secondary 3 turns x 4 parallels of edge-wound 10.085 x 0.885 mm rectangular wire, one whole
+// parallel per section; Primary 45 turns x 1 parallel of 1.865 mm litz, split in series 1/3 per
+// section. Stored section heights: secondary 2.918 mm, primary 7.591 mm. `edit` changes the
+// stored MAS before it goes through magnetic_autocomplete with real winding on.
+OpenMagnetics::Magnetic pq65_through_real_winding(const std::function<void(json&)>& edit) {
+    auto masJson = load_test_data("abt1487_pq65_sp_contiguous.json");
+    edit(masJson);
+    OpenMagnetics::Mas mas(masJson);
+    OpenMagnetics::Settings::GetInstance().set_coil_use_real_winding_geometry(true);
+    return OpenMagnetics::magnetic_autocomplete(OpenMagnetics::Magnetic(masJson.at("magnetic")), json{}, mas.get_inputs());
+}
+
+json& pq65_winding(json& masJson, const std::string& name) {
+    for (auto& winding : masJson["magnetic"]["coil"]["functionalDescription"]) {
+        if (winding["name"] == name) {
+            return winding;
+        }
+    }
+    throw std::runtime_error("no winding " + name);
+}
+
+void set_pq65_stored_heights(json& masJson, double secondaryHeight, double primaryHeight) {
+    for (auto& section : masJson["magnetic"]["coil"]["sectionsDescription"]) {
+        if (section["type"] != "conduction") {
+            continue;
+        }
+        const std::string name = section["name"];
+        section["dimensions"][1] = name.rfind("Secondary", 0) == 0 ? secondaryHeight : primaryHeight;
+    }
+}
+
+struct SectionFrame {
+    std::map<std::string, std::pair<double, double>> axialExtent;   // conduction section -> {low, high}
+    std::map<std::string, std::string> sectionOfLayer;
+    std::map<std::string, std::string> sectionOfTurn;
+    double copperOuterFace = std::numeric_limits<double>::lowest();
+};
+
+SectionFrame section_frame(const OpenMagnetics::Coil& coil) {
+    SectionFrame frame;
+    const auto sectionsCopy = coil.get_sections_description().value();
+    for (const auto& section : sectionsCopy) {
+        if (section.get_type() != MAS::ElectricalType::CONDUCTION) {
+            continue;
+        }
+        frame.axialExtent[section.get_name()] = {section.get_coordinates()[1] - section.get_dimensions()[1] / 2,
+                                                 section.get_coordinates()[1] + section.get_dimensions()[1] / 2};
+    }
+    const auto layersCopy = coil.get_layers_description().value();
+    for (const auto& layer : layersCopy) {
+        if (layer.get_type() != MAS::ElectricalType::CONDUCTION) {
+            continue;
+        }
+        frame.sectionOfLayer[layer.get_name()] = layer.get_section().value();
+        frame.copperOuterFace = std::max(frame.copperOuterFace, layer.get_coordinates()[0] + layer.get_dimensions()[0] / 2);
+    }
+    const auto turnsCopy = coil.get_turns_description().value();
+    for (const auto& turn : turnsCopy) {
+        frame.sectionOfTurn[turn.get_name()] = turn.get_section().value();
+    }
+    return frame;
+}
+
+// Every terminal reservation of `winding` (its lead, stub and the squeezes it charges) stays at the
+// height of the section its terminal turn lies in, and squeezes only that section's layers.
+void check_terminals_local(const std::vector<OpenMagnetics::ConnectionReservedSpace>& spaces, const SectionFrame& frame,
+                           const std::string& winding) {
+    size_t checked = 0;
+    for (const auto& space : spaces) {
+        if (!space.isTerminal || space.winding != winding) {
+            continue;
+        }
+        // An entrance's reservations name the turn they reach (toTurn), an exit's the turn they leave.
+        const std::string& terminalTurn = space.toTurn.empty() ? space.fromTurn : space.toTurn;
+        INFO(winding << " p" << space.parallel << " terminal space of turn '" << terminalTurn << "' in '" << space.section
+                     << "' layer '" << space.layer << "' at y " << space.coordinates[1] * 1e3 << " mm");
+        REQUIRE(frame.sectionOfTurn.contains(terminalTurn));
+        const std::string& section = frame.sectionOfTurn.at(terminalTurn);
+        CHECK(space.section == section);
+        const auto [low, high] = frame.axialExtent.at(section);
+        CHECK(space.coordinates[1] - space.dimensions[1] / 2 >= low - 1e-9);
+        CHECK(space.coordinates[1] + space.dimensions[1] / 2 <= high + 1e-9);
+        if (space.kind == OpenMagnetics::ConnectionKind::LAYER_SQUEEZE) {
+            CHECK(frame.sectionOfLayer.at(space.layer) == section);
+        }
+        ++checked;
+    }
+    REQUIRE(checked > 0);
+}
+
+}  // namespace
+
+// ABT #1487 (Alf, 2026-09-29), rules R1-R4 on the PQ 65/60 S-P-S-P-S-P-S design, its primary cut to
+// 18 turns (6 per section): 24 turns genuinely overflow radially, 7 layers of the 1.865 mm litz
+// being 13.06 mm of build in the 12.05 mm window (an overflow wind() reports, tests below). R1: a section
+// holding a whole parallel (every secondary section) keeps that parallel's terminals local. R4: the
+// series-split primary's own start and finish are local too, in its first and last section. R2: the
+// primary's links between its sections run OUTSIDE the winding build, at a lane (exitSlot) of their
+// own, squeezing only the two sections they join. R3: the build (26.6 mm, the secondary's edge-wound
+// width) leaves 0.86 mm to the window's outer boundary and the 1.865 mm litz link does not fit there;
+// it runs where the PQ's outer legs leave the window open, within the core outline.
+TEST_CASE("Real winding on axially stacked sections: local terminals, outside series links (ABT #1487)",
+          "[constructive-model][coil][real-winding][abt1487]") {
+    auto& settings = OpenMagnetics::Settings::GetInstance();
+    settings.reset();
+    auto magnetic = pq65_through_real_winding([](json& masJson) { pq65_winding(masJson, "Primary")["numberTurns"] = 18; });
+    auto& coil = magnetic.get_mutable_coil();
+    REQUIRE(coil.is_real_winding_blocking_applied());
+    const auto frame = section_frame(coil);
+    const auto spaces = coil.get_connection_reserved_spaces();
+    const auto routes = coil.get_connection_layout().routes;
+
+    check_terminals_local(spaces, frame, "Secondary");   // R1
+    check_terminals_local(spaces, frame, "Primary");     // R4
+
+    const auto window = coil.resolve_bobbin().get_processed_description()->get_winding_windows()[0];
+    const double windowOuterFace = window.get_coordinates().value()[0] + window.get_width().value() / 2;
+    std::vector<double> terminalSlots;
+    for (const auto& route : routes) {
+        if ((route.kind == OpenMagnetics::ConnectionKind::TERMINAL_ENTRANCE || route.kind == OpenMagnetics::ConnectionKind::TERMINAL_EXIT) &&
+            route.exitSlot) {
+            terminalSlots.push_back(route.exitSlot.value());
+        }
+    }
+    REQUIRE(!terminalSlots.empty());
+    size_t outsideLinks = 0;
+    for (const auto& route : routes) {
+        if (route.kind != OpenMagnetics::ConnectionKind::EDGE_CONTINUATION || !route.exitSlot) {
+            continue;
+        }
+        ++outsideLinks;
+        INFO("outside link " << route.winding << " p" << route.parallel << " " << route.fromTurn << " -> " << route.toTurn);
+        CHECK(route.winding == "Primary");
+        const std::set<std::string> joined{frame.sectionOfTurn.at(route.fromTurn), frame.sectionOfTurn.at(route.toTurn)};
+        CHECK(joined.size() == 2);
+        // Outboard of every section's copper, and (R3) beyond the window here.
+        // Radial out, axial outside the build, radial in -- plus a stub at either end when the
+        // turn does not already sit on its section-edge row (a turn on the row has none).
+        REQUIRE(route.waypoints.size() >= 4);
+        double linkX = std::numeric_limits<double>::lowest();
+        for (const auto& waypoint : route.waypoints) {
+            linkX = std::max(linkX, waypoint[0]);
+        }
+        const double linkWidth = OpenMagnetics::resolve_dimensional_values(
+            coil.resolve_wire(coil.get_winding_index_by_name("Primary")).get_maximum_outer_width());
+        CHECK(linkX - linkWidth / 2 >= frame.copperOuterFace - 1e-9);
+        CHECK(linkX + linkWidth / 2 > windowOuterFace);
+        // A lane of its own, at a different angle from every terminal.
+        for (double slot : terminalSlots) {
+            CHECK(std::abs(route.exitSlot.value() - slot) > 1e-6);
+        }
+        // It squeezes, and reserves, nothing outside the two sections it joins.
+        for (const auto& space : spaces) {
+            if (space.winding != route.winding || space.fromTurn != route.fromTurn || space.toTurn != route.toTurn) {
+                continue;
+            }
+            CHECK(joined.contains(space.section));
+            if (space.kind == OpenMagnetics::ConnectionKind::LAYER_SQUEEZE) {
+                CHECK(joined.contains(frame.sectionOfLayer.at(space.layer)));
+            }
+        }
+    }
+    CHECK(outsideLinks == 2);   // Primary section 0 -> 1 -> 2
+    settings.reset();
+}
+
+// ABT #1487 R5 (Alf, 2026-09-29): a STORED design's section heights -- a customer may have corrected
+// them -- survive magnetic_autocomplete's real-winding re-wind. Only a section whose crossing stations
+// need more height than it was given grows, by exactly that need, and the height comes from its
+// neighbouring sections; everything else stays as stored. Primary here is 0.5 mm round wire, so the
+// primary sections have height to give.
+TEST_CASE("magnetic_autocomplete keeps stored heights of axially stacked sections through the real-winding re-wind (ABT #1487)",
+          "[constructive-model][coil][real-winding][abt1487]") {
+    auto& settings = OpenMagnetics::Settings::GetInstance();
+    auto heights = [](const OpenMagnetics::Coil& coil) {
+        std::vector<std::pair<std::string, double>> result;
+        const auto sectionsCopy = coil.get_sections_description().value();
+        for (const auto& section : sectionsCopy) {
+            if (section.get_type() == MAS::ElectricalType::CONDUCTION) {
+                result.push_back({section.get_name(), section.get_dimensions()[1]});
+            }
+        }
+        return result;
+    };
+    auto roundPrimary = [](json& masJson) { pq65_winding(masJson, "Primary")["wire"] = "Round 0.5 - Grade 1"; };
+
+    SECTION("heights that hold their crossings are kept as stored") {
+        settings.reset();
+        auto magnetic = pq65_through_real_winding([&](json& masJson) {
+            roundPrimary(masJson);
+            set_pq65_stored_heights(masJson, 0.0036, 0.0068);
+        });
+        REQUIRE(magnetic.get_coil().is_real_winding_blocking_applied());
+        const auto kept = heights(magnetic.get_coil());
+        REQUIRE(kept.size() == 7);
+        for (const auto& [name, height] : kept) {
+            INFO(name);
+            CHECK(std::abs(height - (name.rfind("Secondary", 0) == 0 ? 0.0036 : 0.0068)) < 1e-9);
+        }
+    }
+    SECTION("a section too short for its crossings grows by exactly their need, from its neighbours") {
+        settings.reset();
+        auto magnetic = pq65_through_real_winding([&](json& masJson) {
+            roundPrimary(masJson);
+            set_pq65_stored_heights(masJson, 0.002918, 0.007591);
+        });
+        auto& coil = magnetic.get_mutable_coil();
+        REQUIRE(coil.is_real_winding_blocking_applied());
+        // 3 turns of one parallel in one layer (the 10.085 mm edge-wound wire fills the width): 3 turns
+        // plus that layer's crossing station, one 0.885 mm wire height each.
+        const double wireHeight = OpenMagnetics::resolve_dimensional_values(
+            coil.resolve_wire(coil.get_winding_index_by_name("Secondary")).get_maximum_outer_height());
+        const double need = 4 * wireHeight;
+        const double grow = need - 0.002918;
+        REQUIRE(grow > 0);
+        // S0 and S3 take all from their one neighbour, S1 and S2 half from each of theirs.
+        const std::vector<std::pair<std::string, double>> expected{
+            {"Secondary section 0", need}, {"Primary section 0", 0.007591 - grow - grow / 2},
+            {"Secondary section 1", need}, {"Primary section 1", 0.007591 - grow / 2 - grow / 2},
+            {"Secondary section 2", need}, {"Primary section 2", 0.007591 - grow / 2 - grow},
+            {"Secondary section 3", need}};
+        const auto kept = heights(coil);
+        REQUIRE(kept.size() == expected.size());
+        for (size_t index = 0; index < expected.size(); ++index) {
+            INFO(expected[index].first);
+            CHECK(kept[index].first == expected[index].first);
+            CHECK(std::abs(kept[index].second - expected[index].second) < 1e-9);
+        }
+    }
+    settings.reset();
+}
+
+namespace {
+
+// The PQ 65/60 field design of ABT #1487 wound directly, as the web's first wind does: no stored
+// sections, the core set for the outside links' room (R3), the secondary wound by consecutive turns.
+OpenMagnetics::Coil pq65_direct_coil(std::optional<int64_t> primaryTurns) {
+    auto masJson = load_test_data("abt1487_pq65_sp_contiguous.json");
+    if (primaryTurns) {
+        pq65_winding(masJson, "Primary")["numberTurns"] = primaryTurns.value();
+    }
+    auto coilJson = masJson["magnetic"]["coil"];
+    coilJson.erase("sectionsDescription");
+    OpenMagnetics::Coil coil(coilJson, false);
+    OpenMagnetics::Core core(masJson["magnetic"]["core"]);
+    coil.set_core_geometry(core);
+    coil.preload_winding_style_overrides({{"Secondary", MAS::WindingStyle::WIND_BY_CONSECUTIVE_TURNS}});
+    return coil;
+}
+
+void check_every_declared_turn_present(const OpenMagnetics::Coil& coil) {
+    std::set<std::string> names;
+    const auto turnsCopy = coil.get_turns_description().value();
+    for (const auto& turn : turnsCopy) {
+        names.insert(turn.get_name());
+    }
+    for (const auto& winding : coil.get_functional_description()) {
+        for (int64_t parallel = 0; parallel < winding.get_number_parallels(); ++parallel) {
+            for (int64_t turn = 0; turn < winding.get_number_turns(); ++turn) {
+                const std::string name = winding.get_name() + " parallel " + std::to_string(parallel) + " turn " + std::to_string(turn);
+                INFO(name);
+                CHECK(names.contains(name));
+            }
+        }
+    }
+}
+
+}  // namespace
+
+// ABT #1487 (owner decision, Alf 2026-09-29): a real-winding layout that does not fit is never a
+// throw. The field design (primary 45 turns of 1.865 mm litz, 15 per section) wound directly needs
+// more layers than the 12.05 mm window takes: the overlapping layers grow out radially, every turn
+// is laid out, and wind() says it does not fit, naming how far and which way.
+TEST_CASE("Real winding lays out an overflowing axially stacked design in full and reports it (ABT #1487)",
+          "[constructive-model][coil][real-winding][abt1487]") {
+    auto& settings = OpenMagnetics::Settings::GetInstance();
+    settings.reset();
+    auto coil = pq65_direct_coil(std::nullopt);
+    settings.set_coil_use_real_winding_geometry(true);
+    CHECK_FALSE(coil.wind({1, 0, 1, 0, 1, 0, 1}, 1));
+    REQUIRE(coil.get_turns_description());
+    check_every_declared_turn_present(coil);
+    const std::string failure = coil.get_last_fit_failure();
+    INFO(failure);
+    CHECK(failure.find("real winding does not fit") != std::string::npos);
+    CHECK(failure.find("radially outward") != std::string::npos);
+    // It grows out radially, not along the column: no turn passes the window's top or bottom.
+    const auto window = coil.resolve_bobbin().get_processed_description()->get_winding_windows()[0];
+    const double windowTop = window.get_coordinates().value()[1] + window.get_height().value() / 2;
+    const double windowBottom = window.get_coordinates().value()[1] - window.get_height().value() / 2;
+    const auto turnsCopy = coil.get_turns_description().value();
+    for (const auto& turn : turnsCopy) {
+        INFO(turn.get_name());
+        const double halfHeight = turn.get_dimensions().value()[1] / 2;
+        CHECK(turn.get_coordinates()[1] + halfHeight <= windowTop + 1e-6);
+        CHECK(turn.get_coordinates()[1] - halfHeight >= windowBottom - 1e-6);
+    }
+    settings.reset();
+}
+
+// ABT #1487 (R5 + owner decision): the field design as stored (secondary sections 2.918 mm, primary
+// 7.591 mm) through magnetic_autocomplete. The secondary sections need 3.54 mm for their crossings
+// and the 1.865 mm litz primary sections have almost nothing to give: the stack grows along the
+// column past the window, is laid out all the same, and the fit failure says so.
+TEST_CASE("magnetic_autocomplete reports a stored stack that outgrows the window along the column (ABT #1487)",
+          "[constructive-model][coil][real-winding][abt1487]") {
+    auto& settings = OpenMagnetics::Settings::GetInstance();
+    settings.reset();
+    auto magnetic = pq65_through_real_winding([](json& masJson) { set_pq65_stored_heights(masJson, 0.002918, 0.007591); });
+    const auto& coil = magnetic.get_coil();
+    REQUIRE(coil.is_real_winding_blocking_applied());
+    REQUIRE(coil.get_turns_description());
+    check_every_declared_turn_present(coil);
+    const std::string failure = coil.get_last_fit_failure();
+    INFO(failure);
+    CHECK(failure.find("real winding does not fit") != std::string::npos);
+    CHECK(failure.find("grows") != std::string::npos);
+    CHECK(failure.find("along the column past its stored height") != std::string::npos);
+    settings.reset();
+}
+
+namespace {
+
+// Every conduction layer, and every turn, lies within the height of its own section.
+void check_layers_within_own_sections(const OpenMagnetics::Coil& coil) {
+    const auto frame = section_frame(coil);
+    // The sections themselves stay stacked: none reaches into another's height.
+    std::vector<std::pair<double, double>> extents;
+    for (const auto& [name, extent] : frame.axialExtent) {
+        extents.push_back(extent);
+    }
+    std::sort(extents.begin(), extents.end());
+    for (size_t index = 1; index < extents.size(); ++index) {
+        INFO("section spanning " << extents[index - 1].first * 1e3 << " .. " << extents[index - 1].second * 1e3 << " mm");
+        CHECK(extents[index - 1].second <= extents[index].first + 1e-9);
+    }
+    const auto layersCopy = coil.get_layers_description().value();
+    size_t checkedLayers = 0;
+    for (const auto& layer : layersCopy) {
+        if (layer.get_type() != MAS::ElectricalType::CONDUCTION) {
+            continue;
+        }
+        INFO(layer.get_name());
+        const auto [low, high] = frame.axialExtent.at(layer.get_section().value());
+        CHECK(layer.get_coordinates()[1] - layer.get_dimensions()[1] / 2 >= low - 1e-9);
+        CHECK(layer.get_coordinates()[1] + layer.get_dimensions()[1] / 2 <= high + 1e-9);
+        ++checkedLayers;
+    }
+    CHECK(checkedLayers >= 7);
+    const auto turnsCopy = coil.get_turns_description().value();
+    for (const auto& turn : turnsCopy) {
+        INFO(turn.get_name());
+        const auto [low, high] = frame.axialExtent.at(turn.get_section().value());
+        const double halfHeight = turn.get_dimensions().value()[1] / 2;
+        CHECK(turn.get_coordinates()[1] - halfHeight >= low - 1e-9);
+        CHECK(turn.get_coordinates()[1] + halfHeight <= high + 1e-9);
+    }
+}
+
+}  // namespace
+
+// ABT #1487, two layout bugs axially stacked sections exposed, on the field design cut to a 15-turn
+// primary, which FITS wound directly (at 18 turns the outside links already find no room).
+// (i) get_connection_reserved_spaces counted a layer of ANOTHER section as crossed by a link between
+// two layers of one section whenever its centre fell radially between them (the wide edge-wound secondary, centred in the window, sat between the primary's two
+// layers): every primary layer step squeezed all four secondary sections and the wind threw "No
+// layers in section". (ii) align_blocked_layer_turns spread a blocked layer's turns over the whole
+// window height rather than its own section's, laying 34.566 mm layers across the other sections.
+TEST_CASE("Real winding on axially stacked sections keeps links and blocked layers in their own section (ABT #1487)",
+          "[constructive-model][coil][real-winding][abt1487]") {
+    auto& settings = OpenMagnetics::Settings::GetInstance();
+    settings.reset();
+    auto coil = pq65_direct_coil(15);
+    settings.set_coil_use_real_winding_geometry(true);
+    const bool fits = coil.wind({1, 0, 1, 0, 1, 0, 1}, 1);
+    INFO(coil.get_last_fit_failure());
+    REQUIRE(fits);
+    REQUIRE(coil.is_real_winding_blocking_applied());
+    check_every_declared_turn_present(coil);
+    const auto frame = section_frame(coil);
+
+    // (i) a link squeezes only layers of the sections its two turns lie in -- never another
+    // section's layer at another height (the secondary's layer, centred at x 21.48 mm, lies
+    // radially between the primary's section-1 layers at 20.54 and 22.41 mm).
+    auto turnOf = [](const std::string& name) { return name.substr(0, name.find('_')); };
+    size_t squeezes = 0;
+    for (const auto& space : coil.get_connection_reserved_spaces()) {
+        if (space.isTerminal || space.kind != OpenMagnetics::ConnectionKind::LAYER_SQUEEZE) {
+            continue;
+        }
+        INFO(space.winding << " " << space.fromTurn << " -> " << space.toTurn << " squeezes '" << space.layer << "'");
+        REQUIRE(frame.sectionOfTurn.contains(turnOf(space.fromTurn)));
+        REQUIRE(frame.sectionOfTurn.contains(turnOf(space.toTurn)));
+        const std::set<std::string> joined{frame.sectionOfTurn.at(turnOf(space.fromTurn)), frame.sectionOfTurn.at(turnOf(space.toTurn))};
+        CHECK(joined.contains(frame.sectionOfLayer.at(space.layer)));
+        ++squeezes;
+    }
+    CHECK(squeezes > 0);
+
+    // (ii) every layer, and every turn in it, stays within its own section's height.
+    check_layers_within_own_sections(coil);
+    settings.reset();
+
+    // (ii) again where lead depths block layer slots: the stored field heights with a 0.5 mm round
+    // primary (it fits: the secondary sections grow from their primary neighbours, R5), re-wound
+    // with real winding. The bug spread primary section 2's blocked layers over 34.566 mm.
+    auto magnetic = pq65_through_real_winding([](json& masJson) {
+        pq65_winding(masJson, "Primary")["wire"] = "Round 0.5 - Grade 1";
+        set_pq65_stored_heights(masJson, 0.002918, 0.007591);
+    });
+    REQUIRE(magnetic.get_coil().is_real_winding_blocking_applied());
+    CHECK(magnetic.get_coil().get_last_fit_failure().empty());
+    check_layers_within_own_sections(magnetic.get_coil());
     settings.reset();
 }

@@ -597,6 +597,324 @@ WindingOrder Coil::get_winding_order(const std::string& sectionName) const {
     return WindingOrder::Z;
 }
 
+// ABT #1487: a concentric (rectangular-window, non-planar) coil whose sections are stacked AXIALLY
+// -- the contiguous section arrangement. Toroids (round windows) and planar coils are excluded.
+static bool sections_stacked_axially_on_concentric_core(Coil& coil) {
+    if (coil.resolve_bobbin().get_winding_window_shape() != WindingWindowShape::RECTANGULAR) {
+        return false;
+    }
+    if (coil.is_planar()) {
+        return false;
+    }
+    if (!Settings::GetInstance().get_coil_use_real_winding_geometry()) {
+        return false;   // the rule shapes real-winding leads; the ideal wind draws none
+    }
+    return coil.get_winding_orientation() == WindingOrientation::CONTIGUOUS;
+}
+
+// ABT #1487 (R3, Alf 2026-09-29): where an OUTSIDE series link may run around a concentric winding
+// build. Seen in the plane ACROSS the column axis, centred on the main column: x is the winding
+// window's layer axis (towards the lateral legs), z is the normal of the connection face, which is
+// the face a lane of ConnectionRoute::exitSlot lies on (side 0 at -z, side 1 at +z). A link at lane
+// x runs axially hugging the build's outer face there. It may not meet core material (the outer
+// legs), and it must stay within the component's outline at that angle: the core outline, or the
+// bobbin's, which reaches at least its own winding window all around the column (MAS carries no
+// flange outline, so that is all of the bobbin outline MKF knows). On cores whose outer legs do not
+// surround the window (E, PQ, U, ...) the link therefore runs where there is no leg and may go
+// beyond the window width, up to the core outline.
+struct OutsideLinkRoomGeometry {
+    // The bobbin column the build is wound on: its outer face, half extents in x and z.
+    ColumnShape columnShape = ColumnShape::ROUND;
+    double columnHalfWidth = 0;
+    double columnHalfDepth = 0;
+    // The build's and the bobbin winding window's radial extent past that face.
+    double windowThickness = 0;
+    // The core.
+    std::string coreFamily;
+    double outlineHalfWidth = 0;
+    double outlineHalfDepth = 0;
+    std::vector<ColumnElement> boxLegs;     // RECTANGULAR outer legs
+    std::vector<ColumnElement> roundLegs;   // ROUND outer legs
+    bool pqLegs = false;                    // PQ-type legs: |x| >= G/2, |z| <= C/2, outside the E/2 bore
+    double pqHalfOpening = 0;               // G/2
+    double pqBoreRadius = 0;                // E/2
+
+    // Distance from the column's outer face (0 on or inside it).
+    double distance_from_column(double x, double z) const {
+        const double ax = std::abs(x);
+        const double az = std::abs(z);
+        switch (columnShape) {
+            case ColumnShape::ROUND:
+                return std::max(0.0, std::hypot(ax, az) - columnHalfWidth);
+            case ColumnShape::RECTANGULAR:
+                return std::hypot(std::max(ax - columnHalfWidth, 0.0), std::max(az - columnHalfDepth, 0.0));
+            case ColumnShape::OBLONG: {
+                // A stadium: straight along its longer half extent, round ends of the shorter one.
+                const double radius = std::min(columnHalfWidth, columnHalfDepth);
+                const double straightX = columnHalfWidth - radius;
+                const double straightZ = columnHalfDepth - radius;
+                return std::max(0.0, std::hypot(std::max(ax - straightX, 0.0), std::max(az - straightZ, 0.0)) - radius);
+            }
+            default:
+                throw CoilException(ErrorCode::COIL_WINDING_ERROR,
+                                    "Real winding (ABT #1487): the room around a winding build is not known for a bobbin column of shape '" +
+                                        std::string(magic_enum::enum_name(columnShape)) + "'");
+        }
+    }
+    // The z (>= 0) at which a disc of `radius` centred at lane x rests on a build `buildThickness` thick.
+    double z_against_build(double x, double buildThickness, double radius) const {
+        const double reach = buildThickness + radius;
+        const double ax = std::abs(x);
+        switch (columnShape) {
+            case ColumnShape::ROUND: {
+                const double r = columnHalfWidth + reach;
+                return ax >= r ? 0.0 : std::sqrt(r * r - ax * ax);
+            }
+            case ColumnShape::RECTANGULAR: {
+                if (ax <= columnHalfWidth) {
+                    return columnHalfDepth + reach;
+                }
+                const double over = ax - columnHalfWidth;
+                return over >= reach ? 0.0 : columnHalfDepth + std::sqrt(reach * reach - over * over);
+            }
+            case ColumnShape::OBLONG: {
+                const double radius0 = std::min(columnHalfWidth, columnHalfDepth);
+                const double straightX = columnHalfWidth - radius0;
+                const double straightZ = columnHalfDepth - radius0;
+                const double r = radius0 + reach;
+                if (ax <= straightX) {
+                    return straightZ + r;
+                }
+                const double over = ax - straightX;
+                return over >= r ? 0.0 : straightZ + std::sqrt(r * r - over * over);
+            }
+            default:
+                return distance_from_column(x, 0);   // throws: shape unknown
+        }
+    }
+    bool point_in_core_leg(double x, double z) const {
+        for (const auto& leg : boxLegs) {
+            const auto c = leg.get_coordinates();
+            const double cz = c.size() > 2 ? c[2] : 0.0;
+            if (std::abs(x - c[0]) < leg.get_width() / 2 && std::abs(z - cz) < leg.get_depth() / 2) {
+                return true;
+            }
+        }
+        for (const auto& leg : roundLegs) {
+            const auto c = leg.get_coordinates();
+            const double cz = c.size() > 2 ? c[2] : 0.0;
+            if (std::hypot(x - c[0], z - cz) < leg.get_width() / 2) {
+                return true;
+            }
+        }
+        if (pqLegs && std::abs(x) > pqHalfOpening && std::abs(x) < outlineHalfWidth && std::abs(z) < outlineHalfDepth &&
+            std::hypot(x, z) > pqBoreRadius) {
+            return true;
+        }
+        return false;
+    }
+    // A disc of `radius` at (x, z) meets core material: its centre or any point of its rim (sampled
+    // every degree, which misses at most radius * (1 - cos 0.5 deg), 4e-5 of the radius; the legs
+    // are far larger than a link, so nothing fits between samples).
+    bool disc_meets_core_leg(double x, double z, double radius) const {
+        if (point_in_core_leg(x, z)) {
+            return true;
+        }
+        for (int k = 0; k < 360; ++k) {
+            const double angle = std::numbers::pi * k / 180.0;
+            if (point_in_core_leg(x + radius * std::cos(angle), z + radius * std::sin(angle))) {
+                return true;
+            }
+        }
+        return false;
+    }
+    bool disc_within_outline(double x, double z, double radius) const {
+        const bool withinCore = std::abs(x) + radius <= outlineHalfWidth + 1e-12 && std::abs(z) + radius <= outlineHalfDepth + 1e-12;
+        const bool withinBobbin = distance_from_column(x, z) + radius <= windowThickness + 1e-12;
+        return withinCore || withinBobbin;
+    }
+    // Whether a link of `linkWidth` at lane x on the face `side` fits against a build
+    // `buildThickness` thick: where it rests on the build, it meets no leg and stays in the outline.
+    bool link_fits(double x, int side, double buildThickness, double linkWidth) const {
+        const double radius = linkWidth / 2;
+        const double z = (side == 0 ? -1.0 : 1.0) * z_against_build(x, buildThickness, radius);
+        return !disc_meets_core_leg(x, z, radius) && disc_within_outline(x, z, radius);
+    }
+    // The furthest lane worth trying: past it a link is outside every outline.
+    double last_lane() const {
+        return std::max(outlineHalfWidth, columnHalfWidth + windowThickness);
+    }
+};
+
+// ABT #1487 (R3): OutsideLinkRoomGeometry for `coil`, from its bobbin and from the core set with
+// Coil::set_core_geometry. The outer legs come from the core's processed columns where their shape
+// says where they are (RECTANGULAR, ROUND); PQ-type legs, whose processed column is IRREGULAR, from
+// the shape's own E, G (and C, A: the outline). Any other family's open sides are not known to MKF
+// and it throws -- there is no default.
+static OutsideLinkRoomGeometry outside_link_room_geometry(Coil& coil) {
+    OutsideLinkRoomGeometry geometry;
+    const auto bobbinProcessed = coil.resolve_bobbin().get_processed_description();
+    if (!bobbinProcessed || !bobbinProcessed->get_column_width()) {
+        throw CoilException(ErrorCode::COIL_NOT_PROCESSED,
+                            "Real winding (ABT #1487): the bobbin states no processed column width, so the room around the winding build is unknown");
+    }
+    geometry.columnShape = bobbinProcessed->get_column_shape();
+    geometry.columnHalfWidth = bobbinProcessed->get_column_width().value();
+    geometry.columnHalfDepth = bobbinProcessed->get_column_depth();
+    const auto windows = bobbinProcessed->get_winding_windows();
+    if (windows.empty() || !windows[0].get_coordinates() || !windows[0].get_width()) {
+        throw CoilException(ErrorCode::COIL_NOT_PROCESSED,
+                            "Real winding (ABT #1487): the bobbin's winding window states no coordinates and width");
+    }
+    geometry.windowThickness = windows[0].get_coordinates().value()[0] + windows[0].get_width().value() / 2 - geometry.columnHalfWidth;
+
+    const auto& core = coil.get_core_geometry();
+    if (!core) {
+        throw CoilException(ErrorCode::COIL_NOT_PROCESSED,
+                            "Real winding (ABT #1487): an outside series link needs the core outline around the winding build, "
+                            "but the coil was given no core (Coil::set_core_geometry)");
+    }
+    const auto family = core->get_shape_family();
+    geometry.coreFamily = std::string(magic_enum::enum_name(family));
+    geometry.outlineHalfWidth = core->get_width() / 2;
+    geometry.outlineHalfDepth = core->get_depth() / 2;
+    const auto columns = core->get_columns();
+    for (size_t index = 1; index < columns.size(); ++index) {
+        const auto& column = columns[index];
+        if (column.get_type() != ColumnType::LATERAL) {
+            continue;
+        }
+        if (column.get_shape() == ColumnShape::RECTANGULAR) {
+            geometry.boxLegs.push_back(column);
+        }
+        else if (column.get_shape() == ColumnShape::ROUND) {
+            geometry.roundLegs.push_back(column);
+        }
+        else if (family == CoreShapeFamily::PQ || family == CoreShapeFamily::PQI) {
+            geometry.pqLegs = true;
+        }
+        else {
+            throw CoilException(ErrorCode::COIL_WINDING_ERROR,
+                                "Real winding (ABT #1487): an outside series link runs where the core has no outer leg, but where a " +
+                                    geometry.coreFamily + " core's outer legs leave the window open (its lateral column is " +
+                                    std::string(magic_enum::enum_name(column.get_shape())) + ") is not known to MKF");
+        }
+    }
+    if (geometry.pqLegs) {
+        auto dimensions = flatten_dimensions(core->resolve_shape().get_dimensions().value());
+        for (const std::string key : {"E", "G"}) {
+            if (!dimensions.contains(key) || dimensions.at(key) <= 0) {
+                throw CoilException(ErrorCode::COIL_WINDING_ERROR,
+                                    "Real winding (ABT #1487): the " + geometry.coreFamily + " shape '" + core->get_shape_name() +
+                                        "' states no dimension " + key + ", so where its outer legs leave the window open is unknown");
+            }
+        }
+        geometry.pqHalfOpening = dimensions.at("G") / 2;
+        geometry.pqBoreRadius = dimensions.at("E") / 2;
+    }
+    return geometry;
+}
+
+// ABT #1487: the radial room the OUTSIDE inter-section links need past the winding build INSIDE the
+// winding window: one coated wire (its radial extent in an overlapping layer, the wire's outer
+// width) of the widest conductor split in series over two or more axially stacked sections; 0 when
+// there is none. Only sections with OVERLAPPING layers take part (the rule's frame, see
+// get_connection_reserved_spaces). R3 (Alf, 2026-09-29): also 0 when the core leaves that link room
+// at some angle around a build that fills the whole window -- an open side, where it runs beyond
+// the window up to the core outline (OutsideLinkRoomGeometry); only a core that offers no such
+// angle makes the sections give the link that room inside the window.
+static double outside_link_radial_room(Coil& coil) {
+    if (!sections_stacked_axially_on_concentric_core(coil)) {
+        return 0;
+    }
+    const auto sections = coil.get_sections_description();
+    if (!sections) {
+        return 0;
+    }
+    std::map<std::pair<std::string, int64_t>, size_t> sectionsHoldingConductor;
+    for (const auto& section : sections.value()) {
+        if (section.get_type() != ElectricalType::CONDUCTION) {
+            continue;
+        }
+        if (section.get_layers_orientation() != WindingOrientation::OVERLAPPING) {
+            return 0;
+        }
+        for (const auto& partialWinding : section.get_partial_windings()) {
+            const auto proportions = partialWinding.get_parallels_proportion();
+            for (size_t parallel = 0; parallel < proportions.size(); ++parallel) {
+                if (proportions[parallel] > 1e-9) {
+                    ++sectionsHoldingConductor[{partialWinding.get_winding(), int64_t(parallel)}];
+                }
+            }
+        }
+    }
+    double room = 0;
+    for (const auto& [conductor, count] : sectionsHoldingConductor) {
+        if (count < 2) {
+            continue;
+        }
+        auto wire = coil.resolve_wire(coil.get_winding_index_by_name(conductor.first));
+        room = std::max(room, wire.get_maximum_outer_width());
+    }
+    if (room <= 0) {
+        return 0;
+    }
+    const auto geometry = outside_link_room_geometry(coil);
+    const double step = 2e-5;
+    for (int side : {0, 1}) {
+        for (double x = 0; x <= geometry.last_lane(); x += step) {
+            if (geometry.link_fits(x, side, geometry.windowThickness, room)) {
+                return 0;
+            }
+        }
+    }
+    return room;
+}
+
+// ABT #1487: the conduction section that holds each (winding, parallel) conductor WHOLE -- its
+// parallelsProportion is 1 there -- keyed by conductor. A conductor split in series over several
+// sections has no entry. Throws on a partial winding whose proportions do not name every parallel,
+// or on a conductor claimed whole by two sections.
+static std::map<std::pair<std::string, int64_t>, std::string> full_parallel_section_by_conductor(Coil& coil) {
+    std::map<std::pair<std::string, int64_t>, std::string> sectionByConductor;
+    const auto sections = coil.get_sections_description();
+    if (!sections) {
+        throw CoilException(ErrorCode::COIL_NOT_PROCESSED,
+                            "Real winding (ABT #1487): the coil has no sections, so which section holds each parallel is unknown");
+    }
+    for (const auto& section : sections.value()) {
+        if (section.get_type() != ElectricalType::CONDUCTION) {
+            continue;
+        }
+        for (const auto& partialWinding : section.get_partial_windings()) {
+            const std::string windingName = partialWinding.get_winding();
+            const auto numberParallels = coil.get_number_parallels(coil.get_winding_index_by_name(windingName));
+            const auto proportions = partialWinding.get_parallels_proportion();
+            if (proportions.size() != size_t(numberParallels)) {
+                throw CoilException(ErrorCode::COIL_WINDING_ERROR,
+                                    "Real winding (ABT #1487): section '" + section.get_name() + "' states " +
+                                        std::to_string(proportions.size()) + " parallels proportions for winding '" +
+                                        windingName + "', which has " + std::to_string(numberParallels) + " parallels");
+            }
+            for (size_t parallel = 0; parallel < proportions.size(); ++parallel) {
+                if (proportions[parallel] < 1 - 1e-9) {
+                    continue;
+                }
+                const auto key = std::make_pair(windingName, int64_t(parallel));
+                auto found = sectionByConductor.find(key);
+                if (found != sectionByConductor.end()) {
+                    throw CoilException(ErrorCode::COIL_WINDING_ERROR,
+                                        "Real winding (ABT #1487): parallel " + std::to_string(parallel) + " of winding '" +
+                                            windingName + "' is held whole by both '" + found->second + "' and '" +
+                                            section.get_name() + "'");
+                }
+                sectionByConductor[key] = section.get_name();
+            }
+        }
+    }
+    return sectionByConductor;
+}
+
 // Connection leads for a TOROIDAL winding. Toroidal turns are stored in cartesian coordinates on
 // circles around the core centre; layers are concentric polar rings. Each parallel is its own
 // conductor: its entrance/exit terminal leads run radially out to the winding-window border, and its
@@ -870,6 +1188,8 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces(
     // that continuation lead crosses, and squeezes, the intervening layer; for adjacent layers it
     // reserves at the single boundary it steps over. Rectangular (concentric), overlapping layers
     // only; contiguous and toroidal windows are a TODO.
+    // ABT #1487: every call re-derives the outside links, so only the last layout's overflows stand.
+    _outsideLinkOverflows.clear();
     std::vector<ConnectionReservedSpace> spaces;
     if (!get_layers_description() || !get_sections_description() || !get_turns_description()) {
         return spaces;
@@ -1038,6 +1358,166 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces(
     auto windowIndexOf = [&](const std::string& sectionName) -> size_t {
         auto found = windowIndexBySection.find(sectionName);
         return found == windowIndexBySection.end() ? 0 : found->second;
+    };
+    // ABT #1487 (Alf, 2026-09-29): "When a contiguous section in a concentric core contains a full
+    // parallel, the terminal must be local to that section." On a concentric core whose sections
+    // are stacked AXIALLY (contiguous arrangement; not a toroid, not planar), a (winding, parallel)
+    // conductor that lives entirely in ONE section gets its input and output terminals AT THAT
+    // SECTION'S OWN HEIGHT: the leads cross only that section's own layers, and the parallel
+    // connection between sections is made outside the window with flying leads. Routing them along
+    // the window's top/bottom edge instead drove the upper sections' leads axially through every
+    // section below (32 mm on the PQ 65/60 S-P-S-P-S-P-S design) and charged slots of layers they
+    // never reach.
+    //
+    // A conductor split in SERIES over several such sections is linked OUTSIDE the winding build
+    // (Alf, same day): each section's end leaves radially at its own height past the build's outer
+    // face, runs axially outside the build to the next section's height and enters radially there.
+    // The link crosses no other section, so it squeezes none; it needs one wire of radial room past
+    // the build's outer face at an angle (its lane, ConnectionRoute::exitSlot) where the core leaves
+    // it that room -- R3: the core outline there, not the window's outer boundary. When no angle
+    // does, it is laid beyond that room and the wind is marked as not fitting (owner decision,
+    // 2026-09-29: the customer must see the overflow, not an exception).
+    //
+    // Virtual frame == real frame here: the rule is stated for OVERLAPPING layers inside axially
+    // stacked sections (x radial, y axial). Contiguous layers keep the historical routing.
+    const bool sectionsStackedAxially = sections_stacked_axially_on_concentric_core(*this) && !layersAreContiguous;
+    std::map<std::string, std::pair<double, double>> sectionAxialExtent;   // conduction section -> {low, high} (real y)
+    std::map<std::pair<std::string, int64_t>, std::string> fullParallelSectionByConductor;
+    double buildOuterFace = std::numeric_limits<double>::lowest();         // outermost conduction copper (real x)
+    if (sectionsStackedAxially) {
+        fullParallelSectionByConductor = full_parallel_section_by_conductor(*this);
+        for (const auto& section : sectionsDescription.value()) {
+            if (section.get_type() != ElectricalType::CONDUCTION) {
+                continue;
+            }
+            const auto sectionCoordinates = section.get_coordinates();
+            const auto sectionDimensions = section.get_dimensions();
+            sectionAxialExtent[section.get_name()] = {sectionCoordinates[1] - sectionDimensions[1] / 2,
+                                                      sectionCoordinates[1] + sectionDimensions[1] / 2};
+        }
+        for (const auto& layer : allLayers) {
+            buildOuterFace = std::max(buildOuterFace, layer.get_coordinates()[0] + layer.get_dimensions()[0] / 2);
+        }
+    }
+    auto sectionLocalConductorSection = [&](const std::string& windingName, int64_t parallel) -> std::optional<std::string> {
+        if (!sectionsStackedAxially) {
+            return std::nullopt;
+        }
+        auto found = fullParallelSectionByConductor.find({windingName, parallel});
+        if (found == fullParallelSectionByConductor.end()) {
+            return std::nullopt;
+        }
+        return found->second;
+    };
+    // ABT #1487 (R1 + R4, Alf 2026-09-29): on axially stacked sections EVERY terminal lead is local
+    // to the section of the turn it attaches to -- a conductor held whole by one section starts and
+    // finishes there (R1), and a conductor split in SERIES starts in its first section and finishes
+    // in its last (R4); both leave at that section's own height and cross only its own layers.
+    // Throws when the turn names no section, or when a conductor held whole by one section attaches
+    // a terminal to a turn of another.
+    auto terminalLeadSection = [&](const Turn& connectingTurn) -> std::optional<std::string> {
+        if (!sectionsStackedAxially) {
+            return std::nullopt;
+        }
+        const auto turnSection = connectingTurn.get_section();
+        if (!turnSection || turnSection->empty()) {
+            throw CoilException(ErrorCode::COIL_WINDING_ERROR,
+                                "Real winding (ABT #1487): turn '" + connectingTurn.get_name() +
+                                    "' carries a terminal but names no section, so the section its lead leaves by is unknown");
+        }
+        if (auto wholeSection = sectionLocalConductorSection(connectingTurn.get_winding(), connectingTurn.get_parallel())) {
+            if (wholeSection.value() != turnSection.value()) {
+                throw CoilException(ErrorCode::COIL_WINDING_ERROR,
+                                    "Real winding (ABT #1487): parallel " + std::to_string(connectingTurn.get_parallel()) +
+                                        " of winding '" + connectingTurn.get_winding() + "' is held whole by section '" +
+                                        wholeSection.value() + "', but its terminal turn '" + connectingTurn.get_name() +
+                                        "' lies in '" + turnSection.value() + "'");
+            }
+        }
+        return turnSection.value();
+    };
+    auto sectionExtentOf = [&](const std::string& sectionName) -> std::pair<double, double> {
+        auto found = sectionAxialExtent.find(sectionName);
+        if (found == sectionAxialExtent.end()) {
+            throw CoilException(ErrorCode::COIL_WINDING_ERROR,
+                                "Real winding (ABT #1487): section '" + sectionName +
+                                    "' holds a section-local lead but is not a conduction section with coordinates and dimensions");
+        }
+        return found->second;
+    };
+    // Rows along a SECTION's own top/bottom edge, stacked inward from that edge: the section-local
+    // counterpart of the window-edge rows below. Key: (section, 0 = high edge / 1 = low edge).
+    std::map<std::pair<std::string, int>, double> sectionEdgeStackDepth;
+    // ABT #1487: the routes of the OUTSIDE inter-section links, which take their own lane along the
+    // connection face (ConnectionRoute::exitSlot) instead of the crossing lane (see the slots below).
+    std::vector<size_t> outsideLinkRouteIndices;
+    // Places a radial run that starts at `turn` and must leave its section `sectionName` outward.
+    // When no layer of that section lies outward of the turn, the run leaves at the turn's own
+    // height and crosses nothing. Otherwise it runs along the section's edge on the `atHigh` side
+    // (a stub climbs to it in the turn's own column) and squeezes ONLY that section's outward
+    // layers there, with the depth measured from the section's edge -- the extent those layers'
+    // turns are spread over (see align_blocked_layer_turns). Returns the run's height.
+    auto placeSectionLocalRadialRun = [&](const Turn& turn, const std::string& sectionName, bool atHigh,
+                                          const std::string& windingName, int64_t parallel,
+                                          double wireOuterWidth, double wireOuterHeight, double runHeight,
+                                          bool isTerminal, ConnectionKind stubKind,
+                                          const std::string& fromTurn, const std::string& toTurn) -> double {
+        const double turnX = turn.get_coordinates()[0];
+        const double turnY = turn.get_coordinates()[1];
+        std::vector<const Layer*> crossed;
+        for (const auto& layer : allLayers) {
+            if (layer.get_section().value_or("") != sectionName) {
+                continue;
+            }
+            if (layer.get_coordinates()[0] > turnX + 1e-9) {
+                crossed.push_back(&layer);
+            }
+        }
+        if (crossed.empty()) {
+            return turnY;
+        }
+        const auto [sectionLow, sectionHigh] = sectionExtentOf(sectionName);
+        const double sectionEdge = atHigh ? sectionHigh : sectionLow;
+        double& stacked = sectionEdgeStackDepth[{sectionName, atHigh ? 0 : 1}];
+        double runY = atHigh ? sectionEdge - stacked - runHeight / 2 : sectionEdge + stacked + runHeight / 2;
+        if (std::abs(runY - turnY) <= wireOuterHeight / 2) {
+            runY = turnY;   // the turn already sits on the row: no stub (the ABT #830 regime)
+        }
+        const double depth = std::abs(sectionEdge - runY) + runHeight / 2;
+        stacked = std::max(stacked, depth);
+        for (const Layer* layer : crossed) {
+            ConnectionReservedSpace squeeze;
+            squeeze.isTerminal = isTerminal;
+            squeeze.winding = windingName;
+            squeeze.parallel = parallel;
+            squeeze.section = sectionName;
+            squeeze.layer = layer->get_name();
+            squeeze.coordinates = {layer->get_coordinates()[0], runY};
+            squeeze.dimensions = {wireOuterWidth, runHeight};
+            squeeze.edgeDepth = depth;
+            squeeze.routedLength = 0;   // space-only: the copper is the drawn stub + radial run
+            squeeze.kind = ConnectionKind::LAYER_SQUEEZE;
+            squeeze.fromTurn = fromTurn;
+            squeeze.toTurn = toTurn;
+            spaces.push_back(squeeze);
+        }
+        if (std::abs(runY - turnY) > wireOuterHeight / 2) {
+            const double stubFarEnd = runY + (runY >= turnY ? 1.0 : -1.0) * wireOuterHeight / 2;
+            ConnectionReservedSpace stub;
+            stub.isTerminal = isTerminal;
+            stub.winding = windingName;
+            stub.parallel = parallel;
+            stub.section = sectionName;
+            stub.layer = "";
+            stub.coordinates = {roundFloat(turnX, 9), roundFloat((turnY + stubFarEnd) / 2, 9)};
+            stub.dimensions = {wireOuterWidth, roundFloat(std::abs(stubFarEnd - turnY), 9)};
+            stub.routedLength = roundFloat(std::abs(stubFarEnd - turnY), 9);
+            stub.kind = stubKind;
+            stub.fromTurn = fromTurn;
+            stub.toTurn = toTurn;
+            spaces.push_back(stub);
+        }
+        return runY;
     };
     // ABT #684: margin tape is reserved for TAPE. A terminal lead or an edge continuation runs
     // ALONG the window edge, so measuring its row from the window put the copper inside the
@@ -1352,8 +1832,13 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces(
         std::string signature;
         size_t count = 0;
         double turnX = connectingTurn.get_coordinates()[0];
+        // ABT #1487: a section-local lead crosses its own section's layers only.
+        const auto localSection = terminalLeadSection(connectingTurn);
         for (const auto& crossed : allLayers) {
             double crossedX = crossed.get_coordinates()[0];
+            if (localSection && crossed.get_section().value_or("") != localSection.value()) {
+                continue;
+            }
             if (crossedX > turnX + 1e-9 && crossedX < windowOuterX) {
                 signature += crossed.get_name() + "|";
                 ++count;
@@ -1461,10 +1946,103 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces(
         if (windowOuterX <= turnX) {
             return;
         }
+        // ABT #1336 / #1487: shared by the window-edge stub and the section-local stub.
+        auto planStubRamp = [&](size_t routesBefore, bool stubIsDrawable, double stubHeight) {
+            // ABT #1336: a drawable stub too short for its two bends becomes a ramp (see
+            // ConnectionRoute::rampLength). Real winding only, like the bend it is planned for.
+            if (stubIsDrawable && routes.size() > routesBefore && is_real_winding_blocking_applied() && !layersAreContiguous) {
+                const double bendRadius = routes.back().plannedBendRadius;
+                if (stubHeight < 2 * bendRadius) {
+                    // The S lies ON the turn's surface, so the wire's curvature is the S's own (in the
+                    // surface) combined with the surface's across it: 1/R^2 >= 1/Rg^2 + 1/rho^2. A flat
+                    // face adds nothing; a round column adds 1/rho, rho the turn's own radius. An
+                    // OBLONG column is taken as round -- the larger curvature, so the longer, safe S.
+                    const auto columnShape = bobbin.get_processed_description().value().get_column_shape();
+                    if (columnShape == ColumnShape::IRREGULAR) {
+                        throw InvalidInputException(ErrorCode::INVALID_BOBBIN_DATA,
+                            "The terminal lead of winding '" + windingName + "' parallel " + std::to_string(parallel) +
+                            " needs a ramp off its turn, but an IRREGULAR column states no surface curvature to plan it on (ABT #1336)");
+                    }
+                    double surfaceCurvature = 0.0;
+                    if (columnShape != ColumnShape::RECTANGULAR) {
+                        surfaceCurvature = 1.0 / turnX;
+                    }
+                    // What bends alike on every axis -- the declared buildability and the sleeve --
+                    // sees the combined curvature. The wire itself only does when it is round.
+                    const auto& leadWire = resolve_wire(get_winding_index_by_name(windingName));
+                    const double sweptRadius = std::max({wireOuterWidth, wireOuterHeight, sleeveOuterDiameter.value_or(0.0)}) / 2;
+                    const auto leadSleeve = sleeved ? resolve_lead_sleeve(windingName, isEntrance ? End::START : End::FINISH, parallel)
+                                                    : std::optional<ConnectionSleeve>{};
+                    const double isotropicRadius = leadWire.get_type() == WireType::RECTANGULAR
+                                                       ? lead_isotropic_bend_radius(leadSleeve, sweptRadius, true)
+                                                       : bendRadius;
+                    const double inSurfaceCurvature2 = 1.0 / (isotropicRadius * isotropicRadius) - surfaceCurvature * surfaceCurvature;
+                    if (!(inSurfaceCurvature2 > 0)) {
+                        throw InvalidInputException(ErrorCode::INVALID_INPUT,
+                            "The terminal lead of winding '" + windingName + "' parallel " + std::to_string(parallel) +
+                            " must bend no tighter than " + std::to_string(isotropicRadius * 1e3) + " mm, but its turn's own radius is " +
+                            std::to_string(turnX * 1e3) + " mm, so no ramp off that turn can climb at all (ABT #1336)");
+                    }
+                    double inSurfaceRadius = 1.0 / std::sqrt(inSurfaceCurvature2);
+                    // A rectangular wire's limits are per axis (IEC 60317-0-2 Table 6 tests flatwise and
+                    // edgewise separately). The column's curvature bends the turn about the AXIAL axis:
+                    // that is the turn's own bend, already wound, and the ramp does not add to it (on a
+                    // cylinder the normal curvature of any direction is at most 1/rho). The S bends it
+                    // about the RADIAL axis, with the axial dimension -- the wire's height in this frame
+                    // (the ramp is only planned for non-contiguous layers) -- in the bend plane. So the S
+                    // answers to that one axis's minimum alone, not to the tighter of the two (ABT #1481).
+                    if (leadWire.get_type() == WireType::RECTANGULAR) {
+                        const auto inSurfaceAxis = WireBend::axis_from_bend_plane_dimension(leadWire, false);
+                        if (auto axisMinimum = WireBend::get_flexibility_bend_radius_if_standardised(leadWire, inSurfaceAxis)) {
+                            inSurfaceRadius = std::max(inSurfaceRadius, axisMinimum.value());
+                        }
+                    }
+                    // A cosine S, y = h (1 - cos(pi s / S)) / 2 over the extent S: its tangent is along
+                    // the turn at both ends and its curvature is continuous, largest at the ends,
+                    // h pi^2 / (2 S^2) -- which is 1/Rg when S = pi sqrt(h Rg / 2).
+                    routes.back().rampLength = std::numbers::pi * std::sqrt(stubHeight * inSurfaceRadius / 2);
+                }
+            }
+        };
         // ABT #685: every rectangle this lead emits carries the same kind and names the turn it
         // attaches to, so a consumer can group the stub + edge run back into ONE route.
         const ConnectionKind terminalKind =
             isEntrance ? ConnectionKind::TERMINAL_ENTRANCE : ConnectionKind::TERMINAL_EXIT;
+        // ABT #1487 (R1 + R4): on axially stacked sections a terminal lead leaves at its own
+        // section's height, crossing only that section's own layers (see terminalLeadSection).
+        if (auto localSection = terminalLeadSection(connectingTurn)) {
+            const std::string turnSection = localSection.value();
+            const double runHeight = sleeved ? std::max(wireOuterHeight, sleeveOuterDiameter.value()) : wireOuterHeight;
+            const std::string fromTurn = isEntrance ? std::string() : connectingTurn.get_name();
+            const std::string toTurn = isEntrance ? connectingTurn.get_name() : std::string();
+            const double runY = placeSectionLocalRadialRun(connectingTurn, turnSection, atTopEdge, windingName, parallel,
+                                                           wireOuterWidth, wireOuterHeight, runHeight, true,
+                                                           terminalKind, fromTurn, toTurn);
+            ConnectionReservedSpace lead;
+            lead.isTerminal = true;
+            lead.winding = windingName;
+            lead.parallel = parallel;
+            lead.section = turnSection;
+            lead.layer = "";
+            lead.coordinates = {roundFloat((turnX + windowOuterX) / 2, 9), runY};
+            lead.dimensions = {roundFloat(windowOuterX - turnX + wireOuterWidth, 9), runHeight};
+            lead.routedLength = roundFloat(windowOuterX - turnX + wireOuterWidth, 9);
+            lead.kind = terminalKind;
+            (isEntrance ? lead.toTurn : lead.fromTurn) = connectingTurn.get_name();
+            lead.sleeveOuterDiameter = sleeveOuterDiameter;
+            spaces.push_back(lead);
+            const size_t localLeadSpaceIndex = spaces.size() - 1;
+            size_t routesBefore = routes.size();
+            addTerminalRoute(windingName, parallel, connectingTurn, isEntrance, terminalKind,
+                             {{turnX, turnY}, {turnX, runY}, {windowOuterX + wireOuterWidth / 2, runY}});
+            tagSleevedRoute(routesBefore);
+            tagBendRadius(routesBefore, std::max({wireOuterWidth, wireOuterHeight, sleeveOuterDiameter.value_or(0.0)}));
+            planStubRamp(routesBefore, std::abs(runY - turnY) > wireOuterHeight / 2, std::abs(runY - turnY));
+            deferPinLeg(routesBefore, localLeadSpaceIndex, windingName, parallel, isEntrance,
+                        windowOuterX + wireOuterWidth / 2, runY,
+                        std::max({wireOuterWidth, wireOuterHeight, sleeveOuterDiameter.value_or(0.0)}));
+            return;
+        }
         // The layers the lead routes OVER (outward of the connecting turn) to reach the border.
         std::vector<const Layer*> crossedLayers;
         for (const auto& crossed : allLayers) {
@@ -1692,62 +2270,7 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces(
                          std::move(terminalRoute));
         tagSleevedRoute(routesBefore);
         tagBendRadius(routesBefore, std::max({wireOuterWidth, wireOuterHeight, sleeveOuterDiameter.value_or(0.0)}));
-        // ABT #1336: a drawable stub too short for its two bends becomes a ramp (see
-        // ConnectionRoute::rampLength). Real winding only, like the bend it is planned for.
-        if (stubIsDrawable && routes.size() > routesBefore && is_real_winding_blocking_applied() && !layersAreContiguous) {
-            const double bendRadius = routes.back().plannedBendRadius;
-            const double stubHeight = std::abs(edgeY - turnY);
-            if (stubHeight < 2 * bendRadius) {
-                // The S lies ON the turn's surface, so the wire's curvature is the S's own (in the
-                // surface) combined with the surface's across it: 1/R^2 >= 1/Rg^2 + 1/rho^2. A flat
-                // face adds nothing; a round column adds 1/rho, rho the turn's own radius. An
-                // OBLONG column is taken as round -- the larger curvature, so the longer, safe S.
-                const auto columnShape = bobbin.get_processed_description().value().get_column_shape();
-                if (columnShape == ColumnShape::IRREGULAR) {
-                    throw InvalidInputException(ErrorCode::INVALID_BOBBIN_DATA,
-                        "The terminal lead of winding '" + windingName + "' parallel " + std::to_string(parallel) +
-                        " needs a ramp off its turn, but an IRREGULAR column states no surface curvature to plan it on (ABT #1336)");
-                }
-                double surfaceCurvature = 0.0;
-                if (columnShape != ColumnShape::RECTANGULAR) {
-                    surfaceCurvature = 1.0 / turnX;
-                }
-                // What bends alike on every axis -- the declared buildability and the sleeve --
-                // sees the combined curvature. The wire itself only does when it is round.
-                const auto& leadWire = resolve_wire(get_winding_index_by_name(windingName));
-                const double sweptRadius = std::max({wireOuterWidth, wireOuterHeight, sleeveOuterDiameter.value_or(0.0)}) / 2;
-                const auto leadSleeve = sleeved ? resolve_lead_sleeve(windingName, isEntrance ? End::START : End::FINISH, parallel)
-                                                : std::optional<ConnectionSleeve>{};
-                const double isotropicRadius = leadWire.get_type() == WireType::RECTANGULAR
-                                                   ? lead_isotropic_bend_radius(leadSleeve, sweptRadius, true)
-                                                   : bendRadius;
-                const double inSurfaceCurvature2 = 1.0 / (isotropicRadius * isotropicRadius) - surfaceCurvature * surfaceCurvature;
-                if (!(inSurfaceCurvature2 > 0)) {
-                    throw InvalidInputException(ErrorCode::INVALID_INPUT,
-                        "The terminal lead of winding '" + windingName + "' parallel " + std::to_string(parallel) +
-                        " must bend no tighter than " + std::to_string(isotropicRadius * 1e3) + " mm, but its turn's own radius is " +
-                        std::to_string(turnX * 1e3) + " mm, so no ramp off that turn can climb at all (ABT #1336)");
-                }
-                double inSurfaceRadius = 1.0 / std::sqrt(inSurfaceCurvature2);
-                // A rectangular wire's limits are per axis (IEC 60317-0-2 Table 6 tests flatwise and
-                // edgewise separately). The column's curvature bends the turn about the AXIAL axis:
-                // that is the turn's own bend, already wound, and the ramp does not add to it (on a
-                // cylinder the normal curvature of any direction is at most 1/rho). The S bends it
-                // about the RADIAL axis, with the axial dimension -- the wire's height in this frame
-                // (the ramp is only planned for non-contiguous layers) -- in the bend plane. So the S
-                // answers to that one axis's minimum alone, not to the tighter of the two (ABT #1481).
-                if (leadWire.get_type() == WireType::RECTANGULAR) {
-                    const auto inSurfaceAxis = WireBend::axis_from_bend_plane_dimension(leadWire, false);
-                    if (auto axisMinimum = WireBend::get_flexibility_bend_radius_if_standardised(leadWire, inSurfaceAxis)) {
-                        inSurfaceRadius = std::max(inSurfaceRadius, axisMinimum.value());
-                    }
-                }
-                // A cosine S, y = h (1 - cos(pi s / S)) / 2 over the extent S: its tangent is along
-                // the turn at both ends and its curvature is continuous, largest at the ends,
-                // h pi^2 / (2 S^2) -- which is 1/Rg when S = pi sqrt(h Rg / 2).
-                routes.back().rampLength = std::numbers::pi * std::sqrt(stubHeight * inSurfaceRadius / 2);
-            }
-        }
+        planStubRamp(routesBefore, stubIsDrawable, std::abs(edgeY - turnY));
         deferPinLeg(routesBefore, edgeLeadSpaceIndex, windingName, parallel, isEntrance,
                     windowOuterX + wireOuterWidth / 2, edgeY,
                     std::max({wireOuterWidth, wireOuterHeight, sleeveOuterDiameter.value_or(0.0)}));
@@ -1805,6 +2328,11 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces(
                 const Turn& connectingTurn = source.at(key);
                 double turnY = connectingTurn.get_coordinates()[1];
                 bool atTop = (turnY >= windowCenterY);
+                if (auto localSection = terminalLeadSection(connectingTurn)) {
+                    // ABT #1487 (R1 + R4): a section-local lead leaves by its OWN section's nearest edge.
+                    const auto [sectionLow, sectionHigh] = sectionExtentOf(localSection.value());
+                    atTop = (turnY >= (sectionLow + sectionHigh) / 2);
+                }
                 if (!entrance && _steepExitLandingByConductor.count(key)) {
                     // ABT #685 steep exit landing: the station was MOVED to the far edge, so the
                     // nearest-edge default IS the travel direction — the overrides below reason
@@ -1950,6 +2478,17 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces(
             // are emitted once PER PARALLEL below and stack under the height-based blocking.
             std::vector<const Layer*> interveningLayers;
             for (const auto& crossed : allLayers) {
+                // ABT #1487: on axially stacked sections a link between two layers of ONE section
+                // stays in that section and crosses only its own layers; another section's layer
+                // lies at another height, however its centre compares radially (a wide edge-wound
+                // secondary centred in the window sat radially between the primary's two layers,
+                // so every primary layer step squeezed all four secondary sections and left their
+                // four-parallel layers no row). A link between two sections runs outside the build
+                // (below) and uses none of this.
+                if (sectionsStackedAxially &&
+                    crossed.get_section().value_or("") != windingLayers[i].get_section().value_or("")) {
+                    continue;
+                }
                 double radial = crossed.get_coordinates()[0];
                 if (radial > radialLow + 1e-12 && radial < radialHigh - 1e-12) {
                     interveningLayers.push_back(&crossed);
@@ -2029,6 +2568,71 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces(
                 }
                 const auto& exitTurn = lastTurnByLayerParallel.at(exitKey);
                 const auto& entryTurn = firstTurnByLayerParallel.at(entryKey);
+
+                // ABT #1487 (Alf, 2026-09-29): a conductor split in SERIES over axially stacked
+                // sections is linked OUTSIDE the winding build. Its end leaves its section radially
+                // at its own height (crossing only that section's outward layers, by the edge facing
+                // the next section), runs axially past the build's outer face to the next section's
+                // height and enters it radially the same way. It passes no other section, so it
+                // squeezes none; it needs one wire of radial room past the build's outer face, at an
+                // angle where the core leaves it that room (R3: the core outline there, not the
+                // window's outer boundary -- see OutsideLinkRoomGeometry and the lanes below).
+                if (sectionsStackedAxially &&
+                    windingLayers[i].get_section().value_or("") != windingLayers[i + 1].get_section().value_or("") &&
+                    windowIndexOf(windingLayers[i].get_section().value_or("")) ==
+                        windowIndexOf(windingLayers[i + 1].get_section().value_or(""))) {
+                    const std::string sectionA = windingLayers[i].get_section().value();
+                    const std::string sectionB = windingLayers[i + 1].get_section().value();
+                    const auto extentA = sectionExtentOf(sectionA);
+                    const auto extentB = sectionExtentOf(sectionB);
+                    const bool nextIsHigher = (extentB.first + extentB.second) > (extentA.first + extentA.second);
+                    // R3: whether the core leaves it that room is decided with its lane, below.
+                    const double linkX = buildOuterFace + wireOuterWidth / 2;
+                    const double x1 = exitTurn.get_coordinates()[0];
+                    const double y1 = exitTurn.get_coordinates()[1];
+                    const double x2 = entryTurn.get_coordinates()[0];
+                    const double y2 = entryTurn.get_coordinates()[1];
+                    const double runA = placeSectionLocalRadialRun(exitTurn, sectionA, nextIsHigher, windingName, parallel,
+                                                                   wireOuterWidth, wireOuterHeight, wireOuterHeight, false,
+                                                                   ConnectionKind::EDGE_CONTINUATION,
+                                                                   exitTurn.get_name(), entryTurn.get_name());
+                    const double runB = placeSectionLocalRadialRun(entryTurn, sectionB, !nextIsHigher, windingName, parallel,
+                                                                   wireOuterWidth, wireOuterHeight, wireOuterHeight, false,
+                                                                   ConnectionKind::EDGE_CONTINUATION,
+                                                                   exitTurn.get_name(), entryTurn.get_name());
+                    auto pushOutsideSegment = [&](const std::string& segmentSection, double cx, double cy, double w, double h,
+                                                  double copperLength) {
+                        ConnectionReservedSpace segment;
+                        segment.winding = windingName;
+                        segment.parallel = parallel;
+                        segment.section = segmentSection;
+                        segment.layer = "";
+                        segment.coordinates = {roundFloat(cx, 9), roundFloat(cy, 9)};
+                        segment.dimensions = {roundFloat(w, 9), roundFloat(h, 9)};
+                        segment.routedLength = roundFloat(copperLength, 9);
+                        segment.kind = ConnectionKind::EDGE_CONTINUATION;
+                        segment.fromTurn = exitTurn.get_name();
+                        segment.toTurn = entryTurn.get_name();
+                        spaces.push_back(segment);
+                    };
+                    // Radial leg out of A, the axial run outside the build, radial leg into B.
+                    pushOutsideSegment(sectionA, (x1 + linkX + wireOuterWidth / 2) / 2, runA,
+                                       linkX + wireOuterWidth / 2 - x1, wireOuterHeight, linkX - x1);
+                    pushOutsideSegment(sectionA, linkX, (runA + runB) / 2, wireOuterWidth,
+                                       std::abs(runA - runB) + wireOuterHeight, std::abs(runA - runB));
+                    pushOutsideSegment(sectionB, (x2 + linkX + wireOuterWidth / 2) / 2, runB,
+                                       linkX + wireOuterWidth / 2 - x2, wireOuterHeight, linkX - x2);
+                    const size_t routesBeforeLink = routes.size();
+                    addRoute(windingName, parallel, exitTurn.get_name(), entryTurn.get_name(),
+                             ConnectionKind::EDGE_CONTINUATION,
+                             {{x1, y1}, {x1, runA}, {linkX, runA}, {linkX, runB}, {x2, runB}, {x2, y2}});
+                    if (routes.size() != routesBeforeLink + 1) {
+                        throw std::logic_error("Real winding (ABT #1487): the outside link of winding '" + windingName +
+                                               "' parallel " + std::to_string(parallel) + " recorded no route");
+                    }
+                    outsideLinkRouteIndices.push_back(routes.size() - 1);
+                    continue;
+                }
 
                 // ABT #615: ALL inter-section continuations on an edge share ONE band (Alf: the
                 // corridor blocking part of the crossed section "can then be reused by the inter
@@ -2453,7 +3057,143 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces(
                                        " attaches to turn '" + turnName + "', which is not among the coil's turns");
             }
         }
-        exitSlots = terminal_exit_slots(routes, routeDiameters, attachAxial);
+        // ABT #1487: the OUTSIDE inter-section links are left out of the terminal lanes: they do
+        // not sit on the crossing lane like the other links, they take a lane of their own past
+        // every terminal's (below), so no outside link runs where a terminal lead leaves.
+        std::vector<bool> isOutsideLink(routes.size(), false);
+        for (size_t index : outsideLinkRouteIndices) {
+            isOutsideLink[index] = true;
+        }
+        {
+            std::vector<ConnectionRoute> slotRoutes;
+            std::vector<double> slotDiameters;
+            std::vector<double> slotAttachAxial;
+            std::vector<size_t> slotRouteIndex;
+            for (size_t index = 0; index < routes.size(); ++index) {
+                if (isOutsideLink[index]) {
+                    continue;
+                }
+                slotRoutes.push_back(routes[index]);
+                slotDiameters.push_back(routeDiameters[index]);
+                slotAttachAxial.push_back(attachAxial[index]);
+                slotRouteIndex.push_back(index);
+            }
+            const auto partialSlots = terminal_exit_slots(slotRoutes, slotDiameters, slotAttachAxial);
+            for (size_t k = 0; k < partialSlots.size(); ++k) {
+                exitSlots[slotRouteIndex[k]] = partialSlots[k];
+            }
+        }
+        // ABT #1487 (Alf, 2026-09-29): an outside link sits at a DIFFERENT ANGLE from every
+        // terminal lead. Along the connection face that angle is the lane x (the frame of
+        // ConnectionRoute::exitSlot): each outside link takes the first lane, from one pitch past the
+        // furthest terminal footprint on its side outward (a ramped exit's footprint reaches past its
+        // slot, see terminal_exit_slots), where the core leaves it room (R3, below); outside links
+        // whose axial runs overlap stand a pitch apart. The pitch is the largest coated diameter
+        // among that side's terminals and outside links.
+        for (int side : {0, 1}) {
+            double pitch = 0;
+            double furthestTerminal = 0;   // the crossing lane itself, x = 0, is never an outside link's
+            bool anyOutside = false;
+            for (size_t index = 0; index < routes.size(); ++index) {
+                const auto& route = routes[index];
+                if (route.side != side) {
+                    continue;
+                }
+                const bool terminal = route.kind == ConnectionKind::TERMINAL_ENTRANCE || route.kind == ConnectionKind::TERMINAL_EXIT;
+                if (terminal) {
+                    pitch = std::max(pitch, routeDiameters[index]);
+                    if (exitSlots[index]) {
+                        const double ramp = (route.kind == ConnectionKind::TERMINAL_EXIT && route.rampLength)
+                                                ? route.rampLength.value() + route.plannedBendRadius
+                                                : 0.0;
+                        furthestTerminal = std::max(furthestTerminal, exitSlots[index].value() + ramp);
+                    }
+                }
+                if (isOutsideLink[index]) {
+                    pitch = std::max(pitch, routeDiameters[index]);
+                    anyOutside = true;
+                }
+            }
+            if (!anyOutside) {
+                continue;
+            }
+            // R3 (Alf, 2026-09-29): the lane must also be one where the CORE leaves the link its
+            // room -- where there is no outer leg, within the core (or bobbin) outline at that
+            // angle, not within the window's outer boundary. From the first lane past every
+            // terminal outward, each outside link takes the first lane that fits and stands one
+            // pitch clear of every outside link placed before it whose axial run overlaps its own.
+            const auto roomGeometry = outside_link_room_geometry(*this);
+            const double buildThickness = buildOuterFace - roomGeometry.columnHalfWidth;
+            const double laneStep = 1e-5;
+            std::vector<std::pair<double, std::pair<double, double>>> placedLanes;   // lane x, axial {low, high}
+            for (size_t index : outsideLinkRouteIndices) {
+                if (routes[index].side != side) {
+                    continue;
+                }
+                double low = std::numeric_limits<double>::max();
+                double high = std::numeric_limits<double>::lowest();
+                for (const auto& waypoint : routes[index].waypoints) {
+                    low = std::min(low, waypoint[1]);
+                    high = std::max(high, waypoint[1]);
+                }
+                const double linkWidth = routeDiameters[index];
+                const double firstLane = furthestTerminal + pitch;
+                std::optional<double> chosen;
+                for (double x = firstLane; x <= roomGeometry.last_lane(); x += laneStep) {
+                    bool clashes = false;
+                    for (const auto& [otherX, otherSpan] : placedLanes) {
+                        if (std::abs(x - otherX) < pitch - 1e-12 && low < otherSpan.second + pitch && otherSpan.first < high + pitch) {
+                            clashes = true;
+                            break;
+                        }
+                    }
+                    if (clashes || !roomGeometry.link_fits(x, side, buildThickness, linkWidth)) {
+                        continue;
+                    }
+                    chosen = x;
+                    break;
+                }
+                if (!chosen) {
+                    // Owner decision (Alf, 2026-09-29): a design that does not fit is NOT refused
+                    // here. The link takes the first lane past the terminals that clashes with no
+                    // other outside link, beyond the room the core leaves it, so the customer sees
+                    // the complete layout overflow; the wind is marked as not fitting (wind()
+                    // returns false and get_last_fit_failure() names this) -- see
+                    // collect_real_winding_overflows.
+                    for (double x = firstLane;; x += laneStep) {
+                        bool clashes = false;
+                        for (const auto& [otherX, otherSpan] : placedLanes) {
+                            if (std::abs(x - otherX) < pitch - 1e-12 && low < otherSpan.second + pitch && otherSpan.first < high + pitch) {
+                                clashes = true;
+                                break;
+                            }
+                        }
+                        if (!clashes) {
+                            chosen = x;
+                            break;
+                        }
+                    }
+                    std::ostringstream reason;
+                    reason << std::fixed << std::setprecision(3)
+                           << "the outside link of winding '" << routes[index].winding << "' parallel " << routes[index].parallel
+                           << " from '" << routes[index].fromTurn << "' to '" << routes[index].toTurn << "' (" << linkWidth * 1e3 << " mm wire) finds no angle around the column where the "
+                           << roomGeometry.coreFamily << " core leaves it room: every lane from the first past the terminals ("
+                           << firstLane * 1e3 << " mm along the connection face) outward meets an outer leg or leaves the core outline ("
+                           << roomGeometry.outlineHalfWidth * 2e3 << " x " << roomGeometry.outlineHalfDepth * 2e3
+                           << " mm) and the bobbin's winding window; the winding build is " << buildThickness * 1e3
+                           << " mm thick past the column, the window " << roomGeometry.windowThickness * 1e3 << " mm";
+                    if (buildThickness + linkWidth > roomGeometry.windowThickness) {
+                        reason << ", so build and link overrun the window radially by "
+                               << (buildThickness + linkWidth - roomGeometry.windowThickness) * 1e3 << " mm";
+                    }
+                    reason << "; it is laid at " << chosen.value() * 1e3 << " mm, outside that room";
+                    _outsideLinkOverflows[routes[index].winding + " parallel " + std::to_string(routes[index].parallel) + " " +
+                                          routes[index].fromTurn + " -> " + routes[index].toTurn] = reason.str();
+                }
+                placedLanes.push_back({chosen.value(), {low, high}});
+                exitSlots[index] = chosen.value();
+            }
+        }
         // ABT #1354: and it is CARRIED, so get_connection_layout's consumers read MKF's decision
         // instead of re-deriving it (the contract at the head of get_connection_layout).
         for (size_t index = 0; index < routes.size(); ++index) {
@@ -2593,6 +3333,12 @@ std::vector<ConnectionRideLevel> Coil::compute_ride_levels(const std::vector<Con
     for (const auto& route : routes) {
         if (route.kind != ConnectionKind::Z_DRAGBACK &&
             route.kind != ConnectionKind::EDGE_CONTINUATION) {
+            continue;
+        }
+        // ABT #1487: an OUTSIDE inter-section link (the one link kind that carries a lane,
+        // ConnectionRoute::exitSlot) runs past the build's outer face at its own angle and enters
+        // its section through that section's blocked edge slots: it lays no lane any turn rides.
+        if (route.kind == ConnectionKind::EDGE_CONTINUATION && route.exitSlot) {
             continue;
         }
         auto odIt = odByWinding.find(route.winding);
@@ -3945,6 +4691,7 @@ void Coil::align_blocked_layer_turns() {
     if (get_sections_description()) {
         sectionsForMargins = get_sections_description().value();
     }
+    const bool stackedSections = sections_stacked_axially_on_concentric_core(*this);
 
     // ABT #685 (Alf, 2026-08-15): per-conductor turn sequences, for the STEEP EXIT LANDING below —
     // "when a turn is the last one of the section and must go out [at the far side], the rule about
@@ -3972,6 +4719,16 @@ void Coil::align_blocked_layer_turns() {
         for (const auto& marginSection : sectionsForMargins) {
             if (!layer.get_section() || marginSection.get_name() != layer.get_section().value()) {
                 continue;
+            }
+            // ABT #1487: on axially stacked sections a layer's turns stay in their OWN section:
+            // the band along the column axis is that section's height, not the window's (whose
+            // other heights hold the other sections), and the section-local leads' depths are
+            // measured from that section's edges (see get_connection_reserved_spaces). The
+            // section's margins are side margins (along x) there, so none insets this axis.
+            if (turnAxis == 1 && stackedSections) {
+                windowHighSide = marginSection.get_coordinates()[1] + marginSection.get_dimensions()[1] / 2;
+                windowLowSide = marginSection.get_coordinates()[1] - marginSection.get_dimensions()[1] / 2;
+                break;
             }
             auto sectionMargin = resolve_margin(marginSection);
             windowHighSide -= (turnAxis == 1) ? sectionMargin[0] : sectionMargin[1];
@@ -4720,6 +5477,9 @@ bool Coil::are_turns_inside_winding_window() {
     const double tolerance = 1e-9;
     auto wires = get_wires();
     auto turnsToCheck = get_turns_description().value();
+    bool escapedAny = false;
+    double worstOverrun = 0;
+    std::string worstReason;
     for (const auto& turn : turnsToCheck) {
         const size_t windingIndex = get_winding_index_by_name(turn.get_winding());
         const double halfWidth = wires[windingIndex].get_maximum_outer_width() / 2;
@@ -4739,16 +5499,35 @@ bool Coil::are_turns_inside_winding_window() {
             // ABT #864: name the escaping turn in _lastFitFailure, like the envelope check in
             // are_sections_and_layers_fitting does — this verdict is what magnetic_autocomplete
             // discards, so the consumer that re-derives it (MVB++'s autocomplete seam) needs the
-            // WHY without re-walking the turns.
-            _lastFitFailure = "turn '" + turn.get_name() + "' at (" + std::to_string(coordinates[0]) +
-                              "," + std::to_string(coordinates[1]) +
-                              ") lies outside every winding window (ABT #624)";
+            // WHY without re-walking the turns. ABT #1487: and by how much, and which way, it
+            // overflows -- measured against the first window, over every escaping turn, so the
+            // customer reads the worst overrun of a layout that is laid out in full.
+            const auto& box = boxes.front();
+            const std::array<std::pair<double, const char*>, 4> overruns{{
+                {coordinates[0] + halfWidth - box.x1, "radially outward (past the window's outer side)"},
+                {box.x0 - (coordinates[0] - halfWidth), "radially inward (past the window's inner side)"},
+                {coordinates[1] + halfHeight - box.y1, "axially past the window's top"},
+                {box.y0 - (coordinates[1] - halfHeight), "axially past the window's bottom"}}};
+            const auto worstHere = *std::max_element(overruns.begin(), overruns.end(),
+                                                     [](const auto& a, const auto& b) { return a.first < b.first; });
+            if (!escapedAny || worstHere.first > worstOverrun) {
+                worstOverrun = worstHere.first;
+                std::ostringstream reason;
+                reason << std::fixed << std::setprecision(3) << "turn '" << turn.get_name() << "' at ("
+                       << coordinates[0] * 1e3 << ", " << coordinates[1] * 1e3 << ") mm lies outside every winding window (ABT #624), "
+                       << worstHere.first * 1e3 << " mm " << worstHere.second;
+                worstReason = reason.str();
+            }
+            escapedAny = true;
             if (std::getenv("MKF_BLOCKING_DIAG")) {
                 std::cerr << "[window] turn " << turn.get_name() << " at (" << coordinates[0]
                           << "," << coordinates[1] << ") lies outside every winding window\n";
             }
-            return false;
         }
+    }
+    if (escapedAny) {
+        _lastFitFailure = worstReason;
+        return false;
     }
     return true;
 }
@@ -5767,7 +6546,30 @@ bool Coil::wind(std::vector<double> proportionPerWinding, std::vector<size_t> pa
     bool explicitlyClearedSnapshot = _marginsExplicitlyCleared;
     _leadSleeveCache.clear();   // ABT #1174: margins and wires may differ from the last wind
     _turnBendRadiusByTurnName.clear();   // the previous wind's corners belong to the previous layout
+    _outsideLinkOverflows.clear();       // ABT #1487: this wind's overflows only
+    _storedHeightOverflows.clear();
+    const std::string fitFailureBefore = _lastFitFailure;
     bool ok = wind_inner(proportionPerWinding, pattern, repetitions);
+    // ABT #1487 (owner decision, Alf 2026-09-29): a real-winding layout that does not fit is laid
+    // out in full -- sections past the window along the column, outside links beyond the room the
+    // core leaves them -- so the customer sees it overflow, and the wind says it does not fit.
+    if (!_outsideLinkOverflows.empty() || !_storedHeightOverflows.empty()) {
+        std::string reasons;
+        for (const auto* overflows : {&_storedHeightOverflows, &_outsideLinkOverflows}) {
+            for (const auto& [what, reason] : *overflows) {
+                reasons += (reasons.empty() ? "" : "; ") + reason;
+            }
+        }
+        ok = false;
+        // Keep what this wind's own fit checks found, and measure the worst turn past the window
+        // (how far, which way) on the layout as laid out.
+        std::string ownCheck = _lastFitFailure != fitFailureBefore ? "; " + _lastFitFailure : std::string();
+        if (get_turns_description() && !are_turns_inside_winding_window() &&
+            ownCheck.find(_lastFitFailure) == std::string::npos) {
+            ownCheck += "; " + _lastFitFailure;
+        }
+        _lastFitFailure = "real winding does not fit (ABT #1487): " + reasons + ownCheck;
+    }
     // ABT #1174: record the lead-sleeve decision on the connections, where MAS carries it, once
     // the wind has placed the margins the decision depends on.
     if (get_turns_description() && _inputs && _inputs->has_insulation_coordination_requirements()) {
@@ -6212,6 +7014,14 @@ bool Coil::wind_inner(std::vector<double> proportionPerWinding, std::vector<size
     // space reserved by connection leads is layered on afterwards (filling factors, Painter, losses)
     // so it never changes whether the ideal winding fit.
     bool result = are_sections_and_layers_fitting() && bool(get_turns_description());
+    // ABT #1487 (owner decision, Alf 2026-09-29): a stored stack of axially stacked sections that
+    // keep_stored_section_heights grew past the window -- its crossings need more height than its
+    // neighbours could give -- is laid out for real all the same, so the customer sees the real
+    // layout overflow. wind() still returns false and names the overflow (_storedHeightOverflows).
+    if (!result && settings.get_coil_use_real_winding_geometry() && get_turns_description() &&
+        !_storedHeightOverflows.empty()) {
+        result = true;
+    }
     // ABT #1175: a wound coil on a chambered bobbin whose windings have to cross a wall must have a
     // route over it; get_chamber_crossovers throws when a wall offers none.
     if (result && get_groups_description()) {
@@ -11278,6 +12088,181 @@ Coil::SectionGroupPlan Coil::plan_section_group(Group group, const std::vector<d
     return plan;
 }
 
+void Coil::preload_stored_section_heights_from_sections() {
+    _storedSectionHeights.clear();
+    if (!get_sections_description() || !sections_stacked_axially_on_concentric_core(*this)) {
+        return;
+    }
+    const auto sections = get_sections_description().value();
+    for (const auto& section : sections) {
+        if (section.get_type() != ElectricalType::CONDUCTION) {
+            continue;
+        }
+        const auto dimensions = section.get_dimensions();
+        if (dimensions.size() < 2 || dimensions[1] <= 0) {
+            throw InvalidInputException(ErrorCode::INVALID_COIL_CONFIGURATION,
+                                        "Real winding (ABT #1487): stored section '" + section.get_name() +
+                                            "' states no height, so the height to keep through the re-wind is unknown");
+        }
+        _storedSectionHeights[section.get_name()] = dimensions[1];
+    }
+}
+
+std::map<size_t, double> Coil::keep_stored_section_heights(
+    const std::vector<std::pair<ElectricalType, std::pair<size_t, double>>>& orderedSectionsWithInsulation,
+    const std::vector<size_t>& numberSectionsPerWinding, const std::vector<WindingStyle>& windByConsecutiveTurns,
+    const std::vector<std::vector<double>>& remainingParallelsProportion, size_t conductionSectionOffset,
+    double availableWidth, const std::vector<Wire>& wirePerWinding) {
+    // The conduction sections in stacking order, named and counted exactly as the wind below does.
+    struct Kept {
+        size_t position;
+        std::string name;
+        double height;
+        double need;
+    };
+    _storedHeightOverflows.clear();   // each wind decides afresh (ABT #1487)
+    std::vector<Kept> kept;
+    auto remaining = remainingParallelsProportion;
+    std::vector<size_t> currentSection(get_functional_description().size(), 0);
+    size_t conductionOrdinal = conductionSectionOffset;
+    for (size_t position = 0; position < orderedSectionsWithInsulation.size(); ++position) {
+        if (orderedSectionsWithInsulation[position].first != ElectricalType::CONDUCTION) {
+            continue;
+        }
+        const size_t marginIndex = conductionOrdinal++;
+        const size_t windingIndex = orderedSectionsWithInsulation[position].second.first;
+        const std::string name = get_name(windingIndex) + " section " + std::to_string(currentSection[windingIndex]);
+        const auto proportions = get_parallels_proportions(currentSection[windingIndex], numberSectionsPerWinding[windingIndex],
+                                                           get_number_turns(windingIndex), get_number_parallels(windingIndex),
+                                                           remaining[windingIndex], windByConsecutiveTurns[windingIndex],
+                                                           std::vector<double>(get_number_parallels(windingIndex), 1));
+        for (size_t parallel = 0; parallel < proportions.second.size(); ++parallel) {
+            remaining[windingIndex][parallel] -= proportions.second[parallel];
+        }
+        currentSection[windingIndex]++;
+        auto stored = _storedSectionHeights.find(name);
+        if (stored == _storedSectionHeights.end()) {
+            throw InvalidInputException(ErrorCode::INVALID_COIL_CONFIGURATION,
+                                        "Real winding (ABT #1487): the re-wind lays out section '" + name +
+                                            "', which the stored design does not have, so there is no stored height to keep");
+        }
+        // Its need: the cross-sections it must hold -- its turns of every parallel it carries, plus
+        // one crossing station per layer of each of those parallels (ABT #685) -- side by side as
+        // many as its width takes (L columns of coated wire), stacked one coated wire height each.
+        // With T turns and P parallels over L layers a layer holds T / L turns and P stations, so
+        // the least height is (ceil(T / L) + P) wire heights at the most layers the width takes.
+        // T is the DECLARED turns: the stations the enclosing wind has added to the winding's
+        // turns (Coil::_realWindingStationsPerWinding) are the per-layer term, counted here for
+        // the layout this height allows rather than for the one the previous pass happened to
+        // produce. A foil has no crossing station (ABT #881) and its sheet is cut to the section:
+        // nothing to grow for.
+        double need = 0;
+        auto wire = wirePerWinding[windingIndex];
+        if (wire.get_type() != WireType::FOIL && wire.get_type() != WireType::PLANAR) {
+            if (marginIndex >= _marginsPerSection.size()) {
+                throw CoilException(ErrorCode::COIL_NOT_PROCESSED,
+                                    "Real winding (ABT #1487): section '" + name + "' has no margins at this point of the wind");
+            }
+            const double width = availableWidth - _marginsPerSection[marginIndex][0] - _marginsPerSection[marginIndex][1];
+            const double wireWidth = resolve_dimensional_values(wire.get_maximum_outer_width());
+            const double wireHeight = resolve_dimensional_values(wire.get_maximum_outer_height());
+            const auto across = static_cast<uint64_t>(std::floor(width / wireWidth + 1e-9));
+            if (across > 0) {
+                const int64_t stations = windingIndex < _realWindingStationsPerWinding.size()
+                                             ? int64_t(_realWindingStationsPerWinding[windingIndex]) : 0;
+                const double declaredTurns = double(get_number_turns(windingIndex) - stations);
+                double turns = 0;
+                uint64_t parallelsCarried = 0;
+                for (double proportion : proportions.second) {
+                    turns += proportion * declaredTurns;
+                    if (proportion > 1e-9) {
+                        ++parallelsCarried;
+                    }
+                }
+                const auto turnsHere = static_cast<uint64_t>(std::ceil(turns - 1e-9));
+                need = static_cast<double>((turnsHere + across - 1) / across + parallelsCarried) * wireHeight;
+            }
+            // A section too narrow for one wire is the wind's to refuse below (it returns false).
+        }
+        kept.push_back({position, name, stored->second, need});
+    }
+
+    // Grow each section that needs more, by exactly its need, from its neighbours in the stack
+    // (those that do not grow themselves), in equal shares as far as each can give without falling
+    // below its own need.
+    std::vector<bool> grows(kept.size(), false);
+    for (size_t k = 0; k < kept.size(); ++k) {
+        grows[k] = kept[k].need > kept[k].height + 1e-12;
+    }
+    for (size_t k = 0; k < kept.size(); ++k) {
+        if (!grows[k]) {
+            continue;
+        }
+        double missing = kept[k].need - kept[k].height;
+        std::vector<size_t> givers;
+        if (k > 0 && !grows[k - 1]) {
+            givers.push_back(k - 1);
+        }
+        if (k + 1 < kept.size() && !grows[k + 1]) {
+            givers.push_back(k + 1);
+        }
+        double canGive = 0;
+        std::string giversText;
+        for (size_t g : givers) {
+            canGive += std::max(0.0, kept[g].height - kept[g].need);
+            giversText += (giversText.empty() ? "" : ", ") + std::string("'") + kept[g].name + "' (" +
+                          std::to_string(kept[g].height * 1e3) + " mm, its own crossings need " + std::to_string(kept[g].need * 1e3) + " mm)";
+        }
+        // Owner decision (Alf, 2026-09-29): when the neighbours cannot give it all, the section
+        // still grows by its FULL need -- they give what they can, the rest takes the stack past
+        // the winding window -- so the customer sees the complete layout overflow; the wind is
+        // marked as not fitting (see collect_real_winding_overflows).
+        if (canGive + 1e-12 < missing) {
+            std::ostringstream reason;
+            reason << std::fixed << std::setprecision(3)
+                   << "stored section '" << kept[k].name << "' is " << kept[k].height * 1e3
+                   << " mm tall but its crossings need " << kept[k].need * 1e3 << " mm; its neighbouring sections "
+                   << (giversText.empty() ? std::string("(none that does not grow itself)") : giversText) << " can give only "
+                   << canGive * 1e3 << " mm of the " << missing * 1e3 << " mm it lacks, so the stack of sections grows "
+                   << (missing - canGive) * 1e3 << " mm along the column past its stored height";
+            _storedHeightOverflows[kept[k].name] = reason.str();
+        }
+        // Equal shares, then whatever a short giver could not cover from the other.
+        std::vector<double> share(givers.size(), 0);
+        double left = missing;
+        for (size_t round = 0; round < 2 && left > 1e-15; ++round) {
+            size_t open = 0;
+            for (size_t i = 0; i < givers.size(); ++i) {
+                if (kept[givers[i]].height - share[i] - kept[givers[i]].need > 1e-15) {
+                    ++open;
+                }
+            }
+            if (open == 0) {
+                break;
+            }
+            const double each = left / double(open);
+            for (size_t i = 0; i < givers.size(); ++i) {
+                const double room = kept[givers[i]].height - share[i] - kept[givers[i]].need;
+                if (room <= 1e-15) {
+                    continue;
+                }
+                const double taken = std::min(each, room);
+                share[i] += taken;
+                left -= taken;
+            }
+        }
+        for (size_t i = 0; i < givers.size(); ++i) {
+            kept[givers[i]].height -= share[i];
+        }
+        kept[k].height = kept[k].need;
+    }
+    std::map<size_t, double> heights;
+    for (const auto& section : kept) {
+        heights[section.position] = section.height;
+    }
+    return heights;
+}
+
 bool Coil::wind_by_rectangular_sections(std::vector<double> proportionPerWinding, std::vector<size_t> pattern, size_t repetitions) {
     set_sections_description(std::nullopt);
     std::vector<Section> sectionsDescription;
@@ -11326,6 +12311,15 @@ bool Coil::wind_by_rectangular_sections(std::vector<double> proportionPerWinding
         double currentSectionCenterWidth = 0;
         double currentSectionCenterHeight = 0;
 
+        // ABT #1487 (R5): the kept heights of a stored design's axially stacked sections, by
+        // position in orderedSectionsWithInsulation (see keep_stored_section_heights).
+        std::map<size_t, double> keptSectionHeights;
+        if (windingOrientation == WindingOrientation::CONTIGUOUS && !_storedSectionHeights.empty()) {
+            keptSectionHeights = keep_stored_section_heights(orderedSectionsWithInsulation, numberSectionsPerWinding,
+                                                             windByConsecutiveTurns, remainingParallelsProportion,
+                                                             conductionSectionOffset, availableWidth, wirePerWinding);
+        }
+
         // Margins are keyed by conduction ordinal, flat across ALL groups in wound order.
         size_t conductionOrdinal = conductionSectionOffset;
         for (size_t sectionIndex = 0; sectionIndex < orderedSectionsWithInsulation.size(); ++sectionIndex) {
@@ -11334,6 +12328,9 @@ bool Coil::wind_by_rectangular_sections(std::vector<double> proportionPerWinding
                 auto sectionInfo = orderedSectionsWithInsulation[sectionIndex].second;
                 auto windingIndex = sectionInfo.first;
                 auto spaceForSection = sectionInfo.second;
+                if (keptSectionHeights.contains(sectionIndex)) {
+                    spaceForSection = keptSectionHeights.at(sectionIndex);
+                }
 
                 double currentSectionHeight = 0;
                 double currentSectionWidth = 0;
@@ -15371,6 +16368,19 @@ std::vector<double> Coil::get_aligned_section_dimensions_rectangular_window(size
     if (sections.size() == 0) {
         throw CoilNotProcessedException("No sections in coil");
     }
+    // ABT #1487: axially stacked sections whose series links run OUTSIDE the build keep that room
+    // free at the window's outer side: the sections align within the window minus it. Whether the
+    // build then leaves it is checked where the links are laid (get_connection_reserved_spaces).
+    if (windingOrientation == WindingOrientation::CONTIGUOUS) {
+        const double outsideRoom = outside_link_radial_room(*this);
+        if (outsideRoom > 0) {
+            auto windowCoordinates = windingWindows[0].get_coordinates().value();
+            windowCoordinates[0] -= outsideRoom / 2;
+            windingWindows[0].set_coordinates(windowCoordinates);
+            windingWindowWidth -= outsideRoom;
+            windingWindows[0].set_width(windingWindowWidth);
+        }
+    }
     // With more than one group, alignment totals only cover the sections sharing this
     // section's group (each group fills its own winding window).
     bool scopeToGroup = get_groups_description() && get_groups_description()->size() > 1;
@@ -15423,6 +16433,17 @@ std::vector<double> Coil::get_aligned_section_dimensions_rectangular_window(size
         }
     };
     auto turnAxisCoordinateContiguous = [&]() -> double {
+        // ABT #1487 (owner decision, Alf 2026-09-29): a section wider than the window it sits in
+        // (a real-winding build that needs more layers than the window holds) is laid from the
+        // window's inner side and grows OUTWARD past it, so the customer sees the overflow; the
+        // wind reports it as not fitting (turns outside the window). Aligning it to the outer side
+        // or centring it would push it into the column instead.
+        const double roomLeft = windingWindows[0].get_coordinates().value()[0] - windingWindowWidth / 2 + resolve_margin(sections[sectionIndex])[0];
+        const double roomRight = windingWindows[0].get_coordinates().value()[0] + windingWindowWidth / 2 - resolve_margin(sections[sectionIndex])[1];
+        if (sections[sectionIndex].get_dimensions()[0] > roomRight - roomLeft + 1e-12 &&
+            turnsAlignment != CoilAlignment::SPREAD && roomLeft >= 0) {
+            return roomLeft;
+        }
         switch (turnsAlignment) {
             case CoilAlignment::INNER_OR_TOP:
                 return windingWindows[0].get_coordinates().value()[0] - windingWindowWidth / 2 + resolve_margin(sections[sectionIndex])[0];

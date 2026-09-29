@@ -342,8 +342,15 @@ struct ConnectionRoute {
     // design, so their waypoint polylines are IDENTICAL and the slot is the ONLY thing that keeps
     // the two terminals apart. A consumer that ignores it draws a short.
     //
-    // Empty on a non-terminal route (links, dragbacks and squeezes sit at the crossing, x = 0), and
-    // on every route when there are no routes at all.
+    // ABT #1487 (R2, Alf 2026-09-29): it ALSO carries the lane of an OUTSIDE series link -- the
+    // EDGE_CONTINUATION that joins a conductor split in series over axially stacked sections (real
+    // winding, concentric core), running axially OUTSIDE the winding build. Same frame: the x along
+    // the connection face where that link runs, at a different angle around the column than every
+    // terminal (never a terminal's slot), and where the core leaves it room (the core outline at
+    // that angle, not the window's outer boundary: see Coil::set_core_geometry).
+    //
+    // Empty on every other non-terminal route (links, dragbacks and squeezes sit at the crossing,
+    // x = 0), and on every route when there are no routes at all.
     std::optional<double> exitSlot;
     // ABT #1423: set when this TERMINAL lead leaves tangentially off a lateral face straight (see
     // TangentDeparture): a consumer draws the straight lead from tangentDeparture->point along
@@ -603,6 +610,10 @@ class Coil : public MAS::Coil {
         // (not part of the MAS coil); winding a section placed in a non-main
         // winding window without it throws.
         std::optional<std::vector<ColumnElement>> _coreColumns;
+        // ABT #1487 (R3): see set_core_geometry.
+        std::optional<Core> _coreGeometry;
+        // ABT #1487 (R5): see preload_stored_section_heights_from_sections.
+        std::map<std::string, double> _storedSectionHeights;
         // Hand-drawn section rectangles (winding studio): section name ->
         // {coordinates, dimensions}, re-imposed at the end of every wind.
         std::map<std::string, std::pair<std::vector<double>, std::vector<double>>> _customSectionRects;
@@ -644,6 +655,19 @@ class Coil : public MAS::Coil {
                                             bool multiGroup, WindingWindowShape windowShape,
                                             size_t conductionSectionOffset);
         bool wind_by_rectangular_sections(std::vector<double> proportionPerWinding, std::vector<size_t> pattern, size_t repetitions);
+        // ABT #1487 (R5): the heights the conduction sections of one axially stacked (contiguous)
+        // group are wound at, keyed by position in orderedSectionsWithInsulation: each the stored
+        // height of the section of the same name (preload_stored_section_heights_from_sections),
+        // except a section whose crossing stations need more -- that one grows by exactly its need,
+        // taken from its neighbouring conduction sections. Throws on a section the store does not
+        // name. When the neighbours cannot give the height without falling below their own need, the
+        // section still grows by its full need (the stack then runs past the window) and the
+        // overflow is recorded in _storedHeightOverflows, so wind() returns false.
+        std::map<size_t, double> keep_stored_section_heights(
+            const std::vector<std::pair<ElectricalType, std::pair<size_t, double>>>& orderedSectionsWithInsulation,
+            const std::vector<size_t>& numberSectionsPerWinding, const std::vector<WindingStyle>& windByConsecutiveTurns,
+            const std::vector<std::vector<double>>& remainingParallelsProportion, size_t conductionSectionOffset,
+            double availableWidth, const std::vector<Wire>& wirePerWinding);
         bool wind_by_round_sections(std::vector<double> proportionPerWinding, std::vector<size_t> pattern, size_t repetitions);
         bool wind_by_rectangular_layers();
         bool wind_by_round_layers();
@@ -770,6 +794,13 @@ class Coil : public MAS::Coil {
         // main column). Callers that hold the core (autocomplete, advisers) must
         // call this before winding a coil whose placement uses non-main windows.
         void set_core_columns(std::vector<ColumnElement> columns) { _coreColumns = columns; }
+        // ABT #1487 (R3): the core the coil is wound on, for the room AROUND the winding build: an
+        // outside series link (real winding, axially stacked sections) is checked against the core
+        // outline at its angle -- where the core has no outer leg it may run beyond the window up to
+        // the core outline. Callers that hold the core (autocomplete, advisers) set it; winding such
+        // a link without it throws. Transient, like set_core_columns: not part of the MAS coil.
+        void set_core_geometry(Core core) { _coreGeometry = std::move(core); }
+        const std::optional<Core>& get_core_geometry() const { return _coreGeometry; }
         // Serialized wound coils always carry their sections/layers/turns at the
         // FINAL multi-window positions (the +x winding frame exists only
         // transiently inside wind()). Entry points that install descriptions
@@ -875,6 +906,18 @@ class Coil : public MAS::Coil {
         // (disjoint sets) are one parallel after another (WIND_BY_CONSECUTIVE_TURNS). A mix of the
         // two is neither, and is left to the heuristic. Overrides already preloaded win.
         void preload_winding_style_overrides_from_stored_sections();
+        // ABT #1487 (R5, Alf 2026-09-29): MKF sizes sections by need when it CREATES a design, but a
+        // STORED design's section heights (a customer may have corrected them) are kept when
+        // magnetic_autocomplete re-winds it for real winding. Records, by section name, the stored
+        // height of every conduction section of a coil whose sections are stacked axially
+        // (contiguous); wind_by_rectangular_sections then keeps them, growing ONLY a section whose
+        // real-winding crossing stations need more height, by exactly that need, taken from its
+        // neighbouring sections (when they cannot give it all the stack overflows the window and the
+        // wind returns false). Does nothing for other coils.
+        // Transient, like preload_margins; clear_stored_section_heights ends it.
+        void preload_stored_section_heights_from_sections();
+        void clear_stored_section_heights() { _storedSectionHeights.clear(); }
+        const std::map<std::string, double>& get_stored_section_heights() const { return _storedSectionHeights; }
         std::optional<WindingStyle> get_winding_style_override(size_t windingIndex) const;
         std::vector<std::pair<size_t, double>> get_ordered_sections(double spaceForSections, std::vector<double> proportionPerWinding, std::vector<size_t> pattern, size_t repetitions=1);
         std::vector<std::pair<ElectricalType, std::pair<size_t, double>>> add_insulation_to_sections(std::vector<std::pair<size_t, double>> orderedSections);
@@ -1393,6 +1436,13 @@ class Coil : public MAS::Coil {
         // loses real-winding blocking can say WHY instead of just not doing it. Diagnostic text
         // only — never a control input.
         std::string _lastFitFailure;
+        // ABT #1487 (owner decision, Alf 2026-09-29): what a real-winding layout of axially stacked
+        // sections overflowed, instead of refusing it -- outside series links laid beyond the room
+        // the core leaves them (keyed by link), stored section heights grown past what their
+        // neighbours could give (keyed by section). wind() turns either into a false return with
+        // get_last_fit_failure() naming them.
+        std::map<std::string, std::string> _outsideLinkOverflows;
+        std::map<std::string, std::string> _storedHeightOverflows;
         // ABT #930: fills _lastFitFailure when a wind produced no turns at all.
         void diagnose_empty_wind();
         std::vector<Turn> get_turns_touching_bobbin_column();

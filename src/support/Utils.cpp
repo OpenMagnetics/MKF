@@ -3219,6 +3219,8 @@ Magnetic magnetic_autocomplete(Magnetic magnetic, json configuration, std::optio
     // around non-main columns can be computed when placement uses non-main windows.
     if (magnetic.get_mutable_core().get_processed_description()) {
         magnetic.get_mutable_coil().set_core_columns(magnetic.get_mutable_core().get_processed_description()->get_columns());
+        // ABT #1487 (R3): and the core itself, for the room its outline leaves around the build.
+        magnetic.get_mutable_coil().set_core_geometry(magnetic.get_mutable_core());
     }
 
     // ABT #646: real winding is a LAYOUT setting, not a drawing one — wind() reserves the
@@ -3259,7 +3261,15 @@ Magnetic magnetic_autocomplete(Magnetic magnetic, json configuration, std::optio
         // real-winding re-wind (see Coil::preload_winding_style_overrides_from_stored_sections).
         if (rewindForRealWinding) {
             magnetic.get_mutable_coil().preload_winding_style_overrides_from_stored_sections();
+            // ABT #1487 (R5): and the heights of its axially stacked sections, which a customer
+            // may have corrected (see Coil::preload_stored_section_heights_from_sections). They
+            // hold for THIS re-wind only: the guard ends them however the wind leaves.
+            magnetic.get_mutable_coil().preload_stored_section_heights_from_sections();
         }
+        struct StoredSectionHeightsGuard {
+            Coil& coil;
+            ~StoredSectionHeightsGuard() { coil.clear_stored_section_heights(); }
+        } storedSectionHeightsGuard{magnetic.get_mutable_coil()};
         if (configuration.contains("interleavingLevel")) {
             uint8_t interleavingLevel = configuration["interleavingLevel"];
             magnetic.get_mutable_coil().set_interleaving_level(interleavingLevel);
