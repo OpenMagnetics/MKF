@@ -6,6 +6,7 @@
 #include "constructive_models/Core.h"
 #include "constructive_models/Magnetic.h"
 #include "constructive_models/Mas.h"
+#include "support/Painter.h"
 #include "support/Utils.h"
 #include "support/Settings.h"
 
@@ -688,6 +689,97 @@ TEST_CASE("Real winding on axially stacked sections starts each local start at t
             }
         }
         CHECK(entranceRoutes == 1);
+    }
+    settings.reset();
+}
+
+namespace {
+
+// The turns painted with the fit-problem ring in an SVG (the CSS rule for the class does not count).
+size_t count_fit_problem_rings(const std::string& svg) {
+    size_t count = 0;
+    const std::string needle = "class=\"fit_problem_turn\"";
+    for (size_t position = svg.find(needle); position != std::string::npos; position = svg.find(needle, position + 1)) {
+        ++count;
+    }
+    return count;
+}
+
+std::string paint_turns_with_fit_problems(OpenMagnetics::Magnetic magnetic, const std::string& fileName) {
+    const auto outFile = std::filesystem::path{std::source_location::current().file_name()}
+                             .parent_path().append("..").append("output").append(fileName);
+    std::filesystem::remove(outFile);
+    OpenMagnetics::Painter painter(outFile);
+    painter.paint_core(magnetic);
+    painter.paint_coil_turns(magnetic);
+    painter.paint_winding_fit_problems(magnetic);
+    return painter.export_svg();
+}
+
+}  // namespace
+
+// The web's 2D view draws a real-winding layout that does not fit as it was wound and marks WHERE it
+// overflows: Painter::paint_winding_fit_problems outlines the winding window and rings every turn
+// whose copper leaves it. The field design as stored grows along the column past the window; a
+// design that fits (0.5 mm round primary) has no ring at all.
+TEST_CASE("paint_winding_fit_problems rings the turns an unfit real winding leaves outside the window (ABT #1487)",
+          "[constructive-model][coil][real-winding][abt1487][painter]") {
+    auto& settings = OpenMagnetics::Settings::GetInstance();
+    settings.reset();
+    {
+        auto unfit = pq65_through_real_winding([](json& masJson) { set_pq65_stored_heights(masJson, 0.002918, 0.007591); });
+        REQUIRE_FALSE(unfit.get_coil().get_last_fit_failure().empty());
+        const auto svg = paint_turns_with_fit_problems(unfit, "abt1487_fit_problems_unfit.svg");
+        CHECK(svg.find("class=\"fit_problem_window\"") != std::string::npos);
+        CHECK(count_fit_problem_rings(svg) > 0);
+    }
+    settings.reset();
+    {
+        auto fitting = pq65_through_real_winding([](json& masJson) {
+            pq65_winding(masJson, "Primary")["wire"] = "Round 0.5 - Grade 1";
+            set_pq65_stored_heights(masJson, 0.002918, 0.007591);
+        });
+        REQUIRE(fitting.get_coil().get_last_fit_failure().empty());
+        const auto svg = paint_turns_with_fit_problems(fitting, "abt1487_fit_problems_fitting.svg");
+        CHECK(svg.find("class=\"fit_problem_window\"") != std::string::npos);
+        CHECK(count_fit_problem_rings(svg) == 0);
+    }
+    settings.reset();
+}
+
+// wind_magnetic_coil_as_described is the re-wind magnetic_autocomplete shares with the web's
+// display paths, and those decide what to draw from its result: it must hand back wind()'s false
+// for a layout that does not fit (with the reason in get_last_fit_failure), and true when it fits.
+TEST_CASE("wind_magnetic_coil_as_described returns false for a real winding that does not fit (ABT #1487)",
+          "[constructive-model][coil][real-winding][abt1487]") {
+    auto& settings = OpenMagnetics::Settings::GetInstance();
+    settings.reset();
+    auto rewind = [&](const std::function<void(json&)>& edit) {
+        auto masJson = load_test_data("abt1487_pq65_sp_contiguous.json");
+        edit(masJson);
+        OpenMagnetics::Mas mas(masJson);
+        settings.set_coil_use_real_winding_geometry(true);
+        auto magnetic = OpenMagnetics::magnetic_autocomplete(OpenMagnetics::Magnetic(masJson.at("magnetic")), json{}, mas.get_inputs());
+        REQUIRE(OpenMagnetics::magnetic_coil_needs_winding(magnetic));
+        const bool fits = OpenMagnetics::wind_magnetic_coil_as_described(magnetic, json{}, mas.get_inputs());
+        return std::make_pair(fits, magnetic.get_coil().get_last_fit_failure());
+    };
+    {
+        const auto [fits, failure] = rewind([](json& masJson) { set_pq65_stored_heights(masJson, 0.002918, 0.007591); });
+        INFO(failure);
+        CHECK_FALSE(fits);
+        // The reason is named (here a turn of the grown stack lies outside the window).
+        CHECK_FALSE(failure.empty());
+    }
+    settings.reset();
+    {
+        const auto [fits, failure] = rewind([](json& masJson) {
+            pq65_winding(masJson, "Primary")["wire"] = "Round 0.5 - Grade 1";
+            set_pq65_stored_heights(masJson, 0.002918, 0.007591);
+        });
+        INFO(failure);
+        CHECK(fits);
+        CHECK(failure.empty());
     }
     settings.reset();
 }

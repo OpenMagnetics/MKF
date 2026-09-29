@@ -500,6 +500,12 @@ class Painter : public PainterInterface {
     // Coil::get_connection_reserved_spaces) as rectangles. Empty unless there are multi-layer
     // sections; useful to visualise real winding geometry.
     void paint_coil_connections(Magnetic magnetic);
+    // Overlay for a coil whose wind did not fit (XY projection): every rectangular winding window
+    // as a red dashed outline, and every turn whose copper leaves all of them ringed in red. The
+    // coil is still drawn as wound, so the user SEES where it overflows instead of getting a bare
+    // "does not fit". Round (toroidal) windows are not outlined: their turns are placed in polar
+    // coordinates this rectangle test does not cover, and the caller's reason text stands alone.
+    void paint_winding_fit_problems(Magnetic magnetic);
     void paint_wire(Wire wire);
     void paint_coil_turns(Magnetic magnetic, bool skipMarginAndLayers = false);
     void paint_temperature_field(Magnetic magnetic, const std::map<std::string, double>& nodeTemperatures, bool showColorBar = false, ColorPalette palette = ColorPalette::BLUE_TO_RED, double ambientTemperature = 25.0, const std::string& textColor = "#000000", const std::string& bgColor = "");

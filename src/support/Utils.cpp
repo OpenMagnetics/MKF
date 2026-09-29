@@ -2846,6 +2846,160 @@ Inputs inputs_autocomplete(Inputs inputs, std::optional<Magnetic> magnetic, json
     return inputs;
 }
 
+bool magnetic_coil_needs_winding(Magnetic& magnetic) {
+    // ABT #646: real winding is a LAYOUT setting, not a drawing one — wind() reserves the
+    // slots the connection leads route through and shortens every layer they cross. A coil
+    // that arrives already wound was laid out WITHOUT those corridors, and magnetic_autocomplete
+    // used to keep it verbatim, so switching real winding on changed nothing: the stored layout
+    // still put a turn in the corridor, and everything downstream (the Painter's connection
+    // views, MVB++'s conductor router) worked from geometry that had never reserved anything.
+    // Measured on a 12-turn 2-layer litz design: as stored, layer 1 spans the full 10.2 mm
+    // window and turn 6 sits EXACTLY on the input connection's reserved rectangle (100%
+    // penetration); re-wound with the flag on, layer 1 is one wire slot shorter at the bottom
+    // (9.345 mm) and the turns clear the corridor. Downstream, that stale layout is what made
+    // the entrance lead and a dragback coincident and unroutable.
+    //
+    // So re-wind when real winding is asked for. This CHANGES turn coordinates for a coil that
+    // already had them — deliberately: with the flag on, a layout that ignores the corridors is
+    // not the design being asked for. (It is also the only way a deserialized coil can report
+    // its real-winding blocking truthfully: that flag is a runtime member set inside wind(),
+    // never serialized into MAS — ABT #849.)
+    //
+    // NOT for planar: real winding (leads, blocking, connection routing) is not implemented for
+    // PCB constructions and MKF refuses it at the machinery that would engage — wind(), the
+    // connection-resistance path. There are no lead corridors to reserve on a planar layout, so
+    // re-winding one would buy nothing and would turn the refusal into a hard failure of
+    // autocomplete itself, i.e. a global display setting would stop every planar design from
+    // rendering at all. The gates that own the ruling still fire wherever routing is attempted.
+    auto& coil = magnetic.get_mutable_coil();
+    const bool rewindForRealWinding = settings.get_coil_use_real_winding_geometry() && !coil.is_planar();
+    return !coil.get_turns_description() || coil.get_turns_description()->empty() || rewindForRealWinding;
+}
+
+bool wind_magnetic_coil_as_described(Magnetic& magnetic, json configuration, std::optional<Inputs> inputs) {
+    // Multi-column winding support: give the coil the core columns so turn lengths
+    // around non-main columns can be computed when placement uses non-main windows. A coil
+    // deserialized from MAS does not carry them (runtime state), so set them before winding.
+    if (magnetic.get_mutable_core().get_processed_description()) {
+        magnetic.get_mutable_coil().set_core_columns(magnetic.get_mutable_core().get_processed_description()->get_columns());
+        // ABT #1487 (R3): and the core itself, for the room its outline leaves around the build.
+        magnetic.get_mutable_coil().set_core_geometry(magnetic.get_mutable_core());
+    }
+    const bool rewindForRealWinding = settings.get_coil_use_real_winding_geometry()
+                                   && !magnetic.get_mutable_coil().is_planar();
+    // ABT #620: without this, wind() below has no design requirements to check
+    // and falls back to calculate_mechanical_insulation() (0 margin, a single
+    // bare mechanical layer) even when the design declares an insulation
+    // standard — a file that carries only functionalDescription + bobbin (no
+    // sectionsDescription) re-wound here for painter/3D/simulation otherwise
+    // silently loses its declared creepage/clearance/DTI requirements.
+    if (inputs) {
+        magnetic.get_mutable_coil().set_inputs(inputs.value());
+    }
+    // ABT #1487: a stored design keeps the way its parallels were wound through the
+    // real-winding re-wind (see Coil::preload_winding_style_overrides_from_stored_sections).
+    if (rewindForRealWinding) {
+        magnetic.get_mutable_coil().preload_winding_style_overrides_from_stored_sections();
+        // ABT #1487 (R5): and the heights of its axially stacked sections, which a customer
+        // may have corrected (see Coil::preload_stored_section_heights_from_sections). They
+        // hold for THIS re-wind only: the guard ends them however the wind leaves.
+        magnetic.get_mutable_coil().preload_stored_section_heights_from_sections();
+    }
+    struct StoredSectionHeightsGuard {
+        Coil& coil;
+        ~StoredSectionHeightsGuard() { coil.clear_stored_section_heights(); }
+    } storedSectionHeightsGuard{magnetic.get_mutable_coil()};
+    if (configuration.contains("interleavingLevel")) {
+        uint8_t interleavingLevel = configuration["interleavingLevel"];
+        magnetic.get_mutable_coil().set_interleaving_level(interleavingLevel);
+    }
+    if (configuration.contains("layersOrientation")) {
+        WindingOrientation layersOrientation = WindingOrientation::CONTIGUOUS;
+        to_json(configuration["layersOrientation"], layersOrientation);
+        magnetic.get_mutable_coil().set_layers_orientation(layersOrientation);
+    }
+    if (configuration.contains("turnsAlignment")) {
+        CoilAlignment turnsAlignment = CoilAlignment::SPREAD;
+        to_json(configuration["turnsAlignment"], turnsAlignment);
+        magnetic.get_mutable_coil().set_turns_alignment(turnsAlignment);
+    }
+    else {
+        if (magnetic.get_mutable_core().get_type() == CoreType::TWO_PIECE_SET) {
+            magnetic.get_mutable_coil().set_turns_alignment(CoilAlignment::SPREAD);
+        }
+        else {
+            magnetic.get_mutable_coil().set_turns_alignment(CoilAlignment::CENTERED);
+        }
+    }
+
+    if (configuration.contains("interleavingPattern")) {
+        std::vector<size_t> pattern = configuration["interleavingPattern"];
+        return magnetic.get_mutable_coil().wind(pattern);
+    }
+    else {
+        // ABT #610: a MAS file that carries a sectionsDescription has already SAID its winding
+        // pattern — the conduction sections' winding sequence IS the interleaving (P,S,P,S =
+        // pattern {0,1} x 2). MAS has no other field for it (deliberately: the sections are
+        // the description), and winding with the default pattern here silently UN-interleaved
+        // such files: 09_planar declares P,S,P,S,P,S and was rebuilt P,S. Derive the pattern
+        // from the given sections — the smallest repeating unit and its count map onto wind's
+        // (pattern, repetitions) form — and fall back to the default wind for anything the
+        // derivation cannot express (sections sharing partial windings, unknown winding
+        // names). Data first, never invented: this reads the file's own structure.
+        std::vector<size_t> sequence;
+        bool derivable = false;
+        if (magnetic.get_coil().get_sections_description()) {
+            derivable = true;
+            auto sections = magnetic.get_coil().get_sections_description().value();
+            auto windings = magnetic.get_coil().get_functional_description();
+            for (const auto& section : sections) {
+                if (section.get_type() != ElectricalType::CONDUCTION) {
+                    continue;
+                }
+                if (section.get_partial_windings().size() != 1) {
+                    derivable = false;
+                    break;
+                }
+                auto name = section.get_partial_windings()[0].get_winding();
+                size_t index = windings.size();
+                for (size_t w = 0; w < windings.size(); ++w) {
+                    if (windings[w].get_name() == name) {
+                        index = w;
+                        break;
+                    }
+                }
+                if (index == windings.size()) {
+                    derivable = false;
+                    break;
+                }
+                sequence.push_back(index);
+            }
+        }
+        if (derivable && !sequence.empty()) {
+            // Smallest repeating unit: sequence = unit repeated k times.
+            size_t unitLength = sequence.size();
+            for (size_t u = 1; u <= sequence.size() / 2; ++u) {
+                if (sequence.size() % u != 0) {
+                    continue;
+                }
+                bool repeats = true;
+                for (size_t i = u; i < sequence.size() && repeats; ++i) {
+                    repeats = sequence[i] == sequence[i % u];
+                }
+                if (repeats) {
+                    unitLength = u;
+                    break;
+                }
+            }
+            std::vector<size_t> pattern(sequence.begin(), sequence.begin() + unitLength);
+            return magnetic.get_mutable_coil().wind(pattern, sequence.size() / unitLength);
+        }
+        else {
+            return magnetic.get_mutable_coil().wind();
+        }
+    }
+}
+
 Magnetic magnetic_autocomplete(Magnetic magnetic, json configuration, std::optional<Inputs> inputs) {
     // A datasheet-only catalogue part (neither core nor coil, see Magnetic.h) has no construction
     // to complete: it is returned as it is, so a catalogue mixing such parts with constructed ones
@@ -3245,120 +3399,9 @@ Magnetic magnetic_autocomplete(Magnetic magnetic, json configuration, std::optio
     // re-winding one would buy nothing and would turn the refusal into a hard failure of
     // autocomplete itself, i.e. a global display setting would stop every planar design from
     // rendering at all. The gates that own the ruling still fire wherever routing is attempted.
-    const bool rewindForRealWinding = settings.get_coil_use_real_winding_geometry()
-                                   && !magnetic.get_mutable_coil().is_planar();
-    if (!magnetic.get_mutable_coil().get_turns_description() || rewindForRealWinding) {
-        // ABT #620: without this, wind() below has no design requirements to check
-        // and falls back to calculate_mechanical_insulation() (0 margin, a single
-        // bare mechanical layer) even when the design declares an insulation
-        // standard — a file that carries only functionalDescription + bobbin (no
-        // sectionsDescription) re-wound here for painter/3D/simulation otherwise
-        // silently loses its declared creepage/clearance/DTI requirements.
-        if (inputs) {
-            magnetic.get_mutable_coil().set_inputs(inputs.value());
-        }
-        // ABT #1487: a stored design keeps the way its parallels were wound through the
-        // real-winding re-wind (see Coil::preload_winding_style_overrides_from_stored_sections).
-        if (rewindForRealWinding) {
-            magnetic.get_mutable_coil().preload_winding_style_overrides_from_stored_sections();
-            // ABT #1487 (R5): and the heights of its axially stacked sections, which a customer
-            // may have corrected (see Coil::preload_stored_section_heights_from_sections). They
-            // hold for THIS re-wind only: the guard ends them however the wind leaves.
-            magnetic.get_mutable_coil().preload_stored_section_heights_from_sections();
-        }
-        struct StoredSectionHeightsGuard {
-            Coil& coil;
-            ~StoredSectionHeightsGuard() { coil.clear_stored_section_heights(); }
-        } storedSectionHeightsGuard{magnetic.get_mutable_coil()};
-        if (configuration.contains("interleavingLevel")) {
-            uint8_t interleavingLevel = configuration["interleavingLevel"];
-            magnetic.get_mutable_coil().set_interleaving_level(interleavingLevel);
-        }
-        if (configuration.contains("layersOrientation")) {
-            WindingOrientation layersOrientation = WindingOrientation::CONTIGUOUS;
-            to_json(configuration["layersOrientation"], layersOrientation);
-            magnetic.get_mutable_coil().set_layers_orientation(layersOrientation);
-        }
-        if (configuration.contains("turnsAlignment")) {
-            CoilAlignment turnsAlignment = CoilAlignment::SPREAD;
-            to_json(configuration["turnsAlignment"], turnsAlignment);
-            magnetic.get_mutable_coil().set_turns_alignment(turnsAlignment);
-        }
-        else {
-            if (magnetic.get_mutable_core().get_type() == CoreType::TWO_PIECE_SET) {
-                magnetic.get_mutable_coil().set_turns_alignment(CoilAlignment::SPREAD);
-            }
-            else {
-                magnetic.get_mutable_coil().set_turns_alignment(CoilAlignment::CENTERED);
-            }
-        }
-
-        if (configuration.contains("interleavingPattern")) {
-            std::vector<size_t> pattern = configuration["interleavingPattern"];
-            magnetic.get_mutable_coil().wind(pattern);
-        }
-        else {
-            // ABT #610: a MAS file that carries a sectionsDescription has already SAID its winding
-            // pattern — the conduction sections' winding sequence IS the interleaving (P,S,P,S =
-            // pattern {0,1} x 2). MAS has no other field for it (deliberately: the sections are
-            // the description), and winding with the default pattern here silently UN-interleaved
-            // such files: 09_planar declares P,S,P,S,P,S and was rebuilt P,S. Derive the pattern
-            // from the given sections — the smallest repeating unit and its count map onto wind's
-            // (pattern, repetitions) form — and fall back to the default wind for anything the
-            // derivation cannot express (sections sharing partial windings, unknown winding
-            // names). Data first, never invented: this reads the file's own structure.
-            std::vector<size_t> sequence;
-            bool derivable = false;
-            if (magnetic.get_coil().get_sections_description()) {
-                derivable = true;
-                auto sections = magnetic.get_coil().get_sections_description().value();
-                auto windings = magnetic.get_coil().get_functional_description();
-                for (const auto& section : sections) {
-                    if (section.get_type() != ElectricalType::CONDUCTION) {
-                        continue;
-                    }
-                    if (section.get_partial_windings().size() != 1) {
-                        derivable = false;
-                        break;
-                    }
-                    auto name = section.get_partial_windings()[0].get_winding();
-                    size_t index = windings.size();
-                    for (size_t w = 0; w < windings.size(); ++w) {
-                        if (windings[w].get_name() == name) {
-                            index = w;
-                            break;
-                        }
-                    }
-                    if (index == windings.size()) {
-                        derivable = false;
-                        break;
-                    }
-                    sequence.push_back(index);
-                }
-            }
-            if (derivable && !sequence.empty()) {
-                // Smallest repeating unit: sequence = unit repeated k times.
-                size_t unitLength = sequence.size();
-                for (size_t u = 1; u <= sequence.size() / 2; ++u) {
-                    if (sequence.size() % u != 0) {
-                        continue;
-                    }
-                    bool repeats = true;
-                    for (size_t i = u; i < sequence.size() && repeats; ++i) {
-                        repeats = sequence[i] == sequence[i % u];
-                    }
-                    if (repeats) {
-                        unitLength = u;
-                        break;
-                    }
-                }
-                std::vector<size_t> pattern(sequence.begin(), sequence.begin() + unitLength);
-                magnetic.get_mutable_coil().wind(pattern, sequence.size() / unitLength);
-            }
-            else {
-                magnetic.get_mutable_coil().wind();
-            }
-        }
+    if (magnetic_coil_needs_winding(magnetic)) {
+        // The bool is deliberately not acted on here: see the ABT #930 warning below.
+        wind_magnetic_coil_as_described(magnetic, configuration, inputs);
     }
 
     // ABT #930: autocompleting ONE magnetic and getting a coil with no turns back, silently, is

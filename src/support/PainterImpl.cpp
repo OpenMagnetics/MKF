@@ -4793,6 +4793,83 @@ void Painter::paint_magnetic(Magnetic magnetic, PainterProjection projection) {
     paint_yz_projection(magnetic);
 }
 
+void Painter::paint_winding_fit_problems(Magnetic magnetic) {
+    auto& coil = magnetic.get_mutable_coil();
+    auto bobbin = coil.resolve_bobbin();
+    if (!bobbin.get_processed_description()) {
+        throw InvalidInputException(ErrorCode::INVALID_BOBBIN_DATA,
+                                    "paint_winding_fit_problems: the bobbin has no processed description, so there is no winding window to check the turns against");
+    }
+    // A copy, not a reference: get_processed_description() returns by value, and ranging over the
+    // windows of that temporary reads a destroyed vector.
+    const auto windingWindows = bobbin.get_processed_description()->get_winding_windows();
+    // Rectangular windows only (see the header). Both frames are accepted for a turn, the
+    // window's own and the window mirrored to +x: a wind that failed can stop before or after
+    // lateral groups are mirrored to negative x, and a turn inside either frame is not the problem.
+    std::vector<std::array<double, 4>> boxes;
+    for (const auto& window : windingWindows) {
+        if (!(window.get_coordinates() && window.get_width() && window.get_height())) {
+            continue;
+        }
+        const double xCenter = (*window.get_coordinates())[0];
+        const double yCenter = (*window.get_coordinates())[1];
+        const double width = *window.get_width();
+        const double height = *window.get_height();
+        for (double x : {xCenter, std::abs(xCenter)}) {
+            boxes.push_back({x - width / 2, x + width / 2, yCenter - height / 2, yCenter + height / 2});
+        }
+    }
+    if (boxes.empty()) {
+        return;
+    }
+
+    _root.style(".fit_problem_window")
+        .set_attr("fill", "none")
+        .set_attr("stroke", "#FF0000")
+        .set_attr("stroke-width", std::to_string(0.00015 * _scale))
+        .set_attr("stroke-dasharray", std::to_string(0.0006 * _scale) + "," + std::to_string(0.0004 * _scale));
+    _root.style(".fit_problem_turn")
+        .set_attr("fill", "#FF0000")
+        .set_attr("fill-opacity", "0.25")
+        .set_attr("stroke", "#FF0000")
+        .set_attr("stroke-width", std::to_string(0.0002 * _scale));
+
+    auto group = _root.add_child<SVG::Group>();
+    for (const auto& window : windingWindows) {
+        if (!(window.get_coordinates() && window.get_width() && window.get_height())) {
+            continue;
+        }
+        paint_rectangle((*window.get_coordinates())[0], (*window.get_coordinates())[1],
+                        *window.get_width(), *window.get_height(), "fit_problem_window", group);
+    }
+
+    if (!coil.get_turns_description()) {
+        return;
+    }
+    const double tolerance = 1e-9;
+    auto wires = coil.get_wires();
+    const auto turns = coil.get_turns_description().value();  // a copy, for the same reason as the windows
+    for (const auto& turn : turns) {
+        auto& wire = wires[coil.get_winding_index_by_name(turn.get_winding())];
+        const double halfWidth = wire.get_maximum_outer_width() / 2;
+        const double halfHeight = wire.get_maximum_outer_height() / 2;
+        const auto& coordinates = turn.get_coordinates();
+        bool inside = false;
+        for (const auto& [x0, x1, y0, y1] : boxes) {
+            if (coordinates[0] - halfWidth >= x0 - tolerance && coordinates[0] + halfWidth <= x1 + tolerance &&
+                coordinates[1] - halfHeight >= y0 - tolerance && coordinates[1] + halfHeight <= y1 + tolerance) {
+                inside = true;
+                break;
+            }
+        }
+        if (!inside) {
+            paint_circle(coordinates[0], coordinates[1], 0.65 * std::max(halfWidth, halfHeight) * 2,
+                         "fit_problem_turn", group, 360, 0, {0, 0},
+                         turn.get_name() + " lies outside the winding window");
+        }
+    }
+}
+
 // CONNECTION-FACE (YZ) projection — ABT #617 (Alf, 2026-08-10). Horizontal axis: depth z,
 // vertical: axial y. Painted WITHOUT symmetry: a turn appears TWICE (its -z and +z face
 // crossings), each at zPos + the DRAGBACK RIDE displacement of that space side, and every

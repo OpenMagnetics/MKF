@@ -297,6 +297,18 @@ double amplitude_to_decibels(double amplitude);
 
 std::string fix_filename(std::string filename);
 Inputs inputs_autocomplete(Inputs inputs, std::optional<Magnetic> magnetic = std::nullopt, json configuration = {});
+// Whether the magnetic's coil must be (re-)wound before its turns can be trusted: it has no
+// turns yet, or real winding geometry is on (a stored layout never reserved the lead
+// corridors, and the blocking state is not serialized). Planar coils are never re-wound for
+// real winding. The single gate magnetic_autocomplete and every in-process re-winder share.
+bool magnetic_coil_needs_winding(Magnetic& magnetic);
+// (Re-)wind the magnetic's coil honouring what the design already says about it: the
+// interleaving pattern carried by its stored sectionsDescription (ABT #610), the
+// configuration's interleavingLevel / layersOrientation / turnsAlignment / interleavingPattern,
+// and the design's inputs (ABT #620). Returns wind()'s result: false means the winding does
+// not fit (Coil::get_last_fit_failure() names why when it can). Callers that paint or export
+// the result must not ignore a false.
+bool wind_magnetic_coil_as_described(Magnetic& magnetic, json configuration = {}, std::optional<Inputs> inputs = std::nullopt);
 // inputs, when provided, carries the design's declared insulation/environmental
 // requirements into the coil BEFORE it winds (ABT #620): without it, wind() has no
 // way to know an insulation standard applies and falls back to
