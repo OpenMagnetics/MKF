@@ -3460,6 +3460,76 @@ TEST_CASE("Calculate_Steinmetz_Coefficients_Synthetic", "[physical-model][core-l
     }
 }
 
+// ABT #1517: fits with temperature dependence must return a usable ct(T). The
+// fitter used to drop the temperature term wherever ct(T) < 0, in the objective
+// AND in its best-of selection, so an all-negative ct scored as a good fit and
+// was returned: on MagNet 3C94 (25/50/70/90 C) it gave ct0 = -27285, which
+// get_temperature_factor then refuses at every temperature.
+TEST_CASE("Calculate_Steinmetz_Coefficients_Temperature", "[physical-model][core-losses][steinmetz-fit][abt-1517]") {
+    const double k = 2.0, alpha = 1.5, beta = 2.7;
+    // ct(T) = ct2*T^2 - ct1*T + ct0, minimum 1.0 at 100 C (a typical MnZn shape).
+    const double ct0 = 2.5, ct1 = 0.03, ct2 = 0.00015;
+    auto trueTemperatureFactor = [&](double temperature) { return ct2 * temperature * temperature - ct1 * temperature + ct0; };
+    // Deterministic +-scatter so the MagNet-shaped case is repeatable.
+    uint32_t lcgState = 12345;
+    auto scatter = [&lcgState](double relative) {
+        lcgState = lcgState * 1664525u + 1013904223u;
+        return 1.0 + relative * (2.0 * (lcgState / 4294967296.0) - 1.0);
+    };
+    auto makePoint = [&](double frequency, double peak, double temperature, double factor) {
+        json pointJson;
+        pointJson["temperature"] = temperature;
+        pointJson["value"] = k * pow(frequency, alpha) * pow(peak, beta) * trueTemperatureFactor(temperature) * factor;
+        pointJson["origin"] = "manufacturer";
+        pointJson["magneticFluxDensity"]["frequency"] = frequency;
+        pointJson["magneticFluxDensity"]["magneticFluxDensity"]["processed"]["label"] = "sinusoidal";
+        pointJson["magneticFluxDensity"]["magneticFluxDensity"]["processed"]["offset"] = 0;
+        pointJson["magneticFluxDensity"]["magneticFluxDensity"]["processed"]["peak"] = peak;
+        pointJson["magneticFluxDensity"]["magneticFluxDensity"]["processed"]["peakToPeak"] = 2 * peak;
+        return VolumetricLossesPoint(pointJson);
+    };
+    auto grid = [&](std::vector<double> temperatures, double relativeScatter) {
+        std::vector<VolumetricLossesPoint> data;
+        for (auto temperature : temperatures) {
+            for (auto frequency : {50000.0, 70000.0, 100000.0, 140000.0, 200000.0}) {
+                for (auto peak : {0.02, 0.05, 0.1, 0.2, 0.3}) {
+                    data.push_back(makePoint(frequency, peak, temperature, relativeScatter > 0 ? scatter(relativeScatter) : 1.0));
+                }
+            }
+        }
+        return data;
+    };
+    // Every fitted temperature must get a positive factor, and the fitted law
+    // must reproduce the noiseless truth at every point of the grid.
+    auto checkFit = [&](const std::vector<VolumetricLossesPoint>& data, double tolerance) {
+        auto [coefficientsPerRange, errorPerRange] = OpenMagnetics::CoreLossesSteinmetzModel::calculate_steinmetz_coefficients(data, {{10000, 1000000}});
+        REQUIRE(coefficientsPerRange.size() == 1);
+        auto fitted = coefficientsPerRange[0];
+        REQUIRE(fitted.get_ct0());
+        REQUIRE(fitted.get_ct1());
+        REQUIRE(fitted.get_ct2());
+        for (auto& point : data) {
+            double temperature = point.get_temperature();
+            double frequency = point.get_magnetic_flux_density().get_frequency();
+            double peak = point.get_magnetic_flux_density().get_magnetic_flux_density()->get_processed()->get_peak().value();
+            double factor = OpenMagnetics::CoreLossesSteinmetzModel::get_temperature_factor(fitted, temperature);
+            double modeled = fitted.get_k() * pow(frequency, fitted.get_alpha()) * pow(peak, fitted.get_beta()) * factor;
+            double truth = k * pow(frequency, alpha) * pow(peak, beta) * trueTemperatureFactor(temperature);
+            CHECK_THAT(modeled, Catch::Matchers::WithinRel(truth, tolerance));
+        }
+    };
+
+    SECTION("Points at 90-110 C: k/alpha/beta fitted there, then ct") {
+        checkFit(grid({25, 50, 70, 90, 100, 120}, 0), 0.03);
+    }
+    SECTION("No points near 100 C: joint fit of all six") {
+        checkFit(grid({25, 50, 70}, 0), 0.03);
+    }
+    SECTION("MagNet-shaped temperatures (25/50/70/90 C) with +-10% scatter") {
+        checkFit(grid({25, 50, 70, 90}, 0.10), 0.15);
+    }
+}
+
 TEST_CASE("Calculate_Steinmetz_Coefficients", "[physical-model][core-losses]") {
     SKIP("Test needs investigation");
     load_core_materials();

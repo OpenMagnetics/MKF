@@ -645,23 +645,27 @@ SteinmetzCoreLossesMethodRangeDatum CoreLossesModel::get_steinmetz_coefficients(
 }
 
 
+// ABT #1517: a temperature factor ct(T) <= 0 is not a loss scale, so it must
+// never score as a fit. These used to drop the temperature term there instead,
+// which made an all-negative ct look like a good temperature-free fit — in the
+// optimizer and in the best-of-restarts selection alike — and it was returned.
+// The optimizer now sees a residual far larger than any real one (log10 units)
+// and retreats; calculate_steinmetz_coefficients throws if no restart ends valid.
+constexpr double invalidTemperatureFactorPenalty = 1e3;
+
 double steinmetz_equation_with_temperature_and_log(double x[], double frequency, double magneticFluxDensityAcPeak, double temperature) {
     double temperatureCoefficient = x[3] - x[4] * temperature + x[5] * pow(temperature, 2);
-    if (temperatureCoefficient < 0) {
-        return x[0] + frequency * x[1] + magneticFluxDensityAcPeak * x[2];
+    if (!(temperatureCoefficient > 0)) {
+        return invalidTemperatureFactorPenalty;
     }
-    else {
-        return x[0] + frequency * x[1] + magneticFluxDensityAcPeak * x[2] + log10(temperatureCoefficient);
-    }
+    return x[0] + frequency * x[1] + magneticFluxDensityAcPeak * x[2] + log10(temperatureCoefficient);
 }
 double steinmetz_equation_with_temperature_and_log(double x[], double logK, double alpha, double beta, double frequency, double magneticFluxDensityAcPeak, double temperature) {
     double temperatureCoefficient = x[0] - x[1] * temperature + x[2] * pow(temperature, 2);
-    if (temperatureCoefficient < 0) {
-        return logK + frequency * alpha + magneticFluxDensityAcPeak * beta;
+    if (!(temperatureCoefficient > 0)) {
+        return invalidTemperatureFactorPenalty;
     }
-    else {
-        return logK + frequency * alpha + magneticFluxDensityAcPeak * beta + log10(temperatureCoefficient);
-    }
+    return logK + frequency * alpha + magneticFluxDensityAcPeak * beta + log10(temperatureCoefficient);
 }
 
 
@@ -919,9 +923,10 @@ std::pair<std::vector<SteinmetzCoreLossesMethodRangeDatum>, std::vector<double>>
                 volumetricLossesInputs[1] = tempCoefficients[1];
                 volumetricLossesInputs[2] = tempCoefficients[2];
 
-                for (size_t index = 0; index < 3; ++index) {
-                    tempCoefficients[index] = initialState;
-                }
+                // Start ct at 1 (ct0 = 1, ct1 = ct2 = 0): k/alpha/beta were just
+                // fitted near 100 C, so "no temperature dependence" is the exact
+                // starting model, and it is valid (ct > 0) at every temperature.
+                tempCoefficients = {1.0, 0.0, 0.0};
                 OpenMagnetics::eigen_levmar_dif(steinmetz_equation_first_only_temperature_func, tempCoefficients.data(), volumetricLossesArray.data(), 3, numberElements, 10000, opts, info, NULL, NULL, static_cast<void*>(volumetricLossesInputs.data()));
                 coefficients[3] = tempCoefficients[0];
                 coefficients[4] = tempCoefficients[1];
@@ -958,6 +963,24 @@ std::pair<std::vector<SteinmetzCoreLossesMethodRangeDatum>, std::vector<double>>
                     bestCoefficients.push_back(coefficients[index]);
                 }
                 bestCoefficients[0] = pow(10, std::max(bestCoefficients[0], -15.0));
+            }
+        }
+        if (bestCoefficients.empty()) {
+            throw CalculationException(ErrorCode::CALCULATION_INVALID_INPUT,
+                "Cannot fit Steinmetz coefficients for range [" + std::to_string(ranges[chunkIndex].first) + ", " +
+                std::to_string(ranges[chunkIndex].second) + "] Hz: no restart produced a finite fit error.");
+        }
+        if (numberInputs == 3) {
+            for (auto& point : volumetricLossesChunk) {
+                double temperature = point.get_temperature();
+                double factor = bestCoefficients[3] - bestCoefficients[4] * temperature + bestCoefficients[5] * pow(temperature, 2);
+                if (!(factor > 0)) {
+                    throw CalculationException(ErrorCode::CALCULATION_INVALID_INPUT,
+                        "Cannot fit Steinmetz temperature coefficients for range [" + std::to_string(ranges[chunkIndex].first) + ", " +
+                        std::to_string(ranges[chunkIndex].second) + "] Hz: no restart gives ct(T) > 0 at " + std::to_string(temperature) +
+                        " C (ct0=" + std::to_string(bestCoefficients[3]) + ", ct1=" + std::to_string(bestCoefficients[4]) +
+                        ", ct2=" + std::to_string(bestCoefficients[5]) + ").");
+                }
             }
         }
         SteinmetzCoreLossesMethodRangeDatum steinmetzCoreLossesMethodRangeDatum;
