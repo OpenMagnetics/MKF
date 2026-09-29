@@ -2433,7 +2433,9 @@ TEST_CASE("Test_Manufacturer_Magnetec", "[physical-model][core-losses][smoke-tes
     // core MASS instead of its volume (the old pinned 3.09 W captured the
     // volume-multiplied bug; the absolute number is a plumbing check only —
     // the 1-turn setup drives B far beyond saturation)
-    REQUIRE_THAT(coreLosses.get_core_losses(), Catch::Matchers::WithinAbs(29685.6, 29685.6 * maxError));
+    // ABT #1491: 29685.6 -> 7421.39 (exactly 1/4): the Magnetec formula now reads its 0.3 T anchor
+    // against the PEAK flux density instead of the peak-to-peak.
+    REQUIRE_THAT(coreLosses.get_core_losses(), Catch::Matchers::WithinAbs(7421.39, 7421.39 * maxError));
 }
 
 TEST_CASE("Test_Manufacturer_Magnetec_Obfuscated_Manufacturer", "[physical-model][core-losses][smoke-test]") {
@@ -2469,7 +2471,9 @@ TEST_CASE("Test_Manufacturer_Magnetec_Obfuscated_Manufacturer", "[physical-model
     auto coreLosses = coreLossesModel->get_core_losses(core, excitation, temperature);
 
     // Identical to Test_Manufacturer_Magnetec: obfuscating the manufacturer must not change the physics.
-    REQUIRE_THAT(coreLosses.get_core_losses(), Catch::Matchers::WithinAbs(29685.6, 29685.6 * maxError));
+    // ABT #1491: 29685.6 -> 7421.39 (exactly 1/4): the Magnetec formula now reads its 0.3 T anchor
+    // against the PEAK flux density instead of the peak-to-peak.
+    REQUIRE_THAT(coreLosses.get_core_losses(), Catch::Matchers::WithinAbs(7421.39, 7421.39 * maxError));
 }
 
 TEST_CASE("Test_XFlux_19", "[physical-model][core-losses][smoke-test]") {
@@ -2829,6 +2833,23 @@ TEST_CASE("Test_CoreLosses_Model_Nanoperm_8000", "[physical-model][core-losses][
     REQUIRE(coreLossesModel != nullptr);
 }
 
+TEST_CASE("Test_CoreLosses_Nanoperm_Data_Sheet_Bound_Is_Peak", "[physical-model][core-losses][smoke-test][abt-1491]") {
+    // Magnetec's NANOPERM data sheet: "Material Losses (0,3 T / 100 kHz / sinus) < 110 W/kg". 0.3 T is a
+    // PEAK amplitude, as every nanocrystalline data sheet quotes it (VAC VP 800 F <= 80 W/kg, Proterial
+    // FT-3 at Bm = 0.2 T). Reading the anchor against 2*Bpk gave 320 W/kg at this very point (ABT #1491).
+    auto material = find_core_material_by_name("Nanoperm 8000");
+    auto excitation = OperatingPointExcitation(json::parse(R"({"frequency": 100000, "magneticFluxDensity": {"processed": {"label": "Sinusoidal", "peak": 0.3, "peakToPeak": 0.6, "offset": 0}}})"));
+
+    CoreLossesProprietaryModel model;
+    double massLosses = model.get_core_mass_losses(material, excitation, 25);
+    CHECK(massLosses < 110);
+    CHECK_THAT(massLosses, Catch::Matchers::WithinRel(80.0, 1e-9));
+
+    // Quadratic in the PEAK flux density: half the peak, a quarter of the loss.
+    auto halfExcitation = OperatingPointExcitation(json::parse(R"({"frequency": 100000, "magneticFluxDensity": {"processed": {"label": "Sinusoidal", "peak": 0.15, "peakToPeak": 0.3, "offset": 0}}})"));
+    CHECK_THAT(model.get_core_mass_losses(material, halfExcitation, 25), Catch::Matchers::WithinRel(20.0, 1e-9));
+}
+
 TEST_CASE("Test_Core_Losses_Nanoperm_8000", "[physical-model][core-losses][smoke-test]") {
     auto models = json::parse("{\"coreLosses\": \"PROPRIETARY\", \"gapReluctance\": \"BALAKRISHNAN\"}");
     auto core = Core(json::parse(R"({"distributorsInfo": [], "functionalDescription": {"coating": null, "gapping": [{"area": 0.000078, "coordinates": [0, 0.0003, 0 ], "distanceClosestNormalSurface": 0.00865, "distanceClosestParallelSurface": 0.005325, "length": 0.0006, "sectionDimensions": [0.00725, 0.01075 ], "shape": "rectangular", "type": "subtractive" }, {"area": 0.000039, "coordinates": [0.010738, 0, 0 ], "distanceClosestNormalSurface": 0.00895, "distanceClosestParallelSurface": 0.005325, "length": 0.000005, "sectionDimensions": [0.003575, 0.01075 ], "shape": "rectangular", "type": "residual" }, {"area": 0.000039, "coordinates": [-0.010738, 0, 0 ], "distanceClosestNormalSurface": 0.00895, "distanceClosestParallelSurface": 0.005325, "length": 0.000005, "sectionDimensions": [0.003575, 0.01075 ], "shape": "rectangular", "type": "residual" } ], "material": "Nanoperm 8000", "numberStacks": 1, "shape": {"aliases": [], "dimensions": {"A": {"excludeMaximum": null, "excludeMinimum": null, "maximum": 0.0258, "minimum": 0.0243, "nominal": null }, "B": {"excludeMaximum": null, "excludeMinimum": null, "maximum": 0.0128, "minimum": 0.0123, "nominal": null }, "C": {"excludeMaximum": null, "excludeMinimum": null, "maximum": 0.011, "minimum": 0.0105, "nominal": null }, "D": {"excludeMaximum": null, "excludeMinimum": null, "maximum": 0.0092, "minimum": 0.0087, "nominal": null }, "E": {"excludeMaximum": null, "excludeMinimum": null, "maximum": 0.0183, "minimum": 0.0175, "nominal": null }, "F": {"excludeMaximum": null, "excludeMinimum": null, "maximum": 0.0075, "minimum": 0.007, "nominal": null } }, "family": "e", "familySubtype": null, "magneticCircuit": "open", "name": "E 25/13/11", "type": "standard" }, "type": "twoPieceSet", "magneticCircuit": "open" }, "geometricalDescription": [{"coordinates": [0, 0, 0 ], "dimensions": null, "insulationMaterial": null, "machining": [{"coordinates": [0, 0.0003, 0 ], "length": 0.0006 } ], "material": "A07", "rotation": [3.141592653589793, 3.141592653589793, 0 ], "shape": {"aliases": [], "dimensions": {"A": {"excludeMaximum": null, "excludeMinimum": null, "maximum": 0.0258, "minimum": 0.0243, "nominal": null }, "B": {"excludeMaximum": null, "excludeMinimum": null, "maximum": 0.0128, "minimum": 0.0123, "nominal": null }, "C": {"excludeMaximum": null, "excludeMinimum": null, "maximum": 0.011, "minimum": 0.0105, "nominal": null }, "D": {"excludeMaximum": null, "excludeMinimum": null, "maximum": 0.0092, "minimum": 0.0087, "nominal": null }, "E": {"excludeMaximum": null, "excludeMinimum": null, "maximum": 0.0183, "minimum": 0.0175, "nominal": null }, "F": {"excludeMaximum": null, "excludeMinimum": null, "maximum": 0.0075, "minimum": 0.007, "nominal": null } }, "family": "e", "familySubtype": null, "magneticCircuit": "open", "name": "E 25/13/11", "type": "standard" }, "type": "halfSet" }, {"coordinates": [0, 0, 0 ], "dimensions": null, "insulationMaterial": null, "machining": null, "material": "A07", "rotation": [0, 0, 0 ], "shape": {"aliases": [], "dimensions": {"A": {"excludeMaximum": null, "excludeMinimum": null, "maximum": 0.0258, "minimum": 0.0243, "nominal": null }, "B": {"excludeMaximum": null, "excludeMinimum": null, "maximum": 0.0128, "minimum": 0.0123, "nominal": null }, "C": {"excludeMaximum": null, "excludeMinimum": null, "maximum": 0.011, "minimum": 0.0105, "nominal": null }, "D": {"excludeMaximum": null, "excludeMinimum": null, "maximum": 0.0092, "minimum": 0.0087, "nominal": null }, "E": {"excludeMaximum": null, "excludeMinimum": null, "maximum": 0.0183, "minimum": 0.0175, "nominal": null }, "F": {"excludeMaximum": null, "excludeMinimum": null, "maximum": 0.0075, "minimum": 0.007, "nominal": null } }, "family": "e", "familySubtype": null, "magneticCircuit": "open", "name": "E 25/13/11", "type": "standard" }, "type": "halfSet" } ], "manufacturerInfo": null, "name": "custom", "processedDescription": {"columns": [{"area": 0.000078, "coordinates": [0, 0, 0 ], "depth": 0.01075, "height": 0.0179, "minimumDepth": null, "minimumWidth": null, "shape": "rectangular", "type": "central", "width": 0.00725 }, {"area": 0.000039, "coordinates": [0.010738, 0, 0 ], "depth": 0.01075, "height": 0.0179, "minimumDepth": null, "minimumWidth": null, "shape": "rectangular", "type": "lateral", "width": 0.003575 }, {"area": 0.000039, "coordinates": [-0.010738, 0, 0 ], "depth": 0.01075, "height": 0.0179, "minimumDepth": null, "minimumWidth": null, "shape": "rectangular", "type": "lateral", "width": 0.003575 } ], "depth": 0.01075, "effectiveParameters": {"effectiveArea": 0.00007739519022938956, "effectiveLength": 0.05775787070464925, "effectiveVolume": 0.000004470181390430815, "minimumArea": 0.00007686249999999999 }, "height": 0.0251, "width": 0.02505, "windingWindows": [{"angle": null, "area": 0.00009531749999999999, "coordinates": [0.0036249999999999998, 0 ], "height": 0.0179, "radialHeight": null, "sectionsAlignment": null, "sectionsOrientation": null, "shape": null, "width": 0.005325 } ] } })"));
@@ -2851,7 +2872,8 @@ TEST_CASE("Test_Core_Losses_Nanoperm_8000", "[physical-model][core-losses][smoke
     auto calculatedMassCoreLosses = coreLosses.get_mass_losses().value();
 
     REQUIRE_THAT(magneticFluxDensity.get_processed().value().get_offset(), Catch::Matchers::WithinAbs(0, 0.0001));
-    REQUIRE_THAT(calculatedMassCoreLosses, Catch::Matchers::WithinAbs(869, 869 * 0.05));
+    // ABT #1491: 869 -> 217.29 W/kg (exactly 1/4): 0.3 T anchor read against the PEAK flux density.
+    REQUIRE_THAT(calculatedMassCoreLosses, Catch::Matchers::WithinAbs(217.29, 217.29 * 0.05));
 }
 
 TEST_CASE("Test_Core_Losses_Web_1", "[physical-model][core-losses][bug][smoke-test]") {

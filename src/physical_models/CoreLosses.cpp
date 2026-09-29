@@ -2763,7 +2763,11 @@ double CoreLossesProprietaryModel::get_core_mass_losses(CoreMaterial coreMateria
     double massLosses = -1;
 
     if (has_magnetec_mass_method(coreMaterial)) {
-        massLosses = 80 * pow(frequency / 100000, 1.8) * pow(magneticFluxDensityAcPeak * 2 / 0.3, 2);
+        // Anchored at 0.3 T PEAK / 100 kHz / sine, the point Magnetec's NANOPERM data sheet bounds at
+        // < 110 W/kg. The old 2*Bpk (peak-to-peak) against that peak anchor read every Nanoperm loss 4x
+        // high: 320 W/kg at the data sheet's own point (ABT #1491). The 80 W/kg constant and the 1.8 / 2
+        // exponents are not stated by any Magnetec document found.
+        massLosses = 80 * pow(frequency / 100000, 1.8) * pow(magneticFluxDensityAcPeak / 0.3, 2);
     }
     else {
         // -1 was an in-band sentinel that propagated as negative losses
@@ -3098,7 +3102,8 @@ double CoreLossesProprietaryModel::get_frequency_from_core_losses(Core core,
     if (!volumetricMethod && has_magnetec_mass_method(materialData)) {
         double mass = core.get_mass();
         double massLosses = coreLosses / mass;
-        frequency = pow(massLosses / 80 / pow(magneticFluxDensityAcPeak * 2 / 0.3, 2), 1.0 / 1.8) * 100000;
+        // Inverse of get_core_mass_losses: peak anchor (ABT #1491)
+        frequency = pow(massLosses / 80 / pow(magneticFluxDensityAcPeak / 0.3, 2), 1.0 / 1.8) * 100000;
     }
 
     if (frequency < 0) {
