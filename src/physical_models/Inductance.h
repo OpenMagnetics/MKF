@@ -28,17 +28,24 @@ namespace OpenMagnetics {
  * - Diagonal elements Lᵢᵢ: Self inductance of winding i (magnetizing + leakage)
  * - Off-diagonal elements Lᵢⱼ: Mutual inductance between windings i and j
  * 
- * The self and mutual inductances are derived from:
- * - Magnetizing inductance (Lₘ): Common flux linking all windings
- * - Leakage inductances (Lₗᵢⱼ): Flux that links only specific windings
- * 
- * For a two-winding transformer with turns N₁ and N₂:
- * - L₁₁ = Lₘ₁ + Lₗ₁₂ (self inductance of primary, referred to primary)
- * - L₂₂ = Lₘ₂ + Lₗ₂₁ (self inductance of secondary, referred to secondary)
- * - L₁₂ = L₂₁ = M = k·√(Lₘ₁·Lₘ₂) (mutual inductance)
- * 
- * Where Lₘ₁ and Lₘ₂ are the magnetizing inductances referred to each winding,
- * related by: Lₘ₂ = Lₘ₁·(N₂/N₁)²
+ * All of them come from one energy formulation. The flux of the magnetic splits into the
+ * core (magnetizing) flux, with permeance P_m, and the window (leakage) field, whose energy
+ * for the winding currents i is W = ½·iᵀΛi (LeakageInductance::calculate_leakage_inductance_matrix).
+ * The stored energy ½·iᵀLi is their sum, so
+ *
+ *   L_ij = N_i·N_j·P_m + Λ_ij          (Lm_i = N_i²·P_m, the magnetizing inductance of winding i)
+ *   k_ij = L_ij / √(L_ii·L_jj)
+ *
+ * and for ampere-turn balanced currents (i_j = −r·i_i, r = N_i/N_j) the magnetizing term
+ * cancels, leaving the pairwise leakage referred to winding i:
+ *
+ *   L_ii + r²·L_jj − 2r·L_ij = Λ_ii + r²·Λ_jj − 2r·Λ_ij
+ *
+ * (for a 1:1 common-mode choke: L_DM = L11 + L22 − 2·L12). calculate_self_inductance,
+ * calculate_mutual_inductance and calculate_coupling_coefficient read the entries of the one
+ * matrix calculate_inductance_matrix_values builds, so they cannot disagree with it. For
+ * windings on different columns the magnetizing term is the reluctance network's matrix
+ * instead of the rank-1 N_i·N_j·P_m (ABT #396).
  */
 class Inductance {
 private:
@@ -121,17 +128,28 @@ public:
 
 
     /**
+     * @brief Numeric inductance matrix L = M_mag + Λ (henries), windings in coil order.
+     *
+     * The single source of truth for every self inductance, mutual inductance and coupling
+     * coefficient this class reports; calculate_inductance_matrix is this matrix keyed by
+     * winding name.
+     */
+    std::vector<std::vector<double>> calculate_inductance_matrix_values(
+        Magnetic magnetic,
+        double frequency,
+        OperatingPoint* operatingPoint = nullptr);
+
+    /**
      * @brief Calculate the mutual inductance between two windings.
-     * 
-     * The mutual inductance M is derived from the magnetizing inductance:
-     *   M = k · √(Lₘ₁ · Lₘ₂)
-     * 
-     * For ideal transformers with perfect coupling (k=1):
-     *   M = Lₘ₁ · (N₂/N₁) = Lₘ₂ · (N₁/N₂)
-     * 
+     *
+     * The off-diagonal entry of the inductance matrix: the magnetizing mutual
+     * N_i·N_j·P_m = √(Lm_i·Lm_j) plus the mutual leakage Λ_ij of the window field, which is
+     * why it needs the frequency.
+     *
      * @param magnetic The magnetic component.
      * @param sourceIndex Index of the first winding.
      * @param destinationIndex Index of the second winding.
+     * @param frequency Frequency for the leakage (window field) calculation.
      * @param operatingPoint Optional operating point.
      * @return Mutual inductance value in Henries.
      */
@@ -139,14 +157,15 @@ public:
         Magnetic magnetic,
         size_t sourceIndex,
         size_t destinationIndex,
+        double frequency,
         OperatingPoint* operatingPoint = nullptr);
 
     /**
      * @brief Calculate the self inductance of a winding.
      * 
-     * Self inductance includes the magnetizing inductance contribution
-     * and the leakage inductance:
-     *   Lᵢᵢ = Lₘᵢ + Lₗᵢ
+     * The diagonal of the inductance matrix: the magnetizing inductance of the winding
+     * plus its self-leakage:
+     *   Lᵢᵢ = Lₘᵢ + Λᵢᵢ
      * 
      * @param magnetic The magnetic component.
      * @param windingIndex Index of the winding.
@@ -164,16 +183,17 @@ public:
      * @brief Calculate the coupling coefficient between two windings.
      * 
      * The coupling coefficient k is defined as:
-     *   k = M / √(L₁₁ · L₂₂)
-     * 
-     * Where k = 1 for perfect coupling and k < 1 for real transformers.
+     *   k = L₁₂ / √(L₁₁ · L₂₂)
+     * with all three entries taken from the same inductance matrix, so the mutual carries
+     * the mutual leakage Λ₁₂ as well as the magnetizing term. It is signed: leg-separated
+     * windings can couple negatively. |k| > 1 throws.
      * 
      * @param magnetic The magnetic component.
      * @param sourceIndex Index of the first winding.
      * @param destinationIndex Index of the second winding.
      * @param frequency Frequency for calculations.
      * @param operatingPoint Optional operating point.
-     * @return Coupling coefficient (dimensionless, 0 < k ≤ 1).
+     * @return Coupling coefficient (dimensionless, |k| ≤ 1).
      */
     double calculate_coupling_coefficient(
         Magnetic magnetic,
@@ -221,8 +241,8 @@ public:
      * whose windings may not all share the main column. Returns the per-column
      * reluctance network's magnetizing inductance matrix when any winding sits off the
      * main column, and nullopt when they all share it (in which case the rank-1
-     * sqrt(Lm_i*Lm_j)/turns-ratio closed form used by calculate_mutual_inductance,
-     * calculate_self_inductance and every other consumer -- including
+     * sqrt(Lm_i*Lm_j)/turns-ratio closed form used by calculate_inductance_matrix_values
+     * and every other consumer -- including
      * ExtendedCantilever::calculate_inductance_matrix, ABT #227.5 -- is already exact and
      * not worth paying the field solve for). Every consumer that assembles a coupling or
      * inductance matrix must call this rather than assuming rank-1 coupling, so a magnetic
@@ -245,6 +265,11 @@ private:
     MagnetizingInductanceOutput calculate_magnetizing_inductance(
         Magnetic magnetic,
         OperatingPoint* operatingPoint);
+
+    /**
+     * @brief Throw when a winding index is out of range for the magnetic.
+     */
+    static void check_winding_index(Magnetic& magnetic, size_t windingIndex);
 
     /**
      * @brief Get winding name from index for matrix keys.

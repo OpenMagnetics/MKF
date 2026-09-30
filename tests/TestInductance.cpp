@@ -197,18 +197,20 @@ TEST_CASE("Test mutual inductance from turns ratio", "[physical-model][inductanc
     auto magnetic = create_two_winding_magnetic("ETD 39", "3C97", numberTurns, numberParallels);
 
     Inductance inductance;
-    double M = inductance.calculate_mutual_inductance(magnetic, 0, 1);
+    double frequency = 100000;
+    double M = inductance.calculate_mutual_inductance(magnetic, 0, 1, frequency);
 
     // Get magnetizing inductance for primary
     MagnetizingInductance magnetizingModel("ZHANG");
     auto magnetizingOutput = magnetizingModel.calculate_inductance_from_number_turns_and_gapping(magnetic);
     double Lm_primary = magnetizingOutput.get_magnetizing_inductance().get_nominal().value();
 
-    // For ideal coupling, M = Lm_primary * (N2/N1)
+    // M = Lm_primary * (N2/N1) + Λ01: the magnetizing mutual plus the mutual leakage.
     double turnsRatio = double(numberTurns[1]) / double(numberTurns[0]);
-    double expectedM = Lm_primary * turnsRatio;
-
-    CHECK_THAT(M, WithinRel(expectedM, maximumError));
+    double mutualLeakage = LeakageInductance().calculate_leakage_inductance_matrix(magnetic, frequency)[0][1];
+    CHECK_THAT(M, WithinRel(Lm_primary * turnsRatio + mutualLeakage, 1e-9));
+    // On a gapped ETD 39 transformer the magnetizing term dominates.
+    CHECK_THAT(M, WithinRel(Lm_primary * turnsRatio, maximumError));
 
     settings.reset();
 }
@@ -579,7 +581,7 @@ TEST_CASE("Test mutual inductance throws for self-reference", "[physical-model][
     Inductance inductance;
 
     // Mutual inductance between winding 0 and itself should throw
-    CHECK_THROWS_AS(inductance.calculate_mutual_inductance(magnetic, 0, 0), std::invalid_argument);
+    CHECK_THROWS_AS(inductance.calculate_mutual_inductance(magnetic, 0, 0, 100000), std::invalid_argument);
 
     settings.reset();
 }
@@ -806,27 +808,30 @@ TEST_CASE("Test mutual inductance relationships for three windings", "[physical-
     Inductance inductance;
 
     // Get mutual inductances
-    double M01 = inductance.calculate_mutual_inductance(magnetic, 0, 1);
-    double M02 = inductance.calculate_mutual_inductance(magnetic, 0, 2);
-    double M12 = inductance.calculate_mutual_inductance(magnetic, 1, 2);
+    double frequency = 100000;
+    double M01 = inductance.calculate_mutual_inductance(magnetic, 0, 1, frequency);
+    double M02 = inductance.calculate_mutual_inductance(magnetic, 0, 2, frequency);
+    double M12 = inductance.calculate_mutual_inductance(magnetic, 1, 2, frequency);
+    // The mutual carries the mutual leakage Λ_ij on top of the magnetizing term.
+    auto leakageMatrix = LeakageInductance().calculate_leakage_inductance_matrix(magnetic, frequency);
 
     // Get magnetizing inductances referred to each winding
     double Lm0 = inductance.calculate_magnetizing_inductance_referred_to_winding(magnetic, 0);
     double Lm1 = inductance.calculate_magnetizing_inductance_referred_to_winding(magnetic, 1);
     double Lm2 = inductance.calculate_magnetizing_inductance_referred_to_winding(magnetic, 2);
 
-    // For ideal coupling: M_ij = sqrt(Lm_i * Lm_j)
-    double expected_M01 = std::sqrt(Lm0 * Lm1);
-    double expected_M02 = std::sqrt(Lm0 * Lm2);
-    double expected_M12 = std::sqrt(Lm1 * Lm2);
+    // M_ij = sqrt(Lm_i * Lm_j) + Λ_ij
+    double expected_M01 = std::sqrt(Lm0 * Lm1) + leakageMatrix[0][1];
+    double expected_M02 = std::sqrt(Lm0 * Lm2) + leakageMatrix[0][2];
+    double expected_M12 = std::sqrt(Lm1 * Lm2) + leakageMatrix[1][2];
 
-    CHECK_THAT(M01, WithinRel(expected_M01, 0.01));
-    CHECK_THAT(M02, WithinRel(expected_M02, 0.01));
-    CHECK_THAT(M12, WithinRel(expected_M12, 0.01));
+    CHECK_THAT(M01, WithinRel(expected_M01, 1e-9));
+    CHECK_THAT(M02, WithinRel(expected_M02, 1e-9));
+    CHECK_THAT(M12, WithinRel(expected_M12, 1e-9));
 
-    // Verify turns ratio relationship for mutual inductances
-    // M01/M02 = N1/N2 (since M_0i = Lm0 * Ni/N0)
-    double ratio_M01_M02 = M01 / M02;
+    // Verify turns ratio relationship for the magnetizing mutuals
+    // (M_0i − Λ_0i) / (M_0j − Λ_0j) = Ni/Nj  (since the magnetizing part is Lm0 * Ni/N0)
+    double ratio_M01_M02 = (M01 - leakageMatrix[0][1]) / (M02 - leakageMatrix[0][2]);
     double expected_ratio = double(numberTurns[1]) / double(numberTurns[2]);
     CHECK_THAT(ratio_M01_M02, WithinRel(expected_ratio, 0.01));
 
@@ -1038,7 +1043,8 @@ TEST_CASE("Test_Coupling_Coefficient_Agrees_With_Inductance_Matrix", "[physical-
 
     // The sign the network reports is meaningful and must survive: the old clamp to [0, 1] turned a
     // legitimately negative coupling into a flat zero, i.e. "these windings do not couple".
-    double mutualFromPair = inductance.calculate_mutual_inductance(magnetic, 0, 1);
+    double mutualFromPair = inductance.calculate_mutual_inductance(magnetic, 0, 1, frequency);
+    CHECK_THAT(mutualFromPair, WithinRel(mutualFromMatrix, 1e-12));
     UNSCOPED_INFO("mutual inductance " << mutualFromPair);
     CHECK(std::isfinite(mutualFromPair));
     CHECK(std::abs(mutualFromPair) > 0);
@@ -1057,12 +1063,13 @@ TEST_CASE("Test_Coupling_Coefficient_Unchanged_For_Main_Column_Windings", "[phys
     auto magnetic = create_two_winding_magnetic("ETD 39", "3C97", numberTurns, numberParallels);
 
     Inductance inductance;
-    double mutualInductance = inductance.calculate_mutual_inductance(magnetic, 0, 1);
+    double mutualInductance = inductance.calculate_mutual_inductance(magnetic, 0, 1, 100000);
     MagnetizingInductance magnetizingModel("ZHANG");
     double magnetizingPrimary = magnetizingModel.calculate_inductance_from_number_turns_and_gapping(magnetic)
                                     .get_magnetizing_inductance().get_nominal().value();
     double turnsRatio = double(numberTurns[1]) / double(numberTurns[0]);
-    CHECK_THAT(mutualInductance, WithinRel(magnetizingPrimary * turnsRatio, maximumError));
+    double mutualLeakage = LeakageInductance().calculate_leakage_inductance_matrix(magnetic, 100000)[0][1];
+    CHECK_THAT(mutualInductance, WithinRel(magnetizingPrimary * turnsRatio + mutualLeakage, 1e-9));
 
     double coupling = inductance.calculate_coupling_coefficient(magnetic, 0, 1, 100000);
     UNSCOPED_INFO("single-window coupling " << coupling);

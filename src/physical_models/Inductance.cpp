@@ -84,32 +84,43 @@ std::optional<std::vector<std::vector<double>>> Inductance::magnetizing_coupling
     return magneticCircuit.calculate_magnetizing_inductance_matrix(magnetic);
 }
 
+void Inductance::check_winding_index(Magnetic& magnetic, size_t windingIndex) {
+    size_t numWindings = magnetic.get_coil().get_functional_description().size();
+    if (windingIndex >= numWindings) {
+        throw InvalidInputException(ErrorCode::COIL_INVALID_TURNS,
+            "Winding index " + std::to_string(windingIndex) + " is out of range: the magnetic has " +
+            std::to_string(numWindings) + " windings");
+    }
+}
+
+// Self inductance, mutual inductance and coupling coefficient are all read from ONE inductance
+// matrix, L = M_mag + Λ (see calculate_inductance_matrix_values). They used to be assembled
+// separately: L_ii = Lm_i + Λ_ii, but M = sqrt(Lm_i·Lm_j) with the mutual leakage Λ_ij left
+// out. The energy of the window field is W = ½·iᵀΛi, so Λ_ij is as much a part of the flux
+// linkage of winding j by the current of winding i as the magnetizing term is; dropping it
+// makes k disagree with the matrix and breaks the loop identity
+//   L_ii + r²·L_jj − 2r·L_ij = Λ_ii + r²·Λ_jj − 2r·Λ_ij = pairwise leakage (r = N_i/N_j),
+// because the magnetizing part cancels exactly for ampere-turn balanced currents. On a
+// sectored toroidal common-mode choke that was k = 0.99596 from the coupling coefficient
+// against 0.99745 from the matrix.
 double Inductance::calculate_mutual_inductance(
     Magnetic magnetic,
     size_t sourceIndex,
     size_t destinationIndex,
+    double frequency,
     OperatingPoint* operatingPoint) {
-    
+
     if (sourceIndex == destinationIndex) {
         // Self inductance, not mutual
         throw std::invalid_argument("Cannot calculate mutual inductance between a winding and itself");
     }
+    check_winding_index(magnetic, sourceIndex);
+    check_winding_index(magnetic, destinationIndex);
 
-    // Leg-separated windings do not couple ideally: ask the reluctance network, the same
-    // source calculate_inductance_matrix uses (ABT #396). The sign is meaningful and is
-    // kept — the network returns a negative mutual in the common branch orientation, where
-    // flux up one leg comes down the other.
-    auto magnetizingOutput = calculate_magnetizing_inductance(magnetic, operatingPoint);
-    if (auto networkMatrix = magnetizing_coupling_matrix(magnetic, magnetizingOutput)) {
-        return (*networkMatrix)[sourceIndex][destinationIndex];
-    }
-
-    // All windings share the main column, so the closed form is exact: with a single
-    // magnetizing flux linking every winding, M = sqrt(Lm_source * Lm_dest), equivalently
-    // Lm_primary * (N_dest / N_source) for a two-winding transformer.
-    double Lm_source = calculate_magnetizing_inductance_referred_to_winding(magnetic, sourceIndex, operatingPoint);
-    double Lm_dest = calculate_magnetizing_inductance_referred_to_winding(magnetic, destinationIndex, operatingPoint);
-    return std::sqrt(Lm_source * Lm_dest);
+    // The sign is meaningful and is kept: for leg-separated windings the reluctance network
+    // returns a negative mutual in the common branch orientation (ABT #396).
+    auto inductanceMatrix = calculate_inductance_matrix_values(magnetic, frequency, operatingPoint);
+    return inductanceMatrix[sourceIndex][destinationIndex];
 }
 
 double Inductance::calculate_self_inductance(
@@ -117,41 +128,13 @@ double Inductance::calculate_self_inductance(
     size_t windingIndex,
     double frequency,
     OperatingPoint* operatingPoint) {
-    
-    // Self inductance L_ii = Lm_i + Ll_i
-    // Where Ll_i is the total leakage inductance as seen from winding i
-    
-    // ABT #396: the magnetizing part of L_ii has to come from the same place the mutual
-    // does, or the coupling coefficient built from them is a ratio of two different
-    // models. For leg-separated windings the driving-point magnetizing inductance of
-    // winding i is the network's diagonal — its own column in series with the parallel
-    // combination of the others — not the rank-1 value referred from the primary, which
-    // assumes every winding sees the main column's flux path.
-    auto magnetizingOutput = calculate_magnetizing_inductance(magnetic, operatingPoint);
-    double Lm_i;
-    if (auto networkMatrix = magnetizing_coupling_matrix(magnetic, magnetizingOutput)) {
-        Lm_i = (*networkMatrix)[windingIndex][windingIndex];
-    }
-    else {
-        Lm_i = calculate_magnetizing_inductance_referred_to_winding(magnetic, windingIndex, operatingPoint);
-    }
 
-    // Self-leakage of winding i is the diagonal of the energy-method leakage
-    // matrix (Λ_ii = 4·W(e_i)), the single source of leakage shared with
-    // calculate_inductance_matrix. The previous code summed "the maximum
-    // leakage across the other windings" but an unconditional break made the
-    // loop dead (only winding 0/1 ever used), and it added the full
-    // short-circuit pair leakage on the diagonal — which, combined with the
-    // ideal-k mutual term, double-counted leakage (ABT #104).
-    size_t numWindings = magnetic.get_coil().get_functional_description().size();
-    double selfLeakage = 0.0;
-    if (numWindings > 1) {
-        LeakageInductance leakageModel;
-        auto leakageMatrix = leakageModel.calculate_leakage_inductance_matrix(magnetic, frequency);
-        selfLeakage = leakageMatrix[windingIndex][windingIndex];
-    }
-
-    return Lm_i + selfLeakage;
+    // L_ii = Lm_i + Λ_ii: the diagonal of the same matrix the mutual and the coupling come
+    // from. Lm_i is the network's driving-point value for leg-separated windings (ABT #396)
+    // and Λ_ii the energy-method self-leakage (ABT #104).
+    check_winding_index(magnetic, windingIndex);
+    auto inductanceMatrix = calculate_inductance_matrix_values(magnetic, frequency, operatingPoint);
+    return inductanceMatrix[windingIndex][windingIndex];
 }
 
 double Inductance::calculate_coupling_coefficient(
@@ -160,21 +143,25 @@ double Inductance::calculate_coupling_coefficient(
     size_t destinationIndex,
     double frequency,
     OperatingPoint* operatingPoint) {
-    
+
+    check_winding_index(magnetic, sourceIndex);
+    check_winding_index(magnetic, destinationIndex);
     if (sourceIndex == destinationIndex) {
         return 1.0; // Perfect coupling with itself
     }
-    
-    double L11 = calculate_self_inductance(magnetic, sourceIndex, frequency, operatingPoint);
-    double L22 = calculate_self_inductance(magnetic, destinationIndex, frequency, operatingPoint);
-    double M = calculate_mutual_inductance(magnetic, sourceIndex, destinationIndex, operatingPoint);
-    
-    // k = M / sqrt(L11 * L22)
-    double denominator = std::sqrt(L11 * L22);
-    if (denominator < 1e-15) {
-        return 0.0;
+
+    auto inductanceMatrix = calculate_inductance_matrix_values(magnetic, frequency, operatingPoint);
+    double L11 = inductanceMatrix[sourceIndex][sourceIndex];
+    double L22 = inductanceMatrix[destinationIndex][destinationIndex];
+    double M = inductanceMatrix[sourceIndex][destinationIndex];
+
+    if (!(L11 > 0) || !(L22 > 0)) {
+        throw InvalidInputException(ErrorCode::CALCULATION_INVALID_RESULT,
+            "Coupling coefficient between windings " + std::to_string(sourceIndex) + " and " +
+            std::to_string(destinationIndex) + " is undefined: non-positive self inductance (L11 = " +
+            std::to_string(L11) + " H, L22 = " + std::to_string(L22) + " H)");
     }
-    
+    double denominator = std::sqrt(L11 * L22);
     double k = M / denominator;
 
     // ABT #396: the clamp that used to sit here, min(1, max(0, k)), silently destroyed two
@@ -182,8 +169,8 @@ double Inductance::calculate_coupling_coefficient(
     // windings — flux up one leg comes down the other, which the reluctance network reports
     // with a sign — into a flat 0, i.e. "these windings do not couple at all". And it
     // capped |k| > 1, which is not a value to be tidied away but a contradiction: a mutual
-    // inductance exceeding sqrt(L11*L22) violates the energy bound, so it means one of the
-    // three inputs is wrong. Report the sign, and refuse the impossible.
+    // inductance exceeding sqrt(L11*L22) violates the energy bound, so it means the
+    // inductance matrix is not positive definite. Report the sign, and refuse the impossible.
     constexpr double couplingBoundTolerance = 1e-6;
     if (std::abs(k) > 1 + couplingBoundTolerance) {
         throw InvalidInputException(ErrorCode::CALCULATION_INVALID_RESULT,
@@ -244,7 +231,7 @@ ScalarMatrixAtFrequency Inductance::calculate_leakage_inductance_matrix(
     return result;
 }
 
-ScalarMatrixAtFrequency Inductance::calculate_inductance_matrix(
+std::vector<std::vector<double>> Inductance::calculate_inductance_matrix_values(
     Magnetic magnetic,
     double frequency,
     OperatingPoint* operatingPoint) {
@@ -266,11 +253,6 @@ ScalarMatrixAtFrequency Inductance::calculate_inductance_matrix(
             "(effective parameters/shape unresolved). Run magnetic autocomplete / process the core first.");
     }
 
-    ScalarMatrixAtFrequency result;
-    result.set_frequency(frequency);
-    
-    std::map<std::string, std::map<std::string, DimensionWithTolerance>> magnitude;
-    
     // Calculate magnetizing inductance (referred to primary)
     auto magnetizingOutput = calculate_magnetizing_inductance(magnetic, operatingPoint);
     double Lm_primary = magnetizingOutput.get_magnetizing_inductance().get_nominal().value();
@@ -315,34 +297,44 @@ ScalarMatrixAtFrequency Inductance::calculate_inductance_matrix(
     }
 
     // Build the inductance matrix (symmetric, so compute upper triangular + diagonal)
+    std::vector<std::vector<double>> inductanceMatrix(numWindings, std::vector<double>(numWindings, 0.0));
     for (size_t i = 0; i < numWindings; ++i) {
-        std::string windingName_i = get_winding_name(magnetic, i);
         double turns_i = functionalDescription[i].get_number_turns();
-
         for (size_t j = i; j < numWindings; ++j) {
-            std::string windingName_j = get_winding_name(magnetic, j);
             double turns_j = functionalDescription[j].get_number_turns();
 
             double M_mag_ij = multiColumnPlacement ? networkMatrix[i][j]
                                                    : Lm_primary * (turns_i / N_primary) * (turns_j / N_primary);
-            double leakage_ij = (i < leakageMatrix.size() && j < leakageMatrix[i].size())
-                                    ? leakageMatrix[i][j]
-                                    : 0.0;
+            double leakage_ij = numWindings > 1 ? leakageMatrix[i][j] : 0.0;
             if (multiColumnPlacement && columnIndexPerWinding[i] != columnIndexPerWinding[j]) {
                 leakage_ij = 0.0;
             }
-
-            DimensionWithTolerance inductanceValue;
-            inductanceValue.set_nominal(M_mag_ij + leakage_ij);
-
-            magnitude[windingName_i][windingName_j] = inductanceValue;
-            if (i != j) {
-                // Symmetric: L_ji = L_ij
-                magnitude[windingName_j][windingName_i] = inductanceValue;
-            }
+            inductanceMatrix[i][j] = M_mag_ij + leakage_ij;
+            inductanceMatrix[j][i] = inductanceMatrix[i][j];
         }
     }
+    return inductanceMatrix;
+}
 
+ScalarMatrixAtFrequency Inductance::calculate_inductance_matrix(
+    Magnetic magnetic,
+    double frequency,
+    OperatingPoint* operatingPoint) {
+
+    auto inductanceMatrix = calculate_inductance_matrix_values(magnetic, frequency, operatingPoint);
+    size_t numWindings = inductanceMatrix.size();
+
+    ScalarMatrixAtFrequency result;
+    result.set_frequency(frequency);
+    std::map<std::string, std::map<std::string, DimensionWithTolerance>> magnitude;
+    for (size_t i = 0; i < numWindings; ++i) {
+        std::string windingName_i = get_winding_name(magnetic, i);
+        for (size_t j = 0; j < numWindings; ++j) {
+            DimensionWithTolerance inductanceValue;
+            inductanceValue.set_nominal(inductanceMatrix[i][j]);
+            magnitude[windingName_i][get_winding_name(magnetic, j)] = inductanceValue;
+        }
+    }
     result.set_magnitude(magnitude);
     return result;
 }

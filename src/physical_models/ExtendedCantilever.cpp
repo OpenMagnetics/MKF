@@ -78,9 +78,9 @@ std::vector<std::vector<double>> assemble_inductance_matrix(
 }
 
 // Rank-1 ideal magnetizing coupling: M_jk = L11 · n_j · n_k. Exact when every winding
-// shares the main column (a single magnetizing flux links all of them); ABT #227.5's
-// build_magnetizing_matrix substitutes the reluctance network's real matrix instead
-// when they do not.
+// shares the main column (a single magnetizing flux links all of them). Only the pure-math
+// build_from_leakage_matrix uses it; ExtendedCantilever::calculate takes the matrix from
+// Inductance, which substitutes the reluctance network's matrix when they do not (ABT #227.5).
 std::vector<std::vector<double>> rank1_magnetizing_matrix(
     double magnetizingInductance, const std::vector<double>& turnsRatios) {
     size_t numberWindings = turnsRatios.size();
@@ -91,24 +91,6 @@ std::vector<std::vector<double>> rank1_magnetizing_matrix(
         }
     }
     return magnetizingMatrix;
-}
-
-// ABT #227.5: a winding on a lateral column does not couple as a rank-1 ideal
-// transformer -- it only links the share of magnetizing flux that returns through ITS
-// leg (ABT #396). Ask the SAME reluctance-network coupling decision every other
-// consumer uses (Inductance::magnetizing_coupling_matrix) instead of assuming rank-1
-// coupling independently here, or this model (and every simulator export built from
-// it: LTspice, NL5, Simba) would report a different coupling than
-// Inductance::calculate_mutual_inductance for the same magnetic.
-std::vector<std::vector<double>> build_magnetizing_matrix(
-    Magnetic& magnetic,
-    const MagnetizingInductanceOutput& magnetizingOutput,
-    double magnetizingInductance,
-    const std::vector<double>& turnsRatios) {
-    if (auto networkMatrix = Inductance::magnetizing_coupling_matrix(magnetic, magnetizingOutput)) {
-        return *networkMatrix;
-    }
-    return rank1_magnetizing_matrix(magnetizingInductance, turnsRatios);
 }
 
 // Effective leakage inductances from the inverse of the assembled inductance matrix
@@ -205,12 +187,6 @@ ExtendedCantileverModel ExtendedCantilever::calculate(Magnetic magnetic, double 
             "Cannot build extended-cantilever model: no windings defined");
     }
 
-    auto leakageMatrix = LeakageInductance().calculate_leakage_inductance_matrix(magnetic, frequency);
-    if (leakageMatrix.size() != numberWindings) {
-        throw InvalidInputException(ErrorCode::COIL_INVALID_TURNS,
-            "Cannot build extended-cantilever model: leakage matrix size does not match number of windings");
-    }
-
     auto magnetizingOutput = MagnetizingInductance().calculate_inductance_from_number_turns_and_gapping(magnetic);
     double magnetizingInductance = magnetizingOutput.get_magnetizing_inductance().get_nominal().value();
     if (magnetizingInductance <= 0.0) {
@@ -225,38 +201,17 @@ ExtendedCantileverModel ExtendedCantilever::calculate(Magnetic magnetic, double 
         turnsRatios[windingIndex] = functionalDescription[windingIndex].get_number_turns() / referenceTurns;
     }
 
-    // ABT #227.5: rank-1 coupling only when every winding shares the main column.
-    auto magnetizingMatrix = build_magnetizing_matrix(magnetic, magnetizingOutput, magnetizingInductance, turnsRatios);
-    auto inductanceMatrix = assemble_inductance_matrix(leakageMatrix, magnetizingMatrix);
+    // The inductance matrix is Inductance's, the one every other consumer reads, so the
+    // cantilever model cannot report a different coupling than the coupling coefficient or the
+    // inductance matrix for the same magnetic (ABT #227.5 / #396 for leg-separated windings).
+    auto inductanceMatrix = Inductance().calculate_inductance_matrix_values(magnetic, frequency);
     return build_from_inductance_matrix(inductanceMatrix, magnetizingInductance, turnsRatios);
 }
 
 std::vector<std::vector<double>> ExtendedCantilever::calculate_inductance_matrix(Magnetic magnetic, double frequency) {
-    auto& functionalDescription = magnetic.get_coil().get_functional_description();
-    size_t numberWindings = functionalDescription.size();
-    if (numberWindings == 0) {
-        throw InvalidInputException(ErrorCode::COIL_INVALID_TURNS,
-            "Cannot build inductance matrix: no windings defined");
-    }
-
-    auto leakageMatrix = LeakageInductance().calculate_leakage_inductance_matrix(magnetic, frequency);
-    if (leakageMatrix.size() != numberWindings) {
-        throw InvalidInputException(ErrorCode::COIL_INVALID_TURNS,
-            "Cannot build extended-cantilever model: leakage matrix size does not match number of windings");
-    }
-
-    auto magnetizingOutput = MagnetizingInductance().calculate_inductance_from_number_turns_and_gapping(magnetic);
-    double magnetizingInductance = magnetizingOutput.get_magnetizing_inductance().get_nominal().value();
-
-    double referenceTurns = functionalDescription[0].get_number_turns();
-    std::vector<double> turnsRatios(numberWindings);
-    for (size_t windingIndex = 0; windingIndex < numberWindings; ++windingIndex) {
-        turnsRatios[windingIndex] = functionalDescription[windingIndex].get_number_turns() / referenceTurns;
-    }
-
-    // ABT #227.5: rank-1 coupling only when every winding shares the main column.
-    auto magnetizingMatrix = build_magnetizing_matrix(magnetic, magnetizingOutput, magnetizingInductance, turnsRatios);
-    return assemble_inductance_matrix(leakageMatrix, magnetizingMatrix);
+    // One source of truth: the simulator exporters (LTspice, ngspice, NL5, Simba) read their
+    // coupling from here, so it must be the matrix Inductance reports (L = M_mag + Λ).
+    return Inductance().calculate_inductance_matrix_values(magnetic, frequency);
 }
 
 } // namespace OpenMagnetics

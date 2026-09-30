@@ -132,13 +132,14 @@ std::string CircuitSimulatorExporterNgspiceModel::export_magnetic_as_subcircuit(
     // self-consistent nor physical. Instead build the full inductance matrix L = M + Λ once
     // (Erickson/Maksimovic extended-cantilever foundation); it is positive-definite, so each
     // self-inductance L_ii and coupling k_ij = L_ij/sqrt(L_ii·L_jj) is consistent and |k_ij| < 1
-    // with no cap. The 2-winding path is left on its validated formula.
+    // with no cap. Two windings use the same matrix (one source of truth with
+    // Inductance::calculate_coupling_coefficient), emitted as a single K statement below.
     std::vector<std::vector<double>> inductanceMatrix;
-    if (numWindings >= 3) {
+    if (numWindings >= 2) {
         inductanceMatrix = ExtendedCantilever::calculate_inductance_matrix(magnetic, Defaults().measurementFrequency);
     }
     auto magnetizingInductorValue = [&](size_t windingIdx, const std::string& is) -> std::string {
-        if (numWindings >= 3) {
+        if (numWindings >= 2) {
             return to_string(inductanceMatrix[windingIdx][windingIdx], 12);  // full self-inductance L_ii
         }
         return "NumberTurns_" + is + "**2*Permeance";
@@ -178,10 +179,23 @@ std::string CircuitSimulatorExporterNgspiceModel::export_magnetic_as_subcircuit(
             if (leakageInductance < 0 || leakageInductance >= magnetizingInductance) {
                 throw std::runtime_error("Unphysical leakage inductance (" + std::to_string(leakageInductance) + " H vs Lmag " + std::to_string(magnetizingInductance) + " H) for winding " + is);
             }
+            // Coupling to winding 1 from the same inductance matrix the inductors are emitted
+            // from (L = M + Λ, the matrix Inductance::calculate_coupling_coefficient reads):
+            // k = L_1i/sqrt(L_11·L_ii). It used to be sqrt((Lm − Llk)/Lm) on inductors of Lm,
+            // which reproduces the short-circuit leakage but drops the self-leakage Λ_ii from
+            // the open-circuit inductances and the mutual leakage from the coupling.
+            double selfPrimary = inductanceMatrix[0][0];
+            double selfThis = inductanceMatrix[index][index];
+            if (!(selfPrimary > 0) || !(selfThis > 0)) {
+                throw std::runtime_error("Non-positive self-inductance building coupling for windings 1-" + is);
+            }
+            double matrixCoupling = inductanceMatrix[0][index] / std::sqrt(selfPrimary * selfThis);
+            if (std::abs(matrixCoupling) >= 1.0) {
+                throw std::runtime_error("Inconsistent coupling coefficient (|k|=" + std::to_string(std::abs(matrixCoupling)) + " >= 1) for windings 1-" + is + "; inductance matrix is not positive-definite");
+            }
             // Clamp below 1: a coupling that rounds/prints as exactly 1 makes the SPICE
-            // coupling matrix singular (ngspice already clamps in the multi-winding path;
-            // the param emission and LTspice did not).
-            double couplingCoefficient = std::min(0.999999, sqrt((magnetizingInductance - leakageInductance) / magnetizingInductance));
+            // coupling matrix singular.
+            double couplingCoefficient = std::min(0.999999, matrixCoupling);
             couplingCoeffs.push_back(couplingCoefficient);
             parametersString += ".param Llk_" + is + "_Value=" + to_string(leakageInductance, 15) + "\n";
             parametersString += ".param CouplingCoefficient_1" + is + "_Value=" + to_string(couplingCoefficient, 12) + "\n";
@@ -271,13 +285,13 @@ std::string CircuitSimulatorExporterNgspiceModel::export_magnetic_as_subcircuit(
     // Each K statement gets a unique name (K12, K13, K23, etc.)
     // Use per-pair leakage inductance calculation for accurate coupling coefficients
     if (numWindings == 2) {
-        // Simple 2-winding case - use the coupling computed from the measured leakage above.
+        // Simple 2-winding case - use the coupling computed from the inductance matrix above.
         // Earlier this was hard-capped at 0.98 "for stability", which injected ~2% ARTIFICIAL
         // leakage: for a low-leakage transformer the real K is ~0.9998, and forcing it to 0.98
         // adds a large series leakage reactance that strangles power transfer (AHB vout capped
         // ~3 V instead of 12 V; PSFB/PSHB decks transferred ~0 power — abt #56/#61). ngspice only
         // needs K strictly below 1 (k=1.0 is a singular coupling matrix), so clamp just under 1.
-        double k12 = couplingCoeffs.size() > 0 ? std::min(0.999999, couplingCoeffs[0]) : 0.98;
+        double k12 = std::min(0.999999, couplingCoeffs.at(0));
         circuitString += "K Lmag_1 Lmag_2 " + std::to_string(k12) + "\n";
     } else if (numWindings >= 3) {
         // Consistent coupling from the full inductance matrix L = M + Λ (positive-definite):
