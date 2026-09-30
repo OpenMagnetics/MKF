@@ -145,6 +145,14 @@ class MagneticAdviser{
         /// rejections here lets get_scorings() force them to the worst normalized
         /// value instead, which works for any invert/log configuration (ABT #801).
         std::map<MagneticFilters, std::set<std::string>> _failedScorings;
+        /// @brief Catalogue parts whose core losses cannot be evaluated, reference -> reason.
+        ///
+        /// A part whose core material has no core-loss model is not dropped and does not abort the
+        /// search: the loss filters do not apply to it (MagneticFilterCoreLossesBased), it is ranked
+        /// on the filters that do, and it is listed here with the reason
+        /// (MagneticFilter::core_losses_not_evaluable_reason) so callers can show that its losses
+        /// were not judged. Filled by the catalogue get_advised_magnetic, cleared at its start.
+        std::map<std::string, std::string> _lossesNotEvaluable;
         /// @brief Default filter flow for custom magnetic design.
         /// COST and LOSSES use log normalization (spans orders of magnitude).
         /// DIMENSIONS uses linear normalization (intuitive volume comparison).
@@ -290,6 +298,14 @@ class MagneticAdviser{
          * @return Map of reference -> (filter -> normalized_score).
          */
         std::map<std::string, std::map<MagneticFilters, double>> get_scorings();
+
+        /**
+         * @brief Catalogue parts of the last catalogue run whose core losses could not be evaluated.
+         * @return Map of reference -> reason ("core material 'X' carries no core-loss data ...").
+         *         A listed part was ranked without any loss-based filter and returned without
+         *         simulated outputs.
+         */
+        const std::map<std::string, std::string>& get_losses_not_evaluable() const { return _lossesNotEvaluable; }
 
         /**
          * @brief Design magnetics from a converter topology using ngspice simulation.

@@ -1096,6 +1096,7 @@ std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic(std::v
     // can produce different rankings between runs.
     clear_scoring();
     _failedScorings.clear();  // stale rejections would mis-rank the next run (ABT #801)
+    _lossesNotEvaluable.clear();
 
     load_filter_flow(filterFlow, catalogueMagneticsWithInputs[0].get_inputs());
     std::vector<MagneticFilterOperation> strictlyRequiredFilterFlow;
@@ -1138,6 +1139,13 @@ std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic(std::v
         // would throw on it, and 8 identical throws in a row -- a catalogue carries many parts of one
         // material -- abort the whole run. This gate is always hard, whatever `strict` says, and scores
         // nothing.
+        // A part whose core material has no core-loss model at all is neither dropped nor allowed to
+        // abort the run: every loss-based filter is not applicable to it (MagneticFilterCoreLossesBased),
+        // it is ranked on the others, and it is flagged with the reason for the caller to show.
+        if (auto reason = MagneticFilter::core_losses_not_evaluable_reason(&magnetic)) {
+            _lossesNotEvaluable[magnetic.get_reference()] = reason.value();
+            logEntry("MagneticAdviser: " + magnetic.get_reference() + ": losses not evaluable: " + reason.value(), "MagneticAdviser", 2);
+        }
         if (_lossModelFrequencySpanFilter.applies_to(&magnetic)) {
             auto [inSpan, spanScoring] = _lossModelFrequencySpanFilter.evaluate_magnetic(&magnetic, &inputs);
             if (!inSpan) {
@@ -1310,6 +1318,12 @@ std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic(std::v
                 // ranked, without simulated outputs -- dropping it here would silently remove
                 // a part every filter just accepted.
                 if (!(mas.get_magnetic().has_core() && mas.get_magnetic().has_coil())) {
+                    masMagneticsWithScoringSimulated.push_back({mas, scoring});
+                    continue;
+                }
+                // Nor can a part whose core losses are not evaluable be simulated (the simulation
+                // computes them): it is returned as ranked, and get_losses_not_evaluable() says why.
+                if (_lossesNotEvaluable.contains(mas.get_magnetic().get_reference())) {
                     masMagneticsWithScoringSimulated.push_back({mas, scoring});
                     continue;
                 }

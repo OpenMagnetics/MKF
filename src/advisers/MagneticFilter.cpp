@@ -159,13 +159,18 @@ std::shared_ptr<MagneticFilter> MagneticFilter::factory(MagneticFilters filterNa
     }
 }
 
-
-
-
-
-
-
-
+std::optional<std::string> MagneticFilter::core_losses_not_evaluable_reason(Magnetic* magnetic) {
+    if (!magnetic->has_core()) {
+        return std::nullopt;
+    }
+    auto material = magnetic->get_core().resolve_material();
+    if (!CoreLossesModel::get_methods(material).empty()) {
+        return std::nullopt;
+    }
+    return "core material '" + material.get_name() +
+           "' carries no core-loss data any model can evaluate (no Steinmetz, Roshen, proprietary or loss-factor "
+           "method in its volumetricLosses, and no massLosses)";
+}
 
 bool MagneticFilterLossModelFrequencySpan::is_material_evaluable(const CoreMaterial& material, const Inputs& inputs,
                                                                  std::optional<CoreLossesModels> model) {

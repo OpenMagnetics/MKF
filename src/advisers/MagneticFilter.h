@@ -39,6 +39,24 @@ class MagneticFilter {
         // filter -- never a made-up one -- and ranks the part on the filters that do apply to it.
         // Filters that can read their answer from the datasheet override this.
         virtual bool applies_to(Magnetic* magnetic) const { return magnetic->has_core() && magnetic->has_coil(); }
+
+        // Why the core losses of `magnetic` cannot be evaluated at all, or nullopt when they can: its
+        // core material carries no core-loss data any model can run (e.g. `volumetricLosses: {}`).
+        // Such a part is outside what every filter built on core losses can say -- they do not apply
+        // to it (MagneticFilterCoreLossesBased) -- and the catalogue adviser flags it with this
+        // reason instead of aborting the search on it or dropping it. Nullopt for a part without a
+        // core: that is the datasheet-only case, which applies_to already answers.
+        static std::optional<std::string> core_losses_not_evaluable_reason(Magnetic* magnetic);
+};
+
+// A filter whose verdict is built on the core losses. It applies to what MagneticFilter does, and
+// only when the core material has a core-loss model: for a part whose material has none it records
+// no score (never a stand-in loss), and the part is ranked on the filters that do apply.
+class MagneticFilterCoreLossesBased : public MagneticFilter {
+    public:
+        bool applies_to(Magnetic* magnetic) const override {
+            return MagneticFilter::applies_to(magnetic) && !core_losses_not_evaluable_reason(magnetic);
+        }
 };
 
 class MagneticFilterAreaProduct : public MagneticFilter {
@@ -93,7 +111,7 @@ class MagneticFilterEstimatedCost : public MagneticFilter {
         std::pair<bool, double> evaluate_magnetic(Magnetic* magnetic, Inputs* inputs, std::vector<Outputs>* outputs = nullptr);
 };
 
-class MagneticFilterCoreAndDcLosses : public MagneticFilter {
+class MagneticFilterCoreAndDcLosses : public MagneticFilterCoreLossesBased {
     private:
         MagnetizingInductance _magnetizingInductance;
         WindingOhmicLosses _windingOhmicLosses;
@@ -109,7 +127,7 @@ class MagneticFilterCoreAndDcLosses : public MagneticFilter {
         std::pair<bool, double> evaluate_magnetic(Magnetic* magnetic, Inputs* inputs, std::vector<Outputs>* outputs = nullptr);
 };
 
-class MagneticFilterCoreDcAndSkinLosses : public MagneticFilter {
+class MagneticFilterCoreDcAndSkinLosses : public MagneticFilterCoreLossesBased {
     private:
         MagnetizingInductance _magnetizingInductance;
         WindingOhmicLosses _windingOhmicLosses;
@@ -126,7 +144,7 @@ class MagneticFilterCoreDcAndSkinLosses : public MagneticFilter {
         std::pair<bool, double> evaluate_magnetic(Magnetic* magnetic, Inputs* inputs, std::vector<Outputs>* outputs = nullptr);
 };
 
-class MagneticFilterLosses : public MagneticFilter {
+class MagneticFilterLosses : public MagneticFilterCoreLossesBased {
     private:
         std::map<std::string, std::string> _models;
         MagneticSimulator _magneticSimulator;
@@ -136,7 +154,7 @@ class MagneticFilterLosses : public MagneticFilter {
         std::pair<bool, double> evaluate_magnetic(Magnetic* magnetic, Inputs* inputs, std::vector<Outputs>* outputs = nullptr);
 };
 
-class MagneticFilterLossesNoProximity : public MagneticFilter {
+class MagneticFilterLossesNoProximity : public MagneticFilterCoreLossesBased {
     private:
         std::map<std::string, std::string> _models;
         WindingOhmicLosses _windingOhmicLosses;
@@ -308,8 +326,11 @@ class MagneticFilterLossModelFrequencySpan : public MagneticFilter {
     public:
         MagneticFilterLossModelFrequencySpan() {};
         std::pair<bool, double> evaluate_magnetic(Magnetic* magnetic, Inputs* inputs, std::vector<Outputs>* outputs = nullptr);
-        // Needs only the core's material, so it judges parts without a coil too.
-        bool applies_to(Magnetic* magnetic) const override { return magnetic->has_core(); }
+        // Needs only the core's material, so it judges parts without a coil too. A material with no
+        // core-loss model at all has no span to judge: the loss filters do not apply to it
+        // (core_losses_not_evaluable_reason) and the catalogue adviser flags the part, rather than
+        // this gate dropping it.
+        bool applies_to(Magnetic* magnetic) const override { return magnetic->has_core() && !core_losses_not_evaluable_reason(magnetic); }
         // The same verdict for a bare material. `model` is the caller's requested core loss model; like
         // CoreLosses, it heads the settings' model order and the first model the material supports is
         // the one judged. A material no model can evaluate is not evaluable (false). When the Settings
@@ -500,7 +521,7 @@ class MagneticFilterFringingFactor : public MagneticFilter {
  * the model and the search). The returned score is the estimated mean total loss (W) of
  * the pair it settled on, 0 when the candidate is outside its scope.
  */
-class MagneticFilterInductorTurnsAndGapByLosses : public MagneticFilter {
+class MagneticFilterInductorTurnsAndGapByLosses : public MagneticFilterCoreLossesBased {
     private:
         std::map<std::string, std::string> _models;
         MagnetizingInductance _magnetizingInductance;
@@ -555,7 +576,7 @@ class MagneticFilterHeight : public MagneticFilter {
         bool applies_to(Magnetic* magnetic) const override;
 };
 
-class MagneticFilterTemperatureRise : public MagneticFilter {
+class MagneticFilterTemperatureRise : public MagneticFilterCoreLossesBased {
     private:
         MagneticFilterLossesNoProximity _magneticFilterLossesNoProximity;
     public:
@@ -563,13 +584,13 @@ class MagneticFilterTemperatureRise : public MagneticFilter {
         std::pair<bool, double> evaluate_magnetic(Magnetic* magnetic, Inputs* inputs, std::vector<Outputs>* outputs = nullptr);
 };
 
-class MagneticFilterLossesTimesVolume : public MagneticFilter {
+class MagneticFilterLossesTimesVolume : public MagneticFilterCoreLossesBased {
     public:
         MagneticFilterLossesTimesVolume() {};
         std::pair<bool, double> evaluate_magnetic(Magnetic* magnetic, Inputs* inputs, std::vector<Outputs>* outputs = nullptr);
 };
 
-class MagneticFilterVolumeTimesTemperatureRise : public MagneticFilter {
+class MagneticFilterVolumeTimesTemperatureRise : public MagneticFilterCoreLossesBased {
     private:
         MagneticFilterTemperatureRise _magneticFilterTemperatureRise;
     public:
@@ -577,7 +598,7 @@ class MagneticFilterVolumeTimesTemperatureRise : public MagneticFilter {
         std::pair<bool, double> evaluate_magnetic(Magnetic* magnetic, Inputs* inputs, std::vector<Outputs>* outputs = nullptr);
 };
 
-class MagneticFilterLossesTimesVolumeTimesTemperatureRise : public MagneticFilter {
+class MagneticFilterLossesTimesVolumeTimesTemperatureRise : public MagneticFilterCoreLossesBased {
     private:
         MagneticFilterTemperatureRise _magneticFilterTemperatureRise;
     public:
@@ -585,7 +606,7 @@ class MagneticFilterLossesTimesVolumeTimesTemperatureRise : public MagneticFilte
         std::pair<bool, double> evaluate_magnetic(Magnetic* magnetic, Inputs* inputs, std::vector<Outputs>* outputs = nullptr);
 };
 
-class MagneticFilterLossesNoProximityTimesVolume : public MagneticFilter {
+class MagneticFilterLossesNoProximityTimesVolume : public MagneticFilterCoreLossesBased {
     private:
         MagneticFilterLossesNoProximity _magneticFilterLossesNoProximity;
     public:
@@ -593,7 +614,7 @@ class MagneticFilterLossesNoProximityTimesVolume : public MagneticFilter {
         std::pair<bool, double> evaluate_magnetic(Magnetic* magnetic, Inputs* inputs, std::vector<Outputs>* outputs = nullptr);
 };
 
-class MagneticFilterLossesNoProximityTimesVolumeTimesTemperatureRise : public MagneticFilter {
+class MagneticFilterLossesNoProximityTimesVolumeTimesTemperatureRise : public MagneticFilterCoreLossesBased {
     private:
         MagneticFilterTemperatureRise _magneticFilterTemperatureRise;
         MagneticFilterLossesNoProximity _magneticFilterLossesNoProximity;
@@ -616,7 +637,7 @@ class MagnetomotiveForce : public MagneticFilter {
 //         std::pair<bool, double> evaluate_magnetic(Magnetic* magnetic, Inputs* inputs, std::vector<Outputs>* outputs = nullptr);
 // };
 
-class MagneticFilterTemperature : public MagneticFilter {
+class MagneticFilterTemperature : public MagneticFilterCoreLossesBased {
     double _maximumTemperature = 130.0;
     // Orchestrator, not a fixed model: selects per material from its available
     // volumetric-losses methods (Steinmetz family, proprietary, loss factor)
