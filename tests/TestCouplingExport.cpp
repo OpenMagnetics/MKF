@@ -87,10 +87,9 @@ TEST_CASE("2-winding coupling: emitted K reflects the computed coupling, not the
     REQUIRE(std::isfinite(computed));
     INFO("emitted K = " << emittedK << ", computed CouplingCoefficient_12 = " << computed);
 
-    // The emitted K must equal the field-solver coupling (the only allowed adjustment is the
-    // numerical clamp just under 1) — NOT the discarded 0.98 cap. The K statement is printed
-    // via std::to_string (6 decimal places), so compare at that print precision.
-    CHECK(std::abs(emittedK - std::min(0.999999, computed)) <= 5e-7);
+    // The emitted K must equal the computed coupling — NOT the discarded 0.98 cap. Both are
+    // printed round-trip exact (max_digits10), so they read back as the same double.
+    CHECK(emittedK == computed);
 
     // For a well-coupled transformer the computed coupling is far above 0.98, so the emitted
     // K must be too. If this ever regressed to the 0.98 cap, both checks below would fail.
@@ -117,15 +116,18 @@ TEST_CASE("2-winding coupling: exported inductors and K are the inductance matri
     Inductance inductance;
     auto matrix = inductance.calculate_inductance_matrix_values(magnetic, frequency);
     double coupling = inductance.calculate_coupling_coefficient(magnetic, 0, 1, frequency);
-    REQUIRE(coupling < 0.999999);  // below the print clamp, so the emitted value is the coupling itself
 
     for (int simulator = 0; simulator < 2; ++simulator) {
         std::string subckt = simulator == 0
             ? CircuitSimulatorExporterNgspiceModel().export_magnetic_as_subcircuit(magnetic, 100000.0, 25.0)
             : CircuitSimulatorExporterLtspiceModel().export_magnetic_as_subcircuit(magnetic, 100000.0, 25.0);
         INFO((simulator == 0 ? "ngspice" : "LTspice"));
-        CHECK_THAT(parse_coupling_param(subckt), Catch::Matchers::WithinRel(coupling, 1e-9));
-        CHECK_THAT(parse_winding_inductor(subckt, "Lmag_1"), Catch::Matchers::WithinRel(matrix[0][0], 1e-9));
-        CHECK_THAT(parse_winding_inductor(subckt, "Lmag_2"), Catch::Matchers::WithinRel(matrix[1][1], 1e-9));
+        // k is printed round-trip exact (max_digits10): the same double.
+        CHECK(parse_coupling_param(subckt) == coupling);
+        // The inductors are printed with 12 fixed decimals (to_string(L, 12)): the read-back
+        // value is within half a unit of the last printed place, 0.5e-12 H.
+        const double halfLastPrintedPlace = 0.5e-12;
+        CHECK_THAT(parse_winding_inductor(subckt, "Lmag_1"), Catch::Matchers::WithinAbs(matrix[0][0], halfLastPrintedPlace));
+        CHECK_THAT(parse_winding_inductor(subckt, "Lmag_2"), Catch::Matchers::WithinAbs(matrix[1][1], halfLastPrintedPlace));
     }
 }

@@ -19,6 +19,7 @@ namespace OpenMagnetics {
 
 // Forward declarations for free functions defined in CircuitSimulatorInterface.cpp.
 std::string to_string(double d, size_t precision);
+std::string to_string_round_trip(double d);
 std::vector<std::string> to_string(std::vector<double> v, size_t precision);
 
 // Emit saturating magnetizing inductance subcircuit fragment for ngspice.
@@ -193,12 +194,12 @@ std::string CircuitSimulatorExporterNgspiceModel::export_magnetic_as_subcircuit(
             if (std::abs(matrixCoupling) >= 1.0) {
                 throw std::runtime_error("Inconsistent coupling coefficient (|k|=" + std::to_string(std::abs(matrixCoupling)) + " >= 1) for windings 1-" + is + "; inductance matrix is not positive-definite");
             }
-            // Clamp below 1: a coupling that rounds/prints as exactly 1 makes the SPICE
-            // coupling matrix singular.
-            double couplingCoefficient = std::min(0.999999, matrixCoupling);
+            // No clamp: L is positive definite, so |k| < 1 strictly (checked above), and the
+            // value is printed round-trip exact so it cannot round up to a singular 1.
+            double couplingCoefficient = matrixCoupling;
             couplingCoeffs.push_back(couplingCoefficient);
             parametersString += ".param Llk_" + is + "_Value=" + to_string(leakageInductance, 15) + "\n";
-            parametersString += ".param CouplingCoefficient_1" + is + "_Value=" + to_string(couplingCoefficient, 12) + "\n";
+            parametersString += ".param CouplingCoefficient_1" + is + "_Value=" + to_string_round_trip(couplingCoefficient) + "\n";
         }
 
         std::vector<std::string> c = to_string(acResistanceCoefficientsPerWinding[index], 12);
@@ -290,9 +291,9 @@ std::string CircuitSimulatorExporterNgspiceModel::export_magnetic_as_subcircuit(
         // leakage: for a low-leakage transformer the real K is ~0.9998, and forcing it to 0.98
         // adds a large series leakage reactance that strangles power transfer (AHB vout capped
         // ~3 V instead of 12 V; PSFB/PSHB decks transferred ~0 power — abt #56/#61). ngspice only
-        // needs K strictly below 1 (k=1.0 is a singular coupling matrix), so clamp just under 1.
-        double k12 = std::min(0.999999, couplingCoeffs.at(0));
-        circuitString += "K Lmag_1 Lmag_2 " + std::to_string(k12) + "\n";
+        // needs K strictly below 1 (k=1.0 is a singular coupling matrix): the matrix coupling is,
+        // and the round-trip print keeps it so.
+        circuitString += "K Lmag_1 Lmag_2 " + to_string_round_trip(couplingCoeffs.at(0)) + "\n";
     } else if (numWindings >= 3) {
         // Consistent coupling from the full inductance matrix L = M + Λ (positive-definite):
         //   k_ij = L_ij / sqrt(L_ii · L_jj),  with the inductors emitted as L_ii above.
@@ -312,7 +313,7 @@ std::string CircuitSimulatorExporterNgspiceModel::export_magnetic_as_subcircuit(
                     throw std::runtime_error("Inconsistent coupling coefficient (|k|=" + std::to_string(std::abs(kij)) + " >= 1) for windings " + std::to_string(i) + "-" + std::to_string(j) + "; inductance matrix is not positive-definite");
                 }
                 std::string kName = "K" + std::to_string(i + 1) + std::to_string(j + 1);
-                circuitString += kName + " Lmag_" + std::to_string(i + 1) + " Lmag_" + std::to_string(j + 1) + " " + std::to_string(kij) + "\n";
+                circuitString += kName + " Lmag_" + std::to_string(i + 1) + " Lmag_" + std::to_string(j + 1) + " " + to_string_round_trip(kij) + "\n";
             }
         }
     }

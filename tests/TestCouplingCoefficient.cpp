@@ -27,12 +27,34 @@
 #include <cmath>
 #include <filesystem>
 #include <fstream>
+#include <limits>
 
 using namespace MAS;
 using namespace OpenMagnetics;
+using Catch::Matchers::WithinAbs;
 using Catch::Matchers::WithinRel;
 
 namespace {
+
+// Tolerances. Where the test repeats the model's own arithmetic on the same doubles, the result
+// is the same double and the check is exact (==). Where it compares two independent solves
+// that agree only in exact arithmetic, the allowed gap is derived from rounding:
+//
+// - Every inductance MKF computes is a quadrature of the field energy. A chain of n correctly
+//   rounded operations has relative error at most γ_n = n·u/(1 − n·u), u = ε/2 (Higham,
+//   Accuracy and Stability of Numerical Algorithms, 2nd ed., Lemma 3.1). γ_n <= √ε holds for
+//   n <= 2/(√ε·(1 + √ε)) ≈ 1.3e8 roundings, orders more than any of the field solvers performs,
+//   so √ε is the error budget of each independently computed inductance.
+// - The test's own combination of those inductances adds a few roundings, bounded by γ_m for
+//   the m operations counted at the use site.
+// - A difference of large, nearly equal terms amplifies their errors by the condition number
+//   of the cancellation, Σ|terms| / |result| (Higham §1.7): that factor is computed from the
+//   case's own values, not chosen.
+const double unitRoundoff = std::numeric_limits<double>::epsilon() / 2;
+const double perInductanceRelativeError = std::sqrt(std::numeric_limits<double>::epsilon());
+double roundingBound(int roundings) {
+    return roundings * unitRoundoff / (1 - roundings * unitRoundoff);
+}
 
 auto& couplingSettings = Settings::GetInstance();
 
@@ -75,7 +97,7 @@ OpenMagnetics::Magnetic gapped_transformer(const std::string& shapeName, std::ve
 // Every pair of windings: the scalar entry points agree with the matrix, and the loop leakage
 // the matrix implies is the pairwise leakage LeakageInductance solves for independently (an
 // ampere-turn balanced excitation, not the polarization the matrix is assembled from).
-void check_consistency(OpenMagnetics::Magnetic magnetic, double frequency, double pairwiseTolerance) {
+void check_consistency(OpenMagnetics::Magnetic magnetic, double frequency) {
     Inductance inductance;
     auto matrix = inductance.calculate_inductance_matrix_values(magnetic, frequency);
     auto named = inductance.calculate_inductance_matrix(magnetic, frequency).get_magnitude();
@@ -88,10 +110,11 @@ void check_consistency(OpenMagnetics::Magnetic magnetic, double frequency, doubl
 
     for (size_t i = 0; i < numberWindings; ++i) {
         auto name_i = functionalDescription[i].get_name();
-        CHECK_THAT(inductance.calculate_self_inductance(magnetic, i, frequency), WithinRel(matrix[i][i], 1e-12));
-        CHECK_THAT(named[name_i][name_i].get_nominal().value(), WithinRel(matrix[i][i], 1e-12));
+        // Same matrix, read back: the same doubles.
+        CHECK(inductance.calculate_self_inductance(magnetic, i, frequency) == matrix[i][i]);
+        CHECK(named[name_i][name_i].get_nominal().value() == matrix[i][i]);
         for (size_t j = 0; j < numberWindings; ++j) {
-            CHECK_THAT(cantileverMatrix[i][j], WithinRel(matrix[i][j], 1e-12));
+            CHECK(cantileverMatrix[i][j] == matrix[i][j]);
             if (i == j) {
                 continue;
             }
@@ -101,9 +124,10 @@ void check_consistency(OpenMagnetics::Magnetic magnetic, double frequency, doubl
             double couplingFromMatrix = matrix[i][j] / std::sqrt(matrix[i][i] * matrix[j][j]);
             INFO("windings " << i << "-" << j << ": M " << mutual << " H, k " << coupling
                  << ", matrix k " << couplingFromMatrix);
-            CHECK_THAT(mutual, WithinRel(matrix[i][j], 1e-12));
-            CHECK_THAT(named[name_i][name_j].get_nominal().value(), WithinRel(matrix[i][j], 1e-12));
-            CHECK_THAT(coupling, WithinRel(couplingFromMatrix, 1e-12));
+            // Same entries and the model's own operation order (M / √(L_ii·L_jj)): the same doubles.
+            CHECK(mutual == matrix[i][j]);
+            CHECK(named[name_i][name_j].get_nominal().value() == matrix[i][j]);
+            CHECK(coupling == couplingFromMatrix);
 
             double turnsRatio = double(functionalDescription[i].get_number_turns()) / functionalDescription[j].get_number_turns();
             double loopLeakage = matrix[i][i] + turnsRatio * turnsRatio * matrix[j][j] - 2 * turnsRatio * mutual;
@@ -111,7 +135,15 @@ void check_consistency(OpenMagnetics::Magnetic magnetic, double frequency, doubl
                                          .get_leakage_inductance_per_winding()[0].get_nominal().value();
             INFO("loop leakage from the matrix " << loopLeakage << " H, pairwise leakage " << pairwiseLeakage << " H");
             REQUIRE(pairwiseLeakage > 0);
-            CHECK_THAT(loopLeakage, WithinRel(pairwiseLeakage, pairwiseTolerance));
+            // L_ii + r²·L_jj − 2r·M = Λ_ii + r²·Λ_jj − 2r·Λ_ij is exact in exact arithmetic (the
+            // magnetizing terms cancel identically and the field model is linear in the currents).
+            // In floating point each of the four inductances carries up to √ε relative error, and
+            // the cancellation turns that into an absolute error of √ε·Σ|terms|; forming r, r², the
+            // three products and the two sums adds at most γ_7 of Σ|terms|.
+            double sumOfMagnitudes = matrix[i][i] + turnsRatio * turnsRatio * matrix[j][j] + 2 * turnsRatio * std::abs(mutual);
+            double loopTolerance = perInductanceRelativeError * (sumOfMagnitudes + pairwiseLeakage) + roundingBound(7) * sumOfMagnitudes;
+            INFO("cancellation condition number " << sumOfMagnitudes / pairwiseLeakage << ", tolerance " << loopTolerance << " H");
+            CHECK_THAT(loopLeakage, WithinAbs(pairwiseLeakage, loopTolerance));
         }
     }
 }
@@ -148,39 +180,50 @@ TEST_CASE("Test_Coupling_Coefficient_Of_1to1_Choke_Follows_From_Self_And_DM_Indu
     INFO("L11 " << L11 << " H, L22 " << L22 << " H, L_DM " << differentialModeInductance << " H, k " << coupling
          << ", expected " << expectedCoupling << ", magnetizing-only " << magnetizingOnlyCoupling);
 
-    // The case must be able to tell the two apart: the mutual leakage moves 1 − k by far more
-    // than the tolerance below.
-    REQUIRE(std::abs((1 - magnetizingOnlyCoupling) - (1 - expectedCoupling)) > 0.05 * (1 - expectedCoupling));
+    // Tolerance on 1 − k. The model's k and expectedCoupling share the denominator √(L11·L22)
+    // (the same doubles, the same operations), so they differ only through the numerator:
+    // L12 from the matrix against (L11 + L22 − L_DM)/2 from the independent DM solve, equal in
+    // exact arithmetic. With √ε relative error on each of L11, L22 and L_DM the numerator is off
+    // by at most √ε·(L11 + L22 + L_DM), and the two sums, the product, the root and the division
+    // add at most γ_6 of it. Divided by 2·√(L11·L22) that is an error in k, and relative to 1 − k
+    // it is amplified by 1/(1 − k): the condition number of reading the leakage out of k.
+    double numeratorMagnitude = L11 + L22 + differentialModeInductance;
+    double couplingTolerance = (perInductanceRelativeError + roundingBound(6)) * numeratorMagnitude /
+                               (2 * std::sqrt(L11 * L22) * (1 - expectedCoupling));
+    INFO("relative tolerance on 1 - k " << couplingTolerance);
+
+    // The case must be able to tell the two apart: the old formula falls outside that tolerance.
+    REQUIRE(std::abs((1 - magnetizingOnlyCoupling) - (1 - expectedCoupling)) > couplingTolerance * (1 - expectedCoupling));
 
     // Compare 1 − k, the part that carries the information (k itself is 0.99…).
-    CHECK_THAT(1 - coupling, WithinRel(1 - expectedCoupling, 1e-6));
+    CHECK_THAT(1 - coupling, WithinRel(1 - expectedCoupling, couplingTolerance));
     CHECK(coupling < 1.0);
 
     // The parallel-connected common-mode inductance a choke datasheet states, (L11 + L22 + 2·L12)/4,
-    // must follow from the same k.
+    // must follow from the same k: k is M / √(L11·L22) in the model's operation order.
     double mutual = inductance.calculate_mutual_inductance(magnetic, 0, 1, frequency);
-    CHECK_THAT(mutual, WithinRel(coupling * std::sqrt(L11 * L22), 1e-12));
+    CHECK(coupling == mutual / std::sqrt(L11 * L22));
     couplingSettings.reset();
 }
 
 TEST_CASE("Test_Coupling_Mutual_And_Self_Inductance_Agree_With_Inductance_Matrix_Choke", "[physical-model][inductance][coupling][cmc][toroidal][smoke-test]") {
     couplingSettings.reset();
     clear_databases();
-    check_consistency(sector_wound_choke(), 100000, 1e-6);
+    check_consistency(sector_wound_choke(), 100000);
     couplingSettings.reset();
 }
 
 TEST_CASE("Test_Coupling_Mutual_And_Self_Inductance_Agree_With_Inductance_Matrix_Transformer", "[physical-model][inductance][coupling][smoke-test]") {
     couplingSettings.reset();
     clear_databases();
-    check_consistency(gapped_transformer("ETD 39", {40, 20}), 100000, 1e-6);
+    check_consistency(gapped_transformer("ETD 39", {40, 20}), 100000);
     couplingSettings.reset();
 }
 
 TEST_CASE("Test_Coupling_Mutual_And_Self_Inductance_Agree_With_Inductance_Matrix_Three_Windings", "[physical-model][inductance][coupling][multi-winding][smoke-test]") {
     couplingSettings.reset();
     clear_databases();
-    check_consistency(gapped_transformer("PQ 35/35", {30, 15, 10}), 100000, 1e-6);
+    check_consistency(gapped_transformer("PQ 35/35", {30, 15, 10}), 100000);
     couplingSettings.reset();
 }
 
@@ -214,10 +257,10 @@ TEST_CASE("Test_Coupling_Extended_Cantilever_Matrix_Is_Inductance_Matrix_Multi_C
     for (size_t i = 0; i < matrix.size(); ++i) {
         for (size_t j = 0; j < matrix.size(); ++j) {
             INFO("entry " << i << "," << j << ": Inductance " << matrix[i][j] << " H, cantilever " << cantileverMatrix[i][j] << " H");
-            CHECK_THAT(cantileverMatrix[i][j], WithinRel(matrix[i][j], 1e-12));
+            CHECK(cantileverMatrix[i][j] == matrix[i][j]);
         }
     }
     double coupling = Inductance().calculate_coupling_coefficient(magnetic, 0, 1, frequency);
-    CHECK_THAT(coupling, WithinRel(cantileverMatrix[0][1] / std::sqrt(cantileverMatrix[0][0] * cantileverMatrix[1][1]), 1e-12));
+    CHECK(coupling == cantileverMatrix[0][1] / std::sqrt(cantileverMatrix[0][0] * cantileverMatrix[1][1]));
     couplingSettings.reset();
 }

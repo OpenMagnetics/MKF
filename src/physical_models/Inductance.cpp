@@ -8,6 +8,7 @@
 
 #include <cmath>
 #include <numbers>
+#include <limits>
 
 namespace OpenMagnetics {
 
@@ -171,7 +172,24 @@ double Inductance::calculate_coupling_coefficient(
     // capped |k| > 1, which is not a value to be tidied away but a contradiction: a mutual
     // inductance exceeding sqrt(L11*L22) violates the energy bound, so it means the
     // inductance matrix is not positive definite. Report the sign, and refuse the impossible.
-    constexpr double couplingBoundTolerance = 1e-6;
+    //
+    // For a positive semi-definite L the bound |k| <= 1 is exact (Cauchy-Schwarz on the energy
+    // ½·iᵀLi), so the only slack the check may allow is floating-point rounding. With the
+    // standard model of arithmetic, a chain of m correctly rounded operations has relative
+    // error at most γ_m = m·u/(1 − m·u), u = ε/2 (Higham, Accuracy and Stability of Numerical
+    // Algorithms, 2nd ed., §2.2 and Lemma 3.1). Counting them on the main-column path:
+    //   L_ij = Lm·(N_i/N_p)·(N_j/N_p) + Λ_ij                       5 roundings  -> γ_5
+    //   radicand L_ii·L_jj                                            γ_5 + γ_5 + 1
+    //   √ halves the radicand's relative error, plus its own rounding  ½·γ_11 + 1
+    //   k = L_ij / √(·)                                                γ_5 + γ_6.5 + 1  <= γ_13
+    // (Lm is a common factor of every entry and cancels from k, so its own rounding does not
+    // enter.) For windings on different columns the network matrix carries the rounding of
+    // its linear solve instead, but there |k| is the flux divider, far from 1; and any pair
+    // sharing a column has the window leakage added, so 1 − |k| >= L_pair/(2·max L_ii), many
+    // orders above γ_13. A value past this bound is therefore a real contradiction.
+    constexpr double unitRoundoff = std::numeric_limits<double>::epsilon() / 2;
+    constexpr double roundingOperations = 13;
+    constexpr double couplingBoundTolerance = roundingOperations * unitRoundoff / (1 - roundingOperations * unitRoundoff);
     if (std::abs(k) > 1 + couplingBoundTolerance) {
         throw InvalidInputException(ErrorCode::CALCULATION_INVALID_RESULT,
             "Coupling coefficient between windings " + std::to_string(sourceIndex) + " and " +

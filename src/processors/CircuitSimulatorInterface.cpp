@@ -1,3 +1,4 @@
+#include <limits>
 #include "support/Utils.h"
 #include "Defaults.h"
 #include "processors/CircuitSimulatorInterface.h"
@@ -92,6 +93,17 @@ std::string to_string(double d, size_t precision) {
     std::ostringstream out;
     out.precision(precision);
     out << std::fixed << d;
+    return out.str();
+}
+
+// Shortest decimal that reads back as the same double: max_digits10 significant digits
+// (C++ [numeric.limits.members]; IEEE 754-2008 §5.12.2). Used for coupling coefficients, whose
+// distance from 1 is the leakage: a fixed 6- or 12-decimal print rounds a k of 0.9999996 to
+// exactly 1, a singular coupling, where the double itself is strictly below 1.
+std::string to_string_round_trip(double d) {
+    std::ostringstream out;
+    out.precision(std::numeric_limits<double>::max_digits10);
+    out << d;
     return out.str();
 }
 
