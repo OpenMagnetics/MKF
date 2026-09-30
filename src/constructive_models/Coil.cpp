@@ -1457,11 +1457,21 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces(
     // (a stub climbs to it in the turn's own column) and squeezes ONLY that section's outward
     // layers there, with the depth measured from the section's edge -- the extent those layers'
     // turns are spread over (see align_blocked_layer_turns). Returns the run's height.
+    //
+    // ABT #1535 (Alf, 2026-09-30, "block the run-in row"): with `blockOwnColumn` the run's row is
+    // ALSO taken out of the turn's own layer whenever a stub is needed. The stub climbs that column
+    // to the row and the radial run turns the corner there, at the connection plane; a turn of
+    // that column wound on the same row passes the run's lane just before the plane at the run's
+    // height -- no raise clears it (measured on the PQ 65 stacked-section design in MVB++: the
+    // first outside link came in at y = 2.798 mm, the top row of Primary section 1 layer 1, and
+    // met turn 15's wrap at 0.0378 mm where 1.726 mm is needed). Every OUTSIDE series link does
+    // this at both of its ends; terminal leads keep their own rules.
     auto placeSectionLocalRadialRun = [&](const Turn& turn, const std::string& sectionName, bool atHigh,
                                           const std::string& windingName, int64_t parallel,
                                           double wireOuterWidth, double wireOuterHeight, double runHeight,
                                           bool isTerminal, ConnectionKind stubKind,
-                                          const std::string& fromTurn, const std::string& toTurn) -> double {
+                                          const std::string& fromTurn, const std::string& toTurn,
+                                          bool blockOwnColumn) -> double {
         const double turnX = turn.get_coordinates()[0];
         const double turnY = turn.get_coordinates()[1];
         std::vector<const Layer*> crossed;
@@ -1496,6 +1506,41 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces(
             squeeze.dimensions = {wireOuterWidth, runHeight};
             squeeze.edgeDepth = depth;
             squeeze.routedLength = 0;   // space-only: the copper is the drawn stub + radial run
+            squeeze.kind = ConnectionKind::LAYER_SQUEEZE;
+            squeeze.fromTurn = fromTurn;
+            squeeze.toTurn = toTurn;
+            spaces.push_back(squeeze);
+        }
+        if (blockOwnColumn && std::abs(runY - turnY) > wireOuterHeight / 2) {
+            const auto& ownLayerName = turn.get_layer();
+            if (!ownLayerName) {
+                throw CoilException(ErrorCode::COIL_WINDING_ERROR,
+                                    "Real winding (ABT #1535): turn '" + turn.get_name() +
+                                        "' ends an outside series link but names no layer, so the run-in row "
+                                        "cannot be blocked in its column");
+            }
+            const Layer* ownLayer = nullptr;
+            for (const auto& layer : allLayers) {
+                if (layer.get_name() == ownLayerName.value()) {
+                    ownLayer = &layer;
+                    break;
+                }
+            }
+            if (ownLayer == nullptr) {
+                throw CoilException(ErrorCode::COIL_WINDING_ERROR,
+                                    "Real winding (ABT #1535): turn '" + turn.get_name() + "' names layer '" +
+                                        ownLayerName.value() + "', which the coil does not have");
+            }
+            ConnectionReservedSpace squeeze;
+            squeeze.isTerminal = isTerminal;
+            squeeze.winding = windingName;
+            squeeze.parallel = parallel;
+            squeeze.section = sectionName;
+            squeeze.layer = ownLayer->get_name();
+            squeeze.coordinates = {ownLayer->get_coordinates()[0], runY};
+            squeeze.dimensions = {wireOuterWidth, runHeight};
+            squeeze.edgeDepth = depth;
+            squeeze.routedLength = 0;   // space-only: the copper is the stub + radial run below
             squeeze.kind = ConnectionKind::LAYER_SQUEEZE;
             squeeze.fromTurn = fromTurn;
             squeeze.toTurn = toTurn;
@@ -2017,7 +2062,7 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces(
             const std::string toTurn = isEntrance ? connectingTurn.get_name() : std::string();
             const double runY = placeSectionLocalRadialRun(connectingTurn, turnSection, atTopEdge, windingName, parallel,
                                                            wireOuterWidth, wireOuterHeight, runHeight, true,
-                                                           terminalKind, fromTurn, toTurn);
+                                                           terminalKind, fromTurn, toTurn, false);
             ConnectionReservedSpace lead;
             lead.isTerminal = true;
             lead.winding = windingName;
@@ -2595,11 +2640,11 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces(
                     const double runA = placeSectionLocalRadialRun(exitTurn, sectionA, nextIsHigher, windingName, parallel,
                                                                    wireOuterWidth, wireOuterHeight, wireOuterHeight, false,
                                                                    ConnectionKind::EDGE_CONTINUATION,
-                                                                   exitTurn.get_name(), entryTurn.get_name());
+                                                                   exitTurn.get_name(), entryTurn.get_name(), true);
                     const double runB = placeSectionLocalRadialRun(entryTurn, sectionB, !nextIsHigher, windingName, parallel,
                                                                    wireOuterWidth, wireOuterHeight, wireOuterHeight, false,
                                                                    ConnectionKind::EDGE_CONTINUATION,
-                                                                   exitTurn.get_name(), entryTurn.get_name());
+                                                                   exitTurn.get_name(), entryTurn.get_name(), true);
                     auto pushOutsideSegment = [&](const std::string& segmentSection, double cx, double cy, double w, double h,
                                                   double copperLength) {
                         ConnectionReservedSpace segment;
@@ -16799,6 +16844,17 @@ bool Coil::delimit_and_compact_rectangular_window() {
         }
 
         auto sections = get_sections_description().value();
+        // ABT #1535: on axially stacked sections the connection bands are measured from the
+        // SECTION's own edges (see get_connection_reserved_spaces / align_blocked_layer_turns), so
+        // the band is part of the section. A section every layer of which gives up the same edge
+        // band -- an outside link's run-in row, blocked in its landing column too -- has no turn
+        // left there, and delimiting it to its turns' envelope dropped the band: the stack closed
+        // over it and the run row came down onto the turns it had been blocked from (measured on
+        // the PQ 65 stacked-section design: Primary section 1 fell from 7.462 to 5.597 mm and the
+        // run-in row landed on its layer 0's top station again). Each layer's band stays inside
+        // its section, up to the edge the section had before it was delimited.
+        const bool keepSectionBands =
+            groupType != WiringTechnology::PRINTED && sections_stacked_axially_on_concentric_core(*this);
         for (size_t i = 0; i < sections.size(); ++i) {
             if (sections[i].get_type() == ElectricalType::CONDUCTION) {
                 auto layersInSection = get_layers_by_section(sections[i].get_name());
@@ -16817,6 +16873,24 @@ bool Coil::delimit_and_compact_rectangular_window() {
                         currentSectionMinimumWidth = std::min(currentSectionMinimumWidth, (layer.get_coordinates()[0] - sectionCoordinates[0]) - layer.get_dimensions()[0] / 2);
                         currentSectionMaximumHeight = std::max(currentSectionMaximumHeight, (layer.get_coordinates()[1] - sectionCoordinates[1]) + layer.get_dimensions()[1] / 2);
                         currentSectionMinimumHeight = std::min(currentSectionMinimumHeight, (layer.get_coordinates()[1] - sectionCoordinates[1]) - layer.get_dimensions()[1] / 2);
+                        if (keepSectionBands && layer.get_orientation() == WindingOrientation::OVERLAPPING) {
+                            auto band = _connectionBlockedDepthPerLayer.find(layer.get_name());
+                            if (band != _connectionBlockedDepthPerLayer.end()) {
+                                const double layerTop = (layer.get_coordinates()[1] - sectionCoordinates[1]) + layer.get_dimensions()[1] / 2;
+                                const double layerBottom = (layer.get_coordinates()[1] - sectionCoordinates[1]) - layer.get_dimensions()[1] / 2;
+                                // Kept, never grown: the band holds the edge the section had,
+                                // up to it and no further (a turn's envelope is a fraction of a
+                                // micron taller than the pitch the depths are counted in).
+                                const double sectionTop = sections[i].get_dimensions()[1] / 2;
+                                const double sectionBottom = -sections[i].get_dimensions()[1] / 2;
+                                if (band->second.first > 1e-12) {
+                                    currentSectionMaximumHeight = std::max(currentSectionMaximumHeight, std::min(layerTop + band->second.first, sectionTop));
+                                }
+                                if (band->second.second > 1e-12) {
+                                    currentSectionMinimumHeight = std::min(currentSectionMinimumHeight, std::max(layerBottom - band->second.second, sectionBottom));
+                                }
+                            }
+                        }
                     }
                 }
 

@@ -196,3 +196,75 @@ TEST_CASE("simulate() runs a fitting stacked-section PQ 65 design reloaded from 
     CHECK(outputs.get_core_losses()->get_core_losses() > 0);
     settings.reset();
 }
+
+// ABT #1535 (Alf, 2026-09-30, "block the run-in row"): an outside series link whose end needs a stub
+// climbs its turn's own column to the run's row and turns the corner there, at the connection
+// plane. No station of that column may sit on that row: the turn wound there passes the link's lane
+// just before the plane at the run's height (measured in MVB++ on this design: the first link came in
+// at y = 2.798 mm, the top row of Primary section 1 layer 1, 0.0378 mm from turn 15's wrap where
+// 1.726 mm is needed). MKF blocked that row for the section's outward layers but not for the landing
+// column itself.
+TEST_CASE("An outside series link's run row is blocked in its own turn's column (ABT #1535)",
+          "[constructive-model][coil][real-winding][abt1535]") {
+    auto& settings = OpenMagnetics::Settings::GetInstance();
+    settings.reset();
+    const auto design = load_abt1533_design();
+    OpenMagnetics::Mas mas(design);
+    auto magnetic = autocomplete_and_reload(design, mas.get_inputs());
+    auto& coil = magnetic.get_mutable_coil();
+    REQUIRE(coil.get_turns_description());
+    const auto turns = coil.get_turns_description().value();
+    auto turnByName = [&](const std::string& name) -> const MAS::Turn& {
+        for (const auto& turn : turns) {
+            if (turn.get_name() == name) {
+                return turn;
+            }
+        }
+        FAIL("no turn named '" << name << "'");
+        throw std::logic_error("unreachable");
+    };
+
+    const auto layout = coil.get_connection_layout();
+    size_t outsideLinks = 0;
+    size_t endsWithStub = 0;
+    for (const auto& route : layout.routes) {
+        if (route.kind != OpenMagnetics::ConnectionKind::EDGE_CONTINUATION || !route.exitSlot) {
+            continue;
+        }
+        ++outsideLinks;
+        // {x1,y1} {x1,runA} {linkX,runA} {linkX,runB} {x2,runB} {x2,y2}, with a stub of zero length
+        // dropped: the second point and the one before last still stand on the two run rows.
+        REQUIRE(route.waypoints.size() >= 4);
+        const std::vector<std::pair<std::string, double>> ends = {
+            {route.fromTurn, route.waypoints[1][1]},   // exit end: its run row
+            {route.toTurn, route.waypoints[route.waypoints.size() - 2][1]},     // landing end: the run-in row
+        };
+        for (const auto& [turnName, runRow] : ends) {
+            const auto& endTurn = turnByName(turnName);
+            // The rows are laid one wire apart at the wire's outer height -- the pitch MKF blocks
+            // and spreads with (a turn's own dimensions carry a fraction of a micron more).
+            const double wireHeight =
+                coil.get_wires()[coil.get_winding_index_by_name(endTurn.get_winding())].get_maximum_outer_height();
+            if (std::abs(endTurn.get_coordinates()[1] - runRow) <= wireHeight / 2) {
+                continue;   // the turn sits on the row itself: no stub, no corner in the column
+            }
+            ++endsWithStub;
+            REQUIRE(endTurn.get_layer());
+            for (const auto& turn : turns) {
+                if (turn.get_layer() != endTurn.get_layer()) {
+                    continue;
+                }
+                const double clearance = std::abs(turn.get_coordinates()[1] - runRow);
+                INFO(route.fromTurn << " -> " << route.toTurn << ": '" << turn.get_name() << "' of "
+                                    << endTurn.get_layer().value() << " at y " << turn.get_coordinates()[1] * 1e3
+                                    << " mm, run row at " << runRow * 1e3 << " mm");
+                // One micron of float bookkeeping between the spread stations and the counted
+                // depths; the defect this pins is a station ON the row (0.15 um away, not 1.865 mm).
+                CHECK(clearance >= wireHeight - 1e-6);
+            }
+        }
+    }
+    CHECK(outsideLinks == 2);    // Primary section 0 -> 1 and 1 -> 2
+    CHECK(endsWithStub >= 1);    // the landing of the first link climbs its column
+    settings.reset();
+}
