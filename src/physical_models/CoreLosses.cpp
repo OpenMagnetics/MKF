@@ -29,6 +29,7 @@
 #include <vector>
 // levmar.h removed - using Eigen LevenbergMarquardt
 
+#include <magic_enum.hpp>
 #include <cmrc/cmrc.hpp>
 CMRC_DECLARE(coreLossesData);
 
@@ -149,10 +150,70 @@ std::vector<CoreLossesModels> CoreLossesModel::get_methods(CoreMaterialDataOrNam
     return models;
 }
 
+// What each model needs in the material's MAS data, for the message of an explicit request the
+// material cannot satisfy (ABT #1497). Mirrors CoreLossesModel::get_methods.
+static std::string required_loss_data(CoreLossesModels model) {
+    switch (model) {
+        case CoreLossesModels::STEINMETZ:
+        case CoreLossesModels::IGSE:
+        case CoreLossesModels::CIGSE:
+        case CoreLossesModels::BARG:
+        case CoreLossesModels::ALBACH:
+        case CoreLossesModels::MSE:
+        case CoreLossesModels::NSE:
+            return "Steinmetz coefficients (a 'steinmetz' volumetricLosses method)";
+        case CoreLossesModels::ROSHEN:
+            return "Roshen data (a 'roshen' volumetricLosses method)";
+        case CoreLossesModels::PROPRIETARY:
+            return "a manufacturer loss model (a 'magnetics', 'micrometals', 'poco' or 'tdg' volumetricLosses method, or 'magnetec' massLosses)";
+        case CoreLossesModels::LOSS_FACTOR:
+            return "loss-factor data (a 'lossFactor' volumetricLosses method)";
+    }
+    throw InvalidInputException(ErrorCode::INVALID_ARGUMENT,
+        "Unknown core-loss model " + std::to_string(static_cast<int>(model)));
+}
+
+bool CoreLosses::can_run_requested_model(CoreLossesModels model, const std::vector<CoreLossesModels>& availableMethodsForMaterial) {
+    if (std::find(availableMethodsForMaterial.begin(), availableMethodsForMaterial.end(), model) != availableMethodsForMaterial.end()) {
+        return true;
+    }
+    // NSE reads the same Steinmetz coefficients as the rest of the family (CoreLossesNSEModel derives
+    // from the Steinmetz model), but get_methods does not list it, so it is judged here.
+    return model == CoreLossesModels::NSE &&
+           std::find(availableMethodsForMaterial.begin(), availableMethodsForMaterial.end(), CoreLossesModels::STEINMETZ) != availableMethodsForMaterial.end();
+}
+
+static void throw_if_requested_model_not_available(CoreLossesModels model, const std::string& materialName,
+                                                   const std::vector<CoreLossesModels>& availableMethodsForMaterial) {
+    if (CoreLosses::can_run_requested_model(model, availableMethodsForMaterial)) {
+        return;
+    }
+    std::string reason = std::string(magic_enum::enum_name(model)) + " needs " + required_loss_data(model) + ", which the material does not carry; ";
+    if (availableMethodsForMaterial.empty()) {
+        reason += "the material carries no core-loss data any model can evaluate";
+    }
+    else {
+        reason += "its data supports only ";
+        for (size_t index = 0; index < availableMethodsForMaterial.size(); ++index) {
+            reason += (index ? ", " : "") + std::string(magic_enum::enum_name(availableMethodsForMaterial[index]));
+        }
+    }
+    throw RequestedCoreLossesModelNotAvailableException(materialName, std::string(magic_enum::enum_name(model)), reason);
+}
+
+void CoreLosses::throw_if_requested_model_not_available(CoreLossesModels model, const CoreMaterial& material) {
+    OpenMagnetics::throw_if_requested_model_not_available(model, material.get_name(), CoreLossesModel::get_methods(material));
+}
+
 std::shared_ptr<CoreLossesModel> CoreLosses::get_core_losses_model(std::string materialName) {
     std::shared_ptr<CoreLossesModel> coreLossesModelForMaterial = nullptr;
 
     auto availableMethodsForMaterial = CoreLossesModel::get_methods(materialName);
+    // An explicit request is not a preference: run exactly that model or say why not (ABT #1497).
+    if (_requestedCoreLossesModel) {
+        OpenMagnetics::throw_if_requested_model_not_available(_requestedCoreLossesModel->first, materialName, availableMethodsForMaterial);
+        return _requestedCoreLossesModel->second;
+    }
     for (auto& [modelName, coreLossesModel] : _coreLossesModels) {
         if (std::find(availableMethodsForMaterial.begin(), availableMethodsForMaterial.end(), modelName) != availableMethodsForMaterial.end()) {
             coreLossesModelForMaterial = coreLossesModel;

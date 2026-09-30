@@ -245,6 +245,11 @@ class Settings
 
 
         std::vector<CoreLossesModels> _coreLossesModelNames;
+        // A core-loss model the caller EXPLICITLY asked for (ABT #1497). When set, CoreLosses runs
+        // exactly this model and throws RequestedCoreLossesModelNotAvailableException for a material
+        // it cannot evaluate, instead of walking _coreLossesModelNames to another model. Unset (the
+        // default) keeps that cascade.
+        std::optional<CoreLossesModels> _coreLossesRequestedModel;
 
         // Centralized model configuration
         MagneticFieldStrengthModels _magneticFieldStrengthModel;
@@ -619,7 +624,15 @@ class Settings
         void set_harmonic_amplitude_threshold(double value);
 
         std::vector<CoreLossesModels> get_core_losses_model_names() const;
+        // The default preference: `value` heads the PROPRIETARY/LOSS_FACTOR/STEINMETZ/ROSHEN cascade,
+        // and a material without it is evaluated with the next model it supports. Setting a
+        // preference withdraws any explicit request.
         void set_core_losses_preferred_model_name(CoreLossesModels value);
+        // The explicit request (ABT #1497): only `value` is used, and a material that cannot run it
+        // throws. Cleared by clear_core_losses_requested_model(), by setting a preference, and by reset().
+        std::optional<CoreLossesModels> get_core_losses_requested_model() const;
+        void set_core_losses_requested_model(CoreLossesModels value);
+        void clear_core_losses_requested_model();
 
         std::string get_preferred_core_material_ferrite_manufacturer() const;
         void set_preferred_core_material_ferrite_manufacturer(std::string value);

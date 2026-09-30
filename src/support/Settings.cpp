@@ -218,6 +218,7 @@ namespace OpenMagnetics {
         // Previously these survived reset(), leaking setter state across
         // tests/sessions (one cause of order-dependent adviser test results)
         _coreLossesModelNames = {Defaults().coreLossesModelDefault, CoreLossesModels::PROPRIETARY, CoreLossesModels::LOSS_FACTOR, CoreLossesModels::STEINMETZ, CoreLossesModels::ROSHEN};
+        _coreLossesRequestedModel = std::nullopt;
         _circuitSimulatorCurveFittingMode = 0;
         _circuitSimulatorFracpoleOptions = std::nullopt;
         _circuitSimulatorIncludeSaturation = false;
@@ -1078,6 +1079,16 @@ namespace OpenMagnetics {
     }
     void Settings::set_core_losses_preferred_model_name(CoreLossesModels value) {
         _coreLossesModelNames = {value, CoreLossesModels::PROPRIETARY, CoreLossesModels::LOSS_FACTOR, CoreLossesModels::STEINMETZ, CoreLossesModels::ROSHEN};
+        _coreLossesRequestedModel = std::nullopt;
+    }
+    std::optional<CoreLossesModels> Settings::get_core_losses_requested_model() const {
+        return _coreLossesRequestedModel;
+    }
+    void Settings::set_core_losses_requested_model(CoreLossesModels value) {
+        _coreLossesRequestedModel = value;
+    }
+    void Settings::clear_core_losses_requested_model() {
+        _coreLossesRequestedModel = std::nullopt;
     }
 
     std::string Settings::get_preferred_core_material_ferrite_manufacturer() const {

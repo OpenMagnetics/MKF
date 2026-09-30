@@ -576,23 +576,55 @@ class CoreLossesLossFactorModel : public CoreLossesModel {
 
 class CoreLosses {
     private:
+        // The default preference cascade: the first of these the material supports is run.
         std::vector<std::pair<CoreLossesModels, std::shared_ptr<CoreLossesModel>>> _coreLossesModels;
+        // An explicitly requested model (ABT #1497): when present it is the only model run, and a
+        // material that cannot run it throws RequestedCoreLossesModelNotAvailableException.
+        std::optional<std::pair<CoreLossesModels, std::shared_ptr<CoreLossesModel>>> _requestedCoreLossesModel;
     public:
 
     CoreLosses() {
         for (auto modelName : settings.get_core_losses_model_names()) {
             _coreLossesModels.push_back(std::pair<CoreLossesModels, std::shared_ptr<CoreLossesModel>>{modelName, CoreLossesModel::factory(modelName)});
         }
+        auto requestedModel = settings.get_core_losses_requested_model();
+        if (requestedModel) {
+            _requestedCoreLossesModel = std::pair<CoreLossesModels, std::shared_ptr<CoreLossesModel>>{requestedModel.value(), CoreLossesModel::factory(requestedModel.value())};
+        }
     }
     virtual ~CoreLosses() = default;
 
+    // Default preference: `model` heads the cascade and a material without it is evaluated with the
+    // next model it supports (reported in CoreLossesOutput.method_used). Withdraws any explicit request.
     void set_core_losses_model_name(CoreLossesModels model) {
         settings.set_core_losses_preferred_model_name(model);
+        _requestedCoreLossesModel = std::nullopt;
         _coreLossesModels.clear();
         for (auto modelName : settings.get_core_losses_model_names()) {
             _coreLossesModels.push_back(std::pair<CoreLossesModels, std::shared_ptr<CoreLossesModel>>{modelName, CoreLossesModel::factory(modelName)});
         }
     }
+
+    // Explicit request (ABT #1497): exactly `model` is run; a material that cannot be evaluated with
+    // it throws RequestedCoreLossesModelNotAvailableException naming the model, the material and why.
+    // Like the preference, it is stored in the Settings so the advisers' filters judge the same model.
+    void set_core_losses_requested_model_name(CoreLossesModels model) {
+        settings.set_core_losses_requested_model(model);
+        _requestedCoreLossesModel = std::pair<CoreLossesModels, std::shared_ptr<CoreLossesModel>>{model, CoreLossesModel::factory(model)};
+    }
+    std::optional<CoreLossesModels> get_core_losses_requested_model_name() const {
+        if (!_requestedCoreLossesModel) {
+            return std::nullopt;
+        }
+        return _requestedCoreLossesModel->first;
+    }
+
+    // Throws RequestedCoreLossesModelNotAvailableException when `model` is not among the models
+    // `material`'s data supports (CoreLossesModel::get_methods).
+    static void throw_if_requested_model_not_available(CoreLossesModels model, const CoreMaterial& material);
+    // Whether an explicit request for `model` can run on a material whose data supports
+    // `availableMethodsForMaterial` (CoreLossesModel::get_methods, plus NSE on Steinmetz data).
+    static bool can_run_requested_model(CoreLossesModels model, const std::vector<CoreLossesModels>& availableMethodsForMaterial);
 
     CoreLossesOutput calculate_core_losses(Core core, OperatingPointExcitation excitation, double temperature);
 

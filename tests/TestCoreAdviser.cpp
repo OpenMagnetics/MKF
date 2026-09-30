@@ -8,6 +8,7 @@
 #include "TestingUtils.h"
 #include "Fixtures.h"
 #include "processors/Sweeper.h"
+#include "processors/MagneticSimulator.h"
 #include "physical_models/Impedance.h"
 #include "physical_models/Reluctance.h"
 
@@ -3214,6 +3215,55 @@ TEST_CASE("Test_Loss_Model_Frequency_Span_Judges_The_Model_That_Runs", "[adviser
     CHECK_FALSE(MagneticFilterLossModelFrequencySpan::is_material_evaluable(Core::resolve_material("TP5H"), inputs, CoreLossesModels::IGSE));
     CHECK_FALSE(MagneticFilterLossModelFrequencySpan::is_material_evaluable(Core::resolve_material("NP7"), inputs));
     CHECK_FALSE(MagneticFilterLossModelFrequencySpan::is_material_evaluable(Core::resolve_material("NP7"), inputs, CoreLossesModels::IGSE));
+}
+
+// ABT #1497: with an explicitly requested core-loss model CoreLosses runs only that model and throws for a
+// material that cannot run it, so the span filter must call such a material not evaluable instead of
+// judging the model the default cascade would have substituted. Its verdict must match CoreLosses'
+// own, material by material; without a request the cascade verdicts stand.
+TEST_CASE("Test_Loss_Model_Frequency_Span_Honours_An_Explicit_Model_Request", "[adviser][core-adviser][abt-1497]") {
+    settings.reset();
+    auto inputs = OpenMagneticsTesting::create_quick_test_inputs();  // 100 kHz
+    auto operatingPoint = inputs.get_operating_points()[0];
+    // Default: PC95 (Roshen only) is evaluable, its Roshen model runs.
+    REQUIRE(MagneticFilterLossModelFrequencySpan::is_material_evaluable(Core::resolve_material("PC95"), inputs));
+
+    settings.set_core_losses_requested_model(CoreLossesModels::IGSE);
+    CHECK_FALSE(MagneticFilterLossModelFrequencySpan::is_material_evaluable(Core::resolve_material("PC95"), inputs));
+    CHECK_FALSE(MagneticFilterLossModelFrequencySpan::is_material_evaluable(Core::resolve_material("PC95"), inputs, CoreLossesModels::ROSHEN));
+    CHECK(MagneticFilterLossModelFrequencySpan::is_material_evaluable(Core::resolve_material("N87"), inputs));
+    // A simulator built now carries the request, as the adviser's own simulators do.
+    REQUIRE(CoreLosses().get_core_losses_requested_model_name() == CoreLossesModels::IGSE);
+
+    std::vector<int64_t> numberTurns = {20};
+    MagneticFilterLossModelFrequencySpan filter;
+    size_t evaluable = 0;
+    size_t notEvaluable = 0;
+    for (std::string grade : {"PC95", "N87", "3C95", "2HM4", "75-Series 26", "TP5H", "NP7"}) {
+        INFO(grade);
+        auto magnetic = OpenMagneticsTesting::get_quick_magnetic("E 42/21/15", OpenMagneticsTesting::get_ground_gap(0.001), numberTurns, 1, grade);
+        bool filterVerdict = MagneticFilterLossModelFrequencySpan::is_material_evaluable(Core::resolve_material(grade), inputs);
+        CHECK(filter.evaluate_magnetic(&magnetic, &inputs).first == filterVerdict);
+        bool coreLossesRuns = true;
+        std::string failure;
+        try {
+            MagneticSimulator magneticSimulator;
+            magneticSimulator.calculate_core_losses(operatingPoint, magnetic);
+        }
+        catch (const std::exception& exception) {
+            coreLossesRuns = false;
+            failure = exception.what();
+        }
+        INFO(failure);
+        CHECK(filterVerdict == coreLossesRuns);
+        (filterVerdict ? evaluable : notEvaluable)++;
+    }
+    // Both verdicts are exercised.
+    CHECK(evaluable >= 2);
+    CHECK(notEvaluable >= 3);
+
+    settings.reset();
+    CHECK(MagneticFilterLossModelFrequencySpan::is_material_evaluable(Core::resolve_material("PC95"), inputs));
 }
 
 // ABT #1456: at 100 kHz MKF used to rank nine 0.5-5 MHz MnZn grades best by far (TP5H read 2 % of 3C95's

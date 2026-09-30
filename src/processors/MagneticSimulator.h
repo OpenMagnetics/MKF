@@ -33,8 +33,13 @@ class MagneticSimulator {
         void set_reluctance_model_name(ReluctanceModels model) {
             _reluctanceModelName = model;
         }
+        // Default preference: heads the core-loss model cascade (see CoreLosses::set_core_losses_model_name).
         void set_core_losses_model_name(CoreLossesModels model) {
             _coreLossesModel.set_core_losses_model_name(model);
+        }
+        // Explicit request: exactly this model, throwing for a material that cannot run it (ABT #1497).
+        void set_core_losses_requested_model_name(CoreLossesModels model) {
+            _coreLossesModel.set_core_losses_requested_model_name(model);
         }
 
         Mas simulate(Mas mas, bool fastMode=false);

@@ -8,6 +8,7 @@
 #include "physical_models/MagnetizingInductance.h"
 #include "processors/CircuitSimulatorInterface.h"
 #include "processors/Sweeper.h"
+#include "processors/MagneticSimulator.h"
 #include "physical_models/Reluctance.h"
 #include "support/MaterialValidator.h"
 #include "TestingUtils.h"
@@ -2849,6 +2850,152 @@ TEST_CASE("Test_CoreLosses_Above_Curie_Temperature_Throws", "[physical-model][co
         CHECK(exception.code() == ErrorCode::MATERIAL_ABOVE_CURIE_TEMPERATURE);
         CHECK(exception.curie_temperature() == curieTemperature);
     }
+}
+
+// ABT #1497 helpers: a 20-turn E 42/21/15 in `materialName` driven by the quick 100 kHz triangular
+// operating point, and the flux density excitation that point puts through its core.
+static std::pair<Core, OperatingPointExcitation> abt1497_core_and_excitation(const std::string& materialName) {
+    auto inputs = OpenMagneticsTesting::create_quick_test_inputs();
+    auto operatingPoint = inputs.get_operating_points()[0];
+    std::vector<int64_t> numberTurns = {20};
+    auto magnetic = OpenMagneticsTesting::get_quick_magnetic("E 42/21/15", OpenMagneticsTesting::get_ground_gap(0.001), numberTurns, 1, materialName);
+    auto core = magnetic.get_core();
+    auto coil = magnetic.get_coil();
+    MagnetizingInductance magnetizingInductance("ZHANG");
+    auto magneticFluxDensity = magnetizingInductance.calculate_inductance_and_magnetic_flux_density(core, coil, &operatingPoint).second;
+    auto excitation = operatingPoint.get_excitations_per_winding()[0];
+    excitation.set_magnetic_flux_density(magneticFluxDensity);
+    return {core, excitation};
+}
+
+TEST_CASE("Test_CoreLosses_Explicit_Request_Of_A_Model_The_Material_Lacks_Throws", "[physical-model][core-losses][smoke-test][abt-1497]") {
+    // ABT #1497 (and #1485 problem 2): asking STEINMETZ or IGSE of PC95, which carries only Roshen data
+    // in MAS, returned the Roshen result, visible only in method_used. An explicit request must run
+    // exactly the requested model or throw, naming the model, the material and why.
+    settings.reset();
+    double temperature = 25;
+    {
+        auto [core, excitation] = abt1497_core_and_excitation("PC95");
+        for (auto requested : {CoreLossesModels::STEINMETZ, CoreLossesModels::IGSE, CoreLossesModels::LOSS_FACTOR, CoreLossesModels::PROPRIETARY}) {
+            INFO("requested " << magic_enum::enum_name(requested));
+            CoreLosses coreLosses;
+            coreLosses.set_core_losses_requested_model_name(requested);
+            CHECK_THROWS_AS(coreLosses.calculate_core_losses(core, excitation, temperature), RequestedCoreLossesModelNotAvailableException);
+            CHECK_THROWS_AS(coreLosses.get_core_volumetric_losses(core.resolve_material(), excitation, temperature), RequestedCoreLossesModelNotAvailableException);
+            CHECK_THROWS_AS(coreLosses.get_core_losses_model("PC95"), RequestedCoreLossesModelNotAvailableException);
+        }
+        // The same request through the simulator, the path PyOM and the web take.
+        MagneticSimulator magneticSimulator;
+        magneticSimulator.set_core_losses_requested_model_name(CoreLossesModels::IGSE);
+        auto inputs = OpenMagneticsTesting::create_quick_test_inputs();
+        auto operatingPoint = inputs.get_operating_points()[0];
+        std::vector<int64_t> numberTurns = {20};
+        auto magnetic = OpenMagneticsTesting::get_quick_magnetic("E 42/21/15", OpenMagneticsTesting::get_ground_gap(0.001), numberTurns, 1, "PC95");
+        CHECK_THROWS_AS(magneticSimulator.calculate_core_losses(operatingPoint, magnetic), RequestedCoreLossesModelNotAvailableException);
+
+        CoreLosses coreLosses;
+        coreLosses.set_core_losses_requested_model_name(CoreLossesModels::STEINMETZ);
+        bool thrown = false;
+        try {
+            coreLosses.calculate_core_losses(core, excitation, temperature);
+        }
+        catch (const RequestedCoreLossesModelNotAvailableException& exception) {
+            thrown = true;
+            CHECK(exception.code() == ErrorCode::MATERIAL_REQUESTED_LOSS_MODEL_NOT_AVAILABLE);
+            CHECK(exception.material_name() == "PC95");
+            CHECK(exception.model_name() == "STEINMETZ");
+            std::string message = exception.what();
+            INFO(message);
+            CHECK_THAT(message, Catch::Matchers::ContainsSubstring("PC95"));
+            CHECK_THAT(message, Catch::Matchers::ContainsSubstring("STEINMETZ"));
+            CHECK_THAT(message, Catch::Matchers::ContainsSubstring("explicitly requested"));
+            CHECK_THAT(message, Catch::Matchers::ContainsSubstring("steinmetz"));
+            CHECK_THAT(message, Catch::Matchers::ContainsSubstring("ROSHEN"));
+        }
+        CHECK(thrown);
+    }
+    {
+        // A ferrite with Steinmetz and Roshen data has no loss-factor or manufacturer model.
+        auto [core, excitation] = abt1497_core_and_excitation("3C95");
+        for (auto requested : {CoreLossesModels::LOSS_FACTOR, CoreLossesModels::PROPRIETARY}) {
+            INFO("requested " << magic_enum::enum_name(requested));
+            CoreLosses coreLosses;
+            coreLosses.set_core_losses_requested_model_name(requested);
+            CHECK_THROWS_AS(coreLosses.calculate_core_losses(core, excitation, temperature), RequestedCoreLossesModelNotAvailableException);
+        }
+    }
+    settings.reset();
+}
+
+TEST_CASE("Test_CoreLosses_Explicit_Request_Of_An_Available_Model_Runs_Exactly_That_Model", "[physical-model][core-losses][smoke-test][abt-1497]") {
+    settings.reset();
+    double temperature = 25;
+    auto [core, excitation] = abt1497_core_and_excitation("3C95");
+    auto availableModels = CoreLossesModel::get_methods(core.resolve_material());
+    // Every model the cascade would never reach with a default preference of IGSE, and IGSE itself.
+    for (auto requested : {CoreLossesModels::IGSE, CoreLossesModels::STEINMETZ, CoreLossesModels::MSE, CoreLossesModels::NSE, CoreLossesModels::ROSHEN}) {
+        INFO("requested " << magic_enum::enum_name(requested));
+        REQUIRE(CoreLosses::can_run_requested_model(requested, availableModels));
+        CoreLosses coreLosses;
+        coreLosses.set_core_losses_requested_model_name(requested);
+        REQUIRE(coreLosses.get_core_losses_requested_model_name() == requested);
+        auto output = coreLosses.calculate_core_losses(core, excitation, temperature);
+        auto direct = CoreLossesModel::factory(requested)->get_core_losses(core, excitation, temperature);
+        CHECK(output.get_method_used() == direct.get_method_used());
+        CHECK(output.get_core_losses() == direct.get_core_losses());
+        CHECK(output.get_core_losses() > 0);
+    }
+    {
+        // A Roshen-only grade asked for Roshen.
+        auto [pc95Core, pc95Excitation] = abt1497_core_and_excitation("PC95");
+        CoreLosses coreLosses;
+        coreLosses.set_core_losses_requested_model_name(CoreLossesModels::ROSHEN);
+        CHECK(coreLosses.calculate_core_losses(pc95Core, pc95Excitation, temperature).get_method_used() == "Roshen");
+    }
+    settings.reset();
+}
+
+TEST_CASE("Test_CoreLosses_Default_Preference_Keeps_The_Cascade", "[physical-model][core-losses][smoke-test][abt-1497]") {
+    // Without an explicit request the preference only heads the PROPRIETARY/LOSS_FACTOR/STEINMETZ/ROSHEN
+    // cascade: the default IGSE reaches PC95's Roshen model and 3C95's iGSE, unchanged by ABT #1497.
+    settings.reset();
+    REQUIRE_FALSE(settings.get_core_losses_requested_model());
+    double temperature = 25;
+    auto [pc95Core, pc95Excitation] = abt1497_core_and_excitation("PC95");
+    auto [core, excitation] = abt1497_core_and_excitation("3C95");
+    {
+        CoreLosses coreLosses;
+        REQUIRE_FALSE(coreLosses.get_core_losses_requested_model_name());
+        auto pc95Output = coreLosses.calculate_core_losses(pc95Core, pc95Excitation, temperature);
+        CHECK(pc95Output.get_method_used() == "Roshen");
+        CHECK(pc95Output.get_core_losses() == CoreLossesRoshenModel().get_core_losses(pc95Core, pc95Excitation, temperature).get_core_losses());
+        auto output = coreLosses.calculate_core_losses(core, excitation, temperature);
+        CHECK(output.get_method_used() == "iGSE");
+        CHECK(output.get_core_losses() == CoreLossesIGSEModel().get_core_losses(core, excitation, temperature).get_core_losses());
+    }
+    {
+        // A preference for STEINMETZ still reaches PC95's Roshen model.
+        CoreLosses coreLosses;
+        coreLosses.set_core_losses_model_name(CoreLossesModels::STEINMETZ);
+        CHECK(coreLosses.calculate_core_losses(pc95Core, pc95Excitation, temperature).get_method_used() == "Roshen");
+        CHECK(coreLosses.calculate_core_losses(core, excitation, temperature).get_method_used() == "Steinmetz");
+    }
+    {
+        // Setting a preference withdraws an explicit request, in the instance and in the Settings, so a
+        // later default call (PyOM calculate_core_losses with no model) does not inherit it.
+        CoreLosses coreLosses;
+        coreLosses.set_core_losses_requested_model_name(CoreLossesModels::STEINMETZ);
+        REQUIRE(settings.get_core_losses_requested_model() == CoreLossesModels::STEINMETZ);
+        CHECK(CoreLosses().get_core_losses_requested_model_name() == CoreLossesModels::STEINMETZ);
+        coreLosses.set_core_losses_model_name(CoreLossesModels::STEINMETZ);
+        CHECK_FALSE(settings.get_core_losses_requested_model());
+        CHECK(coreLosses.calculate_core_losses(pc95Core, pc95Excitation, temperature).get_method_used() == "Roshen");
+        coreLosses.set_core_losses_requested_model_name(CoreLossesModels::IGSE);
+        settings.reset();
+        CHECK_FALSE(settings.get_core_losses_requested_model());
+        CHECK_FALSE(CoreLosses().get_core_losses_requested_model_name());
+    }
+    settings.reset();
 }
 
 TEST_CASE("Test_CoreLosses_Nanoperm_Data_Sheet_Bound_Is_Peak", "[physical-model][core-losses][smoke-test][abt-1491]") {

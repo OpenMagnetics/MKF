@@ -157,6 +157,18 @@ class LossEvaluator {
     // material's data supports (CoreLosses::get_core_losses_model, without the by-name lookup).
     std::string select() {
         auto available = CoreLossesModel::get_methods(_material);
+        // An explicitly requested model (ABT #1497) is the only one MKF runs.
+        auto requested = settings.get_core_losses_requested_model();
+        if (requested) {
+            if (!CoreLosses::can_run_requested_model(requested.value(), available)) {
+                return "the explicitly requested loss model " + std::string(magic_enum::enum_name(requested.value())) +
+                       " cannot be evaluated with the record's loss data";
+            }
+            _model = requested.value();
+            _modelInstance = CoreLossesModel::factory(requested.value());
+            _modelName = std::string(magic_enum::enum_name(requested.value()));
+            return "";
+        }
         for (auto model : settings.get_core_losses_model_names()) {
             if (std::find(available.begin(), available.end(), model) != available.end()) {
                 _model = model;

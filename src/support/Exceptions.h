@@ -46,6 +46,7 @@ enum class ErrorCode : int {
     MATERIAL_INVALID_PROPERTY = 302,
     MATERIAL_FREQUENCY_OUT_OF_SPAN = 303,  // f outside every fitted loss range (ABT #1456)
     MATERIAL_ABOVE_CURIE_TEMPERATURE = 304,  // loss asked of a material hotter than its Curie point (ABT #1485)
+    MATERIAL_REQUESTED_LOSS_MODEL_NOT_AVAILABLE = 305,  // an explicitly requested core-loss model the material cannot run (ABT #1497)
     
     // Calculation errors (400-499)
     CALCULATION_NAN_RESULT = 400,
@@ -116,6 +117,7 @@ inline std::string to_string(ErrorCode code) {
         case ErrorCode::MATERIAL_INVALID_PROPERTY: return "MATERIAL_INVALID_PROPERTY";
         case ErrorCode::MATERIAL_FREQUENCY_OUT_OF_SPAN: return "MATERIAL_FREQUENCY_OUT_OF_SPAN";
         case ErrorCode::MATERIAL_ABOVE_CURIE_TEMPERATURE: return "MATERIAL_ABOVE_CURIE_TEMPERATURE";
+        case ErrorCode::MATERIAL_REQUESTED_LOSS_MODEL_NOT_AVAILABLE: return "MATERIAL_REQUESTED_LOSS_MODEL_NOT_AVAILABLE";
         case ErrorCode::CALCULATION_NAN_RESULT: return "CALCULATION_NAN_RESULT";
         case ErrorCode::CALCULATION_DIVERGED: return "CALCULATION_DIVERGED";
         case ErrorCode::CALCULATION_INVALID_INPUT: return "CALCULATION_INVALID_INPUT";
@@ -330,6 +332,27 @@ public:
     const std::string& material_name() const noexcept { return _materialName; }
     double temperature() const noexcept { return _temperature; }
     double curie_temperature() const noexcept { return _curieTemperature; }
+};
+
+// A caller explicitly asked for one core-loss model and the material cannot be evaluated with it
+// (no data for it). Only an explicit request throws this; the default preference walks its cascade
+// to the material's own model instead (ABT #1497).
+class RequestedCoreLossesModelNotAvailableException : public MaterialException {
+    std::string _materialName;
+    std::string _modelName;
+    std::string _reason;
+public:
+    RequestedCoreLossesModelNotAvailableException(const std::string& materialName, const std::string& modelName,
+                                                  const std::string& reason)
+        : MaterialException(ErrorCode::MATERIAL_REQUESTED_LOSS_MODEL_NOT_AVAILABLE,
+                            "Material " + materialName + ": core-loss model " + modelName +
+                            " was explicitly requested but cannot be used: " + reason,
+                            materialName),
+          _materialName(materialName), _modelName(modelName), _reason(reason) {}
+
+    const std::string& material_name() const noexcept { return _materialName; }
+    const std::string& model_name() const noexcept { return _modelName; }
+    const std::string& reason() const noexcept { return _reason; }
 };
 
 // ============================================================================

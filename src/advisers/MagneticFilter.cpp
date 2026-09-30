@@ -170,10 +170,39 @@ std::shared_ptr<MagneticFilter> MagneticFilter::factory(MagneticFilters filterNa
 bool MagneticFilterLossModelFrequencySpan::is_material_evaluable(const CoreMaterial& material, const Inputs& inputs,
                                                                  std::optional<CoreLossesModels> model) {
     auto availableModels = CoreLossesModel::get_methods(material);
-    // The model CoreLosses will actually run: the first of its order the material supports. A caller's
+    // Whether `modelName` can be evaluated at every operating frequency. Only the Steinmetz family
+    // reads the fitted ranges (see CoreLossesModel::evaluates_steinmetz_ranges).
+    auto coversOperatingFrequencies = [&](CoreLossesModels modelName) {
+        auto coreLossesModel = CoreLossesModel::factory(modelName);
+        if (!CoreLossesModel::evaluates_steinmetz_ranges(coreLossesModel.get())) {
+            return true;
+        }
+        auto [spanMinimum, spanMaximum] = CoreLossesModel::get_steinmetz_fitted_span(material);
+        for (auto& operatingPoint : inputs.get_operating_points()) {
+            for (auto& excitation : operatingPoint.get_excitations_per_winding()) {
+                double frequency = excitation.get_frequency();
+                if (frequency < spanMinimum || frequency > spanMaximum) {
+                    return false;
+                }
+            }
+        }
+        return true;
+    };
+    // An explicitly requested model (ABT #1497) is the only one CoreLosses runs, and it throws for a
+    // material that cannot run it: such a material is not evaluable, never judged by another model.
+    auto requestedModel = Settings::GetInstance().get_core_losses_requested_model();
+    if (requestedModel) {
+        if (!CoreLosses::can_run_requested_model(requestedModel.value(), availableModels)) {
+            return false;
+        }
+        if (!coversOperatingFrequencies(requestedModel.value())) {
+            return false;
+        }
+    }
+    // The model the default cascade runs: the first of its order the material supports. A caller's
     // model heads that order exactly as CoreLosses::set_core_losses_model_name puts it there, so asking
     // IGSE of a Roshen-only material judges the Roshen model that will run, not a Steinmetz span the
-    // material does not have (ABT #1497 tracks whether that substitution should throw instead).
+    // material does not have.
     auto modelOrder = Settings::GetInstance().get_core_losses_model_names();
     if (model) {
         modelOrder.front() = model.value();
@@ -190,21 +219,7 @@ bool MagneticFilterLossModelFrequencySpan::is_material_evaluable(const CoreMater
         // loss calculation itself still throws for it.
         return false;
     }
-    auto coreLossesModel = CoreLossesModel::factory(modelThatRuns.value());
-    // Only the Steinmetz family reads the fitted ranges (see CoreLossesModel::evaluates_steinmetz_ranges).
-    if (!CoreLossesModel::evaluates_steinmetz_ranges(coreLossesModel.get())) {
-        return true;
-    }
-    auto [spanMinimum, spanMaximum] = CoreLossesModel::get_steinmetz_fitted_span(material);
-    for (auto& operatingPoint : inputs.get_operating_points()) {
-        for (auto& excitation : operatingPoint.get_excitations_per_winding()) {
-            double frequency = excitation.get_frequency();
-            if (frequency < spanMinimum || frequency > spanMaximum) {
-                return false;
-            }
-        }
-    }
-    return true;
+    return coversOperatingFrequencies(modelThatRuns.value());
 }
 
 std::pair<bool, double> MagneticFilterLossModelFrequencySpan::evaluate_magnetic(Magnetic* magnetic, Inputs* inputs, std::vector<Outputs>* outputs) {

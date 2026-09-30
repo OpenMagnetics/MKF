@@ -312,7 +312,9 @@ class MagneticFilterLossModelFrequencySpan : public MagneticFilter {
         bool applies_to(Magnetic* magnetic) const override { return magnetic->has_core(); }
         // The same verdict for a bare material. `model` is the caller's requested core loss model; like
         // CoreLosses, it heads the settings' model order and the first model the material supports is
-        // the one judged. A material no model can evaluate is not evaluable (false).
+        // the one judged. A material no model can evaluate is not evaluable (false). When the Settings
+        // carry an explicitly requested model (ABT #1497), a material that cannot run that model, or
+        // not at every operating frequency, is not evaluable either.
         static bool is_material_evaluable(const CoreMaterial& material, const Inputs& inputs,
                                           std::optional<CoreLossesModels> model = std::nullopt);
 };
