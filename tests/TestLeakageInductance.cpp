@@ -501,7 +501,14 @@ TEST_CASE("Calculate leakage inductance for toroidal cores with contiguous secti
     // an MKF characterization value. 0.43 % of the 222 mH self-inductance.
     // ABT #1240: 0.9138e-3 -> 0.94808e-3 (+3.7 %), the field inside the round wires (it was zeroed) now stores
     // its energy; the toroid grid and Kelvin images are unchanged.
-    double expectedLeakageInductance = 0.94808e-3;
+    // 2026-09-30: 0.94808e-3 -> 4.8260e-3. The toroid grid is replaced by the exact per-region ring-plane
+    // solution plus the 3-D correction (LeakageInductance.h, "Toroidal cores"); the old model read 0.10x the
+    // measured differential-mode inductance across 225 WE common-mode chokes. Check on the new value: winding 0
+    // is concentrated in 14 degrees against winding 1 spread over the whole ring, so the MMF is a sawtooth of
+    // 200 A-turns whose harmonics |S_m| stay near 200 up to m ~ 2 pi / 14 deg; (2 mu0 / pi) * 200^2 * sum 1/m gives
+    // about 0.12 H/m, and the model's ring-plane part is 0.096 H/m (x 31 mm half turn = 3.0 mH), plus a 1.85 mH
+    // 3-D correction (large here because the low harmonics dominate). 2.2 % of the 222 mH self-inductance.
+    double expectedLeakageInductance = 4.8260e-3;
 
     auto leakageInductance = LeakageInductance().calculate_leakage_inductance(magnetic, frequency, 1, 0).get_leakage_inductance_per_winding()[0].get_nominal().value();
     CHECK_THAT(leakageInductance, WithinRel(expectedLeakageInductance, maximumError));
@@ -560,7 +567,10 @@ TEST_CASE("Calculate leakage inductance for toroidal cores with contiguous secti
     // contiguous two-sector (common-mode-choke) toroidal topology.
     // ABT #1211: halved as above (6.27273e-6 / (2 a^2)); characterization value, no independent reference. 0.58 %.
     // ABT #1240: 3.1617e-6 -> 3.2288e-6 (+2.1 %), the in-wire field as in the sibling test.
-    double expectedLeakageInductance = 3.2288e-6;
+    // 2026-09-30: 3.2288e-6 -> 1.6359e-5, the toroidal model of the sibling test above. Winding 0 spans 108 degrees
+    // and winding 1 (5 turns at twice the current) only 24 degrees, so the MMF is far from balanced along the ring:
+    // ring-plane 0.28 mH/m x 34 mm = 9.4 uH plus a 7.0 uH 3-D correction. 2.9 % of the 0.556 mH self-inductance.
+    double expectedLeakageInductance = 1.6359e-5;
 
     auto leakageInductance = LeakageInductance().calculate_leakage_inductance(magnetic, frequency, 0, 1).get_leakage_inductance_per_winding()[0].get_nominal().value();
     CHECK_THAT(leakageInductance, WithinRel(expectedLeakageInductance, maximumError));

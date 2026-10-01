@@ -5,6 +5,7 @@
 #include "support/CoilMesher.h"
 #include "physical_models/MagneticShunt.h"
 #include <MAS.hpp>
+#include <array>
 
 using namespace MAS;
 
@@ -66,6 +67,63 @@ class LeakageInductance{
     // calculate_leakage_inductance exactly. Cost: N + N(N−1)/2 field solves.
     std::vector<std::vector<double>> calculate_leakage_inductance_matrix(Magnetic magnetic, double frequency, size_t harmonicIndex = 1);
 
+    // ---- Toroidal cores (CoreShapeFamily::T) --------------------------------------------------
+    // The leakage field of a toroid lives in the air of the bore and outside the core. With a high core
+    // permeability the ferrite decouples the two air regions, and the model is:
+    //
+    //  1. Ring-plane (2-D) energy per unit length, exact. Each bore crossing of a turn is a line current in
+    //     the bore, imaged ONLY in the bore wall (radius B/2); each outer crossing is a line current outside
+    //     the core, imaged ONLY in the outer wall (radius A/2). A line current I at z in a region bounded by a
+    //     high-permeability circle of radius R has the images k·I at R²/conj(z) and −k·I at the centre
+    //     (k = (µ−1)/(µ+1)), which zero the tangential H on the wall. The energy is the closed-form sum
+    //     ½·Σ I_j·A(z_j) with each conductor's geometric mean radius in its self term (in-wire energy
+    //     included). No grid is involved, so there is no grid truncation, far-point drop or grid convergence.
+    //     A region with a net current (a single winding, or ampere-turns that do not balance) links the core:
+    //     the wall then carries the magnetizing circulation Σ I_bore / (2π R), the bore has no centre image
+    //     and the outside has −(1 + k)·Σ I at the centre. The energy includes that circulation between the
+    //     conductors and the wall, so it does not depend on the unit of length (see the .cpp).
+    //  2. Extrusion by the half turn length ℓ∞ = h + w of the conductor envelope (the rectangle through the
+    //     conductor centres): each ring-plane crossing stands for half of its turn.
+    //  3. Three-dimensional correction for the azimuthal MMF. The winding MMF V(φ) on the envelope (a
+    //     staircase rising by the turn current at each turn) drives a field that also leaves through the top
+    //     and bottom faces and closes far from the core. For each azimuthal harmonic m the exterior Laplace
+    //     problem around the envelope (a body of revolution) is solved by finite elements in the meridian
+    //     plane; it gives an effective height h_eff(m), the 3-D energy of the mode over its 2-D per-length
+    //     energy. h_eff(m) → ℓ∞ as m → ∞ (the field then hugs the surface), so the correction
+    //     Σ_m w_m·(h_eff(m) − ℓ∞), with w_m = µ0·|S_m|²/(π·m) the 2-D per-length energy of harmonic m of the
+    //     MMF sheet and S_m = Σ_k I_k·exp(−i·m·φ_k), converges fast. It vanishes for windings whose
+    //     ampere-turns balance at every angle (interleaved or layered windings).
+    struct ToroidalLineCurrent {
+        double x;
+        double y;
+        double current;
+        double geometricMeanRadius;
+    };
+    struct ToroidalLeakageEnergy {
+        double ringPlaneEnergyPerLength;      // J/m, bore + outside (step 1)
+        double extrusionLength;               // m, ℓ∞ (step 2)
+        double threeDimensionalCorrection;    // J (step 3)
+        double energy;                        // J = ringPlaneEnergyPerLength·extrusionLength + threeDimensionalCorrection
+        double envelopeInnerRadius;           // m
+        double envelopeOuterRadius;           // m
+        double envelopeHeight;                // m
+    };
+    static constexpr size_t TOROIDAL_LEAKAGE_NUMBER_MODES = 16;
+    // Per-length energy (J/m) of line currents in one air region bounded by a high-permeability circle.
+    // interiorRegion: the conductors are inside the circle (bore); otherwise they are outside it.
+    static double calculate_ring_plane_region_energy_per_length(const std::vector<ToroidalLineCurrent>& conductors, double wallRadius, double imageFactor, bool interiorRegion);
+    // H field (A/m) of the same line currents and their images at (x, y). Inside a conductor the in-wire field
+    // of a uniform current is used (conductor radius = geometricMeanRadius·e^{1/4}).
+    static std::array<double, 2> calculate_ring_plane_region_field(const std::vector<ToroidalLineCurrent>& conductors, double wallRadius, double imageFactor, bool interiorRegion, double x, double y);
+    // 2-D per-length energy (J/m) of azimuthal harmonic m of the MMF sheet: µ0·|Σ_k I_k·e^{−i·m·φ_k}|²/(π·m).
+    static double calculate_sheet_mode_energy_per_length(const std::vector<double>& angles, const std::vector<double>& currents, size_t mode);
+    // Effective height (m) of azimuthal harmonic m for a rectangular envelope [innerRadius, outerRadius] × [−height/2, height/2]:
+    // the exterior energy of the potential cos(mφ) prescribed on the envelope, divided by 2πm (its 2-D per-length value).
+    // refinement scales the mesh density; farFieldFactor puts the zero-potential boundary at farFieldFactor·outerRadius.
+    static double calculate_body_of_revolution_effective_height(double innerRadius, double outerRadius, double height, size_t mode, double refinement = 1.0, double farFieldFactor = 30.0);
+    // Leakage energy (J) of a toroidal magnetic for signed peak currents per winding.
+    static ToroidalLeakageEnergy calculate_toroidal_leakage_energy(Magnetic magnetic, const std::vector<double>& currentPerWinding);
+
     private:
         static constexpr double NEGLIGIBLE_CURRENT = 1e-9;
         static constexpr double SINUSOIDAL_PEAK_TO_PEAK = 2.0;
@@ -85,6 +143,7 @@ class LeakageInductance{
         // the amplitude the field model drove the turns with (throws when there is none).
         static double harmonic_peak_current_at_field_frequency(const OperatingPointExcitation& excitation, double fieldFrequency);
         std::pair<size_t, size_t> calculate_grid_points(Magnetic& magnetic, double frequency);
+        static double cached_body_of_revolution_effective_height(double innerRadius, double outerRadius, double height, size_t mode);
 
 };
 } // namespace OpenMagnetics

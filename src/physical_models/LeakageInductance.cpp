@@ -7,6 +7,14 @@
 #include "support/Utils.h"
 #include "json.hpp"
 #include <cfloat>
+#include <algorithm>
+#include <array>
+#include <complex>
+#include <map>
+#include <mutex>
+#include <tuple>
+#include <Eigen/Sparse>
+#include <Eigen/SparseCholesky>
 #include "support/Exceptions.h"
 
 namespace OpenMagnetics {
@@ -223,6 +231,28 @@ LeakageInductanceOutput LeakageInductance::calculate_leakage_inductance(Magnetic
         }
     }
 
+    // Toroids: exact ring-plane field with per-region images and the body-of-revolution 3-D correction
+    // (see LeakageInductance.h). Ampere-turn balanced pair: 1 A in the source against the turns-ratio current
+    // in the destination; the result is referred to the source.
+    if (magnetic.get_mutable_core().get_shape_family() == CoreShapeFamily::T) {
+        if (sourceIndex == destinationIndex) {
+            throw InvalidInputException(ErrorCode::INVALID_INPUT, "Leakage inductance needs two different windings");
+        }
+        size_t numberWindings = magnetic.get_coil().get_functional_description().size();
+        std::vector<double> currents(numberWindings, 0.0);
+        currents[sourceIndex] = 1.0;
+        currents[destinationIndex] = -static_cast<double>(magnetic.get_mutable_coil().get_number_turns(sourceIndex)) /
+                                     static_cast<double>(magnetic.get_mutable_coil().get_number_turns(destinationIndex));
+        auto toroidalEnergy = calculate_toroidal_leakage_energy(magnetic, currents);
+        LeakageInductanceOutput toroidalOutput;
+        toroidalOutput.set_method_used("Energy");
+        toroidalOutput.set_origin(ResultOrigin::SIMULATION);
+        DimensionWithTolerance toroidalDimensionWithTolerance;
+        toroidalDimensionWithTolerance.set_nominal(2.0 * toroidalEnergy.energy);
+        toroidalOutput.set_leakage_inductance_per_winding({toroidalDimensionWithTolerance});
+        return toroidalOutput;
+    }
+
     // RAII: any throw between the manual set/restore pair (several are right below) used
     // to leave fringing globally disabled for the rest of the process.
     SettingsGuard<bool> fringingGuard(settings, &Settings::get_magnetic_field_include_fringing, &Settings::set_magnetic_field_include_fringing, false);
@@ -425,6 +455,18 @@ double LeakageInductance::calculate_leakage_field_energy(Magnetic magnetic, cons
 
     OperatingPoint operatingPoint = create_excitation_operating_point(magnetic, currentsRmsSigned, frequency);
 
+    if (magnetic.get_mutable_core().get_shape_family() == CoreShapeFamily::T) {
+        // The same peak amplitudes the field model would drive the turns with (the harmonic at the field frequency).
+        double fieldFrequency = operatingPoint.get_excitations_per_winding()[0].get_current()->get_harmonics()->get_frequencies()[harmonicIndex];
+        std::vector<double> peakCurrents(numberWindings, 0.0);
+        for (size_t windingIndex = 0; windingIndex < numberWindings; ++windingIndex) {
+            if (currentsRmsSigned[windingIndex] != 0) {
+                peakCurrents[windingIndex] = directions[windingIndex] * harmonic_peak_current_at_field_frequency(operatingPoint.get_excitations_per_winding()[windingIndex], fieldFrequency);
+            }
+        }
+        return calculate_toroidal_leakage_energy(magnetic, peakCurrents).energy;
+    }
+
     auto magneticFieldResult = calculate_magnetic_field_phasor(operatingPoint, magnetic, 0, 1, harmonicIndex, directions);
     ComplexField field = magneticFieldResult.inPhase;
     double dA = magneticFieldResult.dA;
@@ -591,6 +633,423 @@ OperatingPoint LeakageInductance::create_leakage_operating_point(Magnetic& magne
     OperatingPoint operatingPoint;
     operatingPoint.set_excitations_per_winding(excitationPerWinding);
     return operatingPoint;
+}
+
+// ---------------------------------------------------------------------------------------------------------
+// Toroidal cores. The model is described in LeakageInductance.h.
+// ---------------------------------------------------------------------------------------------------------
+
+double LeakageInductance::calculate_ring_plane_region_energy_per_length(const std::vector<ToroidalLineCurrent>& conductors, double wallRadius, double imageFactor, bool interiorRegion) {
+    if (!(wallRadius > 0)) {
+        throw InvalidInputException(ErrorCode::INVALID_CORE_DATA, "Toroidal leakage: the wall radius must be positive");
+    }
+    // A(z_j) = -(µ0 / 2π) Σ_k I_k [ln|z_j − z_k| + k·ln|z_j − R²/conj(z_k)| − k·ln|z_j|]. With
+    // |z_j − R²/conj(z_k)| = |z_j·conj(z_k) − R²| / |z_k| the kernel is symmetric in (j, k). The self term uses the
+    // conductor's geometric mean radius, which includes the energy inside the wire.
+    //
+    // Net current. The centre image makes the wall free of tangential field, which is right only when the region
+    // carries no net current. A net current Σ I (a single winding, or any excitation whose ampere-turns do not
+    // balance) links the core: the core field at the wall is the magnetizing H = Σ I_bore / (2π R), and the air
+    // between the conductors and the wall carries that circulation too. Without it the kernel changes by ln(s)
+    // when the geometry is scaled by s, so the energy of a net current would depend on the unit of length.
+    // netCurrentTerm restores the circulation (exact for k = 1, and gauge invariant for any k; it vanishes when
+    // Σ I = 0):
+    //   bore:    + ln|z_j| + ln|z_k| − 3·ln R   (field: direct + wall images, no centre image)
+    //   outside: − ln|z_j| − ln|z_k| + ln R     (field: direct + wall images + −(1 + k)·Σ I at the centre)
+    // For a uniform ring of radius ρ this is the annulus energy µ0·I²/(4π)·ln(R/ρ) in the bore and
+    // µ0·I²/(4π)·ln(ρ/R) outside.
+    double vacuumPermeability = Constants().vacuumPermeability;
+    double logWall = std::log(wallRadius);
+    double sum = 0;
+    for (size_t j = 0; j < conductors.size(); ++j) {
+        std::complex<double> zj(conductors[j].x, conductors[j].y);
+        double rj = std::abs(zj);
+        if (interiorRegion ? !(rj < wallRadius) : !(rj > wallRadius)) {
+            throw InvalidInputException(ErrorCode::INVALID_COIL_CONFIGURATION, "Toroidal leakage: a turn crossing at radius " + std::to_string(rj) +
+                                        " m is on the wrong side of the core wall at " + std::to_string(wallRadius) + " m");
+        }
+        if (!(conductors[j].geometricMeanRadius > 0)) {
+            throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA, "Toroidal leakage: a conductor has no positive geometric mean radius");
+        }
+        for (size_t k = 0; k < conductors.size(); ++k) {
+            std::complex<double> zk(conductors[k].x, conductors[k].y);
+            double rk = std::abs(zk);
+            double direct = (j == k) ? std::log(conductors[j].geometricMeanRadius) : std::log(std::abs(zj - zk));
+            double image = std::log(std::abs(zj * std::conj(zk) - wallRadius * wallRadius)) - std::log(rk) - std::log(rj);
+            double netCurrentTerm = interiorRegion ? std::log(rj) + std::log(rk) - 3 * logWall : -std::log(rj) - std::log(rk) + logWall;
+            sum += conductors[j].current * conductors[k].current * (direct + imageFactor * image + netCurrentTerm);
+        }
+    }
+    return -0.5 * vacuumPermeability / (2 * std::numbers::pi) * sum;
+}
+
+std::array<double, 2> LeakageInductance::calculate_ring_plane_region_field(const std::vector<ToroidalLineCurrent>& conductors, double wallRadius, double imageFactor, bool interiorRegion, double x, double y) {
+    // H of a z-directed line current I at c: (I / 2π)·(−(y − c_y), x − c_x) / ρ².
+    auto lineField = [](double current, double cx, double cy, double px, double py) -> std::array<double, 2> {
+        double dx = px - cx;
+        double dy = py - cy;
+        double rho2 = dx * dx + dy * dy;
+        return {-current / (2 * std::numbers::pi) * dy / rho2, current / (2 * std::numbers::pi) * dx / rho2};
+    };
+    std::array<double, 2> field = {0, 0};
+    for (auto& conductor : conductors) {
+        double radius = conductor.geometricMeanRadius * std::exp(0.25);
+        double dx = x - conductor.x;
+        double dy = y - conductor.y;
+        if (dx * dx + dy * dy < radius * radius) {
+            // Uniform current density inside the wire: H = I·ρ / (2π r²).
+            field[0] += -conductor.current / (2 * std::numbers::pi * radius * radius) * dy;
+            field[1] += conductor.current / (2 * std::numbers::pi * radius * radius) * dx;
+        }
+        else {
+            auto h = lineField(conductor.current, conductor.x, conductor.y, x, y);
+            field[0] += h[0];
+            field[1] += h[1];
+        }
+        double scale = wallRadius * wallRadius / (conductor.x * conductor.x + conductor.y * conductor.y);
+        auto hImage = lineField(imageFactor * conductor.current, conductor.x * scale, conductor.y * scale, x, y);
+        // Centre image (see calculate_ring_plane_region_energy_per_length): none in the bore, so the net current
+        // keeps its circulation at the wall; −(1 + k)·I outside, so the wall carries the core's circulation and the
+        // far field of the bore and outer crossings together vanishes.
+        double centreCurrent = interiorRegion ? 0.0 : -(1 + imageFactor) * conductor.current;
+        auto hCentre = lineField(centreCurrent, 0, 0, x, y);
+        field[0] += hImage[0] + hCentre[0];
+        field[1] += hImage[1] + hCentre[1];
+    }
+    return field;
+}
+
+double LeakageInductance::calculate_sheet_mode_energy_per_length(const std::vector<double>& angles, const std::vector<double>& currents, size_t mode) {
+    if (mode == 0) {
+        throw InvalidInputException(ErrorCode::INVALID_INPUT, "Toroidal leakage: the MMF sheet harmonics start at m = 1");
+    }
+    if (angles.size() != currents.size()) {
+        throw InvalidInputException(ErrorCode::INVALID_INPUT, "Toroidal leakage: one angle per current is needed");
+    }
+    std::complex<double> harmonic = 0;
+    for (size_t k = 0; k < angles.size(); ++k) {
+        harmonic += currents[k] * std::exp(std::complex<double>(0, -static_cast<double>(mode) * angles[k]));
+    }
+    return Constants().vacuumPermeability * std::norm(harmonic) / (std::numbers::pi * static_cast<double>(mode));
+}
+
+namespace {
+// Nodes from start towards end (either direction): first spacing firstStep, growing by ratio up to maximumStep.
+std::vector<double> graded_nodes(double start, double end, double firstStep, double ratio, double maximumStep) {
+    std::vector<double> nodes = {start};
+    double direction = end > start ? 1.0 : -1.0;
+    double length = std::abs(end - start);
+    double position = 0;
+    double step = firstStep;
+    while (position < length) {
+        position = std::min(length, position + step);
+        nodes.push_back(start + direction * position);
+        step = std::min(step * ratio, maximumStep);
+    }
+    if (nodes.size() > 2 && std::abs(nodes[nodes.size() - 1] - nodes[nodes.size() - 2]) < 0.3 * firstStep) {
+        nodes.erase(nodes.end() - 2);
+    }
+    return nodes;
+}
+
+std::vector<double> merge_nodes(std::vector<double> nodes, double tolerance) {
+    std::sort(nodes.begin(), nodes.end());
+    std::vector<double> merged;
+    for (auto node : nodes) {
+        if (merged.empty() || node - merged.back() > tolerance) {
+            merged.push_back(node);
+        }
+    }
+    return merged;
+}
+} // namespace
+
+double LeakageInductance::calculate_body_of_revolution_effective_height(double innerRadius, double outerRadius, double height, size_t mode, double refinement, double farFieldFactor) {
+    if (!(innerRadius > 0) || !(outerRadius > innerRadius) || !(height > 0)) {
+        throw InvalidInputException(ErrorCode::INVALID_CORE_DATA, "Toroidal leakage: the conductor envelope needs 0 < inner radius < outer radius and a positive height");
+    }
+    if (mode == 0) {
+        throw InvalidInputException(ErrorCode::INVALID_INPUT, "Toroidal leakage: the body-of-revolution solve needs an azimuthal harmonic m >= 1");
+    }
+    if (!(refinement > 0) || !(farFieldFactor > 1)) {
+        throw InvalidInputException(ErrorCode::INVALID_INPUT, "Toroidal leakage: the body-of-revolution mesh needs refinement > 0 and farFieldFactor > 1");
+    }
+    // Quarter meridian plane r >= 0, z >= 0 (the problem is even in z). The 3-D potential is ψ(r, z)·cos(mφ) with
+    // ψ = 1 on the envelope, ψ = 0 on the axis (m >= 1) and on the far boundary. Bilinear elements on a tensor grid
+    // graded towards the envelope edges. The energy functional per element is ∫∫ (ψ_r² + ψ_z² + m²ψ²/r²) r dr dz;
+    // ∫cos²(mφ)dφ = π and the lower half plane double it, so the 3-D energy is 2π times the quarter-plane value.
+    double halfHeight = height / 2;
+    double m = static_cast<double>(mode);
+    double smallestFeature = std::min({outerRadius - innerRadius, halfHeight, innerRadius});
+    double firstStep = smallestFeature / (40.0 * refinement);
+    double ratio = 1.15;
+    double farRadius = farFieldFactor * outerRadius;
+    double interiorMaximumStep = smallestFeature / (6.0 * refinement);
+
+    std::vector<double> rNodes;
+    double middleRadius = (innerRadius + outerRadius) / 2;
+    for (auto node : graded_nodes(innerRadius, 0, firstStep, ratio, farRadius)) rNodes.push_back(node);
+    for (auto node : graded_nodes(innerRadius, middleRadius, firstStep, ratio, interiorMaximumStep)) rNodes.push_back(node);
+    for (auto node : graded_nodes(outerRadius, middleRadius, firstStep, ratio, interiorMaximumStep)) rNodes.push_back(node);
+    for (auto node : graded_nodes(outerRadius, farRadius, firstStep, ratio, farRadius)) rNodes.push_back(node);
+    std::vector<double> zNodes;
+    for (auto node : graded_nodes(halfHeight, 0, firstStep, ratio, farRadius)) zNodes.push_back(node);
+    for (auto node : graded_nodes(halfHeight, farRadius, firstStep, ratio, farRadius)) zNodes.push_back(node);
+    double tolerance = 1e-9 * smallestFeature;
+    rNodes = merge_nodes(rNodes, tolerance);
+    zNodes = merge_nodes(zNodes, tolerance);
+
+    size_t nr = rNodes.size();
+    size_t nz = zNodes.size();
+    auto nodeIndex = [nz](size_t i, size_t j) { return i * nz + j; };
+    auto insideEnvelope = [&](double r, double z) {
+        return r > innerRadius + tolerance && r < outerRadius - tolerance && z < halfHeight - tolerance;
+    };
+    auto onEnvelope = [&](double r, double z) {
+        return r >= innerRadius - tolerance && r <= outerRadius + tolerance && z <= halfHeight + tolerance;
+    };
+
+    std::vector<Eigen::Triplet<double>> triplets;
+    std::vector<bool> used(nr * nz, false);
+    const double gauss = 1.0 / std::sqrt(3.0);
+    for (size_t i = 0; i + 1 < nr; ++i) {
+        double r0 = rNodes[i];
+        double dr = rNodes[i + 1] - r0;
+        for (size_t j = 0; j + 1 < nz; ++j) {
+            double dz = zNodes[j + 1] - zNodes[j];
+            if (insideEnvelope(r0 + dr / 2, zNodes[j] + dz / 2)) {
+                continue;
+            }
+            double element[4][4] = {};
+            for (double a : {-gauss, gauss}) {
+                for (double b : {-gauss, gauss}) {
+                    double xi = (a + 1) / 2;
+                    double eta = (b + 1) / 2;
+                    double r = r0 + xi * dr;
+                    double weight = dr * dz / 4 * r;
+                    double shape[4] = {(1 - xi) * (1 - eta), xi * (1 - eta), (1 - xi) * eta, xi * eta};
+                    double dShapeDr[4] = {-(1 - eta) / dr, (1 - eta) / dr, -eta / dr, eta / dr};
+                    double dShapeDz[4] = {-(1 - xi) / dz, -xi / dz, (1 - xi) / dz, xi / dz};
+                    for (size_t p = 0; p < 4; ++p) {
+                        for (size_t q = 0; q < 4; ++q) {
+                            element[p][q] += weight * (dShapeDr[p] * dShapeDr[q] + dShapeDz[p] * dShapeDz[q] + m * m / (r * r) * shape[p] * shape[q]);
+                        }
+                    }
+                }
+            }
+            size_t nodes[4] = {nodeIndex(i, j), nodeIndex(i + 1, j), nodeIndex(i, j + 1), nodeIndex(i + 1, j + 1)};
+            for (size_t p = 0; p < 4; ++p) {
+                used[nodes[p]] = true;
+                for (size_t q = 0; q < 4; ++q) {
+                    triplets.emplace_back(static_cast<int>(nodes[p]), static_cast<int>(nodes[q]), element[p][q]);
+                }
+            }
+        }
+    }
+    size_t numberNodes = nr * nz;
+    Eigen::SparseMatrix<double> stiffness(static_cast<int>(numberNodes), static_cast<int>(numberNodes));
+    stiffness.setFromTriplets(triplets.begin(), triplets.end());
+
+    // Dirichlet values. The free unknowns are the used nodes that are neither on the envelope nor on the axis or far box.
+    Eigen::VectorXd potential = Eigen::VectorXd::Zero(static_cast<int>(numberNodes));
+    std::vector<int> freeIndex(numberNodes, -1);
+    int numberFree = 0;
+    for (size_t i = 0; i < nr; ++i) {
+        for (size_t j = 0; j < nz; ++j) {
+            size_t n = nodeIndex(i, j);
+            if (!used[n]) {
+                continue;
+            }
+            if (onEnvelope(rNodes[i], zNodes[j])) {
+                potential[static_cast<int>(n)] = 1.0;
+            }
+            else if (i == 0 || i == nr - 1 || j == nz - 1) {
+                potential[static_cast<int>(n)] = 0.0;
+            }
+            else {
+                freeIndex[n] = numberFree++;
+            }
+        }
+    }
+    std::vector<Eigen::Triplet<double>> freeTriplets;
+    Eigen::VectorXd rightHandSide = Eigen::VectorXd::Zero(numberFree);
+    for (int k = 0; k < stiffness.outerSize(); ++k) {
+        for (Eigen::SparseMatrix<double>::InnerIterator it(stiffness, k); it; ++it) {
+            int row = freeIndex[static_cast<size_t>(it.row())];
+            if (row < 0) {
+                continue;
+            }
+            int column = freeIndex[static_cast<size_t>(it.col())];
+            if (column >= 0) {
+                freeTriplets.emplace_back(row, column, it.value());
+            }
+            else {
+                rightHandSide[row] -= it.value() * potential[static_cast<int>(it.col())];
+            }
+        }
+    }
+    Eigen::SparseMatrix<double> freeStiffness(numberFree, numberFree);
+    freeStiffness.setFromTriplets(freeTriplets.begin(), freeTriplets.end());
+    Eigen::SimplicialLDLT<Eigen::SparseMatrix<double>> solver;
+    solver.compute(freeStiffness);
+    if (solver.info() != Eigen::Success) {
+        throw CalculationException(ErrorCode::CALCULATION_ERROR, "Toroidal leakage: the body-of-revolution stiffness matrix could not be factorised");
+    }
+    Eigen::VectorXd freeSolution = solver.solve(rightHandSide);
+    if (solver.info() != Eigen::Success) {
+        throw CalculationException(ErrorCode::CALCULATION_ERROR, "Toroidal leakage: the body-of-revolution solve failed");
+    }
+    for (size_t n = 0; n < numberNodes; ++n) {
+        if (freeIndex[n] >= 0) {
+            potential[static_cast<int>(n)] = freeSolution[freeIndex[n]];
+        }
+    }
+    double energyIntegral = 2 * std::numbers::pi * potential.dot(stiffness * potential);
+    return energyIntegral / (2 * std::numbers::pi * m);
+}
+
+double LeakageInductance::cached_body_of_revolution_effective_height(double innerRadius, double outerRadius, double height, size_t mode) {
+    // h_eff(m) depends only on the envelope; adviser loops evaluate the same core many times.
+    static std::mutex cacheMutex;
+    static std::map<std::tuple<long long, long long, long long, size_t>, double> cache;
+    auto key = std::make_tuple(std::llround(innerRadius * 1e9), std::llround(outerRadius * 1e9), std::llround(height * 1e9), mode);
+    {
+        std::lock_guard<std::mutex> lock(cacheMutex);
+        auto found = cache.find(key);
+        if (found != cache.end()) {
+            return found->second;
+        }
+    }
+    double effectiveHeight = calculate_body_of_revolution_effective_height(innerRadius, outerRadius, height, mode);
+    std::lock_guard<std::mutex> lock(cacheMutex);
+    cache[key] = effectiveHeight;
+    return effectiveHeight;
+}
+
+LeakageInductance::ToroidalLeakageEnergy LeakageInductance::calculate_toroidal_leakage_energy(Magnetic magnetic, const std::vector<double>& currentPerWinding) {
+    auto& core = magnetic.get_mutable_core();
+    if (core.get_shape_family() != CoreShapeFamily::T) {
+        throw InvalidInputException(ErrorCode::INVALID_CORE_DATA, "Toroidal leakage model called on a core that is not toroidal");
+    }
+    if (!core.get_processed_description()) {
+        throw CoreNotProcessedException("Toroidal leakage: the core has no processed description");
+    }
+    auto& coil = magnetic.get_mutable_coil();
+    auto windings = coil.get_functional_description();
+    if (currentPerWinding.size() != windings.size()) {
+        throw InvalidInputException(ErrorCode::COIL_INVALID_TURNS, "Toroidal leakage: " + std::to_string(currentPerWinding.size()) +
+                                    " currents given for " + std::to_string(windings.size()) + " windings");
+    }
+    if (!coil.get_turns_description()) {
+        throw CoilNotProcessedException("Toroidal leakage: the coil has no turns description");
+    }
+    auto dimensions = flatten_dimensions(core.resolve_shape().get_dimensions().value());
+    if (dimensions.find("A") == dimensions.end() || dimensions.find("B") == dimensions.end() || dimensions.find("C") == dimensions.end()) {
+        throw InvalidInputException(ErrorCode::INVALID_CORE_DATA, "Toroidal leakage: the toroid shape needs dimensions A, B and C");
+    }
+    double outerWallRadius = dimensions["A"] / 2;
+    double innerWallRadius = dimensions["B"] / 2;
+    // Core::get_number_stacks is MKF's single reading of the stack count (MAS: absent = one core).
+    double coreHeight = dimensions["C"] * static_cast<double>(core.get_number_stacks());
+    double corePermeability = core.get_initial_permeability(Defaults().ambientTemperature);
+    if (!(corePermeability >= 1)) {
+        throw InvalidInputException(ErrorCode::INVALID_CORE_DATA, "Toroidal leakage: the core initial permeability is below 1");
+    }
+    double imageFactor = (corePermeability - 1) / (corePermeability + 1);
+
+    auto wires = coil.get_wires();
+    std::vector<double> geometricMeanRadiusPerWinding;
+    for (size_t windingIndex = 0; windingIndex < windings.size(); ++windingIndex) {
+        auto& wire = wires[windingIndex];
+        double geometricMeanRadius;
+        switch (wire.get_type()) {
+            case WireType::ROUND:
+            case WireType::LITZ:
+                geometricMeanRadius = std::exp(-0.25) * wire.get_maximum_conducting_width() / 2;
+                break;
+            case WireType::RECTANGULAR:
+            case WireType::FOIL:
+            case WireType::PLANAR:
+                // Geometric mean distance of a rectangle from itself, 0.2235·(a + b) (Grover).
+                geometricMeanRadius = 0.2235 * (wire.get_maximum_conducting_width() + wire.get_maximum_conducting_height());
+                break;
+            default:
+                throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA, "Toroidal leakage: unsupported wire type");
+        }
+        if (!(geometricMeanRadius > 0)) {
+            throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA, "Toroidal leakage: winding " + windings[windingIndex].get_name() + " has no conducting dimensions");
+        }
+        geometricMeanRadiusPerWinding.push_back(geometricMeanRadius);
+    }
+
+    std::map<std::string, size_t> windingIndexByName;
+    for (size_t windingIndex = 0; windingIndex < windings.size(); ++windingIndex) {
+        windingIndexByName[windings[windingIndex].get_name()] = windingIndex;
+    }
+
+    std::vector<ToroidalLineCurrent> boreConductors;
+    std::vector<ToroidalLineCurrent> outerConductors;
+    std::vector<double> turnAngles;
+    std::vector<double> turnCurrents;
+    double boreRadiusSum = 0;
+    double outerRadiusSum = 0;
+    double currentWeightSum = 0;
+    const auto turns = coil.get_turns_description().value();
+    for (auto& turn : turns) {
+        auto found = windingIndexByName.find(turn.get_winding());
+        if (found == windingIndexByName.end()) {
+            throw CoilNotProcessedException("Toroidal leakage: turn " + turn.get_name() + " belongs to unknown winding " + turn.get_winding());
+        }
+        size_t windingIndex = found->second;
+        double current = currentPerWinding[windingIndex] / static_cast<double>(windings[windingIndex].get_number_parallels());
+        if (current == 0) {
+            continue;
+        }
+        if (!turn.get_coordinate_system() || turn.get_coordinate_system().value() != CoordinateSystem::CARTESIAN) {
+            throw CoilNotProcessedException("Toroidal leakage: turn " + turn.get_name() + " coordinates are not cartesian");
+        }
+        if (!turn.get_additional_coordinates() || turn.get_additional_coordinates()->empty() || turn.get_additional_coordinates().value()[0].size() < 2) {
+            throw CoilNotProcessedException("Toroidal leakage: turn " + turn.get_name() + " has no outer crossing (additional coordinates)");
+        }
+        auto inner = turn.get_coordinates();
+        auto outer = turn.get_additional_coordinates().value()[0];
+        double geometricMeanRadius = geometricMeanRadiusPerWinding[windingIndex];
+        // The bore crossing and the outer crossing of one turn carry its current in opposite directions.
+        boreConductors.push_back({inner[0], inner[1], current, geometricMeanRadius});
+        outerConductors.push_back({outer[0], outer[1], -current, geometricMeanRadius});
+        turnAngles.push_back(std::atan2(inner[1], inner[0]));
+        turnCurrents.push_back(current);
+        boreRadiusSum += std::abs(current) * std::hypot(inner[0], inner[1]);
+        outerRadiusSum += std::abs(current) * std::hypot(outer[0], outer[1]);
+        currentWeightSum += std::abs(current);
+    }
+    if (boreConductors.empty()) {
+        throw InvalidInputException(ErrorCode::INVALID_INPUT, "Toroidal leakage: no turn carries current");
+    }
+
+    ToroidalLeakageEnergy result;
+    result.ringPlaneEnergyPerLength = calculate_ring_plane_region_energy_per_length(boreConductors, innerWallRadius, imageFactor, true) +
+                                      calculate_ring_plane_region_energy_per_length(outerConductors, outerWallRadius, imageFactor, false);
+
+    // Envelope through the conductor centres (current-weighted mean crossing radii). Its axial offset from the core
+    // faces is the mean of the radial offsets from the bore and outer walls.
+    result.envelopeInnerRadius = boreRadiusSum / currentWeightSum;
+    result.envelopeOuterRadius = outerRadiusSum / currentWeightSum;
+    double axialOffset = ((innerWallRadius - result.envelopeInnerRadius) + (result.envelopeOuterRadius - outerWallRadius)) / 2;
+    result.envelopeHeight = coreHeight + 2 * axialOffset;
+    result.extrusionLength = result.envelopeHeight + (result.envelopeOuterRadius - result.envelopeInnerRadius);
+
+    result.threeDimensionalCorrection = 0;
+    for (size_t mode = 1; mode <= TOROIDAL_LEAKAGE_NUMBER_MODES; ++mode) {
+        double modeEnergyPerLength = calculate_sheet_mode_energy_per_length(turnAngles, turnCurrents, mode);
+        if (modeEnergyPerLength == 0) {
+            continue;
+        }
+        double effectiveHeight = cached_body_of_revolution_effective_height(result.envelopeInnerRadius, result.envelopeOuterRadius, result.envelopeHeight, mode);
+        result.threeDimensionalCorrection += modeEnergyPerLength * (effectiveHeight - result.extrusionLength);
+    }
+    result.energy = result.ringPlaneEnergyPerLength * result.extrusionLength + result.threeDimensionalCorrection;
+    return result;
 }
 
 std::pair<size_t, size_t> LeakageInductance::calculate_grid_points(Magnetic& magnetic, double frequency) {

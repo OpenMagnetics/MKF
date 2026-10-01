@@ -53,7 +53,11 @@ DifferentialModeParameters Impedance::calculate_differential_mode_parameters(Cor
     // The leakage path is essentially air-cored (no core permeability), so the
     // inductive branch is purely reactive; the winding resistance is the
     // dominant loss term. Sign convention matches calculate_impedance().
-    double windingResistance = WindingOhmicLosses::calculate_dc_resistance_per_winding(coil, temperature)[0];
+    // The differential-mode current flows through both windings in series (the
+    // series-opposing loop whose inductance is the leakage above), so the loop
+    // resistance is the sum of the two windings' DC resistances, not winding 0's alone.
+    auto dcResistancePerWinding = WindingOhmicLosses::calculate_dc_resistance_per_winding(coil, temperature);
+    double windingResistance = dcResistancePerWinding[0] + dcResistancePerWinding[1];
 
     // Inter-winding capacitance: the off-diagonal term of the stray-capacitance
     // matrix (between the two windings). On a separated-winding CMC the two

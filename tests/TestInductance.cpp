@@ -1150,15 +1150,24 @@ TEST_CASE("Test_Toroid_Sector_Winding_Self_Inductance_Is_Placement_Independent",
                       << ", leakage " << leakage << " H");
 
         // Self inductance of either winding is the closed form, regardless of where its turns sit.
-        CHECK_THAT(selfFirst, WithinRel(closedForm, 1e-3));
-        CHECK_THAT(selfSecond, WithinRel(closedForm, 1e-3));
+        // Tolerance 0.5 % (was 0.1 %, 2026-09-30): L_ii = Lm + Λ_ii, and since the toroidal leakage model
+        // resolves the air field of a toroid (LeakageInductance.h, "Toroidal cores") the sector winding's self-leakage
+        // Λ_ii is 5.1 uH (0.14 % of the 3.5 mH core term) and its mutual leakage Λ_ij is -3.9 uH, so that
+        // Λ_11 + Λ_22 - 2 Λ_12 = 18 uH is the pairwise leakage. That size is right: measured WE sector-wound chokes
+        // have L_DM / L_CM near 0.5 % (WE 744822222: 10.7 uH against 2.17 mH), and it is still two orders below the
+        // 2.5x reading this test guards against.
+        CHECK_THAT(selfFirst, WithinRel(closedForm, 5e-3));
+        CHECK_THAT(selfSecond, WithinRel(closedForm, 5e-3));
         // The other winding links the same core flux: mutual is the closed form too, k is ~1.
-        CHECK_THAT(mutual, WithinRel(closedForm, 1e-3));
-        CHECK(coupling > 0.999);
+        CHECK_THAT(mutual, WithinRel(closedForm, 5e-3));
+        // k = 1 - Λ/(2L) for a symmetric pair. calculate_coupling_coefficient gives 0.9986 here; it leaves out the
+        // mutual leakage Λ_12, which the inductance matrix includes (M / L11 = 0.9974 from the matrix; WE 744822222
+        // gives 0.9975 from its measured L_DM / L_CM).
+        CHECK(coupling > 0.995);
         CHECK(coupling <= 1.0);
         // And the parallel-connected common-mode inductance a choke datasheet states is (L+M)/2,
         // which the coupling moves by (1-k)/2 — nowhere near the 2.5x the ticket attributed to it.
-        CHECK_THAT(commonModeParallel, WithinRel(closedForm, 1e-3));
+        CHECK_THAT(commonModeParallel, WithinRel(closedForm, 5e-3));
 
         (isSector ? sectorLeakage : layeredLeakage) = leakage;
     }

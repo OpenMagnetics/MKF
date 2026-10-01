@@ -1,0 +1,78 @@
+{
+  "manufacturerInfo": {
+    "name": "W\u00fcrth Elektronik",
+    "reference": "744822222"
+  },
+  "core": {
+    "functionalDescription": {
+      "type": "toroidal",
+      "material": "A07",
+      "shape": {
+        "magneticCircuit": "closed",
+        "type": "custom",
+        "family": "t",
+        "name": "T 14.0/8.0/9.0",
+        "dimensions": {
+          "A": {
+            "nominal": 0.014
+          },
+          "B": {
+            "nominal": 0.008
+          },
+          "C": {
+            "nominal": 0.009
+          }
+        }
+      },
+      "gapping": [],
+      "numberStacks": 1,
+      "coating": {
+        "type": "epoxy",
+        "thickness": 0.0006,
+        "material": "epoxy"
+      }
+    },
+    "name": "T 14/8/9 - A07 - Ungapped"
+  },
+  "coil": {
+    "bobbin": "Basic",
+    "functionalDescription": [
+      {
+        "name": "primary",
+        "numberTurns": 18,
+        "numberParallels": 1,
+        "isolationSide": "primary",
+        "wire": {
+          "type": "round",
+          "name": "Round 0.5 - Grade 1",
+          "conductingDiameter": {
+            "nominal": 0.0005
+          },
+          "coating": {
+            "type": "enamelled",
+            "grade": 1
+          },
+          "material": "copper"
+        }
+      },
+      {
+        "name": "secondary",
+        "numberTurns": 18,
+        "numberParallels": 1,
+        "isolationSide": "secondary",
+        "wire": {
+          "type": "round",
+          "name": "Round 0.5 - Grade 1",
+          "conductingDiameter": {
+            "nominal": 0.0005
+          },
+          "coating": {
+            "type": "enamelled",
+            "grade": 1
+          },
+          "material": "copper"
+        }
+      }
+    ]
+  }
+}

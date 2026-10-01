@@ -63,7 +63,17 @@ namespace {
 // (x 1.1199 on this 12:12 toroid, whose grid and Kelvin images are unchanged). Filter code unchanged since the #1176 pin.
 // ABT #1502 moved ring cores to the IEC 60205 clause 5.1 effective parameters: le/Ae of T 36/23/15 fell 1.6%, Lm
 // rose 1.67% and the score followed: 0.00058639692599301880 -> 0.00057678112765158684 (x 0.98360).
-const double kCmcLeakageRatioBeforeAbt1176 = 0.00057678112765158684;
+// The exact toroidal leakage model (per-region Kelvin images, closed-form ring-plane energy, extrusion by the
+// half turn length h + w, 3-D azimuthal-MMF correction) replaced the pruned and truncated ring-plane grid, which read
+// toroid leakage ~10x low on sectored windings. The value above captured that grid, not physics; the score went
+// 0.00057678112765158684 -> 0.0010479305893388701 (x 1.817). Physical check of the new value: this fixture winds
+// winding 1 as one layer on top of winding 0 over the same ~32 deg arc (12 turns of 0.509 mm OD each, layer
+// centres 0.535 mm apart in the bore and outside), so the ampere-turns balance at every angle and the 3-D term is
+// 0.13 % of the energy. The 1-D layered-winding estimate L = mu0 N^2 (p - d/3) l / b, summed over the bore
+// (b = 6.11 mm) and the outside (b = 10.31 mm) with l = h + w = 23.59 mm, gives 0.407 uH; the model gives
+// Lk = 0.456 uH (x 1.12; the 1-D estimate ignores the field spreading past the ends of the 32 deg layers). Lm = 435 uH
+// (3.02 uH/turn^2, unchanged by this model). The old pin, Lk = 0.251 uH, was 0.62x that estimate.
+const double kCmcLeakageRatio = 0.0010479305893388701;
 
 // Relative error against a published measurement, referred to the measurement (Catch's WithinRel
 // refers to the larger of the two values, which is looser when the model overshoots).
@@ -542,8 +552,8 @@ TEST_CASE("Magnetic shunt: LEAKAGE_INDUCTANCE filter keeps the CMC Lk/Lm score",
     CHECK(defaultScore == explicitScore);
     CHECK(factoryValid);
     UNSCOPED_INFO("CMC Lk/Lm score " << std::setprecision(17) << factoryScore);
-    // Pinned from the pre-change filter (ABT #1176 base 137a2485), same fixture.
-    CHECK_THAT(factoryScore, WithinRel(kCmcLeakageRatioBeforeAbt1176, 1e-12));
+    // Characterisation pin of the score on this fixture; its history and physical check are at kCmcLeakageRatio.
+    CHECK_THAT(factoryScore, WithinRel(kCmcLeakageRatio, 1e-12));
 }
 
 TEST_CASE("Magnetic shunt: LEAKAGE_INDUCTANCE_TARGET scores the distance to the leakage band", "[magnetic-shunt][adviser][magnetic-filter]") {
