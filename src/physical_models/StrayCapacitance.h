@@ -1,5 +1,6 @@
 #pragma once
 #include <set>
+#include <limits>
 #include "Defaults.h"
 #include "constructive_models/Magnetic.h"
 #include "support/Utils.h"
@@ -18,7 +19,11 @@ class StrayCapacitanceModel {
     public:
         std::string methodName = "Default";
         static std::shared_ptr<StrayCapacitanceModel> factory(StrayCapacitanceModels modelName);
-        std::vector<double> preprocess_data_for_round_wires(Turn firstTurn, Wire firstWire, Turn secondTurn, Wire secondWire, std::optional<Coil> coil = std::nullopt);
+        // insulationLayersInBetween: when given, used instead of looking the layers up from the turns'
+        // coordinates (the toroid pair split evaluates the outer crossings, whose coordinates are
+        // not in the frame the layer lookup works in; the layers between two turns are the same
+        // on every run of the ring).
+        std::vector<double> preprocess_data_for_round_wires(Turn firstTurn, Wire firstWire, Turn secondTurn, Wire secondWire, std::optional<Coil> coil = std::nullopt, std::optional<std::vector<Layer>> insulationLayersInBetween = std::nullopt);
         virtual double calculate_static_capacitance_between_two_turns(double wireCoatingThickness, double averageTurnLength, double conductingRadius, double distanceThroughLayers, double distanceThroughAir, double relativePermittivityWireCoating, double relativePermittivityInsulationLayers) = 0;
 };
 
@@ -125,11 +130,35 @@ class StrayCapacitance{
         // (image) geometry. The core coating gives the finite floor at zero air gap.
         // Building block for the through-core inter-winding path (separated-winding CMC
         // differential mode): summed over a winding's turns by calculate_winding_to_core_capacitance.
+        //
+        // Neighbour screening: the element is the turn's PARTIAL capacitance to the core, i.e. the
+        // row sum of the Maxwell capacitance matrix -- the charge on the turn when it and every
+        // neighbouring conductor sit at the same potential. The field a turn sends towards the
+        // core between itself and a neighbour ends on that neighbour instead, and that part is
+        // the turn-to-turn element's business. leftNeighbourPitch / rightNeighbourPitch are the
+        // centre-to-centre distances, along the core surface, to the nearest conductor on each
+        // side that faces the same surface; infinity (the default) means no neighbour on that
+        // side and reproduces the isolated cylinder over a plane. Each side screens half the
+        // turn: element = (C'(p_left) + C'(p_right)) / 2 * length, with C'(p) the per-length
+        // capacitance of one conductor of an infinite periodic row of pitch p over the plane
+        // (calculate_conductor_row_over_plane_capacitance_per_length).
         static double calculate_turn_to_core_capacitance(double conductingRadius, double turnLength,
                                                          double wireCoatingThickness, double wireCoatingRelativePermittivity,
                                                          double airGapToCore,
                                                          double coreCoatingThickness, double coreCoatingRelativePermittivity,
-                                                         double bobbinThickness = 0.0, double bobbinRelativePermittivity = 1.0);
+                                                         double bobbinThickness = 0.0, double bobbinRelativePermittivity = 1.0,
+                                                         double leftNeighbourPitch = std::numeric_limits<double>::infinity(),
+                                                         double rightNeighbourPitch = std::numeric_limits<double>::infinity());
+
+        // Per-unit-length capacitance to a grounded conducting plane of ONE conductor of an
+        // infinite periodic row of equipotential circular conductors (radius r, axis at height
+        // H > r above the plane, centre-to-centre pitch p >= 2r along the plane). Solved to
+        // ~1e-5 by the charge simulation method with the exact periodic Green's function of
+        // the row and its image. Limits: p -> infinity gives the isolated cylinder over a plane,
+        // 2 pi eps0 / acosh(H/r) (Smythe), returned in closed form for p = infinity; r << p, H
+        // gives the thin-wire grid 2 pi eps0 / ln(sinh(2 pi H/p) / sinh(pi r/p)). Throws on
+        // H <= r, p < 2r, or a solution that does not meet the boundary condition.
+        static double calculate_conductor_row_over_plane_capacitance_per_length(double radius, double axisHeight, double pitch);
 
         // Total capacitance from one winding to the (equipotential) ferrite core: the
         // parallel sum of its turns' turn-to-core elements. Two of these in series through

@@ -13,6 +13,9 @@
 #include <limits>
 #include <numbers>
 #include <set>
+#include <map>
+#include <tuple>
+#include <Eigen/Dense>
 #include "support/Exceptions.h"
 #include <magic_enum.hpp>
 
@@ -710,7 +713,7 @@ std::shared_ptr<StrayCapacitanceModel> StrayCapacitanceModel::factory(StrayCapac
         throw ModelNotAvailableException("Unknown Stray capacitance model, available options are: {KOCH, ALBACH, DUERDOTH, MASSARINI}");
 }
 
-std::vector<double> StrayCapacitanceModel::preprocess_data_for_round_wires(Turn firstTurn, Wire firstWire, Turn secondTurn, Wire secondWire, std::optional<Coil> coil) {
+std::vector<double> StrayCapacitanceModel::preprocess_data_for_round_wires(Turn firstTurn, Wire firstWire, Turn secondTurn, Wire secondWire, std::optional<Coil> coil, std::optional<std::vector<Layer>> insulationLayersInBetween) {
     // Accept ROUND and LITZ wire types. For LITZ, we treat the bundle as an equivalent
     // round conductor with the outer bundle diameter as the "conducting" surface and
     // the serving/insulation as the "coating".
@@ -884,10 +887,11 @@ std::vector<double> StrayCapacitanceModel::preprocess_data_for_round_wires(Turn 
     std::vector<double> relativePermittivityLayers;
     double effectiveRelativePermittivityLayers = 1;
     
+    if (coil && !insulationLayersInBetween) {
+        insulationLayersInBetween = StrayCapacitance::get_insulation_layers_between_two_turns(firstTurn, secondTurn, coil.value());
+    }
     if (coil) {
-        std::vector<Layer> insulationLayersInBetween = StrayCapacitance::get_insulation_layers_between_two_turns(firstTurn, secondTurn, coil.value());
-
-        for (auto layer : insulationLayersInBetween) {
+        for (auto layer : insulationLayersInBetween.value()) {
             auto distance = coil->get_insulation_layer_thickness(layer);
             auto relativePermittivity = coil->get_insulation_layer_relative_permittivity(layer);
             distanceThroughLayers += distance;
@@ -1190,12 +1194,30 @@ double StrayCapacitanceDuerdothModel::calculate_static_capacitance_between_two_t
  *   V = (β/√(β²-1)) * arctan(√((β+1)/(β-1)))
  *   Z = ((β²-2)*V - β/2) / (β²-1) - π/4
  * 
- * - Final capacitance from Eq. (3.14), (3.19):
- *   Wges = ε0 * lw * U² * Y1  (energy in rectangular region between turns)
- *   C0 = (2/3) * ε0 * lt * Y1  (capacitance with 2/3 factor for voltage distribution)
- * 
- * The 2/3 factor comes from the quadratic voltage distribution integration
- * in Eq. (3.21): ∫(l/lmax * U0)² dl = lmax/3 * U0²
+ * - Eq. (3.14): Wges = ε0 * lw * U² * Y1, the energy stored between two turns of mean length
+ *   lw whose potential difference U is CONSTANT along the turn (Albach states this explicitly
+ *   right after Eq. (3.16)). The elementary static capacitance of the pair is therefore
+ *       C0 = 2 * Wges / U² = 2 * ε0 * lt * Y1.
+ *
+ * WHY NOT (2/3): Albach's 2/3 appears only in Eq. (3.22), C_L12 = (2/3) ε0 z lw,1,2 Y1, the LUMPED
+ * capacitance of a whole two-layer winding. It is 2 x (1/3), and the 1/3 is Eq. (3.21): integrating
+ * Eq. (3.19), dW = ε0 U(l)² Y1 dl, over the LINEAR voltage ramp U(l) = (l/lmax) U0 between the two
+ * layers, ∫ (l/lmax)² dl = lmax/3. That integral is the voltage distribution along the winding.
+ * This function is the per-PAIR element of an energy method (StrayCapacitance::
+ * calculate_capacitance_among_turns and its callers) that already assigns every turn its own
+ * potential and sums 1/2 C0 dV² over the actual turn pairs, i.e. it performs the Eq. (3.21)
+ * integration itself, turn by turn. Applying the 1/3 inside the pair element as well counted the
+ * voltage distribution twice and made every pair 3x too small.
+ *
+ * Independent checks of the elementary factor 2 (see TestStrayCapacitance.cpp, [albach]):
+ *  - Near contact, the exact solution for two parallel cylinders, C' = π ε0 / acosh(D / 2R),
+ *    behaves as π ε0 / sqrt(2(β-1)); 2 ε0 Y1 has exactly the same singular term (the straight
+ *    flux-line integral ∫ cos φ / (β - cos φ) dφ over |φ| < π/2), and differs from it only by the
+ *    constant (1 + π/2) ε0 of the neglected fringe and flux-line bending. (2/3) ε0 Y1 misses the
+ *    singular term by 3x.
+ *  - 2-D finite differences of the orthogonal-winding cell of Biela & Kolar, IEEE TIA 44(1) 2008,
+ *    Table I (r0 = 0.5 mm, δ = 100 µm, h = 0.15 mm, εD = εF = 3): ~40.4 pF/m; 2 ε0 Y1 = 38.8 pF/m,
+ *    (2/3) ε0 Y1 = 12.9 pF/m.
  * 
  * @note The Albach model uses the OUTER conductor radius (r0 + δ) in the ζ and β
  *       parameters, unlike the Koch model which uses bare conductor radius r0.
@@ -1263,8 +1285,11 @@ double StrayCapacitanceAlbachModel::calculate_static_capacitance_between_two_tur
     // (ABT #173: -0.57 pF on the boundary turns of a separated-winding CMC).
     double Y1 = 1.0 / zeta * (V - std::numbers::pi / 4 + 1.0 / (2 * relativePermittivityWireCoating) * pow(wireCoatingThickness / (conductingRadius + wireCoatingThickness), 2) * Z / zeta);
     
-    // C0: Final capacitance with 2/3 geometric factor from Albach
-    double C0 = 2.0 / 3 * vacuumPermittivity * averageTurnLength * Y1;
+    // C0: elementary static capacitance of the pair at a constant voltage, 2 W / U² with
+    // W = ε0 lt U² Y1 (Albach Eq. 3.14). NOT Albach's (2/3) of Eq. (3.22): that is the lumped
+    // two-layer capacitance, which contains the 1/3 of the linear voltage ramp (Eq. 3.21) that the
+    // per-turn energy method applies itself through the explicit turn potentials. See the header.
+    double C0 = 2 * vacuumPermittivity * averageTurnLength * Y1;
 
     if (std::isnan(beta)) {
         throw std::invalid_argument("beta is NAN");
@@ -1361,9 +1386,23 @@ double StrayCapacitanceKochModel::calculate_static_capacitance_between_two_turns
     // Z = β(β²-2)/((β²-1)^(3/2)) * arctan(...) - β/(2(β²-1)) - π/4
     double Z = beta * (pow(beta, 2) - 2) / pow(pow(beta, 2) - 1, 1.5) * atan(sqrt((beta + 1) / (beta - 1))) - beta / (2 * (pow(beta, 2) - 1))  - std::numbers::pi / 4;
     
-    // Final capacitance - Eq. (7)
-    // C = ε0 * lt / α * (V + (1/(8*εr)) * (2δ/r0)² * Z/α)
-    double C0 = vacuumPermittivity * averageTurnLength / (1 - wireCoatingThickness / (relativePermittivityWireCoating * conductingRadius)) * (V + 1.0 / (8 * relativePermittivityWireCoating) * pow(2 * wireCoatingThickness / conductingRadius, 2) * Z / (1 - wireCoatingThickness / (relativePermittivityWireCoating * conductingRadius)));
+    // Final capacitance. Biela & Kolar print Koch's result (their Eq. 9, the STATIC layer
+    // capacitance per turn pair, i.e. at a constant voltage -- the voltage distribution is only
+    // introduced in their Sec. IV) as
+    //     C = ε0 * lt / α * (V + (1/(8*εr)) * (2δ/r0)² * Z/α),
+    // but that expression is half of what its own derivation gives. Their Sec. III-C builds it from
+    // straight flux lines over ALL angles φ from 0 to 180° of the cell, and that integral is
+    //     ε0 ∫_{-r0}^{r0} dx / (2α(β r0 - sqrt(r0² - x²))) = (2 ε0 / α) (V_Koch + ...),
+    // identical term by term to Albach's 2 ε0 lt Y1 (Albach 2017, Eqs. 3.14/3.16; Koch's Z equals
+    // Albach's Z, and (1/(8εr))(2δ/r0)² = (1/(2εr))(δ/r0)²). Three independent confirmations:
+    //   * Biela & Kolar's own Table I lists 49.2 pF/m for Eq. (9) (FEA 51.8 pF/m), while Eq. (9) as
+    //     printed evaluates to 19.4 pF/m on that geometry; with the factor 2 it is 38.8 pF/m, and a
+    //     2-D finite-difference solution of the same cell gives ~40.4 pF/m.
+    //   * Near contact the exact two-cylinder solution π ε0 / acosh(D/2R) -> π ε0 / sqrt(2(β-1));
+    //     2 ε0 (V_Koch + π/4 - π/4) has exactly that singular term, ε0 V_Koch only half of it.
+    //   * Koch and Albach describe the same flux-line model, so at zero coating they must agree.
+    // Hence the factor 2 below.
+    double C0 = 2 * vacuumPermittivity * averageTurnLength / (1 - wireCoatingThickness / (relativePermittivityWireCoating * conductingRadius)) * (V + 1.0 / (8 * relativePermittivityWireCoating) * pow(2 * wireCoatingThickness / conductingRadius, 2) * Z / (1 - wireCoatingThickness / (relativePermittivityWireCoating * conductingRadius)));
 
     if (std::isnan(beta)) {
         throw std::invalid_argument("beta is NAN");
@@ -1503,6 +1542,96 @@ static void throw_if_turns_are_shorted(Turn firstTurn, Wire firstWire, Turn seco
         " diameter larger than the conducting diameter).");
 }
 
+// A toroid pair: the coil sits in a ROUND winding window, or (no coil given) the turns carry the
+// outer crossings only the toroidal winder records.
+static bool is_toroidal_turn_pair(const Turn& firstTurn, const Turn& secondTurn, std::optional<Coil>& coil) {
+    if (coil) {
+        return coil->resolve_bobbin().get_winding_window_shape() == WindingWindowShape::ROUND;
+    }
+    return firstTurn.get_additional_coordinates().has_value() || secondTurn.get_additional_coordinates().has_value();
+}
+
+static bool has_outer_crossing(const Turn& turn) {
+    auto additional = turn.get_additional_coordinates();
+    return additional && !additional->empty() && additional->at(0).size() >= 2;
+}
+
+// The last station of a conductor (the last turn of its winding and parallel, in turns order) is
+// wound without an outer crossing by design (Coil::wind_toroidal_additional_turns, ABT #685: its
+// exit terminal ascends axially). Any other toroid turn without one is missing data.
+static bool is_last_station_of_its_conductor(const Turn& turn, const std::optional<Coil>& coil) {
+    if (!coil || !coil->get_turns_description()) {
+        return false;
+    }
+    auto turns = coil->get_turns_description().value();
+    for (auto it = turns.rbegin(); it != turns.rend(); ++it) {
+        if (it->get_winding() == turn.get_winding() && it->get_parallel() == turn.get_parallel()) {
+            return it->get_name() == turn.get_name();
+        }
+    }
+    return false;
+}
+
+// TOROID TURN PAIR, split between the two crossings of the ring.
+//
+// A toroid turn encircles the ring cross-section: up the bore (length share C/P of the encircling
+// path P = 2C + (A - B)), across the top and bottom faces ((A - B)/2P each) and down the outer
+// surface (C/P). Two neighbouring turns follow each other along that whole path, but their
+// separation is NOT the same everywhere: the bore is the crowded part of a toroid (its
+// circumference is about half the outer one), so turns that touch at the bore are generally apart
+// at the outer crossing, and layers stacked at the bore are usually single-row outside. The pair
+// element used to be evaluated over the WHOLE length at the minimum separation over both
+// crossings, i.e. at the bore contact.
+//
+// The same face shares as the turn-to-core model (turn_to_core_air_gaps, ROUND branch) apply: the
+// bore run is at the inner crossing's separation, the outer run at the outer crossing's, and each
+// flat run joins the two, so it is integrated by the trapezoid rule, half at each end. The inner
+// share is therefore C/P + 2 * (A - B)/4P = (2C + A - B)/2P = 1/2 exactly, and the outer share
+// 1/2, whatever the ring's dimensions: each half of the pair's length is evaluated with the
+// model's own element at its own crossing's separation. The dielectric layers between the two
+// turns wrap the whole ring, so both halves see the same insulation layers.
+//
+// A turn with no outer crossing is either the last station of its conductor, which has no outer
+// run (see is_last_station_of_its_conductor), and then the pair has no outer half, or missing
+// data, which throws.
+template <typename ElementFunction>
+static double calculate_toroidal_pair_capacitance(const Turn& firstTurn, const Turn& secondTurn,
+                                                  const std::optional<Coil>& coil, ElementFunction elementCapacitance) {
+    for (const Turn* turn : {&firstTurn, &secondTurn}) {
+        if (!has_outer_crossing(*turn) && !is_last_station_of_its_conductor(*turn, coil)) {
+            throw InvalidInputException(ErrorCode::MISSING_DATA,
+                "Toroidal turn '" + turn->get_name() + "' has no recorded outer crossing and is not the last"
+                " station of its conductor: its turn-to-turn capacitance cannot be split between the bore"
+                " and the outer surface of the ring");
+        }
+    }
+    std::optional<std::vector<Layer>> layers = std::nullopt;
+    if (coil) {
+        layers = StrayCapacitance::get_insulation_layers_between_two_turns(firstTurn, secondTurn, coil.value());
+    }
+
+    auto halfLength = [](Turn turn) {
+        turn.set_length(turn.get_length() / 2);
+        return turn;
+    };
+    Turn firstAtBore = halfLength(firstTurn);
+    Turn secondAtBore = halfLength(secondTurn);
+    firstAtBore.set_additional_coordinates(std::nullopt);
+    secondAtBore.set_additional_coordinates(std::nullopt);
+    double capacitance = elementCapacitance(firstAtBore, secondAtBore, layers);
+
+    if (has_outer_crossing(firstTurn) && has_outer_crossing(secondTurn)) {
+        Turn firstOutside = halfLength(firstTurn);
+        Turn secondOutside = halfLength(secondTurn);
+        firstOutside.set_coordinates(firstTurn.get_additional_coordinates()->at(0));
+        secondOutside.set_coordinates(secondTurn.get_additional_coordinates()->at(0));
+        firstOutside.set_additional_coordinates(std::nullopt);
+        secondOutside.set_additional_coordinates(std::nullopt);
+        capacitance += elementCapacitance(firstOutside, secondOutside, layers);
+    }
+    return capacitance;
+}
+
 double StrayCapacitance::calculate_static_capacitance_between_two_turns(Turn firstTurn, Wire firstWire, Turn secondTurn, Wire secondWire, std::optional<Coil> coil) {
     throw_if_turns_are_shorted(firstTurn, firstWire, secondTurn, secondWire);
 
@@ -1529,15 +1658,25 @@ double StrayCapacitance::calculate_static_capacitance_between_two_turns(Turn fir
     else if (isRoundLike(firstWire.get_type()) && isRoundLike(secondWire.get_type())) {
         // Both wires are round-like (ROUND or LITZ): use cylindrical wire model
         _methodsUsed.insert(_model->methodName);
-        auto aux = _model->preprocess_data_for_round_wires(firstTurn, firstWire, secondTurn, secondWire, coil);
-        double wireCoatingThickness = aux[0];
-        double averageTurnLength = aux[1];
-        double conductingRadius = aux[2];
-        double distanceThroughLayers = aux[3];
-        double distanceThroughAir = aux[4];
-        double relativePermittivityWireCoating = aux[5];
-        double relativePermittivityInsulationLayers = aux[6];
-        double capacitance = _model->calculate_static_capacitance_between_two_turns(wireCoatingThickness, averageTurnLength, conductingRadius, distanceThroughLayers, distanceThroughAir, relativePermittivityWireCoating, relativePermittivityInsulationLayers);
+        auto elementCapacitance = [&](const Turn& first, const Turn& second, std::optional<std::vector<Layer>> layers) {
+            auto aux = _model->preprocess_data_for_round_wires(first, firstWire, second, secondWire, coil, layers);
+            double wireCoatingThickness = aux[0];
+            double averageTurnLength = aux[1];
+            double conductingRadius = aux[2];
+            double distanceThroughLayers = aux[3];
+            double distanceThroughAir = aux[4];
+            double relativePermittivityWireCoating = aux[5];
+            double relativePermittivityInsulationLayers = aux[6];
+            return _model->calculate_static_capacitance_between_two_turns(wireCoatingThickness, averageTurnLength, conductingRadius, distanceThroughLayers, distanceThroughAir, relativePermittivityWireCoating, relativePermittivityInsulationLayers);
+        };
+
+        double capacitance;
+        if (is_toroidal_turn_pair(firstTurn, secondTurn, coil)) {
+            capacitance = calculate_toroidal_pair_capacitance(firstTurn, secondTurn, coil, elementCapacitance);
+        }
+        else {
+            capacitance = elementCapacitance(firstTurn, secondTurn, std::nullopt);
+        }
         throw_if_capacitance_is_not_finite(capacitance, firstTurn, firstWire, secondTurn, secondWire);
         return capacitance;
     }
@@ -1580,7 +1719,8 @@ double StrayCapacitance::calculate_turn_to_core_capacitance(double conductingRad
                                                             double wireCoatingThickness, double wireCoatingRelativePermittivity,
                                                             double airGapToCore,
                                                             double coreCoatingThickness, double coreCoatingRelativePermittivity,
-                                                            double bobbinThickness, double bobbinRelativePermittivity) {
+                                                            double bobbinThickness, double bobbinRelativePermittivity,
+                                                            double leftNeighbourPitch, double rightNeighbourPitch) {
     // Capacitance of a turn to the equipotential ferrite core, after Kovacic et al.,
     // "Analytical Wideband Model of a Common-Mode Choke" (IEEE TPEL 2012), eqs (36)-(38).
     // The displacement field leaves the bare conductor surface and reaches the ferrite
@@ -1612,8 +1752,7 @@ double StrayCapacitance::calculate_turn_to_core_capacitance(double conductingRad
     if (conductingRadius <= 0 || turnLength <= 0) {
         return 0;
     }
-    const double vacuumPermittivity = Constants().vacuumPermittivity;
-    const double wireRadius = conductingRadius;  // contract: conductingRadius is the radius (Dc = 2*r)
+        const double wireRadius = conductingRadius;  // contract: conductingRadius is the radius (Dc = 2*r)
     const double enamelTerm = wireCoatingRelativePermittivity > 0 ? wireCoatingThickness / wireCoatingRelativePermittivity : 0.0;
     const double coatingTerm = coreCoatingRelativePermittivity > 0 ? coreCoatingThickness / coreCoatingRelativePermittivity : 0.0;
     // ABT #1164: the bobbin wall is plastic, not air — it enters the series stack as its
@@ -1633,8 +1772,89 @@ double StrayCapacitance::calculate_turn_to_core_capacitance(double conductingRad
             "Turn-to-core capacitance asked for a bare conductor in contact with the core (no wire"
             " coating, no air gap, no core coating): that is a short circuit, not a capacitance");
     }
-    const double heightOverRadius = 1.0 + airEquivalentGap / wireRadius;
-    return 2.0 * std::numbers::pi * vacuumPermittivity * turnLength / std::acosh(heightOverRadius);
+    // Neighbour screening (see the header). The Smythe solution quoted above is the ISOLATED cylinder: it counts
+    // the whole circumference, including the field that leaves the flanks of the turn towards
+    // the core and, with a neighbour beside it, ends on that neighbour instead. In a network of
+    // turn-to-core and turn-to-turn elements the turn-to-core element must be the Maxwell row
+    // sum (the turn's charge with all neighbours at its potential); the isolated value
+    // double-counts the flank field the turn-to-turn element already carries. On a close-wound
+    // toroid bore (pitch = wire OD) under a 0.6 mm case this is a factor ~2 (WE 744822222:
+    // 23.6 vs 50.9 pF/m). No neighbour on a side (infinite pitch) is exactly the old element.
+    const double axisHeight = wireRadius + airEquivalentGap;
+    const double leftPerLength = calculate_conductor_row_over_plane_capacitance_per_length(wireRadius, axisHeight, leftNeighbourPitch);
+    const double rightPerLength = calculate_conductor_row_over_plane_capacitance_per_length(wireRadius, axisHeight, rightNeighbourPitch);
+    return 0.5 * (leftPerLength + rightPerLength) * turnLength;
+}
+
+double StrayCapacitance::calculate_conductor_row_over_plane_capacitance_per_length(double radius, double axisHeight, double pitch) {
+    const double vacuumPermittivity = Constants().vacuumPermittivity;
+    if (!(radius > 0) || !(axisHeight > radius)) {
+        throw InvalidInputException(ErrorCode::INVALID_INPUT,
+            "Conductor row over a plane needs a positive radius and an axis height above the radius"
+            " (the conductor would touch or cross the plane)");
+    }
+    if (std::isinf(pitch)) {
+        // Isolated cylinder over a plane, exact (Smythe, image method).
+        return 2.0 * std::numbers::pi * vacuumPermittivity / std::acosh(axisHeight / radius);
+    }
+    if (!(pitch >= 2.0 * radius)) {
+        throw InvalidInputException(ErrorCode::INVALID_INPUT,
+            "Conductor row over a plane: pitch " + std::to_string(pitch) + " m is below the conductor"
+            " diameter " + std::to_string(2.0 * radius) + " m, i.e. neighbouring conductors overlap");
+    }
+    // Memoised: a winding repeats the same (r, H, p) for most of its turns.
+    static thread_local std::map<std::tuple<double, double, double>, double> cache;
+    auto key = std::make_tuple(radius, axisHeight, pitch);
+    if (auto it = cache.find(key); it != cache.end()) {
+        return it->second;
+    }
+    // Charge simulation method, lengths normalised to the radius. Line charges inside the
+    // reference conductor: one at the isolated image-solution position (height sqrt(H^2 - r^2)),
+    // which carries the near-contact field, and a ring of M at 0.6 r around the axis. Each source
+    // stands for the whole periodic row (every conductor carries the same charge by symmetry)
+    // plus its image row below the plane, whose potential per unit charge (in units of
+    // 1/(2 pi eps0)) is
+    //   G = 1/2 ln[(cosh(a(y+ys)) - cos(a(x-xs))) / (cosh(a(y-ys)) - cos(a(x-xs)))],  a = 2 pi / p,
+    // exactly zero on the plane y = 0. The charges are fitted in least squares to unit potential
+    // at 4(M+1) points on the conductor surface. Converged to < 1e-4 relative for p >= 2r and
+    // H >= 1.0001 r at M = 48 (checked against M = 96 and against both closed-form limits).
+    const size_t ringCharges = 48;
+    const double height = axisHeight / radius;
+    const double period = pitch / radius;
+    const double a = 2.0 * std::numbers::pi / period;
+    std::vector<double> sourceX, sourceY;
+    sourceX.push_back(0.0);
+    sourceY.push_back(std::sqrt(height * height - 1.0));
+    for (size_t k = 0; k < ringCharges; ++k) {
+        double angle = 2.0 * std::numbers::pi * static_cast<double>(k) / static_cast<double>(ringCharges);
+        sourceX.push_back(0.6 * std::cos(angle));
+        sourceY.push_back(height + 0.6 * std::sin(angle));
+    }
+    const size_t numberSources = sourceX.size();
+    const size_t numberPoints = 4 * numberSources;
+    Eigen::MatrixXd influence(numberPoints, numberSources);
+    for (size_t i = 0; i < numberPoints; ++i) {
+        double angle = 2.0 * std::numbers::pi * static_cast<double>(i) / static_cast<double>(numberPoints);
+        double x = std::cos(angle);
+        double y = height + std::sin(angle);
+        for (size_t j = 0; j < numberSources; ++j) {
+            double cosine = std::cos(a * (x - sourceX[j]));
+            influence(i, j) = 0.5 * std::log((std::cosh(a * (y + sourceY[j])) - cosine) /
+                                             (std::cosh(a * (y - sourceY[j])) - cosine));
+        }
+    }
+    Eigen::VectorXd unitPotential = Eigen::VectorXd::Ones(numberPoints);
+    Eigen::VectorXd charges = influence.colPivHouseholderQr().solve(unitPotential);
+    double residual = (influence * charges - unitPotential).cwiseAbs().maxCoeff();
+    if (!(residual < 1e-3)) {
+        throw NaNResultException("Conductor row over a plane (r = " + std::to_string(radius) + " m, H = " +
+                                 std::to_string(axisHeight) + " m, p = " + std::to_string(pitch) +
+                                 " m): the charge simulation does not meet the equipotential condition"
+                                 " (max residual " + std::to_string(residual) + ")");
+    }
+    double capacitancePerLength = 2.0 * std::numbers::pi * vacuumPermittivity * charges.sum();
+    cache.emplace(key, capacitancePerLength);
+    return capacitancePerLength;
 }
 
 double StrayCapacitance::core_image_factor(const Core& core, double frequency) {
@@ -1741,6 +1961,11 @@ struct TurnToCoreFace {
     // A toroid turn ENCIRCLES the ring cross-section, so its length is split between the bore,
     // the outer surface and the two flat faces (ABT #1163, ring-turn segments).
     double lengthFraction;
+    // Centre-to-centre distance, along this face, to the nearest conductor on each side that
+    // faces the same surface (neighbour screening, see calculate_turn_to_core_capacitance).
+    // Infinity = no neighbour on that side = the isolated element.
+    double leftNeighbourPitch = std::numeric_limits<double>::infinity();
+    double rightNeighbourPitch = std::numeric_limits<double>::infinity();
 };
 
 // ABT #1164: the bobbin plastic between the winding and the ferrite is a DIELECTRIC, not air.
@@ -2032,16 +2257,75 @@ static std::vector<TurnToCoreFace> turn_to_core_air_gaps(Coil& coil, const Core&
         // integrated by the trapezoid rule -- half its length at the inner crossing's standoff and
         // screening, half at the outer crossing's. The top and bottom runs are identical here
         // because the wound description is two-dimensional and carries no axial asymmetry.
+        // Neighbour screening at each crossing: the nearest conductor on either side along the
+        // surface, among the turns lying in the same row against it (their centre within one
+        // turn radius of this turn's radius -- the first layer at the bore, the turns resting on
+        // the outer surface outside). The centre-to-centre distance to the nearest one on each
+        // side is the pitch of the row the element is solved in (the true distance, not the arc:
+        // outside the ring the crossings of different layers settle at slightly different radii,
+        // and the angular separation alone would put two touching turns closer than their
+        // diameter). Everything in a row screens, whatever its winding: the element
+        // is the Maxwell row sum, which does not depend on the neighbours' potentials (the
+        // potential DIFFERENCE is carried by the turn-to-turn element). A flat run is again
+        // integrated by the trapezoid rule, half at each crossing's row.
+        auto rowPitches = [&](double radius, double angle, bool atBore) {
+            double leftAngle = std::numeric_limits<double>::infinity();
+            double rightAngle = std::numeric_limits<double>::infinity();
+            double leftDistance = std::numeric_limits<double>::infinity();
+            double rightDistance = std::numeric_limits<double>::infinity();
+            const double x0 = radius * std::cos(angle);
+            const double y0 = radius * std::sin(angle);
+            for (const auto& otherTurn : allTurns) {
+                if (otherTurn.get_name() == turn.get_name()) {
+                    continue;
+                }
+                double otherX, otherY;
+                if (atBore) {
+                    auto otherCoordinates = otherTurn.get_coordinates();
+                    otherX = otherCoordinates[0];
+                    otherY = otherCoordinates.size() > 1 ? otherCoordinates[1] : 0.0;
+                }
+                else {
+                    auto otherAdditionalCoordinates = otherTurn.get_additional_coordinates();
+                    if (!otherAdditionalCoordinates || otherAdditionalCoordinates->empty() || otherAdditionalCoordinates->at(0).size() < 2) {
+                        continue;  // ABT #1353: a last station has no presence outside the ring
+                    }
+                    otherX = otherAdditionalCoordinates->at(0)[0];
+                    otherY = otherAdditionalCoordinates->at(0)[1];
+                }
+                if (std::abs(std::hypot(otherX, otherY) - radius) >= turnOuterRadius) {
+                    continue;  // another layer, not this row
+                }
+                double separation = std::remainder(std::atan2(otherY, otherX) - angle, 2 * std::numbers::pi);
+                double distance = std::hypot(otherX - x0, otherY - y0);
+                if (separation > 0) {
+                    if (separation < leftAngle) {
+                        leftAngle = separation;
+                        leftDistance = distance;
+                    }
+                }
+                else {
+                    if (-separation < rightAngle) {
+                        rightAngle = -separation;
+                        rightDistance = distance;
+                    }
+                }
+            }
+            return std::make_pair(leftDistance, rightDistance);
+        };
+
         std::vector<TurnToCoreFace> faces;
         if (!screenedFromBore) {
-            faces.push_back({boreGap, 0.0, boreShare});           // bore
-            faces.push_back({boreGap, 0.0, flatRunHalfShare});    // top face, inner half
-            faces.push_back({boreGap, 0.0, flatRunHalfShare});    // bottom face, inner half
+            auto [left, right] = rowPitches(turnRadius, turnAngle, true);
+            faces.push_back({boreGap, 0.0, boreShare, left, right});           // bore
+            faces.push_back({boreGap, 0.0, flatRunHalfShare, left, right});    // top face, inner half
+            faces.push_back({boreGap, 0.0, flatRunHalfShare, left, right});    // bottom face, inner half
         }
         if (!screenedFromOutside) {
-            faces.push_back({outerGap, 0.0, outerShare});         // outer surface
-            faces.push_back({outerGap, 0.0, flatRunHalfShare});   // top face, outer half
-            faces.push_back({outerGap, 0.0, flatRunHalfShare});   // bottom face, outer half
+            auto [left, right] = rowPitches(outerCrossingRadius, outerCrossingAngle, false);
+            faces.push_back({outerGap, 0.0, outerShare, left, right});         // outer surface
+            faces.push_back({outerGap, 0.0, flatRunHalfShare, left, right});   // top face, outer half
+            faces.push_back({outerGap, 0.0, flatRunHalfShare, left, right});   // bottom face, outer half
         }
         return faces;
     }
@@ -2204,7 +2488,8 @@ static double turn_to_core_element(Coil& coil, const Core& core, const Turn& tur
             conductingRadius, turn.get_length() * face.lengthFraction,
             wireCoatingThickness, wireCoatingRelativePermittivity,
             face.airGap, coreCoatingThickness, coreCoatingRelativePermittivity,
-            face.bobbinThickness, bobbinRelativePermittivity);
+            face.bobbinThickness, bobbinRelativePermittivity,
+            face.leftNeighbourPitch, face.rightNeighbourPitch);
     }
     return element;
 }

@@ -108,7 +108,7 @@ Curve2D Sweeper::sweep_differential_mode_impedance_over_frequency(Magnetic magne
     // the whole capacitance model would run per frequency (~100x slower).
     double referenceFrequency = std::sqrt(frequencies.front() * frequencies.back());
     auto impedance = OpenMagnetics::Impedance();
-    auto parameters = impedance.calculate_differential_mode_parameters(magnetic.get_core(), magnetic.get_coil(), referenceFrequency);
+    auto parameters = impedance.calculate_differential_mode_parameters(magnetic, referenceFrequency);
 
     std::vector<double> impedances;
     for (auto frequency : frequencies) {

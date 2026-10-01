@@ -127,7 +127,9 @@ class Impedance {
     // referenceFrequency — it is essentially air-cored and flat). Then evaluate the
     // impedance cheaply at each frequency. A sweep should call the first once and the
     // second per point rather than calling calculate_differential_mode_impedance N times.
-    DifferentialModeParameters calculate_differential_mode_parameters(Core core, Coil coil, double referenceFrequency, double temperature = Defaults().ambientTemperature);
+    DifferentialModeParameters calculate_differential_mode_parameters(Magnetic magnetic, double referenceFrequency, double temperature = Defaults().ambientTemperature);
+    DifferentialModeParameters calculate_differential_mode_parameters(Core core, Coil coil, double referenceFrequency, double temperature = Defaults().ambientTemperature,
+                                                                      std::optional<CoreElectricalReference> coreElectricalReference = std::nullopt);
     std::complex<double> differential_mode_impedance_from_parameters(const DifferentialModeParameters& parameters, double frequency);
     // Wideband terminal impedance as a series cascade of resonant tanks (a Foster
     // ladder): the magnetizing tank (first resonance) plus one leakage tank per

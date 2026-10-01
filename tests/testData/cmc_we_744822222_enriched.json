@@ -1,0 +1,190 @@
+{
+ "core": {
+  "functionalDescription": {
+   "type": "toroidal",
+   "material": "A07",
+   "shape": {
+    "magneticCircuit": "closed",
+    "type": "custom",
+    "family": "t",
+    "name": "T 14.0/8.0/9.0",
+    "dimensions": {
+     "A": {
+      "nominal": 0.014
+     },
+     "B": {
+      "nominal": 0.008
+     },
+     "C": {
+      "nominal": 0.009
+     }
+    }
+   },
+   "gapping": [],
+   "numberStacks": 1,
+   "coating": {
+    "type": "epoxy",
+    "thickness": 0.0006,
+    "material": "epoxy"
+   }
+  },
+  "name": "T 14/8/9 - A07 - Ungapped"
+ },
+ "coil": {
+  "bobbin": "Basic",
+  "functionalDescription": [
+   {
+    "name": "primary",
+    "numberTurns": 18,
+    "numberParallels": 1,
+    "isolationSide": "primary",
+    "wire": {
+     "type": "round",
+     "name": "Round 0.5 - Grade 1",
+     "conductingDiameter": {
+      "nominal": 0.0005
+     },
+     "coating": {
+      "type": "enamelled",
+      "grade": 1
+     },
+     "material": "copper"
+    }
+   },
+   {
+    "name": "secondary",
+    "numberTurns": 18,
+    "numberParallels": 1,
+    "isolationSide": "secondary",
+    "wire": {
+     "type": "round",
+     "name": "Round 0.5 - Grade 1",
+     "conductingDiameter": {
+      "nominal": 0.0005
+     },
+     "coating": {
+      "type": "enamelled",
+      "grade": 1
+     },
+     "material": "copper"
+    }
+   }
+  ],
+  "sectionsDescription": [
+   {
+    "coordinateSystem": "polar",
+    "coordinates": [
+     0.0002669999999999999,
+     89.89467663862808
+    ],
+    "dimensions": [
+     0.0005339999999995009,
+     175.99612319457722
+    ],
+    "fillingFactor": 0.2829996138509652,
+    "group": "Default group",
+    "layersAlignment": null,
+    "layersOrientation": "overlapping",
+    "margin": [
+     0.0015,
+     0.0015
+    ],
+    "name": "primary section 0",
+    "numberLayers": null,
+    "partialWindings": [
+     {
+      "connections": null,
+      "parallelsProportion": [
+       1.0
+      ],
+      "winding": "primary"
+     }
+    ],
+    "type": "conduction",
+    "windingOrder": null,
+    "windingStyle": "windByConsecutiveTurns",
+    "windingWindow": null
+   },
+   {
+    "coordinateSystem": "polar",
+    "coordinates": [
+     0.0017000000000000001,
+     179.57870655451234
+    ],
+    "dimensions": [
+     0.0034000000000000002,
+     0.42129344548767217
+    ],
+    "fillingFactor": 1.0,
+    "group": "Default group",
+    "layersAlignment": null,
+    "layersOrientation": "overlapping",
+    "margin": null,
+    "name": "Insulation between primary and secondary section 1",
+    "numberLayers": null,
+    "partialWindings": [],
+    "type": "insulation",
+    "windingOrder": null,
+    "windingStyle": null,
+    "windingWindow": null
+   },
+   {
+    "coordinateSystem": "polar",
+    "coordinates": [
+     0.00026699999999999966,
+     270.1053233613719
+    ],
+    "dimensions": [
+     0.0005339999999995005,
+     175.99612319457722
+    ],
+    "fillingFactor": 0.2829996138509652,
+    "group": "Default group",
+    "layersAlignment": null,
+    "layersOrientation": "overlapping",
+    "margin": [
+     0.0015,
+     0.0015
+    ],
+    "name": "secondary section 0",
+    "numberLayers": null,
+    "partialWindings": [
+     {
+      "connections": null,
+      "parallelsProportion": [
+       1.0
+      ],
+      "winding": "secondary"
+     }
+    ],
+    "type": "conduction",
+    "windingOrder": null,
+    "windingStyle": "windByConsecutiveTurns",
+    "windingWindow": null
+   },
+   {
+    "coordinateSystem": "polar",
+    "coordinates": [
+     0.0017000000000000001,
+     359.78935327725617
+    ],
+    "dimensions": [
+     0.0034000000000000002,
+     0.42129344548767217
+    ],
+    "fillingFactor": 1.0,
+    "group": "Default group",
+    "layersAlignment": null,
+    "layersOrientation": "overlapping",
+    "margin": null,
+    "name": "Insulation between secondary and primary section 3",
+    "numberLayers": null,
+    "partialWindings": [],
+    "type": "insulation",
+    "windingOrder": null,
+    "windingStyle": null,
+    "windingWindow": null
+   }
+  ]
+ }
+}

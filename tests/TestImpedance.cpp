@@ -1,5 +1,7 @@
 #include <source_location>
 #include <algorithm>
+#include <cmath>
+#include <numbers>
 #include <fstream>
 #include <sstream>
 #include "support/Painter.h"
@@ -53,10 +55,17 @@ TEST_CASE("Test_Impedance_0", "[physical-model][impedance][smoke-test]") {
     OpenMagnetics::Magnetic magnetic;
     magnetic.set_core(core);
     magnetic.set_coil(coil);
-    double expectedSelfResonantFrequency = 1400000;
+    // CHARACTERISATION, not a physics anchor (re-pinned 2026-10-01). The 1.4 MHz this test used to
+    // check was measured on a part whose core coating is unknown, while the default toroid coating
+    // and the coating thickness set the turn-to-core gap that dominates this self-capacitance; so the
+    // measurement cannot discriminate the capacitance physics. Value: MKF output with the screened
+    // turn-to-core elements and the 2*eps0*lt*Y1 Albach pair element (was 1.73 MHz before both).
+    // The measured anchor for a toroidal CMC with a documented coating is
+    // "Toroidal CMC common-mode resonance against its s4p measurement (WE 744824220)".
+    double expectedSelfResonantFrequency = 2.4745e6;
     settings._debug = true;
     auto selfResonantFrequency = OpenMagnetics::Impedance().calculate_self_resonant_frequency(magnetic);
-    REQUIRE_THAT(expectedSelfResonantFrequency, Catch::Matchers::WithinAbs(selfResonantFrequency, expectedSelfResonantFrequency * maximumError));
+    REQUIRE_THAT(selfResonantFrequency, Catch::Matchers::WithinRel(expectedSelfResonantFrequency, 0.02));
     settings._debug = false;
 
     {
@@ -676,4 +685,137 @@ TEST_CASE("Test_Core_Dimensional_Attenuation_From_Real_Permittivity", "[physical
     REQUIRE(!n87.get_permittivity());
     auto fNone = OpenMagnetics::Impedance::core_dimensional_attenuation(n87, 1e6, std::complex<double>(1000, 100), dims);
     CHECK(std::abs(fNone - 1.0) < 1e-12);
+}
+
+// Toroidal CMC inter-winding (DM) capacitance with neighbour-screened turn-to-core elements.
+// WE 744822222 (T 14/8/9 A07 MnZn in a 0.6 mm case, 2 x 18 turns of 0.5 mm, sectored). Measured
+// (REDEXPERT .s4p): DM resonance 40.27 MHz with L_DM 9.93 uH at 1 MHz -> 1.57 pF; a complex
+// (R+jwL)||C||Rp fit around the resonance gives 1.97 pF. The isolated (Smythe) turn-to-core
+// element gave 4.54 pF (2.3-2.9x high): the close-wound bore row (pitch = wire OD) screens each
+// turn's flanks, 23.6 vs 50.9 pF/m. Screened: 2.55 pF (1.3-1.6x). The CM tank capacitance moves
+// with it (8.43 -> 6.79 pF), CM peak 0.73 -> 0.98 MHz against 0.93 MHz measured.
+TEST_CASE("Toroidal CMC inter-winding capacitance with screened turn-to-core elements (WE 744822222)", "[physical-model][impedance][cmc][stray-capacitance]") {
+    auto testDataPath = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "cmc_we_744822222_enriched.json");
+    std::ifstream file(testDataPath);
+    OpenMagnetics::Magnetic magnetic(nlohmann::json::parse(file));
+    magnetic = magnetic_autocomplete(magnetic);
+    auto parameters = OpenMagnetics::Impedance().calculate_differential_mode_parameters(magnetic, 1e6);
+    CHECK_THAT(parameters.interWindingCapacitance, Catch::Matchers::WithinRel(2.551e-12, 0.02));
+    // Within 2x of both measured values, and well below the unscreened 4.54 pF.
+    CHECK(parameters.interWindingCapacitance < 2 * 1.57e-12);
+    CHECK(parameters.interWindingCapacitance > 0.5 * 1.97e-12);
+
+    auto commonModeModel = OpenMagnetics::Impedance().build_common_mode_impedance_model(magnetic);
+    // Characterisation (re-pinned 2026-10-01): 6.795 pF before the Albach pair element was corrected
+    // from (2/3)*eps0*lt*Y1 to 2*eps0*lt*Y1 (Albach 2017 eq. 3.14) and toroid turn pairs were split
+    // between the bore and the outer-crossing gap. The s4p-derived C_cm of this part is 13.4 pF,
+    // but its CM peak is flagged weak/low-Q, so it is not used as an anchor here.
+    CHECK_THAT(commonModeModel.tanks[0].capacitance, Catch::Matchers::WithinRel(14.033e-12, 0.02));
+
+    // The DM path honours the magnetic's core electrical reference: a GROUNDED core diverts the
+    // through-core path to the reference, and these sectored windings have no adjacent turns,
+    // so nothing couples them directly.
+    CoreElectricalReference groundedReference;
+    groundedReference.set_type(CoreElectricalReferenceType::GROUNDED);
+    auto grounded = magnetic;
+    grounded.set_core_electrical_reference(groundedReference);
+    auto groundedParameters = OpenMagnetics::Impedance().calculate_differential_mode_parameters(grounded, 1e6);
+    CHECK(groundedParameters.interWindingCapacitance == 0.0);
+    // Floating (absent reference) through the Core/Coil overload equals the Magnetic overload.
+    auto coreCoilParameters = OpenMagnetics::Impedance().calculate_differential_mode_parameters(magnetic.get_core(), magnetic.get_coil(), 1e6);
+    CHECK_THAT(coreCoilParameters.interWindingCapacitance, Catch::Matchers::WithinRel(parameters.interWindingCapacitance, 1e-12));
+}
+
+// MEASURED ANCHOR for the common-mode self-capacitance of epoxy-coated toroidal CMCs.
+//
+// Parts: every WE-CMB catalogue part that (a) the WE requirements sheet gives a 0.6 mm epoxy core
+// coating, (b) has a WE s4p measurement whose CM peak is a clean LC resonance (measDB
+// cm_quality_flag 'good': no weak/low-Q/multi-peak/mu-rolloff flag), and (c) MKF winds. 17 parts
+// meet (a)+(b); 744821240 is left out by (c) (magnetic_autocomplete leaves it unwound). The core
+// is ACME A07 in all 16. No part was selected by its result.
+// Measured values (cmc_impedance_whitepaper/work/measdb/ciw_measured.csv): CM impedance peak
+// frequency and CM inductance at 10 kHz, both from the WE s4p file. The s4p grid is logarithmic
+// with ratio 1.01742 and every peak sits on a grid point: +-0.87% (half a step) reading error.
+//
+// What is compared: f_res ~ 1/sqrt(L*C), so the modelled peak is rescaled by sqrt(L_model/L_meas)
+// at 10 kHz. That removes the A07 initial-permeability tolerance (7000 +-25%, ACME catalogue,
+// i.e. up to +-15% on f) using each sample's own measured inductance and leaves the frequency
+// error to the capacitance (and to the shape of mu(f), assumed common to the lot).
+//
+// Coating: the requirements sheet states 0.6 mm; ACME's catalogue states "0.6 mm max" for T9 and
+// above. No nominal is documented. A thinner coating raises the capacitance and LOWERS f, so the
+// documented bounds are 0 (no coating) and 0.6 mm, and the model must bracket the measurement:
+//   median ln(f(0.6 mm)/f_meas) >= -tol   and   median ln(f(0 mm)/f_meas) <= +tol.
+// Tolerance: two standard errors of the median of the per-part log ratios (1.2533 s/sqrt(n), s the
+// sample standard deviation; ~95% for a normal spread), plus the s4p half-step. The per-part
+// scatter (s ~0.13) is not covered by any documented input uncertainty; it is reported, not tested.
+// The bracket alone does not reject the pre-fix element (its 0 mm median lands on the
+// measurement); the third check, at the requirements-sheet value, does: with (2/3)*eps0*lt*Y1 and
+// unsplit toroid pairs the 0.6 mm median sits 28% high (19% before the turn-to-core screening),
+// against 3% low now, with a tolerance of ~9%.
+TEST_CASE("Toroidal CMC common-mode resonance against its s4p measurement (WE-CMB, 0.6 mm epoxy coating)", "[physical-model][impedance][cmc][stray-capacitance][measured-anchor]") {
+    struct MeasuredPart { std::string partNumber; double peakFrequency; double inductanceAt10kHz; };
+    const std::vector<MeasuredPart> parts = {
+        {"744821039", 137246, 0.044589},   {"744821110", 331131, 0.00976392}, {"744821120", 215030, 0.0211613},
+        {"744821150", 444120, 0.00500236}, {"744822110", 331131, 0.00985155}, {"744822120", 197242, 0.0214343},
+        {"744823210", 226464, 0.0105858},  {"744823220", 174783, 0.023393},   {"744823305", 336899, 0.00523203},
+        {"744823333", 467735, 0.00360972}, {"744824220", 128086, 0.0214685},  {"744824310", 278612, 0.00816787},
+        {"744824407", 273842, 0.00692025}, {"744824433", 501187, 0.00311928}, {"744825320", 152230, 0.0202871},
+        {"744825433", 113501, 0.0295728},
+    };
+    const double s4pHalfStep = std::log(std::sqrt(1.01742));
+
+    auto peakOf = [](const Curve2D& curve) {
+        auto x = curve.get_x_points();
+        auto y = curve.get_y_points();
+        return x[std::max_element(y.begin(), y.end()) - y.begin()];
+    };
+    // ln(f_model * sqrt(L_model / L_meas) / f_meas) for one part at one coating thickness.
+    auto logRatio = [&](const MeasuredPart& part, double coatingThickness) {
+        auto path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "cmc_we_coated_anchor/" + part.partNumber + ".json");
+        std::ifstream file(path);
+        REQUIRE(file.good());
+        auto json = nlohmann::json::parse(file);
+        json["core"]["functionalDescription"]["coating"]["thickness"] = coatingThickness;
+        OpenMagnetics::Magnetic magnetic(json);
+        magnetic = magnetic_autocomplete(magnetic);
+        REQUIRE(magnetic.get_coil().get_turns_description());
+        double coarsePeak = peakOf(Sweeper::sweep_common_mode_impedance_over_frequency(magnetic, 1e3, 1e9, 400, "log"));
+        double peak = peakOf(Sweeper::sweep_common_mode_impedance_over_frequency(magnetic, coarsePeak / 1.1, coarsePeak * 1.1, 401, "linear"));
+        auto lowFrequency = Sweeper::sweep_common_mode_impedance_over_frequency(magnetic, 1e4, 2e4, 2, "linear");
+        double modelInductance = lowFrequency.get_y_points()[0] / (2 * std::numbers::pi * lowFrequency.get_x_points()[0]);
+        return std::log(peak * std::sqrt(modelInductance / part.inductanceAt10kHz) / part.peakFrequency);
+    };
+    auto median = [](std::vector<double> v) {
+        std::sort(v.begin(), v.end());
+        size_t n = v.size();
+        return n % 2 ? v[n / 2] : 0.5 * (v[n / 2 - 1] + v[n / 2]);
+    };
+    auto tolerance = [&](const std::vector<double>& v) {
+        double mean = 0;
+        for (double x : v) mean += x;
+        mean /= static_cast<double>(v.size());
+        double variance = 0;
+        for (double x : v) variance += (x - mean) * (x - mean);
+        double sampleDeviation = std::sqrt(variance / static_cast<double>(v.size() - 1));
+        return 2.0 * 1.2533 * sampleDeviation / std::sqrt(static_cast<double>(v.size())) + s4pHalfStep;
+    };
+
+    std::vector<double> atSheetValue, uncoated;
+    for (const auto& part : parts) {
+        atSheetValue.push_back(logRatio(part, 0.6e-3));
+        uncoated.push_back(logRatio(part, 0.0));
+        UNSCOPED_INFO(part.partNumber << ": model/measured " << std::exp(atSheetValue.back()) << " at 0.6 mm, " << std::exp(uncoated.back()) << " uncoated");
+    }
+    double medianAtSheetValue = median(atSheetValue);
+    double medianUncoated = median(uncoated);
+    double toleranceAtSheetValue = tolerance(atSheetValue);
+    double toleranceUncoated = tolerance(uncoated);
+    UNSCOPED_INFO("median model/measured: " << std::exp(medianAtSheetValue) << " at 0.6 mm (tol " << toleranceAtSheetValue
+                  << "), " << std::exp(medianUncoated) << " uncoated (tol " << toleranceUncoated << ")");
+    // The documented coating bounds bracket the measurement.
+    CHECK(medianAtSheetValue >= -toleranceAtSheetValue);
+    CHECK(medianUncoated <= toleranceUncoated);
+    // At the requirements-sheet value itself.
+    CHECK(std::abs(medianAtSheetValue) <= toleranceAtSheetValue);
 }
