@@ -628,9 +628,12 @@ double Impedance::calculate_self_resonant_frequency(Core core, Coil coil, double
         // magnetic coupling forces every open winding to mirror the driven winding's
         // per-turn potential profile (a 1:1 transformer), so each one's turn-to-core
         // elements charge identically and add in parallel. Multiplying the single-winding
-        // self term by the winding count is that mirror, and it lands both measured SRF
-        // anchors (T12.5/7.5/5 110-turn: 180 kHz; Test_Impedance_0: 1.4 MHz) inside
-        // tolerance where the bare single-winding term sat ~1.7x high (ABT #848).
+        // self term by the winding count is that mirror (ABT #848: the bare single-winding
+        // term sat ~1.7x high). The 110-turn anchor of Test_Self_Resonant_Frequency_Many_Turns
+        // is the measured s4p common-mode peak of WE-CMB 744821039, 137.2 kHz (it used to read
+        // 180 kHz, which no measurement of the part gives). The model currently reads 103.0 kHz
+        // there: its inter-layer turn-to-turn capacitance puts C_CM at 59.4 pF, about 2x the
+        // 30.2 pF the measurement implies (1/((2 pi 137246)^2 * 44.59 mH)). Under investigation.
         capacitance *= static_cast<double>(coil.get_functional_description().size());
     }
 

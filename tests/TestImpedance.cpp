@@ -174,40 +174,35 @@ TEST_CASE("Test_Impedance_Many_Turns", "[physical-model][impedance][smoke-test]"
 
 TEST_CASE("Test_Self_Resonant_Frequency_Many_Turns", "[physical-model][impedance][smoke-test]") {
 
-    std::vector<int64_t> numberTurns = {110, 110};
-    std::vector<int64_t> numberParallels = {1, 1};
-    std::string shapeName = "T 12.5/7.5/5";
-    std::vector<OpenMagnetics::Wire> wires;
-    auto wire = find_wire_by_name("Round 0.15 - Grade 1");
-    wires.push_back(wire);
-    wires.push_back(wire);
+    // The real part: WE-CMB 744821039, 110 + 110 turns of Round 0.15 - Grade 1 on an ACME A07
+    // T 12.7/7.92/4.9 ring with a 0.6 mm epoxy coating, read from its stored MAS (the same file the
+    // coated-anchor test below winds).
+    auto path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "cmc_we_coated_anchor/744821039.json");
+    std::ifstream file(path);
+    REQUIRE(file.good());
+    OpenMagnetics::Magnetic magnetic(nlohmann::json::parse(file));
+    magnetic = magnetic_autocomplete(magnetic);
+    REQUIRE(magnetic.get_coil().get_turns_description());
 
-    WindingOrientation windingOrientation = WindingOrientation::CONTIGUOUS;
-    WindingOrientation layersOrientation = WindingOrientation::OVERLAPPING;
-    CoilAlignment sectionsAlignment = CoilAlignment::CENTERED;
-    CoilAlignment turnsAlignment = CoilAlignment::CENTERED;
-    
-    auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns,
-                                                     numberParallels,
-                                                     shapeName,
-                                                     1,
-                                                     windingOrientation,
-                                                     layersOrientation,
-                                                     turnsAlignment,
-                                                     sectionsAlignment,
-                                                     wires,
-                                                     false);
-
-    int64_t numberStacks = 1;
-    std::string coreMaterial = "A07";
-    std::vector<CoreGap> gapping = {};
-    auto core = OpenMagneticsTesting::get_quick_core(shapeName, gapping, numberStacks, coreMaterial);
-    OpenMagnetics::Magnetic magnetic;
-    magnetic.set_core(core);
-    magnetic.set_coil(coil);
-    double expectedSelfResonantFrequency = 180000;
+    // Anchor: 137.246 kHz, the |Z_CM| peak of the part's WE S-parameter file (744821039.s4p, rev20a,
+    // 26/02/2020, mixed-mode Scc21; the value the coated-anchor table below uses). The single-winding
+    // SRF with the other winding open is the common-mode resonance: unity coupling makes the open
+    // winding mirror the driven one (see Impedance::calculate_self_resonant_frequency).
+    //
+    // Tolerance, from the measurements alone. The part has a second record: the Heimdall measurement
+    // DB (measurements.measurement, origin CMChokesPower, common_mode_impedance, two bit-identical
+    // rows) peaks at 125.893 kHz. Nothing records whether the two are the same sample, so their gap,
+    // |ln(137246/125893)| = 0.0863 (9.0%), is the measured spread of this part's SRF. Both are read
+    // on the same logarithmic grid of ratio 1.01742 (1.74% per point), each peak +-half a step, so
+    // the two readings add one full step, ln(1.01742) = 0.0173. The band is ln(f/137246) within
+    // +-0.1036, i.e. 123.7 to 152.2 kHz; it contains the measDB peak by construction.
+    const double s4pPeak = 137246;
+    const double measurementDatabasePeak = 125893;
+    const double gridStep = std::log(1.01742);
+    const double tolerance = std::abs(std::log(s4pPeak / measurementDatabasePeak)) + gridStep;
     auto selfResonantFrequency = OpenMagnetics::Impedance().calculate_self_resonant_frequency(magnetic);
-    REQUIRE_THAT(expectedSelfResonantFrequency, Catch::Matchers::WithinAbs(selfResonantFrequency, expectedSelfResonantFrequency * maximumError));
+    INFO("model SRF " << selfResonantFrequency << " Hz, ln(model/anchor) " << std::log(selfResonantFrequency / s4pPeak) << ", tolerance " << tolerance);
+    REQUIRE(std::abs(std::log(selfResonantFrequency / s4pPeak)) <= tolerance);
 
 }
 TEST_CASE("Test_Impedance_Few_Turns", "[physical-model][impedance][smoke-test]") {
