@@ -16551,3 +16551,45 @@ TEST_CASE("A section's windingOrder survives the re-wind",
     }
     settings.reset();
 }
+
+// A section whose layers are stacked radially (overlapping layers) is wound from the barrel
+// outward, so the compaction pass must leave its first layer on the window's inner side. It used
+// to read turnsAlignment (an along-the-layer setting) as the section's radial position and centre
+// the section in the window, which floated every turn off the column and lengthened it. With
+// compaction off the same sections already start at the inner side; both paths must agree.
+TEST_CASE("Test_Coil_Contiguous_Sections_Start_At_Window_Inner_Side", "[constructive-model][coil][captot][smoke-test]") {
+    auto& settings = Settings::GetInstance();
+    settings.reset();
+    for (bool compact : {true, false}) {
+        settings.set_coil_delimit_and_compact(compact);
+        auto coil = OpenMagneticsTesting::get_quick_coil({12, 12}, {1, 1}, "PQ 28/20", 1,
+                                                         WindingOrientation::CONTIGUOUS, WindingOrientation::OVERLAPPING,
+                                                         CoilAlignment::CENTERED, CoilAlignment::CENTERED);
+        auto bobbin = coil.resolve_bobbin();
+        auto windowDimensions = bobbin.get_winding_window_dimensions(0);
+        auto windowCoordinates = bobbin.get_winding_window_coordinates(0);
+        double windowInnerSide = windowCoordinates[0] - windowDimensions[0] / 2;
+        auto sections = coil.get_sections_description_conduction();
+        REQUIRE(sections.size() == 2);
+        for (auto& section : sections) {
+            INFO((compact ? "compacted " : "not compacted ") << section.get_name());
+            double sectionInnerSide = section.get_coordinates()[0] - section.get_dimensions()[0] / 2;
+            double margin = OpenMagnetics::Coil::resolve_margin(section)[0];
+            // Compacted, the window is far wider than one 12-turn section, so a centred section
+            // would sit mm away. Not compacted, the section spans the window.
+            if (compact) {
+                REQUIRE(windowDimensions[0] > 2 * section.get_dimensions()[0]);
+            }
+            CHECK_THAT(sectionInnerSide, Catch::Matchers::WithinAbs(windowInnerSide + margin, 1e-9));
+        }
+        auto turns = coil.get_turns_description().value();
+        REQUIRE(!turns.empty());
+        double innermostTurnSide = std::numeric_limits<double>::max();
+        for (auto& turn : turns) {
+            innermostTurnSide = std::min(innermostTurnSide, turn.get_coordinates()[0] - turn.get_dimensions().value()[0] / 2);
+        }
+        INFO((compact ? "compacted" : "not compacted"));
+        CHECK_THAT(innermostTurnSide, Catch::Matchers::WithinAbs(windowInnerSide, 1e-9));
+    }
+    settings.reset();
+}

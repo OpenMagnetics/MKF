@@ -16597,6 +16597,25 @@ std::vector<double> Coil::get_aligned_section_dimensions_rectangular_window(size
             turnsAlignment != CoilAlignment::SPREAD && roomLeft >= 0) {
             return roomLeft;
         }
+        // A section whose layers are stacked RADIALLY (overlapping layers: each layer a column of
+        // turns along the column axis, the next layer wound on top of it) is wound from the barrel
+        // outward -- its first layer rests on the window's inner side, the bobbin's column wall or,
+        // with no wall, the core column itself. turnsAlignment is an ALONG-THE-LAYER setting: in
+        // such a section the layer runs axially, so it aligns the turns along the column axis
+        // (wind_by_rectangular_layers does that, per layer) and has no say over the section's
+        // radial position. Reading it here as a radial position centred these sections in the
+        // window: on WE-FC (ET20, 6.1 mm wide window) both windings floated 2.9 mm off the centre
+        // leg, which made every turn 34.8 mm long against the 28.6-32 mm the LoP DC resistance
+        // implies even with a real barrel wall, and inflated C and DCR together. With compaction
+        // off the same sections already start at the inner edge (the section spans the window and
+        // wind_by_rectangular_layers lays the first layer at its inner side); it was only the
+        // compaction pass that moved them off the barrel. Sections whose layers run radially
+        // (contiguous layers, e.g. a pancake or planar layer) keep turnsAlignment, because there the
+        // layer's own direction IS radial.
+        if (sections[sectionIndex].get_type() == ElectricalType::CONDUCTION &&
+            sections[sectionIndex].get_layers_orientation() == WindingOrientation::OVERLAPPING) {
+            return roomLeft;
+        }
         switch (turnsAlignment) {
             case CoilAlignment::INNER_OR_TOP:
                 return windingWindows[0].get_coordinates().value()[0] - windingWindowWidth / 2 + resolve_margin(sections[sectionIndex])[0];
