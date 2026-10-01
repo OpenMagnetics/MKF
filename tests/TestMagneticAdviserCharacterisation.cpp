@@ -212,15 +212,21 @@ const std::vector<MagneticEntry> kTopThreeWinding = {
     // all slots. Slots 0 and 1 are the same design differing only in winding order
     // (021 vs 012) with scores 0.0005% apart: a documented near-tie, not a meaningful
     // preference. Score scale moved (2.31 -> 1.70) with the normalization pool.
-    {"95 E 8/2 2 stacks gapped 0.02 mm, Turns: 13, Order: 021, Non-Interleaved, Margin Taped 01",
-     "Round 33.0 - Single Build || Round 41.0 - Single Build || Round 41.0 - Single Build",
-     1.7000769237774718},
-    {"95 E 8/2 2 stacks gapped 0.02 mm, Turns: 13, Order: 012, Non-Interleaved, Margin Taped 01",
-     "Round 33.0 - Single Build || Round 41.0 - Single Build || Round 41.0 - Single Build",
-     1.7},
-    {"79 E 10/3 gapped 0.04 mm, Turns: 21, Order: 021, Non-Interleaved, Margin Taped 00",
-     "Round 33.0 - Single Build || Round 41.0 - Single Build || Round 41.0 - Single Build",
-     1},
+    // Refreshed 2026-09-30 (user-approved): the COST filter now scores the unit cost in US$ at 1000
+    // pieces (core price law + copper + winding labour) instead of numberLayers + wire relative cost, so
+    // the composite re-ranks. The 79-material E 10/3 at 21 turns returns to slot 0; the 95-material
+    // E 8/2 2-stack leaves the top 3 and a 79 E 8.3/4 2-stack at 12 turns takes slots 1-2 (the same
+    // design in two winding orders). Both 79 and 95 are priced MnZn ferrites, so no candidate was
+    // dropped by a COST throw; the old winner was out-scored. The per-design US$ were not broken down.
+    {"79 E 10/3 gapped 0.04 mm, Turns: 21, Order: 021, Non-Interleaved, Margin Taped 01",
+     "Round 35.5 - Single Build || Round 41.0 - Single Build || Round 41.0 - Single Build",
+     2},
+    {"79 E 8.3/4 2 stacks gapped 0.01 mm, Turns: 12, Order: 021, Non-Interleaved, Margin Taped 00",
+     "Round 33.0 - Single Build || Round 38.0 - Single Build || Round 38.0 - Single Build",
+     0.85007868429843947},
+    {"79 E 8.3/4 2 stacks gapped 0.01 mm, Turns: 12, Order: 012, Non-Interleaved, Margin Taped 00",
+     "Round 33.0 - Single Build || Round 38.0 - Single Build || Round 38.0 - Single Build",
+     0.84999999999999998},
 };
 
 } // namespace

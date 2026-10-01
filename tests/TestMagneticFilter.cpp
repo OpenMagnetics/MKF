@@ -40,6 +40,7 @@
 
 #include <source_location>
 #include <cmath>
+#include <numbers>
 #include <filesystem>
 #include <fstream>
 #include <vector>
@@ -49,6 +50,7 @@
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/benchmark/catch_benchmark.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
+#include <catch2/matchers/catch_matchers_string.hpp>
 
 #include "advisers/MagneticFilter.h"
 #include "advisers/MagneticAdviser.h"
@@ -217,7 +219,14 @@ const std::map<std::string, Snapshot> kSnapshots = {
     // TEMPERATURE (-1.4 %) drift from the same reclassified flux/B recompute.
     {"ENERGY_STORED",                                   {true,  0.00018781148528340766}},
     {"ESTIMATED_COST",                                  {true,  1.7774692926005085}},
-    {"COST",                                            {true,  7.0}},
+    // COST re-derived 2026-09-30: the filter now scores the unit cost in US$ at 1000 pieces (CostBasis) instead
+    // of numberLayers + wire relative cost (7.0). By hand, for this fixture:
+    //   core      E 35 Ve 8.07 cm3 x 3C97 4800 kg/m3 = 38.74 g; MnZn law 21.03 x 0.03874^0.6407 = US$2.620
+    //   conductor 60 turns, 3.004 m (50 mm/turn round the 10 x 10 mm centre leg) of 1.00 mm copper
+    //             = 21.09 g x US$14.737/kg                                          = US$0.311
+    //   labour    60 x 0.105 min / 0.5 = 12.6 min at US$7.27/h                      = US$1.527
+    //   total                                                                       = US$4.457
+    {"COST",                                            {true,  4.45732988417687}},
     // CORE_AND_DC_LOSSES returns (false, 0) here because the reference
     // magnetic has no DcResistance computed on the wound coil → ohmic
     // losses model rejects it. This locks the silent invalid-fallthrough
@@ -1118,4 +1127,149 @@ TEST_CASE("MagneticAdviser catalogue path drops parts whose material has no loss
         CHECK(mas.get_magnetic().get_core().get_material_name() != "TP5H");
     }
     settings.reset();
+}
+
+// ---------------------------------------------------------------------------
+// COST: the unit cost in US$ at 1000 pieces = core + conductor + labour (see CostBasis).
+// Every expected value below is derived by hand from the reference magnetic, not read back
+// from the filter.
+// ---------------------------------------------------------------------------
+namespace {
+double sum_of_turn_lengths(OpenMagnetics::Magnetic& magnetic) {
+    double length = 0;
+    auto turns = magnetic.get_coil().get_turns_description().value();
+    for (const auto& turn : turns) {
+        length += turn.get_length();
+    }
+    return length;
+}
+}  // namespace
+
+TEST_CASE("MagneticFilter COST breakdown of the reference magnetic",
+          "[magnetic-filter][cost]") {
+    auto magnetic = make_reference_magnetic();
+    auto cost = MagneticFilterCost().calculate_cost(magnetic);
+
+    // Labour: 60 turns x 0.105 min / 0.5 winding share = 12.6 min at US$7.27/h.
+    CHECK_THAT(cost.labour, WithinRel(12.6 / 60 * 7.27, 1e-12));
+
+    // Conductor: Round 1.00 mm, conducting area pi x (0.5 mm)^2, copper 8940 kg/m3 at US$14.737/kg,
+    // no litz premium, over the wound length of all 60 turns.
+    double area = std::numbers::pi * 0.5e-3 * 0.5e-3;
+    CHECK_THAT(cost.conductor, WithinRel(sum_of_turn_lengths(magnetic) * area * 8940 * 14.737, 1e-9));
+
+    // Core: 3C97 is a MnZn ferrite, price = 21.03 x mass^0.6407, mass = Ve(E 35) x 4800 kg/m3.
+    double mass = magnetic.get_core().get_effective_volume() * 4800;
+    REQUIRE(cost.priced());
+    CHECK_THAT(*cost.core, WithinRel(21.03 * std::pow(mass, 0.6407), 1e-9));
+
+    CHECK_THAT(cost.total(), WithinRel(*cost.core + cost.conductor + cost.labour, 1e-12));
+}
+
+TEST_CASE("MagneticFilter COST scores a priced core as valid",
+          "[magnetic-filter][cost]") {
+    auto magnetic = make_reference_magnetic();
+    auto inputs = make_reference_inputs();
+    auto [valid, score] = MagneticFilterCost().evaluate_magnetic(&magnetic, &inputs);
+    CHECK(valid);
+    CHECK_THAT(score, WithinRel(MagneticFilterCost().calculate_cost(magnetic).total(), 1e-12));
+}
+
+TEST_CASE("MagneticFilter COST charges Sullivan's strand premium on litz",
+          "[magnetic-filter][cost]") {
+    OpenMagneticsTesting::QuickMagneticConfig cfg;
+    cfg.numberTurns = {40, 20};
+    cfg.numberParallels = {1, 1};
+    cfg.coreShapeName = "E 35";
+    cfg.coreMaterialName = "3C97";
+    cfg.wireNames = {"Litz 4x0.1 - Grade 1 - Single Served", "Litz 4x0.1 - Grade 1 - Single Served"};
+    auto magnetic = OpenMagneticsTesting::create_quick_test_magnetic(cfg);
+    magnetic.get_mutable_coil().wind();
+    auto cost = MagneticFilterCost().calculate_cost(magnetic);
+    // 4 strands of 0.1 mm copper; C_m(0.1 mm) = 1 + 6e-26/(1e-4)^6 + 2.7e-9/(1e-4)^2 = 1 + 0.06 + 0.27.
+    double area = 4 * std::numbers::pi * 0.05e-3 * 0.05e-3;
+    CHECK_THAT(cost.conductor, WithinRel(sum_of_turn_lengths(magnetic) * area * 8940 * 14.737 * 1.33, 1e-9));
+}
+
+TEST_CASE("MagneticFilter COST flags a core with no price law instead of estimating or dropping it",
+          "[magnetic-filter][cost]") {
+    OpenMagneticsTesting::QuickMagneticConfig cfg;
+    cfg.numberTurns = {40, 20};
+    cfg.numberParallels = {1, 1};
+    cfg.coreShapeName = "E 35";
+    cfg.coreMaterialName = "46";  // Fair-Rite MgZn ferrite: no distributor prices fitted
+    cfg.wireNames = {"Round 1.00 - Grade 1", "Round 1.00 - Grade 1"};
+    auto magnetic = OpenMagneticsTesting::create_quick_test_magnetic(cfg);
+    magnetic.get_mutable_coil().wind();
+    auto cost = MagneticFilterCost().calculate_cost(magnetic);
+    CHECK_FALSE(cost.priced());
+    CHECK_THAT(cost.coreUnpricedReason, Catch::Matchers::ContainsSubstring("no price law for ferrite/MgZn"));
+    // Copper and labour are still known; only the total is not.
+    CHECK_THAT(cost.labour, WithinRel(12.6 / 60 * 7.27, 1e-12));
+    CHECK_THROWS_WITH(cost.total(), Catch::Matchers::ContainsSubstring("unit cost unknown"));
+    // The filter reports it as a failed scoring, which a non-strict adviser flow ranks worst for cost.
+    auto inputs = make_reference_inputs();
+    CHECK(MagneticFilterCost().evaluate_magnetic(&magnetic, &inputs) == std::pair<bool, double>{false, 0.0});
+
+    // The same MnZn reference is unpriced when the basis carries no law for its class.
+    auto reference = make_reference_magnetic();
+    auto basis = MagneticFilterCost::default_basis();
+    basis.corePrice.erase("ferrite/MnZn");
+    auto unpriced = MagneticFilterCost(basis).calculate_cost(reference);
+    CHECK_FALSE(unpriced.priced());
+    CHECK_THAT(unpriced.coreUnpricedReason, Catch::Matchers::ContainsSubstring("no price law for ferrite/MnZn"));
+}
+
+TEST_CASE("MagneticAdviser keeps a core COST cannot price and ranks it last for cost",
+          "[magnetic-filter][cost][magnetic-adviser]") {
+    settings.reset();
+    clear_databases();
+    // Two ~100 uH parts on an E 42/21/15 (the same inputs as the ABT #1456 catalogue test), both gapped
+    // 1 mm at 21 turns so the gap sets the inductance: N87 (priced, ferrite/MnZn) and Fair-Rite 46 (MgZn
+    // ferrite, which has no price law).
+    auto inputs = OpenMagnetics::Inputs::create_quick_operating_point_only_current(
+        100000, 100e-6, 25, WaveformLabel::TRIANGULAR, 2, 0.5, 1);
+    auto part = [&](const std::string& material, double gap, int64_t turns, const std::string& reference) {
+        auto magnetic = OpenMagneticsTesting::get_quick_magnetic("E 42/21/15", OpenMagneticsTesting::get_ground_gap(gap),
+                                                                 std::vector<int64_t>{turns}, 1, material);
+        MAS::MagneticManufacturerInfo manufacturerInfo;
+        manufacturerInfo.set_name("COST test");
+        manufacturerInfo.set_reference(reference);
+        magnetic.set_manufacturer_info(manufacturerInfo);
+        return OpenMagnetics::magnetic_autocomplete(magnetic);
+    };
+    std::vector<OpenMagnetics::Magnetic> catalogue{part("46", 0.001, 21, "unpriced MgZn"), part("N87", 0.001, 21, "priced MnZn")};
+    std::vector<MagneticFilterOperation> flow{MagneticFilterOperation(MagneticFilters::COST, true, false, 1.0)};
+    MagneticAdviser adviser;
+    std::vector<std::pair<OpenMagnetics::Mas, double>> results;
+    REQUIRE_NOTHROW(results = adviser.get_advised_magnetic(inputs, catalogue, flow, 5, false));
+    REQUIRE(results.size() == 2);
+    CHECK(results[0].first.get_magnetic().get_reference() == "priced MnZn");
+    CHECK(results[1].first.get_magnetic().get_reference() == "unpriced MgZn");
+    CHECK(results[1].second < results[0].second);
+    settings.reset();
+}
+
+TEST_CASE("MagneticFilter COST prices a proprietary grade only with its own manufacturer's law",
+          "[magnetic-filter][cost]") {
+    auto make = [](const std::string& material) {
+        OpenMagneticsTesting::QuickMagneticConfig cfg;
+        cfg.numberTurns = {40, 20};
+        cfg.numberParallels = {1, 1};
+        cfg.coreShapeName = "E 35";
+        cfg.coreMaterialName = material;
+        cfg.wireNames = {"Round 1.00 - Grade 1", "Round 1.00 - Grade 1"};
+        auto magnetic = OpenMagneticsTesting::create_quick_test_magnetic(cfg);
+        magnetic.get_mutable_coil().wind();
+        return magnetic;
+    };
+    // Micrometals OC 60: powder/proprietary, priced by the law fitted on Micrometals' own grades.
+    auto micrometals = make("OC 60");
+    CHECK(MagneticFilterCost().calculate_cost(micrometals).priced());
+    // Poco GPC 60 is also powder/proprietary, but no Poco part was priced: the Micrometals law must not be
+    // borrowed for it.
+    auto poco = make("GPC 60");
+    auto cost = MagneticFilterCost().calculate_cost(poco);
+    CHECK_FALSE(cost.priced());
+    CHECK_THAT(cost.coreUnpricedReason, Catch::Matchers::ContainsSubstring("no price law for powder/proprietary/Poco"));
 }

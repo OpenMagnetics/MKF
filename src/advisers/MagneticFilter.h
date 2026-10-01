@@ -91,10 +91,63 @@ class MagneticFilterEnergyStored : public MagneticFilter {
         std::pair<bool, double> evaluate_magnetic(Magnetic* magnetic, Inputs* inputs, std::vector<Outputs>* outputs = nullptr);
 };
 
+// Unit-cost basis of the COST filter: US$ per piece at a 1000-piece production quantity. Every value
+// carries the source it was read from; a quantity with no source is marked as an assumption.
+struct CostBasis {
+    // Refined copper, LME cash settlement US$14,737/t on 2026-09-08 (Cochilco, reported by Reporte Minero,
+    // https://www.reporteminero.cl/noticia/noticias/2026/09/precio-cobre-nuevo-record-alza-lme-septiembre-2026).
+    // The magnet-wire conversion premium over refined copper has no source yet and is not added.
+    double copperPricePerKg = 14.737;
+    // Litz strand premium per unit copper mass, C_m(d) = 1 + k1/d^6 + k2/d^2: Sullivan, "Cost-constrained
+    // selection of strand diameter and number in a litz-wire transformer winding", IEEE TPEL 16(2) 2001,
+    // eq. 4, with the constants refit to newer prices in Sullivan & Zhang, "Simplified design method for
+    // litz wire", APEC 2014 (https://www.ryz.web.illinois.edu/pdf/simplitz_apec2014.pdf).
+    double litzK1 = 6e-26;   // m^6
+    double litzK2 = 2.7e-9;  // m^2
+    // Labour rate: Mexico, semi-skilled, fully loaded, US$7.27/h (Tetakawi, 2026, a shelter-services vendor).
+    double laborRatePerHour = 7.27;
+    // Winding time: 1.05 min for a 2 x 5-turn machine-assisted toroid (Kamil et al., IJIM 2021), i.e.
+    // 0.105 min per turn. ASSUMPTION (unsourced): the time scales linearly with the number of turns and
+    // applies to bobbin winding too.
+    double windingMinutesPerTurn = 0.105;
+    // Winding is 50 % of the labour (termination 40 %, encapsulation 10 %): US patent 5,781,091 (1995).
+    double windingShareOfLabour = 0.5;
+    // Core price per set (or per toroid) as a power law of the core mass, price = c * mass^k (US$, kg),
+    // one law per MAS material type and materialComposition, keyed "type/composition" (e.g. "ferrite/MnZn",
+    // "powder/FeSiAl"; a "proprietary" composition adds the manufacturer, e.g. "powder/proprietary/Micrometals",
+    // since the word names no alloy). Price does not
+    // scale with mass: small cores cost several times more per kg, so a flat US$/kg misprices them. The
+    // values are fitted where they are set. A composition with no fitted law throws.
+    struct PowerLaw {
+        double coefficient;  // c, US$ for a 1 kg core
+        double exponent;     // k
+    };
+    std::map<std::string, PowerLaw> corePrice;
+};
+
+struct CostBreakdown {
+    // Empty when the core has no price law (its material has no composition, or no law is fitted for its
+    // type and composition); coreUnpricedReason then says why. Never estimated.
+    std::optional<double> core;
+    double conductor;
+    double labour;
+    std::string coreUnpricedReason;
+    bool priced() const { return core.has_value(); }
+    // The unit cost; throws for an unpriced core, whose cost is unknown.
+    double total() const;
+};
+
 class MagneticFilterCost : public MagneticFilter {
     public:
         MagneticFilterCost() {};
+        explicit MagneticFilterCost(CostBasis basis) : _basis(std::move(basis)) {};
+        // Scores the unit cost in US$. A core with no price law is not dropped and not estimated: it returns
+        // {false, 0}, which a non-strict adviser flow ranks worst for cost (the ABT #801 failed-scoring rule).
         std::pair<bool, double> evaluate_magnetic(Magnetic* magnetic, Inputs* inputs, std::vector<Outputs>* outputs = nullptr);
+        CostBreakdown calculate_cost(Magnetic& magnetic) const;
+        static CostBasis default_basis();
+    private:
+        std::optional<CostBasis> _basis;
 };
 
 class MagneticFilterEstimatedCost : public MagneticFilter {

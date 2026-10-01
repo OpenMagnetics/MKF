@@ -14,6 +14,10 @@ struct Constants {
     const double minimumNonResidualGap = 0.1e-3;
     const double vacuumPermeability = 1.25663706212e-6;
     const double vacuumPermittivity =  8.8541878128e-12;
+    // Conductor densities [kg/m3]: Engineering ToolBox, "Metals and Alloys - Densities",
+    // https://www.engineeringtoolbox.com/metal-alloys-densities-d_50.html (copper 8940, aluminum 2712; read 2026-09-30).
+    const double copperDensity = 8940;
+    const double aluminiumDensity = 2712;
     
     // Thermal constants
     const double gravityAcceleration = 9.80665;                    // m/s² - standard gravity
