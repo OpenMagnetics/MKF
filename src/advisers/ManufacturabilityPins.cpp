@@ -570,8 +570,14 @@ ManufacturabilityFinding Manufacturability::evaluate_r16_toroid_insulation_and_h
         else {
             // The coating counts only when the core DECLARES it: Core::get_coating_thickness models an
             // undeclared toroid as coated, which is a winding-geometry assumption, not insulation.
+            // A declared coating of thickness 0 is a core checked and found BARE, so it insulates
+            // nothing either. Judge the thinnest the coating can be (MINIMUM): insulation is a
+            // worst-case property.
             if (!core.get_functional_description().get_coating()) {
                 failures.push_back("the toroid core declares no coating, and the core coating is what provides the basic insulation between core and wire");
+            }
+            else if (!(core.get_coating_thickness(DimensionalValues::MINIMUM) > 0)) {
+                failures.push_back("the toroid core is declared bare (coating thickness 0), and the core coating is what provides the basic insulation between core and wire");
             }
             else {
                 passes.push_back("the core declares its coating (basic insulation between core and wire)");
@@ -651,7 +657,8 @@ ManufacturabilityFinding Manufacturability::evaluate_r16_toroid_insulation_and_h
     else {
         const auto base = bobbin.get_base();
         const auto shapeDimensions = flatten_dimensions(core.resolve_shape().get_dimensions().value());
-        const double coating = core.get_coating_thickness();
+        // Fit check: the base must take the ring at its LARGEST coated envelope.
+        const double coating = core.get_coating_thickness(DimensionalValues::MAXIMUM);
         const double ringOuterDiameter = shapeDimensions.at("A") + 2 * coating;
         const double ringHeight = shapeDimensions.at("C") * static_cast<double>(core.get_number_stacks()) + 2 * coating;
         finding.set_unit("m");

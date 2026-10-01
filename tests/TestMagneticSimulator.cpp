@@ -1551,7 +1551,7 @@ TEST_CASE("Test_Magnetic_Simulator_New_Core_Families",
     cores.emplace_back("drumSemishielded", buildCustomCore(
         {{"magneticCircuit", "closed"}, {"type", "custom"}, {"family", "drumSemishielded"},
          {"aliases", json::array()}, {"name", "LQS-like 4018"}, {"dimensions", semishieldedDimensions}},
-        "pieceAndPlate", {{"type", "magneticEpoxy"}, {"thickness", 0.0001}, {"material", "Kool M\u00b5 26"}}));
+        "pieceAndPlate", {{"type", "magneticEpoxy"}, {"thickness", {{"nominal", 0.0001}}}, {"material", "Kool M\u00b5 26"}}));
     // Molded bodies are a low-permeability metal composite, NOT ferrite: building this fixture
     // with a mu_i~2000 ferrite drove B (and hence core loss) an order of magnitude high for a
     // 4 mm part. Use a powder grade in the family's real permeability class instead.

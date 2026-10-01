@@ -1959,7 +1959,7 @@ TEST_CASE("Test_Stray_Capacitance_New_Core_Families",
     cores.emplace_back("drumSemishielded", buildCustomCore(
         {{"magneticCircuit", "closed"}, {"type", "custom"}, {"family", "drumSemishielded"},
          {"aliases", json::array()}, {"name", "LQS-like 4018"}, {"dimensions", semishieldedDimensions}},
-        "pieceAndPlate", {{"type", "magneticEpoxy"}, {"thickness", 0.0001}, {"material", "Kool M\u00b5 26"}}, "3C90"));
+        "pieceAndPlate", {{"type", "magneticEpoxy"}, {"thickness", {{"nominal", 0.0001}}}, {"material", "Kool M\u00b5 26"}}, "3C90"));
     cores.emplace_back("molded", buildCustomCore(
         {{"magneticCircuit", "closed"}, {"type", "custom"}, {"family", "molded"},
          {"aliases", json::array()}, {"name", "MAPI-like 4020"},
@@ -2277,7 +2277,7 @@ TEST_CASE("Magnetic epoxy shield is not a winding-to-core dielectric", "[physica
         magnetic.set_coil(OpenMagnetics::Coil(coilJson, false));
         return OpenMagnetics::magnetic_autocomplete(magnetic);
     };
-    auto shielded = buildMagnetic({{"type", "magneticEpoxy"}, {"thickness", 0.0001}, {"material", "Kool Mµ 26"}});
+    auto shielded = buildMagnetic({{"type", "magneticEpoxy"}, {"thickness", {{"nominal", 0.0001}}}, {"material", "Kool Mµ 26"}});
     auto bare = buildMagnetic(nlohmann::json());
 
     StrayCapacitanceOutput shieldedOutput;
@@ -2340,7 +2340,7 @@ TEST_CASE("Core image factor follows the core material's complex permittivity", 
 TEST_CASE("Full-model capacitance carries the core image factor when a frequency is given", "[physical-model][stray-capacitance][image-factor]") {
     settings.reset();
     for (auto [material, expectBelow] : std::vector<std::pair<std::string, bool>>{{"K07", true}, {"A07", false}}) {
-        auto coreJsonStr = std::string(R"({"name": "abt848", "functionalDescription": {"type": "toroidal", "material": ")") + material + R"(", "shape": "T 14/8/9", "coating": {"type": "epoxy", "thickness": 0.0006}, "gapping": [], "numberStacks": 1}})";
+        auto coreJsonStr = std::string(R"({"name": "abt848", "functionalDescription": {"type": "toroidal", "material": ")") + material + R"(", "shape": "T 14/8/9", "coating": {"type": "epoxy", "thickness": {"maximum": 0.0006}}, "gapping": [], "numberStacks": 1}})";
         auto coilJsonStr = R"({"bobbin": "Basic", "functionalDescription":[{"name": "Primary", "numberTurns": 8, "numberParallels": 1, "isolationSide": "primary", "wire": "Round 1.00 - Grade 1"}]})";
         OpenMagnetics::Core core(nlohmann::json::parse(coreJsonStr));
         core.process_data();
@@ -2631,9 +2631,10 @@ TEST_CASE("Choke corpus: corrected model against measured RedExpert curves", "[.
                 std::string type = coatingRecord.contains("type") && coatingRecord["type"].is_string()
                                        ? coatingRecord["type"].get<std::string>()
                                        : "untyped";
-                double thickness = coatingRecord.contains("thickness") && coatingRecord["thickness"].is_number()
-                                       ? coatingRecord["thickness"].get<double>()
-                                       : 0.0;
+                // thickness is required by MAS and is a dimensionWithTolerance: resolve it, and let
+                // .at() throw on a record that lacks it instead of labelling it 0 mm.
+                double thickness = OpenMagnetics::resolve_dimensional_values(
+                    coatingRecord.at("thickness").get<MAS::DimensionWithTolerance>());
                 std::ostringstream label;
                 label << type << " case " << std::fixed << std::setprecision(2) << thickness * 1e3 << " mm";
                 row.jacket = label.str();
@@ -3082,7 +3083,7 @@ TEST_CASE("ABT1163_Toroid_Turn_Screened_In_The_Bore_Still_Faces_The_Outside", "[
 TEST_CASE("A bonded core turns C0/12 into C0/3 on a linear potential ramp", "[physical-model][stray-capacitance][abt1167]") {
     settings.reset();
     const int64_t numberTurns = 40;
-    auto coreJsonStr = R"({"name": "abt1167", "functionalDescription": {"type": "toroidal", "material": "A07", "shape": "T 14/8/9", "coating": {"type": "epoxy", "thickness": 0.0006}, "gapping": [], "numberStacks": 1}})";
+    auto coreJsonStr = R"({"name": "abt1167", "functionalDescription": {"type": "toroidal", "material": "A07", "shape": "T 14/8/9", "coating": {"type": "epoxy", "thickness": {"maximum": 0.0006}}, "gapping": [], "numberStacks": 1}})";
     auto coilJsonStr = std::string(R"({"bobbin": "Basic", "functionalDescription":[{"name": "Primary", "numberTurns": )")
         + std::to_string(numberTurns) + R"(, "numberParallels": 1, "isolationSide": "primary", "wire": "Round 0.2 - Grade 1"}]})";
     OpenMagnetics::Core core(nlohmann::json::parse(coreJsonStr));
@@ -3166,7 +3167,7 @@ TEST_CASE("A bonded core turns C0/12 into C0/3 on a linear potential ramp", "[ph
 // the invariant the whole ticket rests on: ABSENT MEANS FLOATING and changes nothing.
 TEST_CASE("coreElectricalReference drives the core node, and absent means floating", "[physical-model][stray-capacitance][abt1167]") {
     settings.reset();
-    auto coreJsonStr = R"({"name": "abt1167", "functionalDescription": {"type": "toroidal", "material": "A07", "shape": "T 14/8/9", "coating": {"type": "epoxy", "thickness": 0.0006}, "gapping": [], "numberStacks": 1}})";
+    auto coreJsonStr = R"({"name": "abt1167", "functionalDescription": {"type": "toroidal", "material": "A07", "shape": "T 14/8/9", "coating": {"type": "epoxy", "thickness": {"maximum": 0.0006}}, "gapping": [], "numberStacks": 1}})";
     auto coilJsonStr = R"({"bobbin": "Basic", "functionalDescription":[{"name": "Primary", "numberTurns": 20, "numberParallels": 1, "isolationSide": "primary", "wire": "Round 0.2 - Grade 1"}]})";
     OpenMagnetics::Core core(nlohmann::json::parse(coreJsonStr));
     core.process_data();
@@ -4159,7 +4160,7 @@ TEST_CASE("Toroid turn-to-core gap refuses a turn that lies inside the coated co
         // still clear the window they were laid in. That is the defect the stored 744821039 had
         // (turns laid in the bare 3.95 mm bore of a ring whose jacket leaves 3.36 mm).
         auto json = reference;
-        json["core"]["functionalDescription"]["coating"]["thickness"] = 0.0009;
+        json["core"]["functionalDescription"]["coating"]["thickness"] = {{"nominal", 0.0009}};
         REQUIRE_THROWS_WITH(windingToCore(json), Catch::Matchers::ContainsSubstring("lies inside the core at the bore") &&
                                                  Catch::Matchers::ContainsSubstring("primary parallel 0 turn 0") &&
                                                  Catch::Matchers::ContainsSubstring("0.300000 mm past the bore surface"));

@@ -1744,7 +1744,7 @@ TEST_CASE("Test_Drum_Semishielded_Inductance", "[physical-model][magnetizing-ind
         return core;
     };
     auto glueCoating = [](const std::string& materialName) {
-        return json{{"type", "magneticEpoxy"}, {"thickness", 0.0001}, {"material", materialName}};
+        return json{{"type", "magneticEpoxy"}, {"thickness", {{"nominal", 0.0001}}}, {"material", materialName}};
     };
 
     // Bare drum with the SAME drum dimensions: the air return the glue replaces.
@@ -1794,7 +1794,7 @@ TEST_CASE("Test_Drum_Semishielded_Inductance", "[physical-model][magnetizing-ind
     CHECK_THROWS(MagnetizingInductance::calculate_semishielded_drum_magnetizing_inductance(
         buildCore(json()), numberTurns, 25));  // no coating at all
     CHECK_THROWS(MagnetizingInductance::calculate_semishielded_drum_magnetizing_inductance(
-        buildCore(json{{"type", "epoxy"}, {"thickness", 0.0001}}), numberTurns, 25));  // non-magnetic coating
+        buildCore(json{{"type", "epoxy"}, {"thickness", {{"nominal", 0.0001}}}}), numberTurns, 25));  // non-magnetic coating
     CHECK_THROWS(MagnetizingInductance::calculate_semishielded_drum_magnetizing_inductance(
         buildCore(glueCoating("No Such Glue")), numberTurns, 25));  // unknown shell material
     settings.reset();

@@ -1035,7 +1035,7 @@ TEST_CASE("Test_Leakage_Inductance_New_Core_Families",
     cores.emplace_back("drumSemishielded", buildCustomCore(
         {{"magneticCircuit", "closed"}, {"type", "custom"}, {"family", "drumSemishielded"},
          {"aliases", json::array()}, {"name", "LQS-like 4018"}, {"dimensions", semishieldedDimensions}},
-        "pieceAndPlate", {{"type", "magneticEpoxy"}, {"thickness", 0.0001}, {"material", "Kool M\u00b5 26"}}, "3C90"));
+        "pieceAndPlate", {{"type", "magneticEpoxy"}, {"thickness", {{"nominal", 0.0001}}}, {"material", "Kool M\u00b5 26"}}, "3C90"));
     cores.emplace_back("molded", buildCustomCore(
         {{"magneticCircuit", "closed"}, {"type", "custom"}, {"family", "molded"},
          {"aliases", json::array()}, {"name", "MAPI-like 4020"},

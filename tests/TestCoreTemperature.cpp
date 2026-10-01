@@ -317,7 +317,7 @@ TEST_CASE("Test_Core_Temperature_New_Families", "[physical-model][core-temperatu
         {{"magneticCircuit", "closed"}, {"type", "custom"}, {"family", "drumSemishielded"},
          {"aliases", json::array()}, {"name", "LQS-like 4018"}, {"dimensions", semishieldedDimensions}},
         "pieceAndPlate",
-        {{"type", "magneticEpoxy"}, {"thickness", 0.0001}, {"material", "Kool Mµ 26"}}));
+        {{"type", "magneticEpoxy"}, {"thickness", {{"nominal", 0.0001}}}, {"material", "Kool Mµ 26"}}));
     cores.emplace_back("molded", buildCustomCore(
         {{"magneticCircuit", "closed"}, {"type", "custom"}, {"family", "molded"},
          {"aliases", json::array()}, {"name", "MAPI-like 4020"},

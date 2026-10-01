@@ -2221,7 +2221,7 @@ TEST_CASE("Toroid_Coating_Winding_Window_Offset", "[constructive-model][core][co
     uncoatedJson["functionalDescription"]["shape"] = "T 40/24/16";
     uncoatedJson["functionalDescription"]["gapping"] = json::array();
     uncoatedJson["functionalDescription"]["numberStacks"] = 1;
-    uncoatedJson["functionalDescription"]["coating"] = {{"type", "epoxy"}, {"thickness", 0.0}};
+    uncoatedJson["functionalDescription"]["coating"] = {{"type", "epoxy"}, {"thickness", {{"nominal", 0.0}}}};
     Core uncoated(uncoatedJson, true);
     REQUIRE(uncoated.get_coating_thickness() == 0.0);
 
@@ -2254,7 +2254,7 @@ TEST_CASE("Toroid_Coating_Winding_Window_Offset", "[constructive-model][core][co
     explicitJson["functionalDescription"]["shape"] = "T 40/24/16";
     explicitJson["functionalDescription"]["gapping"] = json::array();
     explicitJson["functionalDescription"]["numberStacks"] = 1;
-    explicitJson["functionalDescription"]["coating"] = {{"type", "epoxy"}, {"thickness", 0.0005}};
+    explicitJson["functionalDescription"]["coating"] = {{"type", "epoxy"}, {"thickness", {{"nominal", 0.0005}}}};
     Core explicitCore(explicitJson, true);
     REQUIRE_THAT(explicitCore.get_coating_thickness(), Catch::Matchers::WithinAbs(0.0005, 1e-12));
     double explicitRh = explicitCore.get_processed_description()->get_winding_windows()[0].get_radial_height().value();
@@ -2312,7 +2312,7 @@ TEST_CASE("Toroid_Coating_Relative_Permittivity", "[constructive-model][core][co
     REQUIRE_THAT(makeCore("parylene").get_coating_relative_permittivity(), Catch::Matchers::WithinAbs(3.1, 1e-9));
 
     // An explicit material overrides the per-type default (Kapton HN = 3.4).
-    Core explicitMat = makeCore(json({{"type", "epoxy"}, {"thickness", 0.0003}, {"material", "Kapton HN"}}));
+    Core explicitMat = makeCore(json({{"type", "epoxy"}, {"thickness", {{"nominal", 0.0003}}}, {"material", "Kapton HN"}}));
     REQUIRE_THAT(explicitMat.get_coating_relative_permittivity(), Catch::Matchers::WithinAbs(3.4, 1e-9));
 
     // A toroid with no coating field falls back to the default epoxy permittivity.
@@ -2493,7 +2493,7 @@ namespace TestDrumCore {
         coreJson["functionalDescription"] = {
             {"type", "pieceAndPlate"}, {"material", "3C90"}, {"shape", shapeJson},
             {"gapping", json::array()}, {"numberStacks", 1},
-            {"coating", {{"type", "magneticEpoxy"}, {"thickness", 0.0001}, {"material", "Kool Mµ 26"}}}};
+            {"coating", {{"type", "magneticEpoxy"}, {"thickness", {{"nominal", 0.0001}}}, {"material", "Kool Mµ 26"}}}};
         Core core(coreJson);
         core.process_data();
         core.process_gap();
@@ -2679,7 +2679,7 @@ namespace TestNewFamilySaturation {
         semishieldedCoreJson["functionalDescription"] = {
             {"type", "pieceAndPlate"}, {"material", "3C90"}, {"shape", semishieldedShape},
             {"gapping", json::array()}, {"numberStacks", 1},
-            {"coating", {{"type", "magneticEpoxy"}, {"thickness", 0.0001}, {"material", "Kool Mµ 26"}}}};
+            {"coating", {{"type", "magneticEpoxy"}, {"thickness", {{"nominal", 0.0001}}}, {"material", "Kool Mµ 26"}}}};
         Core semishieldedCore(semishieldedCoreJson);
         semishieldedCore.process_data();
         semishieldedCore.process_gap();
@@ -3967,4 +3967,42 @@ TEST_CASE("Test_Slab_Core_Rejects_Impossible_Geometry", "[core][slab-core][smoke
     auto boreWiderThanPost = good;
     boreWiderThanPost["H"] = 0.006;
     CHECK_THROWS(build(boreWiderThanPost));
+}
+
+
+TEST_CASE("Test_Core_Coating_Thickness_Is_A_Dimension_With_Tolerance", "[constructive-model][core][coating]") {
+    // MAS core/coating.thickness is a dimensionWithTolerance. Sources bound it rather than state a
+    // nominal (ACME epoxy: "0.6 mm max"; Easy Magnet LoPs: a minimum per ring size), and an explicit
+    // 0 records a ring checked and found bare.
+    auto makeCore = [](json thickness) {
+        json coreJson;
+        coreJson["name"] = "coating_range";
+        coreJson["functionalDescription"]["type"] = "toroidal";
+        coreJson["functionalDescription"]["material"] = "N97";
+        coreJson["functionalDescription"]["shape"] = "T 40/24/16";
+        coreJson["functionalDescription"]["gapping"] = json::array();
+        coreJson["functionalDescription"]["numberStacks"] = 1;
+        coreJson["functionalDescription"]["coating"] = {{"type", "epoxy"}, {"thickness", thickness}};
+        return Core(coreJson, true);
+    };
+
+    SECTION("a maximum-only thickness resolves to that maximum") {
+        Core core = makeCore({{"maximum", 0.0006}});
+        REQUIRE_THAT(core.get_coating_thickness(), Catch::Matchers::WithinAbs(0.0006, 1e-12));
+        REQUIRE_THAT(core.get_coating_thickness(DimensionalValues::MAXIMUM), Catch::Matchers::WithinAbs(0.0006, 1e-12));
+    }
+    SECTION("a range resolves to its midpoint, and each bound on request") {
+        Core core = makeCore({{"minimum", 0.0001}, {"maximum", 0.0006}});
+        REQUIRE_THAT(core.get_coating_thickness(), Catch::Matchers::WithinAbs(0.00035, 1e-12));
+        REQUIRE_THAT(core.get_coating_thickness(DimensionalValues::MINIMUM), Catch::Matchers::WithinAbs(0.0001, 1e-12));
+        REQUIRE_THAT(core.get_coating_thickness(DimensionalValues::MAXIMUM), Catch::Matchers::WithinAbs(0.0006, 1e-12));
+    }
+    SECTION("an explicit 0 is a bare toroid, NOT the undeclared-toroid default") {
+        Core core = makeCore({{"nominal", 0.0}});
+        REQUIRE(core.get_coating_thickness() == 0.0);
+    }
+    SECTION("a negative thickness throws") {
+        // Processing already reads the thickness (the coated bore), so construction throws.
+        REQUIRE_THROWS_AS(makeCore({{"nominal", -0.0001}}), InvalidInputException);
+    }
 }

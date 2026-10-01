@@ -1230,7 +1230,8 @@ std::vector<Bobbin> find_toroid_bases_for_core(Core core, const std::vector<Bobb
         }
     }
     // The base holds the COATED ring: the coating is what touches the pocket, the boat and the limits.
-    const double coating = core.get_coating_thickness();
+    // A fit check, so the ring is taken at its largest coated envelope (MAXIMUM).
+    const double coating = core.get_coating_thickness(DimensionalValues::MAXIMUM);
     const double ringOuterDiameter = shapeDimensions.at("A") + 2 * coating;
     const double ringHeight = shapeDimensions.at("C") * static_cast<double>(core.get_number_stacks()) + 2 * coating;
 

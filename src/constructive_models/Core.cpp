@@ -1799,7 +1799,7 @@ double Core::get_toroid_edge_radius() const {
     return std::min(sourced, geometricLimit);
 }
 
-double Core::get_coating_thickness() const {
+double Core::get_coating_thickness(DimensionalValues preferredValue) const {
     if (!get_functional_description().get_coating()) {
         // A toroid is jacketed (epoxy/parylene) in practice even when the catalogue omits
         // the coating — a bare-ferrite toroid wound with bare wire is rare, and the coating
@@ -1816,9 +1816,19 @@ double Core::get_coating_thickness() const {
         return 0;
     }
     auto coating = get_functional_description().get_coating().value();
-    // Explicit coating data (CoreCoating object): use its thickness directly.
+    // Explicit coating data (CoreCoating object). Its thickness is a dimensionWithTolerance:
+    // sources bound the coating rather than state a nominal (ACME epoxy "0.6 mm max", the
+    // Easy Magnet LoPs' per-ring minima), so collapse it with the shared resolver -- it throws
+    // when no bound is present. An explicit 0 is a bare core and stays 0: it never reaches the
+    // undeclared-toroid default above.
     if (std::holds_alternative<CoreCoating>(coating)) {
-        return std::get<CoreCoating>(coating).get_thickness();
+        const double thickness = resolve_dimensional_values(std::get<CoreCoating>(coating).get_thickness(), preferredValue);
+        if (thickness < 0) {
+            throw InvalidInputException(ErrorCode::INVALID_CORE_DATA,
+                "Core coating thickness resolves to a negative value (" +
+                std::to_string(thickness) + " m); a coating thickness is >= 0, with 0 meaning a bare core");
+        }
+        return thickness;
     }
     // Name-only coating (legacy string form): resolve the datasheet default
     // thickness for the coating type. Throw for an unknown type rather than

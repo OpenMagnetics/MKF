@@ -1063,7 +1063,7 @@ namespace {
         magnetics.emplace_back("drumSemishielded", buildMagnetic(buildCustomCore(
             {{"magneticCircuit", "closed"}, {"type", "custom"}, {"family", "drumSemishielded"},
              {"aliases", json::array()}, {"name", "LQS-like 4018"}, {"dimensions", semishieldedDimensions}},
-            "pieceAndPlate", {{"type", "magneticEpoxy"}, {"thickness", 0.0001}, {"material", "Kool Mµ 26"}}), 8));
+            "pieceAndPlate", {{"type", "magneticEpoxy"}, {"thickness", {{"nominal", 0.0001}}}, {"material", "Kool Mµ 26"}}), 8));
         magnetics.emplace_back("molded", buildMagnetic(buildCustomCore(
             {{"magneticCircuit", "closed"}, {"type", "custom"}, {"family", "molded"},
              {"aliases", json::array()}, {"name", "MAPI-like 4020"},

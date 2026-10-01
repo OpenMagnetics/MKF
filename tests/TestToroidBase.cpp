@@ -207,7 +207,7 @@ TEST_CASE("A seated ring counts a DECLARED coating and only a declared one (ABT 
     REQUIRE_FALSE(bare.get_functional_description().get_coating());
     json coatedJson;
     to_json(coatedJson, bare);
-    coatedJson["functionalDescription"]["coating"] = {{"type", "epoxy"}, {"thickness", 0.0002}};
+    coatedJson["functionalDescription"]["coating"] = {{"type", "epoxy"}, {"thickness", {{"nominal", 0.0002}}}};
     OpenMagnetics::Core coated(coatedJson, true);
     const double coating = coated.get_coating_thickness();
     REQUIRE_THAT(coating, Catch::Matchers::WithinAbs(0.0002, 1e-12));

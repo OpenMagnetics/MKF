@@ -28,7 +28,7 @@
       "numberStacks": 1,
       "coating": {
         "type": "epoxy",
-        "thickness": 0.0006,
+        "thickness": {"maximum": 0.0006},
         "material": "epoxy"
       }
     },

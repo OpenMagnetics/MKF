@@ -4034,7 +4034,7 @@ TEST_CASE("Test_Core_Losses_Drum_Semishielded_Per_Material_Split", "[physical-mo
         coreJson["functionalDescription"] = {
             {"type", "pieceAndPlate"}, {"material", "3C90"}, {"shape", shapeJson},
             {"gapping", json::array()}, {"numberStacks", 1},
-            {"coating", {{"type", "magneticEpoxy"}, {"thickness", 0.0001}, {"material", shellMaterialName}}}};
+            {"coating", {{"type", "magneticEpoxy"}, {"thickness", {{"nominal", 0.0001}}}, {"material", shellMaterialName}}}};
         Core core(coreJson);
         core.process_data();
         core.process_gap();

@@ -5,6 +5,7 @@
 
 #include <MAS.hpp>
 #include "Defaults.h"
+#include "Definitions.h"
 #include "CorePiece.h"
 
 #include <vector>
@@ -138,10 +139,14 @@ class Core : public MAS::MagneticCore {
     std::string get_reference() const;
 
     const std::vector<CoreGap>& get_gapping() const { return get_functional_description().get_gapping(); }
-    // Coating thickness per surface, in m. 0 when the core has no coating. An explicit
-    // thickness (CoreCoating object) is used as-is; a name-only coating (legacy string
-    // form) resolves to the datasheet default thickness for that coating type.
-    double get_coating_thickness() const;
+    // Coating thickness per surface, in m. An explicit CoreCoating.thickness is a MAS
+    // dimensionWithTolerance (sources bound it: ACME's 0.6 mm is a maximum, the LoPs give
+    // minima), collapsed with resolve_dimensional_values(preferred). An explicit 0 means a
+    // core checked and found bare. A name-only coating (legacy string form) resolves to the
+    // datasheet default thickness for that coating type. Throws on a negative thickness.
+    // Fit/envelope checks (does the coated ring fit a base?) pass MAXIMUM; the dielectric
+    // and winding-geometry paths use the NOMINAL default.
+    double get_coating_thickness(DimensionalValues preferredValue = DimensionalValues::NOMINAL) const;
     // Relative permittivity of the coating dielectric, from its insulation material.
     // Explicit CoreCoating.material wins; otherwise the datasheet default material for
     // the coating type. Throws if the core has no coating or the type has no material.

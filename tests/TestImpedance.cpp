@@ -771,7 +771,7 @@ TEST_CASE("Toroidal CMC common-mode resonance against its s4p measurement (WE-CM
         std::ifstream file(path);
         REQUIRE(file.good());
         auto json = nlohmann::json::parse(file);
-        json["core"]["functionalDescription"]["coating"]["thickness"] = coatingThickness;
+        json["core"]["functionalDescription"]["coating"]["thickness"] = {{"nominal", coatingThickness}};
         OpenMagnetics::Magnetic magnetic(json);
         magnetic = magnetic_autocomplete(magnetic);
         REQUIRE(magnetic.get_coil().get_turns_description());
