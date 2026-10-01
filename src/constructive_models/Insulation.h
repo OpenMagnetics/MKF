@@ -592,10 +592,18 @@ class InsulationCoordinator {
     static IsolationClass insulation_class_for_margin(Inputs& inputs);
 
     InsulationCoordinator() {
-        _insulationIEC60664Model = std::make_shared<InsulationIEC60664Model>(InsulationIEC60664Model());
-        _insulationIEC62368Model = std::make_shared<InsulationIEC62368Model>(InsulationIEC62368Model());
-        _insulationIEC61558Model = std::make_shared<InsulationIEC61558Model>(InsulationIEC61558Model());
-        _insulationIEC60335Model = std::make_shared<InsulationIEC60335Model>(InsulationIEC60335Model());
+        // The standards' tables are fixed data read from the embedded resources, and nothing writes to a
+        // model after construction, so they are parsed once per process (thread-safe static initialisation)
+        // and shared. Every Coil holds a coordinator; parsing the four standards per coordinator was half of
+        // the CPU time of a Henry design session (perf profile, 2026-10-01).
+        static const auto iec60664 = std::make_shared<InsulationIEC60664Model>();
+        static const auto iec62368 = std::make_shared<InsulationIEC62368Model>();
+        static const auto iec61558 = std::make_shared<InsulationIEC61558Model>();
+        static const auto iec60335 = std::make_shared<InsulationIEC60335Model>();
+        _insulationIEC60664Model = iec60664;
+        _insulationIEC62368Model = iec62368;
+        _insulationIEC61558Model = iec61558;
+        _insulationIEC60335Model = iec60335;
     }
     InsulationCoordinator(json data) {
         _insulationIEC60664Model = std::make_shared<InsulationIEC60664Model>(InsulationIEC60664Model(data));
