@@ -1572,6 +1572,39 @@ static bool is_last_station_of_its_conductor(const Turn& turn, const std::option
     return false;
 }
 
+// A toroid's outer crossings are part of its geometry, but the winder only records them when the
+// include-additional-coordinates setting is on: Coil::fast_wind and the MagneticAdviser switch it
+// off for speed, so the magnetics they return carry inner stations only. The capacitance needs the
+// outer run of every turn (the toroid pair split and the turn-to-core outer faces), so when a
+// round-window coil has a turn that is neither crossed outside nor the last station of its
+// conductor, the crossings were not generated: generate them here, on this call's own copy, with
+// the winder's own routine. If the winder still leaves such a turn, the pair split throws
+// MISSING_DATA as before.
+static void complete_toroidal_outer_crossings(Coil& coil) {
+    if (!coil.get_turns_description() || !coil.get_layers_description()) {
+        return;
+    }
+    if (coil.resolve_bobbin().get_winding_window_shape() != WindingWindowShape::ROUND) {
+        return;
+    }
+    std::optional<Coil> coilView = coil;
+    bool missing = false;
+    auto turns = coil.get_turns_description().value();
+    for (const auto& turn : turns) {
+        if (!has_outer_crossing(turn) && !is_last_station_of_its_conductor(turn, coilView)) {
+            missing = true;
+            break;
+        }
+    }
+    if (!missing) {
+        return;
+    }
+    auto& settings = Settings::GetInstance();
+    SettingsGuard<bool> includeAdditionalCoordinatesGuard(settings, &Settings::get_coil_include_additional_coordinates,
+                                                          &Settings::set_coil_include_additional_coordinates, true);
+    coil.generate_toroidal_additional_coordinates();
+}
+
 // TOROID TURN PAIR, split between the two crossings of the ring.
 //
 // A toroid turn encircles the ring cross-section: up the bore (length share C/P of the encircling
@@ -2996,6 +3029,7 @@ static double winding_pair_to_core_energy_from_elements(const std::vector<Turn>&
 }
 
 double StrayCapacitance::calculate_winding_to_core_capacitance(Coil coil, Core core, std::string windingName, std::optional<double> frequency) {
+    complete_toroidal_outer_crossings(coil);
     // Total capacitance from one whole winding to the (equipotential) ferrite core,
     // = the parallel sum of every turn's turn-to-core element (all turns of the
     // winding share the single core node). This is the building block for the
@@ -3038,6 +3072,7 @@ double StrayCapacitance::calculate_winding_pair_to_core_energy(Coil coil, Core c
         const std::string& firstWindingName, const std::string& secondWindingName,
         const std::vector<double>& voltagesPerTurn, double firstWindingPotentialOffset,
         std::optional<double> frequency) {
+    complete_toroidal_outer_crossings(coil);
     // Energy in the turn -> core -> turn path of a winding PAIR, against the floating,
     // equipotential ferrite core. Energy method (CPSS 2025 core-potential approach):
     //   1. each turn i has a turn-to-core element C_i and sits at potential V_i;
@@ -3070,6 +3105,7 @@ double StrayCapacitance::calculate_winding_pair_to_core_energy(Coil coil, Core c
 double StrayCapacitance::calculate_through_core_capacitance(Coil coil, Core core,
         const std::string& firstWindingName, const std::string& secondWindingName,
         const std::vector<double>& voltagesPerTurn, std::optional<double> frequency) {
+    complete_toroidal_outer_crossings(coil);
     // Terminal-referenced form of the pair energy above: C = 2W / V_dm^2, with V_dm the
     // differential terminal voltage across the two windings (the first winding spans
     // [0, maxFirst]; the second, negated, spans [minSecond, 0]). Kept as the standalone
@@ -3117,6 +3153,7 @@ double StrayCapacitance::calculate_winding_to_core_self_energy(Coil coil, Core c
         const std::string& windingName,
         const std::vector<double>& voltagesPerTurn, std::optional<double> frequency,
         std::optional<double> fixedCorePotential) {
+    complete_toroidal_outer_crossings(coil);
     // One winding against the floating core (ABT #848). Mirrors
     // calculate_through_core_capacitance exactly — same per-turn elements, same
     // charge-balanced core node — but over a single winding's turns, all with
@@ -3224,6 +3261,7 @@ double StrayCapacitance::calculate_energy_density_between_two_turns(Turn firstTu
 }
 
 std::map<std::pair<size_t, size_t>, double> StrayCapacitance::calculate_capacitance_among_turns(Coil coil) {
+    complete_toroidal_outer_crossings(coil);
     if (!coil.get_turns_description()) {
         throw std::invalid_argument("Missing turns description");
     }
@@ -3429,6 +3467,7 @@ StrayCapacitanceOutput StrayCapacitance::calculate_capacitance(Coil coil, Operat
 }
 
 StrayCapacitanceOutput StrayCapacitance::calculate_capacitance_with_voltages(Coil coil, std::map<std::string, double> voltageRmsPerWinding, std::optional<Core> core, std::optional<double> frequency, std::optional<CoreElectricalReference> coreElectricalReference) {
+    complete_toroidal_outer_crossings(coil);
     // Per-call, not per-object: the same StrayCapacitance is reused across magnetics (the SPICE
     // export calls it twice, once to estimate resonance and once refined), and a stale entry would
     // report a model that ran for a previous coil.

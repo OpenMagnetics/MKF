@@ -4016,3 +4016,45 @@ TEST_CASE("Toroid turn pair refuses a turn with no outer crossing that is not it
     OpenMagnetics::StrayCapacitance strayCapacitance(StrayCapacitanceModels::ALBACH);
     REQUIRE_THROWS_AS(strayCapacitance.calculate_static_capacitance_between_two_turns(stripped, wire, turns[1], wire, coil), InvalidInputException);
 }
+
+// Coil::fast_wind and the MagneticAdviser wind with the include-additional-coordinates setting off,
+// so the toroids they return carry no outer crossings. The capacitance must not throw on them, nor
+// drop their outer runs: it generates the crossings with the winder's own routine, and gives exactly
+// what the same coil gives with its crossings generated explicitly.
+TEST_CASE("Toroid capacitance generates the outer crossings a speed-wound coil left out", "[physical-model][stray-capacitance][toroid][toroid-pair-split]") {
+    settings.reset();
+    settings.set_coil_include_additional_coordinates(false);
+    std::vector<OpenMagnetics::Wire> wires = {OpenMagnetics::find_wire_by_name("Round 0.5 - Grade 1")};
+    auto coil = OpenMagneticsTesting::get_quick_coil({40}, {1}, "T 17/10.7/6.8", 1,
+                                                      MAS::WindingOrientation::CONTIGUOUS,
+                                                      MAS::WindingOrientation::OVERLAPPING,
+                                                      MAS::CoilAlignment::CENTERED,
+                                                      MAS::CoilAlignment::CENTERED,
+                                                      wires, false);
+    settings.set_coil_include_additional_coordinates(true);
+    REQUIRE(coil.get_turns_description());
+    // The premise: the speed wind recorded no outer crossing at all.
+    auto speedWoundTurns = coil.get_turns_description().value();
+    for (const auto& turn : speedWoundTurns) {
+        REQUIRE_FALSE(turn.get_additional_coordinates());
+    }
+
+    OpenMagnetics::Coil crossed = coil;
+    crossed.generate_toroidal_additional_coordinates();
+    REQUIRE(crossed.get_turns_description().value()[0].get_additional_coordinates());
+
+    OpenMagnetics::StrayCapacitance strayCapacitance(StrayCapacitanceModels::ALBACH);
+    auto windingName = coil.get_functional_description()[0].get_name();
+    double fromSpeedWound = strayCapacitance.calculate_capacitance(coil).get_capacitance_among_windings().value()[windingName][windingName];
+    double fromCrossed = strayCapacitance.calculate_capacitance(crossed).get_capacitance_among_windings().value()[windingName][windingName];
+    CHECK(fromSpeedWound > 0);
+    CHECK_THAT(fromSpeedWound, WithinRel(fromCrossed, 1e-12));
+    // Generated on the call's own copy: the caller's coil is untouched.
+    CHECK_FALSE(coil.get_turns_description().value()[0].get_additional_coordinates());
+    // And with the setting off, as the advisers leave it, the result is the same.
+    settings.set_coil_include_additional_coordinates(false);
+    double withSettingOff = strayCapacitance.calculate_capacitance(coil).get_capacitance_among_windings().value()[windingName][windingName];
+    CHECK_THAT(withSettingOff, WithinRel(fromCrossed, 1e-12));
+    CHECK_FALSE(settings.get_coil_include_additional_coordinates());
+    settings.reset();
+}
