@@ -1158,9 +1158,10 @@ TEST_CASE("Test_Toroid_Sector_Winding_Self_Inductance_Is_Placement_Independent",
         CHECK_THAT(selfSecond, WithinRel(closedForm, 5e-3));
         // The other winding links the same core flux: mutual is the closed form too, k is ~1.
         CHECK_THAT(mutual, WithinRel(closedForm, 5e-3));
-        // k = 1 - Λ/(2L) for a symmetric pair. calculate_coupling_coefficient gives 0.9986 here; it leaves out the
-        // mutual leakage Λ_12, which the inductance matrix includes (M / L11 = 0.9974 from the matrix; WE 744822222
+        // k = 1 - Λ/(2L) for a symmetric pair. calculate_coupling_coefficient reads the same inductance matrix,
+        // mutual leakage Λ_12 included, so k = M / sqrt(L11 L22) = 0.9974 for the sector winding (WE 744822222
         // gives 0.9975 from its measured L_DM / L_CM).
+        CHECK_THAT(coupling, WithinRel(mutual / std::sqrt(selfFirst * selfSecond), 1e-9));
         CHECK(coupling > 0.995);
         CHECK(coupling <= 1.0);
         // And the parallel-connected common-mode inductance a choke datasheet states is (L+M)/2,
