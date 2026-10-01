@@ -509,6 +509,13 @@ class Coil : public MAS::Coil {
         // (preload_margins / add_margin_to_section_by_index / reset_margins_per_section).
         std::vector<std::string> _recoveredMarginWindings;
         std::map<std::string, std::vector<double>> _recoveredMarginPerWinding;
+        // A windingOrder stated on a conduction section (U serpentine / Z dragback), keyed by
+        // section name. Every wind rebuilds the sections from scratch, so the order the input
+        // stated is read here before they are cleared and written back onto the section of the
+        // same name once they are rebuilt. Without it a stated U was silently wound as Z.
+        std::map<std::string, WindingOrder> _statedSectionWindingOrders;
+        void capture_stated_section_winding_orders();
+        void restore_stated_section_winding_orders();
         // ABT #724: reset_margins_per_section() means "the next wind is margin-free"; the
         // empty vector alone cannot express that, because wind()'s ABT #676 recovery treats
         // empty as "recover the persisted margins from the sections". Re-armed to false when

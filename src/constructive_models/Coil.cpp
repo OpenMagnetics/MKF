@@ -6975,6 +6975,7 @@ bool Coil::wind_inner(std::vector<double> proportionPerWinding, std::vector<size
                 auto stackUp = plan_planar_stackup();
                 return wind_planar(stackUp);
             }
+            capture_stated_section_winding_orders();
             set_sections_description(std::nullopt);
             set_layers_description(std::nullopt);
             set_turns_description(std::nullopt);
@@ -11388,6 +11389,7 @@ bool Coil::wind_by_sections(std::vector<double> proportionPerWinding, std::vecto
         create_default_groups(bobbin);
     }
 
+    capture_stated_section_winding_orders();
     set_sections_description(std::nullopt);
     set_layers_description(std::nullopt);
     set_turns_description(std::nullopt);
@@ -11458,8 +11460,54 @@ bool Coil::wind_by_sections(std::vector<double> proportionPerWinding, std::vecto
         }
     }
 
+    if (result && get_sections_description()) {
+        restore_stated_section_winding_orders();
+    }
 
     return result;
+}
+
+void Coil::capture_stated_section_winding_orders() {
+    // Only a present description states anything. wind_inner clears the sections before it
+    // calls wind_by_sections, so by the second capture they are gone: keep what the first read.
+    if (!get_sections_description()) {
+        return;
+    }
+    _statedSectionWindingOrders.clear();
+    auto sections = get_sections_description().value();
+    for (const auto& section : sections) {
+        if (section.get_type() == ElectricalType::CONDUCTION && section.get_winding_order()) {
+            _statedSectionWindingOrders[section.get_name()] = section.get_winding_order().value();
+        }
+    }
+}
+
+void Coil::restore_stated_section_winding_orders() {
+    if (_statedSectionWindingOrders.empty()) {
+        return;
+    }
+    auto sections = get_sections_description().value();
+    std::set<std::string> placed;
+    for (auto& section : sections) {
+        auto stated = _statedSectionWindingOrders.find(section.get_name());
+        if (stated != _statedSectionWindingOrders.end()) {
+            section.set_winding_order(stated->second);
+            placed.insert(stated->first);
+        }
+    }
+    for (const auto& [sectionName, order] : _statedSectionWindingOrders) {
+        if (!placed.contains(sectionName)) {
+            std::string produced;
+            for (const auto& section : sections) {
+                produced += (produced.empty() ? "" : ", ") + std::string("'") + section.get_name() + "'";
+            }
+            throw InvalidInputException(ErrorCode::INVALID_COIL_CONFIGURATION,
+                "Section '" + sectionName + "' states windingOrder " + std::string(magic_enum::enum_name(order)) +
+                ", but the wind produced no section of that name, so the order has nowhere to go. Sections produced: " +
+                produced);
+        }
+    }
+    set_sections_description(sections);
 }
 
 bool Coil::needs_virtualization() {

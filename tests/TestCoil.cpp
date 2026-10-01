@@ -16407,3 +16407,146 @@ TEST_CASE("Test_Wind_Over_Full_Foil_Section_Is_Refused_Not_Corrupting", "[constr
     }
     settings.reset();
 }
+
+namespace {
+// A WE-CMB XXL-sized common-mode choke (7448261418): two 17-turn windings of 1.5 mm round wire,
+// one per half of a T 36/23/15 ring. Wound once, as a catalogue part is, so its sections exist
+// and a sheet value (spacer, winding order) can be hung on them before the load-time re-wind.
+OpenMagnetics::Magnetic wound_xxl_like_choke(int64_t turnsPerWinding, double conductingDiameter) {
+    json coreJson;
+    coreJson["functionalDescription"] = {{"type", "toroidal"}, {"material", "3C90"}, {"shape", "T 36/23/15"},
+                                         {"gapping", json::array()}, {"numberStacks", 1}};
+    json wireJson = {{"type", "round"}, {"material", "copper"}, {"numberConductors", 1},
+                     {"conductingDiameter", {{"nominal", conductingDiameter}}},
+                     {"coating", {{"type", "enamelled"}, {"grade", 1}}}};
+    json coilJson;
+    coilJson["bobbin"] = "Basic";
+    coilJson["functionalDescription"] = json::array({
+        {{"name", "L1"}, {"numberTurns", turnsPerWinding}, {"numberParallels", 1}, {"isolationSide", "primary"}, {"wire", wireJson}},
+        {{"name", "L2"}, {"numberTurns", turnsPerWinding}, {"numberParallels", 1}, {"isolationSide", "secondary"}, {"wire", wireJson}}});
+    OpenMagnetics::Magnetic magnetic;
+    magnetic.set_core(OpenMagnetics::Core(coreJson, false, false, false));
+    magnetic.set_coil(OpenMagnetics::Coil(coilJson, false));
+    return OpenMagnetics::magnetic_autocomplete(magnetic);
+}
+
+// What heimdall does with a sheet value: edit the wound sections, drop the cached turns and
+// layers, and let the load-time autocomplete wind again from the sections.
+template <typename EditSection>
+OpenMagnetics::Magnetic rewound_with_sections(OpenMagnetics::Magnetic magnetic, EditSection editSection) {
+    json magneticJson;
+    to_json(magneticJson, magnetic);
+    for (auto& section : magneticJson["coil"]["sectionsDescription"]) {
+        if (section["type"] == "conduction") {
+            editSection(section);
+        }
+    }
+    magneticJson["coil"].erase("turnsDescription");
+    magneticJson["coil"].erase("layersDescription");
+    return OpenMagnetics::magnetic_autocomplete(OpenMagnetics::Magnetic(magneticJson));
+}
+}  // namespace
+
+TEST_CASE("Toroidal wind honours the margins its sections carry (WE-CMB XXL 3 mm spacer)",
+          "[constructive-model][coil][round-winding-window][margin][toroid-section-margin]") {
+    settings.reset();
+    // The WE requirements sheet gives the XXL parts a 3 mm spacer between the two windings,
+    // stored as a 1.5 mm margin on each edge of each conduction section. The spacer is a solid
+    // wall: no copper of one winding may come nearer than 3 mm to copper of the other.
+    //
+    // On the real XXL parts the spacer changes nothing, and that is physics, not an ignored
+    // margin. 17 turns of 1.569 mm wire touching at the inner wall (centre radius 10.42 mm)
+    // take 17 x 2 asin(0.785 / 10.42) = 147 degrees of their 180, so the windings are already
+    // 33 degrees, about 6 mm of arc, apart: more than the spacer. The other three XXL parts
+    // (14 x 1.87, 13 x 2.07, 9 x 2.58 mm) leave 28 to 45 degrees. With 20 turns the packed
+    // windings come within 3 mm of each other, and the margin has to move copper.
+    const double spacer = 3e-3;
+    auto closestCopperBetweenWindings = [](OpenMagnetics::Magnetic& magnetic) {
+        auto coil = magnetic.get_coil();
+        auto turns = coil.get_turns_description().value();
+        double closest = std::numeric_limits<double>::max();
+        for (const auto& a : turns) {
+            for (const auto& b : turns) {
+                if (a.get_winding() != "L1" || b.get_winding() != "L2") continue;
+                double dx = a.get_coordinates()[0] - b.get_coordinates()[0];
+                double dy = a.get_coordinates()[1] - b.get_coordinates()[1];
+                closest = std::min(closest, std::hypot(dx, dy) - a.get_dimensions().value()[0] / 2 -
+                                                b.get_dimensions().value()[0] / 2);
+            }
+        }
+        return closest;
+    };
+
+    for (int64_t turns : {17, 20}) {
+        auto bare = wound_xxl_like_choke(turns, 1.5e-3);
+        auto spaced = rewound_with_sections(bare, [&](json& section) {
+            section["margin"] = json::array({spacer / 2, spacer / 2});
+        });
+        double bareGap = closestCopperBetweenWindings(bare);
+        double spacedGap = closestCopperBetweenWindings(spaced);
+        INFO(turns << " turns: closest L1-L2 copper bare " << bareGap * 1e3 << " mm, with the spacer " << spacedGap * 1e3 << " mm");
+        auto spacedSections = spaced.get_coil().get_sections_description().value();
+        for (auto& section : spacedSections) {
+            if (section.get_type() == ElectricalType::CONDUCTION) {
+                CHECK(OpenMagnetics::Coil::resolve_margin(section)[0] == Catch::Approx(spacer / 2));
+                CHECK(OpenMagnetics::Coil::resolve_margin(section)[1] == Catch::Approx(spacer / 2));
+            }
+        }
+        if (turns == 17) {
+            CHECK(bareGap > spacer);  // the XXL case: the spacer is not binding
+        }
+        else {
+            CHECK(bareGap < spacer);  // packed windings closer than the spacer allows
+        }
+        CHECK(spacedGap >= spacer * (1 - 1e-9));
+    }
+    settings.reset();
+}
+
+TEST_CASE("A section's windingOrder survives the re-wind",
+          "[constructive-model][coil][round-winding-window][winding-order][section-winding-order]") {
+    settings.reset();
+    // Two rings per winding, so the order of the second ring is what U and Z disagree on.
+    auto zWound = wound_xxl_like_choke(40, 1.0e-3);
+    auto uWound = rewound_with_sections(zWound, [](json& section) { section["windingOrder"] = "U"; });
+
+    auto uSections = uWound.get_coil().get_sections_description().value();
+    for (auto& section : uSections) {
+        if (section.get_type() != ElectricalType::CONDUCTION) continue;
+        INFO(section.get_name());
+        CHECK(section.get_winding_order() == std::optional<WindingOrder>(WindingOrder::U));
+        CHECK(uWound.get_coil().get_winding_order(section.get_name()) == WindingOrder::U);
+    }
+
+    // The U wind is not the Z wind. Z drags the wire back, so the second ring starts where the
+    // first one started; U turns around, so it starts where the first one ended.
+    auto anglesOfLayer = [](OpenMagnetics::Magnetic magnetic, const std::string& layerName) {
+        auto coil = magnetic.get_coil();
+        coil.convert_turns_to_polar_coordinates();
+        std::vector<double> angles;
+        auto turns = coil.get_turns_description().value();
+        for (const auto& turn : turns) {
+            if (turn.get_layer() && turn.get_layer().value() == layerName) {
+                angles.push_back(turn.get_coordinates()[1]);
+            }
+        }
+        return angles;
+    };
+    for (auto* wound : {&zWound, &uWound}) {
+        auto firstRing = anglesOfLayer(*wound, "L1 section 0 layer 0");
+        auto secondRing = anglesOfLayer(*wound, "L1 section 0 layer 1");
+        REQUIRE(firstRing.size() >= 2);
+        REQUIRE(secondRing.size() >= 2);
+        double fromFirstStart = std::abs(secondRing.front() - firstRing.front());
+        double fromFirstEnd = std::abs(secondRing.front() - firstRing.back());
+        INFO((wound == &uWound ? "U" : "Z") << ": second ring starts " << fromFirstStart << " deg from the first ring's start, "
+             << fromFirstEnd << " deg from its end");
+        if (wound == &uWound) {
+            CHECK(fromFirstEnd < fromFirstStart);
+        }
+        else {
+            CHECK(fromFirstStart < fromFirstEnd);
+        }
+    }
+    settings.reset();
+}
