@@ -3588,12 +3588,23 @@ TEST_CASE("ABT #1166: case C -- all legs gapped with a split bobbin puts Cgap in
     }
     std::cout << "\n";
 
-    // The magnitude the design note is about: at 1 mm the single-node model is several times
-    // too high. (Its worked ETD49, Cpc = Csc = 50 pF, gives 7.7x; the ratio here is set by this
-    // coil's own Cpc/Csc, but it must be a large factor, not a rounding correction.)
+    // The magnitude the design note is about. In this idealisation the single-node model is too
+    // high by exactly ungapped / total = 1 + Cser / Cgap (Cser = Cpc Csc / (Cpc + Csc)), so the
+    // factor is set by this coil's own Cpc/Csc against Cgap. (The design note's worked ETD49,
+    // Cpc = Csc = 50 pF, gives 7.7x.) This used to be asserted as "> 2", which held only while
+    // Cpc was 28.7 pF: that was the ISOLATED cylinder-over-plane element charged for every turn
+    // of a close-wound layer, which double-counts the flank field the turn-to-turn elements
+    // carry. With the Maxwell row element (pitch = the wire OD) and the yoke charged only across
+    // the core's depth, Cpc = 8.64 pF and the factor is 1 + 4.32/4.83 = 1.89. Cross-check of that
+    // Cpc: the 20-turn layer as a parallel plate on the column, eps0 l H / (t_e/eps_e + t_c/eps_b)
+    // = 8.2 pF, the 5 % above it being the two end turns' outer-flank fringe and the end turn
+    // facing the yoke; the old 28.7 pF was 2.6x that plate (36.0 pF, 4.4x, once the section sits
+    // on the column). The identity is asserted exactly instead of the bare "> 2".
     auto core = OpenMagneticsTesting::get_quick_core("ETD 49/25/16", abt1166_all_legs_ground_gap(0.001), 1, "N87");
     double atOneMillimetre = StrayCapacitance::calculate_through_core_capacitance(coil, core, "winding 0", "winding 1", voltages);
-    CHECK(ungapped / atOneMillimetre > 2.0);
+    auto splitAtOneMillimetre = StrayCapacitance::core_gap_topology(core, coil, "winding 0", "winding 1");
+    CHECK_THAT(ungapped / atOneMillimetre, WithinRel(1 + ungapped / splitAtOneMillimetre.gapCapacitance, 1e-9));
+
 }
 
 TEST_CASE("ABT #1166: the gap does not touch a winding's own through-core self term",
@@ -4185,4 +4196,66 @@ TEST_CASE("Toroid turn-to-core gap refuses a turn that lies inside the coated co
         REQUIRE_THROWS_WITH(windingToCore(json), Catch::Matchers::ContainsSubstring("primary parallel 0 turn 3") &&
                                                  Catch::Matchers::ContainsSubstring("lies inside the core at its outer crossing"));
     }
+}
+
+// Rectangular-window turn-to-core: (1) the yoke above and below an E-core window is ferrite only
+// across the core's depth D, so of a turn wound round the centre leg only the two runs along the
+// depth face it -- length 2 D, not the whole turn (classic sharp-cornered racetrack, no bobbin
+// wall: L_z = D/2, so the in-footprint length is 4 min(D/2, L_z) = 2 D); (2) the column face of a
+// close-wound layer is the Maxwell row element with the centre distance to each neighbour as its
+// pitch, as in the toroid branch. The expectation is built from calculate_turn_to_core_capacitance
+// with the geometry read off the wound turns, so it is the model's own element evaluated on the
+// faces the physics says are there.
+TEST_CASE("Test_StrayCapacitance_Rectangular_Window_Turn_To_Core_Yoke_Share_And_Row_Screening", "[physical-model][stray-capacitance][captot][smoke-test]") {
+    settings.reset();
+    settings.set_coil_use_real_winding_geometry(false);
+    const std::string shapeName = "E 42/21/15";
+    auto wire = find_wire_by_name("Round 0.5 - Grade 1");
+    const double conductingRadius = wire.get_maximum_conducting_width() / 2;
+    const double coatingThickness = wire.get_coating_thickness();
+    const double coatingPermittivity = get_wire_insulation_relative_permittivity(wire);
+    auto core = OpenMagneticsTesting::get_quick_core(shapeName, json::parse("[]"), 1, "Dummy");
+    const double depth = core.get_depth();
+    auto element = [&](double length, double gap, double leftPitch, double rightPitch) {
+        return StrayCapacitance::calculate_turn_to_core_capacitance(conductingRadius, length, coatingThickness, coatingPermittivity,
+                                                                    gap, 0.0, 1.0, 0.0, 1.0, leftPitch, rightPitch);
+    };
+    const double inf = std::numeric_limits<double>::infinity();
+
+    for (int64_t numberTurns : {1, 8}) {
+        INFO(numberTurns << " turns");
+        auto coil = OpenMagneticsTesting::get_quick_coil({numberTurns}, {1}, shapeName, 1, WindingOrientation::OVERLAPPING,
+                                                         WindingOrientation::OVERLAPPING, CoilAlignment::CENTERED,
+                                                         CoilAlignment::CENTERED, {wire}, false);
+        coil.wind();
+        auto turns = coil.get_turns_description().value();
+        REQUIRE(turns.size() == static_cast<size_t>(numberTurns));
+        auto bobbin = coil.resolve_bobbin();
+        REQUIRE(bobbin.get_processed_description()->get_column_thickness() == 0);
+        REQUIRE(bobbin.get_processed_description()->get_wall_thickness() == 0);
+        auto windowDimensions = bobbin.get_winding_window_dimensions(0);
+        auto windowCoordinates = bobbin.get_winding_window_coordinates(0);
+        const double windowInnerEdge = windowCoordinates[0] - windowDimensions[0] / 2;
+        const double windowUpperEdge = windowCoordinates[1] + windowDimensions[1] / 2;
+        const double windowLowerEdge = windowCoordinates[1] - windowDimensions[1] / 2;
+        const double outerRadius = wire.get_maximum_outer_width() / 2;
+
+        std::sort(turns.begin(), turns.end(), [](const Turn& a, const Turn& b) { return a.get_coordinates()[1] < b.get_coordinates()[1]; });
+        double expected = 0;
+        for (size_t i = 0; i < turns.size(); ++i) {
+            auto c = turns[i].get_coordinates();
+            // One layer: every turn shares x, so all face the column.
+            REQUIRE_THAT(c[0], Catch::Matchers::WithinAbs(turns[0].get_coordinates()[0], 1e-12));
+            double below = i == 0 ? inf : std::hypot(c[0] - turns[i - 1].get_coordinates()[0], c[1] - turns[i - 1].get_coordinates()[1]);
+            double above = i + 1 == turns.size() ? inf : std::hypot(c[0] - turns[i + 1].get_coordinates()[0], c[1] - turns[i + 1].get_coordinates()[1]);
+            expected += element(turns[i].get_length(), std::max(0.0, c[0] - outerRadius - windowInnerEdge), above, below);
+        }
+        // Only the top turn faces the upper yoke, only the bottom one the lower; nothing beside them.
+        expected += element(2 * depth, windowUpperEdge - (turns.back().get_coordinates()[1] + outerRadius), inf, inf);
+        expected += element(2 * depth, (turns.front().get_coordinates()[1] - outerRadius) - windowLowerEdge, inf, inf);
+
+        double computed = StrayCapacitance::calculate_winding_to_core_capacitance(coil, core, coil.get_functional_description()[0].get_name());
+        CHECK_THAT(computed, Catch::Matchers::WithinRel(expected, 1e-9));
+    }
+    settings.reset();
 }

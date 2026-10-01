@@ -2137,6 +2137,71 @@ static std::pair<double, double> turn_outer_half_extents(const Turn& turn) {
 //
 // A bare conductor at zero gap is then only ever asked for when it really is in contact, and
 // calculate_turn_to_core_capacitance refuses it as the short it is.
+// The share of a bobbin-wound turn's length that lies under the yoke (or plate) bounding its
+// rectangular winding window. The yoke is ferrite only across the core's depth, |z| <= D/2, while
+// the turn is a racetrack around the column that, on an E/EI/EFD/ETD/EQ core, runs OUTSIDE the
+// core for the part of its length that wraps the column's front and back faces. That part sees no
+// yoke above it: charging the turn's whole length against the yoke (as the axial faces did) counts
+// a ferrite surface that is not there. A pot, RM, PQ or drum core whose depth covers the whole
+// turn keeps a share of 1.
+//
+// The turn, in the column frame (columnWidth/columnDepth are half dimensions to the winding
+// surface, standoff s = radius - columnWidth, corner bend radius b), is four straights and four
+// quarter arcs:
+//     L_z = columnDepth + s - b   half-length of each straight along the depth (z)
+//     x_h = columnWidth + s - b   half-length of each straight across the window (x)
+//     l   = 4 L_z + 4 x_h + 2 pi b
+// (b = s for the classic sharp-cornered model, which gives get_turn_length_in_frame's
+// 4 columnDepth + 4 columnWidth + 2 pi s; b = the charged bend radius under real winding; b = the
+// turn radius for a round or oblong column, whose L_z and x_h then collapse to the oblong's
+// straight and 0). With h = D/2, the length inside |z| <= h is
+//     4 min(h, L_z)                                    the depth straights
+//   + 4 b asin(min(1, (h - L_z) / b))   if h > L_z     the arcs up to |z| = h
+//   + 4 x_h                             if L_z + b <= h  the cross straights
+// An E core with no bobbin wall (columnDepth = h, b = s) gives 2 D / l.
+static double rectangular_turn_share_under_yoke(Coil& coil, const Core& core, const Turn& turn) {
+    if (!turn.get_section()) {
+        throw InvalidInputException(ErrorCode::INVALID_COIL_CONFIGURATION,
+            "Turn " + turn.get_name() + " has no section: its column frame, and so its share under the yoke, is unknown");
+    }
+    auto frame = coil.get_wound_column_frame_for_section(turn.get_section().value());
+    const double turnX = turn.get_coordinates()[0];
+    const double radius = frame.axisX == 0 ? std::abs(turnX) : std::abs(turnX - frame.axisX);
+    const double standoff = radius - frame.columnWidth;
+    double bendRadius;
+    if (frame.shape == ColumnShape::ROUND || frame.shape == ColumnShape::OBLONG) {
+        bendRadius = radius;
+    }
+    else if (frame.shape == ColumnShape::RECTANGULAR || frame.shape == ColumnShape::IRREGULAR) {
+        bendRadius = Settings::GetInstance().get_coil_use_real_winding_geometry()
+                         ? coil.get_turn_bend_radius_in_frame(frame, turnX, coil.get_turn_bend_radius(turn.get_name()))
+                         : standoff;
+    }
+    else {
+        throw InvalidInputException(ErrorCode::INVALID_BOBBIN_DATA, "Turn-to-yoke share: unsupported column shape");
+    }
+    const double depthStraight = frame.columnDepth + standoff - bendRadius;
+    const double crossStraight = frame.columnWidth + standoff - bendRadius;
+    if (!(bendRadius > 0) || depthStraight < 0 || crossStraight < 0) {
+        throw InvalidInputException(ErrorCode::INVALID_COIL_CONFIGURATION,
+            "Turn " + turn.get_name() + " does not wrap its column frame (bend radius " + std::to_string(bendRadius) +
+            " m, straights " + std::to_string(depthStraight) + " m / " + std::to_string(crossStraight) + " m)");
+    }
+    const double halfDepth = core.get_depth() / 2;
+    if (!(halfDepth > 0)) {
+        throw InvalidInputException(ErrorCode::INVALID_CORE_DATA, "Turn-to-yoke share: the core has no depth");
+    }
+    const double total = 4 * depthStraight + 4 * crossStraight + 2 * std::numbers::pi * bendRadius;
+    double inside = 4 * std::min(halfDepth, depthStraight);
+    if (halfDepth > depthStraight) {
+        inside += 4 * bendRadius * std::asin(std::min(1.0, (halfDepth - depthStraight) / bendRadius));
+    }
+    if (depthStraight + bendRadius <= halfDepth) {
+        inside += 4 * crossStraight;
+    }
+    return inside / total;
+}
+
 static std::vector<TurnToCoreFace> turn_to_core_air_gaps(Coil& coil, const Core& core, const Turn& turn, Wire wire,
                                                          const std::vector<Turn>& allTurns) {
     auto bobbin = coil.resolve_bobbin();
@@ -2485,6 +2550,54 @@ static std::vector<TurnToCoreFace> turn_to_core_air_gaps(Coil& coil, const Core&
     double columnThickness = processed.get_column_thickness();
     std::vector<TurnToCoreFace> faces;
 
+    // Neighbour screening, as in the ROUND branch's rowPitches: the turn-to-core element of a turn
+    // in a close-wound row is the Maxwell row sum (the turn's charge with its row neighbours at its
+    // own potential), not the isolated cylinder over a plane, whose flank field ends on the
+    // neighbours and is already carried by the turn-to-turn element. The row facing the column is
+    // the turns of the same layer (|x_o - x| under the turn's outer radius, same window side) and
+    // the pitch is the centre distance to the nearest one above and below; the row facing a yoke or
+    // plate is the turns at the same height, nearest one radially inward and outward. Only for
+    // round and litz conductors: the row element is a row of CYLINDERS, and the equivalent
+    // cylinder of a flat conductor (turn_to_core_equivalent_radius) is wider than its pitch, so the
+    // row sum has no meaning for it and would throw.
+    const double turnOuterRadius = std::max(turnHalfWidth, turnHalfHeight);
+    const bool rowScreening = wire.get_type() == WireType::ROUND || wire.get_type() == WireType::LITZ;
+    const double noNeighbour = std::numeric_limits<double>::infinity();
+    // alongColumn: the row runs along the column axis (y); otherwise radially (x).
+    auto rectangularRowPitches = [&](bool alongColumn) {
+        double towardsPositive = noNeighbour;
+        double towardsNegative = noNeighbour;
+        if (!rowScreening) {
+            return std::make_pair(towardsPositive, towardsNegative);
+        }
+        for (const auto& otherTurn : allTurns) {
+            if (otherTurn.get_name() == turn.get_name()) {
+                continue;
+            }
+            auto otherCoordinates = otherTurn.get_coordinates();
+            double across = alongColumn ? otherCoordinates[0] - coordinates[0] : otherCoordinates[1] - coordinates[1];
+            double along = alongColumn ? otherCoordinates[1] - coordinates[1] : otherCoordinates[0] - coordinates[0];
+            if (std::abs(across) >= turnOuterRadius) {
+                continue;  // another layer (or another height), not this row
+            }
+            if (alongColumn && (otherCoordinates[0] > 0) != (coordinates[0] > 0)) {
+                continue;  // the other window side
+            }
+            double distance = std::hypot(otherCoordinates[0] - coordinates[0], otherCoordinates[1] - coordinates[1]);
+            if (along > 0) {
+                towardsPositive = std::min(towardsPositive, distance);
+            }
+            else if (along < 0) {
+                towardsNegative = std::min(towardsNegative, distance);
+            }
+            else {
+                throw InvalidInputException(ErrorCode::INVALID_COIL_CONFIGURATION,
+                    "Turns " + turn.get_name() + " and " + otherTurn.get_name() + " share a centre: overlapping conductors have no capacitance to the core");
+            }
+        }
+        return std::make_pair(towardsPositive, towardsNegative);
+    };
+
     // ABT #1163, radial-inner face: another turn screens this one when it lies entirely closer
     // to the column (smaller |x|) and overlaps it axially, so it stands in the line of sight.
     bool screenedRadially = false;
@@ -2503,7 +2616,8 @@ static std::vector<TurnToCoreFace> turn_to_core_air_gaps(Coil& coil, const Core&
         }
     }
     if (!screenedRadially) {
-        faces.push_back({std::max(0.0, turnInsulationSurface - windowInnerEdge), columnThickness, 1.0});
+        auto [above, below] = rectangularRowPitches(true);
+        faces.push_back({std::max(0.0, turnInsulationSurface - windowInnerEdge), columnThickness, 1.0, above, below});
     }
 
     // ABT #948, third correction: a turn faces the core on more than one side. A winding WINDOW
@@ -2561,11 +2675,15 @@ static std::vector<TurnToCoreFace> turn_to_core_air_gaps(Coil& coil, const Core&
                 screenedBelow = true;
             }
         }
-        if (!screenedAbove) {
-            faces.push_back({std::max(0.0, windowUpperEdge - (coordinates[1] + turnHalfHeight)), wallThickness, 1.0});
-        }
-        if (!screenedBelow) {
-            faces.push_back({std::max(0.0, (coordinates[1] - turnHalfHeight) - windowLowerEdge), wallThickness, 1.0});
+        if (!screenedAbove || !screenedBelow) {
+            const double axialShare = rectangular_turn_share_under_yoke(coil, core, turn);
+            auto [outward, inward] = rectangularRowPitches(false);
+            if (!screenedAbove) {
+                faces.push_back({std::max(0.0, windowUpperEdge - (coordinates[1] + turnHalfHeight)), wallThickness, axialShare, outward, inward});
+            }
+            if (!screenedBelow) {
+                faces.push_back({std::max(0.0, (coordinates[1] - turnHalfHeight) - windowLowerEdge), wallThickness, axialShare, outward, inward});
+            }
         }
     }
     return faces;
