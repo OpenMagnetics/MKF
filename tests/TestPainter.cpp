@@ -11,6 +11,7 @@
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
 
 #include <fstream>
+#include <limits>
 #include <string>
 #include <cstdint>
 #include <filesystem>
@@ -5025,5 +5026,40 @@ namespace {
         painter.export_svg();
         REQUIRE(std::filesystem::exists(outFile));
         settings.reset();
+    }
+}  // namespace
+
+namespace {
+    // Painter::get_color is the only way a field value becomes an SVG colour. The settings store colours as
+    // "0xrrggbb", which is not an SVG colour; every result must be "#rrggbb" whatever form the end colours take.
+    bool is_svg_hex_colour(const std::string& colour) {
+        return colour.size() == 7 && colour[0] == '#' && colour.find_first_not_of("0123456789abcdef", 1) == std::string::npos;
+    }
+
+    TEST_CASE("Painter colour scale returns #rrggbb and rejects NaN and invalid limits", "[support][painter][painter-colour]") {
+        Painter painter;
+        // End colours come out exactly, in "#rrggbb", from either input form.
+        CHECK(painter.get_color(0, 1, "0x2b35f5", "#ff0000", 0) == "#2b35f5");
+        CHECK(painter.get_color(0, 1, "0x2b35f5", "#ff0000", 1) == "#ff0000");
+        CHECK(painter.get_color(0, 1, "#f00", "0x0000ff", 0) == "#ff0000");
+        // Linear interpolation per channel, truncated: 0x00 + 0.5 * 0xff = 127.5 -> 0x7f.
+        CHECK(painter.get_color(0, 1, "#000000", "#ffffff", 0.5) == "#7f7f7f");
+        // Beyond the scale, including the -inf of log10(0) and +inf, the end colour.
+        CHECK(painter.get_color(0, 1, "0x2b35f5", "#ff0000", -std::numeric_limits<double>::infinity()) == "#2b35f5");
+        CHECK(painter.get_color(0, 1, "0x2b35f5", "#ff0000", std::numeric_limits<double>::infinity()) == "#ff0000");
+        CHECK(painter.get_color(0, 1, "0x2b35f5", "#ff0000", -3) == "#2b35f5");
+        for (double value : {-1.0, 0.0, 0.13, 0.5, 0.77, 1.0, 2.0}) {
+            CHECK(is_svg_hex_colour(painter.get_color(0, 1, settings.get_painter_color_magnetic_field_minimum(), settings.get_painter_color_magnetic_field_maximum(), value)));
+        }
+        double nan = std::numeric_limits<double>::quiet_NaN();
+        double inf = std::numeric_limits<double>::infinity();
+        CHECK_THROWS(painter.get_color(0, 1, "#000000", "#ffffff", nan));
+        CHECK_THROWS(painter.get_color(nan, 1, "#000000", "#ffffff", 0.5));
+        CHECK_THROWS(painter.get_color(0, inf, "#000000", "#ffffff", 0.5));
+        CHECK_THROWS(painter.get_color(1, 1, "#000000", "#ffffff", 0.5));
+        CHECK_THROWS(painter.get_color(1, 0, "#000000", "#ffffff", 0.5));
+        CHECK_THROWS(painter.get_color(0, 1, "red", "#ffffff", 0.5));
+        CHECK_THROWS(painter.get_color(0, 1, "#00000", "#ffffff", 0.5));
+        CHECK_THROWS(painter.get_color(0, 1, "#000000", "#gg0000", 0.5));
     }
 }  // namespace

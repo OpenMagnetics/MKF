@@ -88,13 +88,13 @@ class PainterInterface {
                      hexStr[2] + hexStr[2];
         }
         
-        // Ensure we have a valid hex string
-        if (hexStr.length() < 6) {
-            return 0x000000; // Return black as default
+        if (hexStr.rfind("0x", 0) == 0 || hexStr.rfind("0X", 0) == 0) {
+            hexStr = hexStr.substr(2);
         }
-        
-        // Convert hex string to RGB
-        uint32_t colorValue = std::stoul(hexStr, nullptr, 16);
+        if (hexStr.length() != 6 || hexStr.find_first_not_of("0123456789abcdefABCDEF") != std::string::npos) {
+            throw InvalidInputException(ErrorCode::INVALID_INPUT, "Painter colour '" + hex + "' is not #rrggbb, 0xrrggbb or #rgb");
+        }
+        uint32_t colorValue = static_cast<uint32_t>(std::stoul(hexStr, nullptr, 16));
 
         return colorValue;
     }
@@ -440,10 +440,13 @@ class Painter : public PainterInterface {
     void paint_rectangular_wire(double xCoordinate, double yCoordinate, Wire wire, double angle, std::vector<double> center, std::optional<std::string> label = std::nullopt);
     void paint_rectangle(double xCoordinate, double yCoordinate, double xDimension, double yDimension, std::string cssClassName, SVG::Group* group = nullptr, double angle = 0, std::vector<double> center = {0, 0}, std::optional<std::string> label = std::nullopt);
     void paint_circle(double xCoordinate, double yCoordinate, double radius, std::string cssClassName, SVG::Group* group = nullptr, double fillAngle=360, double angle = 0, std::vector<double> center = {0, 0}, std::optional<std::string> label = std::nullopt);
-    std::string get_color(double minimumValue, double maximumValue, std::string minimumColor, std::string maximumColor, double value);
     void paint_field_point(double xCoordinate, double yCoordinate, double xDimension, double yDimension, std::string color, std::string label);
 
  public:
+    // Colour of value on the linear scale [minimumValue, maximumValue] between the two end colours
+    // (each "#rrggbb", "0xrrggbb" or "#rgb"), always returned as "#rrggbb". Values beyond the scale,
+    // including +-inf, take the end colour; NaN throws.
+    std::string get_color(double minimumValue, double maximumValue, std::string minimumColor, std::string maximumColor, double value);
     SVG::SVG _root;
     Painter() = default;
     Painter(std::filesystem::path filepath){

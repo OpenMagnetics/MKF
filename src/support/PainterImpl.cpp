@@ -1772,11 +1772,19 @@ void Painter::paint_coil_turns(Magnetic magnetic, bool skipMarginAndLayers) {
 }
 
 std::string Painter::get_color(double minimumValue, double maximumValue, std::string minimumColor, std::string maximumColor, double value) {
-    // Handle NaN or invalid values - return minimum color as fallback
-    if (!std::isfinite(value)) {
-        return minimumColor;
+    // A NaN field value is a defect upstream; it has no colour. +-inf is an ordinary value at the end
+    // of the scale (log10 of a zero field is -inf) and clamps to the end colour like any other value
+    // beyond the colour bar. Every colour leaves through the same interpolation below, so the result
+    // is always "#rrggbb": the settings store colours as "0x..." and returning one of them unchanged
+    // put "0x2b35f5", which is not an SVG colour, into the image.
+    if (std::isnan(value)) {
+        throw InvalidInputException(ErrorCode::CALCULATION_INVALID_RESULT, "Painter colour scale was given a NaN value");
     }
-    
+    if (!std::isfinite(minimumValue) || !std::isfinite(maximumValue) || !(maximumValue > minimumValue)) {
+        throw InvalidInputException(ErrorCode::INVALID_INPUT, "Painter colour scale needs finite limits with maximum > minimum, got [" +
+                                    std::to_string(minimumValue) + ", " + std::to_string(maximumValue) + "]");
+    }
+
     // Clamp the value
     value = clamp(value, minimumValue, maximumValue);
     
