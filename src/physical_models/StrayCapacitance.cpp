@@ -37,8 +37,17 @@ static std::vector<std::vector<double>> get_all_turn_coordinates(const Turn& tur
 }
 
 // Helper function to compute the global minimum surface-to-surface gap between any two turns
-static double compute_global_minimum_gap(const std::vector<Turn>& turnsDescription) {
+// The smallest non-negative surface gap between any two turns, which sets the adaptive
+// neighbour threshold of get_surrounding_turns. A coil of fewer than two turns has no pair and no
+// gap: that is std::nullopt, not a number. A coil whose every pair overlaps is broken geometry and
+// is refused by name. Both cases used to return 1e-6 m, a gap that exists in neither.
+static std::optional<double> compute_global_minimum_gap(const std::vector<Turn>& turnsDescription) {
+    if (turnsDescription.size() < 2) {
+        return std::nullopt;
+    }
     double globalMinGap = DBL_MAX;
+    double leastOverlap = -DBL_MAX;
+    std::pair<size_t, size_t> leastOverlappingPair{0, 1};
     
     for (size_t i = 0; i < turnsDescription.size(); ++i) {
         auto coords1 = get_all_turn_coordinates(turnsDescription[i]);
@@ -59,15 +68,21 @@ static double compute_global_minimum_gap(const std::vector<Turn>& turnsDescripti
                     if (surfaceGap >= 0 && surfaceGap < globalMinGap) {
                         globalMinGap = surfaceGap;
                     }
+                    if (surfaceGap < 0 && surfaceGap > leastOverlap) {
+                        leastOverlap = surfaceGap;
+                        leastOverlappingPair = {i, j};
+                    }
                 }
             }
         }
     }
     
-    // If no valid gap found (all turns overlap), return a small default
-    // This ensures at least one turn pair will be found
     if (globalMinGap == DBL_MAX) {
-        return 1e-6;
+        throw InvalidInputException(ErrorCode::INVALID_COIL_CONFIGURATION,
+            "Every pair of turns overlaps, so the coil has no turn-to-turn gap to find neighbours by. The least "
+            "overlapping pair, turns '" + turnsDescription[leastOverlappingPair.first].get_name() + "' and '" +
+            turnsDescription[leastOverlappingPair.second].get_name() + "', overlap by " +
+            std::to_string(-leastOverlap) + " m");
     }
     
     return globalMinGap;
@@ -1171,6 +1186,33 @@ double StrayCapacitanceDuerdothModel::calculate_static_capacitance_between_two_t
     return C0;
 }
 
+// The flux-line models (Albach, Koch) are written for two round conductors a finite distance
+// apart. A separation that is not finite is not a pair they can describe.
+static void throw_if_separation_is_not_finite(const std::string& model, double distanceThroughLayers,
+                                              double distanceThroughAir) {
+    if (std::isfinite(distanceThroughLayers) && std::isfinite(distanceThroughAir)) {
+        return;
+    }
+    throw InvalidInputException(ErrorCode::CALCULATION_INVALID_RESULT,
+        model + " turn-pair capacitance needs a finite separation, got " + std::to_string(distanceThroughLayers) +
+        " m through insulation layers and " + std::to_string(distanceThroughAir) + " m through air");
+}
+
+// β = (1/ζ)(1 + h / (2 ε r)) with ζ < 1 for any coated conductor, so β > 1 whenever the
+// conductors are separated (h >= 0 with a coating, h > 0 without). β <= 1 is a bare pair in
+// contact, overlapping turns (h < 0), or a coating so thick that ζ <= 0 leaves the model's
+// domain. None of these has a capacitance in the model, so none is approximated.
+static void throw_if_beta_is_out_of_domain(const std::string& model, double beta, double wireCoatingThickness,
+                                           double conductingRadius, double gap) {
+    if (beta > 1) {
+        return;
+    }
+    throw InvalidInputException(ErrorCode::CALCULATION_INVALID_RESULT,
+        model + " turn-pair capacitance is defined for beta > 1 only, got beta = " + std::to_string(beta) +
+        " (wire coating " + std::to_string(wireCoatingThickness) + " m on a " + std::to_string(conductingRadius) +
+        " m conducting radius, gap " + std::to_string(gap) + " m): the conductors are not separated");
+}
+
 /**
  * @brief Calculates static capacitance between two turns using the Albach model.
  * 
@@ -1245,12 +1287,11 @@ double StrayCapacitanceAlbachModel::calculate_static_capacitance_between_two_tur
         effectiveRelativePermittivity = 1;
     }
 
-    // Handle edge case: when turns overlap (distance is DBL_MAX), return a large capacitance
-    if (std::isinf(distanceThroughLayersAndAir)) {
-        // When turns overlap or are extremely close, capacitance approaches infinity
-        // Return a very large value instead of trying to calculate
-        return 1e-6;  // 1 µF - effectively infinite for practical purposes
-    }
+    // A pair with no finite separation has no capacitance this model can give. It used to return
+    // 1 µF as "effectively infinite", a number that then entered the network as if computed.
+    // StrayCapacitance::calculate_static_capacitance_between_two_turns refuses such a pair by
+    // name before it gets here; this guards the model's own entry point.
+    throw_if_separation_is_not_finite("Albach", distanceThroughLayers, distanceThroughAir);
 
     // ζ: Modified insulation parameter using OUTER radius (r0 + δ)
     // This differs from Koch model which uses bare conductor radius
@@ -1259,15 +1300,13 @@ double StrayCapacitanceAlbachModel::calculate_static_capacitance_between_two_tur
     // β: Gap geometry parameter
     double beta = 1.0 / zeta * (1 + distanceThroughLayersAndAir / (2 * effectiveRelativePermittivity * (conductingRadius + wireCoatingThickness)));
     
-    // Handle edge case where beta is too close to 1 - use parallel plate approximation
-    // When beta <= 1, sqrt(beta^2 - 1) returns NaN
-    if (beta <= 1.001) {
-        // Use parallel plate approximation as fallback
-        double totalDistance = wireCoatingThickness + distanceThroughLayersAndAir;
-        double epsilonEff = get_effective_relative_permittivity(wireCoatingThickness, relativePermittivityWireCoating, distanceThroughLayersAndAir, relativePermittivityInsulationLayers);
-        double projectedWidth = conductingRadius * 2;  // Projected width of round wire
-        return vacuumPermittivity * epsilonEff * projectedWidth * averageTurnLength / totalDistance;
-    }
+    // β > 1 is the whole domain of Albach's Eq. (3.16), and the formula is exact on all of it,
+    // including the near-contact limit β -> 1+, where it carries the true singular term
+    // π ε0 / sqrt(2(β - 1)) of two touching cylinders (see the header). It used to switch to a
+    // parallel-plate estimate below β = 1.001, an arbitrary threshold with a different formula
+    // behind it. β <= 1 means the conductors are not separated at all (a bare pair in contact,
+    // or overlapping turns), which no capacitance describes: refuse it.
+    throw_if_beta_is_out_of_domain("Albach", beta, wireCoatingThickness, conductingRadius, distanceThroughLayersAndAir);
     
     // V: Arctangent auxiliary function
     double V = beta / sqrt(pow(beta, 2) - 1) * atan(sqrt((beta + 1) / (beta - 1)));
@@ -1344,13 +1383,8 @@ double StrayCapacitanceAlbachModel::calculate_static_capacitance_between_two_tur
 double StrayCapacitanceKochModel::calculate_static_capacitance_between_two_turns(double wireCoatingThickness, double averageTurnLength, double conductingRadius, double distanceThroughLayers, double distanceThroughAir, double relativePermittivityWireCoating, double relativePermittivityInsulationLayers) {
     auto vacuumPermittivity = Constants().vacuumPermittivity;
 
-    // Handle edge case: when turns overlap (distance is DBL_MAX), return a large capacitance
-    double totalDistance = distanceThroughLayers + distanceThroughAir;
-    if (std::isinf(totalDistance)) {
-        // When turns overlap or are extremely close, capacitance approaches infinity
-        // Return a very large value instead of trying to calculate
-        return 1e-6;  // 1 µF - effectively infinite for practical purposes
-    }
+    // See the Albach model: a separation that is not finite is refused, not given 1 µF.
+    throw_if_separation_is_not_finite("Koch", distanceThroughLayers, distanceThroughAir);
 
     // α: Parameter accounting for insulation coating effect - Eq. (3)
     // α = 1 - δ/(εr * r0), where δ = coating thickness
@@ -1368,15 +1402,10 @@ double StrayCapacitanceKochModel::calculate_static_capacitance_between_two_turns
         beta = 1.0 / alpha * (1 + distanceThroughAir / (2 * 1.0 * conductingRadius));
     }
     
-    // Handle edge case where beta is too close to 1 - use parallel plate approximation
-    // When beta <= 1, sqrt(beta^2 - 1) returns NaN
-    if (beta <= 1.001) {
-        // Use parallel plate approximation as fallback
-        double totalDistance = wireCoatingThickness + distanceThroughLayers + distanceThroughAir;
-        double epsilonEff = get_effective_relative_permittivity(wireCoatingThickness, relativePermittivityWireCoating, distanceThroughLayers + distanceThroughAir, relativePermittivityInsulationLayers);
-        double projectedWidth = conductingRadius * 2;  // Projected width of round wire
-        return vacuumPermittivity * epsilonEff * projectedWidth * averageTurnLength / totalDistance;
-    }
+    // Eqs. (5)-(6) are exact for every β > 1, the near-contact limit included; β <= 1 is no
+    // separation at all. No parallel-plate substitute below an arbitrary β = 1.001 (see Albach).
+    throw_if_beta_is_out_of_domain("Koch", beta, wireCoatingThickness, conductingRadius,
+                                   distanceThroughLayers > 0 ? distanceThroughLayers : distanceThroughAir);
     
     // V: Auxiliary function (arctangent approximation of elliptic integral) - Eq. (5)
     // V = (β/√(β²-1)) * arctan(√((β+1)/(β-1))) - π/4
@@ -1700,6 +1729,12 @@ double StrayCapacitance::calculate_static_capacitance_between_two_turns(Turn fir
             double distanceThroughAir = aux[4];
             double relativePermittivityWireCoating = aux[5];
             double relativePermittivityInsulationLayers = aux[6];
+            if (!std::isfinite(distanceThroughLayers) || !std::isfinite(distanceThroughAir)) {
+                throw InvalidInputException(ErrorCode::CALCULATION_INVALID_RESULT,
+                    "Turns '" + first.get_name() + "' and '" + second.get_name() +
+                    "' have no finite separation (" + std::to_string(distanceThroughLayers) + " m through insulation layers, " +
+                    std::to_string(distanceThroughAir) + " m through air), so no turn-to-turn capacitance can be computed for them");
+            }
             return _model->calculate_static_capacitance_between_two_turns(wireCoatingThickness, averageTurnLength, conductingRadius, distanceThroughLayers, distanceThroughAir, relativePermittivityWireCoating, relativePermittivityInsulationLayers);
         };
 
@@ -3272,7 +3307,11 @@ std::map<std::pair<size_t, size_t>, double> StrayCapacitance::calculate_capacita
     auto wirePerWinding = coil.get_wires();
 
     // Compute global minimum gap once for all turns
-    double globalMinimumGap = compute_global_minimum_gap(turns);
+    auto globalMinimumGap = compute_global_minimum_gap(turns);
+    if (!globalMinimumGap) {
+        // Fewer than two turns: there is no turn pair, so no turn-to-turn capacitance.
+        return capacitanceAmongTurns;
+    }
 
     std::set<std::pair<size_t, size_t>> turnsCombinations;
 
@@ -3300,7 +3339,7 @@ std::map<std::pair<size_t, size_t>, double> StrayCapacitance::calculate_capacita
     for (size_t turnIndex = 0; turnIndex <  turns.size(); ++turnIndex) {
         auto turnWindingIndex = coil.get_winding_index_by_name(turns[turnIndex].get_winding());
         auto turnWire = wirePerWinding[turnWindingIndex];
-        auto surroundingTurns = OpenMagnetics::StrayCapacitance::get_surrounding_turns(turns[turnIndex], turns, globalMinimumGap);
+        auto surroundingTurns = OpenMagnetics::StrayCapacitance::get_surrounding_turns(turns[turnIndex], turns, globalMinimumGap.value());
 
         for (auto [surroundingTurn, surroundingTurnIndex] : surroundingTurns) {
             auto key = std::make_pair(turnIndex, surroundingTurnIndex);

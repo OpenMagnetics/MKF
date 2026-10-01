@@ -14,6 +14,7 @@
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/catch_approx.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
+#include <catch2/matchers/catch_matchers_string.hpp>
 #include <catch2/benchmark/catch_benchmark.hpp>
 
 using namespace MAS;
@@ -4057,4 +4058,76 @@ TEST_CASE("Toroid capacitance generates the outer crossings a speed-wound coil l
     CHECK_THAT(withSettingOff, WithinRel(fromCrossed, 1e-12));
     CHECK_FALSE(settings.get_coil_include_additional_coordinates());
     settings.reset();
+}
+
+// A turn pair with no finite separation, or a coil whose every turn pair overlaps, used to get a
+// 1e-6 placeholder: 1 µF as the pair's capacitance, 1 µm as the coil's minimum gap. Both entered
+// the result as if computed. They are refused now, by name where the turns are known.
+TEST_CASE("Turn-pair capacitance refuses a pair with no finite separation instead of returning 1 uF",
+          "[physical-model][stray-capacitance][albach][koch][no-placeholder-capacitance]") {
+    StrayCapacitanceAlbachModel albach;
+    StrayCapacitanceKochModel koch;
+    const double inf = std::numeric_limits<double>::infinity();
+    CHECK_THROWS_WITH(albach.calculate_static_capacitance_between_two_turns(20e-6, 0.05, 0.25e-3, inf, 0.0, 3.5, 3.0),
+                      Catch::Matchers::ContainsSubstring("finite separation"));
+    CHECK_THROWS_WITH(koch.calculate_static_capacitance_between_two_turns(20e-6, 0.05, 0.25e-3, 0.0, inf, 3.5, 3.0),
+                      Catch::Matchers::ContainsSubstring("finite separation"));
+}
+
+TEST_CASE("Turn-to-turn capacitance names the turns of a coil whose every pair overlaps",
+          "[physical-model][stray-capacitance][no-placeholder-capacitance]") {
+    settings.reset();
+    auto coil = OpenMagneticsTesting::get_quick_coil({2}, {1}, "PQ 28/20");
+    auto turns = coil.get_turns_description().value();
+    REQUIRE(turns.size() == 2);
+
+    // One turn alone has no pair: no capacitance, and no error.
+    {
+        auto single = coil;
+        single.set_turns_description(std::vector<Turn>{turns[0]});
+        CHECK(StrayCapacitance().calculate_capacitance_among_turns(single).empty());
+    }
+
+    // Lay the second turn over the first, half a diameter away: the only pair overlaps.
+    double outerDiameter = turns[0].get_dimensions().value()[0];
+    auto coordinates = turns[0].get_coordinates();
+    coordinates[1] += outerDiameter / 2;
+    turns[1].set_coordinates(coordinates);
+    coil.set_turns_description(turns);
+    CHECK_THROWS_WITH(StrayCapacitance().calculate_capacitance_among_turns(coil),
+                      Catch::Matchers::ContainsSubstring(turns[0].get_name()) &&
+                      Catch::Matchers::ContainsSubstring(turns[1].get_name()) &&
+                      Catch::Matchers::ContainsSubstring("overlap"));
+    settings.reset();
+}
+
+// Albach Eq. (3.16) and Koch Eqs. (5)-(6) are exact for every beta > 1. Below beta = 1.001 the
+// code used to switch to a parallel-plate estimate; the formulas themselves hold there and carry
+// the two-cylinder singular term, so the same reference as the near-contact test above applies:
+// pi eps0 / acosh(1 + e) with the predicted fringe error -(1 + pi/2) sqrt(2e) / pi, tolerance e.
+// For bare conductors beta - 1 = h / 2r0 = e, so e = 5e-4 and 1e-4 are inside the old cut-off.
+TEST_CASE("Albach and Koch use their exact formula below beta = 1.001 and refuse beta <= 1",
+          "[physical-model][stray-capacitance][albach][koch][beta-domain]") {
+    const double eps0 = Constants().vacuumPermittivity;
+    const double radius = 0.25e-3;
+    const double turnLength = 1.0;
+    StrayCapacitanceAlbachModel albach;
+    StrayCapacitanceKochModel koch;
+    for (double e : {5e-4, 1e-4}) {
+        double gap = 2 * radius * e;
+        double exact = std::numbers::pi * eps0 * turnLength / std::acosh(1 + e);
+        double predictedRelativeError = -(1 + std::numbers::pi / 2) * std::sqrt(2 * e) / std::numbers::pi;
+        double albachC = albach.calculate_static_capacitance_between_two_turns(0.0, turnLength, radius, 0.0, gap, 3.0, 1.0);
+        double kochC = koch.calculate_static_capacitance_between_two_turns(0.0, turnLength, radius, 0.0, gap, 3.0, 1.0);
+        UNSCOPED_INFO("e=" << e << " exact=" << exact << " albach=" << albachC << " koch=" << kochC);
+        CHECK(std::abs(albachC / exact - 1 - predictedRelativeError) <= e);
+        CHECK(std::abs(kochC / exact - 1 - predictedRelativeError) <= e);
+    }
+    // beta = 1 (bare conductors in contact) and beta < 1 (overlapping) have no capacitance.
+    for (double gap : {0.0, -0.1 * radius}) {
+        CHECK_THROWS_WITH(albach.calculate_static_capacitance_between_two_turns(0.0, turnLength, radius, 0.0, gap, 3.0, 1.0),
+                          Catch::Matchers::ContainsSubstring("beta > 1"));
+        CHECK_THROWS_WITH(koch.calculate_static_capacitance_between_two_turns(0.0, turnLength, radius, 0.0, gap, 3.0, 1.0),
+                          Catch::Matchers::ContainsSubstring("beta > 1"));
+    }
 }
