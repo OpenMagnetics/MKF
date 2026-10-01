@@ -4131,3 +4131,57 @@ TEST_CASE("Albach and Koch use their exact formula below beta = 1.001 and refuse
                           Catch::Matchers::ContainsSubstring("beta > 1"));
     }
 }
+
+// A wound turn rests on the surface it was wound against; it is never inside the core. The
+// toroid branch of the turn-to-core gaps used to clamp a negative gap to zero (std::max(0, gap)),
+// so a turn half a millimetre inside a ring's epoxy jacket was evaluated as "touching". It throws
+// now, naming the turn and the overlap. WE-CMB 744821110 (T 12.7/7.92/4.9, A07, 0.6 mm epoxy,
+// 56 + 56 turns) is wound against its coated bore, so it is the clean reference; each case below breaks
+// one surface on purpose.
+TEST_CASE("Toroid turn-to-core gap refuses a turn that lies inside the coated core", "[physical-model][stray-capacitance][toroid][turn-inside-core]") {
+    settings.reset();
+    auto path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "cmc_we_coated_anchor/744821110.json");
+    std::ifstream file(path);
+    REQUIRE(file.good());
+    const auto reference = nlohmann::json::parse(file);
+    auto windingToCore = [](const nlohmann::json& json) {
+        OpenMagnetics::Magnetic magnetic(json);
+        return StrayCapacitance::calculate_winding_to_core_capacitance(magnetic.get_coil(), magnetic.get_core(), "primary");
+    };
+
+    SECTION("the record as wound: every turn clears both surfaces") {
+        CHECK(windingToCore(reference) > 0);
+    }
+    SECTION("a thicker jacket than the winding was laid for: the bore turns are inside the epoxy") {
+        // The ring is T 12.7/7.92/4.9: bare bore B/2 = 3.96 mm, winding window 3.36 mm (B/2 minus
+        // the 0.6 mm jacket), and the bore turns rest on that window. A 0.9 mm jacket puts the
+        // coated bore at 3.06 mm, 0.3 mm inside the window: the turns sit in epoxy although they
+        // still clear the window they were laid in. That is the defect the stored 744821039 had
+        // (turns laid in the bare 3.95 mm bore of a ring whose jacket leaves 3.36 mm).
+        auto json = reference;
+        json["core"]["functionalDescription"]["coating"]["thickness"] = 0.0009;
+        REQUIRE_THROWS_WITH(windingToCore(json), Catch::Matchers::ContainsSubstring("lies inside the core at the bore") &&
+                                                 Catch::Matchers::ContainsSubstring("primary parallel 0 turn 0") &&
+                                                 Catch::Matchers::ContainsSubstring("0.300000 mm past the bore surface"));
+    }
+    SECTION("one turn moved 0.2 mm radially outward at the bore") {
+        auto json = reference;
+        auto& coordinates = json["coil"]["turnsDescription"][3]["coordinates"];
+        double x = coordinates[0], y = coordinates[1];
+        double r = std::hypot(x, y);
+        coordinates[0] = x * (r + 0.0002) / r;
+        coordinates[1] = y * (r + 0.0002) / r;
+        REQUIRE_THROWS_WITH(windingToCore(json), Catch::Matchers::ContainsSubstring("primary parallel 0 turn 3") &&
+                                                 Catch::Matchers::ContainsSubstring("lies inside the core at the bore"));
+    }
+    SECTION("one turn's outer crossing moved 0.2 mm radially inward") {
+        auto json = reference;
+        auto& crossing = json["coil"]["turnsDescription"][3]["additionalCoordinates"][0];
+        double x = crossing[0], y = crossing[1];
+        double r = std::hypot(x, y);
+        crossing[0] = x * (r - 0.0002) / r;
+        crossing[1] = y * (r - 0.0002) / r;
+        REQUIRE_THROWS_WITH(windingToCore(json), Catch::Matchers::ContainsSubstring("primary parallel 0 turn 3") &&
+                                                 Catch::Matchers::ContainsSubstring("lies inside the core at its outer crossing"));
+    }
+}

@@ -2260,10 +2260,58 @@ static std::vector<TurnToCoreFace> turn_to_core_air_gaps(Coil& coil, const Core&
         // and radial height + 2*column_width inherits the half/full-width ambiguity of
         // column_width that ABT #948 found (bare-ring p10 -3.0 diameters).
         double outerSurfaceRadius = ringOuterDiameter / 2 + (ringInnerDiameter / 2 - boreRadius);
-        double boreGap = std::max(0.0, (boreRadius - turnInsulationRadius) - turnRadius);
+        double boreGap = (boreRadius - turnInsulationRadius) - turnRadius;
         double outerGap = turnHasOuterCrossing
-            ? std::max(0.0, (outerCrossingRadius - turnInsulationRadius) - outerSurfaceRadius)
+            ? (outerCrossingRadius - turnInsulationRadius) - outerSurfaceRadius
             : 0.0;
+
+        // A wound turn rests ON the surface it is wound against; it can never be inside the core.
+        // Two surfaces bound it, and the turn must clear both: the winding window it was wound in
+        // (the gaps above), and the core's own jacketed surface, B/2 - t_jacket at the bore and
+        // A/2 + t_jacket outside. They coincide for a consistent record (the bobbin of a coated
+        // ring is the coated bore). They differ when the turns were wound for a different window
+        // than this core has -- e.g. a stored winding laid in the BARE bore of a ring that carries
+        // a 0.6 mm epoxy jacket, which puts every bore turn half a millimetre inside the epoxy.
+        // This used to be clamped to "touching" (std::max(0, gap)) without a word, so the model
+        // evaluated an impossible geometry as a valid one. Only floating-point rounding of a
+        // touching turn may go below zero.
+        //
+        // Only a DECLARED coating is geometry. For a toroid that declares none,
+        // Core::get_coating_thickness() answers with a default parylene/epoxy thickness for the
+        // dielectric stack, but the core's processing, the bobbin and the winder all seat the turns
+        // on the bare ferrite (Bobbin.cpp, "only a declared coating"); the turns cannot be inside a
+        // jacket the geometry never had.
+        double jacketThickness = core.get_functional_description().get_coating() ? resolve_core_jacket(core).first : 0.0;
+        double coatedBoreRadius = ringInnerDiameter / 2 - jacketThickness;
+        double coatedOuterRadius = ringOuterDiameter / 2 + jacketThickness;
+        double boreSurfaceRadius = std::min(boreRadius, coatedBoreRadius);
+        double boreOverlap = (turnRadius + turnInsulationRadius) - boreSurfaceRadius;
+        const double rounding = 64 * std::numeric_limits<double>::epsilon() * ringOuterDiameter;
+        auto mm = [](double metres) { return std::to_string(metres * 1e3); };
+        if (boreOverlap > rounding) {
+            throw InvalidInputException(ErrorCode::INVALID_COIL_CONFIGURATION,
+                "Toroidal turn '" + turn.get_name() + "' lies inside the core at the bore: its insulation"
+                " reaches r = " + mm(turnRadius + turnInsulationRadius) + " mm, " + mm(boreOverlap) +
+                " mm past the bore surface at r = " + mm(boreSurfaceRadius) + " mm (winding window " +
+                mm(boreRadius) + " mm, core bore B/2 = " + mm(ringInnerDiameter / 2) + " mm minus a " +
+                mm(jacketThickness) + " mm jacket). The turns were wound for a different window than"
+                " this core's.");
+        }
+        if (turnHasOuterCrossing) {
+            double outerSurface = std::max(outerSurfaceRadius, coatedOuterRadius);
+            double outerOverlap = outerSurface - (outerCrossingRadius - turnInsulationRadius);
+            if (outerOverlap > rounding) {
+                throw InvalidInputException(ErrorCode::INVALID_COIL_CONFIGURATION,
+                    "Toroidal turn '" + turn.get_name() + "' lies inside the core at its outer crossing:"
+                    " its insulation reaches down to r = " + mm(outerCrossingRadius - turnInsulationRadius) +
+                    " mm, " + mm(outerOverlap) + " mm inside the outer surface at r = " + mm(outerSurface) +
+                    " mm (A/2 = " + mm(ringOuterDiameter / 2) + " mm plus a " + mm(jacketThickness) +
+                    " mm jacket). The turns were wound for a different window than this core's.");
+            }
+        }
+        // Both checks passed, so a negative gap here is rounding of a touching turn, nothing more.
+        boreGap = std::max(boreGap, 0.0);
+        outerGap = std::max(outerGap, 0.0);
 
         // Screening, at each crossing on its own. At the bore "closer to the core" means a LARGER
         // radius from the axis; outside the ring it means a SMALLER one. Another turn screens this
