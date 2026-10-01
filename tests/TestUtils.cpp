@@ -1185,6 +1185,48 @@ TEST_CASE("Autocomplete picks the winding orientation from the WINDOW, not the c
     CHECK(orientationAfterAutocomplete("E 55/28/21") == WindingOrientation::OVERLAPPING);
 }
 
+TEST_CASE("Autocomplete keeps a piece-and-plate ET/UT core and its catalogue effective length", "[support][utils][piece-and-plate-autocomplete]") {
+    // magnetic_autocomplete re-typed EI and UT cores TWO_PIECE_SET even when the input said
+    // pieceAndPlate, mirroring the E/U piece: le doubled and the common-mode inductance of the
+    // WE-FC (ET 20, UT 20) and WE-FCL (ET 35) chokes came out at exactly 0.5x.
+    //
+    // References, independent of MKF:
+    //   ET 20: le 50.6 mm, ET 35: le 86.7 mm -- TDK "Ferrite for Switching Power Supplies, ET, UU
+    //          and FT Series" (001-01 / 20070122 / e147), table "ET Cores", HS72ET20 / HS72ET35.
+    //   UT 20: le 53 mm -- the WE-FC UT20 list of parameters (Cenker LoP_IndFC_UT20_v.2, core
+    //          Ae 13 mm^2 / le 53 mm), the value the supplier catalogues quote for a UT 20 set.
+    // Each catalogue quotes le to its last printed digit, so the tolerance is half of that digit:
+    // 0.05 mm for TDK, 0.5 mm for the LoP. A mirrored core (2x) is far outside either.
+    auto autocompletedCore = [](const std::string& shapeName) {
+        json coilJson;
+        coilJson["bobbin"] = "Dummy";
+        coilJson["functionalDescription"] = json::array({{
+            {"name", "winding 0"}, {"numberTurns", 12}, {"numberParallels", 1},
+            {"isolationSide", "primary"}, {"wire", "Round 0.1 - Grade 1"}}});
+        json coreJson;
+        coreJson["functionalDescription"] = {{"type", "pieceAndPlate"}, {"material", "3C95"},
+                                             {"shape", shapeName}, {"gapping", json::array()},
+                                             {"numberStacks", 1}};
+        OpenMagnetics::Magnetic magnetic;
+        // Functional description only, as a catalogue part arrives: autocomplete is the one
+        // that processes the core, so the type it settles on decides le.
+        magnetic.set_core(OpenMagnetics::Core(coreJson, false, false, false));
+        magnetic.set_coil(OpenMagnetics::Coil(coilJson, false));
+        return OpenMagnetics::magnetic_autocomplete(magnetic).get_core();
+    };
+
+    struct Reference { std::string shape; double le; double halfDigit; };
+    for (const auto& reference : {Reference{"ET 20", 50.6e-3, 0.05e-3},
+                                  Reference{"ET 35", 86.7e-3, 0.05e-3},
+                                  Reference{"UT 20", 53e-3, 0.5e-3}}) {
+        INFO(reference.shape);
+        auto core = autocompletedCore(reference.shape);
+        CHECK(core.get_functional_description().get_type() == CoreType::PIECE_AND_PLATE);
+        double le = core.get_processed_description()->get_effective_parameters().get_effective_length();
+        CHECK_THAT(le, Catch::Matchers::WithinAbs(reference.le, reference.halfDigit));
+    }
+}
+
 // ABT #1471: magnetic_autocomplete resolved every layer's insulation material through the static
 // resolve_insulation_layer_insulation_material(Coil, name), which copied the whole coil (and twice its
 // layer vector) per layer: quadratic in the layer count. A 23,600-layer plan grew a process to 24 GB.

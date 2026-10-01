@@ -3035,11 +3035,20 @@ Magnetic magnetic_autocomplete(Magnetic magnetic, json configuration, std::optio
     }
     else if (magnetic.get_mutable_core().get_shape_family() == CoreShapeFamily::UI ||
              magnetic.get_mutable_core().get_shape_family() == CoreShapeFamily::PQI ||
+             magnetic.get_mutable_core().get_shape_family() == CoreShapeFamily::UT ||
+             magnetic.get_mutable_core().get_shape_family() == CoreShapeFamily::EI ||
              magnetic.get_mutable_core().get_shape_family() == CoreShapeFamily::DRUM_RING ||
-             magnetic.get_mutable_core().get_shape_family() == CoreShapeFamily::DRUM_SEMISHIELDED) {
+             magnetic.get_mutable_core().get_shape_family() == CoreShapeFamily::DRUM_SEMISHIELDED ||
+             magnetic.get_mutable_core().get_shape_family() == CoreShapeFamily::DRUM_PLATE) {
         // Piece-and-plate: the record already describes the whole assembly, so it is "closed" in
         // the MAS sense of having to be used by itself (ABT #274/#275; drumRing per ABT #366 —
         // its two structural annular gaps are synthesized by Core::process_gap, not listed here).
+        //
+        // The family list is the one the Core constructor and create_quick_core classify as
+        // piece-and-plate. UT, EI and DRUM_PLATE were missing here, so a core that arrived as an
+        // explicit pieceAndPlate fell to the else branch and was re-typed TWO_PIECE_SET: the
+        // E/U piece was mirrored, which doubles le, the column height and the window height.
+        // On an ET 20 choke that halves L = N^2 mu0 mu Ae / le exactly (le 50.6 -> 101.3 mm).
         magnetic.get_mutable_core().get_mutable_functional_description().set_type(CoreType::PIECE_AND_PLATE);
         shape.set_magnetic_circuit(MagneticCircuit::CLOSED);
     }
