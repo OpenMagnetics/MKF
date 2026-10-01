@@ -3482,6 +3482,117 @@ double StrayCapacitance::calculate_energy_density_between_two_turns(Turn firstTu
     return energy / area;
 }
 
+double StrayCapacitance::calculate_differential_mode_capacitance(Coil coil, Core core, std::optional<double> frequency,
+                                                                 std::optional<CoreElectricalReference> coreElectricalReference) {
+    // The DM port of a two-winding magnetic (a common-mode choke measured differentially): the
+    // two windings in series opposition, their far ends joined, the port across the two start
+    // terminals. With the windings' own ramps v (calculate_voltages_per_turn: V at the start
+    // terminal down to 0 at the far end), the port drives the first winding's turns to +v_i and
+    // the second's to -v_j, the joined far ends sitting at 0, so V_port = max(+v) - min(-v).
+    // Every capacitance the port charges stores energy at these potentials:
+    //   W = sum over all turn pairs (inside either winding and between them) 1/2 C_ij (V_i - V_j)^2
+    //     + the turn-to-core elements against the core node
+    // (floating: the core settles where it carries no net charge, sum C_i (V_i - V_c) = 0, and a
+    // gapped core splits into two bodies -- winding_pair_to_core_energy_from_elements, the same
+    // energy the inter-winding entry uses; bonded: the core is held at its reference potential,
+    // 1/2 sum C_i (V_i - V_ref)^2.) The lumped capacitance the port sees is the one storing the
+    // same energy at the port voltage, C_DM = 2 W / V_port^2 (energy method, as in
+    // calculate_capacitance_with_voltages; Massarini & Kazimierczuk 1997, Kovacic et al. 2012).
+    complete_toroidal_outer_crossings(coil);
+    auto windings = coil.get_functional_description();
+    if (windings.size() != 2) {
+        throw InvalidInputException(ErrorCode::INVALID_INPUT,
+            "The differential-mode port is defined for exactly two windings in series opposition; this coil has " +
+            std::to_string(windings.size()));
+    }
+    if (!coil.get_turns_description()) {
+        coil.wind();
+    }
+    const auto firstWindingName = windings[0].get_name();
+    const auto secondWindingName = windings[1].get_name();
+    std::map<std::string, double> voltageRmsPerWinding;
+    double primaryNumberTurns = windings[0].get_number_turns();
+    for (auto& winding : windings) {
+        voltageRmsPerWinding[winding.get_name()] = 10.0 * winding.get_number_turns() / primaryNumberTurns;
+    }
+    // Terminal convention (an assumption, stated so it can be checked): calculate_voltages_per_turn
+    // ramps each winding from its FIRST turn in the turns description (full voltage, the start
+    // terminal) to its last (0, the far end). The port is therefore taken across the two windings'
+    // first-turn terminals with the last-turn terminals joined -- the line side of a common-mode
+    // choke wound with both windings in the same sense, measured with its load side shorted. MAS
+    // records no other terminal identity; a part whose line side is the last turn of a winding
+    // has the mirror-image ramp on that winding, and its C_DM is not this one.
+    auto voltagesOutput = calculate_voltages_per_turn(coil, voltageRmsPerWinding);
+    auto voltagesPerTurn = voltagesOutput.get_voltage_per_turn().value();
+    auto turns = coil.get_turns_description().value();
+
+    std::vector<double> portPotential(turns.size(), 0.0);
+    double maximumFirst = std::numeric_limits<double>::lowest();
+    double minimumSecond = std::numeric_limits<double>::max();
+    for (size_t turnIndex = 0; turnIndex < turns.size(); ++turnIndex) {
+        if (turns[turnIndex].get_winding() == firstWindingName) {
+            portPotential[turnIndex] = voltagesPerTurn[turnIndex];
+            maximumFirst = std::max(maximumFirst, portPotential[turnIndex]);
+        }
+        else if (turns[turnIndex].get_winding() == secondWindingName) {
+            portPotential[turnIndex] = -voltagesPerTurn[turnIndex];
+            minimumSecond = std::min(minimumSecond, portPotential[turnIndex]);
+        }
+        else {
+            throw InvalidInputException(ErrorCode::INVALID_COIL_CONFIGURATION,
+                "Turn " + turns[turnIndex].get_name() + " belongs to winding '" + turns[turnIndex].get_winding() +
+                "', which is not one of the coil's two windings");
+        }
+    }
+    const double portVoltage = maximumFirst - minimumSecond;
+    if (!(portVoltage > 0)) {
+        throw InvalidInputException(ErrorCode::CALCULATION_INVALID_RESULT,
+            "Differential-mode port voltage is not positive: the two windings carry no ramp");
+    }
+
+    double energy = 0;
+    // The map carries every adjacent pair under both orderings (i, j) and (j, i); each pair's
+    // capacitor stores its energy once.
+    for (const auto& [turnsKey, capacitance] : calculate_capacitance_among_turns(coil)) {
+        if (turnsKey.first > turnsKey.second) {
+            continue;
+        }
+        double voltageDrop = portPotential[turnsKey.first] - portPotential[turnsKey.second];
+        energy += 0.5 * capacitance * voltageDrop * voltageDrop;
+    }
+    if (std::isnan(energy)) {
+        throw NaNResultException("Differential-mode turn-to-turn energy is NaN");
+    }
+
+    auto elements = turn_to_core_elements(coil, core, frequency);
+    auto fixedCorePotential = resolve_core_reference_potential(coil, coreElectricalReference, voltagesOutput, voltageRmsPerWinding);
+    if (fixedCorePotential) {
+        double corePotential = fixedCorePotential.value();
+        if (coreElectricalReference->get_type() == CoreElectricalReferenceType::TIED_TO_WINDING) {
+            auto tiedWinding = coreElectricalReference->get_winding().value();
+            if (tiedWinding == secondWindingName) {
+                corePotential = -corePotential;  // that winding's potentials are negated at the DM port
+            }
+            else if (tiedWinding != firstWindingName) {
+                throw InvalidInputException(ErrorCode::INVALID_INPUT,
+                    "The core is tied to winding '" + tiedWinding + "', which is not part of the differential-mode port");
+            }
+        }
+        for (size_t turnIndex = 0; turnIndex < turns.size(); ++turnIndex) {
+            double drop = portPotential[turnIndex] - corePotential;
+            energy += 0.5 * elements[turnIndex] * drop * drop;
+        }
+    }
+    else {
+        auto gapSplit = core_gap_topology(core, coil, &turns, firstWindingName, secondWindingName);
+        // winding_pair_to_core_energy_from_elements applies the DM sign to the second winding
+        // itself, so it takes the unsigned ramp, with the joined far ends at offset 0.
+        energy += winding_pair_to_core_energy_from_elements(turns, elements, firstWindingName, secondWindingName,
+                                                            voltagesPerTurn, 0.0, gapSplit);
+    }
+    return 2 * energy / (portVoltage * portVoltage);
+}
+
 std::map<std::pair<size_t, size_t>, double> StrayCapacitance::calculate_capacitance_among_turns(Coil coil) {
     complete_toroidal_outer_crossings(coil);
     if (!coil.get_turns_description()) {

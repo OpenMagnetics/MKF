@@ -94,17 +94,29 @@ DifferentialModeParameters Impedance::calculate_differential_mode_parameters(Cor
         interWindingCapacitance = capacitanceMatrix[primaryName][secondaryName];
     }
 
-    return {leakageInductance, windingResistance, interWindingCapacitance};
+    // The capacitance that shunts the leakage at the DM port is not the inter-winding entry
+    // alone: driving the windings in series opposition also charges the turn-to-turn
+    // capacitances INSIDE each winding (their turns sit at the DM ramp, not at one potential) and
+    // every turn's element to the core. calculate_differential_mode_capacitance sums that energy
+    // (C_DM = 2 W / V_port^2). Same second pass at the resonance it implies, for the image factor.
+    StrayCapacitance differentialModeCapacitanceModel(strayCapacitanceModel);
+    double differentialModeCapacitance = differentialModeCapacitanceModel.calculate_differential_mode_capacitance(coil, core, std::nullopt, coreElectricalReference);
+    if (leakageInductance > 0 && differentialModeCapacitance > 0) {
+        double differentialResonance = 1.0 / (2.0 * std::numbers::pi * std::sqrt(leakageInductance * differentialModeCapacitance));
+        differentialModeCapacitance = differentialModeCapacitanceModel.calculate_differential_mode_capacitance(coil, core, differentialResonance, coreElectricalReference);
+    }
+
+    return {leakageInductance, windingResistance, interWindingCapacitance, differentialModeCapacitance};
 }
 
 std::complex<double> Impedance::differential_mode_impedance_from_parameters(const DifferentialModeParameters& parameters, double frequency) {
     auto angularFrequency = 2 * std::numbers::pi * frequency;
     auto inductiveImpedance = std::complex<double>(parameters.windingResistance, angularFrequency * parameters.leakageInductance);
-    if (parameters.interWindingCapacitance <= 0) {
+    if (parameters.differentialModeCapacitance <= 0) {
         // No capacitive path: the DM impedance is purely the leakage branch.
         return inductiveImpedance;
     }
-    auto capacitiveImpedance = std::complex<double>(0, -1.0 / (angularFrequency * parameters.interWindingCapacitance));
+    auto capacitiveImpedance = std::complex<double>(0, -1.0 / (angularFrequency * parameters.differentialModeCapacitance));
     return 1.0 / (1.0 / inductiveImpedance + 1.0 / capacitiveImpedance);
 }
 
@@ -465,13 +477,31 @@ WidebandImpedanceModel Impedance::build_wideband_impedance_model(Magnetic magnet
                 continue;  // no leakage path to this winding -> no extra resonance
             }
             auto secondaryName = coil.get_functional_description()[windingIndex].get_name();
-            double interWindingCapacitance = capacitanceMatrix[primaryName][secondaryName];
-            // Second pass at this leakage tank's resonance: the through-core inter-winding path
-            // carries the core image factor at the frequency where it acts (ABT #848).
-            if (interWindingCapacitance > 0) {
-                double differentialResonance = 1.0 / (2.0 * std::numbers::pi * std::sqrt(leakageInductance * interWindingCapacitance));
-                auto refined = StrayCapacitance(Settings::GetInstance().get_stray_capacitance_model()).calculate_capacitance(coil, core, differentialResonance, magnetic.get_core_electrical_reference()).get_capacitance_among_windings().value();
-                interWindingCapacitance = refined[primaryName][secondaryName];
+            double interWindingCapacitance;
+            if (numberWindings == 2) {
+                // Two windings: the leakage tank is the DM port's resonance, shunted by everything
+                // the port charges (calculate_differential_mode_capacitance), not by the
+                // inter-winding matrix entry alone. Second pass at its resonance, for the image
+                // factor (ABT #848).
+                StrayCapacitance differentialModeCapacitanceModel(Settings::GetInstance().get_stray_capacitance_model());
+                interWindingCapacitance = differentialModeCapacitanceModel.calculate_differential_mode_capacitance(coil, core, std::nullopt, magnetic.get_core_electrical_reference());
+                if (interWindingCapacitance > 0) {
+                    double differentialResonance = 1.0 / (2.0 * std::numbers::pi * std::sqrt(leakageInductance * interWindingCapacitance));
+                    interWindingCapacitance = differentialModeCapacitanceModel.calculate_differential_mode_capacitance(coil, core, differentialResonance, magnetic.get_core_electrical_reference());
+                }
+            }
+            else {
+                // More than two windings: a pair's DM port leaves the other windings open, at
+                // potentials the port does not define, so calculate_differential_mode_capacitance
+                // does not apply; the tank keeps the pair's inter-winding matrix entry.
+                interWindingCapacitance = capacitanceMatrix[primaryName][secondaryName];
+                // Second pass at this leakage tank's resonance: the through-core inter-winding path
+                // carries the core image factor at the frequency where it acts (ABT #848).
+                if (interWindingCapacitance > 0) {
+                    double differentialResonance = 1.0 / (2.0 * std::numbers::pi * std::sqrt(leakageInductance * interWindingCapacitance));
+                    auto refined = StrayCapacitance(Settings::GetInstance().get_stray_capacitance_model()).calculate_capacitance(coil, core, differentialResonance, magnetic.get_core_electrical_reference()).get_capacitance_among_windings().value();
+                    interWindingCapacitance = refined[primaryName][secondaryName];
+                }
             }
             // Referral factor (N_0/N_j)² for the secondary resistance in this leakage loop.
             double secondaryTurns = coil.get_functional_description()[windingIndex].get_number_turns();

@@ -311,6 +311,17 @@ class StrayCapacitance{
 
         std::map<std::pair<size_t, size_t>, double> calculate_capacitance_among_turns(Coil coil);
 
+        // Capacitance seen at the DIFFERENTIAL-MODE port of a two-winding magnetic: the two
+        // windings in series opposition, far ends joined, driven across their two start
+        // terminals. Energy method over EVERY capacitance the port charges -- the turn-to-turn
+        // pairs inside each winding and between them, and the turn-to-core elements against the
+        // floating (or bonded) core -- with the DM potentials (first winding +v_i, second -v_j,
+        // joined far ends at 0): C_DM = 2 W / V_port^2. This is what shunts the leakage
+        // inductance at the DM port; the inter-winding entry of the capacitance matrix is one
+        // branch of it only.
+        double calculate_differential_mode_capacitance(Coil coil, Core core, std::optional<double> frequency = std::nullopt,
+                                                       std::optional<CoreElectricalReference> coreElectricalReference = std::nullopt);
+
         // The optional core supplies the through-core inter-winding capacitance for
         // separated (non-adjacent) windings; omit it to keep the legacy behaviour where
         // separated windings have zero mutual capacitance.

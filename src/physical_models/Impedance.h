@@ -22,7 +22,12 @@ namespace OpenMagnetics {
 struct DifferentialModeParameters {
     double leakageInductance;
     double windingResistance;
+    // The inter-winding entry of the capacitance matrix (one branch of what the DM port sees).
     double interWindingCapacitance;
+    // What actually shunts the leakage at the DM port: the energy-method capacitance of the two
+    // windings in series opposition, every turn pair and the core included
+    // (StrayCapacitance::calculate_differential_mode_capacitance). The DM impedance uses this.
+    double differentialModeCapacitance;
 };
 
 // One arm of the wideband terminal-impedance model: a parallel-RLC tank. The

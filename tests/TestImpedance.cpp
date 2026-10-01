@@ -816,3 +816,86 @@ TEST_CASE("Toroidal CMC common-mode resonance against its s4p measurement (WE-CM
     // At the requirements-sheet value itself.
     CHECK(std::abs(medianAtSheetValue) <= toleranceAtSheetValue);
 }
+
+// The DM port of a two-winding choke (windings in series opposition, far ends joined) charges
+// more than the inter-winding path: the turns of each winding sit at the DM ramp, so the
+// turn-to-turn capacitances INSIDE each winding store energy too, and so does every turn's element
+// to the core. calculate_differential_mode_capacitance must be exactly the energy method over all
+// of them, C_DM = 2 W / V_port^2, with the first winding's turns at +v_i, the second's at -v_j:
+//   floating core: W = sum_pairs 1/2 C_ij dV^2 + calculate_winding_pair_to_core_energy (offset 0);
+//   grounded core: W = sum_pairs 1/2 C_ij dV^2 + 1/2 sum_i C_i V_i^2 (each winding's self energy
+//   against a core held at 0, the sign of -v_j squaring away).
+// And the DM impedance must resonate the leakage against C_DM, not against C_iw.
+TEST_CASE("Test_Impedance_Differential_Mode_Capacitance_Is_The_DM_Port_Energy", "[physical-model][impedance][cmc][stray-capacitance][captot]") {
+    auto testDataPath = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "cmc_we_744822222_enriched.json");
+    std::ifstream file(testDataPath);
+    OpenMagnetics::Magnetic magnetic(nlohmann::json::parse(file));
+    magnetic = magnetic_autocomplete(magnetic);
+    auto coil = magnetic.get_coil();
+    auto core = magnetic.get_core();
+    if (!coil.get_turns_description()) {
+        coil.wind();
+    }
+    auto windings = coil.get_functional_description();
+    REQUIRE(windings.size() == 2);
+    auto firstName = windings[0].get_name();
+    auto secondName = windings[1].get_name();
+    StrayCapacitance strayCapacitance(Settings::GetInstance().get_stray_capacitance_model());
+
+    std::map<std::string, double> voltageRmsPerWinding;
+    for (auto& winding : windings) {
+        voltageRmsPerWinding[winding.get_name()] = 10.0 * winding.get_number_turns() / windings[0].get_number_turns();
+    }
+    auto voltages = StrayCapacitance::calculate_voltages_per_turn(coil, voltageRmsPerWinding).get_voltage_per_turn().value();
+    auto turns = coil.get_turns_description().value();
+    std::vector<double> portPotential(turns.size());
+    double maximumFirst = std::numeric_limits<double>::lowest();
+    double maximumSecond = std::numeric_limits<double>::lowest();
+    for (size_t i = 0; i < turns.size(); ++i) {
+        bool first = turns[i].get_winding() == firstName;
+        portPotential[i] = first ? voltages[i] : -voltages[i];
+        (first ? maximumFirst : maximumSecond) = std::max(first ? maximumFirst : maximumSecond, voltages[i]);
+    }
+    const double portVoltage = maximumFirst + maximumSecond;
+    double turnToTurnEnergy = 0;
+    size_t intraWindingPairs = 0;
+    for (const auto& [key, capacitance] : strayCapacitance.calculate_capacitance_among_turns(coil)) {
+        if (key.first < key.second) {
+            turnToTurnEnergy += 0.5 * capacitance * std::pow(portPotential[key.first] - portPotential[key.second], 2);
+            intraWindingPairs += turns[key.first].get_winding() == turns[key.second].get_winding();
+        }
+    }
+    // The DM ramp puts real energy inside each winding: this is what C_iw leaves out.
+    REQUIRE(intraWindingPairs > 0);
+    REQUIRE(turnToTurnEnergy > 0);
+
+    double floatingCoreEnergy = StrayCapacitance::calculate_winding_pair_to_core_energy(coil, core, firstName, secondName, voltages, 0.0);
+    double floating = strayCapacitance.calculate_differential_mode_capacitance(coil, core);
+    CHECK_THAT(floating, Catch::Matchers::WithinRel(2 * (turnToTurnEnergy + floatingCoreEnergy) / (portVoltage * portVoltage), 1e-9));
+
+    CoreElectricalReference groundedReference;
+    groundedReference.set_type(CoreElectricalReferenceType::GROUNDED);
+    double groundedCoreEnergy = StrayCapacitance::calculate_winding_to_core_self_energy(coil, core, firstName, voltages, std::nullopt, 0.0) +
+                                StrayCapacitance::calculate_winding_to_core_self_energy(coil, core, secondName, voltages, std::nullopt, 0.0);
+    double grounded = strayCapacitance.calculate_differential_mode_capacitance(coil, core, std::nullopt, groundedReference);
+    CHECK_THAT(grounded, Catch::Matchers::WithinRel(2 * (turnToTurnEnergy + groundedCoreEnergy) / (portVoltage * portVoltage), 1e-9));
+
+    // The DM parameters carry C_DM (second pass at its own resonance), keep C_iw beside it, and
+    // the DM impedance is the leakage branch in parallel with C_DM.
+    auto parameters = OpenMagnetics::Impedance().calculate_differential_mode_parameters(magnetic, 1e6);
+    double resonance = 1.0 / (2 * std::numbers::pi * std::sqrt(parameters.leakageInductance *
+                                                              strayCapacitance.calculate_differential_mode_capacitance(coil, core)));
+    CHECK_THAT(parameters.differentialModeCapacitance,
+               Catch::Matchers::WithinRel(strayCapacitance.calculate_differential_mode_capacitance(coil, core, resonance), 1e-9));
+    CHECK(parameters.differentialModeCapacitance > parameters.interWindingCapacitance);
+    for (double frequency : {1e6, 3e7, 1e8}) {
+        double omega = 2 * std::numbers::pi * frequency;
+        std::complex<double> inductive(parameters.windingResistance, omega * parameters.leakageInductance);
+        std::complex<double> capacitive(0, -1.0 / (omega * parameters.differentialModeCapacitance));
+        auto expected = 1.0 / (1.0 / inductive + 1.0 / capacitive);
+        CHECK_THAT(std::abs(OpenMagnetics::Impedance().differential_mode_impedance_from_parameters(parameters, frequency)),
+                   Catch::Matchers::WithinRel(std::abs(expected), 1e-12));
+    }
+    std::cout << "744822222: C_iw " << parameters.interWindingCapacitance * 1e12 << " pF, C_DM " << parameters.differentialModeCapacitance * 1e12
+              << " pF (measured DM resonance 40.27 MHz -> 1.57 pF; fit 1.97 pF)" << std::endl;
+}
