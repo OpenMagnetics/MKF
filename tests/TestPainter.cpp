@@ -6,12 +6,16 @@
 #include "Fixtures.h"
 #include "physical_models/WindingLosses.h"
 #include "physical_models/StrayCapacitance.h"
+#include "physical_models/LeakageInductance.h"
+#include "support/CoilMesher.h"
 #include <source_location>
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
 
 #include <fstream>
 #include <limits>
+#include <numbers>
+#include <regex>
 #include <string>
 #include <cstdint>
 #include <filesystem>
@@ -5061,5 +5065,181 @@ namespace {
         CHECK_THROWS(painter.get_color(0, 1, "red", "#ffffff", 0.5));
         CHECK_THROWS(painter.get_color(0, 1, "#00000", "#ffffff", 0.5));
         CHECK_THROWS(painter.get_color(0, 1, "#000000", "#gg0000", 0.5));
+    }
+}  // namespace
+
+namespace {
+    // The toroid's painted H is the ring-plane field of the toroidal leakage model (LeakageInductance.h,
+    // "Toroidal cores"), the field whose energy is the model's L_DM. Until 2026-10 the Painter imaged every
+    // crossing in both walls, which cancelled the bore field, and painted nothing outside the core.
+    struct ExposedFieldPainter : Painter { using PainterInterface::calculate_magnetic_field; };
+
+    OperatingPoint toroid_sine_operating_point(const std::vector<double>& peakCurrents, double frequency) {
+        // A negative peak is a phase of pi.
+        OperatingPoint operatingPoint;
+        std::vector<OperatingPointExcitation> excitations;
+        for (double peak : peakCurrents) {
+            SignalDescriptor current;
+            current.set_waveform(OpenMagnetics::Inputs::create_waveform(WaveformLabel::SINUSOIDAL, 2 * std::fabs(peak), frequency, 0.5, 0, 0, 0, peak < 0 ? std::numbers::pi : 0));
+            OperatingPointExcitation excitation;
+            excitation.set_frequency(frequency);
+            excitation.set_current(current);
+            excitations.push_back(excitation);
+        }
+        operatingPoint.set_excitations_per_winding(excitations);
+        OperatingConditions conditions;
+        conditions.set_ambient_temperature(25);
+        operatingPoint.set_conditions(conditions);
+        return operatingPoint;
+    }
+
+    // ∮ H·dl around the circle of the given radius centred on the core axis, by the midpoint rule.
+    double ring_plane_circulation(const LeakageInductance::ToroidalRingPlaneConductors& conductors, double radius, size_t numberSegments) {
+        double circulation = 0;
+        double dphi = 2 * std::numbers::pi / numberSegments;
+        for (size_t segment = 0; segment < numberSegments; ++segment) {
+            double phi = (segment + 0.5) * dphi;
+            auto h = LeakageInductance::calculate_toroidal_ring_plane_field(conductors, radius * std::cos(phi), radius * std::sin(phi));
+            circulation += (-h[0] * std::sin(phi) + h[1] * std::cos(phi)) * radius * dphi;
+        }
+        return circulation;
+    }
+
+    TEST_CASE("Painter toroid H is the ring-plane field of the toroidal leakage model, inside and outside the core", "[support][painter][magnetic-field-painter][toroidal][painter-toroid-field]") {
+        // WE 744822222 (T 14/8/9, 2 x 18 turns), 1 A peak at 100 kHz in differential and common mode.
+        settings.reset();
+        clear_databases();
+        auto testDataPath = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "cmc_we_744822222_functional.json");
+        std::ifstream file(testDataPath);
+        REQUIRE(file.good());
+        OpenMagnetics::Magnetic magnetic(json::parse(file));
+        magnetic = magnetic_autocomplete(magnetic);
+        settings.set_painter_number_points_x(40);
+        settings.set_painter_number_points_y(40);
+        settings.set_painter_logarithmic_scale(false);
+        settings.set_painter_maximum_value_colorbar(std::nullopt);
+        settings.set_painter_minimum_value_colorbar(std::nullopt);
+
+        double frequency = 100e3;
+        // The Painter drives winding w with its current times the MAS direction of w; DM is opposite effective
+        // bore currents, CM equal ones.
+        auto directions = CoilMesher::calculate_current_direction_per_winding(magnetic.get_coil());
+        std::vector<std::pair<std::string, std::vector<double>>> modes = {
+            {"DM", {1.0 * directions[0], -1.0 * directions[1]}},
+            {"CM", {1.0 * directions[0], 1.0 * directions[1]}},
+        };
+        for (const auto& [mode, peakCurrents] : modes) {
+            INFO(mode);
+            auto operatingPoint = toroid_sine_operating_point(peakCurrents, frequency);
+            // In-phase effective currents: the MKF harmonic amplitude of each winding's sampled sine, signed by its
+            // phase (0 or pi) relative to the reference winding's and by its MAS direction.
+            auto referenceWinding = CoilMesher::get_reference_winding_index(magnetic.get_coil());
+            std::vector<double> effectiveCurrents;
+            for (size_t winding = 0; winding < 2; ++winding) {
+                auto waveform = operatingPoint.get_excitations_per_winding()[winding].get_current()->get_waveform().value();
+                auto sampled = OpenMagnetics::Inputs::calculate_sampled_waveform(waveform, frequency);
+                double amplitude = OpenMagnetics::Inputs::calculate_harmonics_data(waveform, sampled, frequency).get_amplitudes()[1];
+                CHECK_THAT(amplitude, Catch::Matchers::WithinRel(1.0, 0.01));
+                double relativeSign = (peakCurrents[winding] < 0) == (peakCurrents[referenceWinding] < 0) ? 1.0 : -1.0;
+                effectiveCurrents.push_back(amplitude * relativeSign * directions[winding]);
+            }
+            auto conductors = LeakageInductance::calculate_toroidal_ring_plane_conductors(magnetic, effectiveCurrents);
+            REQUIRE(!conductors.bore.empty());
+
+            // 1. The field the Painter paints is calculate_toroidal_ring_plane_field at its grid points. The
+            //    phasor of a sampled sine is exact to the waveform's sampling, hence the relative 1e-9.
+            ExposedFieldPainter painter;
+            auto field = painter.calculate_magnetic_field(operatingPoint, magnetic, 1);
+            REQUIRE(field.get_data().size() > 100);
+            size_t outsidePoints = 0;
+            size_t outsideNonZero = 0;
+            size_t borePoints = 0;
+            size_t ferritePoints = 0;
+            for (const auto& datum : field.get_data()) {
+                auto point = datum.get_point();
+                auto expected = LeakageInductance::calculate_toroidal_ring_plane_field(conductors, point[0], point[1]);
+                double expectedModule = std::hypot(expected[0], expected[1]);
+                double tolerance = 1e-9 * expectedModule + 1e-12;
+                CHECK(std::fabs(datum.get_real() - expected[0]) <= tolerance);
+                CHECK(std::fabs(datum.get_imaginary() - expected[1]) <= tolerance);
+                double radius = std::hypot(point[0], point[1]);
+                if (radius > conductors.outerWallRadius) {
+                    ++outsidePoints;
+                    if (std::hypot(datum.get_real(), datum.get_imaginary()) > 0) {
+                        ++outsideNonZero;
+                    }
+                }
+                else if (radius < conductors.innerWallRadius) {
+                    ++borePoints;
+                }
+                else {
+                    ++ferritePoints;
+                }
+            }
+            // The grid covers the bore, the ferrite and the outside, and the field outside the core is not zero.
+            CHECK(borePoints > 0);
+            CHECK(ferritePoints > 0);
+            REQUIRE(outsidePoints > 0);
+            CHECK(outsideNonZero == outsidePoints);
+
+            // 2. The painted SVG carries each point's |H| in its title, to two significant figures, in field order.
+            auto outFile = outputFilePath;
+            outFile.append("Test_Painter_Toroid_Ring_Plane_Field_" + mode + ".svg");
+            std::filesystem::remove(outFile);
+            Painter svgPainter(outFile);
+            svgPainter.paint_magnetic_field(operatingPoint, magnetic);
+            auto svg = svgPainter.export_svg();
+            std::regex titleRegex("<title>([-+0-9.e]+) A/m</title>");
+            std::vector<double> labels;
+            for (auto it = std::sregex_iterator(svg.begin(), svg.end(), titleRegex); it != std::sregex_iterator(); ++it) {
+                labels.push_back(std::stod((*it)[1].str()));
+            }
+            REQUIRE(labels.size() == field.get_data().size());
+            for (size_t index = 0; index < labels.size(); ++index) {
+                auto point = field.get_data()[index].get_point();
+                auto expected = LeakageInductance::calculate_toroidal_ring_plane_field(conductors, point[0], point[1]);
+                double expectedModule = std::hypot(expected[0], expected[1]);
+                // "%.1e": half a unit of the second significant figure.
+                double rounding = expectedModule > 0 ? 0.5 * std::pow(10.0, std::floor(std::log10(expectedModule)) - 1) : 0;
+                CHECK(std::fabs(labels[index] - expectedModule) <= rounding * (1 + 1e-9));
+            }
+            CHECK(svg.find("0x") == std::string::npos);
+
+            // 3. Ampère: the circulation is 0 on a circle around the bore centre inside every crossing, Σ I_bore in
+            //    the ferrite, and 0 outside every crossing. The integrand is smooth on each circle, so the midpoint
+            //    rule converges geometrically; 1e-6 of the turn current is far below any modelling term.
+            double boreNetCurrent = 0;
+            double smallestBoreRadius = std::numeric_limits<double>::max();
+            double largestOuterRadius = 0;
+            for (const auto& conductor : conductors.bore) {
+                boreNetCurrent += conductor.current;
+                smallestBoreRadius = std::min(smallestBoreRadius, std::hypot(conductor.x, conductor.y) - conductor.geometricMeanRadius * std::exp(0.25));
+            }
+            for (const auto& conductor : conductors.outer) {
+                largestOuterRadius = std::max(largestOuterRadius, std::hypot(conductor.x, conductor.y) + conductor.geometricMeanRadius * std::exp(0.25));
+            }
+            double ferriteRadius = (conductors.innerWallRadius + conductors.outerWallRadius) / 2;
+            CHECK_THAT(ring_plane_circulation(conductors, 0.5 * smallestBoreRadius, 4096), Catch::Matchers::WithinAbs(0, 1e-6));
+            CHECK_THAT(ring_plane_circulation(conductors, ferriteRadius, 4096), Catch::Matchers::WithinAbs(boreNetCurrent, 1e-6));
+            CHECK_THAT(ring_plane_circulation(conductors, 1.5 * largestOuterRadius, 4096), Catch::Matchers::WithinAbs(0, 1e-6));
+            if (mode == "CM") {
+                CHECK_THAT(std::fabs(boreNetCurrent), Catch::Matchers::WithinRel(36.0 * std::fabs(effectiveCurrents[0]), 1e-12));
+            }
+            else {
+                CHECK_THAT(boreNetCurrent, Catch::Matchers::WithinAbs(0.0, 1e-12));
+            }
+
+            // 4. A given field is painted as given on a toroid.
+            auto inputFile = outputFilePath;
+            inputFile.append("Test_Painter_Toroid_Input_Field_" + mode + ".svg");
+            std::filesystem::remove(inputFile);
+            Painter inputPainter(inputFile);
+            inputPainter.paint_magnetic_field(operatingPoint, magnetic, 1, field);
+            auto inputSvg = inputPainter.export_svg();
+            size_t inputLabels = std::distance(std::sregex_iterator(inputSvg.begin(), inputSvg.end(), titleRegex), std::sregex_iterator());
+            CHECK(inputLabels == field.get_data().size());
+            CHECK(std::filesystem::exists(inputFile));
+        }
+        settings.reset();
     }
 }  // namespace

@@ -373,8 +373,8 @@ class PainterInterface {
     virtual std::string export_svg() = 0;
     virtual void export_png() = 0;
     virtual void paint_core(Magnetic magnetic) = 0;
-    ComplexField calculate_magnetic_field_internal_only(OperatingPoint operatingPoint, Magnetic magnetic, size_t harmonicIndex);
-    ComplexField calculate_magnetic_field_external_only(OperatingPoint operatingPoint, Magnetic magnetic, size_t harmonicIndex);
+    // Toroids: the ring-plane field of the toroidal leakage model on the painter grid (see Painter.cpp).
+    ComplexField calculate_toroidal_magnetic_field(OperatingPoint operatingPoint, Magnetic magnetic, size_t harmonicIndex = 1);
     virtual void paint_bobbin(Magnetic magnetic) = 0;
     virtual void paint_coil_sections(Magnetic magnetic) = 0;
     virtual void paint_coil_layers(Magnetic magnetic) = 0;

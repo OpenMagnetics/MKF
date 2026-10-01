@@ -121,6 +121,27 @@ class LeakageInductance{
     // the exterior energy of the potential cos(mφ) prescribed on the envelope, divided by 2πm (its 2-D per-length value).
     // refinement scales the mesh density; farFieldFactor puts the zero-potential boundary at farFieldFactor·outerRadius.
     static double calculate_body_of_revolution_effective_height(double innerRadius, double outerRadius, double height, size_t mode, double refinement = 1.0, double farFieldFactor = 30.0);
+    // The ring-plane line currents of a toroidal magnetic for signed currents per winding (one per winding, A):
+    // the bore crossing of every turn carries its winding current / parallels, the outer crossing the opposite.
+    // Turns of a winding with zero current are left out. Shared by the leakage energy and by the Painter's field.
+    struct ToroidalRingPlaneConductors {
+        std::vector<ToroidalLineCurrent> bore;
+        std::vector<ToroidalLineCurrent> outer;
+        std::vector<double> turnAngles;       // azimuth of each bore crossing, same order as bore
+        std::vector<double> turnCurrents;     // current of each turn, same order as bore
+        double innerWallRadius;               // m, B/2
+        double outerWallRadius;               // m, A/2
+        double coreHeight;                    // m, C times the number of stacks
+        double imageFactor;                   // (µ − 1)/(µ + 1), initial permeability at the ambient temperature
+    };
+    static ToroidalRingPlaneConductors calculate_toroidal_ring_plane_conductors(Magnetic magnetic, const std::vector<double>& currentPerWinding);
+    // H (A/m) at (x, y) of the ring-plane model: in the bore (r < B/2) and outside the core (r > A/2) it is
+    // calculate_ring_plane_region_field of that region's crossings. In the ferrite (B/2 <= r <= A/2) it is the
+    // field each single-interface image solution transmits into the permeable side: a line current I in air at z
+    // next to a permeable region continues there as (1 − k)·I at z (Binns, Lawrenson and Trowbridge, ch. 3), and
+    // the bore crossings' remaining k·Σ I_bore sits at the centre, so that the circulation in the ferrite is
+    // Σ I_bore (Ampère; it is the magnetizing field of the core).
+    static std::array<double, 2> calculate_toroidal_ring_plane_field(const ToroidalRingPlaneConductors& conductors, double x, double y);
     // Leakage energy (J) of a toroidal magnetic for signed peak currents per winding.
     static ToroidalLeakageEnergy calculate_toroidal_leakage_energy(Magnetic magnetic, const std::vector<double>& currentPerWinding);
 

@@ -926,7 +926,7 @@ double LeakageInductance::cached_body_of_revolution_effective_height(double inne
     return effectiveHeight;
 }
 
-LeakageInductance::ToroidalLeakageEnergy LeakageInductance::calculate_toroidal_leakage_energy(Magnetic magnetic, const std::vector<double>& currentPerWinding) {
+LeakageInductance::ToroidalRingPlaneConductors LeakageInductance::calculate_toroidal_ring_plane_conductors(Magnetic magnetic, const std::vector<double>& currentPerWinding) {
     auto& core = magnetic.get_mutable_core();
     if (core.get_shape_family() != CoreShapeFamily::T) {
         throw InvalidInputException(ErrorCode::INVALID_CORE_DATA, "Toroidal leakage model called on a core that is not toroidal");
@@ -987,13 +987,11 @@ LeakageInductance::ToroidalLeakageEnergy LeakageInductance::calculate_toroidal_l
         windingIndexByName[windings[windingIndex].get_name()] = windingIndex;
     }
 
-    std::vector<ToroidalLineCurrent> boreConductors;
-    std::vector<ToroidalLineCurrent> outerConductors;
-    std::vector<double> turnAngles;
-    std::vector<double> turnCurrents;
-    double boreRadiusSum = 0;
-    double outerRadiusSum = 0;
-    double currentWeightSum = 0;
+    ToroidalRingPlaneConductors conductors;
+    conductors.innerWallRadius = innerWallRadius;
+    conductors.outerWallRadius = outerWallRadius;
+    conductors.coreHeight = coreHeight;
+    conductors.imageFactor = imageFactor;
     const auto turns = coil.get_turns_description().value();
     for (auto& turn : turns) {
         auto found = windingIndexByName.find(turn.get_winding());
@@ -1015,16 +1013,65 @@ LeakageInductance::ToroidalLeakageEnergy LeakageInductance::calculate_toroidal_l
         auto outer = turn.get_additional_coordinates().value()[0];
         double geometricMeanRadius = geometricMeanRadiusPerWinding[windingIndex];
         // The bore crossing and the outer crossing of one turn carry its current in opposite directions.
-        boreConductors.push_back({inner[0], inner[1], current, geometricMeanRadius});
-        outerConductors.push_back({outer[0], outer[1], -current, geometricMeanRadius});
-        turnAngles.push_back(std::atan2(inner[1], inner[0]));
-        turnCurrents.push_back(current);
-        boreRadiusSum += std::abs(current) * std::hypot(inner[0], inner[1]);
-        outerRadiusSum += std::abs(current) * std::hypot(outer[0], outer[1]);
-        currentWeightSum += std::abs(current);
+        conductors.bore.push_back({inner[0], inner[1], current, geometricMeanRadius});
+        conductors.outer.push_back({outer[0], outer[1], -current, geometricMeanRadius});
+        conductors.turnAngles.push_back(std::atan2(inner[1], inner[0]));
+        conductors.turnCurrents.push_back(current);
     }
-    if (boreConductors.empty()) {
+    return conductors;
+}
+
+std::array<double, 2> LeakageInductance::calculate_toroidal_ring_plane_field(const ToroidalRingPlaneConductors& conductors, double x, double y) {
+    double radius = std::hypot(x, y);
+    if (radius < conductors.innerWallRadius) {
+        return calculate_ring_plane_region_field(conductors.bore, conductors.innerWallRadius, conductors.imageFactor, true, x, y);
+    }
+    if (radius > conductors.outerWallRadius) {
+        return calculate_ring_plane_region_field(conductors.outer, conductors.outerWallRadius, conductors.imageFactor, false, x, y);
+    }
+    // Ferrite: H of a z-directed line current I at c is (I / 2π)·(−(y − c_y), x − c_x) / ρ².
+    auto add_line = [&](std::array<double, 2>& field, double current, double cx, double cy) {
+        double dx = x - cx;
+        double dy = y - cy;
+        double rho2 = dx * dx + dy * dy;
+        field[0] += -current / (2 * std::numbers::pi) * dy / rho2;
+        field[1] += current / (2 * std::numbers::pi) * dx / rho2;
+    };
+    std::array<double, 2> field = {0, 0};
+    double transmission = 1 - conductors.imageFactor;
+    double boreNetCurrent = 0;
+    for (auto& conductor : conductors.bore) {
+        add_line(field, transmission * conductor.current, conductor.x, conductor.y);
+        boreNetCurrent += conductor.current;
+    }
+    for (auto& conductor : conductors.outer) {
+        add_line(field, transmission * conductor.current, conductor.x, conductor.y);
+    }
+    add_line(field, conductors.imageFactor * boreNetCurrent, 0, 0);
+    return field;
+}
+
+LeakageInductance::ToroidalLeakageEnergy LeakageInductance::calculate_toroidal_leakage_energy(Magnetic magnetic, const std::vector<double>& currentPerWinding) {
+    auto conductors = calculate_toroidal_ring_plane_conductors(magnetic, currentPerWinding);
+    if (conductors.bore.empty()) {
         throw InvalidInputException(ErrorCode::INVALID_INPUT, "Toroidal leakage: no turn carries current");
+    }
+    double innerWallRadius = conductors.innerWallRadius;
+    double outerWallRadius = conductors.outerWallRadius;
+    double coreHeight = conductors.coreHeight;
+    double imageFactor = conductors.imageFactor;
+    const auto& boreConductors = conductors.bore;
+    const auto& outerConductors = conductors.outer;
+    const auto& turnAngles = conductors.turnAngles;
+    const auto& turnCurrents = conductors.turnCurrents;
+    double boreRadiusSum = 0;
+    double outerRadiusSum = 0;
+    double currentWeightSum = 0;
+    for (size_t index = 0; index < boreConductors.size(); ++index) {
+        double weight = std::abs(boreConductors[index].current);
+        boreRadiusSum += weight * std::hypot(boreConductors[index].x, boreConductors[index].y);
+        outerRadiusSum += weight * std::hypot(outerConductors[index].x, outerConductors[index].y);
+        currentWeightSum += weight;
     }
 
     ToroidalLeakageEnergy result;

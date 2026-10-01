@@ -1,6 +1,7 @@
 #include "physical_models/MagneticField.h"
 #include <numbers>
 #include "physical_models/StrayCapacitance.h"
+#include "physical_models/LeakageInductance.h"
 #include "support/Painter.h"
 #include "support/CoilMesher.h"
 #include "constructive_models/Coil.h"
@@ -45,6 +46,9 @@ static void resolve_harmonic_index_for_painting(const Harmonics& harmonics, size
 }
 
 ComplexField PainterInterface::calculate_magnetic_field(OperatingPoint operatingPoint, Magnetic magnetic, size_t harmonicIndex) {
+    if (magnetic.get_core().get_shape_family() == MAS::CoreShapeFamily::T) {
+        return calculate_toroidal_magnetic_field(operatingPoint, magnetic, harmonicIndex);
+    }
     if (!operatingPoint.get_excitations_per_winding()[0].get_current()) {
         throw InvalidInputException(ErrorCode::MISSING_DATA, "Current is missing in excitation");
     }
@@ -120,118 +124,82 @@ ComplexField PainterInterface::calculate_magnetic_field(OperatingPoint operating
     return field;
 }
 
-ComplexField PainterInterface::calculate_magnetic_field_internal_only(OperatingPoint operatingPoint, Magnetic magnetic, size_t harmonicIndex) {
-    // Calculate field using only internal turns (original coordinates)
-    if (!operatingPoint.get_excitations_per_winding()[0].get_current()) {
-        throw InvalidInputException(ErrorCode::MISSING_DATA, "Current is missing in excitation");
+ComplexField PainterInterface::calculate_toroidal_magnetic_field(OperatingPoint operatingPoint, Magnetic magnetic, size_t harmonicIndex) {
+    // The ring-plane field of the toroidal leakage model (LeakageInductance.h, "Toroidal cores"; white
+    // paper section 9.3): per-region Kelvin images with the net-current term, built and evaluated by the
+    // same code that gives the leakage energy, so that the picture is the field whose energy is the
+    // model's L_DM. Each winding is driven by its current phasor at the painted harmonic, signed by the
+    // MAS direction convention (CoilMesher::calculate_current_direction_per_winding). Like the other cores'
+    // painter field (MagneticField's in-phase output), each point holds the in-phase field, i.e. the field of
+    // the peak currents' components in phase with the gauge winding (CoilMesher::calculate_current_phase_per_winding),
+    // as real = Hx and imaginary = Hy.
+    if (magnetic.get_core().get_shape_family() != MAS::CoreShapeFamily::T) {
+        throw InvalidInputException(ErrorCode::INVALID_CORE_DATA, "calculate_toroidal_magnetic_field needs a toroidal core");
     }
-    for (size_t windingIndex = 0; windingIndex < magnetic.get_coil().get_functional_description().size(); ++windingIndex) {
-        if (!operatingPoint.get_excitations_per_winding()[windingIndex].get_current()->get_harmonics()) {
-            auto current = operatingPoint.get_excitations_per_winding()[windingIndex].get_current().value();
-            if (!current.get_waveform()) {
-                throw InvalidInputException(ErrorCode::MISSING_DATA, "Waveform is missing from current");
-            }
-            auto sampledWaveform = Inputs::calculate_sampled_waveform(current.get_waveform().value(), operatingPoint.get_excitations_per_winding()[windingIndex].get_frequency());
-            auto harmonics = Inputs::calculate_harmonics_data(current.get_waveform().value(), sampledWaveform, operatingPoint.get_excitations_per_winding()[windingIndex].get_frequency());
-            current.set_harmonics(harmonics);
-            if (!current.get_processed()) {
-                auto processed = Inputs::calculate_processed_data(harmonics, sampledWaveform, true);
-                current.set_processed(processed);
-            }
-            operatingPoint.get_mutable_excitations_per_winding()[windingIndex].set_current(current);
+    auto coil = magnetic.get_coil();
+    size_t numberWindings = coil.get_functional_description().size();
+    if (operatingPoint.get_excitations_per_winding().size() != numberWindings) {
+        throw InvalidInputException(ErrorCode::MISSING_DATA, "Toroidal field: " + std::to_string(operatingPoint.get_excitations_per_winding().size()) +
+                                    " excitations for " + std::to_string(numberWindings) + " windings");
+    }
+    auto excitationFrequency = operatingPoint.get_excitations_per_winding()[0].get_frequency();
+    for (const auto& excitation : operatingPoint.get_excitations_per_winding()) {
+        if (!excitation.get_current() || !excitation.get_current()->get_waveform()) {
+            throw InvalidInputException(ErrorCode::MISSING_DATA, "Toroidal field: every winding needs a current waveform");
+        }
+        if (excitation.get_frequency() != excitationFrequency) {
+            throw InvalidInputException(ErrorCode::INVALID_INPUT, "Toroidal field: the windings are excited at different frequencies");
         }
     }
-
-    auto harmonics = operatingPoint.get_excitations_per_winding()[0].get_current()->get_harmonics().value();
+    // Every winding's harmonics, from its waveform when MAS does not list them, so that the phases come from
+    // the same gauge as every other core's painted field (CoilMesher::calculate_current_phase_per_winding).
+    auto excitations = operatingPoint.get_excitations_per_winding();
+    for (auto& excitation : excitations) {
+        auto current = excitation.get_current().value();
+        if (!current.get_harmonics()) {
+            auto sampledWaveform = Inputs::calculate_sampled_waveform(current.get_waveform().value(), excitationFrequency);
+            current.set_harmonics(Inputs::calculate_harmonics_data(current.get_waveform().value(), sampledWaveform, excitationFrequency));
+            excitation.set_current(current);
+        }
+    }
+    operatingPoint.set_excitations_per_winding(excitations);
+    Harmonics harmonics = excitations[0].get_current()->get_harmonics().value();
     resolve_harmonic_index_for_painting(harmonics, harmonicIndex);
-    auto frequency = harmonics.get_frequencies()[harmonicIndex];
+    if (harmonicIndex >= harmonics.get_frequencies().size()) {
+        throw InvalidInputException(ErrorCode::INVALID_INPUT, "Toroidal field: harmonic " + std::to_string(harmonicIndex) + " is not in the current");
+    }
+    double frequency = harmonics.get_frequencies()[harmonicIndex];
 
-    bool includeFringing = settings.get_painter_include_fringing();
-    int mirroringDimension = settings.get_painter_mirroring_dimension();  // int (0/1/2/3 mirroring planes), was truncated through bool
+    // In-phase current of winding w: A_w cos(phi_w - phi_gauge), signed by its MAS direction.
+    auto directions = CoilMesher::calculate_current_direction_per_winding(coil);
+    auto phases = CoilMesher::calculate_current_phase_per_winding(coil, operatingPoint, {harmonicIndex})[0];
+    std::vector<double> realCurrents(numberWindings);
+    for (size_t windingIndex = 0; windingIndex < numberWindings; ++windingIndex) {
+        const auto amplitudes = excitations[windingIndex].get_current()->get_harmonics()->get_amplitudes();
+        double amplitude = harmonicIndex < amplitudes.size() ? amplitudes[harmonicIndex] : 0.0;  // a winding without this harmonic carries none of it
+        realCurrents[windingIndex] = amplitude * std::cos(phases[windingIndex]) * static_cast<double>(directions[windingIndex]);
+    }
+    auto conductors = LeakageInductance::calculate_toroidal_ring_plane_conductors(magnetic, realCurrents);
 
     size_t numberPointsX = settings.get_painter_number_points_x();
     size_t numberPointsY = settings.get_painter_number_points_y();
-    Field inducedField = CoilMesher::generate_mesh_induced_grid(magnetic, frequency, numberPointsX, numberPointsY, true, true, true).first;
-
-    auto modelOverride = settings.get_painter_magnetic_field_strength_model();
-    auto magneticFieldModel = modelOverride.value_or(settings.get_magnetic_field_strength_model());
-    auto fringingEffectModel = settings.get_magnetic_field_strength_fringing_effect_model();
-    MagneticField magneticField(magneticFieldModel, fringingEffectModel);
-    // RAII: restore the global magnetic-field settings on scope exit. They used to be
-    // overwritten permanently, leaking the painter's fringing/mirroring choice into
-    // every later physics computation in the process.
-    SettingsGuard<bool> fringingGuard(settings, &Settings::get_magnetic_field_include_fringing, &Settings::set_magnetic_field_include_fringing, includeFringing);
-    SettingsGuard<int> mirroringGuard(settings, &Settings::get_magnetic_field_mirroring_dimension, &Settings::set_magnetic_field_mirroring_dimension, mirroringDimension);
-    
-    auto windingWindowMagneticStrengthFieldOutput = magneticField.calculate_magnetic_field_strength_field(operatingPoint, magnetic, inducedField);
-    return windingWindowMagneticStrengthFieldOutput.get_field_per_frequency()[0];
+    Field grid = CoilMesher::generate_mesh_induced_grid(magnetic, frequency, numberPointsX, numberPointsY, true, true, true).first;
+    ComplexField field;
+    field.set_frequency(frequency);
+    std::vector<ComplexFieldPoint> data;
+    data.reserve(grid.get_data().size());
+    for (const auto& gridPoint : grid.get_data()) {
+        const auto& point = gridPoint.get_point();
+        auto h = LeakageInductance::calculate_toroidal_ring_plane_field(conductors, point[0], point[1]);
+        ComplexFieldPoint datum;
+        datum.set_point(point);
+        datum.set_real(h[0]);
+        datum.set_imaginary(h[1]);
+        data.push_back(datum);
+    }
+    field.set_data(data);
+    return field;
 }
-
-ComplexField PainterInterface::calculate_magnetic_field_external_only(OperatingPoint operatingPoint, Magnetic magnetic, size_t harmonicIndex) {
-    // Calculate field using only external turns (additional coordinates)
-    if (!operatingPoint.get_excitations_per_winding()[0].get_current()) {
-        throw InvalidInputException(ErrorCode::MISSING_DATA, "Current is missing in excitation");
-    }
-    for (size_t windingIndex = 0; windingIndex < magnetic.get_coil().get_functional_description().size(); ++windingIndex) {
-        if (!operatingPoint.get_excitations_per_winding()[windingIndex].get_current()->get_harmonics()) {
-            auto current = operatingPoint.get_excitations_per_winding()[windingIndex].get_current().value();
-            if (!current.get_waveform()) {
-                throw InvalidInputException(ErrorCode::MISSING_DATA, "Waveform is missing from current");
-            }
-            auto sampledWaveform = Inputs::calculate_sampled_waveform(current.get_waveform().value(), operatingPoint.get_excitations_per_winding()[windingIndex].get_frequency());
-            auto harmonics = Inputs::calculate_harmonics_data(current.get_waveform().value(), sampledWaveform, operatingPoint.get_excitations_per_winding()[windingIndex].get_frequency());
-            current.set_harmonics(harmonics);
-            if (!current.get_processed()) {
-                auto processed = Inputs::calculate_processed_data(harmonics, sampledWaveform, true);
-                current.set_processed(processed);
-            }
-            operatingPoint.get_mutable_excitations_per_winding()[windingIndex].set_current(current);
-        }
-    }
-
-    auto harmonics = operatingPoint.get_excitations_per_winding()[0].get_current()->get_harmonics().value();
-    resolve_harmonic_index_for_painting(harmonics, harmonicIndex);
-    auto frequency = harmonics.get_frequencies()[harmonicIndex];
-
-    bool includeFringing = settings.get_painter_include_fringing();
-    int mirroringDimension = settings.get_painter_mirroring_dimension();  // int (0/1/2/3 mirroring planes), was truncated through bool
-
-    size_t numberPointsX = settings.get_painter_number_points_x();
-    size_t numberPointsY = settings.get_painter_number_points_y();
-    Field inducedField = CoilMesher::generate_mesh_induced_grid(magnetic, frequency, numberPointsX, numberPointsY, true, true, true).first;
-
-    auto modelOverride = settings.get_painter_magnetic_field_strength_model();
-    auto magneticFieldModel = modelOverride.value_or(settings.get_magnetic_field_strength_model());
-    auto fringingEffectModel = settings.get_magnetic_field_strength_fringing_effect_model();
-    MagneticField magneticField(magneticFieldModel, fringingEffectModel);
-    // RAII: restore the global magnetic-field settings on scope exit. They used to be
-    // overwritten permanently, leaking the painter's fringing/mirroring choice into
-    // every later physics computation in the process.
-    SettingsGuard<bool> fringingGuard(settings, &Settings::get_magnetic_field_include_fringing, &Settings::set_magnetic_field_include_fringing, includeFringing);
-    SettingsGuard<int> mirroringGuard(settings, &Settings::get_magnetic_field_mirroring_dimension, &Settings::set_magnetic_field_mirroring_dimension, mirroringDimension);
-    
-    // Swap to external coordinates
-    auto turns = magnetic.get_coil().get_turns_description().value();
-    bool hasAdditional = false;
-    for (size_t turnIndex = 0; turnIndex < turns.size(); ++turnIndex) {
-        if (turns[turnIndex].get_additional_coordinates()) {
-            turns[turnIndex].set_coordinates(turns[turnIndex].get_additional_coordinates().value()[0]);
-            hasAdditional = true;
-        }
-    }
-    
-    if (!hasAdditional) {
-        // No external turns, return empty field
-        ComplexField emptyField;
-        emptyField.set_frequency(frequency);
-        return emptyField;
-    }
-    
-    magnetic.get_mutable_coil().set_turns_description(turns);
-    auto windingWindowMagneticStrengthFieldOutput = magneticField.calculate_magnetic_field_strength_field(operatingPoint, magnetic, inducedField);
-    return windingWindowMagneticStrengthFieldOutput.get_field_per_frequency()[0];
-}
-
 
 // ==================== SDF Primitives ====================
 
