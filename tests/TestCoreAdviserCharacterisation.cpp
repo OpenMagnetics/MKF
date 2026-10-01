@@ -219,12 +219,20 @@ void check_top_n(const std::string& label,
 // #756/#764 shape corrections) moved the min-max normalization pool (ABT #398). Same
 // slot-0 core; EP 20/PQ 20/20 3C96 climb past the EFD 3C95, and a second EP 20 gap
 // variant (0.598 mm) displaces the PQ 20/20 3C94 from the tail. Scores -2.4%.
+// Refreshed 2026-10-01 (ABT #1551, user-approved). NOT an MKF change: bisected (first-parent,
+// 8f07c293..fd4751f1) to 535103cb, the MAS bump to 2acaf9b, and within it to MAS 2acaf9b
+// "Norwe column openings re-read from drawings" (ABT #1244). 535103cb's code with MAS b7cf597
+// reproduces the old pin bit-for-bit; with 2acaf9b it gives these values. Every top-5
+// candidate keeps its N, gap, quick bobbin and core/winding losses; what moves is
+// Bobbin::get_filling_factor (EP 20 0.670 -> 0.613), a spline fitted through the whole bobbin
+// catalogue, and with it the pool-relative area-product and loss normalisation. Same slot-0
+// core; EP 20 0.598 climbs past PQ 20/20 and EFD 3C95. Scores -3.7%.
 const std::vector<TopEntry> kTopAvailablePower = {
-    {"EFD 25/13/9 - 3C96 - Gapped 0.43 mm",        3.8502080757738115},
-    {"EP 20 - 3C96 - Gapped 0.375 mm",             3.7771608347344783},
-    {"PQ 20/20 - 3C96 - Gapped 0.46900000000000003 mm", 3.7642990791044353},
-    {"EFD 25/13/9 - 3C95 - Gapped 0.44 mm",        3.7354355592417958},
-    {"EP 20 - 3C96 - Gapped 0.598 mm",             3.7094997930199556},
+    {"EFD 25/13/9 - 3C96 - Gapped 0.43 mm",        3.709114905092024},
+    {"EP 20 - 3C96 - Gapped 0.375 mm",             3.6934785469568991},
+    {"EP 20 - 3C96 - Gapped 0.598 mm",             3.6258176662942887},
+    {"PQ 20/20 - 3C96 - Gapped 0.46900000000000003 mm", 3.6212370666624971},
+    {"EFD 25/13/9 - 3C95 - Gapped 0.44 mm",        3.5943423936765333},
 };
 
 // STANDARD_CORES x POWER: top-5 unique standard-shape ferrite candidates.
