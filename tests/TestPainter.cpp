@@ -5242,4 +5242,277 @@ namespace {
         }
         settings.reset();
     }
+
+    // ---- Painter fix 3: the electric energy of the stray-capacitance model, element by element ----
+
+    // Sums every element's sampled energy and checks it is conserved: the samples plus what the sampler returns
+    // as unplaced carry exactly the energy handed to it.
+    void check_sampling_conserves(const StrayCapacitance::ElectricEnergyElement& element, double spacing) {
+        // Millions of samples: summed with Kahan's compensation, so the check measures the sampler, not the sum.
+        double sampled = 0;
+        double compensation = 0;
+        size_t negativeSamples = 0;
+        double unplaced = StrayCapacitance::sample_electric_energy_element(element, 1.0, spacing, [&](double, double, double energy) {
+            negativeSamples += energy < 0;
+            double corrected = energy - compensation;
+            double next = sampled + corrected;
+            compensation = (next - sampled) - corrected;
+            sampled = next;
+        });
+        CHECK(negativeSamples == 0);
+        CHECK_THAT(sampled + unplaced, Catch::Matchers::WithinRel(1.0, 1e-12));
+    }
+
+    TEST_CASE("Electric energy painting of a bobbin inductor is the stray-capacitance model's energy, element by element", "[support][painter][painter-electric-energy]") {
+        settings.reset();
+        settings.set_stray_capacitance_model(StrayCapacitanceModels::ALBACH);
+        OpenMagneticsTesting::PainterTestConfig config;
+        auto [magnetic, inputs] = OpenMagneticsTesting::prepare_painter_test(config);
+        settings.set_painter_number_points_x(60);
+        settings.set_painter_number_points_y(120);
+        auto operatingPoint = inputs.get_operating_point(0);
+        auto painting = PainterInterface::calculate_electric_energy_painting(operatingPoint, magnetic, 1);
+
+        size_t roundPairs = 0;
+        size_t coreFaces = 0;
+        for (const auto& element : painting.elements) {
+            roundPairs += element.kind == StrayCapacitance::ElectricEnergyElement::Kind::ROUND_PAIR;
+            coreFaces += element.kind == StrayCapacitance::ElectricEnergyElement::Kind::CORE_FACE;
+        }
+        REQUIRE(roundPairs > 0);
+        REQUIRE(coreFaces > 0);
+        REQUIRE(painting.totalEnergyPerLengthInPlane > 0);
+
+        // 1. Conservation: every in-plane J/m is either in a cell, outside the window, or has no place.
+        CHECK_THAT(painting.placedEnergyPerLength + painting.unplacedEnergyPerLength + painting.outsideGridEnergyPerLength,
+                   Catch::Matchers::WithinRel(painting.totalEnergyPerLengthInPlane, 1e-9));
+        // A bobbin inductor's turns and faces are all in the painted window, and a rectangular face has a place.
+        CHECK(painting.unplacedEnergyPerLength == 0);
+        // Outside the window: only the turn-to-core faces' far field can go there (each face is the model's
+        // conductor over an unbounded plane, which runs past the window's corners); a turn pair's tubes run
+        // between its two turns, inside the window.
+        {
+            const double originX = magnetic.get_mutable_core().get_columns()[0].get_width() / 2;
+            const double originY = -0.5 * settings.get_painter_number_points_y() * painting.cellHeight;
+            const double endX = originX + settings.get_painter_number_points_x() * painting.cellWidth;
+            const double endY = -originY;
+            std::map<std::string, double> outsidePerKind;
+            for (size_t elementIndex = 0; elementIndex < painting.elements.size(); ++elementIndex) {
+                const auto& element = painting.elements[elementIndex];
+                std::string key = element.kind == StrayCapacitance::ElectricEnergyElement::Kind::CORE_FACE ? "face" + std::to_string(static_cast<int>(element.surface))
+                                                                                                         : "pair" + std::to_string(static_cast<int>(element.kind));
+                StrayCapacitance::sample_electric_energy_element(element, painting.energyPerLength[elementIndex], std::min(painting.cellWidth, painting.cellHeight),
+                    [&](double x, double y, double energy) {
+                        if (x < originX || x >= endX || y < originY || y >= endY) {
+                            outsidePerKind[key + (x < originX ? " beside the column" : x >= endX ? " beyond the window" : y < originY ? " below" : " above")] += energy;
+                        }
+                    });
+            }
+            double outsideSum = 0;
+            for (const auto& [key, energy] : outsidePerKind) {
+                std::cout << "outside the window, " << key << ": " << energy / painting.totalEnergyPerLengthInPlane << " of the in-plane energy" << std::endl;
+                CHECK(key.rfind("face", 0) == 0);
+                outsideSum += energy;
+            }
+            CHECK_THAT(outsideSum, Catch::Matchers::WithinRel(painting.outsideGridEnergyPerLength, 1e-9));
+        }
+        // 2. The painted cells integrate (u dA) to the placed energy, and the grid is the painter's exact tiling.
+        const size_t numberPointsX = settings.get_painter_number_points_x();
+        const size_t numberPointsY = settings.get_painter_number_points_y();
+        REQUIRE(painting.field.get_data().size() == numberPointsX * numberPointsY);
+        double cellArea = painting.cellWidth * painting.cellHeight;
+        double painted = 0;
+        double nextToColumn = 0;
+        double columnFace = magnetic.get_mutable_core().get_columns()[0].get_width() / 2;
+        for (const auto& datum : painting.field.get_data()) {
+            REQUIRE(std::isfinite(datum.get_value()));
+            REQUIRE(datum.get_value() >= 0);
+            painted += datum.get_value() * cellArea;
+            if (datum.get_point()[0] < columnFace + painting.cellWidth) {
+                nextToColumn += datum.get_value();
+            }
+        }
+        CHECK_THAT(painted, Catch::Matchers::WithinRel(painting.placedEnergyPerLength, 1e-9));
+        // 3. The turn-to-core energy reaches the cells against the column (the old painter had no core).
+        CHECK(nextToColumn > 0);
+
+        // 4. Each element: sampling conserves, and a round pair's flux tubes integrate to its closed form.
+        //    Albach's closed form is the integral of these same tubes, so the difference is the quadrature only.
+        double spacing = std::min(painting.cellWidth, painting.cellHeight);
+        double worstRoundPair = 0;
+        size_t contactCellsChecked = 0;
+        for (size_t elementIndex = 0; elementIndex < painting.elements.size(); ++elementIndex) {
+            const auto& element = painting.elements[elementIndex];
+            check_sampling_conserves(element, spacing);
+            if (element.kind != StrayCapacitance::ElectricEnergyElement::Kind::ROUND_PAIR) {
+                continue;
+            }
+            double closedForm = element.capacitance / (2 * element.length);
+            double tubes = StrayCapacitance::integrate_electric_energy_element(element, spacing);
+            worstRoundPair = std::max(worstRoundPair, std::fabs(tubes - closedForm) / closedForm);
+            // 5. Two touching turns store energy at their contact: the cell holding the contact point is lit.
+            if (element.gap < 0.1 * spacing && painting.energyPerLength[elementIndex] > 0) {
+                double x = (element.firstCentre[0] + element.secondCentre[0]) / 2;
+                double y = (element.firstCentre[1] + element.secondCentre[1]) / 2;
+                size_t column = static_cast<size_t>(std::floor((x - columnFace) / painting.cellWidth));
+                size_t row = static_cast<size_t>(std::floor((y + 0.5 * numberPointsY * painting.cellHeight) / painting.cellHeight));
+                REQUIRE(column < numberPointsX);
+                REQUIRE(row < numberPointsY);
+                CHECK(painting.field.get_data()[row * numberPointsX + column].get_value() > 0);
+                ++contactCellsChecked;
+            }
+        }
+        std::cout << "bobbin inductor: worst round-pair tube integral vs closed form " << worstRoundPair << ", contact cells " << contactCellsChecked << std::endl;
+        CHECK(worstRoundPair < 1e-3);
+        CHECK(contactCellsChecked > 0);
+        settings.reset();
+    }
+
+    TEST_CASE("Electric energy of a turn over the core is the field of a conductor over a plane", "[support][painter][painter-electric-energy]") {
+        settings.reset();
+        const double vacuumPermittivity = Constants().vacuumPermittivity;
+        StrayCapacitance::ElectricEnergyElement element;
+        element.kind = StrayCapacitance::ElectricEnergyElement::Kind::CORE_FACE;
+        element.surface = StrayCapacitance::ElectricEnergyElement::Surface::COLUMN;
+        element.firstCentre = {3e-3, 1e-3};
+        element.length = 1;
+        element.conductingRadius = 0.25e-3;
+        element.airEquivalentGap = 0.1e-3;
+        element.realDistance = 0.4e-3;
+        element.capacitance = 1e-12;
+        const double height = element.conductingRadius + element.airEquivalentGap;
+        const double spacing = 0.02e-3;
+
+        // 1. Isolated: the bipolar integrand is the constant 1/tau0^2, so the integral is Smythe's 2 pi eps0 / acosh(H/r)
+        //    halved (energy per V^2), exactly.
+        double isolated = StrayCapacitance::integrate_electric_energy_element(element, spacing);
+        CHECK_THAT(isolated, Catch::Matchers::WithinRel(std::numbers::pi * vacuumPermittivity / std::acosh(height / element.conductingRadius), 1e-9));
+        check_sampling_conserves(element, spacing);
+        // Every sample lies on the conductor's side of the core surface (column face at x = centre - realDistance).
+        StrayCapacitance::sample_electric_energy_element(element, 1.0, spacing, [&](double x, double, double) {
+            CHECK(x >= element.firstCentre[0] - element.realDistance - 1e-12);
+        });
+
+        // 2. In a row: the charge-simulation field, cell by cell, integrates to the row capacitance it solves.
+        for (double pitch : {0.55e-3, 0.8e-3, 2e-3}) {
+            INFO(pitch);
+            element.positivePitch = pitch;
+            element.negativePitch = pitch;
+            double row = StrayCapacitance::integrate_electric_energy_element(element, spacing);
+            double closedForm = StrayCapacitance::calculate_conductor_row_over_plane_capacitance_per_length(element.conductingRadius, height, pitch) / 2;
+            std::cout << "row pitch " << pitch << ": integral / closed form - 1 = " << row / closedForm - 1 << std::endl;
+            CHECK_THAT(row, Catch::Matchers::WithinRel(closedForm, 1e-3));
+            check_sampling_conserves(element, spacing);
+        }
+        settings.reset();
+    }
+
+    TEST_CASE("Electric energy painting of WE 744822222 in differential mode is the energy of its DM capacitance", "[support][painter][painter-electric-energy][toroidal]") {
+        settings.reset();
+        clear_databases();
+        auto testDataPath = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "cmc_we_744822222_functional.json");
+        std::ifstream file(testDataPath);
+        REQUIRE(file.good());
+        OpenMagnetics::Magnetic magnetic(json::parse(file));
+        magnetic = magnetic_autocomplete(magnetic);
+        settings.set_painter_number_points_x(100);
+        settings.set_painter_number_points_y(100);
+        settings.set_painter_logarithmic_scale(true);
+        settings.set_painter_maximum_value_colorbar(std::nullopt);
+        settings.set_painter_minimum_value_colorbar(std::nullopt);
+
+        // DM: the same 1 V peak sine on both windings, the second in antiphase.
+        const double frequency = 100e3;
+        const double peak = 1.0;
+        OperatingPoint operatingPoint;
+        std::vector<OperatingPointExcitation> excitations;
+        for (double phase : {0.0, std::numbers::pi}) {
+            SignalDescriptor voltage;
+            voltage.set_waveform(OpenMagnetics::Inputs::create_waveform(WaveformLabel::SINUSOIDAL, 2 * peak, frequency, 0.5, 0, 0, 0, phase));
+            OperatingPointExcitation excitation;
+            excitation.set_frequency(frequency);
+            excitation.set_voltage(voltage);
+            excitations.push_back(excitation);
+        }
+        operatingPoint.set_excitations_per_winding(excitations);
+        OperatingConditions conditions;
+        conditions.set_ambient_temperature(25);
+        operatingPoint.set_conditions(conditions);
+
+        auto painting = PainterInterface::calculate_electric_energy_painting(operatingPoint, magnetic, 1);
+        REQUIRE(!painting.elements.empty());
+
+        // 1. The elements' energies add up to the DM capacitance's: 1/2 C_DM |V_port|^2, with V_port the rms of the
+        //    two windings' start terminals in antiphase (the sampled sine's harmonic, not the nominal peak).
+        auto waveform = operatingPoint.get_excitations_per_winding()[0].get_voltage()->get_waveform().value();
+        double rms = std::abs(CoilMesher::calculate_harmonic_phasor(waveform, frequency, frequency)) / std::sqrt(2.0);
+        StrayCapacitance strayCapacitance(settings.get_stray_capacitance_model());
+        double differentialModeCapacitance = strayCapacitance.calculate_differential_mode_capacitance(magnetic.get_coil(), magnetic.get_core(), frequency,
+                                                                                                      magnetic.get_core_electrical_reference());
+        double portVoltage = 2 * rms;
+        std::cout << "744822222 DM: C_DM " << differentialModeCapacitance * 1e12 << " pF, painted elements " << painting.elements.size()
+                  << ", total " << painting.totalEnergy << " J, in-plane " << painting.totalEnergyPerLengthInPlane << " J/m, out of plane "
+                  << painting.outOfPlaneEnergyPerLength << " J/m, unplaced " << painting.unplacedEnergyPerLength << " J/m, outside grid "
+                  << painting.outsideGridEnergyPerLength << " J/m" << std::endl;
+        CHECK_THAT(painting.totalEnergy, Catch::Matchers::WithinRel(0.5 * differentialModeCapacitance * portVoltage * portVoltage, 1e-9));
+
+        // 2. Conservation of the in-plane energy, and the painted cells integrate to what was placed.
+        CHECK_THAT(painting.placedEnergyPerLength + painting.unplacedEnergyPerLength + painting.outsideGridEnergyPerLength,
+                   Catch::Matchers::WithinRel(painting.totalEnergyPerLengthInPlane, 1e-9));
+        double cellArea = painting.cellWidth * painting.cellHeight;
+        double painted = 0;
+        for (const auto& datum : painting.field.get_data()) {
+            REQUIRE(std::isfinite(datum.get_value()));
+            REQUIRE(datum.get_value() >= 0);
+            painted += datum.get_value() * cellArea;
+        }
+        CHECK_THAT(painted, Catch::Matchers::WithinRel(painting.placedEnergyPerLength, 1e-9));
+        // A toroid's top and bottom runs are out of the ring plane, and they carry energy.
+        CHECK(painting.outOfPlaneEnergyPerLength > 0);
+
+        // 3. Energy in the cells between the turns and the core: the bore and outer wall faces are lit.
+        auto core = magnetic.get_core();
+        auto processed = core.get_processed_description().value();
+        double outerRadius = processed.get_width() / 2;
+        double innerRadius = outerRadius - core.get_columns()[0].get_width();
+        double coreFacing = 0;
+        for (const auto& datum : painting.field.get_data()) {
+            double radius = std::hypot(datum.get_point()[0], datum.get_point()[1]);
+            if ((radius < innerRadius && radius > innerRadius - 2 * painting.cellWidth) || (radius > outerRadius && radius < outerRadius + 2 * painting.cellWidth)) {
+                coreFacing += datum.get_value();
+            }
+        }
+        CHECK(coreFacing > 0);
+
+        // 4. What the painter paints for SDF_PHYSICS is this painting, cell for cell.
+        {
+            struct ExposedElectricPainter : Painter { using PainterInterface::calculate_electric_field; };
+            ExposedElectricPainter exposedPainter;
+            auto painted = exposedPainter.calculate_electric_field(operatingPoint, magnetic, 1, ElectricFieldVisualizationModel::SDF_PHYSICS);
+            REQUIRE(painted.get_data().size() == painting.field.get_data().size());
+            size_t differentCells = 0;
+            for (size_t index = 0; index < painted.get_data().size(); ++index) {
+                const auto& expected = painting.field.get_data()[index];
+                const auto& actual = painted.get_data()[index];
+                differentCells += actual.get_point() != expected.get_point() || std::fabs(actual.get_value() - expected.get_value()) > 1e-12 * std::fabs(expected.get_value());
+            }
+            CHECK(differentCells == 0);
+        }
+
+        // 5. The painter draws it (SDF_PHYSICS) with real colours.
+        auto outFile = outputFilePath;
+        outFile.append("Test_Electric_Energy_Painting_744822222_DM.svg");
+        std::filesystem::remove(outFile);
+        Painter painter(outFile);
+        painter.paint_electric_field(operatingPoint, magnetic, 1, std::nullopt, ElectricFieldVisualizationModel::SDF_PHYSICS, ColorPalette::PLASMA);
+        painter.paint_core(magnetic);
+        painter.paint_coil_turns(magnetic);
+        painter.export_svg();
+        REQUIRE(std::filesystem::exists(outFile));
+        std::ifstream svgFile(outFile);
+        std::string svg((std::istreambuf_iterator<char>(svgFile)), std::istreambuf_iterator<char>());
+        CHECK(std::regex_search(svg, std::regex("fill: ?#[0-9a-fA-F]{6}")));
+        CHECK(svg.find("nan") == std::string::npos);
+        settings.reset();
+    }
 }  // namespace

@@ -1,4 +1,7 @@
 #pragma once
+#include <array>
+#include <complex>
+#include <functional>
 #include <set>
 #include <limits>
 #include "Defaults.h"
@@ -338,18 +341,102 @@ class StrayCapacitance{
         StrayCapacitanceOutput calculate_capacitance(const Magnetic& magnetic, std::optional<double> frequency = std::nullopt);
         StrayCapacitanceOutput calculate_capacitance(const Magnetic& magnetic, OperatingPoint operatingPoint, std::optional<double> frequency = std::nullopt);
     
-    // Bipolar coordinate system for round-round energy density computation
-    struct BipolarParams {
-        double focalHalfDistance;
-        double tau1;
-        double tau2;
-        double cosAngle;
-        double sinAngle;
-        double midX, midY;
+    // ---- The model's electrostatic energy, element by element (for the Painter) -------------------------
+    // Every capacitance this class reports is 2W/dV^2 of an energy W that is a sum over elements: the
+    // turn-to-turn pairs (Albach/Koch/... for round conductors, evaluated per crossing on a toroid; parallel
+    // plates for flat ones) and the screened turn-to-core faces against the core node.
+    // calculate_electric_energy_elements lists those elements, built by the same code paths as
+    // calculate_capacitance_among_turns and turn_to_core_elements (same pairs, same toroid split, same faces,
+    // same screening, same image factor), with the geometry each one is evaluated at, so that a field picture
+    // can put each element's energy where the element's own field puts it.
+    struct ElectricEnergyElement {
+        enum class Kind { ROUND_PAIR, PLATE_PAIR, CORE_FACE };
+        // The core surface a CORE_FACE element faces. NONE: the face builder had no bobbin geometry to place
+        // the turn against; such an element has a capacitance but no position, and sampling it throws.
+        enum class Surface { NONE, BORE, OUTSIDE, TOROID_FLAT_FACE, COLUMN, UPPER_YOKE, LOWER_YOKE };
+        Kind kind;
+        size_t firstTurnIndex = 0;
+        size_t secondTurnIndex = 0;                 // pairs only
+        std::array<double, 2> firstCentre = {0, 0}; // the crossing (or turn) centre the element is evaluated at, m
+        std::array<double, 2> secondCentre = {0, 0};
+        double length = 0;                          // m, the length share this element stands for
+        double capacitance = 0;                     // F, the element over its length (core image factor included)
+        bool inPlane = true;                        // false for a toroid's top and bottom runs (not in the ring plane)
+        // ROUND_PAIR (Albach's flux tubes): conductor radius r0, coating thickness delta and permittivity, the
+        // gap between the coating surfaces and its effective permittivity (as the pair model computed them)
+        double conductingRadius = 0;
+        double coatingThickness = 0;
+        double coatingPermittivity = 1;
+        double gap = 0;
+        double gapPermittivity = 1;
+        // PLATE_PAIR: the gap rectangle between the facing conductor surfaces
+        std::array<double, 2> plateCentre = {0, 0};
+        std::array<double, 2> plateHalfExtents = {0, 0};
+        // CORE_FACE: conductingRadius is the equivalent radius of the turn-to-core element; airEquivalentGap is
+        // sum t_i/eps_i of the stack (coating, air, core jacket, bobbin wall); realDistance is the distance from
+        // the conductor axis to the ferrite surface in the real geometry (outer half extent + air + bobbin wall
+        // + core jacket); the pitches are the row pitches of the element, positivePitch on the side the surface
+        // tangent points to (rectangular column: +y; yokes: +x; toroid: counter-clockwise).
+        Surface surface = Surface::NONE;
+        double airEquivalentGap = 0;
+        double realDistance = 0;
+        double positivePitch = std::numeric_limits<double>::infinity();
+        double negativePitch = std::numeric_limits<double>::infinity();
     };
-    static BipolarParams compute_bipolar_params(const Turn& t1, const Turn& t2);
-    static double bipolar_tau_at_point(double lx, double ly, double a);
-    static double bipolar_energy_density_at_point(double px, double py, const BipolarParams& params, double voltageDrop, double epsilonEff);
+  private:
+    // Set only while calculate_electric_energy_elements runs calculate_capacitance_among_turns: every pair
+    // element the turn-to-turn dispatch evaluates is appended here with its geometry.
+    std::vector<ElectricEnergyElement>* _energyElementRecorder = nullptr;
+  public:
+    std::vector<ElectricEnergyElement> calculate_electric_energy_elements(Coil coil, std::optional<Core> core = std::nullopt, std::optional<double> frequency = std::nullopt);
+
+    // The energy each element stores (J) at the given complex rms turn potentials (indexed like the turns
+    // description), 1/2 C |dV|^2. The core is held at fixedCorePotential when given (a bonded core); otherwise it
+    // floats: one charge-balanced node, sum C_i (V_i - V_c) = 0 over all its faces, or, for two windings on a core
+    // that core_gap_topology classifies SPLIT_CORE_NODES, two bodies joined by the gap capacitance (each winding
+    // on its own body), whose energy is returned separately as gapEnergy.
+    struct ElectricEnergyDistribution {
+        std::vector<double> energyPerElement;
+        std::vector<std::complex<double>> corePotentialPerBody;
+        double gapEnergy = 0;
+    };
+    static ElectricEnergyDistribution calculate_electric_energy_per_element(const std::vector<ElectricEnergyElement>& elements, Coil coil, std::optional<Core> core,
+                                                                             const std::vector<std::complex<double>>& turnPotentials,
+                                                                             std::optional<std::complex<double>> fixedCorePotential = std::nullopt);
+
+    // The charge-simulation solution behind calculate_conductor_row_over_plane_capacitance_per_length, in
+    // lengths normalised to the radius and unit conductor potential: phi(x, y) = sum q_k G(x, y; x_k, y_k) with
+    // the periodic row-and-image Green's function G. capacitancePerLength = 2 pi eps0 sum q_k.
+    struct ConductorRowOverPlaneSolution {
+        double height = 0;   // H/r
+        double period = 0;   // p/r
+        std::vector<double> sourceX;
+        std::vector<double> sourceY;
+        std::vector<double> charges;
+        double capacitancePerLength = 0;
+    };
+    static const ConductorRowOverPlaneSolution& solve_conductor_row_over_plane(double radius, double axisHeight, double pitch);
+    // grad phi (normalised) of a solution at (x, y)
+    static std::array<double, 2> conductor_row_over_plane_potential_gradient(const ConductorRowOverPlaneSolution& solution, double x, double y);
+
+    // Spatial distribution of one element's energy per unit length (J/m) in the plane, as weighted points
+    // (x, y, J/m) at a spacing finer than samplingSpacing. Each element is sampled with its own field:
+    //  - ROUND_PAIR: Albach's flux tubes (straight lines between the coating surfaces, radial in the coating,
+    //    the coating taken to second order in delta/(r0 + delta) as in Albach's closed form), each tube a series
+    //    capacitor eps0 R cos(phi) dphi / (2 L R cos(phi) + s_eq(phi)) carrying the pair's dV.
+    //  - PLATE_PAIR: the uniform field of the parallel-plate element in its gap rectangle.
+    //  - CORE_FACE: the field of the conductor (row) over the plane in the air-equivalent geometry, integrated
+    //    in bipolar coordinates, with each half cell at its own pitch, carried to the real geometry (the
+    //    air-equivalent height stretched over the real distance; wrapped around the ring for a toroid).
+    // The points carry exactly energyPerLength between them. Returns the energy per length that has no place in
+    // the plane (beyond half a toroid surface's circumference).
+    using EnergySampleCallback = std::function<void(double x, double y, double energyPerLength)>;
+    static double sample_electric_energy_element(const ElectricEnergyElement& element, double energyPerLength, double samplingSpacing,
+                                                 const EnergySampleCallback& callback);
+    // The energy per unit length, per V^2 of potential difference, that an element's own field integrates to
+    // (the physics sample_electric_energy_element distributes): ROUND_PAIR the flux-tube integral, CORE_FACE the
+    // bipolar integral of the (row) field. The closed-form element is capacitance / (2 length).
+    static double integrate_electric_energy_element(const ElectricEnergyElement& element, double samplingSpacing);
 
     // Internal three-input-multipole matrix used for the floating-node (V3) convergence and exposed
     // as the informational per-pair capacitance matrix. NOT the terminal Maxwell matrix (that is

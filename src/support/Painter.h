@@ -3,6 +3,7 @@
 #include "constructive_models/Core.h"
 #include "constructive_models/Magnetic.h"
 #include "physical_models/Temperature.h"
+#include "physical_models/StrayCapacitance.h"
 #include "support/Utils.h"
 #include <MAS.hpp>
 #include "svg.hpp"
@@ -41,7 +42,7 @@ enum class PainterProjection {
 
 enum class ElectricFieldVisualizationModel {
     LEGACY,       // Original convex-hull area + band-proportion approach
-    SDF_PHYSICS   // SDF Voronoi decomposition + bipolar/plate energy density
+    SDF_PHYSICS   // the stray-capacitance model's energy, element by element (calculate_electric_energy_painting)
 };
 
 
@@ -283,21 +284,30 @@ class PainterInterface {
     ComplexField calculate_magnetic_field(OperatingPoint operatingPoint, Magnetic magnetic, size_t harmonicIndex = 1);
     Field calculate_electric_field(OperatingPoint operatingPoint, Magnetic magnetic, size_t harmonicIndex = 1,
                                    ElectricFieldVisualizationModel model = ElectricFieldVisualizationModel::LEGACY);
-    Field calculate_electric_field_sdf(OperatingPoint operatingPoint, Magnetic magnetic, size_t harmonicIndex = 1);
-
-    // SDF primitives for turn shapes
-    static double sdf_circle(double px, double py, double cx, double cy, double radius);
-    static double sdf_box(double px, double py, double cx, double cy, double halfW, double halfH);
-    static double sdf_oriented_box(double px, double py, double cx, double cy,
-                                   double halfW, double halfH, double angle);
-    static double sdf_turn(double px, double py, const Turn& turn);
-
-    // Energy density models per shape combination
-    static double energy_density_bipolar(double px, double py, const Turn& t1, const Turn& t2, double voltageDrop, double epsilonEff);
-    static double energy_density_parallel_plate(double px, double py, const Turn& t1, const Turn& t2, double voltageDrop, double epsilonEff);
-    static double energy_density_angled_plates(double px, double py, const Turn& t1, const Turn& t2, double voltageDrop, double epsilonEff);
-    static double energy_density_round_rect(double px, double py, const Turn& roundTurn, const Turn& rectTurn, double voltageDrop, double epsilonEff);
-    static double compute_energy_density_at_pixel(double px, double py, const Turn& t1, const Turn& t2, double voltageDrop, double epsilonEff);
+  public:
+    // The electric energy the stray-capacitance model stores, painted where each of its elements' own fields
+    // puts it (ABT painter fix 3). Every capacitance StrayCapacitance reports is 2W/dV^2 of an energy W that is a
+    // sum over elements (turn-to-turn pairs, turn-to-core faces); each element's 1/2 C |dV|^2, per unit of its
+    // length, is distributed by StrayCapacitance::sample_electric_energy_element and binned into the painter's
+    // pixel tiling. Potentials: per winding, the rms phasor of its voltage at the harmonic, times the winding's
+    // linear divider (calculate_voltages_per_turn); the core is held at its coreElectricalReference potential, or
+    // floats (charge balanced, or two bodies for a split gap).
+    struct ElectricEnergyPainting {
+        Field field;                                                  // per pixel cell, J/m^3 (zero cells kept)
+        std::vector<StrayCapacitance::ElectricEnergyElement> elements;
+        std::vector<double> energyPerLength;                          // J/m, per element
+        double totalEnergyPerLengthInPlane = 0;                       // J/m, sum over in-plane elements
+        double placedEnergyPerLength = 0;                             // J/m, binned into the cells
+        double unplacedEnergyPerLength = 0;                           // J/m, in-plane energy the sampler has no place for
+        double outsideGridEnergyPerLength = 0;                        // J/m, placed outside the painted window
+        double outOfPlaneEnergyPerLength = 0;                         // J/m, elements not in the plane (toroid top/bottom runs)
+        double gapEnergy = 0;                                         // J, the split-core gap capacitance
+        double totalEnergy = 0;                                       // J, sum of every element's energy plus gapEnergy
+        double cellWidth = 0;
+        double cellHeight = 0;
+    };
+    static ElectricEnergyPainting calculate_electric_energy_painting(OperatingPoint operatingPoint, Magnetic magnetic, size_t harmonicIndex = 1);
+  protected:
 
     CoatingInfo process_coating(double insulationThickness, InsulationWireCoating coating) {
         InsulationWireCoatingType insulationWireCoatingType = coating.get_type().value();
