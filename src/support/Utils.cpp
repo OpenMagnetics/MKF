@@ -2640,16 +2640,22 @@ std::vector<double> linear_spaced_array(double a, double b, size_t N) {
 
 
 std::vector<double> logarithmic_spaced_array(double a, double b, size_t N) {
+    if (N < 2) {
+        return N == 0 ? std::vector<double>{} : std::vector<double>{a};
+    }
     double logmin = log10(a);
     double logmax = log10(b);
 
     double h = (logmax - logmin) / static_cast<double>(N-1);
     std::vector<double> xs(N);
-    std::vector<double>::iterator x;
-    double val;
-    for (x = xs.begin(), val = log10(a); x != xs.end(); ++x, val += h) {
-        *x = pow(10, val);
+    for (size_t i = 0; i < N; ++i) {
+        xs[i] = pow(10, logmin + h * static_cast<double>(i));
     }
+    // The ends are the requested a and b, not pow(10, log10(.)) of them: the round trip can
+    // land one ulp outside, which puts a sweep ending at a material's last tabulated
+    // frequency just past it (and complex permeability throws there).
+    xs.front() = a;
+    xs.back() = b;
     return xs;
 }
 

@@ -10,6 +10,7 @@
 #include "processors/Sweeper.h"
 #include "processors/MagneticSimulator.h"
 #include "physical_models/Impedance.h"
+#include "physical_models/ComplexPermeability.h"
 #include "physical_models/Reluctance.h"
 
 #include <catch2/catch_test_macros.hpp>
@@ -284,7 +285,15 @@ TEST_CASE("Test_CoreAdviserAvailableCores_Toroidal_Cores_With_Impedance", "[advi
     REQUIRE(foundCoreMeetingImpedance);
 
     {
-        auto impedanceSweep = Sweeper().sweep_impedance_over_frequency(masMagnetics[0].first.get_magnetic(), 1000, 4000000, 1000);
+        // The plotted band is limited to the complex-permeability data of whichever material the
+        // adviser ranked first: a ferrite whose table starts above 1 kHz (e.g. material 80's table
+        // starts at 10 kHz, or a derived table starting at its lowest mu_i(f) point) has no data below it.
+        auto bestMagnetic = masMagnetics[0].first.get_magnetic();
+        auto [minimumMaterialFrequency, maximumMaterialFrequency] = OpenMagnetics::ComplexPermeability().get_frequency_range(bestMagnetic.get_core().resolve_material());
+        double startFrequency = std::max(1000.0, minimumMaterialFrequency);
+        double stopFrequency = std::min(4000000.0, maximumMaterialFrequency);
+        REQUIRE(startFrequency < stopFrequency);
+        auto impedanceSweep = Sweeper().sweep_impedance_over_frequency(bestMagnetic, startFrequency, stopFrequency, 1000);
 
         auto outputFilePath = std::filesystem::path {std::source_location::current().file_name()}.parent_path().append("..").append("output");
         auto outFile = outputFilePath;

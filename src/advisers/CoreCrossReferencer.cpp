@@ -2,6 +2,7 @@
 #include "physical_models/InitialPermeability.h"
 #include "advisers/CoreCrossReferencer.h"
 #include "physical_models/Impedance.h"
+#include "physical_models/ComplexPermeability.h"
 #include "constructive_models/Bobbin.h"
 #include "advisers/CrossReferencerCommon.h"
 #include "processors/MagneticSimulator.h"
@@ -595,10 +596,28 @@ std::vector<std::pair<Core, double>> CoreCrossReferencer::MagneticCoreFilterImpe
         return magnetic;
     };
 
+    // The reference is compared only where its material has complex permeability: outside
+    // the tabulated span there is no data (get_complex_permeability throws), so a sampled
+    // frequency past it (e.g. 100 MHz and 1 GHz on 3C91, whose table ends at 30 MHz) cannot
+    // carry a reference value. A reference whose data covers none of the sampled
+    // frequencies cannot be cross-referenced by impedance at all.
+    std::vector<double> sampledFrequencies;
+    {
+        auto [minimumMaterialFrequency, maximumMaterialFrequency] = ComplexPermeability().get_frequency_range(referenceCore.resolve_material());
+        for (auto frequency : _frequencies) {
+            if (frequency >= minimumMaterialFrequency && frequency <= maximumMaterialFrequency) {
+                sampledFrequencies.push_back(frequency);
+            }
+        }
+        if (sampledFrequencies.empty()) {
+            throw InvalidInputException(ErrorCode::MATERIAL_FREQUENCY_OUT_OF_SPAN, "Reference core material " + referenceCore.resolve_material().get_name() + ": complex permeability (" + std::to_string(minimumMaterialFrequency) + " Hz to " +
+                                     std::to_string(maximumMaterialFrequency) + " Hz) covers none of the impedance cross-reference frequencies");
+        }
+    }
     std::vector<double> referenceImpedances;
     {
         auto referenceMagnetic = windMagnetic(referenceCore);
-        for (auto frequency : _frequencies) {
+        for (auto frequency : sampledFrequencies) {
             referenceImpedances.push_back(std::abs(impedanceModel.calculate_impedance(referenceMagnetic, frequency)));
         }
     }
@@ -634,8 +653,8 @@ std::vector<std::pair<Core, double>> CoreCrossReferencer::MagneticCoreFilterImpe
         bool usable = true;
         try {
             auto candidateMagnetic = windMagnetic(core);
-            for (size_t i = 0; i < _frequencies.size(); ++i) {
-                double candidateImpedance = std::abs(impedanceModel.calculate_impedance(candidateMagnetic, _frequencies[i]));
+            for (size_t i = 0; i < sampledFrequencies.size(); ++i) {
+                double candidateImpedance = std::abs(impedanceModel.calculate_impedance(candidateMagnetic, sampledFrequencies[i]));
                 // Skip a frequency where either side is zero rather than treating it as a
                 // perfect or infinite match: log10 of a ratio with a zero in it is not a
                 // number, and silently substituting one would invent a score.

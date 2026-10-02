@@ -4,6 +4,7 @@
 #include "constructive_models/Coil.h"
 #include "support/Utils.h"
 #include "processors/Sweeper.h"
+#include "physical_models/ComplexPermeability.h"
 #include "support/Painter.h"
 #include "support/Settings.h"
 #include "TestingUtils.h"
@@ -14,6 +15,18 @@ using namespace MAS;
 using namespace OpenMagnetics;
 
 namespace {
+
+    // The impedance of a cored part needs the core material's complex permeability, which exists
+    // only over the material's tabulated range (get_complex_permeability throws outside it). These
+    // sweeps ask for a band, and the part of it the material has data for is what they evaluate.
+    std::pair<double, double> band_inside_material_data(OpenMagnetics::Magnetic& magnetic, double start, double stop) {
+        auto [minimumMaterialFrequency, maximumMaterialFrequency] = ComplexPermeability().get_frequency_range(magnetic.get_core().resolve_material());
+        double limitedStart = std::max(start, minimumMaterialFrequency);
+        double limitedStop = std::min(stop, maximumMaterialFrequency);
+        INFO("complex permeability tabulated over " << minimumMaterialFrequency << ".." << maximumMaterialFrequency << " Hz");
+        REQUIRE(limitedStart < limitedStop);
+        return {limitedStart, limitedStop};
+    }
     auto outputFilePath = std::filesystem::path {std::source_location::current().file_name()}.parent_path().append("..").append("output");
 
     TEST_CASE("Test_Sweeper_Impedance_Over_Frequency_Many_Turns", "[processor][sweeper][smoke-test]") {
@@ -50,7 +63,8 @@ namespace {
         magnetic.set_core(core);
         magnetic.set_coil(coil);
 
-        auto impedanceSweep = Sweeper().sweep_impedance_over_frequency(magnetic, 1000, 400000, 1000);
+        auto [startFrequency, stopFrequency] = band_inside_material_data(magnetic, 1000, 400000);
+        auto impedanceSweep = Sweeper().sweep_impedance_over_frequency(magnetic, startFrequency, stopFrequency, 1000);
 
         auto outFile = outputFilePath;
 
@@ -100,7 +114,8 @@ namespace {
         magnetic.set_core(core);
         magnetic.set_coil(coil);
 
-        auto impedanceSweep = Sweeper().sweep_q_factor_over_frequency(magnetic, 1000, 400000, 1000);
+        auto [startFrequency, stopFrequency] = band_inside_material_data(magnetic, 1000, 400000);
+        auto impedanceSweep = Sweeper().sweep_q_factor_over_frequency(magnetic, startFrequency, stopFrequency, 1000);
 
         auto outFile = outputFilePath;
 
@@ -150,7 +165,8 @@ namespace {
         magnetic.set_core(core);
         magnetic.set_coil(coil);
 
-        auto impedanceSweep = Sweeper().sweep_impedance_over_frequency(magnetic, 1000, 4000000, 10000);
+        auto [startFrequency, stopFrequency] = band_inside_material_data(magnetic, 1000, 4000000);
+        auto impedanceSweep = Sweeper().sweep_impedance_over_frequency(magnetic, startFrequency, stopFrequency, 10000);
 
         auto outFile = outputFilePath;
 
@@ -200,7 +216,8 @@ namespace {
         magnetic.set_core(core);
         magnetic.set_coil(coil);
 
-        auto impedanceSweep = Sweeper().sweep_impedance_over_frequency(magnetic, 1000, 4000000, 100);
+        auto [startFrequency, stopFrequency] = band_inside_material_data(magnetic, 1000, 4000000);
+        auto impedanceSweep = Sweeper().sweep_impedance_over_frequency(magnetic, startFrequency, stopFrequency, 100);
 
         auto outFile = outputFilePath;
 
@@ -250,7 +267,8 @@ namespace {
         magnetic.set_core(core);
         magnetic.set_coil(coil);
 
-        auto impedanceSweep = Sweeper().sweep_impedance_over_frequency(magnetic, 1000, 4000000, 100);
+        auto [startFrequency, stopFrequency] = band_inside_material_data(magnetic, 1000, 4000000);
+        auto impedanceSweep = Sweeper().sweep_impedance_over_frequency(magnetic, startFrequency, stopFrequency, 100);
 
         auto outFile = outputFilePath;
 
@@ -1080,7 +1098,8 @@ namespace {
             // the old ceiling, where the "maximum interior to the band" check read it as no
             // resonance at all. Real moulded parts sit in the pF class because of the resin and
             // layering these synthetic fixtures do not have.
-            auto impedanceSweep = Sweeper().sweep_impedance_over_frequency(magnetic, 1000, 1000000000, 200);
+            auto [startFrequency, stopFrequency] = band_inside_material_data(magnetic, 1000, 1000000000);
+            auto impedanceSweep = Sweeper().sweep_impedance_over_frequency(magnetic, startFrequency, stopFrequency, 200);
             auto impedanceMagnitudes = impedanceSweep.get_y_points();
             REQUIRE(impedanceMagnitudes.size() > 100);
             for (auto impedanceMagnitude : impedanceMagnitudes) {
@@ -1130,10 +1149,13 @@ namespace {
         magnetic.set_core(core);
         magnetic.set_coil(coil);
 
-        REQUIRE_THROWS(Sweeper().sweep_impedance_over_frequency(magnetic, 1e5, 1e8, 20));
+        // Inside 3C97's complex-permeability data (100 kHz..30 MHz), so that the throw below is
+        // the winder's and not the material range's.
+        auto [startFrequency, stopFrequency] = band_inside_material_data(magnetic, 1e5, 1e8);
+        REQUIRE_THROWS_AS(Sweeper().sweep_impedance_over_frequency(magnetic, startFrequency, stopFrequency, 20), InvalidInputException);
 
         auto curve = Sweeper().sweep_impedance_over_frequency(
-            magnetic, 1e5, 1e8, 20, "log", "Impedance over frequency",
+            magnetic, startFrequency, stopFrequency, 20, "log", "Impedance over frequency",
             /*fast=*/true, /*fastCapacitance=*/true);
         auto impedances = curve.get_y_points();
         REQUIRE(impedances.size() == 20);

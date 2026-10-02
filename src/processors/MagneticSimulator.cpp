@@ -2,11 +2,13 @@
 #include "physical_models/LeakageInductance.h"
 #include "physical_models/WindingOhmicLosses.h"
 #include "physical_models/Impedance.h"
+#include "physical_models/ComplexPermeability.h"
 #include "physical_models/Temperature.h"
 #include "support/Settings.h"
 #include <MAS.hpp>
 #include "support/Exceptions.h"
 
+#include <algorithm>
 #include <cmath>
 #include <complex>
 #include <limits>
@@ -291,12 +293,32 @@ MagneticManufacturerInfo MagneticSimulator::build_datasheet(Mas& mas) {
         const size_t numberPoints = 51;
         double startFrequency = selfResonantFrequency / 1000;
         double stopFrequency = selfResonantFrequency * 100;
-        double logStep = std::log10(stopFrequency / startFrequency) / (numberPoints - 1);
+        // The published curve covers only the frequencies where the core material has complex
+        // permeability data: outside its table there is nothing to evaluate (get_complex_permeability
+        // throws there). This sweep is the datasheet's own choice of band, so it asks for the
+        // material's range explicitly and keeps the part of the band that lies inside it. If none
+        // of the band does, the curve cannot be computed and that is reported, not filled in.
+        {
+            auto coreMaterial = magnetic.get_core().resolve_material();
+            auto [minimumMaterialFrequency, maximumMaterialFrequency] = ComplexPermeability().get_frequency_range(coreMaterial);
+            double requestedStartFrequency = startFrequency;
+            double requestedStopFrequency = stopFrequency;
+            startFrequency = std::max(startFrequency, minimumMaterialFrequency);
+            stopFrequency = std::min(stopFrequency, maximumMaterialFrequency);
+            if (!(startFrequency < stopFrequency)) {
+                throw ComplexPermeabilityFrequencyOutOfRangeException(coreMaterial.get_name(),
+                    requestedStartFrequency < minimumMaterialFrequency ? requestedStopFrequency : requestedStartFrequency,
+                    minimumMaterialFrequency, maximumMaterialFrequency);
+            }
+        }
+        // Exact ends (logarithmic_spaced_array): start * 10^(n * step) can land one ulp past the
+        // material's last tabulated frequency, where complex permeability throws.
+        auto frequencies = logarithmic_spaced_array(startFrequency, stopFrequency, numberPoints);
 
         std::vector<DatasheetImpedancePoint> impedancePoints;
         double maximumImpedanceMagnitude = std::numeric_limits<double>::lowest();
         for (size_t pointIndex = 0; pointIndex < numberPoints; ++pointIndex) {
-            double frequency = startFrequency * std::pow(10.0, logStep * pointIndex);
+            double frequency = frequencies[pointIndex];
             auto impedance = impedanceModel.impedance_from_model(widebandModel, frequency);
 
             ImpedancePoint impedancePoint;

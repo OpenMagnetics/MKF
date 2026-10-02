@@ -1,3 +1,4 @@
+#include "physical_models/ComplexPermeability.h"
 #include <source_location>
 #include "constructive_models/Mas.h"
 #include "physical_models/MagnetizingInductance.h"
@@ -225,7 +226,16 @@ TEST_CASE("Test_All_Examples_Real_Geometry_Physics", "[constructive-model][mas][
                 Curve2D impedanceCurve;
                 bool materialLacksComplexPermeability = false;
                 try {
-                    impedanceCurve = Sweeper::sweep_impedance_over_frequency(magnetic, 1e3, 1e7, 15);
+                    // 1 kHz..10 MHz, limited to where the core material has complex permeability:
+                    // outside its table there is no data and get_complex_permeability throws (most
+                    // MnZn tables start at 10 or 100 kHz). A band with no overlap at all is a
+                    // failure to report, not a sweep to shrink to nothing.
+                    auto [minimumMaterialFrequency, maximumMaterialFrequency] = ComplexPermeability().get_frequency_range(magnetic.get_core().resolve_material());
+                    double startFrequency = std::max(1e3, minimumMaterialFrequency);
+                    double stopFrequency = std::min(1e7, maximumMaterialFrequency);
+                    INFO(name << ": complex permeability tabulated over " << minimumMaterialFrequency << ".." << maximumMaterialFrequency << " Hz");
+                    REQUIRE(startFrequency < stopFrequency);
+                    impedanceCurve = Sweeper::sweep_impedance_over_frequency(magnetic, startFrequency, stopFrequency, 15);
                 }
                 catch (const MaterialDataMissingException& e) {
                     materialLacksComplexPermeability = true;

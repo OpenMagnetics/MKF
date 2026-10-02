@@ -314,6 +314,39 @@ public:
     double span_maximum() const noexcept { return _spanMaximum; }
 };
 
+/**
+ * @brief Complex permeability was asked for at a frequency outside the material's tabulated range.
+ *
+ * The complex permeability of a material is a table of measured (or, for materials that only carry
+ * a frequency-dependent initial permeability, derived) points. Outside that table there is no data:
+ * holding the last point made every higher frequency read the same mu' and mu'' (stale K081 data
+ * tabulated 1 Hz to 1 MHz returned its 1 MHz point at 350 MHz and put a common-mode choke's
+ * resonance there). Callers that sweep frequency read ComplexPermeability::get_frequency_range first
+ * and decide what to do; nothing clamps.
+ */
+class ComplexPermeabilityFrequencyOutOfRangeException : public MaterialException {
+    std::string _materialName;
+    double _frequency;
+    double _rangeMinimum;
+    double _rangeMaximum;
+public:
+    ComplexPermeabilityFrequencyOutOfRangeException(const std::string& materialName, double frequency,
+                                                    double rangeMinimum, double rangeMaximum)
+        : MaterialException(ErrorCode::MATERIAL_FREQUENCY_OUT_OF_SPAN,
+                            "Material " + materialName + ": complex permeability is tabulated from " +
+                            std::to_string(rangeMinimum) + " Hz to " + std::to_string(rangeMaximum) +
+                            " Hz; " + std::to_string(frequency) + " Hz is " +
+                            (frequency < rangeMinimum ? "below" : "above") +
+                            " that range and there is no data there",
+                            materialName),
+          _materialName(materialName), _frequency(frequency), _rangeMinimum(rangeMinimum), _rangeMaximum(rangeMaximum) {}
+
+    const std::string& material_name() const noexcept { return _materialName; }
+    double frequency() const noexcept { return _frequency; }
+    double range_minimum() const noexcept { return _rangeMinimum; }
+    double range_maximum() const noexcept { return _rangeMaximum; }
+};
+
 // A ferrite above its Curie point is paramagnetic: no loss model describes it, and the magnetic
 // no longer works as designed (ABT #1485).
 class MaterialAboveCurieTemperatureException : public MaterialException {

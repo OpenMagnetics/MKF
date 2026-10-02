@@ -2,6 +2,7 @@
 #include <source_location>
 #include "physical_models/InitialPermeability.h"
 #include "physical_models/ComplexPermeability.h"
+#include "support/Exceptions.h"
 #include "physical_models/AmplitudePermeability.h"
 #include "support/Painter.h"
 #include "support/Utils.h"
@@ -428,8 +429,11 @@ namespace {
         ComplexPermeability complexPermeability;
         std::string materialName = "N22";
         auto materialData = materialName;
+        // The high point is 10 MHz or the top of N22's complex-permeability table, whichever is
+        // lower: above the table there is no data and get_complex_permeability throws.
+        double highFrequency = std::min(10000000.0, complexPermeability.get_frequency_range(materialData).second);
         auto complexPermeabilityValueAt100000 = complexPermeability.get_complex_permeability(materialData, 100000);
-        auto complexPermeabilityValueAt10000000 = complexPermeability.get_complex_permeability(materialData, 10000000);
+        auto complexPermeabilityValueAt10000000 = complexPermeability.get_complex_permeability(materialData, highFrequency);
         REQUIRE(complexPermeabilityValueAt100000.first > complexPermeabilityValueAt10000000.first);
         REQUIRE(complexPermeabilityValueAt100000.second < complexPermeabilityValueAt10000000.second);
     }
@@ -477,8 +481,11 @@ namespace {
         ComplexPermeability complexPermeability;
         std::string materialName = "N49";
         auto materialData = materialName;
+        // The high point is 10 MHz or the top of N49's complex-permeability table, whichever is
+        // lower: above the table there is no data and get_complex_permeability throws.
+        double highFrequency = std::min(10000000.0, complexPermeability.get_frequency_range(materialData).second);
         auto complexPermeabilityValueAt100000 = complexPermeability.get_complex_permeability(materialData, 100000);
-        auto complexPermeabilityValueAt10000000 = complexPermeability.get_complex_permeability(materialData, 10000000);
+        auto complexPermeabilityValueAt10000000 = complexPermeability.get_complex_permeability(materialData, highFrequency);
         REQUIRE(complexPermeabilityValueAt100000.first > complexPermeabilityValueAt10000000.first);
         REQUIRE(complexPermeabilityValueAt100000.second < complexPermeabilityValueAt10000000.second);
     }
@@ -510,6 +517,48 @@ namespace {
         // whose tabulation anchored the knee orders of magnitude too high; it was
         // characterization of a bug, not physics.
         REQUIRE(complexPermeabilityValueAt100000.second > complexPermeabilityValueAt10000000.second);
+    }
+
+    // Outside its tabulated range a material has no complex permeability. It used to hold the
+    // last point: stale inline K081 data tabulated 1 Hz..1 MHz returned its 1 MHz point at
+    // 350 MHz and put a common-mode choke's resonance there. Now it throws, naming the
+    // material, the frequency and the range. K081's table (MAS) runs from 113335.906 Hz (its
+    // mu'' below that is a winding-resistance tail, removed) to 1 GHz.
+    TEST_CASE("Test_Complex_Permeability_Outside_Range_Throws", "[physical-model][complex-permeability][complex-permeability-range]") {
+        ComplexPermeability complexPermeability;
+        auto [minimumFrequency, maximumFrequency] = complexPermeability.get_frequency_range("K081");
+        REQUIRE_THAT(minimumFrequency, Catch::Matchers::WithinRel(113335.906, 1e-9));
+        REQUIRE_THAT(maximumFrequency, Catch::Matchers::WithinRel(1e9, 1e-9));
+
+        CHECK_NOTHROW(complexPermeability.get_complex_permeability("K081", minimumFrequency));
+        CHECK_NOTHROW(complexPermeability.get_complex_permeability("K081", maximumFrequency));
+        CHECK_THROWS_AS(complexPermeability.get_complex_permeability("K081", minimumFrequency / 2), ComplexPermeabilityFrequencyOutOfRangeException);
+        CHECK_THROWS_AS(complexPermeability.get_complex_permeability("K081", maximumFrequency * 2), ComplexPermeabilityFrequencyOutOfRangeException);
+        try {
+            complexPermeability.get_complex_permeability("K081", 10000);
+            FAIL("10 kHz is below K081's tabulated range and must throw");
+        }
+        catch (const ComplexPermeabilityFrequencyOutOfRangeException& e) {
+            CHECK(e.material_name() == "K081");
+            CHECK(e.frequency() == 10000);
+            CHECK(e.range_minimum() == minimumFrequency);
+            CHECK(e.range_maximum() == maximumFrequency);
+        }
+
+        // A material whose complex permeability is derived from its initial-permeability table
+        // throws outside the derived table's range too.
+        auto [derivedMinimum, derivedMaximum] = complexPermeability.get_frequency_range("XFlux 60");
+        CHECK_THROWS_AS(complexPermeability.get_complex_permeability("XFlux 60", derivedMinimum / 2), ComplexPermeabilityFrequencyOutOfRangeException);
+        CHECK_THROWS_AS(complexPermeability.get_complex_permeability("XFlux 60", derivedMaximum * 2), ComplexPermeabilityFrequencyOutOfRangeException);
+    }
+
+    // mu' is returned as tabulated, not floored at 1: past its ferromagnetic resonance K081's
+    // table goes negative (-3.4 at 337 MHz), and that is data to report, not to clamp.
+    TEST_CASE("Test_Complex_Permeability_Real_Part_Not_Floored", "[physical-model][complex-permeability][complex-permeability-range]") {
+        ComplexPermeability complexPermeability;
+        auto [realPart, imaginaryPart] = complexPermeability.get_complex_permeability("K081", 3.37e8);
+        CHECK(realPart < 0);
+        CHECK(imaginaryPart > 0);
     }
 
     TEST_CASE("Test_Complex_Permeability_XFlux_60", "[physical-model][complex-permeability][smoke-test]") {

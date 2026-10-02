@@ -1,3 +1,4 @@
+#include "physical_models/ComplexPermeability.h"
 #include <source_location>
 #include "constructive_models/Coil.h"
 #include "constructive_models/Core.h"
@@ -1750,7 +1751,11 @@ TEST_CASE("ABT31 sweep_impedance_over_frequency capacitance NaN repro", "[physic
 
     for (auto title : {std::string("Impedance over frequency"), std::string("Common-mode impedance")}) {
         try {
-            auto sweep = Sweeper().sweep_impedance_over_frequency(magnetic, 1e3, 1e9, 100, "log", title);
+            // 1 kHz..1 GHz, limited to the core material's complex-permeability table (3C98:
+            // 100 kHz..30 MHz): outside it there is no data and the sweep throws, which is not
+            // the NaN this repro is about.
+            auto [minimumMaterialFrequency, maximumMaterialFrequency] = ComplexPermeability().get_frequency_range(magnetic.get_core().resolve_material());
+            auto sweep = Sweeper().sweep_impedance_over_frequency(magnetic, std::max(1e3, minimumMaterialFrequency), std::min(1e9, maximumMaterialFrequency), 100, "log", title);
             bool finite = true;
             for (auto y : sweep.get_y_points()) if (!std::isfinite(y)) finite = false;
             UNSCOPED_INFO(title << " => sweep finite=" << finite);
