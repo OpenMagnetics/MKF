@@ -120,6 +120,27 @@ static int64_t get_layer_bundle_size(const Layer& layer) {
 // a SPREAD layer's advance is larger than the packed K*s (fence-post gaps sit between bundles), and
 // with the packed value the correction comes out under-applied: measured 0.9587 against the 0.9590
 // needed. Pass 0 to use the packed closed form, which is the right first guess.
+// A toroidal ring's radial height (its centre's distance from the winding window's wall, which
+// for the first ring is the bore) goes onto the 1 nm grid that every coordinate of the round
+// winder is emitted on, and it goes onto the CLEAR side of that grid: away from the wall, never
+// toward it. A ring touching the wall sits at radial height w/2 exactly, and w is rarely a whole
+// number of nanometres (Round 0.35 Grade 1: 378.362239693 um outer), so rounding to NEAREST moved
+// a touching ring's centre up to half a nanometre toward the bore and put its copper up to that
+// far past the window it was wound in -- which the stray-capacitance model rightly refuses as a
+// turn inside the core (WE 7448013501, 7448052502, 7448062603, 744841210: 0.12 and 0.40 nm).
+// Same rule as ABT #685's stacking pitch: the grid's quantisation error lands on the clear side.
+//
+// Only floating-point representation dust is forgiven, so a value already ON the grid is not
+// pushed a whole nanometre further: radialHeight * 1e9 is one rounded product of a double, so a
+// grid value k comes back as k * (1 +- eps). Forgiving 4 eps of the scaled magnitude covers that
+// and moves a value that is genuinely off-grid toward the wall by at most 4 eps * radialHeight
+// (below 1e-18 m for a 1 mm ring). The stray-capacitance contact check allows 64 eps * A for
+// rounding (A >= 2 * radialHeight), so the dust left is inside what it already forgives.
+static double ceil_radial_height_to_nanometre_grid(double radialHeight) {
+    const double scaled = radialHeight * 1e9;
+    return std::ceil(scaled - std::abs(scaled) * 4 * std::numeric_limits<double>::epsilon()) / 1e9;
+}
+
 static double helical_stacking_pitch(double od, int64_t bundleSize, double turnLength,
                                      double realizedAdvance = 0.0) {
     if (std::getenv("MKF_NO_HELICAL_PITCH")) {
@@ -14366,7 +14387,8 @@ bool Coil::wind_by_round_layers() {
             double currentLayerCenterRadialHeight;
             double currentLayerCenterAngle;
             if (sections[sectionIndex].get_layers_orientation() == WindingOrientation::OVERLAPPING) {
-                currentLayerCenterRadialHeight = roundFloat(sections[sectionIndex].get_coordinates()[0] - sections[sectionIndex].get_dimensions()[0] / 2 + layerRadialHeight / 2, 9);
+                // The ring nearest the wall must not be rounded into it (ceil_radial_height_to_nanometre_grid).
+                currentLayerCenterRadialHeight = ceil_radial_height_to_nanometre_grid(sections[sectionIndex].get_coordinates()[0] - sections[sectionIndex].get_dimensions()[0] / 2 + layerRadialHeight / 2);
                 currentLayerCenterAngle = roundFloat(sections[sectionIndex].get_coordinates()[1], 9);
             } else {
                 throw std::invalid_argument("Only overlapping layers allowed in toroids");
@@ -15448,7 +15470,8 @@ bool Coil::wind_by_round_turns() {
                 totalLayerAngle = physicalTurnsInLayer * wireAngle;
 
                 currentTurnRadialHeightIncrement = 0;
-                currentTurnCenterRadialHeight = roundFloat(layer.get_coordinates()[0], 9);
+                // Never rounded toward the wall: see ceil_radial_height_to_nanometre_grid.
+                currentTurnCenterRadialHeight = ceil_radial_height_to_nanometre_grid(layer.get_coordinates()[0]);
                 switch (alignment) {
                     case CoilAlignment::CENTERED:
                         currentTurnCenterAngle = roundFloat(layerAngularCentre - totalLayerAngle / 2 + wireAngle / 2, 9);
