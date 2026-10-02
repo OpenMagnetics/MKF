@@ -4257,5 +4257,59 @@ TEST_CASE("Test_StrayCapacitance_Rectangular_Window_Turn_To_Core_Yoke_Share_And_
         double computed = StrayCapacitance::calculate_winding_to_core_capacitance(coil, core, coil.get_functional_description()[0].get_name());
         CHECK_THAT(computed, Catch::Matchers::WithinRel(expected, 1e-9));
     }
+
+    // The row continues only through the SAME conductor (same winding, same section). Configuration
+    // of the 13_current_sense example: 80 turns of Round 0.1 wound first, one turn of Round 0.5
+    // outside them. The thin wire's outer layer sits radially beside the thick turn, its centre
+    // closer than the thick turn's 0.5 mm conducting diameter without touching it (the two outer
+    // radii sum to ~0.32 mm). It is not a neighbour in a row of identical cylinders, so the thick
+    // turn's yoke faces are the isolated cylinder's (no neighbour on either side); taking the
+    // thin turn as a row neighbour threw "pitch is below the conductor diameter".
+    {
+        INFO("mixed-wire radial row");
+        auto thinWire = find_wire_by_name("Round 0.1 - Grade 1");
+        auto coil = OpenMagneticsTesting::get_quick_coil({80, 1}, {1, 1}, shapeName, 1, WindingOrientation::OVERLAPPING,
+                                                         WindingOrientation::OVERLAPPING, CoilAlignment::CENTERED,
+                                                         CoilAlignment::CENTERED, {thinWire, wire}, false);
+        coil.wind();
+        auto turns = coil.get_turns_description().value();
+        auto bobbin = coil.resolve_bobbin();
+        REQUIRE(bobbin.get_processed_description()->get_wall_thickness() == 0);
+        auto windowDimensions = bobbin.get_winding_window_dimensions(0);
+        auto windowCoordinates = bobbin.get_winding_window_coordinates(0);
+        const double windowUpperEdge = windowCoordinates[1] + windowDimensions[1] / 2;
+        const double windowLowerEdge = windowCoordinates[1] - windowDimensions[1] / 2;
+        const std::string thickName = coil.get_functional_description()[1].get_name();
+        std::vector<Turn> thickTurns;
+        for (const auto& t : turns) {
+            if (t.get_winding() == thickName) {
+                thickTurns.push_back(t);
+            }
+        }
+        REQUIRE(thickTurns.size() == 1);
+        auto c = thickTurns[0].get_coordinates();
+        const double outerRadius = wire.get_maximum_outer_width() / 2;
+        // The configuration under test: a thin turn on the thick turn's radial row, closer than its diameter.
+        double nearestRadial = inf;
+        bool screenedRadially = false;
+        for (const auto& t : turns) {
+            if (t.get_winding() == thickName) {
+                continue;
+            }
+            auto o = t.get_coordinates();
+            if (std::abs(o[1] - c[1]) < outerRadius) {
+                nearestRadial = std::min(nearestRadial, std::hypot(o[0] - c[0], o[1] - c[1]));
+                screenedRadially = true;
+            }
+        }
+        REQUIRE(screenedRadially);
+        REQUIRE(nearestRadial < 2 * conductingRadius);
+        double expected = element(2 * depth, windowUpperEdge - (c[1] + outerRadius), inf, inf) +
+                          element(2 * depth, (c[1] - outerRadius) - windowLowerEdge, inf, inf);
+        double computed = 0;
+        REQUIRE_NOTHROW(computed = StrayCapacitance::calculate_winding_to_core_capacitance(coil, core, thickName));
+        CHECK_THAT(computed, Catch::Matchers::WithinRel(expected, 1e-9));
+        REQUIRE_NOTHROW(StrayCapacitance().calculate_capacitance(coil));
+    }
     settings.reset();
 }

@@ -2570,6 +2570,14 @@ static std::vector<TurnToCoreFace> turn_to_core_air_gaps(Coil& coil, const Core&
         if (!rowScreening) {
             return std::make_pair(towardsPositive, towardsNegative);
         }
+        // The nearest conductor on each side ends or continues the row. The row element is a row
+        // of IDENTICAL cylinders at a common pitch, so that conductor continues the row only when
+        // it is the same conductor as this turn: same winding (same wire) and same section. A turn
+        // of another section is a different conductor across the section's insulation (often a
+        // thinner wire, whose centre can sit closer than this turn's diameter without touching
+        // it); there the row ends, and this turn's flank toward it is the isolated cylinder's.
+        const Turn* nearestPositive = nullptr;
+        const Turn* nearestNegative = nullptr;
         for (const auto& otherTurn : allTurns) {
             if (otherTurn.get_name() == turn.get_name()) {
                 continue;
@@ -2585,15 +2593,30 @@ static std::vector<TurnToCoreFace> turn_to_core_air_gaps(Coil& coil, const Core&
             }
             double distance = std::hypot(otherCoordinates[0] - coordinates[0], otherCoordinates[1] - coordinates[1]);
             if (along > 0) {
-                towardsPositive = std::min(towardsPositive, distance);
+                if (distance < towardsPositive) {
+                    towardsPositive = distance;
+                    nearestPositive = &otherTurn;
+                }
             }
             else if (along < 0) {
-                towardsNegative = std::min(towardsNegative, distance);
+                if (distance < towardsNegative) {
+                    towardsNegative = distance;
+                    nearestNegative = &otherTurn;
+                }
             }
             else {
                 throw InvalidInputException(ErrorCode::INVALID_COIL_CONFIGURATION,
                     "Turns " + turn.get_name() + " and " + otherTurn.get_name() + " share a centre: overlapping conductors have no capacitance to the core");
             }
+        }
+        auto continuesTheRow = [&](const Turn* neighbour) {
+            return neighbour->get_winding() == turn.get_winding() && neighbour->get_section() == turn.get_section();
+        };
+        if (nearestPositive && !continuesTheRow(nearestPositive)) {
+            towardsPositive = noNeighbour;
+        }
+        if (nearestNegative && !continuesTheRow(nearestNegative)) {
+            towardsNegative = noNeighbour;
         }
         return std::make_pair(towardsPositive, towardsNegative);
     };
