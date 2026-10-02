@@ -462,7 +462,14 @@ TEST_CASE("Test_Coil_Json_10", "[constructive-model][coil][bug][smoke-test]") {
     coil.set_functional_description(coilFunctionalDescription);
     coil.set_sections_description(coilSectionsDescription);
     coil.set_layers_description(coilLayersDescription);
+    // The preset is over-full: 'Primary section 0 layer 0' needs 11.126 mm for its turns and has
+    // 6.150 mm. A direct wind_by_turns refuses copper outside its layer by default...
+    settings.reset();
+    REQUIRE_THROWS_WITH(coil.wind_by_turns(), Catch::Matchers::ContainsSubstring("overflows"));
+    // ...and lays it out when the caller opts in, as a front end showing an over-full winding must.
+    settings.set_coil_wind_even_if_not_fit(true);
     coil.wind_by_turns();
+    settings.reset();
 
     // Repro point: winding by turns over preset sections/layers must produce turns.
     REQUIRE(coil.get_turns_description());

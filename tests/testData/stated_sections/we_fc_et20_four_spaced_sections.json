@@ -1,0 +1,220 @@
+{
+ "name": "7448640396 (Cenker)",
+ "core": {
+  "name": "ET 20 - A07 - Ungapped",
+  "functionalDescription": {
+   "type": "pieceAndPlate",
+   "material": "A07",
+   "shape": {
+    "aliases": [
+     "ET20"
+    ],
+    "dimensions": {
+     "A": {
+      "maximum": 0.0206,
+      "minimum": 0.0196,
+      "nominal": 0.0201
+     },
+     "B": {
+      "nominal": 0.0181
+     },
+     "B2": {
+      "maximum": 0.0022,
+      "minimum": 0.0018,
+      "nominal": 0.002
+     },
+     "C": {
+      "maximum": 0.0047,
+      "minimum": 0.0041,
+      "nominal": 0.0044
+     },
+     "D": {
+      "nominal": 0.0161
+     },
+     "E": {
+      "nominal": 0.0161
+     },
+     "F": {
+      "maximum": 0.0042,
+      "minimum": 0.0036,
+      "nominal": 0.0039
+     }
+    },
+    "family": "ei",
+    "magneticCircuit": "closed",
+    "name": "ET 20",
+    "type": "standard"
+   },
+   "gapping": [],
+   "numberStacks": 1
+  }
+ },
+ "coil": {
+  "functionalDescription": [
+   {
+    "name": "L1",
+    "numberTurns": 30,
+    "numberParallels": 1,
+    "isolationSide": "primary",
+    "wire": {
+     "type": "round",
+     "material": "copper",
+     "numberConductors": 1,
+     "conductingDiameter": {
+      "nominal": 0.00036
+     },
+     "outerDiameter": {
+      "nominal": 0.000407604
+     },
+     "coating": {
+      "type": "enamelled",
+      "grade": 2
+     }
+    }
+   },
+   {
+    "name": "L2",
+    "numberTurns": 30,
+    "numberParallels": 1,
+    "isolationSide": "secondary",
+    "wire": {
+     "type": "round",
+     "material": "copper",
+     "numberConductors": 1,
+     "conductingDiameter": {
+      "nominal": 0.00036
+     },
+     "outerDiameter": {
+      "nominal": 0.000407604
+     },
+     "coating": {
+      "type": "enamelled",
+      "grade": 2
+     }
+    }
+   }
+  ],
+  "bobbin": {
+   "processedDescription": {
+    "columnShape": "round",
+    "columnWidth": 0.0039,
+    "columnDepth": 0.0039,
+    "columnThickness": 0.0008,
+    "wallThickness": 0.0007,
+    "coordinates": [
+     0.0,
+     0.0,
+     0.0
+    ],
+    "windingWindows": [
+     {
+      "area": 2.183e-05,
+      "coordinates": [
+       0.004825,
+       0.0,
+       0.0
+      ],
+      "height": 0.0118,
+      "width": 0.00185,
+      "shape": "rectangular",
+      "sectionsOrientation": "contiguous"
+     }
+    ]
+   }
+  },
+  "sectionsDescription": [
+   {
+    "name": "L1 section 0",
+    "type": "conduction",
+    "layersOrientation": "overlapping",
+    "partialWindings": [
+     {
+      "winding": "L1",
+      "parallelsProportion": [
+       0.5
+      ]
+     }
+    ],
+    "dimensions": [
+     0.00185,
+     0.0018
+    ],
+    "coordinates": [
+     0.004825,
+     0.005
+    ],
+    "coordinateSystem": "cartesian",
+    "windingWindow": 0
+   },
+   {
+    "name": "L1 section 1",
+    "type": "conduction",
+    "layersOrientation": "overlapping",
+    "partialWindings": [
+     {
+      "winding": "L1",
+      "parallelsProportion": [
+       0.5
+      ]
+     }
+    ],
+    "dimensions": [
+     0.00185,
+     0.0018
+    ],
+    "coordinates": [
+     0.004825,
+     0.0024
+    ],
+    "coordinateSystem": "cartesian",
+    "windingWindow": 0
+   },
+   {
+    "name": "L2 section 0",
+    "type": "conduction",
+    "layersOrientation": "overlapping",
+    "partialWindings": [
+     {
+      "winding": "L2",
+      "parallelsProportion": [
+       0.5
+      ]
+     }
+    ],
+    "dimensions": [
+     0.00185,
+     0.0018
+    ],
+    "coordinates": [
+     0.004825,
+     -0.0024
+    ],
+    "coordinateSystem": "cartesian",
+    "windingWindow": 0
+   },
+   {
+    "name": "L2 section 1",
+    "type": "conduction",
+    "layersOrientation": "overlapping",
+    "partialWindings": [
+     {
+      "winding": "L2",
+      "parallelsProportion": [
+       0.5
+      ]
+     }
+    ],
+    "dimensions": [
+     0.00185,
+     0.0018
+    ],
+    "coordinates": [
+     0.004825,
+     -0.005
+    ],
+    "coordinateSystem": "cartesian",
+    "windingWindow": 0
+   }
+  ]
+ }
+}

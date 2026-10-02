@@ -6382,6 +6382,7 @@ CoilAlignment Coil::get_section_alignment() {
 }
 
 bool Coil::fast_wind() {
+    InternalWindScope internalWindScope(*this);
     _strict = false;
 
     wind_by_sections();
@@ -6567,6 +6568,30 @@ void Coil::diagnose_empty_wind() {
                 return;
             }
         }
+        // Margin tape no section could hold: the margins run along the axis the sections stack on
+        // (wind_by_rectangular_sections: the height when sections overlap, the width when they are
+        // contiguous), and a section is never longer on that axis than its window. A pair of
+        // margins that takes that whole length leaves no room for one turn.
+        if (!windingWindows[0].get_radial_height() && windingWindows[0].get_width() && windingWindows[0].get_height()) {
+            const bool alongHeight = get_winding_orientation() == WindingOrientation::OVERLAPPING;
+            const double windowLength = alongHeight ? windingWindows[0].get_height().value() : windingWindows[0].get_width().value();
+            auto mm = [](double metres) {
+                std::ostringstream out;
+                out << std::fixed << std::setprecision(3) << metres * 1000;
+                return out.str();
+            };
+            for (size_t ordinal = 0; ordinal < _marginsPerSection.size(); ++ordinal) {
+                const auto& margin = _marginsPerSection[ordinal];
+                if (margin.size() < 2 || margin[0] + margin[1] < windowLength) {
+                    continue;
+                }
+                _lastFitFailure =
+                    "conduction section " + std::to_string(ordinal) + " carries " + mm(margin[0]) + " + " +
+                    mm(margin[1]) + " mm of margin across a winding window " + mm(windowLength) + " mm " +
+                    (alongHeight ? "high" : "wide") + ", which leaves no room for one turn";
+                return;
+            }
+        }
     }
     catch (const std::exception&) {
         // Diagnosis must never become the failure. A coil too incomplete to measure simply
@@ -6648,6 +6673,7 @@ bool Coil::wind(std::vector<double> proportionPerWinding, std::vector<size_t> pa
 }
 
 bool Coil::wind_inner(std::vector<double> proportionPerWinding, std::vector<size_t> pattern, size_t repetitions) {
+    InternalWindScope internalWindScope(*this);
     // REAL WINDING: a wire that makes N turns crosses the winding-window plane N+1
     // times — the beginning of the first turn occupies its own physical slot in the
     // cross-section (for 3 turns, 4 wire crossings per parallel appear in the 2D
@@ -7737,6 +7763,14 @@ bool Coil::apply_custom_section_rects() {
         // would keep e.g. a single overflowing layer instead of re-packing
         // into the new rect.
         section.set_number_layers(std::nullopt);
+        // ...and the filling factor, which was the computed rect's: left in place it judged the
+        // drawn rect by the area of a rect it no longer has. are_sections_and_layers_fitting
+        // measures it again on the drawn one.
+        section.set_filling_factor(std::nullopt);
+        auto statedPartialWindings = _customSectionPartialWindings.find(section.get_name());
+        if (statedPartialWindings != _customSectionPartialWindings.end()) {
+            section.set_partial_windings(statedPartialWindings->second);
+        }
         anyApplied = true;
     }
     if (!anyApplied) {
@@ -7744,11 +7778,54 @@ bool Coil::apply_custom_section_rects() {
         // exist) are the caller's to clean up; the wound result stays valid.
         return true;
     }
+    if (!_customSectionPartialWindings.empty()) {
+        // A stated turn split must still place every turn of every parallel exactly once.
+        std::map<std::string, std::vector<double>> placed;
+        for (const auto& section : sections) {
+            if (section.get_type() != ElectricalType::CONDUCTION) {
+                continue;
+            }
+            for (const auto& partialWinding : section.get_partial_windings()) {
+                auto& sums = placed[partialWinding.get_winding()];
+                const auto& proportions = partialWinding.get_parallels_proportion();
+                sums.resize(std::max(sums.size(), proportions.size()), 0.0);
+                for (size_t parallelIndex = 0; parallelIndex < proportions.size(); ++parallelIndex) {
+                    sums[parallelIndex] += proportions[parallelIndex];
+                }
+            }
+        }
+        for (const auto& [windingName, sums] : placed) {
+            for (size_t parallelIndex = 0; parallelIndex < sums.size(); ++parallelIndex) {
+                if (std::abs(sums[parallelIndex] - 1.0) > 1e-6) {
+                    throw CoilException(ErrorCode::INVALID_COIL_CONFIGURATION,
+                        "The stated sections place " + std::to_string(sums[parallelIndex]) + " of parallel " +
+                        std::to_string(parallelIndex) + " of winding '" + windingName + "', not all of it once");
+                }
+            }
+        }
+    }
     set_sections_description(sections);
-    return rewind_layers_and_turns();
+    if (!rewind_layers_and_turns()) {
+        return false;
+    }
+    // The re-flow only builds layers and turns inside the drawn rects; whether they FIT them is
+    // the same verdict every other wind owes its caller, or a drawn rect smaller than its copper
+    // came back as a good wind with turns outside it.
+    if (settings.get_coil_wind_even_if_not_fit()) {
+        return true;
+    }
+    if (!are_sections_and_layers_fitting()) {
+        auto overflow = describe_first_section_overflow();
+        if (!overflow.empty()) {
+            _lastFitFailure = overflow;
+        }
+        return false;
+    }
+    return true;
 }
 
 bool Coil::wind_planar(std::vector<size_t> stackUp, std::optional<double> borderToWireDistance, std::map<size_t, double> wireToWireDistance, std::map<std::pair<size_t, size_t>, double> insulationThickness, double coreToLayerDistance) {
+    InternalWindScope internalWindScope(*this);
     bool windEvenIfNotFit = settings.get_coil_wind_even_if_not_fit();
     bool delimitAndCompact = settings.get_coil_delimit_and_compact();
     std::string bobbinName = "";
@@ -8535,6 +8612,135 @@ size_t Coil::get_section_index_by_name(std::string name) const {
     throw CoilException(ErrorCode::COIL_WINDING_ERROR, "No such a section name: " + name);
 }
 
+double get_area_used_in_wires(OpenMagnetics::Wire wire, uint64_t physicalTurns);
+
+double Coil::computed_filling_factor(const std::string& name, const std::vector<PartialWinding>& partialWindings,
+                                     const std::vector<double>& dimensions, const std::optional<std::vector<double>>& margin) {
+    if (dimensions.size() < 2) {
+        throw CoilException(ErrorCode::INVALID_COIL_CONFIGURATION,
+            "'" + name + "' has no fillingFactor and its dimensions do not give one: it states " +
+            std::to_string(dimensions.size()) + " dimensions, 2 are needed");
+    }
+    if (resolve_bobbin().get_winding_window_shape() != WindingWindowShape::RECTANGULAR) {
+        // A round window's element is [radial height, angle]; its area is a ring sector, which only
+        // wind_by_round_sections / wind_by_round_layers know how to measure with the column.
+        throw CoilException(ErrorCode::INVALID_COIL_CONFIGURATION,
+            "'" + name + "' in a round winding window has no fillingFactor; wind it with wind() or "
+            "wind_by_sections()/wind_by_layers() so the winder sets it");
+    }
+    auto wires = get_wires();
+    double usedArea = 0;
+    for (const auto& partialWinding : partialWindings) {
+        size_t windingIndex = get_winding_index_by_name(partialWinding.get_winding());
+        uint64_t physicalTurns = 0;
+        for (double proportion : partialWinding.get_parallels_proportion()) {
+            physicalTurns += uint64_t(std::round(proportion * double(get_number_turns(windingIndex))));
+        }
+        usedArea += get_area_used_in_wires(wires[windingIndex], physicalTurns);
+    }
+    double width = dimensions[0];
+    double height = dimensions[1];
+    if (margin && margin->size() >= 2) {
+        // wind_by_rectangular_sections: the margins run along the axis the sections stack on --
+        // the height when sections overlap, the width when they are contiguous.
+        if (get_winding_orientation() == WindingOrientation::OVERLAPPING) {
+            height -= (*margin)[0] + (*margin)[1];
+        }
+        else {
+            width -= (*margin)[0] + (*margin)[1];
+        }
+    }
+    if (width <= 0 || height <= 0) {
+        throw CoilException(ErrorCode::INVALID_COIL_CONFIGURATION,
+            "'" + name + "' has no room left inside its margins: " + std::to_string(width * 1e3) + " x " +
+            std::to_string(height * 1e3) + " mm");
+    }
+    return usedArea / (width * height);
+}
+
+std::string Coil::describe_first_section_overflow() {
+    if (!get_sections_description() || !get_layers_description()) {
+        return "";
+    }
+    const double ffLimit = settings.get_coil_allow_coating_squish() ? 1.0 + 1e-3 : 1.0;
+    const bool allowHorizontal = settings.get_coil_allow_horizontal_overflow();
+    const bool rectangular = resolve_bobbin().get_winding_window_shape() == WindingWindowShape::RECTANGULAR;
+    auto mm = [](double value) {
+        std::ostringstream text;
+        text << std::fixed << std::setprecision(3) << value * 1e3;
+        return text.str();
+    };
+    auto layers = get_layers_description().value();
+    for (auto& layer : layers) {
+        if (layer.get_type() != ElectricalType::CONDUCTION) {
+            continue;
+        }
+        double fillingFactor = layer.get_filling_factor()
+            ? layer.get_filling_factor().value()
+            : computed_filling_factor(layer.get_name(), layer.get_partial_windings(), layer.get_dimensions(), std::nullopt);
+        if (roundFloat(fillingFactor, 6) > ffLimit) {
+            // The layer is one conductor thick across its turn axis, so its square-area filling
+            // factor times its turn-axis extent is the length its turns need along that axis.
+            // Overlapping layers lay their turns along the height (y, or the angle in a round
+            // window), contiguous layers along the width.
+            const bool turnsAlongHeight = layer.get_orientation() == WindingOrientation::OVERLAPPING;
+            double available = turnsAlongHeight ? layer.get_dimensions()[1] : layer.get_dimensions()[0];
+            std::string unit = (!rectangular && turnsAlongHeight) ? " deg" : " mm";
+            std::string availableText = unit == " deg" ? std::to_string(available) : mm(available);
+            std::string neededText = unit == " deg" ? std::to_string(available * fillingFactor) : mm(available * fillingFactor);
+            return "section '" + layer.get_section().value_or(std::string("?")) + "' overflows: its layer '" +
+                   layer.get_name() + "' needs " + neededText + unit + " for its turns and has " +
+                   availableText + unit;
+        }
+    }
+    if (allowHorizontal) {
+        return "";
+    }
+    auto sections = get_sections_description().value();
+    for (auto& section : sections) {
+        if (section.get_type() != ElectricalType::CONDUCTION) {
+            continue;
+        }
+        auto sectionLayers = get_layers_by_section(section.get_name());
+        double alongWidth = 0;
+        double alongHeight = 0;
+        for (auto& layer : sectionLayers) {
+            if (layer.get_orientation() == WindingOrientation::OVERLAPPING) {
+                alongWidth += layer.get_dimensions()[0];
+                alongHeight = std::max(alongHeight, layer.get_dimensions()[1]);
+            }
+            else {
+                alongWidth = std::max(alongWidth, layer.get_dimensions()[0]);
+                alongHeight += layer.get_dimensions()[1];
+            }
+        }
+        if (roundFloat(alongWidth / section.get_dimensions()[0], 6) > ffLimit) {
+            return "section '" + section.get_name() + "' overflows: its " + std::to_string(sectionLayers.size()) +
+                   " layers need " + mm(alongWidth) + " mm across it and it has " + mm(section.get_dimensions()[0]) + " mm";
+        }
+        if (roundFloat(alongHeight / section.get_dimensions()[1], 6) > ffLimit) {
+            std::string unit = rectangular ? " mm" : " deg";
+            return "section '" + section.get_name() + "' overflows: its " + std::to_string(sectionLayers.size()) +
+                   " layers need " + (rectangular ? mm(alongHeight) : std::to_string(alongHeight)) + unit +
+                   " along it and it has " +
+                   (rectangular ? mm(section.get_dimensions()[1]) : std::to_string(section.get_dimensions()[1])) + unit;
+        }
+    }
+    return "";
+}
+
+void Coil::throw_if_direct_wind_overflows(const std::string& caller) {
+    // Only a DIRECT call: the internal winders own the verdict (they re-wind, retry, or report
+    // "does not fit" themselves), and so does a caller that asked to wind even if it does not fit.
+    if (_internalWindDepth > 0 || settings.get_coil_wind_even_if_not_fit()) {
+        return;
+    }
+    auto overflow = describe_first_section_overflow();
+    if (!overflow.empty()) {
+        throw CoilException(ErrorCode::COIL_WINDING_ERROR, caller + ": " + overflow);
+    }
+}
+
 bool Coil::are_sections_and_layers_fitting() {
     bool windTurns = true;
     if (!get_sections_description()) {
@@ -8545,6 +8751,25 @@ bool Coil::are_sections_and_layers_fitting() {
     }
     auto sections = get_sections_description().value();
     auto layers = get_layers_description().value();
+
+    // A section or layer that was STATED (deserialized, or set by the caller) rather than built by
+    // wind_by_sections / wind_by_layers carries no fillingFactor -- it is optional in MAS -- and
+    // the bare .value() below threw std::bad_optional_access, which reached a Python caller as
+    // "bad optional access" with nothing pointing at the coil. Compute it from what the element
+    // holds, with the formula the winders set it with: the square area its physical turns occupy
+    // (get_area_used_in_wires) over its own rectangle, less its margins on the axis they apply to.
+    for (auto& section : sections) {
+        if (section.get_type() == ElectricalType::CONDUCTION && !section.get_filling_factor()) {
+            section.set_filling_factor(computed_filling_factor(section.get_name(), section.get_partial_windings(),
+                                                               section.get_dimensions(), resolve_margin(section)));
+        }
+    }
+    for (auto& layer : layers) {
+        if (layer.get_type() == ElectricalType::CONDUCTION && !layer.get_filling_factor()) {
+            layer.set_filling_factor(computed_filling_factor(layer.get_name(), layer.get_partial_windings(),
+                                                             layer.get_dimensions(), std::nullopt));
+        }
+    }
 
     // ABT #685 (Alf, 2026-08-16): COATING SQUISH, opt-in. The helical stacking pitch is a
     // second-order correction that pushes an EXACTLY-full layer a few tens of um over — real
@@ -13347,6 +13572,13 @@ bool Coil::wind_by_layers() {
         devirtualize_layers_description();
     }
 
+    // The layer count is capped to what fits the section, so turns beyond its capacity are
+    // crammed into the layers it has (a layer over-full along its turn axis). Inside wind() that
+    // is a verdict for are_sections_and_layers_fitting; on a direct call nobody else will judge it.
+    // A further layer is not the answer: the cap is exactly that no further layer fits the section.
+    if (result) {
+        throw_if_direct_wind_overflows("wind_by_layers");
+    }
     return result;
 }
 
@@ -14389,6 +14621,9 @@ bool Coil::wind_by_turns() {
     if (!get_layers_description()) {
         return false;
     }
+    // A direct call places turns into layers nobody has judged: an over-full layer put its turns
+    // outside its section (WE-FC 7448640395: 4 turns of 0.5025 mm, 2.01 mm, in a 1.8 mm layer).
+    throw_if_direct_wind_overflows("wind_by_turns");
     auto bobbin = resolve_bobbin();
 
     auto functionalDescription = get_functional_description();
@@ -17657,6 +17892,7 @@ void Coil::clear() {
 }
 
 void Coil::try_rewind() {
+    InternalWindScope internalWindScope(*this);
     if (!get_sections_description()) {
         return;
     }
@@ -17950,6 +18186,7 @@ void Coil::preload_margins(std::vector<std::vector<double>> marginPairs) {
 }
 
 void Coil::add_margin_to_section_by_index(size_t sectionIndex, std::vector<double> margins) {
+    InternalWindScope internalWindScope(*this);
     if (!get_sections_description()) {
         throw CoilNotProcessedException("In Add Margin to Section: Section description empty, wind coil first");
     }

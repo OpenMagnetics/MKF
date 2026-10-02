@@ -2993,7 +2993,100 @@ bool wind_magnetic_coil_as_described(Magnetic& magnetic, json configuration, std
                 }
             }
             std::vector<size_t> pattern(sequence.begin(), sequence.begin() + unitLength);
-            return magnetic.get_mutable_coil().wind(pattern, sequence.size() / unitLength);
+
+            // STATED SECTIONS. A coil that arrives with a sectionsDescription but no turns has
+            // stated where each section is and how big it is (MAS requires both), and which turns
+            // it holds. The winder used to re-stack such sections evenly over the whole window: four
+            // 1.8 mm sections of a WE-FC choke, spaced 0.8 / 3.0 / 0.8 mm apart along the column,
+            // came back as four 2.95 mm sections end to end, with turns in the spacing and no
+            // error. The stated rects and turn splits are imposed on the wind as hand-drawn section
+            // rects are (apply_custom_section_rects: after placement, layers and turns re-flowed
+            // inside each, judged for fit).
+            //
+            // Only here, where the pattern is derived from the stated sections themselves: the wind
+            // then builds the same sequence of conduction sections, so the i-th wound section is
+            // the i-th stated one. The winder names a section "<winding> section <k>" with k
+            // counting that winding's sections; a stated file may number them otherwise (El
+            // Magnetic's 750370900_00 says "SEC section 2" for the first SEC section), so each
+            // stated rect is keyed by the name the wind will give its section.
+            //
+            // Not under real winding: there the stored sections are owned by ABT #1487 R5 (stored
+            // heights above), which keeps each stored height unless the section's crossing
+            // stations need more -- a crossing station is a wire slot the stated rect never held.
+            // Not in a round window: there a section is [radial height, angle], and the drawn-rect
+            // re-flow only measures rectangles; a toroid's stored sections are wound by
+            // wind_by_round_sections from their own margins, order and turn split.
+            //
+            // A stated layout that does not fit is reported exactly as any other wind that does
+            // not fit (ABT #930, #1322, #1487): wind() returns false, the reason is in
+            // get_last_fit_failure, and the turns are laid out in the stated sections as far as
+            // they go -- never a throw, so one record cannot stop an atomic catalogue load.
+            auto& coil = magnetic.get_mutable_coil();
+            bool rectangularWindows = true;
+            {
+                auto bobbin = coil.resolve_bobbin();
+                if (!bobbin.get_processed_description()) {
+                    throw CoilException(ErrorCode::INVALID_COIL_CONFIGURATION,
+                        "The coil states its sections but its bobbin has no processed description to place them in");
+                }
+                for (const auto& window : bobbin.get_processed_description()->get_winding_windows()) {
+                    if (window.get_shape() != WindingWindowShape::RECTANGULAR) {
+                        rectangularWindows = false;
+                    }
+                }
+            }
+            std::vector<std::pair<std::string, Section>> statedSections;   // {wound name, stated}
+            if (!coil.get_turns_description() && !coil.is_planar() && !rewindForRealWinding && rectangularWindows) {
+                std::map<std::string, std::pair<std::vector<double>, std::vector<double>>> statedRects;
+                std::map<std::string, std::vector<PartialWinding>> statedPartialWindings;
+                std::map<std::string, size_t> sectionsSoFarPerWinding;
+                const auto givenSections = coil.get_sections_description().value();
+                for (const auto& section : givenSections) {
+                    if (section.get_type() != ElectricalType::CONDUCTION) {
+                        continue;
+                    }
+                    const std::string winding = section.get_partial_windings()[0].get_winding();
+                    const std::string woundName = winding + " section " + std::to_string(sectionsSoFarPerWinding[winding]++);
+                    statedRects[woundName] = {section.get_coordinates(), section.get_dimensions()};
+                    statedPartialWindings[woundName] = section.get_partial_windings();
+                    statedSections.push_back({woundName, section});
+                }
+                coil.preload_custom_section_rects(statedRects);
+                coil.preload_custom_section_partial_windings(statedPartialWindings);
+            }
+            // Transient: the stated rects belong to THIS wind; a later wind of the returned coil
+            // must place its sections afresh.
+            struct StatedSectionsGuard {
+                Coil& coil;
+                ~StatedSectionsGuard() {
+                    coil.preload_custom_section_rects({});
+                    coil.preload_custom_section_partial_windings({});
+                }
+            } statedSectionsGuard{coil};
+
+            const bool wound = coil.wind(pattern, sequence.size() / unitLength);
+            if (wound) {
+                // A wind that fits has imposed every stated rect (apply_custom_section_rects runs
+                // last on a fitting wind); one it did not keep is a winder defect, not a verdict.
+                const auto woundSections = coil.get_sections_description().value();
+                for (const auto& [woundName, stated] : statedSections) {
+                    auto found = std::find_if(woundSections.begin(), woundSections.end(),
+                                              [&](const Section& section) { return section.get_name() == woundName; });
+                    if (found == woundSections.end()) {
+                        throw CoilException(ErrorCode::COIL_WINDING_ERROR,
+                            "Stated section '" + stated.get_name() + "' has no counterpart '" + woundName +
+                            "' in the wound coil, so its rect was not kept");
+                    }
+                    for (size_t axis = 0; axis < 2; ++axis) {
+                        if (std::abs(found->get_coordinates()[axis] - stated.get_coordinates()[axis]) > 1e-12 ||
+                            std::abs(found->get_dimensions()[axis] - stated.get_dimensions()[axis]) > 1e-12) {
+                            throw CoilException(ErrorCode::COIL_WINDING_ERROR,
+                                "Stated section '" + stated.get_name() + "' was not kept by the wind");
+                        }
+                    }
+                }
+            }
+            return wound;
         }
         else {
             return magnetic.get_mutable_coil().wind();

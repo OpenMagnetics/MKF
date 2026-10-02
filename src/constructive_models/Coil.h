@@ -627,6 +627,20 @@ class Coil : public MAS::Coil {
         // Hand-drawn section rectangles (winding studio): section name ->
         // {coordinates, dimensions}, re-imposed at the end of every wind.
         std::map<std::string, std::pair<std::vector<double>, std::vector<double>>> _customSectionRects;
+        std::map<std::string, std::vector<PartialWinding>> _customSectionPartialWindings;
+        // How many internal winders (wind, fast_wind, wind_planar, try_rewind, margin re-winds) are
+        // running. Those call wind_by_layers/wind_by_turns on layouts that may transiently not fit
+        // and own the fit verdict themselves; a DIRECT call (depth 0) has no such owner, so it
+        // throws on an overflowing section instead of returning copper outside its section.
+        size_t _internalWindDepth = 0;
+        struct InternalWindScope {
+            Coil& coil;
+            explicit InternalWindScope(Coil& c) : coil(c) { ++coil._internalWindDepth; }
+            ~InternalWindScope() { --coil._internalWindDepth; }
+        };
+        void throw_if_direct_wind_overflows(const std::string& caller);
+        double computed_filling_factor(const std::string& name, const std::vector<PartialWinding>& partialWindings,
+                                       const std::vector<double>& dimensions, const std::optional<std::vector<double>>& margin);
         // Winding-style overrides (winding studio), keyed by winding name.
         std::map<std::string, WindingStyle> _windingStyleOverridePerWinding;
         // ABT #1487: real-winding crossing stations currently added to each winding's numberTurns
@@ -827,7 +841,16 @@ class Coil : public MAS::Coil {
         // turns re-flowed inside it — compaction never moves a drawn section.
         // Transient, like preload_margins: not part of the MAS coil.
         void preload_custom_section_rects(std::map<std::string, std::pair<std::vector<double>, std::vector<double>>> rects) { _customSectionRects = rects; }
+        // Stated sections (magnetic_autocomplete over a sectionsDescription without turns): the
+        // partial windings each stated section carries, keyed by section name, imposed together
+        // with its rect by apply_custom_section_rects so the stated turn split is kept as well as
+        // the stated position. Transient, like preload_custom_section_rects.
+        void preload_custom_section_partial_windings(std::map<std::string, std::vector<PartialWinding>> partialWindings) { _customSectionPartialWindings = partialWindings; }
         bool apply_custom_section_rects();
+        // The first conduction layer or section whose copper overflows its extent, named with the
+        // size it needs and the size it has; empty when every layer fits. Same axes and limits as
+        // are_sections_and_layers_fitting (turn axis per layer, layer-stack axis per section).
+        std::string describe_first_section_overflow();
         // ABT #978/#982: stack-up for a planar PCB from the printed group's pcb rules — one copper layer per
         // (winding, parallel) group, windings interleaved (port of the auto_planar/MPB layerer).
         std::vector<size_t> plan_planar_stackup();
