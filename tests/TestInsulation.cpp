@@ -2787,6 +2787,12 @@ namespace TestInsulationIEC60335Clearance{
     }
 
     TEST_CASE("Clearance_Basic_P1_OVC_I_Low_Altitude_High_Frequency", "[constructive-model][insulation][iec-60335][smoke-test]") {
+        // Its own inputs: it read the namespace's altitude and voltages as Clearance_Printed_Basic_3
+        // left them (120 V rms, 2000 V peak, 2000 m), and threw when run alone or first in a shard.
+        // These are the values its 11 mm has always been computed from.
+        maximumVoltageRms = 120;
+        maximumVoltagePeak = 2000;
+        altitude.set_maximum(2000);
         mainSupplyVoltage.set_nominal(250);
         frequency = 500000;
         auto overvoltageCategory = OvervoltageCategory::I;
