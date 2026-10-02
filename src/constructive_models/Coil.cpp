@@ -13079,7 +13079,6 @@ bool Coil::wind_by_round_sections(std::vector<double> proportionPerWinding, std:
                 double marginAngle0 = 0;
                 double marginAngle1 = 0;
                 size_t numberLayers = ULONG_MAX;
-                size_t prevNumberLayers = 0;
 
                 // ABT #187: real-winding angular blocking — size the section for the ring capacities
                 // AFTER the blocked slots are removed, so spilled turns get their radial space. The
@@ -13118,23 +13117,79 @@ bool Coil::wind_by_round_sections(std::vector<double> proportionPerWinding, std:
                         currentSectionRadialHeight += (numberLayers - 1) * insulationLayer.get_dimensions()[0];
                     }
                 }
-                else {
-                    while (numberLayers != prevNumberLayers) {
-                        prevNumberLayers = numberLayers;
-                        double currentSectionAngleMinusMargin = currentSectionAngle - marginAngle0 - marginAngle1;
-                        auto aux = get_number_layers_needed_and_number_physical_turns(currentSectionCenterRadialHeight, currentSectionAngleMinusMargin, wirePerWinding[windingIndex], physicalTurnsThisSection, availableRadialHeight, blockedSlotsPointer);
-                        numberLayers = aux.first;
-                        if (_strict) {
-                            currentSectionRadialHeight = numberLayers * wirePerWinding[windingIndex].get_maximum_outer_width();
-                        }
-                        double lastLayerMaximumRadius = availableRadialHeight - (currentSectionCenterRadialHeight + numberLayers * wirePerWinding[windingIndex].get_maximum_outer_width());
-                        if (lastLayerMaximumRadius < 0) {
+                else if (_marginsPerSection[marginIndex][0] > 0 || _marginsPerSection[marginIndex][1] > 0) {
+                    // A section's margins are held as angles taken at its INNERMOST radius, the
+                    // inner edge of its deepest ring (here, and in every placement of the section:
+                    // lastLayerMaximumRadius). So the margin angle depends on how many rings the
+                    // section needs, and the rings it needs depend on the angle the margins leave.
+                    // This used to be solved by iterating rings -> margins -> rings, which walks one
+                    // way only: every extra ring narrows the innermost radius and so widens the
+                    // margins, and once the margins left too little for the next ring the walk ran
+                    // on until the margin chord was wider than the ring itself, where
+                    // wound_distance_to_angle's "does not fit" 360-degree answer made every ring hold
+                    // its forced one turn. WE 7448229004 (7 turns of 1.062 mm per side in a 3.7 mm
+                    // bore, 1.24 mm margins) came back unwound, blamed on "7 rings, 7.434 mm deep",
+                    // when what does not fit is the margins.
+                    //
+                    // Each depth is tried in turn instead: the section takes the shallowest one whose
+                    // margins, taken at that depth's innermost radius, leave room for its turns in
+                    // that many rings. Deeper is tried until the margins no longer fit the ring.
+                    const double wireWidth = wirePerWinding[windingIndex].get_maximum_outer_width();
+                    std::ostringstream tried;
+                    bool sized = false;
+                    for (size_t rings = 1; !sized; ++rings) {
+                        const double innermostRadius = availableRadialHeight - (currentSectionCenterRadialHeight + double(rings) * wireWidth);
+                        if (innermostRadius <= 0) {
+                            tried << "; " << rings << " rings reach past the centre of the window";
                             break;
                         }
-                        marginAngle0 = wound_distance_to_angle(_marginsPerSection[marginIndex][0], lastLayerMaximumRadius);
-                        marginAngle1 = wound_distance_to_angle(_marginsPerSection[marginIndex][1], lastLayerMaximumRadius);
-                    }                
+                        const double angle0 = wound_distance_to_angle(_marginsPerSection[marginIndex][0], innermostRadius);
+                        const double angle1 = wound_distance_to_angle(_marginsPerSection[marginIndex][1], innermostRadius);
+                        const double angleLeft = currentSectionAngle - angle0 - angle1;
+                        if (angle0 >= 360 || angle1 >= 360) {
+                            tried << "; with " << rings << " rings a margin is wider than the "
+                                  << 2 * innermostRadius * 1e3 << " mm diameter of the innermost radius";
+                            break;
+                        }
+                        if (angleLeft <= 0) {
+                            tried << "; with " << rings << " rings the margins, taken at the innermost radius "
+                                  << innermostRadius * 1e3 << " mm, take the whole " << currentSectionAngle << " deg";
+                            break;
+                        }
+                        auto aux = get_number_layers_needed_and_number_physical_turns(currentSectionCenterRadialHeight, angleLeft, wirePerWinding[windingIndex], physicalTurnsThisSection, availableRadialHeight, blockedSlotsPointer);
+                        if (aux.first <= rings) {
+                            numberLayers = rings;
+                            marginAngle0 = angle0;
+                            marginAngle1 = angle1;
+                            sized = true;
+                        }
+                        else {
+                            tried << "; with " << rings << (rings == 1 ? " ring" : " rings") << " they leave "
+                                  << angleLeft << " deg of the " << currentSectionAngle << " deg, which needs "
+                                  << aux.first << " rings";
+                        }
+                    }
+                    if (!sized) {
+                        std::ostringstream reason;
+                        reason << std::fixed << std::setprecision(3)
+                               << "winding '" << get_name(windingIndex) << "' does not fit its round winding window: "
+                               << physicalTurnsThisSection << " turns of a " << wireWidth * 1e3 << " mm wire with margins of "
+                               << _marginsPerSection[marginIndex][0] * 1e3 << " mm and " << _marginsPerSection[marginIndex][1] * 1e3
+                               << " mm, which the section holds as angles at its innermost radius" << tried.str();
+                        _lastFitFailure = reason.str();
+                        return false;
+                    }
+                    if (_strict) {
+                        currentSectionRadialHeight = numberLayers * wireWidth;
+                    }
                     currentSectionAngle -= marginAngle0 + marginAngle1;
+                }
+                else {
+                    auto aux = get_number_layers_needed_and_number_physical_turns(currentSectionCenterRadialHeight, currentSectionAngle, wirePerWinding[windingIndex], physicalTurnsThisSection, availableRadialHeight, blockedSlotsPointer);
+                    numberLayers = aux.first;
+                    if (_strict) {
+                        currentSectionRadialHeight = numberLayers * wirePerWinding[windingIndex].get_maximum_outer_width();
+                    }
                 }
 
 

@@ -87,3 +87,45 @@ TEST_CASE("Test_Toroid_Turn_One_Nanometre_Inside_The_Bore_Is_Refused", "[constru
     REQUIRE_THROWS_WITH(StrayCapacitance().calculate_capacitance(result),
                         ContainsSubstring("lies inside the core at the bore"));
 }
+
+// WE 7448229004: 7 + 7 turns of 1.062 mm wire in the 3.7 mm bore of an epoxy-coated T14/8/9,
+// one section per winding, each with a margin on both sides. The winder holds a section's margins
+// as angles at its innermost radius. With 1.23 mm margins that leaves room for 4 + 3 turns in two
+// rings; from 1.24 mm (the requirements sheet says 1.25) it leaves room for 6 in one ring and 6
+// in two, and a third ring is narrower than the margin. The sizing used to walk ring counts one
+// way, past that point, until the margin no longer fitted the ring and every ring was handed a
+// forced turn; the coil came back unwound, blamed on "7 rings, 7.434 mm deep in a window of
+// 3.7 mm". Unwound is the right verdict for that margin model, but the caller must be told the
+// margins are what does not fit (ABT #930 contract: no turns, get_last_fit_failure says why).
+TEST_CASE("Test_Toroid_Section_Margins_That_Do_Not_Fit_Are_Named", "[constructive-model][coil][toroidal][cmc-catalogue]") {
+    auto with_margin = [](double margin) {
+        auto magneticJson = load_cmc_catalogue_fixture("7448229004");
+        for (auto& section : magneticJson["coil"]["sectionsDescription"]) {
+            if (section.contains("margin")) {
+                section["margin"] = {margin, margin};
+            }
+        }
+        return OpenMagnetics::Magnetic(magneticJson);
+    };
+    SECTION("1.23 mm margins wind both windings in two rings") {
+        settings.reset();
+        auto result = magnetic_autocomplete(with_margin(1.23e-3));
+        REQUIRE(result.get_coil().get_turns_description());
+        CHECK(result.get_coil().get_turns_description()->size() == 14);
+        CHECK(result.get_coil().get_last_fit_failure().empty());
+    }
+    for (double margin : {1.24e-3, 1.25e-3}) {
+        DYNAMIC_SECTION("margins of " << margin * 1e3 << " mm do not fit, and the reason says so") {
+            settings.reset();
+            OpenMagnetics::Magnetic result;
+            REQUIRE_NOTHROW(result = magnetic_autocomplete(with_margin(margin)));
+            CHECK_FALSE(result.get_coil().get_turns_description());
+            const auto reason = result.get_coil().get_last_fit_failure();
+            INFO(reason);
+            CHECK_THAT(reason, ContainsSubstring("winding 'L1' does not fit its round winding window: 7 turns of a 1.062 mm wire") &&
+                               ContainsSubstring("margins of") && ContainsSubstring("innermost radius") &&
+                               ContainsSubstring("with 1 ring they leave") && ContainsSubstring("with 2 rings they leave"));
+            CHECK_THAT(reason, !ContainsSubstring("7 rings"));
+        }
+    }
+}
