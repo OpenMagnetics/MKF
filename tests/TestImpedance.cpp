@@ -187,6 +187,41 @@ TEST_CASE("Test_Impedance_Many_Turns", "[physical-model][impedance][smoke-test]"
     // }
 }
 
+// Past its ferromagnetic resonance A07's mu' is negative (MAS: mu' extended to the top of its
+// tabulated mu'' by Kramers-Kronig; about -132 at 10 MHz). The impedance takes the complex
+// permeability as it is, signed, and the result is finite and passive. Flooring mu' at 1 (as
+// get_complex_permeability used to) would turn the core arm's reactance from capacitive to
+// inductive there.
+TEST_CASE("Test_Impedance_Signed_Complex_Permeability_Above_Resonance", "[physical-model][impedance][complex-permeability-sign]") {
+    settings.reset();
+    double frequency = 1e7;
+    auto [minimumMaterialFrequency, maximumMaterialFrequency] = ComplexPermeability().get_frequency_range(std::string("A07"));
+    REQUIRE(frequency >= minimumMaterialFrequency);
+    REQUIRE(frequency <= maximumMaterialFrequency);
+    auto [realPart, imaginaryPart] = ComplexPermeability().get_complex_permeability(std::string("A07"), frequency);
+    CHECK(realPart < 0);
+    CHECK(imaginaryPart > 0);
+
+    std::vector<int64_t> numberTurns = {110, 110};
+    std::vector<int64_t> numberParallels = {1, 1};
+    std::string shapeName = "T 12.5/7.5/5";
+    auto wire = find_wire_by_name("Round 0.15 - Grade 1");
+    std::vector<OpenMagnetics::Wire> wires = {wire, wire};
+    auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, shapeName, 1,
+                                                     WindingOrientation::CONTIGUOUS, WindingOrientation::OVERLAPPING,
+                                                     CoilAlignment::CENTERED, CoilAlignment::CENTERED, wires, false);
+    std::vector<CoreGap> gapping = {};
+    auto core = OpenMagneticsTesting::get_quick_core(shapeName, gapping, 1, "A07");
+    OpenMagnetics::Magnetic magnetic;
+    magnetic.set_core(core);
+    magnetic.set_coil(coil);
+
+    auto impedance = OpenMagnetics::Impedance().calculate_impedance(magnetic, frequency);
+    CHECK(std::isfinite(impedance.real()));
+    CHECK(std::isfinite(impedance.imag()));
+    CHECK(impedance.real() > 0);
+}
+
 TEST_CASE("Test_Self_Resonant_Frequency_Many_Turns", "[physical-model][impedance][smoke-test]") {
 
     // The real part: WE-CMB 744821039, 110 + 110 turns of Round 0.15 - Grade 1 on an ACME A07
@@ -516,19 +551,20 @@ TEST_CASE("Test_Impedance_Common_Mode_No_Leakage_Spike", "[physical-model][imped
 // the nearest measured endpoint, which froze µ above the data instead. Neither is
 // physics: a query outside the tabulated span now throws
 // ComplexPermeabilityFrequencyOutOfRangeException, and so does a sweep that reaches
-// past it. Inside the span the values stay passive (µ' >= 1, µ'' >= 0).
+// past it. Inside the span the values stay passive (µ'' >= 0); µ' is signed (A10's goes negative
+// above its ferromagnetic resonance, MAS Kramers-Kronig extension) and is not floored.
 TEST_CASE("Test_Impedance_Complex_Permeability_No_Extrapolation", "[physical-model][impedance]") {
     settings.reset();
     OpenMagnetics::ComplexPermeability complexPermeabilityModel;
     auto [minimumMaterialFrequency, maximumMaterialFrequency] = complexPermeabilityModel.get_frequency_range(std::string("A10"));
-    REQUIRE(maximumMaterialFrequency < 2e6);
+    REQUIRE(maximumMaterialFrequency < 1e9);
 
     for (double frequency : {minimumMaterialFrequency, maximumMaterialFrequency}) {
         auto [real, imaginary] = complexPermeabilityModel.get_complex_permeability(std::string("A10"), frequency);
-        CHECK(real >= 1.0);
+        CHECK(std::isfinite(real));
         CHECK(imaginary >= 0.0);
     }
-    for (double frequency : {2e6, 1e7, 1e8, 1e9}) {
+    for (double frequency : {2 * maximumMaterialFrequency, 1e9}) {
         CHECK_THROWS_AS(complexPermeabilityModel.get_complex_permeability(std::string("A10"), frequency), ComplexPermeabilityFrequencyOutOfRangeException);
     }
 

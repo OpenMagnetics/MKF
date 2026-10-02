@@ -561,6 +561,17 @@ namespace {
         CHECK(imaginaryPart > 0);
     }
 
+    // A07's mu' is tabulated (MAS Kramers-Kronig extension) to the top of its mu'', and it is
+    // negative at 10 MHz (about -132). It is returned signed: flooring it at 1 is what this guards.
+    TEST_CASE("Test_Complex_Permeability_A07_Negative_Real_Part_At_10_MHz", "[physical-model][complex-permeability][complex-permeability-sign]") {
+        ComplexPermeability complexPermeability;
+        auto [minimumFrequency, maximumFrequency] = complexPermeability.get_frequency_range("A07");
+        REQUIRE(maximumFrequency > 1e7);
+        auto [realPart, imaginaryPart] = complexPermeability.get_complex_permeability("A07", 1e7);
+        CHECK(realPart < 0);
+        CHECK(imaginaryPart > 0);
+    }
+
     TEST_CASE("Test_Complex_Permeability_XFlux_60", "[physical-model][complex-permeability][smoke-test]") {
         ComplexPermeability complexPermeability;
         std::string materialName = "XFlux 60";
