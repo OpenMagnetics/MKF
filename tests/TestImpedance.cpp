@@ -55,14 +55,16 @@ TEST_CASE("Test_Impedance_0", "[physical-model][impedance][smoke-test]") {
     OpenMagnetics::Magnetic magnetic;
     magnetic.set_core(core);
     magnetic.set_coil(coil);
-    // CHARACTERISATION, not a physics anchor (re-pinned 2026-10-01). The 1.4 MHz this test used to
-    // check was measured on a part whose core coating is unknown, while the default toroid coating
-    // and the coating thickness set the turn-to-core gap that dominates this self-capacitance; so the
-    // measurement cannot discriminate the capacitance physics. Value: MKF output with the screened
-    // turn-to-core elements and the 2*eps0*lt*Y1 Albach pair element (was 1.73 MHz before both).
+    // CHARACTERISATION, not a physics anchor (re-pinned 2026-10-02). The 1.4 MHz this test used to
+    // check was measured on a part whose core coating is unknown, while the coating thickness sets
+    // the turn-to-core gap that dominates this self-capacitance; so the measurement cannot
+    // discriminate the capacitance physics. This core declares no coating, so it is wound on bare
+    // ferrite (an undeclared coating is 0), which puts the turns closest to the core and gives the
+    // lowest self-resonance. Value: MKF output with the screened turn-to-core elements and the
+    // 2*eps0*lt*Y1 Albach pair element on that bare core.
     // The measured anchor for a toroidal CMC with a documented coating is
     // "Toroidal CMC common-mode resonance against its s4p measurement (WE 744824220)".
-    double expectedSelfResonantFrequency = 2.4745e6;
+    double expectedSelfResonantFrequency = 0.72966e6;
     settings._debug = true;
     auto selfResonantFrequency = OpenMagnetics::Impedance().calculate_self_resonant_frequency(magnetic);
     REQUIRE_THAT(selfResonantFrequency, Catch::Matchers::WithinRel(expectedSelfResonantFrequency, 0.02));

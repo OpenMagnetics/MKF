@@ -142,7 +142,7 @@ class Core : public MAS::MagneticCore {
     // Coating thickness per surface, in m. An explicit CoreCoating.thickness is a MAS
     // dimensionWithTolerance (sources bound it: ACME's 0.6 mm is a maximum, the LoPs give
     // minima), collapsed with resolve_dimensional_values(preferred). An explicit 0 means a
-    // core checked and found bare. A name-only coating (legacy string form) resolves to the
+    // core checked and found bare; a core that declares no coating is bare too (0). A name-only coating (legacy string form) resolves to the
     // datasheet default thickness for that coating type. Throws on a negative thickness.
     // Fit/envelope checks (does the coated ring fit a base?) pass MAXIMUM; the dielectric
     // and winding-geometry paths use the NOMINAL default.

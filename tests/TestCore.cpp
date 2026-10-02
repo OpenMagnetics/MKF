@@ -2198,8 +2198,9 @@ TEST_CASE("Toroid_Coating_Winding_Window_Offset", "[constructive-model][core][co
     Core epoxy = makeToroid("epoxy");
     Core parylene = makeToroid("parylene");
 
-    // A toroid with no coating field is jacketed in practice, so it falls back to the
-    // default (epoxy) coating; a name-only coating resolves to its datasheet default.
+    // A toroid that declares no coating is bare (0): the catalogue states the coating of every
+    // part that has one, and no single default stands for an unknown one (real rings range from
+    // bare to 0.6 mm). A name-only coating resolves to its datasheet default.
     //
     // ABT #964: this is a FERRITE ring core, and epoxy on ferrite is not the film a powder
     // toroid carries. Fair-Rite's thermo-set plastic adds at most 0.5 mm across a diameter
@@ -2207,8 +2208,9 @@ TEST_CASE("Toroid_Coating_Winding_Window_Offset", "[constructive-model][core][co
     // limits on R 50.0x30.0x20.0 work out to exactly 0.400 mm per surface against the UNCOATED
     // limits, matching the "< 0.4 mm" it states. The old 0.10 mm here was the POWDER-core value,
     // which is still what a powder toroid resolves to.
-    REQUIRE_THAT(defaulted.get_coating_thickness(),
-                 Catch::Matchers::WithinAbs(Defaults().defaultFerriteEpoxyCoreCoatingThickness, 1e-12));
+    REQUIRE(defaulted.get_coating_thickness() == 0.0);
+    REQUIRE(defaulted.get_coating_thickness(DimensionalValues::MAXIMUM) == 0.0);
+    REQUIRE(defaulted.get_coating_thickness(DimensionalValues::MINIMUM) == 0.0);
     REQUIRE_THAT(epoxy.get_coating_thickness(),
                  Catch::Matchers::WithinAbs(Defaults().defaultFerriteEpoxyCoreCoatingThickness, 1e-12));
     REQUIRE_THAT(parylene.get_coating_thickness(), Catch::Matchers::WithinAbs(12.7e-6, 1e-12));
@@ -2274,9 +2276,9 @@ TEST_CASE("Toroid_Coating_Winding_Window_Offset", "[constructive-model][core][co
     Core eCore(eCoreJson, true);
     REQUIRE(eCore.get_coating_thickness() == 0.0);
 
-    // A SMALL toroid (OD <= 5.08 mm) defaults to parylene rather than epoxy, mirroring
-    // manufacturer practice (thin film on small bores). The large T 40/24/16 above gets
-    // epoxy (0.1 mm); this small one gets parylene (12.7 um) with no coating field.
+    // A SMALL toroid (OD <= 5.08 mm) is in the parylene size tier (thin film on small bores),
+    // which picks its edge radius, but with no coating field it is still bare: 0, and it has
+    // no coating dielectric to ask about.
     json smallJson;
     smallJson["functionalDescription"] = json();
     smallJson["name"] = "core_T_small_parylene_default";
@@ -2286,8 +2288,9 @@ TEST_CASE("Toroid_Coating_Winding_Window_Offset", "[constructive-model][core][co
     smallJson["functionalDescription"]["gapping"] = json::array();
     smallJson["functionalDescription"]["numberStacks"] = 1;
     Core smallToroid(smallJson, true);
-    REQUIRE_THAT(smallToroid.get_coating_thickness(), Catch::Matchers::WithinAbs(12.7e-6, 1e-12));
-    REQUIRE_THAT(smallToroid.get_coating_relative_permittivity(), Catch::Matchers::WithinAbs(3.1, 1e-9));
+    REQUIRE(smallToroid.get_default_toroid_coating_is_parylene());
+    REQUIRE(smallToroid.get_coating_thickness() == 0.0);
+    REQUIRE_THROWS(smallToroid.get_coating_relative_permittivity());
 }
 
 TEST_CASE("Toroid_Coating_Relative_Permittivity", "[constructive-model][core][coating]") {
@@ -2316,8 +2319,10 @@ TEST_CASE("Toroid_Coating_Relative_Permittivity", "[constructive-model][core][co
     Core explicitMat = makeCore(json({{"type", "epoxy"}, {"thickness", {{"nominal", 0.0003}}}, {"material", "Kapton HN"}}));
     REQUIRE_THAT(explicitMat.get_coating_relative_permittivity(), Catch::Matchers::WithinAbs(3.4, 1e-9));
 
-    // A toroid with no coating field falls back to the default epoxy permittivity.
-    REQUIRE_THAT(makeCore(json(nullptr)).get_coating_relative_permittivity(), Catch::Matchers::WithinAbs(3.6, 1e-9));
+    // A toroid with no coating field is bare: it has no coating dielectric, so asking for one
+    // throws, exactly as for a bobbin-wound core.
+    REQUIRE(makeCore(json(nullptr)).get_coating_thickness() == 0.0);
+    REQUIRE_THROWS(makeCore(json(nullptr)).get_coating_relative_permittivity());
 
     // A NON-toroidal core has no coating, so resolving its permittivity throws rather
     // than inventing one (it is wound on a bobbin, not directly on the ferrite).
@@ -3454,41 +3459,48 @@ TEST_CASE("Toroid_Coating_Is_Resolved_Per_Material_Family", "[core][coating][abt
     // same direction, so the bare core's dimensional tolerance cancels instead of being counted
     // as coating. TDK R 50.0x30.0x20.0 yields 0.400 mm on all three axes that way, matching the
     // "< 0.4 mm" it states; Ferroxcube draws its TN jacket at ~0.3 mm.
-    auto toroid = [](const std::string& shape, const std::string& material) {
+    auto toroid = [](const std::string& shape, const std::string& material, const std::string& coating = "") {
         json coreJson;
         coreJson["functionalDescription"]["type"] = "toroidal";
         coreJson["functionalDescription"]["material"] = material;
         coreJson["functionalDescription"]["shape"] = shape;
         coreJson["functionalDescription"]["gapping"] = json::array();
         coreJson["functionalDescription"]["numberStacks"] = 1;
+        if (!coating.empty()) {
+            coreJson["functionalDescription"]["coating"] = coating;
+        }
         return Core(coreJson, true);
     };
     auto defaults = Defaults();
 
-    // Ferrite past TDK's R 9.53 crossover: epoxy, at the drawn ring-core thickness.
+    // Ferrite past TDK's R 9.53 crossover: the epoxy-sized tier, and an "epoxy" jacket resolves
+    // to the drawn ferrite ring-core thickness.
     auto ferriteLarge = toroid("T 25/15/10", "N97");
     REQUIRE(ferriteLarge.is_ferrite_core());
     REQUIRE_FALSE(ferriteLarge.get_default_toroid_coating_is_parylene());
-    REQUIRE_THAT(ferriteLarge.get_coating_thickness(),
+    REQUIRE_THAT(toroid("T 25/15/10", "N97", "epoxy").get_coating_thickness(),
                  Catch::Matchers::WithinAbs(defaults.defaultFerriteEpoxyCoreCoatingThickness, 1e-12));
 
     // THE CASE A SINGLE SHARED THRESHOLD GOT WRONG. One shape, 6,3 mm across, sits between the
-    // two crossovers: past 0.20" so a POWDER toroid of that size is epoxy, but short of R 9.53 so
-    // a FERRITE one is still parylene. Same geometry, opposite jackets, ~24x apart in thickness.
+    // two crossovers: past 0.20" so a POWDER toroid of that size is in the epoxy tier, but short
+    // of R 9.53 so a FERRITE one is still in the parylene (small, tumbled-edge) tier.
     auto ferriteMid = toroid("T 6.3/3.8/2.5", "N97");
     REQUIRE(ferriteMid.is_ferrite_core());
     REQUIRE(ferriteMid.get_default_toroid_coating_is_parylene());
-    REQUIRE_THAT(ferriteMid.get_coating_thickness(),
-                 Catch::Matchers::WithinAbs(defaults.defaultParyleneCoreCoatingThickness, 1e-12));
 
     auto powderMid = toroid("T 6.3/3.8/2.5", "Kool M\u00b5 26");
     REQUIRE_FALSE(powderMid.is_ferrite_core());
     REQUIRE_FALSE(powderMid.get_default_toroid_coating_is_parylene());
-    REQUIRE_THAT(powderMid.get_coating_thickness(),
+    REQUIRE_THAT(toroid("T 6.3/3.8/2.5", "Kool M\u00b5 26", "epoxy").get_coating_thickness(),
                  Catch::Matchers::WithinAbs(defaults.defaultEpoxyCoreCoatingThickness, 1e-12));
+    REQUIRE_THAT(toroid("T 6.3/3.8/2.5", "N97", "parylene").get_coating_thickness(),
+                 Catch::Matchers::WithinAbs(defaults.defaultParyleneCoreCoatingThickness, 1e-12));
 
-    REQUIRE(ferriteMid.get_coating_thickness() < powderMid.get_coating_thickness());
-    REQUIRE(powderMid.get_coating_thickness() < ferriteLarge.get_coating_thickness());
+    // None of them declares a coating, so all of them are bare: the tier picks the edge radius,
+    // never an invented jacket.
+    REQUIRE(ferriteLarge.get_coating_thickness() == 0.0);
+    REQUIRE(ferriteMid.get_coating_thickness() == 0.0);
+    REQUIRE(powderMid.get_coating_thickness() == 0.0);
 }
 
 TEST_CASE("Unprocessed toroid still resolves its ring edge", "[core][coating][abt964][regression]") {

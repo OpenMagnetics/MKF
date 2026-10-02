@@ -2276,11 +2276,9 @@ static std::vector<TurnToCoreFace> turn_to_core_air_gaps(Coil& coil, const Core&
         // evaluated an impossible geometry as a valid one. Only floating-point rounding of a
         // touching turn may go below zero.
         //
-        // Only a DECLARED coating is geometry. For a toroid that declares none,
-        // Core::get_coating_thickness() answers with a default parylene/epoxy thickness for the
-        // dielectric stack, but the core's processing, the bobbin and the winder all seat the turns
-        // on the bare ferrite (Bobbin.cpp, "only a declared coating"); the turns cannot be inside a
-        // jacket the geometry never had.
+        // Only a DECLARED coating is geometry: a toroid that declares none is bare
+        // (Core::get_coating_thickness() is 0), and the core's processing, the bobbin and the
+        // winder all seat its turns on the bare ferrite.
         double jacketThickness = core.get_functional_description().get_coating() ? resolve_core_jacket(core).first : 0.0;
         double coatedBoreRadius = ringInnerDiameter / 2 - jacketThickness;
         double coatedOuterRadius = ringOuterDiameter / 2 + jacketThickness;

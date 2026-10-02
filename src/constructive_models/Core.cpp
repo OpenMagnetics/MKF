@@ -1801,18 +1801,12 @@ double Core::get_toroid_edge_radius() const {
 
 double Core::get_coating_thickness(DimensionalValues preferredValue) const {
     if (!get_functional_description().get_coating()) {
-        // A toroid is jacketed (epoxy/parylene) in practice even when the catalogue omits
-        // the coating — a bare-ferrite toroid wound with bare wire is rare, and the coating
-        // is part of the winding-to-core dielectric path. So an uncoated toroid falls back
-        // to a default coating, with the TYPE chosen by size as manufacturers do (small
-        // toroids -> thin parylene, larger -> epoxy). Non-toroidal cores are bobbin-wound:
-        // the winding never touches the ferrite, so there is no core coating — return 0.
-        if (get_shape_family() == CoreShapeFamily::T) {
-            auto defaults = Defaults();
-            return get_default_toroid_coating_is_parylene()
-                ? defaults.defaultParyleneCoreCoatingThickness
-                : get_default_epoxy_coating_thickness();
-        }
+        // A core that declares no coating is bare: 0. The coating is a property of the part,
+        // and it varies from 0 (bare MnZn rings) to 0.6 mm (epoxy-jacketed rings) across real
+        // catalogues, so no single default stands for an unknown one. The catalogue states the
+        // coating of every part that has one; a toroid without that statement is taken as
+        // wound on bare ferrite, which is also how the core processing, the bobbin and the
+        // winder seat its turns, so the dielectric path and the winding geometry agree.
         return 0;
     }
     auto coating = get_functional_description().get_coating().value();
@@ -1847,21 +1841,8 @@ double Core::get_coating_thickness(DimensionalValues preferredValue) const {
 
 double Core::get_coating_relative_permittivity() const {
     if (!get_functional_description().get_coating()) {
-        // Mirror get_coating_thickness(): an uncoated toroid falls back to the default
-        // coating material — parylene or epoxy, chosen by size; a non-toroidal core has no
-        // coating and must not be queried for one (its thickness is 0, never reached).
-        if (get_shape_family() == CoreShapeFamily::T) {
-            auto defaults = Defaults();
-            auto materialName = get_default_toroid_coating_is_parylene()
-                ? defaults.defaultParyleneCoreCoatingMaterial
-                : defaults.defaultEpoxyCoreCoatingMaterial;
-            auto material = find_insulation_material_by_name(materialName);
-            if (!material.get_relative_permittivity()) {
-                throw InvalidInputException(ErrorCode::INVALID_CORE_DATA,
-                    "Default toroid coating material '" + materialName + "' has no relative permittivity in the database");
-            }
-            return material.get_relative_permittivity().value();
-        }
+        // Mirror get_coating_thickness(): a core that declares no coating is bare, so it has
+        // no coating dielectric to ask about (its thickness is 0 and callers stop there).
         throw InvalidInputException(ErrorCode::INVALID_CORE_DATA,
             "Core has no coating; cannot resolve coating relative permittivity");
     }
