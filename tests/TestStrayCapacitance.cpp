@@ -2999,19 +2999,32 @@ TEST_CASE("ABT1163_Toroid_Turn_Screened_In_The_Bore_Still_Faces_The_Outside", "[
     // is split into what the extra first-layer turns explain (a full element each, the same as in
     // the single-layer coil) and what is left for the second-layer turns. Bore-only screening
     // leaves them ~0; the segments must return at least a tenth of an element per turn.
+    //
+    // The ring is a COATED one: 0.3 mm of epoxy, declared on the core. The premise is a turn
+    // that lies on a dielectric jacket over the ferrite; since an undeclared coating reads as
+    // bare ferrite, the fixture states its coating, and the coil is wound on that same coated
+    // ring so the winding geometry and the dielectric path agree.
     settings.reset();
     const std::string shapeName = "T 17/10.7/6.8";
-    auto core = OpenMagneticsTesting::get_quick_core(shapeName, json::parse("[]"), 1, "80");
-    std::vector<OpenMagnetics::Wire> wires = {OpenMagnetics::find_wire_by_name("Round 0.5 - Grade 1")};
+    auto core = OpenMagnetics::Core(json::parse(R"({"functionalDescription": {"name": "abt1163 coated ring", "type": "toroidal", "material": "80", "shape": ")"
+        + shapeName + R"(", "coating": {"type": "epoxy", "thickness": {"nominal": 0.0003}}, "gapping": [], "numberStacks": 1}})"));
+    REQUIRE(core.get_coating_thickness() == Catch::Approx(0.0003));
+    json bobbinJson;
+    to_json(bobbinJson, OpenMagnetics::Bobbin::create_quick_bobbin(core, true));
+    json wireJson;
+    to_json(wireJson, OpenMagnetics::find_wire_by_name("Round 0.5 - Grade 1"));
 
     struct Wound { double capacitance; size_t layers; size_t boreLayerTurns; size_t otherTurns; };
     auto wind = [&](int64_t numberTurns) {
-        auto coil = OpenMagneticsTesting::get_quick_coil({numberTurns}, {1}, shapeName, 1,
-                                                          MAS::WindingOrientation::CONTIGUOUS,
-                                                          MAS::WindingOrientation::OVERLAPPING,
-                                                          MAS::CoilAlignment::CENTERED,
-                                                          MAS::CoilAlignment::CENTERED,
-                                                          wires, false);
+        json coilJson;
+        coilJson["bobbin"] = bobbinJson;
+        coilJson["functionalDescription"] = json::array();
+        coilJson["functionalDescription"].push_back({{"name", "winding 0"}, {"numberTurns", numberTurns},
+                                                     {"numberParallels", 1}, {"isolationSide", "primary"},
+                                                     {"wire", wireJson}});
+        OpenMagnetics::Coil coil(coilJson, 1, MAS::WindingOrientation::CONTIGUOUS,
+                                 MAS::WindingOrientation::OVERLAPPING, MAS::CoilAlignment::CENTERED,
+                                 MAS::CoilAlignment::CENTERED);
         REQUIRE(coil.get_turns_description());
         auto turns = coil.get_turns_description().value();
         // The bore-adjacent layer is the one lying furthest from the ring axis.
