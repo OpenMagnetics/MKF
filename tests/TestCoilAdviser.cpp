@@ -3120,3 +3120,57 @@ TEST_CASE("Test_CoilAdviser_Web_Flyback_Advise_All_Turns_Inside_Window", "[advis
     }
     settings.reset();
 }
+
+TEST_CASE("Test_CoilAdviser_Beyond_Wire_Limits_Only_As_Invalid", "[adviser][coil-adviser]") {
+    // A coil wound beyond the wire limits (more than defaults.maximumNumberParallels parallels, or
+    // above defaults.maximumEffectiveCurrentDensity) is never a valid design: when nothing fits an
+    // ETD 59 within them (82:5 turns, 20 A peak to peak at 176 kHz, 328 A on the secondary) the
+    // adviser still answers, but every such coil is marked INVALID with the limit it breaks.
+    settings.reset();
+    auto gapping = OpenMagneticsTesting::get_ground_gap(0.003);
+    std::vector<int64_t> numberTurns = {82, 5};
+    std::vector<double> turnsRatios = {double(numberTurns[0]) / numberTurns[1]};
+    auto magnetic = OpenMagneticsTesting::get_quick_magnetic("ETD 59", gapping, numberTurns, 1, "3C91");
+    auto inputs = OpenMagnetics::Inputs::create_quick_operating_point_only_current(175590, 10e-6, 25, WaveformLabel::SINUSOIDAL,
+                                                                                   20, 0.5, 0, turnsRatios);
+    OpenMagnetics::Mas masMagnetic;
+    inputs.process();
+    masMagnetic.set_inputs(inputs);
+    masMagnetic.set_magnetic(magnetic);
+    settings.set_coil_allow_margin_tape(false);
+    settings.set_coil_allow_insulated_wire(true);
+    settings.set_coil_try_rewind(false);
+    settings.set_coil_adviser_maximum_number_wires(1000);
+
+    CoilAdviser coilAdviser;
+    auto masMagneticsWithCoil = coilAdviser.get_advised_coil(masMagnetic, 2);
+    REQUIRE(masMagneticsWithCoil.size() > 0);
+    for (auto& masMagneticWithCoil : masMagneticsWithCoil) {
+        auto reference = masMagneticWithCoil.get_magnetic().get_manufacturer_info()->get_reference().value();
+        INFO(reference);
+        if (coil_failed_validity_filters(masMagneticWithCoil)) {
+            CHECK(reference.find(" [violates: ") != std::string::npos);
+        }
+        else {
+            for (const auto& winding : masMagneticWithCoil.get_magnetic().get_coil().get_functional_description()) {
+                CHECK(winding.get_number_parallels() <= Defaults().maximumNumberParallels);
+            }
+        }
+    }
+
+    // 32 A peak to peak: nothing within the limits fits, and the answer says which limit each
+    // returned coil breaks.
+    auto overloadedInputs = OpenMagnetics::Inputs::create_quick_operating_point_only_current(175590, 10e-6, 25, WaveformLabel::SINUSOIDAL,
+                                                                                             32, 0.5, 0, turnsRatios);
+    overloadedInputs.process();
+    masMagnetic.set_inputs(overloadedInputs);
+    auto overloadedResults = coilAdviser.get_advised_coil(masMagnetic, 2);
+    REQUIRE(overloadedResults.size() > 0);
+    for (auto& masMagneticWithCoil : overloadedResults) {
+        auto reference = masMagneticWithCoil.get_magnetic().get_manufacturer_info()->get_reference().value();
+        INFO(reference);
+        REQUIRE(coil_failed_validity_filters(masMagneticWithCoil));
+        CHECK(reference.find(" [violates: EFFECTIVE_CURRENT_DENSITY above 12") != std::string::npos);
+    }
+    settings.reset();
+}

@@ -108,6 +108,12 @@ class CoilAdviser : public WireAdviser {
         std::map<MagneticFilters, std::shared_ptr<MagneticFilter>> _filters;
         std::vector<MagneticFilterOperation> _loadedFilterFlow;
         OpenMagnetics::WireAdviser _wireAdviser;
+        // Set only while get_advised_coil retries a core on which no coil fits within the wire
+        // limits (defaults.maximumEffectiveCurrentDensity, defaults.maximumNumberParallels): the
+        // per-pattern searches then also draw wires at twice the current density and/or twice the
+        // parallels (the four configurations every search used to run), and every coil found that
+        // way comes back marked INVALID with the limit it breaks, never as a valid design.
+        bool _relaxedWireLimits = false;
         // ABT #1110: Settings' preferred wire standard wins; with no preference the coil
         // adviser keeps its built-in one (Defaults::commonWireStandard, a preference that
         // falls back to every standard when the catalog has none of it, see get_advised_coil).

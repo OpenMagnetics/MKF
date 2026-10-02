@@ -542,6 +542,7 @@ namespace OpenMagnetics {
 
         std::vector<Mas> masesWithCoil;
         bool earlyTerminated = false;
+        auto advise_all_patterns = [&]() {
         for (auto repetition : repetitions) {
             if (earlyTerminated) break;
             for (auto pattern : patterns) {
@@ -609,6 +610,70 @@ namespace OpenMagnetics {
                         break;
                     }
                 }
+            }
+        }
+        };
+
+        // Names the limits a coil breaks: the validity filters it fails (with the current density
+        // limit spelled out) and any winding with more parallels than the configured maximum.
+        auto violated_limits = [&](Mas& candidate) {
+            std::string violated;
+            auto append = [&](const std::string& reason) { violated += (violated.empty() ? "" : ", ") + reason; };
+            for (const auto& filterConfiguration : _loadedFilterFlow) {
+                auto filterEnum = filterConfiguration.get_filter();
+                if (!_filters[filterEnum]->evaluate_magnetic(&candidate.get_mutable_magnetic(), &candidate.get_mutable_inputs()).first) {
+                    std::string reason(magic_enum::enum_name(filterEnum));
+                    if (filterEnum == MagneticFilters::EFFECTIVE_CURRENT_DENSITY) {
+                        reason += " above " + std::to_string(defaults.maximumEffectiveCurrentDensity / 1e6) + " A/mm2";
+                    }
+                    append(reason);
+                }
+            }
+            for (const auto& winding : candidate.get_magnetic().get_coil().get_functional_description()) {
+                if (winding.get_number_parallels() > defaults.maximumNumberParallels) {
+                    append("winding '" + winding.get_name() + "' has " + std::to_string(winding.get_number_parallels()) +
+                           " parallels, above the " + std::to_string(defaults.maximumNumberParallels) + " maximum");
+                }
+            }
+            return violated;
+        };
+        auto stamp_invalid = [&](Mas& candidate) {
+            if (coil_failed_validity_filters(candidate)) {
+                return;
+            }
+            auto violated = violated_limits(candidate);
+            if (violated.empty()) {
+                // Found by the wider search but within every limit: a valid design.
+                return;
+            }
+            if (!candidate.get_magnetic().get_manufacturer_info()) {
+                candidate.get_mutable_magnetic().set_manufacturer_info(MagneticManufacturerInfo());
+            }
+            auto info = candidate.get_magnetic().get_manufacturer_info().value();
+            info.set_reference(INVALID_COIL_REFERENCE_PREFIX + info.get_reference().value_or("") + " [violates: " + violated + "]");
+            candidate.get_mutable_magnetic().set_manufacturer_info(info);
+        };
+
+        // The search mutates `mas` (pattern integrity checks on its coil); the retry starts from
+        // the same state the first search did.
+        const Mas masBeforeSearch = mas;
+        advise_all_patterns();
+        if (masesWithCoil.empty()) {
+            // No coil fits this core within the wire limits. Search again beyond them, so the caller
+            // still learns what the core would need, and mark every such coil INVALID with the limit
+            // it breaks: they rank below any valid design and MagneticAdviser only falls back to
+            // them when no core winds validly.
+            logEntry("No coil fits within the wire limits; retrying beyond them, results marked INVALID", "CoilAdviser", 2);
+            struct RelaxedWireLimitsGuard {
+                bool& flag;
+                explicit RelaxedWireLimitsGuard(bool& f) : flag(f) { flag = true; }
+                ~RelaxedWireLimitsGuard() { flag = false; }
+            } relaxedWireLimitsGuard(_relaxedWireLimits);
+            earlyTerminated = false;
+            mas = masBeforeSearch;
+            advise_all_patterns();
+            for (auto& candidate : masesWithCoil) {
+                stamp_invalid(candidate);
             }
         }
 
@@ -707,11 +772,7 @@ namespace OpenMagnetics {
             size_t numToReturn = std::min(invalidMagneticsWithScoring.size(), maximumNumberResults);
             for (size_t i = 0; i < numToReturn; ++i) {
                 auto mas = invalidMagneticsWithScoring[i].first;
-                if (mas.get_magnetic().get_manufacturer_info()) {
-                    auto info = mas.get_magnetic().get_manufacturer_info().value();
-                    info.set_reference(INVALID_COIL_REFERENCE_PREFIX + info.get_reference().value_or(""));
-                    mas.get_mutable_magnetic().set_manufacturer_info(info);
-                }
+                stamp_invalid(mas);
                 masesWithoutScoring.push_back(mas);
             }
         }
@@ -1165,10 +1226,16 @@ namespace OpenMagnetics {
             // TODO: Extract as static const or class member to reduce duplication.
             std::vector<std::map<std::string, double>> wireConfigurations = {
                 {{"maximumEffectiveCurrentDensity", defaults.maximumEffectiveCurrentDensity}, {"maximumNumberParallels", defaults.maximumNumberParallels}},
-                {{"maximumEffectiveCurrentDensity", defaults.maximumEffectiveCurrentDensity}, {"maximumNumberParallels", defaults.maximumNumberParallels * 2}},
-                {{"maximumEffectiveCurrentDensity", defaults.maximumEffectiveCurrentDensity * 2}, {"maximumNumberParallels", defaults.maximumNumberParallels}},
-                {{"maximumEffectiveCurrentDensity", defaults.maximumEffectiveCurrentDensity * 2}, {"maximumNumberParallels", defaults.maximumNumberParallels * 2}}
             };
+            if (_relaxedWireLimits) {
+                // The search main ran for every core: the limits themselves first, then beyond them.
+                wireConfigurations = {
+                    {{"maximumEffectiveCurrentDensity", defaults.maximumEffectiveCurrentDensity}, {"maximumNumberParallels", defaults.maximumNumberParallels}},
+                    {{"maximumEffectiveCurrentDensity", defaults.maximumEffectiveCurrentDensity}, {"maximumNumberParallels", defaults.maximumNumberParallels * 2}},
+                    {{"maximumEffectiveCurrentDensity", defaults.maximumEffectiveCurrentDensity * 2}, {"maximumNumberParallels", defaults.maximumNumberParallels}},
+                    {{"maximumEffectiveCurrentDensity", defaults.maximumEffectiveCurrentDensity * 2}, {"maximumNumberParallels", defaults.maximumNumberParallels * 2}}
+                };
+            }
             logEntry("Trying " + std::to_string(wireConfigurations.size()) + " wire configurations", "CoilAdviser", 2);
 
             // wound_with windings (e.g. center-tapped LLC half-secondaries)
@@ -1235,12 +1302,13 @@ namespace OpenMagnetics {
                     timeout += wiresWithScoring.size();
 
                     std::move(wiresWithScoring.begin(), wiresWithScoring.end(), std::back_inserter(wireCoilPerWinding.back()));
-                    // COA-FIX-INSULATION-MARGIN: Do NOT early-break here. Letting all
-                    // wireConfigurations run gives diversity in wire thickness — higher
-                    // current density / more parallels yield thinner wires which may
-                    // be the only ones that fit tight sections (e.g. with margin tape).
-                    // The wind() loop downstream is already bounded by
-                    // kMaxConsecutiveFailuresWithNoSuccess and the timeout counter.
+                    // Do NOT early-break here: every wireConfiguration contributes candidates.
+                    // The configurations at twice the current density and/or twice the parallels
+                    // run only in the INVALID retry (_relaxedWireLimits): in the normal search
+                    // the strict EFFECTIVE_CURRENT_DENSITY filter rejected every design wound at
+                    // the doubled density, and the doubled parallels broke the very maximum this
+                    // adviser is configured with, so they only cost wind() calls. The wind() loop
+                    // downstream is bounded by kMaxConsecutiveFailuresWithNoSuccess and the timeout.
                 }
             }
         }
@@ -1594,10 +1662,16 @@ namespace OpenMagnetics {
             // Try multiple wire configurations to find optimal designs
             std::vector<std::map<std::string, double>> wireConfigurations = {
                 {{"maximumEffectiveCurrentDensity", defaults.maximumEffectiveCurrentDensity}, {"maximumNumberParallels", defaults.maximumNumberParallels}},
-                {{"maximumEffectiveCurrentDensity", defaults.maximumEffectiveCurrentDensity}, {"maximumNumberParallels", defaults.maximumNumberParallels * 2}},
-                {{"maximumEffectiveCurrentDensity", defaults.maximumEffectiveCurrentDensity * 2}, {"maximumNumberParallels", defaults.maximumNumberParallels}},
-                {{"maximumEffectiveCurrentDensity", defaults.maximumEffectiveCurrentDensity * 2}, {"maximumNumberParallels", defaults.maximumNumberParallels * 2}}
             };
+            if (_relaxedWireLimits) {
+                // The search main ran for every core: the limits themselves first, then beyond them.
+                wireConfigurations = {
+                    {{"maximumEffectiveCurrentDensity", defaults.maximumEffectiveCurrentDensity}, {"maximumNumberParallels", defaults.maximumNumberParallels}},
+                    {{"maximumEffectiveCurrentDensity", defaults.maximumEffectiveCurrentDensity}, {"maximumNumberParallels", defaults.maximumNumberParallels * 2}},
+                    {{"maximumEffectiveCurrentDensity", defaults.maximumEffectiveCurrentDensity * 2}, {"maximumNumberParallels", defaults.maximumNumberParallels}},
+                    {{"maximumEffectiveCurrentDensity", defaults.maximumEffectiveCurrentDensity * 2}, {"maximumNumberParallels", defaults.maximumNumberParallels * 2}}
+                };
+            }
             logEntry("Trying " + std::to_string(wireConfigurations.size()) + " wire configurations", "CoilAdviser", 2);
 
             wireCoilPerWinding.push_back(std::vector<std::pair<Winding, double>>{});
