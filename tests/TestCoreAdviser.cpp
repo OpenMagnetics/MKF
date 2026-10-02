@@ -2,6 +2,7 @@
 #include <source_location>
 #include "support/Settings.h"
 #include "advisers/CoreAdviser.h"
+#include "advisers/MagneticAdviser.h"
 #include "support/Painter.h"
 #include "support/Utils.h"
 #include "support/Logger.h"
@@ -2932,6 +2933,69 @@ TEST_CASE("Test_CoreAdviser_Temperature_Filter", "[adviser][core-adviser][availa
     settings.reset();
 }
 
+
+TEST_CASE("Test_MagneticAdviser_Temperature_Filter_Finds_Larger_Ferrite_For_Resonant_Inductor", "[adviser][core-adviser][standard-cores][temperature-filter][abt1412]") {
+    // ABT #1412: an LLC/CLLC resonant inductor carries pure AC, so it swings the full flux
+    // every cycle and core LOSS, not saturation, sizes the core. The ranking favours small
+    // cores; with the temperature gate on it rejected every one of them and nothing ever
+    // tried the next larger core, so no ferrite design came back at all. The same spec
+    // class as the field report (33.5 uH +/-15 %, ~28 A peak at 143 kHz, no DC), built
+    // synthetically here. The gate is on by default in design mode.
+    settings.reset();
+    clear_databases();
+    REQUIRE(settings.get_core_adviser_enable_temperature_filter());
+    const double maximumTemperature = settings.get_core_adviser_maximum_temperature();
+
+    const double frequency = 143000;
+    const double inductance = 33.5e-6;
+    const double currentPeak = 28.0;
+    auto inputs = OpenMagnetics::Inputs::create_quick_operating_point_only_current(
+        frequency, inductance, 40, WaveformLabel::SINUSOIDAL, 2 * currentPeak, 0.5, 0);
+    DimensionWithTolerance inductanceRequirement;
+    inductanceRequirement.set_nominal(inductance);
+    inductanceRequirement.set_minimum(inductance * 0.85);
+    inductanceRequirement.set_maximum(inductance * 1.15);
+    inputs.get_mutable_design_requirements().set_magnetizing_inductance(inductanceRequirement);
+
+    MagneticAdviser magneticAdviser;
+    magneticAdviser.set_core_mode(CoreAdviser::CoreAdviserModes::STANDARD_CORES);
+    auto results = magneticAdviser.get_advised_magnetic(inputs, 5);
+    REQUIRE(!results.empty());
+
+    MagneticSimulator magneticSimulator;
+    bool ferriteFound = false;
+    for (auto& [mas, scoring] : results) {
+        auto material = mas.get_mutable_magnetic().get_mutable_core().resolve_material();
+        if (material.get_material() == MAS::MaterialType::FERRITE) {
+            ferriteFound = true;
+        }
+        // The adviser's own final simulate is fast mode (no thermal solve): re-simulate
+        // in full, which is what a user sees, and hold every result to the limit.
+        auto simulated = magneticSimulator.simulate(mas);
+        for (const auto& output : simulated.get_outputs()) {
+            REQUIRE(output.get_temperature());
+            INFO(mas.get_mutable_magnetic().get_reference());
+            CHECK(output.get_temperature()->get_maximum_temperature() <= maximumTemperature);
+        }
+    }
+    CHECK(ferriteFound);
+
+    settings.reset();
+}
+
+TEST_CASE("Test_Maximum_Design_Temperature_Comes_From_The_Design_Requirements", "[adviser][core-adviser][temperature-filter]") {
+    // The temperature gates hold a design to the maximum of designRequirements.operatingTemperature
+    // when the inputs state one, and to the configured setting only when they do not.
+    settings.reset();
+    auto inputs = OpenMagnetics::Inputs::create_quick_operating_point_only_current(
+        100000, 100e-6, 40, WaveformLabel::TRIANGULAR, 10, 0.5, 5);
+    REQUIRE_THAT(resolve_maximum_design_temperature(inputs), Catch::Matchers::WithinAbs(settings.get_core_adviser_maximum_temperature(), 1e-12));
+    DimensionWithTolerance operatingTemperature;
+    operatingTemperature.set_nominal(85);
+    operatingTemperature.set_maximum(105);
+    inputs.get_mutable_design_requirements().set_operating_temperature(operatingTemperature);
+    REQUIRE_THAT(resolve_maximum_design_temperature(inputs), Catch::Matchers::WithinAbs(105, 1e-12));
+}
 
 // =============================================================================
 // CMC core adviser smoke test (merged from TestCoreAdviserCmcBug.cpp)

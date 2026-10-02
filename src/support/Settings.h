@@ -192,7 +192,11 @@ class Settings
         bool _coreAdviserIncludeMargin = false;
         bool _coreAdviserEnableIntermediatePruning = true;
         size_t _coreAdviserMaximumMagneticsAfterFiltering;
-        bool   _coreAdviserEnableTemperatureFilter = false;
+        // Design mode gates on temperature by default: an advised design that runs hotter than
+        // the limit is not viable, and returning it as if it were was ABT #1412. The limit is the
+        // design requirements' operatingTemperature (its maximum) when the inputs give one, else
+        // this configured value (see resolve_maximum_design_temperature in CoreAdviser.h).
+        bool   _coreAdviserEnableTemperatureFilter = true;
         double _coreAdviserMaximumTemperature = 130.0;
         // Multiplicative derating applied to the operating peak flux density
         // before comparing against B_sat in MagneticFilterSaturation. 1.0 (the

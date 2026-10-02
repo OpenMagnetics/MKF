@@ -22,6 +22,13 @@ using namespace MAS;
 
 namespace OpenMagnetics {
 
+// The hot-spot limit the advisers' temperature gates hold a design to: the maximum of the design
+// requirements' operatingTemperature when the inputs state one, else the configured
+// Settings::get_core_adviser_maximum_temperature() (an explicit setting, 130 C unless changed, not
+// a hidden default: callers set it to their own limit). One rule for every gate, so the core-only
+// gate in CoreAdviser and the assembled-part gate in MagneticAdviser cannot disagree.
+double resolve_maximum_design_temperature(Inputs& inputs);
+
 /**
  * @class CoreAdviser
  * @brief Multi-criteria magnetic core recommendation system.

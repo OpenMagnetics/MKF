@@ -9,6 +9,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
+#include <limits>
 #include <map>
 #include <string>
 #include <vector>
@@ -240,15 +241,22 @@ std::pair<bool, double> MagneticFilterTemperature::evaluate_magnetic(
     // pass at the threshold. That hid model bugs (e.g. null _coreLossesModel)
     // and produced "always-acceptable" temperature scores. Let exceptions
     // propagate so callers can either handle them or fail loudly.
+    // A design has to survive its hottest operating point, so each one gets its own
+    // thermal solve and the gate reads the maximum. This used to solve ONCE with the
+    // core losses AVERAGED over the operating points (and the last one's ambient), which
+    // let a part through whenever a cool point diluted a hot one (ABT #1412).
+    if (inputs->get_operating_points().empty()) {
+        throw InvalidInputException(ErrorCode::MISSING_DATA,
+            "Temperature filter needs at least one operating point to compute core losses");
+    }
     const auto& core = magnetic->get_core();
-    double coreLosses = 0.0;
-    double ambientTemperature = 25.0;
+    double maximumTemperature = -std::numeric_limits<double>::max();
 
     const auto& coil = magnetic->get_coil();
     const std::string magneticRef = magnetic->get_reference();
     size_t opIndex = 0;
     for (auto& op : inputs->get_operating_points()) {
-        ambientTemperature = op.get_conditions().get_ambient_temperature();
+        double ambientTemperature = op.get_conditions().get_ambient_temperature();
         auto excitation = op.get_excitations_per_winding()[0];
 
         // Phase 8 (perf): if a prior filter (typically SATURATION on the
@@ -273,26 +281,21 @@ std::pair<bool, double> MagneticFilterTemperature::evaluate_magnetic(
         // Steinmetz method to the proprietary model, which throws for
         // materials (e.g. Fair-Rite loss-factor ones) with no proprietary data
         CoreLossesOutput cl = _coreLosses.calculate_core_losses(core, excitation, ambientTemperature);
-        coreLosses += cl.get_core_losses();
+
+        TemperatureConfig config;
+        config.coreOnly = true;
+        config.coreLosses = cl.get_core_losses();
+        config.ambientTemperature = ambientTemperature;
+        config.plotSchematic = false;
+        if (op.get_conditions().get_cooling()) config.masCooling = op.get_conditions().get_cooling();
+
+        Temperature temp(*magnetic, config);
+        auto result = temp.calculateTemperatures();
+        maximumTemperature = std::max(maximumTemperature, result.maximumTemperature);
         ++opIndex;
     }
-    if (!inputs->get_operating_points().empty())
-        coreLosses /= inputs->get_operating_points().size();
 
-    TemperatureConfig config;
-    config.coreOnly = true;
-    config.coreLosses = coreLosses;
-    config.ambientTemperature = ambientTemperature;
-    config.plotSchematic = false;
-    if (!inputs->get_operating_points().empty()) {
-        auto& cond = inputs->get_operating_points()[0].get_conditions();
-        if (cond.get_cooling()) config.masCooling = cond.get_cooling();
-    }
-
-    Temperature temp(*magnetic, config);
-    auto result = temp.calculateTemperatures();
-
-    return {result.maximumTemperature <= _maximumTemperature, result.maximumTemperature};
+    return {maximumTemperature <= _maximumTemperature, maximumTemperature};
 }
 
 } // namespace OpenMagnetics

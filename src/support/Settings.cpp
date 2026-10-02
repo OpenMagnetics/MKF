@@ -176,7 +176,7 @@ namespace OpenMagnetics {
         // a low limit (e.g. Test_CoreAdviser_Temperature_Filter sets a thermally
         // impossible 24 °C) otherwise leaks "reject every core" into every later
         // adviser run, which returns 0 candidates. Restore to header defaults.
-        _coreAdviserEnableTemperatureFilter = false;
+        _coreAdviserEnableTemperatureFilter = true;
         _coreAdviserMaximumTemperature = 130.0;
         _coreAdviserSaturationMargin = 1.2;
         _coreAdviserSaturationDeratingTemperature = 100.0;

@@ -37,6 +37,14 @@ CMRC_DECLARE(data);
 
 namespace OpenMagnetics {
 
+double resolve_maximum_design_temperature(Inputs& inputs) {
+    auto operatingTemperature = inputs.get_design_requirements().get_operating_temperature();
+    if (operatingTemperature) {
+        return resolve_dimensional_values(operatingTemperature.value(), DimensionalValues::MAXIMUM);
+    }
+    return Settings::GetInstance().get_core_adviser_maximum_temperature();
+}
+
 namespace {
 // ABT #153: marker appended to a result's manufacturer reference and core name
 // when the synthetic STANDARD_CORES catalogue produced nothing and the adviser

@@ -16,22 +16,6 @@
 
 namespace OpenMagnetics {
 
-namespace {
-// A core counts as wound only when the coil adviser returned at least one coil that passed the
-// validity filters. Its INVALID-marked fallbacks (the best of the failed designs, returned so a
-// caller is never left empty-handed) used to count too: the search then stopped after
-// expectedWoundCores cores whose every coil was invalid, before reaching a core large enough to
-// wind (the simulated PSFB: three undersized ferrites, every coil over the effective current
-// density limit, and nothing to load in the Magnetic Adviser).
-bool core_wound_validly(std::vector<Mas>& masesWithCoil) {
-    for (auto& masWithCoil : masesWithCoil) {
-        if (!coil_failed_validity_filters(masWithCoil)) {
-            return true;
-        }
-    }
-    return false;
-}
-}  // namespace
 
 namespace {
 // Drop coil-invalid fallback designs (CoilAdviser stamps INVALID_COIL_REFERENCE_PREFIX on the best
@@ -182,6 +166,28 @@ WoundCandidateOutcome process_wound_candidate(
             if (saturates) {
                 logEntry("MagneticAdviser: dropping '" + mas.get_mutable_magnetic().get_reference()
                          + "' — final saturation current below margin", "MagneticAdviser", 2);
+                return WoundCandidateOutcome::Skipped;
+            }
+        }
+    }
+
+    // Final temperature gate on the ASSEMBLED magnetic (ABT #1412). The CoreAdviser's
+    // temperature gate judges the core with core losses only, before any winding exists;
+    // the simulate() above reports the hot-spot of the whole part (core + winding) on every
+    // operating point, which is the temperature the user is shown. A design the core gate
+    // let through can still exceed the limit once its winding losses are in.
+    if (settings.get_core_adviser_enable_temperature_filter()) {
+        const double maximumTemperature = resolve_maximum_design_temperature(mas.get_mutable_inputs());
+        for (const auto& output : mas.get_outputs()) {
+            if (!output.get_temperature()) {
+                throw InvalidInputException(ErrorCode::MISSING_DATA,
+                    "MagneticAdviser: simulate() returned no temperature for '" + mas.get_mutable_magnetic().get_reference()
+                    + "', so the temperature filter cannot judge it");
+            }
+            if (output.get_temperature()->get_maximum_temperature() > maximumTemperature) {
+                logEntry("MagneticAdviser: dropping '" + mas.get_mutable_magnetic().get_reference()
+                         + "' — simulated hot-spot " + std::to_string(output.get_temperature()->get_maximum_temperature())
+                         + " C above the " + std::to_string(maximumTemperature) + " C limit", "MagneticAdviser", 2);
                 return WoundCandidateOutcome::Skipped;
             }
         }
@@ -852,10 +858,13 @@ std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic(Inputs
             std::vector<std::pair<size_t, double>> usedNumberSectionsAndMargin;
             auto masMagneticsWithCoreAndCoil = coilAdviser.get_advised_coil(mas, std::max(2.0, ceil(double(maximumNumberResults) / masMagneticsWithCore.size())));
 
-            if (core_wound_validly(masMagneticsWithCoreAndCoil)) {
-                logEntry("Core wound!", "MagneticAdviser", 2);
-                coresWound++;
-            }
+            // A core counts as wound only once one of its valid coils survives
+            // process_wound_candidate's gates (saturation, temperature). Neither the coil
+            // adviser's INVALID-marked fallbacks nor coils the gates drop count: a search that
+            // counted them stopped after expectedWoundCores cores whose every coil was invalid
+            // (the simulated PSFB: three undersized ferrites over the current density limit) or
+            // too hot, before reaching a core large enough to wind cool.
+            bool coreAccepted = false;
             size_t processedCoils = 0;
             defer_invalid_coils(masMagneticsWithCoreAndCoil);
             for (auto mas : masMagneticsWithCoreAndCoil) {
@@ -865,6 +874,9 @@ std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic(Inputs
                 auto outcome = process_wound_candidate(
                     mas, magneticSimulator, settings, previousCoilIncludeAdditionalCoordinates,
                     perCoreCoilCap, globalCandidateCap, usedNumberSectionsAndMargin, masData, processedCoils);
+                if (outcome != WoundCandidateOutcome::Skipped) {
+                    coreAccepted = true;
+                }
                 if (outcome == WoundCandidateOutcome::GlobalCapHit) {
                     logEntry("Reached globalCandidateCap (" + std::to_string(globalCandidateCap) + ")", "MagneticAdviser", 2);
                     globalCapReached = true;
@@ -873,6 +885,10 @@ std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic(Inputs
                 if (outcome == WoundCandidateOutcome::PerCoreCapHit) {
                     break;
                 }
+            }
+            if (coreAccepted) {
+                logEntry("Core wound!", "MagneticAdviser", 2);
+                coresWound++;
             }
             if (globalCapReached) {
                 break;
@@ -956,10 +972,7 @@ std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic(Inputs
                 logEntry("Getting coil", "MagneticAdviser", 2);
                 std::vector<std::pair<size_t, double>> usedNumberSectionsAndMargin;
                 auto masMagneticsWithCoreAndCoil = coilAdviser.get_advised_coil(mas, std::max(2.0, ceil(double(maximumNumberResults) / masMagneticsWithCore.size())));
-                if (core_wound_validly(masMagneticsWithCoreAndCoil)) {
-                    logEntry("Core wound!", "MagneticAdviser", 2);
-                    coresWound++;
-                }
+                bool coreAccepted = false;  // see the main loop: counted once a coil survives the gates
                 size_t processedCoils = 0;
 
                 // ABT #105: run retry candidates through the SAME validation path
@@ -974,6 +987,9 @@ std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic(Inputs
                     auto outcome = process_wound_candidate(
                         masWithCoil, magneticSimulator, settings, previousCoilIncludeAdditionalCoordinates,
                         perCoreCoilCap, globalCandidateCap, usedNumberSectionsAndMargin, masData, processedCoils);
+                    if (outcome != WoundCandidateOutcome::Skipped) {
+                        coreAccepted = true;
+                    }
                     if (outcome == WoundCandidateOutcome::GlobalCapHit) {
                         logEntry("Reached globalCandidateCap (" + std::to_string(globalCandidateCap) + ") in retry", "MagneticAdviser", 2);
                         globalCapReached = true;
@@ -982,6 +998,10 @@ std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic(Inputs
                     if (outcome == WoundCandidateOutcome::PerCoreCapHit) {
                         break;
                     }
+                }
+                if (coreAccepted) {
+                    logEntry("Core wound!", "MagneticAdviser", 2);
+                    coresWound++;
                 }
             }
             if (globalCapReached) {
