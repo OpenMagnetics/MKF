@@ -350,7 +350,9 @@ TEST_CASE("Test_One_Operating_Point_Two_Generated_Windings_Turns_Ratios", "[proc
     windingExcitation["frequency"] = 100000;
     windingExcitation["current"]["waveform"]["data"] = {-5, 5, -5};
     windingExcitation["current"]["waveform"]["time"] = {0, 0.0000025, 0.00001};
-    windingExcitation["voltage"]["waveform"]["data"] = {0, 1, 1, 0, 0};
+    // Volt-second balanced (ABT #1585): the same 1 V peak-to-peak, D = 0.25 square, shifted to zero mean
+    // (+0.75 V for 25 %, -0.25 V for 75 %); the former unipolar 0/1 V square is rejected as unbalanced.
+    windingExcitation["voltage"]["waveform"]["data"] = {-0.25, 0.75, 0.75, -0.25, -0.25};
     windingExcitation["voltage"]["waveform"]["time"] = {0, 0, 0.0000025, 0.0000025, 0.00001};
     operatingPoint["excitationsPerWinding"] = json::array();
     operatingPoint["excitationsPerWinding"].push_back(windingExcitation);
