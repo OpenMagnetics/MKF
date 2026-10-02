@@ -2,6 +2,7 @@
 #include "support/StableSortByIndex.h"
 #include "processors/Inputs.h"
 #include "advisers/CoilAdviser.h"
+#include "advisers/MagneticFilter.h"
 #include "support/LibraryContext.h"
 #include "Models.h"
 #include "constructive_models/Insulation.h"
@@ -12,6 +13,70 @@
 #include "support/Exceptions.h"
 #include "support/Logger.h"
 
+
+namespace {
+// In the normal search, wire candidates are drawn at several effective current densities, as
+// fractions of the configured maximum (12 A/mm2 by default): 4, 6, 8 and 12 A/mm2. Each rung's
+// WireAdviser ranking keeps its own top candidates, so the wind loop sees wires sized for low DC
+// loss next to the thin ones the proximity and fit criteria prefer; the coils it winds are then
+// ranked by their losses.
+const std::vector<double> kWireCurrentDensityLadder = {1.0 / 3, 1.0 / 2, 2.0 / 3, 1.0};
+
+// Merges the per-configuration candidate lists. Interleaved (normal search): round-robin, best of
+// each rung first, then the second best of each, ..., dropping a (wire, parallels) pair an earlier
+// rung already contributed, since a thick wire qualifies on every rung. Not interleaved (the
+// relaxed retry): plain concatenation in configuration order.
+std::vector<std::pair<OpenMagnetics::Winding, double>> merge_wire_candidates(
+        std::vector<std::vector<std::pair<OpenMagnetics::Winding, double>>>& candidatesPerConfiguration, bool interleave) {
+    std::vector<std::pair<OpenMagnetics::Winding, double>> merged;
+    if (!interleave) {
+        for (auto& configurationCandidates : candidatesPerConfiguration) {
+            std::move(configurationCandidates.begin(), configurationCandidates.end(), std::back_inserter(merged));
+        }
+        return merged;
+    }
+    std::set<std::string> seen;
+    size_t longest = 0;
+    for (const auto& rung : candidatesPerConfiguration) longest = std::max(longest, rung.size());
+    for (size_t position = 0; position < longest; ++position) {
+        for (auto& rung : candidatesPerConfiguration) {
+            if (position >= rung.size()) continue;
+            auto wire = OpenMagnetics::Coil::resolve_wire(rung[position].first);
+            if (!wire.get_name()) {
+                throw OpenMagnetics::InvalidInputException(OpenMagnetics::ErrorCode::INVALID_INPUT,
+                    "CoilAdviser: an advised wire has no name, so duplicate candidates cannot be told apart");
+            }
+            auto key = wire.get_name().value() + "|" + std::to_string(rung[position].first.get_number_parallels());
+            if (!seen.insert(key).second) continue;
+            merged.push_back(rung[position]);
+        }
+    }
+    return merged;
+}
+
+std::vector<std::map<std::string, double>> wire_configurations(double maximumEffectiveCurrentDensity, double maximumNumberParallels, bool relaxedWireLimits) {
+    if (relaxedWireLimits) {
+        // The normal search ran for every core: the limits themselves first, then beyond them.
+        return {
+            {{"maximumEffectiveCurrentDensity", maximumEffectiveCurrentDensity}, {"maximumNumberParallels", maximumNumberParallels}},
+            {{"maximumEffectiveCurrentDensity", maximumEffectiveCurrentDensity}, {"maximumNumberParallels", maximumNumberParallels * 2}},
+            {{"maximumEffectiveCurrentDensity", maximumEffectiveCurrentDensity * 2}, {"maximumNumberParallels", maximumNumberParallels}},
+            {{"maximumEffectiveCurrentDensity", maximumEffectiveCurrentDensity * 2}, {"maximumNumberParallels", maximumNumberParallels * 2}}
+        };
+    }
+    std::vector<std::map<std::string, double>> configurations;
+    for (double densityFraction : kWireCurrentDensityLadder) {
+        configurations.push_back({{"maximumEffectiveCurrentDensity", maximumEffectiveCurrentDensity * densityFraction},
+                                  {"maximumNumberParallels", maximumNumberParallels}});
+    }
+    return configurations;
+}
+
+// How many wound coils one pattern collects before keeping the maximumNumberResults with the
+// lowest losses (core + ohmic, skin and proximity winding losses). Two: on the 36-case Henry corpus
+// it took 971 s of adviser time against 1163 s with a pool of one (80 against 78 acceptable designs).
+const size_t kWoundCoilPoolMultiplier = 2;
+}  // namespace
 
 namespace OpenMagnetics {
 
@@ -1222,20 +1287,8 @@ namespace OpenMagnetics {
                                          return p1.get_conditions().get_ambient_temperature() < p2.get_conditions().get_ambient_temperature();
                                      })).get_conditions().get_ambient_temperature();
 
-            // COA-OPT-1 NOTE: This wireConfigurations block is duplicated in wound and planar paths.
-            // TODO: Extract as static const or class member to reduce duplication.
-            std::vector<std::map<std::string, double>> wireConfigurations = {
-                {{"maximumEffectiveCurrentDensity", defaults.maximumEffectiveCurrentDensity}, {"maximumNumberParallels", defaults.maximumNumberParallels}},
-            };
-            if (_relaxedWireLimits) {
-                // The search main ran for every core: the limits themselves first, then beyond them.
-                wireConfigurations = {
-                    {{"maximumEffectiveCurrentDensity", defaults.maximumEffectiveCurrentDensity}, {"maximumNumberParallels", defaults.maximumNumberParallels}},
-                    {{"maximumEffectiveCurrentDensity", defaults.maximumEffectiveCurrentDensity}, {"maximumNumberParallels", defaults.maximumNumberParallels * 2}},
-                    {{"maximumEffectiveCurrentDensity", defaults.maximumEffectiveCurrentDensity * 2}, {"maximumNumberParallels", defaults.maximumNumberParallels}},
-                    {{"maximumEffectiveCurrentDensity", defaults.maximumEffectiveCurrentDensity * 2}, {"maximumNumberParallels", defaults.maximumNumberParallels * 2}}
-                };
-            }
+            auto wireConfigurations = wire_configurations(defaults.maximumEffectiveCurrentDensity, defaults.maximumNumberParallels, _relaxedWireLimits);
+            std::vector<std::vector<std::pair<Winding, double>>> candidatesPerConfiguration;
             logEntry("Trying " + std::to_string(wireConfigurations.size()) + " wire configurations", "CoilAdviser", 2);
 
             // wound_with windings (e.g. center-tapped LLC half-secondaries)
@@ -1299,9 +1352,7 @@ namespace OpenMagnetics {
                     if (wiresWithScoring.size() > kMaxWiresPerConfig) {
                         wiresWithScoring.resize(kMaxWiresPerConfig);
                     }
-                    timeout += wiresWithScoring.size();
-
-                    std::move(wiresWithScoring.begin(), wiresWithScoring.end(), std::back_inserter(wireCoilPerWinding.back()));
+                    candidatesPerConfiguration.push_back(std::move(wiresWithScoring));
                     // Do NOT early-break here: every wireConfiguration contributes candidates.
                     // The configurations at twice the current density and/or twice the parallels
                     // run only in the INVALID retry (_relaxedWireLimits): in the normal search
@@ -1311,6 +1362,9 @@ namespace OpenMagnetics {
                     // downstream is bounded by kMaxConsecutiveFailuresWithNoSuccess and the timeout.
                 }
             }
+            auto mergedCandidates = merge_wire_candidates(candidatesPerConfiguration, !_relaxedWireLimits);
+            timeout += mergedCandidates.size();
+            std::move(mergedCandidates.begin(), mergedCandidates.end(), std::back_inserter(wireCoilPerWinding.back()));
         }
 
         for (size_t windingIndex = 0; windingIndex < numberWindings; ++windingIndex) {
@@ -1347,6 +1401,7 @@ namespace OpenMagnetics {
         for (const auto& wpw : wireCoilPerWinding) totalCandidates += wpw.size();
         const size_t kMaxConsecutiveFailuresWithNoSuccess = std::max<size_t>(25, totalCandidates);
         size_t consecutiveFailures = 0;
+        const size_t windPoolSize = maximumNumberResults * kWoundCoilPoolMultiplier;
 
         while (true) {
 
@@ -1525,7 +1580,7 @@ namespace OpenMagnetics {
 
                     masesWithCoil.push_back(mas);
                     wiresIndex++;
-                    if (masesWithCoil.size() == maximumNumberResults) {
+                    if (masesWithCoil.size() == windPoolSize) {
                         break;
                     }
                 }
@@ -1564,6 +1619,29 @@ namespace OpenMagnetics {
 
             if (!anyAdvanceable) break; // COA-BUG-1 FIX: all windings exhausted
             currentWireIndexPerWinding[lowestIndex]++;
+        }
+        if (masesWithCoil.size() > maximumNumberResults) {
+            // Keep the coils with the lowest losses (core + ohmic, skin and proximity winding
+            // losses), as MKF's MagneticFilterLosses computes them on the wound coil: the wire
+            // ranking before winding cannot see the proximity field of the real layer stack.
+            MagneticFilterLosses lossesFilter;
+            std::vector<std::pair<Mas, double>> masesWithLosses;
+            for (auto& woundMas : masesWithCoil) {
+                auto [valid, losses] = lossesFilter.evaluate_magnetic(&woundMas.get_mutable_magnetic(), &woundMas.get_mutable_inputs());
+                if (!valid) {
+                    throw CalculationException(ErrorCode::CALCULATION_ERROR,
+                        "CoilAdviser: the losses of wound coil '" + woundMas.get_mutable_magnetic().get_reference() +
+                        "' could not be evaluated, so the wound coils cannot be ranked by losses");
+                }
+                masesWithLosses.push_back({woundMas, losses});
+            }
+            stable_sort_by_index(masesWithLosses, [](const std::pair<Mas, double>& left, const std::pair<Mas, double>& right) {
+                return left.second < right.second;
+            });
+            masesWithCoil.clear();
+            for (size_t index = 0; index < maximumNumberResults; ++index) {
+                masesWithCoil.push_back(masesWithLosses[index].first);
+            }
         }
         logEntry("Managed to wind " + std::to_string(masesWithCoil.size()) + " coils", "CoilAdviser");
 
@@ -1660,18 +1738,8 @@ namespace OpenMagnetics {
             }
 
             // Try multiple wire configurations to find optimal designs
-            std::vector<std::map<std::string, double>> wireConfigurations = {
-                {{"maximumEffectiveCurrentDensity", defaults.maximumEffectiveCurrentDensity}, {"maximumNumberParallels", defaults.maximumNumberParallels}},
-            };
-            if (_relaxedWireLimits) {
-                // The search main ran for every core: the limits themselves first, then beyond them.
-                wireConfigurations = {
-                    {{"maximumEffectiveCurrentDensity", defaults.maximumEffectiveCurrentDensity}, {"maximumNumberParallels", defaults.maximumNumberParallels}},
-                    {{"maximumEffectiveCurrentDensity", defaults.maximumEffectiveCurrentDensity}, {"maximumNumberParallels", defaults.maximumNumberParallels * 2}},
-                    {{"maximumEffectiveCurrentDensity", defaults.maximumEffectiveCurrentDensity * 2}, {"maximumNumberParallels", defaults.maximumNumberParallels}},
-                    {{"maximumEffectiveCurrentDensity", defaults.maximumEffectiveCurrentDensity * 2}, {"maximumNumberParallels", defaults.maximumNumberParallels * 2}}
-                };
-            }
+            auto wireConfigurations = wire_configurations(defaults.maximumEffectiveCurrentDensity, defaults.maximumNumberParallels, _relaxedWireLimits);
+            std::vector<std::vector<std::pair<Winding, double>>> candidatesPerConfiguration;
             logEntry("Trying " + std::to_string(wireConfigurations.size()) + " wire configurations", "CoilAdviser", 2);
 
             wireCoilPerWinding.push_back(std::vector<std::pair<Winding, double>>{});
@@ -1695,13 +1763,18 @@ namespace OpenMagnetics {
                     if (wiresWithScoring.size() > kMaxWiresPerConfig) {
                         wiresWithScoring.resize(kMaxWiresPerConfig);
                     }
-                    timeout += wiresWithScoring.size();
-                    // Only add wires up to the limit, but continue trying other configurations
-                    size_t spaceRemaining = maximumNumberResults * 4 - wireCoilPerWinding.back().size();
-                    size_t wiresToAdd = std::min(spaceRemaining, wiresWithScoring.size());
-                    std::move(wiresWithScoring.begin(), wiresWithScoring.begin() + wiresToAdd, std::back_inserter(wireCoilPerWinding.back()));
+                    candidatesPerConfiguration.push_back(std::move(wiresWithScoring));
                     found = true;
                 }
+            }
+            {
+                // Merge the configurations, then keep up to four candidates per requested result.
+                auto mergedCandidates = merge_wire_candidates(candidatesPerConfiguration, !_relaxedWireLimits);
+                if (mergedCandidates.size() > maximumNumberResults * 4) {
+                    mergedCandidates.resize(maximumNumberResults * 4);
+                }
+                timeout += mergedCandidates.size();
+                std::move(mergedCandidates.begin(), mergedCandidates.end(), std::back_inserter(wireCoilPerWinding.back()));
             }
             if (!found) {
                 logEntry("No planar wires found for winding " + std::to_string(windingIndex), "CoilAdviser", 2);

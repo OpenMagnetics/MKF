@@ -5,6 +5,7 @@
 #include "support/Painter.h"
 #include "advisers/CoreAdviser.h"
 #include "advisers/CoilAdviser.h"
+#include "advisers/MagneticFilter.h"
 #include "processors/Inputs.h"
 #include "processors/MagneticSimulator.h"
 #include "physical_models/StrayCapacitance.h"
@@ -3172,5 +3173,53 @@ TEST_CASE("Test_CoilAdviser_Beyond_Wire_Limits_Only_As_Invalid", "[adviser][coil
         REQUIRE(coil_failed_validity_filters(masMagneticWithCoil));
         CHECK(reference.find(" [violates: EFFECTIVE_CURRENT_DENSITY above 12") != std::string::npos);
     }
+    settings.reset();
+}
+
+TEST_CASE("Test_CoilAdviser_Ranks_The_Wound_Coils_By_Losses", "[adviser][coil-adviser]") {
+    // A 300 kHz, 10 A peak-to-peak AC inductor (15 turns on an ETD 49). The first wire that fits is
+    // a 3.7 mm solid round wire (Round 7.0), some thirty skin depths thick at this frequency; the
+    // adviser used to return it because it fitted first. It now winds a pool of coils and keeps
+    // the one with the lowest losses (MagneticFilterLosses), which is not that one.
+    settings.reset();
+    auto gapping = OpenMagneticsTesting::get_ground_gap(0.002);
+    std::vector<int64_t> numberTurns = {15};
+    auto magnetic = OpenMagneticsTesting::get_quick_magnetic("ETD 49", gapping, numberTurns, 1, "3C95");
+    auto inputs = OpenMagnetics::Inputs::create_quick_operating_point_only_current(300000, 100e-6, 25, WaveformLabel::TRIANGULAR,
+                                                                                   10, 0.5, 0);
+    inputs.process();
+    OpenMagnetics::Mas masMagnetic;
+    masMagnetic.set_inputs(inputs);
+    masMagnetic.set_magnetic(magnetic);
+    settings.set_coil_allow_margin_tape(false);
+    settings.set_coil_try_rewind(false);
+
+    CoilAdviser coilAdviser;
+    auto masMagneticsWithCoil = coilAdviser.get_advised_coil(masMagnetic, 1);
+    REQUIRE(masMagneticsWithCoil.size() == 1);
+    REQUIRE(!coil_failed_validity_filters(masMagneticsWithCoil[0]));
+    auto advisedMagnetic = masMagneticsWithCoil[0].get_magnetic();
+    auto advisedWinding = advisedMagnetic.get_coil().get_functional_description()[0];
+    INFO(OpenMagnetics::Coil::resolve_wire(advisedWinding).get_name().value() << " x" << advisedWinding.get_number_parallels());
+
+    // The same core and turns wound with the first-fitting thick solid wire.
+    auto thickMagnetic = advisedMagnetic;
+    auto thickCoil = thickMagnetic.get_coil();
+    auto functionalDescription = thickCoil.get_functional_description();
+    functionalDescription[0].set_wire("Round 7.0 - Triple Build");
+    functionalDescription[0].set_number_parallels(1);
+    OpenMagnetics::Coil rewoundCoil;
+    rewoundCoil.set_bobbin(thickCoil.get_bobbin());
+    rewoundCoil.set_functional_description(functionalDescription);
+    REQUIRE(rewoundCoil.wind());
+    thickMagnetic.set_coil(rewoundCoil);
+
+    MagneticFilterLosses lossesFilter;
+    auto [advisedValid, advisedLosses] = lossesFilter.evaluate_magnetic(&advisedMagnetic, &inputs);
+    auto [thickValid, thickLosses] = lossesFilter.evaluate_magnetic(&thickMagnetic, &inputs);
+    REQUIRE(advisedValid);
+    REQUIRE(thickValid);
+    INFO("advised " << advisedLosses << " W, Round 7.0 " << thickLosses << " W");
+    CHECK(advisedLosses < thickLosses);
     settings.reset();
 }
