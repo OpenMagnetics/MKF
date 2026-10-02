@@ -2209,3 +2209,69 @@ TEST_CASE("Test_Excitation_With_Proportional_Voltage_And_Current_Recalculates_Pr
     REQUIRE_THAT(unloaded.get_current()->get_processed()->get_peak().value(), Catch::Matchers::WithinAbs(0, 1e-12));
     REQUIRE_THAT(unloaded.get_current()->get_processed()->get_rms().value(), Catch::Matchers::WithinAbs(0, 1e-12));
 }
+
+// ABT #1585: a voltage whose volt-seconds do not balance over its period has no periodic steady
+// state, and its integral is a drift, not a magnetizing current. These build a rectangular winding
+// voltage of +10 V for half the period and `lowVoltage` for the other half.
+static Waveform abt1585_sampled_rectangular_voltage(double lowVoltage, double frequency) {
+    Waveform waveform;
+    double period = 1.0 / frequency;
+    waveform.set_data({10, 10, lowVoltage, lowVoltage, 10});
+    waveform.set_time(std::vector<double>{0, period / 2, period / 2, period, period});
+    return OpenMagnetics::Inputs::calculate_sampled_waveform(waveform, frequency);
+}
+
+TEST_CASE("Test_Volt_Second_Balance_Unbalanced_Voltage_Throws", "[processor][inputs][abt-1585]") {
+    double frequency = 100000;
+    // Mean 2.5 V: the net 25 uV*s per period is 0.67 of the 37.5 uV*s AC swing, above the 0.25 bound.
+    auto unbalanced = abt1585_sampled_rectangular_voltage(-5, frequency);
+    REQUIRE_THROWS_AS(OpenMagnetics::Inputs::check_volt_second_balance(unbalanced, "test"), InvalidInputException);
+
+    OperatingPointExcitation excitation;
+    excitation.set_frequency(frequency);
+    excitation.set_name("unbalanced");
+    REQUIRE_THROWS_WITH(OpenMagnetics::Inputs::calculate_magnetizing_current(excitation, unbalanced, 100e-6, false, false, false),
+                        Catch::Matchers::ContainsSubstring("Excitation 'unbalanced'") &&
+                        Catch::Matchers::ContainsSubstring("not volt-second balanced"));
+}
+
+TEST_CASE("Test_Volt_Second_Balance_Balanced_Voltage_Integrates", "[processor][inputs][abt-1585]") {
+    double frequency = 100000;
+    auto balanced = abt1585_sampled_rectangular_voltage(-10, frequency);
+    REQUIRE_NOTHROW(OpenMagnetics::Inputs::check_volt_second_balance(balanced, "test"));
+
+    OperatingPointExcitation excitation;
+    excitation.set_frequency(frequency);
+    auto magnetizingCurrent = OpenMagnetics::Inputs::calculate_magnetizing_current(excitation, balanced, 100e-6, false, false, false);
+    // 10 V over half of 10 us across 100 uH: 0.5 A peak to peak.
+    REQUIRE_THAT(magnetizingCurrent.get_processed()->get_peak_to_peak().value(), Catch::Matchers::WithinRel(0.5, 0.02));
+}
+
+TEST_CASE("Test_Single_Winding_Inductor_With_Current_Uses_It_As_Magnetizing_Current", "[processor][inputs][abt-1585]") {
+    // A line-cycle PFC-like case: the voltage is not volt-second balanced, but the winding current is
+    // given, and for a single-winding inductor that current is the magnetizing current.
+    json inputsJson;
+    inputsJson["operatingPoints"] = json::array();
+    json operatingPoint = json();
+    operatingPoint["name"] = "Nominal";
+    operatingPoint["conditions"]["ambientTemperature"] = 25;
+    json windingExcitation = json();
+    windingExcitation["frequency"] = 100000;
+    windingExcitation["voltage"]["waveform"]["data"] = {10, 10, -5, -5, 10};
+    windingExcitation["voltage"]["waveform"]["time"] = {0, 5e-6, 5e-6, 1e-5, 1e-5};
+    windingExcitation["current"]["waveform"]["data"] = {11, 13, 11};
+    windingExcitation["current"]["waveform"]["time"] = {0, 5e-6, 1e-5};
+    operatingPoint["excitationsPerWinding"] = json::array();
+    operatingPoint["excitationsPerWinding"].push_back(windingExcitation);
+    inputsJson["operatingPoints"].push_back(operatingPoint);
+    inputsJson["designRequirements"]["magnetizingInductance"]["nominal"] = 100e-6;
+    inputsJson["designRequirements"]["turnsRatios"] = json::array();
+
+    OpenMagnetics::Inputs inputs(inputsJson);
+    auto excitation = inputs.get_operating_points()[0].get_excitations_per_winding()[0];
+    REQUIRE(excitation.get_magnetizing_current().has_value());
+    double currentPeak = excitation.get_current()->get_processed()->get_peak().value();
+    double magnetizingPeak = excitation.get_magnetizing_current()->get_processed()->get_peak().value();
+    REQUIRE_THAT(currentPeak, Catch::Matchers::WithinRel(13, 0.01));
+    REQUIRE_THAT(magnetizingPeak, Catch::Matchers::WithinRel(currentPeak, 1e-9));
+}

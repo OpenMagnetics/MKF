@@ -146,6 +146,20 @@ class Inputs : public MAS::Inputs {
                                                           const std::vector<double>& turnsRatios,
                                                           const std::vector<IsolationSide>& isolationSides);
 
+    // Largest net volt-second imbalance over one period, as a fraction of the AC flux-linkage
+    // swing, that a voltage may carry and still be integrated into a magnetizing current (ABT #1585).
+    // A periodic steady-state winding voltage has zero net volt-seconds; what remains in a simulated
+    // or measured waveform is sampling error (at most 0.12 of the swing on the multi-winding and
+    // switching-frequency single-winding cases of the Henry corpus, 2026-10-02). The integral of an
+    // unbalanced voltage drifts by the imbalance every period, so above this bound the integrated
+    // current describes the drift, not the magnetizing current: the line-cycle PFC inductor
+    // voltages that motivated it carried 16-46 times their swing and gave kA peaks.
+    static constexpr double maximumVoltSecondImbalance = 0.25;
+    // Throws InvalidInputException when the voltage's net volt-seconds over its period exceed
+    // maximumVoltSecondImbalance of its AC flux-linkage swing. `context` names the operating point
+    // and winding for the message.
+    static void check_volt_second_balance(const Waveform& voltageSampledWaveform, const std::string& context);
+
     static SignalDescriptor calculate_magnetizing_current(OperatingPointExcitation& excitation,
                                                             double magnetizingInductance,
                                                             bool compress,

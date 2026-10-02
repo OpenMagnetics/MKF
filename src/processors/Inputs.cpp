@@ -1927,6 +1927,44 @@ Waveform Inputs::compress_waveform(const Waveform& waveform) {
     return compressedWaveform;
 }
 
+void Inputs::check_volt_second_balance(const Waveform& voltageSampledWaveform, const std::string& context) {
+    // ABT #1585: the magnetizing current is the integral of the voltage over the inductance. Only
+    // the integration constant is removed (calculate_integral_waveform), so a voltage whose
+    // volt-seconds do not balance over the period ramps the "current" by its imbalance instead of
+    // describing the flux swing: Kirchhoff's line-cycle PFC inductor voltages gave 1635 A against
+    // 12.3 A of real winding current, and every core then failed the energy-stored gate.
+    if (!voltageSampledWaveform.get_time() || voltageSampledWaveform.get_data().size() < 2) {
+        throw InvalidInputException(ErrorCode::MISSING_DATA,
+            context + ": the voltage needs a sampled waveform with a time axis to check its volt-second balance");
+    }
+    double meanVoltage = calculate_waveform_average(voltageSampledWaveform);
+    const auto time = voltageSampledWaveform.get_time().value();
+    double period = time.back() - time.front();
+    double netVoltSeconds = meanVoltage * period;
+    auto acFluxLinkage = calculate_integral_waveform(sum_waveform(voltageSampledWaveform, -meanVoltage), true);
+    const auto& acData = acFluxLinkage.get_data();
+    double acSwing = *std::max_element(acData.begin(), acData.end()) - *std::min_element(acData.begin(), acData.end());
+    if (acSwing <= 0) {
+        // A constant voltage: any non-zero value is pure imbalance; zero is no voltage at all.
+        if (meanVoltage != 0) {
+            throw InvalidInputException(ErrorCode::INVALID_INPUT,
+                context + ": the voltage is a constant " + std::to_string(meanVoltage) +
+                " V, which has no periodic steady state; its integral is not a magnetizing current");
+        }
+        return;
+    }
+    double imbalance = std::fabs(netVoltSeconds) / acSwing;
+    if (imbalance > maximumVoltSecondImbalance) {
+        throw InvalidInputException(ErrorCode::INVALID_INPUT,
+            context + ": the voltage is not volt-second balanced (mean " + std::to_string(meanVoltage) +
+            " V over a " + std::to_string(period) + " s period, so its integral drifts by " +
+            std::to_string(netVoltSeconds) + " V*s per period against an AC swing of " + std::to_string(acSwing) +
+            " V*s, " + std::to_string(imbalance) + " of it; the limit is " + std::to_string(maximumVoltSecondImbalance) +
+            "). A magnetizing current integrated from it would describe the drift: give a balanced steady-state "
+            "voltage, or the magnetizing current itself");
+    }
+}
+
 SignalDescriptor Inputs::calculate_magnetizing_current(OperatingPointExcitation& excitation,
                                                                 Waveform voltageSampledWaveform,
                                                                 double magnetizingInductance,
@@ -1970,6 +2008,7 @@ SignalDescriptor Inputs::calculate_magnetizing_current(OperatingPointExcitation&
                 // the waveform from. The previous code subtracted half this winding's own
                 // pk-pk ripple (commutation step included), understating the DC anchor and
                 // with it B_dc and B_peak by ~30% on CCM flyback/flybuck (ABT #907).
+                check_volt_second_balance(voltageSampledWaveform, "Excitation '" + excitation.get_name().value_or("unnamed") + "'");
                 auto centeredMagnetizingWaveform = calculate_integral_waveform(voltageSampledWaveform, true);
                 centeredMagnetizingWaveform = multiply_waveform(centeredMagnetizingWaveform, 1.0 / magnetizingInductance);
                 double excursionAboveMean = *max_element(centeredMagnetizingWaveform.get_data().begin(),
@@ -2136,6 +2175,7 @@ SignalDescriptor Inputs::calculate_magnetizing_current(OperatingPointExcitation&
         // misclassified the load as discontinuous, leaving the spurious DC in
         // place. The result was Bpeak = peakToPeak (instead of peakToPeak/2)
         // for harmonic-rich AC excitations.
+        check_volt_second_balance(voltageSampledWaveform, "Excitation '" + excitation.get_name().value_or("unnamed") + "'");
         sampledMagnetizingCurrentWaveform = calculate_integral_waveform(voltageSampledWaveform, true);
         SignalDescriptor magnetizingCurrentExcitation;
 
@@ -2410,6 +2450,23 @@ OperatingPoint Inputs::process_operating_point(OperatingPoint operatingPoint, do
             voltageExcitation.set_harmonics(calculate_harmonics_data(waveform, sampledWaveform, physFreqFromWaveform(sampledWaveform, excitation.get_frequency())));
             voltageExcitation.set_processed(calculate_processed_data(voltageExcitation, sampledWaveform));
             excitation.set_voltage(voltageExcitation);
+            // A single-winding inductor's winding current IS its magnetizing current, exactly as in
+            // the no-voltage branch below. Integrating the voltage (the generic path further down) is
+            // needed only when the current is absent or several windings share the flux, and it was
+            // wrong whenever the given voltage is not volt-second balanced: Kirchhoff's line-cycle
+            // PFC voltages integrated to kA "magnetizing" peaks against ~12 A of real current, and
+            // no core passed the energy-stored gate (ABT #1585).
+            if (operatingPoint.get_excitations_per_winding().size() == 1 && excitation.get_current() && !excitation.get_magnetizing_current()) {
+                // The current's processed data keeps the fields the caller gave (e.g. only offset
+                // and peak to peak); the magnetizing current needs all of them (peak included),
+                // as calculate_magnetizing_current would have produced.
+                auto magnetizingCurrent = excitation.get_current().value();
+                auto currentWaveform = magnetizingCurrent.get_waveform().value();
+                Waveform sampledCurrentWaveform = is_waveform_sampled(currentWaveform) ? currentWaveform
+                                                                                        : calculate_sampled_waveform(currentWaveform, excitation.get_frequency());
+                magnetizingCurrent.set_processed(calculate_processed_data(magnetizingCurrent, sampledCurrentWaveform, true));
+                excitation.set_magnetizing_current(magnetizingCurrent);
+            }
         }
         else {
             if (operatingPoint.get_excitations_per_winding().size() == 1 && excitation.get_current()) {
