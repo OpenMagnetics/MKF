@@ -1,3 +1,4 @@
+#include <magic_enum.hpp>
 #include "support/Utils.h"
 #include "constructive_models/Bobbin.h"
 #include "constructive_models/BobbinFamilyGeometry.h"
@@ -340,10 +341,26 @@ std::shared_ptr<BobbinDataProcessor> BobbinDataProcessor::factory(Bobbin bobbin)
     else if (family == BobbinFamily::U) {
         return std::make_shared<BobbinEDataProcessor>(ColumnShape::RECTANGULAR);
     }
-    else
+    // EI: formers of the ET 20 / ET 35 cores, which MAS classes as core family 'ei' (an E piece
+    // closed by a flat plate). CorePieceEi inherits CorePieceE's central column, a RECTANGLE, and
+    // so does a former built from it (create_quick_bobbin), so the record reads with the E labels
+    // and that column, like U.
+    else if (family == BobbinFamily::EI) {
+        return std::make_shared<BobbinEDataProcessor>(ColumnShape::RECTANGULAR);
+    }
+    else {
+        // Listed from the enum itself, in the spelling MAS files use, so a family added to the
+        // schema shows up here without anyone editing this message.
+        std::string options;
+        for (auto value : magic_enum::enum_values<BobbinFamily>()) {
+            json spelled;
+            to_json(spelled, value);
+            options += (options.empty() ? "" : ", ") + spelled.get<std::string>();
+        }
         throw InvalidInputException(ErrorCode::INVALID_BOBBIN_DATA,
             "Unknown bobbin family (enumerator value " + std::to_string(static_cast<int>(family)) +
-            "), available options are: {E, EC, EFD, EL, EP, ER, ETD, P, PM, PQ, RM, T, U}");
+            "), available options are: {" + options + "}");
+    }
 }
 
 void load_interpolators() {

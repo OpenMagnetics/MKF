@@ -881,6 +881,18 @@ json bobbin_json_as_family(const std::string& catalogueName, const std::string& 
 }
 }  // namespace
 
+TEST_CASE("An EI former reads as an E former around a rectangular column", "[constructive-model][bobbin][ei-bobbin]") {
+    // MAS bobbin family 'ei' (formers of the ET 20 / ET 35 cores, an E piece closed by a flat plate)
+    // was refused as an unknown family. CorePieceEi inherits CorePieceE's rectangular central column,
+    // so the former reads the E labels around that rectangle. The catalogue has no EI former; this
+    // uses the E42/15 labels (c = 15.7 mm, f = 12.6 mm, s1 = 0.9 mm) under the EI family.
+    OpenMagnetics::Bobbin bobbin(bobbin_json_as_family("Bobbin E42/15", "ei", "E42/15 labels as EI"));
+    auto processed = bobbin.get_processed_description().value();
+    CHECK(processed.get_column_shape() == ColumnShape::RECTANGULAR);
+    CHECK_THAT(processed.get_column_width().value(), Catch::Matchers::WithinAbs(0.0126 / 2 + 0.0009, 1e-12));
+    CHECK_THAT(processed.get_column_depth(), Catch::Matchers::WithinAbs(0.0157 / 2 + 0.0009, 1e-12));
+}
+
 TEST_CASE("Catalogue E-family bobbins carry the column depth of their own labels (ABT #1210)",
           "[constructive-model][bobbin][abt1210]") {
     SECTION("E: Bobbin E42/15, depth c/2 + s1 differs from width f/2 + s1") {
