@@ -8836,6 +8836,26 @@ bool Coil::are_sections_and_layers_fitting() {
             windTurns = false;
         }
     }
+    // A conduction section that wind_by_layers left without a single layer holds none of its
+    // turns, so the layout does not fit. try_rewind's re-proportioning produced exactly that for
+    // a centre-tapped half secondary (LLC 600 W, "Secondary 0 Half 1 section 2") and, judged as
+    // fitting, went on to wind_by_turns and delimit_and_compact, which threw "No layers in
+    // section" out of the coil adviser instead of keeping the layout that had been wound.
+    for (auto& section : sections) {
+        if (section.get_type() != ElectricalType::CONDUCTION) {
+            continue;
+        }
+        bool sectionHasLayers = false;
+        for (const auto& layer : layers) {
+            if (layer.get_type() == ElectricalType::CONDUCTION && layer.get_section() && layer.get_section().value() == section.get_name()) {
+                sectionHasLayers = true;
+                break;
+            }
+        }
+        if (!sectionHasLayers) {
+            windTurns = false;
+        }
+    }
 
     // ABT #616: nothing above compares against the WINDOW — real-winding blocking can grow a
     // section's layer count until its layers walk radially past the winding window edge, and
@@ -18170,7 +18190,18 @@ void Coil::try_rewind() {
         return;
     }
  
-    if (!get_turns_description()) {
+    // Turns for the layout as wound, kept as the fallback when re-proportioning does no better. A
+    // conduction section wind_by_layers left without any layer (a wire too wide for its share of
+    // the window, e.g. a centre-tapped half secondary) has nowhere to put its turns: there is no
+    // fallback to build, and delimit_and_compact would throw "No layers in section" out of wind().
+    bool everyConductionSectionHasLayers = true;
+    for (const auto& section : get_sections_by_type(ElectricalType::CONDUCTION)) {
+        if (get_layers_by_section(section.get_name()).empty()) {
+            everyConductionSectionHasLayers = false;
+            break;
+        }
+    }
+    if (!get_turns_description() && everyConductionSectionHasLayers) {
         wind_by_turns();
         delimit_and_compact();
     }

@@ -16714,3 +16714,37 @@ TEST_CASE("Test_Coil_Real_Winding_Section_That_Cannot_Hold_Its_Turns_Does_Not_Fi
     CHECK(!rebuilt.get_coil().get_turns_description());
     settings.reset();
 }
+
+TEST_CASE("Test_Coil_Rewind_With_A_Section_Left_Without_Layers", "[constructive-model][coil][rewind][bug]") {
+    // Captured from the coil adviser on a 600 W LLC transformer (centre-tapped litz secondary next
+    // to a thick round primary): the first layout leaves a conduction section without any layer,
+    // so it does not fit, and try_rewind then wound turns for it as its fallback and
+    // delimit_and_compact threw "No layers in section: Secondary 0 Half 1 section 2" out of wind().
+    // A coil that does not fit must answer false, not throw.
+    settings.reset();
+    settings.set_coil_try_rewind(true);
+    settings.set_coil_delimit_and_compact(true);
+    settings.set_coil_wind_even_if_not_fit(false);
+    settings.set_coil_allow_margin_tape(true);
+    settings.set_coil_allow_insulated_wire(true);
+    auto path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "coil_rewind_layerless_section.json");
+    std::ifstream file(path);
+    REQUIRE(file.is_open());
+    auto data = json::parse(file);
+    json coilJson;
+    coilJson["bobbin"] = data["bobbin"];
+    coilJson["functionalDescription"] = data["functionalDescription"];
+    OpenMagnetics::Coil coil(coilJson, false);
+    std::vector<double> proportions = data["proportions"];
+    std::vector<size_t> pattern = data["pattern"];
+    size_t repetitions = data["repetitions"];
+    bool wound = false;
+    REQUIRE_NOTHROW(wound = coil.wind(proportions, pattern, repetitions));
+    if (wound) {
+        for (const auto& section : coil.get_sections_by_type(ElectricalType::CONDUCTION)) {
+            INFO(section.get_name());
+            CHECK(!coil.get_layers_by_section(section.get_name()).empty());
+        }
+    }
+    settings.reset();
+}

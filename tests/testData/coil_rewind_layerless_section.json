@@ -1,0 +1,323 @@
+{
+ "bobbin": {
+  "distributorsInfo": null,
+  "functionalDescription": null,
+  "manufacturerInfo": null,
+  "name": null,
+  "processedDescription": {
+   "columnCornerRadius": null,
+   "columnDepth": 0.07243145726821132,
+   "columnShape": "rectangular",
+   "columnThickness": 0.002231457268211324,
+   "columnWidth": 0.019781457268211323,
+   "coordinates": [
+    0.0,
+    0.0,
+    0.0
+   ],
+   "dividers": null,
+   "pins": null,
+   "wallThickness": 0.002256379310344829,
+   "windingWindows": [
+    {
+     "angle": null,
+     "area": 0.0010520874309028231,
+     "column": null,
+     "coordinates": [
+      0.029765728634105662,
+      0.0,
+      0.0
+     ],
+     "height": 0.05268724137931034,
+     "radialHeight": null,
+     "sectionsAlignment": "innerOrTop",
+     "sectionsOrientation": "overlapping",
+     "shape": "rectangular",
+     "width": 0.019968542731788677,
+     "windingOrder": null
+    }
+   ]
+  }
+ },
+ "functionalDescription": [
+  {
+   "connections": null,
+   "isolationSide": "primary",
+   "name": "Primary",
+   "numberParallels": 1,
+   "numberTurns": 16,
+   "windingWindow": null,
+   "wire": {
+    "coating": {
+     "breakdownVoltage": 7600.0,
+     "grade": 3,
+     "material": null,
+     "numberLayers": null,
+     "temperatureRating": null,
+     "thickness": null,
+     "thicknessLayers": null,
+     "type": "enamelled"
+    },
+    "conductingArea": {
+     "excludeMaximum": null,
+     "excludeMinimum": null,
+     "maximum": null,
+     "minimum": null,
+     "nominal": 4.169220176949629e-06,
+     "unit": null
+    },
+    "conductingDiameter": {
+     "excludeMaximum": null,
+     "excludeMinimum": null,
+     "maximum": null,
+     "minimum": null,
+     "nominal": 0.002304,
+     "unit": null
+    },
+    "conductingHeight": null,
+    "conductingWidth": null,
+    "edgeRadius": null,
+    "manufacturerInfo": {
+     "datasheetUrl": null,
+     "description": null,
+     "family": null,
+     "name": "Nearson",
+     "orderCode": null,
+     "provenance": null,
+     "reference": null,
+     "series": null,
+     "spiceModel": null,
+     "status": null
+    },
+    "material": "copper",
+    "name": "Round 11.0 - Triple Build",
+    "numberConductors": 1,
+    "outerDiameter": {
+     "excludeMaximum": null,
+     "excludeMinimum": null,
+     "maximum": null,
+     "minimum": null,
+     "nominal": 0.002418,
+     "unit": null
+    },
+    "outerHeight": null,
+    "outerWidth": null,
+    "standard": "NEMA MW 1000 C",
+    "standardName": "11 AWG",
+    "strand": null,
+    "twistPitch": null,
+    "type": "round"
+   },
+   "woundWith": null
+  },
+  {
+   "connections": null,
+   "isolationSide": "secondary",
+   "name": "Secondary 0 Half 1",
+   "numberParallels": 1,
+   "numberTurns": 1,
+   "windingWindow": null,
+   "wire": {
+    "coating": {
+     "breakdownVoltage": null,
+     "grade": null,
+     "material": null,
+     "numberLayers": 1,
+     "temperatureRating": null,
+     "thickness": null,
+     "thicknessLayers": null,
+     "type": "served"
+    },
+    "conductingArea": {
+     "excludeMaximum": null,
+     "excludeMinimum": null,
+     "maximum": null,
+     "minimum": null,
+     "nominal": 3.4438138668651307e-06,
+     "unit": null
+    },
+    "conductingDiameter": null,
+    "conductingHeight": null,
+    "conductingWidth": null,
+    "edgeRadius": null,
+    "manufacturerInfo": null,
+    "material": "copper",
+    "name": "Synthesized Litz 1218x0.059mm",
+    "numberConductors": 1218,
+    "outerDiameter": {
+     "excludeMaximum": null,
+     "excludeMinimum": null,
+     "maximum": null,
+     "minimum": null,
+     "nominal": 0.0030589558765291187,
+     "unit": null
+    },
+    "outerHeight": null,
+    "outerWidth": null,
+    "standard": null,
+    "standardName": null,
+    "strand": {
+     "coating": {
+      "breakdownVoltage": 355.0,
+      "grade": 1,
+      "material": null,
+      "numberLayers": null,
+      "temperatureRating": null,
+      "thickness": null,
+      "thicknessLayers": null,
+      "type": "enamelled"
+     },
+     "conductingArea": null,
+     "conductingDiameter": {
+      "excludeMaximum": null,
+      "excludeMinimum": null,
+      "maximum": null,
+      "minimum": null,
+      "nominal": 5.9999999999999995e-05,
+      "unit": null
+     },
+     "manufacturerInfo": {
+      "datasheetUrl": null,
+      "description": null,
+      "family": null,
+      "name": "Elektrisola",
+      "orderCode": null,
+      "provenance": null,
+      "reference": null,
+      "series": null,
+      "spiceModel": null,
+      "status": null
+     },
+     "material": "copper",
+     "name": "Round 0.06 - Grade 1",
+     "numberConductors": 1,
+     "outerDiameter": {
+      "excludeMaximum": null,
+      "excludeMinimum": null,
+      "maximum": 7.2e-05,
+      "minimum": 6.6e-05,
+      "nominal": null,
+      "unit": null
+     },
+     "standard": "IEC 60317",
+     "standardName": "0.06 mm",
+     "type": "round"
+    },
+    "twistPitch": null,
+    "type": "litz"
+   },
+   "woundWith": null
+  },
+  {
+   "connections": null,
+   "isolationSide": "secondary",
+   "name": "Secondary 0 Half 2",
+   "numberParallels": 1,
+   "numberTurns": 1,
+   "windingWindow": null,
+   "wire": {
+    "coating": {
+     "breakdownVoltage": null,
+     "grade": null,
+     "material": null,
+     "numberLayers": 1,
+     "temperatureRating": null,
+     "thickness": null,
+     "thicknessLayers": null,
+     "type": "served"
+    },
+    "conductingArea": {
+     "excludeMaximum": null,
+     "excludeMinimum": null,
+     "maximum": null,
+     "minimum": null,
+     "nominal": 3.4438138668651307e-06,
+     "unit": null
+    },
+    "conductingDiameter": null,
+    "conductingHeight": null,
+    "conductingWidth": null,
+    "edgeRadius": null,
+    "manufacturerInfo": null,
+    "material": "copper",
+    "name": "Synthesized Litz 1218x0.059mm",
+    "numberConductors": 1218,
+    "outerDiameter": {
+     "excludeMaximum": null,
+     "excludeMinimum": null,
+     "maximum": null,
+     "minimum": null,
+     "nominal": 0.0030589558765291187,
+     "unit": null
+    },
+    "outerHeight": null,
+    "outerWidth": null,
+    "standard": null,
+    "standardName": null,
+    "strand": {
+     "coating": {
+      "breakdownVoltage": 355.0,
+      "grade": 1,
+      "material": null,
+      "numberLayers": null,
+      "temperatureRating": null,
+      "thickness": null,
+      "thicknessLayers": null,
+      "type": "enamelled"
+     },
+     "conductingArea": null,
+     "conductingDiameter": {
+      "excludeMaximum": null,
+      "excludeMinimum": null,
+      "maximum": null,
+      "minimum": null,
+      "nominal": 5.9999999999999995e-05,
+      "unit": null
+     },
+     "manufacturerInfo": {
+      "datasheetUrl": null,
+      "description": null,
+      "family": null,
+      "name": "Elektrisola",
+      "orderCode": null,
+      "provenance": null,
+      "reference": null,
+      "series": null,
+      "spiceModel": null,
+      "status": null
+     },
+     "material": "copper",
+     "name": "Round 0.06 - Grade 1",
+     "numberConductors": 1,
+     "outerDiameter": {
+      "excludeMaximum": null,
+      "excludeMinimum": null,
+      "maximum": 7.2e-05,
+      "minimum": 6.6e-05,
+      "nominal": null,
+      "unit": null
+     },
+     "standard": "IEC 60317",
+     "standardName": "0.06 mm",
+     "type": "round"
+    },
+    "twistPitch": null,
+    "type": "litz"
+   },
+   "woundWith": [
+    "Secondary 0 Half 1"
+   ]
+  }
+ ],
+ "proportions": [
+  0.5,
+  0.25,
+  0.25
+ ],
+ "pattern": [
+  1,
+  0,
+  2
+ ],
+ "repetitions": 2
+}
