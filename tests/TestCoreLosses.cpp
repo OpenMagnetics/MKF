@@ -4,6 +4,7 @@
 #include "physical_models/CoreLosses.h"
 #include "support/Painter.h"
 #include "support/Settings.h"
+#include "support/Logger.h"
 #include "processors/Inputs.h"
 #include "physical_models/MagnetizingInductance.h"
 #include "processors/CircuitSimulatorInterface.h"
@@ -1945,7 +1946,10 @@ TEST_CASE("Test_IGSE_composite_waveform_low_excitation_frequency", "[physical-mo
     clear_databases();
 
     std::string shapeName = "PQ 20/20";
-    std::string materialName = "3C95";
+    // ABT #1636: this record (1000 switching cycles on a 60 Hz line) is priced cycle by cycle plus its
+    // 60 Hz envelope's loop. 3C95's Steinmetz fit starts at 25 kHz, so its envelope cannot be priced
+    // (MaterialFrequencyOutOfSpanException, checked at the end); PC44's fit starts at 1 Hz.
+    std::string materialName = "PC44";
     Core core = OpenMagneticsTesting::get_quick_core(shapeName, json::array(), 1, materialName);
 
     double excitationFrequency = 60;        // Hz - line frequency
@@ -2001,6 +2005,10 @@ TEST_CASE("Test_IGSE_composite_waveform_low_excitation_frequency", "[physical-mo
     // (within 10x), not 100x-1000x higher as the bug caused
     REQUIRE(volumetricLosses < refVolumetricLosses * 10);
     REQUIRE(volumetricLosses > 0);
+
+    // A ferrite fitted only from 25 kHz refuses the 60 Hz envelope rather than extrapolating it.
+    Core core3C95 = OpenMagneticsTesting::get_quick_core(shapeName, json::array(), 1, "3C95");
+    CHECK_THROWS_AS(coreLossesModel->get_core_losses(core3C95, excitation, temperature), MaterialFrequencyOutOfSpanException);
 }
 
 // ABT #1426 follow-up: the dB/dt core-loss models integrate over the segments of a
@@ -4922,4 +4930,286 @@ TEST_CASE("Calculate_Steinmetz_Coefficients_Temperature_Per_Range", "[physical-m
         CHECK(coefficientsPerRange[0].get_ct2());
         CHECK_FALSE(coefficientsPerRange[1].get_ct0());
     }
+}
+
+// ABT #1636: a boost PFC inductor excited over one line period. The excitation's frequency is the
+// line's; its flux is a switching-frequency triangle ripple riding on the rectified line envelope.
+// The record's core loss is the time average of its switching cycles' minor loops, each at the
+// switching frequency with its own local DC flux, plus the envelope's own line-frequency loop.
+// The references below are built cycle by cycle from the construction itself (exact triangles at
+// the switching frequency) and priced through the same MKF model, independently of how the record
+// is split.
+namespace {
+
+struct BoostPfcLineCycle {
+    OperatingPointExcitation record;
+    std::vector<OperatingPointExcitation> cycles;
+    OperatingPointExcitation envelope;
+};
+
+BoostPfcLineCycle build_boost_pfc_line_cycle(double lineFrequency, size_t cyclesPerLinePeriod, double envelopePeak,
+                                             double maximumRipplePeakToPeak, double inputPeakOverOutputVoltage) {
+    double switchingPeriod = 1 / lineFrequency / static_cast<double>(cyclesPerLinePeriod);
+    double switchingFrequency = 1 / switchingPeriod;
+    auto envelope = [&](double t) { return envelopePeak * std::fabs(sin(2 * std::numbers::pi * lineFrequency * t)); };
+    // Boost: D = 1 - vin / vout, ripple = vin D T / (N Ae), largest (maximumRipplePeakToPeak) at vin = vout / 2.
+    auto inputOverOutput = [&](double t) { return inputPeakOverOutputVoltage * std::fabs(sin(2 * std::numbers::pi * lineFrequency * t)); };
+    auto ripple = [&](double x) { return maximumRipplePeakToPeak * 4 * x * (1 - x); };
+
+    BoostPfcLineCycle result;
+    std::vector<double> time;
+    std::vector<double> data;
+    std::vector<double> envelopeTime;
+    std::vector<double> envelopeData;
+    for (size_t cycleIndex = 0; cycleIndex <= cyclesPerLinePeriod; ++cycleIndex) {
+        double start = static_cast<double>(cycleIndex) * switchingPeriod;
+        double centre = start + switchingPeriod / 2;
+        double x = inputOverOutput(centre);
+        double dutyCycle = 1 - x;
+        double peakToPeak = ripple(x);
+        time.push_back(start);
+        data.push_back(envelope(start) - peakToPeak / 2);
+        if (cycleIndex == cyclesPerLinePeriod) {
+            break;
+        }
+        time.push_back(start + dutyCycle * switchingPeriod);
+        data.push_back(envelope(start + dutyCycle * switchingPeriod) + peakToPeak / 2);
+
+        json cycleJson;
+        cycleJson["frequency"] = switchingFrequency;
+        cycleJson["magneticFluxDensity"]["waveform"]["time"] = {0, dutyCycle * switchingPeriod, switchingPeriod};
+        double offset = envelope(centre);
+        cycleJson["magneticFluxDensity"]["waveform"]["data"] = {offset - peakToPeak / 2, offset + peakToPeak / 2, offset - peakToPeak / 2};
+        cycleJson["magneticFluxDensity"]["processed"]["label"] = WaveformLabel::TRIANGULAR;
+        cycleJson["magneticFluxDensity"]["processed"]["offset"] = offset;
+        cycleJson["magneticFluxDensity"]["processed"]["peak"] = offset + peakToPeak / 2;
+        cycleJson["magneticFluxDensity"]["processed"]["peakToPeak"] = peakToPeak;
+        cycleJson["magneticFluxDensity"]["processed"]["dutyCycle"] = dutyCycle;
+        result.cycles.push_back(OperatingPointExcitation(cycleJson));
+        envelopeTime.push_back(centre - switchingPeriod / 2);
+        envelopeData.push_back(offset);
+    }
+    json recordJson;
+    recordJson["frequency"] = lineFrequency;
+    recordJson["magneticFluxDensity"]["waveform"]["time"] = time;
+    recordJson["magneticFluxDensity"]["waveform"]["data"] = data;
+    recordJson["magneticFluxDensity"]["processed"]["label"] = WaveformLabel::CUSTOM;
+    recordJson["magneticFluxDensity"]["processed"]["offset"] = (*std::max_element(data.begin(), data.end()) + *std::min_element(data.begin(), data.end())) / 2;
+    recordJson["magneticFluxDensity"]["processed"]["peak"] = *std::max_element(data.begin(), data.end());
+    recordJson["magneticFluxDensity"]["processed"]["peakToPeak"] = *std::max_element(data.begin(), data.end()) - *std::min_element(data.begin(), data.end());
+    result.record = OperatingPointExcitation(recordJson);
+
+    json envelopeJson;
+    envelopeJson["frequency"] = lineFrequency;
+    envelopeJson["magneticFluxDensity"]["waveform"]["time"] = envelopeTime;
+    envelopeJson["magneticFluxDensity"]["waveform"]["data"] = envelopeData;
+    envelopeJson["magneticFluxDensity"]["processed"]["label"] = WaveformLabel::CUSTOM;
+    envelopeJson["magneticFluxDensity"]["processed"]["offset"] = (*std::max_element(envelopeData.begin(), envelopeData.end()) + *std::min_element(envelopeData.begin(), envelopeData.end())) / 2;
+    envelopeJson["magneticFluxDensity"]["processed"]["peak"] = *std::max_element(envelopeData.begin(), envelopeData.end());
+    envelopeJson["magneticFluxDensity"]["processed"]["peakToPeak"] = *std::max_element(envelopeData.begin(), envelopeData.end()) - *std::min_element(envelopeData.begin(), envelopeData.end());
+    result.envelope = OperatingPointExcitation(envelopeJson);
+    return result;
+}
+
+double reference_line_cycle_losses(const BoostPfcLineCycle& pfc, const std::function<double(const OperatingPointExcitation&)>& evaluate) {
+    double cyclesLosses = 0;
+    for (const auto& cycle : pfc.cycles) {
+        cyclesLosses += evaluate(cycle);
+    }
+    return cyclesLosses / static_cast<double>(pfc.cycles.size()) + evaluate(pfc.envelope);
+}
+
+} // namespace
+
+TEST_CASE("Core losses of a boost PFC line-cycle excitation are priced per switching cycle", "[physical-model][core-losses][line-cycle-core-losses][smoke-test]") {
+    settings.reset();
+    clear_databases();
+    double temperature = 25;
+    // 60 Hz line, 60 kHz switching: 1000 cycles per line period, 0.6 = Vin,peak / Vout.
+    auto pfc = build_boost_pfc_line_cycle(60, 1000, 0.2, 0.1, 0.6);
+
+    SECTION("Ferrite") {
+        // PC44's Steinmetz ranges are fitted from 1 Hz, so both the cycles and the 60 Hz envelope are in span.
+        Core core = OpenMagneticsTesting::get_quick_core("PQ 20/20", json::array(), 1, "PC44");
+        for (auto modelName : {CoreLossesModels::STEINMETZ, CoreLossesModels::IGSE}) {
+            INFO("Model: " << magic_enum::enum_name(modelName));
+            auto model = CoreLossesModel::factory(modelName);
+            double recordLosses = model->get_core_losses(core, pfc.record, temperature).get_core_losses();
+            double reference = reference_line_cycle_losses(pfc, [&](const OperatingPointExcitation& excitation) {
+                return model->get_core_losses(core, excitation, temperature).get_core_losses();
+            });
+            double envelopeLosses = model->get_core_losses(core, pfc.envelope, temperature).get_core_losses();
+            // The 60 Hz envelope of a ferrite loses next to nothing: the loss is the ripple's.
+            CHECK(envelopeLosses < 0.01 * reference);
+            CHECK(reference > 0.01);
+            CHECK_THAT(recordLosses, Catch::Matchers::WithinRel(reference, 0.01));
+        }
+    }
+
+    SECTION("The envelope repeats once per record, whatever frequency the excitation is labelled with") {
+        // Kirchhoff labels a PFC line-cycle excitation with the switching frequency while its waveform
+        // spans one line period; the envelope is the record's own loop, at 1 / (record duration).
+        Core core = OpenMagneticsTesting::get_quick_core("PQ 20/20", json::array(), 1, "PC44");
+        auto model = CoreLossesModel::factory(CoreLossesModels::STEINMETZ);
+        auto labelledWithSwitchingFrequency = pfc.record;
+        labelledWithSwitchingFrequency.set_frequency(60000);
+        auto record = CoreLossesModel::split_into_switching_cycles(labelledWithSwitchingFrequency);
+        REQUIRE(record.has_value());
+        CHECK_THAT(record->envelope.get_frequency(), Catch::Matchers::WithinRel(60.0, 1e-9));
+        CHECK_THAT(model->get_core_losses(core, labelledWithSwitchingFrequency, temperature).get_core_losses(),
+                   Catch::Matchers::WithinRel(model->get_core_losses(core, pfc.record, temperature).get_core_losses(), 1e-9));
+    }
+
+    SECTION("A ferrite whose fit starts above the line frequency cannot price the envelope's loop") {
+        // 3C95's Steinmetz ranges start at 25 kHz: the switching cycles are in span, the 60 Hz envelope
+        // is not, and an extrapolation of the fit is refused as everywhere else (ABT #1456).
+        Core core = OpenMagneticsTesting::get_quick_core("PQ 20/20", json::array(), 1, "3C95");
+        auto model = CoreLossesModel::factory(CoreLossesModels::STEINMETZ);
+        CHECK_THROWS_AS(model->get_core_losses(core, pfc.record, temperature), MaterialFrequencyOutOfSpanException);
+        // The refusal is the envelope's, and names the material, its fitted span and the frequency asked.
+        CHECK_THROWS_WITH(model->get_core_losses(core, pfc.record, temperature),
+                          Catch::Matchers::ContainsSubstring("3C95") && Catch::Matchers::ContainsSubstring("25000") &&
+                          Catch::Matchers::ContainsSubstring("3000000") && Catch::Matchers::ContainsSubstring("60.000000 Hz is below"));
+        auto record = CoreLossesModel::split_into_switching_cycles(pfc.record);
+        REQUIRE(record.has_value());
+        CHECK_THROWS_AS(model->compute_core_losses(core, record->envelope, temperature), MaterialFrequencyOutOfSpanException);
+        // Every switching cycle alone is in span.
+        for (const auto& cycle : record->cycles) {
+            CHECK(model->compute_core_losses(core, cycle, temperature).get_core_losses() > 0);
+        }
+        CHECK(model->get_core_losses(core, pfc.cycles[250], temperature).get_core_losses() > 0);
+    }
+
+    SECTION("Powder, through the CoreLosses orchestrator with its DC-bias correction per cycle") {
+        Core core = OpenMagneticsTesting::get_quick_core("T 47/24/18.0", json::array(), 1, "Kool Mµ 60");
+        CoreLosses coreLosses;
+        auto powderPfc = build_boost_pfc_line_cycle(60, 1000, 0.4, 0.05, 0.6);
+        double recordLosses = coreLosses.calculate_core_losses(core, powderPfc.record, temperature).get_core_losses();
+        double reference = reference_line_cycle_losses(powderPfc, [&](const OperatingPointExcitation& excitation) {
+            return coreLosses.calculate_core_losses(core, excitation, temperature).get_core_losses();
+        });
+        CHECK(reference > 0);
+        CHECK_THAT(recordLosses, Catch::Matchers::WithinRel(reference, 0.01));
+        // The volumetric entry point prices the record the same way.
+        double effectiveVolume = core.get_processed_description()->get_effective_parameters().get_effective_volume();
+        CHECK_THAT(coreLosses.get_core_volumetric_losses(core.resolve_material(), powderPfc.record, temperature) * effectiveVolume,
+                   Catch::Matchers::WithinRel(reference, 0.01));
+    }
+    settings.reset();
+}
+
+TEST_CASE("A periodic excitation is not split into switching cycles", "[physical-model][core-losses][line-cycle-core-losses][smoke-test]") {
+    settings.reset();
+    double frequency = 100000;
+    double period = 1 / frequency;
+    json excitationJson;
+    excitationJson["frequency"] = frequency;
+    excitationJson["magneticFluxDensity"]["waveform"]["time"] = {0, 0.3 * period, period};
+    excitationJson["magneticFluxDensity"]["waveform"]["data"] = {0.05, 0.15, 0.05};
+    excitationJson["magneticFluxDensity"]["processed"]["label"] = WaveformLabel::TRIANGULAR;
+    excitationJson["magneticFluxDensity"]["processed"]["offset"] = 0.1;
+    excitationJson["magneticFluxDensity"]["processed"]["peak"] = 0.15;
+    excitationJson["magneticFluxDensity"]["processed"]["peakToPeak"] = 0.1;
+    excitationJson["magneticFluxDensity"]["processed"]["dutyCycle"] = 0.3;
+    CHECK_FALSE(CoreLossesModel::split_into_switching_cycles(OperatingPointExcitation(excitationJson)).has_value());
+
+    // A line-cycle record is split into its switching cycles, each at the switching frequency.
+    // The ripple outruns the envelope everywhere (no cycle without a reversal at the line zero crossing).
+    auto pfc = build_boost_pfc_line_cycle(50, 400, 0.02, 0.1, 0.6);
+    auto record = CoreLossesModel::split_into_switching_cycles(pfc.record);
+    REQUIRE(record.has_value());
+    // The record starts and ends on a valley; a valley is confirmed by the rise after it, so the
+    // two edge cycles are not complete cycles of the record and are left out.
+    CHECK(record->cycles.size() == 398);
+    for (const auto& cycle : record->cycles) {
+        CHECK_THAT(cycle.get_frequency(), Catch::Matchers::WithinRel(20000.0, 1e-9));
+    }
+    CHECK(record->envelope.get_frequency() == 50);
+}
+
+TEST_CASE("The envelope of a resampled line-cycle record is the line envelope", "[physical-model][core-losses][line-cycle-core-losses][smoke-test]") {
+    // MKF processes a line-cycle record on a uniform grid of a few samples per switching cycle, so the
+    // record's valleys fall between samples and each cycle's average carries a residue of its ripple.
+    // That residue alternates from cycle to cycle; the envelope priced from it must still be the line
+    // envelope, not a line envelope plus a switching-rate jitter that the dB/dt models price as loss.
+    settings.reset();
+    clear_databases();
+    double temperature = 25;
+    // 60 Hz line, 64.98 kHz switching (1083 cycles), on a 16384-sample grid: ~15 samples per cycle.
+    auto pfc = build_boost_pfc_line_cycle(60, 1083, 0.2, 0.1, 0.6);
+    auto resampledRecord = pfc.record;
+    auto fluxDensity = resampledRecord.get_magnetic_flux_density().value();
+    fluxDensity.set_waveform(OpenMagnetics::Inputs::calculate_sampled_waveform(fluxDensity.get_waveform().value(), 60, 16384));
+    resampledRecord.set_magnetic_flux_density(fluxDensity);
+    auto record = CoreLossesModel::split_into_switching_cycles(resampledRecord);
+    REQUIRE(record.has_value());
+    CHECK(record->cycles.size() > 1070);
+
+    // PC44's Steinmetz ranges are fitted from 1 Hz, so the 60 Hz envelope is in span.
+    Core core = OpenMagneticsTesting::get_quick_core("PQ 20/20", json::array(), 1, "PC44");
+    for (auto modelName : {CoreLossesModels::STEINMETZ, CoreLossesModels::IGSE}) {
+        INFO("Model: " << magic_enum::enum_name(modelName));
+        auto model = CoreLossesModel::factory(modelName);
+        // compute_core_losses prices one loop as it is (the record's own path, after the split).
+        double envelopeLosses = model->compute_core_losses(core, record->envelope, temperature).get_core_losses();
+        double exactEnvelopeLosses = model->compute_core_losses(core, pfc.envelope, temperature).get_core_losses();
+        CHECK(exactEnvelopeLosses > 0);
+        UNSCOPED_INFO("envelope losses " << envelopeLosses << " W, exact " << exactEnvelopeLosses << " W");
+        CHECK_THAT(envelopeLosses, Catch::Matchers::WithinRel(exactEnvelopeLosses, 0.05));
+    }
+    settings.reset();
+}
+
+TEST_CASE("The line envelope's span check follows allowMaterialDataExtrapolation", "[physical-model][core-losses][line-cycle-core-losses][material-extrapolation][smoke-test]") {
+    // 3C95's Steinmetz ranges start at 25 kHz: a PFC record's switching cycles are in span, its 60 Hz
+    // envelope is not. The envelope goes through the same span check as every other Steinmetz lookup, so
+    // it throws with the flag off, is extrapolated with a WARNING with it on, and throws again inside an
+    // adviser (MaterialDataExtrapolationBarrier), whatever the flag says.
+    settings.reset();
+    clear_databases();
+    double temperature = 25;
+    auto pfc = build_boost_pfc_line_cycle(60, 1000, 0.2, 0.1, 0.6);
+    Core core = OpenMagneticsTesting::get_quick_core("PQ 20/20", json::array(), 1, "3C95");
+    auto model = CoreLossesModel::factory(CoreLossesModels::STEINMETZ);
+    auto record = CoreLossesModel::split_into_switching_cycles(pfc.record);
+    REQUIRE(record.has_value());
+
+    SECTION("Off: the envelope throws") {
+        CHECK_THROWS_AS(model->get_core_losses(core, pfc.record, temperature), MaterialFrequencyOutOfSpanException);
+    }
+
+    SECTION("On: the envelope is extrapolated, with a warning naming the material and the frequency") {
+        settings.set_allow_material_data_extrapolation(true);
+        Logger::getInstance().disableCollector();
+        Logger::getInstance().enableCollector(LogLevel::WARNING);
+        double recordLosses = model->get_core_losses(core, pfc.record, temperature).get_core_losses();
+        auto collected = Logger::getInstance().drainCollected();
+        Logger::getInstance().disableCollector();
+
+        double cyclesLosses = 0;
+        double duration = 0;
+        for (size_t index = 0; index < record->cycles.size(); ++index) {
+            cyclesLosses += model->compute_core_losses(core, record->cycles[index], temperature).get_core_losses() * record->durations[index];
+            duration += record->durations[index];
+        }
+        double envelopeLosses = model->compute_core_losses(core, record->envelope, temperature).get_core_losses();
+        CHECK(envelopeLosses > 0);
+        CHECK_THAT(recordLosses, Catch::Matchers::WithinRel(cyclesLosses / duration + envelopeLosses, 1e-9));
+
+        bool warned = false;
+        for (const auto& logRecord : collected) {
+            if (logRecord.moduleOfOrigin == kMaterialDataExtrapolationModule && logRecord.level == LogLevel::WARNING &&
+                logRecord.message.find("3C95") != std::string::npos && logRecord.message.find("60.000000 Hz") != std::string::npos) {
+                warned = true;
+            }
+        }
+        CHECK(warned);
+    }
+
+    SECTION("On, inside an adviser: the envelope still throws") {
+        settings.set_allow_material_data_extrapolation(true);
+        MaterialDataExtrapolationBarrier barrier;
+        CHECK_THROWS_AS(model->get_core_losses(core, pfc.record, temperature), MaterialFrequencyOutOfSpanException);
+    }
+    settings.reset();
 }

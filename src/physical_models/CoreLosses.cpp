@@ -363,7 +363,7 @@ CoreLossesOutput CoreLosses::calculate_semishielded_core_losses(Core core, Opera
         return sectionExcitation;
     };
 
-    double drumVolumetricLosses = get_core_volumetric_losses(
+    double drumVolumetricLosses = get_periodic_core_volumetric_losses(
         core.resolve_material(), excitationForArea(coreMaterialEffectiveArea), temperature);
     double totalLosses = drumVolumetricLosses * coreMaterialVolume;
 
@@ -375,7 +375,7 @@ CoreLossesOutput CoreLosses::calculate_semishielded_core_losses(Core core, Opera
             coating.get_material() && std::holds_alternative<std::string>(coating.get_material().value())) {
             auto shellMaterial = find_core_material_by_name(std::get<std::string>(coating.get_material().value()));
             if (shellMaterial.get_volumetric_losses().size() > 0) {
-                double shellVolumetricLosses = get_core_volumetric_losses(
+                double shellVolumetricLosses = get_periodic_core_volumetric_losses(
                     shellMaterial, excitationForArea(shellMaterialEffectiveArea), temperature);
                 totalLosses += shellVolumetricLosses * shellMaterialVolume;
                 shellLossesPriced = true;
@@ -454,7 +454,7 @@ CoreLossesOutput CoreLosses::calculate_molded_core_losses(Core core, OperatingPo
             unpriced.push_back(region.name + "=" + material.get_name());
             continue;
         }
-        double regionVolumetricLosses = get_core_volumetric_losses(
+        double regionVolumetricLosses = get_periodic_core_volumetric_losses(
             material, excitationForArea(region.c1 / region.c2), temperature);
         totalLosses += regionVolumetricLosses * regionVolume;
     }
@@ -482,6 +482,17 @@ CoreLossesOutput CoreLosses::calculate_molded_core_losses(Core core, OperatingPo
 }
 
 CoreLossesOutput CoreLosses::calculate_core_losses(Core core, OperatingPointExcitation excitation, double temperature) {
+    // A record of many switching cycles (a PFC/Vienna line cycle) is priced cycle by cycle, each
+    // cycle through this whole path, so the DC-bias correction reads each cycle's own DC flux (ABT #1636).
+    if (auto record = CoreLossesModel::split_into_switching_cycles(excitation)) {
+        return CoreLossesModel::combine_switching_cycles(record.value(), excitation, [&](const OperatingPointExcitation& periodicExcitation) {
+            return calculate_periodic_core_losses(core, periodicExcitation, temperature);
+        });
+    }
+    return calculate_periodic_core_losses(core, excitation, temperature);
+}
+
+CoreLossesOutput CoreLosses::calculate_periodic_core_losses(Core core, OperatingPointExcitation excitation, double temperature) {
     // Mixed-material circuit: price each material over its own volume (ABT #362).
     if (core.get_shape_family() == CoreShapeFamily::DRUM_SEMISHIELDED) {
         return calculate_semishielded_core_losses(core, excitation, temperature);
@@ -494,7 +505,7 @@ CoreLossesOutput CoreLosses::calculate_core_losses(Core core, OperatingPointExci
     throw_if_above_curie_temperature(core.resolve_material(), temperature);
     auto coreLossesModelForMaterial = get_core_losses_model(core.get_material_name());
 
-    CoreLossesOutput coreLossesOutput = coreLossesModelForMaterial->get_core_losses(core, excitation, temperature);
+    CoreLossesOutput coreLossesOutput = coreLossesModelForMaterial->compute_core_losses(core, excitation, temperature);
 
     // Apply the DPLE DC-bias correction to EVERY model (ABT #118: Roshen was exempted
     // as "handles DC bias natively", but its path never consumes the DC offset, so
@@ -529,10 +540,20 @@ CoreLossesOutput CoreLosses::calculate_core_losses(Core core, OperatingPointExci
     return coreLossesOutput;
 }
 double CoreLosses::get_core_volumetric_losses(CoreMaterial coreMaterial, OperatingPointExcitation excitation, double temperature){
+    // ABT #1636: a record of many switching cycles, priced cycle by cycle (see calculate_core_losses).
+    if (auto record = CoreLossesModel::split_into_switching_cycles(excitation)) {
+        return CoreLossesModel::combine_switching_cycles(record.value(), [&](const OperatingPointExcitation& periodicExcitation) {
+            return get_periodic_core_volumetric_losses(coreMaterial, periodicExcitation, temperature);
+        });
+    }
+    return get_periodic_core_volumetric_losses(coreMaterial, excitation, temperature);
+}
+
+double CoreLosses::get_periodic_core_volumetric_losses(CoreMaterial coreMaterial, OperatingPointExcitation excitation, double temperature) {
     throw_if_above_curie_temperature(coreMaterial, temperature);
     auto coreLossesModelForMaterial = get_core_losses_model(coreMaterial.get_name());
 
-    double coreVolumetricLosses = coreLossesModelForMaterial->get_core_volumetric_losses(coreMaterial, excitation, temperature);
+    double coreVolumetricLosses = coreLossesModelForMaterial->compute_core_volumetric_losses(coreMaterial, excitation, temperature);
 
     // Apply DPLE correction for non-Roshen models
     if (coreLossesModelForMaterial->get_model_name() != "Roshen") {
@@ -1186,7 +1207,398 @@ std::pair<std::vector<SteinmetzCoreLossesMethodRangeDatum>, std::vector<double>>
     return {steinmetzCoefficientsPerRange, bestErrorPerRange};
 };
 
-CoreLossesOutput CoreLossesSteinmetzModel::get_core_losses(const Core& core,
+// ============================================================================
+// Records of many switching cycles (ABT #1636)
+// ============================================================================
+//
+// A boost PFC or Vienna inductor is excited over one line period: the record spans the line period
+// (its excitation frequency is the line's, or the switching frequency as Kirchhoff labels it) while
+// its flux carries a switching-frequency ripple, one minor loop per switching cycle, riding on the
+// line-frequency envelope. Evaluated as one periodic excitation, every model priced that record at one
+// frequency: at a line harmonic the Steinmetz family read a 60 Hz loop (ferrite ~0 W), and the whole
+// envelope swing became a single loop (powder, tens of watts, also at the switching frequency).
+//
+// The core loss of such a record is the composite of its loops: the minor loop of every switching
+// cycle, each at its own frequency 1/T_k, with its own swing and its own local DC flux, averaged
+// over the record, plus the major loop the envelope traces once per record. The record is
+// split at its flux valleys (one valley per switching cycle); each cycle is closed by removing the
+// envelope's drift across it, linearly in time, which keeps the cycle's time-averaged flux (the
+// envelope's value there) and leaves the ripple the cycle's own. The cycle-averaged flux at each
+// cycle's centre is the envelope.
+
+namespace {
+
+struct PiecewiseLinearSummary {
+    double maximum;
+    double minimum;
+    double maximumTime;
+    double average;
+    double rms;
+};
+
+// Exact time average and rms of a piecewise-linear signal over its samples' span.
+PiecewiseLinearSummary summarize_piecewise_linear(const std::vector<double>& time, const std::vector<double>& data) {
+    if (time.size() != data.size() || data.size() < 2) {
+        throw InvalidInputException(ErrorCode::INVALID_INPUT,
+            "Switching cycle of a line-cycle excitation: " + std::to_string(data.size()) + " samples and " +
+            std::to_string(time.size()) + " time points; a cycle needs at least two of each, as many times as samples");
+    }
+    PiecewiseLinearSummary summary;
+    summary.maximum = data[0];
+    summary.minimum = data[0];
+    summary.maximumTime = time[0];
+    double integral = 0;
+    double integralOfSquare = 0;
+    for (size_t i = 0; i < data.size(); ++i) {
+        if (data[i] > summary.maximum) {
+            summary.maximum = data[i];
+            summary.maximumTime = time[i];
+        }
+        summary.minimum = std::min(summary.minimum, data[i]);
+        if (i + 1 < data.size()) {
+            double timeDifference = time[i + 1] - time[i];
+            integral += (data[i] + data[i + 1]) / 2 * timeDifference;
+            integralOfSquare += (data[i] * data[i] + data[i] * data[i + 1] + data[i + 1] * data[i + 1]) / 3 * timeDifference;
+        }
+    }
+    double duration = time.back() - time.front();
+    summary.average = integral / duration;
+    summary.rms = sqrt(integralOfSquare / duration);
+    return summary;
+}
+
+// A measured (CUSTOM) signal descriptor of one loop, its processed fields following MKF's CUSTOM
+// conventions (offset = (max + min) / 2, peak = the larger magnitude of the two extremes).
+SignalDescriptor make_loop_signal(std::vector<double> time, std::vector<double> data) {
+    auto summary = summarize_piecewise_linear(time, data);
+    double duration = time.back() - time.front();
+    ProcessedWaveform processed;
+    processed.set_label(WaveformLabel::CUSTOM);
+    processed.set_offset((summary.maximum + summary.minimum) / 2);
+    processed.set_peak_to_peak(summary.maximum - summary.minimum);
+    processed.set_peak(std::max(summary.maximum, -summary.minimum));
+    processed.set_positive_peak(summary.maximum);
+    processed.set_negative_peak(summary.minimum);
+    processed.set_average(summary.average);
+    processed.set_rms(summary.rms);
+    processed.set_duty_cycle((summary.maximumTime - time.front()) / duration);
+
+    Waveform waveform;
+    waveform.set_data(data);
+    waveform.set_time(time);
+    SignalDescriptor signal;
+    signal.set_waveform(waveform);
+    signal.set_processed(processed);
+    return signal;
+}
+
+// Valleys of a record, found with a hysteresis of `noise`: a reversal smaller than that is not a
+// flux reversal. Plateaus keep their first sample.
+std::vector<size_t> find_valleys(const std::vector<double>& data, double noise) {
+    std::vector<size_t> valleys;
+    int direction = 0;  // +1 rising towards a peak, -1 falling towards a valley, 0 not yet known
+    size_t extremum = 0;
+    for (size_t i = 1; i < data.size(); ++i) {
+        if (direction == 0) {
+            if (data[i] > data[0] + noise) {
+                direction = 1;
+                extremum = i;
+            }
+            else if (data[i] < data[0] - noise) {
+                direction = -1;
+                extremum = i;
+            }
+        }
+        else if (direction > 0) {
+            if (data[i] > data[extremum]) {
+                extremum = i;
+            }
+            else if (data[extremum] - data[i] > noise) {
+                direction = -1;
+                extremum = i;
+            }
+        }
+        else {
+            if (data[i] < data[extremum]) {
+                extremum = i;
+            }
+            else if (data[i] - data[extremum] > noise) {
+                valleys.push_back(extremum);
+                direction = 1;
+                extremum = i;
+            }
+        }
+    }
+    return valleys;
+}
+
+// The envelope at each switching cycle: the record's time average over the cycles centred on it,
+// 2h + 1 of them with h = (number of cycles) / 128 (fewer at the record's edges, keeping the window
+// centred). The record's valleys are samples, not the flux's true valleys, so one cycle's span differs
+// from its period by up to a sample and its own average keeps a residue of its ripple (a few percent
+// of the ripple at ~15 samples per cycle). That residue changes from cycle to cycle, and the dB/dt
+// models would price it as a switching-rate jitter on the envelope (twice the envelope's iGSE loss on
+// a 16384-sample record). Averaging over 2h + 1 cycles divides it by about 2h + 1. The window, 1/64 of
+// the record, rounds the envelope's own extremes: a rectified line's zero-crossing cusp rises by
+// about 2.5 % of its peak (pi / 128), a smooth extreme moves by less than 0.1 %.
+std::vector<double> average_over_neighbouring_cycles(const std::vector<double>& time, const std::vector<double>& data,
+                                                     const std::vector<size_t>& valleys) {
+    // Running integral of the piecewise-linear record.
+    std::vector<double> integral(data.size(), 0.0);
+    for (size_t i = 1; i < data.size(); ++i) {
+        integral[i] = integral[i - 1] + (data[i - 1] + data[i]) / 2 * (time[i] - time[i - 1]);
+    }
+    size_t numberCycles = valleys.size() - 1;
+    size_t halfWindow = static_cast<size_t>(std::floor(static_cast<double>(numberCycles) / 128.0));
+    std::vector<double> averages;
+    for (size_t cycleIndex = 0; cycleIndex < numberCycles; ++cycleIndex) {
+        size_t cyclesAfter = numberCycles - 1 - cycleIndex;
+        size_t h = std::min({halfWindow, cycleIndex, cyclesAfter});
+        size_t start = valleys[cycleIndex - h];
+        size_t end = valleys[cycleIndex + h + 1];
+        averages.push_back((integral[end] - integral[start]) / (time[end] - time[start]));
+    }
+    return averages;
+}
+
+} // namespace
+
+std::optional<SwitchingCyclesRecord> CoreLossesModel::split_into_switching_cycles(const OperatingPointExcitation& excitation) {
+    if (!excitation.get_magnetic_flux_density()) {
+        return std::nullopt;  // nothing to split; the model reports the missing flux density itself
+    }
+    auto fluxDensity = excitation.get_magnetic_flux_density().value();
+    if (!fluxDensity.get_waveform() && !fluxDensity.get_harmonics()) {
+        return std::nullopt;  // processed-only: an analytical shape, one period by construction
+    }
+    if (fluxDensity.get_waveform() && fluxDensity.get_waveform()->get_data().size() < 2 * minimumSwitchingCyclesInRecord + 1) {
+        return std::nullopt;  // too few samples to hold that many cycles
+    }
+    fluxDensity = Inputs::standardize_waveform(fluxDensity, excitation.get_frequency());
+    auto fluxDensityWaveform = fluxDensity.get_waveform().value();
+    auto fluxDensityData = fluxDensityWaveform.get_data();
+    auto fluxDensityTime = fluxDensityWaveform.get_time().value();
+    if (fluxDensityData.size() != fluxDensityTime.size()) {
+        throw InvalidInputException(ErrorCode::INVALID_INPUT,
+            "Core losses: the flux density waveform has " + std::to_string(fluxDensityData.size()) + " samples and " +
+            std::to_string(fluxDensityTime.size()) + " time points");
+    }
+    if (fluxDensityData.size() < 2 * minimumSwitchingCyclesInRecord + 1) {
+        return std::nullopt;
+    }
+    auto [minimumIt, maximumIt] = std::minmax_element(fluxDensityData.begin(), fluxDensityData.end());
+    double recordPeakToPeak = *maximumIt - *minimumIt;
+    if (!(recordPeakToPeak > 0)) {
+        return std::nullopt;
+    }
+    // A reversal below one part in 1e9 of the record's swing is the round-off of the waveform's
+    // arithmetic (resampling, scaling current into flux), not a reversal of the flux.
+    auto valleys = find_valleys(fluxDensityData, recordPeakToPeak * 1e-9);
+    if (valleys.size() < minimumSwitchingCyclesInRecord + 1) {
+        return std::nullopt;
+    }
+    double recordDuration = fluxDensityTime.back() - fluxDensityTime.front();
+    for (size_t cycleIndex = 0; cycleIndex + 1 < valleys.size(); ++cycleIndex) {
+        double duration = fluxDensityTime[valleys[cycleIndex + 1]] - fluxDensityTime[valleys[cycleIndex]];
+        if (duration * static_cast<double>(minimumSwitchingCyclesInRecord) > recordDuration) {
+            return std::nullopt;
+        }
+    }
+
+    // The magnetizing current is split with the flux when it is sampled with it (the loss-factor
+    // model prices the magnetizing current, not the flux).
+    std::optional<std::vector<double>> magnetizingCurrentData;
+    if (excitation.get_magnetizing_current() && excitation.get_magnetizing_current()->get_waveform()) {
+        auto magnetizingCurrentWaveform = excitation.get_magnetizing_current()->get_waveform().value();
+        if (magnetizingCurrentWaveform.get_data().size() == fluxDensityData.size() &&
+            (!magnetizingCurrentWaveform.get_time() || magnetizingCurrentWaveform.get_time().value() == fluxDensityTime)) {
+            magnetizingCurrentData = magnetizingCurrentWaveform.get_data();
+        }
+    }
+
+    SwitchingCyclesRecord record;
+    std::vector<double> envelopeTime;
+    std::vector<double> envelopeFluxDensity;
+    std::vector<double> envelopeMagnetizingCurrent;
+    for (size_t cycleIndex = 0; cycleIndex + 1 < valleys.size(); ++cycleIndex) {
+        size_t start = valleys[cycleIndex];
+        size_t end = valleys[cycleIndex + 1];
+        double startTime = fluxDensityTime[start];
+        double duration = fluxDensityTime[end] - startTime;
+        if (!(duration > 0)) {
+            throw InvalidInputException(ErrorCode::INVALID_INPUT,
+                "Core losses: switching cycle " + std::to_string(cycleIndex) + " of the line-cycle flux density record has no duration (t = " +
+                std::to_string(startTime) + " s)");
+        }
+        std::vector<double> time;
+        for (size_t i = start; i <= end; ++i) {
+            time.push_back(fluxDensityTime[i] - startTime);
+        }
+        // Remove the envelope's drift across the cycle, keeping its time average.
+        auto close_loop = [&](const std::vector<double>& data) {
+            double drift = data[end] - data[start];
+            std::vector<double> loop;
+            for (size_t i = start; i <= end; ++i) {
+                loop.push_back(data[i] - drift * ((fluxDensityTime[i] - startTime) / duration - 0.5));
+            }
+            return loop;
+        };
+
+        auto cycleFluxDensityData = close_loop(fluxDensityData);
+        auto cycleFluxDensity = make_loop_signal(time, cycleFluxDensityData);
+        envelopeTime.push_back(startTime + duration / 2);
+        // A loop around a negative DC flux loses what its mirror image around the positive one does
+        // (B -> -B leaves an isotropic material's loop unchanged). The loops of a bipolar record (a
+        // Vienna inductor's negative half line cycle) are priced as their mirror images, because the
+        // models read the AC amplitude as processed peak - offset with the peak taken as the larger
+        // magnitude, which is the amplitude only for a non-negative offset.
+        bool mirror = cycleFluxDensity.get_processed()->get_offset() < 0;
+        auto mirrored = [&](std::vector<double> data) {
+            if (mirror) {
+                for (auto& value : data) {
+                    value = -value;
+                }
+            }
+            return data;
+        };
+        OperatingPointExcitation cycle;
+        cycle.set_frequency(1 / duration);
+        cycle.set_magnetic_flux_density(make_loop_signal(time, mirrored(cycleFluxDensityData)));
+        if (magnetizingCurrentData) {
+            auto cycleMagnetizingCurrentData = close_loop(magnetizingCurrentData.value());
+            cycle.set_magnetizing_current(make_loop_signal(time, mirrored(cycleMagnetizingCurrentData)));
+        }
+        record.cycles.push_back(cycle);
+        record.durations.push_back(duration);
+    }
+
+    envelopeFluxDensity = average_over_neighbouring_cycles(fluxDensityTime, fluxDensityData, valleys);
+    if (magnetizingCurrentData) {
+        envelopeMagnetizingCurrent = average_over_neighbouring_cycles(fluxDensityTime, magnetizingCurrentData.value(), valleys);
+    }
+
+    // The envelope repeats once per record: its frequency is the record's, 1 / (record duration). A
+    // line-cycle excitation may carry the switching frequency as its frequency while its waveform spans
+    // the line period (Kirchhoff's PFC/Vienna records do); pricing the envelope at that frequency would
+    // price the line swing as a switching-frequency loop.
+    record.envelope.set_frequency(1 / recordDuration);
+    double envelopeStartTime = envelopeTime.front();
+    for (auto& time : envelopeTime) {
+        time -= envelopeStartTime;
+    }
+    auto envelopeFluxDensitySignal = make_loop_signal(envelopeTime, envelopeFluxDensity);
+    record.envelopePeakToPeak = envelopeFluxDensitySignal.get_processed()->get_peak_to_peak().value();
+    record.envelope.set_magnetic_flux_density(envelopeFluxDensitySignal);
+    if (magnetizingCurrentData) {
+        record.envelope.set_magnetizing_current(make_loop_signal(envelopeTime, envelopeMagnetizingCurrent));
+    }
+    return record;
+}
+
+double CoreLossesModel::combine_switching_cycles(const SwitchingCyclesRecord& record,
+                                                 const std::function<double(const OperatingPointExcitation&)>& evaluate) {
+    double energy = 0;
+    double duration = 0;
+    for (size_t cycleIndex = 0; cycleIndex < record.cycles.size(); ++cycleIndex) {
+        energy += evaluate(record.cycles[cycleIndex]) * record.durations[cycleIndex];
+        duration += record.durations[cycleIndex];
+    }
+    double losses = energy / duration;
+    if (auto envelopeLosses = price_line_envelope(record, evaluate)) {
+        losses += envelopeLosses.value();
+    }
+    return losses;
+}
+
+std::optional<double> CoreLossesModel::price_line_envelope(const SwitchingCyclesRecord& record,
+                                                           const std::function<double(const OperatingPointExcitation&)>& evaluate) {
+    // An envelope that does not move traces no loop.
+    if (!(record.envelopePeakToPeak > 0)) {
+        return std::nullopt;
+    }
+    return evaluate(record.envelope);
+}
+
+std::optional<CoreLossesOutput> CoreLossesModel::price_line_envelope(const SwitchingCyclesRecord& record,
+                                                                     const std::function<CoreLossesOutput(const OperatingPointExcitation&)>& evaluate) {
+    // An envelope that does not move traces no loop.
+    if (!(record.envelopePeakToPeak > 0)) {
+        return std::nullopt;
+    }
+    return evaluate(record.envelope);
+}
+
+CoreLossesOutput CoreLossesModel::combine_switching_cycles(const SwitchingCyclesRecord& record,
+                                                           const OperatingPointExcitation& excitation,
+                                                           const std::function<CoreLossesOutput(const OperatingPointExcitation&)>& evaluate) {
+    std::vector<CoreLossesOutput> outputs;
+    for (const auto& cycle : record.cycles) {
+        outputs.push_back(evaluate(cycle));
+    }
+    std::vector<double> weights = record.durations;
+    double duration = std::accumulate(weights.begin(), weights.end(), 0.0);
+    for (auto& weight : weights) {
+        weight /= duration;
+    }
+    if (auto envelopeLosses = price_line_envelope(record, evaluate)) {
+        outputs.push_back(envelopeLosses.value());
+        weights.push_back(1);
+    }
+
+    // Each field is the weighted sum of the cycles' and envelope's values; a field one of them
+    // lacks is not reported for the record.
+    auto combine = [&](const std::function<std::optional<double>(const CoreLossesOutput&)>& field) -> std::optional<double> {
+        double total = 0;
+        for (size_t index = 0; index < outputs.size(); ++index) {
+            auto value = field(outputs[index]);
+            if (!value) {
+                return std::nullopt;
+            }
+            total += value.value() * weights[index];
+        }
+        return total;
+    };
+
+    CoreLossesOutput result = outputs.front();
+    result.set_core_losses(combine([](const CoreLossesOutput& output) -> std::optional<double> { return output.get_core_losses(); }).value());
+    result.set_volumetric_losses(combine([](const CoreLossesOutput& output) { return output.get_volumetric_losses(); }));
+    result.set_mass_losses(combine([](const CoreLossesOutput& output) { return output.get_mass_losses(); }));
+    result.set_eddy_current_core_losses(combine([](const CoreLossesOutput& output) { return output.get_eddy_current_core_losses(); }));
+    result.set_hysteresis_core_losses(combine([](const CoreLossesOutput& output) { return output.get_hysteresis_core_losses(); }));
+    result.set_magnetic_flux_density(excitation.get_magnetic_flux_density());
+    result.set_method_used(outputs.front().get_method_used() + " per switching cycle (" + std::to_string(record.cycles.size()) +
+                           " cycles) plus line envelope");
+    return result;
+}
+
+CoreLossesOutput CoreLossesModel::get_core_losses(const Core& core, OperatingPointExcitation excitation, double temperature) {
+    if (auto record = split_into_switching_cycles(excitation)) {
+        return combine_switching_cycles(record.value(), excitation, [&](const OperatingPointExcitation& periodicExcitation) {
+            return compute_core_losses(core, periodicExcitation, temperature);
+        });
+    }
+    return compute_core_losses(core, excitation, temperature);
+}
+
+double CoreLossesModel::get_core_volumetric_losses(CoreMaterial coreMaterial, OperatingPointExcitation excitation, double temperature) {
+    if (auto record = split_into_switching_cycles(excitation)) {
+        return combine_switching_cycles(record.value(), [&](const OperatingPointExcitation& periodicExcitation) {
+            return compute_core_volumetric_losses(coreMaterial, periodicExcitation, temperature);
+        });
+    }
+    return compute_core_volumetric_losses(coreMaterial, excitation, temperature);
+}
+
+double CoreLossesModel::get_core_mass_losses(CoreMaterial coreMaterial, OperatingPointExcitation excitation, double temperature) {
+    if (auto record = split_into_switching_cycles(excitation)) {
+        return combine_switching_cycles(record.value(), [&](const OperatingPointExcitation& periodicExcitation) {
+            return compute_core_mass_losses(coreMaterial, periodicExcitation, temperature);
+        });
+    }
+    return compute_core_mass_losses(coreMaterial, excitation, temperature);
+}
+
+CoreLossesOutput CoreLossesSteinmetzModel::compute_core_losses(const Core& core,
                                                   OperatingPointExcitation excitation,
                                                   double temperature) {
     auto magneticFluxDensity = excitation.get_magnetic_flux_density().value();
@@ -1199,13 +1611,15 @@ CoreLossesOutput CoreLossesSteinmetzModel::get_core_losses(const Core& core,
     result.set_origin(ResultOrigin::SIMULATION);
     result.set_temperature(temperature);
 
+    // compute_*, not the get_* entry points: this excitation is already one periodic loop (a record
+    // of switching cycles was split by get_core_losses), and the entry points would split it again.
     if (usesVolumetricLosses(material)) {
-        auto volumetricLosses = get_core_volumetric_losses(material, excitation, temperature);
+        auto volumetricLosses = compute_core_volumetric_losses(material, excitation, temperature);
         result.set_core_losses(volumetricLosses * effectiveVolume);
         result.set_volumetric_losses(volumetricLosses);
     }
     else {
-        auto massLosses = get_core_mass_losses(material, excitation, temperature);
+        auto massLosses = compute_core_mass_losses(material, excitation, temperature);
         // Mass losses are W/kg: multiply by the core MASS, not its volume
         // (the inverse Magnetec path already used get_mass(), confirming the
         // W/kg semantics; using volume was off by the material density)
@@ -1247,7 +1661,7 @@ CoreLossesOutput CoreLossesSteinmetzModel::get_core_losses(const Core& core,
  * @param temperature Core temperature [°C]
  * @return Volumetric core losses [W/m³]
  */
-double CoreLossesSteinmetzModel::get_core_volumetric_losses(CoreMaterial coreMaterial,
+double CoreLossesSteinmetzModel::compute_core_volumetric_losses(CoreMaterial coreMaterial,
                                                             OperatingPointExcitation excitation,
                                                             double temperature) {
     if (!excitation.get_magnetic_flux_density()) {
@@ -1397,7 +1811,7 @@ double CoreLossesIGSEModel::get_ki(SteinmetzCoreLossesMethodRangeDatum steinmetz
  * @param temperature Core temperature [°C]
  * @return Volumetric core losses [W/m³]
  */
-double CoreLossesIGSEModel::get_core_volumetric_losses(CoreMaterial coreMaterial,
+double CoreLossesIGSEModel::compute_core_volumetric_losses(CoreMaterial coreMaterial,
                                                        OperatingPointExcitation excitation,
                                                        double temperature) {
 
@@ -1661,7 +2075,7 @@ double CoreLossesciGSEModel::evaluate_expanded_loss_space(
  * @param temperature Core temperature [°C]
  * @return Volumetric core losses [W/m³]
  */
-double CoreLossesciGSEModel::get_core_volumetric_losses(CoreMaterial coreMaterial,
+double CoreLossesciGSEModel::compute_core_volumetric_losses(CoreMaterial coreMaterial,
                                                         OperatingPointExcitation excitation,
                                                         double temperature) {
     
@@ -1674,7 +2088,7 @@ double CoreLossesciGSEModel::get_core_volumetric_losses(CoreMaterial coreMateria
         // Fall back to iGSE if no ciGSE coefficients available
         // This provides backward compatibility
         CoreLossesIGSEModel igseModel;
-        return igseModel.get_core_volumetric_losses(coreMaterial, excitation, temperature);
+        return igseModel.compute_core_volumetric_losses(coreMaterial, excitation, temperature);
     }
     
     // Get waveform data
@@ -1795,7 +2209,7 @@ double CoreLossesciGSEModel::get_core_volumetric_losses(CoreMaterial coreMateria
  * @param temperature Core temperature [K]
  * @return Volumetric core losses [W/m³]
  */
-double CoreLossesAlbachModel::get_core_volumetric_losses(CoreMaterial coreMaterial,
+double CoreLossesAlbachModel::compute_core_volumetric_losses(CoreMaterial coreMaterial,
                                                          OperatingPointExcitation excitation,
                                                          double temperature) {
     auto magneticFluxDensity = excitation.get_magnetic_flux_density().value();
@@ -1911,7 +2325,7 @@ double CoreLossesAlbachModel::get_core_volumetric_losses(CoreMaterial coreMateri
  * @param temperature Core temperature [°C]
  * @return Volumetric core losses [W/m³]
  */
-double CoreLossesMSEModel::get_core_volumetric_losses(CoreMaterial coreMaterial,
+double CoreLossesMSEModel::compute_core_volumetric_losses(CoreMaterial coreMaterial,
                                                       OperatingPointExcitation excitation,
                                                       double temperature) {
     double frequency = Inputs::get_switching_frequency(excitation);
@@ -2048,7 +2462,7 @@ double CoreLossesNSEModel::get_kn(SteinmetzCoreLossesMethodRangeDatum steinmetzD
  * @param temperature Core temperature [°C]
  * @return Volumetric core losses [W/m³]
  */
-double CoreLossesNSEModel::get_core_volumetric_losses(CoreMaterial coreMaterial,
+double CoreLossesNSEModel::compute_core_volumetric_losses(CoreMaterial coreMaterial,
                                                       OperatingPointExcitation excitation,
                                                       double temperature) {
     auto magneticFluxDensity = excitation.get_magnetic_flux_density().value();
@@ -2148,7 +2562,7 @@ double get_plateau_duty_cycle(std::vector<double> data) {
  * @param temperature Core temperature [°C]
  * @return Volumetric core losses [W/m³]
  */
-double CoreLossesBargModel::get_core_volumetric_losses(CoreMaterial coreMaterial,
+double CoreLossesBargModel::compute_core_volumetric_losses(CoreMaterial coreMaterial,
                                                       OperatingPointExcitation excitation,
                                                       double temperature) {
     auto magneticFluxDensity = excitation.get_magnetic_flux_density().value();
@@ -2239,7 +2653,7 @@ double CoreLossesBargModel::get_core_volumetric_losses(CoreMaterial coreMaterial
  * @param temperature Core temperature [°C]
  * @return CoreLossesOutput with total, hysteresis, and eddy current losses
  */
-CoreLossesOutput CoreLossesRoshenModel::get_core_losses(const Core& core,
+CoreLossesOutput CoreLossesRoshenModel::compute_core_losses(const Core& core,
                                                         OperatingPointExcitation excitation,
                                                         double temperature) {
     auto magneticFluxDensity = excitation.get_magnetic_flux_density().value();
@@ -2267,7 +2681,7 @@ CoreLossesOutput CoreLossesRoshenModel::get_core_losses(const Core& core,
     return result;
 } 
  
-double CoreLossesRoshenModel::get_core_volumetric_losses(CoreMaterial coreMaterial,
+double CoreLossesRoshenModel::compute_core_volumetric_losses(CoreMaterial coreMaterial,
                                                          OperatingPointExcitation excitation,
                                                          double temperature) {
     Core ringCore;
@@ -2834,7 +3248,7 @@ static bool has_magnetec_mass_method(const CoreMaterial& coreMaterial) {
     return false;
 }
 
-double CoreLossesProprietaryModel::get_core_volumetric_losses(CoreMaterial coreMaterial,
+double CoreLossesProprietaryModel::compute_core_volumetric_losses(CoreMaterial coreMaterial,
                                                              OperatingPointExcitation excitation,
                                                              double temperature) {
 
@@ -2944,7 +3358,7 @@ std::map<std::string, std::string> CoreLossesProprietaryModel::get_core_volumetr
     return equations;
 }
 
-double CoreLossesProprietaryModel::get_core_mass_losses(CoreMaterial coreMaterial,
+double CoreLossesProprietaryModel::compute_core_mass_losses(CoreMaterial coreMaterial,
                                                              OperatingPointExcitation excitation,
                                                              double temperature) {
 
@@ -3106,7 +3520,7 @@ double CoreLossesLossFactorModel::calculate_magnetizing_inductance_from_excitati
     return magnetizingInductance;
 }
 
-CoreLossesOutput CoreLossesLossFactorModel::get_core_losses(const Core& core,
+CoreLossesOutput CoreLossesLossFactorModel::compute_core_losses(const Core& core,
                                                         OperatingPointExcitation excitation,
                                                         double temperature) {
     if (!excitation.get_magnetizing_current()) {
@@ -3130,7 +3544,7 @@ CoreLossesOutput CoreLossesLossFactorModel::get_core_losses(const Core& core,
     // R_series * Irms^2 is the TOTAL dissipated power in watts (R already
     // encodes the geometry through L); it was previously stored as W/m^3 and
     // multiplied by the volume a second time.
-    auto totalLosses = get_core_volumetric_losses(coreMaterial, excitation, temperature, magnetizingInductance);
+    auto totalLosses = compute_core_volumetric_losses(coreMaterial, excitation, temperature, magnetizingInductance);
 
     CoreLossesOutput result;
     result.set_core_losses(totalLosses);
@@ -3143,7 +3557,7 @@ CoreLossesOutput CoreLossesLossFactorModel::get_core_losses(const Core& core,
     return result;
 }
 
-double CoreLossesLossFactorModel::get_core_volumetric_losses(CoreMaterial coreMaterial,
+double CoreLossesLossFactorModel::compute_core_volumetric_losses(CoreMaterial coreMaterial,
                                                              OperatingPointExcitation excitation,
                                                              double temperature,
                                                              double magnetizingInductance) {
