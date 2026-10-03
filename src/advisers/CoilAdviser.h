@@ -152,6 +152,18 @@ class CoilAdviser : public WireAdviser {
             return _lastNoResultsReason;
         }
 
+        /**
+         * @brief The wires get_advised_coil(mas) advises from: the catalogue (or the active
+         * LibraryContext inventory) narrowed by the wire-type constraint, the include-type settings
+         * and the preferred wire standard (insulated wires of any standard kept; every standard
+         * accepted when the preferred one leaves nothing).
+         */
+        std::vector<Wire> get_catalogue_wires();
+        /**
+         * @brief With margin tape, the coil stage limits each wire to a single-layer coating of
+         * grade up to 3 (the tape carries the insulation); this applies that limit.
+         */
+        static void limit_wire_insulation_requirements_for_margin(std::vector<WireSolidInsulationRequirements>& solidInsulationRequirementsForWires);
         std::vector<Mas> get_advised_coil(Mas mas, size_t maximumNumberResults=1);
     // ABT #1176, behind Settings::get_coil_adviser_size_magnetic_shunts().
     void add_magnetic_shunts_for_leakage_target(std::vector<Mas>& candidates);

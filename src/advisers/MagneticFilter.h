@@ -104,6 +104,73 @@ class MagneticFilterAreaProduct : public MagneticFilter {
         // The required area product reads the flux density from the material's loss model at each
         // operating frequency.
         bool computes_core_losses() const override { return true; }
+        // The share of a core's winding window the bobbin leaves to the winding: the bobbin
+        // model's factor for bobbin-wound cores, the inner-to-outer circumference rule for
+        // toroids, 1 for printed windings.
+        static double get_bobbin_filling_factor(const Core& core, std::optional<WiringTechnology> wiringTechnology);
+};
+
+/**
+ * @class MagneticFilterWindowCopperCapacity
+ * @brief Core-stage copper screen: can the winding window hold the copper of every winding?
+ *
+ * At the core stage a candidate carries a one-winding stand-in coil; the other windings
+ * follow from the turns ratios. Each winding needs, per turn, the strands of the stand-in's
+ * wire (two skin depths, the finest round strand the wire adviser's litz is built from)
+ * that keep its effective current density at or below the maximum
+ * (Wire::calculate_number_parallels_needed, the helper the stand-in coil itself is sized
+ * with). The window holds that copper at the utilisation MagneticFilterAreaProduct sizes
+ * cores with: the round-strand filling factor times the bobbin filling factor. A core whose
+ * window cannot hold all windings' copper cannot be wound by the coil stage within its
+ * current-density limit, whatever wire it picks, and is rejected here with its numbers.
+ * This is a necessary condition only (litz of the finest strands at the bobbin's best fill):
+ * it never rejects a core the coil stage could wind.
+ * Printed windings are not screened: their copper is the PCB's, not strands in a window.
+ */
+class MagneticFilterWindowCopperCapacity : public MagneticFilter {
+    private:
+        std::vector<double> _turnsRatios;
+        double _temperature = 0;
+        double _maximumEffectiveCurrentDensity = 0;
+        std::string _lastReason;
+    public:
+        MagneticFilterWindowCopperCapacity() {};
+        MagneticFilterWindowCopperCapacity(Inputs inputs, double maximumEffectiveCurrentDensity);
+        std::pair<bool, double> evaluate_magnetic(Magnetic* magnetic, Inputs* inputs, std::vector<Outputs>* outputs = nullptr);
+        // Why the last evaluated candidate was rejected (empty when it passed).
+        const std::string& get_last_reason() const { return _lastReason; }
+        static bool applies_to(const Inputs& inputs);
+};
+
+/**
+ * @class MagneticFilterWireWithinLimits
+ * @brief Can every winding of a completed coil get a wire within the coil stage's limits?
+ *
+ * The window copper capacity is necessary, not sufficient: the coil stage gives each winding a
+ * section of the window (CoilAdviser::get_advised_sections) and looks for a wire that carries
+ * the winding's current at or below the maximum effective current density with at most the
+ * maximum number of parallels and fits that section (WireAdviser, with litz synthesis, as the
+ * coil stage runs it). A 2-turn 33 A secondary in half an E 20 window found no such wire, so
+ * every coil the coil stage made for that core came back INVALID. This filter runs that same
+ * search for each winding on each pattern the coil stage would try, at its fewest repetitions
+ * and without margin tape (the roomiest sections): a core where no pattern gives every winding
+ * a wire is rejected, naming the winding. The candidate's coil must carry every winding.
+ */
+class CoilAdviser;
+class WireAdviser;
+class MagneticFilterWireWithinLimits : public MagneticFilter {
+    private:
+        double _maximumEffectiveCurrentDensity = 0;
+        int _maximumNumberParallels = 0;
+        std::string _lastReason;
+        std::shared_ptr<CoilAdviser> _coilAdviser;
+        std::shared_ptr<WireAdviser> _wireAdviser;
+        // The wires the coil stage advises from (CoilAdviser::get_catalogue_wires), built once.
+        std::optional<std::vector<Wire>> _catalogueWires;
+    public:
+        MagneticFilterWireWithinLimits(double maximumEffectiveCurrentDensity, int maximumNumberParallels);
+        std::pair<bool, double> evaluate_magnetic(Magnetic* magnetic, Inputs* inputs, std::vector<Outputs>* outputs = nullptr);
+        const std::string& get_last_reason() const { return _lastReason; }
 };
 
 class MagneticFilterEnergyStored : public MagneticFilter {

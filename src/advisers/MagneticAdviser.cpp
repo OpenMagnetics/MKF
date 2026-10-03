@@ -398,6 +398,7 @@ std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic_fast(I
 
     // Step 3: Set turns and gap analytically (single pass, no iteration)
     add_initial_turns_by_inductance(&magneticsWithScoring, inputs);
+    coreAdviser.filter_by_window_copper_capacity(&magneticsWithScoring, inputs, " (fast path)");
 
     // Step 3a: Inductance-validity filter — reject cores whose ACHIEVED
     // inductance is outside the required tolerance band. This is the slow

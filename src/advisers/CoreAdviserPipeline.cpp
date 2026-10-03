@@ -328,6 +328,15 @@ std::vector<std::pair<Mas, double>> CoreAdviser::post_process_and_cut(std::vecto
     size_t candidatesExamined = 0;
     size_t candidatesDropped = 0;
     std::map<std::string, std::vector<std::string>> alternativeMaterialsCache;
+    // A core the coil stage cannot give every winding a wire within its limits would only come
+    // back as INVALID coils; drop it here and let the next-scored core backfill. Wound windings
+    // only: a printed winding's copper is the board's, and suppression chokes are sized by the
+    // wire adviser downstream (ABT #126).
+    std::optional<MagneticFilterWireWithinLimits> wireWithinLimits;
+    if (MagneticFilterWindowCopperCapacity::applies_to(inputs) &&
+        get_application() != MAS::MagneticApplication::INTERFERENCE_SUPPRESSION) {
+        wireWithinLimits.emplace(defaults.maximumEffectiveCurrentDensity, defaults.maximumNumberParallels);
+    }
     for (auto& magneticWithScoring : magneticsWithScoring) {
         if (masWithScoring.size() >= maximumNumberResults) {
             break;
@@ -347,6 +356,15 @@ std::vector<std::pair<Mas, double>> CoreAdviser::post_process_and_cut(std::vecto
         }
         try {
             auto mas = post_process_core(candidate[0].first, inputs);
+            if (wireWithinLimits) {
+                auto magnetic = mas.get_magnetic();
+                if (!wireWithinLimits->evaluate_magnetic(&magnetic, &inputs).first) {
+                    ++candidatesDropped;
+                    logEntry("CoreAdviser: dropping core without a wire within the coil stage's limits (backfilling): " +
+                                 wireWithinLimits->get_last_reason(), "CoreAdviser", 2);
+                    continue;
+                }
+            }
             masWithScoring.push_back({mas, candidate[0].second});
             if (uniqueShapes) {
                 usedShapes.push_back(shapeName);
@@ -407,6 +425,7 @@ std::vector<std::pair<Mas, double>> CoreAdviser::filter_available_cores_power_ap
     log_stage("Energy Stored filter", magneticsWithScoring.size());
 
     add_initial_turns_by_inductance(&magneticsWithScoring, inputs);
+    filter_by_window_copper_capacity(&magneticsWithScoring, inputs, "");
 
     // ABT #1411: this path had no inductance gate, so a stock core whose seeded turns
     // miss the required band (powder toroids at 4.6-10.4 uH for a 28.5-38.5 uH spec)
@@ -519,6 +538,7 @@ std::vector<std::pair<Mas, double>> CoreAdviser::filter_available_cores_power_ap
         keepLargestCores(magneticsWithScoring);
 
         add_initial_turns_by_inductance(&magneticsWithScoring, inputs);
+        filter_by_window_copper_capacity(&magneticsWithScoring, inputs, " (retry)");
         magneticsWithScoring = filterMagneticInductance.filter_magnetics(&magneticsWithScoring, inputs, 0, true);
         magneticsWithScoring = filterSaturationAvailable.filter_magnetics(&magneticsWithScoring, inputs, 1, true);
         log_stage("retry Saturation (size-bounded)", magneticsWithScoring.size());
@@ -541,6 +561,7 @@ std::vector<std::pair<Mas, double>> CoreAdviser::filter_available_cores_power_ap
                 // stage 1 sized and saturation-checked the entire pool a second time.
                 keepLargestCores(magneticsWithScoring);
                 add_initial_turns_by_inductance(&magneticsWithScoring, inputs);
+                filter_by_window_copper_capacity(&magneticsWithScoring, inputs, " (retry, margin 1.0)");
                 magneticsWithScoring = filterMagneticInductance.filter_magnetics(&magneticsWithScoring, inputs, 0, true);
                 magneticsWithScoring = filterSaturationAvailable.filter_magnetics(&magneticsWithScoring, inputs, 1, true);
             }
@@ -865,6 +886,7 @@ std::vector<std::pair<Mas, double>> CoreAdviser::filter_standard_cores_power_app
 
         // Calculate turns
         add_initial_turns_by_inductance(&cores, inputs);
+        filter_by_window_copper_capacity(&cores, inputs, " (ferrite)" + stage);
 
         // Re-check fringing on the FINALIZED gap: add_initial_turns_by_inductance
         // can grow the gap (raising N + re-solving for L) to clear saturation, so
@@ -1008,6 +1030,7 @@ std::vector<std::pair<Mas, double>> CoreAdviser::filter_standard_cores_power_app
 
             // Calculate turns
             add_initial_turns_by_inductance(&powderCores, inputs);
+            filter_by_window_copper_capacity(&powderCores, inputs, " (powder)");
 
             // Filter by inductance
             powderCores = filterMagneticInductance.filter_magnetics(&powderCores, inputs, 0.1 * userWeight(CoreAdviserFilters::EFFICIENCY), true);

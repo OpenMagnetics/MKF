@@ -316,6 +316,13 @@ class CoreAdviser {
          * gate: no candidate is removed. Run it on a pruned pool, before the loss ranking.
          */
         void select_inductor_turns_and_gap_by_losses(std::vector<std::pair<Magnetic, double>>* magneticsWithScoring, Inputs inputs);
+        /**
+         * Rejects, with its numbers in the log, every candidate whose winding window cannot
+         * hold the copper of all the input's windings at the maximum effective current
+         * density (MagneticFilterWindowCopperCapacity). Run once the turns are seeded.
+         */
+        void filter_by_window_copper_capacity(std::vector<std::pair<Magnetic, double>>* magneticsWithScoring,
+                                              const Inputs& inputs, const std::string& stage);
 
 
 

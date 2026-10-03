@@ -382,4 +382,30 @@ std::vector<std::pair<Magnetic, double>> CoreAdviser::MagneticCoreFilterTemperat
     return filteredMagneticsWithScoring;
 }
 
+void CoreAdviser::filter_by_window_copper_capacity(std::vector<std::pair<Magnetic, double>>* magneticsWithScoring,
+                                                   const Inputs& inputs, const std::string& stage) {
+    if (magneticsWithScoring->empty()) {
+        return;
+    }
+    if (!MagneticFilterWindowCopperCapacity::applies_to(inputs)) {
+        logEntry("Window copper capacity" + stage + ": printed winding, its copper is the board's; not screened", "CoreAdviser", 2);
+        return;
+    }
+    MagneticFilterWindowCopperCapacity filter(inputs, defaults.maximumEffectiveCurrentDensity);
+    Inputs evaluationInputs = inputs;
+    std::vector<std::pair<Magnetic, double>> kept;
+    kept.reserve(magneticsWithScoring->size());
+    for (auto& [magnetic, scoring] : *magneticsWithScoring) {
+        auto [valid, proportion] = filter.evaluate_magnetic(&magnetic, &evaluationInputs);
+        if (valid) {
+            kept.emplace_back(std::move(magnetic), scoring);
+        }
+        else {
+            logEntry("Window copper capacity" + stage + ": rejected " + filter.get_last_reason(), "CoreAdviser", 2);
+        }
+    }
+    *magneticsWithScoring = std::move(kept);
+    log_stage("Window copper capacity" + stage, magneticsWithScoring->size());
+}
+
 } // namespace OpenMagnetics

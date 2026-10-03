@@ -436,8 +436,14 @@ namespace OpenMagnetics {
         }
     }
 
-    std::vector<Mas> CoilAdviser::get_advised_coil(Mas mas, size_t maximumNumberResults){
-        logEntry("Starting Coil Adviser without wires", "CoilAdviser");
+    void CoilAdviser::limit_wire_insulation_requirements_for_margin(std::vector<WireSolidInsulationRequirements>& solidInsulationRequirementsForWires) {
+        for (auto& requirements : solidInsulationRequirementsForWires) {
+            requirements.set_maximum_number_layers(1);
+            requirements.set_maximum_grade(3);
+        }
+    }
+
+    std::vector<Wire> CoilAdviser::get_catalogue_wires(){
         // Inside a LibraryContext scope the (possibly empty) wireDatabase IS
         // the inventory — lazily reloading the full public catalog here would
         // silently un-restrict 'only my inventory' wire advising (same defect
@@ -445,7 +451,6 @@ namespace OpenMagnetics {
         if (wireDatabase.empty() && !LibraryContext::Scope::anyActive()) {
             load_wires();
         }
-        std::string jsonLine;
         std::vector<Wire> wires;
         // The common-wire-standard default (NEMA MW 1000 C) is a PREFERENCE:
         // against a small catalog (e.g. a LibraryContext inventory of IEC
@@ -489,6 +494,12 @@ namespace OpenMagnetics {
                 }
             }
         }
+        return wires;
+    }
+
+    std::vector<Mas> CoilAdviser::get_advised_coil(Mas mas, size_t maximumNumberResults){
+        logEntry("Starting Coil Adviser without wires", "CoilAdviser");
+        auto wires = get_catalogue_wires();
         return get_advised_coil(&wires, mas, maximumNumberResults);
     }
 
@@ -1171,10 +1182,7 @@ namespace OpenMagnetics {
 
         if (needsMargin) {
             // If we want to use margin, we set the maximum so the wires chosen will need margin (and be faster)
-            for (size_t windingIndex = 0; windingIndex < numberWindings; ++windingIndex) {
-                solidInsulationRequirementsForWires[windingIndex].set_maximum_number_layers(1);
-                solidInsulationRequirementsForWires[windingIndex].set_maximum_grade(3);
-            }
+            limit_wire_insulation_requirements_for_margin(solidInsulationRequirementsForWires);
         }
 
         std::vector<std::vector<std::pair<OpenMagnetics::Winding, double>>> wireCoilPerWinding;

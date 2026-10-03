@@ -3502,3 +3502,72 @@ TEST_CASE("Test_CoreAdviser_Forward_Transformer_Advised_With_Its_Volt_Second_Flu
     }
     settings.reset();
 }
+
+TEST_CASE("Test_CoreAdviser_Window_Copper_Capacity_Rejects_A_Core_That_Cannot_Hold_50_A", "[adviser][core-adviser][magnetic-filter][standard-cores]") {
+    // Henry corpus case forward-200k-5v-50a-transformer: 15 primary turns at 5.5 A and 2
+    // secondary turns at 33 A rms, 200 kHz. Small cores (PQ 27/15, RM 10, E 25) passed every
+    // core-stage filter, then no wire within 12 A/mm2 and 5 parallels fitted their windows and
+    // every design came back INVALID. The window copper capacity filter rejects such a core
+    // before the coil stage, with its numbers; a core with room passes.
+    settings.reset();
+    clear_databases();
+    auto inputs = load_test_inputs("forward-200k-5v-50a-transformer.json");
+
+    auto strand = OpenMagnetics::Wire::get_wire_for_frequency(200000, inputs.get_maximum_temperature(), true);
+    MagneticFilterWindowCopperCapacity filter(inputs, defaults.maximumEffectiveCurrentDensity);
+    auto stand_in = [&](const std::string& shapeName, int64_t primaryNumberTurns = 15) {
+        OpenMagnetics::Magnetic magnetic;
+        magnetic.set_core(OpenMagneticsTesting::get_quick_core(shapeName, OpenMagneticsTesting::get_residual_gap(), 1, "3C95"));
+        magnetic.set_coil(OpenMagneticsTesting::get_quick_coil({primaryNumberTurns}, {1}, shapeName, 1, MAS::WindingOrientation::OVERLAPPING,
+                                                              MAS::WindingOrientation::OVERLAPPING, MAS::CoilAlignment::CENTERED,
+                                                              MAS::CoilAlignment::CENTERED, {strand}));
+        return magnetic;
+    };
+
+    auto small = stand_in("PQ 27/15");
+    auto [smallFits, smallProportion] = filter.evaluate_magnetic(&small, &inputs);
+    INFO(filter.get_last_reason());
+    CHECK_FALSE(smallFits);
+    CHECK(smallProportion > 1);
+    CHECK_THAT(filter.get_last_reason(), Catch::Matchers::ContainsSubstring("PQ 27/15"));
+
+    auto large = stand_in("PQ 50/50");
+    auto [largeFits, largeProportion] = filter.evaluate_magnetic(&large, &inputs);
+    CHECK(largeFits);
+    CHECK(filter.get_last_reason().empty());
+
+    // The wire check must agree with the coil stage it screens for. It once searched every wire
+    // standard and ignored the insulation the margin-tape combinations ask of the wires (a
+    // single-layer coating): E 26/9.5/14.1 and 39 more small cores passed it, then the coil
+    // stage, advising from the preferred standard, found no secondary wire for any of them and
+    // returned every design INVALID (EFFECTIVE_CURRENT_DENSITY).
+    MagneticFilterWireWithinLimits wireWithinLimits(defaults.maximumEffectiveCurrentDensity, defaults.maximumNumberParallels);
+    auto transformer = [&](const std::string& shapeName) {
+        OpenMagnetics::Magnetic magnetic;
+        magnetic.set_core(OpenMagneticsTesting::get_quick_core(shapeName, OpenMagneticsTesting::get_residual_gap(), 1, "3C95"));
+        magnetic.set_coil(OpenMagneticsTesting::get_quick_coil({15, 2}, {1, 1}, shapeName, 1, MAS::WindingOrientation::OVERLAPPING,
+                                                              MAS::WindingOrientation::OVERLAPPING, MAS::CoilAlignment::CENTERED,
+                                                              MAS::CoilAlignment::CENTERED, {strand, strand}));
+        return magnetic;
+    };
+    for (const std::string shapeName : {"E 26/9.5/14.1", "ETD 49/25/16"}) {
+        INFO(shapeName);
+        auto magnetic = transformer(shapeName);
+        auto [withinLimits, unused] = wireWithinLimits.evaluate_magnetic(&magnetic, &inputs);
+        INFO(wireWithinLimits.get_last_reason());
+        OpenMagnetics::Mas mas;
+        mas.set_inputs(inputs);
+        mas.set_magnetic(magnetic);
+        CoilAdviser coilAdviser;
+        auto coils = coilAdviser.get_advised_coil(mas, 1);
+        REQUIRE(coils.size() > 0);
+        CHECK(withinLimits == !coil_failed_validity_filters(coils[0]));
+        if (shapeName == "ETD 49/25/16") {
+            CHECK(withinLimits);
+        }
+        else {
+            CHECK_FALSE(withinLimits);
+        }
+    }
+    settings.reset();
+}
