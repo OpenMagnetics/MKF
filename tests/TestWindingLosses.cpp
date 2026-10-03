@@ -4002,7 +4002,8 @@ TEST_CASE("Debug_Martinez_Flat_Scorecard", "[debug][martinez-flat-scorecard][.]"
                 row["proxPerTurn"] = proximityShare;
                 row["total"] = output.get_winding_losses() / ohmicTotal;
                 json centres = json::array();
-                for (const auto& turn : p.magnetic.get_coil().get_turns_description().value()) {
+                const auto turnsForCentres = p.magnetic.get_coil().get_turns_description().value();
+                for (const auto& turn : turnsForCentres) {
                     centres.push_back(json::array({turn.get_coordinates()[0], turn.get_coordinates()[1]}));
                 }
                 row["turnCentres"] = centres;
