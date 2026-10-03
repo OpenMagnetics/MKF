@@ -16635,3 +16635,42 @@ TEST_CASE("Test_Coil_Contiguous_Sections_Start_At_Window_Inner_Side", "[construc
     }
     settings.reset();
 }
+
+// ABT #1645: 15 turns x 6 parallels of Round 0.19 (0.21 mm over the enamel) on the EPX 7 the core
+// adviser picks for the default buck inductor. The 3.39 mm x 1.28 mm window holds six layers of 16,
+// i.e. 96 physical turns, for 90. The side-by-side parallel split gave each parallel ceil(15 / 6) = 3
+// turns per layer -- layers of 18, 18, 18, 12, 12, 12 -- so three layers overflowed the window and
+// the wind was refused. Each layer must take its even share (15) instead.
+TEST_CASE("Test_Coil_Side_By_Side_Parallels_Take_The_Layer_Share_That_Fits", "[constructive-model][coil][rectangular-winding-window][abt-1645]") {
+    settings.reset();
+    settings.set_coil_delimit_and_compact(true);
+    auto path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "abt1645_buck_epx7_builder.json");
+    std::ifstream file(path);
+    OpenMagnetics::Mas mas(json::parse(file));
+    auto magnetic = mas.get_magnetic();
+    auto& coil = magnetic.get_mutable_coil();
+    coil.set_turns_description(std::nullopt);
+    coil.set_layers_description(std::nullopt);
+    coil.set_sections_description(std::nullopt);
+    coil.set_groups_description(std::nullopt);
+    coil.get_mutable_functional_description()[0].set_wire("Round 0.19 - Grade 1");
+    coil.get_mutable_functional_description()[0].set_number_parallels(6);
+    REQUIRE(coil.get_functional_description()[0].get_number_turns() == 15);
+
+    bool wound = coil.wind();
+    INFO(coil.get_last_fit_failure());
+    REQUIRE(wound);
+    REQUIRE(coil.get_turns_description());
+    CHECK(coil.get_turns_description()->size() == 90);
+    auto layers = coil.get_layers_description().value();
+    size_t conductionLayers = 0;
+    for (auto& layer : layers) {
+        if (layer.get_type() != ElectricalType::CONDUCTION) {
+            continue;
+        }
+        conductionLayers++;
+        CHECK(layer.get_filling_factor().value() <= 1.0);
+    }
+    CHECK(conductionLayers == 6);
+    settings.reset();
+}

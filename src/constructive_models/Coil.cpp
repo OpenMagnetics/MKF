@@ -14125,6 +14125,33 @@ bool Coil::wind_by_rectangular_layers() {
                     : get_parallels_proportions(layerIndex, numberLayers, get_number_turns(windingIndex), get_number_parallels(windingIndex),
                                                 remainingParallelsProportionInSection, windByConsecutiveTurns, totalParallelsProportionInSection);
 
+                // ABT #1645: CONSECUTIVE_PARALLELS lays the parallels side by side and gives every
+                // one of them the same whole number of turns in a layer, ceil(turns left / layers
+                // left). The layer then holds a multiple of the parallel count, which can exceed
+                // what the layer holds although the section holds the winding: 15 turns x 6
+                // parallels of 0.21 mm in six 3.39 mm layers (16 slots each) came out 18,18,18,
+                // 12,12,12, so the first three layers overflowed the window and the coil adviser
+                // rejected the only wire that fits (EPX 7, default buck inductor, IEC 60317). When
+                // the section's remaining layers can hold its remaining turns, the layer takes its
+                // even share of the physical turns instead, still laid parallel by parallel
+                // round-robin. A section whose turns do not fit keeps the old split, so its
+                // verdict (not fitting) is unchanged.
+                if (!realWindingBlocking && windByConsecutiveTurns == WindingStyle::WIND_BY_CONSECUTIVE_PARALLELS &&
+                    maximumNumberPhysicalTurnsPerLayer > 0 &&
+                    parallelsProportions.first > maximumNumberPhysicalTurnsPerLayer) {
+                    uint64_t remainingPhysicalTurnsInSection = 0;
+                    for (size_t parallelIndex = 0; parallelIndex < get_number_parallels(windingIndex); ++parallelIndex) {
+                        remainingPhysicalTurnsInSection += uint64_t(std::round(remainingParallelsProportionInSection[parallelIndex] * get_number_turns(windingIndex)));
+                    }
+                    const uint64_t remainingLayers = numberLayers - layerIndex;
+                    if (remainingPhysicalTurnsInSection <= remainingLayers * maximumNumberPhysicalTurnsPerLayer) {
+                        const uint64_t evenShare = (remainingPhysicalTurnsInSection + remainingLayers - 1) / remainingLayers;
+                        parallelsProportions = get_parallels_proportions(layerIndex, numberLayers, get_number_turns(windingIndex), get_number_parallels(windingIndex),
+                                                                         remainingParallelsProportionInSection, windByConsecutiveTurns, totalParallelsProportionInSection,
+                                                                         1.0, double(evenShare));
+                    }
+                }
+
                 // FOIL PARALLELS ARE N-FILAR, ALWAYS (Alf, 2026-09-04): the N sheets are wound
                 // together as one stack, so layer L holds parallel L mod N, turn L div N -- every
                 // parallel's turn 0, then every parallel's turn 1. Neither winding style gives
@@ -15355,14 +15382,23 @@ bool Coil::wind_by_rectangular_turns() {
                 }
             }
             else {
-                int64_t firstParallelIndex = 0;
-                while (roundFloat(partialWinding.get_parallels_proportion()[firstParallelIndex], 10) == 0) {
-                    firstParallelIndex++;
+                // ABT #1645: each parallel lays its OWN turn count, lane by lane. The layer's split
+                // need not be equal: a side-by-side layer that takes its even share of the turns
+                // (15 turns of 6 parallels in a 16-slot layer: 3,3,3,2,2,2) holds fewer turns of
+                // the last parallels. Taking the first active parallel's count for every parallel
+                // laid 18 turns into that 15-turn layer and pushed three of them past the window.
+                // With equal proportions this is the same lane-by-lane order as before.
+                std::vector<int64_t> turnsPerParallelInLayer(get_number_parallels(windingIndex), 0);
+                int64_t maximumTurnsOfAParallelInLayer = 0;
+                for (size_t parallelIndex = 0; parallelIndex < get_number_parallels(windingIndex); ++parallelIndex) {
+                    if (roundFloat(partialWinding.get_parallels_proportion()[parallelIndex], 10) > 0) {
+                        turnsPerParallelInLayer[parallelIndex] = round(partialWinding.get_parallels_proportion()[parallelIndex] * get_number_turns(windingIndex));
+                        maximumTurnsOfAParallelInLayer = std::max(maximumTurnsOfAParallelInLayer, turnsPerParallelInLayer[parallelIndex]);
+                    }
                 }
-                int64_t numberTurns = round(partialWinding.get_parallels_proportion()[firstParallelIndex] * get_number_turns(windingIndex));
-                for (int64_t turnIndex = 0; turnIndex < numberTurns; ++turnIndex) {
+                for (int64_t turnIndex = 0; turnIndex < maximumTurnsOfAParallelInLayer; ++turnIndex) {
                     for (size_t parallelIndex = 0; parallelIndex < get_number_parallels(windingIndex); ++parallelIndex) {
-                        if (roundFloat(partialWinding.get_parallels_proportion()[parallelIndex], 10) > 0) {
+                        if (turnIndex < turnsPerParallelInLayer[parallelIndex]) {
                             take_next_spread_station(turnStations, turnStationIndex, turnStationAxis, layer.get_name(),
                                                      currentTurnCenterWidth, currentTurnCenterHeight);
                             Turn turn;

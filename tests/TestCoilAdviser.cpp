@@ -2925,4 +2925,36 @@ TEST_CASE("Test_CoilAdviser_Basic_Insulation_Small_Bobbin_Is_Wire_Insulated", "[
     CHECK(anyRated);
 }
 
+TEST_CASE("Test_CoilAdviser_ABT1645_Buck_EPX7_IEC_60317", "[.][abt-1645]") {
+    // The default buck inductor of the web wizard (2 A rms, 15 turns, 100 kHz) on the EPX 7 the
+    // core adviser picks, wire advised with the metric user's preferred standard IEC 60317.
+    settings.reset();
+    auto path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "abt1645_buck_epx7_builder.json");
+    std::ifstream file(path);
+    OpenMagnetics::Mas mas(json::parse(file));
+    for (size_t windingIndex = 0; windingIndex < mas.get_magnetic().get_coil().get_functional_description().size(); ++windingIndex) {
+        mas.get_mutable_magnetic().get_mutable_coil().get_mutable_functional_description()[windingIndex].set_wire("Dummy");
+    }
+    mas.get_mutable_magnetic().get_mutable_coil().set_turns_description(std::nullopt);
+    mas.get_mutable_magnetic().get_mutable_coil().set_layers_description(std::nullopt);
+    mas.get_mutable_magnetic().get_mutable_coil().set_sections_description(std::nullopt);
+    mas.get_mutable_magnetic().get_mutable_coil().set_groups_description(std::nullopt);
+    settings.set_coil_delimit_and_compact(true);
+    settings.set_core_adviser_include_margin(true);
+    settings.set_preferred_wire_standard(WireStandard::IEC_60317);
+
+    CoilAdviser coilAdviser;
+    auto masMagneticsWithCoil = coilAdviser.get_advised_coil(mas, 1);
+    if (masMagneticsWithCoil.empty()) {
+        UNSCOPED_INFO(coilAdviser.get_last_no_results_reason().value_or("no reason recorded"));
+    }
+    else {
+        auto winding = masMagneticsWithCoil[0].get_magnetic().get_coil().get_functional_description()[0];
+        UNSCOPED_INFO("wire " + winding.resolve_wire().get_name().value_or("?") + " x" + std::to_string(winding.get_number_parallels()));
+    }
+    settings.reset();
+    REQUIRE(masMagneticsWithCoil.size() > 0);
+    REQUIRE(masMagneticsWithCoil[0].get_magnetic().get_coil().get_turns_description());
+}
+
 }  // namespace
