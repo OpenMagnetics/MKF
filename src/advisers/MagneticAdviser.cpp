@@ -763,6 +763,9 @@ std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic(Inputs
     size_t expectedWoundCores = std::min(maximumNumberResults, std::max(size_t(2), size_t(floor(double(maximumNumberResults) / numberWindings))));
     size_t requestedCores = expectedWoundCores;
     std::vector<std::string> evaluatedCores;
+    // Toroids among the evaluated cores: the retry without toroids only has something new to
+    // try when some of the evaluated slots went to toroids.
+    size_t numberEvaluatedToroidalCores = 0;
     size_t previouslyObtainedCores = SIZE_MAX;
     size_t whileIteration = 0;
     const size_t maxWhileIterations = 2;  // Limit exponential growth
@@ -846,6 +849,9 @@ std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic(Inputs
             }
             else {
                 evaluatedCores.push_back(coreName);
+                if (mas.get_magnetic().get_core().get_functional_description().get_type() == CoreType::TOROIDAL) {
+                    numberEvaluatedToroidalCores++;
+                }
             }
 
             // Check performance limit
@@ -900,8 +906,18 @@ std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic(Inputs
         }
     }
 
+    // The retry without toroids evaluates the core list again with the toroids taken out. When no
+    // evaluated core was a toroid it would wind the same cores with the same coil adviser and
+    // fail the same way (psfb-10kw: 40 non-toroidal cores, all INVALID, wound twice), so it
+    // only runs when toroids took some of the evaluated slots.
+    const bool retryWithoutToroids = toroidsOriginallyEnabled && numberEvaluatedToroidalCores > 0;
+    if (toroidsOriginallyEnabled && !retryWithoutToroids && masData.empty()) {
+        logEntry("No magnetics found; none of the " + std::to_string(evaluatedCores.size()) +
+                 " evaluated cores was a toroid, so a retry without toroids would wind the same cores again: not retrying",
+                 "MagneticAdviser", 2);
+    }
     // With toroids to drop, the retry below gets its chance before settling for INVALID designs.
-    if (masData.empty() && !toroidsOriginallyEnabled) {
+    if (masData.empty() && !retryWithoutToroids) {
         add_deferred_invalid_coils();
     }
     logEntry("Found " + std::to_string(masData.size()) + " magnetics", "MagneticAdviser", 2);
@@ -926,7 +942,7 @@ std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic(Inputs
     }
 
     // Retry without toroids if toroids were enabled but no results found
-    if (masMagneticsWithScoring.empty() && toroidsOriginallyEnabled) {
+    if (masMagneticsWithScoring.empty() && retryWithoutToroids) {
         logEntry("No magnetics found with toroids enabled. Retrying without toroids...", "MagneticAdviser", 0);
         settings.set_use_toroidal_cores(false);
         clear_loaded_cores();
