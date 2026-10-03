@@ -1249,12 +1249,50 @@ TEST_CASE("UT_20", "[constructive-model][core][processed-description][smoke-test
     REQUIRE_THAT(*(core.get_processed_description()->get_winding_windows()[0].get_width()), Catch::Matchers::WithinAbs(0.0075, 0.0075 * 0.2));
     REQUIRE_THAT(core.get_processed_description()->get_columns()[0].get_width(), Catch::Matchers::WithinAbs(0.0041, 0.0041 * 0.2));
     REQUIRE_THAT(core.get_processed_description()->get_columns()[0].get_depth(), Catch::Matchers::WithinAbs(0.0046 * numberStacks, 0.0046 * numberStacks * 0.2));
-    REQUIRE_THAT(core.get_processed_description()->get_columns()[1].get_width(), Catch::Matchers::WithinAbs(0.0033 * numberStacks, 0.0033 * numberStacks * 0.2));
+    // Return leg A - E - F = 14.1 - 7.5 - 4.1 = 2.5 mm (it read the symmetric (A - E)/2 = 3.3 mm
+    // before the UT columns took F into account).
+    REQUIRE_THAT(core.get_processed_description()->get_columns()[1].get_width(), Catch::Matchers::WithinAbs(0.0025 * numberStacks, 0.0025 * numberStacks * 0.2));
     REQUIRE_THAT(core.get_processed_description()->get_columns()[1].get_depth(), Catch::Matchers::WithinAbs(0.0046 * numberStacks, 0.0046 * numberStacks * 0.2));
     REQUIRE(core.get_processed_description()->get_columns()[0].get_shape() ==
           ColumnShape::RECTANGULAR);
     REQUIRE(core.get_processed_description()->get_columns()[1].get_shape() ==
           ColumnShape::RECTANGULAR);
+}
+
+TEST_CASE("UT_20_Columns_Are_The_Wound_Leg_F_And_The_Return_Leg", "[constructive-model][core][processed-description][ut-columns]") {
+    // MAS 'UT 20': A 14.1, C 4.6, D 16, E 7.5, F 4.1 mm. The wound leg is F wide and the return
+    // leg takes the rest of the width, A - E - F = 2.5 mm; get_shape_constants (Ae/le) has always
+    // used that split, while the columns, the winding window and the column positions assumed two
+    // equal (A - E)/2 = 3.3 mm legs.
+    settings.reset();
+    auto coreShape = OpenMagnetics::find_core_shape_by_name("UT 20");
+    Core core(coreShape, OpenMagnetics::find_core_material_by_name("3C95"));
+    core.process_data();
+    auto processedDescription = core.get_processed_description().value();
+    auto columns = processedDescription.get_columns();
+    REQUIRE(columns.size() == 2);
+    double halfDigit = 0.05e-3;  // MAS states these dimensions to 0.1 mm
+    CHECK_THAT(columns[0].get_width(), Catch::Matchers::WithinAbs(4.1e-3, halfDigit));
+    CHECK_THAT(columns[1].get_width(), Catch::Matchers::WithinAbs(2.5e-3, halfDigit));
+    CHECK_THAT(columns[0].get_area(), Catch::Matchers::WithinAbs(4.1e-3 * 4.6e-3, 1e-9));
+    CHECK_THAT(columns[1].get_area(), Catch::Matchers::WithinAbs(2.5e-3 * 4.6e-3, 1e-9));
+    // Column frame: origin on the wound leg's axis. Return-leg axis at F/2 + E + (A-E-F)/2 = 10.8 mm;
+    // window centre at the wound leg's face plus half the window, F/2 + E/2 = 5.8 mm.
+    CHECK_THAT(columns[1].get_coordinates()[0], Catch::Matchers::WithinAbs(10.8e-3, halfDigit));
+    auto windingWindow = processedDescription.get_winding_windows()[0];
+    CHECK_THAT(windingWindow.get_width().value(), Catch::Matchers::WithinAbs(7.5e-3, halfDigit));
+    CHECK_THAT(windingWindow.get_coordinates().value()[0], Catch::Matchers::WithinAbs(5.8e-3, halfDigit));
+    // The window's inner edge is the wound leg's face and its outer edge the return leg's face.
+    CHECK_THAT(windingWindow.get_coordinates().value()[0] - windingWindow.get_width().value() / 2,
+               Catch::Matchers::WithinAbs(columns[0].get_width() / 2, 1e-9));
+    CHECK_THAT(windingWindow.get_coordinates().value()[0] + windingWindow.get_width().value() / 2,
+               Catch::Matchers::WithinAbs(columns[1].get_coordinates()[0] - columns[1].get_width() / 2, 1e-9));
+    auto effective = processedDescription.get_effective_parameters();
+    // Ae/le come from get_shape_constants (IEC 63182 form), which already split the legs F / A-E-F,
+    // so the column fix leaves them where they were: 12.26 mm^2 / 53.20 mm, pinned to the printed
+    // digit. TDK publishes 12.1 mm^2 / 52.9 mm for its FT20.6 (UT 20) set, 1.3 % / 0.6 % below.
+    CHECK_THAT(effective.get_effective_area() * 1e6, Catch::Matchers::WithinAbs(12.26, 0.005));
+    CHECK_THAT(effective.get_effective_length() * 1e3, Catch::Matchers::WithinAbs(53.20, 0.005));
 }
 
 TEST_CASE("T_40_24_16", "[constructive-model][core][processed-description][smoke-test]") {

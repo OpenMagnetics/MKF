@@ -1875,9 +1875,11 @@ class CorePieceUt : public CorePiece {
         windingWindow.set_height(dimensions["D"]);
         windingWindow.set_width(dimensions["E"]);
         windingWindow.set_area(windingWindow.get_height().value() * windingWindow.get_width().value());
-        // ABT #107: coordinates[0] is the winding-window CENTRE = innerEdge (A-E)/2 + width/2
-        // (width = E). Previously stored only the inner edge; the U/Ur/C pieces already centre.
-        windingWindow.set_coordinates(std::vector<double>({(dimensions["A"] - dimensions["E"]) / 2 + dimensions["E"] / 2, 0}));
+        // ABT #107: coordinates[0] is the winding-window CENTRE, in the column frame (origin on the
+        // wound leg's axis, as process_columns places it). A UT's legs are NOT equal: the wound leg
+        // is F wide and the return leg A - E - F, so the window's inner edge is the wound leg's face
+        // at F/2 -- not the symmetric (A - E)/2 this used, which put it 1.25 mm off on UT 20.
+        windingWindow.set_coordinates(std::vector<double>({dimensions["F"] / 2 + dimensions["E"] / 2, 0}));
         set_winding_window(windingWindow);
     }
 
@@ -1895,12 +1897,16 @@ class CorePieceUt : public CorePiece {
         ColumnElement lateralColumn;
         mainColumn.set_type(ColumnType::LATERAL);
         mainColumn.set_shape(ColumnShape::RECTANGULAR);
-        if (dimensions.find("H") == dimensions.end() || (roundFloat(dimensions["H"]) == 0)) {
-            mainColumn.set_width(roundFloat((dimensions["A"] - dimensions["E"]) / 2));
+        // A UT's two legs differ: the wound leg is F wide and the return leg takes the rest of
+        // the width, A - E - F (UT 20: 4.1 mm and 2.5 mm). Both used to get the symmetric
+        // (A - E)/2 = 3.3 mm, which get_shape_constants (and so Ae/le) never assumed.
+        double returnLegWidth = dimensions["A"] - dimensions["E"] - dimensions["F"];
+        if (dimensions["F"] <= 0 || returnLegWidth <= 0) {
+            throw InvalidInputException(ErrorCode::INVALID_CORE_DATA,
+                "UT shape: the wound leg F (" + std::to_string(dimensions["F"]) + " m) and the return leg A - E - F (" +
+                std::to_string(returnLegWidth) + " m) must both be positive");
         }
-        else {
-            mainColumn.set_width(roundFloat(dimensions["H"]));
-        }
+        mainColumn.set_width(roundFloat(dimensions["F"]));
         mainColumn.set_depth(roundFloat(dimensions["C"]));
         mainColumn.set_height(roundFloat(dimensions["D"]));
         mainColumn.set_area(roundFloat(mainColumn.get_width() * mainColumn.get_depth()));
@@ -1908,12 +1914,14 @@ class CorePieceUt : public CorePiece {
         windingWindows.push_back(mainColumn);
         lateralColumn.set_type(ColumnType::LATERAL);
         lateralColumn.set_shape(ColumnShape::RECTANGULAR);
-        lateralColumn.set_width(mainColumn.get_width());
+        lateralColumn.set_width(roundFloat(returnLegWidth));
         lateralColumn.set_depth(roundFloat(dimensions["C"]));
         lateralColumn.set_height(roundFloat(dimensions["D"]));
         lateralColumn.set_area(roundFloat(lateralColumn.get_width() * lateralColumn.get_depth()));
+        // Axis-to-axis distance: half the wound leg, the window, half the return leg,
+        // F/2 + E + (A - E - F)/2 = (A + E)/2 -- the same value the symmetric form gave.
         lateralColumn.set_coordinates({
-            roundFloat((dimensions["A"] + dimensions["E"]) / 2), 0, 0});
+            roundFloat(dimensions["F"] / 2 + dimensions["E"] + returnLegWidth / 2), 0, 0});
         windingWindows.push_back(lateralColumn);
         set_columns(windingWindows);
     }

@@ -38,6 +38,7 @@ std::vector<double> Painter::get_image_size(Magnetic magnetic) {
         case CoreShapeFamily::C:
         case CoreShapeFamily::U:
         case CoreShapeFamily::UR:
+        case CoreShapeFamily::UT:
             _extraDimension = 1;
             showingCoreWidth = (processedDescription.get_width() - mainColumn.get_width() / 2);
             break;
@@ -1124,7 +1125,8 @@ void Painter::paint_two_piece_set_bobbin(Magnetic magnetic) {
     // the other half too (its reflection across the leg axis at x=0).
     auto coreShapeFamily = magnetic.get_mutable_core().get_shape_family();
     bool fullMainLegDrawn = perColumnWindows || coreShapeFamily == MAS::CoreShapeFamily::C ||
-                            coreShapeFamily == MAS::CoreShapeFamily::U || coreShapeFamily == MAS::CoreShapeFamily::UR;
+                            coreShapeFamily == MAS::CoreShapeFamily::U || coreShapeFamily == MAS::CoreShapeFamily::UR ||
+                            coreShapeFamily == MAS::CoreShapeFamily::UT;
     if (mainColumnWound) {
         addBobbinPolygon(bobbinPoints);
         if (fullMainLegDrawn) {
@@ -1182,6 +1184,7 @@ void Painter::paint_two_piece_set_core(Core core) {
         case MAS::CoreShapeFamily::C:
         case MAS::CoreShapeFamily::U:
         case MAS::CoreShapeFamily::UR:
+        case MAS::CoreShapeFamily::UT:
             showingMainColumnWidth = mainColumn.get_width() / 2;
             showingCoreWidth = processedDescription.get_width() - mainColumn.get_width() / 2;
             break;
@@ -1241,7 +1244,9 @@ void Painter::paint_two_piece_set_core(Core core) {
     // full: its left face sits at -width/2 of the main column, not at the leg's
     // axis. Symmetric families keep x=0 (the left half is drawn as a mirror).
     double mainLegLeftEdge = 0;
-    if (family == MAS::CoreShapeFamily::C || family == MAS::CoreShapeFamily::U || family == MAS::CoreShapeFamily::UR) {
+    // UT is the same asymmetric U piece (closed by a plate), with unequal legs.
+    if (family == MAS::CoreShapeFamily::C || family == MAS::CoreShapeFamily::U || family == MAS::CoreShapeFamily::UR ||
+        family == MAS::CoreShapeFamily::UT) {
         mainLegLeftEdge = -showingMainColumnWidth;
     }
 
@@ -1288,7 +1293,7 @@ void Painter::paint_two_piece_set_core(Core core) {
     // single-window cores keep the historical half view untouched.
     bool mirrorLeftHalf = processedDescription.get_winding_windows().size() > 1 &&
                           family != MAS::CoreShapeFamily::C && family != MAS::CoreShapeFamily::U &&
-                          family != MAS::CoreShapeFamily::UR;
+                          family != MAS::CoreShapeFamily::UR && family != MAS::CoreShapeFamily::UT;
     auto mirrorPoints = [](const std::vector<SVG::Point>& points) {
         std::vector<SVG::Point> mirroredPoints;
         for (auto& point : points) {
@@ -2291,6 +2296,7 @@ void Painter::paint_temperature_field(Magnetic magnetic, const std::map<std::str
         case MAS::CoreShapeFamily::C:
         case MAS::CoreShapeFamily::U:
         case MAS::CoreShapeFamily::UR:
+        case MAS::CoreShapeFamily::UT:
             showingMainColumnWidth = mainColumn.get_width() / 2;
             showingCoreWidth = processedElements.get_width() - mainColumn.get_width() / 2;
             break;
