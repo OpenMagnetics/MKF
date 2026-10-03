@@ -8,6 +8,8 @@
 #include "processors/Sweeper.h"
 #include "constructive_models/Bobbin.h"
 #include "physical_models/Impedance.h"
+#include "physical_models/MagnetizingInductance.h"
+#include "physical_models/Reluctance.h"
 #include "physical_models/ComplexPermeability.h"
 #include "physical_models/StrayCapacitance.h"
 #include "support/Settings.h"
@@ -988,4 +990,50 @@ TEST_CASE("Test_Impedance_Differential_Mode_Capacitance_Is_The_DM_Port_Energy", 
     }
     std::cout << "744822222: C_iw " << parameters.interWindingCapacitance * 1e12 << " pF, C_DM " << parameters.differentialModeCapacitance * 1e12
               << " pF (measured DM resonance 40.27 MHz -> 1.57 pF; fit 1.97 pF)" << std::endl;
+}
+
+TEST_CASE("Test_Impedance_Common_Mode_Includes_The_Gap_Reluctance", "[physical-model][impedance][cm-gap-reluctance]") {
+    // The magnetizing tank used to be N^2 mu(f) / (R_core(mu=1) + R_gap): the gap reluctance,
+    // weighted by mu along with the core, vanished, and a gapped core's common-mode inductance came
+    // out at its gapless value. The core and the gap are in series, L(f) = N^2/(R_core(mu=1)/mu(f) + R_gap),
+    // which at low frequency is the magnetizing inductance MagnetizingInductance computes with the
+    // same reluctance model.
+    //
+    // Tolerance, derived rather than chosen: the two differ only in the permeability -- complex
+    // mu(f) at the sweep frequency against the initial permeability mu_i MagnetizingInductance
+    // uses -- and in the tank's shunt capacitance. dL/L = [R_core/mu / (R_core/mu + R_gap)] dmu/mu
+    // <= |mu(f) - mu_i| / mu_i, and the capacitance raises the apparent inductance by w^2 L C.
+    settings.reset();
+    std::vector<std::pair<std::string, json>> cases = {
+        {"E 42/21/15", OpenMagneticsTesting::get_ground_gap(0.5e-3)},  // 0.5 mm ground gap
+        {"T 25/15/10", json::array()},                                 // gapless toroid: no R_gap at all
+    };
+    for (const auto& [shapeName, gapping] : cases) {
+        INFO(shapeName);
+        auto magnetic = OpenMagneticsTesting::get_quick_magnetic(shapeName, gapping, {20}, 1, "N87");
+        auto core = magnetic.get_core();
+        auto coil = magnetic.get_coil();
+        auto magnetizingInductanceOutput = MagnetizingInductance().calculate_inductance_from_number_turns_and_gapping(core, coil, nullptr);
+        double magnetizingInductance = magnetizingInductanceOutput.get_magnetizing_inductance().get_nominal().value();
+
+        auto reluctanceModel = ReluctanceModel::factory();
+        double initialPermeability = reluctanceModel->get_ungapped_core_reluctance(core, 1.0) /
+                                     magnetizingInductanceOutput.get_ungapped_core_reluctance().value();
+
+        auto material = core.resolve_material();
+        double frequency = ComplexPermeability().get_frequency_range(material).first;
+        auto [permeabilityReal, permeabilityImaginary] = ComplexPermeability().get_complex_permeability(material, frequency);
+        double angularFrequency = 2 * std::numbers::pi * frequency;
+
+        Impedance impedance;
+        auto model = impedance.build_common_mode_impedance_model(magnetic);
+        auto commonModeImpedance = impedance.impedance_from_model(model, frequency);
+        double commonModeInductance = commonModeImpedance.imag() / angularFrequency;
+
+        double permeabilityDeviation = std::abs(std::complex<double>(permeabilityReal, -permeabilityImaginary) - initialPermeability) / initialPermeability;
+        double capacitiveDeviation = pow(angularFrequency, 2) * magnetizingInductance * model.tanks[0].capacitance;
+        INFO("f " << frequency << " Hz, L_CM " << commonModeInductance << " H, L_mag " << magnetizingInductance
+             << " H, |mu(f)-mu_i|/mu_i " << permeabilityDeviation << ", w^2LC " << capacitiveDeviation);
+        CHECK_THAT(commonModeInductance, Catch::Matchers::WithinRel(magnetizingInductance, permeabilityDeviation + capacitiveDeviation));
+    }
 }

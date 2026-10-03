@@ -125,9 +125,9 @@ std::complex<double> Impedance::calculate_differential_mode_impedance(Core core,
     return differential_mode_impedance_from_parameters(parameters, frequency);
 }
 
-double Impedance::estimate_resonance_frequency(Core& core, double airCoredInductance, double capacitance) {
-    // Where a tank built from this air-cored inductance and capacitance resonates, with the
-    // core's initial permeability (25 C, no bias) as the inductance multiplier: the frequency
+double Impedance::estimate_resonance_frequency(Core& core, double airCoredInductance, double gapReluctanceRatio, double capacitance) {
+    // Where a tank built from this inductance and capacitance resonates, with the core's initial
+    // permeability (25 C, no bias) in N^2/(R_core(mu=1)/mu_i + R_gap): the frequency
     // at which the stray capacitance actually acts, which StrayCapacitance::core_image_factor
     // needs to read the core material's permittivity. An estimate is all that is wanted —
     // the factor is slow in frequency — so the low-frequency permeability is the honest
@@ -139,7 +139,8 @@ double Impedance::estimate_resonance_frequency(Core& core, double airCoredInduct
     if (initialPermeability <= 0) {
         return 0.0;
     }
-    return 1.0 / (2.0 * std::numbers::pi * std::sqrt(airCoredInductance * initialPermeability * capacitance));
+    double lowFrequencyInductance = airCoredInductance * initialPermeability / (1.0 + initialPermeability * gapReluctanceRatio);
+    return 1.0 / (2.0 * std::numbers::pi * std::sqrt(lowFrequencyInductance * capacitance));
 }
 
 ImpedanceTank Impedance::build_magnetizing_tank(Core& core, Coil& coil) {
@@ -157,10 +158,19 @@ ImpedanceTank Impedance::build_magnetizing_tank(Core& core, Coil& coil) {
             "Impedance needs the core's processed description (effective area and length) to "
             "build the magnetizing tank; the core carries only its functional description");
     }
+    // The core and its gaps are in series on the flux path: L(f) = N^2 / (R_core(mu=1)/mu(f) + R_gap).
+    // R_core(mu=1) = l_e/(mu0 A_e) scales with the complex permeability; the gapping reluctance
+    // R_gap (fringing included, the default reluctance model -- the one MagnetizingInductance uses)
+    // does not. Multiplying N^2/(R_core(mu=1) + R_gap) by mu(f), as this tank used to, weights the
+    // gap by mu too and so drops it: a 0.5 mm ground gap, or the residual gaps of an ungapped
+    // two-piece core, left the common-mode inductance at the gapless value.
     auto reluctanceModel = OpenMagnetics::ReluctanceModel::factory();
     double numberTurns = coil.get_functional_description()[0].get_number_turns();
-    double reluctanceCoreUnityPermeability = reluctanceModel->get_core_reluctance(core, 1).get_core_reluctance();
+    auto unityPermeabilityReluctance = reluctanceModel->get_core_reluctance(core, 1);
+    double reluctanceCoreUnityPermeability = unityPermeabilityReluctance.get_ungapped_core_reluctance().value();
+    double gapReluctance = unityPermeabilityReluctance.get_gapping_reluctance().value();
     double airCoredInductance = numberTurns * numberTurns / reluctanceCoreUnityPermeability;
+    double gapReluctanceRatio = gapReluctance / reluctanceCoreUnityPermeability;
 
     double capacitance;
     auto& settings = Settings::GetInstance();
@@ -211,7 +221,7 @@ ImpedanceTank Impedance::build_magnetizing_tank(Core& core, Coil& coil) {
         // resonance from the low-frequency inductance, the second evaluates the capacitance
         // there. beta varies slowly with frequency (NiZn eps_r 25 -> 12 over 1-100 MHz), so one
         // refinement is enough; a third pass changes the result by well under a percent.
-        double resonanceEstimate = estimate_resonance_frequency(core, airCoredInductance, capacitance);
+        double resonanceEstimate = estimate_resonance_frequency(core, airCoredInductance, gapReluctanceRatio, capacitance);
         if (resonanceEstimate > 0) {
             capacitanceMatrix = StrayCapacitance(strayCapacitanceModel).calculate_capacitance(coil, core, resonanceEstimate).get_capacitance_among_windings().value();
             capacitance = capacitanceMatrix[windingName][windingName];
@@ -233,7 +243,9 @@ ImpedanceTank Impedance::build_magnetizing_tank(Core& core, Coil& coil) {
         capacitance *= static_cast<double>(windingCount);
     }
 
-    return ImpedanceTank{airCoredInductance, capacitance, true};
+    ImpedanceTank tank{airCoredInductance, capacitance, true};
+    tank.gapReluctanceRatio = gapReluctanceRatio;
+    return tank;
 }
 
 
@@ -385,7 +397,11 @@ std::complex<double> Impedance::impedance_from_model(const WidebandImpedanceMode
     for (const auto& tank : model.tanks) {
         std::complex<double> seriesArm;
         if (tank.usesCorePermeability) {
-            seriesArm = angularFrequency * tank.inductance * std::complex<double>(complexPermeabilityImaginaryPart, complexPermeabilityRealPart);
+            // Z = j w N^2 / (R_core(mu=1)/mu + R_gap) = j w L_air mu / (1 + mu R_gap/R_core(mu=1)),
+            // mu = mu' - j mu'' (e^{jwt}). Without a gap this is w L_air (mu'' + j mu').
+            std::complex<double> permeability(complexPermeabilityRealPart, -complexPermeabilityImaginaryPart);
+            std::complex<double> effectivePermeability = permeability / (1.0 + permeability * tank.gapReluctanceRatio);
+            seriesArm = std::complex<double>(0, angularFrequency * tank.inductance) * effectivePermeability;
         }
         else {
             // Leakage loop resistance referred to winding 0: R_0 + (N_0/N_j)²·R_j.
@@ -647,8 +663,11 @@ double Impedance::calculate_self_resonant_frequency(Core core, Coil coil, double
         {
             auto reluctanceModel = OpenMagnetics::ReluctanceModel::factory();
             double numberTurns = coil.get_functional_description()[0].get_number_turns();
-            double airCoredInductance = numberTurns * numberTurns / reluctanceModel->get_core_reluctance(core, 1).get_core_reluctance();
-            double resonanceEstimate = estimate_resonance_frequency(core, airCoredInductance, capacitance);
+            auto unityPermeabilityReluctance = reluctanceModel->get_core_reluctance(core, 1);
+            double reluctanceCoreUnityPermeability = unityPermeabilityReluctance.get_ungapped_core_reluctance().value();
+            double airCoredInductance = numberTurns * numberTurns / reluctanceCoreUnityPermeability;
+            double gapReluctanceRatio = unityPermeabilityReluctance.get_gapping_reluctance().value() / reluctanceCoreUnityPermeability;
+            double resonanceEstimate = estimate_resonance_frequency(core, airCoredInductance, gapReluctanceRatio, capacitance);
             if (resonanceEstimate > 0) {
                 capacitanceMatrix = StrayCapacitance().calculate_capacitance(coil, core, resonanceEstimate, coreElectricalReference).get_capacitance_among_windings().value();
                 capacitance = capacitanceMatrix[windingName][windingName];

@@ -33,8 +33,9 @@ struct DifferentialModeParameters {
 // One arm of the wideband terminal-impedance model: a parallel-RLC tank. The
 // terminal impedance is the SERIES sum of these tanks (a Foster ladder), each
 // contributing one resonance. usesCorePermeability distinguishes the two kinds:
-//   - magnetizing tank: the inductance is the air-cored inductance to be
-//     multiplied by the core complex permeability µ(f) at each frequency, and
+//   - magnetizing tank: the inductance is the air-cored inductance N²/R_core(µ=1),
+//     turned into N²/(R_core(µ=1)/µ(f) + R_gap) with the core complex
+//     permeability µ(f) and the gapping reluctance at each frequency, and
 //     its loss comes from µ''(f) (no series resistor). This is the first/main
 //     resonance, present for every magnetic.
 //   - leakage tank: a flat air-cored leakage inductance in series with the
@@ -52,6 +53,12 @@ struct ImpedanceTank {
     // is R_0(f) + turnsRatioSquared·R_secondary(f) with turnsRatioSquared = (N_0/N_j)².
     size_t secondaryWindingIndex = 0;
     double turnsRatioSquared = 0.0;
+    // Magnetizing tank only: R_gap / R_core(mu=1), the gapping reluctance (fringing included, the
+    // same reluctance model MagnetizingInductance uses) over the core's unity-permeability
+    // reluctance l_e/(mu0 A_e). With inductance = N^2/R_core(mu=1) the tank inductance is
+    //   L(f) = N^2 / (R_core(mu=1)/mu(f) + R_gap) = inductance * mu / (1 + mu * gapReluctanceRatio),
+    // with mu the complex permeability. 0 for a core without gaps (a toroid).
+    double gapReluctanceRatio = 0.0;
 };
 
 // Precomputed, frequency-independent building blocks of the full wideband
@@ -90,9 +97,10 @@ class Impedance {
         // The magnetizing tank (air-cored inductance ∥ winding self-capacitance),
         // the first resonance shared by calculate_impedance and the wideband model.
         ImpedanceTank build_magnetizing_tank(Core& core, Coil& coil);
-        // Resonance of (air-cored inductance x initial permeability) with a capacitance: the
-        // frequency the stray-capacitance core image factor is evaluated at (ABT #848).
-        static double estimate_resonance_frequency(Core& core, double airCoredInductance, double capacitance);
+        // Resonance of the low-frequency magnetizing inductance N^2/(R_core(mu=1)/mu_i + R_gap)
+        // with a capacitance: the frequency the stray-capacitance core image factor is evaluated
+        // at (ABT #848). airCoredInductance = N^2/R_core(mu=1), gapReluctanceRatio = R_gap/R_core(mu=1).
+        static double estimate_resonance_frequency(Core& core, double airCoredInductance, double gapReluctanceRatio, double capacitance);
     protected:
     public:
     // DEFAULT: the FULL energy-based StrayCapacitance model (owner decision, 2026-08-23): per-pair
