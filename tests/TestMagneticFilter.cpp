@@ -66,6 +66,7 @@
 #include "support/Settings.h"
 #include "support/Utils.h"
 #include "support/Exceptions.h"
+#include "support/Logger.h"
 
 #include "TestingUtils.h"
 
@@ -1130,6 +1131,66 @@ TEST_CASE("MagneticAdviser catalogue path drops parts whose material has no loss
         INFO(mas.get_magnetic().get_reference());
         CHECK(mas.get_magnetic().get_core().get_material_name() != "TP5H");
     }
+    settings.reset();
+}
+
+// ABT #1652 (Alf): advisers NEVER extrapolate, even with Settings::allowMaterialDataExtrapolation on (the web
+// turns it on for hand edits). The same TP5H-at-100 kHz catalogue as above, flag ON: the span gate must still
+// drop every TP5H part, no extrapolated loss may be computed (no WARNING from module MaterialDataExtrapolation),
+// and once the adviser is gone the flag works again, so the setup really had it on.
+TEST_CASE("MagneticAdviser catalogue path keeps barring out-of-span parts with material extrapolation allowed",
+          "[adviser][magnetic-adviser][abt-1652]") {
+    settings.reset();
+    clear_databases();
+    Logger::getInstance().disableCollector();
+    Logger::getInstance().enableCollector(LogLevel::WARNING);
+
+    auto inputs = OpenMagnetics::Inputs::create_quick_operating_point_only_current(
+        100000, 100e-6, 25, WaveformLabel::TRIANGULAR, 2, 0.5, 1);
+    auto part = [&](const std::string& material, double gap, int64_t turns, const std::string& reference) {
+        auto magnetic = OpenMagneticsTesting::get_quick_magnetic("E 42/21/15", OpenMagneticsTesting::get_ground_gap(gap),
+                                                                 std::vector<int64_t>{turns}, 1, material);
+        MAS::MagneticManufacturerInfo manufacturerInfo;
+        manufacturerInfo.set_name("ABT 1652 test");
+        manufacturerInfo.set_reference(reference);
+        magnetic.set_manufacturer_info(manufacturerInfo);
+        return OpenMagnetics::magnetic_autocomplete(magnetic);
+    };
+    std::vector<OpenMagnetics::Magnetic> catalogue;
+    for (int i = 0; i < 10; ++i) {
+        catalogue.push_back(part("TP5H", 0.0005 + 0.0001 * i, 15 + i, "TP5H-" + std::to_string(i)));
+    }
+    catalogue.push_back(part("N87", 0.001, 20, "N87-0"));
+
+    settings.set_allow_material_data_extrapolation(true);
+    Logger::getInstance().drainCollected();
+    std::vector<std::pair<OpenMagnetics::Mas, double>> results;
+    {
+        MagneticAdviser adviser;
+        std::vector<MagneticFilterOperation> flow{MagneticFilterOperation(MagneticFilters::CORE_AND_DC_LOSSES, true, false, true, 1.0)};
+        REQUIRE_NOTHROW(results = adviser.get_advised_magnetic(inputs, catalogue, flow, 11, false));
+    }
+    auto collected = Logger::getInstance().drainCollected();
+    size_t extrapolationRecords = 0;
+    for (auto& record : collected) {
+        if (record.moduleOfOrigin == kMaterialDataExtrapolationModule) {
+            UNSCOPED_INFO("extrapolated under the adviser: " << record.message);
+            extrapolationRecords++;
+        }
+    }
+    CHECK(extrapolationRecords == 0);
+    REQUIRE_FALSE(results.empty());
+    for (auto& [mas, scoring] : results) {
+        INFO(mas.get_magnetic().get_reference());
+        CHECK(mas.get_magnetic().get_core().get_material_name() != "TP5H");
+    }
+
+    // The adviser is gone: the caller's flag is back, and the same gate now lets TP5H through.
+    auto spanFilter = MagneticFilter::factory(MagneticFilters::LOSS_MODEL_FREQUENCY_SPAN);
+    CHECK(settings.get_allow_material_data_extrapolation());
+    CHECK(spanFilter->evaluate_magnetic(&catalogue[0], &inputs).first);
+
+    Logger::getInstance().disableCollector();
     settings.reset();
 }
 

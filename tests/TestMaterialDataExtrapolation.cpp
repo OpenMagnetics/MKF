@@ -6,6 +6,12 @@
 // a caller (the web app shows them in its log panel).
 #include "physical_models/CoreLosses.h"
 #include "advisers/MagneticFilter.h"
+#include "advisers/CoreAdviser.h"
+#include "advisers/CoilAdviser.h"
+#include "advisers/WireAdviser.h"
+#include "advisers/MagneticAdviser.h"
+#include "advisers/CoreCrossReferencer.h"
+#include "advisers/CoreMaterialCrossReferencer.h"
 #include "processors/Sweeper.h"
 #include "support/Exceptions.h"
 #include "support/Logger.h"
@@ -17,6 +23,7 @@
 #include <catch2/matchers/catch_matchers_string.hpp>
 #include <cmath>
 #include <numbers>
+#include <thread>
 
 using namespace OpenMagnetics;
 
@@ -234,6 +241,77 @@ TEST_CASE("The loss-model span gate lets an out-of-span material through only wi
     CHECK(MagneticFilterLossModelFrequencySpan::is_material_evaluable(Core::resolve_material("TP5H"), inputs, CoreLossesModels::IGSE));
     // A material no model can evaluate stays not evaluable: the flag extrapolates data, it does not invent it.
     CHECK_FALSE(MagneticFilterLossModelFrequencySpan::is_material_evaluable(Core::resolve_material("NP7"), inputs));
+    settings.reset();
+}
+
+// ABT #1652 (Alf): advisers NEVER extrapolate, whatever the flag says. Each adviser class holds a
+// MaterialDataExtrapolationBarrier, so while one exists -- on this thread or a worker running on a Settings
+// snapshot -- the flag reads false, the span gate bars the material and the coefficients throw. When the
+// adviser is gone the caller's choice reads back unchanged.
+template <typename Adviser>
+static void check_adviser_bars_extrapolation(const std::string& adviserName, const OpenMagnetics::Inputs& inputs) {
+    INFO(adviserName);
+    REQUIRE(settings.get_allow_material_data_extrapolation());
+    {
+        Adviser adviser;
+        CHECK_FALSE(settings.get_allow_material_data_extrapolation());
+        CHECK_THROWS_AS(CoreLossesModel::get_steinmetz_coefficients("TP5H", 100000), MaterialFrequencyOutOfSpanException);
+        CHECK_FALSE(MagneticFilterLossModelFrequencySpan::is_material_evaluable(Core::resolve_material("TP5H"), inputs, CoreLossesModels::IGSE));
+
+        // A worker thread an adviser fans out to runs on a snapshot of the parent's Settings, which
+        // carries the caller's flag: it must be barred as well.
+        const Settings parentSnapshot = Settings::GetInstance();
+        bool workerAllowed = true;
+        bool workerThrew = false;
+        std::thread worker([&]() {
+            Settings::GetInstance() = parentSnapshot;
+            workerAllowed = Settings::GetInstance().get_allow_material_data_extrapolation();
+            try {
+                CoreLossesModel::get_steinmetz_coefficients("TP5H", 100000);
+            }
+            catch (const MaterialFrequencyOutOfSpanException&) {
+                workerThrew = true;
+            }
+        });
+        worker.join();
+        CHECK_FALSE(workerAllowed);
+        CHECK(workerThrew);
+
+        // A copy is an adviser too; destroying it does not lift the original's barrier.
+        { Adviser copy(adviser); }
+        CHECK_FALSE(settings.get_allow_material_data_extrapolation());
+    }
+    CHECK(settings.get_allow_material_data_extrapolation());
+}
+
+TEST_CASE("Advisers never extrapolate material data, whatever the flag says (ABT #1652)", "[material-extrapolation][adviser-barrier]") {
+    settings.reset();
+    clear_databases();
+    CollectorGuard collector;
+    auto inputs = OpenMagneticsTesting::create_quick_test_inputs();  // 100 kHz, below TP5H's 1-5 MHz fit
+    REQUIRE(MaterialDataExtrapolationBarrier::active_count() == 0);
+    settings.set_allow_material_data_extrapolation(true);
+    REQUIRE(MagneticFilterLossModelFrequencySpan::is_material_evaluable(Core::resolve_material("TP5H"), inputs, CoreLossesModels::IGSE));
+    Logger::getInstance().drainCollected();
+
+    check_adviser_bars_extrapolation<CoreAdviser>("CoreAdviser", inputs);
+    check_adviser_bars_extrapolation<WireAdviser>("WireAdviser", inputs);
+    check_adviser_bars_extrapolation<CoilAdviser>("CoilAdviser", inputs);
+    check_adviser_bars_extrapolation<MagneticAdviser>("MagneticAdviser", inputs);
+    check_adviser_bars_extrapolation<CoreCrossReferencer>("CoreCrossReferencer", inputs);
+    check_adviser_bars_extrapolation<CoreMaterialCrossReferencer>("CoreMaterialCrossReferencer", inputs);
+
+    // Nested advisers (MagneticAdviser runs CoreAdviser runs CoilAdviser): the inner one ending does not
+    // lift the outer one's barrier.
+    {
+        MagneticAdviser outer;
+        { CoreAdviser inner; }
+        CHECK_FALSE(settings.get_allow_material_data_extrapolation());
+    }
+    CHECK(MaterialDataExtrapolationBarrier::active_count() == 0);
+    CHECK(settings.get_allow_material_data_extrapolation());
+    // Nothing was extrapolated under any adviser.
+    CHECK(extrapolation_records(Logger::getInstance().drainCollected()).empty());
     settings.reset();
 }
 

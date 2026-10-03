@@ -1,4 +1,5 @@
 #pragma once
+#include "support/Settings.h"
 #include "advisers/MagneticFilter.h"
 #include "physical_models/CoreLosses.h"
 #include "physical_models/Impedance.h"
@@ -96,6 +97,10 @@ namespace OpenMagnetics {
  * - Colonel Wm. T. McLyman, "Transformer and Inductor Design Handbook"
  */
 class CoreAdviser {
+    private:
+        // ABT #1652: first member, so no adviser code runs without it: while this adviser exists,
+        // material data is never extrapolated (see MaterialDataExtrapolationBarrier in Settings.h).
+        MaterialDataExtrapolationBarrier _materialDataExtrapolationBarrier;
     public: 
         enum class CoreAdviserFilters : int {
             COST,

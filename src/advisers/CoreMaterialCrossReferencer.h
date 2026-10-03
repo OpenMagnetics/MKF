@@ -1,4 +1,5 @@
 #pragma once
+#include "support/Settings.h"
 #include "Constants.h"
 #include "physical_models/CoreLosses.h"
 #include "Defaults.h"
@@ -12,6 +13,10 @@ using namespace MAS;
 namespace OpenMagnetics {
 
 class CoreMaterialCrossReferencer {
+    private:
+        // ABT #1652: first member, so no adviser code runs without it: while this adviser exists,
+        // material data is never extrapolated (see MaterialDataExtrapolationBarrier in Settings.h).
+        MaterialDataExtrapolationBarrier _materialDataExtrapolationBarrier;
     public: 
     protected:
         std::map<std::string, std::string> _models;

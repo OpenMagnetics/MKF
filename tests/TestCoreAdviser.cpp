@@ -4,6 +4,7 @@
 #include "advisers/CoreAdviser.h"
 #include "support/Painter.h"
 #include "support/Utils.h"
+#include "support/Logger.h"
 #include "processors/Inputs.h"
 #include "TestingUtils.h"
 #include "Fixtures.h"
@@ -3317,6 +3318,56 @@ TEST_CASE("Test_CoreAdviser_Ferrite_Pool_Drops_MHz_Grades_Out_Of_Span_At_100kHz"
             CHECK(CoreLossesModel::is_frequency_in_steinmetz_span(materialName, 100000));
         }
     }
+    settings.reset();
+}
+
+// ABT #1652 (Alf): advisers NEVER extrapolate, even with Settings::allowMaterialDataExtrapolation on. The same
+// ferrite pool at 100 kHz with the flag ON must still drop the nine MHz grades by the span verdict and compute
+// no extrapolated loss; outside the adviser the flag lets TP5H through, so the setup really had it on.
+TEST_CASE("Test_CoreAdviser_Ferrite_Pool_Never_Extrapolates_With_Extrapolation_Allowed", "[adviser][core-adviser][abt-1652]") {
+    settings.reset();
+    clear_databases();
+    settings.set_preferred_core_material_ferrite_manufacturer("No such manufacturer (ABT #1456)");
+    Logger::getInstance().disableCollector();
+    Logger::getInstance().enableCollector(LogLevel::WARNING);
+
+    const std::vector<std::string> mhzGrades = {"TP5H", "KL9F", "DMR52W", "DMR51W", "KL7F", "KL11F", "DMR52", "P61", "P63"};
+    auto inputs = OpenMagneticsTesting::create_quick_test_inputs();  // 100 kHz
+    settings.set_allow_material_data_extrapolation(true);
+    REQUIRE(MagneticFilterLossModelFrequencySpan::is_material_evaluable(Core::resolve_material("TP5H"), inputs));
+
+    std::vector<int64_t> numberTurns = {20};
+    auto magnetic = OpenMagneticsTesting::get_quick_magnetic("E 42/21/15", OpenMagneticsTesting::get_ground_gap(0.001), numberTurns, 1, "N87");
+    magnetic.get_mutable_core().get_mutable_functional_description().set_material(std::string(DUMMY_SENTINEL_NAME));
+    std::vector<std::pair<OpenMagnetics::Magnetic, double>> candidates = {{magnetic, 1.0}};
+
+    Logger::getInstance().drainCollected();
+    std::vector<std::pair<OpenMagnetics::Magnetic, double>> withMaterials;
+    std::string log;
+    {
+        CoreAdviser coreAdviser;
+        OpenMagnetics::read_log();
+        withMaterials = coreAdviser.add_ferrite_materials_by_losses(&candidates, inputs);
+        log = OpenMagnetics::read_log();
+    }
+    REQUIRE(!withMaterials.empty());
+    CHECK(log.find("Dropping core material 'TP5H'") != std::string::npos);
+    for (auto& [candidate, scoring] : withMaterials) {
+        auto materialName = candidate.get_core().get_material_name();
+        INFO(materialName);
+        CHECK(std::find(mhzGrades.begin(), mhzGrades.end(), materialName) == mhzGrades.end());
+    }
+    size_t extrapolationRecords = 0;
+    for (auto& record : Logger::getInstance().drainCollected()) {
+        if (record.moduleOfOrigin == kMaterialDataExtrapolationModule) {
+            UNSCOPED_INFO("extrapolated under the adviser: " << record.message);
+            extrapolationRecords++;
+        }
+    }
+    CHECK(extrapolationRecords == 0);
+    CHECK(settings.get_allow_material_data_extrapolation());
+
+    Logger::getInstance().disableCollector();
     settings.reset();
 }
 

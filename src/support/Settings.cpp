@@ -2,6 +2,7 @@
 #include "support/Settings.h"
 #include "processors/CircuitSimulatorInterface.h"
 #include <magic_enum.hpp>
+#include <atomic>
 #include <cstdlib>
 #include <filesystem>
 #include <source_location>
@@ -998,8 +999,25 @@ namespace OpenMagnetics {
         _thermalNetworkStrictGeometry = value;
     }
 
+    // ABT #1652: process-wide, not part of the thread_local Settings, so adviser worker threads and
+    // their Settings snapshots see it as well.
+    static std::atomic<int> materialDataExtrapolationBarriers{0};
+
+    MaterialDataExtrapolationBarrier::MaterialDataExtrapolationBarrier() {
+        materialDataExtrapolationBarriers.fetch_add(1);
+    }
+    MaterialDataExtrapolationBarrier::MaterialDataExtrapolationBarrier(const MaterialDataExtrapolationBarrier&) {
+        materialDataExtrapolationBarriers.fetch_add(1);
+    }
+    MaterialDataExtrapolationBarrier::~MaterialDataExtrapolationBarrier() {
+        materialDataExtrapolationBarriers.fetch_sub(1);
+    }
+    int MaterialDataExtrapolationBarrier::active_count() {
+        return materialDataExtrapolationBarriers.load();
+    }
+
     bool Settings::get_allow_material_data_extrapolation() const {
-        return _allowMaterialDataExtrapolation;
+        return _allowMaterialDataExtrapolation && materialDataExtrapolationBarriers.load() == 0;
     }
     void Settings::set_allow_material_data_extrapolation(bool value) {
         _allowMaterialDataExtrapolation = value;

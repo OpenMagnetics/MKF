@@ -392,7 +392,8 @@ class MagneticFilterWindability : public MagneticFilter {
  * schema, so a material evaluated with one of them always passes.
  *
  * With Settings::allowMaterialDataExtrapolation on (explicit opt-in, off by default) the span does not
- * gate: the losses are evaluated outside it and every such evaluation logs a WARNING.
+ * gate: the losses are evaluated outside it and every such evaluation logs a WARNING. Never under an
+ * adviser (ABT #1652): while any adviser object exists the flag reads false and the span gates as usual.
  */
 class MagneticFilterLossModelFrequencySpan : public MagneticFilter {
     public:

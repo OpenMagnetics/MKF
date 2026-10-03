@@ -1,4 +1,5 @@
 #pragma once
+#include "support/Settings.h"
 #include "support/Utils.h"
 #include "advisers/MagneticFilter.h"
 #include "advisers/CoreAdviser.h"
@@ -129,6 +130,10 @@ namespace OpenMagnetics {
  * @see MagneticFilter For available filter types
  */
 class MagneticAdviser{
+    private:
+        // ABT #1652: first member, so no adviser code runs without it: while this adviser exists,
+        // material data is never extrapolated (see MaterialDataExtrapolationBarrier in Settings.h).
+        MaterialDataExtrapolationBarrier _materialDataExtrapolationBarrier;
     public:
 
         std::map<MagneticFilters, std::shared_ptr<MagneticFilter>> _filters;

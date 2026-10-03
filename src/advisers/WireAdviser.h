@@ -88,6 +88,10 @@ inline void to_json(json & j, const WireSolidInsulationRequirements & x) {
  * - Foil: Low DC resistance but requires careful interleaving for AC
  */
 class WireAdviser {
+    private:
+        // ABT #1652: first member, so no adviser code runs without it: while this adviser exists,
+        // material data is never extrapolated (see MaterialDataExtrapolationBarrier in Settings.h).
+        MaterialDataExtrapolationBarrier _materialDataExtrapolationBarrier;
     protected:
         double _maximumEffectiveCurrentDensity;
         std::optional<WireSolidInsulationRequirements> _wireSolidInsulationRequirements;

@@ -227,6 +227,8 @@ class Settings
         // (the nearest fitted range's coefficients carried past its edge) and every such use logs a
         // WARNING naming the material, the quantity, the value and the range the data covers
         // (module "MaterialDataExtrapolation"; enable the Logger collector to read them back).
+        // ABT #1652: advisers never extrapolate. While any adviser object exists the getter reads
+        // false whatever this holds (see MaterialDataExtrapolationBarrier below). Keep in sync with reset().
         bool   _allowMaterialDataExtrapolation = false;
         GappingOptimizationStrategy _gappingStrategy = GappingOptimizationStrategy::SIMPLE;
 
@@ -599,6 +601,10 @@ class Settings
         bool   get_thermal_network_strict_geometry() const;
         void   set_thermal_network_strict_geometry(bool value);
 
+        // The EFFECTIVE value: what the caller set, AND no adviser alive anywhere in the process
+        // (ABT #1652, MaterialDataExtrapolationBarrier). Every extrapolating site reads this getter,
+        // so none of them can extrapolate under an adviser. The setter stores the caller's choice
+        // untouched: it reads back again once the advisers are gone.
         bool   get_allow_material_data_extrapolation() const;
         void   set_allow_material_data_extrapolation(bool value);
 
@@ -711,6 +717,30 @@ class Settings
 
     };
 
+
+// ABT #1652 (Alf, 2026-10-03): ADVISERS NEVER EXTRAPOLATE material data, whatever
+// Settings::allowMaterialDataExtrapolation says; only work the user does by hand may (the web turns the
+// flag on for it). Every adviser class (CoreAdviser, WireAdviser and so CoilAdviser, MagneticAdviser,
+// CoreCrossReferencer, CoreMaterialCrossReferencer) holds one of these as its FIRST member, and while at
+// least one exists anywhere in the process Settings::get_allow_material_data_extrapolation() reads false.
+//
+// Why the object's lifetime and not a guard in each public method: every entry point an adviser has now
+// or gains later runs while its object exists, so none can forget the guard; a new adviser CLASS must
+// add the member (TestMaterialDataExtrapolation checks each class). Why a process-wide count and not a
+// SettingsGuard that sets the flag off and restores it: Settings is thread_local and advisers fan work
+// out to worker threads that run on snapshots, nested advisers (MagneticAdviser -> CoreAdviser ->
+// CoilAdviser) would restore out of order, and a restore would overwrite a value the caller set
+// meanwhile. The cost: a hand simulation running on another thread while an adviser is alive does not
+// extrapolate either -- it throws MaterialFrequencyOutOfSpanException as it would with the flag off.
+class MaterialDataExtrapolationBarrier {
+public:
+    MaterialDataExtrapolationBarrier();
+    MaterialDataExtrapolationBarrier(const MaterialDataExtrapolationBarrier&);
+    MaterialDataExtrapolationBarrier& operator=(const MaterialDataExtrapolationBarrier&) { return *this; }
+    ~MaterialDataExtrapolationBarrier();
+    // Number of barriers alive in the process (diagnostics and tests).
+    static int active_count();
+};
 
 // ARCH-002: RAII guard for exception-safe Settings mutations
 template<typename T>
