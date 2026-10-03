@@ -14,6 +14,7 @@
 // and shared helpers in advisers/CoreAdviserInternal.h.
 
 #include "advisers/CoreAdviser.h"
+#include <magic_enum.hpp>
 #include "advisers/CoreAdviserInternal.h"
 #include "advisers/CoreMaterialCrossReferencer.h"
 #include "advisers/MagneticFilter.h"
@@ -796,7 +797,53 @@ void add_initial_turns_by_inductance(std::vector<std::pair<Magnetic, double>> *m
         if (inputs.get_design_requirements().get_turns_ratios().size() > 0) {
             NumberTurns numberTurns(initialNumberTurns, inputs.get_design_requirements());
             auto numberTurnsCombination = numberTurns.get_next_number_turns_combination();
+            double sizedNumberTurns = initialNumberTurns;
             initialNumberTurns = numberTurnsCombination[0];
+
+            // ABT #1542: the snap to a valid turns-ratio combination raises N after the gap was sized
+            // for the unsnapped N, so L grew by (N_snapped / N)^2 and the inductance filter rejected
+            // the candidate (546 of 557 on an isolated buck-boost). Where the design has an
+            // inductance target and a gappable core, re-solve the gap for the snapped N, ground
+            // first and then distributed, and adopt it only when it physically fits the column.
+            auto lmDim = inputs.get_design_requirements().get_magnetizing_inductance();
+            bool hasLmTarget = (lmDim.get_nominal() && lmDim.get_nominal().value() > 0) ||
+                               (lmDim.get_maximum() && lmDim.get_maximum().value() > 0);
+            bool sizesInductance = !isTransformer || hasLmTarget;
+            if (sizesInductance && !isSuppression && core.get_shape_family() != CoreShapeFamily::T &&
+                std::llround(initialNumberTurns) != std::llround(sizedNumberTurns)) {
+                Coil snappedCoil = (*magneticsWithScoring)[i].first.get_coil();
+                snappedCoil.get_mutable_functional_description()[0].set_number_turns(static_cast<int64_t>(std::llround(initialNumberTurns)));
+                Inputs lmInputs;
+                lmInputs.set_design_requirements(inputs.get_design_requirements());
+                bool regapped = false;
+                std::string regapFailure;
+                for (auto gappingType : {GappingType::GROUND, GappingType::DISTRIBUTED}) {
+                    try {
+                        auto gaps = magnetizingInductance.calculate_gapping_from_number_turns_and_inductance(core, snappedCoil, &lmInputs, gappingType);
+                        if (gaps.empty()) {
+                            regapFailure += std::string(magic_enum::enum_name(gappingType)) + ": no gap; ";
+                            continue;
+                        }
+                        Core regappedCore = core;
+                        regappedCore.set_gapping(gaps);
+                        if (regappedCore.process_gap()) {
+                            core = regappedCore;
+                            (*magneticsWithScoring)[i].first.set_core(core);
+                            regapped = true;
+                            break;
+                        }
+                        regapFailure += std::string(magic_enum::enum_name(gappingType)) + ": gap does not fit the column; ";
+                    }
+                    catch (const OpenMagneticsException& e) {
+                        regapFailure += std::string(magic_enum::enum_name(gappingType)) + ": " + e.what() + "; ";
+                    }
+                }
+                if (!regapped) {
+                    logEntry("Turns-ratio snap " + std::to_string(sizedNumberTurns) + " -> " + std::to_string(initialNumberTurns) +
+                             " turns on core " + core.get_name().value_or("?") + " could not be re-gapped (" + regapFailure +
+                             "); the inductance filter decides it at the snapped turns", "CoreAdviser", 2);
+                }
+            }
         }
 
         (*magneticsWithScoring)[i].first.get_mutable_coil().get_mutable_functional_description()[0].set_number_turns(initialNumberTurns);
