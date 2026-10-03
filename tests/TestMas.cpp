@@ -10,6 +10,8 @@
 #include "support/Settings.h"
 #include "TestingUtils.h"
 #include "support/Utils.h"
+#include "support/Logger.h"
+#include "physical_models/CoreLosses.h"
 #include "json.hpp"
 
 #include <catch2/catch_test_macros.hpp>
@@ -114,6 +116,29 @@ TEST_CASE("Test_All_Examples_Real_Geometry_Physics", "[constructive-model][mas][
             settings.reset();
             auto mas = OpenMagneticsTesting::mas_loader(file.string());
 
+            // ABT #1567/#1652: 01_simple_inductor_etd34_n87_1Hz runs N87 at 1 Hz, far below its fitted
+            // Steinmetz span, on purpose. Alf: "enable the flag to run cores out of their freq when the test
+            // or users demand it". This example demands it: its core losses are an extrapolation, so it runs
+            // with Settings::allowMaterialDataExtrapolation on and must report that through the Logger
+            // collector. Every other example keeps the flag off.
+            const bool runsOutOfMaterialSpan = name == "01_simple_inductor_etd34_n87_1Hz.json";
+            struct ExtrapolationScope {
+                bool active;
+                explicit ExtrapolationScope(bool on) : active(on) {
+                    if (active) {
+                        settings.set_allow_material_data_extrapolation(true);
+                        Logger::getInstance().disableCollector();
+                        Logger::getInstance().enableCollector(LogLevel::WARNING);
+                    }
+                }
+                ~ExtrapolationScope() {
+                    if (active) {
+                        Logger::getInstance().disableCollector();
+                        settings.set_allow_material_data_extrapolation(false);
+                    }
+                }
+            } extrapolationScope(runsOutOfMaterialSpan);
+
             // Expand through the canonical path (resolves shape/bobbin, processes the core, winds
             // the coil) with REAL winding geometry ON, so the wind inside builds the lead rows /
             // toroidal corridors (ABT #229/#187).
@@ -201,6 +226,22 @@ TEST_CASE("Test_All_Examples_Real_Geometry_Physics", "[constructive-model][mas][
                 OpenMagnetics::Mas simulated;
                 REQUIRE_NOTHROW(simulated = MagneticSimulator().simulate(mas.get_inputs(), magnetic, true));
                 REQUIRE(!simulated.get_outputs().empty());
+                if (runsOutOfMaterialSpan) {
+                    // The extrapolation is reported: material, frequency and the fitted span it lies below.
+                    auto [spanMinimum, spanMaximum] = CoreLossesModel::get_steinmetz_fitted_span(magnetic.get_core().resolve_material());
+                    REQUIRE(1.0 < spanMinimum);
+                    bool reported = false;
+                    for (auto& record : Logger::getInstance().drainCollected()) {
+                        if (record.moduleOfOrigin == kMaterialDataExtrapolationModule && record.level == LogLevel::WARNING &&
+                            record.message.find("N87") != std::string::npos &&
+                            record.message.find(std::to_string(1.0) + " Hz is below") != std::string::npos &&
+                            record.message.find(std::to_string(spanMinimum)) != std::string::npos &&
+                            record.message.find(std::to_string(spanMaximum)) != std::string::npos) {
+                            reported = true;
+                        }
+                    }
+                    CHECK(reported);
+                }
                 for (size_t operatingPointIndex = 0; operatingPointIndex < simulated.get_outputs().size(); ++operatingPointIndex) {
                     auto& output = simulated.get_outputs()[operatingPointIndex];
                     REQUIRE(output.get_core_losses());
