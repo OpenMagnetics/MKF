@@ -12,8 +12,7 @@ This script:
 Usage:
     python generate_temperature_tests.py [examples_folder]
     
-    If examples_folder is not provided, defaults to:
-    C:\Users\Alfonso\wuerth\Ansyas\examples
+    If examples_folder is not provided, defaults to $ANSYAS_DIR/examples.
 """
 
 import json
@@ -27,12 +26,13 @@ from pathlib import Path
 from typing import Dict, List, Optional, Tuple, Any
 from dataclasses import dataclass, field
 from datetime import datetime
+_MKF_ROOT = __import__("pathlib").Path(__file__).resolve().parents[2]  # ABT #1596: this checkout, not a developer path
 
 # Default paths
-DEFAULT_EXAMPLES_DIR = Path("C:/Users/Alfonso/wuerth/Ansyas/examples")
-MKF_TESTS_DIR = Path("/home/alf/OpenMagnetics/MKF/tests")
+DEFAULT_EXAMPLES_DIR = Path(os.environ["ANSYAS_DIR"]) / "examples" if os.environ.get("ANSYAS_DIR") else None
+MKF_TESTS_DIR = Path(str(_MKF_ROOT / "tests"))
 TESTTEMPERATURE_PATH = MKF_TESTS_DIR / "TestTemperature.cpp"
-ANSYAS_DIR = Path("C:/Users/Alfonso/wuerth/Ansyas")
+ANSYAS_DIR = Path(os.environ.get("ANSYAS_DIR", "<set ANSYAS_DIR>"))  # the Ansyas checkout
 
 
 @dataclass
@@ -669,6 +669,8 @@ def main():
     )
     
     args = parser.parse_args()
+    if args.examples_dir is None:
+        parser.error("give examples_dir or set ANSYAS_DIR")
     
     print("=" * 70)
     print("Generate Temperature Tests from Ansyas Icepak")
@@ -743,7 +745,7 @@ def main():
         print(f"\nTests added to: {args.test_file}")
         print("\nNext steps:")
         print("1. Review the generated tests")
-        print("2. Build MKF: cd /home/alf/OpenMagnetics/MKF/build && make -j$(nproc)")
+        print(f"2. Build MKF: ninja -C {_MKF_ROOT / 'build'} MKF_tests")
         print("3. Run the tests: ./tests/TestTemperature '[icepak-validation]'")
         print("\nNote: Tests currently use placeholder temperature values.")
         print("Once cooling.py is fully implemented, re-run with --verbose to")

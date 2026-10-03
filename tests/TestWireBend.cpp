@@ -6,6 +6,7 @@
 // Table 6 and clause 9 (rectangular copper), and IEC 60851-3 ed.3.1 §5.1.1 for the fact that the
 // wire is wound ON the mandrel, which is what puts its centreline one wire radius outside it.
 #include "physical_models/WireBend.h"
+#include <source_location>
 #include "constructive_models/Wire.h"
 #include "constructive_models/Magnetic.h"
 #include "advisers/MagneticFilter.h"
@@ -240,10 +241,10 @@ TEST_CASE("Test_WireBend_Catalogue_Wire_Matches_The_Hand_Numbers", "[wire][wire-
 // the column it is wound on -- and, where it cannot, how far the winding really stands off.
 // Run it with:  ./MKF_tests "[wire-bend-census]" -s
 TEST_CASE("Test_WireBend_Corpus_Census", "[wire][wire-bend][wire-bend-census]") {
-    const std::filesystem::path examples = "/home/alf/OpenMagnetics/MKF/MAS/examples";
-    if (!std::filesystem::exists(examples)) {
-        SKIP("MAS examples not available in this checkout");
-    }
+    // ABT #1596: the MAS submodule of this checkout, not a developer's absolute path.
+    const std::filesystem::path examples =
+        std::filesystem::path{std::source_location::current().file_name()}.parent_path() / ".." / "MAS" / "examples";
+    REQUIRE(std::filesystem::exists(examples));
 
     std::vector<std::filesystem::path> files;
     for (const auto& entry : std::filesystem::directory_iterator(examples)) {
@@ -340,12 +341,10 @@ TEST_CASE("Test_WireBend_Corpus_Census", "[wire][wire-bend][wire-bend-census]") 
 
 TEST_CASE("Test_WireBend_Filter_Judges_The_Wire_Against_Its_Former", "[wire][wire-bend][filter]") {
     // The filter reads the MAS datum, so this also exercises the new columnCornerRadius field.
-    const std::filesystem::path example =
-        "/home/alf/OpenMagnetics/MKF/MAS/examples/02_flyback_efd25_3c95.json";
+    const std::filesystem::path example = std::filesystem::path{std::source_location::current().file_name()}.parent_path() /
+                                          ".." / "MAS" / "examples" / "02_flyback_efd25_3c95.json";
     std::ifstream stream(example);
-    if (!stream.good()) {
-        SKIP("MAS example not available in this checkout");
-    }
+    REQUIRE(stream.good());
     json masJson = json::parse(stream);
     json magneticJson = masJson.contains("magnetic") ? masJson["magnetic"] : masJson;
 

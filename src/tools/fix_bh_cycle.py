@@ -2,9 +2,10 @@ import pandas
 import ndjson
 import os
 import matplotlib.pyplot as plt
+_MKF_ROOT = __import__("pathlib").Path(__file__).resolve().parents[2]  # ABT #1596: this checkout, not a developer path
 
 
-current_advanced_core_materials_path = "/home/alf/OpenMagnetics/MAS/data/advanced_core_materials.ndjson"
+current_advanced_core_materials_path = str(_MKF_ROOT / "MAS" / "data/advanced_core_materials.ndjson")
 
 current_advanced_core_materials = pandas.DataFrame(ndjson.load(open(current_advanced_core_materials_path, "r")))
 current_advanced_core_materials = current_advanced_core_materials.where(pandas.notnull(current_advanced_core_materials), None)

@@ -8,9 +8,12 @@
 # reference cannot silently go stale when loss models change (the lesson of the frozen
 # Icepak bands, ABT #461).
 import json, subprocess, sys, os, glob, re, time
+_MKF_ROOT = __import__("pathlib").Path(__file__).resolve().parents[2]  # ABT #1596: this checkout, not a developer path
 
-OMFEM = "/home/alf/OpenMagnetics/OMFEM/build/omfem_mas"
-EXAMPLES = sorted(glob.glob("/home/alf/OpenMagnetics/MAS/examples/*.json"))
+OMFEM = os.environ.get("OMFEM_MAS")
+if not OMFEM:
+    sys.exit("Set OMFEM_MAS to the omfem_mas binary (e.g. <OMFEM checkout>/build/omfem_mas)")
+EXAMPLES = sorted(glob.glob(str(_MKF_ROOT / "MAS" / "examples/*.json")))
 OUT = sys.argv[1]
 TIMEOUT = 1200
 

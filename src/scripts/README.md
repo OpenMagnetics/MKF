@@ -29,13 +29,13 @@ The script performs the following workflow:
 
 ```bash
 # Run with default examples folder
-python3 /home/alf/OpenMagnetics/MKF/src/scripts/generate_temperature_tests.py
+python3 <MKF checkout>/src/scripts/generate_temperature_tests.py
 
 # Specify custom examples folder
-python3 /home/alf/OpenMagnetics/MKF/src/scripts/generate_temperature_tests.py /path/to/examples
+python3 <MKF checkout>/src/scripts/generate_temperature_tests.py /path/to/examples
 
 # Use with Windows path
-python3 /home/alf/OpenMagnetics/MKF/src/scripts/generate_temperature_tests.py "C:/Users/Alfonso/wuerth/Ansyas/examples"
+python3 <MKF checkout>/src/scripts/generate_temperature_tests.py "$ANSYAS_DIR/examples"
 ```
 
 ### Options
@@ -88,16 +88,16 @@ TEST_CASE("Temperature_Concentric_ETD_49_2W_35T_Bobbin_Icepak", "[temperature][i
 
 ```bash
 # 1. Navigate to the script directory
-cd /home/alf/OpenMagnetics/MKF/src/scripts
+cd <MKF checkout>/src/scripts
 
 # 2. Run the generator
 python3 generate_temperature_tests.py
 
 # 3. Review generated tests
-cat /home/alf/OpenMagnetics/MKF/tests/TestTemperature.cpp | tail -100
+cat <MKF checkout>/tests/TestTemperature.cpp | tail -100
 
 # 4. Build and run the new tests
-cd /home/alf/OpenMagnetics/MKF/build
+cd <MKF checkout>/build
 make -j$(nproc)
 ./tests/TestTemperature "[icepak-validation]"
 ```
@@ -111,7 +111,7 @@ The script provides detailed output:
 Generate Temperature Tests from Ansyas Icepak
 ======================================================================
 Examples folder: C:\Users\Alfonso\wuerth\Ansyas\examples
-Test file: /home/alf/OpenMagnetics/MKF/tests/TestTemperature.cpp
+Test file: <MKF checkout>/tests/TestTemperature.cpp
 ======================================================================
 
 Found 5 JSON files
@@ -133,7 +133,7 @@ Tests generated: 5
 Tests skipped (already exist): 0
 Errors: 0
 
-Tests added to: /home/alf/OpenMagnetics/MKF/tests/TestTemperature.cpp
+Tests added to: <MKF checkout>/tests/TestTemperature.cpp
 Remember to:
 1. Review the generated tests
 2. Replace placeholder values with actual Icepak results
@@ -148,7 +148,7 @@ Add to your CI pipeline:
 # .github/workflows/temperature-tests.yml
 - name: Generate Temperature Tests
   run: |
-    python3 /home/alf/OpenMagnetics/MKF/src/scripts/generate_temperature_tests.py \
+    python3 <MKF checkout>/src/scripts/generate_temperature_tests.py \
       --no-placeholders  # Only generate if Icepak is available
 ```
 

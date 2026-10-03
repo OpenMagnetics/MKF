@@ -10,6 +10,8 @@
 #include "support/Utils.h"
 #include "json.hpp"
 #include "Fixtures.h"
+#include "TestingUtils.h"
+#include <source_location>
 
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
@@ -20,16 +22,16 @@ using namespace MAS;
 using namespace OpenMagnetics;
 
 namespace {
-constexpr auto kCorruptToroidFixture =
-    "/home/alf/OpenMagnetics/WebFrontend/tests/fixtures/toroidal_stale_pin_corrupt_t402416.json";
+// ABT #1596: copied from WebFrontend/tests/fixtures so the smoke test runs in any checkout
+// instead of skipping wherever a developer's sibling repo is absent.
+const auto kCorruptToroidFixture = OpenMagneticsTesting::get_test_data_path(
+    std::source_location::current(), "toroidal_stale_pin_corrupt_t402416.json");
 }
 
 TEST_CASE("Test_Filling_Factors_Area_Fraction_Is_Not_An_Overfill_Ratio", "[coil][filling-factor][smoke-test]") {
     settings.reset();
     std::ifstream file(kCorruptToroidFixture);
-    if (!file.good()) {
-        SKIP("WebFrontend fixture not available in this checkout");
-    }
+    REQUIRE(file.good());
     json masJson = json::parse(file);
     json magneticJson = masJson.contains("magnetic") ? masJson["magnetic"] : masJson;
 

@@ -7,9 +7,9 @@ echo "==========================================================================
 echo ""
 
 # Set paths
-SCRIPT_DIR="/home/alf/OpenMagnetics/MKF/src/scripts"
-EXAMPLES_DIR="C:\Users\Alfonso\wuerth\Ansyas\examples"
-TEST_FILE="/home/alf/OpenMagnetics/MKF/tests/TestTemperature.cpp"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+EXAMPLES_DIR="${ANSYAS_DIR:?set ANSYAS_DIR to the Ansyas checkout}/examples"
+TEST_FILE="$SCRIPT_DIR/../../tests/TestTemperature.cpp"
 
 echo "Script location: $SCRIPT_DIR/generate_temperature_tests.py"
 echo "Examples folder: $EXAMPLES_DIR"

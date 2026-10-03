@@ -24,10 +24,11 @@ import sys
 import urllib.request
 from datetime import date
 from pathlib import Path
+_MKF_ROOT = __import__("pathlib").Path(__file__).resolve().parents[1]  # ABT #1596: this checkout, not a developer path
 
 OUT_DIR = Path(__file__).resolve().parent
-MAS_SCHEMAS = Path("/home/alf/OpenMagnetics/MAS/schemas")
-PEAS_SCHEMAS = Path("/home/alf/OpenMagnetics/PEAS/schemas")
+MAS_SCHEMAS = Path(str(_MKF_ROOT / "MAS" / "schemas"))
+PEAS_SCHEMAS = Path(str(_MKF_ROOT / "PEAS" / "schemas"))
 
 BASE = "https://redexpert.we-online.com/redexpert"
 UA = ("Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "

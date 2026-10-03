@@ -4993,8 +4993,9 @@ namespace {
     }
     // TEMPORARY (ABT #685): repaint Alf's buck-inductor toroid with the new outer-crossing
     // placement so the anchored crossings can be looked at. Writes straight to the path he asked
-    // for. Remove once reviewed.
-    TEST_CASE("Test_Tmp_Buck_Toroid_Repaint", "[tmp-buck]") {
+    // for. Remove once reviewed. Hidden ([.]): it reads and writes MVB++ paths on the developer's
+    // machine (ABT #1596), so it is a manual diagnostic, not part of any suite.
+    TEST_CASE("Test_Tmp_Buck_Toroid_Repaint", "[.][tmp-buck]") {
         clear_databases();
         std::ifstream json_file("/home/alf/OpenMagnetics/MVB++/tests/mas_complete_fixtures/"
                                 "buck_inductor_complete.json");

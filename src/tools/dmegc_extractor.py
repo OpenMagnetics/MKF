@@ -3,6 +3,7 @@ import ndjson
 import pathlib
 import numpy
 import re
+_MKF_ROOT = __import__("pathlib").Path(__file__).resolve().parents[2]  # ABT #1596: this checkout, not a developer path
 
 density_per_material = {
     "DMR25": 4900,
@@ -393,7 +394,7 @@ def add_material(material):
     mas_advanced_materials[material] = mas_advanced_datum
 
 
-permeability_vs_temperature_spreadsheet_path = "/home/alf/OpenMagnetics/MKF/src/tools/temp/dmegc uT - uT.csv"
+permeability_vs_temperature_spreadsheet_path = str(_MKF_ROOT / "src/tools/temp/dmegc uT - uT.csv")
 
 data = pandas.read_csv(permeability_vs_temperature_spreadsheet_path)
 materials = data.columns[1:]
@@ -415,7 +416,7 @@ for material in materials:
         mas_materials[material]["permeability"]["initial"].append({"magneticFieldDcBias": 0, "temperature": float(row["temperature"]), "value": float(row[material])})
 
 
-permeability_vs_temperature_spreadsheet_path = "/home/alf/OpenMagnetics/MKF/src/tools/temp/DMEGC - u vs t.csv"
+permeability_vs_temperature_spreadsheet_path = str(_MKF_ROOT / "src/tools/temp/DMEGC - u vs t.csv")
 
 data = pandas.read_csv(permeability_vs_temperature_spreadsheet_path)
 for index in range(len(data.columns)):
@@ -434,7 +435,7 @@ for index in range(len(data.columns)):
     for index, row in material_data.iterrows():
         mas_materials[material]["permeability"]["initial"].append({"temperature": float(row.iloc[0]), "value": float(row.iloc[1])})
 
-complex_permeability_spreadsheet_path = "/home/alf/OpenMagnetics/MKF/src/tools/temp/dmegc u1u2f - u1u2f.csv"
+complex_permeability_spreadsheet_path = str(_MKF_ROOT / "src/tools/temp/dmegc u1u2f - u1u2f.csv")
 
 data = pandas.read_csv(complex_permeability_spreadsheet_path)
 
@@ -456,7 +457,7 @@ for index in range(len(data.columns)):
         mas_materials[material]["permeability"]["complex"]["real"].append({"frequency": float(row.iloc[0]), "value": float(row.iloc[1])})
         mas_materials[material]["permeability"]["complex"]["imaginary"].append({"frequency": float(row.iloc[0]), "value": float(row.iloc[2])})
 
-complex_permeability_spreadsheet_path = "/home/alf/OpenMagnetics/MKF/src/tools/temp/DMEGC - complex.csv"
+complex_permeability_spreadsheet_path = str(_MKF_ROOT / "src/tools/temp/DMEGC - complex.csv")
 
 data = pandas.read_csv(complex_permeability_spreadsheet_path)
 
@@ -479,7 +480,7 @@ for index in range(len(data.columns)):
     for index, row in real_material_data.iterrows():
         mas_materials[material]["permeability"]["complex"]["real"].append({"frequency": float(row.iloc[0]), "value": float(row.iloc[1])})
 
-bh_spreadsheet_path = "/home/alf/OpenMagnetics/MKF/src/tools/temp/dmegc BH - BH.csv"
+bh_spreadsheet_path = str(_MKF_ROOT / "src/tools/temp/dmegc BH - BH.csv")
 
 data = pandas.read_csv(bh_spreadsheet_path)
 
@@ -536,7 +537,7 @@ for index in range(len(data.columns)):
         "temperature": temperature
     })
 
-amplitude_permeability_spreadsheet_path = "/home/alf/OpenMagnetics/MKF/src/tools/temp/dmegc uaB - uaB.csv"
+amplitude_permeability_spreadsheet_path = str(_MKF_ROOT / "src/tools/temp/dmegc uaB - uaB.csv")
 
 data = pandas.read_csv(amplitude_permeability_spreadsheet_path)
 
@@ -558,7 +559,7 @@ for index in range(len(data.columns)):
     for index, row in material_data.iterrows():
         mas_advanced_materials[material]["permeability"]["amplitude"].append({"value": float(row.iloc[1]), "temperature": temperature, "magneticFluxDensityPeak": float(row.iloc[0]) / 1000})
 
-permeability_vs_bias_spreadsheet_path = "/home/alf/OpenMagnetics/MKF/src/tools/temp/dmegc uHdc - uHdc.csv"
+permeability_vs_bias_spreadsheet_path = str(_MKF_ROOT / "src/tools/temp/dmegc uHdc - uHdc.csv")
 
 data = pandas.read_csv(permeability_vs_bias_spreadsheet_path)
 
@@ -580,7 +581,7 @@ for index in range(len(data.columns)):
     for index, row in material_data.iterrows():
         mas_materials[material]["permeability"]["initial"].append({"magneticFieldDcBias": float(row.iloc[0]), "temperature": temperature, "value": float(row.iloc[1])})
 
-losses_vs_temperature_spreadsheet_path = "/home/alf/OpenMagnetics/MKF/src/tools/temp/DMEGC - loss vs T.csv"
+losses_vs_temperature_spreadsheet_path = str(_MKF_ROOT / "src/tools/temp/DMEGC - loss vs T.csv")
 
 data = pandas.read_csv(losses_vs_temperature_spreadsheet_path)
 material_column_ranges = {}
@@ -647,7 +648,7 @@ for material, material_indexes in material_column_ranges.items():
                 }
             )
 
-losses_vs_frequency_spreadsheet_path = "/home/alf/OpenMagnetics/MKF/src/tools/temp/DMEGC - loss vs f.csv"
+losses_vs_frequency_spreadsheet_path = str(_MKF_ROOT / "src/tools/temp/DMEGC - loss vs f.csv")
 
 data = pandas.read_csv(losses_vs_frequency_spreadsheet_path)
 material_column_ranges = {}
@@ -721,7 +722,7 @@ for material, material_indexes in material_column_ranges.items():
                     "origin": "manufacturer"
                 }
             )
-permeability_vs_bias_spreadsheet_path = "/home/alf/OpenMagnetics/MKF/src/tools/temp/DMEGC - loss factor.csv"
+permeability_vs_bias_spreadsheet_path = str(_MKF_ROOT / "src/tools/temp/DMEGC - loss factor.csv")
 
 data = pandas.read_csv(permeability_vs_bias_spreadsheet_path)
 

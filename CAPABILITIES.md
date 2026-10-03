@@ -12,7 +12,7 @@ Conventions:
 - Names below are **C++ symbols**. PyOM names usually mirror them in
   snake_case. The canonical Python surface is in
   `src/PyMKF/PyMKFWrapper.cpp` (see §9) and in
-  `/home/alf/OpenMagnetics/PyMKF/PyOpenMagnetics.pyi` (read PyMKF's
+  `PyOpenMagnetics.pyi` in the PyMKF repository (read PyMKF's
   AGENTS.md first — the stub is a signature reference, not a usage guide).
 - Methods listed are the ones a downstream caller would actually invoke;
   getters/setters/ctors omitted.

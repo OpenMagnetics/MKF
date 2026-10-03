@@ -5,6 +5,7 @@ import pandas
 import pathlib
 import io
 import chardet
+_MKF_ROOT = __import__("pathlib").Path(__file__).resolve().parents[2]  # ABT #1596: this checkout, not a developer path
 
 
 
@@ -21,4 +22,4 @@ def convert(filename):
 
 
 if __name__ == '__main__':  # pragma: no cover
-    convert("/home/alf/OpenMagnetics/MKF/src/tools/Inductor.dev")
+    convert(str(_MKF_ROOT / "src/tools/Inductor.dev"))

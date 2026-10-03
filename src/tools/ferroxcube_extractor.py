@@ -5,10 +5,11 @@ import numpy
 import glob
 import os
 import re
+_MKF_ROOT = __import__("pathlib").Path(__file__).resolve().parents[2]  # ABT #1596: this checkout, not a developer path
 
 
 # spreadsheet_path = "/mnt/c/Users/Alfonso/Downloads/FXC Materials Permeability.xlsx"
-current_advanced_materials_path = "/home/alfonso/OpenMagnetics/MAS/data/advanced_core_materials.ndjson"
+current_advanced_materials_path = str(_MKF_ROOT / "MAS" / "data/advanced_core_materials.ndjson")
 
 current_advanced_materials_raw = ndjson.load(open(current_advanced_materials_path, "r"))
 # # print(current_advanced_materials_raw[0]["name"])
@@ -106,7 +107,7 @@ current_advanced_materials_raw = ndjson.load(open(current_advanced_materials_pat
 
 temperatures = [25, 100]
 
-for file in glob.iglob('/home/alfonso/OpenMagnetics/MKF/build/BH loops Ferroxcube/*', recursive=True):
+for file in glob.iglob(str(_MKF_ROOT / 'build/BH loops Ferroxcube/*'), recursive=True):
 
     material = file.split("_")[1]
 

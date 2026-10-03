@@ -3,6 +3,7 @@ import json
 import pprint
 import pathlib
 import ndjson
+_MKF_ROOT = __import__("pathlib").Path(__file__).resolve().parents[2]  # ABT #1596: this checkout, not a developer path
 
 
 def heavy_compress_magnetic(magnetic: dict) -> dict:
@@ -42,7 +43,7 @@ def manufacturerInfo(row):
     return row["magnetic"]
 
 
-data_path = "/home/alf/OpenMagnetics/MKF/output/magnetics.csv"
+data_path = str(_MKF_ROOT / "output/magnetics.csv")
 data = pandas.read_csv(data_path)
 
 
