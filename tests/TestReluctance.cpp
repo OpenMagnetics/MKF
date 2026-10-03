@@ -426,6 +426,25 @@ namespace {
         }
     }
 
+    // The fringing-factor inverse scans gap lengths from the residual gap to the column height.
+    // A central column no taller than the residual gap is broken core data; it used to come back
+    // as "maximum gap = residual gap", which made the fringing filter reject every gapped design
+    // on that core without saying why. It must name the data instead.
+    TEST_CASE("Test_Gap_By_Fringing_Factor_Refuses_A_Column_Shorter_Than_The_Residual_Gap", "[physical-model][reluctance][gap][residual-gap]") {
+        auto reluctanceModel = ReluctanceModel::factory(ReluctanceModels::ZHANG);
+        auto core = OpenMagneticsTesting::get_quick_core("E 42/21/20", OpenMagneticsTesting::get_ground_gap(0.5e-3));
+        auto processedDescription = core.get_processed_description().value();
+        auto columns = processedDescription.get_columns();
+        for (auto& column : columns) {
+            if (column.get_type() == ColumnType::CENTRAL) {
+                column.set_height(Constants().residualGap / 2);
+            }
+        }
+        processedDescription.set_columns(columns);
+        core.set_processed_description(processedDescription);
+        CHECK_THROWS_AS(reluctanceModel->get_gapping_by_fringing_factor(core, 1.2), InvalidInputException);
+    }
+
     TEST_CASE("Test_Reluctance_3C96", "[physical-model][reluctance][smoke-test]") {
         double dcCurrent = 10;
         double ambientTemperature = 50;

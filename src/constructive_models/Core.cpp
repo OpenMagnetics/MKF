@@ -899,6 +899,9 @@ bool Core::distribute_and_process_gap() {
     }
 
     if (numberNonResidualGaps + numberResidualGaps == 0) {
+        // The data states no gap: every column gets the normally-ground residual gap
+        // (Constants::residualGap, EPCOS processing notes p.2, see Constants.h). A core whose
+        // ungapped A_L is published states its own residual gapping and never reaches here.
         for (size_t i = 0; i < columns.size(); ++i) {
             CoreGap gap;
             gap.set_type(GapType::RESIDUAL);
@@ -1140,6 +1143,8 @@ bool Core::distribute_and_process_gap() {
             newGapping.push_back(gap);
         }
         if (residualGaps.size() < returnColumns.size()) {
+            // Return columns the data gives no residual gap for: the normally-ground value per
+            // column (Constants::residualGap, EPCOS processing notes p.2, see Constants.h).
             for (size_t i = 0; i < returnColumns.size(); ++i) {
                 CoreGap gap;
                 gap.set_type(GapType::RESIDUAL);

@@ -937,9 +937,16 @@ double ReluctanceModel::get_gapping_by_fringing_factor(Core core, double fringin
     // against the limb (the fringing field spans a core segment), so the large root lives outside
     // the model's validity domain and no caller wants a gap that fills the limb.
     double columnHeight = centralColumns[0].get_height();
+    // The scan runs from the residual gap (the smallest gap a ground mating plane has, see
+    // Constants.h) to the full column height. A central column no taller than that residual gap
+    // is not a core geometry: it used to return the residual gap as the "maximum gap", which
+    // silently rejected every gapped design on the core instead of naming the broken data.
     double minimumGapLength = constants.residualGap;
     if (columnHeight <= minimumGapLength) {
-        return minimumGapLength;
+        throw InvalidInputException(ErrorCode::INVALID_CORE_DATA,
+            "get_gapping_by_fringing_factor: the central column height (" + std::to_string(columnHeight) +
+            " m) is not longer than the residual gap (" + std::to_string(minimumGapLength) +
+            " m); the core's processed columns are not a valid geometry");
     }
 
     auto factorAt = [&](double candidateGapLength) {

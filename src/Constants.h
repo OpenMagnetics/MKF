@@ -10,6 +10,19 @@ namespace OpenMagnetics {
 struct Constants {
     Constants() {};
     ~Constants() {};
+    // Residual air gap of an UNGAPPED ground ferrite core, PER COLUMN (per mating-plane contact).
+    // Source: EPCOS (TDK), "Ferrites and accessories - Processing notes" (09/06), p.2,
+    // https://www.dextermag.com/wp-content/uploads/2017/03/Dexter_EPCOS_Ferrite_Processing_Notes.pdf :
+    //   "precision-ground/lapped cores  s_resid ~ 1 um; normally ground cores  s_resid ~ 10 um ...
+    //    The residual air gap s_resid here is the total of the residual air gaps at the leg or
+    //    centerpost contact surfaces."
+    // Derivation of the per-column value: every flux path crosses the mating plane twice, out
+    // through one column and back through another (the outer legs of an E/PQ/RM core are in
+    // parallel, so they count as one return crossing). The quoted total per path is therefore
+    // 2 x the per-column gap, and the "normally ground" 10 um gives 10 um / 2 = 5 um per column.
+    // It applies ONLY when the core data states no gap at all: a core whose vendor publishes an
+    // ungapped A_L carries its residual gap in its own gapping (type "residual"), and that stated
+    // length is used as given.
     const double residualGap = 5e-6;
     const double minimumNonResidualGap = 0.1e-3;
     const double vacuumPermeability = 1.25663706212e-6;
