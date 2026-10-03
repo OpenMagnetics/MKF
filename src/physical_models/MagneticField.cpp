@@ -503,6 +503,11 @@ WindingWindowMagneticStrengthFieldPhasorOutput MagneticField::calculate_magnetic
         neutralCellsGuard.emplace(settings, &Settings::get_magnetic_field_mirroring_neutral_cells,
                                   &Settings::set_magnetic_field_mirroring_neutral_cells, true);
     }
+    // ABT #1304: flat inducing turns are exact Binns-Lawrenson rectangles (one per turn) on the neutral path and whenever
+    // the caller asks for the CENTER mesher under BINNS_LAWRENSON. Then the width samples can take the turns' field
+    // (the #182 exclusion guards only against filament stand-ins) and they are kept on ungapped cores too.
+    const bool exactFlatInducing = windowBoundaryModel ||
+        (mesherToUse && mesherToUse.value() == CoilMesherModels::CENTER && _magneticFieldStrengthModel == MagneticFieldStrengthModels::BINNS_LAWRENSON);
 
     // MAS excitation convention (2026-09-24): direction by isolation side, not by index.
     std::vector<int8_t> currentDirectionPerWinding;
@@ -628,7 +633,7 @@ WindingWindowMagneticStrengthFieldPhasorOutput MagneticField::calculate_magnetic
     // ABT #1304: on the neutral path a residual gap IS a source (its wall sheet), and the field it throws on the copper
     // decays over tens of um -- the edge points alone would spread it uniformly across the whole face. Keep the
     // samples there so the perpendicular profile is resolved.
-    if (!hasFunctionalGap && !windowBoundaryModel) {
+    if (!hasFunctionalGap && !exactFlatInducing) {
         for (auto& inducedField : inducedFields) {
             auto& inducedData = inducedField.get_mutable_data();
             inducedData.erase(std::remove_if(inducedData.begin(), inducedData.end(),
@@ -780,7 +785,7 @@ WindingWindowMagneticStrengthFieldPhasorOutput MagneticField::calculate_magnetic
             }
             key.strings.push_back(point.get_label() ? "1" + point.get_label().value() : "0");
         };
-        key.numbers = {static_cast<double>(_magneticFieldStrengthModel), multiWindowCore ? 1.0 : 0.0, windowBoundaryModel ? 1.0 : 0.0, coreColumnWidth, coreWidth,
+        key.numbers = {static_cast<double>(_magneticFieldStrengthModel), multiWindowCore ? 1.0 : 0.0, windowBoundaryModel ? 1.0 : 0.0, exactFlatInducing ? 1.0 : 0.0, coreColumnWidth, coreWidth,
                        static_cast<double>(coreShapeFamily), _model->_windingWindowBreadth, static_cast<double>(numberWindings)};
         for (size_t windingIndex = 0; windingIndex < numberWindings; ++windingIndex) {
             json wireJson;
@@ -888,7 +893,7 @@ WindingWindowMagneticStrengthFieldPhasorOutput MagneticField::calculate_magnetic
             // The #182 exclusion guards against FILAMENT stand-ins for neighbouring flat conductors. On the neutral
             // (MMF_BOUNDARY) path each neighbour is one exact Binns-Lawrenson rectangle and the sample's own conductor
             // is skipped, so the samples take the complete field: turns, images and wall sources (ABT #1304).
-            if (!windowBoundaryModel && inducedFieldPoint.get_label() && inducedFieldPoint.get_label().value() == "widthsample") {
+            if (!exactFlatInducing && inducedFieldPoint.get_label() && inducedFieldPoint.get_label().value() == "widthsample") {
                 continue;
             }
             bool inducedPointInsideCore = is_inside_core(inducedFieldPoint, coreColumnWidth, coreWidth, coreShapeFamily);
@@ -1530,6 +1535,19 @@ WindingWindowMagneticStrengthFieldPhasorOutput MagneticField::calculate_magnetic
         quadratureComplexFieldPerHarmonic[harmonicIndex].set_data(quadratureFieldPoints);
     }
 
+    // ABT #1304: with exact flat inducing turns the width samples took the complete field (see exactFlatInducing);
+    // say so, so a proximity model can read the parallel component off them too.
+    if (exactFlatInducing) {
+        for (auto* fields : {&complexFieldPerHarmonic, &quadratureComplexFieldPerHarmonic}) {
+            for (auto& field : *fields) {
+                for (auto& point : field.get_mutable_data()) {
+                    if (point.get_label() && point.get_label().value() == "widthsample") {
+                        point.set_label("fullwidthsample");
+                    }
+                }
+            }
+        }
+    }
     WindingWindowMagneticStrengthFieldPhasorOutput windingWindowMagneticStrengthFieldOutput;
     windingWindowMagneticStrengthFieldOutput.set_field_per_frequency(complexFieldPerHarmonic);
     windingWindowMagneticStrengthFieldOutput.set_quadrature_field_per_frequency(quadratureComplexFieldPerHarmonic);

@@ -332,7 +332,41 @@ WindingLossesOutput WindingLosses::calculate_losses(Magnetic magnetic, Operating
     SettingsGuard<double> harmonicGuard(settings,
         &Settings::get_harmonic_amplitude_threshold,
         &Settings::set_harmonic_amplitude_threshold, thresholdToUse);
-    auto windingWindowMagneticStrengthFieldOutput = magneticField.calculate_magnetic_field_strength_field(operatingPoint, magnetic);
+    // ABT #1304: the Wang mesher puts a flat turn's FULL current on each of its two inducing points; only the WANG field
+    // kernel halves them. Under any other kernel the turn's current is counted twice. When every flat winding is
+    // charged by MARTINEZ (which reads the field of complete turns), mesh the inducing turns with the CENTER mesher:
+    // one exact Binns-Lawrenson rectangle per turn, with the same core images round wire gets. Other proximity models
+    // keep the historical mesh (changing their pinned behaviour is a default change, ABT #1304).
+    std::optional<CoilMesherModels> inducingMesher;
+    if (modelToUse != MagneticFieldStrengthModels::WANG) {
+        bool anyFlatWinding = false;
+        bool everyFlatWindingMartinez = true;
+        auto& coilForMesher = magnetic.get_mutable_coil();
+        for (size_t windingIndex = 0; windingIndex < coilForMesher.get_functional_description().size(); ++windingIndex) {
+            auto wireType = coilForMesher.get_wire_type(windingIndex);
+            if (wireType != WireType::RECTANGULAR && wireType != WireType::FOIL && wireType != WireType::PLANAR) {
+                continue;
+            }
+            anyFlatWinding = true;
+            std::optional<WindingProximityEffectLossesModels> proximityModel;
+            if (modelSet) {
+                auto found = modelSet->proximityModelPerWireType.find(wireType);
+                if (found != modelSet->proximityModelPerWireType.end()) {
+                    proximityModel = found->second;
+                }
+            }
+            else {
+                proximityModel = _models.proximityEffectModel;
+            }
+            if (!proximityModel || proximityModel.value() != WindingProximityEffectLossesModels::MARTINEZ) {
+                everyFlatWindingMartinez = false;
+            }
+        }
+        if (anyFlatWinding && everyFlatWindingMartinez) {
+            inducingMesher = CoilMesherModels::CENTER;
+        }
+    }
+    auto windingWindowMagneticStrengthFieldOutput = magneticField.calculate_magnetic_field_strength_field(operatingPoint, magnetic, std::nullopt, std::nullopt, inducingMesher);
 
     windingLossesOutput = modelSet ?
         WindingProximityEffectLosses::calculate_proximity_effect_losses(magnetic.get_coil(), temperature, windingLossesOutput, windingWindowMagneticStrengthFieldOutput, std::nullopt, modelSet->proximityModelPerWireType) :

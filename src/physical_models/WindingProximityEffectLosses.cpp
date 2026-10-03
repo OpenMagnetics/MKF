@@ -416,6 +416,14 @@ std::pair<double, std::vector<std::pair<double, double>>> WindingProximityEffect
         }
         stackedModel->set_perpendicular_outline_factor(perpendicularOutlineFactor.value());
     }
+    auto martinezModel = std::dynamic_pointer_cast<WindingProximityEffectLossesMartinezModel>(model);
+    if (martinezModel) {
+        if (!perpendicularOutlineFactor) {
+            throw InvalidInputException(ErrorCode::MISSING_DATA,
+                "MARTINEZ needs the turn's stack-outline factor, which only the coil geometry gives: evaluate it through calculate_proximity_effect_losses");
+        }
+        martinezModel->set_perpendicular_outline_factor(perpendicularOutlineFactor.value());
+    }
     if (!wire.get_number_conductors()) {
         wire.set_number_conductors(1);
     }
@@ -427,7 +435,7 @@ std::pair<double, std::vector<std::pair<double, double>>> WindingProximityEffect
     double totalProximityEffectLossesPerMeter = 0;
     std::vector<std::pair<double, double>> lossesPerHarmonic;
 
-    auto isWidthSample = [](const ComplexFieldPoint& point) { return point.get_label() && point.get_label().value() == "widthsample"; };
+    auto isWidthSample = [](const ComplexFieldPoint& point) { return point.get_label() && is_width_sample_label(point.get_label().value()); };
     for (size_t fieldIndex = 0; fieldIndex < fields.size(); ++fieldIndex) {
         auto& complexField = fields[fieldIndex];
         auto frequency = complexField.get_frequency();
@@ -466,6 +474,10 @@ std::pair<double, std::vector<std::pair<double, double>>> WindingProximityEffect
         totalProximityEffectLossesPerMeter += turnLosses;
     }
 
+    if (martinezModel) {
+        // The model instance is shared: a later direct single-conductor call must not inherit this turn's stack.
+        martinezModel->set_perpendicular_outline_factor(std::nullopt);
+    }
     return {totalProximityEffectLossesPerMeter, lossesPerHarmonic};
 }
 
@@ -496,7 +508,9 @@ WindingLossesOutput WindingProximityEffectLosses::calculate_proximity_effect_los
         if (modelPerWireType && modelPerWireType->contains(coil.get_wire_type(windingIndex))) {
             windingModelOverride = modelPerWireType->at(coil.get_wire_type(windingIndex));
         }
-        if (std::dynamic_pointer_cast<WindingProximityEffectLossesWangStackedModel>(get_model(coil.get_wire_type(windingIndex), windingModelOverride))) {
+        auto windingModel = get_model(coil.get_wire_type(windingIndex), windingModelOverride);
+        if (std::dynamic_pointer_cast<WindingProximityEffectLossesWangStackedModel>(windingModel) ||
+            std::dynamic_pointer_cast<WindingProximityEffectLossesMartinezModel>(windingModel)) {
             perpendicularOutlineFactorPerTurn = WindingProximityEffectLossesWangStackedModel::calculate_perpendicular_outline_factors(coil);
             break;
         }
@@ -898,7 +912,7 @@ double WindingProximityEffectLossesWangModel::calculate_turn_losses_impl(Wire& w
                 quadratureNonPlanarHe += datum.get_real();
                 quadratureHy1 += datum.get_imaginary();
             }
-            else if (datum.get_label().value() == "widthsample") {
+            else if (is_width_sample_label(datum.get_label().value())) {
                 quadratureWidthSamplesHPerpendicular.push_back(wire.get_type() == WireType::FOIL ? datum.get_real() : datum.get_imaginary());
             }
         }
@@ -927,7 +941,7 @@ double WindingProximityEffectLossesWangModel::calculate_turn_losses_impl(Wire& w
             Hy1 += datum.get_imaginary();
             lumpedPointCount++;
         }
-        else if (datum.get_label().value() == "widthsample") {
+        else if (is_width_sample_label(datum.get_label().value())) {
             // Width-resolved sample of the total (proximity + gap-fringing,
             // superposed at field level) H component perpendicular to the wide
             // face: y for planar/rectangular, x for foil.
@@ -1504,7 +1518,7 @@ double WindingProximityEffectLossesEwaldModel::calculate_turn_losses(Wire wire, 
     double sumFieldY = 0;
     size_t count = 0;
     for (const auto& point : data) {
-        if (point.get_label() && point.get_label().value() == "widthsample") {
+        if (point.get_label() && is_width_sample_label(point.get_label().value())) {
             continue;
         }
         sumFieldX += point.get_real();
@@ -1623,6 +1637,12 @@ double WindingProximityEffectLossesMartinezModel::calculate_turn_losses_impl(Wir
     double edgeFieldSum = 0;
     size_t edgeCount = 0;
     std::vector<double> quadraturePerpendicularProfile;
+    // Width-resolved PARALLEL field (ABT #1304), read off "fullwidthsample" points: the field along the wide face
+    // varies across the width (near the window walls, a gap, the stack ends) and the loss goes with its SQUARE, so
+    // the mid-width value squared under-counts every non-uniform profile. Each strip of the face is the 1-D slab
+    // problem in its own local field, so the exact slab kernel applies strip by strip.
+    std::vector<double> parallelProfile;
+    std::vector<double> quadratureParallelProfile;
     double quadratureParallelFieldSum = 0;
     double quadratureEdgeFieldSum = 0;
     if (quadratureData) {
@@ -1634,8 +1654,11 @@ double WindingProximityEffectLossesMartinezModel::calculate_turn_losses_impl(Wir
             const auto label = point.get_label().value();
             const double fieldX = point.get_real();
             const double fieldY = point.get_imaginary();
-            if (label == "widthsample") {
+            if (is_width_sample_label(label)) {
                 quadraturePerpendicularProfile.push_back(wideAlongY ? fieldX : fieldY);
+                if (label == "fullwidthsample") {
+                    quadratureParallelProfile.push_back(wideAlongY ? fieldY : fieldX);
+                }
             }
             else if (label == "top" || label == "bottom") {
                 quadratureParallelFieldSum += (wideAlongY ? fieldY : fieldX);
@@ -1658,8 +1681,11 @@ double WindingProximityEffectLossesMartinezModel::calculate_turn_losses_impl(Wir
         // get_real() is Hx and get_imaginary() is Hy: these are field components, not a phasor.
         const double fieldX = point.get_real();
         const double fieldY = point.get_imaginary();
-        if (label == "widthsample") {
+        if (is_width_sample_label(label)) {
             perpendicularProfile.push_back(wideAlongY ? fieldX : fieldY);
+            if (label == "fullwidthsample") {
+                parallelProfile.push_back(wideAlongY ? fieldY : fieldX);
+            }
         }
         else if (label == "top" || label == "bottom") {
             // The wide faces of a rectangular wire; the flat faces of a foil are left/right.
@@ -1716,7 +1742,21 @@ double WindingProximityEffectLossesMartinezModel::calculate_turn_losses_impl(Wir
     const double surfaceResistance = resistivity / skinDepth;
     const double angularFrequency = 2 * std::numbers::pi * frequency;
     const double vacuumPermeability = Constants().vacuumPermeability;
-    const double meanParallelSquared = parallelCount > 0 ? pow(parallelFieldSum / double(parallelCount), 2) + pow(quadratureParallelFieldSum / double(parallelCount), 2) : 0.0;
+    double meanParallelSquared = parallelCount > 0 ? pow(parallelFieldSum / double(parallelCount), 2) + pow(quadratureParallelFieldSum / double(parallelCount), 2) : 0.0;
+    if (!parallelProfile.empty()) {
+        if (!quadratureParallelProfile.empty() && quadratureParallelProfile.size() != parallelProfile.size()) {
+            throw InvalidInputException(ErrorCode::INVALID_INPUT, "Martinez proximity losses: " + std::to_string(parallelProfile.size()) +
+                                        " in-phase full width samples but " + std::to_string(quadratureParallelProfile.size()) + " quadrature ones");
+        }
+        double sumSquares = 0;
+        for (double fieldValue : parallelProfile) {
+            sumSquares += fieldValue * fieldValue;
+        }
+        for (double fieldValue : quadratureParallelProfile) {
+            sumSquares += fieldValue * fieldValue;
+        }
+        meanParallelSquared = sumSquares / double(parallelProfile.size());
+    }
 
     // THE FLAT FACES HAVE AN EXACT SOLUTION, SO THEY GET IT (ABT #1274). A field along the wide
     // face diffuses through the thin dimension, which is the 1D slab problem and is solved in
@@ -1750,7 +1790,13 @@ double WindingProximityEffectLossesMartinezModel::calculate_turn_losses_impl(Wir
     double lossPerpendicular = 0;
     if (!profile.empty()) {
         const double edgeCrowdingFactor = calculate_edge_crowding_factor(wideDimension, thinDimension);
-        const double highFrequencyPerpendicular = 0.5 * edgeCrowdingFactor * surfaceResistance * integralPerpendicularSquared;
+        // ABT #1304: in a stack the excluded perpendicular field crowds at the STACK's outline, not at each member's:
+        // the member carries its share of the outline (see set_perpendicular_outline_factor). Isolated: exactly 1.
+        double stackOutlineFactor = 1;
+        if (_perpendicularOutlineFactor) {
+            stackOutlineFactor = _perpendicularOutlineFactor.value();
+        }
+        const double highFrequencyPerpendicular = 0.5 * edgeCrowdingFactor * stackOutlineFactor * surfaceResistance * integralPerpendicularSquared;
         // LF: the vector-potential variance across the face (omega^2), which for a uniform field
         // reduces to the y-term of the same equation (8).
         const double sampleStep = wideDimension / double(profile.size());

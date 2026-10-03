@@ -3787,6 +3787,50 @@ TEST_CASE("Test_Magnetic_Field_Abt1463_Roshen_Fringing_Follows_The_Gap_Flux", "[
 }
 
 
+// ABT #1304: E 42/21/20 3C97 flat-conductor fixtures for the Martinez scorecard and its OMFEM guards: 10 x 3 x 0.8 mm
+// rectangular pancakes (grade-1 enamel) or 8 x 0.2 x 20 mm foils, spread and centred, with a 1 mm ground gap or the
+// residual gaps only.
+static OpenMagnetics::Magnetic build_e42_flat_fixture(bool foil, bool gapped) {
+    std::string shapeName = "E 42/21/20";
+    std::vector<OpenMagnetics::Wire> wires;
+    OpenMagnetics::Wire wire;
+    std::vector<int64_t> numberTurns;
+    if (foil) {
+        // 8 foil turns 0.2 x 20 mm, 0.05 mm insulation each side.
+        numberTurns = {8};
+        wire.set_nominal_value_conducting_width(0.0002);
+        wire.set_nominal_value_conducting_height(0.02);
+        wire.set_nominal_value_outer_width(0.0003);
+        wire.set_nominal_value_outer_height(0.02);
+        wire.set_type(WireType::FOIL);
+    }
+    else {
+        // 10 pancakes of 3 x 0.8 mm, grade-1 enamel from the standard.
+        numberTurns = {10};
+        wire.set_nominal_value_conducting_width(0.003);
+        wire.set_nominal_value_conducting_height(0.0008);
+        InsulationWireCoating coating;
+        coating.set_type(InsulationWireCoatingType::ENAMELLED);
+        coating.set_grade(1);
+        wire.set_coating(coating);
+        wire.set_nominal_value_outer_width(OpenMagnetics::Wire::get_outer_width_rectangular(0.003, 1, WireStandard::IEC_60317));
+        wire.set_nominal_value_outer_height(OpenMagnetics::Wire::get_outer_height_rectangular(0.0008, 1, WireStandard::IEC_60317));
+        wire.set_type(WireType::RECTANGULAR);
+    }
+    wire.set_number_conductors(1);
+    wire.set_material("copper");
+    wires.push_back(wire);
+    auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, {1}, shapeName, 1,
+        WindingOrientation::OVERLAPPING, WindingOrientation::OVERLAPPING,
+        CoilAlignment::SPREAD, CoilAlignment::CENTERED, wires, false);
+    auto gapping = gapped ? OpenMagneticsTesting::get_ground_gap(0.001) : OpenMagneticsTesting::get_residual_gap();
+    auto core = OpenMagneticsTesting::get_quick_core(shapeName, gapping, 1, "3C97");
+    OpenMagnetics::Magnetic magnetic;
+    magnetic.set_core(core);
+    magnetic.set_coil(coil);
+    return magnetic;
+}
+
 // Martinez flat-conductor scorecard driver (hidden). Per-turn F_R = (ohmic + skin + proximity) / ohmic for every
 // model configuration in env MF_MODELS (';'-separated "FIELD/FRINGING/PROXIMITY" JSON names, '-' = automatic, or
 // "DEFAULT"), at every frequency in env MF_FREQS (comma separated), on the fixture env MF_FIXTURE: a
@@ -3814,46 +3858,6 @@ TEST_CASE("Debug_Martinez_Flat_Scorecard", "[debug][martinez-flat-scorecard][.]"
     const std::string fixture(fixtureName);
     const int repetitions = std::getenv("MF_REPS") ? std::stoi(std::getenv("MF_REPS")) : 3;
 
-    auto build_e42 = [&](bool foil, bool gapped) {
-        std::string shapeName = "E 42/21/20";
-        std::vector<OpenMagnetics::Wire> wires;
-        OpenMagnetics::Wire wire;
-        std::vector<int64_t> numberTurns;
-        if (foil) {
-            // 8 foil turns 0.2 x 20 mm, 0.05 mm insulation each side.
-            numberTurns = {8};
-            wire.set_nominal_value_conducting_width(0.0002);
-            wire.set_nominal_value_conducting_height(0.02);
-            wire.set_nominal_value_outer_width(0.0003);
-            wire.set_nominal_value_outer_height(0.02);
-            wire.set_type(WireType::FOIL);
-        }
-        else {
-            // 10 pancakes of 3 x 0.8 mm, grade-1 enamel from the standard.
-            numberTurns = {10};
-            wire.set_nominal_value_conducting_width(0.003);
-            wire.set_nominal_value_conducting_height(0.0008);
-            InsulationWireCoating coating;
-            coating.set_type(InsulationWireCoatingType::ENAMELLED);
-            coating.set_grade(1);
-            wire.set_coating(coating);
-            wire.set_nominal_value_outer_width(OpenMagnetics::Wire::get_outer_width_rectangular(0.003, 1, WireStandard::IEC_60317));
-            wire.set_nominal_value_outer_height(OpenMagnetics::Wire::get_outer_height_rectangular(0.0008, 1, WireStandard::IEC_60317));
-            wire.set_type(WireType::RECTANGULAR);
-        }
-        wire.set_number_conductors(1);
-        wire.set_material("copper");
-        wires.push_back(wire);
-        auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, {1}, shapeName, 1,
-            WindingOrientation::OVERLAPPING, WindingOrientation::OVERLAPPING,
-            CoilAlignment::SPREAD, CoilAlignment::CENTERED, wires, false);
-        auto gapping = gapped ? OpenMagneticsTesting::get_ground_gap(0.001) : OpenMagneticsTesting::get_residual_gap();
-        auto core = OpenMagneticsTesting::get_quick_core(shapeName, gapping, 1, "3C97");
-        OpenMagnetics::Magnetic magnetic;
-        magnetic.set_core(core);
-        magnetic.set_coil(coil);
-        return magnetic;
-    };
 
     struct Prepared {
         OpenMagnetics::Magnetic magnetic;
@@ -3893,8 +3897,8 @@ TEST_CASE("Debug_Martinez_Flat_Scorecard", "[debug][martinez-flat-scorecard][.]"
                 config.includeFringing = true;
                 config.mirroringDimension = 2;
                 bool foil = fixture.find("FOIL") != std::string::npos;
-                bool gapped = fixture.find("GAP") != std::string::npos;
-                config.createMagnetic = [=]() { return build_e42(foil, gapped); };
+                bool gapped = fixture.find("GAP1MM") != std::string::npos;
+                config.createMagnetic = [=]() { return build_e42_flat_fixture(foil, gapped); };
             }
             else if (fixture == "Seven_Turns_Rectangular_Ungapped_PQ2717") {
                 config = WindingLossesTestData::createSevenTurnsRectangularUngappedPQ2717Config();

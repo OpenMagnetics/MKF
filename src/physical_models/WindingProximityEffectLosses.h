@@ -19,6 +19,12 @@ using namespace MAS; // QUAL-001 TODO: qualify types and remove
 
 namespace OpenMagnetics {
 
+// Width-resolved samples across a flat conductor's wide face. "widthsample" points carry the gap-fringing field only
+// (turn fields at them are filament artefacts, ABT #182); "fullwidthsample" points carry the COMPLETE field of every
+// other turn, its images and the gap, which MagneticField emits only when each flat turn is one exact Binns-Lawrenson
+// rectangle (ABT #1304). Every reader of width samples accepts both; only MARTINEZ reads the full field off the second.
+inline bool is_width_sample_label(const std::string& label) { return label == "widthsample" || label == "fullwidthsample"; }
+
 
 class WindingProximityEffectLossesModel {
   private:
@@ -244,7 +250,14 @@ class WindingProximityEffectLossesMartinezModel : public WindingProximityEffectL
     // Its perpendicular term bridges two different quadratic forms, so it is not additive.
     double calculate_turn_losses_from_phasors(Wire wire, double frequency, std::vector<ComplexFieldPoint> inPhaseData, std::vector<ComplexFieldPoint> quadratureData, double temperature) override;
     bool consumes_width_samples() const override { return true; }
+    // ABT #1304: the turn's share of its stack outline (WindingProximityEffectLossesWangStackedModel::
+    // calculate_perpendicular_outline_factors). Flat conductors stacked with narrow slits exclude the field normal
+    // to their wide faces AS ONE BODY, so only the stack's outline carries the excluded-field surface current.
+    // The coil-level dispatcher sets it per turn; a direct calculate_turn_losses call on one conductor's field,
+    // with no coil, evaluates the isolated conductor (a stack of one, factor exactly 1).
+    void set_perpendicular_outline_factor(std::optional<double> factor) { _perpendicularOutlineFactor = factor; }
   private:
+    std::optional<double> _perpendicularOutlineFactor;
     double calculate_turn_losses_impl(Wire& wire, double frequency, const std::vector<ComplexFieldPoint>& data, const std::vector<ComplexFieldPoint>* quadratureData, double temperature);
 };
 
