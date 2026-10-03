@@ -220,6 +220,14 @@ class Settings
         // FALSE: skip that turn's conduction path to the enclosure, log an ERROR naming the turn
         // and the overlap, and solve the rest of the network.
         bool   _thermalNetworkStrictGeometry = true;
+        // Opt-in for debugging and prospecting, never a default. FALSE (default): using a core
+        // material outside its data throws, as it always has: a core-loss frequency outside the
+        // material's fitted Steinmetz span (or in a gap between its ranges), or a core-loss
+        // temperature at or above its Curie point. TRUE: the same model is evaluated there anyway
+        // (the nearest fitted range's coefficients carried past its edge) and every such use logs a
+        // WARNING naming the material, the quantity, the value and the range the data covers
+        // (module "MaterialDataExtrapolation"; enable the Logger collector to read them back).
+        bool   _allowMaterialDataExtrapolation = false;
         GappingOptimizationStrategy _gappingStrategy = GappingOptimizationStrategy::SIMPLE;
 
 
@@ -590,6 +598,9 @@ class Settings
 
         bool   get_thermal_network_strict_geometry() const;
         void   set_thermal_network_strict_geometry(bool value);
+
+        bool   get_allow_material_data_extrapolation() const;
+        void   set_allow_material_data_extrapolation(bool value);
 
         GappingOptimizationStrategy get_gapping_strategy() const;
         void set_gapping_strategy(GappingOptimizationStrategy value);

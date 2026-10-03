@@ -181,6 +181,7 @@ namespace OpenMagnetics {
         _coreAdviserSaturationDeratingTemperature = 100.0;
 
         _thermalNetworkStrictGeometry = true;
+        _allowMaterialDataExtrapolation = false;
 
         _wireAdviserIncludePlanar = false;
         _wireAdviserIncludeFoil = false;
@@ -995,6 +996,13 @@ namespace OpenMagnetics {
     }
     void Settings::set_thermal_network_strict_geometry(bool value) {
         _thermalNetworkStrictGeometry = value;
+    }
+
+    bool Settings::get_allow_material_data_extrapolation() const {
+        return _allowMaterialDataExtrapolation;
+    }
+    void Settings::set_allow_material_data_extrapolation(bool value) {
+        _allowMaterialDataExtrapolation = value;
     }
 
     GappingOptimizationStrategy Settings::get_gapping_strategy() const {

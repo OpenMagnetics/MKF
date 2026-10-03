@@ -229,6 +229,15 @@ std::string read_log() {
     return contents;
 }
 
+bool material_data_extrapolation_allowed(const std::string& what) {
+    if (!settings.get_allow_material_data_extrapolation()) {
+        return false;
+    }
+    Logger::getInstance().warning(what + " (extrapolated: allowMaterialDataExtrapolation is on)",
+                                  kMaterialDataExtrapolationModule);
+    return true;
+}
+
 void logEntry(std::string entry, std::string module, uint8_t entryVerbosity) {
     auto& logger = Logger::getInstance();
     LogLevel level = (entryVerbosity == 0) ? LogLevel::ERROR 

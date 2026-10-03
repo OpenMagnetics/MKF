@@ -17,6 +17,8 @@
 #include <chrono>
 #include <iomanip>
 #include <functional>
+#include <stdexcept>
+#include <unordered_map>
 #include <memory>
 #include <vector>
 
@@ -194,6 +196,33 @@ private:
 };
 
 /**
+ * @brief Parse a level name ("TRACE", "DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL", "OFF").
+ * Throws std::invalid_argument for anything else: an unknown level is a caller bug, not a default.
+ */
+inline LogLevel log_level_from_string(const std::string& name) {
+    if (name == "TRACE") return LogLevel::TRACE;
+    if (name == "DEBUG") return LogLevel::DEBUG;
+    if (name == "INFO") return LogLevel::INFO;
+    if (name == "WARNING") return LogLevel::WARNING;
+    if (name == "ERROR") return LogLevel::ERROR;
+    if (name == "CRITICAL") return LogLevel::CRITICAL;
+    if (name == "OFF") return LogLevel::OFF;
+    throw std::invalid_argument("Unknown log level '" + name +
+                                "'; expected TRACE, DEBUG, INFO, WARNING, ERROR, CRITICAL or OFF");
+}
+
+/**
+ * @brief One structured record kept by the Logger's collector (see Logger::enableCollector).
+ * Records with the same level, module and message are merged; `count` says how many times it was logged.
+ */
+struct LogRecord {
+    LogLevel level;
+    std::string moduleOfOrigin;
+    std::string message;
+    size_t count = 1;
+};
+
+/**
  * @brief Main logger class (singleton)
  */
 class Logger {
@@ -250,18 +279,82 @@ public:
      * @param message The message to log
      */
     void log(LogLevel level, const std::string& moduleOfOrigin, const std::string& message) {
-        if (level < _level) {
+        // The sinks see what passes the logger level, exactly as before the collector existed; the
+        // collector, when enabled, sees what passes its own level. Neither changes the other.
+        const bool toSinks = !(level < _level);
+        const bool toCollector = _collectorEnabled && level < LogLevel::OFF && !(level < _collectorLevel);
+        if (!toSinks && !toCollector) {
             return;
         }
-        
+
         std::lock_guard<std::mutex> lock(_mutex);
-        
-        auto timestamp = getTimestamp();
-        
-        for (auto& sink : _sinks) {
-            sink->write(level, moduleOfOrigin, message, timestamp);
+
+        if (toSinks) {
+            auto timestamp = getTimestamp();
+            for (auto& sink : _sinks) {
+                sink->write(level, moduleOfOrigin, message, timestamp);
+            }
+        }
+        if (toCollector) {
+            collect(level, moduleOfOrigin, message);
         }
     }
+
+    /**
+     * @brief Start keeping structured records (level, module, message) for a caller to drain.
+     *
+     * Process-wide, like the logger itself, so records logged on adviser worker threads are kept
+     * too. Independent of setLevel(): the console sink keeps its own level (ERROR by default) while
+     * the collector keeps everything at or above `minimumLevel`. Enabling an already-enabled
+     * collector only changes its level; what it holds is kept until drained.
+     * Identical records are merged (LogRecord::count); after kMaximumCollectedRecords distinct
+     * records further ones are counted, not kept, and drainCollected() reports how many.
+     */
+    void enableCollector(LogLevel minimumLevel = LogLevel::WARNING) {
+        std::lock_guard<std::mutex> lock(_mutex);
+        _collectorLevel = minimumLevel;
+        _collectorEnabled = true;
+    }
+
+    /**
+     * @brief Stop collecting and discard whatever was collected and not drained.
+     */
+    void disableCollector() {
+        std::lock_guard<std::mutex> lock(_mutex);
+        _collectorEnabled = false;
+        _collected.clear();
+        _collectedIndex.clear();
+        _collectedDropped = 0;
+    }
+
+    bool isCollectorEnabled() const {
+        return _collectorEnabled;
+    }
+
+    LogLevel getCollectorLevel() const {
+        return _collectorLevel;
+    }
+
+    /**
+     * @brief Hand back every record collected since the last drain, in first-logged order, and
+     * empty the collector. When records were dropped past the cap, a final WARNING from module
+     * "Logger" says how many.
+     */
+    std::vector<LogRecord> drainCollected() {
+        std::lock_guard<std::mutex> lock(_mutex);
+        std::vector<LogRecord> drained;
+        drained.swap(_collected);
+        _collectedIndex.clear();
+        if (_collectedDropped > 0) {
+            drained.push_back({LogLevel::WARNING, "Logger",
+                               std::to_string(_collectedDropped) + " further log records were dropped after the first " +
+                               std::to_string(kMaximumCollectedRecords) + " distinct ones", 1});
+            _collectedDropped = 0;
+        }
+        return drained;
+    }
+
+    static constexpr size_t kMaximumCollectedRecords = 1000;
     
     /**
      * @brief Flush all sinks
@@ -323,9 +416,36 @@ private:
         return oss.str();
     }
     
+    // Caller holds _mutex.
+    void collect(LogLevel level, const std::string& moduleOfOrigin, const std::string& message) {
+        std::string key;
+        key.reserve(moduleOfOrigin.size() + message.size() + 3);
+        key += static_cast<char>('0' + static_cast<int>(level));
+        key += '\x1f';
+        key += moduleOfOrigin;
+        key += '\x1f';
+        key += message;
+        auto found = _collectedIndex.find(key);
+        if (found != _collectedIndex.end()) {
+            _collected[found->second].count++;
+            return;
+        }
+        if (_collected.size() >= kMaximumCollectedRecords) {
+            _collectedDropped++;
+            return;
+        }
+        _collectedIndex.emplace(std::move(key), _collected.size());
+        _collected.push_back({level, moduleOfOrigin, message, 1});
+    }
+
     std::mutex _mutex;
     std::atomic<LogLevel> _level;
     std::vector<std::shared_ptr<LogSink>> _sinks;
+    std::atomic<bool> _collectorEnabled{false};
+    std::atomic<LogLevel> _collectorLevel{LogLevel::WARNING};
+    std::vector<LogRecord> _collected;
+    std::unordered_map<std::string, size_t> _collectedIndex;
+    size_t _collectedDropped = 0;
 };
 
 // ============================================================================

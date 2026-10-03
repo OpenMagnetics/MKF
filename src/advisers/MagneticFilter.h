@@ -390,6 +390,9 @@ class MagneticFilterWindability : public MagneticFilter {
  * Only the Steinmetz family (Steinmetz, iGSE, ciGSE, Barg, Albach, MSE, NSE) has a declared span. The other
  * methods (Magnetics / Micrometals / Poco / TDG closed forms, Roshen, loss factor) declare none in the
  * schema, so a material evaluated with one of them always passes.
+ *
+ * With Settings::allowMaterialDataExtrapolation on (explicit opt-in, off by default) the span does not
+ * gate: the losses are evaluated outside it and every such evaluation logs a WARNING.
  */
 class MagneticFilterLossModelFrequencySpan : public MagneticFilter {
     public:

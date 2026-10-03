@@ -234,7 +234,13 @@ std::shared_ptr<CoreLossesModel> CoreLosses::get_core_losses_model(std::string m
 static void throw_if_above_curie_temperature(const CoreMaterial& coreMaterial, double temperature) {
     auto curieTemperature = coreMaterial.get_curie_temperature();
     if (curieTemperature && temperature >= curieTemperature.value()) {
-        throw MaterialAboveCurieTemperatureException(coreMaterial.get_name(), temperature, curieTemperature.value());
+        MaterialAboveCurieTemperatureException aboveCurie(coreMaterial.get_name(), temperature, curieTemperature.value());
+        // Settings::allowMaterialDataExtrapolation (explicit opt-in): evaluate the ferromagnetic loss
+        // model there anyway, with a WARNING naming the material, the temperature and the Curie point.
+        if (material_data_extrapolation_allowed(aboveCurie.what())) {
+            return;
+        }
+        throw aboveCurie;
     }
 }
 
@@ -707,14 +713,38 @@ SteinmetzCoreLossesMethodRangeDatum CoreLossesModel::get_steinmetz_coefficients(
     // return the nearest range, i.e. extrapolate a power law the data never constrained (a 1-5 MHz fit read
     // at 100 kHz gave 2-18 % of 3C95's loss). Both sides now throw, naming the material and its span.
     auto [minimumMaterialFrequency, maximumMaterialFrequency] = get_steinmetz_fitted_span(materialData);
+    // With Settings::allowMaterialDataExtrapolation on (an explicit opt-in, off by default) the range
+    // nearest to f is carried past its edge, and a WARNING names the material, f and the span.
+    auto nearestRange = [&]() {
+        size_t nearestIndex = 0;
+        double nearestDistance = std::numeric_limits<double>::max();
+        for (size_t i = 0; i < ranges.size(); ++i) {
+            double distance = std::max(ranges[i].get_minimum_frequency().value() - frequency,
+                                       frequency - ranges[i].get_maximum_frequency().value());
+            if (distance < nearestDistance) {
+                nearestDistance = distance;
+                nearestIndex = i;
+            }
+        }
+        return ranges[nearestIndex];
+    };
     if (frequency < minimumMaterialFrequency || frequency > maximumMaterialFrequency) {
-        throw MaterialFrequencyOutOfSpanException(materialData.get_name(), "Steinmetz", frequency,
-                                                  minimumMaterialFrequency, maximumMaterialFrequency);
+        MaterialFrequencyOutOfSpanException outOfSpan(materialData.get_name(), "Steinmetz", frequency,
+                                                      minimumMaterialFrequency, maximumMaterialFrequency);
+        if (material_data_extrapolation_allowed(outOfSpan.what())) {
+            return nearestRange();
+        }
+        throw outOfSpan;
     }
 
-    throw CalculationException(ErrorCode::CALCULATION_INVALID_INPUT,
-                               "Material " + materialData.get_name() + ": " + std::to_string(frequency) +
-                               " Hz falls in a gap between its Steinmetz ranges");
+    std::string gapMessage = "Material " + materialData.get_name() + ": " + std::to_string(frequency) +
+                             " Hz falls in a gap between its Steinmetz ranges (fitted over " +
+                             std::to_string(minimumMaterialFrequency) + " Hz to " +
+                             std::to_string(maximumMaterialFrequency) + " Hz)";
+    if (material_data_extrapolation_allowed(gapMessage)) {
+        return nearestRange();
+    }
+    throw CalculationException(ErrorCode::CALCULATION_INVALID_INPUT, gapMessage);
 }
 
 
@@ -3292,7 +3322,9 @@ double CoreLossesModel::_get_frequency_from_core_losses(Core core,
     // throws when fewer than two sweep points remain.
     double sweepMinimum = 10000;
     double sweepMaximum = 2000000;
-    if (dynamic_cast<const CoreLossesSteinmetzModel*>(this) != nullptr) {
+    // With Settings::allowMaterialDataExtrapolation on, the whole sweep runs and every point outside the
+    // span is evaluated (and warned about) by get_steinmetz_coefficients.
+    if (dynamic_cast<const CoreLossesSteinmetzModel*>(this) != nullptr && !settings.get_allow_material_data_extrapolation()) {
         auto [spanMinimum, spanMaximum] = CoreLossesModel::get_steinmetz_fitted_span(core.resolve_material());
         sweepMinimum = std::max(sweepMinimum, 5000 * ceil(spanMinimum / 5000));
         sweepMaximum = std::min(sweepMaximum, spanMaximum + 1);

@@ -145,6 +145,14 @@ std::optional<InductanceFluxCacheEntry> get_cached_inductance_flux(
 void logEntry(std::string entry, std::string module = "", uint8_t entryVerbosity = 1);
 std::string read_log();
 
+// Settings::allowMaterialDataExtrapolation (off by default). Every site that uses a core material outside the data
+// it carries asks this before throwing: when the flag is off it returns false and logs nothing, and the caller
+// throws exactly as before; when it is on it logs `what` (which must name the material, the quantity, the value
+// and the range the data covers) as a WARNING from module kMaterialDataExtrapolationModule and returns true, and
+// the caller evaluates the same model outside its range.
+inline constexpr const char* kMaterialDataExtrapolationModule = "MaterialDataExtrapolation";
+bool material_data_extrapolation_allowed(const std::string& what);
+
 bool check_requirement(DimensionWithTolerance requirement, double value);
 Core find_core_by_name(std::string name);
 CoreMaterial find_core_material_by_name(std::string name);
