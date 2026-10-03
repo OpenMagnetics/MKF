@@ -384,16 +384,19 @@ TEST_CASE("Test_One_Operating_Point_Two_Generated_Windings_Turns_Ratios", "[proc
         REQUIRE_THAT(excitation_primary.get_current().value().get_harmonics().value().get_frequencies()[0], Catch::Matchers::WithinAbs(0, max_error));
         REQUIRE_THAT(excitation_primary.get_current().value().get_harmonics().value().get_frequencies()[1], Catch::Matchers::WithinAbs(100000, max_error * 100000));
 
-        REQUIRE_THAT(excitation_primary.get_voltage().value().get_processed().value().get_rms().value(), Catch::Matchers::WithinAbs(0.5, max_error * 0.5));
+        // ABT #1585: the balanced fixture (-0.25/+0.75 V, D = 0.25) has RMS sqrt(0.25 * 0.75^2 + 0.75 * 0.25^2) = 0.433 V
+        // (the former unipolar 0/1 V square: 0.5 V). The processed value, 0.428 V, is the 128-point sampled waveform's.
+        REQUIRE_THAT(excitation_primary.get_voltage().value().get_processed().value().get_rms().value(), Catch::Matchers::WithinAbs(0.43301270189221935, max_error * 0.433));
         // ABT #1460: exact 64-harmonic series of the piecewise-linear waveform (previously an aliased DFT128).
         REQUIRE_THAT(excitation_primary.get_voltage().value().get_processed().value().get_thd().value(), Catch::Matchers::WithinAbs(0.91374449406562508, max_error * 0.92));
         // ABT #1460: exact 64-harmonic series of the piecewise-linear waveform (previously an aliased DFT128).
-        REQUIRE_THAT(excitation_primary.get_voltage().value().get_processed().value().get_effective_frequency().value(), Catch::Matchers::WithinAbs(546440.67624448077, max_error * 546440.67624448077));
+        // ABT #1585: the balanced fixture has no DC component, which the unipolar 0/1 V square's 546440.68 Hz included.
+        REQUIRE_THAT(excitation_primary.get_voltage().value().get_processed().value().get_effective_frequency().value(), Catch::Matchers::WithinAbs(590582.20189317246, max_error * 590582.20189317246));
         REQUIRE_THAT(excitation_primary.get_voltage().value().get_processed().value().get_peak_to_peak().value(), Catch::Matchers::WithinAbs(1, max_error * 1));
         REQUIRE_THAT(excitation_primary.get_voltage().value().get_processed().value().get_offset(), Catch::Matchers::WithinAbs(0, max_error * 0.25));
 
-        // ABT #1460: exact 64-harmonic series of the piecewise-linear waveform (previously an aliased DFT128). The DC of the D=0.25 square is exactly 0.25 (was 31/128).
-        REQUIRE_THAT(excitation_primary.get_voltage().value().get_harmonics().value().get_amplitudes()[0], Catch::Matchers::WithinAbs(0.25, max_error * 0.25));
+        // ABT #1585: the balanced fixture's mean is 0.25 * 0.75 - 0.75 * 0.25 = 0 V (the former unipolar 0/1 V square's DC was 0.25 V).
+        REQUIRE_THAT(excitation_primary.get_voltage().value().get_harmonics().value().get_amplitudes()[0], Catch::Matchers::WithinAbs(0, max_error * 0.25));
         // ABT #1460: exact 64-harmonic series of the piecewise-linear waveform (previously an aliased DFT128). Fundamental = (2/pi) sin(pi/4).
         REQUIRE_THAT(excitation_primary.get_voltage().value().get_harmonics().value().get_amplitudes()[1], Catch::Matchers::WithinAbs(0.45015815807855303, max_error * 0.451));
         REQUIRE_THAT(excitation_primary.get_voltage().value().get_harmonics().value().get_frequencies()[0], Catch::Matchers::WithinAbs(0, max_error));
