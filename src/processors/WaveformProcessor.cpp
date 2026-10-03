@@ -655,6 +655,32 @@ WaveformLabel WaveformProcessor::try_guess_waveform_label(Waveform waveform, siz
         period = compressedWaveform.get_time()->back() - compressedWaveform.get_time()->front();
     }
 
+    // Volt-second balance of a 5-point rectangle (RECTANGULAR vs UNIPOLAR_RECTANGULAR).
+    // The vertex tests accept an edge anywhere within edgeTimeTolerance of where it
+    // should be, so a balanced rectangle can carry a volt-second error of up to its
+    // peak-to-peak times that time: it is the tolerance for the balance, in V*s. (The
+    // test used to take `period` itself, in seconds, as the tolerance: a sampled
+    // -250/+750 V rectangle, whose high plateau the sampler shortens by one sample, was
+    // 7.8e-5 V*s "out" of balance against 1e-5 and labelled unipolar, while a genuinely
+    // unipolar 0/1 V one at 100 kHz, 2.5e-6 V*s, passed as balanced.)
+    const double edgeTimeTolerance = 1.5 * period / numberPointsSampledWaveforms;
+    double voltSecondTolerance = 0;
+    if (!compressedWaveform.get_data().empty()) {
+        auto [minimumIt, maximumIt] = std::minmax_element(compressedWaveform.get_data().begin(), compressedWaveform.get_data().end());
+        voltSecondTolerance = (*maximumIt - *minimumIt) * edgeTimeTolerance;
+    }
+    // Each level held from one edge to the next, every interval of the period counted.
+    auto rectangleVoltSecondsEdgesAtSecondAndFourthPoints = [&compressedWaveform]() {
+        const auto time = compressedWaveform.get_time().value();
+        const auto& data = compressedWaveform.get_data();
+        return (time[2] - time[0]) * data[2] + (time[4] - time[2]) * data[4];
+    };
+    auto rectangleVoltSecondsEdgesAtFirstAndThirdPoints = [&compressedWaveform]() {
+        const auto time = compressedWaveform.get_time().value();
+        const auto& data = compressedWaveform.get_data();
+        return (time[1] - time[0]) * data[1] + (time[3] - time[1]) * data[3] + (time[4] - time[3]) * data[4];
+    };
+
     if (compressedWaveform.get_data().size() == 3 &&
         compressedWaveform.get_data()[0] == compressedWaveform.get_data()[2]) {
             return WaveformLabel::TRIANGULAR;
@@ -682,7 +708,7 @@ WaveformLabel WaveformProcessor::try_guess_waveform_label(Waveform waveform, siz
                 return WaveformLabel::TRIANGULAR;
         }
         else if (compressedWaveform.get_data().size() == 5 &&
-            !is_close_enough((compressedWaveform.get_time().value()[2] - compressedWaveform.get_time().value()[0]) * compressedWaveform.get_data()[2] + (compressedWaveform.get_time().value()[4] - compressedWaveform.get_time().value()[2]) * compressedWaveform.get_data()[4], 0 , period) &&
+            !is_close_enough(rectangleVoltSecondsEdgesAtSecondAndFourthPoints(), 0, voltSecondTolerance) &&
             is_close_enough(compressedWaveform.get_time().value()[0], compressedWaveform.get_time().value()[1], 1.5 * period / numberPointsSampledWaveforms) &&
             compressedWaveform.get_data()[1] == compressedWaveform.get_data()[2] &&
             is_close_enough(compressedWaveform.get_time().value()[2], compressedWaveform.get_time().value()[3], 1.5 * period / numberPointsSampledWaveforms) &&
@@ -691,16 +717,7 @@ WaveformLabel WaveformProcessor::try_guess_waveform_label(Waveform waveform, siz
                 return WaveformLabel::UNIPOLAR_RECTANGULAR;
         }
         else if (compressedWaveform.get_data().size() == 5 &&
-            !is_close_enough((compressedWaveform.get_time().value()[2] - compressedWaveform.get_time().value()[0]) * compressedWaveform.get_data()[2] + (compressedWaveform.get_time().value()[4] - compressedWaveform.get_time().value()[2]) * compressedWaveform.get_data()[4], 0 , period) &&
-            is_close_enough(compressedWaveform.get_time().value()[0], compressedWaveform.get_time().value()[1], 1.5 * period / numberPointsSampledWaveforms) &&
-            compressedWaveform.get_data()[1] == compressedWaveform.get_data()[2] &&
-            is_close_enough(compressedWaveform.get_time().value()[2], compressedWaveform.get_time().value()[3], 1.5 * period / numberPointsSampledWaveforms) &&
-            compressedWaveform.get_data()[3] == compressedWaveform.get_data()[4] &&
-            compressedWaveform.get_data()[0] == compressedWaveform.get_data()[4]) {
-                return WaveformLabel::UNIPOLAR_RECTANGULAR;
-        }
-        else if (compressedWaveform.get_data().size() == 5 &&
-            is_close_enough((compressedWaveform.get_time().value()[2] - compressedWaveform.get_time().value()[0]) * compressedWaveform.get_data()[2] + (compressedWaveform.get_time().value()[4] - compressedWaveform.get_time().value()[2]) * compressedWaveform.get_data()[4], 0 , period) &&
+            is_close_enough(rectangleVoltSecondsEdgesAtSecondAndFourthPoints(), 0, voltSecondTolerance) &&
             is_close_enough(compressedWaveform.get_time().value()[0], compressedWaveform.get_time().value()[1], 1.5 * period / numberPointsSampledWaveforms) &&
             compressedWaveform.get_data()[1] == compressedWaveform.get_data()[2] &&
             is_close_enough(compressedWaveform.get_time().value()[2], compressedWaveform.get_time().value()[3], 1.5 * period / numberPointsSampledWaveforms) &&
@@ -709,7 +726,7 @@ WaveformLabel WaveformProcessor::try_guess_waveform_label(Waveform waveform, siz
                 return WaveformLabel::RECTANGULAR;
         }
         else if (compressedWaveform.get_data().size() == 5 &&
-            is_close_enough((compressedWaveform.get_time().value()[1] - compressedWaveform.get_time().value()[0]) * compressedWaveform.get_data()[1] + (compressedWaveform.get_time().value()[3] - compressedWaveform.get_time().value()[2]) * compressedWaveform.get_data()[3], 0 , period) &&
+            is_close_enough(rectangleVoltSecondsEdgesAtFirstAndThirdPoints(), 0, voltSecondTolerance) &&
             is_close_enough(compressedWaveform.get_time().value()[1], compressedWaveform.get_time().value()[2], 1.5 * period / numberPointsSampledWaveforms) &&
             compressedWaveform.get_data()[0] == compressedWaveform.get_data()[1] &&
             is_close_enough(compressedWaveform.get_time().value()[3], compressedWaveform.get_time().value()[4], 1.5 * period / numberPointsSampledWaveforms) &&

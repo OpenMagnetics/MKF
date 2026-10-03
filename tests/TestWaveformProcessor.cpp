@@ -1123,3 +1123,37 @@ TEST_CASE("Test_Exact_Harmonics_Knot_Invariance_And_Errors", "[processor][wavefo
         }
     }
 }
+
+TEST_CASE("Test_Rectangle_Label_Volt_Second_Balance_Is_Relative_To_Amplitude", "[processor][waveform-processor][smoke-test]") {
+    // ABT #1641: the RECTANGULAR vs UNIPOLAR_RECTANGULAR decision compared a volt-second sum
+    // (V*s) against an absolute tolerance equal to the period (s). Sampled at 128 points, a
+    // balanced rectangle loses one sample of its high plateau (the sampler takes the pre-edge
+    // value at t = 0), an imbalance of peak-to-peak * period / 128: at -250/+750 V and
+    // 100 kHz that is 7.8e-5 V*s against a "tolerance" of 1e-5, and it was labelled
+    // UNIPOLAR_RECTANGULAR with its minimum (-250 V) as offset. A genuinely unipolar 0/1 V
+    // one, 2.5e-6 V*s, passed as balanced.
+    const double frequency = 100000;
+    const double period = 1 / frequency;
+    const double dutyCycle = 0.25;
+    for (double amplitude : {1e-3, 1.0, 1000.0, 1e6}) {
+        INFO("peak-to-peak " << amplitude);
+        Waveform balanced;
+        balanced.set_data({-0.25 * amplitude, 0.75 * amplitude, 0.75 * amplitude, -0.25 * amplitude, -0.25 * amplitude});
+        balanced.set_time(std::vector<double>{0, 0, dutyCycle * period, dutyCycle * period, period});
+        auto sampledBalanced = WaveformProcessor::calculate_sampled_waveform(balanced, frequency);
+        REQUIRE(WaveformProcessor::is_waveform_sampled(sampledBalanced));
+        CHECK(WaveformProcessor::try_guess_waveform_label(balanced) == WaveformLabel::RECTANGULAR);
+        CHECK(WaveformProcessor::try_guess_waveform_label(sampledBalanced) == WaveformLabel::RECTANGULAR);
+        auto processedBalanced = WaveformProcessor::calculate_processed_data(sampledBalanced, frequency);
+        CHECK(processedBalanced.get_label() == WaveformLabel::RECTANGULAR);
+        CHECK(processedBalanced.get_offset() == 0);
+
+        Waveform unipolar;
+        unipolar.set_data({0, amplitude, amplitude, 0, 0});
+        unipolar.set_time(std::vector<double>{0, 0, dutyCycle * period, dutyCycle * period, period});
+        auto sampledUnipolar = WaveformProcessor::calculate_sampled_waveform(unipolar, frequency);
+        CHECK(WaveformProcessor::try_guess_waveform_label(unipolar) == WaveformLabel::UNIPOLAR_RECTANGULAR);
+        CHECK(WaveformProcessor::try_guess_waveform_label(sampledUnipolar) == WaveformLabel::UNIPOLAR_RECTANGULAR);
+    }
+}
+
