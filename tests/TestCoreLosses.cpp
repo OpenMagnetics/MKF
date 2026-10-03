@@ -4845,3 +4845,76 @@ TEST_CASE("Core-loss series resistance is continuous in the equivalent turns", "
     CHECK_THAT(below / above, Catch::Matchers::WithinAbs(1.0, 0.1));
     CHECK_THROWS(model->get_core_losses_series_resistance(core, frequency, temperature, 0));
 }
+
+// ABT #1529: how many temperature coefficients a range carries is decided by the range's own
+// points. The fitter decided it from the whole data set, so Micrometals Mix 52 (22.2 C and 25 C
+// overall, one temperature per range) got a full quadratic ct per range: ct(100 C) = -2,085,899.
+TEST_CASE("Calculate_Steinmetz_Coefficients_Temperature_Per_Range", "[physical-model][core-losses][steinmetz-fit][abt-1529]") {
+    const double k = 2.0, alpha = 1.5, beta = 2.7;
+    auto makePoint = [&](double frequency, double peak, double temperature, double factor) {
+        json pointJson;
+        pointJson["temperature"] = temperature;
+        pointJson["value"] = k * pow(frequency, alpha) * pow(peak, beta) * factor;
+        pointJson["origin"] = "manufacturer";
+        pointJson["magneticFluxDensity"]["frequency"] = frequency;
+        pointJson["magneticFluxDensity"]["magneticFluxDensity"]["processed"]["label"] = "sinusoidal";
+        pointJson["magneticFluxDensity"]["magneticFluxDensity"]["processed"]["offset"] = 0;
+        pointJson["magneticFluxDensity"]["magneticFluxDensity"]["processed"]["peak"] = peak;
+        pointJson["magneticFluxDensity"]["magneticFluxDensity"]["processed"]["peakToPeak"] = 2 * peak;
+        return VolumetricLossesPoint(pointJson);
+    };
+    auto block = [&](std::vector<double> frequencies, double temperature, double factor, std::vector<VolumetricLossesPoint>& data) {
+        for (auto frequency : frequencies) {
+            for (auto peak : {0.02, 0.05, 0.1, 0.2, 0.3}) {
+                data.push_back(makePoint(frequency, peak, temperature, factor));
+            }
+        }
+    };
+
+    SECTION("One temperature per range, two overall: no ct is fitted") {
+        std::vector<VolumetricLossesPoint> data;
+        block({20000, 30000, 40000}, 25, 1.0, data);
+        block({200000, 300000, 400000}, 22.2, 1.0, data);
+        auto [coefficientsPerRange, errorPerRange] = OpenMagnetics::CoreLossesSteinmetzModel::calculate_steinmetz_coefficients(data, {{20000, 100000}, {100000, 500000}});
+        REQUIRE(coefficientsPerRange.size() == 2);
+        for (auto& range : coefficientsPerRange) {
+            CHECK_FALSE(range.get_ct0());
+            CHECK_FALSE(range.get_ct1());
+            CHECK_FALSE(range.get_ct2());
+            CHECK_THAT(range.get_k(), Catch::Matchers::WithinRel(k, 0.02));
+        }
+    }
+
+    SECTION("Two temperatures in a range: linear ct, ct2 = 0, exact at both") {
+        // ct(T) linear: 1.0 at 100 C, 1.6 at 25 C.
+        auto factor = [](double temperature) { return 1.0 + 0.008 * (100 - temperature); };
+        std::vector<VolumetricLossesPoint> data;
+        block({50000, 70000, 100000, 140000, 200000}, 25, factor(25), data);
+        block({50000, 70000, 100000, 140000, 200000}, 100, factor(100), data);
+        auto [coefficientsPerRange, errorPerRange] = OpenMagnetics::CoreLossesSteinmetzModel::calculate_steinmetz_coefficients(data, {{10000, 1000000}});
+        REQUIRE(coefficientsPerRange.size() == 1);
+        auto fitted = coefficientsPerRange[0];
+        REQUIRE(fitted.get_ct0());
+        REQUIRE(fitted.get_ct1());
+        REQUIRE(fitted.get_ct2());
+        CHECK(fitted.get_ct2().value() == 0);
+        for (double temperature : {25.0, 100.0}) {
+            double modeled = fitted.get_k() * pow(100000, fitted.get_alpha()) * pow(0.1, fitted.get_beta()) *
+                             OpenMagnetics::CoreLossesSteinmetzModel::get_temperature_factor(fitted, temperature);
+            CHECK_THAT(modeled, Catch::Matchers::WithinRel(k * pow(100000, alpha) * pow(0.1, beta) * factor(temperature), 0.03));
+        }
+    }
+
+    SECTION("Three temperatures in one range, one in the other: only the first gets ct") {
+        auto factor = [](double temperature) { return 0.00015 * temperature * temperature - 0.03 * temperature + 2.5; };
+        std::vector<VolumetricLossesPoint> data;
+        for (double temperature : {25.0, 60.0, 100.0}) {
+            block({20000, 30000, 40000}, temperature, factor(temperature), data);
+        }
+        block({200000, 300000, 400000}, 25, factor(25), data);
+        auto [coefficientsPerRange, errorPerRange] = OpenMagnetics::CoreLossesSteinmetzModel::calculate_steinmetz_coefficients(data, {{20000, 100000}, {100000, 500000}});
+        REQUIRE(coefficientsPerRange.size() == 2);
+        CHECK(coefficientsPerRange[0].get_ct2());
+        CHECK_FALSE(coefficientsPerRange[1].get_ct0());
+    }
+}

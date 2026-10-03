@@ -783,6 +783,21 @@ void steinmetz_equation_with_temperature_func(double *p, double *x, int m, int n
 }
 
 
+// ABT #1529: a range whose loss points span exactly two temperatures fixes one temperature ratio,
+// so only a linear ct(T) = ct0 - ct1 * T is determined (ct2 held at 0). k/alpha/beta are fitted
+// first at one of the two temperatures, as the near-100 C path does, then p = {ct0, ct1}.
+void steinmetz_equation_first_only_linear_temperature_func(double *p, double *x, int m, int n, void *data) {
+    double* aux = static_cast <double*> (data);
+    double temperatureCoefficients[3] = {p[0], p[1], 0.0};
+
+    for(int i=0; i<n; ++i) {
+        auto frequency = aux[3 + 3 * i];
+        auto magneticFluxDensityAcPeak = aux[3 + 3 * i + 1];
+        auto temperature = aux[3 + 3 * i + 2];
+        x[i]=steinmetz_equation_with_temperature_and_log(temperatureCoefficients, aux[0], aux[1], aux[2], frequency, magneticFluxDensityAcPeak, temperature);
+    }
+}
+
 void steinmetz_equation_first_no_temperature_func(double *p, double *x, int m, int n, void *data) {
     double* aux = static_cast <double*> (data);
 
@@ -832,9 +847,10 @@ std::pair<std::vector<SteinmetzCoreLossesMethodRangeDatum>, std::vector<double>>
             distinctTemperatures.push_back(temperature);
         }
     }
-    size_t numberInputs = distinctTemperatures.size() > 1? 3 : 2;
+    size_t cleaningNumberInputs = distinctTemperatures.size() > 1? 3 : 2;
 
-    size_t numberUnknowns = numberInputs == 3? 6 : 3;
+    // Minimum chunk size for the range merging below; each range then decides its own model.
+    size_t cleaningNumberUnknowns = cleaningNumberInputs == 3? 6 : 3;
 
     std::vector<std::vector<VolumetricLossesPoint>> volumetricLossesChunks;
 
@@ -862,11 +878,11 @@ std::pair<std::vector<SteinmetzCoreLossesMethodRangeDatum>, std::vector<double>>
         for (size_t chunkIndex = 0; chunkIndex < volumetricLossesChunks.size(); ++chunkIndex) {
             auto volumetricLossesChunk = volumetricLossesChunks[chunkIndex];
 
-            if (volumetricLossesChunk.size() <= numberUnknowns) {
+            if (volumetricLossesChunk.size() <= cleaningNumberUnknowns) {
                 if (chunkIndex == 0 && volumetricLossesChunks.size() == 1) {
                     if (volumetricLossesChunks[0].size() > 3) {
-                        numberInputs = 2;
-                        numberUnknowns = 3;
+                        cleaningNumberInputs = 2;
+                        cleaningNumberUnknowns = 3;
                         break;
                     }
                     else {
@@ -931,6 +947,35 @@ std::pair<std::vector<SteinmetzCoreLossesMethodRangeDatum>, std::vector<double>>
         double initialState = 10;
         std::vector<double> bestCoefficients;
         auto volumetricLossesChunk = volumetricLossesChunks[chunkIndex];
+        // ABT #1529: how many temperature coefficients a range can carry is decided by ITS OWN
+        // points, not by the whole data set: three ct unknowns need three distinct temperatures
+        // in the range (full quadratic ct), two give a linear ct (ct2 = 0), and one gives none
+        // (k/alpha/beta only). Deciding it globally fitted a full quadratic through one or two
+        // temperatures and returned values such as ct(100 C) = -2e6.
+        std::vector<double> chunkTemperatures;
+        for (auto& point : volumetricLossesChunk) {
+            if (std::find(chunkTemperatures.begin(), chunkTemperatures.end(), point.get_temperature()) == chunkTemperatures.end()) {
+                chunkTemperatures.push_back(point.get_temperature());
+            }
+        }
+        // A range also needs more points than unknowns: one with too few points for the
+        // temperature terms its temperatures would allow drops to the next smaller model.
+        size_t temperatureLevels = chunkTemperatures.size();
+        if (temperatureLevels >= 3 && volumetricLossesChunk.size() <= 6) {
+            temperatureLevels = 2;
+        }
+        if (temperatureLevels == 2 && volumetricLossesChunk.size() <= 5) {
+            temperatureLevels = 1;
+        }
+        if (volumetricLossesChunk.size() <= 3) {
+            throw CalculationException(ErrorCode::CALCULATION_INVALID_INPUT,
+                "Cannot fit Steinmetz coefficients for range [" + std::to_string(ranges[chunkIndex].first) + ", " +
+                std::to_string(ranges[chunkIndex].second) + "] Hz: " + std::to_string(volumetricLossesChunk.size()) +
+                " loss points do not determine k, alpha and beta.");
+        }
+        const size_t numberInputs = temperatureLevels > 1 ? 3 : 2;
+        const bool linearTemperatureFactor = temperatureLevels == 2;
+        const size_t numberUnknowns = temperatureLevels >= 3 ? 6 : (linearTemperatureFactor ? 5 : 3);
         for (size_t loopIndex = 0; loopIndex < loopIterations; ++loopIndex) {
             size_t numberElements = volumetricLossesChunk.size();
             size_t numberElements100C = 0;
@@ -943,12 +988,10 @@ std::pair<std::vector<SteinmetzCoreLossesMethodRangeDatum>, std::vector<double>>
                 if (temperature >= 90 && temperature <= 110) {
                     numberElements100C++;
                 }
-                if (std::find(distinctTemperatures.begin(), distinctTemperatures.end(), temperature) == distinctTemperatures.end()) {
-                    distinctTemperatures.push_back(temperature);
-                }
             }
 
-            std::vector<double> coefficients(numberUnknowns);
+            // Always six slots: a linear fit leaves ct2 = 0, a temperature-free fit ignores 3..5.
+            std::vector<double> coefficients(6, 0.0);
             for (size_t index = 0; index < numberUnknowns; ++index) {
                 coefficients[index] = initialState;
             }
@@ -969,6 +1012,48 @@ std::pair<std::vector<SteinmetzCoreLossesMethodRangeDatum>, std::vector<double>>
                 // and silently returned near-seed coefficients. Use the
                 // stride-2 objective, which fits the reduced k/alpha/beta model.
                 OpenMagnetics::eigen_levmar_dif(steinmetz_equation_func, coefficients.data(), volumetricLossesArray.data(), numberUnknowns, numberElements, 10000, opts, info, NULL, NULL, static_cast<void*>(volumetricLossesInputs.data()));
+            }
+            else if (linearTemperatureFactor) {
+                // Reference temperature: the one with more points, a tie going to the one nearer
+                // 100 C. k/alpha/beta are fitted there, so ct(reference) comes out near 1.
+                double referenceTemperature = chunkTemperatures[0];
+                size_t referenceCount = 0;
+                for (auto candidate : chunkTemperatures) {
+                    size_t count = std::count_if(volumetricLossesChunk.begin(), volumetricLossesChunk.end(),
+                                                 [&](const VolumetricLossesPoint& point) { return point.get_temperature() == candidate; });
+                    if (count > referenceCount ||
+                        (count == referenceCount && fabs(candidate - 100) < fabs(referenceTemperature - 100))) {
+                        referenceTemperature = candidate;
+                        referenceCount = count;
+                    }
+                }
+                std::vector<double> referenceInputs;
+                std::vector<double> referenceArray;
+                for (size_t index = 0; index < numberElements; ++index) {
+                    if (volumetricLossesChunk[index].get_temperature() == referenceTemperature) {
+                        referenceArray.push_back(volumetricLossesArray[index]);
+                        referenceInputs.push_back(volumetricLossesInputs[3 + numberInputs * index]);
+                        referenceInputs.push_back(volumetricLossesInputs[3 + numberInputs * index + 1]);
+                    }
+                }
+                if (referenceArray.size() <= 3) {
+                    throw CalculationException(ErrorCode::CALCULATION_INVALID_INPUT,
+                        "Cannot fit Steinmetz coefficients for range [" + std::to_string(ranges[chunkIndex].first) + ", " +
+                        std::to_string(ranges[chunkIndex].second) + "] Hz: its two temperatures leave " +
+                        std::to_string(referenceArray.size()) + " points at " + std::to_string(referenceTemperature) +
+                        " C, too few for k, alpha and beta.");
+                }
+                std::vector<double> referenceCoefficients(3, initialState);
+                OpenMagnetics::eigen_levmar_dif(steinmetz_equation_first_no_temperature_func, referenceCoefficients.data(), referenceArray.data(), 3, referenceArray.size(), 10000, opts, info, NULL, NULL, static_cast<void*>(referenceInputs.data()));
+                for (size_t index = 0; index < 3; ++index) {
+                    coefficients[index] = referenceCoefficients[index];
+                    volumetricLossesInputs[index] = referenceCoefficients[index];
+                }
+                std::vector<double> linearCoefficients = {1.0, 0.0};
+                OpenMagnetics::eigen_levmar_dif(steinmetz_equation_first_only_linear_temperature_func, linearCoefficients.data(), volumetricLossesArray.data(), 2, numberElements, 10000, opts, info, NULL, NULL, static_cast<void*>(volumetricLossesInputs.data()));
+                coefficients[3] = linearCoefficients[0];
+                coefficients[4] = linearCoefficients[1];
+                coefficients[5] = 0.0;
             }
             else if (numberInputs == 3 && numberElements100C >= 3) {
                 std::vector<double> tempCoefficients(3);
@@ -1031,10 +1116,7 @@ std::pair<std::vector<SteinmetzCoreLossesMethodRangeDatum>, std::vector<double>>
 
             if (errorAverage < bestError) {
                 bestError = errorAverage;
-                bestCoefficients.clear();
-                for (size_t index = 0; index < numberUnknowns; ++index) {
-                    bestCoefficients.push_back(coefficients[index]);
-                }
+                bestCoefficients = coefficients;
                 bestCoefficients[0] = pow(10, std::max(bestCoefficients[0], -15.0));
             }
         }
