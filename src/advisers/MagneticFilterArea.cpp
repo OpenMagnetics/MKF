@@ -505,8 +505,20 @@ std::pair<bool, double> MagneticFilterWindowCopperCapacity::evaluate_magnetic(Ma
     }
     const double strandConductingArea = strand.calculate_conducting_area();
     const double strandConductingDiameter = resolve_dimensional_values(strand.get_conducting_diameter().value());
+    const double bobbinFillingFactor = MagneticFilterAreaProduct::get_bobbin_filling_factor(core, inputs->get_wiring_technology());
 
+    // Per turn, a winding needs strandsPerTurn stand-in strands: the effective current density
+    // the current would have in ONE stand-in strand over the maximum. Above one, whole strands
+    // (rounded up). At or below one, a single stand-in strand is more copper than the current
+    // needs, and the coil stage is free to pick a thinner round wire: a wire thinner than the
+    // two-skin-depth strand carries its current as near-uniformly as the strand does, so the
+    // copper is that fraction of the strand. At line frequency the stand-in strand is two skin
+    // depths at 50 Hz (18.6 mm); counting it whole made a 32 A PFC choke need 272 mm2 of copper
+    // per turn instead of 2.7 mm2, and rejected every core of the catalogue.
+    // Each winding's copper occupies its area over the round-wire filling factor of its own
+    // conductor diameter; the window offers its area times the bobbin filling factor.
     double requiredCopperArea = 0;
+    double requiredWindowArea = 0;
     std::string perWinding;
     for (size_t windingIndex = 0; windingIndex < numberWindings; ++windingIndex) {
         double numberTurns;
@@ -516,7 +528,7 @@ std::pair<bool, double> MagneticFilterWindowCopperCapacity::evaluate_magnetic(Ma
         else {
             numberTurns = static_cast<double>(std::max<int64_t>(1, std::llround(primaryNumberTurns / _turnsRatios[windingIndex - 1])));
         }
-        int maximumNumberStrands = 0;
+        double strandsPerTurn = 0;
         for (size_t operatingPointIndex = 0; operatingPointIndex < inputs->get_operating_points().size(); ++operatingPointIndex) {
             const auto& excitations = inputs->get_operating_points()[operatingPointIndex].get_excitations_per_winding();
             if (windingIndex >= excitations.size() || !excitations[windingIndex].get_current()) {
@@ -524,33 +536,38 @@ std::pair<bool, double> MagneticFilterWindowCopperCapacity::evaluate_magnetic(Ma
                     "Window copper capacity: operating point " + std::to_string(operatingPointIndex) + " has no current for winding " +
                     std::to_string(windingIndex));
             }
-            int numberStrands = Wire::calculate_number_parallels_needed(excitations[windingIndex].get_current().value(), _temperature,
-                                                                        strand, _maximumEffectiveCurrentDensity);
-            maximumNumberStrands = std::max(maximumNumberStrands, numberStrands);
+            double strandLoad = strand.calculate_effective_current_density(excitations[windingIndex].get_current().value(), _temperature) /
+                                _maximumEffectiveCurrentDensity;
+            strandsPerTurn = std::max(strandsPerTurn, strandLoad > 1 ? std::ceil(strandLoad) : strandLoad);
         }
-        double windingCopperArea = numberTurns * maximumNumberStrands * strandConductingArea;
+        if (!(strandsPerTurn > 0)) {
+            throw CalculationException(ErrorCode::CALCULATION_INVALID_RESULT,
+                "Window copper capacity: winding " + std::to_string(windingIndex) + " of " + coreName + " carries no current to size its copper");
+        }
+        const double conductorDiameter = strandsPerTurn < 1 ? strandConductingDiameter * std::sqrt(strandsPerTurn) : strandConductingDiameter;
+        double windingCopperArea = numberTurns * strandsPerTurn * strandConductingArea;
         requiredCopperArea += windingCopperArea;
+        requiredWindowArea += windingCopperArea / Wire::get_filling_factor_round(conductorDiameter);
         perWinding += (windingIndex == 0 ? "" : ", ") + std::to_string(std::llround(numberTurns)) + " turns x " +
-                      std::to_string(maximumNumberStrands) + " strands";
+                      std::to_string(strandsPerTurn) + " strands";
     }
 
     const double windingWindowArea = core.get_winding_windows()[0].get_area().value();
-    const double windingWindowUtilization = Wire::get_filling_factor_round(strandConductingDiameter) *
-                                            MagneticFilterAreaProduct::get_bobbin_filling_factor(core, inputs->get_wiring_technology());
-    const double copperCapacity = windingWindowArea * windingWindowUtilization;
-    if (!(copperCapacity > 0)) {
+    const double usableWindowArea = windingWindowArea * bobbinFillingFactor;
+    if (!(usableWindowArea > 0)) {
         throw CalculationException(ErrorCode::CALCULATION_INVALID_RESULT,
             "Window copper capacity: core " + coreName + " has no usable winding window");
     }
-    const double proportion = requiredCopperArea / copperCapacity;
+    const double proportion = requiredWindowArea / usableWindowArea;
     bool valid = proportion <= 1;
     if (!valid) {
         _lastReason = "core " + coreName + ": the windings (" + perWinding + " of " +
                       std::to_string(strandConductingDiameter * 1e3) + " mm strand at <= " +
                       std::to_string(_maximumEffectiveCurrentDensity * 1e-6) + " A/mm2) need " +
-                      std::to_string(requiredCopperArea * 1e6) + " mm2 of copper; its window holds " +
-                      std::to_string(copperCapacity * 1e6) + " mm2 (" + std::to_string(windingWindowArea * 1e6) +
-                      " mm2 x utilisation " + std::to_string(windingWindowUtilization) + ")";
+                      std::to_string(requiredCopperArea * 1e6) + " mm2 of copper, " +
+                      std::to_string(requiredWindowArea * 1e6) + " mm2 of window at their round-wire fill; it offers " +
+                      std::to_string(usableWindowArea * 1e6) + " mm2 (" + std::to_string(windingWindowArea * 1e6) +
+                      " mm2 x bobbin filling factor " + std::to_string(bobbinFillingFactor) + ")";
     }
     return {valid, proportion};
 }

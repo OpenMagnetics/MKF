@@ -3582,3 +3582,39 @@ TEST_CASE("Test_CoreAdviser_Window_Copper_Capacity_Rejects_A_Core_That_Cannot_Ho
     }
     settings.reset();
 }
+
+TEST_CASE("Test_CoreAdviser_Window_Copper_Capacity_Counts_Line_Frequency_Copper_By_Its_Current", "[adviser][core-adviser][magnetic-filter]") {
+    // PFC boost choke at line frequency (PFC_Inputs.mas.json: 50 Hz, 32.3 A rms). Two skin
+    // depths at 50 Hz are 18.6 mm, so the stand-in strand alone holds 272 mm2 of copper while
+    // the current needs 2.7 mm2 at 12 A/mm2. The capacity screen counted the whole strand per
+    // turn, asked 17,700 mm2 of copper of a 4-stack E 114/46/35 and rejected every core in the
+    // catalogue, so the PFC choke tests returned no core at all. Copper below one strand is
+    // sized by the current: 65 turns fit that window comfortably, 6000 turns do not.
+    settings.reset();
+    clear_databases();
+    auto inputs = load_test_inputs("PFC_Inputs.mas.json");
+
+    auto strand = OpenMagnetics::Wire::get_wire_for_frequency(50, inputs.get_maximum_temperature(), true);
+    REQUIRE(resolve_dimensional_values(strand.get_conducting_diameter().value()) > 0.01);
+    MagneticFilterWindowCopperCapacity filter(inputs, defaults.maximumEffectiveCurrentDensity);
+    auto stand_in = [&](int64_t numberTurns) {
+        OpenMagnetics::Magnetic magnetic;
+        magnetic.set_core(OpenMagneticsTesting::get_quick_core("E 114/46/35", OpenMagneticsTesting::get_residual_gap(), 4, "3C95"));
+        magnetic.set_coil(OpenMagneticsTesting::get_quick_coil({numberTurns}, {1}, "E 114/46/35", 1, MAS::WindingOrientation::OVERLAPPING,
+                                                              MAS::WindingOrientation::OVERLAPPING, MAS::CoilAlignment::CENTERED,
+                                                              MAS::CoilAlignment::CENTERED, {strand}));
+        return magnetic;
+    };
+
+    auto choke = stand_in(65);
+    auto [fits, proportion] = filter.evaluate_magnetic(&choke, &inputs);
+    INFO(filter.get_last_reason());
+    CHECK(fits);
+    CHECK(proportion < 0.5);
+
+    auto overfull = stand_in(6000);
+    auto [overfullFits, overfullProportion] = filter.evaluate_magnetic(&overfull, &inputs);
+    CHECK_FALSE(overfullFits);
+    CHECK(overfullProportion > 1);
+    settings.reset();
+}

@@ -118,9 +118,12 @@ class MagneticFilterAreaProduct : public MagneticFilter {
  * follow from the turns ratios. Each winding needs, per turn, the strands of the stand-in's
  * wire (two skin depths, the finest round strand the wire adviser's litz is built from)
  * that keep its effective current density at or below the maximum
- * (Wire::calculate_number_parallels_needed, the helper the stand-in coil itself is sized
- * with). The window holds that copper at the utilisation MagneticFilterAreaProduct sizes
- * cores with: the round-strand filling factor times the bobbin filling factor. A core whose
+ * (the effective current density of one strand over the maximum, rounded up). When one
+ * strand is more than enough (always at line frequency, where two skin depths are
+ * centimetres) the coil stage can pick a thinner wire, so only that fraction of a strand is
+ * counted. The window holds that copper at the utilisation MagneticFilterAreaProduct sizes
+ * cores with: the round-wire filling factor of each winding's conductor times the bobbin
+ * filling factor. A core whose
  * window cannot hold all windings' copper cannot be wound by the coil stage within its
  * current-density limit, whatever wire it picks, and is rejected here with its numbers.
  * This is a necessary condition only (litz of the finest strands at the bobbin's best fill):
