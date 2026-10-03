@@ -342,6 +342,11 @@ OpenMagnetics::Inputs get_quick_insulation_inputs(DimensionWithTolerance altitud
     excitation.set_frequency(frequency);
     excitation.set_voltage(voltage);
     operatingPoint.get_mutable_excitations_per_winding().push_back(excitation);
+    // ABT #1299: conditions.ambientTemperature is required by MAS; left unset, the generated
+    // struct carries an uninitialised double that lead-sleeve selection read as 5.4e150 C.
+    OperatingConditions conditions;
+    conditions.set_ambient_temperature(25);
+    operatingPoint.set_conditions(conditions);
     inputs.get_mutable_operating_points().push_back(operatingPoint);
     insulationRequirements.set_altitude(altitude);
     insulationRequirements.set_cti(cti);

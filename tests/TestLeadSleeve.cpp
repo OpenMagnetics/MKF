@@ -436,3 +436,16 @@ TEST_CASE("Test_Lead_Sleeve_Overlap_Is_One_Turn_Pitch_Of_Its_Own_Lead", "[constr
     CHECK_THAT(fineOverlap, Catch::Matchers::WithinAbs(InsulationCoordinator::lead_outer_diameter(fine), 1e-12));
     CHECK(fineOverlap > 0);
 }
+
+TEST_CASE("Test_Lead_Sleeve_Temperature_Refuses_An_Invalid_Ambient", "[constructive-model][insulation][lead-sleeve][abt-1299]") {
+    // ABT #1299: an operating point built without conditions carries an uninitialised ambient
+    // temperature; sleeve selection read 5.4e150 C from it. Out-of-schema values must be refused.
+    auto wire = find_wire_by_name(enamelledWireName);
+    auto inputs = make_reinforced_inputs({InsulationStandards::IEC_623681}, 40);
+    CHECK_THAT(InsulationCoordinator::lead_sleeve_required_temperature(inputs, wire), Catch::Matchers::WithinAbs(std::max(40.0, wire.resolve_coating()->get_temperature_rating().value_or(40.0)), 1e-9));
+    // Below -273.15 C the generated MAS setter already refuses; NaN and infinity pass through it.
+    for (double invalid : {std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::infinity()}) {
+        inputs.get_mutable_operating_points()[0].get_mutable_conditions().set_ambient_temperature(invalid);
+        REQUIRE_THROWS_AS(InsulationCoordinator::lead_sleeve_required_temperature(inputs, wire), InvalidInputException);
+    }
+}

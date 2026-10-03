@@ -393,7 +393,17 @@ double InsulationCoordinator::lead_sleeve_required_temperature(Inputs& inputs, W
         anyTemperature = true;
     }
     for (auto& operatingPoint : inputs.get_operating_points()) {
-        requiredTemperature = std::max(requiredTemperature, operatingPoint.get_conditions().get_ambient_temperature());
+        // ABT #1299: MAS::OperatingConditions leaves ambient_temperature uninitialised when an
+        // operating point is built in code without conditions (it is required in MAS, minimum
+        // -273.15 C). Reading it chose sleeves from stack garbage (5.4e150 C). A value outside the
+        // schema's own range is refused by name; the callers must set the ambient.
+        double ambientTemperature = operatingPoint.get_conditions().get_ambient_temperature();
+        if (!std::isfinite(ambientTemperature) || ambientTemperature < -273.15) {
+            throw InvalidInputException(ErrorCode::INVALID_INPUT,
+                "Operating point '" + operatingPoint.get_name().value_or("unnamed") + "' has no valid ambient temperature (" +
+                std::to_string(ambientTemperature) + " C); conditions.ambientTemperature is required to rate a lead sleeve");
+        }
+        requiredTemperature = std::max(requiredTemperature, ambientTemperature);
         anyTemperature = true;
     }
     auto coating = wire.resolve_coating();
