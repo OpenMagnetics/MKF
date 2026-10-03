@@ -120,6 +120,20 @@ PlacedPin placed_pin(OpenMagnetics::Coil& coil, const std::string& name) {
     return PlacedPin();
 }
 
+// ABT #1640: a run to a pin ends where the wrap starts, on a level leg tangent to the wrap circle:
+// `wrapRadius` (pin radius + coated wire radius) off the pin axis, the leg square to that radius.
+void check_tangent_arrival(const PlacedPin& pin, const std::vector<double>& before, const std::vector<double>& end, double wrapRadius) {
+    const size_t axis = pin.hangsAlongZ ? 2 : 1;
+    std::vector<double> radial(3), leg(3);
+    for (size_t c = 0; c < 3; ++c) {
+        radial[c] = c == axis ? 0.0 : end[c] - pin.centre[c];
+        leg[c] = end[c] - before[c];
+    }
+    CHECK_THAT(std::hypot(radial[0], radial[1], radial[2]), Catch::Matchers::WithinAbs(wrapRadius, 1e-12));
+    CHECK_THAT(leg[axis], Catch::Matchers::WithinAbs(0.0, 1e-12));
+    CHECK_THAT(radial[0] * leg[0] + radial[1] * leg[1] + radial[2] * leg[2], Catch::Matchers::WithinAbs(0.0, 1e-15));
+}
+
 // Position along the row counted from the row's START end: -X on row 0, +X on row 1 (vertical).
 size_t walk(OpenMagnetics::Coil& coil, const std::string& name) {
     auto pin = placed_pin(coil, name);
@@ -383,6 +397,7 @@ TEST_CASE("The terminal lead is routed to its pin: routedLength grows by the run
     auto coil = make_coil({{"Primary", 40, 1, "primary", "Round 0.5 - Grade 1"},
                                  {"Secondary", 6, 1, "secondary", "Round 0.5 - Grade 1"}});
     auto core = former_core();
+    const double coatedRadius = find_wire_by_name("Round 0.5 - Grade 1").get_maximum_outer_width() / 2;
 
     std::vector<ConnectionRoute> routesBefore;
     auto spacesBefore = coil.get_connection_reserved_spaces(&routesBefore);
@@ -416,13 +431,15 @@ TEST_CASE("The terminal lead is routed to its pin: routedLength grows by the run
         CHECK(before.pinName.empty());
         CHECK(after.routedLength > before.routedLength);
         REQUIRE(after.pinWaypoints.size() >= 2);
-        // The run ends on the axis of the assigned pin, at least a wire radius beyond the plane the
-        // pin leaves (ABT #1237: the wire rests on the rail face), and starts at the window exit.
+        // The run ends where the wrap round the assigned pin starts, tangent to it (ABT #1640), at
+        // least a wire radius beyond the plane the pin leaves (ABT #1237: the wire rests on the rail
+        // face), and starts at the window exit.
         auto pin = placed_pin(coil, after.pinName);
-        const auto& pinEnd = after.kind == ConnectionKind::TERMINAL_ENTRANCE ? after.pinWaypoints.front() : after.pinWaypoints.back();
-        CHECK_THAT(pinEnd[0], Catch::Matchers::WithinAbs(pin.base[0], 1e-12));
+        const bool entrance = after.kind == ConnectionKind::TERMINAL_ENTRANCE;
+        const auto& pinEnd = entrance ? after.pinWaypoints.front() : after.pinWaypoints.back();
+        const auto& beforeEnd = entrance ? after.pinWaypoints[1] : after.pinWaypoints[after.pinWaypoints.size() - 2];
+        check_tangent_arrival(pin, beforeEnd, pinEnd, pin.diameter / 2 + coatedRadius);
         CHECK(pinEnd[1] <= pin.base[1] - 0.00025);
-        CHECK_THAT(pinEnd[2], Catch::Matchers::WithinAbs(pin.base[2], 1e-12));
         const auto& windowEnd = after.kind == ConnectionKind::TERMINAL_ENTRANCE ? after.pinWaypoints.back() : after.pinWaypoints.front();
         const auto& borderEnd = after.kind == ConnectionKind::TERMINAL_ENTRANCE ? after.waypoints.front() : after.waypoints.back();
         // The border point (radial, axial) leaves on the front face at its own axial level, at
@@ -466,15 +483,17 @@ TEST_CASE("route_leads_to_pins walks beside the pin, down to the rail face and i
     // A one-pin row has no outside, so the lead comes from -X: beside the pin at
     // x = -0.005 - (0.0005 pin radius + 0.00025 wire radius + 0.0005 wire diameter) = -0.00625.
     // Exit (0, 0.003, -0.010) -> along x to -0.00625 (0.00625) -> down to one wire radius under the
-    // pin base y = -0.010 (0.01325) -> across to the row z = 0.006 (0.016) -> into the pin (0.00125).
+    // pin base y = -0.010 (0.01325) -> across towards the row z = 0.006, stopping a wrap radius
+    // (0.0005 + 0.00025) short of it at z = 0.00525 (0.01525) -> along x to the pin, tangent to the
+    // wrap circle (0.00125; ABT #1640).
     REQUIRE(route.waypoints.size() == 5);
-    CHECK_THAT(route.length, Catch::Matchers::WithinAbs(0.00625 + 0.01325 + 0.016 + 0.00125, 1e-12));
+    CHECK_THAT(route.length, Catch::Matchers::WithinAbs(0.00625 + 0.01325 + 0.01525 + 0.00125, 1e-12));
     CHECK_THAT(route.waypoints.front()[0], Catch::Matchers::WithinAbs(0.0, 1e-12));
     CHECK_THAT(route.waypoints.front()[2], Catch::Matchers::WithinAbs(-0.010, 1e-12));
     CHECK_THAT(route.waypoints[1][0], Catch::Matchers::WithinAbs(-0.00625, 1e-12));
     CHECK_THAT(route.waypoints.back()[0], Catch::Matchers::WithinAbs(-0.005, 1e-12));
     CHECK_THAT(route.waypoints.back()[1], Catch::Matchers::WithinAbs(-0.01025, 1e-12));
-    CHECK_THAT(route.waypoints.back()[2], Catch::Matchers::WithinAbs(0.006, 1e-12));
+    CHECK_THAT(route.waypoints.back()[2], Catch::Matchers::WithinAbs(0.00525, 1e-12));
 
     // The ride-over lift moves the exit out along -Z.
     lead.lift = 0.001;
@@ -488,8 +507,10 @@ TEST_CASE("route_leads_to_pins walks beside the pin, down to the rail face and i
     lead.pin = horizontal;
     route = OpenMagnetics::Coil::route_leads_to_pins({horizontal}, {lead}, 0.0, 2)[0];
     // Along x to 0.004 - 0.00125 (0.00275), out along -Z to a wire radius beyond the base plane
-    // z = -0.018 (0.00825), up to the row y = 0.010 (0.007), into the pin (0.00125).
-    CHECK_THAT(route.length, Catch::Matchers::WithinAbs(0.00275 + 0.00825 + 0.007 + 0.00125, 1e-12));
+    // z = -0.018 (0.00825), up towards the row y = 0.010 to a wrap radius short of it, y = 0.00925
+    // (0.00625), along x to the pin, tangent to the wrap circle (0.00125).
+    CHECK_THAT(route.length, Catch::Matchers::WithinAbs(0.00275 + 0.00825 + 0.00625 + 0.00125, 1e-12));
+    CHECK_THAT(route.waypoints.back()[1], Catch::Matchers::WithinAbs(0.00925, 1e-12));
     CHECK_THAT(route.waypoints.back()[2], Catch::Matchers::WithinAbs(-0.01825, 1e-12));
 }
 
@@ -725,7 +746,7 @@ double sampled_distance(const std::vector<Point3>& a, const std::vector<Point3>&
 struct PinRun {
     std::string label;
     std::string pinName;
-    std::vector<Point3> points;   // window exit -> pin axis
+    std::vector<Point3> points;   // window exit -> the wrap's start, tangent to it
     double radius;
     double slotX;                 // Coil::terminal_exit_slots for this lead, recomputed from the routes
 };
@@ -802,11 +823,13 @@ PinRunReport check_pin_runs_share_no_copper(OpenMagnetics::Coil& coil, std::vect
         tip[axis] = 2 * pin.centre[axis] - pin.base[axis];
         return std::vector<Point3>{pin.base, tip};
     };
-    // A wrap as the stretch of its pin's axis it covers, wrapTurns wire diameters from where the run arrives.
+    // A wrap as the stretch of its pin's axis it covers, wrapTurns wire diameters from the level the
+    // run arrives at (ABT #1640: the run ends beside the axis, on the wrap circle).
     auto wrap_axis = [&](const PinRun& run) {
         const auto& pin = pin_named(run.pinName);
         const size_t axis = pin.hangsAlongZ ? 2 : 1;
-        auto top = run.points.back();
+        auto top = pin.centre;
+        top[axis] = run.points.back()[axis];
         auto bottom = top;
         bottom[axis] -= double(wrapTurns) * 2 * run.radius;
         return std::vector<Point3>{top, bottom};
@@ -822,10 +845,10 @@ PinRunReport check_pin_runs_share_no_copper(OpenMagnetics::Coil& coil, std::vect
         // The run starts at MKF's exit slot, the x the in-window lead is drawn at, and leaves along -Z.
         CHECK_THAT(run.points[0][0], Catch::Matchers::WithinAbs(run.slotX, 1e-12));
         CHECK_THAT(run.points[1][0], Catch::Matchers::WithinAbs(run.slotX, 1e-12));
-        // Ends on its own pin's axis, resting outside the rail face, on a level last leg.
-        CHECK_THAT(run.points.back()[0], Catch::Matchers::WithinAbs(pin.centre[0], 1e-12));
+        // Ends where its wrap starts, tangent to the wrap circle on a level last leg (ABT #1640),
+        // resting outside the rail face.
+        check_tangent_arrival(pin, run.points[run.points.size() - 2], run.points.back(), pin.diameter / 2 + run.radius);
         CHECK(run.points.back()[axis] <= pin.base[axis] - run.radius + 1e-12);
-        CHECK_THAT(run.points[run.points.size() - 2][axis], Catch::Matchers::WithinAbs(run.points.back()[axis], 1e-12));
         // The wrap stays on the pin.
         CHECK(wrap_axis(run)[1][axis] >= pin_axis(pin)[1][axis] - 1e-12);
         // Never inside a pin rail (ABT #1249): sampled every 20 um.

@@ -296,8 +296,10 @@ struct ConnectionRoute {
     // route ends at the border as before); `pinWaypoints` is that continuation as 3D points in
     // the bobbin frame (MVB++ concentric frame: column axis Y, leads on the -Z front face), in the
     // same electrical order as `waypoints` (entrance: pin end first; exit: window exit first),
-    // from the window exit to the pin AXIS, one coated radius (or a whole wrap level) beyond the
-    // plane the pin leaves: the wrap starts there (ABT #1237, Coil::route_leads_to_pins). The exit
+    // from the window exit to where the wrap starts, one coated radius (or a whole wrap level)
+    // beyond the plane the pin leaves (ABT #1237, Coil::route_leads_to_pins). The last leg is level
+    // and TANGENT to the wrap circle (pin radius + coated radius about the pin axis), so the wire
+    // goes on round the pin without a corner (ABT #1640); the wrap's sense follows it. The exit
     // carries MKF's own slot along the flange (x, Coil::terminal_exit_slots: the x the in-window
     // run is drawn at) and ride-over lift (z). `routedLength` includes it.
     std::string pinName;
@@ -364,7 +366,7 @@ struct ConnectionRoute {
 // Coil::route_lead_to_pin.
 struct PinLeadRoute {
     std::string pinName;
-    std::vector<std::vector<double>> waypoints;    // 3D, bobbin frame, window exit -> the pin axis at the wrap's start
+    std::vector<std::vector<double>> waypoints;    // 3D, bobbin frame, window exit -> the wrap's start, tangent to the wrap circle (ABT #1640)
     double length = 0;
     // ABT #1172: the centreline bend radius this run's corners were PLANNED for, metres. A
     // consumer that rounds the corners must draw this radius or refuse: the legs are placed

@@ -902,10 +902,18 @@ std::vector<PinLeadRoute> Coil::route_leads_to_pins(const std::vector<MAS::Pin>&
                         auto railPoint = raw.back();
                         railPoint[axisIndex] = wrapTop;
                         raw.push_back(railPoint);
+                        // ABT #1640: the last leg arrives TANGENT to the wrap circle, a wrap radius
+                        // to the side of the pin's row it comes from, and ends where the wrap
+                        // begins. A leg into the pin's axis met the wrap at 90 degrees, a corner no
+                        // bend can round without cutting into the pin (an arc from a radial leg onto
+                        // the circle curves inside it); a tangent arrival has none.
+                        const double rowSide = railPoint[rowIndex] >= pin.centre[rowIndex] ? 1.0 : -1.0;
                         auto rowPoint = railPoint;
-                        rowPoint[rowIndex] = pin.centre[rowIndex];
+                        rowPoint[rowIndex] = pin.centre[rowIndex] + rowSide * wrapRadius;
                         raw.push_back(rowPoint);
-                        raw.push_back(axis_point(pin, axisIndex, wrapTop));
+                        auto wrapStart = axis_point(pin, axisIndex, wrapTop);
+                        wrapStart[rowIndex] += rowSide * wrapRadius;
+                        raw.push_back(wrapStart);
                         std::vector<std::vector<double>> points;
                         for (auto& point : raw) {
                             if (points.empty() || distance(points.back(), point) > 1e-12) {
@@ -950,7 +958,9 @@ std::vector<PinLeadRoute> Coil::route_leads_to_pins(const std::vector<MAS::Pin>&
                             }
                         }
                         // Pins: every pin but its own keeps the approach clearance from the whole run;
-                        // its own pin, from everything but the last leg (which ends on its axis).
+                        // its own pin, from everything but the last leg, which touches it: that leg
+                        // runs tangent to the wrap circle, a pin radius plus a wire radius from the
+                        // axis (ABT #1640), and may come no closer.
                         for (size_t pinIndex = 0; pinIndex < placedPins.size() && !conflict; ++pinIndex) {
                             const auto& other = placedPins[pinIndex];
                             const size_t otherAxis = other.hangsAlongZ ? 2 : 1;
@@ -961,6 +971,14 @@ std::vector<PinLeadRoute> Coil::route_leads_to_pins(const std::vector<MAS::Pin>&
                             if (found < required - tolerance) {
                                 conflict = "pin '" + other.name + "': centreline " + millimetres(found) + " from its axis, " +
                                            millimetres(required) + " needed (pin radius + wire radius + wire diameter)";
+                            }
+                            if (own && !conflict) {
+                                const auto& last = points.size() >= 2 ? points[points.size() - 2] : points.back();
+                                const double touching = segment_distance(last, points.back(), pinAxis[0], pinAxis[1]);
+                                if (touching < wrapRadius - tolerance) {
+                                    conflict = "its own pin '" + other.name + "': the arriving leg comes " + millimetres(touching) +
+                                               " from its axis, inside the wrap radius " + millimetres(wrapRadius);
+                                }
                             }
                         }
                         // Other leads' in-window runs at their exit slots, planned or not.
