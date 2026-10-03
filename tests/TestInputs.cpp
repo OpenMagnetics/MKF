@@ -1665,6 +1665,58 @@ TEST_CASE("Test_Reflect_Flyback_Primary_Web", "[processor][inputs][smoke-test]")
     REQUIRE(processed.get_label() == WaveformLabel::FLYBACK_SECONDARY);
 }
 
+TEST_CASE("Test_Reflect_Secondary_Default_Web_Rectangular_Voltage", "[processor][inputs][bug]") {
+    // ABT #1670: the web's default two-winding operating point. Its primary voltage is the
+    // two-level rectangle -20.5/70.5 V at duty 0.5 (with a processed block, stale, claiming
+    // peakToPeak 100 and offset 0). Reflecting it 1:1 gave 0/-100 V -- a -50 V DC level across
+    // a winding -- because the label guessed from the data (unipolarRectangular, the volt-
+    // seconds do not balance) picked a branch that then read its numbers from the stale block.
+    // A winding voltage reflects by Faraday's law: v2 = v1 / n, point by point, nothing added.
+    auto path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "default_two_winding_pq2715_no_coil_found.json");
+    std::ifstream file(path);
+    REQUIRE(file.good());
+    auto masJson = json::parse(file);
+    OperatingPointExcitation primary(masJson["inputs"]["operatingPoints"][0]["excitationsPerWinding"][0]);
+    auto primaryVoltage = primary.get_voltage().value();
+    auto primaryData = primaryVoltage.get_waveform()->get_data();
+    REQUIRE(primary.get_name().value() == "Primary winding excitation");
+
+    for (double turnsRatio : {1.0, 2.0}) {
+        auto secondary = OpenMagnetics::Inputs::calculate_reflected_secondary(primary, turnsRatio, std::string("Secondary winding excitation"));
+        auto secondaryWaveform = secondary.get_voltage()->get_waveform().value();
+        REQUIRE(secondaryWaveform.get_data().size() == primaryData.size());
+        for (size_t i = 0; i < primaryData.size(); ++i) {
+            CHECK_THAT(secondaryWaveform.get_data()[i], Catch::Matchers::WithinAbs(primaryData[i] / turnsRatio, 1e-12));
+            CHECK_THAT(secondaryWaveform.get_time().value()[i], Catch::Matchers::WithinAbs(primaryVoltage.get_waveform()->get_time().value()[i], 1e-15));
+        }
+        // The primary's own average (+25 V, a web-side issue of its default) scales; no DC is
+        // invented. Both averages go through the same sampled-waveform pipeline that fills the
+        // secondary's processed block, so they are compared like for like.
+        auto primarySampled = OpenMagnetics::Inputs::calculate_sampled_waveform(primaryVoltage.get_waveform().value(), primary.get_frequency());
+        auto primaryVoltageReprocessed = primaryVoltage;
+        primaryVoltageReprocessed.set_processed(std::nullopt);
+        primaryVoltageReprocessed.set_harmonics(OpenMagnetics::Inputs::calculate_harmonics_data(primaryVoltage.get_waveform().value(), primarySampled, primary.get_frequency()));
+        auto primaryAverage = OpenMagnetics::Inputs::calculate_processed_data(primaryVoltageReprocessed, primarySampled, true).get_average().value();
+        CHECK(primaryAverage > 20);
+        CHECK_THAT(secondary.get_voltage()->get_processed()->get_average().value(), Catch::Matchers::WithinAbs(primaryAverage / turnsRatio, 1e-9 * std::fabs(primaryAverage)));
+        CHECK(secondary.get_name().value() == "Secondary winding excitation");
+        // The current is a triangle: scaled by n, shape kept.
+        CHECK_THAT(secondary.get_current()->get_processed()->get_peak_to_peak().value(), Catch::Matchers::WithinRel(10 * turnsRatio, 1e-6));
+    }
+    CHECK(!OpenMagnetics::Inputs::calculate_reflected_secondary(primary, 1.0).get_name());
+
+    // The label-dispatched reflection (the web binding's path) must not synthesise a different
+    // waveform: a unipolarRectangular that does not rest at zero has no unipolar reflection.
+    auto label = OpenMagnetics::Inputs::calculate_basic_processed_data(primaryVoltage.get_waveform().value()).get_label();
+    REQUIRE(label == WaveformLabel::UNIPOLAR_RECTANGULAR);
+    REQUIRE_THROWS(OpenMagnetics::Inputs::reflect_waveform(primaryVoltage, 1.0, label));
+    // Shape-preserving labels reflect by plain scaling.
+    auto asRectangular = OpenMagnetics::Inputs::reflect_waveform(primaryVoltage, 0.5, WaveformLabel::RECTANGULAR);
+    for (size_t i = 0; i < primaryData.size(); ++i) {
+        CHECK_THAT(asRectangular.get_waveform()->get_data()[i], Catch::Matchers::WithinAbs(primaryData[i] * 0.5, 1e-12));
+    }
+}
+
 TEST_CASE("Test_Imported_Rectangle_Is_Custom_Not_Sinusoidal_Via_Inputs", "[processor][inputs][mas-migration][bug]") {
     // ABT #602: Inputs::calculate_basic_processed_data / try_guess_waveform_label /
     // try_guess_duty_cycle used to be a verbatim, independently-bugged twin of

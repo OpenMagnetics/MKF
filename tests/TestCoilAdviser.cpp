@@ -3002,3 +3002,34 @@ TEST_CASE("Test_CoilAdviser_Scoring_Excludes_Rejected_Designs", "[adviser][coil-
     CHECK_THAT(score20, Catch::Matchers::WithinAbs(1.0, 1e-9));
     CHECK_THAT(score40, Catch::Matchers::WithinAbs(0.0, 1e-9));
 }
+
+TEST_CASE("Test_CoilAdviser_Web_Default_Two_Winding_PQ2715", "[adviser][coil-adviser][bug]") {
+    // ABT #1446: the web's DEFAULT design (100 uH, 100 kHz, triangular 10 App) with two 1:1
+    // windings. The core adviser picks PQ 27/15 Fair-Rite 95, 13 + 13 turns, and "Advise all"
+    // (calculate_advised_coil) answered "No coil found". 26 turns of a 2.9 A rms winding fit a
+    // 4.55 x 4.59 mm window many times over. Same preparation as the web entry point.
+    auto path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "default_two_winding_pq2715_no_coil_found.json");
+    std::ifstream file(path);
+    REQUIRE(file.good());
+    OpenMagnetics::Mas mas(json::parse(file));
+    settings.reset();
+    settings.set_coil_delimit_and_compact(true);
+
+    for (size_t windingIndex = 0; windingIndex < mas.get_magnetic().get_coil().get_functional_description().size(); ++windingIndex) {
+        mas.get_mutable_magnetic().get_mutable_coil().get_mutable_functional_description()[windingIndex].set_wire("Dummy");
+    }
+    mas.get_mutable_magnetic().get_mutable_coil().set_turns_description(std::nullopt);
+    mas.get_mutable_magnetic().get_mutable_coil().set_layers_description(std::nullopt);
+    mas.get_mutable_magnetic().get_mutable_coil().set_sections_description(std::nullopt);
+    mas.get_mutable_magnetic().get_mutable_coil().set_groups_description(std::nullopt);
+
+    CoilAdviser coilAdviser;
+    auto masMagneticsWithCoil = coilAdviser.get_advised_coil(mas, 1);
+    settings.reset();
+    INFO(coilAdviser.get_last_no_results_reason().value_or("returned results"));
+    REQUIRE(masMagneticsWithCoil.size() == 1);
+    auto coil = masMagneticsWithCoil[0].get_magnetic().get_coil();
+    REQUIRE(coil.get_turns_description());
+    CHECK(coil.get_functional_description()[0].get_number_turns() == 13);
+    CHECK(coil.get_functional_description()[1].get_number_turns() == 13);
+}

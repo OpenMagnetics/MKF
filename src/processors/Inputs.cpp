@@ -1241,21 +1241,52 @@ SignalDescriptor Inputs::reflect_waveform(SignalDescriptor primarySignalDescript
 SignalDescriptor Inputs::reflect_waveform(SignalDescriptor signal,
                                                  double ratio,
                                                  WaveformLabel label) {
-    
-    if (label == WaveformLabel::CUSTOM) {
-        return reflect_waveform(signal, ratio);
+    // ABT #1670: every label is handled explicitly. An ideal transformer scales the
+    // instantaneous winding voltage by 1/n and the load-referred current by n without
+    // changing its shape, so every shape that is not a flyback current is reflected by
+    // plain scaling. Only the labels below that change shape are synthesised. Before,
+    // any label without a case (RECTANGULAR among them) fell through a `default:`, so
+    // a label nobody had thought about silently took somebody else's branch.
+    switch (label) {
+        case WaveformLabel::CUSTOM:
+        case WaveformLabel::SINUSOIDAL:
+        case WaveformLabel::TRIANGULAR:
+        case WaveformLabel::TRIANGULAR_WITH_DEADTIME:
+        case WaveformLabel::RECTANGULAR:
+        case WaveformLabel::RECTANGULAR_DCM:
+        case WaveformLabel::RECTANGULAR_WITH_DEADTIME:
+        case WaveformLabel::SECONDARY_RECTANGULAR:
+        case WaveformLabel::SECONDARY_RECTANGULAR_WITH_DEADTIME:
+        case WaveformLabel::BIPOLAR_RECTANGULAR:
+        case WaveformLabel::BIPOLAR_TRIANGULAR:
+            return reflect_waveform(signal, ratio);
+        case WaveformLabel::FLYBACK_PRIMARY:
+        case WaveformLabel::FLYBACK_SECONDARY:
+        case WaveformLabel::UNIPOLAR_TRIANGULAR:
+        case WaveformLabel::UNIPOLAR_RECTANGULAR:
+            break;
+        case WaveformLabel::FLYBACK_SECONDARY_WITH_DEADTIME:
+            throw InvalidInputException(ErrorCode::INVALID_INPUT,
+                "reflect_waveform: a flybackSecondaryWithDeadtime waveform has no reflection: the primary"
+                " current of a discontinuous flyback depends on the on-time, which this waveform does not"
+                " carry. Supply the other winding's excitation directly.");
     }
-    ProcessedWaveform processed;
-    if (!signal.get_processed()) {
-        auto waveform = signal.get_waveform().value();
-        if (is_waveform_sampled(waveform)) {
-            waveform = compress_waveform(waveform);
-        }
-        processed = calculate_basic_processed_data(waveform);
+
+    if (!signal.get_waveform() || !signal.get_waveform()->get_time()) {
+        throw InvalidInputException(ErrorCode::MISSING_DATA,
+            "reflect_waveform: reflecting a labelled waveform needs the waveform with its time axis");
     }
-    else {
-        processed = signal.get_processed().value();
+    // ABT #1670: the shape parameters come from the waveform being reflected, never from
+    // the signal's processed block. The label is (by the bindings) guessed from the
+    // waveform, and the processed block a client sends along can describe a different
+    // waveform altogether: the web's default voltage carried processed {peakToPeak 100,
+    // offset 0} over data -20.5/70.5, and mixing the data's label with the block's
+    // numbers is how a 1:1 reflection came out as 0/-100 V.
+    auto waveformToProcess = signal.get_waveform().value();
+    if (is_waveform_sampled(waveformToProcess)) {
+        waveformToProcess = compress_waveform(waveformToProcess);
     }
+    ProcessedWaveform processed = calculate_basic_processed_data(waveformToProcess);
     Waveform newWaveform;
 
     double period = signal.get_waveform()->get_time()->back() - signal.get_waveform()->get_time()->front();
@@ -1289,6 +1320,19 @@ SignalDescriptor Inputs::reflect_waveform(SignalDescriptor signal,
             break;
         }
         case WaveformLabel::UNIPOLAR_RECTANGULAR: {
+            // This synthesis rests the reflected pulse at -offset and builds its other level
+            // from the pulse's height alone, which only describes a pulse that rests at zero.
+            // A two-level wave whose low level is not zero (the web's default -20.5/70.5 V
+            // rectangle, labelled unipolar only because its volt-seconds do not balance)
+            // came out as a different waveform. Refuse it rather than invent one.
+            if (offset != 0) {
+                throw InvalidInputException(ErrorCode::INVALID_INPUT,
+                    "reflect_waveform: this unipolarRectangular waveform does not rest at zero (low level " +
+                    std::to_string(processed.get_offset()) + ", high level " +
+                    std::to_string(processed.get_offset() + processed.get_peak_to_peak().value()) +
+                    "); its unipolar reflection is only defined for a pulse resting at zero. A voltage across a"
+                    " winding reflects by plain scaling (reflect_waveform(signal, ratio)).");
+            }
             double max = peakToPeak * dutyCycle / (1 - dutyCycle) + offset;
             double min = offset;
             double dc = dutyCycle * period;
@@ -1299,13 +1343,50 @@ SignalDescriptor Inputs::reflect_waveform(SignalDescriptor signal,
             break;
         }
         default:
-            return reflect_waveform(signal, ratio);
-            break;
+            // Unreachable for the labels dispatched above; a label added to the schema later
+            // must be given its own reflection, not borrow another label's.
+            throw InvalidInputException(ErrorCode::INVALID_INPUT,
+                "reflect_waveform: no reflection is defined for waveform label " +
+                std::to_string(static_cast<int>(label)));
     }
 
     SignalDescriptor newSignal;
     newSignal.set_waveform(newWaveform);
     return newSignal;
+}
+
+OperatingPointExcitation Inputs::calculate_reflected_secondary(OperatingPointExcitation primaryExcitation, double turnRatio, std::optional<std::string> secondaryName){
+    if (!primaryExcitation.get_voltage() || !primaryExcitation.get_voltage()->get_waveform() ||
+        !primaryExcitation.get_current() || !primaryExcitation.get_current()->get_waveform()) {
+        throw InvalidInputException(ErrorCode::MISSING_DATA,
+            "calculate_reflected_secondary: the primary excitation needs both a voltage and a current waveform to reflect");
+    }
+    OperatingPointExcitation excitationOfThisWinding(primaryExcitation);
+    // ABT #1670: the copy carried the primary's name, so the secondary was presented as
+    // "Primary winding excitation". It is named after its own winding when that is known,
+    // and carries no name otherwise rather than the primary's.
+    excitationOfThisWinding.set_name(secondaryName);
+    auto currentSignalDescriptorProcessed = calculate_basic_processed_data(primaryExcitation.get_current().value().get_waveform().value());
+
+    // ABT #1670: the voltage is reflected by Faraday's law alone. Every winding links the
+    // same flux, so v2(t) = v1(t) / n whatever the shape; no label changes that. Routing it
+    // through the label-dispatched reflection turned the web's default -20.5/70.5 V
+    // rectangle into 0/-100 V, a 50 V DC level across a winding.
+    auto voltageSignalDescriptor = reflect_waveform(primaryExcitation.get_voltage().value(), 1.0 / turnRatio);
+    auto currentSignalDescriptor = reflect_waveform(primaryExcitation.get_current().value(), turnRatio, currentSignalDescriptorProcessed.get_label());
+
+    auto voltageSampledWaveform = calculate_sampled_waveform(voltageSignalDescriptor.get_waveform().value(), excitationOfThisWinding.get_frequency());
+    voltageSignalDescriptor.set_harmonics(calculate_harmonics_data(voltageSignalDescriptor.get_waveform().value(), voltageSampledWaveform, excitationOfThisWinding.get_frequency()));
+    voltageSignalDescriptor.set_processed(calculate_processed_data(voltageSignalDescriptor, voltageSampledWaveform, true));
+
+    auto currentSampledWaveform = calculate_sampled_waveform(currentSignalDescriptor.get_waveform().value(), excitationOfThisWinding.get_frequency());
+    currentSignalDescriptor.set_harmonics(calculate_harmonics_data(currentSignalDescriptor.get_waveform().value(), currentSampledWaveform, excitationOfThisWinding.get_frequency()));
+    currentSignalDescriptor.set_processed(calculate_processed_data(currentSignalDescriptor, currentSampledWaveform, true));
+
+    excitationOfThisWinding.set_voltage(voltageSignalDescriptor);
+    excitationOfThisWinding.set_current(currentSignalDescriptor);
+
+    return excitationOfThisWinding;
 }
 
 std::pair<bool, std::string> Inputs::check_integrity() {
@@ -1418,6 +1499,8 @@ std::pair<bool, std::string> Inputs::check_integrity() {
                         }
 
                         OperatingPointExcitation excitationOfThisWinding(excitationOfPrimaryWinding);
+                        // ABT #1670: the copy is not the primary; it must not carry its name.
+                        excitationOfThisWinding.set_name(std::nullopt);
 
                         // Reflect only what the primary actually carries. Inventing the other half
                         // would be making up an operating point nobody asked for.

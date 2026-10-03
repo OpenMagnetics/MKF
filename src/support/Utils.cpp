@@ -2740,28 +2740,6 @@ SignalDescriptor standardize_signal_descriptor(SignalDescriptor signalDescriptor
     return standardSignalDescriptor;
 }
 
-OperatingPointExcitation calculate_reflected_secondary(OperatingPointExcitation primaryExcitation, double turnRatio){
-    OperatingPointExcitation excitationOfThisWinding(primaryExcitation);
-    auto currentSignalDescriptorProcessed = Inputs::calculate_basic_processed_data(primaryExcitation.get_current().value().get_waveform().value());
-    auto voltageSignalDescriptorProcessed = Inputs::calculate_basic_processed_data(primaryExcitation.get_voltage().value().get_waveform().value());
-
-    auto voltageSignalDescriptor = Inputs::reflect_waveform(primaryExcitation.get_voltage().value(), 1.0 / turnRatio, voltageSignalDescriptorProcessed.get_label());
-    auto currentSignalDescriptor = Inputs::reflect_waveform(primaryExcitation.get_current().value(), turnRatio, currentSignalDescriptorProcessed.get_label());
-
-    auto voltageSampledWaveform = Inputs::calculate_sampled_waveform(voltageSignalDescriptor.get_waveform().value(), excitationOfThisWinding.get_frequency());
-    voltageSignalDescriptor.set_harmonics(Inputs::calculate_harmonics_data(voltageSignalDescriptor.get_waveform().value(), voltageSampledWaveform, excitationOfThisWinding.get_frequency()));
-    voltageSignalDescriptor.set_processed(Inputs::calculate_processed_data(voltageSignalDescriptor, voltageSampledWaveform, true));
-
-    auto currentSampledWaveform = Inputs::calculate_sampled_waveform(currentSignalDescriptor.get_waveform().value(), excitationOfThisWinding.get_frequency());
-    currentSignalDescriptor.set_harmonics(Inputs::calculate_harmonics_data(currentSignalDescriptor.get_waveform().value(), currentSampledWaveform, excitationOfThisWinding.get_frequency()));
-    currentSignalDescriptor.set_processed(Inputs::calculate_processed_data(currentSignalDescriptor, currentSampledWaveform, true));
-
-    excitationOfThisWinding.set_voltage(voltageSignalDescriptor);
-    excitationOfThisWinding.set_current(currentSignalDescriptor);
-
-    return excitationOfThisWinding;
-}
-
 Mas mas_autocomplete(Mas mas, bool simulate, json configuration) {
 
     // ABT #620: thread the design's own requirements into the coil so a re-wind here
@@ -2889,7 +2867,11 @@ Inputs inputs_autocomplete(Inputs inputs, std::optional<Magnetic> magnetic, json
                 else {
                     turnRatioPrimary = OpenMagnetics::resolve_dimensional_values(inputs.get_design_requirements().get_turns_ratios()[0]);
                 }
-                auto secondaryExcitation = calculate_reflected_secondary(inputs.get_mutable_operating_points()[operatingPointIndex].get_mutable_excitations_per_winding()[0], turnRatioPrimary);
+                std::optional<std::string> secondaryName;
+                if (magnetic && magnetic->get_coil().get_functional_description().size() > 1) {
+                    secondaryName = magnetic->get_coil().get_functional_description()[1].get_name() + " winding excitation";
+                }
+                auto secondaryExcitation = Inputs::calculate_reflected_secondary(inputs.get_mutable_operating_points()[operatingPointIndex].get_mutable_excitations_per_winding()[0], turnRatioPrimary, secondaryName);
                 inputs.get_mutable_operating_points()[operatingPointIndex].get_mutable_excitations_per_winding().push_back(secondaryExcitation);
             }
         }

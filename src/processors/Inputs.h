@@ -83,6 +83,10 @@ class Inputs : public MAS::Inputs {
     // static OperatingPointExcitation reflect_waveforms(OperatingPointExcitation excitation, double ratio);
     static SignalDescriptor reflect_waveform(SignalDescriptor excitation, double ratio);
     static SignalDescriptor reflect_waveform(SignalDescriptor signal, double ratio, WaveformLabel label);
+    // Secondary excitation of an ideal two-winding transformer with turns ratio n = N1/N2:
+    // voltage v1/n (Faraday, any shape), current reflected by its label. The result carries
+    // secondaryName (or no name), never the primary's. Throws if the primary lacks either signal.
+    static OperatingPointExcitation calculate_reflected_secondary(OperatingPointExcitation primaryExcitation, double turnRatio, std::optional<std::string> secondaryName = std::nullopt);
 
     static bool is_standardized(SignalDescriptor signal);
     static SignalDescriptor standardize_waveform(SignalDescriptor parameter, double frequency);
