@@ -49,6 +49,22 @@ std::vector<std::map<std::string, double>> wire_configurations(double maximumEff
 // lowest losses (core + ohmic, skin and proximity winding losses). Two: on the 36-case Henry corpus
 // it gave 91 acceptable designs against 87 with a pool of one (the first coils that fit).
 const size_t kWoundCoilPoolMultiplier = 2;
+
+// The switching frequency of every operating point (first winding), for log lines that must name
+// the frequency a loss evaluation failed at.
+std::string describe_operating_frequencies(const OpenMagnetics::Inputs& inputs) {
+    std::string description = "frequency";
+    for (size_t operatingPointIndex = 0; operatingPointIndex < inputs.get_operating_points().size(); ++operatingPointIndex) {
+        const auto& operatingPoint = inputs.get_operating_points()[operatingPointIndex];
+        if (operatingPoint.get_excitations_per_winding().empty()) {
+            throw OpenMagnetics::InvalidInputException(OpenMagnetics::ErrorCode::MISSING_DATA,
+                "Operating point " + std::to_string(operatingPointIndex) + " has no excitations");
+        }
+        description += (operatingPointIndex == 0 ? " " : ", ") +
+                       std::to_string(operatingPoint.get_excitations_per_winding()[0].get_frequency()) + " Hz";
+    }
+    return description;
+}
 }  // namespace
 
 namespace OpenMagnetics {
@@ -1597,23 +1613,53 @@ namespace OpenMagnetics {
             // Keep the coils with the lowest losses (core + ohmic, skin and proximity winding
             // losses), as MKF's MagneticFilterLosses computes them on the wound coil: the wire
             // ranking before winding cannot see the proximity field of the real layer stack.
+            // A coil whose losses MKF cannot evaluate (the material's loss fit does not cover the
+            // frequency, the thermal network does not converge, the filter refuses the coil) has
+            // no loss to rank by: it is dropped from the ranking with its reason logged, and no
+            // loss is invented for it.
             MagneticFilterLosses lossesFilter;
             std::vector<std::pair<Mas, double>> masesWithLosses;
             for (auto& woundMas : masesWithCoil) {
-                auto [valid, losses] = lossesFilter.evaluate_magnetic(&woundMas.get_mutable_magnetic(), &woundMas.get_mutable_inputs());
-                if (!valid) {
-                    throw CalculationException(ErrorCode::CALCULATION_ERROR,
-                        "CoilAdviser: the losses of wound coil '" + woundMas.get_mutable_magnetic().get_reference() +
-                        "' could not be evaluated, so the wound coils cannot be ranked by losses");
+                std::string reason;
+                try {
+                    auto [valid, losses] = lossesFilter.evaluate_magnetic(&woundMas.get_mutable_magnetic(), &woundMas.get_mutable_inputs());
+                    if (valid) {
+                        masesWithLosses.push_back({woundMas, losses});
+                        continue;
+                    }
+                    reason = "MagneticFilterLosses refused the coil (its windings do not match the operating point's excitations)";
                 }
-                masesWithLosses.push_back({woundMas, losses});
+                catch (const MaterialFrequencyOutOfSpanException& exception) {
+                    reason = exception.what();
+                }
+                catch (const CalculationException& exception) {
+                    if (exception.code() != ErrorCode::CALCULATION_INVALID_RESULT &&
+                        exception.code() != ErrorCode::MATERIAL_FREQUENCY_OUT_OF_SPAN) {
+                        throw;
+                    }
+                    reason = exception.what();
+                }
+                logEntry("Wound coil '" + woundMas.get_mutable_magnetic().get_reference() + "' (material " +
+                         woundMas.get_mutable_magnetic().get_mutable_core().resolve_material().get_name() + ", " +
+                         describe_operating_frequencies(woundMas.get_inputs()) +
+                         ") dropped from the loss ranking: its losses could not be evaluated: " + reason, "CoilAdviser");
             }
-            stable_sort_by_index(masesWithLosses, [](const std::pair<Mas, double>& left, const std::pair<Mas, double>& right) {
-                return left.second < right.second;
-            });
-            masesWithCoil.clear();
-            for (size_t index = 0; index < maximumNumberResults; ++index) {
-                masesWithCoil.push_back(masesWithLosses[index].first);
+            if (masesWithLosses.empty()) {
+                // Nothing to rank by: the core keeps its coils in the order they were wound
+                // (the order before the loss ranking existed), and the log says why.
+                logEntry("None of the " + std::to_string(masesWithCoil.size()) + " wound coils on core '" +
+                         mas.get_mutable_magnetic().get_mutable_core().get_shape_name() +
+                         "' could be ranked by losses; returning them in winding order, unranked", "CoilAdviser");
+                masesWithCoil.erase(masesWithCoil.begin() + maximumNumberResults, masesWithCoil.end());
+            }
+            else {
+                stable_sort_by_index(masesWithLosses, [](const std::pair<Mas, double>& left, const std::pair<Mas, double>& right) {
+                    return left.second < right.second;
+                });
+                masesWithCoil.clear();
+                for (size_t index = 0; index < std::min(maximumNumberResults, masesWithLosses.size()); ++index) {
+                    masesWithCoil.push_back(masesWithLosses[index].first);
+                }
             }
         }
         logEntry("Managed to wind " + std::to_string(masesWithCoil.size()) + " coils", "CoilAdviser");
