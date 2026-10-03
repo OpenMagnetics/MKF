@@ -995,3 +995,15 @@ TEST_CASE("Test_Import_Dense_Export_Keeps_At_Most_The_Imported_Maximum", "[proce
         CHECK_THAT(ha.get_amplitudes()[1], Catch::Matchers::WithinRel(hb.get_amplitudes()[1], 1e-3));
     }
 }
+
+TEST_CASE("Test_CircuitSimulationReader_Refuses_A_Partially_Numeric_Cell", "[processor][circuit-simulation-reader][smoke-test][abt-1624]") {
+    // ABT #1624: std::stod returned the numeric prefix of a cell and ignored the rest, so a
+    // decimal-comma "0,001" in a ';'-separated export was silently read as 0.
+    std::string decimalComma = "time;I(L1)\n0;0,001\n1e-6;0,002\n";
+    REQUIRE_THROWS_AS(CircuitSimulationReader(decimalComma, true), InvalidInputException);
+    std::string trailingJunk = "time,I(L1)\n0,1.5A\n";
+    REQUIRE_THROWS_AS(CircuitSimulationReader(trailingJunk, true), InvalidInputException);
+    // A plain, explicitly signed or exponent cell still parses whole.
+    std::string clean = "time,I(L1)\n0,+1.5\n1e-6,-2.5E-1\n";
+    REQUIRE_NOTHROW(CircuitSimulationReader(clean, true));
+}

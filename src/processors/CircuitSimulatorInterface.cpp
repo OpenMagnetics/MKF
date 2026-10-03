@@ -1,3 +1,4 @@
+#include <charconv>
 #include <limits>
 #include "support/Utils.h"
 #include "Defaults.h"
@@ -1940,17 +1941,24 @@ void CircuitSimulationReader::process_line_with_context(const std::string& line,
                     " has more columns than the header (" +
                     std::to_string(_columns.size()) + ")");
             }
-            double value;
-            try {
-                size_t consumed = 0;
-                value = std::stod(token, &consumed);
-                (void)consumed;
+            // ABT #1624: std::from_chars is locale-independent (std::stod follows the C locale, so a
+            // process running under a decimal-comma locale read "0.001" as 0), and the whole token
+            // must be the number: stod stopped at the first character it could not use and
+            // returned the prefix, so a decimal-comma "0,001" was silently read as 0.
+            double value = 0;
+            const char* first = token.data();
+            const char* last = token.data() + token.size();
+            if (first != last && *first == '+') {
+                ++first;  // from_chars takes no explicit plus sign
             }
-            catch (const std::exception&) {
+            auto [end, errorCode] = std::from_chars(first, last, value);
+            if (errorCode != std::errc() || end != last || !std::isfinite(value)) {
                 throw InvalidInputException(ErrorCode::INVALID_INPUT,
                     "Could not parse number on line " + std::to_string(lineNumber) +
                     ", column " + std::to_string(currentColumnIndex + 1) + " (\"" +
-                    _columns[currentColumnIndex].name + "\"): \"" + token + "\"");
+                    _columns[currentColumnIndex].name + "\"): \"" + token + "\"" +
+                    (errorCode == std::errc() && end != last ? " (only \"" + std::string(first, end) + "\" is a number; "
+                                                               "is the decimal separator a comma?)" : ""));
             }
             _columns[currentColumnIndex].data.push_back(value);
             currentColumnIndex++;
