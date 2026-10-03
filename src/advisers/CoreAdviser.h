@@ -581,7 +581,6 @@ inline void to_json(json & j, const CoreAdviser::CoreAdviserFilters & x) {
 
 // Free helper functions used by CoreAdviser and MagneticAdviser fast path
 void add_initial_turns_by_inductance(std::vector<std::pair<Magnetic, double>> *magneticsWithScoring, const Inputs& inputs);
-void correct_windings(std::vector<std::pair<Magnetic, double>> *magneticsWithScoring, const Inputs& inputs);
 Inputs pre_process_inputs(Inputs inputs);
 
 } // namespace OpenMagnetics

@@ -282,10 +282,74 @@ MagneticFilterCoreDcAndSkinLosses::MagneticFilterCoreDcAndSkinLosses(Inputs inpu
     _models = models;
 }
 
+std::pair<bool, double> MagneticFilterCoreDcAndSkinLosses::evaluate_stand_in_with_every_winding(Magnetic* magnetic, Inputs* inputs, std::vector<Outputs>* outputs) {
+    SettingsGuard<bool> coilDelimitGuard(settings,
+        &Settings::get_coil_delimit_and_compact,
+        &Settings::set_coil_delimit_and_compact, false);
+
+    Magnetic completed = with_every_winding(*magnetic, *inputs);
+    const auto& core = completed.get_core();
+    const std::string shapeName = core.get_shape_name();
+    prepare_bobbin_for_non_pqi(&completed, shapeName);
+    auto& coil = completed.get_mutable_coil();
+    const bool windable = !is_pqi_or_ui_shape(shapeName);
+    if (windable) {
+        coil.fast_wind();  // delimit/compact disabled by coilDelimitGuard above
+        if (!coil.get_turns_description()) {
+            // As for one winding: a coil fast_wind() cannot lay out is rejected explicitly.
+            return {false, 0.0};
+        }
+    }
+
+    std::vector<double> totalLossesPerOperatingPoint;
+    std::vector<CoreLossesOutput> coreLossesPerOperatingPoint;
+    std::vector<WindingLossesOutput> windingLossesPerOperatingPoint;
+    for (size_t operatingPointIndex = 0; operatingPointIndex < inputs->get_operating_points().size(); ++operatingPointIndex) {
+        auto operatingPoint = inputs->get_operating_point(operatingPointIndex);
+        // The same hot corner the one-winding path evaluates at.
+        double temperature = saturation_derating_temperature(operatingPoint.get_conditions().get_ambient_temperature());
+        auto [magnetizingInductance, magneticFluxDensity] = _magnetizingInductance.calculate_inductance_and_magnetic_flux_density(core, coil, &operatingPoint);
+        (void) magnetizingInductance;
+        OperatingPointExcitation excitation = operatingPoint.get_excitations_per_winding()[0];
+        excitation.set_magnetic_flux_density(magneticFluxDensity);
+        auto pick = compute_core_losses_with_negative_guard(core, excitation, temperature, _coreLossesModelSteinmetz, _coreLossesModelProprietary);
+        if (!pick.ok) {
+            return {false, 0.0};
+        }
+        if (pick.value < 0) {
+            throw CalculationException(ErrorCode::CALCULATION_ERROR, "Negative core losses for magnetic: " + magnetic->get_reference());
+        }
+        WindingLossesOutput windingLossesOutput;
+        windingLossesOutput.set_origin(ResultOrigin::SIMULATION);
+        double totalLosses = pick.value;
+        if (windable) {
+            // PQI / UI shapes: the same explicit per-shape policy as the one-winding path
+            // (core losses only, their integrated windings are not laid out by fast_wind()).
+            windingLossesOutput = _windingOhmicLosses.calculate_ohmic_losses(coil, operatingPoint, temperature);
+            windingLossesOutput = _windingSkinEffectLosses.calculate_skin_effect_losses(coil, temperature, windingLossesOutput, settings.get_harmonic_amplitude_threshold());
+            if (windingLossesOutput.get_winding_losses() < 0) {
+                throw CalculationException(ErrorCode::CALCULATION_ERROR, "Negative winding losses for magnetic: " + magnetic->get_reference());
+            }
+            totalLosses += windingLossesOutput.get_winding_losses();
+        }
+        if (!std::isfinite(totalLosses)) {
+            throw CalculationException(ErrorCode::CALCULATION_INVALID_RESULT, "Too large losses");
+        }
+        totalLossesPerOperatingPoint.push_back(totalLosses);
+        coreLossesPerOperatingPoint.push_back(pick.output);
+        windingLossesPerOperatingPoint.push_back(windingLossesOutput);
+    }
+    return finalize_losses_scoring(totalLossesPerOperatingPoint, coreLossesPerOperatingPoint, windingLossesPerOperatingPoint,
+                                   magnetic, inputs, outputs, _maximumPowerMean);
+}
+
 std::pair<bool, double> MagneticFilterCoreDcAndSkinLosses::evaluate_magnetic(Magnetic* magnetic, Inputs* inputs, std::vector<Outputs>* outputs) {
     const auto& core = magnetic->get_core();
 
     if (inputs->get_operating_points().size() > 0 && magnetic->get_mutable_coil().get_functional_description().size() != inputs->get_operating_points()[0].get_excitations_per_winding().size()) {
+        if (magnetic->get_coil().get_functional_description().size() == 1) {
+            return evaluate_stand_in_with_every_winding(magnetic, inputs, outputs);
+        }
         return {false, 0.0};
     }
 

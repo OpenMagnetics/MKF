@@ -71,7 +71,19 @@ class MagneticFilter {
         // model (MagneticFilterImpedance: points outside the material's mu(f) range judged on the
         // datasheet common-mode |Z|), or nullopt for a filter whose requirement is not frequency-wise.
         virtual std::optional<std::vector<double>> get_measured_frequencies(Magnetic* magnetic, Inputs* inputs) const { return std::nullopt; }
+
+        // A copy of `magnetic` whose coil carries every winding the inputs excite. At the core
+        // stage a multi-winding candidate carries a one-winding stand-in coil; the windings it
+        // lacks are added exactly as the core adviser completes its results (correct_windings:
+        // turns from the turns ratios, each winding's parallels sized to its own current). A
+        // coil that already has every winding is returned as is; one with more windings than
+        // the inputs excite throws.
+        static Magnetic with_every_winding(const Magnetic& magnetic, const Inputs& inputs);
 };
+
+// Completes each candidate's one-winding stand-in coil with the windings the inputs excite
+// (turns from the requirement turns ratios, parallels sized to each winding's current).
+void correct_windings(std::vector<std::pair<Magnetic, double>> *magneticsWithScoring, const Inputs& inputs);
 
 // A filter whose verdict is built on the core losses. It applies to what MagneticFilter does, and
 // only when the core material has a core-loss model: for a part whose material has none it records
@@ -293,6 +305,11 @@ class MagneticFilterCoreDcAndSkinLosses : public MagneticFilterCoreLossesBased {
         MagneticFilterCoreDcAndSkinLosses(Inputs inputs);
         MagneticFilterCoreDcAndSkinLosses(Inputs inputs, std::map<std::string, std::string> models);
         std::pair<bool, double> evaluate_magnetic(Magnetic* magnetic, Inputs* inputs, std::vector<Outputs>* outputs = nullptr);
+        // A multi-winding candidate still carrying its one-winding stand-in coil: core losses plus
+        // the DC and skin-effect losses of EVERY winding, on the coil completed from the turns
+        // ratios (with_every_winding) and fast-wound. No turns sweep (the ratios fix the turns)
+        // and the candidate keeps its stand-in coil.
+        std::pair<bool, double> evaluate_stand_in_with_every_winding(Magnetic* magnetic, Inputs* inputs, std::vector<Outputs>* outputs = nullptr);
 };
 
 class MagneticFilterLosses : public MagneticFilterCoreLossesBased {
@@ -829,12 +846,26 @@ class MagnetomotiveForce : public MagneticFilter {
 //         std::pair<bool, double> evaluate_magnetic(Magnetic* magnetic, Inputs* inputs, std::vector<Outputs>* outputs = nullptr);
 // };
 
+/**
+ * @class MagneticFilterTemperature
+ * @brief Core-stage temperature gate: the ThermalNetwork's hottest point at each operating point.
+ *
+ * The solve carries the core losses AND the copper: the DC and skin-effect losses of every
+ * winding, on the candidate's coil completed from the turns ratios (with_every_winding) and
+ * fast-wound, per turn. It used to solve the core alone, so a transformer whose copper dominates
+ * (a 10 kW PSFB) looked cool here and every candidate then failed hot after the 8-12 s coil
+ * stage. Proximity losses are not included (they need the coil stage's real layout), so the
+ * estimate is still a lower bound on the final temperature. PQI / UI shapes, whose integrated
+ * windings fast_wind() does not lay out, are solved core-only (the loss filters' policy).
+ */
 class MagneticFilterTemperature : public MagneticFilterCoreLossesBased {
     double _maximumTemperature = 130.0;
     // Orchestrator, not a fixed model: selects per material from its available
     // volumetric-losses methods (Steinmetz family, proprietary, loss factor)
     CoreLosses _coreLosses;
     MagnetizingInductance _magnetizingInductance;
+    WindingOhmicLosses _windingOhmicLosses;
+    WindingSkinEffectLosses _windingSkinEffectLosses;
 public:
     MagneticFilterTemperature() {};
     MagneticFilterTemperature(Inputs inputs, double maximumTemperature);

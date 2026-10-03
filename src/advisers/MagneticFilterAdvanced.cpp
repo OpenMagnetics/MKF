@@ -11,6 +11,7 @@
 #include <cstddef>
 #include <limits>
 #include <map>
+#include <sstream>
 #include <string>
 #include <vector>
 
@@ -254,6 +255,143 @@ std::pair<bool, double> MagneticFilterTemperature::evaluate_magnetic(
 
     const auto& coil = magnetic->get_coil();
     const std::string magneticRef = inductance_flux_cache_key(*magnetic);
+
+    // The thermal solve is the most expensive per-candidate step of the core stage, and the
+    // MagneticAdviser calls the core adviser again with a larger request whenever too few cores
+    // wind: the same candidates came back and were solved again (a 10 kW transformer spent over
+    // seven minutes re-solving cores it had already judged). The verdict depends only on the
+    // candidate (reference, material, turns, gaps) and on the operating points, so it is memoised
+    // per advise (clear_scoring) under a key holding both.
+    std::string temperatureCacheKey = "temperature|" + magneticRef;
+    for (const auto& op : inputs->get_operating_points()) {
+        temperatureCacheKey += "|" + json(op.get_conditions()).dump();
+        for (const auto& excitation : op.get_excitations_per_winding()) {
+            std::ostringstream excitationKey;
+            excitationKey.precision(17);
+            excitationKey << " f " << excitation.get_frequency();
+            if (excitation.get_current() && excitation.get_current()->get_processed()) {
+                const auto processed = excitation.get_current()->get_processed().value();
+                excitationKey << " Irms " << processed.get_rms().value_or(-1) << " Ipk " << processed.get_peak().value_or(-1);
+            }
+            if (excitation.get_voltage() && excitation.get_voltage()->get_processed()) {
+                const auto processed = excitation.get_voltage()->get_processed().value();
+                excitationKey << " Vrms " << processed.get_rms().value_or(-1) << " Vpk " << processed.get_peak().value_or(-1);
+            }
+            temperatureCacheKey += excitationKey.str();
+        }
+    }
+    if (auto cachedMaximumTemperature = get_scoring(temperatureCacheKey, MagneticFilters::TEMPERATURE_RISE)) {
+        return {cachedMaximumTemperature.value() <= _maximumTemperature, cachedMaximumTemperature.value()};
+    }
+
+    // The copper: every winding (a stand-in coil is completed from the turns ratios), laid out
+    // by fast_wind() for its per-turn losses.
+    SettingsGuard<bool> coilDelimitGuard(settings,
+        &Settings::get_coil_delimit_and_compact,
+        &Settings::set_coil_delimit_and_compact, false);
+    const std::string shapeName = core.get_shape_name();
+    const bool windable = !is_pqi_or_ui_shape(shapeName);
+    // Whether this copper fits the window is the window copper capacity screen's verdict (run
+    // before this filter). The stand-in's layout is fast_wind()'s, with section widths in
+    // proportion to copper area: a winding of few, thick turns can get a section narrower than
+    // its conductor and overlap the bobbin by a fraction of a millimetre, a layout artifact the
+    // coil stage does not share. Such a turn gets no conduction path to the enclosure on that
+    // face (logged by the network, ABT #1454), which leaves the estimate on the hot side,
+    // instead of throwing the whole candidate out of the advise.
+    SettingsGuard<bool> strictGeometryGuard(settings,
+        &Settings::get_thermal_network_strict_geometry,
+        &Settings::set_thermal_network_strict_geometry, false);
+    Magnetic lossesMagnetic = with_every_winding(*magnetic, *inputs);
+    // The thermal network gets one node per laid-out conductor, and the stand-in carries each
+    // winding's current in parallel skin-depth strands (15 per turn for 50 A at 50 kHz): a
+    // 10 kW transformer solved hundreds of strand nodes per candidate, ~2 s each. The network
+    // is solved on the same coil with each winding's strands merged into one round conductor
+    // of their copper area (same turns, same copper, laid out as one bundle), and every merged
+    // turn carries the losses of the strands it replaces.
+    Magnetic thermalMagnetic = lossesMagnetic;
+    if (windable) {
+        if (std::holds_alternative<std::string>(lossesMagnetic.get_coil().get_bobbin())) {
+            prepare_bobbin_for_non_pqi(&lossesMagnetic, shapeName);
+        }
+        thermalMagnetic = lossesMagnetic;
+        auto windings = thermalMagnetic.get_coil().get_functional_description();
+        const double wireTemperature = saturation_derating_temperature(inputs->get_operating_points()[0].get_conditions().get_ambient_temperature());
+        for (auto& winding : windings) {
+            if (winding.get_number_parallels() > 1) {
+                auto strand = winding.resolve_wire();
+                const double copperArea = strand.calculate_conducting_area() * winding.get_number_parallels();
+                winding.set_wire(Wire::get_wire_for_conducting_area(copperArea, wireTemperature, true));
+                winding.set_number_parallels(1);
+            }
+        }
+        thermalMagnetic.get_mutable_coil().set_functional_description(windings);
+        for (auto* laidOut : {&lossesMagnetic, &thermalMagnetic}) {
+            laidOut->get_mutable_coil().fast_wind();
+            if (!laidOut->get_coil().get_turns_description()) {
+                // As in the loss filter: a coil fast_wind() cannot lay out is rejected explicitly.
+                logEntry("Temperature filter: the coil of " + magnetic->get_reference() +
+                         " cannot be laid out, so its copper cannot be placed in the thermal network; rejected",
+                         "MagneticFilterTemperature", 2);
+                add_scoring(temperatureCacheKey, MagneticFilters::TEMPERATURE_RISE, std::numeric_limits<double>::max());
+                return {false, std::numeric_limits<double>::max()};
+            }
+        }
+    }
+    // Per-turn losses of the strand coil summed onto the merged coil's turns: the k-th turn of a
+    // winding takes the losses of the k-th turn of each of its strands.
+    auto merge_losses_per_turn = [&](const WindingLossesOutput& strandLosses) {
+        const auto strandTurns = lossesMagnetic.get_coil().get_turns_description().value();
+        const auto mergedTurns = thermalMagnetic.get_coil().get_turns_description().value();
+        auto strandLossesPerTurn = strandLosses.get_winding_losses_per_turn();
+        if (!strandLossesPerTurn || strandLossesPerTurn->size() != strandTurns.size()) {
+            throw CalculationException(ErrorCode::CALCULATION_INVALID_RESULT,
+                "Temperature filter: the winding losses of " + magnetic->get_reference() + " do not give one entry per laid-out turn");
+        }
+        auto coil = thermalMagnetic.get_coil();
+        std::map<std::pair<size_t, size_t>, double> lossesPerWindingTurn;
+        std::map<std::pair<size_t, size_t>, size_t> turnCounter;
+        for (size_t turnIndex = 0; turnIndex < strandTurns.size(); ++turnIndex) {
+            const auto& element = (*strandLossesPerTurn)[turnIndex];
+            double losses = element.get_ohmic_losses() ? element.get_ohmic_losses()->get_losses() : 0.0;
+            for (const auto& lossesPerElement : {element.get_skin_effect_losses(), element.get_proximity_effect_losses()}) {
+                if (lossesPerElement) {
+                    for (double harmonicLosses : lossesPerElement->get_losses_per_harmonic()) {
+                        losses += harmonicLosses;
+                    }
+                }
+            }
+            const size_t windingIndex = coil.get_winding_index_by_name(strandTurns[turnIndex].get_winding());
+            const size_t parallelIndex = strandTurns[turnIndex].get_parallel();
+            const size_t turnInWinding = turnCounter[{windingIndex, parallelIndex}]++;
+            lossesPerWindingTurn[{windingIndex, turnInWinding}] += losses;
+        }
+        std::vector<WindingLossesPerElement> mergedLossesPerTurn;
+        std::map<size_t, size_t> mergedTurnCounter;
+        for (const auto& turn : mergedTurns) {
+            const size_t windingIndex = coil.get_winding_index_by_name(turn.get_winding());
+            const size_t turnInWinding = mergedTurnCounter[windingIndex]++;
+            auto found = lossesPerWindingTurn.find({windingIndex, turnInWinding});
+            if (found == lossesPerWindingTurn.end()) {
+                throw CalculationException(ErrorCode::CALCULATION_INVALID_RESULT,
+                    "Temperature filter: turn " + turn.get_name() + " of " + magnetic->get_reference() + " has no strand turn to take its losses from");
+            }
+            OhmicLosses ohmicLosses;  // the turn's DC and skin-effect losses together
+            ohmicLosses.set_losses(found->second);
+            ohmicLosses.set_origin(ResultOrigin::SIMULATION);
+            WindingLossesPerElement element;
+            element.set_name(turn.get_name());
+            element.set_ohmic_losses(ohmicLosses);
+            mergedLossesPerTurn.push_back(element);
+        }
+        if (mergedLossesPerTurn.size() != lossesPerWindingTurn.size()) {
+            throw CalculationException(ErrorCode::CALCULATION_INVALID_RESULT,
+                "Temperature filter: the merged coil of " + magnetic->get_reference() + " lays out " + std::to_string(mergedLossesPerTurn.size()) +
+                " turns for " + std::to_string(lossesPerWindingTurn.size()) + " strand turns");
+        }
+        WindingLossesOutput merged = strandLosses;
+        merged.set_winding_losses_per_turn(mergedLossesPerTurn);
+        return merged;
+    };
     size_t opIndex = 0;
     for (auto& op : inputs->get_operating_points()) {
         double ambientTemperature = op.get_conditions().get_ambient_temperature();
@@ -283,18 +421,35 @@ std::pair<bool, double> MagneticFilterTemperature::evaluate_magnetic(
         CoreLossesOutput cl = _coreLosses.calculate_core_losses(core, excitation, ambientTemperature);
 
         TemperatureConfig config;
-        config.coreOnly = true;
         config.coreLosses = cl.get_core_losses();
+        if (windable) {
+            // Copper resistivity at the same hot corner the loss filters evaluate at.
+            const double windingTemperature = saturation_derating_temperature(ambientTemperature);
+            auto windingLosses = _windingOhmicLosses.calculate_ohmic_losses(lossesMagnetic.get_coil(), op, windingTemperature);
+            windingLosses = _windingSkinEffectLosses.calculate_skin_effect_losses(lossesMagnetic.get_coil(), windingTemperature, windingLosses,
+                                                                                  settings.get_harmonic_amplitude_threshold());
+            if (!(windingLosses.get_winding_losses() >= 0) || !std::isfinite(windingLosses.get_winding_losses())) {
+                throw CalculationException(ErrorCode::CALCULATION_INVALID_RESULT,
+                    "Temperature filter: invalid winding losses for " + magnetic->get_reference());
+            }
+            config.coreOnly = false;
+            config.windingLosses = windingLosses.get_winding_losses();
+            config.windingLossesOutput = merge_losses_per_turn(windingLosses);
+        }
+        else {
+            config.coreOnly = true;
+        }
         config.ambientTemperature = ambientTemperature;
         config.plotSchematic = false;
         if (op.get_conditions().get_cooling()) config.masCooling = op.get_conditions().get_cooling();
 
-        Temperature temp(*magnetic, config);
+        Temperature temp(windable ? thermalMagnetic : *magnetic, config);
         auto result = temp.calculateTemperatures();
         maximumTemperature = std::max(maximumTemperature, result.maximumTemperature);
         ++opIndex;
     }
 
+    add_scoring(temperatureCacheKey, MagneticFilters::TEMPERATURE_RISE, maximumTemperature);
     return {maximumTemperature <= _maximumTemperature, maximumTemperature};
 }
 

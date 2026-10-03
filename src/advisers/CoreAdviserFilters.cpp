@@ -212,25 +212,11 @@ std::vector<std::pair<Magnetic, double>> CoreAdviser::MagneticCoreFilterLosses::
     SettingsGuard<bool> coilCompactGuard(settings, &Settings::get_coil_delimit_and_compact,
                                          &Settings::set_coil_delimit_and_compact,
                                          settings.get_coil_delimit_and_compact());
-    // CAPABILITY GAP (tracked in FALLBACKS_REVIEW.md): the per-candidate loss
-    // evaluators only support single-winding candidates, and the dataset stage
-    // builds 1-winding dummy coils for everything except CMCs
-    // (CoreAdviserDataset.cpp). For a multi-winding input every candidate
-    // would be rejected by the evaluator's winding-count guard, so this filter
-    // has never actually scored transformer candidates — it used to hide that
-    // behind a silent all-rejected -> return-everything fallback. Keep the
-    // pass-through but say so loudly until transformer-aware loss scoring
-    // (secondaries populated from the requirement turns ratios) exists.
-    if (!inputs.get_operating_points().empty() &&
-        inputs.get_operating_points()[0].get_excitations_per_winding().size() > 1 &&
-        !(*unfilteredMagnetics).empty() &&
-        (*unfilteredMagnetics)[0].first.get_coil().get_functional_description().size() !=
-            inputs.get_operating_points()[0].get_excitations_per_winding().size()) {
-        logEntry("Losses filter cannot score multi-winding inputs against single-winding candidate coils; passing " +
-                     std::to_string((*unfilteredMagnetics).size()) + " candidates through unscored",
-                 "CoreAdviser");
-        return *unfilteredMagnetics;
-    }
+    // A multi-winding input's candidates carry a one-winding stand-in coil at this stage. The
+    // loss filter scores them on the coil completed from the turns ratios: core losses plus the
+    // DC and skin-effect losses of every winding (MagneticFilterCoreDcAndSkinLosses::
+    // evaluate_stand_in_with_every_winding). They used to pass through unscored, so the copper of
+    // a 10 kW transformer never counted before the coil stage.
 
     // NOTE: previously, when the loss model rejected EVERY candidate, this filter
     // silently returned the whole set unscored. That routed cores with

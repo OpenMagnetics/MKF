@@ -171,6 +171,31 @@ std::shared_ptr<MagneticFilter> MagneticFilter::factory(MagneticFilters filterNa
     }
 }
 
+Magnetic MagneticFilter::with_every_winding(const Magnetic& magnetic, const Inputs& inputs) {
+    if (inputs.get_operating_points().empty()) {
+        throw InvalidInputException(ErrorCode::MISSING_DATA, "Completing a stand-in coil needs an operating point");
+    }
+    const size_t numberWindings = inputs.get_operating_points()[0].get_excitations_per_winding().size();
+    const size_t numberCoilWindings = magnetic.get_coil().get_functional_description().size();
+    if (numberCoilWindings == numberWindings) {
+        return magnetic;
+    }
+    if (numberCoilWindings == 0 || numberCoilWindings > numberWindings) {
+        throw InvalidInputException(ErrorCode::INVALID_INPUT,
+            "Completing a stand-in coil: candidate " + magnetic.get_reference() + " carries " + std::to_string(numberCoilWindings) +
+            " windings for an input with " + std::to_string(numberWindings));
+    }
+    std::vector<std::pair<Magnetic, double>> completed = {{magnetic, 0.0}};
+    correct_windings(&completed, inputs);
+    if (completed[0].first.get_coil().get_functional_description().size() != numberWindings) {
+        throw CalculationException(ErrorCode::CALCULATION_INVALID_RESULT,
+            "Completing a stand-in coil: candidate " + magnetic.get_reference() + " came back with " +
+            std::to_string(completed[0].first.get_coil().get_functional_description().size()) + " windings for an input with " +
+            std::to_string(numberWindings) + " (the turns ratios do not give every winding)");
+    }
+    return completed[0].first;
+}
+
 std::optional<std::string> MagneticFilter::core_losses_not_evaluable_reason(Magnetic* magnetic) {
     if (!magnetic->has_core()) {
         return std::nullopt;

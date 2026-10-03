@@ -3618,3 +3618,67 @@ TEST_CASE("Test_CoreAdviser_Window_Copper_Capacity_Counts_Line_Frequency_Copper_
     CHECK(overfullProportion > 1);
     settings.reset();
 }
+
+TEST_CASE("Test_CoreAdviser_Stand_In_Transformer_Losses_And_Temperature_Count_The_Copper_Of_Every_Winding", "[adviser][core-adviser][magnetic-filter][temperature-filter]") {
+    // The core stage judges a transformer core with a one-winding stand-in coil. Its loss filter
+    // used to reject such a candidate outright (winding count != excitation count) and the core
+    // adviser passed every multi-winding candidate through unscored, while the temperature filter
+    // solved a core-only network: the copper of the windings never counted before the coil stage,
+    // and a 10 kW phase-shifted full bridge sent 40 cores to coil design and simulation that were
+    // all too hot (~500 s, no design). Both filters now complete the stand-in from the turns
+    // ratios and count the DC and skin-effect losses of every winding. Henry corpus case
+    // forward-200k-5v-50a-transformer (15 primary turns at 5.5 A, 2 secondary turns at 33 A rms,
+    // 200 kHz): with the currents cut to a tenth (same voltages, so the same volt-second flux and
+    // core losses) the losses and the temperature must both drop.
+    settings.reset();
+    clear_databases();
+    auto inputs = load_test_inputs("forward-200k-5v-50a-transformer.json");
+    REQUIRE(inputs.get_operating_points()[0].get_excitations_per_winding().size() == 2);
+    auto lightInputs = inputs;
+    for (auto& operatingPoint : lightInputs.get_mutable_operating_points()) {
+        for (auto& excitation : operatingPoint.get_mutable_excitations_per_winding()) {
+            excitation = OpenMagnetics::Inputs::get_excitation_with_proportional_current(excitation, 0.1);
+        }
+    }
+
+    const std::string shapeName = "ETD 49/25/16";
+    auto strand = OpenMagnetics::Wire::get_wire_for_frequency(200000, inputs.get_maximum_temperature(), true);
+    auto primaryCurrent = inputs.get_operating_points()[0].get_excitations_per_winding()[0].get_current().value();
+    int64_t primaryParallels = OpenMagnetics::Wire::calculate_number_parallels_needed(primaryCurrent, inputs.get_maximum_temperature(), strand,
+                                                                                     defaults.maximumEffectiveCurrentDensity);
+    OpenMagnetics::Magnetic standIn;
+    standIn.set_core(OpenMagneticsTesting::get_quick_core(shapeName, OpenMagneticsTesting::get_residual_gap(), 1, "3C95"));
+    standIn.set_coil(OpenMagneticsTesting::get_quick_coil({15}, {primaryParallels}, shapeName, 1, MAS::WindingOrientation::OVERLAPPING,
+                                                         MAS::WindingOrientation::OVERLAPPING, MAS::CoilAlignment::CENTERED,
+                                                         MAS::CoilAlignment::CENTERED, {strand}));
+    REQUIRE(standIn.get_coil().get_functional_description().size() == 1);
+
+    MagneticFilterCoreDcAndSkinLosses losses(inputs);
+    std::vector<OpenMagnetics::Outputs> outputs;
+    auto [lossesValid, totalLosses] = losses.evaluate_magnetic(&standIn, &inputs, &outputs);
+    std::vector<OpenMagnetics::Outputs> lightOutputs;
+    auto [lightLossesValid, lightTotalLosses] = losses.evaluate_magnetic(&standIn, &lightInputs, &lightOutputs);
+    REQUIRE(outputs.size() == 1);
+    REQUIRE(lightOutputs.size() == 1);
+    double windingLosses = outputs[0].get_winding_losses()->get_winding_losses();
+    double coreLosses = outputs[0].get_core_losses()->get_core_losses();
+    double lightCoreLosses = lightOutputs[0].get_core_losses()->get_core_losses();
+    INFO("total " << totalLosses << " W (core " << coreLosses << " W, windings " << windingLosses << " W), at a tenth of the current "
+         << lightTotalLosses << " W");
+    CHECK(lossesValid);
+    CHECK(windingLosses > 0);
+    CHECK_THAT(lightCoreLosses, Catch::Matchers::WithinRel(coreLosses, 1e-6));
+    CHECK_THAT(totalLosses, Catch::Matchers::WithinRel(coreLosses + windingLosses, 1e-9));
+    CHECK(totalLosses > lightTotalLosses + 0.5 * windingLosses);
+    // The candidate keeps its stand-in coil: the coil stage designs the real one.
+    CHECK(standIn.get_coil().get_functional_description().size() == 1);
+
+    const double maximumTemperature = resolve_maximum_design_temperature(inputs);
+    MagneticFilterTemperature temperature(inputs, maximumTemperature);
+    auto [unusedFull, hottest] = temperature.evaluate_magnetic(&standIn, &inputs);
+    auto [unusedLight, lightHottest] = temperature.evaluate_magnetic(&standIn, &lightInputs);
+    INFO("hottest " << hottest << " C, at a tenth of the current " << lightHottest << " C");
+    CHECK(hottest > lightHottest + 1);
+    CHECK(standIn.get_coil().get_functional_description().size() == 1);
+    settings.reset();
+}
