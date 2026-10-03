@@ -447,8 +447,13 @@ void load_interpolators() {
                 continue;
             }
             auto bobbinWindingWindow = scannedDescription->get_winding_windows()[0];
-            if (!bobbinWindingWindow.get_area() || !bobbinWindingWindow.get_width() || !bobbinWindingWindow.get_height()) {
-                unusableBobbins.push_back(datum.first + " (winding window has no area/width/height)");
+            // ABT #986: MAS makes a rectangular window's `area` OPTIONAL (width + height are what
+            // define it), so a catalogue former that declares width and height but no area is a
+            // legal record, not an unusable one. Its area is DERIVED, exactly as
+            // Bobbin::get_winding_window_area does (width * height). Only a window without width
+            // or height -- which this fit cannot place on either axis -- is skipped and reported.
+            if (!bobbinWindingWindow.get_width() || !bobbinWindingWindow.get_height()) {
+                unusableBobbins.push_back(datum.first + " (winding window has no width/height)");
                 continue;
             }
             try {
@@ -462,7 +467,9 @@ void load_interpolators() {
                     continue;
                 }
 
-                auto bobbinWindingWindowArea = bobbinWindingWindow.get_area().value();
+                double bobbinWindingWindowArea = bobbinWindingWindow.get_area() ?
+                    bobbinWindingWindow.get_area().value() :
+                    bobbinWindingWindow.get_width().value() * bobbinWindingWindow.get_height().value();
                 auto coreShapeWindingWindowArea = corePiece->get_winding_window().get_area().value() * 2; // Because if we are using a bobbin we have a two piece set
                 double bobbinFillingFactor = bobbinWindingWindowArea / coreShapeWindingWindowArea;
                 double bobbinWindingWindowWidth = bobbinWindingWindow.get_width().value();

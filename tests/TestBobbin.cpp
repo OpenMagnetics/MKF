@@ -332,6 +332,52 @@ TEST_CASE("Unresolvable bobbin catalogue rows are skipped without throwing (ABT 
     }
 }
 
+// ABT #986: MAS makes a rectangular winding window's `area` OPTIONAL -- width and height are
+// what define it. A catalogue former that declares width and height but omits the area is a
+// legal record, and the interpolator fit must USE it (deriving the area as width * height,
+// the same as Bobbin::get_winding_window_area), not throw bad_optional_access and not drop it
+// into the "could not be used" list.
+TEST_CASE("A catalogue bobbin whose window omits the optional area still feeds the fit (ABT #986)",
+          "[constructive-model][bobbin][abt986]") {
+    auto arealess = OpenMagnetics::find_bobbin_by_name("Bobbin ETD 49");
+    REQUIRE(arealess.get_processed_description());
+    auto processedDescription = arealess.get_processed_description().value();
+    auto windingWindows = processedDescription.get_winding_windows();
+    REQUIRE(!windingWindows.empty());
+    REQUIRE(windingWindows[0].get_width());
+    REQUIRE(windingWindows[0].get_height());
+    windingWindows[0].set_area(std::nullopt);
+    processedDescription.set_winding_windows(windingWindows);
+    arealess.set_processed_description(processedDescription);
+    REQUIRE_FALSE(arealess.get_processed_description()->get_winding_windows()[0].get_area());
+
+    const std::string arealessName = "Bobbin ABT986 Arealess";
+    OpenMagnetics::bobbinDatabase[arealessName] = arealess;
+    OpenMagnetics::read_log();  // drain, so the assertions below see only this fit
+
+    // Fresh thread: the interpolators are thread_local (ABT #113), so only a new thread refits.
+    double fillingFactor = 0;
+    std::string threadError;
+    std::thread fitter([&] {
+        try {
+            fillingFactor = OpenMagnetics::Bobbin::get_filling_factor(0.01, 0.01);
+        }
+        catch (const std::exception& e) {
+            threadError = e.what();
+        }
+    });
+    fitter.join();
+    OpenMagnetics::bobbinDatabase.erase(arealessName);
+
+    INFO("fit threw: " << threadError);
+    CHECK(threadError.empty());
+    CHECK(fillingFactor > 0);
+    auto log = OpenMagnetics::read_log();
+    INFO(log);
+    // The row was usable, so the fit must not report it as dropped.
+    CHECK(log.find(arealessName) == std::string::npos);
+}
+
 // ABT #763: Bobbin::process_data() used to be non-deterministic on a bobbin json that
 // carries no functionalDescription. BobbinDataProcessor::factory dereferenced the
 // disengaged optional (`get_functional_description()->get_family()`), reading the
