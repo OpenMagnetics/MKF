@@ -1101,3 +1101,22 @@ namespace {
     }
 
 }  // namespace
+
+TEST_CASE("Wire material thermal conductivity is MAS's table, interpolated, never extrapolated", "[constructive-model][wire][thermal]") {
+    auto copper = OpenMagnetics::find_wire_material_by_name("copper");
+    // MAS tabulates copper at ..., 0 C -> 401, 127 C -> 392, ... (-73 .. 927 C).
+    REQUIRE_THAT(OpenMagnetics::Wire::get_thermal_conductivity(copper, 0.0), Catch::Matchers::WithinAbs(401.0, 1e-12));
+    REQUIRE_THAT(OpenMagnetics::Wire::get_thermal_conductivity(copper, 63.5), Catch::Matchers::WithinAbs(396.5, 1e-9));
+    REQUIRE_THAT(OpenMagnetics::Wire::get_thermal_conductivity(copper, 127.0), Catch::Matchers::WithinAbs(392.0, 1e-12));
+    REQUIRE_THROWS(OpenMagnetics::Wire::get_thermal_conductivity(copper, -100.0));
+    REQUIRE_THROWS(OpenMagnetics::Wire::get_thermal_conductivity(copper, 1000.0));
+
+    MAS::WireMaterial bare;
+    bare.set_name("no table");
+    REQUIRE_THROWS(OpenMagnetics::Wire::get_thermal_conductivity(bare, 25.0));
+    MAS::ThermalConductivityElement a, b;
+    a.set_temperature(20.0); a.set_value(400.0);
+    b.set_temperature(20.0); b.set_value(390.0);
+    bare.set_thermal_conductivity(std::vector<MAS::ThermalConductivityElement>{a, b});
+    REQUIRE_THROWS(OpenMagnetics::Wire::get_thermal_conductivity(bare, 20.0));
+}

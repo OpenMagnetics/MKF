@@ -195,6 +195,11 @@ class Wire : public MAS::Wire {
         static std::optional<InsulationWireCoating> resolve_insulating_coating(const Wire& wire);
         static WireRound resolve_strand(const Wire& wire);
         WireRound resolve_strand();
+        // The material's thermal conductivity at `temperature` (deg C), W/(m K), interpolated
+        // linearly between the points MAS tabulates. Throws when the material has no table,
+        // when two points share a temperature, or when `temperature` lies outside the table:
+        // a conductivity is never extrapolated or defaulted.
+        static double get_thermal_conductivity(const WireMaterial& material, double temperature);
         static WireMaterial resolve_material(Wire wire);
         static WireMaterial resolve_material(WireRound wire);
         WireMaterial resolve_material();

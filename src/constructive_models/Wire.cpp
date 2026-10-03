@@ -162,6 +162,31 @@ namespace OpenMagnetics {
         }
     }
 
+    double Wire::get_thermal_conductivity(const WireMaterial& material, double temperature) {
+        const auto table = material.get_thermal_conductivity();
+        if (!table || table->empty())
+            throw InvalidInputException(ErrorCode::MISSING_DATA,
+                                        "Wire material '" + material.get_name() + "' has no thermalConductivity in MAS");
+        std::vector<std::pair<double, double>> points;
+        for (const auto& p : *table) points.emplace_back(p.get_temperature(), p.get_value());
+        std::sort(points.begin(), points.end());
+        for (size_t i = 1; i < points.size(); ++i)
+            if (points[i].first == points[i - 1].first)
+                throw InvalidInputException(ErrorCode::INVALID_INPUT,
+                                            "Wire material '" + material.get_name() + "' tabulates its thermal conductivity twice at " +
+                                            std::to_string(points[i].first) + " C");
+        if (temperature < points.front().first || temperature > points.back().first)
+            throw InvalidInputException(ErrorCode::INVALID_INPUT,
+                                        "Wire material '" + material.get_name() + "': thermal conductivity is tabulated from " +
+                                        std::to_string(points.front().first) + " to " + std::to_string(points.back().first) +
+                                        " C, asked at " + std::to_string(temperature) + " C");
+        for (size_t i = 0; i + 1 < points.size(); ++i)
+            if (temperature <= points[i + 1].first)
+                return std::lerp(points[i].second, points[i + 1].second,
+                                 (temperature - points[i].first) / (points[i + 1].first - points[i].first));
+        return points.back().second;   // temperature == the single tabulated point
+    }
+
     WireMaterial Wire::resolve_material(Wire wire) {
         if (wire.get_type() == WireType::LITZ) {
             auto strand = wire.resolve_strand();
