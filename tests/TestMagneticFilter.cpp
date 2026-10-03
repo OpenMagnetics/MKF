@@ -59,6 +59,7 @@
 #include "constructive_models/Core.h"
 #include "constructive_models/Coil.h"
 #include "constructive_models/Wire.h"
+#include "physical_models/ComplexPermeability.h"
 #include "processors/Inputs.h"
 #include "support/Settings.h"
 #include "support/Utils.h"
@@ -1273,4 +1274,115 @@ TEST_CASE("MagneticFilter COST prices a proprietary grade only with its own manu
     auto cost = MagneticFilterCost().calculate_cost(poco);
     CHECK_FALSE(cost.priced());
     CHECK_THAT(cost.coreUnpricedReason, Catch::Matchers::ContainsSubstring("no price law for powder/proprietary/Poco"));
+}
+
+// =============================================================================
+// Impedance display |Z| outside the core material's mu(f) span; adviser failure report
+// =============================================================================
+namespace {
+OpenMagnetics::Magnetic load_wound_cmc_catalogue_part(const std::string& partNumber) {
+    auto path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "cmc_catalogue_" + partNumber + ".json");
+    std::ifstream file(path);
+    REQUIRE(file.good());
+    return magnetic_autocomplete(OpenMagnetics::Magnetic(json::parse(file)));
+}
+
+OpenMagnetics::Inputs make_cmc_inputs(double frequency) {
+    // Two windings (turns ratio 1), sinusoidal line current: a common-mode choke's operating point.
+    return OpenMagnetics::Inputs::create_quick_operating_point_only_current(
+        frequency, 0.001, 25, WaveformLabel::SINUSOIDAL, {1.0, 1.0}, 0.5, 0, {1.0});
+}
+
+void set_minimum_impedance(OpenMagnetics::Inputs& inputs, double frequency, double magnitude) {
+    ImpedancePoint impedancePoint;
+    impedancePoint.set_magnitude(magnitude);
+    ImpedanceAtFrequency impedanceAtFrequency;
+    impedanceAtFrequency.set_frequency(frequency);
+    impedanceAtFrequency.set_impedance(impedancePoint);
+    inputs.get_mutable_design_requirements().set_minimum_impedance(std::vector<ImpedanceAtFrequency>{impedanceAtFrequency});
+}
+}
+
+// El Choker hands the adviser a CMC's noise point (150 kHz) and its 50 Hz mains point (line
+// current, thermal). The IMPEDANCE filter's display |Z| at every operating point asked the core
+// material for mu(50 Hz); every CMC ferrite is tabulated from above 50 Hz, so that threw and the
+// adviser dropped the part: 4 of 299 chokes survived. The display |Z| is now written only where
+// the material has mu(f) data and is absent elsewhere; the requirement and the score are unchanged.
+TEST_CASE("MagneticFilter_Impedance_Display_Output_Only_Inside_Material_Mu_Span", "[magnetic-filter][impedance][mu-span]") {
+    settings.reset();
+    auto magnetic = load_wound_cmc_catalogue_part("7448052502");
+    auto [minimumMaterialFrequency, maximumMaterialFrequency] = ComplexPermeability().get_frequency_range(magnetic.get_core().resolve_material());
+    REQUIRE(minimumMaterialFrequency > 50);
+    REQUIRE(minimumMaterialFrequency < 150000);
+    REQUIRE(maximumMaterialFrequency > 150000);
+
+    auto noiseOnly = make_cmc_inputs(150000);
+    set_minimum_impedance(noiseOnly, 150000, 100);
+    auto noiseAndMains = noiseOnly;
+    noiseAndMains.get_mutable_operating_points().push_back(make_cmc_inputs(50).get_operating_points()[0]);
+    REQUIRE(noiseAndMains.get_operating_points().size() == 2);
+    REQUIRE(noiseAndMains.get_operating_points()[1].get_excitations_per_winding()[0].get_frequency() == 50);
+
+    auto filter = MagneticFilter::factory(MagneticFilters::IMPEDANCE, noiseOnly);
+
+    std::vector<OpenMagnetics::Outputs> outputsNoiseOnly;
+    auto [validNoiseOnly, scoringNoiseOnly] = filter->evaluate_magnetic(&magnetic, &noiseOnly, &outputsNoiseOnly);
+
+    std::vector<OpenMagnetics::Outputs> outputs;
+    auto [valid, scoring] = filter->evaluate_magnetic(&magnetic, &noiseAndMains, &outputs);
+
+    CHECK(valid);
+    CHECK(valid == validNoiseOnly);
+    CHECK(scoring == scoringNoiseOnly);
+    REQUIRE(outputs.size() == 2);
+    REQUIRE(outputs[0].get_impedance());
+    REQUIRE(outputs[0].get_impedance()->get_impedance_matrix());
+    auto impedanceMatrix = outputs[0].get_impedance()->get_impedance_matrix().value();
+    REQUIRE(impedanceMatrix.size() == 1);
+    CHECK(impedanceMatrix[0].get_frequency() == 150000);
+    auto expectedMatrix = outputsNoiseOnly[0].get_impedance()->get_impedance_matrix().value()[0];
+    auto windingName = magnetic.get_coil().get_functional_description()[0].get_name();
+    CHECK(impedanceMatrix[0].get_magnitude().at(windingName).at(windingName).get_nominal().value() ==
+          expectedMatrix.get_magnitude().at(windingName).at(windingName).get_nominal().value());
+    CHECK_FALSE(outputs[1].get_impedance());
+
+    // A minimum-impedance REQUIREMENT the material cannot evaluate is still an error.
+    auto requirementOutsideSpan = noiseAndMains;
+    set_minimum_impedance(requirementOutsideSpan, 50, 1);
+    std::vector<OpenMagnetics::Outputs> outputsRequirementOutsideSpan;
+    REQUIRE_THROWS_AS(filter->evaluate_magnetic(&magnetic, &requirementOutsideSpan, &outputsRequirementOutsideSpan),
+                      ComplexPermeabilityFrequencyOutOfRangeException);
+}
+
+// A candidate whose evaluation raises is still kept out of the ranking, but the adviser reports it
+// with its error instead of returning fewer parts with no word why. 7448229004's A07 is tabulated
+// from 9.9 kHz, so a 1 kHz impedance requirement cannot be evaluated on it; 7448052502's SC-1K107
+// starts at 418 Hz and can.
+TEST_CASE("MagneticAdviser_Reports_Candidates_Whose_Evaluation_Throws", "[magnetic-adviser][failed-candidates][mu-span]") {
+    settings.reset();
+    auto evaluable = load_wound_cmc_catalogue_part("7448052502");
+    auto notEvaluable = load_wound_cmc_catalogue_part("7448229004");
+    const double requirementFrequency = 1000;
+    REQUIRE(ComplexPermeability().get_frequency_range(evaluable.get_core().resolve_material()).first < requirementFrequency);
+    REQUIRE(ComplexPermeability().get_frequency_range(notEvaluable.get_core().resolve_material()).first > requirementFrequency);
+
+    auto inputs = make_cmc_inputs(150000);
+    set_minimum_impedance(inputs, requirementFrequency, 1e-3);
+
+    std::map<std::string, OpenMagnetics::Magnetic> catalogue{{evaluable.get_reference(), evaluable},
+                                                             {notEvaluable.get_reference(), notEvaluable}};
+    bool strictlyRequired = GENERATE(true, false);
+    INFO("strictlyRequired " << strictlyRequired);
+    std::vector<MagneticFilterOperation> filterFlow{MagneticFilterOperation(MagneticFilters::IMPEDANCE, true, true, strictlyRequired, 1.0)};
+
+    MagneticAdviser adviser(false);
+    auto results = adviser.get_advised_magnetic(inputs, catalogue, filterFlow, 10);
+    REQUIRE(results.size() == 1);
+    CHECK(results[0].first.get_magnetic().get_reference() == evaluable.get_reference());
+
+    const auto& failedCandidates = adviser.get_failed_candidates();
+    REQUIRE(failedCandidates.size() == 1);
+    CHECK(failedCandidates[0].first == notEvaluable.get_reference());
+    CHECK_THAT(failedCandidates[0].second, Catch::Matchers::ContainsSubstring("IMPEDANCE"));
+    CHECK_THAT(failedCandidates[0].second, Catch::Matchers::ContainsSubstring("A07"));
 }

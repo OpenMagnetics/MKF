@@ -1,4 +1,5 @@
 #include "processors/Inputs.h"
+#include <algorithm>
 #include <source_location>
 #include <cfloat>
 #include <cmath>
@@ -1097,6 +1098,7 @@ std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic(std::v
     clear_scoring();
     _failedScorings.clear();  // stale rejections would mis-rank the next run (ABT #801)
     _lossesNotEvaluable.clear();
+    _failedCandidates.clear();
 
     load_filter_flow(filterFlow, catalogueMagneticsWithInputs[0].get_inputs());
     std::vector<MagneticFilterOperation> strictlyRequiredFilterFlow;
@@ -1178,6 +1180,7 @@ std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic(std::v
             }
             catch (const std::exception& e) {
                 logEntry(std::string("MagneticAdviser: strict filter ") + std::string(magic_enum::enum_name(filterEnum)) + " threw, rejecting magnetic: " + e.what(), "MagneticAdviser", 2);
+                _failedCandidates.push_back({magnetic.get_reference(), std::string(magic_enum::enum_name(filterEnum)) + ": " + e.what()});
                 std::string thisMsg = e.what();
                 if (thisMsg == previousThrowMessage) {
                     ++identicalThrowStreak;
@@ -1255,6 +1258,7 @@ std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic(std::v
             }
             catch (const std::exception& e) {
                 logEntry(std::string("MagneticAdviser: non-strict filter ") + std::string(magic_enum::enum_name(filterEnum)) + " threw, rejecting magnetic: " + e.what(), "MagneticAdviser", 2);
+                _failedCandidates.push_back({magnetic.get_reference(), std::string(magic_enum::enum_name(filterEnum)) + ": " + e.what()});
                 valid = false;
                 break;
             }
@@ -1331,6 +1335,7 @@ std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic(std::v
                     mas = magneticSimulator.simulate(mas, true);
                 } catch (const std::exception& e) {
                     logEntry(std::string("MagneticAdviser: skipping final-simulate candidate: ") + e.what(), "MagneticAdviser", 2);
+                    _failedCandidates.push_back({mas.get_magnetic().get_reference(), std::string("final simulation: ") + e.what()});
                     continue;
                 }
                 masMagneticsWithScoringSimulated.push_back({mas, scoring});
@@ -1357,7 +1362,16 @@ std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic(std::v
         // catalogue (ABT #366/#370): SIGSEGV ~20 frames deep in the saturation filter, which was
         // merely where the exhausted stack happened to land.
         if (strict && catalogueMasWithStriclyRequirementsPassed.size() > 0) {
-            return get_advised_magnetic(catalogueMasWithStriclyRequirementsPassed, filterFlow, maximumNumberResults, false);
+            // The retry starts by clearing the failure report; the candidates that already failed
+            // in this pass are not in the retry's pool, so carry them over.
+            auto failedBeforeRetry = _failedCandidates;
+            auto relaxedResults = get_advised_magnetic(catalogueMasWithStriclyRequirementsPassed, filterFlow, maximumNumberResults, false);
+            for (const auto& failedCandidate : failedBeforeRetry) {
+                if (std::find(_failedCandidates.begin(), _failedCandidates.end(), failedCandidate) == _failedCandidates.end()) {
+                    _failedCandidates.push_back(failedCandidate);
+                }
+            }
+            return relaxedResults;
         }
         return {};
     }

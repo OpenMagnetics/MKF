@@ -153,6 +153,13 @@ class MagneticAdviser{
         /// (MagneticFilter::core_losses_not_evaluable_reason) so callers can show that its losses
         /// were not judged. Filled by the catalogue get_advised_magnetic, cleared at its start.
         std::map<std::string, std::string> _lossesNotEvaluable;
+        /// @brief Catalogue candidates excluded because evaluating them raised, (reference, error).
+        ///
+        /// A filter or the final simulation that throws on a candidate keeps it out of the
+        /// ranking, as before; it is recorded here with the error instead of vanishing from the
+        /// result without a word. Filled by the catalogue get_advised_magnetic, cleared at its
+        /// start. A vector, not a map: two catalogue parts may share a reference.
+        std::vector<std::pair<std::string, std::string>> _failedCandidates;
         /// @brief Default filter flow for custom magnetic design.
         /// COST and LOSSES use log normalization (spans orders of magnitude).
         /// DIMENSIONS uses linear normalization (intuitive volume comparison).
@@ -306,6 +313,14 @@ class MagneticAdviser{
          *         simulated outputs.
          */
         const std::map<std::string, std::string>& get_losses_not_evaluable() const { return _lossesNotEvaluable; }
+
+        /**
+         * @brief Catalogue candidates of the last catalogue run that were excluded because
+         *        evaluating them raised.
+         * @return (reference, error) pairs; the error names the filter (or "final simulation")
+         *         and carries the exception's message. A listed candidate is not in the ranking.
+         */
+        const std::vector<std::pair<std::string, std::string>>& get_failed_candidates() const { return _failedCandidates; }
 
         /**
          * @brief Design magnetics from a converter topology using ngspice simulation.

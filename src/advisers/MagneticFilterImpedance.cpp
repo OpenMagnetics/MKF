@@ -1,6 +1,7 @@
 #include "advisers/MagneticFilter.h"
 #include "advisers/MagneticFilterInternal.h"
 #include "constructive_models/NumberTurns.h"
+#include "physical_models/ComplexPermeability.h"
 #include "physical_models/Impedance.h"
 #include "physical_models/WindingLosses.h"
 #include "physical_models/WindingSkinEffectLosses.h"
@@ -406,22 +407,37 @@ std::pair<bool, double> MagneticFilterImpedance::evaluate_magnetic(Magnetic* mag
         scoring /= impedanceRequirement.size();
     }
 
-    // Always emit the impedance output for any operating points so downstream UI
-    // has the simulated |Z|. We deliberately do NOT add this into `scoring`: there
-    // is no requirement here, and mixing 1/|Z| in arbitrary units corrupts the
-    // min-max normalization (kills monotonicity and frequency-fairness).
+    // Emit the impedance output at the operating points so downstream UI has the simulated |Z|.
+    // We deliberately do NOT add this into `scoring`: there is no requirement here, and mixing
+    // 1/|Z| in arbitrary units corrupts the min-max normalization (kills monotonicity and
+    // frequency-fairness).
+    //
+    // This |Z| is display only, so it is written only at operating points whose frequency lies
+    // inside the core material's tabulated complex-permeability span. Outside it there is no
+    // mu(f) to evaluate (get_complex_permeability throws), and the output is left ABSENT at that
+    // operating point rather than invented. A common-mode choke's inputs carry the 50 Hz mains
+    // point (line current, thermal) next to the noise point, and every CMC ferrite is tabulated
+    // from above 50 Hz: the throw here made the adviser drop the part over a number it only
+    // shows (El Choker: 4 of 299 chokes left). The minimumImpedance requirement above still
+    // throws outside the span: a requirement the data cannot evaluate is an error.
     if (inputs->get_operating_points().size() > 0 && outputs != nullptr) {
+        auto [minimumMaterialFrequency, maximumMaterialFrequency] = ComplexPermeability().get_frequency_range(magnetic->get_core().resolve_material());
         for (size_t operatingPointIndex = 0; operatingPointIndex < inputs->get_operating_points().size(); ++operatingPointIndex) {
-            auto operatingPoint = inputs->get_operating_points()[operatingPointIndex];
-            auto impedance = OpenMagnetics::Impedance(kFastCapacitanceForScoring).calculate_impedance(*magnetic, operatingPoint.get_excitations_per_winding()[0].get_frequency());
-            std::string name = magnetic->get_coil().get_functional_description()[0].get_name();
+            const auto& operatingPoint = inputs->get_operating_points()[operatingPointIndex];
+            double frequency = operatingPoint.get_excitations_per_winding()[0].get_frequency();
 
             while (outputs->size() < operatingPointIndex + 1) {
                 outputs->push_back(Outputs());
             }
+            if (!(frequency >= minimumMaterialFrequency && frequency <= maximumMaterialFrequency)) {
+                continue;
+            }
+
+            auto impedance = OpenMagnetics::Impedance(kFastCapacitanceForScoring).calculate_impedance(*magnetic, frequency);
+            std::string name = magnetic->get_coil().get_functional_description()[0].get_name();
             ImpedanceOutput impedanceOutput;
             ComplexMatrixAtFrequency complexMatrixAtFrequency;
-            complexMatrixAtFrequency.set_frequency(operatingPoint.get_excitations_per_winding()[0].get_frequency());
+            complexMatrixAtFrequency.set_frequency(frequency);
             complexMatrixAtFrequency.get_mutable_magnitude()[name][name].set_nominal(abs(impedance));
             std::vector<ComplexMatrixAtFrequency> impedanceMatrixPerFrequency;
             impedanceMatrixPerFrequency.push_back(complexMatrixAtFrequency);
