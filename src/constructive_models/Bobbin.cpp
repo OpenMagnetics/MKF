@@ -8,6 +8,7 @@
 #include <fstream>
 #include <iostream>
 #include <limits>
+#include <set>
 #include <numbers>
 #include <streambuf>
 #include <vector>
@@ -677,22 +678,45 @@ Bobbin Bobbin::create_quick_bobbin(double windingWindowHeight, double windingWin
     return bobbin;
 }
 
-// ABT #761: the core families that never take a bobbin -- every drum family. The drum's flanges
-// ARE the former (the wire is wound directly on the core), so their quick bobbin is the core's
-// own winding window with zero wall and column thickness, at every size.
+// ABT #761: the core families that never take a bobbin. Every drum family: the drum's flanges
+// ARE the former (the wire is wound directly on the core). And MOLDED (Alf, 2026-10-03): a molded
+// core is pressed around a coil that was wound before pressing, so it never has a former either.
+// Their quick bobbin is the core's own winding window with zero wall and column thickness, at
+// every size.
 static bool is_bobbinless_core_family(CoreShapeFamily family) {
     return family == CoreShapeFamily::DRUM || family == CoreShapeFamily::DRUM_RING ||
-           family == CoreShapeFamily::DRUM_SEMISHIELDED || family == CoreShapeFamily::DRUM_PLATE;
+           family == CoreShapeFamily::DRUM_SEMISHIELDED || family == CoreShapeFamily::DRUM_PLATE ||
+           family == CoreShapeFamily::MOLDED;
+}
+
+// ABT #761 (Alf, 2026-10-03): standard UI/EI shapes that are specific Wurth Elektronik products
+// built without a bobbin. Nothing in the MAS shape data (family/type/magneticCircuit) tells them
+// apart from bobbin-wound UI/EI shapes, so they are named here exactly as in core_shapes.ndjson.
+// - The UI shapes are the WE-FLAT / FeFlat / FeSplit flat-cable ferrites (e.g. 7427807 =
+//   UI 56/5/12): the flat cable is clamped between the U and the I, no former.
+// - EI 3.02/1.95/1.35/4.87/1/2.5/2.3 is the WE-HCM 4035 (74434035010), wound directly on the core.
+// These are the 20 non-drum standard shapes whose catalogue-floored former left no winding window.
+static bool is_bobbinless_core_shape(const std::string& shapeName) {
+    static const std::set<std::string> bobbinlessShapes = {
+        "UI 13.5/2/4", "UI 13.5/2/6", "UI 13.5/2/10",
+        "UI 15.5/2/4", "UI 15.5/2/6", "UI 15.5/2/10",
+        "UI 16/5/8", "UI 16/5/12", "UI 16/5/19", "UI 16/5/20",
+        "UI 24/5/20", "UI 24.5/5/12", "UI 31/5/12", "UI 46/5/12", "UI 56/5/12",
+        "UI 20/3.3/12", "UI 33.5/3.3/12", "UI 40/3.3/12", "UI 45/3.3/12",
+        "EI 3.02/1.95/1.35/4.87/1/2.5/2.3",
+    };
+    return bobbinlessShapes.contains(shapeName);
 }
 
 Bobbin Bobbin::create_quick_bobbin(Core core, bool nullDimensions, std::optional<MAS::OrientationEnum> pinsOrientation) {
     if (!core.get_processed_description()) {
         core.process_data();
     }
-    // ABT #761: a drum is wound directly on the core -- its flanges are the former -- so it
-    // never takes a bobbin. The quick bobbin is the bobbinless one (the same representation as
-    // nullDimensions: the core's own window, zero wall and column), whatever the drum's size.
-    if (is_bobbinless_core_family(core.get_shape_family())) {
+    // ABT #761: drums (their flanges are the former), molded cores (wound before pressing) and
+    // the named bobbinless WE UI/EI products never take a bobbin. The quick bobbin is the
+    // bobbinless one (the same representation as nullDimensions: the core's own window, zero
+    // wall and column), whatever the core's size.
+    if (is_bobbinless_core_family(core.get_shape_family()) || is_bobbinless_core_shape(core.get_shape_name())) {
         nullDimensions = true;
     }
 

@@ -1326,3 +1326,67 @@ TEST_CASE("Drum families never take a bobbin: the quick bobbin is the core's own
     auto etd = OpenMagneticsTesting::get_quick_core("ETD 49/25/16", json::parse("[]"), 1, "Dummy");
     CHECK(OpenMagnetics::Bobbin::create_quick_bobbin(etd).get_processed_description()->get_wall_thickness() > 0);
 }
+
+// ABT #761 (Alf, 2026-10-03): molded cores are wound before pressing and never take a former, and
+// the tiny standard UI/EI shapes that are specific bobbinless Wurth products (WE-FLAT / FeFlat /
+// FeSplit flat-cable ferrites, e.g. 7427807 = UI 56/5/12; WE-HCM 4035 = EI 3.02/...) never take
+// one either. Their quick bobbin is the core's own window with zero wall and column thickness,
+// identical to the explicit bobbinless ("Dummy") bobbin. Regular E/ETD/UI cores keep their walls.
+TEST_CASE("Molded cores and the bobbinless WE UI/EI products never take a bobbin (ABT #761)",
+          "[constructive-model][bobbin][molded][abt761]") {
+    settings.reset();
+    auto checkBobbinless = [](OpenMagnetics::Core& core) {
+        auto coreWindow = core.get_processed_description()->get_winding_windows()[0];
+        auto bobbin = OpenMagnetics::Bobbin::create_quick_bobbin(core);
+        auto processed = bobbin.get_processed_description().value();
+        CHECK(processed.get_wall_thickness() == 0);
+        CHECK(processed.get_column_thickness() == 0);
+        auto window = processed.get_winding_windows()[0];
+        CHECK(window.get_width().value() > 0);
+        CHECK(window.get_height().value() > 0);
+        CHECK_THAT(window.get_width().value(), Catch::Matchers::WithinAbs(coreWindow.get_width().value(), 1e-12));
+        CHECK_THAT(window.get_height().value(), Catch::Matchers::WithinAbs(coreWindow.get_height().value(), 1e-12));
+        auto dummy = OpenMagnetics::Bobbin::create_quick_bobbin(core, true);
+        auto dummyWindow = dummy.get_processed_description()->get_winding_windows()[0];
+        CHECK(window.get_width().value() == dummyWindow.get_width().value());
+        CHECK(window.get_height().value() == dummyWindow.get_height().value());
+        CHECK(window.get_coordinates().value() == dummyWindow.get_coordinates().value());
+    };
+
+    SECTION("Molded: the reporter's square-footprint 1610 cavity") {
+        json shapeJson = {
+            {"magneticCircuit", "closed"}, {"type", "custom"}, {"family", "molded"},
+            {"aliases", json::array()}, {"name", "MAPI-like 1610 square"},
+            {"dimensions", {
+                {"A", {{"nominal", 0.0016}}}, {"B", {{"nominal", 0.0009}}}, {"C", {{"nominal", 0.0016}}},
+                {"D", {{"nominal", 0.00024}}}, {"E", {{"nominal", 0.001219}}}, {"F", {{"nominal", 0.000899}}}}}
+        };
+        json coreJson;
+        coreJson["functionalDescription"] = {
+            {"type", "closedShape"}, {"material", "Kool Mµ 26"}, {"shape", shapeJson},
+            {"gapping", json::array()}, {"numberStacks", 1}};
+        OpenMagnetics::Core core(coreJson);
+        core.process_data();
+        REQUIRE(core.get_shape_family() == MAS::CoreShapeFamily::MOLDED);
+        checkBobbinless(core);
+    }
+
+    SECTION("The bobbinless WE UI/EI products") {
+        for (const std::string shapeName : {"UI 56/5/12", "UI 13.5/2/4", "UI 40/3.3/12", "UI 16/5/19",
+                                            "EI 3.02/1.95/1.35/4.87/1/2.5/2.3"}) {
+            INFO("Shape: " << shapeName);
+            auto core = OpenMagneticsTesting::get_quick_core(shapeName, json::parse("[]"), 1, "Dummy");
+            checkBobbinless(core);
+        }
+    }
+
+    SECTION("Regular cores with a former keep their walls") {
+        for (const std::string shapeName : {"ETD 49/25/16", "E 42/21/15", "UI 93/76/30"}) {
+            INFO("Shape: " << shapeName);
+            auto core = OpenMagneticsTesting::get_quick_core(shapeName, json::parse("[]"), 1, "Dummy");
+            auto processed = OpenMagnetics::Bobbin::create_quick_bobbin(core).get_processed_description().value();
+            CHECK(processed.get_wall_thickness() > 0);
+            CHECK(processed.get_column_thickness() > 0);
+        }
+    }
+}
