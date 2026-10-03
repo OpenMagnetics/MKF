@@ -3786,3 +3786,232 @@ TEST_CASE("Test_Magnetic_Field_Abt1463_Roshen_Fringing_Follows_The_Gap_Flux", "[
     }
 }
 
+
+// Martinez flat-conductor scorecard driver (hidden). Per-turn F_R = (ohmic + skin + proximity) / ohmic for every
+// model configuration in env MF_MODELS (';'-separated "FIELD/FRINGING/PROXIMITY" JSON names, '-' = automatic, or
+// "DEFAULT"), at every frequency in env MF_FREQS (comma separated), on the fixture env MF_FIXTURE: a
+// WindingLossesTestData config name, a testData JSON ("json:<file>", prepared like runJsonBasedWindingLossesTest), or
+// a built E 42 fixture ("E42_RECT_UNGAPPED", "E42_RECT_GAP1MM", "E42_FOIL_UNGAPPED", "E42_FOIL_GAP1MM"). Env
+// MF_EXPORT_DIR writes the processed MAS per frequency for OMFEM (foil exported as RECTANGULAR, which OMFEM sweeps;
+// geometry identical). Env MF_DROP_RESIDUAL removes residual gaps from the core. Output: one "MF" JSON line per row.
+TEST_CASE("Debug_Martinez_Flat_Scorecard", "[debug][martinez-flat-scorecard][.]") {
+    const char* fixtureName = std::getenv("MF_FIXTURE");
+    const char* frequenciesText = std::getenv("MF_FREQS");
+    REQUIRE(fixtureName != nullptr);
+    REQUIRE(frequenciesText != nullptr);
+    std::vector<double> frequencies;
+    {
+        std::stringstream stream(frequenciesText);
+        std::string item;
+        while (std::getline(stream, item, ',')) frequencies.push_back(std::stod(item));
+    }
+    std::vector<std::string> modelNames;
+    {
+        std::stringstream stream(std::getenv("MF_MODELS") ? std::getenv("MF_MODELS") : "DEFAULT");
+        std::string item;
+        while (std::getline(stream, item, ';')) modelNames.push_back(item);
+    }
+    const std::string fixture(fixtureName);
+    const int repetitions = std::getenv("MF_REPS") ? std::stoi(std::getenv("MF_REPS")) : 3;
+
+    auto build_e42 = [&](bool foil, bool gapped) {
+        std::string shapeName = "E 42/21/20";
+        std::vector<OpenMagnetics::Wire> wires;
+        OpenMagnetics::Wire wire;
+        std::vector<int64_t> numberTurns;
+        if (foil) {
+            // 8 foil turns 0.2 x 20 mm, 0.05 mm insulation each side.
+            numberTurns = {8};
+            wire.set_nominal_value_conducting_width(0.0002);
+            wire.set_nominal_value_conducting_height(0.02);
+            wire.set_nominal_value_outer_width(0.0003);
+            wire.set_nominal_value_outer_height(0.02);
+            wire.set_type(WireType::FOIL);
+        }
+        else {
+            // 10 pancakes of 3 x 0.8 mm, grade-1 enamel from the standard.
+            numberTurns = {10};
+            wire.set_nominal_value_conducting_width(0.003);
+            wire.set_nominal_value_conducting_height(0.0008);
+            InsulationWireCoating coating;
+            coating.set_type(InsulationWireCoatingType::ENAMELLED);
+            coating.set_grade(1);
+            wire.set_coating(coating);
+            wire.set_nominal_value_outer_width(OpenMagnetics::Wire::get_outer_width_rectangular(0.003, 1, WireStandard::IEC_60317));
+            wire.set_nominal_value_outer_height(OpenMagnetics::Wire::get_outer_height_rectangular(0.0008, 1, WireStandard::IEC_60317));
+            wire.set_type(WireType::RECTANGULAR);
+        }
+        wire.set_number_conductors(1);
+        wire.set_material("copper");
+        wires.push_back(wire);
+        auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, {1}, shapeName, 1,
+            WindingOrientation::OVERLAPPING, WindingOrientation::OVERLAPPING,
+            CoilAlignment::SPREAD, CoilAlignment::CENTERED, wires, false);
+        auto gapping = gapped ? OpenMagneticsTesting::get_ground_gap(0.001) : OpenMagneticsTesting::get_residual_gap();
+        auto core = OpenMagneticsTesting::get_quick_core(shapeName, gapping, 1, "3C97");
+        OpenMagnetics::Magnetic magnetic;
+        magnetic.set_core(core);
+        magnetic.set_coil(coil);
+        return magnetic;
+    };
+
+    struct Prepared {
+        OpenMagnetics::Magnetic magnetic;
+        OperatingPoint operatingPoint;
+        OpenMagnetics::Inputs inputs;
+        double temperature;
+        int mirroring;
+        bool fringing;
+    };
+    auto prepare = [&](double frequency) {
+        Prepared p;
+        if (fixture.rfind("json:", 0) == 0) {
+            auto path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), fixture.substr(5));
+            auto mas = OpenMagneticsTesting::mas_loader(path);
+            p.magnetic = mas.get_magnetic();
+            p.inputs = mas.get_inputs();
+            p.operatingPoint = p.inputs.get_operating_point(0);
+            OpenMagnetics::Inputs::scale_time_to_frequency(p.operatingPoint, frequency, true);
+            MagnetizingInductance magnetizingInductanceModel("ZHANG");
+            double magnetizingInductance = OpenMagnetics::resolve_dimensional_values(
+                magnetizingInductanceModel.calculate_inductance_from_number_turns_and_gapping(
+                    p.magnetic.get_core(), p.magnetic.get_coil(), &p.operatingPoint).get_magnetizing_inductance());
+            p.operatingPoint = OpenMagnetics::Inputs::process_operating_point(p.operatingPoint, magnetizingInductance);
+            p.temperature = 22;
+            p.mirroring = 1;
+            p.fringing = true;
+        }
+        else {
+            WindingLossesTestData::TestConfig config;
+            if (fixture.rfind("E42_", 0) == 0) {
+                config.temperature = 20;
+                config.magnetizingInductance = 1e-3;
+                config.waveform = WaveformLabel::SINUSOIDAL;
+                config.peakToPeak = 2;
+                config.offset = 0;
+                config.dutyCycle = 0.5;
+                config.includeFringing = true;
+                config.mirroringDimension = 2;
+                bool foil = fixture.find("FOIL") != std::string::npos;
+                bool gapped = fixture.find("GAP") != std::string::npos;
+                config.createMagnetic = [=]() { return build_e42(foil, gapped); };
+            }
+            else {
+                config = WindingLossesTestData::getAllTestConfigs().at(fixture);
+            }
+            p.magnetic = config.createMagnetic();
+            p.inputs = OpenMagnetics::Inputs::create_quick_operating_point_only_current(
+                frequency, config.magnetizingInductance, config.temperature,
+                config.waveform, config.peakToPeak, config.dutyCycle, config.offset);
+            p.operatingPoint = p.inputs.get_operating_point(0);
+            p.temperature = config.temperature;
+            p.mirroring = config.mirroringDimension;
+            p.fringing = config.includeFringing;
+        }
+        if (std::getenv("MF_DROP_RESIDUAL")) {
+            auto core = p.magnetic.get_core();
+            auto gapping = core.get_functional_description().get_gapping();
+            std::vector<CoreGap> kept;
+            for (auto& gap : gapping) {
+                if (gap.get_type() != GapType::RESIDUAL) kept.push_back(gap);
+            }
+            core.get_mutable_functional_description().set_gapping(kept);
+            core.process_gap_or_throw();
+            p.magnetic.set_core(core);
+        }
+        return p;
+    };
+
+    if (const char* exportDir = std::getenv("MF_EXPORT_DIR")) {
+        std::filesystem::create_directories(exportDir);
+        for (auto frequency : frequencies) {
+            settings.reset();
+            clear_databases();
+            auto p = prepare(frequency);
+            OpenMagnetics::Inputs dumpInputs = p.inputs;
+            dumpInputs.set_operating_points({p.operatingPoint});
+            OpenMagnetics::Mas dumpMas;
+            dumpMas.set_inputs(dumpInputs);
+            dumpMas.set_magnetic(p.magnetic);
+            json masJson;
+            to_json(masJson, dumpMas);
+            for (auto& winding : masJson["magnetic"]["coil"]["functionalDescription"]) {
+                if (winding["wire"].is_object() && winding["wire"]["type"] == "foil") {
+                    winding["wire"]["type"] = "rectangular";
+                }
+            }
+            auto path = std::filesystem::path(exportDir) / (fixture.substr(fixture.find(':') + 1) + "_" + std::to_string(static_cast<long long>(frequency)) + ".json");
+            std::ofstream file(path);
+            REQUIRE(file.good());
+            file << masJson.dump();
+            std::cout << "EXPORTED " << path.string() << std::endl;
+        }
+    }
+
+    for (const auto& modelName : modelNames) {
+        for (auto frequency : frequencies) {
+            settings.reset();
+            clear_databases();
+            json row;
+            row["fixture"] = fixture;
+            row["model"] = modelName;
+            row["frequency"] = frequency;
+            try {
+                auto p = prepare(frequency);
+                settings.set_magnetic_field_mirroring_dimension(std::getenv("MF_MIRRORING") ? std::stoi(std::getenv("MF_MIRRORING")) : p.mirroring);
+                settings.set_magnetic_field_include_fringing(p.fringing);
+                WindingLossesModels models;
+                if (modelName.rfind("SET:", 0) == 0) {
+                    WindingLossesModelSets set;
+                    from_json(json(modelName.substr(4)), set);
+                    models.modelSet = set;
+                }
+                else if (modelName != "DEFAULT") {
+                    std::stringstream stream(modelName);
+                    std::string field, fringing, proximity;
+                    std::getline(stream, field, '/');
+                    std::getline(stream, fringing, '/');
+                    std::getline(stream, proximity, '/');
+                    if (field != "-") { MagneticFieldStrengthModels m; from_json(json(field), m); models.magneticFieldStrengthModel = m; }
+                    if (fringing != "-") { MagneticFieldStrengthFringingEffectModels m; from_json(json(fringing), m); models.magneticFieldStrengthFringingEffectModel = m; }
+                    if (proximity != "-") { WindingProximityEffectLossesModels m; from_json(json(proximity), m); models.proximityEffectModel = m; }
+                }
+                WindingLosses windingLosses(models);
+                auto output = windingLosses.calculate_losses(p.magnetic, p.operatingPoint, p.temperature);
+                settings.set_magnetic_field_turn_sums_cache_bytes(0);
+                auto start = std::chrono::steady_clock::now();
+                for (int r = 0; r < repetitions; ++r) {
+                    output = windingLosses.calculate_losses(p.magnetic, p.operatingPoint, p.temperature);
+                }
+                row["ms"] = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count() / repetitions;
+                auto perTurn = output.get_winding_losses_per_turn().value();
+                json ratios = json::array();
+                json proximityShare = json::array();
+                double ohmicTotal = 0;
+                for (const auto& turn : perTurn) {
+                    double ohmic = turn.get_ohmic_losses()->get_losses();
+                    ohmicTotal += ohmic;
+                    double loss = ohmic;
+                    double proximity = 0;
+                    for (auto l : turn.get_skin_effect_losses()->get_losses_per_harmonic()) loss += l;
+                    for (auto l : turn.get_proximity_effect_losses()->get_losses_per_harmonic()) { loss += l; proximity += l; }
+                    ratios.push_back(loss / ohmic);
+                    proximityShare.push_back(proximity / ohmic);
+                }
+                row["perTurn"] = ratios;
+                row["proxPerTurn"] = proximityShare;
+                row["total"] = output.get_winding_losses() / ohmicTotal;
+                json centres = json::array();
+                for (const auto& turn : p.magnetic.get_coil().get_turns_description().value()) {
+                    centres.push_back(json::array({turn.get_coordinates()[0], turn.get_coordinates()[1]}));
+                }
+                row["turnCentres"] = centres;
+            }
+            catch (const std::exception& e) {
+                row["error"] = std::string(e.what()).substr(0, 300);
+            }
+            std::cout << "MF " << row.dump() << std::endl;
+        }
+    }
+    settings.reset();
+}
