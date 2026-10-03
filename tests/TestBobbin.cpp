@@ -1288,3 +1288,41 @@ TEST_CASE("A square-footprint molded core never gets a zero-size quick bobbin wi
     // ... and so must walls that eat the whole cavity height.
     CHECK_THROWS_AS(OpenMagnetics::Bobbin::create_quick_bobbin(core, 0.00013, 0.00001), OpenMagnetics::InvalidInputException);
 }
+
+// ABT #761 (Alf, 2026-10-03): "drum and drum rings never have a bobbin, the whole point of this
+// shape is that the wire can be wound on top of the core, as the drum looks like a bobbin." The
+// quick bobbin of EVERY drum family, at every size, is the bobbinless one: the core's own winding
+// window, zero wall and column thickness -- the same representation nullDimensions builds. (An
+// EXPLICIT wall/column thickness is still honoured: that is the caller asking for one.)
+TEST_CASE("Drum families never take a bobbin: the quick bobbin is the core's own window (ABT #761)",
+          "[constructive-model][bobbin][drum][abt761]") {
+    settings.reset();
+    for (const std::string shapeName : {"DR 3.5x1.0", "DR 10/18/5/2.75/12.5/2.75", "DRH-18X22-4C",
+                                        "DR 2.3 + SRI 3.0", "DRS 8/3.9/3.75/1/1.9/1/8/8/4.2"}) {
+        INFO("Shape: " << shapeName);
+        auto core = OpenMagneticsTesting::get_quick_core(shapeName, json::parse("[]"), 1, "Dummy");
+        auto family = core.get_shape_family();
+        REQUIRE((family == MAS::CoreShapeFamily::DRUM || family == MAS::CoreShapeFamily::DRUM_RING ||
+                 family == MAS::CoreShapeFamily::DRUM_SEMISHIELDED));
+        auto coreWindow = core.get_processed_description()->get_winding_windows()[0];
+
+        auto bobbin = OpenMagnetics::Bobbin::create_quick_bobbin(core);
+        auto processed = bobbin.get_processed_description().value();
+        CHECK(processed.get_wall_thickness() == 0);
+        CHECK(processed.get_column_thickness() == 0);
+        auto window = processed.get_winding_windows()[0];
+        CHECK_THAT(window.get_width().value(), Catch::Matchers::WithinAbs(coreWindow.get_width().value(), 1e-12));
+        CHECK_THAT(window.get_height().value(), Catch::Matchers::WithinAbs(coreWindow.get_height().value(), 1e-12));
+
+        // Identical to the explicit bobbinless ("Dummy") bobbin.
+        auto dummy = OpenMagnetics::Bobbin::create_quick_bobbin(core, true);
+        auto dummyWindow = dummy.get_processed_description()->get_winding_windows()[0];
+        CHECK(window.get_width().value() == dummyWindow.get_width().value());
+        CHECK(window.get_height().value() == dummyWindow.get_height().value());
+        CHECK(window.get_coordinates().value() == dummyWindow.get_coordinates().value());
+
+    }
+    // A family that does take a former is unaffected.
+    auto etd = OpenMagneticsTesting::get_quick_core("ETD 49/25/16", json::parse("[]"), 1, "Dummy");
+    CHECK(OpenMagnetics::Bobbin::create_quick_bobbin(etd).get_processed_description()->get_wall_thickness() > 0);
+}

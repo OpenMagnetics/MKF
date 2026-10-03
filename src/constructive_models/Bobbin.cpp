@@ -677,9 +677,23 @@ Bobbin Bobbin::create_quick_bobbin(double windingWindowHeight, double windingWin
     return bobbin;
 }
 
+// ABT #761: the core families that never take a bobbin -- every drum family. The drum's flanges
+// ARE the former (the wire is wound directly on the core), so their quick bobbin is the core's
+// own winding window with zero wall and column thickness, at every size.
+static bool is_bobbinless_core_family(CoreShapeFamily family) {
+    return family == CoreShapeFamily::DRUM || family == CoreShapeFamily::DRUM_RING ||
+           family == CoreShapeFamily::DRUM_SEMISHIELDED || family == CoreShapeFamily::DRUM_PLATE;
+}
+
 Bobbin Bobbin::create_quick_bobbin(Core core, bool nullDimensions, std::optional<MAS::OrientationEnum> pinsOrientation) {
     if (!core.get_processed_description()) {
         core.process_data();
+    }
+    // ABT #761: a drum is wound directly on the core -- its flanges are the former -- so it
+    // never takes a bobbin. The quick bobbin is the bobbinless one (the same representation as
+    // nullDimensions: the core's own window, zero wall and column), whatever the drum's size.
+    if (is_bobbinless_core_family(core.get_shape_family())) {
+        nullDimensions = true;
     }
 
     // Multi-window cores supported. Use the centre/main window (index 0)
