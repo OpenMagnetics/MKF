@@ -1371,9 +1371,11 @@ std::vector<std::pair<Mas, double>> MagneticAdviser::score_magnetics(std::vector
         return masMagneticsWithScoring;
     }
 
-    for (auto mas : masMagnetics) {
-        masMagneticsWithScoring.push_back({mas, 0.0});
-    }
+    // ABT #1619: a design a scoring filter rejects (e.g. COST on an unpriced design, reported as
+    // {false, 0}) is dropped, and the remaining scores are normalised over the kept designs only.
+    // The valid flag used to be ignored, so a rejected design was ranked, and its 0 set the scale.
+    std::vector<bool> masValidFlags(masMagnetics.size(), true);
+    std::vector<std::pair<MagneticFilterOperation, std::vector<double>>> scoringsPerFilter;
     for (auto filterConfiguration : filterFlow) {
         MagneticFilters filterEnum = filterConfiguration.get_filter();
 
@@ -1384,14 +1386,43 @@ std::vector<std::pair<Mas, double>> MagneticAdviser::score_magnetics(std::vector
         }
 
         std::vector<double> scorings;
-        for (auto mas : masMagnetics) {
+        for (size_t masIndex = 0; masIndex < masMagnetics.size(); ++masIndex) {
+            auto& mas = masMagnetics[masIndex];
             auto [valid, scoring] = filterIt->second->evaluate_magnetic(&mas.get_mutable_magnetic(), &mas.get_mutable_inputs());
+            if (!valid) {
+                masValidFlags[masIndex] = false;
+            }
             scorings.push_back(scoring);
             add_scoring(mas.get_mutable_magnetic().get_reference(), filterEnum, scoring);
         }
-        if (masMagneticsWithScoring.size() > 0) {
-            normalize_scoring(&masMagneticsWithScoring, scorings, filterConfiguration);
+        scoringsPerFilter.push_back({filterConfiguration, scorings});
+    }
+
+    // When every design is rejected, they are ranked among themselves, as CoilAdviser ranks its
+    // rejected coils: the same last resort drop_invalid_when_valid_exists keeps for designs whose
+    // coil failed (they reach the caller marked, never mixed with valid ones).
+    bool anyValid = std::find(masValidFlags.begin(), masValidFlags.end(), true) != masValidFlags.end();
+    std::vector<size_t> keptIndexes;
+    for (size_t masIndex = 0; masIndex < masMagnetics.size(); ++masIndex) {
+        if (masValidFlags[masIndex] || !anyValid) {
+            masMagneticsWithScoring.push_back({masMagnetics[masIndex], 0.0});
+            keptIndexes.push_back(masIndex);
         }
+    }
+    if (!anyValid) {
+        logEntry("WARNING: every one of " + std::to_string(masMagnetics.size()) +
+                 " designs was rejected by a scoring filter; they are ranked among themselves", "MagneticAdviser", 1);
+    }
+    else if (keptIndexes.size() < masMagnetics.size()) {
+        logEntry("Scoring dropped " + std::to_string(masMagnetics.size() - keptIndexes.size()) + " of " +
+                 std::to_string(masMagnetics.size()) + " designs rejected by a scoring filter", "MagneticAdviser", 2);
+    }
+    for (auto& [filterConfiguration, scorings] : scoringsPerFilter) {
+        std::vector<double> keptScorings;
+        for (auto masIndex : keptIndexes) {
+            keptScorings.push_back(scorings[masIndex]);
+        }
+        normalize_scoring(&masMagneticsWithScoring, keptScorings, filterConfiguration);
     }
     
     // OPTIMIZATION: Apply stack penalty - prioritize single stack designs

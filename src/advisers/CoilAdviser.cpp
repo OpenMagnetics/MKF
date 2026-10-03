@@ -294,11 +294,11 @@ namespace OpenMagnetics {
     }
 
     std::vector<std::pair<Mas, double>> CoilAdviser::score_magnetics(std::vector<Mas> masMagnetics, std::vector<MagneticFilterOperation> filterFlow, std::vector<std::pair<Mas, double>>* invalidMagneticsWithScoring) {
-        std::vector<std::pair<Mas, double>> masMagneticsWithScoring;
+        // ABT #1619: every filter is evaluated first, and only then normalised, separately over the
+        // valid and the rejected designs. Normalising one list holding both let a rejected design's
+        // score (an unpriced design's COST of 0, say) set the scale every valid design was ranked on.
         std::vector<bool> masValidFlags(masMagnetics.size(), true);
-        for (auto mas : masMagnetics) {
-            masMagneticsWithScoring.push_back({mas, 0.0});
-        }
+        std::vector<std::vector<double>> scoringsPerFilter;
         for (const auto& filterConfiguration : filterFlow) {
             MagneticFilters filterEnum = filterConfiguration.get_filter();
             std::vector<double> scorings;
@@ -310,23 +310,36 @@ namespace OpenMagnetics {
                 scorings.push_back(scoring);
                 add_scoring(masMagnetics[masIndex].get_mutable_magnetic().get_reference(), filterEnum, scoring);
             }
-            if (masMagneticsWithScoring.size() > 0) {
-                normalize_scoring(&masMagneticsWithScoring, scorings, filterConfiguration);
-            }
+            scoringsPerFilter.push_back(scorings);
         }
-        // Remove invalid designs
-        std::vector<std::pair<Mas, double>> validMasMagneticsWithScoring;
-        size_t invalidCount = 0;
-        for (size_t i = 0; i < masMagneticsWithScoring.size(); ++i) {
-            if (masValidFlags[i]) {
-                validMasMagneticsWithScoring.push_back(masMagneticsWithScoring[i]);
-            }
-            else {
-                if (invalidMagneticsWithScoring != nullptr) {
-                    invalidMagneticsWithScoring->push_back(masMagneticsWithScoring[i]);
+
+        auto scoreGroup = [&](bool validGroup) {
+            std::vector<std::pair<Mas, double>> group;
+            std::vector<size_t> indexes;
+            for (size_t masIndex = 0; masIndex < masMagnetics.size(); ++masIndex) {
+                if (masValidFlags[masIndex] == validGroup) {
+                    group.push_back({masMagnetics[masIndex], 0.0});
+                    indexes.push_back(masIndex);
                 }
-                invalidCount++;
             }
+            if (group.empty()) {
+                return group;
+            }
+            for (size_t filterIndex = 0; filterIndex < filterFlow.size(); ++filterIndex) {
+                std::vector<double> scorings;
+                for (auto masIndex : indexes) {
+                    scorings.push_back(scoringsPerFilter[filterIndex][masIndex]);
+                }
+                normalize_scoring(&group, scorings, filterFlow[filterIndex]);
+            }
+            return group;
+        };
+
+        auto validMasMagneticsWithScoring = scoreGroup(true);
+        size_t invalidCount = masMagnetics.size() - validMasMagneticsWithScoring.size();
+        if (invalidCount > 0 && invalidMagneticsWithScoring != nullptr) {
+            auto invalidGroup = scoreGroup(false);
+            invalidMagneticsWithScoring->insert(invalidMagneticsWithScoring->end(), invalidGroup.begin(), invalidGroup.end());
         }
         if (invalidCount > 0) {
             logEntry("Filtered out " + std::to_string(invalidCount) + " invalid designs out of " + std::to_string(masMagnetics.size()), "CoilAdviser", 2);

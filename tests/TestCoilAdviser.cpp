@@ -2958,3 +2958,47 @@ TEST_CASE("Test_CoilAdviser_ABT1645_Buck_EPX7_IEC_60317", "[.][abt-1645]") {
 }
 
 }  // namespace
+
+// ABT #1619: a design a scoring filter rejects (COST on a core material with no price law
+// returns {false, 0}) must not be ranked with the valid ones: their scores are normalised over
+// the valid designs only, and the rejected one goes to the rejected list.
+TEST_CASE("Test_CoilAdviser_Scoring_Excludes_Rejected_Designs", "[adviser][coil-adviser][abt-1619]") {
+    settings.reset();
+    clear_databases();
+    auto inputs = OpenMagneticsTesting::create_quick_test_inputs();
+    std::vector<OpenMagnetics::Mas> masMagnetics;
+    for (auto [material, turns] : std::vector<std::pair<std::string, int64_t>>{{"N87", 20}, {"N87", 40}, {"4W810", 20}}) {
+        std::vector<int64_t> numberTurns = {turns};
+        auto magnetic = OpenMagnetics::magnetic_autocomplete(OpenMagneticsTesting::get_quick_magnetic(
+            "E 42/21/15", OpenMagneticsTesting::get_ground_gap(0.001), numberTurns, 1, material));
+        MagneticManufacturerInfo manufacturerInfo;
+        manufacturerInfo.set_name("test");
+        manufacturerInfo.set_reference(material + " " + std::to_string(turns));
+        magnetic.set_manufacturer_info(manufacturerInfo);
+        OpenMagnetics::Mas mas;
+        mas.set_magnetic(magnetic);
+        mas.set_inputs(inputs);
+        masMagnetics.push_back(mas);
+    }
+    std::vector<MagneticFilterOperation> flow = {MagneticFilterOperation(MagneticFilters::COST, true, true, 1.0)};
+    CoilAdviser coilAdviser;
+    coilAdviser.load_filter_flow(flow, inputs);
+    std::vector<std::pair<OpenMagnetics::Mas, double>> rejected;
+    auto scored = coilAdviser.score_magnetics(masMagnetics, flow, &rejected);
+
+    REQUIRE(scored.size() == 2);
+    REQUIRE(rejected.size() == 1);
+    CHECK(rejected[0].first.get_magnetic().get_reference() == "4W810 20");
+    // The cheaper 20-turn design wins, and both scores are real numbers on the valid designs' scale.
+    for (auto& [mas, score] : scored) {
+        CHECK(std::isfinite(score));
+    }
+    double score20 = scored[0].first.get_magnetic().get_reference() == "N87 20" ? scored[0].second : scored[1].second;
+    double score40 = scored[0].first.get_magnetic().get_reference() == "N87 40" ? scored[0].second : scored[1].second;
+    CHECK(score20 > score40);
+    // The scale is set by the valid designs alone: the best of the two scores the full weight and
+    // the worst scores 0. Normalised together with the rejected design's zero cost, the valid
+    // designs would sit far from both ends of the scale.
+    CHECK_THAT(score20, Catch::Matchers::WithinAbs(1.0, 1e-9));
+    CHECK_THAT(score40, Catch::Matchers::WithinAbs(0.0, 1e-9));
+}
