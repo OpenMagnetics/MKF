@@ -15,43 +15,15 @@
 
 
 namespace {
-// In the normal search, wire candidates are drawn at several effective current densities, as
-// fractions of the configured maximum (12 A/mm2 by default): 4, 6, 8 and 12 A/mm2. Each rung's
-// WireAdviser ranking keeps its own top candidates, so the wind loop sees wires sized for low DC
-// loss next to the thin ones the proximity and fit criteria prefer; the coils it winds are then
-// ranked by their losses.
-const std::vector<double> kWireCurrentDensityLadder = {1.0 / 3, 1.0 / 2, 2.0 / 3, 1.0};
-
-// Merges the per-configuration candidate lists. Interleaved (normal search): round-robin, best of
-// each rung first, then the second best of each, ..., dropping a (wire, parallels) pair an earlier
-// rung already contributed, since a thick wire qualifies on every rung. Not interleaved (the
-// relaxed retry): plain concatenation in configuration order.
-std::vector<std::pair<OpenMagnetics::Winding, double>> merge_wire_candidates(
-        std::vector<std::vector<std::pair<OpenMagnetics::Winding, double>>>& candidatesPerConfiguration, bool interleave) {
-    std::vector<std::pair<OpenMagnetics::Winding, double>> merged;
-    if (!interleave) {
-        for (auto& configurationCandidates : candidatesPerConfiguration) {
-            std::move(configurationCandidates.begin(), configurationCandidates.end(), std::back_inserter(merged));
-        }
-        return merged;
+// Concatenates the per-configuration candidate lists in configuration order (each list is capped
+// and ranked by its own WireAdviser call; their scores are never re-sorted together).
+std::vector<std::pair<OpenMagnetics::Winding, double>> concatenate_wire_candidates(
+        std::vector<std::vector<std::pair<OpenMagnetics::Winding, double>>>& candidatesPerConfiguration) {
+    std::vector<std::pair<OpenMagnetics::Winding, double>> concatenated;
+    for (auto& configurationCandidates : candidatesPerConfiguration) {
+        std::move(configurationCandidates.begin(), configurationCandidates.end(), std::back_inserter(concatenated));
     }
-    std::set<std::string> seen;
-    size_t longest = 0;
-    for (const auto& rung : candidatesPerConfiguration) longest = std::max(longest, rung.size());
-    for (size_t position = 0; position < longest; ++position) {
-        for (auto& rung : candidatesPerConfiguration) {
-            if (position >= rung.size()) continue;
-            auto wire = OpenMagnetics::Coil::resolve_wire(rung[position].first);
-            if (!wire.get_name()) {
-                throw OpenMagnetics::InvalidInputException(OpenMagnetics::ErrorCode::INVALID_INPUT,
-                    "CoilAdviser: an advised wire has no name, so duplicate candidates cannot be told apart");
-            }
-            auto key = wire.get_name().value() + "|" + std::to_string(rung[position].first.get_number_parallels());
-            if (!seen.insert(key).second) continue;
-            merged.push_back(rung[position]);
-        }
-    }
-    return merged;
+    return concatenated;
 }
 
 std::vector<std::map<std::string, double>> wire_configurations(double maximumEffectiveCurrentDensity, double maximumNumberParallels, bool relaxedWireLimits) {
@@ -64,17 +36,18 @@ std::vector<std::map<std::string, double>> wire_configurations(double maximumEff
             {{"maximumEffectiveCurrentDensity", maximumEffectiveCurrentDensity * 2}, {"maximumNumberParallels", maximumNumberParallels * 2}}
         };
     }
-    std::vector<std::map<std::string, double>> configurations;
-    for (double densityFraction : kWireCurrentDensityLadder) {
-        configurations.push_back({{"maximumEffectiveCurrentDensity", maximumEffectiveCurrentDensity * densityFraction},
-                                  {"maximumNumberParallels", maximumNumberParallels}});
-    }
-    return configurations;
+    // The normal search asks the wire adviser at the limits only. Asking it again at lower
+    // current densities (8, 6 and 4 A/mm2) added no acceptable design on the 36-case Henry corpus
+    // when their fitting candidates were appended after these (91 acceptable designs either way),
+    // and lost designs when interleaved with these (80 against 87), see the commit message.
+    return {
+        {{"maximumEffectiveCurrentDensity", maximumEffectiveCurrentDensity}, {"maximumNumberParallels", maximumNumberParallels}}
+    };
 }
 
 // How many wound coils one pattern collects before keeping the maximumNumberResults with the
 // lowest losses (core + ohmic, skin and proximity winding losses). Two: on the 36-case Henry corpus
-// it took 971 s of adviser time against 1163 s with a pool of one (80 against 78 acceptable designs).
+// it gave 91 acceptable designs against 87 with a pool of one (the first coils that fit).
 const size_t kWoundCoilPoolMultiplier = 2;
 }  // namespace
 
@@ -1362,7 +1335,7 @@ namespace OpenMagnetics {
                     // downstream is bounded by kMaxConsecutiveFailuresWithNoSuccess and the timeout.
                 }
             }
-            auto mergedCandidates = merge_wire_candidates(candidatesPerConfiguration, !_relaxedWireLimits);
+            auto mergedCandidates = concatenate_wire_candidates(candidatesPerConfiguration);
             timeout += mergedCandidates.size();
             std::move(mergedCandidates.begin(), mergedCandidates.end(), std::back_inserter(wireCoilPerWinding.back()));
         }
@@ -1769,7 +1742,7 @@ namespace OpenMagnetics {
             }
             {
                 // Merge the configurations, then keep up to four candidates per requested result.
-                auto mergedCandidates = merge_wire_candidates(candidatesPerConfiguration, !_relaxedWireLimits);
+                auto mergedCandidates = concatenate_wire_candidates(candidatesPerConfiguration);
                 if (mergedCandidates.size() > maximumNumberResults * 4) {
                     mergedCandidates.resize(maximumNumberResults * 4);
                 }
