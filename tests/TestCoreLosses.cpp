@@ -10,6 +10,7 @@
 #include "processors/Sweeper.h"
 #include "processors/MagneticSimulator.h"
 #include "physical_models/Reluctance.h"
+#include "physical_models/InitialPermeability.h"
 #include "support/MaterialValidator.h"
 #include "TestingUtils.h"
 #include "Fixtures.h"
@@ -4817,4 +4818,30 @@ TEST_CASE("Core-loss frequency sweep is clipped to the material's fitted span", 
     CHECK(inSpanStop == 1000000);
     CHECK_THROWS_AS(Sweeper::sweep_core_losses_over_frequency(magnetic, inputs.get_operating_points()[0], 10000, 100000, 10),
                     MaterialFrequencyOutOfSpanException);
+}
+
+// ABT #1602: the core-loss series resistance builds an equivalent winding N = sqrt(L * R). It used to
+// be truncated to an integer, so any L * R < 1 gave N = 0, zero flux and a zero resistance, and the
+// value jumped at every integer N. N is a model quantity and must stay real.
+TEST_CASE("Core-loss series resistance is continuous in the equivalent turns", "[physical-model][core-losses][abt-1602]") {
+    settings.reset();
+    clear_databases();
+    std::vector<int64_t> numberTurns = {20};
+    auto magnetic = OpenMagnetics::magnetic_autocomplete(OpenMagneticsTesting::get_quick_magnetic(
+        "E 42/21/15", OpenMagneticsTesting::get_ground_gap(0.001), numberTurns, 1, "N87"));
+    auto core = magnetic.get_core();
+    double temperature = 25;
+    double frequency = 100000;
+    double initialPermeability = InitialPermeability::get_initial_permeability(core.resolve_material(), temperature);
+    double reluctance = ReluctanceModel::factory()->get_core_reluctance(core, initialPermeability).get_core_reluctance();
+    auto model = CoreLossesModel::factory(std::map<std::string, std::string>({{"coreLosses", "Steinmetz"}}));
+
+    // N = 0.5: was truncated to 0.
+    CHECK(model->get_core_losses_series_resistance(core, frequency, temperature, 0.25 / reluctance) > 0);
+    // Either side of N = 1: was N = 0 below and N = 1 above, a jump from zero to the full value.
+    double below = model->get_core_losses_series_resistance(core, frequency, temperature, 0.98 / reluctance);
+    double above = model->get_core_losses_series_resistance(core, frequency, temperature, 1.02 / reluctance);
+    REQUIRE(above > 0);
+    CHECK_THAT(below / above, Catch::Matchers::WithinAbs(1.0, 0.1));
+    CHECK_THROWS(model->get_core_losses_series_resistance(core, frequency, temperature, 0));
 }

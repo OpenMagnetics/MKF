@@ -1188,7 +1188,15 @@ double CoreLossesModel::get_core_losses_series_resistance(Core core,
     auto reluctanceModel = ReluctanceModel::factory();
     auto reluctance = reluctanceModel->get_core_reluctance(core, initialPermeability).get_core_reluctance();
 
-    int64_t numberTurnsPrimary = sqrt(magnetizingInductance * reluctance);
+    // ABT #1602: the equivalent winding that gives this inductance on this reluctance. It is a
+    // model quantity, not a wound count, so it stays real: truncating it to an integer made
+    // every L*R < 1 give N = 0, no flux and zero losses, and skewed the rest by up to 1/N.
+    if (!(magnetizingInductance > 0) || !(reluctance > 0)) {
+        throw InvalidInputException(ErrorCode::INVALID_INPUT,
+            "Core-loss series resistance needs a positive magnetizing inductance and core reluctance, got L = " +
+            std::to_string(magnetizingInductance) + " H, R = " + std::to_string(reluctance) + " 1/H");
+    }
+    double numberTurnsPrimary = sqrt(magnetizingInductance * reluctance);
     auto operatingPoint = Inputs::create_operating_point_with_sinusoidal_current_mask(frequency, magnetizingInductance, temperature, {}, {virtualCurrentRms * sqrt(2)});
     operatingPoint = Inputs::process_operating_point(operatingPoint, magnetizingInductance);
     auto excitation = operatingPoint.get_excitations_per_winding()[0];
