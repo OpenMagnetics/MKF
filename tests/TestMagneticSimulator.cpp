@@ -1222,6 +1222,9 @@ namespace {
     // The fixtures are trimmed to the excitations MKF actually consumed, so these repros are
     // byte-for-byte the same simulation they always were; only the ignored padding is gone.
 
+        // ABT #1567: the core material is DMR95 (Steinmetz fitted 25 kHz to 500 kHz), not the capture's
+        // DMR51W, whose data start at 500 kHz: at this fixture's 100 kHz its losses would be an
+        // extrapolation, which MKF refuses since ABT #1456. The contiguous-winding repro is unchanged.
         auto path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "bug_contiguous.json");
         auto mas = OpenMagneticsTesting::mas_loader(path);
 
@@ -1247,6 +1250,9 @@ namespace {
     }
 
     TEST_CASE("Test_Simulator_Web_4", "[processor][magnetic-simulator][bug]") {
+        // ABT #1567: the capture embedded an old snapshot of DMR96 whose placeholder Steinmetz ranges
+        // (1 Hz to 1 GHz) carried a fit with ct(100 C) = -4380 (the ABT #1529 under-determined ct fit).
+        // The fixture now names DMR96, so the material comes from MAS (fitted 100 kHz to 500 kHz).
         auto path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "bug_empty_field.json");
         auto mas = OpenMagneticsTesting::mas_loader(path);
 
@@ -1384,10 +1390,9 @@ namespace {
         run_example_simulation("17_cllc_xfmr_e5528_3c92a.json");
     }
     TEST_CASE("Example_18_stacked_inductor", "[example][magnetic-simulator][smoke-test]") {
-        // ABT #1456: its operating point is at 20 kHz, below N27's published loss data (25 kHz). MKF no longer extrapolates a
-        // Steinmetz fit outside the frequencies it was fitted on, so simulating this example must fail
-        // with that specific error, not with any other. (Materials without low-frequency data: ABT #1494.)
-        CHECK_THROWS_AS(run_example_simulation("18_stacked_inductor_e7033_n27.json"), MaterialFrequencyOutOfSpanException);
+        // ABT #1567: the example ran at 20 kHz, below N27's published loss data (25 kHz), which MKF
+        // refuses (ABT #1456). The example now runs at 25 kHz, inside the fitted span, and must simulate.
+        run_example_simulation("18_stacked_inductor_e7033_n27.json");
     }
     TEST_CASE("Example_19_multi_op_xfmr", "[example][magnetic-simulator][smoke-test]") {
         run_example_simulation("19_multi_op_xfmr_etd3920_pc95.json");
@@ -1574,8 +1579,10 @@ TEST_CASE("Test_Magnetic_Simulator_New_Core_Families",
         magnetic.set_coil(OpenMagnetics::Coil(coilJson, false));
         auto completed = OpenMagnetics::magnetic_autocomplete(magnetic);
 
+        // ABT #1567: 400 kHz, inside 3C90's fitted Steinmetz span (25 kHz to 446.69 kHz); at the
+        // former 500 kHz core losses are an extrapolation, which MKF refuses since ABT #1456.
         auto inputs = OpenMagnetics::Inputs::create_quick_operating_point_only_current(
-            500000, 5e-6, 25, WaveformLabel::TRIANGULAR, 0.2, 0.5, 0.2);
+            400000, 5e-6, 25, WaveformLabel::TRIANGULAR, 0.2, 0.5, 0.2);
         auto completedInputs = OpenMagnetics::inputs_autocomplete(inputs, completed);
 
         OpenMagnetics::MagneticSimulator simulator;
