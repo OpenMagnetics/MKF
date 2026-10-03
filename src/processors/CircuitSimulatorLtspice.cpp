@@ -68,7 +68,7 @@ static std::string emit_saturating_inductor_ltspice(
 
 std::string CircuitSimulatorExporterLtspiceModel::export_magnetic_as_subcircuit(Magnetic magnetic, double frequency, double temperature, std::optional<std::string> filePathOrFile, CircuitSimulatorExporterCurveFittingModes mode) {
     std::string headerString = "* Magnetic model made with OpenMagnetics\n";
-    headerString += "* " + magnetic.get_reference() + "\n\n";
+    headerString += "* " + require_single_line_text(magnetic.get_reference(), "magnetic reference") + "\n\n";
     headerString += ".subckt " + fix_filename(magnetic.get_reference());
     std::string circuitString = "";
     std::string parametersString = "";
@@ -340,7 +340,7 @@ std::string CircuitSimulatorExporterLtspiceModel::export_magnetic_as_symbol(Magn
     int rectangleHeight = std::max(leftSideSize, rightSideSize);
 
 
-    symbolString += "TEXT " + std::to_string(-rectangleSemiWidth + 8) + " " + std::to_string(-rectangleHeight / 2 + 8) + " Left 0 " + magnetic.get_reference() + "\n";
+    symbolString += "TEXT " + std::to_string(-rectangleSemiWidth + 8) + " " + std::to_string(-rectangleHeight / 2 + 8) + " Left 0 " + require_single_line_text(magnetic.get_reference(), "magnetic reference") + "\n";
     symbolString += "TEXT " + std::to_string(-rectangleSemiWidth + 8) + " " + std::to_string(rectangleHeight / 2 - 8) + " Left 0 Made with OpenMagnetics\n";
 
 

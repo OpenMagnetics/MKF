@@ -83,7 +83,7 @@ static std::string emit_saturating_inductor_ngspice(
 
 std::string CircuitSimulatorExporterNgspiceModel::export_magnetic_as_subcircuit(Magnetic magnetic, double frequency, double temperature, std::optional<std::string> filePathOrFile, CircuitSimulatorExporterCurveFittingModes mode) {
     std::string headerString = "* Magnetic model made with OpenMagnetics\n";
-    headerString += "* " + magnetic.get_reference() + "\n\n";
+    headerString += "* " + require_single_line_text(magnetic.get_reference(), "magnetic reference") + "\n\n";
     headerString += ".subckt " + fix_filename(magnetic.get_reference());
     std::string circuitString = "";
     std::string parametersString = "";

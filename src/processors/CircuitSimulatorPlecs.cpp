@@ -634,7 +634,7 @@ std::string CircuitSimulatorExporterPlecsModel::export_magnetic_as_subcircuit(
     auto windings = coil.get_functional_description();
     bool isMultiColumn = columns.size() > 1;
 
-    std::string name = magnetic.get_reference();
+    std::string name = require_plecs_quoted_text(magnetic.get_reference(), "magnetic reference");
     if (name.empty()) name = "magnetic";
 
     // Build InitializationCommands
@@ -679,7 +679,7 @@ std::string CircuitSimulatorExporterPlecsModel::export_magnetic_as_symbol(
     auto windings = coil.get_functional_description();
     bool isMultiColumn = columns.size() > 1;
 
-    std::string name = magnetic.get_reference();
+    std::string name = require_plecs_quoted_text(magnetic.get_reference(), "magnetic reference");
     if (name.empty()) name = "magnetic";
 
     // Build InitializationCommands (no simulation/electrical params)

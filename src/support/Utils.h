@@ -296,6 +296,14 @@ double decibels_to_amplitude(double decibels);
 double amplitude_to_decibels(double amplitude);
 
 std::string fix_filename(std::string filename);
+// ABT #1623: free text (a part reference) written into a generated netlist or script. A line
+// break in it ends a SPICE/PLECS comment and turns the rest into netlist or script that runs on
+// open; a quote or backslash ends a PLECS quoted string. These throw, naming `where`, instead of
+// silently rewriting the user's reference.
+std::string require_single_line_text(const std::string& text, const std::string& where);
+std::string require_plecs_quoted_text(const std::string& text, const std::string& where);
+// & < > " ' escaped for XML text and attribute values.
+std::string escape_xml(const std::string& text);
 Inputs inputs_autocomplete(Inputs inputs, std::optional<Magnetic> magnetic = std::nullopt, json configuration = {});
 // Whether the magnetic's coil must be (re-)wound before its turns can be trusted: it has no
 // turns yet, or real winding geometry is on (a stored layout never reserved the lead

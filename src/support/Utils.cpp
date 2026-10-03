@@ -2667,6 +2667,42 @@ double amplitude_to_decibels(double amplitude) {
     return 20 * log10(amplitude);
 }
 
+std::string require_single_line_text(const std::string& text, const std::string& where) {
+    for (unsigned char c : text) {
+        if (c < 0x20 || c == 0x7f) {
+            throw InvalidInputException(ErrorCode::INVALID_INPUT,
+                "The " + where + " contains a control character (code " + std::to_string(int(c)) +
+                "); a line break there would end the generated comment and be read as netlist or script");
+        }
+    }
+    return text;
+}
+
+std::string require_plecs_quoted_text(const std::string& text, const std::string& where) {
+    require_single_line_text(text, where);
+    if (text.find_first_of("\"\\") != std::string::npos) {
+        throw InvalidInputException(ErrorCode::INVALID_INPUT,
+            "The " + where + " contains a double quote or a backslash, which would end the PLECS quoted string it is written into");
+    }
+    return text;
+}
+
+std::string escape_xml(const std::string& text) {
+    std::string escaped;
+    escaped.reserve(text.size());
+    for (char c : text) {
+        switch (c) {
+            case '&': escaped += "&amp;"; break;
+            case '<': escaped += "&lt;"; break;
+            case '>': escaped += "&gt;"; break;
+            case '"': escaped += "&quot;"; break;
+            case '\'': escaped += "&apos;"; break;
+            default: escaped += c;
+        }
+    }
+    return escaped;
+}
+
 std::string fix_filename(std::string filename) {
     // Sanitize to an identifier/filename-safe token: any character outside [A-Za-z0-9_] becomes '_'.
     // This subsumes the previous space/comma/./:/ replacements AND covers the hyphen (and any other

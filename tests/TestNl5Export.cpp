@@ -65,3 +65,31 @@ TEST_CASE("nl5: fracpole export throws when the core network cannot be built", "
     CHECK_THROWS(exporter.export_magnetic_as_subcircuit(magnetic, 100000.0, 25.0, std::nullopt, std::nullopt,
                                                         CircuitSimulatorExporterCurveFittingModes::FRACPOLE));
 }
+
+// ABT #1623: the part reference is free text written into every export. In NL5 XML it must be
+// escaped; in SPICE and PLECS a line break would end the comment and run the rest as netlist or
+// script on open (PLECS init commands are executed), and a quote would end PLECS's quoted name.
+TEST_CASE("exporters: a hostile reference is escaped or refused, never written raw", "[circuit][export][nl5][smoke-test][abt-1623]") {
+    auto magnetic = wound_magnetic({10});
+    auto setReference = [&](const std::string& reference) {
+        MAS::MagneticManufacturerInfo manufacturerInfo;
+        manufacturerInfo.set_name("test");
+        manufacturerInfo.set_reference(reference);
+        magnetic.set_manufacturer_info(manufacturerInfo);
+    };
+    setReference("Part <A&B> \"x\"");
+    std::string nl5 = CircuitSimulatorExporter(CircuitSimulatorExporterModels::NL5).export_magnetic_as_subcircuit(magnetic, 100000.0, 25.0);
+    CHECK(nl5.find("Component: Part &lt;A&amp;B&gt; &quot;x&quot;</c>") != std::string::npos);
+    CHECK(nl5.find("<A&B>") == std::string::npos);
+    CHECK_THROWS(CircuitSimulatorExporter(CircuitSimulatorExporterModels::PLECS).export_magnetic_as_subcircuit(magnetic, 100000.0, 25.0));
+
+    setReference("Part\nV1 in 0 1000");
+    for (auto model : {CircuitSimulatorExporterModels::NGSPICE, CircuitSimulatorExporterModels::LTSPICE, CircuitSimulatorExporterModels::PLECS}) {
+        CHECK_THROWS(CircuitSimulatorExporter(model).export_magnetic_as_subcircuit(magnetic, 100000.0, 25.0));
+    }
+
+    setReference("Plain part 42");
+    for (auto model : {CircuitSimulatorExporterModels::NGSPICE, CircuitSimulatorExporterModels::LTSPICE, CircuitSimulatorExporterModels::PLECS}) {
+        CHECK_NOTHROW(CircuitSimulatorExporter(model).export_magnetic_as_subcircuit(magnetic, 100000.0, 25.0));
+    }
+}
