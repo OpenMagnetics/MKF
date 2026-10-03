@@ -1182,6 +1182,12 @@ TEST_CASE("Test_CoreAdviser_Web_6", "[adviser][core-adviser][available-cores][bu
 
 TEST_CASE("Test_CoreAdviser_Web_7", "[adviser][core-adviser][available-cores][bug]") {
     clear_databases();
+    // Fixture correction: the captured web inputs carry four windings (two 200 kHz windings at
+    // 36 V and 27 V, and two "Primary winding excitation" defaults at +-45.5 V) but only one
+    // turns ratio, 1.33 (= 36 V / 27 V). A turns ratio per winding after the first is required
+    // (the window copper capacity screen throws without them: the turns of the windings the
+    // stand-in coil lacks cannot be derived). The two added ratios follow from the fixture's own
+    // voltages the same way the first does: 36 V / 45.5 V = 0.79.
     auto json_path_1006 = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "test_coreadviser_web_7_1006.json");
     std::ifstream json_file_1006(json_path_1006);
     std::string inputsString((std::istreambuf_iterator<char>(json_file_1006)), std::istreambuf_iterator<char>());
@@ -2591,12 +2597,17 @@ TEST_CASE("Test_CoreAdviser_LLC_From_Frontend_Inputs", "[adviser][core-adviser][
     
     designRequirements.set_topology(MAS::Topology::LLC_RESONANT_CONVERTER);
     
-    // Two turns ratios (for two secondaries or center-tapped)
-    DimensionWithTolerance turnsRatioReq1, turnsRatioReq2;
-    turnsRatioReq1.set_nominal(8.33);
-    turnsRatioReq2.set_nominal(8.33);
+    // Fixture correction: the frontend log had two turns ratios (8.33, 8.33: a centre-tapped
+    // secondary), but this test builds only two excitations, Primary and one Secondary, so it
+    // needs exactly one ratio (one per winding after the first; the window copper capacity
+    // screen throws on a mismatch, the turns of a winding cannot be derived otherwise). The
+    // ratio follows from the fixture's own currents: 10 A rms secondary over 2.147 A rms
+    // primary = 4.66 (the magnetizing current, 200 V x 5 us / 825.6 uH = 1.2 A peak-to-peak,
+    // is a small part of the primary rms). 8.33 with one 10 A secondary would not balance the
+    // ampere-turns of a 2.147 A primary.
+    DimensionWithTolerance turnsRatioReq1;
+    turnsRatioReq1.set_nominal(4.66);
     designRequirements.get_mutable_turns_ratios().push_back(turnsRatioReq1);
-    designRequirements.get_mutable_turns_ratios().push_back(turnsRatioReq2);
     
     // Leakage inductance requirement
     DimensionWithTolerance leakageReq;

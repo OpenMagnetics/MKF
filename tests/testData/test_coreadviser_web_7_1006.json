@@ -7,6 +7,12 @@
     "turnsRatios": [
       {
         "nominal": 1.33
+      },
+      {
+        "nominal": 0.79
+      },
+      {
+        "nominal": 0.79
       }
     ]
   },
