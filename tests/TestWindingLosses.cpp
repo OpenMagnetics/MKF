@@ -3896,6 +3896,9 @@ TEST_CASE("Debug_Martinez_Flat_Scorecard", "[debug][martinez-flat-scorecard][.]"
                 bool gapped = fixture.find("GAP") != std::string::npos;
                 config.createMagnetic = [=]() { return build_e42(foil, gapped); };
             }
+            else if (fixture == "Seven_Turns_Rectangular_Ungapped_PQ2717") {
+                config = WindingLossesTestData::createSevenTurnsRectangularUngappedPQ2717Config();
+            }
             else {
                 config = WindingLossesTestData::getAllTestConfigs().at(fixture);
             }
@@ -3993,8 +3996,11 @@ TEST_CASE("Debug_Martinez_Flat_Scorecard", "[debug][martinez-flat-scorecard][.]"
                     ohmicTotal += ohmic;
                     double loss = ohmic;
                     double proximity = 0;
-                    for (auto l : turn.get_skin_effect_losses()->get_losses_per_harmonic()) loss += l;
-                    for (auto l : turn.get_proximity_effect_losses()->get_losses_per_harmonic()) { loss += l; proximity += l; }
+                    // Bind the optionals: range-for over a member of the getter's temporary dangles.
+                    const auto skinLosses = turn.get_skin_effect_losses().value();
+                    const auto proximityLosses = turn.get_proximity_effect_losses().value();
+                    for (auto l : skinLosses.get_losses_per_harmonic()) loss += l;
+                    for (auto l : proximityLosses.get_losses_per_harmonic()) { loss += l; proximity += l; }
                     ratios.push_back(loss / ohmic);
                     proximityShare.push_back(proximity / ohmic);
                 }
