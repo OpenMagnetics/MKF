@@ -654,11 +654,24 @@ cmrc_add_resource_library(core_losses_data ALIAS data::core_losses_data NAMESPAC
 cmrc_add_resource_library(dfm_rules ALIAS data::dfm_rules NAMESPACE dfmData src/data/dfm_rules.json src/data/quick_bobbin_pins.json)
 target_link_libraries(MKF PUBLIC ${LIBS})
 
-# ABT #327: a range-for over a MAS getter's .value() (or a by-value get_*()) binds a
-# reference to a destroyed temporary — undefined behaviour that either segfaults or
-# silently reads freed memory. GCC catches it as -Wdangling-reference; promote it to a
-# hard error on MKF's own targets so the next one cannot land silently. GNU-only (this is
-# a GCC diagnostic; the generator expression leaves Clang/MSVC untouched).
+# ABT #327 / #988: MAS getters for optional members return the std::optional BY VALUE, so a
+# reference reached through that temporary dangles once the full expression ends — undefined
+# behaviour that segfaults, or silently returns a wrong number (on emscripten, an empty vector).
+# -Werror=dangling-reference turns GCC's diagnostic into a hard error, but it is a PARTIAL guard.
+# Probed with g++ 14 -std=c++20 (-Wdangling-reference), it fires when the chain goes through a
+# call to .value() on the temporary, both as a reference binding and in a range-for:
+#     const auto& v = o.get_x().value();              for (auto e : o.get_x().value()) ...
+#     const auto& v = o.get_x().value().get_y();      for (auto e : o.get_x().value().get_y()) ...
+# It does NOT fire when the chain goes through the optional's operator-> or operator*:
+#     const auto& v = o.get_x()->get_y();             for (auto e : o.get_x()->get_y()) ...
+#     const auto& v = *o.get_x();
+# Those compile clean and passed the full native suite (Core::get_toroid_edge_radius, 54a5bbc1).
+# Cover them by (a) binding the optional to a named local before reaching into it, (b) the grep
+#     (?:&\s*\w+\s*=|for\s*\([^;{}]*?:)\s*[\w.\->\[\]]*?get_(?!mutable_)\w+\(\)\s*->\s*get_\w+\(\)
+# over src/ and tests/ (whitespace-collapsed; it cannot tell a by-value getter from one that returns
+# a reference or a smart pointer, so read every hit), and (c) a Debug -DENABLE_ASAN=ON run of the suite,
+# which reports every form as stack-use-after-scope. GNU-only (the generator expression leaves
+# Clang/MSVC untouched).
 target_compile_options(MKF PRIVATE $<$<CXX_COMPILER_ID:GNU>:-Werror=dangling-reference>)
 
 # Kirchhoff bridge: MKF links libKirchhoffApi.so and includes ONLY KirchhoffApi.hpp (the string facade),
@@ -762,8 +775,8 @@ if(INCLUDE_MKF_TESTS)
     target_link_libraries(MKF_tests PRIVATE Catch2::Catch2WithMain)
     target_link_libraries(MKF_tests PUBLIC MKF)
     target_include_directories(MKF_tests PUBLIC "${PROJECT_SOURCE_DIR}/src/")
-    # ABT #327: the same dangling-reference guard on the test TUs (where three of the four
-    # originally-found sites lived). GNU-only.
+    # ABT #327: the same (partial, see the MKF target above) dangling-reference guard on the
+    # test TUs (where three of the four originally-found sites lived). GNU-only.
     target_compile_options(MKF_tests PRIVATE $<$<CXX_COMPILER_ID:GNU>:-Werror=dangling-reference>)
 
     # tests/KirchhoffNgspiceRunnerShim.cpp compiles Kirchhoff's in-process libngspice runner

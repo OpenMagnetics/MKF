@@ -3071,7 +3071,11 @@ bool wind_magnetic_coil_as_described(Magnetic& magnetic, json configuration, std
                     throw CoilException(ErrorCode::INVALID_COIL_CONFIGURATION,
                         "The coil states its sections but its bobbin has no processed description to place them in");
                 }
-                for (const auto& window : bobbin.get_processed_description()->get_winding_windows()) {
+                // ABT #988: bind the optional first. get_processed_description() returns it BY
+                // VALUE, so ranging over ->get_winding_windows() of that temporary iterates a
+                // vector destroyed before the loop body runs (GCC does not diagnose the -> form).
+                auto bobbinProcessedDescription = bobbin.get_processed_description().value();
+                for (const auto& window : bobbinProcessedDescription.get_winding_windows()) {
                     if (window.get_shape() != WindingWindowShape::RECTANGULAR) {
                         rectangularWindows = false;
                     }
