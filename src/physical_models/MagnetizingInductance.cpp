@@ -678,7 +678,7 @@ std::pair<MagnetizingInductanceOutput, SignalDescriptor> MagnetizingInductance::
     }
 
     std::pair<MagnetizingInductanceOutput, SignalDescriptor> result;
-    double numberWindings = coil.get_functional_description().size();
+    size_t numberWindings = coil.get_functional_description().size();
     double numberTurnsPrimary = coil.get_functional_description()[0].get_number_turns();
     double effectiveArea = core.get_processed_description()->get_effective_parameters().get_effective_area();
     OpenMagnetics::InitialPermeability initialPermeability;
@@ -795,7 +795,14 @@ std::pair<MagnetizingInductanceOutput, SignalDescriptor> MagnetizingInductance::
                             }
                         }
                     }
-                    else if (numberWindings == 1 && excitation.get_current()) {
+                    // One winding in the CIRCUIT: its current is the magnetizing current. The
+                    // coil's winding count does not say that: the core adviser judges cores with a
+                    // one-winding stand-in coil whose secondaries are added only once a core is
+                    // chosen. Asking the coil made the primary's whole current, load included, the
+                    // magnetizing current of every transformer at the core stage (a 228 W forward
+                    // transformer: 0.4-1.7 T and core temperatures of thousands of degrees instead
+                    // of 0.05-0.3 T from its volt-seconds), so the operating point decides.
+                    else if (numberWindings == 1 && operatingPoint->get_excitations_per_winding().size() == 1 && excitation.get_current()) {
                         Inputs::set_current_as_magnetizing_current(operatingPoint);
                     }
                     // CMC check must come BEFORE is_multiport_inductor. CMCs
@@ -812,7 +819,16 @@ std::pair<MagnetizingInductanceOutput, SignalDescriptor> MagnetizingInductance::
                         excitation.set_magnetizing_current(magnetizingCurrent);
                         operatingPoint->get_mutable_excitations_per_winding()[0] = excitation;
                     }
-                    else if (Inputs::is_multiport_inductor(*operatingPoint, coil.get_isolation_sides())) {
+                    // A coil with fewer windings than the circuit (the stand-in above) has no
+                    // isolation sides for the windings it lacks: its own single PRIMARY would read
+                    // as "every winding on one side" and route a transformer to the multiport
+                    // inductor path. Without them the circuit's waveforms decide (flyback labels);
+                    // a transformer goes on to the volt-second path, whose DC-offset rule does not
+                    // read the turns ratios once the operating point has several windings.
+                    else if (Inputs::is_multiport_inductor(*operatingPoint,
+                                 numberWindings < operatingPoint->get_excitations_per_winding().size()
+                                     ? std::optional<std::vector<IsolationSide>>()
+                                     : std::optional<std::vector<IsolationSide>>(coil.get_isolation_sides()))) {
                         auto magnetizingCurrent = Inputs::get_multiport_inductor_magnetizing_current(*operatingPoint);
                         excitation.set_magnetizing_current(magnetizingCurrent);
                         operatingPoint->get_mutable_excitations_per_winding()[0] = excitation;

@@ -14,6 +14,7 @@
 #include "physical_models/Impedance.h"
 #include "physical_models/ComplexPermeability.h"
 #include "physical_models/Reluctance.h"
+#include "physical_models/MagnetizingInductance.h"
 
 #include <catch2/catch_test_macros.hpp>
 #include <cmath>
@@ -3436,3 +3437,68 @@ TEST_CASE("Test_CoreAdviser_Ferrite_Pool_Never_Extrapolates_With_Extrapolation_A
 }
 
 }  // namespace
+
+static OpenMagnetics::Inputs load_test_inputs(const std::string& fileName, std::source_location location = std::source_location::current()) {
+    auto inputsPath = OpenMagneticsTesting::get_test_data_path(location, fileName);
+    std::ifstream inputsFile(inputsPath);
+    REQUIRE(inputsFile.good());
+    json inputsJson;
+    inputsFile >> inputsJson;
+    return OpenMagnetics::Inputs(inputsJson);
+}
+
+TEST_CASE("Test_MagnetizingInductance_Transformer_Stand_In_Coil_Flux_Equals_Full_Coil_Flux", "[physical-model][magnetizing-inductance][core-adviser][temperature-filter]") {
+    // The core adviser judges cores with a one-winding stand-in coil; the secondaries come once
+    // a core is chosen. The magnetizing current must not depend on that: a 228 W forward
+    // transformer's core flux on the stand-in is the flux on the full primary + secondary coil
+    // (its volt-seconds), not the flux of its 2.55 A primary current taken as magnetizing
+    // current, which put 0.4-1.7 T and core temperatures of thousands of degrees on every
+    // standard core and culled them all at the temperature gate.
+    settings.reset();
+    clear_databases();
+    auto inputs = load_test_inputs("forward-228w-19v-transformer.json");
+    REQUIRE(inputs.get_operating_points()[0].get_excitations_per_winding().size() == 2);
+
+    auto core = OpenMagneticsTesting::get_quick_core("ETD 34/17/11", OpenMagneticsTesting::get_residual_gap(), 1, "3C95");
+    auto standInCoil = OpenMagneticsTesting::get_quick_coil({28}, {1}, "ETD 34/17/11");
+    auto fullCoil = OpenMagneticsTesting::get_quick_coil({28, 4}, {1, 1}, "ETD 34/17/11");
+
+    OpenMagnetics::MagnetizingInductance magnetizingInductance("ZHANG");
+    auto standInOperatingPoint = inputs.get_operating_point(0);
+    auto fullOperatingPoint = inputs.get_operating_point(0);
+    auto standIn = magnetizingInductance.calculate_inductance_and_magnetic_flux_density(core, standInCoil, &standInOperatingPoint);
+    auto full = magnetizingInductance.calculate_inductance_and_magnetic_flux_density(core, fullCoil, &fullOperatingPoint);
+
+    double standInPeak = standIn.second.get_processed()->get_peak().value();
+    double fullPeak = full.second.get_processed()->get_peak().value();
+    INFO("stand-in B peak " << standInPeak << " T, full coil B peak " << fullPeak << " T");
+    CHECK_THAT(standInPeak, Catch::Matchers::WithinRel(fullPeak, 1e-9));
+    CHECK(fullPeak < 0.3);
+    settings.reset();
+}
+
+TEST_CASE("Test_CoreAdviser_Forward_Transformer_Advised_With_Its_Volt_Second_Flux_Passes_Temperature", "[adviser][core-adviser][standard-cores][temperature-filter]") {
+    // Henry corpus case forward-228w-19v-transformer: with the stand-in coil's primary current
+    // taken as magnetizing current every core was too hot and the adviser returned nothing.
+    // Judged by its volt-second flux, it returns designs, and every one of them passes the same
+    // temperature filter the gate runs.
+    settings.reset();
+    clear_databases();
+    auto inputs = load_test_inputs("forward-228w-19v-transformer.json");
+    REQUIRE(settings.get_core_adviser_enable_temperature_filter());
+
+    CoreAdviser coreAdviser;
+    coreAdviser.set_mode(CoreAdviser::CoreAdviserModes::STANDARD_CORES);
+    auto masMagnetics = coreAdviser.get_advised_core(inputs, 5);
+
+    REQUIRE(masMagnetics.size() > 0);
+    const double maximumTemperature = resolve_maximum_design_temperature(inputs);
+    MagneticFilterTemperature temperatureFilter(inputs, maximumTemperature);
+    for (auto& [mas, scoring] : masMagnetics) {
+        auto magnetic = mas.get_magnetic();
+        INFO(magnetic.get_core().get_name().value_or("unnamed core") << " at "
+             << magnetic.get_coil().get_functional_description()[0].get_number_turns() << " turns");
+        CHECK(temperatureFilter.evaluate_magnetic(&magnetic, &inputs).first);
+    }
+    settings.reset();
+}

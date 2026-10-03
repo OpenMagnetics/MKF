@@ -20,6 +20,18 @@
 
 namespace OpenMagnetics {
 
+std::string inductance_flux_cache_key(const Magnetic& magnetic) {
+    std::string key = magnetic.get_reference() + "|material " + magnetic.get_core().get_material_name() + "|turns";
+    for (const auto& winding : magnetic.get_coil().get_functional_description()) {
+        key += " " + std::to_string(winding.get_number_turns());
+    }
+    key += "|gaps";
+    for (const auto& gap : magnetic.get_core().get_gapping()) {
+        key += " " + std::to_string(gap.get_length());
+    }
+    return key;
+}
+
 // Phase 5: helpers previously defined in this file (is_pqi_or_ui_shape,
 // default_loss_filter_models, compute_maximum_power_mean_and_maybe_force_steinmetz,
 // prepare_bobbin_for_non_pqi, CoreLossesPick/compute_core_losses_with_negative_guard,

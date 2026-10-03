@@ -42,7 +42,7 @@ std::pair<bool, double> MagneticFilterSaturation::evaluate_magnetic(Magnetic* ma
     // Inductors / energy-storing: B from current with permeability rolloff.
     bool isTransformer = !is_inductor(*inputs);
 
-    const std::string magneticRef = magnetic->get_reference();
+    const std::string magneticRef = inductance_flux_cache_key(*magnetic);
     size_t opIndex = 0;
     for (auto operatingPoint : inputs->get_operating_points()) {
         double magneticFluxDensityPeak;

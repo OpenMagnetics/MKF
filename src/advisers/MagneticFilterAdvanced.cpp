@@ -253,7 +253,7 @@ std::pair<bool, double> MagneticFilterTemperature::evaluate_magnetic(
     double maximumTemperature = -std::numeric_limits<double>::max();
 
     const auto& coil = magnetic->get_coil();
-    const std::string magneticRef = magnetic->get_reference();
+    const std::string magneticRef = inductance_flux_cache_key(*magnetic);
     size_t opIndex = 0;
     for (auto& op : inputs->get_operating_points()) {
         double ambientTemperature = op.get_conditions().get_ambient_temperature();

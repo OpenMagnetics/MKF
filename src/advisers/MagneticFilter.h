@@ -25,6 +25,13 @@ namespace OpenMagnetics {
 std::vector<double> design_turns_ratios(const Inputs& inputs);
 std::vector<IsolationSide> design_isolation_sides(const Inputs& inputs, Magnetic* magnetic);
 
+// Key of the per-advise inductance/flux cache (cache_inductance_flux): the reference plus what
+// the inductance and flux depend on that a candidate can change without changing its reference
+// (turns of every winding, every gap length, the core material). Keyed on the reference alone, a
+// candidate whose turns or gap an adviser step moved (the loss-optimal turns) read the flux of
+// its earlier design.
+std::string inductance_flux_cache_key(const Magnetic& magnetic);
+
 class MagneticFilter {
     public: 
         static std::shared_ptr<MagneticFilter> factory(MagneticFilters filterName, std::optional<Inputs> inputs = std::nullopt);
