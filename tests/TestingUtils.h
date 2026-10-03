@@ -138,6 +138,13 @@ void check_layers_description(OpenMagnetics::Coil coil,
 
 bool check_turns_description(OpenMagnetics::Coil coil);
 bool check_wire_standards(OpenMagnetics::Coil coil);
+
+// Toroids: every turn clears the flat bar on each side of its section. A section's MAS margin is
+// the half-thickness of the bar on its side; the bar's centre plane passes through the ring axis at
+// the section's edge pushed out by the coil's own bar angle. Each turn's perpendicular distance to
+// that plane is at least the margin plus the wire's radius, and neighbouring sections' bars do not
+// overlap (a spread window may leave room between them).
+void check_turns_clear_toroidal_bars(OpenMagnetics::Coil coil);
 void check_winding_losses(OpenMagnetics::Mas mas);
 
 // Asserts that an exported SVG file exists, is non-empty, has an <svg root and

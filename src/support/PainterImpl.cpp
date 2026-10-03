@@ -1443,62 +1443,34 @@ void Painter::paint_toroidal_margin(Magnetic magnetic) {
             auto margins = Coil::resolve_margin(sections[i]);
 
             if (sectionOrientation == WindingOrientation::CONTIGUOUS) {
-
-                if (drawSpacer) {
-                    size_t nextSectionIndex = 0;
-                    if (i < sections.size() - 2) {
-                        nextSectionIndex = i + 2;
-                    }
-                    double leftMargin = Coil::resolve_margin(sections[i])[1];
-                    double rightMargin = Coil::resolve_margin(sections[nextSectionIndex])[0];
-                    double rectangleThickness = leftMargin + rightMargin;
-                    if (rectangleThickness == 0) {
+                // FLAT-BAR MARGINS (user ruling 2026-10-03): the sections of a toroid are separated
+                // by a bar through the window, a slab about the radial line at each section
+                // boundary, and a section's margin on one side is the half of that slab on its
+                // side. Each half is drawn as a rectangle, margin thick, from the ring axis to the
+                // window wall along the boundary line the winder placed it on (the section's edge
+                // minus the bar's angle, Coil::toroidal_section_margin_angles). The two halves
+                // either side of a boundary make up the whole bar.
+                if (sections[i].get_type() != ElectricalType::CONDUCTION) {
+                    continue;
+                }
+                const auto barAngles = magnetic.get_mutable_coil().toroidal_section_margin_angles(sections[i]);
+                const double sectionStart = sections[i].get_coordinates()[1] - sections[i].get_dimensions()[1] / 2;
+                const double sectionEnd = sections[i].get_coordinates()[1] + sections[i].get_dimensions()[1] / 2;
+                std::string cssClassName = "spacer";
+                if (!drawSpacer) {
+                    cssClassName = generate_random_string();
+                    _root.style("." + cssClassName).set_attr("fill", std::regex_replace(std::string(settings.get_painter_color_margin()), std::regex("0x"), "#")).set_attr("stroke", "none");
+                }
+                for (size_t side = 0; side < 2; ++side) {
+                    if (margins[side] <= 0) {
                         continue;
                     }
-                    double leftAngle = sections[i].get_coordinates()[1] + sections[i].get_dimensions()[1] / 2;
-                    double rightAngle = sections[nextSectionIndex].get_coordinates()[1] - sections[nextSectionIndex].get_dimensions()[1] / 2;
-
-                    if (i >= sections.size() - 2) {
-                        rightAngle += 360;
-                    }
-                    double rectangleAngleInRadians = (leftAngle + rightAngle) / 2 / 180 * std::numbers::pi;
-                    std::vector<double> centerRadialPoint = {windingWindowRadialHeight * cos(rectangleAngleInRadians), windingWindowRadialHeight * sin(rectangleAngleInRadians)};
-
-                    std::vector<std::vector<double>> marginPoints = {};
-                    double xCoordinate = 0;
-                    double yCoordinate = windingWindowRadialHeight / 2;
-                    double rectangleWidth = rectangleThickness;
-                    double rectangleHeight = windingWindowRadialHeight;
-                    paint_rectangle(xCoordinate, yCoordinate, rectangleWidth, rectangleHeight, "spacer", nullptr, -90 + rectangleAngleInRadians * 180 / std::numbers::pi, {0, 0});
-                }
-                else {
-                    if (margins[0] > 0) {
-                        double strokeWidth = sections[i].get_dimensions()[0];
-                        double circleDiameter = (windingWindowRadialHeight - sections[i].get_coordinates()[0]) * 2;
-
-                        if (strokeWidth >= circleDiameter - 1e-12) continue;
-
-                        double angle = wound_distance_to_angle(margins[0], circleDiameter / 2 - strokeWidth / 2);
-                        if (sections[i].get_type() == ElectricalType::CONDUCTION) {
-                            std::string cssClassName = generate_random_string();
-                            _root.style("." + cssClassName).set_attr("stroke-width", strokeWidth * _scale).set_attr("fill", "none").set_attr("stroke", std::regex_replace(std::string(settings.get_painter_color_margin()), std::regex("0x"), "#"));
-                            paint_circle(0, 0, circleDiameter / 2, cssClassName, nullptr, angle, -(sections[i].get_coordinates()[1] - sections[i].get_dimensions()[1] / 2), {0, 0});
-                        }
-                    }
-
-                    if (margins[1] > 0) {
-                        double strokeWidth = sections[i].get_dimensions()[0];
-                        double circleDiameter = (windingWindowRadialHeight - sections[i].get_coordinates()[0]) * 2;
-
-                        if (strokeWidth >= circleDiameter - 1e-12) continue;
-
-                        double angle = wound_distance_to_angle(margins[1], circleDiameter / 2 - strokeWidth / 2);
-                        if (sections[i].get_type() == ElectricalType::CONDUCTION) {
-                            std::string cssClassName = generate_random_string();
-                            _root.style("." + cssClassName).set_attr("stroke-width", strokeWidth * _scale).set_attr("fill", "none").set_attr("stroke", std::regex_replace(std::string(settings.get_painter_color_margin()), std::regex("0x"), "#"));
-                            paint_circle(0, 0, circleDiameter / 2, cssClassName, nullptr, angle, -(sections[i].get_coordinates()[1] + sections[i].get_dimensions()[1] / 2 + angle), {0, 0});
-                        }
-                    }
+                    const double boundaryAngle = side == 0 ? sectionStart - barAngles.first : sectionEnd + barAngles.second;
+                    // In the rectangle's own frame the boundary line is the +y axis; after the
+                    // rotation onto boundaryAngle, -x points toward higher angles (side 0's section)
+                    // and +x toward lower ones (side 1's).
+                    const double xCoordinate = side == 0 ? -margins[side] / 2 : margins[side] / 2;
+                    paint_rectangle(xCoordinate, windingWindowRadialHeight / 2, margins[side], windingWindowRadialHeight, cssClassName, nullptr, -90 + boundaryAngle, {0, 0});
                 }
             }
             else {

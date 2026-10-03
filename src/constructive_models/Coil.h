@@ -1364,6 +1364,27 @@ class Coil : public MAS::Coil {
         static MarginInfo resolve_margin_info(const Section& section);
         static MarginInfo resolve_margin_info(const Margin& marginVariant);
 
+        // FLAT-BAR SECTION MARGIN on a round (toroidal) winding window with contiguous sections
+        // (user ruling 2026-10-03). The sections of a toroid are separated by a plastic bar that
+        // crosses the window; a section's margin on one side (MAS Section.margin, metres) is the
+        // half-thickness of that bar, a slab about the radial line at the section boundary.
+        //
+        // toroidal_bar_clearance_angle: the smallest angle (degrees) between that radial line and
+        // the centre of a turn whose centre lies at turnCentreRadius (metres from the ring axis)
+        // so that the turn clears the bar's face. Round/litz: asin((m + r_w) / rho). Rectangular
+        // (radially oriented, width w radial, height h tangential): the inner corner touches the
+        // face, atan2(h/2, rho - w/2) + asin(m / hypot(h/2, rho - w/2)). Throws when the bar and
+        // the turn leave no room at that radius (m + r_w >= rho for a round turn).
+        static double toroidal_bar_clearance_angle(double halfBarThickness, double turnCentreRadius, Wire wire);
+        // The angle the bar takes from a ring of radius turnCentreRadius, over the half-pitch a
+        // turn takes with no margin: clearance(m) - clearance(0). Zero when m is zero.
+        static double toroidal_bar_margin_angle(double halfBarThickness, double turnCentreRadius, Wire wire);
+        // The angles (degrees) from the section's angular start / end to the bar's centre plane
+        // on that side: the smallest values for which every turn of the section clears the bar.
+        // Taken from the turns when the coil has them, else from the layers (first and last turn
+        // of each ring), else from the section's outermost ring.
+        std::pair<double, double> toroidal_section_margin_angles(const Section& section);
+
         double overlapping_filling_factor(const Section& section);
 
         double contiguous_filling_factor(const Section& section);

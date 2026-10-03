@@ -9061,6 +9061,11 @@ Coil::FillingFactorsOutput Coil::calculate_filling_factor(size_t groupIndex) {
                 overlappingDimension = std::max(overlappingDimension, section.get_dimensions()[0]);
             }
             contiguousDimension += section.get_dimensions()[1];
+            if (bobbinWindingWindowShape != WindingWindowShape::RECTANGULAR && section.get_type() == ElectricalType::CONDUCTION) {
+                // The flat bars between toroidal sections take their angle of the ring too.
+                auto barAngles = toroidal_section_margin_angles(section);
+                contiguousDimension += barAngles.first + barAngles.second;
+            }
 
         }
     }
@@ -10061,6 +10066,105 @@ std::pair<size_t, std::vector<int64_t>> get_number_layers_needed_and_number_phys
 
 std::pair<size_t, std::vector<int64_t>> get_number_layers_needed_and_number_physical_turns(Section section, Wire wire, int64_t physicalTurnsInSection, double windingWindowRadius, const std::vector<int64_t>* blockedSlotsPerLayer = nullptr) {
     return get_number_layers_needed_and_number_physical_turns(section.get_coordinates()[0] - section.get_dimensions()[0] / 2, section.get_dimensions()[1], wire, physicalTurnsInSection, windingWindowRadius, blockedSlotsPerLayer);
+}
+
+// Ring capacities of a contiguous toroidal section bounded on each side by a flat bar of
+// half-thickness margins[0] / margins[1] (the section margins). boundarySpan is the angle between
+// the two bars' centre planes. Ring k, centred at radius rho_k, holds the turns whose pitch fits
+// between the two bar faces at that radius: boundarySpan minus, per side, the angle the bar takes
+// from that ring (Coil::toroidal_bar_margin_angle), so an outer ring loses less angle than an inner
+// one. A ring with no room for one turn, or one where the bar leaves no room at all, ends the
+// stack: the turns do not fit, and `failure` says why, ring by ring.
+
+// The flat-bar clearance angle (degrees) of Coil::toroidal_bar_clearance_angle, or nothing when the
+// bar and the turn leave no room at that radius.
+static std::optional<double> toroidal_bar_clearance_angle_if_room(double halfBarThickness, double turnCentreRadius, Wire wire) {
+    const double wireWidth = resolve_dimensional_values(wire.get_maximum_outer_width());
+    const double wireHeight = resolve_dimensional_values(wire.get_maximum_outer_height());
+    if (wire.get_type() == WireType::ROUND || wire.get_type() == WireType::LITZ) {
+        const double reach = halfBarThickness + wireWidth / 2;
+        if (reach >= turnCentreRadius) {
+            return std::nullopt;
+        }
+        return asin(reach / turnCentreRadius) * 180 / std::numbers::pi;
+    }
+    if (wire.get_type() == WireType::RECTANGULAR) {
+        // Radially oriented rectangle: its inner corner, (rho - w/2) radially and h/2 tangentially
+        // from the centre, is the point nearest the bar. Its distance to the bar's centre plane at
+        // angle phi is (rho - w/2) sin(phi) - (h/2) cos(phi) = d sin(phi - atan2(h/2, rho - w/2)).
+        const double inner = turnCentreRadius - wireWidth / 2;
+        const double halfHeight = wireHeight / 2;
+        const double cornerDistance = std::hypot(inner, halfHeight);
+        if (inner <= 0 || halfBarThickness >= cornerDistance) {
+            return std::nullopt;
+        }
+        const double angle = atan2(halfHeight, inner) + asin(halfBarThickness / cornerDistance);
+        if (angle >= std::numbers::pi / 2) {
+            return std::nullopt;
+        }
+        return angle * 180 / std::numbers::pi;
+    }
+    throw NotImplementedException("toroidal section margins (flat bar): only round, litz and rectangular wires are wound on toroids");
+}
+
+struct ToroidalBarRingCapacities {
+    std::vector<int64_t> turnsPerRing;
+    std::string failure;
+};
+static ToroidalBarRingCapacities toroidal_bar_ring_capacities(double startRadialHeight, double boundarySpan, Wire wire, int64_t physicalTurnsInSection,
+                                                       double windingWindowRadius, const std::vector<double>& margins, const std::vector<int64_t>* blockedSlotsPerLayer) {
+    if (wire.get_type() == WireType::FOIL || wire.get_type() == WireType::PLANAR) {
+        throw NotImplementedException("Foil and planar wires are not supported in toroids");
+    }
+    const double wireWidth = resolve_dimensional_values(wire.get_maximum_outer_width());
+    const double wireHeight = resolve_dimensional_values(wire.get_maximum_outer_height());
+    ToroidalBarRingCapacities result;
+    std::ostringstream rings;
+    rings << std::fixed << std::setprecision(3);
+    int64_t remaining = physicalTurnsInSection;
+    for (size_t ring = 0; remaining > 0; ++ring) {
+        const double centreRadius = windingWindowRadius - startRadialHeight - (double(ring) + 0.5) * wireWidth;
+        rings << (ring == 0 ? "" : "; ") << "ring " << ring + 1 << " (turn centres at " << centreRadius * 1e3 << " mm) ";
+        bool room = centreRadius > 0;
+        for (double margin : margins) {
+            room = room && (margin <= 0 || toroidal_bar_clearance_angle_if_room(margin, centreRadius, wire).has_value());
+        }
+        if (!room) {
+            rings << "has no room: a bar face plus the wire reach past that radius";
+            result.failure = rings.str();
+            return result;
+        }
+        const double available = boundarySpan - Coil::toroidal_bar_margin_angle(margins[0], centreRadius, wire)
+                                              - Coil::toroidal_bar_margin_angle(margins[1], centreRadius, wire);
+        const double pitchRadius = wire.get_type() == WireType::RECTANGULAR ? centreRadius - wireWidth / 2 : centreRadius;
+        const double pitch = wound_distance_to_angle(wireHeight, pitchRadius);
+        const int64_t blockedSlots = (blockedSlotsPerLayer != nullptr && ring < blockedSlotsPerLayer->size()) ? (*blockedSlotsPerLayer)[ring] : 0;
+        // Turns whose centres fit between the faces: n turns take n pitches of angle, since the
+        // first and last each sit half a pitch plus the bar's angle inside their boundary.
+        const int64_t fitting = available > 0 ? int64_t(floor(available / pitch)) - blockedSlots : -blockedSlots;
+        if (fitting <= 0) {
+            rings << "leaves " << available << " deg between the bar faces";
+            if (blockedSlots > 0) {
+                rings << " (" << blockedSlots << " turn slots held by leads)";
+            }
+            rings << ", less than the " << pitch << " deg one turn takes";
+            result.failure = rings.str();
+            return result;
+        }
+        rings << "holds " << fitting;
+        result.turnsPerRing.push_back(fitting);
+        remaining -= fitting;
+    }
+    // Over-capacity is taken back from the innermost rings first, the way
+    // get_number_layers_needed_and_number_physical_turns distributes it.
+    int64_t turnsToCorrect = -remaining;
+    size_t currentIndex = result.turnsPerRing.size() - 1;
+    while (turnsToCorrect > 0) {
+        result.turnsPerRing[currentIndex]--;
+        turnsToCorrect--;
+        currentIndex = currentIndex == 0 ? result.turnsPerRing.size() - 1 : currentIndex - 1;
+    }
+    return result;
 }
 
 void Coil::apply_margin_tape(const std::vector<std::pair<ElectricalType, std::pair<size_t, double>>>& orderedSectionsWithInsulation, size_t conductionSectionOffset) {
@@ -13118,67 +13222,37 @@ bool Coil::wind_by_round_sections(std::vector<double> proportionPerWinding, std:
                     }
                 }
                 else if (_marginsPerSection[marginIndex][0] > 0 || _marginsPerSection[marginIndex][1] > 0) {
-                    // A section's margins are held as angles taken at its INNERMOST radius, the
-                    // inner edge of its deepest ring (here, and in every placement of the section:
-                    // lastLayerMaximumRadius). So the margin angle depends on how many rings the
-                    // section needs, and the rings it needs depend on the angle the margins leave.
-                    // This used to be solved by iterating rings -> margins -> rings, which walks one
-                    // way only: every extra ring narrows the innermost radius and so widens the
-                    // margins, and once the margins left too little for the next ring the walk ran
-                    // on until the margin chord was wider than the ring itself, where
-                    // wound_distance_to_angle's "does not fit" 360-degree answer made every ring hold
-                    // its forced one turn. WE 7448229004 (7 turns of 1.062 mm per side in a 3.7 mm
-                    // bore, 1.24 mm margins) came back unwound, blamed on "7 rings, 7.434 mm deep",
-                    // when what does not fit is the margins.
+                    // FLAT-BAR MARGINS (user ruling 2026-10-03): the section's margins are the
+                    // half-thicknesses of the bars that separate it from its neighbours, slabs about
+                    // the radial lines that bound currentSectionAngle. Each ring loses, per side, the
+                    // angle the bar takes from it at its own radius (an outer ring loses less), so the
+                    // rings are counted one by one until the turns are placed or a ring has no room.
+                    // The section keeps the envelope of its rings, which is its outermost ring: its
+                    // angular margins are the bars' angles at that ring, and wind_by_round_layers
+                    // narrows each deeper ring by the extra angle the bar takes there.
                     //
-                    // Each depth is tried in turn instead: the section takes the shallowest one whose
-                    // margins, taken at that depth's innermost radius, leave room for its turns in
-                    // that many rings. Deeper is tried until the margins no longer fit the ring.
+                    // These margins used to be chord angles at the section's INNERMOST radius, which
+                    // charged every ring the deepest ring's angle at a radius no turn sits at. WE
+                    // 7448229004 (7 turns of 1.062 mm per side in a 3.7 mm bore, 1.25 mm margins) came
+                    // back unwound, blamed on the margins.
                     const double wireWidth = wirePerWinding[windingIndex].get_maximum_outer_width();
-                    std::ostringstream tried;
-                    bool sized = false;
-                    for (size_t rings = 1; !sized; ++rings) {
-                        const double innermostRadius = availableRadialHeight - (currentSectionCenterRadialHeight + double(rings) * wireWidth);
-                        if (innermostRadius <= 0) {
-                            tried << "; " << rings << " rings reach past the centre of the window";
-                            break;
-                        }
-                        const double angle0 = wound_distance_to_angle(_marginsPerSection[marginIndex][0], innermostRadius);
-                        const double angle1 = wound_distance_to_angle(_marginsPerSection[marginIndex][1], innermostRadius);
-                        const double angleLeft = currentSectionAngle - angle0 - angle1;
-                        if (angle0 >= 360 || angle1 >= 360) {
-                            tried << "; with " << rings << " rings a margin is wider than the "
-                                  << 2 * innermostRadius * 1e3 << " mm diameter of the innermost radius";
-                            break;
-                        }
-                        if (angleLeft <= 0) {
-                            tried << "; with " << rings << " rings the margins, taken at the innermost radius "
-                                  << innermostRadius * 1e3 << " mm, take the whole " << currentSectionAngle << " deg";
-                            break;
-                        }
-                        auto aux = get_number_layers_needed_and_number_physical_turns(currentSectionCenterRadialHeight, angleLeft, wirePerWinding[windingIndex], physicalTurnsThisSection, availableRadialHeight, blockedSlotsPointer);
-                        if (aux.first <= rings) {
-                            numberLayers = rings;
-                            marginAngle0 = angle0;
-                            marginAngle1 = angle1;
-                            sized = true;
-                        }
-                        else {
-                            tried << "; with " << rings << (rings == 1 ? " ring" : " rings") << " they leave "
-                                  << angleLeft << " deg of the " << currentSectionAngle << " deg, which needs "
-                                  << aux.first << " rings";
-                        }
-                    }
-                    if (!sized) {
+                    auto capacities = toroidal_bar_ring_capacities(currentSectionCenterRadialHeight, currentSectionAngle, wirePerWinding[windingIndex],
+                                                                   physicalTurnsThisSection, availableRadialHeight, _marginsPerSection[marginIndex], blockedSlotsPointer);
+                    if (!capacities.failure.empty()) {
                         std::ostringstream reason;
                         reason << std::fixed << std::setprecision(3)
                                << "winding '" << get_name(windingIndex) << "' does not fit its round winding window: "
-                               << physicalTurnsThisSection << " turns of a " << wireWidth * 1e3 << " mm wire with margins of "
-                               << _marginsPerSection[marginIndex][0] * 1e3 << " mm and " << _marginsPerSection[marginIndex][1] * 1e3
-                               << " mm, which the section holds as angles at its innermost radius" << tried.str();
+                               << physicalTurnsThisSection << " turns of a " << wireWidth * 1e3 << " mm wire in a "
+                               << currentSectionAngle << " deg sector between flat bars of " << _marginsPerSection[marginIndex][0] * 1e3
+                               << " mm and " << _marginsPerSection[marginIndex][1] * 1e3
+                               << " mm half-thickness (the section margins): " << capacities.failure;
                         _lastFitFailure = reason.str();
                         return false;
                     }
+                    numberLayers = capacities.turnsPerRing.size();
+                    const double outermostRingRadius = availableRadialHeight - currentSectionCenterRadialHeight - wireWidth / 2;
+                    marginAngle0 = toroidal_bar_margin_angle(_marginsPerSection[marginIndex][0], outermostRingRadius, wirePerWinding[windingIndex]);
+                    marginAngle1 = toroidal_bar_margin_angle(_marginsPerSection[marginIndex][1], outermostRingRadius, wirePerWinding[windingIndex]);
                     if (_strict) {
                         currentSectionRadialHeight = numberLayers * wireWidth;
                     }
@@ -14412,21 +14486,66 @@ bool Coil::wind_by_round_layers() {
             }
             const std::vector<int64_t>* blockedSlotsPointer = blockedSlotsPerLayerIndex.empty() ? nullptr : &blockedSlotsPerLayerIndex;
 
+            // FLAT-BAR MARGINS (see wind_by_round_sections): a contiguous section's angle is its
+            // outermost ring's span between the bars, and each deeper ring is narrower by the extra
+            // angle the bars take from it, so its turns are counted (and below, laid) in its own span.
+            const auto sectionMargins = resolve_margin(sections[sectionIndex]);
+            const bool barMargins = get_winding_orientation() == WindingOrientation::CONTIGUOUS && (sectionMargins[0] > 0 || sectionMargins[1] > 0);
+            const double sectionOuterRadialHeight = sections[sectionIndex].get_coordinates()[0] - sections[sectionIndex].get_dimensions()[0] / 2;
+            const double outermostRingRadius = windingWindowRadialHeight - sectionOuterRadialHeight - wirePerWinding[windingIndex].get_maximum_outer_width() / 2;
+            auto bar_margin_angles_beyond_outermost_ring = [&](double ringCentreRadius) -> std::pair<double, double> {
+                if (!barMargins) {
+                    return {0, 0};
+                }
+                return {toroidal_bar_margin_angle(sectionMargins[0], ringCentreRadius, wirePerWinding[windingIndex]) -
+                            toroidal_bar_margin_angle(sectionMargins[0], outermostRingRadius, wirePerWinding[windingIndex]),
+                        toroidal_bar_margin_angle(sectionMargins[1], ringCentreRadius, wirePerWinding[windingIndex]) -
+                            toroidal_bar_margin_angle(sectionMargins[1], outermostRingRadius, wirePerWinding[windingIndex])};
+            };
+            auto ring_capacities = [&]() -> std::optional<std::pair<size_t, std::vector<int64_t>>> {
+                if (!barMargins) {
+                    return get_number_layers_needed_and_number_physical_turns(sections[sectionIndex], wirePerWinding[windingIndex], physicalTurnsInSection, windingWindowRadialHeight, blockedSlotsPointer);
+                }
+                const double boundarySpan = sections[sectionIndex].get_dimensions()[1] +
+                                            toroidal_bar_margin_angle(sectionMargins[0], outermostRingRadius, wirePerWinding[windingIndex]) +
+                                            toroidal_bar_margin_angle(sectionMargins[1], outermostRingRadius, wirePerWinding[windingIndex]);
+                auto capacities = toroidal_bar_ring_capacities(sectionOuterRadialHeight, boundarySpan, wirePerWinding[windingIndex], physicalTurnsInSection,
+                                                               windingWindowRadialHeight, sectionMargins, blockedSlotsPointer);
+                if (!capacities.failure.empty()) {
+                    std::ostringstream reason;
+                    reason << std::fixed << std::setprecision(3) << "section '" << sections[sectionIndex].get_name() << "' cannot hold its "
+                           << physicalTurnsInSection << " turns between its flat bars (margins of " << sectionMargins[0] * 1e3 << " mm and "
+                           << sectionMargins[1] * 1e3 << " mm): " << capacities.failure;
+                    _lastFitFailure = reason.str();
+                    return std::nullopt;
+                }
+                return std::pair<size_t, std::vector<int64_t>>{capacities.turnsPerRing.size(), capacities.turnsPerRing};
+            };
+
             if (maximumNumberLayersFittingInSection == 0) {
-                auto aux = get_number_layers_needed_and_number_physical_turns(sections[sectionIndex], wirePerWinding[windingIndex], physicalTurnsInSection, windingWindowRadialHeight, blockedSlotsPointer);
-                numberLayers = aux.first;
-                layerPhysicalTurns = aux.second;
+                auto aux = ring_capacities();
+                if (!aux) {
+                    return false;
+                }
+                numberLayers = aux->first;
+                layerPhysicalTurns = aux->second;
             }
             else if (maximumNumberPhysicalTurnsPerLayer == 0) {
-                auto aux = get_number_layers_needed_and_number_physical_turns(sections[sectionIndex], wirePerWinding[windingIndex], physicalTurnsInSection, windingWindowRadialHeight, blockedSlotsPointer);
+                auto aux = ring_capacities();
+                if (!aux) {
+                    return false;
+                }
                 numberLayers = maximumNumberLayersFittingInSection;
-                layerPhysicalTurns = aux.second;
+                layerPhysicalTurns = aux->second;
             }
             else {
-                auto aux = get_number_layers_needed_and_number_physical_turns(sections[sectionIndex], wirePerWinding[windingIndex], physicalTurnsInSection, windingWindowRadialHeight, blockedSlotsPointer);
-                minimumNumberLayerNeeded = aux.first;
+                auto aux = ring_capacities();
+                if (!aux) {
+                    return false;
+                }
+                minimumNumberLayerNeeded = aux->first;
                 numberLayers = std::min(minimumNumberLayerNeeded, maximumNumberLayersFittingInSection);
-                layerPhysicalTurns = aux.second;
+                layerPhysicalTurns = aux->second;
             }
 
             // We cannot have more layers than physical turns
@@ -14511,11 +14630,15 @@ bool Coil::wind_by_round_layers() {
             layer.set_turns_alignment(wirePerWinding[windingIndex].get_type() == WireType::FOIL
                                           ? CoilAlignment::CENTERED
                                           : turnsAlignment);
-                layer.set_dimensions(std::vector<double>{layerRadialHeight, layerAngle});
-                layer.set_coordinates(std::vector<double>{currentLayerCenterRadialHeight, currentLayerCenterAngle, 0});
+                // Flat-bar margins: this ring's own span between the bars, inside the section's.
+                const auto ringBarAngles = bar_margin_angles_beyond_outermost_ring(windingWindowRadialHeight - currentLayerCenterRadialHeight);
+                const double ringAngle = layerAngle - ringBarAngles.first - ringBarAngles.second;
+                const double ringCenterAngle = currentLayerCenterAngle + (ringBarAngles.first - ringBarAngles.second) / 2;
+                layer.set_dimensions(std::vector<double>{layerRadialHeight, ringAngle});
+                layer.set_coordinates(std::vector<double>{currentLayerCenterRadialHeight, ringCenterAngle, 0});
                 layer.set_coordinate_system(CoordinateSystem::POLAR);
 
-                double layerPerimeter = 2 * std::numbers::pi * (layerAngle / 360) * (windingWindowRadialHeight - layerRadialHeight / 2);
+                double layerPerimeter = 2 * std::numbers::pi * (ringAngle / 360) * (windingWindowRadialHeight - layerRadialHeight / 2);
                 layer.set_filling_factor(get_area_used_in_wires(wirePerWinding[windingIndex], physicalTurnsThisLayer) / (layerPerimeter * layerRadialHeight));
                 layer.set_winding_style(windByConsecutiveTurns);
                 layers.push_back(layer);
@@ -14551,8 +14674,9 @@ bool Coil::wind_by_round_layers() {
                     insulationLayer.set_section(sections[sectionIndex].get_name());
                     insulationLayer.set_coordinate_system(CoordinateSystem::POLAR);
                     insulationLayer.set_name(sections[sectionIndex].get_name() +  " insulation layer " + std::to_string(layerIndex));
-                    insulationLayer.set_dimensions({insulationLayer.get_dimensions()[0], layerAngle});
-                    insulationLayer.set_coordinates(std::vector<double>{currentLayerCenterRadialHeight, currentLayerCenterAngle, 0});
+                    const auto insulationBarAngles = bar_margin_angles_beyond_outermost_ring(windingWindowRadialHeight - currentLayerCenterRadialHeight);
+                    insulationLayer.set_dimensions({insulationLayer.get_dimensions()[0], layerAngle - insulationBarAngles.first - insulationBarAngles.second});
+                    insulationLayer.set_coordinates(std::vector<double>{currentLayerCenterRadialHeight, currentLayerCenterAngle + (insulationBarAngles.first - insulationBarAngles.second) / 2, 0});
                     layers.push_back(insulationLayer);
 
                     if (sections[sectionIndex].get_layers_orientation() == WindingOrientation::OVERLAPPING) {
@@ -17043,9 +17167,8 @@ std::vector<double> Coil::get_aligned_section_dimensions_round_window(size_t sec
             double marginAngle1 = 0;
             if (sections[auxSectionIndex].get_type() == ElectricalType::CONDUCTION) {
                 totalSectionsRadialHeight = std::max(totalSectionsRadialHeight, sections[auxSectionIndex].get_dimensions()[0]);
-                double lastLayerMaximumRadius = windingWindowRadialHeight - (sections[auxSectionIndex].get_coordinates()[0] + sections[auxSectionIndex].get_dimensions()[0] / 2);
-                marginAngle0 = wound_distance_to_angle(resolve_margin(sections[auxSectionIndex])[0], lastLayerMaximumRadius);
-                marginAngle1 = wound_distance_to_angle(resolve_margin(sections[auxSectionIndex])[1], lastLayerMaximumRadius);
+                // Flat-bar margins: the angles from the section's edges to its bars' centre planes.
+                std::tie(marginAngle0, marginAngle1) = toroidal_section_margin_angles(sections[auxSectionIndex]);
             }
             totalSectionsAngle += sections[auxSectionIndex].get_dimensions()[1] + marginAngle0 + marginAngle1;
         }
@@ -17057,9 +17180,8 @@ std::vector<double> Coil::get_aligned_section_dimensions_round_window(size_t sec
     double paddingAmongSectionAngle = 0;
     double marginAngle0 = 0;
 
-    if (sections[sectionIndex].get_type() == ElectricalType::CONDUCTION) {
-        double lastLayerMaximumRadius = windingWindowRadialHeight - (sections[sectionIndex].get_coordinates()[0] + sections[sectionIndex].get_dimensions()[0] / 2);
-        marginAngle0 = wound_distance_to_angle(resolve_margin(sections[sectionIndex])[0], lastLayerMaximumRadius);
+    if (sections[sectionIndex].get_type() == ElectricalType::CONDUCTION && windingOrientation != WindingOrientation::OVERLAPPING) {
+        marginAngle0 = toroidal_section_margin_angles(sections[sectionIndex]).first;
     }
     auto turnsAlignment = get_turns_alignment(sections[sectionIndex].get_name());
 
@@ -17609,22 +17731,38 @@ bool Coil::delimit_and_compact_round_window() {
                     double layerAngle = turnDimensionAngle * turnsInLayer.size();
                     double layerCenterAngle = 0;
 
-                    switch (layers[i].get_turns_alignment().value()) {
-                        case CoilAlignment::INNER_OR_TOP:
-                            layerCenterAngle = section.get_coordinates()[1] - section.get_dimensions()[1] / 2 + layerAngle / 2;
-                            break;
-                        case CoilAlignment::OUTER_OR_BOTTOM:
-                            layerCenterAngle = section.get_coordinates()[1] + section.get_dimensions()[1] / 2 - layerAngle / 2;
-                            break;
-                        case CoilAlignment::CENTERED:
-                            layerCenterAngle = section.get_coordinates()[1];
-                            break;
-                        case CoilAlignment::SPREAD:
-                            layerCenterAngle = section.get_coordinates()[1];
-                            layerAngle = section.get_dimensions()[1];
-                            break;
-                        default:
-                            throw InvalidInputException(ErrorCode::INVALID_COIL_CONFIGURATION, "No such section alignment");
+                    const auto sectionMargins = resolve_margin(section);
+                    if (get_winding_orientation() == WindingOrientation::CONTIGUOUS && (sectionMargins[0] > 0 || sectionMargins[1] > 0)) {
+                        // Flat-bar margins: each ring was laid in its own span between the bars
+                        // (wind_by_round_layers), not from the section's edge, so the ring is
+                        // delimited by its turns.
+                        double lowest = turnsInLayer[0].get_coordinates()[1];
+                        double highest = lowest;
+                        for (const auto& turn : turnsInLayer) {
+                            lowest = std::min(lowest, turn.get_coordinates()[1]);
+                            highest = std::max(highest, turn.get_coordinates()[1]);
+                        }
+                        layerCenterAngle = (lowest + highest) / 2;
+                        layerAngle = highest - lowest + turnDimensionAngle;
+                    }
+                    else {
+                        switch (layers[i].get_turns_alignment().value()) {
+                            case CoilAlignment::INNER_OR_TOP:
+                                layerCenterAngle = section.get_coordinates()[1] - section.get_dimensions()[1] / 2 + layerAngle / 2;
+                                break;
+                            case CoilAlignment::OUTER_OR_BOTTOM:
+                                layerCenterAngle = section.get_coordinates()[1] + section.get_dimensions()[1] / 2 - layerAngle / 2;
+                                break;
+                            case CoilAlignment::CENTERED:
+                                layerCenterAngle = section.get_coordinates()[1];
+                                break;
+                            case CoilAlignment::SPREAD:
+                                layerCenterAngle = section.get_coordinates()[1];
+                                layerAngle = section.get_dimensions()[1];
+                                break;
+                            default:
+                                throw InvalidInputException(ErrorCode::INVALID_COIL_CONFIGURATION, "No such section alignment");
+                        }
                     }
                     layers[i].set_coordinates(std::vector<double>({layers[i].get_coordinates()[0], layerCenterAngle}));
                     layers[i].set_dimensions(std::vector<double>({layers[i].get_dimensions()[0], layerAngle}));
@@ -17697,10 +17835,9 @@ bool Coil::delimit_and_compact_round_window() {
             double marginAngle0 = 0;
             double marginAngle1 = 0;
 
-            if (sections[sectionIndex].get_type() == ElectricalType::CONDUCTION) {
-                double lastLayerMaximumRadius = windingWindowsRadius - (sections[sectionIndex].get_coordinates()[0] + sections[sectionIndex].get_dimensions()[0] / 2);
-                marginAngle0 = wound_distance_to_angle(resolve_margin(sections[sectionIndex])[0], lastLayerMaximumRadius);
-                marginAngle1 = wound_distance_to_angle(resolve_margin(sections[sectionIndex])[1], lastLayerMaximumRadius);
+            if (sections[sectionIndex].get_type() == ElectricalType::CONDUCTION && windingOrientation != WindingOrientation::OVERLAPPING) {
+                // Flat-bar margins, from the turns as they lie before this shift.
+                std::tie(marginAngle0, marginAngle1) = toroidal_section_margin_angles(sections[sectionIndex]);
             }
 
 
@@ -19334,6 +19471,132 @@ MarginInfo Coil::resolve_margin_info(const Margin& marginVariant) {
     else {
         return std::get<MarginInfo>(marginVariant);
     }
+}
+
+// FLAT-BAR SECTION MARGIN (user ruling 2026-10-03). The sections of a toroid are separated by a
+// plastic bar that runs through the window; the requirements sheet gives its thickness t and each
+// section's margin on that side is t/2 (MAS Section.margin, per side, metres). The bar is a slab of
+// half-thickness m about the radial line at the section boundary, so a turn clears it when its
+// perpendicular distance to that line is at least m plus the turn's own extent. For a round turn
+// of outer radius r_w centred at radius rho, at angle phi from the line: rho * sin(phi) >= m + r_w.
+// This replaced a margin held as a chord angle at the section's innermost radius, which charged
+// every ring the angle of the deepest one, and charged it at a radius the turns do not sit at.
+double Coil::toroidal_bar_clearance_angle(double halfBarThickness, double turnCentreRadius, Wire wire) {
+    if (halfBarThickness < 0) {
+        throw InvalidInputException(ErrorCode::INVALID_COIL_CONFIGURATION,
+            "toroidal section margin (bar half-thickness) cannot be negative: " + std::to_string(halfBarThickness) + " m");
+    }
+    auto angle = toroidal_bar_clearance_angle_if_room(halfBarThickness, turnCentreRadius, wire);
+    if (!angle) {
+        std::ostringstream reason;
+        reason << std::setprecision(6) << "a turn centred at radius " << turnCentreRadius * 1e3 << " mm cannot clear a section bar of half-thickness "
+               << halfBarThickness * 1e3 << " mm: the bar face and the turn together reach at least that radius from the bar's centre plane, so there is no room";
+        throw InvalidInputException(ErrorCode::INVALID_COIL_CONFIGURATION, reason.str());
+    }
+    return angle.value();
+}
+
+double Coil::toroidal_bar_margin_angle(double halfBarThickness, double turnCentreRadius, Wire wire) {
+    if (halfBarThickness == 0) {
+        return 0;
+    }
+    return toroidal_bar_clearance_angle(halfBarThickness, turnCentreRadius, wire) - toroidal_bar_clearance_angle(0, turnCentreRadius, wire);
+}
+
+namespace {
+// The angle one turn takes along its ring, as the toroidal winders pitch it: the chord of the
+// wire's tangential height at the turn's centre radius (round) or inner-face radius (rectangular).
+double toroidal_turn_pitch_angle(Wire wire, double turnCentreRadius) {
+    const double wireWidth = resolve_dimensional_values(wire.get_maximum_outer_width());
+    const double wireHeight = resolve_dimensional_values(wire.get_maximum_outer_height());
+    const double pitchRadius = wire.get_type() == WireType::RECTANGULAR ? turnCentreRadius - wireWidth / 2 : turnCentreRadius;
+    return wound_distance_to_angle(wireHeight, pitchRadius);
+}
+
+// Angle b - a folded into (-180, 180].
+double toroidal_angle_difference(double a, double b) {
+    double difference = std::fmod(b - a, 360.0);
+    if (difference > 180) {
+        difference -= 360;
+    }
+    else if (difference <= -180) {
+        difference += 360;
+    }
+    return difference;
+}
+}
+
+std::pair<double, double> Coil::toroidal_section_margin_angles(const Section& section) {
+    const auto margins = resolve_margin(section);
+    if (margins[0] == 0 && margins[1] == 0) {
+        return {0, 0};
+    }
+    if (section.get_partial_windings().size() != 1) {
+        throw NotImplementedException("toroidal section margins: a section with more than one winding is not supported");
+    }
+    const auto windingIndex = get_winding_index_by_name(section.get_partial_windings()[0].get_winding());
+    auto wire = resolve_wire(windingIndex);
+    const double windowRadius = resolve_bobbin().get_processed_description().value().get_winding_windows()[0].get_radial_height().value();
+    const double sectionStart = section.get_coordinates()[1] - section.get_dimensions()[1] / 2;
+    const double sectionEnd = section.get_coordinates()[1] + section.get_dimensions()[1] / 2;
+
+    // Each station is a turn (or the first/last turn of a ring): its centre radius and the
+    // angular extent it occupies on its ring.
+    struct Station { double radius; double low; double high; };
+    std::vector<Station> stations;
+    auto turnsDescription = get_turns_description();
+    if (turnsDescription) {
+        for (const auto& turn : turnsDescription.value()) {
+            if (!turn.get_section() || turn.get_section().value() != section.get_name()) {
+                continue;
+            }
+            auto coordinates = turn.get_coordinates();
+            if (turn.get_coordinate_system() && turn.get_coordinate_system().value() == CoordinateSystem::CARTESIAN) {
+                coordinates = cartesian_to_polar(coordinates, windowRadius);
+            }
+            const double radius = windowRadius - coordinates[0];
+            const double halfPitch = toroidal_turn_pitch_angle(wire, radius) / 2;
+            stations.push_back({radius, coordinates[1] - halfPitch, coordinates[1] + halfPitch});
+        }
+    }
+    if (stations.empty() && get_layers_description()) {
+        for (const auto& layer : get_layers_by_section(section.get_name())) {
+            if (layer.get_type() != ElectricalType::CONDUCTION) {
+                continue;
+            }
+            const double radius = windowRadius - layer.get_coordinates()[0];
+            const double pitch = toroidal_turn_pitch_angle(wire, radius);
+            const double layerStart = layer.get_coordinates()[1] - layer.get_dimensions()[1] / 2;
+            const double layerEnd = layer.get_coordinates()[1] + layer.get_dimensions()[1] / 2;
+            stations.push_back({radius, layerStart, layerStart + pitch});
+            stations.push_back({radius, layerEnd - pitch, layerEnd});
+        }
+    }
+    if (stations.empty()) {
+        const double wireWidth = resolve_dimensional_values(wire.get_maximum_outer_width());
+        const double radius = windowRadius - (section.get_coordinates()[0] - section.get_dimensions()[0] / 2) - wireWidth / 2;
+        const double pitch = toroidal_turn_pitch_angle(wire, radius);
+        stations.push_back({radius, sectionStart, sectionStart + pitch});
+        stations.push_back({radius, sectionEnd - pitch, sectionEnd});
+    }
+
+    double marginAngle0 = 0;
+    double marginAngle1 = 0;
+    bool first = true;
+    for (const auto& station : stations) {
+        const double need0 = margins[0] > 0 ? toroidal_bar_margin_angle(margins[0], station.radius, wire) - toroidal_angle_difference(sectionStart, station.low) : 0;
+        const double need1 = margins[1] > 0 ? toroidal_bar_margin_angle(margins[1], station.radius, wire) - toroidal_angle_difference(station.high, sectionEnd) : 0;
+        if (first) {
+            marginAngle0 = need0;
+            marginAngle1 = need1;
+            first = false;
+        }
+        else {
+            marginAngle0 = std::max(marginAngle0, need0);
+            marginAngle1 = std::max(marginAngle1, need1);
+        }
+    }
+    return {margins[0] > 0 ? marginAngle0 : 0, margins[1] > 0 ? marginAngle1 : 0};
 }
 
 void Winding::set_isolation_side_from_index(size_t windingIndex) {

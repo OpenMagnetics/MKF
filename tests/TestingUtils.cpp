@@ -9,6 +9,9 @@
 #include <fstream>
 #include <iostream>
 #include <vector>
+#include <algorithm>
+#include <cmath>
+#include <numbers>
 
 using namespace MAS;
 using namespace OpenMagnetics;
@@ -668,6 +671,48 @@ bool check_turns_description(OpenMagnetics::Coil coil) {
     }
     CHECK(!collides);
     return !collides && equalToOne;
+}
+
+void check_turns_clear_toroidal_bars(OpenMagnetics::Coil coil) {
+    REQUIRE(coil.get_turns_description());
+    coil.convert_turns_to_cartesian_coordinates();
+    auto sections = coil.get_sections_description().value();
+    std::vector<std::pair<double, double>> planes;
+    for (const auto& section : sections) {
+        if (section.get_type() != ElectricalType::CONDUCTION) {
+            continue;
+        }
+        auto barAngles = coil.toroidal_section_margin_angles(section);
+        double start = section.get_coordinates()[1] - section.get_dimensions()[1] / 2 - barAngles.first;
+        double end = section.get_coordinates()[1] + section.get_dimensions()[1] / 2 + barAngles.second;
+        planes.push_back({start, end});
+        auto margins = OpenMagnetics::Coil::resolve_margin(section);
+        auto windingIndex = coil.get_winding_index_by_name(section.get_partial_windings()[0].get_winding());
+        double wireRadius = coil.resolve_wire(windingIndex).get_maximum_outer_width() / 2;
+        for (const auto& turn : coil.get_turns_by_section(section.get_name())) {
+            double x = turn.get_coordinates()[0];
+            double y = turn.get_coordinates()[1];
+            for (size_t side = 0; side < 2; ++side) {
+                if (margins[side] == 0) {
+                    continue;
+                }
+                double plane = (side == 0 ? start : end) * std::numbers::pi / 180;
+                // Distance to the half-line from the axis at angle `plane`, on the section's side.
+                double distance = side == 0 ? -x * sin(plane) + y * cos(plane) : x * sin(plane) - y * cos(plane);
+                INFO(turn.get_name() << " side " << side << ": " << distance * 1e3 << " mm from the bar plane, needs "
+                     << (margins[side] + wireRadius) * 1e3 << " mm");
+                CHECK(distance >= margins[side] + wireRadius - 1e-9);
+            }
+        }
+    }
+    REQUIRE(planes.size() >= 2);
+    std::sort(planes.begin(), planes.end());
+    for (size_t index = 0; index < planes.size(); ++index) {
+        const auto& current = planes[index];
+        const auto& next = planes[(index + 1) % planes.size()];
+        INFO("bar after the section ending at " << current.second << " deg, next section starting at " << next.first << " deg");
+        CHECK(std::remainder(next.first - current.second, 360.0) >= -1e-6);
+    }
 }
 
 bool check_wire_standards(OpenMagnetics::Coil coil) {

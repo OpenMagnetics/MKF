@@ -785,7 +785,14 @@ TEST_CASE("Toroidal CMC inter-winding capacitance with screened turn-to-core ele
     OpenMagnetics::Magnetic magnetic(nlohmann::json::parse(file));
     magnetic = magnetic_autocomplete(magnetic);
     auto parameters = OpenMagnetics::Impedance().calculate_differential_mode_parameters(magnetic, 1e6);
-    CHECK_THAT(parameters.interWindingCapacitance, Catch::Matchers::WithinRel(2.551e-12, 0.02));
+    // Re-pinned 2026-10-03, 2.551 -> 2.667 pF: with the section margins (1.5 mm per side, a 3 mm bar)
+    // as a flat bar instead of a chord at the innermost radius, each winding's bore ring holds 11 turns
+    // instead of 10 (41.1..138.9 deg instead of 46.0..134.0 deg) and the second ring 7 instead of 8.
+    // The end turns of the two windings sit nearer the bar faces, so the windings face each other across
+    // 82.2 deg of the bore ring (4.12 mm between centres) instead of 92.0 deg (4.51 mm), and the
+    // inter-winding capacitance rises. It was already above both measured values; this widens the
+    // overestimate (1.70x the 1.57 pF resonance value, 1.35x the 1.97 pF fit), which stays open.
+    CHECK_THAT(parameters.interWindingCapacitance, Catch::Matchers::WithinRel(2.667e-12, 0.02));
     // Within 2x of both measured values, and well below the unscreened 4.54 pF.
     CHECK(parameters.interWindingCapacitance < 2 * 1.57e-12);
     CHECK(parameters.interWindingCapacitance > 0.5 * 1.97e-12);
@@ -795,7 +802,9 @@ TEST_CASE("Toroidal CMC inter-winding capacitance with screened turn-to-core ele
     // from (2/3)*eps0*lt*Y1 to 2*eps0*lt*Y1 (Albach 2017 eq. 3.14) and toroid turn pairs were split
     // between the bore and the outer-crossing gap. The s4p-derived C_cm of this part is 13.4 pF,
     // but its CM peak is flagged weak/low-Q, so it is not used as an anchor here.
-    CHECK_THAT(commonModeModel.tanks[0].capacitance, Catch::Matchers::WithinRel(14.033e-12, 0.02));
+    // Re-pinned 2026-10-03, 14.033 -> 12.806 pF, with the flat-bar winding above (11 + 7 turns per
+    // winding in the two rings instead of 10 + 8): 4.4% under that s4p value instead of 4.7% over it.
+    CHECK_THAT(commonModeModel.tanks[0].capacitance, Catch::Matchers::WithinRel(12.806e-12, 0.02));
 
     // The DM path honours the magnetic's core electrical reference: a GROUNDED core diverts the
     // through-core path to the reference, and these sectored windings have no adjacent turns,
@@ -816,8 +825,10 @@ TEST_CASE("Toroidal CMC inter-winding capacitance with screened turn-to-core ele
 // Parts: every WE-CMB catalogue part that (a) the WE requirements sheet gives a 0.6 mm epoxy core
 // coating, (b) has a WE s4p measurement whose CM peak is a clean LC resonance (measDB
 // cm_quality_flag 'good': no weak/low-Q/multi-peak/mu-rolloff flag), and (c) MKF winds. 17 parts
-// meet (a)+(b); 744821240 is left out by (c) (magnetic_autocomplete leaves it unwound). The core
-// is ACME A07 in all 16. No part was selected by its result.
+// meet (a)+(b), and all 17 meet (c): 744821240 (35 + 35 turns of 0.4 mm, 3 mm spacer in a 3.36 mm
+// coated bore) was left out while the section margins were held as angles at the innermost radius,
+// which left it unwound; with the margins as a flat bar across the window it winds. The core is
+// ACME A07 in all 17. No part was selected by its result.
 // Measured values (cmc_impedance_whitepaper/work/measdb/ciw_measured.csv): CM impedance peak
 // frequency and CM inductance at 10 kHz, both from the WE s4p file. The s4p grid is logarithmic
 // with ratio 1.01742 and every peak sits on a grid point: +-0.87% (half a step) reading error.
@@ -846,7 +857,7 @@ TEST_CASE("Toroidal CMC common-mode resonance against its s4p measurement (WE-CM
         {"744823210", 226464, 0.0105858},  {"744823220", 174783, 0.023393},   {"744823305", 336899, 0.00523203},
         {"744823333", 467735, 0.00360972}, {"744824220", 128086, 0.0214685},  {"744824310", 278612, 0.00816787},
         {"744824407", 273842, 0.00692025}, {"744824433", 501187, 0.00311928}, {"744825320", 152230, 0.0202871},
-        {"744825433", 113501, 0.0295728},
+        {"744825433", 113501, 0.0295728},  {"744821240", 475883, 0.00420793},
     };
     const double s4pHalfStep = std::log(std::sqrt(1.01742));
 
@@ -865,7 +876,7 @@ TEST_CASE("Toroidal CMC common-mode resonance against its s4p measurement (WE-CM
         OpenMagnetics::Magnetic magnetic(json);
         magnetic = magnetic_autocomplete(magnetic);
         REQUIRE(magnetic.get_coil().get_turns_description());
-        // All 16 parts are A07, whose complex permeability is tabulated from 9935 Hz (mu'') to about
+        // All 17 parts are A07, whose complex permeability is tabulated from 9935 Hz (mu'') to about
         // 1.57 MHz (mu'; mu'' reaches 14-17 MHz, the mu' gap is a MAS data gap). The coarse 1 kHz..1 GHz
         // search sweeps the part of it A07 has data for; every measured peak (113-501 kHz) is inside.
         auto [minimumMaterialFrequency, maximumMaterialFrequency] = ComplexPermeability().get_frequency_range(magnetic.get_core().resolve_material());

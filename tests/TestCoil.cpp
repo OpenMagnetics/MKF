@@ -9196,6 +9196,20 @@ TEST_CASE("Test_Abt720_MultiGroup_Toroidal_Margins_Keyed_Per_Group", "[construct
     settings.reset();
 }
 
+// The five Test_Wind_Three_Sections_Two_Layer_Toroidal_Contiguous_*_Margin tests: 60/42/33 turns of
+// 0.509 mm wire in the 5 mm bore of a T 20/10/7, with margins of 0.2/0.2, 0.5/0.5 and 0.1/0.5 mm.
+// A toroid's section margin is the half-thickness of a flat bar across the window. A ring of turn
+// centres at rho clears it at asin((m + r_w) / rho) from the boundary line, so the bar takes
+// asin((m + r_w) / rho) - asin(r_w / rho) of that ring: 2.42/6.07/1.21 deg on the bore ring
+// (rho 4.746 mm) for 0.2/0.5/0.1 mm, more on deeper rings. The pinned angles were re-pinned
+// (2026-10-03) from the previous model, which charged every ring the chord 2 asin(m / 2 r_in) at the
+// section's innermost radius (3.30/9.68/1.93 deg in the top, bottom and centred cases). With the bar
+// charged per ring, the 42- and 33-turn windings of those three cases need three rings instead of
+// four, so their sections widen from 86.1/67.6 to 98.4/79.9 deg, and the aligned blocks shift by the
+// narrower bars plus the wider sections. In the two spread cases the ring counts do not change and the
+// turns move by the narrower bars alone (turn 0: a 2.42 deg bar instead of 3.87 deg, four rings deep).
+// Every turn is checked to clear its bars (perpendicular distance >= m + r_w) and not to overlap
+// another turn.
 TEST_CASE("Test_Wind_Three_Sections_Two_Layer_Toroidal_Contiguous_Top_Top_Margin", "[constructive-model][coil][round-winding-window][margin][smoke-test]") {
     settings.set_coil_equalize_margins(false);
     clear_databases();
@@ -9240,10 +9254,11 @@ TEST_CASE("Test_Wind_Three_Sections_Two_Layer_Toroidal_Contiguous_Top_Top_Margin
     }
     settings.reset();
     coil.convert_turns_to_polar_coordinates();
-    REQUIRE_THAT(6, Catch::Matchers::WithinAbs(coil.get_turns_description().value()[0].get_coordinates()[1], 1));
-    REQUIRE_THAT(161, Catch::Matchers::WithinAbs(coil.get_turns_description().value()[60].get_coordinates()[1], 1));
-    REQUIRE_THAT(258, Catch::Matchers::WithinAbs(coil.get_turns_description().value()[102].get_coordinates()[1], 1));
+    REQUIRE_THAT(5.5, Catch::Matchers::WithinAbs(coil.get_turns_description().value()[0].get_coordinates()[1], 1));
+    REQUIRE_THAT(155.4, Catch::Matchers::WithinAbs(coil.get_turns_description().value()[60].get_coordinates()[1], 1));
+    REQUIRE_THAT(261.1, Catch::Matchers::WithinAbs(coil.get_turns_description().value()[102].get_coordinates()[1], 1));
     OpenMagneticsTesting::check_turns_description(coil);
+    OpenMagneticsTesting::check_turns_clear_toroidal_bars(coil);
 }
 
 TEST_CASE("Test_Wind_Three_Sections_Two_Layer_Toroidal_Contiguous_Bottom_Top_Margin", "[constructive-model][coil][round-winding-window][margin][smoke-test]") {
@@ -9290,10 +9305,11 @@ TEST_CASE("Test_Wind_Three_Sections_Two_Layer_Toroidal_Contiguous_Bottom_Top_Mar
     }
     settings.reset();
     coil.convert_turns_to_polar_coordinates();
-    REQUIRE_THAT(33, Catch::Matchers::WithinAbs(coil.get_turns_description().value()[0].get_coordinates()[1], 1));
-    REQUIRE_THAT(188, Catch::Matchers::WithinAbs(coil.get_turns_description().value()[60].get_coordinates()[1], 1));
-    REQUIRE_THAT(332, Catch::Matchers::WithinAbs(coil.get_turns_description().value()[134].get_coordinates()[1], 1));
+    REQUIRE_THAT(21.5, Catch::Matchers::WithinAbs(coil.get_turns_description().value()[0].get_coordinates()[1], 1));
+    REQUIRE_THAT(171.4, Catch::Matchers::WithinAbs(coil.get_turns_description().value()[60].get_coordinates()[1], 1));
+    REQUIRE_THAT(340.9, Catch::Matchers::WithinAbs(coil.get_turns_description().value()[134].get_coordinates()[1], 1));
     OpenMagneticsTesting::check_turns_description(coil);
+    OpenMagneticsTesting::check_turns_clear_toroidal_bars(coil);
 }
 
 TEST_CASE("Test_Wind_Three_Sections_Two_Layer_Toroidal_Contiguous_Centered_Top_Margin", "[constructive-model][coil][round-winding-window][margin][smoke-test]") {
@@ -9340,10 +9356,11 @@ TEST_CASE("Test_Wind_Three_Sections_Two_Layer_Toroidal_Contiguous_Centered_Top_M
     }
     settings.reset();
     coil.convert_turns_to_polar_coordinates();
-    REQUIRE_THAT(20, Catch::Matchers::WithinAbs(coil.get_turns_description().value()[0].get_coordinates()[1], 1));
-    REQUIRE_THAT(174, Catch::Matchers::WithinAbs(coil.get_turns_description().value()[60].get_coordinates()[1], 1));
-    REQUIRE_THAT(318, Catch::Matchers::WithinAbs(coil.get_turns_description().value()[134].get_coordinates()[1], 1));
+    REQUIRE_THAT(13.5, Catch::Matchers::WithinAbs(coil.get_turns_description().value()[0].get_coordinates()[1], 1));
+    REQUIRE_THAT(163.4, Catch::Matchers::WithinAbs(coil.get_turns_description().value()[60].get_coordinates()[1], 1));
+    REQUIRE_THAT(332.9, Catch::Matchers::WithinAbs(coil.get_turns_description().value()[134].get_coordinates()[1], 1));
     OpenMagneticsTesting::check_turns_description(coil);
+    OpenMagneticsTesting::check_turns_clear_toroidal_bars(coil);
 }
 
 TEST_CASE("Test_Wind_Three_Sections_Two_Layer_Toroidal_Contiguous_Spread_Top_Margin", "[constructive-model][coil][round-winding-window][margin][smoke-test]") {
@@ -9390,10 +9407,11 @@ TEST_CASE("Test_Wind_Three_Sections_Two_Layer_Toroidal_Contiguous_Spread_Top_Mar
     }
     settings.reset();
     coil.convert_turns_to_polar_coordinates();
-    REQUIRE_THAT(7, Catch::Matchers::WithinAbs(coil.get_turns_description().value()[0].get_coordinates()[1], 1));
-    REQUIRE_THAT(131, Catch::Matchers::WithinAbs(coil.get_turns_description().value()[60].get_coordinates()[1], 1));
-    REQUIRE_THAT(341, Catch::Matchers::WithinAbs(coil.get_turns_description().value()[134].get_coordinates()[1], 1));
+    REQUIRE_THAT(5.5, Catch::Matchers::WithinAbs(coil.get_turns_description().value()[0].get_coordinates()[1], 1));
+    REQUIRE_THAT(129.1, Catch::Matchers::WithinAbs(coil.get_turns_description().value()[60].get_coordinates()[1], 1));
+    REQUIRE_THAT(341.2, Catch::Matchers::WithinAbs(coil.get_turns_description().value()[134].get_coordinates()[1], 1));
     OpenMagneticsTesting::check_turns_description(coil);
+    OpenMagneticsTesting::check_turns_clear_toroidal_bars(coil);
 }
 
 TEST_CASE("Test_Wind_Three_Sections_Two_Layer_Toroidal_Contiguous_Spread_Spread_Margin", "[constructive-model][coil][round-winding-window][margin][smoke-test]") {
@@ -9440,10 +9458,11 @@ TEST_CASE("Test_Wind_Three_Sections_Two_Layer_Toroidal_Contiguous_Spread_Spread_
     }
     settings.reset();
     coil.convert_turns_to_polar_coordinates();
-    REQUIRE_THAT(7, Catch::Matchers::WithinAbs(coil.get_turns_description().value()[0].get_coordinates()[1], 1));
-    REQUIRE_THAT(131, Catch::Matchers::WithinAbs(coil.get_turns_description().value()[60].get_coordinates()[1], 1));
-    REQUIRE_THAT(349, Catch::Matchers::WithinAbs(coil.get_turns_description().value()[134].get_coordinates()[1], 1));
+    REQUIRE_THAT(5.6, Catch::Matchers::WithinAbs(coil.get_turns_description().value()[0].get_coordinates()[1], 1));
+    REQUIRE_THAT(129.4, Catch::Matchers::WithinAbs(coil.get_turns_description().value()[60].get_coordinates()[1], 1));
+    REQUIRE_THAT(349.5, Catch::Matchers::WithinAbs(coil.get_turns_description().value()[134].get_coordinates()[1], 1));
     OpenMagneticsTesting::check_turns_description(coil);
+    OpenMagneticsTesting::check_turns_clear_toroidal_bars(coil);
 }
 
 TEST_CASE("Test_Wind_Three_Sections_Two_Layer_Toroidal_Contiguous_Spread_Top_Additional_Coordinates", "[constructive-model][coil][round-winding-window][smoke-test]") {
@@ -15939,13 +15958,25 @@ TEST_CASE("Test_Failed_Wind_Does_Not_Poison_The_Coil", "[coil][wind][smoke-test]
     // failed too. A wind that fails and produces no turns must leave the coil as it
     // found it; a margin-free re-wind after clearing the sections must then succeed.
     //
-    // Fixture: WE choke 744821240 as enriched by asgard — a two-winding toroid whose
-    // sheet-specified 3 mm spacer fits the real cased part but not the modelled bare
-    // bore, the exact catalogue case that exposed the poisoning.
+    // Fixture: WE choke 744821240 as enriched by asgard, the catalogue case that exposed the
+    // poisoning: a two-winding toroid, 35 + 35 turns of 0.4 mm wire in a 3.36 mm bore, its
+    // sections separated by the sheet's 3 mm spacer (1.5 mm margin per side). Since the margin
+    // is modelled as a flat bar across the window, those 3 mm fit and the part winds, so the
+    // margins here are widened to a bar that cannot fit: a half-thickness equal to the bore
+    // radius, which leaves no ring any room (bar face plus wire radius beyond every turn centre).
     auto dataDir = std::filesystem::path{__FILE__}.parent_path().append("testData");
     std::ifstream jsonFile((dataDir / "abt850_infeasible_margins_toroid.json").string());
     json magneticJson;
     jsonFile >> magneticJson;
+    const double boreRadius = magneticJson["coil"]["bobbin"]["processedDescription"]["windingWindows"][0]["radialHeight"].get<double>();
+    size_t widenedSections = 0;
+    for (auto& section : magneticJson["coil"]["sectionsDescription"]) {
+        if (section.contains("margin") && !section["margin"].is_null()) {
+            section["margin"] = {boreRadius, boreRadius};
+            ++widenedSections;
+        }
+    }
+    REQUIRE(widenedSections == 2);
     OpenMagnetics::Magnetic magnetic(magneticJson);
     auto coil = magnetic.get_coil();
     REQUIRE(!coil.get_turns_description());
@@ -15953,6 +15984,10 @@ TEST_CASE("Test_Failed_Wind_Does_Not_Poison_The_Coil", "[coil][wind][smoke-test]
     bool sectionedWind = coil.wind();
     CHECK(!sectionedWind);
     CHECK(!coil.get_turns_description());
+    // It fails for the bars, and says so.
+    INFO(coil.get_last_fit_failure());
+    CHECK_THAT(coil.get_last_fit_failure(), Catch::Matchers::ContainsSubstring("flat bars of 3.360 mm and 3.360 mm half-thickness") &&
+                                            Catch::Matchers::ContainsSubstring("has no room"));
 
     // The poisoning regression: clearing the infeasible sections and re-winding fresh
     // must succeed. Before the ABT #850 fix this second wind failed as well, because
