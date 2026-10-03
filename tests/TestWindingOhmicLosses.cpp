@@ -307,5 +307,18 @@ namespace {
         REQUIRE_THAT(expectedOhmicLosses, Catch::Matchers::WithinAbs(ohmicLosses, expectedOhmicLosses * maximumError));
     }
 
+    TEST_CASE("Test_Winding_Ohmic_Losses_Refuse_A_Turn_Of_An_Undeclared_Parallel", "[physical-model][ohmic-losses][smoke-test][abt-1615]") {
+        // ABT #1615: a turn naming parallel 2 of a 2-parallel winding wrote past the per-parallel
+        // resistance array. Both the DC-resistance and the losses paths must refuse it.
+        double temperature = 20;
+        auto operatingPoint = get_operating_point_with_dc_current({1});
+        auto winding = get_coil({3}, {2});
+        auto turns = winding.get_turns_description().value();
+        turns.back().set_parallel(2);
+        winding.set_turns_description(turns);
+
+        REQUIRE_THROWS_AS(WindingOhmicLosses::calculate_dc_resistance_per_winding(winding, temperature), InvalidInputException);
+        REQUIRE_THROWS_AS(WindingOhmicLosses().calculate_ohmic_losses(winding, operatingPoint, temperature), InvalidInputException);
+    }
 
 }  // namespace

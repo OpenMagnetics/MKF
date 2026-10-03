@@ -211,6 +211,20 @@ double WindingOhmicLosses::calculate_effective_resistance_per_meter(Wire wire, d
 
 namespace {
 
+// ABT #1615: a turn's parallel index addresses a per-parallel array sized from
+// functionalDescription; a turnsDescription that names a parallel the winding does not
+// have (a stale or hand-edited wind) wrote past it. Refuse it, naming the turn.
+size_t checked_parallel_index(Coil& coil, const Turn& turn, size_t windingIndex) {
+    auto parallelIndex = static_cast<size_t>(turn.get_parallel());
+    if (parallelIndex >= coil.get_number_parallels(windingIndex)) {
+        throw InvalidInputException(ErrorCode::INVALID_COIL_CONFIGURATION,
+            "Turn '" + turn.get_name() + "' belongs to parallel " + std::to_string(parallelIndex) + " of winding '" +
+            coil.get_functional_description()[windingIndex].get_name() + "', which declares only " +
+            std::to_string(coil.get_number_parallels(windingIndex)) + " parallels. The coil must be re-wound.");
+    }
+    return parallelIndex;
+}
+
 // ABT #246: a parallel branch whose series resistance is zero (or non-finite) has no
 // turns of that parallel in turnsDescription — an inconsistent coil, e.g. a stale or
 // corrupted wind. The parallel-combination arithmetic then runs 1/0 -> infinite
@@ -261,7 +275,7 @@ std::vector<double> WindingOhmicLosses::calculate_dc_resistance_per_winding(Coil
     std::vector<double> dcResistancePerWinding;
     for (auto& turn : turns) {
         auto windingIndex = coil.get_winding_index_by_name(turn.get_winding());
-        auto parallelIndex = turn.get_parallel();
+        auto parallelIndex = checked_parallel_index(coil, turn, windingIndex);
 
         double turnResistance = calculate_dc_resistance(turn, wirePerWinding[windingIndex], temperature);
         seriesResistancePerWindingPerParallel[windingIndex][parallelIndex] += turnResistance;
@@ -349,7 +363,7 @@ WindingLossesOutput WindingOhmicLosses::calculate_ohmic_losses(Coil coil, Operat
     std::vector<double> dcResistancePerWinding;
     for (auto& turn : turns) {
         auto windingIndex = coil.get_winding_index_by_name(turn.get_winding());
-        auto parallelIndex = turn.get_parallel();
+        auto parallelIndex = checked_parallel_index(coil, turn, windingIndex);
 
         double turnResistance = calculate_dc_resistance(turn, wirePerWinding[windingIndex], temperature);
         dcResistancePerTurn.push_back(turnResistance);
@@ -384,7 +398,7 @@ WindingLossesOutput WindingOhmicLosses::calculate_ohmic_losses(Coil coil, Operat
     for (size_t turnIndex = 0; turnIndex < turns.size(); ++turnIndex) {
         Turn turn = turns[turnIndex];
         auto windingIndex = coil.get_winding_index_by_name(turn.get_winding());
-        auto parallelIndex = turn.get_parallel();
+        auto parallelIndex = checked_parallel_index(coil, turn, windingIndex);
 
         auto currentDividerThisTurn = dcCurrentPerWinding[windingIndex] == 0? 0 : dcCurrentPerWindingPerParallel[windingIndex][parallelIndex] / dcCurrentPerWinding[windingIndex];
 
