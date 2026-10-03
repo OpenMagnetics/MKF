@@ -8126,6 +8126,13 @@ std::vector<WindingStyle> Coil::wind_by_consecutive_turns(std::vector<uint64_t> 
  * for better current sharing and reduced proximity effect.
  */
 WindingStyle Coil::wind_by_consecutive_turns(uint64_t numberTurns, uint64_t numberParallels, size_t numberSlots, std::optional<size_t> windingIndex) {
+    // ABT #1613: every heuristic below takes a remainder by numberSlots (SIGFPE at 0). The
+    // multi-winding overload has always refused it; a layer with no slot has nothing to wind into.
+    if (numberSlots == 0) {
+        throw InvalidInputException("Number of slots cannot be less than 1: a layer or section with no slot left "
+                                    "cannot hold " + std::to_string(numberTurns) + " turns of " +
+                                    std::to_string(numberParallels) + " parallels");
+    }
     // When turns < slots, we MUST use CONSECUTIVE_TURNS to distribute physical turns (parallels)
     // across slots. CONSECUTIVE_PARALLELS would put all turns in the first slots, leaving rest empty.
     if (numberTurns < numberSlots && numberParallels > 1) {

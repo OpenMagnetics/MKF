@@ -16674,3 +16674,12 @@ TEST_CASE("Test_Coil_Side_By_Side_Parallels_Take_The_Layer_Share_That_Fits", "[c
     CHECK(conductionLayers == 6);
     settings.reset();
 }
+
+TEST_CASE("Test_Coil_Consecutive_Turns_Refuses_Zero_Slots", "[constructive-model][coil][smoke-test][abt-1613]") {
+    // ABT #1613: the single-layer overload divided by the slot count with no guard (SIGFPE); it
+    // must refuse a zero-slot layer like the multi-winding overload does.
+    OpenMagnetics::Coil coil;
+    REQUIRE_THROWS_AS(coil.wind_by_consecutive_turns(uint64_t(4), uint64_t(1), size_t(0)), InvalidInputException);
+    REQUIRE_THROWS_AS(coil.wind_by_consecutive_turns(std::vector<uint64_t>{4}, std::vector<uint64_t>{1}, std::vector<size_t>{0}), InvalidInputException);
+    REQUIRE(coil.wind_by_consecutive_turns(uint64_t(4), uint64_t(1), size_t(2)) == WindingStyle::WIND_BY_CONSECUTIVE_PARALLELS);
+}
