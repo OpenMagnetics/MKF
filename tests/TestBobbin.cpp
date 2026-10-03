@@ -12,6 +12,8 @@
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
 #include <catch2/matchers/catch_matchers_string.hpp>
 #include <filesystem>
+#include <functional>
+#include <optional>
 #include <fstream>
 #include <iostream>
 #include <magic_enum.hpp>
@@ -1225,4 +1227,64 @@ TEST_CASE("Pin rails: no pins -> none; pins but a missing or contradicting rail 
         auto bobbin = OpenMagnetics::Bobbin::create_quick_bobbin(core, false, MAS::OrientationEnum::HORIZONTAL);
         CHECK_THROWS_WITH(bobbin.get_pin_rails(), Catch::Matchers::ContainsSubstring("horizontal pins"));
     }
+}
+
+// ABT #761: a molded core with a SQUARE footprint (A == C, the norm for WE-MAPI/MXGI 1610 ...
+// 6060) was reported to get a zero-width bobbin winding window. A zero-width (or zero-height)
+// window is never a valid answer -- MAS rejects the magnetic -- so create_quick_bobbin must
+// either return the molded cavity (width (E - F)/2, height D, both > 0) or THROW, never clamp a
+// negative leftover to 0 and return it.
+TEST_CASE("A square-footprint molded core never gets a zero-size quick bobbin window (ABT #761)",
+          "[constructive-model][bobbin][molded][abt761]") {
+    settings.reset();
+    // The reporter's IndMAPI 744383130033 reconstruction: A = C = 1.6 mm.
+    json shapeJson = {
+        {"magneticCircuit", "closed"}, {"type", "custom"}, {"family", "molded"},
+        {"aliases", json::array()}, {"name", "MAPI-like 1610 square"},
+        {"dimensions", {
+            {"A", {{"nominal", 0.0016}}}, {"B", {{"nominal", 0.0009}}}, {"C", {{"nominal", 0.0016}}},
+            {"D", {{"nominal", 0.00024}}}, {"E", {{"nominal", 0.001219}}}, {"F", {{"nominal", 0.000899}}}}}
+    };
+    json coreJson;
+    coreJson["functionalDescription"] = {
+        {"type", "closedShape"}, {"material", "Kool Mµ 26"}, {"shape", shapeJson},
+        {"gapping", json::array()}, {"numberStacks", 1}};
+    OpenMagnetics::Core core(coreJson);
+    core.process_data();
+
+    // MKF's own molded window is the cavity annulus, whatever the footprint.
+    auto coreWindow = core.get_processed_description()->get_winding_windows()[0];
+    CHECK_THAT(coreWindow.get_width().value(), Catch::Matchers::WithinAbs((0.001219 - 0.000899) / 2, 1e-12));
+    CHECK_THAT(coreWindow.get_height().value(), Catch::Matchers::WithinAbs(0.00024, 1e-12));
+
+    // nullDimensions (the "Dummy"/"None" path): the bobbin IS the cavity.
+    auto dummy = OpenMagnetics::Bobbin::create_quick_bobbin(core, true);
+    auto dummyWindow = dummy.get_processed_description()->get_winding_windows()[0];
+    CHECK_THAT(dummyWindow.get_width().value(), Catch::Matchers::WithinAbs((0.001219 - 0.000899) / 2, 1e-12));
+    CHECK_THAT(dummyWindow.get_height().value(), Catch::Matchers::WithinAbs(0.00024, 1e-12));
+
+    // The "Basic" path (create_simple_bobbin_from_core): either a real window or a throw.
+    auto checkNonZeroOrThrow = [](const std::function<OpenMagnetics::Bobbin()>& make) {
+        std::optional<OpenMagnetics::Bobbin> bobbin;
+        try {
+            bobbin = make();
+        }
+        catch (const OpenMagnetics::InvalidInputException& e) {
+            INFO("threw: " << e.what());
+            SUCCEED();
+            return;
+        }
+        auto window = bobbin->get_processed_description()->get_winding_windows()[0];
+        INFO("width " << window.get_width().value() << " height " << window.get_height().value());
+        CHECK(window.get_width().value() > 0);
+        CHECK(window.get_height().value() > 0);
+        REQUIRE(window.get_area());
+        CHECK(window.get_area().value() > 0);
+    };
+    checkNonZeroOrThrow([&] { return OpenMagnetics::Bobbin::create_quick_bobbin(core); });
+    // Explicit thicknesses that eat the whole cavity width must throw, not return width 0.
+    checkNonZeroOrThrow([&] { return OpenMagnetics::Bobbin::create_quick_bobbin(core, 0.00001, 0.0002); });
+    CHECK_THROWS_AS(OpenMagnetics::Bobbin::create_quick_bobbin(core, 0.00001, 0.0002), OpenMagnetics::InvalidInputException);
+    // ... and so must walls that eat the whole cavity height.
+    CHECK_THROWS_AS(OpenMagnetics::Bobbin::create_quick_bobbin(core, 0.00013, 0.00001), OpenMagnetics::InvalidInputException);
 }

@@ -767,7 +767,23 @@ Bobbin Bobbin::create_quick_bobbin(Core core, double wallThickness, double colum
         std::vector<double> bobbinWindingWindowDimensions;
 
         if (bobbinWindingWindowShape == WindingWindowShape::RECTANGULAR) {
-            bobbinWindingWindowDimensions = {std::max(0.0, coreWindingWindow.get_width().value() - columnThickness), std::max(0.0, coreWindingWindow.get_height().value() - wallThickness * 2)};
+            // ABT #761: never clamp the leftover to zero. A column or walls as thick as (or thicker
+            // than) the core window leave NO room to wind, and a window of width or height 0 is not
+            // a bobbin -- MAS rejects it, and every winder downstream divides by it. This bit the
+            // smallest molded parts (a 1610 cavity is 0.16 mm wide), where the quick bobbin's
+            // catalogue-floored thicknesses exceed the cavity. Say so instead.
+            double bobbinWindowWidth = coreWindingWindow.get_width().value() - columnThickness;
+            double bobbinWindowHeight = coreWindingWindow.get_height().value() - wallThickness * 2;
+            if (!(bobbinWindowWidth > 0) || !(bobbinWindowHeight > 0)) {
+                throw InvalidInputException(ErrorCode::INVALID_BOBBIN_DATA,
+                    "A bobbin with column thickness " + std::to_string(columnThickness) + " m and wall thickness " +
+                    std::to_string(wallThickness) + " m leaves no winding window in core '" +
+                    core.get_name().value_or("<unnamed>") + "' window " + std::to_string(windowIndex) + " (" +
+                    std::to_string(coreWindingWindow.get_width().value()) + " m wide x " +
+                    std::to_string(coreWindingWindow.get_height().value()) + " m high): bobbin window would be " +
+                    std::to_string(bobbinWindowWidth) + " m x " + std::to_string(bobbinWindowHeight) + " m");
+            }
+            bobbinWindingWindowDimensions = {bobbinWindowWidth, bobbinWindowHeight};
         }
         else {
             bobbinWindingWindowDimensions = {coreWindingWindow.get_radial_height().value(), coreWindingWindow.get_angle().value()};
