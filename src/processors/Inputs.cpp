@@ -3415,12 +3415,19 @@ std::vector<InsulationStandards> Inputs::get_standards() {
             "this design names none");
     }
 
+    if (get_design_requirements().get_insulation()->get_standards()->empty()) {
+        // ABT #1228: an empty list is no more a standard than an absent one; reading it as "no
+        // standard asks for anything" returned 0 mm clearance and creepage.
+        throw InvalidInputException(ErrorCode::MISSING_DATA,
+            "designRequirements.insulation.standards is empty: insulation coordination takes its tables from the "
+            "standards the design names, and this design names none");
+    }
     return get_design_requirements().get_insulation()->get_standards().value();
 }
 
 bool Inputs::has_insulation_coordination_requirements() const {
     auto insulation = get_design_requirements().get_insulation();
-    return insulation && insulation->get_standards();
+    return insulation && insulation->get_standards() && !insulation->get_standards()->empty();
 }
 
 void Inputs::throw_if_json_lacks_required_fields(const json& inputsJson) {

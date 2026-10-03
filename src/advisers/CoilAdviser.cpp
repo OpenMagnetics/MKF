@@ -1692,7 +1692,7 @@ namespace OpenMagnetics {
 
             // B19 FIX: Calculate planar clearances using InsulationCoordinator
             bool planarClearanceViolated = false;
-            if (mas.get_mutable_inputs().get_design_requirements().get_insulation() &&
+            if (mas.get_mutable_inputs().has_insulation_coordination_requirements() &&
                 mas.get_mutable_inputs().get_wiring_technology() == WiringTechnology::PRINTED) {
                 try {
                     InsulationCoordinator insulationCoordinator;

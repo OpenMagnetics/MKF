@@ -84,7 +84,7 @@ MagneticFilterEstimatedCost::MagneticFilterEstimatedCost(Inputs inputs) {
     double necessaryWireCopperArea = primaryCurrentRms / defaults.maximumCurrentDensity;
     _estimatedParallels = ceil(necessaryWireCopperArea / estimatedWireConductingArea);
 
-    if (settings.get_core_adviser_include_margin() && inputs.get_design_requirements().get_insulation()) {
+    if (settings.get_core_adviser_include_margin() && inputs.has_insulation_coordination_requirements()) {
         auto clearanceAndCreepageDistance = InsulationCoordinator().calculate_creepage_distance(inputs, true);
         _averageMarginInWindingWindow = clearanceAndCreepageDistance;
     }

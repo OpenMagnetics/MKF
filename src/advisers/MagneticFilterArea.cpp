@@ -37,7 +37,7 @@ MagneticFilterAreaProduct::MagneticFilterAreaProduct(Inputs inputs) {
     _coreLossesModelSteinmetz = CoreLossesModel::factory(std::map<std::string, std::string>({{"coreLosses", "Steinmetz"}}));
     _coreLossesModelProprietary = CoreLossesModel::factory(std::map<std::string, std::string>({{"coreLosses", "Proprietary"}}));
 
-    if (settings.get_core_adviser_include_margin() && inputs.get_design_requirements().get_insulation()) {
+    if (settings.get_core_adviser_include_margin() && inputs.has_insulation_coordination_requirements()) {
         auto clearanceAndCreepageDistance = InsulationCoordinator().calculate_creepage_distance(inputs, true);
         _averageMarginInWindingWindow = clearanceAndCreepageDistance;
     }

@@ -216,6 +216,8 @@ class InsulationIEC60664Model : public InsulationStandard {
 
 class InsulationIEC62368Model : public InsulationStandard {
   public:
+    // Each throws when the design has no insulation requirement or names no standard (ABT #1228).
+    static void require_insulation_requirement(Inputs& inputs, const std::string& quantity);
     double calculate_withstand_voltage(Inputs& inputs);
     double calculate_clearance(Inputs& inputs);
     double calculate_creepage_distance(Inputs& inputs, bool includeClearance = false);
@@ -524,6 +526,8 @@ class InsulationCoordinator {
     std::shared_ptr<InsulationIEC60335Model> _insulationIEC60335Model;
 
   public:
+    // Each throws when the design has no insulation requirement or names no standard (ABT #1228).
+    static void require_insulation_requirement(Inputs& inputs, const std::string& quantity);
     double calculate_withstand_voltage(Inputs& inputs);
     double calculate_clearance(Inputs& inputs);
     double calculate_creepage_distance(Inputs& inputs, bool includeClearance = false);

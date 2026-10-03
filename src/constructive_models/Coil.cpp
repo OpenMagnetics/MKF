@@ -9510,7 +9510,7 @@ bool Coil::calculate_mechanical_insulation() {
 bool Coil::calculate_insulation(bool simpleMode) {
     auto inputs = _inputs.value();
 
-    if (!inputs.get_design_requirements().get_insulation()) {
+    if (!inputs.has_insulation_coordination_requirements()) {
         return false;
     }
 

@@ -466,7 +466,7 @@ ManufacturabilityFinding Manufacturability::evaluate_r7_size_heuristic(Magnetic&
     auto finding = make_finding("R7");
     finding.set_unit("m (core effective length)");
 
-    if (!inputs.get_design_requirements().get_insulation()) {
+    if (!inputs.has_insulation_coordination_requirements()) {
         finding.set_status(ManufacturabilityStatus::NOT_APPLICABLE);
         finding.set_message("The design requirements ask for no insulation coordination, so neither margin tape nor insulated wire is being chosen between.");
         return finding;
@@ -849,7 +849,7 @@ ManufacturabilityFinding Manufacturability::evaluate_r11_termination_protection(
     }
     finding.set_measured_value(static_cast<double>(sleevedLeads.size()));
 
-    if (!inputs.get_design_requirements().get_insulation()) {
+    if (!inputs.has_insulation_coordination_requirements()) {
         if (sleevedLeads.empty()) {
             finding.set_status(ManufacturabilityStatus::NOT_APPLICABLE);
             finding.set_message("The design has no insulation requirement and no lead is sleeved, so no termination protection is called for.");

@@ -47,6 +47,39 @@ namespace TestInsulation{
         REQUIRE(0.0024 == creepageDistance);
     }
 
+    TEST_CASE("Test_Coordinated_Distances_Throw_Without_A_Requirement", "[constructive-model][insulation][smoke-test]") {
+        // ABT #1228: a design with no insulation requirement, or one naming no standard, used to get
+        // 0 mm clearance/creepage, 0 V withstand and 0 mm DTI, indistinguishable from a computed
+        // "no separation needed". Every coordinator answer must throw instead.
+        DimensionWithTolerance altitude;
+        altitude.set_maximum(2000);
+        DimensionWithTolerance mainSupplyVoltage;
+        mainSupplyVoltage.set_nominal(400);
+        auto standardCoordinator = InsulationCoordinator();
+        auto standards = std::vector<InsulationStandards>{InsulationStandards::IEC_623681};
+        OpenMagnetics::Inputs inputs = OpenMagneticsTesting::get_quick_insulation_inputs(altitude, Cti::GROUP_I, IsolationClass::BASIC, mainSupplyVoltage, OvervoltageCategory::II, PollutionDegree::PD2, standards, 400, 566, 100000, WiringTechnology::WOUND);
+        REQUIRE(standardCoordinator.calculate_clearance(inputs) > 0);
+
+        auto checkAllThrow = [&](OpenMagnetics::Inputs& badInputs) {
+            REQUIRE_THROWS(standardCoordinator.calculate_insulation_coordination(badInputs));
+            REQUIRE_THROWS(standardCoordinator.calculate_clearance(badInputs));
+            REQUIRE_THROWS(standardCoordinator.calculate_creepage_distance(badInputs, true));
+            REQUIRE_THROWS(standardCoordinator.calculate_withstand_voltage(badInputs));
+            REQUIRE_THROWS(standardCoordinator.calculate_distance_through_insulation(badInputs));
+        };
+
+        auto noRequirement = inputs;
+        noRequirement.get_mutable_design_requirements().set_insulation(std::nullopt);
+        checkAllThrow(noRequirement);
+
+        auto noStandards = inputs;
+        auto insulation = noStandards.get_design_requirements().get_insulation().value();
+        insulation.set_standards(std::vector<InsulationStandards>{});
+        noStandards.get_mutable_design_requirements().set_insulation(insulation);
+        REQUIRE_FALSE(noStandards.has_insulation_coordination_requirements());
+        checkAllThrow(noStandards);
+    }
+
     TEST_CASE("Test_Coordinated_Clearance", "[constructive-model][insulation][smoke-test]") {
         double maximumVoltageRms = 666;
         double maximumVoltagePeak = 800;
