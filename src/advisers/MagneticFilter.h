@@ -76,9 +76,38 @@ class MagneticFilter {
         // stage a multi-winding candidate carries a one-winding stand-in coil; the windings it
         // lacks are added exactly as the core adviser completes its results (correct_windings:
         // turns from the turns ratios, each winding's parallels sized to its own current). A
-        // coil that already has every winding is returned as is; one with more windings than
-        // the inputs excite throws.
+        // coil that already has every winding is returned as is, except a stand-in (its bobbin
+        // still a name): the common-mode choke stand-in carries every winding, but only the first
+        // has its seeded turns (the others hold the placeholder 1), so it is completed the same
+        // way. One with more windings than the inputs excite throws.
         static Magnetic with_every_winding(const Magnetic& magnetic, const Inputs& inputs);
+
+        // Conducting area of the round conductor whose own effective current density for
+        // `current` is maximumEffectiveCurrentDensity: log bisection between rms / maximum (the
+        // effective density is never below the DC one) and upperArea (a conductor known to be
+        // enough). Throws when the current has no processed rms.
+        static double get_conducting_area_for_current(const SignalDescriptor& current, double upperArea, double temperature,
+                                                      double maximumEffectiveCurrentDensity);
+
+        // A copy of a stand-in `magnetic` whose single-strand windings carry their current with
+        // copper to spare (one stand-in strand, two skin depths: 18.6 mm at 50 Hz, below the
+        // maximum effective current density at every operating point) are wound with a round
+        // conductor the coil stage could pick: at least the copper MagneticFilterWindowCopperCapacity
+        // counts (get_conducting_area_for_current), at most the strand, and as thick as the window
+        // holds (filled at the capacity screen's utilisation, then the largest that fast_wind lays
+        // out as whole layers). The core-stage losses and temperature then lay out and score copper
+        // the coil stage can wind, not a strand no window can hold, nor the thinnest wire allowed
+        // (a 32 A PFC choke at 12 A/mm2 dissipates ~200 W in its copper). Windings needing more
+        // than one strand get more parallels of it by the same window-filling scale. With
+        // fillWindow false only the spare strands are replaced, by the minimum copper (no layout
+        // is tried). The coil must carry every winding the inputs excite.
+        static Magnetic with_copper_sized_to_current(const Magnetic& magnetic, const Inputs& inputs, double maximumEffectiveCurrentDensity,
+                                                     bool fillWindow = true);
+
+        // A copy of `magnetic` whose windings' parallel strands are merged into one round
+        // conductor of their copper area (same turns, same copper, one bundle): the coil the
+        // core-stage thermal network is solved on, one node per merged turn.
+        static Magnetic with_merged_strands(const Magnetic& magnetic, double temperature);
 };
 
 // Completes each candidate's one-winding stand-in coil with the windings the inputs excite
@@ -868,9 +897,14 @@ class MagneticFilterTemperature : public MagneticFilterCoreLossesBased {
     MagnetizingInductance _magnetizingInductance;
     WindingOhmicLosses _windingOhmicLosses;
     WindingSkinEffectLosses _windingSkinEffectLosses;
+    bool _sizeStandInCopper = false;
 public:
     MagneticFilterTemperature() {};
     MagneticFilterTemperature(Inputs inputs, double maximumTemperature);
+    // The core adviser's candidates carry a placeholder stand-in coil: their copper is laid out
+    // and scored as the coil stage could wind it (with_copper_sized_to_current). Off by default:
+    // a real coil is solved with its own wires.
+    void set_size_stand_in_copper(bool value) { _sizeStandInCopper = value; }
     std::pair<bool, double> evaluate_magnetic(Magnetic* magnetic, Inputs* inputs,
                                               std::vector<Outputs>* outputs = nullptr);
 };

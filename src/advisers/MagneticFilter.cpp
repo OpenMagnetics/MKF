@@ -1,4 +1,6 @@
 #include "advisers/MagneticFilter.h"
+#include "support/Settings.h"
+#include <numbers>
 #include "physical_models/WireBend.h"
 #include "advisers/MagneticFilterInternal.h"
 #include "physical_models/Temperature.h"
@@ -177,7 +179,8 @@ Magnetic MagneticFilter::with_every_winding(const Magnetic& magnetic, const Inpu
     }
     const size_t numberWindings = inputs.get_operating_points()[0].get_excitations_per_winding().size();
     const size_t numberCoilWindings = magnetic.get_coil().get_functional_description().size();
-    if (numberCoilWindings == numberWindings) {
+    const bool standIn = std::holds_alternative<std::string>(magnetic.get_coil().get_bobbin());
+    if (numberCoilWindings == numberWindings && (numberWindings == 1 || !standIn)) {
         return magnetic;
     }
     if (numberCoilWindings == 0 || numberCoilWindings > numberWindings) {
@@ -194,6 +197,186 @@ Magnetic MagneticFilter::with_every_winding(const Magnetic& magnetic, const Inpu
             std::to_string(numberWindings) + " (the turns ratios do not give every winding)");
     }
     return completed[0].first;
+}
+
+double MagneticFilter::get_conducting_area_for_current(const SignalDescriptor& current, double upperArea, double temperature,
+                                                       double maximumEffectiveCurrentDensity) {
+    if (!current.get_processed() || !current.get_processed()->get_rms()) {
+        throw InvalidInputException(ErrorCode::MISSING_DATA, "Sizing a conductor to its current: the current has no processed rms");
+    }
+    if (!(maximumEffectiveCurrentDensity > 0) || !(upperArea > 0)) {
+        throw InvalidInputException(ErrorCode::INVALID_INPUT,
+            "Sizing a conductor to its current: the maximum effective current density and the upper area must be positive");
+    }
+    // The search depends on the current's rms and effective frequency and the strand only:
+    // memoised per thread (the core adviser asks it per candidate and winding).
+    const double rms = current.get_processed()->get_rms().value();
+    if (!current.get_processed()->get_effective_frequency()) {
+        throw InvalidInputException(ErrorCode::MISSING_DATA, "Sizing a conductor to its current: the current has no effective frequency");
+    }
+    const auto cacheKey = std::make_tuple(rms, current.get_processed()->get_effective_frequency().value(), upperArea, temperature,
+                                          maximumEffectiveCurrentDensity);
+    thread_local std::map<std::tuple<double, double, double, double, double>, double> conductingAreaCache;
+    if (auto cached = conductingAreaCache.find(cacheKey); cached != conductingAreaCache.end()) {
+        return cached->second;
+    }
+    double lowerArea = rms / maximumEffectiveCurrentDensity;
+    if (!(lowerArea > 0)) {
+        throw CalculationException(ErrorCode::CALCULATION_INVALID_RESULT, "Sizing a conductor to its current: the current has no rms to size copper for");
+    }
+    auto density_at = [&](double conductingArea) {
+        return Wire::get_wire_for_conducting_area(conductingArea, temperature, true).calculate_effective_current_density(current, temperature);
+    };
+    if (lowerArea >= upperArea || density_at(lowerArea) <= maximumEffectiveCurrentDensity) {
+        return conductingAreaCache[cacheKey] = std::min(lowerArea, upperArea);
+    }
+    while (upperArea / lowerArea > 1.001) {
+        const double middleArea = std::sqrt(lowerArea * upperArea);
+        if (density_at(middleArea) > maximumEffectiveCurrentDensity) {
+            lowerArea = middleArea;
+        }
+        else {
+            upperArea = middleArea;
+        }
+    }
+    return conductingAreaCache[cacheKey] = upperArea;
+}
+
+Magnetic MagneticFilter::with_copper_sized_to_current(const Magnetic& magnetic, const Inputs& inputs, double maximumEffectiveCurrentDensity,
+                                                       bool fillWindow) {
+    const auto& operatingPoints = inputs.get_operating_points();
+    if (operatingPoints.empty()) {
+        throw InvalidInputException(ErrorCode::MISSING_DATA, "Sizing stand-in copper: the inputs have no operating points");
+    }
+    const auto windings = magnetic.get_coil().get_functional_description();
+    const double temperature = inputs.get_maximum_temperature();
+    // Per winding: the copper the maximum effective current density asks for (minimumArea) and the
+    // stand-in strand's (strandArea), for the windings one strand carries with copper to spare.
+    std::map<size_t, std::pair<double, double>> spareWindings;
+    double fixedWindowArea = 0;
+    double spareWindowArea = 0;
+    std::map<size_t, int64_t> bundleWindings;
+    for (size_t windingIndex = 0; windingIndex < windings.size(); ++windingIndex) {
+        auto winding = windings[windingIndex];
+        Wire strand = winding.resolve_wire();
+        const double strandConductingArea = strand.calculate_conducting_area();
+        const double strandDiameter = strand.get_conducting_diameter() ? resolve_dimensional_values(strand.get_conducting_diameter().value()) : 0;
+        const double windingCopper = static_cast<double>(winding.get_number_turns()) * winding.get_number_parallels() * strandConductingArea;
+        bool spare = winding.get_number_parallels() == 1 && strand.get_type() == WireType::ROUND && strandDiameter > 0;
+        double minimumArea = 0;
+        for (size_t operatingPointIndex = 0; spare && operatingPointIndex < operatingPoints.size(); ++operatingPointIndex) {
+            const auto& excitations = operatingPoints[operatingPointIndex].get_excitations_per_winding();
+            if (windingIndex >= excitations.size() || !excitations[windingIndex].get_current()) {
+                throw InvalidInputException(ErrorCode::MISSING_DATA,
+                    "Sizing stand-in copper: operating point " + std::to_string(operatingPointIndex) + " has no current for winding " +
+                    std::to_string(windingIndex));
+            }
+            const SignalDescriptor current = excitations[windingIndex].get_current().value();
+            if (strand.calculate_effective_current_density(current, temperature) > maximumEffectiveCurrentDensity) {
+                spare = false;
+                break;
+            }
+            minimumArea = std::max(minimumArea,
+                get_conducting_area_for_current(current, strandConductingArea, temperature, maximumEffectiveCurrentDensity));
+        }
+        if (spare && minimumArea < strandConductingArea) {
+            spareWindings[windingIndex] = {minimumArea, strandConductingArea};
+            const double minimumDiameter = std::sqrt(4 * minimumArea / std::numbers::pi);
+            spareWindowArea += static_cast<double>(winding.get_number_turns()) * minimumArea / Wire::get_filling_factor_round(minimumDiameter);
+        }
+        else if (strandDiameter > 0) {
+            // Strands sized to the current (parallels at the maximum density): more parallels of
+            // the same strand are as windable, so they scale with the window too.
+            bundleWindings[windingIndex] = winding.get_number_parallels();
+            spareWindowArea += windingCopper / Wire::get_filling_factor_round(strandDiameter);
+        }
+        else {
+            fixedWindowArea += windingCopper;
+        }
+    }
+    if (spareWindings.empty() && bundleWindings.empty()) {
+        return magnetic;
+    }
+
+    // The coil stage may wind those windings with any round wire between that minimum and the
+    // strand, and thicker copper runs cooler: the copper is the thickest that still fits, the
+    // window filled as MagneticFilterWindowCopperCapacity fills it (round-wire filling factor
+    // times the bobbin filling factor), then checked laid out as whole layers (fast_wind).
+    const auto& core = magnetic.get_core();
+    if (core.get_winding_windows().empty() || !core.get_winding_windows()[0].get_area()) {
+        throw CoreNotProcessedException("Sizing stand-in copper: core " + magnetic.get_reference() + " has no winding window area");
+    }
+    const double usableWindowArea = core.get_winding_windows()[0].get_area().value() *
+                                    MagneticFilterAreaProduct::get_bobbin_filling_factor(core, inputs.get_wiring_technology());
+    const double maximumScale = std::max(1.0, (usableWindowArea - fixedWindowArea) / spareWindowArea);
+    const std::string shapeName = core.get_shape_name();
+    const bool windable = !is_pqi_or_ui_shape(shapeName);
+
+    auto sized_with = [&](double scale) {
+        Magnetic sized = magnetic;
+        auto sizedWindings = windings;
+        for (const auto& [windingIndex, areas] : spareWindings) {
+            const double conductingArea = std::min(areas.second, areas.first * scale);
+            sizedWindings[windingIndex].set_wire(Wire::get_wire_for_conducting_area(conductingArea, temperature, true));
+        }
+        for (const auto& [windingIndex, numberParallels] : bundleWindings) {
+            sizedWindings[windingIndex].set_number_parallels(
+                std::max<int64_t>(numberParallels, static_cast<int64_t>(std::floor(static_cast<double>(numberParallels) * scale))));
+        }
+        sized.get_mutable_coil().set_functional_description(sizedWindings);
+        return sized;
+    };
+    // Fits: the strand coil (losses) AND its merged-strand copy (thermal network) both lay out
+    // as whole layers inside the window.
+    const double mergeTemperature = saturation_derating_temperature(operatingPoints[0].get_conditions().get_ambient_temperature());
+    auto fits = [&](Magnetic sized) {
+        SettingsGuard<bool> coilDelimitGuard(settings, &Settings::get_coil_delimit_and_compact, &Settings::set_coil_delimit_and_compact, false);
+        if (std::holds_alternative<std::string>(sized.get_coil().get_bobbin())) {
+            prepare_bobbin_for_non_pqi(&sized, shapeName);
+        }
+        Magnetic merged = with_merged_strands(sized, mergeTemperature);
+        for (auto* laidOut : {&sized, &merged}) {
+            laidOut->get_mutable_coil().fast_wind();
+            if (!laidOut->get_coil().get_turns_description().has_value() || !laidOut->get_mutable_coil().are_sections_and_layers_fitting()) {
+                return false;
+            }
+        }
+        return true;
+    };
+    if (!fillWindow) {
+        return sized_with(1.0);
+    }
+    if (!windable || maximumScale == 1.0) {
+        return sized_with(maximumScale);
+    }
+    // The window fill, else the geometric middle between it and the minimum copper, else the
+    // minimum copper (its fit is the caller's to judge): at most two layouts per candidate.
+    for (double scale : {maximumScale, std::sqrt(maximumScale)}) {
+        auto sized = sized_with(scale);
+        if (fits(sized)) {
+            return sized;
+        }
+    }
+    return sized_with(1.0);
+}
+
+Magnetic MagneticFilter::with_merged_strands(const Magnetic& magnetic, double temperature) {
+    Magnetic merged = magnetic;
+    auto windings = merged.get_coil().get_functional_description();
+    bool changed = false;
+    for (auto& winding : windings) {
+        if (winding.get_number_parallels() > 1) {
+            auto strand = winding.resolve_wire();
+            const double copperArea = strand.calculate_conducting_area() * winding.get_number_parallels();
+            winding.set_wire(Wire::get_wire_for_conducting_area(copperArea, temperature, true));
+            winding.set_number_parallels(1);
+            changed = true;
+        }
+    }
+    if (changed) {
+        merged.get_mutable_coil().set_functional_description(windings);
+    }
+    return merged;
 }
 
 std::optional<std::string> MagneticFilter::core_losses_not_evaluable_reason(Magnetic* magnetic) {

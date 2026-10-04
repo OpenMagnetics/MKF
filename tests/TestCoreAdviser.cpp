@@ -795,6 +795,12 @@ TEST_CASE("Test_CoreAdviserAvailableCores_No_Toroids_Two_Windings", "[adviser][c
     OpenMagnetics::Inputs inputs;
 
     prepare_test_parameters(dcCurrent, ambientTemperature, frequency, turnsRatios, desiredMagnetizingInductance, inputs, voltagePeakToPeak);
+    // Fixture correction (ABT #1680): create_quick_operating_point reflects the secondary as if
+    // the ratio were Ns/Np, so ratio 0.1 builds a 10:1 step-down secondary (60 Vpp at ten times
+    // the primary current). MKF's turns ratio is Np/Ns: the requirement must say 10, or the
+    // window copper capacity screen sizes ten times the turns at ten times the current and
+    // rejects every core.
+    inputs.get_mutable_design_requirements().get_mutable_turns_ratios()[0].set_nominal(10);
 
     std::map<CoreAdviser::CoreAdviserFilters, double> weights;
     weights[CoreAdviser::CoreAdviserFilters::COST] = 1;
@@ -1487,6 +1493,12 @@ TEST_CASE("Test_CoreAdviserStandardCores_All_Shapes_Two_Windings", "[adviser][co
     inputs.get_mutable_design_requirements().get_mutable_magnetizing_inductance().set_minimum(desiredMagnetizingInductance);
     inputs.get_mutable_design_requirements().get_mutable_magnetizing_inductance().set_nominal(std::nullopt);
     inputs.get_mutable_design_requirements().get_mutable_magnetizing_inductance().set_maximum(std::nullopt);
+    // Fixture correction (ABT #1680): create_quick_operating_point reflects the secondary as if
+    // the ratio were Ns/Np, so ratio 0.1 builds a 10:1 step-down secondary (21 V, 33.8 A rms
+    // against 211 V, 3.4 A). MKF's turns ratio is Np/Ns: the requirement must say 10, or the
+    // window copper capacity screen sizes ten times the turns at ten times the current and
+    // rejects every core.
+    inputs.get_mutable_design_requirements().get_mutable_turns_ratios()[0].set_nominal(10);
 
     OperatingPoint operatingPoint;
     CoreAdviser coreAdviser;
@@ -3619,6 +3631,56 @@ TEST_CASE("Test_CoreAdviser_Window_Copper_Capacity_Counts_Line_Frequency_Copper_
     settings.reset();
 }
 
+TEST_CASE("Test_CoreAdviser_Temperature_Lays_Out_Line_Frequency_Stand_In_Copper_Sized_To_Its_Current", "[adviser][core-adviser][magnetic-filter][temperature-filter]") {
+    // Same PFC boost choke stand-in as above (PFC_Inputs.mas.json, 50 Hz, 32.3 A rms, 65 turns on
+    // a 4-stack E 114/46/35). The 18.6 mm line-frequency strand lays out three turns per layer,
+    // so the temperature filter rejected every core with "whole layers do not fit" and the PFC
+    // choke tests got no core. The core adviser's temperature filter now lays out the copper the
+    // coil stage could wind (MagneticFilter::with_copper_sized_to_current): thinner than the
+    // strand, at least the copper the current needs, and it must fit the window as whole layers.
+    settings.reset();
+    clear_databases();
+    auto inputs = load_test_inputs("PFC_Inputs.mas.json");
+
+    auto strand = OpenMagnetics::Wire::get_wire_for_frequency(50, inputs.get_maximum_temperature(), true);
+    const double strandDiameter = resolve_dimensional_values(strand.get_conducting_diameter().value());
+    OpenMagnetics::Magnetic choke;
+    choke.set_core(OpenMagneticsTesting::get_quick_core("E 114/46/35", OpenMagneticsTesting::get_residual_gap(), 4, "3C95"));
+    choke.set_coil(OpenMagneticsTesting::get_quick_coil({65}, {1}, "E 114/46/35", 1, MAS::WindingOrientation::OVERLAPPING,
+                                                       MAS::WindingOrientation::OVERLAPPING, MAS::CoilAlignment::CENTERED,
+                                                       MAS::CoilAlignment::CENTERED, {strand}));
+
+    auto sized = MagneticFilter::with_copper_sized_to_current(choke, inputs, defaults.maximumEffectiveCurrentDensity);
+    auto sizedWinding = sized.get_coil().get_functional_description()[0];
+    auto sizedCoil = sized.get_coil();
+    auto sizedWire = sizedCoil.resolve_wire(0);
+    const double sizedDiameter = resolve_dimensional_values(sizedWire.get_conducting_diameter().value());
+    const double rms = inputs.get_operating_points()[0].get_excitations_per_winding()[0].get_current()->get_processed()->get_rms().value();
+    const double minimumDiameter = 2 * sqrt(rms / defaults.maximumEffectiveCurrentDensity / M_PI);
+    INFO("strand " << strandDiameter * 1000 << " mm, sized " << sizedDiameter * 1000 << " mm x" << sizedWinding.get_number_parallels()
+         << ", DC minimum " << minimumDiameter * 1000 << " mm");
+    CHECK(sizedWinding.get_number_turns() == 65);
+    CHECK(sizedDiameter < strandDiameter);
+    CHECK(sizedDiameter * sqrt(sizedWinding.get_number_parallels()) >= minimumDiameter);
+    // The candidate keeps its stand-in coil.
+    auto chokeCoil = choke.get_coil();
+    CHECK(resolve_dimensional_values(chokeCoil.resolve_wire(0).get_conducting_diameter().value()) == strandDiameter);
+
+    const double maximumTemperature = resolve_maximum_design_temperature(inputs);
+    MagneticFilterTemperature standInTemperature(inputs, maximumTemperature);
+    standInTemperature.set_size_stand_in_copper(true);  // as the core adviser runs it
+    auto [unusedSized, sizedHottest] = standInTemperature.evaluate_magnetic(&choke, &inputs);
+    INFO("hottest with sized copper " << sizedHottest << " C");
+    CHECK(sizedHottest < std::numeric_limits<double>::max());
+
+    // With the strand itself (a real coil's own wires, the flag off) the window holds no whole layers.
+    MagneticFilterTemperature ownWiresTemperature(inputs, maximumTemperature);
+    auto [ownWiresValid, ownWiresHottest] = ownWiresTemperature.evaluate_magnetic(&choke, &inputs);
+    CHECK_FALSE(ownWiresValid);
+    CHECK(ownWiresHottest == std::numeric_limits<double>::max());
+    settings.reset();
+}
+
 TEST_CASE("Test_CoreAdviser_Stand_In_Transformer_Losses_And_Temperature_Count_The_Copper_Of_Every_Winding", "[adviser][core-adviser][magnetic-filter][temperature-filter]") {
     // The core stage judges a transformer core with a one-winding stand-in coil. Its loss filter
     // used to reject such a candidate outright (winding count != excitation count) and the core
@@ -3675,6 +3737,7 @@ TEST_CASE("Test_CoreAdviser_Stand_In_Transformer_Losses_And_Temperature_Count_Th
 
     const double maximumTemperature = resolve_maximum_design_temperature(inputs);
     MagneticFilterTemperature temperature(inputs, maximumTemperature);
+    temperature.set_size_stand_in_copper(true);  // as the core adviser runs it on its stand-ins
     auto [unusedFull, hottest] = temperature.evaluate_magnetic(&standIn, &inputs);
     auto [unusedLight, lightHottest] = temperature.evaluate_magnetic(&standIn, &lightInputs);
     INFO("hottest " << hottest << " C, at a tenth of the current " << lightHottest << " C");

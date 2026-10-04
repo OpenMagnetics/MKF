@@ -345,6 +345,7 @@ CoreAdviser::MagneticCoreFilterTemperature::MagneticCoreFilterTemperature(
     Inputs inputs, std::map<std::string, std::string> models, double maximumTemperature)
 {
     _filter = MagneticFilterTemperature(inputs, maximumTemperature);
+    _filter.set_size_stand_in_copper(true);
 }
 
 std::vector<std::pair<Magnetic, double>> CoreAdviser::MagneticCoreFilterTemperature::filter_magnetics(

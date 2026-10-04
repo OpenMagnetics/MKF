@@ -519,9 +519,12 @@ std::pair<bool, double> MagneticFilterWindowCopperCapacity::evaluate_magnetic(Ma
     double requiredCopperArea = 0;
     double requiredWindowArea = 0;
     std::string perWinding;
+    const bool standIn = std::holds_alternative<std::string>(coil.get_bobbin());
     for (size_t windingIndex = 0; windingIndex < numberWindings; ++windingIndex) {
         double numberTurns;
-        if (windingIndex < windings.size()) {
+        // A stand-in (bobbin still a name) seeds the first winding's turns only: the common-mode
+        // choke stand-in carries every winding, the others at the placeholder 1 turn.
+        if (windingIndex < windings.size() && (windingIndex == 0 || !standIn)) {
             numberTurns = static_cast<double>(windings[windingIndex].get_number_turns());
         }
         else {
@@ -549,36 +552,8 @@ std::pair<bool, double> MagneticFilterWindowCopperCapacity::evaluate_magnetic(Ma
             const auto cacheKey = std::make_tuple(strandConductingDiameter, windingIndex, operatingPointIndex);
             auto cached = _conductorAreaCache.find(cacheKey);
             if (cached == _conductorAreaCache.end()) {
-                if (!current.get_processed() || !current.get_processed()->get_rms()) {
-                    throw InvalidInputException(ErrorCode::MISSING_DATA,
-                        "Window copper capacity: the current of winding " + std::to_string(windingIndex) + " has no processed rms");
-                }
-                // The effective current density is never below the DC one, so the conductor has at
-                // least rms / maximum of copper, and the strand itself is enough: bisect between.
-                double lowerArea = current.get_processed()->get_rms().value() / _maximumEffectiveCurrentDensity;
-                double upperArea = strandConductingArea;
-                if (!(lowerArea > 0)) {
-                    throw CalculationException(ErrorCode::CALCULATION_INVALID_RESULT,
-                        "Window copper capacity: winding " + std::to_string(windingIndex) + " carries no rms current to size its copper");
-                }
-                auto density_at = [&](double conductingArea) {
-                    return Wire::get_wire_for_conducting_area(conductingArea, _temperature, true).calculate_effective_current_density(current, _temperature);
-                };
-                if (lowerArea >= upperArea || density_at(lowerArea) <= _maximumEffectiveCurrentDensity) {
-                    upperArea = std::min(lowerArea, upperArea);
-                }
-                else {
-                    while (upperArea / lowerArea > 1.001) {
-                        const double middleArea = std::sqrt(lowerArea * upperArea);
-                        if (density_at(middleArea) > _maximumEffectiveCurrentDensity) {
-                            lowerArea = middleArea;
-                        }
-                        else {
-                            upperArea = middleArea;
-                        }
-                    }
-                }
-                cached = _conductorAreaCache.emplace(cacheKey, upperArea).first;
+                const double conductingArea = get_conducting_area_for_current(current, strandConductingArea, _temperature, _maximumEffectiveCurrentDensity);
+                cached = _conductorAreaCache.emplace(cacheKey, conductingArea).first;
             }
             strandsPerTurn = std::max(strandsPerTurn, cached->second / strandConductingArea);
         }

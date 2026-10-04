@@ -608,7 +608,20 @@ TEST_CASE("MagneticFilter TEMPERATURE snapshot",
     // CRASH. We construct via the explicit 2-arg ctor to keep this test alive,
     // and assert that the factory variant THROWS or crashes — proving the bug.
     settings.reset();
+    // Fixture correction: the temperature filter now solves the copper of every winding the
+    // inputs excite, and a coil with a winding the inputs do not excite has no current to give
+    // it (MagneticFilter::with_every_winding throws). The reference inputs excite one winding,
+    // so the filter gets the reference magnetic's first winding alone (40 turns), wound.
     auto magnetic = make_reference_magnetic();
+    {
+        auto coil = magnetic.get_coil();
+        auto windings = coil.get_functional_description();
+        windings.resize(1);
+        coil.set_functional_description(windings);
+        coil.unwind();
+        coil.wind();
+        magnetic.set_coil(coil);
+    }
     auto inputs = make_reference_inputs();
     MagneticFilterTemperature filter(inputs, 130.0);
     auto [valid, score] = filter.evaluate_magnetic(&magnetic, &inputs);
