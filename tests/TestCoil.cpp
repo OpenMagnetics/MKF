@@ -16748,3 +16748,42 @@ TEST_CASE("Test_Coil_Rewind_With_A_Section_Left_Without_Layers", "[constructive-
     }
     settings.reset();
 }
+
+// The rough layout (fast_wind, used by the advisers' core-stage loss and temperature screens)
+// split the window between windings by copper AREA. A winding occupies whole layers, though:
+// 15 turns of a 1.872 mm conductor in a 27.3 mm tall window need two layers (14 fit in one,
+// 3.744 mm), but the area split gave the primary 3.52 mm of the 8 mm window and the secondary
+// (8 turns of 2.88 mm, one 2.88 mm layer) 4.45 mm. wind_by_layers then crammed all 15 primary
+// turns into one layer and its end turns sat 0.39 mm inside the yokes, though both windings
+// fit side by side (3.744 + 2.88 + 2 x 0.025 insulation = 6.67 of 8 mm). The thermal network
+// refuses such overlapping turns.
+TEST_CASE("Test_Coil_Fast_Wind_Gives_Each_Winding_Its_Whole_Layers", "[constructive-model][coil][fast-wind]") {
+    settings.reset();
+    settings.set_coil_delimit_and_compact(false);
+    const double windowHeight = 0.0273;
+    const double windowWidth = 0.008;
+    auto coil = OpenMagneticsTesting::get_quick_coil({15, 8}, {1, 1}, windowHeight, windowWidth, {0.01 + windowWidth / 2, 0}, 1,
+                                                     WindingOrientation::OVERLAPPING, WindingOrientation::OVERLAPPING,
+                                                     CoilAlignment::CENTERED, CoilAlignment::CENTERED,
+                                                     {find_wire_by_name("Round 1.80 - Grade 1"), find_wire_by_name("Round 2.80 - Grade 1")});
+    // The case: the primary needs a second layer, and the whole layers fit the window.
+    const double primaryDiameter = coil.get_wires()[0].get_maximum_outer_width();
+    const double secondaryDiameter = coil.get_wires()[1].get_maximum_outer_width();
+    REQUIRE(15 * primaryDiameter > windowHeight);
+    REQUIRE(8 * secondaryDiameter < windowHeight);
+    REQUIRE(2 * primaryDiameter + secondaryDiameter < windowWidth);
+
+    REQUIRE(coil.fast_wind());
+    CHECK(coil.are_sections_and_layers_fitting());
+    const auto conductionSections = coil.get_sections_description_conduction();
+    for (const auto& section : conductionSections) {
+        const double neededWidth = section.get_partial_windings()[0].get_winding() == "winding 0" ? 2 * primaryDiameter : secondaryDiameter;
+        CHECK(section.get_dimensions()[0] >= neededWidth);
+    }
+    // No turn crosses the top or bottom of the window.
+    const auto turns = coil.get_turns_description().value();
+    for (const auto& turn : turns) {
+        CHECK(std::abs(turn.get_coordinates()[1]) + turn.get_dimensions().value()[1] / 2 <= windowHeight / 2 + 1e-9);
+    }
+    settings.reset();
+}

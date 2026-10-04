@@ -963,6 +963,10 @@ class Coil : public MAS::Coil {
         void equalize_margins(const std::vector<std::pair<ElectricalType, std::pair<size_t, double>>>& orderedSectionsWithInsulation, size_t conductionSectionOffset = 0);
 
         std::vector<double> get_proportion_per_winding_based_on_wires();
+        // Proportions that give every winding the whole layers its turns need in the sections
+        // wind_by_sections() just laid out (see fast_wind), or nullopt when the current split
+        // already holds them, or when the window cannot hold them at all.
+        std::optional<std::vector<double>> get_proportion_per_winding_for_whole_layers();
         // conductionSectionOffset: number of conduction sections wound by previous groups
         // (_marginsPerSection is keyed by conduction ordinal flat across all groups;
         // single-group coils pass 0).

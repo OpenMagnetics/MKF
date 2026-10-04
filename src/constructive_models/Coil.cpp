@@ -6410,6 +6410,21 @@ bool Coil::fast_wind() {
     if (!get_sections_description()) {
         return false;
     }
+    // wind_by_sections() splits the window in proportion to each winding's copper AREA, but a
+    // winding occupies whole layers: a few thick turns that need one turn more than a layer holds
+    // need a second full layer. On a stand-in transformer (E 42/21/20, 15 primary turns of a
+    // 1.94 mm conductor, 14 per layer, two 4-turn 3.14 mm centre-tap halves) the area split gave
+    // the primary 3.07 mm for its two 1.94 mm layers and the secondary 4.33 mm for its single
+    // 3.14 mm one, so wind_by_layers crammed all 15 primary turns into one layer and the end
+    // turns sat 0.9 mm inside the yokes, though both windings fit side by side (7.0 of 7.4 mm).
+    // The full wind() repairs this in try_rewind(); the rough layout re-splits once by whole
+    // layers instead.
+    if (auto wholeLayerProportions = get_proportion_per_winding_for_whole_layers()) {
+        wind_by_sections(wholeLayerProportions.value(), _currentPattern, _currentRepetitions);
+        if (!get_sections_description()) {
+            return false;
+        }
+    }
     wind_by_layers();
     if (!get_layers_description()) {
         return false;
@@ -9914,6 +9929,127 @@ std::vector<std::pair<ElectricalType, std::pair<size_t, double>>> Coil::add_insu
     }
 
     return orderedSectionsWithInsulation;
+}
+
+std::optional<std::vector<double>> Coil::get_proportion_per_winding_for_whole_layers() {
+    if (!get_sections_description()) {
+        throw CoilNotProcessedException("get_proportion_per_winding_for_whole_layers needs the coil wound by sections");
+    }
+    auto bobbin = resolve_bobbin();
+    // Rectangular, single-group windows only: there the sections stack along one axis of one
+    // window and a proportion is a share of that axis. Round windows lay layers out in angle
+    // (get_number_layers_needed_and_number_physical_turns) and multi-group coils split each group
+    // separately; their split is left as wind_by_sections() made it.
+    if (bobbin.get_winding_window_shape() != WindingWindowShape::RECTANGULAR) {
+        return std::nullopt;
+    }
+    if (get_groups_description() && get_groups_description()->size() > 1) {
+        return std::nullopt;
+    }
+    const auto sections = get_sections_description().value();
+    const size_t restrictiveAxis = bobbin.get_winding_window_sections_orientation(0) == WindingOrientation::OVERLAPPING ? 0 : 1;
+    const size_t freeAxis = 1 - restrictiveAxis;
+    auto wires = get_wires();
+    const size_t numberWindings = get_functional_description().size();
+
+    // Per winding: the space its sections have now and the space their whole layers need, both
+    // counted as try_rewind() counts them (a section's own extent plus half of each insulation
+    // carved out of it; a winding split over k sections claims k times its largest section).
+    std::vector<double> largestCurrentSpace(numberWindings, 0);
+    std::vector<double> largestNeededSpace(numberWindings, 0);
+    std::vector<size_t> numberSectionsPerWinding(numberWindings, 0);
+    bool anySectionShort = false;
+    for (size_t sectionIndex = 0; sectionIndex < sections.size(); ++sectionIndex) {
+        const auto& section = sections[sectionIndex];
+        if (section.get_type() != ElectricalType::CONDUCTION) {
+            continue;
+        }
+        if (section.get_partial_windings().empty()) {
+            throw InvalidInputException(ErrorCode::INVALID_COIL_CONFIGURATION, "Section " + section.get_name() + " has no windings");
+        }
+        // Every winding wound with another in this section shares its layers: count all their
+        // turns, at the largest conductor among them.
+        int64_t physicalTurnsInSection = 0;
+        double conductorAlongRestrictive = 0;
+        double conductorAlongFree = 0;
+        bool oneTurnPerLayer = false;
+        for (const auto& partialWinding : section.get_partial_windings()) {
+            const size_t windingIndex = get_winding_index_by_name(partialWinding.get_winding());
+            const auto& parallelsProportion = partialWinding.get_parallels_proportion();
+            for (size_t parallelIndex = 0; parallelIndex < parallelsProportion.size(); ++parallelIndex) {
+                physicalTurnsInSection += std::llround(parallelsProportion[parallelIndex] * get_number_turns(windingIndex));
+            }
+            auto& wire = wires[windingIndex];
+            const double wireWidth = wire.get_maximum_outer_width();
+            const double wireHeight = wire.get_maximum_outer_height();
+            conductorAlongRestrictive = std::max(conductorAlongRestrictive, restrictiveAxis == 0 ? wireWidth : wireHeight);
+            conductorAlongFree = std::max(conductorAlongFree, restrictiveAxis == 0 ? wireHeight : wireWidth);
+            // Same special cases as wind_by_rectangular_layers: a foil layer is one turn, and so is
+            // a contiguous layer of rectangular wire when the setting asks for it.
+            if (section.get_layers_orientation() == WindingOrientation::OVERLAPPING && wire.get_type() == WireType::FOIL) {
+                oneTurnPerLayer = true;
+            }
+            if (section.get_layers_orientation() == WindingOrientation::CONTIGUOUS && wire.get_type() == WireType::RECTANGULAR &&
+                settings.get_coil_only_one_turn_per_layer_in_contiguous_rectangular()) {
+                oneTurnPerLayer = true;
+            }
+        }
+        if (physicalTurnsInSection == 0) {
+            continue;
+        }
+        if (conductorAlongRestrictive <= 0 || conductorAlongFree <= 0) {
+            throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA, "A wire in section " + section.get_name() + " has no outer dimensions");
+        }
+        const double conductorsAlongFreeAxis = oneTurnPerLayer ? 1.0 : std::floor(section.get_dimensions()[freeAxis] / conductorAlongFree);
+        if (conductorsAlongFreeAxis < 1) {
+            // Not one conductor fits across the section: no split of the window helps.
+            return std::nullopt;
+        }
+        const double neededRestrictive = std::ceil(double(physicalTurnsInSection) / conductorsAlongFreeAxis) * conductorAlongRestrictive;
+        const double currentRestrictive = section.get_dimensions()[restrictiveAxis];
+        if (neededRestrictive > currentRestrictive * (1 + 1e-9)) {
+            anySectionShort = true;
+        }
+        double carvedInsulation = 0;
+        if (sectionIndex >= 2 && sections[sectionIndex - 1].get_type() == ElectricalType::INSULATION) {
+            carvedInsulation += sections[sectionIndex - 1].get_dimensions()[restrictiveAxis] / 2;
+        }
+        if (sectionIndex + 2 < sections.size() && sections[sectionIndex + 1].get_type() == ElectricalType::INSULATION) {
+            carvedInsulation += sections[sectionIndex + 1].get_dimensions()[restrictiveAxis] / 2;
+        }
+        // The section is credited to the winding that leads it (wound-with windings share it).
+        const size_t leaderIndex = get_winding_group_minimum_index(get_winding_index_by_name(section.get_partial_windings()[0].get_winding()));
+        largestCurrentSpace[leaderIndex] = std::max(largestCurrentSpace[leaderIndex], currentRestrictive + carvedInsulation);
+        largestNeededSpace[leaderIndex] = std::max(largestNeededSpace[leaderIndex], neededRestrictive + carvedInsulation);
+        numberSectionsPerWinding[leaderIndex]++;
+    }
+    if (!anySectionShort) {
+        return std::nullopt;
+    }
+
+    double totalCurrentSpace = 0;
+    double totalNeededSpace = 0;
+    for (size_t windingIndex = 0; windingIndex < numberWindings; ++windingIndex) {
+        totalCurrentSpace += numberSectionsPerWinding[windingIndex] * largestCurrentSpace[windingIndex];
+        totalNeededSpace += numberSectionsPerWinding[windingIndex] * largestNeededSpace[windingIndex];
+    }
+    const double spareSpace = totalCurrentSpace - totalNeededSpace;
+    if (spareSpace < 0) {
+        // The whole layers do not fit side by side: the copper does not fit this window.
+        return std::nullopt;
+    }
+    // Each winding gets its whole layers; the space left over is shared as the copper-area split
+    // shared the window.
+    std::vector<double> proportionPerWinding(numberWindings, 0);
+    for (size_t windingIndex = 0; windingIndex < numberWindings; ++windingIndex) {
+        if (numberSectionsPerWinding[windingIndex] == 0) {
+            continue;
+        }
+        const double currentSpace = numberSectionsPerWinding[windingIndex] * largestCurrentSpace[windingIndex];
+        const double neededSpace = numberSectionsPerWinding[windingIndex] * largestNeededSpace[windingIndex];
+        proportionPerWinding[windingIndex] = (neededSpace + spareSpace * currentSpace / totalCurrentSpace) / totalCurrentSpace;
+    }
+    return proportionPerWinding;
 }
 
 std::vector<double> Coil::get_proportion_per_winding_based_on_wires() {
