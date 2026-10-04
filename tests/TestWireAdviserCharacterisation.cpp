@@ -147,24 +147,30 @@ void check_top_n(const std::string& label,
 // WireAdviser now breaks score ties by ascending outer diameter, which
 // promotes the thinner-insulation variant. Same fix promoted Round 17.0
 // Single Build over Heavy Build in slot 4.
+// ABT #1446 (2026-10-04): the area filter now also requires whole turns per layer to fit the
+// section depth. Round 16.0 (1.35 mm over the insulation) packs 11 turns per 15 mm layer, so 42
+// turns need 4 layers = 5.4 mm in this 5 mm section: it never fitted, the bulk-area test let it
+// through. Round 17.0 takes 4 x 1.21 = 4.84 mm. Re-pinned with Alf's approval.
 const std::vector<TopEntry> kTopAllTypes = {
-    {"Round 16.0 - Single Build", 3.9999898124395115},
-    {"Round 1.25 - Grade 1",      3.9983446101392519},
-    {"Round 16.5 - Single Build", 3.9969312641903958},
-    {"Round 16.5 - Heavy Build",  3.9969312641903958},
-    {"Round 17.0 - Single Build", 3.9933077449224341},
+    {"Round 17.0 - Single Build", 3.9999867967525091},
+    {"Round 17.0 - Heavy Build",  3.9999867967525091},
+    {"Round 1.12 - Grade 1",      3.9980298419951352},
+    {"Round 1.12 - Grade 2",      3.9980298419951352},
+    {"Round 1.12 - Grade 3",      3.9980298419951352},
 };
 
 // Phase 1 fix landed: previously top-2 tied at 3.9996749837491876 with
 // Single-Served before Unserved with no deterministic tie-break. The
 // outer-diameter tie-break now promotes Unserved (no serving = smaller
 // outer diameter).
+// ABT #1446 (2026-10-04): the same whole-turn packing check now rejects the former first choice,
+// Litz 10x0.3, in this 5 mm deep section. Re-pinned with Alf's approval.
 const std::vector<TopEntry> kTopLitzHighFreq = {
-    {"Litz 10x0.3 - Grade 1 - Unserved",      3.9996749837491876},
-    {"Litz 10x0.3 - Grade 1 - Single Served", 3.9996749837491876},
-    {"Litz 6x0.4 - Grade 1 - Unserved",       3.9993320286548131},
-    {"Litz 45x0.14 - Grade 1 - Unserved",     3.9953893064831778},
-    {"Litz 4x0.5 - Grade 1 - Unserved",       3.995096563768834},
+    {"Litz 20x0.2 - Grade 1 - Unserved",       3.9985155090241427},
+    {"Litz 30x0.16 - Grade 1 - Unserved",      3.9946058368921773},
+    {"Litz 6x0.355 - Grade 1 - Unserved",      3.9939837949108128},
+    {"Litz 6x0.355 - Grade 1 - Single Served", 3.9939837949108128},
+    {"Litz 6x0.355 - Grade 2 - Unserved",      3.9939837949108128},
 };
 
 // Phase 1 fix landed: the planar dataset generator (create_planar_dataset)
