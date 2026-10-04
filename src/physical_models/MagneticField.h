@@ -22,6 +22,45 @@ using namespace MAS; // QUAL-001 TODO: qualify types and remove
 
 namespace OpenMagnetics {
 
+// ABT #1645: thin-strip transmission. A foil turn is a strip of width W (its wide conducting dimension) and thickness
+// t << W. In a uniform field H0 normal to its wide face it carries, to first order, the eddy sheet current
+// K(x) = j omega mu0 sigma t H0 x (Faraday, curl E = -j omega mu0 H, with x across the width from the centre and no
+// net current; t << delta, so the current is uniform through the thickness). Line currents K dx at +-x give the
+// centre a normal field -K dx / (2 pi x) each, so the sheet adds -(dK/dx) W / (2 pi) = -j omega mu0 sigma t W / (2 pi)
+// H0 = -j W t / (pi delta^2) H0 (omega mu0 sigma = 2 / delta^2), opposing H0. Solved self-consistently (the eddy current is driven by the total normal field H, not
+// by H0): H = H0 - j (W t / (pi delta^2)) H, so the strip transmits the normal component with
+// T = 1 / (1 + j W t / (pi delta^2)) and leaves the tangential one alone. It applies to the field of any source
+// reaching a conductor (foil, round or litz) through the strip: the strips counted are the FOIL turns strictly
+// between the source and the induced point whose plane the straight source-to-point line crosses within the strip's
+// width. T is complex and per harmonic; it multiplies the normal component of the phasor (in-phase and quadrature).
+struct ScreeningStrip {
+    double centreX;
+    double centreY;
+    double tangentX;  // along the wide dimension
+    double tangentY;
+    double normalX;   // normal to the wide face
+    double normalY;
+    double width;     // the wide conducting dimension, W
+    double thickness; // the thin conducting dimension, t
+    size_t windingIndex;
+    int64_t turnIndex;
+};
+
+// A unit-current field contribution (Hx, Hy) that crosses `strips` (indices into the strip list, ordered from the
+// source to the induced point) on its way.
+struct ScreenedFieldSum {
+    size_t windingIndex;
+    std::vector<uint32_t> strips;
+    double fieldX;
+    double fieldY;
+};
+
+// The strips strictly between the source (sourceX, sourceY) and the induced point, ordered from the source; the
+// source's own strip (excludedSourceTurn, for a real turn) and the induced point's own strip (excludedInducedTurn)
+// never count.
+std::vector<uint32_t> strips_between(const std::vector<ScreeningStrip>& strips, double sourceX, double sourceY, double pointX, double pointY,
+                                     std::optional<int64_t> excludedSourceTurn, std::optional<int64_t> excludedInducedTurn);
+
 class MagneticFieldStrengthModel {
     public:
         std::vector<Wire> _wirePerWinding;
@@ -57,6 +96,14 @@ class MagneticFieldStrengthFringingEffectModel {
         // Field at (x, y) of the boundary sources for a net winding MMF of netAmpereTurns, Binns-Lawrenson sign convention.
         virtual std::pair<double, double> get_window_boundary_field([[maybe_unused]] double pointX, [[maybe_unused]] double pointY,
                                                                     [[maybe_unused]] double netAmpereTurns) const {
+            throw ModelNotAvailableException("This fringing effect model has no window-boundary sources");
+        }
+        // The same field per unit net MMF, split by the foil strips it crosses on its way to (x, y) (ABT #1645): returns
+        // the part that crosses none and appends the screened parts to `screened`, grouped by the strips they cross.
+        virtual std::pair<double, double> get_window_boundary_field_screened([[maybe_unused]] double pointX, [[maybe_unused]] double pointY,
+                                                                             [[maybe_unused]] const std::vector<ScreeningStrip>& strips,
+                                                                             [[maybe_unused]] std::optional<int64_t> inducedTurn,
+                                                                             [[maybe_unused]] std::vector<ScreenedFieldSum>& screened) const {
             throw ModelNotAvailableException("This fringing effect model has no window-boundary sources");
         }
 };
@@ -309,6 +356,8 @@ class MagneticFieldStrengthMmfBoundaryModel : public MagneticFieldStrengthFringi
     bool is_window_boundary_model() const override { return true; }
     void setup_window_boundary(Magnetic magnetic, std::optional<OperatingPoint> operatingPoint) override;
     std::pair<double, double> get_window_boundary_field(double pointX, double pointY, double netAmpereTurns) const override;
+    std::pair<double, double> get_window_boundary_field_screened(double pointX, double pointY, const std::vector<ScreeningStrip>& strips,
+                                                                 std::optional<int64_t> inducedTurn, std::vector<ScreenedFieldSum>& screened) const override;
     // Closed-form field of one uniform sheet (see the definition), Binns-Lawrenson sign convention.
     static std::pair<double, double> calculate_sheet_field(const WindowWallSheet& sheet, double current, double pointX, double pointY);
 };

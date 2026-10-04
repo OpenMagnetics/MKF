@@ -28,6 +28,7 @@ namespace std {
 #include <fstream>
 #include <iostream>
 #include <numbers>
+#include <complex>
 #include <streambuf>
 #include <vector>
 #include <list>
@@ -76,6 +77,9 @@ struct TurnSumsEntry {
     std::vector<double> relativeCurrentPerPosition;
     // Per induced point, per winding: (Hx, Hy) of the winding's turns with unit anchor current.
     std::vector<std::vector<std::pair<double, double>>> unitFieldPerInducedPointPerWinding;
+    // Per induced point: the unit-anchor fields that cross foil strips, grouped by winding and strips (ABT #1645).
+    // They are kept apart because their transmission depends on the harmonic.
+    std::vector<std::vector<ScreenedFieldSum>> screenedPerInducedPoint;
     size_t bytes;
 };
 
@@ -100,6 +104,12 @@ size_t turn_sums_entry_bytes(const TurnSumsEntry& entry) {
     }
     for (const auto& perWinding : entry.unitFieldPerInducedPointPerWinding) {
         bytes += sizeof(perWinding) + perWinding.size() * sizeof(std::pair<double, double>);
+    }
+    for (const auto& perPoint : entry.screenedPerInducedPoint) {
+        bytes += sizeof(perPoint);
+        for (const auto& sum : perPoint) {
+            bytes += sizeof(sum) + sum.strips.size() * sizeof(uint32_t);
+        }
     }
     return bytes;
 }
@@ -200,6 +210,72 @@ struct RectangleFieldKernel {
 };
 
 } // namespace
+
+std::vector<uint32_t> strips_between(const std::vector<ScreeningStrip>& strips, double sourceX, double sourceY, double pointX, double pointY,
+                                     std::optional<int64_t> excludedSourceTurn, std::optional<int64_t> excludedInducedTurn) {
+    // Scratch reused between calls: this runs once per source-point pair.
+    thread_local std::vector<std::pair<double, uint32_t>> crossings;
+    crossings.clear();
+    for (uint32_t stripIndex = 0; stripIndex < strips.size(); ++stripIndex) {
+        const auto& strip = strips[stripIndex];
+        if ((excludedSourceTurn && strip.turnIndex == excludedSourceTurn.value()) || (excludedInducedTurn && strip.turnIndex == excludedInducedTurn.value())) {
+            continue;
+        }
+        // Signed distances of source and point from the strip's plane: strictly on opposite sides.
+        const double sourceDistance = (sourceX - strip.centreX) * strip.normalX + (sourceY - strip.centreY) * strip.normalY;
+        const double pointDistance = (pointX - strip.centreX) * strip.normalX + (pointY - strip.centreY) * strip.normalY;
+        if (!(sourceDistance * pointDistance < 0)) {
+            continue;
+        }
+        const double fraction = sourceDistance / (sourceDistance - pointDistance);
+        const double crossingX = sourceX + fraction * (pointX - sourceX);
+        const double crossingY = sourceY + fraction * (pointY - sourceY);
+        const double along = (crossingX - strip.centreX) * strip.tangentX + (crossingY - strip.centreY) * strip.tangentY;
+        if (!(std::abs(along) < strip.width / 2)) {
+            continue;
+        }
+        crossings.emplace_back(fraction, stripIndex);
+    }
+    std::sort(crossings.begin(), crossings.end());
+    std::vector<uint32_t> result;
+    result.reserve(crossings.size());
+    for (const auto& crossing : crossings) {
+        result.push_back(crossing.second);
+    }
+    return result;
+}
+
+namespace {
+
+// ABT #1645: add a unit field that crosses `strips` to its group (same winding, same strips in the same order).
+void add_screened(std::vector<ScreenedFieldSum>& sums, size_t windingIndex, std::vector<uint32_t>&& strips, double fieldX, double fieldY) {
+    for (auto& sum : sums) {
+        if (sum.windingIndex == windingIndex && sum.strips == strips) {
+            sum.fieldX += fieldX;
+            sum.fieldY += fieldY;
+            return;
+        }
+    }
+    sums.push_back({windingIndex, std::move(strips), fieldX, fieldY});
+}
+
+// ABT #1645: the screened group's field after its strips, each transmitting its normal component by its T, in
+// order from the source; returns the complex (Hx, Hy) per unit source current.
+std::pair<std::complex<double>, std::complex<double>> transmit_through_strips(const ScreenedFieldSum& sum, const std::vector<ScreeningStrip>& strips,
+                                                                              const std::vector<std::complex<double>>& transmissionPerStrip) {
+    std::complex<double> fieldX = sum.fieldX;
+    std::complex<double> fieldY = sum.fieldY;
+    for (auto stripIndex : sum.strips) {
+        const auto& strip = strips[stripIndex];
+        const std::complex<double> normalChange = (fieldX * strip.normalX + fieldY * strip.normalY) * (transmissionPerStrip[stripIndex] - 1.0);
+        fieldX += normalChange * strip.normalX;
+        fieldY += normalChange * strip.normalY;
+    }
+    return {fieldX, fieldY};
+}
+
+} // namespace
+
 
 MagneticField::TurnSumsCacheStatistics MagneticField::get_turn_sums_cache_statistics() {
     auto& cache = turn_sums_cache();
@@ -547,6 +623,127 @@ std::pair<double, double> MagneticFieldStrengthMmfBoundaryModel::get_window_boun
     return {fieldX, fieldY};
 }
 
+// ABT #1645: a wall sheet is an extended source, so which strips its field crosses depends on the point of the sheet
+// it leaves from. Along the sheet that set changes only where the line to the induced point passes a strip's end, or
+// where the sheet meets a strip's plane: split there, each piece crosses one fixed set of strips (read at its middle)
+// and its field is the exact uniform-sheet field of the piece. No discretisation: the pieces are exact.
+namespace {
+// The field of a uniform sheet piece, as calculate_sheet_field, through its multipole series beyond 2 lengths (the
+// series and cut of setup_window_boundary: below 5e-9 of the filament term).
+std::pair<double, double> sheet_piece_field(const WindowWallSheet& piece, double pointX, double pointY) {
+    const double segmentX = piece.end[0] - piece.start[0];
+    const double segmentY = piece.end[1] - piece.start[1];
+    const double length = hypot(segmentX, segmentY);
+    const double dRe = 0.5 * (piece.start[0] + piece.end[0]) - pointX;
+    const double dIm = 0.5 * (piece.start[1] + piece.end[1]) - pointY;
+    const double dNormSquared = dRe * dRe + dIm * dIm;
+    if (!(length > 0) || dNormSquared < 4.0 * length * length) {
+        return MagneticFieldStrengthMmfBoundaryModel::calculate_sheet_field(piece, piece.current, pointX, pointY);
+    }
+    const double halfRe = segmentX / 2;
+    const double halfIm = segmentY / 2;
+    const double stepRe = halfRe * halfRe - halfIm * halfIm;
+    const double stepIm = 2 * halfRe * halfIm;
+    const double inverseRe = dRe / dNormSquared;
+    const double inverseIm = -dIm / dNormSquared;
+    const double inverseSquaredRe = inverseRe * inverseRe - inverseIm * inverseIm;
+    const double inverseSquaredIm = 2 * inverseRe * inverseIm;
+    double powerRe = 1;
+    double powerIm = 0;
+    double termRe = inverseRe;
+    double termIm = inverseIm;
+    double sumRe = 0;
+    double sumIm = 0;
+    for (size_t index = 0; index < 7; ++index) {
+        const double denominator = static_cast<double>(2 * index + 1);
+        const double momentRe = powerRe / denominator;
+        const double momentIm = powerIm / denominator;
+        sumRe += momentRe * termRe - momentIm * termIm;
+        sumIm += momentRe * termIm + momentIm * termRe;
+        const double nextPowerRe = powerRe * stepRe - powerIm * stepIm;
+        powerIm = powerRe * stepIm + powerIm * stepRe;
+        powerRe = nextPowerRe;
+        const double nextTermRe = termRe * inverseSquaredRe - termIm * inverseSquaredIm;
+        termIm = termRe * inverseSquaredIm + termIm * inverseSquaredRe;
+        termRe = nextTermRe;
+    }
+    const double prefactor = piece.current / (2 * std::numbers::pi);
+    return {prefactor * sumIm, prefactor * sumRe};
+}
+} // namespace
+
+std::pair<double, double> MagneticFieldStrengthMmfBoundaryModel::get_window_boundary_field_screened(double pointX, double pointY, const std::vector<ScreeningStrip>& strips,
+                                                                                                    std::optional<int64_t> inducedTurn, std::vector<ScreenedFieldSum>& screened) const {
+    if (!_isSetUp) {
+        throw CalculationException(ErrorCode::CALCULATION_INVALID_RESULT, "MMF_BOUNDARY: get_window_boundary_field_screened called before setup_window_boundary");
+    }
+    // Every sheet whole and unscreened first (the fast path); a sheet with strips in the way is then taken out
+    // whole and put back piece by piece.
+    auto [fieldX, fieldY] = get_window_boundary_field(pointX, pointY, 1.0);
+    std::vector<double> breaks;
+    for (const auto& sheet : _sheets) {
+        const double startX = sheet.start[0];
+        const double startY = sheet.start[1];
+        const double segmentX = sheet.end[0] - startX;
+        const double segmentY = sheet.end[1] - startY;
+        breaks.assign({0.0, 1.0});
+        auto add_break = [&breaks](double parameter) {
+            if (parameter > 0 && parameter < 1) {
+                breaks.push_back(parameter);
+            }
+        };
+        for (const auto& strip : strips) {
+            if (inducedTurn && strip.turnIndex == inducedTurn.value()) {
+                continue;
+            }
+            for (double side : {-0.5, 0.5}) {
+                // Sheet point Q(s) = start + s segment on the line through the point and the strip's end E:
+                // cross(Q - P, E - P) = 0.
+                const double rayX = strip.centreX + side * strip.width * strip.tangentX - pointX;
+                const double rayY = strip.centreY + side * strip.width * strip.tangentY - pointY;
+                const double denominator = segmentX * rayY - segmentY * rayX;
+                if (denominator != 0) {
+                    add_break(-((startX - pointX) * rayY - (startY - pointY) * rayX) / denominator);
+                }
+            }
+            const double normalSpeed = segmentX * strip.normalX + segmentY * strip.normalY;
+            if (normalSpeed != 0) {
+                add_break(-((startX - strip.centreX) * strip.normalX + (startY - strip.centreY) * strip.normalY) / normalSpeed);
+            }
+        }
+        std::sort(breaks.begin(), breaks.end());
+        if (breaks.size() == 2 && strips_between(strips, startX + 0.5 * segmentX, startY + 0.5 * segmentY, pointX, pointY, std::nullopt, inducedTurn).empty()) {
+            continue;
+        }
+        auto [wholeFieldX, wholeFieldY] = sheet_piece_field(sheet, pointX, pointY);
+        fieldX -= wholeFieldX;
+        fieldY -= wholeFieldY;
+        for (size_t pieceIndex = 0; pieceIndex + 1 < breaks.size(); ++pieceIndex) {
+            const double from = breaks[pieceIndex];
+            const double to = breaks[pieceIndex + 1];
+            if (!(to > from)) {
+                continue;
+            }
+            WindowWallSheet piece{{startX + from * segmentX, startY + from * segmentY}, {startX + to * segmentX, startY + to * segmentY}, sheet.current * (to - from)};
+            if (piece.start == piece.end) {
+                // Two breaks closer than the coordinates resolve: a piece of no length, carrying no current.
+                continue;
+            }
+            const double middle = 0.5 * (from + to);
+            auto crossed = strips_between(strips, startX + middle * segmentX, startY + middle * segmentY, pointX, pointY, std::nullopt, inducedTurn);
+            auto [pieceFieldX, pieceFieldY] = sheet_piece_field(piece, pointX, pointY);
+            if (crossed.empty()) {
+                fieldX += pieceFieldX;
+                fieldY += pieceFieldY;
+            }
+            else {
+                add_screened(screened, 0, std::move(crossed), pieceFieldX, pieceFieldY);
+            }
+        }
+    }
+    return {fieldX, fieldY};
+}
+
 WindingWindowMagneticStrengthFieldPhasorOutput MagneticField::calculate_magnetic_field_strength_field(OperatingPoint operatingPoint, Magnetic magnetic, std::optional<Field> externalInducedField, std::optional<std::vector<int8_t>> customCurrentDirectionPerWinding, std::optional<CoilMesherModels> coilMesherModel) {
     auto& settings = OpenMagnetics::Settings::GetInstance();
     auto includeFringing = settings.get_magnetic_field_include_fringing();
@@ -734,6 +931,62 @@ WindingWindowMagneticStrengthFieldPhasorOutput MagneticField::calculate_magnetic
         windingIndexPerTurn[turnIndex] = magnetic.get_mutable_coil().get_winding_index_by_name(turns[turnIndex].get_winding());
     }
 
+    // ABT #1645: every foil turn is a thin strip that screens the field crossing it (see ScreeningStrip). Without
+    // foil the list is empty and nothing below changes.
+    std::vector<ScreeningStrip> screeningStrips;
+    for (size_t turnIndex = 0; turnIndex < turns.size(); ++turnIndex) {
+        size_t windingIndex = windingIndexPerTurn[turnIndex];
+        const auto& wire = _wirePerWinding[windingIndex];
+        if (wire.get_type() != WireType::FOIL) {
+            continue;
+        }
+        if (!wire.get_conducting_width() || !wire.get_conducting_height()) {
+            throw InvalidInputException(ErrorCode::MISSING_DATA, "Foil screening (ABT #1645): the foil of turn " + turns[turnIndex].get_name() + " has no conducting width or height");
+        }
+        const double conductingWidth = resolve_dimensional_values(wire.get_conducting_width().value());
+        const double conductingHeight = resolve_dimensional_values(wire.get_conducting_height().value());
+        const auto& coordinates = turns[turnIndex].get_coordinates();
+        if (coordinates.size() < 2) {
+            throw InvalidInputException(ErrorCode::MISSING_DATA, "Foil screening (ABT #1645): turn " + turns[turnIndex].get_name() + " has no 2D coordinates");
+        }
+        // In the conductor's own frame (the Binns-Lawrenson kernel's) the width runs along x and the height along y;
+        // the turn's rotation turns that frame by +rotation.
+        const bool heightIsWide = conductingHeight >= conductingWidth;
+        const double localTangentX = heightIsWide ? 0.0 : 1.0;
+        const double localTangentY = heightIsWide ? 1.0 : 0.0;
+        double angle = 0;
+        if (turns[turnIndex].get_rotation()) {
+            angle = turns[turnIndex].get_rotation().value() / 180 * std::numbers::pi;
+        }
+        ScreeningStrip strip;
+        strip.centreX = coordinates[0];
+        strip.centreY = coordinates[1];
+        strip.tangentX = localTangentX * cos(angle) - localTangentY * sin(angle);
+        strip.tangentY = localTangentX * sin(angle) + localTangentY * cos(angle);
+        strip.normalX = -strip.tangentY;
+        strip.normalY = strip.tangentX;
+        strip.width = std::max(conductingWidth, conductingHeight);
+        strip.thickness = std::min(conductingWidth, conductingHeight);
+        strip.windingIndex = windingIndex;
+        strip.turnIndex = static_cast<int64_t>(turnIndex);
+        screeningStrips.push_back(strip);
+    }
+    // Per harmonic, each strip's T = 1 / (1 + j W t / (pi delta^2)) at that harmonic's skin depth (1 at DC).
+    auto strip_transmissions = [&](double frequency) {
+        std::vector<std::complex<double>> transmissions(screeningStrips.size(), 1.0);
+        if (!(frequency > 0)) {
+            return transmissions;
+        }
+        double temperature = operatingPoint.get_conditions().get_ambient_temperature();
+        for (size_t stripIndex = 0; stripIndex < screeningStrips.size(); ++stripIndex) {
+            const auto& strip = screeningStrips[stripIndex];
+            double skinDepth = WindingSkinEffectLosses::calculate_skin_depth(_wirePerWinding[strip.windingIndex], frequency, temperature);
+            double reaction = strip.width * strip.thickness / (std::numbers::pi * skinDepth * skinDepth);
+            transmissions[stripIndex] = 1.0 / std::complex<double>(1.0, reaction);
+        }
+        return transmissions;
+    };
+
     // Set up IMAGED_MMF_SHEETS: turn rectangles/filaments and gap sheets in the image lattice.
     if (_magneticFieldStrengthModel == MagneticFieldStrengthModels::IMAGED_MMF_SHEETS) {
         auto imagedModel = std::dynamic_pointer_cast<MagneticFieldStrengthImagedMmfSheetsModel>(_model);
@@ -868,6 +1121,9 @@ WindingWindowMagneticStrengthFieldPhasorOutput MagneticField::calculate_magnetic
         std::vector<std::vector<std::pair<double, double>>> fieldPerInducedPointPerWinding;
         // Per harmonic, per winding: the anchor filament's current at that harmonic.
         std::vector<std::vector<double>> scalePerHarmonicPerWinding;
+        // Per induced point: the fields through foil strips (ABT #1645), with unit anchor current, transmitted per
+        // harmonic where they are used. Empty without foil.
+        std::vector<std::vector<ScreenedFieldSum>> screenedPerInducedPoint;
     };
     std::optional<TurnFieldSums> turnFieldSums;
     auto build_turn_field_sums = [&]() -> TurnFieldSums {
@@ -956,6 +1212,11 @@ WindingWindowMagneticStrengthFieldPhasorOutput MagneticField::calculate_magnetic
         for (const auto& inducedPoint : inducedData) {
             add_point(inducedPoint);
         }
+        key.numbers.push_back(static_cast<double>(screeningStrips.size()));
+        for (const auto& strip : screeningStrips) {
+            key.numbers.insert(key.numbers.end(), {strip.centreX, strip.centreY, strip.tangentX, strip.tangentY, strip.width, strip.thickness,
+                                                   static_cast<double>(strip.windingIndex), static_cast<double>(strip.turnIndex)});
+        }
         size_t keyHash = hash_turn_sums_key(key);
 
         // The anchor currents of this operating point, per harmonic and winding.
@@ -996,7 +1257,7 @@ WindingWindowMagneticStrengthFieldPhasorOutput MagneticField::calculate_magnetic
                 if (currents_fit(*entry)) {
                     cache.entries.splice(cache.entries.begin(), cache.entries, entry);
                     ++cache.hits;
-                    return {entry->unitFieldPerInducedPointPerWinding, scales_for(entry->anchorPerWinding)};
+                    return {entry->unitFieldPerInducedPointPerWinding, scales_for(entry->anchorPerWinding), entry->screenedPerInducedPoint};
                 }
                 // Same mesh, currents distributed differently: summed afresh and replaced below.
                 cache.bytes -= entry->bytes;
@@ -1040,6 +1301,7 @@ WindingWindowMagneticStrengthFieldPhasorOutput MagneticField::calculate_magnetic
         // The kernel sum with unit anchor current, with the same exclusions the per-harmonic
         // loop applies to a turn.
         entry.unitFieldPerInducedPointPerWinding.assign(inducedData.size(), std::vector<std::pair<double, double>>(numberWindings, {0.0, 0.0}));
+        entry.screenedPerInducedPoint.assign(inducedData.size(), {});
         // ABT #1645: everything the double loop reads, read once. The FieldPoint getters copy their optionals (the label
         // string among them) and the wire dimensions go through resolve_dimensional_values; per pair that was a third of
         // the time. Under BINNS_LAWRENSON the kernel itself is evaluated here with the conductor's precomputed
@@ -1134,6 +1396,19 @@ WindingWindowMagneticStrengthFieldPhasorOutput MagneticField::calculate_magnetic
                 if (std::isnan(inducedFieldX) || std::isnan(inducedFieldY)) {
                     throw NaNResultException("NaN found in magnetic field calculation");
                 }
+                if (!screeningStrips.empty()) {
+                    // ABT #1645: a real turn never screens itself (its own filaments may sit off its centre line);
+                    // an image is a different source, which its turn's strip does screen.
+                    std::optional<int64_t> sourceTurn;
+                    if (!source.isImage) {
+                        sourceTurn = source.turnIndex;
+                    }
+                    auto crossed = strips_between(screeningStrips, source.x, source.y, inducedX, inducedY, sourceTurn, inducedTurnIndex);
+                    if (!crossed.empty()) {
+                        add_screened(entry.screenedPerInducedPoint[inducedIndex], source.windingIndex, std::move(crossed), inducedFieldX, inducedFieldY);
+                        continue;
+                    }
+                }
                 fieldPerWinding[source.windingIndex].first += inducedFieldX;
                 fieldPerWinding[source.windingIndex].second += inducedFieldY;
             }
@@ -1147,9 +1422,17 @@ WindingWindowMagneticStrengthFieldPhasorOutput MagneticField::calculate_magnetic
                 fieldPerWinding[windingIndex].first /= anchorCurrent;
                 fieldPerWinding[windingIndex].second /= anchorCurrent;
             }
+            for (auto& screenedSums : entry.screenedPerInducedPoint) {
+                for (auto& sum : screenedSums) {
+                    if (sum.windingIndex == windingIndex) {
+                        sum.fieldX /= anchorCurrent;
+                        sum.fieldY /= anchorCurrent;
+                    }
+                }
+            }
         }
 
-        TurnFieldSums sums{entry.unitFieldPerInducedPointPerWinding, scales_for(entry.anchorPerWinding)};
+        TurnFieldSums sums{entry.unitFieldPerInducedPointPerWinding, scales_for(entry.anchorPerWinding), entry.screenedPerInducedPoint};
         if (cacheLimit > 0) {
             entry.key = std::move(key);
             entry.bytes = turn_sums_entry_bytes(entry);
@@ -1170,6 +1453,8 @@ WindingWindowMagneticStrengthFieldPhasorOutput MagneticField::calculate_magnetic
     if (windowBoundaryModel) {
         _fringingEffectModel->setup_window_boundary(magnetic, operatingPoint);
     }
+    // ABT #1645: per induced point, the wall field split by the foil strips it crosses (filled on first use).
+    std::vector<std::optional<std::pair<std::pair<double, double>, std::vector<ScreenedFieldSum>>>> wallScreeningPerInducedPoint;
 
     for (size_t harmonicIndex = 0; harmonicIndex < inducingFields.size(); ++harmonicIndex){
         std::vector<ComplexFieldPoint> fieldPoints;
@@ -1596,6 +1881,7 @@ WindingWindowMagneticStrengthFieldPhasorOutput MagneticField::calculate_magnetic
         }
 
         const auto& inducedDataThisHarmonic = inducedFields[harmonicIndex].get_data();
+        const std::vector<std::complex<double>> transmissionPerStrip = strip_transmissions(inducingFields[harmonicIndex].get_frequency());
         for (size_t inducedIndex = 0; inducedIndex < inducedDataThisHarmonic.size(); ++inducedIndex) {
             const auto& inducedFieldPoint = inducedDataThisHarmonic[inducedIndex];
             double totalInducedFieldX = 0;
@@ -1664,6 +1950,77 @@ WindingWindowMagneticStrengthFieldPhasorOutput MagneticField::calculate_magnetic
                         if (std::isnan(complexFieldPoint.get_imaginary())) {
                             throw NaNResultException("NaN found in fringing field calculation");
                         }
+                        // ABT #1645: Roshen's gap field leaves the gap mouth, the segment |y - y_gap| < g / 2 on the
+                        // column face. Split the mouth like a wall sheet (where the line to the point passes a
+                        // strip's end, or the mouth meets a strip's plane); a piece whose line crosses strips has
+                        // its own Roshen field (the same formula over the piece) replaced by the transmitted one.
+                        // Without crossing strips the whole-gap field above stands exactly as it was.
+                        // SULLIVAN's gap field is a set of image filaments, not a mouth segment: not screened.
+                        const bool roshenGapField = albachRoutedGapsPending || _magneticFieldStrengthFringingEffectModel == MagneticFieldStrengthFringingEffectModels::ROSHEN;
+                        if (!screeningStrips.empty() && roshenGapField) {
+                            const double gapX = gap.get_coordinates().value()[0];
+                            const double gapY = gap.get_coordinates().value()[1];
+                            const double mouthX = gapX == 0 ? gapX + gap.get_section_dimensions().value()[0] / 2 : gapX - gap.get_section_dimensions().value()[0] / 2;
+                            const double mouthStartY = gapY - gap.get_length() / 2;
+                            const double mouthLength = gap.get_length();
+                            const double pointX = fringingInducedPoint.get_point()[0];
+                            const double pointY = fringingInducedPoint.get_point()[1];
+                            const auto inducedTurn = fringingInducedPoint.get_turn_index();
+                            std::vector<double> breaks{0.0, 1.0};
+                            auto add_break = [&breaks](double parameter) {
+                                if (parameter > 0 && parameter < 1) {
+                                    breaks.push_back(parameter);
+                                }
+                            };
+                            for (const auto& strip : screeningStrips) {
+                                if (inducedTurn && strip.turnIndex == inducedTurn.value()) {
+                                    continue;
+                                }
+                                for (double side : {-0.5, 0.5}) {
+                                    const double endX = strip.centreX + side * strip.width * strip.tangentX;
+                                    const double endY = strip.centreY + side * strip.width * strip.tangentY;
+                                    if (endX != pointX) {
+                                        const double mouthCrossingY = pointY + (mouthX - pointX) / (endX - pointX) * (endY - pointY);
+                                        add_break((mouthCrossingY - mouthStartY) / mouthLength);
+                                    }
+                                }
+                                if (strip.normalY != 0) {
+                                    add_break(-((mouthX - strip.centreX) * strip.normalX + (mouthStartY - strip.centreY) * strip.normalY) / (mouthLength * strip.normalY));
+                                }
+                            }
+                            std::sort(breaks.begin(), breaks.end());
+                            const std::complex<double> gapCurrent(inPhaseFactor, quadratureFactor);
+                            for (size_t pieceIndex = 0; pieceIndex + 1 < breaks.size(); ++pieceIndex) {
+                                const double from = mouthStartY + breaks[pieceIndex] * mouthLength;
+                                const double to = mouthStartY + breaks[pieceIndex + 1] * mouthLength;
+                                if (!(to > from)) {
+                                    continue;
+                                }
+                                auto crossed = strips_between(screeningStrips, mouthX, 0.5 * (from + to), pointX, pointY, std::nullopt, inducedTurn);
+                                if (crossed.empty()) {
+                                    continue;
+                                }
+                                CoreGap piece = gap;
+                                auto pieceCoordinates = gap.get_coordinates().value();
+                                pieceCoordinates[1] = 0.5 * (from + to);
+                                piece.set_coordinates(pieceCoordinates);
+                                piece.set_length(to - from);
+                                auto pieceField = albachRoutedGapsPending ?
+                                    albachFallbackRoshenModel.get_magnetic_field_strength_between_gap_and_point(piece, magneticFieldStrengthGap, fringingInducedPoint) :
+                                    _fringingEffectModel->get_magnetic_field_strength_between_gap_and_point(piece, magneticFieldStrengthGap, fringingInducedPoint);
+                                ScreenedFieldSum screenedPiece{0, std::move(crossed), pieceField.get_real(), pieceField.get_imaginary()};
+                                auto [transmittedX, transmittedY] = transmit_through_strips(screenedPiece, screeningStrips, transmissionPerStrip);
+                                std::complex<double> changeX = gapCurrent * (transmittedX - screenedPiece.fieldX);
+                                std::complex<double> changeY = gapCurrent * (transmittedY - screenedPiece.fieldY);
+                                if (mirroredForFringing) {
+                                    changeX = -changeX;
+                                }
+                                totalInducedFieldX += changeX.real();
+                                totalInducedFieldY += changeY.real();
+                                totalQuadratureInducedFieldX += changeX.imag();
+                                totalQuadratureInducedFieldY += changeY.imag();
+                            }
+                        }
                     }
                 }
             }
@@ -1683,6 +2040,16 @@ WindingWindowMagneticStrengthFieldPhasorOutput MagneticField::calculate_magnetic
                 totalInducedFieldY += windingFieldY * scale * inPhaseFactorPerWinding[windingIndex];
                 totalQuadratureInducedFieldX += windingFieldX * scale * quadratureFactorPerWinding[windingIndex];
                 totalQuadratureInducedFieldY += windingFieldY * scale * quadratureFactorPerWinding[windingIndex];
+            }
+            // ABT #1645: the turn fields that reach this point through foil strips, transmitted at this harmonic.
+            for (const auto& screenedSum : turnFieldSums->screenedPerInducedPoint[inducedIndex]) {
+                auto [transmittedX, transmittedY] = transmit_through_strips(screenedSum, screeningStrips, transmissionPerStrip);
+                const std::complex<double> current = scalePerWinding[screenedSum.windingIndex] *
+                    std::complex<double>(inPhaseFactorPerWinding[screenedSum.windingIndex], quadratureFactorPerWinding[screenedSum.windingIndex]);
+                totalInducedFieldX += (current * transmittedX).real();
+                totalInducedFieldY += (current * transmittedY).real();
+                totalQuadratureInducedFieldX += (current * transmittedX).imag();
+                totalQuadratureInducedFieldY += (current * transmittedY).imag();
             }
 
             // Sources that are not turns -- equivalent fringing sources -- are summed per harmonic.
@@ -1717,8 +2084,29 @@ WindingWindowMagneticStrengthFieldPhasorOutput MagneticField::calculate_magnetic
             if (windowBoundaryModel && (netAmpereTurns != 0 || netQuadratureAmpereTurns != 0) &&
                 !is_inside_core(inducedFieldPoint, coreColumnWidth, coreWidth, coreShapeFamily)) {
                 // The wall field is linear in the net ampere-turns: one unit evaluation, scaled per component.
-                auto [boundaryFieldX, boundaryFieldY] = _fringingEffectModel->get_window_boundary_field(
-                    inducedFieldPoint.get_point()[0], inducedFieldPoint.get_point()[1], 1.0);
+                double boundaryFieldX;
+                double boundaryFieldY;
+                const std::vector<ScreenedFieldSum>* screenedWallSums = nullptr;
+                if (screeningStrips.empty()) {
+                    std::tie(boundaryFieldX, boundaryFieldY) = _fringingEffectModel->get_window_boundary_field(
+                        inducedFieldPoint.get_point()[0], inducedFieldPoint.get_point()[1], 1.0);
+                }
+                else {
+                    // ABT #1645: the wall pieces whose field crosses foil strips, split once (the geometry does not
+                    // change between harmonics) and transmitted per harmonic.
+                    if (wallScreeningPerInducedPoint.empty()) {
+                        wallScreeningPerInducedPoint.resize(inducedDataThisHarmonic.size());
+                    }
+                    auto& wallScreening = wallScreeningPerInducedPoint[inducedIndex];
+                    if (!wallScreening) {
+                        std::vector<ScreenedFieldSum> screenedSums;
+                        auto unscreened = _fringingEffectModel->get_window_boundary_field_screened(
+                            inducedFieldPoint.get_point()[0], inducedFieldPoint.get_point()[1], screeningStrips, inducedFieldPoint.get_turn_index(), screenedSums);
+                        wallScreening = std::make_pair(unscreened, std::move(screenedSums));
+                    }
+                    std::tie(boundaryFieldX, boundaryFieldY) = wallScreening->first;
+                    screenedWallSums = &wallScreening->second;
+                }
                 if (std::isnan(boundaryFieldX) || std::isnan(boundaryFieldY)) {
                     throw NaNResultException("NaN found in the MMF_BOUNDARY window field (ABT #1304)");
                 }
@@ -1726,6 +2114,16 @@ WindingWindowMagneticStrengthFieldPhasorOutput MagneticField::calculate_magnetic
                 totalInducedFieldY += boundaryFieldY * netAmpereTurns;
                 totalQuadratureInducedFieldX += boundaryFieldX * netQuadratureAmpereTurns;
                 totalQuadratureInducedFieldY += boundaryFieldY * netQuadratureAmpereTurns;
+                if (screenedWallSums) {
+                    const std::complex<double> netCurrent(netAmpereTurns, netQuadratureAmpereTurns);
+                    for (const auto& screenedSum : *screenedWallSums) {
+                        auto [transmittedX, transmittedY] = transmit_through_strips(screenedSum, screeningStrips, transmissionPerStrip);
+                        totalInducedFieldX += (netCurrent * transmittedX).real();
+                        totalInducedFieldY += (netCurrent * transmittedY).real();
+                        totalQuadratureInducedFieldX += (netCurrent * transmittedX).imag();
+                        totalQuadratureInducedFieldY += (netCurrent * transmittedY).imag();
+                    }
+                }
             }
             ComplexFieldPoint complexFieldPoint;
             complexFieldPoint.set_point(inducedFieldPoint.get_point());
