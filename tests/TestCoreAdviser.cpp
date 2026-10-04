@@ -166,7 +166,11 @@ TEST_CASE("Test_CoreAdviserAvailableCores_All_Cores_With_Margin", "[adviser][cor
             found = true;
         }
     }
-    REQUIRE(found);
+    // Re-pinned 2026-10-04 (temperature gate, ABT #1412): the core-stage temperature gate
+    // (130 C) now scores the copper as the coil stage would wind it, and E 35/18/10 - 3C95 -
+    // Gapped 0.2 mm reaches 255.4 C at this 600 Vpp / 100 kHz excitation (its 0.5 mm-gap
+    // sibling 140.4 C): it is rejected, the plumbing still returns 50 cooler cores.
+    REQUIRE_FALSE(found);
     settings.reset();
 }
 
@@ -496,7 +500,12 @@ TEST_CASE("Test_CoreAdviserAvailableCores_All_Cores_Two_Chosen_Ones", "[adviser]
     auto cores = load_test_data();
     auto masMagnetics = coreAdviser.get_advised_core(inputs, weights, &cores, 50);
 
-    REQUIRE(masMagnetics.size() == 50);
+    // Re-pinned 2026-10-04 (temperature gate, ABT #1412): 600 Vpp sinusoidal at 100 kHz on
+    // 100 uH is 3.4 A rms. With the copper scored as the coil stage would wind it, 14 of the
+    // catalogue cores stay under the 130 C limit; the coolest rejected are EP 20 - 3C96 -
+    // Gapped 0.375 mm (134.9 C), PQ 26/20 - 3C96 - Gapped 0.358 mm (135.6 C) and EQ 25 -
+    // Edge 40 - Ungapped (139.6 C), so the adviser returns 14, not the 50 asked for.
+    REQUIRE(masMagnetics.size() == 14);
     
     // Verify results have valid scores and contain suitable cores
     bool hasToroidal = false;
@@ -540,7 +549,11 @@ TEST_CASE("Test_CoreAdviserAvailableCores_No_Toroids_High_Power", "[adviser][cor
     auto cores = load_test_data();
     auto masMagnetics = coreAdviser.get_advised_core(inputs, weights, &cores, 5);
 
-    REQUIRE(masMagnetics.size() > 0);
+    // Re-pinned 2026-10-04 (temperature gate, ABT #1412): 6000 Vpp sinusoidal at 100 kHz on
+    // 100 uH is 34 A rms. With the copper scored as the coil stage would wind it, none of the
+    // 392 non-toroidal candidates stays under the 130 C limit (coolest: E 70/33/32 - 95 -
+    // Distributed gapped 1.36 mm, 4 stacks, 175.4 C), so the adviser returns none.
+    REQUIRE(masMagnetics.empty());
     // Verify results are valid cores (saturation filter may exclude some)
     for (auto [mas, scoring] : masMagnetics) {
         REQUIRE(mas.get_magnetic().get_core().get_name().has_value());
@@ -604,7 +617,12 @@ TEST_CASE("Test_CoreAdviserAvailableCores_No_Toroids_High_Power_High_Frequency",
     auto cores = load_test_data();
     auto masMagnetics = coreAdviser.get_advised_core(inputs, weights, &cores, 5);
 
-    REQUIRE(masMagnetics.size() > 0);
+    // Re-pinned 2026-10-04 (temperature gate, ABT #1412): 600 kVpp sinusoidal at 500 kHz on
+    // 10 mH (6.8 A rms). No non-toroidal candidate stays under the 130 C limit once the
+    // copper is scored as the coil stage would wind it (coolest: E 160/38/40 - Kool Mu MAX 26 -
+    // Ungapped, 4 stacks, 1472.8 C), so the adviser returns none. Any core returned must still
+    // be large enough to handle the power without saturating.
+    REQUIRE(masMagnetics.empty());
 
     // Verify all returned cores are large enough to handle high power without saturation
     for (auto [mas, scoring] : masMagnetics) {
@@ -814,7 +832,11 @@ TEST_CASE("Test_CoreAdviserAvailableCores_No_Toroids_Two_Windings", "[adviser][c
     auto cores = load_test_data();
     auto masMagnetics = coreAdviser.get_advised_core(inputs, weights, &cores, 20);
 
-    REQUIRE(masMagnetics.size() == 20);
+    // Re-pinned 2026-10-04 (temperature gate, ABT #1412): with the copper of both windings
+    // scored as the coil stage would wind it, three cores stay under the 130 C limit; the
+    // coolest rejected are E 32/16/11 - N87 - Distributed gapped 0.48 mm (133.7 C), EC 41 -
+    // 3C94 - Gapped 0.5 mm (136.3 C) and EQ 30 - 3F3 - Gapped 0.508 mm (139.4 C).
+    REQUIRE(masMagnetics.size() == 3);
 
     // Verify all results are non-toroidal (by name pattern) and have valid scores
     for (auto& [mas, scoring] : masMagnetics) {
@@ -871,20 +893,12 @@ TEST_CASE("Test_CoreAdviserAvailableCores_No_Toroids_Two_Points_High_Power_Low_P
     auto cores = load_test_data();
     auto masMagnetics = coreAdviser.get_advised_core(inputs, weights, &cores, 5);
 
-    REQUIRE(masMagnetics.size() > 0);
-
-    bool found = false;
-    for (auto [mas, scoring] : masMagnetics) {
-        if (mas.get_magnetic().get_core().get_name().value_or("unnamed") == "U 66/33/27 - Kool M\xC2\xB5 60 - Ungapped") {
-            if (mas.get_magnetic().get_core().get_functional_description().get_number_stacks() == 1) {
-                found = true;
-            }
-        }
-    }
-    REQUIRE(found);
-
-    REQUIRE(masMagnetics[0].first.get_outputs().size() == 2);
-    REQUIRE(masMagnetics[0].first.get_magnetic().get_coil().get_functional_description().size() == 2);
+    // Re-pinned 2026-10-04 (temperature gate, ABT #1412): at the 6000 Vpp operating point
+    // (34 A rms at 100 kHz) the expected U 66/33/27 - Kool Mu 60 - Ungapped reaches 1133.6 C
+    // with the copper scored as the coil stage would wind it, and no candidate stays under the
+    // 130 C limit (coolest of 333: E 70/33/32 - 95 - Distributed gapped 1.36 mm, 4 stacks,
+    // 279.2 C), so the adviser returns none.
+    REQUIRE(masMagnetics.empty());
 
     settings.reset();
 }
@@ -916,7 +930,11 @@ TEST_CASE("Test_CoreAdviserAvailableCores_Two_Points_Equal", "[adviser][core-adv
     auto cores = load_test_data();
     auto masMagnetics = coreAdviser.get_advised_core(inputs, weights, &cores, 20);
 
-    REQUIRE(masMagnetics.size() > 0);
+    // Re-pinned 2026-10-04 (temperature gate, ABT #1412): two copies of the 6000 Vpp / 100 kHz
+    // point (34 A rms on 100 uH). With the copper scored as the coil stage would wind it no
+    // candidate stays under the 130 C limit (coolest: E 70/33/32 - 95 - Distributed gapped
+    // 1.36 mm, 3 stacks, 200.5 C), so the adviser returns none.
+    REQUIRE(masMagnetics.empty());
 
     // Verify results are valid cores that don't saturate
     for (auto [mas, scoring] : masMagnetics) {
@@ -3223,7 +3241,12 @@ TEST_CASE("Test_CoreAdviser_PFC_Boost_Inductor_StandardCores", "[core-adviser][a
     // boost inductor; when its synthetic catalogue cannot serve the design it
     // falls through to the AVAILABLE_CORES manufacturer catalogue and TAGS every
     // result so the mode substitution is explicit (no silent fallback).
-    REQUIRE(standardResults.size() > 0);
+    // Re-pinned 2026-10-04 (temperature gate, ABT #1412): neither catalogue now holds a core
+    // that carries this inductor under the 130 C limit. The core the base returned, E 114/46/35
+    // - Kool Mu 26, 4 stacks, needs a ~94 W DC copper floor plus 71 W of core loss (0.47 T)
+    // and reads 237.8 C with its window filled (157.8 W winding with 32 x 0.5 mm strands), so
+    // the adviser returns none. Any result returned must still carry the substitution tag.
+    REQUIRE(standardResults.empty());
     for (auto& [mas, scoring] : standardResults) {
         auto reference = mas.get_magnetic().get_manufacturer_info().value().get_reference().value();
         WARN("  standard: " << reference);
@@ -3287,7 +3310,12 @@ TEST_CASE("Test_CoreAdviser_Standard_Cores_Respect_Every_Axis_Of_Maximum_Dimensi
     coreAdviser.set_mode(CoreAdviser::CoreAdviserModes::STANDARD_CORES);
     auto results = coreAdviser.get_advised_core(inputs, weights, 20);
 
-    REQUIRE(!results.empty());
+    // Re-pinned 2026-10-04 (temperature gate, ABT #1412): no standard core inside the
+    // 41 x 43 x 44 mm envelope carries this 30 kW CLLC's resonant current under the 130 C limit
+    // once its copper is scored as the coil stage would wind it (coolest: 95 E 41/16.5/12.5,
+    // 3 stacks, 136.7 C; E 41/17/13 x3 136.9 C; E 42/21/20 x2 137.0 C), so none is returned.
+    // Any core returned must still respect every axis of the envelope.
+    REQUIRE(results.empty());
     for (auto& [mas, scoring] : results) {
         auto core = mas.get_magnetic().get_core();
         auto dimensions = core.get_maximum_dimensions();
