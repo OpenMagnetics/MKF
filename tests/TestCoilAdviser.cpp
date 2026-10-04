@@ -3014,6 +3014,10 @@ TEST_CASE("Test_CoilAdviser_Web_Default_Two_Winding_PQ2715", "[adviser][coil-adv
     OpenMagnetics::Mas mas(json::parse(file));
     settings.reset();
     settings.set_coil_delimit_and_compact(true);
+    // The web sends IEC 60317 as the preferred wire standard; with it the wire adviser's top
+    // candidates per configuration were all ~0.8 mm litz that fit the section by bulk area but
+    // not in whole turns per layer, so the winder rejected every one.
+    settings.set_preferred_wire_standard(MAS::WireStandard::IEC_60317);
 
     for (size_t windingIndex = 0; windingIndex < mas.get_magnetic().get_coil().get_functional_description().size(); ++windingIndex) {
         mas.get_mutable_magnetic().get_mutable_coil().get_mutable_functional_description()[windingIndex].set_wire("Dummy");

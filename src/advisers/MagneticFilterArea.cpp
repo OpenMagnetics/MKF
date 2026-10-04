@@ -326,6 +326,74 @@ std::pair<bool, double> MagneticFilterAreaWithParallels::evaluate_magnetic(Magne
     return {valid, scoring};
 }
 
+// ABT #1446: whether the winding's physical turns can be laid out in whole turns per layer
+// inside a rectangular (Cartesian) section, using the same packing rules the layer winder
+// (Coil::wind_by_rectangular_layers) applies: turns per layer = floor(section length along the
+// layer / conductor size along the layer), layers = ceil(turns / turns per layer), and the
+// layers' stacked thickness must fit the section's depth. The bulk outer-area comparison alone
+// passed a 0.85 mm litz for 13 turns in a 2.27 x 4.59 mm section (area ratio 0.9), though
+// 5 turns per layer x 3 layers needs 2.55 mm of depth: the winder then rejected every wire the
+// adviser had offered and the coil adviser answered "No coil found".
+static bool fits_in_whole_turns_per_layer(const Wire& wire, const Winding& winding, const Section& section, double numberSections) {
+    if (section.get_dimensions().size() < 2) {
+        throw InvalidInputException(ErrorCode::INVALID_COIL_CONFIGURATION,
+            "Section " + section.get_name() + " has no width and height to lay turns out in");
+    }
+    if (!(numberSections > 0)) {
+        throw InvalidInputException(ErrorCode::INVALID_COIL_CONFIGURATION,
+            "Winding " + winding.get_name() + " is split into a non-positive number of sections");
+    }
+    double sectionWidth = section.get_dimensions()[0];
+    double sectionHeight = section.get_dimensions()[1];
+    bool layersStackAlongWidth = section.get_layers_orientation() == WindingOrientation::OVERLAPPING;
+
+    double conductorAlongLayer;
+    double layerThickness;
+    std::optional<double> fixedTurnsPerLayer;
+    if (wire.get_type() == WireType::ROUND || wire.get_type() == WireType::LITZ) {
+        if (!wire.get_outer_diameter()) {
+            throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA, "Wire " + wire.get_name().value_or("(unnamed)") + " is missing its outer diameter");
+        }
+        double diameter = resolve_dimensional_values(wire.get_outer_diameter().value());
+        conductorAlongLayer = diameter;
+        layerThickness = diameter;
+    }
+    else {
+        if (!wire.get_outer_width() || !wire.get_outer_height()) {
+            throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA, "Wire " + wire.get_name().value_or("(unnamed)") + " is missing its outer width or height");
+        }
+        double wireWidth = resolve_dimensional_values(wire.get_outer_width().value());
+        double wireHeight = resolve_dimensional_values(wire.get_outer_height().value());
+        if (layersStackAlongWidth) {
+            conductorAlongLayer = wireHeight;
+            layerThickness = wireWidth;
+            if (wire.get_type() == WireType::FOIL) {
+                fixedTurnsPerLayer = 1;
+            }
+        }
+        else {
+            conductorAlongLayer = wireWidth;
+            layerThickness = wireHeight;
+            if (wire.get_type() == WireType::RECTANGULAR && settings.get_coil_only_one_turn_per_layer_in_contiguous_rectangular()) {
+                fixedTurnsPerLayer = 1;
+            }
+        }
+    }
+    if (!(conductorAlongLayer > 0) || !(layerThickness > 0)) {
+        throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA, "Wire " + wire.get_name().value_or("(unnamed)") + " has a non-positive outer dimension");
+    }
+
+    double lengthAlongLayer = layersStackAlongWidth ? sectionHeight : sectionWidth;
+    double depth = layersStackAlongWidth ? sectionWidth : sectionHeight;
+    double turnsPerLayer = fixedTurnsPerLayer ? fixedTurnsPerLayer.value() : std::floor(lengthAlongLayer / conductorAlongLayer);
+    if (turnsPerLayer < 1) {
+        return false;
+    }
+    double physicalTurns = std::ceil(static_cast<double>(winding.get_number_turns()) * static_cast<double>(winding.get_number_parallels()) / numberSections);
+    double numberLayers = std::ceil(physicalTurns / turnsPerLayer);
+    return numberLayers * layerThickness <= depth * (1 + 1e-9);
+}
+
 std::pair<bool, double> MagneticFilterAreaWithParallels::evaluate_magnetic(Winding winding, Section section, double numberSections, double sectionArea, bool allowNotFit) {
     auto wire = Coil::resolve_wire(winding);
     if (!Coil::resolve_wire(winding).get_conducting_area()) {
@@ -335,7 +403,18 @@ std::pair<bool, double> MagneticFilterAreaWithParallels::evaluate_magnetic(Windi
 
     neededOuterAreaNoCompact *= winding.get_number_parallels() * winding.get_number_turns() / numberSections;
 
-    if (neededOuterAreaNoCompact < sectionArea) {
+    // ABT #1446: a strict fit also needs the turns to pack in whole turns per layer. Only
+    // rectangular sections are checked: in a toroid's polar section the turns a layer holds
+    // depend on that layer's radius (the inner circumference shrinks layer by layer), which the
+    // toroidal winder works out turn by turn; a per-layer count here would be a second,
+    // diverging model of it. The allowNotFit pass (taken only when no wire fits strictly) keeps
+    // its existing bulk-area tolerance.
+    bool packs = true;
+    if (!allowNotFit && (!section.get_coordinate_system() || section.get_coordinate_system().value() == CoordinateSystem::CARTESIAN)) {
+        packs = fits_in_whole_turns_per_layer(wire, winding, section, numberSections);
+    }
+
+    if (neededOuterAreaNoCompact < sectionArea && packs) {
         // double scoring = (section.get_dimensions()[0] * section.get_dimensions()[1]) - neededOuterAreaNoCompact;
         return {true, 1.0};
     }
