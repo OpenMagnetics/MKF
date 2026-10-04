@@ -66,6 +66,7 @@
 #include "physical_models/WindingLosses.h"
 #include "physical_models/WindingSkinEffectLosses.h"
 #include "processors/Inputs.h"
+#include "physical_models/MagnetizingInductance.h"
 #include "support/Settings.h"
 #include "support/Utils.h"
 #include "support/Exceptions.h"
@@ -622,7 +623,27 @@ TEST_CASE("MagneticFilter TEMPERATURE snapshot",
         coil.wind();
         magnetic.set_coil(coil);
     }
-    auto inputs = make_reference_inputs();
+    // With one winding and one excitation the current IS the magnetizing current, and this
+    // ungapped E 35 is 5.86 mH, not the 100 uH the reference inputs state: their 1.73 A peak
+    // drove it to 2.5 T (3.4 kW of core losses, 2304 C, invalid). The two-winding reference
+    // had hidden that: its flux came from the inputs' 100 uH, 0.043 T. The snapshot keeps that
+    // excitation, the same volt-seconds, on the magnetic's own inductance: 1.73 A x 100 uH / L
+    // of current, the same 0.043 T and core losses, and the copper the filter now scores.
+    OpenMagnetics::Inputs inputs;
+    {
+        MagnetizingInductance magnetizingInductanceModel;
+        const double ownInductance = magnetizingInductanceModel.calculate_inductance_from_number_turns_and_gapping(magnetic)
+                                         .get_magnetizing_inductance().get_nominal().value();
+        OpenMagneticsTesting::QuickInputsConfig cfg;
+        cfg.frequency = 100000;
+        cfg.magnetizingInductance = ownInductance;
+        cfg.temperature = 25;
+        cfg.label = WaveformLabel::TRIANGULAR;
+        cfg.peakToPeak = 2 * 1.73205 * 100e-6 / ownInductance;
+        cfg.dutyCycle = 0.5;
+        cfg.offset = 0;
+        inputs = OpenMagneticsTesting::create_quick_test_inputs(cfg);
+    }
     MagneticFilterTemperature filter(inputs, 130.0);
     auto [valid, score] = filter.evaluate_magnetic(&magnetic, &inputs);
 
