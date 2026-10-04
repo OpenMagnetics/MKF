@@ -286,6 +286,16 @@ class MagneticFieldStrengthSullivanModel : public MagneticFieldStrengthFringingE
 class MagneticFieldStrengthMmfBoundaryModel : public MagneticFieldStrengthFringingEffectModel {
   private:
     std::vector<WindowWallSheet> _sheets;
+    // ABT #1645: per sheet, its centre and the normalised moments <zeta^k> (k = 0, 2, ..., 12) of a uniform line source,
+    // for the multipole form of calculate_sheet_field far from the sheet (see get_window_boundary_field).
+    struct SheetMultipole {
+        double centreX;
+        double centreY;
+        double farRadiusSquared;
+        double momentRe[7];
+        double momentIm[7];
+    };
+    std::vector<SheetMultipole> _sheetMultipoles;
     bool _isSetUp = false;
   public:
     std::string methodName = "MmfBoundary";

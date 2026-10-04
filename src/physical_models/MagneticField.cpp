@@ -109,6 +109,96 @@ bool currents_agree(double actual, double expected) {
     return std::abs(actual - expected) <= 1e-9 * std::max(std::abs(actual), std::abs(expected));
 }
 
+// ABT #1645: the Binns-Lawrenson field of a uniform current over the rectangle |x'| < a, |y'| < b, evaluated fast and
+// to the same numbers (relative differences ~1e-9 and below). Two exact rewrites of the closed form, no new physics:
+//  - Near the rectangle, the corner primitives P(u, v) = u ln(u^2 + v^2) / 2 + v atan(u / v) of Hx and P(v, u) of Hy
+//    share every logarithm, and atan(v / u) = sign(u v) pi / 2 - atan(u / v): 4 logarithms and 4 arctangents instead
+//    of 8 and 8.
+//  - Far from it, the multipole series of the same integral. In this kernel's convention a filament I at z0 gives
+//    Hy + j Hx = I / (2 pi (z0 - z)); the rectangle is the filament smeared over z0 + zeta, and
+//    1 / (D + zeta) = sum_k (-zeta)^k / D^(k+1) with D = z0 - z, so Hy + j Hx = I / (2 pi) sum_k m_k / D^(k+1) with the
+//    normalised moments m_k = <zeta^k> over the rectangle (odd ones vanish by symmetry, even ones are real):
+//    m_k = sum_{j even} C(k, j) (-1)^(j/2) a^(k-j) b^j / ((k - j + 1)(j + 1)). |m_k| <= rho^k, rho^2 = a^2 + b^2, so
+//    cutting after k = 12 at |D| >= 4 rho leaves less than (1/4)^14 * 4/3 = 5e-9 of the filament term.
+struct RectangleFieldKernel {
+    static constexpr size_t numberMoments = 7;  // k = 0, 2, ..., 12
+    double a = 0;
+    double b = 0;
+    double farRadiusSquared = 0;
+    double moments[numberMoments] = {};
+    RectangleFieldKernel() = default;
+    RectangleFieldKernel(double halfWidth, double halfHeight) : a(halfWidth), b(halfHeight) {
+        farRadiusSquared = 16.0 * (a * a + b * b);
+        for (size_t index = 0; index < numberMoments; ++index) {
+            const int k = 2 * static_cast<int>(index);
+            double moment = 0;
+            double binomial = 1;  // C(k, j)
+            for (int j = 0; j <= k; ++j) {
+                if (j > 0) {
+                    binomial = binomial * static_cast<double>(k - j + 1) / static_cast<double>(j);
+                }
+                if (j % 2 != 0) {
+                    continue;
+                }
+                const double sign = (j / 2) % 2 == 0 ? 1.0 : -1.0;
+                moment += sign * binomial * std::pow(a, k - j) * std::pow(b, j) / (static_cast<double>(k - j + 1) * static_cast<double>(j + 1));
+            }
+            moments[index] = moment;
+        }
+    }
+    // (Hx, Hy) at (x, y) relative to the rectangle's centre, for a total current `current`.
+    std::pair<double, double> field(double x, double y, double current) const {
+        if (x * x + y * y >= farRadiusSquared) {
+            // D = z0 - z = -(x + j y).
+            const double dRe = -x;
+            const double dIm = -y;
+            const double dNormSquared = dRe * dRe + dIm * dIm;
+            const double inverseRe = dRe / dNormSquared;  // 1 / D
+            const double inverseIm = -dIm / dNormSquared;
+            const double inverseSquaredRe = inverseRe * inverseRe - inverseIm * inverseIm;  // 1 / D^2
+            const double inverseSquaredIm = 2 * inverseRe * inverseIm;
+            double termRe = inverseRe;  // 1 / D^(k+1)
+            double termIm = inverseIm;
+            double sumRe = 0;
+            double sumIm = 0;
+            for (size_t index = 0; index < numberMoments; ++index) {
+                sumRe += moments[index] * termRe;
+                sumIm += moments[index] * termIm;
+                const double nextRe = termRe * inverseSquaredRe - termIm * inverseSquaredIm;
+                termIm = termRe * inverseSquaredIm + termIm * inverseSquaredRe;
+                termRe = nextRe;
+            }
+            const double prefactor = current / (2.0 * std::numbers::pi);
+            return {prefactor * sumIm, prefactor * sumRe};
+        }
+        const double us[2] = {x - a, x + a};
+        const double vs[2] = {y - b, y + b};
+        double sumX = 0;
+        double sumY = 0;
+        for (size_t i = 0; i < 2; ++i) {
+            for (size_t j = 0; j < 2; ++j) {
+                const double u = us[i];
+                const double v = vs[j];
+                const double cornerSign = (i == j) ? 1.0 : -1.0;
+                const double squaredRadius = u * u + v * v;
+                const double logarithm = squaredRadius > 0 ? log(squaredRadius) : 0.0;
+                const double arctangentUOverV = v != 0 ? atan(u / v) : 0.0;
+                // P(u, v) for Hx, P(v, u) for Hy, as in the direct form.
+                const double primitiveX = 0.5 * u * logarithm + (v != 0 ? v * arctangentUOverV : 0.0);
+                double arctangentVOverU = 0;
+                if (u != 0 && v != 0) {
+                    arctangentVOverU = std::copysign(std::numbers::pi / 2, u * v) - arctangentUOverV;
+                }
+                const double primitiveY = 0.5 * v * logarithm + (u != 0 ? u * arctangentVOverU : 0.0);
+                sumX += cornerSign * primitiveX;
+                sumY += cornerSign * primitiveY;
+            }
+        }
+        const double currentDensityOver2Pi = current / (4.0 * a * b) / (2.0 * std::numbers::pi);
+        return {currentDensityOver2Pi * sumX, -currentDensityOver2Pi * sumY};
+    }
+};
+
 } // namespace
 
 MagneticField::TurnSumsCacheStatistics MagneticField::get_turn_sums_cache_statistics() {
@@ -377,6 +467,43 @@ std::pair<double, double> MagneticFieldStrengthMmfBoundaryModel::calculate_sheet
 
 void MagneticFieldStrengthMmfBoundaryModel::setup_window_boundary(Magnetic magnetic, std::optional<OperatingPoint> operatingPoint) {
     _sheets = CoilMesher::generate_window_wall_sheets(magnetic, operatingPoint);
+    // ABT #1645: a uniform sheet of length L along the unit tangent t is the filament smeared over zeta = s t,
+    // |s| < L / 2, so its normalised moments are m_k = t^k (L / 2)^k / (k + 1) for even k (odd ones vanish), and
+    // Hy + j Hx = I / (2 pi) sum_k m_k / D^(k+1), D = centre - point, in the filament convention calculate_sheet_field
+    // shares. |m_k| = (L / 2)^k / (k + 1): cut after k = 12 at |D| >= 2 L, the remainder is below 5e-9 of the
+    // filament term.
+    _sheetMultipoles.clear();
+    _sheetMultipoles.reserve(_sheets.size());
+    for (const auto& sheet : _sheets) {
+        const double segmentX = sheet.end[0] - sheet.start[0];
+        const double segmentY = sheet.end[1] - sheet.start[1];
+        const double length = hypot(segmentX, segmentY);
+        if (!(length > 0)) {
+            throw CalculationException(ErrorCode::CALCULATION_INVALID_RESULT, "Neutral window field (ABT #1304): zero-length wall sheet");
+        }
+        SheetMultipole multipole;
+        multipole.centreX = 0.5 * (sheet.start[0] + sheet.end[0]);
+        multipole.centreY = 0.5 * (sheet.start[1] + sheet.end[1]);
+        multipole.farRadiusSquared = 4.0 * length * length;
+        const double tangentX = segmentX / length;
+        const double tangentY = segmentY / length;
+        // (t L / 2)^2, raised step by step.
+        const double halfRe = tangentX * length / 2;
+        const double halfIm = tangentY * length / 2;
+        const double stepRe = halfRe * halfRe - halfIm * halfIm;
+        const double stepIm = 2 * halfRe * halfIm;
+        double powerRe = 1;
+        double powerIm = 0;
+        for (size_t index = 0; index < 7; ++index) {
+            const double denominator = static_cast<double>(2 * index + 1);
+            multipole.momentRe[index] = powerRe / denominator;
+            multipole.momentIm[index] = powerIm / denominator;
+            const double nextRe = powerRe * stepRe - powerIm * stepIm;
+            powerIm = powerRe * stepIm + powerIm * stepRe;
+            powerRe = nextRe;
+        }
+        _sheetMultipoles.push_back(multipole);
+    }
     _isSetUp = true;
 }
 
@@ -386,7 +513,33 @@ std::pair<double, double> MagneticFieldStrengthMmfBoundaryModel::get_window_boun
     }
     double fieldX = 0;
     double fieldY = 0;
-    for (const auto& sheet : _sheets) {
+    for (size_t sheetIndex = 0; sheetIndex < _sheets.size(); ++sheetIndex) {
+        const auto& sheet = _sheets[sheetIndex];
+        const auto& multipole = _sheetMultipoles[sheetIndex];
+        const double dRe = multipole.centreX - pointX;
+        const double dIm = multipole.centreY - pointY;
+        const double dNormSquared = dRe * dRe + dIm * dIm;
+        if (dNormSquared >= multipole.farRadiusSquared) {
+            const double inverseRe = dRe / dNormSquared;
+            const double inverseIm = -dIm / dNormSquared;
+            const double inverseSquaredRe = inverseRe * inverseRe - inverseIm * inverseIm;
+            const double inverseSquaredIm = 2 * inverseRe * inverseIm;
+            double termRe = inverseRe;
+            double termIm = inverseIm;
+            double sumRe = 0;
+            double sumIm = 0;
+            for (size_t index = 0; index < 7; ++index) {
+                sumRe += multipole.momentRe[index] * termRe - multipole.momentIm[index] * termIm;
+                sumIm += multipole.momentRe[index] * termIm + multipole.momentIm[index] * termRe;
+                const double nextRe = termRe * inverseSquaredRe - termIm * inverseSquaredIm;
+                termIm = termRe * inverseSquaredIm + termIm * inverseSquaredRe;
+                termRe = nextRe;
+            }
+            const double prefactor = sheet.current * netAmpereTurns / (2 * std::numbers::pi);
+            fieldX += prefactor * sumIm;
+            fieldY += prefactor * sumRe;
+            continue;
+        }
         auto [sheetFieldX, sheetFieldY] = calculate_sheet_field(sheet, sheet.current * netAmpereTurns, pointX, pointY);
         fieldX += sheetFieldX;
         fieldY += sheetFieldY;
@@ -887,42 +1040,102 @@ WindingWindowMagneticStrengthFieldPhasorOutput MagneticField::calculate_magnetic
         // The kernel sum with unit anchor current, with the same exclusions the per-harmonic
         // loop applies to a turn.
         entry.unitFieldPerInducedPointPerWinding.assign(inducedData.size(), std::vector<std::pair<double, double>>(numberWindings, {0.0, 0.0}));
+        // ABT #1645: everything the double loop reads, read once. The FieldPoint getters copy their optionals (the label
+        // string among them) and the wire dimensions go through resolve_dimensional_values; per pair that was a third of
+        // the time. Under BINNS_LAWRENSON the kernel itself is evaluated here with the conductor's precomputed
+        // RectangleFieldKernel or the filament formula, exactly as get_magnetic_field_strength_components_between_two_points
+        // does for an unrotated conductor; any other model, or a rotated conductor, goes through the model as before.
+        struct InducingSource {
+            const FieldPoint* point;
+            double x;
+            double y;
+            double value;
+            int64_t turnIndex;
+            size_t windingIndex;
+            bool isImage;
+            bool rotated;
+        };
+        std::vector<InducingSource> sources;
+        sources.reserve(numberPositions);
+        for (size_t position = 0; position < numberPositions; ++position) {
+            size_t windingIndex = windingPerPosition[position];
+            if (!entry.anchorPerWinding[windingIndex]) {
+                continue;
+            }
+            size_t reference = referenceHarmonicPerWinding[windingIndex];
+            const auto& inducingFieldPoint = inducingFields[reference].get_data()[turnPointsPerHarmonic[reference][position]];
+            const auto label = inducingFieldPoint.get_label();
+            sources.push_back({&inducingFieldPoint, inducingFieldPoint.get_point()[0], inducingFieldPoint.get_point()[1], inducingFieldPoint.get_value(),
+                               inducingFieldPoint.get_turn_index().value(), windingIndex, label && label.value() == "image",
+                               inducingFieldPoint.get_rotation().has_value()});
+        }
+        const bool binnsLawrensonKernel = _magneticFieldStrengthModel == MagneticFieldStrengthModels::BINNS_LAWRENSON;
+        std::vector<std::optional<RectangleFieldKernel>> rectangleKernelPerWinding(numberWindings);
+        std::vector<double> roundRadiusSquaredPerWinding(numberWindings, 0.0);
+        if (binnsLawrensonKernel) {
+            for (size_t windingIndex = 0; windingIndex < numberWindings; ++windingIndex) {
+                const auto& wire = _wirePerWinding[windingIndex];
+                if (wire.get_type() != WireType::ROUND && wire.get_type() != WireType::LITZ) {
+                    rectangleKernelPerWinding[windingIndex] = RectangleFieldKernel(resolve_dimensional_values(wire.get_conducting_width().value()) / 2,
+                                                                                   resolve_dimensional_values(wire.get_conducting_height().value()) / 2);
+                }
+                else {
+                    double wireRadius = _wireMaxOuterWidth[windingIndex] / 2;
+                    roundRadiusSquaredPerWinding[windingIndex] = wireRadius * wireRadius;
+                }
+            }
+        }
         for (size_t inducedIndex = 0; inducedIndex < inducedData.size(); ++inducedIndex) {
             const auto& inducedFieldPoint = inducedData[inducedIndex];
+            const auto inducedLabel = inducedFieldPoint.get_label();
+            const auto inducedTurnIndex = inducedFieldPoint.get_turn_index();
             // Width samples receive no turn field (the fringing-only rule of the loop below).
             // The #182 exclusion guards against FILAMENT stand-ins for neighbouring flat conductors. On the neutral
             // (MMF_BOUNDARY) path each neighbour is one exact Binns-Lawrenson rectangle and the sample's own conductor
             // is skipped, so the samples take the complete field: turns, images and wall sources (ABT #1304).
-            if (!exactFlatInducing && inducedFieldPoint.get_label() && inducedFieldPoint.get_label().value() == "widthsample") {
+            if (!exactFlatInducing && inducedLabel && inducedLabel.value() == "widthsample") {
                 continue;
             }
             bool inducedPointInsideCore = is_inside_core(inducedFieldPoint, coreColumnWidth, coreWidth, coreShapeFamily);
-            if (!inducedFieldPoint.get_turn_index() && inducedPointInsideCore) {
+            if (!inducedTurnIndex && inducedPointInsideCore) {
                 continue;
             }
+            const double inducedX = inducedFieldPoint.get_point()[0];
+            const double inducedY = inducedFieldPoint.get_point()[1];
             auto& fieldPerWinding = entry.unitFieldPerInducedPointPerWinding[inducedIndex];
-            for (size_t position = 0; position < numberPositions; ++position) {
-                size_t windingIndex = windingPerPosition[position];
-                if (!entry.anchorPerWinding[windingIndex]) {
-                    continue;
-                }
-                size_t reference = referenceHarmonicPerWinding[windingIndex];
-                const auto& inducingFieldPoint = inducingFields[reference].get_data()[turnPointsPerHarmonic[reference][position]];
-                if (multiWindowCore && inducingFieldPoint.get_point()[0] * inducedFieldPoint.get_point()[0] < 0) {
+            for (const auto& source : sources) {
+                if (multiWindowCore && source.x * inducedX < 0) {
                     continue;
                 }
                 // A turn's own field is the skin model's. On the neutral path its IMAGES are not: they are the core's
                 // reply to it, and next to a wall they are most of the field the turn sees (ABT #1304).
-                bool inducingIsOwnImage = windowBoundaryModel && inducingFieldPoint.get_label() && inducingFieldPoint.get_label().value() == "image";
-                if (inducedFieldPoint.get_turn_index() && inducedFieldPoint.get_turn_index().value() == inducingFieldPoint.get_turn_index().value() && !inducingIsOwnImage) {
+                bool inducingIsOwnImage = windowBoundaryModel && source.isImage;
+                if (inducedTurnIndex && inducedTurnIndex.value() == source.turnIndex && !inducingIsOwnImage) {
                     continue;
                 }
-                auto [inducedFieldX, inducedFieldY] = _model->get_magnetic_field_strength_components_between_two_points(inducingFieldPoint, inducedFieldPoint, windingIndex);
+                double inducedFieldX;
+                double inducedFieldY;
+                if (binnsLawrensonKernel && !source.rotated) {
+                    if (rectangleKernelPerWinding[source.windingIndex]) {
+                        std::tie(inducedFieldX, inducedFieldY) = rectangleKernelPerWinding[source.windingIndex]->field(inducedX - source.x, inducedY - source.y, source.value);
+                    }
+                    else {
+                        // The filament with its uniform-density interior, as in the model.
+                        double distanceX = source.x - inducedX;
+                        double distanceY = source.y - inducedY;
+                        double divisor = 2 * std::numbers::pi * std::max(distanceY * distanceY + distanceX * distanceX, roundRadiusSquaredPerWinding[source.windingIndex]);
+                        inducedFieldX = -source.value * distanceY / divisor;
+                        inducedFieldY = source.value * distanceX / divisor;
+                    }
+                }
+                else {
+                    std::tie(inducedFieldX, inducedFieldY) = _model->get_magnetic_field_strength_components_between_two_points(*source.point, inducedFieldPoint, source.windingIndex);
+                }
                 if (std::isnan(inducedFieldX) || std::isnan(inducedFieldY)) {
                     throw NaNResultException("NaN found in magnetic field calculation");
                 }
-                fieldPerWinding[windingIndex].first += inducedFieldX;
-                fieldPerWinding[windingIndex].second += inducedFieldY;
+                fieldPerWinding[source.windingIndex].first += inducedFieldX;
+                fieldPerWinding[source.windingIndex].second += inducedFieldY;
             }
         }
         for (size_t windingIndex = 0; windingIndex < numberWindings; ++windingIndex) {
@@ -1790,18 +2003,13 @@ std::pair<double, double> MagneticFieldStrengthBinnsLawrensonModel::get_magnetic
         // conductor too. The previous atan/log form with quadrant corrections (identical outside, to 1e-6 on 2e4
         // random points) zeroed the field in the copper, which dropped the tracks' own energy from the planar
         // leakage integral (ABT #1240).
-        auto primitive = [](double u, double v) {
-            double squaredRadius = u * u + v * v;
-            double logarithmTerm = squaredRadius > 0 ? 0.5 * u * log(squaredRadius) : 0.0;
-            double arctangentTerm = v != 0 ? v * atan(u / v) : 0.0;
-            return logarithmTerm + arctangentTerm;
-        };
-        auto cornerSum = [&primitive](double u1, double u2, double v1, double v2) {
-            return primitive(u2, v2) - primitive(u1, v2) - primitive(u2, v1) + primitive(u1, v1);
-        };
-        double currentDensityOver2Pi = inducingFieldPoint.get_value() / (4.0 * a * b) / (2.0 * std::numbers::pi);
-        Hx = currentDensityOver2Pi * cornerSum(x - a, x + a, y - b, y + b);
-        Hy = -currentDensityOver2Pi * cornerSum(y - b, y + b, x - a, x + a);
+        // Evaluated by RectangleFieldKernel (ABT #1645): the same closed form, with the multipole series far away.
+        // The kernel's moments depend only on the conductor, so the last one built is reused (per thread).
+        thread_local RectangleFieldKernel lastKernel;
+        if (lastKernel.a != a || lastKernel.b != b) {
+            lastKernel = RectangleFieldKernel(a, b);
+        }
+        std::tie(Hx, Hy) = lastKernel.field(x, y, inducingFieldPoint.get_value());
         if (std::isnan(Hx) || std::isnan(Hy)) {
             throw NaNResultException("NaN found in Binns Lawrenson's model for magnetic field");
         }
