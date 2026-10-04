@@ -3084,9 +3084,12 @@ TEST_CASE("Test_CoilAdviser_Web_Flyback_Advise_All_Turns_Inside_Window", "[advis
     }
 
     // Every turn of the advised layout, with its wire's outer dimensions, lies inside the winding
-    // window. This is the check real winding applies before it routes leads (Coil "[fit]"); the
-    // design advised before ABT #1446 (5 x 2 parallels of Litz 180x0.05 on the secondary) failed it
-    // with a secondary turn 0.24 mm below the window, so the web's real-winding rebuild refused it.
+    // window: the check real winding applies before it routes leads (Coil "[fit]").
+    // Not asserted here: the web's next step, rebuilding this coil from its stored JSON with real
+    // winding geometry (MVB++ magnetic_autocomplete_safe). This MKF refuses it for the design advised
+    // now (5 turns x 4 parallels of a 0.663 mm wire: the per-layer crossing stations do not converge)
+    // and for the one advised before ABT #1446 (5 x 2 Litz 180x0.05: the stored-design re-wind puts a
+    // secondary turn outside the window, so blocking is not applied).
     auto bobbin = coil.resolve_bobbin();
     REQUIRE(bobbin.get_processed_description());
     const auto windingWindows = bobbin.get_processed_description()->get_winding_windows();
