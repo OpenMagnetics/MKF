@@ -3083,16 +3083,19 @@ TEST_CASE("Test_CoilAdviser_Web_Flyback_Advise_All_Real_Winding", "[adviser][coi
                   << layersPerWinding[winding.get_name()] << " layers" << std::endl;
     }
 
-    // The web's next step: rebuild the same coil with real winding geometry on.
+    // The web's next step, as MVB++ magnetic_autocomplete_safe does it: the stored coil (sections
+    // and turns, no layers -- what the web keeps) is built without winding, then
+    // magnetic_autocomplete re-winds it with real winding geometry on and MVB++'s lead bend policy.
     settings.set_coil_use_real_winding_geometry(true);
-    OpenMagnetics::Magnetic magnetic = masMagneticsWithCoil[0].get_magnetic();
-    auto& realCoil = magnetic.get_mutable_coil();
-    realCoil.set_turns_description(std::nullopt);
-    realCoil.set_layers_description(std::nullopt);
-    realCoil.set_sections_description(std::nullopt);
-    realCoil.set_groups_description(std::nullopt);
-    bool wound = false;
-    CHECK_NOTHROW(wound = realCoil.wind());
-    CHECK(wound);
+    settings.set_coil_lead_bend_radius_factor(std::optional<double>(1.05));
+    json magneticJson;
+    to_json(magneticJson, masMagneticsWithCoil[0].get_magnetic());
+    magneticJson["coil"].erase("layersDescription");
+    OpenMagnetics::Magnetic storedMagnetic;
+    storedMagnetic.set_core(OpenMagnetics::Core(magneticJson.at("core")));
+    storedMagnetic.set_coil(OpenMagnetics::Coil(magneticJson.at("coil"), false));
+    OpenMagnetics::Magnetic enriched;
+    CHECK_NOTHROW(enriched = magnetic_autocomplete(storedMagnetic, json{}));
+    CHECK(enriched.get_coil().is_real_winding_blocking_applied());
     settings.reset();
 }
