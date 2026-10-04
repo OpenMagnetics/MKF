@@ -178,12 +178,17 @@ const std::vector<TopEntry> kTopLitzHighFreq = {
 // SAME display name (e.g. two "Planar 243.59 µm" rows with different
 // scores at ranks 0 and 3). The parallels count is now encoded in the
 // display name so users can disambiguate.
+// 2026-10-04 re-pin: the planar copper-thickness penalty is gone from the wire adviser
+// (coil adviser commit "try lower current densities and keep the lowest-loss wound coils";
+// the coil adviser now ranks wound coils by their losses). Without it the thicker copper,
+// which carries 5 A at 200 kHz with lower losses, ranks first: was 243.59 µm x2 (1.3197),
+// 278.38 x2, 208.79 x2, 243.59 x3, 313.18 x2.
 const std::vector<TopEntry> kTopPlanar = {
-    {"Planar 243.59 µm x2 parallels", 1.3196636443022853},
-    {"Planar 278.38 µm x2 parallels", 1.2926461763463761},
-    {"Planar 208.79 µm x2 parallels", 1.2613406508784197},
-    {"Planar 243.59 µm x3 parallels", 1.1647936870013549},
-    {"Planar 313.18 µm x2 parallels", 1.1599709209384959},
+    {"Planar 313.18 µm x2 parallels", 1.9315554209384957},
+    {"Planar 347.98 µm x2 parallels", 1.9292044850553256},
+    {"Planar 278.38 µm x2 parallels", 1.9119274110402538},
+    {"Planar 243.59 µm x2 parallels", 1.8484465039961628},
+    {"Planar 208.79 µm x2 parallels", 1.7578835080212769},
 };
 
 } // namespace
