@@ -416,14 +416,6 @@ std::pair<double, std::vector<std::pair<double, double>>> WindingProximityEffect
         }
         stackedModel->set_perpendicular_outline_factor(perpendicularOutlineFactor.value());
     }
-    auto martinezModel = std::dynamic_pointer_cast<WindingProximityEffectLossesMartinezModel>(model);
-    if (martinezModel) {
-        if (!perpendicularOutlineFactor) {
-            throw InvalidInputException(ErrorCode::MISSING_DATA,
-                "MARTINEZ needs the turn's stack-outline factor, which only the coil geometry gives: evaluate it through calculate_proximity_effect_losses");
-        }
-        martinezModel->set_perpendicular_outline_factor(perpendicularOutlineFactor.value());
-    }
     if (!wire.get_number_conductors()) {
         wire.set_number_conductors(1);
     }
@@ -474,10 +466,6 @@ std::pair<double, std::vector<std::pair<double, double>>> WindingProximityEffect
         totalProximityEffectLossesPerMeter += turnLosses;
     }
 
-    if (martinezModel) {
-        // The model instance is shared: a later direct single-conductor call must not inherit this turn's stack.
-        martinezModel->set_perpendicular_outline_factor(std::nullopt);
-    }
     return {totalProximityEffectLossesPerMeter, lossesPerHarmonic};
 }
 
@@ -508,9 +496,7 @@ WindingLossesOutput WindingProximityEffectLosses::calculate_proximity_effect_los
         if (modelPerWireType && modelPerWireType->contains(coil.get_wire_type(windingIndex))) {
             windingModelOverride = modelPerWireType->at(coil.get_wire_type(windingIndex));
         }
-        auto windingModel = get_model(coil.get_wire_type(windingIndex), windingModelOverride);
-        if (std::dynamic_pointer_cast<WindingProximityEffectLossesWangStackedModel>(windingModel) ||
-            std::dynamic_pointer_cast<WindingProximityEffectLossesMartinezModel>(windingModel)) {
+        if (std::dynamic_pointer_cast<WindingProximityEffectLossesWangStackedModel>(get_model(coil.get_wire_type(windingIndex), windingModelOverride))) {
             perpendicularOutlineFactorPerTurn = WindingProximityEffectLossesWangStackedModel::calculate_perpendicular_outline_factors(coil);
             break;
         }
@@ -1790,13 +1776,7 @@ double WindingProximityEffectLossesMartinezModel::calculate_turn_losses_impl(Wir
     double lossPerpendicular = 0;
     if (!profile.empty()) {
         const double edgeCrowdingFactor = calculate_edge_crowding_factor(wideDimension, thinDimension);
-        // ABT #1304: in a stack the excluded perpendicular field crowds at the STACK's outline, not at each member's:
-        // the member carries its share of the outline (see set_perpendicular_outline_factor). Isolated: exactly 1.
-        double stackOutlineFactor = 1;
-        if (_perpendicularOutlineFactor) {
-            stackOutlineFactor = _perpendicularOutlineFactor.value();
-        }
-        const double highFrequencyPerpendicular = 0.5 * edgeCrowdingFactor * stackOutlineFactor * surfaceResistance * integralPerpendicularSquared;
+        const double highFrequencyPerpendicular = 0.5 * edgeCrowdingFactor * surfaceResistance * integralPerpendicularSquared;
         // LF: the vector-potential variance across the face (omega^2), which for a uniform field
         // reduces to the y-term of the same equation (8).
         const double sampleStep = wideDimension / double(profile.size());
