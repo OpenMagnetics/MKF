@@ -3568,6 +3568,57 @@ double split_mean_log_point(double x, double y, const SplitSection& source) {
            ((x1 - x0) * (y1 - y0));
 }
 
+// Mean of ln |p - q| over p uniform in a disk of radius a and q uniform in a disk of radius b, centres d apart, when the
+// disks overlap (d < a + b). The potential of disk b at p is ln rho (rho = |p - c_b|) outside it and
+// ln b + (rho^2 - b^2) / (2 b^2) inside, so the mean is the mean over disk a of ln |p - c_b| plus the mean of
+// g(rho) = ln(b / rho) + (rho^2 - b^2) / (2 b^2) over the lens. Circles about c_b lie wholly inside disk a for
+// rho < a - d (closed form) and cross its edge for |d - a| < rho < d + a (arc 2 rho acos(.), Gauss-Legendre).
+double split_mean_log_overlapping_disks(double a, double b, double d) {
+    // Mean over disk a of ln |p - c_b|: ln d when c_b is outside it, ln a - (a^2 - d^2) / (2 a^2) inside.
+    double mean = d >= a ? std::log(d) : std::log(a) - (a * a - d * d) / (2 * a * a);
+    double lens = 0;  // integral of g over the lens
+    const double inner = std::min(std::max(a - d, 0.0), b);
+    if (inner > 0) {
+        lens += std::numbers::pi * (inner * inner * std::log(b / inner) + inner * inner * inner * inner / (4 * b * b));
+    }
+    const double lower = std::max(std::abs(d - a), inner);
+    const double upper = std::min(b, d + a);
+    if (upper > lower && d > 0) {
+        static const auto gaussLegendre = [] {
+            constexpr size_t order = 48;
+            std::array<std::pair<double, double>, order> nodes{};
+            for (size_t i = 0; i < order; ++i) {
+                double x = std::cos(std::numbers::pi * (i + 0.75) / (order + 0.5));
+                double derivative = 0;
+                for (int iteration = 0; iteration < 100; ++iteration) {
+                    double p0 = 1, p1 = x;
+                    for (size_t k = 2; k <= order; ++k) {
+                        double p2 = ((2 * k - 1) * x * p1 - (k - 1) * p0) / k;
+                        p0 = p1;
+                        p1 = p2;
+                    }
+                    derivative = order * (x * p1 - p0) / (x * x - 1);
+                    double step = p1 / derivative;
+                    x -= step;
+                    if (std::abs(step) < 1e-16) {
+                        break;
+                    }
+                }
+                nodes[i] = {x, 2 / ((1 - x * x) * derivative * derivative)};
+            }
+            return nodes;
+        }();
+        const double half = (upper - lower) / 2, middle = (upper + lower) / 2;
+        for (const auto& [node, weight] : gaussLegendre) {
+            const double rho = middle + half * node;
+            const double cosine = std::clamp((d * d + rho * rho - a * a) / (2 * d * rho), -1.0, 1.0);
+            const double g = std::log(b / rho) + (rho * rho - b * b) / (2 * b * b);
+            lens += half * weight * g * 2 * rho * std::acos(cosine);
+        }
+    }
+    return mean + lens / (std::numbers::pi * a * a);
+}
+
 // Mean of ln |p - q| over p in the target conductor section and q in the source section.
 double split_mean_log(const SplitSection& target, const SplitSection& source) {
     const double dx = target.x - source.x;
@@ -3583,11 +3634,14 @@ double split_mean_log(const SplitSection& target, const SplitSection& source) {
         return 0.5 * std::log(d2) - m2 * real2 / 2 - m4 * real4 / 4;
     }
     if (target.round && source.round) {
-        if (d2 == 0) {
-            // The same conductor (an image never lands on a conductor): the GMD of a disk with itself, r e^(-1/4).
-            return std::log(std::max(target.radius, source.radius)) - 0.25;
+        // Distinct uniform disks act on each other as their centre filaments when they do not overlap. A crossing and its
+        // own (m = 0) image coincide, and touching bundles overlap by the rounding of their coordinates: those take the
+        // exact overlapping-disk mean (ABT #1314; an exact d2 == 0 test missed the self term and read ln(1e-18)).
+        const double contact = target.radius + source.radius;
+        if (d2 >= contact * contact) {
+            return 0.5 * std::log(d2);
         }
-        return 0.5 * std::log(d2);
+        return split_mean_log_overlapping_disks(target.radius, source.radius, std::sqrt(d2));
     }
     if (target.round) {
         // Mean over the disk of the source's potential = its value at the centre (harmonic outside the source).
