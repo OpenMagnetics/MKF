@@ -148,6 +148,8 @@ class MagneticFilterWindowCopperCapacity : public MagneticFilter {
         double _temperature = 0;
         double _maximumEffectiveCurrentDensity = 0;
         std::string _lastReason;
+        // Copper area of the conductor sized to one winding's current, by (strand diameter, winding, operating point).
+        std::map<std::tuple<double, size_t, size_t>, double> _conductorAreaCache;
     public:
         MagneticFilterWindowCopperCapacity() {};
         MagneticFilterWindowCopperCapacity(Inputs inputs, double maximumEffectiveCurrentDensity);

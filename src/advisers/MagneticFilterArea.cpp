@@ -510,9 +510,8 @@ std::pair<bool, double> MagneticFilterWindowCopperCapacity::evaluate_magnetic(Ma
     // Per turn, a winding needs strandsPerTurn stand-in strands: the effective current density
     // the current would have in ONE stand-in strand over the maximum. Above one, whole strands
     // (rounded up). At or below one, a single stand-in strand is more copper than the current
-    // needs, and the coil stage is free to pick a thinner round wire: a wire thinner than the
-    // two-skin-depth strand carries its current as near-uniformly as the strand does, so the
-    // copper is that fraction of the strand. At line frequency the stand-in strand is two skin
+    // needs, and the coil stage is free to pick a thinner round wire: the copper is that of the
+    // round conductor whose own effective current density is the maximum. At line frequency the stand-in strand is two skin
     // depths at 50 Hz (18.6 mm); counting it whole made a 32 A PFC choke need 272 mm2 of copper
     // per turn instead of 2.7 mm2, and rejected every core of the catalogue.
     // Each winding's copper occupies its area over the round-wire filling factor of its own
@@ -536,9 +535,52 @@ std::pair<bool, double> MagneticFilterWindowCopperCapacity::evaluate_magnetic(Ma
                     "Window copper capacity: operating point " + std::to_string(operatingPointIndex) + " has no current for winding " +
                     std::to_string(windingIndex));
             }
-            double strandLoad = strand.calculate_effective_current_density(excitations[windingIndex].get_current().value(), _temperature) /
-                                _maximumEffectiveCurrentDensity;
-            strandsPerTurn = std::max(strandsPerTurn, strandLoad > 1 ? std::ceil(strandLoad) : strandLoad);
+            const auto current = excitations[windingIndex].get_current().value();
+            double strandLoad = strand.calculate_effective_current_density(current, _temperature) / _maximumEffectiveCurrentDensity;
+            if (strandLoad > 1) {
+                strandsPerTurn = std::max(strandsPerTurn, std::ceil(strandLoad));
+                continue;
+            }
+            // One strand is more than enough: the copper is that of the round conductor whose own
+            // effective current density is the maximum, not the fraction strandLoad of the strand.
+            // A thinner conductor carries the current's high-frequency harmonics (a PFC choke's
+            // ripple at the switching frequency) no better per unit of copper than the strand, so
+            // the fraction overcounts. The search depends on the inputs only: memoised.
+            const auto cacheKey = std::make_tuple(strandConductingDiameter, windingIndex, operatingPointIndex);
+            auto cached = _conductorAreaCache.find(cacheKey);
+            if (cached == _conductorAreaCache.end()) {
+                if (!current.get_processed() || !current.get_processed()->get_rms()) {
+                    throw InvalidInputException(ErrorCode::MISSING_DATA,
+                        "Window copper capacity: the current of winding " + std::to_string(windingIndex) + " has no processed rms");
+                }
+                // The effective current density is never below the DC one, so the conductor has at
+                // least rms / maximum of copper, and the strand itself is enough: bisect between.
+                double lowerArea = current.get_processed()->get_rms().value() / _maximumEffectiveCurrentDensity;
+                double upperArea = strandConductingArea;
+                if (!(lowerArea > 0)) {
+                    throw CalculationException(ErrorCode::CALCULATION_INVALID_RESULT,
+                        "Window copper capacity: winding " + std::to_string(windingIndex) + " carries no rms current to size its copper");
+                }
+                auto density_at = [&](double conductingArea) {
+                    return Wire::get_wire_for_conducting_area(conductingArea, _temperature, true).calculate_effective_current_density(current, _temperature);
+                };
+                if (lowerArea >= upperArea || density_at(lowerArea) <= _maximumEffectiveCurrentDensity) {
+                    upperArea = std::min(lowerArea, upperArea);
+                }
+                else {
+                    while (upperArea / lowerArea > 1.001) {
+                        const double middleArea = std::sqrt(lowerArea * upperArea);
+                        if (density_at(middleArea) > _maximumEffectiveCurrentDensity) {
+                            lowerArea = middleArea;
+                        }
+                        else {
+                            upperArea = middleArea;
+                        }
+                    }
+                }
+                cached = _conductorAreaCache.emplace(cacheKey, upperArea).first;
+            }
+            strandsPerTurn = std::max(strandsPerTurn, cached->second / strandConductingArea);
         }
         if (!(strandsPerTurn > 0)) {
             throw CalculationException(ErrorCode::CALCULATION_INVALID_RESULT,
