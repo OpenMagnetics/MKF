@@ -3831,6 +3831,62 @@ static OpenMagnetics::Magnetic build_e42_flat_fixture(bool foil, bool gapped) {
     return magnetic;
 }
 
+// Per-turn F_R = (ohmic + skin + proximity) / ohmic of the E 42 flat fixture at 200 kHz (2 A peak-to-peak sinusoid,
+// 20 C, mirroring 2, fringing on) under BINNS_LAWRENSON / ROSHEN / MARTINEZ, the setup the ABT #1304 scorecard and its
+// OMFEM references (.mkf-1645-fem/ref2) use.
+static std::vector<double> e42_flat_fixture_turn_resistance_factors(bool foil, bool gapped) {
+    settings.reset();
+    clear_databases();
+    auto magnetic = build_e42_flat_fixture(foil, gapped);
+    auto inputs = OpenMagnetics::Inputs::create_quick_operating_point_only_current(200000, 1e-3, 20, WaveformLabel::SINUSOIDAL, 2, 0.5, 0);
+    settings.set_magnetic_field_mirroring_dimension(2);
+    settings.set_magnetic_field_include_fringing(true);
+    WindingLossesModels models;
+    models.magneticFieldStrengthModel = MagneticFieldStrengthModels::BINNS_LAWRENSON;
+    models.magneticFieldStrengthFringingEffectModel = MagneticFieldStrengthFringingEffectModels::ROSHEN;
+    models.proximityEffectModel = WindingProximityEffectLossesModels::MARTINEZ;
+    WindingLosses windingLosses(models);
+    auto output = windingLosses.calculate_losses(magnetic, inputs.get_operating_point(0), 20);
+    std::vector<double> factors;
+    const auto perTurn = output.get_winding_losses_per_turn().value();
+    for (const auto& turn : perTurn) {
+        double ohmic = turn.get_ohmic_losses()->get_losses();
+        double loss = ohmic;
+        const auto skinLosses = turn.get_skin_effect_losses().value();
+        const auto proximityLosses = turn.get_proximity_effect_losses().value();
+        for (auto harmonicLoss : skinLosses.get_losses_per_harmonic()) loss += harmonicLoss;
+        for (auto harmonicLoss : proximityLosses.get_losses_per_harmonic()) loss += harmonicLoss;
+        factors.push_back(loss / ohmic);
+    }
+    settings.reset();
+    return factors;
+}
+
+TEST_CASE("Test_Winding_Losses_Martinez_E42_Rect_Gap_Adjacent_Turn_Vs_OMFEM", "[winding-losses][martinez-flat][physical-model]") {
+    // ABT #1304: Martinez reads the exact Binns-Lawrenson field of each flat neighbour (CENTER mesher), not filament
+    // stand-ins. Ten 3 x 0.8 mm pancakes beside a 1 mm centre gap at 200 kHz: the turn just above the gap (index 5,
+    // y = +1.63 mm) is the one the fringing field heats most. OMFEM 2D (ref2/E42_RECT_GAP1MM_200000.fem.json, per-body
+    // copper loss over P_cu / R_ac/R_dc / N) gives it F_R = 557.89.
+    const double omfemGapAdjacentTurnFactor = 557.8936;
+    auto factors = e42_flat_fixture_turn_resistance_factors(false, true);
+    REQUIRE(factors.size() == 10);
+    INFO("MKF F_R of the gap-adjacent turn " << factors[5] << ", OMFEM " << omfemGapAdjacentTurnFactor);
+    CHECK(factors[5] >= 0.8 * omfemGapAdjacentTurnFactor);
+}
+
+TEST_CASE("Test_Winding_Losses_Martinez_E42_Foil_Stack_Screens_The_Gap_Field", "[winding-losses][martinez-flat][physical-model]") {
+    // ABT #1645: a foil turn is a thin strip that transmits the field normal to it by T = 1 / (1 + j W t / (pi delta^2))
+    // (MagneticField.h, ScreeningStrip). Eight 0.2 x 20 mm foils beside a 1 mm centre gap at 200 kHz: the first foil
+    // takes the gap's fringing field and screens the rest. OMFEM 2D (ref2/E42_FOIL_GAP1MM_200000.fem.json) gives the
+    // gap-side foil F_R = 1970.5 and the outermost 1.28, a ratio of 1542. MKF reads 134 with the strips screening and
+    // 6.8 without (every foil then sees the gap's normal field almost undiminished). Foil stays well above OMFEM
+    // turn by turn (5.7x to 66x here), so this guards the screening's existence, not agreement.
+    auto factors = e42_flat_fixture_turn_resistance_factors(true, true);
+    REQUIRE(factors.size() == 8);
+    INFO("MKF F_R gap-side foil " << factors[0] << ", outermost foil " << factors[7]);
+    CHECK(factors[0] / factors[7] >= 50);
+}
+
 // Martinez flat-conductor scorecard driver (hidden). Per-turn F_R = (ohmic + skin + proximity) / ohmic for every
 // model configuration in env MF_MODELS (';'-separated "FIELD/FRINGING/PROXIMITY" JSON names, '-' = automatic, or
 // "DEFAULT"), at every frequency in env MF_FREQS (comma separated), on the fixture env MF_FIXTURE: a
