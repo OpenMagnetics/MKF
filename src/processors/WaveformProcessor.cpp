@@ -665,9 +665,18 @@ WaveformLabel WaveformProcessor::try_guess_waveform_label(Waveform waveform, siz
     // unipolar 0/1 V one at 100 kHz, 2.5e-6 V*s, passed as balanced.)
     const double edgeTimeTolerance = 1.5 * period / numberPointsSampledWaveforms;
     double voltSecondTolerance = 0;
+    // UNIPOLAR means one polarity: a rectangle whose levels lie on both sides of zero is
+    // bipolar whatever its volt-second balance, so it is RECTANGULAR (with an offset when
+    // unbalanced, e.g. +-1 V at duty 0.2), never UNIPOLAR_RECTANGULAR. The balance alone
+    // cannot tell them apart: the unipolar 0/1 V rectangle at duty 0.25 is 0.25 p2p*T
+    // out of balance, a +-1 V one at duty 0.2 0.3 p2p*T. A level within the same fraction
+    // of the peak-to-peak as the edge-time tolerance of the period counts as zero.
+    bool levelsOnBothSidesOfZero = false;
     if (!compressedWaveform.get_data().empty()) {
         auto [minimumIt, maximumIt] = std::minmax_element(compressedWaveform.get_data().begin(), compressedWaveform.get_data().end());
         voltSecondTolerance = (*maximumIt - *minimumIt) * edgeTimeTolerance;
+        const double levelTolerance = (*maximumIt - *minimumIt) * 1.5 / numberPointsSampledWaveforms;
+        levelsOnBothSidesOfZero = *minimumIt < -levelTolerance && *maximumIt > levelTolerance;
     }
     // Each level held from one edge to the next, every interval of the period counted.
     auto rectangleVoltSecondsEdgesAtSecondAndFourthPoints = [&compressedWaveform]() {
@@ -708,6 +717,7 @@ WaveformLabel WaveformProcessor::try_guess_waveform_label(Waveform waveform, siz
                 return WaveformLabel::TRIANGULAR;
         }
         else if (compressedWaveform.get_data().size() == 5 &&
+            !levelsOnBothSidesOfZero &&
             !is_close_enough(rectangleVoltSecondsEdgesAtSecondAndFourthPoints(), 0, voltSecondTolerance) &&
             is_close_enough(compressedWaveform.get_time().value()[0], compressedWaveform.get_time().value()[1], 1.5 * period / numberPointsSampledWaveforms) &&
             compressedWaveform.get_data()[1] == compressedWaveform.get_data()[2] &&
@@ -717,7 +727,7 @@ WaveformLabel WaveformProcessor::try_guess_waveform_label(Waveform waveform, siz
                 return WaveformLabel::UNIPOLAR_RECTANGULAR;
         }
         else if (compressedWaveform.get_data().size() == 5 &&
-            is_close_enough(rectangleVoltSecondsEdgesAtSecondAndFourthPoints(), 0, voltSecondTolerance) &&
+            (levelsOnBothSidesOfZero || is_close_enough(rectangleVoltSecondsEdgesAtSecondAndFourthPoints(), 0, voltSecondTolerance)) &&
             is_close_enough(compressedWaveform.get_time().value()[0], compressedWaveform.get_time().value()[1], 1.5 * period / numberPointsSampledWaveforms) &&
             compressedWaveform.get_data()[1] == compressedWaveform.get_data()[2] &&
             is_close_enough(compressedWaveform.get_time().value()[2], compressedWaveform.get_time().value()[3], 1.5 * period / numberPointsSampledWaveforms) &&
@@ -726,7 +736,7 @@ WaveformLabel WaveformProcessor::try_guess_waveform_label(Waveform waveform, siz
                 return WaveformLabel::RECTANGULAR;
         }
         else if (compressedWaveform.get_data().size() == 5 &&
-            is_close_enough(rectangleVoltSecondsEdgesAtFirstAndThirdPoints(), 0, voltSecondTolerance) &&
+            (levelsOnBothSidesOfZero || is_close_enough(rectangleVoltSecondsEdgesAtFirstAndThirdPoints(), 0, voltSecondTolerance)) &&
             is_close_enough(compressedWaveform.get_time().value()[1], compressedWaveform.get_time().value()[2], 1.5 * period / numberPointsSampledWaveforms) &&
             compressedWaveform.get_data()[0] == compressedWaveform.get_data()[1] &&
             is_close_enough(compressedWaveform.get_time().value()[3], compressedWaveform.get_time().value()[4], 1.5 * period / numberPointsSampledWaveforms) &&
