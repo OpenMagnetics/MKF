@@ -3037,3 +3037,62 @@ TEST_CASE("Test_CoilAdviser_Web_Default_Two_Winding_PQ2715", "[adviser][coil-adv
     CHECK(coil.get_functional_description()[0].get_number_turns() == 13);
     CHECK(coil.get_functional_description()[1].get_number_turns() == 13);
 }
+
+TEST_CASE("Test_CoilAdviser_Web_Flyback_Advise_All_Real_Winding", "[adviser][coil-adviser][bug][abt-1699]") {
+    // ABT #1699: the web's default flyback -> core Advise (95 EQ 26/19/7, 0.18 mm gap, 42:5)
+    // -> wire "Advise All" (calculate_advised_coil), replayed with the settings captured at the
+    // engine proxy. The advised Secondary (5 turns x 4 parallels of a 0.663 mm round wire) could
+    // not be rebuilt with real winding geometry: "5 turn(s) ... already span 33 layers".
+    auto path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "web_adviser_flows/flyback_calculate_advised_coil.json");
+    std::ifstream file(path);
+    REQUIRE(file.good());
+    auto fixture = json::parse(file);
+    settings.reset();
+    OpenMagneticsTesting::apply_web_engine_settings(fixture.at("engineSettingsAtCall"));
+    settings.set_coil_delimit_and_compact(true);
+    OpenMagnetics::Mas mas(fixture.at("mas"));
+    for (size_t windingIndex = 0; windingIndex < mas.get_magnetic().get_coil().get_functional_description().size(); ++windingIndex) {
+        mas.get_mutable_magnetic().get_mutable_coil().get_mutable_functional_description()[windingIndex].set_wire("Dummy");
+    }
+    mas.get_mutable_magnetic().get_mutable_coil().set_turns_description(std::nullopt);
+    mas.get_mutable_magnetic().get_mutable_coil().set_layers_description(std::nullopt);
+    mas.get_mutable_magnetic().get_mutable_coil().set_sections_description(std::nullopt);
+    mas.get_mutable_magnetic().get_mutable_coil().set_groups_description(std::nullopt);
+
+    CoilAdviser coilAdviser;
+    auto masMagneticsWithCoil = coilAdviser.get_advised_coil(mas, 1);
+    INFO(coilAdviser.get_last_no_results_reason().value_or("returned results"));
+    REQUIRE(masMagneticsWithCoil.size() == 1);
+    auto coil = masMagneticsWithCoil[0].get_magnetic().get_coil();
+    REQUIRE(coil.get_turns_description());
+    REQUIRE(coil.get_layers_description());
+
+    // Layers per winding of the advised (ideal) layout.
+    std::map<std::string, size_t> layersPerWinding;
+    const auto layers = coil.get_layers_description().value();
+    for (const auto& layer : layers) {
+        if (layer.get_type() == MAS::ElectricalType::CONDUCTION) {
+            layersPerWinding[layer.get_partial_windings()[0].get_winding()]++;
+        }
+    }
+    const auto windings = coil.get_functional_description();
+    for (const auto& winding : windings) {
+        auto wire = std::get<OpenMagnetics::Wire>(winding.get_wire());
+        std::cout << "[abt-1699] " << winding.get_name() << ": " << winding.get_number_turns() << " turns x "
+                  << winding.get_number_parallels() << " parallels of " << wire.get_name().value_or("?") << " in "
+                  << layersPerWinding[winding.get_name()] << " layers" << std::endl;
+    }
+
+    // The web's next step: rebuild the same coil with real winding geometry on.
+    settings.set_coil_use_real_winding_geometry(true);
+    OpenMagnetics::Magnetic magnetic = masMagneticsWithCoil[0].get_magnetic();
+    auto& realCoil = magnetic.get_mutable_coil();
+    realCoil.set_turns_description(std::nullopt);
+    realCoil.set_layers_description(std::nullopt);
+    realCoil.set_sections_description(std::nullopt);
+    realCoil.set_groups_description(std::nullopt);
+    bool wound = false;
+    CHECK_NOTHROW(wound = realCoil.wind());
+    CHECK(wound);
+    settings.reset();
+}

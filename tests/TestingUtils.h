@@ -235,4 +235,55 @@ struct QuickMagneticConfig {
 // Helper to create a quick Magnetic for testing
 OpenMagnetics::Magnetic create_quick_test_magnetic(const QuickMagneticConfig& config = QuickMagneticConfig{});
 
+// Applies the web engine's settings object (the JSON the WebFrontend hands to
+// WebLibMKF set_settings) to OpenMagnetics::Settings, key for key as that binding
+// does, so a fixture captured at the web engine proxy replays under the same
+// settings in C++. A key the fixture lacks throws (json::at), never a default.
+inline void apply_web_engine_settings(const nlohmann::json& s) {
+    auto& settings = OpenMagnetics::Settings::GetInstance();
+    settings.set_magnetizing_inductance_include_air_inductance(s.at("magnetizingInductanceIncludeAirInductance").get<bool>());
+    settings.set_coil_allow_margin_tape(s.at("coilAllowMarginTape").get<bool>());
+    settings.set_coil_allow_insulated_wire(s.at("coilAllowInsulatedWire").get<bool>());
+    settings.set_coil_fill_sections_with_margin_tape(s.at("coilFillSectionsWithMarginTape").get<bool>());
+    settings.set_coil_wind_even_if_not_fit(s.at("coilWindEvenIfNotFit").get<bool>());
+    settings.set_coil_delimit_and_compact(s.at("coilDelimitAndCompact").get<bool>());
+    settings.set_coil_only_one_turn_per_layer_in_contiguous_rectangular(s.at("coilOnlyOneTurnPerLayerInContiguousRectangular").get<bool>());
+    settings.set_coil_try_rewind(s.at("coilTryRewind").get<bool>());
+    settings.set_coil_maximum_layers_planar(s.at("coilMaximumLayersPlanar").get<int>());
+    settings.set_preferred_core_material_ferrite_manufacturer(s.at("preferredCoreMaterialFerriteManufacturer").get<std::string>());
+    settings.set_preferred_core_material_powder_manufacturer(s.at("preferredCoreMaterialPowderManufacturer").get<std::string>());
+    if (s.at("preferredWireStandard").is_null()) {
+        settings.set_preferred_wire_standard(std::nullopt);
+    }
+    else {
+        settings.set_preferred_wire_standard(s.at("preferredWireStandard").get<MAS::WireStandard>());
+    }
+    settings.set_coil_include_additional_coordinates(s.at("coilIncludeAdditionalCoordinates").get<bool>());
+    settings.set_coil_use_real_winding_geometry(s.at("coilUseRealWindingGeometry").get<bool>());
+    settings.set_use_only_cores_in_stock(s.at("useOnlyCoresInStock").get<bool>());
+    settings.set_magnetic_field_number_points_x(s.at("magneticFieldNumberPointsX").get<int>());
+    settings.set_magnetic_field_number_points_y(s.at("magneticFieldNumberPointsY").get<int>());
+    settings.set_magnetic_field_mirroring_dimension(s.at("magneticFieldMirroringDimension").get<int>());
+    settings.set_magnetic_field_include_fringing(s.at("magneticFieldIncludeFringing").get<bool>());
+    settings.set_coil_adviser_maximum_number_wires(s.at("coilAdviserMaximumNumberWires").get<int>());
+    settings.set_core_adviser_include_margin(s.at("coreIncludeMargin").get<bool>());
+    settings.set_core_adviser_include_stacks(s.at("coreIncludeStacks").get<bool>());
+    settings.set_core_adviser_include_distributed_gaps(s.at("coreIncludeDistributedGaps").get<bool>());
+    settings.set_use_toroidal_cores(s.at("useToroidalCores").get<bool>());
+    settings.set_use_concentric_cores(s.at("useConcentricCores").get<bool>());
+    settings.set_magnetic_field_strength_model(static_cast<OpenMagnetics::MagneticFieldStrengthModels>(s.at("magneticFieldStrengthModel").get<int>()));
+    settings.set_magnetic_field_strength_fringing_effect_model(static_cast<OpenMagnetics::MagneticFieldStrengthFringingEffectModels>(s.at("magneticFieldStrengthFringingEffectModel").get<int>()));
+    settings.set_reluctance_model(static_cast<OpenMagnetics::ReluctanceModels>(s.at("reluctanceModel").get<int>()));
+    settings.set_core_temperature_model(static_cast<OpenMagnetics::CoreTemperatureModels>(s.at("coreTemperatureModel").get<int>()));
+    settings.set_core_thermal_resistance_model(static_cast<OpenMagnetics::CoreThermalResistanceModels>(s.at("coreThermalResistanceModel").get<int>()));
+    settings.set_winding_skin_effect_losses_model(static_cast<OpenMagnetics::WindingSkinEffectLossesModels>(s.at("windingSkinEffectLossesModel").get<int>()));
+    settings.set_winding_proximity_effect_losses_model(static_cast<OpenMagnetics::WindingProximityEffectLossesModels>(s.at("windingProximityEffectLossesModel").get<int>()));
+    settings.set_stray_capacitance_model(static_cast<OpenMagnetics::StrayCapacitanceModels>(s.at("strayCapacitanceModel").get<int>()));
+    settings.set_coil_enable_user_winding_losses_models(s.at("coilEnableUserWindingLossesModels").get<bool>());
+    settings.set_core_per_column_winding_windows(s.at("corePerColumnWindingWindows").get<bool>());
+    settings.set_coil_adviser_allow_lateral_placement(s.at("coilAdviserAllowLateralPlacement").get<bool>());
+    settings.set_thermal_network_strict_geometry(s.at("thermalNetworkStrictGeometry").get<bool>());
+    settings.set_allow_material_data_extrapolation(s.at("allowMaterialDataExtrapolation").get<bool>());
+}
+
 } // namespace OpenMagneticsTesting

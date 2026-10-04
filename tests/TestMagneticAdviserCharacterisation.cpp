@@ -571,3 +571,85 @@ TEST_CASE("MagneticAdviser advises a toroidal CMC for the web wizard's default d
     settings.reset();
     clear_databases();
 }
+
+namespace {
+
+// Replays WebLibMKF calculate_advised_magnetics_impl for an interferenceSuppression
+// input: weights normalised to sum 1, then the explicit suppression filter flow the
+// binding builds (CORE_MINIMUM_IMPEDANCE, COST, LOSSES, DIMENSIONS, LEAKAGE_INDUCTANCE,
+// TURN_COUNT) instead of the weights map.
+std::vector<std::pair<OpenMagnetics::Mas, double>> replay_web_suppression_magnetic_adviser(const std::string& fixtureName) {
+    auto path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "web_adviser_flows/" + fixtureName);
+    std::ifstream file(path);
+    REQUIRE(file.is_open());
+    auto fixture = nlohmann::json::parse(file);
+    OpenMagneticsTesting::apply_web_engine_settings(fixture.at("engineSettingsAtCall"));
+    Settings::GetInstance().set_coil_delimit_and_compact(true);
+
+    OpenMagnetics::Inputs inputs(fixture.at("inputs"));
+    REQUIRE(inputs.get_design_requirements().get_application().value() == "interferenceSuppression");
+    CoreAdviser::CoreAdviserModes coreMode;
+    from_json(fixture.at("coreMode"), coreMode);
+
+    std::map<std::string, double> weightsByName = fixture.at("weights");
+    double weightSum = 0;
+    for (auto const& [name, weight] : weightsByName) {
+        weightSum += weight;
+    }
+    std::map<MagneticFilters, double> weights;
+    for (auto const& [name, weight] : weightsByName) {
+        MagneticFilters filter;
+        from_json(name, filter);
+        weights[filter] = weight / weightSum;
+    }
+    double wCost = weights.at(MagneticFilters::COST);
+    double wLosses = weights.at(MagneticFilters::LOSSES);
+    double wDims = weights.at(MagneticFilters::DIMENSIONS);
+    std::vector<MagneticFilterOperation> filterFlow{
+        MagneticFilterOperation(MagneticFilters::CORE_MINIMUM_IMPEDANCE, true, true, true, std::max(1.0, wDims * 2.0)),
+        MagneticFilterOperation(MagneticFilters::COST, true, true, wCost),
+        MagneticFilterOperation(MagneticFilters::LOSSES, true, true, wLosses),
+        MagneticFilterOperation(MagneticFilters::DIMENSIONS, true, true, wDims),
+        MagneticFilterOperation(MagneticFilters::LEAKAGE_INDUCTANCE, true, true, wDims),
+        MagneticFilterOperation(MagneticFilters::TURN_COUNT, true, false, std::max(wLosses, wDims)),
+    };
+
+    OpenMagnetics::MagneticAdviser adviser;
+    adviser.set_core_mode(coreMode);
+    return adviser.get_advised_magnetic(inputs, filterFlow, fixture.at("maximumNumberResults").get<size_t>());
+}
+
+}  // namespace
+
+// ABT #1699: the web's CMC wizard -> Magnetic Adviser call, captured at the engine proxy.
+// It threw "[COIL_NOT_PROCESSED] ... Missing turns description to evaluate cost filter":
+// a candidate reached the COST filter without a wound coil.
+TEST_CASE("MagneticAdviser web CMC suppression flow returns wound toroidal CMCs",
+          "[adviser][magnetic-adviser][available-cores][cmc][suppression][abt-1699]") {
+    settings.reset();
+    clear_databases();
+    std::vector<std::pair<OpenMagnetics::Mas, double>> results;
+    REQUIRE_NOTHROW(results = replay_web_suppression_magnetic_adviser("cmc_calculate_advised_magnetics.json"));
+    REQUIRE(results.size() > 0);
+    for (auto& [mas, scoring] : results) {
+        CHECK(mas.get_mutable_magnetic().get_mutable_core().get_type() == CoreType::TOROIDAL);
+        CHECK(mas.get_magnetic().get_coil().get_turns_description().has_value());
+    }
+    settings.reset();
+    clear_databases();
+}
+
+// ABT #1699: the web's DMC wizard -> Magnetic Adviser call (standard cores, 6 results).
+TEST_CASE("MagneticAdviser web DMC suppression flow returns wound chokes",
+          "[adviser][magnetic-adviser][standard-cores][dmc][suppression][abt-1699]") {
+    settings.reset();
+    clear_databases();
+    std::vector<std::pair<OpenMagnetics::Mas, double>> results;
+    REQUIRE_NOTHROW(results = replay_web_suppression_magnetic_adviser("dmc_calculate_advised_magnetics.json"));
+    REQUIRE(results.size() > 0);
+    for (auto& [mas, scoring] : results) {
+        CHECK(mas.get_magnetic().get_coil().get_turns_description().has_value());
+    }
+    settings.reset();
+    clear_databases();
+}
