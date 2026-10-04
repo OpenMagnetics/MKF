@@ -11,6 +11,7 @@
 #include "TestingUtils.h"
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
+#include <catch2/matchers/catch_matchers_string.hpp>
 #include <chrono>
 #include <fstream>
 #include <locale>
@@ -1004,6 +1005,15 @@ TEST_CASE("Test_CircuitSimulationReader_Refuses_A_Partially_Numeric_Cell", "[pro
     REQUIRE_THROWS_AS(CircuitSimulationReader(decimalComma, true), InvalidInputException);
     std::string trailingJunk = "time,I(L1)\n0,1.5A\n";
     REQUIRE_THROWS_AS(CircuitSimulationReader(trailingJunk, true), InvalidInputException);
+    // The refusal names the numeric prefix, whichever standard library parsed it.
+    REQUIRE_THROWS_WITH(CircuitSimulationReader(trailingJunk, true),
+                        Catch::Matchers::ContainsSubstring("only \"1.5\" is a number"));
+    // ABT #1695: the parse must not depend on the standard library's stream parser, so a hex
+    // float or an infinity (which libc++ streams read) is refused as on every other toolchain.
+    std::string hexCell = "time,I(L1)\n0,0x10\n";
+    REQUIRE_THROWS_AS(CircuitSimulationReader(hexCell, true), InvalidInputException);
+    std::string infinityCell = "time,I(L1)\n0,inf\n";
+    REQUIRE_THROWS_AS(CircuitSimulationReader(infinityCell, true), InvalidInputException);
     // A plain, explicitly signed or exponent cell still parses whole.
     std::string clean = "time,I(L1)\n0,+1.5\n1e-6,-2.5E-1\n";
     REQUIRE_NOTHROW(CircuitSimulationReader(clean, true));

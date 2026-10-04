@@ -1942,28 +1942,59 @@ void CircuitSimulationReader::process_line_with_context(const std::string& line,
                     " has more columns than the header (" +
                     std::to_string(_columns.size()) + ")");
             }
-            // ABT #1624: the number is read in the classic "C" locale whatever the process locale is
-            // (std::stod follows the global C locale, so a process running under a decimal-comma
-            // locale read "0.001" as 0), and the whole token must be the number: stod stopped at
-            // the first character it could not use and returned the prefix, so a decimal-comma
-            // "0,001" was silently read as 0. A stream, not std::from_chars: Emscripten's libc++
-            // has no floating-point from_chars, and MKF builds to WASM.
-            double value = 0;
-            std::istringstream number(token);
-            number.imbue(std::locale::classic());
-            number >> value;
-            const bool parsed = !number.fail();
-            const bool whole = parsed && number.peek() == std::char_traits<char>::eof();
-            if (!whole || !std::isfinite(value)) {
-                const auto consumed = parsed ? number.tellg() : std::streampos(-1);
+            // ABT #1624: the parse is locale-independent (std::stod follows the C locale, so a
+            // process running under a decimal-comma locale read "0.001" as 0), and the whole token
+            // must be the number: stod stopped at the first character it could not use and
+            // returned the prefix, so a decimal-comma "0,001" was silently read as 0.
+            // ABT #1695: no std::from_chars(double), which the WASM toolchain's libc++ (emscripten
+            // 3.1.51, libc++ 17) does not provide. The token is first matched against the plain
+            // decimal grammar [+-]digits[.digits][(e|E)[+-]digits] (at least one mantissa digit),
+            // because the stream parsers differ between standard libraries (libc++ also reads hex
+            // floats and "inf"); only a whole match is then converted, by a stream imbued with the
+            // classic locale.
+            size_t numberLength = 0;
+            {
+                size_t position = 0;
+                auto isDigit = [&](size_t index) { return index < token.size() && token[index] >= '0' && token[index] <= '9'; };
+                if (position < token.size() && (token[position] == '+' || token[position] == '-')) {
+                    ++position;
+                }
+                size_t mantissaDigits = 0;
+                while (isDigit(position)) { ++position; ++mantissaDigits; }
+                if (position < token.size() && token[position] == '.') {
+                    ++position;
+                    while (isDigit(position)) { ++position; ++mantissaDigits; }
+                }
+                if (mantissaDigits > 0) {
+                    numberLength = position;
+                    if (position < token.size() && (token[position] == 'e' || token[position] == 'E')) {
+                        size_t exponentPosition = position + 1;
+                        if (exponentPosition < token.size() && (token[exponentPosition] == '+' || token[exponentPosition] == '-')) {
+                            ++exponentPosition;
+                        }
+                        if (isDigit(exponentPosition)) {
+                            while (isDigit(exponentPosition)) { ++exponentPosition; }
+                            numberLength = exponentPosition;
+                        }
+                    }
+                }
+            }
+            double value = std::numeric_limits<double>::quiet_NaN();
+            bool parsed = false;
+            if (numberLength == token.size()) {
+                std::istringstream numberStream(token);
+                numberStream.imbue(std::locale::classic());
+                numberStream >> value;
+                parsed = !numberStream.fail() && numberStream.peek() == std::char_traits<char>::eof();
+            }
+            if (!parsed || !std::isfinite(value)) {
                 throw InvalidInputException(ErrorCode::INVALID_INPUT,
                     "Could not parse number on line " + std::to_string(lineNumber) +
                     ", column " + std::to_string(currentColumnIndex + 1) + " (\"" +
                     _columns[currentColumnIndex].name + "\"): \"" + token + "\"" +
-                    (parsed && !whole && consumed > 0
-                         ? " (only \"" + token.substr(0, size_t(consumed)) + "\" is a number; "
-                           "is the decimal separator a comma?)"
-                         : ""));
+                    (numberLength > 0 && numberLength < token.size()
+                         ? " (only \"" + token.substr(0, numberLength) + "\" is a number; "
+                           "is the decimal separator a comma?)" : ""));
             }
             _columns[currentColumnIndex].data.push_back(value);
             currentColumnIndex++;
