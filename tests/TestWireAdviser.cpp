@@ -44,6 +44,9 @@ namespace {
 
         section.set_dimensions({windingWindowWidth, windingWindowHeight});
         section.set_coordinate_system(CoordinateSystem::CARTESIAN);
+        // layersOrientation is required by MAS; left unset it is an uninitialised enum, which the
+        // area filter's whole-turn layer packing (ABT #1446) reads. Concentric layers, as wound.
+        section.set_layers_orientation(WindingOrientation::OVERLAPPING);
 
         ProcessedWaveform processed;
         processed.set_peak_to_peak(currentRms * 2 * 1.4142);

@@ -408,9 +408,12 @@ std::pair<bool, double> MagneticFilterAreaWithParallels::evaluate_magnetic(Windi
     // depend on that layer's radius (the inner circumference shrinks layer by layer), which the
     // toroidal winder works out turn by turn; a per-layer count here would be a second,
     // diverging model of it. The allowNotFit pass (taken only when no wire fits strictly) keeps
-    // its existing bulk-area tolerance.
+    // its existing bulk-area tolerance. Planar wires are not checked either: a planar winding
+    // is laid out per PCB layer by the planar winder (Coil::wind_by_planar_layers), not by the
+    // layer winder whose rules fits_in_whole_turns_per_layer mirrors.
     bool packs = true;
-    if (!allowNotFit && (!section.get_coordinate_system() || section.get_coordinate_system().value() == CoordinateSystem::CARTESIAN)) {
+    if (!allowNotFit && wire.get_type() != WireType::PLANAR &&
+        (!section.get_coordinate_system() || section.get_coordinate_system().value() == CoordinateSystem::CARTESIAN)) {
         packs = fits_in_whole_turns_per_layer(wire, winding, section, numberSections);
     }
 

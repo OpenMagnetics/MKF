@@ -68,6 +68,9 @@ Section make_section(double width, double height) {
     Section s;
     s.set_dimensions({width, height});
     s.set_coordinate_system(CoordinateSystem::CARTESIAN);
+    // layersOrientation is required by MAS; left unset it is an uninitialised enum, which the
+    // area filter's whole-turn layer packing (ABT #1446) reads. Concentric layers, as wound.
+    s.set_layers_orientation(WindingOrientation::OVERLAPPING);
     return s;
 }
 
