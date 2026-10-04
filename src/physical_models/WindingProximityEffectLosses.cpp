@@ -407,8 +407,11 @@ double WindingProximityEffectLossesModel::calculate_turn_losses_from_phasors(Wir
     return turnLosses;
 }
 
-std::pair<double, std::vector<std::pair<double, double>>> WindingProximityEffectLosses::calculate_proximity_effect_losses_per_meter(Wire wire, double temperature, std::vector<ComplexField> fields, std::optional<WindingProximityEffectLossesModels> modelOverride, std::optional<std::vector<ComplexField>> quadratureFields, std::optional<double> perpendicularOutlineFactor) {
+std::pair<double, std::vector<std::pair<double, double>>> WindingProximityEffectLosses::calculate_proximity_effect_losses_per_meter(Wire wire, double temperature, std::vector<ComplexField> fields, std::optional<WindingProximityEffectLossesModels> modelOverride, std::optional<std::vector<ComplexField>> quadratureFields, std::optional<double> perpendicularOutlineFactor, std::optional<double> stackSharingNumber) {
     auto model = get_model(wire.get_type(), modelOverride);
+    if (auto martinezModel = std::dynamic_pointer_cast<WindingProximityEffectLossesMartinezModel>(model)) {
+        martinezModel->set_stack_sharing_number(stackSharingNumber);
+    }
     if (auto stackedModel = std::dynamic_pointer_cast<WindingProximityEffectLossesWangStackedModel>(model)) {
         if (!perpendicularOutlineFactor) {
             throw InvalidInputException(ErrorCode::MISSING_DATA,
@@ -491,6 +494,18 @@ WindingLossesOutput WindingProximityEffectLosses::calculate_proximity_effect_los
 
     // WANG_STACKED reads each turn's place in its stack from the coil geometry, once.
     std::optional<std::vector<double>> perpendicularOutlineFactorPerTurn;
+    // MARTINEZ reads each flat turn's stack sharing number (mutual reaction, ABT #1314 B) from the coil geometry, once.
+    std::optional<std::vector<double>> stackSharingNumberPerTurn;
+    for (size_t windingIndex = 0; windingIndex < coil.get_functional_description().size(); ++windingIndex) {
+        std::optional<WindingProximityEffectLossesModels> windingModelOverride = modelOverride;
+        if (modelPerWireType && modelPerWireType->contains(coil.get_wire_type(windingIndex))) {
+            windingModelOverride = modelPerWireType->at(coil.get_wire_type(windingIndex));
+        }
+        if (std::dynamic_pointer_cast<WindingProximityEffectLossesMartinezModel>(get_model(coil.get_wire_type(windingIndex), windingModelOverride))) {
+            stackSharingNumberPerTurn = WindingProximityEffectLossesMartinezModel::calculate_stack_sharing_numbers(coil);
+            break;
+        }
+    }
     for (size_t windingIndex = 0; windingIndex < coil.get_functional_description().size(); ++windingIndex) {
         std::optional<WindingProximityEffectLossesModels> windingModelOverride = modelOverride;
         if (modelPerWireType && modelPerWireType->contains(coil.get_wire_type(windingIndex))) {
@@ -645,10 +660,14 @@ WindingLossesOutput WindingProximityEffectLosses::calculate_proximity_effect_los
         if (perpendicularOutlineFactorPerTurn) {
             perpendicularOutlineFactor = perpendicularOutlineFactorPerTurn.value()[turnIndex];
         }
-        auto primaryLossesPerHarmonic = calculate_proximity_effect_losses_per_meter(wire, temperature, primaryFields, turnModelOverride, primaryQuadrature, perpendicularOutlineFactor).second;
+        std::optional<double> stackSharingNumber;
+        if (stackSharingNumberPerTurn) {
+            stackSharingNumber = stackSharingNumberPerTurn.value()[turnIndex];
+        }
+        auto primaryLossesPerHarmonic = calculate_proximity_effect_losses_per_meter(wire, temperature, primaryFields, turnModelOverride, primaryQuadrature, perpendicularOutlineFactor, stackSharingNumber).second;
         std::vector<std::pair<double, double>> secondaryLossesPerHarmonic;
         if (hasSecondaryCrossing) {
-            secondaryLossesPerHarmonic = calculate_proximity_effect_losses_per_meter(wire, temperature, secondaryFields, turnModelOverride, secondaryQuadrature, perpendicularOutlineFactor).second;
+            secondaryLossesPerHarmonic = calculate_proximity_effect_losses_per_meter(wire, temperature, secondaryFields, turnModelOverride, secondaryQuadrature, perpendicularOutlineFactor, stackSharingNumber).second;
             if (secondaryLossesPerHarmonic.size() != primaryLossesPerHarmonic.size()) {
                 throw InvalidInputException(ErrorCode::INVALID_COIL_CONFIGURATION,
                     "Primary and secondary crossing harmonics do not match for turn " + std::to_string(turnIndex));
@@ -1776,7 +1795,10 @@ double WindingProximityEffectLossesMartinezModel::calculate_turn_losses_impl(Wir
     double lossPerpendicular = 0;
     if (!profile.empty()) {
         const double edgeCrowdingFactor = calculate_edge_crowding_factor(wideDimension, thinDimension);
-        const double highFrequencyPerpendicular = 0.5 * edgeCrowdingFactor * surfaceResistance * integralPerpendicularSquared;
+        // Stacked flat conductors share the exclusion (calculate_stack_sharing_numbers): 1/n^2 of the isolated loss.
+        const double stackSharingNumber = _stackSharingNumber ? _stackSharingNumber.value() : 1.0;
+        const double highFrequencyPerpendicular = 0.5 * edgeCrowdingFactor * surfaceResistance * integralPerpendicularSquared /
+                                                  (stackSharingNumber * stackSharingNumber);
         // LF: the vector-potential variance across the face (omega^2), which for a uniform field
         // reduces to the y-term of the same equation (8).
         const double sampleStep = wideDimension / double(profile.size());
@@ -2586,6 +2608,75 @@ std::vector<double> WindingProximityEffectLossesWangStackedModel::calculate_perp
         }
     }
     return factors;
+}
+
+std::vector<double> WindingProximityEffectLossesMartinezModel::calculate_stack_sharing_numbers(Coil coil) {
+    if (!coil.get_turns_description()) {
+        throw CoilNotProcessedException("Martinez stack sharing: the coil has no turns description");
+    }
+    const auto turns = coil.get_turns_description().value();
+    const size_t numberTurns = turns.size();
+    // Each flat turn in its own (wide, normal) frame, as the CoilMesher places its width samples (FOIL wide along y).
+    struct FlatTurn { bool flat; bool wideAlongY; double wide; double thin; double alongWide; double alongNormal; };
+    std::vector<FlatTurn> flatTurns(numberTurns, FlatTurn{false, false, 0, 0, 0, 0});
+    for (size_t turnIndex = 0; turnIndex < numberTurns; ++turnIndex) {
+        const auto& turn = turns[turnIndex];
+        auto wire = coil.resolve_wire(coil.get_winding_index_by_name(turn.get_winding()));
+        if (wire.get_type() != WireType::RECTANGULAR && wire.get_type() != WireType::PLANAR && wire.get_type() != WireType::FOIL) {
+            continue;
+        }
+        if (turn.get_coordinates().size() < 2) {
+            throw CoilNotProcessedException("Martinez stack sharing: turn " + turn.get_name() + " has no 2D coordinates");
+        }
+        FlatTurn flatTurn{true, wire.get_type() == WireType::FOIL, 0, 0, 0, 0};
+        const double width = wire.get_maximum_conducting_width();
+        const double height = wire.get_maximum_conducting_height();
+        flatTurn.wide = flatTurn.wideAlongY ? height : width;
+        flatTurn.thin = flatTurn.wideAlongY ? width : height;
+        if (!(flatTurn.wide > 0) || !(flatTurn.thin > 0)) {
+            throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA, "Martinez stack sharing: the wire of turn " + turn.get_name() + " has a zero conducting dimension");
+        }
+        flatTurn.alongWide = flatTurn.wideAlongY ? turn.get_coordinates()[1] : turn.get_coordinates()[0];
+        flatTurn.alongNormal = flatTurn.wideAlongY ? turn.get_coordinates()[0] : turn.get_coordinates()[1];
+        flatTurns[turnIndex] = flatTurn;
+    }
+
+    std::vector<double> sharingNumbers(numberTurns, 1.0);
+    for (size_t k = 0; k < numberTurns; ++k) {
+        const auto& induced = flatTurns[k];
+        if (!induced.flat) {
+            continue;
+        }
+        double coupled = induced.thin * induced.wide;  // the self term, t_k G_kk = t_k W_k
+        for (size_t j = 0; j < numberTurns; ++j) {
+            const auto& inducing = flatTurns[j];
+            if (j == k || !inducing.flat || inducing.wideAlongY != induced.wideAlongY) {
+                continue;
+            }
+            const double s = inducing.alongWide - induced.alongWide;
+            const double d = std::abs(inducing.alongNormal - induced.alongNormal);
+            const double halfWide = inducing.wide / 2;
+            if (d == 0 && std::abs(s) <= halfWide + induced.wide / 2) {
+                throw InvalidInputException(ErrorCode::INVALID_INPUT, "Martinez stack sharing: flat turns " + turns[j].get_name() + " and " +
+                                            turns[k].get_name() + " overlap");
+            }
+            auto primitive = [&](double u) {
+                double value = u - s / 2 * std::log(u * u + d * d);
+                if (d > 0) {
+                    value -= d * std::atan(u / d);
+                }
+                return value;
+            };
+            coupled += inducing.thin * (primitive(s + halfWide) - primitive(s - halfWide));
+        }
+        const double sharingNumber = coupled / (induced.thin * induced.wide);
+        if (!(sharingNumber > 0) || !std::isfinite(sharingNumber)) {
+            throw CalculationException(ErrorCode::CALCULATION_INVALID_RESULT, "Martinez stack sharing: turn " + turns[k].get_name() +
+                                       " reads a non-positive sharing number " + std::to_string(sharingNumber));
+        }
+        sharingNumbers[k] = sharingNumber;
+    }
+    return sharingNumbers;
 }
 
 } // namespace OpenMagnetics

@@ -64,7 +64,7 @@ class WindingProximityEffectLosses {
     // A plain (real, single-phase) field: there is no quadrature component.
     static WindingLossesOutput calculate_proximity_effect_losses(Coil coil, double temperature, WindingLossesOutput windingLossesOutput, WindingWindowMagneticStrengthFieldOutput windingWindowMagneticStrengthFieldOutput, std::optional<WindingProximityEffectLossesModels> modelOverride = std::nullopt, std::optional<std::map<WireType, WindingProximityEffectLossesModels>> modelPerWireType = std::nullopt);
     // quadratureFields, when given, must match fields harmonic by harmonic and point by point.
-    static std::pair<double, std::vector<std::pair<double, double>>> calculate_proximity_effect_losses_per_meter(Wire wire, double temperature, std::vector<ComplexField> fields, std::optional<WindingProximityEffectLossesModels> modelOverride = std::nullopt, std::optional<std::vector<ComplexField>> quadratureFields = std::nullopt, std::optional<double> perpendicularOutlineFactor = std::nullopt);
+    static std::pair<double, std::vector<std::pair<double, double>>> calculate_proximity_effect_losses_per_meter(Wire wire, double temperature, std::vector<ComplexField> fields, std::optional<WindingProximityEffectLossesModels> modelOverride = std::nullopt, std::optional<std::vector<ComplexField>> quadratureFields = std::nullopt, std::optional<double> perpendicularOutlineFactor = std::nullopt, std::optional<double> stackSharingNumber = std::nullopt);
   private:
     static WindingLossesOutput calculate_proximity_effect_losses_impl(Coil coil, double temperature, WindingLossesOutput windingLossesOutput, const std::vector<ComplexField>& fieldPerFrequency, const std::optional<std::vector<ComplexField>>& quadratureFieldPerFrequency, std::optional<WindingProximityEffectLossesModels> modelOverride, std::optional<std::map<WireType, WindingProximityEffectLossesModels>> modelPerWireType);
 
@@ -250,7 +250,23 @@ class WindingProximityEffectLossesMartinezModel : public WindingProximityEffectL
     // Its perpendicular term bridges two different quadratic forms, so it is not additive.
     double calculate_turn_losses_from_phasors(Wire wire, double frequency, std::vector<ComplexFieldPoint> inPhaseData, std::vector<ComplexFieldPoint> quadratureData, double temperature) override;
     bool consumes_width_samples() const override { return true; }
+    // MUTUAL REACTION of stacked flat conductors to the field normal to their wide faces (ABT #1314 B). A thin strip k
+    // (width W_k, thickness t_k) in a normal field H carries the eddy sheet current K = j omega mu0 sigma t_k H x, whose
+    // own normal field at its centre is j alpha_k H, alpha_k = omega mu0 sigma t_k W_k / (2 pi) (the ABT #1645 thin-strip
+    // transmission). A flat conductor j parallel to it, its centre offset s along the wide axis and d along the normal,
+    // throws j omega mu0 sigma t_j H_j G_jk / (2 pi) at k's centre, the same mode integrated in closed form:
+    //     G_jk = [u - d atan(u / d) - (s / 2) ln(u^2 + d^2)]_{u = s - W_j/2}^{s + W_j/2},   G_kk = W_k.
+    // Every stacked conductor sees (nearly) the same incident normal field, so the coupled system
+    // H_k = H0 - j sum_j alpha_j (G_jk / W_j) H_j solves, at high frequency, to H_k = H0 / (j alpha_k n_k) with
+    //     n_k = sum_j t_j G_jk / (t_k W_k)        (n_k = 1 for an isolated conductor):
+    // the stack excludes the normal field COLLECTIVELY and each member carries 1/n_k of the eddy current it would carry
+    // alone, so its high-frequency perpendicular loss is 1/n_k^2 of the isolated one. The low-frequency branch (eddy
+    // currents too weak to react) is unchanged. Geometry only; one number per turn, in turns-description order.
+    static std::vector<double> calculate_stack_sharing_numbers(Coil coil);
+    // The turn's n_k; unset means the conductor is evaluated alone in the given field (n = 1, the per-meter API).
+    void set_stack_sharing_number(std::optional<double> stackSharingNumber) { _stackSharingNumber = stackSharingNumber; }
   private:
+    std::optional<double> _stackSharingNumber;
     double calculate_turn_losses_impl(Wire& wire, double frequency, const std::vector<ComplexFieldPoint>& data, const std::vector<ComplexFieldPoint>* quadratureData, double temperature);
 };
 

@@ -4028,6 +4028,90 @@ TEST_CASE("Test_Winding_Losses_Parallel_Split_Ohmic_Is_DC_Split_Redistribution_I
     settings.reset();
 }
 
+TEST_CASE("Test_Winding_Losses_Martinez_Stack_Sharing_Number_Closed_Form", "[winding-losses][parallel-split][physical-model]") {
+    // ABT #1314 B: n_k = sum_j t_j G_jk / (t_k W_k), G_jk the closed-form normal field of strip j's eddy mode at strip k's
+    // centre. Checked against a direct quadrature of the same mode integral, and n = 1 for a conductor alone.
+    auto& settings = OpenMagnetics::Settings::GetInstance();
+    settings.reset();
+    auto [magnetic, operatingPoint] = sixteen_parallel_planar_fixture("Test_Winding_Losses_Sixteen_Turns_Planar_Sinusoidal_No_Fringing.json", 100000);
+    auto coil = magnetic.get_coil();
+    auto turns = coil.get_turns_description().value();
+    auto numbers = WindingProximityEffectLossesMartinezModel::calculate_stack_sharing_numbers(coil);
+    REQUIRE(numbers.size() == 16);
+    auto wire = coil.resolve_wire(0);
+    const double wide = wire.get_maximum_conducting_width();
+    for (size_t k = 0; k < 16; ++k) {
+        double expected = 1;
+        for (size_t j = 0; j < 16; ++j) {
+            if (j == k) {
+                continue;
+            }
+            const double s = turns[j].get_coordinates()[0] - turns[k].get_coordinates()[0];
+            const double d = std::abs(turns[j].get_coordinates()[1] - turns[k].get_coordinates()[1]);
+            // integral over strip j of (x' - x_j)(x' - x_k) / ((x' - x_k)^2 + d^2), midpoint rule
+            const size_t steps = 200000;
+            double integral = 0;
+            for (size_t step = 0; step < steps; ++step) {
+                const double u = s - wide / 2 + (step + 0.5) * wide / steps;
+                integral += (u - s) * u / (u * u + d * d) * wide / steps;
+            }
+            expected += integral / wide;
+        }
+        INFO("turn " << k << ": n " << numbers[k] << ", quadrature " << expected);
+        CHECK_THAT(numbers[k], Catch::Matchers::WithinRel(expected, 1e-6));
+        // Sixteen 20 mm sheets in a 4.8 mm stack: every sheet shares the exclusion with most of the others.
+        CHECK(numbers[k] > 10);
+        CHECK(numbers[k] < 16);
+    }
+    auto [single, singleOperatingPoint] = sixteen_parallel_planar_fixture("Test_Winding_Losses_One_Turn_Planar_Sinusoidal_No_Fringing.json", 100000);
+    auto singleNumbers = WindingProximityEffectLossesMartinezModel::calculate_stack_sharing_numbers(single.get_coil());
+    REQUIRE(singleNumbers.size() == 1);
+    CHECK(singleNumbers[0] == 1.0);
+    settings.reset();
+}
+
+TEST_CASE("Test_Winding_Losses_Parallel_Stack_Excludes_Perpendicular_Field_Collectively_Vs_OMFEM", "[winding-losses][parallel-split][physical-model]") {
+    // ABT #1314 B: the 16 stacked parallel sheets exclude the field normal to their faces together (Martinez mutual
+    // reaction, calculate_stack_sharing_numbers). Charged as isolated sheets, BINNS_LAWRENSON/ROSHEN/MARTINEZ read 399.5 W
+    // at 100 kHz. ROSHEN models no residual gap, so the like-for-like reference is OMFEM 2D with one conductor per
+    // parallel and the three 5 um residual gaps removed (.mkf-1645-fem scratch nf100_nogap): P_cu 31.45 W, top sheet
+    // 11.89 W (with the residual gaps: 51.04 W, top sheet 6.70 W).
+    auto& settings = OpenMagnetics::Settings::GetInstance();
+    settings.reset();
+    auto [magnetic, operatingPoint] = sixteen_parallel_planar_fixture("Test_Winding_Losses_Sixteen_Turns_Planar_Sinusoidal_No_Fringing.json", 100000);
+    WindingLossesModels models;
+    models.magneticFieldStrengthModel = MagneticFieldStrengthModels::BINNS_LAWRENSON;
+    models.magneticFieldStrengthFringingEffectModel = MagneticFieldStrengthFringingEffectModels::ROSHEN;
+    models.proximityEffectModel = WindingProximityEffectLossesModels::MARTINEZ;
+    auto output = WindingLosses(models).calculate_losses(magnetic, operatingPoint, 22);
+    const double total = output.get_winding_losses();
+    auto perTurn = output.get_winding_losses_per_turn().value();
+    auto turns = magnetic.get_coil().get_turns_description().value();
+    size_t top = 0;
+    for (size_t turnIndex = 0; turnIndex < turns.size(); ++turnIndex) {
+        if (turns[turnIndex].get_coordinates()[1] > turns[top].get_coordinates()[1]) {
+            top = turnIndex;
+        }
+    }
+    const auto ohmicLosses = perTurn[top].get_ohmic_losses();
+    const auto skinLosses = perTurn[top].get_skin_effect_losses();
+    const auto proximityLosses = perTurn[top].get_proximity_effect_losses();
+    REQUIRE(ohmicLosses);
+    REQUIRE(skinLosses);
+    REQUIRE(proximityLosses);
+    double topLoss = ohmicLosses->get_losses();
+    for (auto loss : skinLosses->get_losses_per_harmonic()) {
+        topLoss += loss;
+    }
+    for (auto loss : proximityLosses->get_losses_per_harmonic()) {
+        topLoss += loss;
+    }
+    INFO("total " << total << " W (OMFEM without residual gaps 31.45 W), top sheet " << topLoss << " W (OMFEM 11.89 W)");
+    CHECK_THAT(total, Catch::Matchers::WithinRel(31.45, 0.25));
+    CHECK_THAT(topLoss, Catch::Matchers::WithinRel(11.89, 0.2));
+    settings.reset();
+}
+
 // Martinez flat-conductor scorecard driver (hidden). Per-turn F_R = (ohmic + skin + proximity) / ohmic for every
 // model configuration in env MF_MODELS (';'-separated "FIELD/FRINGING/PROXIMITY" JSON names, '-' = automatic, or
 // "DEFAULT"), at every frequency in env MF_FREQS (comma separated), on the fixture env MF_FIXTURE: a
