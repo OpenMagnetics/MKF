@@ -1,4 +1,5 @@
 #include "physical_models/WindingOhmicLosses.h"
+#include "physical_models/MagneticField.h"
 #include "physical_models/Resistivity.h"
 #include "processors/Inputs.h"
 #include "Constants.h"
@@ -453,6 +454,85 @@ WindingLossesOutput WindingOhmicLosses::calculate_ohmic_losses(Coil coil, Operat
     result.set_current_divider_per_turn(currentDividerPerTurn);
 
     return result;
+}
+
+WindingLossesOutput WindingOhmicLosses::apply_parallel_current_split(Coil coil, WindingLossesOutput windingLossesOutput, const ParallelCurrentSplit& parallelCurrentSplit, double temperature) {
+    if (!coil.get_turns_description()) {
+        throw CoilNotProcessedException("Ohmic losses (ABT #1314): the coil has no turns description");
+    }
+    const auto turns = coil.get_turns_description().value();
+    if (!windingLossesOutput.get_winding_losses_per_turn() || !windingLossesOutput.get_winding_losses_per_winding() ||
+        !windingLossesOutput.get_dc_resistance_per_turn() || !windingLossesOutput.get_current_divider_per_turn()) {
+        throw InvalidInputException(ErrorCode::MISSING_DATA, "Ohmic losses (ABT #1314): the parallel split needs the ohmic losses per turn and per winding, "
+                                    "the DC resistance per turn and the current divider per turn");
+    }
+    auto windingLossesPerTurn = windingLossesOutput.get_winding_losses_per_turn().value();
+    auto windingLossesPerWinding = windingLossesOutput.get_winding_losses_per_winding().value();
+    const auto dcResistancePerTurn = windingLossesOutput.get_dc_resistance_per_turn().value();
+    const auto currentDividerPerTurn = windingLossesOutput.get_current_divider_per_turn().value();
+    if (windingLossesPerTurn.size() != turns.size() || dcResistancePerTurn.size() != turns.size() || currentDividerPerTurn.size() != turns.size() ||
+        parallelCurrentSplit.strandPerTurn.size() != turns.size()) {
+        throw InvalidInputException(ErrorCode::INVALID_INPUT, "Ohmic losses (ABT #1314): the losses, resistances, dividers or split do not cover every turn");
+    }
+    const size_t numberWindings = coil.get_functional_description().size();
+    auto connectionResistance = calculate_connection_resistance_per_winding_per_parallel(coil, temperature);
+
+    // Excess over the DC split of the mean square current of each turn's strand: sum over the solved harmonics of
+    // (|I_strand,h|^2 - (divider |I_winding,h|)^2) / 2 (peak phasors).
+    std::vector<double> excessMeanSquarePerTurn(turns.size(), 0.0);
+    std::vector<size_t> windingPerTurn(turns.size());
+    std::map<std::pair<size_t, int64_t>, size_t> turnPerParallel;
+    for (size_t turnIndex = 0; turnIndex < turns.size(); ++turnIndex) {
+        size_t windingIndex = coil.get_winding_index_by_name(turns[turnIndex].get_winding());
+        windingPerTurn[turnIndex] = windingIndex;
+        turnPerParallel[{windingIndex, turns[turnIndex].get_parallel()}] = turnIndex;
+        if (coil.get_number_parallels(windingIndex) == 1) {
+            continue;
+        }
+        for (size_t splitIndex = 0; splitIndex < parallelCurrentSplit.frequencies.size(); ++splitIndex) {
+            const double strandAmplitude = std::abs(parallelCurrentSplit.currentPerTurnPerFrequency[splitIndex].at(turnIndex));
+            const double dcSplitAmplitude = currentDividerPerTurn[turnIndex] * std::abs(parallelCurrentSplit.currentPerWindingPerFrequency[splitIndex].at(windingIndex));
+            excessMeanSquarePerTurn[turnIndex] += (strandAmplitude * strandAmplitude - dcSplitAmplitude * dcSplitAmplitude) / 2;
+        }
+    }
+
+    std::vector<double> excessLossPerWinding(numberWindings, 0.0);
+    for (size_t turnIndex = 0; turnIndex < turns.size(); ++turnIndex) {
+        if (excessMeanSquarePerTurn[turnIndex] == 0) {
+            continue;
+        }
+        const double excessLoss = dcResistancePerTurn[turnIndex] * excessMeanSquarePerTurn[turnIndex];
+        auto ohmicLosses = windingLossesPerTurn[turnIndex].get_ohmic_losses();
+        if (!ohmicLosses) {
+            throw InvalidInputException(ErrorCode::MISSING_DATA, "Ohmic losses (ABT #1314): turn " + std::to_string(turnIndex) + " has no ohmic losses to correct");
+        }
+        ohmicLosses->set_losses(ohmicLosses->get_losses() + excessLoss);
+        windingLossesPerTurn[turnIndex].set_ohmic_losses(ohmicLosses);
+        excessLossPerWinding[windingPerTurn[turnIndex]] += excessLoss;
+    }
+    // The connection leads of a parallel are in series with its strand.
+    for (const auto& [key, turnIndex] : turnPerParallel) {
+        const double resistance = connectionResistance.at(key.first).at(static_cast<size_t>(key.second));
+        excessLossPerWinding[key.first] += resistance * excessMeanSquarePerTurn[turnIndex];
+    }
+
+    double excessLossTotal = 0;
+    for (size_t windingIndex = 0; windingIndex < numberWindings; ++windingIndex) {
+        if (excessLossPerWinding[windingIndex] == 0) {
+            continue;
+        }
+        auto ohmicLosses = windingLossesPerWinding.at(windingIndex).get_ohmic_losses();
+        if (!ohmicLosses) {
+            throw InvalidInputException(ErrorCode::MISSING_DATA, "Ohmic losses (ABT #1314): winding " + std::to_string(windingIndex) + " has no ohmic losses to correct");
+        }
+        ohmicLosses->set_losses(ohmicLosses->get_losses() + excessLossPerWinding[windingIndex]);
+        windingLossesPerWinding[windingIndex].set_ohmic_losses(ohmicLosses);
+        excessLossTotal += excessLossPerWinding[windingIndex];
+    }
+    windingLossesOutput.set_winding_losses_per_turn(windingLossesPerTurn);
+    windingLossesOutput.set_winding_losses_per_winding(windingLossesPerWinding);
+    windingLossesOutput.set_winding_losses(windingLossesOutput.get_winding_losses() + excessLossTotal);
+    return windingLossesOutput;
 }
 
 double WindingOhmicLosses::calculate_ohmic_losses_per_meter(Wire wire, SignalDescriptor current, double temperature) {

@@ -3668,9 +3668,12 @@ std::optional<ParallelCurrentSplit> MagneticField::calculate_parallel_current_sp
     }
     magnetic.set_core(core);
 
-    // SCOPE (ABT #1314, pending a decision): the neutral window frame (image lattice + wall sources) exists only for
-    // single-window, non-toroidal cores whose turns cross the section once. Elsewhere no split is solved and the
-    // harmonics keep the DC (resistive) split they always had.
+    // WORK ITEM (ABT #1314, Alf 2026-10-04: build the frame): the strand impedance needs the neutral window frame (image
+    // lattice + MMF_BOUNDARY wall sources), which exists today only for single-window, non-toroidal cores whose turns
+    // cross the section once. Toroids (Kelvin images of the ring), multi-window cores and turns with additionalCoordinates
+    // still lack it: no split is solved for them here and every consumer keeps the DC (resistive) split it always had.
+    // This is NOT a physical split -- the frame for those geometries plugs in here (strandInductance below) and this
+    // early return goes away when it lands.
     if (core.get_shape_family() == CoreShapeFamily::T || core.get_processed_description()->get_winding_windows().size() != 1) {
         return std::nullopt;
     }
@@ -3837,7 +3840,7 @@ std::optional<ParallelCurrentSplit> MagneticField::calculate_parallel_current_sp
             if (!prunedCurrent || !prunedCurrent->get_harmonics() || !current || !current->get_harmonics()) {
                 continue;
             }
-            const auto& frequencies = current->get_harmonics()->get_frequencies();
+            const auto frequencies = current->get_harmonics()->get_frequencies();
             for (double prunedFrequency : prunedCurrent->get_harmonics()->get_frequencies()) {
                 for (size_t harmonicIndex = 0; harmonicIndex < frequencies.size(); ++harmonicIndex) {
                     if (std::abs(frequencies[harmonicIndex] - prunedFrequency) <= 1e-9 * std::abs(prunedFrequency)) {

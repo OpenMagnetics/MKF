@@ -4050,6 +4050,7 @@ TEST_CASE("Debug_Martinez_Flat_Scorecard", "[debug][martinez-flat-scorecard][.]"
                 auto perTurn = output.get_winding_losses_per_turn().value();
                 json ratios = json::array();
                 json proximityShare = json::array();
+                json lossPerTurn = json::array();
                 double ohmicTotal = 0;
                 for (const auto& turn : perTurn) {
                     double ohmic = turn.get_ohmic_losses()->get_losses();
@@ -4063,6 +4064,18 @@ TEST_CASE("Debug_Martinez_Flat_Scorecard", "[debug][martinez-flat-scorecard][.]"
                     for (auto l : proximityLosses.get_losses_per_harmonic()) { loss += l; proximity += l; }
                     ratios.push_back(loss / ohmic);
                     proximityShare.push_back(proximity / ohmic);
+                    lossPerTurn.push_back(loss);
+                }
+                row["lossPerTurn"] = lossPerTurn;
+                row["lossTotal"] = output.get_winding_losses();
+                // ABT #1314: the strand current (peak |I|) of every turn at the first solved harmonic.
+                if (auto split = MagneticField::calculate_parallel_current_split(p.magnetic, p.operatingPoint, p.temperature)) {
+                    json currentPerTurn = json::array();
+                    for (const auto& current : split->currentPerTurnPerFrequency.at(0)) {
+                        currentPerTurn.push_back(std::abs(current));
+                    }
+                    row["splitFrequency"] = split->frequencies.at(0);
+                    row["currentPerTurn"] = currentPerTurn;
                 }
                 row["perTurn"] = ratios;
                 row["proxPerTurn"] = proximityShare;

@@ -1,5 +1,6 @@
 #include "physical_models/WindingSkinEffectLosses.h"
 #include "physical_models/WindingOhmicLosses.h"
+#include "physical_models/MagneticField.h"
 #include "constructive_models/Wire.h"
 #include "Defaults.h"
 
@@ -170,7 +171,7 @@ double WindingSkinEffectLosses::calculate_skin_depth(Wire wire, double frequency
     return calculate_skin_depth(wire.resolve_material(), frequency, temperature);
 };
 
-std::pair<double, std::vector<std::pair<double, double>>> WindingSkinEffectLosses::calculate_skin_effect_losses_per_meter(Wire wire, SignalDescriptor current, double temperature, double currentDivider, std::optional<WindingSkinEffectLossesModels> modelOverride) {
+std::pair<double, std::vector<std::pair<double, double>>> WindingSkinEffectLosses::calculate_skin_effect_losses_per_meter(Wire wire, SignalDescriptor current, double temperature, double currentDivider, std::optional<WindingSkinEffectLossesModels> modelOverride, const std::vector<double>* currentDividerPerHarmonic) {
     double dcResistancePerMeter = WindingOhmicLosses::calculate_dc_resistance_per_meter(wire, temperature);
 
     auto model = get_model(wire.get_type(), modelOverride);
@@ -189,12 +190,17 @@ std::pair<double, std::vector<std::pair<double, double>>> WindingSkinEffectLosse
     if (numAmplitudes != numFrequencies) {
         throw InvalidInputException(ErrorCode::MISSING_DATA, "Harmonics amplitudes and frequencies size mismatch: " + std::to_string(numAmplitudes) + " vs " + std::to_string(numFrequencies));
     }
+    if (currentDividerPerHarmonic && currentDividerPerHarmonic->size() != numAmplitudes) {
+        throw InvalidInputException(ErrorCode::INVALID_INPUT, "Skin effect losses: " + std::to_string(currentDividerPerHarmonic->size()) +
+                                    " current dividers for " + std::to_string(numAmplitudes) + " harmonics");
+    }
 
     for (size_t harmonicIndex = 1; harmonicIndex < numAmplitudes; ++harmonicIndex)
     {
         auto harmonicRmsCurrent = harmonics.get_amplitudes()[harmonicIndex] / sqrt(2);  // Because a harmonic is always sinusoidal
         auto harmonicFrequency = harmonics.get_frequencies()[harmonicIndex];
-        auto harmonicRmsCurrentInTurn = harmonicRmsCurrent * currentDivider;
+        // ABT #1314: a strand of a winding with parallels carries its own share of every harmonic.
+        auto harmonicRmsCurrentInTurn = harmonicRmsCurrent * (currentDividerPerHarmonic ? (*currentDividerPerHarmonic)[harmonicIndex] : currentDivider);
         auto dcLossPerMeterThisHarmonic = pow(harmonicRmsCurrentInTurn, 2) * dcResistancePerMeter;
 
         if (std::isnan(harmonicFrequency) || harmonicFrequency <= 0) {
@@ -210,7 +216,32 @@ std::pair<double, std::vector<std::pair<double, double>>> WindingSkinEffectLosse
 }
 
 
-WindingLossesOutput WindingSkinEffectLosses::calculate_skin_effect_losses(Coil coil, double temperature, WindingLossesOutput windingLossesOutput, double windingLossesHarmonicAmplitudeThreshold, std::optional<WindingSkinEffectLossesModels> modelOverride, std::optional<std::map<WireType, WindingSkinEffectLossesModels>> modelPerWireType) {
+// ABT #1314: the share of each harmonic of its winding's current that the strand of `turnIndex` carries, |I_strand,h| /
+// |I_winding,h|, from the parallel current split. Harmonic 0 (DC) and harmonics without current keep the DC divider.
+static std::vector<double> split_current_divider_per_harmonic(const ParallelCurrentSplit& split, size_t turnIndex, size_t windingIndex,
+                                                              const SignalDescriptor& current, double dcDivider) {
+    if (!current.get_harmonics()) {
+        throw InvalidInputException(ErrorCode::MISSING_DATA, "Skin effect losses (ABT #1314): current is missing harmonics");
+    }
+    const auto harmonics = current.get_harmonics().value();
+    std::vector<double> divider(harmonics.get_amplitudes().size(), dcDivider);
+    for (size_t harmonicIndex = 1; harmonicIndex < divider.size(); ++harmonicIndex) {
+        if (harmonics.get_amplitudes()[harmonicIndex] == 0) {
+            continue;
+        }
+        const size_t splitIndex = split.frequency_index(harmonics.get_frequencies()[harmonicIndex]);
+        const double windingAmplitude = std::abs(split.currentPerWindingPerFrequency[splitIndex].at(windingIndex));
+        const double strandAmplitude = std::abs(split.currentPerTurnPerFrequency[splitIndex].at(turnIndex));
+        if (windingAmplitude == 0) {
+            throw NotImplementedException("Skin effect losses (ABT #1314): winding " + std::to_string(windingIndex) + " has a harmonic at " +
+                                          std::to_string(harmonics.get_frequencies()[harmonicIndex]) + " Hz that its parallel current split carries no current for");
+        }
+        divider[harmonicIndex] = strandAmplitude / windingAmplitude;
+    }
+    return divider;
+}
+
+WindingLossesOutput WindingSkinEffectLosses::calculate_skin_effect_losses(Coil coil, double temperature, WindingLossesOutput windingLossesOutput, double windingLossesHarmonicAmplitudeThreshold, std::optional<WindingSkinEffectLossesModels> modelOverride, std::optional<std::map<WireType, WindingSkinEffectLossesModels>> modelPerWireType, const ParallelCurrentSplit* parallelCurrentSplit) {
     if (!coil.get_turns_description()) {
         throw CoilNotProcessedException("Winding does not have turns description");
     }
@@ -259,7 +290,12 @@ WindingLossesOutput WindingSkinEffectLosses::calculate_skin_effect_losses(Coil c
         }
         SignalDescriptor current = operatingPoint.get_excitations_per_winding()[windingIndex].get_current().value();
 
-        auto lossesPerMeterPerHarmonic = calculate_skin_effect_losses_per_meter(wire, current, temperature, currentDividerPerTurn[turnIndex], turnModelOverride).second;
+        std::optional<std::vector<double>> splitDivider;
+        if (parallelCurrentSplit && coil.get_number_parallels(windingIndex) > 1) {
+            splitDivider = split_current_divider_per_harmonic(*parallelCurrentSplit, turnIndex, windingIndex, current, currentDividerPerTurn[turnIndex]);
+        }
+        auto lossesPerMeterPerHarmonic = calculate_skin_effect_losses_per_meter(wire, current, temperature, currentDividerPerTurn[turnIndex], turnModelOverride,
+                                                                                splitDivider ? &splitDivider.value() : nullptr).second;
 
         LossElementPerHarmonic skinEffectLosses;
         auto model = get_model(coil.get_wire_type(windingIndex), turnModelOverride);
@@ -289,9 +325,12 @@ WindingLossesOutput WindingSkinEffectLosses::calculate_skin_effect_losses(Coil c
     auto connectionLengthPerWindingPerParallel =
         WindingOhmicLosses::calculate_connection_length_per_winding_per_parallel(coil);
     std::map<std::pair<size_t, int64_t>, double> dividerPerParallel;
+    // ABT #1314: a parallel's connection copper is in series with its strand: it carries the strand's split current.
+    std::map<std::pair<size_t, int64_t>, size_t> turnPerParallel;
     for (size_t turnIndex = 0; turnIndex < turns.size(); ++turnIndex) {
         size_t turnWindingIndex = coil.get_winding_index_by_name(turns[turnIndex].get_winding());
         dividerPerParallel[{turnWindingIndex, turns[turnIndex].get_parallel()}] = currentDividerPerTurn[turnIndex];
+        turnPerParallel[{turnWindingIndex, turns[turnIndex].get_parallel()}] = turnIndex;
     }
     auto windingLossesPerWinding = windingLossesOutput.get_winding_losses_per_winding().value();
     bool anyConnectionSkin = false;
@@ -313,7 +352,13 @@ WindingLossesOutput WindingSkinEffectLosses::calculate_skin_effect_losses(Coil c
                 throw InvalidInputException(ErrorCode::MISSING_DATA, "Winding " + std::to_string(windingIndex) + " parallel " + std::to_string(parallelIndex) + " has connection copper but no turns to take its current divider from");
             }
             SignalDescriptor current = operatingPoint.get_excitations_per_winding()[windingIndex].get_current().value();
-            auto lossesPerMeterPerHarmonic = calculate_skin_effect_losses_per_meter(coil.resolve_wire(windingIndex), current, temperature, dividerFound->second, modelOverride).second;
+            std::optional<std::vector<double>> splitDivider;
+            if (parallelCurrentSplit && coil.get_number_parallels(windingIndex) > 1) {
+                splitDivider = split_current_divider_per_harmonic(*parallelCurrentSplit, turnPerParallel.at({windingIndex, int64_t(parallelIndex)}), windingIndex,
+                                                                  current, dividerFound->second);
+            }
+            auto lossesPerMeterPerHarmonic = calculate_skin_effect_losses_per_meter(coil.resolve_wire(windingIndex), current, temperature, dividerFound->second, modelOverride,
+                                                                                    splitDivider ? &splitDivider.value() : nullptr).second;
             if (!anyConnectionThisWinding) {
                 connectionLossPerHarmonic.assign(lossesPerMeterPerHarmonic.size(), 0.0);
                 connectionHarmonicFrequency.resize(lossesPerMeterPerHarmonic.size());

@@ -17,6 +17,8 @@ using namespace MAS; // QUAL-001 TODO: qualify types and remove
 
 namespace OpenMagnetics {
 
+struct ParallelCurrentSplit;  // physical_models/MagneticField.h (ABT #1314)
+
 class WindingOhmicLosses {
     private:
     protected:
@@ -42,6 +44,9 @@ class WindingOhmicLosses {
         // turns. Indexed [winding][parallel]. Returns zeros unless real winding geometry is enabled.
         static std::vector<std::vector<double>> calculate_connection_resistance_per_winding_per_parallel(Coil coil, double temperature);
         static WindingLossesOutput calculate_ohmic_losses(Coil coil, OperatingPoint operatingPoint, double temperature);
+        // ABT #1314: re-charges the ohmic (R_dc) losses of the turns and connection leads of windings with parallels with the
+        // strand currents of the parallel current split for every harmonic it solved, in place of the DC (resistive) split.
+        static WindingLossesOutput apply_parallel_current_split(Coil coil, WindingLossesOutput windingLossesOutput, const ParallelCurrentSplit& parallelCurrentSplit, double temperature);
         static double calculate_ohmic_losses_per_meter(Wire wire, SignalDescriptor current, double temperature);
 };
 
