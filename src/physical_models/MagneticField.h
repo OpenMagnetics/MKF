@@ -9,6 +9,7 @@
 #include "support/CoilMesher.h"
 #include <MAS.hpp>
 #include <cmath>
+#include <complex>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -108,6 +109,27 @@ class MagneticFieldStrengthFringingEffectModel {
         }
 };
 
+// ABT #1314: the physical current split between the parallels of each winding. The parallels of a winding are strands
+// connected at both ends: every strand of a winding sees the same terminal voltage and the strand currents sum to the
+// winding's current. A strand runs through all the turns of its parallel in series, so its voltage is the sum over its
+// turn crossings of (R_t I + j w l_t A_t), A_t the 2D vector potential at crossing t (per unit length, averaged over the
+// conductor's section) from every conductor, its core images and the window-wall sources that return the net MMF.
+// Solved per harmonic as one small dense complex system; DC splits by resistance (WindingOhmicLosses) as before.
+struct ParallelCurrentSplit {
+    // The harmonic frequencies solved (> 0), in the order of the excitations' harmonics.
+    std::vector<double> frequencies;
+    // Per solved frequency, per turn: the complex peak current of the turn's strand, MAS current frame (into the dot),
+    // phases referred to the gauge winding as CoilMesher::calculate_current_phase_per_winding does.
+    std::vector<std::vector<std::complex<double>>> currentPerTurnPerFrequency;
+    // Per solved frequency, per winding: the winding's complex peak current (amplitude x exp(j phase)).
+    std::vector<std::vector<std::complex<double>>> currentPerWindingPerFrequency;
+    // The strand (winding, parallel) of every turn, numbered 0 .. numberStrands - 1, and the winding of every strand.
+    std::vector<size_t> strandPerTurn;
+    std::vector<size_t> windingPerStrand;
+    // The index in `frequencies` of a harmonic frequency; throws when it was not solved.
+    size_t frequency_index(double frequency) const;
+};
+
 class MagneticField {
     private:
     protected:
@@ -144,7 +166,7 @@ class MagneticField {
         // Default current directions follow the MAS excitation convention by isolation side
         // (CoilMesher::calculate_current_direction_per_winding); a custom vector overrides
         // them. Phases always come from the windings' current waveforms.
-        WindingWindowMagneticStrengthFieldPhasorOutput calculate_magnetic_field_strength_field(OperatingPoint operatingPoint, Magnetic magnetic, std::optional<Field> externalInducedField = std::nullopt, std::optional<std::vector<int8_t>> customCurrentDirectionPerWinding = std::nullopt, std::optional<CoilMesherModels> coilMesherModel = std::nullopt);
+        WindingWindowMagneticStrengthFieldPhasorOutput calculate_magnetic_field_strength_field(OperatingPoint operatingPoint, Magnetic magnetic, std::optional<Field> externalInducedField = std::nullopt, std::optional<std::vector<int8_t>> customCurrentDirectionPerWinding = std::nullopt, std::optional<CoilMesherModels> coilMesherModel = std::nullopt, std::optional<ParallelCurrentSplit> parallelCurrentSplit = std::nullopt);
 
         static std::shared_ptr<MagneticFieldStrengthFringingEffectModel> factory(MagneticFieldStrengthFringingEffectModels modelName);
         static std::shared_ptr<MagneticFieldStrengthModel> factory(MagneticFieldStrengthModels modelName);
@@ -158,6 +180,10 @@ class MagneticField {
             size_t entries = 0;
             size_t bytes = 0;
         };
+        // ABT #1314: the split of every winding's harmonic currents between its parallels (see ParallelCurrentSplit), at the
+        // conductors' temperature. Empty when no winding has more than one parallel.
+        static std::optional<ParallelCurrentSplit> calculate_parallel_current_split(Magnetic magnetic, OperatingPoint operatingPoint, double temperature,
+                                                                                    std::optional<std::vector<int8_t>> customCurrentDirectionPerWinding = std::nullopt);
         static TurnSumsCacheStatistics get_turn_sums_cache_statistics();
         static void clear_turn_sums_cache();
 };
@@ -529,7 +555,7 @@ class MagneticFieldStrengthImagedMmfSheetsModel : public MagneticFieldStrengthMo
 
     // Field of all turns (per winding current amplitudes, signed), own real turn excluded.
     std::pair<double, double> turns_field(double x, double y, const std::vector<double>& currentPerWinding,
-                                          std::optional<size_t> excludedTurn) const;
+                                          std::optional<size_t> excludedTurn, const std::vector<double>* multiplierPerTurn = nullptr) const;
     // Field of all gap sheets per ampere of magnetizing current.
     std::pair<double, double> gaps_field(double x, double y) const;
 
