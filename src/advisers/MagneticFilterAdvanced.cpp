@@ -291,16 +291,6 @@ std::pair<bool, double> MagneticFilterTemperature::evaluate_magnetic(
         &Settings::set_coil_delimit_and_compact, false);
     const std::string shapeName = core.get_shape_name();
     const bool windable = !is_pqi_or_ui_shape(shapeName);
-    // Whether this copper fits the window is the window copper capacity screen's verdict (run
-    // before this filter). The stand-in's layout is fast_wind()'s, with section widths in
-    // proportion to copper area: a winding of few, thick turns can get a section narrower than
-    // its conductor and overlap the bobbin by a fraction of a millimetre, a layout artifact the
-    // coil stage does not share. Such a turn gets no conduction path to the enclosure on that
-    // face (logged by the network, ABT #1454), which leaves the estimate on the hot side,
-    // instead of throwing the whole candidate out of the advise.
-    SettingsGuard<bool> strictGeometryGuard(settings,
-        &Settings::get_thermal_network_strict_geometry,
-        &Settings::set_thermal_network_strict_geometry, false);
     Magnetic lossesMagnetic = with_every_winding(*magnetic, *inputs);
     // The thermal network gets one node per laid-out conductor, and the stand-in carries each
     // winding's current in parallel skin-depth strands (15 per turn for 50 A at 50 kHz): a
@@ -335,6 +325,17 @@ std::pair<bool, double> MagneticFilterTemperature::evaluate_magnetic(
                 add_scoring(temperatureCacheKey, MagneticFilters::TEMPERATURE_RISE, std::numeric_limits<double>::max());
                 return {false, std::numeric_limits<double>::max()};
             }
+        }
+        // fast_wind() gives every winding the whole layers its turns need when the window holds
+        // them (Coil::get_proportion_per_winding_for_whole_layers). A merged-strand coil whose
+        // layers still do not fit has copper that does not fit this window as whole layers: its
+        // turns would sit inside the core, which the thermal network refuses (strict geometry).
+        if (!thermalMagnetic.get_mutable_coil().are_sections_and_layers_fitting()) {
+            logEntry("Temperature filter: the whole layers of " + magnetic->get_reference() +
+                     " do not fit its winding window; rejected",
+                     "MagneticFilterTemperature", 2);
+            add_scoring(temperatureCacheKey, MagneticFilters::TEMPERATURE_RISE, std::numeric_limits<double>::max());
+            return {false, std::numeric_limits<double>::max()};
         }
     }
     // Per-turn losses of the strand coil summed onto the merged coil's turns: the k-th turn of a
