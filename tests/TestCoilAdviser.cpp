@@ -3038,7 +3038,7 @@ TEST_CASE("Test_CoilAdviser_Web_Default_Two_Winding_PQ2715", "[adviser][coil-adv
     CHECK(coil.get_functional_description()[1].get_number_turns() == 13);
 }
 
-TEST_CASE("Test_CoilAdviser_Web_Flyback_Advise_All_Real_Winding", "[adviser][coil-adviser][bug][abt-1699]") {
+TEST_CASE("Test_CoilAdviser_Web_Flyback_Advise_All_Turns_Inside_Window", "[adviser][coil-adviser][bug][abt-1699]") {
     // ABT #1699: the web's default flyback -> core Advise (95 EQ 26/19/7, 0.18 mm gap, 42:5)
     // -> wire "Advise All" (calculate_advised_coil), replayed with the settings captured at the
     // engine proxy. The advised Secondary (5 turns x 4 parallels of a 0.663 mm round wire) could
@@ -3083,19 +3083,37 @@ TEST_CASE("Test_CoilAdviser_Web_Flyback_Advise_All_Real_Winding", "[adviser][coi
                   << layersPerWinding[winding.get_name()] << " layers" << std::endl;
     }
 
-    // The web's next step, as MVB++ magnetic_autocomplete_safe does it: the stored coil (sections
-    // and turns, no layers -- what the web keeps) is built without winding, then
-    // magnetic_autocomplete re-winds it with real winding geometry on and MVB++'s lead bend policy.
-    settings.set_coil_use_real_winding_geometry(true);
-    settings.set_coil_lead_bend_radius_factor(std::optional<double>(1.05));
-    json magneticJson;
-    to_json(magneticJson, masMagneticsWithCoil[0].get_magnetic());
-    magneticJson["coil"].erase("layersDescription");
-    OpenMagnetics::Magnetic storedMagnetic;
-    storedMagnetic.set_core(OpenMagnetics::Core(magneticJson.at("core")));
-    storedMagnetic.set_coil(OpenMagnetics::Coil(magneticJson.at("coil"), false));
-    OpenMagnetics::Magnetic enriched;
-    CHECK_NOTHROW(enriched = magnetic_autocomplete(storedMagnetic, json{}));
-    CHECK(enriched.get_coil().is_real_winding_blocking_applied());
+    // Every turn of the advised layout, with its wire's outer dimensions, lies inside the winding
+    // window. This is the check real winding applies before it routes leads (Coil "[fit]"); the
+    // design advised before ABT #1446 (5 x 2 parallels of Litz 180x0.05 on the secondary) failed it
+    // with a secondary turn 0.24 mm below the window, so the web's real-winding rebuild refused it.
+    auto bobbin = coil.resolve_bobbin();
+    REQUIRE(bobbin.get_processed_description());
+    const auto windingWindows = bobbin.get_processed_description()->get_winding_windows();
+    REQUIRE(windingWindows.size() == 1);
+    const auto& window = windingWindows[0];
+    REQUIRE(window.get_coordinates());
+    REQUIRE(window.get_width());
+    REQUIRE(window.get_height());
+    const double xCenter = std::abs(window.get_coordinates().value()[0]);
+    const double yCenter = window.get_coordinates().value()[1];
+    const double x0 = xCenter - window.get_width().value() / 2;
+    const double x1 = xCenter + window.get_width().value() / 2;
+    const double y0 = yCenter - window.get_height().value() / 2;
+    const double y1 = yCenter + window.get_height().value() / 2;
+    auto wires = coil.get_wires();
+    const auto turns = coil.get_turns_description().value();
+    const double tolerance = 1e-9;
+    for (const auto& turn : turns) {
+        auto& wire = wires[coil.get_winding_index_by_name(turn.get_winding())];
+        const double halfWidth = wire.get_maximum_outer_width() / 2;
+        const double halfHeight = wire.get_maximum_outer_height() / 2;
+        const auto coordinates = turn.get_coordinates();
+        INFO(turn.get_name() << " at (" << coordinates[0] << ", " << coordinates[1] << "), window x[" << x0 << ", " << x1 << "] y[" << y0 << ", " << y1 << "]");
+        CHECK(coordinates[0] - halfWidth >= x0 - tolerance);
+        CHECK(coordinates[0] + halfWidth <= x1 + tolerance);
+        CHECK(coordinates[1] - halfHeight >= y0 - tolerance);
+        CHECK(coordinates[1] + halfHeight <= y1 + tolerance);
+    }
     settings.reset();
 }
