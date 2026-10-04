@@ -278,13 +278,38 @@ static OpenMagnetics::Inputs load_cllc_resonant_inductor_inputs() {
     return OpenMagnetics::Inputs(nlohmann::json::parse(file));
 }
 
+// The same inductor at a fraction of its measured tank current (voltage scaled with it, the
+// inductor's own V = L di/dt). At full current no standard core inside the 41 x 43 x 44 mm
+// envelope stays under the 130 C temperature gate once the copper is scored as the coil stage
+// would wind it (coolest: 95 E 41/16.5/12.5 x3, 136.7 C), so the tests below that check what
+// the adviser does with a design it can build (envelope, inductance band, loss balance) run it
+// at half current (2026-10-04, ABT #1412).
+static OpenMagnetics::Inputs load_cllc_resonant_inductor_inputs_at_current_fraction(double currentFraction) {
+    auto path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "abt1410_cllc_resonant_inductor_inputs.json");
+    std::ifstream file(path);
+    REQUIRE(file.is_open());
+    auto inputsJson = nlohmann::json::parse(file);
+    for (auto& operatingPoint : inputsJson["operatingPoints"]) {
+        for (auto& excitation : operatingPoint["excitationsPerWinding"]) {
+            for (const char* signal : {"current", "voltage"}) {
+                REQUIRE(excitation[signal]["waveform"].contains("data"));
+                REQUIRE_FALSE(excitation[signal].contains("processed"));
+                for (auto& value : excitation[signal]["waveform"]["data"]) {
+                    value = value.get<double>() * currentFraction;
+                }
+            }
+        }
+    }
+    return OpenMagnetics::Inputs(inputsJson);
+}
+
 // ABT #1410: standard-cores design mode returned an ER 51/10/38 (51 mm wide) inside a
 // 41 x 43 x 44 mm envelope, because only the height was ever checked.
 TEST_CASE("MagneticAdviser standard cores keeps the wound magnetic inside the maximum dimensions",
           "[adviser][magnetic-adviser][standard-cores][abt-1410]") {
     settings.reset();
     clear_databases();
-    auto inputs = load_cllc_resonant_inductor_inputs();
+    auto inputs = load_cllc_resonant_inductor_inputs_at_current_fraction(0.5);
     REQUIRE(inputs.get_design_requirements().get_maximum_dimensions());
 
     OpenMagnetics::MagneticAdviser adviser;
@@ -309,7 +334,7 @@ TEST_CASE("MagneticAdviser available cores returns only designs inside the magne
           "[adviser][magnetic-adviser][available-cores][abt-1411]") {
     settings.reset();
     clear_databases();
-    auto inputs = load_cllc_resonant_inductor_inputs();
+    auto inputs = load_cllc_resonant_inductor_inputs_at_current_fraction(0.5);
     const auto& requirement = inputs.get_design_requirements().get_magnetizing_inductance();
     double minimum = requirement.get_minimum().value();
     double maximum = requirement.get_maximum().value();
@@ -350,7 +375,7 @@ TEST_CASE("MagneticAdviser standard cores sizes an AC-dominated inductor by loss
           "[adviser][magnetic-adviser][standard-cores][abt-1426]") {
     settings.reset();
     clear_databases();
-    auto inputs = load_cllc_resonant_inductor_inputs();
+    auto inputs = load_cllc_resonant_inductor_inputs_at_current_fraction(0.5);
 
     OpenMagnetics::MagneticAdviser adviser;
     adviser.set_core_mode(CoreAdviser::CoreAdviserModes::STANDARD_CORES);
