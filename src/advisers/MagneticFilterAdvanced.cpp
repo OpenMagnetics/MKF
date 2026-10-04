@@ -262,7 +262,9 @@ std::pair<bool, double> MagneticFilterTemperature::evaluate_magnetic(
     // seven minutes re-solving cores it had already judged). The verdict depends only on the
     // candidate (reference, material, turns, gaps) and on the operating points, so it is memoised
     // per advise (clear_scoring) under a key holding both.
-    std::string temperatureCacheKey = "temperature|" + magneticRef;
+    // A stand-in solved with its copper sized to the current is a different coil from the same
+    // magnetic solved with its own wires: the two must not share a cached temperature.
+    std::string temperatureCacheKey = std::string(_sizeStandInCopper ? "temperature-sized|" : "temperature|") + magneticRef;
     for (const auto& op : inputs->get_operating_points()) {
         temperatureCacheKey += "|" + json(op.get_conditions()).dump();
         for (const auto& excitation : op.get_excitations_per_winding()) {

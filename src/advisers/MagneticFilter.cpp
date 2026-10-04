@@ -335,7 +335,9 @@ Magnetic MagneticFilter::with_copper_sized_to_current(const Magnetic& magnetic, 
             prepare_bobbin_for_non_pqi(&sized, shapeName);
         }
         Magnetic merged = with_merged_strands(sized, mergeTemperature);
-        for (auto* laidOut : {&sized, &merged}) {
+        // The merged copy first: one conductor per turn lays out faster than the strand bundle,
+        // and a merged coil that does not fit settles the question without the strand layout.
+        for (auto* laidOut : {&merged, &sized}) {
             laidOut->get_mutable_coil().fast_wind();
             if (!laidOut->get_coil().get_turns_description().has_value() || !laidOut->get_mutable_coil().are_sections_and_layers_fitting()) {
                 return false;
