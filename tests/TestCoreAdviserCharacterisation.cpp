@@ -227,12 +227,14 @@ void check_top_n(const std::string& label,
 // Bobbin::get_filling_factor (EP 20 0.670 -> 0.613), a spline fitted through the whole bobbin
 // catalogue, and with it the pool-relative area-product and loss normalisation. Same slot-0
 // core; EP 20 0.598 climbs past PQ 20/20 and EFD 3C95. Scores -3.7%.
+// Re-pinned 2026-10-04 (temperature gate, ABT #1412): the core-stage temperature gate
+// (130 C) now scores the copper as the coil stage would wind it. At 600 Vpp / 100 kHz on
+// 100 uH (3.4 A rms) the former top-5 run hot: EFD 25/13/9 - 3C96 - Gapped 0.43 mm 249.2 C,
+// EP 20 - 3C96 - Gapped 0.375 mm 134.9 C, PQ 20/20 - 3C96 - Gapped 0.469 mm 193.1 C,
+// EFD 25/13/9 - 3C95 - Gapped 0.44 mm 196.1 C (no EP 20 - 3C96 - Gapped 0.598 mm reaches the gate).
+// One core of the fixture catalogue stays under the limit (129.6 C), and it is the only result.
 const std::vector<TopEntry> kTopAvailablePower = {
-    {"EFD 25/13/9 - 3C96 - Gapped 0.43 mm",        3.709114905092024},
-    {"EP 20 - 3C96 - Gapped 0.375 mm",             3.6934785469568991},
-    {"EP 20 - 3C96 - Gapped 0.598 mm",             3.6258176662942887},
-    {"PQ 20/20 - 3C96 - Gapped 0.46900000000000003 mm", 3.6212370666624971},
-    {"EFD 25/13/9 - 3C95 - Gapped 0.44 mm",        3.5943423936765333},
+    {"PQ 20/20 - 3C97 - Gapped 0.477 mm",          4.7327978556817465},
 };
 
 // STANDARD_CORES x POWER: top-5 unique standard-shape ferrite candidates.
