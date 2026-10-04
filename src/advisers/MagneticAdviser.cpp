@@ -1438,7 +1438,13 @@ std::vector<std::pair<Mas, double>> MagneticAdviser::score_magnetics(std::vector
 
         std::vector<double> scorings;
         for (size_t masIndex = 0; masIndex < masMagnetics.size(); ++masIndex) {
-            auto& mas = masMagnetics[masIndex];
+            // ABT #1699: each filter scores its own COPY of the design. Some filters are design
+            // filters that rework the magnetic they are handed -- CORE_MINIMUM_IMPEDANCE (the core
+            // adviser's turn search for suppression chokes) swaps in an unwound coil with its own
+            // turn count -- and scoring must not change what is being scored: through a reference
+            // the next filter (COST) met that unwound coil and threw COIL_NOT_PROCESSED, and the
+            // design returned to the caller would have been the filter's rework, not the advised one.
+            auto mas = masMagnetics[masIndex];
             auto [valid, scoring] = filterIt->second->evaluate_magnetic(&mas.get_mutable_magnetic(), &mas.get_mutable_inputs());
             if (!valid) {
                 masValidFlags[masIndex] = false;
