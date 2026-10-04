@@ -1100,6 +1100,7 @@ std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic(std::v
     _lossesNotEvaluable.clear();
     _failedCandidates.clear();
     _judgedFrequencies.clear();
+    _measuredFrequencies.clear();
 
     load_filter_flow(filterFlow, catalogueMagneticsWithInputs[0].get_inputs());
     // ABT #1679: the loss-model frequency-span gate below exists for the computations that need
@@ -1116,6 +1117,9 @@ std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic(std::v
     auto recordJudgedFrequencies = [this](MagneticFilters filterEnum, Magnetic& magnetic, Inputs& inputs) {
         if (auto judgedFrequencies = _filters[filterEnum]->get_judged_frequencies(&magnetic, &inputs)) {
             _judgedFrequencies[magnetic.get_reference()][filterEnum] = judgedFrequencies.value();
+        }
+        if (auto measuredFrequencies = _filters[filterEnum]->get_measured_frequencies(&magnetic, &inputs)) {
+            _measuredFrequencies[magnetic.get_reference()][filterEnum] = measuredFrequencies.value();
         }
     };
     std::vector<MagneticFilterOperation> strictlyRequiredFilterFlow;

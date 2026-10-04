@@ -45,6 +45,9 @@
 #include <fstream>
 #include <vector>
 #include <utility>
+#include <algorithm>
+#include <iterator>
+#include <limits>
 #include "json.hpp"
 
 #include <catch2/catch_test_macros.hpp>
@@ -1350,6 +1353,22 @@ OpenMagnetics::Magnetic load_wound_cmc_catalogue_part(const std::string& partNum
     return magnetic_autocomplete(OpenMagnetics::Magnetic(json::parse(file)));
 }
 
+// The same part without its datasheet's measured impedance curve: IMPEDANCE then judges it on the
+// core material's mu(f) range alone (the measured band judges points outside it on that curve).
+OpenMagnetics::Magnetic without_measured_impedance(OpenMagnetics::Magnetic magnetic) {
+    auto manufacturerInfo = magnetic.get_manufacturer_info().value();
+    auto datasheetInfo = manufacturerInfo.get_datasheet_info().value();
+    auto electrical = datasheetInfo.get_electrical().value();
+    for (auto& entry : electrical) {
+        entry.set_impedance_points(std::nullopt);
+    }
+    datasheetInfo.set_electrical(electrical);
+    manufacturerInfo.set_datasheet_info(datasheetInfo);
+    magnetic.set_manufacturer_info(manufacturerInfo);
+    REQUIRE_FALSE(MagneticFilterImpedance::get_measured_impedance_curve(magnetic));
+    return magnetic;
+}
+
 OpenMagnetics::Inputs make_cmc_inputs(double frequency) {
     // Two windings (turns ratio 1), sinusoidal line current: a common-mode choke's operating point.
     return OpenMagnetics::Inputs::create_quick_operating_point_only_current(
@@ -1425,7 +1444,8 @@ TEST_CASE("MagneticFilter_Impedance_Display_Output_Only_Inside_Material_Mu_Span"
 TEST_CASE("MagneticAdviser_Reports_Candidates_Whose_Evaluation_Throws", "[magnetic-adviser][failed-candidates][mu-span]") {
     settings.reset();
     auto evaluable = load_wound_cmc_catalogue_part("7448052502");
-    auto notEvaluable = load_wound_cmc_catalogue_part("7448229004");
+    // Without its measured curve (which starts at 1 kHz and would judge the point: measured-band).
+    auto notEvaluable = without_measured_impedance(load_wound_cmc_catalogue_part("7448229004"));
     const double requirementFrequency = 1000;
     REQUIRE(ComplexPermeability().get_frequency_range(evaluable.get_core().resolve_material()).first < requirementFrequency);
     REQUIRE(ComplexPermeability().get_frequency_range(notEvaluable.get_core().resolve_material()).first > requirementFrequency);
@@ -1476,7 +1496,8 @@ void set_minimum_impedances(OpenMagnetics::Inputs& inputs, const std::vector<std
 // only those two would, and reports them as its judged frequencies. The 30 MHz point is not judged.
 TEST_CASE("MagneticAdviser_Impedance_Ranks_On_The_Covered_Requirement_Points", "[magnetic-adviser][impedance][covered-band]") {
     settings.reset();
-    auto part = load_wound_cmc_catalogue_part("7448229004");
+    // Without its measured curve: a part that carries one is judged above the mu(f) range on it (measured-band).
+    auto part = without_measured_impedance(load_wound_cmc_catalogue_part("7448229004"));
     auto [minimumMaterialFrequency, maximumMaterialFrequency] = ComplexPermeability().get_frequency_range(part.get_core().resolve_material());
     REQUIRE(minimumMaterialFrequency < 150000);
     REQUIRE(maximumMaterialFrequency > 1e6);
@@ -1518,13 +1539,15 @@ TEST_CASE("MagneticAdviser_Impedance_Ranks_On_The_Covered_Requirement_Points", "
     REQUIRE(judgedFrequencies.contains(part.get_reference()));
     REQUIRE(judgedFrequencies.at(part.get_reference()).contains(MagneticFilters::IMPEDANCE));
     CHECK(judgedFrequencies.at(part.get_reference()).at(MagneticFilters::IMPEDANCE) == std::vector<double>{150000, 1e6});
+    CHECK(adviser.get_measured_frequencies().at(part.get_reference()).at(MagneticFilters::IMPEDANCE).empty());
 }
 
 // A part whose material has no data at any requirement frequency cannot be judged on it: it is not
 // ranked, and the adviser reports it, naming its range and the requirement's.
 TEST_CASE("MagneticAdviser_Impedance_Reports_A_Part_With_No_Covered_Requirement_Point", "[magnetic-adviser][impedance][covered-band]") {
     settings.reset();
-    auto part = load_wound_cmc_catalogue_part("7448229004");
+    // Without its measured curve (measured-band covers 20 and 30 MHz on a part that has one).
+    auto part = without_measured_impedance(load_wound_cmc_catalogue_part("7448229004"));
     REQUIRE(ComplexPermeability().get_frequency_range(part.get_core().resolve_material()).second < 20e6);
 
     auto inputs = make_cmc_inputs(150000);
@@ -1657,4 +1680,206 @@ TEST_CASE("Wire_Without_Number_Of_Conductors_Is_One_Conductor_Unless_Litz", "[wi
     WindingLossesOutput losses;
     REQUIRE_NOTHROW(losses = WindingLosses().calculate_losses(part, operatingPoint, 25));
     CHECK(losses.get_winding_losses() > 0);
+}
+
+// =============================================================================
+// Measured band: a minimumImpedance point outside the core material's mu(f) range is judged on the
+// part's own measured common-mode |Z| (datasheet impedancePoints, zero DC bias), interpolated
+// log|Z| vs log f between the two bracketing measured points, never extrapolated. ACME's A07 mu(f)
+// ends at ~12.5 MHz (the plot stops at mu = 10) while 7448229004 is measured from 1 kHz to 1 GHz.
+// =============================================================================
+namespace {
+// 7448229004's measured points bracketing 22 MHz (tests/testData/cmc_catalogue_7448229004.json).
+constexpr double kBracketLowFrequency = 21256900.0;
+constexpr double kBracketLowMagnitude = 741.031;
+constexpr double kBracketHighFrequency = 22387200.0;
+constexpr double kBracketHighMagnitude = 728.922;
+// Hand-computed: exp(ln 741.031 + (ln 22e6 - ln 21256900) / (ln 22387200 - ln 21256900) * (ln 728.922 - ln 741.031)).
+constexpr double kMeasuredMagnitudeAt22MHz = 732.9775932440663;
+
+OpenMagnetics::Magnetic with_impedance_points(OpenMagnetics::Magnetic magnetic, std::vector<DatasheetImpedancePoint> points) {
+    auto manufacturerInfo = magnetic.get_manufacturer_info().value();
+    auto datasheetInfo = manufacturerInfo.get_datasheet_info().value();
+    auto electrical = datasheetInfo.get_electrical().value();
+    REQUIRE(electrical.size() == 1);
+    electrical[0].set_impedance_points(points);
+    datasheetInfo.set_electrical(electrical);
+    manufacturerInfo.set_datasheet_info(datasheetInfo);
+    magnetic.set_manufacturer_info(manufacturerInfo);
+    return magnetic;
+}
+
+std::vector<DatasheetImpedancePoint> impedance_points_of(const OpenMagnetics::Magnetic& magnetic) {
+    return magnetic.get_manufacturer_info()->get_datasheet_info()->get_electrical()->at(0).get_impedance_points().value();
+}
+
+DatasheetImpedancePoint make_impedance_point(double frequency, double magnitude) {
+    ImpedancePoint impedance;
+    impedance.set_magnitude(magnitude);
+    DatasheetImpedancePoint point;
+    point.set_frequency(frequency);
+    point.set_impedance(impedance);
+    return point;
+}
+}
+
+TEST_CASE("MagneticFilter_Impedance_Judges_Above_The_Mu_Span_On_The_Measured_Curve", "[magnetic-filter][impedance][measured-band]") {
+    settings.reset();
+    auto part = load_wound_cmc_catalogue_part("7448229004");
+    auto [minimumMaterialFrequency, maximumMaterialFrequency] = ComplexPermeability().get_frequency_range(part.get_core().resolve_material());
+    REQUIRE(maximumMaterialFrequency > 1e6);
+    REQUIRE(maximumMaterialFrequency < 13e6);
+
+    auto curve = MagneticFilterImpedance::get_measured_impedance_curve(part);
+    REQUIRE(curve);
+    CHECK(curve->front().first == 1000);
+    CHECK(curve->back().first == 1e9);
+    auto upper = std::find_if(curve->begin(), curve->end(), [](const auto& point) { return point.first >= 22e6; });
+    REQUIRE(upper != curve->begin());
+    REQUIRE(upper != curve->end());
+    CHECK(std::prev(upper)->first == kBracketLowFrequency);
+    CHECK(std::prev(upper)->second == kBracketLowMagnitude);
+    CHECK(upper->first == kBracketHighFrequency);
+    CHECK(upper->second == kBracketHighMagnitude);
+
+    double measuredAt22MHz = MagneticFilterImpedance::interpolate_measured_impedance(curve.value(), 22e6);
+    CHECK_THAT(measuredAt22MHz, WithinRel(kMeasuredMagnitudeAt22MHz, 1e-12));
+    // A measured frequency returns its own point; outside the measured range nothing is extrapolated.
+    CHECK(MagneticFilterImpedance::interpolate_measured_impedance(curve.value(), kBracketHighFrequency) == kBracketHighMagnitude);
+    CHECK_THROWS_AS(MagneticFilterImpedance::interpolate_measured_impedance(curve.value(), 2e9), InvalidInputException);
+    CHECK_THROWS_AS(MagneticFilterImpedance::interpolate_measured_impedance(curve.value(), 500), InvalidInputException);
+
+    auto filter = MagneticFilter::factory(MagneticFilters::IMPEDANCE, make_cmc_inputs(150000));
+
+    // Same pass/fail and the same per-point score as a model point: valid just under the measured |Z|,
+    // invalid just over it, score log10(Zmeasured / Zreq).
+    auto under = make_cmc_inputs(150000);
+    set_minimum_impedances(under, {{22e6, 100}});
+    auto [validUnder, scoringUnder] = filter->evaluate_magnetic(&part, &under);
+    CHECK(validUnder);
+    CHECK_THAT(scoringUnder, WithinRel(std::log10(kMeasuredMagnitudeAt22MHz / 100), 1e-9));
+    auto justUnder = make_cmc_inputs(150000);
+    set_minimum_impedances(justUnder, {{22e6, kMeasuredMagnitudeAt22MHz * 0.999}});
+    CHECK(filter->evaluate_magnetic(&part, &justUnder).first);
+    auto justOver = make_cmc_inputs(150000);
+    set_minimum_impedances(justOver, {{22e6, kMeasuredMagnitudeAt22MHz * 1.001}});
+    CHECK_FALSE(filter->evaluate_magnetic(&part, &justOver).first);
+
+    // A mixed requirement: model points inside the mu(f) range, measured points above it, and a point
+    // above the measured range that is not judged. The score is the mean over the judged points.
+    auto inputs = make_cmc_inputs(150000);
+    set_minimum_impedances(inputs, {{150000, 1e-3}, {1e6, 1e-3}, {22e6, 100}, {30e6, 1e-3}, {2e9, 1e-3}});
+    auto modelOnly = make_cmc_inputs(150000);
+    set_minimum_impedances(modelOnly, {{150000, 1e-3}, {1e6, 1e-3}});
+    auto thirtyOnly = make_cmc_inputs(150000);
+    set_minimum_impedances(thirtyOnly, {{30e6, 1e-3}});
+    auto [valid, scoring] = filter->evaluate_magnetic(&part, &inputs);
+    auto [validModelOnly, scoringModelOnly] = filter->evaluate_magnetic(&part, &modelOnly);
+    auto [validThirtyOnly, scoringThirtyOnly] = filter->evaluate_magnetic(&part, &thirtyOnly);
+    CHECK(valid);
+    CHECK(validModelOnly);
+    CHECK(validThirtyOnly);
+    CHECK_THAT(scoring, WithinRel((2 * scoringModelOnly + scoringUnder + scoringThirtyOnly) / 4, 1e-9));
+    CHECK(filter->get_judged_frequencies(&part, &inputs).value() == std::vector<double>{150000, 1e6, 22e6, 30e6});
+    CHECK(filter->get_measured_frequencies(&part, &inputs).value() == std::vector<double>{22e6, 30e6});
+
+    // The adviser reports both lists.
+    bool strictlyRequired = GENERATE(true, false);
+    INFO("strictlyRequired " << strictlyRequired);
+    std::map<std::string, OpenMagnetics::Magnetic> catalogue{{part.get_reference(), part}};
+    std::vector<MagneticFilterOperation> filterFlow{MagneticFilterOperation(MagneticFilters::IMPEDANCE, true, true, strictlyRequired, 1.0)};
+    MagneticAdviser adviser(false);
+    auto results = adviser.get_advised_magnetic(inputs, catalogue, filterFlow, 10);
+    REQUIRE(results.size() == 1);
+    CHECK(adviser.get_failed_candidates().empty());
+    CHECK(adviser.get_judged_frequencies().at(part.get_reference()).at(MagneticFilters::IMPEDANCE) == std::vector<double>{150000, 1e6, 22e6, 30e6});
+    CHECK(adviser.get_measured_frequencies().at(part.get_reference()).at(MagneticFilters::IMPEDANCE) == std::vector<double>{22e6, 30e6});
+}
+
+// A point measured under DC bias is a different curve: only the zero-bias points are read.
+TEST_CASE("MagneticFilter_Impedance_Measured_Curve_Ignores_DC_Biased_Points", "[magnetic-filter][impedance][measured-band]") {
+    settings.reset();
+    auto part = load_wound_cmc_catalogue_part("7448229004");
+    auto points = impedance_points_of(part);
+    auto biased = make_impedance_point(22e6, 1e6);
+    biased.set_current(2.0);
+    points.push_back(biased);
+    auto partWithBiased = with_impedance_points(part, points);
+    auto curve = MagneticFilterImpedance::get_measured_impedance_curve(partWithBiased);
+    REQUIRE(curve);
+    CHECK(curve->size() == impedance_points_of(part).size());
+    CHECK_THAT(MagneticFilterImpedance::interpolate_measured_impedance(curve.value(), 22e6), WithinRel(kMeasuredMagnitudeAt22MHz, 1e-12));
+
+    // Only biased points: no zero-bias curve, so the part is judged on the mu(f) range alone.
+    auto onlyBiased = with_impedance_points(part, {biased});
+    CHECK_FALSE(MagneticFilterImpedance::get_measured_impedance_curve(onlyBiased));
+}
+
+// A part without a measured curve keeps the covered-band behaviour: points above the mu(f) range
+// are not judged, and the score is the one of its covered points.
+TEST_CASE("MagneticFilter_Impedance_Without_Measured_Curve_Keeps_The_Covered_Band", "[magnetic-filter][impedance][measured-band]") {
+    settings.reset();
+    auto part = without_measured_impedance(load_wound_cmc_catalogue_part("7448229004"));
+    auto inputs = make_cmc_inputs(150000);
+    set_minimum_impedances(inputs, {{150000, 1e-3}, {1e6, 1e-3}, {22e6, 1e9}});
+    auto coveredOnly = make_cmc_inputs(150000);
+    set_minimum_impedances(coveredOnly, {{150000, 1e-3}, {1e6, 1e-3}});
+    auto filter = MagneticFilter::factory(MagneticFilters::IMPEDANCE, inputs);
+    auto [valid, scoring] = filter->evaluate_magnetic(&part, &inputs);
+    auto [validCoveredOnly, scoringCoveredOnly] = filter->evaluate_magnetic(&part, &coveredOnly);
+    CHECK(valid);
+    CHECK(scoring == scoringCoveredOnly);
+    CHECK(filter->get_judged_frequencies(&part, &inputs).value() == std::vector<double>{150000, 1e6});
+    CHECK(filter->get_measured_frequencies(&part, &inputs).value().empty());
+
+    // With its curve the 22 MHz point is judged, and the 1 GOhm request fails it.
+    auto measuredPart = load_wound_cmc_catalogue_part("7448229004");
+    CHECK_FALSE(filter->evaluate_magnetic(&measuredPart, &inputs).first);
+}
+
+// Malformed measured data throws a specific error; nothing is skipped or guessed.
+TEST_CASE("MagneticFilter_Impedance_Malformed_Measured_Curve_Throws", "[magnetic-filter][impedance][measured-band]") {
+    settings.reset();
+    auto part = load_wound_cmc_catalogue_part("7448229004");
+    auto inputs = make_cmc_inputs(150000);
+    set_minimum_impedances(inputs, {{150000, 1e-3}, {22e6, 1e-3}});
+    auto filter = MagneticFilter::factory(MagneticFilters::IMPEDANCE, inputs);
+    auto points = impedance_points_of(part);
+
+    SECTION("a non-positive magnitude") {
+        auto bad = points;
+        bad[100].get_mutable_impedance().set_magnitude(0);
+        auto badPart = with_impedance_points(part, bad);
+        CHECK_THROWS_AS(filter->evaluate_magnetic(&badPart, &inputs), InvalidDatasheetImpedanceException);
+        CHECK_THROWS_AS(MagneticFilterImpedance::get_measured_impedance_curve(badPart), InvalidDatasheetImpedanceException);
+    }
+    SECTION("a non-finite frequency") {
+        auto bad = points;
+        bad[100].set_frequency(std::numeric_limits<double>::quiet_NaN());
+        auto badPart = with_impedance_points(part, bad);
+        CHECK_THROWS_AS(filter->evaluate_magnetic(&badPart, &inputs), InvalidDatasheetImpedanceException);
+    }
+    SECTION("two values at one frequency") {
+        auto bad = points;
+        bad.push_back(make_impedance_point(kBracketLowFrequency, 2 * kBracketLowMagnitude));
+        auto badPart = with_impedance_points(part, bad);
+        CHECK_THROWS_AS(filter->evaluate_magnetic(&badPart, &inputs), InvalidDatasheetImpedanceException);
+    }
+    SECTION("two commonModeChoke entries with a zero-bias curve") {
+        auto manufacturerInfo = part.get_manufacturer_info().value();
+        auto datasheetInfo = manufacturerInfo.get_datasheet_info().value();
+        auto electrical = datasheetInfo.get_electrical().value();
+        electrical.push_back(electrical[0]);
+        datasheetInfo.set_electrical(electrical);
+        manufacturerInfo.set_datasheet_info(datasheetInfo);
+        auto badPart = part;
+        badPart.set_manufacturer_info(manufacturerInfo);
+        CHECK_THROWS_AS(filter->evaluate_magnetic(&badPart, &inputs), InvalidDatasheetImpedanceException);
+    }
+    SECTION("a point without magnitude does not even parse") {
+        json magneticJson;
+        to_json(magneticJson, part);
+        magneticJson["manufacturerInfo"]["datasheetInfo"]["electrical"][0]["impedancePoints"][100]["impedance"].erase("magnitude");
+        CHECK_THROWS(OpenMagnetics::Magnetic(magneticJson));
+    }
 }

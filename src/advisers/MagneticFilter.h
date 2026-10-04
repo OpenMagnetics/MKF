@@ -59,6 +59,11 @@ class MagneticFilter {
         // evaluate (MagneticFilterImpedance outside the material's mu(f) range) lists only the
         // points it judged, so the caller can say what the ranking rests on.
         virtual std::optional<std::vector<double>> get_judged_frequencies(Magnetic* magnetic, Inputs* inputs) const { return std::nullopt; }
+
+        // The subset of get_judged_frequencies judged on the part's own measured data instead of the
+        // model (MagneticFilterImpedance: points outside the material's mu(f) range judged on the
+        // datasheet common-mode |Z|), or nullopt for a filter whose requirement is not frequency-wise.
+        virtual std::optional<std::vector<double>> get_measured_frequencies(Magnetic* magnetic, Inputs* inputs) const { return std::nullopt; }
 };
 
 // A filter whose verdict is built on the core losses. It applies to what MagneticFilter does, and
@@ -510,11 +515,41 @@ class MagneticFilterDatasheetLimits : public MagneticFilter {
 
 class MagneticFilterImpedance : public MagneticFilter {
     public:
+        // Measured common-mode |Z| of a part, (frequency Hz, |Z| Ohm), strictly increasing in frequency.
+        using MeasuredImpedanceCurve = std::vector<std::pair<double, double>>;
+
         MagneticFilterImpedance() {};
         std::pair<bool, double> evaluate_magnetic(Magnetic* magnetic, Inputs* inputs, std::vector<Outputs>* outputs = nullptr);
-        // The minimumImpedance frequencies inside the core material's tabulated mu(f) range: the
-        // only points the filter judges. Nullopt without a minimumImpedance requirement.
+        // The minimumImpedance frequencies the filter judges: those inside the core material's
+        // tabulated mu(f) range (judged on the model), and those outside it but inside the part's
+        // measured common-mode |Z| curve (judged on the measurement). Nullopt without a
+        // minimumImpedance requirement.
         std::optional<std::vector<double>> get_judged_frequencies(Magnetic* magnetic, Inputs* inputs) const override;
+        // The judged frequencies judged on the measured curve (outside the material's mu(f) range).
+        std::optional<std::vector<double>> get_measured_frequencies(Magnetic* magnetic, Inputs* inputs) const override;
+
+        // The part's zero-bias common-mode |Z| from its datasheet: the impedancePoints of the
+        // manufacturerInfo.datasheetInfo.electrical entry with subtype commonModeChoke, keeping only
+        // the points without a DC-bias current (or with current 0). Nullopt when the part carries
+        // none. Throws InvalidDatasheetImpedanceException on a malformed point, two values at one
+        // frequency, or more than one zero-bias curve (several entries, or per-winding curves).
+        static std::optional<MeasuredImpedanceCurve> get_measured_impedance_curve(const Magnetic& magnetic);
+        // |Z| at `frequency` from the measured curve: linear interpolation of log|Z| against log f
+        // between the two bracketing measured points (the point itself when measured there). Throws
+        // outside the measured frequency range: the curve is never extrapolated.
+        static double interpolate_measured_impedance(const MeasuredImpedanceCurve& curve, double frequency);
+
+    private:
+        // Per requirement point: judged on the model (inside the material's mu(f) range), on the
+        // measured curve (outside it, inside the curve's range), or not judged.
+        enum class ImpedanceSource { MODEL, MEASURED, NOT_JUDGED };
+        struct RequirementCoverage {
+            std::vector<ImpedanceSource> sources;  // one per minimumImpedance point, in order
+            std::optional<MeasuredImpedanceCurve> measuredCurve;
+            double minimumMaterialFrequency;
+            double maximumMaterialFrequency;
+        };
+        static RequirementCoverage classify_requirement(Magnetic* magnetic, Inputs* inputs);
 };
 
 class MagneticFilterMagnetizingInductance : public MagneticFilter {

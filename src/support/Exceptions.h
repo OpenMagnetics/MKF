@@ -12,6 +12,8 @@
 #include <exception>
 #include <string>
 #include <sstream>
+#include <optional>
+#include <utility>
 
 namespace OpenMagnetics {
 
@@ -359,13 +361,19 @@ class RequirementOutsideMaterialDataException : public MaterialException {
 public:
     RequirementOutsideMaterialDataException(const std::string& materialName, const std::string& requirement,
                                             double requirementMinimum, double requirementMaximum,
-                                            double rangeMinimum, double rangeMaximum)
+                                            double rangeMinimum, double rangeMaximum,
+                                            std::optional<std::pair<double, double>> measuredRange = std::nullopt)
         : MaterialException(ErrorCode::MATERIAL_FREQUENCY_OUT_OF_SPAN,
                             "Material " + materialName + ": complex permeability is tabulated from " +
                             std::to_string(rangeMinimum) + " Hz to " + std::to_string(rangeMaximum) +
-                            " Hz; no " + requirement + " frequency (" + std::to_string(requirementMinimum) +
+                            " Hz" +
+                            (measuredRange ? "; the part's measured impedance spans " + std::to_string(measuredRange->first) +
+                                             " Hz to " + std::to_string(measuredRange->second) + " Hz"
+                                           : std::string()) +
+                            "; no " + requirement + " frequency (" + std::to_string(requirementMinimum) +
                             " Hz to " + std::to_string(requirementMaximum) +
-                            " Hz) lies inside that range, so the requirement cannot be judged on this part",
+                            " Hz) lies inside " + (measuredRange ? "either range" : "that range") +
+                            ", so the requirement cannot be judged on this part",
                             materialName) {}
 };
 
@@ -434,6 +442,17 @@ public:
     
     InvalidInputException(ErrorCode code, const std::string& message)
         : CalculationException(code, message) {}
+};
+
+// A requirement point outside the material's mu(f) range is judged on the part's own measured
+// common-mode |Z| (datasheet impedancePoints). This says why that measured curve cannot be read:
+// a point with a non-positive or non-finite frequency or magnitude, two values at one frequency,
+// or more than one zero-bias curve to choose from. Malformed data, never a reason to guess.
+class InvalidDatasheetImpedanceException : public InvalidInputException {
+public:
+    InvalidDatasheetImpedanceException(const std::string& reference, const std::string& reason)
+        : InvalidInputException(ErrorCode::INVALID_INPUT,
+                                "Magnetic " + reference + ": datasheet commonModeChoke impedancePoints cannot be used: " + reason) {}
 };
 
 // ============================================================================

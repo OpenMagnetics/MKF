@@ -172,6 +172,12 @@ class MagneticAdviser{
         /// candidate whose data stops below the top requirement frequency is ranked on the points it
         /// covers, and this says which. Filled by the catalogue get_advised_magnetic, cleared at its start.
         std::map<std::string, std::map<MagneticFilters, std::vector<double>>> _judgedFrequencies;
+        /// @brief The subset of _judgedFrequencies judged on the part's own measured data, reference -> filter -> Hz.
+        ///
+        /// IMPEDANCE judges a minimumImpedance point outside the core material's mu(f) range on the
+        /// part's measured common-mode |Z| (datasheet impedancePoints) when it has one
+        /// (MagneticFilter::get_measured_frequencies). Filled and cleared with _judgedFrequencies.
+        std::map<std::string, std::map<MagneticFilters, std::vector<double>>> _measuredFrequencies;
         /// @brief Default filter flow for custom magnetic design.
         /// COST and LOSSES use log normalization (spans orders of magnitude).
         /// DIMENSIONS uses linear normalization (intuitive volume comparison).
@@ -341,6 +347,15 @@ class MagneticAdviser{
          *         core material's tabulated mu(f) range). Points not listed were not judged.
          */
         const std::map<std::string, std::map<MagneticFilters, std::vector<double>>>& get_judged_frequencies() const { return _judgedFrequencies; }
+
+        /**
+         * @brief The judged frequencies of the last catalogue run that were judged on the part's own
+         *        measured data rather than the model.
+         * @return Map of reference -> (filter -> frequencies in Hz), a subset of get_judged_frequencies().
+         *         IMPEDANCE: the minimumImpedance points outside the core material's mu(f) range judged
+         *         on the datasheet's measured common-mode |Z|. Empty list: every judged point used the model.
+         */
+        const std::map<std::string, std::map<MagneticFilters, std::vector<double>>>& get_measured_frequencies() const { return _measuredFrequencies; }
 
         /**
          * @brief Design magnetics from a converter topology using ngspice simulation.
