@@ -287,6 +287,10 @@ class Wire : public MAS::Wire {
         double calculate_effective_current_density(SignalDescriptor current, double temperature);
         double calculate_effective_current_density(double rms, double frequency, double temperature);
         double calculate_effective_conducting_area(double frequency, double temperature);
+        // The number of conductors of this wire. A non-litz wire (round, rectangular, foil, planar)
+        // is one conductor by definition, so a missing numberConductors (optional in MAS basicWire)
+        // means 1; a litz wire without it is incomplete data and throws INVALID_WIRE_DATA.
+        int64_t resolve_number_conductors() const;
         double calculate_conducting_area();
         double calculate_outer_area();
 

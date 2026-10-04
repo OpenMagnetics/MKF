@@ -1207,14 +1207,20 @@ namespace OpenMagnetics {
         return calculate_outer_diameter(*this, preferredValue);
     }
 
+    int64_t Wire::resolve_number_conductors() const {
+        if (get_number_conductors()) {
+            return get_number_conductors().value();
+        }
+        if (get_type() == WireType::LITZ) {
+            throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA, "Missing number of conductors for litz wire" +
+                                        (get_name() ? " " + get_name().value() : std::string()));
+        }
+        return 1;
+    }
+
     double Wire::calculate_conducting_area() {
         if (!get_number_conductors()) {
-            if (get_type() == WireType::LITZ) {
-                throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA, "Missing number of conductors for wire");
-            }
-            else {
-                set_number_conductors(1);
-            }
+            set_number_conductors(resolve_number_conductors());
         }
         switch (get_type()) {
             case WireType::LITZ:
@@ -1274,12 +1280,7 @@ namespace OpenMagnetics {
 
     double Wire::calculate_outer_area() {
         if (!get_number_conductors()) {
-            if (get_type() == WireType::LITZ) {
-                throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA, "Missing number of conductors for wire");
-            }
-            else {
-                set_number_conductors(1);
-            }
+            set_number_conductors(resolve_number_conductors());
         }
         switch (get_type()) {
             case WireType::LITZ:

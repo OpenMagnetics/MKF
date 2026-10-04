@@ -160,6 +160,13 @@ class MagneticAdviser{
         /// result without a word. Filled by the catalogue get_advised_magnetic, cleared at its
         /// start. A vector, not a map: two catalogue parts may share a reference.
         std::vector<std::pair<std::string, std::string>> _failedCandidates;
+        /// @brief Requirement frequencies each ranked candidate was judged on, reference -> filter -> Hz.
+        ///
+        /// Filled for filters with a frequency-wise requirement (MagneticFilter::get_judged_frequencies):
+        /// IMPEDANCE judges a minimumImpedance point only inside the core material's mu(f) range, so a
+        /// candidate whose data stops below the top requirement frequency is ranked on the points it
+        /// covers, and this says which. Filled by the catalogue get_advised_magnetic, cleared at its start.
+        std::map<std::string, std::map<MagneticFilters, std::vector<double>>> _judgedFrequencies;
         /// @brief Default filter flow for custom magnetic design.
         /// COST and LOSSES use log normalization (spans orders of magnitude).
         /// DIMENSIONS uses linear normalization (intuitive volume comparison).
@@ -321,6 +328,14 @@ class MagneticAdviser{
          *         and carries the exception's message. A listed candidate is not in the ranking.
          */
         const std::vector<std::pair<std::string, std::string>>& get_failed_candidates() const { return _failedCandidates; }
+
+        /**
+         * @brief Requirement frequencies each candidate of the last catalogue run was judged on.
+         * @return Map of reference -> (filter -> judged frequencies in Hz). Only filters with a
+         *         frequency-wise requirement appear (IMPEDANCE: the minimumImpedance points inside the
+         *         core material's tabulated mu(f) range). Points not listed were not judged.
+         */
+        const std::map<std::string, std::map<MagneticFilters, std::vector<double>>>& get_judged_frequencies() const { return _judgedFrequencies; }
 
         /**
          * @brief Design magnetics from a converter topology using ngspice simulation.

@@ -347,6 +347,28 @@ public:
     double range_maximum() const noexcept { return _rangeMaximum; }
 };
 
+/**
+ * @brief None of a requirement's frequencies lies inside the material's tabulated mu(f) range.
+ *
+ * A minimum-impedance requirement is judged only at the frequencies where the core material has
+ * complex-permeability data; the points outside are not judged at all. When that leaves no point,
+ * nothing about the requirement can be said for the part: it is not ranked, and the adviser reports
+ * it with this error (MagneticAdviser::get_failed_candidates).
+ */
+class RequirementOutsideMaterialDataException : public MaterialException {
+public:
+    RequirementOutsideMaterialDataException(const std::string& materialName, const std::string& requirement,
+                                            double requirementMinimum, double requirementMaximum,
+                                            double rangeMinimum, double rangeMaximum)
+        : MaterialException(ErrorCode::MATERIAL_FREQUENCY_OUT_OF_SPAN,
+                            "Material " + materialName + ": complex permeability is tabulated from " +
+                            std::to_string(rangeMinimum) + " Hz to " + std::to_string(rangeMaximum) +
+                            " Hz; no " + requirement + " frequency (" + std::to_string(requirementMinimum) +
+                            " Hz to " + std::to_string(requirementMaximum) +
+                            " Hz) lies inside that range, so the requirement cannot be judged on this part",
+                            materialName) {}
+};
+
 // A ferrite above its Curie point is paramagnetic: no loss model describes it, and the magnetic
 // no longer works as designed (ABT #1485).
 class MaterialAboveCurieTemperatureException : public MaterialException {

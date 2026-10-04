@@ -355,6 +355,24 @@ std::pair<bool, double> MagneticFilterProximityFactor::evaluate_magnetic(Winding
     return {valid, proximityFactor};
 }
 
+std::optional<std::vector<double>> MagneticFilterImpedance::get_judged_frequencies(Magnetic* magnetic, Inputs* inputs) const {
+    if (!inputs->get_design_requirements().get_minimum_impedance()) {
+        return std::nullopt;
+    }
+    auto [minimumMaterialFrequency, maximumMaterialFrequency] = ComplexPermeability().get_frequency_range(magnetic->get_core().resolve_material());
+    // A named copy: get_minimum_impedance() returns the optional by value, so ranging over its
+    // value() directly would iterate a destroyed temporary.
+    const auto requirement = inputs->get_design_requirements().get_minimum_impedance().value();
+    std::vector<double> judgedFrequencies;
+    for (const auto& impedanceAtFrequency : requirement) {
+        double frequency = impedanceAtFrequency.get_frequency();
+        if (frequency >= minimumMaterialFrequency && frequency <= maximumMaterialFrequency) {
+            judgedFrequencies.push_back(frequency);
+        }
+    }
+    return judgedFrequencies;
+}
+
 std::pair<bool, double> MagneticFilterImpedance::evaluate_magnetic(Magnetic* magnetic, Inputs* inputs, std::vector<Outputs>* outputs) {
     bool valid = true;
     double scoring = 0;
@@ -362,12 +380,12 @@ std::pair<bool, double> MagneticFilterImpedance::evaluate_magnetic(Magnetic* mag
     // Impedance scoring: dimensionless log-ratio.
     //
     // For a "minimum impedance" requirement the part is invalid if Zact < Zreq at any
-    // frequency. Among valid parts we want to reward parts close to the requirement
+    // judged frequency. Among valid parts we want to reward parts close to the requirement
     // (smallest over-dimensioning) and penalize gross over-dimensioning (cost/size).
     //
     // Per-frequency:
     //     dev_i = log10(max(Zact_i / Zreq_i, 1))   // 0 when at-spec (under-spec → invalid)
-    // Filter score = mean over frequency points (then min-max normalized + inverted
+    // Filter score = mean over the judged frequency points (then min-max normalized + inverted
     // downstream so smallest dev becomes the top score).
     //
     // No dead band on the raw score: normalize_scoring rescales to [0,1] so any
@@ -376,6 +394,16 @@ std::pair<bool, double> MagneticFilterImpedance::evaluate_magnetic(Magnetic* mag
     // normalize_scoring and returns 1.0 for every part (the "all show 100" bug).
     // Keeping the raw monotonic dev preserves ranking spread when this is the only
     // active filter.
+    //
+    // Judged frequencies: only the requirement points inside the core material's tabulated
+    // complex-permeability range (get_judged_frequencies). Outside it the material has no mu(f),
+    // so |Z| there is unknown: such a point is not judged at all -- neither a pass nor a fail,
+    // and nothing is invented for it. A CISPR-band request reaches 30 MHz while many CMC ferrites
+    // are tabulated only to 1-16 MHz; judging those parts on the band their data covers keeps
+    // them in the ranking (El Choker: 142 of 299 chokes were excluded), and the mean over the
+    // judged points keeps their score on the same per-point scale as a fully covered part's. The
+    // adviser reports the judged frequencies per candidate. A part with no judged point at all
+    // cannot be judged on the requirement and throws RequirementOutsideMaterialDataException.
 
     // Candidate SCORING runs the fast (OneLayer) capacitance path, explicitly. MKF d424c32e made
     // the full energy-based capacitance model Impedance's default -- right for analysing ONE
@@ -389,7 +417,20 @@ std::pair<bool, double> MagneticFilterImpedance::evaluate_magnetic(Magnetic* mag
 
     if (inputs->get_design_requirements().get_minimum_impedance()) {
         auto impedanceRequirement = inputs->get_design_requirements().get_minimum_impedance().value();
+        auto judgedFrequencies = get_judged_frequencies(magnetic, inputs).value();
+        if (judgedFrequencies.empty()) {
+            auto material = magnetic->get_core().resolve_material();
+            auto [minimumMaterialFrequency, maximumMaterialFrequency] = ComplexPermeability().get_frequency_range(material);
+            auto [lowest, highest] = std::minmax_element(impedanceRequirement.begin(), impedanceRequirement.end(),
+                [](const ImpedanceAtFrequency& a, const ImpedanceAtFrequency& b) { return a.get_frequency() < b.get_frequency(); });
+            throw RequirementOutsideMaterialDataException(material.get_name(), "minimumImpedance",
+                                                          lowest->get_frequency(), highest->get_frequency(),
+                                                          minimumMaterialFrequency, maximumMaterialFrequency);
+        }
         for (auto impedanceAtFrequency : impedanceRequirement) {
+            if (std::find(judgedFrequencies.begin(), judgedFrequencies.end(), impedanceAtFrequency.get_frequency()) == judgedFrequencies.end()) {
+                continue;  // outside the material's mu(f) data: not judged
+            }
             auto impedance = OpenMagnetics::Impedance(kFastCapacitanceForScoring).calculate_impedance(*magnetic, impedanceAtFrequency.get_frequency());
             double zReq = impedanceAtFrequency.get_impedance().get_magnitude();
             double zAct = abs(impedance);
@@ -404,7 +445,7 @@ std::pair<bool, double> MagneticFilterImpedance::evaluate_magnetic(Magnetic* mag
             double dev = std::log10(ratio);
             scoring += dev;
         }
-        scoring /= impedanceRequirement.size();
+        scoring /= judgedFrequencies.size();
     }
 
     // Emit the impedance output at the operating points so downstream UI has the simulated |Z|.
@@ -418,8 +459,8 @@ std::pair<bool, double> MagneticFilterImpedance::evaluate_magnetic(Magnetic* mag
     // operating point rather than invented. A common-mode choke's inputs carry the 50 Hz mains
     // point (line current, thermal) next to the noise point, and every CMC ferrite is tabulated
     // from above 50 Hz: the throw here made the adviser drop the part over a number it only
-    // shows (El Choker: 4 of 299 chokes left). The minimumImpedance requirement above still
-    // throws outside the span: a requirement the data cannot evaluate is an error.
+    // shows (El Choker: 4 of 299 chokes left). The minimumImpedance requirement above is judged
+    // inside the span only, and throws when no requirement point lies inside it.
     if (inputs->get_operating_points().size() > 0 && outputs != nullptr) {
         auto [minimumMaterialFrequency, maximumMaterialFrequency] = ComplexPermeability().get_frequency_range(magnetic->get_core().resolve_material());
         for (size_t operatingPointIndex = 0; operatingPointIndex < inputs->get_operating_points().size(); ++operatingPointIndex) {

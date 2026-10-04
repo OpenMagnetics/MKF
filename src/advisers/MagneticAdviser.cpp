@@ -1099,8 +1099,25 @@ std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic(std::v
     _failedScorings.clear();  // stale rejections would mis-rank the next run (ABT #801)
     _lossesNotEvaluable.clear();
     _failedCandidates.clear();
+    _judgedFrequencies.clear();
 
     load_filter_flow(filterFlow, catalogueMagneticsWithInputs[0].get_inputs());
+    // ABT #1679: the loss-model frequency-span gate below exists for the computations that need
+    // core losses at the operating frequencies -- a loss-based filter of the flow, or the final
+    // simulation (MagneticSimulator::simulate computes the core losses at every operating point).
+    // A flow that computes none (e.g. a common-mode choke search on impedance and size, whose 50 Hz
+    // mains point lies below many ferrites' loss fits) has no reason to exclude a part for its fit.
+    bool coreLossesComputed = _simulateResults;
+    for (const auto& filterConfiguration : filterFlow) {
+        coreLossesComputed |= _filters[filterConfiguration.get_filter()]->computes_core_losses();
+    }
+    // Records the requirement frequencies a filter judged this candidate on (filters that skip
+    // points their data cannot evaluate, see MagneticFilter::get_judged_frequencies).
+    auto recordJudgedFrequencies = [this](MagneticFilters filterEnum, Magnetic& magnetic, Inputs& inputs) {
+        if (auto judgedFrequencies = _filters[filterEnum]->get_judged_frequencies(&magnetic, &inputs)) {
+            _judgedFrequencies[magnetic.get_reference()][filterEnum] = judgedFrequencies.value();
+        }
+    };
     std::vector<MagneticFilterOperation> strictlyRequiredFilterFlow;
     std::vector<MagneticFilterOperation> nonStrictlyRequiredFilterFlow;
     std::vector<Mas> validMas;
@@ -1137,10 +1154,11 @@ std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic(std::v
         auto magnetic = mas.get_magnetic();
         bool validMagnetic = true;
         // ABT #1456: a part whose core material has no loss coefficients at an operating frequency (outside
-        // its fitted Steinmetz span) is dropped here, before any filter computes losses. The loss filters
+        // its fitted Steinmetz span) is excluded here, before any filter computes losses. The loss filters
         // would throw on it, and 8 identical throws in a row -- a catalogue carries many parts of one
-        // material -- abort the whole run. This gate is always hard, whatever `strict` says, and scores
-        // nothing.
+        // material -- abort the whole run. This gate is hard, whatever `strict` says, and scores
+        // nothing. It applies only when the flow or the final simulation computes core losses (ABT
+        // #1679), and an excluded part is reported in get_failed_candidates() with the reason.
         // A part whose core material has no core-loss model at all is neither dropped nor allowed to
         // abort the run: every loss-based filter is not applicable to it (MagneticFilterCoreLossesBased),
         // it is ranked on the others, and it is flagged with the reason for the caller to show.
@@ -1148,11 +1166,14 @@ std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic(std::v
             _lossesNotEvaluable[magnetic.get_reference()] = reason.value();
             logEntry("MagneticAdviser: " + magnetic.get_reference() + ": losses not evaluable: " + reason.value(), "MagneticAdviser", 2);
         }
-        if (_lossModelFrequencySpanFilter.applies_to(&magnetic)) {
-            auto [inSpan, spanScoring] = _lossModelFrequencySpanFilter.evaluate_magnetic(&magnetic, &inputs);
-            if (!inSpan) {
-                logEntry("MagneticAdviser: dropping " + magnetic.get_reference() +
-                         ": an operating frequency lies outside its core material's fitted loss span", "MagneticAdviser", 2);
+        if (coreLossesComputed && _lossModelFrequencySpanFilter.applies_to(&magnetic)) {
+            if (auto reason = MagneticFilterLossModelFrequencySpan::material_not_evaluable_reason(magnetic.get_core().resolve_material(), inputs)) {
+                std::string computedBy = _simulateResults ? "the final simulation computes core losses at every operating point"
+                                                          : "a filter of the flow computes core losses";
+                logEntry("MagneticAdviser: excluding " + magnetic.get_reference() + ": " + reason.value(), "MagneticAdviser", 2);
+                _failedCandidates.push_back({magnetic.get_reference(),
+                                             std::string(magic_enum::enum_name(MagneticFilters::LOSS_MODEL_FREQUENCY_SPAN)) + ": " +
+                                             reason.value() + " (" + computedBy + ")"});
                 continue;
             }
         }
@@ -1168,6 +1189,7 @@ std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic(std::v
             try {
                 auto [valid, scoring] = _filters[filterEnum]->evaluate_magnetic(&magnetic, &inputs, &outputs);
                 add_scoring(magnetic.get_reference(), filterEnum, scoring);
+                recordJudgedFrequencies(filterEnum, magnetic, inputs);
                 if (strict) {
                     validMagnetic &= valid;
                     if (!valid) {
@@ -1177,6 +1199,16 @@ std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic(std::v
                 // Successful evaluation resets the streak.
                 identicalThrowStreak = 0;
                 previousThrowMessage.clear();
+            }
+            catch (const RequirementOutsideMaterialDataException& e) {
+                // Not a malformed input: the part's material has no data where the requirement
+                // lies, and every part of that material says the same. It does not count toward
+                // the identical-throw abort below, which would otherwise end the search after 8
+                // parts of one material in a row.
+                logEntry(std::string("MagneticAdviser: strict filter ") + std::string(magic_enum::enum_name(filterEnum)) + " cannot judge magnetic: " + e.what(), "MagneticAdviser", 2);
+                _failedCandidates.push_back({magnetic.get_reference(), std::string(magic_enum::enum_name(filterEnum)) + ": " + e.what()});
+                validMagnetic = false;
+                break;
             }
             catch (const std::exception& e) {
                 logEntry(std::string("MagneticAdviser: strict filter ") + std::string(magic_enum::enum_name(filterEnum)) + " threw, rejecting magnetic: " + e.what(), "MagneticAdviser", 2);
@@ -1246,6 +1278,7 @@ std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic(std::v
                 // still rejects everything would recurse forever and stack-overflow.
                 auto [filterValid, scoring] = _filters[filterEnum]->evaluate_magnetic(&magnetic, &inputs, &outputs);
                 add_scoring(magnetic.get_reference(), filterEnum, scoring);
+                recordJudgedFrequencies(filterEnum, magnetic, inputs);
                 // A candidate this filter rejected must rank WORST for it, never
                 // best. evaluate_magnetic returns 0.0 on rejection (a sentinel, not
                 // a distance), and with invert=true 0.0 is the top score — so

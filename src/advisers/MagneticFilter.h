@@ -47,6 +47,18 @@ class MagneticFilter {
         // reason instead of aborting the search on it or dropping it. Nullopt for a part without a
         // core: that is the datasheet-only case, which applies_to already answers.
         static std::optional<std::string> core_losses_not_evaluable_reason(Magnetic* magnetic);
+
+        // Whether evaluating this filter computes core losses at the operating points. The catalogue
+        // adviser applies its loss-model frequency-span gate (MagneticFilterLossModelFrequencySpan)
+        // only when some filter of the flow, or its final simulation, computes them: a flow that
+        // computes no losses has no reason to exclude a part for its loss fit (ABT #1679).
+        virtual bool computes_core_losses() const { return false; }
+
+        // The requirement frequencies this filter judged `magnetic` on, or nullopt for a filter
+        // whose requirement is not frequency-wise. A filter that skips the points its data cannot
+        // evaluate (MagneticFilterImpedance outside the material's mu(f) range) lists only the
+        // points it judged, so the caller can say what the ranking rests on.
+        virtual std::optional<std::vector<double>> get_judged_frequencies(Magnetic* magnetic, Inputs* inputs) const { return std::nullopt; }
 };
 
 // A filter whose verdict is built on the core losses. It applies to what MagneticFilter does, and
@@ -57,6 +69,7 @@ class MagneticFilterCoreLossesBased : public MagneticFilter {
         bool applies_to(Magnetic* magnetic) const override {
             return MagneticFilter::applies_to(magnetic) && !core_losses_not_evaluable_reason(magnetic);
         }
+        bool computes_core_losses() const override { return true; }
 };
 
 class MagneticFilterAreaProduct : public MagneticFilter {
@@ -76,6 +89,9 @@ class MagneticFilterAreaProduct : public MagneticFilter {
         MagneticFilterAreaProduct(Inputs inputs);
         std::pair<bool, double> evaluate_magnetic(Magnetic* magnetic, Inputs* inputs, std::vector<Outputs>* outputs = nullptr);
         double get_estimated_area_product_required(Inputs inputs);
+        // The required area product reads the flux density from the material's loss model at each
+        // operating frequency.
+        bool computes_core_losses() const override { return true; }
 };
 
 class MagneticFilterEnergyStored : public MagneticFilter {
@@ -391,6 +407,10 @@ class MagneticFilterLossModelFrequencySpan : public MagneticFilter {
         // not at every operating frequency, is not evaluable either.
         static bool is_material_evaluable(const CoreMaterial& material, const Inputs& inputs,
                                           std::optional<CoreLossesModels> model = std::nullopt);
+        // Why the material is not evaluable (the model, its fitted span and the operating frequencies
+        // outside it), or nullopt when it is. is_material_evaluable is its negation.
+        static std::optional<std::string> material_not_evaluable_reason(const CoreMaterial& material, const Inputs& inputs,
+                                                                        std::optional<CoreLossesModels> model = std::nullopt);
 };
 
 class MagneticFilterSolidInsulationRequirements : public MagneticFilter {
@@ -488,6 +508,9 @@ class MagneticFilterImpedance : public MagneticFilter {
     public:
         MagneticFilterImpedance() {};
         std::pair<bool, double> evaluate_magnetic(Magnetic* magnetic, Inputs* inputs, std::vector<Outputs>* outputs = nullptr);
+        // The minimumImpedance frequencies inside the core material's tabulated mu(f) range: the
+        // only points the filter judges. Nullopt without a minimumImpedance requirement.
+        std::optional<std::vector<double>> get_judged_frequencies(Magnetic* magnetic, Inputs* inputs) const override;
 };
 
 class MagneticFilterMagnetizingInductance : public MagneticFilter {

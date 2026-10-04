@@ -174,34 +174,52 @@ std::optional<std::string> MagneticFilter::core_losses_not_evaluable_reason(Magn
 
 bool MagneticFilterLossModelFrequencySpan::is_material_evaluable(const CoreMaterial& material, const Inputs& inputs,
                                                                  std::optional<CoreLossesModels> model) {
+    return !material_not_evaluable_reason(material, inputs, model);
+}
+
+std::optional<std::string> MagneticFilterLossModelFrequencySpan::material_not_evaluable_reason(const CoreMaterial& material, const Inputs& inputs,
+                                                                                              std::optional<CoreLossesModels> model) {
     auto availableModels = CoreLossesModel::get_methods(material);
-    // Whether `modelName` can be evaluated at every operating frequency. Only the Steinmetz family
-    // reads the fitted ranges (see CoreLossesModel::evaluates_steinmetz_ranges).
-    auto coversOperatingFrequencies = [&](CoreLossesModels modelName) {
+    // Why `modelName` cannot be evaluated at every operating frequency, or nullopt when it can. Only
+    // the Steinmetz family reads the fitted ranges (see CoreLossesModel::evaluates_steinmetz_ranges).
+    auto operatingFrequenciesOutsideSpan = [&](CoreLossesModels modelName) -> std::optional<std::string> {
         auto coreLossesModel = CoreLossesModel::factory(modelName);
         if (!CoreLossesModel::evaluates_steinmetz_ranges(coreLossesModel.get())) {
-            return true;
+            return std::nullopt;
         }
         auto [spanMinimum, spanMaximum] = CoreLossesModel::get_steinmetz_fitted_span(material);
+        std::vector<double> outside;
         for (auto& operatingPoint : inputs.get_operating_points()) {
             for (auto& excitation : operatingPoint.get_excitations_per_winding()) {
                 double frequency = excitation.get_frequency();
-                if (frequency < spanMinimum || frequency > spanMaximum) {
-                    return false;
+                if ((frequency < spanMinimum || frequency > spanMaximum) &&
+                    std::find(outside.begin(), outside.end(), frequency) == outside.end()) {
+                    outside.push_back(frequency);
                 }
             }
         }
-        return true;
+        if (outside.empty()) {
+            return std::nullopt;
+        }
+        std::string frequencies;
+        for (auto frequency : outside) {
+            frequencies += (frequencies.empty() ? "" : ", ") + std::to_string(frequency) + " Hz";
+        }
+        return "core material '" + material.get_name() + "': its " + std::string(magic_enum::enum_name(modelName)) +
+               " core-loss coefficients are fitted over " + std::to_string(spanMinimum) + " Hz to " +
+               std::to_string(spanMaximum) + " Hz, and the operating frequency " + frequencies +
+               " lies outside that span; its core losses there would be an extrapolation of the fit";
     };
     // An explicitly requested model (ABT #1497) is the only one CoreLosses runs, and it throws for a
     // material that cannot run it: such a material is not evaluable, never judged by another model.
     auto requestedModel = Settings::GetInstance().get_core_losses_requested_model();
     if (requestedModel) {
         if (!CoreLosses::can_run_requested_model(requestedModel.value(), availableModels)) {
-            return false;
+            return "core material '" + material.get_name() + "' cannot run the requested core-loss model " +
+                   std::string(magic_enum::enum_name(requestedModel.value()));
         }
-        if (!coversOperatingFrequencies(requestedModel.value())) {
-            return false;
+        if (auto reason = operatingFrequenciesOutsideSpan(requestedModel.value())) {
+            return reason;
         }
     }
     // The model the default cascade runs: the first of its order the material supports. A caller's
@@ -222,9 +240,9 @@ bool MagneticFilterLossModelFrequencySpan::is_material_evaluable(const CoreMater
     if (!modelThatRuns) {
         // No model can evaluate this material at all (e.g. raw loss points only): not evaluable. The
         // loss calculation itself still throws for it.
-        return false;
+        return "core material '" + material.get_name() + "' supports none of the core-loss models in the settings' order";
     }
-    return coversOperatingFrequencies(modelThatRuns.value());
+    return operatingFrequenciesOutsideSpan(modelThatRuns.value());
 }
 
 std::pair<bool, double> MagneticFilterLossModelFrequencySpan::evaluate_magnetic(Magnetic* magnetic, Inputs* inputs, std::vector<Outputs>* outputs) {

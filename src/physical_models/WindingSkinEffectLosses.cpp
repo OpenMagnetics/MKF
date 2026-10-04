@@ -616,10 +616,9 @@ double WindingSkinEffectLossesAlbachModel::calculate_skin_factor(const Wire& wir
     std::complex<double> besselRatio1 = 1.0 / ratioI1I0;
     std::complex<double> besselRatio2 = ratioI1I0;
     
-    if (!wire.get_number_conductors()) {
-        throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA, "Missing number of conductors for wire");
-    }
-    double numConductors = wire.get_number_conductors().value();
+    // A solid (non-litz) wire stored without numberConductors is one conductor; only a litz wire
+    // without its strand count is incomplete (Wire::resolve_number_conductors throws for it).
+    double numConductors = static_cast<double>(wire.resolve_number_conductors());
     double geometricFactor = (numConductors * (numConductors - 1) * pow(wireRadius, 2)) / pow(wireOuterRadius, 2);
     
     double factor = 0.5 * (alpha * (besselRatio1 + geometricFactor * besselRatio2)).real();
