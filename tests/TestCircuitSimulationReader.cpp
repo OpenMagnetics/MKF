@@ -13,6 +13,7 @@
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
 #include <chrono>
 #include <fstream>
+#include <locale>
 #include <sstream>
 #include <cmath>
 #include <numbers>
@@ -1006,4 +1007,23 @@ TEST_CASE("Test_CircuitSimulationReader_Refuses_A_Partially_Numeric_Cell", "[pro
     // A plain, explicitly signed or exponent cell still parses whole.
     std::string clean = "time,I(L1)\n0,+1.5\n1e-6,-2.5E-1\n";
     REQUIRE_NOTHROW(CircuitSimulationReader(clean, true));
+}
+
+TEST_CASE("Test_CircuitSimulationReader_Reads_Numbers_In_The_C_Locale_Whatever_The_Global_One", "[processor][circuit-simulation-reader][smoke-test][abt-1624]") {
+    // ABT #1624: a cell is read in the classic "C" locale. Under a global locale whose decimal
+    // separator is a comma, "0.001" is still 0.001, not 0 or a refusal.
+    struct DecimalComma : std::numpunct<char> {
+        char do_decimal_point() const override { return ','; }
+    };
+    const std::locale previous = std::locale::global(std::locale(std::locale::classic(), new DecimalComma));
+    double read = -1;
+    try {
+        CircuitSimulationReader reader(std::string("time,I(L1)\n0,0.001\n1e-6,0.002\n"), true);
+        read = reader.get_columns().at(1).data.at(0);
+    } catch (...) {
+        std::locale::global(previous);
+        throw;
+    }
+    std::locale::global(previous);
+    REQUIRE(read == 0.001);
 }

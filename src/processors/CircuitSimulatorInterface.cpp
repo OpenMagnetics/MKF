@@ -1,4 +1,5 @@
-#include <charconv>
+#include <locale>
+#include <sstream>
 #include <limits>
 #include "support/Utils.h"
 #include "Defaults.h"
@@ -1941,24 +1942,28 @@ void CircuitSimulationReader::process_line_with_context(const std::string& line,
                     " has more columns than the header (" +
                     std::to_string(_columns.size()) + ")");
             }
-            // ABT #1624: std::from_chars is locale-independent (std::stod follows the C locale, so a
-            // process running under a decimal-comma locale read "0.001" as 0), and the whole token
-            // must be the number: stod stopped at the first character it could not use and
-            // returned the prefix, so a decimal-comma "0,001" was silently read as 0.
+            // ABT #1624: the number is read in the classic "C" locale whatever the process locale is
+            // (std::stod follows the global C locale, so a process running under a decimal-comma
+            // locale read "0.001" as 0), and the whole token must be the number: stod stopped at
+            // the first character it could not use and returned the prefix, so a decimal-comma
+            // "0,001" was silently read as 0. A stream, not std::from_chars: Emscripten's libc++
+            // has no floating-point from_chars, and MKF builds to WASM.
             double value = 0;
-            const char* first = token.data();
-            const char* last = token.data() + token.size();
-            if (first != last && *first == '+') {
-                ++first;  // from_chars takes no explicit plus sign
-            }
-            auto [end, errorCode] = std::from_chars(first, last, value);
-            if (errorCode != std::errc() || end != last || !std::isfinite(value)) {
+            std::istringstream number(token);
+            number.imbue(std::locale::classic());
+            number >> value;
+            const bool parsed = !number.fail();
+            const bool whole = parsed && number.peek() == std::char_traits<char>::eof();
+            if (!whole || !std::isfinite(value)) {
+                const auto consumed = parsed ? number.tellg() : std::streampos(-1);
                 throw InvalidInputException(ErrorCode::INVALID_INPUT,
                     "Could not parse number on line " + std::to_string(lineNumber) +
                     ", column " + std::to_string(currentColumnIndex + 1) + " (\"" +
                     _columns[currentColumnIndex].name + "\"): \"" + token + "\"" +
-                    (errorCode == std::errc() && end != last ? " (only \"" + std::string(first, end) + "\" is a number; "
-                                                               "is the decimal separator a comma?)" : ""));
+                    (parsed && !whole && consumed > 0
+                         ? " (only \"" + token.substr(0, size_t(consumed)) + "\" is a number; "
+                           "is the decimal separator a comma?)"
+                         : ""));
             }
             _columns[currentColumnIndex].data.push_back(value);
             currentColumnIndex++;
