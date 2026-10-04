@@ -3887,6 +3887,134 @@ TEST_CASE("Test_Winding_Losses_Martinez_E42_Foil_Stack_Screens_The_Gap_Field", "
     CHECK(factors[0] / factors[7] >= 50);
 }
 
+// ABT #1314: the 1 turn x 16 parallel planar fixtures prepared at `frequency` exactly as the scorecard driver and
+// runJsonBasedWindingLossesTest prepare them (ZHANG magnetizing inductance, 22 C, mirroring 1, fringing on).
+static std::pair<OpenMagnetics::Magnetic, OperatingPoint> sixteen_parallel_planar_fixture(const std::string& fileName, double frequency) {
+    auto path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), fileName);
+    auto mas = OpenMagneticsTesting::mas_loader(path);
+    OpenMagnetics::Magnetic magnetic = mas.get_magnetic();
+    OpenMagnetics::Inputs inputs = mas.get_inputs();
+    auto operatingPoint = inputs.get_operating_point(0);
+    OpenMagnetics::Inputs::scale_time_to_frequency(operatingPoint, frequency, true);
+    MagnetizingInductance magnetizingInductanceModel("ZHANG");
+    double magnetizingInductance = OpenMagnetics::resolve_dimensional_values(
+        magnetizingInductanceModel.calculate_inductance_from_number_turns_and_gapping(magnetic.get_core(), magnetic.get_coil(), &operatingPoint)
+            .get_magnetizing_inductance());
+    operatingPoint = OpenMagnetics::Inputs::process_operating_point(operatingPoint, magnetizingInductance);
+    auto& settings = Settings::GetInstance();
+    settings.set_magnetic_field_mirroring_dimension(1);
+    settings.set_magnetic_field_include_fringing(true);
+    return {magnetic, operatingPoint};
+}
+
+// Peak |I| of every parallel at the first solved harmonic, ordered as OMFEM numbers them (par0 = top, y descending).
+static std::vector<double> sixteen_parallel_strand_currents(OpenMagnetics::Magnetic magnetic, const ParallelCurrentSplit& split) {
+    auto turns = magnetic.get_coil().get_turns_description().value();
+    std::vector<size_t> order(turns.size());
+    for (size_t index = 0; index < order.size(); ++index) {
+        order[index] = index;
+    }
+    std::sort(order.begin(), order.end(), [&](size_t a, size_t b) { return turns[a].get_coordinates()[1] > turns[b].get_coordinates()[1]; });
+    std::vector<double> currents;
+    for (auto index : order) {
+        currents.push_back(std::abs(split.currentPerTurnPerFrequency.at(0).at(index)));
+    }
+    return currents;
+}
+
+TEST_CASE("Test_Winding_Losses_Parallel_Split_No_Fringing_Vs_OMFEM", "[winding-losses][parallel-split][physical-model]") {
+    // ABT #1314: the 16 parallels of the single planar turn are strands joined at both ends; at 100 kHz (ungapped, residual
+    // gaps only) the outer traces carry most of the current and the centre rises again. OMFEM 2D with one conductor per
+    // parallel (.mkf-1645-fem/ref3_parallels/summary.txt, No_Fringing_100000, f1 = 99218.8 Hz) gives peak |I| per parallel
+    //   137 43.5 10.8 5.33 9.79 14.5 22.1 31.1 | 31.1 22.1 14.5 9.79 5.33 10.8 43.5 137 A
+    // (a DC split would put 31.1 A in every one). MKF reads ~153 51 12.6 3.2 8.1 10.9 18.1 30.6.
+    auto& settings = OpenMagnetics::Settings::GetInstance();
+    settings.reset();
+    auto [magnetic, operatingPoint] = sixteen_parallel_planar_fixture("Test_Winding_Losses_Sixteen_Turns_Planar_Sinusoidal_No_Fringing.json", 100000);
+    auto split = MagneticField::calculate_parallel_current_split(magnetic, operatingPoint, 22);
+    REQUIRE(split);
+    auto currents = sixteen_parallel_strand_currents(magnetic, split.value());
+    REQUIRE(currents.size() == 16);
+    const std::vector<double> omfem = {137, 43.5, 10.8, 5.33, 9.79, 14.5, 22.1, 31.1, 31.1, 22.1, 14.5, 9.79, 5.33, 10.8, 43.5, 137};
+    for (size_t parallel = 0; parallel < 16; ++parallel) {
+        INFO("parallel " << parallel << ": MKF " << currents[parallel] << " A, OMFEM " << omfem[parallel] << " A");
+        if (parallel == 0 || parallel == 1 || parallel == 7 || parallel == 8 || parallel == 14 || parallel == 15) {
+            CHECK_THAT(currents[parallel], Catch::Matchers::WithinRel(omfem[parallel], 0.2));
+        }
+    }
+    // The minimum sits between the outer trace and the centre, which rises again.
+    CHECK(currents[3] < currents[1]);
+    CHECK(currents[3] < currents[7]);
+    CHECK(currents[12] < currents[14]);
+    CHECK(currents[12] < currents[8]);
+    settings.reset();
+}
+
+TEST_CASE("Test_Winding_Losses_Parallel_Split_Fringing_Close_Vs_OMFEM", "[winding-losses][parallel-split][physical-model]") {
+    // ABT #1314: the same stack beside the gap at 20 kHz: the split is one-sided, falling monotonically away from the gap
+    // side. OMFEM 2D (.mkf-1645-fem/ref3_parallels/summary.txt, Fringing_Close_20000, f1 = 19843.8 Hz):
+    //   90.7 76.2 64.4 55.4 48.8 43.5 38 31.1 23.2 16.2 10.8 7.1 4.61 2.96 1.83 0.998 A.
+    // MKF reads ~101 81.7 66.3 55 47.8 42.9 37.4 29.3 19.8 12.2 7.2 4.0 2.1 1.2 1.0 1.6.
+    auto& settings = OpenMagnetics::Settings::GetInstance();
+    settings.reset();
+    auto [magnetic, operatingPoint] = sixteen_parallel_planar_fixture("Test_Winding_Losses_Sixteen_Turns_Planar_Sinusoidal_Fringing_Close.json", 20000);
+    auto split = MagneticField::calculate_parallel_current_split(magnetic, operatingPoint, 22);
+    REQUIRE(split);
+    auto currents = sixteen_parallel_strand_currents(magnetic, split.value());
+    REQUIRE(currents.size() == 16);
+    const std::vector<double> omfem = {90.7, 76.2, 64.4, 55.4, 48.8, 43.5, 38, 31.1, 23.2, 16.2, 10.8, 7.1, 4.61, 2.96, 1.83, 0.998};
+    for (size_t parallel = 0; parallel < 8; ++parallel) {
+        INFO("parallel " << parallel << ": MKF " << currents[parallel] << " A, OMFEM " << omfem[parallel] << " A");
+        CHECK_THAT(currents[parallel], Catch::Matchers::WithinRel(omfem[parallel], 0.15));
+    }
+    for (size_t parallel = 1; parallel < 14; ++parallel) {
+        INFO("parallel " << parallel);
+        CHECK(currents[parallel] < currents[parallel - 1]);
+    }
+    settings.reset();
+}
+
+TEST_CASE("Test_Winding_Losses_Parallel_Split_Charges_Ohmic_And_Skin_Per_Strand", "[winding-losses][parallel-split][physical-model]") {
+    // ABT #1314: the ohmic and skin losses of every parallel are those of its own strand current, not of the DC
+    // (resistive) share: ohmic_t = R_dc,t |I_t|^2 / 2 for a pure sinusoid, and, all traces being the same copper at
+    // the same frequency, skin_t / ohmic_t is the same for every parallel. The DC split gives every trace the same
+    // ohmic and skin losses (the strand currents span 3 A to 180 A at 2 MHz). Harmonics below the amplitude threshold
+    // are not split: they keep the DC share, div_t^2 (I_rms^2 - |I_w|^2 / 2), in the ohmic losses.
+    auto& settings = OpenMagnetics::Settings::GetInstance();
+    settings.reset();
+    auto [magnetic, operatingPoint] = sixteen_parallel_planar_fixture("Test_Winding_Losses_Sixteen_Turns_Planar_Sinusoidal_No_Fringing.json", 2000000);
+    auto split = MagneticField::calculate_parallel_current_split(magnetic, operatingPoint, 22);
+    REQUIRE(split);
+    REQUIRE(split->frequencies.size() == 1);
+    auto output = WindingLosses().calculate_losses(magnetic, operatingPoint, 22);
+    auto perTurn = output.get_winding_losses_per_turn().value();
+    auto resistancePerTurn = output.get_dc_resistance_per_turn().value();
+    auto dividerPerTurn = output.get_current_divider_per_turn().value();
+    const double windingRms = operatingPoint.get_excitations_per_winding()[0].get_current()->get_processed()->get_rms().value();
+    const double windingAmplitude = std::abs(split->currentPerWindingPerFrequency[0][0]);
+    const double unsplitMeanSquare = windingRms * windingRms - windingAmplitude * windingAmplitude / 2;
+    REQUIRE(perTurn.size() == 16);
+    std::optional<double> skinOverOhmic;
+    for (size_t turnIndex = 0; turnIndex < perTurn.size(); ++turnIndex) {
+        const double current = std::abs(split->currentPerTurnPerFrequency[0][turnIndex]);
+        const double ohmic = perTurn[turnIndex].get_ohmic_losses()->get_losses();
+        const auto skinLosses = perTurn[turnIndex].get_skin_effect_losses().value();
+        double skin = 0;
+        for (auto loss : skinLosses.get_losses_per_harmonic()) {
+            skin += loss;
+        }
+        INFO("turn " << turnIndex << ": |I| " << current << " A, ohmic " << ohmic << " W, skin " << skin << " W");
+        const double splitOhmic = resistancePerTurn[turnIndex] * current * current / 2;
+        CHECK_THAT(ohmic, Catch::Matchers::WithinRel(splitOhmic + resistancePerTurn[turnIndex] * pow(dividerPerTurn[turnIndex], 2) * unsplitMeanSquare, 1e-9));
+        REQUIRE(skin > 0);
+        if (!skinOverOhmic) {
+            skinOverOhmic = skin / splitOhmic;
+        }
+        CHECK_THAT(skin / splitOhmic, Catch::Matchers::WithinRel(skinOverOhmic.value(), 1e-9));
+    }
+    settings.reset();
+}
+
 // Martinez flat-conductor scorecard driver (hidden). Per-turn F_R = (ohmic + skin + proximity) / ohmic for every
 // model configuration in env MF_MODELS (';'-separated "FIELD/FRINGING/PROXIMITY" JSON names, '-' = automatic, or
 // "DEFAULT"), at every frequency in env MF_FREQS (comma separated), on the fixture env MF_FIXTURE: a
