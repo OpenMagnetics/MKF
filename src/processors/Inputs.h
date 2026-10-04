@@ -87,6 +87,11 @@ class Inputs : public MAS::Inputs {
     // voltage v1/n (Faraday, any shape), current reflected by its label. The result carries
     // secondaryName (or no name), never the primary's. Throws if the primary lacks either signal.
     static OperatingPointExcitation calculate_reflected_secondary(OperatingPointExcitation primaryExcitation, double turnRatio, std::optional<std::string> secondaryName = std::nullopt);
+    // Primary excitation of the same transformer, from the secondary's: voltage v2*n (Faraday,
+    // any shape), current reflected by its label with ratio 1/n, so a flyback secondary current
+    // comes back as a flyback primary one. The result carries primaryName (or no name), never
+    // the secondary's. Throws if the secondary lacks either signal.
+    static OperatingPointExcitation calculate_reflected_primary(OperatingPointExcitation secondaryExcitation, double turnRatio, std::optional<std::string> primaryName = std::nullopt);
 
     static bool is_standardized(SignalDescriptor signal);
     static SignalDescriptor standardize_waveform(SignalDescriptor parameter, double frequency);

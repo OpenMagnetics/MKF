@@ -1717,6 +1717,63 @@ TEST_CASE("Test_Reflect_Secondary_Default_Web_Rectangular_Voltage", "[processor]
     }
 }
 
+TEST_CASE("Test_Reflected_Primary_Mirrors_Reflected_Secondary", "[processor][inputs][bug]") {
+    // ABT #1698: the web reflected the primary in its own binding, a copy of the old logic
+    // (plain current scaling, aliased harmonics). MKF owns it now: the primary from the
+    // secondary is the exact inverse of calculate_reflected_secondary.
+    auto path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "default_two_winding_pq2715_no_coil_found.json");
+    std::ifstream file(path);
+    REQUIRE(file.good());
+    auto masJson = json::parse(file);
+    OperatingPointExcitation primary(masJson["inputs"]["operatingPoints"][0]["excitationsPerWinding"][0]);
+    auto primaryVoltageData = primary.get_voltage()->get_waveform()->get_data();
+    auto primaryCurrentData = primary.get_current()->get_waveform()->get_data();
+
+    for (double turnsRatio : {1.0, 2.0, 0.25}) {
+        auto secondary = OpenMagnetics::Inputs::calculate_reflected_secondary(primary, turnsRatio, std::string("Secondary winding excitation"));
+        auto back = OpenMagnetics::Inputs::calculate_reflected_primary(secondary, turnsRatio, std::string("Primary winding excitation"));
+        CHECK(back.get_name().value() == "Primary winding excitation");
+        auto voltage = back.get_voltage()->get_waveform()->get_data();
+        auto current = back.get_current()->get_waveform()->get_data();
+        REQUIRE(voltage.size() == primaryVoltageData.size());
+        REQUIRE(current.size() == primaryCurrentData.size());
+        for (size_t i = 0; i < voltage.size(); ++i) {
+            CHECK_THAT(voltage[i], Catch::Matchers::WithinAbs(primaryVoltageData[i], 1e-9));
+        }
+        for (size_t i = 0; i < current.size(); ++i) {
+            CHECK_THAT(current[i], Catch::Matchers::WithinAbs(primaryCurrentData[i], 1e-9));
+        }
+        // v1 = v2 * n: the reflected primary's processed block is computed, not copied.
+        CHECK_THAT(back.get_voltage()->get_processed()->get_peak_to_peak().value(),
+                   Catch::Matchers::WithinRel(secondary.get_voltage()->get_processed()->get_peak_to_peak().value() * turnsRatio, 1e-9));
+        CHECK(back.get_voltage()->get_harmonics());
+        CHECK(back.get_current()->get_harmonics());
+    }
+    CHECK(!OpenMagnetics::Inputs::calculate_reflected_primary(primary, 1.0).get_name());
+
+    // A flyback current goes to the secondary as a flyback secondary one and comes back as a
+    // flyback primary one (the label-dispatched current reflection, in both directions).
+    Waveform waveform;
+    waveform.set_data(std::vector<double>({0, 30, 80, 0, 0}));
+    waveform.set_time(std::vector<double>({0, 0, 1.4e-6, 1.4e-6, 0.00001}));
+    SignalDescriptor flybackPrimaryCurrent;
+    flybackPrimaryCurrent.set_waveform(waveform);
+    OperatingPointExcitation flybackPrimary(primary);
+    flybackPrimary.set_current(flybackPrimaryCurrent);
+    auto flybackSecondary = OpenMagnetics::Inputs::calculate_reflected_secondary(flybackPrimary, 2.0);
+    CHECK(OpenMagnetics::Inputs::calculate_basic_processed_data(flybackSecondary.get_current()->get_waveform().value()).get_label() == WaveformLabel::FLYBACK_SECONDARY);
+    auto flybackBack = OpenMagnetics::Inputs::calculate_reflected_primary(flybackSecondary, 2.0);
+    auto flybackBackProcessed = OpenMagnetics::Inputs::calculate_basic_processed_data(flybackBack.get_current()->get_waveform().value());
+    CHECK(flybackBackProcessed.get_label() == WaveformLabel::FLYBACK_PRIMARY);
+    auto flybackOriginalProcessed = OpenMagnetics::Inputs::calculate_basic_processed_data(waveform);
+    CHECK_THAT(flybackBackProcessed.get_peak_to_peak().value(), Catch::Matchers::WithinRel(flybackOriginalProcessed.get_peak_to_peak().value(), 0.04));
+
+    // Missing signals throw; nothing is invented.
+    OperatingPointExcitation noCurrent(primary);
+    noCurrent.set_current(std::nullopt);
+    REQUIRE_THROWS(OpenMagnetics::Inputs::calculate_reflected_primary(noCurrent, 1.0));
+}
+
 TEST_CASE("Test_Imported_Rectangle_Is_Custom_Not_Sinusoidal_Via_Inputs", "[processor][inputs][mas-migration][bug]") {
     // ABT #602: Inputs::calculate_basic_processed_data / try_guess_waveform_label /
     // try_guess_duty_cycle used to be a verbatim, independently-bugged twin of

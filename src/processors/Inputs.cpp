@@ -1355,38 +1355,56 @@ SignalDescriptor Inputs::reflect_waveform(SignalDescriptor signal,
     return newSignal;
 }
 
-OperatingPointExcitation Inputs::calculate_reflected_secondary(OperatingPointExcitation primaryExcitation, double turnRatio, std::optional<std::string> secondaryName){
-    if (!primaryExcitation.get_voltage() || !primaryExcitation.get_voltage()->get_waveform() ||
-        !primaryExcitation.get_current() || !primaryExcitation.get_current()->get_waveform()) {
+// The excitation of the other winding of an ideal two-winding transformer: the voltage scaled
+// by voltageRatio (Faraday's law, point by point, whatever the shape), the current reflected by
+// its label with currentRatio, and both re-processed. Shared by calculate_reflected_secondary and
+// calculate_reflected_primary so the two directions cannot drift apart.
+static OperatingPointExcitation reflect_excitation(const OperatingPointExcitation& excitation,
+                                                   double voltageRatio,
+                                                   double currentRatio,
+                                                   std::optional<std::string> name,
+                                                   const std::string& functionName) {
+    if (!excitation.get_voltage() || !excitation.get_voltage()->get_waveform() ||
+        !excitation.get_current() || !excitation.get_current()->get_waveform()) {
         throw InvalidInputException(ErrorCode::MISSING_DATA,
-            "calculate_reflected_secondary: the primary excitation needs both a voltage and a current waveform to reflect");
+            functionName + ": the excitation needs both a voltage and a current waveform to reflect");
     }
-    OperatingPointExcitation excitationOfThisWinding(primaryExcitation);
-    // ABT #1670: the copy carried the primary's name, so the secondary was presented as
+    OperatingPointExcitation excitationOfThisWinding(excitation);
+    // ABT #1670: the copy carried the other winding's name, so the secondary was presented as
     // "Primary winding excitation". It is named after its own winding when that is known,
-    // and carries no name otherwise rather than the primary's.
-    excitationOfThisWinding.set_name(secondaryName);
-    auto currentSignalDescriptorProcessed = calculate_basic_processed_data(primaryExcitation.get_current().value().get_waveform().value());
+    // and carries no name otherwise rather than the other winding's.
+    excitationOfThisWinding.set_name(name);
+    auto currentSignalDescriptorProcessed = Inputs::calculate_basic_processed_data(excitation.get_current().value().get_waveform().value());
 
     // ABT #1670: the voltage is reflected by Faraday's law alone. Every winding links the
     // same flux, so v2(t) = v1(t) / n whatever the shape; no label changes that. Routing it
     // through the label-dispatched reflection turned the web's default -20.5/70.5 V
     // rectangle into 0/-100 V, a 50 V DC level across a winding.
-    auto voltageSignalDescriptor = reflect_waveform(primaryExcitation.get_voltage().value(), 1.0 / turnRatio);
-    auto currentSignalDescriptor = reflect_waveform(primaryExcitation.get_current().value(), turnRatio, currentSignalDescriptorProcessed.get_label());
+    auto voltageSignalDescriptor = Inputs::reflect_waveform(excitation.get_voltage().value(), voltageRatio);
+    auto currentSignalDescriptor = Inputs::reflect_waveform(excitation.get_current().value(), currentRatio, currentSignalDescriptorProcessed.get_label());
 
-    auto voltageSampledWaveform = calculate_sampled_waveform(voltageSignalDescriptor.get_waveform().value(), excitationOfThisWinding.get_frequency());
-    voltageSignalDescriptor.set_harmonics(calculate_harmonics_data(voltageSignalDescriptor.get_waveform().value(), voltageSampledWaveform, excitationOfThisWinding.get_frequency()));
-    voltageSignalDescriptor.set_processed(calculate_processed_data(voltageSignalDescriptor, voltageSampledWaveform, true));
+    auto voltageSampledWaveform = Inputs::calculate_sampled_waveform(voltageSignalDescriptor.get_waveform().value(), excitationOfThisWinding.get_frequency());
+    voltageSignalDescriptor.set_harmonics(Inputs::calculate_harmonics_data(voltageSignalDescriptor.get_waveform().value(), voltageSampledWaveform, excitationOfThisWinding.get_frequency()));
+    voltageSignalDescriptor.set_processed(Inputs::calculate_processed_data(voltageSignalDescriptor, voltageSampledWaveform, true));
 
-    auto currentSampledWaveform = calculate_sampled_waveform(currentSignalDescriptor.get_waveform().value(), excitationOfThisWinding.get_frequency());
-    currentSignalDescriptor.set_harmonics(calculate_harmonics_data(currentSignalDescriptor.get_waveform().value(), currentSampledWaveform, excitationOfThisWinding.get_frequency()));
-    currentSignalDescriptor.set_processed(calculate_processed_data(currentSignalDescriptor, currentSampledWaveform, true));
+    auto currentSampledWaveform = Inputs::calculate_sampled_waveform(currentSignalDescriptor.get_waveform().value(), excitationOfThisWinding.get_frequency());
+    currentSignalDescriptor.set_harmonics(Inputs::calculate_harmonics_data(currentSignalDescriptor.get_waveform().value(), currentSampledWaveform, excitationOfThisWinding.get_frequency()));
+    currentSignalDescriptor.set_processed(Inputs::calculate_processed_data(currentSignalDescriptor, currentSampledWaveform, true));
 
     excitationOfThisWinding.set_voltage(voltageSignalDescriptor);
     excitationOfThisWinding.set_current(currentSignalDescriptor);
 
     return excitationOfThisWinding;
+}
+
+OperatingPointExcitation Inputs::calculate_reflected_secondary(OperatingPointExcitation primaryExcitation, double turnRatio, std::optional<std::string> secondaryName){
+    return reflect_excitation(primaryExcitation, 1.0 / turnRatio, turnRatio, secondaryName, "calculate_reflected_secondary");
+}
+
+// ABT #1698: the web reflected the primary in its own binding, a copy of the old secondary
+// logic with plain current scaling and the aliased harmonics; the reflection lives here now.
+OperatingPointExcitation Inputs::calculate_reflected_primary(OperatingPointExcitation secondaryExcitation, double turnRatio, std::optional<std::string> primaryName){
+    return reflect_excitation(secondaryExcitation, turnRatio, 1.0 / turnRatio, primaryName, "calculate_reflected_primary");
 }
 
 std::pair<bool, std::string> Inputs::check_integrity() {
