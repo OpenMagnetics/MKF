@@ -44,8 +44,9 @@ class WindingOhmicLosses {
         // turns. Indexed [winding][parallel]. Returns zeros unless real winding geometry is enabled.
         static std::vector<std::vector<double>> calculate_connection_resistance_per_winding_per_parallel(Coil coil, double temperature);
         static WindingLossesOutput calculate_ohmic_losses(Coil coil, OperatingPoint operatingPoint, double temperature);
-        // ABT #1314: re-charges the ohmic (R_dc) losses of the turns and connection leads of windings with parallels with the
-        // strand currents of the parallel current split for every harmonic it solved, in place of the DC (resistive) split.
+        // ABT #1314: the copper loss that the parallel current split adds over the DC (resistive) split, R_dc sum_h(|I_strand,h|^2 -
+        // (divider |I_winding,h|)^2)/2 for every harmonic it solved, charged to the AC (skin) losses of the turns and of the winding's
+        // connection leads at that harmonic. Ohmic stays the DC split (Alf, 2026-10-04). Call after the skin effect losses.
         static WindingLossesOutput apply_parallel_current_split(Coil coil, WindingLossesOutput windingLossesOutput, const ParallelCurrentSplit& parallelCurrentSplit, double temperature);
         static double calculate_ohmic_losses_per_meter(Wire wire, SignalDescriptor current, double temperature);
 };

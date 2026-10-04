@@ -244,12 +244,9 @@ WindingLossesOutput WindingLosses::calculate_losses(Magnetic magnetic, Operating
 
     auto windingLossesOutput = WindingOhmicLosses::calculate_ohmic_losses(magnetic.get_coil(), operatingPoint, temperature);
     // ABT #1314: the parallels of a winding share its harmonic currents as their impedances dictate (empty without
-    // parallels). Solved once, at the conductors' temperature, and charged consistently to the ohmic, skin and field
-    // (proximity) losses.
+    // parallels). Solved once, at the conductors' temperature, and charged consistently to the skin (AC) and field
+    // (proximity) losses; the ohmic losses keep the DC (resistive) split.
     const auto parallelCurrentSplit = MagneticField::calculate_parallel_current_split(magnetic, operatingPoint, temperature);
-    if (parallelCurrentSplit) {
-        windingLossesOutput = WindingOhmicLosses::apply_parallel_current_split(magnetic.get_coil(), windingLossesOutput, parallelCurrentSplit.value(), temperature);
-    }
     const ParallelCurrentSplit* parallelCurrentSplitPointer = parallelCurrentSplit ? &parallelCurrentSplit.value() : nullptr;
     // ABT #1304: a named model set fixes every model -- one field solution for the magnetic, skin and proximity per wire
     // type -- after checking it models this magnetic. CUSTOM keeps the individually selected models.
@@ -266,6 +263,10 @@ WindingLossesOutput WindingLosses::calculate_losses(Magnetic magnetic, Operating
     windingLossesOutput = modelSet ?
         WindingSkinEffectLosses::calculate_skin_effect_losses(magnetic.get_coil(), temperature, windingLossesOutput, settings.get_harmonic_amplitude_threshold(), std::nullopt, modelSet->skinModelPerWireType, parallelCurrentSplitPointer) :
         WindingSkinEffectLosses::calculate_skin_effect_losses(magnetic.get_coil(), temperature, windingLossesOutput, settings.get_harmonic_amplitude_threshold(), _models.skinEffectModel, std::nullopt, parallelCurrentSplitPointer);
+    // ABT #1314: the split's redistribution loss over the DC split is AC copper loss: charged to the skin (AC) terms, ohmic stays DC.
+    if (parallelCurrentSplit) {
+        windingLossesOutput = WindingOhmicLosses::apply_parallel_current_split(magnetic.get_coil(), windingLossesOutput, parallelCurrentSplit.value(), temperature);
+    }
 
     auto isPlanar = true;
     auto isRectangular = true;

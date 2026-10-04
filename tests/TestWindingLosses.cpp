@@ -3974,12 +3974,14 @@ TEST_CASE("Test_Winding_Losses_Parallel_Split_Fringing_Close_Vs_OMFEM", "[windin
     settings.reset();
 }
 
-TEST_CASE("Test_Winding_Losses_Parallel_Split_Charges_Ohmic_And_Skin_Per_Strand", "[winding-losses][parallel-split][physical-model]") {
-    // ABT #1314: the ohmic and skin losses of every parallel are those of its own strand current, not of the DC
-    // (resistive) share: ohmic_t = R_dc,t |I_t|^2 / 2 for a pure sinusoid, and, all traces being the same copper at
-    // the same frequency, skin_t / ohmic_t is the same for every parallel. The DC split gives every trace the same
-    // ohmic and skin losses (the strand currents span 3 A to 180 A at 2 MHz). Harmonics below the amplitude threshold
-    // are not split: they keep the DC share, div_t^2 (I_rms^2 - |I_w|^2 / 2), in the ohmic losses.
+TEST_CASE("Test_Winding_Losses_Parallel_Split_Ohmic_Is_DC_Split_Redistribution_In_Skin", "[winding-losses][parallel-split][physical-model]") {
+    // ABT #1314 (Alf, 2026-10-04): the ohmic losses of every parallel are TRUE DC-split losses, R_dc,t div_t^2 I_rms^2,
+    // whatever the split; the extra copper loss of the AC redistribution between parallels, R_dc,t (|I_t|^2 - (div_t
+    // |I_w|)^2) / 2 per solved harmonic, is AC loss and is reported in the skin (AC) term of the turn at that harmonic.
+    // The skin model's own part is charged with the strand current: all traces being the same copper at the same
+    // frequency, (skin_t - redistribution_t) / (R_dc,t |I_t|^2 / 2) is the same for every parallel (the strand currents
+    // span 3 A to 180 A at 2 MHz). Total ohmic + skin per turn = R_dc,t div_t^2 (I_rms^2 - |I_w|^2/2) + R_dc,t |I_t|^2/2
+    // + skin model of |I_t| (the unsplit harmonics below the amplitude threshold keep the DC share).
     auto& settings = OpenMagnetics::Settings::GetInstance();
     settings.reset();
     auto [magnetic, operatingPoint] = sixteen_parallel_planar_fixture("Test_Winding_Losses_Sixteen_Turns_Planar_Sinusoidal_No_Fringing.json", 2000000);
@@ -3994,7 +3996,9 @@ TEST_CASE("Test_Winding_Losses_Parallel_Split_Charges_Ohmic_And_Skin_Per_Strand"
     const double windingAmplitude = std::abs(split->currentPerWindingPerFrequency[0][0]);
     const double unsplitMeanSquare = windingRms * windingRms - windingAmplitude * windingAmplitude / 2;
     REQUIRE(perTurn.size() == 16);
-    std::optional<double> skinOverOhmic;
+    std::optional<double> modelSkinOverSplitOhmic;
+    double redistributionTotal = 0;
+    double ohmicTotal = 0;
     for (size_t turnIndex = 0; turnIndex < perTurn.size(); ++turnIndex) {
         const double current = std::abs(split->currentPerTurnPerFrequency[0][turnIndex]);
         const double ohmic = perTurn[turnIndex].get_ohmic_losses()->get_losses();
@@ -4004,14 +4008,23 @@ TEST_CASE("Test_Winding_Losses_Parallel_Split_Charges_Ohmic_And_Skin_Per_Strand"
             skin += loss;
         }
         INFO("turn " << turnIndex << ": |I| " << current << " A, ohmic " << ohmic << " W, skin " << skin << " W");
+        const double dcSplitAmplitude = dividerPerTurn[turnIndex] * windingAmplitude;
+        ohmicTotal += ohmic;
+        CHECK_THAT(ohmic, Catch::Matchers::WithinRel(resistancePerTurn[turnIndex] * pow(dividerPerTurn[turnIndex] * windingRms, 2), 1e-9));
         const double splitOhmic = resistancePerTurn[turnIndex] * current * current / 2;
-        CHECK_THAT(ohmic, Catch::Matchers::WithinRel(splitOhmic + resistancePerTurn[turnIndex] * pow(dividerPerTurn[turnIndex], 2) * unsplitMeanSquare, 1e-9));
-        REQUIRE(skin > 0);
-        if (!skinOverOhmic) {
-            skinOverOhmic = skin / splitOhmic;
+        const double redistribution = resistancePerTurn[turnIndex] * (current * current - dcSplitAmplitude * dcSplitAmplitude) / 2;
+        redistributionTotal += std::abs(redistribution);
+        const double modelSkin = skin - redistribution;
+        REQUIRE(modelSkin > 0);
+        if (!modelSkinOverSplitOhmic) {
+            modelSkinOverSplitOhmic = modelSkin / splitOhmic;
         }
-        CHECK_THAT(skin / splitOhmic, Catch::Matchers::WithinRel(skinOverOhmic.value(), 1e-9));
+        CHECK_THAT(modelSkin / splitOhmic, Catch::Matchers::WithinRel(modelSkinOverSplitOhmic.value(), 1e-9));
+        CHECK_THAT(ohmic + skin, Catch::Matchers::WithinRel(splitOhmic + resistancePerTurn[turnIndex] * pow(dividerPerTurn[turnIndex], 2) * unsplitMeanSquare + modelSkin, 1e-9));
     }
+    // The split is far from the DC share at 2 MHz: the redistribution is a real AC loss, not a rounding residue.
+    INFO("redistribution " << redistributionTotal << " W, ohmic " << ohmicTotal << " W");
+    CHECK(redistributionTotal > ohmicTotal);
     settings.reset();
 }
 
