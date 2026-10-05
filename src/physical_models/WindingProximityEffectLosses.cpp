@@ -2622,7 +2622,12 @@ std::vector<double> WindingProximityEffectLossesMartinezModel::calculate_stack_s
     for (size_t turnIndex = 0; turnIndex < numberTurns; ++turnIndex) {
         const auto& turn = turns[turnIndex];
         auto wire = coil.resolve_wire(coil.get_winding_index_by_name(turn.get_winding()));
-        if (wire.get_type() != WireType::RECTANGULAR && wire.get_type() != WireType::PLANAR && wire.get_type() != WireType::FOIL) {
+        // A foil's reaction on the normal field of its neighbours is already in the field every turn sees: the field
+        // solver screens whatever crosses a foil by its strip transmission T (MagneticField.h, ScreeningStrip). Sharing
+        // the exclusion with a foil as well counts that same mutual reaction twice (on the E42 foil stack beside a 1 mm
+        // gap it took the gap-side/outermost foil F_R ratio from 134 to 46, OMFEM 1542), so foils neither share nor are
+        // shared with.
+        if (wire.get_type() != WireType::RECTANGULAR && wire.get_type() != WireType::PLANAR) {
             continue;
         }
         if (turn.get_coordinates().size() < 2) {
