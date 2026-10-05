@@ -57,6 +57,10 @@ struct InducingCoilMesh {
     // magnetizing current, whose phase drives the gap fringing field) to the same gauge.
     // Empty when no winding carries that harmonic.
     std::vector<std::optional<double>> gaugePhasePerHarmonic;
+    // ABT #1314: the peak current per winding each harmonic's points were scaled by (before divider and direction). With
+    // unitCurrentForSilentParallels, a winding of several parallels that carries nothing at a harmonic is meshed at 1 A so
+    // a parallel current split can place its circulating current there; every consumer then rescales by this amplitude.
+    std::vector<std::vector<double>> amplitudePerHarmonicPerWinding;
 };
 
 class CoilMesher {
@@ -87,7 +91,7 @@ class CoilMesher {
     // Peak phasor X of a waveform at harmonicFrequency, x(t) = Re(X exp(+j w t)), from a DFT of
     // the waveform sampled over one period of excitationFrequency (the sampler MKF's harmonics use).
     static std::complex<double> calculate_harmonic_phasor(const Waveform& waveform, double excitationFrequency, double harmonicFrequency);
-    InducingCoilMesh generate_mesh_inducing_coil_phasors(Magnetic magnetic, OperatingPoint operatingPoint, double windingLossesHarmonicAmplitudeThreshold = defaults.harmonicAmplitudeThreshold, std::optional<std::vector<int8_t>> customCurrentDirectionPerWinding = std::nullopt, std::optional<CoilMesherModels> coilMesherModel = std::nullopt);
+    InducingCoilMesh generate_mesh_inducing_coil_phasors(Magnetic magnetic, OperatingPoint operatingPoint, double windingLossesHarmonicAmplitudeThreshold = defaults.harmonicAmplitudeThreshold, std::optional<std::vector<int8_t>> customCurrentDirectionPerWinding = std::nullopt, std::optional<CoilMesherModels> coilMesherModel = std::nullopt, bool unitCurrentForSilentParallels = false);
     // Amplitude-and-direction part only (generate_mesh_inducing_coil_phasors().fieldPerHarmonic).
     // The phases are NOT in these fields: a caller that sums them treats every winding as in
     // phase with the reference. Field computations must use the phasor variant.
@@ -149,4 +153,4 @@ class CoilMesherWangModel : public CoilMesherModel {
 
 
 
-} // namespace OpenMagnetics
+} // namespace OpenMagnetics

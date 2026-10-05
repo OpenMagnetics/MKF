@@ -402,7 +402,11 @@ WindingLossesOutput WindingOhmicLosses::calculate_ohmic_losses(Coil coil, Operat
         auto windingIndex = coil.get_winding_index_by_name(turn.get_winding());
         auto parallelIndex = checked_parallel_index(coil, turn, windingIndex);
 
-        auto currentDividerThisTurn = dcCurrentPerWinding[windingIndex] == 0? 0 : dcCurrentPerWindingPerParallel[windingIndex][parallelIndex] / dcCurrentPerWinding[windingIndex];
+        // A parallel's share of its winding's current is its conductance share, also when the winding carries no current
+        // (ABT #1314: a field mesh of that winding at 1 A, for the circulating current of a parallel split, needs it).
+        auto currentDividerThisTurn = dcCurrentPerWinding[windingIndex] == 0 ?
+            dcResistancePerWinding[windingIndex] / seriesResistancePerWindingPerParallel[windingIndex][parallelIndex] :
+            dcCurrentPerWindingPerParallel[windingIndex][parallelIndex] / dcCurrentPerWinding[windingIndex];
 
         double windingOhmicLossesInTurn = pow(dcCurrentPerWindingPerParallel[windingIndex][parallelIndex], 2) * dcResistancePerTurn[turnIndex];
         OhmicLosses ohmicLosses;
@@ -498,26 +502,35 @@ WindingLossesOutput WindingOhmicLosses::apply_parallel_current_split(Coil coil, 
         }
     }
 
-    // Adds `lossPerFrequency` (indexed as the split's frequencies) to the AC element at the matching harmonic frequencies.
+    // Adds `lossPerFrequency` (indexed as the split's frequencies) to the AC element's entry for that harmonic: the entry at
+    // any frequency the windings' lists give it. An element's list follows its winding's harmonics, which the operating
+    // point's pruning can leave out of frequency order, so the entry is searched, not bisected.
     auto add_to_harmonics = [&](LossElementPerHarmonic& element, const std::vector<double>& lossPerFrequency, const std::string& owner) {
         auto& harmonicFrequencies = element.get_mutable_harmonic_frequencies();
         auto& lossesPerHarmonic = element.get_mutable_losses_per_harmonic();
+        if (harmonicFrequencies.size() != lossesPerHarmonic.size()) {
+            throw InvalidInputException(ErrorCode::INVALID_INPUT, "Parallel current split losses (ABT #1314): the AC losses of " + owner + " list " +
+                                        std::to_string(harmonicFrequencies.size()) + " frequencies for " + std::to_string(lossesPerHarmonic.size()) + " losses");
+        }
         for (size_t splitIndex = 0; splitIndex < numberFrequencies; ++splitIndex) {
             if (lossPerFrequency[splitIndex] == 0) {
                 continue;
             }
-            if (harmonicFrequencies.size() != lossesPerHarmonic.size() || !std::is_sorted(harmonicFrequencies.begin(), harmonicFrequencies.end())) {
-                throw InvalidInputException(ErrorCode::INVALID_INPUT, "Parallel current split losses (ABT #1314): the AC losses of " + owner + " are not one loss per ascending harmonic");
+            std::optional<size_t> position;
+            for (size_t harmonicIndex = 0; harmonicIndex < harmonicFrequencies.size() && !position; ++harmonicIndex) {
+                if (harmonicFrequencies[harmonicIndex] > 0 && parallelCurrentSplit.find_frequency_index(harmonicFrequencies[harmonicIndex]) == splitIndex) {
+                    position = harmonicIndex;
+                }
             }
-            // A harmonic its own winding does not carry can still circulate between the parallels (driven by another winding).
-            const double frequency = parallelCurrentSplit.frequencies[splitIndex];
-            auto found = std::lower_bound(harmonicFrequencies.begin(), harmonicFrequencies.end(), frequency);
-            const auto position = static_cast<size_t>(found - harmonicFrequencies.begin());
-            if (found == harmonicFrequencies.end() || *found != frequency) {
-                harmonicFrequencies.insert(found, frequency);
-                lossesPerHarmonic.insert(lossesPerHarmonic.begin() + static_cast<std::ptrdiff_t>(position), 0.0);
+            if (!position) {
+                // A harmonic its own winding does not carry can still circulate between the parallels (driven by another winding).
+                const double frequency = parallelCurrentSplit.frequencies[splitIndex];
+                auto after = std::find_if(harmonicFrequencies.begin(), harmonicFrequencies.end(), [&](double listed) { return listed > frequency; });
+                position = static_cast<size_t>(after - harmonicFrequencies.begin());
+                harmonicFrequencies.insert(after, frequency);
+                lossesPerHarmonic.insert(lossesPerHarmonic.begin() + static_cast<std::ptrdiff_t>(position.value()), 0.0);
             }
-            lossesPerHarmonic.at(position) += lossPerFrequency[splitIndex];
+            lossesPerHarmonic.at(position.value()) += lossPerFrequency[splitIndex];
         }
     };
 

@@ -460,7 +460,7 @@ std::vector<Field> CoilMesher::generate_mesh_inducing_coil(Magnetic magnetic, Op
     return generate_mesh_inducing_coil_phasors(magnetic, operatingPoint, windingLossesHarmonicAmplitudeThreshold, customCurrentDirectionPerWinding, coilMesherModel).fieldPerHarmonic;
 }
 
-InducingCoilMesh CoilMesher::generate_mesh_inducing_coil_phasors(Magnetic magnetic, OperatingPoint operatingPoint, double windingLossesHarmonicAmplitudeThreshold, std::optional<std::vector<int8_t>> customCurrentDirectionPerWinding, std::optional<CoilMesherModels> coilMesherModel) {
+InducingCoilMesh CoilMesher::generate_mesh_inducing_coil_phasors(Magnetic magnetic, OperatingPoint operatingPoint, double windingLossesHarmonicAmplitudeThreshold, std::optional<std::vector<int8_t>> customCurrentDirectionPerWinding, std::optional<CoilMesherModels> coilMesherModel, bool unitCurrentForSilentParallels) {
     auto coil = magnetic.get_coil();
     if (!coil.get_turns_description()) {
         throw CoilNotProcessedException("Winding does not have turns description");
@@ -527,7 +527,9 @@ InducingCoilMesh CoilMesher::generate_mesh_inducing_coil_phasors(Magnetic magnet
     auto commonHarmonicIndexes = get_common_harmonic_indexes(operatingPoint, windingLossesHarmonicAmplitudeThreshold);
 
     std::map<size_t, Field> tempFieldPerHarmonic;
+    std::map<size_t, std::vector<double>> amplitudePerWindingPerHarmonic;
     for (auto harmonicIndex : commonHarmonicIndexes) {
+        amplitudePerWindingPerHarmonic[harmonicIndex].assign(coil.get_functional_description().size(), 0.0);
         Field field;
         for (auto excitation : operatingPoint.get_excitations_per_winding()) {
             if (harmonicIndex < excitation.get_current()->get_harmonics().value().get_frequencies().size()) {
@@ -563,6 +565,10 @@ InducingCoilMesh CoilMesher::generate_mesh_inducing_coil_phasors(Magnetic magnet
             if (harmonicIndex < harmonics.get_amplitudes().size()) {
                 harmonicCurrentPeak = harmonics.get_amplitudes()[harmonicIndex];  // Because a harmonic is always sinusoidal
             }
+            if (unitCurrentForSilentParallels && harmonicCurrentPeak == 0 && coil.get_number_parallels(windingIndex) > 1) {
+                harmonicCurrentPeak = 1;
+            }
+            amplitudePerWindingPerHarmonic[harmonicIndex][windingIndex] = harmonicCurrentPeak;
             auto harmonicCurrentPeakInTurn = harmonicCurrentPeak * currentDividerPerTurn[turnIndex];
             if (std::isnan(harmonicCurrentPeakInTurn)) {
                 throw NaNResultException("NaN found in harmonicCurrentPeakInTurn value");
@@ -580,6 +586,7 @@ InducingCoilMesh CoilMesher::generate_mesh_inducing_coil_phasors(Magnetic magnet
     std::vector<Field> fieldPerHarmonic;
     std::vector<std::vector<double>> phasePerHarmonicPerWinding;
     std::vector<std::optional<double>> gaugePhasePerHarmonic;
+    std::vector<std::vector<double>> amplitudePerHarmonicPerWinding;
     for (size_t harmonicIndex = 0; harmonicIndex < tempFieldPerHarmonic.size(); ++harmonicIndex){
         if (tempFieldPerHarmonic[harmonicIndex].get_data().size() > 0) {
             fieldPerHarmonic.push_back(tempFieldPerHarmonic[harmonicIndex]);
@@ -590,6 +597,7 @@ InducingCoilMesh CoilMesher::generate_mesh_inducing_coil_phasors(Magnetic magnet
             }
             phasePerHarmonicPerWinding.push_back(phasePerCommonHarmonic[static_cast<size_t>(commonPosition - commonHarmonicIndexes.begin())]);
             gaugePhasePerHarmonic.push_back(gaugePhasePerCommonHarmonic[static_cast<size_t>(commonPosition - commonHarmonicIndexes.begin())]);
+            amplitudePerHarmonicPerWinding.push_back(amplitudePerWindingPerHarmonic.at(harmonicIndex));
         }
     }
 
@@ -611,7 +619,7 @@ InducingCoilMesh CoilMesher::generate_mesh_inducing_coil_phasors(Magnetic magnet
         }
     }
 
-    return {fieldPerHarmonic, phasePerHarmonicPerWinding, gaugePhasePerHarmonic};
+    return {fieldPerHarmonic, phasePerHarmonicPerWinding, gaugePhasePerHarmonic, amplitudePerHarmonicPerWinding};
 }
 
 std::vector<Field> CoilMesher::generate_mesh_induced_coil(Magnetic magnetic, OperatingPoint operatingPoint, double windingLossesHarmonicAmplitudeThreshold) {

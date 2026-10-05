@@ -116,8 +116,10 @@ class MagneticFieldStrengthFringingEffectModel {
 // conductor's section) from every conductor, its core images and the window-wall sources that return the net MMF.
 // Solved per harmonic as one small dense complex system; DC splits by resistance (WindingOhmicLosses) as before.
 struct ParallelCurrentSplit {
-    // The harmonic frequencies solved (> 0), in the order of the excitations' harmonics.
+    // The harmonics solved, as frequencies k f_excitation (k >= 1, ascending), and per harmonic every frequency the
+    // windings' harmonics lists give it (a list built from a waveform's own time span can differ from k f_excitation).
     std::vector<double> frequencies;
+    std::vector<std::vector<double>> listedFrequenciesPerFrequency;
     // Per solved frequency, per turn: the complex peak current of the turn's strand, MAS current frame (into the dot),
     // phases referred to the gauge winding as CoilMesher::calculate_current_phase_per_winding does.
     std::vector<std::vector<std::complex<double>>> currentPerTurnPerFrequency;
@@ -126,8 +128,10 @@ struct ParallelCurrentSplit {
     // The strand (winding, parallel) of every turn, numbered 0 .. numberStrands - 1, and the winding of every strand.
     std::vector<size_t> strandPerTurn;
     std::vector<size_t> windingPerStrand;
-    // The index in `frequencies` of a harmonic frequency; throws when it was not solved.
+    // The index in `frequencies` of a harmonic frequency, solved or listed; throws when it was not solved.
     size_t frequency_index(double frequency) const;
+    // The same, empty when the harmonic was not solved.
+    std::optional<size_t> find_frequency_index(double frequency) const;
 };
 
 class MagneticField {
