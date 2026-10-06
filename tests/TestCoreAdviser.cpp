@@ -505,7 +505,11 @@ TEST_CASE("Test_CoreAdviserAvailableCores_All_Cores_Two_Chosen_Ones", "[adviser]
     // catalogue cores stay under the 130 C limit; the coolest rejected are EP 20 - 3C96 -
     // Gapped 0.375 mm (134.9 C), PQ 26/20 - 3C96 - Gapped 0.358 mm (135.6 C) and EQ 25 -
     // Edge 40 - Ungapped (139.6 C), so the adviser returns 14, not the 50 asked for.
-    REQUIRE(masMagnetics.size() == 14);
+    // Re-pinned 2026-10-06, 14 -> 19: get_advised_core now merges the first search with the
+    // stacked one instead of returning only the stacked one, whose cost/size pre-loss cap had
+    // culled five designs the first search returned under the limit: P 26/16 - 3C95 - Gapped
+    // 0.725 mm, RM 10 - 3C90 - Gapped 0.74 mm and RM 10 - 3C91 / 3C95 / 3C97 - Gapped 0.47 mm.
+    REQUIRE(masMagnetics.size() == 19);
     
     // Verify results have valid scores and contain suitable cores
     bool hasToroidal = false;
@@ -833,10 +837,15 @@ TEST_CASE("Test_CoreAdviserAvailableCores_No_Toroids_Two_Windings", "[adviser][c
     auto masMagnetics = coreAdviser.get_advised_core(inputs, weights, &cores, 20);
 
     // Re-pinned 2026-10-04 (temperature gate, ABT #1412): with the copper of both windings
-    // scored as the coil stage would wind it, three cores stay under the 130 C limit; the
-    // coolest rejected are E 32/16/11 - N87 - Distributed gapped 0.48 mm (133.7 C), EC 41 -
+    // scored as the coil stage would wind it, three cores stayed under the 130 C limit; the
+    // coolest rejected were E 32/16/11 - N87 - Distributed gapped 0.48 mm (133.7 C), EC 41 -
     // 3C94 - Gapped 0.5 mm (136.3 C) and EQ 30 - 3F3 - Gapped 0.508 mm (139.4 C).
-    REQUIRE(masMagnetics.size() == 3);
+    // Re-pinned 2026-10-06, 3 -> 10: after main's re-gap on the turns-ratio snap (0e0d9369) the
+    // first search finds 9 cores under the limit (EQ 30 and PQ 32/20 in 3C9x/3F3), fewer than
+    // the 20 asked for, so the stacked search runs too and adds ETD 34 - 3C97 - Gapped 0.2 mm.
+    // get_advised_core now MERGES both searches instead of returning only the stacked one,
+    // which had culled the first search's 9 by its cost/size pre-loss cap and returned 1.
+    REQUIRE(masMagnetics.size() == 10);
 
     // Verify all results are non-toroidal (by name pattern) and have valid scores
     for (auto& [mas, scoring] : masMagnetics) {

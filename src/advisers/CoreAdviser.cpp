@@ -397,8 +397,41 @@ std::vector<std::pair<Mas, double>> CoreAdviser::get_advised_core(Inputs inputs,
         // near 8 GB natively and ran the browser engine out of memory (std::bad_alloc).
         maximumMagneticsAfterFiltering = std::min<size_t>(magnetics.size(),
             maximumMagneticsAfterFiltering * defaults.coreAdviserMaximumNumberStacks);
-        filteredMagnetics = filter_available_cores_power_application(&magnetics, inputs, weights, maximumMagneticsAfterFiltering, maximumNumberResults);
-        return filteredMagnetics;
+        auto widerSearchMagnetics = filter_available_cores_power_application(&magnetics, inputs, weights, maximumMagneticsAfterFiltering, maximumNumberResults);
+
+        // Merge both searches. The wider search is a RETRY for more results, not a
+        // replacement: its pre-loss cap ranks a 5x larger pool by cost/size score, so it can
+        // cull designs the first search had already validated (No_Toroids_Two_Windings: the
+        // first search returned 9 cores under the temperature limit, the wider one 1). Returning
+        // only the wider search therefore made the adviser return FEWER designs after asking for
+        // more. Both lists are fully post-processed, valid designs: rank them together by
+        // score, drop the duplicates (a single core both searches returned), cut to the limit.
+        const bool uniqueShapes = get_unique_core_shapes();
+        auto mergeKey = [&](const std::pair<Mas, double>& result) {
+            const auto& magnetic = result.first.get_magnetic();
+            if (uniqueShapes) {
+                return magnetic.get_core().get_shape_name();
+            }
+            if (!magnetic.get_manufacturer_info() || !magnetic.get_manufacturer_info()->get_reference()) {
+                throw std::runtime_error("CoreAdviser: cannot merge the stacked search with the first one: an advised magnetic has no reference to identify it by");
+            }
+            return magnetic.get_manufacturer_info()->get_reference().value();
+        };
+        std::move(widerSearchMagnetics.begin(), widerSearchMagnetics.end(), std::back_inserter(filteredMagnetics));
+        stable_sort_by_index(filteredMagnetics, [](const std::pair<Mas, double>& b1, const std::pair<Mas, double>& b2) {
+            return b1.second > b2.second;
+        });
+        std::vector<std::pair<Mas, double>> mergedMagnetics;
+        std::set<std::string> usedKeys;
+        for (auto& result : filteredMagnetics) {
+            if (mergedMagnetics.size() >= maximumNumberResults) {
+                break;
+            }
+            if (usedKeys.insert(mergeKey(result)).second) {
+                mergedMagnetics.push_back(std::move(result));
+            }
+        }
+        return mergedMagnetics;
     }
     else {
         filteredMagnetics = filter_available_cores_suppression_application(&magnetics, inputs, weights, maximumMagneticsAfterFiltering, maximumNumberResults);
