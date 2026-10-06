@@ -992,6 +992,55 @@ namespace {
         REQUIRE_THAT(expectedValue, Catch::Matchers::WithinAbs(magnetizingInductance, max_error * expectedValue));
     }
 
+    TEST_CASE("Test_Magnetizing_Inductance_Gapless_Core_Has_No_Gap_Fields", "[physical-model][magnetizing-inductance][reluctance][bug][abt-1714]") {
+        // ABT #1714: a gapless core (here a toroid) got gappingReluctance = 0, maximumFringingFactor = 1,
+        // maximumStorableMagneticEnergyGapping = 0 and reluctancePerGap = [] in its magnetizing
+        // inductance output. MAS gappingReluctance has exclusiveMinimum 0, so every exported MAS of a
+        // toroid failed schema validation. With no gap those fields describe nothing: they are absent.
+        settings.reset();
+        clear_databases();
+        double numberTurns = 42;
+        std::vector<CoreGap> noGaps = {};
+        Core toroid;
+        OpenMagnetics::Coil toroidWinding;
+        OpenMagnetics::Inputs toroidInputs;
+        prepare_test_parameters(0, 25, 20000, numberTurns, -1, noGaps, "T 58/41/18", "3C95", toroid, toroidWinding, toroidInputs);
+        auto toroidOperatingPoint = toroidInputs.get_operating_point(0);
+        MagnetizingInductance magnetizingInductanceModel("ZHANG");
+        auto toroidOutput = magnetizingInductanceModel.calculate_inductance_from_number_turns_and_gapping(toroid, toroidWinding, &toroidOperatingPoint);
+        // MAS.hpp serialises an unset optional as null (as it does measurementCondition); the MAS
+        // exporters drop nulls, so null here is an absent field in the exported file.
+        json toroidJson;
+        to_json(toroidJson, toroidOutput);
+        INFO(toroidJson.dump());
+        CHECK(toroidJson.value("gappingReluctance", json()).is_null());
+        CHECK(toroidJson.value("maximumFringingFactor", json()).is_null());
+        CHECK(toroidJson.value("maximumStorableMagneticEnergyGapping", json()).is_null());
+        CHECK(toroidJson.value("reluctancePerGap", json()).is_null());
+        REQUIRE(toroidJson.contains("coreReluctance"));
+        CHECK(toroidJson.at("coreReluctance").get<double>() > 0);
+        // No gap in series: the core reluctance is the material's alone.
+        CHECK(toroidJson.at("coreReluctance").get<double>() == toroidJson.at("ungappedCoreReluctance").get<double>());
+        CHECK(toroidOutput.get_magnetizing_inductance().get_nominal().value() > 0);
+
+        // A gapped core keeps every gap field, and each is a positive number.
+        auto gapping = OpenMagneticsTesting::get_ground_gap(0.001);
+        Core gapped;
+        OpenMagnetics::Coil gappedWinding;
+        OpenMagnetics::Inputs gappedInputs;
+        prepare_test_parameters(0, 25, 20000, numberTurns, -1, gapping, "ETD 29", "3C95", gapped, gappedWinding, gappedInputs);
+        auto gappedOperatingPoint = gappedInputs.get_operating_point(0);
+        auto gappedOutput = magnetizingInductanceModel.calculate_inductance_from_number_turns_and_gapping(gapped, gappedWinding, &gappedOperatingPoint);
+        REQUIRE(gappedOutput.get_gapping_reluctance());
+        CHECK(gappedOutput.get_gapping_reluctance().value() > 0);
+        REQUIRE(gappedOutput.get_maximum_fringing_factor());
+        CHECK(gappedOutput.get_maximum_fringing_factor().value() > 0);
+        REQUIRE(gappedOutput.get_maximum_storable_magnetic_energy_gapping());
+        CHECK(gappedOutput.get_maximum_storable_magnetic_energy_gapping().value() > 0);
+        REQUIRE(gappedOutput.get_reluctance_per_gap());
+        CHECK(!gappedOutput.get_reluctance_per_gap()->empty());
+    }
+
     TEST_CASE("Test_Magnetizing_Inductance_Toroid_Stacks", "[physical-model][magnetizing-inductance][smoke-test]") {
         settings.reset();
         clear_databases();

@@ -168,7 +168,7 @@ ImpedanceTank Impedance::build_magnetizing_tank(Core& core, Coil& coil) {
     double numberTurns = coil.get_functional_description()[0].get_number_turns();
     auto unityPermeabilityReluctance = reluctanceModel->get_core_reluctance(core, 1);
     double reluctanceCoreUnityPermeability = unityPermeabilityReluctance.get_ungapped_core_reluctance().value();
-    double gapReluctance = unityPermeabilityReluctance.get_gapping_reluctance().value();
+    double gapReluctance = OpenMagnetics::ReluctanceModel::gapping_reluctance_in_series(core, unityPermeabilityReluctance);
     double airCoredInductance = numberTurns * numberTurns / reluctanceCoreUnityPermeability;
     double gapReluctanceRatio = gapReluctance / reluctanceCoreUnityPermeability;
 
@@ -666,7 +666,7 @@ double Impedance::calculate_self_resonant_frequency(Core core, Coil coil, double
             auto unityPermeabilityReluctance = reluctanceModel->get_core_reluctance(core, 1);
             double reluctanceCoreUnityPermeability = unityPermeabilityReluctance.get_ungapped_core_reluctance().value();
             double airCoredInductance = numberTurns * numberTurns / reluctanceCoreUnityPermeability;
-            double gapReluctanceRatio = unityPermeabilityReluctance.get_gapping_reluctance().value() / reluctanceCoreUnityPermeability;
+            double gapReluctanceRatio = OpenMagnetics::ReluctanceModel::gapping_reluctance_in_series(core, unityPermeabilityReluctance) / reluctanceCoreUnityPermeability;
             double resonanceEstimate = estimate_resonance_frequency(core, airCoredInductance, gapReluctanceRatio, capacitance);
             if (resonanceEstimate > 0) {
                 capacitanceMatrix = StrayCapacitance().calculate_capacitance(coil, core, resonanceEstimate, coreElectricalReference).get_capacitance_among_windings().value();

@@ -318,7 +318,12 @@ double MagnetizingInductance::calculate_drum_ring_magnetizing_inductance(Core co
     double ferriteReluctance = (drumC1 / drumPermeability + ringC1 / ringPermeability) / vacuumPermeability;
 
     auto reluctanceModelForGaps = ReluctanceModel::factory(Defaults().reluctanceModelDefault);
-    double clearanceReluctance = reluctanceModelForGaps->get_gapping_reluctance(core).get_gapping_reluctance().value();
+    auto clearanceOutput = reluctanceModelForGaps->get_gapping_reluctance(core);
+    if (!clearanceOutput.get_gapping_reluctance()) {
+        throw InvalidInputException(ErrorCode::INVALID_CORE_DATA,
+            "drumRing core has no clearance gaps between drum and ring; its gapping must hold them");
+    }
+    double clearanceReluctance = clearanceOutput.get_gapping_reluctance().value();
 
     return pow(numberTurns, 2) / (ferriteReluctance + clearanceReluctance);
 }

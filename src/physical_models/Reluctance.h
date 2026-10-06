@@ -122,6 +122,10 @@ class ReluctanceModel {
     MagnetizingInductanceOutput get_core_reluctance(Core core, std::optional<OperatingPoint> = std::nullopt);
     MagnetizingInductanceOutput get_core_reluctance(Core core, double initialPermeability);
     MagnetizingInductanceOutput get_gapping_reluctance(Core core);
+    // ABT #1714: the gapping reluctance in series with the core material. A core with no gaps has
+    // none (get_gapping_reluctance leaves the field unset), which adds nothing to the flux path;
+    // a gapped core whose output lacks it is an error.
+    static double gapping_reluctance_in_series(Core& core, const MagnetizingInductanceOutput& output);
     double get_gapping_by_fringing_factor(Core core, double fringingFactor);
     ReluctanceModel() = default;
     virtual ~ReluctanceModel() = default;
