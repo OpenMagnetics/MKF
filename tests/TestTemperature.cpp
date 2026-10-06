@@ -3386,7 +3386,10 @@ TEST_CASE("Temperature: concentric_transformer", "[temperature][smoke-test]") {
         // (winding loss unchanged, 0.201 W). The Icepak band (core_0 63.50 C, core_1 67.88 C,
         // previously 48.0..84.85) matched only the drift artifact's loss and Icepak's loss inputs
         // are not recorded, so it cannot be compared against a physical excitation; this pins
-        // the thermal network's result for the balanced fixture instead.
+        // the thermal network's result for the balanced fixture instead. The old Icepak band
+        // matched the old fixture's DC-offset flux-drift artefact (1-2 T), so this is now a
+        // REGRESSION pin, not a validation; ABT #1715 redoes the Icepak comparison with
+        // recorded loss inputs.
         REQUIRE_THAT(tempsByType.at("core"), Catch::Matchers::WithinRel(31.70, 0.05));
     }
     
@@ -3419,7 +3422,8 @@ TEST_CASE("Temperature: concentric_transformer", "[temperature][smoke-test]") {
         // section) the core loss falls from the drift artifact's 1.261 W to 0.133 W and the
         // uniform winding level from 47.1..47.8 C to 32.05..32.31 C, below Icepak's exported
         // turn span (38.72..60.01 C), which rested on that artifact's loss. Each turn is pinned
-        // to the balanced fixture's winding level, 32.2 C, at 5 %.
+        // to the balanced fixture's winding level, 32.2 C, at 5 % -- a REGRESSION pin, not a
+        // validation (see the core section; ABT #1715).
         const double windingLevel = 32.2;
         auto checkTurn = [&](const std::string& key) {
             REQUIRE(tempsPerTurn.count(key) == 1);
