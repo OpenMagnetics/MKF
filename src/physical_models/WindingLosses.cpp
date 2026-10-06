@@ -307,7 +307,10 @@ WindingLossesOutput WindingLosses::calculate_losses(Magnetic magnetic, Operating
     }
     else if ((_models.magneticFieldStrengthFringingEffectModel.has_value() ?
                   _models.magneticFieldStrengthFringingEffectModel.value() :
-                  settings.get_magnetic_field_strength_fringing_effect_model()) == MagneticFieldStrengthFringingEffectModels::MMF_BOUNDARY) {
+                  settings.get_magnetic_field_strength_fringing_effect_model()) == MagneticFieldStrengthFringingEffectModels::MMF_BOUNDARY ||
+             (_models.magneticFieldStrengthFringingEffectModel.has_value() ?
+                  _models.magneticFieldStrengthFringingEffectModel.value() :
+                  settings.get_magnetic_field_strength_fringing_effect_model()) == MagneticFieldStrengthFringingEffectModels::ROSHEN_COUNT_ONCE) {
         // ABT #1304: MMF_BOUNDARY is a 2-D image construction and pairs only with the pure 2-D kernel, for every wire
         // type (see MagneticFieldStrengthMmfBoundaryModel). An explicitly chosen field model is left as chosen, and
         // MagneticField refuses an incompatible one.

@@ -433,8 +433,11 @@ std::shared_ptr<MagneticFieldStrengthFringingEffectModel> MagneticField::factory
     else if (modelName == MagneticFieldStrengthFringingEffectModels::MMF_BOUNDARY) {
         return std::make_shared<MagneticFieldStrengthMmfBoundaryModel>();
     }
+    else if (modelName == MagneticFieldStrengthFringingEffectModels::ROSHEN_COUNT_ONCE) {
+        return std::make_shared<MagneticFieldStrengthMmfBoundaryModel>(WindowGapMmf::ROSHEN_GAP_FIELD);
+    }
     else
-        throw ModelNotAvailableException("Unknown Magnetic Field Strength Fringing Effect model, available options are: {ALBACH, ROSHEN, SULLIVAN, MMF_BOUNDARY}");
+        throw ModelNotAvailableException("Unknown Magnetic Field Strength Fringing Effect model, available options are: {ALBACH, ROSHEN, SULLIVAN, MMF_BOUNDARY, ROSHEN_COUNT_ONCE}");
 }
 
 std::shared_ptr<MagneticFieldStrengthModel> MagneticField::factory() {
@@ -545,7 +548,7 @@ std::pair<double, double> MagneticFieldStrengthMmfBoundaryModel::calculate_sheet
 
 
 void MagneticFieldStrengthMmfBoundaryModel::setup_window_boundary(Magnetic magnetic, std::optional<OperatingPoint> operatingPoint) {
-    _sheets = CoilMesher::generate_window_wall_sheets(magnetic, operatingPoint);
+    _sheets = CoilMesher::generate_window_wall_sheets(magnetic, operatingPoint, _gapMmf);
     // ABT #1645: a uniform sheet of length L along the unit tangent t is the filament smeared over zeta = s t,
     // |s| < L / 2, so its normalised moments are m_k = t^k (L / 2)^k / (k + 1) for even k (odd ones vanish), and
     // Hy + j Hx = I / (2 pi) sum_k m_k / D^(k+1), D = centre - point, in the filament convention calculate_sheet_field
@@ -2753,7 +2756,7 @@ ComplexFieldPoint MagneticFieldStrengthRoshenModel::get_magnetic_field_strength_
 
     double magneticIntensityXDividend = pow(distanceFromCenterEdgeGapX, 2) + pow(distanceFromCenterEdgeGapY - halfGapLength, 2);
     double magneticIntensityXDivisor = pow(distanceFromCenterEdgeGapX, 2) + pow(distanceFromCenterEdgeGapY + halfGapLength, 2);
-    double Hx = -0.9 * magneticFieldStrengthGap / 2 / std::numbers::pi * log(magneticIntensityXDividend / magneticIntensityXDivisor);
+    double Hx = -roshenGapFieldFactor * magneticFieldStrengthGap / 2 / std::numbers::pi * log(magneticIntensityXDividend / magneticIntensityXDivisor);
 
     double m;
     if (pow(distanceFromCenterEdgeGapX, 2) + pow(distanceFromCenterEdgeGapY, 2) > pow(halfGapLength, 2)) {
@@ -2764,7 +2767,7 @@ ComplexFieldPoint MagneticFieldStrengthRoshenModel::get_magnetic_field_strength_
     }
 
     double x = distanceFromCenterEdgeGapX * halfGapLength / (pow(distanceFromCenterEdgeGapX, 2) + pow(distanceFromCenterEdgeGapY, 2) - pow(halfGapLength, 2));
-    double Hy = -0.9 * magneticFieldStrengthGap / std::numbers::pi * (atan(x) + m * std::numbers::pi);
+    double Hy = -roshenGapFieldFactor * magneticFieldStrengthGap / std::numbers::pi * (atan(x) + m * std::numbers::pi);
 
     // (Hx, Hy) as written: a gap with flux along -y and its window at +xi (see SIGN above).
     // Central leg, flux +y, window at +x: the negative, (-Hx, -Hy).

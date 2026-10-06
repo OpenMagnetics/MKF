@@ -1,4 +1,5 @@
 #include "support/CoilMesher.h"
+#include "Constants.h"
 #include "physical_models/Reluctance.h"
 #include "physical_models/WindingOhmicLosses.h"
 #include "processors/Inputs.h"
@@ -1190,7 +1191,7 @@ std::vector<FieldPoint> CoilMesherWangModel::generate_mesh_inducing_turn(const T
 }
 
 
-std::vector<WindowWallSheet> CoilMesher::generate_window_wall_sheets(Magnetic magnetic, std::optional<OperatingPoint> operatingPoint) {
+std::vector<WindowWallSheet> CoilMesher::generate_window_wall_sheets(Magnetic magnetic, std::optional<OperatingPoint> operatingPoint, WindowGapMmf gapMmf) {
     auto core = magnetic.get_core();
     if (!core.get_processed_description()) {
         throw CoreNotProcessedException("Core is not processed");
@@ -1276,11 +1277,33 @@ std::vector<WindowWallSheet> CoilMesher::generate_window_wall_sheets(Magnetic ma
         originals.push_back({{wallX, yStart}, {wallX, yEnd}, current});
     };
 
+    // ROSHEN_GAP_FIELD: Roshen's gap field at a gap of length g is roshenGapFieldFactor H_g times the field of the mouth
+    // as a uniform sheet of density H_g on the face (the lattice supplies the coincident image), so its MMF is
+    // roshenGapFieldFactor H_g g, with H_g = B / mu0 = NI / (R_total A_e mu0) -- the amplitude MagneticFieldStrengthRoshenModel
+    // is fed, the same at every gap. Per ampere-turn of net MMF: roshenGapFieldFactor g / (mu0 A_e R_total).
+    double roshenMmfPerGapLength = 0;
+    if (gapMmf == WindowGapMmf::ROSHEN_GAP_FIELD) {
+        const double effectiveArea = processedDescription.get_effective_parameters().get_effective_area();
+        if (!(effectiveArea > 0)) {
+            throw InvalidInputException(ErrorCode::INVALID_CORE_DATA, "Count-once Roshen window field: the core's effective area is not positive");
+        }
+        roshenMmfPerGapLength = roshenGapFieldFactor / (Constants().vacuumPermeability * effectiveArea * totalReluctance);
+    }
+
     double gapMmfFractionThisWindow = 0;
     for (size_t gapIndex = 0; gapIndex < gapping.size(); ++gapIndex) {
         auto coordinates = gapping[gapIndex].get_coordinates().value();
         double gapLength = gapping[gapIndex].get_length();
         double reluctance = reluctancePerGap[gapIndex].get_reluctance();
+        if (gapMmf == WindowGapMmf::ROSHEN_GAP_FIELD) {
+            const bool mainColumnGap = static_cast<size_t>(core.find_closest_column_index_by_coordinates(coordinates)) == mainColumnIndex;
+            if (mainColumnGap || coordinates[0] > 0) {
+                double fraction = roshenMmfPerGapLength * gapLength;
+                gapSheet(mainColumnGap ? x0 : x1, coordinates[1], gapLength, -fraction);
+                gapMmfFractionThisWindow += fraction;
+            }
+            continue;
+        }
         if (static_cast<size_t>(core.find_closest_column_index_by_coordinates(coordinates)) == mainColumnIndex) {
             double fraction = reluctance / totalReluctance;
             gapSheet(x0, coordinates[1], gapLength, -fraction);
@@ -1298,7 +1321,9 @@ std::vector<WindowWallSheet> CoilMesher::generate_window_wall_sheets(Magnetic ma
     // it, this side's lateral limb and the two plates its area share.
     const double ferriteMmfFraction = 1 - gapMmfFractionThisWindow;
     if (ferriteMmfFraction < -1e-9) {
-        throw CalculationException(ErrorCode::CALCULATION_INVALID_RESULT, "Neutral window field (ABT #1304): the gaps' MMF exceeds the winding's");
+        throw CalculationException(ErrorCode::CALCULATION_INVALID_RESULT, std::string("Neutral window field (ABT #1304): the gaps' MMF (") +
+                                   (gapMmf == WindowGapMmf::ROSHEN_GAP_FIELD ? "Roshen's 0.9 H_g g" : "reluctance shares") + ") is " +
+                                   std::to_string(gapMmfFractionThisWindow) + " of the winding's: the ferrite would carry a negative MMF");
     }
     if (ferriteMmfFraction > 1e-12) {
         double lateralAreaTotal = 0;

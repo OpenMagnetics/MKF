@@ -1,6 +1,7 @@
 #include <source_location>
 #include "support/Painter.h"
 #include "physical_models/MagneticField.h"
+#include "physical_models/Reluctance.h"
 #include "json.hpp"
 #include "TestingUtils.h"
 #include "Models.h"
@@ -8,7 +9,9 @@
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
 
+#include <array>
 #include <fstream>
+#include <map>
 #include <string>
 #include <cmath>
 
@@ -680,6 +683,172 @@ namespace {
             double expectedTangential = std::abs((onColumn ? columnSheet : lateralSheet) * ampereTurns / B);
             CHECK_THAT(std::abs(field.get_data()[index].get_imaginary()), Catch::Matchers::WithinAbs(expectedTangential, 0.03 * windowFieldScale));
         }
+        settings.reset();
+    }
+
+    // ROSHEN_COUNT_ONCE: Ampere round the winding window. Just inside a mu -> inf wall the tangential H is the MMF the
+    // wall carries, so the circulation along the column face over a gap's mouth is that gap's MMF and along the rest of
+    // the walls the ferrite's. ROSHEN puts Roshen's gap MMF 0.9 H_g g at the mouth ON TOP of a lattice whose walls
+    // already carry the whole NI; the count-once model must give the mouth exactly 0.9 H_g g and the remaining walls
+    // NI - 0.9 H_g g, the whole contour NI. H_g = NI / (R_total A_e mu0), Roshen's amplitude. Gapped (0.1 mm ground gap)
+    // and ungapped (residual gaps) PQ 26/25. With a 1 mm gap 0.9 H_g g exceeds NI (H_g = B / mu0 ignores the fringing
+    // that lowers the gap's reluctance), the ferrite would need a negative MMF, and the model throws.
+    // Also: Roshen's Hx IS the mouth sheet's with its coincident image. (MKF's Roshen Hy takes atan of half the
+    // subtended angle's tangent, so it is not that sheet's -- nor any curl-free partner of its own Hx -- and is not checked.)
+    TEST_CASE("Test_Magnetic_Field_Roshen_Count_Once_Counts_Each_Gap_Once", "[physical-model][magnetic-field][mmf-boundary]") {
+        for (bool gapped : {true, false}) {
+            numberTurns = {8};
+            numberParallels = {1};
+            turnsRatios = {};
+            interleavingLevel = 1;
+            numberStacks = 1;
+            voltagePeakToPeak = 2000;
+            frequency = 125000;
+            gapping = gapped ? OpenMagneticsTesting::get_ground_gap(0.0001) : OpenMagneticsTesting::get_residual_gap();
+            setup();
+            OpenMagnetics::Magnetic magnetic;
+            magnetic.set_core(core);
+            magnetic.set_coil(coil);
+            auto operatingPoint = inputs.get_operating_point(0);
+            settings.reset();
+            settings.set_magnetic_field_mirroring_dimension(1);
+
+            auto processed = core.get_processed_description().value();
+            auto window = processed.get_winding_windows()[0];
+            const double A = window.get_width().value();
+            const double B = window.get_height().value();
+            const double x0 = core.get_columns()[core.get_main_column_index()].get_width() / 2;
+            const double x1 = x0 + A;
+            const double y0 = -B / 2;
+            const double y1 = B / 2;
+
+            // The main-column gap and Roshen's H_g per ampere-turn, from MKF's reluctance and A_e.
+            std::optional<CoreGap> mainGap;
+            for (auto& gap : core.get_functional_description().get_gapping()) {
+                if (static_cast<size_t>(core.find_closest_column_index_by_coordinates(gap.get_coordinates().value())) == core.get_main_column_index()) {
+                    mainGap = gap;
+                }
+            }
+            REQUIRE(mainGap);
+            auto reluctanceModel = ReluctanceModel::factory();
+            const double totalReluctance = reluctanceModel->get_core_reluctance(core, operatingPoint).get_core_reluctance();
+            const double effectiveArea = processed.get_effective_parameters().get_effective_area();
+            const double gapFieldPerAmpereTurn = 1.0 / (totalReluctance * effectiveArea * Constants().vacuumPermeability);
+            const double gapLength = mainGap->get_length();
+            const double gapY = mainGap->get_coordinates().value()[1];
+            const double roshenMmfPerAmpereTurn = roshenGapFieldFactor * gapFieldPerAmpereTurn * gapLength;
+            if (gapped) {
+                CHECK(roshenMmfPerAmpereTurn > 0.3);  // a gap whose MMF a double count would show
+            }
+
+            // Roshen's closed form = 0.9 x (mouth sheet of density H_g + its coincident image).
+            for (std::vector<double> probe : {std::vector<double>{x0 + 0.3e-3, gapY + 0.2e-3}, {x0 + 2e-3, gapY - 1e-3}, {x0 + 0.05e-3, gapY}}) {
+                FieldPoint point;
+                point.set_point(probe);
+                auto roshen = MagneticFieldStrengthRoshenModel().get_magnetic_field_strength_between_gap_and_point(mainGap.value(), 1.0, point);
+                WindowWallSheet mouth{{x0, gapY - gapLength / 2}, {x0, gapY + gapLength / 2}, 0};
+                auto [sheetX, sheetY] = MagneticFieldStrengthMmfBoundaryModel::calculate_sheet_field(mouth, -roshenGapFieldFactor * gapLength, probe[0], probe[1]);
+                double scale = hypot(roshen.get_real(), roshen.get_imaginary());
+                CHECK_THAT(2 * sheetX, Catch::Matchers::WithinAbs(roshen.get_real(), 1e-9 * scale));
+            }
+
+            // Contour 5 um inside the walls, counter-clockwise, midpoint rule with steps of a quarter of that inset (the
+            // sheets' ends make the field near the corners vary on the inset's scale). The mouth window reaches 0.5 mm past
+            // the gap's ends: at 5 um from the face less than 1 % of the mouth's MMF lies beyond, and the column
+            // ferrite's own density over the window is added to the expectation.
+            const double inset = 5e-6;
+            const double mouthHalfWindow = gapLength / 2 + 0.5e-3;
+            std::vector<FieldPoint> points;
+            std::vector<std::array<double, 2>> steps;
+            std::vector<bool> onMouth;
+            std::vector<size_t> wallOf;
+            auto addWall = [&](double ax, double ay, double bx, double by, size_t wall) {
+                const bool columnWall = wall == 3;
+                size_t samples = static_cast<size_t>(std::ceil(hypot(bx - ax, by - ay) / (inset / 4)));
+                for (size_t index = 0; index < samples; ++index) {
+                    double t = (index + 0.5) / samples;
+                    FieldPoint point;
+                    point.set_point({ax + t * (bx - ax), ay + t * (by - ay)});
+                    points.push_back(point);
+                    steps.push_back({(bx - ax) / samples, (by - ay) / samples});
+                    onMouth.push_back(columnWall && std::abs(ay + t * (by - ay) - gapY) < mouthHalfWindow);
+                    wallOf.push_back(wall);
+                }
+            };
+            addWall(x0 + inset, y0 + inset, x1 - inset, y0 + inset, 0);
+            addWall(x1 - inset, y0 + inset, x1 - inset, y1 - inset, 1);
+            addWall(x1 - inset, y1 - inset, x0 + inset, y1 - inset, 2);
+            addWall(x0 + inset, y1 - inset, x0 + inset, y0 + inset, 3);
+
+            // The window's own sources (each boundary segment once, at its largest image factor), per wall: bottom,
+            // lateral, top, column. They must return exactly NI, and the column's mouth sheet must be Roshen's gap MMF.
+            std::map<std::array<long, 4>, double> originals;
+            for (auto& sheet : CoilMesher::generate_window_wall_sheets(magnetic, operatingPoint, WindowGapMmf::ROSHEN_GAP_FIELD)) {
+                std::array<long, 4> key{std::lround(sheet.start[0] * 1e9), std::lround(sheet.start[1] * 1e9), std::lround(sheet.end[0] * 1e9), std::lround(sheet.end[1] * 1e9)};
+                if (std::abs(sheet.current) > std::abs(originals[key])) {
+                    originals[key] = sheet.current;
+                }
+            }
+            std::array<double, 4> expectedPerWall{0, 0, 0, 0};
+            double columnSheet = 0;
+            double mouthSheet = 0;
+            const long nx0 = std::lround(x0 * 1e9), nx1 = std::lround(x1 * 1e9), ny0 = std::lround(y0 * 1e9), ny1 = std::lround(y1 * 1e9);
+            for (auto& [key, current] : originals) {
+                const bool inWindowX = key[0] >= nx0 && key[2] <= nx1 && key[0] <= nx1 && key[2] >= nx0;
+                const bool inWindowY = key[1] >= ny0 && key[3] <= ny1 && key[1] <= ny1 && key[3] >= ny0;
+                if (key[0] == key[2] && inWindowY && (key[0] == nx0 || key[0] == nx1)) {
+                    expectedPerWall[key[0] == nx0 ? 3 : 1] += current;
+                    if (key[0] == nx0 && key[1] == ny0 && key[3] == ny1) {
+                        columnSheet = current;
+                    }
+                    else if (key[0] == nx0) {
+                        mouthSheet += current;
+                    }
+                }
+                else if (key[1] == key[3] && inWindowX && (key[1] == ny0 || key[1] == ny1)) {
+                    expectedPerWall[key[1] == ny0 ? 0 : 2] += current;
+                }
+            }
+            CHECK_THAT(expectedPerWall[0] + expectedPerWall[1] + expectedPerWall[2] + expectedPerWall[3], Catch::Matchers::WithinAbs(-1.0, 1e-6));
+            CHECK_THAT(-mouthSheet, Catch::Matchers::WithinRel(roshenMmfPerAmpereTurn, 1e-3));
+            REQUIRE(columnSheet != 0);
+            const double expectedMouth = roshenMmfPerAmpereTurn + std::abs(columnSheet) * 2 * mouthHalfWindow / B;
+
+            Field inducedField;
+            inducedField.set_data(points);
+            inducedField.set_frequency(frequency);
+            MagneticField magneticField(MagneticFieldStrengthModels::BINNS_LAWRENSON, MagneticFieldStrengthFringingEffectModels::ROSHEN_COUNT_ONCE);
+            auto field = magneticField.calculate_magnetic_field_strength_field(operatingPoint, magnetic, inducedField).get_field_per_frequency()[0];
+            REQUIRE(field.get_data().size() == points.size());
+
+            double harmonicAmplitude = operatingPoint.get_excitations_per_winding()[0].get_current().value().get_harmonics().value().get_amplitudes()[1];
+            const double ampereTurns = harmonicAmplitude * numberTurns[0];
+            double mouthCirculation = 0;
+            double wallCirculation = 0;
+            std::array<double, 4> circulationPerWall{0, 0, 0, 0};
+            for (size_t index = 0; index < points.size(); ++index) {
+                double contribution = field.get_data()[index].get_real() * steps[index][0] + field.get_data()[index].get_imaginary() * steps[index][1];
+                (onMouth[index] ? mouthCirculation : wallCirculation) += contribution;
+                circulationPerWall[wallOf[index]] += contribution;
+            }
+            // Total: NI. Mouth: Roshen's gap MMF, once (plus the column ferrite over the window). Rest: what the gap leaves.
+            // Every wall: exactly its own sources -- a double count cannot satisfy all four, since the total is NI.
+            CHECK_THAT(std::abs(mouthCirculation + wallCirculation), Catch::Matchers::WithinRel(ampereTurns, 0.005));
+            CHECK_THAT(std::abs(mouthCirculation), Catch::Matchers::WithinAbs(expectedMouth * ampereTurns, 0.01 * ampereTurns));
+            CHECK_THAT(std::abs(wallCirculation), Catch::Matchers::WithinAbs((1 - expectedMouth) * ampereTurns, 0.01 * ampereTurns));
+            for (size_t wall = 0; wall < 4; ++wall) {
+                CHECK_THAT(std::abs(circulationPerWall[wall]), Catch::Matchers::WithinAbs(std::abs(expectedPerWall[wall]) * ampereTurns, 0.01 * ampereTurns));
+            }
+        }
+        // A 1 mm gap: Roshen's gap MMF exceeds the winding's; refused, not clamped.
+        numberTurns = {8};
+        gapping = OpenMagneticsTesting::get_ground_gap(0.001);
+        setup();
+        OpenMagnetics::Magnetic gappedMagnetic;
+        gappedMagnetic.set_core(core);
+        gappedMagnetic.set_coil(coil);
+        CHECK_THROWS_AS(CoilMesher::generate_window_wall_sheets(gappedMagnetic, inputs.get_operating_point(0), WindowGapMmf::ROSHEN_GAP_FIELD), CalculationException);
+        gapping = OpenMagneticsTesting::get_ground_gap(0.001);
         settings.reset();
     }
 
