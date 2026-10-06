@@ -374,19 +374,8 @@ class MagneticFieldStrengthMmfBoundaryModel : public MagneticFieldStrengthFringi
     };
     std::vector<SheetMultipole> _sheetMultipoles;
     bool _isSetUp = false;
-    WindowGapMmf _gapMmf = WindowGapMmf::RELUCTANCE_SHARE;
   public:
     std::string methodName = "MmfBoundary";
-    MagneticFieldStrengthMmfBoundaryModel() = default;
-    // ROSHEN_COUNT_ONCE: the same construction with Roshen's gap field at each gap mouth. Roshen's closed form is
-    // roshenGapFieldFactor H_g times the field of the mouth as a uniform sheet of density H_g lying on the mu -> inf face
-    // (sheet plus coincident image, which the lattice supplies), so the mouth is that sheet carrying 0.9 H_g g, counted
-    // once: the ferrite walls take NI minus the gaps' Roshen MMF (see CoilMesher::generate_window_wall_sheets).
-    explicit MagneticFieldStrengthMmfBoundaryModel(WindowGapMmf gapMmf) : _gapMmf(gapMmf) {
-        if (gapMmf == WindowGapMmf::ROSHEN_GAP_FIELD) {
-            methodName = "RoshenCountOnce";
-        }
-    }
     ComplexFieldPoint get_magnetic_field_strength_between_gap_and_point([[maybe_unused]] CoreGap gap, [[maybe_unused]] double magneticFieldStrengthGap,
                                                                         [[maybe_unused]] FieldPoint inducedFieldPoint) {
         throw ModelNotAvailableException("MMF_BOUNDARY is not a per-gap model: the ferrite carries part of the MMF; use get_window_boundary_field");

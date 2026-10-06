@@ -22,11 +22,7 @@ enum class MagneticFieldStrengthFringingEffectModels : int {
     ROSHEN,
     ALBACH,
     SULLIVAN,
-    MMF_BOUNDARY,
-    // The MMF_BOUNDARY construction (neutral lattice, ferrite wall sheets) with Roshen's gap field at each gap mouth:
-    // Roshen's MMF 0.9 H_g g counted once, the ferrite taking the rest. Opt-in, MKF-internal. Appended last: bindings
-    // pass the enum as an int.
-    ROSHEN_COUNT_ONCE
+    MMF_BOUNDARY
 };
 
 

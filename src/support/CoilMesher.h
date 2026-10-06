@@ -28,12 +28,6 @@ enum class CoilMesherModels : int {
 // ABT #1304: a uniform current sheet on a straight segment of the winding-window boundary, per unit depth. It is
 // the equivalent source of an MMF drop on that boundary -- the mouth of a gap, or the ferrite along a wall -- and
 // every lattice image of it is returned as its own sheet with its image factor already applied.
-// How a gap's mouth sheet is sized in generate_window_wall_sheets (see there).
-enum class WindowGapMmf { RELUCTANCE_SHARE, ROSHEN_GAP_FIELD };
-// Roshen's gap fringing field is 0.9 H_g times the field of the gap mouth taken as a uniform sheet of density H_g lying
-// on the mu -> inf face (the sheet plus its coincident image); MagneticFieldStrengthRoshenModel and ROSHEN_GAP_FIELD share it.
-inline constexpr double roshenGapFieldFactor = 0.9;
-
 struct WindowWallSheet {
     std::vector<double> start;
     std::vector<double> end;
@@ -109,11 +103,7 @@ class CoilMesher {
     // composition: main-column gaps in series, lateral branches in parallel); the ferrite's share is spread along
     // the four walls in proportion to length x tangential H, H = B / mu with B from the flux through that wall's
     // limb. Throws for toroids and multi-window cores, whose boundary this frame does not describe.
-    // ROSHEN_GAP_FIELD (ROSHEN_COUNT_ONCE): each gap's mouth carries the MMF of Roshen's gap field instead, 0.9 H_g g with
-    // H_g = B / mu0 = NI / (R_total A_e mu0) (MagneticFieldStrengthRoshenModel's own amplitude), and the ferrite takes what
-    // Ampere leaves: every gap's MMF is counted once and the sources still return exactly the winding's NI.
-    static std::vector<WindowWallSheet> generate_window_wall_sheets(Magnetic magnetic, std::optional<OperatingPoint> operatingPoint,
-                                                                    WindowGapMmf gapMmf = WindowGapMmf::RELUCTANCE_SHARE);
+    static std::vector<WindowWallSheet> generate_window_wall_sheets(Magnetic magnetic, std::optional<OperatingPoint> operatingPoint);
     // meshAllWindows: mesh every distinct winding-window region (multi-column cores)
     // instead of only window 0. Painting wants it; the leakage energy integrator must
     // NOT use it — its revolution bookkeeping already accounts for the full turn from

@@ -280,7 +280,6 @@ inline void to_json(json & j, const MagneticFieldStrengthFringingEffectModels & 
         case MagneticFieldStrengthFringingEffectModels::ALBACH: j = "Albach"; break;
         case MagneticFieldStrengthFringingEffectModels::SULLIVAN: j = "Sullivan"; break;
         case MagneticFieldStrengthFringingEffectModels::MMF_BOUNDARY: j = "MmfBoundary"; break;
-        case MagneticFieldStrengthFringingEffectModels::ROSHEN_COUNT_ONCE: j = "RoshenCountOnce"; break;
         default: throw std::runtime_error("Unexpected value in enumeration \"MagneticFieldStrengthFringingEffectModels\": " + std::to_string(static_cast<int>(x)));
     }
 }
@@ -290,7 +289,6 @@ inline void from_json(const json & j, MagneticFieldStrengthFringingEffectModels 
     else if (j == "Albach" || j == "albach" || j == "ALBACH") x = MagneticFieldStrengthFringingEffectModels::ALBACH;
     else if (j == "Sullivan" || j == "sullivan" || j == "SULLIVAN") x = MagneticFieldStrengthFringingEffectModels::SULLIVAN;
     else if (j == "MmfBoundary" || j == "mmfBoundary" || j == "MMF_BOUNDARY") x = MagneticFieldStrengthFringingEffectModels::MMF_BOUNDARY;
-    else if (j == "RoshenCountOnce" || j == "roshenCountOnce" || j == "ROSHEN_COUNT_ONCE") x = MagneticFieldStrengthFringingEffectModels::ROSHEN_COUNT_ONCE;
     else { throw std::runtime_error("Input JSON does not conform to MagneticFieldStrengthFringingEffectModels schema: " + to_string(j)); }
 }
 
