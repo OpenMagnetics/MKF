@@ -16683,3 +16683,34 @@ TEST_CASE("Test_Coil_Consecutive_Turns_Refuses_Zero_Slots", "[constructive-model
     REQUIRE_THROWS_AS(coil.wind_by_consecutive_turns(std::vector<uint64_t>{4}, std::vector<uint64_t>{1}, std::vector<size_t>{0}), InvalidInputException);
     REQUIRE(coil.wind_by_consecutive_turns(uint64_t(4), uint64_t(1), size_t(2)) == WindingStyle::WIND_BY_CONSECUTIVE_PARALLELS);
 }
+
+TEST_CASE("Test_Coil_Real_Winding_Section_That_Cannot_Hold_Its_Turns_Does_Not_Fit", "[coil][real-winding][bug][abt-1699]") {
+    // ABT #1699: a coil-adviser candidate on the web flyback core, stored as the web stores it and
+    // rebuilt with real winding geometry. Once the connection corridors are blocked, a secondary
+    // layer has no row left for every parallel, and the layer fill stopped there: 'Secondary 0
+    // section 0' was laid out with 2 of its 9 turns and 'Secondary 0 section 1' with no layer at
+    // all, and delimit_and_compact then threw "No layers in section" (COIL_NOT_PROCESSED). Turns a
+    // section cannot hold are a wind that does not fit, named as such.
+    auto path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "web_adviser_flows/flyback_interleaved_candidate_stored.json");
+    std::ifstream file(path);
+    REQUIRE(file.good());
+    auto stored = json::parse(file).at("magnetic");
+    settings.reset();
+    settings.set_coil_delimit_and_compact(true);
+    settings.set_coil_try_rewind(true);
+    OpenMagnetics::Magnetic magnetic;
+    magnetic.set_core(OpenMagnetics::Core(stored.at("core")));
+    magnetic.set_coil(OpenMagnetics::Coil(stored.at("coil"), false));
+
+    std::optional<std::string> refusal;
+    REQUIRE_NOTHROW(refusal = OpenMagnetics::real_winding_refusal(magnetic));
+    REQUIRE(refusal);
+    INFO(refusal.value());
+    CHECK(refusal->find("cannot hold its") != std::string::npos);
+
+    // The web's rebuild of the same stored design: no throw, and no coil with turns missing.
+    OpenMagnetics::Magnetic rebuilt;
+    REQUIRE_NOTHROW(rebuilt = OpenMagneticsTesting::rebuild_with_real_winding_as_web(magnetic));
+    CHECK(!rebuilt.get_coil().get_turns_description());
+    settings.reset();
+}

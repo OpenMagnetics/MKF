@@ -3131,6 +3131,44 @@ bool wind_magnetic_coil_as_described(Magnetic& magnetic, json configuration, std
     }
 }
 
+std::optional<std::string> real_winding_refusal(const Magnetic& woundMagnetic, std::optional<Inputs> inputs) {
+    json magneticJson;
+    to_json(magneticJson, woundMagnetic);
+    magneticJson.at("coil").erase("layersDescription");
+    Magnetic rebuilt;
+    rebuilt.set_core(woundMagnetic.get_core());
+    rebuilt.set_coil(Coil(magneticJson.at("coil"), false));
+    SettingsGuard<bool> realWindingGuard(settings,
+                                         &Settings::get_coil_use_real_winding_geometry,
+                                         &Settings::set_coil_use_real_winding_geometry, true);
+    bool wound = false;
+    try {
+        wound = wind_magnetic_coil_as_described(rebuilt, json{}, inputs);
+    }
+    catch (const CoilException& e) {
+        if (e.code() != ErrorCode::COIL_WINDING_ERROR) {
+            throw;
+        }
+        return std::string(e.what());
+    }
+    auto& coil = rebuilt.get_mutable_coil();
+    if (!wound) {
+        return "real winding does not fit: " + (coil.get_last_fit_failure().empty()
+                                                ? std::string("the winder returned no fitting layout")
+                                                : coil.get_last_fit_failure());
+    }
+    if (!coil.get_turns_description() || coil.get_turns_description()->empty()) {
+        return std::string("real winding built no turns");
+    }
+    if (!coil.is_real_winding_blocking_applied()) {
+        return std::string("real winding did not apply connection blocking");
+    }
+    if (!coil.are_turns_inside_winding_window()) {
+        return "real winding puts turns outside the winding window: " + coil.get_last_fit_failure();
+    }
+    return std::nullopt;
+}
+
 Magnetic magnetic_autocomplete(Magnetic magnetic, json configuration, std::optional<Inputs> inputs) {
     // A datasheet-only catalogue part (neither core nor coil, see Magnetic.h) has no construction
     // to complete: it is returned as it is, so a catalogue mixing such parts with constructed ones

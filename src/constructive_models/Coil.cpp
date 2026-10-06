@@ -14017,6 +14017,18 @@ bool Coil::wind_by_rectangular_layers() {
                     }
                     std::cerr << "} maxPerLayer=" << maximumNumberPhysicalTurnsPerLayer << "\n";
                 }
+                // ABT #1699: the loop above stops at a layer whose connection corridors leave no row
+                // for every parallel. Turns still unplaced then are turns this section cannot hold:
+                // the wind does not fit. Carrying on laid the section out with those turns missing
+                // (9 turns in, 2 placed) or with no layer at all, which delimit_and_compact then met
+                // as "No layers in section" (COIL_NOT_PROCESSED) instead of a fit verdict.
+                if (remainingTurns > 0) {
+                    _lastFitFailure = "real winding: section '" + sections[sectionIndex].get_name() + "' cannot hold its " +
+                                      std::to_string(physicalTurnsInSection) + " turns: " + std::to_string(remainingTurns) +
+                                      " are left when layer " + std::to_string(builtLayers) +
+                                      " has no room for a row of every parallel beside its blocked connection corridors";
+                    return false;
+                }
             }
 
             // ABT #229 root-cause fix: an N-filar winding laid CONSECUTIVE_PARALLELS holds its K

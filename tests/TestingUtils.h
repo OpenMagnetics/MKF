@@ -7,6 +7,7 @@
 #include "constructive_models/Magnetic.h"
 #include "constructive_models/Mas.h"
 #include "constructive_models/Wire.h"
+#include "support/Settings.h"
 #include <magic_enum.hpp>
 
 #include <filesystem>
@@ -284,6 +285,31 @@ inline void apply_web_engine_settings(const nlohmann::json& s) {
     settings.set_coil_adviser_allow_lateral_placement(s.at("coilAdviserAllowLateralPlacement").get<bool>());
     settings.set_thermal_network_strict_geometry(s.at("thermalNetworkStrictGeometry").get<bool>());
     settings.set_allow_material_data_extrapolation(s.at("allowMaterialDataExtrapolation").get<bool>());
+}
+
+// Rebuilds a coil the way the web does after an adviser returns it, when the user turns real
+// winding geometry on: MVB++ magnetic_autocomplete_safe takes the stored magnetic JSON without
+// its layersDescription, builds Coil(json, false) (no wind), and runs magnetic_autocomplete with
+// coil_use_real_winding_geometry on and MVB++'s lead bend policy (kRoundCornerBendFactor 1.05,
+// no minimum bend radius). Settings are restored on every way out.
+inline OpenMagnetics::Magnetic rebuild_with_real_winding_as_web(const OpenMagnetics::Magnetic& stored) {
+    nlohmann::json magneticJson;
+    to_json(magneticJson, stored);
+    magneticJson.at("coil").erase("layersDescription");
+    auto& settings = OpenMagnetics::Settings::GetInstance();
+    OpenMagnetics::SettingsGuard<bool> realWindingGuard(settings,
+        &OpenMagnetics::Settings::get_coil_use_real_winding_geometry,
+        &OpenMagnetics::Settings::set_coil_use_real_winding_geometry, true);
+    OpenMagnetics::SettingsGuard<std::optional<double>> bendFactorGuard(settings,
+        &OpenMagnetics::Settings::get_coil_lead_bend_radius_factor,
+        &OpenMagnetics::Settings::set_coil_lead_bend_radius_factor, std::optional<double>(1.05));
+    OpenMagnetics::SettingsGuard<std::optional<double>> bendMinimumGuard(settings,
+        &OpenMagnetics::Settings::get_coil_lead_minimum_bend_radius,
+        &OpenMagnetics::Settings::set_coil_lead_minimum_bend_radius, std::optional<double>());
+    OpenMagnetics::Magnetic magnetic;
+    magnetic.set_core(OpenMagnetics::Core(magneticJson.at("core")));
+    magnetic.set_coil(OpenMagnetics::Coil(magneticJson.at("coil"), false));
+    return OpenMagnetics::magnetic_autocomplete(magnetic, nlohmann::json{});
 }
 
 } // namespace OpenMagneticsTesting

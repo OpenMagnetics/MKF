@@ -325,6 +325,13 @@ bool magnetic_coil_needs_winding(Magnetic& magnetic);
 // not fit (Coil::get_last_fit_failure() names why when it can). Callers that paint or export
 // the result must not ignore a false.
 bool wind_magnetic_coil_as_described(Magnetic& magnetic, json configuration = {}, std::optional<Inputs> inputs = std::nullopt);
+// ABT #1699: rebuilds a wound magnetic the way a stored design is rebuilt with real winding
+// geometry (its JSON without layersDescription, Coil(json, false), then
+// wind_magnetic_coil_as_described with coil_use_real_winding_geometry on) and returns why the
+// real winder refuses it, or nullopt when it winds: turns present, connection blocking applied,
+// every turn inside its window. The verdict is the real winder's own; a COIL_WINDING_ERROR it
+// throws is its refusal and is returned as the reason, any other exception propagates.
+std::optional<std::string> real_winding_refusal(const Magnetic& woundMagnetic, std::optional<Inputs> inputs = std::nullopt);
 // inputs, when provided, carries the design's declared insulation/environmental
 // requirements into the coil BEFORE it winds (ABT #620): without it, wind() has no
 // way to know an insulation standard applies and falls back to
