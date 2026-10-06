@@ -848,6 +848,119 @@ namespace {
         settings.reset();
     }
 
+    // Roshen (IEEE Trans. Magn. 43(8), 2007, as reproduced in Electronics 10, 1683, eqs. 6-7), l_g the half gap, xi the
+    // distance from the leg face, y along it: Hx = H_g / (2 pi) ln[(xi^2 + (y - l_g)^2) / (xi^2 + (y + l_g)^2)],
+    // Hy = -H_g / pi [atan(2 xi l_g / (xi^2 + y^2 - l_g^2)) + m pi] -- together the field of the mouth as a uniform
+    // current sheet of density H_g on the mu -> inf face plus its coincident image, curl-free in the window. MKF had
+    // atan(xi l_g / ...) (the factor 2 lost): Hx was that sheet's, Hy was not any field's partner, and the window
+    // circulation of the gap field alone was not zero. Checked: both components equal the sheet's (x 0.9); round a
+    // closed contour 5 um inside the window walls the gap field circulates 0 in total and 0.9 H_g g along the face over
+    // its mouth; the whole ROSHEN window field (lattice + gap) circulates exactly NI. PQ 26/25, 0.1 mm and 1 mm gaps.
+    TEST_CASE("Test_Magnetic_Field_Roshen_Gap_Field_Is_Curl_Free", "[physical-model][magnetic-field]") {
+        for (double groundGap : {1e-4, 1e-3}) {
+            numberTurns = {8};
+            numberParallels = {1};
+            turnsRatios = {};
+            interleavingLevel = 1;
+            numberStacks = 1;
+            voltagePeakToPeak = 2000;
+            frequency = 125000;
+            gapping = OpenMagneticsTesting::get_ground_gap(groundGap);
+            setup();
+            OpenMagnetics::Magnetic magnetic;
+            magnetic.set_core(core);
+            magnetic.set_coil(coil);
+            auto operatingPoint = inputs.get_operating_point(0);
+            settings.reset();
+            settings.set_magnetic_field_mirroring_dimension(1);
+
+            auto processed = core.get_processed_description().value();
+            auto window = processed.get_winding_windows()[0];
+            const double A = window.get_width().value();
+            const double B = window.get_height().value();
+            const double x0 = core.get_columns()[core.get_main_column_index()].get_width() / 2;
+            const double x1 = x0 + A;
+            const double y0 = -B / 2;
+            const double y1 = B / 2;
+            std::optional<CoreGap> mainGap;
+            for (auto& gap : core.get_functional_description().get_gapping()) {
+                if (static_cast<size_t>(core.find_closest_column_index_by_coordinates(gap.get_coordinates().value())) == core.get_main_column_index()) {
+                    mainGap = gap;
+                }
+            }
+            REQUIRE(mainGap);
+            const double gapLength = mainGap->get_length();
+            const double gapY = mainGap->get_coordinates().value()[1];
+            MagneticFieldStrengthRoshenModel roshenModel;
+
+            // Both components: 0.9 x (mouth sheet of density H_g = 1 + its coincident image).
+            for (std::vector<double> probe : {std::vector<double>{x0 + 0.3e-3, gapY + 0.2e-3}, {x0 + 2e-3, gapY - 1e-3}, {x0 + 0.05e-3, gapY},
+                                              {x0 + 1e-3, gapY + 0.4e-3}, {x0 + 0.2e-3, gapY - 0.6 * gapLength}}) {
+                FieldPoint point;
+                point.set_point(probe);
+                auto roshen = roshenModel.get_magnetic_field_strength_between_gap_and_point(mainGap.value(), 1.0, point);
+                WindowWallSheet mouth{{x0, gapY - gapLength / 2}, {x0, gapY + gapLength / 2}, 0};
+                auto [sheetX, sheetY] = MagneticFieldStrengthMmfBoundaryModel::calculate_sheet_field(mouth, -0.9 * gapLength, probe[0], probe[1]);
+                double scale = hypot(roshen.get_real(), roshen.get_imaginary());
+                CHECK_THAT(2 * sheetX, Catch::Matchers::WithinAbs(roshen.get_real(), 1e-9 * scale));
+                CHECK_THAT(2 * sheetY, Catch::Matchers::WithinAbs(roshen.get_imaginary(), 1e-9 * scale));
+            }
+
+            // Closed contour 5 um inside the walls, counter-clockwise, midpoint rule (steps of a quarter of the inset).
+            const double inset = 5e-6;
+            const double mouthHalfWindow = gapLength / 2 + 0.5e-3;
+            std::vector<FieldPoint> points;
+            std::vector<std::array<double, 2>> steps;
+            std::vector<bool> onMouth;
+            auto addWall = [&](double ax, double ay, double bx, double by, bool columnWall) {
+                size_t samples = static_cast<size_t>(std::ceil(hypot(bx - ax, by - ay) / (inset / 4)));
+                for (size_t index = 0; index < samples; ++index) {
+                    double t = (index + 0.5) / samples;
+                    FieldPoint point;
+                    point.set_point({ax + t * (bx - ax), ay + t * (by - ay)});
+                    points.push_back(point);
+                    steps.push_back({(bx - ax) / samples, (by - ay) / samples});
+                    onMouth.push_back(columnWall && std::abs(ay + t * (by - ay) - gapY) < mouthHalfWindow);
+                }
+            };
+            addWall(x0 + inset, y0 + inset, x1 - inset, y0 + inset, false);
+            addWall(x1 - inset, y0 + inset, x1 - inset, y1 - inset, false);
+            addWall(x1 - inset, y1 - inset, x0 + inset, y1 - inset, false);
+            addWall(x0 + inset, y1 - inset, x0 + inset, y0 + inset, true);
+
+            // The gap field alone (H_g = 1): curl-free, so 0 round the contour, and 0.9 g along the face over its mouth.
+            double gapTotal = 0;
+            double gapMouth = 0;
+            for (size_t index = 0; index < points.size(); ++index) {
+                auto h = roshenModel.get_magnetic_field_strength_between_gap_and_point(mainGap.value(), 1.0, points[index]);
+                double contribution = h.get_real() * steps[index][0] + h.get_imaginary() * steps[index][1];
+                gapTotal += contribution;
+                if (onMouth[index]) {
+                    gapMouth += contribution;
+                }
+            }
+            CHECK_THAT(gapTotal, Catch::Matchers::WithinAbs(0, 0.002 * 0.9 * gapLength));
+            CHECK_THAT(std::abs(gapMouth), Catch::Matchers::WithinRel(0.9 * gapLength, 0.02));
+
+            // The whole ROSHEN window field: the lattice carries NI and the curl-free gap field adds nothing round the contour.
+            Field inducedField;
+            inducedField.set_data(points);
+            inducedField.set_frequency(frequency);
+            MagneticField magneticField(MagneticFieldStrengthModels::BINNS_LAWRENSON, MagneticFieldStrengthFringingEffectModels::ROSHEN);
+            auto field = magneticField.calculate_magnetic_field_strength_field(operatingPoint, magnetic, inducedField).get_field_per_frequency()[0];
+            REQUIRE(field.get_data().size() == points.size());
+            double harmonicAmplitude = operatingPoint.get_excitations_per_winding()[0].get_current().value().get_harmonics().value().get_amplitudes()[1];
+            const double ampereTurns = harmonicAmplitude * numberTurns[0];
+            double windowCirculation = 0;
+            for (size_t index = 0; index < points.size(); ++index) {
+                windowCirculation += field.get_data()[index].get_real() * steps[index][0] + field.get_data()[index].get_imaginary() * steps[index][1];
+            }
+            CHECK_THAT(std::abs(windowCirculation), Catch::Matchers::WithinRel(ampereTurns, 0.005));
+        }
+        gapping = OpenMagneticsTesting::get_ground_gap(0.001);
+        settings.reset();
+    }
+
     // ABT #1304: with MMF_BOUNDARY every lattice cell is neutral, so the image sum converges -- one and two mirror cells agree.
     TEST_CASE("Test_Magnetic_Field_Mmf_Boundary_Lattice_Converges", "[physical-model][magnetic-field][mmf-boundary]") {
         numberTurns = {8};

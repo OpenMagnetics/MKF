@@ -2763,7 +2763,12 @@ ComplexFieldPoint MagneticFieldStrengthRoshenModel::get_magnetic_field_strength_
         m = 1;
     }
 
-    double x = distanceFromCenterEdgeGapX * halfGapLength / (pow(distanceFromCenterEdgeGapX, 2) + pow(distanceFromCenterEdgeGapY, 2) - pow(halfGapLength, 2));
+    // Roshen's Hy: atan(2 xi l_g / (xi^2 + y^2 - l_g^2)), l_g the HALF gap -- the tangent of the full angle the mouth
+    // subtends, atan((y + l_g) / xi) - atan((y - l_g) / xi). With Hx above it is the field of the mouth as a uniform
+    // current sheet on the mu -> inf face plus its coincident image, curl-free in the window. MKF had xi l_g (the 2
+    // dropped): Hx stayed that sheet's but Hy was nobody's partner, and the window circulation round PQ 26/25 with a
+    // 1 mm gap read 1.23 NI instead of NI (Test_Magnetic_Field_Roshen_Gap_Field_Is_Curl_Free).
+    double x = distanceFromCenterEdgeGapX * 2 * halfGapLength / (pow(distanceFromCenterEdgeGapX, 2) + pow(distanceFromCenterEdgeGapY, 2) - pow(halfGapLength, 2));
     double Hy = -0.9 * magneticFieldStrengthGap / std::numbers::pi * (atan(x) + m * std::numbers::pi);
 
     // (Hx, Hy) as written: a gap with flux along -y and its window at +xi (see SIGN above).
