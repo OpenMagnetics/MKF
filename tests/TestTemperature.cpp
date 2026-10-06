@@ -93,28 +93,28 @@ LossesFromSimulation getLossesFromSimulation(const OpenMagnetics::Magnetic& magn
     mas.set_magnetic(magnetic);
     mas.set_inputs(inputs);
     
-    try {
-        auto simulatedMas = magneticSimulator.simulate(inputs, magnetic);
-        
-        if (!simulatedMas.get_outputs().empty()) {
-            auto outputs = simulatedMas.get_outputs()[0];
-            
-            // Get core losses
-            if (outputs.get_core_losses()) {
-                result.coreLosses = resolve_dimensional_values(outputs.get_core_losses()->get_core_losses());
-            }
-            
-            // Get winding losses
-            if (outputs.get_winding_losses()) {
-                result.windingLosses = resolve_dimensional_values(outputs.get_winding_losses()->get_winding_losses());
-                result.windingLossesOutput = outputs.get_winding_losses();
-            }
-            
-            result.simulationSucceeded = true;
-        }
-    } catch (const std::exception& e) {
+    // No try/catch: a simulation that throws (e.g. the volt-second balance check rejecting an
+    // unbalanced fixture) must fail the test with ITS message, not surface later as a misleading
+    // "WindingLossesOutput missing" or silently switch the caller to placeholder losses.
+    auto simulatedMas = magneticSimulator.simulate(inputs, magnetic);
+    if (simulatedMas.get_outputs().empty()) {
+        throw std::runtime_error("getLossesFromSimulation: MagneticSimulator returned no outputs");
     }
-    
+    auto outputs = simulatedMas.get_outputs()[0];
+
+    // Get core losses
+    if (outputs.get_core_losses()) {
+        result.coreLosses = resolve_dimensional_values(outputs.get_core_losses()->get_core_losses());
+    }
+
+    // Get winding losses
+    if (outputs.get_winding_losses()) {
+        result.windingLosses = resolve_dimensional_values(outputs.get_winding_losses()->get_winding_losses());
+        result.windingLossesOutput = outputs.get_winding_losses();
+    }
+
+    result.simulationSucceeded = true;
+
     // Get ambient temperature from operating point
     if (!inputs.get_operating_points().empty()) {
         auto opPoint = inputs.get_operating_points()[0];
@@ -2696,11 +2696,29 @@ TEST_CASE("Temperature: Toroidal with Insulation Layers", "[temperature][round-w
     }
     
     // Get inputs from test file (contains operating points)
+    //
+    // Operating point: a single-winding inductor. The fixture used to drive BOTH windings (67 and
+    // 15 turns) with the same in-phase 10 A pk-pk current, so their ampere-turns added on an
+    // ungapped toroid: B_peak = 31.5 T and 2.28 MW of core loss, and the thermal network could not
+    // converge (the old helper swallowed that exception and the test ran on 0 W). Now only the
+    // 67-turn primary carries current; the 15-turn secondary stays in the coil (its section and the
+    // insulation layers around it are what this test checks) but is open: 0 A, with the induced
+    // voltage V1 * 15 / 67. That open secondary is how a single-winding inductor is expressed on
+    // this two-winding coil: MagneticSimulator rejects an operating point without exactly one
+    // excitation per winding, and removing the secondary would remove the insulation layers.
+    //   Core: Fair-Rite 98, T 28/14/15 ungapped, Ae = 105 mm^2, Bsat(100 C) = 0.405 T;
+    //   L = 44.27 mH (the fixture's stored magnetizing inductance), ambient 100 C, 100 kHz, D = 0.5.
+    //   Primary current: triangular, 30 mA pk-pk (+-15 mA), no DC.
+    //   B_peak = L * I_peak / (N * Ae) = 44.27e-3 * 0.015 / (67 * 105e-6) = 0.094 T  (23 % of Bsat).
+    //   V1 = L * dI / (D * T) = 44.27e-3 * 0.030 / 5e-6 = +-265.60 V square (volt-second balanced);
+    //   V2 = 265.60 * 15 / 67 = +-59.46 V.
     auto inputs = mas.get_inputs();
-    
+
     // Run magnetic simulation to get real losses
     auto losses = getLossesFromSimulation(magnetic, inputs);
-    
+    // The simulation must produce real losses now, not the 0 W the swallowed exception left.
+    REQUIRE(losses.coreLosses > 0);
+
     
     // Temperature config
     TemperatureConfig config;
