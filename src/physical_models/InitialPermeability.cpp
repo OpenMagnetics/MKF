@@ -9,6 +9,9 @@
 #include <iostream>
 #include "spline.h"
 #include <numbers>
+#include <mutex>
+#include <memory>
+#include <map>
 #include <sstream>
 #include <streambuf>
 #include <algorithm>
@@ -175,7 +178,69 @@ double InitialPermeability::has_temperature_dependency(CoreMaterial coreMaterial
     }
 }
 
-double InitialPermeability::get_magnetic_field_dc_bias_for_flux_density(CoreMaterial coreMaterial, double biasFluxDensity, double temperature, std::optional<double> frequency) {
+// The material's magnetisation curve B(H) = mu0 * integral_0^H mu_rev(h) dh, tabulated once per material,
+// temperature and frequency. mu_rev is floored at 1: the vacuum term B = mu0 (H + M) never vanishes, and the
+// datasheet fits (1/(a + b H^c) and kin) fall below it when extrapolated. The grid is geometric from 1e-6 of the
+// saturation field strength to 1000 times it (0.8 % steps, trapezoid rule), so it resolves the low-field slope and
+// the knee alike; a linear march on Hsat / 400 steps took up to 400 000 permeability evaluations per call, which
+// made every biased inductance in an adviser cost seconds (ABT #1223).
+const InitialPermeability::MagnetisationCurve& InitialPermeability::get_magnetisation_curve(const CoreMaterial& coreMaterial, double temperature, std::optional<double> frequency) {
+    // Keyed on the data the curve is built from, not the name alone (a custom material may reuse a catalogue
+    // name): the initial permeability with its modifiers, and the saturation points that set Hsat.
+    json initialPermeabilityJson = std::visit([](const auto& initial) { return json(initial); }, coreMaterial.get_permeability().get_initial());
+    json saturationJson = json(coreMaterial.get_saturation());
+    std::ostringstream keyStream;
+    keyStream.precision(17);
+    keyStream << coreMaterial.get_name() << '|' << initialPermeabilityJson.dump() << '|' << saturationJson.dump() << '|' << temperature << '|' << (frequency ? frequency.value() : -1.0);
+    std::string key = keyStream.str();
+
+    static std::mutex cacheMutex;
+    static std::map<std::string, std::shared_ptr<const MagnetisationCurve>> cache;
+    {
+        std::lock_guard<std::mutex> lock(cacheMutex);
+        auto found = cache.find(key);
+        if (found != cache.end()) {
+            return *found->second;
+        }
+    }
+
+    InitialPermeability initialPermeability;
+    double saturationFieldStrength = Core::get_magnetic_field_strength_saturation(coreMaterial, temperature);
+    if (!(saturationFieldStrength > 0)) {
+        throw InvalidInputException(ErrorCode::INVALID_INPUT, "Material " + coreMaterial.get_name() + " has no positive saturation field strength at " + std::to_string(temperature) + " C to build its magnetisation curve");
+    }
+    double vacuumPermeability = Constants().vacuumPermeability;
+    auto reversiblePermeabilityAt = [&](double fieldStrength) {
+        return std::max(1.0, initialPermeability.get_initial_permeability(coreMaterial, temperature, fieldStrength, frequency));
+    };
+    auto curve = std::make_shared<MagnetisationCurve>();
+    const double firstFieldStrength = 1e-6 * saturationFieldStrength;
+    const double lastFieldStrength = 1000 * saturationFieldStrength;
+    const double ratio = 1.008;
+    // From 0 to the first grid point mu_rev is its zero-field value.
+    double previousPermeability = reversiblePermeabilityAt(0);
+    curve->fieldStrength.push_back(0);
+    curve->fluxDensity.push_back(0);
+    double fieldStrength = firstFieldStrength;
+    double permeability = reversiblePermeabilityAt(fieldStrength);
+    curve->fieldStrength.push_back(fieldStrength);
+    curve->fluxDensity.push_back(vacuumPermeability * 0.5 * (previousPermeability + permeability) * fieldStrength);
+    previousPermeability = permeability;
+    while (fieldStrength < lastFieldStrength) {
+        double nextFieldStrength = fieldStrength * ratio;
+        double nextPermeability = reversiblePermeabilityAt(nextFieldStrength);
+        curve->fluxDensity.push_back(curve->fluxDensity.back() + vacuumPermeability * 0.5 * (previousPermeability + nextPermeability) * (nextFieldStrength - fieldStrength));
+        curve->fieldStrength.push_back(nextFieldStrength);
+        fieldStrength = nextFieldStrength;
+        previousPermeability = nextPermeability;
+    }
+
+    std::lock_guard<std::mutex> lock(cacheMutex);
+    auto [inserted, wasInserted] = cache.emplace(key, std::move(curve));
+    return *inserted->second;
+}
+
+double InitialPermeability::get_magnetic_field_dc_bias_for_flux_density(CoreMaterial coreMaterial, double biasFluxDensity, double temperature, std::optional<double> frequency, bool refuseAboveSaturation) {
     if (biasFluxDensity < 0) {
         throw InvalidInputException(ErrorCode::INVALID_INPUT, "A DC bias flux density cannot be negative: " + std::to_string(biasFluxDensity) + " T");
     }
@@ -183,43 +248,76 @@ double InitialPermeability::get_magnetic_field_dc_bias_for_flux_density(CoreMate
         return 0;
     }
     double saturationFluxDensity = Core::get_magnetic_flux_density_saturation(coreMaterial, temperature, false);
-    if (biasFluxDensity > saturationFluxDensity) {
+    // Sizing a gap (refuseAboveSaturation) asks for a bias no gap can hold. Analysing a given design
+    // does not: its operating point may sit past the knee, and the curve carries on there on the
+    // vacuum slope, which is the material's B(H) beyond saturation.
+    if (refuseAboveSaturation && biasFluxDensity > saturationFluxDensity) {
         throw InvalidInputException(ErrorCode::INVALID_INPUT,
             "The DC bias puts " + std::to_string(biasFluxDensity) + " T in material " + coreMaterial.get_name() +
             ", above its saturation of " + std::to_string(saturationFluxDensity) + " T at " + std::to_string(temperature) +
             " °C: no gap holds the target inductance at that bias, fewer turns or a larger core are needed");
     }
 
-    // B(H) = µ0·∫0^H µ_rev(h)·dh, marched with the trapezoid rule on a grid fine against the
-    // knee (400 steps to the saturation field strength). µ_rev is floored at 1: the vacuum term
-    // B = µ0·(H + M) never vanishes, and the datasheet fits (1/(a + b·H^c) and kin) fall below
-    // it when extrapolated. The march ends inside the step that crosses the target, which is
-    // then interpolated linearly.
-    double saturationFieldStrength = Core::get_magnetic_field_strength_saturation(coreMaterial, temperature);
-    double step = std::max(saturationFieldStrength / 400., 0.01);
-    double vacuumPermeability = Constants().vacuumPermeability;
-    auto reversiblePermeabilityAt = [&](double fieldStrength) {
-        return std::max(1.0, get_initial_permeability(coreMaterial, temperature, fieldStrength, frequency));
-    };
-    double fieldStrength = 0;
-    double fluxDensity = 0;
-    double previousPermeability = reversiblePermeabilityAt(0);
-    double fieldStrengthLimit = 1000 * saturationFieldStrength;
-    while (fieldStrength < fieldStrengthLimit) {
-        double nextFieldStrength = fieldStrength + step;
-        double nextPermeability = reversiblePermeabilityAt(nextFieldStrength);
-        double nextFluxDensity = fluxDensity + vacuumPermeability * 0.5 * (previousPermeability + nextPermeability) * step;
-        if (nextFluxDensity >= biasFluxDensity) {
-            return fieldStrength + (biasFluxDensity - fluxDensity) / (nextFluxDensity - fluxDensity) * step;
-        }
-        fieldStrength = nextFieldStrength;
-        fluxDensity = nextFluxDensity;
-        previousPermeability = nextPermeability;
+    const auto& curve = get_magnetisation_curve(coreMaterial, temperature, frequency);
+    const auto& fluxDensities = curve.fluxDensity;
+    const auto& fieldStrengths = curve.fieldStrength;
+    if (biasFluxDensity <= fluxDensities.back()) {
+        // B(H) is strictly increasing (mu_rev >= 1), so the crossing is found by bisection and interpolated linearly.
+        size_t upper = std::lower_bound(fluxDensities.begin(), fluxDensities.end(), biasFluxDensity) - fluxDensities.begin();
+        size_t lower = upper - 1;
+        return fieldStrengths[lower] + (biasFluxDensity - fluxDensities[lower]) / (fluxDensities[upper] - fluxDensities[lower]) * (fieldStrengths[upper] - fieldStrengths[lower]);
+    }
+    if (!refuseAboveSaturation && biasFluxDensity > saturationFluxDensity) {
+        // Analysing a design driven past saturation: a thousand times the saturation field strength
+        // is far beyond the knee, the magnetisation no longer grows, and B rises on the vacuum slope.
+        return fieldStrengths.back() + (biasFluxDensity - fluxDensities.back()) / Constants().vacuumPermeability;
     }
     throw std::runtime_error("The DC-bias permeability curve of material " + coreMaterial.get_name() + " integrates to only " +
-                             std::to_string(fluxDensity) + " T at " + std::to_string(fieldStrengthLimit) + " A/m, below the " +
+                             std::to_string(fluxDensities.back()) + " T at " + std::to_string(fieldStrengths.back()) + " A/m, below the " +
                              std::to_string(biasFluxDensity) + " T asked, although that is under its saturation of " +
                              std::to_string(saturationFluxDensity) + " T: the material's DC-bias factor is inconsistent with its saturation data");
+}
+
+std::pair<double, double> InitialPermeability::get_dc_operating_point_for_magnetomotive_force(CoreMaterial coreMaterial, double magnetomotiveForce, double effectiveLength, double effectiveArea, double gapReluctance, double temperature, std::optional<double> frequency) {
+    if (magnetomotiveForce < 0 || effectiveLength <= 0 || effectiveArea <= 0 || gapReluctance < 0) {
+        throw InvalidInputException(ErrorCode::INVALID_INPUT,
+            "DC-bias load line needs a non-negative MMF and gap reluctance and positive core dimensions: MMF " + std::to_string(magnetomotiveForce) +
+            " A, l_e " + std::to_string(effectiveLength) + " m, A_e " + std::to_string(effectiveArea) + " m2, R_gap " + std::to_string(gapReluctance) + " 1/H");
+    }
+    if (magnetomotiveForce == 0) {
+        return {0, 0};
+    }
+    // Ampere around the magnetic circuit with the MMF imposed: N*I = H*l_e + B(H)*A_e*R_gap on the material's
+    // magnetisation curve. The right side grows strictly with H, so the crossing on the tabulated curve is found by
+    // bisection; past the table's end (1000 Hsat) B rises on the vacuum slope and the crossing is linear. Without a
+    // gap this is H = N*I/l_e, the vendors' own rule for powder cores.
+    const auto& curve = get_magnetisation_curve(coreMaterial, temperature, frequency);
+    const auto& fieldStrengths = curve.fieldStrength;
+    const auto& fluxDensities = curve.fluxDensity;
+    auto loadLine = [&](size_t index) {
+        return fieldStrengths[index] * effectiveLength + fluxDensities[index] * effectiveArea * gapReluctance;
+    };
+    size_t last = fieldStrengths.size() - 1;
+    if (magnetomotiveForce > loadLine(last)) {
+        double vacuumPermeability = Constants().vacuumPermeability;
+        double slope = effectiveLength + vacuumPermeability * effectiveArea * gapReluctance;
+        double extraFieldStrength = (magnetomotiveForce - loadLine(last)) / slope;
+        return {fieldStrengths[last] + extraFieldStrength, fluxDensities[last] + vacuumPermeability * extraFieldStrength};
+    }
+    size_t lower = 0;
+    size_t upper = last;
+    while (upper - lower > 1) {
+        size_t middle = (lower + upper) / 2;
+        if (loadLine(middle) < magnetomotiveForce) {
+            lower = middle;
+        }
+        else {
+            upper = middle;
+        }
+    }
+    double fraction = (magnetomotiveForce - loadLine(lower)) / (loadLine(upper) - loadLine(lower));
+    return {fieldStrengths[lower] + fraction * (fieldStrengths[upper] - fieldStrengths[lower]),
+            fluxDensities[lower] + fraction * (fluxDensities[upper] - fluxDensities[lower])};
 }
 
 double InitialPermeability::has_magnetic_field_dc_bias_dependency(CoreMaterial coreMaterial) {

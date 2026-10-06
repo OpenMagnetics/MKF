@@ -64,10 +64,28 @@ class InitialPermeability {
         // The datasheet bias curve is the REVERSIBLE (incremental) permeability, dB/dH along the
         // magnetisation curve, so B(H) = µ0·∫0^H µ_rev(h)·dh must be integrated and inverted; the
         // secant B = µ0·µ_rev(H)·H is wrong past the knee, and the fixed point µ ← µ_rev(B/(µ0·µ))
-        // diverges there. Throws when biasFluxDensity exceeds the material saturation at that
-        // temperature: no field strength holds that flux, the design is infeasible.
+        // diverges there. With refuseAboveSaturation (gap sizing) it throws when biasFluxDensity
+        // exceeds the material saturation at that temperature: no gap holds that flux. Without it
+        // (analysing a given design) the march continues past the knee on the vacuum slope.
         static double get_magnetic_field_dc_bias_for_flux_density(CoreMaterial coreMaterial,
                                         double biasFluxDensity,
+                                        double temperature,
+                                        std::optional<double> frequency = std::nullopt,
+                                        bool refuseAboveSaturation = true);
+        // The material's magnetisation curve B(H) = mu0 * integral of mu_rev, tabulated and cached per material,
+        // temperature and frequency (ABT #1223).
+        struct MagnetisationCurve {
+            std::vector<double> fieldStrength;
+            std::vector<double> fluxDensity;
+        };
+        static const MagnetisationCurve& get_magnetisation_curve(const CoreMaterial& coreMaterial, double temperature, std::optional<double> frequency);
+        // The DC operating point {H, B} of the material when the MMF N*I is imposed (current-driven, or a DC
+        // set by the load currents): solves N*I = H*l_e + B(H)*A_e*R_gap on the magnetisation curve.
+        static std::pair<double, double> get_dc_operating_point_for_magnetomotive_force(CoreMaterial coreMaterial,
+                                        double magnetomotiveForce,
+                                        double effectiveLength,
+                                        double effectiveArea,
+                                        double gapReluctance,
                                         double temperature,
                                         std::optional<double> frequency = std::nullopt);
         static std::vector<PermeabilityPoint> sample_initial_permeability_by_frequency_modifier(PermeabilityPoint permeabilityPoint);
@@ -90,4 +108,4 @@ class InitialPermeability {
                                         std::optional<CoreShapeFamily> shapeFamily);
 };
 
-} // namespace OpenMagnetics
+} // namespace OpenMagnetics
