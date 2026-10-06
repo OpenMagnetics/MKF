@@ -649,6 +649,17 @@ std::vector<std::pair<OpenMagnetics::Mas, double>> replay_web_suppression_magnet
 // ABT #1699: the web's CMC wizard -> Magnetic Adviser call, captured at the engine proxy.
 // It threw "[COIL_NOT_PROCESSED] ... Missing turns description to evaluate cost filter":
 // a candidate reached the COST filter without a wound coil.
+// The fixture's inputs are Kirchhoff design_cmc's output for the wizard spec (230 V, 10 A, 50 Hz, 2
+// windings, 500 ohm at 150 kHz, C_par 10 pF, dV/dt 50 V/ns). Its "Nominal" operating point was captured
+// when Kirchhoff drove each winding with I_cm = C*dV/dt = 0.5 A as a continuous 150 kHz sinusoid, so each
+// winding saw v = L*w*(sum I_cm) = 0.5305 mH * 2pi*150 kHz * 1 A = 500 V peak (~0.7 T; no toroid stayed
+// under the adviser's 130 C gate). C*dV/dt only lasts the few-ns switching edge. The CM current at 150 kHz
+// is the switch node's 150 kHz component through C_par: V_bus = sqrt(2)*230 = 325.3 V, t_r = V_bus/(dV/dt)
+// = 6.5 ns, V_1 = (2/pi)*V_bus*sinc(pi*f*t_r) = 207.1 V, I_cm = 2pi*f*C_par*V_1 = 1.95 mA in total, i.e.
+// 0.98 mA per winding on its +-10 A line (DM) level, and the voltage on every winding is the CM drop on
+// the choke's own CM impedance, |Z|*I_cm = 500 ohm * 1.95 mA = 0.98 V peak. That "Nominal" operating point
+// was regenerated with the corrected Kirchhoff (cmc_common_mode_current_peak); the line-frequency operating
+// point and the design requirements are unchanged.
 TEST_CASE("MagneticAdviser web CMC suppression flow returns wound toroidal CMCs",
           "[adviser][magnetic-adviser][available-cores][cmc][suppression][abt-1699]") {
     settings.reset();
