@@ -3144,7 +3144,7 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces(
                 slotAttachAxial.push_back(attachAxial[index]);
                 slotRouteIndex.push_back(index);
             }
-            const auto partialSlots = terminal_exit_slots(slotRoutes, slotDiameters, slotAttachAxial);
+            const auto partialSlots = terminal_exit_slots(slotRoutes, slotDiameters, slotAttachAxial, is_real_winding_blocking_applied());
             for (size_t k = 0; k < partialSlots.size(); ++k) {
                 exitSlots[slotRouteIndex[k]] = partialSlots[k];
             }

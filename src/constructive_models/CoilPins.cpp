@@ -50,6 +50,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cmrc/cmrc.hpp>
+#include <iomanip>
 #include <limits>
 #include <map>
 #include <set>
@@ -377,6 +378,58 @@ double polyline_distance(const std::vector<std::vector<double>>& a, const std::v
     return best;
 }
 
+bool is_terminal_route(const ConnectionRoute& route) {
+    return route.kind == ConnectionKind::TERMINAL_ENTRANCE || route.kind == ConnectionKind::TERMINAL_EXIT;
+}
+
+std::string terminal_route_label(const ConnectionRoute& route) {
+    return "winding '" + route.winding + "' parallel " + std::to_string(route.parallel) +
+           (route.kind == ConnectionKind::TERMINAL_ENTRANCE ? " entrance" : " exit");
+}
+
+// A route's 2D polyline (radial, axial) lifted to 3D for the shared segment distance.
+std::vector<std::vector<double>> route_polyline(const ConnectionRoute& route) {
+    std::vector<std::vector<double>> points;
+    for (const auto& waypoint : route.waypoints) {
+        points.push_back({waypoint.at(0), waypoint.at(1), 0.0});
+    }
+    return points;
+}
+
+// What a copper piece occupies ALONG the connection face: [low, high] in x. A lead occupies its slot;
+// a RAMPED lead (ABT #1336, ConnectionRoute::rampLength, real winding only) also occupies the stretch
+// of its turn it climbs along -- an entrance towards the crossing (lower x: the wrap leaves the
+// crossing towards -x and the lead joins it from its slot), an exit away from it (its last turn
+// arrives at the slot from +x) -- the ramp plus the plannedBendRadius of level run its radial bend
+// takes. Links and dragbacks sit at the crossing, x = 0.
+std::pair<double, double> lane_footprint(const ConnectionRoute& route, double x) {
+    if (!is_terminal_route(route)) {
+        return {0.0, 0.0};
+    }
+    const double span = route.rampLength ? route.rampLength.value() + route.plannedBendRadius : 0.0;
+    return route.kind == ConnectionKind::TERMINAL_ENTRANCE ? std::pair<double, double>{x - span, x}
+                                                           : std::pair<double, double>{x, x + span};
+}
+
+double footprint_gap(const std::pair<double, double>& a, const std::pair<double, double>& b) {
+    return std::max(a.first - b.second, b.first - a.second);
+}
+
+// ABT #1705: two terminal leads of DIFFERENT bundles (winding, entrance/exit) can meet in 3D when
+// their 2D routes come within the two coated radii plus both planned bend radii (a drawn lead's
+// corners reach up to its bend radius off the polyline); such a pair must then stand the two coated
+// radii plus the larger bend radius apart along the face. Real winding only. Returns
+// {reach, requiredGap}, both centreline distances.
+std::pair<double, double> cross_bundle_clearance(const ConnectionRoute& a, double diameterA, const ConnectionRoute& b,
+                                                 double diameterB) {
+    const double radii = (diameterA + diameterB) / 2;
+    return {radii + a.plannedBendRadius + b.plannedBendRadius, radii + std::max(a.plannedBendRadius, b.plannedBendRadius)};
+}
+
+bool same_bundle(const ConnectionRoute& a, const ConnectionRoute& b) {
+    return a.winding == b.winding && a.kind == b.kind && a.side == b.side;
+}
+
 struct RoutedPinLead {
     size_t request = 0;
     size_t pinIndex = 0;
@@ -502,27 +555,16 @@ int64_t Coil::pin_wrap_turns() {
 
 std::vector<std::optional<double>> Coil::terminal_exit_slots(const std::vector<ConnectionRoute>& routes,
                                                              const std::vector<double>& diameters,
-                                                             const std::vector<double>& attachAxial) {
+                                                             const std::vector<double>& attachAxial,
+                                                             bool realWinding) {
     if (diameters.size() != routes.size() || attachAxial.size() != routes.size()) {
         throw InvalidInputException(ErrorCode::INVALID_INPUT,
             "terminal_exit_slots needs one diameter and one attach coordinate per route: " + std::to_string(routes.size()) +
             " routes, " + std::to_string(diameters.size()) + " diameters, " + std::to_string(attachAxial.size()) + " attach coordinates.");
     }
-    auto is_terminal = [](const ConnectionRoute& route) {
-        return route.kind == ConnectionKind::TERMINAL_ENTRANCE || route.kind == ConnectionKind::TERMINAL_EXIT;
-    };
-    auto label_of = [](const ConnectionRoute& route) {
-        return "winding '" + route.winding + "' parallel " + std::to_string(route.parallel) +
-               (route.kind == ConnectionKind::TERMINAL_ENTRANCE ? " entrance" : " exit");
-    };
-    // The routes' 2D polylines (radial, axial) lifted to 3D for the shared segment distance.
-    auto polyline_of = [](const ConnectionRoute& route) {
-        std::vector<std::vector<double>> points;
-        for (const auto& waypoint : route.waypoints) {
-            points.push_back({waypoint.at(0), waypoint.at(1), 0.0});
-        }
-        return points;
-    };
+    auto is_terminal = is_terminal_route;
+    auto label_of = terminal_route_label;
+    auto polyline_of = route_polyline;
     std::vector<std::optional<double>> slots(routes.size());
     for (size_t index = 0; index < routes.size(); ++index) {
         if (!is_terminal(routes[index])) {
@@ -538,6 +580,14 @@ std::vector<std::optional<double>> Coil::terminal_exit_slots(const std::vector<C
         if (!std::isfinite(attachAxial[index])) {
             throw InvalidInputException(ErrorCode::INVALID_INPUT,
                 "The terminal route of " + label_of(routes[index]) + " has no attach turn coordinate.");
+        }
+        // ABT #1705: under real winding the lanes are planned for the lead's bends, so the bend must
+        // be known. Coil::lead_bend_radius never returns less than the coated radius it sweeps.
+        if (realWinding && !(routes[index].plannedBendRadius >= diameters[index] / 2 - 1e-12)) {
+            throw InvalidInputException(ErrorCode::INVALID_INPUT,
+                "The terminal route of " + label_of(routes[index]) + " carries a planned bend radius of " +
+                std::to_string(routes[index].plannedBendRadius * 1e3) + " mm, below its coated radius " +
+                std::to_string(diameters[index] / 2 * 1e3) + " mm, so its lane cannot be planned for its bends (ABT #1705).");
         }
     }
     const double tolerance = 1e-9;
@@ -560,24 +610,11 @@ std::vector<std::optional<double>> Coil::terminal_exit_slots(const std::vector<C
                 windingOrder.push_back(route.winding);
             }
         }
-        // What a copper piece occupies ALONG the face: [low, high] in x. A lead occupies its slot;
-        // a RAMPED lead (ABT #1336, ConnectionRoute::rampLength, real winding only) also occupies
-        // the stretch of its turn it climbs along -- an entrance towards the crossing (lower x:
-        // the wrap leaves the crossing towards -x and the lead joins it from its slot), an exit
-        // away from it (its last turn arrives at the slot from +x) -- the ramp plus the
-        // plannedBendRadius of level run its radial bend takes. Links and dragbacks sit at the
-        // crossing, x = 0.
+        // What a copper piece occupies ALONG the face: see lane_footprint.
         auto ramp_span = [&](size_t index) {
             return routes[index].rampLength ? routes[index].rampLength.value() + routes[index].plannedBendRadius : 0.0;
         };
-        auto footprint_at = [&](size_t index, double x) -> std::pair<double, double> {
-            if (!is_terminal(routes[index])) {
-                return {0.0, 0.0};
-            }
-            const double span = ramp_span(index);
-            return routes[index].kind == ConnectionKind::TERMINAL_ENTRANCE ? std::pair<double, double>{x - span, x}
-                                                                           : std::pair<double, double>{x, x + span};
-        };
+        auto footprint_at = [&](size_t index, double x) { return lane_footprint(routes[index], x); };
         struct Occupant {
             size_t route;
             std::pair<double, double> footprint;
@@ -601,12 +638,20 @@ std::vector<std::optional<double>> Coil::terminal_exit_slots(const std::vector<C
                 return false;   // a winding's leads never yield to its own links
             }
             const double clearance = (diameters[lead] + diameters[occupant.route]) / 2 - tolerance;
-            const double gap = std::max(footprint.first - occupant.footprint.second, occupant.footprint.first - footprint.second);
-            if (gap >= clearance) {
+            double requiredGap = clearance;   // along the face
+            double reach = clearance;         // in the section: closer than this, the two can meet
+            if (realWinding && is_terminal(other)) {
+                // Rule 4 (ABT #1705): another bundle's lead, within reach of this lead's corners.
+                const auto [bendReach, bendGap] = cross_bundle_clearance(routes[lead], diameters[lead], other, diameters[occupant.route]);
+                reach = bendReach - tolerance;
+                requiredGap = bendGap - tolerance;
+            }
+            const double gap = footprint_gap(footprint, occupant.footprint);
+            if (gap >= requiredGap) {
                 return false;
             }
             const double found = polyline_distance(polyline_of(routes[lead]), polyline_of(other));
-            return found < clearance;
+            return found < reach;
         };
         for (const auto& winding : windingOrder) {
             for (auto kind : {ConnectionKind::TERMINAL_ENTRANCE, ConnectionKind::TERMINAL_EXIT}) {
@@ -688,7 +733,57 @@ std::vector<std::optional<double>> Coil::terminal_exit_slots(const std::vector<C
             }
         }
     }
+    check_terminal_lanes(routes, diameters, slots, realWinding);
     return slots;
+}
+
+void Coil::check_terminal_lanes(const std::vector<ConnectionRoute>& routes, const std::vector<double>& diameters,
+                                const std::vector<std::optional<double>>& slots, bool realWinding) {
+    if (diameters.size() != routes.size() || slots.size() != routes.size()) {
+        throw InvalidInputException(ErrorCode::INVALID_INPUT,
+            "check_terminal_lanes needs one diameter and one slot per route: " + std::to_string(routes.size()) + " routes, " +
+            std::to_string(diameters.size()) + " diameters, " + std::to_string(slots.size()) + " slots.");
+    }
+    // A clearance is met when the found distance is at least the required one less this: the lanes
+    // are sums of lengths in metres, so a pair placed at exactly the required distance must pass.
+    const double tolerance = 1e-9;
+    auto millimetres = [](double metres) {
+        std::ostringstream out;
+        out << std::fixed << std::setprecision(4) << metres * 1e3 << " mm";
+        return out.str();
+    };
+    for (size_t i = 0; i < routes.size(); ++i) {
+        if (!is_terminal_route(routes[i]) || !slots[i]) {
+            continue;
+        }
+        for (size_t j = i + 1; j < routes.size(); ++j) {
+            if (!is_terminal_route(routes[j]) || !slots[j] || routes[j].side != routes[i].side) {
+                continue;
+            }
+            const double gap = footprint_gap(lane_footprint(routes[i], slots[i].value()), lane_footprint(routes[j], slots[j].value()));
+            const double radii = (diameters[i] + diameters[j]) / 2;
+            const double section = polyline_distance(route_polyline(routes[i]), route_polyline(routes[j]));
+            auto witness = [&]() {
+                return terminal_route_label(routes[i]) + " at x " + millimetres(slots[i].value()) + " and " +
+                       terminal_route_label(routes[j]) + " at x " + millimetres(slots[j].value()) + ": ";
+            };
+            if (gap < radii - tolerance && section < radii - tolerance) {
+                throw std::logic_error("Terminal lanes collide (ABT #1705): " + witness() + "their footprints along the connection face are " +
+                                       millimetres(gap) + " apart and their routes in the winding window " + millimetres(section) +
+                                       ", both under the " + millimetres(radii) + " their coated radii need.");
+            }
+            if (realWinding && !same_bundle(routes[i], routes[j])) {
+                const auto [reach, requiredGap] = cross_bundle_clearance(routes[i], diameters[i], routes[j], diameters[j]);
+                if (section < reach - tolerance && gap < requiredGap - tolerance) {
+                    throw std::logic_error("Terminal lanes collide (ABT #1705): " + witness() + "the two leads belong to different bundles and their routes in the winding window come " +
+                                           millimetres(section) + " apart, within the " + millimetres(reach) +
+                                           " their coated radii and bends reach, yet their footprints along the connection face stand only " +
+                                           millimetres(gap) + " apart, under the " + millimetres(requiredGap) +
+                                           " (coated radii plus the larger bend radius) that keeps their bent copper apart.");
+                }
+            }
+        }
+    }
 }
 
 std::vector<PinLeadRoute> Coil::route_leads_to_pins(const std::vector<MAS::Pin>& bobbinPins,

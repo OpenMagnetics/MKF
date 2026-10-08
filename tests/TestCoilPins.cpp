@@ -769,7 +769,7 @@ std::vector<std::optional<double>> recompute_exit_slots(OpenMagnetics::Coil& coi
         }
         attachAxial.push_back(axial);
     }
-    return OpenMagnetics::Coil::terminal_exit_slots(routes, diameters, attachAxial);
+    return OpenMagnetics::Coil::terminal_exit_slots(routes, diameters, attachAxial, coil.is_real_winding_blocking_applied());
 }
 
 struct PinRunReport {
@@ -1156,7 +1156,7 @@ TEST_CASE("terminal_exit_slots: bundles on consecutive lanes, anchored clear of 
         return std::make_pair(routes, attach);
     };
     auto slots_of = [&](const std::vector<ConnectionRoute>& routes, const std::vector<double>& attach) {
-        return OpenMagnetics::Coil::terminal_exit_slots(routes, std::vector<double>(routes.size(), od), attach);
+        return OpenMagnetics::Coil::terminal_exit_slots(routes, std::vector<double>(routes.size(), od), attach, false);
     };
 
     SECTION("entrances at the plane side by side, exits one lane out of their dragback") {
@@ -1206,7 +1206,7 @@ TEST_CASE("terminal_exit_slots: bundles on consecutive lanes, anchored clear of 
     }
     SECTION("inputs that do not match the routes throw") {
         auto [routes, attach] = bundle("Primary", 0, true);
-        CHECK_THROWS_WITH(OpenMagnetics::Coil::terminal_exit_slots(routes, {od}, attach), Catch::Matchers::ContainsSubstring("one diameter"));
+        CHECK_THROWS_WITH(OpenMagnetics::Coil::terminal_exit_slots(routes, {od}, attach, false), Catch::Matchers::ContainsSubstring("one diameter"));
         attach[1] = std::numeric_limits<double>::quiet_NaN();
         CHECK_THROWS_WITH(slots_of(routes, attach), Catch::Matchers::ContainsSubstring("no attach turn coordinate"));
     }

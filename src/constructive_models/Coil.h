@@ -1204,15 +1204,46 @@ class Coil : public MAS::Coil {
          *   3. The anchor a0 is the lowest lane at which no member's 2D route (radial, axial) comes
          *      closer than the two coated radii to anything already on its lane (rule 1 plus every
          *      bundle placed before).
+         *   4. ABT #1705, REAL WINDING ONLY: two terminal leads of DIFFERENT bundles whose sections
+         *      come within reach of each other's corners -- 2D routes closer than the two coated
+         *      radii plus BOTH planned bend radii (ConnectionRoute::plannedBendRadius) -- never share
+         *      the face: their footprints along it stand the two coated radii PLUS the larger bend
+         *      radius apart. A drawn lead is not its 2D polyline: it leaves its helix and turns onto
+         *      its radial run through bends of plannedBendRadius, so its copper reaches up to that
+         *      radius off the polyline and off its lane, and two bundles whose polylines merely
+         *      touch in 2D (14_dab: an inner-layer entrance row 0.855 mm below the outer-layer exit
+         *      row) collide in 3D wherever they share x. The extra bend radius is the clearance gap
+         *      between bundles: never an exact touch at a bundle boundary. Members of ONE bundle keep
+         *      their side-by-side pitch (rules 2 and 3, ABT #685/#1336).
+         * Then check_terminal_lanes proves the result and throws on a collision.
          * @param routes          the coil's connection routes (get_connection_reserved_spaces)
          * @param diameters       coated (or sleeve) outer diameter per route, same size as routes
          * @param attachAxial     per route, the axial coordinate of the turn a terminal route attaches to
          *                        (ignored for other routes), same size as routes
+         * @param realWinding     Coil::is_real_winding_blocking_applied(): rule 4 applies, and every
+         *                        terminal route must carry its plannedBendRadius (else it throws)
          * @return per route: its exit x for a TERMINAL_ENTRANCE / TERMINAL_EXIT route, empty otherwise
          */
         static std::vector<std::optional<double>> terminal_exit_slots(const std::vector<ConnectionRoute>& routes,
                                                                       const std::vector<double>& diameters,
-                                                                      const std::vector<double>& attachAxial);
+                                                                      const std::vector<double>& attachAxial,
+                                                                      bool realWinding);
+        /**
+         * @brief ABT #1705: proves a set of terminal lanes (terminal_exit_slots' answer, or any other)
+         * and THROWS on the first pair that collides, naming both leads, their lanes and the shortfall.
+         * Per isolation side, every pair of terminal leads with a slot:
+         *   - no two leads within their summed coated radii: when their footprints along the face
+         *     (the lane, plus a ramp's span on its turn side) come closer than (d_i + d_j)/2, their 2D
+         *     routes must not -- whether the two are siblings of one bundle or not;
+         *   - under real winding, two leads of DIFFERENT bundles (winding, entrance/exit) whose 2D
+         *     routes come within (d_i + d_j)/2 + R_i + R_j (R = plannedBendRadius) must stand
+         *     (d_i + d_j)/2 + max(R_i, R_j) apart along the face (terminal_exit_slots rule 4). This
+         *     is the check that catches an inner-layer lead crossing the outer layer where its own
+         *     winding's exits attach.
+         * Same arguments as terminal_exit_slots, plus the slots to prove (same size as routes).
+         */
+        static void check_terminal_lanes(const std::vector<ConnectionRoute>& routes, const std::vector<double>& diameters,
+                                         const std::vector<std::optional<double>>& slots, bool realWinding);
         /**
          * @brief Every terminal lead's run from the window exit to its pin, planned together so no
          * two runs share copper (ABT #1172 WP3, ABT #1237).
