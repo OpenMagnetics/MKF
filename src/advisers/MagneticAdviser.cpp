@@ -243,6 +243,9 @@ std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic_fast(I
 }
 
 std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic_fast(Inputs inputs, std::vector<MagneticFilterOperation> filterFlow, size_t maximumNumberResults) {
+    // ABT #1718: the loss ranking integrates the primary voltage of every wound candidate; an
+    // unbalanced voltage is rejected once, here, before any core is searched or coil wound.
+    Inputs::check_adviser_inputs_volt_second_balance(inputs);
     inputs = pre_process_inputs(inputs);
 
     // Caller-supplied filters (e.g. DC/EFFECTIVE_CURRENT_DENSITY) are evaluated
@@ -611,6 +614,8 @@ std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic(Inputs
 }
 
 std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic(Inputs inputs, std::vector<MagneticFilterOperation> filterFlow, size_t maximumNumberResults) {
+    // ABT #1718: see get_advised_magnetic_fast.
+    Inputs::check_adviser_inputs_volt_second_balance(inputs);
     clear_scoring();
     _failedScorings.clear();  // stale rejections would mis-rank the next run (ABT #801)
     load_filter_flow(filterFlow, inputs);

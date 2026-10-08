@@ -364,6 +364,9 @@ std::vector<std::pair<Mas, double>> CoreAdviser::get_advised_core(Inputs inputs,
 }
 
 std::vector<std::pair<Mas, double>> CoreAdviser::get_advised_core(Inputs inputs, std::map<CoreAdviserFilters, double> weights, std::vector<Core>* cores, size_t maximumNumberResults){
+    // ABT #1718: the loss filters integrate the primary voltage of every candidate; an unbalanced
+    // voltage is rejected once, here, instead of culling every core.
+    Inputs::check_adviser_inputs_volt_second_balance(inputs);
     _weights = weights;
  
     size_t maximumMagneticsAfterFiltering = settings.get_core_adviser_maximum_magnetics_after_filtering();
@@ -441,6 +444,7 @@ std::vector<std::pair<Mas, double>> CoreAdviser::get_advised_core(Inputs inputs,
 
 std::vector<std::pair<Mas, double>> CoreAdviser::get_advised_core(Inputs inputs, std::vector<CoreShape>* shapes, size_t maximumNumberResults) {
     throw_if_inputs_are_not_processed(inputs);
+    Inputs::check_adviser_inputs_volt_second_balance(inputs);  // ABT #1718
     auto globalIncludeStacks = settings.get_core_adviser_include_stacks();
     auto magnetics = create_magnetic_dataset(inputs, shapes, globalIncludeStacks);
 

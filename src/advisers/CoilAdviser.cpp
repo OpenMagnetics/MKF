@@ -518,6 +518,17 @@ namespace OpenMagnetics {
         auto coreType = core.get_functional_description().get_type();
 
         auto inputs = mas.get_mutable_inputs();
+        // ABT #1718: the loss ranking integrates the primary voltage of every wound candidate;
+        // an unbalanced voltage is rejected once, here, before anything is wound.
+        {
+            const auto& coil = mas.get_magnetic().get_coil();
+            std::optional<std::string> primaryWindingName = std::nullopt;
+            if (!coil.get_functional_description().empty()) {
+                primaryWindingName = coil.get_functional_description()[0].get_name();
+            }
+            Inputs::check_adviser_inputs_volt_second_balance(inputs, coil.get_isolation_sides(), primaryWindingName,
+                                                             core.get_shape_family(), coreType);
+        }
         load_filter_flow(_defaultCustomMagneticFilterFlow, inputs);
         auto patterns = Coil::get_patterns(inputs, coreType);
         auto repetitions = Coil::get_repetitions(inputs, coreType);

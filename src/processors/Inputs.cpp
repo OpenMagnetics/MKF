@@ -1965,6 +1965,116 @@ void Inputs::check_volt_second_balance(const Waveform& voltageSampledWaveform, c
     }
 }
 
+void Inputs::check_adviser_inputs_volt_second_balance(const Inputs& inputs,
+                                                      std::optional<std::vector<IsolationSide>> coilIsolationSides,
+                                                      std::optional<std::string> primaryWindingName,
+                                                      std::optional<CoreShapeFamily> coreShapeFamily,
+                                                      std::optional<CoreType> coreType) {
+    // Open-core families are priced by their own models (calculate_flux_density_for_family_model),
+    // which never integrate the voltage. DRUM_RING and MOLDED take those models only for some
+    // grades, so the whole family is left unchecked rather than guessing which.
+    if (coreShapeFamily) {
+        switch (coreShapeFamily.value()) {
+            case CoreShapeFamily::DRUM:
+            case CoreShapeFamily::DRUM_SEMISHIELDED:
+            case CoreShapeFamily::DRUM_RING:
+            case CoreShapeFamily::ROD:
+            case CoreShapeFamily::MOLDED:
+                return;
+            default:
+                break;
+        }
+    }
+
+    const auto& operatingPoints = inputs.get_operating_points();
+    for (size_t operatingPointIndex = 0; operatingPointIndex < operatingPoints.size(); ++operatingPointIndex) {
+        const auto& operatingPoint = operatingPoints[operatingPointIndex];
+        const auto& excitations = operatingPoint.get_excitations_per_winding();
+        if (excitations.empty()) {
+            continue;
+        }
+        // The loss path integrates only the primary (winding 0) excitation.
+        auto excitation = get_primary_excitation(operatingPoint);
+        if (!excitation.get_voltage()) {
+            continue;
+        }
+        bool hasCurrent = excitation.get_current().has_value();
+
+        // Mirrors the routing in MagnetizingInductance::calculate_inductance_and_magnetic_flux_density.
+        // One winding in the circuit with a current: that current is the magnetizing current (the
+        // loss path also requires the coil to have one winding; with the coil unknown, or with it
+        // known, this check stays on the side that does not integrate).
+        if (excitations.size() == 1 && hasCurrent) {
+            continue;
+        }
+        if (excitations.size() >= 2) {
+            // With no primary current, the routing below throws its own error before integrating.
+            if (!hasCurrent) {
+                continue;
+            }
+            // Common-mode choke on a toroid: its magnetizing current is the winding average. With
+            // the core type unknown, every CMC-shaped operating point is skipped.
+            bool coreCanBeToroidal = !coreType || coreType.value() == CoreType::TOROIDAL;
+            if (coreCanBeToroidal && can_be_common_mode_choke(operatingPoint)) {
+                continue;
+            }
+            // Multiport inductor: the coil's isolation sides decide, unless the coil has fewer
+            // windings than the circuit. With no coil yet, either reading skips the check.
+            std::optional<std::vector<IsolationSide>> effectiveIsolationSides = std::nullopt;
+            if (coilIsolationSides && coilIsolationSides->size() >= excitations.size()) {
+                effectiveIsolationSides = coilIsolationSides;
+            }
+            if (is_multiport_inductor(operatingPoint, effectiveIsolationSides)) {
+                continue;
+            }
+            if (!coilIsolationSides) {
+                auto requiredIsolationSides = inputs.get_design_requirements().get_isolation_sides();
+                if (requiredIsolationSides && is_multiport_inductor(operatingPoint, requiredIsolationSides.value())) {
+                    continue;
+                }
+            }
+        }
+        // Inside calculate_magnetizing_current a FLYBACK_PRIMARY / FLYBACK_SECONDARY /
+        // UNIPOLAR_TRIANGULAR current is rebuilt from its own knots; the voltage is integrated
+        // there only for a multi-winding DC anchor that depends on the coil's turns ratios, so
+        // those are left unchecked. Every other current (or none) has its voltage integrated.
+        if (hasCurrent && excitation.get_current()->get_processed()) {
+            auto label = excitation.get_current()->get_processed()->get_label();
+            if (label == WaveformLabel::FLYBACK_PRIMARY || label == WaveformLabel::FLYBACK_SECONDARY ||
+                label == WaveformLabel::UNIPOLAR_TRIANGULAR) {
+                continue;
+            }
+        }
+        else if (hasCurrent) {
+            // No processed block: the loss path cannot read a label either; the adviser's own
+            // processing decides what happens to it.
+            continue;
+        }
+
+        // The same preparation the loss path gives the voltage before integrating it, so the
+        // numbers in the message are the ones it would have reported.
+        double frequency = excitation.get_frequency();
+        OperatingPoint preparedOperatingPoint = operatingPoint;
+        if (excitation.get_current()) {
+            excitation.set_current(standardize_waveform(excitation.get_current().value(), frequency));
+        }
+        excitation.set_voltage(standardize_waveform(excitation.get_voltage().value(), frequency));
+        preparedOperatingPoint.get_mutable_excitations_per_winding()[0] = excitation;
+        make_waveform_size_power_of_two(&preparedOperatingPoint);
+        auto preparedVoltage = preparedOperatingPoint.get_excitations_per_winding()[0].get_voltage().value();
+        auto sampledVoltageWaveform = calculate_sampled_waveform(preparedVoltage.get_waveform().value(), frequency);
+
+        std::string operatingPointLabel = "operating point " + std::to_string(operatingPointIndex);
+        if (operatingPoint.get_name()) {
+            operatingPointLabel += " ('" + operatingPoint.get_name().value() + "')";
+        }
+        std::string windingName = primaryWindingName ? primaryWindingName.value()
+                                                     : excitation.get_name().value_or("unnamed");
+        check_volt_second_balance(sampledVoltageWaveform,
+            "Adviser inputs are invalid: " + operatingPointLabel + ", winding 0 ('" + windingName + "')");
+    }
+}
+
 SignalDescriptor Inputs::calculate_magnetizing_current(OperatingPointExcitation& excitation,
                                                                 Waveform voltageSampledWaveform,
                                                                 double magnetizingInductance,

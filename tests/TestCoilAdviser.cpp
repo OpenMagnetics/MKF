@@ -3039,6 +3039,85 @@ TEST_CASE("Test_CoilAdviser_Web_Default_Two_Winding_PQ2715", "[adviser][coil-adv
     CHECK(coil.get_functional_description()[1].get_number_turns() == 13);
 }
 
+// ABT #1718: the default two-winding fixture, prepared as the web does, with its primary voltage
+// either as captured (-20.5 / +70.5 V square, mean +25 V: not volt-second balanced) or replaced
+// by a balanced +-50 V square of the same timing.
+static OpenMagnetics::Mas load_default_two_winding_for_balance_check(bool balanced) {
+    auto path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "default_two_winding_pq2715_no_coil_found.json");
+    std::ifstream file(path);
+    REQUIRE(file.good());
+    OpenMagnetics::Mas mas(json::parse(file));
+    for (size_t windingIndex = 0; windingIndex < mas.get_magnetic().get_coil().get_functional_description().size(); ++windingIndex) {
+        mas.get_mutable_magnetic().get_mutable_coil().get_mutable_functional_description()[windingIndex].set_wire("Dummy");
+    }
+    mas.get_mutable_magnetic().get_mutable_coil().set_turns_description(std::nullopt);
+    mas.get_mutable_magnetic().get_mutable_coil().set_layers_description(std::nullopt);
+    mas.get_mutable_magnetic().get_mutable_coil().set_sections_description(std::nullopt);
+    mas.get_mutable_magnetic().get_mutable_coil().set_groups_description(std::nullopt);
+    if (balanced) {
+        auto& excitations = mas.get_mutable_inputs().get_mutable_operating_points()[0].get_mutable_excitations_per_winding();
+        // Primary: +50 V for the first half period, -50 V for the second; the secondary (1:1)
+        // carries the same square on its own time axis.
+        std::vector<std::vector<double>> balancedData = {{-50, 50, 50, -50, -50}, {50, 50, -50, -50, 50}};
+        for (size_t windingIndex = 0; windingIndex < excitations.size(); ++windingIndex) {
+            auto& excitation = excitations[windingIndex];
+            auto waveform = excitation.get_voltage()->get_waveform().value();
+            REQUIRE(waveform.get_data().size() == balancedData[windingIndex].size());
+            waveform.set_data(balancedData[windingIndex]);
+            SignalDescriptor voltage;
+            voltage.set_waveform(waveform);
+            auto sampled = OpenMagnetics::Inputs::calculate_sampled_waveform(waveform, excitation.get_frequency());
+            voltage.set_harmonics(OpenMagnetics::Inputs::calculate_harmonics_data(waveform, sampled, excitation.get_frequency()));
+            voltage.set_processed(OpenMagnetics::Inputs::calculate_processed_data(voltage, sampled, false));
+            excitation.set_voltage(voltage);
+        }
+    }
+    return mas;
+}
+
+TEST_CASE("Test_CoilAdviser_Unbalanced_Voltage_Rejected_Before_Winding", "[adviser][coil-adviser][bug][abt-1718]") {
+    // ABT #1718: the loss ranking (since 38b37cc3) integrates the primary voltage of every wound
+    // coil, and an unbalanced voltage throws there (ABT #1585) — after every coil was wound. The
+    // adviser now rejects it once, up front: the message prefix belongs only to that check (the
+    // loss path's own rejection starts "Excitation '...'"), names the winding and the mean.
+    settings.reset();
+    settings.set_coil_delimit_and_compact(true);
+    settings.set_preferred_wire_standard(MAS::WireStandard::IEC_60317);
+    auto mas = load_default_two_winding_for_balance_check(false);
+    CoilAdviser coilAdviser;
+    std::string message;
+    try {
+        coilAdviser.get_advised_coil(mas, 1);
+    }
+    catch (const OpenMagnetics::InvalidInputException& e) {
+        message = e.what();
+    }
+    settings.reset();
+    INFO(message);
+    REQUIRE(message.find("Adviser inputs are invalid: operating point 0") != std::string::npos);
+    CHECK(message.find("winding 0 ('Primary')") != std::string::npos);
+    // The captured primary is -20.5 / +70.5 V at 50 % duty: a mean of +25 V.
+    auto meanPosition = message.find("not volt-second balanced (mean ");
+    REQUIRE(meanPosition != std::string::npos);
+    double reportedMean = std::stod(message.substr(meanPosition + std::string("not volt-second balanced (mean ").size()));
+    CHECK_THAT(reportedMean, Catch::Matchers::WithinAbs(25, 0.5));
+}
+
+TEST_CASE("Test_CoilAdviser_Balanced_Voltage_Still_Advised", "[adviser][coil-adviser][bug][abt-1718]") {
+    // ABT #1718 counterpart: the same design with a balanced +-50 V primary passes the up-front
+    // check and returns coils.
+    settings.reset();
+    settings.set_coil_delimit_and_compact(true);
+    settings.set_preferred_wire_standard(MAS::WireStandard::IEC_60317);
+    auto mas = load_default_two_winding_for_balance_check(true);
+    CoilAdviser coilAdviser;
+    auto masMagneticsWithCoil = coilAdviser.get_advised_coil(mas, 1);
+    settings.reset();
+    INFO(coilAdviser.get_last_no_results_reason().value_or("returned results"));
+    REQUIRE(masMagneticsWithCoil.size() == 1);
+    REQUIRE(masMagneticsWithCoil[0].get_magnetic().get_coil().get_turns_description());
+}
+
 TEST_CASE("Test_CoilAdviser_Web_Flyback_Advise_All_Turns_Inside_Window", "[adviser][coil-adviser][bug][abt-1699]") {
     // ABT #1699: the web's default flyback -> core Advise (95 EQ 26/19/7, 0.18 mm gap, 42:5)
     // -> wire "Advise All" (calculate_advised_coil), replayed with the settings captured at the

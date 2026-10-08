@@ -159,6 +159,22 @@ class Inputs : public MAS::Inputs {
     // maximumVoltSecondImbalance of its AC flux-linkage swing. `context` names the operating point
     // and winding for the message.
     static void check_volt_second_balance(const Waveform& voltageSampledWaveform, const std::string& context);
+    // ABT #1718: the advisers' loss ranking (MagnetizingInductance::calculate_inductance_and_magnetic_flux_density)
+    // integrates the primary voltage of every operating point into a magnetizing current, and that
+    // integration rejects an unbalanced voltage (check_volt_second_balance). Reached only after every
+    // candidate has been wound, the rejection killed the whole adviser late, or culled every candidate.
+    // This runs the same check once, up front, on exactly the excitations that path integrates, and
+    // throws an InvalidInputException starting "Adviser inputs are invalid:" that names the operating
+    // point and the winding. Excitations routed to a path that does not integrate the voltage (a
+    // single-winding current, a common-mode choke, a multiport inductor, a flyback/unipolar
+    // triangular current, an open-core family model) are not checked. What the adviser does not know
+    // yet is assumed in the direction that checks less: `coilIsolationSides` nullopt = no coil yet,
+    // `coreShapeFamily` / `coreType` nullopt = no core yet.
+    static void check_adviser_inputs_volt_second_balance(const Inputs& inputs,
+                                                         std::optional<std::vector<IsolationSide>> coilIsolationSides = std::nullopt,
+                                                         std::optional<std::string> primaryWindingName = std::nullopt,
+                                                         std::optional<CoreShapeFamily> coreShapeFamily = std::nullopt,
+                                                         std::optional<CoreType> coreType = std::nullopt);
 
     static SignalDescriptor calculate_magnetizing_current(OperatingPointExcitation& excitation,
                                                             double magnetizingInductance,
