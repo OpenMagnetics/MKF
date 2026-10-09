@@ -220,27 +220,6 @@ bool is_close_enough(double x, double y, double error){
     return fabs(x - y) <= error;
 }
 
-bool include_dc_offset_into_magnetizing_current_rosano(Waveform voltageSampledWaveform) {
-    double maximumVoltage = 0;
-    for (auto point : voltageSampledWaveform.get_data()) {
-        maximumVoltage = std::max(maximumVoltage, fabs(point));
-    }
-
-    size_t numberPointsClosedToZero = 0;
-    for (auto point : voltageSampledWaveform.get_data()) {
-        if (fabs(point) < maximumVoltage * 0.05) {
-            numberPointsClosedToZero++;
-        }
-    }
-
-    if (numberPointsClosedToZero > voltageSampledWaveform.get_data().size() * 0.02) {
-        return false;
-    }
-    else {
-        return true;
-    }
-}
-
 bool is_instantaneously_conducting_power(OperatingPoint operatingPoint) {
     auto excitationPerWinding = operatingPoint.get_excitations_per_winding();
     std::vector<std::vector<double>> powerWaveforms;
@@ -323,13 +302,15 @@ bool Inputs::include_dc_offset_into_magnetizing_current(OperatingPoint operating
     // the turns ratios and the actual number of excitations in the operating point
     bool onlyOneWinding = turnsRatios.size() == 0 && operatingPoint.get_excitations_per_winding().size() <= 1;
 
-    auto excitationPerWinding = operatingPoint.get_excitations_per_winding();
-    auto voltageWaveform = excitationPerWinding[0].get_voltage()->get_waveform().value();
-    auto sampledWaveform = calculate_sampled_waveform(voltageWaveform, excitationPerWinding[0].get_frequency());
-    bool includeAccordingToRosanoMethod = include_dc_offset_into_magnetizing_current_rosano(sampledWaveform);
+    // Windings that conduct alternately (a flyback): at the conducting winding's current peak it
+    // carries the whole magnetizing MMF, so the currents give the DC exactly (ABT #907), dead time or
+    // not. The voltage's zero intervals used to veto it too (include_dc_offset_into_magnetizing_current_rosano):
+    // a DCM flyback's dead time is 0 V, so its magnetizing current lost its DC once it came from
+    // Faraday instead of the FLYBACK label's triangle (ABT #1467). Windings conducting at the same
+    // time (a transformer) carry load current on top, and their DC is not anchored.
     bool includeAccordingToCoupledPower = !is_instantaneously_conducting_power(operatingPoint);
 
-    return onlyOneWinding || (includeAccordingToRosanoMethod && includeAccordingToCoupledPower);
+    return onlyOneWinding || includeAccordingToCoupledPower;
 }
 
 
@@ -550,7 +531,7 @@ bool Inputs::is_multiport_inductor(OperatingPoint operatingPoint, std::optional<
 }
 
 
-bool Inputs::can_be_common_mode_choke(OperatingPoint operatingPoint) {
+bool Inputs::can_be_common_mode_choke(OperatingPoint operatingPoint, std::optional<std::vector<IsolationSide>> isolationSides) {
     auto excitations = operatingPoint.get_excitations_per_winding();
     // CMC topologies: 2 (line + neutral), 3 (three-phase delta), or 4
     // (three-phase + neutral). Four-winding was previously excluded, which

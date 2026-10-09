@@ -2562,7 +2562,8 @@ TEST_CASE("Test_Magnetizing_Current_Of_Zero_Volt_Second_Voltage_Has_No_Dc", "[pr
     double peak = magnetizingCurrent.get_processed()->get_peak().value();
     double dc = magnetizingCurrent.get_harmonics()->get_amplitudes()[0];
     double sampleMean = 0;
-    for (auto value : magnetizingCurrent.get_waveform()->get_data()) {
+    auto magnetizingCurrentWaveform = magnetizingCurrent.get_waveform().value();
+    for (auto value : magnetizingCurrentWaveform.get_data()) {
         sampleMean += value / numberPoints;
     }
     INFO("peak " << peak << " A, DC harmonic " << dc << " A, sample mean " << sampleMean << " A");
