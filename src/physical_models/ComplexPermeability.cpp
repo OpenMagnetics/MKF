@@ -109,8 +109,16 @@ ComplexPermeabilityData ComplexPermeability::calculate_complex_permeability_from
                 lowestDataFrequency = std::min(lowestDataFrequency, point.get_frequency().value());
             }
         }
-        if (lowestDataFrequency < std::numeric_limits<double>::max() && frequencyFor67Point78Drop > 0) {
-            double lowestNormalizedFrequency = lowestDataFrequency / frequencyFor67Point78Drop;
+        // A material whose mu(f) is a FORMULA (Poco/Magnetics/Micrometals frequency factors: no
+        // tabulated points) is defined down to DC, so its table must reach low frequencies too.
+        // Stopping at 0.01x the anchor refused GPC 26 (anchor ~1 MHz) at 1 kHz with "complex
+        // permeability data only from 10 kHz" — data it never had; the limit was this grid's
+        // (user report 2026-10-09). Down there the closed form gives mu' -> mu_i and mu'' -> 0.
+        constexpr double formulaLowestFrequency = 1;  // Hz
+        bool hasTabulatedPoints = lowestDataFrequency < std::numeric_limits<double>::max();
+        double tableLowestFrequency = hasTabulatedPoints ? lowestDataFrequency : formulaLowestFrequency;
+        if (frequencyFor67Point78Drop > 0) {
+            double lowestNormalizedFrequency = tableLowestFrequency / frequencyFor67Point78Drop;
             double logarithmicStep = normalizedFrequencies[1] / normalizedFrequencies[0];
             std::vector<double> lowerNormalizedFrequencies;
             double normalizedFrequency = normalizedFrequencies.front() / logarithmicStep;

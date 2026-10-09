@@ -11,6 +11,7 @@
 #include "physical_models/MagnetizingInductance.h"
 #include "physical_models/Reluctance.h"
 #include "physical_models/ComplexPermeability.h"
+#include "physical_models/InitialPermeability.h"
 #include "physical_models/StrayCapacitance.h"
 #include "support/Settings.h"
 #include "TestingUtils.h"
@@ -1047,4 +1048,27 @@ TEST_CASE("Test_Impedance_Common_Mode_Includes_The_Gap_Reluctance", "[physical-m
              << " H, |mu(f)-mu_i|/mu_i " << permeabilityDeviation << ", w^2LC " << capacitiveDeviation);
         CHECK_THAT(commonModeInductance, Catch::Matchers::WithinRel(magnetizingInductance, permeabilityDeviation + capacitiveDeviation));
     }
+}
+
+// User report 2026-10-09: the impedance graph of a GPC 26 design refused 1 kHz with "material GPC 26
+// has complex permeability data only from 10 kHz". GPC 26 has no measured mu(f): its permeability is
+// Poco's frequency-factor formula, defined down to DC. The 10 kHz limit was the synthesized table's
+// own grid (0.01x its roll-off anchor), not the material's. Down there mu' is the DC permeability.
+TEST_CASE("Test_Complex_Permeability_Formula_Material_Reaches_Low_Frequency", "[physical-model][impedance][smoke-test]") {
+    settings.reset();
+    ComplexPermeability complexPermeabilityModel;
+    auto material = Core::resolve_material(std::string("GPC 26"));
+    REQUIRE(InitialPermeability::get_only_frequency_dependent_points(material).empty());
+
+    auto [minimumFrequency, maximumFrequency] = complexPermeabilityModel.get_frequency_range(material);
+    CHECK(minimumFrequency <= 1.0 + 1e-9);
+    auto [realAt1kHz, imaginaryAt1kHz] = complexPermeabilityModel.get_complex_permeability(material, 1000);
+    CHECK_THAT(realAt1kHz, Catch::Matchers::WithinRel(InitialPermeability::get_initial_permeability(material, std::nullopt, std::nullopt, 1000.0), 0.02));
+    CHECK(imaginaryAt1kHz >= 0);
+    CHECK(imaginaryAt1kHz < 0.01 * realAt1kHz);
+
+    // A material with a measured table still answers only inside its data.
+    auto [tableMinimum, tableMaximum] = complexPermeabilityModel.get_frequency_range(std::string("A10"));
+    CHECK(tableMinimum > 1.0);
+    settings.reset();
 }
