@@ -1574,10 +1574,16 @@ TEST_CASE("Test_Reflect_Unipolar_Rectangular_Ratio_1", "[processor][inputs][smok
     signal.set_waveform(waveform);
     auto processed = OpenMagnetics::Inputs::calculate_processed_data(signal.get_waveform().value());
     
+    // A unipolar pulse reflects by ampere-turn scaling, shape and timing kept (a current
+    // transformer's secondary conducts during the pulse); the flyback's off-time transfer
+    // belongs to the FLYBACK_* labels.
     auto reflectedSignal = OpenMagnetics::Inputs::reflect_waveform(signal, ratio, WaveformLabel::UNIPOLAR_RECTANGULAR);
     auto reflectedProcessed = OpenMagnetics::Inputs::calculate_processed_data(reflectedSignal.get_waveform().value());
 
-    REQUIRE_THAT(-processed.get_average().value() * ratio, Catch::Matchers::WithinAbs(reflectedProcessed.get_average().value(), max_error * processed.get_average().value() * ratio));
+    REQUIRE_THAT(processed.get_average().value() * ratio, Catch::Matchers::WithinAbs(reflectedProcessed.get_average().value(), max_error * processed.get_average().value() * ratio));
+    for (size_t i = 0; i < waveform.get_data().size(); ++i) {
+        CHECK_THAT(reflectedSignal.get_waveform()->get_data()[i], Catch::Matchers::WithinAbs(waveform.get_data()[i] * ratio, 1e-12));
+    }
 }
 
 TEST_CASE("Test_Reflect_Unipolar_Rectangular_Ratio_2", "[processor][inputs][smoke-test]") {
@@ -1593,10 +1599,16 @@ TEST_CASE("Test_Reflect_Unipolar_Rectangular_Ratio_2", "[processor][inputs][smok
     signal.set_waveform(waveform);
     auto processed = OpenMagnetics::Inputs::calculate_processed_data(signal.get_waveform().value());
     
+    // A unipolar pulse reflects by ampere-turn scaling, shape and timing kept (a current
+    // transformer's secondary conducts during the pulse); the flyback's off-time transfer
+    // belongs to the FLYBACK_* labels.
     auto reflectedSignal = OpenMagnetics::Inputs::reflect_waveform(signal, ratio, WaveformLabel::UNIPOLAR_RECTANGULAR);
     auto reflectedProcessed = OpenMagnetics::Inputs::calculate_processed_data(reflectedSignal.get_waveform().value());
 
-    REQUIRE_THAT(-processed.get_average().value() * ratio, Catch::Matchers::WithinAbs(reflectedProcessed.get_average().value(), max_error * processed.get_average().value() * ratio));
+    REQUIRE_THAT(processed.get_average().value() * ratio, Catch::Matchers::WithinAbs(reflectedProcessed.get_average().value(), max_error * processed.get_average().value() * ratio));
+    for (size_t i = 0; i < waveform.get_data().size(); ++i) {
+        CHECK_THAT(reflectedSignal.get_waveform()->get_data()[i], Catch::Matchers::WithinAbs(waveform.get_data()[i] * ratio, 1e-12));
+    }
 }
 
 TEST_CASE("Test_Reflect_Unipolar_Triangular_Ratio_2", "[processor][inputs][smoke-test]") {
@@ -1711,14 +1723,55 @@ TEST_CASE("Test_Reflect_Secondary_Default_Web_Rectangular_Voltage", "[processor]
     CHECK(!OpenMagnetics::Inputs::calculate_reflected_secondary(primary, 1.0).get_name());
 
     // The label-dispatched reflection (the web binding's path) must not synthesise a different
-    // waveform: a unipolarRectangular that does not rest at zero has no unipolar reflection.
+    // waveform. A rectangle straddling zero is labelled rectangular (acddb0f6) and reflects
+    // by plain scaling; a unipolarRectangular that does not rest at zero has no unipolar
+    // reflection.
     auto label = OpenMagnetics::Inputs::calculate_basic_processed_data(primaryVoltage.get_waveform().value()).get_label();
-    REQUIRE(label == WaveformLabel::UNIPOLAR_RECTANGULAR);
-    REQUIRE_THROWS(OpenMagnetics::Inputs::reflect_waveform(primaryVoltage, 1.0, label));
+    REQUIRE(label == WaveformLabel::RECTANGULAR);
+    auto asLabelled = OpenMagnetics::Inputs::reflect_waveform(primaryVoltage, 1.0, label);
+    for (size_t i = 0; i < primaryData.size(); ++i) {
+        CHECK_THAT(asLabelled.get_waveform()->get_data()[i], Catch::Matchers::WithinAbs(primaryData[i], 1e-12));
+    }
+    // Even forced to unipolarRectangular, the reflection is the same waveform scaled: no
+    // label synthesises a shape the winding does not have.
+    auto asUnipolar = OpenMagnetics::Inputs::reflect_waveform(primaryVoltage, 1.0, WaveformLabel::UNIPOLAR_RECTANGULAR);
+    for (size_t i = 0; i < primaryData.size(); ++i) {
+        CHECK_THAT(asUnipolar.get_waveform()->get_data()[i], Catch::Matchers::WithinAbs(primaryData[i], 1e-12));
+    }
     // Shape-preserving labels reflect by plain scaling.
     auto asRectangular = OpenMagnetics::Inputs::reflect_waveform(primaryVoltage, 0.5, WaveformLabel::RECTANGULAR);
     for (size_t i = 0; i < primaryData.size(); ++i) {
         CHECK_THAT(asRectangular.get_waveform()->get_data()[i], Catch::Matchers::WithinAbs(primaryData[i] * 0.5, 1e-12));
+    }
+}
+
+TEST_CASE("Test_Reflect_Secondary_Current_Transformer_Unipolar_Pulse", "[processor][inputs][bug]") {
+    // A current transformer (or a forward) carries a unipolar primary current pulse, 0 A then
+    // 2 A for 30% of the period. Its secondary conducts DURING the pulse: i2 = n i1, point by
+    // point. The unipolar labels used to be reflected as a flyback (the current moved into
+    // the off time, scaled by D/(1-D)), which is what the FLYBACK_* labels are for.
+    double frequency = 100000;
+    double period = 1.0 / frequency;
+    double turnsRatio = 50;
+    for (auto [shape, data] : std::vector<std::pair<std::string, std::vector<double>>>{
+             {"rectangular", {0, 2, 2, 0, 0}}, {"triangular", {0, 2, 0, 0}}}) {
+        std::vector<double> time = shape == "rectangular" ? std::vector<double>{0, 0, 0.3 * period, 0.3 * period, period}
+                                                          : std::vector<double>{0, 0.3 * period, 0.3 * period, period};
+        Waveform waveform;
+        waveform.set_data(data);
+        waveform.set_time(time);
+        auto label = OpenMagnetics::Inputs::calculate_basic_processed_data(waveform).get_label();
+        INFO(shape);
+        CHECK(label == (shape == "rectangular" ? WaveformLabel::UNIPOLAR_RECTANGULAR : WaveformLabel::UNIPOLAR_TRIANGULAR));
+
+        SignalDescriptor current;
+        current.set_waveform(waveform);
+        auto reflected = OpenMagnetics::Inputs::reflect_waveform(current, 1.0 / turnsRatio, label);
+        REQUIRE(reflected.get_waveform()->get_data().size() == data.size());
+        for (size_t i = 0; i < data.size(); ++i) {
+            CHECK_THAT(reflected.get_waveform()->get_data()[i], Catch::Matchers::WithinAbs(data[i] / turnsRatio, 1e-12));
+            CHECK_THAT(reflected.get_waveform()->get_time().value()[i], Catch::Matchers::WithinAbs(time[i], 1e-15));
+        }
     }
 }
 

@@ -1244,7 +1244,10 @@ SignalDescriptor Inputs::reflect_waveform(SignalDescriptor signal,
     // ABT #1670: every label is handled explicitly. An ideal transformer scales the
     // instantaneous winding voltage by 1/n and the load-referred current by n without
     // changing its shape, so every shape that is not a flyback current is reflected by
-    // plain scaling. Only the labels below that change shape are synthesised. Before,
+    // plain scaling. Only the flyback labels below change shape. A unipolar pulse is
+    // not a flyback: a current transformer's or forward's secondary conducts DURING the
+    // primary pulse, i2 = n i1 point by point (ABT #1718 review); the flyback's
+    // off-time transfer has its own FLYBACK_* labels. Before,
     // any label without a case (RECTANGULAR among them) fell through a `default:`, so
     // a label nobody had thought about silently took somebody else's branch.
     switch (label) {
@@ -1259,11 +1262,11 @@ SignalDescriptor Inputs::reflect_waveform(SignalDescriptor signal,
         case WaveformLabel::SECONDARY_RECTANGULAR_WITH_DEADTIME:
         case WaveformLabel::BIPOLAR_RECTANGULAR:
         case WaveformLabel::BIPOLAR_TRIANGULAR:
+        case WaveformLabel::UNIPOLAR_TRIANGULAR:
+        case WaveformLabel::UNIPOLAR_RECTANGULAR:
             return reflect_waveform(signal, ratio);
         case WaveformLabel::FLYBACK_PRIMARY:
         case WaveformLabel::FLYBACK_SECONDARY:
-        case WaveformLabel::UNIPOLAR_TRIANGULAR:
-        case WaveformLabel::UNIPOLAR_RECTANGULAR:
             break;
         case WaveformLabel::FLYBACK_SECONDARY_WITH_DEADTIME:
             throw InvalidInputException(ErrorCode::INVALID_INPUT,
@@ -1293,8 +1296,6 @@ SignalDescriptor Inputs::reflect_waveform(SignalDescriptor signal,
     double frequency = 1.0 / period;
     double peakToPeak = processed.get_peak_to_peak().value() * ratio;
     double offset = processed.get_offset() * ratio;
-    double dutyCycle = processed.get_duty_cycle().value();
-
 
     switch(label) {
         case WaveformLabel::FLYBACK_PRIMARY:
@@ -1309,39 +1310,6 @@ SignalDescriptor Inputs::reflect_waveform(SignalDescriptor signal,
             processed.set_peak_to_peak(peakToPeak);
             newWaveform = create_waveform(processed, frequency);
             break;
-        case WaveformLabel::UNIPOLAR_TRIANGULAR: {
-            double max = peakToPeak * dutyCycle / (1 - dutyCycle) + offset;
-            double min = offset;
-            double dc = dutyCycle * period;
-            std::vector<double> data = {min, min, max, min};
-            std::vector<double> time = {0, dc, dc, period};
-            newWaveform.set_data(data);
-            newWaveform.set_time(time);
-            break;
-        }
-        case WaveformLabel::UNIPOLAR_RECTANGULAR: {
-            // This synthesis rests the reflected pulse at -offset and builds its other level
-            // from the pulse's height alone, which only describes a pulse that rests at zero.
-            // A two-level wave whose low level is not zero (the web's default -20.5/70.5 V
-            // rectangle, labelled unipolar only because its volt-seconds do not balance)
-            // came out as a different waveform. Refuse it rather than invent one.
-            if (offset != 0) {
-                throw InvalidInputException(ErrorCode::INVALID_INPUT,
-                    "reflect_waveform: this unipolarRectangular waveform does not rest at zero (low level " +
-                    std::to_string(processed.get_offset()) + ", high level " +
-                    std::to_string(processed.get_offset() + processed.get_peak_to_peak().value()) +
-                    "); its unipolar reflection is only defined for a pulse resting at zero. A voltage across a"
-                    " winding reflects by plain scaling (reflect_waveform(signal, ratio)).");
-            }
-            double max = peakToPeak * dutyCycle / (1 - dutyCycle) + offset;
-            double min = offset;
-            double dc = dutyCycle * period;
-            std::vector<double> data = {-min, -min, -max, -max, -min};
-            std::vector<double> time = {0, dc, dc, period, period};
-            newWaveform.set_data(data);
-            newWaveform.set_time(time);
-            break;
-        }
         default:
             // Unreachable for the labels dispatched above; a label added to the schema later
             // must be given its own reflection, not borrow another label's.
