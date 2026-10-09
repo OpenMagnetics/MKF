@@ -9176,9 +9176,16 @@ Coil::FillingFactorsOutput Coil::calculate_filling_factor(size_t groupIndex) {
     double stackingFillingFactor = windingOrientation == WindingOrientation::CONTIGUOUS
                                        ? output.contiguousFillingFactor
                                        : output.overlappingFillingFactor;
-    output.windingFits = output.areaFillingFactor <= 1 &&
-                         output.maxLayerFillingFactor <= 1 &&
-                         stackingFillingFactor <= 1;
+    // A winding that fills its dimension EXACTLY is a fit. A spread section is laid out
+    // to the full window height, so its height and the window's agree only to the last
+    // bit: 0.0078000000000000005 / 0.0078 = 1.0000000000000002, and a strict `<= 1`
+    // told the builder that WE 7443634700 (15 turns of 2.4 x 0.35 mm flat wire, 5.8 mm
+    // of copper in a 7.8 mm PQ 20/13.7 window) "does not fit this core". The tolerance
+    // forgives representation dust only — a real overfill is orders of magnitude larger.
+    constexpr double fitTolerance = 1e-9;
+    output.windingFits = output.areaFillingFactor <= 1 + fitTolerance &&
+                         output.maxLayerFillingFactor <= 1 + fitTolerance &&
+                         stackingFillingFactor <= 1 + fitTolerance;
     return output;
 }
 

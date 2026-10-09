@@ -1,0 +1,3090 @@
+{
+ "magnetic": {
+  "coil": {
+   "bobbin": {
+    "processedDescription": {
+     "columnDepth": 0.00435,
+     "columnShape": "round",
+     "columnThickness": 0,
+     "columnWidth": 0.00435,
+     "coordinates": [
+      0,
+      0,
+      0
+     ],
+     "wallThickness": 0,
+     "windingWindows": [
+      {
+       "area": 3.627000000000001e-05,
+       "coordinates": [
+        0.006675,
+        0,
+        0
+       ],
+       "height": 0.0078,
+       "sectionsAlignment": "spread",
+       "sectionsOrientation": "contiguous",
+       "shape": "rectangular",
+       "width": 0.004650000000000001
+      }
+     ]
+    }
+   },
+   "functionalDescription": [
+    {
+     "isolationSide": "primary",
+     "name": "main",
+     "numberParallels": 1,
+     "numberTurns": 15,
+     "wire": {
+      "coating": {
+       "grade": 1,
+       "material": {
+        "aliases": [],
+        "composition": "Polyurethane",
+        "dielectricStrength": [
+         {
+          "thickness": 0.0001,
+          "value": 25000000
+         }
+        ],
+        "manufacturerInfo": {
+         "name": "MWS Wire"
+        },
+        "name": "Polyurethane 155",
+        "relativePermittivity": 3.7,
+        "resistivity": [
+         {
+          "value": 10000000000000000
+         }
+        ],
+        "temperatureClass": 155
+       },
+       "type": "enamelled"
+      },
+      "conductingHeight": {
+       "nominal": 0.00035
+      },
+      "conductingWidth": {
+       "nominal": 0.0024
+      },
+      "material": "copper",
+      "numberConductors": 1,
+      "outerHeight": {
+       "nominal": 0.00038718750000000005
+      },
+      "outerWidth": {
+       "nominal": 0.002484998613132493
+      },
+      "type": "rectangular"
+     }
+    }
+   ],
+   "groupsDescription": [
+    {
+     "coordinateSystem": "cartesian",
+     "coordinates": [
+      0.006675,
+      0
+     ],
+     "dimensions": [
+      0.004650000000000001,
+      0.0078
+     ],
+     "name": "Default group",
+     "partialWindings": [
+      {
+       "parallelsProportion": [
+        1
+       ],
+       "winding": "main"
+      }
+     ],
+     "sectionsOrientation": "contiguous",
+     "type": "wound"
+    }
+   ],
+   "layersDescription": [
+    {
+     "coordinateSystem": "cartesian",
+     "coordinates": [
+      0.005592499306566246,
+      0
+     ],
+     "dimensions": [
+      0.002484998613132493,
+      0.0078000000000000005
+     ],
+     "fillingFactor": 0.744591,
+     "name": "main section 0 layer 0",
+     "orientation": "overlapping",
+     "partialWindings": [
+      {
+       "parallelsProportion": [
+        1
+       ],
+       "winding": "main"
+      }
+     ],
+     "section": "main section 0",
+     "turnsAlignment": "spread",
+     "type": "conduction",
+     "windingStyle": "windByConsecutiveTurns"
+    }
+   ],
+   "sectionsDescription": [
+    {
+     "coordinateSystem": "cartesian",
+     "coordinates": [
+      0.005592499306566246,
+      0
+     ],
+     "dimensions": [
+      0.002484998613132493,
+      0.0078000000000000005
+     ],
+     "fillingFactor": 0.3979157983962932,
+     "group": "Default group",
+     "layersOrientation": "overlapping",
+     "margin": [
+      0,
+      0
+     ],
+     "name": "main section 0",
+     "partialWindings": [
+      {
+       "parallelsProportion": [
+        1
+       ],
+       "winding": "main"
+      }
+     ],
+     "type": "conduction",
+     "windingStyle": "windByConsecutiveTurns"
+    }
+   ],
+   "turnsDescription": [
+    {
+     "coordinateSystem": "cartesian",
+     "coordinates": [
+      0.005592499306566246,
+      -0.00370640625
+     ],
+     "crossSectionalShape": "rectangular",
+     "dimensions": [
+      0.002484998613132493,
+      0.00038718750000000005
+     ],
+     "layer": "main section 0 layer 0",
+     "length": 0.035138709473429064,
+     "name": "main parallel 0 turn 0",
+     "orientation": "clockwise",
+     "parallel": 0,
+     "rotation": 0,
+     "section": "main section 0",
+     "winding": "main"
+    },
+    {
+     "coordinateSystem": "cartesian",
+     "coordinates": [
+      0.005592499306566246,
+      -0.0031769196428571432
+     ],
+     "crossSectionalShape": "rectangular",
+     "dimensions": [
+      0.002484998613132493,
+      0.00038718750000000005
+     ],
+     "layer": "main section 0 layer 0",
+     "length": 0.035138709473429064,
+     "name": "main parallel 0 turn 1",
+     "orientation": "clockwise",
+     "parallel": 0,
+     "rotation": 0,
+     "section": "main section 0",
+     "winding": "main"
+    },
+    {
+     "coordinateSystem": "cartesian",
+     "coordinates": [
+      0.005592499306566246,
+      -0.002647433035714286
+     ],
+     "crossSectionalShape": "rectangular",
+     "dimensions": [
+      0.002484998613132493,
+      0.00038718750000000005
+     ],
+     "layer": "main section 0 layer 0",
+     "length": 0.035138709473429064,
+     "name": "main parallel 0 turn 2",
+     "orientation": "clockwise",
+     "parallel": 0,
+     "rotation": 0,
+     "section": "main section 0",
+     "winding": "main"
+    },
+    {
+     "coordinateSystem": "cartesian",
+     "coordinates": [
+      0.005592499306566246,
+      -0.0021179464285714287
+     ],
+     "crossSectionalShape": "rectangular",
+     "dimensions": [
+      0.002484998613132493,
+      0.00038718750000000005
+     ],
+     "layer": "main section 0 layer 0",
+     "length": 0.035138709473429064,
+     "name": "main parallel 0 turn 3",
+     "orientation": "clockwise",
+     "parallel": 0,
+     "rotation": 0,
+     "section": "main section 0",
+     "winding": "main"
+    },
+    {
+     "coordinateSystem": "cartesian",
+     "coordinates": [
+      0.005592499306566246,
+      -0.0015884598214285714
+     ],
+     "crossSectionalShape": "rectangular",
+     "dimensions": [
+      0.002484998613132493,
+      0.00038718750000000005
+     ],
+     "layer": "main section 0 layer 0",
+     "length": 0.035138709473429064,
+     "name": "main parallel 0 turn 4",
+     "orientation": "clockwise",
+     "parallel": 0,
+     "rotation": 0,
+     "section": "main section 0",
+     "winding": "main"
+    },
+    {
+     "coordinateSystem": "cartesian",
+     "coordinates": [
+      0.005592499306566246,
+      -0.0010589732142857146
+     ],
+     "crossSectionalShape": "rectangular",
+     "dimensions": [
+      0.002484998613132493,
+      0.00038718750000000005
+     ],
+     "layer": "main section 0 layer 0",
+     "length": 0.035138709473429064,
+     "name": "main parallel 0 turn 5",
+     "orientation": "clockwise",
+     "parallel": 0,
+     "rotation": 0,
+     "section": "main section 0",
+     "winding": "main"
+    },
+    {
+     "coordinateSystem": "cartesian",
+     "coordinates": [
+      0.005592499306566246,
+      -0.0005294866071428571
+     ],
+     "crossSectionalShape": "rectangular",
+     "dimensions": [
+      0.002484998613132493,
+      0.00038718750000000005
+     ],
+     "layer": "main section 0 layer 0",
+     "length": 0.035138709473429064,
+     "name": "main parallel 0 turn 6",
+     "orientation": "clockwise",
+     "parallel": 0,
+     "rotation": 0,
+     "section": "main section 0",
+     "winding": "main"
+    },
+    {
+     "coordinateSystem": "cartesian",
+     "coordinates": [
+      0.005592499306566246,
+      0
+     ],
+     "crossSectionalShape": "rectangular",
+     "dimensions": [
+      0.002484998613132493,
+      0.00038718750000000005
+     ],
+     "layer": "main section 0 layer 0",
+     "length": 0.035138709473429064,
+     "name": "main parallel 0 turn 7",
+     "orientation": "clockwise",
+     "parallel": 0,
+     "rotation": 0,
+     "section": "main section 0",
+     "winding": "main"
+    },
+    {
+     "coordinateSystem": "cartesian",
+     "coordinates": [
+      0.005592499306566246,
+      0.0005294866071428571
+     ],
+     "crossSectionalShape": "rectangular",
+     "dimensions": [
+      0.002484998613132493,
+      0.00038718750000000005
+     ],
+     "layer": "main section 0 layer 0",
+     "length": 0.035138709473429064,
+     "name": "main parallel 0 turn 8",
+     "orientation": "clockwise",
+     "parallel": 0,
+     "rotation": 0,
+     "section": "main section 0",
+     "winding": "main"
+    },
+    {
+     "coordinateSystem": "cartesian",
+     "coordinates": [
+      0.005592499306566246,
+      0.0010589732142857141
+     ],
+     "crossSectionalShape": "rectangular",
+     "dimensions": [
+      0.002484998613132493,
+      0.00038718750000000005
+     ],
+     "layer": "main section 0 layer 0",
+     "length": 0.035138709473429064,
+     "name": "main parallel 0 turn 9",
+     "orientation": "clockwise",
+     "parallel": 0,
+     "rotation": 0,
+     "section": "main section 0",
+     "winding": "main"
+    },
+    {
+     "coordinateSystem": "cartesian",
+     "coordinates": [
+      0.005592499306566246,
+      0.0015884598214285712
+     ],
+     "crossSectionalShape": "rectangular",
+     "dimensions": [
+      0.002484998613132493,
+      0.00038718750000000005
+     ],
+     "layer": "main section 0 layer 0",
+     "length": 0.035138709473429064,
+     "name": "main parallel 0 turn 10",
+     "orientation": "clockwise",
+     "parallel": 0,
+     "rotation": 0,
+     "section": "main section 0",
+     "winding": "main"
+    },
+    {
+     "coordinateSystem": "cartesian",
+     "coordinates": [
+      0.005592499306566246,
+      0.0021179464285714287
+     ],
+     "crossSectionalShape": "rectangular",
+     "dimensions": [
+      0.002484998613132493,
+      0.00038718750000000005
+     ],
+     "layer": "main section 0 layer 0",
+     "length": 0.035138709473429064,
+     "name": "main parallel 0 turn 11",
+     "orientation": "clockwise",
+     "parallel": 0,
+     "rotation": 0,
+     "section": "main section 0",
+     "winding": "main"
+    },
+    {
+     "coordinateSystem": "cartesian",
+     "coordinates": [
+      0.005592499306566246,
+      0.002647433035714286
+     ],
+     "crossSectionalShape": "rectangular",
+     "dimensions": [
+      0.002484998613132493,
+      0.00038718750000000005
+     ],
+     "layer": "main section 0 layer 0",
+     "length": 0.035138709473429064,
+     "name": "main parallel 0 turn 12",
+     "orientation": "clockwise",
+     "parallel": 0,
+     "rotation": 0,
+     "section": "main section 0",
+     "winding": "main"
+    },
+    {
+     "coordinateSystem": "cartesian",
+     "coordinates": [
+      0.005592499306566246,
+      0.0031769196428571424
+     ],
+     "crossSectionalShape": "rectangular",
+     "dimensions": [
+      0.002484998613132493,
+      0.00038718750000000005
+     ],
+     "layer": "main section 0 layer 0",
+     "length": 0.035138709473429064,
+     "name": "main parallel 0 turn 13",
+     "orientation": "clockwise",
+     "parallel": 0,
+     "rotation": 0,
+     "section": "main section 0",
+     "winding": "main"
+    },
+    {
+     "coordinateSystem": "cartesian",
+     "coordinates": [
+      0.005592499306566246,
+      0.00370640625
+     ],
+     "crossSectionalShape": "rectangular",
+     "dimensions": [
+      0.002484998613132493,
+      0.00038718750000000005
+     ],
+     "layer": "main section 0 layer 0",
+     "length": 0.035138709473429064,
+     "name": "main parallel 0 turn 14",
+     "orientation": "clockwise",
+     "parallel": 0,
+     "rotation": 0,
+     "section": "main section 0",
+     "winding": "main"
+    }
+   ]
+  },
+  "core": {
+   "functionalDescription": {
+    "gapping": [
+     {
+      "area": 5.9447e-05,
+      "coordinates": [
+       0,
+       0.000200848,
+       0
+      ],
+      "distanceClosestNormalSurface": 0.003498304,
+      "distanceClosestParallelSurface": 0.004650000000000001,
+      "length": 0.0004016966175059497,
+      "sectionDimensions": [
+       0.0087,
+       0.0087
+      ],
+      "shape": "round",
+      "type": "subtractive"
+     },
+     {
+      "area": 3.1623e-05,
+      "coordinates": [
+       0.010129393,
+       0,
+       0
+      ],
+      "distanceClosestNormalSurface": 0.0038975,
+      "distanceClosestParallelSurface": 0.004650000000000001,
+      "length": 5e-06,
+      "sectionDimensions": [
+       0.002258786,
+       0.014
+      ],
+      "shape": "irregular",
+      "type": "residual"
+     },
+     {
+      "area": 3.1623e-05,
+      "coordinates": [
+       -0.010129393,
+       0,
+       0
+      ],
+      "distanceClosestNormalSurface": 0.0038975,
+      "distanceClosestParallelSurface": 0.004650000000000001,
+      "length": 5e-06,
+      "sectionDimensions": [
+       0.002258786,
+       0.014
+      ],
+      "shape": "irregular",
+      "type": "residual"
+     }
+    ],
+    "material": {
+     "application": [
+      "power"
+     ],
+     "coerciveForce": [
+      {
+       "magneticField": 11.36,
+       "magneticFluxDensity": 0,
+       "temperature": 25
+      },
+      {
+       "magneticField": 8.6,
+       "magneticFluxDensity": 0,
+       "temperature": 100
+      }
+     ],
+     "curieTemperature": 220,
+     "density": 4900,
+     "family": "p",
+     "manufacturerInfo": {
+      "datasheetUrl": "https://www.acme-ferrite.com.tw/img/CorePDF/acme_product_now.pdf",
+      "description": "Wide Temperature Low Loss Material",
+      "name": "ACME"
+     },
+     "material": "ferrite",
+     "materialComposition": "MnZn",
+     "name": "P47",
+     "permeability": {
+      "complex": {
+       "imaginary": [
+        {
+         "frequency": 1000,
+         "value": 315.9009952989979
+        },
+        {
+         "frequency": 1029.4460000000001,
+         "value": 307.1355585576097
+        },
+        {
+         "frequency": 1059.7589999999998,
+         "value": 297.59314994891656
+        },
+        {
+         "frequency": 1090.964,
+         "value": 289.50394860549164
+        },
+        {
+         "frequency": 1123.0880000000002,
+         "value": 281.69001958190205
+        },
+        {
+         "frequency": 1156.1589999999999,
+         "value": 273.50835035436864
+        },
+        {
+         "frequency": 1190.203,
+         "value": 266.2598106668433
+        },
+        {
+         "frequency": 1225.249,
+         "value": 259.85602065001774
+        },
+        {
+         "frequency": 1261.327,
+         "value": 251.1473727910502
+        },
+        {
+         "frequency": 1298.4679999999998,
+         "value": 244.84676415729268
+        },
+        {
+         "frequency": 1336.703,
+         "value": 239.08410616658395
+        },
+        {
+         "frequency": 1376.063,
+         "value": 231.28365493148644
+        },
+        {
+         "frequency": 1416.582,
+         "value": 224.23507467808363
+        },
+        {
+         "frequency": 1458.2949999999998,
+         "value": 217.6718364426824
+        },
+        {
+         "frequency": 1501.235,
+         "value": 212.08182947737535
+        },
+        {
+         "frequency": 1545.44,
+         "value": 207.20092073244643
+        },
+        {
+         "frequency": 1590.947,
+         "value": 202.07118970639465
+        },
+        {
+         "frequency": 1637.7939999999999,
+         "value": 195.44143263271846
+        },
+        {
+         "frequency": 1686.02,
+         "value": 190.22332751003216
+        },
+        {
+         "frequency": 1735.666,
+         "value": 185.81847247398068
+        },
+        {
+         "frequency": 1786.774,
+         "value": 178.49709708329107
+        },
+        {
+         "frequency": 1839.387,
+         "value": 174.9443006135788
+        },
+        {
+         "frequency": 1893.549,
+         "value": 170.1767095824154
+        },
+        {
+         "frequency": 1949.306,
+         "value": 165.48836775938625
+        },
+        {
+         "frequency": 2006.7050000000002,
+         "value": 161.10689700589637
+        },
+        {
+         "frequency": 2065.794,
+         "value": 156.85380357582108
+        },
+        {
+         "frequency": 2126.623,
+         "value": 151.53936184312155
+        },
+        {
+         "frequency": 2189.243,
+         "value": 148.77533385018785
+        },
+        {
+         "frequency": 2253.707,
+         "value": 142.85871752694067
+        },
+        {
+         "frequency": 2320.069,
+         "value": 139.49580014076145
+        },
+        {
+         "frequency": 2388.386,
+         "value": 134.72513052451512
+        },
+        {
+         "frequency": 2458.714,
+         "value": 132.9421562513352
+        },
+        {
+         "frequency": 2531.112,
+         "value": 130.7236263132567
+        },
+        {
+         "frequency": 2605.6429999999996,
+         "value": 125.02793501177916
+        },
+        {
+         "frequency": 2682.368,
+         "value": 122.14148475485537
+        },
+        {
+         "frequency": 2761.3529999999996,
+         "value": 118.3566618085763
+        },
+        {
+         "frequency": 2842.663,
+         "value": 115.44963583101116
+        },
+        {
+         "frequency": 2926.3669999999997,
+         "value": 112.26165531384143
+        },
+        {
+         "frequency": 3012.536,
+         "value": 109.08860462233423
+        },
+        {
+         "frequency": 3101.2430000000004,
+         "value": 106.82152819451362
+        },
+        {
+         "frequency": 3192.561,
+         "value": 102.01589758764102
+        },
+        {
+         "frequency": 3286.569,
+         "value": 99.9521647247893
+        },
+        {
+         "frequency": 3383.345,
+         "value": 97.60834788635059
+        },
+        {
+         "frequency": 3482.97,
+         "value": 93.99821055936299
+        },
+        {
+         "frequency": 3585.529,
+         "value": 91.15387950229616
+        },
+        {
+         "frequency": 3691.1069999999995,
+         "value": 89.77597071246024
+        },
+        {
+         "frequency": 3799.795,
+         "value": 86.68397037702066
+        },
+        {
+         "frequency": 3911.683,
+         "value": 85.23493940361085
+        },
+        {
+         "frequency": 4026.865,
+         "value": 81.88747456543334
+        },
+        {
+         "frequency": 4145.44,
+         "value": 80.03141219260937
+        },
+        {
+         "frequency": 4267.505,
+         "value": 77.24308703263046
+        },
+        {
+         "frequency": 4393.166,
+         "value": 75.99941597955306
+        },
+        {
+         "frequency": 4522.526,
+         "value": 74.94527022435247
+        },
+        {
+         "frequency": 4655.695,
+         "value": 72.98379042549762
+        },
+        {
+         "frequency": 4792.785999999999,
+         "value": 71.19086199793425
+        },
+        {
+         "frequency": 4933.9130000000005,
+         "value": 68.32353155436867
+        },
+        {
+         "frequency": 5079.196,
+         "value": 67.94733102539183
+        },
+        {
+         "frequency": 5228.757,
+         "value": 65.3453746890387
+        },
+        {
+         "frequency": 5382.722000000001,
+         "value": 62.9018483836656
+        },
+        {
+         "frequency": 5541.22,
+         "value": 61.83091245969449
+        },
+        {
+         "frequency": 5704.3859999999995,
+         "value": 61.77983781754577
+        },
+        {
+         "frequency": 5872.356,
+         "value": 60.662947824676905
+        },
+        {
+         "frequency": 6045.272,
+         "value": 57.3291420235698
+        },
+        {
+         "frequency": 6223.28,
+         "value": 55.79717406354571
+        },
+        {
+         "frequency": 6406.5289999999995,
+         "value": 55.79466408398847
+        },
+        {
+         "frequency": 6595.175,
+         "value": 53.56882286507975
+        },
+        {
+         "frequency": 6789.375,
+         "value": 52.235360452654376
+        },
+        {
+         "frequency": 6989.293,
+         "value": 51.71360390138578
+        },
+        {
+         "frequency": 7195.099,
+         "value": 49.41091257232748
+        },
+        {
+         "frequency": 7406.964,
+         "value": 48.67219825322295
+        },
+        {
+         "frequency": 7625.067999999999,
+         "value": 47.62709868891469
+        },
+        {
+         "frequency": 7849.594,
+         "value": 46.56348557338663
+        },
+        {
+         "frequency": 8080.731999999999,
+         "value": 44.7588758235423
+        },
+        {
+         "frequency": 8318.675000000001,
+         "value": 41.88390480807137
+        },
+        {
+         "frequency": 8563.625,
+         "value": 42.24524313360634
+        },
+        {
+         "frequency": 8815.787999999999,
+         "value": 42.275025655768545
+        },
+        {
+         "frequency": 9075.376,
+         "value": 40.88701931872209
+        },
+        {
+         "frequency": 9342.607,
+         "value": 40.02954628275444
+        },
+        {
+         "frequency": 9617.708,
+         "value": 39.065291820893364
+        },
+        {
+         "frequency": 9900.909,
+         "value": 37.82294272495681
+        },
+        {
+         "frequency": 10192.449,
+         "value": 36.5907714986938
+        },
+        {
+         "frequency": 10492.573,
+         "value": 36.93357095578324
+        },
+        {
+         "frequency": 10801.536,
+         "value": 36.599056003204
+        },
+        {
+         "frequency": 11119.595000000001,
+         "value": 36.06277147219945
+        },
+        {
+         "frequency": 11447.020999999999,
+         "value": 34.75898208291025
+        },
+        {
+         "frequency": 11784.087,
+         "value": 33.6018607742103
+        },
+        {
+         "frequency": 12131.079,
+         "value": 31.59096628861946
+        },
+        {
+         "frequency": 12488.288,
+         "value": 31.759557426812705
+        },
+        {
+         "frequency": 12856.016,
+         "value": 30.22243730532774
+        },
+        {
+         "frequency": 13234.571,
+         "value": 30.106404264321352
+        },
+        {
+         "frequency": 13624.274,
+         "value": 30.523592067463603
+        },
+        {
+         "frequency": 14025.451000000001,
+         "value": 28.328861913801948
+        },
+        {
+         "frequency": 14438.442000000001,
+         "value": 28.7287048492744
+        },
+        {
+         "frequency": 14863.592999999999,
+         "value": 26.663056172814162
+        },
+        {
+         "frequency": 15301.263,
+         "value": 27.337428309779035
+        },
+        {
+         "frequency": 15751.821,
+         "value": 26.521032999047325
+        },
+        {
+         "frequency": 16215.645999999999,
+         "value": 26.54393273253536
+        },
+        {
+         "frequency": 16693.128,
+         "value": 24.359907192383673
+        },
+        {
+         "frequency": 17184.670000000002,
+         "value": 24.76937637262359
+        },
+        {
+         "frequency": 17690.687,
+         "value": 24.96232418342245
+        },
+        {
+         "frequency": 18211.603,
+         "value": 23.78381353963951
+        },
+        {
+         "frequency": 18747.858,
+         "value": 22.83656041126703
+        },
+        {
+         "frequency": 19299.903000000002,
+         "value": 23.19914948877277
+        },
+        {
+         "frequency": 19868.203999999998,
+         "value": 23.021784988679045
+        },
+        {
+         "frequency": 20453.239,
+         "value": 22.367946139462155
+        },
+        {
+         "frequency": 21055.501,
+         "value": 21.73302380217753
+        },
+        {
+         "frequency": 21675.497,
+         "value": 21.75100337000069
+        },
+        {
+         "frequency": 22313.749,
+         "value": 20.506629810735735
+        },
+        {
+         "frequency": 22970.795,
+         "value": 20.270901984439504
+        },
+        {
+         "frequency": 23647.188,
+         "value": 21.101553321036864
+        },
+        {
+         "frequency": 24343.498,
+         "value": 20.17761009628829
+        },
+        {
+         "frequency": 25060.311999999998,
+         "value": 20.445086490071095
+        },
+        {
+         "frequency": 25798.232,
+         "value": 20.21613054059805
+        },
+        {
+         "frequency": 26557.881999999998,
+         "value": 18.65566842532929
+        },
+        {
+         "frequency": 27339.9,
+         "value": 18.701063672813184
+        },
+        {
+         "frequency": 28144.945,
+         "value": 18.579045201477104
+        },
+        {
+         "frequency": 28973.695,
+         "value": 19.328301016533725
+        },
+        {
+         "frequency": 29826.847999999998,
+         "value": 18.511346881035866
+        },
+        {
+         "frequency": 30705.123,
+         "value": 18.4739339466025
+        },
+        {
+         "frequency": 31609.26,
+         "value": 18.197828050742363
+        },
+        {
+         "frequency": 32540.019,
+         "value": 17.60572362873184
+        },
+        {
+         "frequency": 33498.185999999994,
+         "value": 17.3978075130269
+        },
+        {
+         "frequency": 34484.566,
+         "value": 18.06546686857196
+        },
+        {
+         "frequency": 35499.992,
+         "value": 16.295552462463213
+        },
+        {
+         "frequency": 36545.316999999995,
+         "value": 16.93077825938644
+        },
+        {
+         "frequency": 37621.423,
+         "value": 16.694408525278128
+        },
+        {
+         "frequency": 38729.215,
+         "value": 14.880774691467131
+        },
+        {
+         "frequency": 39869.627,
+         "value": 16.455553945038247
+        },
+        {
+         "frequency": 41043.619999999995,
+         "value": 16.590877251957792
+        },
+        {
+         "frequency": 42252.182,
+         "value": 16.464140254126807
+        },
+        {
+         "frequency": 43496.331,
+         "value": 16.923853393569924
+        },
+        {
+         "frequency": 44777.115000000005,
+         "value": 16.926628429545733
+        },
+        {
+         "frequency": 46095.612,
+         "value": 16.238266086929617
+        },
+        {
+         "frequency": 47452.934,
+         "value": 16.684604792583343
+        },
+        {
+         "frequency": 48850.223,
+         "value": 14.80887311043973
+        },
+        {
+         "frequency": 50288.656,
+         "value": 16.287847627850237
+        },
+        {
+         "frequency": 51769.445,
+         "value": 15.214910955532329
+        },
+        {
+         "frequency": 53293.838,
+         "value": 15.511687567332896
+        },
+        {
+         "frequency": 54863.117000000006,
+         "value": 15.894749232625001
+        },
+        {
+         "frequency": 56478.605,
+         "value": 15.842499331523657
+        },
+        {
+         "frequency": 58141.662,
+         "value": 15.885770309328306
+        },
+        {
+         "frequency": 59853.689000000006,
+         "value": 16.106885157732794
+        },
+        {
+         "frequency": 61616.128000000004,
+         "value": 16.021950359984217
+        },
+        {
+         "frequency": 63430.464,
+         "value": 15.146178184273957
+        },
+        {
+         "frequency": 65298.224,
+         "value": 15.410253069934582
+        },
+        {
+         "frequency": 67220.981,
+         "value": 16.079533589936894
+        },
+        {
+         "frequency": 69200.356,
+         "value": 15.77446975087093
+        },
+        {
+         "frequency": 71238.015,
+         "value": 16.745599356172267
+        },
+        {
+         "frequency": 73335.67499999999,
+         "value": 16.836563695867945
+        },
+        {
+         "frequency": 75495.102,
+         "value": 16.892725224611468
+        },
+        {
+         "frequency": 77718.11499999999,
+         "value": 16.51155331955801
+        },
+        {
+         "frequency": 80006.586,
+         "value": 16.678243198693984
+        },
+        {
+         "frequency": 82362.443,
+         "value": 16.971852532899103
+        },
+        {
+         "frequency": 84787.67000000001,
+         "value": 17.427157444773457
+        },
+        {
+         "frequency": 87284.31,
+         "value": 17.742019537811967
+        },
+        {
+         "frequency": 89854.466,
+         "value": 17.698700341944008
+        },
+        {
+         "frequency": 92500.30099999999,
+         "value": 17.12663455521842
+        },
+        {
+         "frequency": 95224.046,
+         "value": 18.402049272441563
+        },
+        {
+         "frequency": 98027.993,
+         "value": 17.184242616095673
+        },
+        {
+         "frequency": 100914.505,
+         "value": 18.411374295162616
+        },
+        {
+         "frequency": 103886.01199999999,
+         "value": 18.249094006117762
+        },
+        {
+         "frequency": 106945.017,
+         "value": 17.99946007531122
+        },
+        {
+         "frequency": 110094.098,
+         "value": 19.68129256713881
+        },
+        {
+         "frequency": 113335.90599999999,
+         "value": 19.46560622390799
+        },
+        {
+         "frequency": 116673.171,
+         "value": 20.101967623263402
+        },
+        {
+         "frequency": 120108.704,
+         "value": 19.933361664292832
+        },
+        {
+         "frequency": 123645.4,
+         "value": 20.089860756430824
+        },
+        {
+         "frequency": 127286.237,
+         "value": 21.460910363064873
+        },
+        {
+         "frequency": 131034.28,
+         "value": 21.330990382200106
+        },
+        {
+         "frequency": 134892.688,
+         "value": 21.984439858753287
+        },
+        {
+         "frequency": 138864.71,
+         "value": 22.585521744572194
+        },
+        {
+         "frequency": 142953.691,
+         "value": 23.310834266770254
+        },
+        {
+         "frequency": 147163.07499999998,
+         "value": 22.857931077094054
+        },
+        {
+         "frequency": 151496.408,
+         "value": 24.76737910571493
+        },
+        {
+         "frequency": 155957.34,
+         "value": 25.677023949459556
+        },
+        {
+         "frequency": 160549.62699999998,
+         "value": 25.809801681267786
+        },
+        {
+         "frequency": 165277.13700000002,
+         "value": 26.29350431397257
+        },
+        {
+         "frequency": 170143.853,
+         "value": 27.257214516580717
+        },
+        {
+         "frequency": 175153.873,
+         "value": 28.219019344768892
+        },
+        {
+         "frequency": 180311.41700000002,
+         "value": 28.996469687239742
+        },
+        {
+         "frequency": 185620.829,
+         "value": 30.361143653425284
+        },
+        {
+         "frequency": 191086.581,
+         "value": 31.176703361057594
+        },
+        {
+         "frequency": 196713.276,
+         "value": 32.02670580395038
+        },
+        {
+         "frequency": 202505.65399999998,
+         "value": 32.2340007984402
+        },
+        {
+         "frequency": 208468.593,
+         "value": 33.7622799941194
+        },
+        {
+         "frequency": 214607.115,
+         "value": 34.26981753510789
+        },
+        {
+         "frequency": 220926.391,
+         "value": 36.4913269079671
+        },
+        {
+         "frequency": 227431.74300000002,
+         "value": 36.9678080163112
+        },
+        {
+         "frequency": 234128.65099999998,
+         "value": 38.4903129825604
+        },
+        {
+         "frequency": 241022.754,
+         "value": 40.196287317009414
+        },
+        {
+         "frequency": 248119.859,
+         "value": 41.86834504808139
+        },
+        {
+         "frequency": 255425.944,
+         "value": 42.6923626706687
+        },
+        {
+         "frequency": 262947.163,
+         "value": 45.22960807399273
+        },
+        {
+         "frequency": 270689.849,
+         "value": 46.57329879996013
+        },
+        {
+         "frequency": 278660.526,
+         "value": 48.81580021263458
+        },
+        {
+         "frequency": 286865.90499999997,
+         "value": 49.815648009758114
+        },
+        {
+         "frequency": 295312.89800000004,
+         "value": 52.92154380478654
+        },
+        {
+         "frequency": 304008.62,
+         "value": 54.86336268159291
+        },
+        {
+         "frequency": 312960.393,
+         "value": 58.00795924474047
+        },
+        {
+         "frequency": 322175.759,
+         "value": 59.36089427195068
+        },
+        {
+         "frequency": 331662.479,
+         "value": 62.98631555101079
+        },
+        {
+         "frequency": 341428.543,
+         "value": 63.31986153322323
+        },
+        {
+         "frequency": 351482.176,
+         "value": 65.52490873264037
+        },
+        {
+         "frequency": 361831.84599999996,
+         "value": 69.56070678866548
+        },
+        {
+         "frequency": 372486.27,
+         "value": 73.4951163267916
+        },
+        {
+         "frequency": 383454.423,
+         "value": 77.40200972968914
+        },
+        {
+         "frequency": 394745.541,
+         "value": 81.23004736192419
+        },
+        {
+         "frequency": 406369.135,
+         "value": 85.32489297557609
+        },
+        {
+         "frequency": 418334.995,
+         "value": 90.40209513703402
+        },
+        {
+         "frequency": 430653.19899999996,
+         "value": 95.69157724252777
+        },
+        {
+         "frequency": 443334.12299999996,
+         "value": 102.03859037423813
+        },
+        {
+         "frequency": 456388.446,
+         "value": 107.60575966597062
+        },
+        {
+         "frequency": 469827.164,
+         "value": 114.22184382859106
+        },
+        {
+         "frequency": 483661.59599999996,
+         "value": 122.58870220163627
+        },
+        {
+         "frequency": 497903.394,
+         "value": 131.84039437630486
+        },
+        {
+         "frequency": 512564.552,
+         "value": 142.59725312548005
+        },
+        {
+         "frequency": 527657.42,
+         "value": 153.80414798728356
+        },
+        {
+         "frequency": 543194.71,
+         "value": 166.5030629490441
+        },
+        {
+         "frequency": 559189.5070000001,
+         "value": 182.03678961282435
+        },
+        {
+         "frequency": 575655.2840000001,
+         "value": 200.5198973945167
+        },
+        {
+         "frequency": 592605.908,
+         "value": 222.35860493672493
+        },
+        {
+         "frequency": 610055.657,
+         "value": 248.56265397535597
+        },
+        {
+         "frequency": 628019.227,
+         "value": 278.5292718459106
+        },
+        {
+         "frequency": 646511.749,
+         "value": 315.76515556453074
+        },
+        {
+         "frequency": 665548.7980000001,
+         "value": 358.9708874021435
+        },
+        {
+         "frequency": 685146.4079999999,
+         "value": 411.1761800549203
+        },
+        {
+         "frequency": 705321.0850000001,
+         "value": 473.1591057246442
+        },
+        {
+         "frequency": 726089.822,
+         "value": 544.5724929391428
+        },
+        {
+         "frequency": 747470.11,
+         "value": 628.4452472552405
+        },
+        {
+         "frequency": 769479.957,
+         "value": 725.7798249843521
+        },
+        {
+         "frequency": 792137.902,
+         "value": 834.6373126337783
+        },
+        {
+         "frequency": 815463.028,
+         "value": 958.5878946058577
+        },
+        {
+         "frequency": 839474.9809999999,
+         "value": 1096.7286083856757
+        },
+        {
+         "frequency": 864193.985,
+         "value": 1249.5987494932367
+        },
+        {
+         "frequency": 889640.8589999999,
+         "value": 1419.1128191187981
+        },
+        {
+         "frequency": 915837.037,
+         "value": 1602.4701837498708
+        },
+        {
+         "frequency": 942804.581,
+         "value": 1805.4656654830026
+        },
+        {
+         "frequency": 970566.2069999999,
+         "value": 2028.7199617264075
+        },
+        {
+         "frequency": 999145.295,
+         "value": 2270.5333955870246
+        },
+        {
+         "frequency": 1028565.9169999999,
+         "value": 2538.2456347740253
+        },
+        {
+         "frequency": 1058852.8530000001,
+         "value": 2825.698274778821
+        },
+        {
+         "frequency": 1090031.611,
+         "value": 3130.9782262536296
+        },
+        {
+         "frequency": 1122128.453,
+         "value": 3442.810982316548
+        },
+        {
+         "frequency": 1155170.411,
+         "value": 3766.0110580132305
+        },
+        {
+         "frequency": 1189185.316,
+         "value": 4083.218806331887
+        },
+        {
+         "frequency": 1224201.8169999998,
+         "value": 4378.324310576464
+        },
+        {
+         "frequency": 1260249.406,
+         "value": 4643.848614888278
+        },
+        {
+         "frequency": 1297358.445,
+         "value": 4859.902846226915
+        },
+        {
+         "frequency": 1335560.189,
+         "value": 5019.072877097862
+        },
+        {
+         "frequency": 1374886.813,
+         "value": 5111.690490259006
+        },
+        {
+         "frequency": 1415371.441,
+         "value": 5126.758285610756
+        },
+        {
+         "frequency": 1457048.1709999999,
+         "value": 5072.613213862302
+        },
+        {
+         "frequency": 1499952.104,
+         "value": 4960.600150006357
+        },
+        {
+         "frequency": 1544119.379,
+         "value": 4794.7185785240135
+        },
+        {
+         "frequency": 1589587.193,
+         "value": 4590.633344285227
+        },
+        {
+         "frequency": 1636393.843,
+         "value": 4364.108520974958
+        },
+        {
+         "frequency": 1684578.7519999999,
+         "value": 4122.550065309644
+        }
+       ],
+       "real": [
+        {
+         "frequency": 1000,
+         "value": 3071.1573914081137
+        },
+        {
+         "frequency": 1029.4460000000001,
+         "value": 3071.380320445504
+        },
+        {
+         "frequency": 1059.7589999999998,
+         "value": 3070.0787347653136
+        },
+        {
+         "frequency": 1090.964,
+         "value": 3071.15039363564
+        },
+        {
+         "frequency": 1123.0880000000002,
+         "value": 3071.8411737470165
+        },
+        {
+         "frequency": 1156.1589999999999,
+         "value": 3071.075417501989
+        },
+        {
+         "frequency": 1190.203,
+         "value": 3070.9084706443905
+        },
+        {
+         "frequency": 1225.249,
+         "value": 3070.027750994431
+        },
+        {
+         "frequency": 1261.327,
+         "value": 3069.60188655529
+        },
+        {
+         "frequency": 1298.4679999999998,
+         "value": 3070.9734499602223
+        },
+        {
+         "frequency": 1336.703,
+         "value": 3069.7658343675407
+        },
+        {
+         "frequency": 1376.063,
+         "value": 3071.006439459029
+        },
+        {
+         "frequency": 1416.582,
+         "value": 3069.692857597454
+        },
+        {
+         "frequency": 1458.2949999999998,
+         "value": 3069.098046937151
+        },
+        {
+         "frequency": 1501.235,
+         "value": 3069.5559011933174
+        },
+        {
+         "frequency": 1545.44,
+         "value": 3070.375640254573
+        },
+        {
+         "frequency": 1590.947,
+         "value": 3071.226369451074
+        },
+        {
+         "frequency": 1637.7939999999999,
+         "value": 3070.1117242641203
+        },
+        {
+         "frequency": 1686.02,
+         "value": 3069.943777724741
+        },
+        {
+         "frequency": 1735.666,
+         "value": 3070.3746405727916
+        },
+        {
+         "frequency": 1786.774,
+         "value": 3070.740524105011
+        },
+        {
+         "frequency": 1839.387,
+         "value": 3070.4706100238654
+        },
+        {
+         "frequency": 1893.549,
+         "value": 3069.657868735083
+        },
+        {
+         "frequency": 1949.306,
+         "value": 3069.870800954653
+        },
+        {
+         "frequency": 2006.7050000000002,
+         "value": 3068.574213683373
+        },
+        {
+         "frequency": 2065.794,
+         "value": 3069.312978520286
+        },
+        {
+         "frequency": 2126.623,
+         "value": 3069.135035163086
+        },
+        {
+         "frequency": 2189.243,
+         "value": 3069.0860507557672
+        },
+        {
+         "frequency": 2253.707,
+         "value": 3070.038747494033
+        },
+        {
+         "frequency": 2320.069,
+         "value": 3069.5199126491643
+        },
+        {
+         "frequency": 2388.386,
+         "value": 3068.7901449482893
+        },
+        {
+         "frequency": 2458.714,
+         "value": 3068.5342264120914
+        },
+        {
+         "frequency": 2531.112,
+         "value": 3066.8697562450275
+        },
+        {
+         "frequency": 2605.6429999999996,
+         "value": 3068.0203899761327
+        },
+        {
+         "frequency": 2682.368,
+         "value": 3069.8398108194115
+        },
+        {
+         "frequency": 2761.3529999999996,
+         "value": 3068.2773081941123
+        },
+        {
+         "frequency": 2842.663,
+         "value": 3068.8671204455045
+        },
+        {
+         "frequency": 2926.3669999999997,
+         "value": 3068.4792439140806
+        },
+        {
+         "frequency": 3012.536,
+         "value": 3068.419263007159
+        },
+        {
+         "frequency": 3101.2430000000004,
+         "value": 3067.8854329355595
+        },
+        {
+         "frequency": 3192.561,
+         "value": 3067.6924943516306
+        },
+        {
+         "frequency": 3286.569,
+         "value": 3068.247317740652
+        },
+        {
+         "frequency": 3383.345,
+         "value": 3067.378594272076
+        },
+        {
+         "frequency": 3482.97,
+         "value": 3067.52954622116
+        },
+        {
+         "frequency": 3585.529,
+         "value": 3067.2546337311055
+        },
+        {
+         "frequency": 3691.1069999999995,
+         "value": 3067.517550039777
+        },
+        {
+         "frequency": 3799.795,
+         "value": 3067.179657597454
+        },
+        {
+         "frequency": 3911.683,
+         "value": 3066.0130289578356
+        },
+        {
+         "frequency": 4026.865,
+         "value": 3067.8994284805085
+        },
+        {
+         "frequency": 4145.44,
+         "value": 3066.903745425616
+        },
+        {
+         "frequency": 4267.505,
+         "value": 3066.0440190930785
+        },
+        {
+         "frequency": 4393.166,
+         "value": 3065.434213206046
+        },
+        {
+         "frequency": 4522.526,
+         "value": 3067.125674781225
+        },
+        {
+         "frequency": 4655.695,
+         "value": 3066.979721241049
+        },
+        {
+         "frequency": 4792.785999999999,
+         "value": 3066.655824343675
+        },
+        {
+         "frequency": 4933.9130000000005,
+         "value": 3066.4708832140013
+        },
+        {
+         "frequency": 5079.196,
+         "value": 3067.490558631662
+        },
+        {
+         "frequency": 5228.757,
+         "value": 3066.052016547335
+        },
+        {
+         "frequency": 5382.722000000001,
+         "value": 3066.0360216388212
+        },
+        {
+         "frequency": 5541.22,
+         "value": 3067.302618456642
+        },
+        {
+         "frequency": 5704.3859999999995,
+         "value": 3065.800096738265
+        },
+        {
+         "frequency": 5872.356,
+         "value": 3065.676136197295
+        },
+        {
+         "frequency": 6045.272,
+         "value": 3064.7104435958627
+        },
+        {
+         "frequency": 6223.28,
+         "value": 3066.2839427207637
+        },
+        {
+         "frequency": 6406.5289999999995,
+         "value": 3065.308253301511
+        },
+        {
+         "frequency": 6595.175,
+         "value": 3065.259268894192
+        },
+        {
+         "frequency": 6789.375,
+         "value": 3065.874073190135
+        },
+        {
+         "frequency": 6989.293,
+         "value": 3064.39254478918
+        },
+        {
+         "frequency": 7195.099,
+         "value": 3065.142306125696
+        },
+        {
+         "frequency": 7406.964,
+         "value": 3065.3342450278433
+        },
+        {
+         "frequency": 7625.067999999999,
+         "value": 3066.3289284009543
+        },
+        {
+         "frequency": 7849.594,
+         "value": 3065.3832294351623
+        },
+        {
+         "frequency": 8080.731999999999,
+         "value": 3063.9646809864753
+        },
+        {
+         "frequency": 8318.675000000001,
+         "value": 3066.466884486873
+        },
+        {
+         "frequency": 8563.625,
+         "value": 3064.8064130469365
+        },
+        {
+         "frequency": 8815.787999999999,
+         "value": 3064.523503102625
+        },
+        {
+         "frequency": 9075.376,
+         "value": 3064.9363716785997
+        },
+        {
+         "frequency": 9342.607,
+         "value": 3063.424852824184
+        },
+        {
+         "frequency": 9617.708,
+         "value": 3063.7347541766103
+        },
+        {
+         "frequency": 9900.909,
+         "value": 3065.213283532219
+        },
+        {
+         "frequency": 10192.449,
+         "value": 3064.12063134447
+        },
+        {
+         "frequency": 10492.573,
+         "value": 3064.198606523468
+        },
+        {
+         "frequency": 10801.536,
+         "value": 3063.7807395385835
+        },
+        {
+         "frequency": 11119.595000000001,
+         "value": 3062.9560020684166
+        },
+        {
+         "frequency": 11447.020999999999,
+         "value": 3063.8827070803495
+        },
+        {
+         "frequency": 11784.087,
+         "value": 3062.098275099442
+        },
+        {
+         "frequency": 12131.079,
+         "value": 3063.3938626889417
+        },
+        {
+         "frequency": 12488.288,
+         "value": 3062.7830571201266
+        },
+        {
+         "frequency": 12856.016,
+         "value": 3062.6730921241046
+        },
+        {
+         "frequency": 13234.571,
+         "value": 3061.8433562450273
+        },
+        {
+         "frequency": 13624.274,
+         "value": 3062.507144948289
+        },
+        {
+         "frequency": 14025.451000000001,
+         "value": 3061.4374854415273
+        },
+        {
+         "frequency": 14438.442000000001,
+         "value": 3062.165253778838
+        },
+        {
+         "frequency": 14863.592999999999,
+         "value": 3061.1415796340484
+        },
+        {
+         "frequency": 15301.263,
+         "value": 3060.7517037390608
+        },
+        {
+         "frequency": 15751.821,
+         "value": 3060.973633094669
+        },
+        {
+         "frequency": 16215.645999999999,
+         "value": 3061.559446618933
+        },
+        {
+         "frequency": 16693.128,
+         "value": 3060.5437699284
+        },
+        {
+         "frequency": 17184.670000000002,
+         "value": 3060.089914399363
+        },
+        {
+         "frequency": 17690.687,
+         "value": 3060.0839163086707
+        },
+        {
+         "frequency": 18211.603,
+         "value": 3060.9846295942716
+        },
+        {
+         "frequency": 18747.858,
+         "value": 3061.17157008751
+        },
+        {
+         "frequency": 19299.903000000002,
+         "value": 3059.684043595863
+        },
+        {
+         "frequency": 19868.203999999998,
+         "value": 3060.166889896579
+        },
+        {
+         "frequency": 20453.239,
+         "value": 3060.717714558472
+        },
+        {
+         "frequency": 21055.501,
+         "value": 3060.213874940334
+        },
+        {
+         "frequency": 21675.497,
+         "value": 3058.7903280827363
+        },
+        {
+         "frequency": 22313.749,
+         "value": 3058.59938886237
+        },
+        {
+         "frequency": 22970.795,
+         "value": 3059.070238981702
+        },
+        {
+         "frequency": 23647.188,
+         "value": 3059.3841390612565
+        },
+        {
+         "frequency": 24343.498,
+         "value": 3059.503101193317
+        },
+        {
+         "frequency": 25060.311999999998,
+         "value": 3059.5960715990454
+        },
+        {
+         "frequency": 25798.232,
+         "value": 3058.335472871917
+        },
+        {
+         "frequency": 26557.881999999998,
+         "value": 3058.963273031026
+        },
+        {
+         "frequency": 27339.9,
+         "value": 3057.6157019888624
+        },
+        {
+         "frequency": 28144.945,
+         "value": 3058.5873926809854
+        },
+        {
+         "frequency": 28973.695,
+         "value": 3058.3194779634046
+        },
+        {
+         "frequency": 29826.847999999998,
+         "value": 3058.444438186157
+        },
+        {
+         "frequency": 30705.123,
+         "value": 3057.622699761336
+        },
+        {
+         "frequency": 31609.26,
+         "value": 3057.9206049323784
+        },
+        {
+         "frequency": 32540.019,
+         "value": 3057.8906144789175
+        },
+        {
+         "frequency": 33498.185999999994,
+         "value": 3057.5527220365943
+        },
+        {
+         "frequency": 34484.566,
+         "value": 3057.973588066825
+        },
+        {
+         "frequency": 35499.992,
+         "value": 3056.876937151949
+        },
+        {
+         "frequency": 36545.316999999995,
+         "value": 3057.7066730310253
+        },
+        {
+         "frequency": 37621.423,
+         "value": 3058.2764916467777
+        },
+        {
+         "frequency": 38729.215,
+         "value": 3057.6556892601425
+        },
+        {
+         "frequency": 39869.627,
+         "value": 3058.611385043755
+        },
+        {
+         "frequency": 41043.619999999995,
+         "value": 3057.539726173428
+        },
+        {
+         "frequency": 42252.182,
+         "value": 3057.6616873508347
+        },
+        {
+         "frequency": 43496.331,
+         "value": 3057.334791408114
+        },
+        {
+         "frequency": 44777.115000000005,
+         "value": 3057.3447882259343
+        },
+        {
+         "frequency": 46095.612,
+         "value": 3058.4054505966583
+        },
+        {
+         "frequency": 47452.934,
+         "value": 3057.6706844868727
+        },
+        {
+         "frequency": 48850.223,
+         "value": 3057.777650437549
+        },
+        {
+         "frequency": 50288.656,
+         "value": 3057.7526583929985
+        },
+        {
+         "frequency": 51769.445,
+         "value": 3058.229506603023
+        },
+        {
+         "frequency": 53293.838,
+         "value": 3058.3424706443907
+        },
+        {
+         "frequency": 54863.117000000006,
+         "value": 3057.676682577565
+        },
+        {
+         "frequency": 56478.605,
+         "value": 3057.7726520286387
+        },
+        {
+         "frequency": 58141.662,
+         "value": 3058.817319490851
+        },
+        {
+         "frequency": 59853.689000000006,
+         "value": 3059.4081314240248
+        },
+        {
+         "frequency": 61616.128000000004,
+         "value": 3058.770334447096
+        },
+        {
+         "frequency": 63430.464,
+         "value": 3059.5850750994427
+        },
+        {
+         "frequency": 65298.224,
+         "value": 3059.740025775656
+        },
+        {
+         "frequency": 67220.981,
+         "value": 3059.7260302307072
+        },
+        {
+         "frequency": 69200.356,
+         "value": 3060.011939220365
+        },
+        {
+         "frequency": 71238.015,
+         "value": 3060.630742243436
+        },
+        {
+         "frequency": 73335.67499999999,
+         "value": 3061.0785996817817
+        },
+        {
+         "frequency": 75495.102,
+         "value": 3061.9393256961016
+        },
+        {
+         "frequency": 77718.11499999999,
+         "value": 3062.3332003182177
+        },
+        {
+         "frequency": 80006.586,
+         "value": 3062.691086396181
+        },
+        {
+         "frequency": 82362.443,
+         "value": 3062.3711882259345
+        },
+        {
+         "frequency": 84787.67000000001,
+         "value": 3064.3545568814634
+        },
+        {
+         "frequency": 87284.31,
+         "value": 3063.761745584725
+        },
+        {
+         "frequency": 89854.466,
+         "value": 3064.208603341288
+        },
+        {
+         "frequency": 92500.30099999999,
+         "value": 3065.4282151153534
+        },
+        {
+         "frequency": 95224.046,
+         "value": 3066.0630130469362
+        },
+        {
+         "frequency": 98027.993,
+         "value": 3066.7877823389017
+        },
+        {
+         "frequency": 100914.505,
+         "value": 3067.037702784407
+        },
+        {
+         "frequency": 103886.01199999999,
+         "value": 3068.7521570405725
+        },
+        {
+         "frequency": 106945.017,
+         "value": 3069.6658661893393
+        },
+        {
+         "frequency": 110094.098,
+         "value": 3070.173704534606
+        },
+        {
+         "frequency": 113335.90599999999,
+         "value": 3071.356328082736
+        },
+        {
+         "frequency": 116673.171,
+         "value": 3072.487967859984
+        },
+        {
+         "frequency": 120108.704,
+         "value": 3073.639601272871
+        },
+        {
+         "frequency": 123645.4,
+         "value": 3074.8672105011933
+        },
+        {
+         "frequency": 127286.237,
+         "value": 3076.0328394590288
+        },
+        {
+         "frequency": 131034.28,
+         "value": 3077.854259665871
+        },
+        {
+         "frequency": 134892.688,
+         "value": 3079.229821797931
+        },
+        {
+         "frequency": 138864.71,
+         "value": 3081.063238186157
+        },
+        {
+         "frequency": 142953.691,
+         "value": 3082.491783452664
+        },
+        {
+         "frequency": 147163.07499999998,
+         "value": 3084.7370687350835
+        },
+        {
+         "frequency": 151496.408,
+         "value": 3086.8244042959423
+        },
+        {
+         "frequency": 155957.34,
+         "value": 3088.7058054097056
+        },
+        {
+         "frequency": 160549.62699999998,
+         "value": 3091.0050735083523
+        },
+        {
+         "frequency": 165277.13700000002,
+         "value": 3093.6272388225934
+        },
+        {
+         "frequency": 170143.853,
+         "value": 3096.1644311853615
+        },
+        {
+         "frequency": 175153.873,
+         "value": 3098.559668735083
+        },
+        {
+         "frequency": 180311.41700000002,
+         "value": 3101.121853142402
+        },
+        {
+         "frequency": 185620.829,
+         "value": 3104.0389245823385
+        },
+        {
+         "frequency": 191086.581,
+         "value": 3107.5188168655523
+        },
+        {
+         "frequency": 196713.276,
+         "value": 3110.9457260143195
+        },
+        {
+         "frequency": 202505.65399999998,
+         "value": 3114.4356151153534
+        },
+        {
+         "frequency": 208468.593,
+         "value": 3119.014157677008
+        },
+        {
+         "frequency": 214607.115,
+         "value": 3123.36377311058
+        },
+        {
+         "frequency": 220926.391,
+         "value": 3127.0825893396973
+        },
+        {
+         "frequency": 227431.74300000002,
+         "value": 3131.6601322195697
+        },
+        {
+         "frequency": 234128.65099999998,
+         "value": 3136.692530310262
+        },
+        {
+         "frequency": 241022.754,
+         "value": 3142.535670326173
+        },
+        {
+         "frequency": 248119.859,
+         "value": 3147.6970273667453
+        },
+        {
+         "frequency": 255425.944,
+         "value": 3153.484185202863
+        },
+        {
+         "frequency": 262947.163,
+         "value": 3159.9921136038183
+        },
+        {
+         "frequency": 270689.849,
+         "value": 3166.4870461416062
+        },
+        {
+         "frequency": 278660.526,
+         "value": 3173.9196801909297
+        },
+        {
+         "frequency": 286865.90499999997,
+         "value": 3180.8314800318212
+        },
+        {
+         "frequency": 295312.89800000004,
+         "value": 3189.2278073190128
+        },
+        {
+         "frequency": 304008.62,
+         "value": 3198.896729514717
+        },
+        {
+         "frequency": 312960.393,
+         "value": 3208.3407233094663
+        },
+        {
+         "frequency": 322175.759,
+         "value": 3217.5797823389016
+        },
+        {
+         "frequency": 331662.479,
+         "value": 3228.874187112172
+        },
+        {
+         "frequency": 341428.543,
+         "value": 3238.8470125696094
+        },
+        {
+         "frequency": 351482.176,
+         "value": 3251.0801185361966
+        },
+        {
+         "frequency": 361831.84599999996,
+         "value": 3264.333899602227
+        },
+        {
+         "frequency": 372486.27,
+         "value": 3278.323446459824
+        },
+        {
+         "frequency": 383454.423,
+         "value": 3294.0814303898164
+        },
+        {
+         "frequency": 394745.541,
+         "value": 3310.022356085918
+        },
+        {
+         "frequency": 406369.135,
+         "value": 3327.929655847255
+        },
+        {
+         "frequency": 418334.995,
+         "value": 3347.09255592681
+        },
+        {
+         "frequency": 430653.19899999996,
+         "value": 3367.324115831344
+        },
+        {
+         "frequency": 443334.12299999996,
+         "value": 3389.7449788385034
+        },
+        {
+         "frequency": 456388.446,
+         "value": 3411.647007000795
+        },
+        {
+         "frequency": 469827.164,
+         "value": 3437.9476350039768
+        },
+        {
+         "frequency": 483661.59599999996,
+         "value": 3466.213637390612
+        },
+        {
+         "frequency": 497903.394,
+         "value": 3496.457010342084
+        },
+        {
+         "frequency": 512564.552,
+         "value": 3529.811392999204
+        },
+        {
+         "frequency": 527657.42,
+         "value": 3564.9482082736668
+        },
+        {
+         "frequency": 543194.71,
+         "value": 3603.66688337311
+        },
+        {
+         "frequency": 559189.5070000001,
+         "value": 3645.2886343675414
+        },
+        {
+         "frequency": 575655.2840000001,
+         "value": 3691.9117933174216
+        },
+        {
+         "frequency": 592605.908,
+         "value": 3742.0248413683366
+        },
+        {
+         "frequency": 610055.657,
+         "value": 3797.614146221161
+        },
+        {
+         "frequency": 628019.227,
+         "value": 3855.897593476531
+        },
+        {
+         "frequency": 646511.749,
+         "value": 3919.8192459824973
+        },
+        {
+         "frequency": 665548.7980000001,
+         "value": 3988.5573653142396
+        },
+        {
+         "frequency": 685146.4079999999,
+         "value": 4061.164253142402
+        },
+        {
+         "frequency": 705321.0850000001,
+         "value": 4135.446607637231
+        },
+        {
+         "frequency": 726089.822,
+         "value": 4213.849650437549
+        },
+        {
+         "frequency": 747470.11,
+         "value": 4293.150407478122
+        },
+        {
+         "frequency": 769479.957,
+         "value": 4371.536455688146
+        },
+        {
+         "frequency": 792137.902,
+         "value": 4449.161746062052
+        },
+        {
+         "frequency": 815463.028,
+         "value": 4525.554428798726
+        },
+        {
+         "frequency": 839474.9809999999,
+         "value": 4597.583500556881
+        },
+        {
+         "frequency": 864193.985,
+         "value": 4664.890075576769
+        },
+        {
+         "frequency": 889640.8589999999,
+         "value": 4725.668728560064
+        },
+        {
+         "frequency": 915837.037,
+         "value": 4778.41993683373
+        },
+        {
+         "frequency": 942804.581,
+         "value": 4823.467597295146
+        },
+        {
+         "frequency": 970566.2069999999,
+         "value": 4852.075490851233
+        },
+        {
+         "frequency": 999145.295,
+         "value": 4866.817798090691
+        },
+        {
+         "frequency": 1028565.9169999999,
+         "value": 4859.88600461416
+        },
+        {
+         "frequency": 1058852.8530000001,
+         "value": 4821.8781032617335
+        },
+        {
+         "frequency": 1090031.611,
+         "value": 4748.603428003182
+        },
+        {
+         "frequency": 1122128.453,
+         "value": 4630.577997772473
+        },
+        {
+         "frequency": 1155170.411,
+         "value": 4467.404938902147
+        },
+        {
+         "frequency": 1189185.316,
+         "value": 4246.68019984089
+        },
+        {
+         "frequency": 1224201.8169999998,
+         "value": 3966.5793613365145
+        },
+        {
+         "frequency": 1260249.406,
+         "value": 3632.9145732696898
+        },
+        {
+         "frequency": 1297358.445,
+         "value": 3252.290733174224
+        },
+        {
+         "frequency": 1335560.189,
+         "value": 2833.8049452665073
+        },
+        {
+         "frequency": 1374886.813,
+         "value": 2388.0338428003183
+        },
+        {
+         "frequency": 1415371.441,
+         "value": 1941.8668663484486
+        },
+        {
+         "frequency": 1457048.1709999999,
+         "value": 1505.0919002386631
+        },
+        {
+         "frequency": 1499952.104,
+         "value": 1096.063101988862
+        },
+        {
+         "frequency": 1544119.379,
+         "value": 724.5458630867142
+        },
+        {
+         "frequency": 1589587.193,
+         "value": 404.9974814956244
+        },
+        {
+         "frequency": 1636393.843,
+         "value": 123.66183605409704
+        },
+        {
+         "frequency": 1684578.7519999999,
+         "value": 0.1
+        }
+       ]
+      },
+      "initial": [
+       {
+        "temperature": -40,
+        "value": 2371.01661
+       },
+       {
+        "temperature": -35,
+        "value": 2375.88174
+       },
+       {
+        "temperature": -30,
+        "value": 2400.40719
+       },
+       {
+        "temperature": -25,
+        "value": 2428.42914
+       },
+       {
+        "temperature": -20,
+        "value": 2458.38915
+       },
+       {
+        "temperature": -15,
+        "value": 2493.1743300000003
+       },
+       {
+        "temperature": -10,
+        "value": 2532.18528
+       },
+       {
+        "temperature": -5,
+        "value": 2576.51091
+       },
+       {
+        "temperature": 0,
+        "value": 2628.6687
+       },
+       {
+        "temperature": 5,
+        "value": 2683.35396
+       },
+       {
+        "temperature": 10,
+        "value": 2744.24301
+       },
+       {
+        "temperature": 15,
+        "value": 2809.7474399999996
+       },
+       {
+        "temperature": 20,
+        "value": 2880.0171000000005
+       },
+       {
+        "temperature": 25,
+        "value": 2953.53351
+       },
+       {
+        "temperature": 30,
+        "value": 3031.64532
+       },
+       {
+        "temperature": 35,
+        "value": 3112.89399
+       },
+       {
+        "temperature": 40,
+        "value": 3195.9708299999998
+       },
+       {
+        "temperature": 45,
+        "value": 3277.99872
+       },
+       {
+        "temperature": 50,
+        "value": 3355.28136
+       },
+       {
+        "temperature": 55,
+        "value": 3427.8587100000004
+       },
+       {
+        "temperature": 60,
+        "value": 3495.61089
+       },
+       {
+        "temperature": 65,
+        "value": 3556.22022
+       },
+       {
+        "temperature": 70,
+        "value": 3608.9274600000003
+       },
+       {
+        "temperature": 75,
+        "value": 3658.42791
+       },
+       {
+        "temperature": 80,
+        "value": 3691.86444
+       },
+       {
+        "temperature": 85,
+        "value": 3714.4218600000004
+       },
+       {
+        "temperature": 90,
+        "value": 3725.6706
+       },
+       {
+        "temperature": 95,
+        "value": 3724.95132
+       },
+       {
+        "temperature": 100,
+        "value": 3714.51177
+       },
+       {
+        "temperature": 105,
+        "value": 3694.36194
+       },
+       {
+        "temperature": 110,
+        "value": 3666.88944
+       },
+       {
+        "temperature": 115,
+        "value": 3635.1711899999996
+       },
+       {
+        "temperature": 120,
+        "value": 3599.7266700000005
+       },
+       {
+        "temperature": 125,
+        "value": 3563.3031300000002
+       },
+       {
+        "temperature": 130,
+        "value": 3528.25821
+       },
+       {
+        "temperature": 135,
+        "value": 3494.55195
+       },
+       {
+        "temperature": 140,
+        "value": 3464.6518800000003
+       },
+       {
+        "temperature": 160,
+        "value": 3444.003707239458
+       },
+       {
+        "temperature": 180,
+        "value": 3500.0858552108193
+       },
+       {
+        "temperature": 200,
+        "value": 3703.1212251392203
+       },
+       {
+        "temperature": 210,
+        "value": 3799.2906125696095
+       },
+       {
+        "temperature": 215,
+        "value": 3914.35398568019
+       },
+       {
+        "temperature": 220,
+        "value": 3950.842370723945
+       },
+       {
+        "temperature": 225,
+        "value": 4023.219331742243
+       },
+       {
+        "temperature": 230,
+        "value": 4081.000938743038
+       },
+       {
+        "temperature": 235,
+        "value": 4202.062402545743
+       },
+       {
+        "temperature": 240,
+        "value": 4260.643754972155
+       },
+       {
+        "temperature": 245,
+        "value": 3939.445998408909
+       },
+       {
+        "temperature": 250,
+        "value": 3067.423579952266
+       },
+       {
+        "temperature": 255,
+        "value": 0
+       }
+      ]
+     },
+     "recommendations": {
+      "maximumFrequency": 500000,
+      "minimumFrequency": 20000
+     },
+     "remanence": [
+      {
+       "magneticField": 0,
+       "magneticFluxDensity": 0.1,
+       "temperature": 25
+      },
+      {
+       "magneticField": 0,
+       "magneticFluxDensity": 0.07,
+       "temperature": 100
+      }
+     ],
+     "resistivity": [
+      {
+       "temperature": 25,
+       "value": 5
+      }
+     ],
+     "saturation": [
+      {
+       "magneticField": 1200,
+       "magneticFluxDensity": 0.52,
+       "temperature": 25
+      },
+      {
+       "magneticField": 1200,
+       "magneticFluxDensity": 0.42,
+       "temperature": 100
+      }
+     ],
+     "type": "commercial",
+     "volumetricLosses": {
+      "default": [
+       {
+        "method": "roshen"
+       },
+       {
+        "method": "steinmetz",
+        "ranges": [
+         {
+          "alpha": 1.426387452415152,
+          "beta": 2.8015048719641893,
+          "ct0": 1.3258403095157516,
+          "ct1": 0.015695373425384584,
+          "ct2": 0.00010647044179018076,
+          "k": 2.3864064338614908,
+          "maximumFrequency": 150000,
+          "minimumFrequency": 100000
+         },
+         {
+          "alpha": 2.431021728210472,
+          "beta": 2.413192252441154,
+          "ct0": 1.2851406928532292,
+          "ct1": 0.014230247925364434,
+          "ct2": 0.00011298480844941078,
+          "k": 3.6115269980756828e-06,
+          "maximumFrequency": 1000000,
+          "minimumFrequency": 150000
+         }
+        ]
+       }
+      ]
+     }
+    },
+    "numberStacks": 1,
+    "shape": {
+     "dimensions": {
+      "A": {
+       "nominal": 0.0205
+      },
+      "B": {
+       "nominal": 0.00685
+      },
+      "C": {
+       "nominal": 0.014
+      },
+      "D": {
+       "nominal": 0.0039
+      },
+      "E": {
+       "nominal": 0.018000000000000002
+      },
+      "F": {
+       "nominal": 0.0087
+      },
+      "G": {
+       "nominal": 0.012
+      }
+     },
+     "family": "pq",
+     "magneticCircuit": "open",
+     "name": "PQ20/13.7",
+     "type": "standard"
+    },
+    "type": "twoPieceSet"
+   },
+   "geometricalDescription": [
+    {
+     "coordinates": [
+      0,
+      0,
+      0
+     ],
+     "machining": [
+      {
+       "coordinates": [
+        0,
+        0.00020084815437648742,
+        0
+       ],
+       "length": 0.00040169630875297484
+      }
+     ],
+     "material": "P47",
+     "rotation": [
+      3.141592653589793,
+      3.141592653589793,
+      0
+     ],
+     "shape": {
+      "dimensions": {
+       "A": {
+        "nominal": 0.0205
+       },
+       "B": {
+        "nominal": 0.00685
+       },
+       "C": {
+        "nominal": 0.014
+       },
+       "D": {
+        "nominal": 0.0039
+       },
+       "E": {
+        "nominal": 0.018000000000000002
+       },
+       "F": {
+        "nominal": 0.0087
+       },
+       "G": {
+        "nominal": 0.012
+       }
+      },
+      "family": "pq",
+      "magneticCircuit": "open",
+      "name": "PQ20/13.7",
+      "type": "standard"
+     },
+     "type": "halfSet"
+    },
+    {
+     "coordinates": [
+      0,
+      0,
+      0
+     ],
+     "material": "P47",
+     "rotation": [
+      0,
+      0,
+      0
+     ],
+     "shape": {
+      "dimensions": {
+       "A": {
+        "nominal": 0.0205
+       },
+       "B": {
+        "nominal": 0.00685
+       },
+       "C": {
+        "nominal": 0.014
+       },
+       "D": {
+        "nominal": 0.0039
+       },
+       "E": {
+        "nominal": 0.018000000000000002
+       },
+       "F": {
+        "nominal": 0.0087
+       },
+       "G": {
+        "nominal": 0.012
+       }
+      },
+      "family": "pq",
+      "magneticCircuit": "open",
+      "name": "PQ20/13.7",
+      "type": "standard"
+     },
+     "type": "halfSet"
+    }
+   ],
+   "name": "PQ20/13.7 - P47 - Gapped 0.402 mm",
+   "processedDescription": {
+    "columns": [
+     {
+      "area": 5.9447e-05,
+      "coordinates": [
+       0,
+       0,
+       0
+      ],
+      "depth": 0.0087,
+      "height": 0.0078,
+      "shape": "round",
+      "type": "central",
+      "width": 0.0087
+     },
+     {
+      "area": 3.1623e-05,
+      "coordinates": [
+       0.010129393,
+       0,
+       0
+      ],
+      "depth": 0.014,
+      "height": 0.0078,
+      "minimumWidth": 0.00125,
+      "shape": "irregular",
+      "type": "lateral",
+      "width": 0.002258786
+     },
+     {
+      "area": 3.1623e-05,
+      "coordinates": [
+       -0.010129393,
+       0,
+       0
+      ],
+      "depth": 0.014,
+      "height": 0.0078,
+      "minimumWidth": 0.00125,
+      "shape": "irregular",
+      "type": "lateral",
+      "width": 0.002258786
+     }
+    ],
+    "depth": 0.014,
+    "effectiveParameters": {
+     "effectiveArea": 6.480628621313627e-05,
+     "effectiveLength": 0.032260480853353875,
+     "effectiveVolume": 2.090681955555854e-06,
+     "minimumArea": 5.944678698755285e-05
+    },
+    "height": 0.0137,
+    "width": 0.0205,
+    "windingWindows": [
+     {
+      "area": 3.627000000000001e-05,
+      "coordinates": [
+       0.006675,
+       0
+      ],
+      "height": 0.0078,
+      "width": 0.004650000000000001
+     }
+    ]
+   }
+  },
+  "manufacturerInfo": {
+   "datasheetUrl": "https://www.we-online.com/katalog/en/datasheet/7443634700",
+   "family": "WE-HCF",
+   "name": "Würth Elektronik",
+   "reference": "7443634700",
+   "status": "production"
+  }
+ }
+}
