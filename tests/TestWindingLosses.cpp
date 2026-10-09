@@ -4167,7 +4167,8 @@ TEST_CASE("Debug_Martinez_Flat_Scorecard", "[debug][martinez-flat-scorecard][.]"
                 magnetizingInductanceModel.calculate_inductance_from_number_turns_and_gapping(
                     p.magnetic.get_core(), p.magnetic.get_coil(), &p.operatingPoint).get_magnetizing_inductance());
             p.operatingPoint = OpenMagnetics::Inputs::process_operating_point(p.operatingPoint, magnetizingInductance);
-            p.temperature = 22;
+            // The MAS's own ambient temperature: OMFEM solves at it (copper sigma), so MKF must too.
+            p.temperature = p.operatingPoint.get_conditions().get_ambient_temperature();
             p.mirroring = 1;
             p.fringing = true;
         }
