@@ -273,10 +273,15 @@ namespace TestWindingLossesRound {
 
     TEST_CASE("Test_Winding_Losses_Twelve_Turns_Round_Sinusoidal", "[physical-model][winding-losses][round][rectangular-winding-window]") {
         // Test to evaluate proximity effect losses, as there is no fringing and the wire is small enough to avoid skin
-        // ABT #832 (2026-08-20): FEM-verified — OMFEM on this fixture gives R_ac/R_dc
-        // 1.003/1.067/1.263/2.705 at 100k/500k/1M/3M and MKF lands within 1.3% at every
-        // point. Only the 3 MHz pin was updated (the old 0.34496 was 20% below FEM);
-        // the rest of the historical table passes as-is.
+        // ABT #832 (2026-08-20): OMFEM 2D gave R_ac/R_dc 1.003/1.067/1.263/2.705 at
+        // 100k/500k/1M/3M. That reference is GAPLESS: the fixture ships a pre-built core
+        // geometricalDescription, and before OMFEM c31a832 (2026-09-06) the residual->subtractive
+        // retype never reached the meshed geometry, so the three 5 um residual gaps were solid
+        // ferrite. ABT #1314 (2026-10-08) re-ran OMFEM 2D with the gapping emptied (plain closed
+        // ferrite): 1.003/1.065/1.249/2.647 at the same frequencies. The pins compare MKF's
+        // no-residual-fringing result against that gapless field; no FEM of this fixture with
+        // its residual gaps meshed exists yet. Only the 3 MHz pin was updated in #832 (the old
+        // 0.34496 was 20% below FEM); the rest of the historical table passes as-is.
         WindingLossesTestHelpers::runJsonBasedWindingLossesTest(
             "Test_Winding_Losses_Twelve_Turns_Round_Sinusoidal.json", 22,
             {{1, 0.17371}, {10000, 0.17372}, {20000, 0.17373}, {30000, 0.17374}, {40000, 0.17375},
