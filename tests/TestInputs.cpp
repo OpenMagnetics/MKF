@@ -2474,3 +2474,99 @@ TEST_CASE("Test_Switching_Frequency_Of_A_Line_Cycle_Record_At_Any_Frequency", "[
     auto converterExcitation = converter.get_operating_point(0).get_excitations_per_winding()[0];
     CHECK_THAT(OpenMagnetics::Inputs::get_switching_frequency(converterExcitation), Catch::Matchers::WithinRel(100000, 1e-12));
 }
+
+// ABT #1467: the derived magnetizing current is Faraday on the winding voltage, never a shape
+// rebuilt from the load current's label. Fixtures shared with ABT #1463 (TestWindingLosses).
+namespace {
+    json abt1467_inputs_without_magnetizing_current(const std::string& fileName) {
+        auto path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), fileName);
+        std::ifstream in(path);
+        json masJson = json::parse(in);
+        json inputsJson = masJson["inputs"];
+        for (auto& operatingPoint : inputsJson["operatingPoints"]) {
+            for (auto& excitation : operatingPoint["excitationsPerWinding"]) {
+                excitation.erase("magnetizingCurrent");
+            }
+        }
+        return inputsJson;
+    }
+}
+
+TEST_CASE("Test_Magnetizing_Current_Dcm_Flyback_Keeps_The_Dead_Time", "[processor][inputs][abt-1467]") {
+    // DCM flyback, 42:6, 100 kHz, L_m 250 uH: 235 V for 2.5 us, -137.2 V while the secondary
+    // demagnetizes, 0 V for the last 42 of 128 samples. The flux (and the magnetizing current) rises
+    // 235 V * 2.5 us / 250 uH = 2.35 A and stays flat through the dead time. The FLYBACK_PRIMARY
+    // label used to rebuild a triangle rising over D and falling over all of 1 - D: no dead time.
+    OpenMagnetics::Inputs inputs(abt1467_inputs_without_magnetizing_current("Test_Winding_Losses_Abt1463_Flyback.json"));
+    auto excitation = inputs.get_operating_points()[0].get_excitations_per_winding()[0];
+    REQUIRE(excitation.get_magnetizing_current());
+    auto magnetizingCurrent = excitation.get_magnetizing_current().value();
+    auto waveform = magnetizingCurrent.get_waveform().value();
+    const auto& data = waveform.get_data();
+    REQUIRE(data.size() == 128);
+    double maximum = *std::max_element(data.begin(), data.end());
+    double minimum = *std::min_element(data.begin(), data.end());
+    double faradaySwing = 235.0 * 2.5e-6 / 250e-6;
+    double deadTimeLevel = data.back();
+    size_t flatSamples = 0;
+    for (auto value : data) {
+        if (std::fabs(value - deadTimeLevel) <= 1e-9 * faradaySwing) {
+            flatSamples++;
+        }
+    }
+    INFO("i_m max " << maximum << " A, min " << minimum << " A, dead-time level " << deadTimeLevel << " A over " << flatSamples << " samples");
+    CHECK(flatSamples >= 42);
+    CHECK_THAT(maximum - minimum, Catch::Matchers::WithinRel(faradaySwing, 0.01));
+    // DCM: the dead time sits at the flux's minimum (the fixture's volt-seconds close to 1.5 %).
+    CHECK(std::fabs(deadTimeLevel - minimum) < 0.02 * faradaySwing);
+    // DC anchor (ABT #907): the magnetizing current peaks where the primary current does (its
+    // 128-sample peak, 2.277 A, is 3 % under the knot peak).
+    CHECK_THAT(maximum, Catch::Matchers::WithinRel(faradaySwing, 0.05));
+}
+
+TEST_CASE("Test_Magnetizing_Current_Ideal_Sinusoidal_Transformer_Is_Faraday", "[processor][inputs][abt-1467]") {
+    // 1:1, 20 V cos on each winding, 3 A sinusoidal currents that cancel (opposite isolation sides by
+    // MKF's index convention), L_m 100 uH, 200 kHz: the magnetizing current is V / (w L_m) = 0.159 A,
+    // not the 3 A load current (it used to be read as a common-mode choke and stored as a +-3 A
+    // triangle).
+    OpenMagnetics::Inputs inputs(abt1467_inputs_without_magnetizing_current("Test_Winding_Losses_Abt1463_Transformer.json"));
+    auto excitation = inputs.get_operating_points()[0].get_excitations_per_winding()[0];
+    REQUIRE(excitation.get_magnetizing_current());
+    auto processed = excitation.get_magnetizing_current()->get_processed().value();
+    double expectedAmplitude = 20.0 / (2 * std::numbers::pi * 200000 * 100e-6);
+    INFO("i_m peak to peak " << processed.get_peak_to_peak().value() << " A, peak " << processed.get_peak().value() << " A");
+    CHECK_THAT(processed.get_peak_to_peak().value() / 2, Catch::Matchers::WithinRel(expectedAmplitude, 0.02));
+    CHECK_THAT(processed.get_peak().value(), Catch::Matchers::WithinRel(expectedAmplitude, 0.02));
+}
+
+TEST_CASE("Test_Magnetizing_Current_Of_Zero_Volt_Second_Voltage_Has_No_Dc", "[processor][inputs][abt-1467][abt-1713]") {
+    // ABT #1713: 688.5 V for a quarter of the period and -229.5 V for the rest balance exactly, so
+    // the flux is a zero-mean triangle. The integration constant was the trapezoid average of the
+    // samples over N - 1 intervals, not the period average, leaving ~1 % of the peak as DC.
+    double frequency = 100000;
+    size_t numberPoints = 128;
+    std::vector<double> data(numberPoints, -229.5);
+    std::vector<double> time(numberPoints);
+    for (size_t i = 0; i < numberPoints; ++i) {
+        time[i] = i / (frequency * numberPoints);
+        if (i < numberPoints / 4) {
+            data[i] = 688.5;
+        }
+    }
+    Waveform voltage;
+    voltage.set_data(data);
+    voltage.set_time(time);
+    OperatingPointExcitation excitation;
+    excitation.set_frequency(frequency);
+    auto magnetizingCurrent = OpenMagnetics::Inputs::calculate_magnetizing_current(excitation, voltage, 1e-3, false, 0.0);
+    double peak = magnetizingCurrent.get_processed()->get_peak().value();
+    double dc = magnetizingCurrent.get_harmonics()->get_amplitudes()[0];
+    double sampleMean = 0;
+    for (auto value : magnetizingCurrent.get_waveform()->get_data()) {
+        sampleMean += value / numberPoints;
+    }
+    INFO("peak " << peak << " A, DC harmonic " << dc << " A, sample mean " << sampleMean << " A");
+    REQUIRE(peak > 0);
+    CHECK(std::fabs(dc) < 1e-9 * peak);
+    CHECK(std::fabs(sampleMean) < 1e-9 * peak);
+}

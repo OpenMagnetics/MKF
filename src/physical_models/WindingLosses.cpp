@@ -190,7 +190,8 @@ WindingLossesOutput WindingLosses::calculate_losses(Magnetic magnetic, Operating
             MagnetizingInductance().calculate_inductance_from_number_turns_and_gapping(
                 magnetic.get_core(), magnetic.get_coil()).get_magnetizing_inductance());
         operatingPoint = Inputs::process_operating_point(operatingPoint, magnetizingInductance,
-                                                         magnetic.get_mutable_coil().get_turns_ratios());
+                                                         magnetic.get_mutable_coil().get_turns_ratios(), false,
+                                                         magnetic.get_mutable_coil().get_isolation_sides());
     }
 
     auto windingLossesOutput = WindingOhmicLosses::calculate_ohmic_losses(magnetic.get_coil(), operatingPoint, temperature);

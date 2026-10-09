@@ -2245,3 +2245,40 @@ TEST_CASE("Test_Volt_Seconds_That_Saturate_The_Core_Are_Refused_Before_The_Dc_Bi
     CHECK(inductance >= 60e-6);
     CHECK(inductance <= 67e-6);
 }
+
+TEST_CASE("Test_Magnetic_Flux_Density_Dcm_Flyback_Keeps_The_Dead_Time", "[physical-model][magnetizing-inductance][abt-1467]") {
+    // ABT #1467: the core-loss path routes a flyback-labelled multi-winding operating point to the
+    // multiport-inductor branch, which rebuilt the magnetizing current as a triangle rising over D
+    // and falling over all of 1 - D. A DCM flyback's flux is flat through the dead time (0 V on
+    // every winding for the last 42 of 128 samples); Faraday on the primary voltage keeps it.
+    auto path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "Test_Winding_Losses_Abt1463_Flyback.json");
+    std::ifstream in(path);
+    json masJson = json::parse(in);
+    OpenMagnetics::Magnetic magnetic(masJson["magnetic"]);
+    for (auto& excitation : masJson["inputs"]["operatingPoints"][0]["excitationsPerWinding"]) {
+        excitation.erase("magnetizingCurrent");
+    }
+    OperatingPoint operatingPoint(masJson["inputs"]["operatingPoints"][0]);
+    MagnetizingInductance magnetizingInductance;
+    auto [output, magneticFluxDensity] = magnetizingInductance.calculate_inductance_and_magnetic_flux_density(magnetic.get_core(), magnetic.get_coil(), &operatingPoint);
+    // Stored compressed (corner points only): sample it over the period.
+    auto sampledFluxDensity = OpenMagnetics::Inputs::calculate_sampled_waveform(magneticFluxDensity.get_waveform().value(), 100000);
+    const auto data = sampledFluxDensity.get_data();
+    REQUIRE(data.size() >= 128);
+    double maximum = *std::max_element(data.begin(), data.end());
+    double minimum = *std::min_element(data.begin(), data.end());
+    double deadTimeLevel = data.back();
+    size_t flatSamples = 0;
+    for (auto value : data) {
+        if (std::fabs(value - deadTimeLevel) <= 1e-6 * (maximum - minimum)) {
+            flatSamples++;
+        }
+    }
+    double flatFraction = static_cast<double>(flatSamples) / data.size();
+    // Faraday: B swing = V t_on / (N_p A_e).
+    double effectiveArea = magnetic.get_core().get_processed_description()->get_effective_parameters().get_effective_area();
+    double faradaySwing = 235.0 * 2.5e-6 / (42 * effectiveArea);
+    INFO("B max " << maximum << " T, min " << minimum << " T, flat fraction " << flatFraction << ", Faraday swing " << faradaySwing << " T");
+    CHECK(flatFraction >= 0.3);
+    CHECK_THAT(maximum - minimum, Catch::Matchers::WithinRel(faradaySwing, 0.03));
+}

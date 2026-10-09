@@ -489,6 +489,26 @@ bool Inputs::is_waveform_imported(Waveform waveform) {
 
 }
 
+bool Inputs::has_flyback_label(const OperatingPointExcitation& excitation) {
+    auto current = excitation.get_current();
+    if (!current) {
+        return false;
+    }
+    if (current->get_waveform() && current->get_waveform()->get_ancillary_label()) {
+        WaveformLabel ancillaryLabel = current->get_waveform()->get_ancillary_label().value();
+        if (ancillaryLabel == WaveformLabel::FLYBACK_PRIMARY || ancillaryLabel == WaveformLabel::FLYBACK_SECONDARY) {
+            return true;
+        }
+    }
+    if (current->get_processed()) {
+        auto label = current->get_processed()->get_label();
+        if (label == WaveformLabel::FLYBACK_PRIMARY || label == WaveformLabel::FLYBACK_SECONDARY) {
+            return true;
+        }
+    }
+    return false;
+}
+
 bool Inputs::is_multiport_inductor(OperatingPoint operatingPoint, std::optional<std::vector<IsolationSide>> isolationSides) {
     auto excitations = operatingPoint.get_excitations_per_winding();
     if (excitations.size() < 2) {
@@ -508,23 +528,8 @@ bool Inputs::is_multiport_inductor(OperatingPoint operatingPoint, std::optional<
             }
         }
 
-        // Check for flyback-type labels on primary winding current
-        bool hasFlybackLabel = false;
         OperatingPointExcitation excitation = Inputs::get_primary_excitation(operatingPoint);
-        if (excitation.get_current()->get_waveform()) {
-            if (excitation.get_current()->get_waveform()->get_ancillary_label()) {
-                WaveformLabel ancillaryLabel = excitation.get_current()->get_waveform()->get_ancillary_label().value();
-                if (ancillaryLabel == WaveformLabel::FLYBACK_PRIMARY || ancillaryLabel == WaveformLabel::FLYBACK_SECONDARY) {
-                    hasFlybackLabel = true;
-                }
-            }
-        }
-        if (!hasFlybackLabel && excitation.get_current()->get_processed()) {
-            auto label = excitation.get_current()->get_processed()->get_label();
-            if (label == WaveformLabel::FLYBACK_PRIMARY || label == WaveformLabel::FLYBACK_SECONDARY) {
-                hasFlybackLabel = true;
-            }
-        }
+        bool hasFlybackLabel = has_flyback_label(excitation);
 
         if (hasFlybackLabel) {
             // Guard: If another winding shares the primary's isolation side, this is a
@@ -553,6 +558,21 @@ bool Inputs::can_be_common_mode_choke(OperatingPoint operatingPoint) {
     // the full line current into the core-flux calculation.
     if (excitations.size() < 2 || excitations.size() > 4) {
         return false;
+    }
+    // MKF signs a winding's ampere-turns by its isolation side: windings on different sides oppose,
+    // so the same current on a primary and a secondary cancels in the core. That is a transformer
+    // carrying load current, not common-mode current; reading it as a CMC stored the load current
+    // as the magnetizing current (ABT #1467: a 1:1 transformer's 3 A instead of V / (w L_m) = 0.16 A).
+    if (isolationSides) {
+        if (isolationSides->size() < excitations.size()) {
+            throw InvalidInputException(ErrorCode::INVALID_INPUT, "can_be_common_mode_choke: " + std::to_string(isolationSides->size()) +
+                                        " isolation sides for " + std::to_string(excitations.size()) + " windings");
+        }
+        for (size_t windingIndex = 1; windingIndex < excitations.size(); ++windingIndex) {
+            if (isolationSides.value()[windingIndex] != isolationSides->front()) {
+                return false;
+            }
+        }
     }
 
     if (!operatingPoint.get_excitations_per_winding()[0].get_current()) {
@@ -613,42 +633,58 @@ bool Inputs::can_be_common_mode_choke(OperatingPoint operatingPoint) {
     return false;
 }
 
-SignalDescriptor Inputs::get_multiport_inductor_magnetizing_current(OperatingPoint operatingPoint) {
+SignalDescriptor Inputs::get_multiport_inductor_magnetizing_current(OperatingPoint operatingPoint,
+                                                                   double magnetizingInductance,
+                                                                   const std::vector<double>& turnsRatios,
+                                                                   std::optional<std::vector<IsolationSide>> isolationSides) {
+    // ABT #1467: this used to rebuild a TRIANGULAR current from the primary current's offset, peak
+    // to peak and duty cycle, rising over D and falling over the whole of 1 - D. A DCM flyback's
+    // dead time was lost (its flux, and so its core losses, read from the wrong shape), and for
+    // windings on one side the other windings' ampere-turns were ignored.
     OperatingPointExcitation excitation = Inputs::get_primary_excitation(operatingPoint);
-
-    if (!excitation.get_current()->get_processed()) {
-        throw InvalidInputException(ErrorCode::INVALID_COIL_CONFIGURATION, "Current is not processed");
+    if (!excitation.get_current()) {
+        throw InvalidInputException(ErrorCode::MISSING_DATA, "Multiport inductor: the primary excitation has no current");
     }
-
-    auto processed = excitation.get_current()->get_processed().value();
-    double peakToPeak = processed.get_peak_to_peak().value();
-    double offset = processed.get_offset();
-
-    // Preserve the duty cycle from the original waveform to get correct asymmetric slopes
-    double dutyCycle = 0.5;
-    if (processed.get_duty_cycle()) {
-        dutyCycle = processed.get_duty_cycle().value();
-    } else if (excitation.get_current()->get_waveform()) {
-        dutyCycle = try_guess_duty_cycle(excitation.get_current()->get_waveform().value(),
-                                          processed.get_label(),
-                                          excitation.get_frequency());
-    }
-
-    // Build a continuous triangular magnetizing current with the correct offset,
-    // peak-to-peak, and duty cycle (asymmetric slopes for tOn vs tOff)
-    ProcessedWaveform triangularProcessed;
-    triangularProcessed.set_label(WaveformLabel::TRIANGULAR);
-    triangularProcessed.set_offset(offset + peakToPeak / 2);
-    triangularProcessed.set_peak_to_peak(peakToPeak);
-    triangularProcessed.set_duty_cycle(dutyCycle);
-
-    auto waveform = create_waveform(triangularProcessed, excitation.get_frequency());
     SignalDescriptor magnetizingCurrent;
-    auto sampledWaveform = Inputs::calculate_sampled_waveform(waveform, excitation.get_frequency());
-    magnetizingCurrent.set_waveform(sampledWaveform);
-    magnetizingCurrent.set_harmonics(calculate_harmonics_data(waveform, sampledWaveform, excitation.get_frequency()));
+    if (has_flyback_label(excitation)) {
+        // The windings conduct alternately: the flux comes from the primary voltage (Faraday),
+        // anchored where the primary current peaks, as there it carries the whole magnetizing MMF.
+        if (!excitation.get_voltage()) {
+            throw InvalidInputException(ErrorCode::MISSING_DATA,
+                "Multiport inductor with a flyback-labelled primary current: its magnetizing current comes from the primary "
+                "voltage (Faraday, anchored at the primary current's peak), and the primary has no voltage");
+        }
+        magnetizingCurrent = calculate_magnetizing_current(excitation, magnetizingInductance, false, true, true);
+    }
+    else {
+        // Every winding on one isolation side (that is what made it a multiport inductor): their
+        // MMFs add, and by Ampere the magnetizing MMF is their sum.
+        size_t numberWindings = operatingPoint.get_excitations_per_winding().size();
+        if (!isolationSides || isolationSides->empty()) {
+            throw InvalidInputException(ErrorCode::MISSING_DATA,
+                "Multiport inductor without a flyback label: the magnetizing current is the windings' ampere-turn sum, which needs their isolation sides");
+        }
+        std::vector<IsolationSide> sides(numberWindings, isolationSides->front());
+        for (size_t windingIndex = 0; windingIndex < numberWindings && windingIndex < isolationSides->size(); ++windingIndex) {
+            if (isolationSides.value()[windingIndex] != isolationSides->front()) {
+                throw InvalidInputException(ErrorCode::INVALID_INPUT,
+                    "Multiport inductor without a flyback label: its windings must share one isolation side for their ampere-turns to add");
+            }
+        }
+        // calculate_ampere_turn_current needs one winding on the primary side as reference; with
+        // every winding on one side, which side it is does not change the sum.
+        std::fill(sides.begin(), sides.end(), IsolationSide::PRIMARY);
+        auto ampereTurnCurrent = calculate_ampere_turn_current(operatingPoint, turnsRatios, sides);
+        auto waveform = ampereTurnCurrent.get_waveform().value();
+        magnetizingCurrent.set_waveform(waveform);
+        magnetizingCurrent.set_harmonics(calculate_harmonics_data(waveform, waveform, excitation.get_frequency()));
+    }
+    auto sampledWaveform = magnetizingCurrent.get_waveform().value();
+    if (!is_size_power_of_2(sampledWaveform.get_data())) {
+        sampledWaveform = Inputs::calculate_sampled_waveform(sampledWaveform, excitation.get_frequency());
+        magnetizingCurrent.set_waveform(sampledWaveform);
+    }
     magnetizingCurrent.set_processed(calculate_processed_data(magnetizingCurrent, sampledWaveform, true));
-
     return magnetizingCurrent;
 }
 
@@ -1117,8 +1153,26 @@ Waveform Inputs::calculate_integral_waveform(Waveform waveform, bool subtractAve
     resultWaveform.set_data(integration);
 
     if (subtractAverage) {
-        double integrationAverage = calculate_waveform_average(resultWaveform);
-        resultWaveform = sum_waveform(resultWaveform, -integrationAverage);
+        // The integration constant is the integral's average over the whole PERIOD (ABT #1713).
+        // Sample i holds data[i] over [t_i, t_i+1); the last sample holds over one more step,
+        // [t_N-1, t_N-1 + dt), which closes the period of a sampled waveform (N points spanning
+        // [0, T)). The trapezoid of the integral over t_0..t_N-1 alone left that interval out and
+        // divided by (N - 1) dt: a zero-volt-second voltage kept ~1 % of its peak as DC.
+        if (integrationSize < 2) {
+            throw InvalidInputException(ErrorCode::INVALID_INPUT, "calculate_integral_waveform: the waveform needs at least 2 samples to remove the integration constant");
+        }
+        double lastStep = time[integrationSize - 1] - time[integrationSize - 2];
+        if (!(lastStep > 0)) {
+            throw InvalidInputException(ErrorCode::INVALID_INPUT, "calculate_integral_waveform: the last two samples share an instant, so the hold of the last sample (and the period) is undefined");
+        }
+        double closedIntegral = integration.back() + data[integrationSize - 1] * lastStep;
+        double area = 0;
+        for (size_t i = 0; i + 1 < integration.size(); ++i) {
+            area += (integration[i] + integration[i + 1]) / 2 * (time[i + 1] - time[i]);
+        }
+        area += (integration.back() + closedIntegral) / 2 * lastStep;
+        double period = time[integrationSize - 1] + lastStep - time[0];
+        resultWaveform = sum_waveform(resultWaveform, -area / period);
     }
 
     // Taken once: get_time() copies the whole axis on every call (see calculate_waveform_average).
@@ -2024,32 +2078,22 @@ void Inputs::check_adviser_inputs_volt_second_balance(const Inputs& inputs,
             if (coilIsolationSides && coilIsolationSides->size() >= excitations.size()) {
                 effectiveIsolationSides = coilIsolationSides;
             }
-            if (is_multiport_inductor(operatingPoint, effectiveIsolationSides)) {
-                continue;
-            }
-            if (!coilIsolationSides) {
-                auto requiredIsolationSides = inputs.get_design_requirements().get_isolation_sides();
-                if (requiredIsolationSides && is_multiport_inductor(operatingPoint, requiredIsolationSides.value())) {
+            // A flyback-labelled multiport inductor has its primary voltage integrated (ABT #1467);
+            // one with every winding on one side takes the ampere-turn sum and integrates nothing.
+            if (!has_flyback_label(excitation)) {
+                if (is_multiport_inductor(operatingPoint, effectiveIsolationSides)) {
                     continue;
+                }
+                if (!coilIsolationSides) {
+                    auto requiredIsolationSides = inputs.get_design_requirements().get_isolation_sides();
+                    if (requiredIsolationSides && is_multiport_inductor(operatingPoint, requiredIsolationSides.value())) {
+                        continue;
+                    }
                 }
             }
         }
-        // Inside calculate_magnetizing_current a FLYBACK_PRIMARY / FLYBACK_SECONDARY /
-        // UNIPOLAR_TRIANGULAR current is rebuilt from its own knots; the voltage is integrated
-        // there only for a multi-winding DC anchor that depends on the coil's turns ratios, so
-        // those are left unchecked. Every other current (or none) has its voltage integrated.
-        if (hasCurrent && excitation.get_current()->get_processed()) {
-            auto label = excitation.get_current()->get_processed()->get_label();
-            if (label == WaveformLabel::FLYBACK_PRIMARY || label == WaveformLabel::FLYBACK_SECONDARY ||
-                label == WaveformLabel::UNIPOLAR_TRIANGULAR) {
-                continue;
-            }
-        }
-        else if (hasCurrent) {
-            // No processed block: the loss path cannot read a label either; the adviser's own
-            // processing decides what happens to it.
-            continue;
-        }
+        // Every current label has its voltage integrated (ABT #1467): a FLYBACK_PRIMARY /
+        // FLYBACK_SECONDARY / UNIPOLAR_TRIANGULAR current is no longer rebuilt from its own knots.
 
         // The same preparation the loss path gives the voltage before integrating it, so the
         // numbers in the message are the ones it would have reported.
@@ -2256,64 +2300,22 @@ SignalDescriptor Inputs::calculate_magnetizing_current(OperatingPointExcitation&
 
 
     SignalDescriptor magnetizingCurrentExcitation;
-    Waveform sampledMagnetizingCurrentWaveform;
-    // The triangular branch builds the current from its knots; its harmonics come from those
-    // knots exactly, not from their 128 samples (ABT #1460).
-    std::optional<Waveform> magnetizingCurrentKnots;
+    // Faraday, for every excitation (ABT #1467): v = N dPhi/dt, so the magnetizing current is the
+    // voltage's integral over the magnetizing inductance, plus the DC anchor the caller derived
+    // (dcCurrent). A FLYBACK_PRIMARY / FLYBACK_SECONDARY / UNIPOLAR_TRIANGULAR current used to be
+    // rebuilt instead as a triangle from its own offset, peak to peak and duty cycle, rising over D
+    // and falling over the whole of 1 - D: a DCM flyback lost its dead time (h1 of N_p i_m 17 % low
+    // and 29 degrees off the windings' net MMF), and the load current's shape stood in for the flux.
+    //
+    // The integration constant is always removed: it depends only on where the numerical
+    // integration starts within the cycle and is physically meaningless; any real DC bias is
+    // supplied separately via dcCurrent. A small net volt-second imbalance (probe offset, resistive
+    // drop, a capture that is not a whole number of periods) is removed before integrating.
+    double meanVoltage = calculate_steady_state_mean_voltage(excitation, voltageSampledWaveform, "Excitation '" + excitation.get_name().value_or("unnamed") + "'");
+    Waveform sampledMagnetizingCurrentWaveform = calculate_integral_waveform(sum_waveform(voltageSampledWaveform, -meanVoltage), true);
+    sampledMagnetizingCurrentWaveform = multiply_waveform(sampledMagnetizingCurrentWaveform, 1.0 / magnetizingInductance);
+    sampledMagnetizingCurrentWaveform = sum_waveform(sampledMagnetizingCurrentWaveform, dcCurrent);
 
-    if (excitation.get_current() && 
-        (excitation.get_current()->get_processed()->get_label() == WaveformLabel::FLYBACK_PRIMARY || 
-        excitation.get_current()->get_processed()->get_label() == WaveformLabel::FLYBACK_SECONDARY || 
-        excitation.get_current()->get_processed()->get_label() == WaveformLabel::UNIPOLAR_TRIANGULAR)) {
-
-        double offset = excitation.get_current()->get_processed()->get_offset();
-        double peakToPeak = excitation.get_current()->get_processed()->get_peak_to_peak().value();
-
-        // Preserve the duty cycle from the original waveform to get correct asymmetric slopes
-        double dutyCycle = 0.5;
-        if (excitation.get_current()->get_processed()->get_duty_cycle()) {
-            dutyCycle = excitation.get_current()->get_processed()->get_duty_cycle().value();
-        } else if (excitation.get_current()->get_waveform()) {
-            dutyCycle = try_guess_duty_cycle(excitation.get_current()->get_waveform().value(),
-                                              excitation.get_current()->get_processed()->get_label());
-        }
-
-        ProcessedWaveform triangularProcessed;
-        triangularProcessed.set_label(WaveformLabel::TRIANGULAR);
-        triangularProcessed.set_offset(offset + peakToPeak / 2);
-        triangularProcessed.set_peak_to_peak(peakToPeak);
-        triangularProcessed.set_duty_cycle(dutyCycle);
-        auto newWaveform = create_waveform(triangularProcessed, excitation.get_frequency());
-        sampledMagnetizingCurrentWaveform = calculate_sampled_waveform(newWaveform, excitation.get_frequency());
-        magnetizingCurrentKnots = newWaveform;
-    }
-    else {
-        // Always subtract the integration constant: in steady state, a pure
-        // inductor driven by a symmetric AC voltage has zero net DC in the
-        // magnetizing current. The integration of V(t) produces an arbitrary
-        // constant of integration that depends on where the numerical
-        // integration starts within the cycle — for asymmetric / harmonic-rich
-        // waveforms (e.g. distorted "sinusoidal" with high THD) this constant
-        // is non-zero and lopsides the resulting current into a unipolar
-        // [0, +Imax] shape. Any intentional DC bias is supplied separately
-        // via `dcCurrent` and added back below; the integration constant
-        // itself is physically meaningless and must always be removed.
-        //
-        // The previous `is_continuously_conducting_power(excitation)` heuristic
-        // was wrong for inductor mode: a pure inductor has V and I in ~90°
-        // quadrature, so V·I ≈ sin(2ωt) crosses zero often and the heuristic
-        // misclassified the load as discontinuous, leaving the spurious DC in
-        // place. The result was Bpeak = peakToPeak (instead of peakToPeak/2)
-        // for harmonic-rich AC excitations.
-        double meanVoltage = calculate_steady_state_mean_voltage(excitation, voltageSampledWaveform, "Excitation '" + excitation.get_name().value_or("unnamed") + "'");
-        sampledMagnetizingCurrentWaveform = calculate_integral_waveform(sum_waveform(voltageSampledWaveform, -meanVoltage), true);
-        SignalDescriptor magnetizingCurrentExcitation;
-
-
-        sampledMagnetizingCurrentWaveform = multiply_waveform(sampledMagnetizingCurrentWaveform, 1.0 / magnetizingInductance);
-        sampledMagnetizingCurrentWaveform = sum_waveform(sampledMagnetizingCurrentWaveform, dcCurrent);
-    }
- 
     if (compress){
         magnetizingCurrentExcitation.set_waveform(compress_waveform(sampledMagnetizingCurrentWaveform));
     }
@@ -2322,7 +2324,7 @@ SignalDescriptor Inputs::calculate_magnetizing_current(OperatingPointExcitation&
     }
 
     magnetizingCurrentExcitation.set_harmonics(
-        calculate_harmonics_data(magnetizingCurrentKnots ? *magnetizingCurrentKnots : sampledMagnetizingCurrentWaveform, sampledMagnetizingCurrentWaveform, excitation.get_frequency()));
+        calculate_harmonics_data(sampledMagnetizingCurrentWaveform, sampledMagnetizingCurrentWaveform, excitation.get_frequency()));
     {
         auto processedData = calculate_processed_data(magnetizingCurrentExcitation, sampledMagnetizingCurrentWaveform);
         // The 'offset' field represents the AC mean of the magnetizing current (DC bias is captured in harmonics[0]).
@@ -2354,7 +2356,8 @@ SignalDescriptor Inputs::calculate_magnetizing_current(OperatingPointExcitation&
     return calculate_magnetizing_current(excitation, voltageSampledWaveform, magnetizingInductance, compress, dcCurrent);
 }
 
-OperatingPoint Inputs::process_operating_point(OperatingPoint operatingPoint, double magnetizingInductance, std::optional<std::vector<double>> turnsRatios, bool isDmcTopology) {
+OperatingPoint Inputs::process_operating_point(OperatingPoint operatingPoint, double magnetizingInductance, std::optional<std::vector<double>> turnsRatios, bool isDmcTopology,
+                                                std::optional<std::vector<IsolationSide>> isolationSides) {
     // Decide the excitation's effective loss-driving frequency.
     //
     // Two cases must both work:
@@ -2675,9 +2678,19 @@ OperatingPoint Inputs::process_operating_point(OperatingPoint operatingPoint, do
         // — it's a plain series inductor and the regular path handles it.
         bool isDmcOperatingPoint = !primaryHasMagnetizingCurrent
             && can_be_differential_mode_choke(operatingPoint, isDmcTopology);
+        // The windings' isolation sides decide whether identical currents add (one side: a
+        // common-mode choke) or cancel (a transformer). Undeclared, MKF's index convention applies.
+        std::vector<IsolationSide> windingIsolationSides;
+        // (Fewer declared than windings: the rest by index, as get_isolation_sides_used extends them.)
+        if (isolationSides) {
+            windingIsolationSides = isolationSides.value();
+        }
+        for (size_t windingIndex = windingIsolationSides.size(); windingIndex < operatingPoint.get_excitations_per_winding().size(); ++windingIndex) {
+            windingIsolationSides.push_back(get_isolation_side_from_index(windingIndex));
+        }
         bool isCmcOperatingPoint = !primaryHasMagnetizingCurrent
             && !isDmcOperatingPoint
-            && can_be_common_mode_choke(operatingPoint);
+            && can_be_common_mode_choke(operatingPoint, windingIsolationSides);
         if (isDmcOperatingPoint) {
             auto dmMagnetizingCurrent = get_differential_mode_choke_magnetizing_current(operatingPoint);
             // Stamp the synthesized DMC magnetizing current on every winding;
@@ -2725,6 +2738,19 @@ void Inputs::process(std::optional<std::variant<double, std::vector<double>>> ma
     bool isDmcTopology = get_design_requirements().get_topology().has_value()
         && get_design_requirements().get_topology().value() == MAS::Topology::DIFFERENTIAL_MODE_CHOKE;
 
+    // The windings' isolation sides (ABT #1467): declared, or every winding on the line side for a
+    // declared common-mode choke; otherwise process_operating_point applies MKF's index convention.
+    std::optional<std::vector<IsolationSide>> isolationSides = get_design_requirements().get_isolation_sides();
+    bool isCmcTopology = get_design_requirements().get_topology().has_value()
+        && get_design_requirements().get_topology().value() == MAS::Topology::COMMON_MODE_CHOKE;
+    if (!isolationSides && isCmcTopology) {
+        size_t numberWindings = get_design_requirements().get_turns_ratios().size() + 1;
+        for (auto& operatingPoint : operatingPoints) {
+            numberWindings = std::max(numberWindings, operatingPoint.get_excitations_per_winding().size());
+        }
+        isolationSides = std::vector<IsolationSide>(numberWindings, IsolationSide::PRIMARY);
+    }
+
     for (size_t operatingPointIndex = 0; operatingPointIndex < operatingPoints.size(); ++operatingPointIndex) {
         auto operatingPoint = operatingPoints[operatingPointIndex];
         double magnetizingInductanceToProcess;
@@ -2748,7 +2774,7 @@ void Inputs::process(std::optional<std::variant<double, std::vector<double>>> ma
         else {
             magnetizingInductanceToProcess = resolve_dimensional_values(get_design_requirements().get_magnetizing_inductance());
         }
-        processed_operating_points.push_back(process_operating_point(operatingPoint, magnetizingInductanceToProcess, std::nullopt, isDmcTopology));
+        processed_operating_points.push_back(process_operating_point(operatingPoint, magnetizingInductanceToProcess, std::nullopt, isDmcTopology, isolationSides));
     }
     set_operating_points(processed_operating_points);
 }

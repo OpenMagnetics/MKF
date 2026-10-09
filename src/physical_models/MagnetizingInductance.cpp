@@ -855,7 +855,13 @@ std::pair<MagnetizingInductanceOutput, SignalDescriptor> MagnetizingInductance::
                     excitation.set_magnetizing_current(magnetizingCurrent);
                     operatingPoint->get_mutable_excitations_per_winding()[0] = excitation;
                 }
-                else if (Inputs::can_be_common_mode_choke(*operatingPoint) && core.get_type() == CoreType::TOROIDAL) {
+                // The coil's isolation sides, when it has every winding of the circuit: windings on
+                // different sides oppose, so identical currents on them are a transformer's (ABT #1467).
+                else if (Inputs::can_be_common_mode_choke(*operatingPoint,
+                             numberWindings < operatingPoint->get_excitations_per_winding().size()
+                                 ? std::optional<std::vector<IsolationSide>>()
+                                 : std::optional<std::vector<IsolationSide>>(coil.get_isolation_sides()))
+                         && core.get_type() == CoreType::TOROIDAL) {
                     auto magnetizingCurrent = Inputs::get_common_mode_choke_magnetizing_current(*operatingPoint);
                     excitation.set_magnetizing_current(magnetizingCurrent);
                     operatingPoint->get_mutable_excitations_per_winding()[0] = excitation;
@@ -870,7 +876,10 @@ std::pair<MagnetizingInductanceOutput, SignalDescriptor> MagnetizingInductance::
                              numberWindings < operatingPoint->get_excitations_per_winding().size()
                                  ? std::optional<std::vector<IsolationSide>>()
                                  : std::optional<std::vector<IsolationSide>>(coil.get_isolation_sides()))) {
-                    auto magnetizingCurrent = Inputs::get_multiport_inductor_magnetizing_current(*operatingPoint);
+                    auto magnetizingCurrent = Inputs::get_multiport_inductor_magnetizing_current(*operatingPoint, modifiedMagnetizingInductance, coil.get_turns_ratios(),
+                        numberWindings < operatingPoint->get_excitations_per_winding().size()
+                            ? std::optional<std::vector<IsolationSide>>()
+                            : std::optional<std::vector<IsolationSide>>(coil.get_isolation_sides()));
                     excitation.set_magnetizing_current(magnetizingCurrent);
                     operatingPoint->get_mutable_excitations_per_winding()[0] = excitation;
                 }

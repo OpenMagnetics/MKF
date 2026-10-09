@@ -306,8 +306,17 @@ Inputs pre_process_inputs(Inputs inputs) {
                 Inputs::set_current_as_magnetizing_current(&inputs.get_mutable_operating_points()[operatingPointIndex]);
                 continue;
             }
-            auto magnetizingCurrent = Inputs::calculate_magnetizing_current(excitation, magnetizingInductance, false);
-            inputs.get_mutable_operating_points()[operatingPointIndex].get_mutable_excitations_per_winding()[0].set_magnetizing_current(magnetizingCurrent);
+            // Faraday on the primary voltage with the DC anchored as Inputs::process_operating_point
+            // does (ABT #1467): a flyback label no longer brings its own triangle and offset.
+            auto& operatingPoint = inputs.get_mutable_operating_points()[operatingPointIndex];
+            std::vector<double> turnsRatios;
+            for (auto& turnsRatio : inputs.get_design_requirements().get_turns_ratios()) {
+                turnsRatios.push_back(resolve_dimensional_values(turnsRatio));
+            }
+            bool addOffset = Inputs::include_dc_offset_into_magnetizing_current(operatingPoint, turnsRatios);
+            auto magnetizingCurrent = Inputs::calculate_magnetizing_current(excitation, magnetizingInductance, false, addOffset,
+                                                                            operatingPoint.get_excitations_per_winding().size() > 1);
+            operatingPoint.get_mutable_excitations_per_winding()[0].set_magnetizing_current(magnetizingCurrent);
         }
     }
     return inputs;

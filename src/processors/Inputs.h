@@ -59,12 +59,18 @@ class Inputs : public MAS::Inputs {
     bool has_insulation_coordination_requirements() const;
     std::pair<bool, std::string> check_integrity();
     void process(std::optional<std::variant<double, std::vector<double>>> magnetizingInductance = std::nullopt);
-    static OperatingPoint process_operating_point(OperatingPoint operatingPoint, double magnetizingInductance, std::optional<std::vector<double>> turnsRatios = std::nullopt, bool isDmcTopology = false);
+    // isolationSides: the windings' sides; without them MKF's index convention applies (winding k on
+    // get_isolation_side_from_index(k)). Windings on different sides oppose, so identical currents
+    // on them cancel: that is a transformer, never a common-mode choke (ABT #1467).
+    static OperatingPoint process_operating_point(OperatingPoint operatingPoint, double magnetizingInductance, std::optional<std::vector<double>> turnsRatios = std::nullopt, bool isDmcTopology = false,
+                                                  std::optional<std::vector<IsolationSide>> isolationSides = std::nullopt);
 
     static bool is_waveform_sampled(Waveform waveform);
     static bool is_waveform_imported(Waveform waveform);
     static bool is_multiport_inductor(OperatingPoint operatingPoint, std::optional<std::vector<IsolationSide>> isolationSides = std::nullopt);
-    static bool can_be_common_mode_choke(OperatingPoint operatingPoint);
+    // isolationSides, when given: a common-mode choke has every winding on one side. Windings on
+    // different sides oppose, so identical currents on them cancel (a transformer), ABT #1467.
+    static bool can_be_common_mode_choke(OperatingPoint operatingPoint, std::optional<std::vector<IsolationSide>> isolationSides = std::nullopt);
     static bool can_be_differential_mode_choke(OperatingPoint operatingPoint, bool isDmcTopology = false);
 
     static Waveform calculate_sampled_waveform(Waveform waveform, double frequency=0, std::optional<size_t> numberPoints=std::nullopt, std::optional<size_t> maximumNumberPoints=std::nullopt);
@@ -315,7 +321,16 @@ class Inputs : public MAS::Inputs {
     static double get_switching_frequency(const OperatingPointExcitation& excitation);
     static double get_magnetic_flux_density_peak(OperatingPointExcitation excitation, double switchingFrequency);
     static double get_magnetic_flux_density_peak_to_peak(OperatingPointExcitation excitation, double switchingFrequency);
-    static SignalDescriptor get_multiport_inductor_magnetizing_current(OperatingPoint operatingPoint);
+    // A multiport inductor's magnetizing current (ABT #1467). Flyback-labelled (the windings conduct
+    // alternately): Faraday on the primary voltage, DC anchored at the primary current's peak
+    // (ABT #907); it throws without a primary voltage. Otherwise every winding is on one isolation
+    // side and their MMFs add: the ampere-turn sum of the winding currents, referred to the primary.
+    static SignalDescriptor get_multiport_inductor_magnetizing_current(OperatingPoint operatingPoint,
+                                                                       double magnetizingInductance,
+                                                                       const std::vector<double>& turnsRatios,
+                                                                       std::optional<std::vector<IsolationSide>> isolationSides);
+    // The primary current carries a FLYBACK_PRIMARY / FLYBACK_SECONDARY label (processed or ancillary).
+    static bool has_flyback_label(const OperatingPointExcitation& excitation);
     static SignalDescriptor get_common_mode_choke_magnetizing_current(OperatingPoint operatingPoint);
     static SignalDescriptor get_differential_mode_choke_magnetizing_current(OperatingPoint operatingPoint);
 
