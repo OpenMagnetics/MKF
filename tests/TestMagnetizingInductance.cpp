@@ -2183,12 +2183,12 @@ TEST_CASE("Test_Dc_Bias_Is_The_Time_Average_Not_The_Midpoint", "[physical-model]
     REQUIRE(fabs(asymmetricMidpoint) > 0.005 * asymmetricSwing);
     // Read as a bias, the midpoint collapsed both inductances to 0.0002 uH, so they must also match the
     // small-signal inductance N^2 / R at the unbiased permeability. With the DC taken as the average the
-    // two duties agree to 1e-4 (the voltage integration leaves a residual DC of about 1 % of the peak).
+    // two duties agree to 1e-4 (the integration constant is the full-period average, ABT #1713: no residual DC).
     double unbiasedPermeability = InitialPermeability().get_initial_permeability(core.resolve_material(), 25.0, std::nullopt, 1e5);
     double unbiasedInductance = 1.0 / ReluctanceModel::factory(ReluctanceModels::ZHANG)->get_core_reluctance(core, unbiasedPermeability).get_core_reluctance();
     INFO("unbiased L " << unbiasedInductance * 1e6 << " uH");
     CHECK_THAT(asymmetricInductance, Catch::Matchers::WithinRel(symmetricInductance, 1e-3));
-    // 1 %: the residual DC the voltage integration leaves (ABT #1713) biases both duties by about 0.5 %.
+    // 1 %: model tolerance; the voltage integration no longer leaves a residual DC (ABT #1713).
     CHECK_THAT(asymmetricInductance, Catch::Matchers::WithinRel(unbiasedInductance, 1e-2));
 }
 
@@ -2281,4 +2281,37 @@ TEST_CASE("Test_Magnetic_Flux_Density_Dcm_Flyback_Keeps_The_Dead_Time", "[physic
     INFO("B max " << maximum << " T, min " << minimum << " T, flat fraction " << flatFraction << ", Faraday swing " << faradaySwing << " T");
     CHECK(flatFraction >= 0.3);
     CHECK_THAT(maximum - minimum, Catch::Matchers::WithinRel(faradaySwing, 0.03));
+}
+
+TEST_CASE("Test_Multiport_Flyback_Without_Voltage_Is_The_Ampere_Turn_Sum", "[physical-model][magnetizing-inductance][abt-1467]") {
+    // ABT #1467: a flyback-labelled operating point with no primary voltage. Its magnetizing current
+    // is the windings' ampere-turn sum referred to the primary (secondary signed by its isolation
+    // side), exact while either winding conducts: it keeps the DCM dead time (both currents zero)
+    // where the FLYBACK label's triangle fell over all of 1 - D.
+    auto path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "Test_Winding_Losses_Abt1463_Flyback.json");
+    std::ifstream in(path);
+    json masJson = json::parse(in);
+    for (auto& excitation : masJson["inputs"]["operatingPoints"][0]["excitationsPerWinding"]) {
+        excitation.erase("magnetizingCurrent");
+        excitation.erase("voltage");
+    }
+    OperatingPoint operatingPoint(masJson["inputs"]["operatingPoints"][0]);
+    auto magnetizingCurrent = OpenMagnetics::Inputs::get_multiport_inductor_magnetizing_current(
+        operatingPoint, 250e-6, {7.0}, std::vector<IsolationSide>{IsolationSide::PRIMARY, IsolationSide::SECONDARY});
+    auto waveform = magnetizingCurrent.get_waveform().value();
+    const auto& data = waveform.get_data();
+    double maximum = *std::max_element(data.begin(), data.end());
+    double minimum = *std::min_element(data.begin(), data.end());
+    size_t zeroSamples = 0;
+    for (auto value : data) {
+        if (std::fabs(value) <= 1e-9 * maximum) {
+            zeroSamples++;
+        }
+    }
+    INFO("i_m max " << maximum << " A, min " << minimum << " A, " << zeroSamples << " of " << data.size() << " samples at zero");
+    // Peak: the primary's 128-sample peak, 2.277 A; the secondary's 16.16 A / 7 = 2.309 A at commutation.
+    CHECK_THAT(maximum, Catch::Matchers::WithinRel(2.31, 0.02));
+    CHECK(minimum > -1e-9 * maximum);
+    // Dead time: the last 42 of 128 samples carry no current on either winding.
+    CHECK(static_cast<double>(zeroSamples) / data.size() >= 40.0 / 128);
 }

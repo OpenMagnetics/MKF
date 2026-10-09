@@ -627,34 +627,38 @@ SignalDescriptor Inputs::get_multiport_inductor_magnetizing_current(OperatingPoi
         throw InvalidInputException(ErrorCode::MISSING_DATA, "Multiport inductor: the primary excitation has no current");
     }
     SignalDescriptor magnetizingCurrent;
-    if (has_flyback_label(excitation)) {
+    size_t numberWindings = operatingPoint.get_excitations_per_winding().size();
+    if (has_flyback_label(excitation) && excitation.get_voltage()) {
         // The windings conduct alternately: the flux comes from the primary voltage (Faraday),
         // anchored where the primary current peaks, as there it carries the whole magnetizing MMF.
-        if (!excitation.get_voltage()) {
-            throw InvalidInputException(ErrorCode::MISSING_DATA,
-                "Multiport inductor with a flyback-labelled primary current: its magnetizing current comes from the primary "
-                "voltage (Faraday, anchored at the primary current's peak), and the primary has no voltage");
-        }
         magnetizingCurrent = calculate_magnetizing_current(excitation, magnetizingInductance, false, true, true);
     }
     else {
-        // Every winding on one isolation side (that is what made it a multiport inductor): their
-        // MMFs add, and by Ampere the magnetizing MMF is their sum.
-        size_t numberWindings = operatingPoint.get_excitations_per_winding().size();
+        // No primary voltage on a flyback, or every winding on one isolation side: the ampere-turn
+        // sum of the winding currents, referred to the primary, each winding signed by its isolation
+        // side as calculate_ampere_turn_current does. By Ampere that sum IS the magnetizing MMF only
+        // while the given currents are the windings' true currents: for a flyback it is exact while
+        // either winding conducts and through the dead time (both zero), but it carries no flux the
+        // currents do not show (no ringing, no leakage-commutation overlap), which Faraday would.
         if (!isolationSides || isolationSides->empty()) {
             throw InvalidInputException(ErrorCode::MISSING_DATA,
-                "Multiport inductor without a flyback label: the magnetizing current is the windings' ampere-turn sum, which needs their isolation sides");
+                "Multiport inductor: without a flyback primary voltage, the magnetizing current is the windings' ampere-turn sum, which needs their isolation sides");
         }
-        std::vector<IsolationSide> sides(numberWindings, isolationSides->front());
-        for (size_t windingIndex = 0; windingIndex < numberWindings && windingIndex < isolationSides->size(); ++windingIndex) {
-            if (isolationSides.value()[windingIndex] != isolationSides->front()) {
-                throw InvalidInputException(ErrorCode::INVALID_INPUT,
-                    "Multiport inductor without a flyback label: its windings must share one isolation side for their ampere-turns to add");
+        std::vector<IsolationSide> sides;
+        for (size_t windingIndex = 0; windingIndex < numberWindings; ++windingIndex) {
+            sides.push_back(windingIndex < isolationSides->size() ? isolationSides.value()[windingIndex] : get_isolation_side_from_index(windingIndex));
+        }
+        if (!has_flyback_label(excitation)) {
+            for (auto side : sides) {
+                if (side != sides.front()) {
+                    throw InvalidInputException(ErrorCode::INVALID_INPUT,
+                        "Multiport inductor without a flyback label: its windings must share one isolation side for their ampere-turns to add");
+                }
             }
+            // calculate_ampere_turn_current needs a primary-side reference; with every winding on
+            // one side, which side it is does not change the sum.
+            std::fill(sides.begin(), sides.end(), IsolationSide::PRIMARY);
         }
-        // calculate_ampere_turn_current needs one winding on the primary side as reference; with
-        // every winding on one side, which side it is does not change the sum.
-        std::fill(sides.begin(), sides.end(), IsolationSide::PRIMARY);
         auto ampereTurnCurrent = calculate_ampere_turn_current(operatingPoint, turnsRatios, sides);
         auto waveform = ampereTurnCurrent.get_waveform().value();
         magnetizingCurrent.set_waveform(waveform);

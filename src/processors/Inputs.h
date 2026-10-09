@@ -323,8 +323,8 @@ class Inputs : public MAS::Inputs {
     static double get_magnetic_flux_density_peak_to_peak(OperatingPointExcitation excitation, double switchingFrequency);
     // A multiport inductor's magnetizing current (ABT #1467). Flyback-labelled (the windings conduct
     // alternately): Faraday on the primary voltage, DC anchored at the primary current's peak
-    // (ABT #907); it throws without a primary voltage. Otherwise every winding is on one isolation
-    // side and their MMFs add: the ampere-turn sum of the winding currents, referred to the primary.
+    // (ABT #907). Without a primary voltage, or with every winding on one isolation side: the
+    // ampere-turn sum of the winding currents, referred to the primary (exact while they conduct).
     static SignalDescriptor get_multiport_inductor_magnetizing_current(OperatingPoint operatingPoint,
                                                                        double magnetizingInductance,
                                                                        const std::vector<double>& turnsRatios,
