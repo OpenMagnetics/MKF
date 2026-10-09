@@ -2832,7 +2832,7 @@ std::map<std::string, double> get_major_loop_parameters(double saturationMagneti
  * @param B_peak Target peak magnetic flux density [T]
  * @return The vertical offset delta to apply to the B-H curves
  */
-static double roshen_compute_analytical_delta(double Hc, double a1, double b1, double b2, double B_peak) {
+static std::optional<double> roshen_compute_analytical_delta(double Hc, double a1, double b1, double b2, double B_peak) {
     // Coefficients for the quadratic solution
     // A = 2*B_peak*Hc*b1*b2 + B_peak*a1*(b1 + b2) - Hc*(b1 + b2) - a1
     double A = 2.0 * B_peak * Hc * b1 * b2 + B_peak * a1 * (b1 + b2) - Hc * (b1 + b2) - a1;
@@ -2857,8 +2857,7 @@ static double roshen_compute_analytical_delta(double Hc, double a1, double b1, d
              + a1 * a1;
     
     if (D < 0) {
-        // Fallback: no real solution, return 0 (will use unshifted curves)
-        return 0.0;
+        return std::nullopt;
     }
     
     double sqrt_D = std::sqrt(D);
@@ -2872,8 +2871,8 @@ static double roshen_compute_analytical_delta(double Hc, double a1, double b1, d
     }
     
     if (u <= 0) {
-        // Both solutions negative, fallback
-        return 0.0;
+        // The tip is not at H < -Hc: a small loop (see roshen_compute_minor_loop_delta).
+        return std::nullopt;
     }
     
     // Compute B values at the crossing point
@@ -2884,6 +2883,55 @@ static double roshen_compute_analytical_delta(double Hc, double a1, double b1, d
     double delta = (B_upper - B_lower) / 2.0;
     
     return delta;
+}
+
+/**
+ * @brief Vertical offset (delta) of the Roshen minor B-H loop reaching +-B_peak.
+ *
+ * The analytical root above assumes the tip of the minor loop lies at H < -Hc. A small
+ * loop (B_peak below roughly the flux density the lower branch reaches at -Hc, ~73 mT
+ * for PC95 at 25 C) has its tip at -Hc <= H <= 0, where neither root is positive. That
+ * case used to return delta = 0: the unshifted branches coincide inside +-B_peak, the
+ * loop area is 0, and the hysteresis term vanished — PC95 at 100 kHz, 25 C dropped from
+ * 32.9 kW/m3 at 76 mT to 0.63 kW/m3 (eddy only, exactly B^2 f^2) at 61 mT (user report
+ * 2026-10-09).
+ *
+ * For that region the tip is solved directly: upper(H) + lower(H) is strictly
+ * increasing in H, equals -2*B_peak at the tip, is >= -2*B_peak at H = -Hc for a small
+ * loop and is 0 at H = 0, so bisection on [-Hc, 0] brackets the single root.
+ * At or above saturation there is no minor loop: the major loop is used (delta = 0).
+ */
+static double roshen_compute_minor_loop_delta(double Hc, double a1, double b1, double b2, double B_peak, double B_saturation) {
+    auto analyticalDelta = roshen_compute_analytical_delta(Hc, a1, b1, b2, B_peak);
+    if (analyticalDelta) {
+        return analyticalDelta.value();
+    }
+    if (B_peak >= B_saturation) {
+        // At or past saturation the loop IS the major loop: no vertical shift.
+        return 0.0;
+    }
+    // Both branches on -Hc <= H <= 0: the upper uses b1 (H >= -Hc), the lower uses b1 (H < Hc).
+    auto upper = [&](double H) { return (H + Hc) / (a1 + b1 * fabs(H + Hc)); };
+    auto lower = [&](double H) { return -(-H + Hc) / (a1 + b1 * fabs(-H + Hc)); };
+    auto tipResidual = [&](double H) { return upper(H) + lower(H) + 2.0 * B_peak; };
+    double low = -Hc;
+    double high = 0;
+    if (!(tipResidual(low) <= 0 && tipResidual(high) >= 0)) {
+        throw CalculationException(ErrorCode::CALCULATION_ERROR,
+            "Roshen minor loop: no tip for B_peak = " + std::to_string(B_peak) + " T (Hc = " + std::to_string(Hc) +
+            " A/m, a1 = " + std::to_string(a1) + ", b1 = " + std::to_string(b1) + ", b2 = " + std::to_string(b2) + ")");
+    }
+    for (size_t iteration = 0; iteration < 200 && high - low > 1e-12 * std::max(1.0, Hc); ++iteration) {
+        double middle = (low + high) / 2.0;
+        if (tipResidual(middle) < 0) {
+            low = middle;
+        }
+        else {
+            high = middle;
+        }
+    }
+    double tip = (low + high) / 2.0;
+    return (upper(tip) - lower(tip)) / 2.0;
 }
 
 std::pair<std::vector<double>, std::vector<double>> CoreLossesRoshenModel::get_bh_loop(std::map<std::string, double> parameters,
@@ -2950,7 +2998,8 @@ std::pair<std::vector<double>, std::vector<double>> CoreLossesRoshenModel::get_b
         calculate_magnetic_flux_density_waveform(magneticFieldStrengthPoints, false);
 
     // Compute the analytical vertical offset (delta) to create the minor loop at B_peak
-    double delta = roshen_compute_analytical_delta(coerciveForce, a1, b1, b2, magneticFluxDensityAcPeak);
+    double delta = roshen_compute_minor_loop_delta(coerciveForce, a1, b1, b2, magneticFluxDensityAcPeak,
+                                                   saturationMagneticFluxDensity);
     
     // Apply the offset: shift upper branch down, lower branch up
     for (size_t i = 0; i < upperMagneticFluxDensityWaveform.size(); i++) {

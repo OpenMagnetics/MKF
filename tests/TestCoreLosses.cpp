@@ -4339,6 +4339,36 @@ OperatingPointExcitation build_sinusoidal_flux_excitation(double frequency, doub
 }
 }  // namespace
 
+// User report 2026-10-09: PC95 (Roshen-only in MAS), sinusoid, 100 kHz, 25 C lost its
+// hysteresis term below ~73 mT — 0.63 kW/m3 at 61 mT against 32.9 kW/m3 at 76 mT, the low
+// side scaling exactly as B^2 f^2 (eddy only). The analytical minor-loop tip has no positive
+// root for a small loop and the code silently used delta = 0, which gives a zero-area loop.
+TEST_CASE("Test_Roshen_Small_Minor_Loop_Keeps_Hysteresis", "[physical-model][core-losses][roshen-core-losses-model][smoke-test]") {
+    settings.reset();
+    clear_databases();
+    double frequency = 100000;
+    double temperature = 25;
+    Core core = OpenMagneticsTesting::get_quick_core("PQ 20/20", json::array(), 1, "PC95");
+    CoreLossesRoshenModel roshen;
+    auto parameters = roshen.get_roshen_parameters(core, build_sinusoidal_flux_excitation(frequency, 0.061), temperature);
+    auto hysteresis = [&](double peak) {
+        return roshen.get_hysteresis_losses_density(parameters, build_sinusoidal_flux_excitation(frequency, peak));
+    };
+
+    // Small loops have hysteresis, growing with the peak.
+    CHECK(hysteresis(0.010) > 0);
+    CHECK(hysteresis(0.030) > hysteresis(0.010));
+    CHECK(hysteresis(0.061) > hysteresis(0.030));
+    // No cliff across the boundary between the small-loop and analytical solutions (~73 mT).
+    CHECK_THAT(hysteresis(0.0725), Catch::Matchers::WithinRel(hysteresis(0.0745), 0.1));
+    // The reported pair: 61 mT is now a smooth step below 76 mT, not a factor of 50.
+    auto low = roshen.get_core_losses(core, build_sinusoidal_flux_excitation(frequency, 0.061), temperature).get_core_losses();
+    auto high = roshen.get_core_losses(core, build_sinusoidal_flux_excitation(frequency, 0.076), temperature).get_core_losses();
+    CHECK(low / high > 0.3);
+    CHECK(low / high < 1);
+    settings.reset();
+}
+
 TEST_CASE("Test_Roshen_Eddy_Current_Ferrite_Uses_Bulk_Cross_Section", "[physical-model][core-losses][roshen-core-losses-model][abt-1344]") {
     settings.reset();
     clear_databases();
