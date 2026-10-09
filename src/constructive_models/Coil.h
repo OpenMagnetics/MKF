@@ -1190,20 +1190,23 @@ class Coil : public MAS::Coil {
          * start there (route_leads_to_pins) and a consumer drawing the lead inside the window
          * (MVB++) draws its run at this x.
          *
-         * The rule, per isolation side (route.side), on lanes x = lane * pitch, pitch = the largest
-         * coated diameter of that side's terminal leads, lanes 0, 1, 2, ... (toward +x):
-         *   1. Lane 0 already holds the routes MKF draws on the connection plane: Z dragbacks and
+         * The rule, per isolation side (route.side), along +x from x = 0, with pitch = the largest
+         * coated diameter of that side's terminal leads:
+         *   1. x = 0 already holds the routes MKF draws on the connection plane: Z dragbacks and
          *      edge continuations (against every lead) and U turnarounds / tangential links (against
          *      other windings' leads only: a winding's leads never yield to its own links).
          *   2. A winding's leads of one end (its ENTRANCE block, then its EXIT block; windings in
-         *      route order) are one bundle on CONSECUTIVE lanes a0, a0 + 1, ... Members are ordered as
+         *      route order) are one bundle standing side by side from its anchor a0, one pitch apart (plus any #1336 ramp
+         *      lying between two of them). Members are ordered as
          *      MVB++'s fan orders a same-radius bundle (every attach radius, the smallest radial
          *      waypoint, within the first member's coated radius of the first member's): by the
          *      route's axial span (entrance ascending, exit descending), ties by the attach turn's
          *      axial coordinate ascending; otherwise by parallel index.
-         *   3. The anchor a0 is the lowest lane at which no member's 2D route (radial, axial) comes
-         *      closer than the two coated radii to anything already on its lane (rule 1 plus every
-         *      bundle placed before).
+         *   3. The anchor a0 is the lowest x >= 0 -- solved exactly, not stepped in pitches (ABT #1705)
+         *      -- at which no member's footprint along the face stands closer than the required gap to
+         *      anything already placed (rule 1 plus every bundle before) whose 2D route (radial,
+         *      axial) comes within reach of the member's: the two coated radii, or under rule 4 the
+         *      wider gap and reach given there.
          *   4. ABT #1705, REAL WINDING ONLY: two terminal leads of DIFFERENT bundles whose sections
          *      come within reach of each other's corners -- 2D routes closer than the two coated
          *      radii plus BOTH planned bend radii (ConnectionRoute::plannedBendRadius) -- never share

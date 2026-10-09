@@ -53,6 +53,8 @@
 #include <iomanip>
 #include <limits>
 #include <map>
+#include <tuple>
+#include <optional>
 #include <set>
 #include <sstream>
 
@@ -631,27 +633,32 @@ std::vector<std::optional<double>> Coil::terminal_exit_slots(const std::vector<C
         // Two pieces clash when their footprints along the face come within one coated radius each
         // AND their sections do too. Without ramps a footprint is a point and pitch >= the sum of
         // the radii, so this is exactly the old same-lane test.
-        auto blocks_lead = [&](const Occupant& occupant, size_t lead, const std::pair<double, double>& footprint) {
+        // The gap along the face that keeps a lead clear of an occupant, measured exactly (no
+        // tolerance), or nothing when the two can never meet: a winding's own link, or sections
+        // farther apart than the two can reach.
+        auto required_gap = [&](const Occupant& occupant, size_t lead) -> std::optional<double> {
             const auto& other = routes[occupant.route];
             const bool link = other.kind == ConnectionKind::U_ADJACENT || other.kind == ConnectionKind::U_TANGENTIAL;
             if (link && other.winding == routes[lead].winding) {
-                return false;   // a winding's leads never yield to its own links
+                return std::nullopt;   // a winding's leads never yield to its own links
             }
-            const double clearance = (diameters[lead] + diameters[occupant.route]) / 2 - tolerance;
-            double requiredGap = clearance;   // along the face
-            double reach = clearance;         // in the section: closer than this, the two can meet
+            double requiredGap = (diameters[lead] + diameters[occupant.route]) / 2;   // along the face
+            double reach = requiredGap;   // in the section: closer than this, the two can meet
             if (realWinding && is_terminal(other)) {
                 // Rule 4 (ABT #1705): another bundle's lead, within reach of this lead's corners.
-                const auto [bendReach, bendGap] = cross_bundle_clearance(routes[lead], diameters[lead], other, diameters[occupant.route]);
-                reach = bendReach - tolerance;
-                requiredGap = bendGap - tolerance;
+                std::tie(reach, requiredGap) = cross_bundle_clearance(routes[lead], diameters[lead], other, diameters[occupant.route]);
             }
-            const double gap = footprint_gap(footprint, occupant.footprint);
-            if (gap >= requiredGap) {
-                return false;
+            if (polyline_distance(polyline_of(routes[lead]), polyline_of(other)) >= reach - tolerance) {
+                return std::nullopt;
             }
-            const double found = polyline_distance(polyline_of(routes[lead]), polyline_of(other));
-            return found < reach;
+            return requiredGap;
+        };
+        // Two pieces clash when their sections come within reach AND their footprints along the face
+        // stand closer than the required gap. Without ramps a footprint is a point and pitch >= the sum
+        // of the radii, so this is exactly the old same-lane test.
+        auto blocks_lead = [&](const Occupant& occupant, size_t lead, const std::pair<double, double>& footprint) {
+            const auto requiredGap = required_gap(occupant, lead);
+            return requiredGap && footprint_gap(footprint, occupant.footprint) < requiredGap.value() - tolerance;
         };
         for (const auto& winding : windingOrder) {
             for (auto kind : {ConnectionKind::TERMINAL_ENTRANCE, ConnectionKind::TERMINAL_EXIT}) {
@@ -701,19 +708,37 @@ std::vector<std::optional<double>> Coil::terminal_exit_slots(const std::vector<C
                 // A group's members stand side by side from the anchor, one pitch apart -- plus, between
                 // two of them, whatever ramp lies in that gap: an entrance member's own ramp lies
                 // back towards its predecessor, an exit member's ramp forward towards its successor.
-                // With no ramps this is the old lane grid, x = lane * pitch.
+                // With no ramps the members stand one pitch apart from the anchor.
                 std::vector<double> offsets(members.size(), 0.0);
                 for (size_t position = 1; position < members.size(); ++position) {
                     const bool entrance = kind == ConnectionKind::TERMINAL_ENTRANCE;
                     const double between = entrance ? ramp_span(members[position]) : ramp_span(members[position - 1]);
                     offsets[position] = offsets[position - 1] + pitch + between;
                 }
-                // Every anchor past the occupied lanes is free, so the search ends.
-                size_t anchor = 0;
-                for (;; ++anchor) {
+                // THE ANCHOR IS EXACT (ABT #1705, Alf: the lanes are not snapped to the pitch grid). Each
+                // (member, occupant) pair that can meet blocks the open interval of anchors at which the
+                // member's footprint stands closer than the required gap to the occupant's; above it the
+                // pair is clear from the anchor at which the gap is exactly met. The free anchors are
+                // therefore a finite union of intervals whose lowest point is 0 or one of those edges:
+                // try them in order and take the first that clears every pair.
+                std::vector<double> candidates{0.0};
+                for (size_t position = 0; position < members.size(); ++position) {
+                    const auto footprintAtZero = footprint_at(members[position], offsets[position]);
+                    for (const auto& occupant : occupants) {
+                        if (const auto requiredGap = required_gap(occupant, members[position])) {
+                            const double edge = occupant.footprint.second + requiredGap.value() - footprintAtZero.first;
+                            if (edge > 0.0) {
+                                candidates.push_back(edge);
+                            }
+                        }
+                    }
+                }
+                std::sort(candidates.begin(), candidates.end());
+                std::optional<double> anchor;
+                for (double candidate : candidates) {
                     bool free = true;
                     for (size_t position = 0; position < members.size() && free; ++position) {
-                        const auto footprint = footprint_at(members[position], double(anchor) * pitch + offsets[position]);
+                        const auto footprint = footprint_at(members[position], candidate + offsets[position]);
                         for (const auto& occupant : occupants) {
                             if (blocks_lead(occupant, members[position], footprint)) {
                                 free = false;
@@ -722,11 +747,17 @@ std::vector<std::optional<double>> Coil::terminal_exit_slots(const std::vector<C
                         }
                     }
                     if (free) {
+                        anchor = candidate;
                         break;
                     }
                 }
+                if (!anchor) {
+                    // The highest edge clears every pair by construction, so this is a defect here.
+                    throw std::logic_error("terminal_exit_slots: no anchor clears the " + terminal_route_label(routes[members.front()]) +
+                                           " bundle, although the highest blocking edge should (ABT #1705).");
+                }
                 for (size_t position = 0; position < members.size(); ++position) {
-                    const double x = double(anchor) * pitch + offsets[position];
+                    const double x = anchor.value() + offsets[position];
                     slots[members[position]] = x;
                     occupants.push_back({members[position], footprint_at(members[position], x)});
                 }

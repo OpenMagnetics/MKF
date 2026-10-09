@@ -149,6 +149,7 @@ TEST_CASE("14_dab: every terminal lead has its own lane, clear of every other bu
     size_t crossBundlePairs = 0;
     size_t primaryEntranceVsExit = 0;
     double minimumCrossBundleSurplus = std::numeric_limits<double>::max();
+    double minimumCrossBundleSlack = std::numeric_limits<double>::max();   // gap beyond the required one
     for (size_t i = 0; i < leads.size(); ++i) {
         for (size_t j = i + 1; j < leads.size(); ++j) {
             const auto& a = leads[i];
@@ -178,6 +179,7 @@ TEST_CASE("14_dab: every terminal lead has its own lane, clear of every other bu
                 CHECK(gap >= required - 1e-9);
                 CHECK(gap > radii);
                 minimumCrossBundleSurplus = std::min(minimumCrossBundleSurplus, gap - radii);
+                minimumCrossBundleSlack = std::min(minimumCrossBundleSlack, gap - required);
             }
         }
     }
@@ -186,6 +188,10 @@ TEST_CASE("14_dab: every terminal lead has its own lane, clear of every other bu
     REQUIRE(crossBundlePairs >= primaryEntranceVsExit);
     INFO("smallest cross-bundle clearance beyond the coated radii: " << minimumCrossBundleSurplus * 1e3 << " mm");
     CHECK(minimumCrossBundleSurplus > 0);
+    // The tightest bundle boundary stands EXACTLY the required gap apart: the anchor is solved, not
+    // stepped along a pitch grid that would waste up to a pitch at every boundary (Alf, ABT #1705).
+    INFO("smallest cross-bundle slack beyond the required gap: " << minimumCrossBundleSlack * 1e3 << " mm");
+    CHECK(std::abs(minimumCrossBundleSlack) < 1e-9);
 
     // Each lead leaves its helix with room for its bends: a straight stub from its turn to its row
     // holds two bends of plannedBendRadius (one in the turn surface, one onto the radial run), so it is
@@ -279,16 +285,15 @@ TEST_CASE("terminal_exit_slots: two bundles that touch in the section take disjo
         CHECK(slots[3].value() == 0.0);   // exit order by span descending: parallel 1 first
         CHECK(slots[2].value() == od);
     }
-    SECTION("real winding: the exit bundle starts the first lane at least d + R past the entrance bundle") {
+    SECTION("real winding: the exit bundle starts exactly d + R past the entrance bundle") {
         auto slots = OpenMagnetics::Coil::terminal_exit_slots(routes, diameters, attach, true);
         CHECK(slots[0].value() == 0.0);
         CHECK(slots[1].value() == od);
-        // The second entrance stands at od, so the first exit needs od + (od + bend) = 2.159 mm; on the pitch grid
-        // that is lane 3 = 2.565 mm.
-        const double firstExitLane = std::ceil((od + od + bend) / od - 1e-9) * od;
-        CHECK(firstExitLane == 3 * od);
-        CHECK(slots[3].value() == firstExitLane);
-        CHECK(slots[2].value() == firstExitLane + od);
+        // The second entrance stands at od, so the first exit stands at od + (od + bend) = 2.159 mm -- not
+        // rounded up to the next pitch (3 od = 2.565 mm).
+        const double firstExit = od + od + bend;
+        CHECK(std::abs(slots[3].value() - firstExit) < 1e-12);
+        CHECK(std::abs(slots[2].value() - (firstExit + od)) < 1e-12);
     }
     SECTION("real winding without a planned bend throws") {
         routes[2].plannedBendRadius = 0;
