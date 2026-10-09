@@ -3329,3 +3329,133 @@ TEST_CASE("Test_CoilAdviser_Coils_Whose_Losses_Cannot_Be_Evaluated_Are_Dropped_F
     CHECK(log.find("Steinmetz loss coefficients are fitted over 2000000.000000 Hz to 20000000.000000 Hz") != std::string::npos);
     CHECK(log.find("could be ranked by losses; returning them in winding order, unranked") != std::string::npos);
 }
+
+// ABT #1699: a coil advised with real winding geometry on is one the real winder builds from its
+// stored form: real_winding_refusal accepts it, and rebuilt as the web does (MVB++
+// magnetic_autocomplete_safe) it applies its connection blocking with every turn inside the window.
+static void check_advised_coils_are_real_windable(std::vector<OpenMagnetics::Mas>& advised) {
+    for (auto& advisedMas : advised) {
+        const auto windings = advisedMas.get_magnetic().get_coil().get_functional_description();
+        for (const auto& winding : windings) {
+            std::cout << "[abt-1699 real winding] " << winding.get_name() << ": " << winding.get_number_turns() << " turns x "
+                      << winding.get_number_parallels() << " parallels of "
+                      << std::get<OpenMagnetics::Wire>(winding.get_wire()).get_name().value_or("?") << std::endl;
+        }
+        auto refusal = OpenMagnetics::real_winding_refusal(advisedMas.get_magnetic(), advisedMas.get_inputs());
+        INFO(refusal.value_or("accepted"));
+        CHECK(!refusal);
+        auto rebuilt = OpenMagneticsTesting::rebuild_with_real_winding_as_web(advisedMas.get_magnetic());
+        INFO(rebuilt.get_mutable_coil().get_last_fit_failure());
+        CHECK(rebuilt.get_coil().is_real_winding_blocking_applied());
+        const auto outside = OpenMagneticsTesting::turns_outside_winding_window(rebuilt.get_mutable_coil());
+        for (const auto& turn : outside) {
+            INFO(turn);
+            CHECK(false);
+        }
+    }
+}
+
+static OpenMagnetics::Mas load_web_flyback_advise_all(bool realWinding) {
+    auto path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "web_adviser_flows/flyback_calculate_advised_coil.json");
+    std::ifstream file(path);
+    REQUIRE(file.good());
+    auto fixture = json::parse(file);
+    settings.reset();
+    OpenMagneticsTesting::apply_web_engine_settings(fixture.at("engineSettingsAtCall"));
+    settings.set_coil_delimit_and_compact(true);
+    settings.set_coil_use_real_winding_geometry(realWinding);
+    OpenMagnetics::Mas mas(fixture.at("mas"));
+    for (size_t windingIndex = 0; windingIndex < mas.get_magnetic().get_coil().get_functional_description().size(); ++windingIndex) {
+        mas.get_mutable_magnetic().get_mutable_coil().get_mutable_functional_description()[windingIndex].set_wire("Dummy");
+    }
+    mas.get_mutable_magnetic().get_mutable_coil().set_turns_description(std::nullopt);
+    mas.get_mutable_magnetic().get_mutable_coil().set_layers_description(std::nullopt);
+    mas.get_mutable_magnetic().get_mutable_coil().set_sections_description(std::nullopt);
+    mas.get_mutable_magnetic().get_mutable_coil().set_groups_description(std::nullopt);
+    return mas;
+}
+
+TEST_CASE("Test_CoilAdviser_Real_Winding_Web_Flyback_Advise_All_Is_Real_Windable", "[adviser][coil-adviser][bug][abt-1699]") {
+    // ABT #1699 flow 3: the web's default flyback (95 EQ 26/19/7, 42:5), wire "Advise All" with real
+    // winding geometry on. The adviser proposed wires laid out with no crossing stations (the
+    // Secondary as 5 turns x 4 parallels of a 0.663 mm wire, or 5 x 2 of a 1.02 mm litz filling its
+    // 2 layers exactly) that the real winder cannot build: it found nothing. Now the whole-turn
+    // packing filter reserves one crossing station per layer and parallel, and the coils returned
+    // are vetted by the real winder from their stored form.
+    auto mas = load_web_flyback_advise_all(true);
+    CoilAdviser coilAdviser;
+    auto masMagneticsWithCoil = coilAdviser.get_advised_coil(mas, 1);
+    INFO(coilAdviser.get_last_no_results_reason().value_or("returned results"));
+    REQUIRE(masMagneticsWithCoil.size() >= 1);
+    check_advised_coils_are_real_windable(masMagneticsWithCoil);
+    settings.reset();
+}
+
+TEST_CASE("Test_MagneticFilterAreaWithParallels_Reserves_Crossing_Stations_Only_With_Real_Winding", "[adviser][coil-adviser][magnetic-filter][bug][abt-1699]") {
+    // ABT #1699: 5 turns x 2 parallels of a 1.02 mm wire in a section 5.65 mm along the layer and
+    // 2.04 mm deep. Ideally that is 5 turns per layer in 2 layers: it packs. With real winding
+    // geometry each layer also carries one crossing station per parallel (ABT #685), so a layer
+    // holds 3 turns and the 10 turns need 4 layers (4.08 mm): it does not.
+    OpenMagnetics::Wire wire;
+    wire.set_type(MAS::WireType::ROUND);
+    wire.set_name("abt1699 round 1.02");
+    wire.set_nominal_value_conducting_diameter(0.0010);
+    wire.set_nominal_value_outer_diameter(0.00102);
+    wire.set_nominal_value_conducting_area(std::numbers::pi * 0.0005 * 0.0005);
+    wire.set_material("copper");
+    wire.set_number_conductors(1);
+    OpenMagnetics::Winding winding;
+    winding.set_name("Secondary");
+    winding.set_number_turns(5);
+    winding.set_number_parallels(2);
+    winding.set_isolation_side(MAS::IsolationSide::SECONDARY);
+    winding.set_wire(wire);
+    MAS::Section section;
+    section.set_name("Secondary section 0");
+    section.set_type(MAS::ElectricalType::CONDUCTION);
+    section.set_coordinate_system(MAS::CoordinateSystem::CARTESIAN);
+    section.set_layers_orientation(MAS::WindingOrientation::OVERLAPPING);
+    section.set_dimensions({0.00204, 0.00565});
+    section.set_coordinates({0.01, 0, 0});
+    const double sectionArea = 0.00204 * 0.00565;
+    MagneticFilterAreaWithParallels filter;
+
+    settings.reset();
+    settings.set_coil_use_real_winding_geometry(false);
+    CHECK(filter.evaluate_magnetic(winding, section, 1, sectionArea, false).first);
+    settings.set_coil_use_real_winding_geometry(true);
+    CHECK(!filter.evaluate_magnetic(winding, section, 1, sectionArea, false).first);
+    // A one-turn winding is an omega: no crossing station is charged.
+    winding.set_number_turns(1);
+    winding.set_number_parallels(9);
+    CHECK(filter.evaluate_magnetic(winding, section, 1, sectionArea, false).first);
+    settings.reset();
+}
+
+TEST_CASE("Test_CoilAdviser_Real_Winding_Selection_Drops_What_The_Real_Winder_Refuses", "[adviser][coil-adviser][bug][abt-1699]") {
+    // ABT #1699 (b): with real winding geometry on, the coils the adviser returns are vetted by the
+    // real winder on their stored form. A web-flyback candidate the real winder refuses when it is
+    // rebuilt from its stored form ('Secondary 0 section 0' cannot hold its turns once the
+    // connection corridors are blocked) is not returned; with the setting off the selection is the
+    // first maximumNumberResults, as before.
+    auto mas = load_web_flyback_advise_all(true);
+    auto path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "web_adviser_flows/flyback_interleaved_candidate_stored.json");
+    std::ifstream file(path);
+    REQUIRE(file.good());
+    auto stored = json::parse(file).at("magnetic");
+    OpenMagnetics::Magnetic magnetic;
+    magnetic.set_core(OpenMagnetics::Core(stored.at("core")));
+    magnetic.set_coil(OpenMagnetics::Coil(stored.at("coil"), false));
+    mas.set_magnetic(magnetic);
+
+    MagneticFilterRealWinding filter;
+    CHECK(!filter.evaluate_magnetic(&mas.get_mutable_magnetic(), &mas.get_mutable_inputs()).first);
+    INFO(filter.get_last_reason());
+    CHECK(filter.get_last_reason().find("cannot hold its") != std::string::npos);
+
+    CoilAdviser coilAdviser;
+    CHECK(coilAdviser.select_real_windable({mas}, 1).empty());
+    settings.set_coil_use_real_winding_geometry(false);
+    CHECK(coilAdviser.select_real_windable({mas}, 1).size() == 1);
+    settings.reset();
+}

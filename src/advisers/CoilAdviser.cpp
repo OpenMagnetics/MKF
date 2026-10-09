@@ -513,6 +513,8 @@ namespace OpenMagnetics {
         _diagnosisNoWiresDetail.clear();
         _diagnosisBestOverfill = std::numeric_limits<double>::max();
         _diagnosisBestFailure.clear();
+        _diagnosisRealWindingRefusals = 0;
+        _diagnosisRealWindingRefusal.clear();
         _lastNoResultsReason = std::nullopt;
         auto core = mas.get_magnetic().get_core();
         auto coreType = core.get_functional_description().get_type();
@@ -911,6 +913,11 @@ namespace OpenMagnetics {
                     + " of their re-proportioned recovery layouts were certifiably unpackable and skipped)";
                 if (!_diagnosisBestFailure.empty()) {
                     reason += "; best candidate failed on: " + _diagnosisBestFailure;
+                }
+                if (_diagnosisRealWindingRefusals > 0) {
+                    reason += "; " + std::to_string(_diagnosisRealWindingRefusals)
+                        + " candidates were refused by the real winder, e.g. "
+                        + _diagnosisRealWindingRefusal;
                 }
             }
             _lastNoResultsReason = reason;
@@ -1458,7 +1465,28 @@ namespace OpenMagnetics {
             // We have new wires combination, we need to restart insulation each time and let it compute it again
             mas.get_mutable_magnetic().get_mutable_coil().reset_insulation();
             _diagnosisWindAttempts++;
-            bool wound = mas.get_mutable_magnetic().get_mutable_coil().wind(sectionProportions, pattern, repetitions);
+            // ABT #1699: with real winding geometry on, this wind IS the real one, and the real
+            // winder refuses a layout it cannot close layer by layer by throwing COIL_WINDING_ERROR
+            // (the crossing stations and the connection-lead blocking do not converge). That is this
+            // candidate's verdict -- the same one real_winding_refusal returns for it -- not the
+            // adviser's: it is counted, logged and the walk goes on. Any other exception, and this
+            // one with the setting off, propagates.
+            auto windCandidate = [&](const std::vector<double>& proportions) -> bool {
+                try {
+                    return mas.get_mutable_magnetic().get_mutable_coil().wind(proportions, pattern, repetitions);
+                }
+                catch (const CoilException& e) {
+                    if (e.code() != ErrorCode::COIL_WINDING_ERROR || !settings.get_coil_use_real_winding_geometry()) {
+                        throw;
+                    }
+                    if (_diagnosisRealWindingRefusals++ == 0) {
+                        _diagnosisRealWindingRefusal = e.what();
+                    }
+                    logEntry(std::string("Candidate refused by the real winder: ") + e.what(), "CoilAdviser", 2);
+                    return false;
+                }
+            };
+            bool wound = windCandidate(sectionProportions);
             bool packable = true;
             if (!wound) {
                 // ABT #415 RECOVERY: the fixed equal shares above are decided before any wire is
@@ -1476,7 +1504,7 @@ namespace OpenMagnetics {
                                                    mas.get_mutable_magnetic().get_mutable_coil(), pattern, repetitions);
                 if (packable && combinationProportions != sectionProportions) {
                     mas.get_mutable_magnetic().get_mutable_coil().reset_insulation();
-                    wound = mas.get_mutable_magnetic().get_mutable_coil().wind(combinationProportions, pattern, repetitions);
+                    wound = windCandidate(combinationProportions);
                 }
                 else if (!packable) {
                     _diagnosisGuardSkips++;
@@ -1669,21 +1697,53 @@ namespace OpenMagnetics {
                 logEntry("None of the " + std::to_string(masesWithCoil.size()) + " wound coils on core '" +
                          mas.get_mutable_magnetic().get_mutable_core().get_shape_name() +
                          "' could be ranked by losses; returning them in winding order, unranked", "CoilAdviser");
-                masesWithCoil.erase(masesWithCoil.begin() + maximumNumberResults, masesWithCoil.end());
             }
             else {
                 stable_sort_by_index(masesWithLosses, [](const std::pair<Mas, double>& left, const std::pair<Mas, double>& right) {
                     return left.second < right.second;
                 });
                 masesWithCoil.clear();
-                for (size_t index = 0; index < std::min(maximumNumberResults, masesWithLosses.size()); ++index) {
-                    masesWithCoil.push_back(masesWithLosses[index].first);
+                for (auto& [rankedMas, losses] : masesWithLosses) {
+                    masesWithCoil.push_back(std::move(rankedMas));
                 }
             }
         }
+        // masesWithCoil is now in ranking order (or winding order when nothing could be ranked).
+        // The first maximumNumberResults are returned. ABT #1699: with real winding geometry on,
+        // only coils the real winder builds from their stored form (MagneticFilterRealWinding) are
+        // returned, walking the ranking until enough pass, so each candidate costs one real wind
+        // only when it would otherwise be returned. With the setting off the returned coils are the
+        // first maximumNumberResults, as before.
+        masesWithCoil = select_real_windable(std::move(masesWithCoil), maximumNumberResults);
         logEntry("Managed to wind " + std::to_string(masesWithCoil.size()) + " coils", "CoilAdviser");
 
         return masesWithCoil;
+    }
+
+    std::vector<Mas> CoilAdviser::select_real_windable(std::vector<Mas> rankedMases, size_t maximumNumberResults) {
+        if (!settings.get_coil_use_real_winding_geometry()) {
+            if (rankedMases.size() > maximumNumberResults) {
+                rankedMases.erase(rankedMases.begin() + maximumNumberResults, rankedMases.end());
+            }
+            return rankedMases;
+        }
+        MagneticFilterRealWinding realWindingFilter;
+        std::vector<Mas> selected;
+        for (auto& rankedMas : rankedMases) {
+            if (selected.size() == maximumNumberResults) {
+                break;
+            }
+            if (realWindingFilter.evaluate_magnetic(&rankedMas.get_mutable_magnetic(), &rankedMas.get_mutable_inputs()).first) {
+                selected.push_back(std::move(rankedMas));
+                continue;
+            }
+            if (_diagnosisRealWindingRefusals++ == 0) {
+                _diagnosisRealWindingRefusal = realWindingFilter.get_last_reason();
+            }
+            logEntry("Wound coil '" + rankedMas.get_mutable_magnetic().get_reference() +
+                     "' refused by the real winder: " + realWindingFilter.get_last_reason(), "CoilAdviser", 2);
+        }
+        return selected;
     }
 
     std::vector<Mas> CoilAdviser::get_advised_planar_coil_for_pattern(std::vector<Wire>* wires, Mas mas, std::vector<size_t> pattern, size_t repetitions, size_t maximumNumberResults, std::string reference){

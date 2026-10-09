@@ -312,4 +312,44 @@ inline OpenMagnetics::Magnetic rebuild_with_real_winding_as_web(const OpenMagnet
     return OpenMagnetics::magnetic_autocomplete(magnetic, nlohmann::json{});
 }
 
+// Every turn of a wound coil, with its wire's outer dimensions, against its winding window
+// (single-window bobbins). Returns one line per turn that leaves the window; throws when the
+// coil has no turns or the bobbin no window, so an unwound coil can never read as "all inside".
+inline std::vector<std::string> turns_outside_winding_window(OpenMagnetics::Coil& coil) {
+    if (!coil.get_turns_description() || coil.get_turns_description()->empty()) {
+        throw std::runtime_error("turns_outside_winding_window: the coil has no turns: " + coil.get_last_fit_failure());
+    }
+    auto bobbin = coil.resolve_bobbin();
+    if (!bobbin.get_processed_description() || bobbin.get_processed_description()->get_winding_windows().size() != 1) {
+        throw std::runtime_error("turns_outside_winding_window: expected a bobbin with exactly one winding window");
+    }
+    const auto window = bobbin.get_processed_description()->get_winding_windows()[0];
+    if (!window.get_coordinates() || !window.get_width() || !window.get_height()) {
+        throw std::runtime_error("turns_outside_winding_window: the winding window has no rectangular description");
+    }
+    const double xCenter = std::abs(window.get_coordinates().value()[0]);
+    const double yCenter = window.get_coordinates().value()[1];
+    const double x0 = xCenter - window.get_width().value() / 2;
+    const double x1 = xCenter + window.get_width().value() / 2;
+    const double y0 = yCenter - window.get_height().value() / 2;
+    const double y1 = yCenter + window.get_height().value() / 2;
+    const double tolerance = 1e-9;
+    auto wires = coil.get_wires();
+    const auto turns = coil.get_turns_description().value();
+    std::vector<std::string> outside;
+    for (const auto& turn : turns) {
+        auto& wire = wires[coil.get_winding_index_by_name(turn.get_winding())];
+        const double halfWidth = wire.get_maximum_outer_width() / 2;
+        const double halfHeight = wire.get_maximum_outer_height() / 2;
+        const auto c = turn.get_coordinates();
+        if (c[0] - halfWidth < x0 - tolerance || c[0] + halfWidth > x1 + tolerance ||
+            c[1] - halfHeight < y0 - tolerance || c[1] + halfHeight > y1 + tolerance) {
+            outside.push_back(turn.get_name() + " at (" + std::to_string(c[0]) + ", " + std::to_string(c[1]) +
+                              "), window x[" + std::to_string(x0) + ", " + std::to_string(x1) + "] y[" +
+                              std::to_string(y0) + ", " + std::to_string(y1) + "]");
+        }
+    }
+    return outside;
+}
+
 } // namespace OpenMagneticsTesting

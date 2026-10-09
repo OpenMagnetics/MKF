@@ -399,7 +399,26 @@ static bool fits_in_whole_turns_per_layer(const Wire& wire, const Winding& windi
         return false;
     }
     double physicalTurns = std::ceil(static_cast<double>(winding.get_number_turns()) * static_cast<double>(winding.get_number_parallels()) / numberSections);
-    double numberLayers = std::ceil(physicalTurns / turnsPerLayer);
+
+    // ABT #1699: with real winding geometry on, every layer a parallel enters also carries that
+    // parallel's crossing station (ABT #685: a wire making N turns over L layers crosses the
+    // window plane N + L times; Coil::wind_inner's RealWindingCrossingBump charges one extra
+    // cross-section per layer and parallel). A layer of T positions then holds T - P turns of a
+    // P-parallel winding, so N P / S turns need L layers with L (T - P) >= N P / S, which is the
+    // fixpoint the bump iterates to ((N/S + L) P <= L T). With T <= P no number of layers closes
+    // (each new layer brings as many stations as it has room): the real winder refuses it. The
+    // bump charges no station to a foil (ABT #881) or a one-turn winding (the omega), and none in
+    // a toroid's round window, whose sections are polar and never reach this function. With the
+    // setting off nothing changes: the ideal wind charges no station.
+    double stationsPerLayer = 0;
+    if (settings.get_coil_use_real_winding_geometry() && wire.get_type() != WireType::FOIL && winding.get_number_turns() > 1) {
+        stationsPerLayer = static_cast<double>(winding.get_number_parallels());
+    }
+    double turnsPerLayerAfterStations = turnsPerLayer - stationsPerLayer;
+    if (turnsPerLayerAfterStations < 1) {
+        return false;
+    }
+    double numberLayers = std::ceil(physicalTurns / turnsPerLayerAfterStations);
     return numberLayers * layerThickness <= depth * (1 + 1e-9);
 }
 
@@ -444,6 +463,27 @@ std::pair<bool, double> MagneticFilterAreaWithParallels::evaluate_magnetic(Windi
     else {
         return {false, 0.0};
     }
+}
+
+std::pair<bool, double> MagneticFilterRealWinding::evaluate_magnetic(Magnetic* magnetic, Inputs* inputs, [[maybe_unused]] std::vector<Outputs>* outputs) {
+    _lastReason.clear();
+    if (!magnetic->has_core() || !magnetic->has_coil()) {
+        throw CoilNotProcessedException("Real winding check: the magnetic has no core and coil to rebuild");
+    }
+    if (magnetic->get_mutable_coil().is_planar()) {
+        throw InvalidInputException(ErrorCode::INVALID_COIL_CONFIGURATION,
+            "Real winding check: a planar coil has no real-winding model (ABT #492)");
+    }
+    std::optional<Inputs> realWindingInputs;
+    if (inputs) {
+        realWindingInputs = *inputs;
+    }
+    auto refusal = real_winding_refusal(*magnetic, realWindingInputs);
+    if (refusal) {
+        _lastReason = refusal.value();
+        return {false, 0.0};
+    }
+    return {true, 1.0};
 }
 
 bool MagneticFilterWindowCopperCapacity::applies_to(const Inputs& inputs) {

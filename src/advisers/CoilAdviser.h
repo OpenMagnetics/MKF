@@ -138,6 +138,8 @@ class CoilAdviser : public WireAdviser {
         std::string _diagnosisNoWiresDetail;
         double _diagnosisBestOverfill = std::numeric_limits<double>::max();
         std::string _diagnosisBestFailure;     // failing constraint of the closest losing candidate
+        size_t _diagnosisRealWindingRefusals = 0;  // ranked coils the real winder refused (ABT #1699)
+        std::string _diagnosisRealWindingRefusal;  // the first such refusal, as the real winder named it
         std::optional<std::string> _lastNoResultsReason;
 
     public:
@@ -151,6 +153,11 @@ class CoilAdviser : public WireAdviser {
         std::optional<std::string> get_last_no_results_reason() const {
             return _lastNoResultsReason;
         }
+
+        // ABT #1699: the first maximumNumberResults of `rankedMases` (in their order). With real
+        // winding geometry on, only those MagneticFilterRealWinding accepts; refusals are counted
+        // in the no-results diagnosis.
+        std::vector<Mas> select_real_windable(std::vector<Mas> rankedMases, size_t maximumNumberResults);
 
         /**
          * @brief The wires get_advised_coil(mas) advises from: the catalogue (or the active

@@ -463,6 +463,28 @@ class MagneticFilterAreaWithParallels : public MagneticFilter {
         std::pair<bool, double> evaluate_magnetic(Winding winding, Section section, double numberSections, double sectionArea, bool allowNotFit);
 };
 
+/**
+ * @class MagneticFilterRealWinding
+ * @brief Does the real winder build this wound magnetic as it is stored? (ABT #1699)
+ *
+ * A coil an adviser returns is stored and rebuilt downstream from its JSON with real winding
+ * geometry (the web's 3D view, MVB++ magnetic_autocomplete_safe). This filter asks the real
+ * winder itself, through real_winding_refusal: the magnetic rebuilt from its stored form (its
+ * functional and section description; layers and turns are laid out again) must
+ * wind, apply its connection blocking and keep every turn inside the winding window. The
+ * refusal the real winder gives is kept as the last reason. Planar coils have no real-winding
+ * model (ABT #492): evaluating one throws.
+ */
+class MagneticFilterRealWinding : public MagneticFilter {
+    private:
+        std::string _lastReason;
+    public:
+        MagneticFilterRealWinding() {};
+        std::pair<bool, double> evaluate_magnetic(Magnetic* magnetic, Inputs* inputs, std::vector<Outputs>* outputs = nullptr);
+        // Why the last evaluated magnetic was refused (empty when it passed).
+        const std::string& get_last_reason() const { return _lastReason; }
+};
+
 class MagneticFilterEffectiveResistance : public MagneticFilter {
     private:
         double _maximumCurrent;
