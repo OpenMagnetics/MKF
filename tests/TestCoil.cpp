@@ -14546,7 +14546,6 @@ TEST_CASE("Test_Toroidal_Bifilar_Ring_Lays_Each_Parallel_Its_Own_Turn_Count", "[
                                                                 MAS::CoilAlignment::CENTERED,
                                                                 {primaryWire, secondaryWire}));
     INFO(coil.get_last_fit_failure());
-    INFO(coil.read_log());
     REQUIRE(coil.get_turns_description());
     REQUIRE(coil.get_layers_description());
     const auto turns = coil.get_turns_description().value();

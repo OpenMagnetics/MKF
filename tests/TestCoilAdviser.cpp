@@ -3601,7 +3601,6 @@ TEST_CASE("Test_CoilAdviser_Random_15_Real_Winding", "[adviser][coil-adviser][re
     Logger::getInstance().disableCollector();
     CHECK(outerCrossingRefusals == 0);
     REQUIRE(masMagneticsWithCoil.size() > 0);
-    { json dump; to_json(dump, masMagneticsWithCoil[0]); std::ofstream("/tmp/claude-1000/-home-alf-OpenMagnetics-MKF/fbc78d45-d35c-4dd5-bff4-11234a5076ff/scratchpad/r15_advised.json") << dump.dump(); }  // TEMP-DIAG
     OpenMagneticsTesting::check_turns_description(masMagneticsWithCoil[0].get_magnetic().get_coil());
     for (auto& advisedMas : masMagneticsWithCoil) {
         auto refusal = OpenMagnetics::real_winding_refusal(advisedMas.get_magnetic(), advisedMas.get_inputs());
