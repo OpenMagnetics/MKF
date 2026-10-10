@@ -379,4 +379,37 @@ namespace {
         REQUIRE(niznCrossReferencer.get_cross_referenced_core_material(nizn, 25, 5).size() > 0);
     }
 
+    TEST_CASE("Test_CoreMaterialCrossReferencer_Refuses_Candidate_Without_Permeability_At_Temperature", "[adviser][core-material-cross-referencer][abt-1739]") {
+        // ABT #1739: DN100H's mu_i(T) table starts at 26.46 C and DN15P's at 27.24 C, both below
+        // their Curie points, so mu_i at 25 C throws MATERIAL_TEMPERATURE_OUT_OF_RANGE. As
+        // alternatives of a NiZn suppression ferrite they are refused with that reason; the
+        // cross-reference (and the common-mode-choke core adviser that calls it) goes on.
+        settings.reset();
+        clear_databases();
+        auto reference = Core::resolve_material(std::string("DN30B"));
+        CoreMaterialCrossReferencer crossReferencer(std::map<std::string, std::string>{{"coreLosses", "Steinmetz"}});
+        auto alternatives = crossReferencer.get_cross_referenced_core_material(reference, 25, 1000);
+        REQUIRE(alternatives.size() > 0);
+        for (auto& [material, scoring] : alternatives) {
+            REQUIRE(material.get_name() != "DN100H");
+            REQUIRE(material.get_name() != "DN15P");
+        }
+        auto refusals = crossReferencer.get_refusals();
+        REQUIRE(refusals.contains("DN100H"));
+        REQUIRE(refusals.contains("DN15P"));
+        CHECK(refusals.at("DN100H").find("MATERIAL_TEMPERATURE_OUT_OF_RANGE") != std::string::npos);
+        // DN85H's table starts exactly at 25 C: it is evaluated, not refused.
+        CHECK(!refusals.contains("DN85H"));
+
+        // Inside their tables they are candidates like any other.
+        CoreMaterialCrossReferencer warmCrossReferencer(std::map<std::string, std::string>{{"coreLosses", "Steinmetz"}});
+        warmCrossReferencer.get_cross_referenced_core_material(reference, 60, 1000);
+        CHECK(!warmCrossReferencer.get_refusals().contains("DN100H"));
+
+        // The reference is the material asked about: its own missing data is an error, not a refusal.
+        CoreMaterialCrossReferencer referenceCrossReferencer(std::map<std::string, std::string>{{"coreLosses", "Steinmetz"}});
+        REQUIRE_THROWS_AS(referenceCrossReferencer.get_cross_referenced_core_material(Core::resolve_material(std::string("DN100H")), 25, 10),
+                          MaterialTemperatureOutOfRangeException);
+    }
+
 }  // namespace

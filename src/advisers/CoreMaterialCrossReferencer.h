@@ -23,6 +23,7 @@ class CoreMaterialCrossReferencer {
         std::string _log;
         std::optional<std::string> _onlyManufacturer;
         std::map<CoreMaterialCrossReferencerFilters, double> _weights;
+        std::map<std::string, std::string> _refusals;
 
 
     public:
@@ -67,6 +68,14 @@ class CoreMaterialCrossReferencer {
         std::vector<std::pair<CoreMaterial, double>> get_cross_referenced_core_material(CoreMaterial referenceCoreMaterial, double temperature, std::map<CoreMaterialCrossReferencerFilters, double> weights, size_t maximumNumberResults=10);
         std::vector<std::pair<CoreMaterial, double>> apply_filters(std::vector<std::pair<CoreMaterial, double>>* coreMaterials, CoreMaterial referenceCoreMaterial, double temperature, std::map<CoreMaterialCrossReferencerFilters, double> weights, size_t maximumNumberResults);
 
+        // ABT #1739: the candidate materials the last cross-reference refused, name -> reason. A
+        // candidate whose mu_i cannot be evaluated at the requested temperature (below Curie but
+        // outside its mu_i(T) table, or a table value below 1 there) is refused by the initial-
+        // permeability filter instead of aborting the cross-reference.
+        const std::map<std::string, std::string>& get_refusals() const {
+            return _refusals;
+        }
+
         void use_only_manufacturer(std::string onlyManufacturer) {
             _onlyManufacturer = onlyManufacturer;
         }
@@ -83,8 +92,17 @@ class CoreMaterialCrossReferencer {
     };
     
     class MagneticCoreFilterInitialPermeability : public MagneticCoreFilter {
+        private:
+            std::map<std::string, std::string> _refusals;
         public:
+            // A candidate whose mu_i(T) throws MATERIAL_TEMPERATURE_OUT_OF_RANGE or
+            // MATERIAL_INVALID_PROPERTY (below 1 below Curie) at the temperature is that candidate's
+            // refusal: it is culled, logged and named in get_refusals() (ABT #1739). Any other
+            // exception, and any exception for the reference material, propagates.
             std::vector<std::pair<CoreMaterial, double>> filter_core_materials(std::vector<std::pair<CoreMaterial, double>>* unfilteredCoreMaterials, CoreMaterial referenceCoreMaterial, double temperature, double weight=1);
+            const std::map<std::string, std::string>& get_refusals() const {
+                return _refusals;
+            }
     };
     
     class MagneticCoreFilterRemanence : public MagneticCoreFilter {

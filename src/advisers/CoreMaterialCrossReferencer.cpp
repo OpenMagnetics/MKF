@@ -67,25 +67,45 @@ std::vector<std::pair<CoreMaterial, double>> CoreMaterialCrossReferencer::Magnet
     add_scored_value("Reference", CoreMaterialCrossReferencerFilters::INITIAL_PERMEABILITY, referenceInitialPermeabilityValueWithTemperature);
 
 
+    std::vector<std::pair<CoreMaterial, double>> filteredCoreMaterialsWithScoring;
     for (size_t coreMaterialIndex = 0; coreMaterialIndex < (*unfilteredCoreMaterials).size(); ++coreMaterialIndex){
         CoreMaterial coreMaterial = (*unfilteredCoreMaterials)[coreMaterialIndex].first;
 
-        double initialPermeabilityValueWithTemperature = initialPermeability.get_initial_permeability(coreMaterial, temperature, std::nullopt, std::nullopt);
+        // ABT #1739: a candidate with no mu_i data at this temperature (below its Curie point but
+        // outside its mu_i(T) table), or whose table gives mu_i < 1 there, cannot be compared on
+        // permeability. That is the candidate's refusal, not the cross-reference's: it is culled
+        // with its reason. Nothing is substituted for the missing value.
+        double initialPermeabilityValueWithTemperature;
+        try {
+            initialPermeabilityValueWithTemperature = initialPermeability.get_initial_permeability(coreMaterial, temperature, std::nullopt, std::nullopt);
+        }
+        catch (const MaterialException& e) {
+            if (e.code() != ErrorCode::MATERIAL_TEMPERATURE_OUT_OF_RANGE && e.code() != ErrorCode::MATERIAL_INVALID_PROPERTY) {
+                throw;
+            }
+            _refusals[coreMaterial.get_name()] = e.what();
+            logEntry("CoreMaterialCrossReferencer: candidate material '" + coreMaterial.get_name() +
+                         "' refused, its initial permeability cannot be evaluated at " + std::to_string(temperature) +
+                         " C: " + e.what(),
+                     "CoreMaterialCrossReferencer", 2);
+            continue;
+        }
 
         double scoring = fabs(referenceInitialPermeabilityValueWithTemperature - initialPermeabilityValueWithTemperature);
         newScoring.push_back(scoring);
         add_scoring(coreMaterial.get_name(), CoreMaterialCrossReferencerFilters::INITIAL_PERMEABILITY, scoring);
         add_scored_value(coreMaterial.get_name(), CoreMaterialCrossReferencerFilters::INITIAL_PERMEABILITY, initialPermeabilityValueWithTemperature);
+        filteredCoreMaterialsWithScoring.push_back((*unfilteredCoreMaterials)[coreMaterialIndex]);
     }
 
-    if ((*unfilteredCoreMaterials).size() != newScoring.size()) {
-        throw CalculationException(ErrorCode::CALCULATION_ERROR, "Something wrong happened while filtering, size of unfilteredCoreMaterials: " + std::to_string((*unfilteredCoreMaterials).size()) + ", size of newScoring: " + std::to_string(newScoring.size()));
+    if (filteredCoreMaterialsWithScoring.size() != newScoring.size()) {
+        throw CalculationException(ErrorCode::CALCULATION_ERROR, "Something wrong happened while filtering, size of filteredCoreMaterials: " + std::to_string(filteredCoreMaterialsWithScoring.size()) + ", size of newScoring: " + std::to_string(newScoring.size()));
     }
 
-    if ((*unfilteredCoreMaterials).size() > 0) {
-        normalize_scoring(unfilteredCoreMaterials, &newScoring, weight, (*_filterConfiguration)[CoreMaterialCrossReferencerFilters::INITIAL_PERMEABILITY]);
+    if (filteredCoreMaterialsWithScoring.size() > 0) {
+        normalize_scoring(&filteredCoreMaterialsWithScoring, &newScoring, weight, (*_filterConfiguration)[CoreMaterialCrossReferencerFilters::INITIAL_PERMEABILITY]);
     }
-    return *unfilteredCoreMaterials;
+    return filteredCoreMaterialsWithScoring;
 }
 
 std::vector<std::pair<CoreMaterial, double>> CoreMaterialCrossReferencer::MagneticCoreFilterRemanence::filter_core_materials(std::vector<std::pair<CoreMaterial, double>>* unfilteredCoreMaterials, CoreMaterial referenceCoreMaterial, double temperature, double weight) {
@@ -563,7 +583,9 @@ std::vector<std::pair<CoreMaterial, double>> CoreMaterialCrossReferencer::apply_
         {F::RESISTIVITY,
          [&](auto* r){ return filterResistivity.filter_core_materials(r, referenceCoreMaterial, temperature, weights[F::RESISTIVITY]); }},
     };
+    _refusals.clear();
     rankedCoreMaterials = run_cross_referencer_pipeline(rankedCoreMaterials, steps, "Core Material Cross Referencer");
+    _refusals = filterInitialPermeability.get_refusals();
 
     if (rankedCoreMaterials.size() > maximumNumberResults) {
         rankedCoreMaterials.resize(maximumNumberResults);
