@@ -74,6 +74,24 @@ namespace {
         CHECK_THROWS_AS(initialPermeability.get_initial_permeability(material, 200.0, std::nullopt, std::nullopt), MaterialTemperatureOutOfRangeException);
     }
 
+    TEST_CASE("Test_Initial_Permeability_Table_Starting_Above_Ambient_Evaluates_Inside_It", "[physical-model][initial-permeability][initial-permeability-temperature-range]") {
+        // ABT #1739: DN100H's mu_i(T) table runs 26.46..139.82 C (Curie 130 C). A request at a
+        // temperature inside the table is the table's own value; the ambient (25 C) reference that
+        // only normalises frequency / DC-bias factors must not be evaluated for it, or the material
+        // throws at every temperature.
+        settings.reset();
+        auto material = find_core_material_by_name("DN100H");
+        InitialPermeability initialPermeability;
+        double tabulated = InitialPermeability::get_initial_permeability_temperature_dependent(material, 60);
+        REQUIRE(tabulated > 1);
+        CHECK(initialPermeability.get_initial_permeability(material, 60.0, std::nullopt, std::nullopt) == tabulated);
+        // Above Curie: paramagnetic, 1.
+        CHECK(initialPermeability.get_initial_permeability(material, 135.0, std::nullopt, std::nullopt) == 1);
+        // At 25 C there is no data: it still throws.
+        CHECK_THROWS_AS(initialPermeability.get_initial_permeability(material, 25.0, std::nullopt, std::nullopt), MaterialTemperatureOutOfRangeException);
+        CHECK_THROWS_AS(initialPermeability.get_initial_permeability(material, std::nullopt, std::nullopt, std::nullopt), MaterialTemperatureOutOfRangeException);
+    }
+
     TEST_CASE("Test_Initial_Permeability_Outside_Temperature_Table_Extrapolation_Flag", "[physical-model][initial-permeability][initial-permeability-temperature-range]") {
         settings.reset();
         settings.set_allow_material_data_extrapolation(true);
