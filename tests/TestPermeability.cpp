@@ -41,6 +41,35 @@ namespace {
         }
     }
 
+    // ABT #1739: 3C94's mu_i(T) table ends at 180 C, its Curie point is 220 C. Between the two there
+    // is no data. Until the MAS data reaching the Curie collapse is published, MKF still evaluates its
+    // spline there, but must report it: a WARNING naming the material, the temperature and the range.
+    TEST_CASE("Test_Initial_Permeability_Outside_Temperature_Table_Warns", "[physical-model][initial-permeability][initial-permeability-temperature-range]") {
+        auto material = find_core_material_by_name("3C94");
+        auto warnings_for = [&](double temperature) {
+            Logger::getInstance().disableCollector();
+            Logger::getInstance().enableCollector(LogLevel::WARNING);
+            InitialPermeability::get_initial_permeability_temperature_dependent(material, temperature);
+            auto collected = Logger::getInstance().drainCollected();
+            Logger::getInstance().disableCollector();
+            size_t count = 0;
+            for (const auto& record : collected) {
+                if (record.moduleOfOrigin == kMaterialDataExtrapolationModule && record.level == LogLevel::WARNING &&
+                    record.message.find("3C94") != std::string::npos &&
+                    record.message.find(std::to_string(temperature) + " C") != std::string::npos &&
+                    record.message.find("180.000000 C") != std::string::npos) {
+                    ++count;
+                }
+            }
+            return count;
+        };
+        CHECK(warnings_for(100) == 0);
+        CHECK(warnings_for(200) == 1);
+        CHECK(warnings_for(-60) == 1);
+        // Above the Curie point the material is paramagnetic: mu = 1 is the physics, not an extrapolation.
+        CHECK(warnings_for(250) == 0);
+    }
+
     TEST_CASE("Test_Initial_Permeability_Single_Point_Curve", "[physical-model][initial-permeability][smoke-test]") {
         // ABT #339: a curve with no dependency axis (a single point, or points
         // all at one temperature with no frequency / DC-bias sweep) must read

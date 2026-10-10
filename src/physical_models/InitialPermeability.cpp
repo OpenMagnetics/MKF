@@ -19,6 +19,7 @@
 #include <cfloat>
 #include <magic_enum.hpp>
 #include "support/Exceptions.h"
+#include "support/Logger.h"
 
 
 
@@ -899,6 +900,22 @@ double InitialPermeability::get_initial_permeability_temperature_dependent(CoreM
             initialPermeabilityTemperatureInterps[coreMaterial.get_name()] =
                 [c](double) { return c; };
         }
+    }
+
+    // ABT #1739: outside its tabulated mu_i(T) range the material has no data. Until the MAS data that
+    // extends the tables to the Curie collapse is published, the spline is still evaluated there and
+    // floored at 1 as before, but no longer silently: every such evaluation is reported as a WARNING
+    // naming the material, the temperature and the tabulated range.
+    double tabulatedMinimum = *std::min_element(permeabilityPoints.begin(), permeabilityPoints.end(),
+        [](const auto& a, const auto& b) { return *a.get_temperature() < *b.get_temperature(); })->get_temperature();
+    double tabulatedMaximum = *std::max_element(permeabilityPoints.begin(), permeabilityPoints.end(),
+        [](const auto& a, const auto& b) { return *a.get_temperature() < *b.get_temperature(); })->get_temperature();
+    bool aboveCurie = coreMaterial.get_curie_temperature() && temperature > *coreMaterial.get_curie_temperature();
+    if (!aboveCurie && (temperature < tabulatedMinimum || temperature > tabulatedMaximum)) {
+        Logger::getInstance().warning("Material " + coreMaterial.get_name() + ": initial permeability is tabulated from " +
+                                      std::to_string(tabulatedMinimum) + " C to " + std::to_string(tabulatedMaximum) +
+                                      " C; asked at " + std::to_string(temperature) +
+                                      " C, extrapolated and floored at 1", kMaterialDataExtrapolationModule);
     }
 
     double value = initialPermeabilityTemperatureInterps[coreMaterial.get_name()](temperature);
