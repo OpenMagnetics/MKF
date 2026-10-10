@@ -3569,3 +3569,23 @@ TEST_CASE("Test_CoilAdviser_Real_Winding_Selection_Drops_What_The_Real_Winder_Re
     CHECK(coilAdviser.select_real_windable({mas}, 1).size() == 1);
     settings.reset();
 }
+
+TEST_CASE("Test_CoilAdviser_Random_15_Real_Winding", "[adviser][coil-adviser][real-geometry][bug]") {
+    // ABT #1734: the Random_15/16 design (T 12.7/7.9/12.7, 45 + 45 turns) advised with real
+    // winding on. The toroidal placer laid 20 stations into 19-slot bifilar rings, the outer-
+    // crossing sweep threw CALCULATION_INVALID_RESULT on the overrun ring, and the whole advise
+    // aborted. The adviser must return a design.
+    auto jsonPath = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "test_coiladviser_random_15_real_winding.json");
+    std::ifstream jsonFile(jsonPath);
+    OpenMagnetics::Mas mas(json::parse(jsonFile));
+    settings.reset();
+    settings.set_coil_use_real_winding_geometry(true);
+    mas.get_mutable_magnetic().get_mutable_coil().set_turns_description(std::nullopt);
+    mas.get_mutable_magnetic().get_mutable_coil().set_layers_description(std::nullopt);
+    mas.get_mutable_magnetic().get_mutable_coil().set_sections_description(std::nullopt);
+    CoilAdviser coilAdviser;
+    auto masMagneticsWithCoil = coilAdviser.get_advised_coil(mas, 1);
+    REQUIRE(masMagneticsWithCoil.size() > 0);
+    OpenMagneticsTesting::check_turns_description(masMagneticsWithCoil[0].get_magnetic().get_coil());
+    settings.reset();
+}

@@ -14523,6 +14523,61 @@ TEST_CASE("Test_Toroidal_Ring_To_Ring_Hops_Are_Short_And_Do_Not_Cross", "[coil][
     settings.reset();
 }
 
+TEST_CASE("Test_Toroidal_Bifilar_Ring_Lays_Each_Parallel_Its_Own_Turn_Count", "[coil][toroidal][real-geometry]") {
+    // ABT #1734: a toroidal ring whose capacity is not a multiple of the parallel count splits
+    // its turns unevenly between the parallels (19 slots of a bifilar winding: 10 + 9). The
+    // toroidal placer laid the FIRST parallel's count for every parallel, so the ring got 20
+    // stations for 19 slots, overran its section, parallel 1 ended with 49 turns instead of 45,
+    // and the real-winding outer-crossing sweep threw CALCULATION_INVALID_RESULT ("NO
+    // outer-crossing azimuth ... turn Primary parallel 0 turn 40"), aborting the coil adviser
+    // (Test_CoilAdviser_Random_15/16 inputs with real winding on).
+    settings.reset();
+    settings.set_coil_use_real_winding_geometry(true);
+    auto wire = OpenMagnetics::find_wire_by_name("Round 26.0 - Single Build");
+    OpenMagnetics::Coil coil;
+    REQUIRE_NOTHROW(coil = OpenMagneticsTesting::get_quick_coil({45, 45}, {2, 2}, "T 12.7/7.9/12.7", 1,
+                                                                MAS::WindingOrientation::CONTIGUOUS,
+                                                                MAS::WindingOrientation::OVERLAPPING,
+                                                                MAS::CoilAlignment::CENTERED,
+                                                                MAS::CoilAlignment::CENTERED,
+                                                                {wire, wire}));
+    REQUIRE(coil.get_turns_description());
+    REQUIRE(coil.get_layers_description());
+    const auto turns = coil.get_turns_description().value();
+
+    // Every parallel of every winding carries exactly its own number of turns.
+    std::map<std::pair<std::string, int64_t>, size_t> turnsPerParallel;
+    std::map<std::string, size_t> stationsPerLayer;
+    for (const auto& turn : turns) {
+        turnsPerParallel[{turn.get_winding(), turn.get_parallel()}]++;
+        stationsPerLayer[turn.get_layer().value()]++;
+    }
+    REQUIRE(turnsPerParallel.size() == 4);
+    for (const auto& [key, count] : turnsPerParallel) {
+        INFO(key.first << " parallel " << key.second);
+        CHECK(count == 45);
+    }
+
+    // Every ring holds exactly the physical turns its layer was sized for, and at least one ring
+    // has an uneven split (otherwise this fixture no longer exercises the defect).
+    bool sawUnevenRing = false;
+    const auto layers = coil.get_layers_description().value();
+    for (const auto& layer : layers) {
+        if (layer.get_type() != MAS::ElectricalType::CONDUCTION) {
+            continue;
+        }
+        INFO(layer.get_name());
+        CHECK(stationsPerLayer[layer.get_name()] == coil.get_number_turns(layer));
+        const auto proportions = layer.get_partial_windings()[0].get_parallels_proportion();
+        if (proportions.size() == 2 && std::abs(proportions[0] - proportions[1]) > 1e-9 &&
+            proportions[0] > 0 && proportions[1] > 0) {
+            sawUnevenRing = true;
+        }
+    }
+    CHECK(sawUnevenRing);
+    settings.reset();
+}
+
 // ABT #374: a bore-capacity claim of the form (N_turns + N_leads) * wireOD <= pi * ID says these
 // toroidal fixtures cannot hold their own leads. That inequality is the capacity of a SINGLE ring
 // at the inner surface, and it is not what MKF winds: the toroidal winder fills concentric rings

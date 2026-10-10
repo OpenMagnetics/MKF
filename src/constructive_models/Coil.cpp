@@ -16547,11 +16547,24 @@ bool Coil::wind_by_round_turns() {
                 }
             }
             else {
-                int64_t firstParallelIndex = 0;
-                while (roundFloat(partialWinding.get_parallels_proportion()[firstParallelIndex], 10) == 0) {
-                    firstParallelIndex++;
+                // ABT #1734: EACH PARALLEL LAYS ITS OWN TURN COUNT, as the rectangular winder has
+                // done since ABT #1645. A ring's capacity need not be a multiple of the parallel
+                // count, so its side-by-side split is uneven (19 slots of a bifilar winding: 10 + 9),
+                // and taking the FIRST active parallel's count for every parallel laid 20 stations
+                // into that 19-station ring. Measured on T 12.7/7.9/12.7 with 45 turns x 2 parallels
+                // of Round 26.0 (real winding): every ring overran its span by up to one pitch past
+                // the section edge (ring 4: 12 stations, 46.8..182.2 deg, in a section ending at
+                // 164.7 deg), parallel 1 came out with 49 turns instead of 45, and the outer-crossing
+                // sweep then found no monotonic azimuth inside the section for the ring's closing
+                // turn. With equal proportions this is the same bundle order as before.
+                std::vector<int64_t> turnsPerParallelInLayer(get_number_parallels(windingIndex), 0);
+                int64_t numberTurns = 0;   // bundle positions: the largest per-parallel count
+                for (size_t parallelIndex = 0; parallelIndex < get_number_parallels(windingIndex); ++parallelIndex) {
+                    if (roundFloat(partialWinding.get_parallels_proportion()[parallelIndex], 10) > 0) {
+                        turnsPerParallelInLayer[parallelIndex] = round(partialWinding.get_parallels_proportion()[parallelIndex] * get_number_turns(windingIndex));
+                        numberTurns = std::max(numberTurns, turnsPerParallelInLayer[parallelIndex]);
+                    }
                 }
-                int64_t numberTurns = round(partialWinding.get_parallels_proportion()[firstParallelIndex] * get_number_turns(windingIndex));
                 // ABT #1253: A U-TURN DOES NOT REORDER THE BUNDLE. Parallels wound N-filar travel
                 // as one bundle, and the parallel that is AHEAD along the wound path stays ahead
                 // once the winding turns around at the end of a ring — it is simply the first to
@@ -16571,7 +16584,7 @@ bool Coil::wind_by_round_turns() {
                 }
                 for (int64_t turnIndex = 0; turnIndex < numberTurns; ++turnIndex) {
                     for (size_t parallelIndex : bundleOrder) {
-                        if (roundFloat(partialWinding.get_parallels_proportion()[parallelIndex], 10) > 0) {
+                        if (turnIndex < turnsPerParallelInLayer[parallelIndex]) {
                             Turn turn;
                             turn.set_coordinates(std::vector<double>{currentTurnCenterRadialHeight, currentTurnCenterAngle});
                             turn.set_layer(layer.get_name());
@@ -17516,11 +17529,21 @@ bool Coil::wind_toroidal_additional_turns() {
                                     blockers += std::string(" ") + (vertical.below ? "in@" : "out@") +
                                                 std::to_string(atan2(vertical.y, vertical.x) * 180 / std::numbers::pi).substr(0, 6);
                                 }
-                                throw CalculationException(ErrorCode::CALCULATION_INVALID_RESULT,
-                                    "wind_toroidal_additional_turns: NO outer-crossing azimuth exists for turn " + turn.get_name() +
-                                    " whose implied 3D runs clear the terminal connection verticals while keeping "
-                                    "the winding order monotonic -- the inner-station layout leaves the connection "
-                                    "corridor blocked (fix the layer spread / turn distribution, not this sweep)" +
+                                // ABT #1734 (Alf): a layout whose outer crossings cannot be kept in
+                                // winding order inside the section is a WIND that does not route --
+                                // a refusal of this design (COIL_WINDING_ERROR, which the coil
+                                // adviser treats as that candidate's verdict), not an invalid
+                                // calculation. The terminals do not gate the sweep (ABT #685); the
+                                // only constraints left are the order and the section's territory.
+                                throw CoilException(ErrorCode::COIL_WINDING_ERROR,
+                                    "wind_toroidal_additional_turns: NO outer-crossing azimuth inside section '" +
+                                    section.get_name() + "' keeps turn " + turn.get_name() +
+                                    " in winding order after the previous crossing (at " +
+                                    (previousOuterCrossingAzimuth ? std::to_string(previousOuterCrossingAzimuth.value()) : std::string("none")) +
+                                    " deg; this crossing anchored at " + std::to_string(thetaDeg) + " deg; section territory " +
+                                    std::to_string(section.get_coordinates()[1] - section.get_dimensions()[1] / 2) + ".." +
+                                    std::to_string(section.get_coordinates()[1] + section.get_dimensions()[1] / 2) +
+                                    " deg) -- the inner-station layout leaves this ring no routable outer crossing" +
                                     stationMap + blockers);
                             }
                             if (std::getenv("MKF_TOROID_DIAG")) {
@@ -18486,6 +18509,29 @@ bool Coil::delimit_and_compact_round_window() {
                                 break;
                             default:
                                 throw InvalidInputException(ErrorCode::INVALID_COIL_CONFIGURATION, "No such section alignment");
+                        }
+                        // ABT #1734: UNDER REAL WINDING A RING IS WHERE ITS TURNS ARE. The extent
+                        // above is synthetic -- the alignment's packed arc around the section
+                        // centre -- but wind_by_round_turns lays every ring after the first in a
+                        // span shaved by the input-connection corridor and shifted half of it
+                        // toward the section end, and a U ring starts one pitch past the forward
+                        // layout. So the turns sit up to half a corridor plus a pitch beyond the
+                        // synthetic arc, the section built from these arcs does not contain its own
+                        // stations, and the outer-crossing sweep -- which may not leave the section
+                        // -- found no azimuth for a ring-closing crossing (T 12.7/7.9/12.7, 45 x 3
+                        // parallels of Round 26.0: section 19.6..157.7 deg, ring 2 stations to
+                        // 166.1 deg, previous crossing at 159.5 deg). Grow the arc to hold every
+                        // turn; a layout that already lay inside it is unchanged.
+                        if (settings.get_coil_use_real_winding_geometry()) {
+                            double lowestOffset = -layerAngle / 2;
+                            double highestOffset = layerAngle / 2;
+                            for (const auto& turn : turnsInLayer) {
+                                const double offset = std::remainder(turn.get_coordinates()[1] - layerCenterAngle, 360.0);
+                                lowestOffset = std::min(lowestOffset, offset - turnDimensionAngle / 2);
+                                highestOffset = std::max(highestOffset, offset + turnDimensionAngle / 2);
+                            }
+                            layerCenterAngle += (lowestOffset + highestOffset) / 2;
+                            layerAngle = highestOffset - lowestOffset;
                         }
                     }
                     layers[i].set_coordinates(std::vector<double>({layers[i].get_coordinates()[0], layerCenterAngle}));
