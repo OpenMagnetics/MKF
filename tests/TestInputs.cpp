@@ -2290,7 +2290,7 @@ TEST_CASE("Test_Volt_Second_Balance_Unbalanced_Voltage_Throws", "[processor][inp
     OperatingPointExcitation excitation;
     excitation.set_frequency(frequency);
     excitation.set_name("unbalanced");
-    REQUIRE_THROWS_WITH(OpenMagnetics::Inputs::calculate_magnetizing_current(excitation, unbalanced, 100e-6, false, false, false),
+    REQUIRE_THROWS_WITH(OpenMagnetics::Inputs::calculate_magnetizing_current(excitation, unbalanced, 100e-6, false),
                         Catch::Matchers::ContainsSubstring("Excitation 'unbalanced'") &&
                         Catch::Matchers::ContainsSubstring("not volt-second balanced"));
 }
@@ -2302,7 +2302,7 @@ TEST_CASE("Test_Volt_Second_Balance_Balanced_Voltage_Integrates", "[processor][i
 
     OperatingPointExcitation excitation;
     excitation.set_frequency(frequency);
-    auto magnetizingCurrent = OpenMagnetics::Inputs::calculate_magnetizing_current(excitation, balanced, 100e-6, false, false, false);
+    auto magnetizingCurrent = OpenMagnetics::Inputs::calculate_magnetizing_current(excitation, balanced, 100e-6, false);
     // 10 V over half of 10 us across 100 uH: 0.5 A peak to peak.
     REQUIRE_THAT(magnetizingCurrent.get_processed()->get_peak_to_peak().value(), Catch::Matchers::WithinRel(0.5, 0.02));
 }
@@ -2570,4 +2570,40 @@ TEST_CASE("Test_Magnetizing_Current_Of_Zero_Volt_Second_Voltage_Has_No_Dc", "[pr
     REQUIRE(peak > 0);
     CHECK(std::fabs(dc) < 1e-9 * peak);
     CHECK(std::fabs(sampleMean) < 1e-9 * peak);
+}
+
+TEST_CASE("Test_Magnetizing_Current_Forward_Reset_Is_Faraday_From_Zero", "[processor][inputs][abt-1467]") {
+    // Single-switch forward, 1:1, 100 kHz, judged on a core with L_m 100 uH: +100 V for 2.5 us (on),
+    // -100 V for 2.5 us (reset), 0 V for 5 us (dead time). The flux rises 100 V * 2.5 us / 100 uH
+    // = 2.5 A and the reset brings it back to zero, where it stays: the magnetizing current goes
+    // 0 -> 2.5 A -> 0. The currents were simulated with another magnetizing inductance (200 uH:
+    // the primary ramps 1.25 A over its 10 A of reflected load and resets from 1.25 A), as a
+    // converter simulation judged on a candidate core always is. In the dead time no winding
+    // conducts, so by Ampere the magnetizing current is zero there whatever L_m the currents had.
+    // Anchoring the DC at the primary current's peak (11.25 A, load included) read an 11 A
+    // magnetizing peak; at the reset's first current (1.25 A) a 1.25 A one, offset by -1.25 A
+    // through the dead time; ignoring the currents (zero-mean Faraday) a 1.9 A one.
+    json operatingPointJson = json::parse(R"({
+        "conditions": {"ambientTemperature": 25},
+        "excitationsPerWinding": [
+            {"frequency": 100000, "name": "Primary",
+             "current": {"waveform": {"time": [0, 2.5e-6, 2.5e-6, 5e-6, 1e-5], "data": [10, 11.25, 1.25, 0, 0]}},
+             "voltage": {"waveform": {"time": [0, 2.5e-6, 2.5e-6, 5e-6, 5e-6, 1e-5], "data": [100, 100, -100, -100, 0, 0]}}},
+            {"frequency": 100000, "name": "Secondary",
+             "current": {"waveform": {"time": [0, 2.5e-6, 2.5e-6, 1e-5], "data": [10, 10, 0, 0]}},
+             "voltage": {"waveform": {"time": [0, 2.5e-6, 2.5e-6, 5e-6, 5e-6, 1e-5], "data": [100, 100, -100, -100, 0, 0]}}}
+        ]
+    })");
+    OperatingPoint operatingPoint(operatingPointJson);
+    auto processed = OpenMagnetics::Inputs::process_operating_point(operatingPoint, 100e-6, std::vector<double>{1});
+    auto magnetizingCurrent = processed.get_excitations_per_winding()[0].get_magnetizing_current().value();
+    auto waveform = magnetizingCurrent.get_waveform().value();
+    const auto& data = waveform.get_data();
+    double maximum = *std::max_element(data.begin(), data.end());
+    double minimum = *std::min_element(data.begin(), data.end());
+    INFO("i_m max " << maximum << " A, min " << minimum << " A, last sample (dead time) " << data.back() << " A");
+    CHECK_THAT(maximum - minimum, Catch::Matchers::WithinRel(2.5, 0.01));
+    CHECK_THAT(maximum, Catch::Matchers::WithinRel(2.5, 0.01));
+    CHECK(std::fabs(minimum) < 0.01 * 2.5);
+    CHECK(std::fabs(data.back()) < 0.01 * 2.5);
 }

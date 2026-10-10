@@ -1002,11 +1002,9 @@ WindingWindowMagneticStrengthFieldPhasorOutput MagneticField::calculate_magnetic
             if (includeFringing && !imagedModel->get_gap_sources().empty()) {
                 if (!operatingPoint.get_excitations_per_winding()[0].get_magnetizing_current()) {
                     auto magnetizingInductance = MagneticSimulator().calculate_magnetizing_inductance(operatingPoint, magnetic);
-                    auto includeDcCurrent = Inputs::include_dc_offset_into_magnetizing_current(operatingPoint, magnetic.get_turns_ratios());
-                    auto magnetizingCurrent = Inputs::calculate_magnetizing_current(operatingPoint.get_mutable_excitations_per_winding()[0],
+                    auto magnetizingCurrent = Inputs::calculate_magnetizing_current(operatingPoint, 0,
                                                                                    resolve_dimensional_values(magnetizingInductance.get_magnetizing_inductance()),
-                                                                                   true, includeDcCurrent,
-                                                                                   operatingPoint.get_excitations_per_winding().size() > 1);
+                                                                                   magnetic.get_turns_ratios(), true);
                     operatingPoint.get_mutable_excitations_per_winding()[0].set_magnetizing_current(magnetizingCurrent);
                 }
                 auto magnetizingCurrentSignal = operatingPoint.get_excitations_per_winding()[0].get_magnetizing_current().value();

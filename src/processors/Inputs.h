@@ -131,13 +131,25 @@ class Inputs : public MAS::Inputs {
      */
     static double calculate_max_volt_seconds(const OperatingPointExcitation& excitation);
     static double calculate_max_volt_seconds(const OperatingPoint& operatingPoint);
+    // Every winding's current sampled on ONE time grid over the period (numberPoints, or the
+    // finest power of 2 the currents need), and whether it carries current at each instant
+    // (|i| above 1 % of that winding's peak). std::nullopt when a winding has no current.
+    struct WindingConduction {
+        std::vector<std::vector<double>> currents;
+        std::vector<std::vector<bool>> conducting;
+    };
+    static std::optional<WindingConduction> calculate_winding_conduction(const OperatingPoint& operatingPoint, std::optional<size_t> numberPoints = std::nullopt);
+    // The instants at which a winding's current is the magnetizing current: the primary conducting
+    // while no other winding does, any other winding conducting while the primary does not.
+    static std::vector<bool> calculate_magnetizing_conduction_instants(const WindingConduction& conduction, size_t windingIndex);
+    // Whether the windings' currents give the magnetizing DC: a single winding, or windings that do
+    // not always conduct together (flyback, forward reset). Time-aware (ABT #1467).
     static bool include_dc_offset_into_magnetizing_current(OperatingPoint operatingPoint, std::vector<double> turnsRatios);
-    // addOffset: anchor the magnetizing current's DC level to the winding current
-    // (see include_dc_offset_into_magnetizing_current). alternatingConduction: true
-    // when the operating point has several windings conducting alternately (flyback
-    // style); the winding current then contains commutation steps, so the DC anchor
-    // is peak-based on the volt-second integral instead of the measured midpoint
-    // (ABT #907). Pass excitations_per_winding().size() > 1 at the call site.
+    // The DC of a winding's magnetizing current, taken where that winding carries the magnetizing
+    // MMF alone (ABT #907, #1467); 0 when it never does.
+    static double calculate_magnetizing_current_dc_anchor(const OperatingPoint& operatingPoint, size_t windingIndex, Waveform voltageSampledWaveform, double magnetizingInductance);
+    static double calculate_magnetizing_current_dc_anchor(OperatingPointExcitation excitation, const WindingConduction& conduction, size_t windingIndex,
+                                                          Waveform voltageSampledWaveform, double magnetizingInductance);
     // The ampere-turn current of an operating point: i_m(t) = sum_k c_k (N_k/N_ref) i_k(t), the
     // single current that, in the reference winding, drives the same core flux as all windings
     // together. Built from the winding current WAVEFORMS on one common period grid, so phase and
@@ -197,17 +209,15 @@ class Inputs : public MAS::Inputs {
     static std::optional<SignalDescriptor> get_single_winding_magnetizing_current(const OperatingPointExcitation& excitation,
                                                                                   size_t numberWindings);
 
-    static SignalDescriptor calculate_magnetizing_current(OperatingPointExcitation& excitation,
+    // A winding's magnetizing current, the single decision every caller shares (ABT #1467):
+    // Faraday on its voltage (voltageSampledWaveform, or its own voltage sampled), DC from the
+    // currents where include_dc_offset_into_magnetizing_current says they give it.
+    static SignalDescriptor calculate_magnetizing_current(const OperatingPoint& operatingPoint,
+                                                            size_t windingIndex,
                                                             double magnetizingInductance,
+                                                            const std::vector<double>& turnsRatios,
                                                             bool compress,
-                                                            bool addOffset,
-                                                            bool alternatingConduction);
-    static SignalDescriptor calculate_magnetizing_current(OperatingPointExcitation& excitation,
-                                                            Waveform voltageSampledWaveform,
-                                                            double magnetizingInductance,
-                                                            bool compress,
-                                                            bool addOffset,
-                                                            bool alternatingConduction);
+                                                            std::optional<Waveform> voltageSampledWaveform = std::nullopt);
     static SignalDescriptor calculate_magnetizing_current(OperatingPointExcitation& excitation,
                                                             double magnetizingInductance,
                                                             bool compress,
@@ -217,6 +227,11 @@ class Inputs : public MAS::Inputs {
                                                             double magnetizingInductance,
                                                             bool compress,
                                                             double dcCurrent=0);
+    // A bool in the dcCurrent slot is the removed (addOffset, alternatingConduction) signature: it
+    // converted silently to a 1 A DC (PyOpenMagnetics did exactly that). Callers that want the
+    // currents' DC use the OperatingPoint overload above.
+    static SignalDescriptor calculate_magnetizing_current(OperatingPointExcitation& excitation, double magnetizingInductance, bool compress, bool dcCurrent) = delete;
+    static SignalDescriptor calculate_magnetizing_current(OperatingPointExcitation& excitation, Waveform voltageSampledWaveform, double magnetizingInductance, bool compress, bool dcCurrent) = delete;
     static SignalDescriptor add_offset_to_excitation(SignalDescriptor signalDescriptor,
                                                              double offset,
                                                              double frequency);

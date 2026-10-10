@@ -220,97 +220,279 @@ bool is_close_enough(double x, double y, double error){
     return fabs(x - y) <= error;
 }
 
-bool is_instantaneously_conducting_power(OperatingPoint operatingPoint) {
-    auto excitationPerWinding = operatingPoint.get_excitations_per_winding();
-    std::vector<std::vector<double>> powerWaveforms;
-    double maximumPeakPower = 0;
-    for (auto excitation : excitationPerWinding) {
-        if (!excitation.get_current()) {
-            // If only voltage is defined, we are in transformer mode
-            return true;
+// Every winding's current on ONE time grid, and at which instants it carries current (ABT #1467).
+// The old classifier compared the windings' RAW waveforms index by index whenever a winding's
+// current and voltage had the same number of points, ignoring their time vectors: a 3-winding
+// flyback whose secondaries were tabulated on another grid looked simultaneously conducting and
+// lost its magnetizing DC. Here every current is resampled onto the same numberPoints over the
+// period first. Conduction is judged on the current (Ampere: a winding carries ampere-turns iff it
+// carries current), against 1 % of that winding's own peak, the classifier's existing figure.
+// std::nullopt when a winding has no current: the currents then say nothing about the
+// magnetizing MMF (voltage-only, transformer mode, as before).
+std::optional<Inputs::WindingConduction> Inputs::calculate_winding_conduction(const OperatingPoint& operatingPoint, std::optional<size_t> numberPoints) {
+    const auto excitations = operatingPoint.get_excitations_per_winding();
+    if (excitations.empty()) {
+        throw InvalidInputException(ErrorCode::INVALID_INPUT, "calculate_winding_conduction: the operating point has no excitations");
+    }
+    size_t gridPoints = settings.get_inputs_number_points_sampled_waveforms();
+    for (size_t windingIndex = 0; windingIndex < excitations.size(); ++windingIndex) {
+        const auto current = excitations[windingIndex].get_current();
+        if (!current) {
+            return std::nullopt;
         }
-        if (!excitation.get_voltage()) {
-            // If only current is defined, we are in inductor mode
-            return false;
+        if (!current->get_waveform()) {
+            throw InvalidInputException(ErrorCode::MISSING_DATA, "calculate_winding_conduction: winding " + std::to_string(windingIndex) +
+                                        " has a current without a waveform; processed values carry no timing to compare the windings on");
         }
-        if (!excitation.get_current()->get_waveform()) {
-            throw std::invalid_argument("Missing current waveform");
+        size_t windingPoints = 1;
+        while (windingPoints < current->get_waveform()->get_data().size()) {
+            windingPoints *= 2;
         }
-        if (!excitation.get_voltage()->get_waveform()) {
-            throw std::invalid_argument("Missing voltage waveform");
+        gridPoints = std::max(gridPoints, windingPoints);
+        if (excitations[windingIndex].get_frequency() != excitations[0].get_frequency()) {
+            throw InvalidInputException(ErrorCode::INVALID_INPUT, "calculate_winding_conduction: winding " + std::to_string(windingIndex) + " is excited at " +
+                                        std::to_string(excitations[windingIndex].get_frequency()) + " Hz, winding 0 at " + std::to_string(excitations[0].get_frequency()) + " Hz");
         }
-        std::vector<double> currentWaveform;
-        std::vector<double> voltageWaveform;
-
-        if (excitation.get_current()->get_waveform()->get_data().size() != excitation.get_voltage()->get_waveform()->get_data().size()) {
-            // Determine a common number of points for both waveforms to ensure they have the same size after resampling
-            size_t currentSize = excitation.get_current()->get_waveform()->get_data().size();
-            size_t voltageSize = excitation.get_voltage()->get_waveform()->get_data().size();
-            size_t numberPointsForSampling = settings.get_inputs_number_points_sampled_waveforms();
-            size_t maxSize = std::max(currentSize, voltageSize);
-            if (maxSize > numberPointsForSampling) {
-                // Check if maxSize is a power of 2
-                if (maxSize > 0 && ((maxSize & (maxSize - 1)) == 0)) {
-                    numberPointsForSampling = maxSize;
-                }
-                else {
-                    numberPointsForSampling = round_up_size_to_power_of_2(maxSize);
-                }
-            }
-            auto currentSampledWaveform = Inputs::calculate_sampled_waveform(excitation.get_current()->get_waveform().value(), excitation.get_frequency(), numberPointsForSampling);
-            auto voltageSampledWaveform = Inputs::calculate_sampled_waveform(excitation.get_voltage()->get_waveform().value(), excitation.get_frequency(), numberPointsForSampling);
-            currentWaveform = currentSampledWaveform.get_data();
-            voltageWaveform = voltageSampledWaveform.get_data();
+    }
+    if (numberPoints) {
+        if (numberPoints.value() == 0 || (numberPoints.value() & (numberPoints.value() - 1)) != 0) {
+            throw InvalidInputException(ErrorCode::INVALID_INPUT, "calculate_winding_conduction: the grid must have a power-of-2 number of points, got " + std::to_string(numberPoints.value()));
         }
-        else{
-            currentWaveform = excitation.get_current()->get_waveform()->get_data();
-            voltageWaveform = excitation.get_voltage()->get_waveform()->get_data();
-        }
-        std::vector<double> powerWaveform;
-        for (size_t i = 0; i < currentWaveform.size(); ++i) {
-            powerWaveform.push_back(currentWaveform[i] * voltageWaveform[i]);
-        }
-        double peakPower = *max_element(powerWaveform.begin(), powerWaveform.end());
-
-        powerWaveforms.push_back(powerWaveform);
-        maximumPeakPower = std::max(maximumPeakPower, peakPower);
+        gridPoints = numberPoints.value();
     }
 
-    size_t numberPointNotConductingAtTheSameTime = 0;
-    for (size_t pointIndex = 0; pointIndex < powerWaveforms[0].size(); ++pointIndex) {
-        for (size_t windingIndex = 0; windingIndex < powerWaveforms.size() - 1; ++windingIndex) {
-            bool is_left_winding_conducting = fabs(powerWaveforms[windingIndex][pointIndex]) > maximumPeakPower * 0.01;  // hardcoded
-            bool is_right_winding_conducting = fabs(powerWaveforms[windingIndex + 1][pointIndex]) > maximumPeakPower * 0.01;  // hardcoded
-            if (is_left_winding_conducting != is_right_winding_conducting) {
-                numberPointNotConductingAtTheSameTime++;
+    WindingConduction conduction;
+    for (size_t windingIndex = 0; windingIndex < excitations.size(); ++windingIndex) {
+        auto sampled = calculate_sampled_waveform(excitations[windingIndex].get_current()->get_waveform().value(),
+                                                  excitations[windingIndex].get_frequency(), gridPoints, gridPoints);
+        auto data = sampled.get_data();
+        if (data.size() != gridPoints) {
+            throw InvalidInputException(ErrorCode::INVALID_INPUT, "calculate_winding_conduction: winding " + std::to_string(windingIndex) + " sampled to " +
+                                        std::to_string(data.size()) + " points instead of " + std::to_string(gridPoints));
+        }
+        double peak = 0;
+        for (auto value : data) {
+            peak = std::max(peak, std::fabs(value));
+        }
+        std::vector<bool> conducting(gridPoints);
+        for (size_t pointIndex = 0; pointIndex < gridPoints; ++pointIndex) {
+            conducting[pointIndex] = std::fabs(data[pointIndex]) > peak * 0.01;
+        }
+        conduction.currents.push_back(data);
+        conduction.conducting.push_back(conducting);
+    }
+    return conduction;
+}
+
+std::vector<bool> Inputs::calculate_magnetizing_conduction_instants(const WindingConduction& conduction, size_t windingIndex) {
+    // The instants at which winding windingIndex's current is the magnetizing current (referred to
+    // it): it conducts, and the primary (winding 0) hands it the magnetizing MMF rather than
+    // carrying load current with it. For the primary: no other winding conducts. For any other
+    // winding: the primary does not. A flyback's primary on-time and its secondaries' off-time
+    // qualify; so does a forward's reset interval (the primary alone, its current returning the
+    // magnetizing energy), while a forward's on-time, where primary and secondary carry the load
+    // current together, does not.
+    const size_t numberWindings = conduction.conducting.size();
+    if (windingIndex >= numberWindings) {
+        throw InvalidInputException(ErrorCode::INVALID_INPUT, "calculate_magnetizing_conduction_instants: winding " + std::to_string(windingIndex) +
+                                    " of an operating point with " + std::to_string(numberWindings) + " windings");
+    }
+    const size_t gridPoints = conduction.conducting[windingIndex].size();
+    std::vector<bool> instants(gridPoints, false);
+    for (size_t pointIndex = 0; pointIndex < gridPoints; ++pointIndex) {
+        if (!conduction.conducting[windingIndex][pointIndex]) {
+            continue;
+        }
+        bool alone = true;
+        if (windingIndex == 0) {
+            for (size_t otherIndex = 1; otherIndex < numberWindings; ++otherIndex) {
+                if (conduction.conducting[otherIndex][pointIndex]) {
+                    alone = false;
+                    break;
+                }
+            }
+        }
+        else {
+            alone = !conduction.conducting[0][pointIndex];
+        }
+        instants[pointIndex] = alone;
+    }
+    return instants;
+}
+
+bool windings_alternate(const Inputs::WindingConduction& conduction) {
+    // Windings that do not always conduct together: an adjacent pair differs on more than 10 % of
+    // the period (the classifier's existing figure).
+    const auto& conducting = conduction.conducting;
+    const size_t gridPoints = conducting[0].size();
+    size_t numberPointsNotConductingAtTheSameTime = 0;
+    for (size_t pointIndex = 0; pointIndex < gridPoints; ++pointIndex) {
+        for (size_t windingIndex = 0; windingIndex + 1 < conducting.size(); ++windingIndex) {
+            if (conducting[windingIndex][pointIndex] != conducting[windingIndex + 1][pointIndex]) {
+                numberPointsNotConductingAtTheSameTime++;
                 break;
             }
-
         }
     }
-    if (numberPointNotConductingAtTheSameTime > powerWaveforms[0].size() * 0.1) { // hardcoded
-        return false;
-    }
-    else {
-        return true;
-    }
-
+    return numberPointsNotConductingAtTheSameTime > gridPoints * 0.1;
 }
 
 bool Inputs::include_dc_offset_into_magnetizing_current(OperatingPoint operatingPoint, std::vector<double> turnsRatios) {
     // Determine if this is truly a single-winding component (inductor) by checking both
     // the turns ratios and the actual number of excitations in the operating point
     bool onlyOneWinding = turnsRatios.size() == 0 && operatingPoint.get_excitations_per_winding().size() <= 1;
+    if (onlyOneWinding) {
+        return true;
+    }
 
-    // Windings that conduct alternately (a flyback): at the conducting winding's current peak it
-    // carries the whole magnetizing MMF, so the currents give the DC exactly (ABT #907), dead time or
-    // not. The voltage's zero intervals used to veto it too (include_dc_offset_into_magnetizing_current_rosano):
+    // Windings that do not always conduct together (a flyback, or a forward's reset interval):
+    // somewhere one of them carries the magnetizing MMF alone, so the currents give the DC
+    // (calculate_magnetizing_current_dc_anchor). Windings that always conduct together (a
+    // transformer) carry load current on top of it, and their DC is not anchored. Compared on one
+    // time grid (ABT #1467); a pair differing on more than 10 % of the period counts, as before.
+    // The voltage's zero intervals used to veto the DC too (include_dc_offset_into_magnetizing_current_rosano):
     // a DCM flyback's dead time is 0 V, so its magnetizing current lost its DC once it came from
-    // Faraday instead of the FLYBACK label's triangle (ABT #1467). Windings conducting at the same
-    // time (a transformer) carry load current on top, and their DC is not anchored.
-    bool includeAccordingToCoupledPower = !is_instantaneously_conducting_power(operatingPoint);
+    // Faraday instead of the FLYBACK label's triangle (ABT #1467).
+    auto conduction = calculate_winding_conduction(operatingPoint);
+    if (!conduction) {
+        return false;
+    }
+    return windings_alternate(conduction.value());
+}
 
-    return onlyOneWinding || includeAccordingToCoupledPower;
+double Inputs::calculate_magnetizing_current_dc_anchor(const OperatingPoint& operatingPoint, size_t windingIndex, Waveform voltageSampledWaveform, double magnetizingInductance) {
+    // The DC of winding windingIndex's magnetizing current, from the currents (ABT #907, #1467).
+    // Faraday gives the magnetizing current's shape, i_F(t) = (1/L) int v dt with zero mean; the DC
+    // is where the currents say what the magnetizing MMF is: at the instants where this winding
+    // carries it alone (calculate_magnetizing_conduction_instants), by Ampere i_m = i_winding.
+    //  - No winding conducts somewhere (a dead time): i_m = 0 there. Preferred, as it does not
+    //    depend on the L_m the currents were simulated with.
+    //  - The winding's current peaks there (a flyback): peak(i_m) = peak(i_winding), anchored on
+    //    the current's exact peak and the excursion's maximum (ABT #907: the commutation steps of
+    //    the current move no flux, so its midpoint or pk-pk do not describe i_m).
+    //  - It peaks while sharing the load current (a forward's on-time): the peak is load current
+    //    and anchors nothing. The largest current of the magnetizing-only instants (the start of
+    //    the forward's reset) anchors instead, at the same instant of i_F.
+    //  - It never carries the magnetizing MMF alone (a forward's secondary): no DC.
+    const auto excitations = operatingPoint.get_excitations_per_winding();
+    if (windingIndex >= excitations.size()) {
+        throw InvalidInputException(ErrorCode::INVALID_INPUT, "calculate_magnetizing_current_dc_anchor: winding " + std::to_string(windingIndex) +
+                                    " of an operating point with " + std::to_string(excitations.size()) + " windings");
+    }
+    if (magnetizingInductance <= 0) {
+        throw InvalidInputException(ErrorCode::INVALID_INPUT, "magnetizingInductance cannot be zero or negative");
+    }
+    auto excitation = excitations[windingIndex];
+    if (!excitation.get_current()) {
+        return 0;
+    }
+    auto conduction = calculate_winding_conduction(operatingPoint);
+    if (!conduction) {
+        return 0;
+    }
+    return calculate_magnetizing_current_dc_anchor(excitation, conduction.value(), windingIndex, voltageSampledWaveform, magnetizingInductance);
+}
+
+double Inputs::calculate_magnetizing_current_dc_anchor(OperatingPointExcitation excitation, const WindingConduction& conduction, size_t windingIndex,
+                                                       Waveform voltageSampledWaveform, double magnetizingInductance) {
+    if (!excitation.get_current()) {
+        return 0;
+    }
+    const auto& current = conduction.currents[windingIndex];
+
+    // Instants where no winding conducts and the winding voltage is zero (a forward's dead time
+    // after its reset, a DCM flyback's dead time): every winding's ampere-turns are zero, so by
+    // Ampere the magnetizing current is zero there, whatever inductance the currents were
+    // simulated with. The voltage must be zero too: a winding voltage means the flux is still
+    // moving, so currents that read zero there are a gap in the data, not a dead time (the
+    // mas-flyback-3-winding-lv fixture's secondaries start conducting 2.8 us after the primary
+    // stops, under the full -8 V reset voltage). This anchor needs only the
+    // voltage's shape, so it is preferred to the ones below, which convert a current into flux
+    // through this core's L_m and inherit any mismatch between that L_m and the one behind the
+    // currents (the forward-228w fixture's reset current, 0.55 A, is a ~1.2 mH reset; on a core with
+    // another L_m, anchoring on it shifted B by 0.14 T).
+    auto voltageOnGrid = calculate_sampled_waveform(voltageSampledWaveform, excitation.get_frequency(), current.size(), current.size()).get_data();
+    if (voltageOnGrid.size() != current.size()) {
+        throw InvalidInputException(ErrorCode::INVALID_INPUT, "calculate_magnetizing_current_dc_anchor: the voltage sampled to " +
+                                    std::to_string(voltageOnGrid.size()) + " points, the currents to " + std::to_string(current.size()));
+    }
+    double voltagePeak = 0;
+    for (auto value : voltageOnGrid) {
+        voltagePeak = std::max(voltagePeak, std::fabs(value));
+    }
+    std::vector<size_t> deadInstants;
+    for (size_t pointIndex = 0; pointIndex < current.size(); ++pointIndex) {
+        if (std::fabs(voltageOnGrid[pointIndex]) > voltagePeak * 0.01) {
+            continue;
+        }
+        bool anyConducting = false;
+        for (const auto& windingConducting : conduction.conducting) {
+            if (windingConducting[pointIndex]) {
+                anyConducting = true;
+                break;
+            }
+        }
+        if (!anyConducting) {
+            deadInstants.push_back(pointIndex);
+        }
+    }
+    if (!deadInstants.empty()) {
+        // The same mean-free integral the magnetizing current is built from (calculate_magnetizing_current).
+        double meanVoltage = calculate_steady_state_mean_voltage(excitation, voltageSampledWaveform, "Excitation '" + excitation.get_name().value_or("unnamed") + "'");
+        auto centeredMagnetizingWaveform = calculate_integral_waveform(sum_waveform(voltageSampledWaveform, -meanVoltage), true);
+        centeredMagnetizingWaveform = multiply_waveform(centeredMagnetizingWaveform, 1.0 / magnetizingInductance);
+        auto excursionOnGrid = calculate_sampled_waveform(centeredMagnetizingWaveform, excitation.get_frequency(), current.size(), current.size()).get_data();
+        if (excursionOnGrid.size() != current.size()) {
+            throw InvalidInputException(ErrorCode::INVALID_INPUT, "calculate_magnetizing_current_dc_anchor: the volt-second integral sampled to " +
+                                        std::to_string(excursionOnGrid.size()) + " points, the currents to " + std::to_string(current.size()));
+        }
+        double excursionWhileDead = 0;
+        for (auto pointIndex : deadInstants) {
+            excursionWhileDead += excursionOnGrid[pointIndex];
+        }
+        return -excursionWhileDead / deadInstants.size();
+    }
+
+    auto instants = calculate_magnetizing_conduction_instants(conduction, windingIndex);
+    std::optional<size_t> aloneMaximumIndex;
+    std::optional<double> sharedMaximum;
+    for (size_t pointIndex = 0; pointIndex < current.size(); ++pointIndex) {
+        if (instants[pointIndex]) {
+            if (!aloneMaximumIndex || current[pointIndex] > current[aloneMaximumIndex.value()]) {
+                aloneMaximumIndex = pointIndex;
+            }
+        }
+        else if (conduction.conducting[windingIndex][pointIndex]) {
+            if (!sharedMaximum || current[pointIndex] > sharedMaximum.value()) {
+                sharedMaximum = current[pointIndex];
+            }
+        }
+    }
+    if (!aloneMaximumIndex) {
+        return 0;
+    }
+
+    // The same mean-free integral the magnetizing current is built from (calculate_magnetizing_current).
+    double meanVoltage = calculate_steady_state_mean_voltage(excitation, voltageSampledWaveform, "Excitation '" + excitation.get_name().value_or("unnamed") + "'");
+    auto centeredMagnetizingWaveform = calculate_integral_waveform(sum_waveform(voltageSampledWaveform, -meanVoltage), true);
+    centeredMagnetizingWaveform = multiply_waveform(centeredMagnetizingWaveform, 1.0 / magnetizingInductance);
+
+    if (!sharedMaximum || current[aloneMaximumIndex.value()] >= sharedMaximum.value()) {
+        auto currentSignal = excitation.get_current().value();
+        if (!currentSignal.get_processed() || !currentSignal.get_processed()->get_peak()) {
+            auto currentWaveform = currentSignal.get_waveform().value();
+            currentSignal.set_processed(calculate_processed_data(currentWaveform, excitation.get_frequency()));
+        }
+        const auto& excursion = centeredMagnetizingWaveform.get_data();
+        double excursionAboveMean = *max_element(excursion.begin(), excursion.end());
+        return currentSignal.get_processed()->get_peak().value() - excursionAboveMean;
+    }
+    auto excursionOnGrid = calculate_sampled_waveform(centeredMagnetizingWaveform, excitation.get_frequency(), current.size(), current.size()).get_data();
+    if (excursionOnGrid.size() != current.size()) {
+        throw InvalidInputException(ErrorCode::INVALID_INPUT, "calculate_magnetizing_current_dc_anchor: the volt-second integral sampled to " +
+                                    std::to_string(excursionOnGrid.size()) + " points, the currents to " + std::to_string(current.size()));
+    }
+    return current[aloneMaximumIndex.value()] - excursionOnGrid[aloneMaximumIndex.value()];
 }
 
 
@@ -630,8 +812,8 @@ SignalDescriptor Inputs::get_multiport_inductor_magnetizing_current(OperatingPoi
     size_t numberWindings = operatingPoint.get_excitations_per_winding().size();
     if (has_flyback_label(excitation) && excitation.get_voltage()) {
         // The windings conduct alternately: the flux comes from the primary voltage (Faraday),
-        // anchored where the primary current peaks, as there it carries the whole magnetizing MMF.
-        magnetizingCurrent = calculate_magnetizing_current(excitation, magnetizingInductance, false, true, true);
+        // anchored where the primary carries the whole magnetizing MMF alone.
+        magnetizingCurrent = calculate_magnetizing_current(operatingPoint, 0, magnetizingInductance, turnsRatios, false);
     }
     else {
         // No primary voltage on a flyback, or every winding on one isolation side: the ampere-turn
@@ -1454,8 +1636,6 @@ std::pair<bool, std::string> Inputs::check_integrity() {
 
     for (size_t i = 0; i < operatingPoints.size(); ++i) {
         std::vector<OperatingPointExcitation> processedExcitationsPerWinding;
-        // bool includeDcOffsetIntoMagnetizingCurrent = include_dc_offset_into_magnetizing_current(operatingPoints[i], turnsRatiosValues);
-
         for (auto& excitation : operatingPoints[i].get_mutable_excitations_per_winding()) {
             // Here we processed this excitation voltage
             if (excitation.get_voltage()) {
@@ -1484,11 +1664,8 @@ std::pair<bool, std::string> Inputs::check_integrity() {
                 }
                 auto voltageWaveform = excitation.get_voltage()->get_waveform().value();
                 auto sampledWaveform = calculate_sampled_waveform(voltageWaveform, excitation.get_frequency());
-                bool includeDcOffsetIntoMagnetizingCurrent = include_dc_offset_into_magnetizing_current(operatingPoints[i], turnsRatiosValues);
-                // bool includeDcOffsetIntoMagnetizingCurrent = include_dc_offset_into_magnetizing_current_rosano(sampledWaveform);
-                excitation.set_current(
-                    calculate_magnetizing_current(excitation, sampledWaveform, magnetizing_inductance(), true, includeDcOffsetIntoMagnetizingCurrent,
-                                                  operatingPoints[i].get_excitations_per_winding().size() > 1));
+                // This winding has no current, so no current gives its magnetizing DC: Faraday alone.
+                excitation.set_current(calculate_magnetizing_current(excitation, sampledWaveform, magnetizing_inductance(), true, 0.0));
             }
             processedExcitationsPerWinding.push_back(excitation);
         }
@@ -2124,91 +2301,67 @@ std::optional<SignalDescriptor> Inputs::get_single_winding_magnetizing_current(c
     return magnetizingCurrent;
 }
 
-SignalDescriptor Inputs::calculate_magnetizing_current(OperatingPointExcitation& excitation,
-                                                                Waveform voltageSampledWaveform,
-                                                                double magnetizingInductance,
-                                                                bool compress,
-                                                                bool addOffset,
-                                                                bool alternatingConduction) {
-    double dcCurrent = 0;
+SignalDescriptor Inputs::calculate_magnetizing_current(const OperatingPoint& operatingPoint,
+                                                       size_t windingIndex,
+                                                       double magnetizingInductance,
+                                                       const std::vector<double>& turnsRatios,
+                                                       bool compress,
+                                                       std::optional<Waveform> voltageSampledWaveform) {
+    // The one decision for a winding's magnetizing current (ABT #1467): Faraday on the winding's
+    // voltage, plus the DC the currents give. process_operating_point, the core adviser's
+    // pre-processing and the autocomplete paths all come through here, so they cannot drift apart.
+    const auto excitations = operatingPoint.get_excitations_per_winding();
+    if (windingIndex >= excitations.size()) {
+        throw InvalidInputException(ErrorCode::INVALID_INPUT, "calculate_magnetizing_current: winding " + std::to_string(windingIndex) +
+                                    " of an operating point with " + std::to_string(excitations.size()) + " windings");
+    }
     if (magnetizingInductance <= 0) {
         throw InvalidInputException(ErrorCode::INVALID_INPUT, "magnetizingInductance cannot be zero or negative");
     }
-
-    if (addOffset && excitation.get_current()) {
-
-        if (!excitation.get_current()->get_processed()) {
-            auto currentExcitation = excitation.get_current().value();
-            auto currentExcitationWaveform = currentExcitation.get_waveform().value();
-            auto sampledCurrentWaveform = calculate_sampled_waveform(currentExcitationWaveform, excitation.get_frequency());
-            currentExcitation.set_harmonics(calculate_harmonics_data(currentExcitationWaveform, sampledCurrentWaveform, excitation.get_frequency()));
-            currentExcitation.set_processed(calculate_processed_data(currentExcitation, sampledCurrentWaveform, true, currentExcitation.get_processed()));
-            excitation.set_current(currentExcitation);
+    auto excitation = excitations[windingIndex];
+    if (!voltageSampledWaveform) {
+        if (!excitation.get_voltage()) {
+            throw InvalidInputException(ErrorCode::MISSING_DATA, "calculate_magnetizing_current: winding " + std::to_string(windingIndex) +
+                                        " has no voltage to derive its magnetizing current from (Faraday)");
         }
+        auto voltageExcitation = standardize_waveform(excitation.get_voltage().value(), excitation.get_frequency());
+        auto waveform = voltageExcitation.get_waveform().value();
+        if (!is_waveform_sampled(waveform)) {
+            waveform = calculate_sampled_waveform(waveform, excitation.get_frequency());
+        }
+        voltageSampledWaveform = waveform;
+    }
 
+    double dcCurrent = 0;
+    bool onlyOneWinding = turnsRatios.empty() && excitations.size() <= 1;
+    if (excitation.get_current() && excitations.size() > 1) {
+        // Several windings: the same classification as include_dc_offset_into_magnetizing_current,
+        // on one conduction map shared with the anchor.
+        auto conduction = calculate_winding_conduction(operatingPoint);
+        if (conduction && windings_alternate(conduction.value())) {
+            dcCurrent = calculate_magnetizing_current_dc_anchor(excitation, conduction.value(), windingIndex, voltageSampledWaveform.value(), magnetizingInductance);
+        }
+    }
+    else if (excitation.get_current() && onlyOneWinding) {
         if (excitation.get_current()->get_waveform()) {
-            if (!excitation.get_current()->get_processed()->get_peak()) {
-                auto currentExcitation = excitation.get_current().value();
-                auto processed = calculate_processed_data(excitation.get_current()->get_waveform().value());
-                currentExcitation.set_processed(processed);
-                excitation.set_current(currentExcitation);
-
-            }
-
-            if (alternatingConduction) {
-                // Several windings conducting alternately (flyback style): this winding's
-                // measured waveform contains commutation steps (the other winding's
-                // ampere-turns handed over at the switching instant), which move no flux,
-                // so neither its midpoint nor its pk-pk ripple describe the magnetizing
-                // current. What IS exact is the peak: at this winding's current peak it
-                // carries the whole magnetizing MMF, so peak(i_mag) == peak(i_winding).
-                // Anchor there, subtracting the magnetizing excursion above its mean taken
-                // from the same zero-mean volt-second integral the overload below builds
-                // the waveform from. The previous code subtracted half this winding's own
-                // pk-pk ripple (commutation step included), understating the DC anchor and
-                // with it B_dc and B_peak by ~30% on CCM flyback/flybuck (ABT #907).
-                double meanVoltage = calculate_steady_state_mean_voltage(excitation, voltageSampledWaveform, "Excitation '" + excitation.get_name().value_or("unnamed") + "'");
-                auto centeredMagnetizingWaveform = calculate_integral_waveform(sum_waveform(voltageSampledWaveform, -meanVoltage), true);
-                centeredMagnetizingWaveform = multiply_waveform(centeredMagnetizingWaveform, 1.0 / magnetizingInductance);
-                double excursionAboveMean = *max_element(centeredMagnetizingWaveform.get_data().begin(),
-                                                         centeredMagnetizingWaveform.get_data().end());
-                dcCurrent = excitation.get_current()->get_processed()->get_peak().value() - excursionAboveMean;
-            }
-            else {
-                // Single winding: the measured current IS the magnetizing current, and the
-                // measurement is the only source of DC truth (the voltage integral carries
-                // none). Anchor at its midpoint. (Named locals: MAS getters return by
-                // value, so chaining into get_data() would dangle.)
-                auto currentSignal = excitation.get_current().value();
-                auto currentWaveform = currentSignal.get_waveform().value();
-                const std::vector<double>& currentData = currentWaveform.get_data();
-                dcCurrent = (*max_element(currentData.begin(), currentData.end()) +
-                             *min_element(currentData.begin(), currentData.end())) / 2;
-            }
+            // Single winding: the measured current IS the magnetizing current, and the
+            // measurement is the only source of DC truth (the voltage integral carries
+            // none). Anchor at its midpoint. (Named locals: MAS getters return by
+            // value, so chaining into get_data() would dangle.)
+            auto currentSignal = excitation.get_current().value();
+            auto currentWaveform = currentSignal.get_waveform().value();
+            const std::vector<double>& currentData = currentWaveform.get_data();
+            dcCurrent = (*max_element(currentData.begin(), currentData.end()) +
+                         *min_element(currentData.begin(), currentData.end())) / 2;
         }
         else {
+            if (!excitation.get_current()->get_processed()) {
+                throw InvalidInputException(ErrorCode::MISSING_DATA, "calculate_magnetizing_current: the winding's current has neither a waveform nor processed values to take its DC from");
+            }
             dcCurrent = excitation.get_current()->get_processed()->get_offset();
         }
     }
-    return calculate_magnetizing_current(excitation, voltageSampledWaveform, magnetizingInductance, compress, dcCurrent);
-}
-
-SignalDescriptor Inputs::calculate_magnetizing_current(OperatingPointExcitation& excitation,
-                                                                double magnetizingInductance,
-                                                                bool compress,
-                                                                bool addOffset,
-                                                                bool alternatingConduction) {
-    if (!excitation.get_voltage()) {
-        throw std::invalid_argument("Missing voltage signal");
-    }
-    auto voltageExcitation = excitation.get_voltage().value();
-    voltageExcitation = standardize_waveform(voltageExcitation, excitation.get_frequency());
-    auto waveform = voltageExcitation.get_waveform().value();
-
-    if (!is_waveform_sampled(waveform)) {
-        waveform = calculate_sampled_waveform(waveform, excitation.get_frequency());
-    }
-    return calculate_magnetizing_current(excitation, waveform, magnetizingInductance, compress, addOffset, alternatingConduction);
+    return calculate_magnetizing_current(excitation, voltageSampledWaveform.value(), magnetizingInductance, compress, dcCurrent);
 }
 
 bool is_continuously_conducting_power(OperatingPointExcitation excitation) {
@@ -2623,8 +2776,6 @@ OperatingPoint Inputs::process_operating_point(OperatingPoint operatingPoint, do
             turnsRatios.push_back(turnsRatio);
         }
 
-        bool includeDcOffsetIntoMagnetizingCurrent = include_dc_offset_into_magnetizing_current(operatingPoint, turnsRatios);
-
         // ── CMC handling ─────────────────────────────────────────────────
         // In a common-mode choke every winding carries identical DM + CM
         // currents (MKF stores every winding's current "into the dot"), so
@@ -2701,8 +2852,7 @@ OperatingPoint Inputs::process_operating_point(OperatingPoint operatingPoint, do
                     if (windingIndex < voltageSampledWaveforms.size()) {
                         waveform = voltageSampledWaveforms[windingIndex];
                     }
-                    excitation.set_magnetizing_current(calculate_magnetizing_current(excitation, waveform, magnetizingInductance, false, includeDcOffsetIntoMagnetizingCurrent,
-                                                                                     operatingPoint.get_excitations_per_winding().size() > 1));
+                    excitation.set_magnetizing_current(calculate_magnetizing_current(operatingPoint, windingIndex, magnetizingInductance, turnsRatios, false, waveform));
                 }
                 processedExcitationsPerWinding[windingIndex] = excitation;
             }

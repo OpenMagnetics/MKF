@@ -2764,13 +2764,10 @@ Mas mas_autocomplete(Mas mas, bool simulate, json configuration) {
         auto coilTurnsRatios = mas.get_magnetic().get_coil().get_turns_ratios();
         mas.get_mutable_inputs().get_mutable_operating_points()[operatingPointIndex] = Inputs::process_operating_point(mas.get_inputs().get_operating_points()[operatingPointIndex], magnetizingInductance,
                                                                                                                      coilTurnsRatios, false, mas.get_magnetic().get_coil().get_isolation_sides());
-        // Faraday with the DC anchored as process_operating_point does (ABT #1467).
+        // The decision process_operating_point makes, compressed (ABT #1467).
         auto processedOperatingPoint = mas.get_inputs().get_operating_points()[operatingPointIndex];
-        bool addOffset = Inputs::include_dc_offset_into_magnetizing_current(processedOperatingPoint, coilTurnsRatios);
-        bool alternatingConduction = processedOperatingPoint.get_excitations_per_winding().size() > 1;
         for (size_t windingIndex = 0; windingIndex < numberWindings; windingIndex++) {
-            auto excitation = processedOperatingPoint.get_excitations_per_winding()[windingIndex];
-            auto magnetizingCurrent = Inputs::calculate_magnetizing_current(excitation, magnetizingInductance, true, addOffset, alternatingConduction);
+            auto magnetizingCurrent = Inputs::calculate_magnetizing_current(processedOperatingPoint, windingIndex, magnetizingInductance, coilTurnsRatios, true);
             auto processed = Inputs::calculate_processed_data(magnetizingCurrent.get_waveform().value(), mas.get_inputs().get_operating_points()[operatingPointIndex].get_excitations_per_winding()[windingIndex].get_frequency(), true);
             magnetizingCurrent.set_processed(processed);
             mas.get_mutable_inputs().get_mutable_operating_points()[operatingPointIndex].get_mutable_excitations_per_winding()[windingIndex].set_magnetizing_current(magnetizingCurrent);
@@ -2852,27 +2849,18 @@ Inputs inputs_autocomplete(Inputs inputs, std::optional<Magnetic> magnetic, json
             }
             auto excitation = inputs.get_operating_points()[operatingPointIndex].get_excitations_per_winding()[windingIndex];
 
-            // Faraday with the DC anchored as Inputs::process_operating_point does (ABT #1467).
-            if (!excitation.get_voltage()) {
-                throw InvalidInputException(ErrorCode::MISSING_DATA, "inputs_autocomplete: operating point " + std::to_string(operatingPointIndex) +
-                                            ", winding " + std::to_string(windingIndex) + " has no voltage to derive its magnetizing current from");
-            }
+            // The decision Inputs::process_operating_point makes, compressed (ABT #1467); it throws
+            // when the winding has no voltage to integrate.
             std::vector<double> requiredTurnsRatios;
             for (auto& turnsRatio : inputs.get_design_requirements().get_turns_ratios()) {
                 requiredTurnsRatios.push_back(resolve_dimensional_values(turnsRatio));
             }
-            bool addOffset = Inputs::include_dc_offset_into_magnetizing_current(operatingPoint, requiredTurnsRatios);
-            auto magnetizingCurrent = Inputs::calculate_magnetizing_current(excitation, magnetizingInductance, true, addOffset,
-                                                                            operatingPoint.get_excitations_per_winding().size() > 1);
+            auto magnetizingCurrent = Inputs::calculate_magnetizing_current(operatingPoint, windingIndex, magnetizingInductance, requiredTurnsRatios, true);
 
-            if (excitation.get_voltage()) {
-                if (excitation.get_voltage().value().get_processed()) {
-                    if (excitation.get_voltage().value().get_processed().value().get_duty_cycle()) {
-                        auto processed = magnetizingCurrent.get_processed().value();
-                        processed.set_duty_cycle(excitation.get_voltage().value().get_processed().value().get_duty_cycle().value());
-                        magnetizingCurrent.set_processed(processed);
-                    }
-                }
+            if (excitation.get_voltage()->get_processed() && excitation.get_voltage()->get_processed()->get_duty_cycle()) {
+                auto processed = magnetizingCurrent.get_processed().value();
+                processed.set_duty_cycle(excitation.get_voltage()->get_processed()->get_duty_cycle().value());
+                magnetizingCurrent.set_processed(processed);
             }
             inputs.get_mutable_operating_points()[operatingPointIndex].get_mutable_excitations_per_winding()[windingIndex].set_magnetizing_current(magnetizingCurrent);
 

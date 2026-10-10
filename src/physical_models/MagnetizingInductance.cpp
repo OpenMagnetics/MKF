@@ -892,12 +892,8 @@ std::pair<MagnetizingInductanceOutput, SignalDescriptor> MagnetizingInductance::
                     biasFluxImposed = !addOffset;
                     fluxFromVoltSeconds = true;
 
-                    auto magnetizingCurrent = Inputs::calculate_magnetizing_current(excitation,
-                                                                                            sampledVoltageWaveform,
-                                                                                            modifiedMagnetizingInductance,
-                                                                                            false,
-                                                                                            addOffset,
-                                                                                            operatingPoint->get_excitations_per_winding().size() > 1);
+                    auto magnetizingCurrent = Inputs::calculate_magnetizing_current(*operatingPoint, 0, modifiedMagnetizingInductance, turnsRatios, false,
+                                                                                    sampledVoltageWaveform);
 
                     auto sampledMagnetizingCurrentWaveform = Inputs::calculate_sampled_waveform(magnetizingCurrent.get_waveform().value(), excitation.get_frequency());
                     // Replace the stored waveform with the resampled (power-of-2)
