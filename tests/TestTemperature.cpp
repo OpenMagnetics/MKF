@@ -3553,6 +3553,16 @@ TEST_CASE("Temperature: concentric_flyback_rectangular_column", "[temperature][s
     // conduction, and that path is the separate coupling problem tracked in #461.
     // The per-turn section below is currently DEAD (guarded lookups on key names
     // that never match), so it does not catch this — see ABT #454.
+    //
+    // FIXTURE (ABT #1740, Alf 2026-10-10): the fixture used to carry a second operating
+    // point, "Max. input volt.", whose 911 uVs on 24 turns of this E 25/13/7 impose a
+    // 0.73 T swing on 3C96 (B_sat ~0.5 T): the core saturates and MKF now refuses it. It
+    // was dropped; the test only ever used the first operating point's losses (outputs[0]).
+    // Its design requirements said Lm >= 510 uH and turns ratio 8.5, while the coil is
+    // 24:13 on a 0.8 mm gap (~64 uH); they now state the real coil (Lm 60-67 uH, 24/13).
+    // The remaining operating point's waveforms were simulated with Lm = 510 uH, not with
+    // this coil's ~64 uH; the Icepak references stay, as they belong to this geometry and
+    // to that operating point's losses.
     auto jsonPath = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "concentric_flyback_rectangular_column.json");
     auto mas = OpenMagneticsTesting::mas_loader(jsonPath);
     
@@ -3649,6 +3659,11 @@ TEST_CASE("Temperature: concentric_transformer_contiguous_rectangular_wire", "[t
     // window/room split of the turn area, and the damped solver iteration
     // (Temperature.cpp, ABT #461), the core converges at ~449°C, inside this band —
     // re-enabled.
+    //
+    // FIXTURE (ABT #1740): as in concentric_flyback_rectangular_column, the saturating
+    // "Max. input volt." operating point was dropped and the design requirements now
+    // state the real coil (Lm 60-67 uH, turns ratio 24/13). The remaining operating
+    // point's waveforms were simulated with Lm = 510 uH, not with this coil's inductance.
     auto jsonPath = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "concentric_transformer_contiguous_rectangular_wire.json");
     auto mas = OpenMagneticsTesting::mas_loader(jsonPath);
     

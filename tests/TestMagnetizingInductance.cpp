@@ -2175,41 +2175,48 @@ TEST_CASE("Test_Dc_Bias_Is_The_Time_Average_Not_The_Midpoint", "[physical-model]
 }
 
 TEST_CASE("Test_Volt_Seconds_That_Saturate_The_Core_Are_Refused_Before_The_Dc_Bias_Runs_Away", "[physical-model][magnetizing-inductance][dc-bias][abt-1740]") {
-    // The 3C96 Icepak flyback fixture's second operating point puts 911 uVs on 24 turns of an E 25/13/7
-    // (A_e 51.8 mm2): a 0.73 T swing on a material that saturates at about 0.50 T, with the magnetizing
-    // current anchored at the primary's 1.79 A peak. No DC point holds that. The DC-bias fixed point used
-    // to run away instead (H 224 -> 3.6e17 A/m, mu 309 -> 8e-13) and report "biased permeability at
-    // mu = 0.000000 is 0.000000". It must say the core saturates, naming the operating point and winding.
+    // The 3C96 Icepak flyback fixture (E 25/13/7, A_e 51.8 mm2, 24:13 on a 0.8 mm gap) used to carry a
+    // second operating point of 911 uVs, a 0.73 T swing on a material that saturates at about 0.5 T. The
+    // DC-bias fixed point ran away on it (H 224 -> 3.6e17 A/m, mu 309 -> 8e-13) and reported "biased
+    // permeability at mu = 0.000000 is 0.000000". That point is gone from the fixture; the same swing is
+    // reproduced here from its first operating point (595 uVs, 0.48 T on 24 turns) with 16 turns:
+    // 0.48 * 24 / 16 = 0.72 T. It must say the core saturates, naming the operating point and winding.
     auto path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "concentric_flyback_rectangular_column.json");
     auto mas = OpenMagneticsTesting::mas_loader(path.string());
     auto magnetic = OpenMagnetics::magnetic_autocomplete(mas.get_magnetic());
     auto inputs = mas.get_inputs();
     MagnetizingInductance magnetizingInductance(ReluctanceModels::ZHANG);
+    REQUIRE(inputs.get_operating_point(0).get_name().value() == "Min. input volt. (simulated)");
+    auto coilWithTurns = [&](int numberTurns) {
+        auto coil = magnetic.get_coil();
+        coil.get_mutable_functional_description()[0].set_number_turns(numberTurns);
+        return coil;
+    };
 
-    auto saturating = inputs.get_operating_point(1);
-    REQUIRE(saturating.get_name().value() == "Max. input volt. (simulated)");
+    auto saturating = inputs.get_operating_point(0);
     auto start = std::chrono::steady_clock::now();
-    CHECK_THROWS_WITH(magnetizingInductance.calculate_inductance_and_magnetic_flux_density(magnetic.get_core(), magnetic.get_coil(), &saturating),
+    CHECK_THROWS_WITH(magnetizingInductance.calculate_inductance_and_magnetic_flux_density(magnetic.get_core(), coilWithTurns(16), &saturating),
                       Catch::Matchers::ContainsSubstring("The core saturates") &&
-                      Catch::Matchers::ContainsSubstring("Max. input volt. (simulated)") &&
+                      Catch::Matchers::ContainsSubstring("Min. input volt. (simulated)") &&
                       Catch::Matchers::ContainsSubstring("winding 'Primary'") &&
+                      Catch::Matchers::ContainsSubstring("DC-bias operating point reaches") &&
                       Catch::Matchers::ContainsSubstring("B_sat"));
     CHECK(std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count() < 30);
 
-    // Three times fewer turns triple the swing to about 2.2 T peak-to-peak: more than twice B_sat, which no
-    // bias can hold, so it is refused from the volt-seconds alone, before any DC-bias evaluation.
-    auto coil = magnetic.get_coil();
-    coil.get_mutable_functional_description()[0].set_number_turns(8);
-    auto tooFewTurns = inputs.get_operating_point(1);
-    CHECK_THROWS_WITH(magnetizingInductance.calculate_inductance_and_magnetic_flux_density(magnetic.get_core(), coil, &tooFewTurns),
+    // 8 turns triple the swing to about 1.4 T peak-to-peak: more than twice B_sat, which no bias can
+    // hold, so it is refused from the volt-seconds alone, before any DC-bias evaluation.
+    auto tooFewTurns = inputs.get_operating_point(0);
+    CHECK_THROWS_WITH(magnetizingInductance.calculate_inductance_and_magnetic_flux_density(magnetic.get_core(), coilWithTurns(8), &tooFewTurns),
                       Catch::Matchers::ContainsSubstring("The core saturates") &&
                       Catch::Matchers::ContainsSubstring("the volt-seconds impose a flux swing") &&
                       Catch::Matchers::ContainsSubstring("for any bias"));
 
-    // Control: the first operating point (595 uVs, 0.48 T swing) has a DC point and keeps its answer.
+    // Control: the real coil (24 turns, 0.48 T swing) has a DC point and keeps its answer, the ~64 uH
+    // the fixture's design requirements now state.
     auto converging = inputs.get_operating_point(0);
     auto [output, fluxDensity] = magnetizingInductance.calculate_inductance_and_magnetic_flux_density(magnetic.get_core(), magnetic.get_coil(), &converging);
     double inductance = resolve_dimensional_values(output.get_magnetizing_inductance());
     INFO("L " << inductance * 1e6 << " uH, B peak " << fluxDensity.get_processed().value().get_peak().value() << " T");
-    CHECK(inductance > 0);
+    CHECK(inductance >= 60e-6);
+    CHECK(inductance <= 67e-6);
 }
