@@ -920,7 +920,8 @@ std::pair<MagnetizingInductanceOutput, SignalDescriptor> MagnetizingInductance::
                 // iteration (ABT #1740).
                 if (fluxFromVoltSeconds) {
                     double saturationFluxDensity = saturationFluxDensityAt();
-                    const auto& fluxDensityData = magneticFluxDensity.get_waveform().value().get_data();
+                    auto fluxDensityWaveformForSwing = magneticFluxDensity.get_waveform().value();
+                    const auto& fluxDensityData = fluxDensityWaveformForSwing.get_data();
                     double swing = *std::max_element(fluxDensityData.begin(), fluxDensityData.end()) -
                                    *std::min_element(fluxDensityData.begin(), fluxDensityData.end());
                     voltSecondFluxDensitySwing = swing;
@@ -1011,7 +1012,8 @@ std::pair<MagnetizingInductanceOutput, SignalDescriptor> MagnetizingInductance::
 
                 lastBiasFieldStrength = hFieldDcBias;
                 {
-                    const auto& fluxDensityData = result.second.get_waveform().value().get_data();
+                    auto fluxDensityWaveformForPeak = result.second.get_waveform().value();
+                    const auto& fluxDensityData = fluxDensityWaveformForPeak.get_data();
                     lastPeakFluxDensity = std::max(fabs(*std::max_element(fluxDensityData.begin(), fluxDensityData.end())),
                                                    fabs(*std::min_element(fluxDensityData.begin(), fluxDensityData.end())));
                 }

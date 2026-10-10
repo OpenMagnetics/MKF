@@ -2183,9 +2183,10 @@ TEST_CASE("Test_Volt_Seconds_That_Saturate_The_Core_Are_Refused_Before_The_Dc_Bi
     auto path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "concentric_flyback_rectangular_column.json");
     auto mas = OpenMagneticsTesting::mas_loader(path.string());
     auto magnetic = OpenMagnetics::magnetic_autocomplete(mas.get_magnetic());
+    auto inputs = mas.get_inputs();
     MagnetizingInductance magnetizingInductance(ReluctanceModels::ZHANG);
 
-    auto saturating = mas.get_inputs().get_operating_point(1);
+    auto saturating = inputs.get_operating_point(1);
     REQUIRE(saturating.get_name().value() == "Max. input volt. (simulated)");
     auto start = std::chrono::steady_clock::now();
     CHECK_THROWS_WITH(magnetizingInductance.calculate_inductance_and_magnetic_flux_density(magnetic.get_core(), magnetic.get_coil(), &saturating),
@@ -2199,14 +2200,14 @@ TEST_CASE("Test_Volt_Seconds_That_Saturate_The_Core_Are_Refused_Before_The_Dc_Bi
     // bias can hold, so it is refused from the volt-seconds alone, before any DC-bias evaluation.
     auto coil = magnetic.get_coil();
     coil.get_mutable_functional_description()[0].set_number_turns(8);
-    auto tooFewTurns = mas.get_inputs().get_operating_point(1);
+    auto tooFewTurns = inputs.get_operating_point(1);
     CHECK_THROWS_WITH(magnetizingInductance.calculate_inductance_and_magnetic_flux_density(magnetic.get_core(), coil, &tooFewTurns),
                       Catch::Matchers::ContainsSubstring("The core saturates") &&
                       Catch::Matchers::ContainsSubstring("the volt-seconds impose a flux swing") &&
                       Catch::Matchers::ContainsSubstring("for any bias"));
 
     // Control: the first operating point (595 uVs, 0.48 T swing) has a DC point and keeps its answer.
-    auto converging = mas.get_inputs().get_operating_point(0);
+    auto converging = inputs.get_operating_point(0);
     auto [output, fluxDensity] = magnetizingInductance.calculate_inductance_and_magnetic_flux_density(magnetic.get_core(), magnetic.get_coil(), &converging);
     double inductance = resolve_dimensional_values(output.get_magnetizing_inductance());
     INFO("L " << inductance * 1e6 << " uH, B peak " << fluxDensity.get_processed().value().get_peak().value() << " T");
