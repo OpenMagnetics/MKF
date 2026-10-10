@@ -33,6 +33,7 @@
 #include <iostream>
 #include <list>
 #include <map>
+#include <numbers>
 #include <set>
 #include <sstream>
 #include <stdexcept>
@@ -223,6 +224,78 @@ std::vector<std::pair<Magnetic, double>> cull_to_unique_core_shapes(std::vector<
     return magneticsWithScoring;
 }
 
+// The core stage's stand-in coil (get_dummy_coil + correct_windings) gives every winding the same
+// round strand, two skin depths thick. That is a sensible AC conductor, but nothing ties it to the
+// window: at line frequency two skin depths are centimetres (Test_CoreAdviser_Web_8, 50 Hz: an
+// 18.6 mm strand, turns laid out 38 mm past an E core's window), and with a high turn count even a
+// 0.42 mm strand overflows a small window (10 mH at 100 kHz: 206 turns in a PQ 20/20's 3.2 mm).
+// The loss <-> temperature solve heats the wound stand-in on the full thermal network, which
+// refuses copper outside the window (ABT #838), so those candidates were all dropped. A stand-in
+// is not a design: the coil stage picks the real wire. So when the stand-in's turns do not fit,
+// thin its strand (every winding's, parallels kept) to the thickest one whose fast_wind layout
+// keeps every turn inside the winding window. That is the most copper the window can hold in this
+// layout, so the stand-in's copper losses stay a lower bound of what the coil stage can reach.
+// Works on a coil that fast_wind() has just wound; rewinds it.
+static void fit_stand_in_strand_to_window(Coil& coil) {
+    if (!coil.get_turns_description() || coil.are_turns_inside_winding_window()) {
+        return;
+    }
+    auto wires = coil.get_wires();
+    if (wires.empty() || !wires[0].get_conducting_diameter()) {
+        throw InvalidInputException(ErrorCode::INVALID_COIL_CONFIGURATION,
+            "fit_stand_in_strand_to_window: the stand-in coil's first winding has no round conducting diameter.");
+    }
+    const double standInDiameter = resolve_dimensional_values(wires[0].get_conducting_diameter().value());
+    for (size_t windingIndex = 1; windingIndex < wires.size(); ++windingIndex) {
+        if (!wires[windingIndex].get_conducting_diameter() ||
+            resolve_dimensional_values(wires[windingIndex].get_conducting_diameter().value()) != standInDiameter) {
+            throw InvalidInputException(ErrorCode::INVALID_COIL_CONFIGURATION,
+                "fit_stand_in_strand_to_window: winding " + std::to_string(windingIndex) +
+                " does not carry the stand-in strand of the first winding; this is not a core-stage stand-in coil.");
+        }
+    }
+    auto windWith = [&coil, &wires](double conductingDiameter) {
+        Wire strand = Wire::get_wire_for_conducting_area(std::numbers::pi * conductingDiameter * conductingDiameter / 4,
+                                                         Defaults().ambientTemperature, true);
+        std::vector<Wire> strands(wires.size(), strand);
+        coil.set_wires(strands);
+        coil.unwind();
+        SettingsGuard<bool> coilDelimitGuard(settings, &Settings::get_coil_delimit_and_compact, &Settings::set_coil_delimit_and_compact, false);
+        return coil.fast_wind() && coil.are_turns_inside_winding_window();
+    };
+
+    // Bracket: halve until the layout fits (a thinner strand never needs more room in a layer or
+    // more layers), then bisect between the last overflowing and the first fitting diameter.
+    double overflowing = standInDiameter;
+    double fitting = standInDiameter / 2;
+    const size_t maximumHalvings = 30;  // 2^-30 of the skin-depth strand: far below any wire
+    size_t halvings = 1;
+    while (!windWith(fitting)) {
+        if (++halvings > maximumHalvings) {
+            throw CalculationException(ErrorCode::CALCULATION_INVALID_RESULT,
+                "fit_stand_in_strand_to_window: no round strand down to " + std::to_string(fitting * 1e6) +
+                " um lays every turn of the stand-in coil inside the winding window.");
+        }
+        overflowing = fitting;
+        fitting /= 2;
+    }
+    const double relativeResolution = 1e-3;
+    while (overflowing - fitting > relativeResolution * fitting) {
+        double middle = (overflowing + fitting) / 2;
+        if (windWith(middle)) {
+            fitting = middle;
+        }
+        else {
+            overflowing = middle;
+        }
+    }
+    if (!windWith(fitting)) {
+        throw CalculationException(ErrorCode::CALCULATION_INVALID_RESULT,
+            "fit_stand_in_strand_to_window: the " + std::to_string(fitting * 1e3) +
+            " mm strand that fitted the window no longer does when rewound.");
+    }
+}
+
 Mas CoreAdviser::post_process_core(Magnetic magnetic, Inputs inputs) {
     MagneticEnergy magneticEnergy;
     Mas mas;
@@ -240,6 +313,7 @@ Mas CoreAdviser::post_process_core(Magnetic magnetic, Inputs inputs) {
         SettingsGuard<bool> coilDelimitGuard(settings, &Settings::get_coil_delimit_and_compact, &Settings::set_coil_delimit_and_compact, false);
         magnetic.get_mutable_coil().fast_wind();
     }
+    fit_stand_in_strand_to_window(magnetic.get_mutable_coil());
 
     // Store the magnetic AFTER fast_wind so the returned Mas carries the wound
     // coil (sections/layers/turns). Previously set_magnetic ran before

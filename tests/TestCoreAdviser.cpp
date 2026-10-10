@@ -28,6 +28,8 @@
 #include <magic_enum.hpp>
 #include <vector>
 #include <typeinfo>
+#include <numbers>
+#include "constructive_models/Bobbin.h"
 
 using namespace MAS;
 using namespace OpenMagnetics;
@@ -806,7 +808,85 @@ TEST_CASE("Test_CoreAdviserAvailableCores_No_Toroids_Redo_Culling", "[adviser][c
     settings.reset();
 }
 
-TEST_CASE("Test_CoreAdviserAvailableCores_No_Toroids_Two_Windings", "[adviser][core-adviser][available-cores][smoke-test]") {
+// ABT #838: the core stage's stand-in coil gets a strand of two skin depths. 206 turns of the
+// 100 kHz strand (0.42 mm) overflow a PQ 20/20's quick bobbin (the Redo_Culling candidate above),
+// and the loss <-> temperature solve heats the wound stand-in on a thermal network that refuses
+// copper outside the window, so the candidate was dropped. post_process_core thins the stand-in
+// strand to the thickest one whose layout keeps every turn in the window; a stand-in that fits
+// keeps its skin-depth strand.
+TEST_CASE("Core adviser post-processing fits its stand-in strand to the winding window",
+          "[adviser][core-adviser][smoke-test]") {
+    clear_databases();
+    settings.reset();
+    const double frequency = 100000;
+    const double ambientTemperature = 25;
+    OpenMagnetics::Inputs inputs;
+    // 600 Vpp keeps the PQ 20/20 cool: the guard is about the layout, not the losses.
+    prepare_test_parameters(0, ambientTemperature, frequency, {}, 10e-3, inputs, 600);
+
+    auto skinDepthStrand = OpenMagnetics::Wire::get_wire_for_frequency(frequency, inputs.get_maximum_temperature(), true);
+    const double skinDepthDiameter = resolve_dimensional_values(skinDepthStrand.get_conducting_diameter().value());
+
+    auto standIn = [&](int64_t numberTurns) {
+        auto core = OpenMagneticsTesting::get_quick_core("PQ 20/20", OpenMagneticsTesting::get_ground_gap(0.000477), 1, "3C97");
+        OpenMagnetics::Winding winding;
+        winding.set_name("primary");
+        winding.set_isolation_side(IsolationSide::PRIMARY);
+        winding.set_number_turns(numberTurns);
+        winding.set_number_parallels(1);
+        winding.set_wire(skinDepthStrand);
+        OpenMagnetics::Coil coil;
+        coil.set_bobbin(OpenMagnetics::Bobbin::create_quick_bobbin(core));
+        coil.set_functional_description({winding});
+        OpenMagnetics::Magnetic magnetic;
+        magnetic.set_core(core);
+        magnetic.set_coil(coil);
+        return magnetic;
+    };
+    auto strandDiameter = [](OpenMagnetics::Magnetic magnetic) {
+        return resolve_dimensional_values(magnetic.get_mutable_coil().resolve_wire(0).get_conducting_diameter().value());
+    };
+
+    SECTION("206 turns of the skin-depth strand overflow the window: the strand is thinned until they fit") {
+        auto overflowing = standIn(206);
+        {
+            auto probe = overflowing;
+            settings.set_coil_delimit_and_compact(false);
+            REQUIRE(probe.get_mutable_coil().fast_wind());
+            settings.reset();
+            REQUIRE_FALSE(probe.get_mutable_coil().are_turns_inside_winding_window());
+        }
+        auto mas = CoreAdviser().post_process_core(overflowing, inputs);
+        auto magnetic = mas.get_magnetic();
+        REQUIRE(magnetic.get_coil().get_turns_description());
+        CHECK(magnetic.get_mutable_coil().are_turns_inside_winding_window());
+        const double fitted = strandDiameter(magnetic);
+        CAPTURE(skinDepthDiameter, fitted);
+        CHECK(fitted < skinDepthDiameter);
+        REQUIRE(mas.get_outputs().size() == 1);
+        REQUIRE(mas.get_outputs()[0].get_winding_losses());
+        CHECK(mas.get_outputs()[0].get_winding_losses()->get_winding_losses() > 0);
+
+        // The thickest strand that fits: 0.5 % thicker no longer does.
+        auto thicker = standIn(206);
+        auto thickerStrand = OpenMagnetics::Wire::get_wire_for_conducting_area(std::numbers::pi * std::pow(fitted * 1.005, 2) / 4,
+                                                                              ambientTemperature, true);
+        thicker.get_mutable_coil().set_wires({thickerStrand});
+        settings.set_coil_delimit_and_compact(false);
+        REQUIRE(thicker.get_mutable_coil().fast_wind());
+        settings.reset();
+        CHECK_FALSE(thicker.get_mutable_coil().are_turns_inside_winding_window());
+    }
+    SECTION("A stand-in that fits keeps its skin-depth strand") {
+        auto mas = CoreAdviser().post_process_core(standIn(40), inputs);
+        auto magnetic = mas.get_magnetic();
+        CHECK(magnetic.get_mutable_coil().are_turns_inside_winding_window());
+        CHECK(strandDiameter(mas.get_magnetic()) == skinDepthDiameter);
+    }
+    settings.reset();
+}
+
+TEST_CASE("Test_CoreAdviserAvailableCores_No_Toroids_Two_Windings","[adviser][core-adviser][available-cores][smoke-test]") {
     clear_databases();
     double voltagePeakToPeak = 600;
     double dcCurrent = 0;
