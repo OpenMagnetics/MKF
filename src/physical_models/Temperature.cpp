@@ -556,43 +556,12 @@ void Temperature::createToroidalCoreNodes() {
     
     double coreK = getCoreThermalConductivity();
     
-    // Pre-calculate turn positions and widths for segment-specific coverage
-    // Map each turn to its angular position and width
-    struct TurnCoverageInfo {
-        double angle;           // Angular position (radians)
-        double innerWidth;      // Width at inner radius
-        double outerWidth;      // Width at outer radius
-        bool isInner;           // Is this turn on inner or outer half?
-    };
-    std::vector<TurnCoverageInfo> turnCoverageInfo;
-    
-    auto coil = _magnetic.get_coil();
-    auto turns = coil.get_turns_description();
-    if (turns) {
-        for (const auto& turn : *turns) {
-            auto coords = turn.get_coordinates();
-            if (coords.size() >= 2) {
-                // Calculate angular position from turn center coordinates
-                double turnAngle = std::atan2(coords[1], coords[0]);
-                
-                // Determine if turn is on inner or outer half based on radius
-                double turnRadius = std::sqrt(coords[0]*coords[0] + coords[1]*coords[1]);
-                bool isInner = turnRadius < meanRadius;
-                
-                // Calculate turn width at inner and outer radii
-                // Use turn's actual dimensions if available, otherwise use defaults
-                double innerWidth = _wireWidth;  // Use cached wire width
-                double outerWidth = _wireWidth;
-                if (turn.get_dimensions() && turn.get_dimensions()->size() >= 1) {
-                    innerWidth = (*turn.get_dimensions())[0];
-                    outerWidth = innerWidth;
-                }
-                
-                turnCoverageInfo.push_back({turnAngle, innerWidth, outerWidth, isInner});
-            }
-        }
-    }
-    
+    // A segment's radial faces start fully exposed. Which share of them a winding covers is decided
+    // ONCE, by createToroidalConvectionConnections, from the TURN nodes resting on each face (ABT
+    // #1735). This used to be computed here from the coil's turn description even in core-only
+    // mode -- where no turn exists in the network -- so the "bare core" of the first-pass solve
+    // was wrapped in invisible copper (a T 20/10/7 wound with 60 turns lost its whole bore).
+
     // Pre-calculate loss weighting proportional to 1/r^2 (B ~ 1/r, losses ~ B^2)
     // Each segment's mean radius determines its share of total core losses
     double lossWeightSum = 0.0;
@@ -636,59 +605,17 @@ void Temperature::createToroidalCoreNodes() {
         
         double tangentialArea = radialDepth * height;
         
-        // Calculate segment-specific surface coverage
-        // Find turns that are adjacent to this core segment's angular span
-        std::vector<double> innerTurnWidths;
-        std::vector<double> outerTurnWidths;
-        
-        for (const auto& turnInfo : turnCoverageInfo) {
-            // Normalize turn angle to [0, 2π)
-            double turnAngle = turnInfo.angle;
-            while (turnAngle < 0) turnAngle += 2.0 * M_PI;
-            
-            // Check if turn is within this segment's angular span [angle, angle + angularStep)
-            // Add small tolerance for edge cases
-            double tol = angularStep * 0.1;
-            double segStart = angle - tol;
-            double segEnd = angle + angularStep + tol;
-            
-            bool inSegment = false;
-            if (segStart <= turnAngle && turnAngle < segEnd) {
-                inSegment = true;
-            } else if (segStart < 0 && turnAngle >= (2.0 * M_PI + segStart)) {
-                // Handle wrap-around at 0/2π boundary
-                inSegment = true;
-            } else if (segEnd > 2.0 * M_PI && turnAngle < (segEnd - 2.0 * M_PI)) {
-                // Handle wrap-around at 0/2π boundary
-                inSegment = true;
-            }
-            
-            if (inSegment) {
-                innerTurnWidths.push_back(turnInfo.innerWidth);
-                outerTurnWidths.push_back(turnInfo.outerWidth);
-            }
-        }
-        
-        // Calculate surface coverage for inner and outer radial surfaces
-        // Inner surface: turns cover from the inside
-        double innerCoverage = ThermalNetworkNode::calculateToroidalSurfaceCoverage(
-            windingWindowInnerRadius, angularStep, innerTurnWidths);
-        
-        // Outer surface: turns cover from the outside
-        double outerCoverage = ThermalNetworkNode::calculateToroidalSurfaceCoverage(
-            windingWindowOuterRadius, angularStep, outerTurnWidths);
-        
         node.quadrants[0].face = ThermalNodeFace::RADIAL_INNER;
         node.quadrants[0].surfaceArea = radialInnerArea;
         node.quadrants[0].length = radialLength;
         node.quadrants[0].thermalConductivity = coreK;
-        node.quadrants[0].surfaceCoverage = innerCoverage;
+        node.quadrants[0].surfaceCoverage = 1.0;
         
         node.quadrants[1].face = ThermalNodeFace::RADIAL_OUTER;
         node.quadrants[1].surfaceArea = radialOuterArea;
         node.quadrants[1].length = radialLength;
         node.quadrants[1].thermalConductivity = coreK;
-        node.quadrants[1].surfaceCoverage = outerCoverage;
+        node.quadrants[1].surfaceCoverage = 1.0;
         
         node.quadrants[2].face = ThermalNodeFace::TANGENTIAL_LEFT;
         node.quadrants[2].surfaceArea = tangentialArea;
@@ -3582,7 +3509,9 @@ void Temperature::createTurnToInsulationConnections() {
             double turnSurfaceOuterRadius = turnRadiusPos + turnRadiusActual;
             
             // Find layers that are close on either radial side of the turn
-            std::vector<std::pair<int, double>> matchingLayers;  // (layerIdx, whichSide: -1=inner, +1=outer)
+            // (layerIdx, whichSide: -1=inner, +1=outer, radial surface gap, layer half thickness)
+            struct MatchingLayer { int layerIdx; double whichSide; double surfaceGap; double semiThickness; };
+            std::vector<MatchingLayer> matchingLayers;
             
             for (const auto& layer : allLayers) {
                 // Skip layers on opposite side of core (inner vs outer)
@@ -3596,19 +3525,19 @@ void Temperature::createTurnToInsulationConnections() {
                 // (layer is closer to center than turn)
                 double gapInner = turnSurfaceInnerRadius - layerSurfaceOuterRadius;
                 if (std::abs(gapInner) < proximityThreshold) {
-                    matchingLayers.push_back({layer.layerIdx, -1.0});  // -1 = turn's inner side
+                    matchingLayers.push_back({layer.layerIdx, -1.0, gapInner, layer.semiThickness});  // -1 = turn's inner side
                 }
                 
                 // Check if turn's OUTER surface is close to layer's INNER surface
                 // (layer is farther from center than turn)
                 double gapOuter = layerSurfaceInnerRadius - turnSurfaceOuterRadius;
                 if (std::abs(gapOuter) < proximityThreshold) {
-                    matchingLayers.push_back({layer.layerIdx, +1.0});  // +1 = turn's outer side
+                    matchingLayers.push_back({layer.layerIdx, +1.0, gapOuter, layer.semiThickness});  // +1 = turn's outer side
                 }
             }
             
             // For each matching layer, find closest node by angle and create connection
-            for (const auto& [layerIdx, whichSide] : matchingLayers) {
+            for (const auto& [layerIdx, whichSide, surfaceGap, layerSemiThickness] : matchingLayers) {
                 const auto& layerInsIndices = insNodesByLayer[layerIdx];
                 
                 // Find closest insulation node in this layer by angular proximity
@@ -3699,17 +3628,25 @@ void Temperature::createTurnToInsulationConnections() {
                                   (turnNode.dimensions.width * turnNode.dimensions.height * 0.5);
                 }
                 
-                // Conduction distance is the surface-to-surface distance
-                double conductionDistance = std::max(minQuadrantDistance, 1e-6);
-                
                 // Get insulation thermal conductivity
                 double insulationK = kInsulation_DefaultConductivity;
                 if (insNode.quadrants[0].thermalConductivity > 0) {
                     insulationK = insNode.quadrants[0].thermalConductivity;
                 }
-                
+
+                // ABT #1735: heat crosses the RADIAL path from the turn's surface to the layer's
+                // centre -- the air gap between them (if any) and half the layer's thickness.
+                // The conduction length used to be the distance between the two quadrants' limit
+                // points, which sit at the TURN's angle and at the IL SEGMENT's mid-angle: on a
+                // T 36/23/15 with 8 segments that chord is up to ~4 mm of "tape", turning a
+                // ~0.05 mm contact into ~1000 K/W per turn and hiding the whole wrap behind it.
+                (void) minQuadrantDistance;  // only selects the facing pair above
                 r.resistance = ThermalResistance::calculateConductionResistance(
-                    conductionDistance, insulationK, contactArea);
+                    layerSemiThickness, insulationK, contactArea);
+                if (surfaceGap > 0) {
+                    r.resistance += ThermalResistance::calculateConductionResistance(
+                        surfaceGap, gapAirThermalConductivity(), contactArea);
+                }
                 
                 _resistances.push_back(r);
                 connectionCount++;
@@ -4289,14 +4226,6 @@ void Temperature::createToroidalConvectionConnections(size_t ambientIdx, double 
     double coreInnerR = dimensions["B"] / 2.0;
     double coreOuterR = dimensions["A"] / 2.0;
 
-    std::set<std::string> connectedQuadrants;
-    for (const auto& res : _resistances) {
-        if (res.type == HeatTransferType::CONDUCTION) {
-            connectedQuadrants.insert(std::to_string(res.nodeFromId) + "_" + std::string(magic_enum::enum_name(res.quadrantFrom)));
-            connectedQuadrants.insert(std::to_string(res.nodeToId) + "_" + std::string(magic_enum::enum_name(res.quadrantTo)));
-        }
-    }
-
     bool hasInsulationLayers = false;
     bool hasOuterInsulationLayers = false;
     for (size_t i = 0; i < _nodes.size(); i++) {
@@ -4449,117 +4378,214 @@ void Temperature::createToroidalConvectionConnections(size_t ambientIdx, double 
     }
 
         
-        // Core convection - connect exposed core quadrants
-        // When insulation layers are present, core is covered by insulation and has no convection
-        if (!hasInsulationLayers) {
+    // ---- Exposed core surface of a wound toroid (ABT #1735) ----
+    // The core between the turns is bare ferrite looking at the room. The envelope above hands
+    // the turns only the share of the wound-body surface their own arcs cover (outerCoverage /
+    // holeCoverage), so the uncovered remainder MUST be the core's, or it is in nobody's books.
+    // The previous builder blocked a whole segment face as soon as one turn rested on it (and a
+    // face a turn conducted into was skipped as well), so a sparsely wound toroid -- 10 turns on
+    // a T 20/10/7 -- lost ~80% of its surface to ambient and ran several times hotter than the
+    // same core bare. Coverage is now partial and per face, measured with exactly the arc the
+    // envelope uses for a turn: its largest dimension plus one stagnant gap, as an angle at the
+    // turn's own radius. Each segment face convects its uncovered fraction; the two annular faces
+    // (absent from the old model even for a bare core) convect theirs too, covered where the
+    // turns cross them radially -- a strip of width (d + gap) whose angular share is taken at
+    // the annulus mean radius.
+    // When insulation layers are present, a full-circle layer wraps the core (partial-arc
+    // separators create no nodes, see createInsulationLayerNodes), so the core's bare surface
+    // sees the WRAP, not the room: it conducts across the air gap the turns hold open between
+    // core and tape, into the wrap layer nearest the core, and the outermost layer carries the
+    // envelope to ambient (below). Without that gap path the core's only way out was through
+    // the turns' contact strips -- ten turns on a T 20/10/7 -- however much bare ferrite faced
+    // the tape a wire's diameter away.
+    {
+        const double twoPi = 2.0 * std::numbers::pi;
+        const double stagnantGap = ThermalDefaults::kConvection_StagnantAirGap;
+        const double coreHeight = dimensions["C"];
+        const double annulusMeanR = (coreInnerR + coreOuterR) / 2.0;
+        const size_t numberSegments = static_cast<size_t>(_config.toroidalSegments);
+        if (numberSegments == 0) {
+            throw std::runtime_error("Temperature::createToroidalConvectionConnections: toroidalSegments must be positive.");
+        }
+        const double segmentSpan = twoPi / numberSegments;
+
+        // Angular arcs as [start, end) with 0 <= start < 2*pi; an arc crossing 2*pi is split.
+        using Arc = std::pair<double, double>;
+        auto addArc = [&](std::vector<Arc>& arcs, double centerAngle, double halfWidth) {
+            double start = std::fmod(std::fmod(centerAngle - halfWidth, twoPi) + twoPi, twoPi);
+            double end = start + 2.0 * halfWidth;
+            if (2.0 * halfWidth >= twoPi) {
+                arcs.push_back({0.0, twoPi});
+            }
+            else if (end > twoPi) {
+                arcs.push_back({start, twoPi});
+                arcs.push_back({0.0, end - twoPi});
+            }
+            else {
+                arcs.push_back({start, end});
+            }
+        };
+        auto mergeArcs = [](std::vector<Arc> arcs) {
+            std::sort(arcs.begin(), arcs.end());
+            std::vector<Arc> merged;
+            for (const auto& arc : arcs) {
+                if (!merged.empty() && arc.first <= merged.back().second) {
+                    merged.back().second = std::max(merged.back().second, arc.second);
+                }
+                else {
+                    merged.push_back(arc);
+                }
+            }
+            return merged;
+        };
+        auto coveredFractionOfSegment = [&](const std::vector<Arc>& mergedArcs, double segmentStart) {
+            double segmentEnd = segmentStart + segmentSpan;
+            double covered = 0.0;
+            for (const auto& arc : mergedArcs) {
+                covered += std::max(0.0, std::min(arc.second, segmentEnd) - std::max(arc.first, segmentStart));
+            }
+            return std::clamp(covered / segmentSpan, 0.0, 1.0);
+        };
+
+        std::vector<Arc> outerFaceArcs, boreFaceArcs, annulusArcs;
+        for (size_t j = 0; j < _nodes.size(); j++) {
+            if (_nodes[j].part != ThermalNodePartType::TURN) continue;
+            double turnR = std::hypot(_nodes[j].physicalCoordinates[0], _nodes[j].physicalCoordinates[1]);
+            if (turnR <= 0) continue;
+            double turnMaxDim = std::max(_nodes[j].dimensions.width, _nodes[j].dimensions.height);
+            double turnAngle = std::atan2(_nodes[j].physicalCoordinates[1], _nodes[j].physicalCoordinates[0]);
+            double coveredWidth = turnMaxDim + stagnantGap;
+            // Same surface-to-surface test as ABT #906: a turn rests on a face when its near
+            // surface is within the stagnant gap of the core surface.
+            if (turnR > coreOuterR && (turnR - turnMaxDim / 2.0) - coreOuterR < stagnantGap) {
+                addArc(outerFaceArcs, turnAngle, coveredWidth / 2.0 / turnR);
+            }
+            if (turnR < coreInnerR && coreInnerR - (turnR + turnMaxDim / 2.0) < stagnantGap) {
+                addArc(boreFaceArcs, turnAngle, coveredWidth / 2.0 / turnR);
+                // Every turn crosses both annular faces between the bore and the rim.
+                addArc(annulusArcs, turnAngle, coveredWidth / 2.0 / annulusMeanR);
+            }
+        }
+        outerFaceArcs = mergeArcs(outerFaceArcs);
+        boreFaceArcs = mergeArcs(boreFaceArcs);
+        annulusArcs = mergeArcs(annulusArcs);
+
+        const double annularAreaPerSegment =
+            2.0 * std::numbers::pi * (coreOuterR * coreOuterR - coreInnerR * coreInnerR) / numberSegments;
+        if (!(coreHeight > 0) || !(annularAreaPerSegment > 0)) {
+            throw std::runtime_error("Temperature::createToroidalConvectionConnections: toroidal core has a "
+                                     "non-positive height or annulus; cannot build its exposed surface.");
+        }
+
+        auto connectCoreSurface = [&](size_t nodeIdx, ThermalNodeFace face, double exposedArea) {
+            if (exposedArea <= 0) return;
+            ThermalResistanceElement r;
+            r.nodeFromId = nodeIdx;
+            r.quadrantFrom = face;
+            r.nodeToId = ambientIdx;
+            r.quadrantTo = ThermalNodeFace::NONE;
+            r.type = _config.includeForcedConvection ?
+                     HeatTransferType::FORCED_CONVECTION :
+                     HeatTransferType::NATURAL_CONVECTION;
+            r.resistance = 1.0 / (h_conv * exposedArea);
+            r.area = exposedArea;
+            _resistances.push_back(r);
+        };
+
+        // Bare core face -> the wrap layer nearest the core on that side, across the air gap
+        // between the core surface and the tape's core-facing surface, then half the tape.
+        auto connectCoreSurfaceToWrap = [&](size_t coreIdx, double coreAngle, bool boreSide, double exposedArea) {
+            if (exposedArea <= 0) return;
+            size_t bestIdx = 0;
+            double bestOffset = std::numeric_limits<double>::max();
+            double bestAngleDifference = std::numeric_limits<double>::max();
+            bool found = false;
+            for (size_t k = 0; k < _nodes.size(); k++) {
+                const auto& ilNode = _nodes[k];
+                if (ilNode.part != ThermalNodePartType::INSULATION_LAYER || ilNode.isInnerTurn != boreSide) continue;
+                double ilR = std::hypot(ilNode.physicalCoordinates[0], ilNode.physicalCoordinates[1]);
+                double offset = boreSide ? coreInnerR - ilR : ilR - coreOuterR;
+                double angleDifference = std::abs(std::atan2(ilNode.physicalCoordinates[1], ilNode.physicalCoordinates[0]) - coreAngle);
+                if (angleDifference > std::numbers::pi) angleDifference = 2.0 * std::numbers::pi - angleDifference;
+                // Innermost layer first, then the segment facing this one.
+                bool better = !found || offset < bestOffset - 1e-9 ||
+                              (std::abs(offset - bestOffset) <= 1e-9 && angleDifference < bestAngleDifference);
+                if (better) {
+                    found = true;
+                    bestIdx = k;
+                    bestOffset = offset;
+                    bestAngleDifference = angleDifference;
+                }
+            }
+            if (!found) {
+                // A contiguous toroid has no rim-side wrap nodes (createInsulationLayerNodes skips
+                // them); its rim is the turns' envelope, so the bare rim convects to the room.
+                if (!boreSide) {
+                    connectCoreSurface(coreIdx, ThermalNodeFace::RADIAL_OUTER, exposedArea);
+                    return;
+                }
+                throw std::runtime_error("Temperature::createToroidalConvectionConnections: the toroid has insulation "
+                                         "layer nodes but none on the bore side to receive core segment " +
+                                         _nodes[coreIdx].name + ".");
+            }
+            const auto& wrapNode = _nodes[bestIdx];
+            double thickness = wrapNode.dimensions.width;
+            double airGap = bestOffset - thickness / 2.0;
+            double insulationK = wrapNode.quadrants[0].thermalConductivity;
+            if (!(thickness > 0) || !(insulationK > 0)) {
+                throw std::runtime_error("Temperature::createToroidalConvectionConnections: insulation layer node " +
+                                         wrapNode.name + " has no thickness or conductivity.");
+            }
+            ThermalResistanceElement r;
+            r.nodeFromId = coreIdx;
+            r.quadrantFrom = boreSide ? ThermalNodeFace::RADIAL_INNER : ThermalNodeFace::RADIAL_OUTER;
+            r.nodeToId = bestIdx;
+            r.quadrantTo = boreSide ? ThermalNodeFace::RADIAL_OUTER : ThermalNodeFace::RADIAL_INNER;
+            r.type = HeatTransferType::CONDUCTION;
+            r.area = exposedArea;
+            r.resistance = ThermalResistance::calculateConductionResistance(thickness / 2.0, insulationK, exposedArea);
+            if (airGap > 0) {
+                r.resistance += ThermalResistance::calculateConductionResistance(airGap, gapAirThermalConductivity(), exposedArea);
+            }
+            _resistances.push_back(r);
+        };
+
         for (size_t i = 0; i < _nodes.size(); i++) {
             if (_nodes[i].part != ThermalNodePartType::CORE_TOROIDAL_SEGMENT) continue;
-            
-            // Check RADIAL_OUTER - exposed if no turn wraps the outer core surface.
-            // Surface-to-surface: a turn resting on the core OD has its CENTER half a
-            // wire dimension (plus coating/placement clearance) beyond coreOuterR, so
-            // the previous |turnR - coreOuterR| < turnWidth center test never fired and
-            // the wrapped core surface kept convecting to ambient through the winding
-            // (ABT #906). Block when the turn's inner surface is within the stagnant
-            // gap of the core surface.
-            // Per-SEGMENT blocking (ABT #906 follow-up): a sector-wound toroid wraps
-            // only some segments; the bare arc's core surface must keep convecting.
-            double segmentAngle = std::atan2(_nodes[i].physicalCoordinates[1], _nodes[i].physicalCoordinates[0]);
-            double segmentHalfSpan = std::numbers::pi / std::max(1, _config.toroidalSegments);
-            auto turnOverlapsSegment = [&](size_t j, double turnR, double turnMaxDim) {
-                if (turnR <= 0) return false;
-                double turnAngle = std::atan2(_nodes[j].physicalCoordinates[1], _nodes[j].physicalCoordinates[0]);
-                double turnHalfWidth = (turnMaxDim + ThermalDefaults::kConvection_StagnantAirGap) / 2.0 / turnR;
-                double angleDiff = turnAngle - segmentAngle;
-                while (angleDiff > std::numbers::pi) angleDiff -= 2.0 * std::numbers::pi;
-                while (angleDiff < -std::numbers::pi) angleDiff += 2.0 * std::numbers::pi;
-                return std::abs(angleDiff) < segmentHalfSpan + turnHalfWidth;
-            };
+            double midAngle = std::atan2(_nodes[i].physicalCoordinates[1], _nodes[i].physicalCoordinates[0]);
+            double segmentStart = std::fmod(std::fmod(midAngle - segmentSpan / 2.0, twoPi) + twoPi, twoPi);
+            // A segment starting just below 2*pi through rounding would see none of the arcs that
+            // were split at 0; segment starts are multiples of the span, so snap to the nearest.
+            segmentStart = std::round(segmentStart / segmentSpan) * segmentSpan;
+            if (segmentStart >= twoPi - 1e-12) segmentStart = 0.0;
 
-            bool outerBlocked = false;
-            for (size_t j = 0; j < _nodes.size(); j++) {
-                if (_nodes[j].part != ThermalNodePartType::TURN) continue;
-
-                double turnR = std::sqrt(
-                    _nodes[j].physicalCoordinates[0]*_nodes[j].physicalCoordinates[0] +
-                    _nodes[j].physicalCoordinates[1]*_nodes[j].physicalCoordinates[1]
-                );
-                double turnMaxDim = std::max(_nodes[j].dimensions.width, _nodes[j].dimensions.height);
-
-                double surfaceGap = (turnR - turnMaxDim / 2.0) - coreOuterR;
-                if (turnR > coreOuterR && surfaceGap < ThermalDefaults::kConvection_StagnantAirGap &&
-                    turnOverlapsSegment(j, turnR, turnMaxDim)) {
-                    outerBlocked = true;
-                    break;
-                }
+            auto* outerQuadrant = _nodes[i].getQuadrant(ThermalNodeFace::RADIAL_OUTER);
+            auto* innerQuadrant = _nodes[i].getQuadrant(ThermalNodeFace::RADIAL_INNER);
+            if (!outerQuadrant || !innerQuadrant) {
+                throw std::runtime_error("Temperature::createToroidalConvectionConnections: core segment " +
+                                         _nodes[i].name + " is missing a radial quadrant.");
             }
-            
-            if (!outerBlocked) {
-                std::string qKey = std::to_string(i) + "_" + 
-                                  std::string(magic_enum::enum_name(ThermalNodeFace::RADIAL_OUTER));
-                if (connectedQuadrants.count(qKey) == 0) {
-                    auto* q = _nodes[i].getQuadrant(ThermalNodeFace::RADIAL_OUTER);
-                    if (q) {
-                        ThermalResistanceElement r;
-                        r.nodeFromId = i;
-                        r.quadrantFrom = ThermalNodeFace::RADIAL_OUTER;
-                        r.nodeToId = ambientIdx;
-                        r.quadrantTo = ThermalNodeFace::NONE;
-                        r.type = _config.includeForcedConvection ? 
-                                 HeatTransferType::FORCED_CONVECTION : 
-                                 HeatTransferType::NATURAL_CONVECTION;
-                        r.resistance = q->calculateConvectionResistance(h_conv);
-                        r.area = q->surfaceArea * q->surfaceCoverage;
-                        _resistances.push_back(r);
-                    }
-                }
-            }
-            
-            // Check RADIAL_INNER - exposed if no turn lines the inner core surface.
-            // Same surface-to-surface reasoning as RADIAL_OUTER above (ABT #906): a
-            // turn resting on the core ID has its center half a wire dimension inside
-            // coreInnerR.
-            bool innerBlocked = false;
-            for (size_t j = 0; j < _nodes.size(); j++) {
-                if (_nodes[j].part != ThermalNodePartType::TURN) continue;
+            outerQuadrant->surfaceCoverage = 1.0 - coveredFractionOfSegment(outerFaceArcs, segmentStart);
+            innerQuadrant->surfaceCoverage = 1.0 - coveredFractionOfSegment(boreFaceArcs, segmentStart);
+            double annulusExposed = 1.0 - coveredFractionOfSegment(annulusArcs, segmentStart);
 
-                double turnR = std::sqrt(
-                    _nodes[j].physicalCoordinates[0]*_nodes[j].physicalCoordinates[0] +
-                    _nodes[j].physicalCoordinates[1]*_nodes[j].physicalCoordinates[1]
-                );
-                double turnMaxDim = std::max(_nodes[j].dimensions.width, _nodes[j].dimensions.height);
-
-                double surfaceGap = coreInnerR - (turnR + turnMaxDim / 2.0);
-                if (turnR < coreInnerR && surfaceGap < ThermalDefaults::kConvection_StagnantAirGap &&
-                    turnOverlapsSegment(j, turnR, turnMaxDim)) {
-                    innerBlocked = true;
-                    break;
-                }
+            double outerExposedArea = outerQuadrant->surfaceArea * outerQuadrant->surfaceCoverage;
+            double innerExposedArea = innerQuadrant->surfaceArea * innerQuadrant->surfaceCoverage;
+            // The annular faces have no quadrant of their own (a segment has radial and
+            // tangential faces only); their exposed share is lumped on the outer face's side.
+            double annulusExposedArea = annularAreaPerSegment * annulusExposed;
+            if (!hasInsulationLayers) {
+                connectCoreSurface(i, ThermalNodeFace::RADIAL_OUTER, outerExposedArea);
+                connectCoreSurface(i, ThermalNodeFace::RADIAL_INNER, innerExposedArea);
+                connectCoreSurface(i, ThermalNodeFace::RADIAL_OUTER, annulusExposedArea);
             }
-            
-            if (!innerBlocked) {
-                std::string qKey = std::to_string(i) + "_" + 
-                                  std::string(magic_enum::enum_name(ThermalNodeFace::RADIAL_INNER));
-                if (connectedQuadrants.count(qKey) == 0) {
-                    auto* q = _nodes[i].getQuadrant(ThermalNodeFace::RADIAL_INNER);
-                    if (q) {
-                        ThermalResistanceElement r;
-                        r.nodeFromId = i;
-                        r.quadrantFrom = ThermalNodeFace::RADIAL_INNER;
-                        r.nodeToId = ambientIdx;
-                        r.quadrantTo = ThermalNodeFace::NONE;
-                        r.type = _config.includeForcedConvection ?
-                                 HeatTransferType::FORCED_CONVECTION :
-                                 HeatTransferType::NATURAL_CONVECTION;
-                        r.resistance = q->calculateConvectionResistance(h_conv);
-                        r.area = q->surfaceArea * q->surfaceCoverage;
-                        _resistances.push_back(r);
-                    }
-                }
+            else {
+                connectCoreSurfaceToWrap(i, midAngle, false, outerExposedArea + annulusExposedArea);
+                connectCoreSurfaceToWrap(i, midAngle, true, innerExposedArea);
             }
         }
-        }
-        
+    }
+
         // Insulation layer convection - only the outermost insulation layer has convection to ambient
         // Find the outermost insulation layer (highest layer index)
         int maxLayerIdx = -1;
@@ -4575,6 +4601,54 @@ void Temperature::createToroidalConvectionConnections(size_t ambientIdx, double 
                 }
             }
         }
+
+        // ABT #1735: the outermost wrap's exposed skin is its ENVELOPE, as for the turns above: the
+        // cylinder the wrap forms outside the core OD, the one lining the bore, and the two
+        // annular faces it covers over the core's flat faces -- all at the wrap's own offset from
+        // the core. Each IL segment node used to convect its section-plane quadrant instead
+        // (segment arc at the MEAN of the bore and rim radii x HALF the core height, identical for
+        // the bore and the rim node, no annular faces): 13.9 cm2 for a wrap whose skin is ~44 cm2
+        // on a T 36/23/15. Every wound toroid with a tape layer -- any multi-winding quick coil --
+        // shed its whole loss through that third of its surface and ran 3-6x hotter than the
+        // bare core. The wrap's radial offset and thickness come from the node itself (its
+        // centre radius against the core surface it wraps, and its radial dimension).
+        size_t outermostOuterNodes = 0;
+        size_t outermostInnerNodes = 0;
+        for (const auto& node : _nodes) {
+            if (node.part != ThermalNodePartType::INSULATION_LAYER || !node.insulationLayerIndex.has_value() ||
+                static_cast<int>(node.insulationLayerIndex.value()) != maxLayerIdx) {
+                continue;
+            }
+            if (node.isInnerTurn) {
+                ++outermostInnerNodes;
+            }
+            else {
+                ++outermostOuterNodes;
+            }
+        }
+        auto wrapSkinArea = [&](const ThermalNetworkNode& node) {
+            double nodeR = std::hypot(node.physicalCoordinates[0], node.physicalCoordinates[1]);
+            double thickness = node.dimensions.width;
+            double radialOffset = node.isInnerTurn ? coreInnerR - nodeR : nodeR - coreOuterR;
+            if (!(thickness > 0) || radialOffset < 0) {
+                throw std::runtime_error("Temperature::createToroidalConvectionConnections: insulation layer node " +
+                                         node.name + " does not wrap the core (offset " + std::to_string(radialOffset) +
+                                         " m, thickness " + std::to_string(thickness) + " m).");
+            }
+            double skinOffset = radialOffset + thickness / 2.0;
+            double rimSkinR = coreOuterR + skinOffset;
+            double boreSkinR = coreInnerR - skinOffset;
+            if (!(boreSkinR > 0)) {
+                throw std::runtime_error("Temperature::createToroidalConvectionConnections: insulation layer node " +
+                                         node.name + " closes the bore (skin radius " + std::to_string(boreSkinR) + " m).");
+            }
+            double wrapHeight = dimensions["C"] + 2.0 * skinOffset;
+            double halfAnnularFaces = std::numbers::pi * (rimSkinR * rimSkinR - boreSkinR * boreSkinR);
+            if (node.isInnerTurn) {
+                return (2.0 * std::numbers::pi * boreSkinR * wrapHeight + halfAnnularFaces) / outermostInnerNodes;
+            }
+            return (2.0 * std::numbers::pi * rimSkinR * wrapHeight + halfAnnularFaces) / outermostOuterNodes;
+        };
 
         // Only create convection for the outermost insulation layer
         for (size_t i = 0; i < _nodes.size(); i++) {
@@ -4606,12 +4680,9 @@ void Temperature::createToroidalConvectionConnections(size_t ambientIdx, double 
                     r.type = _config.includeForcedConvection ? 
                              HeatTransferType::FORCED_CONVECTION : 
                              HeatTransferType::NATURAL_CONVECTION;
-                    r.resistance = q->calculateConvectionResistance(h_conv);
-                    r.area = q->surfaceArea * q->surfaceCoverage;
+                    r.area = wrapSkinArea(node);
+                    r.resistance = 1.0 / (h_conv * r.area);
                     _resistances.push_back(r);
-                    if (THERMAL_DEBUG) {
-                    }
-                } else if (THERMAL_DEBUG) {
                 }
             }
             
@@ -4627,12 +4698,9 @@ void Temperature::createToroidalConvectionConnections(size_t ambientIdx, double 
                     r.type = _config.includeForcedConvection ? 
                              HeatTransferType::FORCED_CONVECTION : 
                              HeatTransferType::NATURAL_CONVECTION;
-                    r.resistance = q->calculateConvectionResistance(h_conv);
-                    r.area = q->surfaceArea * q->surfaceCoverage;
+                    r.area = wrapSkinArea(node);
+                    r.resistance = 1.0 / (h_conv * r.area);
                     _resistances.push_back(r);
-                    if (THERMAL_DEBUG) {
-                    }
-                } else if (THERMAL_DEBUG) {
                 }
             }
         }
