@@ -2674,10 +2674,13 @@ TEST_CASE("Test_Core_Losses_Rosano_Forward", "[physical-model][core-losses][smok
     double expectedLosses = 0.438;
     auto maximumError = 0.1;
 
-    // Updated for 617dc492: magnetizing current is now bipolar-centered for AC
-    // excitation (peak = peak_to_peak/2). Previous expected 0.145 was the
-    // pre-fix unipolar value where peak == peak_to_peak.
-    REQUIRE_THAT(0.08, Catch::Matchers::WithinAbs(magneticFluxDensity.get_processed().value().get_peak().value(), 0.08 * maximumError));
+    // A forward's flux is unipolar: it rises from zero over the on-time and the reset brings it back
+    // to zero, where it stays through the dead time (no winding conducts, so by Ampere the
+    // magnetizing current is zero there). The peak is the whole Faraday excursion, 0.1457 T, not
+    // half of it: 617dc492's bipolar centering (peak = peak-to-peak / 2, the old 0.08 pin) put a
+    // negative flux in a converter that never reverses it (ABT #1467, re-pinned with Alf's approval).
+    double expectedMagneticFluxDensityPeak = 0.1456;
+    REQUIRE_THAT(expectedMagneticFluxDensityPeak, Catch::Matchers::WithinAbs(magneticFluxDensity.get_processed().value().get_peak().value(), expectedMagneticFluxDensityPeak * maximumError));
     REQUIRE_THAT(expectedLosses, Catch::Matchers::WithinAbs(calculatedCoreLosses, expectedLosses * maximumError));
 }
 
