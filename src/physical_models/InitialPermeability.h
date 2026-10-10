@@ -40,6 +40,19 @@ class InitialPermeability {
                                         std::optional<double> frequency = std::nullopt,
                                         std::optional<double> magneticFluxDensity = std::nullopt,
                                         std::optional<CoreShapeFamily> shapeFamily = std::nullopt);
+        // The material model's value as it stands, which past the saturation knee may fall BELOW 1: the
+        // amplitude-permeability (Roshen loop) slope and the vendors' 1/(a + b H^c) fits tend to 0 there,
+        // while a real material's reversible permeability never drops under the vacuum's (B = mu0 (H + M)).
+        // get_initial_permeability refuses such a value (ABT #1740); only callers that model the vacuum
+        // asymptote themselves read it here -- the magnetisation-curve builder, which carries B on the
+        // vacuum slope past that point, and the DC-bias fixed point, which reports the saturation with
+        // its operating point.
+        static double get_initial_permeability_model_value(CoreMaterial coreMaterial,
+                                        std::optional<double> temperature = std::nullopt,
+                                        std::optional<double> magneticFieldDcBias = std::nullopt,
+                                        std::optional<double> frequency = std::nullopt,
+                                        std::optional<double> magneticFluxDensity = std::nullopt,
+                                        std::optional<CoreShapeFamily> shapeFamily = std::nullopt);
         static double get_initial_permeability(CoreMaterial coreMaterial, OperatingPoint operatingPoint,
                                         std::optional<CoreShapeFamily> shapeFamily = std::nullopt);
         static double get_initial_permeability(std::string coreMaterialName, OperatingPoint operatingPoint,

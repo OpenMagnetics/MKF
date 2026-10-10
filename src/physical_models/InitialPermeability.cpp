@@ -212,7 +212,7 @@ const InitialPermeability::MagnetisationCurve& InitialPermeability::get_magnetis
     }
     double vacuumPermeability = Constants().vacuumPermeability;
     auto reversiblePermeabilityAt = [&](double fieldStrength) {
-        return std::max(1.0, initialPermeability.get_initial_permeability(coreMaterial, temperature, fieldStrength, frequency));
+        return std::max(1.0, initialPermeability.get_initial_permeability_model_value(coreMaterial, temperature, fieldStrength, frequency));
     };
     auto curve = std::make_shared<MagnetisationCurve>();
     const double firstFieldStrength = 1e-6 * saturationFieldStrength;
@@ -1116,6 +1116,35 @@ double InitialPermeability::calculate_frequency_for_initial_permeability_drop(Co
 
 
 double InitialPermeability::get_initial_permeability(CoreMaterial coreMaterial,
+                                                     std::optional<double> temperature,
+                                                     std::optional<double> magneticFieldDcBias,
+                                                     std::optional<double> frequency,
+                                                     std::optional<double> magneticFluxDensity,
+                                                     std::optional<CoreShapeFamily> shapeFamily) {
+    double permeability = get_initial_permeability_model_value(coreMaterial, temperature, magneticFieldDcBias, frequency, magneticFluxDensity, shapeFamily);
+    // A relative permeability below the vacuum's is not a material property: it is the model extrapolated
+    // past the knee, where its B-H slope tends to 0 instead of to mu0 (ABT #1740: 3C96 read 0.499 at
+    // 6.2 kA/m and 8e-13 at 5e9 A/m). The material there is saturated, and that is what is said.
+    if (permeability < 1) {
+        std::ostringstream message;
+        message << "Material " << coreMaterial.get_name() << " is saturated: its permeability model gives mu_r = " << permeability
+                << " (below the vacuum's 1)";
+        if (magneticFieldDcBias) {
+            message << " at a DC bias of " << magneticFieldDcBias.value() << " A/m";
+        }
+        if (magneticFluxDensity) {
+            message << " at a flux density of " << magneticFluxDensity.value() << " T";
+        }
+        if (temperature) {
+            message << " and " << temperature.value() << " C";
+        }
+        message << "; the operating point lies past the material's saturation";
+        throw CalculationException(ErrorCode::CALCULATION_INVALID_RESULT, message.str());
+    }
+    return permeability;
+}
+
+double InitialPermeability::get_initial_permeability_model_value(CoreMaterial coreMaterial,
                                                      std::optional<double> temperature,
                                                      std::optional<double> magneticFieldDcBias,
                                                      std::optional<double> frequency,

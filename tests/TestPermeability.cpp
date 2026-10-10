@@ -10,6 +10,7 @@
 
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
+#include <catch2/matchers/catch_matchers_string.hpp>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -785,6 +786,32 @@ namespace {
         painter.paint_curve(curves.first);
         painter.export_svg();
         REQUIRE(std::filesystem::exists(outFile));
+    }
+
+
+    TEST_CASE("Test_Initial_Permeability_Below_Vacuum_Is_Refused", "[physical-model][initial-permeability][abt-1740]") {
+        // Past the knee the amplitude permeability of a ferrite (the slope of its Roshen loop) tends to 0, not
+        // to the vacuum's 1: 3C96 gave mu_r = 0.499 at 6.2 kA/m and 8e-13 at 5e9 A/m, which the DC-bias fixed
+        // point then used as a material property. A relative permeability below 1 is the model extrapolated
+        // past saturation, and is refused.
+        auto material = OpenMagnetics::Core::resolve_material("3C96");
+        double modelValue = OpenMagnetics::InitialPermeability::get_initial_permeability_model_value(material, 25.0, 6.2e3, 100e3);
+        INFO("3C96 model permeability at 6.2 kA/m: " << modelValue);
+        REQUIRE(modelValue < 1);
+        CHECK_THROWS_WITH(OpenMagnetics::InitialPermeability::get_initial_permeability(material, 25.0, 6.2e3, 100e3),
+                          Catch::Matchers::ContainsSubstring("is saturated") && Catch::Matchers::ContainsSubstring("3C96"));
+
+        // Below the knee the value is the model's, unchanged.
+        double biased = OpenMagnetics::InitialPermeability::get_initial_permeability(material, 25.0, 100.0, 100e3);
+        CHECK(biased == OpenMagnetics::InitialPermeability::get_initial_permeability_model_value(material, 25.0, 100.0, 100e3));
+        CHECK(biased > 1);
+
+        // The magnetisation curve, which carries B on the vacuum slope past that point, is still built and
+        // still inverts a flux density beyond saturation.
+        double saturationFluxDensity = OpenMagnetics::Core::get_magnetic_flux_density_saturation(material, 25.0, false);
+        double fieldStrength = 0;
+        CHECK_NOTHROW(fieldStrength = OpenMagnetics::InitialPermeability::get_magnetic_field_dc_bias_for_flux_density(material, 1.2 * saturationFluxDensity, 25.0, 100e3, false));
+        CHECK(fieldStrength > 0);
     }
 
 }  // namespace

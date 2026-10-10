@@ -741,6 +741,20 @@ std::pair<MagnetizingInductanceOutput, SignalDescriptor> MagnetizingInductance::
     modifiedTotalReluctance = magnetizingInductanceOutput.get_core_reluctance();
     modifiedMagnetizingInductance = pow(numberTurnsPrimary, 2) / modifiedTotalReluctance;
 
+    // What the last evaluation of the fixed point saw, for the saturation refusal below (ABT #1740).
+    std::optional<double> voltSecondFluxDensitySwing;   // B peak-to-peak the volt-seconds impose, mu-independent
+    double lastBiasFieldStrength = 0;
+    double lastPeakFluxDensity = 0;
+    // Read only when a saturation is reported: a design without an operating point needs no saturation data.
+    auto saturationFluxDensityAt = [&]() { return Core::get_magnetic_flux_density_saturation(core.resolve_material(), temperature, false); };
+    auto describeOperatingPoint = [&]() {
+        std::string description = "operating point '" + (operatingPoint && operatingPoint->get_name() ? operatingPoint->get_name().value() : std::string("unnamed")) +
+                                  "', winding '" + coil.get_functional_description()[0].get_name() + "' (" +
+                                  std::to_string(static_cast<int>(numberTurnsPrimary)) + " turns, A_e " +
+                                  std::to_string(effectiveArea * 1e6) + " mm2, material " + core.resolve_material().get_name() + ")";
+        return description;
+    };
+
     // ABT #1223: under DC bias the permeability is a fixed point mu = F(mu): the bias flux density
     // follows from the magnetizing current and the reluctance, both of which depend on mu, and the
     // bias field is read from that flux density on the material's magnetisation curve. The previous
@@ -757,6 +771,8 @@ std::pair<MagnetizingInductanceOutput, SignalDescriptor> MagnetizingInductance::
         // whose DC comes from its own volt-seconds fixes the flux (Faraday); everything else (a
         // current, or a DC set by the load currents) fixes the MMF.
         bool biasFluxImposed = false;
+        // Whether the flux below comes from this winding's volt-seconds (Faraday), and so its swing is fixed.
+        bool fluxFromVoltSeconds = false;
 
         if (operatingPoint) {
             if (operatingPoint->get_mutable_excitations_per_winding().size() > 0) {
@@ -861,6 +877,7 @@ std::pair<MagnetizingInductanceOutput, SignalDescriptor> MagnetizingInductance::
                     auto turnsRatios = coil.get_turns_ratios();
                     bool addOffset = Inputs::include_dc_offset_into_magnetizing_current(*operatingPoint, turnsRatios);
                     biasFluxImposed = !addOffset;
+                    fluxFromVoltSeconds = true;
 
                     auto magnetizingCurrent = Inputs::calculate_magnetizing_current(excitation,
                                                                                             sampledVoltageWaveform,
@@ -896,6 +913,25 @@ std::pair<MagnetizingInductanceOutput, SignalDescriptor> MagnetizingInductance::
                 auto magneticFlux = OpenMagnetics::MagneticField::calculate_magnetic_flux(operatingPoint->get_mutable_excitations_per_winding()[0].get_magnetizing_current().value(), currentTotalReluctance, numberTurnsPrimary);
                 auto magneticFluxDensity = OpenMagnetics::MagneticField::calculate_magnetic_flux_density(magneticFlux, effectiveArea);
                 result.second = magneticFluxDensity;
+
+                // A voltage fixes the flux swing by Faraday: N * A_e * dB = integral of v dt, whatever the
+                // permeability (the magnetizing current scales with 1/L and the flux with L). A swing wider than
+                // twice the saturation flux density fits no bias at all, so it is refused here, before the DC-bias
+                // iteration (ABT #1740).
+                if (fluxFromVoltSeconds) {
+                    double saturationFluxDensity = saturationFluxDensityAt();
+                    const auto& fluxDensityData = magneticFluxDensity.get_waveform().value().get_data();
+                    double swing = *std::max_element(fluxDensityData.begin(), fluxDensityData.end()) -
+                                   *std::min_element(fluxDensityData.begin(), fluxDensityData.end());
+                    voltSecondFluxDensitySwing = swing;
+                    if (swing / 2 > saturationFluxDensity) {
+                        throw CalculationException(ErrorCode::CALCULATION_INVALID_RESULT,
+                            "The core saturates: at " + describeOperatingPoint() + " the volt-seconds impose a flux swing dB = " +
+                            std::to_string(swing) + " T peak-to-peak, so B_peak >= dB / 2 = " + std::to_string(swing / 2) +
+                            " T for any bias, above B_sat = " + std::to_string(saturationFluxDensity) + " T at " + std::to_string(temperature) +
+                            " C. More turns, a larger core or less volt-seconds are needed");
+                    }
+                }
                 double switchingFrequency = Inputs::get_switching_frequency(operatingPoint->get_mutable_excitations_per_winding()[0]);
 
                 // The bias is a flux density: the DC offset, or the largest harmonic below the
@@ -973,7 +1009,15 @@ std::pair<MagnetizingInductanceOutput, SignalDescriptor> MagnetizingInductance::
                     }
                 }
 
-                nextPermeability = initialPermeability.get_initial_permeability(core.resolve_material(), temperature, hFieldDcBias, frequency);
+                lastBiasFieldStrength = hFieldDcBias;
+                {
+                    const auto& fluxDensityData = result.second.get_waveform().value().get_data();
+                    lastPeakFluxDensity = std::max(fabs(*std::max_element(fluxDensityData.begin(), fluxDensityData.end())),
+                                                   fabs(*std::min_element(fluxDensityData.begin(), fluxDensityData.end())));
+                }
+                // The model's value, not the checked one: a value at or below the vacuum's means the DC point
+                // has left the material's curve, and the loop below says so with this operating point.
+                nextPermeability = initialPermeability.get_initial_permeability_model_value(core.resolve_material(), temperature, hFieldDcBias, frequency);
             }
         }
         return nextPermeability;
@@ -981,16 +1025,34 @@ std::pair<MagnetizingInductanceOutput, SignalDescriptor> MagnetizingInductance::
 
     const size_t maximumBiasEvaluations = 60;
     const double biasConvergenceTolerance = 1e-3;
+    const double currentInitialPermeabilityUnbiased = currentInitialPermeability;
     double permeability = currentInitialPermeability;
     std::optional<double> permeabilityAboveRoot;   // F(mu) < mu
     std::optional<double> permeabilityBelowRoot;   // F(mu) > mu
     bool biasConverged = false;
     for (size_t evaluation = 0; evaluation < maximumBiasEvaluations; ++evaluation) {
         double nextPermeability = biasedPermeability(permeability);
-        if (!std::isfinite(nextPermeability) || nextPermeability <= 0) {
+        if (!std::isfinite(nextPermeability)) {
             throw CalculationException(ErrorCode::CALCULATION_INVALID_RESULT,
                 "Magnetizing inductance under DC bias: the material's biased permeability at mu = " +
-                std::to_string(permeability) + " is " + std::to_string(nextPermeability));
+                std::to_string(permeability) + " is not finite (" + std::to_string(nextPermeability) + ")");
+        }
+        // The DC point has reached the vacuum's permeability, or a model value below it (the amplitude
+        // permeability and the 1/(a + b H^c) fits fall to 0 past the knee): the core material is saturated at
+        // that bias. With the flux swing fixed by volt-seconds, a lower permeability means more magnetizing
+        // current and so more bias, and the iteration ran away to H = 3.6e17 A/m and mu = 8e-13 before this
+        // check (ABT #1740). A material whose own permeability is the vacuum's is left alone.
+        if (nextPermeability <= 1 && currentInitialPermeabilityUnbiased > 1) {
+            std::ostringstream message;
+            message << "The core saturates: at " << describeOperatingPoint() << " the DC-bias operating point reaches H = "
+                    << lastBiasFieldStrength << " A/m, where the material's permeability is " << nextPermeability
+                    << " (the vacuum's is 1; unbiased " << currentInitialPermeabilityUnbiased << "), with |B| up to "
+                    << lastPeakFluxDensity << " T against B_sat = " << saturationFluxDensityAt() << " T at " << temperature << " C";
+            if (voltSecondFluxDensitySwing) {
+                message << "; the volt-seconds impose a flux swing dB = " << voltSecondFluxDensitySwing.value() << " T peak-to-peak";
+            }
+            message << ". More turns, a larger gap or core, or less volt-seconds are needed";
+            throw CalculationException(ErrorCode::CALCULATION_INVALID_RESULT, message.str());
         }
         double residual = nextPermeability - permeability;
         if (fabs(residual) <= biasConvergenceTolerance * permeability) {
