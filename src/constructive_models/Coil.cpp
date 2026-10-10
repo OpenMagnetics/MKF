@@ -18510,29 +18510,6 @@ bool Coil::delimit_and_compact_round_window() {
                             default:
                                 throw InvalidInputException(ErrorCode::INVALID_COIL_CONFIGURATION, "No such section alignment");
                         }
-                        // ABT #1734: UNDER REAL WINDING A RING IS WHERE ITS TURNS ARE. The extent
-                        // above is synthetic -- the alignment's packed arc around the section
-                        // centre -- but wind_by_round_turns lays every ring after the first in a
-                        // span shaved by the input-connection corridor and shifted half of it
-                        // toward the section end, and a U ring starts one pitch past the forward
-                        // layout. So the turns sit up to half a corridor plus a pitch beyond the
-                        // synthetic arc, the section built from these arcs does not contain its own
-                        // stations, and the outer-crossing sweep -- which may not leave the section
-                        // -- found no azimuth for a ring-closing crossing (T 12.7/7.9/12.7, 45 x 3
-                        // parallels of Round 26.0: section 19.6..157.7 deg, ring 2 stations to
-                        // 166.1 deg, previous crossing at 159.5 deg). Grow the arc to hold every
-                        // turn; a layout that already lay inside it is unchanged.
-                        if (settings.get_coil_use_real_winding_geometry()) {
-                            double lowestOffset = -layerAngle / 2;
-                            double highestOffset = layerAngle / 2;
-                            for (const auto& turn : turnsInLayer) {
-                                const double offset = std::remainder(turn.get_coordinates()[1] - layerCenterAngle, 360.0);
-                                lowestOffset = std::min(lowestOffset, offset - turnDimensionAngle / 2);
-                                highestOffset = std::max(highestOffset, offset + turnDimensionAngle / 2);
-                            }
-                            layerCenterAngle += (lowestOffset + highestOffset) / 2;
-                            layerAngle = highestOffset - lowestOffset;
-                        }
                     }
                     layers[i].set_coordinates(std::vector<double>({layers[i].get_coordinates()[0], layerCenterAngle}));
                     layers[i].set_dimensions(std::vector<double>({layers[i].get_dimensions()[0], layerAngle}));
