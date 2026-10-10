@@ -2333,3 +2333,30 @@ TEST_CASE("Test_Single_Winding_Inductor_With_Current_Uses_It_As_Magnetizing_Curr
     REQUIRE_THAT(currentPeak, Catch::Matchers::WithinRel(13, 0.01));
     REQUIRE_THAT(magnetizingPeak, Catch::Matchers::WithinRel(currentPeak, 1e-9));
 }
+
+TEST_CASE("Test_Mas_Autocomplete_Single_Winding_Inductor_Unbalanced_Voltage_Uses_Its_Current", "[processor][inputs][abt-1585][smoke-test]") {
+    // Saved web design (WebFrontend fixture etd49_wound_10uH_5T): one winding carrying a symmetric
+    // +-5 A triangular current and a voltage whose volt-seconds do not balance (-20.5 / +70.5 V,
+    // mean ~25 V). Since ABT #1585 the winding current of a single-winding inductor IS its
+    // magnetizing current, but mas_autocomplete / inputs_autocomplete still integrated the voltage
+    // and refused the whole file ("not volt-second balanced"): every such design stopped loading.
+    auto path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "inductor_unbalanced_voltage_with_current.json");
+    std::ifstream file(path);
+    REQUIRE(file.good());
+    OpenMagnetics::Mas mas(json::parse(file));
+    REQUIRE(mas.get_inputs().get_design_requirements().get_turns_ratios().empty());
+
+    auto autocompletedMas = OpenMagnetics::mas_autocomplete(mas, false, json::object());
+
+    auto excitation = autocompletedMas.get_inputs().get_operating_points()[0].get_excitations_per_winding()[0];
+    REQUIRE(excitation.get_magnetizing_current());
+    REQUIRE(excitation.get_current());
+    double magnetizingPeak = excitation.get_magnetizing_current()->get_processed()->get_peak().value();
+    double currentPeak = excitation.get_current()->get_processed()->get_peak().value();
+    CHECK_THAT(magnetizingPeak, Catch::Matchers::WithinRel(currentPeak, 1e-9));
+    CHECK_THAT(currentPeak, Catch::Matchers::WithinRel(5.0, 1e-6));
+
+    auto autocompletedInputs = OpenMagnetics::inputs_autocomplete(mas.get_inputs(), mas.get_magnetic(), json::object());
+    auto inputsExcitation = autocompletedInputs.get_operating_points()[0].get_excitations_per_winding()[0];
+    CHECK_THAT(inputsExcitation.get_magnetizing_current()->get_processed()->get_peak().value(), Catch::Matchers::WithinRel(5.0, 1e-6));
+}

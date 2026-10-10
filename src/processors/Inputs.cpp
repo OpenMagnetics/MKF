@@ -2043,6 +2043,26 @@ void Inputs::check_adviser_inputs_volt_second_balance(const Inputs& inputs,
     }
 }
 
+std::optional<SignalDescriptor> Inputs::get_single_winding_magnetizing_current(const OperatingPointExcitation& excitation,
+                                                                              size_t numberWindings) {
+    if (numberWindings != 1 || !excitation.get_current()) {
+        return std::nullopt;
+    }
+    auto magnetizingCurrent = excitation.get_current().value();
+    if (!magnetizingCurrent.get_waveform()) {
+        throw InvalidInputException(ErrorCode::MISSING_DATA, "Excitation '" + excitation.get_name().value_or("unnamed") +
+                                    "': the current has no waveform, so it cannot be taken as the magnetizing current");
+    }
+    // The current's processed data keeps the fields the caller gave (e.g. only offset and peak to
+    // peak); the magnetizing current needs all of them (peak included), as
+    // calculate_magnetizing_current would have produced.
+    auto currentWaveform = magnetizingCurrent.get_waveform().value();
+    Waveform sampledCurrentWaveform = is_waveform_sampled(currentWaveform) ? currentWaveform
+                                                                            : calculate_sampled_waveform(currentWaveform, excitation.get_frequency());
+    magnetizingCurrent.set_processed(calculate_processed_data(magnetizingCurrent, sampledCurrentWaveform, true));
+    return magnetizingCurrent;
+}
+
 SignalDescriptor Inputs::calculate_magnetizing_current(OperatingPointExcitation& excitation,
                                                                 Waveform voltageSampledWaveform,
                                                                 double magnetizingInductance,
@@ -2534,16 +2554,11 @@ OperatingPoint Inputs::process_operating_point(OperatingPoint operatingPoint, do
             // wrong whenever the given voltage is not volt-second balanced: Kirchhoff's line-cycle
             // PFC voltages integrated to kA "magnetizing" peaks against ~12 A of real current, and
             // no core passed the energy-stored gate (ABT #1585).
-            if (operatingPoint.get_excitations_per_winding().size() == 1 && excitation.get_current() && !excitation.get_magnetizing_current()) {
-                // The current's processed data keeps the fields the caller gave (e.g. only offset
-                // and peak to peak); the magnetizing current needs all of them (peak included),
-                // as calculate_magnetizing_current would have produced.
-                auto magnetizingCurrent = excitation.get_current().value();
-                auto currentWaveform = magnetizingCurrent.get_waveform().value();
-                Waveform sampledCurrentWaveform = is_waveform_sampled(currentWaveform) ? currentWaveform
-                                                                                        : calculate_sampled_waveform(currentWaveform, excitation.get_frequency());
-                magnetizingCurrent.set_processed(calculate_processed_data(magnetizingCurrent, sampledCurrentWaveform, true));
-                excitation.set_magnetizing_current(magnetizingCurrent);
+            if (!excitation.get_magnetizing_current()) {
+                auto singleWindingMagnetizingCurrent = get_single_winding_magnetizing_current(excitation, operatingPoint.get_excitations_per_winding().size());
+                if (singleWindingMagnetizingCurrent) {
+                    excitation.set_magnetizing_current(singleWindingMagnetizingCurrent.value());
+                }
             }
         }
         else {

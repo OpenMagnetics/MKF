@@ -176,6 +176,13 @@ class Inputs : public MAS::Inputs {
                                                          std::optional<CoreShapeFamily> coreShapeFamily = std::nullopt,
                                                          std::optional<CoreType> coreType = std::nullopt);
 
+    // A single-winding inductor's winding current IS its magnetizing current (ABT #1585); the
+    // voltage is integrated only when the current is absent or several windings share the flux.
+    // Returns the current with complete processed data (peak included), or nullopt when the rule
+    // does not apply. Every place that fills magnetizingCurrent must go through this first.
+    static std::optional<SignalDescriptor> get_single_winding_magnetizing_current(const OperatingPointExcitation& excitation,
+                                                                                  size_t numberWindings);
+
     static SignalDescriptor calculate_magnetizing_current(OperatingPointExcitation& excitation,
                                                             double magnetizingInductance,
                                                             bool compress,

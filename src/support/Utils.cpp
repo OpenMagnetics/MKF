@@ -2764,7 +2764,11 @@ Mas mas_autocomplete(Mas mas, bool simulate, json configuration) {
         mas.get_mutable_inputs().get_mutable_operating_points()[operatingPointIndex] = Inputs::process_operating_point(mas.get_inputs().get_operating_points()[operatingPointIndex], magnetizingInductance);
         for (size_t windingIndex = 0; windingIndex < numberWindings; windingIndex++) {
             auto excitation = mas.get_inputs().get_operating_points()[operatingPointIndex].get_excitations_per_winding()[windingIndex];
-            auto magnetizingCurrent = Inputs::calculate_magnetizing_current(excitation, magnetizingInductance, true, 0.0);
+            // ABT #1585: a single-winding inductor's current is its magnetizing current. Integrating
+            // the voltage here refused every saved inductor whose voltage is not volt-second balanced.
+            auto singleWindingMagnetizingCurrent = Inputs::get_single_winding_magnetizing_current(excitation, numberWindings);
+            auto magnetizingCurrent = singleWindingMagnetizingCurrent ? singleWindingMagnetizingCurrent.value()
+                                                                      : Inputs::calculate_magnetizing_current(excitation, magnetizingInductance, true, 0.0);
             auto processed = Inputs::calculate_processed_data(magnetizingCurrent.get_waveform().value(), mas.get_inputs().get_operating_points()[operatingPointIndex].get_excitations_per_winding()[windingIndex].get_frequency(), true);
             magnetizingCurrent.set_processed(processed);
             mas.get_mutable_inputs().get_mutable_operating_points()[operatingPointIndex].get_mutable_excitations_per_winding()[windingIndex].set_magnetizing_current(magnetizingCurrent);
@@ -2846,7 +2850,10 @@ Inputs inputs_autocomplete(Inputs inputs, std::optional<Magnetic> magnetic, json
             }
             auto excitation = inputs.get_operating_points()[operatingPointIndex].get_excitations_per_winding()[windingIndex];
 
-            auto magnetizingCurrent = Inputs::calculate_magnetizing_current(excitation, magnetizingInductance, true, 0.0);
+            // ABT #1585: a single-winding inductor's current is its magnetizing current (see mas_autocomplete).
+            auto singleWindingMagnetizingCurrent = Inputs::get_single_winding_magnetizing_current(excitation, numberWindings);
+            auto magnetizingCurrent = singleWindingMagnetizingCurrent ? singleWindingMagnetizingCurrent.value()
+                                                                      : Inputs::calculate_magnetizing_current(excitation, magnetizingInductance, true, 0.0);
 
             if (excitation.get_voltage()) {
                 if (excitation.get_voltage().value().get_processed()) {
