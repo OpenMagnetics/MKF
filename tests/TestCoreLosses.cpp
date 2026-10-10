@@ -4878,6 +4878,49 @@ TEST_CASE("Core-loss frequency sweep is clipped to the material's fitted span", 
                     MaterialFrequencyOutOfSpanException);
 }
 
+// ABT #1467: the core-loss sweep takes its magnetizing current from the shared decision
+// (Inputs::calculate_magnetizing_current on the operating point, reached through
+// MagnetizingInductance since ABT #1754), not from the primary voltage alone. Two CCM flybacks, 1:1, 100 kHz, D = 0.5, the same +-20 V winding voltage, differ only in
+// the windings' currents: 15 -> 17 A and 1 -> 3 A. The voltage gives both the same flux swing; the
+// currents give the first a ~14 A larger magnetizing DC, and on a material with DC-bias
+// permeability data the DPLE correction prices that DC. Integrating the voltage alone gave both
+// the same zero-mean flux and the same losses.
+TEST_CASE("Core-loss frequency sweep carries the flyback's magnetizing DC", "[sweeper][core-losses][abt-1467]") {
+    settings.reset();
+    clear_databases();
+    std::vector<int64_t> numberTurns = {20, 20};
+    auto magnetic = OpenMagnetics::magnetic_autocomplete(OpenMagneticsTesting::get_quick_magnetic(
+        "E 42/21/15", OpenMagneticsTesting::get_ground_gap(0.001), numberTurns, 1, "DMR96"));
+    REQUIRE(InitialPermeability::has_magnetic_field_dc_bias_dependency(magnetic.get_core().resolve_material()));
+    auto flyback = [](double valley, double peak) {
+        json operatingPointJson;
+        operatingPointJson["conditions"]["ambientTemperature"] = 25;
+        json primary;
+        primary["frequency"] = 100000;
+        primary["name"] = "Primary";
+        primary["current"]["waveform"]["time"] = {0, 5e-6, 5e-6, 1e-5};
+        primary["current"]["waveform"]["data"] = {valley, peak, 0, 0};
+        primary["voltage"]["waveform"]["time"] = {0, 5e-6, 5e-6, 1e-5};
+        primary["voltage"]["waveform"]["data"] = {20, 20, -20, -20};
+        json secondary;
+        secondary["frequency"] = 100000;
+        secondary["name"] = "Secondary";
+        secondary["current"]["waveform"]["time"] = {0, 5e-6, 5e-6, 1e-5};
+        secondary["current"]["waveform"]["data"] = {0, 0, peak, valley};
+        secondary["voltage"]["waveform"]["time"] = {0, 5e-6, 5e-6, 1e-5};
+        secondary["voltage"]["waveform"]["data"] = {-20, -20, 20, 20};
+        operatingPointJson["excitationsPerWinding"] = {primary, secondary};
+        return OperatingPoint(operatingPointJson);
+    };
+    auto biased = Sweeper::sweep_core_losses_over_frequency(magnetic, flyback(15, 17), Topology::FLYBACK_CONVERTER, 100000, 200000, 2);
+    auto lightlyBiased = Sweeper::sweep_core_losses_over_frequency(magnetic, flyback(1, 3), Topology::FLYBACK_CONVERTER, 100000, 200000, 2);
+    double biasedLosses = biased.get_y_points().front();
+    double lightlyBiasedLosses = lightlyBiased.get_y_points().front();
+    INFO("core losses at 100 kHz: 15 -> 17 A " << biasedLosses << " W, 1 -> 3 A " << lightlyBiasedLosses << " W");
+    REQUIRE(lightlyBiasedLosses > 0);
+    CHECK(biasedLosses > 1.05 * lightlyBiasedLosses);
+}
+
 // ABT #1602: the core-loss series resistance builds an equivalent winding N = sqrt(L * R). It used to
 // be truncated to an integer, so any L * R < 1 gave N = 0, zero flux and a zero resistance, and the
 // value jumped at every integer N. N is a model quantity and must stay real.
