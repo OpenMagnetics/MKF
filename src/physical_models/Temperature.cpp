@@ -1,6 +1,7 @@
 #include "physical_models/Temperature.h"
 #include "constructive_models/CorePiece.h"
 #include "physical_models/ThermalResistance.h"
+#include "physical_models/ReluctanceNetwork.h"
 #include "StrayCapacitance.h"
 #include "support/Painter.h"
 #include "support/Utils.h"
@@ -331,7 +332,13 @@ void Temperature::extractWireProperties() {
     
     auto wire = std::get<Wire>(wireVariant);
     _isRoundWire = (wire.get_type() == WireType::ROUND || wire.get_type() == WireType::LITZ);
-    _isPlanar = (wire.get_type() == WireType::PLANAR || wire.get_type() == WireType::FOIL);
+    // ABT #1735: "planar" is the PCB-trace topology (turns stacked on FR4 layers, the core's
+    // plates closing the stack), which createPlanarConvectionConnections models. A FOIL winding
+    // is wound around a column like any other concentric winding; classifying it as planar sent
+    // a foil-wound E 40/11 through the PCB path, whose core convects from its quarter-model
+    // section quadrants (~8 cm2) instead of the core's real exterior (~32 cm2, ABT #1459), and
+    // ran its core at 3x the core-only resistance.
+    _isPlanar = (wire.get_type() == WireType::PLANAR);
     
     // Get wire dimensions
     if (wire.get_type() == WireType::LITZ) {
@@ -397,7 +404,7 @@ void Temperature::extractWireProperties() {
         if (std::holds_alternative<Wire>(wv)) {
             auto w = std::get<Wire>(wv);
             wProps.isRoundWire = (w.get_type() == WireType::ROUND || w.get_type() == WireType::LITZ);
-            wProps.isPlanar = (w.get_type() == WireType::PLANAR || w.get_type() == WireType::FOIL);
+            wProps.isPlanar = (w.get_type() == WireType::PLANAR);  // ABT #1735: foil is wound, not PCB
             
             // Extract dimensions from THIS winding's wire (not winding[0])
             wProps.wireWidth = kWire_DefaultWidth;
@@ -509,6 +516,16 @@ void Temperature::createThermalNodes() {
                 throw std::runtime_error("Temperature::createThermalNodes: Failed to wind coil: " + std::string(e.what()));
             }
         }
+    }
+
+    // ABT #1735: the concentric network is one winding window around the main column (the
+    // other half of the core is its mirror image). A winding placed on another column sits in a
+    // window the network does not build: its turns were measured against the main window's
+    // walls and refused as "overlapping their enclosure by 21 mm". Say what is actually missing.
+    if (!_config.coreOnly && !_isToroidal && ReluctanceNetwork::has_non_main_placement(_magnetic)) {
+        throw NotImplementedException("Temperature::createThermalNodes: the thermal network of a winding placed on a "
+                                      "column other than the main one (magnetic '" + _magnetic.get_reference() +
+                                      "'; only the main column's winding window is built)");
     }
 
     if (_isToroidal) {

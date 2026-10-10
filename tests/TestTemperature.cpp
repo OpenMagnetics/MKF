@@ -1,6 +1,9 @@
 #include "physical_models/Temperature.h"
 #include "physical_models/ThermalResistance.h"
 #include "physical_models/WindingLosses.h"
+#include "constructive_models/Bobbin.h"
+#include "support/Settings.h"
+#include "support/Exceptions.h"
 #include "support/Painter.h"
 #include "processors/MagneticSimulator.h"
 #include "Definitions.h"
@@ -4587,4 +4590,215 @@ TEST_CASE("Temperature: ABT 1454 an unserved litz rests on its enclosure through
     // than that: it has the thicker film between copper and enclosure.
     CHECK(std::abs(tUnserved - tServed) < 3.0);
     CHECK(tUnserved <= tServed + 0.5);
+}
+
+// ABT #1735: the full network put the core of a WOUND toroid 3-12x hotter than the same core bare
+// (T 36/23/15 N87 20:10: 97 K/W full vs 33 K/W core-only at 1 W, and the "core-only" value itself
+// wrapped the core in the coil's invisible turns). Three faults in the toroidal builder, all
+// topology/area, none a correlation: (1) the outermost insulation wrap convected a section-plane
+// quadrant -- half the core height at the mean radius, no annular faces -- a third of its real
+// skin; (2) turn-to-wrap conduction ran over the chord between the turn's angle and the wrap
+// segment's mid-angle (millimetres of tape) instead of the radial contact; (3) a toroid with no
+// wrap blocked a core face outright under any turn and never counted the bare ferrite between
+// sparse turns. A winding with no copper loss only ADDS surface to the core it is wound on, so the
+// wound core must not be hotter than the bare one at the same core loss.
+namespace {
+OpenMagnetics::Magnetic abt1735WoundToroid(std::vector<int64_t> turns, const std::string& shape, const std::string& material) {
+    std::vector<int64_t> parallels(turns.size(), 1);
+    auto coil = OpenMagneticsTesting::get_quick_coil(turns, parallels, shape, 1, WindingOrientation::OVERLAPPING,
+                                                     WindingOrientation::OVERLAPPING, CoilAlignment::SPREAD,
+                                                     CoilAlignment::SPREAD);
+    auto core = OpenMagneticsTesting::get_quick_core(shape, json::array(), 1, material);
+    OpenMagnetics::Magnetic magnetic;
+    magnetic.set_core(core);
+    magnetic.set_coil(coil);
+    magnetic.get_mutable_coil().wind();
+    return magnetic;
+}
+
+double abt1735CoreRise(const OpenMagnetics::Magnetic& magnetic, bool coreOnly, double coreLosses) {
+    TemperatureConfig config;
+    config.ambientTemperature = 25.0;
+    config.coreLosses = coreLosses;
+    config.windingLosses = 0.0;  // P_cu = 0: the winding is a passive fin and wrap
+    config.coreOnly = coreOnly;
+    config.plotSchematic = false;
+    Temperature temperature(magnetic, config);
+    auto result = temperature.calculateTemperatures();
+    REQUIRE(result.converged);
+    double hottestCore = -std::numeric_limits<double>::max();
+    for (const auto& node : temperature.getNodes()) {
+        if (node.part == ThermalNodePartType::CORE_TOROIDAL_SEGMENT) hottestCore = std::max(hottestCore, node.temperature);
+    }
+    REQUIRE(hottestCore > config.ambientTemperature);
+    return hottestCore - config.ambientTemperature;
+}
+
+// h*A hand estimate for an isothermal surface of area A at rise dT: natural convection (the same
+// correlation and characteristic length the network uses -- the processed core height) plus
+// grey-body radiation at the default emissivity. What it checks is the AREA and the topology,
+// which is where the defects were; the correlation is shared on purpose.
+double abt1735SurfaceResistance(const OpenMagnetics::Magnetic& magnetic, double area, double rise) {
+    double ambient = 25.0;
+    double surface = ambient + rise;
+    double characteristicLength = magnetic.get_core().get_processed_description()->get_height();
+    double h = ThermalResistance::calculateNaturalConvectionCoefficient(surface, ambient, characteristicLength,
+                                                                       SurfaceOrientation::VERTICAL) +
+               ThermalResistance::calculateRadiationCoefficient(surface, ambient, ThermalDefaults::kConvection_DefaultEmissivity);
+    return 1.0 / (h * area);
+}
+}  // namespace
+
+TEST_CASE("Temperature: ABT 1735 a wound toroid with no copper loss is no hotter than its bare core",
+          "[temperature][toroidal][abt-1735][smoke-test]") {
+    struct Case { std::vector<int64_t> turns; std::string shape; std::string material; };
+    // Two-winding quick coils carry a full-circle insulation wrap (faults 1 and 2); the single
+    // sparse winding has none (fault 3); the 60-turn one is a fully covered single winding.
+    std::vector<Case> cases = {
+        {{20, 10}, "T 36/23/15", "N87"},
+        {{5, 5}, "T 20/10/7", "N87"},
+        {{24, 12, 8, 6}, "T 36/23/15", "3C97"},
+        {{10}, "T 36/23/15", "N87"},
+        {{60}, "T 20/10/7", "N87"},
+    };
+    for (const auto& c : cases) {
+        CAPTURE(c.shape, c.material, c.turns.size(), c.turns[0]);
+        auto magnetic = abt1735WoundToroid(c.turns, c.shape, c.material);
+        double bareRise = abt1735CoreRise(magnetic, true, 1.0);
+        double woundRise = abt1735CoreRise(magnetic, false, 1.0);
+        CAPTURE(bareRise, woundRise);
+        // The wrap and the turns' contact strips add a little series resistance (enamel, tape,
+        // the air the turns hold open) to a surface they enlarge by 25-40%; at no copper loss
+        // the wound core may land a few per cent above the bare one, never several times.
+        CHECK(woundRise < bareRise * 1.15);
+    }
+}
+
+TEST_CASE("Temperature: ABT 1735 toroid surface resistance matches the h*A of its own surface",
+          "[temperature][toroidal][abt-1735][smoke-test]") {
+    // Bare core: its whole surface -- both cylinders AND both annular faces -- by arithmetic.
+    {
+        auto magnetic = abt1735WoundToroid({20, 10}, "T 36/23/15", "N87");
+        auto dimensions = magnetic.get_core().resolve_shape().get_dimensions().value();
+        double A = resolve_dimensional_values(dimensions["A"]);
+        double B = resolve_dimensional_values(dimensions["B"]);
+        double C = resolve_dimensional_values(dimensions["C"]);
+        double bareArea = std::numbers::pi * (A + B) * C + 2.0 * std::numbers::pi / 4.0 * (A * A - B * B);
+        double rise = abt1735CoreRise(magnetic, true, 1.0);
+        double handEstimate = abt1735SurfaceResistance(magnetic, bareArea, rise);
+        CAPTURE(bareArea, rise, handEstimate);
+        // Isothermal ring, same correlations: the network must reproduce h*A to a few per cent.
+        CHECK(rise > handEstimate * 0.95);
+        CHECK(rise < handEstimate * 1.05);
+    }
+    // Wound and wrapped: the outermost wrap's skin, by arithmetic from the MAS layer record
+    // (radial offset of the layer centre from the core surface, and its thickness).
+    {
+        auto magnetic = abt1735WoundToroid({20, 10}, "T 36/23/15", "N87");
+        auto dimensions = magnetic.get_core().resolve_shape().get_dimensions().value();
+        double A = resolve_dimensional_values(dimensions["A"]);
+        double B = resolve_dimensional_values(dimensions["B"]);
+        double C = resolve_dimensional_values(dimensions["C"]);
+        auto layers = magnetic.get_coil().get_layers_description_insulation();
+        REQUIRE(!layers.empty());
+        double skinOffset = 0;
+        for (const auto& layer : layers) {
+            if (layer.get_dimensions().size() < 2 || layer.get_coordinates().size() < 2) continue;
+            skinOffset = std::max(skinOffset, layer.get_coordinates()[0] + layer.get_dimensions()[0] / 2.0);
+        }
+        REQUIRE(skinOffset > 0);
+        double rimR = A / 2.0 + skinOffset;
+        double boreR = B / 2.0 - skinOffset;
+        double height = C + 2.0 * skinOffset;
+        double wrapArea = 2.0 * std::numbers::pi * (rimR + boreR) * height + 2.0 * std::numbers::pi * (rimR * rimR - boreR * boreR);
+        double rise = abt1735CoreRise(magnetic, false, 1.0);
+        double handEstimate = abt1735SurfaceResistance(magnetic, wrapArea, rise);
+        CAPTURE(wrapArea, rise, handEstimate);
+        // Hand estimate of the internal path, core to wrap, at 1 W: ~20 turns x 2 contact strips
+        // of ~0.5 mm x ~35 mm through ~30 um enamel at ~0.2 W/mK is ~0.4 K/W, plus half a tape
+        // thickness: well under 10% of the ~15 K/W surface term. Before the fix: 97 K/W, 6x.
+        CHECK(rise > handEstimate * 0.95);
+        CHECK(rise < handEstimate * 1.15);
+    }
+}
+
+TEST_CASE("Temperature: ABT 1735 a foil-wound E core with no copper loss is no hotter than its bare core",
+          "[temperature][abt-1735][smoke-test]") {
+    // Test_Simulator_Web_1's E 40/11 MPP 40, two 6-turn foil windings. FOIL used to classify the
+    // winding as PCB-planar, and the planar path convected the core from its quarter-model section
+    // quadrants: 6.6 cm2 of core exterior (vs 32 cm2 from the real geometry) and 83 K/W at 1 W
+    // against 27.6 K/W core-only. A foil winding is wound around the column like any other.
+    auto path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "test_simulator_web_1_1095.json");
+    OpenMagnetics::Magnetic magnetic(json::parse(std::ifstream(path)));
+    REQUIRE(magnetic.get_coil().get_turns_description());
+    for (const auto& winding : magnetic.get_coil().get_functional_description()) {
+        REQUIRE(std::get<OpenMagnetics::Wire>(winding.get_wire()).get_type() == WireType::FOIL);
+    }
+    auto hottestCoreRise = [&](bool coreOnly) {
+        TemperatureConfig config;
+        config.ambientTemperature = 25.0;
+        config.coreLosses = 1.0;
+        config.windingLosses = 0.0;
+        config.coreOnly = coreOnly;
+        config.plotSchematic = false;
+        Temperature temperature(magnetic, config);
+        auto result = temperature.calculateTemperatures();
+        REQUIRE(result.converged);
+        double hottest = -std::numeric_limits<double>::max();
+        for (const auto& node : temperature.getNodes()) {
+            if (node.part == ThermalNodePartType::CORE_CENTRAL_COLUMN || node.part == ThermalNodePartType::CORE_LATERAL_COLUMN ||
+                node.part == ThermalNodePartType::CORE_TOP_YOKE || node.part == ThermalNodePartType::CORE_BOTTOM_YOKE) {
+                hottest = std::max(hottest, node.temperature);
+            }
+        }
+        REQUIRE(hottest > config.ambientTemperature);
+        return hottest - config.ambientTemperature;
+    };
+    double bareRise = hottestCoreRise(true);
+    double woundRise = hottestCoreRise(false);
+    CAPTURE(bareRise, woundRise);
+    CHECK(woundRise < bareRise * 1.15);
+}
+
+TEST_CASE("Temperature: ABT 1735 a winding on a lateral column is refused as unmodelled, not as an overlap",
+          "[temperature][abt-1735][multi-column][smoke-test]") {
+    // The concentric network builds the main column's window only. A secondary placed on the
+    // -x lateral leg used to be measured against the main window's walls and refused as
+    // "overlaps its enclosure by 21 mm": a wrong diagnosis of a topology the network lacks.
+    auto& settings = Settings::GetInstance();
+    settings.reset();
+    settings.set_core_per_column_winding_windows(true);
+    auto core = OpenMagneticsTesting::get_quick_core("E 42/21/20", json::parse("[]"), 1, "3C97");
+    auto bobbin = OpenMagnetics::Bobbin::create_quick_bobbin(core, 0.001, 0.001);
+    json bobbinJson;
+    to_json(bobbinJson, bobbin);
+    json coilJson;
+    coilJson["bobbin"] = bobbinJson;
+    coilJson["functionalDescription"] = json::array();
+    coilJson["functionalDescription"].push_back(json{{"name", "Primary"}, {"numberTurns", 20}, {"numberParallels", 1},
+                                                     {"isolationSide", "primary"}, {"wire", "Round 0.475 - Grade 1"}});
+    coilJson["functionalDescription"].push_back(json{{"name", "Secondary"}, {"numberTurns", 10}, {"numberParallels", 1},
+                                                     {"isolationSide", "secondary"}, {"wire", "Round 0.475 - Grade 1"}});
+    OpenMagnetics::Coil coil(coilJson, false);
+    coil.get_mutable_functional_description()[1].set_winding_window(2);
+    coil.set_core_columns(core.get_processed_description()->get_columns());
+    REQUIRE(coil.wind());
+    OpenMagnetics::Magnetic magnetic;
+    magnetic.set_core(core);
+    magnetic.set_coil(coil);
+    bool anyNegativeTurn = false;
+    auto turns = magnetic.get_coil().get_turns_description().value();
+    for (const auto& turn : turns) anyNegativeTurn = anyNegativeTurn || turn.get_coordinates()[0] < 0;
+    REQUIRE(anyNegativeTurn);
+
+    TemperatureConfig config;
+    config.ambientTemperature = 25.0;
+    config.coreLosses = 1.0;
+    config.windingLosses = 0.0;
+    config.plotSchematic = false;
+    CHECK_THROWS_AS(Temperature(magnetic, config).calculateTemperatures(), NotImplementedException);
+    // Core-only needs no window and still answers.
+    config.coreOnly = true;
+    CHECK(Temperature(magnetic, config).calculateTemperatures().converged);
+    settings.reset();
 }
