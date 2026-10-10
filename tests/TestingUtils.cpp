@@ -688,6 +688,54 @@ bool check_turns_description(OpenMagnetics::Coil coil) {
     return !collides && equalToOne;
 }
 
+bool check_toroidal_windings_keep_their_sectors(OpenMagnetics::Coil coil) {
+    REQUIRE(coil.get_turns_description());
+    coil.convert_turns_to_cartesian_coordinates();
+    const auto turns = coil.get_turns_description().value();
+    auto azimuthOf = [](const Turn& turn) {
+        double a = std::atan2(turn.get_coordinates()[1], turn.get_coordinates()[0]) * 180.0 / std::numbers::pi;
+        return a < 0 ? a + 360.0 : a;
+    };
+    std::map<std::string, std::vector<double>> azimuthsPerWinding;
+    for (const auto& turn : turns) {
+        azimuthsPerWinding[turn.get_winding()].push_back(azimuthOf(turn));
+    }
+    REQUIRE(azimuthsPerWinding.size() >= 2);
+    bool allKept = true;
+    for (auto& [windingName, azimuths] : azimuthsPerWinding) {
+        std::sort(azimuths.begin(), azimuths.end());
+        double largestGap = 360.0 - (azimuths.back() - azimuths.front());
+        double arcStart = azimuths.front();
+        for (size_t i = 1; i < azimuths.size(); ++i) {
+            if (azimuths[i] - azimuths[i - 1] > largestGap) {
+                largestGap = azimuths[i] - azimuths[i - 1];
+                arcStart = azimuths[i];
+            }
+        }
+        const double arcSpan = 360.0 - largestGap;
+        size_t foreignInside = 0;
+        for (const auto& turn : turns) {
+            if (turn.get_winding() == windingName) {
+                continue;
+            }
+            double fromStart = std::fmod(azimuthOf(turn) - arcStart + 360.0, 360.0);
+            if (fromStart > 1e-6 && fromStart < arcSpan - 1e-6) {
+                if (foreignInside < 5) {
+                    INFO("turn '" << turn.get_name() << "' at " << azimuthOf(turn) << " deg lies inside winding '"
+                         << windingName << "' arc " << arcStart << " deg + " << arcSpan << " deg");
+                    CHECK(false);
+                }
+                ++foreignInside;
+            }
+        }
+        INFO("winding '" << windingName << "' occupies " << arcStart << " deg + " << arcSpan << " deg; "
+             << foreignInside << " foreign turn(s) inside it");
+        CHECK(foreignInside == 0);
+        allKept = allKept && foreignInside == 0;
+    }
+    return allKept;
+}
+
 void check_turns_clear_toroidal_bars(OpenMagnetics::Coil coil) {
     REQUIRE(coil.get_turns_description());
     coil.convert_turns_to_cartesian_coordinates();

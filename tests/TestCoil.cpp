@@ -14582,6 +14582,11 @@ TEST_CASE("Test_Toroidal_Bifilar_Ring_Lays_Each_Parallel_Its_Own_Turn_Count", "[
     CHECK(sawUnevenRing);
     // And the outer crossings of both windings are laid without a collision.
     OpenMagneticsTesting::check_turns_description(coil);
+    // And every ring, however deep, stays in its own winding's sector: the align re-spread passes
+    // used to extend a deep ring's territory up to the nearest foreign turn AT ITS OWN RADIUS --
+    // the other winding has fewer rings, so there was none -- and spread it across the other
+    // winding's sector (ABT #1734).
+    OpenMagneticsTesting::check_toroidal_windings_keep_their_sectors(coil);
     settings.reset();
 }
 

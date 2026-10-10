@@ -5871,6 +5871,7 @@ std::map<std::string, uint64_t> Coil::align_blocked_ring_turns(bool forceSpreadB
     const bool spreadAllRingsActive = forceSpreadBaseline &&
                                       settings.get_coil_use_real_winding_geometry() &&
                                       !std::getenv("MKF_NO_SPREAD_ALL");
+    const bool realWindingSectorsActive = settings.get_coil_use_real_winding_geometry();
     for (size_t iteration = 0; iteration < maximumIterations; ++iteration) {
         // ABT #833: measured fresh each pass on the CURRENT geometry. This clear used to sit at
         // the BOTTOM of the loop body, which silently destroyed the last pass's measurement
@@ -5937,8 +5938,12 @@ std::map<std::string, uint64_t> Coil::align_blocked_ring_turns(bool forceSpreadB
         // nearest same-radius foreign turn reaches deep into the neighbouring sector while that
         // neighbour's own inner ring is still huddled mid-sector (measured 179 deg of territory
         // in a 120 deg sector on the 3-winding CMC).
+        //
+        // ABT #1734: the same partition also BOUNDS every later re-spread and nudge under real
+        // winding (see the clamp at the per-ring territory below), so it is measured whenever real
+        // winding is on, not only for the force-spread.
         std::map<std::string, std::pair<bool, std::pair<double, double>>> windingOccupiedArc;
-        if (spreadAllRingsActive) {
+        if (realWindingSectorsActive) {
             std::map<std::string, std::vector<double>> anglesPerWinding;
             for (size_t t = 0; t < turns.size(); ++t) {
                 anglesPerWinding[turns[t].get_winding()].push_back(normalizeAngle(
@@ -6184,6 +6189,61 @@ std::map<std::string, uint64_t> Coil::align_blocked_ring_turns(bool forceSpreadB
                 }
                 territoryStart = normalizeAngle(rawStart - marginStart);
                 sectionSpan = rawSpan + marginStart + marginEnd;
+            }
+            // ABT #1734: UNDER REAL WINDING NO RING LEAVES ITS WINDING'S SECTOR. The margin rule
+            // above extends a ring only up to the nearest FOREIGN turn at its OWN radius, and a
+            // deep ring usually has none: the other winding has fewer rings (or thicker wire, so
+            // its rings sit at other radii). The extension then ran to the half-circle cap on
+            // each side and the re-spread marched the ring over the other winding's whole sector
+            // (T 12.7/7.9/12.7, 45 + 45 turns, Round 29.0 x 2 Primary / Round 27.5 x 2 Secondary,
+            // contiguous: Primary's ring 3 re-spread over 360 deg, its rings 0..2 over up to
+            // 278 deg of a 180 deg sector). The ring's territory is therefore its margin territory
+            // CUT to its winding's partition territory (windingOccupiedArc), the same territory
+            // the force-spread uses; a ring classified full-circle inside a sector winding gets
+            // the winding's whole territory. Only multi-winding sector layouts are partitioned; a
+            // single winding, or a full-circle winding among others, keeps the per-ring rule.
+            if (realWindingSectorsActive && !forceSpreadAllRings) {
+                auto windingArc = windingOccupiedArc.find(turns[turnIdxs[0]].get_winding());
+                if (windingArc != windingOccupiedArc.end() && !windingArc->second.first) {
+                    const double windingStart = windingArc->second.second.first;
+                    const double windingSpan = windingArc->second.second.second;
+                    if (fullCircle) {
+                        territoryStart = windingStart;
+                        sectionSpan = windingSpan;
+                    }
+                    else {
+                        // The ring's arc in coordinates relative to the winding's territory start.
+                        const double ringStartRelative = normalizeAngle(territoryStart - windingStart);
+                        const double ringEndRelative = ringStartRelative + sectionSpan;
+                        double clampedStart;
+                        double clampedEnd;
+                        if (ringStartRelative <= windingSpan) {
+                            clampedStart = ringStartRelative;
+                            // An arc that runs past the winding's end AND round to its start again
+                            // covers the whole territory.
+                            clampedEnd = ringEndRelative >= 360.0 ? windingSpan : std::min(windingSpan, ringEndRelative);
+                            if (ringEndRelative >= 360.0) {
+                                clampedStart = 0;
+                            }
+                        }
+                        else if (ringEndRelative > 360.0) {
+                            // Starts behind the winding's territory and runs into it.
+                            clampedStart = 0;
+                            clampedEnd = std::min(windingSpan, ringEndRelative - 360.0);
+                        }
+                        else {
+                            throw CoilException(ErrorCode::CALCULATION_INVALID_RESULT,
+                                "align_blocked_ring_turns: ring '" + ringName + "' territory " +
+                                std::to_string(territoryStart) + " deg + " + std::to_string(sectionSpan) +
+                                " deg lies outside its winding's territory " + std::to_string(windingStart) +
+                                " deg + " + std::to_string(windingSpan) + " deg, which is measured on the "
+                                "same turns -- the ring's turns cannot be outside it");
+                        }
+                        territoryStart = normalizeAngle(windingStart + clampedStart);
+                        sectionSpan = clampedEnd - clampedStart;
+                    }
+                    fullCircle = false;
+                }
             }
             // Alf 2026-08-24: the force-spread distributes over the WINDING's territory (see
             // windingOccupiedArc above) so a huddled inner ring reaches its whole sector, and
@@ -17219,12 +17279,13 @@ bool Coil::wind_toroidal_additional_turns() {
                     // ABT #1734 (Alf, 2026-10-10): THE RING'S OWN GEOMETRY bounds its outer
                     // crossings. Real winding only. Three per-ring quantities:
                     //  - the parallels wound side by side in this ring (N of an N-filar bundle);
-                    //  - each station's bundle pitch: the smaller of its gaps to the neighbouring
-                    //    stations of the ring (bundle members sit one pitch apart; the larger gap
-                    //    may be a connection corridor);
+                    //  - the ring's bundle pitch: the smallest gap between neighbouring stations of
+                    //    the ring (bundle members sit one pitch apart; a larger gap may be a
+                    //    connection corridor);
                     //  - the arc the ring's stations OCCUPY (largest-gap analysis, the same rule as
                     //    align_blocked_ring_turns), extended by N/2 bundle pitches at each end so it
-                    //    holds every anchor below with half a pitch of the crossing's own copper.
+                    //    holds every crossing (an interior crossing of an N-filar bundle sits N/2
+                    //    pitches past its station, half-way to its parallel's next one).
                     // The section's angular extent is NOT the ring's territory: it is rebuilt
                     // synthetically (N x turn angle around the section centre) by
                     // delimit_and_compact_round_window, while the rings after the first are laid in
@@ -17234,7 +17295,6 @@ bool Coil::wind_toroidal_additional_turns() {
                     // parallels: section to 157.7 deg, ring stations to 166 deg) and the sweep
                     // below, which may not leave its territory, found no azimuth.
                     size_t layerParallelCount = 1;
-                    std::vector<double> stationPitchInLayer(turnsThisLayer.size(), 0.0);
                     bool ringFullCircle = true;
                     double ringTerritoryStart = 0;
                     double ringTerritorySpan = 360;
@@ -17245,18 +17305,9 @@ bool Coil::wind_toroidal_additional_turns() {
                         }
                         layerParallelCount = parallelsInLayer.size();
                         double ringPitch = std::numeric_limits<double>::max();
-                        for (size_t i = 0; i < turnsThisLayer.size(); ++i) {
-                            double pitch = std::numeric_limits<double>::max();
-                            if (i > 0) {
-                                pitch = std::min(pitch, std::abs(std::remainder(turnsThisLayer[i].get_coordinates()[1] -
-                                                                                turnsThisLayer[i - 1].get_coordinates()[1], 360.0)));
-                            }
-                            if (i + 1 < turnsThisLayer.size()) {
-                                pitch = std::min(pitch, std::abs(std::remainder(turnsThisLayer[i + 1].get_coordinates()[1] -
-                                                                                turnsThisLayer[i].get_coordinates()[1], 360.0)));
-                            }
-                            stationPitchInLayer[i] = pitch;
-                            ringPitch = std::min(ringPitch, pitch);
+                        for (size_t i = 1; i < turnsThisLayer.size(); ++i) {
+                            ringPitch = std::min(ringPitch, std::abs(std::remainder(turnsThisLayer[i].get_coordinates()[1] -
+                                                                                    turnsThisLayer[i - 1].get_coordinates()[1], 360.0)));
                         }
                         std::vector<double> stationAngles;
                         for (const auto& layerTurn : turnsThisLayer) {
@@ -17290,8 +17341,7 @@ bool Coil::wind_toroidal_additional_turns() {
                         }
                         return fromStart <= ringTerritorySpan;
                     };
-                    for (size_t turnInLayerIndex = 0; turnInLayerIndex < turnsThisLayer.size(); ++turnInLayerIndex) {
-                        auto turn = turnsThisLayer[turnInLayerIndex];
+                    for (auto turn : turnsThisLayer) {
                         auto turnIndex = get_turn_index(turn.get_name());
                         if (lastStationOfConductor.count(turn.get_name())) {
                             continue;   // its connection is the output terminal (see above)
@@ -17327,22 +17377,6 @@ bool Coil::wind_toroidal_additional_turns() {
                                 // Only the half-step OFFSET comes from the wrapped difference: the
                                 // stored azimuth is cumulative and may exceed 360.
                                 additionalCoordinates[1] += std::remainder(nextAz - ownAz, 360.0) / 2;
-                            }
-                            else if (layerParallelCount > 1 && layerWindingDirection != 0.0) {
-                                // ABT #1734 (Alf, 2026-10-10): A CROSSING THAT DOES NOT ADVANCE TO
-                                // A NEXT STATION OF ITS RING (the ring-closing one, which dives to
-                                // the next ring, ABT #865) sits at its own station + (N - 1)/2
-                                // bundle pitches. Every interior crossing of an N-filar bundle
-                                // advances N/2 pitches (half-way to its parallel's next station,
-                                // N pitches on), so a closing crossing left at its own azimuth
-                                // lands exactly ON its predecessor's (the previous bundle's last
-                                // parallel: one pitch back + N/2 pitches) and the order guard
-                                // rejects it by construction. At (N - 1)/2 it is half a pitch past
-                                // that predecessor and the next parallel's closing one pitch
-                                // further, the bundle's own spacing. A single-wire ring (N = 1)
-                                // keeps the station azimuth, unchanged.
-                                additionalCoordinates[1] += layerWindingDirection *
-                                    double(layerParallelCount - 1) / 2 * stationPitchInLayer[turnInLayerIndex];
                             }
                         }
 
