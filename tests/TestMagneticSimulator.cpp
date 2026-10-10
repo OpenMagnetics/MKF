@@ -11,6 +11,7 @@
 
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
+#include <catch2/matchers/catch_matchers_string.hpp>
 #include <cmath>
 #include <vector>
 
@@ -686,26 +687,20 @@ namespace {
         json windingLossesJson;
         to_json(windingLossesJson, windingLosses);
 
-        auto simulator = MagneticSimulator();
-        auto operatingPoint = inputs.get_operating_point(0);
-        auto coreLosses = simulator.calculate_core_losses(operatingPoint, magnetic);
-        auto mas = simulator.simulate(inputs, magnetic);
-        json coreLossesJson;
-        to_json(coreLossesJson, coreLosses);
-
-        check_simulation_outputs_sane(mas);
         CHECK(std::isfinite(windingLosses.get_winding_losses()));
         CHECK(windingLosses.get_winding_losses() > 0);
-        CHECK(std::isfinite(coreLosses.get_core_losses()));
-        CHECK(coreLosses.get_core_losses() > 0);
 
-        // MagneticAdviser::preview_magnetic(mas);
-
-        {
-            auto outFile = outputFilePath;
-            outFile.append("Test_IEEE_Article_Simulation_2.mas.json");
-            to_file(outFile, mas);
-        }
+        // At 80 C ambient in still air this PQ 60/52 dissipates ~61 W (14 W core, 47 W copper at
+        // 80 C), which drives the core to ~270 C; with the core just below 3C95F's Curie
+        // temperature (210 C) its losses still drive it to ~300 C. No operating point exists, and
+        // both loss entry points refuse it (ABT #838, accepted by Alf 2026-10-10) instead of
+        // reporting losses at a temperature the design never settles at.
+        auto simulator = MagneticSimulator();
+        auto operatingPoint = inputs.get_operating_point(0);
+        REQUIRE_THROWS_WITH(simulator.calculate_core_losses(operatingPoint, magnetic),
+                            Catch::Matchers::ContainsSubstring("No operating temperature was found where the core is ferromagnetic"));
+        REQUIRE_THROWS_WITH(simulator.simulate(inputs, magnetic),
+                            Catch::Matchers::ContainsSubstring("No operating temperature was found where the core is ferromagnetic"));
 
 
         {
@@ -836,6 +831,11 @@ namespace {
         operatingPointJson["name"] = "Nominal";
         operatingPointJson["conditions"] = json();
         operatingPointJson["conditions"]["ambientTemperature"] = 100;
+        // Forced air (ABT #838, Alf 2026-10-10): in still air at 100 C this ETD 29 dissipates ~9 W
+        // with the core at 3C95's Curie temperature (215 C) but sheds only ~7 W there, so it has no
+        // operating point. With a fan's 2 m/s the core settles at ~181 C (~2.4 W core, ~5.6 W copper).
+        operatingPointJson["conditions"]["cooling"]["velocity"] = {2.0, 0.0, 0.0};
+        operatingPointJson["conditions"]["cooling"]["temperature"] = 100;
 
         operatingPointJson["excitationsPerWinding"] = json::array();
         {

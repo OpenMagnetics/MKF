@@ -16,6 +16,7 @@
 #include "support/Utils.h"
 
 #include <catch2/catch_test_macros.hpp>
+#include <catch2/matchers/catch_matchers_string.hpp>
 
 #include <filesystem>
 #include <fstream>
@@ -187,13 +188,13 @@ TEST_CASE("simulate() runs a fitting stacked-section PQ 65 design reloaded from 
     OpenMagnetics::Mas mas(design);
     auto magnetic = autocomplete_and_reload(design, mas.get_inputs());
 
-    auto simulated = OpenMagnetics::MagneticSimulator().simulate(mas.get_inputs(), magnetic);
-    REQUIRE(simulated.get_outputs().size() == 1);
-    const auto& outputs = simulated.get_outputs()[0];
-    REQUIRE(outputs.get_winding_losses());
-    CHECK(outputs.get_winding_losses()->get_winding_losses() > 0);
-    REQUIRE(outputs.get_core_losses());
-    CHECK(outputs.get_core_losses()->get_core_losses() > 0);
+    // simulate() gets past the outside series links (what ABT #1533 broke) and reaches the
+    // loss <-> temperature solve, which finds no operating point: at 100 C ambient the 0.5 mm
+    // primary dissipates ~60-77 W of copper against ~2 W of core, driving the core past
+    // DMR96A's Curie temperature (230 C) to ~310 C. The solve refuses that (ABT #838, accepted
+    // by Alf 2026-10-10) instead of reporting losses at a temperature the design never reaches.
+    REQUIRE_THROWS_WITH(OpenMagnetics::MagneticSimulator().simulate(mas.get_inputs(), magnetic),
+                        Catch::Matchers::ContainsSubstring("No operating temperature was found where the core is ferromagnetic"));
     settings.reset();
 }
 

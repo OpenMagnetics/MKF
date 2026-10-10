@@ -3175,32 +3175,14 @@ TEST_CASE("Temperature: 220kW Transformer", "[temperature][transformer][smoke-te
         operatingPoint.get_mutable_conditions().set_cooling(forcedCooling);
     }
 
-    // Run magnetic simulation to get actual losses
-    auto losses = getLossesFromSimulation(magnetic, inputs);
-
-    TemperatureConfig config = TemperatureConfig::fromMasOperatingConditions(inputs.get_operating_points()[0].get_conditions());
-    REQUIRE(config.masCooling.has_value());
-    config.coreLosses = losses.coreLosses;
-    if (!losses.windingLossesOutput.has_value()) {
-        throw std::runtime_error("WindingLossesOutput missing from simulation results");
-    }
-    config.windingLosses = losses.windingLosses;
-    config.windingLossesOutput = losses.windingLossesOutput.value();
-    config.plotSchematic = true;
-    config.schematicOutputPath = (getOutputDir() / "thermal_schematic_220kW_transformer.svg").string();
-
-    Temperature temp(magnetic, config);
-    auto result = temp.calculateTemperatures();
-
-    // Export temperature field visualization
-    exportTemperatureFieldSvg("220kW_transformer", magnetic, result.nodeTemperatures, config.ambientTemperature);
-
-    // Export thermal circuit schematic
-    exportThermalCircuitSchematic("220kW_transformer", temp);
-
-    REQUIRE(result.converged);
-    REQUIRE(result.maximumTemperature > config.ambientTemperature);
-    REQUIRE(result.totalThermalResistance > 0.0);
+    // Even with the airflow this design has no operating point (ABT #838, accepted by Alf
+    // 2026-10-10): its copper alone dissipates ~1.4 kW at 60 C (360 A / 514 A rms at 20 kHz,
+    // ~42 A/mm2 in the primary litz; R_dc * I^2 checked by hand), while 4 m/s over its ~0.075 m2
+    // of surface gives ~0.4 K/W by hand (0.74 K/W in the thermal network), a 0.5-1 kK rise: core
+    // and copper heat each other past the Curie temperature. simulate() refuses that instead of
+    // reporting losses at a temperature the design never reaches.
+    REQUIRE_THROWS_WITH(getLossesFromSimulation(magnetic, inputs),
+                        Catch::Matchers::ContainsSubstring("No operating temperature was found where the core is ferromagnetic"));
 }
 
 TEST_CASE("Temperature: PQ Single Turn Quadrant Surface Areas", "[temperature][concentric][geometry][smoke-test]") {
