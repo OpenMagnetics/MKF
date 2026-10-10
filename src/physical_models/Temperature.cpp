@@ -7187,6 +7187,9 @@ ThermalResult Temperature::solveThermalCircuit() {
             _nodes[i].part == ThermalNodePartType::CORE_BOTTOM_YOKE) {
             coreTempSum += temperatures[i];
             coreCount++;
+            if (!result.maximumCoreTemperature || temperatures[i] > result.maximumCoreTemperature.value()) {
+                result.maximumCoreTemperature = temperatures[i];
+            }
         } else if (_nodes[i].part == ThermalNodePartType::TURN) {
             coilTempSum += temperatures[i];
             coilCount++;
@@ -7195,6 +7198,9 @@ ThermalResult Temperature::solveThermalCircuit() {
     
     result.averageCoreTemperature = coreCount > 0 ? coreTempSum / coreCount : _config.ambientTemperature;
     result.averageCoilTemperature = coilCount > 0 ? coilTempSum / coilCount : _config.ambientTemperature;
+    if (coilCount > 0) {
+        result.averageTurnTemperature = coilTempSum / coilCount;
+    }
     result.methodUsed = "Quadrant-based Thermal Equivalent Circuit";
     
     return result;

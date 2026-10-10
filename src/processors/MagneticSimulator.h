@@ -13,8 +13,6 @@ namespace OpenMagnetics {
 
 class MagneticSimulator {
     private:
-        bool _enableTemperatureConvergence = false;
-
         ReluctanceModels _reluctanceModelName;
 
         MagnetizingInductance _magnetizingInductanceModel;
@@ -62,16 +60,32 @@ class MagneticSimulator {
         // TemperatureConfig::fromSimulatedOutput (ABT #906) — the same config the temperature-map
         // plot wrappers use, so the exported MAS and the UI can never disagree.
         TemperatureOutput calculate_temperature(OperatingPoint& operatingPoint, Magnetic magnetic, const Outputs& output);
-        // ABT #838: `knownWindingLosses`, when given, is the winding-loss result of the pass just
-        // run for this operating point. The core-loss loop needs the CORE's temperature, and the
-        // winding heats the core: without it the loop solves a core-only network with core losses
-        // alone, so on a winding-dominated design the core sits cooler than it really does and its
-        // losses are read off the material curve at the wrong temperature. With it, the loop uses
-        // the full network (turn nodes carry the winding power) exactly as the exported
-        // temperature does. Absent = the historical core-only behaviour, which is also the first
-        // pass, when no winding-loss result exists yet.
+        // ABT #838: core losses at the temperature the part's dissipation produces, by
+        // fixed-point iteration from ambient on the thermal network (the core-loss <-> temperature
+        // loop this function has always held, now always run to convergence):
+        //   - coil WOUND (turns description present): core AND winding heat the same full network,
+        //     so neither temperature can be found without the other's losses. Core losses are
+        //     evaluated at T_core = hottest CORE node, winding losses at T_winding = mean TURN-node
+        //     temperature (WindingLosses takes one temperature for the whole coil). simulate() uses
+        //     this, and so do the advisers' loss filters and the PyOM/WASM wrappers when they pass a
+        //     wound coil.
+        //   - no turns (the core advisers' sentinel-coil candidates): no winding losses exist to
+        //     compute; the core-only network carries the core losses alone.
+        // Converged when the network returns both temperatures within
+        // kOperatingTemperatureTolerance of the ones the losses were evaluated at. Each
+        // temperature's step is halved whenever its residual changes sign (losses falling steeply
+        // with temperature make plain substitution oscillate), and the core is kept below its
+        // material's Curie point, where its loss and permeability data end. Not settling within
+        // kOperatingTemperatureMaximumIterations, or being driven to the Curie point, THROWS
+        // (thermal runaway: there is no operating point to report, and the last iterate is not one).
+        // `windingLossesOutput` / `temperatureOutput`, when given, receive the winding losses and
+        // the full-network temperature solved together with the returned core losses (asking for
+        // winding losses of an unwound coil throws).
+        static constexpr double kOperatingTemperatureTolerance = 0.5;      // K, both temperatures
+        static constexpr size_t kOperatingTemperatureMaximumIterations = 100;
         CoreLossesOutput calculate_core_losses(OperatingPoint& operatingPoint, Magnetic magnetic,
-                                               std::optional<WindingLossesOutput> knownWindingLosses = std::nullopt);
+                                               std::optional<WindingLossesOutput>* windingLossesOutput = nullptr,
+                                               std::optional<TemperatureOutput>* temperatureOutput = nullptr);
         LeakageInductanceOutput calculate_leakage_inductance(OperatingPoint& operatingPoint, Magnetic magnetic);
         static LeakageInductanceOutput calculate_leakage_inductance(Magnetic magnetic, double frequency);
         MagnetizingInductanceOutput calculate_magnetizing_inductance(OperatingPoint& operatingPoint, Magnetic magnetic);

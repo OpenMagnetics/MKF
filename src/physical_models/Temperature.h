@@ -202,6 +202,12 @@ struct ThermalResult {
     double maximumTemperature;
     double averageCoreTemperature;
     double averageCoilTemperature;
+    // ABT #838: the core's own hot spot (maximum over CORE nodes only) and the mean over TURN
+    // nodes. Unlike the two averages above, these are left EMPTY when the network has no node of
+    // that kind instead of reporting the ambient temperature, so a caller that needs the core's
+    // or the winding's temperature can tell "not modelled" from "at ambient".
+    std::optional<double> maximumCoreTemperature;
+    std::optional<double> averageTurnTemperature;
     std::map<std::string, double> nodeTemperatures;
     double totalThermalResistance;
     size_t iterationsToConverge;

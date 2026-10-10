@@ -1202,6 +1202,43 @@ TEST_CASE("Temperature: Very High Losses", "[temperature][smoke-test]") {
     REQUIRE(result.maximumTemperature > 100.0);
 }
 
+// ABT #838: this design's N87 core losses fall steeply with temperature (3.9 W at 106 C, 2.6 W at
+// 134 C), so plain substitution in simulate()'s loss <-> temperature loop swings around the fixed
+// point forever and the simulation throws. Halving a temperature's step whenever its residual
+// changes sign settles it: the published core losses are the model at the published core
+// temperature, and the network fed those losses returns that temperature.
+TEST_CASE("Temperature: simulate settles an oscillating loss-temperature loop", "[temperature][smoke-test]") {
+    std::vector<int64_t> numberTurns({10});
+    std::vector<int64_t> numberParallels({1});
+    std::string shapeName = "ETD 29/16/10";
+    auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, shapeName, 1,
+                                                     WindingOrientation::CONTIGUOUS, WindingOrientation::CONTIGUOUS,
+                                                     CoilAlignment::CENTERED, CoilAlignment::CENTERED);
+    auto gapping = json::array();
+    auto core = OpenMagneticsTesting::get_quick_core(shapeName, gapping, 1, "N87");
+    OpenMagnetics::Magnetic magnetic;
+    magnetic.set_core(core);
+    magnetic.set_coil(coil);
+    auto inputs = createInputsForMagnetic(magnetic, 100000.0, 25.0, 1.0);
+
+    OpenMagnetics::MagneticSimulator simulator;
+    auto simulated = simulator.simulate(inputs, magnetic, false);
+    const auto& output = simulated.get_outputs()[0];
+    const auto& operatingPoint = simulated.get_inputs().get_operating_points()[0];
+    const double publishedCoreTemperature = output.get_core_losses()->get_temperature();
+    auto config = TemperatureConfig::fromSimulatedOutput(operatingPoint, output);
+    auto network = Temperature(magnetic, config).calculateTemperatures();
+    REQUIRE(network.maximumCoreTemperature);
+    CAPTURE(publishedCoreTemperature, network.maximumCoreTemperature.value(), output.get_core_losses()->get_core_losses());
+    CHECK(publishedCoreTemperature > 100.0);
+    CHECK(std::fabs(publishedCoreTemperature - network.maximumCoreTemperature.value()) <
+          OpenMagnetics::MagneticSimulator::kOperatingTemperatureTolerance);
+    auto excitation = operatingPoint.get_excitations_per_winding()[0];
+    REQUIRE(excitation.get_magnetic_flux_density());
+    CHECK_THAT(output.get_core_losses()->get_core_losses(), Catch::Matchers::WithinRel(
+        OpenMagnetics::CoreLosses().calculate_core_losses(magnetic.get_core(), excitation, publishedCoreTemperature).get_core_losses(), 1e-9));
+}
+
 TEST_CASE("Temperature: Very Small Core", "[temperature][smoke-test]") {
     std::vector<int64_t> numberTurns({5});
     std::vector<int64_t> numberParallels({1});

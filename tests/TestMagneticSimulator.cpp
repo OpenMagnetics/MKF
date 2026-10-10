@@ -2,6 +2,7 @@
 #include <source_location>
 #include "support/Painter.h"
 #include "processors/MagneticSimulator.h"
+#include "physical_models/Temperature.h"
 #include "advisers/MagneticAdviser.h"
 #include "processors/Inputs.h"
 #include "support/Exceptions.h"
@@ -1411,6 +1412,137 @@ namespace {
     }
     TEST_CASE("Example_24_margin_interleaved_flyback", "[example][magnetic-simulator][smoke-test]") {
         run_example_simulation("24_margin_interleaved_flyback_pq3230_3c94.json");
+    }
+
+    // ABT #838: the published core temperature counts the winding's heat, and every published
+    // loss is evaluated at the temperature the COMBINED dissipation produces. Checked by
+    // re-solving the same thermal network from the published losses, in both simulate modes:
+    //   1. coreLosses.temperature is the hottest CORE node of the full network for those losses
+    //      (not the whole part's hot spot, which is normally a turn, and not a core-only network);
+    //   2. removing the winding's losses from that network cools the core: the published value
+    //      is above the core-losses-only (P_cu = 0) core temperature;
+    //   3. the core losses are the core-loss model evaluated at the published core temperature;
+    //   4. the winding losses were evaluated at the network's mean turn temperature.
+    TEST_CASE("Simulated core temperature includes the winding losses", "[processor][magnetic-simulator][smoke-test]") {
+        const double tolerance = MagneticSimulator::kOperatingTemperatureTolerance;
+        for (const std::string filename : {"01_simple_inductor_etd34_n87.json", "03_buck_inductor_pq3230_n95.json"}) {
+            for (bool fastMode : {false, true}) {
+                INFO(filename << " fastMode=" << fastMode);
+                auto path = get_examples_dir() / filename;
+                REQUIRE(std::filesystem::exists(path));
+                auto mas = OpenMagneticsTesting::mas_loader(path.string());
+                auto magnetic = OpenMagnetics::magnetic_autocomplete(mas.get_magnetic());
+                auto inputs = OpenMagnetics::inputs_autocomplete(mas.get_inputs(), magnetic);
+                if (!magnetic.get_coil().get_turns_description()) {
+                    magnetic.get_mutable_coil().wind();
+                }
+
+                MagneticSimulator simulator;
+                auto simulated = simulator.simulate(inputs, magnetic, fastMode);
+                REQUIRE(simulated.get_outputs().size() == inputs.get_operating_points().size());
+
+                for (size_t opIdx = 0; opIdx < simulated.get_outputs().size(); ++opIdx) {
+                    const auto& output = simulated.get_outputs()[opIdx];
+                    const auto& operatingPoint = simulated.get_inputs().get_operating_points()[opIdx];
+                    // The simulator must not hand back its internal core temperature as the ambient.
+                    REQUIRE(operatingPoint.get_conditions().get_ambient_temperature() ==
+                            inputs.get_operating_points()[opIdx].get_conditions().get_ambient_temperature());
+                    const double publishedCoreTemperature = output.get_core_losses()->get_temperature();
+                    const double windingLosses = output.get_winding_losses()->get_winding_losses();
+                    REQUIRE(windingLosses > 0);
+
+                    auto fullConfig = TemperatureConfig::fromSimulatedOutput(operatingPoint, output);
+                    auto full = Temperature(magnetic, fullConfig).calculateTemperatures();
+                    REQUIRE(full.maximumCoreTemperature);
+                    REQUIRE(full.averageTurnTemperature);
+                    CAPTURE(publishedCoreTemperature, full.maximumCoreTemperature.value(), full.maximumTemperature,
+                            output.get_core_losses()->get_core_losses(), windingLosses);
+                    // 1.
+                    CHECK(std::fabs(publishedCoreTemperature - full.maximumCoreTemperature.value()) < tolerance);
+
+                    // 2.
+                    auto coreOnlyLossesConfig = fullConfig;
+                    coreOnlyLossesConfig.windingLosses = 0;
+                    coreOnlyLossesConfig.windingLossesOutput = std::nullopt;
+                    auto withoutWinding = Temperature(magnetic, coreOnlyLossesConfig).calculateTemperatures();
+                    REQUIRE(withoutWinding.maximumCoreTemperature);
+                    CAPTURE(withoutWinding.maximumCoreTemperature.value());
+                    CHECK(publishedCoreTemperature > withoutWinding.maximumCoreTemperature.value() + tolerance);
+
+                    // 3.
+                    auto excitation = operatingPoint.get_excitations_per_winding()[0];
+                    REQUIRE(excitation.get_magnetic_flux_density());
+                    double coreLossesAtPublishedTemperature = CoreLosses().calculate_core_losses(
+                        magnetic.get_core(), excitation, publishedCoreTemperature).get_core_losses();
+                    CHECK_THAT(output.get_core_losses()->get_core_losses(),
+                               Catch::Matchers::WithinRel(coreLossesAtPublishedTemperature, 1e-9));
+
+                    // 4.
+                    REQUIRE(output.get_winding_losses()->get_temperature());
+                    CAPTURE(output.get_winding_losses()->get_temperature().value(), full.averageTurnTemperature.value());
+                    CHECK(std::fabs(output.get_winding_losses()->get_temperature().value() -
+                                    full.averageTurnTemperature.value()) < tolerance);
+                }
+            }
+        }
+    }
+
+    // ABT #838: the 2-argument calculate_core_losses (core advisers' loss filters, PyOM/WASM
+    // calculate_core_losses) runs the SAME loss <-> temperature solve as simulate():
+    //   - wound coil: identical core losses and core temperature to simulate(), above the
+    //     core-losses-only core temperature (the winding's heat is counted);
+    //   - coil with no turns: the core-only network, converged: re-solving that network from the
+    //     returned losses gives back the returned temperature, and the losses are the model at it.
+    TEST_CASE("calculate_core_losses solves the same loss-temperature loop as simulate", "[processor][magnetic-simulator][smoke-test]") {
+        const double tolerance = MagneticSimulator::kOperatingTemperatureTolerance;
+        for (const std::string filename : {"01_simple_inductor_etd34_n87.json", "03_buck_inductor_pq3230_n95.json"}) {
+            INFO(filename);
+            auto path = get_examples_dir() / filename;
+            REQUIRE(std::filesystem::exists(path));
+            auto mas = OpenMagneticsTesting::mas_loader(path.string());
+            auto magnetic = OpenMagnetics::magnetic_autocomplete(mas.get_magnetic());
+            auto inputs = OpenMagnetics::inputs_autocomplete(mas.get_inputs(), magnetic);
+            if (!magnetic.get_coil().get_turns_description()) {
+                magnetic.get_mutable_coil().wind();
+            }
+            MagneticSimulator simulator;
+            auto simulated = simulator.simulate(inputs, magnetic, true);
+            const CoreLossesOutput simulatedCoreLosses = simulated.get_outputs()[0].get_core_losses().value();
+
+            // Wound coil.
+            auto operatingPoint = inputs.get_operating_points()[0];
+            const double ambientTemperature = operatingPoint.get_conditions().get_ambient_temperature();
+            auto wound = simulator.calculate_core_losses(operatingPoint, magnetic);
+            CAPTURE(wound.get_temperature(), simulatedCoreLosses.get_temperature(), wound.get_core_losses(),
+                    simulatedCoreLosses.get_core_losses());
+            REQUIRE(operatingPoint.get_conditions().get_ambient_temperature() == ambientTemperature);
+            CHECK_THAT(wound.get_temperature(), Catch::Matchers::WithinAbs(simulatedCoreLosses.get_temperature(), 1e-9));
+            CHECK_THAT(wound.get_core_losses(), Catch::Matchers::WithinRel(simulatedCoreLosses.get_core_losses(), 1e-9));
+
+            // Coil with no turns: core-only network, converged.
+            OpenMagnetics::Magnetic unwoundMagnetic = magnetic;
+            unwoundMagnetic.get_mutable_coil().set_turns_description(std::nullopt);
+            unwoundMagnetic.get_mutable_coil().set_layers_description(std::nullopt);
+            unwoundMagnetic.get_mutable_coil().set_sections_description(std::nullopt);
+            auto unwoundOperatingPoint = inputs.get_operating_points()[0];
+            auto coreOnly = simulator.calculate_core_losses(unwoundOperatingPoint, unwoundMagnetic);
+            REQUIRE(unwoundOperatingPoint.get_conditions().get_ambient_temperature() == ambientTemperature);
+            auto coreOnlyConfig = TemperatureConfig::fromMasOperatingConditions(unwoundOperatingPoint.get_conditions());
+            coreOnlyConfig.plotSchematic = false;
+            coreOnlyConfig.coreOnly = true;
+            coreOnlyConfig.coreLosses = coreOnly.get_core_losses();
+            auto coreOnlyNetwork = Temperature(unwoundMagnetic, coreOnlyConfig).calculateTemperatures();
+            REQUIRE(coreOnlyNetwork.maximumCoreTemperature);
+            CAPTURE(coreOnly.get_temperature(), coreOnlyNetwork.maximumCoreTemperature.value(), coreOnly.get_core_losses());
+            CHECK(coreOnly.get_temperature() > ambientTemperature + tolerance);
+            CHECK(std::fabs(coreOnly.get_temperature() - coreOnlyNetwork.maximumCoreTemperature.value()) < tolerance);
+            auto excitation = unwoundOperatingPoint.get_excitations_per_winding()[0];
+            REQUIRE(excitation.get_magnetic_flux_density());
+            CHECK_THAT(coreOnly.get_core_losses(), Catch::Matchers::WithinRel(CoreLosses().calculate_core_losses(
+                unwoundMagnetic.get_core(), excitation, coreOnly.get_temperature()).get_core_losses(), 1e-9));
+            // The winding's heat warms the core.
+            CHECK(wound.get_temperature() > coreOnly.get_temperature() + tolerance);
+        }
     }
 
     // =========================================================================
