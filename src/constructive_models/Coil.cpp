@@ -17178,7 +17178,82 @@ bool Coil::wind_toroidal_additional_turns() {
                                                           turnsThisLayer[0].get_coordinates()[1], 360.0);
                         layerWindingDirection = firstStep < 0 ? -1.0 : 1.0;
                     }
-                    for (auto turn : turnsThisLayer) {
+                    // ABT #1734 (Alf, 2026-10-10): THE RING'S OWN GEOMETRY bounds its outer
+                    // crossings. Real winding only. Three per-ring quantities:
+                    //  - the parallels wound side by side in this ring (N of an N-filar bundle);
+                    //  - each station's bundle pitch: the smaller of its gaps to the neighbouring
+                    //    stations of the ring (bundle members sit one pitch apart; the larger gap
+                    //    may be a connection corridor);
+                    //  - the arc the ring's stations OCCUPY (largest-gap analysis, the same rule as
+                    //    align_blocked_ring_turns), extended by N/2 bundle pitches at each end so it
+                    //    holds every anchor below with half a pitch of the crossing's own copper.
+                    // The section's angular extent is NOT the ring's territory: it is rebuilt
+                    // synthetically (N x turn angle around the section centre) by
+                    // delimit_and_compact_round_window, while the rings after the first are laid in
+                    // the span shaved by the input corridor and shifted toward the section end, and
+                    // a U ring starts one pitch past the forward layout -- so the section did not
+                    // contain its own stations (T 12.7/7.9/12.7, 45 + 45 turns of Round 26.0 x 2
+                    // parallels: section to 157.7 deg, ring stations to 166 deg) and the sweep
+                    // below, which may not leave its territory, found no azimuth.
+                    size_t layerParallelCount = 1;
+                    std::vector<double> stationPitchInLayer(turnsThisLayer.size(), 0.0);
+                    bool ringFullCircle = true;
+                    double ringTerritoryStart = 0;
+                    double ringTerritorySpan = 360;
+                    if (settings.get_coil_use_real_winding_geometry() && turnsThisLayer.size() >= 2) {
+                        std::set<int64_t> parallelsInLayer;
+                        for (const auto& layerTurn : turnsThisLayer) {
+                            parallelsInLayer.insert(layerTurn.get_parallel());
+                        }
+                        layerParallelCount = parallelsInLayer.size();
+                        double ringPitch = std::numeric_limits<double>::max();
+                        for (size_t i = 0; i < turnsThisLayer.size(); ++i) {
+                            double pitch = std::numeric_limits<double>::max();
+                            if (i > 0) {
+                                pitch = std::min(pitch, std::abs(std::remainder(turnsThisLayer[i].get_coordinates()[1] -
+                                                                                turnsThisLayer[i - 1].get_coordinates()[1], 360.0)));
+                            }
+                            if (i + 1 < turnsThisLayer.size()) {
+                                pitch = std::min(pitch, std::abs(std::remainder(turnsThisLayer[i + 1].get_coordinates()[1] -
+                                                                                turnsThisLayer[i].get_coordinates()[1], 360.0)));
+                            }
+                            stationPitchInLayer[i] = pitch;
+                            ringPitch = std::min(ringPitch, pitch);
+                        }
+                        std::vector<double> stationAngles;
+                        for (const auto& layerTurn : turnsThisLayer) {
+                            double a = std::fmod(layerTurn.get_coordinates()[1], 360.0);
+                            stationAngles.push_back(a < 0 ? a + 360.0 : a);
+                        }
+                        std::sort(stationAngles.begin(), stationAngles.end());
+                        double largestGap = 360.0 - (stationAngles.back() - stationAngles.front());
+                        double gapEnd = stationAngles.front();
+                        for (size_t i = 1; i < stationAngles.size(); ++i) {
+                            if (stationAngles[i] - stationAngles[i - 1] > largestGap) {
+                                largestGap = stationAngles[i] - stationAngles[i - 1];
+                                gapEnd = stationAngles[i];
+                            }
+                        }
+                        const double meanPitch = 360.0 / double(stationAngles.size());
+                        const double margin = double(layerParallelCount) / 2 * ringPitch;
+                        ringFullCircle = largestGap <= 2 * meanPitch || largestGap <= 2 * margin;
+                        if (!ringFullCircle) {
+                            ringTerritoryStart = gapEnd - margin;
+                            ringTerritorySpan = 360.0 - largestGap + 2 * margin;
+                        }
+                    }
+                    auto insideRingTerritory = [&](double az) {
+                        if (ringFullCircle) {
+                            return true;
+                        }
+                        double fromStart = std::fmod(az - ringTerritoryStart, 360.0);
+                        if (fromStart < 0) {
+                            fromStart += 360.0;
+                        }
+                        return fromStart <= ringTerritorySpan;
+                    };
+                    for (size_t turnInLayerIndex = 0; turnInLayerIndex < turnsThisLayer.size(); ++turnInLayerIndex) {
+                        auto turn = turnsThisLayer[turnInLayerIndex];
                         auto turnIndex = get_turn_index(turn.get_name());
                         if (lastStationOfConductor.count(turn.get_name())) {
                             continue;   // its connection is the output terminal (see above)
@@ -17214,6 +17289,22 @@ bool Coil::wind_toroidal_additional_turns() {
                                 // Only the half-step OFFSET comes from the wrapped difference: the
                                 // stored azimuth is cumulative and may exceed 360.
                                 additionalCoordinates[1] += std::remainder(nextAz - ownAz, 360.0) / 2;
+                            }
+                            else if (layerParallelCount > 1 && layerWindingDirection != 0.0) {
+                                // ABT #1734 (Alf, 2026-10-10): A CROSSING THAT DOES NOT ADVANCE TO
+                                // A NEXT STATION OF ITS RING (the ring-closing one, which dives to
+                                // the next ring, ABT #865) sits at its own station + (N - 1)/2
+                                // bundle pitches. Every interior crossing of an N-filar bundle
+                                // advances N/2 pitches (half-way to its parallel's next station,
+                                // N pitches on), so a closing crossing left at its own azimuth
+                                // lands exactly ON its predecessor's (the previous bundle's last
+                                // parallel: one pitch back + N/2 pitches) and the order guard
+                                // rejects it by construction. At (N - 1)/2 it is half a pitch past
+                                // that predecessor and the next parallel's closing one pitch
+                                // further, the bundle's own spacing. A single-wire ring (N = 1)
+                                // keeps the station azimuth, unchanged.
+                                additionalCoordinates[1] += layerWindingDirection *
+                                    double(layerParallelCount - 1) / 2 * stationPitchInLayer[turnInLayerIndex];
                             }
                         }
 
@@ -17450,14 +17541,14 @@ bool Coil::wind_toroidal_additional_turns() {
                                 // toroid has no such drift -- each return goes straight over -- so
                                 // the classic crossing may lean AT MOST one wire (phase 1) and
                                 // otherwise stacks outward at its own azimuth, exactly as before.
+                                // ABT #1734: the territory is the RING'S occupied arc (see
+                                // insideRingTerritory above), not the section's synthetic extent.
                                 if (bestRadius == std::numeric_limits<double>::max() && realWindingPlacement) {
-                                    const double sectionCentre = section.get_coordinates()[1];
-                                    const double sectionHalfSpan = section.get_dimensions()[1] / 2;
                                     const double sweepStep = 0.25;
-                                    for (double offset = sweepStep; offset <= 2 * sectionHalfSpan; offset += sweepStep) {
+                                    for (double offset = sweepStep; offset <= ringTerritorySpan; offset += sweepStep) {
                                         for (double sign : {1.0, -1.0}) {
                                             double az = thetaDeg + sign * offset;
-                                            if (std::abs(std::remainder(az - sectionCentre, 360.0)) > sectionHalfSpan) {
+                                            if (!insideRingTerritory(az)) {
                                                 continue;
                                             }
                                             double restRadius = restAt(az);
@@ -17534,15 +17625,16 @@ bool Coil::wind_toroidal_additional_turns() {
                                 // a refusal of this design (COIL_WINDING_ERROR, which the coil
                                 // adviser treats as that candidate's verdict), not an invalid
                                 // calculation. The terminals do not gate the sweep (ABT #685); the
-                                // only constraints left are the order and the section's territory.
+                                // only constraints left are the order and the ring's territory.
                                 throw CoilException(ErrorCode::COIL_WINDING_ERROR,
-                                    "wind_toroidal_additional_turns: NO outer-crossing azimuth inside section '" +
+                                    "wind_toroidal_additional_turns: NO outer-crossing azimuth inside its ring of section '" +
                                     section.get_name() + "' keeps turn " + turn.get_name() +
                                     " in winding order after the previous crossing (at " +
                                     (previousOuterCrossingAzimuth ? std::to_string(previousOuterCrossingAzimuth.value()) : std::string("none")) +
-                                    " deg; this crossing anchored at " + std::to_string(thetaDeg) + " deg; section territory " +
-                                    std::to_string(section.get_coordinates()[1] - section.get_dimensions()[1] / 2) + ".." +
-                                    std::to_string(section.get_coordinates()[1] + section.get_dimensions()[1] / 2) +
+                                    " deg; this crossing anchored at " + std::to_string(thetaDeg) + " deg; ring territory " +
+                                    (ringFullCircle ? std::string("full circle")
+                                                    : std::to_string(ringTerritoryStart) + ".." +
+                                                      std::to_string(ringTerritoryStart + ringTerritorySpan)) +
                                     " deg) -- the inner-station layout leaves this ring no routable outer crossing" +
                                     stationMap + blockers);
                             }
