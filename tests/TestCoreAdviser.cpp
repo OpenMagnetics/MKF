@@ -2443,8 +2443,10 @@ TEST_CASE("Test_CoreAdviser_Flyback_From_Frontend_Inputs", "[adviser][core-advis
     // Primary current: triangular ramp during on-time, zero during off-time
     SignalDescriptor primaryCurrent;
     Waveform currentWaveform;
-    currentWaveform.set_data(std::vector<double>{0, 0, 2.35, 0});  // Simplified flyback primary current
-    currentWaveform.set_time(std::vector<double>{0, 0, 5e-6, 5e-6});  // 50% duty cycle at 100kHz = 5µs on
+    // Given over the whole 10 us period, zero in the off-time: a waveform covering only the 5 us
+    // on-time is rejected by the sampler, which would otherwise stretch it over the period (ABT #1467).
+    currentWaveform.set_data(std::vector<double>{0, 0, 2.35, 0, 0});  // Simplified flyback primary current
+    currentWaveform.set_time(std::vector<double>{0, 0, 5e-6, 5e-6, 10e-6});  // 50% duty cycle at 100kHz = 5µs on
     primaryCurrent.set_waveform(currentWaveform);
     
     // offset is a required field, a plain double the generated class leaves uninitialised: a
@@ -2507,6 +2509,8 @@ TEST_CASE("Test_CoreAdviser_Flyback_From_Frontend_Inputs", "[adviser][core-advis
     inputs.get_mutable_operating_points().push_back(operatingPoint);
     
     // Add second operating point (like the frontend does for min/max input voltages)
+    // Its duty is 0.4, so +150 V x 4 us balances -100 V x 6 us: the frontend capture had D = 0.5,
+    // a 25 V mean that no steady-state winding can carry (check_volt_second_balance, ABT #1467).
     OperatingPoint operatingPoint2;
     OperatingConditions conditions2;
     conditions2.set_ambient_temperature(25);
@@ -2519,8 +2523,8 @@ TEST_CASE("Test_CoreAdviser_Flyback_From_Frontend_Inputs", "[adviser][core-advis
     
     SignalDescriptor primaryCurrent2;
     Waveform currentWaveform2;
-    currentWaveform2.set_data(std::vector<double>{0, 0, 1.5, 0});
-    currentWaveform2.set_time(std::vector<double>{0, 0, 5e-6, 5e-6});
+    currentWaveform2.set_data(std::vector<double>{0, 0, 1.5, 0, 0});
+    currentWaveform2.set_time(std::vector<double>{0, 0, 4e-6, 4e-6, 10e-6});
     primaryCurrent2.set_waveform(currentWaveform2);
     
     ProcessedWaveform currentProcessed2;
@@ -2529,7 +2533,7 @@ TEST_CASE("Test_CoreAdviser_Flyback_From_Frontend_Inputs", "[adviser][core-advis
     currentProcessed2.set_rms(0.7);
     currentProcessed2.set_peak(1.5);
     currentProcessed2.set_peak_to_peak(1.5);
-    currentProcessed2.set_duty_cycle(0.5);
+    currentProcessed2.set_duty_cycle(0.4);
     currentProcessed2.set_offset(0);
     primaryCurrent2.set_processed(currentProcessed2);
     primaryExcitation2.set_current(primaryCurrent2);
@@ -2537,14 +2541,14 @@ TEST_CASE("Test_CoreAdviser_Flyback_From_Frontend_Inputs", "[adviser][core-advis
     SignalDescriptor primaryVoltage2;
     Waveform voltageWaveform2;
     voltageWaveform2.set_data(std::vector<double>{150, 150, -100, -100});
-    voltageWaveform2.set_time(std::vector<double>{0, 5e-6, 5e-6, 10e-6});
+    voltageWaveform2.set_time(std::vector<double>{0, 4e-6, 4e-6, 10e-6});
     primaryVoltage2.set_waveform(voltageWaveform2);
     
     ProcessedWaveform voltageProcessed2;
     voltageProcessed2.set_label(WaveformLabel::RECTANGULAR);
     voltageProcessed2.set_peak(150);
     voltageProcessed2.set_peak_to_peak(250);
-    voltageProcessed2.set_duty_cycle(0.5);
+    voltageProcessed2.set_duty_cycle(0.4);
     voltageProcessed2.set_offset(0);
     primaryVoltage2.set_processed(voltageProcessed2);
     primaryExcitation2.set_voltage(primaryVoltage2);
@@ -2559,7 +2563,7 @@ TEST_CASE("Test_CoreAdviser_Flyback_From_Frontend_Inputs", "[adviser][core-advis
     SignalDescriptor secondaryCurrent2;
     Waveform secCurrentWaveform2;
     secCurrentWaveform2.set_data(std::vector<double>{0, 0, 4.0, 0});
-    secCurrentWaveform2.set_time(std::vector<double>{0, 5e-6, 5e-6, 10e-6});
+    secCurrentWaveform2.set_time(std::vector<double>{0, 4e-6, 4e-6, 10e-6});
     secondaryCurrent2.set_waveform(secCurrentWaveform2);
     
     ProcessedWaveform secCurrentProcessed2;
@@ -2567,7 +2571,7 @@ TEST_CASE("Test_CoreAdviser_Flyback_From_Frontend_Inputs", "[adviser][core-advis
     secCurrentProcessed2.set_average(2.0);
     secCurrentProcessed2.set_rms(2.8);
     secCurrentProcessed2.set_peak(4.0);
-    secCurrentProcessed2.set_duty_cycle(0.5);
+    secCurrentProcessed2.set_duty_cycle(0.4);
     secCurrentProcessed2.set_offset(0);
     secondaryCurrent2.set_processed(secCurrentProcessed2);
     secondaryExcitation2.set_current(secondaryCurrent2);
