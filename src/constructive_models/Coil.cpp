@@ -17008,6 +17008,21 @@ bool Coil::wind_toroidal_additional_turns() {
         return it->second;
     };
 
+    // ABT #1734: OUTER CROSSINGS OF EARLIER SECTIONS, for the real-winding placement. Each section
+    // used to rest its crossings against its own only, which is enough while every section keeps to
+    // its angular sector -- but under real winding the rings are laid and spread where their turns
+    // go (corridor shift, U rings, the align force-spread), and a ring can run past its section into
+    // the neighbour's sector. On the outer face both windings' crossings then share the base ring:
+    // measured on the Random_15 adviser design (T 12.7/7.9/12.7, 45 x 2 of Round 29.0 Primary and
+    // Round 27.5 Secondary), Primary parallel 0 turn 0's crossing at 164.5 deg was placed 0.137 mm
+    // from Secondary parallel 1 turn 25's at 165.7 deg, against a 0.339 mm envelope. Each entry keeps
+    // its wire's outer height: two different wires touch at the half-sum of their heights.
+    struct PlacedForeignCrossing {
+        std::vector<double> coordinates;
+        double outerHeight;
+        std::string sectionName;
+    };
+    std::vector<PlacedForeignCrossing> crossingsOfAllSections;
     for (auto section : sections) { 
         if (section.get_type() == ElectricalType::CONDUCTION) {
             std::vector<std::vector<double>> placedTurnsCoordinates;
@@ -17404,6 +17419,22 @@ bool Coil::wind_toroidal_additional_turns() {
                                     double tangentRadius = placedRadius * cos(dAng) + sqrt(discriminant);
                                     restRadius = std::max(restRadius, tangentRadius);
                                 }
+                                if (realWindingPlacement) {
+                                    for (const auto& foreign : crossingsOfAllSections) {
+                                        if (foreign.sectionName == section.get_name()) {
+                                            continue;   // this section's own: placedTurnsCoordinates above
+                                        }
+                                        const double contact = (wireHeight + foreign.outerHeight) / 2 + 5e-9;
+                                        double placedRadius = windowRadialHeight - foreign.coordinates[0];
+                                        double dAng = std::remainder(foreign.coordinates[1] - az, 360.0) / 180 * std::numbers::pi;
+                                        double chord = placedRadius * sin(dAng);
+                                        double discriminant = contact * contact - chord * chord;
+                                        if (discriminant <= 0) {
+                                            continue;
+                                        }
+                                        restRadius = std::max(restRadius, placedRadius * cos(dAng) + sqrt(discriminant));
+                                    }
+                                }
                                 return restRadius;
                             };
                             auto segmentPointDistance = [](double ax, double ay, double bx, double by,
@@ -17651,6 +17682,19 @@ bool Coil::wind_toroidal_additional_turns() {
                                 throw CalculationException(ErrorCode::CALCULATION_INVALID_RESULT,
                                     "wind_toroidal_additional_turns: rested outer crossing still collides for turn " + turn.get_name());
                             }
+                            if (realWindingPlacement) {
+                                for (const auto& foreign : crossingsOfAllSections) {
+                                    if (foreign.sectionName == section.get_name()) {
+                                        continue;
+                                    }
+                                    if (!get_collision_distances(additionalCoordinates, {foreign.coordinates},
+                                                                 (wireHeight + foreign.outerHeight) / 2 + 5e-9).empty()) {
+                                        throw CalculationException(ErrorCode::CALCULATION_INVALID_RESULT,
+                                            "wind_toroidal_additional_turns: rested outer crossing of turn " + turn.get_name() +
+                                            " still collides with an outer crossing of another section");
+                                    }
+                                }
+                            }
                             }
                         }
                         currentSectionMaximumAdditionalRadialHeight = std::min(currentSectionMaximumAdditionalRadialHeight, additionalCoordinates[0]);
@@ -17694,6 +17738,9 @@ bool Coil::wind_toroidal_additional_turns() {
 
                         turns[turnIndex] = turn;
                         placedTurnsCoordinates.push_back(additionalCoordinates);
+                        if (settings.get_coil_use_real_winding_geometry()) {
+                            crossingsOfAllSections.push_back({additionalCoordinates, wireHeight, section.get_name()});
+                        }
                     }
                     currentBaseRadialHeightForLayers -= turnsInSection[0].get_dimensions().value()[0];
                 }

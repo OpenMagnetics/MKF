@@ -672,7 +672,17 @@ bool check_turns_description(OpenMagnetics::Coil coil) {
     bool collides = check_collisions(dimensionsByName, coordinatesByName, bobbinWindingWindowShape == WindingWindowShape::ROUND);
     CHECK(!collides);
     if (additionalCoordinatesByName.size() > 0) {
-        collides |= check_collisions(dimensionsByName, additionalCoordinatesByName, bobbinWindingWindowShape == WindingWindowShape::ROUND);
+        // Only the turns that HAVE an outer crossing take part: under real winding the last
+        // station of each conductor has none (ABT #685), and check_collisions looks every
+        // dimensioned name up in the coordinates map -- a missing one read an empty vector
+        // (segfault on the first real-winding toroid checked here, ABT #1734).
+        std::map<std::string, std::vector<double>> additionalDimensionsByName;
+        for (const auto& [name, dimensions] : dimensionsByName) {
+            if (additionalCoordinatesByName.count(name)) {
+                additionalDimensionsByName[name] = dimensions;
+            }
+        }
+        collides |= check_collisions(additionalDimensionsByName, additionalCoordinatesByName, bobbinWindingWindowShape == WindingWindowShape::ROUND);
     }
     CHECK(!collides);
     return !collides && equalToOne;

@@ -14533,14 +14533,20 @@ TEST_CASE("Test_Toroidal_Bifilar_Ring_Lays_Each_Parallel_Its_Own_Turn_Count", "[
     // (Test_CoilAdviser_Random_15/16 inputs with real winding on).
     settings.reset();
     settings.set_coil_use_real_winding_geometry(true);
-    auto wire = OpenMagnetics::find_wire_by_name("Round 26.0 - Single Build");
+    // The wires the coil adviser returns first for those inputs on top of ABT #1699. (Round 26.0
+    // x 2, the design first reported, does not fit this quick coil: "90 turns of a 0.431 mm wire
+    // need 13 rings, 5.603 mm deep, in a window of 3.95 mm radial height".)
+    auto primaryWire = OpenMagnetics::find_wire_by_name("Round 29.0 - Single Build");
+    auto secondaryWire = OpenMagnetics::find_wire_by_name("Round 27.5 - Single Build");
     OpenMagnetics::Coil coil;
     REQUIRE_NOTHROW(coil = OpenMagneticsTesting::get_quick_coil({45, 45}, {2, 2}, "T 12.7/7.9/12.7", 1,
                                                                 MAS::WindingOrientation::CONTIGUOUS,
                                                                 MAS::WindingOrientation::OVERLAPPING,
                                                                 MAS::CoilAlignment::CENTERED,
                                                                 MAS::CoilAlignment::CENTERED,
-                                                                {wire, wire}));
+                                                                {primaryWire, secondaryWire}));
+    INFO(coil.get_last_fit_failure());
+    INFO(coil.read_log());
     REQUIRE(coil.get_turns_description());
     REQUIRE(coil.get_layers_description());
     const auto turns = coil.get_turns_description().value();
@@ -14575,6 +14581,8 @@ TEST_CASE("Test_Toroidal_Bifilar_Ring_Lays_Each_Parallel_Its_Own_Turn_Count", "[
         }
     }
     CHECK(sawUnevenRing);
+    // And the outer crossings of both windings are laid without a collision.
+    OpenMagneticsTesting::check_turns_description(coil);
     settings.reset();
 }
 

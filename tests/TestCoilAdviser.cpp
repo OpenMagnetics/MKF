@@ -3583,9 +3583,30 @@ TEST_CASE("Test_CoilAdviser_Random_15_Real_Winding", "[adviser][coil-adviser][re
     mas.get_mutable_magnetic().get_mutable_coil().set_turns_description(std::nullopt);
     mas.get_mutable_magnetic().get_mutable_coil().set_layers_description(std::nullopt);
     mas.get_mutable_magnetic().get_mutable_coil().set_sections_description(std::nullopt);
+    // Since ABT #1699 the adviser counts a COIL_WINDING_ERROR as that candidate's refusal and walks
+    // on, so "returns a design" alone would pass with the defect back. The refusals are logged at
+    // INFO: none of them may be the outer-crossing sweep's.
+    Logger::getInstance().disableCollector();
+    Logger::getInstance().enableCollector(LogLevel::INFO);
+    Logger::getInstance().drainCollected();
     CoilAdviser coilAdviser;
     auto masMagneticsWithCoil = coilAdviser.get_advised_coil(mas, 1);
+    size_t outerCrossingRefusals = 0;
+    for (const auto& record : Logger::getInstance().drainCollected()) {
+        if (record.message.find("NO outer-crossing azimuth") != std::string::npos) {
+            INFO(record.message);
+            ++outerCrossingRefusals;
+        }
+    }
+    Logger::getInstance().disableCollector();
+    CHECK(outerCrossingRefusals == 0);
     REQUIRE(masMagneticsWithCoil.size() > 0);
+    { json dump; to_json(dump, masMagneticsWithCoil[0]); std::ofstream("/tmp/claude-1000/-home-alf-OpenMagnetics-MKF/fbc78d45-d35c-4dd5-bff4-11234a5076ff/scratchpad/r15_advised.json") << dump.dump(); }  // TEMP-DIAG
     OpenMagneticsTesting::check_turns_description(masMagneticsWithCoil[0].get_magnetic().get_coil());
+    for (auto& advisedMas : masMagneticsWithCoil) {
+        auto refusal = OpenMagnetics::real_winding_refusal(advisedMas.get_magnetic(), advisedMas.get_inputs());
+        INFO(refusal.value_or("accepted"));
+        CHECK(!refusal);
+    }
     settings.reset();
 }
