@@ -2607,3 +2607,44 @@ TEST_CASE("Test_Magnetizing_Current_Forward_Reset_Is_Faraday_From_Zero", "[proce
     CHECK(std::fabs(minimum) < 0.01 * 2.5);
     CHECK(std::fabs(data.back()) < 0.01 * 2.5);
 }
+
+TEST_CASE("Test_Sampled_Waveform_Rejects_A_Time_Axis_That_Does_Not_Span_The_Period", "[processor][inputs][abt-1467]") {
+    // A flyback primary given over its 5 us on-time only, at 100 kHz (10 us period). The sampler
+    // used to take the axis length as the period and stretch the ramp over all 10 us: a 100 %
+    // duty cycle and twice the RMS. It must refuse such an axis, and an axis of two periods too.
+    Waveform onTimeOnly;
+    onTimeOnly.set_data({0, 0, 2.35, 0});
+    onTimeOnly.set_time(std::vector<double>{0, 0, 5e-6, 5e-6});
+    REQUIRE_THROWS_AS(OpenMagnetics::Inputs::calculate_sampled_waveform(onTimeOnly, 100000), std::invalid_argument);
+
+    Waveform twoPeriods;
+    twoPeriods.set_data({0, 1, 0, 1, 0});
+    twoPeriods.set_time(std::vector<double>{0, 5e-6, 1e-5, 1.5e-5, 2e-5});
+    REQUIRE_THROWS_AS(OpenMagnetics::Inputs::calculate_sampled_waveform(twoPeriods, 100000), std::invalid_argument);
+
+    // The same primary over the whole period, zero in the off-time, is sampled as given: the
+    // second half of the samples is zero.
+    Waveform fullPeriod;
+    fullPeriod.set_data({0, 0, 2.35, 0, 0});
+    fullPeriod.set_time(std::vector<double>{0, 0, 5e-6, 5e-6, 1e-5});
+    auto sampled = OpenMagnetics::Inputs::calculate_sampled_waveform(fullPeriod, 100000);
+    const auto& data = sampled.get_data();
+    size_t zeroSamples = 0;
+    for (auto value : data) {
+        if (value == 0) {
+            zeroSamples++;
+        }
+    }
+    CHECK(zeroSamples >= data.size() / 2);
+    CHECK_THAT(*std::max_element(data.begin(), data.end()), Catch::Matchers::WithinRel(2.35, 0.02));
+
+    // A sampled waveform (open axis [0, T - dt]) spans the period too, and resampling it to the same
+    // number of points gives it back: the last sample holds until T. Taking the axis length as the
+    // period squeezed it by (N - 1) / N on every resampling (forward.mas.json reached 511^2 / 512^2).
+    auto resampled = OpenMagnetics::Inputs::calculate_sampled_waveform(sampled, 100000, data.size());
+    REQUIRE(resampled.get_data().size() == data.size());
+    CHECK_THAT(resampled.get_time().value().back(), Catch::Matchers::WithinRel(sampled.get_time().value().back(), 1e-9));
+    for (size_t index = 0; index < data.size(); ++index) {
+        CHECK_THAT(resampled.get_data()[index], Catch::Matchers::WithinAbs(data[index], 1e-9));
+    }
+}
