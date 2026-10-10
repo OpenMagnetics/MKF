@@ -1415,7 +1415,9 @@ TEST_CASE("Test_Induced_Voltage_And_Magnetizing_Current_Sinusoidal", "[processor
     double max_error = 0.02;
     size_t numberPointsSampledWaveforms = 69;
     for (size_t i = 0; i < numberPointsSampledWaveforms; ++i) {
-        double angle = i * 2 * M_PI / numberPointsSampledWaveforms;
+        // One full period on both axes (the angle used to step by 2*pi/69 against a time step of
+        // T/68, leaving the current 2.3 A short of closing, a drift the integral then reproduced).
+        double angle = i * 2 * M_PI / (numberPointsSampledWaveforms - 1);
         time.push_back(i / frequency / (numberPointsSampledWaveforms - 1));
         data.push_back((sin(angle) * peakToPeak / 2) + offset);
     }
@@ -2360,3 +2362,30 @@ TEST_CASE("Test_Mas_Autocomplete_Single_Winding_Inductor_Unbalanced_Voltage_Uses
     auto inputsExcitation = autocompletedInputs.get_operating_points()[0].get_excitations_per_winding()[0];
     CHECK_THAT(inputsExcitation.get_magnetizing_current()->get_processed()->get_peak().value(), Catch::Matchers::WithinRel(5.0, 1e-6));
 }
+
+TEST_CASE("Test_Magnetizing_Current_Removes_A_Small_Volt_Second_Imbalance", "[processor][inputs][abt-1585][smoke-test]") {
+    // A measured winding voltage (oscilloscope upload) carries a probe offset, a resistive drop or a
+    // capture that is not a whole number of periods. Within the tolerance the mean used to stay in
+    // the integral and tilt the magnetizing current by the imbalance; a winding in periodic steady
+    // state has zero net volt-seconds, so the mean is removed and the result equals the balanced one.
+    auto magnetizingCurrentFor = [](double voltageOffset) {
+        OperatingPointExcitation excitation;
+        excitation.set_name("Primary winding excitation");
+        excitation.set_frequency(100000);
+        Waveform waveform;
+        waveform.set_data({-50 + voltageOffset, 50 + voltageOffset, 50 + voltageOffset, -50 + voltageOffset, -50 + voltageOffset});
+        waveform.set_time(std::vector<double>{0, 0, 0.000005, 0.000005, 0.00001});
+        SignalDescriptor voltage;
+        voltage.set_waveform(waveform);
+        excitation.set_voltage(voltage);
+        return OpenMagnetics::Inputs::calculate_magnetizing_current(excitation, 100e-6, false, 0.0).get_waveform()->get_data();
+    };
+    auto balanced = magnetizingCurrentFor(0);
+    auto offset = magnetizingCurrentFor(2);  // 2 V mean: 8 % of the 25 uV*s swing, inside the 25 % limit
+    REQUIRE(balanced.size() == offset.size());
+    for (size_t i = 0; i < balanced.size(); ++i) {
+        CHECK_THAT(offset[i], Catch::Matchers::WithinAbs(balanced[i], 1e-9));
+    }
+    CHECK_THROWS_AS(magnetizingCurrentFor(10), InvalidInputException);  // 40 % of the swing: still refused
+}
+

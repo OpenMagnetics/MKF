@@ -1933,6 +1933,38 @@ void Inputs::check_volt_second_balance(const Waveform& voltageSampledWaveform, c
     }
 }
 
+double Inputs::calculate_steady_state_mean_voltage(const OperatingPointExcitation& excitation,
+                                                   const Waveform& voltageSampledWaveform,
+                                                   const std::string& context) {
+    check_volt_second_balance(voltageSampledWaveform, context);
+    // The mean is taken from the voltage as given, not from its resampled copy: resampling a clean
+    // rectangle moves its edges by a fraction of a sample and invents a mean of ~1 % of the swing,
+    // which is not in the data and must not bend the integral.
+    const Waveform& givenWaveform = (excitation.get_voltage() && excitation.get_voltage()->get_waveform() &&
+                                     excitation.get_voltage()->get_waveform()->get_time() &&
+                                     excitation.get_voltage()->get_waveform()->get_data().size() >= 2)
+                                        ? excitation.get_voltage()->get_waveform().value()
+                                        : voltageSampledWaveform;
+    double meanVoltage = calculate_waveform_average(givenWaveform);
+    if (meanVoltage == 0) {
+        return 0;
+    }
+    const auto givenTime = givenWaveform.get_time().value();
+    double period = givenTime.back() - givenTime.front();
+    double meanSampledVoltage = calculate_waveform_average(voltageSampledWaveform);
+    auto acFluxLinkage = calculate_integral_waveform(sum_waveform(voltageSampledWaveform, -meanSampledVoltage), true);
+    const auto& acData = acFluxLinkage.get_data();
+    double acSwing = *std::max_element(acData.begin(), acData.end()) - *std::min_element(acData.begin(), acData.end());
+    double imbalance = acSwing > 0 ? std::fabs(meanVoltage * period) / acSwing : 0;
+    if (imbalance > voltSecondImbalanceWarningThreshold) {
+        Logger::getInstance().warning(context + ": the voltage's mean of " + std::to_string(meanVoltage) +
+            " V (net volt-seconds " + std::to_string(imbalance * 100) + " % of the AC swing) was removed before integrating "
+            "the magnetizing current; a winding in periodic steady state has none (probe offset, resistive drop or a "
+            "capture that is not a whole number of periods)", "Inputs");
+    }
+    return meanVoltage;
+}
+
 void Inputs::check_adviser_inputs_volt_second_balance(const Inputs& inputs,
                                                       std::optional<std::vector<IsolationSide>> coilIsolationSides,
                                                       std::optional<std::string> primaryWindingName,
@@ -2106,8 +2138,8 @@ SignalDescriptor Inputs::calculate_magnetizing_current(OperatingPointExcitation&
                 // the waveform from. The previous code subtracted half this winding's own
                 // pk-pk ripple (commutation step included), understating the DC anchor and
                 // with it B_dc and B_peak by ~30% on CCM flyback/flybuck (ABT #907).
-                check_volt_second_balance(voltageSampledWaveform, "Excitation '" + excitation.get_name().value_or("unnamed") + "'");
-                auto centeredMagnetizingWaveform = calculate_integral_waveform(voltageSampledWaveform, true);
+                double meanVoltage = calculate_steady_state_mean_voltage(excitation, voltageSampledWaveform, "Excitation '" + excitation.get_name().value_or("unnamed") + "'");
+                auto centeredMagnetizingWaveform = calculate_integral_waveform(sum_waveform(voltageSampledWaveform, -meanVoltage), true);
                 centeredMagnetizingWaveform = multiply_waveform(centeredMagnetizingWaveform, 1.0 / magnetizingInductance);
                 double excursionAboveMean = *max_element(centeredMagnetizingWaveform.get_data().begin(),
                                                          centeredMagnetizingWaveform.get_data().end());
@@ -2273,8 +2305,8 @@ SignalDescriptor Inputs::calculate_magnetizing_current(OperatingPointExcitation&
         // misclassified the load as discontinuous, leaving the spurious DC in
         // place. The result was Bpeak = peakToPeak (instead of peakToPeak/2)
         // for harmonic-rich AC excitations.
-        check_volt_second_balance(voltageSampledWaveform, "Excitation '" + excitation.get_name().value_or("unnamed") + "'");
-        sampledMagnetizingCurrentWaveform = calculate_integral_waveform(voltageSampledWaveform, true);
+        double meanVoltage = calculate_steady_state_mean_voltage(excitation, voltageSampledWaveform, "Excitation '" + excitation.get_name().value_or("unnamed") + "'");
+        sampledMagnetizingCurrentWaveform = calculate_integral_waveform(sum_waveform(voltageSampledWaveform, -meanVoltage), true);
         SignalDescriptor magnetizingCurrentExcitation;
 
 

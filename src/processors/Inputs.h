@@ -159,6 +159,14 @@ class Inputs : public MAS::Inputs {
     // maximumVoltSecondImbalance of its AC flux-linkage swing. `context` names the operating point
     // and winding for the message.
     static void check_volt_second_balance(const Waveform& voltageSampledWaveform, const std::string& context);
+    // check_volt_second_balance, then the mean of the voltage AS GIVEN (not its resampled copy). A
+    // winding in periodic steady state has zero net volt-seconds, so what remains (probe offset, I*R
+    // drop, a capture that is not a whole number of periods) is subtracted before integrating the
+    // magnetizing current, and logged as a warning above voltSecondImbalanceWarningThreshold.
+    static constexpr double voltSecondImbalanceWarningThreshold = 0.01;
+    static double calculate_steady_state_mean_voltage(const OperatingPointExcitation& excitation,
+                                                      const Waveform& voltageSampledWaveform,
+                                                      const std::string& context);
     // ABT #1718: the advisers' loss ranking (MagnetizingInductance::calculate_inductance_and_magnetic_flux_density)
     // integrates the primary voltage of every operating point into a magnetizing current, and that
     // integration rejects an unbalanced voltage (check_volt_second_balance). Reached only after every
