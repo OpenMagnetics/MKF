@@ -1,6 +1,7 @@
 #include "processors/MagneticSimulator.h"
 #include "physical_models/LeakageInductance.h"
 #include "physical_models/WindingOhmicLosses.h"
+#include "physical_models/WindingSkinEffectLosses.h"
 #include "physical_models/Impedance.h"
 #include "physical_models/ComplexPermeability.h"
 #include "physical_models/Temperature.h"
@@ -148,7 +149,8 @@ TemperatureOutput MagneticSimulator::calculate_temperature(OperatingPoint& opera
 
 CoreLossesOutput MagneticSimulator::calculate_core_losses(OperatingPoint& operatingPoint, Magnetic magnetic,
                                                           std::optional<WindingLossesOutput>* windingLossesOutput,
-                                                          std::optional<TemperatureOutput>* temperatureOutput) {
+                                                          std::optional<TemperatureOutput>* temperatureOutput,
+                                                          WindingLossesScope windingLossesScope) {
     if (!operatingPoint.get_excitations_per_winding()[0].get_current()) {
         throw InvalidInputException(ErrorCode::MISSING_DATA, "Missing current in operating point");
     }
@@ -195,7 +197,20 @@ CoreLossesOutput MagneticSimulator::calculate_core_losses(OperatingPoint& operat
         std::optional<WindingLossesOutput> windingLosses;
         TemperatureConfig config;
         if (withWinding) {
-            windingLosses = calculate_winding_losses(operatingPoint, magnetic, windingTemperature);
+            switch (windingLossesScope) {
+                case WindingLossesScope::FULL:
+                    windingLosses = calculate_winding_losses(operatingPoint, magnetic, windingTemperature);
+                    break;
+                case WindingLossesScope::OHMIC_AND_SKIN_EFFECT:
+                    windingLosses = WindingSkinEffectLosses::calculate_skin_effect_losses(
+                        magnetic.get_coil(), windingTemperature,
+                        WindingOhmicLosses::calculate_ohmic_losses(magnetic.get_coil(), operatingPoint, windingTemperature),
+                        0.5);
+                    break;
+                case WindingLossesScope::OHMIC:
+                    windingLosses = WindingOhmicLosses::calculate_ohmic_losses(magnetic.get_coil(), operatingPoint, windingTemperature);
+                    break;
+            }
             Outputs losses;
             losses.set_core_losses(coreLossesOutput);
             losses.set_winding_losses(windingLosses.value());

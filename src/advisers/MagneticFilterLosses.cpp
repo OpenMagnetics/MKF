@@ -620,10 +620,15 @@ std::pair<bool, double> MagneticFilterLosses::evaluate_magnetic(Magnetic* magnet
 
     for (size_t operatingPointIndex = 0; operatingPointIndex < inputs->get_operating_points().size(); ++operatingPointIndex) {
         auto operatingPoint = inputs->get_operating_points()[operatingPointIndex];
-        auto temperature = operatingPoint.get_conditions().get_ambient_temperature();
-        auto windingLosses = _magneticSimulator.calculate_winding_losses(operatingPoint, *magnetic, temperature);
+        // ABT #838: core and winding losses from ONE loss <-> temperature solve, each at the
+        // temperature their combined heat produces (previously the winding losses were computed
+        // here at ambient, beside core losses solved at the hot core: an inconsistent pair, and
+        // the winding losses computed twice).
+        std::optional<WindingLossesOutput> solvedWindingLosses;
+        auto coreLosses = _magneticSimulator.calculate_core_losses(operatingPoint, *magnetic, &solvedWindingLosses, nullptr,
+                                                                   WindingLossesScope::FULL);
+        auto windingLosses = solvedWindingLosses.value();
         auto windingLossesValue = windingLosses.get_winding_losses();
-        auto coreLosses = _magneticSimulator.calculate_core_losses(operatingPoint, *magnetic);
         auto coreLossesValue = coreLosses.get_core_losses();
         scoring += windingLossesValue + coreLossesValue;
 
@@ -655,15 +660,13 @@ std::pair<bool, double> MagneticFilterLossesNoProximity::evaluate_magnetic(Magne
 
     for (size_t operatingPointIndex = 0; operatingPointIndex < inputs->get_operating_points().size(); ++operatingPointIndex) {
         auto operatingPoint = inputs->get_operating_points()[operatingPointIndex];
-        auto temperature = operatingPoint.get_conditions().get_ambient_temperature();
-        auto windingLosses = _windingOhmicLosses.calculate_ohmic_losses(magnetic->get_coil(), operatingPoint, temperature);
-        // Phase 1 fix: was previously called twice on the same windingLosses
-        // (double-counting the skin-effect contribution). One call is correct.
-        windingLosses = _windingSkinEffectLosses.calculate_skin_effect_losses(magnetic->get_coil(), temperature, windingLosses, 0.5);
-        // windingLosses = WindingLosses::combine_turn_losses(windingLosses, magnetic->get_coil());
+        // ABT #838: DC + skin-effect winding losses (no proximity) and core losses from ONE
+        // loss <-> temperature solve, each at the temperature their combined heat produces.
+        std::optional<WindingLossesOutput> solvedWindingLosses;
+        auto coreLosses = _magneticSimulator.calculate_core_losses(operatingPoint, *magnetic, &solvedWindingLosses, nullptr,
+                                                                   WindingLossesScope::OHMIC_AND_SKIN_EFFECT);
+        auto windingLosses = solvedWindingLosses.value();
         double windingLossesValue = windingLosses.get_winding_losses();
-
-        auto coreLosses = _magneticSimulator.calculate_core_losses(operatingPoint, *magnetic);
         auto coreLossesValue = coreLosses.get_core_losses();
         scoring += windingLossesValue + coreLossesValue;
 

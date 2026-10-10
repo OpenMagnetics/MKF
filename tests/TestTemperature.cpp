@@ -3165,11 +3165,21 @@ TEST_CASE("Temperature: 220kW Transformer", "[temperature][transformer][smoke-te
     auto magnetic = OpenMagnetics::magnetic_autocomplete(mas.get_magnetic());
     auto inputs = OpenMagnetics::inputs_autocomplete(mas.get_inputs(), magnetic);
 
+    // Forced convection at 4 m/s is part of the OPERATING CONDITIONS (ABT #838): simulate()
+    // solves the losses at the temperature this cooling produces, so it must see the airflow,
+    // not only the thermal network built afterwards.
+    MAS::Cooling forcedCooling;
+    forcedCooling.set_velocity(std::vector<double>{4.0, 0.0, 0.0});  // 4 m/s airflow
+    for (auto& operatingPoint : inputs.get_mutable_operating_points()) {
+        forcedCooling.set_temperature(operatingPoint.get_conditions().get_ambient_temperature());
+        operatingPoint.get_mutable_conditions().set_cooling(forcedCooling);
+    }
+
     // Run magnetic simulation to get actual losses
     auto losses = getLossesFromSimulation(magnetic, inputs);
 
-    TemperatureConfig config;
-    config.ambientTemperature = losses.ambientTemperature;
+    TemperatureConfig config = TemperatureConfig::fromMasOperatingConditions(inputs.get_operating_points()[0].get_conditions());
+    REQUIRE(config.masCooling.has_value());
     config.coreLosses = losses.coreLosses;
     if (!losses.windingLossesOutput.has_value()) {
         throw std::runtime_error("WindingLossesOutput missing from simulation results");
@@ -3178,12 +3188,6 @@ TEST_CASE("Temperature: 220kW Transformer", "[temperature][transformer][smoke-te
     config.windingLossesOutput = losses.windingLossesOutput.value();
     config.plotSchematic = true;
     config.schematicOutputPath = (getOutputDir() / "thermal_schematic_220kW_transformer.svg").string();
-
-    // Add forced convection at 4 m/s
-    MAS::Cooling forcedCooling;
-    forcedCooling.set_temperature(losses.ambientTemperature);
-    forcedCooling.set_velocity(std::vector<double>{4.0, 0.0, 0.0});  // 4 m/s airflow
-    config.masCooling = forcedCooling;
 
     Temperature temp(magnetic, config);
     auto result = temp.calculateTemperatures();

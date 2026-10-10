@@ -11,6 +11,17 @@ using namespace MAS;
 
 namespace OpenMagnetics {
 
+// ABT #838: which winding-loss model the loss <-> temperature solve evaluates for a wound coil.
+// The advisers' loss filters each publish their own winding-loss model (MagneticFilterLosses the
+// full one, MagneticFilterLossesNoProximity DC + skin effect, the core adviser's post-processing
+// DC only); the solve heats the network with exactly the winding losses the caller publishes, so
+// the core and winding losses it returns are one self-consistent pair and are computed once.
+enum class WindingLossesScope {
+    FULL,                       // WindingLosses: DC + skin + proximity (simulate())
+    OHMIC_AND_SKIN_EFFECT,      // DC + skin effect, no proximity
+    OHMIC                       // DC only
+};
+
 class MagneticSimulator {
     private:
         ReluctanceModels _reluctanceModelName;
@@ -80,12 +91,14 @@ class MagneticSimulator {
         // (thermal runaway: there is no operating point to report, and the last iterate is not one).
         // `windingLossesOutput` / `temperatureOutput`, when given, receive the winding losses and
         // the full-network temperature solved together with the returned core losses (asking for
-        // winding losses of an unwound coil throws).
+        // winding losses of an unwound coil throws). `windingLossesScope` selects the winding-loss
+        // model the solve evaluates (and returns) for a wound coil.
         static constexpr double kOperatingTemperatureTolerance = 0.5;      // K, both temperatures
         static constexpr size_t kOperatingTemperatureMaximumIterations = 100;
         CoreLossesOutput calculate_core_losses(OperatingPoint& operatingPoint, Magnetic magnetic,
                                                std::optional<WindingLossesOutput>* windingLossesOutput = nullptr,
-                                               std::optional<TemperatureOutput>* temperatureOutput = nullptr);
+                                               std::optional<TemperatureOutput>* temperatureOutput = nullptr,
+                                               WindingLossesScope windingLossesScope = WindingLossesScope::FULL);
         LeakageInductanceOutput calculate_leakage_inductance(OperatingPoint& operatingPoint, Magnetic magnetic);
         static LeakageInductanceOutput calculate_leakage_inductance(Magnetic magnetic, double frequency);
         MagnetizingInductanceOutput calculate_magnetizing_inductance(OperatingPoint& operatingPoint, Magnetic magnetic);

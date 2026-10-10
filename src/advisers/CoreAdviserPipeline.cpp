@@ -226,7 +226,6 @@ std::vector<std::pair<Magnetic, double>> cull_to_unique_core_shapes(std::vector<
 Mas CoreAdviser::post_process_core(Magnetic magnetic, Inputs inputs) {
     MagneticEnergy magneticEnergy;
     Mas mas;
-    double temperature = inputs.get_maximum_temperature();
 
     magnetic.get_reference();
     if (magnetic.get_manufacturer_info()) {
@@ -273,9 +272,14 @@ Mas CoreAdviser::post_process_core(Magnetic magnetic, Inputs inputs) {
         magnetizingInductanceOutput.set_origin(ResultOrigin::SIMULATION);
 
 
-        WindingLossesOutput windingLossesOutput = _windingOhmicLosses.calculate_ohmic_losses(magnetic.get_coil(), operatingPoint, temperature);
-
-        CoreLossesOutput coreLossesOutput = _magneticSimulator.calculate_core_losses(operatingPoint, magnetic);
+        // ABT #838: DC winding losses and core losses from ONE loss <-> temperature solve, each at
+        // the temperature their combined heat produces (previously the DC losses were computed
+        // here at the inputs' maximum temperature, beside core losses solved with their own copy
+        // of the winding losses).
+        std::optional<WindingLossesOutput> solvedWindingLosses;
+        CoreLossesOutput coreLossesOutput = _magneticSimulator.calculate_core_losses(operatingPoint, magnetic, &solvedWindingLosses, nullptr,
+                                                                                     WindingLossesScope::OHMIC);
+        WindingLossesOutput windingLossesOutput = solvedWindingLosses.value();
 
         InductanceOutput inductanceOutput;
         inductanceOutput.set_magnetizing_inductance(magnetizingInductanceOutput);
