@@ -8298,13 +8298,53 @@ void Coil::set_isolation_sides(std::vector<IsolationSide> isolationSides) {
     }
 }
 
+namespace {
+// Every turn of the coil grouped under its layer (or section) name, in turns-description order,
+// built from ONE copy of the turns description. The generated getter returns the turns by value,
+// so get_turns_by_layer copies every turn of the coil on each call, and a loop over the layers
+// that calls it once per layer is quadratic in the number of turns. Same exceptions as
+// get_turns_by_layer / get_turns_by_section: throws if the turns description is missing or a turn
+// has no layer (section).
+std::map<std::string, std::vector<Turn>> group_turns_by_layer(const Coil& coil) {
+    auto turns = coil.get_turns_description().value();
+    std::map<std::string, std::vector<Turn>> turnsByLayer;
+    for (auto & turn : turns) {
+        auto layerName = turn.get_layer().value();
+        turnsByLayer[layerName].push_back(std::move(turn));
+    }
+    return turnsByLayer;
+}
+
+std::map<std::string, std::vector<Turn>> group_turns_by_section(const Coil& coil) {
+    auto turns = coil.get_turns_description().value();
+    std::map<std::string, std::vector<Turn>> turnsBySection;
+    for (auto & turn : turns) {
+        auto sectionName = turn.get_section().value();
+        turnsBySection[sectionName].push_back(std::move(turn));
+    }
+    return turnsBySection;
+}
+
+// The turns of one group, or an empty vector when the group has none (what get_turns_by_layer /
+// get_turns_by_section return for a name with no turns).
+const std::vector<Turn>& turns_of_group(const std::map<std::string, std::vector<Turn>>& turnsByGroup, const std::string& groupName) {
+    static const std::vector<Turn> noTurns;
+    auto it = turnsByGroup.find(groupName);
+    if (it == turnsByGroup.end()) {
+        return noTurns;
+    }
+    return it->second;
+}
+} // namespace
+
+// The generated getters return the descriptions by value. That one copy is unavoidable here, so
+// the lookups below move the matching elements out of it rather than copying them a second time.
 std::vector<Layer> Coil::get_layers_by_section(std::string sectionName) const {
     auto layers = get_layers_description().value();
     std::vector<Layer> foundLayers;
     for (auto & layer : layers) {
-        auto layerSectionName = layer.get_section().value();
-        if (layerSectionName == sectionName) {
-            foundLayers.push_back(layer);
+        if (layer.get_section().value() == sectionName) {
+            foundLayers.push_back(std::move(layer));
         }
     }
     return foundLayers;
@@ -8314,9 +8354,8 @@ std::vector<Turn> Coil::get_turns_by_layer(std::string layerName) const {
     auto turns = get_turns_description().value();
     std::vector<Turn> foundTurns;
     for (auto & turn : turns) {
-        auto turnLayerName = turn.get_layer().value();
-        if (turnLayerName == layerName) {
-            foundTurns.push_back(turn);
+        if (turn.get_layer().value() == layerName) {
+            foundTurns.push_back(std::move(turn));
         }
     }
     return foundTurns;
@@ -8326,9 +8365,8 @@ std::vector<Turn> Coil::get_turns_by_winding(std::string windingName) const {
     auto turns = get_turns_description().value();
     std::vector<Turn> foundTurns;
     for (auto & turn : turns) {
-        auto turnSectionName = turn.get_winding();
-        if (turnSectionName == windingName) {
-            foundTurns.push_back(turn);
+        if (turn.get_winding() == windingName) {
+            foundTurns.push_back(std::move(turn));
         }
     }
     return foundTurns;
@@ -8338,9 +8376,8 @@ std::vector<Turn> Coil::get_turns_by_section(std::string sectionName) const {
     auto turns = get_turns_description().value();
     std::vector<Turn> foundTurns;
     for (auto & turn : turns) {
-        auto turnSectionName = turn.get_section().value();
-        if (turnSectionName == sectionName) {
-            foundTurns.push_back(turn);
+        if (turn.get_section().value() == sectionName) {
+            foundTurns.push_back(std::move(turn));
         }
     }
     return foundTurns;
@@ -8452,7 +8489,7 @@ std::vector<Section> Coil::get_sections_by_group(std::string groupName) const {
         if (section.get_group()) {
             auto sectionSectionGroup = section.get_group().value();
             if (sectionSectionGroup == groupName) {
-                foundSections.push_back(section);
+                foundSections.push_back(std::move(section));
             }
         }
     }
@@ -8465,7 +8502,7 @@ const std::vector<Section> Coil::get_sections_by_type(ElectricalType electricalT
     for (auto & section : sections) {
         auto sectionSectionType = section.get_type();
         if (sectionSectionType == electricalType) {
-            foundSections.push_back(section);
+            foundSections.push_back(std::move(section));
         }
     }
     return foundSections;
@@ -8538,7 +8575,7 @@ const std::vector<Layer> Coil::get_layers_by_type(ElectricalType electricalType)
     for (auto & layer : layers) {
         auto layerSectionType = layer.get_type();
         if (layerSectionType == electricalType) {
-            foundLayers.push_back(layer);
+            foundLayers.push_back(std::move(layer));
         }
     }
     return foundLayers;
@@ -8601,12 +8638,13 @@ size_t Coil::get_winding_index_by_name(const std::vector<Winding>& functionalDes
 }
 
 size_t Coil::get_turn_index_by_name(std::string name) {
-    if (!get_turns_description()) {
+    // get_turns_description() returns an optional by value: take ONE copy, held in a named
+    // local (a reference into the temporary would dangle), and check it rather than copying twice.
+    const auto turnsDescription = get_turns_description();
+    if (!turnsDescription) {
         throw CoilNotProcessedException("Turns description not set, did you forget to wind?");
     }
-    // Note: get_turns_description() returns an optional by value; .value() returns
-    // a reference into that temporary. Copy out to avoid dangling reference.
-    auto turns = get_turns_description().value();
+    const auto& turns = turnsDescription.value();
 
     // Validate cache: the turns vector may have been replaced since the cache was
     // populated (e.g. re-winding). A stale index would cause out-of-bounds writes
@@ -9135,6 +9173,9 @@ Coil::FillingFactorsOutput Coil::calculate_filling_factor(size_t groupIndex) {
         }
     }
 
+    // One grouping of the turns for the whole loop instead of a full copy of them per layer
+    // (see group_turns_by_layer); built where get_turns_by_layer was first called.
+    std::optional<std::map<std::string, std::vector<Turn>>> turnsByLayer;
     for (const auto& layer : layers) {
         // Track the true maximum, not just overflows: this value is reported now, and a
         // healthy coil should show its real headroom (e.g. 0.49) rather than a placeholder 0.
@@ -9142,7 +9183,10 @@ Coil::FillingFactorsOutput Coil::calculate_filling_factor(size_t groupIndex) {
             maximumLayerFillingFactor = std::max(maximumLayerFillingFactor, layer.get_filling_factor().value());
         }
         if (layer.get_type() == ElectricalType::CONDUCTION) {
-            auto turns = get_turns_by_layer(layer.get_name());
+            if (!turnsByLayer) {
+                turnsByLayer = group_turns_by_layer(*this);
+            }
+            const auto& turns = turns_of_group(turnsByLayer.value(), layer.get_name());
             for (const auto& turn : turns) {
                 area += turn.get_dimensions().value()[0] * turn.get_dimensions().value()[1];
             }
@@ -16513,10 +16557,36 @@ bool Coil::wind_toroidal_additional_turns() {
     std::vector<std::pair<Layer, double>> maximumAdditionalRadialHeightPerInsulationLayerByIndex;
     auto windingOrientation = get_winding_orientation();
 
+    // One grouping of the (stored) turns per section and per layer for the whole loop instead of a
+    // full copy of them per section / layer (see group_turns_by_layer), built where
+    // get_turns_by_section / get_turns_by_layer were first called. The stored turns do not change
+    // until the set_turns_description at the end. Likewise the turn indexes: get_turn_index_by_name
+    // copied every turn per turn; `turns` holds the stored turns in the same order with the same names.
+    std::optional<std::map<std::string, std::vector<Turn>>> turnsBySection;
+    std::optional<std::map<std::string, std::vector<Turn>>> turnsByLayer;
+    std::map<std::string, size_t> turnIndexByName;
+    bool turnIndexByNameBuilt = false;
+    auto get_turn_index = [&](const std::string& name) {
+        if (!turnIndexByNameBuilt) {
+            for (size_t i = 0; i < turns.size(); ++i) {
+                turnIndexByName.emplace(turns[i].get_name(), i);   // first match, as get_turn_index_by_name
+            }
+            turnIndexByNameBuilt = true;
+        }
+        auto it = turnIndexByName.find(name);
+        if (it == turnIndexByName.end()) {
+            throw CoilException(ErrorCode::COIL_WINDING_ERROR, "No such a turn name: " + name);
+        }
+        return it->second;
+    };
+
     for (auto section : sections) { 
         if (section.get_type() == ElectricalType::CONDUCTION) {
             std::vector<std::vector<double>> placedTurnsCoordinates;
-            auto turnsInSection = get_turns_by_section(section.get_name());
+            if (!turnsBySection) {
+                turnsBySection = group_turns_by_section(*this);
+            }
+            const auto& turnsInSection = turns_of_group(turnsBySection.value(), section.get_name());
             auto partialWinding = section.get_partial_windings()[0];  // TODO: Support multiwinding in layers
             auto winding = get_winding_by_name(partialWinding.get_winding());
             auto windingIndex = get_winding_index_by_name(partialWinding.get_winding());
@@ -16666,7 +16736,10 @@ bool Coil::wind_toroidal_additional_turns() {
             size_t conductionLayerCount = 0;
             for (auto layer : layersThisSection) {
                 if (layer.get_type() == ElectricalType::CONDUCTION) {
-                    auto turnsThisLayer = get_turns_by_layer(layer.get_name());
+                    if (!turnsByLayer) {
+                        turnsByLayer = group_turns_by_layer(*this);
+                    }
+                    const auto& turnsThisLayer = turns_of_group(turnsByLayer.value(), layer.get_name());
                     conductionLayerCount++;   // (first-layer exemption removed, ABT #865)
                     // Winding progression sense of this layer (sign of the inner-azimuth step),
                     // for the outer-crossing monotonicity guard.
@@ -16678,7 +16751,7 @@ bool Coil::wind_toroidal_additional_turns() {
                         layerWindingDirection = firstStep < 0 ? -1.0 : 1.0;
                     }
                     for (auto turn : turnsThisLayer) {
-                        auto turnIndex = get_turn_index_by_name(turn.get_name());
+                        auto turnIndex = get_turn_index(turn.get_name());
                         if (lastStationOfConductor.count(turn.get_name())) {
                             continue;   // its connection is the output terminal (see above)
                         }
@@ -17505,9 +17578,15 @@ bool Coil::delimit_and_compact_rectangular_window() {
     if (get_layers_description()) {
         auto layers = get_layers_description().value();
         if (get_turns_description()) {
+            // One grouping of the turns for the whole loop instead of a full copy of them per
+            // layer (see group_turns_by_layer); built where get_turns_by_layer was first called.
+            std::optional<std::map<std::string, std::vector<Turn>>> turnsByLayer;
             for (size_t i = 0; i < layers.size(); ++i) {
                 if (layers[i].get_type() == ElectricalType::CONDUCTION) {
-                    auto turnsInLayer = get_turns_by_layer(layers[i].get_name());
+                    if (!turnsByLayer) {
+                        turnsByLayer = group_turns_by_layer(*this);
+                    }
+                    const auto& turnsInLayer = turns_of_group(turnsByLayer.value(), layers[i].get_name());
                     auto layerCoordinates = layers[i].get_coordinates();
                     double currentLayerMaximumWidth = (turnsInLayer[0].get_coordinates()[0] - layerCoordinates[0]) + turnsInLayer[0].get_dimensions().value()[0] / 2;
                     double currentLayerMinimumWidth = (turnsInLayer[0].get_coordinates()[0] - layerCoordinates[0]) - turnsInLayer[0].get_dimensions().value()[0] / 2;
@@ -17874,9 +17953,15 @@ bool Coil::delimit_and_compact_round_window() {
     if (get_layers_description()) {
         auto layers = get_layers_description().value();
         if (get_turns_description()) {
+            // One grouping of the turns for the whole loop instead of a full copy of them per
+            // layer (see group_turns_by_layer); built where get_turns_by_layer was first called.
+            std::optional<std::map<std::string, std::vector<Turn>>> turnsByLayer;
             for (size_t i = 0; i < layers.size(); ++i) {
                 if (layers[i].get_type() == ElectricalType::CONDUCTION) {
-                    auto turnsInLayer = get_turns_by_layer(layers[i].get_name());
+                    if (!turnsByLayer) {
+                        turnsByLayer = group_turns_by_layer(*this);
+                    }
+                    const auto& turnsInLayer = turns_of_group(turnsByLayer.value(), layers[i].get_name());
                     auto layerCoordinates = layers[i].get_coordinates();
                     auto section = get_section_by_name(layers[i].get_section().value());
 
@@ -17924,9 +18009,15 @@ bool Coil::delimit_and_compact_round_window() {
         auto wirePerWinding = get_wires();
         auto layers = get_layers_description().value();
         if (get_turns_description()) {
+            // One grouping of the turns for the whole loop instead of a full copy of them per
+            // layer (see group_turns_by_layer); built where get_turns_by_layer was first called.
+            std::optional<std::map<std::string, std::vector<Turn>>> turnsByLayer;
             for (size_t i = 0; i < layers.size(); ++i) {
                 if (layers[i].get_type() == ElectricalType::CONDUCTION) {
-                    auto turnsInLayer = get_turns_by_layer(layers[i].get_name());
+                    if (!turnsByLayer) {
+                        turnsByLayer = group_turns_by_layer(*this);
+                    }
+                    const auto& turnsInLayer = turns_of_group(turnsByLayer.value(), layers[i].get_name());
                     auto layerCoordinates = layers[i].get_coordinates();
                     auto section = get_section_by_name(layers[i].get_section().value());
 
