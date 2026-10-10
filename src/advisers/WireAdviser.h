@@ -109,7 +109,18 @@ class WireAdviser {
         // multi-winding litz-fit problem is out of ABT #5's scope.
         bool _synthesizeLitz = false;
         std::string _log;
+        // ABT #1699: wires the strict packing pass refused because the real winder (real winding
+        // geometry on) cannot close their section against its crossing stations and own leads.
+        // Accumulated until reset_real_winding_packing_diagnosis().
+        size_t _realWindingPackingRefusals = 0;
+        std::string _firstRealWindingPackingRefusal;
     public:
+        void reset_real_winding_packing_diagnosis() {
+            _realWindingPackingRefusals = 0;
+            _firstRealWindingPackingRefusal.clear();
+        }
+        size_t get_real_winding_packing_refusals() const { return _realWindingPackingRefusals; }
+        const std::string& get_first_real_winding_packing_refusal() const { return _firstRealWindingPackingRefusal; }
 
         WireAdviser(double maximumEffectiveCurrentDensity, int maximumNumberParallels) {
             _maximumEffectiveCurrentDensity = maximumEffectiveCurrentDensity;

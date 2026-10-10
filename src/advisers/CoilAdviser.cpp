@@ -515,6 +515,7 @@ namespace OpenMagnetics {
         _diagnosisBestFailure.clear();
         _diagnosisRealWindingRefusals = 0;
         _diagnosisRealWindingRefusal.clear();
+        _wireAdviser.reset_real_winding_packing_diagnosis();
         _lastNoResultsReason = std::nullopt;
         auto core = mas.get_magnetic().get_core();
         auto coreType = core.get_functional_description().get_type();
@@ -919,6 +920,14 @@ namespace OpenMagnetics {
                         + " candidates were refused by the real winder, e.g. "
                         + _diagnosisRealWindingRefusal;
                 }
+            }
+            // ABT #1699: with real winding geometry on, say how many wires the strict packing
+            // pass refused because the real winder could not close their section once its
+            // crossing stations and connection-lead slots are reserved.
+            if (_wireAdviser.get_real_winding_packing_refusals() > 0) {
+                reason += "; not real-windable in this window: " + std::to_string(_wireAdviser.get_real_winding_packing_refusals())
+                    + " wires do not pack once the real winder's crossing stations and connection-lead blocking are reserved, e.g. "
+                    + _wireAdviser.get_first_real_winding_packing_refusal();
             }
             _lastNoResultsReason = reason;
             logEntry("WARNING: " + reason, "CoilAdviser", 1);

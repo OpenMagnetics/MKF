@@ -3391,6 +3391,31 @@ TEST_CASE("Test_CoilAdviser_Real_Winding_Web_Flyback_Advise_All_Is_Real_Windable
     settings.reset();
 }
 
+TEST_CASE("Test_CoilAdviser_Real_Winding_Web_Default_Two_Winding_PQ2715_Is_Not_Real_Windable", "[adviser][coil-adviser][bug][abt-1699]") {
+    // ABT #1699 flow 3 (Alf, 2026-10-10): the web's default two-winding design on PQ 27/15 (13 + 13
+    // turns, 2.9 A rms), with the balanced +-50 V primary built in-test (the captured one is refused
+    // up front, ABT #1718/#1719), advised with real winding geometry on. No coil the adviser may
+    // propose is real-windable in this window: with one crossing station per layer and parallel
+    // and the slots the connection leads block, every wire within the current-density limit needs
+    // more layers than a P|S section has. The adviser must return nothing, and say so: the reason
+    // names the stations and the lead blocking.
+    settings.reset();
+    settings.set_coil_delimit_and_compact(true);
+    settings.set_preferred_wire_standard(MAS::WireStandard::IEC_60317);
+    settings.set_coil_use_real_winding_geometry(true);
+    auto mas = load_default_two_winding_for_balance_check(true);
+    CoilAdviser coilAdviser;
+    auto masMagneticsWithCoil = coilAdviser.get_advised_coil(mas, 1);
+    settings.reset();
+    CHECK(masMagneticsWithCoil.empty());
+    REQUIRE(coilAdviser.get_last_no_results_reason());
+    auto reason = coilAdviser.get_last_no_results_reason().value();
+    INFO(reason);
+    CHECK(reason.find("not real-windable in this window") != std::string::npos);
+    CHECK(reason.find("crossing stations") != std::string::npos);
+    CHECK(reason.find("connection-lead blocking") != std::string::npos);
+}
+
 TEST_CASE("Test_MagneticFilterAreaWithParallels_Reserves_Crossing_Stations_Only_With_Real_Winding", "[adviser][coil-adviser][magnetic-filter][bug][abt-1699]") {
     // ABT #1699: 5 turns x 2 parallels of a 1.02 mm wire in a section 5.65 mm along the layer and
     // 2.04 mm deep. Ideally that is 5 turns per layer in 2 layers: it packs. With real winding
@@ -3429,6 +3454,60 @@ TEST_CASE("Test_MagneticFilterAreaWithParallels_Reserves_Crossing_Stations_Only_
     winding.set_number_turns(1);
     winding.set_number_parallels(9);
     CHECK(filter.evaluate_magnetic(winding, section, 1, sectionArea, false).first);
+    settings.reset();
+}
+
+TEST_CASE("Test_MagneticFilterAreaWithParallels_Reserves_Lead_Blocking_Only_With_Real_Winding", "[adviser][coil-adviser][magnetic-filter][bug][abt-1699]") {
+    // ABT #1699 (Alf, 2026-10-10: model lead blocking too): 8 turns of a 1.02 mm wire in a section
+    // 5.65 mm along the layer (5 positions). With the crossing stations alone a layer holds 4 turns
+    // and 2 layers (2.04 mm) close it. The real winder also blocks a slot of every outer layer for
+    // the entrance lead that crosses it (blocked={0+0,0+1,...}), so the second layer holds 3 and a
+    // third layer is needed: in a 2.04 mm deep section it does not pack, in a 3.06 mm one it does.
+    // With the setting off neither the stations nor the leads are charged.
+    OpenMagnetics::Wire wire;
+    wire.set_type(MAS::WireType::ROUND);
+    wire.set_name("abt1699 round 1.02");
+    wire.set_nominal_value_conducting_diameter(0.0010);
+    wire.set_nominal_value_outer_diameter(0.00102);
+    wire.set_nominal_value_conducting_area(std::numbers::pi * 0.0005 * 0.0005);
+    wire.set_material("copper");
+    wire.set_number_conductors(1);
+    OpenMagnetics::Winding winding;
+    winding.set_name("Primary");
+    winding.set_number_turns(8);
+    winding.set_number_parallels(1);
+    winding.set_isolation_side(MAS::IsolationSide::PRIMARY);
+    winding.set_wire(wire);
+    auto sectionOfDepth = [](double depth) {
+        MAS::Section section;
+        section.set_name("Primary section 0");
+        section.set_type(MAS::ElectricalType::CONDUCTION);
+        section.set_coordinate_system(MAS::CoordinateSystem::CARTESIAN);
+        section.set_layers_orientation(MAS::WindingOrientation::OVERLAPPING);
+        section.set_dimensions({depth, 0.00565});
+        section.set_coordinates({0.01, 0, 0});
+        return section;
+    };
+
+    settings.reset();
+    settings.set_coil_use_real_winding_geometry(false);
+    {
+        MagneticFilterAreaWithParallels filter;
+        CHECK(filter.evaluate_magnetic(winding, sectionOfDepth(0.00204), 1, 0.00204 * 0.00565, false).first);
+    }
+    settings.set_coil_use_real_winding_geometry(true);
+    {
+        MagneticFilterAreaWithParallels filter;
+        CHECK(!filter.evaluate_magnetic(winding, sectionOfDepth(0.00204), 1, 0.00204 * 0.00565, false).first);
+        CHECK(filter.get_real_winding_refusals() == 1);
+        INFO(filter.get_first_real_winding_refusal());
+        CHECK(filter.get_first_real_winding_refusal().find("Primary section 0") != std::string::npos);
+    }
+    {
+        MagneticFilterAreaWithParallels filter;
+        CHECK(filter.evaluate_magnetic(winding, sectionOfDepth(0.00306), 1, 0.00306 * 0.00565, false).first);
+        CHECK(filter.get_real_winding_refusals() == 0);
+    }
     settings.reset();
 }
 

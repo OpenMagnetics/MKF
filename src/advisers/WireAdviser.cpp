@@ -196,6 +196,12 @@ std::vector<std::pair<Winding, double>>  WireAdviser::filter_by_area_with_parall
             listOfIndexesToErase.push_back(coilIndex);
         }
     }
+    if (filter.get_real_winding_refusals() > 0) {
+        if (_realWindingPackingRefusals == 0) {
+            _firstRealWindingPackingRefusal = filter.get_first_real_winding_refusal();
+        }
+        _realWindingPackingRefusals += filter.get_real_winding_refusals();
+    }
 
     for (size_t i = 0; i < (*unfilteredCoils).size(); ++i) {
         if (listOfIndexesToErase.size() > 0 && i == listOfIndexesToErase.front()) {

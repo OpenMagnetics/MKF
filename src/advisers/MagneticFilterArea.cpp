@@ -422,6 +422,54 @@ static bool fits_in_whole_turns_per_layer(const Wire& wire, const Winding& windi
     return numberLayers * layerThickness <= depth * (1 + 1e-9);
 }
 
+// ABT #1699 (Alf, 2026-10-10: "model lead blocking too"): with real winding geometry on, the real
+// winder also takes slots out of every layer a connection lead crosses -- the blocked={0+1,0+2,...}
+// per layer it reports, which come from the drawn lead routes (per-edge rows, stubs, U landings,
+// Coil::compute_connection_blocked_slots_per_layer) and are iterated to a fixpoint with the
+// crossing stations inside Coil::wind. That geometry exists only once a layout does, so it is not
+// re-derived here: the real winder itself is asked. A probe coil holds this winding alone -- its
+// wire, its parallels and the turns one of its numberSections sections carries -- in a window the
+// size of the section, and is wound with real winding geometry. Its own terminal leads cross its
+// own outer layers exactly as the entrance lead does in the winding's first section (the one that
+// holds the terminal), and the stations are charged by the same code, so the probe packs iff the
+// real winder can close this section with this wire against its own leads. Leads of OTHER windings
+// crossing the section (and their insulation clearance) depend on wires not yet chosen here; the
+// coil adviser's own real wind of the combination and MagneticFilterRealWinding judge those.
+// A COIL_WINDING_ERROR from the probe (stations and blocking do not converge) is the refusal;
+// any other exception propagates.
+static bool real_winder_packs_section_alone(const Wire& wire, const Winding& winding, const Section& section, double numberSections, std::string* refusal) {
+    Winding probeWinding = winding;
+    probeWinding.set_wire(wire);
+    probeWinding.set_number_turns(static_cast<int64_t>(std::ceil(static_cast<double>(winding.get_number_turns()) / numberSections)));
+    probeWinding.set_wound_with(std::nullopt);
+    probeWinding.set_winding_window(std::nullopt);
+    Coil probe;
+    probe.set_functional_description({probeWinding});
+    probe.set_bobbin(Bobbin::create_quick_bobbin(section.get_dimensions()[1], section.get_dimensions()[0]));
+    probe.set_layers_orientation(section.get_layers_orientation());
+    bool wound = false;
+    try {
+        wound = probe.wind();
+    }
+    catch (const CoilException& e) {
+        if (e.code() != ErrorCode::COIL_WINDING_ERROR) {
+            throw;
+        }
+        *refusal = e.what();
+        return false;
+    }
+    if (!wound) {
+        *refusal = probe.get_last_fit_failure().empty() ? std::string("the real winder returned no fitting layout")
+                                                        : probe.get_last_fit_failure();
+        return false;
+    }
+    if (!probe.are_turns_inside_winding_window()) {
+        *refusal = "the real winder puts turns outside the section: " + probe.get_last_fit_failure();
+        return false;
+    }
+    return true;
+}
+
 std::pair<bool, double> MagneticFilterAreaWithParallels::evaluate_magnetic(Winding winding, Section section, double numberSections, double sectionArea, bool allowNotFit) {
     auto wire = Coil::resolve_wire(winding);
     if (!Coil::resolve_wire(winding).get_conducting_area()) {
@@ -443,6 +491,20 @@ std::pair<bool, double> MagneticFilterAreaWithParallels::evaluate_magnetic(Windi
     if (!allowNotFit && wire.get_type() != WireType::PLANAR &&
         (!section.get_coordinate_system() || section.get_coordinate_system().value() == CoordinateSystem::CARTESIAN)) {
         packs = fits_in_whole_turns_per_layer(wire, winding, section, numberSections);
+    }
+
+    // ABT #1699: with real winding geometry on, the connection leads' blocked slots too, as the
+    // real winder lays them (see real_winder_packs_section_alone). Asked last: it winds a coil.
+    if (packs && !allowNotFit && neededOuterAreaNoCompact < sectionArea && settings.get_coil_use_real_winding_geometry() &&
+        wire.get_type() != WireType::PLANAR &&
+        (!section.get_coordinate_system() || section.get_coordinate_system().value() == CoordinateSystem::CARTESIAN)) {
+        std::string refusal;
+        packs = real_winder_packs_section_alone(wire, winding, section, numberSections, &refusal);
+        if (!packs && _realWindingRefusals++ == 0) {
+            _firstRealWindingRefusal = "winding '" + winding.get_name() + "' with " +
+                std::to_string(winding.get_number_parallels()) + " x " + wire.get_name().value_or("(unnamed wire)") +
+                " in section '" + section.get_name() + "': " + refusal;
+        }
     }
 
     if (neededOuterAreaNoCompact < sectionArea && packs) {

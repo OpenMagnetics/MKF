@@ -457,10 +457,16 @@ class MagneticFilterLayerParity : public MagneticFilter {
 };
 
 class MagneticFilterAreaWithParallels : public MagneticFilter {
+    private:
+        // ABT #1699: wires the real winder refused in the strict pass (real winding on only).
+        size_t _realWindingRefusals = 0;
+        std::string _firstRealWindingRefusal;
     public:
         MagneticFilterAreaWithParallels() {};
         std::pair<bool, double> evaluate_magnetic(Magnetic* magnetic, Inputs* inputs, std::vector<Outputs>* outputs = nullptr);
         std::pair<bool, double> evaluate_magnetic(Winding winding, Section section, double numberSections, double sectionArea, bool allowNotFit);
+        size_t get_real_winding_refusals() const { return _realWindingRefusals; }
+        const std::string& get_first_real_winding_refusal() const { return _firstRealWindingRefusal; }
 };
 
 /**
