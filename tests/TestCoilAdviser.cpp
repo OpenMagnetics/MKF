@@ -3355,15 +3355,16 @@ static void check_advised_coils_are_real_windable(std::vector<OpenMagnetics::Mas
     }
 }
 
-static OpenMagnetics::Mas load_web_flyback_advise_all(bool realWinding) {
-    auto path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "web_adviser_flows/flyback_calculate_advised_coil.json");
+// A web wire "Advise all" call (WebLibMKF calculate_advised_coil): the engine settings at the
+// call, then the MAS with every wire Dummy and the coil's descriptions cleared, as the web does.
+static OpenMagnetics::Mas load_web_advise_all(const std::string& fixtureName) {
+    auto path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "web_adviser_flows/" + fixtureName);
     std::ifstream file(path);
     REQUIRE(file.good());
     auto fixture = json::parse(file);
     settings.reset();
     OpenMagneticsTesting::apply_web_engine_settings(fixture.at("engineSettingsAtCall"));
     settings.set_coil_delimit_and_compact(true);
-    settings.set_coil_use_real_winding_geometry(realWinding);
     OpenMagnetics::Mas mas(fixture.at("mas"));
     for (size_t windingIndex = 0; windingIndex < mas.get_magnetic().get_coil().get_functional_description().size(); ++windingIndex) {
         mas.get_mutable_magnetic().get_mutable_coil().get_mutable_functional_description()[windingIndex].set_wire("Dummy");
@@ -3373,6 +3374,31 @@ static OpenMagnetics::Mas load_web_flyback_advise_all(bool realWinding) {
     mas.get_mutable_magnetic().get_mutable_coil().set_sections_description(std::nullopt);
     mas.get_mutable_magnetic().get_mutable_coil().set_groups_description(std::nullopt);
     return mas;
+}
+
+static OpenMagnetics::Mas load_web_flyback_advise_all(bool realWinding) {
+    auto mas = load_web_advise_all("flyback_calculate_advised_coil.json");
+    settings.set_coil_use_real_winding_geometry(realWinding);
+    return mas;
+}
+
+TEST_CASE("Test_CoilAdviser_Web_Cmc_Advise_All_Ranks_Coils_Without_A_Given_Magnetizing_Current", "[adviser][coil-adviser][bug]") {
+    // The web's default CMC (T 10.5/5.5/20 in R12KZ; a 150 kHz common-mode point and a 50 Hz line
+    // point whose windings carry opposite currents and no voltage), wire "Advise all". The loss
+    // ranking of the wound coils asked MagneticSimulator for core losses, which copied the
+    // excitation before the magnetizing-inductance model stamped the magnetizing current into the
+    // operating point, and the loss-factor model refused the copy: "Missing magnetizing current
+    // in excitation", no coil.
+    auto mas = load_web_advise_all("cmc_calculate_advised_coil.json");
+    CoilAdviser coilAdviser;
+    auto masMagneticsWithCoil = coilAdviser.get_advised_coil(mas, 1);
+    INFO(coilAdviser.get_last_no_results_reason().value_or("returned results"));
+    REQUIRE(masMagneticsWithCoil.size() == 1);
+    for (const auto& winding : masMagneticsWithCoil[0].get_magnetic().get_coil().get_functional_description()) {
+        auto wire = winding.get_wire();
+        CHECK(!(std::holds_alternative<std::string>(wire) && std::get<std::string>(wire) == "Dummy"));
+    }
+    settings.reset();
 }
 
 TEST_CASE("Test_CoilAdviser_Real_Winding_Web_Flyback_Advise_All_Is_Real_Windable", "[adviser][coil-adviser][bug][abt-1699]") {

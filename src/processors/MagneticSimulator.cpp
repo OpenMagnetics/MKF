@@ -156,10 +156,14 @@ CoreLossesOutput MagneticSimulator::calculate_core_losses(OperatingPoint& operat
     do {
         temperature = temperatureAfterLosses;
 
-        excitation = operatingPoint.get_excitations_per_winding()[0];
         operatingPoint.get_mutable_conditions().set_ambient_temperature(temperature);
 
         magneticFluxDensity = _magnetizingInductanceModel.calculate_inductance_and_magnetic_flux_density(magnetic, &operatingPoint).second;
+        // Read the excitation after the inductance model: it stamps the magnetizing current it
+        // derived (a CMC's common-mode current, a voltage's integral) into the operating point.
+        // A copy taken before it lacked that current whenever the operating point arrived without
+        // one, and the loss-factor model then refused it ("Missing magnetizing current").
+        excitation = operatingPoint.get_excitations_per_winding()[0];
         excitation.set_magnetic_flux_density(magneticFluxDensity);
         operatingPoint.get_mutable_excitations_per_winding()[0] = excitation;
 
