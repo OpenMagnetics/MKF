@@ -58,6 +58,8 @@
 
 #include "advisers/MagneticFilter.h"
 #include "advisers/MagneticAdviser.h"
+#include "advisers/CoreAdviser.h"
+#include "physical_models/Temperature.h"
 #include "constructive_models/Magnetic.h"
 #include "constructive_models/Core.h"
 #include "constructive_models/Coil.h"
@@ -410,6 +412,87 @@ TEST_CASE("MagneticFilter LOSSES_NO_PROXIMITY snapshot",
     // The captured snapshot reflects this double-count; once fixed, snapshot
     // must be regenerated.
     evaluate_and_check("LOSSES_NO_PROXIMITY", MagneticFilters::LOSSES_NO_PROXIMITY);
+}
+
+// ABT #838: the loss filters and the core adviser's post-processing publish core AND winding
+// losses from ONE loss <-> temperature solve. The published pair must be self-consistent: heating
+// the thermal network with exactly these losses puts the core's hottest node at the temperature
+// the core losses were evaluated at and the mean turn at the temperature the winding losses were
+// evaluated at. (The filters used to compute the winding losses at ambient, or at the inputs'
+// maximum temperature, beside core losses solved with their own copy of the winding losses.)
+// Each publishes the winding-loss model it always did: full, DC + skin (no proximity), DC only.
+TEST_CASE("Loss filters publish core and winding losses solved at one operating temperature",
+          "[magnetic-filter][losses][smoke-test]") {
+    settings.reset();
+    const double tolerance = MagneticSimulator::kOperatingTemperatureTolerance;
+    // A wound inductor that heats up measurably (the reference magnetic above has two windings
+    // and the reference inputs one excitation, so the loss filters reject it: their snapshots
+    // are {false, 0}).
+    auto examplePath = std::filesystem::path{std::source_location::current().file_name()}
+        .parent_path().append("..").append("MAS").append("examples").append("01_simple_inductor_etd34_n87.json");
+    REQUIRE(std::filesystem::exists(examplePath));
+    auto exampleMas = OpenMagneticsTesting::mas_loader(examplePath.string());
+    auto exampleMagnetic = OpenMagnetics::magnetic_autocomplete(exampleMas.get_magnetic());
+    auto inputs = OpenMagnetics::inputs_autocomplete(exampleMas.get_inputs(), exampleMagnetic);
+    if (!exampleMagnetic.get_coil().get_turns_description()) {
+        exampleMagnetic.get_mutable_coil().wind();
+    }
+    const double ambientTemperature = inputs.get_operating_points()[0].get_conditions().get_ambient_temperature();
+
+    auto checkSelfConsistent = [&](const OpenMagnetics::Magnetic& magnetic, const MAS::OperatingPoint& operatingPoint, const OpenMagnetics::Outputs& output) {
+        REQUIRE(output.get_core_losses());
+        REQUIRE(output.get_winding_losses());
+        REQUIRE(output.get_winding_losses()->get_temperature());
+        const double coreTemperature = output.get_core_losses()->get_temperature();
+        const double windingTemperature = output.get_winding_losses()->get_temperature().value();
+        auto network = Temperature(magnetic, TemperatureConfig::fromSimulatedOutput(operatingPoint, output)).calculateTemperatures();
+        REQUIRE(network.maximumCoreTemperature);
+        REQUIRE(network.averageTurnTemperature);
+        CAPTURE(coreTemperature, windingTemperature, network.maximumCoreTemperature.value(), network.averageTurnTemperature.value(),
+                output.get_core_losses()->get_core_losses(), output.get_winding_losses()->get_winding_losses());
+        // The design must actually heat up, or "evaluated at ambient" would pass too.
+        REQUIRE(windingTemperature > ambientTemperature + 4 * tolerance);
+        CHECK(std::fabs(network.maximumCoreTemperature.value() - coreTemperature) < tolerance);
+        CHECK(std::fabs(network.averageTurnTemperature.value() - windingTemperature) < tolerance);
+    };
+
+    SECTION("MagneticFilterLosses: full winding losses") {
+        auto magnetic = exampleMagnetic;
+        std::vector<OpenMagnetics::Outputs> outputs;
+        auto [valid, score] = MagneticFilterLosses().evaluate_magnetic(&magnetic, &inputs, &outputs);
+        REQUIRE(valid);
+        REQUIRE(outputs.size() == inputs.get_operating_points().size());
+        checkSelfConsistent(magnetic, inputs.get_operating_points()[0], outputs[0]);
+        auto operatingPoint = inputs.get_operating_points()[0];
+        double expected = MagneticSimulator().calculate_winding_losses(operatingPoint, magnetic,
+            outputs[0].get_winding_losses()->get_temperature().value()).get_winding_losses();
+        CHECK_THAT(outputs[0].get_winding_losses()->get_winding_losses(), WithinRel(expected, 1e-9));
+        CHECK_THAT(score, WithinRel(outputs[0].get_core_losses()->get_core_losses() + expected, 1e-9));
+    }
+    SECTION("MagneticFilterLossesNoProximity: DC + skin effect, no proximity") {
+        auto magnetic = exampleMagnetic;
+        std::vector<OpenMagnetics::Outputs> outputs;
+        auto [valid, score] = MagneticFilterLossesNoProximity().evaluate_magnetic(&magnetic, &inputs, &outputs);
+        REQUIRE(valid);
+        REQUIRE(outputs.size() == inputs.get_operating_points().size());
+        checkSelfConsistent(magnetic, inputs.get_operating_points()[0], outputs[0]);
+        const double windingTemperature = outputs[0].get_winding_losses()->get_temperature().value();
+        auto operatingPoint = inputs.get_operating_points()[0];
+        double expected = WindingSkinEffectLosses::calculate_skin_effect_losses(magnetic.get_coil(), windingTemperature,
+            WindingOhmicLosses::calculate_ohmic_losses(magnetic.get_coil(), operatingPoint, windingTemperature), 0.5).get_winding_losses();
+        CHECK_THAT(outputs[0].get_winding_losses()->get_winding_losses(), WithinRel(expected, 1e-9));
+    }
+    SECTION("CoreAdviser::post_process_core: DC winding losses") {
+        auto magnetic = exampleMagnetic;
+        auto mas = CoreAdviser().post_process_core(magnetic, inputs);
+        REQUIRE(mas.get_outputs().size() == inputs.get_operating_points().size());
+        const auto& output = mas.get_outputs()[0];
+        const auto& operatingPoint = mas.get_inputs().get_operating_points()[0];
+        checkSelfConsistent(mas.get_magnetic(), operatingPoint, output);
+        double expected = WindingOhmicLosses::calculate_ohmic_losses(mas.get_magnetic().get_coil(), operatingPoint,
+            output.get_winding_losses()->get_temperature().value()).get_winding_losses();
+        CHECK_THAT(output.get_winding_losses()->get_winding_losses(), WithinRel(expected, 1e-9));
+    }
 }
 
 TEST_CASE("MagneticFilter DIMENSIONS snapshot",
