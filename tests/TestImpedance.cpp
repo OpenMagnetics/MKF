@@ -1058,7 +1058,7 @@ TEST_CASE("Test_Complex_Permeability_Formula_Material_Reaches_Low_Frequency", "[
     settings.reset();
     ComplexPermeability complexPermeabilityModel;
     auto material = Core::resolve_material(std::string("GPC 26"));
-    REQUIRE(InitialPermeability::get_only_frequency_dependent_points(material).empty());
+    REQUIRE(std::holds_alternative<PermeabilityPoint>(material.get_permeability().get_initial()));
 
     auto [minimumFrequency, maximumFrequency] = complexPermeabilityModel.get_frequency_range(material);
     CHECK(minimumFrequency <= 1.0 + 1e-9);

@@ -114,8 +114,12 @@ ComplexPermeabilityData ComplexPermeability::calculate_complex_permeability_from
         // Stopping at 0.01x the anchor refused GPC 26 (anchor ~1 MHz) at 1 kHz with "complex
         // permeability data only from 10 kHz" — data it never had; the limit was this grid's
         // (user report 2026-10-09). Down there the closed form gives mu' -> mu_i and mu'' -> 0.
+        // A formula material stores ONE initial-permeability point (plus its modifiers);
+        // get_only_frequency_dependent_points samples that formula from the measurement frequency
+        // (10 kHz) up, so those samples are not data and must not set the table's lower end.
         constexpr double formulaLowestFrequency = 1;  // Hz
-        bool hasTabulatedPoints = lowestDataFrequency < std::numeric_limits<double>::max();
+        bool isFormulaMaterial = std::holds_alternative<PermeabilityPoint>(coreMaterial.get_permeability().get_initial());
+        bool hasTabulatedPoints = !isFormulaMaterial && lowestDataFrequency < std::numeric_limits<double>::max();
         double tableLowestFrequency = hasTabulatedPoints ? lowestDataFrequency : formulaLowestFrequency;
         if (frequencyFor67Point78Drop > 0) {
             double lowestNormalizedFrequency = tableLowestFrequency / frequencyFor67Point78Drop;
