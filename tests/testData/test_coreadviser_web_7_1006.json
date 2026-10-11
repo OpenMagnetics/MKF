@@ -7298,7 +7298,7 @@
         },
         {
           "name": "Primary winding excitation",
-          "frequency": 100000,
+          "frequency": 200000,
           "current": {
             "waveform": {
               "data": [
@@ -7307,9 +7307,9 @@
                 -5
               ],
               "time": [
-                0,
-                5e-06,
-                1e-05
+                0.0,
+                2.5e-06,
+                5e-06
               ]
             },
             "processed": {
@@ -7329,11 +7329,11 @@
                 -45.5
               ],
               "time": [
-                0,
-                0,
-                5e-06,
-                5e-06,
-                1e-05
+                0.0,
+                0.0,
+                2.5e-06,
+                2.5e-06,
+                5e-06
               ]
             },
             "processed": {
@@ -7346,7 +7346,7 @@
         },
         {
           "name": "Primary winding excitation",
-          "frequency": 100000,
+          "frequency": 200000,
           "current": {
             "waveform": {
               "data": [
@@ -7355,9 +7355,9 @@
                 -5
               ],
               "time": [
-                0,
-                5e-06,
-                1e-05
+                0.0,
+                2.5e-06,
+                5e-06
               ]
             },
             "processed": {
@@ -7377,11 +7377,11 @@
                 -45.5
               ],
               "time": [
-                0,
-                0,
-                5e-06,
-                5e-06,
-                1e-05
+                0.0,
+                0.0,
+                2.5e-06,
+                2.5e-06,
+                5e-06
               ]
             },
             "processed": {

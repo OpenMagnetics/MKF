@@ -1221,6 +1221,9 @@ TEST_CASE("Test_CoreAdviser_Web_7", "[adviser][core-adviser][available-cores][bu
     // (the window copper capacity screen throws without them: the turns of the windings the
     // stand-in coil lacks cannot be derived). The two added ratios follow from the fixture's own
     // voltages the same way the first does: 36 V / 45.5 V = 0.79.
+    // The two default windings were also left at the form's 100 kHz while the operating point runs at
+    // 200 kHz: the windings of one magnetic share one flux and one frequency, so they are put at 200 kHz
+    // (time axes halved, same shapes and amplitudes) (ABT #1467).
     auto json_path_1006 = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "test_coreadviser_web_7_1006.json");
     std::ifstream json_file_1006(json_path_1006);
     std::string inputsString((std::istreambuf_iterator<char>(json_file_1006)), std::istreambuf_iterator<char>());
