@@ -801,6 +801,17 @@ namespace {
         CHECK_THROWS_WITH(OpenMagnetics::InitialPermeability::get_initial_permeability(material, 25.0, 6.2e3, 100e3),
                           Catch::Matchers::ContainsSubstring("is saturated") && Catch::Matchers::ContainsSubstring("3C96"));
 
+        // Without a bias, a value below 1 is not a saturation and must not be reported as one: the Magnetics
+        // frequencyFactor quartic of Kool Mu 60 goes negative near 30 MHz. In the CoreAdviser's suppression
+        // run these refusals once all read "is saturated", sending the reader after the wrong cause.
+        auto koolMu = OpenMagnetics::Core::resolve_material("Kool Mµ 60");
+        double highFrequencyModelValue = OpenMagnetics::InitialPermeability::get_initial_permeability_model_value(koolMu, 25.0, std::nullopt, 30e6);
+        INFO("Kool Mu 60 model permeability at 30 MHz: " << highFrequencyModelValue);
+        REQUIRE(highFrequencyModelValue < 1);
+        CHECK_THROWS_WITH(OpenMagnetics::InitialPermeability::get_initial_permeability(koolMu, 25.0, std::nullopt, 30e6),
+                          Catch::Matchers::ContainsSubstring("frequency or temperature dependence is outside its valid range") &&
+                          !Catch::Matchers::ContainsSubstring("saturated"));
+
         // Below the knee the value is the model's, unchanged.
         double biased = OpenMagnetics::InitialPermeability::get_initial_permeability(material, 25.0, 100.0, 100e3);
         CHECK(biased == OpenMagnetics::InitialPermeability::get_initial_permeability_model_value(material, 25.0, 100.0, 100e3));
