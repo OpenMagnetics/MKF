@@ -800,6 +800,9 @@ namespace {
         REQUIRE(modelValue < 1);
         CHECK_THROWS_WITH(OpenMagnetics::InitialPermeability::get_initial_permeability(material, 25.0, 6.2e3, 100e3),
                           Catch::Matchers::ContainsSubstring("is saturated") && Catch::Matchers::ContainsSubstring("3C96"));
+        // It is a SaturationException, the type an adviser rejects a candidate on (ABT #1740, #1534).
+        CHECK_THROWS_AS(OpenMagnetics::InitialPermeability::get_initial_permeability(material, 25.0, 6.2e3, 100e3),
+                        OpenMagnetics::SaturationException);
 
         // Without a bias, a value below 1 is not a saturation and must not be reported as one: the Magnetics
         // frequencyFactor quartic of Kool Mu 60 goes negative near 30 MHz. In the CoreAdviser's suppression
@@ -811,6 +814,21 @@ namespace {
         CHECK_THROWS_WITH(OpenMagnetics::InitialPermeability::get_initial_permeability(koolMu, 25.0, std::nullopt, 30e6),
                           Catch::Matchers::ContainsSubstring("frequency or temperature dependence is outside its valid range") &&
                           !Catch::Matchers::ContainsSubstring("saturated"));
+        // ... and it is not a SaturationException: a model out of its range must stop an adviser, not be
+        // taken as a verdict on the candidate.
+        bool refusedAsSaturation = false;
+        bool refused = false;
+        try {
+            OpenMagnetics::InitialPermeability::get_initial_permeability(koolMu, 25.0, std::nullopt, 30e6);
+        }
+        catch (const OpenMagnetics::SaturationException&) {
+            refusedAsSaturation = true;
+        }
+        catch (const OpenMagnetics::CalculationException&) {
+            refused = true;
+        }
+        CHECK_FALSE(refusedAsSaturation);
+        CHECK(refused);
 
         // Below the knee the value is the model's, unchanged.
         double biased = OpenMagnetics::InitialPermeability::get_initial_permeability(material, 25.0, 100.0, 100e3);
@@ -823,6 +841,11 @@ namespace {
         double fieldStrength = 0;
         CHECK_NOTHROW(fieldStrength = OpenMagnetics::InitialPermeability::get_magnetic_field_dc_bias_for_flux_density(material, 1.2 * saturationFluxDensity, 25.0, 100e3, false));
         CHECK(fieldStrength > 0);
+
+        // Sizing a gap for a bias above saturation is refused as a saturation too (ABT #1534 asked for a type
+        // a caller can catch exactly, instead of INVALID_INPUT shared with malformed input).
+        CHECK_THROWS_AS(OpenMagnetics::InitialPermeability::get_magnetic_field_dc_bias_for_flux_density(material, 1.2 * saturationFluxDensity, 25.0, 100e3, true),
+                        OpenMagnetics::SaturationException);
     }
 
 }  // namespace

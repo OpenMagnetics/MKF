@@ -1917,3 +1917,126 @@ TEST_CASE("MagneticFilter_Impedance_Malformed_Measured_Curve_Throws", "[magnetic
         CHECK_THROWS(OpenMagnetics::Magnetic(magneticJson));
     }
 }
+
+// ABT #1740: the inductance model refuses an operating point that saturates the core with a
+// SaturationException. The saturation filter turns exactly that exception into its verdict, a reject,
+// and the core-and-DC losses filter stops its turn sweep at the last count that worked instead of
+// dropping the candidate (any other exception still propagates, ABT #1456).
+//
+// The design: an ungapped E 35 / 3C97 inductor carrying 10 A of DC. The bias MMF N I is imposed by the
+// current, so the DC point moves up the material's curve with every turn until the model's permeability
+// there falls to the vacuum's, where the model refuses it. The current is given as a raw waveform
+// (no processed data), which keeps the losses filter's saturation-current cap (it reads the processed
+// peak) out of the way, so the sweep meets the model's refusal itself.
+namespace {
+OpenMagnetics::Inputs saturating_dc_inductor_inputs(double dcCurrent = 10.0) {
+    const double frequency = 100e3;
+    const int samples = 64;
+    json time = json::array(), data = json::array();
+    for (int k = 0; k <= samples; ++k) {
+        time.push_back(k / (samples * frequency));
+        data.push_back(dcCurrent + (k < samples / 2 ? -0.5 + 1.0 * k / (samples / 2) : 0.5 - 1.0 * (k - samples / 2) / (samples / 2)));
+    }
+    OpenMagnetics::Inputs inputs(json{
+        {"designRequirements", {{"magnetizingInductance", {{"minimum", 1e-9}}},
+                                {"turnsRatios", json::array()}, {"isolationSides", {"primary"}}, {"topology", "buckConverter"}}},
+        {"operatingPoints", {{{"name", "dc 10 A"}, {"conditions", {{"ambientTemperature", 25}}},
+                              {"excitationsPerWinding", {{{"name", "Primary"}, {"frequency", frequency},
+                                                          {"current", {{"waveform", {{"time", time}, {"data", data}}}}}}}}}}}});
+    // Inputs processes the waveform on construction; drop the processed data and harmonics again so the
+    // losses filter's saturation-current cap, which reads the processed peak, stays out of the way.
+    for (auto& operatingPoint : inputs.get_mutable_operating_points()) {
+        for (auto& excitation : operatingPoint.get_mutable_excitations_per_winding()) {
+            auto current = excitation.get_current().value();
+            current.set_processed(std::nullopt);
+            current.set_harmonics(std::nullopt);
+            excitation.set_current(current);
+        }
+    }
+    return inputs;
+}
+
+OpenMagnetics::Magnetic saturating_dc_inductor(int64_t numberTurns) {
+    OpenMagneticsTesting::QuickMagneticConfig cfg;
+    cfg.numberTurns = {numberTurns};
+    cfg.numberParallels = {1};
+    cfg.coreShapeName = "E 35";
+    cfg.coreMaterialName = "3C97";
+    cfg.wireNames = {"Round 1.00 - Grade 1"};
+    auto magnetic = OpenMagneticsTesting::create_quick_test_magnetic(cfg);
+    magnetic.get_mutable_coil().wind();
+    return magnetic;
+}
+
+// The highest turn count the inductance model still answers for at that bias; one more is refused.
+int64_t last_turn_count_before_saturation_refusal() {
+    auto inputs = saturating_dc_inductor_inputs();
+    MagnetizingInductance magnetizingInductance;
+    for (int64_t numberTurns = 1; numberTurns <= 200; ++numberTurns) {
+        auto magnetic = saturating_dc_inductor(numberTurns);
+        auto operatingPoint = inputs.get_operating_point(0);
+        try {
+            magnetizingInductance.calculate_inductance_and_magnetic_flux_density(magnetic.get_core(), magnetic.get_coil(), &operatingPoint);
+        }
+        catch (const SaturationException&) {
+            return numberTurns - 1;
+        }
+    }
+    throw std::runtime_error("no turn count up to 200 saturates the test inductor");
+}
+}  // namespace
+
+TEST_CASE("MagneticFilter SATURATION rejects a candidate the inductance model refuses as saturated",
+          "[magnetic-filter][saturation][abt-1740]") {
+    settings.reset();
+    clear_databases();
+    auto inputs = saturating_dc_inductor_inputs();
+    int64_t lastWorking = last_turn_count_before_saturation_refusal();
+    INFO("last turn count before the refusal: " << lastWorking);
+    REQUIRE(lastWorking >= 2);
+
+    // The model's refusal is a SaturationException, and it names the saturation.
+    auto saturated = saturating_dc_inductor(lastWorking + 1);
+    auto operatingPoint = inputs.get_operating_point(0);
+    CHECK_THROWS_AS(MagnetizingInductance().calculate_inductance_and_magnetic_flux_density(saturated.get_core(), saturated.get_coil(), &operatingPoint),
+                    SaturationException);
+
+    // The filter's verdict on it is a reject, not an exception.
+    MagneticFilterSaturation filter;
+    std::pair<bool, double> verdict{true, -1};
+    CHECK_NOTHROW(verdict = filter.evaluate_magnetic(&saturated, &inputs));
+    CHECK(verdict == std::pair<bool, double>{false, 0.0});
+
+    // Control: a single turn of the same core at 1 A of DC (about 0.04 T) is far from it, and passes.
+    auto light = saturating_dc_inductor(1);
+    auto lightInputs = saturating_dc_inductor_inputs(1.0);
+    CHECK(filter.evaluate_magnetic(&light, &lightInputs).first);
+    settings.reset();
+}
+
+TEST_CASE("MagneticFilter CORE_AND_DC_LOSSES turn sweep stops at the last count that does not saturate",
+          "[magnetic-filter][losses][abt-1740]") {
+    settings.reset();
+    clear_databases();
+    auto inputs = saturating_dc_inductor_inputs();
+    int64_t lastWorking = last_turn_count_before_saturation_refusal();
+    INFO("last turn count before the refusal: " << lastWorking);
+    REQUIRE(lastWorking >= 2);
+
+    // The sweep starts at the last working count; its next step (one more turn) is refused as saturated.
+    // The candidate keeps the count that worked, with its losses.
+    auto magnetic = saturating_dc_inductor(lastWorking);
+    MagneticFilterCoreAndDcLosses filter(inputs);
+    std::pair<bool, double> verdict{false, 0};
+    REQUIRE_NOTHROW(verdict = filter.evaluate_magnetic(&magnetic, &inputs));
+    // Scored with its losses, not the {false, 0} reject. (Its valid flag compares those losses with a power
+    // budget derived from the inputs, which a current-only operating point does not give: not judged here.)
+    CHECK(verdict.second > 0);
+    CHECK(magnetic.get_coil().get_functional_description()[0].get_number_turns() == lastWorking);
+
+    // A candidate whose very first count saturates has no count to keep: it is rejected.
+    auto saturated = saturating_dc_inductor(lastWorking + 1);
+    REQUIRE_NOTHROW(verdict = filter.evaluate_magnetic(&saturated, &inputs));
+    CHECK(verdict == std::pair<bool, double>{false, 0.0});
+    settings.reset();
+}

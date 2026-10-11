@@ -97,8 +97,17 @@ std::pair<bool, double> MagneticFilterSaturation::evaluate_magnetic(Magnetic* ma
             } else if (hasCurrentWaveform) {
                 // Derive voltage from V = L·di/dt using the actual gapped-core inductance
                 OpenMagnetics::MagnetizingInductance magnetizingInductanceCalc;
-                auto inductanceOutput = magnetizingInductanceCalc.calculate_inductance_from_number_turns_and_gapping(
-                    *magnetic, &operatingPoint);
+                MagnetizingInductanceOutput inductanceOutput;
+                try {
+                    inductanceOutput = magnetizingInductanceCalc.calculate_inductance_from_number_turns_and_gapping(
+                        *magnetic, &operatingPoint);
+                }
+                catch (const SaturationException& e) {
+                    // The model refused this operating point because the core saturates there: that is this
+                    // filter's verdict, a reject. Any other exception still propagates (ABT #1740).
+                    logEntry(std::string("Saturation filter: rejecting candidate: ") + e.what(), "MagneticFilter", 2);
+                    return {false, 0.0};
+                }
 
                 if (inductanceOutput.get_magnetizing_inductance().get_nominal()) {
                     actualInductance = inductanceOutput.get_magnetizing_inductance().get_nominal().value();
@@ -131,8 +140,18 @@ std::pair<bool, double> MagneticFilterSaturation::evaluate_magnetic(Magnetic* ma
             OpenMagnetics::MagnetizingInductance magnetizingInductanceObj;
             
             magnetizingInductanceObj.set_topology(inputs->get_design_requirements().get_topology());
-            auto result = magnetizingInductanceObj.calculate_inductance_and_magnetic_flux_density(
-                magnetic->get_core(), magnetic->get_coil(), &operatingPoint);
+            std::pair<MagnetizingInductanceOutput, SignalDescriptor> result;
+            try {
+                result = magnetizingInductanceObj.calculate_inductance_and_magnetic_flux_density(
+                    magnetic->get_core(), magnetic->get_coil(), &operatingPoint);
+            }
+            catch (const SaturationException& e) {
+                // The DC-bias operating point (or the volt-seconds) saturates the core: this filter's verdict
+                // is a reject, as for a B_peak above B_sat below. Any other exception still propagates, as a
+                // filter that throws is not a verdict (ABT #1456, #1740).
+                logEntry(std::string("Saturation filter: rejecting candidate: ") + e.what(), "MagneticFilter", 2);
+                return {false, 0.0};
+            }
             auto magneticFluxDensity = result.second;
 
             // Phase 8 (perf): seed the per-adviser-invocation cache so

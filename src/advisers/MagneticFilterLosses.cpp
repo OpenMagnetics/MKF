@@ -148,7 +148,24 @@ std::pair<bool, double> MagneticFilterCoreAndDcLosses::evaluate_magnetic(Magneti
             }
 
             _magnetizingInductance.set_topology(inputs->get_design_requirements().get_topology());
-            auto [magnetizingInductance, magneticFluxDensity] = _magnetizingInductance.calculate_inductance_and_magnetic_flux_density(core, coil, &operatingPoint);
+            // A turn count whose operating point saturates the core is refused by the inductance model
+            // (SaturationException). The sweep stops there and keeps the best count it already evaluated,
+            // restored below; only when no count has worked yet is the candidate rejected. Any other
+            // exception still propagates (ABT #1740).
+            std::pair<MagnetizingInductanceOutput, SignalDescriptor> inductanceAndFluxDensity;
+            try {
+                inductanceAndFluxDensity = _magnetizingInductance.calculate_inductance_and_magnetic_flux_density(core, coil, &operatingPoint);
+            }
+            catch (const SaturationException& e) {
+                if (!std::isfinite(bestTotalLosses)) {
+                    logEntry(std::string("Losses filter: rejecting candidate, its first turn count saturates: ") + e.what(), "CoreAdviser", 2);
+                    return {false, 0.0};
+                }
+                logEntry(std::string("Losses filter: turn sweep stops at ") + std::to_string(numberTurnsCombination[0]) +
+                         " turns, which saturate: " + e.what(), "CoreAdviser", 2);
+                break;
+            }
+            auto& [magnetizingInductance, magneticFluxDensity] = inductanceAndFluxDensity;
 
             if (!check_requirement(inputs->get_design_requirements().get_magnetizing_inductance(), magnetizingInductance.get_magnetizing_inductance().get_nominal().value())) {
                 if (resolve_dimensional_values(inputs->get_design_requirements().get_magnetizing_inductance()) < resolve_dimensional_values(magnetizingInductance.get_magnetizing_inductance().get_nominal().value())) {
@@ -459,7 +476,24 @@ std::pair<bool, double> MagneticFilterCoreDcAndSkinLosses::evaluate_magnetic(Mag
             }
 
             _magnetizingInductance.set_topology(inputs->get_design_requirements().get_topology());
-            auto [magnetizingInductance, magneticFluxDensity] = _magnetizingInductance.calculate_inductance_and_magnetic_flux_density(core, coil, &operatingPoint);
+            // A turn count whose operating point saturates the core is refused by the inductance model
+            // (SaturationException). The sweep stops there and keeps the best count it already evaluated,
+            // restored below; only when no count has worked yet is the candidate rejected. Any other
+            // exception still propagates (ABT #1740).
+            std::pair<MagnetizingInductanceOutput, SignalDescriptor> inductanceAndFluxDensity;
+            try {
+                inductanceAndFluxDensity = _magnetizingInductance.calculate_inductance_and_magnetic_flux_density(core, coil, &operatingPoint);
+            }
+            catch (const SaturationException& e) {
+                if (!std::isfinite(bestTotalLosses)) {
+                    logEntry(std::string("Losses filter: rejecting candidate, its first turn count saturates: ") + e.what(), "CoreAdviser", 2);
+                    return {false, 0.0};
+                }
+                logEntry(std::string("Losses filter: turn sweep stops at ") + std::to_string(numberTurnsCombination[0]) +
+                         " turns, which saturate: " + e.what(), "CoreAdviser", 2);
+                break;
+            }
+            auto& [magnetizingInductance, magneticFluxDensity] = inductanceAndFluxDensity;
 
             if (!check_requirement(inputs->get_design_requirements().get_magnetizing_inductance(), magnetizingInductance.get_magnetizing_inductance().get_nominal().value())) {
                 if (resolve_dimensional_values(inputs->get_design_requirements().get_magnetizing_inductance()) < resolve_dimensional_values(magnetizingInductance.get_magnetizing_inductance().get_nominal().value())) {

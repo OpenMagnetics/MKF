@@ -92,7 +92,8 @@ enum class ErrorCode : int {
     // Calculation result errors (1300-1399)
     CALCULATION_INVALID_RESULT = 1300,
     CALCULATION_TIMEOUT = 1301,
-    INVALID_LOSS_DATA = 1302
+    INVALID_LOSS_DATA = 1302,
+    CALCULATION_CORE_SATURATES = 1303
 };
 
 /**
@@ -145,6 +146,7 @@ inline std::string to_string(ErrorCode code) {
         case ErrorCode::CALCULATION_INVALID_RESULT: return "CALCULATION_INVALID_RESULT";
         case ErrorCode::CALCULATION_TIMEOUT: return "CALCULATION_TIMEOUT";
         case ErrorCode::INVALID_LOSS_DATA: return "INVALID_LOSS_DATA";
+        case ErrorCode::CALCULATION_CORE_SATURATES: return "CALCULATION_CORE_SATURATES";
         default: return "UNKNOWN";
     }
 }
@@ -476,6 +478,16 @@ public:
     
     InvalidInputException(ErrorCode code, const std::string& message)
         : CalculationException(code, message) {}
+};
+
+// The core saturates at the given operating point: a physics verdict on the design (this material,
+// turn count, gap and core cannot carry that flux), not malformed input and not a failed calculation.
+// An adviser rejects the candidate on exactly this exception; every other one still stops the run
+// (ABT #1534, #1740). The message names the operating point and the flux against B_sat.
+class SaturationException : public CalculationException {
+public:
+    explicit SaturationException(const std::string& message)
+        : CalculationException(ErrorCode::CALCULATION_CORE_SATURATES, message) {}
 };
 
 // A requirement point outside the material's mu(f) range is judged on the part's own measured

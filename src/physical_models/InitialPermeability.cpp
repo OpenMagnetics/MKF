@@ -252,8 +252,10 @@ double InitialPermeability::get_magnetic_field_dc_bias_for_flux_density(CoreMate
     // Sizing a gap (refuseAboveSaturation) asks for a bias no gap can hold. Analysing a given design
     // does not: its operating point may sit past the knee, and the curve carries on there on the
     // vacuum slope, which is the material's B(H) beyond saturation.
+    // A saturation verdict on the design, not malformed input: callers that rank candidates reject this
+    // one and go on, while a genuine INVALID_INPUT still stops them (ABT #1534).
     if (refuseAboveSaturation && biasFluxDensity > saturationFluxDensity) {
-        throw InvalidInputException(ErrorCode::INVALID_INPUT,
+        throw SaturationException(
             "The DC bias puts " + std::to_string(biasFluxDensity) + " T in material " + coreMaterial.get_name() +
             ", above its saturation of " + std::to_string(saturationFluxDensity) + " T at " + std::to_string(temperature) +
             " °C: no gap holds the target inductance at that bias, fewer turns or a larger core are needed");
@@ -1157,6 +1159,11 @@ double InitialPermeability::get_initial_permeability(CoreMaterial coreMaterial,
         }
         else {
             message << ": the material's frequency or temperature dependence is outside its valid range here";
+        }
+        // Only the bias case is a saturation verdict on the design (an adviser rejects the candidate on
+        // it); a model outside its frequency or temperature range is not, and must stop the run.
+        if (biased && unbiasedPermeability.value() >= 1) {
+            throw SaturationException(message.str());
         }
         throw CalculationException(ErrorCode::CALCULATION_INVALID_RESULT, message.str());
     }

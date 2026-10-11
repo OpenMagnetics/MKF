@@ -926,7 +926,7 @@ std::pair<MagnetizingInductanceOutput, SignalDescriptor> MagnetizingInductance::
                                    *std::min_element(fluxDensityData.begin(), fluxDensityData.end());
                     voltSecondFluxDensitySwing = swing;
                     if (swing / 2 > saturationFluxDensity) {
-                        throw CalculationException(ErrorCode::CALCULATION_INVALID_RESULT,
+                        throw SaturationException(
                             "The core saturates: at " + describeOperatingPoint() + " the volt-seconds impose a flux swing dB = " +
                             std::to_string(swing) + " T peak-to-peak, so B_peak >= dB / 2 = " + std::to_string(swing / 2) +
                             " T for any bias, above B_sat = " + std::to_string(saturationFluxDensity) + " T at " + std::to_string(temperature) +
@@ -1054,7 +1054,7 @@ std::pair<MagnetizingInductanceOutput, SignalDescriptor> MagnetizingInductance::
                 message << "; the volt-seconds impose a flux swing dB = " << voltSecondFluxDensitySwing.value() << " T peak-to-peak";
             }
             message << ". More turns, a larger gap or core, or less volt-seconds are needed";
-            throw CalculationException(ErrorCode::CALCULATION_INVALID_RESULT, message.str());
+            throw SaturationException(message.str());
         }
         double residual = nextPermeability - permeability;
         if (fabs(residual) <= biasConvergenceTolerance * permeability) {
