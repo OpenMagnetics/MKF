@@ -493,6 +493,10 @@ double StrayCapacitance::calculate_area_between_two_turns_using_vecticals_and_ho
 }
 
 std::vector<Layer> StrayCapacitance::get_insulation_layers_between_two_turns(Turn firstTurn, Turn secondTurn, Coil coil) {
+    return get_insulation_layers_between_two_turns_in_place(firstTurn, secondTurn, coil);
+}
+
+std::vector<Layer> StrayCapacitance::get_insulation_layers_between_two_turns_in_place(const Turn& firstTurn, const Turn& secondTurn, Coil& coil) {
     if (!coil.get_sections_description()) {
         throw std::invalid_argument("Missing sections description");
     }

@@ -336,6 +336,8 @@ private:
     bool _isPlanar = false;         // True for planar windings (PCB traces)
     bool _isRoundWire = false;      // True for round wires and litz
     std::optional<InsulationWireCoating> _wireCoating;  // Wire coating for thermal calculations
+    bool _turnsDescriptionRead = false;  // _turnsDescription holds the coil's turns (see turnsDescription())
+    std::optional<std::vector<Turn>> _turnsDescription;
     
     // =========================================================================
     // IMP-NEW-06: Per-winding wire properties for multi-winding transformers
@@ -788,6 +790,15 @@ private:
      * @brief Get insulation layer thermal resistance between turns
      */
     double getInsulationLayerThermalResistance(int turnIdx1, int turnIdx2, double contactArea);
+
+    /**
+     * @brief The coil's turns description, copied once per network (ABT #838)
+     *
+     * The MAS getter returns the turns BY VALUE; the turn-to-turn connections read it for every
+     * touching pair, which copied the whole description O(N^2) times (0.8 s per network for a
+     * 492-turn coil).
+     */
+    const std::optional<std::vector<Turn>>& turnsDescription();
     
     /**
      * @brief Calculate contact area between two quadrants

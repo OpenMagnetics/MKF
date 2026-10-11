@@ -2489,8 +2489,8 @@ void Temperature::createConcentricTurnToTurnConnections(const std::vector<size_t
 
                 // Check if there's a solid insulation layer between these turns
                 // If so, skip direct connection - turns will connect through insulation layer node
-                auto coil = _magnetic.get_coil();
-                auto turnsDescription = coil.get_turns_description();
+                auto& coil = _magnetic.get_mutable_coil();
+                const auto& turnsDescription = this->turnsDescription();
                 bool hasSolidInsulationBetween = false;
 
                 if (turnsDescription && turn1Idx >= 0 && turn1Idx < static_cast<int>(turnsDescription->size()) &&
@@ -2498,7 +2498,7 @@ void Temperature::createConcentricTurnToTurnConnections(const std::vector<size_t
                     try {
                         auto& turn1 = (*turnsDescription)[turn1Idx];
                         auto& turn2 = (*turnsDescription)[turn2Idx];
-                        auto layersBetween = StrayCapacitance::get_insulation_layers_between_two_turns(turn1, turn2, coil);
+                        auto layersBetween = StrayCapacitance::get_insulation_layers_between_two_turns_in_place(turn1, turn2, coil);
                         hasSolidInsulationBetween = !layersBetween.empty();
                     } catch (const std::exception& e) { // IMP-8
                         // If we can't determine insulation layers (e.g., missing layer description),
@@ -2713,8 +2713,8 @@ void Temperature::createToroidalTurnToTurnConnections(const std::vector<size_t>&
 
                 // Check if there's a solid insulation layer between these turns
                 // If so, skip direct connection - turns will connect through insulation layer node
-                auto coil = _magnetic.get_coil();
-                auto turnsDescription = coil.get_turns_description();
+                auto& coil = _magnetic.get_mutable_coil();
+                const auto& turnsDescription = this->turnsDescription();
                 bool hasSolidInsulationBetween = false;
 
                 if (turnsDescription && turn1Idx >= 0 && turn1Idx < static_cast<int>(turnsDescription->size()) &&
@@ -2722,7 +2722,7 @@ void Temperature::createToroidalTurnToTurnConnections(const std::vector<size_t>&
                     try {
                         auto& turn1 = (*turnsDescription)[turn1Idx];
                         auto& turn2 = (*turnsDescription)[turn2Idx];
-                        auto layersBetween = StrayCapacitance::get_insulation_layers_between_two_turns(turn1, turn2, coil);
+                        auto layersBetween = StrayCapacitance::get_insulation_layers_between_two_turns_in_place(turn1, turn2, coil);
                         // Zero-thickness layers are geometric boundary markers, not physical insulation.
                         // Filter them out so they don't block direct turn-to-turn connections.
                         layersBetween.erase(
@@ -6595,14 +6595,22 @@ double Temperature::calculateContactArea(const ThermalNodeQuadrant& q1, const Th
     return height * minLength;
 }
 
+const std::optional<std::vector<Turn>>& Temperature::turnsDescription() {
+    if (!_turnsDescriptionRead) {
+        _turnsDescription = _magnetic.get_coil().get_turns_description();
+        _turnsDescriptionRead = true;
+    }
+    return _turnsDescription;
+}
+
 double Temperature::getInsulationLayerThermalResistance(int turnIdx1, int turnIdx2, double contactArea) {
     if (contactArea <= 0.0) {
         throw std::runtime_error("Temperature::getInsulationLayerThermalResistance: Contact area is zero or negative (" +
                                  std::to_string(contactArea) + "). Cannot calculate thermal resistance.");
     }
 
-    auto coil = _magnetic.get_coil();
-    auto turnsDescription = coil.get_turns_description();
+    auto& coil = _magnetic.get_mutable_coil();
+    const auto& turnsDescription = this->turnsDescription();
 
     if (turnIdx2 < 0) {
         // Turn-to-solid connection: read coating from the wire itself, no defaults.
@@ -6631,7 +6639,7 @@ double Temperature::getInsulationLayerThermalResistance(int turnIdx1, int turnId
     auto& turn1 = (*turnsDescription)[turnIdx1];
     auto& turn2 = (*turnsDescription)[turnIdx2];
 
-    auto layersBetween = StrayCapacitance::get_insulation_layers_between_two_turns(turn1, turn2, coil);
+    auto layersBetween = StrayCapacitance::get_insulation_layers_between_two_turns_in_place(turn1, turn2, coil);
 
     double totalLayerResistance = 0.0;
     for (const auto& layer : layersBetween) {
