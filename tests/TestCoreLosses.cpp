@@ -3451,7 +3451,10 @@ TEST_CASE("Frequency_From_Losses_TDG", "[physical-model][core-losses][smoke-test
 
     auto coreLossesModel = CoreLossesModel::factory(models);
     auto coreLosses = coreLossesModel->get_core_losses(core, excitation, temperature);
-    double expectedLosses = 37.04;
+    // ABT #1467: 37.04 -> 34.08 W. The sampler now closes an open time axis periodically instead of
+    // resampling it twice: the flux was an asymmetric triangle (+5.37 / -5.63 T shape, midpoint -7.4 mT,
+    // peak 0.3252 T) and is now the exact symmetric triangle the voltage drives (peak 0.3203 T).
+    double expectedLosses = 34.08;
     REQUIRE_THAT(coreLosses.get_core_losses(), Catch::Matchers::WithinAbs(expectedLosses, expectedLosses * maxError));
 }
 

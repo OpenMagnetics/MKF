@@ -388,7 +388,10 @@ TEST_CASE("Test_Sample_And_Compress_Sinusoidal", "[processor][waveform-processor
     REQUIRE(128UL == sampledWaveform.get_data().size());
 
     auto compressedWaveform = WaveformProcessor::compress_waveform(sampledWaveform);
-    REQUIRE(115UL == compressedWaveform.get_data().size());
+    // ABT #1467: 115 -> 110. The open 69-sample axis is now closed periodically and the sine sampled
+    // over the full 2 pi period, instead of being resampled onto (127/128) of it; the exact periodic
+    // sine compresses to 110 points.
+    REQUIRE(110UL == compressedWaveform.get_data().size());
     auto guessedLabel = WaveformProcessor::try_guess_waveform_label(compressedWaveform);
     REQUIRE(magic_enum::enum_name(WaveformLabel::SINUSOIDAL) == magic_enum::enum_name(guessedLabel));
 }
