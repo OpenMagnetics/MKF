@@ -5090,6 +5090,9 @@ BoostPfcLineCycle build_boost_pfc_line_cycle(double lineFrequency, size_t cycles
     recordJson["magneticFluxDensity"]["processed"]["peakToPeak"] = *std::max_element(data.begin(), data.end()) - *std::min_element(data.begin(), data.end());
     result.record = OperatingPointExcitation(recordJson);
 
+    // The envelope repeats once per line period: it closes one period after its first sample, on the same value.
+    envelopeTime.push_back(1 / lineFrequency);
+    envelopeData.push_back(envelopeData.front());
     json envelopeJson;
     envelopeJson["frequency"] = lineFrequency;
     envelopeJson["magneticFluxDensity"]["waveform"]["time"] = envelopeTime;
@@ -5137,18 +5140,27 @@ TEST_CASE("Core losses of a boost PFC line-cycle excitation are priced per switc
         }
     }
 
-    SECTION("The envelope repeats once per record, whatever frequency the excitation is labelled with") {
-        // Kirchhoff labels a PFC line-cycle excitation with the switching frequency while its waveform
-        // spans one line period; the envelope is the record's own loop, at 1 / (record duration).
+    SECTION("The envelope repeats once per record, and the record is labelled with its line frequency") {
+        // The record spans one 60 Hz line period and is labelled 60 Hz: the envelope is a loop at the
+        // line frequency over that same period (ABT #1467).
         Core core = OpenMagneticsTesting::get_quick_core("PQ 20/20", json::array(), 1, "PC44");
         auto model = CoreLossesModel::factory(CoreLossesModels::STEINMETZ);
+        REQUIRE(pfc.record.get_frequency() == 60);
+        auto record = CoreLossesModel::split_into_switching_cycles(pfc.record);
+        REQUIRE(record.has_value());
+        CHECK(record->envelope.get_frequency() == 60);
+        auto envelopeTime = record->envelope.get_magnetic_flux_density()->get_waveform()->get_time().value();
+        CHECK(envelopeTime.front() == 0);
+        CHECK_THAT(envelopeTime.back(), Catch::Matchers::WithinRel(1.0 / 60, 1e-12));
+        auto envelopeData = record->envelope.get_magnetic_flux_density()->get_waveform()->get_data();
+        CHECK(envelopeData.back() == envelopeData.front());
+
+        // A line-cycle record labelled with the switching frequency is mislabelled: its waveform spans
+        // 1000 periods of that frequency, and it is refused, not re-read as one period of something else.
         auto labelledWithSwitchingFrequency = pfc.record;
         labelledWithSwitchingFrequency.set_frequency(60000);
-        auto record = CoreLossesModel::split_into_switching_cycles(labelledWithSwitchingFrequency);
-        REQUIRE(record.has_value());
-        CHECK_THAT(record->envelope.get_frequency(), Catch::Matchers::WithinRel(60.0, 1e-9));
-        CHECK_THAT(model->get_core_losses(core, labelledWithSwitchingFrequency, temperature).get_core_losses(),
-                   Catch::Matchers::WithinRel(model->get_core_losses(core, pfc.record, temperature).get_core_losses(), 1e-9));
+        CHECK_THROWS_AS(CoreLossesModel::split_into_switching_cycles(labelledWithSwitchingFrequency), std::invalid_argument);
+        CHECK_THROWS_AS(model->get_core_losses(core, labelledWithSwitchingFrequency, temperature), std::invalid_argument);
     }
 
     SECTION("A ferrite whose fit starts above the line frequency cannot price the envelope's loop") {

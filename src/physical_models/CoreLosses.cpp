@@ -6,6 +6,7 @@
 #include "physical_models/InitialPermeability.h"
 
 #include "processors/Inputs.h"
+#include "processors/WaveformProcessor.h"
 #include "processors/CircuitSimulatorInterface.h"
 #include "physical_models/Reluctance.h"
 #include "physical_models/MagneticField.h"
@@ -1395,6 +1396,9 @@ std::optional<SwitchingCyclesRecord> CoreLossesModel::split_into_switching_cycle
     auto fluxDensityWaveform = fluxDensity.get_waveform().value();
     auto fluxDensityData = fluxDensityWaveform.get_data();
     auto fluxDensityTime = fluxDensityWaveform.get_time().value();
+    // A record spans one period of its excitation's frequency, the line frequency for a line-cycle
+    // record; a record labelled with another frequency is refused, not re-read (ABT #1467).
+    WaveformProcessor::check_time_axis_spans_one_period(fluxDensityTime, excitation.get_frequency());
     if (fluxDensityData.size() != fluxDensityTime.size()) {
         throw InvalidInputException(ErrorCode::INVALID_INPUT,
             "Core losses: the flux density waveform has " + std::to_string(fluxDensityData.size()) + " samples and " +
@@ -1489,14 +1493,20 @@ std::optional<SwitchingCyclesRecord> CoreLossesModel::split_into_switching_cycle
         envelopeMagnetizingCurrent = average_over_neighbouring_cycles(fluxDensityTime, magnetizingCurrentData.value(), valleys);
     }
 
-    // The envelope repeats once per record: its frequency is the record's, 1 / (record duration). A
-    // line-cycle excitation may carry the switching frequency as its frequency while its waveform spans
-    // the line period (Kirchhoff's PFC/Vienna records do); pricing the envelope at that frequency would
-    // price the line swing as a switching-frequency loop.
-    record.envelope.set_frequency(1 / recordDuration);
+    // The envelope repeats once per record: the record spans one period of the excitation's frequency
+    // (the line frequency; standardize_waveform above refuses an axis that does not span 1 / f), and
+    // so does the envelope. Its samples sit at the cycles' centres; the period closes one period after
+    // the first of them, on the same value (ABT #1467).
+    const double linePeriod = 1 / excitation.get_frequency();
+    record.envelope.set_frequency(excitation.get_frequency());
     double envelopeStartTime = envelopeTime.front();
     for (auto& time : envelopeTime) {
         time -= envelopeStartTime;
+    }
+    envelopeTime.push_back(linePeriod);
+    envelopeFluxDensity.push_back(envelopeFluxDensity.front());
+    if (magnetizingCurrentData) {
+        envelopeMagnetizingCurrent.push_back(envelopeMagnetizingCurrent.front());
     }
     auto envelopeFluxDensitySignal = make_loop_signal(envelopeTime, envelopeFluxDensity);
     record.envelopePeakToPeak = envelopeFluxDensitySignal.get_processed()->get_peak_to_peak().value();
