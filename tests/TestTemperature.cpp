@@ -687,8 +687,58 @@ TEST_CASE("Temperature: Ambient Temperature Effect", "[temperature][smoke-test]"
     REQUIRE(result2.converged);
     REQUIRE(result2.maximumTemperature > result1.maximumTemperature);
 
-    REQUIRE_THAT(result2.totalThermalResistance, 
-                 Catch::Matchers::WithinRel(result1.totalThermalResistance, 0.1));
+    // ABT #1735 (Alf 2026-10-11): the band is derived from how the part's own heat-transfer
+    // coefficients scale between the two ambients, not guessed. Raising the ambient from 25 to
+    // 50 C at a similar rise:
+    //   - radiation, h_rad = eps sigma (Ts^2 + Ta^2)(Ts + Ta), grows with absolute temperature
+    //     cubed: (323/298)^3 = 1.27 at a few kelvin of rise;
+    //   - natural convection on surfaces inside a correlation's range falls slightly (film
+    //     viscosity rises faster than conductivity, and the rise is smaller), while a small
+    //     surface on the Nu >= 1 floor has h = k_air(T_film)/L, which grows with k_air (~7%);
+    //   - solid conduction (ferrite, copper, enamel, tape) is ambient-independent here, and
+    //     stagnant-air films grow with k_air.
+    // So the part's total thermal resistance must FALL (radiation carries a large share of a small
+    // naturally-cooled part's heat and nothing falls by as much as it rises), and it cannot fall by
+    // more than its fastest-growing conductance rises: no part of the heat path becomes more than
+    // m_max times as conductive, so the rise per watt cannot shrink below 1/m_max of its 25 C
+    // value. m_max is read from the model's own resistors, paired between the two solves (same
+    // geometry, same network). The core/winding loss split moves between the ambients (3C97 loss
+    // falls, copper loss rises), but on this toroid both sit on one body whose hottest node is
+    // set by the surface films, so the split does not carry the rise per watt outside this range.
+    const auto& resistances25 = result1.thermalResistances;
+    const auto& resistances50 = result2.thermalResistances;
+    REQUIRE(resistances25.size() == resistances50.size());
+    REQUIRE(!resistances25.empty());
+    double maximumConductanceGrowth = 0.0;
+    double radiationConductance25 = 0.0;
+    double ambientConductance25 = 0.0;
+    const size_t ambientIdx = temp1.getNodes().size() - 1;
+    for (size_t k = 0; k < resistances25.size(); ++k) {
+        REQUIRE(resistances25[k].nodeFromId == resistances50[k].nodeFromId);
+        REQUIRE(resistances25[k].nodeToId == resistances50[k].nodeToId);
+        REQUIRE(resistances25[k].type == resistances50[k].type);
+        REQUIRE(resistances25[k].resistance > 0);
+        REQUIRE(resistances50[k].resistance > 0);
+        maximumConductanceGrowth = std::max(maximumConductanceGrowth, resistances25[k].resistance / resistances50[k].resistance);
+        if (resistances25[k].nodeToId == ambientIdx) {
+            ambientConductance25 += 1.0 / resistances25[k].resistance;
+            if (resistances25[k].type == HeatTransferType::RADIATION) {
+                radiationConductance25 += 1.0 / resistances25[k].resistance;
+            }
+        }
+    }
+    // The fastest-growing coefficient is radiation: (T50/T25)^3 within the rises seen here.
+    double hRadGrowth = ThermalResistance::calculateRadiationCoefficient(result2.maximumTemperature, 50.0, 0.9) /
+                        ThermalResistance::calculateRadiationCoefficient(result1.maximumTemperature, 25.0, 0.9);
+    double ratio = result2.totalThermalResistance / result1.totalThermalResistance;
+    INFO("R(25 C) " << result1.totalThermalResistance << " K/W, R(50 C) " << result2.totalThermalResistance
+         << " K/W, ratio " << ratio << "; largest conductance growth " << maximumConductanceGrowth
+         << ", h_rad growth at the hottest node " << hRadGrowth << "; radiation share of the 25 C surface conductance "
+         << radiationConductance25 / ambientConductance25);
+    CHECK(maximumConductanceGrowth > 1.0);
+    CHECK(maximumConductanceGrowth < hRadGrowth * 1.02);
+    CHECK(result2.totalThermalResistance < result1.totalThermalResistance);
+    CHECK(ratio > 1.0 / maximumConductanceGrowth);
 }
 
 TEST_CASE("Temperature: Loss Variation", "[temperature][smoke-test]") {
