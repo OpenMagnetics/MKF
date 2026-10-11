@@ -5940,36 +5940,57 @@ std::map<std::string, uint64_t> Coil::align_blocked_ring_turns(bool forceSpreadB
             }
             ringRadius[ringName] = sum / double(turnIdxs.size());
         }
-        // The territory that is safe for ALL of a winding's rings at once is the arc the
-        // winding's own turns already occupy (its sector, measured on the geometry — sections'
-        // polar envelopes can be stale after compaction, cf. ABT #186). The per-ring margin rule
-        // below must not be used for the force-spread: a tight inner ring extended toward the
-        // nearest same-radius foreign turn reaches deep into the neighbouring sector while that
-        // neighbour's own inner ring is still huddled mid-sector (measured 179 deg of territory
-        // in a 120 deg sector on the 3-winding CMC).
+        // The territory that is safe for ALL of a section's rings at once.
         //
-        // ABT #1734: the same partition also BOUNDS every later re-spread and nudge under real
-        // winding (see the clamp at the per-ring territory below), so it is measured whenever real
-        // winding is on, not only for the force-spread.
+        // Several sections (a CONTIGUOUS toroid; an interleaved winding owns one sector per
+        // section): each section's ALLOCATED sector, as wind_by_sections laid it, plus half of
+        // each adjacent insulation section (_allocatedSectionTerritories, ABT #1734, Alf
+        // 2026-10-11). Disjoint by construction. It bounds the force-spread (a huddled inner ring
+        // reaches its whole sector, and no ring's margin heuristic can walk it into a
+        // neighbour's: measured 179 deg of territory in a 120 deg sector on the 3-winding CMC) and,
+        // under real winding, every later re-spread and nudge (see the clamp at the per-ring
+        // territory below). It used to be measured from the arcs the turns currently occupy,
+        // which is self-referential: a section whose turns were spilled to deeper rings occupies a
+        // narrower arc, was handed less territory, reported more deficit and spilled again, and
+        // the toroidal blocking loop ran away until the wind no longer fit (see
+        // record_allocated_section_territories).
+        //
+        // A single section keeps the arc its own turns occupy (or the full circle).
+        //
+        // Sectors exist only in a CONTIGUOUS layout: OVERLAPPING sections are concentric
+        // (radially stacked, each around the whole core), so cutting the circle between them is
+        // meaningless (ABT #1734: partitioning their measured arcs halved two stacked windings and
+        // 20 of 250 overlapping sweep fixtures stopped winding).
         std::map<std::string, std::pair<bool, std::pair<double, double>>> sectionOccupiedArc;
         if (contiguousSectorLayout && (spreadAllRingsActive || realWindingSectorsActive)) {
-            // ABT #1734 (Alf 2026-10-11): the partition is keyed by SECTION, not by winding. An
-            // interleaved winding (P S P S) owns two sectors; keyed by winding, its two sections
-            // measured as one arc spanning the other winding's sector between them, and the
-            // re-spread marched its rings across it (164 of 170 interleaved contiguous fixtures
-            // collided).
-            std::map<std::string, std::vector<double>> anglesPerSection;
+            std::set<std::string> sectionsWithTurns;
             for (size_t t = 0; t < turns.size(); ++t) {
                 if (!turns[t].get_section()) {
                     throw CoilException(ErrorCode::CALCULATION_INVALID_RESULT,
                         "align_blocked_ring_turns: turn '" + turns[t].get_name() +
-                        "' has no section; the real-winding sector partition is keyed by section");
+                        "' has no section; the real-winding sector territories are kept per section");
                 }
-                anglesPerSection[turns[t].get_section().value()].push_back(normalizeAngle(
-                    std::atan2(turns[t].get_coordinates()[1], turns[t].get_coordinates()[0]) *
-                    180.0 / std::numbers::pi));
+                sectionsWithTurns.insert(turns[t].get_section().value());
             }
-            for (auto& [sectionName, angles] : anglesPerSection) {
+            if (sectionsWithTurns.size() > 1) {
+                for (const auto& sectionName : sectionsWithTurns) {
+                    auto allocated = _allocatedSectionTerritories.find(sectionName);
+                    if (allocated == _allocatedSectionTerritories.end()) {
+                        throw CoilException(ErrorCode::CALCULATION_INVALID_RESULT,
+                            "align_blocked_ring_turns: section '" + sectionName + "' of a contiguous toroid has no "
+                            "allocated sector territory (record_allocated_section_territories runs at the end of "
+                            "wind_by_sections; these sections were not laid by it)");
+                    }
+                    sectionOccupiedArc[sectionName] = {false, allocated->second};
+                }
+            }
+            else if (sectionsWithTurns.size() == 1) {
+                std::vector<double> angles;
+                for (size_t t = 0; t < turns.size(); ++t) {
+                    angles.push_back(normalizeAngle(
+                        std::atan2(turns[t].get_coordinates()[1], turns[t].get_coordinates()[0]) *
+                        180.0 / std::numbers::pi));
+                }
                 std::sort(angles.begin(), angles.end());
                 double largestGap = 360.0 - (angles.back() - angles.front());
                 double gapEnd = angles.front();
@@ -5980,83 +6001,12 @@ std::map<std::string, uint64_t> Coil::align_blocked_ring_turns(bool forceSpreadB
                         gapEnd = angles[i];
                     }
                 }
-                double meanPitch = 360.0 / double(std::max<size_t>(angles.size(), 1));
-                // ABT #885: a SINGLE-TURN winding is not a full-circle winding. The test above
-                // asks "is there no gap big enough to be the winding's opening", which is
-                // meaningless for one angle: largestGap comes out 360 (there is nothing to
-                // subtract) and meanPitch comes out 360 too, so `largestGap <= 2 * meanPitch`
-                // passes trivially and the turn is recorded as occupying the WHOLE CIRCLE — the
-                // exact opposite of the truth, which is that it occupies one wire's width.
-                //
-                // The consequence was not local. A full-circle winding makes the partition below
-                // give up (the "degenerate mix" branch clears every territory), the force-spread
-                // then finds no winding arc and each ring falls back to its own measured arc, and
-                // the other winding's rings spread over 360 degrees straight through this turn.
-                // Measured on current_transformer_complete (T 25.3/14.8/10, a 1-turn Round 6.0
-                // primary and a 100-turn Round 0.5 secondary): the secondary spanned 0.9..353 deg
-                // instead of its own 163 deg sector, and TWELVE of its turns ended up inside the
-                // primary's copper -- inside it both in azimuth (156.8..203.2 deg) and in radius
-                // (3.214..7.400 mm).
+                double meanPitch = 360.0 / double(angles.size());
+                // ABT #885: a SINGLE-TURN section is not a full-circle section: for one angle
+                // largestGap and meanPitch both come out 360, and `largestGap <= 2 * meanPitch`
+                // would record one wire's width as the whole circle.
                 bool sectionFullCircle = angles.size() > 1 && largestGap <= 2 * meanPitch;
-                sectionOccupiedArc[sectionName] = {sectionFullCircle, {gapEnd, 360.0 - largestGap}};
-            }
-            // The measured arcs are the TIGHT pre-spread occupancy (a huddled winding measures
-            // well under its sector), and extending each winding toward its neighbours' turns
-            // independently makes adjacent territories OVERLAP (both extend up to the same
-            // pre-spread turns, then both spread into the shared band). Partition instead: the
-            // boundary between two angularly adjacent windings is the MIDPOINT of the free gap
-            // between their occupied arcs — deterministic, disjoint, and symmetric. Only for
-            // multi-winding layouts where every winding is a sector; a single winding keeps its
-            // own arc (or the full circle), and a degenerate mix (a full-circle winding among
-            // sectors) keeps the per-ring territories untouched.
-            if (sectionOccupiedArc.size() > 1) {
-                bool anyFullCircle = false;
-                for (const auto& [sectionName, arc] : sectionOccupiedArc) {
-                    anyFullCircle = anyFullCircle || arc.first;
-                }
-                if (anyFullCircle) {
-                    sectionOccupiedArc.clear();
-                }
-                else {
-                    std::vector<std::pair<double, std::string>> orderedArcs;  // {start, winding}
-                    for (const auto& [sectionName, arc] : sectionOccupiedArc) {
-                        orderedArcs.push_back({arc.second.first, sectionName});
-                    }
-                    std::sort(orderedArcs.begin(), orderedArcs.end());
-                    std::map<std::string, std::pair<double, double>> territory;  // {start, span}
-                    for (size_t i = 0; i < orderedArcs.size(); ++i) {
-                        const auto& previous = orderedArcs[(i + orderedArcs.size() - 1) % orderedArcs.size()];
-                        const auto& next = orderedArcs[(i + 1) % orderedArcs.size()];
-                        const auto& own = sectionOccupiedArc.at(orderedArcs[i].second).second;
-                        const auto& previousArc = sectionOccupiedArc.at(previous.second).second;
-                        double ownStart = own.first;
-                        // ABT #1734: SIGNED gaps. The winder can lay a winding's deeper rings past
-                        // its section into the neighbour's (corridor shift, U rings), so two
-                        // occupied arcs can OVERLAP; the free gap between them is then negative.
-                        // Measured as normalizeAngle(start - previous end) it came out as nearly
-                        // 360 deg and the winding's "territory" swallowed its neighbours. Each gap
-                        // is the distance from one winding's start to the next's start minus the
-                        // first one's span, the same number seen from either side, so the
-                        // boundary (its midpoint, the middle of the overlap when negative) is
-                        // shared by both windings and the territories stay disjoint.
-                        double gapBehind = normalizeAngle(ownStart - previousArc.first) - previousArc.second;
-                        double gapAhead = normalizeAngle(next.first - ownStart) - own.second;
-                        double territoryStartAngle = normalizeAngle(ownStart - gapBehind / 2);
-                        double territorySpan = own.second + gapBehind / 2 + gapAhead / 2;
-                        if (territorySpan <= 0) {
-                            // A winding nested inside another's arc: no sector partition exists.
-                            territory.clear();
-                            break;
-                        }
-                        territory[orderedArcs[i].second] = {territoryStartAngle, territorySpan};
-                    }
-                    if (territory.size() != sectionOccupiedArc.size()) {
-                        sectionOccupiedArc.clear();   // degenerate (nested) layout: per-ring rule, as for a full-circle mix
-                    }
-                    for (auto& [sectionName, arc] : sectionOccupiedArc) {
-                        arc.second = territory.at(sectionName);
-                    }
-                }
+                sectionOccupiedArc[*sectionsWithTurns.begin()] = {sectionFullCircle, {gapEnd, 360.0 - largestGap}};
             }
         }
 
@@ -12474,6 +12424,7 @@ void Coil::assign_windings_to_columns(const std::vector<std::vector<size_t>>& wi
 }
 
 bool Coil::wind_by_sections(std::vector<double> proportionPerWinding, std::vector<size_t> pattern, size_t repetitions) {
+    _allocatedSectionTerritories.clear();
     _currentProportionPerWinding = proportionPerWinding;
     _currentPattern = pattern;
     _currentRepetitions = repetitions;
@@ -12580,9 +12531,59 @@ bool Coil::wind_by_sections(std::vector<double> proportionPerWinding, std::vecto
 
     if (result && get_sections_description()) {
         restore_stated_section_winding_orders();
+        if (bobbinWindingWindowShape == WindingWindowShape::ROUND &&
+            get_winding_orientation() == WindingOrientation::CONTIGUOUS) {
+            record_allocated_section_territories();
+        }
     }
 
     return result;
+}
+
+void Coil::record_allocated_section_territories() {
+    // ABT #1734 (Alf 2026-10-11): the sector each CONDUCTION section of a contiguous toroid was
+    // allocated, read from the sections description as wind_by_round_sections laid it (before
+    // delimit_and_compact_round_window rebuilds each section's extent as the union of its rings'
+    // synthetic N x turn-angle spans): the section's own angular span plus half of each adjacent
+    // insulation section. align_blocked_ring_turns bounds every real-winding ring by it. A
+    // territory measured from where the turns currently are is self-referential: a winding whose
+    // turns were spilled to deeper rings occupies a narrower arc, so it was handed less
+    // territory, reported more deficit, spilled again -- the blocking loop ran away (T 25/15/10,
+    // 15 + 15 + 15 turns x 2 of Round 21.0: the middle winding's territory fell 110 -> 77 -> 71
+    // deg against its 120 deg sector, until "30 turns ... need 14 rings, 10.598 mm deep, in a
+    // window of 7.5 mm radial height").
+    _allocatedSectionTerritories.clear();
+    const auto sections = get_sections_description().value();
+    const size_t count = sections.size();
+    for (size_t i = 0; i < count; ++i) {
+        if (sections[i].get_type() != ElectricalType::CONDUCTION) {
+            continue;
+        }
+        double halfInsulationBehind = 0;
+        double halfInsulationAhead = 0;
+        if (count > 1) {
+            const auto& previous = sections[(i + count - 1) % count];
+            const auto& next = sections[(i + 1) % count];
+            if (previous.get_type() == ElectricalType::INSULATION) {
+                halfInsulationBehind = previous.get_dimensions()[1] / 2;
+            }
+            if (next.get_type() == ElectricalType::INSULATION) {
+                halfInsulationAhead = next.get_dimensions()[1] / 2;
+            }
+        }
+        const double span = sections[i].get_dimensions()[1];
+        if (!(span > 0)) {
+            throw CoilException(ErrorCode::CALCULATION_INVALID_RESULT,
+                "record_allocated_section_territories: section '" + sections[i].get_name() +
+                "' was allocated a non-positive angular span " + std::to_string(span) + " deg");
+        }
+        const double start = sections[i].get_coordinates()[1] - span / 2 - halfInsulationBehind;
+        double normalizedStart = std::fmod(start, 360.0);
+        if (normalizedStart < 0) {
+            normalizedStart += 360.0;
+        }
+        _allocatedSectionTerritories[sections[i].get_name()] = {normalizedStart, span + halfInsulationBehind + halfInsulationAhead};
+    }
 }
 
 void Coil::capture_stated_section_winding_orders() {

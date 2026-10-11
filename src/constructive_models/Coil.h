@@ -504,6 +504,12 @@ class Coil : public MAS::Coil {
         // sections carry no margin entry. Section::margin on the wound sections is the
         // persisted truth; this vector is the transient winding-time input.
         std::vector<std::vector<double>> _marginsPerSection;
+        // ABT #1734 (Alf 2026-10-11): the angular territory each CONDUCTION section of a CONTIGUOUS
+        // round-window layout was ALLOCATED by wind_by_sections (its sector plus half of each
+        // adjacent insulation section), name -> {start deg, span deg}. Recorded before
+        // delimit_and_compact_round_window rebuilds the section extents from the turns. The
+        // real-winding ring re-spread is bounded by it (align_blocked_ring_turns).
+        std::map<std::string, std::pair<double, double>> _allocatedSectionTerritories;
         // ABT #724 (owner ruling): margins recovered from a previous wind FOLLOW THE WINDING.
         // Which winding each recovered ordinal belonged to, and each winding's merged
         // {topOrLeft, bottomOrRight}; plan_section_group re-maps mismatched ordinals when the
@@ -517,6 +523,7 @@ class Coil : public MAS::Coil {
         // same name once they are rebuilt. Without it a stated U was silently wound as Z.
         std::map<std::string, WindingOrder> _statedSectionWindingOrders;
         void capture_stated_section_winding_orders();
+        void record_allocated_section_territories();
         void restore_stated_section_winding_orders();
         // ABT #724: reset_margins_per_section() means "the next wind is margin-free"; the
         // empty vector alone cannot express that, because wind()'s ABT #676 recovery treats
