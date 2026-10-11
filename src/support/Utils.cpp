@@ -3058,9 +3058,10 @@ bool wind_magnetic_coil_as_described(Magnetic& magnetic, json configuration, std
             // wind_by_round_sections from their own margins, order and turn split.
             //
             // A stated layout that does not fit is reported exactly as any other wind that does
-            // not fit (ABT #930, #1322, #1487): wind() returns false, the reason is in
+            // not fit (ABT #930, #1322, #1487): wind() returns false and the reason is in
             // get_last_fit_failure, and the turns are laid out in the stated sections as far as
-            // they go -- never a throw, so one record cannot stop an atomic catalogue load.
+            // they go. This function only reports it; magnetic_autocomplete keeps a stated layout
+            // as it was laid out and logs the reason as a WARNING (ABT #1496).
             auto& coil = magnetic.get_mutable_coil();
             bool rectangularWindows = true;
             {
@@ -3584,23 +3585,52 @@ Magnetic magnetic_autocomplete(Magnetic magnetic, json configuration, std::optio
     // re-winding one would buy nothing and would turn the refusal into a hard failure of
     // autocomplete itself, i.e. a global display setting would stop every planar design from
     // rendering at all. The gates that own the ruling still fire wherever routing is attempted.
+    // ABT #930 / #1496 (Alf, 2026-10-10): a wind that does not fit is never handed back silently.
+    // Before, the bool was discarded, with only a warning when no turns came back at all, and
+    // layouts with copper outside the window reached the 2D and 3D views and the simulation: with
+    // real winding on, 24 of the 107 tests/testData designs the web autocompletes came back that
+    // way (LLC_trafo_first: turn 0 10.6 mm below the window floor), and nothing said so.
+    //  - A layout MKF planned itself (the coil arrived with no sections, layers or turns) that does
+    //    not fit is an error: autocomplete throws COIL_WINDING_ERROR with the reason.
+    //  - A layout the design STATES (it arrived with sections, layers or turns of its own) is the
+    //    customer's: it is laid out in full as stated, so the views can show where it overflows
+    //    (Painter::paint_winding_fit_problems rings every turn outside the window), and the reason
+    //    is logged as a WARNING, which a caller collecting the log (Logger::enableCollector) reads.
+    //    That holds for a stated layout kept as it is, without a wind, too (planar, or real winding
+    //    off): it is judged the same way.
+    // The per-candidate wind() callers (CoilAdviser, Impedance, StrayCapacitance) cull on wind()'s
+    // false themselves and do not come through here.
+    auto& coilToComplete = magnetic.get_mutable_coil();
+    const bool layoutIsStated = coilToComplete.get_sections_description() || coilToComplete.get_layers_description() ||
+                                (coilToComplete.get_turns_description() && !coilToComplete.get_turns_description()->empty());
     if (magnetic_coil_needs_winding(magnetic)) {
-        // The bool is deliberately not acted on here: see the ABT #930 warning below.
-        wind_magnetic_coil_as_described(magnetic, configuration, inputs);
+        const bool wound = wind_magnetic_coil_as_described(magnetic, configuration, inputs);
+        if (!wound) {
+            auto& coil = magnetic.get_mutable_coil();
+            const std::string reason = coil.get_last_fit_failure();
+            const std::string what =
+                std::string("the winding does not fit its window") +
+                (settings.get_coil_use_real_winding_geometry() && !coil.is_planar() ? " with real winding geometry" : "") +
+                (coil.get_turns_description() ? "" : " (no turns were produced)") +
+                (reason.empty() ? std::string(", and the winder did not narrow the reason further") : ": " + reason);
+            if (!layoutIsStated) {
+                throw CoilException(ErrorCode::COIL_WINDING_ERROR, "Autocomplete could not wind this magnetic: " + what);
+            }
+            OM_WARNING_M("Utils", "The stated winding layout is laid out as stated, but " + what);
+        }
     }
-
-    // ABT #930: autocompleting ONE magnetic and getting a coil with no turns back, silently, is
-    // how "Turns not created" reached a reporter with no way to tell a broken winder from a
-    // conductor that cannot fit its window. Deliberately a loud warning and not a throw: the
-    // per-candidate wind() callers (CoilAdviser, Impedance, StrayCapacitance) legitimately cull
-    // on a failed wind, and a throw here would turn their culls into aborts.
-    if (!magnetic.get_mutable_coil().get_turns_description()) {
-        const auto& reason = magnetic.get_mutable_coil().get_last_fit_failure();
-        OM_WARNING_M("Utils", "Autocomplete produced no turns for this magnetic"
-                              + (reason.empty()
-                                 ? std::string(": the winding does not fit its window, and the reason could not "
-                                               "be narrowed further.")
-                                 : ". " + reason));
+    else if (layoutIsStated) {
+        auto& coil = magnetic.get_mutable_coil();
+        const bool inside = coil.are_turns_inside_winding_window();
+        // are_turns_inside_winding_window names the escaping turn; keep that reason when both fail.
+        const std::string outsideReason = inside ? std::string() : coil.get_last_fit_failure();
+        const bool fitting = !coil.get_sections_description() || !coil.get_layers_description() ||
+                             coil.are_sections_and_layers_fitting();
+        if (!inside || !fitting) {
+            const std::string reason = !inside ? outsideReason : coil.get_last_fit_failure();
+            OM_WARNING_M("Utils", std::string("The stated winding layout is kept as stated, but it does not fit its window") +
+                                  (reason.empty() ? std::string(" (its sections or layers overflow)") : ": " + reason));
+        }
     }
 
     // ABT #1172 (WP3, MAS RFC 0013): winding ends terminate on the bobbin's pins. After winding,

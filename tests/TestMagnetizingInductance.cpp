@@ -2098,18 +2098,21 @@ TEST_CASE("Test_Number_Turns_From_Inductance_Unreachable_Under_Dc_Bias_Throws", 
             excitation.set_current(current);
         }
     }
-    auto magneticFor = [](const std::string& shape) {
+    // ABT #1496: magnetic_autocomplete now throws when the winding does not fit its window, and a
+    // 1.25 mm wire does not fit the 0.635 mm ring of T 2.03/1.27/0.64; the tiny toroids are wound
+    // with a wire they hold, so the inductance solve is what is under test (Alf, 2026-10-11).
+    auto magneticFor = [](const std::string& shape, const std::string& wireName) {
         return magnetic_autocomplete(OpenMagnetics::Magnetic(json{
             {"core", {{"name", shape}, {"functionalDescription", {{"type", "toroidal"}, {"shape", shape}, {"material", "75-Series 26"},
                                                                   {"gapping", json::array()}, {"numberStacks", 1}}}}},
             {"coil", {{"bobbin", "Basic"}, {"functionalDescription", {{{"name", "Primary"}, {"numberTurns", 1}, {"numberParallels", 1},
-                                                                        {"isolationSide", "primary"}, {"wire", "Round 1.25 - Grade 1"}}}}}}}));
+                                                                        {"isolationSide", "primary"}, {"wire", wireName}}}}}}}));
     };
     MagnetizingInductance magnetizingInductance(ReluctanceModels::ZHANG);
 
     for (const std::string shape : {"T 2.03/1.27/0.64", "T 3.94/2.24/1.8"}) {
         INFO(shape);
-        auto magnetic = magneticFor(shape);
+        auto magnetic = magneticFor(shape, "Round 0.2 - Grade 1");
         auto start = std::chrono::steady_clock::now();
         CHECK_THROWS_AS(magnetizingInductance.calculate_number_turns_from_gapping_and_inductance(magnetic.get_core(), magnetic.get_coil(), &inputs),
                         CalculationException);
@@ -2119,7 +2122,7 @@ TEST_CASE("Test_Number_Turns_From_Inductance_Unreachable_Under_Dc_Bias_Throws", 
     }
 
     // Control: a core that does reach the target keeps an answer, and that answer meets it.
-    auto magnetic = magneticFor("T 21/12/14");
+    auto magnetic = magneticFor("T 21/12/14", "Round 1.25 - Grade 1");
     int numberTurns = magnetizingInductance.calculate_number_turns_from_gapping_and_inductance(magnetic.get_core(), magnetic.get_coil(), &inputs);
     auto coil = magnetic.get_coil();
     coil.get_mutable_functional_description()[0].set_number_turns(numberTurns);

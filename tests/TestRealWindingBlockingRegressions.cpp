@@ -6,6 +6,7 @@
 #include "constructive_models/Core.h"
 #include "constructive_models/Magnetic.h"
 #include "constructive_models/Mas.h"
+#include "support/Logger.h"
 #include "support/Painter.h"
 #include "support/Utils.h"
 #include "support/Settings.h"
@@ -782,4 +783,516 @@ TEST_CASE("wind_magnetic_coil_as_described returns false for a real winding that
         CHECK(failure.empty());
     }
     settings.reset();
+}
+
+namespace {
+
+// Autocompletes a stored design the way the web does. With freshWind the stored turns and layers are
+// dropped, so the coil is wound from its sections even with real winding off (a stored layout is
+// otherwise taken as it is and nothing is wound).
+// With dropSections too, the coil states no layout at all and MKF plans it (ABT #1496: such a plan
+// that does not fit throws, where a stated one is laid out and warned about).
+OpenMagnetics::Magnetic autocomplete_stored_design(const std::string& name, bool freshWind = false, bool dropSections = false) {
+    const auto masJson = load_test_data(name);
+    json magneticJson = masJson.contains("magnetic") ? masJson.at("magnetic") : masJson;
+    if (freshWind) {
+        magneticJson["coil"].erase("turnsDescription");
+        magneticJson["coil"].erase("layersDescription");
+    }
+    if (dropSections) {
+        magneticJson["coil"].erase("sectionsDescription");
+    }
+    std::optional<OpenMagnetics::Inputs> inputs;
+    if (masJson.contains("inputs")) {
+        inputs = OpenMagnetics::Inputs(masJson.at("inputs"), false);
+    }
+    OpenMagnetics::Magnetic magnetic;
+    magnetic.set_core(OpenMagnetics::Core(magneticJson.at("core")));
+    magnetic.set_coil(OpenMagnetics::Coil(magneticJson.at("coil"), false));
+    return OpenMagnetics::magnetic_autocomplete(magnetic, json{}, inputs);
+}
+
+size_t count_conduction_layers_of(OpenMagnetics::Coil& coil, const std::string& windingName) {
+    size_t count = 0;
+    const auto layers = coil.get_layers_by_type(MAS::ElectricalType::CONDUCTION);
+    for (const auto& layer : layers) {
+        if (layer.get_partial_windings()[0].get_winding() == windingName) {
+            count++;
+        }
+    }
+    return count;
+}
+
+}  // namespace
+
+// ABT #1496: LLC_trafo_first (ETD 59, Primary 24 + Secondary 8 + Tertiary 8 turns of a 2.64 mm
+// wire, 11.475 mm wide window). The equal split gives each winding 3.81 mm and the primary needs
+// two 16-turn layers (5.28 mm), which try_rewind cannot hand out because the equal split leaves
+// nothing unused; the winder then crammed all 24 turns into ONE layer, turn 0 10.6 mm below the
+// window floor, and autocomplete handed that on. 5.28 + 2.64 + 2.64 mm fit side by side.
+TEST_CASE("Real winding: autocomplete re-splits a window the equal split filled, so every turn is inside (ABT #1496)",
+          "[constructive-model][coil][real-winding][abt1496]") {
+    auto& settings = OpenMagnetics::Settings::GetInstance();
+    settings.reset();
+    settings.set_coil_use_real_winding_geometry(true);
+    auto magnetic = autocomplete_stored_design("LLC_trafo_first.json");
+    auto& coil = magnetic.get_mutable_coil();
+    REQUIRE(coil.get_turns_description());
+    INFO(coil.get_last_fit_failure());
+    CHECK(coil.are_turns_inside_winding_window());
+    CHECK(coil.are_sections_and_layers_fitting());
+    CHECK(count_conduction_layers_of(coil, "Primary") == 2);
+    settings.reset();
+}
+
+// ABT #1496: with real winding on, every re-wind after the ideal one (the crossing raise, the turn
+// blocking) starts from the split that fit, not from the caller's equal one.
+// catalogue_missing_turns (E 20/10/6): the SEC's 1.048 mm litz fits in the 0.46 of the window the
+// re-split gives it, not in the equal third (1.02 mm). turns_misaligned (E 30/15/7): the 3.754 mm
+// primary wire needs 0.74 of the window; half of it is 2.52 mm.
+TEST_CASE("Real winding: re-winds start from the split that fit (ABT #1496)",
+          "[constructive-model][coil][real-winding][abt1496]") {
+    auto& settings = OpenMagnetics::Settings::GetInstance();
+    for (const std::string name : {"catalogue_missing_turns.json", "turns_misaligned.json"}) {
+        settings.reset();
+        settings.set_coil_use_real_winding_geometry(true);
+        INFO(name);
+        auto magnetic = autocomplete_stored_design(name);
+        auto& coil = magnetic.get_mutable_coil();
+        REQUIRE(coil.get_turns_description());
+        INFO(coil.get_last_fit_failure());
+        CHECK(coil.are_turns_inside_winding_window());
+        CHECK(coil.are_sections_and_layers_fitting());
+    }
+    settings.reset();
+}
+
+// ABT #1496: an interior section that ends on a layer boundary below its fair share must not leave
+// the outer section more than its whole layers hold. abt1194_interleaved_nfilar_e16: the Secondary's
+// inner section stopped at one layer, the outer one was handed 40 conductors for its 2 x 17 rows and
+// its turns came out 229 um past the window.
+TEST_CASE("Real winding: an interior section takes its own whole layers when the outer ones cannot hold the rest (ABT #1496)",
+          "[constructive-model][coil][real-winding][abt1496]") {
+    auto& settings = OpenMagnetics::Settings::GetInstance();
+    settings.reset();
+    settings.set_coil_use_real_winding_geometry(true);
+    auto magnetic = autocomplete_stored_design("abt1194_interleaved_nfilar_e16.json");
+    auto& coil = magnetic.get_mutable_coil();
+    REQUIRE(coil.get_turns_description());
+    INFO(coil.get_last_fit_failure());
+    CHECK(coil.are_turns_inside_winding_window());
+    CHECK(coil.are_sections_and_layers_fitting());
+    settings.reset();
+}
+
+// ABT #1496 (Alf, 2026-10-10: a layout MKF plans that does not fit THROWS, real winding on and off,
+// with the fit-failure reason). bug_capacitance_error: 12 turns of a 0.935 mm wire, 2 per layer in
+// a 2.8 mm tall window, need 6 layers (5.61 mm) in a 4.505 mm wide one -- no split can fit it. It
+// used to come back wound past the window, silently. Its stated sections are dropped too, so MKF
+// plans the whole layout.
+TEST_CASE("magnetic_autocomplete throws COIL_WINDING_ERROR for a winding that does not fit its window (ABT #1496)",
+          "[constructive-model][coil][real-winding][magnetic-autocomplete][abt1496]") {
+    auto& settings = OpenMagnetics::Settings::GetInstance();
+    for (const bool realWinding : {false, true}) {
+        settings.reset();
+        settings.set_coil_use_real_winding_geometry(realWinding);
+        INFO("real winding " << realWinding);
+        bool threw = false;
+        try {
+            autocomplete_stored_design("bug_capacitance_error.json", /*freshWind=*/true, /*dropSections=*/true);
+        }
+        catch (const OpenMagnetics::OpenMagneticsException& e) {
+            threw = true;
+            INFO(e.what());
+            CHECK(e.code() == OpenMagnetics::ErrorCode::COIL_WINDING_ERROR);
+            CHECK(std::string(e.what()).find("does not fit its window") != std::string::npos);
+        }
+        CHECK(threw);
+    }
+    settings.reset();
+}
+
+namespace {
+
+// Autocompletes `name` with the log collector on and returns the magnetic and every WARNING the
+// Utils module logged on the way.
+std::pair<OpenMagnetics::Magnetic, std::vector<std::string>> autocomplete_collecting_warnings(const std::string& name,
+                                                                                            bool freshWind) {
+    auto& logger = OpenMagnetics::Logger::getInstance();
+    logger.disableCollector();
+    logger.enableCollector(OpenMagnetics::LogLevel::WARNING);
+    std::vector<std::string> warnings;
+    OpenMagnetics::Magnetic magnetic;
+    try {
+        magnetic = autocomplete_stored_design(name, freshWind);
+    }
+    catch (...) {
+        logger.disableCollector();
+        throw;
+    }
+    for (const auto& record : logger.drainCollected()) {
+        if (record.level == OpenMagnetics::LogLevel::WARNING && record.moduleOfOrigin == "Utils") {
+            warnings.push_back(record.message);
+        }
+    }
+    logger.disableCollector();
+    return {magnetic, warnings};
+}
+
+bool any_contains(const std::vector<std::string>& messages, const std::string& needle) {
+    return std::any_of(messages.begin(), messages.end(),
+                       [&](const std::string& message) { return message.find(needle) != std::string::npos; });
+}
+
+}  // namespace
+
+// ABT #1496 (Alf, 2026-10-10): a layout the design STATES (sections, layers or turns of its own) is
+// the customer's, so an unfit one is laid out in full as stated, for the views to ring the turns
+// outside the window, and the reason is logged as a WARNING for the caller's log collector -- real
+// winding on and off. bug_capacitance_error states its sections; the 6 layers it needs (5.61 mm) do
+// not fit the 4.505 mm window.
+TEST_CASE("magnetic_autocomplete lays an unfit stated layout out in full and warns why (ABT #1496)",
+          "[constructive-model][coil][real-winding][magnetic-autocomplete][abt1496]") {
+    auto& settings = OpenMagnetics::Settings::GetInstance();
+    for (const bool realWinding : {false, true}) {
+        settings.reset();
+        settings.set_coil_use_real_winding_geometry(realWinding);
+        INFO("real winding " << realWinding);
+        auto [magnetic, warnings] = autocomplete_collecting_warnings("bug_capacitance_error.json", /*freshWind=*/true);
+        for (const auto& warning : warnings) {
+            UNSCOPED_INFO(warning);
+        }
+        CHECK(any_contains(warnings, "The stated winding layout is laid out as stated, but the winding does not fit its window"));
+        auto& coil = magnetic.get_mutable_coil();
+        REQUIRE(coil.get_turns_description());
+        // Real winding lays each (layer, parallel) out with one extra, length-free crossing
+        // station (ABT #685), so the turns stated are the turns that carry length.
+        const auto laidOut = coil.get_turns_description().value();
+        size_t turnsLaidOut = std::count_if(laidOut.begin(), laidOut.end(),
+                                            [](const auto& turn) { return turn.get_length() > 0; });
+        size_t turnsStated = 0;
+        for (const auto& winding : coil.get_functional_description()) {
+            turnsStated += winding.get_number_turns() * winding.get_number_parallels();
+        }
+        CHECK(turnsLaidOut == turnsStated);
+        CHECK_FALSE((coil.are_turns_inside_winding_window() && coil.are_sections_and_layers_fitting()));
+    }
+    settings.reset();
+}
+
+// ABT #1496: a stated layout kept as it is, with no wind (planar never re-winds), is judged the same
+// way. OM Oyang paper example: its stored turns lie outside the winding window, and it used to come
+// back from autocomplete as it was, with nothing said.
+TEST_CASE("magnetic_autocomplete warns when a stated layout it keeps as is does not fit (ABT #1496)",
+          "[constructive-model][coil][planar][magnetic-autocomplete][abt1496]") {
+    auto& settings = OpenMagnetics::Settings::GetInstance();
+    settings.reset();
+    auto [magnetic, warnings] = autocomplete_collecting_warnings("OM Oyang paper example.json", /*freshWind=*/false);
+    for (const auto& warning : warnings) {
+        UNSCOPED_INFO(warning);
+    }
+    REQUIRE(magnetic.get_mutable_coil().is_planar());
+    CHECK(any_contains(warnings, "The stated winding layout is kept as stated, but it does not fit its window"));
+    settings.reset();
+}
+
+// ABT #1496: autocomplete never hands back an unfit layout without saying so. bug_nan_losses_per_turn
+// (real winding) came back judged fitting by wind() and reporting itself unfit right after: the
+// lead charge, applied after the verdict, counted Secondary 1 Half 2's 3.5 mm lead rows at each
+// edge inside its section, which delimit_and_compact had shrunk to the 9.06 mm its layers keep
+// clear of them (section filling factor 1.21). Measured inside the section, the leads take none of
+// it and the layout fits, with nothing to warn about.
+TEST_CASE("Real winding: autocomplete hands back a layout that fits, or says why not (ABT #1496)",
+          "[constructive-model][coil][real-winding][magnetic-autocomplete][abt1496]") {
+    auto& settings = OpenMagnetics::Settings::GetInstance();
+    settings.reset();
+    settings.set_coil_use_real_winding_geometry(true);
+    auto [magnetic, warnings] = autocomplete_collecting_warnings("bug_nan_losses_per_turn.json", /*freshWind=*/false);
+    for (const auto& warning : warnings) {
+        UNSCOPED_INFO(warning);
+    }
+    auto& coil = magnetic.get_mutable_coil();
+    REQUIRE(coil.get_turns_description());
+    INFO(coil.get_last_fit_failure());
+    CHECK_FALSE(any_contains(warnings, "does not fit its window"));
+    CHECK(coil.are_turns_inside_winding_window());
+    CHECK(coil.are_sections_and_layers_fitting());
+    settings.reset();
+}
+
+// ABT #1496 (Alf, 2026-10-10: sections of one winding may differ in width, only when equal ones do
+// not fit). bug_3d_foil_2kw_ih (E 55/28/21, 8.75 mm wide window), Secondary - Primary foil -
+// Secondary: with real winding on, the Secondary is raised from 36 to 37 turns x 3 parallels of a
+// 1.205 mm litz, which split 19 + 18 per parallel: 57 and 54 physical turns at 28 per layer, so one
+// section needs 3 layers and the other 2. Equal sections claim 2 x 3 layers (2 x 3.61 mm + the
+// 1.6 mm foil, past the window); unequal ones fit (3.61 + 2.41 + 1.6 mm). The design itself, with
+// real winding on, then stops at the inner foil's terminal lead, which crosses the outer Secondary
+// as a run as tall as the sheet (see the ABT #1496 report); so the split is pinned here with the 37
+// turns stated and real winding off, where no lead is laid. MKF plans the layout (the stated
+// sections are dropped) in the file's own Secondary, Primary, Secondary order.
+TEST_CASE("The sections of one winding take the width of their own whole layers when equal ones do not fit (ABT #1496)",
+          "[constructive-model][coil][abt1496]") {
+    auto& settings = OpenMagnetics::Settings::GetInstance();
+    settings.reset();
+    settings.set_coil_use_real_winding_geometry(false);
+    const auto masJson = load_test_data("bug_3d_foil_2kw_ih.json");
+    json magneticJson = masJson.at("magnetic");
+    magneticJson["coil"].erase("turnsDescription");
+    magneticJson["coil"].erase("layersDescription");
+    magneticJson["coil"].erase("sectionsDescription");
+    REQUIRE(magneticJson["coil"]["functionalDescription"][1]["name"] == "Secondary");
+    magneticJson["coil"]["functionalDescription"][1]["numberTurns"] = 37;
+    OpenMagnetics::Magnetic magnetic;
+    magnetic.set_core(OpenMagnetics::Core(magneticJson.at("core")));
+    magnetic.set_coil(OpenMagnetics::Coil(magneticJson.at("coil"), false));
+    auto done = OpenMagnetics::magnetic_autocomplete(magnetic, json{{"interleavingPattern", {1, 0, 1}}},
+                                                     OpenMagnetics::Inputs(masJson.at("inputs"), false));
+    auto& coil = done.get_mutable_coil();
+    REQUIRE(coil.get_turns_description());
+    INFO(coil.get_last_fit_failure());
+    CHECK(coil.are_turns_inside_winding_window());
+    CHECK(coil.are_sections_and_layers_fitting());
+    size_t layersInSection0 = 0;
+    size_t layersInSection1 = 0;
+    for (const auto& layer : coil.get_layers_by_type(MAS::ElectricalType::CONDUCTION)) {
+        if (layer.get_section() == "Secondary section 0") layersInSection0++;
+        if (layer.get_section() == "Secondary section 1") layersInSection1++;
+    }
+    CHECK(layersInSection0 + layersInSection1 == 5);
+    CHECK(layersInSection0 != layersInSection1);
+    const auto section0 = coil.get_section_by_name("Secondary section 0");
+    const auto section1 = coil.get_section_by_name("Secondary section 1");
+    CHECK(section0.get_dimensions()[0] != Catch::Approx(section1.get_dimensions()[0]).epsilon(1e-3));
+    settings.reset();
+}
+
+// ABT #1496 (Alf, 2026-10-11): a foil sheet is not routed out across the outer windings as its own
+// lead. A winding shop joins a separate conductor to the foil end (a wire soldered to it, a strip
+// welded across it) and takes that out radially, or lets the end leave axially through the end
+// face. MAS states it on the connection (leadConductor, exit). The real-winding lead model reserves
+// the stated conductor's own cross-section, and a foil end that has to cross outer layers with
+// neither stated throws: the sheet (a run as tall as the foil) is no size anybody can reserve.
+// 17_cllc_xfmr_e5528_3c92a with its second winding made 4 turns of Foil 0.2: one sheet per layer,
+// so its start, on the innermost of its layers, crosses the other three.
+namespace {
+
+OpenMagnetics::Magnetic foil_lead_magnetic(const std::vector<MAS::ConnectionElement>& foilConnections) {
+    auto& settings = OpenMagnetics::Settings::GetInstance();
+    settings.reset();
+    // Laid out ideally (it fits), then read under the real-winding lead model.
+    auto mas = OpenMagneticsTesting::mas_loader(std::string(__FILE__).substr(0, std::string(__FILE__).rfind('/')) +
+                                                "/../MAS/examples/17_cllc_xfmr_e5528_3c92a.json");
+    auto magneticIn = mas.get_magnetic();
+    auto& windings = magneticIn.get_mutable_coil().get_mutable_functional_description();
+    windings[1].set_wire("Foil 0.2");
+    windings[1].set_number_turns(4);
+    windings[1].set_number_parallels(1);
+    if (foilConnections.empty()) {
+        windings[1].set_connections(std::nullopt);
+    }
+    else {
+        windings[1].set_connections(foilConnections);
+    }
+    magneticIn.get_mutable_coil().set_turns_description(std::nullopt);
+    magneticIn.get_mutable_coil().set_layers_description(std::nullopt);
+    magneticIn.get_mutable_coil().set_sections_description(std::nullopt);
+    auto magnetic = OpenMagnetics::magnetic_autocomplete(magneticIn);
+    settings.set_coil_use_real_winding_geometry(true);
+    return magnetic;
+}
+
+MAS::ConnectionElement foil_end(MAS::End end, std::optional<std::string> leadConductorName, std::optional<MAS::LeadExit> exit) {
+    MAS::ConnectionElement connection;
+    connection.set_end(end);
+    if (leadConductorName) {
+        // Given like a winding's own wire: here by its catalogue name.
+        connection.set_lead_conductor(MAS::WireDataOrNameUnion(leadConductorName.value()));
+    }
+    connection.set_exit(exit);
+    return connection;
+}
+
+// The same foil winding wound by the real winder itself.
+OpenMagnetics::Magnetic foil_lead_magnetic_wound_real(const std::vector<MAS::ConnectionElement>& foilConnections) {
+    auto& settings = OpenMagnetics::Settings::GetInstance();
+    settings.reset();
+    auto mas = OpenMagneticsTesting::mas_loader(std::string(__FILE__).substr(0, std::string(__FILE__).rfind('/')) +
+                                                "/../MAS/examples/17_cllc_xfmr_e5528_3c92a.json");
+    auto magneticIn = mas.get_magnetic();
+    auto& windings = magneticIn.get_mutable_coil().get_mutable_functional_description();
+    windings[1].set_wire("Foil 0.2");
+    windings[1].set_number_turns(4);
+    windings[1].set_number_parallels(1);
+    windings[1].set_connections(foilConnections);
+    magneticIn.get_mutable_coil().set_turns_description(std::nullopt);
+    magneticIn.get_mutable_coil().set_layers_description(std::nullopt);
+    magneticIn.get_mutable_coil().set_sections_description(std::nullopt);
+    settings.set_coil_use_real_winding_geometry(true);
+    return OpenMagnetics::magnetic_autocomplete(magneticIn);
+}
+
+}  // namespace
+
+TEST_CASE("Real winding: a foil end crossing outer layers with no stated lead conductor throws (ABT #1496)",
+          "[constructive-model][coil][real-winding][foil][abt1496]") {
+    auto magnetic = foil_lead_magnetic({});
+    auto& coil = magnetic.get_mutable_coil();
+    std::string message;
+    try {
+        coil.get_connection_reserved_spaces();
+    }
+    catch (const OpenMagnetics::CoilException& e) {
+        CHECK(e.code() == OpenMagnetics::ErrorCode::COIL_WINDING_ERROR);
+        message = e.what();
+    }
+    INFO(message);
+    CHECK(message.find("sheet is not routed out as its own lead") != std::string::npos);
+    CHECK(message.find("connections[].leadConductor") != std::string::npos);
+    OpenMagnetics::Settings::GetInstance().reset();
+}
+
+TEST_CASE("Real winding: a foil end's lead reserves its stated lead conductor, not the sheet (ABT #1496)",
+          "[constructive-model][coil][real-winding][foil][abt1496]") {
+    const std::string leadName = "Round 1.00 - Grade 1";
+    auto magnetic = foil_lead_magnetic({foil_end(MAS::End::START, leadName, std::nullopt),
+                                        foil_end(MAS::End::FINISH, leadName, std::nullopt)});
+    auto& coil = magnetic.get_mutable_coil();
+    const double leadOuterDiameter = OpenMagnetics::Wire(OpenMagnetics::find_wire_by_name(leadName)).get_maximum_outer_width();
+    const auto foilName = coil.get_functional_description()[1].get_name();
+    const double foilHeight = coil.resolve_wire(1).get_maximum_outer_height();
+    REQUIRE(foilHeight > 5 * leadOuterDiameter);
+    size_t squeezes = 0;
+    size_t terminalRects = 0;
+    for (const auto& space : coil.get_connection_reserved_spaces()) {
+        if (space.winding != foilName || !space.isTerminal) {
+            continue;
+        }
+        ++terminalRects;
+        INFO("kind " << int(space.kind) << " layer '" << space.layer << "' " << space.dimensions[0] * 1e3 << " x "
+                     << space.dimensions[1] * 1e3 << " mm");
+        if (space.kind == OpenMagnetics::ConnectionKind::LAYER_SQUEEZE) {
+            ++squeezes;
+            // The crossed layer loses the lead conductor's own slot, not a sheet-tall band.
+            CHECK(std::abs(space.dimensions[1] - leadOuterDiameter) < 1e-9);
+        }
+        else {
+            CHECK(std::min(space.dimensions[0], space.dimensions[1]) <= leadOuterDiameter + 1e-9);
+        }
+    }
+    CHECK(terminalRects > 0);
+    CHECK(squeezes > 0);
+    OpenMagnetics::Settings::GetInstance().reset();
+}
+
+TEST_CASE("Real winding: a foil end's lead conductor named outside the wire database throws (ABT #1496)",
+          "[constructive-model][coil][real-winding][foil][abt1496]") {
+    // Wherever the lead is first read (the layout or the lead model), the unknown name throws.
+    std::string message;
+    try {
+        auto magnetic = foil_lead_magnetic({foil_end(MAS::End::START, std::string("No such lead wire"), std::nullopt),
+                                            foil_end(MAS::End::FINISH, std::string("No such lead wire"), std::nullopt)});
+        magnetic.get_mutable_coil().get_connection_reserved_spaces();
+    }
+    catch (const OpenMagnetics::WireNotFoundException& e) {
+        message = e.what();
+    }
+    INFO(message);
+    CHECK(message.find("lead conductor of winding") != std::string::npos);
+    CHECK(message.find("No such lead wire") != std::string::npos);
+    OpenMagnetics::Settings::GetInstance().reset();
+}
+
+TEST_CASE("Real winding: a foil end that exits axially crosses no outer layer (ABT #1496)",
+          "[constructive-model][coil][real-winding][foil][abt1496]") {
+    auto magnetic = foil_lead_magnetic({foil_end(MAS::End::START, std::nullopt, MAS::LeadExit::AXIAL),
+                                        foil_end(MAS::End::FINISH, std::nullopt, MAS::LeadExit::AXIAL)});
+    auto& coil = magnetic.get_mutable_coil();
+    const auto foilName = coil.get_functional_description()[1].get_name();
+    std::vector<OpenMagnetics::ConnectionRoute> routes;
+    auto spaces = coil.get_connection_reserved_spaces(&routes);
+    size_t terminalRects = 0;
+    for (const auto& space : spaces) {
+        if (space.winding != foilName || !space.isTerminal) {
+            continue;
+        }
+        ++terminalRects;
+        CHECK(space.kind != OpenMagnetics::ConnectionKind::LAYER_SQUEEZE);
+    }
+    CHECK(terminalRects == 2);
+    size_t terminalRoutes = 0;
+    for (const auto& route : routes) {
+        if (route.winding != foilName || (route.kind != OpenMagnetics::ConnectionKind::TERMINAL_ENTRANCE &&
+                                          route.kind != OpenMagnetics::ConnectionKind::TERMINAL_EXIT)) {
+            continue;
+        }
+        ++terminalRoutes;
+        // Along its own column: one straight leg, constant radial position.
+        REQUIRE(route.waypoints.size() == 2);
+        CHECK(std::abs(route.waypoints[0][0] - route.waypoints[1][0]) < 1e-12);
+    }
+    CHECK(terminalRoutes == 2);
+    OpenMagnetics::Settings::GetInstance().reset();
+}
+
+namespace {
+
+// ABT #1423 judges each terminal route of a really wound coil for a tangential exit: a bend wider
+// than the connection face's half straight cannot leave radially. Each foil terminal route is
+// judged here with a 20 mm bend, wider than the E 55/28/21 column's 8.2 mm half straight (the
+// coil's other leads keep the bend they were planned for). Returns, per route, whether it left
+// tangentially, or the refusal's text when it could not.
+std::vector<std::string> judge_foil_leads_with_a_wide_bend(OpenMagnetics::Coil& coil) {
+    REQUIRE(coil.is_real_winding_blocking_applied());
+    const auto foilName = coil.get_functional_description()[1].get_name();
+    const auto turns = coil.get_turns_description().value();
+    const auto routes = coil.get_connection_layout().routes;
+    std::vector<std::string> verdicts;
+    for (const auto& route : routes) {
+        if (route.winding != foilName || (route.kind != OpenMagnetics::ConnectionKind::TERMINAL_ENTRANCE &&
+                                          route.kind != OpenMagnetics::ConnectionKind::TERMINAL_EXIT)) {
+            continue;
+        }
+        auto wide = route;
+        wide.plannedBendRadius = 0.020;
+        try {
+            verdicts.push_back(coil.plan_tangent_departure(wide, routes, turns) ? "tangent" : "radial");
+        }
+        catch (const OpenMagnetics::CoilException& e) {
+            verdicts.push_back(e.what());
+        }
+    }
+    return verdicts;
+}
+
+}  // namespace
+
+TEST_CASE("Real winding: a foil end's stated lead conductor is judged for a tangential exit like any lead (ABT #1496)",
+          "[constructive-model][coil][real-winding][foil][abt1496]") {
+    // A foil used to be exempt -- its sheet ends in a tab, not in a bent wire -- but a STATED lead
+    // conductor is a bent wire like any other (Alf, 2026-10-11), so its bend is judged: with a bend
+    // that cannot fit, it leaves tangentially or the wind is refused for the tangent reason. A
+    // radial exit with an unfittable bend is the defect.
+    auto magnetic = foil_lead_magnetic_wound_real({foil_end(MAS::End::START, std::string("Round 1.00 - Grade 1"), std::nullopt),
+                                                   foil_end(MAS::End::FINISH, std::string("Round 1.00 - Grade 1"), std::nullopt)});
+    const auto verdicts = judge_foil_leads_with_a_wide_bend(magnetic.get_mutable_coil());
+    CHECK(verdicts.size() == 2);
+    for (const auto& verdict : verdicts) {
+        INFO(verdict);
+        CHECK((verdict == "tangent" || verdict.find("must leave tangentially") != std::string::npos));
+    }
+    OpenMagnetics::Settings::GetInstance().reset();
+}
+
+TEST_CASE("Real winding: a foil end with no stated lead is not judged for a tangential exit (ABT #1496)",
+          "[constructive-model][coil][real-winding][foil][abt1496]") {
+    // The other half of the rule: a foil with no stated lead leaves by its sheet's tab (here
+    // axially, crossing nothing), so even an unfittable bend sends nothing tangentially.
+    auto magnetic = foil_lead_magnetic_wound_real({foil_end(MAS::End::START, std::nullopt, MAS::LeadExit::AXIAL),
+                                                   foil_end(MAS::End::FINISH, std::nullopt, MAS::LeadExit::AXIAL)});
+    const auto verdicts = judge_foil_leads_with_a_wide_bend(magnetic.get_mutable_coil());
+    CHECK(verdicts.size() == 2);
+    for (const auto& verdict : verdicts) {
+        CHECK(verdict == "radial");
+    }
+    OpenMagnetics::Settings::GetInstance().reset();
 }

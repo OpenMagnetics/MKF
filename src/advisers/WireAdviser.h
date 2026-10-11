@@ -253,6 +253,9 @@ class WireAdviser {
                                                                                           double temperature,
                                                                                           uint8_t numberSections);
         void expand_wires_dataset_with_parallels(std::vector<Winding>* windings);
+        // ABT #1496: gives `to` the lead conductors (and exits) of `from`'s ends, for windings that
+        // take another winding's wire (wound-together groups, CMC phases).
+        static void copy_lead_conductors(const Winding& from, Winding& to);
         void set_maximum_area_proportion(std::vector<std::pair<Winding, double>>* unfilteredCoils, Section section, uint8_t numberSections);
     
 };

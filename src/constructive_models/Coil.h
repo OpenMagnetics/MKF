@@ -608,6 +608,25 @@ class Coil : public MAS::Coil {
         std::vector<double> _currentProportionPerWinding;
         std::vector<size_t> _currentPattern;
         size_t _currentRepetitions = 1;
+        // ABT #1496: how a winding's share of the window is divided among ITS sections, for the one
+        // split (proportions, pattern, repetitions) it was computed for. Without it every section of a
+        // winding gets an equal part (get_ordered_sections). The whole-layer re-split
+        // (get_proportion_per_winding_for_whole_layers) sets it when the sections of one winding need
+        // different numbers of whole layers and only unequal sections fit; any wind laid out with
+        // another split ignores it, and every wind() / fast_wind() starts without it.
+        struct SectionSharesOfSplit {
+            std::vector<double> proportionPerWinding;
+            std::vector<size_t> pattern;
+            size_t repetitions = 1;
+            // Winding name -> its share of the winding's space per section, in wound order, summing to 1.
+            std::map<std::string, std::vector<double>> sharesPerWinding;
+        };
+        std::optional<SectionSharesOfSplit> _sectionSharesOfSplit;
+        // ABT #1496: redistribute_section_turns_for_blocking lets an interior section take more of
+        // its own whole layers than its fair share only once the blocked layout has actually
+        // overflowed (a section over-full or a turn outside the window). Set by the blocking
+        // fixpoint in wind_inner, cleared at the start of every wind.
+        bool _redistributeToWholeLayersOnOverflow = false;
         bool _strict = true;
         bool _bobbin_resolved = false;
         // True while sections/layers/turns sit at their FINAL multi-window positions
@@ -966,7 +985,16 @@ class Coil : public MAS::Coil {
         // Proportions that give every winding the whole layers its turns need in the sections
         // wind_by_sections() just laid out (see fast_wind), or nullopt when the current split
         // already holds them, or when the window cannot hold them at all.
-        std::optional<std::vector<double>> get_proportion_per_winding_for_whole_layers();
+        struct WholeLayerSplit {
+            std::vector<double> proportionPerWinding;
+            // Empty when every section of a winding gets an equal part of its space; otherwise, per
+            // winding name, the share of each of its sections (see SectionSharesOfSplit).
+            std::map<std::string, std::vector<double>> sectionSharesPerWinding;
+        };
+        std::optional<WholeLayerSplit> get_proportion_per_winding_for_whole_layers();
+        // Lays the sections out with a whole-layer split: records its section shares for exactly this
+        // split, then wind_by_sections().
+        bool wind_by_sections_with_whole_layer_split(const WholeLayerSplit& split);
         // conductionSectionOffset: number of conduction sections wound by previous groups
         // (_marginsPerSection is keyed by conduction ordinal flat across all groups;
         // single-group coils pass 0).
@@ -1382,6 +1410,17 @@ class Coil : public MAS::Coil {
         // sleeve recorded on the winding's connections[] (matching `end`, and `parallel` or none) is
         // replayed as data.
         std::optional<ConnectionSleeve> resolve_lead_sleeve(const std::string& windingName, End end, int64_t parallel);
+        // ABT #1496: the conductor that carries one terminated end to its terminal when it is a
+        // separate piece joined to the winding's own conductor -- a wire soldered to a foil end, a
+        // strip welded across it -- recorded on the winding's connections[] as leadConductor
+        // (matching `end`, and `parallel` or none). Empty: the winding's own wire is the lead,
+        // which is what a round, litz or rectangular wire is. A foil or planar sheet is not
+        // routed out as its own lead, so get_connection_reserved_spaces throws when such an end
+        // crosses outer layers without one.
+        std::optional<Wire> resolve_lead_conductor(const std::string& windingName, End end, int64_t parallel);
+        // The path one terminated end leaves the winding by (connections[].exit): RADIAL across the
+        // layers wound over it, AXIAL along its own column out through the end face. Empty: radial.
+        std::optional<LeadExit> resolve_lead_exit(const std::string& windingName, End end, int64_t parallel);
         // Writes the coordinator's decision into every winding's connections[]: the connection for
         // each end (start, finish) gets the sleeve, or loses a stale one; a connection is appended
         // for an end that needs a sleeve and has none. Requires inputs with an insulation

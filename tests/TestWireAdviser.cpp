@@ -217,6 +217,108 @@ namespace {
         REQUIRE(WireType::FOIL == OpenMagnetics::Coil::resolve_wire(masMagneticWithCoil).get_type());
     }
 
+    TEST_CASE("Test_WireAdviser_Foil_Candidates_Carry_The_Lead_Conductor_The_Adviser_Sized_With_Real_Winding", "[constructive-model][wire-adviser][real-winding][abt-1496]") {
+        // ABT #1496 (Alf, 2026-10-11): with real winding geometry on, a foil end that leaves across
+        // the layers wound over it needs a conductor of its own joined to the sheet, or the real
+        // winder throws. The adviser sizes it by its own rules: the smallest outer section among the
+        // round and rectangular wires it may use here that carries one parallel's current alone
+        // within the maximum effective current density; it writes it on both ends, leaving radially.
+        // The real-winder probe of the area filter (ABT #1699) then lays the candidate out; the same
+        // foil with no lead stated is refused. With the setting off no connection is written.
+        settings.reset();
+        clear_databases();
+        numberTurns = 4;
+        currentRms = 10;
+        currentEffectiveFrequency = 134567;
+        setup();
+        section.set_name("primary section 0");
+        section.set_type(ElectricalType::CONDUCTION);
+        section.set_coordinates({0.01, 0, 0});
+        settings.set_wire_adviser_include_foil(true);
+        settings.set_wire_adviser_include_round(true);
+        settings.set_wire_adviser_include_rectangular(false);
+        settings.set_wire_adviser_include_litz(false);
+        settings.set_wire_adviser_include_planar(false);
+        load_wires();
+        std::vector<OpenMagnetics::Wire> wires;
+        for (auto& [name, wire] : wireDatabase) {
+            if (wire.get_type() == WireType::FOIL || wire.get_type() == WireType::ROUND) {
+                wires.push_back(wire);
+            }
+        }
+        WireAdviser wireAdviser;
+        const double maximumDensity = wireAdviser.get_maximum_effective_current_density();
+
+        settings.set_coil_use_real_winding_geometry(false);
+        auto idealDataset = wireAdviser.create_dataset(coilFunctionalDescription, &wires, section, current, temperature);
+        size_t idealFoils = 0;
+        for (auto& [winding, scoring] : idealDataset) {
+            if (OpenMagnetics::Coil::resolve_wire(winding).get_type() == WireType::FOIL) {
+                ++idealFoils;
+                CHECK(!winding.get_connections());
+            }
+        }
+        REQUIRE(idealFoils > 0);
+
+        settings.set_coil_use_real_winding_geometry(true);
+        auto dataset = wireAdviser.create_dataset(coilFunctionalDescription, &wires, section, current, temperature);
+        size_t foils = 0;
+        size_t probed = 0;
+        MagneticFilterAreaWithParallels filter;
+        const double sectionArea = section.get_dimensions()[0] * section.get_dimensions()[1];
+        for (auto& [winding, scoring] : dataset) {
+            if (OpenMagnetics::Coil::resolve_wire(winding).get_type() != WireType::FOIL) {
+                continue;
+            }
+            ++foils;
+            REQUIRE(winding.get_connections());
+            const auto connections = winding.get_connections().value();
+            REQUIRE(connections.size() == 2);
+            std::optional<OpenMagnetics::Wire> lead;
+            for (const auto& connection : connections) {
+                REQUIRE(connection.get_end());
+                CHECK(!connection.get_parallel());
+                REQUIRE(connection.get_lead_conductor());
+                REQUIRE(std::holds_alternative<MAS::Wire>(connection.get_lead_conductor().value()));
+                REQUIRE(connection.get_exit());
+                CHECK(connection.get_exit().value() == LeadExit::RADIAL);
+                OpenMagnetics::Wire thisLead(std::get<MAS::Wire>(connection.get_lead_conductor().value()));
+                if (lead) {
+                    CHECK(thisLead.get_name() == lead->get_name());
+                }
+                lead = thisLead;
+            }
+            CHECK(lead->get_type() == WireType::ROUND);
+            const double parallels = static_cast<double>(winding.get_number_parallels());
+            CHECK(lead->calculate_effective_current_density(current, temperature) <= parallels * maximumDensity);
+            // No smaller allowed wire would carry it.
+            const double leadSection = lead->get_maximum_outer_width() * lead->get_maximum_outer_height();
+            for (auto& wire : wires) {
+                if (wire.get_type() != WireType::ROUND) {
+                    continue;
+                }
+                if (wire.get_maximum_outer_width() * wire.get_maximum_outer_height() < leadSection) {
+                    CHECK(wire.calculate_effective_current_density(current, temperature) > parallels * maximumDensity);
+                }
+            }
+            if (probed < 2) {
+                ++probed;
+                INFO(OpenMagnetics::Coil::resolve_wire(winding).get_name().value_or("") << " x" << winding.get_number_parallels());
+                auto accepted = filter.evaluate_magnetic(winding, section, 1, sectionArea, false);
+                INFO(filter.get_first_real_winding_refusal());
+                CHECK(accepted.first);
+                auto withoutLead = winding;
+                withoutLead.set_connections(std::nullopt);
+                MagneticFilterAreaWithParallels refusingFilter;
+                CHECK(!refusingFilter.evaluate_magnetic(withoutLead, section, 1, sectionArea, false).first);
+                CHECK(refusingFilter.get_first_real_winding_refusal().find("leadConductor") != std::string::npos);
+            }
+        }
+        CHECK(foils > 0);
+        CHECK(probed > 0);
+        settings.reset();
+    }
+
     TEST_CASE("Test_Planar_2", "[constructive-model][wire-adviser][smoke-test]") {
         settings.reset();
         clear_databases();

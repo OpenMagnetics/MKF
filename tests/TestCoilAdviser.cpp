@@ -3476,10 +3476,15 @@ TEST_CASE("Test_MagneticFilterAreaWithParallels_Reserves_Crossing_Stations_Only_
     CHECK(filter.evaluate_magnetic(winding, section, 1, sectionArea, false).first);
     settings.set_coil_use_real_winding_geometry(true);
     CHECK(!filter.evaluate_magnetic(winding, section, 1, sectionArea, false).first);
-    // A one-turn winding is an omega: no crossing station is charged.
+    // A one-turn winding is an omega: no crossing station is charged. ABT #1496 (Alf, 2026-10-11):
+    // its 9 parallels' leads still block their slots, and with them the omega needs 6.12 mm along
+    // a 5.65 mm section: the real winder refuses it, and the filter says why.
     winding.set_number_turns(1);
     winding.set_number_parallels(9);
-    CHECK(filter.evaluate_magnetic(winding, section, 1, sectionArea, false).first);
+    MagneticFilterAreaWithParallels omegaFilter;
+    CHECK(!omegaFilter.evaluate_magnetic(winding, section, 1, sectionArea, false).first);
+    INFO(omegaFilter.get_first_real_winding_refusal());
+    CHECK(!omegaFilter.get_first_real_winding_refusal().empty());
     settings.reset();
 }
 

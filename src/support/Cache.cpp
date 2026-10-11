@@ -13,8 +13,40 @@ thread_local std::map<std::string, double> MagneticsCache::_magneticEnergyCache;
 
 void MagneticsCache::autocomplete_magnetics() {
     throw_if_frozen("autocomplete_magnetics");
-    for (auto [reference, magnetic] : _cache) {
-        _cache[reference] = magnetic_autocomplete(magnetic);
+    // ABT #1496: magnetic_autocomplete throws on a record whose winding MKF has to lay out (it states
+    // no sections, layers or turns) and which does not fit its window.
+    // A catalogue load must neither keep such a record half-wound nor drop it quietly, and one
+    // exception per load would hide every unfit record after the first: autocomplete them all,
+    // collect each failure, and fail the load once naming every one. The cache is only replaced
+    // when every record autocompleted.
+    std::map<std::string, Magnetic> autocompleted;
+    std::vector<std::string> failures;
+    std::optional<ErrorCode> commonCode;
+    bool mixedCodes = false;
+    for (const auto& [reference, magnetic] : _cache) {
+        try {
+            autocompleted.emplace(reference, magnetic_autocomplete(magnetic));
+        }
+        catch (const OpenMagneticsException& e) {
+            failures.push_back("'" + reference + "': " + e.what());
+            if (!commonCode) {
+                commonCode = e.code();
+            }
+            else if (commonCode.value() != e.code()) {
+                mixedCodes = true;
+            }
+        }
+    }
+    if (!failures.empty()) {
+        std::string message = "magneticsCache::autocomplete_magnetics: " + std::to_string(failures.size()) + " of " +
+                              std::to_string(_cache.size()) + " records could not be autocompleted:";
+        for (const auto& failure : failures) {
+            message += "\n  " + failure;
+        }
+        throw OpenMagneticsException(mixedCodes ? ErrorCode::INVALID_INPUT : commonCode.value(), message);
+    }
+    for (auto& [reference, magnetic] : autocompleted) {
+        _cache[reference] = std::move(magnetic);
     }
 }
 

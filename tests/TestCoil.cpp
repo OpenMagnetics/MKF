@@ -13258,6 +13258,18 @@ TEST_CASE("Test_Abt881_Foil_Has_No_Crossing_Station", "[constructive-model][coil
     windings[1].set_wire("Foil 0.2");
     windings[1].set_number_turns(1);
     windings[1].set_number_parallels(6);
+    // ABT #1496 (Alf, 2026-10-11): an inner foil end that crosses the layers wound over it leaves
+    // through a conductor joined to the sheet, stated here; without one the real winder throws.
+    {
+        std::vector<MAS::ConnectionElement> foilLeads;
+        for (auto end : {MAS::End::START, MAS::End::FINISH}) {
+            MAS::ConnectionElement connection;
+            connection.set_end(end);
+            connection.set_lead_conductor(MAS::WireDataOrNameUnion(std::string("Round 1.00 - Grade 1")));
+            foilLeads.push_back(connection);
+        }
+        windings[1].set_connections(foilLeads);
+    }
     magneticIn.get_mutable_coil().set_turns_description(std::nullopt);
     magneticIn.get_mutable_coil().set_layers_description(std::nullopt);
     magneticIn.get_mutable_coil().set_sections_description(std::nullopt);
@@ -13311,6 +13323,18 @@ TEST_CASE("Test_Foil_Parallels_Are_N_Filar", "[constructive-model][coil][real-ge
     windings[1].set_wire("Foil 0.2");
     windings[1].set_number_turns(2);
     windings[1].set_number_parallels(4);
+    // ABT #1496 (Alf, 2026-10-11): an inner foil end that crosses the layers wound over it leaves
+    // through a conductor joined to the sheet, stated here; without one the real winder throws.
+    {
+        std::vector<MAS::ConnectionElement> foilLeads;
+        for (auto end : {MAS::End::START, MAS::End::FINISH}) {
+            MAS::ConnectionElement connection;
+            connection.set_end(end);
+            connection.set_lead_conductor(MAS::WireDataOrNameUnion(std::string("Round 1.00 - Grade 1")));
+            foilLeads.push_back(connection);
+        }
+        windings[1].set_connections(foilLeads);
+    }
     magneticIn.get_mutable_coil().set_turns_description(std::nullopt);
     magneticIn.get_mutable_coil().set_layers_description(std::nullopt);
     magneticIn.get_mutable_coil().set_sections_description(std::nullopt);
@@ -13420,6 +13444,18 @@ TEST_CASE("Test_Foil_Sheets_Of_A_Stack_Share_One_Height", "[constructive-model][
     windings[1].set_wire("Foil 0.2");
     windings[1].set_number_turns(2);
     windings[1].set_number_parallels(6);
+    // ABT #1496 (Alf, 2026-10-11): an inner foil end that crosses the layers wound over it leaves
+    // through a conductor joined to the sheet, stated here; without one the real winder throws.
+    {
+        std::vector<MAS::ConnectionElement> foilLeads;
+        for (auto end : {MAS::End::START, MAS::End::FINISH}) {
+            MAS::ConnectionElement connection;
+            connection.set_end(end);
+            connection.set_lead_conductor(MAS::WireDataOrNameUnion(std::string("Round 1.00 - Grade 1")));
+            foilLeads.push_back(connection);
+        }
+        windings[1].set_connections(foilLeads);
+    }
     magneticIn.get_mutable_coil().set_turns_description(std::nullopt);
     magneticIn.get_mutable_coil().set_layers_description(std::nullopt);
     magneticIn.get_mutable_coil().set_sections_description(std::nullopt);
@@ -14172,26 +14208,34 @@ TEST_CASE("Test_Core_Window_Winding_Order_Reaches_Autocompleted_Bobbin",
     REQUIRE(reprocessedWindows[0].get_winding_order().has_value());
     CHECK(reprocessedWindows[0].get_winding_order().value() == MAS::WindingOrder::U);
 
-    // (2) create_quick_bobbin carries it onto the autocompleted bobbin, where
-    //     Coil::get_winding_order picks it up for every section of the wind.
-    OpenMagnetics::Magnetic magnetic;
-    magnetic.set_core(core);
-    auto coilJson = masJson["magnetic"]["coil"];
-    coilJson["bobbin"] = "Dummy";
-    magnetic.set_coil(OpenMagnetics::Coil(coilJson, false));
-    auto completed = OpenMagnetics::magnetic_autocomplete(magnetic);
-
-    auto bobbin = completed.get_mutable_coil().resolve_bobbin();
+    // (2) create_quick_bobbin carries it onto the bobbin autocomplete builds for "Dummy" (with null
+    //     dimensions), where Coil::get_winding_order picks it up for every section of the wind.
+    //     Built directly: the wind itself is refused below.
+    auto bobbin = OpenMagnetics::Bobbin::create_quick_bobbin(core, true);
     auto bobbinWindows = bobbin.get_processed_description().value().get_winding_windows();
     REQUIRE(!bobbinWindows.empty());
     REQUIRE(bobbinWindows[0].get_winding_order().has_value());
     CHECK(bobbinWindows[0].get_winding_order().value() == MAS::WindingOrder::U);
 
-    auto sectionsDescription = completed.get_coil().get_sections_description();
-    REQUIRE(sectionsDescription.has_value());
-    auto sections = sectionsDescription.value();
-    REQUIRE(!sections.empty());
-    CHECK(completed.get_coil().get_winding_order(sections[0].get_name()) == MAS::WindingOrder::U);
+    // (3) Autocompleting the reconstruction with a quick bobbin.
+    OpenMagnetics::Magnetic magnetic;
+    magnetic.set_core(core);
+    auto coilJson = masJson["magnetic"]["coil"];
+    coilJson["bobbin"] = "Dummy";
+    magnetic.set_coil(OpenMagnetics::Coil(coilJson, false));
+    // ABT #1496 (Alf, 2026-10-11): the reconstruction's 34 turns do not fit the quick bobbin's
+    // window (turn 14 lands 370 um past it, and further turns ~15 mm outside the core); the old
+    // autocomplete handed that layout back silently. It now refuses it.
+    bool threw = false;
+    try {
+        OpenMagnetics::magnetic_autocomplete(magnetic);
+    }
+    catch (const OpenMagnetics::CoilException& e) {
+        threw = true;
+        INFO(e.what());
+        CHECK(e.code() == OpenMagnetics::ErrorCode::COIL_WINDING_ERROR);
+    }
+    CHECK(threw);
     settings.reset();
 }
 
@@ -14246,10 +14290,16 @@ TEST_CASE("Test_Molded_Small_Body_Refusal_Names_The_Reason", "[constructive-mode
     };
 
     SECTION("a conductor wider than the annulus is refused, and the refusal names the numbers") {
-        // 0.36 mm conductor into (0.70 - 0.50)/2 = 0.10 mm of annulus.
-        auto coil = build(0.00050, 0.00070, 5, 0.00036);
-        REQUIRE_FALSE(coil.get_turns_description().has_value());
-        auto reason = coil.get_last_fit_failure();
+        // 0.36 mm conductor into (0.70 - 0.50)/2 = 0.10 mm of annulus. ABT #1496: autocomplete
+        // no longer hands an unwound coil back; it throws, with the refusal in its message.
+        std::string reason;
+        try {
+            build(0.00050, 0.00070, 5, 0.00036);
+        }
+        catch (const OpenMagnetics::CoilException& e) {
+            CHECK(e.code() == OpenMagnetics::ErrorCode::COIL_WINDING_ERROR);
+            reason = e.what();
+        }
         UNSCOPED_INFO("reason: " << reason);
         REQUIRE_FALSE(reason.empty());
         CHECK(reason.find("winding 0") != std::string::npos);
@@ -14258,9 +14308,17 @@ TEST_CASE("Test_Molded_Small_Body_Refusal_Names_The_Reason", "[constructive-mode
     }
 
     SECTION("turn count is not the lever: one turn fails identically") {
-        auto coil = build(0.00050, 0.00070, 1, 0.00036);
-        REQUIRE_FALSE(coil.get_turns_description().has_value());
-        CHECK_FALSE(coil.get_last_fit_failure().empty());
+        std::string reason;
+        try {
+            build(0.00050, 0.00070, 1, 0.00036);
+        }
+        catch (const OpenMagnetics::CoilException& e) {
+            CHECK(e.code() == OpenMagnetics::ErrorCode::COIL_WINDING_ERROR);
+            reason = e.what();
+        }
+        UNSCOPED_INFO("reason: " << reason);
+        CHECK(reason.find("0.360") != std::string::npos);
+        CHECK(reason.find("0.100") != std::string::npos);
     }
 
     SECTION("widen the annulus and the same part winds") {

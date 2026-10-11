@@ -1449,6 +1449,7 @@ namespace OpenMagnetics {
                     if (windings[pIdx].get_name() == partnerName) {
                         windings[wIdx].set_wire(windings[pIdx].get_wire());
                         windings[wIdx].set_number_parallels(windings[pIdx].get_number_parallels());
+                        WireAdviser::copy_lead_conductors(windings[pIdx], windings[wIdx]);  // ABT #1496: and its lead
                         break;
                     }
                 }
@@ -1466,6 +1467,7 @@ namespace OpenMagnetics {
                 for (size_t wIdx = 1; wIdx < windings.size(); ++wIdx) {
                     windings[wIdx].set_wire(w0.get_wire());
                     windings[wIdx].set_number_parallels(w0.get_number_parallels());
+                    WireAdviser::copy_lead_conductors(w0, windings[wIdx]);  // ABT #1496: and its lead
                 }
             }
 
@@ -1931,6 +1933,7 @@ namespace OpenMagnetics {
                     if (windings[pIdx].get_name() == partnerName) {
                         windings[wIdx].set_wire(windings[pIdx].get_wire());
                         windings[wIdx].set_number_parallels(windings[pIdx].get_number_parallels());
+                        WireAdviser::copy_lead_conductors(windings[pIdx], windings[wIdx]);  // ABT #1496: and its lead
                         break;
                     }
                 }
