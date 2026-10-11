@@ -932,6 +932,63 @@ TEST_CASE("Core adviser post-processing fits its stand-in strand to the winding 
     settings.reset();
 }
 
+// ABT #838: the core stage winds its stand-in coil with the layout the coil stage will use. On a
+// toroid that is CONTIGUOUS sectors spread around the ring; the quick bobbin's default OVERLAPPING
+// rings stacked a CMC's two windings radially, so fast_wind returned false, post_process_core
+// ignored it, and an unwound stand-in reached the loss and temperature solve. Two 4-turn windings of
+// a 1.47 mm wire fill a 2.75 mm radial window side by side but not stacked (2.94 mm). A coil that the
+// coil-stage layout cannot wind either (two 8-turn windings need 3 rings, 4.4 mm, of a 3.5 mm window)
+// is not a candidate: post_process_core throws with the winder's reason.
+TEST_CASE("Core adviser post-processing winds a toroid's stand-in coil with the coil stage's layout",
+          "[adviser][core-adviser][smoke-test]") {
+    clear_databases();
+    settings.reset();
+    auto inputs = prepare_common_mode_choke_inputs(100000, 100e-6, 0.02, 0);
+    auto standIn = [](std::string shapeName, int64_t numberTurns) {
+        auto core = OpenMagneticsTesting::get_quick_core(shapeName, json::parse("[]"), 1, "R12KZ");
+        auto wire = find_wire_by_name("Round 1.40 - Grade 1");
+        std::vector<OpenMagnetics::Winding> windings;
+        for (auto name : {"Line", "Neutral"}) {
+            OpenMagnetics::Winding winding;
+            winding.set_name(name);
+            winding.set_isolation_side(IsolationSide::PRIMARY);
+            winding.set_number_turns(numberTurns);
+            winding.set_number_parallels(1);
+            winding.set_wire(wire);
+            windings.push_back(winding);
+        }
+        OpenMagnetics::Coil coil;
+        coil.set_bobbin(OpenMagnetics::Bobbin::create_quick_bobbin(core));
+        coil.set_functional_description(windings);
+        OpenMagnetics::Magnetic magnetic;
+        magnetic.set_core(core);
+        magnetic.set_coil(coil);
+        return magnetic;
+    };
+
+    SECTION("T 10.5/5.5/20, 2 x 4 turns: wound side by side, every turn inside the window") {
+        auto mas = CoreAdviser().post_process_core(standIn("T 10.5/5.5/20", 4), inputs);
+        auto magnetic = mas.get_magnetic();
+        auto turns = magnetic.get_coil().get_turns_description();
+        REQUIRE(turns);
+        CHECK(turns->size() == 8);
+        CHECK(magnetic.get_mutable_coil().are_turns_inside_winding_window());
+    }
+    SECTION("T 13/7/5, 2 x 8 turns: cannot be wound, and post-processing says why") {
+        std::optional<std::string> refusal;
+        try {
+            CoreAdviser().post_process_core(standIn("T 13/7/5", 8), inputs);
+        }
+        catch (const OpenMagnetics::CoilException& e) {
+            refusal = e.what();
+        }
+        REQUIRE(refusal);
+        CHECK_THAT(refusal.value(), Catch::Matchers::ContainsSubstring("cannot be wound") &&
+                                    Catch::Matchers::ContainsSubstring("does not fit its round winding window"));
+    }
+    settings.reset();
+}
+
 TEST_CASE("Test_CoreAdviserAvailableCores_No_Toroids_Two_Windings","[adviser][core-adviser][available-cores][smoke-test]") {
     clear_databases();
     double voltagePeakToPeak = 600;

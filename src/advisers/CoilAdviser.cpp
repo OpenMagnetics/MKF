@@ -1125,24 +1125,8 @@ namespace OpenMagnetics {
         return stackUp;
     }
 
-    std::vector<Mas> CoilAdviser::get_advised_coil_for_pattern(std::vector<Wire>* wires, Mas mas, std::vector<size_t> pattern, size_t repetitions, std::vector<WireSolidInsulationRequirements> solidInsulationRequirementsForWires, size_t maximumNumberResults, std::string reference){
-        bool filterMode = bool(mas.get_mutable_inputs().get_design_requirements().get_minimum_impedance());
-        const bool isCmc = mas.get_mutable_inputs().get_design_requirements().get_sub_application().has_value()
-                        && mas.get_mutable_inputs().get_design_requirements().get_sub_application().value()
-                           == SubApplication::COMMON_MODE_NOISE_FILTERING;
-        size_t dmcWindingCount = 0;
-        if (!mas.get_inputs().get_operating_points().empty()) {
-            dmcWindingCount = mas.get_inputs().get_operating_points()[0].get_excitations_per_winding().size();
-        }
-        const bool isDmcMultiWinding =
-            mas.get_mutable_inputs().get_design_requirements().get_topology().has_value()
-            && mas.get_mutable_inputs().get_design_requirements().get_topology().value() == MAS::Topology::DIFFERENTIAL_MODE_CHOKE
-            && dmcWindingCount >= 2;
-        size_t maximumNumberWires = settings.get_coil_adviser_maximum_number_wires();
-        auto sectionProportions = calculate_winding_window_proportion_per_winding(mas.get_mutable_inputs(), mas.get_magnetic().get_coil());
-        auto core = mas.get_magnetic().get_core();
-        auto coil = mas.get_magnetic().get_coil();
-        if (core.get_functional_description().get_type() != CoreType::TOROIDAL) {
+    void CoilAdviser::apply_coil_stage_winding_layout(Coil& coil, CoreType coreType, bool filterMode) {
+        if (coreType != CoreType::TOROIDAL) {
             coil.set_winding_orientation(WindingOrientation::OVERLAPPING);
             coil.set_section_alignment(CoilAlignment::INNER_OR_TOP);
         }
@@ -1176,6 +1160,26 @@ namespace OpenMagnetics {
                 }
             }
         }
+    }
+
+    std::vector<Mas> CoilAdviser::get_advised_coil_for_pattern(std::vector<Wire>* wires, Mas mas, std::vector<size_t> pattern, size_t repetitions, std::vector<WireSolidInsulationRequirements> solidInsulationRequirementsForWires, size_t maximumNumberResults, std::string reference){
+        bool filterMode = bool(mas.get_mutable_inputs().get_design_requirements().get_minimum_impedance());
+        const bool isCmc = mas.get_mutable_inputs().get_design_requirements().get_sub_application().has_value()
+                        && mas.get_mutable_inputs().get_design_requirements().get_sub_application().value()
+                           == SubApplication::COMMON_MODE_NOISE_FILTERING;
+        size_t dmcWindingCount = 0;
+        if (!mas.get_inputs().get_operating_points().empty()) {
+            dmcWindingCount = mas.get_inputs().get_operating_points()[0].get_excitations_per_winding().size();
+        }
+        const bool isDmcMultiWinding =
+            mas.get_mutable_inputs().get_design_requirements().get_topology().has_value()
+            && mas.get_mutable_inputs().get_design_requirements().get_topology().value() == MAS::Topology::DIFFERENTIAL_MODE_CHOKE
+            && dmcWindingCount >= 2;
+        size_t maximumNumberWires = settings.get_coil_adviser_maximum_number_wires();
+        auto sectionProportions = calculate_winding_window_proportion_per_winding(mas.get_mutable_inputs(), mas.get_magnetic().get_coil());
+        auto core = mas.get_magnetic().get_core();
+        auto coil = mas.get_magnetic().get_coil();
+        apply_coil_stage_winding_layout(coil, core.get_functional_description().get_type(), filterMode);
         mas.get_mutable_magnetic().set_coil(coil);
 
         size_t numberWindings = coil.get_functional_description().size();

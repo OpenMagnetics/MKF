@@ -456,22 +456,26 @@ std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic_fast(I
     for (auto& [magnetic, scoring] : magneticsWithScoring) {
         Mas mas;
         try {
-            mas = coreAdviser.post_process_core(magnetic, inputs);
-
             // If the interleaved layout did not fit this core's window, retry the
             // non-interleaved (level-1) layout before giving up — a tighter core
             // may only host the windings as one section each. This preserves the
             // candidate (a valid, if more loosely coupled, design) instead of
-            // dropping it.
-            bool wound = mas.get_magnetic().get_coil().get_turns_description()
-                         && !mas.get_magnetic().get_coil().get_turns_description()->empty();
-            if (!wound && numberWindingsFast > 1
-                && magnetic.get_coil().get_current_repetitions() != 1) {
+            // dropping it. post_process_core refuses a stand-in it cannot wind with
+            // COIL_WINDING_ERROR (ABT #838); any other error is not a layout verdict.
+            try {
+                mas = coreAdviser.post_process_core(magnetic, inputs);
+            }
+            catch (const CoilException& e) {
+                if (e.code() != ErrorCode::COIL_WINDING_ERROR || numberWindingsFast <= 1
+                    || magnetic.get_coil().get_current_repetitions() == 1) {
+                    throw;
+                }
+                logEntry(std::string("MagneticAdviser::get_advised_magnetic_fast: the interleaved layout does not fit, retrying one section per winding: ") + e.what(), "MagneticAdviser", 2);
                 magnetic.get_mutable_coil().set_interleaving_level(1);
                 mas = coreAdviser.post_process_core(magnetic, inputs);
-                wound = mas.get_magnetic().get_coil().get_turns_description()
-                        && !mas.get_magnetic().get_coil().get_turns_description()->empty();
             }
+            bool wound = mas.get_magnetic().get_coil().get_turns_description()
+                         && !mas.get_magnetic().get_coil().get_turns_description()->empty();
 
             // Never surface an un-wound magnetic: if fast_wind could not lay out
             // the turns (window too small for the inductance-driven turn count),

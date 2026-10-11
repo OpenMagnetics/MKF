@@ -311,7 +311,17 @@ Mas CoreAdviser::post_process_core(Magnetic magnetic, Inputs inputs) {
         // RAII (ABT #113 sweep): exception-safe replacement for the manual
         // save/set/restore — fast_wind can throw.
         SettingsGuard<bool> coilDelimitGuard(settings, &Settings::get_coil_delimit_and_compact, &Settings::set_coil_delimit_and_compact, false);
-        magnetic.get_mutable_coil().fast_wind();
+        // ABT #838: the stand-in is wound with the layout the coil stage will use (toroids CONTIGUOUS
+        // sectors, not the quick bobbin's OVERLAPPING rings, which stacked a CMC's two windings radially
+        // and left no room for them), and a coil that layout cannot wind is not a candidate: say why.
+        CoilAdviser::apply_coil_stage_winding_layout(magnetic.get_mutable_coil(), magnetic.get_core().get_functional_description().get_type(),
+                                                     bool(inputs.get_design_requirements().get_minimum_impedance()));
+        if (!magnetic.get_mutable_coil().fast_wind()) {
+            auto coreName = magnetic.get_core().get_name();
+            throw CoilException(ErrorCode::COIL_WINDING_ERROR,
+                "post_process_core: the stand-in coil" + (coreName ? " of '" + coreName.value() + "'" : std::string()) +
+                " cannot be wound: " + magnetic.get_coil().get_last_fit_failure());
+        }
     }
     fit_stand_in_strand_to_window(magnetic.get_mutable_coil());
 

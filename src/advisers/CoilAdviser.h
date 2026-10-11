@@ -173,6 +173,14 @@ class CoilAdviser : public WireAdviser {
          * grade up to 3 (the tape carries the insulation); this applies that limit.
          */
         static void limit_wire_insulation_requirements_for_margin(std::vector<WireSolidInsulationRequirements>& solidInsulationRequirementsForWires);
+        /**
+         * @brief The section layout the coil stage winds a core with (ABT #838): toroids CONTIGUOUS
+         * sectors SPREAD around the ring (turns CENTERED in filter mode), every other core OVERLAPPING
+         * sections from the inner side. Also writes it into the bobbin's winding window, whose stale
+         * quick-bobbin orientation would otherwise win in wind_by_sections. The core adviser winds its
+         * stand-in coil with the same layout, so it judges a core by the winding the coil stage builds.
+         */
+        static void apply_coil_stage_winding_layout(Coil& coil, CoreType coreType, bool filterMode);
         std::vector<Mas> get_advised_coil(Mas mas, size_t maximumNumberResults=1);
     // ABT #1176, behind Settings::get_coil_adviser_size_magnetic_shunts().
     void add_magnetic_shunts_for_leakage_target(std::vector<Mas>& candidates);
