@@ -775,7 +775,10 @@ namespace {
         MagnetizingInductance magnetizing_inductance("ZHANG");
 
         double expectedInductanceValue = 215e-6;
-        double currentPeakToPeak = 20;
+        // 10 A peak-to-peak puts B_peak = L I_pk / (N A_e) = 0.335 T in the 3C97, against B_sat ~ 0.53 T at
+        // 25 C. It was 20 A, a 0.669 T peak the material cannot carry, which the inductance model now refuses
+        // as a saturation (ABT #1740).
+        double currentPeakToPeak = 10;
         double voltagePeakToPeak = 2 * M_PI * frequency * expectedInductanceValue * currentPeakToPeak;
 
         prepare_test_parameters(dcCurrent, ambientTemperature, frequency, numberTurns, -1, gapping, coreShape,
@@ -2043,16 +2046,21 @@ TEST_CASE("Test_Molded_Per_Region_Inductance", "[physical-model][magnetizing-ind
     biasedCore.process_data();
     biasedCore.process_gap();
     double unbiased = MagnetizingInductance::calculate_molded_magnetizing_inductance(biasedCore, numberTurns, 25, referenceFrequency);
-    double biased = MagnetizingInductance::calculate_molded_magnetizing_inductance(biasedCore, numberTurns, 25, referenceFrequency, 20.0);
-    double moreBiased = MagnetizingInductance::calculate_molded_magnetizing_inductance(biasedCore, numberTurns, 25, referenceFrequency, 60.0);
-    UNSCOPED_INFO("unbiased " << unbiased * 1e6 << " uH, 20 A " << biased * 1e6 << " uH, 60 A " << moreBiased * 1e6 << " uH");
+    double biased = MagnetizingInductance::calculate_molded_magnetizing_inductance(biasedCore, numberTurns, 25, referenceFrequency, 1.0);
+    // 1 A and 2 A put B = I L / (N A_post) = 0.13 T and 0.22 T in the Kool Mu 60 post (B_sat about 1.0 T),
+    // where the flux still rises with the current. It was 20 A and 60 A: from about 3 A on, this per-region
+    // iteration's flux FALLS with current (ABT #1765), and from about 10 A its iterate reaches 71 kA/m,
+    // where the fit gives mu_r 0.93, below the vacuum's, which the permeability model now refuses as a
+    // saturation (ABT #1740).
+    double moreBiased = MagnetizingInductance::calculate_molded_magnetizing_inductance(biasedCore, numberTurns, 25, referenceFrequency, 2.0);
+    UNSCOPED_INFO("unbiased " << unbiased * 1e6 << " uH, 1 A " << biased * 1e6 << " uH, 2 A " << moreBiased * 1e6 << " uH");
     CHECK(biased < unbiased);
     CHECK(moreBiased < biased);
     CHECK_THAT(unbiased, Catch::Matchers::WithinRel(stiffPost, 1e-6));
 
     // Through the public entry point WITH an operating point, the way every consumer calls it:
     // a raw current waveform (no processed data, no harmonics) whose DC component is the bias.
-    // A symmetric ripple reproduces the unbiased figure; a 20 A offset reproduces the biased one.
+    // A symmetric ripple reproduces the unbiased figure; a 1 A offset reproduces the biased one.
     auto operatingPointWithOffset = [&](double offset) {
         json operatingPointJson = json::parse(R"({"conditions": {"ambientTemperature": 25.0},
             "excitationsPerWinding": [{"name": "Primary", "frequency": 100000,
@@ -2064,7 +2072,7 @@ TEST_CASE("Test_Molded_Per_Region_Inductance", "[physical-model][magnetizing-ind
         return OperatingPoint(operatingPointJson);
     };
     auto rippleOnly = operatingPointWithOffset(0);
-    auto withOffset = operatingPointWithOffset(20);
+    auto withOffset = operatingPointWithOffset(1);
     auto rippleOutput = magnetizingInductanceModel.calculate_inductance_from_number_turns_and_gapping(biasedCore, winding, &rippleOnly);
     auto offsetOutput = magnetizingInductanceModel.calculate_inductance_from_number_turns_and_gapping(biasedCore, winding, &withOffset);
     CHECK(rippleOutput.get_method_used() == "MoldedPerRegionReluctance");
@@ -2152,9 +2160,12 @@ TEST_CASE("Test_Dc_Bias_Is_The_Time_Average_Not_The_Midpoint", "[physical-model]
     };
     MagnetizingInductance magnetizingInductance(ReluctanceModels::ZHANG);
 
-    // Same volt-seconds per half cycle in both, so the same flux swing.
-    auto asymmetric = operatingPointFor(0.25, 688.5);
-    auto symmetric = operatingPointFor(0.5, 344.25);
+    // Same volt-seconds per half cycle in both, so the same flux swing: 68.85 V for 2.5 us on one turn of
+    // A_e = 195 mm2 is about 1.1 T peak-to-peak, a peak of about 0.55 T against Nanoperm's B_sat of about
+    // 1.2 T. It was ten times that (688.5 V, an 11 T swing), which no core carries and which the inductance
+    // model now refuses as a saturation (ABT #1740).
+    auto asymmetric = operatingPointFor(0.25, 68.85);
+    auto symmetric = operatingPointFor(0.5, 34.425);
     auto [asymmetricOutput, asymmetricFluxDensity] = magnetizingInductance.calculate_inductance_and_magnetic_flux_density(core, coil, &asymmetric);
     auto [symmetricOutput, symmetricFluxDensity] = magnetizingInductance.calculate_inductance_and_magnetic_flux_density(core, coil, &symmetric);
     double asymmetricInductance = resolve_dimensional_values(asymmetricOutput.get_magnetizing_inductance());
@@ -2202,6 +2213,10 @@ TEST_CASE("Test_Volt_Seconds_That_Saturate_The_Core_Are_Refused_Before_The_Dc_Bi
                       Catch::Matchers::ContainsSubstring("DC-bias operating point reaches") &&
                       Catch::Matchers::ContainsSubstring("B_sat"));
     CHECK(std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count() < 30);
+    // A SaturationException, the type an adviser rejects a candidate on instead of stopping.
+    auto saturatingAgain = inputs.get_operating_point(0);
+    CHECK_THROWS_AS(magnetizingInductance.calculate_inductance_and_magnetic_flux_density(magnetic.get_core(), coilWithTurns(16), &saturatingAgain),
+                    SaturationException);
 
     // 8 turns triple the swing to about 1.4 T peak-to-peak: more than twice B_sat, which no bias can
     // hold, so it is refused from the volt-seconds alone, before any DC-bias evaluation.
@@ -2210,6 +2225,9 @@ TEST_CASE("Test_Volt_Seconds_That_Saturate_The_Core_Are_Refused_Before_The_Dc_Bi
                       Catch::Matchers::ContainsSubstring("The core saturates") &&
                       Catch::Matchers::ContainsSubstring("the volt-seconds impose a flux swing") &&
                       Catch::Matchers::ContainsSubstring("for any bias"));
+    auto tooFewTurnsAgain = inputs.get_operating_point(0);
+    CHECK_THROWS_AS(magnetizingInductance.calculate_inductance_and_magnetic_flux_density(magnetic.get_core(), coilWithTurns(8), &tooFewTurnsAgain),
+                    SaturationException);
 
     // Control: the real coil (24 turns, 0.48 T swing) has a DC point and keeps its answer, the ~64 uH
     // the fixture's design requirements now state.
