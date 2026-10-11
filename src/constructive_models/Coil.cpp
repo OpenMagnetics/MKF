@@ -6398,10 +6398,24 @@ std::map<std::string, uint64_t> Coil::align_blocked_ring_turns(bool forceSpreadB
             }
             double spacing = totalFree / double(turnIdxs.size());
             // Ring turns in cyclic order starting just after the reference angle.
+            //
+            // ABT #1734: a SECTOR ring is ordered from the start of the arc it occupies (the end
+            // of its largest gap), not from the territory start. The two coincide only while the
+            // territory is measured on the ring's own turns. A section's allocated sector need
+            // not contain all of its turns (the winder lays rings past their section), and a turn
+            // lying just BEHIND the territory start sorted LAST: T 12.7/7.9/12.7, 20 + 20 turns,
+            // Round 29.0 / 27.5, contiguous: the Secondary's turns 0 and 1 at 173.9 and 179.5 deg,
+            // its territory starting at 180 deg, were moved to the far end of the sector (346.7
+            // and 355.7 deg), the ring's winding order was broken and the regenerated crossings
+            // of turns 1 and 11 landed on the same point.
+            double orderReferenceAngle = referenceAngle;
+            if (!fullCircle && ringOccupiedArc.count(ringName) && !ringOccupiedArc.at(ringName).first) {
+                orderReferenceAngle = ringOccupiedArc.at(ringName).second.first;
+            }
             std::vector<size_t> orderedTurns(turnIdxs.begin(), turnIdxs.end());
             std::sort(orderedTurns.begin(), orderedTurns.end(), [&](size_t a, size_t b) {
-                double angleA = normalizeAngle(normalizeAngle(std::atan2(turns[a].get_coordinates()[1], turns[a].get_coordinates()[0]) * 180.0 / std::numbers::pi) - referenceAngle);
-                double angleB = normalizeAngle(normalizeAngle(std::atan2(turns[b].get_coordinates()[1], turns[b].get_coordinates()[0]) * 180.0 / std::numbers::pi) - referenceAngle);
+                double angleA = normalizeAngle(normalizeAngle(std::atan2(turns[a].get_coordinates()[1], turns[a].get_coordinates()[0]) * 180.0 / std::numbers::pi) - orderReferenceAngle);
+                double angleB = normalizeAngle(normalizeAngle(std::atan2(turns[b].get_coordinates()[1], turns[b].get_coordinates()[0]) * 180.0 / std::numbers::pi) - orderReferenceAngle);
                 return angleA < angleB;
             });
 

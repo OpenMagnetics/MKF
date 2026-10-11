@@ -14709,6 +14709,63 @@ TEST_CASE("Test_Toroidal_Real_Winding_Interleaved_Sections_Keep_Their_Own_Sector
     settings.reset();
 }
 
+TEST_CASE("Test_Toroidal_Real_Winding_Sector_Territories_Are_The_Allocated_Sectors", "[coil][toroidal][real-geometry]") {
+    // ABT #1734 (Alf 2026-10-11): each section of a contiguous toroid is bounded by the sector
+    // wind_by_sections ALLOCATED it (plus half of each adjacent insulation), not by the arc its
+    // turns currently occupy. The measured arc is self-referential: a section whose turns were
+    // spilled to deeper rings occupies a narrower arc, was handed less territory, reported more
+    // deficit and spilled again, until the wind no longer fit (T 25/15/10, 15 x 3 x 2 Round 21.0:
+    // the middle winding's territory fell 110 -> 77 -> 71 deg against its 120 deg sector). None of
+    // these eight contiguous fixtures wound with the measured partition.
+    struct Fixture {
+        std::string core;
+        std::vector<int64_t> turns;
+        int64_t parallels;
+        std::vector<std::string> wires;   // cycled over the windings
+    };
+    const std::vector<Fixture> fixtures = {
+        {"T 25/15/10", {15, 15, 15}, 2, {"Round 21.0 - Single Build"}},
+        {"T 20/10/7", {45, 25}, 2, {"Round 24.0 - Single Build"}},
+        {"T 20/10/7", {15, 15, 15}, 2, {"Round 24.0 - Single Build"}},
+        {"T 17.3/9.7/12.7", {15, 15, 15}, 1, {"Round 21.0 - Single Build"}},
+        {"T 17.3/9.7/12.7", {15, 15, 15}, 2, {"Round 24.0 - Single Build"}},
+        {"T 12.7/7.9/12.7", {15, 15, 15}, 2, {"Round 29.0 - Single Build", "Round 27.5 - Single Build"}},
+        {"T 10/6/4", {30, 30, 30}, 1, {"Round 29.0 - Single Build", "Round 27.5 - Single Build"}},
+        {"T 10/6/4", {15, 15, 15}, 2, {"Round 29.0 - Single Build", "Round 27.5 - Single Build"}},
+    };
+    for (const auto& fixture : fixtures) {
+        std::string description = fixture.core + " turns";
+        for (auto turns : fixture.turns) {
+            description += " " + std::to_string(turns);
+        }
+        description += " x" + std::to_string(fixture.parallels) + " " + fixture.wires[0];
+        INFO(description);
+        settings.reset();
+        settings.set_coil_use_real_winding_geometry(true);
+        std::vector<OpenMagnetics::Wire> wires;
+        for (size_t w = 0; w < fixture.turns.size(); ++w) {
+            wires.push_back(OpenMagnetics::find_wire_by_name(fixture.wires[w % fixture.wires.size()]));
+        }
+        std::vector<int64_t> parallels(fixture.turns.size(), fixture.parallels);
+        OpenMagnetics::Coil coil;
+        REQUIRE_NOTHROW(coil = OpenMagneticsTesting::get_quick_coil(fixture.turns, parallels, fixture.core, 1,
+                                                                    MAS::WindingOrientation::CONTIGUOUS,
+                                                                    MAS::WindingOrientation::OVERLAPPING,
+                                                                    MAS::CoilAlignment::CENTERED,
+                                                                    MAS::CoilAlignment::CENTERED,
+                                                                    wires));
+        INFO(coil.get_last_fit_failure());
+        CHECK(coil.get_turns_description());
+        if (!coil.get_turns_description()) {
+            continue;
+        }
+        CHECK(OpenMagneticsTesting::check_turns_description(coil));
+        CHECK(OpenMagneticsTesting::check_toroidal_sections_keep_their_sectors(coil));
+    }
+    settings.reset();
+}
+
+
 // ABT #374: a bore-capacity claim of the form (N_turns + N_leads) * wireOD <= pi * ID says these
 // toroidal fixtures cannot hold their own leads. That inequality is the capacity of a SINGLE ring
 // at the inner surface, and it is not what MKF winds: the toroidal winder fills concentric rings
