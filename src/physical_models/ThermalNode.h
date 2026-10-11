@@ -697,6 +697,14 @@ struct ThermalResistanceElement {
     // it together with the orientation.
     std::optional<double> characteristicLength;
 
+    // ABT #1735: the fraction of THIS surface's radiation that leaves to the room, when the
+    // builder knows the surface looks into a cavity. Set for a toroid's bore wall, which sees
+    // the room only through the bore's two openings
+    // (ThermalResistance::calculateCylinderWallToOpeningsViewFactor) and otherwise sees itself;
+    // its radiation to ambient is built over area x this fraction. Unset: the surface faces the
+    // room openly, as every exterior surface of the other builders does.
+    std::optional<double> roomViewFactor;
+
     // ABT #838: the emissivity of THIS surface. Radiation used to read one config-wide value,
     // which is right for enamelled wire, insulation wrap and ferrite but not for bare copper.
     // Set when the resistor is built and re-read by recalculateConvectionResistances, so the

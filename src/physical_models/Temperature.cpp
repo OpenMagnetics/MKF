@@ -4670,7 +4670,9 @@ void Temperature::createConvectionConnections() {
         if (_isToroidal) {
             // A wound toroid's convection-exposed winding surfaces are its outer periphery and
             // top/bottom faces — they see the ROOM. The bore is a near-isothermal cavity (turns
-            // facing turns at winding temperature), so its net radiative exchange is ~zero, and
+            // facing turns at winding temperature): its wall reaches the room only through the two
+            // openings, with the view factor the builder stores on each bore resistor
+            // (roomViewFactor, ABT #1735), and its exchange with itself nets ~zero; and
             // the core is covered by the winding precisely where a turn could otherwise face it.
             // Radiating exposed toroidal surfaces at the core (the pre-#527 behaviour) pumped
             // winding heat into a body those surfaces do not see.
@@ -4754,6 +4756,11 @@ void Temperature::createConvectionConnections() {
                     (_lateralPlacement && !_isToroidal && !_isPlanar) ? inWindowFraction(sourceNode) : windowFacingFraction;
                 double coreFacingArea = convectionResistor.area * nodeWindowFacingFraction;
                 double roomFacingArea = convectionResistor.area - coreFacingArea;
+                // ABT #1735: a surface lining a cavity (a toroid's bore) reaches the room only
+                // through the cavity's openings; the rest of its view is its own wall.
+                if (convectionResistor.roomViewFactor) {
+                    roomFacingArea *= convectionResistor.roomViewFactor.value();
+                }
 
                 if (coreFacingArea > 0) {
                     ThermalResistanceElement radiationResistor;
@@ -4819,9 +4826,16 @@ void Temperature::createConvectionConnections() {
                 radiationResistor.nodeToId = ambientIdx;
                 radiationResistor.quadrantTo = ThermalNodeFace::NONE;
                 radiationResistor.type = HeatTransferType::RADIATION;
-                radiationResistor.area = convectionResistor.area;
+                // ABT #1735: bare ferrite lining a toroid's bore reaches the room only through the
+                // bore's openings.
+                double roomFacingArea = convectionResistor.area;
+                if (convectionResistor.roomViewFactor) {
+                    roomFacingArea *= convectionResistor.roomViewFactor.value();
+                }
+                if (!(roomFacingArea > 0)) continue;
+                radiationResistor.area = roomFacingArea;
                 radiationResistor.orientation = convectionResistor.orientation;
-                radiationResistor.resistance = 1.0 / (h_rad * convectionResistor.area);
+                radiationResistor.resistance = 1.0 / (h_rad * roomFacingArea);
                 _resistances.push_back(radiationResistor);
             }
         }
@@ -4891,11 +4905,14 @@ void Temperature::createToroidalConvectionConnections(size_t ambientIdx, double 
         return _resistances.back();
     };
     // A vertical cylinder of the given area plus an annular-face area split equally between the
-    // top and the bottom face.
+    // top and the bottom face. A bore cylinder (cylinderRoomViewFactor set) looks at the room only
+    // through the bore's two openings; its radiation path reads that fraction
+    // (createConvectionConnections). Rim cylinders and annular faces face the room openly.
     auto addCylinderAndFaces = [&](size_t nodeIdx, ThermalNodeFace face, double cylinderArea, double cylinderHeight,
-                                   double facesArea, double faceLength) {
+                                   double facesArea, double faceLength, std::optional<double> cylinderRoomViewFactor) {
         if (cylinderArea > 0) {
-            addConvectionToAmbient(nodeIdx, face, cylinderArea, SurfaceOrientation::VERTICAL, cylinderHeight);
+            auto& cylinder = addConvectionToAmbient(nodeIdx, face, cylinderArea, SurfaceOrientation::VERTICAL, cylinderHeight);
+            cylinder.roomViewFactor = cylinderRoomViewFactor;
         }
         if (facesArea > 0) {
             addConvectionToAmbient(nodeIdx, face, facesArea / 2.0, SurfaceOrientation::HORIZONTAL_TOP, faceLength);
@@ -4905,6 +4922,11 @@ void Temperature::createToroidalConvectionConnections(size_t ambientIdx, double 
     // Wound-body envelope, shared by the turns' envelope and the bare core between them.
     double envelopeHeight = 0.0;
     double envelopeFaceLength = 0.0;
+    // ABT #1735: the bore of the wound body (radius innerEnvelopeR, height envelopeHeight) sees the
+    // room only through its two openings. Every surface lining it -- the bore-side turns' envelope
+    // and the bare ferrite between them -- radiates to the room with this view factor; the rest of
+    // its view is the bore's own wall, a near-isothermal cavity with ~zero net exchange.
+    double envelopeBoreViewFactor = 0.0;
 
     // ---- Envelope-based ambient interface for the wound toroid (ABT #906) ----
     // A packed toroidal winding presents its ENVELOPE to the air: the outer cylinder
@@ -4962,6 +4984,7 @@ void Temperature::createToroidalConvectionConnections(size_t ambientIdx, double 
         // The wound body is the core axial height plus one wire on each face.
         envelopeHeight = axialLength + 2.0 * maximumTurnDimension;
         envelopeFaceLength = (outerEnvelopeR - innerEnvelopeR) / 2.0;
+        envelopeBoreViewFactor = ThermalResistance::calculateCylinderWallToOpeningsViewFactor(innerEnvelopeR, envelopeHeight);
         double outerCylinderArea = 2.0 * std::numbers::pi * outerEnvelopeR * envelopeHeight;
         double holeCylinderArea = 2.0 * std::numbers::pi * innerEnvelopeR * envelopeHeight;
         double annularFacesArea = 2.0 * std::numbers::pi * (outerEnvelopeR * outerEnvelopeR - innerEnvelopeR * innerEnvelopeR);
@@ -5015,9 +5038,11 @@ void Temperature::createToroidalConvectionConnections(size_t ambientIdx, double 
             if (boundaryNodes.empty() || cylinderArea + facesArea <= 0) return;
             double cylinderShare = cylinderArea / boundaryNodes.size();
             double facesShare = facesArea / boundaryNodes.size();
+            const std::optional<double> cylinderRoomViewFactor =
+                face == ThermalNodeFace::RADIAL_INNER ? std::optional<double>(envelopeBoreViewFactor) : std::nullopt;
             for (size_t i : boundaryNodes) {
                 size_t first = _resistances.size();
-                addCylinderAndFaces(i, face, cylinderShare, envelopeHeight, facesShare, envelopeFaceLength);
+                addCylinderAndFaces(i, face, cylinderShare, envelopeHeight, facesShare, envelopeFaceLength, cylinderRoomViewFactor);
                 auto* q = _nodes[i].getQuadrant(face);
                 if (q && q->coating.has_value()) {
                     for (size_t k = first; k < _resistances.size(); ++k) {
@@ -5174,7 +5199,9 @@ void Temperature::createToroidalConvectionConnections(size_t ambientIdx, double 
         // Bare ferrite between the turns is part of the wound body's surface: its cylinder share
         // takes the body's height and its annular share the body's face length.
         auto connectCoreSurface = [&](size_t nodeIdx, ThermalNodeFace face, double cylinderArea, double annulusArea) {
-            addCylinderAndFaces(nodeIdx, face, cylinderArea, envelopeHeight, annulusArea, envelopeFaceLength);
+            const std::optional<double> cylinderRoomViewFactor =
+                face == ThermalNodeFace::RADIAL_INNER ? std::optional<double>(envelopeBoreViewFactor) : std::nullopt;
+            addCylinderAndFaces(nodeIdx, face, cylinderArea, envelopeHeight, annulusArea, envelopeFaceLength, cylinderRoomViewFactor);
         };
 
         // Bare core face -> the wrap layer nearest the core on that side. Where the wrap lies on
@@ -5455,7 +5482,7 @@ void Temperature::createToroidalConvectionConnections(size_t ambientIdx, double 
                 ++outermostOuterNodes;
             }
         }
-        struct WrapSkin { double cylinderArea = 0, facesArea = 0, height = 0, faceLength = 0; };
+        struct WrapSkin { double cylinderArea = 0, facesArea = 0, height = 0, faceLength = 0, boreRadius = 0; };
         auto wrapSkinArea = [&](const ThermalNetworkNode& node) {
             double nodeR = std::hypot(node.physicalCoordinates[0], node.physicalCoordinates[1]);
             double thickness = node.dimensions.width;
@@ -5475,6 +5502,7 @@ void Temperature::createToroidalConvectionConnections(size_t ambientIdx, double 
             WrapSkin skin;
             skin.height = dimensions["C"] + 2.0 * skinOffset;
             skin.faceLength = (rimSkinR - boreSkinR) / 2.0;
+            skin.boreRadius = boreSkinR;
             // Half of the two annular faces (one face's worth) goes with each side.
             double halfAnnularFaces = std::numbers::pi * (rimSkinR * rimSkinR - boreSkinR * boreSkinR);
             double sideNodes = static_cast<double>(node.isInnerTurn ? outermostInnerNodes : outermostOuterNodes);
@@ -5507,7 +5535,7 @@ void Temperature::createToroidalConvectionConnections(size_t ambientIdx, double 
                 if (q && q->surfaceArea > 0) {
                     auto skin = wrapSkinArea(node);
                     addCylinderAndFaces(i, ThermalNodeFace::RADIAL_OUTER, skin.cylinderArea, skin.height, skin.facesArea,
-                                        skin.faceLength);
+                                        skin.faceLength, std::nullopt);
                 }
             }
             
@@ -5516,8 +5544,10 @@ void Temperature::createToroidalConvectionConnections(size_t ambientIdx, double 
                 auto* q = node.getQuadrant(ThermalNodeFace::RADIAL_INNER);
                 if (q && q->surfaceArea > 0) {
                     auto skin = wrapSkinArea(node);
+                    // The wrap lining the bore sees the room through the bore's openings only.
                     addCylinderAndFaces(i, ThermalNodeFace::RADIAL_INNER, skin.cylinderArea, skin.height, skin.facesArea,
-                                        skin.faceLength);
+                                        skin.faceLength,
+                                        ThermalResistance::calculateCylinderWallToOpeningsViewFactor(skin.boreRadius, skin.height));
                 }
             }
         }

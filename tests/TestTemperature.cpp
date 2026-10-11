@@ -686,6 +686,7 @@ TEST_CASE("Temperature: Ambient Temperature Effect", "[temperature][smoke-test]"
     REQUIRE(result1.converged);
     REQUIRE(result2.converged);
     REQUIRE(result2.maximumTemperature > result1.maximumTemperature);
+
     REQUIRE_THAT(result2.totalThermalResistance, 
                  Catch::Matchers::WithinRel(result1.totalThermalResistance, 0.1));
 }
@@ -4637,17 +4638,32 @@ double abt1735CoreRise(const OpenMagnetics::Magnetic& magnetic, bool coreOnly, d
 // h*A hand estimate for an isothermal ring body at rise dT, by surface (ABT #1735, Alf
 // 2026-10-11): the rim and bore cylinders are VERTICAL with L = the body height, the two annular
 // faces HORIZONTAL_TOP / HORIZONTAL_BOTTOM with L = area/perimeter = (R_out - R_in)/2; each adds
-// grey-body radiation at the default emissivity. The correlation is shared with the network on
-// purpose: what this checks is the AREA, the orientation and the length of each surface.
+// grey-body radiation at the default emissivity -- the bore wall only over the share of its view
+// that leaves through the bore's two openings (abt1735BoreViewFactor). The correlation is shared
+// with the network on purpose: what this checks is the AREA, the orientation and the length of
+// each surface.
+// View factor from the inner wall of an open cylinder (radius r, height H) to its two end
+// openings, written out here independently of ThermalResistance: coaxial equal disks at
+// separation H see each other with F_dd = (X - sqrt(X^2 - 4))/2, X = 2 + (H/r)^2; each opening
+// sees the wall with 1 - F_dd; reciprocity 2 pi r H F = 2 pi r^2 (1 - F_dd).
+double abt1735BoreViewFactor(double r, double H) {
+    double X = 2.0 + (H / r) * (H / r);
+    double diskToDisk = (X - std::sqrt(X * X - 4.0)) / 2.0;
+    return (r / H) * (1.0 - diskToDisk);
+}
+
 double abt1735RingResistance(double rimR, double boreR, double height, double rise) {
     double ambient = 25.0;
     double surface = ambient + rise;
     double hRad = ThermalResistance::calculateRadiationCoefficient(surface, ambient, ThermalDefaults::kConvection_DefaultEmissivity);
     double faceLength = (rimR - boreR) / 2.0;
     double faceArea = std::numbers::pi * (rimR * rimR - boreR * boreR);
-    double cylindersArea = 2.0 * std::numbers::pi * (rimR + boreR) * height;
+    double rimArea = 2.0 * std::numbers::pi * rimR * height;
+    double boreArea = 2.0 * std::numbers::pi * boreR * height;
+    double hVertical = ThermalResistance::calculateNaturalConvectionCoefficient(surface, ambient, height, SurfaceOrientation::VERTICAL);
     double conductance =
-        (ThermalResistance::calculateNaturalConvectionCoefficient(surface, ambient, height, SurfaceOrientation::VERTICAL) + hRad) * cylindersArea +
+        (hVertical + hRad) * rimArea +
+        (hVertical + hRad * abt1735BoreViewFactor(boreR, height)) * boreArea +
         (ThermalResistance::calculateNaturalConvectionCoefficient(surface, ambient, faceLength, SurfaceOrientation::HORIZONTAL_TOP) + hRad) * faceArea +
         (ThermalResistance::calculateNaturalConvectionCoefficient(surface, ambient, faceLength, SurfaceOrientation::HORIZONTAL_BOTTOM) + hRad) * faceArea;
     return 1.0 / conductance;
@@ -4725,6 +4741,56 @@ TEST_CASE("Temperature: ABT 1735 toroid surface resistance matches the h*A of it
         CHECK(rise > handEstimate * 0.95);
         CHECK(rise < handEstimate * 1.15);
     }
+}
+
+TEST_CASE("Temperature: ABT 1735 a toroid's bore radiates to the room only through its openings",
+          "[temperature][toroidal][abt-1735][smoke-test]") {
+    // Closed form against hand values: r = H gives X = 3, F_dd = (3 - sqrt 5)/2 and
+    // F = (sqrt 5 - 1)/2 = 0.618034; H = 2r gives X = 6, F_dd = 3 - 2 sqrt 2 and F = sqrt 2 - 1.
+    CHECK_THAT(ThermalResistance::calculateCylinderWallToOpeningsViewFactor(1e-3, 1e-3),
+               Catch::Matchers::WithinAbs((std::sqrt(5.0) - 1.0) / 2.0, 1e-12));
+    CHECK_THAT(ThermalResistance::calculateCylinderWallToOpeningsViewFactor(2e-3, 4e-3),
+               Catch::Matchers::WithinAbs(std::sqrt(2.0) - 1.0, 1e-12));
+    CHECK_THROWS(ThermalResistance::calculateCylinderWallToOpeningsViewFactor(0.0, 1e-3));
+
+    // Bare T 36/23/15: every exterior surface radiates to the room at full view except the bore
+    // wall, which sees the room through its two openings (r = B/2, H = C) and otherwise itself.
+    // It used to radiate its whole area to the room at view factor 1, against the builder's own
+    // statement that the bore is a cavity with ~zero net exchange.
+    auto magnetic = abt1735WoundToroid({20, 10}, "T 36/23/15", "N87");
+    auto dimensions = magnetic.get_core().resolve_shape().get_dimensions().value();
+    double A = resolve_dimensional_values(dimensions["A"]);
+    double B = resolve_dimensional_values(dimensions["B"]);
+    double C = resolve_dimensional_values(dimensions["C"]);
+    TemperatureConfig config;
+    config.ambientTemperature = 25.0;
+    config.coreLosses = 1.0;
+    config.windingLosses = 0.0;
+    config.coreOnly = true;
+    config.plotSchematic = false;
+    Temperature temperature(magnetic, config);
+    auto result = temperature.calculateTemperatures();
+    REQUIRE(result.converged);
+    const size_t ambientIdx = temperature.getNodes().size() - 1;
+    REQUIRE(temperature.getNodes()[ambientIdx].part == ThermalNodePartType::AMBIENT);
+    double radiatingArea = 0.0;
+    double convectingArea = 0.0;
+    for (const auto& r : temperature.getResistances()) {
+        if (r.nodeToId != ambientIdx) continue;
+        if (r.type == HeatTransferType::RADIATION) radiatingArea += r.area;
+        if (r.type == HeatTransferType::NATURAL_CONVECTION) convectingArea += r.area;
+    }
+    double rimArea = std::numbers::pi * A * C;
+    double boreArea = std::numbers::pi * B * C;
+    double facesArea = 2.0 * std::numbers::pi * (A * A - B * B) / 4.0;
+    double boreViewFactor = abt1735BoreViewFactor(B / 2.0, C);
+    CAPTURE(rimArea, boreArea, facesArea, boreViewFactor, convectingArea, radiatingArea);
+    // T 36/23/15: r = 11.5 mm, H = 15 mm, F = 0.553.
+    CHECK(boreViewFactor > 0.5);
+    CHECK(boreViewFactor < 0.6);
+    // Convection takes the whole surface; radiation the same surface less the bore's self-view.
+    CHECK_THAT(convectingArea, Catch::Matchers::WithinRel(rimArea + boreArea + facesArea, 1e-6));
+    CHECK_THAT(radiatingArea, Catch::Matchers::WithinRel(rimArea + boreViewFactor * boreArea + facesArea, 1e-6));
 }
 
 TEST_CASE("Temperature: ABT 1735 a foil-wound E core with no copper loss is no hotter than its bare core",

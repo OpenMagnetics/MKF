@@ -178,6 +178,19 @@ public:
         }
     }
     
+    /**
+     * @brief View factor from the inner wall of an open cylinder (a toroid's bore) to its two
+     * end openings, i.e. to the room (ABT #1735).
+     *
+     * Closed form from the coaxial equal-disk view factor and reciprocity: with
+     * X = 2 + (H/r)^2, F_disk-disk = (X - sqrt(X^2 - 4)) / 2, each opening sees the wall with
+     * 1 - F_disk-disk, and A_wall F_wall-openings = 2 A_disk (1 - F_disk-disk) gives
+     * F = (r/H) (1 - F_disk-disk). The same expression OMFEM's thermal solver uses for the bore
+     * (ABT #1751). The rest of the wall's view, 1 - F, lands on the wall itself.
+     * Throws when the radius or the height is not positive.
+     */
+    static double calculateCylinderWallToOpeningsViewFactor(double radius, double height);
+
     // IMP-NEW-08: View-factor-aware radiation coefficient
     static double calculateRadiationCoefficientWithViewFactor(
         double surfaceTemperature, double ambientTemperature,

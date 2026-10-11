@@ -4,6 +4,8 @@
 #include <magic_enum.hpp>
 #include <algorithm>
 #include <cmath>
+#include <stdexcept>
+#include <string>
 
 namespace OpenMagnetics {
 using namespace ThermalDefaults; // IMP-2
@@ -145,6 +147,18 @@ double ThermalResistance::calculateRadiationCoefficient(
     double h_rad = emissivity * constants.stefanBoltzmannConstant * (Ts*Ts + Ta*Ta) * (Ts + Ta);
     
     return h_rad;
+}
+
+double ThermalResistance::calculateCylinderWallToOpeningsViewFactor(double radius, double height) {
+    if (!(radius > 0) || !(height > 0)) {
+        throw std::invalid_argument("ThermalResistance::calculateCylinderWallToOpeningsViewFactor: the cylinder needs "
+                                    "a positive radius and height (radius " + std::to_string(radius) + " m, height " +
+                                    std::to_string(height) + " m).");
+    }
+    const double heightOverRadius = height / radius;
+    const double X = 2.0 + heightOverRadius * heightOverRadius;
+    const double diskToDisk = 0.5 * (X - std::sqrt(X * X - 4.0));
+    return (radius / height) * (1.0 - diskToDisk);
 }
 
 // IMP-NEW-08: View-factor-aware radiation coefficient
