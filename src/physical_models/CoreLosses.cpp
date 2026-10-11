@@ -1292,46 +1292,6 @@ SignalDescriptor make_loop_signal(std::vector<double> time, std::vector<double> 
     return signal;
 }
 
-// Valleys of a record, found with a hysteresis of `noise`: a reversal smaller than that is not a
-// flux reversal. Plateaus keep their first sample.
-std::vector<size_t> find_valleys(const std::vector<double>& data, double noise) {
-    std::vector<size_t> valleys;
-    int direction = 0;  // +1 rising towards a peak, -1 falling towards a valley, 0 not yet known
-    size_t extremum = 0;
-    for (size_t i = 1; i < data.size(); ++i) {
-        if (direction == 0) {
-            if (data[i] > data[0] + noise) {
-                direction = 1;
-                extremum = i;
-            }
-            else if (data[i] < data[0] - noise) {
-                direction = -1;
-                extremum = i;
-            }
-        }
-        else if (direction > 0) {
-            if (data[i] > data[extremum]) {
-                extremum = i;
-            }
-            else if (data[extremum] - data[i] > noise) {
-                direction = -1;
-                extremum = i;
-            }
-        }
-        else {
-            if (data[i] < data[extremum]) {
-                extremum = i;
-            }
-            else if (data[i] - data[extremum] > noise) {
-                valleys.push_back(extremum);
-                direction = 1;
-                extremum = i;
-            }
-        }
-    }
-    return valleys;
-}
-
 // The envelope at each switching cycle: the record's time average over the cycles centred on it,
 // 2h + 1 of them with h = (number of cycles) / 128 (fewer at the record's edges, keeping the window
 // centred). The record's valleys are samples, not the flux's true valleys, so one cycle's span differs
@@ -1443,24 +1403,12 @@ std::optional<SwitchingCyclesRecord> CoreLossesModel::split_into_switching_cycle
     if (fluxDensityData.size() < 2 * minimumSwitchingCyclesInRecord + 1) {
         return std::nullopt;
     }
-    auto [minimumIt, maximumIt] = std::minmax_element(fluxDensityData.begin(), fluxDensityData.end());
-    double recordPeakToPeak = *maximumIt - *minimumIt;
-    if (!(recordPeakToPeak > 0)) {
+    auto switchingCycleValleys = Inputs::find_switching_cycle_valleys(fluxDensityTime, fluxDensityData);
+    if (!switchingCycleValleys) {
         return std::nullopt;
     }
-    // A reversal below one part in 1e9 of the record's swing is the round-off of the waveform's
-    // arithmetic (resampling, scaling current into flux), not a reversal of the flux.
-    auto valleys = find_valleys(fluxDensityData, recordPeakToPeak * 1e-9);
-    if (valleys.size() < minimumSwitchingCyclesInRecord + 1) {
-        return std::nullopt;
-    }
+    auto valleys = switchingCycleValleys.value();
     double recordDuration = fluxDensityTime.back() - fluxDensityTime.front();
-    for (size_t cycleIndex = 0; cycleIndex + 1 < valleys.size(); ++cycleIndex) {
-        double duration = fluxDensityTime[valleys[cycleIndex + 1]] - fluxDensityTime[valleys[cycleIndex]];
-        if (duration * static_cast<double>(minimumSwitchingCyclesInRecord) > recordDuration) {
-            return std::nullopt;
-        }
-    }
 
     // The magnetizing current is split with the flux (the loss-factor model prices the magnetizing
     // current, not the flux). The two records need not share samples: the flux is often stored

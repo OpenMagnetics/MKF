@@ -301,6 +301,17 @@ class Inputs : public MAS::Inputs {
     }
     static void set_current_as_magnetizing_current(OperatingPoint* operatingPoint);
 
+    // A record needs at least this many complete reversal cycles, none of them longer than this
+    // many-th part of the record, to be taken as repeated switching cycles (ABT #1636): a line-cycle
+    // record. A periodic excitation is one period of its frequency: one loop, or a few reversals
+    // (ringing, multi-level or burst waveforms, Gibbs ripple of a reconstructed step), at least one of
+    // which spans a large part of the period.
+    static constexpr size_t minimumSwitchingCyclesInRecord = 16;
+    // Valleys of a record, found with a hysteresis of `noise`. Plateaus keep their first sample.
+    static std::vector<size_t> find_valleys(const std::vector<double>& data, double noise);
+    // The valleys that bound a record's switching cycles, or nothing when the record is not a record
+    // of repeated switching cycles by the definition above.
+    static std::optional<std::vector<size_t>> find_switching_cycle_valleys(const std::vector<double>& time, const std::vector<double>& data);
     static double get_switching_frequency(const OperatingPointExcitation& excitation);
     static double get_magnetic_flux_density_peak(OperatingPointExcitation excitation, double switchingFrequency);
     static double get_magnetic_flux_density_peak_to_peak(OperatingPointExcitation excitation, double switchingFrequency);

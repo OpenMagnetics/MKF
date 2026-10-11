@@ -3738,49 +3738,123 @@ void Inputs::set_current_as_magnetizing_current(OperatingPoint* operatingPoint) 
     operatingPoint->get_mutable_excitations_per_winding()[0] = excitation;
 }
 
-double Inputs::get_switching_frequency(const OperatingPointExcitation& excitation) {
-    if (excitation.get_frequency() < 400) {
-        if (excitation.get_current()) {
-            if (excitation.get_current()->get_waveform()) {
-                auto waveform = excitation.get_current()->get_waveform().value();
-                if (waveform.get_data().size() > constants.numberPointsSampledWaveforms) {
-                    // The switching frequency is a property of the waveform, so it is read from the
-                    // waveform's spectrum whether or not a processed copy of the excitation cached it.
-                    // Returning the line frequency for an unprocessed copy made the magnetizing
-                    // inductance read a 50 Hz DMC record as having no line-frequency swing below its
-                    // switching frequency, so no DC-bias roll-off: mu = 300 instead of ~104 on an MPP
-                    // 300 toroid, 1.02 T instead of 0.35 T and 16.3 W instead of 1.74 W (ABT #1764).
-                    Harmonics harmonics;
-                    if (excitation.get_current()->get_harmonics()) {
-                        harmonics = excitation.get_current()->get_harmonics().value();
-                    }
-                    else {
-                        auto sampledWaveform = Inputs::calculate_sampled_waveform(waveform, excitation.get_frequency());
-                        harmonics = Inputs::calculate_harmonics_data(waveform, sampledWaveform, excitation.get_frequency());
-                    }
-                    // A spectrum with nothing above DC carries no switching ripple: the excitation's
-                    // own frequency is its frequency, as for every other excitation.
-                    if (harmonics.get_amplitudes().size() < 2) {
-                        return excitation.get_frequency();
-                    }
-                    double mainHarmonicAmplitude = harmonics.get_amplitudes()[1];
-                    double strongestHarmonicAmplitudeAfterMain = 0;
-                    double strongestHarmonicAmplitudeAfterMainFrequency = harmonics.get_frequencies()[1];
-                    for (size_t harmonicIndex = 2; harmonicIndex < harmonics.get_amplitudes().size(); ++harmonicIndex) {
-                        if (harmonics.get_amplitudes()[harmonicIndex] > 0.01 * mainHarmonicAmplitude) {
-                            if (harmonics.get_amplitudes()[harmonicIndex] > strongestHarmonicAmplitudeAfterMain) {
-                                strongestHarmonicAmplitudeAfterMain = harmonics.get_amplitudes()[harmonicIndex];
-                                strongestHarmonicAmplitudeAfterMainFrequency = harmonics.get_frequencies()[harmonicIndex];
-                            }
-                        }
-                    }
-
-                    return strongestHarmonicAmplitudeAfterMainFrequency;
-                }
+// Valleys of a record, found with a hysteresis of `noise`: a reversal smaller than that is not a
+// flux reversal. Plateaus keep their first sample.
+std::vector<size_t> Inputs::find_valleys(const std::vector<double>& data, double noise) {
+    std::vector<size_t> valleys;
+    int direction = 0;  // +1 rising towards a peak, -1 falling towards a valley, 0 not yet known
+    size_t extremum = 0;
+    for (size_t i = 1; i < data.size(); ++i) {
+        if (direction == 0) {
+            if (data[i] > data[0] + noise) {
+                direction = 1;
+                extremum = i;
+            }
+            else if (data[i] < data[0] - noise) {
+                direction = -1;
+                extremum = i;
+            }
+        }
+        else if (direction > 0) {
+            if (data[i] > data[extremum]) {
+                extremum = i;
+            }
+            else if (data[extremum] - data[i] > noise) {
+                direction = -1;
+                extremum = i;
+            }
+        }
+        else {
+            if (data[i] < data[extremum]) {
+                extremum = i;
+            }
+            else if (data[i] - data[extremum] > noise) {
+                valleys.push_back(extremum);
+                direction = 1;
+                extremum = i;
             }
         }
     }
-    return excitation.get_frequency();
+    return valleys;
+}
+
+std::optional<std::vector<size_t>> Inputs::find_switching_cycle_valleys(const std::vector<double>& time, const std::vector<double>& data) {
+    if (data.size() != time.size()) {
+        throw InvalidInputException(ErrorCode::INVALID_INPUT,
+            "Switching cycles: the record has " + std::to_string(data.size()) + " samples and " + std::to_string(time.size()) + " time points");
+    }
+    if (data.size() < 2 * minimumSwitchingCyclesInRecord + 1) {
+        return std::nullopt;  // too few samples to hold that many cycles
+    }
+    auto [minimumIt, maximumIt] = std::minmax_element(data.begin(), data.end());
+    double recordPeakToPeak = *maximumIt - *minimumIt;
+    if (!(recordPeakToPeak > 0)) {
+        return std::nullopt;
+    }
+    // A reversal below one part in 1e9 of the record's swing is the round-off of the waveform's
+    // arithmetic (resampling, scaling current into flux), not a reversal.
+    auto valleys = find_valleys(data, recordPeakToPeak * 1e-9);
+    if (valleys.size() < minimumSwitchingCyclesInRecord + 1) {
+        return std::nullopt;
+    }
+    double recordDuration = time.back() - time.front();
+    for (size_t cycleIndex = 0; cycleIndex + 1 < valleys.size(); ++cycleIndex) {
+        double duration = time[valleys[cycleIndex + 1]] - time[valleys[cycleIndex]];
+        if (duration * static_cast<double>(minimumSwitchingCyclesInRecord) > recordDuration) {
+            return std::nullopt;
+        }
+    }
+    return valleys;
+}
+
+double Inputs::get_switching_frequency(const OperatingPointExcitation& excitation) {
+    // The switching frequency of an excitation is its frequency, unless its current is a line-cycle
+    // record: a record of repeated switching cycles (find_switching_cycle_valleys) described at the
+    // frequency of its period, the line. Its switching frequency is then the rate of its cycles. The
+    // record is read from its waveform at any excitation frequency, whether or not a processed copy
+    // cached the waveform's spectrum (ABT #1764: a fixed f < 400 Hz gate gave a DMC record swept to 500 Hz
+    // no line bias, and an unprocessed 50 Hz copy returned 50 Hz for want of cached harmonics: mu 300
+    // instead of ~104 on an MPP 300 toroid, B 1.02 T instead of 0.35 T, 16.3 W instead of 1.74 W).
+    double frequency = excitation.get_frequency();
+    if (!excitation.get_current() || !excitation.get_current()->get_waveform()) {
+        return frequency;
+    }
+    auto waveform = excitation.get_current()->get_waveform().value();
+    if (!waveform.get_time()) {
+        return frequency;  // an equidistant waveform is one period of its frequency, not a record
+    }
+    auto time = waveform.get_time().value();
+    if (time.size() < 2) {
+        return frequency;
+    }
+    // A record that spans that many periods of the excitation's frequency already carries the switching
+    // frequency as its frequency (Kirchhoff's PFC/Vienna records do).
+    if ((time.back() - time.front()) * frequency >= static_cast<double>(minimumSwitchingCyclesInRecord)) {
+        return frequency;
+    }
+    auto valleys = find_switching_cycle_valleys(time, waveform.get_data());
+    if (!valleys) {
+        return frequency;
+    }
+    // The record's switching rate is its number of cycles over their span. A cycle in which the line
+    // outran the ripple, so that it shows no valley, appears as one cycle twice the usual length: each
+    // cycle counts as its length in typical cycles (the median one), rounded. A periodic record switches
+    // at a harmonic of its period, so the rate is the nearest one: the cycles are bounded by samples, so
+    // their span is off by up to a sample at each end.
+    std::vector<double> durations;
+    for (size_t cycleIndex = 0; cycleIndex + 1 < valleys->size(); ++cycleIndex) {
+        durations.push_back(time[(*valleys)[cycleIndex + 1]] - time[(*valleys)[cycleIndex]]);
+    }
+    auto sortedDurations = durations;
+    std::nth_element(sortedDurations.begin(), sortedDurations.begin() + sortedDurations.size() / 2, sortedDurations.end());
+    double typicalDuration = sortedDurations[sortedDurations.size() / 2];
+    double numberCycles = 0;
+    for (auto duration : durations) {
+        numberCycles += std::max(1.0, std::round(duration / typicalDuration));
+    }
+    double cyclesSpan = time[valleys->back()] - time[valleys->front()];
+    double cycleRate = numberCycles / cyclesSpan;
+    return std::round(cycleRate / frequency) * frequency;
 }
 
 double Inputs::get_magnetic_flux_density_peak(OperatingPointExcitation excitation, double switchingFrequency) {

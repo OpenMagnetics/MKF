@@ -810,6 +810,34 @@ TEST_CASE("MagneticAdviser web DMC whose switching ripple is resolved returns wo
                                                                  operatingFrequency, 100 * operatingFrequency, 3, ambientTemperature);
     INFO("stored operating point: " << storedSweep.get_y_points()[0] << " W, processed: " << dmcSweep.get_y_points()[0] << " W");
     CHECK_THAT(storedSweep.get_y_points()[0], Catch::Matchers::WithinRel(dmcSweep.get_y_points()[0], 0.01));
+
+    // Swept to 500 Hz and 5 kHz the record is the same line current with its ripple, faster: the line
+    // swing still biases the core (ABT #1764). A fixed f < 400 Hz gate on the switching-frequency
+    // detection gave those points no bias: mu 300 and 1.02 T on an MPP 300 core that saturates at
+    // 0.8 T, and 685 W / 28754 W in the plot.
+    auto fluxDensityPeakAt = [&](double lineFrequency) {
+        auto swept = inputs.get_operating_point(0);
+        OpenMagnetics::Inputs::scale_time_to_frequency(swept, lineFrequency, false, true);
+        for (auto& excitation : swept.get_mutable_excitations_per_winding()) {
+            excitation.set_magnetizing_current(std::nullopt);
+            excitation.set_magnetic_flux_density(std::nullopt);
+        }
+        MagnetizingInductance sweptModel;
+        sweptModel.set_topology(topology);
+        return sweptModel.calculate_inductance_and_magnetic_flux_density(magnetic, &swept).second.get_processed()->get_peak().value();
+    };
+    double lineFrequencyFluxDensityPeak = fluxDensityPeakAt(operatingFrequency);
+    auto saturation = magnetic.get_core().resolve_material().get_saturation();
+    REQUIRE_FALSE(saturation.empty());
+    double saturationFluxDensity = saturation[0].get_magnetic_flux_density();
+    CHECK(lineFrequencyFluxDensityPeak < saturationFluxDensity);
+    for (double lineFrequency : {10 * operatingFrequency, 100 * operatingFrequency}) {
+        double fluxDensityPeak = fluxDensityPeakAt(lineFrequency);
+        INFO("line frequency " << lineFrequency << " Hz: B peak " << fluxDensityPeak << " T, at " << operatingFrequency << " Hz "
+             << lineFrequencyFluxDensityPeak << " T, saturation " << saturationFluxDensity << " T");
+        CHECK(fluxDensityPeak < saturationFluxDensity);
+        CHECK_THAT(fluxDensityPeak, Catch::Matchers::WithinRel(lineFrequencyFluxDensityPeak, 0.02));
+    }
     settings.reset();
     clear_databases();
 }

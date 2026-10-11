@@ -70,12 +70,8 @@ class CoreLossesModel {
     CoreLossesModel() = default;
     virtual ~CoreLossesModel() = default;
     std::string get_model_name() const { return _modelName; }
-    // A record needs at least this many complete flux reversal cycles, none of them longer than this
-    // many-th part of the record, to be taken as repeated switching cycles (ABT #1636). A periodic
-    // excitation is one period of its frequency: one loop, or a few reversals (ringing, multi-level
-    // or burst waveforms, Gibbs ripple of a reconstructed step), at least one of which spans a large
-    // part of the period.
-    static constexpr size_t minimumSwitchingCyclesInRecord = 16;
+    // The definition of a record of repeated switching cycles lives with the waveforms (Inputs).
+    static constexpr size_t minimumSwitchingCyclesInRecord = Inputs::minimumSwitchingCyclesInRecord;
     // Splits a record of many switching cycles (see SwitchingCyclesRecord); nullopt for a periodic
     // excitation, which the models evaluate as it is.
     static std::optional<SwitchingCyclesRecord> split_into_switching_cycles(const OperatingPointExcitation& excitation);

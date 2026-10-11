@@ -2447,3 +2447,30 @@ TEST_CASE("Test_Scale_Time_To_Frequency_Keeps_No_Spectrum_Of_The_Old_Time_Axis",
     CHECK_THAT(harmonics.get_frequencies()[1], Catch::Matchers::WithinRel(500, 1e-6));
     CHECK_THAT(harmonics.get_frequencies()[strongestRipple], Catch::Matchers::WithinRel(1e6, 1e-3));
 }
+
+TEST_CASE("Test_Switching_Frequency_Of_A_Line_Cycle_Record_At_Any_Frequency", "[processor][inputs][bug]") {
+    // ABT #1764: a line-cycle record (a record of repeated switching cycles described at its line
+    // frequency) is recognised from its waveform, not by a fixed f < 400 Hz gate. The web DMC record
+    // swept to 500 Hz and 5 kHz switches at 1 MHz and 10 MHz; the gate returned 500 Hz and 5 kHz,
+    // so the magnetizing inductance saw no line swing to bias the core with.
+    auto path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "web_adviser_flows/dmc_calculate_advised_magnetics_switching_ripple.json");
+    std::ifstream file(path);
+    REQUIRE(file.good());
+    auto fixture = json::parse(file);
+    OperatingPointExcitation storedExcitation(fixture["inputs"]["operatingPoints"][0]["excitationsPerWinding"][0]);
+    CHECK_THAT(OpenMagnetics::Inputs::get_switching_frequency(storedExcitation), Catch::Matchers::WithinRel(100000, 1e-9));
+    for (double lineFrequency : {500.0, 5000.0}) {
+        for (bool processSignals : {false, true}) {
+            auto swept = storedExcitation;
+            OpenMagnetics::Inputs::scale_time_to_frequency(swept, lineFrequency, false, processSignals);
+            INFO("line frequency " << lineFrequency << " Hz, processed " << processSignals);
+            CHECK_THAT(OpenMagnetics::Inputs::get_switching_frequency(swept), Catch::Matchers::WithinRel(2000 * lineFrequency, 1e-9));
+        }
+    }
+
+    // One period of a converter's current is not a record of switching cycles: its frequency is
+    // its switching frequency.
+    auto converter = OpenMagnetics::Inputs::create_quick_operating_point(100000, 100e-6, 25, WaveformLabel::TRIANGULAR, 10, 0.5, 0);
+    auto converterExcitation = converter.get_operating_point(0).get_excitations_per_winding()[0];
+    CHECK_THAT(OpenMagnetics::Inputs::get_switching_frequency(converterExcitation), Catch::Matchers::WithinRel(100000, 1e-12));
+}
