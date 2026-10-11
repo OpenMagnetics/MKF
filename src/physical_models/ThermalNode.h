@@ -691,6 +691,12 @@ struct ThermalResistanceElement {
     double thermalConductivity = 0.0; // Material thermal conductivity W/(m·K)
     SurfaceOrientation orientation = SurfaceOrientation::VERTICAL;
 
+    // ABT #1735: the boundary-layer length of THIS surface for the natural-convection law. When
+    // unset, recalculateConvectionResistances uses the component's height (ABT #461). A builder
+    // that knows its surfaces (the toroid: rim and bore vertical, annular faces horizontal) sets
+    // it together with the orientation.
+    std::optional<double> characteristicLength;
+
     // ABT #838: the emissivity of THIS surface. Radiation used to read one config-wide value,
     // which is right for enamelled wire, insulation wrap and ferrite but not for bare copper.
     // Set when the resistor is built and re-read by recalculateConvectionResistances, so the

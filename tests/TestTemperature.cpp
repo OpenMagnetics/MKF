@@ -4634,18 +4634,23 @@ double abt1735CoreRise(const OpenMagnetics::Magnetic& magnetic, bool coreOnly, d
     return hottestCore - config.ambientTemperature;
 }
 
-// h*A hand estimate for an isothermal surface of area A at rise dT: natural convection (the same
-// correlation and characteristic length the network uses -- the processed core height) plus
-// grey-body radiation at the default emissivity. What it checks is the AREA and the topology,
-// which is where the defects were; the correlation is shared on purpose.
-double abt1735SurfaceResistance(const OpenMagnetics::Magnetic& magnetic, double area, double rise) {
+// h*A hand estimate for an isothermal ring body at rise dT, by surface (ABT #1735, Alf
+// 2026-10-11): the rim and bore cylinders are VERTICAL with L = the body height, the two annular
+// faces HORIZONTAL_TOP / HORIZONTAL_BOTTOM with L = area/perimeter = (R_out - R_in)/2; each adds
+// grey-body radiation at the default emissivity. The correlation is shared with the network on
+// purpose: what this checks is the AREA, the orientation and the length of each surface.
+double abt1735RingResistance(double rimR, double boreR, double height, double rise) {
     double ambient = 25.0;
     double surface = ambient + rise;
-    double characteristicLength = magnetic.get_core().get_processed_description()->get_height();
-    double h = ThermalResistance::calculateNaturalConvectionCoefficient(surface, ambient, characteristicLength,
-                                                                       SurfaceOrientation::VERTICAL) +
-               ThermalResistance::calculateRadiationCoefficient(surface, ambient, ThermalDefaults::kConvection_DefaultEmissivity);
-    return 1.0 / (h * area);
+    double hRad = ThermalResistance::calculateRadiationCoefficient(surface, ambient, ThermalDefaults::kConvection_DefaultEmissivity);
+    double faceLength = (rimR - boreR) / 2.0;
+    double faceArea = std::numbers::pi * (rimR * rimR - boreR * boreR);
+    double cylindersArea = 2.0 * std::numbers::pi * (rimR + boreR) * height;
+    double conductance =
+        (ThermalResistance::calculateNaturalConvectionCoefficient(surface, ambient, height, SurfaceOrientation::VERTICAL) + hRad) * cylindersArea +
+        (ThermalResistance::calculateNaturalConvectionCoefficient(surface, ambient, faceLength, SurfaceOrientation::HORIZONTAL_TOP) + hRad) * faceArea +
+        (ThermalResistance::calculateNaturalConvectionCoefficient(surface, ambient, faceLength, SurfaceOrientation::HORIZONTAL_BOTTOM) + hRad) * faceArea;
+    return 1.0 / conductance;
 }
 }  // namespace
 
@@ -4668,8 +4673,10 @@ TEST_CASE("Temperature: ABT 1735 a wound toroid with no copper loss is no hotter
         double woundRise = abt1735CoreRise(magnetic, false, 1.0);
         CAPTURE(bareRise, woundRise);
         // The wrap and the turns' contact strips add a little series resistance (enamel, tape,
-        // the air the turns hold open) to a surface they enlarge by 25-40%; at no copper loss
-        // the wound core may land a few per cent above the bare one, never several times.
+        // the air a turn holds open under the tape next to it) to a surface they enlarge by
+        // 25-40%; at no copper loss the wound core may land a few per cent above the bare one,
+        // never several times. Between sparse turns the tape lies on the ferrite: a 0.5 mm air
+        // film under the whole wrap of the 5:5 T 20/10/7 alone is ~17 K/W, 1.2x its bare core.
         CHECK(woundRise < bareRise * 1.15);
     }
 }
@@ -4683,10 +4690,9 @@ TEST_CASE("Temperature: ABT 1735 toroid surface resistance matches the h*A of it
         double A = resolve_dimensional_values(dimensions["A"]);
         double B = resolve_dimensional_values(dimensions["B"]);
         double C = resolve_dimensional_values(dimensions["C"]);
-        double bareArea = std::numbers::pi * (A + B) * C + 2.0 * std::numbers::pi / 4.0 * (A * A - B * B);
         double rise = abt1735CoreRise(magnetic, true, 1.0);
-        double handEstimate = abt1735SurfaceResistance(magnetic, bareArea, rise);
-        CAPTURE(bareArea, rise, handEstimate);
+        double handEstimate = abt1735RingResistance(A / 2.0, B / 2.0, C, rise);
+        CAPTURE(rise, handEstimate);
         // Isothermal ring, same correlations: the network must reproduce h*A to a few per cent.
         CHECK(rise > handEstimate * 0.95);
         CHECK(rise < handEstimate * 1.05);
@@ -4710,10 +4716,9 @@ TEST_CASE("Temperature: ABT 1735 toroid surface resistance matches the h*A of it
         double rimR = A / 2.0 + skinOffset;
         double boreR = B / 2.0 - skinOffset;
         double height = C + 2.0 * skinOffset;
-        double wrapArea = 2.0 * std::numbers::pi * (rimR + boreR) * height + 2.0 * std::numbers::pi * (rimR * rimR - boreR * boreR);
         double rise = abt1735CoreRise(magnetic, false, 1.0);
-        double handEstimate = abt1735SurfaceResistance(magnetic, wrapArea, rise);
-        CAPTURE(wrapArea, rise, handEstimate);
+        double handEstimate = abt1735RingResistance(rimR, boreR, height, rise);
+        CAPTURE(rise, handEstimate);
         // Hand estimate of the internal path, core to wrap, at 1 W: ~20 turns x 2 contact strips
         // of ~0.5 mm x ~35 mm through ~30 um enamel at ~0.2 W/mK is ~0.4 K/W, plus half a tape
         // thickness: well under 10% of the ~15 K/W surface term. Before the fix: 97 K/W, 6x.
