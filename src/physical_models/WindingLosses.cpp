@@ -177,6 +177,49 @@ double WindingLosses::calculate_effective_resistance_of_winding(Magnetic magneti
 
 
 WindingLossesOutput WindingLosses::calculate_losses(Magnetic magnetic, OperatingPoint operatingPoint, double temperature) {
+    auto field = calculate_magnetic_field(magnetic, operatingPoint, temperature);
+    return calculate_losses(magnetic, field, temperature);
+}
+
+bool WindingLosses::use_quick_harmonic_threshold(const Magnetic& magnetic) const {
+    int64_t totalNumberPhysicalTurns = 0;
+    for (auto winding : magnetic.get_coil().get_functional_description()) {
+        totalNumberPhysicalTurns += winding.get_number_turns() * winding.get_number_parallels();
+    }
+    return Settings::GetInstance().get_harmonic_amplitude_threshold_quick_mode() && totalNumberPhysicalTurns > _quickModeForManyTurnsThreshold;
+}
+
+const WindingLossesModelSet* WindingLosses::resolve_model_set(Magnetic& magnetic) const {
+    auto& settings = OpenMagnetics::Settings::GetInstance();
+    // ABT #1304: a named model set fixes every model -- one field solution for the magnetic, skin and proximity per wire
+    // type -- after checking it models this magnetic. CUSTOM keeps the individually selected models.
+    // ABT #1759: with no set named and no model chosen (here or in Settings), the default set for this core
+    // (get_default_winding_losses_model_set), resolved exactly as the Painter resolves the field it plots.
+    const bool anyModelChosenHere = _models.magneticFieldStrengthModel || _models.magneticFieldStrengthFringingEffectModel ||
+                                    _models.skinEffectModel || _models.proximityEffectModel;
+    WindingLossesModelSets modelSetId;
+    if (_models.modelSet) {
+        modelSetId = _models.modelSet.value();
+    }
+    else if (anyModelChosenHere) {
+        modelSetId = settings.get_winding_losses_model_set();
+    }
+    else {
+        modelSetId = resolve_winding_losses_model_set_from_settings(magnetic, settings.get_magnetic_field_include_fringing());
+    }
+    const WindingLossesModelSet* modelSet = nullptr;
+    if (modelSetId != WindingLossesModelSets::CUSTOM) {
+        if (anyModelChosenHere) {
+            throw InvalidInputException(ErrorCode::INVALID_INPUT, "Winding-loss model set " + std::string(magic_enum::enum_name(modelSetId)) +
+                                        " fixes every model; choose models individually only with the CUSTOM set");
+        }
+        modelSet = &get_winding_losses_model_set(modelSetId);
+        check_winding_losses_model_set_applies(*modelSet, magnetic);
+    }
+    return modelSet;
+}
+
+WindingLosses::WindingLossesField WindingLosses::calculate_magnetic_field(Magnetic magnetic, OperatingPoint operatingPoint, double temperature) {
     auto& settings = OpenMagnetics::Settings::GetInstance();
 
     // Normalise under-specified excitations the same way core losses does
@@ -204,44 +247,12 @@ WindingLossesOutput WindingLosses::calculate_losses(Magnetic magnetic, Operating
                                                          magnetic.get_mutable_coil().get_isolation_sides());
     }
 
-    auto windingLossesOutput = WindingOhmicLosses::calculate_ohmic_losses(magnetic.get_coil(), operatingPoint, temperature);
     // ABT #1314: the parallels of a winding share its harmonic currents as their impedances dictate (empty without
     // parallels). Solved once, at the conductors' temperature, and charged consistently to the skin (AC) and field
-    // (proximity) losses; the ohmic losses keep the DC (resistive) split.
+    // (proximity) losses; the ohmic losses keep the DC (resistive) split. The split feeds the field, so with parallels
+    // the field step depends on that temperature (WindingLossesField::depends_on_temperature).
     const auto parallelCurrentSplit = MagneticField::calculate_parallel_current_split(magnetic, operatingPoint, temperature);
-    const ParallelCurrentSplit* parallelCurrentSplitPointer = parallelCurrentSplit ? &parallelCurrentSplit.value() : nullptr;
-    // ABT #1304: a named model set fixes every model -- one field solution for the magnetic, skin and proximity per wire
-    // type -- after checking it models this magnetic. CUSTOM keeps the individually selected models.
-    // ABT #1759: with no set named and no model chosen (here or in Settings), the default set for this core
-    // (get_default_winding_losses_model_set), resolved exactly as the Painter resolves the field it plots.
-    const bool anyModelChosenHere = _models.magneticFieldStrengthModel || _models.magneticFieldStrengthFringingEffectModel ||
-                                    _models.skinEffectModel || _models.proximityEffectModel;
-    WindingLossesModelSets modelSetId;
-    if (_models.modelSet) {
-        modelSetId = _models.modelSet.value();
-    }
-    else if (anyModelChosenHere) {
-        modelSetId = settings.get_winding_losses_model_set();
-    }
-    else {
-        modelSetId = resolve_winding_losses_model_set_from_settings(magnetic, settings.get_magnetic_field_include_fringing());
-    }
-    const WindingLossesModelSet* modelSet = nullptr;
-    if (modelSetId != WindingLossesModelSets::CUSTOM) {
-        if (anyModelChosenHere) {
-            throw InvalidInputException(ErrorCode::INVALID_INPUT, "Winding-loss model set " + std::string(magic_enum::enum_name(modelSetId)) +
-                                        " fixes every model; choose models individually only with the CUSTOM set");
-        }
-        modelSet = &get_winding_losses_model_set(modelSetId);
-        check_winding_losses_model_set_applies(*modelSet, magnetic);
-    }
-    windingLossesOutput = modelSet ?
-        WindingSkinEffectLosses::calculate_skin_effect_losses(magnetic.get_coil(), temperature, windingLossesOutput, settings.get_harmonic_amplitude_threshold(), std::nullopt, modelSet->skinModelPerWireType, parallelCurrentSplitPointer) :
-        WindingSkinEffectLosses::calculate_skin_effect_losses(magnetic.get_coil(), temperature, windingLossesOutput, settings.get_harmonic_amplitude_threshold(), _models.skinEffectModel, std::nullopt, parallelCurrentSplitPointer);
-    // ABT #1314: the split's redistribution loss over the DC split is AC copper loss: charged to the skin (AC) terms, ohmic stays DC.
-    if (parallelCurrentSplit) {
-        windingLossesOutput = WindingOhmicLosses::apply_parallel_current_split(magnetic.get_coil(), windingLossesOutput, parallelCurrentSplit.value(), temperature);
-    }
+    const WindingLossesModelSet* modelSet = resolve_model_set(magnetic);
 
     auto isPlanar = true;
     auto isRectangular = true;
@@ -302,13 +313,8 @@ WindingLossesOutput WindingLosses::calculate_losses(Magnetic magnetic, Operating
     }
     MagneticField magneticField(modelToUse, fringingModelToUse);
 
-    int64_t totalNumberPhysicalTurns = 0;
-    for (auto winding : magnetic.get_coil().get_functional_description()) {
-        totalNumberPhysicalTurns += winding.get_number_turns() * winding.get_number_parallels();
-    }
-
     // ARCH-002: RAII guard for harmonic threshold quick mode
-    bool useQuickMode = settings.get_harmonic_amplitude_threshold_quick_mode() && totalNumberPhysicalTurns > _quickModeForManyTurnsThreshold;
+    bool useQuickMode = use_quick_harmonic_threshold(magnetic);
     double thresholdToUse = useQuickMode ? settings.get_harmonic_amplitude_threshold() * 2 : settings.get_harmonic_amplitude_threshold();
     SettingsGuard<double> harmonicGuard(settings,
         &Settings::get_harmonic_amplitude_threshold,
@@ -349,9 +355,38 @@ WindingLossesOutput WindingLosses::calculate_losses(Magnetic magnetic, Operating
     }
     auto windingWindowMagneticStrengthFieldOutput = magneticField.calculate_magnetic_field_strength_field(operatingPoint, magnetic, std::nullopt, std::nullopt, inducingMesher, parallelCurrentSplit);
 
+    return WindingLossesField{operatingPoint, windingWindowMagneticStrengthFieldOutput, parallelCurrentSplit, modelSet, temperature};
+}
+
+WindingLossesOutput WindingLosses::calculate_losses(Magnetic magnetic, const WindingLossesField& field, double temperature) {
+    auto& settings = OpenMagnetics::Settings::GetInstance();
+    if (field.depends_on_temperature() && temperature != field.temperature) {
+        throw InvalidInputException(ErrorCode::INVALID_INPUT,
+            "Winding losses at " + std::to_string(temperature) + " C from a field whose parallel current split was solved at " +
+            std::to_string(field.temperature) + " C: with parallels the field step depends on the temperature and must be "
+            "recomputed at the temperature of the losses");
+    }
+    const OperatingPoint& operatingPoint = field.operatingPoint;
+    const WindingLossesModelSet* modelSet = field.modelSet;
+    const ParallelCurrentSplit* parallelCurrentSplitPointer = field.parallelCurrentSplit ? &field.parallelCurrentSplit.value() : nullptr;
+    auto windingLossesOutput = WindingOhmicLosses::calculate_ohmic_losses(magnetic.get_coil(), operatingPoint, temperature);
     windingLossesOutput = modelSet ?
-        WindingProximityEffectLosses::calculate_proximity_effect_losses(magnetic.get_coil(), temperature, windingLossesOutput, windingWindowMagneticStrengthFieldOutput, std::nullopt, modelSet->proximityModelPerWireType) :
-        WindingProximityEffectLosses::calculate_proximity_effect_losses(magnetic.get_coil(), temperature, windingLossesOutput, windingWindowMagneticStrengthFieldOutput, _models.proximityEffectModel);
+        WindingSkinEffectLosses::calculate_skin_effect_losses(magnetic.get_coil(), temperature, windingLossesOutput, settings.get_harmonic_amplitude_threshold(), std::nullopt, modelSet->skinModelPerWireType, parallelCurrentSplitPointer) :
+        WindingSkinEffectLosses::calculate_skin_effect_losses(magnetic.get_coil(), temperature, windingLossesOutput, settings.get_harmonic_amplitude_threshold(), _models.skinEffectModel, std::nullopt, parallelCurrentSplitPointer);
+    // ABT #1314: the split's redistribution loss over the DC split is AC copper loss: charged to the skin (AC) terms, ohmic stays DC.
+    if (field.parallelCurrentSplit) {
+        windingLossesOutput = WindingOhmicLosses::apply_parallel_current_split(magnetic.get_coil(), windingLossesOutput, field.parallelCurrentSplit.value(), temperature);
+    }
+
+    // The proximity kernel runs under the same harmonic threshold the field step used.
+    bool useQuickMode = use_quick_harmonic_threshold(magnetic);
+    double thresholdToUse = useQuickMode ? settings.get_harmonic_amplitude_threshold() * 2 : settings.get_harmonic_amplitude_threshold();
+    SettingsGuard<double> harmonicGuard(settings,
+        &Settings::get_harmonic_amplitude_threshold,
+        &Settings::set_harmonic_amplitude_threshold, thresholdToUse);
+    windingLossesOutput = modelSet ?
+        WindingProximityEffectLosses::calculate_proximity_effect_losses(magnetic.get_coil(), temperature, windingLossesOutput, field.field, std::nullopt, modelSet->proximityModelPerWireType) :
+        WindingProximityEffectLosses::calculate_proximity_effect_losses(magnetic.get_coil(), temperature, windingLossesOutput, field.field, _models.proximityEffectModel);
     windingLossesOutput = combine_turn_losses(windingLossesOutput, magnetic.get_coil());
 
     return windingLossesOutput;

@@ -175,6 +175,13 @@ CoreLossesOutput MagneticSimulator::calculate_core_losses(OperatingPoint& operat
     std::optional<double> previousWindingResidual;
     const auto coreMaterial = magnetic.get_core().resolve_material();
     const auto curieTemperature = coreMaterial.get_curie_temperature();
+    // The winding losses' field step (H at every turn) depends on the currents and the geometry,
+    // not on the temperature, unless a winding has parallels (their current split is solved at the
+    // conductors' temperature, ABT #1314): it is computed once, at the first iterate, and every
+    // iterate runs only the per-turn kernels at its own winding temperature (the architecture's
+    // two steps); with parallels the field step is redone at each iterate's winding temperature.
+    WindingLosses windingLossesModel;
+    std::optional<WindingLosses::WindingLossesField> windingLossesField;
 
     for (size_t iteration = 1; iteration <= kOperatingTemperatureMaximumIterations; ++iteration) {
         // Core losses at the core's temperature. The magnetizing model reads the core temperature
@@ -198,9 +205,17 @@ CoreLossesOutput MagneticSimulator::calculate_core_losses(OperatingPoint& operat
         TemperatureConfig config;
         if (withWinding) {
             switch (windingLossesScope) {
-                case WindingLossesScope::FULL:
-                    windingLosses = calculate_winding_losses(operatingPoint, magnetic, windingTemperature);
+                case WindingLossesScope::FULL: {
+                    // As calculate_winding_losses: the field mirrored in one dimension.
+                    auto& settings = Settings::GetInstance();
+                    SettingsGuard<int> mirroringGuard(settings, &Settings::get_magnetic_field_mirroring_dimension,
+                                                      &Settings::set_magnetic_field_mirroring_dimension, 1);
+                    if (!windingLossesField || windingLossesField->depends_on_temperature()) {
+                        windingLossesField = windingLossesModel.calculate_magnetic_field(magnetic, operatingPoint, windingTemperature);
+                    }
+                    windingLosses = windingLossesModel.calculate_losses(magnetic, windingLossesField.value(), windingTemperature);
                     break;
+                }
                 case WindingLossesScope::OHMIC_AND_SKIN_EFFECT:
                     windingLosses = WindingSkinEffectLosses::calculate_skin_effect_losses(
                         magnetic.get_coil(), windingTemperature,

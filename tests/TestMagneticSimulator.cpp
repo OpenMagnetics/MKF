@@ -1545,6 +1545,49 @@ namespace {
         }
     }
 
+    TEST_CASE("The loss-temperature solve computes the winding's magnetic field once", "[processor][magnetic-simulator][smoke-test]") {
+        // ABT #838: H at every turn follows from the currents and the geometry, not from the
+        // temperature, so the solve computes it once and evaluates only the per-turn kernels at each
+        // iterate's winding temperature. Counted through the field's turn-sum lookups: one solve must
+        // make exactly the lookups of ONE winding-loss evaluation, although it iterates.
+        const double tolerance = MagneticSimulator::kOperatingTemperatureTolerance;
+        for (const std::string filename : {"01_simple_inductor_etd34_n87.json", "03_buck_inductor_pq3230_n95.json"}) {
+            INFO(filename);
+            auto path = get_examples_dir() / filename;
+            REQUIRE(std::filesystem::exists(path));
+            auto mas = OpenMagneticsTesting::mas_loader(path.string());
+            auto magnetic = OpenMagnetics::magnetic_autocomplete(mas.get_magnetic());
+            auto inputs = OpenMagnetics::inputs_autocomplete(mas.get_inputs(), magnetic);
+            if (!magnetic.get_coil().get_turns_description()) {
+                magnetic.get_mutable_coil().wind();
+            }
+            MagneticSimulator simulator;
+            auto lookups = []() {
+                auto statistics = MagneticField::get_turn_sums_cache_statistics();
+                return statistics.hits + statistics.misses;
+            };
+
+            auto operatingPoint = inputs.get_operating_points()[0];
+            const double ambientTemperature = operatingPoint.get_conditions().get_ambient_temperature();
+            size_t before = lookups();
+            auto windingLossesAtAmbient = simulator.calculate_winding_losses(operatingPoint, magnetic, ambientTemperature);
+            const size_t lookupsPerEvaluation = lookups() - before;
+            REQUIRE(windingLossesAtAmbient.get_winding_losses() > 0);
+            REQUIRE(lookupsPerEvaluation > 0);
+
+            std::optional<WindingLossesOutput> solvedWindingLosses;
+            before = lookups();
+            auto solved = simulator.calculate_core_losses(operatingPoint, magnetic, &solvedWindingLosses);
+            const size_t lookupsPerSolve = lookups() - before;
+            REQUIRE(solvedWindingLosses);
+            CAPTURE(solved.get_temperature(), lookupsPerEvaluation, lookupsPerSolve);
+            // The first iterate is at ambient; a converged temperature this far from it took more
+            // than one iterate, so a field computed per iterate would show up as extra lookups.
+            REQUIRE(solved.get_temperature() > ambientTemperature + tolerance);
+            CHECK(lookupsPerSolve == lookupsPerEvaluation);
+        }
+    }
+
     // =========================================================================
     // Datasheet builder: build_datasheet() turns a simulated MAS into a
     // manufacturer-style datasheetInfo block populated from the Outputs and the
