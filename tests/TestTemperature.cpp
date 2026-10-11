@@ -4760,14 +4760,10 @@ TEST_CASE("Temperature: ABT 1735 a foil-wound E core with no copper loss is no h
     CHECK(woundRise < bareRise * 1.15);
 }
 
-TEST_CASE("Temperature: ABT 1735 a winding on a lateral column is refused as unmodelled, not as an overlap",
-          "[temperature][abt-1735][multi-column][smoke-test]") {
-    // The concentric network builds the main column's window only. A secondary placed on the
-    // -x lateral leg used to be measured against the main window's walls and refused as
-    // "overlaps its enclosure by 21 mm": a wrong diagnosis of a topology the network lacks.
-    auto& settings = Settings::GetInstance();
-    settings.reset();
-    settings.set_core_per_column_winding_windows(true);
+namespace {
+// E 42/21/20 with per-column windows: windings[i] is placed in bobbin winding window windows[i]
+// (0: main column; on this shell 1 and 2 are the outer legs' windows).
+OpenMagnetics::Magnetic abt1735MultiColumnMagnetic(const std::vector<int64_t>& turns, const std::vector<int64_t>& windows) {
     auto core = OpenMagneticsTesting::get_quick_core("E 42/21/20", json::parse("[]"), 1, "3C97");
     auto bobbin = OpenMagnetics::Bobbin::create_quick_bobbin(core, 0.001, 0.001);
     json bobbinJson;
@@ -4775,30 +4771,172 @@ TEST_CASE("Temperature: ABT 1735 a winding on a lateral column is refused as unm
     json coilJson;
     coilJson["bobbin"] = bobbinJson;
     coilJson["functionalDescription"] = json::array();
-    coilJson["functionalDescription"].push_back(json{{"name", "Primary"}, {"numberTurns", 20}, {"numberParallels", 1},
-                                                     {"isolationSide", "primary"}, {"wire", "Round 0.475 - Grade 1"}});
-    coilJson["functionalDescription"].push_back(json{{"name", "Secondary"}, {"numberTurns", 10}, {"numberParallels", 1},
-                                                     {"isolationSide", "secondary"}, {"wire", "Round 0.475 - Grade 1"}});
+    const std::vector<std::string> names = {"Primary", "Secondary", "Tertiary"};
+    for (size_t i = 0; i < turns.size(); ++i) {
+        coilJson["functionalDescription"].push_back(json{{"name", names[i]}, {"numberTurns", turns[i]}, {"numberParallels", 1},
+                                                         {"isolationSide", i == 0 ? "primary" : (i == 1 ? "secondary" : "tertiary")},
+                                                         {"wire", "Round 0.475 - Grade 1"}});
+    }
     OpenMagnetics::Coil coil(coilJson, false);
-    coil.get_mutable_functional_description()[1].set_winding_window(2);
+    for (size_t i = 0; i < windows.size(); ++i) {
+        if (windows[i] != 0) coil.get_mutable_functional_description()[i].set_winding_window(windows[i]);
+    }
     coil.set_core_columns(core.get_processed_description()->get_columns());
     REQUIRE(coil.wind());
     OpenMagnetics::Magnetic magnetic;
     magnetic.set_core(core);
     magnetic.set_coil(coil);
-    bool anyNegativeTurn = false;
-    auto turns = magnetic.get_coil().get_turns_description().value();
-    for (const auto& turn : turns) anyNegativeTurn = anyNegativeTurn || turn.get_coordinates()[0] < 0;
-    REQUIRE(anyNegativeTurn);
+    return magnetic;
+}
 
+struct Abt1735Solved {
+    std::map<std::string, double> legTemperature;   // "Core_Column_<i>" -> C
+    double hottestTurnOnLeg[3] = {-1e9, -1e9, -1e9};  // per wound column index
+    double coldestTurn = 1e9;
+    double heatToAmbient = 0, injected = 0;
+    size_t lateralNodes = 0;
+    bool anyWoundColumnTag = false;
+};
+
+Abt1735Solved abt1735Solve(OpenMagnetics::Magnetic magnetic, double coreLoss, double lossPerTurn) {
     TemperatureConfig config;
     config.ambientTemperature = 25.0;
-    config.coreLosses = 1.0;
-    config.windingLosses = 0.0;
+    config.coreLosses = coreLoss;
     config.plotSchematic = false;
-    CHECK_THROWS_AS(Temperature(magnetic, config).calculateTemperatures(), NotImplementedException);
+    size_t numberTurns = magnetic.get_coil().get_turns_description()->size();
+    config.windingLosses = lossPerTurn * numberTurns;
+    if (lossPerTurn > 0) {
+        WindingLossesOutput lossesOutput;
+        std::vector<WindingLossesPerElement> perTurn;
+        for (size_t t = 0; t < numberTurns; ++t) {
+            WindingLossesPerElement element;
+            OhmicLosses ohmic;
+            ohmic.set_losses(lossPerTurn);
+            ohmic.set_method_used("test");
+            ohmic.set_origin(ResultOrigin::SIMULATION);
+            element.set_name(magnetic.get_coil().get_turns_description()->at(t).get_name());
+            element.set_ohmic_losses(ohmic);
+            perTurn.push_back(element);
+        }
+        lossesOutput.set_winding_losses_per_turn(perTurn);
+        lossesOutput.set_winding_losses(config.windingLosses);
+        lossesOutput.set_origin(ResultOrigin::SIMULATION);
+        lossesOutput.set_method_used("test");
+        config.windingLossesOutput = lossesOutput;
+    }
+    Temperature temperature(magnetic, config);
+    auto result = temperature.calculateTemperatures();
+    REQUIRE(result.converged);
+    Abt1735Solved solved;
+    const auto& nodes = temperature.getNodes();
+    size_t ambientIdx = nodes.size();
+    for (size_t i = 0; i < nodes.size(); ++i) {
+        const auto& node = nodes[i];
+        if (node.part == ThermalNodePartType::AMBIENT) ambientIdx = i;
+        if (node.part == ThermalNodePartType::CORE_LATERAL_COLUMN) {
+            solved.lateralNodes++;
+            solved.legTemperature[node.name] = node.temperature;
+        }
+        if (node.woundColumnIndex) solved.anyWoundColumnTag = true;
+        if (node.part == ThermalNodePartType::TURN) {
+            solved.coldestTurn = std::min(solved.coldestTurn, node.temperature);
+            if (node.woundColumnIndex) {
+                auto& hottest = solved.hottestTurnOnLeg[node.woundColumnIndex.value()];
+                hottest = std::max(hottest, node.temperature);
+            }
+        }
+        solved.injected += node.powerDissipation;
+    }
+    REQUIRE(ambientIdx < nodes.size());
+    for (const auto& r : temperature.getResistances()) {
+        size_t other = nodes.size();
+        if (r.nodeToId == ambientIdx) other = r.nodeFromId;
+        else if (r.nodeFromId == ambientIdx) other = r.nodeToId;
+        if (other < nodes.size() && r.resistance > 0.0) {
+            solved.heatToAmbient += (nodes[other].temperature - nodes[ambientIdx].temperature) / r.resistance;
+        }
+    }
+    return solved;
+}
+}  // namespace
+
+TEST_CASE("Temperature: ABT 1735 a winding on an outer leg is modelled in its own window",
+          "[temperature][abt-1735][multi-column][smoke-test]") {
+    // The concentric network used to build the main column's window only; a winding on an outer
+    // leg was refused (first as a 21 mm "overlap", then as unmodelled). Alf 2026-10-11: model it.
+    // Each wound leg becomes its own node, its winding rests on that leg's bobbin column, faces the
+    // main winding's crossing across the shared window, and convects from its room-facing wrap.
+    auto& settings = Settings::GetInstance();
+    settings.reset();
+    settings.set_core_per_column_winding_windows(true);
+    struct Case { std::string label; std::vector<int64_t> turns; std::vector<int64_t> windows; };
+    std::vector<Case> cases = {
+        {"secondary on the -x leg", {20, 10}, {0, 2}},
+        {"secondary on the +x leg", {20, 10}, {0, 1}},
+        {"secondary and tertiary on both legs", {20, 10, 10}, {0, 1, 2}},
+    };
+    for (const auto& c : cases) {
+        CAPTURE(c.label);
+        auto magnetic = abt1735MultiColumnMagnetic(c.turns, c.windows);
+        auto columns = magnetic.get_core().get_processed_description()->get_columns();
+        size_t mainColumn = magnetic.get_core().get_main_column_index();
+        std::set<size_t> woundLegs;
+        for (size_t w = 1; w < c.windows.size(); ++w) {
+            woundLegs.insert(magnetic.get_core().get_winding_window_column_index(static_cast<size_t>(c.windows[w])));
+        }
+        // Copper loss only: the leg windings heat their own legs.
+        auto solved = abt1735Solve(magnetic, 0.2, 0.02);
+        CAPTURE(solved.heatToAmbient, solved.injected);
+        CHECK(solved.lateralNodes == 2);
+        CHECK_THAT(solved.heatToAmbient, Catch::Matchers::WithinRel(solved.injected, 0.02));
+        for (size_t leg = 0; leg < columns.size(); ++leg) {
+            if (leg == mainColumn) continue;
+            std::string name = "Core_Column_" + std::to_string(leg);
+            REQUIRE(solved.legTemperature.count(name));
+            CAPTURE(leg, solved.legTemperature[name], solved.hottestTurnOnLeg[leg]);
+            if (woundLegs.count(leg)) {
+                CHECK(solved.hottestTurnOnLeg[leg] > 25.0);
+                CHECK(solved.hottestTurnOnLeg[leg] > solved.legTemperature[name]);
+                for (size_t other = 0; other < columns.size(); ++other) {
+                    if (other == mainColumn || woundLegs.count(other)) continue;
+                    CHECK(solved.legTemperature[name] > solved.legTemperature["Core_Column_" + std::to_string(other)]);
+                }
+            }
+        }
+        CHECK(solved.coldestTurn > 25.0);
+    }
+    // Mirror images: the +x and -x placements are the same component turned around.
+    {
+        auto minus = abt1735Solve(abt1735MultiColumnMagnetic({20, 10}, {0, 2}), 0.2, 0.02);
+        auto plus = abt1735Solve(abt1735MultiColumnMagnetic({20, 10}, {0, 1}), 0.2, 0.02);
+        CHECK_THAT(minus.hottestTurnOnLeg[2], Catch::Matchers::WithinRel(plus.hottestTurnOnLeg[1], 1e-6));
+        CHECK_THAT(minus.legTemperature["Core_Column_2"], Catch::Matchers::WithinRel(plus.legTemperature["Core_Column_1"], 1e-6));
+        CHECK_THAT(minus.legTemperature["Core_Column_1"], Catch::Matchers::WithinRel(plus.legTemperature["Core_Column_2"], 1e-6));
+    }
     // Core-only needs no window and still answers.
-    config.coreOnly = true;
-    CHECK(Temperature(magnetic, config).calculateTemperatures().converged);
+    {
+        auto magnetic = abt1735MultiColumnMagnetic({20, 10}, {0, 2});
+        TemperatureConfig config;
+        config.coreLosses = 1.0;
+        config.coreOnly = true;
+        config.plotSchematic = false;
+        CHECK(Temperature(magnetic, config).calculateTemperatures().converged);
+    }
+    settings.reset();
+}
+
+TEST_CASE("Temperature: ABT 1735 without an outer-leg winding the network keeps one two-leg node",
+          "[temperature][abt-1735][multi-column][smoke-test]") {
+    // Per-column windows on, every winding on the main column: nothing is placed on a leg, so the
+    // network is the unsplit main-window network (one lateral node standing for both legs, no
+    // node tagged with a wound column) and the outer-leg code never runs.
+    auto& settings = Settings::GetInstance();
+    settings.reset();
+    settings.set_core_per_column_winding_windows(true);
+    auto solved = abt1735Solve(abt1735MultiColumnMagnetic({20, 10}, {0, 0}), 0.2, 0.02);
+    CHECK(solved.lateralNodes == 1);
+    CHECK(solved.legTemperature.count("Core_Column_1") == 1);
+    CHECK(!solved.anyWoundColumnTag);
+    CHECK_THAT(solved.heatToAmbient, Catch::Matchers::WithinRel(solved.injected, 0.02));
     settings.reset();
 }

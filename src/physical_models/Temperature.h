@@ -347,6 +347,30 @@ private:
         std::optional<Wire> wire;
     };
     std::map<size_t, WindingWireProperties> _perWindingWireProps;
+
+    // ABT #1735: a winding wound on a lateral leg of a three-column shell. The concentric
+    // network then splits the lateral-column node into the two legs and gives the wound leg's
+    // winding its own enclosure (its leg, the flanges, the shared -x window).
+    struct LateralPlacement {
+        size_t mainColumnIndex;
+        size_t plusLegIndex;               // outer leg at +x (processed column index)
+        size_t minusLegIndex;              // outer leg at -x
+        std::map<size_t, size_t> bobbinWindowOfWoundLeg;  // wound outer leg -> bobbin window of its winding
+        std::map<std::string, size_t> columnOfSection;    // section name -> wound column
+    };
+    std::optional<LateralPlacement> _lateralPlacement;
+    void resolveLateralPlacement();
+    /// Column a turn/layer of section @p sectionName is wound around (lateral placement only).
+    size_t woundColumnOfSection(const std::optional<std::string>& sectionName, const std::string& what) const;
+    bool isLateralWound(const ThermalNetworkNode& node) const;
+    /// +1 / -1: side of the leg a lateral-wound node is wound on.
+    double lateralSide(const ThermalNetworkNode& node) const;
+    bool isLegWound(size_t columnIndex) const;
+    /// Wrap of a lateral leg's winding: the leg's own bobbin column (leg + one column-wall thickness),
+    /// as Coil::get_wound_column_frame_for_section builds it.
+    struct LateralWrap { double axisX; double halfWidth; double halfDepth; double legFaceX; double wallThickness; ColumnShape shape; };
+    LateralWrap lateralWrapGeometry(size_t columnIndex) const;
+    size_t legNodeIndex(size_t columnIndex) const;
     // The film on a conductor's OUTER surface, the one that rests on a bobbin, core or wrap:
     // {thickness, thermal conductivity}; thickness 0 means bare metal. For litz it is the
     // serving when there is one and the outer strands' own enamel when there is not (ABT #1454).
@@ -659,6 +683,11 @@ private:
 
     /// Share of a concentric wrap that lies inside the core windows: column depth / (width + depth).
     double inWindowFraction() const;
+    /// ABT #1735: in-window share of THIS node's wrap: the main column's for main-wound nodes; for a
+    /// lateral leg only its inner segment runs through a window, depth / (2 (width + depth)).
+    double inWindowFraction(const ThermalNetworkNode& node) const;
+    /// ABT #1735: across-window conduction in the shared -x window and the lateral leg's flanges.
+    void createLateralAcrossWindowConnections(size_t ambientIdx);
 
     /// ABT #1459: exposed (room-facing) outer surface of a concentric core, from its real geometry.
     struct CoreExteriorAreas {

@@ -356,6 +356,9 @@ public:
     std::optional<size_t> turnDescriptionIndex;
     std::optional<size_t> coreSegmentIndex;
     std::optional<size_t> insulationLayerIndex;  // For INSULATION_LAYER nodes
+    // ABT #1735: concentric TURN / INSULATION_LAYER nodes of a coil with a winding on a lateral
+    // leg: the core column (processed index) the node is wound around. Unset otherwise.
+    std::optional<size_t> woundColumnIndex;
     
     // True if this is an inner half of a toroidal turn
     bool isInnerTurn = false;
