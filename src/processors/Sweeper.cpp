@@ -439,9 +439,9 @@ Curve2D Sweeper::sweep_core_losses_over_frequency(Magnetic magnetic, OperatingPo
         // Core Info panel and the datasheet read a fraction of one (ABT: user report).
         auto sweptOperatingPoint = operatingPoint;
         Inputs::scale_time_to_frequency(sweptOperatingPoint, frequency, false);
-        // The rescale moves the currents and voltages, not a magnetizing current the operating
-        // point carries, which would keep its own frequency's time axis: the model derives it
-        // again at this frequency.
+        // The model derives the magnetizing current and flux density at each frequency, as this
+        // sweep always did: one the operating point carries may come from a model that did not
+        // know the topology (the CMC triangle a DMC used to get).
         for (auto& excitation : sweptOperatingPoint.get_mutable_excitations_per_winding()) {
             excitation.set_magnetizing_current(std::nullopt);
             excitation.set_magnetic_flux_density(std::nullopt);
