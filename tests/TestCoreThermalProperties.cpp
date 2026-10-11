@@ -1,6 +1,9 @@
 // The core thermal properties MKF hands the thermal solver and the FEM exporters: a material's own
-// MAS heatConductivity / heatCapacity, else the approved fallback (Alf, 2026-10-11) -- the median
-// over the MAS materials of the same materialComposition that carry the value -- else a throw.
+// MAS heatConductivity / heatCapacity, else an approved fallback (Alf, 2026-10-11).
+// heatCapacity: the median over the MAS materials of the same materialComposition that carry it,
+// else a throw. heatConductivity (ABT #1753, Alf 2026-10-12): the tiered resolver, which pools only
+// SOURCED values (a provenance entry cites heatConductivity) through CLASS (type + composition),
+// FAMILY and ALL_SOURCED, flags every estimate, and never throws for an absent value.
 #include "physical_models/ThermalResistance.h"
 #include "support/Utils.h"
 #include "support/Exceptions.h"
@@ -29,7 +32,9 @@ const CoreMaterial& template_material() {
     return m;
 }
 
-// A material of the given composition and thermal values, cloned from the template.
+// A material of the given composition and thermal values, cloned from the template. A given
+// heatConductivity is cited by its own document ("datasheet of <name>"), so the tiered conductivity
+// resolver pools it as one sourced data point; the template's own provenance is dropped.
 CoreMaterial material(const std::string& name, std::optional<MaterialComposition> composition,
                       std::optional<double> k, std::optional<double> cp) {
     CoreMaterial m = template_material();
@@ -37,6 +42,16 @@ CoreMaterial material(const std::string& name, std::optional<MaterialComposition
     m.set_material_composition(composition);
     m.set_heat_conductivity(k ? std::optional<DimensionWithTolerance>(nominal(*k)) : std::nullopt);
     m.set_heat_capacity(cp ? std::optional<DimensionWithTolerance>(nominal(*cp)) : std::nullopt);
+    if (k) {
+        MAS::Provenance citation;
+        citation.set_source(MAS::ProvenanceSource::MANUFACTURER_DATASHEET);
+        citation.set_source_name("datasheet of " + name);
+        citation.set_fields(std::vector<std::string>{"heatConductivity"});
+        m.set_provenance(std::vector<MAS::Provenance>{citation});
+    }
+    else {
+        m.set_provenance(std::nullopt);
+    }
     return m;
 }
 
@@ -100,12 +115,22 @@ TEST_CASE("Core thermal properties: no value and nothing to pool by throws, neve
     CHECK_THROWS_WITH(ThermalResistance::getCoreMaterialHeatCapacity(
                           material("bare", MaterialComposition::FE_SI, std::nullopt, std::nullopt)),
                       ContainsSubstring("no FE_SI material in the database carries one"));
-    // proprietary: no chemistry to pool by, even though a proprietary record has values
-    CHECK_THROWS_WITH(ThermalResistance::getCoreMaterialThermalConductivity(
-                          material("bare", MaterialComposition::PROPRIETARY, std::nullopt, std::nullopt)),
-                      ContainsSubstring("no materialComposition"));
-    // no composition at all
-    CHECK_THROWS_WITH(ThermalResistance::getCoreMaterialThermalConductivity(
-                          material("bare", std::nullopt, std::nullopt, std::nullopt)),
-                      ContainsSubstring("no materialComposition"));
+}
+
+TEST_CASE("Core thermal properties: a conductivity with no chemistry to pool by resolves through its material type, flagged", "[core-thermal-properties]") {
+    // ABT #1753 (Alf, 2026-10-12): a proprietary or missing composition has no CLASS, so the
+    // conductivity falls to the FAMILY tier = the sourced materials of its own material type (the
+    // template is a FERRITE): median of a (1) and p (5) = 3. Flagged, never a throw.
+    const ScopedMaterialDatabase db({material("a", MaterialComposition::FE_SI, 1.0, std::nullopt),
+                                     material("p", MaterialComposition::PROPRIETARY, 5.0, 500.0)});
+    for (const auto& composition : {std::optional<MaterialComposition>(MaterialComposition::PROPRIETARY),
+                                    std::optional<MaterialComposition>()}) {
+        const auto bare = material("bare", composition, std::nullopt, std::nullopt);
+        CHECK_THAT(ThermalResistance::getCoreMaterialThermalConductivity(bare), Catch::Matchers::WithinAbs(3.0, 1e-12));
+        const auto resolved = resolve_core_material_heat_conductivity(bare);
+        REQUIRE(resolved.is_estimated());
+        CHECK(resolved.tier == CoreHeatConductivityTier::FAMILY);
+        CHECK(resolved.estimate->pool == "material type FERRITE");
+        CHECK(resolved.estimate->numberDataPoints == 2);
+    }
 }

@@ -19,6 +19,9 @@
 #include <filesystem>
 #include <fstream>
 #include <set>
+#include <functional>
+#include <map>
+#include <magic_enum.hpp>
 
 using namespace MAS;
 using namespace OpenMagnetics;
@@ -4481,6 +4484,301 @@ TEST_CASE("Temperature: an insulation material is found under its MAS name", "[t
     // A name that only the generic list knows still resolves there.
     REQUIRE_THAT(ThermalResistance::getMaterialThermalConductivity("mylar"),
                  Catch::Matchers::WithinAbs(0.15, 1e-12));
+}
+
+// ============================================================================
+// ABT #1753: a core material's heat conductivity — the MAS value, or a flagged estimate (class,
+// family, all sourced materials); absence never throws, malformed data does
+// ============================================================================
+// The network used the configured coreThermalConductivity (4.0) or a per-composition constant
+// table whenever MAS had no heatConductivity: numbers no datasheet backs, applied silently. Now
+// one resolver returns the MAS value, or estimates it from the SOURCED materials of the nearest
+// pool that has any and says so (Alf, 2026-10-11: "always keep an approved fallback").
+namespace {
+CoreMaterial core_material_without_heat_conductivity(MaterialType type, std::optional<MaterialComposition> composition) {
+    auto material = find_core_material_by_name("N87");
+    material.set_name("N87 without heat conductivity");
+    material.set_heat_conductivity(std::nullopt);
+    material.set_provenance(std::nullopt);
+    material.set_material(type);
+    material.set_material_composition(composition);
+    return material;
+}
+
+// Resolves a renamed copy (the WARNING is logged once per material) and returns the warnings.
+std::vector<std::string> estimate_warnings(CoreMaterial material, const std::string& probeName) {
+    material.set_name(probeName);
+    Logger::getInstance().disableCollector();
+    Logger::getInstance().enableCollector(LogLevel::WARNING);
+    resolve_core_material_heat_conductivity(material);
+    auto collected = Logger::getInstance().drainCollected();
+    Logger::getInstance().disableCollector();
+    std::vector<std::string> messages;
+    for (const auto& record : collected) {
+        if (record.level == LogLevel::WARNING && record.message.find(probeName) != std::string::npos) {
+            messages.push_back(record.message);
+        }
+    }
+    return messages;
+}
+
+// The span of the pooled members' values; every member must be sourced and satisfy `inPool`.
+std::pair<double, double> sourced_pool_span(const CoreHeatConductivityEstimate& estimate,
+                                            const std::function<bool(const CoreMaterial&)>& inPool) {
+    double low = std::numeric_limits<double>::max();
+    double high = std::numeric_limits<double>::lowest();
+    for (const auto& name : estimate.sourceMaterials) {
+        auto member = find_core_material_by_name(name);
+        REQUIRE(member.get_heat_conductivity());
+        REQUIRE(member.get_provenance());
+        REQUIRE(inPool(member));
+        double value = resolve_dimensional_values(member.get_heat_conductivity().value());
+        low = std::min(low, value);
+        high = std::max(high, value);
+    }
+    return {low, high};
+}
+
+bool has_sourced_heat_conductivity(const CoreMaterial& material) {
+    if (!material.get_heat_conductivity() || !material.get_provenance()) {
+        return false;
+    }
+    const auto provenance = material.get_provenance().value();  // bound: never range-for over a temporary's value()
+    for (const auto& entry : provenance) {
+        if (entry.get_retracted() && entry.get_retracted().value()) {
+            continue;
+        }
+        if (entry.get_fields()) {
+            auto fields = entry.get_fields().value();
+            if (std::find(fields.begin(), fields.end(), "heatConductivity") != fields.end() &&
+                (entry.get_source_url() || entry.get_source_name())) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+}
+
+TEST_CASE("Core heat conductivity: a material with MAS data uses it exactly", "[temperature][thermal][smoke-test]") {
+    SECTION("Sourced value") {
+        auto material = find_core_material_by_name("N87");
+        REQUIRE(material.get_heat_conductivity());
+        auto resolved = resolve_core_material_heat_conductivity(material);
+        CHECK_FALSE(resolved.is_estimated());
+        CHECK(resolved.tier == CoreHeatConductivityTier::MATERIAL);
+        CHECK(resolved.source);
+        CHECK_FALSE(resolved.is_unsourced());
+        CHECK(resolved.value == resolve_dimensional_values(material.get_heat_conductivity().value()));
+        CHECK(ThermalResistance::getCoreMaterialThermalConductivity(material) == resolved.value);
+        CHECK(ThermalResistance::getMaterialThermalConductivity("N87") == resolved.value);
+    }
+    SECTION("Unsourced value: still the material's own, flagged unsourced") {
+        auto material = find_core_material_by_name("MPP 14");
+        REQUIRE(material.get_heat_conductivity());
+        REQUIRE_FALSE(has_sourced_heat_conductivity(material));
+        auto resolved = resolve_core_material_heat_conductivity(material);
+        CHECK_FALSE(resolved.is_estimated());
+        CHECK(resolved.tier == CoreHeatConductivityTier::MATERIAL);
+        CHECK(resolved.is_unsourced());
+        CHECK(resolved.value == resolve_dimensional_values(material.get_heat_conductivity().value()));
+        auto warnings = estimate_warnings(material, "MPP 14 (unsourced warning probe)");
+        REQUIRE(warnings.size() == 1);
+        CHECK(warnings[0].find("UNSOURCED") != std::string::npos);
+    }
+}
+
+TEST_CASE("Core heat conductivity: a material without data gets its class estimate, flagged", "[temperature][thermal][smoke-test]") {
+    SECTION("MnZn ferrite: family values only, so the class median") {
+        auto material = core_material_without_heat_conductivity(MaterialType::FERRITE, MaterialComposition::MN_ZN);
+        auto resolved = resolve_core_material_heat_conductivity(material);
+        REQUIRE(resolved.is_estimated());
+        CHECK(resolved.tier == CoreHeatConductivityTier::CLASS);
+        const auto& estimate = resolved.estimate.value();
+        CHECK(estimate.tier == CoreHeatConductivityTier::CLASS);
+        CHECK(estimate.pool == "class FERRITE MN_ZN");
+        REQUIRE(estimate.sourceMaterials.size() > 1);
+        CHECK(estimate.numberDataPoints < estimate.sourceMaterials.size());  // family values counted once
+        CHECK(estimate.numberDocuments > 1);
+        CHECK_FALSE(estimate.predictor);
+        auto [low, high] = sourced_pool_span(estimate, [](const CoreMaterial& m) {
+            return m.get_material() == MaterialType::FERRITE && m.get_material_composition() == MaterialComposition::MN_ZN;
+        });
+        CHECK(resolved.value >= low);
+        CHECK(resolved.value <= high);
+    }
+    SECTION("Carbonyl iron powder: per-grade data with a density trend") {
+        auto mix1 = find_core_material_by_name("Mix 1");
+        REQUIRE_FALSE(mix1.get_heat_conductivity());
+        auto resolved = resolve_core_material_heat_conductivity(mix1);
+        REQUIRE(resolved.is_estimated());
+        CHECK(resolved.tier == CoreHeatConductivityTier::CLASS);
+        const auto& estimate = resolved.estimate.value();
+        REQUIRE(estimate.predictor);
+        CHECK(estimate.predictor.value() == "density");
+        CHECK(estimate.predictorValue.value() == mix1.get_density().value());
+        CHECK(estimate.predictorValue.value() >= estimate.predictorMinimum.value());
+        CHECK(estimate.predictorValue.value() <= estimate.predictorMaximum.value());
+        CHECK_FALSE(estimate.trendNotFollowedReason);
+        auto [low, high] = sourced_pool_span(estimate, [](const CoreMaterial& m) {
+            return m.get_material() == MaterialType::POWDER && m.get_material_composition() == MaterialComposition::CARBONYL_IRON;
+        });
+        CHECK(resolved.value > low);
+        CHECK(resolved.value < high);
+        auto warnings = estimate_warnings(mix1, "Mix 1 (estimate warning probe)");
+        REQUIRE(warnings.size() == 1);
+        CHECK(warnings[0].find("ESTIMATED") != std::string::npos);
+        CHECK(warnings[0].find("tier CLASS") != std::string::npos);
+        CHECK(warnings[0].find("class POWDER CARBONYL_IRON") != std::string::npos);
+        CHECK(warnings[0].find("least-squares trend on density") != std::string::npos);
+    }
+    SECTION("Carbonyl iron powder outside the sourced density span: the class median, never extrapolated") {
+        auto mix1 = resolve_core_material_heat_conductivity(find_core_material_by_name("Mix 1")).estimate.value();
+        auto mix17 = find_core_material_by_name("Mix 17");
+        REQUIRE_FALSE(mix17.get_heat_conductivity());
+        REQUIRE(mix17.get_density().value() < mix1.predictorMinimum.value());
+        auto resolved = resolve_core_material_heat_conductivity(mix17);
+        REQUIRE(resolved.is_estimated());
+        const auto& estimate = resolved.estimate.value();
+        CHECK_FALSE(estimate.predictor);
+        REQUIRE(estimate.trendNotFollowedReason);
+        // The median of the class's per-grade sourced values.
+        std::vector<double> values;
+        for (const auto& name : estimate.sourceMaterials) {
+            values.push_back(resolve_dimensional_values(find_core_material_by_name(name).get_heat_conductivity().value()));
+        }
+        std::sort(values.begin(), values.end());
+        REQUIRE(values.size() % 2 == 1);
+        CHECK(resolved.value == values[values.size() / 2]);
+        auto warnings = estimate_warnings(mix17, "Mix 17 (estimate warning probe)");
+        REQUIRE(warnings.size() == 1);
+        CHECK(warnings[0].find("ESTIMATED") != std::string::npos);
+        CHECK(warnings[0].find("median") != std::string::npos);
+        CHECK(warnings[0].find("trend is not followed") != std::string::npos);
+    }
+}
+
+TEST_CASE("Core heat conductivity: a class with no sourced member gets its family estimate, flagged", "[temperature][thermal][smoke-test]") {
+    // No FeSiCr powder in MAS carries a sourced value: the metal powder and alloy family answers.
+    auto material = core_material_without_heat_conductivity(MaterialType::POWDER, MaterialComposition::FE_SI_CR);
+    auto resolved = resolve_core_material_heat_conductivity(material);
+    REQUIRE(resolved.is_estimated());
+    CHECK(resolved.tier == CoreHeatConductivityTier::FAMILY);
+    const auto& estimate = resolved.estimate.value();
+    CHECK(estimate.pool.find("metal powder and alloy family") != std::string::npos);
+    CHECK(estimate.method.find("class POWDER FE_SI_CR has no sourced member") != std::string::npos);
+    CHECK(estimate.numberDocuments >= 1);
+    CHECK_FALSE(estimate.predictor);
+    auto [low, high] = sourced_pool_span(estimate, [](const CoreMaterial& m) { return m.get_material() != MaterialType::FERRITE; });
+    CHECK(resolved.value >= low);
+    CHECK(resolved.value <= high);
+    // Every sourced non-ferrite material is in the pool.
+    size_t sourcedMetals = 0;
+    for (const auto& name : get_core_material_names()) {
+        auto member = find_core_material_by_name(name);
+        if (member.get_material() != MaterialType::FERRITE && has_sourced_heat_conductivity(member)) {
+            ++sourcedMetals;
+        }
+    }
+    CHECK(estimate.sourceMaterials.size() == sourcedMetals);
+    auto warnings = estimate_warnings(material, "FeSiCr powder (family warning probe)");
+    REQUIRE(warnings.size() == 1);
+    CHECK(warnings[0].find("tier FAMILY") != std::string::npos);
+}
+
+TEST_CASE("Core heat conductivity: a proprietary or missing composition falls to its material type, then to all sourced materials", "[temperature][thermal][smoke-test]") {
+    size_t sourcedAll = 0;
+    std::map<MaterialType, size_t> sourcedByType;
+    for (const auto& name : get_core_material_names()) {
+        auto member = find_core_material_by_name(name);
+        if (has_sourced_heat_conductivity(member)) {
+            ++sourcedAll;
+            ++sourcedByType[member.get_material()];
+        }
+    }
+    REQUIRE(sourcedAll > 0);
+    size_t lastResortCases = 0;
+    for (auto type : magic_enum::enum_values<MaterialType>()) {
+        for (std::optional<MaterialComposition> composition : {std::optional<MaterialComposition>(MaterialComposition::PROPRIETARY),
+                                                                std::optional<MaterialComposition>()}) {
+            CAPTURE(magic_enum::enum_name(type), composition.has_value());
+            auto resolved = resolve_core_material_heat_conductivity(core_material_without_heat_conductivity(type, composition));
+            REQUIRE(resolved.is_estimated());
+            const auto& estimate = resolved.estimate.value();
+            if (sourcedByType[type] > 0) {
+                CHECK(resolved.tier == CoreHeatConductivityTier::FAMILY);
+                CHECK(estimate.pool == "material type " + std::string(magic_enum::enum_name(type)));
+                CHECK(estimate.sourceMaterials.size() == sourcedByType[type]);
+                sourced_pool_span(estimate, [type](const CoreMaterial& m) { return m.get_material() == type; });
+            }
+            else {
+                ++lastResortCases;
+                CHECK(resolved.tier == CoreHeatConductivityTier::ALL_SOURCED);
+                CHECK(estimate.pool == "all sourced core materials");
+                CHECK(estimate.sourceMaterials.size() == sourcedAll);
+                auto [low, high] = sourced_pool_span(estimate, [](const CoreMaterial&) { return true; });
+                CHECK(resolved.value >= low);
+                CHECK(resolved.value <= high);
+            }
+        }
+    }
+    // MAS today has no sourced electrical-steel or nanocrystalline value, so the last resort is
+    // exercised; if sourcing ever covers every material type, this count drops to 0 by design.
+    INFO("material types answered by the last resort: " << lastResortCases / 2);
+    CHECK(lastResortCases > 0);
+}
+
+TEST_CASE("Core heat conductivity: a malformed value throws", "[temperature][thermal][smoke-test]") {
+    for (double bad : {-1.0, 0.0}) {
+        auto material = find_core_material_by_name("N87");
+        DimensionWithTolerance malformed;
+        malformed.set_nominal(bad);
+        material.set_heat_conductivity(malformed);
+        CHECK_THROWS_AS(resolve_core_material_heat_conductivity(material), MaterialException);
+    }
+}
+
+TEST_CASE("Temperature: the network takes the core conductivity from the resolver and never from a configured default", "[temperature][thermal][smoke-test]") {
+    std::vector<int64_t> numberTurns({10});
+    std::vector<int64_t> numberParallels({1});
+    std::string shapeName = "ETD 29/16/10";
+    auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, shapeName, 1,
+        WindingOrientation::OVERLAPPING, WindingOrientation::OVERLAPPING,
+        CoilAlignment::CENTERED, CoilAlignment::CENTERED);
+    auto core = OpenMagneticsTesting::get_quick_core(shapeName, json::array(), 1, "N87");
+    OpenMagnetics::Magnetic magnetic;
+    magnetic.set_coil(coil);
+
+    TemperatureConfig config;
+    config.ambientTemperature = 25.0;
+    config.plotSchematic = false;
+    // Losses from the N87 design, then held FIXED: only the thermal model is under test.
+    magnetic.set_core(core);
+    applySimulatedLosses(config, magnetic);
+
+    auto solve = [&](const CoreMaterial& material) {
+        core.get_mutable_functional_description().set_material(material);
+        magnetic.set_core(core);
+        auto result = Temperature(magnetic, config).calculateTemperatures();
+        REQUIRE(result.converged);
+        return result.maximumTemperature;
+    };
+    auto with_conductivity = [](CoreMaterial material, double k) {
+        DimensionWithTolerance value;
+        value.set_nominal(k);
+        material.set_heat_conductivity(value);
+        return material;
+    };
+
+    // A material whose class has no sourced conductivity: the solve runs on the flagged family
+    // estimate (it used to run on the configured 4.0, and before this ticket's first draft, threw).
+    auto noData = core_material_without_heat_conductivity(MaterialType::POWDER, MaterialComposition::FE_SI_CR);
+    const double resolvedK = resolve_core_material_heat_conductivity(noData).value;
+    // The guard only discriminates if the estimate is not the old default.
+    REQUIRE(std::abs(resolvedK - 4.0) > 0.5);
+    const double estimated = solve(noData);
+    CHECK_THAT(estimated, Catch::Matchers::WithinAbs(solve(with_conductivity(noData, resolvedK)), 1e-9));
+    CHECK(std::abs(estimated - solve(with_conductivity(noData, 4.0))) > 1e-3);
 }
 
 // ============================================================================

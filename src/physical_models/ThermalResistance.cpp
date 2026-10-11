@@ -1,9 +1,14 @@
 #include "support/Utils.h"
 #include "physical_models/ThermalResistance.h"
 #include "support/Exceptions.h"
+#include "physical_models/InitialPermeability.h"
 #include <magic_enum.hpp>
 #include <algorithm>
 #include <cmath>
+#include <map>
+#include <mutex>
+#include <set>
+#include <sstream>
 #include <stdexcept>
 #include <string>
 
@@ -199,21 +204,24 @@ double ThermalResistance::getMaterialThermalConductivity(const std::string& mate
         }
     }
     
-    // Try core material database (uses heatConductivity field)
+    // Try core material database. A core material resolves through the one core-material
+    // resolver (MAS value, or a flagged class/family/all-sourced estimate) — not through get_nominal(),
+    // which missed every min/max band and sent such materials to the generic list below.
+    std::optional<CoreMaterial> coreMaterial;
     try {
-        auto coreMaterial = find_core_material_by_name(materialName);  // Core materials may be case-sensitive
-        return getCoreMaterialThermalConductivity(coreMaterial);
-    } catch (const std::exception& /* e */) { // IMP-8
+        coreMaterial = find_core_material_by_name(materialName);  // Core materials may be case-sensitive
+    } catch (const CoreMaterialNotFoundException& /* e */) {
         // Not a core material, continue
     }
+    if (coreMaterial) {
+        return resolve_core_material_heat_conductivity(coreMaterial.value()).value;
+    }
     
-    // Fallback to common thermal conductivities in W/(m·K)
+    // Generic NON-core materials in W/(m·K) (core materials resolve above, through the resolver)
     static const std::map<std::string, double> conductivities = {
         {"copper", 385.0},
         {"aluminium", 237.0},
         {"aluminum", 237.0},
-        {"ferrite", 4.0},
-        {"iron_powder", 20.0},
         {"air", 0.026},
         {"epoxy", 0.25},
         {"polyamide", 0.25},
@@ -300,12 +308,13 @@ double ThermalResistance::getWireMaterialThermalConductivity(const WireMaterial&
 
 namespace {
 
-// THE APPROVED FALLBACK for a core material's thermal properties (Alf, 2026-10-11): a material
+// THE APPROVED FALLBACK for a core material's HEAT CAPACITY (Alf, 2026-10-11): a material
 // that carries no value of its own takes the MEDIAN of that value over every MAS core material of
 // the SAME materialComposition that does carry one. Each contributing value is the manufacturer's
 // own, with its provenance in MAS, so the fallback is sourced data rather than a constant, and it
 // follows the database as data is added. The median, not the mean, so one outlying vendor table
-// cannot drag a whole chemistry.
+// cannot drag a whole chemistry. (Heat CONDUCTIVITY does not use this: it goes through the tiered
+// resolve_core_material_heat_conductivity below, ABT #1753, Alf's decision 2026-10-12.)
 //
 // It throws (MATERIAL_DATA_MISSING) when the material states no composition, when the composition
 // is 'proprietary' (no chemistry to pool by), or when no material of that composition carries the
@@ -342,22 +351,427 @@ double median_over_composition(const CoreMaterial& coreMaterial, Getter getValue
 
 }  // namespace
 
-double ThermalResistance::getCoreMaterialThermalConductivity(const CoreMaterial& coreMaterial) {
-    // Resolve via the shared resolver (handles nominal, and the min/max bands that most
-    // catalogue ferrites use without a nominal) rather than reading only get_nominal().
-    if (const auto heatCond = coreMaterial.get_heat_conductivity()) {
-        return resolve_dimensional_values(*heatCond);
-    }
-    return median_over_composition(coreMaterial, [](const CoreMaterial& m) { return m.get_heat_conductivity(); },
-                                   "heatConductivity");
-}
-
 double ThermalResistance::getCoreMaterialHeatCapacity(const CoreMaterial& coreMaterial) {
     if (const auto heatCapacity = coreMaterial.get_heat_capacity()) {
         return resolve_dimensional_values(*heatCapacity);
     }
     return median_over_composition(coreMaterial, [](const CoreMaterial& m) { return m.get_heat_capacity(); },
                                    "heatCapacity");
+}
+
+double ThermalResistance::getCoreMaterialThermalConductivity(const CoreMaterial& coreMaterial) {
+    return resolve_core_material_heat_conductivity(coreMaterial).value;
+}
+
+// ============================================================================
+// Core material heat conductivity: MAS value, or a flagged estimate from the sourced members of
+// the material's class, family, or all sourced materials (ABT #1753). Alf, 2026-10-11: "create an interpolator for the ones that
+// don't have data, from the ones that have data, as an approved fallback".
+// ============================================================================
+namespace {
+
+// A heatConductivity is SOURCED when a provenance entry that is not retracted names the field.
+// A bare value without one (e.g. copied between vendors) is used for its own material, but it is
+// not evidence about any other material.
+std::vector<std::string> heat_conductivity_sources(const CoreMaterial& material) {
+    std::vector<std::string> sources;
+    if (!material.get_heat_conductivity() || !material.get_provenance()) {
+        return sources;
+    }
+    const auto provenance = material.get_provenance().value();
+    for (const auto& entry : provenance) {
+        if (entry.get_retracted() && entry.get_retracted().value()) {
+            continue;
+        }
+        if (!entry.get_fields()) {
+            continue;
+        }
+        const auto fields = entry.get_fields().value();
+        if (std::find(fields.begin(), fields.end(), "heatConductivity") == fields.end()) {
+            continue;
+        }
+        if (entry.get_source_url()) {
+            sources.push_back(entry.get_source_url().value());
+        }
+        else if (entry.get_source_name()) {
+            sources.push_back(entry.get_source_name().value());
+        }
+        // An entry naming the field but no document is not a citation.
+    }
+    return sources;
+}
+
+// The first document citing the value (the MATERIAL tier reports one source).
+std::optional<std::string> heat_conductivity_source(const CoreMaterial& material) {
+    const auto sources = heat_conductivity_sources(material);
+    if (sources.empty()) {
+        return std::nullopt;
+    }
+    return sources.front();
+}
+
+// Two-sided 95 % critical value of Student's t for `dof` degrees of freedom (standard table;
+// statistics, not physics). Beyond 30 dof the normal value is within 4 %.
+double student_t_975(size_t dof) {
+    static const double table[] = {12.706, 4.303, 3.182, 2.776, 2.571, 2.447, 2.365, 2.306, 2.262, 2.228,
+                                   2.201, 2.179, 2.160, 2.145, 2.131, 2.120, 2.110, 2.101, 2.093, 2.086,
+                                   2.080, 2.074, 2.069, 2.064, 2.060, 2.056, 2.052, 2.048, 2.045, 2.042};
+    if (dof == 0) {
+        throw CalculationException(ErrorCode::CALCULATION_INVALID_RESULT, "Student t with zero degrees of freedom");
+    }
+    if (dof <= 30) {
+        return table[dof - 1];
+    }
+    return 1.960;
+}
+
+struct LinearTrend {
+    double intercept;
+    double slope;
+    double rSquared;
+    double minimum;
+    double maximum;
+};
+
+// Least squares k = a + b x; engaged only when the slope is significant at 95 % (|b| > t·SE(b)).
+std::optional<LinearTrend> significant_linear_trend(const std::vector<std::pair<double, double>>& points) {
+    const size_t n = points.size();
+    if (n < 3) {
+        return std::nullopt;
+    }
+    double meanX = 0, meanY = 0;
+    for (const auto& [x, y] : points) {
+        meanX += x;
+        meanY += y;
+    }
+    meanX /= static_cast<double>(n);
+    meanY /= static_cast<double>(n);
+    double sxx = 0, sxy = 0, syy = 0;
+    for (const auto& [x, y] : points) {
+        sxx += (x - meanX) * (x - meanX);
+        sxy += (x - meanX) * (y - meanY);
+        syy += (y - meanY) * (y - meanY);
+    }
+    if (sxx <= 0 || syy <= 0) {
+        return std::nullopt;
+    }
+    const double slope = sxy / sxx;
+    const double intercept = meanY - slope * meanX;
+    double residual = 0;
+    for (const auto& [x, y] : points) {
+        const double e = y - (intercept + slope * x);
+        residual += e * e;
+    }
+    const double standardError = std::sqrt(residual / static_cast<double>(n - 2) / sxx);
+    if (std::abs(slope) <= student_t_975(n - 2) * standardError) {
+        return std::nullopt;
+    }
+    double minimum = std::numeric_limits<double>::max();
+    double maximum = std::numeric_limits<double>::lowest();
+    for (const auto& point : points) {
+        minimum = std::min(minimum, point.first);
+        maximum = std::max(maximum, point.first);
+    }
+    return LinearTrend{intercept, slope, sxy * sxy / (sxx * syy), minimum, maximum};
+}
+
+double median(std::vector<double> values) {
+    std::sort(values.begin(), values.end());
+    const size_t n = values.size();
+    return n % 2 == 1 ? values[n / 2] : (values[n / 2 - 1] + values[n / 2]) / 2.0;
+}
+
+// The predictors a trend may follow, in the order they are tried: density first (it tracks the
+// porosity, i.e. how much binder/air sits between conducting particles), then initial permeability
+// (which tracks the same packing for powders).
+std::optional<double> predictor_value(const std::string& predictor, const CoreMaterial& material) {
+    if (predictor == "density") {
+        return material.get_density();
+    }
+    return InitialPermeability::get_initial_permeability(material, Defaults().ambientTemperature);
+}
+
+// A heatConductivity that is present must be a finite positive number: anything else is malformed
+// data, which throws (absence is not malformed; it walks the estimate tiers).
+double checked_heat_conductivity(const CoreMaterial& material) {
+    const double value = resolve_dimensional_values(material.get_heat_conductivity().value());
+    if (!std::isfinite(value) || value <= 0) {
+        std::ostringstream message;
+        message << "Core material '" << material.get_name() << "' has a malformed heatConductivity in MAS (" << value
+                << " W/(m K)): it must be a finite positive number. Fix the record in MAS.";
+        throw MaterialException(ErrorCode::MATERIAL_INVALID_PROPERTY, message.str());
+    }
+    return value;
+}
+
+bool is_ferrite_family(MaterialType materialType) {
+    return materialType == MaterialType::FERRITE;
+}
+
+std::string class_name(MaterialType materialType, MaterialComposition composition) {
+    return std::string(magic_enum::enum_name(materialType)) + " " + std::string(magic_enum::enum_name(composition));
+}
+
+struct SourcedMember {
+    const CoreMaterial* material;
+    std::vector<std::string> sources;  // every document citing the value
+    double value;
+};
+
+// Every core material whose heatConductivity a provenance entry cites. Unsourced values are not
+// evidence about any other material and are left out.
+std::vector<SourcedMember> sourced_core_materials() {
+    if (coreMaterialDatabase.empty()) {
+        load_core_materials();
+    }
+    std::vector<SourcedMember> members;
+    for (const auto& [materialName, material] : coreMaterialDatabase) {
+        auto sources = heat_conductivity_sources(material);
+        if (sources.empty()) {
+            continue;
+        }
+        members.push_back({&material, std::move(sources), checked_heat_conductivity(material)});
+    }
+    return members;
+}
+
+// Pools the members, collapsing family values: a document that gives one value to all its grades
+// is ONE data point (else a vendor with many grades would outvote the rest); a document that gives
+// its grades different values is per-grade data, one point per grade, and only those can show a
+// trend. A value several documents cite is counted once, under the citing document that covers
+// the most members of the pool (ties: the smallest identifier), so the grouping does not depend on
+// the order of the provenance entries, nor split one table cited under two URLs.
+// Fills the estimate's materials/documents/points and returns the data points.
+std::vector<double> pool_data_points(const std::vector<SourcedMember>& members, CoreHeatConductivityEstimate& estimate,
+                                     std::vector<const SourcedMember*>* perGradeMembers) {
+    std::map<std::string, size_t> citationsInPool;
+    for (const auto& member : members) {
+        for (const auto& source : std::set<std::string>(member.sources.begin(), member.sources.end())) {
+            ++citationsInPool[source];
+        }
+    }
+    std::map<std::string, std::vector<const SourcedMember*>> membersBySource;
+    for (const auto& member : members) {
+        const std::string* widest = nullptr;
+        for (const auto& source : member.sources) {
+            if (!widest || citationsInPool.at(source) > citationsInPool.at(*widest) ||
+                (citationsInPool.at(source) == citationsInPool.at(*widest) && source < *widest)) {
+                widest = &source;
+            }
+        }
+        membersBySource[*widest].push_back(&member);
+    }
+    std::vector<double> points;
+    estimate.sourceMaterials.clear();
+    for (const auto& [source, sourceMembers] : membersBySource) {
+        std::set<double> distinct;
+        for (const auto* member : sourceMembers) {
+            distinct.insert(member->value);
+            estimate.sourceMaterials.push_back(member->material->get_name());
+        }
+        if (distinct.size() == 1) {
+            points.push_back(sourceMembers.front()->value);
+            continue;
+        }
+        for (const auto* member : sourceMembers) {
+            points.push_back(member->value);
+            if (perGradeMembers) {
+                perGradeMembers->push_back(member);
+            }
+        }
+    }
+    std::sort(estimate.sourceMaterials.begin(), estimate.sourceMaterials.end());
+    estimate.numberDocuments = membersBySource.size();
+    estimate.numberDataPoints = points.size();
+    return points;
+}
+
+// Tier CLASS: in-span trend, else the class median. Disengaged when the class has no sourced member.
+std::optional<CoreHeatConductivity> class_estimate(const CoreMaterial& coreMaterial, MaterialComposition composition,
+                                                   const std::vector<SourcedMember>& sourced) {
+    const auto materialType = coreMaterial.get_material();
+    std::vector<SourcedMember> members;
+    for (const auto& member : sourced) {
+        if (member.material->get_material() == materialType && member.material->get_material_composition() &&
+            member.material->get_material_composition().value() == composition) {
+            members.push_back(member);
+        }
+    }
+    if (members.empty()) {
+        return std::nullopt;
+    }
+    CoreHeatConductivityEstimate estimate;
+    estimate.tier = CoreHeatConductivityTier::CLASS;
+    estimate.pool = "class " + class_name(materialType, composition);
+    std::vector<const SourcedMember*> trendMembers;
+    const auto points = pool_data_points(members, estimate, &trendMembers);
+
+    double value = median(points);
+    std::string method = "the median of its " + std::to_string(points.size()) + " sourced data points";
+
+    std::optional<LinearTrend> bestTrend;
+    std::string bestPredictor;
+    double bestPredictorValue = 0;
+    for (const std::string predictor : {"density", "initialPermeability"}) {
+        if (trendMembers.size() < 3) {
+            break;
+        }
+        const auto target = predictor_value(predictor, coreMaterial);
+        if (!target) {
+            continue;
+        }
+        std::vector<std::pair<double, double>> trendPoints;
+        for (const auto* member : trendMembers) {
+            const auto x = predictor_value(predictor, *member->material);
+            if (x) {
+                trendPoints.push_back({x.value(), member->value});
+            }
+        }
+        const auto trend = significant_linear_trend(trendPoints);
+        if (trend && (!bestTrend || trend->rSquared > bestTrend->rSquared)) {
+            bestTrend = trend;
+            bestPredictor = predictor;
+            bestPredictorValue = target.value();
+        }
+    }
+    if (bestTrend) {
+        std::ostringstream span;
+        span << bestPredictor << " = " << bestPredictorValue << " against the sourced span " << bestTrend->minimum
+             << " to " << bestTrend->maximum;
+        // Alf, 2026-10-11: follow the trend only inside the sourced span; outside it, the class median.
+        if (bestPredictorValue >= bestTrend->minimum && bestPredictorValue <= bestTrend->maximum) {
+            value = bestTrend->intercept + bestTrend->slope * bestPredictorValue;
+            estimate.predictor = bestPredictor;
+            estimate.predictorValue = bestPredictorValue;
+            estimate.predictorMinimum = bestTrend->minimum;
+            estimate.predictorMaximum = bestTrend->maximum;
+            std::ostringstream trendText;
+            trendText << "the least-squares trend on " << bestPredictor << " (r^2 = " << bestTrend->rSquared << ") at "
+                      << span.str();
+            method = trendText.str();
+        }
+        else {
+            estimate.trendNotFollowedReason = "outside the trend's span: " + span.str();
+            method += " (the class's " + bestPredictor + " trend is not followed: " + span.str() + ")";
+        }
+    }
+    estimate.method = method;
+    return CoreHeatConductivity{value, CoreHeatConductivityTier::CLASS, std::nullopt, estimate};
+}
+
+// Tiers FAMILY and ALL_SOURCED: the median of a broader pool. Disengaged when the pool is empty.
+std::optional<CoreHeatConductivity> pooled_median_estimate(CoreHeatConductivityTier tier, const std::string& pool,
+                                                           const std::vector<SourcedMember>& members) {
+    if (members.empty()) {
+        return std::nullopt;
+    }
+    CoreHeatConductivityEstimate estimate;
+    estimate.tier = tier;
+    estimate.pool = pool;
+    const auto points = pool_data_points(members, estimate, nullptr);
+    estimate.method = "the median of its " + std::to_string(points.size()) + " sourced data points";
+    return CoreHeatConductivity{median(points), tier, std::nullopt, estimate};
+}
+
+CoreHeatConductivity estimate_core_material_heat_conductivity(const CoreMaterial& coreMaterial) {
+    const auto materialType = coreMaterial.get_material();
+    const auto sourced = sourced_core_materials();
+    std::optional<CoreHeatConductivity> resolved;
+    std::string skipped;
+
+    // Tier CLASS: a physical composition only (a proprietary one is not a class).
+    const auto composition = coreMaterial.get_material_composition();
+    const bool physicalComposition = composition && composition.value() != MaterialComposition::PROPRIETARY;
+    if (physicalComposition) {
+        resolved = class_estimate(coreMaterial, composition.value(), sourced);
+        if (!resolved) {
+            skipped = "class " + class_name(materialType, composition.value()) + " has no sourced member";
+        }
+    }
+    else {
+        skipped = composition ? "its composition is PROPRIETARY" : "it has no materialComposition";
+    }
+
+    // Tier FAMILY: ferrites, or metal powders and alloys; a proprietary or missing composition only
+    // says the material type, so its family is that type.
+    if (!resolved) {
+        std::vector<SourcedMember> members;
+        std::string pool;
+        if (physicalComposition) {
+            const bool ferrite = is_ferrite_family(materialType);
+            pool = ferrite ? "ferrite family (material type FERRITE)"
+                           : "metal powder and alloy family (material types other than FERRITE)";
+            for (const auto& member : sourced) {
+                if (is_ferrite_family(member.material->get_material()) == ferrite) {
+                    members.push_back(member);
+                }
+            }
+        }
+        else {
+            pool = "material type " + std::string(magic_enum::enum_name(materialType));
+            for (const auto& member : sourced) {
+                if (member.material->get_material() == materialType) {
+                    members.push_back(member);
+                }
+            }
+        }
+        resolved = pooled_median_estimate(CoreHeatConductivityTier::FAMILY, pool, members);
+        if (!resolved) {
+            skipped += "; " + pool + " has no sourced member";
+        }
+    }
+
+    // Tier ALL_SOURCED: last resort.
+    if (!resolved) {
+        resolved = pooled_median_estimate(CoreHeatConductivityTier::ALL_SOURCED, "all sourced core materials", sourced);
+    }
+    if (!resolved) {
+        throw MaterialException(ErrorCode::MATERIAL_DATA_MISSING,
+            "Core material '" + coreMaterial.get_name() + "' has no heatConductivity in MAS, and no core material in "
+            "MAS carries a sourced heatConductivity to estimate it from: the MAS core material data is not loaded "
+            "or has lost its provenance.");
+    }
+    if (!skipped.empty()) {
+        resolved->estimate->method += " (" + skipped + ")";
+    }
+    return resolved.value();
+}
+
+// One WARNING per material (manufacturer + name) for every flagged result.
+void warn_once(const CoreMaterial& coreMaterial, const std::string& message) {
+    static std::mutex warnedMutex;
+    static std::set<std::string> warned;
+    std::lock_guard<std::mutex> lock(warnedMutex);
+    if (warned.insert(coreMaterial.get_manufacturer_info().get_name() + "/" + coreMaterial.get_name()).second) {
+        OM_WARNING(message);
+    }
+}
+
+} // namespace
+
+CoreHeatConductivity resolve_core_material_heat_conductivity(const CoreMaterial& coreMaterial) {
+    if (coreMaterial.get_heat_conductivity()) {
+        CoreHeatConductivity resolved{checked_heat_conductivity(coreMaterial), CoreHeatConductivityTier::MATERIAL,
+                                      heat_conductivity_source(coreMaterial), std::nullopt};
+        if (resolved.is_unsourced()) {
+            std::ostringstream message;
+            message << "Core material '" << coreMaterial.get_name() << "': its MAS heatConductivity " << resolved.value
+                    << " W/(m K) is UNSOURCED (no provenance entry cites it); used for this material, never pooled "
+                       "for others.";
+            warn_once(coreMaterial, message.str());
+        }
+        return resolved;
+    }
+    auto resolved = estimate_core_material_heat_conductivity(coreMaterial);
+    const auto& estimate = resolved.estimate.value();
+    std::ostringstream message;
+    message << "Core material '" << coreMaterial.get_name() << "' has no heatConductivity in MAS: ESTIMATED "
+            << resolved.value << " W/(m K), tier " << magic_enum::enum_name(estimate.tier) << ", from the "
+            << estimate.pool << ": " << estimate.sourceMaterials.size() << " sourced materials, "
+            << estimate.numberDocuments << " documents, " << estimate.numberDataPoints
+            << " independent data points, using " << estimate.method << ".";
+    warn_once(coreMaterial, message.str());
+    return resolved;
 }
 
 double ThermalResistance::getInsulationMaterialThermalConductivity(const InsulationMaterial& material) {

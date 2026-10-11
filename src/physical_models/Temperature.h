@@ -244,7 +244,6 @@ struct TemperatureConfig {
     // maxIterations to build the resistance network and draw it, and legitimately never
     // intend to solve it.
     bool requireConvergence = true;
-    double coreThermalConductivity = 4.0;  // Ferrite thermal conductivity (W/m·K)
     
     // Inter-turn insulation (electrical insulation tape between turns)
     bool useInterTurnInsulation = false;        // Enable inter-turn insulation layers
@@ -490,9 +489,8 @@ private:
     /**
      * @brief Get core thermal conductivity from actual material data
      * 
-     * Resolves the core material from the database and returns its thermal
-     * conductivity. Falls back to _config.coreThermalConductivity if material
-     * resolution fails.
+     * Resolves the core material and returns resolve_core_material_heat_conductivity(...).value:
+     * the MAS value, or a flagged class/family/all-sourced estimate (absence never throws).
      */
     double getCoreThermalConductivity() const;
     

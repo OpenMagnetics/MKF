@@ -198,15 +198,11 @@ TemperatureConfig TemperatureConfig::fromSimulatedOutput(const MAS::OperatingPoi
 // ============================================================================
 
 double Temperature::getCoreThermalConductivity() const {
+    // ABT #1753: the one core-material resolver — the MAS value, or a WARNING-flagged estimate from
+    // the sourced materials of the same class, family, or all of MAS. No per-composition constants
+    // and no configured default: those were numbers nobody could trace to a datasheet.
     auto coreMaterial = Core(_magnetic.get_core()).resolve_material();
-    try {
-        return ThermalResistance::getCoreMaterialThermalConductivity(coreMaterial);
-    } catch (const MaterialException&) {
-        // Neither the material's own value nor the same-composition MAS median exists (no or
-        // proprietary composition, or a composition no record carries a value for): the
-        // configured conductivity, the conservative-hot choice (low k over-predicts the hot spot).
-        return _config.coreThermalConductivity;
-    }
+    return resolve_core_material_heat_conductivity(coreMaterial).value;
 }
 
 double Temperature::getBobbinThermalConductivity() const {
