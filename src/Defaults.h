@@ -19,6 +19,14 @@ struct Defaults {
     // See MKF/docs/WindingLossesModelValidation.md for full methodology and results
     const OpenMagnetics::MagneticFieldStrengthModels magneticFieldStrengthModelDefault = OpenMagnetics::MagneticFieldStrengthModels::ALBACH;
     const OpenMagnetics::MagneticFieldStrengthFringingEffectModels magneticFieldStrengthFringingEffectModelDefault = OpenMagnetics::MagneticFieldStrengthFringingEffectModels::ROSHEN;
+    // ABT #1759 (Alf 2026-10-11, "keep the best model"): the winding-loss model set used when no model is chosen, per
+    // core type the one most accurate against 2D OMFEM (get_default_winding_losses_model_set). The neutral window
+    // (MMF_BOUNDARY field + MARTINEZ / FERREIRA proximity) where its frame exists; MMF_BOUNDARY has no frame for
+    // toroids, several winding windows or turns crossing the section twice, which keep the historical automatic choice.
+    const OpenMagnetics::WindingLossesModelSets windingLossesModelSetDefaultSingleWindow = OpenMagnetics::WindingLossesModelSets::NEUTRAL_WINDOW;
+    const OpenMagnetics::WindingLossesModelSets windingLossesModelSetDefaultToroid = OpenMagnetics::WindingLossesModelSets::LEGACY_DEFAULT;
+    const OpenMagnetics::WindingLossesModelSets windingLossesModelSetDefaultMultiWindow = OpenMagnetics::WindingLossesModelSets::LEGACY_DEFAULT;
+    const OpenMagnetics::WindingLossesModelSets windingLossesModelSetDefaultSecondCrossing = OpenMagnetics::WindingLossesModelSets::LEGACY_DEFAULT;
     const OpenMagnetics::CoreThermalResistanceModels coreThermalResistanceModelDefault = OpenMagnetics::CoreThermalResistanceModels::MANIKTALA;
     const double maximumProportionMagneticFluxDensitySaturation = 0.7;
     const double coreAdviserFrequencyReference = 100000;

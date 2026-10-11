@@ -2,6 +2,7 @@
 #include <numbers>
 #include "physical_models/StrayCapacitance.h"
 #include "physical_models/LeakageInductance.h"
+#include "physical_models/WindingLossesModelSets.h"
 #include "support/Painter.h"
 #include "support/CoilMesher.h"
 #include "constructive_models/Coil.h"
@@ -87,10 +88,23 @@ ComplexField PainterInterface::calculate_magnetic_field(OperatingPoint operating
     Field inducedField = CoilMesher::generate_mesh_induced_grid(magnetic, frequency, numberPointsX, numberPointsY, true, true, true).first;
 
     auto modelOverride = settings.get_painter_magnetic_field_strength_model();
-    // Use painter override if set, otherwise use the simulation magnetic field strength model
-    auto magneticFieldModel = modelOverride.value_or(settings.get_magnetic_field_strength_model());
-    // Use the configured fringing effect model from settings
-    auto fringingEffectModel = settings.get_magnetic_field_strength_fringing_effect_model();
+    // ABT #1759: the plotted field is the winding-loss model's own H. Without a painter override, the field and fringing
+    // models are the pair of the set WindingLosses solves this magnetic with (resolve_winding_losses_model_set_from_settings,
+    // the default set when nothing is configured); with CUSTOM, the individually configured models as before.
+    const WindingLossesModelSets modelSetId = modelOverride ? WindingLossesModelSets::CUSTOM :
+                                              resolve_winding_losses_model_set_from_settings(magnetic, includeFringing);
+    MagneticFieldStrengthModels magneticFieldModel;
+    MagneticFieldStrengthFringingEffectModels fringingEffectModel;
+    if (modelSetId != WindingLossesModelSets::CUSTOM) {
+        const auto& modelSet = get_winding_losses_model_set(modelSetId);
+        check_winding_losses_model_set_applies(modelSet, magnetic);
+        magneticFieldModel = resolve_winding_losses_field_model(modelSet, magnetic);
+        fringingEffectModel = modelSet.fringingModel;
+    }
+    else {
+        magneticFieldModel = modelOverride.value_or(settings.get_magnetic_field_strength_model());
+        fringingEffectModel = settings.get_magnetic_field_strength_fringing_effect_model();
+    }
     MagneticField magneticField(magneticFieldModel, fringingEffectModel);
     // RAII: restore the global magnetic-field settings on scope exit. They used to be
     // overwritten permanently, leaking the painter's fringing/mirroring choice into

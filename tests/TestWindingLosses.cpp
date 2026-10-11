@@ -78,8 +78,8 @@ namespace WindingLossesTestHelpers {
             const std::vector<std::pair<double, double>>& expectedValues,
             double maxError = maximumError,
             bool includeFringing = true,
-            MagneticFieldStrengthModels fieldModel = MagneticFieldStrengthModels::ALBACH,
-            MagneticFieldStrengthFringingEffectModels fringingModel = MagneticFieldStrengthFringingEffectModels::ALBACH) {
+            std::optional<MagneticFieldStrengthModels> fieldModel = MagneticFieldStrengthModels::ALBACH,
+            std::optional<MagneticFieldStrengthFringingEffectModels> fringingModel = MagneticFieldStrengthFringingEffectModels::ALBACH) {
         
         auto path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), jsonFileName);
         auto mas = OpenMagneticsTesting::mas_loader(path);
@@ -89,8 +89,13 @@ namespace WindingLossesTestHelpers {
 
         settings.reset();
         clear_databases();
-        settings.set_magnetic_field_strength_model(fieldModel);
-        settings.set_magnetic_field_strength_fringing_effect_model(fringingModel);
+        // nullopt: MKF's default models (ABT #1759: the default model set for the core).
+        if (fieldModel) {
+            settings.set_magnetic_field_strength_model(fieldModel.value());
+        }
+        if (fringingModel) {
+            settings.set_magnetic_field_strength_fringing_effect_model(fringingModel.value());
+        }
 
         for (auto& [frequency, expectedValue] : expectedValues) {
             OperatingPoint operatingPoint = inputs.get_operating_point(0);

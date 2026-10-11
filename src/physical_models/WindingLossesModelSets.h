@@ -47,4 +47,19 @@ void check_winding_losses_model_set_applies(const WindingLossesModelSet& set, Ma
 // The sets that apply to this magnetic (CUSTOM always does).
 std::vector<WindingLossesModelSets> get_applicable_winding_losses_model_sets(Magnetic magnetic);
 
+// MKF's historical automatic choice of field model by wire type: the CUSTOM path and LEGACY_DEFAULT (ABT #1304).
+MagneticFieldStrengthModels automatic_winding_losses_field_model(Magnetic& magnetic);
+// The field model a set solves with: its own, or the historical automatic choice when it names none (LEGACY_DEFAULT).
+MagneticFieldStrengthModels resolve_winding_losses_field_model(const WindingLossesModelSet& set, Magnetic& magnetic);
+
+// ABT #1759: the set used when no winding-loss model is chosen. Per core type, the set most accurate against 2D OMFEM
+// (Defaults.h): the neutral window where its frame exists (one winding window, not a toroid, every turn crossing the
+// section once), the historical automatic choice elsewhere.
+WindingLossesModelSets get_default_winding_losses_model_set(Magnetic magnetic);
+// The set Settings select for this magnetic, for every consumer of the winding-loss field (winding losses, the Painter's
+// field plot). Settings' set when one is named. Otherwise (CUSTOM) the default set for the core while the field
+// configuration is the default one -- field and fringing models at their Defaults and fringing included -- and CUSTOM
+// (the individually configured models) once any of them is configured.
+WindingLossesModelSets resolve_winding_losses_model_set_from_settings(Magnetic magnetic, bool includeFringing);
+
 } // namespace OpenMagnetics

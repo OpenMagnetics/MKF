@@ -168,52 +168,6 @@ double WindingLosses::calculate_effective_resistance_of_winding(Magnetic magneti
 }
 
 
-// MKF's historical automatic choice of field model by wire type. One function, so the CUSTOM path and the
-// LEGACY_DEFAULT model set (ABT #1304) cannot drift apart.
-static MagneticFieldStrengthModels automatic_field_model(Magnetic& magnetic) {
-    bool isPlanar = true;
-    bool isRectangular = true;
-    bool isFoil = true;
-    for (auto wire : magnetic.get_mutable_coil().get_wires()) {
-        isPlanar = isPlanar && wire.get_type() == WireType::PLANAR;
-        isRectangular = isRectangular && wire.get_type() == WireType::RECTANGULAR;
-        isFoil = isFoil && wire.get_type() == WireType::FOIL;
-    }
-    MagneticFieldStrengthModels modelToUse;
-    if (isPlanar) {
-        modelToUse = OpenMagnetics::MagneticFieldStrengthModels::WANG;
-    }
-    else if (isRectangular) {
-        modelToUse = OpenMagnetics::MagneticFieldStrengthModels::BINNS_LAWRENSON;
-    }
-    else if (isFoil) {
-        modelToUse = OpenMagnetics::MagneticFieldStrengthModels::WANG;
-    }
-    else {
-        bool hasFoil = false;
-        for (auto wire : magnetic.get_mutable_coil().get_wires()) {
-            if (wire.get_type() == WireType::FOIL) {
-                hasFoil = true;
-                break;
-            }
-        }
-        if (hasFoil) {
-            // Mixed foil + round/litz (e.g. foil primary, litz secondary): the
-            // Wang mesher represents a foil inducing turn as 2 end filaments,
-            // which only the Wang label-pair formulas can reconstruct into a
-            // sheet field. Feeding them to LAMMERANER places the whole foil
-            // current at the foil ENDS and inverts the MMF profile across the
-            // stack (ABT #182). ALBACH subdivides flat conductors into
-            // distributed filaments and handles mixed conductor types.
-            modelToUse = OpenMagnetics::MagneticFieldStrengthModels::ALBACH;
-        }
-        else {
-            modelToUse = OpenMagnetics::MagneticFieldStrengthModels::LAMMERANER;
-        }
-    }
-    return modelToUse;
-}
-
 WindingLossesOutput WindingLosses::calculate_losses(Magnetic magnetic, OperatingPoint operatingPoint, double temperature) {
     auto& settings = OpenMagnetics::Settings::GetInstance();
 
@@ -250,10 +204,23 @@ WindingLossesOutput WindingLosses::calculate_losses(Magnetic magnetic, Operating
     const ParallelCurrentSplit* parallelCurrentSplitPointer = parallelCurrentSplit ? &parallelCurrentSplit.value() : nullptr;
     // ABT #1304: a named model set fixes every model -- one field solution for the magnetic, skin and proximity per wire
     // type -- after checking it models this magnetic. CUSTOM keeps the individually selected models.
-    const WindingLossesModelSets modelSetId = _models.modelSet.value_or(settings.get_winding_losses_model_set());
+    // ABT #1759: with no set named and no model chosen (here or in Settings), the default set for this core
+    // (get_default_winding_losses_model_set), resolved exactly as the Painter resolves the field it plots.
+    const bool anyModelChosenHere = _models.magneticFieldStrengthModel || _models.magneticFieldStrengthFringingEffectModel ||
+                                    _models.skinEffectModel || _models.proximityEffectModel;
+    WindingLossesModelSets modelSetId;
+    if (_models.modelSet) {
+        modelSetId = _models.modelSet.value();
+    }
+    else if (anyModelChosenHere) {
+        modelSetId = settings.get_winding_losses_model_set();
+    }
+    else {
+        modelSetId = resolve_winding_losses_model_set_from_settings(magnetic, settings.get_magnetic_field_include_fringing());
+    }
     const WindingLossesModelSet* modelSet = nullptr;
     if (modelSetId != WindingLossesModelSets::CUSTOM) {
-        if (_models.magneticFieldStrengthModel || _models.magneticFieldStrengthFringingEffectModel || _models.skinEffectModel || _models.proximityEffectModel) {
+        if (anyModelChosenHere) {
             throw InvalidInputException(ErrorCode::INVALID_INPUT, "Winding-loss model set " + std::string(magic_enum::enum_name(modelSetId)) +
                                         " fixes every model; choose models individually only with the CUSTOM set");
         }
@@ -292,11 +259,8 @@ WindingLossesOutput WindingLosses::calculate_losses(Magnetic magnetic, Operating
     // Only auto-select model if not explicitly specified in _models
     // First check _models, then Settings, then auto-select based on wire type
     MagneticFieldStrengthModels modelToUse;
-    if (modelSet && modelSet->fieldModel) {
-        modelToUse = modelSet->fieldModel.value();
-    }
-    else if (modelSet) {
-        modelToUse = automatic_field_model(magnetic);
+    if (modelSet) {
+        modelToUse = resolve_winding_losses_field_model(*modelSet, magnetic);
     }
     else if (_models.magneticFieldStrengthModel.has_value()) {
         modelToUse = _models.magneticFieldStrengthModel.value();
@@ -314,7 +278,7 @@ WindingLossesOutput WindingLosses::calculate_losses(Magnetic magnetic, Operating
         modelToUse = OpenMagnetics::MagneticFieldStrengthModels::BINNS_LAWRENSON;
     }
     else {
-        modelToUse = automatic_field_model(magnetic);
+        modelToUse = automatic_winding_losses_field_model(magnetic);
     }
     
     // Use fringing model: first _models, then Settings, then default ROSHEN

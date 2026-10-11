@@ -1,5 +1,7 @@
 #include "physical_models/WindingLossesModelSets.h"
 #include "support/Exceptions.h"
+#include "support/Settings.h"
+#include "Defaults.h"
 #include <magic_enum.hpp>
 
 namespace OpenMagnetics {
@@ -189,6 +191,85 @@ void check_winding_losses_model_set_applies(const WindingLossesModelSet& set, Ma
                                              " wire (winding " + coil.get_functional_description()[windingIndex].get_name() + ")");
         }
     }
+}
+
+MagneticFieldStrengthModels automatic_winding_losses_field_model(Magnetic& magnetic) {
+    bool isPlanar = true;
+    bool isRectangular = true;
+    bool isFoil = true;
+    for (auto wire : magnetic.get_mutable_coil().get_wires()) {
+        isPlanar = isPlanar && wire.get_type() == WireType::PLANAR;
+        isRectangular = isRectangular && wire.get_type() == WireType::RECTANGULAR;
+        isFoil = isFoil && wire.get_type() == WireType::FOIL;
+    }
+    if (isPlanar) {
+        return Field::WANG;
+    }
+    if (isRectangular) {
+        return Field::BINNS_LAWRENSON;
+    }
+    if (isFoil) {
+        return Field::WANG;
+    }
+    for (auto wire : magnetic.get_mutable_coil().get_wires()) {
+        if (wire.get_type() == WireType::FOIL) {
+            // Mixed foil + round/litz (e.g. foil primary, litz secondary): the Wang mesher represents a foil inducing
+            // turn as 2 end filaments, which only the Wang label-pair formulas can reconstruct into a sheet field.
+            // Feeding them to LAMMERANER places the whole foil current at the foil ENDS and inverts the MMF profile
+            // across the stack (ABT #182). ALBACH subdivides flat conductors into distributed filaments and handles
+            // mixed conductor types.
+            return Field::ALBACH;
+        }
+    }
+    return Field::LAMMERANER;
+}
+
+MagneticFieldStrengthModels resolve_winding_losses_field_model(const WindingLossesModelSet& set, Magnetic& magnetic) {
+    if (set.fieldModel) {
+        return set.fieldModel.value();
+    }
+    return automatic_winding_losses_field_model(magnetic);
+}
+
+WindingLossesModelSets get_default_winding_losses_model_set(Magnetic magnetic) {
+    const Defaults defaults;
+    switch (scope_of(magnetic)) {
+        case Scope::TOROID:
+            return defaults.windingLossesModelSetDefaultToroid;
+        case Scope::MULTI_WINDOW:
+            return defaults.windingLossesModelSetDefaultMultiWindow;
+        case Scope::SINGLE_RECTANGULAR_WINDOW:
+        case Scope::ROUND_POST_SINGLE_WINDOW:
+            break;
+        case Scope::ANY:
+            throw CalculationException(ErrorCode::CALCULATION_INVALID_RESULT, "A core's scope is never ANY");
+    }
+    // A turn with a second crossing (a winding on a lateral column) is not one conductor of the single window frame.
+    const auto& turnsDescription = magnetic.get_coil().get_turns_description();
+    if (turnsDescription) {
+        const auto turns = turnsDescription.value();
+        for (const auto& turn : turns) {
+            if (turn.get_additional_coordinates()) {
+                return defaults.windingLossesModelSetDefaultSecondCrossing;
+            }
+        }
+    }
+    return defaults.windingLossesModelSetDefaultSingleWindow;
+}
+
+WindingLossesModelSets resolve_winding_losses_model_set_from_settings(Magnetic magnetic, bool includeFringing) {
+    auto& settings = Settings::GetInstance();
+    if (settings.get_winding_losses_model_set() != WindingLossesModelSets::CUSTOM) {
+        return settings.get_winding_losses_model_set();
+    }
+    const Defaults defaults;
+    const bool defaultFieldConfiguration = includeFringing &&
+        settings.get_magnetic_field_strength_model() == defaults.magneticFieldStrengthModelDefault &&
+        settings.get_magnetic_field_strength_fringing_effect_model() == defaults.magneticFieldStrengthFringingEffectModelDefault;
+    if (!defaultFieldConfiguration) {
+        return WindingLossesModelSets::CUSTOM;
+    }
+    return get_default_winding_losses_model_set(magnetic);
 }
 
 std::vector<WindingLossesModelSets> get_applicable_winding_losses_model_sets(Magnetic magnetic) {
