@@ -511,7 +511,13 @@ TEST_CASE("Test_CoreAdviserAvailableCores_All_Cores_Two_Chosen_Ones", "[adviser]
     // stacked one instead of returning only the stacked one, whose cost/size pre-loss cap had
     // culled five designs the first search returned under the limit: P 26/16 - 3C95 - Gapped
     // 0.725 mm, RM 10 - 3C90 - Gapped 0.74 mm and RM 10 - 3C91 / 3C95 / 3C97 - Gapped 0.47 mm.
-    REQUIRE(masMagnetics.size() == 19);
+    // Re-pinned 2026-10-11, 19 -> 16 (ABT #838, approved by Alf): the core loss is now solved at the
+    // temperature the core and winding losses heat it to, not at 25 C. RM 10 - 3C91 - Gapped 0.47 /
+    // 0.29 / 0.3 mm run away: 3.9-4.9 W at 25 C heat the RM 10 past 100 C, above 3C91's loss minimum,
+    // where its loss rises with temperature faster than the core sheds it (0.47 mm: 4.1 W at 110 C,
+    // 5.0 W at 121 C, 8.3 W at 152 C, 17 W at 208 C), up to the 220 C Curie temperature with the losses
+    // still asking for 225-248 C. No operating temperature exists, so the adviser rejects them.
+    REQUIRE(masMagnetics.size() == 16);
     
     // Verify results have valid scores and contain suitable cores
     bool hasToroidal = false;
