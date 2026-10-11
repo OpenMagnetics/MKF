@@ -289,7 +289,13 @@ class Inputs : public MAS::Inputs {
 
     static Waveform calculate_derivative_waveform(Waveform waveform);
     static Waveform calculate_integral_waveform(Waveform waveform, bool subtractAverage=false);
-    static double calculate_waveform_average(Waveform waveform) ;
+    // Time average over the waveform's period. Without a frequency the axis is taken as closed
+    // ([t0, t0 + T]) and integrated by trapezoids. With the excitation frequency an axis that is
+    // open by one step ([t0, t0 + T - dt], the sampled convention, uniform only) is recognised
+    // (WaveformProcessor::check_time_axis_spans_one_period) and averaged as the sampled waveform it
+    // is: each sample holds until the next, the last until t0 + T, so the mean of N uniform samples
+    // is their sum / N, the same convention calculate_integral_waveform integrates with (ABT #1713).
+    static double calculate_waveform_average(Waveform waveform, std::optional<double> frequency = std::nullopt);
     static Waveform multiply_waveform(Waveform waveform, double scalarValue);
     static Waveform sum_waveform(Waveform waveform, double scalarValue);
     // Pointwise add two waveforms. Both must have the same number of data points.

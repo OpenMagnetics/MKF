@@ -93,12 +93,25 @@ void ifft(std::vector<std::complex<double>>& x)
     }
 }
 
-double Inputs::calculate_waveform_average(Waveform waveform) {
+double Inputs::calculate_waveform_average(Waveform waveform, std::optional<double> frequency) {
     // get_time() returns the optional BY VALUE, so indexing it inside the loop copied the whole
     // time axis twice per sample: O(N^2), minutes for an imported waveform with a few hundred
     // thousand points. Take it once.
     const auto time = waveform.get_time().value();
     const auto& data = waveform.get_data();
+    if (frequency && WaveformProcessor::check_time_axis_spans_one_period(time, frequency.value())) {
+        // Open axis (ABT #1713): sample i holds over [t_i, t_i+1), the last one over one more step
+        // up to t0 + T. The trapezoid over t_0..t_N-1 left that last step out, divided by (N - 1) dt
+        // and ramped every edge: an exactly balanced 688.5 V / -229.5 V rectangle (32 of 128
+        // samples high) read a -1.807 V mean, which was then removed from the voltage before
+        // integrating it and left a DC on its magnetizing current.
+        const double lastStep = time[time.size() - 1] - time[time.size() - 2];
+        double voltSeconds = data.back() * lastStep;
+        for (size_t i = 0; i + 1 < data.size(); ++i) {
+            voltSeconds += data[i] * (time[i + 1] - time[i]);
+        }
+        return voltSeconds / (time.back() + lastStep - time.front());
+    }
     double integration = 0;
     double period = time.back() - time.front();
     for (size_t i = 0; i < data.size() - 1; ++i)
@@ -2161,13 +2174,13 @@ double Inputs::calculate_steady_state_mean_voltage(const OperatingPointExcitatio
                                      excitation.get_voltage()->get_waveform()->get_data().size() >= 2)
                                         ? excitation.get_voltage()->get_waveform().value()
                                         : voltageSampledWaveform;
-    double meanVoltage = calculate_waveform_average(givenWaveform);
+    double meanVoltage = calculate_waveform_average(givenWaveform, excitation.get_frequency());
     if (meanVoltage == 0) {
         return 0;
     }
     const auto givenTime = givenWaveform.get_time().value();
     double period = givenTime.back() - givenTime.front();
-    double meanSampledVoltage = calculate_waveform_average(voltageSampledWaveform);
+    double meanSampledVoltage = calculate_waveform_average(voltageSampledWaveform, excitation.get_frequency());
     auto acFluxLinkage = calculate_integral_waveform(sum_waveform(voltageSampledWaveform, -meanSampledVoltage), true);
     const auto& acData = acFluxLinkage.get_data();
     double acSwing = *std::max_element(acData.begin(), acData.end()) - *std::min_element(acData.begin(), acData.end());
