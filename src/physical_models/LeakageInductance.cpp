@@ -565,6 +565,8 @@ OperatingPoint LeakageInductance::create_excitation_operating_point(Magnetic& ma
         current.set_processed(processed);
         current.set_harmonics(Inputs::calculate_harmonics_data(waveform, frequency));
         OperatingPointExcitation excitation;
+        // The generated class leaves the frequency uninitialised: unset, it read as 3.75e233 Hz downstream (ABT #1467).
+        excitation.set_frequency(frequency);
         excitation.set_current(current);
         excitationPerWinding.push_back(excitation);
     }
@@ -588,6 +590,7 @@ OperatingPoint LeakageInductance::create_leakage_operating_point(Magnetic& magne
     sourceCurrent.set_processed(sourceProcessed);
     sourceCurrent.set_harmonics(Inputs::calculate_harmonics_data(sourceWaveform, frequency));
     OperatingPointExcitation sourceExcitation;
+    sourceExcitation.set_frequency(frequency);
     sourceExcitation.set_current(sourceCurrent);
 
     // Create destination excitation with turns ratio
@@ -602,6 +605,7 @@ OperatingPoint LeakageInductance::create_leakage_operating_point(Magnetic& magne
     destinationCurrent.set_processed(destinationProcessed);
     destinationCurrent.set_harmonics(Inputs::calculate_harmonics_data(destinationWaveform, frequency));
     OperatingPointExcitation destinationExcitation;
+    destinationExcitation.set_frequency(frequency);
     destinationExcitation.set_current(destinationCurrent);
 
     // Create rest excitation with negligible current
@@ -614,6 +618,7 @@ OperatingPoint LeakageInductance::create_leakage_operating_point(Magnetic& magne
     restCurrent.set_processed(restProcessed);
     restCurrent.set_harmonics(Inputs::calculate_harmonics_data(restWaveform, frequency));
     OperatingPointExcitation restExcitation;
+    restExcitation.set_frequency(frequency);
     restExcitation.set_current(restCurrent);
 
     // Build excitation vector for all windings
