@@ -3711,6 +3711,58 @@ TEST_CASE("Test_Winding_Losses_Abt1463_Flyback_Per_Harmonic_Vs_OMFEM", "[physica
     settings.reset();
 }
 
+// ABT #1759 re-score driver (hidden): the two default-fringing pins (Abt1463 flyback per harmonic, Wang_Stacked R_ac/R_dc)
+// under each fringing model as the DEFAULT (set in Settings, field model left automatic, exactly what a changed
+// Defaults value does in WindingLosses). Prints one line per model.
+TEST_CASE("Debug_Abt1759_Default_Fringing_Rescore", "[debug][abt1759-rescore][.]") {
+    for (auto fringing : {MagneticFieldStrengthFringingEffectModels::ROSHEN, MagneticFieldStrengthFringingEffectModels::MMF_BOUNDARY}) {
+        const std::string name(magic_enum::enum_name(fringing));
+        settings.reset();
+        clear_databases();
+        settings.set_magnetic_field_strength_fringing_effect_model(fringing);
+        try {
+            auto ratios = abt1463_ac_to_dc_per_harmonic("Test_Winding_Losses_Abt1463_Flyback.json");
+            std::cout << "RESCORE abt1463 " << name;
+            for (size_t harmonic : {1, 2, 3, 4, 5, 6, 7, 8, 10, 12, 15, 20}) {
+                std::cout << " h" << harmonic << "=" << ratios[0][harmonic] << "/" << ratios[1][harmonic];
+            }
+            std::cout << std::endl;
+        }
+        catch (const std::exception& e) {
+            std::cout << "RESCORE abt1463 " << name << " ERROR " << e.what() << std::endl;
+        }
+        settings.reset();
+        clear_databases();
+        try {
+            auto path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "Test_Winding_Losses_Sixteen_Turns_Planar_Sinusoidal_Fringing_Close.json");
+            auto mas = OpenMagneticsTesting::mas_loader(path);
+            auto magnetic = mas.get_magnetic();
+            OperatingPoint operatingPoint = mas.get_inputs().get_operating_point(0);
+            OpenMagnetics::Inputs::scale_time_to_frequency(operatingPoint, 100000, true);
+            MagnetizingInductance magnetizingInductanceModel("ZHANG");
+            double magnetizingInductance = OpenMagnetics::resolve_dimensional_values(
+                magnetizingInductanceModel.calculate_inductance_from_number_turns_and_gapping(
+                    magnetic.get_core(), magnetic.get_coil(), &operatingPoint).get_magnetizing_inductance());
+            operatingPoint = OpenMagnetics::Inputs::process_operating_point(operatingPoint, magnetizingInductance);
+            settings.set_magnetic_field_mirroring_dimension(1);
+            settings.set_magnetic_field_include_fringing(true);
+            settings.set_magnetic_field_strength_fringing_effect_model(fringing);
+            WindingLossesModels models;
+            models.proximityEffectModel = WindingProximityEffectLossesModels::WANG_STACKED;
+            auto output = WindingLosses(models).calculate_losses(magnetic, operatingPoint, 25);
+            double ohmic = 0;
+            for (const auto& turn : output.get_winding_losses_per_turn().value()) {
+                ohmic += turn.get_ohmic_losses()->get_losses();
+            }
+            std::cout << "RESCORE wang_stacked " << name << " racOverRdc=" << output.get_winding_losses() / ohmic << std::endl;
+        }
+        catch (const std::exception& e) {
+            std::cout << "RESCORE wang_stacked " << name << " ERROR " << e.what() << std::endl;
+        }
+        settings.reset();
+    }
+}
+
 TEST_CASE("Test_Winding_Losses_Abt1463_Gapped_Inductor_Harmonic_Distribution_Vs_OMFEM", "[physical-model][winding-losses][fringing][abt-1463]") {
     // What this ticket fixes is the gap field's distribution over harmonics, so that is what is
     // checked: R_ac/R_dc at h = 2, 3 relative to h = 1. Before the fix h = 2, 3 got no gap field
