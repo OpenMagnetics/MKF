@@ -3,6 +3,9 @@
 #include "processors/CircuitSimulatorInterface.h"
 #include <magic_enum.hpp>
 #include <atomic>
+#include <cstdio>
+#include <map>
+#include <type_traits>
 #include <cstdlib>
 #include <filesystem>
 #include <source_location>
@@ -63,6 +66,173 @@ namespace OpenMagnetics {
         _circuitSimulatorCoreLossTopology = 1;  // Default to ROSANO
     }
 
+
+namespace {
+    void add_to_fingerprint(std::string& text, bool value) { text += value ? "1|" : "0|"; }
+    void add_to_fingerprint(std::string& text, int value) { text += std::to_string(value) + "|"; }
+    void add_to_fingerprint(std::string& text, size_t value) { text += std::to_string(value) + "|"; }
+    void add_to_fingerprint(std::string& text, double value) {
+        char buffer[40];
+        std::snprintf(buffer, sizeof(buffer), "%.17g|", value);
+        text += buffer;
+    }
+    void add_to_fingerprint(std::string& text, const std::string& value) { text += std::to_string(value.size()) + ":" + value + "|"; }
+    void add_to_fingerprint(std::string& text, const std::map<std::string, double>& value) {
+        text += std::to_string(value.size()) + "{";
+        for (const auto& [key, number] : value) {
+            add_to_fingerprint(text, key);
+            add_to_fingerprint(text, number);
+        }
+    }
+    template <typename T> requires std::is_enum_v<T>
+    void add_to_fingerprint(std::string& text, T value) { text += std::to_string(static_cast<long long>(value)) + "|"; }
+    template <typename T>
+    void add_to_fingerprint(std::string& text, const std::vector<T>& value) {
+        text += std::to_string(value.size()) + "[";
+        for (const auto& element : value) {
+            add_to_fingerprint(text, element);
+        }
+    }
+    template <typename T>
+    void add_to_fingerprint(std::string& text, const std::optional<T>& value) {
+        if (!value) {
+            text += "-|";
+            return;
+        }
+        text += "+";
+        add_to_fingerprint(text, value.value());
+    }
+}
+
+    std::string Settings::fingerprint() const {
+        std::string text;
+        add_to_fingerprint(text, _useToroidalCores);
+        add_to_fingerprint(text, _useConcentricCores);
+        add_to_fingerprint(text, _inputsTrimHarmonics);
+        add_to_fingerprint(text, _inputsNumberPointsSampledWaveforms);
+        add_to_fingerprint(text, _inputsMaximumNumberPointsSampledImportedWaveforms);
+        add_to_fingerprint(text, _magnetizingInductanceIncludeAirInductance);
+        add_to_fingerprint(text, _coilAllowMarginTape);
+        add_to_fingerprint(text, _coilAllowInsulatedWire);
+        add_to_fingerprint(text, _coilFillSectionsWithMarginTape);
+        add_to_fingerprint(text, _coilWindEvenIfNotFit);
+        add_to_fingerprint(text, _coilDelimitAndCompact);
+        add_to_fingerprint(text, _coilTryRewind);
+        add_to_fingerprint(text, _coilIncludeAdditionalCoordinates);
+        add_to_fingerprint(text, _coilEqualizeMargins);
+        add_to_fingerprint(text, _coilOnlyOneTurnPerLayerInContiguousRectangular);
+        add_to_fingerprint(text, _coilUseRealWindingGeometry);
+        add_to_fingerprint(text, _coilAllowCoatingSquish);
+        add_to_fingerprint(text, _coilAllowHorizontalOverflow);
+        add_to_fingerprint(text, _coilQuickBobbinGeneratePins);
+        add_to_fingerprint(text, _coilConnectLeadsToPins);
+        add_to_fingerprint(text, _coilQuickBobbinPinsOrientation);
+        add_to_fingerprint(text, _toroidMounting);
+        add_to_fingerprint(text, _coilMaximumLayersPlanar);
+        add_to_fingerprint(text, _useOnlyCoresInStock);
+        add_to_fingerprint(text, _usePowderCores);
+        add_to_fingerprint(text, _corePerColumnWindingWindows);
+        add_to_fingerprint(text, _coilAdviserAllowLateralPlacement);
+        add_to_fingerprint(text, _coilAdviserSizeMagneticShunts);
+        add_to_fingerprint(text, _coilAdviserMagneticShuntMaterial);
+        add_to_fingerprint(text, _coilAdviserMagneticShuntGapToInnerColumn);
+        add_to_fingerprint(text, _coilAdviserMagneticShuntGapToOuterColumn);
+        add_to_fingerprint(text, _wireAdviserPenalizeOddLayerCount);
+        add_to_fingerprint(text, _effectiveParameterStandard);
+        add_to_fingerprint(text, _nanocrystallineStackingFactor);
+        add_to_fingerprint(text, _painterNumberPointsX);
+        add_to_fingerprint(text, _painterNumberPointsY);
+        add_to_fingerprint(text, _painterMirroringDimension);
+        add_to_fingerprint(text, _painterMode);
+        add_to_fingerprint(text, _painterLogarithmicScale);
+        add_to_fingerprint(text, _painterIncludeFringing);
+        add_to_fingerprint(text, _painterDrawSpacer);
+        add_to_fingerprint(text, _painterSimpleLitz);
+        add_to_fingerprint(text, _painterAdvancedLitz);
+        add_to_fingerprint(text, _painterMaximumValueColorbar);
+        add_to_fingerprint(text, _painterMinimumValueColorbar);
+        add_to_fingerprint(text, _painterColorFerrite);
+        add_to_fingerprint(text, _painterColorBobbin);
+        add_to_fingerprint(text, _painterColorCopper);
+        add_to_fingerprint(text, _painterColorInsulation);
+        add_to_fingerprint(text, _painterColorFr4);
+        add_to_fingerprint(text, _painterColorEnamel);
+        add_to_fingerprint(text, _painterColorFEP);
+        add_to_fingerprint(text, _painterColorETFE);
+        add_to_fingerprint(text, _painterColorTCA);
+        add_to_fingerprint(text, _painterColorPFA);
+        add_to_fingerprint(text, _painterColorSilk);
+        add_to_fingerprint(text, _painterColorMargin);
+        add_to_fingerprint(text, _painterColorSpacer);
+        add_to_fingerprint(text, _painterColorShunt);
+        add_to_fingerprint(text, _painterColorLines);
+        add_to_fingerprint(text, _painterColorText);
+        add_to_fingerprint(text, _painterColorCurrentDensity);
+        add_to_fingerprint(text, _painterCciCoordinatesPath);
+        add_to_fingerprint(text, _coilLeadBendRadiusFactor);
+        add_to_fingerprint(text, _coilLeadMinimumBendRadius);
+        add_to_fingerprint(text, _painterColorMagneticFieldMinimum);
+        add_to_fingerprint(text, _painterColorMagneticFieldMaximum);
+        add_to_fingerprint(text, _painterMagneticFieldStrengthModel);
+        add_to_fingerprint(text, _magneticFieldNumberPointsX);
+        add_to_fingerprint(text, _magneticFieldNumberPointsY);
+        add_to_fingerprint(text, _magneticFieldMirroringDimension);
+        add_to_fingerprint(text, _magneticFieldMirroringCompleteCells);
+        add_to_fingerprint(text, _magneticFieldIncludeFringing);
+        add_to_fingerprint(text, _coilMesherInsideTurnsFactor);
+        add_to_fingerprint(text, _leakageInductanceGridAutoScaling);
+        add_to_fingerprint(text, _leakageInductanceGridPrecisionLevelPlanar);
+        add_to_fingerprint(text, _leakageInductanceGridPrecisionLevelWound);
+        add_to_fingerprint(text, _coilAdviserMaximumNumberWires);
+        add_to_fingerprint(text, _coreAdviserIncludeStacks);
+        add_to_fingerprint(text, _coreAdviserIncludeDistributedGaps);
+        add_to_fingerprint(text, _coreAdviserIncludeMargin);
+        add_to_fingerprint(text, _coreAdviserEnableIntermediatePruning);
+        add_to_fingerprint(text, _coreAdviserMaximumMagneticsAfterFiltering);
+        add_to_fingerprint(text, _coreAdviserEnableTemperatureFilter);
+        add_to_fingerprint(text, _coreAdviserMaximumTemperature);
+        add_to_fingerprint(text, _coreAdviserSaturationMargin);
+        add_to_fingerprint(text, _coreAdviserSaturationDeratingTemperature);
+        add_to_fingerprint(text, _thermalNetworkStrictGeometry);
+        add_to_fingerprint(text, _allowMaterialDataExtrapolation);
+        add_to_fingerprint(text, _gappingStrategy);
+        add_to_fingerprint(text, _wireAdviserIncludePlanar);
+        add_to_fingerprint(text, _wireAdviserIncludeFoil);
+        add_to_fingerprint(text, _wireAdviserIncludeRectangular);
+        add_to_fingerprint(text, _wireAdviserIncludeLitz);
+        add_to_fingerprint(text, _wireAdviserIncludeRound);
+        add_to_fingerprint(text, _wireAdviserAllowRectangularInToroidalCores);
+        add_to_fingerprint(text, _preferredWireStandard);
+        add_to_fingerprint(text, _harmonicAmplitudeThresholdQuickMode);
+        add_to_fingerprint(text, _harmonicAmplitudeThreshold);
+        add_to_fingerprint(text, _magneticFieldTurnSumsCacheBytes);
+        add_to_fingerprint(text, _coreLossesModelNames);
+        add_to_fingerprint(text, _coreLossesRequestedModel);
+        add_to_fingerprint(text, _magneticFieldStrengthModel);
+        add_to_fingerprint(text, _magneticFieldStrengthFringingEffectModel);
+        add_to_fingerprint(text, _leakageInductanceMagneticFieldStrengthModel);
+        add_to_fingerprint(text, _reluctanceModel);
+        add_to_fingerprint(text, _coreTemperatureModel);
+        add_to_fingerprint(text, _coreThermalResistanceModel);
+        add_to_fingerprint(text, _windingSkinEffectLossesModel);
+        add_to_fingerprint(text, _windingProximityEffectLossesModel);
+        add_to_fingerprint(text, _strayCapacitanceModel);
+        add_to_fingerprint(text, _electricFieldOutputUnit);
+        add_to_fingerprint(text, _coilEnableUserWindingLossesModels);
+        add_to_fingerprint(text, _circuitSimulatorCurveFittingMode);
+        add_to_fingerprint(text, _circuitSimulatorFracpoleOptions);
+        add_to_fingerprint(text, _circuitSimulatorIncludeSaturation);
+        add_to_fingerprint(text, _circuitSimulatorIncludeMutualResistance);
+        add_to_fingerprint(text, _circuitSimulatorIncludeStrayCapacitance);
+        add_to_fingerprint(text, _circuitSimulatorIncludeSteinmetzCoreLoss);
+        add_to_fingerprint(text, _circuitSimulatorCoreLossTopology);
+        add_to_fingerprint(text, _verbose);
+        add_to_fingerprint(text, _preferredCoreMaterialFerriteManufacturer);
+        add_to_fingerprint(text, _preferredCoreMaterialPowderManufacturer);
+        add_to_fingerprint(text, _coreCrossReferencerAllowDifferentCoreMaterialType);
+        add_to_fingerprint(text, _debug);
+        return text;
+    }
 
     void Settings::reset() {
         // Capture the core-catalog filter settings before restoring defaults: the

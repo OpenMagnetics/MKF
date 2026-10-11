@@ -340,6 +340,10 @@ class Settings
         static Settings& GetInstance();
 
         void reset();
+        // Every setting's value, written out (ABT #838): two Settings with the same fingerprint
+        // configure every computation alike. A setting added to this class must be added to
+        // Settings::fingerprint (Settings.cpp) as well.
+        std::string fingerprint() const;
 
         bool get_verbose() const;
         void set_verbose(bool value);

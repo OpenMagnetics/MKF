@@ -140,6 +140,7 @@ void sort_magnetics_by_scoring(std::vector<std::pair<Magnetic, double>>* magneti
 
 
 std::vector<std::pair<Mas, double>> CoreAdviser::get_advised_core(Inputs inputs, size_t maximumNumberResults) {
+    LossSolveMemoScope lossSolveMemoScope;  // exact repeats of a loss solve are answered from this run's memo
     std::map<CoreAdviserFilters, double> weights;
     magic_enum::enum_for_each<CoreAdviserFilters>([&] (auto val) {
         CoreAdviserFilters filter = val;
@@ -154,6 +155,7 @@ std::vector<std::pair<Mas, double>> CoreAdviser::get_advised_core(
         size_t maximumNumberResults,
         const LibraryContext* ctx,
         const AdviserConstraints& constraints) {
+    LossSolveMemoScope lossSolveMemoScope;  // exact repeats of a loss solve are answered from this run's memo
     // Apply per-call library override (RAII swap on the global *Database maps).
     auto scope = ctx ? ctx->applyScoped() : LibraryContext::Scope{};
 
@@ -204,6 +206,7 @@ std::vector<std::pair<Mas, double>> CoreAdviser::get_advised_core(
 }
 
 std::vector<std::pair<Mas, double>> CoreAdviser::get_advised_core(Inputs inputs, std::map<CoreAdviserFilters, double> weights, size_t maximumNumberResults){
+    LossSolveMemoScope lossSolveMemoScope;  // exact repeats of a loss solve are answered from this run's memo
     if (get_mode() == CoreAdviserModes::AVAILABLE_CORES) {
         if (coreDatabase.empty() && !LibraryContext::Scope::anyActive()) {
             load_cores();
@@ -273,6 +276,7 @@ std::vector<std::pair<Mas, double>> CoreAdviser::get_advised_core(Inputs inputs,
 }
 
 std::vector<std::pair<Mas, double>> CoreAdviser::get_advised_core(Inputs inputs, std::vector<Core>* cores, size_t maximumNumberResults) {
+    LossSolveMemoScope lossSolveMemoScope;  // exact repeats of a loss solve are answered from this run's memo
     std::map<CoreAdviserFilters, double> weights;
     magic_enum::enum_for_each<CoreAdviserFilters>([&] (auto val) {
         CoreAdviserFilters filter = val;
@@ -282,6 +286,7 @@ std::vector<std::pair<Mas, double>> CoreAdviser::get_advised_core(Inputs inputs,
 }
 
 std::vector<std::pair<Mas, double>> CoreAdviser::get_advised_core(Inputs inputs, std::vector<Core>* cores, size_t maximumNumberResults, size_t maximumNumberCores) {
+    LossSolveMemoScope lossSolveMemoScope;  // exact repeats of a loss solve are answered from this run's memo
     std::map<CoreAdviserFilters, double> weights;
     magic_enum::enum_for_each<CoreAdviserFilters>([&] (auto val) {
         CoreAdviserFilters filter = val;
@@ -329,6 +334,7 @@ static void throw_if_inputs_are_not_processed(Inputs& inputs) {
 }
 
 std::vector<std::pair<Mas, double>> CoreAdviser::get_advised_core(Inputs inputs, std::map<CoreAdviserFilters, double> weights, std::vector<Core>* cores, size_t maximumNumberResults, size_t maximumNumberCores) {
+    LossSolveMemoScope lossSolveMemoScope;  // exact repeats of a loss solve are answered from this run's memo
 
     throw_if_inputs_are_not_processed(inputs);
 
@@ -364,6 +370,7 @@ std::vector<std::pair<Mas, double>> CoreAdviser::get_advised_core(Inputs inputs,
 }
 
 std::vector<std::pair<Mas, double>> CoreAdviser::get_advised_core(Inputs inputs, std::map<CoreAdviserFilters, double> weights, std::vector<Core>* cores, size_t maximumNumberResults){
+    LossSolveMemoScope lossSolveMemoScope;  // exact repeats of a loss solve are answered from this run's memo
     // ABT #1718: the loss filters integrate the primary voltage of every candidate; an unbalanced
     // voltage is rejected once, here, instead of culling every core.
     Inputs::check_adviser_inputs_volt_second_balance(inputs);
@@ -443,6 +450,7 @@ std::vector<std::pair<Mas, double>> CoreAdviser::get_advised_core(Inputs inputs,
 }
 
 std::vector<std::pair<Mas, double>> CoreAdviser::get_advised_core(Inputs inputs, std::vector<CoreShape>* shapes, size_t maximumNumberResults) {
+    LossSolveMemoScope lossSolveMemoScope;  // exact repeats of a loss solve are answered from this run's memo
     throw_if_inputs_are_not_processed(inputs);
     Inputs::check_adviser_inputs_volt_second_balance(inputs);  // ABT #1718
     auto globalIncludeStacks = settings.get_core_adviser_include_stacks();

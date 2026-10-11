@@ -656,6 +656,14 @@ class CoreLosses {
         settings.set_core_losses_requested_model(model);
         _requestedCoreLossesModel = std::pair<CoreLossesModels, std::shared_ptr<CoreLossesModel>>{model, CoreLossesModel::factory(model)};
     }
+    // The preference cascade, in order.
+    std::vector<CoreLossesModels> get_core_losses_model_names() const {
+        std::vector<CoreLossesModels> names;
+        for (const auto& [name, model] : _coreLossesModels) {
+            names.push_back(name);
+        }
+        return names;
+    }
     std::optional<CoreLossesModels> get_core_losses_requested_model_name() const {
         if (!_requestedCoreLossesModel) {
             return std::nullopt;

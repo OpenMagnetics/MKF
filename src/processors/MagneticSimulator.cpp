@@ -10,6 +10,8 @@
 #include "support/Exceptions.h"
 
 #include <algorithm>
+#include <memory>
+#include <unordered_map>
 #include <cmath>
 #include <complex>
 #include <limits>
@@ -147,6 +149,55 @@ TemperatureOutput MagneticSimulator::calculate_temperature(OperatingPoint& opera
     return temperatureOutput;
 }
 
+namespace {
+    struct LossSolveMemo {
+        std::unordered_map<std::string, SolvedLosses> entries;
+        size_t hits = 0;
+        size_t misses = 0;
+    };
+    thread_local std::unique_ptr<LossSolveMemo> activeLossSolveMemo;
+}
+
+LossSolveMemoScope::LossSolveMemoScope() {
+    if (!activeLossSolveMemo) {
+        activeLossSolveMemo = std::make_unique<LossSolveMemo>();
+        _owner = true;
+    }
+}
+
+LossSolveMemoScope::~LossSolveMemoScope() {
+    if (_owner) {
+        activeLossSolveMemo.reset();
+    }
+}
+
+LossSolveMemoScope::Statistics LossSolveMemoScope::get_statistics() {
+    if (!activeLossSolveMemo) {
+        return {};
+    }
+    return {activeLossSolveMemo->hits, activeLossSolveMemo->misses, activeLossSolveMemo->entries.size()};
+}
+
+std::string MagneticSimulator::loss_solve_key(const OperatingPoint& operatingPoint, const Magnetic& magnetic,
+                                              WindingLossesScope windingLossesScope) const {
+    json magneticJson;
+    to_json(magneticJson, magnetic);
+    json operatingPointJson;
+    to_json(operatingPointJson, operatingPoint);
+    json modelsJson;
+    modelsJson["windingLossesScope"] = static_cast<int>(windingLossesScope);
+    modelsJson["magnetizingInductance"] = _magnetizingInductanceModel.get_models();
+    std::vector<int> coreLossesModels;
+    for (auto model : _coreLossesModel.get_core_losses_model_names()) {
+        coreLossesModels.push_back(static_cast<int>(model));
+    }
+    modelsJson["coreLosses"] = coreLossesModels;
+    auto requestedModel = _coreLossesModel.get_core_losses_requested_model_name();
+    modelsJson["coreLossesRequested"] = requestedModel ? static_cast<int>(requestedModel.value()) : -1;
+    return magneticJson.dump() + "\n" + operatingPointJson.dump() + "\n" + modelsJson.dump() + "\n" +
+           Settings::GetInstance().fingerprint();
+}
+
 CoreLossesOutput MagneticSimulator::calculate_core_losses(OperatingPoint& operatingPoint, Magnetic magnetic,
                                                           std::optional<WindingLossesOutput>* windingLossesOutput,
                                                           std::optional<TemperatureOutput>* temperatureOutput,
@@ -154,16 +205,49 @@ CoreLossesOutput MagneticSimulator::calculate_core_losses(OperatingPoint& operat
     if (!operatingPoint.get_excitations_per_winding()[0].get_current()) {
         throw InvalidInputException(ErrorCode::MISSING_DATA, "Missing current in operating point");
     }
+    if (windingLossesOutput != nullptr && !magnetic.get_coil().get_turns_description()) {
+        throw CoilNotProcessedException("Winding losses asked of '" + magnetic.get_reference() +
+                                        "', whose coil has no turns: wind it first");
+    }
+
+    SolvedLosses solved;
+    if (activeLossSolveMemo) {
+        std::string key = loss_solve_key(operatingPoint, magnetic, windingLossesScope);
+        auto found = activeLossSolveMemo->entries.find(key);
+        if (found != activeLossSolveMemo->entries.end()) {
+            ++activeLossSolveMemo->hits;
+            solved = found->second;
+        }
+        else {
+            ++activeLossSolveMemo->misses;
+            solved = solve_losses_at_operating_temperature(operatingPoint, magnetic, windingLossesScope);
+            activeLossSolveMemo->entries.emplace(std::move(key), solved);
+        }
+    }
+    else {
+        solved = solve_losses_at_operating_temperature(operatingPoint, magnetic, windingLossesScope);
+    }
+
+    // Publish exactly the set that was solved.
+    operatingPoint.get_mutable_excitations_per_winding()[0] = solved.excitation;
+    if (windingLossesOutput != nullptr) {
+        *windingLossesOutput = solved.windingLosses;
+    }
+    if (temperatureOutput != nullptr) {
+        *temperatureOutput = solved.temperature;
+    }
+    return solved.coreLosses;
+}
+
+SolvedLosses MagneticSimulator::solve_losses_at_operating_temperature(const OperatingPoint& operatingPoint,
+                                                                                         Magnetic& magnetic,
+                                                                                         WindingLossesScope windingLossesScope) {
     // ABT #838: a wound coil heats the core, and the core's temperature sets the winding's: both
     // losses are evaluated at the temperatures their COMBINED dissipation produces, on the full
     // network (turn nodes carry the winding power). Without turns there are no winding losses to
     // compute and no turn nodes to put them in (the core advisers' sentinel-coil candidates): the
     // core is then solved on the core-only network with its own losses.
     const bool withWinding = magnetic.get_coil().get_turns_description().has_value();
-    if (windingLossesOutput != nullptr && !withWinding) {
-        throw CoilNotProcessedException("Winding losses asked of '" + magnetic.get_reference() +
-                                        "', whose coil has no turns: wind it first");
-    }
 
     const double ambientTemperature = operatingPoint.get_conditions().get_ambient_temperature();
     double coreTemperature = ambientTemperature;
@@ -268,25 +352,21 @@ CoreLossesOutput MagneticSimulator::calculate_core_losses(OperatingPoint& operat
         if (std::fabs(nextCoreTemperature - coreTemperature) < kOperatingTemperatureTolerance &&
             std::fabs(nextWindingTemperature - windingTemperature) < kOperatingTemperatureTolerance) {
             // Converged: the losses were evaluated at temperatures within the tolerance of the
-            // ones these very losses produce. Publish exactly the set that was solved.
-            operatingPoint.get_mutable_excitations_per_winding()[0] = excitation;
-            if (windingLossesOutput != nullptr) {
-                *windingLossesOutput = windingLosses;
+            // ones these very losses produce.
+            SolvedLosses solved;
+            solved.coreLosses = coreLossesOutput;
+            solved.excitation = excitation;
+            solved.windingLosses = windingLosses;
+            solved.temperature.set_initial_temperature(config.ambientTemperature);
+            solved.temperature.set_maximum_temperature(thermalResult.maximumTemperature);
+            double totalLosses = config.coreLosses + config.windingLosses;
+            if (totalLosses > 0) {
+                solved.temperature.set_bulk_thermal_resistance(
+                    (thermalResult.maximumTemperature - config.ambientTemperature) / totalLosses);
             }
-            if (temperatureOutput != nullptr) {
-                TemperatureOutput temperature;
-                temperature.set_initial_temperature(config.ambientTemperature);
-                temperature.set_maximum_temperature(thermalResult.maximumTemperature);
-                double totalLosses = config.coreLosses + config.windingLosses;
-                if (totalLosses > 0) {
-                    temperature.set_bulk_thermal_resistance(
-                        (thermalResult.maximumTemperature - config.ambientTemperature) / totalLosses);
-                }
-                temperature.set_method_used("ThermalNetwork");
-                temperature.set_origin(ResultOrigin::SIMULATION);
-                *temperatureOutput = temperature;
-            }
-            return coreLossesOutput;
+            solved.temperature.set_method_used("ThermalNetwork");
+            solved.temperature.set_origin(ResultOrigin::SIMULATION);
+            return solved;
         }
         // Next iterate. Plain substitution (relaxation 1) is the fastest when the losses' feedback
         // on temperature is weak, but a ferrite whose losses FALL steeply with temperature makes

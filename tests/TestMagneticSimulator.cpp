@@ -1588,6 +1588,90 @@ namespace {
         }
     }
 
+    TEST_CASE("Inside a loss-solve memo scope an exact repeat returns the stored solve", "[processor][magnetic-simulator][smoke-test]") {
+        // ABT #838: an adviser run solves the same candidate at the same operating point more than
+        // once. Inside a LossSolveMemoScope the repeat returns the stored solve, which must be exactly
+        // what a fresh solve returns; any difference in the inputs, the models or the Settings is a
+        // different solve.
+        auto path = get_examples_dir() / "01_simple_inductor_etd34_n87.json";
+        REQUIRE(std::filesystem::exists(path));
+        auto mas = OpenMagneticsTesting::mas_loader(path.string());
+        auto magnetic = OpenMagnetics::magnetic_autocomplete(mas.get_magnetic());
+        auto inputs = OpenMagnetics::inputs_autocomplete(mas.get_inputs(), magnetic);
+        if (!magnetic.get_coil().get_turns_description()) {
+            magnetic.get_mutable_coil().wind();
+        }
+        const auto operatingPoint = inputs.get_operating_points()[0];
+        const double ambientTemperature = operatingPoint.get_conditions().get_ambient_temperature();
+        struct Solve {
+            json coreLosses, windingLosses, temperature, excitation;
+        };
+        auto solve = [&magnetic](OperatingPoint thisOperatingPoint) {
+            MagneticSimulator simulator;  // a fresh simulator each time, as different filters hold
+            std::optional<WindingLossesOutput> windingLosses;
+            std::optional<TemperatureOutput> temperature;
+            auto coreLosses = simulator.calculate_core_losses(thisOperatingPoint, magnetic, &windingLosses, &temperature);
+            REQUIRE(windingLosses);
+            REQUIRE(temperature);
+            Solve result;
+            to_json(result.coreLosses, coreLosses);
+            to_json(result.windingLosses, windingLosses.value());
+            to_json(result.temperature, temperature.value());
+            to_json(result.excitation, thisOperatingPoint.get_excitations_per_winding()[0]);
+            return result;
+        };
+        auto same = [](const Solve& a, const Solve& b) {
+            return a.coreLosses.dump() == b.coreLosses.dump() && a.windingLosses.dump() == b.windingLosses.dump() &&
+                   a.temperature.dump() == b.temperature.dump() && a.excitation.dump() == b.excitation.dump();
+        };
+
+        REQUIRE(LossSolveMemoScope::get_statistics().entries == 0);
+        auto fresh = solve(operatingPoint);
+        {
+            LossSolveMemoScope scope;
+            auto first = solve(operatingPoint);
+            auto repeat = solve(operatingPoint);
+            auto statistics = LossSolveMemoScope::get_statistics();
+            CHECK(statistics.misses == 1);
+            CHECK(statistics.hits == 1);
+            CHECK(same(first, fresh));
+            CHECK(same(repeat, fresh));
+
+            // A different operating point is a different solve.
+            auto warmer = operatingPoint;
+            warmer.get_mutable_conditions().set_ambient_temperature(ambientTemperature + 1);
+            auto warmerSolve = solve(warmer);
+            CHECK(!same(warmerSolve, fresh));
+            statistics = LossSolveMemoScope::get_statistics();
+            CHECK(statistics.misses == 2);
+            CHECK(statistics.hits == 1);
+
+            // So is a different setting.
+            {
+                auto& settings = Settings::GetInstance();
+                SettingsGuard<bool> fringingGuard(settings, &Settings::get_magnetic_field_include_fringing,
+                                                  &Settings::set_magnetic_field_include_fringing,
+                                                  !settings.get_magnetic_field_include_fringing());
+                solve(operatingPoint);
+                statistics = LossSolveMemoScope::get_statistics();
+                CHECK(statistics.misses == 3);
+                CHECK(statistics.hits == 1);
+            }
+
+            // A nested scope uses the outer memo.
+            {
+                LossSolveMemoScope inner;
+                auto nestedRepeat = solve(operatingPoint);
+                CHECK(same(nestedRepeat, fresh));
+                statistics = LossSolveMemoScope::get_statistics();
+                CHECK(statistics.hits == 2);
+                CHECK(statistics.entries == 3);
+            }
+        }
+        // The memo ends with the outermost scope.
+        CHECK(LossSolveMemoScope::get_statistics().entries == 0);
+    }
+
     // =========================================================================
     // Datasheet builder: build_datasheet() turns a simulated MAS into a
     // manufacturer-style datasheetInfo block populated from the Outputs and the

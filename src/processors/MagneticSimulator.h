@@ -22,12 +22,50 @@ enum class WindingLossesScope {
     OHMIC                       // DC only
 };
 
+// ABT #838: within one adviser run the same candidate is often solved again at the same
+// operating point (by a filter and again by a later stage or flow). While a LossSolveMemoScope is
+// alive on a thread, MagneticSimulator::calculate_core_losses keeps each converged solve of that
+// thread under its exact inputs -- the serialized magnetic and operating point, the winding-loss
+// scope, the simulator's models and every Settings value -- and answers an exact repeat with the
+// stored result, which is what the solve returns. Nothing is matched approximately; a solve that
+// throws is not stored. Scopes nest: an inner scope uses the outer scope's memo. The advisers open
+// one per run; the memo is freed when the outermost scope ends.
+// One converged loss <-> temperature solve: what calculate_core_losses returns and writes.
+struct SolvedLosses {
+    CoreLossesOutput coreLosses;
+    OperatingPointExcitation excitation;
+    std::optional<WindingLossesOutput> windingLosses;
+    TemperatureOutput temperature;
+};
+
+class LossSolveMemoScope {
+    public:
+        LossSolveMemoScope();
+        ~LossSolveMemoScope();
+        LossSolveMemoScope(const LossSolveMemoScope&) = delete;
+        LossSolveMemoScope& operator=(const LossSolveMemoScope&) = delete;
+        struct Statistics {
+            size_t hits = 0;
+            size_t misses = 0;
+            size_t entries = 0;
+        };
+        // The memo active on this thread (all zero when no scope is open).
+        static Statistics get_statistics();
+    private:
+        bool _owner = false;
+};
+
 class MagneticSimulator {
     private:
         ReluctanceModels _reluctanceModelName;
 
         MagnetizingInductance _magnetizingInductanceModel;
         CoreLosses _coreLossesModel;
+
+        SolvedLosses solve_losses_at_operating_temperature(const OperatingPoint& operatingPoint, Magnetic& magnetic,
+                                                           WindingLossesScope windingLossesScope);
+        std::string loss_solve_key(const OperatingPoint& operatingPoint, const Magnetic& magnetic,
+                                   WindingLossesScope windingLossesScope) const;
 
     public:
 

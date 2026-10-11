@@ -47,6 +47,7 @@ class MagnetizingInductance {
     MagnetizingInductance(std::string model) {
         _models["gapReluctance"] = model;
     }
+    std::map<std::string, std::string> get_models() const { return _models; }
     MagnetizingInductanceOutput calculate_inductance_from_number_turns_and_gapping(Core core,
                                                                                    Coil coil,
                                                                                    OperatingPoint* operatingPoint = nullptr);
