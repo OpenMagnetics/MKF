@@ -1794,7 +1794,7 @@ ProcessedWaveform Inputs::calculate_basic_processed_data(Waveform waveform) {
 }
 
 ProcessedWaveform Inputs::calculate_processed_data(Waveform waveform,
-                                            std::optional<double> frequency,
+                                            double frequency,
                                             bool includeAdvancedData,
                                             std::optional<ProcessedWaveform> processed) {
     return WaveformProcessor::calculate_processed_data(waveform, frequency, includeAdvancedData, processed,
@@ -4097,7 +4097,7 @@ SignalDescriptor Inputs::get_current_with_effective_maximum(size_t windingIndex)
         if (!get_operating_points()[operatingPointIndex].get_excitations_per_winding()[windingIndex].get_current()->get_processed()->get_effective_frequency()) {
             auto current = get_operating_points()[operatingPointIndex].get_excitations_per_winding()[windingIndex].get_current().value();
             if (current.get_waveform()) {
-                auto processed = calculate_processed_data(current.get_waveform().value());
+                auto processed = calculate_processed_data(current.get_waveform().value(), get_operating_points()[operatingPointIndex].get_excitations_per_winding()[windingIndex].get_frequency());
                 current.set_processed(processed);
                 get_mutable_operating_points()[operatingPointIndex].get_mutable_excitations_per_winding()[windingIndex].set_current(current);
             }

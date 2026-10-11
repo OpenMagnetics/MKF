@@ -1280,7 +1280,7 @@ namespace OpenMagnetics {
                 if (!mas.get_inputs().get_operating_points()[operatingPointIndex].get_excitations_per_winding()[windingIndex].get_current()->get_processed()->get_effective_frequency()) {
                     auto current = mas.get_inputs().get_operating_points()[operatingPointIndex].get_excitations_per_winding()[windingIndex].get_current().value();
                     if (current.get_waveform()) {
-                        auto processed = Inputs::calculate_processed_data(current.get_waveform().value());
+                        auto processed = Inputs::calculate_processed_data(current.get_waveform().value(), mas.get_inputs().get_operating_points()[operatingPointIndex].get_excitations_per_winding()[windingIndex].get_frequency());
                         current.set_processed(processed);
                         mas.get_mutable_inputs().get_mutable_operating_points()[operatingPointIndex].get_mutable_excitations_per_winding()[windingIndex].set_current(current);
                     }
@@ -1811,7 +1811,7 @@ namespace OpenMagnetics {
                 if (!mas.get_inputs().get_operating_points()[operatingPointIndex].get_excitations_per_winding()[windingIndex].get_current()->get_processed()->get_effective_frequency()) {
                     auto current = mas.get_inputs().get_operating_points()[operatingPointIndex].get_excitations_per_winding()[windingIndex].get_current().value();
                     if (current.get_waveform()) {
-                        auto processed = Inputs::calculate_processed_data(current.get_waveform().value());
+                        auto processed = Inputs::calculate_processed_data(current.get_waveform().value(), mas.get_inputs().get_operating_points()[operatingPointIndex].get_excitations_per_winding()[windingIndex].get_frequency());
                         current.set_processed(processed);
                         mas.get_mutable_inputs().get_mutable_operating_points()[operatingPointIndex].get_mutable_excitations_per_winding()[windingIndex].set_current(current);
                     }

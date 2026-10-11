@@ -40,8 +40,12 @@ class WaveformProcessor {
                                          double phase = 0,
                                          size_t numberPointsSampledWaveforms = 128);
 
+    // Throws std::invalid_argument unless the axis spans exactly one period of `frequency` (within
+    // 0.1 %), closed [t0, t0 + T] or, on a uniform axis, open [t0, t0 + T - dt]; true when open.
+    static bool check_time_axis_spans_one_period(const std::vector<double>& time, double frequency);
+
     static MAS::Waveform calculate_sampled_waveform(MAS::Waveform waveform,
-                                                    double frequency = 0,
+                                                    double frequency,
                                                     std::optional<size_t> numberPoints = std::nullopt,
                                                     size_t numberPointsSampledWaveforms = 128,
                                                     std::optional<size_t> maximumNumberPoints = std::nullopt);
@@ -76,7 +80,7 @@ class WaveformProcessor {
                                                    size_t numberPointsSampledWaveforms = 128);
 
     static MAS::ProcessedWaveform calculate_processed_data(MAS::Waveform waveform,
-                                                           std::optional<double> frequency = std::nullopt,
+                                                           double frequency,
                                                            bool includeAdvancedData = true,
                                                            std::optional<MAS::ProcessedWaveform> processed = std::nullopt,
                                                            bool trimHarmonics = true,

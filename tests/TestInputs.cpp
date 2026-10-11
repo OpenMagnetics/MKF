@@ -1574,13 +1574,13 @@ TEST_CASE("Test_Reflect_Unipolar_Rectangular_Ratio_1", "[processor][inputs][smok
 
     SignalDescriptor signal;
     signal.set_waveform(waveform);
-    auto processed = OpenMagnetics::Inputs::calculate_processed_data(signal.get_waveform().value());
+    auto processed = OpenMagnetics::Inputs::calculate_processed_data(signal.get_waveform().value(), 100000);
     
     // A unipolar pulse reflects by ampere-turn scaling, shape and timing kept (a current
     // transformer's secondary conducts during the pulse); the flyback's off-time transfer
     // belongs to the FLYBACK_* labels.
     auto reflectedSignal = OpenMagnetics::Inputs::reflect_waveform(signal, ratio, WaveformLabel::UNIPOLAR_RECTANGULAR);
-    auto reflectedProcessed = OpenMagnetics::Inputs::calculate_processed_data(reflectedSignal.get_waveform().value());
+    auto reflectedProcessed = OpenMagnetics::Inputs::calculate_processed_data(reflectedSignal.get_waveform().value(), 100000);
 
     REQUIRE_THAT(processed.get_average().value() * ratio, Catch::Matchers::WithinAbs(reflectedProcessed.get_average().value(), max_error * processed.get_average().value() * ratio));
     for (size_t i = 0; i < waveform.get_data().size(); ++i) {
@@ -1599,13 +1599,13 @@ TEST_CASE("Test_Reflect_Unipolar_Rectangular_Ratio_2", "[processor][inputs][smok
 
     SignalDescriptor signal;
     signal.set_waveform(waveform);
-    auto processed = OpenMagnetics::Inputs::calculate_processed_data(signal.get_waveform().value());
+    auto processed = OpenMagnetics::Inputs::calculate_processed_data(signal.get_waveform().value(), 100000);
     
     // A unipolar pulse reflects by ampere-turn scaling, shape and timing kept (a current
     // transformer's secondary conducts during the pulse); the flyback's off-time transfer
     // belongs to the FLYBACK_* labels.
     auto reflectedSignal = OpenMagnetics::Inputs::reflect_waveform(signal, ratio, WaveformLabel::UNIPOLAR_RECTANGULAR);
-    auto reflectedProcessed = OpenMagnetics::Inputs::calculate_processed_data(reflectedSignal.get_waveform().value());
+    auto reflectedProcessed = OpenMagnetics::Inputs::calculate_processed_data(reflectedSignal.get_waveform().value(), 100000);
 
     REQUIRE_THAT(processed.get_average().value() * ratio, Catch::Matchers::WithinAbs(reflectedProcessed.get_average().value(), max_error * processed.get_average().value() * ratio));
     for (size_t i = 0; i < waveform.get_data().size(); ++i) {
@@ -1624,10 +1624,10 @@ TEST_CASE("Test_Reflect_Unipolar_Triangular_Ratio_2", "[processor][inputs][smoke
 
     SignalDescriptor signal;
     signal.set_waveform(waveform);
-    auto processed = OpenMagnetics::Inputs::calculate_processed_data(signal.get_waveform().value());
+    auto processed = OpenMagnetics::Inputs::calculate_processed_data(signal.get_waveform().value(), 100000);
     
     auto reflectedSignal = OpenMagnetics::Inputs::reflect_waveform(signal, ratio, WaveformLabel::UNIPOLAR_TRIANGULAR);
-    auto reflectedProcessed = OpenMagnetics::Inputs::calculate_processed_data(reflectedSignal.get_waveform().value());
+    auto reflectedProcessed = OpenMagnetics::Inputs::calculate_processed_data(reflectedSignal.get_waveform().value(), 100000);
 
     REQUIRE_THAT(processed.get_average().value() * ratio, Catch::Matchers::WithinAbs(reflectedProcessed.get_average().value(), max_error * processed.get_average().value() * ratio));
 }
@@ -2621,6 +2621,16 @@ TEST_CASE("Test_Sampled_Waveform_Rejects_A_Time_Axis_That_Does_Not_Span_The_Peri
     twoPeriods.set_data({0, 1, 0, 1, 0});
     twoPeriods.set_time(std::vector<double>{0, 5e-6, 1e-5, 1.5e-5, 2e-5});
     REQUIRE_THROWS_AS(OpenMagnetics::Inputs::calculate_sampled_waveform(twoPeriods, 100000), std::invalid_argument);
+
+    // A frequency is required: 0 is not "the axis is the period", it throws like NaN, inf and negative.
+    Waveform onePeriod;
+    onePeriod.set_data({0, 1, 0});
+    onePeriod.set_time(std::vector<double>{0, 5e-6, 1e-5});
+    REQUIRE_THROWS_AS(OpenMagnetics::Inputs::calculate_sampled_waveform(onePeriod, 0), std::invalid_argument);
+    REQUIRE_THROWS_AS(OpenMagnetics::Inputs::calculate_sampled_waveform(onePeriod, std::numeric_limits<double>::quiet_NaN()), std::invalid_argument);
+    REQUIRE_THROWS_AS(OpenMagnetics::Inputs::calculate_sampled_waveform(onePeriod, std::numeric_limits<double>::infinity()), std::invalid_argument);
+    REQUIRE_THROWS_AS(OpenMagnetics::Inputs::calculate_sampled_waveform(onePeriod, -100000), std::invalid_argument);
+    REQUIRE_NOTHROW(OpenMagnetics::Inputs::calculate_sampled_waveform(onePeriod, 100000));
 
     // The same primary over the whole period, zero in the off-time, is sampled as given: the
     // second half of the samples is zero.

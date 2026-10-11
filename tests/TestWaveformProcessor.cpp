@@ -383,7 +383,7 @@ TEST_CASE("Test_Sample_And_Compress_Sinusoidal", "[processor][waveform-processor
 
     REQUIRE(!WaveformProcessor::is_waveform_sampled(waveform));
 
-    auto sampledWaveform = WaveformProcessor::calculate_sampled_waveform(waveform);
+    auto sampledWaveform = WaveformProcessor::calculate_sampled_waveform(waveform, 1.0 / (2 * M_PI));  // open axis of 69 samples over a 2 pi s period
     REQUIRE(WaveformProcessor::is_waveform_sampled(sampledWaveform));
     REQUIRE(128UL == sampledWaveform.get_data().size());
 
@@ -400,7 +400,7 @@ TEST_CASE("Test_Sample_And_Compress_Rectangular", "[processor][waveform-processo
 
     REQUIRE(!WaveformProcessor::is_waveform_sampled(waveform));
 
-    auto sampledWaveform = WaveformProcessor::calculate_sampled_waveform(waveform);
+    auto sampledWaveform = WaveformProcessor::calculate_sampled_waveform(waveform, 100000);
     REQUIRE(WaveformProcessor::is_waveform_sampled(sampledWaveform));
     REQUIRE(128UL == sampledWaveform.get_data().size());
 
@@ -417,7 +417,7 @@ TEST_CASE("Test_Sample_And_Compress_Triangular", "[processor][waveform-processor
 
     REQUIRE(!WaveformProcessor::is_waveform_sampled(waveform));
 
-    auto sampledWaveform = WaveformProcessor::calculate_sampled_waveform(waveform);
+    auto sampledWaveform = WaveformProcessor::calculate_sampled_waveform(waveform, 100000);
     REQUIRE(WaveformProcessor::is_waveform_sampled(sampledWaveform));
     REQUIRE(128UL == sampledWaveform.get_data().size());
 
@@ -434,7 +434,7 @@ TEST_CASE("Test_Sample_And_Compress_Unipolar_Triangular", "[processor][waveform-
 
     REQUIRE(!WaveformProcessor::is_waveform_sampled(waveform));
 
-    auto sampledWaveform = WaveformProcessor::calculate_sampled_waveform(waveform);
+    auto sampledWaveform = WaveformProcessor::calculate_sampled_waveform(waveform, 100000);
     REQUIRE(WaveformProcessor::is_waveform_sampled(sampledWaveform));
     REQUIRE(128UL == sampledWaveform.get_data().size());
 
@@ -451,7 +451,7 @@ TEST_CASE("Test_Sample_And_Compress_Unipolar_Rectangular", "[processor][waveform
 
     REQUIRE(!WaveformProcessor::is_waveform_sampled(waveform));
 
-    auto sampledWaveform = WaveformProcessor::calculate_sampled_waveform(waveform);
+    auto sampledWaveform = WaveformProcessor::calculate_sampled_waveform(waveform, 100000);
     REQUIRE(WaveformProcessor::is_waveform_sampled(sampledWaveform));
     REQUIRE(128UL == sampledWaveform.get_data().size());
 
@@ -468,7 +468,7 @@ TEST_CASE("Test_Sample_And_Compress_Bipolar_Rectangular", "[processor][waveform-
 
     REQUIRE(!WaveformProcessor::is_waveform_sampled(waveform));
 
-    auto sampledWaveform = WaveformProcessor::calculate_sampled_waveform(waveform);
+    auto sampledWaveform = WaveformProcessor::calculate_sampled_waveform(waveform, 100000);
     REQUIRE(WaveformProcessor::is_waveform_sampled(sampledWaveform));
     REQUIRE(128UL == sampledWaveform.get_data().size());
 
@@ -485,7 +485,7 @@ TEST_CASE("Test_Sample_And_Compress_Flyback_Primary", "[processor][waveform-proc
 
     REQUIRE(!WaveformProcessor::is_waveform_sampled(waveform));
 
-    auto sampledWaveform = WaveformProcessor::calculate_sampled_waveform(waveform);
+    auto sampledWaveform = WaveformProcessor::calculate_sampled_waveform(waveform, 100000);
     REQUIRE(WaveformProcessor::is_waveform_sampled(sampledWaveform));
     REQUIRE(128UL == sampledWaveform.get_data().size());
 
@@ -502,7 +502,7 @@ TEST_CASE("Test_Sample_And_Compress_Flyback_Secondary", "[processor][waveform-pr
 
     REQUIRE(!WaveformProcessor::is_waveform_sampled(waveform));
 
-    auto sampledWaveform = WaveformProcessor::calculate_sampled_waveform(waveform);
+    auto sampledWaveform = WaveformProcessor::calculate_sampled_waveform(waveform, 100000);
     REQUIRE(WaveformProcessor::is_waveform_sampled(sampledWaveform));
     REQUIRE(128UL == sampledWaveform.get_data().size());
 

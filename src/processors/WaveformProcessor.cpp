@@ -974,6 +974,39 @@ Waveform WaveformProcessor::create_waveform(WaveformLabel label, double peakToPe
     return waveform;
 }
 
+bool WaveformProcessor::check_time_axis_spans_one_period(const std::vector<double>& time, double frequency) {
+    // The time axis must span the excitation's period, closed ([t0, t0 + T]) or, on a uniform
+    // axis, open by one step ([t0, t0 + T - dt], the sampled convention). An axis that covers
+    // only part of the period (e.g. a flyback primary given over its on-time alone) or several
+    // periods would be stretched or squeezed onto one period, silently changing every harmonic
+    // and the duty cycle, so it is rejected. A frequency is required: the axis is checked against
+    // it, never taken as the period on its own; 0, NaN, inf and negative throw (ABT #1467).
+    if (!std::isfinite(frequency) || frequency <= 0) {
+        throw std::invalid_argument("A waveform with a time axis needs the excitation frequency to check that the axis spans one period, got frequency " + std::to_string(frequency));
+    }
+    if (time.size() < 2) {
+        throw std::invalid_argument("A time axis needs at least 2 points, got " + std::to_string(time.size()));
+    }
+    const double period = time.back() - time.front();
+    const double expectedPeriod = 1.0 / frequency;
+    const double lastStep = time[time.size() - 1] - time[time.size() - 2];
+    bool uniformAxis = lastStep > 0;
+    for (size_t index = 1; uniformAxis && index < time.size(); ++index) {
+        uniformAxis = std::fabs((time[index] - time[index - 1]) - lastStep) <= 1e-6 * lastStep;
+    }
+    const double tolerance = 1e-3 * expectedPeriod;
+    const double closedError = std::fabs(period - expectedPeriod);
+    const double openError = uniformAxis? std::fabs(period + lastStep - expectedPeriod) : std::numeric_limits<double>::infinity();
+    if (closedError > tolerance && openError > tolerance) {
+        std::ostringstream message;
+        message << std::setprecision(10) << "Waveform time axis spans " << period << " s (" << time.size() << " points from " << time.front()
+                << " s to " << time.back() << " s, last step " << lastStep << " s" << (uniformAxis? ", uniform" : "") << ") but the excitation period is "
+                << expectedPeriod << " s (" << frequency << " Hz): a waveform must be given over exactly one period, including the intervals where it is zero";
+        throw std::invalid_argument(message.str());
+    }
+    return openError < closedError;
+}
+
 Waveform WaveformProcessor::calculate_sampled_waveform(Waveform waveform, double frequency, std::optional<size_t> numberPoints, size_t numberPointsSampledWaveforms, std::optional<size_t> maximumNumberPoints) {
     std::vector<double> time;
     auto data = waveform.get_data();
@@ -1007,40 +1040,13 @@ Waveform WaveformProcessor::calculate_sampled_waveform(Waveform waveform, double
         if (period <= 0) {
             throw std::invalid_argument("Invalid waveform period: " + std::to_string(period));
         }
-        // The time axis must span the excitation's period, closed ([t0, t0 + T]) or, on a uniform
-        // axis, open by one step ([t0, t0 + T - dt], the sampled convention). An axis that covers
-        // only part of the period (e.g. a flyback primary given over its on-time alone) or several
-        // periods would be stretched or squeezed onto one period here, silently changing every
-        // harmonic and the duty cycle, so it is rejected (ABT #1467).
-        // frequency == 0 is this function's documented "no period given" (the default argument):
-        // the axis is then the period and there is nothing to check it against.
-        if (std::isnan(frequency) || std::isinf(frequency) || frequency < 0) {
-            throw std::invalid_argument("Invalid excitation frequency for a waveform with a time axis: " + std::to_string(frequency));
-        }
-        if (frequency > 0) {
-            const double expectedPeriod = 1.0 / frequency;
+        if (check_time_axis_spans_one_period(time, frequency)) {
+            // Open axis: the last sample holds until t0 + T, where the next period starts with
+            // the first sample. Sampling over the axis alone squeezed the period by one step,
+            // (N - 1) / N, on every resampling of an already sampled waveform.
             const double lastStep = time[time.size() - 1] - time[time.size() - 2];
-            bool uniformAxis = lastStep > 0;
-            for (size_t index = 1; uniformAxis && index < time.size(); ++index) {
-                uniformAxis = std::fabs((time[index] - time[index - 1]) - lastStep) <= 1e-6 * lastStep;
-            }
-            const double tolerance = 1e-3 * expectedPeriod;
-            const double closedError = std::fabs(period - expectedPeriod);
-            const double openError = uniformAxis? std::fabs(period + lastStep - expectedPeriod) : std::numeric_limits<double>::infinity();
-            if (closedError > tolerance && openError > tolerance) {
-                std::ostringstream message;
-                message << std::setprecision(10) << "Waveform time axis spans " << period << " s (" << time.size() << " points from " << time.front()
-                        << " s to " << time.back() << " s, last step " << lastStep << " s" << (uniformAxis? ", uniform" : "") << ") but the excitation period is "
-                        << expectedPeriod << " s (" << frequency << " Hz): a waveform must be given over exactly one period, including the intervals where it is zero";
-                throw std::invalid_argument(message.str());
-            }
-            if (openError < closedError) {
-                // Open axis: the last sample holds until t0 + T, where the next period starts with
-                // the first sample. Sampling over the axis alone squeezed the period by one step,
-                // (N - 1) / N, on every resampling of an already sampled waveform.
-                openAxisPeriodClosure = time.back() + lastStep;
-                period += lastStep;
-            }
+            openAxisPeriodClosure = time.back() + lastStep;
+            period += lastStep;
         }
         frequency = 1.0 / period;
         // Validate frequency after inference
@@ -1437,22 +1443,17 @@ ProcessedWaveform WaveformProcessor::calculate_basic_processed_data(Waveform wav
 }
 
 ProcessedWaveform WaveformProcessor::calculate_processed_data(Waveform waveform,
-                                            std::optional<double> frequency,
+                                            double frequency,
                                             bool includeAdvancedData,
                                             std::optional<ProcessedWaveform> processed,
                                             bool trimHarmonics,
                                             double harmonicAmplitudeThreshold,
                                             size_t numberPointsSampledWaveforms) {
-    double frequencyValue;
-    if (frequency) {
-        frequencyValue = frequency.value();
+    // A frequency is required, never derived from the time axis (ABT #1467).
+    if (!std::isfinite(frequency) || frequency <= 0) {
+        throw std::invalid_argument("calculate_processed_data needs the excitation frequency, got " + std::to_string(frequency));
     }
-    else {
-        if (!waveform.get_time()) {
-            throw std::invalid_argument("Either frequency or time must be provided");
-        }
-        frequencyValue = 1.0 / (waveform.get_time()->back() - waveform.get_time()->front());
-    }
+    const double frequencyValue = frequency;
     auto sampledWaveform = waveform;
     if (!is_size_power_of_2(waveform.get_data())) {
         sampledWaveform = calculate_sampled_waveform(waveform, frequencyValue, std::nullopt, numberPointsSampledWaveforms);
