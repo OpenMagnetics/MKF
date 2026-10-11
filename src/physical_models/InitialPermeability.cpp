@@ -858,6 +858,25 @@ std::vector<PermeabilityPoint> InitialPermeability::get_only_magnetic_field_dc_b
     return  magneticFieldDcBiasPoints;
 }
 
+std::optional<double> InitialPermeability::get_paramagnetic_temperature(const CoreMaterial& coreMaterial) {
+    // ABT #1739: the temperature above which the material is paramagnetic (mu_i = 1): the stored Curie
+    // temperature, or the last point of the measured mu_i(T) table if that runs above it (a Curie
+    // temperature stored as the data sheet's guaranteed minimum). No Curie temperature: none.
+    auto curieTemperature = coreMaterial.get_curie_temperature();
+    if (!curieTemperature) {
+        return std::nullopt;
+    }
+    double paramagneticTemperature = curieTemperature.value();
+    if (has_temperature_dependency(coreMaterial)) {
+        for (const auto& point : get_only_temperature_dependent_points(coreMaterial)) {
+            if (point.get_temperature()) {
+                paramagneticTemperature = std::max(paramagneticTemperature, point.get_temperature().value());
+            }
+        }
+    }
+    return paramagneticTemperature;
+}
+
 double InitialPermeability::get_initial_permeability_temperature_dependent(CoreMaterial coreMaterial, double temperature) {
     double initialPermeabilityValue = 1;
     auto permeabilityPoints = get_only_temperature_dependent_points(coreMaterial);
@@ -902,19 +921,23 @@ double InitialPermeability::get_initial_permeability_temperature_dependent(CoreM
         }
     }
 
+    double tabulatedMinimum = *std::min_element(permeabilityPoints.begin(), permeabilityPoints.end(),
+        [](const auto& a, const auto& b) { return *a.get_temperature() < *b.get_temperature(); })->get_temperature();
+    double tabulatedMaximum = *std::max_element(permeabilityPoints.begin(), permeabilityPoints.end(),
+        [](const auto& a, const auto& b) { return *a.get_temperature() < *b.get_temperature(); })->get_temperature();
+
     // Above its Curie point a ferrite is paramagnetic: mu_i = 1 is the physics, not an extrapolation.
+    // The stored Curie temperature can be a guaranteed minimum (Ferroxcube prints "TC >= 220 C") with
+    // the measured mu_i(T) running above it (3C90 to 240 C), so mu_i = 1 starts only above both.
     auto curieTemperature = coreMaterial.get_curie_temperature();
-    if (curieTemperature && temperature > curieTemperature.value()) {
+    auto paramagneticTemperature = get_paramagnetic_temperature(coreMaterial);
+    if (paramagneticTemperature && temperature > paramagneticTemperature.value()) {
         return 1;
     }
 
     // ABT #1739: below the Curie point, outside the tabulated mu_i(T) range, the material has no data.
     // The spline through the table is not a model of the material there, so it is not evaluated
     // unless Settings::allowMaterialDataExtrapolation asks for it (then with a WARNING).
-    double tabulatedMinimum = *std::min_element(permeabilityPoints.begin(), permeabilityPoints.end(),
-        [](const auto& a, const auto& b) { return *a.get_temperature() < *b.get_temperature(); })->get_temperature();
-    double tabulatedMaximum = *std::max_element(permeabilityPoints.begin(), permeabilityPoints.end(),
-        [](const auto& a, const auto& b) { return *a.get_temperature() < *b.get_temperature(); })->get_temperature();
     if (temperature < tabulatedMinimum || temperature > tabulatedMaximum) {
         MaterialTemperatureOutOfRangeException outOfRange(coreMaterial.get_name(), temperature, tabulatedMinimum,
                                                           tabulatedMaximum, curieTemperature);
@@ -1234,8 +1257,9 @@ double InitialPermeability::get_initial_permeability(CoreMaterial coreMaterial,
         }
     }
 
-    if (coreMaterial.get_curie_temperature() && temperature) {
-        if ((temperature.value()) > (*coreMaterial.get_curie_temperature())) {
+    if (temperature) {
+        auto paramagneticTemperature = get_paramagnetic_temperature(coreMaterial);
+        if (paramagneticTemperature && temperature.value() > paramagneticTemperature.value()) {
             initialPermeabilityValue = 1;
         }
     }

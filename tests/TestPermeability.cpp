@@ -85,11 +85,33 @@ namespace {
         double tabulated = InitialPermeability::get_initial_permeability_temperature_dependent(material, 60);
         REQUIRE(tabulated > 1);
         CHECK(initialPermeability.get_initial_permeability(material, 60.0, std::nullopt, std::nullopt) == tabulated);
-        // Above Curie: paramagnetic, 1.
-        CHECK(initialPermeability.get_initial_permeability(material, 135.0, std::nullopt, std::nullopt) == 1);
+        // Above both its Curie temperature (130 C) and the last measured point (139.82 C): paramagnetic, 1.
+        CHECK(initialPermeability.get_initial_permeability(material, 140.0, std::nullopt, std::nullopt) == 1);
         // At 25 C there is no data: it still throws.
         CHECK_THROWS_AS(initialPermeability.get_initial_permeability(material, 25.0, std::nullopt, std::nullopt), MaterialTemperatureOutOfRangeException);
         CHECK_THROWS_AS(initialPermeability.get_initial_permeability(material, std::nullopt, std::nullopt, std::nullopt), MaterialTemperatureOutOfRangeException);
+    }
+
+    TEST_CASE("Test_Initial_Permeability_Measured_Table_Above_Minimum_Curie_Is_Evaluated", "[physical-model][initial-permeability][initial-permeability-temperature-range]") {
+        // ABT #1739: Ferroxcube prints 3C90's Curie temperature as "TC >= 220 C", a guaranteed minimum, and
+        // MAS stores 220 C; the measured mu_i(T) runs on to 240 C (225..240 C: 636, 91, 46, 34). mu_i = 1
+        // starts only above both the Curie temperature and the last measured point.
+        settings.reset();
+        auto material = find_core_material_by_name("3C90");
+        REQUIRE(material.get_curie_temperature());
+        REQUIRE(material.get_curie_temperature().value() == 220);
+        REQUIRE(InitialPermeability::get_paramagnetic_temperature(material).value() == 240);
+        InitialPermeability initialPermeability;
+        CHECK_THAT(InitialPermeability::get_initial_permeability_temperature_dependent(material, 230), Catch::Matchers::WithinAbs(91, 1e-9));
+        CHECK_THAT(initialPermeability.get_initial_permeability(material, 230.0, std::nullopt, std::nullopt), Catch::Matchers::WithinAbs(91, 1e-9));
+        CHECK(InitialPermeability::get_initial_permeability_temperature_dependent(material, 245) == 1);
+        CHECK(initialPermeability.get_initial_permeability(material, 245.0, std::nullopt, std::nullopt) == 1);
+
+        // 3C94: the same 220 C minimum, but its measured table ends at 180 C: no data from 180 to 220 C.
+        auto material3C94 = find_core_material_by_name("3C94");
+        REQUIRE(material3C94.get_curie_temperature().value() == 220);
+        CHECK_THROWS_AS(InitialPermeability::get_initial_permeability_temperature_dependent(material3C94, 200), MaterialTemperatureOutOfRangeException);
+        CHECK(InitialPermeability::get_initial_permeability_temperature_dependent(material3C94, 230) == 1);
     }
 
     TEST_CASE("Test_Initial_Permeability_Outside_Temperature_Table_Extrapolation_Flag", "[physical-model][initial-permeability][initial-permeability-temperature-range]") {
