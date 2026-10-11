@@ -2447,6 +2447,11 @@ TEST_CASE("Test_CoreAdviser_Flyback_From_Frontend_Inputs", "[adviser][core-advis
     currentWaveform.set_time(std::vector<double>{0, 0, 5e-6, 5e-6});  // 50% duty cycle at 100kHz = 5µs on
     primaryCurrent.set_waveform(currentWaveform);
     
+    // offset is a required field, a plain double the generated class leaves uninitialised: a
+    // processed block built by hand must set it, or the flyback magnetizing current is built on
+    // whatever the heap held (ABT #1755: 54 A instead of 2.3 A, 0 cores, only after some other
+    // tests had run). 0 is what Inputs' calculate_offset gives these labels and waveforms: the
+    // first sample for FLYBACK_PRIMARY, the last for FLYBACK_SECONDARY, 0 for RECTANGULAR.
     ProcessedWaveform currentProcessed;
     currentProcessed.set_label(WaveformLabel::FLYBACK_PRIMARY);
     currentProcessed.set_average(0.588);
@@ -2454,6 +2459,7 @@ TEST_CASE("Test_CoreAdviser_Flyback_From_Frontend_Inputs", "[adviser][core-advis
     currentProcessed.set_peak(2.32);
     currentProcessed.set_peak_to_peak(2.32);
     currentProcessed.set_duty_cycle(0.5);
+    currentProcessed.set_offset(0);
     primaryCurrent.set_processed(currentProcessed);
     primaryExcitation.set_current(primaryCurrent);
     
@@ -2469,6 +2475,7 @@ TEST_CASE("Test_CoreAdviser_Flyback_From_Frontend_Inputs", "[adviser][core-advis
     voltageProcessed.set_peak(114);
     voltageProcessed.set_peak_to_peak(228);
     voltageProcessed.set_duty_cycle(0.5);
+    voltageProcessed.set_offset(0);
     primaryVoltage.set_processed(voltageProcessed);
     primaryExcitation.set_voltage(primaryVoltage);
     
@@ -2491,6 +2498,7 @@ TEST_CASE("Test_CoreAdviser_Flyback_From_Frontend_Inputs", "[adviser][core-advis
     secCurrentProcessed.set_rms(3.5);
     secCurrentProcessed.set_peak(5.0);
     secCurrentProcessed.set_duty_cycle(0.5);
+    secCurrentProcessed.set_offset(0);
     secondaryCurrent.set_processed(secCurrentProcessed);
     secondaryExcitation.set_current(secondaryCurrent);
     
@@ -2522,6 +2530,7 @@ TEST_CASE("Test_CoreAdviser_Flyback_From_Frontend_Inputs", "[adviser][core-advis
     currentProcessed2.set_peak(1.5);
     currentProcessed2.set_peak_to_peak(1.5);
     currentProcessed2.set_duty_cycle(0.5);
+    currentProcessed2.set_offset(0);
     primaryCurrent2.set_processed(currentProcessed2);
     primaryExcitation2.set_current(primaryCurrent2);
     
@@ -2536,6 +2545,7 @@ TEST_CASE("Test_CoreAdviser_Flyback_From_Frontend_Inputs", "[adviser][core-advis
     voltageProcessed2.set_peak(150);
     voltageProcessed2.set_peak_to_peak(250);
     voltageProcessed2.set_duty_cycle(0.5);
+    voltageProcessed2.set_offset(0);
     primaryVoltage2.set_processed(voltageProcessed2);
     primaryExcitation2.set_voltage(primaryVoltage2);
     
@@ -2558,6 +2568,7 @@ TEST_CASE("Test_CoreAdviser_Flyback_From_Frontend_Inputs", "[adviser][core-advis
     secCurrentProcessed2.set_rms(2.8);
     secCurrentProcessed2.set_peak(4.0);
     secCurrentProcessed2.set_duty_cycle(0.5);
+    secCurrentProcessed2.set_offset(0);
     secondaryCurrent2.set_processed(secCurrentProcessed2);
     secondaryExcitation2.set_current(secondaryCurrent2);
     
@@ -2709,6 +2720,8 @@ TEST_CASE("Test_CoreAdviser_LLC_From_Frontend_Inputs", "[adviser][core-adviser][
     voltageProcessed.set_peak(200);
     voltageProcessed.set_peak_to_peak(400);
     voltageProcessed.set_duty_cycle(0.5);
+    // offset is required and uninitialised unless set (ABT #1755); 0 for a symmetric square wave.
+    voltageProcessed.set_offset(0);
     primaryVoltage.set_processed(voltageProcessed);
     primaryExcitation.set_voltage(primaryVoltage);
     
@@ -2730,6 +2743,7 @@ TEST_CASE("Test_CoreAdviser_LLC_From_Frontend_Inputs", "[adviser][core-adviser][
     // sinusoidal peak, matching how the primary above states 6.21 for its 3.105 peak.
     secCurrentProcessed.set_peak_to_peak(28.0);
     secCurrentProcessed.set_duty_cycle(0.5);
+    secCurrentProcessed.set_offset(0.0);
     secondaryCurrent.set_processed(secCurrentProcessed);
     secondaryExcitation.set_current(secondaryCurrent);
     
