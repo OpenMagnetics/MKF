@@ -185,7 +185,8 @@ class MagneticField {
             size_t bytes = 0;
         };
         // ABT #1314: the split of every winding's harmonic currents between its parallels (see ParallelCurrentSplit), at the
-        // conductors' temperature. Empty when no winding has more than one parallel.
+        // conductors' temperature. Empty when no winding has more than one parallel. Throws NotImplementedException for
+        // toroids, multi-window cores and turns with additionalCoordinates (no neutral window frame for them yet).
         static std::optional<ParallelCurrentSplit> calculate_parallel_current_split(Magnetic magnetic, OperatingPoint operatingPoint, double temperature,
                                                                                     std::optional<std::vector<int8_t>> customCurrentDirectionPerWinding = std::nullopt);
         static TurnSumsCacheStatistics get_turn_sums_cache_statistics();

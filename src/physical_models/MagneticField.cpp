@@ -3746,18 +3746,22 @@ std::optional<ParallelCurrentSplit> MagneticField::calculate_parallel_current_sp
     }
     magnetic.set_core(core);
 
-    // WORK ITEM (ABT #1314, Alf 2026-10-04: build the frame): the strand impedance needs the neutral window frame (image
-    // lattice + MMF_BOUNDARY wall sources), which exists today only for single-window, non-toroidal cores whose turns
-    // cross the section once. Toroids (Kelvin images of the ring), multi-window cores and turns with additionalCoordinates
-    // still lack it: no split is solved for them here and every consumer keeps the DC (resistive) split it always had.
-    // This is NOT a physical split -- the frame for those geometries plugs in here (strandInductance below) and this
-    // early return goes away when it lands.
-    if (core.get_shape_family() == CoreShapeFamily::T || core.get_processed_description()->get_winding_windows().size() != 1) {
-        return std::nullopt;
+    // ABT #1759 (Alf 2026-10-11): the strand impedance needs the neutral window frame (image lattice + MMF_BOUNDARY wall
+    // sources), which exists only for single-window, non-toroidal cores whose turns cross the section once. For any
+    // other geometry the split is not solved, and keeping the DC (resistive) split instead would be a silent
+    // fallback: each case throws until its frame is implemented (one ABT ticket per case).
+    if (core.get_shape_family() == CoreShapeFamily::T) {
+        throw NotImplementedException("Parallel current split (ABT #1314) on a toroidal core (needs the Kelvin images of the ring)");
+    }
+    const size_t numberWindingWindows = core.get_processed_description()->get_winding_windows().size();
+    if (numberWindingWindows != 1) {
+        throw NotImplementedException("Parallel current split (ABT #1314) on a multi-window core (" + std::to_string(numberWindingWindows) +
+                                      " winding windows; the neutral window frame exists for one window only)");
     }
     for (const auto& turn : turns) {
         if (turn.get_additional_coordinates()) {
-            return std::nullopt;
+            throw NotImplementedException("Parallel current split (ABT #1314) for turns with additionalCoordinates (turn " + turn.get_name() +
+                                          " crosses the cross-section more than once)");
         }
     }
 

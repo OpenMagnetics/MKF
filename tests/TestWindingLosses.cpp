@@ -4033,6 +4033,69 @@ TEST_CASE("Test_Winding_Losses_Parallel_Split_Ohmic_Is_DC_Split_Redistribution_I
     settings.reset();
 }
 
+TEST_CASE("Test_Winding_Losses_Parallel_Split_Throws_Where_No_Frame_Exists", "[winding-losses][parallel-split][physical-model]") {
+    // ABT #1759 (Alf, 2026-10-11): the split needs the neutral window frame, which exists only for single-window,
+    // non-toroidal cores whose turns cross the section once. Elsewhere it used to return nothing and every consumer
+    // silently kept the DC (resistive) split; now each unsupported case throws, naming itself.
+    auto& settings = OpenMagnetics::Settings::GetInstance();
+    auto inputs = OpenMagnetics::Inputs::create_quick_operating_point_only_current(100000, 100e-6, 25, WaveformLabel::TRIANGULAR, 10, 0.5, 0);
+    auto operatingPoint = inputs.get_operating_point(0);
+    auto requireNotImplemented = [&](OpenMagnetics::Magnetic& magnetic, const std::string& naming) {
+        try {
+            MagneticField::calculate_parallel_current_split(magnetic, operatingPoint, 25);
+            FAIL("the parallel current split did not throw for " << naming);
+        }
+        catch (const OpenMagnetics::NotImplementedException& exception) {
+            INFO(exception.what());
+            CHECK(std::string(exception.what()).find(naming) != std::string::npos);
+        }
+    };
+
+    SECTION("toroid") {
+        settings.reset();
+        clear_databases();
+        settings.set_use_toroidal_cores(true);
+        auto coil = OpenMagneticsTesting::get_quick_coil({10}, {2}, "T 40/24/16", 1);
+        auto core = OpenMagneticsTesting::get_quick_core("T 40/24/16", OpenMagneticsTesting::get_residual_gap());
+        OpenMagnetics::Magnetic magnetic;
+        magnetic.set_core(core);
+        magnetic.set_coil(coil);
+        requireNotImplemented(magnetic, "toroidal core");
+        settings.reset();
+    }
+
+    SECTION("multi-window core") {
+        settings.reset();
+        clear_databases();
+        auto coil = OpenMagneticsTesting::get_quick_coil({10}, {2}, "E 42/21/20", 1);
+        settings.set_core_per_column_winding_windows(true);
+        auto core = OpenMagneticsTesting::get_quick_core("E 42/21/20", OpenMagneticsTesting::get_residual_gap());
+        REQUIRE(core.get_processed_description()->get_winding_windows().size() > 1);
+        OpenMagnetics::Magnetic magnetic;
+        magnetic.set_core(core);
+        magnetic.set_coil(coil);
+        requireNotImplemented(magnetic, "multi-window core");
+        settings.reset();
+    }
+
+    SECTION("turns with additionalCoordinates") {
+        settings.reset();
+        clear_databases();
+        auto coil = OpenMagneticsTesting::get_quick_coil({10}, {2}, "E 42/21/20", 1);
+        auto turns = coil.get_turns_description().value();
+        auto mirrored = turns[0].get_coordinates();
+        mirrored[0] = -mirrored[0];
+        turns[0].set_additional_coordinates(std::vector<std::vector<double>>{mirrored});
+        coil.set_turns_description(turns);
+        auto core = OpenMagneticsTesting::get_quick_core("E 42/21/20", OpenMagneticsTesting::get_residual_gap());
+        OpenMagnetics::Magnetic magnetic;
+        magnetic.set_core(core);
+        magnetic.set_coil(coil);
+        requireNotImplemented(magnetic, "additionalCoordinates");
+        settings.reset();
+    }
+}
+
 TEST_CASE("Test_Winding_Losses_Martinez_Stack_Sharing_Number_Closed_Form", "[winding-losses][parallel-split][physical-model]") {
     // ABT #1314 B: n_k = sum_j t_j G_jk / (t_k W_k), G_jk the closed-form normal field of strip j's eddy mode at strip k's
     // centre. Checked against a direct quadrature of the same mode integral, and n = 1 for a conductor alone.
