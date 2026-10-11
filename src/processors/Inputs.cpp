@@ -2319,6 +2319,14 @@ SignalDescriptor Inputs::calculate_magnetizing_current(const OperatingPoint& ope
         throw InvalidInputException(ErrorCode::INVALID_INPUT, "magnetizingInductance cannot be zero or negative");
     }
     auto excitation = excitations[windingIndex];
+    // A single-winding inductor's winding current IS its magnetizing current (ABT #1585): the
+    // voltage is integrated only when the current is absent or several windings share the flux.
+    if (turnsRatios.empty()) {
+        auto singleWindingMagnetizingCurrent = get_single_winding_magnetizing_current(excitation, excitations.size());
+        if (singleWindingMagnetizingCurrent) {
+            return singleWindingMagnetizingCurrent.value();
+        }
+    }
     if (!voltageSampledWaveform) {
         if (!excitation.get_voltage()) {
             throw InvalidInputException(ErrorCode::MISSING_DATA, "calculate_magnetizing_current: winding " + std::to_string(windingIndex) +
@@ -2333,32 +2341,12 @@ SignalDescriptor Inputs::calculate_magnetizing_current(const OperatingPoint& ope
     }
 
     double dcCurrent = 0;
-    bool onlyOneWinding = turnsRatios.empty() && excitations.size() <= 1;
     if (excitation.get_current() && excitations.size() > 1) {
         // Several windings: the same classification as include_dc_offset_into_magnetizing_current,
         // on one conduction map shared with the anchor.
         auto conduction = calculate_winding_conduction(operatingPoint);
         if (conduction && windings_alternate(conduction.value())) {
             dcCurrent = calculate_magnetizing_current_dc_anchor(excitation, conduction.value(), windingIndex, voltageSampledWaveform.value(), magnetizingInductance);
-        }
-    }
-    else if (excitation.get_current() && onlyOneWinding) {
-        if (excitation.get_current()->get_waveform()) {
-            // Single winding: the measured current IS the magnetizing current, and the
-            // measurement is the only source of DC truth (the voltage integral carries
-            // none). Anchor at its midpoint. (Named locals: MAS getters return by
-            // value, so chaining into get_data() would dangle.)
-            auto currentSignal = excitation.get_current().value();
-            auto currentWaveform = currentSignal.get_waveform().value();
-            const std::vector<double>& currentData = currentWaveform.get_data();
-            dcCurrent = (*max_element(currentData.begin(), currentData.end()) +
-                         *min_element(currentData.begin(), currentData.end())) / 2;
-        }
-        else {
-            if (!excitation.get_current()->get_processed()) {
-                throw InvalidInputException(ErrorCode::MISSING_DATA, "calculate_magnetizing_current: the winding's current has neither a waveform nor processed values to take its DC from");
-            }
-            dcCurrent = excitation.get_current()->get_processed()->get_offset();
         }
     }
     return calculate_magnetizing_current(excitation, voltageSampledWaveform.value(), magnetizingInductance, compress, dcCurrent);

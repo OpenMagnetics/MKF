@@ -2849,15 +2849,16 @@ Inputs inputs_autocomplete(Inputs inputs, std::optional<Magnetic> magnetic, json
             }
             auto excitation = inputs.get_operating_points()[operatingPointIndex].get_excitations_per_winding()[windingIndex];
 
-            // The decision Inputs::process_operating_point makes, compressed (ABT #1467); it throws
-            // when the winding has no voltage to integrate.
+            // The decision Inputs::process_operating_point makes, compressed (ABT #1467): a
+            // single-winding inductor's current (ABT #1585), else Faraday on the voltage, which
+            // throws when the winding has none.
             std::vector<double> requiredTurnsRatios;
             for (auto& turnsRatio : inputs.get_design_requirements().get_turns_ratios()) {
                 requiredTurnsRatios.push_back(resolve_dimensional_values(turnsRatio));
             }
             auto magnetizingCurrent = Inputs::calculate_magnetizing_current(operatingPoint, windingIndex, magnetizingInductance, requiredTurnsRatios, true);
 
-            if (excitation.get_voltage()->get_processed() && excitation.get_voltage()->get_processed()->get_duty_cycle()) {
+            if (excitation.get_voltage() && excitation.get_voltage()->get_processed() && excitation.get_voltage()->get_processed()->get_duty_cycle()) {
                 auto processed = magnetizingCurrent.get_processed().value();
                 processed.set_duty_cycle(excitation.get_voltage()->get_processed()->get_duty_cycle().value());
                 magnetizingCurrent.set_processed(processed);
