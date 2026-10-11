@@ -30,6 +30,7 @@
 //   Baselines recorded at the bottom of the file.
 // =============================================================================
 
+#include <numbers>
 #include <source_location>
 #include <cmath>
 #include <fstream>
@@ -102,10 +103,15 @@ OpenMagnetics::Inputs make_power_inputs() {
 }
 
 OpenMagnetics::Inputs make_interference_suppression_inputs() {
-    // Mirrors TestCoreAdviser.cpp:Test_CoreAdviserAvailableCores_Toroidal_Cores_With_Impedance.
+    // Mirrors TestCoreAdviser.cpp:Test_CoreAdviserAvailableCores_Toroidal_Cores_With_Impedance, except for
+    // the inductance. ABT #838: the 60 Vpp drive's current is derived from the specified inductance, and
+    // 1 uH made it 48 A peak, imposed as magnetising current on toroids whose inductance is thousands of
+    // times higher. 1.6 mH is the inductance the 1 kOhm at 100 kHz impedance requirement itself asks
+    // for (1000 / (2 pi 100 kHz)); the drive becomes 30 mA peak.
+    const double magnetizingInductance = 1000 / (2 * std::numbers::pi * 100000);
     auto inputs = OpenMagnetics::Inputs::create_quick_operating_point(
         /*frequency*/ 100000,
-        /*magnetizingInductance*/ 1e-6,
+        /*magnetizingInductance*/ magnetizingInductance,
         /*temperature*/ 25,
         /*label*/ WaveformLabel::SINUSOIDAL,
         /*peakToPeak*/ 60,
@@ -120,7 +126,7 @@ OpenMagnetics::Inputs make_interference_suppression_inputs() {
     iaf.set_impedance(ip);
     minimumImpedance.push_back(iaf);
     inputs.get_mutable_design_requirements().set_minimum_impedance(minimumImpedance);
-    inputs.get_mutable_design_requirements().get_mutable_magnetizing_inductance().set_minimum(1e-6);
+    inputs.get_mutable_design_requirements().get_mutable_magnetizing_inductance().set_minimum(magnetizingInductance);
     inputs.get_mutable_design_requirements().get_mutable_magnetizing_inductance().set_nominal(std::nullopt);
     inputs.get_mutable_design_requirements().get_mutable_magnetizing_inductance().set_maximum(std::nullopt);
     return inputs;

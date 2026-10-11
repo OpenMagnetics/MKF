@@ -51,8 +51,12 @@ struct AdviserQuery {
 
 // Distinct queries so concurrent workers exercise different code paths /
 // cache keys. Thread i runs query i % queries.size().
+// ABT #838: query 0 drives 200 Vpp (was 600). 600 Vpp at 100 kHz through the 100 uH specification is
+// 4.8 A peak; the shortlist's only candidates for it were E 100/60/28 ungapped stacks whose 30-60 W of
+// core loss run them past their Curie temperature once the loss is solved at the temperature it heats
+// the core to, so the adviser returned nothing. At 200 Vpp it returns 5 cores (E 100/60/28 3C95, 43 C).
 const std::vector<AdviserQuery> QUERIES = {
-    {10e-5, 100000, 600},
+    {10e-5, 100000, 200},
     {5e-5, 200000, 400},
     {2e-5, 400000, 200},
     {20e-5, 50000, 800},

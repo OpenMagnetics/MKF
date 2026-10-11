@@ -2763,7 +2763,11 @@ TEST_CASE("Test_WireAdviser_HFInductor_SynthesizesLitz", "[adviser][coil-adviser
     double magnetizingInductance = 100e-6;
     double temperature = 25;
 
-    auto gapping = OpenMagneticsTesting::get_ground_gap(0.0002);
+    // ABT #838: a 1.8 mm gap (was 0.2 mm). 30 turns on a 0.2 mm-gapped PQ 26/25 are 632 uH, and the 10 App
+    // of this fixture put 3C97 at Bpk 0.86 T (125 W at 25 C): with the core loss solved at the temperature
+    // it heats the core to, no operating point existed. 1.8 mm gives the fixture's own 100 uH (99 uH),
+    // Bpk 0.135 T, and keeps the 100 kHz, 10 App drive whose proximity loss litz is for.
+    auto gapping = OpenMagneticsTesting::get_ground_gap(0.0018);
     auto magnetic = OpenMagneticsTesting::get_quick_magnetic("PQ 26/25", gapping, numberTurns, 1, "3C97");
     auto inputs = OpenMagnetics::Inputs::create_quick_operating_point_only_current(
         frequency, magnetizingInductance, temperature, WaveformLabel::TRIANGULAR, 10, 0.5, 0, turnsRatios);
@@ -2803,7 +2807,11 @@ TEST_CASE("Test_Synthesized_Litz_0101mm_Strand_Simulates", "[coil-adviser][litz]
     auto& settings = OpenMagnetics::Settings::GetInstance();
     settings.reset();
 
-    auto gapping = OpenMagneticsTesting::get_ground_gap(0.0002);
+    // ABT #838: a 1.8 mm gap (was 0.2 mm). 30 turns on a 0.2 mm-gapped PQ 26/25 are 632 uH, and the 10 App
+    // of this fixture put 3C97 at Bpk 0.86 T (125 W at 25 C): with the core loss solved at the temperature
+    // it heats the core to, no operating point existed. 1.8 mm gives the fixture's own 100 uH (99 uH),
+    // Bpk 0.135 T, and keeps the 100 kHz, 10 App drive whose proximity loss litz is for.
+    auto gapping = OpenMagneticsTesting::get_ground_gap(0.0018);
     auto magnetic = OpenMagneticsTesting::get_quick_magnetic("PQ 26/25", gapping, {30}, 1, "3C97");
     auto litz = OpenMagnetics::Wire::create_quick_litz_wire(0.000101, 31);
     magnetic.set_coil(OpenMagnetics::Coil::create_quick_coil("PQ 26/25", {30}, {1}, {litz}));

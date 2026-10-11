@@ -47,6 +47,22 @@ void prepare_test_parameters(double dcCurrent, double ambientTemperature, double
     }
 }
 
+// ABT #838: a common-mode choke's operating point. Both windings carry the same line current (a DC
+// offset, whose flux cancels between the windings) plus the same common-mode ripple, which is what
+// magnetises the core: milliamps to tens of milliamps of noise current, not amperes. The CMC tests
+// used to describe the choke as a single winding driven by 600 Vpp at 100 kHz through the 100 uH
+// specification, i.e. 4.8 A peak of magnetising current imposed on high-permeability toroids
+// (0.8-1.4 T, 55-147 W of core loss at 25 C) that no operating temperature could carry.
+OpenMagnetics::Inputs prepare_common_mode_choke_inputs(double frequency, double minimumMagnetizingInductance,
+                                                       double commonModeCurrentPeakToPeak, double lineCurrent) {
+    auto inputs = OpenMagnetics::Inputs::create_quick_operating_point_only_current(
+        frequency, minimumMagnetizingInductance, 25, WaveformLabel::SINUSOIDAL,
+        std::vector<double>{commonModeCurrentPeakToPeak, commonModeCurrentPeakToPeak}, 0.5, lineCurrent, {1.0});
+    inputs.get_mutable_design_requirements().set_isolation_sides(std::vector<IsolationSide>{IsolationSide::PRIMARY, IsolationSide::PRIMARY});
+    REQUIRE(OpenMagnetics::Inputs::can_be_common_mode_choke(inputs.get_operating_points()[0]));
+    return inputs;
+}
+
 std::vector<Core> load_test_data() {
     auto inventory_path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "test_cores.ndjson");
     std::ifstream ndjsonFile(inventory_path);
@@ -356,10 +372,30 @@ TEST_CASE("Test_CoreAdviser_CMC_Default_Web_Design_Returns_Cores", "[adviser][co
     REQUIRE(inputsFile.good());
     json inputsJson;
     inputsFile >> inputsJson;
+    // ABT #838: the captured wizard inputs put a 1 App, 150 kHz ripple on both windings over their 10 A
+    // line current. Identical on both windings, that ripple is common-mode current, the current that
+    // magnetises a CMC's core: 1 App of it drove the advised R12KZ toroids to 0.8-1.4 T and 16-22 W at
+    // 25 C, past their 130 C Curie temperature. A CMC's common-mode current is milliamps to tens of
+    // milliamps: the ripple is scaled to 20 mApp around the same 10 A line current, and the stale
+    // processed/harmonics data are dropped so the inputs process the scaled waveform.
+    const double commonModeRippleScale = 0.02;
+    for (auto& excitationJson : inputsJson.at("operatingPoints").at(0).at("excitationsPerWinding")) {
+        auto& currentJson = excitationJson.at("current");
+        const double lineCurrent = currentJson.at("processed").at("offset").get<double>();
+        for (auto& sample : currentJson.at("waveform").at("data")) {
+            sample = lineCurrent + (sample.get<double>() - lineCurrent) * commonModeRippleScale;
+        }
+        currentJson.erase("processed");
+        currentJson.erase("harmonics");
+    }
 
     OpenMagnetics::Inputs inputs(inputsJson);
     // Sanity: this is a 2-winding common-mode choke carrying real DC line current.
     REQUIRE(OpenMagnetics::Inputs::can_be_common_mode_choke(inputs.get_operating_points()[0]));
+    for (const auto& excitation : inputs.get_operating_points()[0].get_excitations_per_winding()) {
+        REQUIRE_THAT(excitation.get_current()->get_processed()->get_peak_to_peak().value(), Catch::Matchers::WithinRel(0.02, 0.01));
+        REQUIRE_THAT(excitation.get_current()->get_processed()->get_offset(), Catch::Matchers::WithinRel(10.0, 0.01));
+    }
 
     std::map<CoreAdviser::CoreAdviserFilters, double> weights;
     weights[CoreAdviser::CoreAdviserFilters::COST] = 1.0 / 3;
@@ -381,7 +417,11 @@ TEST_CASE("Test_CoreAdviser_CMC_Default_Web_Design_Returns_Cores", "[adviser][co
 
 TEST_CASE("Test_CoreAdviserAvailableCores_All_Cores_Load_Internally_Only_Stock", "[adviser][core-adviser][available-cores][smoke-test]") {
     clear_databases();
-    double voltagePeakToPeak = 600;
+    // ABT #838: 200 Vpp (was 600). 600 Vpp at 100 kHz across the 100 uH specification is 4.8 A peak,
+    // 720 VA reactive: every stock candidate near 100 uH (RM 10 N41 gapped 0.44 mm: Bpk 0.28 T, 4.3 W
+    // at 25 C) runs away to its Curie temperature once its core loss is solved at the temperature it
+    // heats itself to, so no core survived. At 200 Vpp (1.6 A peak) a PQ 20/20 N49 lands at 50 C.
+    double voltagePeakToPeak = 200;
     double dcCurrent = 0;
     double ambientTemperature = 25;
     double frequency = 100000;
@@ -1964,18 +2004,15 @@ TEST_CASE("Test_CoreAdviserStandardCores_Common_Mode_Choke_Low_Frequency", "[adv
     settings.reset();
     clear_databases();
     load_core_shapes();
-    double voltagePeakToPeak = 600;
+    double commonModeCurrentPeakToPeak = 0.02;
     double dcCurrent = 0;
-    double ambientTemperature = 25;
     double frequency = 100000;
     double desiredMagnetizingInductance = 10e-5;
-    std::vector<double> turnsRatios = {};
-    OpenMagnetics::Inputs inputs;
 
     settings.set_use_toroidal_cores(false);
     settings.set_use_concentric_cores(true);
 
-    prepare_test_parameters(dcCurrent, ambientTemperature, frequency, turnsRatios, desiredMagnetizingInductance, inputs, voltagePeakToPeak);
+    auto inputs = prepare_common_mode_choke_inputs(frequency, desiredMagnetizingInductance, commonModeCurrentPeakToPeak, dcCurrent);
 
     std::vector<std::pair<double, double>> impedancePoints = {
         {1e5, 1000},
@@ -2025,18 +2062,15 @@ TEST_CASE("Test_CoreAdviserStandardCores_Common_Mode_Choke_Low_Frequency_With_Dc
     settings.reset();
     clear_databases();
     load_core_shapes();
-    double voltagePeakToPeak = 600;
+    double commonModeCurrentPeakToPeak = 0.02;
     double dcCurrent = 50;
-    double ambientTemperature = 25;
     double frequency = 100000;
     double desiredMagnetizingInductance = 10e-5;
-    std::vector<double> turnsRatios = {};
-    OpenMagnetics::Inputs inputs;
 
     settings.set_use_toroidal_cores(false);
     settings.set_use_concentric_cores(true);
 
-    prepare_test_parameters(dcCurrent, ambientTemperature, frequency, turnsRatios, desiredMagnetizingInductance, inputs, voltagePeakToPeak);
+    auto inputs = prepare_common_mode_choke_inputs(frequency, desiredMagnetizingInductance, commonModeCurrentPeakToPeak, dcCurrent);
 
     std::vector<std::pair<double, double>> impedancePoints = {
         {1e5, 1000},
@@ -2085,18 +2119,15 @@ TEST_CASE("Test_CoreAdviserStandardCores_Common_Mode_Choke_High_Frequency", "[ad
     settings.reset();
     clear_databases();
     load_core_shapes();
-    double voltagePeakToPeak = 600;
+    double commonModeCurrentPeakToPeak = 0.02;
     double dcCurrent = 0;
-    double ambientTemperature = 25;
     double frequency = 100000;
     double desiredMagnetizingInductance = 10e-5;
-    std::vector<double> turnsRatios = {};
-    OpenMagnetics::Inputs inputs;
 
     settings.set_use_toroidal_cores(false);
     settings.set_use_concentric_cores(true);
 
-    prepare_test_parameters(dcCurrent, ambientTemperature, frequency, turnsRatios, desiredMagnetizingInductance, inputs, voltagePeakToPeak);
+    auto inputs = prepare_common_mode_choke_inputs(frequency, desiredMagnetizingInductance, commonModeCurrentPeakToPeak, dcCurrent);
 
     std::vector<std::pair<double, double>> impedancePoints = {
         {1e6, 1000},
