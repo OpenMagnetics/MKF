@@ -760,7 +760,11 @@ std::pair<MagnetizingInductanceOutput, SignalDescriptor> MagnetizingInductance::
     // bias field is read from that flux density on the material's magnetisation curve. The previous
     // code ran one pass and returned it as converged. Plain iteration is used until two evaluations
     // bracket the root (F overshooting), then bisection in log(mu); no convergence throws.
+    // Set by the last evaluation below: the excitation is a line-cycle record (switching cycles riding on a line
+    // swing) whose MMF the current imposes, so each switching cycle sees its own instantaneous line bias.
+    bool lineCycleRecordUnderImposedMagnetomotiveForce = false;
     auto biasedPermeability = [&](double permeability) -> double {
+        lineCycleRecordUnderImposedMagnetomotiveForce = false;
         currentInitialPermeability = permeability;
         magnetizingInductanceOutput = reluctanceModel->get_core_reluctance(core, permeability);
         currentTotalReluctance = magnetizingInductanceOutput.get_core_reluctance();
@@ -988,6 +992,7 @@ std::pair<MagnetizingInductanceOutput, SignalDescriptor> MagnetizingInductance::
                     auto [loadLineFieldStrength, loadLineFluxDensity] = InitialPermeability::get_dc_operating_point_for_magnetomotive_force(
                         core.resolve_material(), biasMagnetomotiveForce, effectiveLength, effectiveArea, gapReluctance, temperature, frequency);
                     hFieldDcBias = loadLineFieldStrength;
+                    lineCycleRecordUnderImposedMagnetomotiveForce = switchingFrequency > frequency;
 
                     // The flux above is linear in mu_rev, the small-signal slope: right for the
                     // ripple, but its DC part is N*I_dc/(R(mu_rev)*A_e), which collapses towards zero
@@ -1082,6 +1087,82 @@ std::pair<MagnetizingInductanceOutput, SignalDescriptor> MagnetizingInductance::
         throw CalculationException(ErrorCode::CALCULATION_INVALID_RESULT,
             "Magnetizing inductance did not converge under DC bias in " + std::to_string(maximumBiasEvaluations) +
             " evaluations (last permeability " + std::to_string(permeability) + ")");
+    }
+
+    // A line-cycle record under an imposed MMF (a DMC or PFC choke carrying its line current with the switching
+    // ripple): the permeability above is the one at the line swing's peak, the operating point that sets the
+    // inductance the circuit can count on. The flux density each switching cycle actually swings is not: the
+    // line bias changes over the line cycle, and a cycle near the zero crossing sees the unbiased, larger
+    // permeability (ABT #1764: on the web DMC wizard's T 48/23/19 MPP 300 toroid the peak permeability, ~104,
+    // for every cycle priced the ripple at 1.74 W against ~6.8 W with each cycle at its own bias). Each cycle,
+    // bounded by the valleys of the magnetizing current, keeps the line flux density computed above (its mean),
+    // and its ripple swings about it with the incremental permeability at the cycle's own line bias: the field
+    // of its mean MMF on the same load line as the bias above.
+    if (lineCycleRecordUnderImposedMagnetomotiveForce) {
+        // The flux density is built on the magnetizing current's own samples: the core-loss split reads the two
+        // records over the same span.
+        auto magnetizingCurrentWaveform = operatingPoint->get_mutable_excitations_per_winding()[0].get_magnetizing_current().value().get_waveform().value();
+        if (!magnetizingCurrentWaveform.get_time()) {
+            throw CalculationException(ErrorCode::CALCULATION_INVALID_RESULT,
+                "Magnetizing inductance of a line-cycle record: the magnetizing current has no time axis");
+        }
+        auto time = magnetizingCurrentWaveform.get_time().value();
+        auto current = magnetizingCurrentWaveform.get_data();
+        // The cycles are those of the magnetizing current. A model branch that drives the core with one switching
+        // period instead of the record (the CMC branch's triangle of the line swing, for a caller that does not
+        // name the topology) has no line cycle to bias its cycles with: its flux density stays as computed above.
+        auto valleys = Inputs::find_switching_cycle_valleys(time, current);
+        if (valleys) {
+            auto coreMaterial = core.resolve_material();
+            double effectiveLength = core.get_processed_description()->get_effective_parameters().get_effective_length();
+            double ungappedCoreReluctance = magnetizingInductanceOutput.get_ungapped_core_reluctance().value();
+            double gapReluctance = currentTotalReluctance - ungappedCoreReluctance;
+            // The cycles' bounds: before the first valley the first cycle continues, after the last one the last.
+            std::vector<size_t> bounds = valleys.value();
+            bounds.front() = 0;
+            bounds.back() = current.size();
+            // The flux density above is linear in the magnetizing current through this reluctance, plus the offset
+            // the DC bias may have moved it by.
+            double currentAverage = Inputs::calculate_waveform_average(magnetizingCurrentWaveform);
+            double fluxDensityOffset = Inputs::calculate_waveform_average(result.second.get_waveform().value()) -
+                                       numberTurnsPrimary * currentAverage / (currentTotalReluctance * effectiveArea);
+            std::vector<double> fluxDensityData(current.size());
+            for (size_t cycleIndex = 0; cycleIndex + 1 < bounds.size(); ++cycleIndex) {
+                size_t first = bounds[cycleIndex];
+                size_t end = bounds[cycleIndex + 1];
+                // The cycle's time average (trapezoids over its samples; the last cycle ends at the record's last one).
+                size_t last = std::min(end, current.size() - 1);
+                double cycleCurrent;
+                if (time[last] > time[first]) {
+                    double integral = 0;
+                    for (size_t sampleIndex = first; sampleIndex < last; ++sampleIndex) {
+                        integral += 0.5 * (current[sampleIndex] + current[sampleIndex + 1]) * (time[sampleIndex + 1] - time[sampleIndex]);
+                    }
+                    cycleCurrent = integral / (time[last] - time[first]);
+                }
+                else {
+                    cycleCurrent = current[first];
+                }
+                double lineMagnetomotiveForce = numberTurnsPrimary * cycleCurrent;
+                double lineFieldStrength = InitialPermeability::get_dc_operating_point_for_magnetomotive_force(
+                    coreMaterial, fabs(lineMagnetomotiveForce), effectiveLength, effectiveArea, gapReluctance, temperature, frequency).first;
+                double incrementalPermeability = initialPermeability.get_initial_permeability(coreMaterial, temperature, lineFieldStrength, frequency);
+                double incrementalReluctance = reluctanceModel->get_ungapped_core_reluctance(core, incrementalPermeability) + gapReluctance;
+                double cycleFluxDensity = lineMagnetomotiveForce / (currentTotalReluctance * effectiveArea) + fluxDensityOffset;
+                for (size_t sampleIndex = first; sampleIndex < end; ++sampleIndex) {
+                    fluxDensityData[sampleIndex] = cycleFluxDensity +
+                        numberTurnsPrimary * (current[sampleIndex] - cycleCurrent) / (incrementalReluctance * effectiveArea);
+                }
+            }
+            Waveform fluxDensityWaveform;
+            fluxDensityWaveform.set_time(time);
+            fluxDensityWaveform.set_data(fluxDensityData);
+            SignalDescriptor magneticFluxDensity;
+            magneticFluxDensity.set_waveform(fluxDensityWaveform);
+            magneticFluxDensity.set_harmonics(Inputs::calculate_harmonics_data(fluxDensityWaveform, frequency));
+            magneticFluxDensity.set_processed(Inputs::calculate_basic_processed_data(fluxDensityWaveform));
+            result.second = magneticFluxDensity;
+        }
     }
 
     // Multi-column winding placement: the lumped N²/R model assumes the primary links

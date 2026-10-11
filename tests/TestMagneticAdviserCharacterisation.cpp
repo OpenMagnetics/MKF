@@ -799,6 +799,17 @@ TEST_CASE("MagneticAdviser web DMC whose switching ripple is resolved returns wo
     CHECK_THAT(dmcSweep.get_y_points()[0], Catch::Matchers::WithinRel(simulatedCoreLosses.get_core_losses(), 0.01));
     CHECK_FALSE(cmcBranchSweep.get_y_points()[0] < 10 * simulatedCoreLosses.get_core_losses());
 
+    // Each switching cycle swings at its own instantaneous line bias (ABT #1764): with the permeability of the
+    // line swing's peak (~104) for every cycle the ripple near the zero crossings was priced ~4x low, 1.74 W.
+    // Reference: the record split at its current's valleys, each cycle's ripple B = mu0 * mu(H of the cycle's
+    // mean current) * N * di / l_e on the material's DC-bias curve, Steinmetz per cycle at its own rate: 6.84 W
+    // (first-principles script on this magnetic, the ungapped T 48/23/19 MPP 300 with 30 + 30 turns).
+    REQUIRE(magnetic.get_core().get_shape_name() == "T 48/23/19");
+    REQUIRE(magnetic.get_core().get_material_name() == "MPP 300");
+    REQUIRE(magnetic.get_core().get_functional_description().get_gapping().empty());
+    REQUIRE(magnetic.get_coil().get_functional_description()[0].get_number_turns() == 30);
+    CHECK_THAT(simulatedCoreLosses.get_core_losses(), Catch::Matchers::WithinRel(6.84, 0.05));
+
     // The operating point as stored (waveforms, no harmonics) is the same excitation as its processed
     // copy, so the sweep must price it the same (ABT #1764): it read 16.3 W against 1.74 W, because
     // the switching frequency came from the cached harmonics and fell back to 50 Hz without them,
