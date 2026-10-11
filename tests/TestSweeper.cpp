@@ -783,7 +783,7 @@ namespace {
                                                                                               dcCurrent,
                                                                                               turnsRatios);
 
-        auto coreSweep = Sweeper().sweep_core_losses_over_frequency(magnetic, inputs.get_operating_points()[0], 10000, 1200000, 20);
+        auto coreSweep = Sweeper().sweep_core_losses_over_frequency(magnetic, inputs.get_operating_points()[0], inputs.get_design_requirements().get_topology(), 10000, 1200000, 20);
 
         auto outFile = outputFilePath;
 
@@ -864,7 +864,7 @@ namespace {
                                                                                               dcCurrent,
                                                                                               turnsRatios);
 
-        auto coreSweep = Sweeper().sweep_core_losses_over_frequency(magnetic, inputs.get_operating_points()[0], 10000, 1200000, 20);
+        auto coreSweep = Sweeper().sweep_core_losses_over_frequency(magnetic, inputs.get_operating_points()[0], inputs.get_design_requirements().get_topology(), 10000, 1200000, 20);
 
         auto outFile = outputFilePath;
 

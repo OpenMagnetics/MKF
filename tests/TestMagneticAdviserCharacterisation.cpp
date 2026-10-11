@@ -49,6 +49,7 @@
 #include "constructive_models/Mas.h"
 #include "processors/Inputs.h"
 #include "processors/MagneticSimulator.h"
+#include "processors/Sweeper.h"
 #include "support/Settings.h"
 #include "support/Utils.h"
 
@@ -726,6 +727,31 @@ TEST_CASE("MagneticAdviser web DMC whose switching ripple is resolved returns wo
     for (size_t index = 0; index < lineCurrent.size(); index += 1024) {
         CHECK_THAT(magnetizingCurrent[index], Catch::Matchers::WithinAbs(lineCurrent[index] + neutralCurrent[index], 1e-9));
     }
+
+    // The core-losses-over-frequency plot drives the core the same way (ABT #1754): at the
+    // operating frequency it must report what the simulator reports for this DMC. Without the
+    // topology the model cannot tell the DMC from a CMC and takes the CMC triangle, which is what
+    // the sweep's own copy of the branches always did: ~550 W against ~2 W.
+    auto magnetic = results[0].first.get_magnetic();
+    auto topology = inputs.get_design_requirements().get_topology();
+    double operatingFrequency = inputs.get_operating_point(0).get_excitations_per_winding()[0].get_frequency();
+    MagneticSimulator simulator;
+    simulator.set_core_losses_model_name(CoreLossesModels::STEINMETZ);
+    simulator.set_topology(topology);
+    auto simulatedOperatingPoint = inputs.get_operating_point(0);
+    auto simulatedCoreLosses = simulator.calculate_core_losses(simulatedOperatingPoint, magnetic);
+    // Without temperature convergence the simulator evaluates the losses once, at ambient.
+    double ambientTemperature = inputs.get_operating_point(0).get_conditions().get_ambient_temperature();
+
+    auto dmcSweep = Sweeper::sweep_core_losses_over_frequency(magnetic, inputs.get_operating_point(0), topology,
+                                                              operatingFrequency, 100 * operatingFrequency, 3, ambientTemperature);
+    auto cmcBranchSweep = Sweeper::sweep_core_losses_over_frequency(magnetic, inputs.get_operating_point(0), std::nullopt,
+                                                                    operatingFrequency, 100 * operatingFrequency, 3, ambientTemperature);
+    REQUIRE_THAT(dmcSweep.get_x_points()[0], Catch::Matchers::WithinRel(operatingFrequency, 1e-9));
+    INFO("f = " << operatingFrequency << " Hz: simulator " << simulatedCoreLosses.get_core_losses() << " W, DMC sweep "
+         << dmcSweep.get_y_points()[0] << " W, CMC branch " << cmcBranchSweep.get_y_points()[0] << " W");
+    CHECK_THAT(dmcSweep.get_y_points()[0], Catch::Matchers::WithinRel(simulatedCoreLosses.get_core_losses(), 0.01));
+    CHECK_FALSE(cmcBranchSweep.get_y_points()[0] < 10 * simulatedCoreLosses.get_core_losses());
     settings.reset();
     clear_databases();
 }

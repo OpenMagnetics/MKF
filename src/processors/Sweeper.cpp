@@ -382,7 +382,7 @@ Curve2D Sweeper::sweep_core_resistance_over_frequency(Magnetic magnetic, double 
     return Curve2D(frequencies, coreResistances, title);
 }
 
-Curve2D Sweeper::sweep_core_losses_over_frequency(Magnetic magnetic, OperatingPoint operatingPoint, double start, double stop, size_t numberElements, double temperature, std::string mode, std::string title) {
+Curve2D Sweeper::sweep_core_losses_over_frequency(Magnetic magnetic, OperatingPoint operatingPoint, std::optional<Topology> topology, double start, double stop, size_t numberElements, double temperature, std::string mode, std::string title) {
     // ABT #1456: this sweep evaluates the Steinmetz model, whose coefficients exist only inside the material's
     // fitted span. Sweep the part of [start, stop] the fit covers and say so in the title, as the core
     // resistance sweep does; a request entirely outside the span throws.
@@ -413,27 +413,21 @@ Curve2D Sweeper::sweep_core_losses_over_frequency(Magnetic magnetic, OperatingPo
         frequencies.back() = stop;
     }
     auto core = magnetic.get_core();
-    auto coil = magnetic.get_coil();
 
-    auto magnetizingInductanceModel = MagnetizingInductance();
-    auto magnetizingInductance = resolve_dimensional_values(magnetizingInductanceModel.calculate_inductance_from_number_turns_and_gapping(core, coil).get_magnetizing_inductance());
-
-    double numberWindings = coil.get_functional_description().size();
-    double numberTurnsPrimary = coil.get_functional_description()[0].get_number_turns();
-    double effectiveArea = core.get_processed_description()->get_effective_parameters().get_effective_area();
-
-    OpenMagnetics::InitialPermeability initialPermeabilityModel;
-    auto reluctanceModel = OpenMagnetics::ReluctanceModel::factory();
-    auto initialPermeability = initialPermeabilityModel.get_initial_permeability(core.resolve_material(), temperature);
-    auto magnetizingInductanceOutput = reluctanceModel->get_core_reluctance(core, initialPermeability);
-    auto totalReluctance = magnetizingInductanceOutput.get_core_reluctance();
+    // Each point's magnetizing current and flux density come from MagnetizingInductance, the model
+    // the simulator and the advisers use, given the design's topology. This sweep kept its own copy
+    // of that model's branches, which drifted from it: once the model told a multi-winding DMC from
+    // a CMC, the copy still drove a DMC with the CMC triangle of its line current's whole swing at
+    // the ripple frequency (ABT #1754).
+    MagnetizingInductance magnetizingInductanceModel;
+    magnetizingInductanceModel.set_topology(topology);
+    operatingPoint.get_mutable_conditions().set_ambient_temperature(temperature);
 
     std::vector<double> coreLossesPerFrequency;
     CoreLosses coreLossesModel;
     coreLossesModel.set_core_losses_model_name(CoreLossesModels::STEINMETZ);
 
     for (auto frequency : frequencies) {
-
         // Keep BOTH signals through the rescale. The third argument used to be `true`
         // (cleanFrequencyDependentFields), which with the default useCurrentAsBase=true
         // DELETES the voltage and keeps the current — so every point on the curve was
@@ -443,50 +437,21 @@ Curve2D Sweeper::sweep_core_losses_over_frequency(Magnetic magnetic, OperatingPo
         // core losses go DOWN, not up. The two only ever agreed at the operating
         // point's own frequency, which is why the graph read tens of watts where the
         // Core Info panel and the datasheet read a fraction of one (ABT: user report).
-        Inputs::scale_time_to_frequency(operatingPoint, frequency, false);
-
-        OperatingPointExcitation excitation = Inputs::get_primary_excitation(operatingPoint);
-
-        if (numberWindings == 1 && excitation.get_current()) {
-            Inputs::set_current_as_magnetizing_current(&operatingPoint);
-        }
-        else if (Inputs::is_multiport_inductor(operatingPoint, coil.get_isolation_sides())) {
-            auto magnetizingCurrent = Inputs::get_multiport_inductor_magnetizing_current(operatingPoint);
-            excitation.set_magnetizing_current(magnetizingCurrent);
-            operatingPoint.get_mutable_excitations_per_winding()[0] = excitation;
-        }
-        else if (Inputs::can_be_common_mode_choke(operatingPoint) && core.get_type() == CoreType::TOROIDAL) {
-            // CMC: drive the core from the common-mode current alone, so the
-            // DM (line) current which cancels in the toroid doesn't inflate B.
-            // Same pattern MagnetizingInductance.cpp:149 uses.
-            auto magnetizingCurrent = Inputs::get_common_mode_choke_magnetizing_current(operatingPoint);
-            excitation.set_magnetizing_current(magnetizingCurrent);
-            operatingPoint.get_mutable_excitations_per_winding()[0] = excitation;
-        }
-        else if (excitation.get_voltage()) {
-            auto voltage = excitation.get_voltage().value();
-            auto sampledVoltageWaveform = Inputs::calculate_sampled_waveform(voltage.get_waveform().value(), frequency);
-
-            auto magnetizingCurrent = Inputs::calculate_magnetizing_current(excitation,
-                                                                                   sampledVoltageWaveform,
-                                                                                   magnetizingInductance,
-                                                                                   false);
-
-            auto sampledMagnetizingCurrentWaveform = Inputs::calculate_sampled_waveform(magnetizingCurrent.get_waveform().value(), excitation.get_frequency());
-            // calculate_magnetizing_current already set the harmonics, from the current's knots
-            // where it had them (ABT #1460); recomputing them from this resample would lose that.
-            magnetizingCurrent.set_processed(Inputs::calculate_processed_data(magnetizingCurrent, sampledMagnetizingCurrentWaveform, false));
-
-            excitation.set_magnetizing_current(magnetizingCurrent);
-            operatingPoint.get_mutable_excitations_per_winding()[0] = excitation;
+        auto sweptOperatingPoint = operatingPoint;
+        Inputs::scale_time_to_frequency(sweptOperatingPoint, frequency, false);
+        // The rescale moves the currents and voltages, not a magnetizing current the operating
+        // point carries, which would keep its own frequency's time axis: the model derives it
+        // again at this frequency.
+        for (auto& excitation : sweptOperatingPoint.get_mutable_excitations_per_winding()) {
+            excitation.set_magnetizing_current(std::nullopt);
+            excitation.set_magnetic_flux_density(std::nullopt);
         }
 
-        auto magneticFlux = OpenMagnetics::MagneticField::calculate_magnetic_flux(operatingPoint.get_mutable_excitations_per_winding()[0].get_magnetizing_current().value(), totalReluctance, numberTurnsPrimary);
-        auto magneticFluxDensity = OpenMagnetics::MagneticField::calculate_magnetic_flux_density(magneticFlux, effectiveArea);
-    
+        auto magneticFluxDensity = magnetizingInductanceModel.calculate_inductance_and_magnetic_flux_density(magnetic, &sweptOperatingPoint).second;
+        auto excitation = sweptOperatingPoint.get_excitations_per_winding()[0];
         excitation.set_magnetic_flux_density(magneticFluxDensity);
 
-        auto coreLosses =  coreLossesModel.calculate_core_losses(core, excitation, temperature).get_core_losses();
+        auto coreLosses = coreLossesModel.calculate_core_losses(core, excitation, temperature).get_core_losses();
         coreLossesPerFrequency.push_back(coreLosses);
     }
 

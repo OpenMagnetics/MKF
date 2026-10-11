@@ -4855,14 +4855,14 @@ TEST_CASE("Core-loss frequency sweep is clipped to the material's fitted span", 
     auto inputs = OpenMagneticsTesting::create_quick_test_inputs();
     auto [spanMinimum, spanMaximum] = CoreLossesModel::get_steinmetz_fitted_span("P63");
     REQUIRE(spanMinimum > 10000);
-    auto sweep = Sweeper::sweep_core_losses_over_frequency(magnetic, inputs.get_operating_points()[0], 10000, 1200000, 10);
+    auto sweep = Sweeper::sweep_core_losses_over_frequency(magnetic, inputs.get_operating_points()[0], inputs.get_design_requirements().get_topology(), 10000, 1200000, 10);
     CHECK_THAT(sweep.get_x_points().front(), Catch::Matchers::WithinRel(spanMinimum, 1e-9));
     CHECK_THAT(sweep.get_x_points().back(), Catch::Matchers::WithinRel(1200000.0, 1e-9));
     CHECK_THAT(sweep.get_title(), Catch::Matchers::ContainsSubstring("fitted Steinmetz span"));
     auto [inSpanStart, inSpanStop] = Sweeper::core_resistance_frequency_window(magnetic, 400000, 1000000);
     CHECK(inSpanStart == 400000);
     CHECK(inSpanStop == 1000000);
-    CHECK_THROWS_AS(Sweeper::sweep_core_losses_over_frequency(magnetic, inputs.get_operating_points()[0], 10000, 100000, 10),
+    CHECK_THROWS_AS(Sweeper::sweep_core_losses_over_frequency(magnetic, inputs.get_operating_points()[0], inputs.get_design_requirements().get_topology(), 10000, 100000, 10),
                     MaterialFrequencyOutOfSpanException);
 }
 
