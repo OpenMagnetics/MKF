@@ -493,7 +493,9 @@ Curve2D Sweeper::sweep_core_losses_over_frequency(Magnetic magnetic, OperatingPo
         // point's own frequency, which is why the graph read tens of watts where the
         // Core Info panel and the datasheet read a fraction of one (ABT: user report).
         auto sweptOperatingPoint = operatingPoint;
-        Inputs::scale_time_to_frequency(sweptOperatingPoint, frequency, false);
+        // Recompute the signals' harmonics and processed data on the rescaled time axis: the stored
+        // ones describe the operating point's own frequency (ABT #1764).
+        Inputs::scale_time_to_frequency(sweptOperatingPoint, frequency, false, true);
         // The model derives the magnetizing current and flux density at each frequency, as this
         // sweep always did: one the operating point carries may come from a model that did not
         // know the topology (the CMC triangle a DMC used to get).

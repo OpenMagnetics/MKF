@@ -3264,25 +3264,29 @@ void Inputs::scale_time_to_frequency(OperatingPoint& operatingPoint, double newF
 
 void Inputs::scale_time_to_frequency(OperatingPointExcitation& excitation, double newFrequency, bool cleanFrequencyDependentFields, bool processSignals, bool useCurrentAsBase){
     excitation.set_frequency(newFrequency);
-    if (excitation.get_current() && excitation.get_current()->get_waveform()) {
-        auto current = excitation.get_current().value();
-        current.set_waveform(scale_time_to_frequency(current.get_waveform().value(), newFrequency));
+    // A signal whose time axis is rescaled keeps its waveform; its harmonics and processed data were
+    // derived from the old time axis. They are recomputed from the rescaled waveform when processSignals
+    // is set, and dropped otherwise, so that no consumer reads a spectrum at the old frequencies (a
+    // swept DMC record kept its 100 kHz ripple harmonic while its waveform moved to 1 MHz, ABT #1764).
+    // A signal without a waveform is described by its processed data alone and is left as it is.
+    auto rescale = [&](SignalDescriptor signal) {
+        signal.set_waveform(scale_time_to_frequency(signal.get_waveform().value(), newFrequency));
         if (processSignals) {
-            auto sampledWaveform = Inputs::calculate_sampled_waveform(current.get_waveform().value(), newFrequency);
-            current.set_harmonics(Inputs::calculate_harmonics_data(current.get_waveform().value(), sampledWaveform, newFrequency));
-            current.set_processed(Inputs::calculate_processed_data(current, sampledWaveform, true));
+            auto sampledWaveform = Inputs::calculate_sampled_waveform(signal.get_waveform().value(), newFrequency);
+            signal.set_harmonics(Inputs::calculate_harmonics_data(signal.get_waveform().value(), sampledWaveform, newFrequency));
+            signal.set_processed(Inputs::calculate_processed_data(signal, sampledWaveform, true));
         }
-        excitation.set_current(current);
+        else {
+            signal.set_harmonics(std::nullopt);
+            signal.set_processed(std::nullopt);
+        }
+        return signal;
+    };
+    if (excitation.get_current() && excitation.get_current()->get_waveform()) {
+        excitation.set_current(rescale(excitation.get_current().value()));
     }
     if (excitation.get_voltage() && excitation.get_voltage()->get_waveform()) {
-        auto voltage = excitation.get_voltage().value();
-        voltage.set_waveform(scale_time_to_frequency(voltage.get_waveform().value(), newFrequency));
-        if (processSignals) {
-            auto sampledWaveform = Inputs::calculate_sampled_waveform(voltage.get_waveform().value(), newFrequency);
-            voltage.set_harmonics(Inputs::calculate_harmonics_data(voltage.get_waveform().value(), sampledWaveform, newFrequency));
-            voltage.set_processed(Inputs::calculate_processed_data(voltage, sampledWaveform, true));
-        }
-        excitation.set_voltage(voltage);
+        excitation.set_voltage(rescale(excitation.get_voltage().value()));
     }
     if (cleanFrequencyDependentFields) {
         if (useCurrentAsBase) {
@@ -3297,34 +3301,13 @@ void Inputs::scale_time_to_frequency(OperatingPointExcitation& excitation, doubl
     }
     else {
         if (excitation.get_magnetizing_current() && excitation.get_magnetizing_current()->get_waveform()) {
-            auto magnetizingCurrent = excitation.get_magnetizing_current().value();
-            magnetizingCurrent.set_waveform(scale_time_to_frequency(magnetizingCurrent.get_waveform().value(), newFrequency));
-            if (processSignals) {
-                auto sampledWaveform = Inputs::calculate_sampled_waveform(magnetizingCurrent.get_waveform().value(), newFrequency);
-                magnetizingCurrent.set_harmonics(Inputs::calculate_harmonics_data(magnetizingCurrent.get_waveform().value(), sampledWaveform, newFrequency));
-                magnetizingCurrent.set_processed(Inputs::calculate_processed_data(magnetizingCurrent, sampledWaveform, true));
-            }
-            excitation.set_magnetizing_current(magnetizingCurrent);
+            excitation.set_magnetizing_current(rescale(excitation.get_magnetizing_current().value()));
         }
         if (excitation.get_magnetic_flux_density() && excitation.get_magnetic_flux_density()->get_waveform()) {
-            auto magneticFluxDensity = excitation.get_magnetic_flux_density().value();
-            magneticFluxDensity.set_waveform(scale_time_to_frequency(magneticFluxDensity.get_waveform().value(), newFrequency));
-            if (processSignals) {
-                auto sampledWaveform = Inputs::calculate_sampled_waveform(magneticFluxDensity.get_waveform().value(), newFrequency);
-                magneticFluxDensity.set_harmonics(Inputs::calculate_harmonics_data(magneticFluxDensity.get_waveform().value(), sampledWaveform, newFrequency));
-                magneticFluxDensity.set_processed(Inputs::calculate_processed_data(magneticFluxDensity, sampledWaveform, true));
-            }
-            excitation.set_magnetic_flux_density(magneticFluxDensity);
+            excitation.set_magnetic_flux_density(rescale(excitation.get_magnetic_flux_density().value()));
         }
         if (excitation.get_magnetic_field_strength() && excitation.get_magnetic_field_strength()->get_waveform()) {
-            auto magneticFieldStrength = excitation.get_magnetic_field_strength().value();
-            magneticFieldStrength.set_waveform(scale_time_to_frequency(magneticFieldStrength.get_waveform().value(), newFrequency));
-            if (processSignals) {
-                auto sampledWaveform = Inputs::calculate_sampled_waveform(magneticFieldStrength.get_waveform().value(), newFrequency);
-                magneticFieldStrength.set_harmonics(Inputs::calculate_harmonics_data(magneticFieldStrength.get_waveform().value(), sampledWaveform, newFrequency));
-                magneticFieldStrength.set_processed(Inputs::calculate_processed_data(magneticFieldStrength, sampledWaveform, true));
-            }
-            excitation.set_magnetic_field_strength(magneticFieldStrength);
+            excitation.set_magnetic_field_strength(rescale(excitation.get_magnetic_field_strength().value()));
         }
     }
 }

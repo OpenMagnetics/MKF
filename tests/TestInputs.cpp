@@ -2413,3 +2413,37 @@ TEST_CASE("Test_Switching_Frequency_Read_From_The_Waveform_Not_The_Cached_Harmon
     CHECK_THAT(processedSwitchingFrequency, Catch::Matchers::WithinRel(100000, 1e-3));
     CHECK_THAT(OpenMagnetics::Inputs::get_switching_frequency(storedExcitation), Catch::Matchers::WithinRel(processedSwitchingFrequency, 1e-9));
 }
+
+TEST_CASE("Test_Scale_Time_To_Frequency_Keeps_No_Spectrum_Of_The_Old_Time_Axis", "[processor][inputs][bug]") {
+    // ABT #1764: rescaling an excitation's time axis without reprocessing kept the harmonics of the old
+    // axis. The web DMC record moved to 500 Hz kept a 100 kHz ripple harmonic while its waveform's
+    // ripple sat at 1 MHz. Without reprocessing the stale spectrum and processed data are dropped;
+    // with it they are those of the rescaled waveform.
+    auto path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "web_adviser_flows/dmc_calculate_advised_magnetics_switching_ripple.json");
+    std::ifstream file(path);
+    REQUIRE(file.good());
+    OpenMagnetics::Inputs inputs(json::parse(file)["inputs"]);
+    auto excitation = inputs.get_operating_point(0).get_excitations_per_winding()[0];
+    REQUIRE(excitation.get_current()->get_harmonics());
+    REQUIRE(excitation.get_voltage()->get_harmonics());
+
+    auto unprocessed = excitation;
+    OpenMagnetics::Inputs::scale_time_to_frequency(unprocessed, 500, false, false);
+    CHECK_FALSE(unprocessed.get_current()->get_harmonics());
+    CHECK_FALSE(unprocessed.get_current()->get_processed());
+    CHECK_FALSE(unprocessed.get_voltage()->get_harmonics());
+    CHECK_FALSE(unprocessed.get_voltage()->get_processed());
+    REQUIRE(unprocessed.get_current()->get_waveform());
+
+    auto reprocessed = excitation;
+    OpenMagnetics::Inputs::scale_time_to_frequency(reprocessed, 500, false, true);
+    auto harmonics = reprocessed.get_current()->get_harmonics().value();
+    size_t strongestRipple = 2;
+    for (size_t index = 2; index < harmonics.get_amplitudes().size(); ++index) {
+        if (harmonics.get_amplitudes()[index] > harmonics.get_amplitudes()[strongestRipple]) {
+            strongestRipple = index;
+        }
+    }
+    CHECK_THAT(harmonics.get_frequencies()[1], Catch::Matchers::WithinRel(500, 1e-6));
+    CHECK_THAT(harmonics.get_frequencies()[strongestRipple], Catch::Matchers::WithinRel(1e6, 1e-3));
+}
