@@ -3751,7 +3751,8 @@ TEST_CASE("Debug_Abt1759_Default_Fringing_Rescore", "[debug][abt1759-rescore][.]
             models.proximityEffectModel = WindingProximityEffectLossesModels::WANG_STACKED;
             auto output = WindingLosses(models).calculate_losses(magnetic, operatingPoint, 25);
             double ohmic = 0;
-            for (const auto& turn : output.get_winding_losses_per_turn().value()) {
+            const auto lossesPerTurn = output.get_winding_losses_per_turn().value();
+            for (const auto& turn : lossesPerTurn) {
                 ohmic += turn.get_ohmic_losses()->get_losses();
             }
             std::cout << "RESCORE wang_stacked " << name << " racOverRdc=" << output.get_winding_losses() / ohmic << std::endl;

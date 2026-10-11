@@ -13187,9 +13187,11 @@ TEST_CASE("Test_Real_Geometry_Connection_Skin_Losses", "[constructive-model][coi
         auto skinOutput = OpenMagnetics::WindingSkinEffectLosses::calculate_skin_effect_losses(
             coil, temperature, ohmicOutput, Defaults().harmonicAmplitudeThreshold, std::nullopt, modelPerWireType);
         double connectionSkin = 0;
-        for (auto& element : skinOutput.get_winding_losses_per_winding().value()) {
+        const auto connectionLossesPerWinding = skinOutput.get_winding_losses_per_winding().value();
+        for (const auto& element : connectionLossesPerWinding) {
             REQUIRE(element.get_skin_effect_losses());
-            for (auto loss : element.get_skin_effect_losses()->get_losses_per_harmonic()) {
+            const auto connectionElement = element.get_skin_effect_losses().value();
+            for (auto loss : connectionElement.get_losses_per_harmonic()) {
                 connectionSkin += loss;
             }
         }
