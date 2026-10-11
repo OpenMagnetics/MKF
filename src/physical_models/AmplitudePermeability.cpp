@@ -9,7 +9,7 @@ std::optional<double> AmplitudePermeability::get_amplitude_permeability(std::str
     return get_amplitude_permeability(coreMaterial, magneticFluxDensityPeak, magneticFieldStrengthPeak, temperature);
 }
 
-std::optional<double> AmplitudePermeability::get_amplitude_permeability(CoreMaterial coreMaterial, std::optional<double> magneticFluxDensityPeak, std::optional<double> magneticFieldStrengthPeak, double temperature) {
+std::optional<double> AmplitudePermeability::get_amplitude_permeability(const CoreMaterial& coreMaterial, std::optional<double> magneticFluxDensityPeak, std::optional<double> magneticFieldStrengthPeak, double temperature) {
     // Calculate amplitude permeability using B-H loop slope
     // This uses the average slope of the loop, not the instantaneous derivative
     
@@ -78,7 +78,7 @@ std::pair<Curve2D, Curve2D> BHLoopRoshenModel::get_hysteresis_loop(std::string c
     return get_hysteresis_loop(coreMaterial, temperature, magneticFluxDensityPeak, magneticFieldStrengthPeak);
 }
 
-std::pair<Curve2D, Curve2D> BHLoopRoshenModel::get_hysteresis_loop(CoreMaterial coreMaterial, 
+std::pair<Curve2D, Curve2D> BHLoopRoshenModel::get_hysteresis_loop(const CoreMaterial& coreMaterial, 
                                                                     double temperature, 
                                                                     std::optional<double> magneticFluxDensityPeak, 
                                                                     std::optional<double> magneticFieldStrengthPeak) {

@@ -1120,7 +1120,8 @@ std::pair<MagnetizingInductanceOutput, SignalDescriptor> MagnetizingInductance::
         if (valleys) {
             auto coreMaterial = core.resolve_material();
             // The material's magnetisation curve, fetched once for the record: every cycle's load line is read on it.
-            const auto& magnetisationCurve = InitialPermeability::get_magnetisation_curve(coreMaterial, temperature, frequency);
+            // (shared with the bounded cache, ABT #838: this share keeps the curve alive for every cycle.)
+            const auto magnetisationCurve = InitialPermeability::get_magnetisation_curve(coreMaterial, temperature, frequency);
             double effectiveLength = core.get_processed_description()->get_effective_parameters().get_effective_length();
             double ungappedCoreReluctance = magnetizingInductanceOutput.get_ungapped_core_reluctance().value();
             double gapReluctance = currentTotalReluctance - ungappedCoreReluctance;
@@ -1152,7 +1153,7 @@ std::pair<MagnetizingInductanceOutput, SignalDescriptor> MagnetizingInductance::
                 }
                 double lineMagnetomotiveForce = numberTurnsPrimary * cycleCurrent;
                 double lineFieldStrength = InitialPermeability::get_dc_operating_point_for_magnetomotive_force(
-                    magnetisationCurve, fabs(lineMagnetomotiveForce), effectiveLength, effectiveArea, gapReluctance).first;
+                    *magnetisationCurve, fabs(lineMagnetomotiveForce), effectiveLength, effectiveArea, gapReluctance).first;
                 double incrementalPermeability = initialPermeability.get_initial_permeability(coreMaterial, temperature, lineFieldStrength, frequency);
                 double incrementalReluctance = reluctanceModel->get_ungapped_core_reluctance(core, incrementalPermeability) + gapReluctance;
                 double cycleFluxDensity = lineMagnetomotiveForce / (currentTotalReluctance * effectiveArea) + fluxDensityOffset;

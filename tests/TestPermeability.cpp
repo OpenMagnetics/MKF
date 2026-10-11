@@ -822,6 +822,31 @@ namespace {
         REQUIRE_THAT(muP, Catch::Matchers::WithinRel(muDefault, 1e-9));
     }
 
+    // ABT #838: the loss-temperature loop asks for the magnetisation curve at a new temperature on every pass. The
+    // cache was keyed on the exact temperature and never evicted, so it grew for the life of the process. It is
+    // bounded now, and a curve rebuilt after its eviction is the same numbers, bit for bit.
+    TEST_CASE("Magnetisation curve cache stays bounded and an evicted curve rebuilds identically", "[physical-model][initial-permeability]") {
+        auto coreMaterial = OpenMagnetics::find_core_material_by_name("3C97");
+        double frequency = 100000;
+        auto first = OpenMagnetics::InitialPermeability::get_magnetisation_curve(coreMaterial, 25.125, frequency);
+        std::vector<double> firstFieldStrength = first->fieldStrength;
+        std::vector<double> firstFluxDensity = first->fluxDensity;
+        REQUIRE(firstFieldStrength.size() > 1000);
+
+        const size_t capacity = OpenMagnetics::InitialPermeability::magnetisationCurveCacheCapacity;
+        for (size_t index = 0; index < capacity + 20; ++index) {
+            OpenMagnetics::InitialPermeability::get_magnetisation_curve(coreMaterial, 30 + 0.25 * index, frequency);
+        }
+        CHECK(OpenMagnetics::InitialPermeability::get_magnetisation_curve_cache_size() <= capacity);
+
+        // The first curve was evicted; the caller's copy is still alive, and the rebuild matches it exactly.
+        REQUIRE(first->fieldStrength == firstFieldStrength);
+        auto rebuilt = OpenMagnetics::InitialPermeability::get_magnetisation_curve(coreMaterial, 25.125, frequency);
+        CHECK(rebuilt.get() != first.get());
+        CHECK(rebuilt->fieldStrength == firstFieldStrength);
+        CHECK(rebuilt->fluxDensity == firstFluxDensity);
+    }
+
     TEST_CASE("Test_BH_Loop_3C97", "[physical-model][amplitude-permeability][smoke-test]") {
         std::string materialName = "3C97";
         auto curves = OpenMagnetics::BHLoopRoshenModel().get_hysteresis_loop(materialName, 25, 0.2, std::nullopt);
@@ -907,7 +932,9 @@ namespace {
         double frequency = 50.0;
         double effectiveLength = 0.1;
         double effectiveArea = 1e-4;
-        const auto& curve = OpenMagnetics::InitialPermeability::get_magnetisation_curve(material, temperature, frequency);
+        // The caller's share of the cached curve (the cache is bounded and may evict it, ABT #838).
+        const auto curveShare = OpenMagnetics::InitialPermeability::get_magnetisation_curve(material, temperature, frequency);
+        const auto& curve = *curveShare;
         for (double gapReluctance : {0.0, 2e6}) {
             for (double magnetomotiveForce : {0.0, 1e-3, 0.5, 7.3, 144.0, 238.1, 1500.0, 4e4, 1e9}) {
                 auto fromMaterial = OpenMagnetics::InitialPermeability::get_dc_operating_point_for_magnetomotive_force(

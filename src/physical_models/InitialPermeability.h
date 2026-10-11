@@ -1,4 +1,5 @@
 #pragma once
+#include <memory>
 #include "Constants.h"
 
 #include "constructive_models/Core.h"
@@ -34,7 +35,7 @@ class InitialPermeability {
                                         std::optional<double> magneticFluxDensity = std::nullopt,
                                         std::optional<CoreShapeFamily> shapeFamily = std::nullopt);
 
-        static double get_initial_permeability(CoreMaterial coreMaterial,
+        static double get_initial_permeability(const CoreMaterial& coreMaterial,
                                         std::optional<double> temperature = std::nullopt,
                                         std::optional<double> magneticFieldDcBias = std::nullopt,
                                         std::optional<double> frequency = std::nullopt,
@@ -47,13 +48,13 @@ class InitialPermeability {
         // asymptote themselves read it here -- the magnetisation-curve builder, which carries B on the
         // vacuum slope past that point, and the DC-bias fixed point, which reports the saturation with
         // its operating point.
-        static double get_initial_permeability_model_value(CoreMaterial coreMaterial,
+        static double get_initial_permeability_model_value(const CoreMaterial& coreMaterial,
                                         std::optional<double> temperature = std::nullopt,
                                         std::optional<double> magneticFieldDcBias = std::nullopt,
                                         std::optional<double> frequency = std::nullopt,
                                         std::optional<double> magneticFluxDensity = std::nullopt,
                                         std::optional<CoreShapeFamily> shapeFamily = std::nullopt);
-        static double get_initial_permeability(CoreMaterial coreMaterial, OperatingPoint operatingPoint,
+        static double get_initial_permeability(const CoreMaterial& coreMaterial, OperatingPoint operatingPoint,
                                         std::optional<CoreShapeFamily> shapeFamily = std::nullopt);
         static double get_initial_permeability(std::string coreMaterialName, OperatingPoint operatingPoint,
                                         std::optional<CoreShapeFamily> shapeFamily = std::nullopt);
@@ -67,13 +68,13 @@ class InitialPermeability {
         static InitialPermeabilitModifier resolve_modifier(const PermeabilityPoint& permeabilityPoint,
                                         std::optional<CoreShapeFamily> shapeFamily = std::nullopt);
 
-        static double has_temperature_dependency(CoreMaterial coreMaterial);
-        static double has_frequency_dependency(CoreMaterial coreMaterial);
-        static double has_magnetic_field_dc_bias_dependency(CoreMaterial coreMaterial);
+        static double has_temperature_dependency(const CoreMaterial& coreMaterial);
+        static double has_frequency_dependency(const CoreMaterial& coreMaterial);
+        static double has_magnetic_field_dc_bias_dependency(const CoreMaterial& coreMaterial);
         static std::optional<double> get_paramagnetic_temperature(const CoreMaterial& coreMaterial);
-        static double get_initial_permeability_temperature_dependent(CoreMaterial coreMaterial, double temperature);
-        static double get_initial_permeability_frequency_dependent(CoreMaterial coreMaterial, double frequency);
-        static double get_initial_permeability_magnetic_field_dc_bias_dependent(CoreMaterial coreMaterial, double magneticFieldDcBias);
+        static double get_initial_permeability_temperature_dependent(const CoreMaterial& coreMaterial, double temperature);
+        static double get_initial_permeability_frequency_dependent(const CoreMaterial& coreMaterial, double frequency);
+        static double get_initial_permeability_magnetic_field_dc_bias_dependent(const CoreMaterial& coreMaterial, double magneticFieldDcBias);
         // ABT #1093: the field strength H_dc that carries a given DC flux density in the material.
         // The datasheet bias curve is the REVERSIBLE (incremental) permeability, dB/dH along the
         // magnetisation curve, so B(H) = µ0·∫0^H µ_rev(h)·dh must be integrated and inverted; the
@@ -81,21 +82,26 @@ class InitialPermeability {
         // diverges there. With refuseAboveSaturation (gap sizing) it throws when biasFluxDensity
         // exceeds the material saturation at that temperature: no gap holds that flux. Without it
         // (analysing a given design) the march continues past the knee on the vacuum slope.
-        static double get_magnetic_field_dc_bias_for_flux_density(CoreMaterial coreMaterial,
+        static double get_magnetic_field_dc_bias_for_flux_density(const CoreMaterial& coreMaterial,
                                         double biasFluxDensity,
                                         double temperature,
                                         std::optional<double> frequency = std::nullopt,
                                         bool refuseAboveSaturation = true);
         // The material's magnetisation curve B(H) = mu0 * integral of mu_rev, tabulated and cached per material,
-        // temperature and frequency (ABT #1223).
+        // temperature and frequency (ABT #1223). The cache keeps the most recently used curves only (ABT #838: the
+        // loss-temperature loop asks for a new temperature on every pass, and an unbounded cache grew without end);
+        // the caller shares ownership of the curve it gets, so an eviction never pulls it from under the caller.
         struct MagnetisationCurve {
             std::vector<double> fieldStrength;
             std::vector<double> fluxDensity;
         };
-        static const MagnetisationCurve& get_magnetisation_curve(const CoreMaterial& coreMaterial, double temperature, std::optional<double> frequency);
+        static constexpr size_t magnetisationCurveCacheCapacity = 256;
+        static std::shared_ptr<const MagnetisationCurve> get_magnetisation_curve(const CoreMaterial& coreMaterial, double temperature, std::optional<double> frequency);
+        // Number of curves the cache holds now (bounded by magnetisationCurveCacheCapacity).
+        static size_t get_magnetisation_curve_cache_size();
         // The DC operating point {H, B} of the material when the MMF N*I is imposed (current-driven, or a DC
         // set by the load currents): solves N*I = H*l_e + B(H)*A_e*R_gap on the magnetisation curve.
-        static std::pair<double, double> get_dc_operating_point_for_magnetomotive_force(CoreMaterial coreMaterial,
+        static std::pair<double, double> get_dc_operating_point_for_magnetomotive_force(const CoreMaterial& coreMaterial,
                                         double magnetomotiveForce,
                                         double effectiveLength,
                                         double effectiveArea,
@@ -111,18 +117,18 @@ class InitialPermeability {
                                         double effectiveArea,
                                         double gapReluctance);
         static std::vector<PermeabilityPoint> sample_initial_permeability_by_frequency_modifier(PermeabilityPoint permeabilityPoint);
-        static double calculate_frequency_for_initial_permeability_drop(CoreMaterial coreMaterial, double percentageDrop, double maximumError = 0.01);
-        static std::vector<size_t> get_only_temperature_dependent_indexes(CoreMaterial coreMaterial);
+        static double calculate_frequency_for_initial_permeability_drop(const CoreMaterial& coreMaterial, double percentageDrop, double maximumError = 0.01);
+        static std::vector<size_t> get_only_temperature_dependent_indexes(const CoreMaterial& coreMaterial);
         static std::vector<size_t> get_only_temperature_dependent_indexes(std::vector<PermeabilityPoint> permeabilityPoints);
-        static std::vector<PermeabilityPoint> get_only_temperature_dependent_points(CoreMaterial coreMaterial);
-        static std::vector<size_t> get_only_frequency_dependent_indexes(CoreMaterial coreMaterial);
+        static std::vector<PermeabilityPoint> get_only_temperature_dependent_points(const CoreMaterial& coreMaterial);
+        static std::vector<size_t> get_only_frequency_dependent_indexes(const CoreMaterial& coreMaterial);
         static std::vector<size_t> get_only_frequency_dependent_indexes(std::vector<PermeabilityPoint> permeabilityPoints);
-        static std::vector<PermeabilityPoint> get_only_frequency_dependent_points(CoreMaterial coreMaterial);
-        static std::vector<size_t> get_only_magnetic_field_dc_bias_dependent_indexes(CoreMaterial coreMaterial);
+        static std::vector<PermeabilityPoint> get_only_frequency_dependent_points(const CoreMaterial& coreMaterial);
+        static std::vector<size_t> get_only_magnetic_field_dc_bias_dependent_indexes(const CoreMaterial& coreMaterial);
         static std::vector<size_t> get_only_magnetic_field_dc_bias_dependent_indexes(std::vector<PermeabilityPoint> permeabilityPoints);
-        static std::vector<PermeabilityPoint> get_only_magnetic_field_dc_bias_dependent_points(CoreMaterial coreMaterial);
+        static std::vector<PermeabilityPoint> get_only_magnetic_field_dc_bias_dependent_points(const CoreMaterial& coreMaterial);
         static std::map<std::string, std::string> get_initial_permeability_equations(PermeabilityPoint permeabilityPoint);
-        static double get_initial_permeability_formula(CoreMaterial coreMaterial,
+        static double get_initial_permeability_formula(const CoreMaterial& coreMaterial,
                                                        std::optional<double> temperature,
                                                        std::optional<double> magneticFieldDcBias,
                                                        std::optional<double> frequency,

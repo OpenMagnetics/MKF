@@ -21,7 +21,7 @@ class AmplitudePermeability {
     private:
     protected:
     public:
-        static std::optional<double> get_amplitude_permeability(CoreMaterial coreMaterial, std::optional<double> magneticFluxDensityPeak, std::optional<double> magneticFieldStrengthPeak, double temperature=defaults.ambientTemperature);
+        static std::optional<double> get_amplitude_permeability(const CoreMaterial& coreMaterial, std::optional<double> magneticFluxDensityPeak, std::optional<double> magneticFieldStrengthPeak, double temperature=defaults.ambientTemperature);
         static std::optional<double> get_amplitude_permeability(std::string coreMaterialName, std::optional<double> magneticFluxDensityPeak, std::optional<double> magneticFieldStrengthPeak, double temperature=defaults.ambientTemperature);
 
 };
@@ -38,7 +38,7 @@ class BHLoopModel {
                                                             std::optional<double> magneticFluxDensityPeak,
                                                             std::optional<double> magneticFieldStrengthPeak) = 0;
 
-    virtual std::pair<Curve2D, Curve2D> get_hysteresis_loop(CoreMaterial coreMaterial,
+    virtual std::pair<Curve2D, Curve2D> get_hysteresis_loop(const CoreMaterial& coreMaterial,
                                                             double temperature,
                                                             std::optional<double> magneticFluxDensityPeak,
                                                             std::optional<double> magneticFieldStrengthPeak) = 0;
@@ -56,7 +56,7 @@ class BHLoopRoshenModel : public BHLoopModel {
                                                     double temperature,
                                                     std::optional<double> magneticFluxDensityPeak,
                                                     std::optional<double> magneticFieldStrengthPeak);
-    std::pair<Curve2D, Curve2D> get_hysteresis_loop(CoreMaterial coreMaterial,
+    std::pair<Curve2D, Curve2D> get_hysteresis_loop(const CoreMaterial& coreMaterial,
                                                     double temperature,
                                                     std::optional<double> magneticFluxDensityPeak,
                                                     std::optional<double> magneticFieldStrengthPeak);

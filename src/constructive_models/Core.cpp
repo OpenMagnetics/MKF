@@ -2180,9 +2180,9 @@ void Core::process_data() {
     scale_to_stacks(get_number_stacks());
 }
 
-double Core::get_magnetic_flux_density_saturation(CoreMaterial coreMaterial, double temperature, bool proportion) {
+double Core::get_magnetic_flux_density_saturation(const CoreMaterial& coreMaterial, double temperature, bool proportion) {
     auto defaults = Defaults();
-    auto saturationData = coreMaterial.get_saturation();
+    const auto& saturationData = coreMaterial.get_saturation();
     std::vector<std::pair<double, double>> data;
 
     if (saturationData.size() == 0) {
@@ -2208,15 +2208,15 @@ double Core::get_magnetic_flux_density_saturation(double temperature, bool propo
     return get_magnetic_flux_density_saturation(coreMaterial, temperature, proportion);
 }
 
-double Core::get_magnetic_flux_density_saturation(CoreMaterial coreMaterial, bool proportion) {
+double Core::get_magnetic_flux_density_saturation(const CoreMaterial& coreMaterial, bool proportion) {
     return get_magnetic_flux_density_saturation(coreMaterial, 25, proportion);
 }
 double Core::get_magnetic_flux_density_saturation(bool proportion) {
     return get_magnetic_flux_density_saturation(25, proportion);
 }
 
-double Core::get_magnetic_field_strength_saturation(CoreMaterial coreMaterial, double temperature) {
-    auto saturationData = coreMaterial.get_saturation();
+double Core::get_magnetic_field_strength_saturation(const CoreMaterial& coreMaterial, double temperature) {
+    const auto& saturationData = coreMaterial.get_saturation();
     std::vector<std::pair<double, double>> data;
 
     if (saturationData.size() == 0) {
@@ -2237,7 +2237,7 @@ double Core::get_magnetic_field_strength_saturation(double temperature) {
     return get_magnetic_field_strength_saturation(coreMaterial, temperature);
 }
 
-double Core::get_remanence(CoreMaterial coreMaterial, double temperature, bool returnZeroIfMissing) {
+double Core::get_remanence(const CoreMaterial& coreMaterial, double temperature, bool returnZeroIfMissing) {
     if (!coreMaterial.get_remanence()) {
         if (returnZeroIfMissing) {
             return 0;
@@ -2266,7 +2266,7 @@ double Core::get_remanence(double temperature) {
     return get_remanence(coreMaterial, temperature);
 }
 
-double Core::get_curie_temperature(CoreMaterial coreMaterial) {
+double Core::get_curie_temperature(const CoreMaterial& coreMaterial) {
     if (!coreMaterial.get_curie_temperature()) {
         return std::numeric_limits<double>::quiet_NaN();
     }
@@ -2278,7 +2278,7 @@ double Core::get_curie_temperature() {
     return get_curie_temperature(coreMaterial);
 }
 
-double Core::get_coercive_force(CoreMaterial coreMaterial, double temperature, bool returnZeroIfMissing) {
+double Core::get_coercive_force(const CoreMaterial& coreMaterial, double temperature, bool returnZeroIfMissing) {
     if (!coreMaterial.get_coercive_force()) {
         if (returnZeroIfMissing) {
             return 0;
@@ -2313,7 +2313,7 @@ double Core::get_initial_permeability(double temperature){
     return get_initial_permeability(coreMaterial, temperature);
 }
 
-double Core::get_initial_permeability(CoreMaterial coreMaterial, double temperature){
+double Core::get_initial_permeability(const CoreMaterial& coreMaterial, double temperature){
     InitialPermeability initialPermeability;
     auto initialPermeabilityValue = initialPermeability.get_initial_permeability(coreMaterial, temperature, std::nullopt, std::nullopt);
     return initialPermeabilityValue;
@@ -2353,7 +2353,7 @@ double Core::get_resistivity(CoreMaterial coreMaterial, double temperature){
     return resistivity;
 }
 
-double Core::get_density(CoreMaterial coreMaterial) {
+double Core::get_density(const CoreMaterial& coreMaterial) {
     if (!coreMaterial.get_density()) {
         return std::numeric_limits<double>::quiet_NaN();
     }
