@@ -117,7 +117,14 @@ LeakageInductance::PhasorField LeakageInductance::calculate_magnetic_field_phaso
     double dA = meshResult.second;
 
     // Use dedicated leakage inductance H-field model (default: BINNS_LAWRENSON, which works best for air-only calculations)
-    MagneticField magneticField(settings.get_leakage_inductance_magnetic_field_strength_model(), settings.get_magnetic_field_strength_fringing_effect_model());
+    // ABT #1759: leakage is the conductors' field with gap fringing switched OFF (every caller, and the guard below), so no
+    // gap-fringing model is ever evaluated here. The pair handed to MagneticField must still be one that accepts fringing
+    // off: the configured global fringing model is the winding-loss choice and may be a window-boundary model
+    // (MMF_BOUNDARY), which IS the gapped core's field and refuses fringing off. Leakage therefore names its own
+    // gap-fringing model, ROSHEN, explicitly and independently of that setting; with fringing off its value cannot enter
+    // the result (Test_Leakage_Inductance_Ignores_The_Global_Fringing_Model).
+    SettingsGuard<bool> leakageFringingOffGuard(settings, &Settings::get_magnetic_field_include_fringing, &Settings::set_magnetic_field_include_fringing, false);
+    MagneticField magneticField(settings.get_leakage_inductance_magnetic_field_strength_model(), MagneticFieldStrengthFringingEffectModels::ROSHEN);
 
     std::vector<int8_t> currentDirectionPerWinding;
     for (size_t windingIndex = 0; windingIndex < magnetic.get_coil().get_functional_description().size(); ++windingIndex) {

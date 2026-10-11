@@ -7,6 +7,8 @@
 #include "physical_models/WindingLosses.h"
 #include "physical_models/StrayCapacitance.h"
 #include "physical_models/LeakageInductance.h"
+#include "physical_models/MagneticField.h"
+#include "constructive_models/Bobbin.h"
 #include "support/CoilMesher.h"
 #include <source_location>
 #include <catch2/catch_test_macros.hpp>
@@ -1208,6 +1210,182 @@ namespace {
         painter.export_svg();
         OpenMagneticsTesting::check_svg(outFile);
 
+        settings.reset();
+    }
+
+    // ABT #1759 (Alf 2026-10-11): with the default winding-loss model set per core type, leakage and the Painter's field
+    // plot MUST work for every core type. One transformer per family, single parallel and (single-window families)
+    // paralleled windings: leakage gives a positive value and the field paints. Counter-check: give the Painter the global
+    // field/fringing pair with MMF_BOUNDARY as default and the toroid / multi-window rows throw; give leakage the global
+    // fringing model and it throws once that model is MMF_BOUNDARY.
+    namespace {
+        struct DesignUnderTest {
+            std::string name;
+            OpenMagnetics::Magnetic magnetic;
+            OperatingPoint operatingPoint;
+        };
+
+        OperatingPoint transformer_operating_point() {
+            auto inputs = OpenMagnetics::Inputs::create_quick_operating_point(100000, 0.001, 25, WaveformLabel::TRIANGULAR, 100, 0.5, 0, {2.0});
+            return inputs.get_operating_point(0);
+        }
+
+        DesignUnderTest quick_transformer(std::string shapeName, json gapping, std::vector<int64_t> numberParallels) {
+            auto coil = OpenMagneticsTesting::get_quick_coil({20, 10}, numberParallels, shapeName, 1, WindingOrientation::OVERLAPPING,
+                                                             WindingOrientation::OVERLAPPING, CoilAlignment::CENTERED, CoilAlignment::INNER_OR_TOP);
+            auto core = OpenMagneticsTesting::get_quick_core(shapeName, gapping, 1, "3C97");
+            OpenMagnetics::Magnetic magnetic;
+            magnetic.set_core(core);
+            magnetic.set_coil(coil);
+            return {shapeName + " x" + std::to_string(numberParallels[0]) + "/" + std::to_string(numberParallels[1]), magnetic, transformer_operating_point()};
+        }
+
+        // E 42/21/20 with one winding window per column: primary on the central column, secondary on a lateral one
+        // (MultiColumnWinding_ECore_PrimaryCentral_SecondaryLateral). The central turns carry additionalCoordinates.
+        DesignUnderTest multi_window_transformer(std::vector<int64_t> numberParallels) {
+            settings.set_core_per_column_winding_windows(true);
+            auto core = OpenMagneticsTesting::get_quick_core("E 42/21/20", OpenMagneticsTesting::get_ground_gap(0.0005), 1, "3C97");
+            auto bobbin = OpenMagnetics::Bobbin::create_quick_bobbin(core, 0.001, 0.001);
+            json coilJson;
+            json bobbinJson;
+            to_json(bobbinJson, bobbin);
+            coilJson["bobbin"] = bobbinJson;
+            coilJson["functionalDescription"] = json::array();
+            coilJson["functionalDescription"].push_back(json{{"name", "Primary"}, {"numberTurns", 20}, {"numberParallels", numberParallels[0]},
+                                                             {"isolationSide", "primary"}, {"wire", "Round 0.475 - Grade 1"}});
+            coilJson["functionalDescription"].push_back(json{{"name", "Secondary"}, {"numberTurns", 10}, {"numberParallels", numberParallels[1]},
+                                                             {"isolationSide", "secondary"}, {"wire", "Round 0.475 - Grade 1"}});
+            OpenMagnetics::Coil coil(coilJson, false);
+            coil.get_mutable_functional_description()[1].set_winding_window(2);
+            coil.set_core_columns(core.get_processed_description()->get_columns());
+            REQUIRE(coil.wind());
+            OpenMagnetics::Magnetic magnetic;
+            magnetic.set_core(core);
+            magnetic.set_coil(coil);
+            return {"E 42/21/20 multi-window x" + std::to_string(numberParallels[0]) + "/" + std::to_string(numberParallels[1]), magnetic,
+                    transformer_operating_point()};
+        }
+
+        void check_leakage_and_field_paint(DesignUnderTest& design) {
+            INFO(design.name);
+            double leakage = 0;
+            REQUIRE_NOTHROW(leakage = LeakageInductance().calculate_leakage_inductance(design.magnetic, 100000).get_leakage_inductance_per_winding()[0].get_nominal().value());
+            CHECK(leakage > 0);
+            auto outFile = outputFilePath;
+            outFile.append("Test_Painter_Leakage_And_Field_Work_For_Every_Core_Type.svg");
+            std::filesystem::remove(outFile);
+            Painter painter(outFile);
+            settings.set_painter_number_points_x(20);
+            settings.set_painter_number_points_y(20);
+            REQUIRE_NOTHROW(painter.paint_magnetic_field(design.operatingPoint, design.magnetic));
+            painter.paint_core(design.magnetic);
+            painter.export_svg();
+            REQUIRE(std::filesystem::exists(outFile));
+        }
+    }
+
+    TEST_CASE("Test_Painter_Leakage_And_Field_Work_For_Every_Core_Type", "[support][painter][magnetic-field-painter][leakage-inductance][model-sets]") {
+        auto gap = OpenMagneticsTesting::get_ground_gap(0.0005);
+        std::vector<std::pair<std::string, json>> singleWindowFamilies = {
+            {"E 42/21/20", gap}, {"ETD 34/17/11", gap}, {"PQ 26/25", gap}, {"RM 10", gap}, {"EP 17", gap}};
+        for (auto& [shapeName, gapping] : singleWindowFamilies) {
+            for (auto parallels : std::vector<std::vector<int64_t>>{{1, 1}, {2, 2}}) {
+                settings.reset();
+                clear_databases();
+                auto design = quick_transformer(shapeName, gapping, parallels);
+                check_leakage_and_field_paint(design);
+            }
+        }
+        {
+            settings.reset();
+            clear_databases();
+            auto design = quick_transformer("T 40/24/16", json::array(), {1, 1});
+            check_leakage_and_field_paint(design);
+        }
+        {
+            settings.reset();
+            clear_databases();
+            auto design = multi_window_transformer({1, 1});
+            check_leakage_and_field_paint(design);
+        }
+        {
+            settings.reset();
+            clear_databases();
+            auto path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "leakage_inductance_planar.json");
+            OpenMagnetics::Mas mas;
+            OpenMagnetics::from_file(path, mas);
+            DesignUnderTest design{"planar (leakage_inductance_planar.json)", mas.get_magnetic(), mas.get_inputs().get_operating_point(0)};
+            check_leakage_and_field_paint(design);
+        }
+        settings.reset();
+    }
+
+    // ABT #1759 probe (hidden): which consumers throw NotImplemented for paralleled windings where the parallel current
+    // split has no frame (855cd23e): toroid and multi-window, through winding losses, leakage and the field paint.
+    TEST_CASE("Debug_Abt1759_Parallel_Split_Throw_Probe", "[.][abt1759-probe]") {
+        auto probe = [](DesignUnderTest design) {
+            auto run = [&](const std::string& consumer, auto&& call) {
+                try {
+                    call();
+                    std::cout << "PROBE " << design.name << " " << consumer << " OK" << std::endl;
+                }
+                catch (const std::exception& e) {
+                    std::cout << "PROBE " << design.name << " " << consumer << " THROWS " << e.what() << std::endl;
+                }
+            };
+            run("winding-losses", [&]() { WindingLosses().calculate_losses(design.magnetic, design.operatingPoint, 25); });
+            run("leakage", [&]() { LeakageInductance().calculate_leakage_inductance(design.magnetic, 100000); });
+            run("field-paint", [&]() {
+                auto outFile = outputFilePath;
+                outFile.append("Debug_Abt1759_Parallel_Split_Throw_Probe.svg");
+                Painter painter(outFile);
+                settings.set_painter_number_points_x(20);
+                settings.set_painter_number_points_y(20);
+                painter.paint_magnetic_field(design.operatingPoint, design.magnetic);
+            });
+        };
+        for (auto parallels : std::vector<std::vector<int64_t>>{{1, 1}, {2, 1}, {1, 2}}) {
+            settings.reset();
+            clear_databases();
+            probe(quick_transformer("T 40/24/16", json::array(), parallels));
+            settings.reset();
+            clear_databases();
+            probe(multi_window_transformer(parallels));
+        }
+        settings.reset();
+    }
+
+    // ABT #1759: the Painter plots the winding-loss model's own H. On a single-window core with nothing configured that
+    // is the default set's pair, BINNS_LAWRENSON + MMF_BOUNDARY, point for point. Counter-check: build the Painter's
+    // MagneticField from the global settings again (Painter.cpp) and this fails.
+    TEST_CASE("Test_Painter_Field_Is_The_Default_Winding_Loss_Field", "[support][painter][magnetic-field-painter][model-sets]") {
+        struct FieldProbe : public Painter {
+            using Painter::Painter;
+            ComplexField field(OperatingPoint operatingPoint, OpenMagnetics::Magnetic magnetic) { return calculate_magnetic_field(operatingPoint, magnetic, 1); }
+        };
+        settings.reset();
+        clear_databases();
+        auto design = quick_transformer("E 42/21/20", OpenMagneticsTesting::get_ground_gap(0.0005), {1, 1});
+        settings.set_painter_number_points_x(20);
+        settings.set_painter_number_points_y(20);
+        settings.set_painter_include_fringing(true);
+        auto outFile = outputFilePath;
+        outFile.append("Test_Painter_Field_Is_The_Default_Winding_Loss_Field.svg");
+        FieldProbe probe(outFile);
+        auto painted = probe.field(design.operatingPoint, design.magnetic);
+
+        auto frequency = design.operatingPoint.get_excitations_per_winding()[0].get_current()->get_harmonics()->get_frequencies()[1];
+        Field inducedField = CoilMesher::generate_mesh_induced_grid(design.magnetic, frequency, 20, 20, true, true, true).first;
+        settings.set_magnetic_field_include_fringing(true);
+        settings.set_magnetic_field_mirroring_dimension(settings.get_painter_mirroring_dimension());
+        MagneticField magneticField(MagneticFieldStrengthModels::BINNS_LAWRENSON, MagneticFieldStrengthFringingEffectModels::MMF_BOUNDARY);
+        auto expected = magneticField.calculate_magnetic_field_strength_field(design.operatingPoint, design.magnetic, inducedField).get_field_per_frequency()[0];
+        REQUIRE(painted.get_data().size() == expected.get_data().size());
+        REQUIRE(painted.get_data().size() > 0);
+        for (size_t index = 0; index < painted.get_data().size(); ++index) {
+            CHECK(painted.get_data()[index].get_real() == expected.get_data()[index].get_real());
+            CHECK(painted.get_data()[index].get_imaginary() == expected.get_data()[index].get_imaginary());
+        }
         settings.reset();
     }
 

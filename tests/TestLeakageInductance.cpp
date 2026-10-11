@@ -62,6 +62,48 @@ TEST_CASE("Calculate leakage inductance for a E core with same number of turns",
     settings.reset();
 }
 
+// ABT #1759: leakage is the conductors' field with gap fringing off, so the global fringing model -- the winding-loss
+// choice -- must not enter it, and a window-boundary model there (MMF_BOUNDARY, which refuses fringing off) must not make
+// leakage throw. Counter-check: hand MagneticField the global fringing model in LeakageInductance.cpp and the
+// MMF_BOUNDARY leg throws.
+TEST_CASE("Test_Leakage_Inductance_Ignores_The_Global_Fringing_Model", "[physical-model][leakage-inductance][mmf-boundary]") {
+    settings.reset();
+    std::vector<int64_t> numberTurns({30, 15});
+    std::vector<int64_t> numberParallels({1, 1});
+    std::string shapeName = "E 42/21/20";
+    std::vector<OpenMagnetics::Wire> wires;
+    wires.push_back(OpenMagnetics::Wire::create_quick_litz_wire(0.00005, 25));
+    wires.push_back(OpenMagnetics::Wire::create_quick_litz_wire(0.00005, 50));
+    auto coil = OpenMagnetics::Coil::create_quick_coil(shapeName, numberTurns, numberParallels, wires);
+    auto gapping = OpenMagnetics::Core::create_ground_gapping(0.001, 3);
+    auto core = OpenMagnetics::Core::create_quick_core(shapeName, "3C97", gapping);
+    OpenMagnetics::Magnetic magnetic;
+    magnetic.set_core(core);
+    magnetic.set_coil(coil);
+    const double frequency = 100000;
+
+    auto leakageWith = [&](std::optional<MagneticFieldStrengthFringingEffectModels> globalFringingModel) {
+        settings.reset();
+        if (globalFringingModel) {
+            settings.set_magnetic_field_strength_fringing_effect_model(globalFringingModel.value());
+        }
+        auto value = LeakageInductance().calculate_leakage_inductance(magnetic, frequency).get_leakage_inductance_per_winding()[0].get_nominal().value();
+        // Leakage leaves the global fringing switch as it found it.
+        CHECK(settings.get_magnetic_field_include_fringing());
+        return value;
+    };
+    const double byDefault = leakageWith(std::nullopt);
+    CHECK(byDefault > 0);
+    for (auto model : {MagneticFieldStrengthFringingEffectModels::MMF_BOUNDARY, MagneticFieldStrengthFringingEffectModels::ALBACH,
+                       MagneticFieldStrengthFringingEffectModels::SULLIVAN}) {
+        INFO(magic_enum::enum_name(model));
+        double value = 0;
+        REQUIRE_NOTHROW(value = leakageWith(model));
+        CHECK(value == byDefault);
+    }
+    settings.reset();
+}
+
 TEST_CASE("Calculate leakage inductance for a E core with different number of turns", "[physical-model][leakage-inductance]") {
     std::vector<int64_t> numberTurns({64, 20});
     std::vector<int64_t> numberParallels({1, 1});
