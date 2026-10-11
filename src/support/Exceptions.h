@@ -49,6 +49,7 @@ enum class ErrorCode : int {
     MATERIAL_FREQUENCY_OUT_OF_SPAN = 303,  // f outside every fitted loss range (ABT #1456)
     MATERIAL_ABOVE_CURIE_TEMPERATURE = 304,  // loss asked of a material hotter than its Curie point (ABT #1485)
     MATERIAL_REQUESTED_LOSS_MODEL_NOT_AVAILABLE = 305,  // an explicitly requested core-loss model the material cannot run (ABT #1497)
+    MATERIAL_TEMPERATURE_OUT_OF_RANGE = 306,  // mu_i(T) asked below Curie but outside the tabulated temperatures (ABT #1739)
     
     // Calculation errors (400-499)
     CALCULATION_NAN_RESULT = 400,
@@ -120,6 +121,7 @@ inline std::string to_string(ErrorCode code) {
         case ErrorCode::MATERIAL_FREQUENCY_OUT_OF_SPAN: return "MATERIAL_FREQUENCY_OUT_OF_SPAN";
         case ErrorCode::MATERIAL_ABOVE_CURIE_TEMPERATURE: return "MATERIAL_ABOVE_CURIE_TEMPERATURE";
         case ErrorCode::MATERIAL_REQUESTED_LOSS_MODEL_NOT_AVAILABLE: return "MATERIAL_REQUESTED_LOSS_MODEL_NOT_AVAILABLE";
+        case ErrorCode::MATERIAL_TEMPERATURE_OUT_OF_RANGE: return "MATERIAL_TEMPERATURE_OUT_OF_RANGE";
         case ErrorCode::CALCULATION_NAN_RESULT: return "CALCULATION_NAN_RESULT";
         case ErrorCode::CALCULATION_DIVERGED: return "CALCULATION_DIVERGED";
         case ErrorCode::CALCULATION_INVALID_INPUT: return "CALCULATION_INVALID_INPUT";
@@ -395,6 +397,38 @@ public:
     const std::string& material_name() const noexcept { return _materialName; }
     double temperature() const noexcept { return _temperature; }
     double curie_temperature() const noexcept { return _curieTemperature; }
+};
+
+// The initial permeability of a material was asked at a temperature below its Curie point but outside
+// the temperatures its mu_i(T) table covers. There is no data there: the spline through the table is
+// not a model of the material outside it (it ran 3C96's 180 C table to the Curie point and floored
+// the result at 1). Above the Curie point the material is paramagnetic and mu_i = 1 is returned
+// instead; Settings::allowMaterialDataExtrapolation turns this into an evaluation with a WARNING
+// (ABT #1739).
+class MaterialTemperatureOutOfRangeException : public MaterialException {
+    std::string _materialName;
+    double _temperature;
+    double _tableMinimum;
+    double _tableMaximum;
+public:
+    MaterialTemperatureOutOfRangeException(const std::string& materialName, double temperature,
+                                           double tableMinimum, double tableMaximum,
+                                           std::optional<double> curieTemperature)
+        : MaterialException(ErrorCode::MATERIAL_TEMPERATURE_OUT_OF_RANGE,
+                            "Material " + materialName + ": initial permeability is tabulated from " +
+                            std::to_string(tableMinimum) + " C to " + std::to_string(tableMaximum) + " C" +
+                            (curieTemperature ? ", Curie temperature " + std::to_string(curieTemperature.value()) + " C"
+                                              : std::string(", no Curie temperature")) +
+                            "; " + std::to_string(temperature) + " C is " +
+                            (temperature < tableMinimum ? "below" : "above") +
+                            " that table and there is no data there",
+                            materialName),
+          _materialName(materialName), _temperature(temperature), _tableMinimum(tableMinimum), _tableMaximum(tableMaximum) {}
+
+    const std::string& material_name() const noexcept { return _materialName; }
+    double temperature() const noexcept { return _temperature; }
+    double table_minimum() const noexcept { return _tableMinimum; }
+    double table_maximum() const noexcept { return _tableMaximum; }
 };
 
 // A caller explicitly asked for one core-loss model and the material cannot be evaluated with it

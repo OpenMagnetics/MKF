@@ -902,30 +902,40 @@ double InitialPermeability::get_initial_permeability_temperature_dependent(CoreM
         }
     }
 
-    // ABT #1739: outside its tabulated mu_i(T) range the material has no data. Until the MAS data that
-    // extends the tables to the Curie collapse is published, the spline is still evaluated there and
-    // floored at 1 as before, but no longer silently: every such evaluation is reported as a WARNING
-    // naming the material, the temperature and the tabulated range.
+    // Above its Curie point a ferrite is paramagnetic: mu_i = 1 is the physics, not an extrapolation.
+    auto curieTemperature = coreMaterial.get_curie_temperature();
+    if (curieTemperature && temperature > curieTemperature.value()) {
+        return 1;
+    }
+
+    // ABT #1739: below the Curie point, outside the tabulated mu_i(T) range, the material has no data.
+    // The spline through the table is not a model of the material there, so it is not evaluated
+    // unless Settings::allowMaterialDataExtrapolation asks for it (then with a WARNING).
     double tabulatedMinimum = *std::min_element(permeabilityPoints.begin(), permeabilityPoints.end(),
         [](const auto& a, const auto& b) { return *a.get_temperature() < *b.get_temperature(); })->get_temperature();
     double tabulatedMaximum = *std::max_element(permeabilityPoints.begin(), permeabilityPoints.end(),
         [](const auto& a, const auto& b) { return *a.get_temperature() < *b.get_temperature(); })->get_temperature();
-    bool aboveCurie = coreMaterial.get_curie_temperature() && temperature > *coreMaterial.get_curie_temperature();
-    if (!aboveCurie && (temperature < tabulatedMinimum || temperature > tabulatedMaximum)) {
-        Logger::getInstance().warning("Material " + coreMaterial.get_name() + ": initial permeability is tabulated from " +
-                                      std::to_string(tabulatedMinimum) + " C to " + std::to_string(tabulatedMaximum) +
-                                      " C; asked at " + std::to_string(temperature) +
-                                      " C, extrapolated and floored at 1", kMaterialDataExtrapolationModule);
+    if (temperature < tabulatedMinimum || temperature > tabulatedMaximum) {
+        MaterialTemperatureOutOfRangeException outOfRange(coreMaterial.get_name(), temperature, tabulatedMinimum,
+                                                          tabulatedMaximum, curieTemperature);
+        if (!material_data_extrapolation_allowed(outOfRange.what())) {
+            throw outOfRange;
+        }
     }
 
-    double value = initialPermeabilityTemperatureInterps[coreMaterial.get_name()](temperature);
-    initialPermeabilityValue = std::max(1., value);
+    initialPermeabilityValue = initialPermeabilityTemperatureInterps[coreMaterial.get_name()](temperature);
 
-
-    if (coreMaterial.get_curie_temperature()) {
-        if (temperature > (*coreMaterial.get_curie_temperature())) {
-            initialPermeabilityValue = 1;
-        }
+    // A ferromagnetic material below its Curie point has mu_i > 1. A value below 1 means the table (or its
+    // extrapolation) says something unphysical there; it is reported, not floored to 1.
+    if (initialPermeabilityValue < 1) {
+        throw MaterialException(ErrorCode::MATERIAL_INVALID_PROPERTY,
+                                "Material " + coreMaterial.get_name() + ": initial permeability at " +
+                                std::to_string(temperature) + " C evaluates to " + std::to_string(initialPermeabilityValue) +
+                                ", below 1, although the temperature is below the Curie point" +
+                                (curieTemperature ? " (" + std::to_string(curieTemperature.value()) + " C)" : std::string(" (none stored)")) +
+                                "; its mu_i(T) table runs from " + std::to_string(tabulatedMinimum) + " C to " +
+                                std::to_string(tabulatedMaximum) + " C",
+                                coreMaterial.get_name());
     }
 
     if (std::isnan(initialPermeabilityValue)) {

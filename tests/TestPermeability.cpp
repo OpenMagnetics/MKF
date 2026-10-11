@@ -30,7 +30,10 @@ namespace {
         std::string materialName = "3C97";
         auto materialData = materialName;
         double initialPermeabilityValue = initialPermeability.get_initial_permeability(materialData);
-        REQUIRE(initialPermeabilityValue == 3341.5);
+        // ABT #1739: 3C97's mu_i(T) table is Ferroxcube's own measurement, unrounded ("FXC Materials
+        // Power.xlsx", 10 kHz, 0.1 mT); at the default 25 C it gives 3341.24. The old pin 3341.5 was
+        // the same measurement rounded in the table.
+        REQUIRE_THAT(initialPermeabilityValue, Catch::Matchers::WithinAbs(3341.24, 0.005));
         {
             double magneticFieldDcBias = 60;
             double temperature = 25;
@@ -41,33 +44,77 @@ namespace {
         }
     }
 
-    // ABT #1739: 3C94's mu_i(T) table ends at 180 C, its Curie point is 220 C. Between the two there
-    // is no data. Until the MAS data reaching the Curie collapse is published, MKF still evaluates its
-    // spline there, but must report it: a WARNING naming the material, the temperature and the range.
-    TEST_CASE("Test_Initial_Permeability_Outside_Temperature_Table_Warns", "[physical-model][initial-permeability][initial-permeability-temperature-range]") {
-        auto material = find_core_material_by_name("3C94");
-        auto warnings_for = [&](double temperature) {
-            Logger::getInstance().disableCollector();
-            Logger::getInstance().enableCollector(LogLevel::WARNING);
-            InitialPermeability::get_initial_permeability_temperature_dependent(material, temperature);
-            auto collected = Logger::getInstance().drainCollected();
-            Logger::getInstance().disableCollector();
-            size_t count = 0;
-            for (const auto& record : collected) {
-                if (record.moduleOfOrigin == kMaterialDataExtrapolationModule && record.level == LogLevel::WARNING &&
-                    record.message.find("3C94") != std::string::npos &&
-                    record.message.find(std::to_string(temperature) + " C") != std::string::npos &&
-                    record.message.find("180.000000 C") != std::string::npos) {
-                    ++count;
-                }
+    // ABT #1739: 3C99's mu_i(T) table is Ferroxcube's measurement, -40..180 C; its Curie point is 300 C.
+    // Between 180 C and 300 C (and below -40 C) there is no data: MKF throws instead of running the
+    // spline there. Above the Curie point the material is paramagnetic and mu_i = 1.
+    TEST_CASE("Test_Initial_Permeability_Outside_Temperature_Table_Throws", "[physical-model][initial-permeability][initial-permeability-temperature-range]") {
+        settings.reset();
+        auto material = find_core_material_by_name("3C99");
+        REQUIRE(material.get_curie_temperature());
+        REQUIRE(material.get_curie_temperature().value() == 300);
+
+        CHECK(InitialPermeability::get_initial_permeability_temperature_dependent(material, 100) > 1);
+        CHECK_THROWS_AS(InitialPermeability::get_initial_permeability_temperature_dependent(material, 200), MaterialTemperatureOutOfRangeException);
+        CHECK_THROWS_AS(InitialPermeability::get_initial_permeability_temperature_dependent(material, -60), MaterialTemperatureOutOfRangeException);
+        try {
+            InitialPermeability::get_initial_permeability_temperature_dependent(material, 200);
+            FAIL("no exception at 200 C");
+        }
+        catch (const MaterialTemperatureOutOfRangeException& exception) {
+            CHECK(exception.code() == ErrorCode::MATERIAL_TEMPERATURE_OUT_OF_RANGE);
+            CHECK(static_cast<int>(exception.code()) == 306);
+            CHECK(exception.table_minimum() == -40);
+            CHECK(exception.table_maximum() == 180);
+        }
+        // Above the Curie point: paramagnetic, exactly 1, no throw.
+        CHECK(InitialPermeability::get_initial_permeability_temperature_dependent(material, 350) == 1);
+
+        // The same query through the public entry point throws too (temperature factor at 200 C).
+        InitialPermeability initialPermeability;
+        CHECK_THROWS_AS(initialPermeability.get_initial_permeability(material, 200.0, std::nullopt, std::nullopt), MaterialTemperatureOutOfRangeException);
+    }
+
+    TEST_CASE("Test_Initial_Permeability_Outside_Temperature_Table_Extrapolation_Flag", "[physical-model][initial-permeability][initial-permeability-temperature-range]") {
+        settings.reset();
+        settings.set_allow_material_data_extrapolation(true);
+        auto material = find_core_material_by_name("3C99");
+        Logger::getInstance().disableCollector();
+        Logger::getInstance().enableCollector(LogLevel::WARNING);
+        double value = InitialPermeability::get_initial_permeability_temperature_dependent(material, 200);
+        auto collected = Logger::getInstance().drainCollected();
+        Logger::getInstance().disableCollector();
+        settings.reset();
+        CHECK(value > 1);
+        size_t warnings = 0;
+        for (const auto& record : collected) {
+            if (record.moduleOfOrigin == kMaterialDataExtrapolationModule && record.level == LogLevel::WARNING &&
+                record.message.find("3C99") != std::string::npos && record.message.find("200.000000 C") != std::string::npos &&
+                record.message.find("180.000000 C") != std::string::npos) {
+                ++warnings;
             }
-            return count;
-        };
-        CHECK(warnings_for(100) == 0);
-        CHECK(warnings_for(200) == 1);
-        CHECK(warnings_for(-60) == 1);
-        // Above the Curie point the material is paramagnetic: mu = 1 is the physics, not an extrapolation.
-        CHECK(warnings_for(250) == 0);
+        }
+        CHECK(warnings == 1);
+    }
+
+    TEST_CASE("Test_Initial_Permeability_Below_One_Below_Curie_Throws", "[physical-model][initial-permeability][initial-permeability-temperature-range]") {
+        // A table whose own point says mu_i < 1 below the Curie point is unphysical: it is reported, not
+        // floored to 1. (3C99's 180 C point replaced by 0.5; the rest of the record is untouched.)
+        settings.reset();
+        json materialJson;
+        to_json(materialJson, find_core_material_by_name("3C99"));
+        materialJson["name"] = "ABT1739 3C99 with mu 0.5 at 180 C";
+        bool replaced = false;
+        for (auto& point : materialJson["permeability"]["initial"]) {
+            if (point.contains("temperature") && point["temperature"].get<double>() == 180) {
+                point["value"] = 0.5;
+                replaced = true;
+            }
+        }
+        REQUIRE(replaced);
+        CoreMaterial material;
+        from_json(materialJson, material);
+        CHECK(InitialPermeability::get_initial_permeability_temperature_dependent(material, 25) > 1);
+        CHECK_THROWS_AS(InitialPermeability::get_initial_permeability_temperature_dependent(material, 180), MaterialException);
     }
 
     TEST_CASE("Test_Initial_Permeability_Single_Point_Curve", "[physical-model][initial-permeability][smoke-test]") {
