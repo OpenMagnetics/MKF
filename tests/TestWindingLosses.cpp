@@ -4187,7 +4187,7 @@ TEST_CASE("Test_Winding_Losses_Parallel_Split_Throws_Where_No_Frame_Exists", "[w
         clear_databases();
         settings.set_use_toroidal_cores(true);
         auto coil = OpenMagneticsTesting::get_quick_coil({10}, {2}, "T 40/24/16", 1);
-        auto core = OpenMagneticsTesting::get_quick_core("T 40/24/16", OpenMagneticsTesting::get_residual_gap());
+        auto core = OpenMagneticsTesting::get_quick_core("T 40/24/16", json::array());  // toroids carry no gap
         OpenMagnetics::Magnetic magnetic;
         magnetic.set_core(core);
         magnetic.set_coil(coil);

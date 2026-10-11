@@ -1314,7 +1314,8 @@ namespace {
             auto path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "leakage_inductance_planar.json");
             OpenMagnetics::Mas mas;
             OpenMagnetics::from_file(path, mas);
-            DesignUnderTest design{"planar (leakage_inductance_planar.json)", mas.get_magnetic(), mas.get_inputs().get_operating_point(0)};
+            auto planarInputs = mas.get_inputs();
+            DesignUnderTest design{"planar (leakage_inductance_planar.json)", mas.get_magnetic(), planarInputs.get_operating_point(0)};
             check_leakage_and_field_paint(design);
         }
         settings.reset();
