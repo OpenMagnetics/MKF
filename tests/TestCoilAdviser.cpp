@@ -3604,7 +3604,7 @@ TEST_CASE("Test_CoilAdviser_Random_15_Real_Winding", "[adviser][coil-adviser][re
     OpenMagneticsTesting::check_turns_description(masMagneticsWithCoil[0].get_magnetic().get_coil());
     // Every ring stays in its own winding's sector (ABT #1734, see the bifilar toroid guard in
     // TestCoil.cpp).
-    OpenMagneticsTesting::check_toroidal_windings_keep_their_sectors(masMagneticsWithCoil[0].get_magnetic().get_coil());
+    OpenMagneticsTesting::check_toroidal_sections_keep_their_sectors(masMagneticsWithCoil[0].get_magnetic().get_coil());
     for (auto& advisedMas : masMagneticsWithCoil) {
         auto refusal = OpenMagnetics::real_winding_refusal(advisedMas.get_magnetic(), advisedMas.get_inputs());
         INFO(refusal.value_or("accepted"));

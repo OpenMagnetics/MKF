@@ -140,10 +140,10 @@ void check_layers_description(OpenMagnetics::Coil coil,
 bool check_turns_description(OpenMagnetics::Coil coil);
 bool check_wire_standards(OpenMagnetics::Coil coil);
 
-// Toroids with CONTIGUOUS (sector) windings: each winding's turns occupy one arc (the circle minus
-// the largest gap between its turn azimuths), and no turn of another winding lies inside it -- every
-// ring, however deep, stays in its own winding's sector.
-bool check_toroidal_windings_keep_their_sectors(OpenMagnetics::Coil coil);
+// Toroids with CONTIGUOUS (sector) windings: each SECTION's turns occupy one arc (the circle minus
+// the largest gap between its turn azimuths), and no turn of another section lies inside it -- every
+// ring, however deep, stays in its own section's sector (an interleaved winding has one per section).
+bool check_toroidal_sections_keep_their_sectors(OpenMagnetics::Coil coil);
 
 // Toroids: every turn clears the flat bar on each side of its section. A section's MAS margin is
 // the half-thickness of the bar on its side; the bar's centre plane passes through the ring axis at

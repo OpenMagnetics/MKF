@@ -14586,7 +14586,126 @@ TEST_CASE("Test_Toroidal_Bifilar_Ring_Lays_Each_Parallel_Its_Own_Turn_Count", "[
     // used to extend a deep ring's territory up to the nearest foreign turn AT ITS OWN RADIUS --
     // the other winding has fewer rings, so there was none -- and spread it across the other
     // winding's sector (ABT #1734).
-    OpenMagneticsTesting::check_toroidal_windings_keep_their_sectors(coil);
+    OpenMagneticsTesting::check_toroidal_sections_keep_their_sectors(coil);
+    settings.reset();
+}
+
+TEST_CASE("Test_Toroidal_Real_Winding_Outer_Crossing_Sweep_Stays_In_Its_Ring_Arc", "[coil][toroidal][real-geometry]") {
+    // ABT #1734 (fix C): under real winding a ring is laid where its stations actually are --
+    // the corridor shift moves rings after the first toward the section end -- while the
+    // section's angular extent is rebuilt synthetically (N turn pitches centred on the section).
+    // The phase-2 outer-crossing sweep searched only inside that synthetic extent, which here
+    // does not contain the ring's own stations, so it found no azimuth and refused the wind with
+    // "NO outer-crossing azimuth". The sweep is bounded by the arc the ring OCCUPIES instead.
+    settings.reset();
+    settings.set_coil_use_real_winding_geometry(true);
+    auto wire = OpenMagnetics::find_wire_by_name("Round 21.0 - Single Build");
+    OpenMagnetics::Coil coil;
+    REQUIRE_NOTHROW(coil = OpenMagneticsTesting::get_quick_coil({20, 20}, {1, 1}, "T 12.7/7.9/12.7", 1,
+                                                                MAS::WindingOrientation::CONTIGUOUS,
+                                                                MAS::WindingOrientation::OVERLAPPING,
+                                                                MAS::CoilAlignment::CENTERED,
+                                                                MAS::CoilAlignment::CENTERED,
+                                                                {wire, wire}));
+    INFO(coil.get_last_fit_failure());
+    REQUIRE(coil.get_turns_description());
+    CHECK(OpenMagneticsTesting::check_turns_description(coil));
+    CHECK(OpenMagneticsTesting::check_toroidal_sections_keep_their_sectors(coil));
+    settings.reset();
+}
+
+TEST_CASE("Test_Toroidal_Real_Winding_Settle_Regenerates_Rewritten_Crossings_Contiguous", "[coil][toroidal][real-geometry]") {
+    // ABT #1734 (fix E): align_blocked_ring_turns' re-spread rewrites the outer crossings onto
+    // the station azimuths even when no station moves. The settle loop compared stations only,
+    // so it stopped there and kept those unswept crossings, which collided with another
+    // winding's crossing. The settle loop compares the crossings too and regenerates them.
+    settings.reset();
+    settings.set_coil_use_real_winding_geometry(true);
+    auto wire = OpenMagnetics::find_wire_by_name("Round 29.0 - Single Build");
+    OpenMagnetics::Coil coil;
+    REQUIRE_NOTHROW(coil = OpenMagneticsTesting::get_quick_coil({30, 30, 30}, {2, 2, 2}, "T 17.3/9.7/12.7", 1,
+                                                                MAS::WindingOrientation::CONTIGUOUS,
+                                                                MAS::WindingOrientation::OVERLAPPING,
+                                                                MAS::CoilAlignment::CENTERED,
+                                                                MAS::CoilAlignment::CENTERED,
+                                                                {wire, wire, wire}));
+    INFO(coil.get_last_fit_failure());
+    REQUIRE(coil.get_turns_description());
+    CHECK(OpenMagneticsTesting::check_turns_description(coil));
+    CHECK(OpenMagneticsTesting::check_toroidal_sections_keep_their_sectors(coil));
+    settings.reset();
+}
+
+TEST_CASE("Test_Toroidal_Real_Winding_Settle_Regenerates_Rewritten_Crossings_Overlapping", "[coil][toroidal][real-geometry]") {
+    // ABT #1734 (fix E), overlapping windings: same settle-loop defect as the contiguous case --
+    // without the crossing comparison the settle loop keeps crossings the re-spread rewrote and
+    // two crossings collide.
+    settings.reset();
+    settings.set_coil_use_real_winding_geometry(true);
+    auto wire = OpenMagnetics::find_wire_by_name("Round 21.0 - Single Build");
+    OpenMagnetics::Coil coil;
+    REQUIRE_NOTHROW(coil = OpenMagneticsTesting::get_quick_coil({45, 45}, {2, 2}, "T 25/15/10", 1,
+                                                                MAS::WindingOrientation::OVERLAPPING,
+                                                                MAS::WindingOrientation::OVERLAPPING,
+                                                                MAS::CoilAlignment::CENTERED,
+                                                                MAS::CoilAlignment::CENTERED,
+                                                                {wire, wire}));
+    INFO(coil.get_last_fit_failure());
+    REQUIRE(coil.get_turns_description());
+    CHECK(OpenMagneticsTesting::check_turns_description(coil));
+    settings.reset();
+}
+
+TEST_CASE("Test_Toroidal_Real_Winding_Overlapping_Sections_Are_Not_Cut_Into_Sectors", "[coil][toroidal][real-geometry]") {
+    // ABT #1734: the real-winding sector partition belongs to CONTIGUOUS layouts only. Overlapping
+    // sections are concentric, but their measured turn arcs classify as "sectors" once a corridor
+    // opens a gap wider than two pitches; partitioned, each of these two windings was cut to about
+    // half the circle and the blocking loop spilled turns until "90 turns ... need 12 rings, 5.001
+    // mm deep, in a window of 3.95 mm radial height" and the wind failed.
+    settings.reset();
+    settings.set_coil_use_real_winding_geometry(true);
+    auto wire = OpenMagnetics::find_wire_by_name("Round 29.0 - Single Build");
+    OpenMagnetics::Coil coil;
+    REQUIRE_NOTHROW(coil = OpenMagneticsTesting::get_quick_coil({45, 45}, {2, 2}, "T 12.7/7.9/12.7", 1,
+                                                                MAS::WindingOrientation::OVERLAPPING,
+                                                                MAS::WindingOrientation::OVERLAPPING,
+                                                                MAS::CoilAlignment::CENTERED,
+                                                                MAS::CoilAlignment::CENTERED,
+                                                                {wire, wire}));
+    INFO(coil.get_last_fit_failure());
+    REQUIRE(coil.get_turns_description());
+    CHECK(OpenMagneticsTesting::check_turns_description(coil));
+    settings.reset();
+}
+
+TEST_CASE("Test_Toroidal_Real_Winding_Interleaved_Sections_Keep_Their_Own_Sectors", "[coil][toroidal][real-geometry]") {
+    // ABT #1734 (Alf 2026-10-11): the real-winding sector partition is keyed by SECTION. An
+    // interleaved winding (P S P S) owns two sectors; keyed by winding, its two sections measured
+    // as one arc spanning the other winding's sector between them, and the re-spread marched its
+    // rings across that sector into the other winding's copper.
+    settings.reset();
+    settings.set_coil_use_real_winding_geometry(true);
+    auto wire = OpenMagnetics::find_wire_by_name("Round 29.0 - Single Build");
+    OpenMagnetics::Coil coil;
+    REQUIRE_NOTHROW(coil = OpenMagneticsTesting::get_quick_coil({20, 20}, {1, 1}, "T 20/10/7", 2,
+                                                                MAS::WindingOrientation::CONTIGUOUS,
+                                                                MAS::WindingOrientation::OVERLAPPING,
+                                                                MAS::CoilAlignment::CENTERED,
+                                                                MAS::CoilAlignment::CENTERED,
+                                                                {wire, wire}));
+    INFO(coil.get_last_fit_failure());
+    REQUIRE(coil.get_turns_description());
+    REQUIRE(coil.get_sections_description());
+    size_t conductionSections = 0;
+    const auto sections = coil.get_sections_description().value();
+    for (const auto& section : sections) {
+        if (section.get_type() == MAS::ElectricalType::CONDUCTION) {
+            ++conductionSections;
+        }
+    }
+    REQUIRE(conductionSections == 4);   // P S P S: the fixture must stay interleaved
+    CHECK(OpenMagneticsTesting::check_turns_description(coil));
+    CHECK(OpenMagneticsTesting::check_toroidal_sections_keep_their_sectors(coil));
     settings.reset();
 }
 
