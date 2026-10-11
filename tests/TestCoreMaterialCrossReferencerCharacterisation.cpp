@@ -149,24 +149,29 @@ void check_top_n(const std::string& label,
 // compared on the loss-grid frequencies they share with the reference instead of being culled for
 // missing one (and the MAS data moved: ABT #1456/#1490 refits, ct defaults). KL97W (Huoh Yow
 // 97-class, data to 200 kHz) now enters at slot 0; ML33D leaves the five.
+// Re-pinned 2026-10-11 (ABT #1739, Alf-approved): the reference 3C97 now carries Ferroxcube's unrounded
+// measured mu_i(T) (workbook, -40..180 C, extended from the data-sheet figure) and Curie 221 C read off
+// the figure's collapse instead of 215 C. Same five names, same order; scores move by <= 1.1e-4 relative.
 const std::vector<TopEntry> kTopFerriteDefault = {
-    {"KL97W", 2.7249014672682108},
-    {"DMR95", 2.7062838354523393},
-    {"P45",   2.7029715663731353},
-    {"TPW30", 2.6899236084261187},
-    {"MBT2",  2.689063419286561},
+    {"KL97W", 2.7251897974217534},
+    {"DMR95", 2.7060437087952227},
+    {"P45",   2.7027534052650459},
+    {"TPW30", 2.6901378204055253},
+    {"MBT2",  2.6888450398768433},
 };
 
 // Refreshed 2026-08-20 (ABT #834): identical five names and order; scores +0.27%
 // from the same normalization shift.
 // Re-baselined 2026-09-29 (ABT #1456): same cause as above. N95/PEM95 keep slots 0-1; the larger
 // candidate pool shifts the normalization, and PCL47/PC47 leave the five for N51/PEL95.
+// Re-pinned 2026-10-11 (ABT #1739, Alf-approved): same cause as above (3C97's unrounded measured mu_i(T)
+// and Curie 221 C instead of 215 C). Same five names, same order; scores move by <= 3.6e-4 relative.
 const std::vector<TopEntry> kTopFerriteOnlyTdk = {
-    {"N95",   2.483894643200923},
-    {"PEM95", 2.4718130882901406},
-    {"N97",   2.4125823626698186},
-    {"N51",   2.3872011076579112},
-    {"PEL95", 2.3819166531736888},
+    {"N95",   2.4844834154655544},
+    {"PEM95", 2.4712909529748712},
+    {"N97",   2.4134601008148024},
+    {"N51",   2.3877902091228509},
+    {"PEL95", 2.3815691962334045},
 };
 
 // Refreshed 2026-08-20 (ABT #834, user-approved): same normalization shift. Kool Mµ
