@@ -140,6 +140,8 @@ class CoilAdviser : public WireAdviser {
         std::string _diagnosisBestFailure;     // failing constraint of the closest losing candidate
         size_t _diagnosisRealWindingRefusals = 0;  // ranked coils the real winder refused (ABT #1699)
         std::string _diagnosisRealWindingRefusal;  // the first such refusal, as the real winder named it
+        size_t _diagnosisInsulationOutsideWindow = 0;  // wound coils whose insulation escapes the window (ABT #838)
+        std::string _diagnosisInsulationOutsideWindowReason;  // the first such escape
         std::optional<std::string> _lastNoResultsReason;
 
     public:

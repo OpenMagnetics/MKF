@@ -5808,6 +5808,102 @@ bool Coil::are_turns_inside_winding_window() {
     return true;
 }
 
+// ABT #838: the insulation the coil description carries must lie inside a winding window as well
+// as its copper. are_turns_inside_winding_window() tests the turns only, so a coil whose sections
+// add up wider than the window -- the outer wrap of insulation tape placed past the window edge
+// (ETD 59: 16 x 25 um ending 24.6 um beyond the bobbin's outer side; EQ 26: 15 um) -- passed every
+// fit check, and only the thermal network, which builds a node per layer, found the overflow.
+// Same envelope and tolerance as the turns check: each insulation section and insulation layer
+// rect inside ANY of the bobbin's rectangular winding windows (multi-column coils wind groups in
+// several). Round windows block angularly and are judged by the toroidal fill, as for turns.
+bool Coil::are_insulation_layers_inside_winding_window() {
+    auto bobbin = resolve_bobbin();
+    if (bobbin.get_winding_window_shape() != WindingWindowShape::RECTANGULAR) {
+        return true;
+    }
+    auto processedDescription = bobbin.get_processed_description();
+    if (!processedDescription || processedDescription->get_winding_windows().empty()) {
+        return true;
+    }
+    auto windingWindows = processedDescription->get_winding_windows();
+    struct WindowBox { double x0, x1, y0, y1; };
+    std::vector<WindowBox> boxes;
+    for (const auto& windingWindow : windingWindows) {
+        if (!windingWindow.get_coordinates() || !windingWindow.get_width() || !windingWindow.get_height()) {
+            continue;
+        }
+        boxes.push_back({(*windingWindow.get_coordinates())[0] - *windingWindow.get_width() / 2,
+                         (*windingWindow.get_coordinates())[0] + *windingWindow.get_width() / 2,
+                         (*windingWindow.get_coordinates())[1] - *windingWindow.get_height() / 2,
+                         (*windingWindow.get_coordinates())[1] + *windingWindow.get_height() / 2});
+    }
+    if (boxes.empty()) {
+        return true;
+    }
+    const double tolerance = 1e-9;
+    bool escapedAny = false;
+    double worstOverrun = 0;
+    std::string worstReason;
+    auto judge = [&](const std::string& kind, const std::string& name, const std::vector<double>& coordinates,
+                     const std::vector<double>& dimensions) {
+        const double x0 = coordinates[0] - dimensions[0] / 2;
+        const double x1 = coordinates[0] + dimensions[0] / 2;
+        const double y0 = coordinates[1] - dimensions[1] / 2;
+        const double y1 = coordinates[1] + dimensions[1] / 2;
+        for (const auto& box : boxes) {
+            if (x0 >= box.x0 - tolerance && x1 <= box.x1 + tolerance && y0 >= box.y0 - tolerance && y1 <= box.y1 + tolerance) {
+                return;
+            }
+        }
+        // Measured against the window whose overrun is smallest: the one the element belongs to.
+        double overrunHere = std::numeric_limits<double>::max();
+        const char* direction = "";
+        for (const auto& box : boxes) {
+            const std::array<std::pair<double, const char*>, 4> overruns{{
+                {x1 - box.x1, "radially outward (past the window's outer side)"},
+                {box.x0 - x0, "radially inward (past the window's inner side)"},
+                {y1 - box.y1, "axially past the window's top"},
+                {box.y0 - y0, "axially past the window's bottom"}}};
+            const auto worst = *std::max_element(overruns.begin(), overruns.end(),
+                                                 [](const auto& a, const auto& b) { return a.first < b.first; });
+            if (worst.first < overrunHere) {
+                overrunHere = worst.first;
+                direction = worst.second;
+            }
+        }
+        if (!escapedAny || overrunHere > worstOverrun) {
+            worstOverrun = overrunHere;
+            std::ostringstream reason;
+            reason << std::fixed << std::setprecision(4) << "insulation " << kind << " '" << name << "' spans x ["
+                   << x0 * 1e3 << ", " << x1 * 1e3 << "] y [" << y0 * 1e3 << ", " << y1 * 1e3
+                   << "] mm and lies outside every winding window, " << overrunHere * 1e3 << " mm " << direction;
+            worstReason = reason.str();
+        }
+        escapedAny = true;
+    };
+    if (get_sections_description()) {
+        auto sections = get_sections_description().value();
+        for (const auto& section : sections) {
+            if (section.get_type() == ElectricalType::INSULATION) {
+                judge("section", section.get_name(), section.get_coordinates(), section.get_dimensions());
+            }
+        }
+    }
+    if (get_layers_description()) {
+        auto layers = get_layers_description().value();
+        for (const auto& layer : layers) {
+            if (layer.get_type() == ElectricalType::INSULATION) {
+                judge("layer", layer.get_name(), layer.get_coordinates(), layer.get_dimensions());
+            }
+        }
+    }
+    if (escapedAny) {
+        _lastFitFailure = worstReason;
+        return false;
+    }
+    return true;
+}
+
 std::map<std::string, uint64_t> Coil::align_blocked_ring_turns(bool forceSpreadBaseline) {
     std::map<std::string, uint64_t> ringDeficitSlots;
     if (!get_turns_description() || !get_layers_description()) {

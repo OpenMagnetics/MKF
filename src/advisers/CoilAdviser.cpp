@@ -515,6 +515,8 @@ namespace OpenMagnetics {
         _diagnosisBestFailure.clear();
         _diagnosisRealWindingRefusals = 0;
         _diagnosisRealWindingRefusal.clear();
+        _diagnosisInsulationOutsideWindow = 0;
+        _diagnosisInsulationOutsideWindowReason.clear();
         _wireAdviser.reset_real_winding_packing_diagnosis();
         _lastNoResultsReason = std::nullopt;
         auto core = mas.get_magnetic().get_core();
@@ -919,6 +921,11 @@ namespace OpenMagnetics {
                     reason += "; " + std::to_string(_diagnosisRealWindingRefusals)
                         + " candidates were refused by the real winder, e.g. "
                         + _diagnosisRealWindingRefusal;
+                }
+                if (_diagnosisInsulationOutsideWindow > 0) {
+                    reason += "; " + std::to_string(_diagnosisInsulationOutsideWindow)
+                        + " wound candidates were refused because their insulation does not fit the window, e.g. "
+                        + _diagnosisInsulationOutsideWindowReason;
                 }
             }
             // ABT #1699: with real winding geometry on, say how many wires the strict packing
@@ -1612,6 +1619,18 @@ namespace OpenMagnetics {
                     if (totalAngle > 360.0) {
                         wound = false;
                     }
+                }
+                // ABT #838: the copper fitting is not the whole coil -- the insulation sections and
+                // layers the description carries must fit the window too (the wind's own verdict
+                // tests turns only). A coil whose outer insulation wrap ends past the window edge
+                // is not buildable and is not returned; the walk goes on to the next combination.
+                else if (!mas.get_mutable_magnetic().get_mutable_coil().are_insulation_layers_inside_winding_window()) {
+                    wound = false;
+                    const auto& insulationEscape = mas.get_mutable_magnetic().get_mutable_coil().get_last_fit_failure();
+                    if (_diagnosisInsulationOutsideWindow++ == 0) {
+                        _diagnosisInsulationOutsideWindowReason = insulationEscape;
+                    }
+                    logEntry("Wound candidate refused: " + insulationEscape, "CoilAdviser", 2);
                 }
 
                 if (wound) {

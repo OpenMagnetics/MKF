@@ -3201,6 +3201,73 @@ TEST_CASE("Test_CoilAdviser_Web_Flyback_Advise_All_Turns_Inside_Window", "[advis
     settings.reset();
 }
 
+TEST_CASE("Coil adviser returns only coils whose insulation fits the winding window", "[adviser][coil-adviser][bug][abt-838]") {
+    // ABT #838: the adviser's fit verdict tested the copper only. Two advised coils carried an outer
+    // wrap of insulation tape past the window edge (ETD 59 16 x 25 um ending 24.6 um beyond it, the
+    // web flyback on EQ 26/19/7 4 x 25 um ending 15 um beyond it) and the thermal network, which
+    // builds a node per layer, was the first to notice. Many results are asked for so the loss
+    // ranking (whose thermal network would throw on such a coil) does not run: every coil the walk
+    // accepted is returned and judged here.
+    auto requireInsulationInside = [](std::vector<OpenMagnetics::Mas>& advised, CoilAdviser& coilAdviser) {
+        INFO(coilAdviser.get_last_no_results_reason().value_or("returned results"));
+        REQUIRE(!advised.empty());
+        for (auto& mas : advised) {
+            auto& coil = mas.get_mutable_magnetic().get_mutable_coil();
+            INFO(mas.get_magnetic().get_reference() << ": " << coil.get_last_fit_failure());
+            CHECK(coil.are_insulation_layers_inside_winding_window());
+            CHECK(coil.are_turns_inside_winding_window());
+        }
+    };
+    SECTION("Web flyback, EQ 26/19/7, 42:5") {
+        auto path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "web_adviser_flows/flyback_calculate_advised_coil.json");
+        std::ifstream file(path);
+        REQUIRE(file.good());
+        auto fixture = json::parse(file);
+        settings.reset();
+        OpenMagneticsTesting::apply_web_engine_settings(fixture.at("engineSettingsAtCall"));
+        settings.set_coil_delimit_and_compact(true);
+        OpenMagnetics::Mas mas(fixture.at("mas"));
+        for (size_t windingIndex = 0; windingIndex < mas.get_magnetic().get_coil().get_functional_description().size(); ++windingIndex) {
+            mas.get_mutable_magnetic().get_mutable_coil().get_mutable_functional_description()[windingIndex].set_wire("Dummy");
+        }
+        mas.get_mutable_magnetic().get_mutable_coil().set_turns_description(std::nullopt);
+        mas.get_mutable_magnetic().get_mutable_coil().set_layers_description(std::nullopt);
+        mas.get_mutable_magnetic().get_mutable_coil().set_sections_description(std::nullopt);
+        mas.get_mutable_magnetic().get_mutable_coil().set_groups_description(std::nullopt);
+        CoilAdviser coilAdviser;
+        auto advised = coilAdviser.get_advised_coil(mas, 50);
+        settings.reset();
+        requireInsulationInside(advised, coilAdviser);
+    }
+    SECTION("ETD 59 82:5, basic insulation from IEC 62368-1, no margin tape") {
+        settings.reset();
+        std::vector<int64_t> numberTurns = {82, 5};
+        std::vector<double> turnsRatios = {double(numberTurns[0]) / numberTurns[1]};
+        auto magnetic = OpenMagneticsTesting::get_quick_magnetic("ETD 59", OpenMagneticsTesting::get_ground_gap(0.003), numberTurns, 1, "3C91");
+        auto inputs = OpenMagnetics::Inputs::create_quick_operating_point_only_current(175590, 10e-6, 25, WaveformLabel::SINUSOIDAL, 20, 0.5, 0, turnsRatios);
+        DimensionWithTolerance altitude;
+        DimensionWithTolerance mainSupplyVoltage;
+        altitude.set_maximum(2000);
+        mainSupplyVoltage.set_nominal(400);
+        auto insulationRequirements = OpenMagneticsTesting::get_quick_insulation_requirements(
+            altitude, Cti::GROUP_I, IsolationClass::BASIC, mainSupplyVoltage, OvervoltageCategory::IV, PollutionDegree::PD1,
+            std::vector<InsulationStandards>{InsulationStandards::IEC_606641, InsulationStandards::IEC_623681});
+        inputs.get_mutable_design_requirements().set_insulation(insulationRequirements);
+        inputs.process();
+        OpenMagnetics::Mas mas;
+        mas.set_inputs(inputs);
+        mas.set_magnetic(magnetic);
+        settings.set_coil_allow_margin_tape(false);
+        settings.set_coil_allow_insulated_wire(true);
+        settings.set_coil_try_rewind(false);
+        settings.set_coil_adviser_maximum_number_wires(1000);
+        CoilAdviser coilAdviser;
+        auto advised = coilAdviser.get_advised_coil(mas, 50);
+        settings.reset();
+        requireInsulationInside(advised, coilAdviser);
+    }
+}
+
 TEST_CASE("Test_CoilAdviser_Beyond_Wire_Limits_Only_As_Invalid", "[adviser][coil-adviser]") {
     // A coil wound beyond the wire limits (more than defaults.maximumNumberParallels parallels, or
     // above defaults.maximumEffectiveCurrentDensity) is never a valid design: when nothing fits an

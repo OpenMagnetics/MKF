@@ -920,6 +920,9 @@ class Coil : public MAS::Coil {
         bool is_real_winding_blocking_applied() const { return _realWindingBlockingApplied; }
         // ABT #624: every turn's copper inside the winding window (final wind verdict only).
         bool are_turns_inside_winding_window();
+        // ABT #838: every INSULATION section and insulation layer inside a winding window too (the
+        // turns check above sees copper only). False names the worst escape in get_last_fit_failure().
+        bool are_insulation_layers_inside_winding_window();
 
         const BobbinDataOrNameUnion & get_bobbin() const { return bobbin; }
         BobbinDataOrNameUnion & get_mutable_bobbin() { return bobbin; }
