@@ -798,6 +798,18 @@ TEST_CASE("MagneticAdviser web DMC whose switching ripple is resolved returns wo
          << dmcSweep.get_y_points()[0] << " W, CMC branch " << cmcBranchSweep.get_y_points()[0] << " W");
     CHECK_THAT(dmcSweep.get_y_points()[0], Catch::Matchers::WithinRel(simulatedCoreLosses.get_core_losses(), 0.01));
     CHECK_FALSE(cmcBranchSweep.get_y_points()[0] < 10 * simulatedCoreLosses.get_core_losses());
+
+    // The operating point as stored (waveforms, no harmonics) is the same excitation as its processed
+    // copy, so the sweep must price it the same (ABT #1764): it read 16.3 W against 1.74 W, because
+    // the switching frequency came from the cached harmonics and fell back to 50 Hz without them,
+    // which dropped the line swing's DC-bias roll-off of the MPP 300 permeability.
+    std::ifstream storedFile(path);
+    OperatingPoint storedOperatingPoint(nlohmann::json::parse(storedFile)["inputs"]["operatingPoints"][0]);
+    REQUIRE_FALSE(storedOperatingPoint.get_excitations_per_winding()[0].get_current()->get_harmonics());
+    auto storedSweep = Sweeper::sweep_core_losses_over_frequency(magnetic, storedOperatingPoint, topology,
+                                                                 operatingFrequency, 100 * operatingFrequency, 3, ambientTemperature);
+    INFO("stored operating point: " << storedSweep.get_y_points()[0] << " W, processed: " << dmcSweep.get_y_points()[0] << " W");
+    CHECK_THAT(storedSweep.get_y_points()[0], Catch::Matchers::WithinRel(dmcSweep.get_y_points()[0], 0.01));
     settings.reset();
     clear_databases();
 }

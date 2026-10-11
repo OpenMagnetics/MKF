@@ -3761,22 +3761,38 @@ double Inputs::get_switching_frequency(const OperatingPointExcitation& excitatio
             if (excitation.get_current()->get_waveform()) {
                 auto waveform = excitation.get_current()->get_waveform().value();
                 if (waveform.get_data().size() > constants.numberPointsSampledWaveforms) {
+                    // The switching frequency is a property of the waveform, so it is read from the
+                    // waveform's spectrum whether or not a processed copy of the excitation cached it.
+                    // Returning the line frequency for an unprocessed copy made the magnetizing
+                    // inductance read a 50 Hz DMC record as having no line-frequency swing below its
+                    // switching frequency, so no DC-bias roll-off: mu = 300 instead of ~104 on an MPP
+                    // 300 toroid, 1.02 T instead of 0.35 T and 16.3 W instead of 1.74 W (ABT #1764).
+                    Harmonics harmonics;
                     if (excitation.get_current()->get_harmonics()) {
-                        auto harmonics = excitation.get_current()->get_harmonics().value();
-                        double mainHarmonicAmplitude = harmonics.get_amplitudes()[1];
-                        double strongestHarmonicAmplitudeAfterMain = 0;
-                        double strongestHarmonicAmplitudeAfterMainFrequency = harmonics.get_frequencies()[1];
-                        for (size_t harmonicIndex = 2; harmonicIndex < harmonics.get_amplitudes().size(); ++harmonicIndex) {
-                            if (harmonics.get_amplitudes()[harmonicIndex] > 0.01 * mainHarmonicAmplitude) {
-                                if (harmonics.get_amplitudes()[harmonicIndex] > strongestHarmonicAmplitudeAfterMain) {
-                                    strongestHarmonicAmplitudeAfterMain = harmonics.get_amplitudes()[harmonicIndex];
-                                    strongestHarmonicAmplitudeAfterMainFrequency = harmonics.get_frequencies()[harmonicIndex];
-                                }
+                        harmonics = excitation.get_current()->get_harmonics().value();
+                    }
+                    else {
+                        auto sampledWaveform = Inputs::calculate_sampled_waveform(waveform, excitation.get_frequency());
+                        harmonics = Inputs::calculate_harmonics_data(waveform, sampledWaveform, excitation.get_frequency());
+                    }
+                    // A spectrum with nothing above DC carries no switching ripple: the excitation's
+                    // own frequency is its frequency, as for every other excitation.
+                    if (harmonics.get_amplitudes().size() < 2) {
+                        return excitation.get_frequency();
+                    }
+                    double mainHarmonicAmplitude = harmonics.get_amplitudes()[1];
+                    double strongestHarmonicAmplitudeAfterMain = 0;
+                    double strongestHarmonicAmplitudeAfterMainFrequency = harmonics.get_frequencies()[1];
+                    for (size_t harmonicIndex = 2; harmonicIndex < harmonics.get_amplitudes().size(); ++harmonicIndex) {
+                        if (harmonics.get_amplitudes()[harmonicIndex] > 0.01 * mainHarmonicAmplitude) {
+                            if (harmonics.get_amplitudes()[harmonicIndex] > strongestHarmonicAmplitudeAfterMain) {
+                                strongestHarmonicAmplitudeAfterMain = harmonics.get_amplitudes()[harmonicIndex];
+                                strongestHarmonicAmplitudeAfterMainFrequency = harmonics.get_frequencies()[harmonicIndex];
                             }
                         }
-
-                        return strongestHarmonicAmplitudeAfterMainFrequency;
                     }
+
+                    return strongestHarmonicAmplitudeAfterMainFrequency;
                 }
             }
         }

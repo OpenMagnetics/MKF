@@ -2389,3 +2389,27 @@ TEST_CASE("Test_Magnetizing_Current_Removes_A_Small_Volt_Second_Imbalance", "[pr
     CHECK_THROWS_AS(magnetizingCurrentFor(10), InvalidInputException);  // 40 % of the swing: still refused
 }
 
+
+TEST_CASE("Test_Switching_Frequency_Read_From_The_Waveform_Not_The_Cached_Harmonics", "[processor][inputs][bug]") {
+    // ABT #1764: the web DMC wizard's operating point, 50 Hz line current with a 100 kHz ripple
+    // sampled at 16384 points. Its processed copy (harmonics cached) and the same operating point as
+    // stored (waveforms only) are the same excitation, so they have the same switching frequency.
+    // get_switching_frequency returned the line frequency for the stored copy, and the magnetizing
+    // inductance then saw no line swing below the switching frequency: no DC-bias roll-off, mu 300
+    // instead of ~104 on the advised MPP 300 toroid, and 16.3 W of core losses instead of 1.74 W.
+    auto path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "web_adviser_flows/dmc_calculate_advised_magnetics_switching_ripple.json");
+    std::ifstream file(path);
+    REQUIRE(file.good());
+    auto fixture = json::parse(file);
+    OperatingPointExcitation storedExcitation(fixture["inputs"]["operatingPoints"][0]["excitationsPerWinding"][0]);
+    REQUIRE(storedExcitation.get_current()->get_waveform());
+    REQUIRE_FALSE(storedExcitation.get_current()->get_harmonics());
+
+    OpenMagnetics::Inputs inputs(fixture["inputs"]);
+    auto processedExcitation = inputs.get_operating_point(0).get_excitations_per_winding()[0];
+    REQUIRE(processedExcitation.get_current()->get_harmonics());
+
+    double processedSwitchingFrequency = OpenMagnetics::Inputs::get_switching_frequency(processedExcitation);
+    CHECK_THAT(processedSwitchingFrequency, Catch::Matchers::WithinRel(100000, 1e-3));
+    CHECK_THAT(OpenMagnetics::Inputs::get_switching_frequency(storedExcitation), Catch::Matchers::WithinRel(processedSwitchingFrequency, 1e-9));
+}
