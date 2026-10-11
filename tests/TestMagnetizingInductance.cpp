@@ -2173,7 +2173,14 @@ TEST_CASE("Test_Dc_Bias_Is_The_Time_Average_Not_The_Midpoint", "[physical-model]
 
     double asymmetricMidpoint = asymmetricFluxDensity.get_processed().value().get_offset();
     INFO("midpoint of the d = 0.25 flux " << asymmetricMidpoint << " T, L " << asymmetricInductance * 1e6 << " uH vs " << symmetricInductance * 1e6 << " uH");
-    REQUIRE(fabs(asymmetricMidpoint) > 0.05);   // the case is meaningful only if the midpoint is far from the average
+    // The case is meaningful only if the midpoint is far from the average. That distance is an artifact of
+    // the sampled voltage integration, about 1.2-1.5 % of the peak-to-peak swing; since an unsaturated core
+    // keeps the swing below 2 B_sat (2.4 T here), it can never reach the absolute 0.05 T this once required
+    // (on an 11 T swing, ABT #1740). It is stated relative to the swing instead.
+    auto asymmetricFluxData = asymmetricFluxDensity.get_waveform().value().get_data();
+    double asymmetricSwing = *std::max_element(asymmetricFluxData.begin(), asymmetricFluxData.end()) -
+                             *std::min_element(asymmetricFluxData.begin(), asymmetricFluxData.end());
+    REQUIRE(fabs(asymmetricMidpoint) > 0.005 * asymmetricSwing);
     // Read as a bias, the midpoint collapsed both inductances to 0.0002 uH, so they must also match the
     // small-signal inductance N^2 / R at the unbiased permeability. With the DC taken as the average the
     // two duties agree to 1e-4 (the voltage integration leaves a residual DC of about 1 % of the peak).
