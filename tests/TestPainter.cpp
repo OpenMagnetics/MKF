@@ -1271,6 +1271,9 @@ namespace {
             double leakage = 0;
             REQUIRE_NOTHROW(leakage = LeakageInductance().calculate_leakage_inductance(design.magnetic, 100000).get_leakage_inductance_per_winding()[0].get_nominal().value());
             CHECK(leakage > 0);
+            double windingLosses = 0;
+            REQUIRE_NOTHROW(windingLosses = WindingLosses().calculate_losses(design.magnetic, design.operatingPoint, 25).get_winding_losses());
+            CHECK(windingLosses > 0);
             auto outFile = outputFilePath;
             outFile.append("Test_Painter_Leakage_And_Field_Work_For_Every_Core_Type.svg");
             std::filesystem::remove(outFile);
@@ -1296,17 +1299,17 @@ namespace {
                 check_leakage_and_field_paint(design);
             }
         }
-        {
+        // ABT #1759: toroids and multi-window cores split their parallels by the explicit RESISTIVE model (no neutral
+        // window frame); with parallels on either winding, winding losses, leakage and the field paint must all work.
+        for (auto parallels : std::vector<std::vector<int64_t>>{{1, 1}, {2, 1}, {1, 2}, {2, 2}}) {
             settings.reset();
             clear_databases();
-            auto design = quick_transformer("T 40/24/16", json::array(), {1, 1});
-            check_leakage_and_field_paint(design);
-        }
-        {
+            auto toroid = quick_transformer("T 40/24/16", json::array(), parallels);
+            check_leakage_and_field_paint(toroid);
             settings.reset();
             clear_databases();
-            auto design = multi_window_transformer({1, 1});
-            check_leakage_and_field_paint(design);
+            auto multiWindow = multi_window_transformer(parallels);
+            check_leakage_and_field_paint(multiWindow);
         }
         {
             settings.reset();

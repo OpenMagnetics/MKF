@@ -115,7 +115,24 @@ class MagneticFieldStrengthFringingEffectModel {
 // turn crossings of (R_t I + j w l_t A_t), A_t the 2D vector potential at crossing t (per unit length, averaged over the
 // conductor's section) from every conductor, its core images and the window-wall sources that return the net MMF.
 // Solved per harmonic as one small dense complex system; DC splits by resistance (WindingOhmicLosses) as before.
+//
+// Which model splits a magnetic's parallels is chosen per geometry by MagneticField::parallel_current_split_model:
+//  - NEUTRAL_WINDOW_IMPEDANCE: the strand impedance system above. Its strand inductance needs the neutral window frame
+//    (core image lattice + MMF_BOUNDARY window-wall sources), which exists for single-window, non-toroidal cores whose
+//    turns cross the section once.
+//  - RESISTIVE: every harmonic splits between the parallels by their DC conductance (series turn resistance plus the
+//    connection resistance), exactly the DC split, with no inductive term. Chosen deliberately (Alf, 2026-10-11, ABT
+//    #1759) for the geometries that have no neutral window frame yet: toroids (#1767), multi-window cores (#1768) and
+//    turns with additionalCoordinates (#1769). It ignores the proximity-driven redistribution between parallels, so
+//    it understates the AC losses of parallels that see different fields; those tickets carry the real AC split.
+enum class ParallelCurrentSplitModel {
+    NEUTRAL_WINDOW_IMPEDANCE,
+    RESISTIVE
+};
+
 struct ParallelCurrentSplit {
+    // The model that produced this split (see ParallelCurrentSplitModel).
+    ParallelCurrentSplitModel model = ParallelCurrentSplitModel::NEUTRAL_WINDOW_IMPEDANCE;
     // The harmonics solved, as frequencies k f_excitation (k >= 1, ascending), and per harmonic every frequency the
     // windings' harmonics lists give it (a list built from a waveform's own time span can differ from k f_excitation).
     std::vector<double> frequencies;
@@ -185,10 +202,13 @@ class MagneticField {
             size_t bytes = 0;
         };
         // ABT #1314: the split of every winding's harmonic currents between its parallels (see ParallelCurrentSplit), at the
-        // conductors' temperature. Empty when no winding has more than one parallel. Throws NotImplementedException for
-        // toroids, multi-window cores and turns with additionalCoordinates (no neutral window frame for them yet).
+        // conductors' temperature, by the model parallel_current_split_model chooses for the magnetic. Empty when no
+        // winding has more than one parallel.
         static std::optional<ParallelCurrentSplit> calculate_parallel_current_split(Magnetic magnetic, OperatingPoint operatingPoint, double temperature,
                                                                                     std::optional<std::vector<int8_t>> customCurrentDirectionPerWinding = std::nullopt);
+        // ABT #1759: the parallel current split model for this magnetic's geometry: RESISTIVE for toroids, multi-window
+        // cores and turns with additionalCoordinates (no neutral window frame), NEUTRAL_WINDOW_IMPEDANCE otherwise.
+        static ParallelCurrentSplitModel parallel_current_split_model(const Magnetic& magnetic);
         static TurnSumsCacheStatistics get_turn_sums_cache_statistics();
         static void clear_turn_sums_cache();
 };

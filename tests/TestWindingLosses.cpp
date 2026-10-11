@@ -1053,6 +1053,39 @@ namespace TestWindingLossesResistanceMatrix {
 
     }
 
+    TEST_CASE("Test_Resistance_Matrix_Resolves_The_Winding_Loss_Model_Set", "[physical-model][winding-losses][model-sets]") {
+        // ABT #1759 (Alf, 2026-10-11): R_ii of the resistance matrix is the loss the winding-loss model books for 1 A rms
+        // in winding i alone, through the same model-set resolver, with fringing on (default set: NEUTRAL_WINDOW on this
+        // single-window gapped ETD) and off (CUSTOM). Counter-check: force fringing off inside calculate_resistance_matrix
+        // again and the fringing-on case fails (the matrix falls back to the legacy models).
+        for (bool fringing : {true, false}) {
+            settings.reset();
+            clear_databases();
+            settings.set_magnetic_field_include_fringing(fringing);
+            auto config = WindingLossesTestData::createTenTurnsLitzSinusoidalConfig();
+            auto magnetic = config.createMagnetic();
+            const double temperature = config.temperature;
+            const double frequency = 250000;
+            INFO("fringing " << fringing << ", resolved set " << magic_enum::enum_name(resolve_winding_losses_model_set_from_settings(magnetic, fringing)));
+            if (fringing) {
+                REQUIRE(resolve_winding_losses_model_set_from_settings(magnetic, fringing) == WindingLossesModelSets::NEUTRAL_WINDOW);
+            }
+            auto resistanceMatrix = WindingLosses().calculate_resistance_matrix(magnetic, temperature, frequency);
+            const auto windingName = magnetic.get_coil().get_functional_description()[0].get_name();
+            const double rii = resistanceMatrix.get_magnitude().at(windingName).at(windingName).get_nominal().value();
+
+            double magnetizingInductance = OpenMagnetics::resolve_dimensional_values(MagnetizingInductance().calculate_inductance_from_number_turns_and_gapping(
+                magnetic.get_core(), magnetic.get_coil()).get_magnetizing_inductance());
+            std::vector<double> mask(magnetic.get_coil().get_functional_description().size(), 0.0);
+            mask[0] = std::sqrt(2.0);
+            auto operatingPoint = OpenMagnetics::Inputs::create_operating_point_with_sinusoidal_current_mask(
+                frequency, magnetizingInductance, temperature, magnetic.get_mutable_coil().get_turns_ratios(), mask);
+            const double windingLossResistance = WindingLosses().calculate_losses(magnetic, operatingPoint, temperature).get_winding_losses();
+            CHECK_THAT(rii, Catch::Matchers::WithinRel(windingLossResistance, 1e-12));
+        }
+        settings.reset();
+    }
+
     TEST_CASE("Test_Resistance_Matrix_Symmetry", "[physical-model][winding-losses][smoke-test]") {
         settings.reset();
         clear_databases();
@@ -4164,22 +4197,35 @@ TEST_CASE("Test_Winding_Losses_Parallel_Split_Ohmic_Is_DC_Split_Redistribution_I
     settings.reset();
 }
 
-TEST_CASE("Test_Winding_Losses_Parallel_Split_Throws_Where_No_Frame_Exists", "[winding-losses][parallel-split][physical-model]") {
-    // ABT #1759 (Alf, 2026-10-11): the split needs the neutral window frame, which exists only for single-window,
-    // non-toroidal cores whose turns cross the section once. Elsewhere it used to return nothing and every consumer
-    // silently kept the DC (resistive) split; now each unsupported case throws, naming itself.
+TEST_CASE("Test_Winding_Losses_Parallel_Split_Is_Resistive_Where_No_Frame_Exists", "[winding-losses][parallel-split][physical-model]") {
+    // ABT #1759 (Alf, 2026-10-11): the impedance split needs the neutral window frame, which exists only for
+    // single-window, non-toroidal cores whose turns cross the section once. Toroids, multi-window cores and turns with
+    // additionalCoordinates split by the explicit RESISTIVE model: every harmonic by DC conductance, the same share
+    // WindingOhmicLosses gives DC. (This test replaced Test_Winding_Losses_Parallel_Split_Throws_Where_No_Frame_Exists,
+    // which asserted a NotImplementedException there.) Counter-check: a single-window E core keeps the impedance model.
     auto& settings = OpenMagnetics::Settings::GetInstance();
     auto inputs = OpenMagnetics::Inputs::create_quick_operating_point_only_current(100000, 100e-6, 25, WaveformLabel::TRIANGULAR, 10, 0.5, 0);
     auto operatingPoint = inputs.get_operating_point(0);
-    auto requireNotImplemented = [&](OpenMagnetics::Magnetic& magnetic, const std::string& naming) {
-        try {
-            MagneticField::calculate_parallel_current_split(magnetic, operatingPoint, 25);
-            FAIL("the parallel current split did not throw for " << naming);
+    auto requireResistiveSplit = [&](OpenMagnetics::Magnetic& magnetic) {
+        REQUIRE(MagneticField::parallel_current_split_model(magnetic) == ParallelCurrentSplitModel::RESISTIVE);
+        auto split = MagneticField::calculate_parallel_current_split(magnetic, operatingPoint, 25);
+        REQUIRE(split);
+        CHECK(split->model == ParallelCurrentSplitModel::RESISTIVE);
+        auto divider = WindingOhmicLosses::calculate_ohmic_losses(magnetic.get_coil(), operatingPoint, 25).get_current_divider_per_turn().value();
+        REQUIRE(split->frequencies.size() > 0);
+        REQUIRE(split->strandPerTurn.size() == divider.size());
+        for (size_t frequencyIndex = 0; frequencyIndex < split->frequencies.size(); ++frequencyIndex) {
+            const auto& winding = split->currentPerWindingPerFrequency[frequencyIndex];
+            const auto& perTurn = split->currentPerTurnPerFrequency[frequencyIndex];
+            for (size_t turnIndex = 0; turnIndex < divider.size(); ++turnIndex) {
+                const auto expected = divider[turnIndex] * winding.at(0);
+                CHECK_THAT(perTurn[turnIndex].real(), Catch::Matchers::WithinAbs(expected.real(), 1e-12 * std::abs(winding.at(0)) + 1e-15));
+                CHECK_THAT(perTurn[turnIndex].imag(), Catch::Matchers::WithinAbs(expected.imag(), 1e-12 * std::abs(winding.at(0)) + 1e-15));
+            }
         }
-        catch (const OpenMagnetics::NotImplementedException& exception) {
-            INFO(exception.what());
-            CHECK(std::string(exception.what()).find(naming) != std::string::npos);
-        }
+        WindingLossesOutput losses;
+        REQUIRE_NOTHROW(losses = WindingLosses().calculate_losses(magnetic, operatingPoint, 25));
+        CHECK(losses.get_winding_losses() > 0);
     };
 
     SECTION("toroid") {
@@ -4191,7 +4237,7 @@ TEST_CASE("Test_Winding_Losses_Parallel_Split_Throws_Where_No_Frame_Exists", "[w
         OpenMagnetics::Magnetic magnetic;
         magnetic.set_core(core);
         magnetic.set_coil(coil);
-        requireNotImplemented(magnetic, "toroidal core");
+        requireResistiveSplit(magnetic);
         settings.reset();
     }
 
@@ -4205,7 +4251,7 @@ TEST_CASE("Test_Winding_Losses_Parallel_Split_Throws_Where_No_Frame_Exists", "[w
         OpenMagnetics::Magnetic magnetic;
         magnetic.set_core(core);
         magnetic.set_coil(coil);
-        requireNotImplemented(magnetic, "multi-window core");
+        requireResistiveSplit(magnetic);
         settings.reset();
     }
 
@@ -4222,7 +4268,22 @@ TEST_CASE("Test_Winding_Losses_Parallel_Split_Throws_Where_No_Frame_Exists", "[w
         OpenMagnetics::Magnetic magnetic;
         magnetic.set_core(core);
         magnetic.set_coil(coil);
-        requireNotImplemented(magnetic, "additionalCoordinates");
+        REQUIRE(MagneticField::parallel_current_split_model(magnetic) == ParallelCurrentSplitModel::RESISTIVE);
+        auto split = MagneticField::calculate_parallel_current_split(magnetic, operatingPoint, 25);
+        REQUIRE(split);
+        CHECK(split->model == ParallelCurrentSplitModel::RESISTIVE);
+        settings.reset();
+    }
+
+    SECTION("single-window core keeps the impedance split") {
+        settings.reset();
+        clear_databases();
+        auto coil = OpenMagneticsTesting::get_quick_coil({10}, {2}, "E 42/21/20", 1);
+        auto core = OpenMagneticsTesting::get_quick_core("E 42/21/20", OpenMagneticsTesting::get_residual_gap());
+        OpenMagnetics::Magnetic magnetic;
+        magnetic.set_core(core);
+        magnetic.set_coil(coil);
+        CHECK(MagneticField::parallel_current_split_model(magnetic) == ParallelCurrentSplitModel::NEUTRAL_WINDOW_IMPEDANCE);
         settings.reset();
     }
 }

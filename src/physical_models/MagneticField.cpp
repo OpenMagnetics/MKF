@@ -3720,6 +3720,28 @@ size_t ParallelCurrentSplit::frequency_index(double frequency) const {
     return index.value();
 }
 
+ParallelCurrentSplitModel MagneticField::parallel_current_split_model(const Magnetic& magnetic) {
+    auto core = magnetic.get_core();
+    if (!core.get_processed_description()) {
+        core.process_data();
+    }
+    if (core.get_shape_family() == CoreShapeFamily::T) {
+        return ParallelCurrentSplitModel::RESISTIVE;  // no Kelvin images of the ring yet (ABT #1767)
+    }
+    if (core.get_processed_description()->get_winding_windows().size() != 1) {
+        return ParallelCurrentSplitModel::RESISTIVE;  // the neutral window frame exists for one window only (ABT #1768)
+    }
+    const auto turnsDescription = magnetic.get_coil().get_turns_description();  // a copy: never bind into a temporary
+    if (turnsDescription) {
+        for (const auto& turn : turnsDescription.value()) {
+            if (turn.get_additional_coordinates()) {
+                return ParallelCurrentSplitModel::RESISTIVE;  // a turn crossing the section twice has no frame yet (ABT #1769)
+            }
+        }
+    }
+    return ParallelCurrentSplitModel::NEUTRAL_WINDOW_IMPEDANCE;
+}
+
 std::optional<ParallelCurrentSplit> MagneticField::calculate_parallel_current_split(Magnetic magnetic, OperatingPoint operatingPoint, double temperature,
                                                                                    std::optional<std::vector<int8_t>> customCurrentDirectionPerWinding) {
     auto& coil = magnetic.get_mutable_coil();
@@ -3747,31 +3769,22 @@ std::optional<ParallelCurrentSplit> MagneticField::calculate_parallel_current_sp
     magnetic.set_core(core);
 
     // ABT #1759 (Alf 2026-10-11): the strand impedance needs the neutral window frame (image lattice + MMF_BOUNDARY wall
-    // sources), which exists only for single-window, non-toroidal cores whose turns cross the section once. For any
-    // other geometry the split is not solved, and keeping the DC (resistive) split instead would be a silent
-    // fallback: each case throws until its frame is implemented (one ABT ticket per case).
-    if (core.get_shape_family() == CoreShapeFamily::T) {
-        throw NotImplementedException("Parallel current split (ABT #1314) on a toroidal core (needs the Kelvin images of the ring)");
-    }
-    const size_t numberWindingWindows = core.get_processed_description()->get_winding_windows().size();
-    if (numberWindingWindows != 1) {
-        throw NotImplementedException("Parallel current split (ABT #1314) on a multi-window core (" + std::to_string(numberWindingWindows) +
-                                      " winding windows; the neutral window frame exists for one window only)");
-    }
-    for (const auto& turn : turns) {
-        if (turn.get_additional_coordinates()) {
-            throw NotImplementedException("Parallel current split (ABT #1314) for turns with additionalCoordinates (turn " + turn.get_name() +
-                                          " crosses the cross-section more than once)");
-        }
-    }
+    // sources). Geometries without it split by the explicit RESISTIVE model (see ParallelCurrentSplitModel).
+    ParallelCurrentSplit split;
+    split.model = parallel_current_split_model(magnetic);
+    const bool impedanceModel = split.model == ParallelCurrentSplitModel::NEUTRAL_WINDOW_IMPEDANCE;
 
     auto& settings = Settings::GetInstance();
-    if (settings.get_magnetic_field_mirroring_dimension() < 1) {
-        throw InvalidInputException(ErrorCode::INVALID_INPUT, "Parallel current split (ABT #1314): needs the core image lattice (mirroring dimension >= 1)");
-    }
     // The MMF_BOUNDARY construction: complete, neutral cells, conductors and wall sources imaged identically.
-    SettingsGuard<bool> completeCellsGuard(settings, &Settings::get_magnetic_field_mirroring_complete_cells, &Settings::set_magnetic_field_mirroring_complete_cells, true);
-    SettingsGuard<bool> neutralCellsGuard(settings, &Settings::get_magnetic_field_mirroring_neutral_cells, &Settings::set_magnetic_field_mirroring_neutral_cells, true);
+    std::optional<SettingsGuard<bool>> completeCellsGuard;
+    std::optional<SettingsGuard<bool>> neutralCellsGuard;
+    if (impedanceModel) {
+        if (settings.get_magnetic_field_mirroring_dimension() < 1) {
+            throw InvalidInputException(ErrorCode::INVALID_INPUT, "Parallel current split (ABT #1314): needs the core image lattice (mirroring dimension >= 1)");
+        }
+        completeCellsGuard.emplace(settings, &Settings::get_magnetic_field_mirroring_complete_cells, &Settings::set_magnetic_field_mirroring_complete_cells, true);
+        neutralCellsGuard.emplace(settings, &Settings::get_magnetic_field_mirroring_neutral_cells, &Settings::set_magnetic_field_mirroring_neutral_cells, true);
+    }
 
     auto wires = coil.get_wires();
     std::vector<int8_t> directionPerWinding = customCurrentDirectionPerWinding ? customCurrentDirectionPerWinding.value() :
@@ -3781,7 +3794,6 @@ std::optional<ParallelCurrentSplit> MagneticField::calculate_parallel_current_sp
                                     " current directions for " + std::to_string(numberWindings) + " windings");
     }
 
-    ParallelCurrentSplit split;
     // Strands: one per (winding, parallel).
     std::map<std::pair<size_t, int64_t>, size_t> strandIndex;
     std::vector<size_t> windingPerTurn(turns.size());
@@ -3799,97 +3811,101 @@ std::optional<ParallelCurrentSplit> MagneticField::calculate_parallel_current_sp
     }
     const size_t numberStrands = split.windingPerStrand.size();
 
-    // Each crossing's section and its core images (the CENTER mesher's lattice and image factors).
-    std::vector<SplitSection> sectionPerTurn(turns.size());
-    std::vector<std::vector<std::pair<SplitSection, double>>> sourcesPerTurn(turns.size());
-    CoilMesherCenterModel mesher;
-    for (size_t turnIndex = 0; turnIndex < turns.size(); ++turnIndex) {
-        const auto& turn = turns[turnIndex];
-        auto& wire = wires[windingPerTurn[turnIndex]];
-        SplitSection section;
-        if (wire.get_type() == WireType::ROUND) {
-            if (!wire.get_conducting_diameter()) {
-                throw InvalidInputException(ErrorCode::MISSING_DATA, "Parallel current split (ABT #1314): round wire of turn " + turn.get_name() + " has no conducting diameter");
-            }
-            section.round = true;
-            section.radius = resolve_dimensional_values(wire.get_conducting_diameter().value()) / 2;
-        }
-        else if (wire.get_type() == WireType::LITZ) {
-            // The bundle carries the strand current spread over its envelope.
-            section.round = true;
-            section.radius = wire.get_maximum_outer_width() / 2;
-        }
-        else {
-            if (!wire.get_conducting_width() || !wire.get_conducting_height()) {
-                throw InvalidInputException(ErrorCode::MISSING_DATA, "Parallel current split (ABT #1314): the wire of turn " + turn.get_name() + " has no conducting width or height");
-            }
-            double width = resolve_dimensional_values(wire.get_conducting_width().value());
-            double height = resolve_dimensional_values(wire.get_conducting_height().value());
-            double rotation = turn.get_rotation().value_or(0.0);
-            double quarterTurns = rotation / 90.0;
-            if (std::abs(quarterTurns - std::round(quarterTurns)) > 1e-9) {
-                throw NotImplementedException("Parallel current split (ABT #1314): turn " + turn.get_name() + " is rotated " + std::to_string(rotation) +
-                                              " degrees; only axis-aligned rectangular sections are integrated");
-            }
-            if (static_cast<int64_t>(std::llround(quarterTurns)) % 2 != 0) {
-                std::swap(width, height);
-            }
-            section.halfWidth = width / 2;
-            section.halfHeight = height / 2;
-            if (!(section.halfWidth > 0) || !(section.halfHeight > 0)) {
-                throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA, "Parallel current split (ABT #1314): the wire of turn " + turn.get_name() + " has a zero conducting dimension");
-            }
-        }
-        section.x = turn.get_coordinates()[0];
-        section.y = turn.get_coordinates()[1];
-        sectionPerTurn[turnIndex] = section;
-        auto points = mesher.generate_mesh_inducing_turn(turn, wire, turnIndex, turn.get_length(), core);
-        for (const auto& point : points) {
-            SplitSection image = section;
-            image.x = point.get_point()[0];
-            image.y = point.get_point()[1];
-            sourcesPerTurn[turnIndex].push_back({image, point.get_value()});
-        }
-    }
-
-    // The wall sources per ampere-turn of net MMF (images included), and W_t.
-    const double mu0Over2Pi = Constants().vacuumPermeability / (2 * std::numbers::pi);
-    auto sheets = CoilMesher::generate_window_wall_sheets(magnetic, operatingPoint);
-    std::vector<double> wallPotentialPerTurn(turns.size(), 0.0);
-    for (const auto& sheet : sheets) {
-        SplitSection source;
-        source.x = 0.5 * (sheet.start[0] + sheet.end[0]);
-        source.y = 0.5 * (sheet.start[1] + sheet.end[1]);
-        source.halfWidth = 0.5 * std::abs(sheet.end[0] - sheet.start[0]);
-        source.halfHeight = 0.5 * std::abs(sheet.end[1] - sheet.start[1]);
-        if (source.halfWidth != 0 && source.halfHeight != 0) {
-            throw CalculationException(ErrorCode::CALCULATION_INVALID_RESULT, "Parallel current split (ABT #1314): a window-wall sheet is not axis-aligned");
-        }
-        for (size_t turnIndex = 0; turnIndex < turns.size(); ++turnIndex) {
-            wallPotentialPerTurn[turnIndex] -= mu0Over2Pi * sheet.current * split_mean_log(sectionPerTurn[turnIndex], source);
-        }
-    }
-
-    // Strand inductance (per strand, with the turn lengths) and resistance.
+    // Strand inductance: the neutral window frame's, or none for the RESISTIVE model (its strands split by resistance).
     Eigen::MatrixXd strandInductance = Eigen::MatrixXd::Zero(numberStrands, numberStrands);
-    std::vector<double> netDirectionPerStrand(numberStrands, 0.0);
-    for (size_t turnIndex = 0; turnIndex < turns.size(); ++turnIndex) {
-        netDirectionPerStrand[split.strandPerTurn[turnIndex]] += directionPerWinding[windingPerTurn[turnIndex]];
-    }
-    for (size_t targetIndex = 0; targetIndex < turns.size(); ++targetIndex) {
-        const double targetFactor = turns[targetIndex].get_length() * directionPerWinding[windingPerTurn[targetIndex]];
-        const size_t targetStrand = split.strandPerTurn[targetIndex];
-        for (size_t sourceIndex = 0; sourceIndex < turns.size(); ++sourceIndex) {
-            double potential = 0;
-            for (const auto& [image, weight] : sourcesPerTurn[sourceIndex]) {
-                potential -= weight * split_mean_log(sectionPerTurn[targetIndex], image);
+    if (impedanceModel) {
+        // Each crossing's section and its core images (the CENTER mesher's lattice and image factors).
+        std::vector<SplitSection> sectionPerTurn(turns.size());
+        std::vector<std::vector<std::pair<SplitSection, double>>> sourcesPerTurn(turns.size());
+        CoilMesherCenterModel mesher;
+        for (size_t turnIndex = 0; turnIndex < turns.size(); ++turnIndex) {
+            const auto& turn = turns[turnIndex];
+            auto& wire = wires[windingPerTurn[turnIndex]];
+            SplitSection section;
+            if (wire.get_type() == WireType::ROUND) {
+                if (!wire.get_conducting_diameter()) {
+                    throw InvalidInputException(ErrorCode::MISSING_DATA, "Parallel current split (ABT #1314): round wire of turn " + turn.get_name() + " has no conducting diameter");
+                }
+                section.round = true;
+                section.radius = resolve_dimensional_values(wire.get_conducting_diameter().value()) / 2;
             }
-            strandInductance(targetStrand, split.strandPerTurn[sourceIndex]) += targetFactor * directionPerWinding[windingPerTurn[sourceIndex]] * mu0Over2Pi * potential;
+            else if (wire.get_type() == WireType::LITZ) {
+                // The bundle carries the strand current spread over its envelope.
+                section.round = true;
+                section.radius = wire.get_maximum_outer_width() / 2;
+            }
+            else {
+                if (!wire.get_conducting_width() || !wire.get_conducting_height()) {
+                    throw InvalidInputException(ErrorCode::MISSING_DATA, "Parallel current split (ABT #1314): the wire of turn " + turn.get_name() + " has no conducting width or height");
+                }
+                double width = resolve_dimensional_values(wire.get_conducting_width().value());
+                double height = resolve_dimensional_values(wire.get_conducting_height().value());
+                double rotation = turn.get_rotation().value_or(0.0);
+                double quarterTurns = rotation / 90.0;
+                if (std::abs(quarterTurns - std::round(quarterTurns)) > 1e-9) {
+                    throw NotImplementedException("Parallel current split (ABT #1314): turn " + turn.get_name() + " is rotated " + std::to_string(rotation) +
+                                                  " degrees; only axis-aligned rectangular sections are integrated");
+                }
+                if (static_cast<int64_t>(std::llround(quarterTurns)) % 2 != 0) {
+                    std::swap(width, height);
+                }
+                section.halfWidth = width / 2;
+                section.halfHeight = height / 2;
+                if (!(section.halfWidth > 0) || !(section.halfHeight > 0)) {
+                    throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA, "Parallel current split (ABT #1314): the wire of turn " + turn.get_name() + " has a zero conducting dimension");
+                }
+            }
+            section.x = turn.get_coordinates()[0];
+            section.y = turn.get_coordinates()[1];
+            sectionPerTurn[turnIndex] = section;
+            auto points = mesher.generate_mesh_inducing_turn(turn, wire, turnIndex, turn.get_length(), core);
+            for (const auto& point : points) {
+                SplitSection image = section;
+                image.x = point.get_point()[0];
+                image.y = point.get_point()[1];
+                sourcesPerTurn[turnIndex].push_back({image, point.get_value()});
+            }
         }
-        for (size_t strand = 0; strand < numberStrands; ++strand) {
-            strandInductance(targetStrand, strand) += targetFactor * wallPotentialPerTurn[targetIndex] * netDirectionPerStrand[strand];
+
+        // The wall sources per ampere-turn of net MMF (images included), and W_t.
+        const double mu0Over2Pi = Constants().vacuumPermeability / (2 * std::numbers::pi);
+        auto sheets = CoilMesher::generate_window_wall_sheets(magnetic, operatingPoint);
+        std::vector<double> wallPotentialPerTurn(turns.size(), 0.0);
+        for (const auto& sheet : sheets) {
+            SplitSection source;
+            source.x = 0.5 * (sheet.start[0] + sheet.end[0]);
+            source.y = 0.5 * (sheet.start[1] + sheet.end[1]);
+            source.halfWidth = 0.5 * std::abs(sheet.end[0] - sheet.start[0]);
+            source.halfHeight = 0.5 * std::abs(sheet.end[1] - sheet.start[1]);
+            if (source.halfWidth != 0 && source.halfHeight != 0) {
+                throw CalculationException(ErrorCode::CALCULATION_INVALID_RESULT, "Parallel current split (ABT #1314): a window-wall sheet is not axis-aligned");
+            }
+            for (size_t turnIndex = 0; turnIndex < turns.size(); ++turnIndex) {
+                wallPotentialPerTurn[turnIndex] -= mu0Over2Pi * sheet.current * split_mean_log(sectionPerTurn[turnIndex], source);
+            }
+        }
+
+        // Strand inductance (per strand, with the turn lengths).
+        std::vector<double> netDirectionPerStrand(numberStrands, 0.0);
+        for (size_t turnIndex = 0; turnIndex < turns.size(); ++turnIndex) {
+            netDirectionPerStrand[split.strandPerTurn[turnIndex]] += directionPerWinding[windingPerTurn[turnIndex]];
+        }
+        for (size_t targetIndex = 0; targetIndex < turns.size(); ++targetIndex) {
+            const double targetFactor = turns[targetIndex].get_length() * directionPerWinding[windingPerTurn[targetIndex]];
+            const size_t targetStrand = split.strandPerTurn[targetIndex];
+            for (size_t sourceIndex = 0; sourceIndex < turns.size(); ++sourceIndex) {
+                double potential = 0;
+                for (const auto& [image, weight] : sourcesPerTurn[sourceIndex]) {
+                    potential -= weight * split_mean_log(sectionPerTurn[targetIndex], image);
+                }
+                strandInductance(targetStrand, split.strandPerTurn[sourceIndex]) += targetFactor * directionPerWinding[windingPerTurn[sourceIndex]] * mu0Over2Pi * potential;
+            }
+            for (size_t strand = 0; strand < numberStrands; ++strand) {
+                strandInductance(targetStrand, strand) += targetFactor * wallPotentialPerTurn[targetIndex] * netDirectionPerStrand[strand];
+            }
         }
     }
+    // Strand resistance.
     std::vector<double> strandResistance(numberStrands, 0.0);
     for (size_t turnIndex = 0; turnIndex < turns.size(); ++turnIndex) {
         strandResistance[split.strandPerTurn[turnIndex]] += WindingOhmicLosses::calculate_dc_resistance(turns[turnIndex], wires[windingPerTurn[turnIndex]], temperature);
@@ -4066,6 +4082,8 @@ std::optional<ParallelCurrentSplit> MagneticField::calculate_parallel_current_sp
         for (size_t windingIndex = 0; windingIndex < numberWindings; ++windingIndex) {
             rightHandSide(numberStrands + windingIndex) = windingCurrent[windingIndex];
         }
+        // RESISTIVE model: strandInductance is zero, so the system is R_s I_s = V_w, sum_s I_s = I_w: every strand
+        // carries I_w G_s / sum G, its DC conductance share.
         Eigen::VectorXcd solution = system.partialPivLu().solve(rightHandSide);
         std::vector<std::complex<double>> currentPerTurn(turns.size());
         for (size_t turnIndex = 0; turnIndex < turns.size(); ++turnIndex) {

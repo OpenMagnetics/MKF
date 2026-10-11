@@ -357,12 +357,11 @@ ScalarMatrixAtFrequency WindingLosses::calculate_resistance_matrix(Magnetic magn
     size_t numWindings = functionalDescription.size();
     auto turnsRatios = magnetic.get_mutable_coil().get_turns_ratios();
 
-    auto& settings = OpenMagnetics::Settings::GetInstance();
-    // ARCH-002: RAII guard for exception safety
-    SettingsGuard<bool> fringingGuard(settings,
-        &Settings::get_magnetic_field_include_fringing,
-        &Settings::set_magnetic_field_include_fringing, false);
-
+    // ABT #1759 (Alf 2026-10-11): every R_ij comes from calculate_losses under the caller's settings, so it resolves its
+    // models through the same model-set resolver as the winding losses (resolve_winding_losses_model_set_from_settings):
+    // R_ii is the loss the winding-loss model books for 1 A rms in winding i alone. Fringing is no longer forced off
+    // here: with it off the default set could never be resolved (MMF_BOUNDARY needs the gap field), so the matrix
+    // silently used the legacy models while the winding losses used the default set.
     auto magnetizingInductanceModel = MagnetizingInductance();
     auto magnetizingInductance = resolve_dimensional_values(magnetizingInductanceModel.calculate_inductance_from_number_turns_and_gapping(magnetic.get_core(), magnetic.get_coil()).get_magnetizing_inductance());
     
@@ -442,7 +441,6 @@ ScalarMatrixAtFrequency WindingLosses::calculate_resistance_matrix(Magnetic magn
     }
 
     scalarMatrixAtFrequency.set_magnitude(resistanceMagnitude);
-    // ARCH-002: fringingGuard destructor restores previous setting
     return scalarMatrixAtFrequency;
 }
 
