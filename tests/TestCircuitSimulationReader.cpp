@@ -113,6 +113,48 @@ TEST_CASE("Test_Guess_Separator_Ltspice", "[processor][circuit-simulation-reader
     }
 }
 
+TEST_CASE("Test_Get_One_Period_Returns_Exactly_One_Period", "[processor][circuit-simulation-reader][abt-1467]") {
+    // A 10 ns export column accumulated in floating point: the sample meant to sit on T misses it
+    // by rounding, and the window used to take the next sample too, T plus one step (Rosano's
+    // forward_case.csv gave 502 points over 5.01 us at 200 kHz).
+    const double frequency = 200000;
+    const double period = 1.0 / frequency;
+    std::vector<double> time;
+    std::vector<double> data;
+    double t = 0;
+    for (size_t index = 0; index < 1501; ++index) {
+        time.push_back(t);
+        data.push_back(std::sin(2 * M_PI * frequency * t));
+        t += 1e-8;
+    }
+    Waveform record;
+    record.set_data(data);
+    record.set_time(time);
+    CircuitSimulationReader reader;
+    auto onePeriod = reader.get_one_period(record, frequency, false, false, "rounded");
+    REQUIRE(onePeriod.get_time());
+    CHECK(onePeriod.get_time()->front() == 0);
+    CHECK_THAT(onePeriod.get_time()->back(), Catch::Matchers::WithinRel(period, 1e-9));
+    CHECK(onePeriod.get_data().size() == 501);
+
+    // A step that does not divide the period: the window is cut at T, the last value interpolated.
+    std::vector<double> coarseTime;
+    std::vector<double> coarseData;
+    for (size_t index = 0; index < 400; ++index) {
+        coarseTime.push_back(index * 3e-8);
+        coarseData.push_back(index * 3e-8);
+    }
+    Waveform coarse;
+    coarse.set_data(coarseData);
+    coarse.set_time(coarseTime);
+    CircuitSimulationReader coarseReader;
+    auto coarsePeriod = coarseReader.get_one_period(coarse, frequency, false, false, "coarse");
+    CHECK_THAT(coarsePeriod.get_time()->back(), Catch::Matchers::WithinRel(period, 1e-12));
+    CHECK_THAT(coarsePeriod.get_data().back() - coarsePeriod.get_data().front(), Catch::Matchers::WithinRel(period, 1e-9));
+    // and the sampler takes it at its frequency
+    REQUIRE_NOTHROW(OpenMagnetics::Inputs::calculate_sampled_waveform(coarsePeriod, frequency));
+}
+
 TEST_CASE("Test_Import_Csv_Rosano_Forward", "[processor][circuit-simulation-reader]") {
     auto simulation_path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "forward_case.csv");
 

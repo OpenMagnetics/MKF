@@ -2257,14 +2257,17 @@ Waveform CircuitSimulationReader::get_one_period(Waveform waveform, double frequ
         }
 
 
+        // The window closes at the first sample at or past one period after its first sample.
+        // A sample that misses the end only by the rounding of the exported time column counts
+        // as on it: comparing exactly took the next sample too, a window of T plus one step
+        // (ABT #1467).
+        const double windowEnd = time[periodStartIndex] + period;
+        const double endRoundingTolerance = 1e-6 * period;
         for (size_t i = periodStartIndex; i < time.size(); ++i)
         {
-            if (time[i] >= periodStart + period) {
+            if (time[i] >= windowEnd - endRoundingTolerance) {
                 periodStopIndex = i + 1;
                 break;
-            }
-            else {
-
             }
         }
         // If the alignment back-walk pulled periodStart so far back that
@@ -2300,6 +2303,24 @@ Waveform CircuitSimulationReader::get_one_period(Waveform waveform, double frequ
     double offset = periodTime[0];
     for (size_t index = 0; index < periodTime.size(); index++) {
         periodTime[index] -= offset;
+    }
+    // Exactly one period, [0, T]: the last sample is on T up to the column's rounding, or past it,
+    // and then the waveform is cut at T between it and the previous sample (ABT #1467).
+    if (periodTime.size() < 2) {
+        throw InvalidInputException(ErrorCode::INVALID_INPUT,
+            "CircuitSimulationReader::get_one_period: the period window on time axis \"" + timeAxisName + "\" holds fewer than 2 samples");
+    }
+    {
+        const size_t last = periodTime.size() - 1;
+        if (std::fabs(periodTime[last] - period) > 1e-6 * period) {
+            if (periodTime[last] < period || periodTime[last - 1] >= period) {
+                throw InvalidInputException(ErrorCode::INVALID_INPUT,
+                    "CircuitSimulationReader::get_one_period: the period window on time axis \"" + timeAxisName + "\" does not bracket one period of " + std::to_string(period) + " s");
+            }
+            const double fraction = (period - periodTime[last - 1]) / (periodTime[last] - periodTime[last - 1]);
+            periodData[last] = periodData[last - 1] + fraction * (periodData[last] - periodData[last - 1]);
+        }
+        periodTime[last] = period;
     }
 
 
