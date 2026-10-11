@@ -131,7 +131,10 @@ class MagneticSimulator {
         // the full-network temperature solved together with the returned core losses (asking for
         // winding losses of an unwound coil throws). `windingLossesScope` selects the winding-loss
         // model the solve evaluates (and returns) for a wound coil.
-        static constexpr double kOperatingTemperatureTolerance = 0.5;      // K, both temperatures
+        // K, both temperatures. 2 K (was 0.5 K; approved by Alf 2026-10-11): on the 522 solves of the
+        // web9 magnetic adviser run it moves the hot spot by <= 0.57 K, the winding temperature by
+        // <= 2 K and the total loss by <= 0.96%, and saves ~300 of 1775 iterations.
+        static constexpr double kOperatingTemperatureTolerance = 2.0;
         static constexpr size_t kOperatingTemperatureMaximumIterations = 100;
         CoreLossesOutput calculate_core_losses(OperatingPoint& operatingPoint, Magnetic magnetic,
                                                std::optional<WindingLossesOutput>* windingLossesOutput = nullptr,
