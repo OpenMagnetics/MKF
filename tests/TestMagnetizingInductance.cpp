@@ -2256,8 +2256,10 @@ TEST_CASE("Test_Magnetic_Flux_Density_Dcm_Flyback_Keeps_The_Dead_Time", "[physic
     // ABT #1467: the core-loss path routes a flyback-labelled multi-winding operating point to the
     // multiport-inductor branch, which rebuilt the magnetizing current as a triangle rising over D
     // and falling over all of 1 - D. A DCM flyback's flux is flat through the dead time (0 V on
-    // every winding for the last 42 of 128 samples); Faraday on the primary voltage keeps it.
-    auto path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "Test_Winding_Losses_Abt1463_Flyback.json");
+    // every winding for the last 42 of 128 samples); Faraday on the primary voltage keeps it. The
+    // fixture is the #1463 flyback with its reset balanced (-235 * 32 / 54 V instead of -137.2 V):
+    // the mean removed from an unbalanced voltage would tilt the dead time.
+    auto path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "Test_Magnetizing_Current_Dcm_Flyback_Balanced.json");
     std::ifstream in(path);
     json masJson = json::parse(in);
     OpenMagnetics::Magnetic magnetic(masJson["magnetic"]);

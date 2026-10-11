@@ -2493,11 +2493,14 @@ namespace {
 }
 
 TEST_CASE("Test_Magnetizing_Current_Dcm_Flyback_Keeps_The_Dead_Time", "[processor][inputs][abt-1467]") {
-    // DCM flyback, 42:6, 100 kHz, L_m 250 uH: 235 V for 2.5 us, -137.2 V while the secondary
-    // demagnetizes, 0 V for the last 42 of 128 samples. The flux (and the magnetizing current) rises
-    // 235 V * 2.5 us / 250 uH = 2.35 A and stays flat through the dead time. The FLYBACK_PRIMARY
-    // label used to rebuild a triangle rising over D and falling over all of 1 - D: no dead time.
-    OpenMagnetics::Inputs inputs(abt1467_inputs_without_magnetizing_current("Test_Winding_Losses_Abt1463_Flyback.json"));
+    // DCM flyback, 42:6, 100 kHz, L_m 250 uH: 235 V for 2.5 us (32 of 128 samples), -139.26 V while
+    // the secondary demagnetizes (54 samples), 0 V for the last 42. The flux (and the magnetizing
+    // current) rises 235 V * 2.5 us / 250 uH = 2.35 A and stays flat through the dead time. The
+    // FLYBACK_PRIMARY label used to rebuild a triangle rising over D and falling over all of 1 - D:
+    // no dead time. The fixture is the #1463 flyback with its reset balanced (235 * 32 / 54 V instead
+    // of 137.2 V, which left 8.7 uV*s per period): any mean removed from an unbalanced voltage tilts
+    // the 0 V dead time, so the dead time is flat only on a balanced one.
+    OpenMagnetics::Inputs inputs(abt1467_inputs_without_magnetizing_current("Test_Magnetizing_Current_Dcm_Flyback_Balanced.json"));
     auto excitation = inputs.get_operating_points()[0].get_excitations_per_winding()[0];
     REQUIRE(excitation.get_magnetizing_current());
     auto magnetizingCurrent = excitation.get_magnetizing_current().value();
@@ -2517,7 +2520,7 @@ TEST_CASE("Test_Magnetizing_Current_Dcm_Flyback_Keeps_The_Dead_Time", "[processo
     INFO("i_m max " << maximum << " A, min " << minimum << " A, dead-time level " << deadTimeLevel << " A over " << flatSamples << " samples");
     CHECK(flatSamples >= 42);
     CHECK_THAT(maximum - minimum, Catch::Matchers::WithinRel(faradaySwing, 0.01));
-    // DCM: the dead time sits at the flux's minimum (the fixture's volt-seconds close to 1.5 %).
+    // DCM: the dead time sits at the flux's minimum (the balanced fixture's volt-seconds close).
     CHECK(std::fabs(deadTimeLevel - minimum) < 0.02 * faradaySwing);
     // DC anchor (ABT #907): the magnetizing current peaks where the primary current does (its
     // 128-sample peak, 2.277 A, is 3 % under the knot peak).
