@@ -265,13 +265,10 @@ WindingLossesOutput WindingSkinEffectLosses::calculate_skin_effect_losses(Coil c
 
     double totalSkinEffectLosses = 0;
 
-    for (size_t turnIndex = 0; turnIndex < turns.size(); ++turnIndex)
-    {
-        auto turn = turns[turnIndex];
-        int windingIndex = coil.get_winding_index_by_name(turn.get_winding());
-        auto wire = coil.resolve_wire(windingIndex);
-        // ABT #1304: a model set chooses per wire type; a single override applies to every winding.
-        std::optional<WindingSkinEffectLossesModels> turnModelOverride = modelOverride;
+    // ABT #1304: a model set chooses per wire type; a single override applies to every winding. Turns and the
+    // winding's connection copper (ABT #1759: the connections used to read only the single override) use the same.
+    auto modelOverrideForWinding = [&](size_t windingIndex) {
+        std::optional<WindingSkinEffectLossesModels> windingModelOverride = modelOverride;
         if (modelPerWireType) {
             auto wireTypeThisWinding = coil.get_wire_type(windingIndex);
             auto found = modelPerWireType->find(wireTypeThisWinding);
@@ -279,8 +276,17 @@ WindingLossesOutput WindingSkinEffectLosses::calculate_skin_effect_losses(Coil c
                 throw ModelNotAvailableException("The model set has no WindingSkinEffectLossesModels for " +
                                                  std::string(magic_enum::enum_name(wireTypeThisWinding)) + " wire");
             }
-            turnModelOverride = found->second;
+            windingModelOverride = found->second;
         }
+        return windingModelOverride;
+    };
+
+    for (size_t turnIndex = 0; turnIndex < turns.size(); ++turnIndex)
+    {
+        auto turn = turns[turnIndex];
+        int windingIndex = coil.get_winding_index_by_name(turn.get_winding());
+        auto wire = coil.resolve_wire(windingIndex);
+        std::optional<WindingSkinEffectLossesModels> turnModelOverride = modelOverrideForWinding(windingIndex);
         double wireLength = turn.get_length();
 
         if (static_cast<size_t>(windingIndex) >= operatingPoint.get_excitations_per_winding().size() ||
@@ -357,7 +363,7 @@ WindingLossesOutput WindingSkinEffectLosses::calculate_skin_effect_losses(Coil c
                 splitDivider = split_current_divider_per_harmonic(*parallelCurrentSplit, turnPerParallel.at({windingIndex, int64_t(parallelIndex)}), windingIndex,
                                                                   current, dividerFound->second);
             }
-            auto lossesPerMeterPerHarmonic = calculate_skin_effect_losses_per_meter(coil.resolve_wire(windingIndex), current, temperature, dividerFound->second, modelOverride,
+            auto lossesPerMeterPerHarmonic = calculate_skin_effect_losses_per_meter(coil.resolve_wire(windingIndex), current, temperature, dividerFound->second, modelOverrideForWinding(windingIndex),
                                                                                     splitDivider ? &splitDivider.value() : nullptr).second;
             if (!anyConnectionThisWinding) {
                 connectionLossPerHarmonic.assign(lossesPerMeterPerHarmonic.size(), 0.0);

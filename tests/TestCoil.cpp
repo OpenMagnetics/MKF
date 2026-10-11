@@ -13172,6 +13172,45 @@ TEST_CASE("Test_Real_Geometry_Connection_Skin_Losses", "[constructive-model][coi
         }
         settings.reset();
     }
+
+    SECTION("a per-wire-type model choice (model set) reaches the connection copper too") {
+        // ABT #1759: the turns read the model set's per-wire-type skin model, the connection copper read only the
+        // single override (none here) and so used the wire-type default instead.
+        settings.set_coil_use_real_winding_geometry(true);
+        auto coil = OpenMagneticsTesting::get_quick_coil({40, 40}, {1, 1}, "PQ 28/20", 2);
+        REQUIRE(coil.get_turns_description());
+        const auto chosenModel = WindingSkinEffectLossesModels::XI_NAN; // Dowell equivalent-foil, not the default Bessel
+        auto inputs = OpenMagnetics::Inputs::create_quick_operating_point_only_current(
+            400000, 100e-6, temperature, WaveformLabel::TRIANGULAR, 2, 0.5, 0, {1});
+        auto ohmicOutput = OpenMagnetics::WindingOhmicLosses::calculate_ohmic_losses(coil, inputs.get_operating_point(0), temperature);
+        std::map<WireType, WindingSkinEffectLossesModels> modelPerWireType = {{WireType::ROUND, chosenModel}};
+        auto skinOutput = OpenMagnetics::WindingSkinEffectLosses::calculate_skin_effect_losses(
+            coil, temperature, ohmicOutput, Defaults().harmonicAmplitudeThreshold, std::nullopt, modelPerWireType);
+        double connectionSkin = 0;
+        for (auto& element : skinOutput.get_winding_losses_per_winding().value()) {
+            REQUIRE(element.get_skin_effect_losses());
+            for (auto loss : element.get_skin_effect_losses()->get_losses_per_harmonic()) {
+                connectionSkin += loss;
+            }
+        }
+        auto prunedOperatingPoint = OpenMagnetics::Inputs::prune_harmonics(inputs.get_operating_point(0), Defaults().harmonicAmplitudeThreshold);
+        auto expectedLengths = expected_connection_length_rectangular(coil);
+        double expectedChosen = 0;
+        double expectedDefault = 0;
+        for (size_t windingIndex = 0; windingIndex < coil.get_functional_description().size(); ++windingIndex) {
+            auto windingName = coil.get_functional_description()[windingIndex].get_name();
+            auto current = prunedOperatingPoint.get_excitations_per_winding()[windingIndex].get_current().value();
+            auto wire = coil.resolve_wire(windingIndex);
+            expectedChosen += OpenMagnetics::WindingSkinEffectLosses::calculate_skin_effect_losses_per_meter(wire, current, temperature, 1, chosenModel).first *
+                              expectedLengths.at({windingName, 0});
+            expectedDefault += OpenMagnetics::WindingSkinEffectLosses::calculate_skin_effect_losses_per_meter(wire, current, temperature, 1).first *
+                               expectedLengths.at({windingName, 0});
+        }
+        // The fixture must tell the two models apart, or the guard measures nothing.
+        REQUIRE(std::abs(expectedChosen - expectedDefault) > 0.01 * expectedDefault);
+        CHECK_THAT(connectionSkin, Catch::Matchers::WithinRel(expectedChosen, 1e-6));
+        settings.reset();
+    }
 }
 
 TEST_CASE("Test_Abt967_Autocomplete_Accepts_A_Database_Foil", "[constructive-model][coil][foil][regression]") {
