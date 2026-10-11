@@ -188,13 +188,7 @@ double ThermalResistance::getMaterialThermalConductivity(const std::string& mate
     // Try core material database (uses heatConductivity field)
     try {
         auto coreMaterial = find_core_material_by_name(materialName);  // Core materials may be case-sensitive
-        auto heatCond = coreMaterial.get_heat_conductivity();
-        if (heatCond) {
-            auto nominal = heatCond->get_nominal();
-            if (nominal) {
-                return *nominal;
-            }
-        }
+        return getCoreMaterialThermalConductivity(coreMaterial);
     } catch (const std::exception& /* e */) { // IMP-8
         // Not a core material, continue
     }
@@ -290,18 +284,66 @@ double ThermalResistance::getWireMaterialThermalConductivity(const WireMaterial&
     }
 }
 
-double ThermalResistance::getCoreMaterialThermalConductivity(const CoreMaterial& coreMaterial) {
-    auto heatCond = coreMaterial.get_heat_conductivity();
-    if (!heatCond) {
-        // No conductivity data at all: signal missing-material-data so the caller decides.
-        // Temperature::getCoreThermalConductivity catches this and falls back to the
-        // configured coreThermalConductivity instead of silently hardcoding 4.0 here.
+namespace {
+
+// THE APPROVED FALLBACK for a core material's thermal properties (Alf, 2026-10-11): a material
+// that carries no value of its own takes the MEDIAN of that value over every MAS core material of
+// the SAME materialComposition that does carry one. Each contributing value is the manufacturer's
+// own, with its provenance in MAS, so the fallback is sourced data rather than a constant, and it
+// follows the database as data is added. The median, not the mean, so one outlying vendor table
+// cannot drag a whole chemistry.
+//
+// It throws (MATERIAL_DATA_MISSING) when the material states no composition, when the composition
+// is 'proprietary' (no chemistry to pool by), or when no material of that composition carries the
+// value -- never a guessed number.
+template <typename Getter>
+double median_over_composition(const CoreMaterial& coreMaterial, Getter getValue, const std::string& quantity) {
+    const auto composition = coreMaterial.get_material_composition();
+    if (!composition || *composition == MaterialComposition::PROPRIETARY) {
         throw MaterialException(ErrorCode::MATERIAL_DATA_MISSING,
-            "Core material '" + coreMaterial.get_name() + "' has no heat_conductivity defined");
+            "Core material '" + coreMaterial.get_name() + "' has no " + quantity +
+            " and no materialComposition to take the same-composition median from");
     }
+    if (coreMaterialDatabase.empty()) {
+        load_core_materials();
+    }
+    std::vector<double> values;
+    for (const auto& [name, material] : coreMaterialDatabase) {
+        if (material.get_material_composition() != composition) {
+            continue;
+        }
+        if (const auto value = getValue(material)) {
+            values.push_back(resolve_dimensional_values(*value));
+        }
+    }
+    if (values.empty()) {
+        throw MaterialException(ErrorCode::MATERIAL_DATA_MISSING,
+            "Core material '" + coreMaterial.get_name() + "' has no " + quantity + ", and no " +
+            std::string(magic_enum::enum_name(*composition)) + " material in the database carries one");
+    }
+    std::sort(values.begin(), values.end());
+    const size_t middle = values.size() / 2;
+    return values.size() % 2 == 1 ? values[middle] : 0.5 * (values[middle - 1] + values[middle]);
+}
+
+}  // namespace
+
+double ThermalResistance::getCoreMaterialThermalConductivity(const CoreMaterial& coreMaterial) {
     // Resolve via the shared resolver (handles nominal, and the min/max bands that most
     // catalogue ferrites use without a nominal) rather than reading only get_nominal().
-    return resolve_dimensional_values(*heatCond);
+    if (const auto heatCond = coreMaterial.get_heat_conductivity()) {
+        return resolve_dimensional_values(*heatCond);
+    }
+    return median_over_composition(coreMaterial, [](const CoreMaterial& m) { return m.get_heat_conductivity(); },
+                                   "heatConductivity");
+}
+
+double ThermalResistance::getCoreMaterialHeatCapacity(const CoreMaterial& coreMaterial) {
+    if (const auto heatCapacity = coreMaterial.get_heat_capacity()) {
+        return resolve_dimensional_values(*heatCapacity);
+    }
+    return median_over_composition(coreMaterial, [](const CoreMaterial& m) { return m.get_heat_capacity(); },
+                                   "heatCapacity");
 }
 
 double ThermalResistance::getInsulationMaterialThermalConductivity(const InsulationMaterial& material) {

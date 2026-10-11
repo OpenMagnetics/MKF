@@ -140,9 +140,21 @@ public:
     static double getWireMaterialThermalConductivity(const WireMaterial& wireMaterial, double temperature);
     
     /**
-     * @brief Get thermal conductivity from core material
+     * @brief Thermal conductivity of a core material, W/(m·K)
+     *
+     * The material's own MAS heatConductivity when it has one; otherwise the approved fallback:
+     * the median heatConductivity over the MAS materials of the same materialComposition.
+     * Throws MATERIAL_DATA_MISSING when neither exists (no or proprietary composition, or no
+     * material of that composition carries the value).
      */
     static double getCoreMaterialThermalConductivity(const CoreMaterial& coreMaterial);
+
+    /**
+     * @brief Specific heat capacity of a core material, J/(kg·K)
+     *
+     * Same rule as getCoreMaterialThermalConductivity, on MAS heatCapacity.
+     */
+    static double getCoreMaterialHeatCapacity(const CoreMaterial& coreMaterial);
     
     /**
      * @brief Get thermal conductivity from insulation material

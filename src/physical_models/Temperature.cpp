@@ -201,28 +201,9 @@ double Temperature::getCoreThermalConductivity() const {
     try {
         return ThermalResistance::getCoreMaterialThermalConductivity(coreMaterial);
     } catch (const MaterialException&) {
-        // No material in the MAS database currently carries thermalConductivity (audited
-        // 2026-08-02: 0 of 662), so this path is the effective source for every core. A single
-        // number for all chemistries is wrong — powder-core composites conduct 2-3x better than
-        // ferrites — so the estimate is per material COMPOSITION, which the database does carry,
-        // with values from vendor data (Ferroxcube/TDK ferrite datasheets ~3.5-5 W/mK; Magnetics
-        // Inc. powder cores ~8-13 W/mK for the distributed-gap composite, not the pure metal):
-        auto composition = coreMaterial.get_material_composition();
-        if (composition) {
-            switch (composition.value()) {
-                case MaterialComposition::MN_ZN:
-                case MaterialComposition::NI_ZN:
-                case MaterialComposition::MG_ZN:         return 4.0;   // ferrites
-                case MaterialComposition::FE_SI_AL:      return 8.0;   // Sendust
-                case MaterialComposition::FE_SI:         return 10.0;  // XFlux-class
-                case MaterialComposition::FE_NI:         return 9.0;   // High Flux
-                case MaterialComposition::FE_NI_MO:      return 9.0;   // MPP
-                case MaterialComposition::CARBONYL_IRON: return 6.0;
-                case MaterialComposition::IRON:          return 8.0;
-                case MaterialComposition::PROPRIETARY:   break;        // unknown chemistry: fall through
-            }
-        }
-        // Unknown composition: the conservative-hot choice (low k over-predicts the hot spot).
+        // Neither the material's own value nor the same-composition MAS median exists (no or
+        // proprietary composition, or a composition no record carries a value for): the
+        // configured conductivity, the conservative-hot choice (low k over-predicts the hot spot).
         return _config.coreThermalConductivity;
     }
 }
