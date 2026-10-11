@@ -1391,13 +1391,11 @@ double MagnetizingInductance::calculate_gap_from_saturation_constraint(Core core
         testCore.get_mutable_functional_description().set_gapping(gapping);
         testCore.process_gap_or_throw();
         
-        // Calculate total reluctance manually (classic formula)
-        // Core reluctance: R_core = l_e / (μ₀ * μ_r * A_e), using the MATERIAL's
-        // initial permeability (a hardcoded 2000 skewed the search for powder
-        // cores with μr 14-125 and high-permeability MnZn ferrites alike)
-        double effectiveLength = testCore.get_processed_description()->get_effective_parameters().get_effective_length();
+        // Core reluctance from the reluctance model (ABT #1766: one value for every caller), using the MATERIAL's
+        // initial permeability (a hardcoded 2000 skewed the search for powder cores with μr 14-125 and
+        // high-permeability MnZn ferrites alike)
         double initialPermeabilityValue = InitialPermeability::get_initial_permeability(testCore.resolve_material());
-        double coreReluctance = effectiveLength / (constants.vacuumPermeability * initialPermeabilityValue * effectiveArea);
+        double coreReluctance = reluctanceModel->get_ungapped_core_reluctance(testCore, initialPermeabilityValue);
         
         // Gap reluctance: R_gap = l_gap / (μ₀ * A_gap)
         double gapArea = columns[0].get_area();
@@ -1810,9 +1808,8 @@ std::pair<double, double> MagnetizingInductance::calculate_optimal_gap_and_turns
     double currentInitialPermeability = initialPermeability.get_initial_permeability(
         tempCore.resolve_material(), temperature, std::nullopt, frequency);
     
-    // Estimate core reluctance from effective parameters
-    double effectiveLength = tempCore.get_processed_description()->get_effective_parameters().get_effective_length();
-    double coreReluctance = effectiveLength / (constants.vacuumPermeability * currentInitialPermeability * effectiveArea);
+    // Core reluctance from the reluctance model (ABT #1766: one value for every caller)
+    double coreReluctance = reluctanceModel->get_ungapped_core_reluctance(tempCore, currentInitialPermeability);
     
     // Step 4: Calculate needed gap reluctance
     double neededGapReluctance = requiredReluctance - coreReluctance;

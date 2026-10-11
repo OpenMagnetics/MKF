@@ -54,6 +54,18 @@ class CorePiece {
   public:
     virtual std::tuple<double, double, double> get_shape_constants() = 0;
     virtual std::tuple<double, double, double> get_shape_constants_iec63182();
+
+    // ABT #1766: the exact core factor C1 = R_core * mu0 * mu_r of this piece (same per-piece convention as
+    // get_shape_constants' c1), for the pieces whose ferrite path has one. IEC 60205 and IEC 63182 book every
+    // limb-to-yoke corner as a quarter circle of mean area, pi/4 "squares" whatever the two limb widths, which puts
+    // the reluctance of an E, planar E, U, UI or EI core 6-8 % above a 2D field solve (OMFEM). Those pieces are
+    // prismatic with rectangular limbs, i.e. 2D bodies, and each corner has an exact Schwarz-Christoffel resistance
+    // (right_angle_bend_squares in CorePiece.cpp); they override this, and process() then sets le = C1 * Ae with
+    // Ae kept from the selected standard, so le, Ve and every le/(mu0 mu Ae) carry the exact path.
+    // nullopt (the default) keeps the standard's le: pieces with round or shaped posts have a 3D path with no
+    // closed form (ABT #1772), and tape-wound C cores carry their flux along the ribbon, not as potential flow.
+    virtual std::optional<double> get_exact_shape_constant_c1() { return std::nullopt; }
+    static double exact_effective_length(double exactC1, double effectiveArea);
     virtual void process_columns() = 0;
     virtual void process_winding_window() = 0;
     virtual void process_extra_data() = 0;

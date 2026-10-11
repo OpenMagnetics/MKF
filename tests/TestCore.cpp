@@ -2021,12 +2021,29 @@ TEST_CASE("Test_Core_Effective_Permeability", "[constructive-model][core][functi
 
     Core core(coreJson, true);
 
-    auto effectivePermeability = core.get_effective_permeability(25);
+    // The expected values are the vendor's mu_e, and the vendor defines mu_e = le / (mu0 Ae R_core) with the
+    // IEC 60205 le (C1^2 / C2, corners booked as quarter circles). Since ABT #1766 MKF's processed le carries the
+    // field-exact corners (Ae unchanged), so Core::get_effective_permeability, which uses the processed le, is not
+    // the vendor's quantity. Compare like with like: the same core reluctance R and processed Ae, with the
+    // IEC-convention le of the same shape.
+    auto corePiece = CorePiece::factory(std::get<CoreShape>(core.get_functional_description().get_shape()));
+    // The piece's IEC le is C1^2 / C2 and its processed (exact) le sits in its partial parameters; the core's le is
+    // the piece's times the number of pieces in the path, so scale the core's processed le by the piece's ratio.
+    auto [c1, c2, minimumArea] = corePiece->get_shape_constants();
+    double pieceIecToExactLengthRatio = (c1 * c1 / c2) / corePiece->get_partial_effective_parameters().get_effective_length();
+    auto processedEffectiveParameters = core.get_processed_description().value().get_effective_parameters();
+    double iecEffectiveLength = processedEffectiveParameters.get_effective_length() * pieceIecToExactLengthRatio;
+    double effectiveArea = processedEffectiveParameters.get_effective_area();
+    auto vendorConventionEffectivePermeability = [&](double temperature) {
+        return iecEffectiveLength / (core.get_reluctance(temperature) * effectiveArea * Constants().vacuumPermeability);
+    };
+
+    auto effectivePermeability = vendorConventionEffectivePermeability(25);
     double expectedEffectivePermeability = 136;
 
     REQUIRE_THAT(expectedEffectivePermeability, Catch::Matchers::WithinAbs(effectivePermeability, expectedEffectivePermeability * maximumError));
 
-    effectivePermeability = core.get_effective_permeability(125);
+    effectivePermeability = vendorConventionEffectivePermeability(125);
     expectedEffectivePermeability = 139;
     REQUIRE_THAT(expectedEffectivePermeability, Catch::Matchers::WithinAbs(effectivePermeability, expectedEffectivePermeability * maximumError));
 }

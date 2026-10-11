@@ -233,8 +233,11 @@ void check_top_n(const std::string& label,
 // EP 20 - 3C96 - Gapped 0.375 mm 134.9 C, PQ 20/20 - 3C96 - Gapped 0.469 mm 193.1 C,
 // EFD 25/13/9 - 3C95 - Gapped 0.44 mm 196.1 C (no EP 20 - 3C96 - Gapped 0.598 mm reaches the gate).
 // One core of the fixture catalogue stays under the limit (129.6 C), and it is the only result.
+// Re-pinned 2026-10-12 (ABT #1766, user-approved): rectangular-limb cores (E, planar E, U, UI, EI)
+// now carry the field-exact right-angle bends in le/Ve (Ae unchanged), i.e. a lower core reluctance.
+// Same single core; score 4.7327978556817465 -> 4.7223288293487959 (-0.22 %).
 const std::vector<TopEntry> kTopAvailablePower = {
-    {"PQ 20/20 - 3C97 - Gapped 0.477 mm",          4.7327978556817465},
+    {"PQ 20/20 - 3C97 - Gapped 0.477 mm",          4.7223288293487959},
 };
 
 // STANDARD_CORES x POWER: top-5 unique standard-shape ferrite candidates.

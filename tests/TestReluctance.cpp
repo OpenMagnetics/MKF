@@ -488,6 +488,26 @@ namespace {
         REQUIRE(calculatedReluctanceAt150 > calculatedReluctanceAt200);
     }
 
+    // ABT #1766: the ungapped ferrite reluctance of a rectangular-limbed core is its 2D field-solve value. IEC 60205
+    // books every limb-to-yoke corner as pi/4 squares of mean area, which put these cores 5.9-7.7 % above OMFEM 2D
+    // (ungapped runs, 1/L_m with only the residual gaps subtracted); the exact Schwarz-Christoffel bend brings them
+    // within 0.3 %. C1 = R_core * mu0 * mu_r = le / Ae, so le itself must carry it. References (1/m, OMFEM 2D):
+    // E 42/21/20 393.88, E 64/10/50 (planar E) 144.50, U 100/57/25 485.46.
+    TEST_CASE("Test_Reluctance_Ungapped_Rectangular_Limb_Cores_Match_OMFEM", "[physical-model][reluctance][smoke-test]") {
+        auto reluctanceModel = ReluctanceModel::factory(ReluctanceModels::ZHANG);
+        double mu0 = Constants().vacuumPermeability;
+        for (auto [shapeName, omfemC1] : std::vector<std::pair<std::string, double>>{
+                 {"E 42/21/20", 393.88}, {"E 64/10/50", 144.50}, {"U 100/57/25", 485.46}}) {
+            INFO(shapeName);
+            auto core = OpenMagneticsTesting::get_quick_core(shapeName, json::array());
+            auto effectiveParameters = core.get_processed_description()->get_effective_parameters();
+            double c1FromEffectiveParameters = effectiveParameters.get_effective_length() / effectiveParameters.get_effective_area();
+            double c1FromReluctance = reluctanceModel->get_ungapped_core_reluctance(core, 1.0) * mu0;
+            CHECK_THAT(c1FromEffectiveParameters, Catch::Matchers::WithinRel(omfemC1, 0.005));
+            CHECK_THAT(c1FromReluctance, Catch::Matchers::WithinRel(omfemC1, 0.005));
+        }
+    }
+
     TEST_CASE("Test_Web_0", "[physical-model][reluctance][gap][bug][smoke-test]") {
         std::string coreGapData = R"({"area":0.000123,"coordinates":[0,0.0005,0],"distanceClosestNormalSurface":0.014098,"distanceClosestParallelSurface":0.0088,"length":0.000005,"sectionDimensions":[0.0125,0.0125],"shape":"round","type":"subtractive"})";
         std::string modelNameString = "Zhang";

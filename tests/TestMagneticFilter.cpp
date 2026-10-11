@@ -226,7 +226,11 @@ const std::map<std::string, Snapshot> kSnapshots = {
     // E35 ferrite at ~1.73 A peak has isat << margin·ipeak, so SATURATION
     // flips valid true→false (was {true, 0.1185}). ENERGY_STORED (-0.4 %) and
     // TEMPERATURE (-1.4 %) drift from the same reclassified flux/B recompute.
-    {"ENERGY_STORED",                                   {true,  0.00018781148528340766}},
+    // Re-pinned 2026-10-12 (ABT #1766, user-approved): the E 35 fixture's le/Ve now carry the field-exact
+    // right-angle bends (Ae unchanged), i.e. a lower core reluctance: ENERGY_STORED 1.8781148528340766e-4 ->
+    // 1.8031756024430384e-4, COST 4.45732988417687 -> 4.3620705094657808 (smaller Ve, lighter core),
+    // MAGNETIZING_INDUCTANCE 5.7629428244944511e-3 -> 6.006604362371216e-3.
+    {"ENERGY_STORED",                                   {true,  0.00018031756024430384}},
     {"ESTIMATED_COST",                                  {true,  1.7774692926005085}},
     // COST re-derived 2026-09-30: the filter now scores the unit cost in US$ at 1000 pieces (CostBasis) instead
     // of numberLayers + wire relative cost (7.0). By hand, for this fixture:
@@ -235,7 +239,7 @@ const std::map<std::string, Snapshot> kSnapshots = {
     //             = 21.09 g x US$14.737/kg                                          = US$0.311
     //   labour    60 x 0.105 min / 0.5 = 12.6 min at US$7.27/h                      = US$1.527
     //   total                                                                       = US$4.457
-    {"COST",                                            {true,  4.45732988417687}},
+    {"COST",                                            {true,  4.3620705094657808}},
     // CORE_AND_DC_LOSSES returns (false, 0) here because the reference
     // magnetic has no DcResistance computed on the wound coil → ohmic
     // losses model rejects it. This locks the silent invalid-fallthrough
@@ -265,7 +269,8 @@ const std::map<std::string, Snapshot> kSnapshots = {
     {"DC_CURRENT_DENSITY",                              {false, 0.0}},
     {"EFFECTIVE_CURRENT_DENSITY",                       {false, 0.0}},
     {"IMPEDANCE",                                       {true,  0.0}},
-    {"MAGNETIZING_INDUCTANCE",                          {false, 0.0057629428244944511}},
+    // Re-pinned 2026-10-12 (ABT #1766): 5.7629428244944511e-3 -> 6.006604362371216e-3, exact le (lower core reluctance).
+    {"MAGNETIZING_INDUCTANCE",                          {false, 0.006006604362371216}},
     {"SKIN_LOSSES_DENSITY",                             {false, 0.0}},
     {"TEMPERATURE_RISE",                                {true,  25.0}},
     // LOCKS BUG: MagnetomotiveForce only push_backs in INSULATION branch

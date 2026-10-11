@@ -195,9 +195,15 @@ TEST_CASE("Test_Ui_Effective_Parameters_Match_Vendor_Catalogue", "[core][shape-f
         REQUIRE(piece != nullptr);
         auto effectiveParameters = piece->get_partial_effective_parameters();
 
-        double effectiveLength = effectiveParameters.get_effective_length() * 1000;
+        // The catalogue le is the vendor's IEC 60205 le (C1^2 / C2, corners booked as quarter circles), so it is
+        // compared against MKF's IEC-convention le from the same shape constants, not against the processed le:
+        // since ABT #1766 the processed le of a UI core carries the field-exact corners (Ae unchanged), which is
+        // the better reluctance but not the vendor's definition. Ae is the same in both conventions.
+        auto [c1, c2, minimumArea] = piece->get_shape_constants();
+        double effectiveLength = c1 * c1 / c2 * 1000;
         double effectiveArea = effectiveParameters.get_effective_area() * 1e6;
-        UNSCOPED_INFO(reference.shapeName << ": le = " << effectiveLength << " mm (catalogue "
+        REQUIRE_THAT(effectiveArea, Catch::Matchers::WithinRel(c1 / c2 * 1e6, 1e-12));
+        UNSCOPED_INFO(reference.shapeName << ": IEC le = " << effectiveLength << " mm (catalogue "
                       << reference.effectiveLengthMillimetres << "), Ae = " << effectiveArea
                       << " mm2 (catalogue " << reference.effectiveAreaSquareMillimetres << ")");
         // 5% covers the catalogue's three-significant-figure rounding and the dimensional

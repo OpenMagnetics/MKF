@@ -2,6 +2,7 @@
 #include "physical_models/ComplexPermeability.h"
 #include "physical_models/InitialPermeability.h"
 #include "physical_models/LeakageInductance.h"
+#include "physical_models/Reluctance.h"
 #include "support/Exceptions.h"
 #include "support/Utils.h"
 #include "Constants.h"
@@ -213,10 +214,9 @@ MagneticShuntNetworkInputs MagneticShuntModel::extract_network_inputs(Magnetic& 
     }
 
     // Zhang eq. (10): R_c1 = R_c2 = l_e / (2 mu0 mur A_e); one half-core loop is R_c1/2 + R_c2.
-    double mu0 = Constants().vacuumPermeability;
-    auto effectiveParameters = core.get_processed_description()->get_effective_parameters();
+    // The ungapped core reluctance comes from the reluctance model (ABT #1766: one value for every caller).
     double coreRelativePermeability = InitialPermeability::get_initial_permeability(core.resolve_material(), temperature, std::nullopt, frequency);
-    double coreHalfReluctance = effectiveParameters.get_effective_length() / (2 * mu0 * coreRelativePermeability * effectiveParameters.get_effective_area());
+    double coreHalfReluctance = ReluctanceModel::factory()->get_ungapped_core_reluctance(core, coreRelativePermeability) / 2;
     inputs.coreLoopReluctance = coreHalfReluctance / 2 + coreHalfReluctance;
 
     double windowHalfHeight = columns.main.get_height() / 2;
