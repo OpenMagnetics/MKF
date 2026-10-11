@@ -461,6 +461,24 @@ TEST_CASE("Test_PFC_Only_Current", "[processor][circuit-simulation-reader]") {
     }
 }
 
+TEST_CASE("Test_Process_Operating_Point_Keeps_The_Stated_Frequency", "[processor][circuit-simulation-reader][abt-1467]") {
+    // A 50 Hz PFC line-cycle record keeps its 50 Hz label: process_operating_point used to replace it
+    // with the switching harmonic, a label that did not match the 20 ms record (ABT #1467).
+    auto simulation_path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "only_pfc_current_waveform.csv");
+    auto reader = CircuitSimulationReader(simulation_path.string());
+    auto operatingPoint = reader.extract_operating_point(2, 50);
+    operatingPoint = OpenMagnetics::Inputs::process_operating_point(operatingPoint, 110e-6);
+    REQUIRE(operatingPoint.get_excitations_per_winding().size() == 1);
+    CHECK(operatingPoint.get_excitations_per_winding()[0].get_frequency() == 50);
+
+    // A missing frequency is not repaired from the waveform's harmonics: NaN, 0 and negative throw.
+    for (double frequency : {std::numeric_limits<double>::quiet_NaN(), 0.0, -50.0}) {
+        auto broken = reader.extract_operating_point(2, 50);
+        broken.get_mutable_excitations_per_winding()[0].set_frequency(frequency);
+        CHECK_THROWS_AS(OpenMagnetics::Inputs::process_operating_point(broken, 110e-6), InvalidInputException);
+    }
+}
+
 TEST_CASE("Test_Simba_File_Loaded", "[processor][circuit-simulation-reader]") {
     auto simulation_path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "simba_simulation.csv");
 

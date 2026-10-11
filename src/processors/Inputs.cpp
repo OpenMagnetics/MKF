@@ -2496,168 +2496,17 @@ SignalDescriptor Inputs::calculate_magnetizing_current(OperatingPointExcitation&
 
 OperatingPoint Inputs::process_operating_point(OperatingPoint operatingPoint, double magnetizingInductance, std::optional<std::vector<double>> turnsRatios, bool isDmcTopology,
                                                 std::optional<std::vector<IsolationSide>> isolationSides) {
-    // Decide the excitation's effective loss-driving frequency.
-    //
-    // Two cases must both work:
-    // 1. Single-tone excitations below the line-frequency gate (e.g. a 250 Hz
-    //    triangular inductor, 60 Hz mains transformer): the stated fundamental IS
-    //    the loss-driving frequency and must be preserved verbatim.
-    // 2. PFC-style excitations where the stated fundamental is the slow line/envelope
-    //    frequency but the loss-driving content sits at a much higher switching
-    //    frequency: downstream loss/thermal math needs the switching frequency, so
-    //    we replace the stated value with the dominant loss-contributing harmonic.
-    //
-    // Score each harmonic by f·amplitude (a loss-relevant quantity that grows with
-    // both frequency and flux swing). Below the line-frequency gate we look up the
-    // max-scoring bin; above the gate the stated frequency is taken as authoritative,
-    // which also keeps the heuristic idempotent (no drift into FFT noise on re-runs).
-    constexpr double kLineFrequencyGate = 400.0;
-
-    auto effectiveFrequencyFromHarmonics = [](const SignalDescriptor& sig) -> double {
-        if (!sig.get_harmonics()) {
-            return 0.0;
-        }
-        auto harmonics = sig.get_harmonics().value();
-        const auto& freqs = harmonics.get_frequencies();
-        const auto& amps = harmonics.get_amplitudes();
-        if (freqs.size() != amps.size() || freqs.size() < 2) {
-            return 0.0;
-        }
-        double peakAmplitude = 0.0;
-        for (size_t k = 0; k < freqs.size(); ++k) {
-            if (freqs[k] > 0 && amps[k] > peakAmplitude) {
-                peakAmplitude = amps[k];
-            }
-        }
-        if (peakAmplitude <= 0) {
-            return 0.0;
-        }
-        // Threshold out FFT leakage: ignore bins with tiny amplitude so f·amp scoring
-        // doesn't drift into high-frequency noise.
-        const double amplitudeFloor = peakAmplitude * 0.01;
-        double bestScore = 0.0;
-        double bestFreq = 0.0;
-        for (size_t k = 0; k < freqs.size(); ++k) {
-            if (freqs[k] <= 0) continue;
-            if (amps[k] < amplitudeFloor) continue;
-            double score = freqs[k] * amps[k];
-            if (score > bestScore) {
-                bestScore = score;
-                bestFreq = freqs[k];
-            }
-        }
-        return bestFreq;
-    };
-
-    // Returns the amplitude at the harmonic bin closest to `target` Hz, or 0 if
-    // the spectrum is unavailable. Used to decide whether to override a stated
-    // fundamental: if the user-stated fundamental already carries comparable
-    // amplitude to the candidate switching bin, we should not override.
-    auto amplitudeAtFrequency = [](const SignalDescriptor& sig, double target) -> double {
-        if (!sig.get_harmonics() || target <= 0) {
-            return 0.0;
-        }
-        auto harmonics = sig.get_harmonics().value();
-        const auto& freqs = harmonics.get_frequencies();
-        const auto& amps = harmonics.get_amplitudes();
-        if (freqs.size() != amps.size() || freqs.empty()) {
-            return 0.0;
-        }
-        size_t closestIdx = 0;
-        double bestDiff = std::numeric_limits<double>::infinity();
-        for (size_t k = 0; k < freqs.size(); ++k) {
-            if (freqs[k] <= 0) continue;
-            double diff = std::abs(freqs[k] - target);
-            if (diff < bestDiff) {
-                bestDiff = diff;
-                closestIdx = k;
-            }
-        }
-        return amps[closestIdx];
-    };
-
+    // The stated frequency is the excitation's: it is never replaced by a harmonic of the waveform. A
+    // line-cycle (PFC) record keeps its line frequency; its switching cycles are priced per cycle by
+    // the core-loss models. A missing or invalid frequency throws (ABT #1467).
     for (size_t i = 0; i < operatingPoint.get_excitations_per_winding().size(); ++i) {
-        auto& excitation = operatingPoint.get_mutable_excitations_per_winding()[i];
-        auto freq = excitation.get_frequency();
-
-        // Garbage guard: NaN / inf / non-positive stated frequency.
-        if (std::isnan(freq) || std::isinf(freq) || freq <= 0) {
-            double effectiveFreq = 0.0;
-            if (excitation.get_current()) {
-                effectiveFreq = effectiveFrequencyFromHarmonics(excitation.get_current().value());
-            }
-            if (effectiveFreq <= 0 && excitation.get_voltage()) {
-                effectiveFreq = effectiveFrequencyFromHarmonics(excitation.get_voltage().value());
-            }
-            if (effectiveFreq > 0) {
-                excitation.set_frequency(effectiveFreq);
-            }
-            continue;
-        }
-
-        // Idempotency gate: above the line-frequency threshold the stated frequency
-        // is authoritative. Stops re-runs from drifting into FFT noise.
-        if (freq >= kLineFrequencyGate) {
-            continue;
-        }
-
-        double effectiveFreq = 0.0;
-        // The amplitude check below must be against the *same* signal that
-        // produced effectiveFreq, otherwise we compare bins from different
-        // spectra. Stash a copy of the driving signal (get_current()/get_voltage()
-        // return optionals by value here, so a raw pointer would dangle).
-        std::optional<SignalDescriptor> drivingSignal;
-        if (excitation.get_current()) {
-            auto sig = excitation.get_current().value();
-            effectiveFreq = effectiveFrequencyFromHarmonics(sig);
-            if (effectiveFreq > 0) {
-                drivingSignal = sig;
-            }
-        }
-        if (effectiveFreq <= 0 && excitation.get_voltage()) {
-            auto sig = excitation.get_voltage().value();
-            effectiveFreq = effectiveFrequencyFromHarmonics(sig);
-            if (effectiveFreq > 0) {
-                drivingSignal = sig;
-            }
-        }
-
-        // Replace only when (1) the loss-dominant harmonic lives above the gate
-        // (PFC-style) AND (2) the user-stated fundamental does not already carry
-        // comparable amplitude. Without the second check we hijack a real 50 Hz
-        // line-transformer waveform that happens to have switching ripple at
-        // 100 kHz: f·amp scoring favours the switching bin because of the f
-        // factor, even when its amplitude is a small fraction of the fundamental.
-        //
-        // PFC inductor current: amp@line ≪ amp@switching → override fires.
-        // Line transformer current with small ripple: amp@line ≫ amp@switching
-        //   → don't override.
-        if (effectiveFreq >= kLineFrequencyGate && effectiveFreq > freq && drivingSignal.has_value()) {
-            double ampAtStated    = amplitudeAtFrequency(drivingSignal.value(), freq);
-            double ampAtEffective = amplitudeAtFrequency(drivingSignal.value(), effectiveFreq);
-            // Threshold: if the stated fundamental's amplitude is at least half
-            // of the candidate switching bin's amplitude, treat the stated
-            // frequency as authoritative. Half is conservative — real PFC
-            // inductor currents have amp@line many orders of magnitude below
-            // amp@switching.
-            const double overrideAmplitudeRatio = 0.5;
-            if (ampAtStated < overrideAmplitudeRatio * ampAtEffective) {
-                excitation.set_frequency(effectiveFreq);
-            }
+        double frequency = operatingPoint.get_excitations_per_winding()[i].get_frequency();
+        if (!std::isfinite(frequency) || frequency <= 0) {
+            throw InvalidInputException(ErrorCode::INVALID_INPUT,
+                "process_operating_point: excitation " + std::to_string(i) + " has frequency " + std::to_string(frequency) +
+                "; every excitation needs its frequency (finite and positive)");
         }
     }
-
-    auto physFreqFromWaveform = [](const Waveform& w, double fallback) -> double {
-        if (w.get_time()) {
-            auto t = w.get_time().value();
-            if (t.size() >= 2) {
-                double step = t[1] - t[0];
-                double period = step * static_cast<double>(t.size());
-                if (period > 0 && std::isfinite(1.0 / period)) return 1.0 / period;
-            }
-        }
-        return fallback;
-    };
 
     std::vector<OperatingPointExcitation> processedExcitationsPerWinding;
     std::vector<Waveform> voltageSampledWaveforms;
@@ -2681,7 +2530,7 @@ OperatingPoint Inputs::process_operating_point(OperatingPoint operatingPoint, do
             else {
                 sampledWaveform = waveform;
             }
-            currentExcitation.set_harmonics(calculate_harmonics_data(waveform, sampledWaveform, physFreqFromWaveform(sampledWaveform, excitation.get_frequency())));
+            currentExcitation.set_harmonics(calculate_harmonics_data(waveform, sampledWaveform, excitation.get_frequency()));
             currentExcitation.set_processed(calculate_processed_data(currentExcitation, sampledWaveform, true, currentExcitation.get_processed()));
             excitation.set_current(currentExcitation);
         }
@@ -2697,7 +2546,7 @@ OperatingPoint Inputs::process_operating_point(OperatingPoint operatingPoint, do
                 else {
                     sampledWaveform = waveform;
                 }
-                currentExcitation.set_harmonics(calculate_harmonics_data(waveform, sampledWaveform, physFreqFromWaveform(sampledWaveform, excitation.get_frequency())));
+                currentExcitation.set_harmonics(calculate_harmonics_data(waveform, sampledWaveform, excitation.get_frequency()));
                 currentExcitation.set_processed(calculate_processed_data(currentExcitation, sampledWaveform, true, currentExcitation.get_processed()));
                 excitation.set_current(currentExcitation);
             }
@@ -2718,7 +2567,7 @@ OperatingPoint Inputs::process_operating_point(OperatingPoint operatingPoint, do
                 sampledWaveform = waveform;
             }
             voltageSampledWaveforms.push_back(sampledWaveform);
-            voltageExcitation.set_harmonics(calculate_harmonics_data(waveform, sampledWaveform, physFreqFromWaveform(sampledWaveform, excitation.get_frequency())));
+            voltageExcitation.set_harmonics(calculate_harmonics_data(waveform, sampledWaveform, excitation.get_frequency()));
             voltageExcitation.set_processed(calculate_processed_data(voltageExcitation, sampledWaveform));
             excitation.set_voltage(voltageExcitation);
             // A single-winding inductor's winding current IS its magnetizing current, exactly as in
@@ -2753,7 +2602,7 @@ OperatingPoint Inputs::process_operating_point(OperatingPoint operatingPoint, do
                     sampledWaveform = waveform;
                 }
                 voltageSampledWaveforms.push_back(sampledWaveform);
-                voltageExcitation.set_harmonics(calculate_harmonics_data(waveform, sampledWaveform, physFreqFromWaveform(sampledWaveform, excitation.get_frequency())));
+                voltageExcitation.set_harmonics(calculate_harmonics_data(waveform, sampledWaveform, excitation.get_frequency()));
                 voltageExcitation.set_processed(calculate_processed_data(voltageExcitation, sampledWaveform, true, voltageExcitation.get_processed()));
                 excitation.set_voltage(voltageExcitation);
             }
