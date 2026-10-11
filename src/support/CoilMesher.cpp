@@ -1243,9 +1243,34 @@ std::vector<WindowWallSheet> CoilMesher::generate_window_wall_sheets(Magnetic ma
         reluctancePerGap = reluctanceOutput.get_reluctance_per_gap().value();
     }
 
+    // Which lateral limb this window's outer wall (x1) stands for. An E-type core has its lateral limbs displaced in x
+    // and the window faces the one at x > 0. The EP family's single back leg is displaced only in z (x = 0): it is the
+    // whole return path of the window, and the 2-D section represents it by the outer wall x1, as the CENTER mesher's
+    // image frame already does (ABT #1759: EP 17 with a lateral residual gap at x = 0 used to throw here). A core mixing
+    // both kinds of lateral limb has no such single wall and is refused.
+    bool anyLateralInX = false;
+    bool anyLateralInZOnly = false;
+    for (size_t columnIndex = 0; columnIndex < columns.size(); ++columnIndex) {
+        if (columnIndex == mainColumnIndex) {
+            continue;
+        }
+        if (columns[columnIndex].get_coordinates()[0] == 0) {
+            anyLateralInZOnly = true;
+        }
+        else {
+            anyLateralInX = true;
+        }
+    }
+    if (anyLateralInX && anyLateralInZOnly) {
+        throw NotImplementedException("Neutral window field (ABT #1304) on a core with lateral limbs displaced both in x and only in z");
+    }
+    auto facesThisWindow = [&](double lateralX) {
+        return anyLateralInZOnly ? lateralX == 0 : lateralX > 0;
+    };
+
     // Lateral branches: their parallel reluctance carries the lateral MMF; on THIS window's side it drops across
-    // the lateral gaps at x > 0, shared among them by reluctance (series within that limb), so the window's
-    // sources stay exactly neutral however MKF groups them.
+    // the lateral gaps of the limb the window faces, shared among them by reluctance (series within that limb), so
+    // the window's sources stay exactly neutral however MKF groups them.
     double inverseLateralReluctance = 0;
     double lateralReluctanceThisSide = 0;
     for (size_t gapIndex = 0; gapIndex < gapping.size(); ++gapIndex) {
@@ -1255,14 +1280,14 @@ std::vector<WindowWallSheet> CoilMesher::generate_window_wall_sheets(Magnetic ma
         auto coordinates = gapping[gapIndex].get_coordinates().value();
         if (static_cast<size_t>(core.find_closest_column_index_by_coordinates(coordinates)) != mainColumnIndex) {
             inverseLateralReluctance += 1 / reluctancePerGap[gapIndex].get_reluctance();
-            if (coordinates[0] > 0) {
+            if (facesThisWindow(coordinates[0])) {
                 lateralReluctanceThisSide += reluctancePerGap[gapIndex].get_reluctance();
             }
         }
     }
     const double lateralMmfFraction = inverseLateralReluctance > 0 ? (1 / inverseLateralReluctance) / totalReluctance : 0.0;
     if (lateralMmfFraction > 0 && !(lateralReluctanceThisSide > 0)) {
-        throw GapException(ErrorCode::GAP_INVALID_DIMENSIONS, "Neutral window field (ABT #1304): the core has lateral gaps but none on the x > 0 side this window faces");
+        throw GapException(ErrorCode::GAP_INVALID_DIMENSIONS, "Neutral window field (ABT #1304): the core has lateral gaps but none on the lateral limb this window faces");
     }
 
     // A gap's slot mouth on the window boundary: its axial extent, clipped to the wall it opens onto.
@@ -1286,7 +1311,7 @@ std::vector<WindowWallSheet> CoilMesher::generate_window_wall_sheets(Magnetic ma
             gapSheet(x0, coordinates[1], gapLength, -fraction);
             gapMmfFractionThisWindow += fraction;
         }
-        else if (coordinates[0] > 0) {
+        else if (facesThisWindow(coordinates[0])) {
             double fraction = lateralMmfFraction * reluctance / lateralReluctanceThisSide;
             gapSheet(x1, coordinates[1], gapLength, -fraction);
             gapMmfFractionThisWindow += fraction;
@@ -1308,7 +1333,7 @@ std::vector<WindowWallSheet> CoilMesher::generate_window_wall_sheets(Magnetic ma
                 continue;
             }
             lateralAreaTotal += columns[columnIndex].get_area();
-            if (columns[columnIndex].get_coordinates()[0] > 0) {
+            if (facesThisWindow(columns[columnIndex].get_coordinates()[0])) {
                 lateralAreaThisSide += columns[columnIndex].get_area();
             }
         }

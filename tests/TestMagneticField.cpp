@@ -848,6 +848,76 @@ namespace {
         settings.reset();
     }
 
+    // ABT #1759: the EP family's back leg is displaced only in z (x = 0); it is the window's whole return limb, which the
+    // 2-D frame represents by the outer wall x1. Its lateral (residual) gap at x = 0 used to make the wall sources throw
+    // ("lateral gaps but none on the x > 0 side"), and with them the default parallel current split, the winding losses
+    // and the Painter field plot of every EP with a paralleled winding (Test_Coil_Painter_Web_3). The back leg's gap now
+    // opens on x1 with the lateral MMF share, the ferrite walls carry the rest, and the sources return exactly NI.
+    TEST_CASE("Test_Magnetic_Field_Mmf_Boundary_Ep_Back_Leg_Gap_Opens_On_The_Outer_Wall", "[physical-model][magnetic-field][mmf-boundary]") {
+        settings.reset();
+        clear_databases();
+        auto jsonPath = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "test_coil_painter_web_3_1473.json");
+        std::ifstream jsonFile(jsonPath);
+        OpenMagnetics::Magnetic magnetic(json::parse(jsonFile));
+        auto core = magnetic.get_core();
+        if (!core.get_processed_description()) {
+            core.process_data();
+        }
+        core.process_gap_or_throw();
+        magnetic.set_core(core);
+        REQUIRE(core.get_shape_family() == CoreShapeFamily::EP);
+        auto columns = core.get_columns();
+        const size_t mainColumnIndex = core.get_main_column_index();
+        const double x0 = columns[mainColumnIndex].get_width() / 2;
+        const double x1 = x0 + core.get_processed_description()->get_winding_windows()[0].get_width().value();
+        // The fixture is the case: one lateral limb, at x = 0, with a residual gap.
+        size_t lateralColumns = 0;
+        for (size_t columnIndex = 0; columnIndex < columns.size(); ++columnIndex) {
+            if (columnIndex != mainColumnIndex) {
+                ++lateralColumns;
+                REQUIRE(columns[columnIndex].get_coordinates()[0] == 0);
+            }
+        }
+        REQUIRE(lateralColumns == 1);
+
+        auto inputs = OpenMagnetics::Inputs::create_quick_operating_point_only_current(100000, 100e-6, 25, WaveformLabel::TRIANGULAR, 10, 0.5, 0, {32});
+        auto operatingPoint = inputs.get_operating_point(0);
+        std::vector<WindowWallSheet> sheets;
+        REQUIRE_NOTHROW(sheets = CoilMesher::generate_window_wall_sheets(magnetic, operatingPoint));
+
+        // The function itself throws unless the window's original sources return exactly NI; here: where they sit. Sheets
+        // are filtered to the window's height (the lattice's y images fall outside it); along x the cell's own source
+        // and its nearest x image coincide on each wall, with the same factor for both walls.
+        const double halfHeight = core.get_processed_description()->get_winding_windows()[0].get_height().value() / 2;
+        double backLegGapSheet = 0;
+        double mainGapSheet = 0;
+        double backLegGapOnColumnWall = 0;
+        for (auto& sheet : sheets) {
+            const double length = std::hypot(sheet.end[0] - sheet.start[0], sheet.end[1] - sheet.start[1]);
+            if (std::abs(sheet.start[1]) > halfHeight + 1e-12 || std::abs(sheet.end[1]) > halfHeight + 1e-12) {
+                continue;
+            }
+            const bool residualMouth = std::abs(length - 5e-6) < 1e-9;
+            if (sheet.start[0] == x1 && sheet.end[0] == x1 && residualMouth) {
+                backLegGapSheet += sheet.current;
+            }
+            if (sheet.start[0] == x0 && sheet.end[0] == x0 && residualMouth) {
+                backLegGapOnColumnWall += sheet.current;
+            }
+            if (sheet.start[0] == x0 && sheet.end[0] == x0 && std::abs(length - 0.000414) < 1e-9) {
+                mainGapSheet += sheet.current;
+            }
+        }
+        CHECK(backLegGapSheet < 0);
+        CHECK(backLegGapOnColumnWall == 0);
+        CHECK(mainGapSheet < backLegGapSheet);   // the 0.414 mm ground gap drops far more MMF than the 5 um residual one
+
+        // End to end: the default parallel current split (2-parallel secondary) builds on these sources.
+        auto twoWindingInputs = OpenMagnetics::Inputs::create_quick_operating_point_only_current(100000, 100e-6, 25, WaveformLabel::TRIANGULAR, 10, 0.5, 0, {32});
+        REQUIRE_NOTHROW(MagneticField::calculate_parallel_current_split(magnetic, twoWindingInputs.get_operating_point(0), 25));
+        settings.reset();
+    }
+
     // Roshen (IEEE Trans. Magn. 43(8), 2007, as reproduced in Electronics 10, 1683, eqs. 6-7), l_g the half gap, xi the
     // distance from the leg face, y along it: Hx = H_g / (2 pi) ln[(xi^2 + (y - l_g)^2) / (xi^2 + (y + l_g)^2)],
     // Hy = -H_g / pi [atan(2 xi l_g / (xi^2 + y^2 - l_g^2)) + m pi] -- together the field of the mouth as a uniform
