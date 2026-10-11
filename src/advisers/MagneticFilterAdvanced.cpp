@@ -435,6 +435,7 @@ std::pair<bool, double> MagneticFilterTemperature::evaluate_magnetic(
             magneticFluxDensity = cached->magneticFluxDensity;
         } else {
             auto opCopy = op;
+            _magnetizingInductance.set_topology(inputs->get_design_requirements().get_topology());
             auto [L, B] = _magnetizingInductance.calculate_inductance_and_magnetic_flux_density(core, coil, &opCopy);
             (void)L;
             magneticFluxDensity = B;

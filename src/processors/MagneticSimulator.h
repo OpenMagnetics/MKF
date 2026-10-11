@@ -42,6 +42,13 @@ class MagneticSimulator {
             _coreLossesModel.set_core_losses_requested_model_name(model);
         }
 
+        // The design's topology for the magnetizing-inductance model (see
+        // MagnetizingInductance::set_topology). simulate() sets it from its Inputs; callers of the
+        // per-operating-point methods below set it from theirs.
+        void set_topology(std::optional<Topology> topology) {
+            _magnetizingInductanceModel.set_topology(topology);
+        }
+
         Mas simulate(Mas mas, bool fastMode=false);
         Mas simulate(const Inputs& inputs, const Magnetic& magnetic, bool fastMode=false);
 

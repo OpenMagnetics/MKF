@@ -130,6 +130,7 @@ std::pair<bool, double> MagneticFilterSaturation::evaluate_magnetic(Magnetic* ma
             // For inductors/energy-storing converters, use the standard calculation
             OpenMagnetics::MagnetizingInductance magnetizingInductanceObj;
             
+            magnetizingInductanceObj.set_topology(inputs->get_design_requirements().get_topology());
             auto result = magnetizingInductanceObj.calculate_inductance_and_magnetic_flux_density(
                 magnetic->get_core(), magnetic->get_coil(), &operatingPoint);
             auto magneticFluxDensity = result.second;

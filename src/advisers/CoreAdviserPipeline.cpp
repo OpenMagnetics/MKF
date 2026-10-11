@@ -254,6 +254,7 @@ Mas CoreAdviser::post_process_core(Magnetic magnetic, Inputs inputs) {
         Outputs outputs;
         auto operatingPoint = inputs.get_operating_point(operatingPointIndex);
 
+        _magneticSimulator.set_topology(inputs.get_design_requirements().get_topology());
         MagnetizingInductanceOutput magnetizingInductanceOutput = _magneticSimulator.calculate_magnetizing_inductance(operatingPoint, magnetic);
         // calculate_magnetizing_inductance() re-evaluated the magnetizing current — the flux /
         // saturation driver, which scales with 1/Lm — at THIS core's achieved inductance (Np^2 /

@@ -825,6 +825,16 @@ std::pair<MagnetizingInductanceOutput, SignalDescriptor> MagnetizingInductance::
                 // the core flux calculation and overstates B by the ratio
                 // I_line / I_cm. The correct CMC path averages the winding
                 // currents and drops the DM DC offset.
+                // A multi-winding differential-mode choke: every winding carries the line current
+                // into its dot, so the core sees their sum (the line-frequency current with its
+                // switching ripple, sampled as given). Its windings' currents match like a CMC's,
+                // so the topology must be checked before the CMC branch, which would replace the
+                // line current with a triangle of its whole swing at the ripple frequency.
+                else if (_topology == Topology::DIFFERENTIAL_MODE_CHOKE && Inputs::can_be_differential_mode_choke(*operatingPoint, true)) {
+                    auto magnetizingCurrent = Inputs::get_differential_mode_choke_magnetizing_current(*operatingPoint);
+                    excitation.set_magnetizing_current(magnetizingCurrent);
+                    operatingPoint->get_mutable_excitations_per_winding()[0] = excitation;
+                }
                 else if (Inputs::can_be_common_mode_choke(*operatingPoint) && core.get_type() == CoreType::TOROIDAL) {
                     auto magnetizingCurrent = Inputs::get_common_mode_choke_magnetizing_current(*operatingPoint);
                     excitation.set_magnetizing_current(magnetizingCurrent);

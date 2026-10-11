@@ -689,3 +689,43 @@ TEST_CASE("MagneticAdviser web DMC suppression flow returns wound chokes",
     settings.reset();
     clear_databases();
 }
+
+TEST_CASE("MagneticAdviser web DMC whose switching ripple is resolved returns wound chokes",
+          "[adviser][magnetic-adviser][standard-cores][dmc][suppression][bug]") {
+    // The web's DMC wizard -> Magnetic Adviser call of 2026-10-11: two windings, each carrying the
+    // 50 Hz line current (4.8 A peak) with a 0.44 A, 100 kHz switching ripple, sampled at 16384
+    // points so the ripple is resolved (the 1024-point fixture above aliases it to 2.4 kHz).
+    // The magnetizing-inductance model took the CMC branch for it (matching winding currents on a
+    // toroid) and drove the core with a triangle of the line current's whole swing at 100 kHz:
+    // ~400 W of core losses, every candidate over the 130 C limit, no result. The DMC topology
+    // now selects the DMC magnetizing current, the sum of the winding currents as sampled.
+    settings.reset();
+    clear_databases();
+    std::vector<std::pair<OpenMagnetics::Mas, double>> results;
+    REQUIRE_NOTHROW(results = replay_web_suppression_magnetic_adviser("dmc_calculate_advised_magnetics_switching_ripple.json"));
+    REQUIRE(results.size() > 0);
+    for (auto& [mas, scoring] : results) {
+        CHECK(mas.get_magnetic().get_coil().get_turns_description().has_value());
+    }
+
+    auto path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "web_adviser_flows/dmc_calculate_advised_magnetics_switching_ripple.json");
+    std::ifstream file(path);
+    OpenMagnetics::Inputs inputs(nlohmann::json::parse(file).at("inputs"));
+    auto operatingPoint = inputs.get_operating_point(0);
+    const auto& excitations = operatingPoint.get_excitations_per_winding();
+    REQUIRE(excitations.size() == 2);
+    auto lineCurrent = excitations[0].get_current()->get_waveform()->get_data();
+    auto neutralCurrent = excitations[1].get_current()->get_waveform()->get_data();
+    REQUIRE(lineCurrent.size() == 16384);
+
+    MagnetizingInductance magnetizingInductance;
+    magnetizingInductance.set_topology(inputs.get_design_requirements().get_topology());
+    magnetizingInductance.calculate_inductance_and_magnetic_flux_density(results[0].first.get_magnetic(), &operatingPoint);
+    auto magnetizingCurrent = operatingPoint.get_excitations_per_winding()[0].get_magnetizing_current()->get_waveform()->get_data();
+    REQUIRE(magnetizingCurrent.size() == lineCurrent.size());
+    for (size_t index = 0; index < lineCurrent.size(); index += 1024) {
+        CHECK_THAT(magnetizingCurrent[index], Catch::Matchers::WithinAbs(lineCurrent[index] + neutralCurrent[index], 1e-9));
+    }
+    settings.reset();
+    clear_databases();
+}

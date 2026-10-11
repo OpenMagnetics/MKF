@@ -24,9 +24,18 @@ namespace OpenMagnetics {
 class MagnetizingInductance {
   private:
     std::map<std::string, std::string> _models;
+    // The design's topology (designRequirements.topology). A multi-winding differential-mode
+    // choke and a common-mode choke both carry matching currents on every winding, so the
+    // operating point alone cannot tell them apart; the topology decides which magnetizing
+    // current drives the core.
+    std::optional<Topology> _topology;
 
   protected:
   public:
+    // Callers that hold the design's Inputs set the topology before calculating, for every
+    // design, so an object reused across designs never keeps a previous design's value.
+    void set_topology(std::optional<Topology> topology) { _topology = topology; }
+
     MagnetizingInductance() {
         _models["gapReluctance"] = to_string(Defaults().reluctanceModelDefault);
     }

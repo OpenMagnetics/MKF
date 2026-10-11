@@ -21,6 +21,7 @@ Mas MagneticSimulator::simulate(Mas mas, bool fastMode){
     return simulate(mas.get_mutable_inputs(), mas.get_mutable_magnetic(), fastMode);
 }
 Mas MagneticSimulator::simulate(const Inputs& inputs, const Magnetic& magnetic, bool fastMode){
+    set_topology(inputs.get_design_requirements().get_topology());
     Mas mas;
     std::vector<Outputs> outputs;
     std::vector<OperatingPoint> simulatedOperatingPoints;

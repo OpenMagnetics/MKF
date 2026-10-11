@@ -147,6 +147,7 @@ std::pair<bool, double> MagneticFilterCoreAndDcLosses::evaluate_magnetic(Magneti
                 }
             }
 
+            _magnetizingInductance.set_topology(inputs->get_design_requirements().get_topology());
             auto [magnetizingInductance, magneticFluxDensity] = _magnetizingInductance.calculate_inductance_and_magnetic_flux_density(core, coil, &operatingPoint);
 
             if (!check_requirement(inputs->get_design_requirements().get_magnetizing_inductance(), magnetizingInductance.get_magnetizing_inductance().get_nominal().value())) {
@@ -314,6 +315,7 @@ std::pair<bool, double> MagneticFilterCoreDcAndSkinLosses::evaluate_stand_in_wit
         auto operatingPoint = inputs->get_operating_point(operatingPointIndex);
         // The same hot corner the one-winding path evaluates at.
         double temperature = saturation_derating_temperature(operatingPoint.get_conditions().get_ambient_temperature());
+        _magnetizingInductance.set_topology(inputs->get_design_requirements().get_topology());
         auto [magnetizingInductance, magneticFluxDensity] = _magnetizingInductance.calculate_inductance_and_magnetic_flux_density(core, coil, &operatingPoint);
         (void) magnetizingInductance;
         OperatingPointExcitation excitation = operatingPoint.get_excitations_per_winding()[0];
@@ -456,6 +458,7 @@ std::pair<bool, double> MagneticFilterCoreDcAndSkinLosses::evaluate_magnetic(Mag
                 }
             }
 
+            _magnetizingInductance.set_topology(inputs->get_design_requirements().get_topology());
             auto [magnetizingInductance, magneticFluxDensity] = _magnetizingInductance.calculate_inductance_and_magnetic_flux_density(core, coil, &operatingPoint);
 
             if (!check_requirement(inputs->get_design_requirements().get_magnetizing_inductance(), magnetizingInductance.get_magnetizing_inductance().get_nominal().value())) {
@@ -575,6 +578,7 @@ MagneticFilterLosses::MagneticFilterLosses(std::map<std::string, std::string> mo
 
 std::pair<bool, double> MagneticFilterLosses::evaluate_magnetic(Magnetic* magnetic, Inputs* inputs, std::vector<Outputs>* outputs) {
     double scoring = 0;
+    _magneticSimulator.set_topology(inputs->get_design_requirements().get_topology());
 
     if (inputs->get_operating_points().size() > 0 && magnetic->get_mutable_coil().get_functional_description().size() != inputs->get_operating_points()[0].get_excitations_per_winding().size()) {
         return {false, 0.0};
@@ -609,6 +613,7 @@ MagneticFilterLossesNoProximity::MagneticFilterLossesNoProximity(std::map<std::s
 
 std::pair<bool, double> MagneticFilterLossesNoProximity::evaluate_magnetic(Magnetic* magnetic, Inputs* inputs, std::vector<Outputs>* outputs) {
     double scoring = 0;
+    _magneticSimulator.set_topology(inputs->get_design_requirements().get_topology());
 
     if (inputs->get_operating_points().size() > 0 && magnetic->get_mutable_coil().get_functional_description().size() != inputs->get_operating_points()[0].get_excitations_per_winding().size()) {
         return {false, 0.0};
@@ -876,6 +881,7 @@ std::pair<bool, double> MagneticFilterInductorTurnsAndGapByLosses::evaluate_magn
             }
         }
         else {
+            _magnetizingInductance.set_topology(inputs->get_design_requirements().get_topology());
             _magnetizingInductance.calculate_inductance_and_magnetic_flux_density(core, coil, &operatingPoint);
         }
         preparedOperatingPoints.push_back(operatingPoint);
