@@ -14765,6 +14765,29 @@ TEST_CASE("Test_Toroidal_Real_Winding_Sector_Territories_Are_The_Allocated_Secto
     settings.reset();
 }
 
+TEST_CASE("Test_Toroidal_Real_Winding_Respread_Keeps_The_Ring_Winding_Order", "[coil][toroidal][real-geometry]") {
+    // ABT #1734: a section's allocated sector need not contain all of its turns (the winder lays
+    // rings past their section). The even re-spread ordered a ring's turns from its territory
+    // start, so the Secondary's turns 0 and 1, just behind that start (173.9 and 179.5 deg, the
+    // territory starting at 180 deg), sorted last and were moved to the far end of the sector:
+    // the ring's winding order broke and the regenerated crossings of turns 1 and 11 landed on
+    // the same point. The ring is ordered from the middle of its own largest gap.
+    settings.reset();
+    settings.set_coil_use_real_winding_geometry(true);
+    OpenMagnetics::Coil coil;
+    REQUIRE_NOTHROW(coil = OpenMagneticsTesting::get_quick_coil({20, 20}, {1, 1}, "T 12.7/7.9/12.7", 1,
+                                                                MAS::WindingOrientation::CONTIGUOUS,
+                                                                MAS::WindingOrientation::OVERLAPPING,
+                                                                MAS::CoilAlignment::CENTERED,
+                                                                MAS::CoilAlignment::CENTERED,
+                                                                {OpenMagnetics::find_wire_by_name("Round 29.0 - Single Build"),
+                                                                 OpenMagnetics::find_wire_by_name("Round 27.5 - Single Build")}));
+    INFO(coil.get_last_fit_failure());
+    REQUIRE(coil.get_turns_description());
+    CHECK(OpenMagneticsTesting::check_turns_description(coil));
+    CHECK(OpenMagneticsTesting::check_toroidal_sections_keep_their_sectors(coil));
+    settings.reset();
+}
 
 // ABT #374: a bore-capacity claim of the form (N_turns + N_leads) * wireOD <= pi * ID says these
 // toroidal fixtures cannot hold their own leads. That inequality is the capacity of a SINGLE ring
