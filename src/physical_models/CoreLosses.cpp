@@ -1361,6 +1361,63 @@ std::vector<double> average_over_neighbouring_cycles(const std::vector<double>& 
     return averages;
 }
 
+// A periodic record read at `time` by linear interpolation, wrapping from its last sample to its first
+// one period later. Both records must lie inside one period. The period is the line record's duration,
+// not 1 / the excitation's frequency: a line-cycle excitation may carry the switching frequency.
+std::vector<double> magnetizing_current_on_time_base(const Waveform& waveform, const std::vector<double>& time, double period) {
+    const auto& data = waveform.get_data();
+    if (!waveform.get_time()) {
+        throw InvalidInputException(ErrorCode::INVALID_INPUT, "Core losses: the line-cycle magnetizing current has no time axis");
+    }
+    const std::vector<double> sourceTime = waveform.get_time().value();
+    if (data.size() < 2 || sourceTime.size() != data.size()) {
+        throw InvalidInputException(ErrorCode::INVALID_INPUT,
+            "Core losses: the line-cycle magnetizing current has " + std::to_string(data.size()) + " samples and " +
+            std::to_string(sourceTime.size()) + " time points");
+    }
+    if (!(period > 0)) {
+        throw InvalidInputException(ErrorCode::INVALID_INPUT, "Core losses: the line-cycle flux density record has no duration");
+    }
+    const double tolerance = period * 1e-6;
+    if (!std::is_sorted(sourceTime.begin(), sourceTime.end())) {
+        throw InvalidInputException(ErrorCode::INVALID_INPUT, "Core losses: the line-cycle magnetizing current's time axis is not ascending");
+    }
+    if (sourceTime.back() - sourceTime.front() > period + tolerance || time.back() - time.front() > period + tolerance) {
+        throw InvalidInputException(ErrorCode::INVALID_INPUT,
+            "Core losses: the line-cycle magnetizing current (" + std::to_string(sourceTime.back() - sourceTime.front()) +
+            " s) and flux density (" + std::to_string(time.back() - time.front()) + " s) records must each lie inside one period of " +
+            std::to_string(period) + " s to be split together");
+    }
+    std::vector<double> result;
+    result.reserve(time.size());
+    for (double t : time) {
+        // The bracketing samples, the record extended one period either side to wrap.
+        auto upper = std::upper_bound(sourceTime.begin(), sourceTime.end(), t);
+        double t0, t1, y0, y1;
+        if (upper == sourceTime.begin()) {
+            t0 = sourceTime.back() - period;
+            y0 = data.back();
+            t1 = sourceTime.front();
+            y1 = data.front();
+        }
+        else if (upper == sourceTime.end()) {
+            t0 = sourceTime.back();
+            y0 = data.back();
+            t1 = sourceTime.front() + period;
+            y1 = data.front();
+        }
+        else {
+            size_t i = static_cast<size_t>(upper - sourceTime.begin());
+            t0 = sourceTime[i - 1];
+            y0 = data[i - 1];
+            t1 = sourceTime[i];
+            y1 = data[i];
+        }
+        result.push_back(t1 > t0 ? y0 + (y1 - y0) * (t - t0) / (t1 - t0) : y0);
+    }
+    return result;
+}
+
 } // namespace
 
 std::optional<SwitchingCyclesRecord> CoreLossesModel::split_into_switching_cycles(const OperatingPointExcitation& excitation) {
@@ -1405,14 +1462,21 @@ std::optional<SwitchingCyclesRecord> CoreLossesModel::split_into_switching_cycle
         }
     }
 
-    // The magnetizing current is split with the flux when it is sampled with it (the loss-factor
-    // model prices the magnetizing current, not the flux).
+    // The magnetizing current is split with the flux (the loss-factor model prices the magnetizing
+    // current, not the flux). The two records need not share samples: the flux is often stored
+    // compressed to its corners while the current is uniformly sampled over [0, T) (ABT #1745: a
+    // 10942-corner flux against a 16384-sample current, and the current was dropped, so every
+    // loss-factor material threw). Off a shared grid the current is read on the flux's time base by
+    // linear interpolation, the record wrapping at its period (the flux record's duration).
     std::optional<std::vector<double>> magnetizingCurrentData;
     if (excitation.get_magnetizing_current() && excitation.get_magnetizing_current()->get_waveform()) {
         auto magnetizingCurrentWaveform = excitation.get_magnetizing_current()->get_waveform().value();
         if (magnetizingCurrentWaveform.get_data().size() == fluxDensityData.size() &&
             (!magnetizingCurrentWaveform.get_time() || magnetizingCurrentWaveform.get_time().value() == fluxDensityTime)) {
             magnetizingCurrentData = magnetizingCurrentWaveform.get_data();
+        }
+        else {
+            magnetizingCurrentData = magnetizing_current_on_time_base(magnetizingCurrentWaveform, fluxDensityTime, recordDuration);
         }
     }
 

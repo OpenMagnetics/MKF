@@ -5160,6 +5160,95 @@ TEST_CASE("A periodic excitation is not split into switching cycles", "[physical
     CHECK(record->envelope.get_frequency() == 50);
 }
 
+TEST_CASE("A line-cycle magnetizing current on its own grid is split with the flux", "[physical-model][core-losses][line-cycle-core-losses][smoke-test]") {
+    // ABT #1745: the flux of a PFC record is stored compressed to its corners while its magnetizing
+    // current is sampled on a grid of its own. The split dropped a current not on the flux's grid, and
+    // the loss-factor model (which prices the magnetizing current) then threw for every cycle. The
+    // current is read on the flux's time base over the line period, not the switching period the
+    // excitation's frequency names.
+    settings.reset();
+    clear_databases();
+    double temperature = 25;
+    double lineFrequency = 50;
+    double amperesPerTesla = 20;
+    size_t cyclesPerLinePeriod = 400;
+    auto pfc = build_boost_pfc_line_cycle(lineFrequency, cyclesPerLinePeriod, 0.2, 0.1, 0.6);
+    auto fluxWaveform = pfc.record.get_magnetic_flux_density()->get_waveform().value();
+    const std::vector<double> cornerTime = fluxWaveform.get_time().value();
+    const auto& cornerData = fluxWaveform.get_data();
+    auto flux_at = [&](double t) {
+        size_t upper = static_cast<size_t>(std::upper_bound(cornerTime.begin(), cornerTime.end(), t) - cornerTime.begin());
+        if (upper == cornerTime.size()) {
+            return cornerData.back();
+        }
+        return cornerData[upper - 1] + (cornerData[upper] - cornerData[upper - 1]) * (t - cornerTime[upper - 1]) / (cornerTime[upper] - cornerTime[upper - 1]);
+    };
+    auto with_magnetizing_current = [&](const std::vector<double>& time) {
+        std::vector<double> current;
+        for (double t : time) {
+            current.push_back(flux_at(t) * amperesPerTesla);
+        }
+        json magnetizingCurrentJson;
+        magnetizingCurrentJson["waveform"]["time"] = time;
+        magnetizingCurrentJson["waveform"]["data"] = current;
+        magnetizingCurrentJson["processed"]["label"] = WaveformLabel::CUSTOM;
+        magnetizingCurrentJson["processed"]["peak"] = *std::max_element(current.begin(), current.end());
+        magnetizingCurrentJson["processed"]["offset"] = (*std::max_element(current.begin(), current.end()) + *std::min_element(current.begin(), current.end())) / 2;
+        auto record = pfc.record;
+        // Kirchhoff's PFC records carry the switching frequency while their waveforms span the line period.
+        record.set_frequency(lineFrequency * cyclesPerLinePeriod);
+        record.set_magnetizing_current(SignalDescriptor(magnetizingCurrentJson));
+        REQUIRE(record.get_magnetizing_current()->get_waveform()->get_data().size() != cornerData.size());
+        return record;
+    };
+
+    SECTION("Sampled at the corners and between them, it is read back exactly on the corners") {
+        std::vector<double> time;
+        for (size_t i = 0; i < cornerTime.size(); ++i) {
+            time.push_back(cornerTime[i]);
+            if (i + 1 < cornerTime.size()) {
+                time.push_back((cornerTime[i] + cornerTime[i + 1]) / 2);
+            }
+        }
+        auto record = with_magnetizing_current(time);
+        auto split = CoreLossesModel::split_into_switching_cycles(record);
+        REQUIRE(split.has_value());
+        REQUIRE(split->cycles.size() > 390);
+        for (const auto& cycle : split->cycles) {
+            REQUIRE(cycle.get_magnetizing_current());
+            const std::vector<double> cycleCurrent = cycle.get_magnetizing_current()->get_waveform()->get_data();
+            const std::vector<double> cycleFlux = cycle.get_magnetic_flux_density()->get_waveform()->get_data();
+            REQUIRE(cycleCurrent.size() == cycleFlux.size());
+            for (size_t i = 0; i < cycleFlux.size(); ++i) {
+                CHECK_THAT(cycleCurrent[i], Catch::Matchers::WithinAbs(cycleFlux[i] * amperesPerTesla, 1e-9));
+            }
+        }
+        REQUIRE(split->envelope.get_magnetizing_current());
+    }
+
+    SECTION("Sampled uniformly over the line period, as Kirchhoff stores it, every cycle carries it and a loss-factor material prices the record") {
+        size_t numberPoints = 16384;
+        std::vector<double> time;
+        for (size_t i = 0; i < numberPoints; ++i) {
+            time.push_back(static_cast<double>(i) / static_cast<double>(numberPoints) / lineFrequency);
+        }
+        auto record = with_magnetizing_current(time);
+        auto split = CoreLossesModel::split_into_switching_cycles(record);
+        REQUIRE(split.has_value());
+        REQUIRE(split->cycles.size() > 390);
+        for (const auto& cycle : split->cycles) {
+            REQUIRE(cycle.get_magnetizing_current());
+        }
+        REQUIRE(split->envelope.get_magnetizing_current());
+
+        // 2HM5 has only loss-factor data: the record is priced, not refused.
+        Core core = OpenMagneticsTesting::get_quick_core("E 42/21/15", json::array(), 1, "2HM5");
+        CoreLosses coreLosses;
+        CHECK(coreLosses.calculate_core_losses(core, record, temperature).get_core_losses() > 0);
+    }
+    settings.reset();
+}
+
 TEST_CASE("The envelope of a resampled line-cycle record is the line envelope", "[physical-model][core-losses][line-cycle-core-losses][smoke-test]") {
     // MKF processes a line-cycle record on a uniform grid of a few samples per switching cycle, so the
     // record's valleys fall between samples and each cycle's average carries a residue of its ripple.
