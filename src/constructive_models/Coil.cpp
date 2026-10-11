@@ -6408,9 +6408,12 @@ std::map<std::string, uint64_t> Coil::align_blocked_ring_turns(bool forceSpreadB
             // its territory starting at 180 deg, were moved to the far end of the sector (346.7
             // and 355.7 deg), the ring's winding order was broken and the regenerated crossings
             // of turns 1 and 11 landed on the same point.
+            // The cut is the MIDDLE of the ring's largest gap, never a turn's own azimuth: cut at
+            // the first turn, rounding could put that turn at 359.999 deg and sort it last.
             double orderReferenceAngle = referenceAngle;
             if (!fullCircle && ringOccupiedArc.count(ringName) && !ringOccupiedArc.at(ringName).first) {
-                orderReferenceAngle = ringOccupiedArc.at(ringName).second.first;
+                const auto& occupied = ringOccupiedArc.at(ringName).second;
+                orderReferenceAngle = normalizeAngle(occupied.first - (360.0 - occupied.second) / 2);
             }
             std::vector<size_t> orderedTurns(turnIdxs.begin(), turnIdxs.end());
             std::sort(orderedTurns.begin(), orderedTurns.end(), [&](size_t a, size_t b) {
