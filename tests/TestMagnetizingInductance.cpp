@@ -2143,53 +2143,59 @@ TEST_CASE("Test_Number_Turns_From_Inductance_Unreachable_Under_Dc_Bias_Throws", 
 }
 
 TEST_CASE("Test_Dc_Bias_Is_The_Time_Average_Not_The_Midpoint", "[physical-model][magnetizing-inductance][dc-bias][abt-1223]") {
-    // A rectangular voltage with zero volt-second average carries no DC, whatever its duty: at d = 0.25
-    // the flux is a zero-mean triangle whose midpoint, (max + min) / 2, sits well away from zero. Read
-    // as a bias, that midpoint drove the permeability of this ungapped Nanoperm toroid into saturation
-    // (core losses 7.4 kW -> 12.8 kW). The inductance must equal the symmetric d = 0.5 case's.
+    // A voltage with zero volt-second average carries no DC, whatever its shape. With a dead time
+    // (+V for T/4, -V for T/4, 0 for T/2) the flux is a triangle followed by a flat stretch at its
+    // minimum: its time average sits a quarter of the swing above the minimum, its midpoint,
+    // (max + min) / 2, half the swing above it. With the DC taken as the average the midpoint is
+    // swing / 4 away from zero; read as a bias, it would drive the permeability of this ungapped
+    // Nanoperm toroid down the curve. (A plain triangle cannot test this: whatever its duty, its
+    // midpoint IS its average, ABT #1467.) The inductance must equal the symmetric square wave's and
+    // the unbiased small-signal value.
     auto core = Core(json::parse(R"({"functionalDescription": {"gapping": [], "material": "Nanoperm 80000", "numberStacks": 1, "shape": {"magneticCircuit": "closed", "type": "custom", "family": "t", "aliases": [], "name": "T 63/50/30", "dimensions": {"A": {"nominal": 0.063}, "B": {"nominal": 0.050}, "C": {"nominal": 0.030}}}, "type": "toroidal"}, "manufacturerInfo": null, "name": "My Core"})"));
     auto coil = OpenMagnetics::Coil(json::parse(R"({"bobbin": "Dummy", "functionalDescription": [{"isolationSide": "primary", "name": "Primary", "numberParallels": 1, "numberTurns": 1, "wire": "Dummy"}]})"));
-    auto operatingPointFor = [](double dutyCycle, double peakVoltage) {
-        const double period = 1e-5;
-        double lowVoltage = -peakVoltage * dutyCycle / (1 - dutyCycle);
-        return OperatingPoint(json{
-            {"conditions", {{"ambientTemperature", 25.0}}},
-            {"excitationsPerWinding", {{{"frequency", 1 / period}, {"name", "Primary"},
-                {"voltage", {{"waveform", {{"data", {peakVoltage, peakVoltage, lowVoltage, lowVoltage, peakVoltage}},
-                                           {"time", {0.0, dutyCycle * period, dutyCycle * period, period, period}}}}}}}}}});
+    const double period = 1e-5;
+    auto operatingPointWith = [period](std::vector<double> data, std::vector<double> time) {
+        json excitationJson;
+        excitationJson["frequency"] = 1 / period;
+        excitationJson["name"] = "Primary";
+        excitationJson["voltage"]["waveform"]["data"] = data;
+        excitationJson["voltage"]["waveform"]["time"] = time;
+        json operatingPointJson;
+        operatingPointJson["conditions"]["ambientTemperature"] = 25.0;
+        operatingPointJson["excitationsPerWinding"] = json::array({excitationJson});
+        return OperatingPoint(operatingPointJson);
     };
     MagnetizingInductance magnetizingInductance(ReluctanceModels::ZHANG);
 
-    // Same volt-seconds per half cycle in both, so the same flux swing: 68.85 V for 2.5 us on one turn of
-    // A_e = 195 mm2 is about 1.1 T peak-to-peak, a peak of about 0.55 T against Nanoperm's B_sat of about
-    // 1.2 T. It was ten times that (688.5 V, an 11 T swing), which no core carries and which the inductance
-    // model now refuses as a saturation (ABT #1740).
-    auto asymmetric = operatingPointFor(0.25, 68.85);
-    auto symmetric = operatingPointFor(0.5, 34.425);
-    auto [asymmetricOutput, asymmetricFluxDensity] = magnetizingInductance.calculate_inductance_and_magnetic_flux_density(core, coil, &asymmetric);
+    // Same volt-seconds per excursion in both (68.85 V for T/4 = 34.425 V for T/2), so the same flux
+    // swing, about 1.1 T peak to peak: below Nanoperm's saturation.
+    const double voltage = 68.85;
+    auto deadTime = operatingPointWith({voltage, voltage, -voltage, -voltage, 0, 0},
+                                       {0, period / 4, period / 4, period / 2, period / 2, period});
+    auto symmetric = operatingPointWith({voltage / 2, voltage / 2, -voltage / 2, -voltage / 2, voltage / 2},
+                                        {0, period / 2, period / 2, period, period});
+    auto [deadTimeOutput, deadTimeFluxDensity] = magnetizingInductance.calculate_inductance_and_magnetic_flux_density(core, coil, &deadTime);
     auto [symmetricOutput, symmetricFluxDensity] = magnetizingInductance.calculate_inductance_and_magnetic_flux_density(core, coil, &symmetric);
-    double asymmetricInductance = resolve_dimensional_values(asymmetricOutput.get_magnetizing_inductance());
+    double deadTimeInductance = resolve_dimensional_values(deadTimeOutput.get_magnetizing_inductance());
     double symmetricInductance = resolve_dimensional_values(symmetricOutput.get_magnetizing_inductance());
 
-    double asymmetricMidpoint = asymmetricFluxDensity.get_processed().value().get_offset();
-    INFO("midpoint of the d = 0.25 flux " << asymmetricMidpoint << " T, L " << asymmetricInductance * 1e6 << " uH vs " << symmetricInductance * 1e6 << " uH");
-    // The case is meaningful only if the midpoint is far from the average. That distance is an artifact of
-    // the sampled voltage integration, about 1.2-1.5 % of the peak-to-peak swing; since an unsaturated core
-    // keeps the swing below 2 B_sat (2.4 T here), it can never reach the absolute 0.05 T this once required
-    // (on an 11 T swing, ABT #1740). It is stated relative to the swing instead.
-    auto asymmetricFluxData = asymmetricFluxDensity.get_waveform().value().get_data();
-    double asymmetricSwing = *std::max_element(asymmetricFluxData.begin(), asymmetricFluxData.end()) -
-                             *std::min_element(asymmetricFluxData.begin(), asymmetricFluxData.end());
-    REQUIRE(fabs(asymmetricMidpoint) > 0.005 * asymmetricSwing);
-    // Read as a bias, the midpoint collapsed both inductances to 0.0002 uH, so they must also match the
-    // small-signal inductance N^2 / R at the unbiased permeability. With the DC taken as the average the
-    // two duties agree to 1e-4 (the integration constant is the full-period average, ABT #1713: no residual DC).
+    auto fluxData = deadTimeFluxDensity.get_waveform().value().get_data();
+    double swing = *std::max_element(fluxData.begin(), fluxData.end()) - *std::min_element(fluxData.begin(), fluxData.end());
+    double midpoint = deadTimeFluxDensity.get_processed().value().get_offset();
+    double average = OpenMagnetics::Inputs::calculate_waveform_average(deadTimeFluxDensity.get_waveform().value());
+    INFO("dead-time flux: swing " << swing << " T, midpoint " << midpoint << " T, average " << average << " T; L " << deadTimeInductance * 1e6 << " uH vs " << symmetricInductance * 1e6 << " uH");
+    // The case is meaningful only if the midpoint is far from the average: a quarter of the swing.
+    REQUIRE(swing > 0.5);
+    // (The shape alone: midpoint - average does not depend on the DC the model assigns.)
+    REQUIRE_THAT(midpoint - average, Catch::Matchers::WithinAbs(swing / 4, 0.02 * swing));
+
     double unbiasedPermeability = InitialPermeability().get_initial_permeability(core.resolve_material(), 25.0, std::nullopt, 1e5);
     double unbiasedInductance = 1.0 / ReluctanceModel::factory(ReluctanceModels::ZHANG)->get_core_reluctance(core, unbiasedPermeability).get_core_reluctance();
     INFO("unbiased L " << unbiasedInductance * 1e6 << " uH");
-    CHECK_THAT(asymmetricInductance, Catch::Matchers::WithinRel(symmetricInductance, 1e-3));
-    // 1 %: model tolerance; the voltage integration no longer leaves a residual DC (ABT #1713).
-    CHECK_THAT(asymmetricInductance, Catch::Matchers::WithinRel(unbiasedInductance, 1e-2));
+    CHECK_THAT(deadTimeInductance, Catch::Matchers::WithinRel(symmetricInductance, 1e-3));
+    CHECK_THAT(deadTimeInductance, Catch::Matchers::WithinRel(unbiasedInductance, 1e-2));
+    // Zero net volt-seconds: no DC flux.
+    CHECK_THAT(average, Catch::Matchers::WithinAbs(0, 0.01 * swing));
 }
 
 TEST_CASE("Test_Volt_Seconds_That_Saturate_The_Core_Are_Refused_Before_The_Dc_Bias_Runs_Away", "[physical-model][magnetizing-inductance][dc-bias][abt-1740]") {
