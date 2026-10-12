@@ -6430,16 +6430,36 @@ std::map<std::string, uint64_t> Coil::align_blocked_ring_turns(bool forceSpreadB
                 // sweep-resolution edge case must degrade to a partial march, not an infinite loop.
                 size_t marchGuard = 0;
                 while (toAdvance > 1e-12 && marchGuard++ < 1000) {
-                    const auto* corridor = insideCorridor(position + 1e-9);
+                    // ABT #1789: a corridor blocks the march from its START EDGE (inclusive) to
+                    // its end edge (exclusive). The march steps exactly onto the start edge of
+                    // the next corridor ahead, and used to ask `insideCorridor(position + 1e-9)`
+                    // there: that probe lies half-width - 1e-9 from the corridor's centre, which
+                    // is the very bound insideCorridor tests against, so the answer was decided
+                    // by floating-point rounding. When it came out "not inside", the distance
+                    // loop below saw the same corridor 0 deg ahead, skipped it as "not ahead",
+                    // and the march walked the rest of its step INTO the corridor (T 20/10/7,
+                    // 45 + 25 turns x 2 of Round 24.0: 'winding 1 parallel 1 turn 3' re-spread to
+                    // 278.1226 deg, 0.796 deg inside the lead corridor starting at 277.3263 deg,
+                    // identically on every re-spread until the ABT #723 escalation spilled a
+                    // turn the ring had room for).
+                    const std::pair<double, double>* corridor = nullptr;
+                    for (const auto& c : corridors) {
+                        const double fromCentre = angularDifference(position, c.first);
+                        if (fromCentre >= -c.second - 1e-9 && fromCentre < c.second - 1e-9) {
+                            corridor = &c;
+                            break;
+                        }
+                    }
                     if (corridor != nullptr) {
                         position = normalizeAngle(corridor->first + corridor->second);
                         continue;
                     }
-                    // Distance to the nearest corridor start ahead of us (cyclically).
+                    // Distance to the nearest corridor start ahead of us (cyclically). A corridor
+                    // starting within 1e-9 deg of the position was jumped above.
                     double nearestAhead = 360.0;
                     for (const auto& c : corridors) {
                         double ahead = normalizeAngle((c.first - c.second) - position);
-                        if (ahead > 1e-12) {
+                        if (ahead > 1e-9) {
                             nearestAhead = std::min(nearestAhead, ahead);
                         }
                     }

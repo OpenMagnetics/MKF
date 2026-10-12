@@ -14720,6 +14720,11 @@ TEST_CASE("Test_Toroidal_Real_Winding_Sector_Territories_Are_The_Allocated_Secto
     // in proportion to the angle each winding needs (Alf 2026-10-12): with an equal split the last
     // two fixtures (45 + 25 turns) did not wind, the Primary's turns not fitting their half while
     // the Secondary left part of its own empty.
+    // ABT #1789: T 20/10/7 with 45 + 25 turns still did not wind. The even re-spread marched onto
+    // the start edge of a lead corridor and, depending on floating-point rounding, walked the
+    // rest of its step into it; the ring re-spread to the same intrusion until the ABT #723
+    // escalation spilled a turn it had room for, one ring per re-wind, to "50 turns need 14 rings,
+    // 7.574 mm deep, in a window of 5 mm".
     struct Fixture {
         std::string core;
         std::vector<int64_t> turns;
