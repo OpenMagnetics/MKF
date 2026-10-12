@@ -3181,8 +3181,14 @@ TEST_CASE("Temperature: 220kW Transformer", "[temperature][transformer][smoke-te
     // of surface gives ~0.4 K/W by hand (0.74 K/W in the thermal network), a 0.5-1 kK rise: core
     // and copper heat each other past the Curie temperature. simulate() refuses that instead of
     // reporting losses at a temperature the design never reaches.
-    REQUIRE_THROWS_WITH(getLossesFromSimulation(magnetic, inputs),
-                        Catch::Matchers::ContainsSubstring("No operating temperature was found where the core is ferromagnetic"));
+    // The refusal that arrives is the saturation one (ABT #838, Alf 2026-10-12): on the way up, at
+    // the 224.69 C iterate, the volt-seconds on the 6 turns (A_e 4085 mm2, flux swing 0.5019 T
+    // peak-to-peak) ask B_pk 0.2509 T of DMR96A, above its B_sat of 0.2471 T at that temperature,
+    // one or two iterates before the loop reaches the 230 C ceiling where it would report "No
+    // operating temperature was found where the core is ferromagnetic". Either way the design has
+    // no operating point; the core saturating at the temperature its losses heat it to is the
+    // expected refusal (CALCULATION_CORE_SATURATES).
+    REQUIRE_THROWS_AS(getLossesFromSimulation(magnetic, inputs), OpenMagnetics::SaturationException);
 }
 
 TEST_CASE("Temperature: PQ Single Turn Quadrant Surface Areas", "[temperature][concentric][geometry][smoke-test]") {
