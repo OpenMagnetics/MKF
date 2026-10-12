@@ -4734,10 +4734,18 @@ TEST_CASE("Debug_Abt1759_Foil_Field_Probe", "[debug][abt1759-foil][.]") {
         MagneticField magneticField(fieldModel, fringingModel);
         auto output = magneticField.calculate_magnetic_field_strength_field(operatingPoint, magnetic, std::nullopt, std::nullopt, mesher);
         const auto fields = output.get_field_per_frequency();
-        for (const auto& complexField : fields) {
-            if (std::abs(complexField.get_frequency() - frequency) > 1e-6 * frequency) {
-                continue;
+        // The solved fundamental is the sampled waveform's own (9921.875 Hz for a 10 kHz request): take the harmonic
+        // nearest to the requested frequency and say which one it is.
+        REQUIRE(!fields.empty());
+        size_t nearest = 0;
+        for (size_t index = 1; index < fields.size(); ++index) {
+            if (std::abs(fields[index].get_frequency() - frequency) < std::abs(fields[nearest].get_frequency() - frequency)) {
+                nearest = index;
             }
+        }
+        std::cout << "FPINFO " << modelName << " harmonic " << fields[nearest].get_frequency() << " Hz of " << fields.size() << std::endl;
+        {
+            const auto& complexField = fields[nearest];
             const auto points = complexField.get_data();
             for (const auto& point : points) {
                 std::cout << "FP " << modelName << " " << (point.get_turn_index() ? point.get_turn_index().value() : -1) << " "
