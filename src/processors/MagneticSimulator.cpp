@@ -5,6 +5,7 @@
 #include "physical_models/Impedance.h"
 #include "physical_models/ComplexPermeability.h"
 #include "physical_models/Temperature.h"
+#include "physical_models/InitialPermeability.h"
 #include "support/Settings.h"
 #include <MAS.hpp>
 #include "support/Exceptions.h"
@@ -258,6 +259,10 @@ SolvedLosses MagneticSimulator::solve_losses_at_operating_temperature(const Oper
     std::optional<double> previousCoreResidual;
     std::optional<double> previousWindingResidual;
     const auto coreMaterial = magnetic.get_core().resolve_material();
+    // The loop's ceiling: the highest temperature where the material is ferromagnetic and its
+    // mu_i(T) has data (the last table point when the table ends below Curie, else Curie). Above
+    // it the magnetizing model's permeability refuses (ABT #1739), so no iterate may land there.
+    const auto ferromagneticDataCeiling = InitialPermeability::get_maximum_ferromagnetic_data_temperature(coreMaterial);
     const auto curieTemperature = coreMaterial.get_curie_temperature();
     // The winding losses' field step (H at every turn) depends on the currents and the geometry,
     // not on the temperature, unless a winding has parallels (their current split is solved at the
@@ -390,23 +395,27 @@ SolvedLosses MagneticSimulator::solve_losses_at_operating_temperature(const Oper
         double proposedWindingTemperature = windingTemperature + windingRelaxation * windingResidual;
 
         // The core-loss and permeability models describe the FERROMAGNETIC material and refuse a
-        // temperature at or above its Curie point. The first steps start from ambient-temperature
-        // losses and can overshoot far past where the answer lies, so the iterate is kept inside
-        // the range where the losses exist: at most halfway from the current core temperature to
-        // the Curie point. If the iteration has been driven to within the tolerance of the Curie
-        // point and the losses there still push the core hotter, no operating point was found
-        // below it: refuse, saying so.
-        if (curieTemperature && proposedCoreTemperature >= curieTemperature.value()) {
-            const double distanceToCurie = curieTemperature.value() - coreTemperature;
-            if (distanceToCurie < kOperatingTemperatureTolerance) {
+        // temperature at or above its Curie point; the permeability also refuses one between the end
+        // of its measured mu_i(T) table and the Curie point. The first steps start from
+        // ambient-temperature losses and can overshoot far past where the answer lies, so the iterate
+        // is kept inside the range where the losses and the permeability exist: at most halfway from
+        // the current core temperature to that ceiling. If the iteration has been driven to within
+        // the tolerance of the ceiling and the losses there still push the core hotter, no operating
+        // point was found below it: refuse, saying so.
+        if (ferromagneticDataCeiling && proposedCoreTemperature >= ferromagneticDataCeiling.value()) {
+            const double distanceToCeiling = ferromagneticDataCeiling.value() - coreTemperature;
+            if (distanceToCeiling < kOperatingTemperatureTolerance) {
+                const bool ceilingIsCurie = curieTemperature && ferromagneticDataCeiling.value() == curieTemperature.value();
                 throw CalculationException(ErrorCode::CALCULATION_INVALID_RESULT,
                     "Losses of '" + magnetic.get_reference() + "': with the core at " + std::to_string(coreTemperature) +
-                    " C, just below the Curie temperature of " + coreMaterial.get_name() + " (" +
-                    std::to_string(curieTemperature.value()) + " C), its core and winding losses still drive it to " +
+                    " C, just below " +
+                    (ceilingIsCurie ? "the Curie temperature of " + coreMaterial.get_name()
+                                    : "the last temperature of " + coreMaterial.get_name() + "'s measured mu_i(T) table") +
+                    " (" + std::to_string(ferromagneticDataCeiling.value()) + " C), its core and winding losses still drive it to " +
                     std::to_string(nextCoreTemperature) + " C. No operating temperature was found where the core is "
-                    "ferromagnetic. History:" + history);
+                    "ferromagnetic and its permeability is known. History:" + history);
             }
-            proposedCoreTemperature = coreTemperature + 0.5 * distanceToCurie;
+            proposedCoreTemperature = coreTemperature + 0.5 * distanceToCeiling;
         }
         coreTemperature = proposedCoreTemperature;
         windingTemperature = proposedWindingTemperature;

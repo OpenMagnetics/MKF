@@ -72,6 +72,14 @@ class InitialPermeability {
         static double has_frequency_dependency(const CoreMaterial& coreMaterial);
         static double has_magnetic_field_dc_bias_dependency(const CoreMaterial& coreMaterial);
         static std::optional<double> get_paramagnetic_temperature(const CoreMaterial& coreMaterial);
+        // The highest temperature at which the material is ferromagnetic AND its mu_i(T) model has data:
+        // the last point of the measured mu_i(T) table when the table ends below the Curie temperature
+        // (between the two, mu_i(T) refuses, ABT #1739), otherwise the Curie temperature. Without a
+        // Curie temperature: the table's last point; with neither: none. The loss-temperature loop
+        // keeps the core below it (ABT #838).
+        static std::optional<double> get_maximum_ferromagnetic_data_temperature(const CoreMaterial& coreMaterial);
+        // The last temperature of the material's measured mu_i(T) table; none without such a table.
+        static std::optional<double> get_temperature_table_end(const CoreMaterial& coreMaterial);
         static double get_initial_permeability_temperature_dependent(const CoreMaterial& coreMaterial, double temperature);
         static double get_initial_permeability_frequency_dependent(const CoreMaterial& coreMaterial, double frequency);
         static double get_initial_permeability_magnetic_field_dc_bias_dependent(const CoreMaterial& coreMaterial, double magneticFieldDcBias);

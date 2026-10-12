@@ -916,14 +916,40 @@ std::optional<double> InitialPermeability::get_paramagnetic_temperature(const Co
         return std::nullopt;
     }
     double paramagneticTemperature = curieTemperature.value();
-    if (has_temperature_dependency(coreMaterial)) {
-        for (const auto& point : get_only_temperature_dependent_points(coreMaterial)) {
-            if (point.get_temperature()) {
-                paramagneticTemperature = std::max(paramagneticTemperature, point.get_temperature().value());
-            }
-        }
+    auto tableEnd = get_temperature_table_end(coreMaterial);
+    if (tableEnd) {
+        paramagneticTemperature = std::max(paramagneticTemperature, tableEnd.value());
     }
     return paramagneticTemperature;
+}
+
+std::optional<double> InitialPermeability::get_temperature_table_end(const CoreMaterial& coreMaterial) {
+    if (!has_temperature_dependency(coreMaterial)) {
+        return std::nullopt;
+    }
+    std::optional<double> tableEnd;
+    for (const auto& point : get_only_temperature_dependent_points(coreMaterial)) {
+        if (point.get_temperature() && (!tableEnd || point.get_temperature().value() > tableEnd.value())) {
+            tableEnd = point.get_temperature().value();
+        }
+    }
+    return tableEnd;
+}
+
+std::optional<double> InitialPermeability::get_maximum_ferromagnetic_data_temperature(const CoreMaterial& coreMaterial) {
+    // ABT #838: get_initial_permeability_temperature_dependent answers up to the table's last point and
+    // above get_paramagnetic_temperature (mu_i = 1); between the two it refuses. The ferromagnetic side
+    // ends at the Curie temperature, so the range where the material is ferromagnetic and mu_i(T) answers
+    // ends at the lower of the two.
+    auto curieTemperature = coreMaterial.get_curie_temperature();
+    auto tableEnd = get_temperature_table_end(coreMaterial);
+    if (curieTemperature && tableEnd) {
+        return std::min(curieTemperature.value(), tableEnd.value());
+    }
+    if (curieTemperature) {
+        return curieTemperature;
+    }
+    return tableEnd;
 }
 
 double InitialPermeability::get_initial_permeability_temperature_dependent(const CoreMaterial& coreMaterial, double temperature) {

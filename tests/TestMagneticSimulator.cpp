@@ -3,6 +3,8 @@
 #include "support/Painter.h"
 #include "processors/MagneticSimulator.h"
 #include "physical_models/Temperature.h"
+#include "physical_models/InitialPermeability.h"
+#include "advisers/MagneticFilter.h"
 #include "advisers/MagneticAdviser.h"
 #include "processors/Inputs.h"
 #include "support/Exceptions.h"
@@ -12,6 +14,7 @@
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
 #include <catch2/matchers/catch_matchers_string.hpp>
+#include <catch2/matchers/catch_matchers_predicate.hpp>
 #include <cmath>
 #include <vector>
 
@@ -764,9 +767,9 @@ namespace {
         }
     }
 
-    TEST_CASE("Test_IEEE_Article_Simulation_3", "[processor][magnetic-simulator][heavy]") {
-
-        double temperature = 20;
+    // The IEEE article's ETD 29/16/10 3C95 transformer at 100 C ambient. forcedAir: the 2 m/s fan
+    // Test_IEEE_Article_Simulation_3 runs it with; without it, the still-air design the fan was added for.
+    std::pair<OpenMagnetics::Inputs, OpenMagnetics::Magnetic> build_ieee_article_3(bool forcedAir) {
         std::vector<int64_t> numberTurns = {32, 2};
         std::vector<int64_t> numberParallels = {1, 1};
         std::vector<double> turnsRatios = {16};
@@ -834,8 +837,10 @@ namespace {
         // Forced air (ABT #838, Alf 2026-10-10): in still air at 100 C this ETD 29 dissipates ~9 W
         // with the core at 3C95's Curie temperature (215 C) but sheds only ~7 W there, so it has no
         // operating point. With a fan's 2 m/s the core settles at ~181 C (~2.4 W core, ~5.6 W copper).
-        operatingPointJson["conditions"]["cooling"]["velocity"] = {2.0, 0.0, 0.0};
-        operatingPointJson["conditions"]["cooling"]["temperature"] = 100;
+        if (forcedAir) {
+            operatingPointJson["conditions"]["cooling"]["velocity"] = {2.0, 0.0, 0.0};
+            operatingPointJson["conditions"]["cooling"]["temperature"] = 100;
+        }
 
         operatingPointJson["excitationsPerWinding"] = json::array();
         {
@@ -874,7 +879,13 @@ namespace {
         // set" (ABT #190). turnsRatios entries are dimensionWithTolerance objects.
         inputsJson["designRequirements"]["turnsRatios"].push_back(json({{"nominal", 16}}));
 
-        OpenMagnetics::Inputs inputs(inputsJson);
+        return {OpenMagnetics::Inputs(inputsJson), magnetic};
+    }
+
+    TEST_CASE("Test_IEEE_Article_Simulation_3", "[processor][magnetic-simulator][heavy]") {
+
+        double temperature = 20;
+        auto [inputs, magnetic] = build_ieee_article_3(true);
 
 
 
@@ -965,6 +976,39 @@ namespace {
             painter.export_svg();
             settings.reset();
         }
+    }
+
+    // ABT #838 x #1739: 3C95's measured mu_i(T) table ends at 180 C, below its 244 C Curie point, and
+    // mu_i(T) refuses between the two (MaterialTemperatureOutOfRangeException). In still air at 100 C
+    // this ETD 29 has no operating point. The loss-temperature loop used to cap its core iterate only at
+    // the Curie point, so the iterate landed in that gap and the MaterialException escaped every
+    // adviser's catch (coil adviser's loss ranking included). The loop is now capped where mu_i(T)
+    // still answers, and refuses there with CalculationException(CALCULATION_INVALID_RESULT): the
+    // refusal the advisers catch to drop the candidate and continue.
+    TEST_CASE("Loss-temperature loop is capped where the core's mu_i(T) data ends and refuses there with the exception advisers catch", "[processor][magnetic-simulator]") {
+        auto [inputs, magnetic] = build_ieee_article_3(false);
+        auto coreMaterial = magnetic.get_mutable_core().resolve_material();
+        REQUIRE(coreMaterial.get_name() == "3C95");
+        REQUIRE(coreMaterial.get_curie_temperature());
+        auto ceiling = InitialPermeability::get_maximum_ferromagnetic_data_temperature(coreMaterial);
+        REQUIRE(ceiling);
+        // The table ends below Curie: the ceiling is its last point, where mu_i(T) still answers,
+        // and just above it mu_i(T) refuses.
+        CHECK(ceiling.value() < coreMaterial.get_curie_temperature().value());
+        CHECK_NOTHROW(InitialPermeability::get_initial_permeability(coreMaterial, ceiling.value()));
+        CHECK_THROWS_AS(InitialPermeability::get_initial_permeability(coreMaterial, ceiling.value() + 1), MaterialTemperatureOutOfRangeException);
+
+        auto isLoopRefusal = Catch::Matchers::Predicate<CalculationException>([](const CalculationException& exception) {
+            return exception.code() == ErrorCode::CALCULATION_INVALID_RESULT &&
+                   std::string(exception.what()).find("No operating temperature was found where the core is ferromagnetic") != std::string::npos;
+        }, "a CALCULATION_INVALID_RESULT refusal naming the ferromagnetic range");
+
+        auto operatingPoint = inputs.get_operating_point(0);
+        MagneticSimulator simulator;
+        REQUIRE_THROWS_MATCHES(simulator.calculate_core_losses(operatingPoint, magnetic), CalculationException, isLoopRefusal);
+        // The loss filter the advisers evaluate a candidate with refuses it the same way.
+        MagneticFilterLosses lossesFilter;
+        REQUIRE_THROWS_MATCHES(lossesFilter.evaluate_magnetic(&magnetic, &inputs), CalculationException, isLoopRefusal);
     }
 
     TEST_CASE("Test_Flyback_Simulation", "[processor][magnetic-simulator]") {

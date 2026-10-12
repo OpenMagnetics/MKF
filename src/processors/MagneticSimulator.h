@@ -123,9 +123,11 @@ class MagneticSimulator {
         // Converged when the network returns both temperatures within
         // kOperatingTemperatureTolerance of the ones the losses were evaluated at. Each
         // temperature's step is halved whenever its residual changes sign (losses falling steeply
-        // with temperature make plain substitution oscillate), and the core is kept below its
-        // material's Curie point, where its loss and permeability data end. Not settling within
-        // kOperatingTemperatureMaximumIterations, or being driven to the Curie point, THROWS
+        // with temperature make plain substitution oscillate), and the core is kept below the
+        // highest temperature where its material is ferromagnetic and its mu_i(T) has data
+        // (InitialPermeability::get_maximum_ferromagnetic_data_temperature: the last table point
+        // when the table ends below Curie, else Curie). Not settling within
+        // kOperatingTemperatureMaximumIterations, or being driven to that ceiling, THROWS
         // (thermal runaway: there is no operating point to report, and the last iterate is not one).
         // `windingLossesOutput` / `temperatureOutput`, when given, receive the winding losses and
         // the full-network temperature solved together with the returned core losses (asking for
