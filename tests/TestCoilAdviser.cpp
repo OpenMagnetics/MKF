@@ -1350,6 +1350,62 @@ TEST_CASE("Test_CoilAdviser_Random_5", "[adviser][coil-adviser][bug]") {
     }
 }
 
+// ABT #838 (Alf, 2026-10-12): a coil whose core saturates at the temperature its own losses heat
+// it to is REJECTED by the coil adviser's loss ranking, as the saturation filter rejects a
+// candidate (ABT #1740); the ranking used to rethrow it and abort the whole search. The fixture
+// is Test_CoilAdviser_Random_5's: 15 turns on an E 114/46/26 in 3C91 holding 2.575 mH against
+// 3 A peak to peak at 592.5 kHz, a 0.63 T flux swing (B_peak 0.31 T). That is below 3C91's
+// 0.47 T at the 23 C ambient, and above the 0.28 T left at the 171 C its losses drive it past.
+TEST_CASE("Coil adviser rejects a coil whose core saturates at its operating temperature", "[adviser][coil-adviser][abt-838]") {
+    settings.reset();
+    clear_databases();
+    std::vector<int64_t> numberTurns = {15, 36, 87, 60};
+    std::vector<double> turnsRatios = {15. / 36, 15. / 87, 15. / 60};
+    settings.set_use_toroidal_cores(false);
+    auto gapping = OpenMagneticsTesting::get_distributed_gap(0.003175, 1);
+    auto magnetic = OpenMagneticsTesting::get_quick_magnetic("E 114/46/26", gapping, numberTurns, 1, "3C91");
+    magnetic.get_mutable_coil().set_turns_alignment(magic_enum::enum_cast<CoilAlignment>(3).value());
+    magnetic.get_mutable_coil().set_winding_orientation(magic_enum::enum_cast<WindingOrientation>(0).value());
+    magnetic.get_mutable_coil().set_layers_orientation(magic_enum::enum_cast<WindingOrientation>(1).value());
+    auto inputs = OpenMagnetics::Inputs::create_quick_operating_point_only_current(
+        592535, 0.002575, 23, WaveformLabel::SINUSOIDAL, 3, 0.61, 5, turnsRatios);
+    inputs.get_mutable_design_requirements().set_isolation_sides(std::vector<IsolationSide>{
+        IsolationSide::DENARY, IsolationSide::NONARY, IsolationSide::QUATERNARY, IsolationSide::OCTONARY});
+    inputs.process();
+    OpenMagnetics::Mas masMagnetic;
+    masMagnetic.set_inputs(inputs);
+    masMagnetic.set_magnetic(magnetic);
+
+    // What the loss-temperature solve says about one of this core's wound coils. Asked for more
+    // coils than it can wind, the adviser returns them without ranking them, so this is a coil
+    // the ranking below meets.
+    auto unrankedCoils = CoilAdviser().get_advised_coil(masMagnetic, 100000);
+    REQUIRE(unrankedCoils.size() > 2);
+    auto core_saturates = [](OpenMagnetics::Mas& woundMas) {
+        try {
+            MagneticFilterLosses().evaluate_magnetic(&woundMas.get_mutable_magnetic(), &woundMas.get_mutable_inputs());
+        }
+        catch (const CalculationException& exception) {
+            if (exception.code() == ErrorCode::CALCULATION_CORE_SATURATES) {
+                return true;
+            }
+            throw;
+        }
+        return false;
+    };
+    REQUIRE(core_saturates(unrankedCoils[0]));
+
+    // Ranking by losses: the adviser carries on past the saturating coils and returns none of them.
+    std::vector<OpenMagnetics::Mas> rankedCoils;
+    REQUIRE_NOTHROW(rankedCoils = CoilAdviser().get_advised_coil(masMagnetic, 2));
+    REQUIRE(rankedCoils.size() <= 2);
+    for (auto& rankedCoil : rankedCoils) {
+        INFO(rankedCoil.get_mutable_magnetic().get_reference());
+        CHECK_FALSE(core_saturates(rankedCoil));
+    }
+    settings.reset();
+}
+
 TEST_CASE("Test_CoilAdviser_Random_6", "[adviser][coil-adviser][bug]") {
 
     int64_t numberStacks = 1;

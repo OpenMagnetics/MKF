@@ -1698,8 +1698,14 @@ namespace OpenMagnetics {
             // frequency, the thermal network does not converge, the filter refuses the coil) has
             // no loss to rank by: it is dropped from the ranking with its reason logged, and no
             // loss is invented for it.
+            // A coil whose core saturates at the temperature its own losses heat it to
+            // (CALCULATION_CORE_SATURATES, thrown by the loss-temperature solve) is a different
+            // case: that is a verdict on the design, as in the saturation filter (ABT #1740), so the
+            // coil is REJECTED, here and in the unranked return below (ABT #838, Alf 2026-10-12).
+            // Only that code is treated so; any other error still propagates.
             MagneticFilterLosses lossesFilter;
             std::vector<std::pair<Mas, double>> masesWithLosses;
+            std::vector<Mas> masesUnranked;
             for (auto& woundMas : masesWithCoil) {
                 std::string reason;
                 try {
@@ -1714,12 +1720,21 @@ namespace OpenMagnetics {
                     reason = exception.what();
                 }
                 catch (const CalculationException& exception) {
+                    if (exception.code() == ErrorCode::CALCULATION_CORE_SATURATES) {
+                        logEntry("Wound coil '" + woundMas.get_mutable_magnetic().get_reference() + "' (material " +
+                                 woundMas.get_mutable_magnetic().get_mutable_core().resolve_material().get_name() + ", " +
+                                 describe_operating_frequencies(woundMas.get_inputs()) +
+                                 ") rejected: its core saturates at the temperature its losses heat it to: " +
+                                 exception.what(), "CoilAdviser");
+                        continue;
+                    }
                     if (exception.code() != ErrorCode::CALCULATION_INVALID_RESULT &&
                         exception.code() != ErrorCode::MATERIAL_FREQUENCY_OUT_OF_SPAN) {
                         throw;
                     }
                     reason = exception.what();
                 }
+                masesUnranked.push_back(woundMas);
                 logEntry("Wound coil '" + woundMas.get_mutable_magnetic().get_reference() + "' (material " +
                          woundMas.get_mutable_magnetic().get_mutable_core().resolve_material().get_name() + ", " +
                          describe_operating_frequencies(woundMas.get_inputs()) +
@@ -1730,7 +1745,9 @@ namespace OpenMagnetics {
                 // (the order before the loss ranking existed), and the log says why.
                 logEntry("None of the " + std::to_string(masesWithCoil.size()) + " wound coils on core '" +
                          mas.get_mutable_magnetic().get_mutable_core().get_shape_name() +
-                         "' could be ranked by losses; returning them in winding order, unranked", "CoilAdviser");
+                         "' could be ranked by losses; returning the " + std::to_string(masesUnranked.size()) +
+                         " whose core does not saturate in winding order, unranked", "CoilAdviser");
+                masesWithCoil = std::move(masesUnranked);
             }
             else {
                 stable_sort_by_index(masesWithLosses, [](const std::pair<Mas, double>& left, const std::pair<Mas, double>& right) {
