@@ -1745,8 +1745,12 @@ namespace OpenMagnetics {
                 // (the order before the loss ranking existed), and the log says why.
                 logEntry("None of the " + std::to_string(masesWithCoil.size()) + " wound coils on core '" +
                          mas.get_mutable_magnetic().get_mutable_core().get_shape_name() +
-                         "' could be ranked by losses; returning the " + std::to_string(masesUnranked.size()) +
-                         " whose core does not saturate in winding order, unranked", "CoilAdviser");
+                         "' could be ranked by losses; returning them in winding order, unranked" +
+                         (masesUnranked.size() < masesWithCoil.size()
+                              ? ", without the " + std::to_string(masesWithCoil.size() - masesUnranked.size()) +
+                                    " whose core saturates at its operating temperature"
+                              : std::string()),
+                         "CoilAdviser");
                 masesWithCoil = std::move(masesUnranked);
             }
             else {
