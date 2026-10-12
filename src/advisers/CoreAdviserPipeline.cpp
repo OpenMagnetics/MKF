@@ -43,7 +43,7 @@
 
 namespace OpenMagnetics {
 
-void correct_windings(std::vector<std::pair<Magnetic, double>> *magneticsWithScoring, const Inputs& inputs) {
+void correct_windings(std::vector<std::pair<Magnetic, double>> *magneticsWithScoring, const Inputs& inputs, bool sizeParallelsToCurrent) {
     MagnetizingInductance magnetizingInductance;
 
     // If the wizard supplied per-winding excitation names (e.g. LLC center-tap
@@ -153,11 +153,13 @@ void correct_windings(std::vector<std::pair<Magnetic, double>> *magneticsWithSco
 
             // Size this secondary's parallels to its own RMS current (both the DC
             // ~7 A/mm2 and effective ~12 A/mm2 limits), like get_dummy_coil does
-            // for the primary. ABT #126: not for common-mode chokes — see
+            // for the primary. ABT #126: not for interference suppression — see
             // get_dummy_coil; current-sized parallels made every CMC candidate
             // unwindable and the suppression adviser returned zero results.
-            if (!inputs.get_operating_points().empty() &&
-                !Inputs::can_be_common_mode_choke(inputs.get_operating_points()[0])) {
+            // ABT #1822: the caller says so (sizeParallelsToCurrent, as for
+            // get_dummy_coil); the excitation's shape does not, a 1:1 transformer
+            // with equal currents being CMC-shaped too.
+            if (sizeParallelsToCurrent && !inputs.get_operating_points().empty()) {
                 const auto& secExcitations = inputs.get_operating_points()[0].get_excitations_per_winding();
                 if (windingIndex < secExcitations.size() && secExcitations[windingIndex].get_current()) {
                     auto secCurrent = secExcitations[windingIndex].get_current().value();
@@ -459,7 +461,7 @@ std::vector<std::pair<Mas, double>> CoreAdviser::post_process_and_cut(std::vecto
             }
         }
         std::vector<std::pair<Magnetic, double>> candidate{magneticWithScoring};
-        correct_windings(&candidate, inputs);
+        correct_windings(&candidate, inputs, get_application() != MAS::MagneticApplication::INTERFERENCE_SUPPRESSION);
         if (withAlternativeMaterials) {
             add_alternative_materials(&candidate, inputs, &alternativeMaterialsCache);
         }

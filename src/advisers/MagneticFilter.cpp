@@ -189,7 +189,11 @@ Magnetic MagneticFilter::with_every_winding(const Magnetic& magnetic, const Inpu
             " windings for an input with " + std::to_string(numberWindings));
     }
     std::vector<std::pair<Magnetic, double>> completed = {{magnetic, 0.0}};
-    correct_windings(&completed, inputs);
+    // A filter is not told the adviser's application, so the added windings are sized to their
+    // current unless the excitation is common-mode-choke shaped, as before ABT #1822. Such an
+    // excitation has equal currents in every winding, and an added winding is a copy of the first:
+    // it carries the parallels the adviser gave the first winding for that same current.
+    correct_windings(&completed, inputs, !Inputs::can_be_common_mode_choke(inputs.get_operating_points()[0]));
     if (completed[0].first.get_coil().get_functional_description().size() != numberWindings) {
         throw CalculationException(ErrorCode::CALCULATION_INVALID_RESULT,
             "Completing a stand-in coil: candidate " + magnetic.get_reference() + " came back with " +

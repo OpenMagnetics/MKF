@@ -112,7 +112,9 @@ class MagneticFilter {
 
 // Completes each candidate's one-winding stand-in coil with the windings the inputs excite
 // (turns from the requirement turns ratios, parallels sized to each winding's current).
-void correct_windings(std::vector<std::pair<Magnetic, double>> *magneticsWithScoring, const Inputs& inputs);
+// sizeParallelsToCurrent: each added winding's parallels are sized to its own current. The core
+// and magnetic advisers pass "the application is not interference suppression" (ABT #126, ABT #1822).
+void correct_windings(std::vector<std::pair<Magnetic, double>> *magneticsWithScoring, const Inputs& inputs, bool sizeParallelsToCurrent);
 
 // A filter whose verdict is built on the core losses. It applies to what MagneticFilter does, and
 // only when the core material has a core-loss model: for a part whose material has none it records

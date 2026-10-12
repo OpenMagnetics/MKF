@@ -115,14 +115,18 @@ Coil get_dummy_coil(const Inputs& inputs, bool sizeParallelsToCurrent) {
         // capacity, so the fast path left high-current windings under-coppered —
         // every winding at ~18 A/mm2 regardless of core (ABT #70). Use the same
         // helper the WireAdviser uses on the full path so both paths agree.
-        // ABT #126: NOT for common-mode chokes — sizing every CMC winding's
+        // ABT #126: NOT for interference suppression — sizing every CMC winding's
         // parallels to the full line current with a skin-depth strand produced
         // N x ~dozens of parallel strands that fit no toroid window, so every
         // suppression candidate died at post-processing (fast_wind: no turns)
-        // and the adviser returned ZERO results. The CMC dummy keeps 1 parallel
-        // (the historical suppression behaviour); real copper sizing for CMCs
-        // is the wire adviser's job downstream.
-        if (sizeParallelsToCurrent && !isCommonModeChoke && !operatingPoints.empty()) {
+        // and the adviser returned ZERO results. The suppression dummy keeps 1
+        // parallel (the historical suppression behaviour); real copper sizing for
+        // CMCs is the wire adviser's job downstream.
+        // ABT #1822: the exemption is the caller's (the adviser's application), not
+        // the shape of the excitation. A 1:1 transformer with equal currents is
+        // CMC-shaped (can_be_common_mode_choke), and exempting it left one skin-depth
+        // strand per winding at 24.8 A/mm2 on a power design.
+        if (sizeParallelsToCurrent && !operatingPoints.empty()) {
             const auto& excitations = operatingPoints[0].get_excitations_per_winding();
             if (w < excitations.size() && excitations[w].get_current()) {
                 auto windingCurrent = excitations[w].get_current().value();

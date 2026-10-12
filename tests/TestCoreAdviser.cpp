@@ -618,6 +618,103 @@ TEST_CASE("Core adviser returns no core whose loss-temperature solve is above th
     settings.reset();
 }
 
+// ABT #1822: the stand-in coil's parallels are sized to each winding's current unless the adviser's
+// application is interference suppression (ABT #126). The exemption used to follow the SHAPE of the
+// excitation (Inputs::can_be_common_mode_choke), which is also true for a 1:1 transformer with equal
+// currents: on a power design every winding kept ONE skin-depth strand (0.416 mm at 100 kHz,
+// 24.8 A/mm2 for 3.376 A rms), and the loss-temperature solve of the returned part ran on it.
+TEST_CASE("Core adviser sizes its stand-in's parallels to the current unless the application is interference suppression",
+          "[adviser][core-adviser][available-cores][abt-1822]") {
+    settings.reset();
+    clear_databases();
+    OpenMagnetics::Inputs inputs;
+    prepare_test_parameters(0, 25, 100000, {1}, 10e-5, inputs, 600);
+    inputs.get_mutable_design_requirements().get_mutable_magnetizing_inductance().set_minimum(10e-5);
+    inputs.get_mutable_design_requirements().get_mutable_magnetizing_inductance().set_nominal(std::nullopt);
+    inputs.get_mutable_design_requirements().get_mutable_magnetizing_inductance().set_maximum(std::nullopt);
+    const auto operatingPoint = inputs.get_operating_points()[0];
+    const auto excitations = operatingPoint.get_excitations_per_winding();
+    REQUIRE(excitations.size() == 2);
+    // The premise: this power transformer's excitation is common-mode-choke shaped.
+    REQUIRE(OpenMagnetics::Inputs::can_be_common_mode_choke(operatingPoint));
+
+    auto dcCurrentDensity = [&](const OpenMagnetics::Winding& winding, size_t windingIndex) {
+        auto wire = OpenMagnetics::Coil::resolve_wire(winding);
+        return wire.calculate_dc_current_density(excitations[windingIndex].get_current().value()) / winding.get_number_parallels();
+    };
+    auto parallelsForEffectiveDensity = [&](const OpenMagnetics::Winding& winding, size_t windingIndex) {
+        auto wire = OpenMagnetics::Coil::resolve_wire(winding);
+        return OpenMagnetics::Wire::calculate_number_parallels_needed(excitations[windingIndex].get_current().value(), inputs.get_maximum_temperature(), wire, defaults.maximumEffectiveCurrentDensity);
+    };
+    // dcLimit: a returned part's strand may have been thinned to fit the winding window after the
+    // parallels were sized (post_process_core), so only the stand-in before it is held to the DC limit.
+    auto check_sized = [&](const std::vector<OpenMagnetics::Winding>& windings, bool dcLimit) {
+        REQUIRE(windings.size() == 2);
+        for (size_t windingIndex = 0; windingIndex < windings.size(); ++windingIndex) {
+            INFO("winding " << windingIndex << ", " << windings[windingIndex].get_number_parallels() << " parallels");
+            CHECK(windings[windingIndex].get_number_parallels() > 1);
+            if (dcLimit) {
+                CHECK(dcCurrentDensity(windings[windingIndex], windingIndex) <= defaults.maximumCurrentDensity);
+            }
+            CHECK(windings[windingIndex].get_number_parallels() >= parallelsForEffectiveDensity(windings[windingIndex], windingIndex));
+        }
+    };
+    auto cores = load_test_data();
+    REQUIRE(cores.size() > 0);
+    std::vector<OpenMagnetics::Core> oneCore = {cores[0]};
+
+    SECTION("Power: the dataset's stand-in and the completed windings carry their current") {
+        CoreAdviser coreAdviser;
+        coreAdviser.set_mode(CoreAdviser::CoreAdviserModes::AVAILABLE_CORES);
+        auto magnetics = coreAdviser.create_magnetic_dataset(inputs, &oneCore, false);
+        REQUIRE(magnetics.size() == 1);
+        check_sized(magnetics[0].first.get_coil().get_functional_description(), true);
+        correct_windings(&magnetics, inputs, true);
+        check_sized(magnetics[0].first.get_coil().get_functional_description(), true);
+    }
+    SECTION("Power: a returned core's coil carries its current") {
+        std::map<CoreAdviser::CoreAdviserFilters, double> weights;
+        weights[CoreAdviser::CoreAdviserFilters::COST] = 1;
+        weights[CoreAdviser::CoreAdviserFilters::EFFICIENCY] = 1;
+        weights[CoreAdviser::CoreAdviserFilters::DIMENSIONS] = 1;
+        CoreAdviser coreAdviser;
+        coreAdviser.set_mode(CoreAdviser::CoreAdviserModes::AVAILABLE_CORES);
+        auto masMagnetics = coreAdviser.get_advised_core(inputs, weights, &cores, 3);
+        REQUIRE(masMagnetics.size() > 0);
+        for (auto& [mas, scoring] : masMagnetics) {
+            INFO(mas.get_magnetic().get_core().get_name().value_or("unnamed"));
+            check_sized(mas.get_magnetic().get_coil().get_functional_description(), false);
+        }
+    }
+    SECTION("Interference suppression: one parallel per winding") {
+        CoreAdviser coreAdviser;
+        coreAdviser.set_mode(CoreAdviser::CoreAdviserModes::AVAILABLE_CORES);
+        coreAdviser.set_application(MAS::MagneticApplication::INTERFERENCE_SUPPRESSION);
+        // The suppression dataset keeps toroids only for a common-mode-choke shaped excitation.
+        settings.set_use_toroidal_cores(true);
+        std::vector<OpenMagnetics::Core> oneToroid;
+        for (auto& core : cores) {
+            if (core.get_shape_family() == MAS::CoreShapeFamily::T) {
+                oneToroid.push_back(core);
+                break;
+            }
+        }
+        REQUIRE(oneToroid.size() == 1);
+        auto magnetics = coreAdviser.create_magnetic_dataset(inputs, &oneToroid, false);
+        REQUIRE(magnetics.size() == 1);
+        for (auto& winding : magnetics[0].first.get_coil().get_functional_description()) {
+            CHECK(winding.get_number_parallels() == 1);
+        }
+        correct_windings(&magnetics, inputs, false);
+        auto windings = magnetics[0].first.get_coil().get_functional_description();
+        REQUIRE(windings.size() == 2);
+        for (auto& winding : windings) {
+            CHECK(winding.get_number_parallels() == 1);
+        }
+    }
+    settings.reset();
+}
+
 TEST_CASE("Test_CoreAdviserAvailableCores_No_Toroids_High_Power", "[adviser][core-adviser][available-cores][smoke-test]") {
     clear_databases();
     double voltagePeakToPeak = 6000;

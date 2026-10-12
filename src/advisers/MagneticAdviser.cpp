@@ -432,7 +432,7 @@ std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic_fast(I
     coreAdviser.select_inductor_turns_and_gap_by_losses(&magneticsWithScoring, inputs);
 
     // Step 4: Add secondary windings from turns ratios
-    correct_windings(&magneticsWithScoring, inputs);
+    correct_windings(&magneticsWithScoring, inputs, get_application() != MAS::MagneticApplication::INTERFERENCE_SUPPRESSION);
 
     // Multi-winding transformers: prefer an INTERLEAVED winding (primary and
     // secondary split into alternating sections) over the default single
