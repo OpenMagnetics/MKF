@@ -484,7 +484,7 @@ SignalDescriptor MagnetizingInductance::calculate_magnetic_flux_density_from_ind
     double drivingPointReluctance = pow(numberTurns, 2) / magnetizingInductance;
     auto magneticFlux = OpenMagnetics::MagneticField::calculate_magnetic_flux(
         operatingPoint->get_mutable_excitations_per_winding()[0].get_magnetizing_current().value(),
-        drivingPointReluctance, numberTurns);
+        drivingPointReluctance, numberTurns, operatingPoint->get_mutable_excitations_per_winding()[0].get_frequency());
     return OpenMagnetics::MagneticField::calculate_magnetic_flux_density(magneticFlux, fluxCarryingArea);
 }
 
@@ -919,7 +919,7 @@ std::pair<MagnetizingInductanceOutput, SignalDescriptor> MagnetizingInductance::
                     operatingPoint->get_mutable_excitations_per_winding()[0].set_magnetizing_current(magnetizingCurrent);
                 }
 
-                auto magneticFlux = OpenMagnetics::MagneticField::calculate_magnetic_flux(operatingPoint->get_mutable_excitations_per_winding()[0].get_magnetizing_current().value(), currentTotalReluctance, numberTurnsPrimary);
+                auto magneticFlux = OpenMagnetics::MagneticField::calculate_magnetic_flux(operatingPoint->get_mutable_excitations_per_winding()[0].get_magnetizing_current().value(), currentTotalReluctance, numberTurnsPrimary, operatingPoint->get_mutable_excitations_per_winding()[0].get_frequency());
                 auto magneticFluxDensity = OpenMagnetics::MagneticField::calculate_magnetic_flux_density(magneticFlux, effectiveArea);
                 result.second = magneticFluxDensity;
 
@@ -1197,7 +1197,7 @@ std::pair<MagnetizingInductanceOutput, SignalDescriptor> MagnetizingInductance::
                 double drivingPointReluctance = pow(numberTurnsPrimary, 2) / modifiedMagnetizingInductance;
                 auto magneticFlux = OpenMagnetics::MagneticField::calculate_magnetic_flux(
                     operatingPoint->get_mutable_excitations_per_winding()[0].get_magnetizing_current().value(),
-                    drivingPointReluctance, numberTurnsPrimary);
+                    drivingPointReluctance, numberTurnsPrimary, operatingPoint->get_mutable_excitations_per_winding()[0].get_frequency());
                 result.second = OpenMagnetics::MagneticField::calculate_magnetic_flux_density(magneticFlux, drivenColumnArea);
             }
         }
@@ -1624,7 +1624,7 @@ std::vector<CoreGap> MagnetizingInductance::calculate_gapping_from_number_turns_
     // the knee of any ferrite, ran away to a saturated permeability, and the search then
     // clamped at the residual gap for any target above a few tens of µH.
     if (excitation.get_magnetizing_current()) {
-        auto magneticFlux = OpenMagnetics::MagneticField::calculate_magnetic_flux(operatingPoint.get_mutable_excitations_per_winding()[0].get_magnetizing_current().value(), neededTotalReluctance, numberTurnsPrimary);
+        auto magneticFlux = OpenMagnetics::MagneticField::calculate_magnetic_flux(operatingPoint.get_mutable_excitations_per_winding()[0].get_magnetizing_current().value(), neededTotalReluctance, numberTurnsPrimary, operatingPoint.get_mutable_excitations_per_winding()[0].get_frequency());
         auto magneticFluxDensity = OpenMagnetics::MagneticField::calculate_magnetic_flux_density(magneticFlux, effectiveArea);
         double biasFluxDensity = fabs(magneticFluxDensity.get_processed().value().get_offset());
         if (biasFluxDensity > 0) {

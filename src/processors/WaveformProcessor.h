@@ -103,7 +103,13 @@ class WaveformProcessor {
     static bool is_waveform_sampled(MAS::Waveform waveform, size_t numberPointsSampledWaveforms = 128);
     static bool is_waveform_imported(MAS::Waveform waveform, size_t numberPointsSampledWaveforms = 128);
     static double calculate_waveform_average(MAS::Waveform waveform);
-    static MAS::Waveform compress_waveform(const MAS::Waveform& waveform);
+    // Keeps only the corners of a waveform (points where the slope changes) and closes it
+    // periodically. Without a frequency the axis is taken as sampled, open by one step
+    // ([t0, t0 + T - dt]), and the first sample is appended at t_N-1 + dt. With the excitation
+    // frequency a closed axis ([t0, t0 + T], which may also hold 128 points) is recognised: it
+    // already ends at t0 + T and gets no extra point; appending one stretched it to T + dt
+    // (ABT #1467). Any other axis is closed as before; the span is not validated here.
+    static MAS::Waveform compress_waveform(const MAS::Waveform& waveform, std::optional<double> frequency = std::nullopt);
     static MAS::WaveformLabel try_guess_waveform_label(MAS::Waveform waveform, size_t numberPointsSampledWaveforms = 128);
     static double try_guess_duty_cycle(MAS::Waveform waveform,
                                        MAS::WaveformLabel label = MAS::WaveformLabel::CUSTOM,

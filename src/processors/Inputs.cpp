@@ -2069,59 +2069,8 @@ OperatingPoint Inputs::prune_harmonics(OperatingPoint operatingPoint, double win
 }
 
 
-Waveform Inputs::compress_waveform(const Waveform& waveform) {
-    Waveform compressedWaveform;
-    auto data = waveform.get_data();
-    if (data.size() < 2) {
-        return waveform;
-    }
-    data.push_back(data[0]);
-    auto time = waveform.get_time().value();
-    if (time.size() < 2) {
-        return waveform;
-    }
-    time.push_back(time[time.size() - 1] + (time[time.size() - 1] - time[time.size() - 2]));
-    std::vector<double> compressedData;
-    std::vector<double> compressedTime;
-    double previousSlope = DBL_MAX;
-    for (size_t i = 0; i < data.size() - 1; ++i){
-        // FIXED: BUG-01 — Guard against division by zero on identical time points
-        double slope;
-        if (time[i + 1] == time[i]) {
-            slope = (data[i + 1] >= data[i]) ? DBL_MAX : -DBL_MAX;
-        } else {
-            slope = (data[i + 1] - data[i]) / (time[i + 1] - time[i]);
-        }
-        
-        // Emit point if: (1) discontinuity, OR (2) slope changes significantly
-        bool isDiscontinuity = (slope == DBL_MAX || slope == -DBL_MAX);
-        bool previousWasDiscontinuity = (previousSlope == DBL_MAX || previousSlope == -DBL_MAX);
-        
-        // Detect slope change: use relative change if possible, absolute if previous slope is near zero
-        bool slopeChanged = false;
-        if (!isDiscontinuity && !previousWasDiscontinuity) {
-            if (fabs(previousSlope) > 1e-9) {
-                // Non-zero previous slope: use relative change
-                slopeChanged = fabs((slope - previousSlope) / previousSlope) > 0.01;
-            } else {
-                // Previous slope near zero: use absolute change
-                slopeChanged = fabs(slope) > 1e-9;
-            }
-        }
-        if (isDiscontinuity || previousWasDiscontinuity || slopeChanged) {
-            compressedData.push_back(data[i]);
-            compressedTime.push_back(time[i]);
-        }
-        previousSlope = slope;
-    }
-    compressedData.push_back(data.back());
-    compressedTime.push_back(time.back());
-    compressedWaveform.set_data(compressedData);
-    compressedWaveform.set_time(compressedTime);
-    if (waveform.get_ancillary_label()) {
-        compressedWaveform.set_ancillary_label(waveform.get_ancillary_label().value());
-    }
-    return compressedWaveform;
+Waveform Inputs::compress_waveform(const Waveform& waveform, std::optional<double> frequency) {
+    return WaveformProcessor::compress_waveform(waveform, frequency);
 }
 
 void Inputs::check_volt_second_balance(const Waveform& voltageSampledWaveform, const std::string& context) {

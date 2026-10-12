@@ -1748,7 +1748,7 @@ double CoreLossesModel::get_core_losses_series_resistance(Core core,
     auto operatingPoint = Inputs::create_operating_point_with_sinusoidal_current_mask(frequency, magnetizingInductance, temperature, {}, {virtualCurrentRms * sqrt(2)});
     operatingPoint = Inputs::process_operating_point(operatingPoint, magnetizingInductance);
     auto excitation = operatingPoint.get_excitations_per_winding()[0];
-    auto magneticFlux = MagneticField::calculate_magnetic_flux(excitation.get_magnetizing_current().value(), reluctance, numberTurnsPrimary);
+    auto magneticFlux = MagneticField::calculate_magnetic_flux(excitation.get_magnetizing_current().value(), reluctance, numberTurnsPrimary, excitation.get_frequency());
     auto magneticFluxDensity = MagneticField::calculate_magnetic_flux_density(magneticFlux, effectiveArea);
     excitation.set_magnetic_flux_density(magneticFluxDensity);
 

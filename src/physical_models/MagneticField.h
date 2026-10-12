@@ -66,9 +66,12 @@ class MagneticField {
             _fringingEffectModel = factory(_magneticFieldStrengthFringingEffectModel);
         }
 
+        // frequency: the excitation's, so a magnetizing current given on a closed axis ([t0, t0 + T])
+        // is told from a sampled open one when it is compressed (ABT #1467).
         static SignalDescriptor calculate_magnetic_flux(SignalDescriptor magnetizingCurrent,
-                                                        double MagneticField,
-                                                        double numberTurns);
+                                                        double reluctance,
+                                                        double numberTurns,
+                                                        double frequency);
         static SignalDescriptor calculate_magnetic_flux_density(SignalDescriptor magneticFlux,
                                                                 double area);
         static SignalDescriptor calculate_magnetic_field_strength(SignalDescriptor magneticFluxDensity,

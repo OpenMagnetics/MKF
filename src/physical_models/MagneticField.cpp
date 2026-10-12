@@ -128,14 +128,17 @@ void MagneticField::clear_turn_sums_cache() {
 
 SignalDescriptor MagneticField::calculate_magnetic_flux(SignalDescriptor magnetizingCurrent,
                                                           double reluctance,
-                                                          double numberTurns) {
+                                                          double numberTurns,
+                                                          double frequency) {
     SignalDescriptor magneticFlux;
     Waveform magneticFluxWaveform;
     std::vector<double> magneticFluxData;
     auto compressedMagnetizingCurrentWaveform = magnetizingCurrent.get_waveform().value();
 
     if (Inputs::is_waveform_sampled(compressedMagnetizingCurrentWaveform)) {
-        compressedMagnetizingCurrentWaveform = Inputs::compress_waveform(compressedMagnetizingCurrentWaveform);
+        // A 128-point axis may be closed ([t0, t0 + T], given that way) as well as sampled and open:
+        // the frequency tells them apart, so the flux spans T, not T + dt (ABT #1467).
+        compressedMagnetizingCurrentWaveform = Inputs::compress_waveform(compressedMagnetizingCurrentWaveform, frequency);
     }
 
     for (auto& datum : compressedMagnetizingCurrentWaveform.get_data()) {

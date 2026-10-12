@@ -9,6 +9,7 @@
 
 #include "processors/WaveformProcessor.h"
 #include "processors/Inputs.h"
+#include "physical_models/MagneticField.h"
 #include "json.hpp"
 
 #include <catch2/catch_test_macros.hpp>
@@ -394,6 +395,49 @@ TEST_CASE("Test_Sample_And_Compress_Sinusoidal", "[processor][waveform-processor
     REQUIRE(110UL == compressedWaveform.get_data().size());
     auto guessedLabel = WaveformProcessor::try_guess_waveform_label(compressedWaveform);
     REQUIRE(magic_enum::enum_name(WaveformLabel::SINUSOIDAL) == magic_enum::enum_name(guessedLabel));
+}
+
+TEST_CASE("Test_Compress_A_Closed_Axis_Of_128_Points_Spans_One_Period", "[processor][waveform-processor][abt-1467]") {
+    // ABT #1467: a waveform given on 128 points over a CLOSED axis ([0, T], step T / 127) has the
+    // size of a sampled one, so is_waveform_sampled says yes and the flux path compressed it.
+    // compress_waveform assumed the sampled OPEN axis and appended the first point at t_127 + dt:
+    // the flux then spanned 128 T / 127 and the core-loss split refused it ("time axis spans T + dt").
+    // With the excitation frequency the closed axis is told apart and not closed twice.
+    const double frequency = 100000;
+    const double period = 1 / frequency;
+    const size_t numberPoints = 128;
+    auto sineOn = [&](double step) {
+        std::vector<double> time, data;
+        for (size_t i = 0; i < numberPoints; ++i) {
+            time.push_back(i * step);
+            data.push_back(sin(2 * std::numbers::pi * i * step / period));
+        }
+        Waveform waveform;
+        waveform.set_time(time);
+        waveform.set_data(data);
+        return waveform;
+    };
+    auto closed = sineOn(period / (numberPoints - 1));
+    auto open = sineOn(period / numberPoints);
+    REQUIRE(WaveformProcessor::is_waveform_sampled(closed));
+    REQUIRE(WaveformProcessor::is_waveform_sampled(open));
+
+    for (const auto& [name, waveform] : {std::pair{"closed", closed}, std::pair{"open", open}}) {
+        INFO(name << " axis");
+        auto compressed = WaveformProcessor::compress_waveform(waveform, frequency);
+        const auto time = compressed.get_time().value();
+        CHECK(time.front() == 0);
+        CHECK_THAT(time.back(), Catch::Matchers::WithinRel(period, 1e-12));
+        CHECK_THAT(compressed.get_data().back(), Catch::Matchers::WithinAbs(compressed.get_data().front(), 1e-12));
+
+        // The flux of a magnetizing current on that axis spans the same period.
+        SignalDescriptor magnetizingCurrent;
+        magnetizingCurrent.set_waveform(waveform);
+        auto flux = MagneticField::calculate_magnetic_flux(magnetizingCurrent, 1e6, 10, frequency);
+        const auto fluxTime = flux.get_waveform()->get_time().value();
+        CHECK_THAT(fluxTime.back() - fluxTime.front(), Catch::Matchers::WithinRel(period, 1e-12));
+        CHECK_NOTHROW(WaveformProcessor::check_time_axis_spans_one_period(fluxTime, frequency));
+    }
 }
 
 TEST_CASE("Test_Sample_And_Compress_Rectangular", "[processor][waveform-processor][smoke-test]") {

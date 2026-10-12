@@ -285,7 +285,8 @@ class Inputs : public MAS::Inputs {
     // Ignored for non-sinusoidal labels (use `skew` for those).
     static Waveform create_waveform(WaveformLabel label, double peakToPeak, double frequency, double dutyCycle=0.5, double offset=0, double deadTime=0, double skew=0, double phase=0);
     static ProcessedWaveform calculate_basic_processed_data(Waveform waveform);
-    static Waveform compress_waveform(const Waveform& waveform);
+    // See WaveformProcessor::compress_waveform: with the frequency a closed axis is not closed twice.
+    static Waveform compress_waveform(const Waveform& waveform, std::optional<double> frequency = std::nullopt);
 
     static Waveform calculate_derivative_waveform(Waveform waveform);
     static Waveform calculate_integral_waveform(Waveform waveform, bool subtractAverage=false);

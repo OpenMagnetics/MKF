@@ -218,18 +218,37 @@ double WaveformProcessor::calculate_waveform_average(Waveform waveform) {
     return integration / period;
 }
 
-Waveform WaveformProcessor::compress_waveform(const Waveform& waveform) {
+Waveform WaveformProcessor::compress_waveform(const Waveform& waveform, std::optional<double> frequency) {
     Waveform compressedWaveform;
     auto data = waveform.get_data();
     if (data.size() < 2) {
         return waveform;
     }
-    data.push_back(data[0]);
     auto time = waveform.get_time().value();
     if (time.size() < 2) {
         return waveform;
     }
-    time.push_back(time[time.size() - 1] + (time[time.size() - 1] - time[time.size() - 2]));
+    // An open axis is closed periodically with the first sample one step after the last. A closed
+    // axis already reaches t0 + T: closing it again made the result span T + dt (ABT #1467).
+    // Only an axis recognised as closed (it spans the period within the sampler's 0.1 %, and is
+    // nearer to it than its one-step extension) loses the closing point. An axis that spans
+    // something else is not judged here: compressing is not where a record is validated.
+    bool openAxis = true;
+    if (frequency) {
+        if (!std::isfinite(frequency.value()) || frequency.value() <= 0) {
+            throw std::invalid_argument("compress_waveform needs a positive excitation frequency to tell a closed time axis from an open one, got " + std::to_string(frequency.value()));
+        }
+        const double expectedPeriod = 1.0 / frequency.value();
+        const double span = time.back() - time.front();
+        const double lastStep = time[time.size() - 1] - time[time.size() - 2];
+        const double closedError = std::fabs(span - expectedPeriod);
+        const double openError = std::fabs(span + lastStep - expectedPeriod);
+        openAxis = !(closedError <= 1e-3 * expectedPeriod && closedError <= openError);
+    }
+    if (openAxis) {
+        data.push_back(data[0]);
+        time.push_back(time[time.size() - 1] + (time[time.size() - 1] - time[time.size() - 2]));
+    }
     std::vector<double> compressedData;
     std::vector<double> compressedTime;
     double previousSlope = DBL_MAX;
