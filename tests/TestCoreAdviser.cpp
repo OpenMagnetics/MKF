@@ -550,7 +550,13 @@ TEST_CASE("Test_CoreAdviserAvailableCores_All_Cores_Two_Chosen_Ones", "[adviser]
     // where its loss rises with temperature faster than the core sheds it (0.47 mm: 4.1 W at 110 C,
     // 5.0 W at 121 C, 8.3 W at 152 C, 17 W at 208 C), up to the 220 C Curie temperature with the losses
     // still asking for 225-248 C. No operating temperature exists, so the adviser rejects them.
-    REQUIRE(masMagnetics.size() == 16);
+    // Re-pinned 2026-10-12, 16 -> 14 (ABT #838 / #1802, approved by Alf on 2026-10-12): the 130 C
+    // limit is now also applied to the temperature the loss-temperature solve converges to, not only
+    // to the one-pass estimate from the 25 C losses. That drops four parts whose solved hot spot is
+    // above the limit: ETD 29 - 3C97 - Gapped 0.5 mm (132.49 C), RM 10 - 3C91 - Gapped 0.29 mm and
+    // 0.3 mm (218.36 C each, a fixed point inside 3C91's permeability collapse below Curie) and
+    // RM 10 - 3C97 - Gapped 0.3 mm (135.45 C).
+    REQUIRE(masMagnetics.size() == 14);
     
     // Verify results have valid scores and contain suitable cores
     bool hasToroidal = false;
