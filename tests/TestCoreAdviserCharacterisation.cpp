@@ -327,10 +327,15 @@ const std::vector<TopEntry> kTopStandardPower = {
 // same kind of unarbitrated near-tie as the 2026-08-23 third-place swap: no measurement decides
 // between them, and the pin records the engine, not a new truth. Scores are pool-relative
 // min-max, so they are not comparable across pins in absolute terms.
+// Re-pinned 2026-10-11 (ABT #1467, magnetizing-current inputs commits incl. ee4955b3): same
+// three cores in the same order, scores -0.05 % / -0.10 % / -0.34 %. The magnetizing current is
+// Faraday on the winding voltage with the DC the currents fix: the zero-DC excitation's spurious
+// -0.377 A magnetizing offset is gone (-0.0014 A; peak 48.10 -> 47.73 A), the top core's flux peak
+// 0.2919 -> 0.2897 T and its core loss -3 %.
 const std::vector<TopEntry> kTopAvailableInterference = {
-    {"T 134/77/155 - XFlux 26 - Ungapped",         1.96010195480288},
-    {"T 134/77/78 - XFlux 26 - Ungapped",          1.8544802939152827},
-    {"T 134/77/27 - Edge 26 - Ungapped",           1.5364767289418393},
+    {"T 134/77/155 - XFlux 26 - Ungapped",         1.9591044354114571},
+    {"T 134/77/78 - XFlux 26 - Ungapped",          1.8526669739617065},
+    {"T 134/77/27 - Edge 26 - Ungapped",           1.5312536265407848},
 };
 
 } // namespace
