@@ -2323,3 +2323,38 @@ TEST_CASE("Test_Multiport_Flyback_Without_Voltage_Is_The_Ampere_Turn_Sum", "[phy
     // Dead time: the last 42 of 128 samples carry no current on either winding.
     CHECK(static_cast<double>(zeroSamples) / data.size() >= 40.0 / 128);
 }
+
+TEST_CASE("Test_Forward_Transformer_Load_Current_Is_Not_Core_Bias", "[physical-model][magnetizing-inductance][abt-1467][abt-1814]") {
+    // ABT #1814, fixed by ABT #1467: MAS example 04 (forward transformer, E 32/16 N87, 3 windings).
+    // The primary's load current used to be taken as the core's DC bias: B offset 0.4055 T and an
+    // inductance of 34.304 uH at the operating point, 5 % of the unbiased 673.212 uH. The magnetizing
+    // current is Faraday on the winding voltage, so the load ampere-turns, which the secondary
+    // cancels, do not bias the core: |B offset| is about 3.5 mT and the inductance is the unbiased one.
+    settings.reset();
+    clear_databases();
+    std::ifstream file(std::string(__FILE__).substr(0, std::string(__FILE__).rfind('/'))
+                       + "/../MAS/examples/04_forward_xfmr_e3216_n87.json");
+    REQUIRE(file.is_open());
+    json masJson = json::parse(file);
+    OpenMagnetics::Magnetic magnetic(masJson["magnetic"]);
+    magnetic = magnetic_autocomplete(magnetic);
+    for (auto& operatingPointJson : masJson["inputs"]["operatingPoints"]) {
+        for (auto& excitationJson : operatingPointJson["excitationsPerWinding"]) {
+            excitationJson.erase("magnetizingCurrent");
+        }
+    }
+    OpenMagnetics::Inputs inputs(masJson["inputs"], false);
+    REQUIRE(inputs.get_operating_points().size() >= 1);
+    OperatingPoint operatingPoint = inputs.get_operating_points()[0];
+    REQUIRE(operatingPoint.get_excitations_per_winding().size() == 3);
+
+    MagnetizingInductance model;
+    double unbiasedInductance = resolve_dimensional_values(
+        model.calculate_inductance_from_number_turns_and_gapping(magnetic.get_core(), magnetic.get_coil()).get_magnetizing_inductance());
+    auto [output, magneticFluxDensity] = model.calculate_inductance_and_magnetic_flux_density(magnetic.get_core(), magnetic.get_coil(), &operatingPoint);
+    double inductanceAtOperatingPoint = resolve_dimensional_values(output.get_magnetizing_inductance());
+
+    CHECK_THAT(unbiasedInductance, Catch::Matchers::WithinRel(673.212e-6, 0.01));
+    CHECK_THAT(inductanceAtOperatingPoint, Catch::Matchers::WithinRel(unbiasedInductance, 0.01));
+    CHECK(std::abs(magneticFluxDensity.get_processed()->get_offset()) < 0.01);
+}
