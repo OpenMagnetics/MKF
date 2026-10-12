@@ -19,7 +19,7 @@ TIMEOUT = 1200
 
 refs = {"_meta": {
     "generator": "gen_omfem_refs.py (ABT #461 / #454)",
-    "source": "omfem_mas: 2D mesh -> FEM losses -> solve_thermal_fem (h=12 W/m2K, eps=0.9, radiating)",
+    "source": "omfem_mas: 2D mesh -> FEM losses -> solve_thermal_fem (h from MKF natural-convection law per boundary, out-of-plane face sink, open toroid bore with view factor, k_core from MKF resolve_core_material_heat_conductivity, eps=0.9, radiating; ABT #1751)",
     "losses": "OMFEM's own FEM losses, stored here and fed IDENTICALLY to both models by the test",
     "date": time.strftime("%Y-%m-%d"),
 }, "examples": {}}
@@ -62,7 +62,7 @@ for path in EXAMPLES:
         else:
             entry.update({
                 "status": "ok",
-                "ambient": payload.get("ambient_temperature", 25.0),
+                "ambient": payload["ambient_temperature"],
                 "p_core": payload.get("P_core_iGSE", 0.0) + payload.get("P_core_eddy", 0.0),
                 "p_cu": payload.get("P_cu", 0.0),
                 "omfem_t_core": payload.get("temperature_core"),
