@@ -4144,6 +4144,9 @@ TEST_CASE("Test_Winding_Losses_Martinez_E42_Foil_Stack_Screens_The_Gap_Field", "
 
 // ABT #1314: the 1 turn x 16 parallel planar fixtures prepared at `frequency` exactly as the scorecard driver and
 // runJsonBasedWindingLossesTest prepare them (ZHANG magnetizing inductance, 22 C, mirroring 1, fringing on).
+// The inductance is the unbiased one (no operating point): 500 A on one turn of an ungapped ferrite saturates the core,
+// the biased inductance of a saturated core is refused (ABT #1740), and the winding losses of these current-driven
+// fixtures do not depend on the core state (Alf's decision for main's planar helper, ABT #1790 item B).
 static std::pair<OpenMagnetics::Magnetic, OperatingPoint> sixteen_parallel_planar_fixture(const std::string& fileName, double frequency) {
     auto path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), fileName);
     auto mas = OpenMagneticsTesting::mas_loader(path);
@@ -4153,7 +4156,7 @@ static std::pair<OpenMagnetics::Magnetic, OperatingPoint> sixteen_parallel_plana
     OpenMagnetics::Inputs::scale_time_to_frequency(operatingPoint, frequency, true);
     MagnetizingInductance magnetizingInductanceModel("ZHANG");
     double magnetizingInductance = OpenMagnetics::resolve_dimensional_values(
-        magnetizingInductanceModel.calculate_inductance_from_number_turns_and_gapping(magnetic.get_core(), magnetic.get_coil(), &operatingPoint)
+        magnetizingInductanceModel.calculate_inductance_from_number_turns_and_gapping(magnetic.get_core(), magnetic.get_coil())
             .get_magnetizing_inductance());
     operatingPoint = OpenMagnetics::Inputs::process_operating_point(operatingPoint, magnetizingInductance);
     auto& settings = Settings::GetInstance();
@@ -4544,9 +4547,16 @@ TEST_CASE("Debug_Martinez_Flat_Scorecard", "[debug][martinez-flat-scorecard][.]"
             p.operatingPoint = p.inputs.get_operating_point(0);
             OpenMagnetics::Inputs::scale_time_to_frequency(p.operatingPoint, frequency, true);
             MagnetizingInductance magnetizingInductanceModel("ZHANG");
-            double magnetizingInductance = OpenMagnetics::resolve_dimensional_values(
-                magnetizingInductanceModel.calculate_inductance_from_number_turns_and_gapping(
-                    p.magnetic.get_core(), p.magnetic.get_coil(), &p.operatingPoint).get_magnetizing_inductance());
+            // One winding: the unbiased inductance. These are current-driven winding-loss fixtures, some of which
+            // (500 A on one turn of an ungapped ferrite) saturate the core; the biased inductance of a saturated core is
+            // refused (ABT #1740) and their winding losses do not depend on the core state (ABT #1790 item B).
+            // Several windings: the gap field takes the magnetizing flux from winding 0's voltage (Faraday), which the
+            // inductance call derives from the operating point, so that call keeps it.
+            const bool severalWindings = p.magnetic.get_coil().get_functional_description().size() > 1;
+            auto inductanceOutput = severalWindings
+                ? magnetizingInductanceModel.calculate_inductance_from_number_turns_and_gapping(p.magnetic.get_core(), p.magnetic.get_coil(), &p.operatingPoint)
+                : magnetizingInductanceModel.calculate_inductance_from_number_turns_and_gapping(p.magnetic.get_core(), p.magnetic.get_coil());
+            double magnetizingInductance = OpenMagnetics::resolve_dimensional_values(inductanceOutput.get_magnetizing_inductance());
             p.operatingPoint = OpenMagnetics::Inputs::process_operating_point(p.operatingPoint, magnetizingInductance);
             // The MAS's own ambient temperature: OMFEM solves at it (copper sigma), so MKF must too.
             p.temperature = p.operatingPoint.get_conditions().get_ambient_temperature();
