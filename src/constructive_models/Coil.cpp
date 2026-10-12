@@ -13945,7 +13945,7 @@ std::vector<double> Coil::get_contiguous_toroid_proportion_per_winding_by_needed
         if (numberSectionsPerWinding[windingIndex] == 0) {
             continue;
         }
-        const auto& wire = wires[windingIndex];
+        auto& wire = wires[windingIndex];
         if (wire.get_type() == WireType::FOIL) {
             throw NotImplementedException("Foil is not supported in toroids");
         }

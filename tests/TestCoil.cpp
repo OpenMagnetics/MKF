@@ -14716,7 +14716,10 @@ TEST_CASE("Test_Toroidal_Real_Winding_Sector_Territories_Are_The_Allocated_Secto
     // spilled to deeper rings occupies a narrower arc, was handed less territory, reported more
     // deficit and spilled again, until the wind no longer fit (T 25/15/10, 15 x 3 x 2 Round 21.0:
     // the middle winding's territory fell 110 -> 77 -> 71 deg against its 120 deg sector). None of
-    // these eight contiguous fixtures wound with the measured partition.
+    // these eight contiguous fixtures wound with the measured partition. The sectors are allocated
+    // in proportion to the angle each winding needs (Alf 2026-10-12): with an equal split the last
+    // two fixtures (45 + 25 turns) did not wind, the Primary's turns not fitting their half while
+    // the Secondary left part of its own empty.
     struct Fixture {
         std::string core;
         std::vector<int64_t> turns;
@@ -14732,6 +14735,8 @@ TEST_CASE("Test_Toroidal_Real_Winding_Sector_Territories_Are_The_Allocated_Secto
         {"T 12.7/7.9/12.7", {15, 15, 15}, 2, {"Round 29.0 - Single Build", "Round 27.5 - Single Build"}},
         {"T 10/6/4", {30, 30, 30}, 1, {"Round 29.0 - Single Build", "Round 27.5 - Single Build"}},
         {"T 10/6/4", {15, 15, 15}, 2, {"Round 29.0 - Single Build", "Round 27.5 - Single Build"}},
+        {"T 17.3/9.7/12.7", {45, 25}, 1, {"Round 21.0 - Single Build"}},
+        {"T 10/6/4", {45, 25}, 2, {"Round 29.0 - Single Build"}},
     };
     for (const auto& fixture : fixtures) {
         std::string description = fixture.core + " turns";
