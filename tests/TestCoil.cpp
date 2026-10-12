@@ -14842,6 +14842,39 @@ TEST_CASE("Test_Toroidal_Real_Winding_Single_Ring_Section_Closing_Crossing_Clear
     settings.reset();
 }
 
+TEST_CASE("Test_Toroidal_Real_Winding_Outer_Crossings_Of_Neighbouring_Sections_Clear_Each_Other", "[coil][toroidal][real-geometry]") {
+    // ABT #1803: the outer-crossing rest/collision sweep kept its placed crossings per section, so
+    // the crossings of neighbouring sectors -- which share the one outer ring -- were never checked
+    // against each other. Here 'winding 0 parallel 0 turn 7_ending' (crossing at r = 8.9055 mm,
+    // 89.57 deg) and 'winding 1 parallel 0 turn 12_ending' (same radius, 92.65 deg) sat 0.478 mm
+    // centre to centre for a 0.541 mm wire, each inside its own sector. A section's sweep now also
+    // sees the crossings placed by the sections before it, at the touch distance of each pair.
+    settings.reset();
+    settings.set_coil_use_real_winding_geometry(true);
+    auto wire = OpenMagnetics::find_wire_by_name("Round 24.0 - Single Build");
+    OpenMagnetics::Coil coil;
+    REQUIRE_NOTHROW(coil = OpenMagneticsTesting::get_quick_coil({20, 20}, {2, 2}, "T 17.3/9.7/12.7", 2,
+                                                                MAS::WindingOrientation::CONTIGUOUS,
+                                                                MAS::WindingOrientation::OVERLAPPING,
+                                                                MAS::CoilAlignment::CENTERED,
+                                                                MAS::CoilAlignment::CENTERED,
+                                                                {wire, wire}));
+    INFO(coil.get_last_fit_failure());
+    REQUIRE(coil.get_turns_description());
+    REQUIRE(coil.get_sections_description());
+    size_t conductionSections = 0;
+    const auto sections = coil.get_sections_description().value();
+    for (const auto& section : sections) {
+        if (section.get_type() == MAS::ElectricalType::CONDUCTION) {
+            ++conductionSections;
+        }
+    }
+    REQUIRE(conductionSections == 4);   // P S P S: the defect is between neighbouring sectors
+    CHECK(OpenMagneticsTesting::check_turns_description(coil));
+    CHECK(OpenMagneticsTesting::check_toroidal_sections_keep_their_sectors(coil));
+    settings.reset();
+}
+
 // ABT #374: a bore-capacity claim of the form (N_turns + N_leads) * wireOD <= pi * ID says these
 // toroidal fixtures cannot hold their own leads. That inequality is the capacity of a SINGLE ring
 // at the inner surface, and it is not what MKF winds: the toroidal winder fills concentric rings

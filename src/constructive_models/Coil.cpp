@@ -17385,9 +17385,31 @@ bool Coil::wind_toroidal_additional_turns() {
         return it->second;
     };
 
+    // ABT #1803: THE SECTIONS OF A CONTIGUOUS TOROID SHARE ONE OUTER RING. placedTurnsCoordinates is
+    // per section, so a section's rest/collision sweep never saw the outer crossings of its
+    // neighbours: at a sector boundary the ring-closing crossing of one section (which keeps its own
+    // station azimuth, ABT #865) and the one of the next section -- different bore rings, so their
+    // inner stations clear radially -- landed on the same outer radius a few degrees apart
+    // (T 17.3/9.7/12.7, 20 + 20 turns x 2 of 0.541 mm, interleaved: 0.478 mm centre to centre).
+    // Under real winding, with sectors side by side, a section's sweep therefore also rests against
+    // and is checked against the crossings the sections before it placed. The touch distance is
+    // PER PAIR: neighbouring sections can carry different wires, so two crossings touch at half the
+    // sum of their two wire heights. Overlapping sections stack radially, each on its own base
+    // radius, and the classic wind keeps its placement: both are left as they were.
+    struct OtherSectionCrossing {
+        std::vector<double> coordinates;
+        double wireHeight;
+    };
+    std::vector<OtherSectionCrossing> otherSectionsCrossings;
+    std::vector<OtherSectionCrossing> currentSectionCrossings;
+    const bool sectionsShareTheOuterRing = settings.get_coil_use_real_winding_geometry() &&
+                                           windingOrientation != WindingOrientation::OVERLAPPING;
+
     for (auto section : sections) { 
         if (section.get_type() == ElectricalType::CONDUCTION) {
             std::vector<std::vector<double>> placedTurnsCoordinates;
+            otherSectionsCrossings.insert(otherSectionsCrossings.end(), currentSectionCrossings.begin(), currentSectionCrossings.end());
+            currentSectionCrossings.clear();
             if (!turnsBySection) {
                 turnsBySection = group_turns_by_section(*this);
             }
@@ -17755,18 +17777,31 @@ bool Coil::wind_toroidal_additional_turns() {
                             // worst observed derivation error. A construction bias, like the
                             // bend factor — the gates still measure exactly.
                             const double wireHeightClear = wireHeight + 5e-9;
+                            // ABT #1803: centre distance at which this section's wire touches a
+                            // crossing of another section's wire (same 5 nm bias as wireHeightClear).
+                            auto clearToOtherSection = [&](const OtherSectionCrossing& other) {
+                                return (wireHeight + other.wireHeight) / 2 + 5e-9;
+                            };
                             auto restAt = [&](double az) {
                                 double restRadius = baseRadius;
-                                for (auto& placedCoordinates : placedTurnsCoordinates) {
+                                auto restAgainst = [&](const std::vector<double>& placedCoordinates, double clearDistance) {
                                     double placedRadius = windowRadialHeight - placedCoordinates[0];
                                     double dAng = std::remainder(placedCoordinates[1] - az, 360.0) / 180 * std::numbers::pi;
                                     double chord = placedRadius * sin(dAng);
-                                    double discriminant = wireHeightClear * wireHeightClear - chord * chord;
+                                    double discriminant = clearDistance * clearDistance - chord * chord;
                                     if (discriminant <= 0) {
-                                        continue;   // cannot bind at this azimuth
+                                        return;   // cannot bind at this azimuth
                                     }
                                     double tangentRadius = placedRadius * cos(dAng) + sqrt(discriminant);
                                     restRadius = std::max(restRadius, tangentRadius);
+                                };
+                                for (auto& placedCoordinates : placedTurnsCoordinates) {
+                                    restAgainst(placedCoordinates, wireHeightClear);
+                                }
+                                if (sectionsShareTheOuterRing) {
+                                    for (const auto& other : otherSectionsCrossings) {
+                                        restAgainst(other.coordinates, clearToOtherSection(other));
+                                    }
                                 }
                                 return restRadius;
                             };
@@ -18015,6 +18050,15 @@ bool Coil::wind_toroidal_additional_turns() {
                                 throw CalculationException(ErrorCode::CALCULATION_INVALID_RESULT,
                                     "wind_toroidal_additional_turns: rested outer crossing still collides for turn " + turn.get_name());
                             }
+                            if (sectionsShareTheOuterRing) {
+                                for (const auto& other : otherSectionsCrossings) {
+                                    if (!get_collision_distances(additionalCoordinates, {other.coordinates}, clearToOtherSection(other)).empty()) {
+                                        throw CalculationException(ErrorCode::CALCULATION_INVALID_RESULT,
+                                            "wind_toroidal_additional_turns: rested outer crossing of turn " + turn.get_name() +
+                                            " in section '" + section.get_name() + "' still collides with a crossing of another section");
+                                    }
+                                }
+                            }
                             }
                         }
                         currentSectionMaximumAdditionalRadialHeight = std::min(currentSectionMaximumAdditionalRadialHeight, additionalCoordinates[0]);
@@ -18058,6 +18102,7 @@ bool Coil::wind_toroidal_additional_turns() {
 
                         turns[turnIndex] = turn;
                         placedTurnsCoordinates.push_back(additionalCoordinates);
+                        currentSectionCrossings.push_back({additionalCoordinates, wireHeight});
                     }
                     currentBaseRadialHeightForLayers -= turnsInSection[0].get_dimensions().value()[0];
                 }
