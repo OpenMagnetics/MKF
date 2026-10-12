@@ -4494,7 +4494,8 @@ TEST_CASE("Test_Winding_Losses_Parallel_Stack_Excludes_Perpendicular_Field_Colle
 // WindingLossesTestData config name, a testData JSON ("json:<file>", prepared like runJsonBasedWindingLossesTest), or
 // a built E 42 fixture ("E42_RECT_UNGAPPED", "E42_RECT_GAP1MM", "E42_FOIL_UNGAPPED", "E42_FOIL_GAP1MM"). Env
 // MF_EXPORT_DIR writes the processed MAS per frequency for OMFEM (foil exported as RECTANGULAR, which OMFEM sweeps;
-// geometry identical). Env MF_DROP_RESIDUAL removes residual gaps from the core. Output: one "MF" JSON line per row.
+// geometry identical). Env MF_DROP_RESIDUAL removes residual gaps from the core; env MF_AUTOCOMPLETE runs mas_autocomplete
+// on a json fixture first. Output: one "MF" JSON line per row.
 TEST_CASE("Debug_Martinez_Flat_Scorecard", "[debug][martinez-flat-scorecard][.]") {
     const char* fixtureName = std::getenv("MF_FIXTURE");
     const char* frequenciesText = std::getenv("MF_FREQS");
@@ -4528,7 +4529,16 @@ TEST_CASE("Debug_Martinez_Flat_Scorecard", "[debug][martinez-flat-scorecard][.]"
         Prepared p;
         if (fixture.rfind("json:", 0) == 0) {
             auto path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), fixture.substr(5));
-            auto mas = OpenMagneticsTesting::mas_loader(path);
+            OpenMagnetics::Mas mas;
+            if (std::getenv("MF_AUTOCOMPLETE")) {
+                // A raw MAS (wires by partial data, no processed descriptions), e.g. test_mas_autocomplete_json_2_548.json:
+                // loaded and completed as Test_Mas_Autocomplete_Json_2 does.
+                std::ifstream rawFile(path);
+                mas = mas_autocomplete(OpenMagnetics::Mas(json::parse(rawFile)));
+            }
+            else {
+                mas = OpenMagneticsTesting::mas_loader(path);
+            }
             p.magnetic = mas.get_magnetic();
             p.inputs = mas.get_inputs();
             p.operatingPoint = p.inputs.get_operating_point(0);
