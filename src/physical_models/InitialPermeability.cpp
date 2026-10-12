@@ -294,7 +294,18 @@ std::pair<double, double> InitialPermeability::get_dc_operating_point_for_magnet
     // magnetisation curve. The right side grows strictly with H, so the crossing on the tabulated curve is found by
     // bisection; past the table's end (1000 Hsat) B rises on the vacuum slope and the crossing is linear. Without a
     // gap this is H = N*I/l_e, the vendors' own rule for powder cores.
-    const auto& curve = get_magnetisation_curve(coreMaterial, temperature, frequency);
+    return get_dc_operating_point_for_magnetomotive_force(get_magnetisation_curve(coreMaterial, temperature, frequency), magnetomotiveForce, effectiveLength, effectiveArea, gapReluctance);
+}
+
+std::pair<double, double> InitialPermeability::get_dc_operating_point_for_magnetomotive_force(const MagnetisationCurve& curve, double magnetomotiveForce, double effectiveLength, double effectiveArea, double gapReluctance) {
+    if (magnetomotiveForce < 0 || effectiveLength <= 0 || effectiveArea <= 0 || gapReluctance < 0) {
+        throw InvalidInputException(ErrorCode::INVALID_INPUT,
+            "DC-bias load line needs a non-negative MMF and gap reluctance and positive core dimensions: MMF " + std::to_string(magnetomotiveForce) +
+            " A, l_e " + std::to_string(effectiveLength) + " m, A_e " + std::to_string(effectiveArea) + " m2, R_gap " + std::to_string(gapReluctance) + " 1/H");
+    }
+    if (magnetomotiveForce == 0) {
+        return {0, 0};
+    }
     const auto& fieldStrengths = curve.fieldStrength;
     const auto& fluxDensities = curve.fluxDensity;
     auto loadLine = [&](size_t index) {

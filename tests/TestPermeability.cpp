@@ -896,4 +896,33 @@ namespace {
                         OpenMagnetics::SaturationException);
     }
 
+    TEST_CASE("Test_DC_Operating_Point_On_A_Held_Magnetisation_Curve_Is_The_Material_One", "[physical-model][initial-permeability][abt-1764]") {
+        // The per-cycle line bias of a line-cycle record (ABT #1764) solves one load line per switching cycle,
+        // ~2000 per record. Looking the material's curve up for each of them (a cache key built from the
+        // material's JSON on every call) cost 14 us a cycle, 1.0 s of an 8.5 s DMC CoreAdviser run; the record
+        // now fetches the curve once and solves on it. Both entries must give the same operating point, to the
+        // bit, and that point must sit on the load line N*I = H*l_e + B*A_e*R_gap.
+        auto material = OpenMagnetics::Core::resolve_material("Kool Mµ 60");
+        double temperature = 25.0;
+        double frequency = 50.0;
+        double effectiveLength = 0.1;
+        double effectiveArea = 1e-4;
+        const auto& curve = OpenMagnetics::InitialPermeability::get_magnetisation_curve(material, temperature, frequency);
+        for (double gapReluctance : {0.0, 2e6}) {
+            for (double magnetomotiveForce : {0.0, 1e-3, 0.5, 7.3, 144.0, 238.1, 1500.0, 4e4, 1e9}) {
+                auto fromMaterial = OpenMagnetics::InitialPermeability::get_dc_operating_point_for_magnetomotive_force(
+                    material, magnetomotiveForce, effectiveLength, effectiveArea, gapReluctance, temperature, frequency);
+                auto fromCurve = OpenMagnetics::InitialPermeability::get_dc_operating_point_for_magnetomotive_force(
+                    curve, magnetomotiveForce, effectiveLength, effectiveArea, gapReluctance);
+                INFO("MMF " << magnetomotiveForce << " A, R_gap " << gapReluctance << " 1/H: H " << fromCurve.first << " A/m, B " << fromCurve.second << " T");
+                CHECK(fromCurve.first == fromMaterial.first);
+                CHECK(fromCurve.second == fromMaterial.second);
+                double loadLine = fromCurve.first * effectiveLength + fromCurve.second * effectiveArea * gapReluctance;
+                CHECK_THAT(loadLine, Catch::Matchers::WithinRel(magnetomotiveForce, 1e-9));
+            }
+        }
+        CHECK_THROWS_AS(OpenMagnetics::InitialPermeability::get_dc_operating_point_for_magnetomotive_force(curve, -1.0, effectiveLength, effectiveArea, 0.0),
+                        OpenMagnetics::InvalidInputException);
+    }
+
 }  // namespace

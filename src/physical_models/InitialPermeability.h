@@ -102,6 +102,14 @@ class InitialPermeability {
                                         double gapReluctance,
                                         double temperature,
                                         std::optional<double> frequency = std::nullopt);
+        // The same crossing on a curve the caller already holds: get_magnetisation_curve builds its cache key
+        // from the material's data on every call, which a caller solving many MMFs on one material (one per
+        // switching cycle of a line-cycle record, ABT #1764) pays once by fetching the curve itself.
+        static std::pair<double, double> get_dc_operating_point_for_magnetomotive_force(const MagnetisationCurve& curve,
+                                        double magnetomotiveForce,
+                                        double effectiveLength,
+                                        double effectiveArea,
+                                        double gapReluctance);
         static std::vector<PermeabilityPoint> sample_initial_permeability_by_frequency_modifier(PermeabilityPoint permeabilityPoint);
         static double calculate_frequency_for_initial_permeability_drop(CoreMaterial coreMaterial, double percentageDrop, double maximumError = 0.01);
         static std::vector<size_t> get_only_temperature_dependent_indexes(CoreMaterial coreMaterial);
