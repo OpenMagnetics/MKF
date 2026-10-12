@@ -2,6 +2,8 @@
 #include <MAS.hpp>
 #include "json.hpp"
 #include "Models.h"
+#include <limits>
+#include <optional>
 
 using json = nlohmann::json;
 
@@ -468,6 +470,13 @@ class Curve2D {
     std::vector<double> xPoints;
     std::vector<double> yPoints;
     std::string title;
+    // One flag per point, set only by the sweeps that have a saturated-state model (Sweeper's DC-bias
+    // inductance and core-loss sweeps, ABT #1790): true where the core saturates at that point. What
+    // the y value of such a point is depends on the sweep and is stated in its title: the inductance
+    // sweep carries the air-core inductance (mu_r = 1) there, and the core-loss sweep carries no value
+    // (NaN, a JSON null), since no core loss is computed for a saturated core. Unset for every curve
+    // without that model, where a saturating point still throws.
+    std::optional<std::vector<bool>> saturatedPoints;
 
     public: 
         Curve2D() = default;
@@ -485,6 +494,9 @@ class Curve2D {
         const std::string & get_title() const { return title; }
         std::string & get_mutable_title() { return title; }
         void set_title(const std::string & value) { this->title = value; }
+
+        const std::optional<std::vector<bool>> & get_saturated_points() const { return saturatedPoints; }
+        void set_saturated_points(const std::optional<std::vector<bool>> & value) { this->saturatedPoints = value; }
 };
                 
 void from_json(const json & j, Curve2D & x);
@@ -492,8 +504,16 @@ void to_json(json & j, const Curve2D & x);
 
 inline void from_json(const json & j, Curve2D& x) {
     x.set_x_points(j.at("xPoints").get<std::vector<double>>());
-    x.set_y_points(j.at("yPoints").get<std::vector<double>>());
+    // A point without a value (NaN) is written by to_json as a JSON null; read it back as NaN.
+    std::vector<double> yPoints;
+    for (const auto& yPoint : j.at("yPoints")) {
+        yPoints.push_back(yPoint.is_null() ? std::numeric_limits<double>::quiet_NaN() : yPoint.get<double>());
+    }
+    x.set_y_points(yPoints);
     x.set_title(j.at("title").get<std::string>());
+    if (j.contains("saturatedPoints")) {
+        x.set_saturated_points(j.at("saturatedPoints").get<std::vector<bool>>());
+    }
 }
 
 inline void to_json(json & j, const Curve2D & x) {
@@ -501,6 +521,9 @@ inline void to_json(json & j, const Curve2D & x) {
     j["xPoints"] = x.get_x_points();
     j["yPoints"] = x.get_y_points();
     j["title"] = x.get_title();
+    if (x.get_saturated_points()) {
+        j["saturatedPoints"] = x.get_saturated_points().value();
+    }
 }
 
 enum class MagneticFilters : int {

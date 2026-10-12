@@ -4630,8 +4630,18 @@ void Painter::paint_waveform(std::vector<double> data, std::optional<std::vector
 }
 
 void Painter::paint_curve(Curve2D curve2D, bool logScale) {
-    // For basic painter, ignore logScale and just plot
-    paint_waveform(curve2D.get_y_points(), std::make_optional(curve2D.get_x_points()));
+    // For basic painter, ignore logScale and just plot.
+    // A point without a value (NaN: e.g. the core loss of a point where the core saturates, which
+    // Sweeper flags and does not compute, ABT #1790) has nothing to draw; the line joins the others.
+    std::vector<double> xPoints;
+    std::vector<double> yPoints;
+    for (size_t index = 0; index < curve2D.get_y_points().size(); ++index) {
+        if (std::isfinite(curve2D.get_y_points()[index])) {
+            xPoints.push_back(curve2D.get_x_points().at(index));
+            yPoints.push_back(curve2D.get_y_points()[index]);
+        }
+    }
+    paint_waveform(yPoints, std::make_optional(xPoints));
 }
 
 

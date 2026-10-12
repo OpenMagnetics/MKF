@@ -7,6 +7,11 @@
 #include "physical_models/ComplexPermeability.h"
 #include "support/Painter.h"
 #include "support/Settings.h"
+#include "support/Exceptions.h"
+#include "physical_models/Reluctance.h"
+#include "physical_models/MagnetizingInductance.h"
+#include "processors/Inputs.h"
+#include <cmath>
 #include "TestingUtils.h"
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
@@ -580,6 +585,72 @@ namespace {
 
         auto impedanceSweep = Sweeper().sweep_magnetizing_inductance_over_dc_bias(magnetic, 0, 260, 100);
 
+        // ABT #1790: 12 turns on a 1 mm gap swept to 260 A (3120 A-turn) runs far past the saturation of
+        // 3C95, where MagnetizingInductance refuses the bias (ABT #1740). The sweep continues there with
+        // the core as air (mu_r = 1 in the reluctance model), flags those points and names them in the
+        // title; the unsaturated part is the model's own value at each bias, untouched.
+        {
+            const auto& currents = impedanceSweep.get_x_points();
+            const auto& inductances = impedanceSweep.get_y_points();
+            REQUIRE(impedanceSweep.get_saturated_points());
+            auto saturatedPoints = impedanceSweep.get_saturated_points().value();
+            REQUIRE(currents.size() == 100);
+            REQUIRE(inductances.size() == 100);
+            REQUIRE(saturatedPoints.size() == 100);
+
+            double numberTurnsPrimary = 12;
+            double airCoreInductance = numberTurnsPrimary * numberTurnsPrimary / ReluctanceModel::factory()->get_core_reluctance(core, 1.0).get_core_reluctance();
+            INFO("air-core inductance " << airCoreInductance << " H");
+
+            OpenMagnetics::Coil inductorCoil;
+            inductorCoil.set_functional_description({coil.get_functional_description()[0]});
+            MagnetizingInductance magnetizingInductanceModel;
+            double staticMagnetizingInductance = resolve_dimensional_values(magnetizingInductanceModel.calculate_inductance_from_number_turns_and_gapping(core, inductorCoil).get_magnetizing_inductance());
+
+            CHECK_FALSE(saturatedPoints.front());
+            CHECK(saturatedPoints.back());
+            size_t firstSaturatedIndex = saturatedPoints.size();
+            for (size_t index = 0; index < saturatedPoints.size(); ++index) {
+                INFO("point " << index << ", " << currents[index] << " A, L = " << inductances[index] << " H");
+                if (saturatedPoints[index]) {
+                    firstSaturatedIndex = std::min(firstSaturatedIndex, index);
+                    // The saturated region: exactly the air-core value, flat.
+                    CHECK_THAT(inductances[index], Catch::Matchers::WithinRel(airCoreInductance, 1e-12));
+                }
+                else {
+                    // Once saturated, a larger bias is saturated too.
+                    CHECK(index < firstSaturatedIndex);
+                    // The unsaturated region is the model's value at that bias, as before the
+                    // saturated-state model existed: the sweep did not change it.
+                    auto operatingPoint = OpenMagnetics::Inputs::create_operating_point_with_sinusoidal_current_mask(defaults.measurementFrequency, staticMagnetizingInductance, defaults.ambientTemperature, {}, {sqrt(2)}, currents[index]);
+                    double modelInductance = resolve_dimensional_values(magnetizingInductanceModel.calculate_inductance_from_number_turns_and_gapping(core, inductorCoil, &operatingPoint).get_magnetizing_inductance());
+                    CHECK_THAT(inductances[index], Catch::Matchers::WithinRel(modelInductance, 1e-12));
+                    // A core, however biased, carries more flux than air.
+                    CHECK(inductances[index] > airCoreInductance);
+                    if (index > 0) {
+                        CHECK(inductances[index] <= inductances[index - 1] * (1 + 1e-9));
+                    }
+                }
+            }
+            REQUIRE(firstSaturatedIndex < saturatedPoints.size());
+            REQUIRE(firstSaturatedIndex > 0);
+            // The model itself refuses the first saturated bias: outside Sweeper the refusal stands.
+            {
+                auto operatingPoint = OpenMagnetics::Inputs::create_operating_point_with_sinusoidal_current_mask(defaults.measurementFrequency, staticMagnetizingInductance, defaults.ambientTemperature, {}, {sqrt(2)}, currents[firstSaturatedIndex]);
+                CHECK_THROWS_AS(magnetizingInductanceModel.calculate_inductance_from_number_turns_and_gapping(core, inductorCoil, &operatingPoint), SaturationException);
+            }
+            CHECK(impedanceSweep.get_title().find("core saturated from") != std::string::npos);
+            CHECK(impedanceSweep.get_title().find("air-core inductance, mu_r = 1") != std::string::npos);
+            WARN("ABT #1790 DC-bias sweep: L(0 A) = " << inductances[0] << " H; last unsaturated point " << currents[firstSaturatedIndex - 1] << " A, L = " << inductances[firstSaturatedIndex - 1]
+                 << " H; first saturated point " << currents[firstSaturatedIndex] << " A; air-core L = " << airCoreInductance << " H; title: " << impedanceSweep.get_title());
+
+            // The flags survive the curve's JSON form.
+            json curveJson;
+            to_json(curveJson, impedanceSweep);
+            REQUIRE(curveJson.contains("saturatedPoints"));
+            CHECK(curveJson["saturatedPoints"].get<std::vector<bool>>() == saturatedPoints);
+        }
+
         auto outFile = outputFilePath;
 
         outFile.append("Test_Sweeper_Magnetizing_Inductance_Over_DC_Bias_Ferrite.svg");
@@ -865,6 +936,43 @@ namespace {
                                                                                               turnsRatios);
 
         auto coreSweep = Sweeper().sweep_core_losses_over_frequency(magnetic, inputs.get_operating_points()[0], inputs.get_design_requirements().get_topology(), 10000, 1200000, 20);
+
+        // ABT #1790: the sweep holds the applied voltage, so the flux swing grows as the frequency
+        // falls. At the 10 kHz start it is 0.817 T peak to peak (0.408 T peak) on A121, whose B_sat is
+        // 0.38 T at 100 C: that point saturates and MagnetizingInductance refuses it (ABT #1740); the
+        // next one (12.9 kHz, 0.317 T peak) does not. The saturated point stays in the curve, flagged
+        // and without a value (no core loss is computed for a saturated core); the others are computed.
+        {
+            const auto& frequencies = coreSweep.get_x_points();
+            const auto& coreLosses = coreSweep.get_y_points();
+            REQUIRE(coreSweep.get_saturated_points());
+            auto saturatedPoints = coreSweep.get_saturated_points().value();
+            REQUIRE(frequencies.size() == 20);
+            REQUIRE(coreLosses.size() == 20);
+            REQUIRE(saturatedPoints.size() == 20);
+            CHECK(frequencies.front() == 10000);
+            CHECK(saturatedPoints[0]);
+            CHECK(std::isnan(coreLosses[0]));
+            for (size_t index = 1; index < saturatedPoints.size(); ++index) {
+                INFO("point " << index << ", " << frequencies[index] << " Hz, core losses " << coreLosses[index] << " W");
+                CHECK_FALSE(saturatedPoints[index]);
+                CHECK(std::isfinite(coreLosses[index]));
+                CHECK(coreLosses[index] > 0);
+            }
+            CHECK(coreSweep.get_title().find("core saturated at 1 of 20 points") != std::string::npos);
+            CHECK(coreSweep.get_title().find("no core loss is computed") != std::string::npos);
+            WARN("ABT #1790 core-loss sweep: P(" << frequencies[1] << " Hz) = " << coreLosses[1] << " W, P(" << frequencies[10] << " Hz) = " << coreLosses[10]
+                 << " W, P(" << frequencies[19] << " Hz) = " << coreLosses[19] << " W; title: " << coreSweep.get_title());
+
+            // The flag and the missing value survive the curve's JSON form (NaN is a JSON null).
+            json curveJson = json::parse([&]() { json j; to_json(j, coreSweep); return j.dump(); }());
+            CHECK(curveJson["yPoints"][0].is_null());
+            CHECK(curveJson["saturatedPoints"].get<std::vector<bool>>() == saturatedPoints);
+            Curve2D readBack;
+            from_json(curveJson, readBack);
+            CHECK(std::isnan(readBack.get_y_points()[0]));
+            CHECK(readBack.get_y_points()[1] == coreLosses[1]);
+        }
 
         auto outFile = outputFilePath;
 
