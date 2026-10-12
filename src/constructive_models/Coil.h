@@ -524,6 +524,10 @@ class Coil : public MAS::Coil {
         std::map<std::string, WindingOrder> _statedSectionWindingOrders;
         void capture_stated_section_winding_orders();
         void record_allocated_section_territories();
+        std::vector<double> get_contiguous_toroid_proportion_per_winding_by_needed_angle(const Group& group,
+                                                                                          const std::vector<double>& proportionPerWinding,
+                                                                                          const std::vector<size_t>& pattern,
+                                                                                          size_t repetitions, bool multiGroup);
         void restore_stated_section_winding_orders();
         // ABT #724: reset_margins_per_section() means "the next wind is margin-free"; the
         // empty vector alone cannot express that, because wind()'s ABT #676 recovery treats

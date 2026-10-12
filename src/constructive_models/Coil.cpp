@@ -13855,6 +13855,198 @@ void Coil::remove_insulation_if_margin_is_enough(const std::vector<std::pair<siz
     }
 }
 
+std::vector<double> Coil::get_contiguous_toroid_proportion_per_winding_by_needed_angle(const Group& group,
+                                                                                       const std::vector<double>& proportionPerWinding,
+                                                                                       const std::vector<size_t>& pattern,
+                                                                                       size_t repetitions, bool multiGroup) {
+    // ABT #1734 (Alf 2026-10-12): each winding's share of a contiguous toroid is the angle it
+    // NEEDS. A section of N physical turns laid in K rings needs the smallest angle a whose rings
+    // hold them: sum_k (floor(a / theta_k) - blocked_k) >= N, theta_k the turn angle at ring k's
+    // radius and blocked_k the input-connection corridor the real winder keeps free on every ring
+    // after the first (parallels + 1 slots), counted exactly as wind_by_round_sections sizes the
+    // section. All windings are measured at one common depth, the shallowest at which their
+    // needs (plus the insulation the sections lose) fit the group's angle; when none does, at the
+    // deepest the window allows. The window is then split in proportion to those needs. An equal
+    // split handed T 20/10/7, 45 + 25 turns x 2 of Round 24.0 two 180 deg sectors: the Primary's
+    // 90 turns did not fit in its half while the Secondary's 50 left a third of the other empty.
+    // The corridors the blocking re-winds discover are deliberately left out: the allocation must
+    // not move between those re-winds, or the territories chase the turns again.
+    const size_t numberWindings = get_functional_description().size();
+    std::set<size_t> groupWindingIndexes;
+    if (multiGroup) {
+        for (const auto& groupPartialWinding : group.get_partial_windings()) {
+            groupWindingIndexes.insert(get_winding_index_by_name(groupPartialWinding.get_winding()));
+        }
+    }
+    std::vector<size_t> sequence;
+    for (size_t repetitionIndex = 0; repetitionIndex < repetitions; ++repetitionIndex) {
+        for (auto windingIndex : pattern) {
+            if (windingIndex >= numberWindings) {
+                throw std::invalid_argument("Winding index does not exist in winding");
+            }
+            if (!multiGroup || groupWindingIndexes.contains(windingIndex)) {
+                sequence.push_back(windingIndex);
+            }
+        }
+    }
+    std::vector<size_t> numberSectionsPerWinding(numberWindings, 0);
+    size_t distinctWindings = 0;
+    for (auto windingIndex : sequence) {
+        if (numberSectionsPerWinding[windingIndex]++ == 0) {
+            distinctWindings++;
+        }
+    }
+    if (distinctWindings < 2) {
+        // One winding takes the whole group whatever its share: nothing to apportion.
+        return proportionPerWinding;
+    }
+
+    // The angle a section loses to the insulation beside it, as add_insulation_to_sections carves
+    // it (half of each insulation between consecutive sections); a winding's sections are equal,
+    // so its worst section sets what each of them must be given on top of its need.
+    std::vector<double> worstInsulationLoss(numberWindings, 0);
+    for (size_t i = 0; i < sequence.size(); ++i) {
+        double loss = 0;
+        if (i > 0) {
+            auto key = std::pair<size_t, size_t>{sequence[i - 1], sequence[i]};
+            if (_insulationSections.contains(key)) {
+                loss += _insulationSections[key].get_dimensions()[1] / 2;
+            }
+        }
+        if (i + 1 < sequence.size()) {
+            auto key = std::pair<size_t, size_t>{sequence[i], sequence[i + 1]};
+            if (_insulationSections.contains(key)) {
+                loss += _insulationSections[key].get_dimensions()[1] / 2;
+            }
+        }
+        worstInsulationLoss[sequence[i]] = std::max(worstInsulationLoss[sequence[i]], loss);
+    }
+
+    const double windowRadius = group.get_dimensions()[0];
+    const double availableAngle = group.get_dimensions()[1];
+    if (!(windowRadius > 0) || !(availableAngle > 0)) {
+        throw CoilException(ErrorCode::INVALID_COIL_CONFIGURATION,
+                            "Group " + group.get_name() + " has no round winding window to apportion: radial height " +
+                            std::to_string(windowRadius) + " m, angle " + std::to_string(availableAngle) + " deg");
+    }
+    auto wires = get_wires();
+
+    struct WindingNeed {
+        int64_t physicalTurnsPerSection;
+        int64_t corridorSlots;
+        double wireWidth;
+        double wireHeight;
+        double firstRingRadius;
+        size_t maximumRings;
+    };
+    std::vector<WindingNeed> needs(numberWindings);
+    std::vector<double> depthCandidates;
+    for (size_t windingIndex = 0; windingIndex < numberWindings; ++windingIndex) {
+        if (numberSectionsPerWinding[windingIndex] == 0) {
+            continue;
+        }
+        const auto& wire = wires[windingIndex];
+        if (wire.get_type() == WireType::FOIL) {
+            throw NotImplementedException("Foil is not supported in toroids");
+        }
+        if (wire.get_type() == WireType::PLANAR) {
+            throw NotImplementedException("Planar is not supported in toroids");
+        }
+        WindingNeed need;
+        need.wireWidth = resolve_dimensional_values(wire.get_maximum_outer_width());
+        need.wireHeight = resolve_dimensional_values(wire.get_maximum_outer_height());
+        if (!(need.wireWidth > 0) || !(need.wireHeight > 0)) {
+            throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA, "The wire of winding " + get_name(windingIndex) + " has no outer dimensions");
+        }
+        const double turnsPerSection = std::ceil(double(get_number_turns(windingIndex)) / double(numberSectionsPerWinding[windingIndex]));
+        need.physicalTurnsPerSection = int64_t(turnsPerSection) * int64_t(get_number_parallels(windingIndex));
+        need.corridorSlots = int64_t(get_number_parallels(windingIndex)) + 1;
+        need.firstRingRadius = windowRadius - (wire.get_type() == WireType::RECTANGULAR ? need.wireWidth : need.wireWidth / 2);
+        // The deepest stack the window takes (wind_by_round_sections refuses a deeper one).
+        need.maximumRings = std::max<size_t>(1, size_t(std::floor(windowRadius / need.wireWidth * (1 + 1e-9))));
+        for (size_t rings = 1; rings <= need.maximumRings; ++rings) {
+            depthCandidates.push_back(double(rings) * need.wireWidth);
+        }
+        needs[windingIndex] = need;
+    }
+    std::sort(depthCandidates.begin(), depthCandidates.end());
+
+    // Mirrors get_number_layers_needed_and_number_physical_turns ring by ring.
+    auto ringsHold = [](const WindingNeed& need, size_t rings, double angle) {
+        double radius = need.firstRingRadius;
+        int64_t held = 0;
+        for (size_t ring = 0; ring < rings; ++ring) {
+            double wireAngle = wound_distance_to_angle(need.wireHeight, std::max(need.wireWidth, radius));
+            int64_t blocked = ring >= 1 ? need.corridorSlots : 0;
+            held += int64_t(std::max(1.0, std::floor(angle / wireAngle) - double(blocked)));
+            if (radius > need.wireWidth) {
+                radius -= need.wireWidth;
+            }
+        }
+        return held;
+    };
+    auto neededAngle = [&](const WindingNeed& need, size_t rings) {
+        double low = 0;
+        double high = availableAngle;
+        while (ringsHold(need, rings, high) < need.physicalTurnsPerSection) {
+            high *= 2;
+        }
+        for (size_t iteration = 0; iteration < 60; ++iteration) {
+            double middle = (low + high) / 2;
+            if (ringsHold(need, rings, middle) >= need.physicalTurnsPerSection) {
+                high = middle;
+            }
+            else {
+                low = middle;
+            }
+        }
+        return high;
+    };
+
+    std::vector<double> claimPerWinding;
+    for (size_t depthIndex = 0; depthIndex < depthCandidates.size(); ++depthIndex) {
+        const double depth = depthCandidates[depthIndex];
+        claimPerWinding.assign(numberWindings, 0);
+        double totalClaim = 0;
+        bool everyWindingHasARing = true;
+        for (size_t windingIndex = 0; windingIndex < numberWindings; ++windingIndex) {
+            if (numberSectionsPerWinding[windingIndex] == 0) {
+                continue;
+            }
+            const auto& need = needs[windingIndex];
+            size_t rings = std::min(need.maximumRings, size_t(std::floor(depth / need.wireWidth * (1 + 1e-9))));
+            if (rings == 0) {
+                everyWindingHasARing = false;
+                break;
+            }
+            claimPerWinding[windingIndex] = double(numberSectionsPerWinding[windingIndex]) *
+                                            (neededAngle(need, rings) + worstInsulationLoss[windingIndex]);
+            totalClaim += claimPerWinding[windingIndex];
+        }
+        if (!everyWindingHasARing) {
+            continue;
+        }
+        if (totalClaim <= availableAngle || depthIndex + 1 == depthCandidates.size()) {
+            break;
+        }
+    }
+    double totalClaim = 0;
+    for (double claim : claimPerWinding) {
+        totalClaim += claim;
+    }
+    if (!(totalClaim > 0)) {
+        throw CalculationException(ErrorCode::CALCULATION_INVALID_RESULT,
+                                   "Group " + group.get_name() + ": the windings claim no angle of the contiguous toroid");
+    }
+    std::vector<double> apportioned = proportionPerWinding;
+    for (size_t windingIndex = 0; windingIndex < numberWindings; ++windingIndex) {
+        if (!multiGroup || groupWindingIndexes.contains(windingIndex)) {
+            apportioned[windingIndex] = claimPerWinding[windingIndex] / totalClaim;
+        }
+    }
+    return apportioned;
+}
+
 bool Coil::wind_by_round_sections(std::vector<double> proportionPerWinding, std::vector<size_t> pattern, size_t repetitions) {
     set_sections_description(std::nullopt);
     std::vector<Section> sectionsDescription;
@@ -13885,8 +14077,16 @@ bool Coil::wind_by_round_sections(std::vector<double> proportionPerWinding, std:
     size_t conductionSectionOffset = 0;
 
     for (auto& groupEntry : groups) {
+        // ABT #1734 (Alf 2026-10-12): under real winding the sectors of a CONTIGUOUS toroid are its
+        // windings' territories, so they are allocated in proportion to the angle each winding
+        // needs, not in the caller's (usually equal) shares.
+        std::vector<double> groupProportionPerWinding = proportionPerWinding;
+        if (settings.get_coil_use_real_winding_geometry() && get_winding_orientation() == WindingOrientation::CONTIGUOUS) {
+            groupProportionPerWinding = get_contiguous_toroid_proportion_per_winding_by_needed_angle(groupEntry, proportionPerWinding,
+                                                                                                     pattern, repetitions, multiGroup);
+        }
         // ABT #720: shared orchestration — see plan_section_group.
-        auto plan = plan_section_group(groupEntry, proportionPerWinding, pattern, repetitions, multiGroup,
+        auto plan = plan_section_group(groupEntry, groupProportionPerWinding, pattern, repetitions, multiGroup,
                                        WindingWindowShape::ROUND, conductionSectionOffset);
         if (plan.skip) {
             continue;
