@@ -2510,34 +2510,16 @@ double WindingProximityEffectLossesWangStackedModel::outline_integral(double A, 
     return total * 0.5 * (v2 - v1);
 }
 
-std::vector<double> WindingProximityEffectLossesWangStackedModel::calculate_perpendicular_outline_factors(Coil coil) {
-    if (!coil.get_turns_description()) {
-        throw CoilNotProcessedException("WANG_STACKED: the coil has no turns description");
-    }
-    const auto turns = coil.get_turns_description().value();
-    size_t numberTurns = turns.size();
-    std::vector<double> factors(numberTurns, 1.0);
+namespace {
+// One flat conductor in its own (wide, stacking) frame, as the CoilMesher places its width samples.
+struct FlatStackTurn { bool flat; bool wideAlongY; double wide; double thin; double alongWide; double alongStack; };
 
-    // Each flat turn in its own (wide, stacking) frame, as the CoilMesher places its width samples.
-    struct FlatTurn { bool flat; bool wideAlongY; double wide; double thin; double alongWide; double alongStack; };
-    std::vector<FlatTurn> flatTurns(numberTurns);
-    for (size_t turnIndex = 0; turnIndex < numberTurns; ++turnIndex) {
-        const auto& turn = turns[turnIndex];
-        auto wire = coil.resolve_wire(coil.get_winding_index_by_name(turn.get_winding()));
-        FlatTurn flatTurn{false, false, 0, 0, 0, 0};
-        if (wire.get_type() == WireType::RECTANGULAR || wire.get_type() == WireType::PLANAR || wire.get_type() == WireType::FOIL) {
-            flatTurn.flat = true;
-            flatTurn.wideAlongY = (wire.get_type() == WireType::FOIL);
-            double width = wire.get_maximum_conducting_width();
-            double height = wire.get_maximum_conducting_height();
-            flatTurn.wide = flatTurn.wideAlongY ? height : width;
-            flatTurn.thin = flatTurn.wideAlongY ? width : height;
-            flatTurn.alongWide = flatTurn.wideAlongY ? turn.get_coordinates()[1] : turn.get_coordinates()[0];
-            flatTurn.alongStack = flatTurn.wideAlongY ? turn.get_coordinates()[0] : turn.get_coordinates()[1];
-        }
-        flatTurns[turnIndex] = flatTurn;
-    }
-
+// The stacks of flat conductors: the transitive closure of "same orientation, same wide and thin size, centres within
+// half a width of each other along the wide axis, slit between them (gap along the stacking axis) under half a width".
+// Returns the stack root of every turn (a non-flat or isolated turn is its own root). Shared by WANG_STACKED (its stack
+// outline) and MARTINEZ (its stack sharing number), so both models see the same stacks.
+std::vector<size_t> flat_stack_roots(const std::vector<FlatStackTurn>& flatTurns) {
+    const size_t numberTurns = flatTurns.size();
     std::vector<size_t> parent(numberTurns);
     for (size_t i = 0; i < numberTurns; ++i) {
         parent[i] = i;
@@ -2572,10 +2554,45 @@ std::vector<double> WindingProximityEffectLossesWangStackedModel::calculate_perp
             }
         }
     }
+    std::vector<size_t> roots(numberTurns);
+    for (size_t i = 0; i < numberTurns; ++i) {
+        roots[i] = root(i);
+    }
+    return roots;
+}
+} // namespace
+
+std::vector<double> WindingProximityEffectLossesWangStackedModel::calculate_perpendicular_outline_factors(Coil coil) {
+    if (!coil.get_turns_description()) {
+        throw CoilNotProcessedException("WANG_STACKED: the coil has no turns description");
+    }
+    const auto turns = coil.get_turns_description().value();
+    size_t numberTurns = turns.size();
+    std::vector<double> factors(numberTurns, 1.0);
+
+    std::vector<FlatStackTurn> flatTurns(numberTurns);
+    for (size_t turnIndex = 0; turnIndex < numberTurns; ++turnIndex) {
+        const auto& turn = turns[turnIndex];
+        auto wire = coil.resolve_wire(coil.get_winding_index_by_name(turn.get_winding()));
+        FlatStackTurn flatTurn{false, false, 0, 0, 0, 0};
+        if (wire.get_type() == WireType::RECTANGULAR || wire.get_type() == WireType::PLANAR || wire.get_type() == WireType::FOIL) {
+            flatTurn.flat = true;
+            flatTurn.wideAlongY = (wire.get_type() == WireType::FOIL);
+            double width = wire.get_maximum_conducting_width();
+            double height = wire.get_maximum_conducting_height();
+            flatTurn.wide = flatTurn.wideAlongY ? height : width;
+            flatTurn.thin = flatTurn.wideAlongY ? width : height;
+            flatTurn.alongWide = flatTurn.wideAlongY ? turn.get_coordinates()[1] : turn.get_coordinates()[0];
+            flatTurn.alongStack = flatTurn.wideAlongY ? turn.get_coordinates()[0] : turn.get_coordinates()[1];
+        }
+        flatTurns[turnIndex] = flatTurn;
+    }
+
+    const auto stackRoots = flat_stack_roots(flatTurns);
     std::map<size_t, std::vector<size_t>> stacks;
     for (size_t i = 0; i < numberTurns; ++i) {
         if (flatTurns[i].flat) {
-            stacks[root(i)].push_back(i);
+            stacks[stackRoots[i]].push_back(i);
         }
     }
     for (auto& [stackRoot, members] : stacks) {
@@ -2617,8 +2634,7 @@ std::vector<double> WindingProximityEffectLossesMartinezModel::calculate_stack_s
     const auto turns = coil.get_turns_description().value();
     const size_t numberTurns = turns.size();
     // Each flat turn in its own (wide, normal) frame, as the CoilMesher places its width samples (FOIL wide along y).
-    struct FlatTurn { bool flat; bool wideAlongY; double wide; double thin; double alongWide; double alongNormal; };
-    std::vector<FlatTurn> flatTurns(numberTurns, FlatTurn{false, false, 0, 0, 0, 0});
+    std::vector<FlatStackTurn> flatTurns(numberTurns, FlatStackTurn{false, false, 0, 0, 0, 0});
     for (size_t turnIndex = 0; turnIndex < numberTurns; ++turnIndex) {
         const auto& turn = turns[turnIndex];
         auto wire = coil.resolve_wire(coil.get_winding_index_by_name(turn.get_winding()));
@@ -2633,7 +2649,7 @@ std::vector<double> WindingProximityEffectLossesMartinezModel::calculate_stack_s
         if (turn.get_coordinates().size() < 2) {
             throw CoilNotProcessedException("Martinez stack sharing: turn " + turn.get_name() + " has no 2D coordinates");
         }
-        FlatTurn flatTurn{true, wire.get_type() == WireType::FOIL, 0, 0, 0, 0};
+        FlatStackTurn flatTurn{true, wire.get_type() == WireType::FOIL, 0, 0, 0, 0};
         const double width = wire.get_maximum_conducting_width();
         const double height = wire.get_maximum_conducting_height();
         flatTurn.wide = flatTurn.wideAlongY ? height : width;
@@ -2642,10 +2658,16 @@ std::vector<double> WindingProximityEffectLossesMartinezModel::calculate_stack_s
             throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA, "Martinez stack sharing: the wire of turn " + turn.get_name() + " has a zero conducting dimension");
         }
         flatTurn.alongWide = flatTurn.wideAlongY ? turn.get_coordinates()[1] : turn.get_coordinates()[0];
-        flatTurn.alongNormal = flatTurn.wideAlongY ? turn.get_coordinates()[0] : turn.get_coordinates()[1];
+        flatTurn.alongStack = flatTurn.wideAlongY ? turn.get_coordinates()[0] : turn.get_coordinates()[1];
         flatTurns[turnIndex] = flatTurn;
     }
 
+    // ABT #1784 (Alf 2026-10-12): j runs over k's OWN stack only (flat_stack_roots, the grouping WANG_STACKED uses). The
+    // derivation sets H_j = H_k ("every stacked conductor sees the same incident field"), which holds inside k's stack and
+    // nowhere else: a narrow strip under the slit between two wide strips of another layer sits where G_jk diverges near
+    // j's edge, and the sum over every flat turn of the window read n = -3.78 (down to -10.5) on
+    // test_mas_autocomplete_json_2_548.json and inflated n to +15.8 under the centre of a wide strip.
+    const auto stackRoots = flat_stack_roots(flatTurns);
     std::vector<double> sharingNumbers(numberTurns, 1.0);
     for (size_t k = 0; k < numberTurns; ++k) {
         const auto& induced = flatTurns[k];
@@ -2659,11 +2681,14 @@ std::vector<double> WindingProximityEffectLossesMartinezModel::calculate_stack_s
                 continue;
             }
             const double s = inducing.alongWide - induced.alongWide;
-            const double d = std::abs(inducing.alongNormal - induced.alongNormal);
+            const double d = std::abs(inducing.alongStack - induced.alongStack);
             const double halfWide = inducing.wide / 2;
             if (d == 0 && std::abs(s) <= halfWide + induced.wide / 2) {
                 throw InvalidInputException(ErrorCode::INVALID_INPUT, "Martinez stack sharing: flat turns " + turns[j].get_name() + " and " +
                                             turns[k].get_name() + " overlap");
+            }
+            if (stackRoots[j] != stackRoots[k]) {
+                continue;
             }
             auto primitive = [&](double u) {
                 double value = u - s / 2 * std::log(u * u + d * d);

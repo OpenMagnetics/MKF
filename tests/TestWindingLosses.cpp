@@ -4416,6 +4416,36 @@ TEST_CASE("Test_Winding_Losses_Martinez_Stack_Sharing_Number_Closed_Form", "[win
     settings.reset();
 }
 
+TEST_CASE("Test_Winding_Losses_Martinez_Stack_Sharing_Number_Counts_Only_The_Own_Stack", "[winding-losses][parallel-split][physical-model]") {
+    // ABT #1784: n_k sums over k's own stack only (the stacks WANG_STACKED groups). On this interleaved planar design
+    // (0.8 mm primary strips under the 0.2 mm slit between 3.2 mm secondary strips one layer away) the sum over every
+    // flat turn of the window read n = -3.78 for PRIMARY parallel 0 turn 3 (worst -10.5, and +15.8 under a wide strip's
+    // centre). Restricted to the own stack it reads n in [1.45, 4.34].
+    auto& settings = OpenMagnetics::Settings::GetInstance();
+    settings.reset();
+    auto jsonPath = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "test_mas_autocomplete_json_2_548.json");
+    std::ifstream jsonFile(jsonPath);
+    json masJson = json::parse(jsonFile);
+    OpenMagnetics::Mas mas(masJson);
+    auto coil = mas.get_magnetic().get_coil();
+    REQUIRE(coil.get_turns_description());
+    const auto turns = coil.get_turns_description().value();
+    auto numbers = WindingProximityEffectLossesMartinezModel::calculate_stack_sharing_numbers(coil);
+    REQUIRE(numbers.size() == turns.size());
+    double minimum = std::numeric_limits<double>::max();
+    double maximum = std::numeric_limits<double>::lowest();
+    for (size_t k = 0; k < numbers.size(); ++k) {
+        INFO(turns[k].get_name() << ": n " << numbers[k]);
+        CHECK(numbers[k] >= 1.0);
+        CHECK(numbers[k] <= 5.0);
+        minimum = std::min(minimum, numbers[k]);
+        maximum = std::max(maximum, numbers[k]);
+    }
+    INFO("n in [" << minimum << ", " << maximum << "]");
+    CHECK(maximum > 1.0);  // the design does have stacks: some turn shares its exclusion
+    settings.reset();
+}
+
 TEST_CASE("Test_Winding_Losses_Parallel_Stack_Excludes_Perpendicular_Field_Collectively_Vs_OMFEM", "[winding-losses][parallel-split][physical-model]") {
     // ABT #1314 B: the 16 stacked parallel sheets exclude the field normal to their faces together (Martinez mutual
     // reaction, calculate_stack_sharing_numbers). Charged as isolated sheets, BINNS_LAWRENSON/ROSHEN/MARTINEZ read 399.5 W
