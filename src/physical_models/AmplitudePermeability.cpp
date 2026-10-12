@@ -83,6 +83,14 @@ std::pair<Curve2D, Curve2D> BHLoopRoshenModel::get_hysteresis_loop(const CoreMat
                                                                     std::optional<double> magneticFluxDensityPeak, 
                                                                     std::optional<double> magneticFieldStrengthPeak) {
 
+    // ABT #1736: remanence and coercive force reach zero at the Curie temperature (see
+    // Core::get_remanence); at and above it there is no loop to build.
+    if (coreMaterial.get_curie_temperature() && temperature >= coreMaterial.get_curie_temperature().value()) {
+        throw MaterialException(ErrorCode::MATERIAL_ABOVE_CURIE_TEMPERATURE,
+            "Core material " + coreMaterial.get_name() + " has no hysteresis loop at " + std::to_string(temperature) +
+            " C: it is not ferromagnetic at or above its Curie temperature of " +
+            std::to_string(coreMaterial.get_curie_temperature().value()) + " C");
+    }
     double saturationMagneticFieldStrength = Core::get_magnetic_field_strength_saturation(coreMaterial, temperature);
     double saturationMagneticFluxDensity = Core::get_magnetic_flux_density_saturation(coreMaterial, temperature, false);
     double coerciveForce = Core::get_coercive_force(coreMaterial, temperature);

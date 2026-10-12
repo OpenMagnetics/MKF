@@ -2180,6 +2180,43 @@ void Core::process_data() {
     scale_to_stacks(get_number_stacks());
 }
 
+// ABT #1736: remanence and coercive force are tabulated up to some temperature, usually 100 C, and
+// the hysteresis loop built from them is asked for up to the Curie temperature. Past the last data
+// point the value goes linearly to ZERO AT THE MATERIAL'S OWN CURIE TEMPERATURE, where
+// ferromagnetism ends, and stays zero above it. Extrapolating the table's last slope instead made
+// remanence and coercive force cross zero below Curie (N87: Br at 149.8 C, Hc at 207 C, Curie
+// 210 C; Fair-Rite 97: Br at 146 C, Hc at 175 C, Curie 220 C), where the loop is singular and the
+// permeability came out as 0 or a few tens.
+// Inside the data, and below its first point, the value is what interp() gives, as before.
+// A material without a Curie temperature cannot be evaluated past its data: that throws.
+// Only these two are anchored (Alf, 2026-10-12): the tip of the loop stays
+// get_magnetic_flux_density_saturation / get_magnetic_field_strength_saturation, so the loop and
+// the saturation gates share one B_sat(T).
+static double interpolate_ferromagnetic_property_to_curie(const CoreMaterial& coreMaterial,
+                                                          const std::vector<std::pair<double, double>>& data,
+                                                          double temperature,
+                                                          const std::string& propertyName) {
+    if (data.empty()) {
+        throw MaterialException(ErrorCode::MATERIAL_DATA_MISSING, "Missing " + propertyName + " data in core material " + coreMaterial.get_name());
+    }
+    auto lastPoint = *std::max_element(data.begin(), data.end(), [](const std::pair<double, double>& a, const std::pair<double, double>& b) {
+        return a.first < b.first;
+    });
+    if (temperature <= lastPoint.first) {
+        return interp(data, temperature);
+    }
+    if (!coreMaterial.get_curie_temperature()) {
+        throw MaterialException(ErrorCode::MATERIAL_DATA_MISSING,
+            "Core material " + coreMaterial.get_name() + " has no Curie temperature: its " + propertyName + " cannot be evaluated at " +
+            std::to_string(temperature) + " C, above its last data point at " + std::to_string(lastPoint.first) + " C");
+    }
+    double curieTemperature = coreMaterial.get_curie_temperature().value();
+    if (temperature >= curieTemperature || lastPoint.first >= curieTemperature) {
+        return 0;
+    }
+    return lastPoint.second * (curieTemperature - temperature) / (curieTemperature - lastPoint.first);
+}
+
 double Core::get_magnetic_flux_density_saturation(const CoreMaterial& coreMaterial, double temperature, bool proportion) {
     auto defaults = Defaults();
     const auto& saturationData = coreMaterial.get_saturation();
@@ -2256,7 +2293,7 @@ double Core::get_remanence(const CoreMaterial& coreMaterial, double temperature,
         data.push_back(std::pair<double, double>{datum.get_temperature(), datum.get_magnetic_flux_density()});
     }
 
-    double remanence = interp(data, temperature);
+    double remanence = interpolate_ferromagnetic_property_to_curie(coreMaterial, data, temperature, "remanence");
 
     return remanence;
 }
@@ -2297,7 +2334,7 @@ double Core::get_coercive_force(const CoreMaterial& coreMaterial, double tempera
         data.push_back(std::pair<double, double>{datum.get_temperature(), datum.get_magnetic_field()});
     }
 
-    double coerciveForce = interp(data, temperature);
+    double coerciveForce = interpolate_ferromagnetic_property_to_curie(coreMaterial, data, temperature, "coercive force");
 
     return coerciveForce;
 }

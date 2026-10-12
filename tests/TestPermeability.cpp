@@ -952,4 +952,56 @@ namespace {
                         OpenMagnetics::InvalidInputException);
     }
 
+    // ABT #1736: remanence and coercive force are tabulated at 25 and 100 C for most ferrites, and the
+    // BH-loop permeability model is asked up to the Curie temperature. Extrapolating the table's slope
+    // made them cross zero below Curie (N87: Br at 149.8 C, Hc at 207 C, Curie 210 C; Fair-Rite 97: Br
+    // at 146 C, Hc at 175 C, Curie 220 C), where the loop is singular: N87 under ANY bias gave mu = 44
+    // at 150 C (3896 unbiased), and 97 gave mu = 0 at exactly 175 C, which the magnetizing model then
+    // reported as a saturated core at 0.108 T. They now go linearly from the last data point to zero AT
+    // the Curie temperature. The loop's saturation point is not anchored: it stays the saturation
+    // data the saturation gates read (Alf, 2026-10-12).
+    TEST_CASE("BH-loop permeability has no singular temperature between the remanence data and Curie", "[physical-model][initial-permeability][amplitude-permeability][abt-1736]") {
+        struct Case { std::string material; double temperature; };
+        for (auto& [materialName, temperature] : std::vector<Case>{{"N87", 150.0}, {"N87", 149.8}, {"N87", 207.0}, {"97", 175.0}, {"97", 146.0}}) {
+            INFO(materialName << " at " << temperature << " C");
+            auto material = OpenMagnetics::Core::resolve_material(materialName);
+            double curieTemperature = OpenMagnetics::Core::get_curie_temperature(material);
+            REQUIRE(temperature < curieTemperature);
+
+            // Below Curie the material is ferromagnetic: it has a remanence and a coercive force.
+            CHECK(OpenMagnetics::Core::get_remanence(material, temperature) > 0);
+            CHECK(OpenMagnetics::Core::get_coercive_force(material, temperature) > 0);
+
+            // A bias far below the knee leaves the permeability where it is without bias, here and
+            // a fraction of a degree to either side.
+            for (double probedTemperature : {temperature - 0.2, temperature, temperature + 0.2}) {
+                INFO("probed at " << probedTemperature << " C");
+                double unbiased = OpenMagnetics::InitialPermeability::get_initial_permeability_model_value(material, probedTemperature, std::nullopt, 100e3);
+                for (double magneticFieldDcBias : {0.078, 1.0}) {
+                    INFO("H = " << magneticFieldDcBias << " A/m");
+                    double biased = 0;
+                    REQUIRE_NOTHROW(biased = OpenMagnetics::InitialPermeability::get_initial_permeability(material, probedTemperature, magneticFieldDcBias, 100e3));
+                    CHECK_THAT(biased, Catch::Matchers::WithinRel(unbiased, 0.05));
+                }
+            }
+        }
+
+        // The anchor itself: zero at the Curie temperature and above, the data inside the data.
+        auto n87 = OpenMagnetics::Core::resolve_material("N87");
+        double n87Curie = OpenMagnetics::Core::get_curie_temperature(n87);
+        CHECK(OpenMagnetics::Core::get_remanence(n87, n87Curie) == 0);
+        CHECK(OpenMagnetics::Core::get_coercive_force(n87, n87Curie) == 0);
+        CHECK(OpenMagnetics::Core::get_remanence(n87, n87Curie + 20) == 0);
+        // No loop at or above Curie: refused, by name.
+        CHECK_THROWS_WITH(OpenMagnetics::BHLoopRoshenModel().get_hysteresis_loop(n87, n87Curie, std::nullopt, 10.0),
+                          Catch::Matchers::ContainsSubstring("not ferromagnetic at or above its Curie temperature"));
+
+        // A material without a Curie temperature cannot be evaluated past its data: no guess.
+        auto withoutCurie = n87;
+        withoutCurie.set_curie_temperature(std::nullopt);
+        CHECK_THROWS_WITH(OpenMagnetics::Core::get_remanence(withoutCurie, 150.0), Catch::Matchers::ContainsSubstring("has no Curie temperature"));
+        CHECK_THROWS_WITH(OpenMagnetics::Core::get_coercive_force(withoutCurie, 150.0), Catch::Matchers::ContainsSubstring("has no Curie temperature"));
+        CHECK_NOTHROW(OpenMagnetics::Core::get_remanence(withoutCurie, 60.0));
+    }
+
 }  // namespace
