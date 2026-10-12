@@ -2426,7 +2426,7 @@ TEST_CASE("Test_Manufacturer_Magnetec", "[physical-model][core-losses][smoke-tes
     auto models =
         json::parse(R"({"coreLosses": "PROPRIETARY", "coreTemperature": "MANIKTALA", "gapReluctance": "ZHANG"})");
     auto core = Core(json::parse(R"({"functionalDescription": {"gapping": [], "material": "Nanoperm 80000", "numberStacks": 1, "shape": {"magneticCircuit": "closed", "type": "custom", "family": "t", "aliases": [], "name": "T 63/50/30", "dimensions": {"A": {"nominal": 0.063}, "B": {"nominal": 0.050}, "C": {"nominal": 0.030}}}, "type": "toroidal"}, "manufacturerInfo": null, "name": "My Core"})"));
-    auto winding = OpenMagnetics::Coil(json::parse(R"({"bobbin": "Dummy", "functionalDescription": [{"isolationSide": "primary", "name": "Primary", "numberParallels": 1, "numberTurns": 1, "wire": "Dummy"}], "layersDescription": null, "sectionsDescription": null, "turnsDescription": null})"));
+    auto winding = OpenMagnetics::Coil(json::parse(R"({"bobbin": "Dummy", "functionalDescription": [{"isolationSide": "primary", "name": "Primary", "numberParallels": 1, "numberTurns": 10, "wire": "Dummy"}], "layersDescription": null, "sectionsDescription": null, "turnsDescription": null})"));
     auto operatingPoint = OperatingPoint(json::parse(R"({"conditions": {"ambientRelativeHumidity": null, "ambientTemperature": 25.0, "cooling": null, "name": null}, "excitationsPerWinding": [{"frequency": 100000.0, "magneticFieldStrength": null, "magneticFluxDensity": null, "magnetizingCurrent": null, "name": "My Operating Point", "voltage": {"harmonics": null, "processed": null, "waveform": {"ancillaryLabel": null, "data": [688.5, 688.5, -229.49999999999995, -229.49999999999995, 688.5], "numberPeriods": null, "time": [0.0, 2.4999999999999998e-06, 2.4999999999999998e-06, 1e-05, 1e-05]}}}], "name": null})"));
 
     MagnetizingInductance magnetizingInductanceModel(std::string{models["gapReluctance"]});
@@ -2442,13 +2442,26 @@ TEST_CASE("Test_Manufacturer_Magnetec", "[physical-model][core-losses][smoke-tes
     auto coreLossesModel = CoreLossesModel::factory(models);
     auto coreLosses = coreLossesModel->get_core_losses(core, excitation, temperature);
 
-    // Expectation updated after fixing mass losses (W/kg) to multiply by the
-    // core MASS instead of its volume (the old pinned 3.09 W captured the
-    // volume-multiplied bug; the absolute number is a plumbing check only —
-    // the 1-turn setup drives B far beyond saturation)
-    // ABT #1491: 29685.6 -> 7421.39 (exactly 1/4): the Magnetec formula now reads its 0.3 T anchor
-    // against the PEAK flux density instead of the peak-to-peak.
-    REQUIRE_THAT(coreLosses.get_core_losses(), Catch::Matchers::WithinAbs(7421.39, 7421.39 * maxError));
+    // ABT #1790 (Alf, 2026-10-12): the fixture has 10 turns, 7421.39 W -> 77.497 W. With 1 turn the
+    // 688.5 V x 2.5 us pulse asked for a 11.08 T swing (B_peak 5.5 T on a 1.2 T material), which
+    // MagnetizingInductance now refuses (ABT #1740); 7421.39 W was a loss at a point that cannot exist.
+    // First-principles check of the new value:
+    //   volt-seconds: dB = V t / (N Ae) = 688.5 * 2.5e-6 / (10 * 155.307e-6 m2) = 1.108 T peak to peak,
+    //                 B_peak = 0.554 T, under Nanoperm 80000's B_sat of 1.2 T;
+    //   Magnetec loss (CoreLosses.cpp, anchored at 0.3 T peak / 100 kHz): 80 W/kg * (100k/100k)^1.8 *
+    //                 (0.554 / 0.3)^2 = 272.9 W/kg, times the core mass 0.2544 kg = 69.4 W.
+    // The model gives 77.497 W, 11.6 % above that hand value, and all of the difference is the flux
+    // amplitude it reads: peak - mean of the sampled flux waveform = 0.5683 - (-0.0171) = 0.5854 T,
+    // where the swing's half is 0.5513 T; 80 * (0.5854 / 0.3)^2 * 0.2544 = 77.50 W.
+    {
+        double effectiveArea = core.get_processed_description()->get_effective_parameters().get_effective_area();
+        double voltSecondsSwing = 688.5 * 2.4999999999999998e-06 / (10 * effectiveArea);
+        CHECK_THAT(magneticFluxDensity.get_processed()->get_peak_to_peak().value(), Catch::Matchers::WithinRel(voltSecondsSwing, 0.01));
+        CHECK(magneticFluxDensity.get_processed()->get_peak().value() < 1.2);
+        double amplitude = magneticFluxDensity.get_processed()->get_peak().value() - magneticFluxDensity.get_processed()->get_offset();
+        CHECK_THAT(coreLosses.get_core_losses(), Catch::Matchers::WithinRel(80 * pow(amplitude / 0.3, 2) * core.get_mass(), 1e-9));
+    }
+    REQUIRE_THAT(coreLosses.get_core_losses(), Catch::Matchers::WithinAbs(77.497, 77.497 * maxError));
 }
 
 TEST_CASE("Test_Manufacturer_Magnetec_Obfuscated_Manufacturer", "[physical-model][core-losses][smoke-test]") {
@@ -2470,7 +2483,7 @@ TEST_CASE("Test_Manufacturer_Magnetec_Obfuscated_Manufacturer", "[physical-model
     REQUIRE(obfuscatedMaterial.get_manufacturer_info().get_name() == "Würth Elektronik");
     core.set_material(obfuscatedMaterial);
 
-    auto winding = OpenMagnetics::Coil(json::parse(R"({"bobbin": "Dummy", "functionalDescription": [{"isolationSide": "primary", "name": "Primary", "numberParallels": 1, "numberTurns": 1, "wire": "Dummy"}], "layersDescription": null, "sectionsDescription": null, "turnsDescription": null})"));
+    auto winding = OpenMagnetics::Coil(json::parse(R"({"bobbin": "Dummy", "functionalDescription": [{"isolationSide": "primary", "name": "Primary", "numberParallels": 1, "numberTurns": 10, "wire": "Dummy"}], "layersDescription": null, "sectionsDescription": null, "turnsDescription": null})"));
     auto operatingPoint = OperatingPoint(json::parse(R"({"conditions": {"ambientRelativeHumidity": null, "ambientTemperature": 25.0, "cooling": null, "name": null}, "excitationsPerWinding": [{"frequency": 100000.0, "magneticFieldStrength": null, "magneticFluxDensity": null, "magnetizingCurrent": null, "name": "My Operating Point", "voltage": {"harmonics": null, "processed": null, "waveform": {"ancillaryLabel": null, "data": [688.5, 688.5, -229.49999999999995, -229.49999999999995, 688.5], "numberPeriods": null, "time": [0.0, 2.4999999999999998e-06, 2.4999999999999998e-06, 1e-05, 1e-05]}}}], "name": null})"));
 
     MagnetizingInductance magnetizingInductanceModel(std::string{models["gapReluctance"]});
@@ -2484,9 +2497,8 @@ TEST_CASE("Test_Manufacturer_Magnetec_Obfuscated_Manufacturer", "[physical-model
     auto coreLosses = coreLossesModel->get_core_losses(core, excitation, temperature);
 
     // Identical to Test_Manufacturer_Magnetec: obfuscating the manufacturer must not change the physics.
-    // ABT #1491: 29685.6 -> 7421.39 (exactly 1/4): the Magnetec formula now reads its 0.3 T anchor
-    // against the PEAK flux density instead of the peak-to-peak.
-    REQUIRE_THAT(coreLosses.get_core_losses(), Catch::Matchers::WithinAbs(7421.39, 7421.39 * maxError));
+    // ABT #1790: 10 turns instead of 1, 7421.39 W -> 77.497 W; the derivation is in that test.
+    REQUIRE_THAT(coreLosses.get_core_losses(), Catch::Matchers::WithinAbs(77.497, 77.497 * maxError));
 }
 
 TEST_CASE("Test_XFlux_19", "[physical-model][core-losses][smoke-test]") {
