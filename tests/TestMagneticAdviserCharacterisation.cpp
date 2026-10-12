@@ -48,6 +48,8 @@
 #include "advisers/MagneticAdviser.h"
 #include "constructive_models/Mas.h"
 #include "processors/Inputs.h"
+#include "physical_models/InitialPermeability.h"
+#include "support/Exceptions.h"
 #include "processors/MagneticSimulator.h"
 #include "processors/Sweeper.h"
 #include "support/Settings.h"
@@ -686,6 +688,50 @@ TEST_CASE("MagneticAdviser web DMC suppression flow returns wound chokes",
     REQUIRE(results.size() > 0);
     for (auto& [mas, scoring] : results) {
         CHECK(mas.get_magnetic().get_coil().get_turns_description().has_value());
+    }
+    settings.reset();
+    clear_databases();
+}
+
+// ABT #1794: the candidates of the DMC switching-ripple call below include Nanoperm 2000 toroids.
+// To reach 450 ohm at 150 kHz on T 25/16/10 the filter raises the turns until the line current biases
+// the core to 1554 A/m, past the knee of that material, where its permeability model gives mu_r < 1
+// (0.963) and the impedance model refuses the bias with CALCULATION_CORE_SATURATES (ABT #1740). The
+// filter caught only ModelNotAvailableException, so one saturating candidate threw out of the whole
+// adviser. It is rejected instead and the adviser goes on with the others (Alf, 2026-10-12).
+TEST_CASE("CoreMinimumImpedance filter rejects a candidate whose core saturates at its bias",
+          "[adviser][magnetic-filter][dmc][suppression][abt-1794]") {
+    settings.reset();
+    clear_databases();
+    auto path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "web_adviser_flows/dmc_calculate_advised_magnetics_switching_ripple.json");
+    std::ifstream file(path);
+    REQUIRE(file.is_open());
+    auto fixture = nlohmann::json::parse(file);
+    OpenMagneticsTesting::apply_web_engine_settings(fixture.at("engineSettingsAtCall"));
+    OpenMagnetics::Inputs inputs(fixture.at("inputs"));
+    REQUIRE(inputs.get_design_requirements().get_minimum_impedance().has_value());
+
+    // The premise, outside the filter: the material is refused at that bias as a saturation, and
+    // is a material at a small one. That refusal stands everywhere else.
+    auto coreMaterial = find_core_material_by_name("Nanoperm 2000");
+    CHECK_THROWS_AS(InitialPermeability::get_initial_permeability(coreMaterial, 25, 1554.28, 150000), SaturationException);
+    CHECK(InitialPermeability::get_initial_permeability(coreMaterial, 25, 10, 150000) > 1);
+
+    // The adviser's standard-cores candidates: each toroid shape with the material, ungapped.
+    for (std::string shapeName : {"T 25/16/10", "T 30/20/10", "T 40/32/15"}) {
+        INFO("core " << shapeName << " - Nanoperm 2000 - Ungapped");
+        json coreJson = json::parse(R"({"functionalDescription": {"gapping": [], "material": "Nanoperm 2000", "numberStacks": 1, "shape": "", "type": "toroidal"}, "name": "candidate"})");
+        coreJson["functionalDescription"]["shape"] = shapeName;
+        OpenMagnetics::Core core(coreJson);
+        OpenMagnetics::Magnetic magnetic;
+        magnetic.set_core(core);
+        magnetic.set_coil(OpenMagnetics::Coil(json::parse(R"({"bobbin": "Dummy", "functionalDescription": [{"isolationSide": "primary", "name": "Primary", "numberParallels": 1, "numberTurns": 1, "wire": "Dummy"}, {"isolationSide": "primary", "name": "Secondary", "numberParallels": 1, "numberTurns": 1, "wire": "Dummy"}], "layersDescription": null, "sectionsDescription": null, "turnsDescription": null})")));
+
+        MagneticFilterCoreMinimumImpedance filter;
+        std::pair<bool, double> verdict{true, -1};
+        REQUIRE_NOTHROW(verdict = filter.evaluate_magnetic(&magnetic, &inputs));
+        CHECK_FALSE(verdict.first);
+        CHECK(verdict.second == 0);
     }
     settings.reset();
     clear_databases();

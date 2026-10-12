@@ -24,6 +24,18 @@ namespace OpenMagnetics {
 // Shared helpers (prepare_bobbin_for_non_pqi etc.) live in
 // advisers/MagneticFilterInternal.h.
 
+// ABT #1794 (Alf, 2026-10-12): a candidate whose core saturates at the bias it would carry is not a
+// choke for this requirement. The impedance model refuses that bias (CALCULATION_CORE_SATURATES,
+// ABT #1740: the material's permeability model gives mu_r < 1 there); the filter takes that as its
+// verdict and rejects the candidate, as the saturation filter does, so the adviser goes on with the
+// others. Only that error code: anything else the model throws still stops the run.
+static void rethrow_unless_core_saturates(const OpenMagneticsException& exception, const Core& core) {
+    if (exception.code() != ErrorCode::CALCULATION_CORE_SATURATES) {
+        throw;
+    }
+    logEntry(std::string("Core minimum impedance filter: rejecting candidate ") + core.get_name().value_or("(unnamed core)") + ": " + exception.what(), "MagneticFilter", 2);
+}
+
 std::pair<bool, double> MagneticFilterCoreMinimumImpedance::evaluate_magnetic(Magnetic* magnetic, Inputs* inputs, std::vector<Outputs>* outputs) {
     const auto& core = magnetic->get_core();
 
@@ -126,6 +138,11 @@ std::pair<bool, double> MagneticFilterCoreMinimumImpedance::evaluate_magnetic(Ma
             } catch (const ModelNotAvailableException&) {
                 jumpOk = false;
                 break;
+            } catch (const OpenMagneticsException& exception) {
+                // Saturated with a single turn at this current: more turns only raise the bias.
+                rethrow_unless_core_saturates(exception, core);
+                magnetic->set_coil(std::move(coil));
+                return {false, 0};
             }
         }
         if (jumpOk) {
@@ -176,6 +193,11 @@ std::pair<bool, double> MagneticFilterCoreMinimumImpedance::evaluate_magnetic(Ma
                     } catch (const ModelNotAvailableException&) {
                         modelMissing = true;
                         break;
+                    } catch (const OpenMagneticsException& exception) {
+                        // Saturated at the turns the requirement needs.
+                        rethrow_unless_core_saturates(exception, core);
+                        magnetic->set_coil(std::move(coil));
+                        return {false, 0};
                     }
                 }
                 if (modelMissing) {
@@ -259,6 +281,12 @@ std::pair<bool, double> MagneticFilterCoreMinimumImpedance::evaluate_magnetic(Ma
             catch (const ModelNotAvailableException &exc) {
 
                 validMaterial = false;
+            }
+            catch (const OpenMagneticsException& exception) {
+                // Saturated at this turn count; the search only goes up in turns, so in bias.
+                rethrow_unless_core_saturates(exception, core);
+                magnetic->set_coil(std::move(coil));
+                return {false, 0};
             }
         }
 
