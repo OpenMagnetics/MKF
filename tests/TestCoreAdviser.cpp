@@ -197,32 +197,25 @@ TEST_CASE("Test_CoreAdviserAvailableCores_Toroidal_Cores_With_Impedance", "[advi
     settings.set_use_concentric_cores(false);
     settings.set_use_toroidal_cores(true);
     settings.set_use_only_cores_in_stock(false);
-    // Original test used 600 Vpp + 30 A DC to force a high-flux scenario.
-    // With strict material-application filtering (only N30 toroids remain
-    // in the test catalog for Interference Suppression), that flux level
-    // saturates every candidate. Shrink both numbers to values that let
-    // the smoke test exercise the impedance filter end-to-end on N30.
-    double voltagePeakToPeak = 60;
-    // dcCurrent was 30 A in the original test. The test is really a
-    // single-winding inductor smoke test with an impedance constraint rather
-    // than a CMC design — `can_be_common_mode_choke` cannot fire with only
-    // one excitation, so the saturation filter sees the full DC bias. With
-    // the strict material-application filter, the only Interference-
-    // Suppression toroids in the test catalog (N30) legitimately saturate
-    // under meaningful DC bias. Dropping to 0 A keeps the smoke test
-    // achievable: we're exercising the filter chain end-to-end, not
-    // modelling a real-world inductor with 30 A of DC.
+    // Fixture changed 2026-10-12 (ABT #838, Alf's decision): a realistic common-mode-choke drive, as
+    // the other CMC fixtures got (prepare_common_mode_choke_inputs): two windings carrying the same
+    // 20 mApp of common-mode current at 100 kHz, no line current. The test used to describe the choke
+    // as ONE winding driven by 60 Vpp at 100 kHz through its 1 uH minimum-inductance specification:
+    // 47.7 A peak of magnetising current on 132-200 turns of the powder toroids that survive the
+    // impedance filter (0.38-0.95 T, 6.9-41.7 kW of core loss, 77-123 W of copper). The adviser
+    // returned five of them at 1175-1533 C while losses were computed at 25 C, and returns none now
+    // that they are solved at the temperature they produce (no operating point below the 460 / 500 C
+    // Curie temperatures). Before that it was 600 Vpp + 30 A DC, shrunk when the strict
+    // material-application filter left only N30 toroids for Interference Suppression.
+    double commonModeCurrentPeakToPeak = 0.02;
     double dcCurrent = 0;
-    double ambientTemperature = 25;
     double frequency = 100000;
     // For interference suppression, impedance (not inductance) is the primary requirement.
     // Complex permeability provides high impedance through resistive losses.
     // Set a low minimum inductance that doesn't conflict with impedance-optimized turn counts.
     double desiredMagnetizingInductance = 1e-6;
-    std::vector<double> turnsRatios = {};
-    OpenMagnetics::Inputs inputs;
 
-    prepare_test_parameters(dcCurrent, ambientTemperature, frequency, turnsRatios, desiredMagnetizingInductance, inputs, voltagePeakToPeak);
+    auto inputs = prepare_common_mode_choke_inputs(frequency, desiredMagnetizingInductance, commonModeCurrentPeakToPeak, dcCurrent);
 
     std::map<CoreAdviser::CoreAdviserFilters, double> weights;
     weights[CoreAdviser::CoreAdviserFilters::COST] = 0;
