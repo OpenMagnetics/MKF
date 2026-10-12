@@ -3598,18 +3598,31 @@ TEST_CASE("Temperature: concentric_flyback_rectangular_column", "[temperature][s
     auto magnetic = OpenMagnetics::magnetic_autocomplete(mas.get_magnetic());
     auto inputs = OpenMagnetics::inputs_autocomplete(mas.get_inputs(), magnetic);
     
-    // Run magnetic simulation to get actual losses
-    auto losses = getLossesFromSimulation(magnetic, inputs);
-    
+    // LOSSES FED TO THE NETWORK (ABT #838, Alf 2026-10-12): the losses recorded in the fixture for
+    // its SECOND operating point, "Max. input volt." (15.67 W of core loss at 484.5 C plus the
+    // per-turn winding losses), kept beside the fixture in
+    // concentric_flyback_rectangular_column_max_input_voltage_outputs.json: outputs[1] of the fixture as it was until ABT #1740
+    // dropped that operating point (git 433bfd3f). This is the INFERRED Icepak input: which losses
+    // the Icepak run was given is not recorded. Ansyas, the Icepak driver, feeds it from
+    // mas.outputs[operating_point_index] and defaults to index 0, but index 0's losses (4.02 W of
+    // core loss) put this network's core at 187-199 C, far below Icepak's 351-485 C, and only
+    // index 1 reproduces Icepak's temperatures (its recorded core-loss temperature, 484.48 C, is
+    // Icepak's core_1 of the flyback run). The test used to feed the losses MKF simulates for the
+    // first operating point, which have no relation to what Icepak solved.
+    auto recordedOutputsPath = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "concentric_flyback_rectangular_column_max_input_voltage_outputs.json");
+    std::ifstream recordedOutputsFile(recordedOutputsPath);
+    REQUIRE(recordedOutputsFile.good());
+    MAS::Outputs recordedOutputs(json::parse(recordedOutputsFile));
+    REQUIRE(recordedOutputs.get_core_losses());
+    REQUIRE(recordedOutputs.get_winding_losses());
+    REQUIRE(recordedOutputs.get_winding_losses()->get_winding_losses_per_turn());
+    REQUIRE(recordedOutputs.get_winding_losses()->get_winding_losses_per_turn()->size() == magnetic.get_coil().get_turns_description().value().size());
+
     TemperatureConfig config;
-    config.ambientTemperature = losses.ambientTemperature;
-    config.coreLosses = losses.coreLosses;
-    if (losses.windingLossesOutput.has_value()) {
-        config.windingLosses = losses.windingLosses;
-        config.windingLossesOutput = losses.windingLossesOutput.value();
-    } else {
-        applySimulatedLosses(config, magnetic);
-    }
+    config.ambientTemperature = inputs.get_operating_points()[0].get_conditions().get_ambient_temperature();
+    config.coreLosses = recordedOutputs.get_core_losses()->get_core_losses();
+    config.windingLosses = recordedOutputs.get_winding_losses()->get_winding_losses();
+    config.windingLossesOutput = recordedOutputs.get_winding_losses().value();
     config.plotSchematic = false;
     
     Temperature temp(magnetic, config);
@@ -3699,18 +3712,31 @@ TEST_CASE("Temperature: concentric_transformer_contiguous_rectangular_wire", "[t
     auto magnetic = OpenMagnetics::magnetic_autocomplete(mas.get_magnetic());
     auto inputs = OpenMagnetics::inputs_autocomplete(mas.get_inputs(), magnetic);
     
-    // Run magnetic simulation to get actual losses
-    auto losses = getLossesFromSimulation(magnetic, inputs);
-    
+    // LOSSES FED TO THE NETWORK (ABT #838, Alf 2026-10-12): the losses recorded in the fixture for
+    // its SECOND operating point, "Max. input volt." (15.67 W of core loss at 484.5 C plus the
+    // per-turn winding losses), kept beside the fixture in
+    // concentric_transformer_contiguous_rectangular_wire_max_input_voltage_outputs.json: outputs[1] of the fixture as it was until ABT #1740
+    // dropped that operating point (git 433bfd3f). This is the INFERRED Icepak input: which losses
+    // the Icepak run was given is not recorded. Ansyas, the Icepak driver, feeds it from
+    // mas.outputs[operating_point_index] and defaults to index 0, but index 0's losses (4.02 W of
+    // core loss) put this network's core at 187-199 C, far below Icepak's 351-485 C, and only
+    // index 1 reproduces Icepak's temperatures (its recorded core-loss temperature, 484.48 C, is
+    // Icepak's core_1 of the flyback run). The test used to feed the losses MKF simulates for the
+    // first operating point, which have no relation to what Icepak solved.
+    auto recordedOutputsPath = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "concentric_transformer_contiguous_rectangular_wire_max_input_voltage_outputs.json");
+    std::ifstream recordedOutputsFile(recordedOutputsPath);
+    REQUIRE(recordedOutputsFile.good());
+    MAS::Outputs recordedOutputs(json::parse(recordedOutputsFile));
+    REQUIRE(recordedOutputs.get_core_losses());
+    REQUIRE(recordedOutputs.get_winding_losses());
+    REQUIRE(recordedOutputs.get_winding_losses()->get_winding_losses_per_turn());
+    REQUIRE(recordedOutputs.get_winding_losses()->get_winding_losses_per_turn()->size() == magnetic.get_coil().get_turns_description().value().size());
+
     TemperatureConfig config;
-    config.ambientTemperature = losses.ambientTemperature;
-    config.coreLosses = losses.coreLosses;
-    if (losses.windingLossesOutput.has_value()) {
-        config.windingLosses = losses.windingLosses;
-        config.windingLossesOutput = losses.windingLossesOutput.value();
-    } else {
-        applySimulatedLosses(config, magnetic);
-    }
+    config.ambientTemperature = inputs.get_operating_points()[0].get_conditions().get_ambient_temperature();
+    config.coreLosses = recordedOutputs.get_core_losses()->get_core_losses();
+    config.windingLosses = recordedOutputs.get_winding_losses()->get_winding_losses();
+    config.windingLossesOutput = recordedOutputs.get_winding_losses().value();
     config.plotSchematic = true;
     
     Temperature temp(magnetic, config);
