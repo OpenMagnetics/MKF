@@ -61,6 +61,11 @@ constexpr bool kRegenerateBaselines = false;
 // sits 3x above that floor and 100x below the ~1e-2 shift a real physics change
 // produces, so identity flips and real drift still fail loudly.
 constexpr double kRelTol = 1e-4;
+// AVAILABLE_CORES x POWER only: 5e-3 (0.5 %) on the SCORE, approved by Alf on 2026-10-12 ("just repin
+// it by adding some margin"). Stacked model changes keep moving this score by about 0.1 % with the
+// same core (ABT #1766 -0.22 %, ABT #1467 -0.098 %), each one failing the 1e-4 pin without any change
+// of ranking. The core NAMES are still compared exactly, so an identity flip fails as before.
+constexpr double kRelTolAvailablePower = 5e-3;
 
 // --- Fixture loader ---------------------------------------------------------
 std::vector<Core> load_test_cores_fixture() {
@@ -129,7 +134,8 @@ struct TopEntry {
 
 void check_top_n(const std::string& label,
                  const std::vector<std::pair<OpenMagnetics::Mas, double>>& got,
-                 const std::vector<TopEntry>& expectedTop) {
+                 const std::vector<TopEntry>& expectedTop,
+                 double relTol = kRelTol) {
     // Print baseline lines whenever regenerating OR when no snapshot has
     // been recorded yet (expectedTop empty). Empty-snapshot still enforces
     // the monotonic-ordering structural contract.
@@ -164,7 +170,7 @@ void check_top_n(const std::string& label,
         INFO("top[" << i << "] expected=\"" << expectedTop[i].name << "\" got=\"" << name
                     << "\" score=" << std::setprecision(17) << got[i].second);
         REQUIRE(name == expectedTop[i].name);
-        REQUIRE_THAT(got[i].second, WithinRel(expectedTop[i].score, kRelTol));
+        REQUIRE_THAT(got[i].second, WithinRel(expectedTop[i].score, relTol));
     }
 }
 
@@ -236,8 +242,11 @@ void check_top_n(const std::string& label,
 // Re-pinned 2026-10-12 (ABT #1766, user-approved): rectangular-limb cores (E, planar E, U, UI, EI)
 // now carry the field-exact right-angle bends in le/Ve (Ae unchanged), i.e. a lower core reluctance.
 // Same single core; score 4.7327978556817465 -> 4.7223288293487959 (-0.22 %).
+// Re-pinned 2026-10-12 (ABT #1467, approved by Alf): the magnetizing current is Faraday on the winding
+// voltage and the sampler closes the period. Same single core; score 4.7223288293487959 ->
+// 4.7177218949119135 (-0.098 %). Compared with kRelTolAvailablePower (0.5 %), names exactly.
 const std::vector<TopEntry> kTopAvailablePower = {
-    {"PQ 20/20 - 3C97 - Gapped 0.477 mm",          4.7223288293487959},
+    {"PQ 20/20 - 3C97 - Gapped 0.477 mm",          4.7177218949119135},
 };
 
 // STANDARD_CORES x POWER: top-5 unique standard-shape ferrite candidates.
@@ -362,7 +371,7 @@ TEST_CASE("CoreAdviser AVAILABLE_CORES x POWER top-5 snapshot",
     adviser.set_mode(CoreAdviser::CoreAdviserModes::AVAILABLE_CORES);
     auto results = adviser.get_advised_core(inputs, weights, &cores, 5);
 
-    check_top_n("AVAILABLE_CORES_POWER", results, kTopAvailablePower);
+    check_top_n("AVAILABLE_CORES_POWER", results, kTopAvailablePower, kRelTolAvailablePower);
 }
 
 TEST_CASE("CoreAdviser STANDARD_CORES x POWER top-5 snapshot",
