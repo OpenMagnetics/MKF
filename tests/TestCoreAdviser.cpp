@@ -577,6 +577,48 @@ TEST_CASE("Test_CoreAdviserAvailableCores_All_Cores_Two_Chosen_Ones", "[adviser]
     settings.reset();
 }
 
+// ABT #1802: the temperature gate holds a returned core to its limit on the temperature the
+// loss-temperature solve found for it, which is the one the adviser publishes. The gate's filter
+// stage judges a single pass (losses at 25 C, the network solved once): RM 10 - 3C91 - Gapped
+// 0.29 mm and 0.3 mm passed it at 124 C and were returned with their cores solved at 218.4 C
+// (12.4 W, inside 3C91's mu_i collapse below Curie) under the 130 C limit.
+TEST_CASE("Core adviser returns no core whose loss-temperature solve is above the temperature limit", "[adviser][core-adviser][available-cores][abt-1802]") {
+    settings.reset();
+    clear_databases();
+    OpenMagnetics::Inputs inputs;
+    prepare_test_parameters(0, 25, 100000, {}, 10e-5, inputs, 600);
+
+    std::map<CoreAdviser::CoreAdviserFilters, double> weights;
+    weights[CoreAdviser::CoreAdviserFilters::COST] = 1;
+    weights[CoreAdviser::CoreAdviserFilters::EFFICIENCY] = 1;
+    weights[CoreAdviser::CoreAdviserFilters::DIMENSIONS] = 1;
+
+    settings.set_use_toroidal_cores(true);
+    CoreAdviser coreAdviser;
+    coreAdviser.set_mode(CoreAdviser::CoreAdviserModes::AVAILABLE_CORES);
+    auto cores = load_test_data();
+    auto masMagnetics = coreAdviser.get_advised_core(inputs, weights, &cores, 50);
+
+    const double maximumTemperature = resolve_maximum_design_temperature(inputs);
+    REQUIRE(maximumTemperature == 130);
+    REQUIRE(masMagnetics.size() > 0);
+    for (auto& [mas, scoring] : masMagnetics) {
+        auto coreName = mas.get_magnetic().get_core().get_name().value_or("unnamed");
+        INFO(coreName);
+        REQUIRE(mas.get_outputs().size() == 1);
+        for (auto& output : mas.get_outputs()) {
+            REQUIRE(output.get_temperature());
+            REQUIRE(output.get_core_losses());
+            CHECK(output.get_temperature()->get_maximum_temperature() <= maximumTemperature);
+            // The hot spot is at least as hot as the core the losses were solved at.
+            CHECK(output.get_core_losses()->get_temperature() <= output.get_temperature()->get_maximum_temperature() + MagneticSimulator::kOperatingTemperatureTolerance);
+        }
+        CHECK(coreName.find("RM 10 - 3C91 - Gapped 0.29 mm") == std::string::npos);
+        CHECK(coreName.find("RM 10 - 3C91 - Gapped 0.3 mm") == std::string::npos);
+    }
+    settings.reset();
+}
+
 TEST_CASE("Test_CoreAdviserAvailableCores_No_Toroids_High_Power", "[adviser][core-adviser][available-cores][smoke-test]") {
     clear_databases();
     double voltagePeakToPeak = 6000;

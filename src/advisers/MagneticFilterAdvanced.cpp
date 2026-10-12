@@ -484,4 +484,22 @@ std::pair<bool, double> MagneticFilterTemperature::evaluate_magnetic(
     return {maximumTemperature <= _maximumTemperature, maximumTemperature};
 }
 
+std::pair<bool, double> MagneticFilterTemperature::evaluate_solved_outputs(const std::vector<Outputs>& outputs) const {
+    if (outputs.empty()) {
+        throw InvalidInputException(ErrorCode::MISSING_DATA,
+            "Temperature filter: no solved operating point to read the temperature from");
+    }
+    double maximumTemperature = std::numeric_limits<double>::lowest();
+    for (size_t operatingPointIndex = 0; operatingPointIndex < outputs.size(); ++operatingPointIndex) {
+        const auto& solvedTemperature = outputs[operatingPointIndex].get_temperature();
+        if (!solvedTemperature) {
+            throw InvalidInputException(ErrorCode::MISSING_DATA,
+                "Temperature filter: operating point " + std::to_string(operatingPointIndex) +
+                " carries no temperature from the loss-temperature solve");
+        }
+        maximumTemperature = std::max(maximumTemperature, solvedTemperature->get_maximum_temperature());
+    }
+    return {maximumTemperature <= _maximumTemperature, maximumTemperature};
+}
+
 } // namespace OpenMagnetics

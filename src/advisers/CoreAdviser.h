@@ -236,10 +236,13 @@ class CoreAdviser {
         // Honours unique-core-shapes (a shape is only burned by a SURVIVING
         // candidate). withAlternativeMaterials additionally runs the
         // alternative-materials lookup per kept candidate (STANDARD_CORES path).
+        // maximumTemperature (ABT #1802): the temperature gate's limit when that gate ran; a
+        // candidate whose published loss-temperature solve is hotter is dropped and backfilled.
         std::vector<std::pair<Mas, double>> post_process_and_cut(std::vector<std::pair<Magnetic, double>>& magneticsWithScoring,
                                                                  Inputs& inputs,
                                                                  size_t maximumNumberResults,
-                                                                 bool withAlternativeMaterials = false);
+                                                                 bool withAlternativeMaterials = false,
+                                                                 std::optional<double> maximumTemperature = std::nullopt);
 
         /**
          * @brief Calculate gap constraints for STANDARD_CORES mode.

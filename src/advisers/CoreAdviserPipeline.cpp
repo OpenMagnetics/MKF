@@ -360,8 +360,11 @@ Mas CoreAdviser::post_process_core(Magnetic magnetic, Inputs inputs) {
         // the temperature their combined heat produces (previously the DC losses were computed
         // here at the inputs' maximum temperature, beside core losses solved with their own copy
         // of the winding losses).
+        // ABT #1802: the hot spot that solve found is published with the losses, and it is what the
+        // temperature gate judges the returned part on (post_process_and_cut).
         std::optional<WindingLossesOutput> solvedWindingLosses;
-        CoreLossesOutput coreLossesOutput = _magneticSimulator.calculate_core_losses(operatingPoint, magnetic, &solvedWindingLosses, nullptr,
+        std::optional<TemperatureOutput> solvedTemperature;
+        CoreLossesOutput coreLossesOutput = _magneticSimulator.calculate_core_losses(operatingPoint, magnetic, &solvedWindingLosses, &solvedTemperature,
                                                                                      WindingLossesScope::OHMIC);
         WindingLossesOutput windingLossesOutput = solvedWindingLosses.value();
 
@@ -370,6 +373,7 @@ Mas CoreAdviser::post_process_core(Magnetic magnetic, Inputs inputs) {
         outputs.set_inductance(inductanceOutput);
         outputs.set_winding_losses(windingLossesOutput);
         outputs.set_core_losses(coreLossesOutput);
+        outputs.set_temperature(solvedTemperature.value());
 
         mas.get_mutable_outputs().push_back(outputs);
     }
@@ -412,7 +416,8 @@ Inputs pre_process_inputs(Inputs inputs) {
 std::vector<std::pair<Mas, double>> CoreAdviser::post_process_and_cut(std::vector<std::pair<Magnetic, double>>& magneticsWithScoring,
                                                                       Inputs& inputs,
                                                                       size_t maximumNumberResults,
-                                                                      bool withAlternativeMaterials) {
+                                                                      bool withAlternativeMaterials,
+                                                                      std::optional<double> maximumTemperature) {
     // See the declaration comment (ABT #126): walk in score order, keep the first
     // maximumNumberResults candidates that SURVIVE post-processing. Windings are
     // corrected (and alternative materials looked up) per candidate, so tail
@@ -432,6 +437,14 @@ std::vector<std::pair<Mas, double>> CoreAdviser::post_process_and_cut(std::vecto
     if (MagneticFilterWindowCopperCapacity::applies_to(inputs) &&
         get_application() != MAS::MagneticApplication::INTERFERENCE_SUPPRESSION) {
         wireWithinLimits.emplace(defaults.maximumEffectiveCurrentDensity, defaults.maximumNumberParallels);
+    }
+    // ABT #1802: the temperature gate's verdict on a returned part is read from the loss-temperature
+    // solve that post_process_core publishes. The gate's filter stage ranks and culls the pool on a
+    // single pass (losses at ambient, the network solved once); a part whose losses rise with
+    // temperature passed it at 124 C and was returned with its core solved at 218 C under a 130 C limit.
+    std::optional<MagneticFilterTemperature> temperatureGate;
+    if (maximumTemperature) {
+        temperatureGate.emplace(inputs, maximumTemperature.value());
     }
     for (auto& magneticWithScoring : magneticsWithScoring) {
         if (masWithScoring.size() >= maximumNumberResults) {
@@ -458,6 +471,16 @@ std::vector<std::pair<Mas, double>> CoreAdviser::post_process_and_cut(std::vecto
                     ++candidatesDropped;
                     logEntry("CoreAdviser: dropping core without a wire within the coil stage's limits (backfilling): " +
                                  wireWithinLimits->get_last_reason(), "CoreAdviser", 2);
+                    continue;
+                }
+            }
+            if (temperatureGate) {
+                auto [withinLimit, solvedMaximumTemperature] = temperatureGate->evaluate_solved_outputs(mas.get_outputs());
+                if (!withinLimit) {
+                    ++candidatesDropped;
+                    logEntry("CoreAdviser: dropping core whose loss-temperature solve reaches " + std::to_string(solvedMaximumTemperature) +
+                                 " C, above " + std::to_string(maximumTemperature.value()) + " C (backfilling): " +
+                                 mas.get_magnetic().get_core().get_name().value_or("unnamed"), "CoreAdviser", 2);
                     continue;
                 }
             }
@@ -707,7 +730,13 @@ std::vector<std::pair<Mas, double>> CoreAdviser::filter_available_cores_power_ap
     // own core-adviser regression still lands ~4.3 W (was ~3.2 W) and the
     // magnetic-adviser default inductor ~3.2 W, both with the re-rank removed.
     // ABT #126: post-process before cutting (backfill; see post_process_and_cut)
-    return post_process_and_cut(magneticsWithScoring, inputs, maximumNumberResults);
+    // ABT #1802: where the temperature gate ran (enabled, and not skipped at zero EFFICIENCY weight),
+    // the returned parts are held to its limit on the temperature their loss solve found.
+    std::optional<double> solvedTemperatureLimit;
+    if (settings.get_core_adviser_enable_temperature_filter() && weights[CoreAdviserFilters::EFFICIENCY] > 0) {
+        solvedTemperatureLimit = resolve_maximum_design_temperature(inputs);
+    }
+    return post_process_and_cut(magneticsWithScoring, inputs, maximumNumberResults, /*withAlternativeMaterials=*/false, solvedTemperatureLimit);
 }
 
 std::vector<std::pair<Mas, double>> CoreAdviser::filter_available_cores_suppression_application(std::vector<std::pair<Magnetic, double>>* magnetics, Inputs inputs, std::map<CoreAdviserFilters, double> weights, size_t maximumMagneticsAfterFiltering, size_t maximumNumberResults){
@@ -1192,7 +1221,13 @@ std::vector<std::pair<Mas, double>> CoreAdviser::filter_standard_cores_power_app
     // front, making the per-advise re-rank winding cost redundant. See the
     // matching note in the standard-cores pipeline above.
     // ABT #126: post-process before cutting (backfill; see post_process_and_cut)
-    return post_process_and_cut(magneticsWithScoring, inputs, maximumNumberResults, /*withAlternativeMaterials=*/true);
+    // ABT #1802: where the temperature gate ran, the returned parts are held to its limit on the
+    // temperature their loss solve found.
+    std::optional<double> solvedTemperatureLimit;
+    if (temperatureGateActive) {
+        solvedTemperatureLimit = resolve_maximum_design_temperature(inputs);
+    }
+    return post_process_and_cut(magneticsWithScoring, inputs, maximumNumberResults, /*withAlternativeMaterials=*/true, solvedTemperatureLimit);
 }
 
 std::vector<std::pair<Mas, double>> CoreAdviser::filter_standard_cores_interference_suppression_application(std::vector<std::pair<Magnetic, double>>* magnetics, Inputs inputs, std::map<CoreAdviserFilters, double> weights, size_t maximumMagneticsAfterFiltering, size_t maximumNumberResults){

@@ -935,6 +935,11 @@ public:
     void set_size_stand_in_copper(bool value) { _sizeStandInCopper = value; }
     std::pair<bool, double> evaluate_magnetic(Magnetic* magnetic, Inputs* inputs,
                                               std::vector<Outputs>* outputs = nullptr);
+    // ABT #1802: the gate's verdict on a part whose losses have been solved at their operating
+    // temperature (MagneticSimulator::calculate_core_losses): the hottest point over the
+    // operating points, as that solve published it in each Outputs' temperature, against the
+    // limit. Throws when an operating point carries no solved temperature.
+    std::pair<bool, double> evaluate_solved_outputs(const std::vector<Outputs>& outputs) const;
 };
 
 // // Nice to have in the future
