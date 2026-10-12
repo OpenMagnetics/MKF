@@ -6014,74 +6014,107 @@ std::map<std::string, uint64_t> Coil::align_blocked_ring_turns(bool forceSpreadB
         // + the ring's own turn angular half-pitch). dimensions[1] is the lead's azimuthal wire
         // thickness, matching the drawn radial lead's convention.
         std::map<std::string, std::vector<std::pair<double, double>>> corridorsPerRing;  // {center, half}
+        auto measureCorridors = [&]() {
+            corridorsPerRing.clear();
+            for (const auto& space : spaces) {
+                if (space.layer.empty() || !ringRadius.count(space.layer)) {
+                    continue;
+                }
+                double radius = ringRadius.at(space.layer);
+                double markerHalfAngle = wound_distance_to_angle(space.dimensions[1], radius) / 2;
+                size_t ringWindingIndex = get_winding_index_by_name(turns[ringTurnIndexes.at(space.layer)[0]].get_winding());
+                double turnHalfAngle = wound_distance_to_angle(wires[ringWindingIndex].get_maximum_outer_height(), radius) / 2;
+                if (markerHalfAngle >= 180 || turnHalfAngle >= 180) {
+                    continue;  // wound_distance_to_angle's does-not-fit sentinel — nothing sane to block
+                }
+                corridorsPerRing[space.layer].push_back({normalizeAngle(space.rotation), markerHalfAngle + turnHalfAngle});
+            }
+            // ABT #885: ANOTHER WINDING'S COPPER IS A CORRIDOR TOO. The re-spread and the nudge march
+            // turns over "territory minus corridors", and the corridor set held only this ring's own
+            // connection markers — no other winding's turns were in the obstacle model at all. The
+            // iteration-0 force-spread survives that omission because its winding-territory partition
+            // keeps the sectors apart; the per-ring passes on iterations >= 1 do not: their margin
+            // rule can extend a ring's territory across a foreign winding (and the full-circle
+            // classifier can hand it the whole circle), and the march then walks turns straight
+            // through the foreign copper. Traced move by move on the SP-ordered
+            // current_transformer_complete: every intruding turn was placed by a RESPREAD with
+            // territory span 360, landing inside the one-turn Round 6.0 primary.
+            //
+            // So register, per ring, an exclusion corridor at each foreign turn whose RADIAL band
+            // overlaps the ring's. The half-angle is exact for round wire: two crossings at radii
+            // r and rf touch when their centre distance equals the sum of half-widths D, and the
+            // planar law of cosines gives the azimuth below which they interpenetrate,
+            //     cos(alpha) = (r^2 + rf^2 - D^2) / (2 r rf).
+            // cos(alpha) >= 1 means the radial separation alone clears the pair — no corridor. Same-
+            // winding turns are exempt: a winding's own rings nest at exactly one OD by design.
+            //
+            // Capacity accounting follows for free: blockedUnion now counts the foreign copper, so a
+            // ring that genuinely cannot hold its turns outside it reports a deficit and the blocking
+            // loop spills turns to the next ring, instead of the march inventing an overlap.
+            for (const auto& [ringName, turnIdxs] : ringTurnIndexes) {
+                const double radius = ringRadius.at(ringName);
+                const std::string& ringWindingName = turns[turnIdxs[0]].get_winding();
+                const size_t ringWindingIndex = get_winding_index_by_name(ringWindingName);
+                const double ownHalfWidth = wires[ringWindingIndex].get_maximum_outer_width() / 2;
+                for (size_t t = 0; t < turns.size(); ++t) {
+                    if (turns[t].get_winding() == ringWindingName) {
+                        continue;
+                    }
+                    const size_t foreignWindingIndex = get_winding_index_by_name(turns[t].get_winding());
+                    const double foreignHalfWidth =
+                        wires[foreignWindingIndex].get_maximum_outer_width() / 2;
+                    const double foreignRadius = std::hypot(turns[t].get_coordinates()[0],
+                                                            turns[t].get_coordinates()[1]);
+                    if (foreignRadius < 1e-12 || radius < 1e-12) {
+                        continue;
+                    }
+                    const double touchDistance = ownHalfWidth + foreignHalfWidth;
+                    const double cosAlpha =
+                        (radius * radius + foreignRadius * foreignRadius - touchDistance * touchDistance) /
+                        (2 * radius * foreignRadius);
+                    if (cosAlpha >= 1.0) {
+                        continue;   // radially clear of each other at every azimuth
+                    }
+                    const double alpha =
+                        std::acos(std::clamp(cosAlpha, -1.0, 1.0)) * 180.0 / std::numbers::pi;
+                    if (alpha >= 180) {
+                        continue;   // foreign turn swallows the whole ring: nothing sane to block
+                    }
+                    const double foreignAngle = normalizeAngle(
+                        std::atan2(turns[t].get_coordinates()[1], turns[t].get_coordinates()[0]) *
+                        180.0 / std::numbers::pi);
+                    corridorsPerRing[ringName].push_back({foreignAngle, alpha});
+                }
+            }
+        };
+        measureCorridors();
+        // ABT #1818: THE CORRIDORS ARE RE-MEASURED AS SOON AS A RING MOVES ITS LEAD ANCHOR (see the
+        // full-circle re-spread below), not at the next pass. The anchor casts the corridors of the
+        // winding's other rings, so two rings whose lead turns block each other (the entrance turn
+        // of one parallel under the exit lead of the other, one ring apart) both moved in the same
+        // pass, each out of the corridor the other had ALREADY left, and landed on top of each
+        // other again (T 10/6/4, 30 + 30 + 30 turns x 2 of Round 29.0, overlapping: 'winding 1
+        // parallel 1 turn 0' and 'winding 1 parallel 1 turn 29' at 62.8/65.6, 36.1/38.2 and
+        // 60.2/60.6 deg on three consecutive passes). With the corridors measured on the geometry
+        // the first ring left, the second ring of such a pair finds itself clear and stays.
+        auto remeasureCorridorsAfterRingMove = [&]() {
+            set_turns_description(turns);
+            spaces = get_connection_reserved_spaces();
+            measureCorridors();
+        };
+
+        // ABT #1818: the turns a terminal lead is attached to (each conductor's entrance and exit
+        // turn). Their azimuths ARE the lead corridors of the other rings; see the re-spread below.
+        std::set<std::string> leadAttachedTurnNames;
         for (const auto& space : spaces) {
-            if (space.layer.empty() || !ringRadius.count(space.layer)) {
+            if (!space.isTerminal) {
                 continue;
             }
-            double radius = ringRadius.at(space.layer);
-            double markerHalfAngle = wound_distance_to_angle(space.dimensions[1], radius) / 2;
-            size_t ringWindingIndex = get_winding_index_by_name(turns[ringTurnIndexes.at(space.layer)[0]].get_winding());
-            double turnHalfAngle = wound_distance_to_angle(wires[ringWindingIndex].get_maximum_outer_height(), radius) / 2;
-            if (markerHalfAngle >= 180 || turnHalfAngle >= 180) {
-                continue;  // wound_distance_to_angle's does-not-fit sentinel — nothing sane to block
+            if (!space.toTurn.empty()) {
+                leadAttachedTurnNames.insert(space.toTurn);
             }
-            corridorsPerRing[space.layer].push_back({normalizeAngle(space.rotation), markerHalfAngle + turnHalfAngle});
-        }
-        // ABT #885: ANOTHER WINDING'S COPPER IS A CORRIDOR TOO. The re-spread and the nudge march
-        // turns over "territory minus corridors", and the corridor set held only this ring's own
-        // connection markers — no other winding's turns were in the obstacle model at all. The
-        // iteration-0 force-spread survives that omission because its winding-territory partition
-        // keeps the sectors apart; the per-ring passes on iterations >= 1 do not: their margin
-        // rule can extend a ring's territory across a foreign winding (and the full-circle
-        // classifier can hand it the whole circle), and the march then walks turns straight
-        // through the foreign copper. Traced move by move on the SP-ordered
-        // current_transformer_complete: every intruding turn was placed by a RESPREAD with
-        // territory span 360, landing inside the one-turn Round 6.0 primary.
-        //
-        // So register, per ring, an exclusion corridor at each foreign turn whose RADIAL band
-        // overlaps the ring's. The half-angle is exact for round wire: two crossings at radii
-        // r and rf touch when their centre distance equals the sum of half-widths D, and the
-        // planar law of cosines gives the azimuth below which they interpenetrate,
-        //     cos(alpha) = (r^2 + rf^2 - D^2) / (2 r rf).
-        // cos(alpha) >= 1 means the radial separation alone clears the pair — no corridor. Same-
-        // winding turns are exempt: a winding's own rings nest at exactly one OD by design.
-        //
-        // Capacity accounting follows for free: blockedUnion now counts the foreign copper, so a
-        // ring that genuinely cannot hold its turns outside it reports a deficit and the blocking
-        // loop spills turns to the next ring, instead of the march inventing an overlap.
-        for (const auto& [ringName, turnIdxs] : ringTurnIndexes) {
-            const double radius = ringRadius.at(ringName);
-            const std::string& ringWindingName = turns[turnIdxs[0]].get_winding();
-            const size_t ringWindingIndex = get_winding_index_by_name(ringWindingName);
-            const double ownHalfWidth = wires[ringWindingIndex].get_maximum_outer_width() / 2;
-            for (size_t t = 0; t < turns.size(); ++t) {
-                if (turns[t].get_winding() == ringWindingName) {
-                    continue;
-                }
-                const size_t foreignWindingIndex = get_winding_index_by_name(turns[t].get_winding());
-                const double foreignHalfWidth =
-                    wires[foreignWindingIndex].get_maximum_outer_width() / 2;
-                const double foreignRadius = std::hypot(turns[t].get_coordinates()[0],
-                                                        turns[t].get_coordinates()[1]);
-                if (foreignRadius < 1e-12 || radius < 1e-12) {
-                    continue;
-                }
-                const double touchDistance = ownHalfWidth + foreignHalfWidth;
-                const double cosAlpha =
-                    (radius * radius + foreignRadius * foreignRadius - touchDistance * touchDistance) /
-                    (2 * radius * foreignRadius);
-                if (cosAlpha >= 1.0) {
-                    continue;   // radially clear of each other at every azimuth
-                }
-                const double alpha =
-                    std::acos(std::clamp(cosAlpha, -1.0, 1.0)) * 180.0 / std::numbers::pi;
-                if (alpha >= 180) {
-                    continue;   // foreign turn swallows the whole ring: nothing sane to block
-                }
-                const double foreignAngle = normalizeAngle(
-                    std::atan2(turns[t].get_coordinates()[1], turns[t].get_coordinates()[0]) *
-                    180.0 / std::numbers::pi);
-                corridorsPerRing[ringName].push_back({foreignAngle, alpha});
+            if (!space.fromTurn.empty()) {
+                leadAttachedTurnNames.insert(space.fromTurn);
             }
         }
 
@@ -6096,6 +6129,16 @@ std::map<std::string, uint64_t> Coil::align_blocked_ring_turns(bool forceSpreadB
             double radius = ringRadius.at(ringName);
             size_t ringWindingIndex = get_winding_index_by_name(turns[turnIdxs[0]].get_winding());
             double turnPitchAngle = wound_distance_to_angle(wires[ringWindingIndex].get_maximum_outer_height(), radius);
+            // ABT #1818: a turn moved OUT of a corridor is stored on the 1 nm cartesian grid
+            // (roundFloat 9), which shifts it by up to 0.71 nm of arc: 1e-5 deg on a 4 mm ring. A
+            // target 1e-6 deg past the corridor edge therefore reads back INSIDE the corridor. The
+            // edge clearance of the lead anchor is one grid step of arc at the ring's radius on top
+            // of the 1e-6 deg: kept at 1e-6 deg it stayed "inside" on every pass, was re-spread four
+            // times to the same place and escalated to a one-slot deficit on all 16 re-winds
+            // (T 25/15/10, 15 + 15 + 15 turns of Round 24.0, overlapping: 'winding 0 parallel 0
+            // turn 0' at 5.43149 deg, 2e-6 deg inside the corridor ending at 5.43148 deg).
+            // (The minimal nudge still clears by 1e-6 deg only: ABT #1804.)
+            const double corridorEdgeClearance = 1e-6 + 1e-9 / radius * 180.0 / std::numbers::pi;
 
             auto insideCorridor = [&](double angle) -> const std::pair<double, double>* {
                 for (const auto& corridor : corridors) {
@@ -6396,6 +6439,64 @@ std::map<std::string, uint64_t> Coil::align_blocked_ring_turns(bool forceSpreadB
                 }
                 referenceAngle = normalizeAngle(widest->first + widest->second);
             }
+            // ABT #1818: A FULL-CIRCLE RING IS RE-SPREAD AROUND ITS OWN LEAD-ATTACHED TURN. The end
+            // of the widest corridor is not a property of the ring: the corridors are other rings'
+            // lead azimuths, so anchoring the march there re-places every turn of the ring from
+            // scratch on each re-spread -- its entrance or exit turn included, and with that turn
+            // the corridor it casts on the winding's other rings. Two rings of one winding then
+            // chase each other's leads: ring 0 is laid after ring 1's exit lead, which moves ring
+            // 0's entrance turn, whose corridor on ring 1 moves, ring 1 is laid after it, its exit
+            // turn moves, and so on (T 12.7/7.9/12.7, 45 + 45 turns x 2 of Round 29.0,
+            // overlapping: the entrance corridor on 'winding 0 section 0 layer 0' at 6.6, 348.1,
+            // 14.0, 338.5, 2.6 deg on five consecutive passes, an intrusion of 0.3 to 4 deg after
+            // each). Four re-spreads later the ABT #723 escalation reported a one-slot deficit the
+            // ring did not have, the blocking re-wind reserved the slot, and the re-wound ring
+            // chased again: the same deficit on all 16 re-winds.
+            //
+            // So when the ring holds a lead-attached turn, that turn keeps its azimuth and the
+            // march starts AT it (the first one in winding order when it holds several). The
+            // corridors the ring casts then stay where they are through a re-spread, and the
+            // other rings settle against fixed corridors. The anchor only moves when it sits in
+            // a corridor itself, and then to the nearest clear edge of it.
+            // Not for the iteration-0 force-spread, which is the baseline placement.
+            std::optional<size_t> leadAnchorTurn;
+            double leadAnchorOriginalAngle = 0;
+            if (fullCircle && !forceSpreadAllRings) {
+                for (size_t t : turnIdxs) {
+                    if (leadAttachedTurnNames.count(turns[t].get_name())) {
+                        leadAnchorTurn = t;   // turnIdxs is in winding order
+                        break;
+                    }
+                }
+            }
+            if (leadAnchorTurn) {
+                leadAnchorOriginalAngle = normalizeAngle(std::atan2(turns[leadAnchorTurn.value()].get_coordinates()[1],
+                                                                    turns[leadAnchorTurn.value()].get_coordinates()[0]) * 180.0 / std::numbers::pi);
+                referenceAngle = leadAnchorOriginalAngle;
+                if (insideCorridor(leadAnchorOriginalAngle) != nullptr) {
+                    // Walk out of the corridor(s) on each side; same edge clearance as the nudge.
+                    auto clearEdge = [&](double direction) {
+                        double edge = leadAnchorOriginalAngle;
+                        size_t walkGuard = 0;
+                        const std::pair<double, double>* blocking = insideCorridor(edge);
+                        while (blocking != nullptr) {
+                            if (walkGuard++ > corridors.size()) {
+                                throw CoilException(ErrorCode::CALCULATION_INVALID_RESULT,
+                                    "align_blocked_ring_turns: the corridors of ring '" + ringName +
+                                    "' leave its lead-attached turn '" + turns[leadAnchorTurn.value()].get_name() +
+                                    "' no clear azimuth although the ring has free arc");
+                            }
+                            edge = normalizeAngle(blocking->first + direction * (blocking->second + corridorEdgeClearance));
+                            blocking = insideCorridor(edge);
+                        }
+                        return edge;
+                    };
+                    const double edgeAhead = clearEdge(1.0);
+                    const double edgeBehind = clearEdge(-1.0);
+                    referenceAngle = normalizeAngle(edgeAhead - leadAnchorOriginalAngle) <= normalizeAngle(leadAnchorOriginalAngle - edgeBehind)
+                                         ? edgeAhead : edgeBehind;
+                }
+            }
             double spacing = totalFree / double(turnIdxs.size());
             // Ring turns in cyclic order starting just after the reference angle.
             //
@@ -6415,6 +6516,9 @@ std::map<std::string, uint64_t> Coil::align_blocked_ring_turns(bool forceSpreadB
                 const auto& occupied = ringOccupiedArc.at(ringName).second;
                 orderReferenceAngle = normalizeAngle(occupied.first - (360.0 - occupied.second) / 2);
             }
+            if (leadAnchorTurn) {
+                orderReferenceAngle = leadAnchorOriginalAngle;   // the anchor sorts first (offset 0)
+            }
             std::vector<size_t> orderedTurns(turnIdxs.begin(), turnIdxs.end());
             std::sort(orderedTurns.begin(), orderedTurns.end(), [&](size_t a, size_t b) {
                 double angleA = normalizeAngle(normalizeAngle(std::atan2(turns[a].get_coordinates()[1], turns[a].get_coordinates()[0]) * 180.0 / std::numbers::pi) - orderReferenceAngle);
@@ -6425,7 +6529,7 @@ std::map<std::string, uint64_t> Coil::align_blocked_ring_turns(bool forceSpreadB
             double position = referenceAngle;
             for (size_t k = 0; k < orderedTurns.size(); ++k) {
                 // Advance by the next chunk of free arc, jumping over any corridor met on the way.
-                double toAdvance = (k == 0) ? spacing / 2 : spacing;
+                double toAdvance = (k == 0) ? (leadAnchorTurn ? 0.0 : spacing / 2) : spacing;
                 // Safety bound: the free-space guard above should make this unreachable, but a
                 // sweep-resolution edge case must degrade to a partial march, not an infinite loop.
                 size_t marchGuard = 0;
@@ -6499,6 +6603,9 @@ std::map<std::string, uint64_t> Coil::align_blocked_ring_turns(bool forceSpreadB
             // not spend the ring's escalation budget.
             if (intrusion) {
                 respreadCountPerRing[ringName]++;
+            }
+            if (leadAnchorTurn && referenceAngle != leadAnchorOriginalAngle) {
+                remeasureCorridorsAfterRingMove();   // the anchor itself moved
             }
         }
 
