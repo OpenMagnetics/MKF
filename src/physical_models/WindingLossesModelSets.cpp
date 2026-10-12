@@ -133,8 +133,11 @@ Scope scope_of(Magnetic& magnetic) {
     // ABT #1783 (Alf 2026-10-12): a drum, a rod, and a drum closed by a ring, a shell or a plate wind in a window that
     // no ferrite frame closes on all four sides (the drum-ring's annular clearance gap lies outside the window's height,
     // so it opens nowhere onto it). The neutral window places the core's MMF on that frame, so it has no frame to place it on.
+    // A MOLDED core (Alf 2026-10-12) has its winding embedded in the magnetic material itself: there is no air window
+    // bounded by a high-permeability frame either.
     if (family == CoreShapeFamily::DRUM || family == CoreShapeFamily::ROD || family == CoreShapeFamily::DRUM_RING ||
-        family == CoreShapeFamily::DRUM_SEMISHIELDED || family == CoreShapeFamily::DRUM_PLATE) {
+        family == CoreShapeFamily::DRUM_SEMISHIELDED || family == CoreShapeFamily::DRUM_PLATE ||
+        family == CoreShapeFamily::MOLDED) {
         return Scope::NO_WINDOW_FRAME;
     }
     if (!core.get_processed_description()) {

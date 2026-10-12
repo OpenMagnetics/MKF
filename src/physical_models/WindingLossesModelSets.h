@@ -18,8 +18,8 @@ enum class WindingLossesModelSetScope : int {
     ROUND_POST_SINGLE_WINDOW,   // one winding window around a round central column (PQ, RM, P, EP, ETD, ...)
     TOROID,
     MULTI_WINDOW,               // several winding windows (multi-column cores)
-    NO_WINDOW_FRAME             // drum / rod families (DRUM, ROD, DRUM_RING, DRUM_SEMISHIELDED, DRUM_PLATE): no ferrite
-                                // frame closes the window, so the neutral-window image lattice has nothing to stand on
+    NO_WINDOW_FRAME             // drum / rod / molded families (DRUM, ROD, DRUM_RING, DRUM_SEMISHIELDED, DRUM_PLATE, MOLDED):
+                                // no ferrite frame closes an air window, so the neutral-window image lattice has nothing to stand on
 };
 
 // A named, self-consistent combination of the winding-loss models: ONE field solution for the whole magnetic (field

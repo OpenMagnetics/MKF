@@ -2964,6 +2964,43 @@ TEST_CASE("Test_Winding_Losses_Default_Is_The_Best_Set_Per_Core", "[physical-mod
                 CHECK_THAT(std::string(error.what()), Catch::Matchers::ContainsSubstring("not available for this core family"));
             }
         }
+        // A MOLDED core (winding embedded in the magnetic material, no air window framed by ferrite) is in the same scope.
+        // Shape from the ABT #761 molded fixture in TestBobbin.cpp (A = C = 1.6 mm).
+        {
+            INFO("MOLDED");
+            settings.reset();
+            clear_databases();
+            json shapeJson = {
+                {"magneticCircuit", "closed"}, {"type", "custom"}, {"family", "molded"},
+                {"aliases", json::array()}, {"name", "MAPI-like 1610 square"},
+                {"dimensions", {
+                    {"A", {{"nominal", 0.0016}}}, {"B", {{"nominal", 0.0009}}}, {"C", {{"nominal", 0.0016}}},
+                    {"D", {{"nominal", 0.00024}}}, {"E", {{"nominal", 0.001219}}}, {"F", {{"nominal", 0.000899}}}}}
+            };
+            json coreJson;
+            coreJson["functionalDescription"] = {
+                {"type", "closedShape"}, {"material", "Kool Mµ 26"}, {"shape", shapeJson},
+                {"gapping", json::array()}, {"numberStacks", 1}};
+            OpenMagnetics::Core core(coreJson);
+            core.process_data();
+            REQUIRE(core.get_shape_family() == CoreShapeFamily::MOLDED);
+            json coilJson;
+            coilJson["bobbin"] = "Dummy";
+            coilJson["functionalDescription"] = json::array({{
+                {"name", "winding 0"}, {"numberTurns", 2}, {"numberParallels", 1},
+                {"isolationSide", "primary"}, {"wire", "Round 0.014 - Grade 1"}}});
+            OpenMagnetics::Magnetic magnetic;
+            magnetic.set_core(core);
+            magnetic.set_coil(OpenMagnetics::Coil(coilJson, false));
+            CHECK(get_default_winding_losses_model_set(magnetic) == WindingLossesModelSets::LEGACY_DEFAULT);
+            try {
+                check_winding_losses_model_set_applies(get_winding_losses_model_set(WindingLossesModelSets::NEUTRAL_WINDOW), magnetic);
+                FAIL("NEUTRAL_WINDOW accepted a molded core");
+            }
+            catch (const ModelNotAvailableException& error) {
+                CHECK_THAT(std::string(error.what()), Catch::Matchers::ContainsSubstring("not available for this core family (MOLDED"));
+            }
+        }
         // End to end on the drum ring: the default solves, equals LEGACY_DEFAULT bit for bit, and a named NEUTRAL_WINDOW
         // is refused before any field is built.
         settings.reset();
