@@ -734,6 +734,54 @@ namespace {
         }
     }
 
+    // ABT #1790: XFlux 60's mu(f) is the Magnetics frequencyFactor quartic, a fit that reads 59.9 at
+    // 100 kHz, 58.5 at 1 MHz and falls below the vacuum's 1 near 26.7 MHz (then goes negative). The
+    // derived complex-permeability table ends where that model stops giving a material value: the
+    // material answers inside the table and throws above its end. Reading the refused point with the
+    // checked getter threw the whole table away, and XFlux 60 had no complex permeability at 100 kHz.
+    TEST_CASE("Test_Complex_Permeability_Derived_Table_Ends_Where_Frequency_Model_Drops_Below_Vacuum", "[physical-model][complex-permeability][complex-permeability-range][abt-1790]") {
+        ComplexPermeability complexPermeability;
+        auto coreMaterial = OpenMagnetics::find_core_material_by_name("XFlux 60");
+
+        // The premise: the material's own model is below the vacuum's permeability at 30 MHz and is
+        // refused there, while it is a material value at 20 MHz.
+        CHECK(OpenMagnetics::InitialPermeability::get_initial_permeability_model_value(coreMaterial, std::nullopt, std::nullopt, 3e7) < 1);
+        CHECK_THROWS_AS(OpenMagnetics::InitialPermeability::get_initial_permeability(coreMaterial, std::nullopt, std::nullopt, 3e7), CalculationException);
+        CHECK(OpenMagnetics::InitialPermeability::get_initial_permeability(coreMaterial, std::nullopt, std::nullopt, 2e7) > 1);
+
+        // Inside the table: answers.
+        auto [realAt100kHz, imaginaryAt100kHz] = complexPermeability.get_complex_permeability(coreMaterial, 1e5);
+        auto [realAt1MHz, imaginaryAt1MHz] = complexPermeability.get_complex_permeability(coreMaterial, 1e6);
+        CHECK(realAt100kHz > 50);
+        CHECK(realAt100kHz < 60);
+        CHECK(realAt1MHz > 50);
+        CHECK(realAt1MHz < realAt100kHz);
+        CHECK(imaginaryAt100kHz > 0);
+        CHECK(imaginaryAt1MHz > imaginaryAt100kHz);
+
+        // The table ends past 1 MHz and before the model's crossing of 1; its last point is a
+        // frequency the checked initial-permeability getter accepts, and every tabulated |mu| is a
+        // material value (not clamped to 1, not below it).
+        auto [minimumFrequency, maximumFrequency] = complexPermeability.get_frequency_range(coreMaterial);
+        CHECK(maximumFrequency > 1e7);
+        CHECK(maximumFrequency < 2.67e7);
+        CHECK(OpenMagnetics::InitialPermeability::get_initial_permeability(coreMaterial, std::nullopt, std::nullopt, maximumFrequency) > 1);
+        auto derived = complexPermeability.calculate_complex_permeability_from_frequency_dependent_initial_permeability(coreMaterial);
+        auto realPoints = std::get<std::vector<PermeabilityPoint>>(derived.get_real());
+        auto imaginaryPoints = std::get<std::vector<PermeabilityPoint>>(derived.get_imaginary());
+        REQUIRE(realPoints.size() == imaginaryPoints.size());
+        REQUIRE(realPoints.size() > 10);
+        for (size_t index = 0; index < realPoints.size(); ++index) {
+            INFO("f = " << realPoints[index].get_frequency().value() << " Hz");
+            CHECK(std::hypot(realPoints[index].get_value(), imaginaryPoints[index].get_value()) > 1);
+        }
+
+        // Above the table: throws, at its edge and where the model is below 1.
+        CHECK_NOTHROW(complexPermeability.get_complex_permeability(coreMaterial, maximumFrequency));
+        CHECK_THROWS_AS(complexPermeability.get_complex_permeability(coreMaterial, maximumFrequency * 1.001), ComplexPermeabilityFrequencyOutOfRangeException);
+        CHECK_THROWS_AS(complexPermeability.get_complex_permeability(coreMaterial, 3e7), ComplexPermeabilityFrequencyOutOfRangeException);
+    }
+
     // ABT #358: per-shape-family DC-bias modifiers must be reachable. Kool Mu 26 publishes
     // three fits: "default", "E/ER/U" and "EQ/LP" — all with the same 'a' but different b/c,
     // so at a real DC bias the three give measurably different permeability.

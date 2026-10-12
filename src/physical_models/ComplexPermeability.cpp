@@ -206,14 +206,37 @@ ComplexPermeabilityData ComplexPermeability::calculate_complex_permeability_from
         // mu'(f) to the modelled one, which pins mu' to the data and carries mu'' along at
         // the modelled loss angle (ABT #843). Materials without a frequency-dependent table
         // never reach this function, so there is always a curve to read.
-        double measuredPermeability = InitialPermeability::get_initial_permeability(coreMaterial, std::nullopt, std::nullopt, permeabilityPointFrequency);
+        // The table ENDS where the material's own frequency model stops describing a material.
+        // A formula mu(f) is a fit with a valid range: XFlux 60's Magnetics frequencyFactor quartic
+        // reads 59.9 at 100 kHz, 58.5 at 1 MHz, 30.7 at 20 MHz and 0.83 at 26.6 MHz, and goes
+        // negative after that. A relative permeability below the vacuum's is not a material value
+        // (get_initial_permeability refuses it, ABT #1740), so there is no table point there: the
+        // points before it stand, and get_complex_permeability answers inside them and throws
+        // above them, like any other end of the tabulated range. Asking the checked getter here
+        // instead made that one out-of-range point throw away the whole table, and the material
+        // had no complex permeability at 100 kHz either (ABT #1790). The model value is read as
+        // it stands only to find that end; it is never used below 1, clamped or floored.
+        // A point also needs the model 5 % above it (the local slope of the Kramers-Kronig loss
+        // angle below), so the table ends at the first frequency where either read is below 1.
+        // Past the last TABULATED point the model is not read at all (see below).
+        constexpr double localSlopeRelativeStep = 1.05;
+        bool beyondTheTabulatedData = lastTabulatedFrequency > 0 && permeabilityPointFrequency > lastTabulatedFrequency;
+        double measuredPermeability = 0;
+        double permeabilityAbove = 0;
+        if (!beyondTheTabulatedData) {
+            measuredPermeability = InitialPermeability::get_initial_permeability_model_value(coreMaterial, std::nullopt, std::nullopt, permeabilityPointFrequency);
+            permeabilityAbove = InitialPermeability::get_initial_permeability_model_value(coreMaterial, std::nullopt, std::nullopt, permeabilityPointFrequency * localSlopeRelativeStep);
+            if (measuredPermeability < 1 || permeabilityAbove < 1) {
+                break;
+            }
+        }
 
         // Past its last tabulated point the initial-permeability interpolator turns back UP:
         // Nanoperm 80000 reads 156 at 25.6 MHz (its last point), then 451 at 50 MHz and
         // 1,057 at 100 MHz. Permeability does not recover after roll-off, so a rise means we
         // have run off the end of the data, not that the material got more permeable. Carry
         // on with the last real log-log slope instead of following the rise (ABT #843).
-        if (lastTabulatedFrequency > 0 && permeabilityPointFrequency > lastTabulatedFrequency) {
+        if (beyondTheTabulatedData) {
             measuredPermeability = lastTabulatedPermeability * pow(permeabilityPointFrequency / lastTabulatedFrequency, beyondTheDataLogSlope);
         }
 
@@ -229,15 +252,13 @@ ComplexPermeabilityData ComplexPermeability::calculate_complex_permeability_from
             // (a flat table says nothing about eddy loss, which the closed form does).
             double sheetAngle = std::atan2(std::max(muCoreImag, 0.0), muCoreReal);
             double localSlope = 0;
-            if (lastTabulatedFrequency > 0 && permeabilityPointFrequency > lastTabulatedFrequency) {
+            if (beyondTheTabulatedData) {
                 localSlope = beyondTheDataLogSlope;
             }
             else {
-                constexpr double relativeStep = 1.05;
-                double permeabilityAbove = InitialPermeability::get_initial_permeability(coreMaterial, std::nullopt, std::nullopt, permeabilityPointFrequency * relativeStep);
-                double permeabilityBelow = InitialPermeability::get_initial_permeability(coreMaterial, std::nullopt, std::nullopt, permeabilityPointFrequency / relativeStep);
+                double permeabilityBelow = InitialPermeability::get_initial_permeability(coreMaterial, std::nullopt, std::nullopt, permeabilityPointFrequency / localSlopeRelativeStep);
                 if (permeabilityAbove > 0 && permeabilityBelow > 0) {
-                    localSlope = log(permeabilityAbove / permeabilityBelow) / (2 * log(relativeStep));
+                    localSlope = log(permeabilityAbove / permeabilityBelow) / (2 * log(localSlopeRelativeStep));
                 }
             }
             // n in [0, 0.95]: negative slopes only (a rising read is interpolator artefact),
