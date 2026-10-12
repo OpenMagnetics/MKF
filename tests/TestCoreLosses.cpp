@@ -5237,8 +5237,7 @@ TEST_CASE("A line-cycle magnetizing current on its own grid is split with the fl
     // ABT #1745: the flux of a PFC record is stored compressed to its corners while its magnetizing
     // current is sampled on a grid of its own. The split dropped a current not on the flux's grid, and
     // the loss-factor model (which prices the magnetizing current) then threw for every cycle. The
-    // current is read on the flux's time base over the line period, not the switching period the
-    // excitation's frequency names.
+    // current is read on the flux's time base over the line period.
     settings.reset();
     clear_databases();
     double temperature = 25;
@@ -5268,8 +5267,10 @@ TEST_CASE("A line-cycle magnetizing current on its own grid is split with the fl
         magnetizingCurrentJson["processed"]["peak"] = *std::max_element(current.begin(), current.end());
         magnetizingCurrentJson["processed"]["offset"] = (*std::max_element(current.begin(), current.end()) + *std::min_element(current.begin(), current.end())) / 2;
         auto record = pfc.record;
-        // Kirchhoff's PFC records carry the switching frequency while their waveforms span the line period.
-        record.set_frequency(lineFrequency * cyclesPerLinePeriod);
+        // A record's frequency label is the period its waveform spans (Alf, 2026-10-12, ABT #1467): this
+        // one spans the line period, so it is labelled with the line frequency; the switching frequency
+        // is detected from the waveform.
+        REQUIRE(record.get_frequency() == lineFrequency);
         record.set_magnetizing_current(SignalDescriptor(magnetizingCurrentJson));
         REQUIRE(record.get_magnetizing_current()->get_waveform()->get_data().size() != cornerData.size());
         return record;
