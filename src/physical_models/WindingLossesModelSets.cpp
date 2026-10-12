@@ -126,8 +126,16 @@ const std::map<WindingLossesModelSets, WindingLossesModelSet>& registry() {
 
 Scope scope_of(Magnetic& magnetic) {
     auto core = magnetic.get_core();
-    if (core.get_shape_family() == CoreShapeFamily::T) {
+    const auto family = core.get_shape_family();
+    if (family == CoreShapeFamily::T) {
         return Scope::TOROID;
+    }
+    // ABT #1783 (Alf 2026-10-12): a drum, a rod, and a drum closed by a ring, a shell or a plate wind in a window that
+    // no ferrite frame closes on all four sides (the drum-ring's annular clearance gap lies outside the window's height,
+    // so it opens nowhere onto it). The neutral window places the core's MMF on that frame, so it has no frame to place it on.
+    if (family == CoreShapeFamily::DRUM || family == CoreShapeFamily::ROD || family == CoreShapeFamily::DRUM_RING ||
+        family == CoreShapeFamily::DRUM_SEMISHIELDED || family == CoreShapeFamily::DRUM_PLATE) {
+        return Scope::NO_WINDOW_FRAME;
     }
     if (!core.get_processed_description()) {
         core.process_data();
@@ -180,7 +188,9 @@ void check_winding_losses_model_set_applies(const WindingLossesModelSet& set, Ma
     }
     if (!covered) {
         throw ModelNotAvailableException("Winding-loss model set " + std::string(magic_enum::enum_name(set.id)) +
-                                         " does not model this core (" + std::string(magic_enum::enum_name(actual)) + ")");
+                                         " is not available for this core family (" +
+                                         std::string(magic_enum::enum_name(magnetic.get_core().get_shape_family())) +
+                                         ", scope " + std::string(magic_enum::enum_name(actual)) + ")");
     }
     auto coil = magnetic.get_coil();
     for (size_t windingIndex = 0; windingIndex < coil.get_functional_description().size(); ++windingIndex) {
@@ -238,6 +248,8 @@ WindingLossesModelSets get_default_winding_losses_model_set(Magnetic magnetic) {
             return defaults.windingLossesModelSetDefaultToroid;
         case Scope::MULTI_WINDOW:
             return defaults.windingLossesModelSetDefaultMultiWindow;
+        case Scope::NO_WINDOW_FRAME:
+            return defaults.windingLossesModelSetDefaultNoWindowFrame;
         case Scope::SINGLE_RECTANGULAR_WINDOW:
         case Scope::ROUND_POST_SINGLE_WINDOW:
             break;

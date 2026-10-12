@@ -21,6 +21,7 @@
 
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
+#include <catch2/matchers/catch_matchers_string.hpp>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -2932,6 +2933,54 @@ TEST_CASE("Test_Winding_Losses_Default_Is_The_Best_Set_Per_Core", "[physical-mod
         CHECK(get_default_winding_losses_model_set(magnetic) == WindingLossesModelSets::LEGACY_DEFAULT);
         settings.reset();
     }
+    // ABT #1783 (Alf 2026-10-12): drum and rod families have no window frame for the neutral window. They keep the
+    // legacy set by default (the drum ring used to throw GAP_INVALID_DIMENSIONS from the wall sheets: its annular
+    // clearance opens nowhere onto the window), and NEUTRAL_WINDOW asked for by name refuses them by family.
+    // Counter-check: drop the family test from scope_of and the drum-ring losses throw / the refusal disappears.
+    SECTION("Drum and rod families keep the legacy set; the neutral window refuses them") {
+        auto buildMagnetic = [](const std::string& shapeName) {
+            auto core = OpenMagneticsTesting::get_quick_core(shapeName, json::array(), 1, "N87");
+            json coilJson;
+            coilJson["bobbin"] = "Dummy";
+            coilJson["functionalDescription"] = json::array({{
+                {"name", "winding 0"}, {"numberTurns", 8}, {"numberParallels", 1},
+                {"isolationSide", "primary"}, {"wire", "Round 0.1 - Grade 1"}}});
+            OpenMagnetics::Magnetic magnetic;
+            magnetic.set_core(core);
+            magnetic.set_coil(OpenMagnetics::Coil(coilJson, false));
+            return OpenMagnetics::magnetic_autocomplete(magnetic);
+        };
+        for (const std::string shapeName : {"DR 2.3 + SRI 3.0", "DR 10/18/5/2.75/12.5/2.75", "DRS 8/3.9/3.75/1/1.9/1/8/8/4.2"}) {
+            INFO(shapeName);
+            settings.reset();
+            clear_databases();
+            auto magnetic = buildMagnetic(shapeName);
+            CHECK(get_default_winding_losses_model_set(magnetic) == WindingLossesModelSets::LEGACY_DEFAULT);
+            try {
+                check_winding_losses_model_set_applies(get_winding_losses_model_set(WindingLossesModelSets::NEUTRAL_WINDOW), magnetic);
+                FAIL("NEUTRAL_WINDOW accepted a drum-family core");
+            }
+            catch (const ModelNotAvailableException& error) {
+                CHECK_THAT(std::string(error.what()), Catch::Matchers::ContainsSubstring("not available for this core family"));
+            }
+        }
+        // End to end on the drum ring: the default solves, equals LEGACY_DEFAULT bit for bit, and a named NEUTRAL_WINDOW
+        // is refused before any field is built.
+        settings.reset();
+        clear_databases();
+        settings.set_magnetic_field_include_fringing(true);
+        auto magnetic = buildMagnetic("DR 2.3 + SRI 3.0");
+        auto inputs = OpenMagnetics::Inputs::create_quick_operating_point_only_current(
+            1e6, 14e-6, 25, WaveformLabel::TRIANGULAR, 0.4, 0.5, 1.0);
+        auto operatingPoint = inputs.get_operating_point(0);
+        double byDefault = WindingLosses().calculate_losses(magnetic, operatingPoint, 25).get_winding_losses();
+        double legacy = WindingLosses(setOf(WindingLossesModelSets::LEGACY_DEFAULT)).calculate_losses(magnetic, operatingPoint, 25).get_winding_losses();
+        CHECK(byDefault > 0);
+        CHECK(byDefault == legacy);
+        CHECK_THROWS_AS(WindingLosses(setOf(WindingLossesModelSets::NEUTRAL_WINDOW)).calculate_losses(magnetic, operatingPoint, 25),
+                        ModelNotAvailableException);
+        settings.reset();
+    }
 }
 
 // A named set is exactly its registry row: the same numbers as selecting those models by hand.
@@ -4577,6 +4626,57 @@ TEST_CASE("Debug_Martinez_Flat_Scorecard", "[debug][martinez-flat-scorecard][.]"
                 row["error"] = std::string(e.what()).substr(0, 300);
             }
             std::cout << "MF " << row.dump() << std::endl;
+        }
+    }
+    settings.reset();
+}
+
+// ABT #1759 foil investigation (hidden probe, Alf 2026-10-12): the per-turn field each field model hands the proximity
+// kernel on the E 42 foil fixture of the scorecard (2 A peak-to-peak sinusoid, 20 C, mirroring 2, fringing on). Env
+// PF_FREQ (Hz), PF_GAPPED (any value: 1 mm ground gap), PF_MODELS (';'-separated "FIELD/FRINGING" JSON names). Output:
+// one "FP <model> <turn> <label> <x> <y> <Hx> <Hy>" line per field point of the fundamental, in-phase.
+TEST_CASE("Debug_Abt1759_Foil_Field_Probe", "[debug][abt1759-foil][.]") {
+    const double frequency = std::stod(std::getenv("PF_FREQ") ? std::getenv("PF_FREQ") : "10000");
+    const bool gapped = std::getenv("PF_GAPPED") != nullptr;
+    std::vector<std::string> modelNames;
+    {
+        std::stringstream stream(std::getenv("PF_MODELS") ? std::getenv("PF_MODELS") : "BinnsLawrenson/MmfBoundary");
+        std::string item;
+        while (std::getline(stream, item, ';')) modelNames.push_back(item);
+    }
+    for (const auto& modelName : modelNames) {
+        settings.reset();
+        auto magnetic = build_e42_flat_fixture(true, gapped);
+        clear_databases();
+        settings.set_magnetic_field_mirroring_dimension(2);
+        settings.set_magnetic_field_include_fringing(true);
+        auto inputs = OpenMagnetics::Inputs::create_quick_operating_point_only_current(frequency, 1e-3, 20, WaveformLabel::SINUSOIDAL, 2, 0.5, 0);
+        auto operatingPoint = inputs.get_operating_point(0);
+        std::stringstream stream(modelName);
+        std::string field, fringing;
+        std::getline(stream, field, '/');
+        std::getline(stream, fringing, '/');
+        MagneticFieldStrengthModels fieldModel;
+        from_json(json(field), fieldModel);
+        MagneticFieldStrengthFringingEffectModels fringingModel;
+        from_json(json(fringing), fringingModel);
+        std::optional<CoilMesherModels> mesher;
+        if (fieldModel != MagneticFieldStrengthModels::WANG) {
+            mesher = CoilMesherModels::CENTER;  // as WindingLosses meshes inducing turns for an all-MARTINEZ coil
+        }
+        MagneticField magneticField(fieldModel, fringingModel);
+        auto output = magneticField.calculate_magnetic_field_strength_field(operatingPoint, magnetic, std::nullopt, std::nullopt, mesher);
+        const auto fields = output.get_field_per_frequency();
+        for (const auto& complexField : fields) {
+            if (std::abs(complexField.get_frequency() - frequency) > 1e-6 * frequency) {
+                continue;
+            }
+            const auto points = complexField.get_data();
+            for (const auto& point : points) {
+                std::cout << "FP " << modelName << " " << (point.get_turn_index() ? point.get_turn_index().value() : -1) << " "
+                          << (point.get_label() ? point.get_label().value() : std::string("-")) << " " << point.get_point()[0] << " "
+                          << point.get_point()[1] << " " << point.get_real() << " " << point.get_imaginary() << std::endl;
+            }
         }
     }
     settings.reset();

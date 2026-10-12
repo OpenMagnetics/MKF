@@ -27,6 +27,9 @@ struct Defaults {
     const OpenMagnetics::WindingLossesModelSets windingLossesModelSetDefaultToroid = OpenMagnetics::WindingLossesModelSets::LEGACY_DEFAULT;
     const OpenMagnetics::WindingLossesModelSets windingLossesModelSetDefaultMultiWindow = OpenMagnetics::WindingLossesModelSets::LEGACY_DEFAULT;
     const OpenMagnetics::WindingLossesModelSets windingLossesModelSetDefaultSecondCrossing = OpenMagnetics::WindingLossesModelSets::LEGACY_DEFAULT;
+    // ABT #1783 (Alf 2026-10-12): drum and rod families (DRUM, ROD, DRUM_RING, DRUM_SEMISHIELDED, DRUM_PLATE) have no
+    // window frame for the neutral window; they keep the historical automatic choice, like toroids.
+    const OpenMagnetics::WindingLossesModelSets windingLossesModelSetDefaultNoWindowFrame = OpenMagnetics::WindingLossesModelSets::LEGACY_DEFAULT;
     const OpenMagnetics::CoreThermalResistanceModels coreThermalResistanceModelDefault = OpenMagnetics::CoreThermalResistanceModels::MANIKTALA;
     const double maximumProportionMagneticFluxDensitySaturation = 0.7;
     const double coreAdviserFrequencyReference = 100000;
