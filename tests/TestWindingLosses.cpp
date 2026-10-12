@@ -94,9 +94,14 @@ namespace WindingLossesTestHelpers {
         for (auto& [frequency, expectedValue] : expectedValues) {
             OperatingPoint operatingPoint = inputs.get_operating_point(0);
             OpenMagnetics::Inputs::scale_time_to_frequency(operatingPoint, frequency, true);
+            // The inductance is the unbiased one (no operating point): these fixtures are
+            // current-driven winding-loss cases, several of which (500 A on one turn of an
+            // ungapped ferrite) saturate the core, and the biased inductance of a saturated core
+            // is refused (ABT #1740). The winding losses do not depend on the core state; the
+            // inductance only lets process_operating_point complete the excitation (ABT #1790).
             double magnetizingInductance = OpenMagnetics::resolve_dimensional_values(
                 magnetizingInductanceModel.calculate_inductance_from_number_turns_and_gapping(
-                    magnetic.get_core(), magnetic.get_coil(), &operatingPoint).get_magnetizing_inductance());
+                    magnetic.get_core(), magnetic.get_coil()).get_magnetizing_inductance());
             operatingPoint = OpenMagnetics::Inputs::process_operating_point(operatingPoint, magnetizingInductance);
 
             settings.set_magnetic_field_mirroring_dimension(1);
@@ -992,7 +997,9 @@ namespace TestWindingLossesPlanar {
                 for (auto& [frequency, expectedValue] : expectedWindingLosses) {
                     OperatingPoint operatingPoint = inputs.get_operating_point(0);
                     OpenMagnetics::Inputs::scale_time_to_frequency(operatingPoint, frequency, true);
-                    double magnetizingInductance = OpenMagnetics::resolve_dimensional_values(magnetizingInductanceModel.calculate_inductance_from_number_turns_and_gapping(magnetic.get_core(), magnetic.get_coil(), &operatingPoint).get_magnetizing_inductance());
+                    // Unbiased inductance: two one-turn windings at 500 A in phase saturate this ungapped
+                    // core, and the winding losses do not depend on the core state (ABT #1790).
+                    double magnetizingInductance = OpenMagnetics::resolve_dimensional_values(magnetizingInductanceModel.calculate_inductance_from_number_turns_and_gapping(magnetic.get_core(), magnetic.get_coil()).get_magnetizing_inductance());
                     operatingPoint = OpenMagnetics::Inputs::process_operating_point(operatingPoint, magnetizingInductance);
 
                     WindingLosses windingLosses;
