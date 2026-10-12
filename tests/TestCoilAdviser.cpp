@@ -1295,7 +1295,15 @@ TEST_CASE("Test_CoilAdviser_Random_5", "[adviser][coil-adviser][bug]") {
     double magnetizingInductance = 0.002575;
     double temperature = 23;
     WaveformLabel waveShape = WaveformLabel::SINUSOIDAL;
-    double peakToPeak = 3;
+    // Fixture changed 2026-10-12 (ABT #838, Alf's decision): ripple 3 App -> 0.1 App. Through the
+    // 2.575 mH specification, 3 App at 592.5 kHz put 0.626 T peak-to-peak of volt-seconds on these 15
+    // turns (A_e 816 mm2): B_pk 0.313 T, below 3C91's 0.47 T at 23 C but above its 0.276 T at the
+    // 170.75 C the losses heat the core to, so every coil saturated at its operating temperature and
+    // the adviser returned none. With 0.1 App the core runs at B_pk 0.0104 T and 70 C (core 1.1 W,
+    // copper 13.2 W; B_sat 0.41 T there). 0.3 App still has no operating temperature (core 17.7 W and
+    // copper 59.8 W at 23 C, running away past 3C91's last mu_i(T) point at 220 C). The saturating
+    // 3 App fixture lives on in the guard below.
+    double peakToPeak = 0.1;
     double dutyCycle = 0.61;
     double dcCurrent = 5;
     settings.set_use_toroidal_cores(false);
