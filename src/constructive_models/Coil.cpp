@@ -7960,6 +7960,7 @@ bool Coil::wind_inner(std::vector<double> proportionPerWinding, std::vector<size
         // rectangular fixpoint above (which is a no-op for round windows and vice versa).
         if (resolve_bobbin().get_winding_window_shape() == WindingWindowShape::ROUND) {
             const size_t maximumToroidalBlockingIterations = 16;
+            bool toroidalBlockingSettled = false;
             for (size_t blockingIteration = 0; blockingIteration < maximumToroidalBlockingIterations; ++blockingIteration) {
                 auto ringDeficits = align_blocked_ring_turns(/*forceSpreadBaseline=*/blockingIteration == 0);
                 bool changed = false;
@@ -7980,12 +7981,14 @@ bool Coil::wind_inner(std::vector<double> proportionPerWinding, std::vector<size
                     std::cerr << "} changed=" << changed << "\n";
                 }
                 if (!changed) {
+                    toroidalBlockingSettled = true;
                     break;
                 }
                 _applyConnectionBlocking = true;
                 wind_by_sections(proportionPerWinding, pattern, repetitions);
                 wind_by_layers();
                 if (!get_layers_description()) {
+                    toroidalBlockingSettled = true;   // no layers: nothing left to block, the verdict below is "does not fit"
                     break;
                 }
                 if (windEvenIfNotFit || are_sections_and_layers_fitting()) {
@@ -7993,6 +7996,28 @@ bool Coil::wind_inner(std::vector<double> proportionPerWinding, std::vector<size
                     if (delimitAndCompact) {
                         delimit_and_compact();
                     }
+                }
+            }
+            // ABT #1805: THE LOOP RAN OUT OF RE-WINDS. Its last re-wind has not been measured, so
+            // measure it; if rings still cannot clear their corridors the coil in hand is not a wind
+            // (T 12.7/7.9/12.7, 20 + 20 turns x 2 of 0.541 mm, interleaved: the same three one-slot
+            // deficits on the last four re-winds, shipped with two turns 0.227 mm apart and two
+            // single-turn rings outside their sector). Refuse it instead of returning it.
+            if (!toroidalBlockingSettled && get_turns_description()) {
+                auto unresolvedDeficits = align_blocked_ring_turns();
+                std::string unresolved;
+                for (const auto& [ringName, deficitSlots] : unresolvedDeficits) {
+                    if (deficitSlots != 0) {
+                        unresolved += (unresolved.empty() ? "" : ", ") + ringName + " (" + std::to_string(deficitSlots) + ")";
+                    }
+                }
+                if (!unresolved.empty()) {
+                    throw CoilException(
+                        ErrorCode::COIL_WINDING_ERROR,
+                        "Real winding toroidal turn blocking did not converge: after " +
+                        std::to_string(maximumToroidalBlockingIterations) +
+                        " re-winds these rings still cannot keep their turns clear of the connection corridors (missing slots): " +
+                        unresolved);
                 }
             }
             // Owner ruling (ABT #723): the input terminal's internal connection OWNS its angular

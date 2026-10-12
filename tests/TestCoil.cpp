@@ -14875,6 +14875,41 @@ TEST_CASE("Test_Toroidal_Real_Winding_Outer_Crossings_Of_Neighbouring_Sections_C
     settings.reset();
 }
 
+TEST_CASE("Test_Toroidal_Real_Winding_Blocking_Out_Of_Rewinds_Refuses_The_Wind", "[coil][toroidal][real-geometry]") {
+    // ABT #1805: when the toroidal blocking loop used up its 16 re-winds with ring deficits left it
+    // returned the last attempt anyway. On this fixture the last four re-winds reported the same
+    // three one-slot deficits and the coil shipped with 'winding 0 parallel 1 turn 4' and
+    // 'winding 1 parallel 0 turn 14' 0.227 mm apart for a 0.541 mm wire and two single-turn rings
+    // outside their sector. A wind that runs out of re-winds with deficits left is refused with a
+    // COIL_WINDING_ERROR naming the rings; whatever IS returned must be a valid wind.
+    settings.reset();
+    settings.set_coil_use_real_winding_geometry(true);
+    auto wire = OpenMagnetics::find_wire_by_name("Round 24.0 - Single Build");
+    OpenMagnetics::Coil coil;
+    bool refused = false;
+    try {
+        coil = OpenMagneticsTesting::get_quick_coil({20, 20}, {2, 2}, "T 12.7/7.9/12.7", 2,
+                                                    MAS::WindingOrientation::CONTIGUOUS,
+                                                    MAS::WindingOrientation::OVERLAPPING,
+                                                    MAS::CoilAlignment::CENTERED,
+                                                    MAS::CoilAlignment::CENTERED,
+                                                    {wire, wire});
+    }
+    catch (const OpenMagnetics::CoilException& exception) {
+        refused = true;
+        CHECK(exception.code() == OpenMagnetics::ErrorCode::COIL_WINDING_ERROR);
+        CHECK_THAT(std::string(exception.what()),
+                   Catch::Matchers::ContainsSubstring("toroidal turn blocking did not converge"));
+    }
+    if (!refused && coil.get_turns_description()) {
+        CHECK(OpenMagneticsTesting::check_turns_description(coil));
+        CHECK(OpenMagneticsTesting::check_toroidal_sections_keep_their_sectors(coil));
+    }
+    settings.reset();
+}
+
+
+
 // ABT #374: a bore-capacity claim of the form (N_turns + N_leads) * wireOD <= pi * ID says these
 // toroidal fixtures cannot hold their own leads. That inequality is the capacity of a SINGLE ring
 // at the inner surface, and it is not what MKF winds: the toroidal winder fills concentric rings
