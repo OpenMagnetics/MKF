@@ -1495,7 +1495,10 @@ namespace {
     //     returned losses gives back the returned temperature, and the losses are the model at it.
     TEST_CASE("calculate_core_losses solves the same loss-temperature loop as simulate", "[processor][magnetic-simulator][smoke-test]") {
         const double tolerance = MagneticSimulator::kOperatingTemperatureTolerance;
-        for (const std::string filename : {"01_simple_inductor_etd34_n87.json", "03_buck_inductor_pq3230_n95.json"}) {
+        // 05 (PFC inductor, T 40/20) replaces 03 (buck inductor, PQ 32/30): 03's core-only rise is
+        // 0.6 K, inside the 2 K loop tolerance, so its core-only solve stops at ambient and the
+        // "above ambient" check has nothing to measure. 05's core-only rise is ~15 K (Alf's decision).
+        for (const std::string filename : {"01_simple_inductor_etd34_n87.json", "05_pfc_inductor_t4020_hf60.json"}) {
             INFO(filename);
             auto path = get_examples_dir() / filename;
             REQUIRE(std::filesystem::exists(path));
