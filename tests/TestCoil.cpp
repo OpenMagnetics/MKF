@@ -14794,6 +14794,49 @@ TEST_CASE("Test_Toroidal_Real_Winding_Respread_Keeps_The_Ring_Winding_Order", "[
     settings.reset();
 }
 
+TEST_CASE("Test_Toroidal_Real_Winding_Single_Ring_Section_Closing_Crossing_Clears_Its_Predecessor", "[coil][toroidal][real-geometry]") {
+    // ABT #1789: a section wound in ONE ring was treated as "taped" (the flag is cleared only for
+    // two or more conduction layers) and skipped the outer-crossing rest/collision sweep. Its
+    // ring-closing "_ending" crossing keeps its own azimuth while every crossing before it sits
+    // half a station pitch forward, so the two are half a pitch apart: here winding 1 section 0,
+    // stations 4.697 deg apart, 'turn 8' crossing at 174.94 deg and 'turn 8_ending' at 177.289 deg
+    // on r = 6.5055 mm, 0.267 mm centre to centre for a 0.311 mm wire. Under real winding the
+    // single-ring section runs the sweep, which leans the closing crossing clear.
+    settings.reset();
+    settings.set_coil_use_real_winding_geometry(true);
+    auto wire = OpenMagnetics::find_wire_by_name("Round 29.0 - Single Build");
+    OpenMagnetics::Coil coil;
+    REQUIRE_NOTHROW(coil = OpenMagneticsTesting::get_quick_coil({20, 20}, {1, 1}, "T 12.7/7.9/12.7", 2,
+                                                                MAS::WindingOrientation::CONTIGUOUS,
+                                                                MAS::WindingOrientation::OVERLAPPING,
+                                                                MAS::CoilAlignment::CENTERED,
+                                                                MAS::CoilAlignment::CENTERED,
+                                                                {wire, wire}));
+    INFO(coil.get_last_fit_failure());
+    REQUIRE(coil.get_turns_description());
+    REQUIRE(coil.get_sections_description());
+    size_t conductionSections = 0;
+    const auto sections = coil.get_sections_description().value();
+    for (const auto& section : sections) {
+        if (section.get_type() == MAS::ElectricalType::CONDUCTION) {
+            ++conductionSections;
+            // The defect needs single-ring sections: the fixture must keep them.
+            size_t conductionLayers = 0;
+            const auto layers = coil.get_layers_by_section(section.get_name());
+            for (const auto& layer : layers) {
+                if (layer.get_type() == MAS::ElectricalType::CONDUCTION) {
+                    ++conductionLayers;
+                }
+            }
+            CHECK(conductionLayers == 1);
+        }
+    }
+    REQUIRE(conductionSections == 4);   // P S P S: the fixture must stay interleaved
+    CHECK(OpenMagneticsTesting::check_turns_description(coil));
+    CHECK(OpenMagneticsTesting::check_toroidal_sections_keep_their_sectors(coil));
+    settings.reset();
+}
+
 // ABT #374: a bore-capacity claim of the form (N_turns + N_leads) * wireOD <= pi * ID says these
 // toroidal fixtures cannot hold their own leads. That inequality is the capacity of a SINGLE ring
 // at the inner surface, and it is not what MKF winds: the toroidal winder fills concentric rings

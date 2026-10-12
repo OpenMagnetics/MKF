@@ -17517,6 +17517,19 @@ bool Coil::wind_toroidal_additional_turns() {
                     }
                 }
             }
+            else if (conductionLayerIndices.size() == 1 && settings.get_coil_use_real_winding_geometry()) {
+                // ABT #1789: a section with ONE conduction layer has no tape to separate anything
+                // either, and under real winding it still has a crossing that needs the sweep
+                // below: the ring-closing station (the N+1 crossing, "_ending") keeps its own
+                // azimuth (ABT #865) while every crossing before it has advanced half a station
+                // pitch (ABT #685), so it sits HALF a pitch from its predecessor. On a tightly
+                // packed ring whose outer/inner radius ratio is under 2 that is less than one
+                // wire (T 12.7/7.9/12.7, 20 + 20 turns of Round 29.0, interleaved: winding 1
+                // section 0 crossings 0.267 mm apart for a 0.311 mm wire). Treated as "taped",
+                // the single-ring section skipped the rest/collision sweep and shipped the
+                // overlap. Real winding only: a classic wind has no closing station.
+                areLayersTaped = false;
+            }
             
             size_t conductionLayerCount = 0;
             for (auto layer : layersThisSection) {
