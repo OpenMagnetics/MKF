@@ -10,6 +10,7 @@
 #include "Definitions.h"
 #include "TestingUtils.h"
 #include "json.hpp"
+#include <numbers>
 
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
@@ -1193,14 +1194,25 @@ TEST_CASE("Temperature: Very High Losses", "[temperature][smoke-test]") {
     REQUIRE(result.maximumTemperature > 100.0);
 }
 
-// ABT #838: this design's N87 core losses fall steeply with temperature (3.9 W at 106 C, 2.6 W at
-// 134 C), so plain substitution in simulate()'s loss <-> temperature loop swings around the fixed
-// point forever and the simulation throws. Halving a temperature's step whenever its residual
-// changes sign settles it: the published core losses are the model at the published core
-// temperature, and the network fed those losses returns that temperature.
+// ABT #838: where a ferrite's core losses FALL with temperature (N87 below its loss minimum near
+// 100 C), the map "losses at T -> temperature those losses produce" has a negative slope, and at a
+// cold ambient the rise is large enough for that slope to pass -1 at the operating point. Plain
+// substitution then cannot converge: it swings around the fixed point forever and simulate() throws
+// "did not settle". Halving a temperature's step whenever its residual changes sign settles it.
+//
+// The fixture (found by the bounded search of 2026-10-13, 17 of 40 cold-ambient designs behave so):
+// ETD 29/16/10 N87 ungapped, 10:10 turns, -40 C ambient, 100 kHz, the flux imposed by a sinusoidal
+// winding voltage (Faraday: two windings, so the flux does not follow mu(T)) at 0.32 of B_sat(-40 C),
+// 0.188 T. The map: 13.9 W at -40 C -> 259 C; 2.93 W at 60 C -> 54.7 C; fixed point between 55 and
+// 60 C with slope -1.35. With the step halving disabled, simulate() throws after 100 iterations for
+// every level from 0.24 to 0.40 of B_sat; with it, this level settles at 58.0 C with 3.04 W.
 TEST_CASE("Temperature: simulate settles an oscillating loss-temperature loop", "[temperature][smoke-test]") {
-    std::vector<int64_t> numberTurns({10});
-    std::vector<int64_t> numberParallels({1});
+    const int64_t turns = 10;
+    const double ambientTemperature = -40.0;
+    const double frequency = 100000.0;
+    const double saturationFluxDensityFraction = 0.32;
+    std::vector<int64_t> numberTurns({turns, turns});
+    std::vector<int64_t> numberParallels({1, 1});
     std::string shapeName = "ETD 29/16/10";
     auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, shapeName, 1,
                                                      WindingOrientation::CONTIGUOUS, WindingOrientation::CONTIGUOUS,
@@ -1210,7 +1222,17 @@ TEST_CASE("Temperature: simulate settles an oscillating loss-temperature loop", 
     OpenMagnetics::Magnetic magnetic;
     magnetic.set_core(core);
     magnetic.set_coil(coil);
-    auto inputs = createInputsForMagnetic(magnetic, 100000.0, 25.0, 1.0);
+    const double magnetizingInductance = resolve_dimensional_values(
+        OpenMagnetics::MagnetizingInductance().calculate_inductance_from_number_turns_and_gapping(
+            magnetic.get_mutable_core(), magnetic.get_mutable_coil()).get_magnetizing_inductance());
+    // Faraday for a sine: V_peak = 2 pi f N A_e B_peak
+    const double fluxDensityPeak = saturationFluxDensityFraction *
+        magnetic.get_mutable_core().get_magnetic_flux_density_saturation(ambientTemperature, false);
+    const double voltagePeak = 2.0 * std::numbers::pi * frequency * static_cast<double>(turns) *
+        magnetic.get_mutable_core().get_effective_area() * fluxDensityPeak;
+    auto inputs = OpenMagnetics::Inputs::create_quick_operating_point(
+        frequency, magnetizingInductance, ambientTemperature, WaveformLabel::SINUSOIDAL,
+        2.0 * voltagePeak, 0.5, 0.0, {1.0});
 
     OpenMagnetics::MagneticSimulator simulator;
     auto simulated = simulator.simulate(inputs, magnetic, false);
@@ -1221,11 +1243,17 @@ TEST_CASE("Temperature: simulate settles an oscillating loss-temperature loop", 
     auto network = Temperature(magnetic, config).calculateTemperatures();
     REQUIRE(network.maximumCoreTemperature);
     CAPTURE(publishedCoreTemperature, network.maximumCoreTemperature.value(), output.get_core_losses()->get_core_losses());
-    CHECK(publishedCoreTemperature > 100.0);
+    // The operating point is the map's fixed point, which lies between 55 and 60 C.
+    CHECK(publishedCoreTemperature > 55.0 - OpenMagnetics::MagneticSimulator::kOperatingTemperatureTolerance);
+    CHECK(publishedCoreTemperature < 60.0 + OpenMagnetics::MagneticSimulator::kOperatingTemperatureTolerance);
     CHECK(std::fabs(publishedCoreTemperature - network.maximumCoreTemperature.value()) <
           OpenMagnetics::MagneticSimulator::kOperatingTemperatureTolerance);
     auto excitation = operatingPoint.get_excitations_per_winding()[0];
     REQUIRE(excitation.get_magnetic_flux_density());
+    REQUIRE(excitation.get_magnetic_flux_density()->get_processed());
+    // The flux is the imposed one, at the solved temperature too.
+    CHECK_THAT(excitation.get_magnetic_flux_density()->get_processed()->get_peak().value(),
+               Catch::Matchers::WithinRel(fluxDensityPeak, 0.01));
     CHECK_THAT(output.get_core_losses()->get_core_losses(), Catch::Matchers::WithinRel(
         OpenMagnetics::CoreLosses().calculate_core_losses(magnetic.get_core(), excitation, publishedCoreTemperature).get_core_losses(), 1e-9));
 }
