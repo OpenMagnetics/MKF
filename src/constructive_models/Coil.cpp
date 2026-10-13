@@ -6143,7 +6143,13 @@ std::map<std::string, uint64_t> Coil::align_blocked_ring_turns(bool forceSpreadB
             // times to the same place and escalated to a one-slot deficit on all 16 re-winds
             // (T 25/15/10, 15 + 15 + 15 turns of Round 24.0, overlapping: 'winding 0 parallel 0
             // turn 0' at 5.43149 deg, 2e-6 deg inside the corridor ending at 5.43148 deg).
-            // (The minimal nudge still clears by 1e-6 deg only: ABT #1804.)
+            // The minimal nudge clears by the same amount (ABT #1804): at 1e-6 deg a nudged turn
+            // read back inside the corridor it had just left and was "nudged" to the same grid
+            // point until the ring's nudge budget was spent, after which the ring was re-spread
+            // although one nudge had cleared it (T 10/6/4, 9 turns x 3 of Round 0.63, overlapping:
+            // 'winding 0 parallel 2 turn 6' moved 357.193 -> 357.193 deg on six passes; T 20/10/7,
+            // 30 + 30 + 30 turns of Round 24.0, interleaved: a single-turn ring nudged six times
+            // to 328.388 deg and then measured one slot short on all 16 re-winds).
             const double corridorEdgeClearance = 1e-6 + 1e-9 / radius * 180.0 / std::numbers::pi;
 
             auto insideCorridor = [&](double angle) -> const std::pair<double, double>* {
@@ -6365,8 +6371,8 @@ std::map<std::string, uint64_t> Coil::align_blocked_ring_turns(bool forceSpreadB
                     if (corridor == nullptr) {
                         continue;
                     }
-                    double lowerEdge = normalizeAngle(corridor->first - corridor->second - 1e-6);
-                    double upperEdge = normalizeAngle(corridor->first + corridor->second + 1e-6);
+                    double lowerEdge = normalizeAngle(corridor->first - corridor->second - corridorEdgeClearance);
+                    double upperEdge = normalizeAngle(corridor->first + corridor->second + corridorEdgeClearance);
                     bool lowerCloser = std::abs(angularDifference(turnAngle, lowerEdge)) <= std::abs(angularDifference(turnAngle, upperEdge));
                     bool placed = false;
                     for (double candidate : {lowerCloser ? lowerEdge : upperEdge, lowerCloser ? upperEdge : lowerEdge}) {
@@ -6402,19 +6408,40 @@ std::map<std::string, uint64_t> Coil::align_blocked_ring_turns(bool forceSpreadB
                 }
             }
 
-            // Free angular space = territory minus the corridors (union measured by sweeping — the
-            // stacked parallels' corridors overlap heavily).
+            // Free angular space = territory minus the union of the corridors (the stacked
+            // parallels' corridors overlap heavily).
+            //
+            // ABT #1818: the union is the exact length of the merged corridor arcs. It used to be
+            // counted on 3600 samples of the territory, i.e. to 0.1 deg on a full circle, and the
+            // re-spread below lays the turns every totalFree / n of free arc: whatever the count
+            // was off by ended up in the last gap of the march. Marching from the end of the widest
+            // corridor that gap has half a spacing to spare; marching from the lead anchor it is
+            // the gap between the last turn and the anchor itself (T 10/6/4, 45 + 45 turns x 2 of
+            // Round 29.0, overlapping: 'winding 1 parallel 1 turn 15' laid 9.4515 deg before
+            // 'winding 1 parallel 0 turn 0' on a ring whose pitch is 9.456 deg, a 0.16 um overlap).
             double blockedUnion = 0;
             {
-                const int sweepSteps = 3600;
-                int blockedSteps = 0;
-                for (int s = 0; s < sweepSteps; ++s) {
-                    double sweepAngle = normalizeAngle(territoryStart + s * sectionSpan / sweepSteps);
-                    if (insideCorridor(sweepAngle)) {
-                        blockedSteps++;
+                // Corridor arcs relative to the territory start, cut to the territory, merged. A
+                // corridor is narrower than the circle, so it wraps past 360 deg at most once.
+                std::vector<std::pair<double, double>> blockedArcs;
+                for (const auto& corridor : corridors) {
+                    const double arcStart = normalizeAngle(corridor.first - corridor.second - territoryStart);
+                    const double arcEnd = arcStart + 2 * corridor.second;
+                    if (arcStart < sectionSpan) {
+                        blockedArcs.push_back({arcStart, std::min(arcEnd, sectionSpan)});
+                    }
+                    if (arcEnd > 360.0) {
+                        blockedArcs.push_back({0.0, std::min(arcEnd - 360.0, sectionSpan)});
                     }
                 }
-                blockedUnion = blockedSteps * sectionSpan / sweepSteps;
+                std::sort(blockedArcs.begin(), blockedArcs.end());
+                double coveredUpTo = 0;
+                for (const auto& arc : blockedArcs) {
+                    if (arc.second > coveredUpTo) {
+                        blockedUnion += arc.second - std::max(arc.first, coveredUpTo);
+                        coveredUpTo = arc.second;
+                    }
+                }
             }
             double totalFree = sectionSpan - blockedUnion;
             double needed = double(turnIdxs.size()) * turnPitchAngle;
@@ -6468,9 +6495,22 @@ std::map<std::string, uint64_t> Coil::align_blocked_ring_turns(bool forceSpreadB
             // other rings settle against fixed corridors. The anchor only moves when it sits in
             // a corridor itself, and then to the nearest clear edge of it.
             // Not for the iteration-0 force-spread, which is the baseline placement.
+            //
+            // THE ANCHOR HOLDS FOR EVERY RING WHOSE TERRITORY IS THE WHOLE CIRCLE, however the ring
+            // is classed. "Full circle" is measured on the turns (largest gap <= two mean pitches),
+            // and an anchored re-spread itself opens such a gap: the turns jump the corridors of
+            // the other rings' leads. From then on the ring is classed an arc; with no sector to
+            // bound it (overlapping sections, a single winding) and no foreign turn at its radius
+            // the arc's margins give it the whole circle back, but the re-spread was laid from the
+            // middle of its largest gap, not from the anchor, and the chase above started again
+            // one pass later (T 10/6/4, 9 turns x 3 of Round 0.63, overlapping: both rings turned
+            // 34.85 deg per pass until four ABT #723 escalations had moved the split from 18 + 9
+            // to 16 + 11 turns and two ring-to-ring hops crossed). A ring inside a sector territory
+            // is bounded by its sector and is not anchored.
+            const bool wholeCircleTerritory = fullCircle || (ringWindingTerritory == nullptr && sectionSpan >= 360.0 - 1e-9);
             std::optional<size_t> leadAnchorTurn;
             double leadAnchorOriginalAngle = 0;
-            if (fullCircle && !forceSpreadAllRings) {
+            if (wholeCircleTerritory && !forceSpreadAllRings) {
                 for (size_t t : turnIdxs) {
                     if (leadAttachedTurnNames.count(turns[t].get_name())) {
                         leadAnchorTurn = t;   // turnIdxs is in winding order
@@ -6483,7 +6523,7 @@ std::map<std::string, uint64_t> Coil::align_blocked_ring_turns(bool forceSpreadB
                                                                     turns[leadAnchorTurn.value()].get_coordinates()[0]) * 180.0 / std::numbers::pi);
                 referenceAngle = leadAnchorOriginalAngle;
                 if (insideCorridor(leadAnchorOriginalAngle) != nullptr) {
-                    // Walk out of the corridor(s) on each side; same edge clearance as the nudge.
+                    // Walk out of the corridor(s) on each side.
                     auto clearEdge = [&](double direction) {
                         double edge = leadAnchorOriginalAngle;
                         size_t walkGuard = 0;

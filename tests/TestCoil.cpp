@@ -14977,6 +14977,97 @@ TEST_CASE("Test_Toroidal_Real_Winding_Blocking_Reservation_Holds_A_Ring_Below_Th
     settings.reset();
 }
 
+TEST_CASE("Test_Toroidal_Real_Winding_Nudged_Turn_Clears_Its_Corridor_On_The_Coordinate_Grid", "[coil][toroidal][real-geometry]") {
+    // ABT #1818 / ABT #1804: the minimal nudge moved an intruding turn to the corridor edge plus
+    // 1e-6 deg, and the turn is stored on the 1 nm coordinate grid: it read back inside the corridor
+    // and was nudged to the same point until the ring's nudge budget was spent. Here a ring holding
+    // one turn was nudged six times to 328.388 deg, fell through to the re-spread, was measured one
+    // slot short, and a ring of one turn has no turn to give away: the same deficit on all 16
+    // re-winds and the wind was refused. The nudge clears the edge by one grid step of arc as well.
+    settings.reset();
+    settings.set_coil_use_real_winding_geometry(true);
+    auto wire = OpenMagnetics::find_wire_by_name("Round 24.0 - Single Build");
+    OpenMagnetics::Coil coil;
+    REQUIRE_NOTHROW(coil = OpenMagneticsTesting::get_quick_coil({30, 30, 30}, {1, 1, 1}, "T 20/10/7", 2,
+                                                                MAS::WindingOrientation::CONTIGUOUS,
+                                                                MAS::WindingOrientation::OVERLAPPING,
+                                                                MAS::CoilAlignment::CENTERED,
+                                                                MAS::CoilAlignment::CENTERED,
+                                                                {wire, wire, wire}));
+    INFO(coil.get_last_fit_failure());
+    REQUIRE(coil.get_turns_description());
+    CHECK(OpenMagneticsTesting::check_turns_description(coil));
+    CHECK(OpenMagneticsTesting::check_toroidal_sections_keep_their_sectors(coil));
+    settings.reset();
+}
+
+TEST_CASE("Test_Toroidal_Real_Winding_No_Turn_Is_Left_In_A_Lead_Corridor", "[coil][toroidal][real-geometry]") {
+    // ABT #1818: T 25/15/10, 45 + 25 turns x 2 of Round 21.0, overlapping. Without the lead anchor
+    // the rings of a winding chased each other's leads until the blocking loop gave up moving them,
+    // and the wind shipped with turns under the leads (24 lead/turn pairs, the worst 378.5 um inside
+    // a 0.757 mm wire). The rule the winder enforces is angular: on the ring a lead crosses, no turn
+    // centre lies within (lead width + turn width) / 2, as angles at the ring's radius, of the
+    // lead's azimuth. Checked here on the returned wind, and the turns must not collide either: the
+    // anchored re-spread closes the ring on the anchor, where a blocked arc counted to 0.1 deg
+    // left two turns of this fixture closer than a wire.
+    settings.reset();
+    settings.set_coil_use_real_winding_geometry(true);
+    auto wire = OpenMagnetics::find_wire_by_name("Round 21.0 - Single Build");
+    OpenMagnetics::Coil coil;
+    REQUIRE_NOTHROW(coil = OpenMagneticsTesting::get_quick_coil({45, 25}, {2, 2}, "T 25/15/10", 1,
+                                                                MAS::WindingOrientation::OVERLAPPING,
+                                                                MAS::WindingOrientation::OVERLAPPING,
+                                                                MAS::CoilAlignment::CENTERED,
+                                                                MAS::CoilAlignment::CENTERED,
+                                                                {wire, wire}));
+    INFO(coil.get_last_fit_failure());
+    REQUIRE(coil.get_turns_description());
+    CHECK(OpenMagneticsTesting::check_turns_description(coil));
+
+    coil.convert_turns_to_cartesian_coordinates();
+    const auto turns = coil.get_turns_description().value();
+    const auto spaces = coil.get_connection_reserved_spaces();
+    std::map<std::string, std::vector<size_t>> ringTurns;
+    for (size_t t = 0; t < turns.size(); ++t) {
+        ringTurns[turns[t].get_layer().value()].push_back(t);
+    }
+    // Stations are stored on a 1 nm grid: 1 nm of arc at the innermost ring is below 1e-4 deg.
+    const double gridToleranceDegrees = 1e-4;
+    size_t corridorsChecked = 0;
+    double deepestIntrusionDegrees = 0;
+    std::string deepestIntrusion;
+    for (const auto& space : spaces) {
+        if (space.layer.empty() || !ringTurns.count(space.layer)) {
+            continue;
+        }
+        const auto& ring = ringTurns.at(space.layer);
+        double ringRadius = 0;
+        for (size_t t : ring) {
+            ringRadius += std::hypot(turns[t].get_coordinates()[0], turns[t].get_coordinates()[1]) / double(ring.size());
+        }
+        const double turnWidth = turns[ring[0]].get_dimensions().value()[1];
+        const double corridorHalfAngle = OpenMagnetics::wound_distance_to_angle(space.dimensions[1], ringRadius) / 2 +
+                                         OpenMagnetics::wound_distance_to_angle(turnWidth, ringRadius) / 2;
+        REQUIRE(corridorHalfAngle < 180);
+        ++corridorsChecked;
+        for (size_t t : ring) {
+            const double turnAzimuth = std::atan2(turns[t].get_coordinates()[1], turns[t].get_coordinates()[0]) * 180 / std::numbers::pi;
+            const double fromLead = std::abs(std::remainder(turnAzimuth - space.rotation, 360.0));
+            const double intrusion = corridorHalfAngle - fromLead;
+            if (intrusion > deepestIntrusionDegrees) {
+                deepestIntrusionDegrees = intrusion;
+                deepestIntrusion = "'" + turns[t].get_name() + "' at " + std::to_string(turnAzimuth) + " deg, lead of " +
+                                   space.winding + " at " + std::to_string(space.rotation) + " deg on '" + space.layer +
+                                   "', corridor half-angle " + std::to_string(corridorHalfAngle) + " deg";
+            }
+        }
+    }
+    CHECK(corridorsChecked >= 8);   // 4 conductors, an entrance and an exit lead each
+    INFO("deepest turn in a lead corridor: " << deepestIntrusion << ", " << deepestIntrusionDegrees << " deg inside");
+    CHECK(deepestIntrusionDegrees < gridToleranceDegrees);
+    settings.reset();
+}
+
 // ABT #374: a bore-capacity claim of the form (N_turns + N_leads) * wireOD <= pi * ID says these
 // toroidal fixtures cannot hold their own leads. That inequality is the capacity of a SINGLE ring
 // at the inner surface, and it is not what MKF winds: the toroidal winder fills concentric rings
