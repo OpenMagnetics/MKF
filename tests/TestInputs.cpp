@@ -2661,3 +2661,25 @@ TEST_CASE("Test_Sampled_Waveform_Rejects_A_Time_Axis_That_Does_Not_Span_The_Peri
         CHECK_THAT(resampled.get_data()[index], Catch::Matchers::WithinAbs(data[index], 1e-9));
     }
 }
+
+// ABT #1837: the sampled magnetizing current has a closed time axis (it reaches t0 + T). Compressed
+// without the frequency it was closed a second time and spanned T + dt (113 points over 128/127 of
+// the period), which the sampler then refuses: MKF rejected its own output in mas_autocomplete.
+TEST_CASE("Test_Compressed_Magnetizing_Current_Spans_Exactly_One_Period", "[processor][inputs][abt-1837]") {
+    double frequency = 1e6;
+    double magnetizingInductance = 26e-6;
+    std::vector<double> turnsRatios = {2.0};
+    auto inputs = OpenMagnetics::Inputs::create_quick_operating_point(frequency, magnetizingInductance, 25, WaveformLabel::SINUSOIDAL, 10, 0.5, 0, turnsRatios);
+    auto operatingPoint = OpenMagnetics::Inputs::process_operating_point(inputs.get_operating_points()[0], magnetizingInductance, turnsRatios);
+
+    for (bool compress : {false, true}) {
+        CAPTURE(compress);
+        auto magnetizingCurrent = OpenMagnetics::Inputs::calculate_magnetizing_current(operatingPoint, 0, magnetizingInductance, turnsRatios, compress);
+        REQUIRE(magnetizingCurrent.get_waveform());
+        auto time = magnetizingCurrent.get_waveform()->get_time().value();
+        REQUIRE(time.size() >= 2);
+        CHECK_THAT((time.back() - time.front()) * frequency, Catch::Matchers::WithinRel(1.0, 1e-9));
+        // What the autocomplete does next with it.
+        CHECK_NOTHROW(OpenMagnetics::Inputs::calculate_sampled_waveform(magnetizingCurrent.get_waveform().value(), frequency));
+    }
+}

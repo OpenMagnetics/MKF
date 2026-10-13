@@ -2405,7 +2405,10 @@ SignalDescriptor Inputs::calculate_magnetizing_current(OperatingPointExcitation&
     sampledMagnetizingCurrentWaveform = sum_waveform(sampledMagnetizingCurrentWaveform, dcCurrent);
 
     if (compress){
-        magnetizingCurrentExcitation.set_waveform(compress_waveform(sampledMagnetizingCurrentWaveform));
+        // With the frequency: the sampled waveform's axis is closed (it reaches t0 + T), and closing
+        // it again made the compressed magnetizing current span T + dt, which the sampler then
+        // refuses (ABT #1837).
+        magnetizingCurrentExcitation.set_waveform(compress_waveform(sampledMagnetizingCurrentWaveform, excitation.get_frequency()));
     }
     else {
         magnetizingCurrentExcitation.set_waveform(sampledMagnetizingCurrentWaveform);
