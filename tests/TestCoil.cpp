@@ -14908,7 +14908,74 @@ TEST_CASE("Test_Toroidal_Real_Winding_Blocking_Out_Of_Rewinds_Refuses_The_Wind",
     settings.reset();
 }
 
+TEST_CASE("Test_Toroidal_Real_Winding_Lead_Anchor_Leaves_Its_Corridor_Clear_Of_The_Edge", "[coil][toroidal][real-geometry]") {
+    // ABT #1818: a full-circle ring is re-spread around its lead-attached turn, and an anchor that
+    // sits in a corridor is moved to that corridor's nearest edge. Moved to the edge plus 1e-6 deg,
+    // the 1 nm rounding of the turn coordinates put it back 2e-6 deg inside ('winding 0 parallel 0
+    // turn 0' at 5.43149 deg in the corridor 9.72006 +- 4.28858 deg), the same on every nudge and
+    // re-spread, so the ring escalated the same one-slot deficit on all 16 re-winds and the wind
+    // was refused. The anchor clears the edge by the 1e-6 deg plus 1 nm of arc at the ring radius.
+    settings.reset();
+    settings.set_coil_use_real_winding_geometry(true);
+    auto wire = OpenMagnetics::find_wire_by_name("Round 24.0 - Single Build");
+    OpenMagnetics::Coil coil;
+    REQUIRE_NOTHROW(coil = OpenMagneticsTesting::get_quick_coil({15, 15, 15}, {1, 1, 1}, "T 25/15/10", 1,
+                                                                MAS::WindingOrientation::OVERLAPPING,
+                                                                MAS::WindingOrientation::OVERLAPPING,
+                                                                MAS::CoilAlignment::CENTERED,
+                                                                MAS::CoilAlignment::CENTERED,
+                                                                {wire, wire, wire}));
+    INFO(coil.get_last_fit_failure());
+    REQUIRE(coil.get_turns_description());
+    CHECK(OpenMagneticsTesting::check_turns_description(coil));
+    settings.reset();
+}
 
+TEST_CASE("Test_Toroidal_Real_Winding_Corridors_Are_Remeasured_When_A_Lead_Anchor_Moves", "[coil][toroidal][real-geometry]") {
+    // ABT #1818: the corridors a ring must clear are cast by the lead-attached turns of the other
+    // rings. Measured once per pass, two lead turns one ring apart, each inside the other's
+    // corridor ('winding 1 parallel 1 turn 0' on layer 0 and 'winding 1 parallel 1 turn 29' on
+    // layer 1), both moved against the corridors of the pass start and landed together again, pass
+    // after pass (62.8/65.6, 36.1/38.2, 60.2/60.6 deg), until the turns were spilled into rings the
+    // window does not have. The corridors are measured again as soon as an anchor has moved.
+    settings.reset();
+    settings.set_coil_use_real_winding_geometry(true);
+    auto wire = OpenMagnetics::find_wire_by_name("Round 29.0 - Single Build");
+    OpenMagnetics::Coil coil;
+    REQUIRE_NOTHROW(coil = OpenMagneticsTesting::get_quick_coil({30, 30, 30}, {2, 2, 2}, "T 10/6/4", 1,
+                                                                MAS::WindingOrientation::OVERLAPPING,
+                                                                MAS::WindingOrientation::OVERLAPPING,
+                                                                MAS::CoilAlignment::CENTERED,
+                                                                MAS::CoilAlignment::CENTERED,
+                                                                {wire, wire, wire}));
+    INFO(coil.get_last_fit_failure());
+    REQUIRE(coil.get_turns_description());
+    CHECK(OpenMagneticsTesting::check_turns_description(coil));
+    settings.reset();
+}
+
+TEST_CASE("Test_Toroidal_Real_Winding_Blocking_Reservation_Holds_A_Ring_Below_The_Turns_It_Failed_With", "[coil][toroidal][real-geometry]") {
+    // ABT #1818: a slot reserved by the toroidal blocking loop comes off a ring's capacity, and the
+    // layer count takes the surplus back out of all the rings in turn, so the reservation did not
+    // take a turn out of the ring. Here 'winding 0 section 0 layer 0' is short of room at 48 turns
+    // and layer 1 at 43, with 90 turns to place and 12 unused slots: the split went 48/42, 48/42,
+    // 47/43, 48/42 ... and the 16 re-winds were spent ("toroidal turn blocking did not converge").
+    // A ring measured short again holding the turns it already failed with is held below that count.
+    settings.reset();
+    settings.set_coil_use_real_winding_geometry(true);
+    auto wire = OpenMagnetics::find_wire_by_name("Round 29.0 - Single Build");
+    OpenMagnetics::Coil coil;
+    REQUIRE_NOTHROW(coil = OpenMagneticsTesting::get_quick_coil({45, 45}, {2, 2}, "T 10/6/4", 1,
+                                                                MAS::WindingOrientation::OVERLAPPING,
+                                                                MAS::WindingOrientation::OVERLAPPING,
+                                                                MAS::CoilAlignment::CENTERED,
+                                                                MAS::CoilAlignment::CENTERED,
+                                                                {wire, wire}));
+    INFO(coil.get_last_fit_failure());
+    REQUIRE(coil.get_turns_description());
+    CHECK(OpenMagneticsTesting::check_turns_description(coil));
+    settings.reset();
+}
 
 // ABT #374: a bore-capacity claim of the form (N_turns + N_leads) * wireOD <= pi * ID says these
 // toroidal fixtures cannot hold their own leads. That inequality is the capacity of a SINGLE ring
