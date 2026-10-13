@@ -62,6 +62,49 @@ TEST_CASE("Calculate leakage inductance for a E core with same number of turns",
     settings.reset();
 }
 
+// Leaves `value` in the stack region the next calls will use, so that a local read before it is written reads `value`.
+[[gnu::noinline]] static double fill_stack_with(double value) {
+    volatile double region[131072];
+    for (size_t index = 0; index < 131072; ++index) {
+        region[index] = value;
+    }
+    return region[65536];
+}
+
+TEST_CASE("The leakage operating point states its ambient temperature", "[physical-model][leakage-inductance]") {
+    // ABT #1759: the leakage model builds its own unit-current operating point, and the field solution reads its
+    // conditions: with parallels, the current split takes the core's permeability and the conductors' resistivity at the
+    // ambient temperature. The generated OperatingConditions leaves that temperature uninitialised, so the split was solved
+    // at whatever the stack held -- seven MAS examples (02 flyback, 06 LLC, 09 planar, 11 push-pull, 20, 22, 24) threw
+    // MATERIAL_TEMPERATURE_OUT_OF_RANGE at a stale Curie temperature, or not, from run to run. The leakage of a design with
+    // parallels must not depend on what the stack held before the call.
+    settings.reset();
+    std::vector<int64_t> numberTurns({42, 7});
+    std::vector<int64_t> numberParallels({1, 3});
+    std::string shapeName = "E 42/33/20";
+    std::vector<OpenMagnetics::Wire> wires;
+    wires.push_back(OpenMagnetics::Wire::create_quick_litz_wire(0.00005, 25));
+    wires.push_back(OpenMagnetics::Wire::create_quick_litz_wire(0.00005, 25));
+    auto coil = OpenMagnetics::Coil::create_quick_coil(shapeName, numberTurns, numberParallels, wires);
+    auto core = OpenMagnetics::Core::create_quick_core(shapeName, "3C95", OpenMagnetics::Core::create_ground_gapping(2e-5, 3));
+    OpenMagnetics::Magnetic magnetic;
+    magnetic.set_core(core);
+    magnetic.set_coil(coil);
+
+    std::vector<double> leakageInductances;
+    for (double stale : {1e9, -1e9, 244.0}) {
+        INFO("stack filled with " << stale);
+        CHECK(fill_stack_with(stale) == stale);
+        double leakageInductance = 0;
+        REQUIRE_NOTHROW(leakageInductance = LeakageInductance().calculate_leakage_inductance(magnetic, 100000).get_leakage_inductance_per_winding()[0].get_nominal().value());
+        leakageInductances.push_back(leakageInductance);
+    }
+    CHECK(leakageInductances[0] > 0);
+    CHECK(leakageInductances[1] == leakageInductances[0]);
+    CHECK(leakageInductances[2] == leakageInductances[0]);
+    settings.reset();
+}
+
 // ABT #1759: leakage is the conductors' field with gap fringing off, so the global fringing model -- the winding-loss
 // choice -- must not enter it, and a window-boundary model there (MMF_BOUNDARY, which refuses fringing off) must not make
 // leakage throw. Counter-check: hand MagneticField the global fringing model in LeakageInductance.cpp and the

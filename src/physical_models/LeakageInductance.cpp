@@ -580,6 +580,11 @@ OperatingPoint LeakageInductance::create_excitation_operating_point(Magnetic& ma
 
     OperatingPoint operatingPoint;
     operatingPoint.set_excitations_per_winding(excitationPerWinding);
+    // The generated class leaves the ambient temperature uninitialised, and the field solution reads it (the parallel
+    // current split takes the core's permeability and the conductors' resistivity at the conditions' temperature): unset,
+    // it read whatever the stack held, e.g. a material's Curie temperature (ABT #1759). The leakage model has no
+    // temperature of its own; it is stated at the ambient this file already takes the core's permeability at.
+    operatingPoint.get_mutable_conditions().set_ambient_temperature(Defaults().ambientTemperature);
     return operatingPoint;
 }
 
@@ -644,6 +649,11 @@ OperatingPoint LeakageInductance::create_leakage_operating_point(Magnetic& magne
 
     OperatingPoint operatingPoint;
     operatingPoint.set_excitations_per_winding(excitationPerWinding);
+    // The generated class leaves the ambient temperature uninitialised, and the field solution reads it (the parallel
+    // current split takes the core's permeability and the conductors' resistivity at the conditions' temperature): unset,
+    // it read whatever the stack held, e.g. a material's Curie temperature (ABT #1759). The leakage model has no
+    // temperature of its own; it is stated at the ambient this file already takes the core's permeability at.
+    operatingPoint.get_mutable_conditions().set_ambient_temperature(Defaults().ambientTemperature);
     return operatingPoint;
 }
 
