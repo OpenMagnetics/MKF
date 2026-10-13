@@ -1632,6 +1632,50 @@ namespace {
             // than one iterate, so a field computed per iterate would show up as extra lookups.
             REQUIRE(solved.get_temperature() > ambientTemperature + tolerance);
             CHECK(lookupsPerSolve == lookupsPerEvaluation);
+
+            // The field AND the current split between a winding's parallels (ABT #1314) are those
+            // of ambient at every iterate; only the conductors' resistance follows the iterate
+            // (decided by Alf 2026-10-13). The solved winding temperature is read back from the
+            // solved DC losses, which are linear in it.
+            auto& settings = Settings::GetInstance();
+            SettingsGuard<int> mirroringGuard(settings, &Settings::get_magnetic_field_mirroring_dimension,
+                                              &Settings::set_magnetic_field_mirroring_dimension, 1);
+            auto dcLosses = [&](double temperature) {
+                double total = 0;
+                const auto ohmicLosses = WindingOhmicLosses::calculate_ohmic_losses(magnetic.get_coil(), operatingPoint, temperature);
+                const auto lossesPerWinding = ohmicLosses.get_winding_losses_per_winding().value();
+                for (auto& winding : lossesPerWinding) {
+                    total += winding.get_ohmic_losses()->get_losses();
+                }
+                return total;
+            };
+            double solvedDcLosses = 0;
+            const auto solvedLossesPerWinding = solvedWindingLosses->get_winding_losses_per_winding().value();
+            for (auto& winding : solvedLossesPerWinding) {
+                solvedDcLosses += winding.get_ohmic_losses()->get_losses();
+            }
+            const double dcLossesAtAmbient = dcLosses(ambientTemperature);
+            const double dcLossesPerKelvin = dcLosses(ambientTemperature + 100) / 100 - dcLossesAtAmbient / 100;
+            const double solvedWindingTemperature = ambientTemperature + (solvedDcLosses - dcLossesAtAmbient) / dcLossesPerKelvin;
+            REQUIRE(solvedWindingTemperature > ambientTemperature + tolerance);
+            REQUIRE_THAT(dcLosses(solvedWindingTemperature), Catch::Matchers::WithinRel(solvedDcLosses, 1e-12));
+
+            WindingLosses windingLossesModel;
+            auto fieldAtAmbient = windingLossesModel.calculate_magnetic_field(magnetic, operatingPoint, ambientTemperature);
+            const double lossesFieldAtAmbient = windingLossesModel.calculate_losses(magnetic, fieldAtAmbient, solvedWindingTemperature).get_winding_losses();
+            const double lossesFieldAtSolved = windingLossesModel.calculate_losses(magnetic, operatingPoint, solvedWindingTemperature).get_winding_losses();
+            CAPTURE(solvedWindingTemperature, solvedWindingLosses->get_winding_losses(), lossesFieldAtAmbient, lossesFieldAtSolved);
+            CHECK_THAT(solvedWindingLosses->get_winding_losses(), Catch::Matchers::WithinRel(lossesFieldAtAmbient, 1e-9));
+            bool hasParallels = false;
+            for (auto& winding : magnetic.get_coil().get_functional_description()) {
+                hasParallels = hasParallels || winding.get_number_parallels() > 1;
+            }
+            // 03_buck (12 turns x 2 parallels) must be able to tell the two choices apart.
+            CHECK(hasParallels == (filename == "03_buck_inductor_pq3230_n95.json"));
+            if (hasParallels) {
+                CHECK(std::fabs(lossesFieldAtSolved - lossesFieldAtAmbient) > 1e-7 * lossesFieldAtAmbient);
+                CHECK(std::fabs(lossesFieldAtSolved - lossesFieldAtAmbient) < 1e-4 * lossesFieldAtAmbient);
+            }
         }
     }
 

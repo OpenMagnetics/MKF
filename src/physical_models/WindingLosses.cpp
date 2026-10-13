@@ -250,7 +250,7 @@ WindingLosses::WindingLossesField WindingLosses::calculate_magnetic_field(Magnet
     // ABT #1314: the parallels of a winding share its harmonic currents as their impedances dictate (empty without
     // parallels). Solved once, at the conductors' temperature, and charged consistently to the skin (AC) and field
     // (proximity) losses; the ohmic losses keep the DC (resistive) split. The split feeds the field, so with parallels
-    // the field step depends on that temperature (WindingLossesField::depends_on_temperature).
+    // the field step belongs to that temperature (WindingLossesField::temperature).
     const auto parallelCurrentSplit = MagneticField::calculate_parallel_current_split(magnetic, operatingPoint, temperature);
     const WindingLossesModelSet* modelSet = resolve_model_set(magnetic);
 
@@ -360,12 +360,6 @@ WindingLosses::WindingLossesField WindingLosses::calculate_magnetic_field(Magnet
 
 WindingLossesOutput WindingLosses::calculate_losses(Magnetic magnetic, const WindingLossesField& field, double temperature) {
     auto& settings = OpenMagnetics::Settings::GetInstance();
-    if (field.depends_on_temperature() && temperature != field.temperature) {
-        throw InvalidInputException(ErrorCode::INVALID_INPUT,
-            "Winding losses at " + std::to_string(temperature) + " C from a field whose parallel current split was solved at " +
-            std::to_string(field.temperature) + " C: with parallels the field step depends on the temperature and must be "
-            "recomputed at the temperature of the losses");
-    }
     const OperatingPoint& operatingPoint = field.operatingPoint;
     const WindingLossesModelSet* modelSet = field.modelSet;
     const ParallelCurrentSplit* parallelCurrentSplitPointer = field.parallelCurrentSplit ? &field.parallelCurrentSplit.value() : nullptr;

@@ -264,11 +264,12 @@ SolvedLosses MagneticSimulator::solve_losses_at_operating_temperature(const Oper
     // it the magnetizing model's permeability refuses (ABT #1739), so no iterate may land there.
     const auto ferromagneticDataCeiling = InitialPermeability::get_maximum_ferromagnetic_data_temperature(coreMaterial);
     const auto curieTemperature = coreMaterial.get_curie_temperature();
-    // The winding losses' field step (H at every turn) depends on the currents and the geometry,
-    // not on the temperature, unless a winding has parallels (their current split is solved at the
-    // conductors' temperature, ABT #1314): it is computed once, at the first iterate, and every
-    // iterate runs only the per-turn kernels at its own winding temperature (the architecture's
-    // two steps); with parallels the field step is redone at each iterate's winding temperature.
+    // The winding losses' field step (H at every turn, and the current split between a winding's
+    // parallels that feeds it, ABT #1314) is computed ONCE, at ambient, and every iterate runs only
+    // the per-turn kernels at its own winding temperature (the architecture's two steps): the
+    // conductors' resistance follows the iterate, the field and the split do not (decided by Alf
+    // 2026-10-13). Without parallels H does not depend on the temperature at all; with parallels
+    // the losses differ from a field redone at the solved temperature by about 1e-5 relative.
     WindingLosses windingLossesModel;
     std::optional<WindingLosses::WindingLossesField> windingLossesField;
 
@@ -299,8 +300,8 @@ SolvedLosses MagneticSimulator::solve_losses_at_operating_temperature(const Oper
                     auto& settings = Settings::GetInstance();
                     SettingsGuard<int> mirroringGuard(settings, &Settings::get_magnetic_field_mirroring_dimension,
                                                       &Settings::set_magnetic_field_mirroring_dimension, 1);
-                    if (!windingLossesField || windingLossesField->depends_on_temperature()) {
-                        windingLossesField = windingLossesModel.calculate_magnetic_field(magnetic, operatingPoint, windingTemperature);
+                    if (!windingLossesField) {
+                        windingLossesField = windingLossesModel.calculate_magnetic_field(magnetic, operatingPoint, ambientTemperature);
                     }
                     windingLosses = windingLossesModel.calculate_losses(magnetic, windingLossesField.value(), windingTemperature);
                     break;
