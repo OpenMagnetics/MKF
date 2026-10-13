@@ -754,10 +754,21 @@ TEST_CASE("Core adviser sizes its stand-in's parallels to the current unless the
             CHECK(winding.get_number_parallels() == 1);
         }
 
-        // A filter that was not told the application refuses to complete a stand-in.
-        auto untold = standIn;
-        OpenMagnetics::MagneticFilterCoreDcAndSkinLosses lossesFilter(inputs);
+        // A filter that was not told the application refuses to complete a stand-in; told, it
+        // evaluates it. The candidate is a core the power adviser returns for these inputs, cut
+        // back to its first winding (this section's toroid saturates at 600 Vpp).
+        std::map<CoreAdviser::CoreAdviserFilters, double> weights;
+        weights[CoreAdviser::CoreAdviserFilters::COST] = 1;
+        weights[CoreAdviser::CoreAdviserFilters::EFFICIENCY] = 1;
+        weights[CoreAdviser::CoreAdviserFilters::DIMENSIONS] = 1;
+        CoreAdviser powerAdviser;
+        powerAdviser.set_mode(CoreAdviser::CoreAdviserModes::AVAILABLE_CORES);
+        auto masMagnetics = powerAdviser.get_advised_core(inputs, weights, &cores, 1);
+        REQUIRE(masMagnetics.size() > 0);
+        auto untold = masMagnetics[0].first.get_magnetic();
         untold.get_mutable_coil().get_mutable_functional_description().resize(1);
+        REQUIRE(OpenMagnetics::MagneticFilter::lacks_windings(untold, inputs));
+        OpenMagnetics::MagneticFilterCoreDcAndSkinLosses lossesFilter(inputs);
         REQUIRE_THROWS_AS(lossesFilter.evaluate_magnetic(&untold, &inputs), OpenMagnetics::InvalidInputException);
         lossesFilter.set_application(MAS::MagneticApplication::POWER);
         REQUIRE_NOTHROW(lossesFilter.evaluate_magnetic(&untold, &inputs));
