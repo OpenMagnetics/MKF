@@ -549,6 +549,10 @@ class Coil : public MAS::Coil {
         // blocked at its {top, bottom}. Consumed by wind_by_rectangular_layers when
         // _applyConnectionBlocking is set. Both stay empty/false unless real winding geometry is on.
         std::map<std::string, std::pair<uint64_t, uint64_t>> _connectionBlockedSlotsPerLayer;
+        // ABT #1818: per toroidal ring (layer name), the turn slots wind_by_round_layers left unused
+        // in it: its capacity (reserved slots already taken out) minus the turns it was given. The
+        // toroidal blocking loop of wind() reserves them when a ring's reservation has to bind.
+        std::map<std::string, int64_t> _ringUnusedSlotsPerLayer;
         // The CONTINUOUS depths those slot counts were quantized from: per crossed layer, the deepest
         // crossing run's edgeDepth (insulation included) at its {high, low} edge, in metres along its
         // turn axis, accumulated monotonically like the slots. Slots stay the CAPACITY currency
@@ -1179,7 +1183,10 @@ class Coil : public MAS::Coil {
         // displacement, the CAPACITY deficit in that ring's own turn slots; wind()'s toroidal
         // blocking loop reserves those slots (turns spill inward) and re-winds, after which
         // displacement succeeds. Round windows only; no-op (empty map) otherwise.
-        std::map<std::string, uint64_t> align_blocked_ring_turns(bool forceSpreadBaseline = false);
+        // ringsShortOfMeasuredRoom (optional output, ABT #1818): the rings whose reported deficit is a
+        // measurement (their turns need more arc than their corridors leave), as opposed to the
+        // one-slot ABT #723 escalation of a ring that kept needing re-spreads.
+        std::map<std::string, uint64_t> align_blocked_ring_turns(bool forceSpreadBaseline = false, std::set<std::string>* ringsShortOfMeasuredRoom = nullptr);
 
         std::vector<Section> get_sections_description_conduction() const;
         std::vector<Layer> get_layers_description_conduction() const;

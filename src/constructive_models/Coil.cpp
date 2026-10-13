@@ -5808,7 +5808,10 @@ bool Coil::are_turns_inside_winding_window() {
     return true;
 }
 
-std::map<std::string, uint64_t> Coil::align_blocked_ring_turns(bool forceSpreadBaseline) {
+std::map<std::string, uint64_t> Coil::align_blocked_ring_turns(bool forceSpreadBaseline, std::set<std::string>* ringsShortOfMeasuredRoom) {
+    if (ringsShortOfMeasuredRoom != nullptr) {
+        ringsShortOfMeasuredRoom->clear();
+    }
     std::map<std::string, uint64_t> ringDeficitSlots;
     if (!get_turns_description() || !get_layers_description()) {
         return ringDeficitSlots;
@@ -5894,6 +5897,9 @@ std::map<std::string, uint64_t> Coil::align_blocked_ring_turns(bool forceSpreadB
         // final pass's deficits so an unconverged ring escalates to capacity (the ABT #723
         // "spill" path) instead of being reported as solved.
         ringDeficitSlots.clear();
+        if (ringsShortOfMeasuredRoom != nullptr) {
+            ringsShortOfMeasuredRoom->clear();   // measured afresh each pass, with the deficits
+        }
         auto turns = get_turns_description().value();
         auto spaces = get_connection_reserved_spaces();
 
@@ -6419,6 +6425,9 @@ std::map<std::string, uint64_t> Coil::align_blocked_ring_turns(bool forceSpreadB
                 // then displacement succeeds on the re-wound geometry.
                 uint64_t deficit = uint64_t(std::ceil((needed - totalFree) / turnPitchAngle - 1e-9));
                 ringDeficitSlots[ringName] = std::max(ringDeficitSlots[ringName], deficit);
+                if (ringsShortOfMeasuredRoom != nullptr) {
+                    ringsShortOfMeasuredRoom->insert(ringName);   // a measurement, not a #723 escalation
+                }
                 logEntry("Toroidal ring '" + ringName + "' needs " + std::to_string(deficit)
                              + " blocked slot(s) to clear its connection corridors ("
                              + std::to_string(totalFree) + " deg free < " + std::to_string(needed) + " deg needed)",
@@ -8068,8 +8077,13 @@ bool Coil::wind_inner(std::vector<double> proportionPerWinding, std::vector<size
         if (resolve_bobbin().get_winding_window_shape() == WindingWindowShape::ROUND) {
             const size_t maximumToroidalBlockingIterations = 16;
             bool toroidalBlockingSettled = false;
+            // ABT #1818: per ring, the fewest turns it is known not to clear its corridors with: the
+            // fewest it held when its room was measured short, or the count a reservation below has
+            // since held it under. See the booking of a measured deficit in the loop.
+            std::map<std::string, size_t> ringTurnsKnownNotToClear;
             for (size_t blockingIteration = 0; blockingIteration < maximumToroidalBlockingIterations; ++blockingIteration) {
-                auto ringDeficits = align_blocked_ring_turns(/*forceSpreadBaseline=*/blockingIteration == 0);
+                std::set<std::string> ringsShortOfMeasuredRoom;
+                auto ringDeficits = align_blocked_ring_turns(/*forceSpreadBaseline=*/blockingIteration == 0, &ringsShortOfMeasuredRoom);
                 bool changed = false;
                 for (const auto& [ringName, deficitSlots] : ringDeficits) {
                     if (deficitSlots == 0) {
@@ -8077,13 +8091,71 @@ bool Coil::wind_inner(std::vector<double> proportionPerWinding, std::vector<size
                     }
                     // Monotonic accumulation, as in the rectangular loop: the deficit is measured
                     // against the CURRENT (already partially blocked) geometry, so add it on top.
-                    _connectionBlockedSlotsPerLayer[ringName].first += deficitSlots;
+                    //
+                    // ABT #1818: A RING THAT COMES BACK WITH AS MANY TURNS AS IT ALREADY FAILED WITH IS
+                    // HELD BELOW THAT COUNT. A reserved slot comes off the ring's CAPACITY, and the
+                    // winder does not fill a ring to its capacity: it sizes every ring to what fits
+                    // and takes the surplus back out of all the rings in turn (the closing correction
+                    // of get_number_layers_needed_and_number_physical_turns). So a reservation mostly
+                    // eats slots the ring was not using, and what it does move is one turn, to
+                    // whichever ring the correction reaches next. Two rings both measured short then
+                    // pass that turn back and forth: T 10/6/4, 45 + 45 turns x 2 of Round 29.0,
+                    // overlapping, has 'winding 0 section 0 layer 0' short at 48 turns and layer 1 at
+                    // 43, 90 turns to place and 12 unused slots, so the split went 48/42, 48/42, 47/43,
+                    // 48/42 ... and the 16 re-winds were spent before the unused slots were.
+                    // A measured deficit says how many turns the ring held when its corridors left it
+                    // too little room. The first time, it is booked as before. When the ring is
+                    // measured short again holding at least the fewest turns it is known not to clear
+                    // with, the booking did not bind: the ring's unused slots are reserved too, down to
+                    // one turn under that count, which the correction cannot hand back. Each such
+                    // booking lowers the ring's count by one, so the split cannot cycle.
+                    // One under the failed count, not the measured deficit under the turns held: the
+                    // correction also drains the bound ring and overfills the others, whose measured
+                    // deficits are then large and, bound whole, one slot more than the ring needs in
+                    // the layout it ends up in (T 10/6/4, 45 + 25 turns x 2 of Round 27.5: rings bound
+                    // at 27 and 25 turns where 28 and 26 clear, an extra ring, a stack too deep for the
+                    // window). A #723 escalation (a ring that kept needing re-spreads) measures no
+                    // room and is booked as one slot, as before.
+                    {
+                        auto unusedSlots = _ringUnusedSlotsPerLayer.find(ringName);
+                        if (unusedSlots == _ringUnusedSlotsPerLayer.end()) {
+                            throw CoilException(ErrorCode::CALCULATION_INVALID_RESULT,
+                                "Real winding toroidal turn blocking: ring '" + ringName +
+                                "' reports a deficit but wind_by_round_layers recorded no capacity for it");
+                        }
+                        const bool measured = ringsShortOfMeasuredRoom.count(ringName) > 0;
+                        size_t turnsHeld = 0;
+                        {
+                            const auto turnsNow = get_turns_description().value();
+                            for (const auto& turn : turnsNow) {
+                                if (turn.get_layer() && turn.get_layer().value() == ringName) {
+                                    ++turnsHeld;
+                                }
+                            }
+                        }
+                        auto knownNotToClear = ringTurnsKnownNotToClear.find(ringName);
+                        if (measured && knownNotToClear != ringTurnsKnownNotToClear.end() && turnsHeld >= knownNotToClear->second) {
+                            _connectionBlockedSlotsPerLayer[ringName].first += uint64_t(unusedSlots->second) + uint64_t(turnsHeld - knownNotToClear->second) + 1;
+                            knownNotToClear->second -= 1;
+                        }
+                        else {
+                            _connectionBlockedSlotsPerLayer[ringName].first += deficitSlots;
+                            if (measured) {
+                                if (knownNotToClear == ringTurnsKnownNotToClear.end()) {
+                                    ringTurnsKnownNotToClear[ringName] = turnsHeld;
+                                }
+                                else {
+                                    knownNotToClear->second = std::min(knownNotToClear->second, turnsHeld);
+                                }
+                            }
+                        }
+                    }
                     changed = true;
                 }
                 if (std::getenv("MKF_BLOCKING_DIAG")) {
                     std::cerr << "[torfix] iter " << blockingIteration << " deficits={";
                     for (const auto& [ringName, deficitSlots] : ringDeficits) {
-                        std::cerr << ringName << ":" << deficitSlots << ",";
+                        std::cerr << ringName << ":" << deficitSlots << (ringsShortOfMeasuredRoom.count(ringName) ? "M" : "E") << ",";
                     }
                     std::cerr << "} changed=" << changed << "\n";
                 }
@@ -10900,7 +10972,7 @@ std::vector<double> get_section_areas(std::vector<std::pair<ElectricalType, std:
     return sectionAreas;
 }
 
-std::pair<size_t, std::vector<int64_t>> get_number_layers_needed_and_number_physical_turns(double radialHeight, double angle, Wire wire, int64_t physicalTurnsInSection, double windingWindowRadius, const std::vector<int64_t>* blockedSlotsPerLayer = nullptr) {
+std::pair<size_t, std::vector<int64_t>> get_number_layers_needed_and_number_physical_turns(double radialHeight, double angle, Wire wire, int64_t physicalTurnsInSection, double windingWindowRadius, const std::vector<int64_t>* blockedSlotsPerLayer = nullptr, std::vector<int64_t>* unusedSlotsPerLayer = nullptr) {
     int64_t reaminingPhysicalTurnsInSection = physicalTurnsInSection;
     double wireWidth = resolve_dimensional_values(wire.get_maximum_outer_width());
     double wireHeight = resolve_dimensional_values(wire.get_maximum_outer_height());
@@ -10920,6 +10992,7 @@ std::pair<size_t, std::vector<int64_t>> get_number_layers_needed_and_number_phys
     }
     double sectionAvailableAngle = angle;
     std::vector<int64_t> layerPhysicalTurns;
+    std::vector<int64_t> turnsFittingPerLayer;
     size_t numberLayers = 0;
     while (reaminingPhysicalTurnsInSection > 0) {
         double wireAngle = wound_distance_to_angle(wireHeight, std::max(wireWidth, currentRadius));
@@ -10931,6 +11004,7 @@ std::pair<size_t, std::vector<int64_t>> get_number_layers_needed_and_number_phys
         reaminingPhysicalTurnsInSection -= numberTurnsFittingThisLayer;
 
         layerPhysicalTurns.push_back(numberTurnsFittingThisLayer);
+        turnsFittingPerLayer.push_back(numberTurnsFittingThisLayer);
         numberLayers++;
         if (currentRadius > wireWidth) {
             currentRadius -= wireWidth;
@@ -10947,12 +11021,20 @@ std::pair<size_t, std::vector<int64_t>> get_number_layers_needed_and_number_phys
         else
             currentIndex--;
     }
+    // ABT #1818: the slots each ring keeps beyond its turns, i.e. what the correction above took
+    // back out of it (see Coil::_ringUnusedSlotsPerLayer).
+    if (unusedSlotsPerLayer != nullptr) {
+        unusedSlotsPerLayer->assign(numberLayers, 0);
+        for (size_t layerIndex = 0; layerIndex < numberLayers; ++layerIndex) {
+            (*unusedSlotsPerLayer)[layerIndex] = turnsFittingPerLayer[layerIndex] - layerPhysicalTurns[layerIndex];
+        }
+    }
 
     return {numberLayers, layerPhysicalTurns};
 }
 
-std::pair<size_t, std::vector<int64_t>> get_number_layers_needed_and_number_physical_turns(Section section, Wire wire, int64_t physicalTurnsInSection, double windingWindowRadius, const std::vector<int64_t>* blockedSlotsPerLayer = nullptr) {
-    return get_number_layers_needed_and_number_physical_turns(section.get_coordinates()[0] - section.get_dimensions()[0] / 2, section.get_dimensions()[1], wire, physicalTurnsInSection, windingWindowRadius, blockedSlotsPerLayer);
+std::pair<size_t, std::vector<int64_t>> get_number_layers_needed_and_number_physical_turns(Section section, Wire wire, int64_t physicalTurnsInSection, double windingWindowRadius, const std::vector<int64_t>* blockedSlotsPerLayer = nullptr, std::vector<int64_t>* unusedSlotsPerLayer = nullptr) {
+    return get_number_layers_needed_and_number_physical_turns(section.get_coordinates()[0] - section.get_dimensions()[0] / 2, section.get_dimensions()[1], wire, physicalTurnsInSection, windingWindowRadius, blockedSlotsPerLayer, unusedSlotsPerLayer);
 }
 
 // Ring capacities of a contiguous toroidal section bounded on each side by a flat bar of
@@ -10996,6 +11078,7 @@ static std::optional<double> toroidal_bar_clearance_angle_if_room(double halfBar
 
 struct ToroidalBarRingCapacities {
     std::vector<int64_t> turnsPerRing;
+    std::vector<int64_t> unusedSlotsPerRing;
     std::string failure;
 };
 static ToroidalBarRingCapacities toroidal_bar_ring_capacities(double startRadialHeight, double boundarySpan, Wire wire, int64_t physicalTurnsInSection,
@@ -11044,12 +11127,16 @@ static ToroidalBarRingCapacities toroidal_bar_ring_capacities(double startRadial
     }
     // Over-capacity is taken back from the innermost rings first, the way
     // get_number_layers_needed_and_number_physical_turns distributes it.
+    const std::vector<int64_t> fittingPerRing = result.turnsPerRing;
     int64_t turnsToCorrect = -remaining;
     size_t currentIndex = result.turnsPerRing.size() - 1;
     while (turnsToCorrect > 0) {
         result.turnsPerRing[currentIndex]--;
         turnsToCorrect--;
         currentIndex = currentIndex == 0 ? result.turnsPerRing.size() - 1 : currentIndex - 1;
+    }
+    for (size_t ring = 0; ring < fittingPerRing.size(); ++ring) {
+        result.unusedSlotsPerRing.push_back(fittingPerRing[ring] - result.turnsPerRing[ring]);
     }
     return result;
 }
@@ -15562,6 +15649,7 @@ bool Coil::wind_by_rectangular_layers() {
 
 bool Coil::wind_by_round_layers() {
     set_layers_description(std::nullopt);
+    _ringUnusedSlotsPerLayer.clear();
     if (!get_sections_description()) {
         return false;
     }
@@ -15679,9 +15767,10 @@ bool Coil::wind_by_round_layers() {
                         toroidal_bar_margin_angle(sectionMargins[1], ringCentreRadius, wirePerWinding[windingIndex]) -
                             toroidal_bar_margin_angle(sectionMargins[1], outermostRingRadius, wirePerWinding[windingIndex])};
             };
+            std::vector<int64_t> ringUnusedSlots;
             auto ring_capacities = [&]() -> std::optional<std::pair<size_t, std::vector<int64_t>>> {
                 if (!barMargins) {
-                    return get_number_layers_needed_and_number_physical_turns(sections[sectionIndex], wirePerWinding[windingIndex], physicalTurnsInSection, windingWindowRadialHeight, blockedSlotsPointer);
+                    return get_number_layers_needed_and_number_physical_turns(sections[sectionIndex], wirePerWinding[windingIndex], physicalTurnsInSection, windingWindowRadialHeight, blockedSlotsPointer, &ringUnusedSlots);
                 }
                 const double boundarySpan = sections[sectionIndex].get_dimensions()[1] +
                                             toroidal_bar_margin_angle(sectionMargins[0], outermostRingRadius, wirePerWinding[windingIndex]) +
@@ -15696,6 +15785,7 @@ bool Coil::wind_by_round_layers() {
                     _lastFitFailure = reason.str();
                     return std::nullopt;
                 }
+                ringUnusedSlots = capacities.unusedSlotsPerRing;
                 return std::pair<size_t, std::vector<int64_t>>{capacities.turnsPerRing.size(), capacities.turnsPerRing};
             };
 
@@ -15723,6 +15813,18 @@ bool Coil::wind_by_round_layers() {
                 minimumNumberLayerNeeded = aux->first;
                 numberLayers = std::min(minimumNumberLayerNeeded, maximumNumberLayersFittingInSection);
                 layerPhysicalTurns = aux->second;
+            }
+
+            for (size_t ringIndex = 0; ringIndex < ringUnusedSlots.size(); ++ringIndex) {
+                _ringUnusedSlotsPerLayer[sections[sectionIndex].get_name() + " layer " + std::to_string(ringIndex)] = ringUnusedSlots[ringIndex];
+            }
+            if (std::getenv("MKF_BLOCKING_DIAG")) {
+                std::cerr << "[rings] " << sections[sectionIndex].get_name() << " turns/unused/blocked:";
+                for (size_t ringIndex = 0; ringIndex < layerPhysicalTurns.size(); ++ringIndex) {
+                    std::cerr << " " << layerPhysicalTurns[ringIndex] << "/" << (ringIndex < ringUnusedSlots.size() ? ringUnusedSlots[ringIndex] : -1)
+                              << "/" << (ringIndex < blockedSlotsPerLayerIndex.size() ? blockedSlotsPerLayerIndex[ringIndex] : 0);
+                }
+                std::cerr << "\n";
             }
 
             // We cannot have more layers than physical turns
