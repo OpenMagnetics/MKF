@@ -834,11 +834,19 @@ namespace {
         operatingPointJson["name"] = "Nominal";
         operatingPointJson["conditions"] = json();
         operatingPointJson["conditions"]["ambientTemperature"] = 100;
-        // Forced air (ABT #838, Alf 2026-10-10): in still air at 100 C this ETD 29 dissipates ~9 W
-        // with the core at 3C95's Curie temperature (215 C) but sheds only ~7 W there, so it has no
-        // operating point. With a fan's 2 m/s the core settles at ~181 C (~2.4 W core, ~5.6 W copper).
+        // Forced air (ABT #838, Alf 2026-10-10; raised from 2 to 4 m/s with Alf's approval of
+        // 2026-10-13, "change the fixture so it solves"): this ETD 29 is thermally overloaded at
+        // 100 C ambient. main never fed the temperature back into the losses and itself published
+        // 224-233 C for it in still air, from the losses at 100 C, without checking it. With the
+        // loss-temperature loop it has no operating point in still air (it sheds ~7 W at 3C95's
+        // limit and dissipates ~9 W), and at 2 m/s the core is driven to 186.6 C, past the 180 C
+        // end of 3C95's measured mu_i(T) table (5.69 W of copper at 100 C under the ABT #1759
+        // default winding-loss set). Solved at 100 C ambient: 2.5 m/s still refuses (181.6 C),
+        // 3 m/s settles at 174.9 C, 4 m/s at 168.2 C (2.10 W core, 6.10 W copper, hottest point
+        // 181.8 C), 5 m/s at 163.3 C. 4 m/s keeps 12 K to the table end, twice what ABT #1759
+        // moved this core by; ambient and drive stay the article's.
         if (forcedAir) {
-            operatingPointJson["conditions"]["cooling"]["velocity"] = {2.0, 0.0, 0.0};
+            operatingPointJson["conditions"]["cooling"]["velocity"] = {4.0, 0.0, 0.0};
             operatingPointJson["conditions"]["cooling"]["temperature"] = 100;
         }
 
