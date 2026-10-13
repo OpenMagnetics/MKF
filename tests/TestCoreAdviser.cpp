@@ -370,7 +370,11 @@ TEST_CASE("Test_CoreAdviser_CMC_Default_Web_Design_Returns_Cores", "[adviser][co
     // magnetises a CMC's core: 1 App of it drove the advised R12KZ toroids to 0.8-1.4 T and 16-22 W at
     // 25 C, past their 130 C Curie temperature. A CMC's common-mode current is milliamps to tens of
     // milliamps: the ripple is scaled to 20 mApp around the same 10 A line current, and the stale
-    // processed/harmonics data are dropped so the inputs process the scaled waveform.
+    // processed/harmonics data are dropped so the inputs process the scaled waveform. The captured
+    // winding voltage (500 Vpp at 150 kHz) is the voltage that 1 App ripple induces, so it is scaled
+    // by the same factor: current and voltage describe the same ripple (approved by Alf 2026-10-13).
+    // Left at 500 Vpp it states 50 times the volt-seconds of the 20 mApp ripple, and the saturation
+    // filter refuses every candidate on them.
     const double commonModeRippleScale = 0.02;
     for (auto& excitationJson : inputsJson.at("operatingPoints").at(0).at("excitationsPerWinding")) {
         auto& currentJson = excitationJson.at("current");
@@ -380,6 +384,12 @@ TEST_CASE("Test_CoreAdviser_CMC_Default_Web_Design_Returns_Cores", "[adviser][co
         }
         currentJson.erase("processed");
         currentJson.erase("harmonics");
+        auto& voltageJson = excitationJson.at("voltage");
+        for (auto& sample : voltageJson.at("waveform").at("data")) {
+            sample = sample.get<double>() * commonModeRippleScale;
+        }
+        voltageJson.erase("processed");
+        voltageJson.erase("harmonics");
     }
 
     OpenMagnetics::Inputs inputs(inputsJson);
