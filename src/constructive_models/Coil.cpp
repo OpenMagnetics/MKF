@@ -8194,29 +8194,6 @@ bool Coil::wind_inner(std::vector<double> proportionPerWinding, std::vector<size
                         for (size_t t = 0; !settleMoved && t < after.size(); ++t) {
                             settleMoved = std::abs(before[t].get_coordinates()[0] - after[t].get_coordinates()[0]) > 1e-9 ||
                                           std::abs(before[t].get_coordinates()[1] - after[t].get_coordinates()[1]) > 1e-9;
-                            // ABT #1734: a re-spread rewrites the outer crossings of every turn
-                            // it places -- rotated onto the station's own azimuth, dropping the
-                            // midpoint anchor and the compaction -- even when the station itself
-                            // stays put (a ring re-spread onto the same positions). Comparing
-                            // stations only, that read as "nothing moved", the loop stopped, and
-                            // the coil kept crossings no sweep had placed: on T 12.7/7.9/12.7 with
-                            // 45 x 2 + 45 x 2 turns a whole ring's crossings sat on their stations,
-                            // one 0.303 mm from another winding's crossing (0.339 mm envelope).
-                            const auto& additionalBefore = before[t].get_additional_coordinates();
-                            const auto& additionalAfter = after[t].get_additional_coordinates();
-                            if (!settleMoved && additionalBefore.has_value() != additionalAfter.has_value()) {
-                                settleMoved = true;
-                            }
-                            if (!settleMoved && additionalBefore && additionalAfter) {
-                                const auto& crossingsBefore = additionalBefore.value();
-                                const auto& crossingsAfter = additionalAfter.value();
-                                settleMoved = crossingsBefore.size() != crossingsAfter.size();
-                                for (size_t k = 0; !settleMoved && k < crossingsAfter.size(); ++k) {
-                                    for (size_t axis = 0; !settleMoved && axis < 2; ++axis) {
-                                        settleMoved = std::abs(crossingsBefore[k][axis] - crossingsAfter[k][axis]) > 1e-9;
-                                    }
-                                }
-                            }
                         }
                     }
                     if (!settleMoved) {
