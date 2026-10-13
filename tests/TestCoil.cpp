@@ -13590,6 +13590,76 @@ TEST_CASE("Test_Real_Geometry_Planar_Winds_As_Pcb", "[constructive-model][coil][
     settings.reset();
 }
 
+TEST_CASE("Test_Planar_Printed_Group_Sits_At_Its_Pcb_Core_To_Track_Without_Real_Winding", "[constructive-model][coil][planar][abt-1760]") {
+    // ABT #1760: a printed group that carries a pcb is laid out at that pcb's coreToTrack whether or not real
+    // winding geometry is on. It was read only with real winding on, so the board of MAS example 09 (rule
+    // 0.30 mm) was placed at the 0.25 mm its caller passed and MVB++ refused to cut the FR4 around it.
+    // The rule here (0.20 mm) is neither the caller's distance (0.25 mm) nor the example's own, so the
+    // placement can only come from reading the group's pcb.
+    settings.reset();
+    settings.set_coil_use_real_winding_geometry(false);
+    auto mas = OpenMagneticsTesting::mas_loader(std::string(__FILE__).substr(0, std::string(__FILE__).rfind('/'))
+                                                + "/../MAS/examples/09_planar_xfmr_er2510_3c94.json");
+    auto magnetic = OpenMagnetics::magnetic_autocomplete(mas.get_magnetic());
+    const std::vector<size_t> stackUp = {0, 1, 0, 1, 0, 1};
+    const double callerDistance = 250e-6;
+    const double coreToTrack = 200e-6;
+
+    auto window = magnetic.get_mutable_coil().resolve_bobbin().get_processed_description()->get_winding_windows()[0];
+    const double windowWidth = window.get_width().value();
+    const double windowLeft = window.get_coordinates().value()[0] - windowWidth / 2;
+    const double windowRight = window.get_coordinates().value()[0] + windowWidth / 2;
+
+    auto printedGroupOf = [](OpenMagnetics::Coil& coil) {
+        auto groups = coil.get_groups_description();
+        REQUIRE(groups);
+        REQUIRE(groups->size() == 1);
+        REQUIRE(groups->front().get_type() == WiringTechnology::PRINTED);
+        return groups->front();
+    };
+
+    SECTION("with a pcb, the group and its copper keep the pcb's coreToTrack from both core walls") {
+        auto coil = magnetic.get_coil();
+        auto groups = coil.get_groups_description().value();
+        REQUIRE(groups.front().get_pcb());
+        auto pcb = groups.front().get_pcb().value();
+        pcb.get_mutable_design_rules().set_core_to_track(coreToTrack);
+        groups.front().set_pcb(pcb);
+        coil.set_groups_description(groups);
+
+        REQUIRE(coil.wind_planar(stackUp, std::nullopt, {}, {}, callerDistance));
+        auto group = printedGroupOf(coil);
+        REQUIRE(group.get_pcb());
+        CHECK_THAT(group.get_pcb()->get_design_rules().get_core_to_track(), Catch::Matchers::WithinAbs(coreToTrack, 1e-12));
+        CHECK_THAT(group.get_coordinates()[0] - group.get_dimensions()[0] / 2 - windowLeft, Catch::Matchers::WithinAbs(coreToTrack, 1e-9));
+        CHECK_THAT(windowRight - group.get_coordinates()[0] - group.get_dimensions()[0] / 2, Catch::Matchers::WithinAbs(coreToTrack, 1e-9));
+
+        auto turns = coil.get_turns_description();
+        REQUIRE(turns);
+        REQUIRE(turns->size() == 27);
+        for (auto& turn : turns.value()) {
+            const double halfWidth = turn.get_dimensions().value()[0] / 2;
+            INFO(turn.get_name());
+            CHECK(turn.get_coordinates()[0] - halfWidth - windowLeft >= coreToTrack - 1e-9);
+            CHECK(windowRight - turn.get_coordinates()[0] - halfWidth >= coreToTrack - 1e-9);
+        }
+    }
+
+    SECTION("without a pcb the group states no rule and sits at the distance its caller passes") {
+        auto coil = magnetic.get_coil();
+        auto groups = coil.get_groups_description().value();
+        groups.front().set_pcb(std::nullopt);
+        coil.set_groups_description(groups);
+
+        REQUIRE(coil.wind_planar(stackUp, std::nullopt, {}, {}, callerDistance));
+        auto group = printedGroupOf(coil);
+        CHECK(!group.get_pcb());
+        CHECK_THAT(group.get_coordinates()[0] - group.get_dimensions()[0] / 2 - windowLeft, Catch::Matchers::WithinAbs(callerDistance, 1e-9));
+        CHECK_THAT(windowRight - group.get_coordinates()[0] - group.get_dimensions()[0] / 2, Catch::Matchers::WithinAbs(callerDistance, 1e-9));
+    }
+    settings.reset();
+}
+
 // Count pairs of turns whose centres are closer than ~one wire — i.e. physically overlapping. Toroidal
 // turns are cartesian, so this is a plain centre-distance check.
 static int toroidal_turn_overlaps(OpenMagnetics::Coil& coil) {

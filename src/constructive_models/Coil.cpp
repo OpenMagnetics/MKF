@@ -8494,8 +8494,14 @@ bool Coil::wind_planar(std::vector<size_t> stackUp, std::optional<double> border
             // window, on the terminal sides, so nothing inside the window has to be reserved). The copper
             // region (the layer) starts coreToTrack from the column and the first turn hugs its edge.
             const bool realWindingPlanar = settings.get_coil_use_real_winding_geometry() && pcb;
-            if (realWindingPlanar) {
+            // ABT #1760: the copper-to-core clearance of a printed group that carries a pcb is that pcb's
+            // design rule, whichever placement the turns then get. It was read only under real winding
+            // geometry, so a board stating coreToTrack 0.30 mm was laid out at the caller's 0.25 mm and
+            // broke its own rule. A group without a pcb states no rule and keeps the caller's distance.
+            if (pcb) {
                 coreToLayerDistance = pcb->get_design_rules().get_core_to_track();
+            }
+            if (realWindingPlanar) {
                 borderToWireDistance = 0.0;
                 for (size_t i = 0; i < get_functional_description().size(); ++i) {
                     wireToWireDistance[i] = pcb->get_design_rules().get_track_to_track();
