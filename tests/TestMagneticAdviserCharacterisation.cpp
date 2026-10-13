@@ -786,14 +786,19 @@ TEST_CASE("MagneticAdviser web DMC whose switching ripple is resolved returns wo
     simulator.set_topology(topology);
     auto simulatedOperatingPoint = inputs.get_operating_point(0);
     auto simulatedCoreLosses = simulator.calculate_core_losses(simulatedOperatingPoint, magnetic);
-    // Without temperature convergence the simulator evaluates the losses once, at ambient.
-    double ambientTemperature = inputs.get_operating_point(0).get_conditions().get_ambient_temperature();
+    // The simulator solves the losses with the temperature they heat the core to (ABT #838: 76.4 C
+    // here, from 25 C ambient), so the sweep is run at that solved temperature and both sides price
+    // the same core (at ambient the sweep reads 6.836 W against the simulator's 6.932 W). Approved
+    // by Alf 2026-10-13.
+    double solvedTemperature = simulatedCoreLosses.get_temperature();
+    CHECK(solvedTemperature > inputs.get_operating_point(0).get_conditions().get_ambient_temperature());
 
     auto dmcSweep = Sweeper::sweep_core_losses_over_frequency(magnetic, inputs.get_operating_point(0), topology,
-                                                              operatingFrequency, 100 * operatingFrequency, 3, ambientTemperature);
+                                                              operatingFrequency, 100 * operatingFrequency, 3, solvedTemperature);
     auto cmcBranchSweep = Sweeper::sweep_core_losses_over_frequency(magnetic, inputs.get_operating_point(0), std::nullopt,
-                                                                    operatingFrequency, 100 * operatingFrequency, 3, ambientTemperature);
+                                                                    operatingFrequency, 100 * operatingFrequency, 3, solvedTemperature);
     REQUIRE_THAT(dmcSweep.get_x_points()[0], Catch::Matchers::WithinRel(operatingFrequency, 1e-9));
+    INFO("solved core temperature " << solvedTemperature << " C");
     INFO("f = " << operatingFrequency << " Hz: simulator " << simulatedCoreLosses.get_core_losses() << " W, DMC sweep "
          << dmcSweep.get_y_points()[0] << " W, CMC branch " << cmcBranchSweep.get_y_points()[0] << " W");
     CHECK_THAT(dmcSweep.get_y_points()[0], Catch::Matchers::WithinRel(simulatedCoreLosses.get_core_losses(), 0.01));
@@ -818,7 +823,7 @@ TEST_CASE("MagneticAdviser web DMC whose switching ripple is resolved returns wo
     OperatingPoint storedOperatingPoint(nlohmann::json::parse(storedFile)["inputs"]["operatingPoints"][0]);
     REQUIRE_FALSE(storedOperatingPoint.get_excitations_per_winding()[0].get_current()->get_harmonics());
     auto storedSweep = Sweeper::sweep_core_losses_over_frequency(magnetic, storedOperatingPoint, topology,
-                                                                 operatingFrequency, 100 * operatingFrequency, 3, ambientTemperature);
+                                                                 operatingFrequency, 100 * operatingFrequency, 3, solvedTemperature);
     INFO("stored operating point: " << storedSweep.get_y_points()[0] << " W, processed: " << dmcSweep.get_y_points()[0] << " W");
     CHECK_THAT(storedSweep.get_y_points()[0], Catch::Matchers::WithinRel(dmcSweep.get_y_points()[0], 0.01));
 
