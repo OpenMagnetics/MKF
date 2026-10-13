@@ -16,7 +16,7 @@
       {
         "name": "Op. Point No. 1",
         "conditions": {
-          "ambientTemperature": 100
+          "ambientTemperature": 25
         },
         "excitationsPerWinding": [
           {
