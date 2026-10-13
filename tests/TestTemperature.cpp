@@ -4416,57 +4416,123 @@ TEST_CASE("ABT838_Bare_Copper_Does_Not_Radiate_Like_A_Matte_Dielectric", "[tempe
     // "bare" -- how MAS writes bare metal -- so the two windings must come out with different
     // emissivities, and the value has to survive recalculateConvectionResistances, which is
     // where the single config-wide value used to be re-imposed every iteration.
+    //
+    // ABT #1540: the stored layout is litz | foil | litz, and the 0.4 x 9 mm foil touches the
+    // ten litz turns of the layer on each of its sides. The network used to measure a
+    // rectangular turn by half its SMALLER side in every direction, so only the litz turn level
+    // with the foil's centre could ever be "near" it, none was, and the foil came out with no
+    // edge to either layer and its outer face open to the room -- through a full layer of litz.
+    // That impossible surface was the bare one this test read. With the outlines measured as
+    // they are, the buried foil has no exposed face, which is asserted below; the bare surface
+    // is now read from the same design without its outer primary section (litz | foil), where
+    // the foil really is the outermost layer, and the coated one from the stored layout, whose
+    // outermost layer is litz.
     auto jsonPath = OpenMagneticsTesting::get_test_data_path(std::source_location::current(),
                                                             "concentric_litz_foil.json");
     auto mas = OpenMagneticsTesting::mas_loader(jsonPath);
-    auto magnetic = mas.get_magnetic();
-    auto operatingPoint = mas.get_inputs().get_operating_points()[0];
-    auto losses = getLossesFromSimulation(magnetic, mas.get_mutable_inputs());
 
-    TemperatureConfig config;
-    config.ambientTemperature = losses.ambientTemperature;
-    config.coreLosses = losses.coreLosses;
-    REQUIRE(losses.windingLossesOutput.has_value());
-    config.windingLosses = losses.windingLosses;
-    config.windingLossesOutput = losses.windingLossesOutput.value();
-    config.plotSchematic = false;
-
-    Temperature temperature(magnetic, config);
-    auto result = temperature.calculateTemperatures();
-    REQUIRE(result.converged);
+    auto withoutOuterPrimarySection = [](const OpenMagnetics::Magnetic& stored) {
+        json magneticJson;
+        to_json(magneticJson, stored);
+        auto& coil = magneticJson["coil"];
+        // The stored sections, from the column outwards: Primary section 0, insulation,
+        // Secondary section 0, insulation, Primary section 1, insulation.
+        REQUIRE(coil["sectionsDescription"].size() == 6);
+        REQUIRE(coil["sectionsDescription"][4]["name"] == "Primary section 1");
+        REQUIRE(coil["functionalDescription"][0]["name"] == "Primary");
+        REQUIRE(coil["functionalDescription"][0]["numberParallels"] == 2);
+        const std::set<std::string> dropped = {coil["sectionsDescription"][4]["name"].get<std::string>(),
+                                               coil["sectionsDescription"][5]["name"].get<std::string>()};
+        auto keepOutsideDropped = [&](json& description, const std::string& sectionKey) {
+            json kept = json::array();
+            for (auto& item : description) {
+                if (!dropped.count(item[sectionKey].get<std::string>())) {
+                    kept.push_back(item);
+                }
+            }
+            description = kept;
+        };
+        keepOutsideDropped(coil["sectionsDescription"], "name");
+        keepOutsideDropped(coil["layersDescription"], "section");
+        keepOutsideDropped(coil["turnsDescription"], "section");
+        // The second parallel lived entirely in the dropped section: the primary is one parallel.
+        coil["functionalDescription"][0]["numberParallels"] = 1;
+        for (const char* key : {"sectionsDescription", "layersDescription"}) {
+            for (auto& item : coil[key]) {
+                if (!item.contains("partialWindings")) continue;
+                for (auto& partialWinding : item["partialWindings"]) {
+                    if (partialWinding["winding"] != "Primary") continue;
+                    REQUIRE(partialWinding["parallelsProportion"].size() == 2);
+                    REQUIRE(partialWinding["parallelsProportion"][1] == 0);
+                    partialWinding["parallelsProportion"] = json::array({partialWinding["parallelsProportion"][0]});
+                }
+            }
+        }
+        for (auto& turn : coil["turnsDescription"]) {
+            REQUIRE(turn["parallel"] == 0);
+        }
+        return OpenMagnetics::Magnetic(magneticJson);
+    };
 
     // Read the SOLVED resistances, not just the field: a value stamped on the resistor that the
     // iteration then ignores is exactly the bug being fixed, and a test that only inspects the
     // field passes in both states. h_rad follows from R and the area, and it is proportional to
     // the emissivity, so the bare winding's radiating surfaces must come out far weaker than the
     // coated one's.
-    const auto& nodes = temperature.getNodes();
     std::vector<double> bareCoefficients;
     std::vector<double> coatedCoefficients;
-    for (const auto& resistor : temperature.getResistances()) {
-        if (resistor.type != HeatTransferType::RADIATION) {
-            continue;
+    auto readRadiatingTurnSurfaces = [&](const OpenMagnetics::Magnetic& magnetic) {
+        auto losses = getLossesFromSimulation(magnetic, mas.get_mutable_inputs());
+
+        TemperatureConfig config;
+        config.ambientTemperature = losses.ambientTemperature;
+        config.coreLosses = losses.coreLosses;
+        REQUIRE(losses.windingLossesOutput.has_value());
+        config.windingLosses = losses.windingLosses;
+        config.windingLossesOutput = losses.windingLossesOutput.value();
+        config.plotSchematic = false;
+
+        Temperature temperature(magnetic, config);
+        auto result = temperature.calculateTemperatures();
+        REQUIRE(result.converged);
+
+        const auto& nodes = temperature.getNodes();
+        for (const auto& resistor : temperature.getResistances()) {
+            if (resistor.type != HeatTransferType::RADIATION) {
+                continue;
+            }
+            if (resistor.nodeFromId >= nodes.size() || resistor.area <= 0 || resistor.resistance <= 0) {
+                continue;
+            }
+            const auto& node = nodes[resistor.nodeFromId];
+            if (node.part != ThermalNodePartType::TURN || !node.windingIndex) {
+                continue;
+            }
+            const double impliedCoefficient = 1.0 / (resistor.resistance * resistor.area);
+            // Winding 0 is the served litz, winding 1 the bare foil.
+            if (node.windingIndex.value() == 1) {
+                bareCoefficients.push_back(impliedCoefficient);
+                CHECK_THAT(resistor.emissivity,
+                           Catch::Matchers::WithinRel(OpenMagnetics::ThermalDefaults::kRadiation_BareCopperEmissivity, 1e-12));
+            }
+            else {
+                coatedCoefficients.push_back(impliedCoefficient);
+                CHECK_THAT(resistor.emissivity,
+                           Catch::Matchers::WithinRel(OpenMagnetics::ThermalDefaults::kConvection_DefaultEmissivity, 1e-12));
+            }
         }
-        if (resistor.nodeFromId >= nodes.size() || resistor.area <= 0 || resistor.resistance <= 0) {
-            continue;
-        }
-        const auto& node = nodes[resistor.nodeFromId];
-        if (node.part != ThermalNodePartType::TURN || !node.windingIndex) {
-            continue;
-        }
-        const double impliedCoefficient = 1.0 / (resistor.resistance * resistor.area);
-        // Winding 0 is the served litz, winding 1 the bare foil.
-        if (node.windingIndex.value() == 1) {
-            bareCoefficients.push_back(impliedCoefficient);
-            CHECK_THAT(resistor.emissivity,
-                       Catch::Matchers::WithinRel(OpenMagnetics::ThermalDefaults::kRadiation_BareCopperEmissivity, 1e-12));
-        }
-        else {
-            coatedCoefficients.push_back(impliedCoefficient);
-            CHECK_THAT(resistor.emissivity,
-                       Catch::Matchers::WithinRel(OpenMagnetics::ThermalDefaults::kConvection_DefaultEmissivity, 1e-12));
-        }
-    }
+    };
+
+    // Stored layout, litz | foil | litz: the outer litz layer radiates, the buried foil does not.
+    readRadiatingTurnSurfaces(mas.get_magnetic());
+    CHECK(bareCoefficients.empty());
+    REQUIRE(!coatedCoefficients.empty());
+    const size_t coatedSurfacesOfStoredLayout = coatedCoefficients.size();
+
+    // litz | foil: the foil is the outermost layer and covers the litz, so it alone radiates.
+    readRadiatingTurnSurfaces(withoutOuterPrimarySection(mas.get_magnetic()));
+    CHECK(coatedCoefficients.size() == coatedSurfacesOfStoredLayout);
+
     // Both kinds must actually be present, or the test is asserting nothing.
     REQUIRE(!bareCoefficients.empty());
     REQUIRE(!coatedCoefficients.empty());
