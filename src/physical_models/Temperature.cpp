@@ -1164,6 +1164,20 @@ void Temperature::createBobbinNodes() {
     _nodes.push_back(bottomYokeWall);
 }
 
+namespace {
+// ABT #1540: an insulation layer drawn in Cartesian coordinates with orientation CONTIGUOUS is a
+// tape lying across the winding window between axially stacked sections or layers: its dimensions
+// are [radial span, thickness]. Every other concentric layer is wrapped around the column and is
+// [thickness, axial span]. Same rule as Coil::get_insulation_layer_thickness.
+bool isCartesianLayerAcrossWindow(const Layer& layer) {
+    auto coordinateSystem = layer.get_coordinate_system();
+    if (coordinateSystem && coordinateSystem.value() != MAS::CoordinateSystem::CARTESIAN) {
+        return false;
+    }
+    return layer.get_orientation() == WindingOrientation::CONTIGUOUS;
+}
+} // namespace
+
 void Temperature::createInsulationLayerNodes() {
     auto coil = _magnetic.get_mutable_coil();
     
@@ -1233,10 +1247,19 @@ void Temperature::createInsulationLayerNodes() {
         // does not exist and, worse, phantom convecting/radiating surfaces INSIDE the winding.
         // Real specified thickness is honoured; true zero is skipped, and the turns connect
         // directly across the boundary exactly as they physically touch.
-        if (!_isToroidal && layerWidth < 1e-9) {
+        //
+        // ABT #1540: the thickness is dimensions[0] only for a layer wrapped around the column. A
+        // tape lying ACROSS the window between axially stacked sections (Cartesian, orientation
+        // CONTIGUOUS) is drawn [radial span, thickness], so its thickness is dimensions[1] --
+        // the same rule Coil::get_insulation_layer_thickness applies. Testing dimensions[0] alone
+        // let a zero-thickness inter-section marker through as a node with no height: nothing
+        // could bear on it, and it then stood "between" the turns resting on it.
+        const bool liesAcrossWindow = !_isToroidal && isCartesianLayerAcrossWindow(layer);
+        double& drawnThickness = liesAcrossWindow ? layerHeight : layerWidth;
+        if (!_isToroidal && drawnThickness < 1e-9) {
             double specifiedThickness = coil.get_insulation_layer_thickness(layer);
             if (specifiedThickness > 1e-9) {
-                layerWidth = specifiedThickness;
+                drawnThickness = specifiedThickness;
             } else {
                 layerIdx++;
                 continue;
