@@ -1354,10 +1354,10 @@ namespace {
         run_example_simulation("06_llc_xfmr_eq4128_3c97.json");
     }
     TEST_CASE("Example_07_cmc", "[example][magnetic-simulator][smoke-test]") {
-        // ABT #1456: its operating point is at 50 Hz, below the fitted span of its ferrite's loss data. MKF no longer extrapolates a
-        // Steinmetz fit outside the frequencies it was fitted on, so simulating this example must fail
-        // with that specific error, not with any other. (Materials without low-frequency data: ABT #1494.)
-        CHECK_THROWS_AS(run_example_simulation("07_cmc_t2515_w800.json"), MaterialFrequencyOutOfSpanException);
+        // ABT #1848: the example states a proper common-mode choke operating point at 150 kHz, inside the fitted span of its
+        // ferrite's loss data, so it runs like the other examples. The refusal of a frequency outside a material's fitted span
+        // (ABT #1456) stays guarded in TestCoreLosses.cpp and TestMaterialDataExtrapolation.cpp.
+        run_example_simulation("07_cmc_t2515_w800.json");
     }
     TEST_CASE("Example_08_pq_inductor", "[example][magnetic-simulator][smoke-test]") {
         run_example_simulation("08_pq_inductor_pq5050_n27.json");
