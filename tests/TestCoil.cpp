@@ -14614,11 +14614,20 @@ TEST_CASE("Test_Toroidal_Real_Winding_Outer_Crossing_Sweep_Stays_In_Its_Ring_Arc
     settings.reset();
 }
 
-TEST_CASE("Test_Toroidal_Real_Winding_Settle_Regenerates_Rewritten_Crossings_Contiguous", "[coil][toroidal][real-geometry]") {
-    // ABT #1734 (fix E): align_blocked_ring_turns' re-spread rewrites the outer crossings onto
-    // the station azimuths even when no station moves. The settle loop compared stations only,
-    // so it stopped there and kept those unswept crossings, which collided with another
-    // winding's crossing. The settle loop compares the crossings too and regenerates them.
+TEST_CASE("Test_Toroidal_Real_Winding_Contiguous_Windings_Keep_Their_Sectors_And_Sweep_Crossings_In_Their_Ring_Territory", "[coil][toroidal][real-geometry]") {
+    // ABT #1734: three contiguous bifilar windings of three rings each wind without a collision
+    // and every turn stays in its own winding's sector. Two pieces of the winder keep that true
+    // on this fixture, and the test fails without either:
+    //  - the real-winding sector partition of align_blocked_ring_turns (a contiguous section's
+    //    rings are re-spread inside the sector allocated to the section). Without it 14 turns
+    //    of the three windings end in a neighbouring sector ('winding 1 parallel 0 turn 0' at
+    //    137.431 deg inside 'winding 0 section 0');
+    //  - the outer-crossing sweep bounded by the territory of the ring (the arc its stations
+    //    occupy) instead of the section's synthetic extent. Bounded by the section, 'winding 2
+    //    parallel 0 turn 11' finds no azimuth after the previous crossing and the wind is refused
+    //    with "NO outer-crossing azimuth inside its ring".
+    // (The test was named after the settle loop's outer-crossing comparison, which never fired
+    // on any fixture and was removed, ABT #1819.)
     settings.reset();
     settings.set_coil_use_real_winding_geometry(true);
     auto wire = OpenMagnetics::find_wire_by_name("Round 29.0 - Single Build");
@@ -14636,10 +14645,19 @@ TEST_CASE("Test_Toroidal_Real_Winding_Settle_Regenerates_Rewritten_Crossings_Con
     settings.reset();
 }
 
-TEST_CASE("Test_Toroidal_Real_Winding_Settle_Regenerates_Rewritten_Crossings_Overlapping", "[coil][toroidal][real-geometry]") {
-    // ABT #1734 (fix E), overlapping windings: same settle-loop defect as the contiguous case --
-    // without the crossing comparison the settle loop keeps crossings the re-spread rewrote and
-    // two crossings collide.
+TEST_CASE("Test_Toroidal_Real_Winding_Overlapping_Respread_March_Jumps_A_Corridor_From_Its_Start_Edge", "[coil][toroidal][real-geometry]") {
+    // ABT #1734, ABT #1789: two overlapping bifilar windings wind, and without a collision. Two
+    // pieces of align_blocked_ring_turns keep that true on this fixture, and the test fails
+    // without either:
+    //  - the re-spread march treats a corridor as blocked from its start edge (inclusive) to its
+    //    end edge (exclusive). Stepping exactly onto the start edge of the next corridor it used
+    //    to probe 1e-9 deg ahead, an answer decided by rounding, and could walk the rest of its
+    //    step into the corridor. With the probe back, 'winding 0 section 0 layer 0' stays one
+    //    slot short on all 16 re-winds ("toroidal turn blocking did not converge");
+    //  - the sector partition is applied to CONTIGUOUS layouts only. Applied to these concentric
+    //    windings, the three rings of 'winding 0' stay one slot short each on all 16 re-winds.
+    // (The test was named after the settle loop's outer-crossing comparison, which never fired
+    // on any fixture and was removed, ABT #1819.)
     settings.reset();
     settings.set_coil_use_real_winding_geometry(true);
     auto wire = OpenMagnetics::find_wire_by_name("Round 21.0 - Single Build");
@@ -14931,13 +14949,26 @@ TEST_CASE("Test_Toroidal_Real_Winding_Lead_Anchor_Leaves_Its_Corridor_Clear_Of_T
     settings.reset();
 }
 
-TEST_CASE("Test_Toroidal_Real_Winding_Corridors_Are_Remeasured_When_A_Lead_Anchor_Moves", "[coil][toroidal][real-geometry]") {
-    // ABT #1818: the corridors a ring must clear are cast by the lead-attached turns of the other
-    // rings. Measured once per pass, two lead turns one ring apart, each inside the other's
-    // corridor ('winding 1 parallel 1 turn 0' on layer 0 and 'winding 1 parallel 1 turn 29' on
-    // layer 1), both moved against the corridors of the pass start and landed together again, pass
-    // after pass (62.8/65.6, 36.1/38.2, 60.2/60.6 deg), until the turns were spilled into rings the
-    // window does not have. The corridors are measured again as soon as an anchor has moved.
+TEST_CASE("Test_Toroidal_Real_Winding_Lead_Anchor_Holds_For_A_Ring_Classed_As_An_Arc_Of_The_Whole_Circle", "[coil][toroidal][real-geometry]") {
+    // ABT #1818: three overlapping bifilar windings of 30 turns fit the 3 mm window of a T 10/6/4
+    // and wind without a collision. The corridors a ring must clear are cast by the lead-attached
+    // turns of the other rings, so the rings only settle when each is re-spread around its own
+    // lead-attached turn. Three pieces of align_blocked_ring_turns keep that true on this
+    // fixture, and the test fails without any of them:
+    //  - the lead anchor holds for every ring whose territory is the whole circle and that no
+    //    sector bounds, not only for the rings classed "full circle". An anchored re-spread
+    //    jumps the other rings' corridors and so opens a gap wider than two pitches: the ring is
+    //    then classed an arc, was re-spread from the middle of its largest gap, and its lead
+    //    turn, with the corridor it casts, moved again on every pass;
+    //  - the anchor clears its corridor edge by 1e-6 deg plus 1 nm of arc at the ring radius,
+    //    so that it does not read back inside the corridor on the 1 nm coordinate grid.
+    //    Without either of those two the turns are spilled into rings the window does not have
+    //    ("60 turns of a 0.311 mm wire need 13 rings, 5.648 mm deep, in a window of 3 mm radial
+    //    height");
+    //  - the sector partition is applied to CONTIGUOUS layouts only (otherwise: "need 6 rings,
+    //    3.16 mm deep").
+    // (The test was named after a re-measure of the corridors each time an anchor moved; with the
+    // anchor holding as above it changed no fixture and was removed.)
     settings.reset();
     settings.set_coil_use_real_winding_geometry(true);
     auto wire = OpenMagnetics::find_wire_by_name("Round 29.0 - Single Build");
@@ -14954,13 +14985,22 @@ TEST_CASE("Test_Toroidal_Real_Winding_Corridors_Are_Remeasured_When_A_Lead_Ancho
     settings.reset();
 }
 
-TEST_CASE("Test_Toroidal_Real_Winding_Blocking_Reservation_Holds_A_Ring_Below_The_Turns_It_Failed_With", "[coil][toroidal][real-geometry]") {
-    // ABT #1818: a slot reserved by the toroidal blocking loop comes off a ring's capacity, and the
-    // layer count takes the surplus back out of all the rings in turn, so the reservation did not
-    // take a turn out of the ring. Here 'winding 0 section 0 layer 0' is short of room at 48 turns
-    // and layer 1 at 43, with 90 turns to place and 12 unused slots: the split went 48/42, 48/42,
-    // 47/43, 48/42 ... and the 16 re-winds were spent ("toroidal turn blocking did not converge").
-    // A ring measured short again holding the turns it already failed with is held below that count.
+TEST_CASE("Test_Toroidal_Real_Winding_Anchored_Respread_Measures_The_Blocked_Arc_Exactly", "[coil][toroidal][real-geometry]") {
+    // ABT #1818: two overlapping bifilar windings of 45 turns fit the 3 mm window of a T 10/6/4
+    // and wind without a collision. Three pieces of align_blocked_ring_turns keep that true on
+    // this fixture, and the test fails without any of them:
+    //  - the arc the corridors block in a ring is the exact length of the merged corridor arcs.
+    //    Counted on 3600 samples of the territory it was off by up to 0.1 deg, and a re-spread
+    //    marched from the lead anchor puts that error in the gap that closes the ring on the
+    //    anchor: two turns of the 0.311 mm wire end 0.310842 mm apart, a 0.16 um overlap;
+    //  - the lead anchor holds for every ring whose territory is the whole circle and that no
+    //    sector bounds, not only for the rings classed "full circle". Without it the lead turns
+    //    and the corridors they cast keep moving and the six rings stay one slot short each on
+    //    all 16 re-winds ("toroidal turn blocking did not converge");
+    //  - the sector partition is applied to CONTIGUOUS layouts only (otherwise: "90 turns of a
+    //    0.311 mm wire need 8 rings, 3.446 mm deep, in a window of 3 mm radial height").
+    // (The test was named after a reservation that held a ring below the turn count it had
+    // already failed with; with the two fixes above it changed no fixture and was removed.)
     settings.reset();
     settings.set_coil_use_real_winding_geometry(true);
     auto wire = OpenMagnetics::find_wire_by_name("Round 29.0 - Single Build");
