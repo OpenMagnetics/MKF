@@ -17,6 +17,16 @@ EXAMPLES = sorted(glob.glob(str(_MKF_ROOT / "MAS" / "examples/*.json")))
 OUT = sys.argv[1]
 TIMEOUT = 1200
 
+# Examples that run OUTSIDE their core material's tabulated/fitted data, where MKF refuses by default.
+# 01_1Hz asks N87's core loss at 1 Hz, below the span its Steinmetz coefficients are fitted over (25 kHz to
+# 1 MHz). Alf's decision (2026-10-12, ABT #1796): generate it with MKF's explicit opt-in
+# Settings::allowMaterialDataExtrapolation, which omfem_mas forwards when it is given
+# --allow-material-data-extrapolation (MasSolveOptions::allow_material_data_extrapolation; a run-time
+# option, off by default, no environment variable). Every other example runs with it off. The entry
+# records that it was on and MKF's own warning per extrapolated quantity, as omfem_mas returns them.
+EXTRAPOLATED_EXAMPLES = {"01_simple_inductor_etd34_n87_1Hz.json"}
+LOG_DIR = os.environ.get("OMFEM_REF_LOG_DIR")  # optional: keep each example's omfem_mas stderr there
+
 refs = {"_meta": {
     "generator": "gen_omfem_refs.py (ABT #461 / #454)",
     "source": "omfem_mas: 2D mesh -> FEM losses -> solve_thermal_fem (h from MKF natural-convection law per boundary, out-of-plane face sink, open toroid bore with view factor, k_core from MKF resolve_core_material_heat_conductivity, eps=0.9, radiating; ABT #1751)",
@@ -48,7 +58,11 @@ for path in EXAMPLES:
         entry["error"] = f"mas parse: {e}"
     t0 = time.time()
     try:
-        r = subprocess.run([OMFEM, path, "/tmp/omfem_ref_gen.msh"], capture_output=True, text=True, timeout=TIMEOUT)
+        extrapolate = name in EXTRAPOLATED_EXAMPLES
+        command = [OMFEM] + (["--allow-material-data-extrapolation"] if extrapolate else []) + [path, OUT + ".scratch.msh"]
+        r = subprocess.run(command, capture_output=True, text=True, timeout=TIMEOUT)
+        if LOG_DIR:
+            open(os.path.join(LOG_DIR, name + ".stderr"), "w").write(r.stderr)
         out = r.stdout.strip().splitlines()
         payload = None
         for line in reversed(out):
@@ -59,7 +73,14 @@ for path in EXAMPLES:
             entry["error"] = (r.stderr.strip().splitlines() or ["no json output"])[-1][:300]
         elif not payload.get("temperature_source"):
             entry["error"] = "no thermal result in solve output"
+        elif extrapolate and not payload.get("material_data_extrapolations"):
+            entry["error"] = "extrapolation was switched on but omfem_mas returned no MKF extrapolation warning"
+        elif not extrapolate and "material_data_extrapolation_allowed" in payload:
+            entry["error"] = "omfem_mas reports material data extrapolation on an example that did not ask for it"
         else:
+            if extrapolate:
+                entry["material_data_extrapolation"] = {"allowMaterialDataExtrapolation": True,
+                                                        "extrapolated": payload["material_data_extrapolations"]}
             entry.update({
                 "status": "ok",
                 "ambient": payload["ambient_temperature"],
