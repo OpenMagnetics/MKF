@@ -2338,6 +2338,75 @@ void Temperature::createTurnToTurnConnections() {
     }
 }
 
+namespace {
+// Geometric tolerance for "touching": coordinates in MAS are computed in double precision from
+// millimetre dimensions; 0.1 um is far below any wire, film or wall thickness, far above rounding.
+constexpr double kEnclosureGeometryTolerance = 1e-7;
+
+// ABT #1540: how two turn outlines of a concentric winding stand to each other.
+struct TurnOutlineGap {
+    bool facing = false;      // a face of one looks at a face of the other
+    bool horizontal = false;  // the facing faces are the radial (left/right) ones
+    double distance = 0.0;    // surface to surface along the facing direction; negative = one outline inside the other
+};
+
+// Two round outlines: the distance between the circles, facing along the larger centre offset
+// (what this network always did). As soon as one outline is a rectangle (rectangular, foil and
+// planar conductors) the extent of a turn depends on the direction: a 5.6 x 0.47 mm strip reaches
+// 2.8 mm sideways and 0.24 mm up. Taking half the SMALLER side in every direction, as before,
+// left two strips lying side by side 5 mm "apart", and read the facing faces from the centre
+// offsets, so a strip under a round turn standing off its centre was taken as its side neighbour.
+// For those pairs the gap is measured between the outlines along each axis, and two faces face
+// each other only where the outlines overlap along the other axis.
+TurnOutlineGap turnOutlineGap(const ThermalNetworkNode& node1, const ThermalNetworkNode& node2) {
+    TurnOutlineGap gap;
+    const double dx = std::abs(node1.physicalCoordinates[0] - node2.physicalCoordinates[0]);
+    const double dy = std::abs(node1.physicalCoordinates[1] - node2.physicalCoordinates[1]);
+    const bool round1 = node1.crossSectionalShape == TurnCrossSectionalShape::ROUND;
+    const bool round2 = node2.crossSectionalShape == TurnCrossSectionalShape::ROUND;
+    if (round1 && round2) {
+        const double radius1 = std::min(node1.dimensions.width, node1.dimensions.height) / 2.0;
+        const double radius2 = std::min(node2.dimensions.width, node2.dimensions.height) / 2.0;
+        gap.facing = true;
+        gap.horizontal = dx > dy;
+        gap.distance = std::sqrt(dx * dx + dy * dy) - radius1 - radius2;
+        return gap;
+    }
+
+    const double gapX = dx - (node1.dimensions.width + node2.dimensions.width) / 2.0;
+    const double gapY = dy - (node1.dimensions.height + node2.dimensions.height) / 2.0;
+    const bool overlapAlongX = gapX < -kEnclosureGeometryTolerance;
+    const bool overlapAlongY = gapY < -kEnclosureGeometryTolerance;
+    if (overlapAlongX && overlapAlongY) {
+        // The bounding outlines penetrate: by the shallower of the two depths. A round outline
+        // beyond the rectangle's corner is measured from the corner instead of from its own
+        // bounding square.
+        gap.facing = true;
+        gap.horizontal = gapX > gapY;
+        gap.distance = std::max(gapX, gapY);
+        if (round1 != round2) {
+            const auto& round = round1 ? node1 : node2;
+            const auto& rectangle = round1 ? node2 : node1;
+            const double beyondX = dx - rectangle.dimensions.width / 2.0;
+            const double beyondY = dy - rectangle.dimensions.height / 2.0;
+            if (beyondX > 0 && beyondY > 0) {
+                gap.distance = std::sqrt(beyondX * beyondX + beyondY * beyondY) -
+                               std::min(round.dimensions.width, round.dimensions.height) / 2.0;
+            }
+        }
+    } else if (overlapAlongY) {
+        gap.facing = true;
+        gap.horizontal = true;
+        gap.distance = gapX;
+    } else if (overlapAlongX) {
+        gap.facing = true;
+        gap.horizontal = false;
+        gap.distance = gapY;
+    }
+    return gap;
+}
+} // namespace
+
 void Temperature::createConcentricTurnToTurnConnections(const std::vector<size_t>& turnNodeIndices, double minConductionDist) {
     // NOTE: O(N^2) complexity over turn nodes. For designs with >1000 turns,
     // consider implementing spatial indexing (grid hash or k-d tree) for neighbor search.
@@ -2352,34 +2421,24 @@ void Temperature::createConcentricTurnToTurnConnections(const std::vector<size_t
             
             double dx = node1.physicalCoordinates[0] - node2.physicalCoordinates[0];
             double dy = node1.physicalCoordinates[1] - node2.physicalCoordinates[1];
-            double centerDistance = std::sqrt(dx*dx + dy*dy);
             
             // Connection condition: surface distance < min(min_outer_dim1, min_outer_dim2) / 4
             double minOuterDim1 = std::min(node1.dimensions.width, node1.dimensions.height);
             double minOuterDim2 = std::min(node2.dimensions.width, node2.dimensions.height);
             double thresholdDist = std::min(minOuterDim1, minOuterDim2) / 4.0;
             
-            // For rectangular wires, calculate surface distance based on relative orientation
-            // The surface distance is center distance minus the projected size in the connection direction
-            double surfaceDistance;
-            if (centerDistance < 1e-9) {
-                surfaceDistance = 0;
-            } else {
-                // For each node, use half the min dimension as the conservative extent estimate
-                // This works for both rectangular and round wires
-                double extent1 = minOuterDim1 / 2.0;
-                double extent2 = minOuterDim2 / 2.0;
-                
-                surfaceDistance = centerDistance - extent1 - extent2;
-            }
-            
+            // ABT #1540: surface-to-surface distance and facing faces from the turns' real outlines.
+            const TurnOutlineGap outlineGap = turnOutlineGap(node1, node2);
+            if (!outlineGap.facing) continue;
+            const double surfaceDistance = outlineGap.distance;
+
             if (surfaceDistance > thresholdDist) continue;
             
             // Find which quadrants are facing each other
             ThermalNodeFace face1, face2;
             
             // Determine primary direction of connection
-            bool moreHorizontal = std::abs(dx) > std::abs(dy);
+            bool moreHorizontal = outlineGap.horizontal;
             
             if (moreHorizontal) {
                 // Horizontal connection - use RADIAL faces
@@ -3090,10 +3149,6 @@ struct WindingItem {
     size_t nodeIdx;
     double x0, x1, y0, y1;
 };
-
-// Geometric tolerance for "touching": coordinates in MAS are computed in double precision from
-// millimetre dimensions; 0.1 um is far below any wire, film or wall thickness, far above rounding.
-constexpr double kEnclosureGeometryTolerance = 1e-7;
 
 // Unshadowed share of each item's face looking in -x (fromLow=true, sorted by x0 ascending) or
 // +x (sorted by x1 descending); or, with alongY, in +y / -y. The item closest to the surface
