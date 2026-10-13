@@ -2450,9 +2450,13 @@ TEST_CASE("Test_Manufacturer_Magnetec", "[physical-model][core-losses][smoke-tes
     //                 B_peak = 0.554 T, under Nanoperm 80000's B_sat of 1.2 T;
     //   Magnetec loss (CoreLosses.cpp, anchored at 0.3 T peak / 100 kHz): 80 W/kg * (100k/100k)^1.8 *
     //                 (0.554 / 0.3)^2 = 272.9 W/kg, times the core mass 0.2544 kg = 69.4 W.
-    // The model gives 77.497 W, 11.6 % above that hand value, and all of the difference is the flux
-    // amplitude it reads: peak - mean of the sampled flux waveform = 0.5683 - (-0.0171) = 0.5854 T,
-    // where the swing's half is 0.5513 T; 80 * (0.5854 / 0.3)^2 * 0.2544 = 77.50 W.
+    // Before ABT #1467 the model gave 77.497 W, 11.6 % above that hand value, and all of the difference
+    // was the flux amplitude it read: peak - mean of the sampled flux waveform = 0.5683 - (-0.0171) =
+    // 0.5854 T, where the swing's half is 0.5513 T; 80 * (0.5854 / 0.3)^2 * 0.2544 = 77.50 W.
+    // ABT #1467 (Alf, 2026-10-13): 77.497 W -> 69.440 W. The sampler closes the open time axis
+    // periodically instead of squeezing it twice by resampling, so the flux is the exact symmetric
+    // triangle the voltage drives: peak 0.5541 T, no offset, and the asymmetric amplitude is gone. The
+    // loss now equals the hand value, 80 * (0.5541 / 0.3)^2 * 0.2544 = 69.44 W.
     {
         double effectiveArea = core.get_processed_description()->get_effective_parameters().get_effective_area();
         double voltSecondsSwing = 688.5 * 2.4999999999999998e-06 / (10 * effectiveArea);
@@ -2461,7 +2465,7 @@ TEST_CASE("Test_Manufacturer_Magnetec", "[physical-model][core-losses][smoke-tes
         double amplitude = magneticFluxDensity.get_processed()->get_peak().value() - magneticFluxDensity.get_processed()->get_offset();
         CHECK_THAT(coreLosses.get_core_losses(), Catch::Matchers::WithinRel(80 * pow(amplitude / 0.3, 2) * core.get_mass(), 1e-9));
     }
-    REQUIRE_THAT(coreLosses.get_core_losses(), Catch::Matchers::WithinAbs(77.497, 77.497 * maxError));
+    REQUIRE_THAT(coreLosses.get_core_losses(), Catch::Matchers::WithinAbs(69.440, 69.440 * maxError));
 }
 
 TEST_CASE("Test_Manufacturer_Magnetec_Obfuscated_Manufacturer", "[physical-model][core-losses][smoke-test]") {
@@ -2498,7 +2502,8 @@ TEST_CASE("Test_Manufacturer_Magnetec_Obfuscated_Manufacturer", "[physical-model
 
     // Identical to Test_Manufacturer_Magnetec: obfuscating the manufacturer must not change the physics.
     // ABT #1790: 10 turns instead of 1, 7421.39 W -> 77.497 W; the derivation is in that test.
-    REQUIRE_THAT(coreLosses.get_core_losses(), Catch::Matchers::WithinAbs(77.497, 77.497 * maxError));
+    // ABT #1467 (Alf, 2026-10-13): 77.497 W -> 69.440 W, the hand value; see that test.
+    REQUIRE_THAT(coreLosses.get_core_losses(), Catch::Matchers::WithinAbs(69.440, 69.440 * maxError));
 }
 
 TEST_CASE("Test_XFlux_19", "[physical-model][core-losses][smoke-test]") {
