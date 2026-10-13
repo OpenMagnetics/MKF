@@ -347,10 +347,21 @@ const std::vector<TopEntry> kTopStandardPower = {
 // Faraday on the winding voltage with the DC the currents fix: the zero-DC excitation's spurious
 // -0.377 A magnetizing offset is gone (-0.0014 A; peak 48.10 -> 47.73 A), the top core's flux peak
 // 0.2919 -> 0.2897 T and its core loss -3 %.
+// Re-pinned 2026-10-13 (ABT #838, approved by Alf 2026-10-13) to the three N30 toroids. The
+// fixture's drive changed, not the ranking engine: make_interference_suppression_inputs asks for
+// the 1.6 mH the 1 kOhm at 100 kHz requirement implies instead of 1 uH, so the 60 Vpp excitation
+// drives 30 mA peak instead of 48 A. At 30 mA the T 16/9.6/6.3 in N30 meets the requirement with
+// 24 turns (H = 18.8 A/m, |Z| = 1003 Ohm at 100 kHz, B_peak 0.10 T), while the T 134/77/155 in
+// XFlux 26 needs 60 turns on a 134 mm powder toroid for the same 1 kOhm, so the small ferrite
+// toroids lead on turn count and losses. At 48 A they could not be in the list at all: 48.1 A
+// peak on a single turn is H = 1249 A/m on a 38.5 mm path, far into saturation (N30's B_sat is
+// 0.23 T at 100 C), the impedance collapses to milliohms and the impedance filter rejects them;
+// only the big low-permeability powder toroids survived that drive, which is what the former
+// pin recorded.
 const std::vector<TopEntry> kTopAvailableInterference = {
-    {"T 134/77/155 - XFlux 26 - Ungapped",         1.9591044354114571},
-    {"T 134/77/78 - XFlux 26 - Ungapped",          1.8526669739617065},
-    {"T 134/77/27 - Edge 26 - Ungapped",           1.5312536265407848},
+    {"T 16/9.6/6.3 - N30 - Ungapped",              1.9957918197708548},
+    {"T 14/9/5 - N30 - Ungapped",                  1.7852313889986431},
+    {"T 12.5/7.5/5 - N30 - Ungapped",              1.6854890970047767},
 };
 
 } // namespace
