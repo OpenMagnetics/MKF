@@ -6,6 +6,7 @@
 #include "support/Exceptions.h"
 #include "support/Painter.h"
 #include "processors/MagneticSimulator.h"
+#include "physical_models/MagnetizingInductance.h"
 #include "Definitions.h"
 #include "TestingUtils.h"
 #include "json.hpp"
@@ -130,57 +131,46 @@ LossesFromSimulation getLossesFromSimulation(const OpenMagnetics::Magnetic& magn
     return result;
 }
 
-// Helper to create Inputs with operating points for a magnetic component
-// Uses Inputs::create_quick_operating_point_only_current with reasonable defaults
-// Properly handles multi-winding transformers by calculating turns ratios
+// The drive of these fixtures: a sinusoidal current whose peak is a stated fraction of the
+// magnetic's own saturation current at the test temperature (Magnetic::calculate_saturation_current
+// with the raw B_sat), so with that temperature's permeability the peak flux density is that
+// fraction of B_sat. The default, 0.2, is about 0.1 T in a power ferrite. The operating point
+// states the inductance MKF calculates for the magnetic, so the voltage it carries is the one
+// that current induces. Since ABT #1467 a single-winding inductor's current IS its magnetizing
+// current: an amplitude in amperes that ignores the core (these fixtures used 1 A) saturates the
+// ungapped ones (T 20/10/7 3C97 with 10 turns: 1.8 times its saturation current).
 OpenMagnetics::Inputs createInputsForMagnetic(const OpenMagnetics::Magnetic& magnetic,
                                                double frequency = 100000.0,  // 100 kHz default
                                                double temperature = 25.0,
-                                               double currentPeak = 1.0,     // 1A peak default
+                                               double saturationCurrentFraction = 0.2,
                                                WaveformLabel waveShape = WaveformLabel::SINUSOIDAL) {
-    // Estimate magnetizing inductance based on core and turns
-    double magnetizingInductance = 1e-3;  // 1mH default
-    std::vector<double> turnsRatios;
-    
-    // Try to calculate actual inductance and turns ratios if possible
-    try {
-        auto coil = magnetic.get_coil();
-        auto core = magnetic.get_core();
-        auto functionalDesc = coil.get_functional_description();
-        
-        if (!functionalDesc.empty()) {
-            // Get primary winding turns
-            auto primaryWinding = functionalDesc[0];
-            int primaryTurns = primaryWinding.get_number_turns();
-            
-            // Calculate magnetizing inductance based on primary
-            double al = 1000e-9;  // 1000 nH/turn^2 typical
-            magnetizingInductance = al * primaryTurns * primaryTurns;
-            
-            // Calculate turns ratios for additional windings (for transformers)
-            if (functionalDesc.size() > 1) {
-                for (size_t i = 1; i < functionalDesc.size(); ++i) {
-                    double ratio = static_cast<double>(functionalDesc[i].get_number_turns()) / primaryTurns;
-                    turnsRatios.push_back(ratio);
-                }
-            }
-        }
-    } catch (...) {
-        // Use defaults
+    OpenMagnetics::Magnetic sizedMagnetic = magnetic;  // the calculations below take a mutable magnetic
+    const double saturationCurrent = sizedMagnetic.calculate_saturation_current(temperature, false);
+    const double magnetizingInductance = resolve_dimensional_values(
+        OpenMagnetics::MagnetizingInductance().calculate_inductance_from_number_turns_and_gapping(
+            sizedMagnetic.get_mutable_core(), sizedMagnetic.get_mutable_coil()).get_magnetizing_inductance());
+
+    // Turns ratios of the additional windings, as these fixtures have always stated them
+    auto functionalDescription = magnetic.get_coil().get_functional_description();
+    if (functionalDescription.empty()) {
+        throw std::runtime_error("createInputsForMagnetic: the coil has no winding");
     }
-    
-    // Calculate peak-to-peak from peak for sinusoidal
-    double peakToPeak = currentPeak * 2.0;  // For sinusoidal: peak-to-peak = 2 * peak
-    
+    std::vector<double> turnsRatios;
+    const double primaryTurns = static_cast<double>(functionalDescription[0].get_number_turns());
+    for (size_t i = 1; i < functionalDescription.size(); ++i) {
+        turnsRatios.push_back(static_cast<double>(functionalDescription[i].get_number_turns()) / primaryTurns);
+    }
+
+    const double currentPeak = saturationCurrentFraction * saturationCurrent;
     return OpenMagnetics::Inputs::create_quick_operating_point_only_current(
         frequency,
         magnetizingInductance,
         temperature,
         waveShape,
-        peakToPeak,
+        2.0 * currentPeak,  // peak to peak of a sine
         0.5,    // duty cycle
         0.0,    // DC current
-        turnsRatios  // Pass turns ratios for multi-winding support
+        turnsRatios
     );
 }
 
@@ -189,9 +179,9 @@ OpenMagnetics::Inputs createInputsForMagnetic(const OpenMagnetics::Magnetic& mag
 void applySimulatedLosses(TemperatureConfig& config, 
                           const OpenMagnetics::Magnetic& magnetic,
                           double frequency = 100000.0,
-                          double currentPeak = 1.0) {
+                          double saturationCurrentFraction = 0.2) {
     // Create proper Inputs with operating points
-    auto inputs = createInputsForMagnetic(magnetic, frequency, config.ambientTemperature, currentPeak);
+    auto inputs = createInputsForMagnetic(magnetic, frequency, config.ambientTemperature, saturationCurrentFraction);
     
     // Get real losses from simulation
     auto losses = getLossesFromSimulation(magnetic, inputs);
@@ -251,7 +241,7 @@ TEST_CASE("Temperature: Toroidal Core T20 Ten Turns", "[temperature][round-windi
     config.schematicOutputPath = (getOutputDir() / "thermal_schematic_Toroid_T20_10_turns.svg").string();
     
     // Use real simulation for losses
-    // Use 0.1A current to avoid extreme core losses in small ungapped toroid
+    // A tenth of the saturation current: a small rise in this small ungapped toroid
     auto inputs = createInputsForMagnetic(magnetic, 100000.0, config.ambientTemperature, 0.1);
     auto losses = getLossesFromSimulation(magnetic, inputs);
     if (losses.simulationSucceeded) {
@@ -574,7 +564,7 @@ TEST_CASE("Temperature: E Core", "[temperature][smoke-test]") {
     config.schematicOutputPath = (getOutputDir() / "thermal_schematic_E_Core_42_21_15.svg").string();
     
     // Use real simulation for losses
-    auto inputs = createInputsForMagnetic(magnetic, 100000.0, config.ambientTemperature, 1.0);
+    auto inputs = createInputsForMagnetic(magnetic, 100000.0, config.ambientTemperature, 0.1);
     auto losses = getLossesFromSimulation(magnetic, inputs);
     
     
@@ -1191,8 +1181,9 @@ TEST_CASE("Temperature: Very High Losses", "[temperature][smoke-test]") {
 
     TemperatureConfig config;
     config.ambientTemperature = 25.0;
-    config.coreLosses = 10.0;
     applySimulatedLosses(config, magnetic);
+    // The stated 10 W are the test's subject; the simulation gives the per-turn winding losses.
+    config.coreLosses = 10.0;
     config.plotSchematic = false;
     
     Temperature temp(magnetic, config);
@@ -1466,7 +1457,7 @@ TEST_CASE("Temperature: Linear Scaling Validation", "[temperature][smoke-test]")
     
     // Use different current levels to get different actual losses
     // With real simulation, losses scale with operating point, not config
-    std::vector<double> currents = {0.1, 0.2, 0.3, 0.5};
+    std::vector<double> currents = {0.05, 0.1, 0.15, 0.2};  // fractions of the saturation current
     std::vector<double> tempRises;
     std::vector<double> actualLosses;
     
@@ -1549,7 +1540,9 @@ TEST_CASE("Temperature: U Core", "[temperature][smoke-test]") {
     TemperatureConfig config;
     config.ambientTemperature = 25.0;
     config.coreLosses = 2.5;
-    applySimulatedLosses(config, magnetic);
+    // A tenth of the saturation current: at the default fifth this 297 cm3 ungapped N87 core dissipates
+    // 44 W at 100 kHz and has no operating temperature.
+    applySimulatedLosses(config, magnetic, 100000.0, 0.1);
     config.plotSchematic = false;
     
     Temperature temp(magnetic, config);
@@ -1865,7 +1858,7 @@ TEST_CASE("Temperature: Van den Bossche E42 Validation", "[temperature][smoke-te
     config.plotSchematic = false;
 
     // Test at different power levels
-    std::vector<double> currents = {0.03, 0.04, 0.05};  // Low currents for reasonable losses
+    std::vector<double> currents = {0.03, 0.04, 0.05};  // fractions of the saturation current: low losses
     
     
     // Get core geometry info
@@ -1933,7 +1926,7 @@ TEST_CASE("Temperature: Power-Temperature Linearity", "[temperature][smoke-test]
     config.plotSchematic = false;
 
     // Test linearity at different power levels using different currents
-    std::vector<double> currents = {0.1, 0.2, 0.3, 0.5};
+    std::vector<double> currents = {0.05, 0.1, 0.15, 0.2};  // fractions of the saturation current
     std::vector<double> thermalResistances;
     std::vector<double> actualLosses;
     std::vector<double> tempRises;
