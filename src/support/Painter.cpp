@@ -106,6 +106,12 @@ ComplexField PainterInterface::calculate_magnetic_field(OperatingPoint operating
         fringingEffectModel = settings.get_magnetic_field_strength_fringing_effect_model();
     }
     MagneticField magneticField(magneticFieldModel, fringingEffectModel);
+    // ABT #1759 (Alf 2026-10-13): the currents the parallels carry are the winding-loss model's, solved on the model's own
+    // image lattice (the magnetic-field mirroring, exactly as WindingLosses solves them) BEFORE the painter's display
+    // settings are applied below. The painter mirroring only decides which images of those currents the plot draws: it
+    // used to reach the split too, which a display mirroring of 0 made throw (no lattice to solve the strands on).
+    const auto parallelCurrentSplit = MagneticField::calculate_parallel_current_split(magnetic, operatingPoint,
+                                                                                      operatingPoint.get_conditions().get_ambient_temperature());
     // RAII: restore the global magnetic-field settings on scope exit. They used to be
     // overwritten permanently, leaking the painter's fringing/mirroring choice into
     // every later physics computation in the process.
@@ -113,7 +119,7 @@ ComplexField PainterInterface::calculate_magnetic_field(OperatingPoint operating
     SettingsGuard<int> mirroringGuard(settings, &Settings::get_magnetic_field_mirroring_dimension, &Settings::set_magnetic_field_mirroring_dimension, mirroringDimension);
     ComplexField field;
     {
-        auto windingWindowMagneticStrengthFieldOutput = magneticField.calculate_magnetic_field_strength_field(operatingPoint, magnetic, inducedField);
+        auto windingWindowMagneticStrengthFieldOutput = magneticField.calculate_magnetic_field_strength_field(operatingPoint, magnetic, inducedField, std::nullopt, std::nullopt, parallelCurrentSplit);
         field = windingWindowMagneticStrengthFieldOutput.get_field_per_frequency()[0];
 
     }
@@ -126,7 +132,7 @@ ComplexField PainterInterface::calculate_magnetic_field(OperatingPoint operating
             }
         }
         magnetic.get_mutable_coil().set_turns_description(turns);
-        auto windingWindowMagneticStrengthFieldOutput = magneticField.calculate_magnetic_field_strength_field(operatingPoint, magnetic, inducedField);
+        auto windingWindowMagneticStrengthFieldOutput = magneticField.calculate_magnetic_field_strength_field(operatingPoint, magnetic, inducedField, std::nullopt, std::nullopt, parallelCurrentSplit);
         auto additionalField = windingWindowMagneticStrengthFieldOutput.get_field_per_frequency()[0];
         for (size_t pointIndex = 0; pointIndex < field.get_data().size(); ++pointIndex) {
             field.get_mutable_data()[pointIndex].set_real(field.get_mutable_data()[pointIndex].get_real() + additionalField.get_mutable_data()[pointIndex].get_real());

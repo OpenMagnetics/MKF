@@ -4208,6 +4208,37 @@ TEST_CASE("Test_Winding_Losses_Parallel_Split_No_Fringing_Vs_OMFEM", "[winding-l
     settings.reset();
 }
 
+TEST_CASE("Test_Winding_Losses_Parallel_Split_Painter_Uses_The_Models_Own_Lattice", "[winding-losses][parallel-split][physical-model]") {
+    // ABT #1759 (Alf 2026-10-13): the field plot draws the winding-loss model's H, so the parallels carry the model's
+    // currents: solved on the model's own image lattice (the magnetic-field mirroring), whatever the painter's DISPLAY
+    // mirroring is. A display mirroring of 0 used to reach the split solver, which has no lattice to solve the strands on
+    // and threw "needs the core image lattice" (MagneticSimulatorJsonHV / JsonLV paint an adviser design this way).
+    auto& settings = OpenMagnetics::Settings::GetInstance();
+    settings.reset();
+    auto [magnetic, operatingPoint] = sixteen_parallel_planar_fixture("Test_Winding_Losses_Sixteen_Turns_Planar_Sinusoidal_No_Fringing.json", 100000);
+    REQUIRE(MagneticField::calculate_parallel_current_split(magnetic, operatingPoint, 22));
+    settings.set_painter_number_points_x(10);
+    settings.set_painter_number_points_y(10);
+    settings.set_painter_include_fringing(false);
+    settings.set_painter_mirroring_dimension(0);
+    auto outFile = std::filesystem::path{std::source_location::current().file_name()}.parent_path().append("..").append("output");
+    outFile.append("Test_Winding_Losses_Parallel_Split_Painter_Uses_The_Models_Own_Lattice.svg");
+    std::filesystem::remove(outFile);
+    {
+        Painter painter(outFile);
+        REQUIRE_NOTHROW(painter.paint_magnetic_field(operatingPoint, magnetic));
+    }
+    // The painter restored the model's lattice after drawing without images.
+    CHECK(settings.get_magnetic_field_mirroring_dimension() == 1);
+    // A model with no lattice of its own still cannot split the strands: that is the model's setting, and it throws.
+    settings.set_magnetic_field_mirroring_dimension(0);
+    {
+        Painter painter(outFile);
+        REQUIRE_THROWS_WITH(painter.paint_magnetic_field(operatingPoint, magnetic), Catch::Matchers::ContainsSubstring("needs the core image lattice"));
+    }
+    settings.reset();
+}
+
 TEST_CASE("Test_Winding_Losses_Parallel_Split_Fringing_Close_Vs_OMFEM", "[winding-losses][parallel-split][physical-model]") {
     // ABT #1314: the same stack beside the gap at 20 kHz: the split is one-sided, falling monotonically away from the gap
     // side. OMFEM 2D (.mkf-1645-fem/ref3_parallels/summary.txt, Fringing_Close_20000, f1 = 19843.8 Hz):
