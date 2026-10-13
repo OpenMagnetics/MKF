@@ -189,8 +189,9 @@ std::vector<std::pair<Magnetic, double>> CoreAdviser::MagneticCoreFilterCost::fi
     return filteredMagneticsWithScoring;
 }
 
-CoreAdviser::MagneticCoreFilterLosses::MagneticCoreFilterLosses(Inputs inputs, std::map<std::string, std::string> models) {
+CoreAdviser::MagneticCoreFilterLosses::MagneticCoreFilterLosses(Inputs inputs, std::map<std::string, std::string> models, MAS::MagneticApplication application) {
     _filter = MagneticFilterCoreDcAndSkinLosses(inputs, models); // F23 FIX: DC+skin effect losses
+    _filter.set_application(application);
 }
 
 std::vector<std::pair<Magnetic, double>> CoreAdviser::MagneticCoreFilterLosses::filter_magnetics(std::vector<std::pair<Magnetic, double>>* unfilteredMagnetics, Inputs inputs, double weight, bool firstFilter) {
@@ -342,9 +343,10 @@ std::vector<std::pair<Magnetic, double>> CoreAdviser::MagneticCoreFilterSaturati
 }
 
 CoreAdviser::MagneticCoreFilterTemperature::MagneticCoreFilterTemperature(
-    Inputs inputs, std::map<std::string, std::string> models, double maximumTemperature)
+    Inputs inputs, std::map<std::string, std::string> models, double maximumTemperature, MAS::MagneticApplication application)
 {
     _filter = MagneticFilterTemperature(inputs, maximumTemperature);
+    _filter.set_application(application);
     _filter.set_size_stand_in_copper(true);
 }
 

@@ -464,7 +464,7 @@ class CoreAdviser {
             MagneticFilterCoreDcAndSkinLosses _filter; // F23 FIX: use DC+skin losses instead of DC-only
 
         public:
-            MagneticCoreFilterLosses(Inputs inputs, std::map<std::string, std::string> models);
+            MagneticCoreFilterLosses(Inputs inputs, std::map<std::string, std::string> models, MAS::MagneticApplication application);
             std::vector<std::pair<Magnetic, double>> filter_magnetics(std::vector<std::pair<Magnetic, double>>* unfilteredMagnetics, Inputs inputs, double weight=1, bool firstFilter=false);
     };
     
@@ -507,7 +507,7 @@ class CoreAdviser {
         MagneticFilterTemperature _filter;
     public:
         MagneticCoreFilterTemperature(Inputs inputs, std::map<std::string, std::string> models,
-                                      double maximumTemperature);
+                                      double maximumTemperature, MAS::MagneticApplication application);
         std::vector<std::pair<Magnetic, double>> filter_magnetics(
             std::vector<std::pair<Magnetic, double>>* unfilteredMagnetics,
             Inputs inputs, double weight = 1, bool firstFilter = false);

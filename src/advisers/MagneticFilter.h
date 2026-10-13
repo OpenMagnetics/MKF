@@ -80,7 +80,11 @@ class MagneticFilter {
         // still a name): the common-mode choke stand-in carries every winding, but only the first
         // has its seeded turns (the others hold the placeholder 1), so it is completed the same
         // way. One with more windings than the inputs excite throws.
-        static Magnetic with_every_winding(const Magnetic& magnetic, const Inputs& inputs);
+        // The added windings' parallels are sized to their current unless the application is
+        // interference suppression, the rule the core and magnetic advisers apply (ABT #1822).
+        static Magnetic with_every_winding(const Magnetic& magnetic, const Inputs& inputs, MAS::MagneticApplication application);
+        // True when with_every_winding has windings to add or re-derive on this candidate.
+        static bool lacks_windings(const Magnetic& magnetic, const Inputs& inputs);
 
         // Conducting area of the round conductor whose own effective current density for
         // `current` is maximumEffectiveCurrentDensity: log bisection between rms / maximum (the
@@ -113,7 +117,8 @@ class MagneticFilter {
 // Completes each candidate's one-winding stand-in coil with the windings the inputs excite
 // (turns from the requirement turns ratios, parallels sized to each winding's current).
 // sizeParallelsToCurrent: each added winding's parallels are sized to its own current. The core
-// and magnetic advisers pass "the application is not interference suppression" (ABT #126, ABT #1822).
+// and magnetic advisers and MagneticFilter::with_every_winding pass "the application is not
+// interference suppression" (ABT #126, ABT #1822).
 void correct_windings(std::vector<std::pair<Magnetic, double>> *magneticsWithScoring, const Inputs& inputs, bool sizeParallelsToCurrent);
 
 // A filter whose verdict is built on the core losses. It applies to what MagneticFilter does, and
@@ -125,6 +130,13 @@ class MagneticFilterCoreLossesBased : public MagneticFilter {
             return MagneticFilter::applies_to(magnetic) && !core_losses_not_evaluable_reason(magnetic);
         }
         bool computes_core_losses() const override { return true; }
+        // The adviser's application. A filter that completes a stand-in coil from the turns ratios
+        // needs it to size the added windings as the adviser does (ABT #1822); it is not derived
+        // from the excitation, and completing a stand-in without it throws.
+        void set_application(MAS::MagneticApplication value) { _application = value; }
+    protected:
+        std::optional<MAS::MagneticApplication> _application;
+        Magnetic complete_stand_in(const Magnetic& magnetic, const Inputs& inputs) const;
 };
 
 class MagneticFilterAreaProduct : public MagneticFilter {

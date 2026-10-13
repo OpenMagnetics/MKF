@@ -712,6 +712,56 @@ TEST_CASE("Core adviser sizes its stand-in's parallels to the current unless the
             CHECK(winding.get_number_parallels() == 1);
         }
     }
+    SECTION("A filter completing a stand-in decides by the application it is handed, as the advisers do") {
+        // MagneticFilter::with_every_winding is correct_windings' third caller. It used to keep the
+        // excitation-shape test, so the loss and temperature filters scored a power design's
+        // stand-in on one strand per winding while the advisers sized the returned part's copper.
+        CoreAdviser coreAdviser;
+        coreAdviser.set_mode(CoreAdviser::CoreAdviserModes::AVAILABLE_CORES);
+        coreAdviser.set_application(MAS::MagneticApplication::INTERFERENCE_SUPPRESSION);
+        settings.set_use_toroidal_cores(true);
+        std::vector<OpenMagnetics::Core> oneToroid;
+        for (auto& core : cores) {
+            if (core.get_shape_family() == MAS::CoreShapeFamily::T) {
+                oneToroid.push_back(core);
+                break;
+            }
+        }
+        REQUIRE(oneToroid.size() == 1);
+        // A stand-in with one parallel per winding (the suppression dataset's).
+        auto magnetics = coreAdviser.create_magnetic_dataset(inputs, &oneToroid, false);
+        REQUIRE(magnetics.size() == 1);
+        const auto standIn = magnetics[0].first;
+        for (auto& winding : standIn.get_coil().get_functional_description()) {
+            REQUIRE(winding.get_number_parallels() == 1);
+        }
+        REQUIRE(OpenMagnetics::MagneticFilter::lacks_windings(standIn, inputs));
+
+        // The helper re-derives the windings after the first from the turns ratios; the first keeps
+        // the parallels it came with. So the added winding is the one that shows the decision.
+        auto power = OpenMagnetics::MagneticFilter::with_every_winding(standIn, inputs, MAS::MagneticApplication::POWER);
+        auto powerWindings = power.get_coil().get_functional_description();
+        REQUIRE(powerWindings.size() == 2);
+        INFO("added winding, " << powerWindings[1].get_number_parallels() << " parallels");
+        CHECK(powerWindings[1].get_number_parallels() > 1);
+        CHECK(dcCurrentDensity(powerWindings[1], 1) <= defaults.maximumCurrentDensity);
+        CHECK(powerWindings[1].get_number_parallels() >= parallelsForEffectiveDensity(powerWindings[1], 1));
+
+        auto suppression = OpenMagnetics::MagneticFilter::with_every_winding(standIn, inputs, MAS::MagneticApplication::INTERFERENCE_SUPPRESSION);
+        auto suppressionWindings = suppression.get_coil().get_functional_description();
+        REQUIRE(suppressionWindings.size() == 2);
+        for (auto& winding : suppressionWindings) {
+            CHECK(winding.get_number_parallels() == 1);
+        }
+
+        // A filter that was not told the application refuses to complete a stand-in.
+        auto untold = standIn;
+        OpenMagnetics::MagneticFilterCoreDcAndSkinLosses lossesFilter(inputs);
+        untold.get_mutable_coil().get_mutable_functional_description().resize(1);
+        REQUIRE_THROWS_AS(lossesFilter.evaluate_magnetic(&untold, &inputs), OpenMagnetics::InvalidInputException);
+        lossesFilter.set_application(MAS::MagneticApplication::POWER);
+        REQUIRE_NOTHROW(lossesFilter.evaluate_magnetic(&untold, &inputs));
+    }
     settings.reset();
 }
 
@@ -4086,6 +4136,7 @@ TEST_CASE("Test_CoreAdviser_Stand_In_Transformer_Losses_And_Temperature_Count_Th
     REQUIRE(standIn.get_coil().get_functional_description().size() == 1);
 
     MagneticFilterCoreDcAndSkinLosses losses(inputs);
+    losses.set_application(MAS::MagneticApplication::POWER);  // completing a stand-in needs it (ABT #1822)
     std::vector<OpenMagnetics::Outputs> outputs;
     auto [lossesValid, totalLosses] = losses.evaluate_magnetic(&standIn, &inputs, &outputs);
     std::vector<OpenMagnetics::Outputs> lightOutputs;
@@ -4108,6 +4159,7 @@ TEST_CASE("Test_CoreAdviser_Stand_In_Transformer_Losses_And_Temperature_Count_Th
     const double maximumTemperature = resolve_maximum_design_temperature(inputs);
     MagneticFilterTemperature temperature(inputs, maximumTemperature);
     temperature.set_size_stand_in_copper(true);  // as the core adviser runs it on its stand-ins
+    temperature.set_application(MAS::MagneticApplication::POWER);
     auto [unusedFull, hottest] = temperature.evaluate_magnetic(&standIn, &inputs);
     auto [unusedLight, lightHottest] = temperature.evaluate_magnetic(&standIn, &lightInputs);
     INFO("hottest " << hottest << " C, at a tenth of the current " << lightHottest << " C");

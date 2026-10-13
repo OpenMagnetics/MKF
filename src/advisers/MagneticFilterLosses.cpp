@@ -310,7 +310,7 @@ std::pair<bool, double> MagneticFilterCoreDcAndSkinLosses::evaluate_stand_in_wit
     // copper the window copper capacity screen counts (with_copper_sized_to_current without the
     // window fill: this scoring filter runs on every candidate, and the minimum copper scores
     // every candidate alike; the core-stage temperature gate fills the window).
-    Magnetic completed = with_copper_sized_to_current(with_every_winding(*magnetic, *inputs), *inputs,
+    Magnetic completed = with_copper_sized_to_current(complete_stand_in(*magnetic, *inputs), *inputs,
                                                       defaults.maximumEffectiveCurrentDensity, false);
     const auto& core = completed.get_core();
     const std::string shapeName = core.get_shape_name();

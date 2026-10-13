@@ -296,7 +296,7 @@ std::pair<bool, double> MagneticFilterTemperature::evaluate_magnetic(
     // The core adviser's stand-in copper is laid out and scored as the coil stage could wind it
     // (with_copper_sized_to_current: no 18.6 mm line-frequency strand, the window filled). A real
     // coil is solved with its own wires.
-    Magnetic lossesMagnetic = with_every_winding(*magnetic, *inputs);
+    Magnetic lossesMagnetic = complete_stand_in(*magnetic, *inputs);
     // Sized copper (thermal network, merged) and the strands per-turn losses are computed on: a
     // winding whose parallels the window fill multiplied keeps its original strands for the loss
     // computation, and each turn's losses are scaled by original / filled parallels (identical

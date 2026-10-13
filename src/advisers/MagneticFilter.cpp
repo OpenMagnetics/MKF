@@ -173,27 +173,43 @@ std::shared_ptr<MagneticFilter> MagneticFilter::factory(MagneticFilters filterNa
     }
 }
 
-Magnetic MagneticFilter::with_every_winding(const Magnetic& magnetic, const Inputs& inputs) {
+bool MagneticFilter::lacks_windings(const Magnetic& magnetic, const Inputs& inputs) {
     if (inputs.get_operating_points().empty()) {
         throw InvalidInputException(ErrorCode::MISSING_DATA, "Completing a stand-in coil needs an operating point");
     }
     const size_t numberWindings = inputs.get_operating_points()[0].get_excitations_per_winding().size();
     const size_t numberCoilWindings = magnetic.get_coil().get_functional_description().size();
     const bool standIn = std::holds_alternative<std::string>(magnetic.get_coil().get_bobbin());
-    if (numberCoilWindings == numberWindings && (numberWindings == 1 || !standIn)) {
+    return !(numberCoilWindings == numberWindings && (numberWindings == 1 || !standIn));
+}
+
+Magnetic MagneticFilterCoreLossesBased::complete_stand_in(const Magnetic& magnetic, const Inputs& inputs) const {
+    if (!lacks_windings(magnetic, inputs)) {
         return magnetic;
     }
+    if (!_application) {
+        throw InvalidInputException(ErrorCode::MISSING_DATA,
+            "Completing the stand-in coil of candidate " + magnetic.get_reference() +
+            " needs the adviser's application (set_application): it decides whether the added windings are sized to their current");
+    }
+    return with_every_winding(magnetic, inputs, _application.value());
+}
+
+Magnetic MagneticFilter::with_every_winding(const Magnetic& magnetic, const Inputs& inputs, MAS::MagneticApplication application) {
+    if (!lacks_windings(magnetic, inputs)) {
+        return magnetic;
+    }
+    const size_t numberWindings = inputs.get_operating_points()[0].get_excitations_per_winding().size();
+    const size_t numberCoilWindings = magnetic.get_coil().get_functional_description().size();
     if (numberCoilWindings == 0 || numberCoilWindings > numberWindings) {
         throw InvalidInputException(ErrorCode::INVALID_INPUT,
             "Completing a stand-in coil: candidate " + magnetic.get_reference() + " carries " + std::to_string(numberCoilWindings) +
             " windings for an input with " + std::to_string(numberWindings));
     }
     std::vector<std::pair<Magnetic, double>> completed = {{magnetic, 0.0}};
-    // A filter is not told the adviser's application, so the added windings are sized to their
-    // current unless the excitation is common-mode-choke shaped, as before ABT #1822. Such an
-    // excitation has equal currents in every winding, and an added winding is a copy of the first:
-    // it carries the parallels the adviser gave the first winding for that same current.
-    correct_windings(&completed, inputs, !Inputs::can_be_common_mode_choke(inputs.get_operating_points()[0]));
+    // The same rule as the core and magnetic advisers (ABT #1822): the parallels are sized to the
+    // current unless the application is interference suppression.
+    correct_windings(&completed, inputs, application != MAS::MagneticApplication::INTERFERENCE_SUPPRESSION);
     if (completed[0].first.get_coil().get_functional_description().size() != numberWindings) {
         throw CalculationException(ErrorCode::CALCULATION_INVALID_RESULT,
             "Completing a stand-in coil: candidate " + magnetic.get_reference() + " came back with " +

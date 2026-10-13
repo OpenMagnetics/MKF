@@ -447,6 +447,7 @@ std::vector<std::pair<Mas, double>> CoreAdviser::post_process_and_cut(std::vecto
     std::optional<MagneticFilterTemperature> temperatureGate;
     if (maximumTemperature) {
         temperatureGate.emplace(inputs, maximumTemperature.value());
+        temperatureGate->set_application(get_application());
     }
     for (auto& magneticWithScoring : magneticsWithScoring) {
         if (masWithScoring.size() >= maximumNumberResults) {
@@ -513,7 +514,7 @@ std::vector<std::pair<Mas, double>> CoreAdviser::filter_available_cores_power_ap
     MagneticCoreFilterAreaProduct filterAreaProduct(inputs);
     MagneticCoreFilterEnergyStored filterEnergyStored(inputs, _models);
     MagneticCoreFilterCost filterCost(inputs);
-    MagneticCoreFilterLosses filterLosses(inputs, _models);
+    MagneticCoreFilterLosses filterLosses(inputs, _models, get_application());
     MagneticCoreFilterDimensions filterDimensions;
     MagneticCoreFilterMagneticInductance filterMagneticInductance;
 
@@ -595,7 +596,7 @@ std::vector<std::pair<Mas, double>> CoreAdviser::filter_available_cores_power_ap
 
     if (settings.get_core_adviser_enable_temperature_filter()) {
         MagneticCoreFilterTemperature filterTemperature(
-            inputs, _models, resolve_maximum_design_temperature(inputs));
+            inputs, _models, resolve_maximum_design_temperature(inputs), get_application());
         filterTemperature.set_scorings(&_scorings);
         filterTemperature.set_filter_configuration(&_filterConfiguration);
         magneticsWithScoring = filterTemperature.filter_magnetics(
@@ -701,7 +702,7 @@ std::vector<std::pair<Mas, double>> CoreAdviser::filter_available_cores_power_ap
 
         if (settings.get_core_adviser_enable_temperature_filter()) {
             MagneticCoreFilterTemperature filterTemperature(
-                inputs, _models, resolve_maximum_design_temperature(inputs));
+                inputs, _models, resolve_maximum_design_temperature(inputs), get_application());
             filterTemperature.set_scorings(&_scorings);
             filterTemperature.set_filter_configuration(&_filterConfiguration);
             magneticsWithScoring = filterTemperature.filter_magnetics(
@@ -747,7 +748,7 @@ std::vector<std::pair<Mas, double>> CoreAdviser::filter_available_cores_suppress
     log_probe("pre_process_inputs (suppression)", magnetics->size());
 
     MagneticCoreFilterCost filterCost(inputs);
-    MagneticCoreFilterLosses filterLosses(inputs, _models);
+    MagneticCoreFilterLosses filterLosses(inputs, _models, get_application());
     MagneticCoreFilterDimensions filterDimensions;
     MagneticCoreFilterMagneticInductance filterMagneticInductance;
     MagneticCoreFilterMinimumImpedance filterMinimumImpedance;
@@ -909,7 +910,7 @@ std::vector<std::pair<Mas, double>> CoreAdviser::filter_standard_cores_power_app
     MagneticCoreFilterAreaProduct filterAreaProduct(inputs);
     MagneticCoreFilterEnergyStored filterEnergyStored(inputs, _models);
     MagneticCoreFilterCost filterCost(inputs);
-    MagneticCoreFilterLosses filterLosses(inputs, _models);
+    MagneticCoreFilterLosses filterLosses(inputs, _models, get_application());
     MagneticCoreFilterDimensions filterDimensions;
     MagneticCoreFilterMagneticInductance filterMagneticInductance;
     MagneticCoreFilterFringingFactor filterFringingFactor(inputs, _models);
@@ -1059,7 +1060,7 @@ std::vector<std::pair<Mas, double>> CoreAdviser::filter_standard_cores_power_app
                 largestVolumeAtTemperatureGate = std::max(largestVolumeAtTemperatureGate, magnetic.get_core().get_effective_volume());
             }
             MagneticCoreFilterTemperature filterTemperature(
-                inputs, _models, resolve_maximum_design_temperature(inputs));
+                inputs, _models, resolve_maximum_design_temperature(inputs), get_application());
             filterTemperature.set_scorings(&_scorings);
             filterTemperature.set_filter_configuration(&_filterConfiguration);
             filterTemperature.set_cache_usage(false);
@@ -1182,7 +1183,7 @@ std::vector<std::pair<Mas, double>> CoreAdviser::filter_standard_cores_power_app
 
             if (settings.get_core_adviser_enable_temperature_filter()) {
                 MagneticCoreFilterTemperature filterTemperature(
-                    inputs, _models, resolve_maximum_design_temperature(inputs));
+                    inputs, _models, resolve_maximum_design_temperature(inputs), get_application());
                 filterTemperature.set_scorings(&_scorings);
                 filterTemperature.set_filter_configuration(&_filterConfiguration);
                 filterTemperature.set_cache_usage(false);
@@ -1235,7 +1236,7 @@ std::vector<std::pair<Mas, double>> CoreAdviser::filter_standard_cores_power_app
 std::vector<std::pair<Mas, double>> CoreAdviser::filter_standard_cores_interference_suppression_application(std::vector<std::pair<Magnetic, double>>* magnetics, Inputs inputs, std::map<CoreAdviserFilters, double> weights, size_t maximumMagneticsAfterFiltering, size_t maximumNumberResults){
     inputs = pre_process_inputs(inputs);
 
-    MagneticCoreFilterLosses filterLosses(inputs, _models);
+    MagneticCoreFilterLosses filterLosses(inputs, _models, get_application());
     MagneticCoreFilterDimensions filterDimensions;
     MagneticCoreFilterMinimumImpedance filterMinimumImpedance;
     MagneticCoreFilterMagneticInductance filterMagneticInductance;
