@@ -2479,8 +2479,14 @@ void Temperature::createConcentricTurnToTurnConnections(const std::vector<size_t
                         double insLeft = insX - insWidth / 2;
                         double insRight = insX + insWidth / 2;
                         
-                        // Check if insulation overlaps the line between turns
-                        bool xOverlap = (insLeft < maxTurnX) && (insRight > minTurnX);
+                        // ABT #1540: a layer separates two side-by-side turns only if it stands
+                        // BETWEEN their centres: its whole radial extent inside the centre-to-centre
+                        // span. The old test (any overlap with that span) was also true for a tape
+                        // lying across the window UNDER or OVER the pair -- the tape between two
+                        // axially stacked sections runs under the whole row -- so the turns resting
+                        // on it lost their edge to each other. With exact touching, which side of
+                        // the strict < the pair fell on was decided by rounding.
+                        bool xOverlap = (insLeft >= minTurnX) && (insRight <= maxTurnX);
                         bool yOverlap = std::abs(insY - turn1Y) < (insHeight / 2 + node1.dimensions.height / 2);
                         
                         if (xOverlap && yOverlap) {
@@ -2494,8 +2500,10 @@ void Temperature::createConcentricTurnToTurnConnections(const std::vector<size_t
                         double insBottom = insY - insHeight / 2;
                         double insTop = insY + insHeight / 2;
                         
-                        // Check if insulation overlaps the line between turns
-                        bool yOverlap = (insBottom < maxTurnY) && (insTop > minTurnY);
+                        // ABT #1540: same rule along the axis -- the layer's whole axial extent
+                        // inside the centre-to-centre span. A layer wrapped around the column BESIDE
+                        // two turns stacked in one layer is not between them.
+                        bool yOverlap = (insBottom >= minTurnY) && (insTop <= maxTurnY);
                         bool xOverlap = std::abs(insX - turn1X) < (insWidth / 2 + node1.dimensions.width / 2);
                         
                         if (xOverlap && yOverlap) {
