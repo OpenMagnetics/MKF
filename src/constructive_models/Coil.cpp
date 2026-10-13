@@ -6088,21 +6088,6 @@ std::map<std::string, uint64_t> Coil::align_blocked_ring_turns(bool forceSpreadB
             }
         };
         measureCorridors();
-        // ABT #1818: THE CORRIDORS ARE RE-MEASURED AS SOON AS A RING MOVES ITS LEAD ANCHOR (see the
-        // full-circle re-spread below), not at the next pass. The anchor casts the corridors of the
-        // winding's other rings, so two rings whose lead turns block each other (the entrance turn
-        // of one parallel under the exit lead of the other, one ring apart) both moved in the same
-        // pass, each out of the corridor the other had ALREADY left, and landed on top of each
-        // other again (T 10/6/4, 30 + 30 + 30 turns x 2 of Round 29.0, overlapping: 'winding 1
-        // parallel 1 turn 0' and 'winding 1 parallel 1 turn 29' at 62.8/65.6, 36.1/38.2 and
-        // 60.2/60.6 deg on three consecutive passes). With the corridors measured on the geometry
-        // the first ring left, the second ring of such a pair finds itself clear and stays.
-        auto remeasureCorridorsAfterRingMove = [&]() {
-            set_turns_description(turns);
-            spaces = get_connection_reserved_spaces();
-            measureCorridors();
-        };
-
         // ABT #1818: the turns a terminal lead is attached to (each conductor's entrance and exit
         // turn). Their azimuths ARE the lead corridors of the other rings; see the re-spread below.
         std::set<std::string> leadAttachedTurnNames;
@@ -6643,9 +6628,6 @@ std::map<std::string, uint64_t> Coil::align_blocked_ring_turns(bool forceSpreadB
             // not spend the ring's escalation budget.
             if (intrusion) {
                 respreadCountPerRing[ringName]++;
-            }
-            if (leadAnchorTurn && referenceAngle != leadAnchorOriginalAngle) {
-                remeasureCorridorsAfterRingMove();   // the anchor itself moved
             }
         }
 
