@@ -3864,6 +3864,22 @@ void Temperature::createTurnToInsulationConnections() {
     if (!_isToroidal) {
         // For concentric cores: iterate through turns and find closest insulation layer on each side
         // This ensures turns connect to the correct insulation layer based on perpendicular distance
+
+        // ABT #1540: a tape lying across the window (between axially stacked sections) faces the
+        // turns with its top and bottom, not with its sides: it is a candidate for a turn's TOP
+        // and BOTTOM faces only. Which way a layer lies is read from its MAS description.
+        auto insulationLayerDescriptions = _magnetic.get_mutable_coil().get_layers_description_insulation();
+        std::map<size_t, bool> liesAcrossWindow;
+        for (size_t insulationIdx : insulationNodeIndices) {
+            const auto& insulationNode = _nodes[insulationIdx];
+            if (!insulationNode.insulationLayerIndex.has_value() ||
+                insulationNode.insulationLayerIndex.value() >= insulationLayerDescriptions.size()) {
+                throw std::runtime_error("Temperature::createTurnToInsulationConnections: insulation node " +
+                                         insulationNode.name + " does not point to an insulation layer of the coil.");
+            }
+            liesAcrossWindow[insulationIdx] =
+                isCartesianLayerAcrossWindow(insulationLayerDescriptions[insulationNode.insulationLayerIndex.value()]);
+        }
         
         for (size_t turnIdx : turnNodeIndices) {
             const auto& turnNode = _nodes[turnIdx];
@@ -3891,6 +3907,11 @@ void Temperature::createTurnToInsulationConnections() {
             InsulationCandidate rightCandidate;
             bool hasLeft = false;
             bool hasRight = false;
+            // ABT #1540: closest tape lying across the window below and above the turn.
+            InsulationCandidate belowCandidate;
+            InsulationCandidate aboveCandidate;
+            bool hasBelow = false;
+            bool hasAbove = false;
 
             for (size_t insulationIdx : insulationNodeIndices) {
                 const auto& insulationNode = _nodes[insulationIdx];
@@ -3914,6 +3935,50 @@ void Temperature::createTurnToInsulationConnections() {
                 double insulationTop = insulationY + insulationH / 2.0;
                 double turnBottom = turnY - turnHeight / 2.0;
                 double turnTop = turnY + turnHeight / 2.0;
+
+                if (liesAcrossWindow.at(insulationIdx)) {
+                    // ABT #1540: the tape lies across the window. It bears on the turn's bottom
+                    // (top) face when it is under (over) the turn: their radial spans overlap, its
+                    // surface is at or beyond the turn's surface within half its own thickness,
+                    // and no other turn lies in between. Mirrors the LEFT/RIGHT rule below, with
+                    // the axes exchanged.
+                    double turnLeftEdge = turnX - turnWidth / 2.0;
+                    double turnRightEdge = turnX + turnWidth / 2.0;
+                    if (insulationRightEdge <= turnLeftEdge || insulationLeftEdge >= turnRightEdge) continue;
+
+                    double distToBelow = turnBottom - insulationTop;
+                    double distToAbove = insulationBottom - turnTop;
+                    const double axialSideTolerance = insulationH / 2.0;
+                    auto turnBetweenAxially = [&](double fromY, double toY) {
+                        for (size_t otherIdx : turnNodeIndices) {
+                            if (otherIdx == turnIdx) continue;
+                            const auto& other = _nodes[otherIdx];
+                            double otherX = other.physicalCoordinates[0];
+                            if (std::abs(otherX - turnX) >= (other.dimensions.width + turnWidth) / 2.0) continue;
+                            double otherY = other.physicalCoordinates[1];
+                            double otherBottom = otherY - other.dimensions.height / 2.0;
+                            double otherTop = otherY + other.dimensions.height / 2.0;
+                            double lo = std::min(fromY, toY) - axialSideTolerance;
+                            double hi = std::max(fromY, toY) + axialSideTolerance;
+                            if (otherBottom >= lo && otherTop <= hi) return true;
+                        }
+                        return false;
+                    };
+
+                    if (distToBelow >= -axialSideTolerance && distToBelow <= connectionThreshold &&
+                        (!hasBelow || distToBelow < belowCandidate.distance) &&
+                        !turnBetweenAxially(insulationTop, turnBottom)) {
+                        belowCandidate = {insulationIdx, distToBelow, insulationK, insulationW, insulationH};
+                        hasBelow = true;
+                    }
+                    if (distToAbove >= -axialSideTolerance && distToAbove <= connectionThreshold &&
+                        (!hasAbove || distToAbove < aboveCandidate.distance) &&
+                        !turnBetweenAxially(turnTop, insulationBottom)) {
+                        aboveCandidate = {insulationIdx, distToAbove, insulationK, insulationW, insulationH};
+                        hasAbove = true;
+                    }
+                    continue;  // never a LEFT/RIGHT neighbour: its sides are its thin edges
+                }
 
                 // Use generous Y-overlap check: allow partial overlap or nearby turns
                 double yTolerance = std::max(turnHeight, insulationH);
@@ -4055,6 +4120,42 @@ void Temperature::createTurnToInsulationConnections() {
                               << " LEFT (dist=" << rightCandidate.distance * 1000 << "mm, R=" 
                               << r.resistance << " K/W)" << std::endl;
                 }
+            }
+
+            // ABT #1540: connection to the tape lying across the window below / above the turn.
+            // Half the tape (the node is its mid-plane) over the turn's face, in series with the
+            // air of any real clearance, exactly like the LEFT/RIGHT connections above.
+            auto connectAcrossWindowTape = [&](const InsulationCandidate& candidate, ThermalNodeFace turnFace,
+                                               ThermalNodeFace tapeFace) {
+                if (connectedQuadrants.count({turnIdx, turnFace})) return;
+                auto* turnQuadrant = turnNode.getQuadrant(turnFace);
+                if (!turnQuadrant) {
+                    throw std::runtime_error("Temperature: turn-to-insulation connection: turn node " + turnNode.name +
+                                             " is missing the " + std::string(magic_enum::enum_name(turnFace)) +
+                                             " quadrant; cannot determine contact area.");
+                }
+                double contactArea = turnQuadrant->surfaceArea;
+                ThermalResistanceElement r;
+                r.nodeFromId = candidate.insulationIdx;
+                r.quadrantFrom = tapeFace;
+                r.nodeToId = turnIdx;
+                r.quadrantTo = turnFace;
+                r.type = HeatTransferType::CONDUCTION;
+                r.resistance = ThermalResistance::calculateConductionResistance(
+                    candidate.insulationHeight / 2.0, candidate.insulationK, contactArea);
+                if (candidate.distance > 0) {
+                    r.resistance += ThermalResistance::calculateConductionResistance(
+                        candidate.distance, gapAirThermalConductivity(), contactArea);
+                }
+                _resistances.push_back(r);
+            };
+            if (hasBelow) {
+                // Tape's TOP face under the turn's BOTTOM face.
+                connectAcrossWindowTape(belowCandidate, ThermalNodeFace::TANGENTIAL_RIGHT, ThermalNodeFace::TANGENTIAL_LEFT);
+            }
+            if (hasAbove) {
+                // Tape's BOTTOM face over the turn's TOP face.
+                connectAcrossWindowTape(aboveCandidate, ThermalNodeFace::TANGENTIAL_LEFT, ThermalNodeFace::TANGENTIAL_RIGHT);
             }
         }
     }
