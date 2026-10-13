@@ -2740,7 +2740,60 @@ SignalDescriptor standardize_signal_descriptor(SignalDescriptor signalDescriptor
     return standardSignalDescriptor;
 }
 
+// ABT #1849: magnetic_autocomplete completes a winding that states no turns, no parallels or no
+// wire with a placeholder so the geometry can be drawn: 1 turn, 1 parallel, and the wire "Dummy",
+// which Winding::resolve_wire turns into "Round 0.01 - Grade 1" (10 um of copper). That is a
+// stand-in, not the design. Simulating it publishes the placeholder's losses and temperature as
+// the design's (PQ 32/30 with one such winding at 2 A rms: 12 Ohm, 48.3 W, 5880 C), so a
+// simulation is refused, naming each winding and what it lacks. After magnetic_autocomplete the
+// placeholder is a resolved wire like any other, so this reads the magnetic BEFORE completion.
+static void throw_if_a_winding_would_be_invented(const Magnetic& magnetic) {
+    const auto windings = magnetic.get_coil().get_functional_description();
+    std::string invented;
+    for (size_t windingIndex = 0; windingIndex < windings.size(); ++windingIndex) {
+        const auto& winding = windings[windingIndex];
+        std::vector<std::string> lacks;
+        if (winding.get_number_turns() == 0) {
+            lacks.push_back("numberTurns is 0");
+        }
+        if (winding.get_number_parallels() == 0) {
+            lacks.push_back("numberParallels is 0");
+        }
+        const auto wire = winding.get_wire();
+        if (std::holds_alternative<std::string>(wire)) {
+            const auto wireName = std::get<std::string>(wire);
+            if (wireName.empty()) {
+                lacks.push_back("it names no wire");
+            }
+            else if (wireName == DUMMY_SENTINEL_NAME) {
+                lacks.push_back(std::string("its wire is the placeholder '") + DUMMY_SENTINEL_NAME + "'");
+            }
+        }
+        if (lacks.empty()) {
+            continue;
+        }
+        if (!invented.empty()) {
+            invented += "; ";
+        }
+        invented += "winding " + std::to_string(windingIndex) + " ('" + winding.get_name() + "'): ";
+        for (size_t lackIndex = 0; lackIndex < lacks.size(); ++lackIndex) {
+            invented += (lackIndex == 0 ? "" : ", ") + lacks[lackIndex];
+        }
+    }
+    if (!invented.empty()) {
+        throw InvalidInputException(ErrorCode::INVALID_COIL_CONFIGURATION,
+            "mas_autocomplete cannot simulate this magnetic: it would have to invent a winding (1 turn, 1 parallel "
+            "of a 10 um placeholder wire) and publish that stand-in's losses and temperature as the design's. " +
+            invented + ". Give each winding its turns, parallels and wire, or call mas_autocomplete with "
+            "simulate = false to complete the geometry only.");
+    }
+}
+
 Mas mas_autocomplete(Mas mas, bool simulate, json configuration) {
+
+    if (simulate) {
+        throw_if_a_winding_would_be_invented(mas.get_magnetic());
+    }
 
     // ABT #620: thread the design's own requirements into the coil so a re-wind here
     // (the common case for a file that only carries functionalDescription + bobbin)

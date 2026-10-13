@@ -10,6 +10,7 @@
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
 #include <catch2/matchers/catch_matchers_string.hpp>
+#include <catch2/matchers/catch_matchers_exception.hpp>
 #include <filesystem>
 #include <cfloat>
 #include <limits>
@@ -748,6 +749,70 @@ namespace {
         REQUIRE(autocompletedMas.get_outputs()[0].get_core_losses());
         REQUIRE(autocompletedMas.get_outputs()[0].get_winding_losses());
         REQUIRE(autocompletedMas.get_outputs()[0].get_inductance());
+    }
+
+    // ABT #1849: a winding that states no turns, no parallels or no wire is completed by
+    // magnetic_autocomplete with a placeholder (1 turn, 1 parallel of the 10 um "Dummy" wire) so
+    // the geometry can be drawn. mas_autocomplete used to simulate that stand-in as the design:
+    // 12 Ohm, 48.3 W and 5880 C published for a PQ 32/30. It must refuse, naming the winding,
+    // still complete the geometry when asked not to simulate, and still simulate a real winding.
+    TEST_CASE("ABT1849_Mas_Autocomplete_Refuses_To_Simulate_An_Invented_Winding", "[support][utils][abt-1849][smoke-test]") {
+        settings.reset();
+        clear_databases();
+        settings.set_use_only_cores_in_stock(false);
+        auto core = find_core_by_name("PQ 32/30 - 3C90 - Gapped 0.492 mm");
+        OpenMagnetics::Inputs inputs = OpenMagnetics::Inputs::create_quick_operating_point(100000, 42e-6, 42, WaveformLabel::SINUSOIDAL, 10, 0.5, 2);
+        auto buildMas = [&](const std::string& name, int64_t numberTurns, int64_t numberParallels, const std::string& wire) {
+            OpenMagnetics::Coil coil;
+            OpenMagnetics::Winding winding;
+            winding.set_name(name);
+            winding.set_number_turns(numberTurns);
+            winding.set_number_parallels(numberParallels);
+            winding.set_wire(wire);
+            coil.get_mutable_functional_description().push_back(winding);
+            OpenMagnetics::Magnetic magnetic;
+            magnetic.set_core(core);
+            magnetic.set_coil(coil);
+            OpenMagnetics::Mas mas;
+            mas.set_inputs(inputs);
+            mas.set_magnetic(magnetic);
+            return mas;
+        };
+
+        SECTION("a winding with no turns, no parallels and no wire is not simulated") {
+            auto mas = buildMas("", 0, 0, "");
+            REQUIRE_THROWS_MATCHES(mas_autocomplete(mas), OpenMagnetics::InvalidInputException,
+                Catch::Matchers::MessageMatches(Catch::Matchers::ContainsSubstring("winding 0 (''")
+                    && Catch::Matchers::ContainsSubstring("numberTurns is 0")
+                    && Catch::Matchers::ContainsSubstring("numberParallels is 0")
+                    && Catch::Matchers::ContainsSubstring("it names no wire")));
+        }
+        SECTION("a real turn count on the placeholder wire is not simulated either") {
+            auto mas = buildMas("Primary", 10, 1, "Dummy");
+            REQUIRE_THROWS_MATCHES(mas_autocomplete(mas), OpenMagnetics::InvalidInputException,
+                Catch::Matchers::MessageMatches(Catch::Matchers::ContainsSubstring("winding 0 ('Primary')")
+                    && Catch::Matchers::ContainsSubstring("placeholder 'Dummy'")));
+        }
+        SECTION("the geometry is still completed when no simulation is asked for") {
+            auto mas = buildMas("", 0, 0, "");
+            auto completed = mas_autocomplete(mas, false);
+            REQUIRE(completed.get_magnetic().get_coil().get_turns_description());
+            REQUIRE(completed.get_magnetic().get_coil().get_functional_description()[0].get_number_turns() == 1);
+            REQUIRE(completed.get_outputs().empty());
+        }
+        SECTION("a real winding is simulated") {
+            auto mas = buildMas("Primary", 10, 1, "Round 1.00 - Grade 1");
+            auto completed = mas_autocomplete(mas);
+            REQUIRE(completed.get_outputs().size() == 1);
+            REQUIRE(completed.get_outputs()[0].get_winding_losses());
+            const double windingLosses = completed.get_outputs()[0].get_winding_losses()->get_winding_losses();
+            INFO("winding losses " << windingLosses << " W");
+            // Ten turns of 1 mm copper carrying a few amperes: a fraction of a watt, not the
+            // placeholder's 48 W.
+            REQUIRE(windingLosses > 0);
+            REQUIRE(windingLosses < 5);
+        }
+        settings.reset();
     }
 
     // ABT #1071: the web builder swaps the SHAPE of an existing core and keeps everything else,
