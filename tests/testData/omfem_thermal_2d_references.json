@@ -3,97 +3,113 @@
   "generator": "gen_omfem_refs.py (ABT #461 / #454)",
   "source": "omfem_mas: 2D mesh -> FEM losses -> solve_thermal_fem (h from MKF natural-convection law per boundary, out-of-plane face sink, open toroid bore with view factor, k_core from MKF resolve_core_material_heat_conductivity, eps=0.9, radiating; ABT #1751)",
   "losses": "OMFEM's own FEM losses, stored here and fed IDENTICALLY to both models by the test",
-  "date": "2026-10-12"
+  "date": "2026-10-13"
  },
  "examples": {
   "000_debug.json": {
    "status": "ok",
    "shape_family": "pq",
    "ambient": 25,
-   "p_core": 1.4678013819251671e-13,
+   "p_core": 1.4688698097837968e-13,
    "p_cu": 0.00588486037288,
-   "omfem_t_core": 25.7670690616,
-   "omfem_t_winding": 26.1782412237,
-   "omfem_t_max": 26.1783088251,
-   "seconds": 25.2
+   "omfem_t_core": 25.7670690854,
+   "omfem_t_winding": 26.1782412522,
+   "omfem_t_max": 26.1783088536,
+   "seconds": 18.1
   },
   "00_debug.json": {
    "status": "ok",
    "shape_family": "pq",
    "ambient": 25,
-   "p_core": 6.383728952598525e-08,
+   "p_core": 6.386367379650865e-08,
    "p_cu": 0.000734367347712,
-   "omfem_t_core": 25.1022359323,
-   "omfem_t_winding": 25.1534543051,
-   "omfem_t_max": 25.1534627345,
-   "seconds": 19.2
+   "omfem_t_core": 25.1022359387,
+   "omfem_t_winding": 25.1534543118,
+   "omfem_t_max": 25.1534627412,
+   "seconds": 14.0
   },
   "01_simple_inductor_etd34_n87.json": {
    "status": "ok",
    "shape_family": "unknown",
    "ambient": 25,
-   "p_core": 0.029792965902483,
-   "p_cu": 1.16800355119,
-   "omfem_t_core": 43.0323884754,
-   "omfem_t_winding": 52.3050704002,
-   "omfem_t_max": 58.5659632353,
-   "seconds": 42.1
+   "p_core": 0.029792686287141,
+   "p_cu": 1.16784765894,
+   "omfem_t_core": 43.0303148961,
+   "omfem_t_winding": 52.3014861621,
+   "omfem_t_max": 58.5591619603,
+   "seconds": 30.0
   },
   "01_simple_inductor_etd34_n87_1Hz.json": {
-   "status": "failed",
+   "status": "ok",
    "shape_family": "unknown",
-   "error": "error: [MATERIAL_FREQUENCY_OUT_OF_SPAN] Material N87: Steinmetz loss coefficients are fitted over 25000.000000 Hz to 1000000.000000 Hz; 1.000000 Hz is below that span and would be an extrapolation of the fit (Context: N87)",
-   "seconds": 0.4
+   "material_data_extrapolation": {
+    "allowMaterialDataExtrapolation": true,
+    "extrapolated": [
+     "[MATERIAL_FREQUENCY_OUT_OF_SPAN] Material N87: Steinmetz loss coefficients are fitted over 25000.000000 Hz to 1000000.000000 Hz; 1.000000 Hz is below that span and would be an extrapolation of the fit (Context: N87) (extrapolated: allowMaterialDataExtrapolation is on)"
+    ]
+   },
+   "ambient": 25,
+   "p_core": 7.196263453370861e-10,
+   "p_cu": 0.994435293629,
+   "omfem_t_core": 40.3163768949,
+   "omfem_t_winding": 47.3623211028,
+   "omfem_t_max": 48.6463150796,
+   "seconds": 19.0
   },
   "02_flyback_efd25_3c95.json": {
    "status": "ok",
    "shape_family": "unknown",
    "ambient": 25,
-   "p_core": 0.22139799243473002,
-   "p_cu": 0.140410921431,
-   "omfem_t_core": 45.9433894229,
-   "omfem_t_winding": 49.2472144921,
-   "omfem_t_max": 51.454931937,
-   "seconds": 45.0
+   "p_core": 0.255759106729891,
+   "p_cu": 0.139690069661,
+   "omfem_t_core": 47.6552026235,
+   "omfem_t_winding": 50.8817138538,
+   "omfem_t_max": 53.0871715917,
+   "seconds": 37.3
   },
   "03_buck_inductor_pq3230_n95.json": {
    "status": "ok",
    "shape_family": "unknown",
    "ambient": 60,
-   "p_core": 0.028809865849091003,
-   "p_cu": 2.52165411622,
-   "omfem_t_core": 95.5504033836,
-   "omfem_t_winding": 104.020781983,
-   "omfem_t_max": 119.05631394,
-   "seconds": 84.1
+   "p_core": 0.028829098328073,
+   "p_cu": 2.52166216389,
+   "omfem_t_core": 95.5509128384,
+   "omfem_t_winding": 104.023039208,
+   "omfem_t_max": 119.068305409,
+   "seconds": 69.6
   },
   "04_forward_xfmr_e3216_n87.json": {
-   "status": "failed",
+   "status": "ok",
    "shape_family": "unknown",
-   "error": "timeout after 1200s",
-   "seconds": 1143.9
+   "ambient": 25,
+   "p_core": 0.08258938623152756,
+   "p_cu": 0.395171112662,
+   "omfem_t_core": 45.1245179506,
+   "omfem_t_winding": 53.072259332,
+   "omfem_t_max": 55.9090996373,
+   "seconds": 219.3
   },
   "05_pfc_inductor_t4020_hf60.json": {
    "status": "ok",
    "shape_family": "unknown",
    "ambient": 80,
-   "p_core": 0.000115878590365,
-   "p_cu": 0.572783097571,
-   "omfem_t_core": 86.5823468266,
-   "omfem_t_winding": 87.1546774609,
-   "omfem_t_max": 87.5131885286,
-   "seconds": 65.8
+   "p_core": 0.000115878043663,
+   "p_cu": 0.572783375191,
+   "omfem_t_core": 86.6080067963,
+   "omfem_t_winding": 87.1805822585,
+   "omfem_t_max": 87.5269936626,
+   "seconds": 29.8
   },
   "06_llc_xfmr_eq4128_3c97.json": {
    "status": "ok",
    "shape_family": "unknown",
    "ambient": 25,
-   "p_core": 0.18432543195184,
-   "p_cu": 0.554167871807,
-   "omfem_t_core": 36.7634099066,
-   "omfem_t_winding": 38.9969117459,
-   "omfem_t_max": 39.4256315095,
-   "seconds": 100.4
+   "p_core": 0.18457231175107,
+   "p_cu": 0.553574232646,
+   "omfem_t_core": 36.7584999396,
+   "omfem_t_winding": 38.989749287,
+   "omfem_t_max": 39.4179740009,
+   "seconds": 90.5
   },
   "07_cmc_t2515_w800.json": {
    "status": "failed",
@@ -105,12 +121,12 @@
    "status": "ok",
    "shape_family": "unknown",
    "ambient": 45,
-   "p_core": 0.0638269671509,
-   "p_cu": 1.56817835755,
-   "omfem_t_core": 57.5987242412,
-   "omfem_t_winding": 63.4611921711,
-   "omfem_t_max": 67.0015008543,
-   "seconds": 58.5
+   "p_core": 0.0638269798112,
+   "p_cu": 1.56817720508,
+   "omfem_t_core": 57.5987170412,
+   "omfem_t_winding": 63.4612579054,
+   "omfem_t_max": 67.0016191767,
+   "seconds": 54.2
   },
   "09_planar_xfmr_er2510_3c94.json": {
    "status": "failed",
@@ -122,166 +138,166 @@
    "status": "ok",
    "shape_family": "unknown",
    "ambient": 25,
-   "p_core": 0.002884327632094,
-   "p_cu": 0.109422089753,
-   "omfem_t_core": 35.7256124307,
-   "omfem_t_winding": 37.7737105442,
-   "omfem_t_max": 39.5102183127,
-   "seconds": 68.5
+   "p_core": 0.002884331191726,
+   "p_cu": 0.109424445399,
+   "omfem_t_core": 35.7258443948,
+   "omfem_t_winding": 37.7743309903,
+   "omfem_t_max": 39.5112237007,
+   "seconds": 62.2
   },
   "11_pushpull_etd49_tp4a.json": {
    "status": "ok",
    "shape_family": "unknown",
    "ambient": 25,
-   "p_core": 4.7632359955267,
-   "p_cu": 0.172305913871,
-   "omfem_t_core": 98.5278505245,
-   "omfem_t_winding": 95.4918005802,
-   "omfem_t_max": 105.357050931,
-   "seconds": 772.8
+   "p_core": 4.625596054476301,
+   "p_cu": 0.170677858387,
+   "omfem_t_core": 96.8754498268,
+   "omfem_t_winding": 93.9621442032,
+   "omfem_t_max": 103.527317734,
+   "seconds": 534.7
   },
   "12_boost_inductor_t5026_26.json": {
    "status": "ok",
    "shape_family": "unknown",
    "ambient": 70,
-   "p_core": 0.0905983372518,
-   "p_cu": 0.0132579019255,
-   "omfem_t_core": 70.95607299,
-   "omfem_t_winding": 70.9483697294,
-   "omfem_t_max": 70.9872687927,
-   "seconds": 87.2
+   "p_core": 0.0905961787747,
+   "p_cu": 0.0132577130439,
+   "omfem_t_core": 70.954402755,
+   "omfem_t_winding": 70.9442419069,
+   "omfem_t_max": 70.9829148273,
+   "seconds": 78.1
   },
   "13_current_sense_er95_n87.json": {
    "status": "ok",
    "shape_family": "unknown",
    "ambient": 25,
-   "p_core": 1.777803724744306e-06,
-   "p_cu": 0.162345857197,
-   "omfem_t_core": 87.5241055648,
-   "omfem_t_winding": 108.606576698,
-   "omfem_t_max": 125.390044951,
-   "seconds": 302.1
+   "p_core": 1.786010998704791e-06,
+   "p_cu": 0.162346097445,
+   "omfem_t_core": 87.524731754,
+   "omfem_t_winding": 108.594141766,
+   "omfem_t_max": 125.378048314,
+   "seconds": 242.5
   },
   "14_dab_xfmr_pm8770_n97.json": {
    "status": "ok",
    "shape_family": "unknown",
    "ambient": 25,
-   "p_core": 2.0505390521001,
-   "p_cu": 0.99313527784,
-   "omfem_t_core": 34.5530550385,
-   "omfem_t_winding": 37.2680479921,
-   "omfem_t_max": 37.9166194766,
-   "seconds": 359.8
+   "p_core": 2.0631461177451,
+   "p_cu": 0.992888886832,
+   "omfem_t_core": 34.586743933,
+   "omfem_t_winding": 37.3027596129,
+   "omfem_t_max": 37.9506714774,
+   "seconds": 271.4
   },
   "15_gan_inductor_e138_3f4.json": {
    "status": "ok",
    "shape_family": "unknown",
    "ambient": 40,
-   "p_core": 0.00034641206832464996,
-   "p_cu": 0.155295029548,
-   "omfem_t_core": 62.404363848,
-   "omfem_t_winding": 76.3072850486,
-   "omfem_t_max": 85.9444737144,
-   "seconds": 2.8
+   "p_core": 0.00034643461508157005,
+   "p_cu": 0.155295470205,
+   "omfem_t_core": 62.4043250119,
+   "omfem_t_winding": 76.3098295201,
+   "omfem_t_max": 85.9520391218,
+   "seconds": 2.5
   },
   "16_coupled_inductor_e2513_dmr95.json": {
    "status": "ok",
    "shape_family": "unknown",
    "ambient": 50,
-   "p_core": 0.0032197986678722625,
-   "p_cu": 0.249809108273,
-   "omfem_t_core": 62.2927933211,
-   "omfem_t_winding": 69.1156016792,
-   "omfem_t_max": 70.6799198484,
-   "seconds": 21.1
+   "p_core": 0.0033438700216682,
+   "p_cu": 0.249805163228,
+   "omfem_t_core": 62.2982516901,
+   "omfem_t_winding": 69.121158052,
+   "omfem_t_max": 70.6895152753,
+   "seconds": 19.5
   },
   "17_cllc_xfmr_e5528_3c92a.json": {
    "status": "ok",
    "shape_family": "unknown",
    "ambient": 25,
-   "p_core": 3.073773938872295,
-   "p_cu": 0.482056877789,
-   "omfem_t_core": 61.9695626113,
-   "omfem_t_winding": 63.0270419511,
-   "omfem_t_max": 63.394928241,
-   "seconds": 95.6
+   "p_core": 3.07655312022989,
+   "p_cu": 0.481333443068,
+   "omfem_t_core": 61.987648658,
+   "omfem_t_winding": 63.0411306639,
+   "omfem_t_max": 63.4073164802,
+   "seconds": 91.9
   },
   "18_stacked_inductor_e7033_n27.json": {
    "status": "ok",
    "shape_family": "unknown",
    "ambient": 70,
-   "p_core": 0.05673781152104,
-   "p_cu": 3.67350851644,
-   "omfem_t_core": 84.791717216,
-   "omfem_t_winding": 96.1833462295,
-   "omfem_t_max": 104.271792923,
-   "seconds": 81.1
+   "p_core": 0.056739256431579996,
+   "p_cu": 3.67350747048,
+   "omfem_t_core": 84.7917064364,
+   "omfem_t_winding": 96.1835971113,
+   "omfem_t_max": 104.272396989,
+   "seconds": 75.4
   },
   "19_multi_op_xfmr_etd3920_pc95.json": {
    "status": "ok",
    "shape_family": "unknown",
    "ambient": 25,
-   "p_core": 4.43973071886e-05,
-   "p_cu": 0.0093834311734,
-   "omfem_t_core": 25.4091114253,
-   "omfem_t_winding": 25.5744038383,
-   "omfem_t_max": 25.6129901088,
-   "seconds": 238.8
+   "p_core": 4.78726638507e-05,
+   "p_cu": 0.00934893629958,
+   "omfem_t_core": 25.4078447209,
+   "omfem_t_winding": 25.5725269901,
+   "omfem_t_max": 25.6109751266,
+   "seconds": 182.4
   },
   "20_iso_buckboost_epc25_3c91.json": {
    "status": "ok",
    "shape_family": "unknown",
    "ambient": 25,
-   "p_core": 0.0011591607123926598,
-   "p_cu": 0.270315053131,
-   "omfem_t_core": 34.1365439519,
-   "omfem_t_winding": 36.3163078407,
-   "omfem_t_max": 36.8783500109,
-   "seconds": 51.3
+   "p_core": 0.001199748170939495,
+   "p_cu": 0.268573898708,
+   "omfem_t_core": 34.0853554978,
+   "omfem_t_winding": 36.249856687,
+   "omfem_t_max": 36.7988693349,
+   "seconds": 47.2
   },
   "21_interleaved_flyback_etd39_n87.json": {
    "status": "ok",
    "shape_family": "unknown",
    "ambient": 25,
-   "p_core": 0.488046288124128,
-   "p_cu": 1.13361299019,
-   "omfem_t_core": 43.8281198174,
-   "omfem_t_winding": 50.6546849272,
-   "omfem_t_max": 53.200981659,
-   "seconds": 93.2
+   "p_core": 0.5643801473705541,
+   "p_cu": 1.12718811415,
+   "omfem_t_core": 44.5051962438,
+   "omfem_t_winding": 51.3232469613,
+   "omfem_t_max": 53.8748269323,
+   "seconds": 84.2
   },
   "22_margin_tape_forward_e4218_3c95.json": {
    "status": "ok",
    "shape_family": "unknown",
    "ambient": 25,
-   "p_core": 4.407851817846316,
-   "p_cu": 0.172783952771,
-   "omfem_t_core": 109.003309954,
-   "omfem_t_winding": 110.035717112,
-   "omfem_t_max": 115.746260144,
-   "seconds": 421.0
+   "p_core": 0.0072147677201435,
+   "p_cu": 0.171663531468,
+   "omfem_t_core": 30.3209973005,
+   "omfem_t_winding": 32.7886881216,
+   "omfem_t_max": 33.2759991782,
+   "seconds": 181.0
   },
   "23_interleaved_llc_pq3530_n97.json": {
    "status": "ok",
    "shape_family": "unknown",
    "ambient": 25,
-   "p_core": 0.375622299409211,
-   "p_cu": 0.983372163219,
-   "omfem_t_core": 48.6329932737,
-   "omfem_t_winding": 53.9684222161,
-   "omfem_t_max": 55.3601692717,
-   "seconds": 70.8
+   "p_core": 0.37600714983699396,
+   "p_cu": 0.98207907048,
+   "omfem_t_core": 48.6192804615,
+   "omfem_t_winding": 53.9478286147,
+   "omfem_t_max": 55.3374991033,
+   "seconds": 64.4
   },
   "24_margin_interleaved_flyback_pq3230_3c94.json": {
    "status": "ok",
    "shape_family": "unknown",
    "ambient": 25,
-   "p_core": 0.0144494819641698,
-   "p_cu": 0.412218205757,
-   "omfem_t_core": 33.517093221,
-   "omfem_t_winding": 35.8843439141,
-   "omfem_t_max": 37.3514225121,
-   "seconds": 143.6
+   "p_core": 0.0176895737459887,
+   "p_cu": 0.410913448055,
+   "omfem_t_core": 33.5497114951,
+   "omfem_t_winding": 35.9116975424,
+   "omfem_t_max": 37.3779253982,
+   "seconds": 128.2
   }
  }
 }
