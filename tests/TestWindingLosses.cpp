@@ -28,6 +28,9 @@
 #include <iomanip>
 #include <magic_enum.hpp>
 #include <vector>
+#if defined(__linux__) && !defined(__EMSCRIPTEN__)
+#include <link.h>
+#endif
 #include <map>
 #include <set>
 #include <typeinfo>
@@ -4238,6 +4241,107 @@ TEST_CASE("Test_Winding_Losses_Parallel_Split_Painter_Uses_The_Models_Own_Lattic
     }
     settings.reset();
 }
+
+#if defined(__linux__) && !defined(__EMSCRIPTEN__)
+// ABT #1850: the dynamic symbols (defined and undefined) of every object loaded in this process whose mangled name has
+// the given component.
+namespace {
+struct DynamicSymbolSearch {
+    std::string component;
+    std::vector<std::string> found;
+    size_t objects = 0;
+    size_t symbols = 0;
+};
+
+int collect_dynamic_symbols(struct dl_phdr_info* info, size_t, void* data) {
+    auto& search = *static_cast<DynamicSymbolSearch*>(data);
+    const ElfW(Dyn)* dynamic = nullptr;
+    for (int index = 0; index < info->dlpi_phnum; ++index) {
+        if (info->dlpi_phdr[index].p_type == PT_DYNAMIC) {
+            dynamic = reinterpret_cast<const ElfW(Dyn)*>(info->dlpi_addr + info->dlpi_phdr[index].p_vaddr);
+        }
+    }
+    if (dynamic == nullptr) {
+        return 0;
+    }
+    // glibc relocates these addresses in place for the objects it loads; the kernel's vDSO keeps offsets.
+    auto address = [&](ElfW(Addr) value) { return value < info->dlpi_addr ? info->dlpi_addr + value : value; };
+    const ElfW(Sym)* symbolTable = nullptr;
+    const char* stringTable = nullptr;
+    const uint32_t* sysvHash = nullptr;
+    const uint32_t* gnuHash = nullptr;
+    for (auto entry = dynamic; entry->d_tag != DT_NULL; ++entry) {
+        if (entry->d_tag == DT_SYMTAB) symbolTable = reinterpret_cast<const ElfW(Sym)*>(address(entry->d_un.d_ptr));
+        if (entry->d_tag == DT_STRTAB) stringTable = reinterpret_cast<const char*>(address(entry->d_un.d_ptr));
+        if (entry->d_tag == DT_HASH) sysvHash = reinterpret_cast<const uint32_t*>(address(entry->d_un.d_ptr));
+        if (entry->d_tag == DT_GNU_HASH) gnuHash = reinterpret_cast<const uint32_t*>(address(entry->d_un.d_ptr));
+    }
+    if (symbolTable == nullptr || stringTable == nullptr) {
+        return 0;
+    }
+    size_t numberSymbols = 0;
+    if (sysvHash != nullptr) {
+        numberSymbols = sysvHash[1];  // nchain
+    }
+    else if (gnuHash != nullptr) {
+        const uint32_t numberBuckets = gnuHash[0];
+        const uint32_t firstHashedSymbol = gnuHash[1];
+        const uint32_t bloomWords = gnuHash[2];
+        const uint32_t* buckets = gnuHash + 4 + bloomWords * (sizeof(ElfW(Addr)) / sizeof(uint32_t));
+        const uint32_t* chains = buckets + numberBuckets;
+        uint32_t last = 0;
+        for (uint32_t bucket = 0; bucket < numberBuckets; ++bucket) {
+            last = std::max(last, buckets[bucket]);
+        }
+        if (last < firstHashedSymbol) {
+            numberSymbols = firstHashedSymbol;  // imports only
+        }
+        else {
+            while ((chains[last - firstHashedSymbol] & 1u) == 0) {
+                ++last;
+            }
+            numberSymbols = last + 1;
+        }
+    }
+    else {
+        throw std::runtime_error(std::string("ABT #1850 guard: ") + info->dlpi_name + " has a dynamic symbol table and no hash table to size it");
+    }
+    ++search.objects;
+    search.symbols += numberSymbols;
+    for (size_t index = 0; index < numberSymbols; ++index) {
+        const std::string name = stringTable + symbolTable[index].st_name;
+        if (name.find(search.component) != std::string::npos) {
+            search.found.push_back(std::string(info->dlpi_name) + ": " + name);
+        }
+    }
+    return 0;
+}
+}  // namespace
+
+// ABT #1850: MKF is built with -march=native and Eigen picks its allocation scheme from the instruction set (AVX-512:
+// malloc(n + 64) with the malloc pointer kept 8 bytes below the block, released by free(block[-1]); default flags: plain
+// malloc/free). Eigen's functions are weak symbols the dynamic linker binds once per process, so a program using Eigen
+// with other flags (OMFEM, through libmvb++.so) supplied MKF's out-of-line Eigen::internal::aligned_malloc while MKF kept
+// its inlined release: the parallel split's strand system was freed as free(0x30), SIGSEGV. No Eigen symbol may take
+// part in dynamic binding: MKF includes Eigen through support/EigenPrivate.h, with hidden visibility.
+TEST_CASE("Test_Winding_Losses_Parallel_Split_No_Eigen_Symbol_Is_Dynamically_Bound", "[winding-losses][parallel-split][physical-model]") {
+    // the walk reads symbol tables: it finds MKF's own exported split
+    DynamicSymbolSearch own{"13OpenMagnetics13MagneticField32calculate_parallel_current_split", {}};
+    dl_iterate_phdr(collect_dynamic_symbols, &own);
+    REQUIRE(own.objects > 1);
+    REQUIRE_FALSE(own.found.empty());
+
+    DynamicSymbolSearch eigen{"5Eigen", {}};
+    dl_iterate_phdr(collect_dynamic_symbols, &eigen);
+    REQUIRE(eigen.symbols == own.symbols);
+    std::string listed;
+    for (size_t index = 0; index < eigen.found.size() && index < 5; ++index) {
+        listed += "\n  " + eigen.found[index];
+    }
+    INFO(eigen.found.size() << " dynamic Eigen symbols in " << eigen.objects << " loaded objects, the first:" << listed);
+    CHECK(eigen.found.empty());
+}
+#endif
 
 TEST_CASE("Test_Winding_Losses_Parallel_Split_Turns_Of_A_Winding_List_The_Same_Harmonics", "[winding-losses][parallel-split][physical-model]") {
     // ABT #1759: the redistribution between parallels is charged to the skin losses per solved harmonic, and a harmonic the

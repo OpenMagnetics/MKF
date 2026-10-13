@@ -34,7 +34,7 @@ namespace std {
 #include <list>
 #include <set>
 #include <array>
-#include <Eigen/Dense>
+#include "support/EigenPrivate.h"
 #include <mutex>
 #include "support/Exceptions.h"
 

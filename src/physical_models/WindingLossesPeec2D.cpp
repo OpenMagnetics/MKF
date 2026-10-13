@@ -11,7 +11,7 @@
 #include "support/Exceptions.h"
 #include "support/Utils.h"
 
-#include <Eigen/Dense>
+#include "support/EigenPrivate.h"
 #include <complex>
 #include <numbers>
 

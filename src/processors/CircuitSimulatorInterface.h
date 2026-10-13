@@ -17,16 +17,14 @@ using namespace MAS;
 // Eigen-based Levenberg-Marquardt solver replacing levmar (no Fortran/LAPACK).
 // ============================================================================
 
-#include <Eigen/Dense>
-#include <unsupported/Eigen/LevenbergMarquardt>
-#include <unsupported/Eigen/NumericalDiff>
+#include "support/EigenPrivate.h"
 #include <vector>
 #include <cmath>
 #include <limits>
 
 namespace OpenMagnetics {
 
-struct LMFunctorWrapper : Eigen::DenseFunctor<double> {
+struct MKF_EIGEN_PRIVATE LMFunctorWrapper : Eigen::DenseFunctor<double> {
     using LevmarFunc = void (*)(double *p, double *x, int m, int n, void *data);
 
     LevmarFunc _func;

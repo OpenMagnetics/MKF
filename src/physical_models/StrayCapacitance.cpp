@@ -15,7 +15,7 @@
 #include <set>
 #include <map>
 #include <tuple>
-#include <Eigen/Dense>
+#include "support/EigenPrivate.h"
 #include "support/Exceptions.h"
 #include <magic_enum.hpp>
 

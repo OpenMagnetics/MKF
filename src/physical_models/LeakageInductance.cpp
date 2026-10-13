@@ -13,8 +13,7 @@
 #include <map>
 #include <mutex>
 #include <tuple>
-#include <Eigen/Sparse>
-#include <Eigen/SparseCholesky>
+#include "support/EigenPrivate.h"
 #include "support/Exceptions.h"
 
 namespace OpenMagnetics {

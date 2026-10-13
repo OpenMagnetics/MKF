@@ -5,7 +5,7 @@
 #include "physical_models/Resistivity.h"
 #include "Defaults.h"
 
-#include <Eigen/Dense>
+#include "support/EigenPrivate.h"
 #include <algorithm>
 #include <cmath>
 #include <complex>
