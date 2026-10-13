@@ -512,10 +512,11 @@ WindingLossesOutput WindingOhmicLosses::apply_parallel_current_split(Coil coil, 
             throw InvalidInputException(ErrorCode::INVALID_INPUT, "Parallel current split losses (ABT #1314): the AC losses of " + owner + " list " +
                                         std::to_string(harmonicFrequencies.size()) + " frequencies for " + std::to_string(lossesPerHarmonic.size()) + " losses");
         }
+        // Every solved harmonic gets its entry, whatever this strand's share of it: the turns of a winding are combined
+        // into layers, sections and windings entry by entry, so they must all list the same harmonics. Entering only the
+        // harmonics a strand had a non-zero excess at left the turns of one winding with lists of different lengths
+        // (34 and 41 on a flyback candidate of the coil adviser), which the combination wrote past the end of (ABT #1759).
         for (size_t splitIndex = 0; splitIndex < numberFrequencies; ++splitIndex) {
-            if (lossPerFrequency[splitIndex] == 0) {
-                continue;
-            }
             std::optional<size_t> position;
             for (size_t harmonicIndex = 0; harmonicIndex < harmonicFrequencies.size() && !position; ++harmonicIndex) {
                 if (harmonicFrequencies[harmonicIndex] > 0 && parallelCurrentSplit.find_frequency_index(harmonicFrequencies[harmonicIndex]) == splitIndex) {

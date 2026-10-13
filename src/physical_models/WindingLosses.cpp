@@ -66,6 +66,10 @@ WindingLossesPerElement combine_turn_losses_per_element(std::vector<WindingLosse
             skinEffectLossesThisElement.set_losses_per_harmonic(std::vector<double>(skinEffectLossesPerHarmonic.size(), 0));
             windingLossesThisElement.set_skin_effect_losses(skinEffectLossesThisElement);
         }
+        if (skinEffectLossesPerHarmonic.size() != skinEffectHarmonicFrequencies.size() ||
+            skinEffectLossesThisElement.get_losses_per_harmonic().size() != skinEffectLossesPerHarmonic.size()) {
+            throw CalculationException(ErrorCode::CALCULATION_ERROR, "Winding losses: turn " + std::to_string(turnIndex) + " carries " + std::to_string(skinEffectLossesPerHarmonic.size()) + " skin-effect losses for " + std::to_string(skinEffectHarmonicFrequencies.size()) + " harmonic frequencies, and the element it is combined into " + std::to_string(skinEffectLossesThisElement.get_losses_per_harmonic().size()));
+        }
         for (size_t harmonicIndex = 0; harmonicIndex < skinEffectHarmonicFrequencies.size(); ++harmonicIndex) {
             skinEffectLossesThisElement.get_mutable_losses_per_harmonic()[harmonicIndex] += skinEffectLossesPerHarmonic[harmonicIndex];
         }
@@ -79,6 +83,10 @@ WindingLossesPerElement combine_turn_losses_per_element(std::vector<WindingLosse
             proximityEffectLossesThisElement.set_harmonic_frequencies(proximityEffectHarmonicFrequencies);
             proximityEffectLossesThisElement.set_losses_per_harmonic(std::vector<double>(proximityEffectLossesPerHarmonic.size(), 0));
             windingLossesThisElement.set_proximity_effect_losses(proximityEffectLossesThisElement);
+        }
+        if (proximityEffectLossesPerHarmonic.size() != proximityEffectHarmonicFrequencies.size() ||
+            proximityEffectLossesThisElement.get_losses_per_harmonic().size() != proximityEffectLossesPerHarmonic.size()) {
+            throw CalculationException(ErrorCode::CALCULATION_ERROR, "Winding losses: turn " + std::to_string(turnIndex) + " carries " + std::to_string(proximityEffectLossesPerHarmonic.size()) + " proximity-effect losses for " + std::to_string(proximityEffectHarmonicFrequencies.size()) + " harmonic frequencies, and the element it is combined into " + std::to_string(proximityEffectLossesThisElement.get_losses_per_harmonic().size()));
         }
         for (size_t harmonicIndex = 0; harmonicIndex < proximityEffectHarmonicFrequencies.size(); ++harmonicIndex) {
             proximityEffectLossesThisElement.get_mutable_losses_per_harmonic()[harmonicIndex] += proximityEffectLossesPerHarmonic[harmonicIndex];

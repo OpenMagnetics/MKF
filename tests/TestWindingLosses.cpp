@@ -4239,6 +4239,54 @@ TEST_CASE("Test_Winding_Losses_Parallel_Split_Painter_Uses_The_Models_Own_Lattic
     settings.reset();
 }
 
+TEST_CASE("Test_Winding_Losses_Parallel_Split_Turns_Of_A_Winding_List_The_Same_Harmonics", "[winding-losses][parallel-split][physical-model]") {
+    // ABT #1759: the redistribution between parallels is charged to the skin losses per solved harmonic, and a harmonic the
+    // winding itself does not carry (driven by another winding, circulating between its parallels) is entered into the
+    // strand's list. It was entered only where that strand's excess was non-zero, so the turns of one winding listed
+    // different harmonics (34 and 41 on a flyback candidate of the coil adviser) and combine_turn_losses, which adds them
+    // entry by entry, wrote past the end of the shorter list: heap corruption, SIGABRT in
+    // Test_CoilAdviser_Real_Winding_Web_Flyback_Advise_All_Is_Real_Windable.
+    // Here: the 16 parallels of the planar turn, with one more solved harmonic that the winding does not carry and that
+    // circulates between two strands only (+1 A and -1 A peak, the other fourteen carry none of it).
+    auto& settings = OpenMagnetics::Settings::GetInstance();
+    settings.reset();
+    auto [magnetic, operatingPoint] = sixteen_parallel_planar_fixture("Test_Winding_Losses_Sixteen_Turns_Planar_Sinusoidal_No_Fringing.json", 100000);
+    auto solved = MagneticField::calculate_parallel_current_split(magnetic, operatingPoint, 22);
+    REQUIRE(solved);
+    auto split = solved.value();
+    const size_t numberTurns = magnetic.get_coil().get_turns_description().value().size();
+    REQUIRE(numberTurns == 16);
+    const double circulatingFrequency = split.frequencies.back() + 100000;
+    REQUIRE_FALSE(split.find_frequency_index(circulatingFrequency));
+    std::vector<std::complex<double>> circulating(numberTurns, 0.0);
+    circulating[3] = 1.0;
+    circulating[9] = -1.0;
+    split.frequencies.push_back(circulatingFrequency);
+    split.listedFrequenciesPerFrequency.push_back({circulatingFrequency});
+    split.currentPerTurnPerFrequency.push_back(circulating);
+    split.currentPerWindingPerFrequency.push_back({0.0});
+
+    auto losses = WindingOhmicLosses::calculate_ohmic_losses(magnetic.get_coil(), operatingPoint, 22);
+    losses = WindingSkinEffectLosses::calculate_skin_effect_losses(magnetic.get_coil(), 22, losses);
+    const auto dcResistancePerTurn = losses.get_dc_resistance_per_turn().value();
+    losses = WindingOhmicLosses::apply_parallel_current_split(magnetic.get_coil(), losses, split, 22);
+
+    const auto lossesPerTurn = losses.get_winding_losses_per_turn().value();
+    REQUIRE(lossesPerTurn.size() == numberTurns);
+    const auto reference = lossesPerTurn[0].get_skin_effect_losses()->get_harmonic_frequencies();
+    REQUIRE(std::find(reference.begin(), reference.end(), circulatingFrequency) != reference.end());
+    for (size_t turnIndex = 0; turnIndex < numberTurns; ++turnIndex) {
+        INFO("turn " << turnIndex);
+        const auto skin = lossesPerTurn[turnIndex].get_skin_effect_losses().value();
+        REQUIRE(skin.get_harmonic_frequencies() == reference);
+        REQUIRE(skin.get_losses_per_harmonic().size() == reference.size());
+        // The circulating harmonic is the last listed: R_dc |I|^2 / 2 in the two strands that carry it, nothing elsewhere.
+        const double expected = (turnIndex == 3 || turnIndex == 9) ? dcResistancePerTurn[turnIndex] / 2 : 0.0;
+        CHECK_THAT(skin.get_losses_per_harmonic().back(), Catch::Matchers::WithinRel(expected, 1e-9) || Catch::Matchers::WithinAbs(expected, 1e-15));
+    }
+    settings.reset();
+}
+
 TEST_CASE("Test_Winding_Losses_Parallel_Split_Fringing_Close_Vs_OMFEM", "[winding-losses][parallel-split][physical-model]") {
     // ABT #1314: the same stack beside the gap at 20 kHz: the split is one-sided, falling monotonically away from the gap
     // side. OMFEM 2D (.mkf-1645-fem/ref3_parallels/summary.txt, Fringing_Close_20000, f1 = 19843.8 Hz):
