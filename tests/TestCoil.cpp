@@ -14977,6 +14977,50 @@ TEST_CASE("Test_Toroidal_Real_Winding_Blocking_Reservation_Holds_A_Ring_Below_Th
     settings.reset();
 }
 
+TEST_CASE("Test_Toroidal_Real_Winding_Sector_Respread_Is_Ordered_From_The_Rings_Own_Arc", "[coil][toroidal][real-geometry]") {
+    // ABT #1734 / ABT #1819: a sector ring is re-spread in the order of the arc it occupies, cut in
+    // the middle of its largest gap. Ordered from the march's reference angle instead, a turn lying
+    // just behind it sorts last and is laid at the far end of the sector: on this fixture the
+    // regenerated crossings then find no azimuth and the wind is refused.
+    settings.reset();
+    settings.set_coil_use_real_winding_geometry(true);
+    auto wire = OpenMagnetics::find_wire_by_name("Round 29.0 - Single Build");
+    OpenMagnetics::Coil coil;
+    REQUIRE_NOTHROW(coil = OpenMagneticsTesting::get_quick_coil({30, 30, 30}, {1, 1, 1}, "T 20/10/7", 1,
+                                                                MAS::WindingOrientation::CONTIGUOUS,
+                                                                MAS::WindingOrientation::OVERLAPPING,
+                                                                MAS::CoilAlignment::CENTERED,
+                                                                MAS::CoilAlignment::CENTERED,
+                                                                {wire, wire, wire}));
+    INFO(coil.get_last_fit_failure());
+    REQUIRE(coil.get_turns_description());
+    CHECK(OpenMagneticsTesting::check_turns_description(coil));
+    CHECK(OpenMagneticsTesting::check_toroidal_sections_keep_their_sectors(coil));
+    settings.reset();
+}
+
+TEST_CASE("Test_Toroidal_Real_Winding_Lead_Anchor_Settles_The_Rings_Of_A_Winding", "[coil][toroidal][real-geometry]") {
+    // ABT #1818: T 25/15/10, 45 + 45 turns x 2 of Round 24.0, overlapping. Re-spread from the end
+    // of the widest corridor, the rings of a winding moved their own lead turns on every pass and
+    // chased each other's leads: the same one-slot escalation on all 16 re-winds, and the wind was
+    // refused. Re-spread around its lead-attached turn, each ring leaves the corridors it casts
+    // where they are and the wind settles.
+    settings.reset();
+    settings.set_coil_use_real_winding_geometry(true);
+    auto wire = OpenMagnetics::find_wire_by_name("Round 24.0 - Single Build");
+    OpenMagnetics::Coil coil;
+    REQUIRE_NOTHROW(coil = OpenMagneticsTesting::get_quick_coil({45, 45}, {2, 2}, "T 25/15/10", 1,
+                                                                MAS::WindingOrientation::OVERLAPPING,
+                                                                MAS::WindingOrientation::OVERLAPPING,
+                                                                MAS::CoilAlignment::CENTERED,
+                                                                MAS::CoilAlignment::CENTERED,
+                                                                {wire, wire}));
+    INFO(coil.get_last_fit_failure());
+    REQUIRE(coil.get_turns_description());
+    CHECK(OpenMagneticsTesting::check_turns_description(coil));
+    settings.reset();
+}
+
 TEST_CASE("Test_Toroidal_Real_Winding_Nudged_Turn_Clears_Its_Corridor_On_The_Coordinate_Grid", "[coil][toroidal][real-geometry]") {
     // ABT #1818 / ABT #1804: the minimal nudge moved an intruding turn to the corridor edge plus
     // 1e-6 deg, and the turn is stored on the 1 nm coordinate grid: it read back inside the corridor
