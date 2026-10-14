@@ -28,18 +28,24 @@ namespace OpenMagnetics {
  * The method (proposal .cperm-estimator/PROPOSAL.md, validated by hold-out on the catalogue):
  * - Shape-matched neighbours. Every other material of the same class (FERRITE MN_ZN, or FERRITE
  *   NI_ZN; same manufacturer allowed) is slid along log-frequency (the Snoek degree of freedom) and
- *   its mu' and mu'' are scaled, to fit the target's OWN data on the known side of the gap, weighted
- *   down with distance from the edge (exp(-d / 1 decade)), plus the other part inside the gap, where
- *   that part is tabulated. The estimate at a frequency is the median of the 5 best-matching donors
- *   whose shifted data reach it (at least 3 required), scaled so that it meets the material's own
- *   last tabulated value at the edge exactly (the donors give the shape, the material the level).
+ *   its mu' and mu'' are scaled, to fit the target's OWN data on the known side of the gap, plus the
+ *   other part inside the gap, where that part is tabulated. Above the data every own point counts,
+ *   weighted down with distance from the edge (exp(-d / 1 decade)); below it, the own points within
+ *   one decade of the edge count, uniformly (Alf, 2026-10-14: each side uses the variant that did best
+ *   on its own hold-out). The estimate at a frequency is the median of the 5 best-matching donors
+ *   whose shifted data reach it (at least 3 required), joined to the material's own last tabulated
+ *   value at the edge (the donors give the shape, the material the level): mu'' is scaled to meet
+ *   it; mu', which crosses zero above resonance, takes the gap at the edge as an additive offset that
+ *   fades linearly in log-frequency to zero one decade from the edge, so the curve is continuous
+ *   there and follows the donors' trend beyond (a scale flipped the sign of mu' where the donors'
+ *   median and the own value lie on opposite sides of zero).
  * - Beyond the donors' reach, the estimate continues from its outermost point along the class's tail
  *   slope, learned from the catalogue (median log-log slope of the donors' outermost decade).
  * - Below its data, mu' is held at its lowest tabulated value (the catalogue shows mu' flat there).
  * - Donors whose mu_i * f(mu'' peak) is more than 2 decades off their class median are screened out
  *   (19 DMEGC records and ACME N5 sit ~3 decades low: frequencies that look like kHz stored as Hz).
- * Hold-out errors of |Z| (toroid) with data removed above 1 MHz, MnZn: median 17 %, P90 73 % (C++ port,
- * with the edge scale and the distance weights; the proposal's Python: 19 % / 68 %), against
+ * Hold-out errors of |Z| (toroid) with data removed above 1 MHz, MnZn: median 17 %, P90 66 % (C++ port,
+ * with the edge join and the weights above; the proposal's Python: 19 % / 68 %), against
  * 182 % / 1696 % for the best simple baseline.
  *
  * It refuses (ComplexPermeabilityEstimatorRefusal) powders, MgZn, a proprietary or missing
@@ -105,14 +111,17 @@ struct ComplexPermeabilityGapEstimate {
     std::vector<ComplexPermeabilityDonorFit> donors;  // ranked, the best first (ESTIMATED_NEIGHBOURS)
     size_t numberDonorsMatched = 0;              // class donors that could be matched at all
     double reachFrequency = 0;                   // outermost frequency at least 3 donors reach, Hz
-    double reachValue = 0;                       // the estimate there
+    double reachValue = 0;                       // the donors' value there (mu': before the edge offset)
     double tailSlope = 0;                        // learned: d log|value| / d log f past the reach
     size_t tailSlopeDonors = 0;                  // donors the tail slope is the median of
-    // D7 (Alf, 2026-10-14): every donor's gain carries edgeScale = the part's own last tabulated value /
-    // the donors' median there, so the estimate meets the material's own data at the edge exactly.
+    // The join to the material's own last tabulated value at the edge (Alf, 2026-10-14):
+    // - mu'': every donor's gain carries edgeScale = own edge value / the donors' median there;
+    // - mu': edgeOffset = own edge value - the donors' median there, added at the edge and fading
+    //   linearly in log-frequency to 0 one decade from it (edge_offset_at). edgeScale stays 1.
     double edgeScale = 1;
-    // edgeScale < 0: the donors' median at the edge has the opposite sign of the own mu' there, and the
-    // multiplicative scale flips the estimated mu' (reported to Alf, ABT #1861; not hidden).
+    double edgeOffset = 0;
+    // mu' only: the donors' median at the edge lies on the other side of zero from the own value. The
+    // additive offset joins the two without flipping the donors' trend.
     bool edgeSignMismatch = false;
     std::string neighboursMethod;                // human-readable, as CoreHeatConductivityEstimate::method
     std::string tailMethod;
@@ -122,6 +131,15 @@ struct ComplexPermeabilityGapEstimate {
 
     // The estimated value at a frequency beyond the edge, and where it came from.
     std::pair<double, ComplexPermeabilitySource> evaluate(double frequency) const;
+    // mu': the part of edgeOffset still added at this frequency (edgeOffset at the edge, 0 from one
+    // decade beyond it). 0 for mu'' and for HELD_FLAT.
+    double edge_offset_at(double frequency) const;
+    // The donors' per-point median at a frequency inside their reach, before the mu' edge offset (for
+    // mu'' it carries the edge scale). Disengaged where fewer than 3 donors reach it.
+    std::optional<double> neighbours_median(double frequency) const;
+    // log10 f, moved to just inside the gap (1e-6 decades past the edge) when it is not already
+    // further: the donors are read as they are beyond the edge, where the join is made.
+    double inside_gap(double logFrequency) const;
     const std::string& method(ComplexPermeabilitySource valueSource) const;
 };
 

@@ -25,11 +25,21 @@ namespace {
 constexpr double kShiftRangeDecades = 1.5;
 constexpr double kShiftStepDecades = 0.025;
 constexpr int kNumberShifts = 121;  // 2 * 1.5 / 0.025 + 1
-// - the target's own data matched: all its points on the known side of the gap edge, each weighted
-//   exp(-d / 1 decade) with d its distance from the edge in decades (Alf, 2026-10-14: the neighbours
-//   give the tendency, the material's own data drive the weight; hold-out: 0.5, 1 and 2 decades
-//   tried, 1 kept); points of the other part inside the gap weigh 1;
+// - the target's own data matched (Alf, 2026-10-14: each side uses the variant that did best on its
+//   own hold-out): ABOVE the data, all its points on the known side of the gap edge, each weighted
+//   exp(-d / 1 decade) with d its distance from the edge in decades (the neighbours give the
+//   tendency, the material's own data drive the weight; hold-out: 0.5, 1 and 2 decades tried, 1
+//   kept); BELOW the data, its points within 1 decade of the edge, uniformly. Points of the other part
+//   inside the gap weigh 1;
 constexpr double kMatchWeightDecades = 1.0;
+constexpr double kMatchWindowDecades = 1.0;
+// - mu' joins its own edge value through an additive offset that fades linearly in log-frequency to
+//   0 over 1 decade from the edge (Alf, 2026-10-14);
+constexpr double kEdgeOffsetFadeDecades = 1.0;
+// - the join is made with the donors as they are just inside the gap, 1e-6 decades past the edge: a
+//   donor whose shifted table ends exactly at the edge counts at the edge but not beyond it, and the
+//   join at the edge point itself would leave a jump right after it (3C97's mu' at 30 MHz: 0.47);
+constexpr double kEdgeJoinStepDecades = 1e-6;
 // - mu' points inside the gap join the match only from 100 Hz up (the hold-out's sweep starts at
 //   1 kHz; a decade below it is still matched);
 constexpr double kLowestMatchedRealFrequency = 100;
@@ -264,16 +274,20 @@ bool beyond_edge(double logFrequency, double logEdge, ComplexPermeabilityGapSide
 }
 
 // The weight of one of the target's own points on the known side of the edge (0: not matched).
+// Gap above the data: exp(-d / kMatchWeightDecades). Gap below it: 1 within kMatchWindowDecades.
 double known_side_weight(double logFrequency, double logEdge, ComplexPermeabilityGapSide side) {
     double distance = side == ComplexPermeabilityGapSide::BELOW ? logFrequency - logEdge : logEdge - logFrequency;
     if (distance < -kLogTolerance) {
         return 0;
     }
+    if (side == ComplexPermeabilityGapSide::BELOW) {
+        return distance <= kMatchWindowDecades + kLogTolerance ? 1 : 0;
+    }
     return std::exp(-std::max(distance, 0.0) / kMatchWeightDecades);
 }
 
-// The target's data used to fit each donor: its points on the known side of the edge, weighted down
-// with their distance from the edge (known_side_weight), plus the
+// The target's data used to fit each donor: its points on the known side of the edge, weighted
+// as known_side_weight says, plus the
 // other part's points inside the gap when that part is tabulated there (realMissing / imaginaryMissing
 // say which parts the target lacks beyond the edge).
 Channels match_channels(const CatalogueMaterial& target, double logEdge, ComplexPermeabilityGapSide side,
@@ -567,24 +581,32 @@ ComplexPermeabilityGapEstimate neighbours_gap(const CatalogueMaterial& target, c
                       " donors have data past the edge";
         return gap;
     }
-    // D7 (Alf, 2026-10-14): the donors give the shape; the estimate meets the material's own last
-    // tabulated point exactly. Every donor's gain is multiplied by own edge value / donors' median there.
+    // The donors give the shape; the estimate meets the material's own last tabulated point exactly
+    // (Alf, 2026-10-14). mu'': every donor's gain is multiplied by own edge value / donors' median
+    // there. mu': the difference is added, fading over kEdgeOffsetFadeDecades (edge_offset_at), so a
+    // donors' median on the other side of zero is joined, not flipped.
     {
-        auto edgeEstimate = neighbours_value(gap.donors, part, logEdge);
+        auto edgeEstimate = neighbours_value(gap.donors, part, gap.inside_gap(logEdge));
         if (!edgeEstimate) {
             gap.refusal = where + ": fewer than " + std::to_string(kMinimumNeighbours) + " of its best-matching " + materialClass +
-                          " donors reach the edge, so the estimate cannot be scaled to meet its own value there";
+                          " donors reach the edge, so the estimate cannot be joined to its own value there";
             return gap;
         }
         if (edgeEstimate.value() == 0) {
-            gap.refusal = where + ": the donors' median at the edge is 0, so the estimate cannot be scaled to meet its own value there";
+            gap.refusal = where + ": the donors' median at the edge is 0 (their tables are 0 there), so they give no trend to join "
+                          "its own value to";
             return gap;
         }
         double ownEdge = side == ComplexPermeabilityGapSide::BELOW ? own.values.front() : own.values.back();
-        gap.edgeScale = ownEdge / edgeEstimate.value();
-        gap.edgeSignMismatch = gap.edgeScale < 0;
-        for (auto& fit : gap.donors) {
-            fit.gain *= gap.edgeScale;
+        if (part == ComplexPermeabilityPart::REAL) {
+            gap.edgeOffset = ownEdge - edgeEstimate.value();
+            gap.edgeSignMismatch = ownEdge * edgeEstimate.value() < 0;
+        }
+        else {
+            gap.edgeScale = ownEdge / edgeEstimate.value();
+            for (auto& fit : gap.donors) {
+                fit.gain *= gap.edgeScale;
+            }
         }
     }
     gap.reachFrequency = std::pow(10.0, reach.value());
@@ -593,6 +615,8 @@ ComplexPermeabilityGapEstimate neighbours_gap(const CatalogueMaterial& target, c
         throw CalculationException(ErrorCode::CALCULATION_INVALID_RESULT,
             "Complex permeability estimate of " + target.name + ", " + where + ": the donors' reach has no estimate");
     }
+    // mu': the donors' value, without the edge offset; evaluate() adds the offset in the tail as well,
+    // so it is gone a decade from the edge wherever that falls.
     gap.reachValue = reachValue.value();
     auto slope = learned_tail_slope(donors, part, side);
     if (!slope) {
@@ -609,9 +633,18 @@ ComplexPermeabilityGapEstimate neighbours_gap(const CatalogueMaterial& target, c
         neighbours << (index == 0 ? " " : ", ") << gap.donors[index].name << " " << std::showpos << std::fixed << std::setprecision(3)
                    << gap.donors[index].shiftDecades << std::noshowpos << " dec";
     }
-    neighbours << "; per-point median, each donor shifted in frequency and scaled to " << target.name << "'s own data (weighted "
-               << "down with distance from " << format_frequency(gap.edgeFrequency) << "), then scaled by " << gap.edgeScale
-               << " to meet its own value at " << format_frequency(gap.edgeFrequency) << "; reaches " << format_frequency(gap.reachFrequency);
+    neighbours << "; per-point median, each donor shifted in frequency and scaled to " << target.name << "'s own data ("
+               << (side == ComplexPermeabilityGapSide::ABOVE ? "weighted down with distance from " : "within a decade of ")
+               << format_frequency(gap.edgeFrequency) << "), then ";
+    if (part == ComplexPermeabilityPart::REAL) {
+        neighbours << "offset by " << std::showpos << std::defaultfloat << std::setprecision(4) << gap.edgeOffset << std::noshowpos
+                   << " at " << format_frequency(gap.edgeFrequency) << ", fading to 0 a decade from it, to meet its own value there";
+    }
+    else {
+        neighbours << "scaled by " << std::defaultfloat << std::setprecision(4) << gap.edgeScale << " to meet its own value at "
+                   << format_frequency(gap.edgeFrequency);
+    }
+    neighbours << "; reaches " << format_frequency(gap.reachFrequency);
     gap.neighboursMethod = neighbours.str();
     std::ostringstream tail;
     tail << part_symbol(part) << " ESTIMATED beyond the donors' reach (" << format_frequency(gap.reachFrequency) << ") along the "
@@ -638,15 +671,36 @@ std::pair<double, ComplexPermeabilitySource> ComplexPermeabilityGapEstimate::eva
     double logReach = std::log10(reachFrequency);
     bool beyondReach = side == ComplexPermeabilityGapSide::BELOW ? logFrequency < logReach : logFrequency > logReach;
     if (beyondReach) {
-        return {reachValue * std::pow(frequency / reachFrequency, tailSlope), ComplexPermeabilitySource::ESTIMATED_TAIL};
+        return {reachValue * std::pow(frequency / reachFrequency, tailSlope) + edge_offset_at(frequency), ComplexPermeabilitySource::ESTIMATED_TAIL};
     }
-    auto value = neighbours_value(donors, part, logFrequency);
+    auto value = neighbours_value(donors, part, inside_gap(logFrequency));
     if (!value) {
         throw CalculationException(ErrorCode::CALCULATION_INVALID_RESULT,
             "Complex permeability estimate of " + materialName + ": fewer than 3 donors reach " + std::to_string(frequency) +
             " Hz inside their reach (" + std::to_string(reachFrequency) + " Hz)");
     }
-    return {value.value(), ComplexPermeabilitySource::ESTIMATED_NEIGHBOURS};
+    return {value.value() + edge_offset_at(frequency), ComplexPermeabilitySource::ESTIMATED_NEIGHBOURS};
+}
+
+std::optional<double> ComplexPermeabilityGapEstimate::neighbours_median(double frequency) const {
+    if (source != ComplexPermeabilitySource::ESTIMATED_NEIGHBOURS || !refusal.empty()) {
+        return std::nullopt;
+    }
+    return neighbours_value(donors, part, inside_gap(std::log10(frequency)));
+}
+
+double ComplexPermeabilityGapEstimate::inside_gap(double logFrequency) const {
+    double logEdge = std::log10(edgeFrequency);
+    return side == ComplexPermeabilityGapSide::ABOVE ? std::max(logFrequency, logEdge + kEdgeJoinStepDecades)
+                                                     : std::min(logFrequency, logEdge - kEdgeJoinStepDecades);
+}
+
+double ComplexPermeabilityGapEstimate::edge_offset_at(double frequency) const {
+    if (part != ComplexPermeabilityPart::REAL || source != ComplexPermeabilitySource::ESTIMATED_NEIGHBOURS) {
+        return 0;
+    }
+    double distance = std::fabs(std::log10(frequency / edgeFrequency));
+    return edgeOffset * std::max(0.0, 1 - distance / kEdgeOffsetFadeDecades);
 }
 
 const std::string& ComplexPermeabilityGapEstimate::method(ComplexPermeabilitySource valueSource) const {
