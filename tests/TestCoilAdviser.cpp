@@ -8,6 +8,7 @@
 #include "advisers/MagneticFilter.h"
 #include "processors/Inputs.h"
 #include "processors/MagneticSimulator.h"
+#include "processors/ResultsAnalyzer.h"
 #include "physical_models/StrayCapacitance.h"
 #include <magic_enum.hpp>
 #include "TestingUtils.h"
@@ -1389,19 +1390,47 @@ TEST_CASE("Coil adviser rejects a coil whose core saturates at its operating tem
     // the ranking below meets.
     auto unrankedCoils = CoilAdviser().get_advised_coil(masMagnetic, 100000);
     REQUIRE(unrankedCoils.size() > 2);
+    // Since ABT #1855 (Alf approved this rewrite 2026-10-14) the loss-temperature solve no longer throws
+    // for a saturated core: the losses filter gives the solved outputs and refuses the coil, and the
+    // verdict is the saturation check analyze_results makes on them (the one the coil adviser uses).
     auto core_saturates = [](OpenMagnetics::Mas& woundMas) {
-        try {
-            MagneticFilterLosses().evaluate_magnetic(&woundMas.get_mutable_magnetic(), &woundMas.get_mutable_inputs());
-        }
-        catch (const CalculationException& exception) {
-            if (exception.code() == ErrorCode::CALCULATION_CORE_SATURATES) {
-                return true;
+        std::vector<OpenMagnetics::Outputs> outputs;
+        std::pair<bool, double> verdict;
+        REQUIRE_NOTHROW(verdict = MagneticFilterLosses().evaluate_magnetic(&woundMas.get_mutable_magnetic(), &woundMas.get_mutable_inputs(), &outputs));
+        REQUIRE(outputs.size() == woundMas.get_inputs().get_operating_points().size());
+        bool saturates = false;
+        for (size_t index = 0; index < outputs.size(); ++index) {
+            REQUIRE(outputs[index].get_core_losses());
+            for (const auto& finding : ResultsAnalyzer::analyze_saturation(woundMas.get_magnetic(), woundMas.get_inputs().get_operating_points()[index],
+                                                                           outputs[index], index)) {
+                INFO(finding.message);
+                CHECK(finding.code == ResultFindingCode::CORE_SATURATES);
+                saturates = true;
             }
-            throw;
         }
-        return false;
+        if (saturates) {
+            // A saturating coil is refused by the filter.
+            CHECK_FALSE(verdict.first);
+        }
+        return saturates;
     };
     REQUIRE(core_saturates(unrankedCoils[0]));
+    {
+        // Its numbers: the core is solved at the temperature its losses heat it to, where its B peak is
+        // above the material's B_sat.
+        std::vector<OpenMagnetics::Outputs> outputs;
+        MagneticFilterLosses().evaluate_magnetic(&unrankedCoils[0].get_mutable_magnetic(), &unrankedCoils[0].get_mutable_inputs(), &outputs);
+        double coreTemperature = outputs[0].get_core_losses()->get_temperature();
+        double peak = ResultsAnalyzer::get_peak_flux_density(outputs[0].get_core_losses()->get_magnetic_flux_density().value());
+        auto verdict = ResultsAnalyzer::check_saturation(unrankedCoils[0].get_mutable_magnetic().get_mutable_core().resolve_material(), peak, coreTemperature);
+        INFO("core at " << coreTemperature << " C, B peak " << peak << " T, B_sat " << verdict.saturationFluxDensity << " T");
+        // Measured on this branch (2026-10-14): 0.3133 T at 220 C against B_sat 0.21 T there; the losses drive
+        // the core to the end of 3C91's data, where the loss solve holds it.
+        CHECK(verdict.saturates);
+        CHECK_THAT(peak, Catch::Matchers::WithinRel(0.3133, 0.02));
+        CHECK(coreTemperature > 200);
+        CHECK(std::isfinite(outputs[0].get_core_losses()->get_core_losses()));
+    }
 
     // Ranking by losses: the adviser carries on past the saturating coils and returns none of them.
     std::vector<OpenMagnetics::Mas> rankedCoils;

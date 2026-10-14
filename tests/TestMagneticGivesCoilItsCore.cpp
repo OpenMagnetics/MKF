@@ -12,6 +12,8 @@
 #include "constructive_models/Mas.h"
 #include "physical_models/WindingOhmicLosses.h"
 #include "processors/MagneticSimulator.h"
+#include "processors/ResultsAnalyzer.h"
+#include "physical_models/InitialPermeability.h"
 #include "support/Settings.h"
 #include "support/Utils.h"
 
@@ -189,12 +191,32 @@ TEST_CASE("simulate() runs a fitting stacked-section PQ 65 design reloaded from 
     auto magnetic = autocomplete_and_reload(design, mas.get_inputs());
 
     // simulate() gets past the outside series links (what ABT #1533 broke) and reaches the
-    // loss <-> temperature solve, which finds no operating point: at 100 C ambient the 0.5 mm
-    // primary dissipates ~60-77 W of copper against ~2 W of core, driving the core past
-    // DMR96A's Curie temperature (230 C) to ~310 C. The solve refuses that (ABT #838, accepted
-    // by Alf 2026-10-10) instead of reporting losses at a temperature the design never reaches.
-    REQUIRE_THROWS_WITH(OpenMagnetics::MagneticSimulator().simulate(mas.get_inputs(), magnetic),
-                        Catch::Matchers::ContainsSubstring("No operating temperature was found where the core is ferromagnetic"));
+    // loss <-> temperature solve: at 100 C ambient the 0.5 mm primary dissipates ~60-77 W of copper
+    // against ~2 W of core, driving the core past DMR96A's Curie temperature (230 C) to ~310 C.
+    // Rewritten for ABT #1855, Alf approved 2026-10-14: the solve no longer refuses that; it holds the
+    // core at the last temperature its material's data covers (mu_r = 1 at Curie), iterates the
+    // winding to its own fixed point, and ResultsAnalyzer reports CORE_ABOVE_MATERIAL_DATA_LIMIT.
+    OpenMagnetics::Mas simulated;
+    REQUIRE_NOTHROW(simulated = OpenMagnetics::MagneticSimulator().simulate(mas.get_inputs(), magnetic));
+    REQUIRE(simulated.get_outputs().size() == mas.get_inputs().get_operating_points().size());
+    const auto ceiling = OpenMagnetics::InitialPermeability::get_maximum_ferromagnetic_data_temperature(magnetic.get_core().resolve_material());
+    REQUIRE(ceiling);
+    const auto& output = simulated.get_outputs()[0];
+    REQUIRE(output.get_core_losses());
+    REQUIRE(output.get_temperature());
+    INFO("core losses at " << output.get_core_losses()->get_temperature() << " C, ceiling " << ceiling.value()
+         << " C, hottest point " << output.get_temperature()->get_maximum_temperature() << " C");
+    CHECK(output.get_core_losses()->get_temperature() <= ceiling.value());
+    CHECK(output.get_core_losses()->get_temperature() > ceiling.value() - OpenMagnetics::MagneticSimulator::kOperatingTemperatureTolerance);
+    CHECK(output.get_temperature()->get_maximum_temperature() > ceiling.value());
+    size_t dataLimitFindings = 0;
+    for (const auto& finding : OpenMagnetics::ResultsAnalyzer::analyze_results(simulated)) {
+        INFO(finding.message);
+        if (finding.code == OpenMagnetics::ResultFindingCode::CORE_ABOVE_MATERIAL_DATA_LIMIT && finding.operatingPointIndex == 0) {
+            ++dataLimitFindings;
+        }
+    }
+    CHECK(dataLimitFindings == 1);
     settings.reset();
 }
 

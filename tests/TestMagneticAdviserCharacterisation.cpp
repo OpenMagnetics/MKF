@@ -711,10 +711,13 @@ TEST_CASE("CoreMinimumImpedance filter rejects a candidate whose core saturates 
     OpenMagnetics::Inputs inputs(fixture.at("inputs"));
     REQUIRE(inputs.get_design_requirements().get_minimum_impedance().has_value());
 
-    // The premise, outside the filter: the material is refused at that bias as a saturation, and
-    // is a material at a small one. That refusal stands everywhere else.
+    // The premise, outside the filter: at that bias the material is saturated, and at a small one it
+    // is a material. Until ABT #1855 the permeability refused that bias (SaturationException); since then
+    // (Alf approved this rewrite 2026-10-14, ABT #1855) the saturated material takes the vacuum's
+    // permeability, 1, and the filter rejects the candidate through the shared saturation check
+    // (ResultsAnalyzer::check_saturation on B at the bias).
     auto coreMaterial = find_core_material_by_name("Nanoperm 2000");
-    CHECK_THROWS_AS(InitialPermeability::get_initial_permeability(coreMaterial, 25, 1554.28, 150000), SaturationException);
+    CHECK(InitialPermeability::get_initial_permeability(coreMaterial, 25, 1554.28, 150000) == 1);
     CHECK(InitialPermeability::get_initial_permeability(coreMaterial, 25, 10, 150000) > 1);
 
     // The adviser's standard-cores candidates: each toroid shape with the material, ungapped.

@@ -1,5 +1,6 @@
 #include <source_location>
 #include "processors/CircuitSimulatorInterface.h"
+#include "processors/ResultsAnalyzer.h"
 #include "physical_models/MagnetizingInductance.h"
 #include "physical_models/InitialPermeability.h"
 #include "constructive_models/CorePiece.h"
@@ -2275,30 +2276,48 @@ TEST_CASE("Test_Volt_Seconds_That_Saturate_The_Core_Are_Refused_Before_The_Dc_Bi
         return coil;
     };
 
+    // Until ABT #1855 both were refused (SaturationException naming the operating point and winding).
+    // Since then (Alf approved this rewrite 2026-10-14, ABT #1855) the model gives its numbers for a
+    // saturated core, the DC-bias fixed point still settles (it no longer runs away), and the saturation
+    // is the verdict of the shared check analyze_results makes, ResultsAnalyzer::check_saturation.
+    auto material = magnetic.get_core().resolve_material();
+    double temperature = inputs.get_operating_point(0).get_conditions().get_ambient_temperature();
+    auto swingOf = [](const SignalDescriptor& fluxDensity) {
+        auto data = fluxDensity.get_waveform().value().get_data();
+        return *std::max_element(data.begin(), data.end()) - *std::min_element(data.begin(), data.end());
+    };
+
+    auto real = inputs.get_operating_point(0);
+    auto realFluxDensity = magnetizingInductance.calculate_inductance_and_magnetic_flux_density(magnetic.get_core(), magnetic.get_coil(), &real).second;
+    double realSwing = swingOf(realFluxDensity);
+
     auto saturating = inputs.get_operating_point(0);
     auto start = std::chrono::steady_clock::now();
-    CHECK_THROWS_WITH(magnetizingInductance.calculate_inductance_and_magnetic_flux_density(magnetic.get_core(), coilWithTurns(16), &saturating),
-                      Catch::Matchers::ContainsSubstring("The core saturates") &&
-                      Catch::Matchers::ContainsSubstring("Min. input volt. (simulated)") &&
-                      Catch::Matchers::ContainsSubstring("winding 'Primary'") &&
-                      Catch::Matchers::ContainsSubstring("DC-bias operating point reaches") &&
-                      Catch::Matchers::ContainsSubstring("B_sat"));
+    std::pair<MagnetizingInductanceOutput, SignalDescriptor> saturatingResult;
+    REQUIRE_NOTHROW(saturatingResult = magnetizingInductance.calculate_inductance_and_magnetic_flux_density(magnetic.get_core(), coilWithTurns(16), &saturating));
     CHECK(std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count() < 30);
-    // A SaturationException, the type an adviser rejects a candidate on instead of stopping.
-    auto saturatingAgain = inputs.get_operating_point(0);
-    CHECK_THROWS_AS(magnetizingInductance.calculate_inductance_and_magnetic_flux_density(magnetic.get_core(), coilWithTurns(16), &saturatingAgain),
-                    SaturationException);
+    double saturatingInductance = resolve_dimensional_values(saturatingResult.first.get_magnetizing_inductance());
+    double saturatingSwing = swingOf(saturatingResult.second);
+    double saturatingPeak = ResultsAnalyzer::get_peak_flux_density(saturatingResult.second);
+    auto saturatingVerdict = ResultsAnalyzer::check_saturation(material, saturatingPeak, temperature);
+    INFO("16 turns: L " << saturatingInductance * 1e6 << " uH, swing " << saturatingSwing << " T, B peak " << saturatingPeak
+         << " T, B_sat " << saturatingVerdict.saturationFluxDensity << " T; 24 turns: swing " << realSwing << " T");
+    CHECK(std::isfinite(saturatingInductance));
+    CHECK(saturatingInductance > 0);
+    // Faraday: the same volt-seconds on 16 turns instead of 24.
+    CHECK_THAT(saturatingSwing, Catch::Matchers::WithinRel(realSwing * 24 / 16, 0.01));
+    CHECK(saturatingVerdict.saturates);
+    CHECK_THAT(saturatingVerdict.message, Catch::Matchers::ContainsSubstring("The core saturates"));
 
-    // 8 turns triple the swing to about 1.4 T peak-to-peak: more than twice B_sat, which no bias can
-    // hold, so it is refused from the volt-seconds alone, before any DC-bias evaluation.
+    // 8 turns triple the swing to about 1.4 T peak-to-peak: more than twice B_sat, which no bias can hold.
     auto tooFewTurns = inputs.get_operating_point(0);
-    CHECK_THROWS_WITH(magnetizingInductance.calculate_inductance_and_magnetic_flux_density(magnetic.get_core(), coilWithTurns(8), &tooFewTurns),
-                      Catch::Matchers::ContainsSubstring("The core saturates") &&
-                      Catch::Matchers::ContainsSubstring("the volt-seconds impose a flux swing") &&
-                      Catch::Matchers::ContainsSubstring("for any bias"));
-    auto tooFewTurnsAgain = inputs.get_operating_point(0);
-    CHECK_THROWS_AS(magnetizingInductance.calculate_inductance_and_magnetic_flux_density(magnetic.get_core(), coilWithTurns(8), &tooFewTurnsAgain),
-                    SaturationException);
+    std::pair<MagnetizingInductanceOutput, SignalDescriptor> tooFewTurnsResult;
+    REQUIRE_NOTHROW(tooFewTurnsResult = magnetizingInductance.calculate_inductance_and_magnetic_flux_density(magnetic.get_core(), coilWithTurns(8), &tooFewTurns));
+    double tooFewTurnsSwing = swingOf(tooFewTurnsResult.second);
+    INFO("8 turns: swing " << tooFewTurnsSwing << " T");
+    CHECK_THAT(tooFewTurnsSwing, Catch::Matchers::WithinRel(realSwing * 3, 0.01));
+    CHECK(tooFewTurnsSwing / 2 > saturatingVerdict.saturationFluxDensity);
+    CHECK(ResultsAnalyzer::check_saturation(material, ResultsAnalyzer::get_peak_flux_density(tooFewTurnsResult.second), temperature).saturates);
 
     // Control: the real coil (24 turns, 0.48 T swing) has a DC point and keeps its answer, the ~64 uH
     // the fixture's design requirements now state.

@@ -68,6 +68,7 @@
 #include "physical_models/WindingLosses.h"
 #include "physical_models/WindingSkinEffectLosses.h"
 #include "processors/Inputs.h"
+#include "processors/ResultsAnalyzer.h"
 #include "physical_models/MagnetizingInductance.h"
 #include "support/Settings.h"
 #include "support/Utils.h"
@@ -2065,14 +2066,17 @@ TEST_CASE("MagneticFilter_Impedance_Malformed_Measured_Curve_Throws", "[magnetic
     }
 }
 
-// ABT #1740: the inductance model refuses an operating point that saturates the core with a
-// SaturationException. The saturation filter turns exactly that exception into its verdict, a reject,
-// and the core-and-DC losses filter stops its turn sweep at the last count that worked instead of
-// dropping the candidate (any other exception still propagates, ABT #1456).
+// ABT #1740: an operating point that saturates the core is a verdict on the candidate: the saturation
+// filter rejects it, and the core-and-DC losses filter stops its turn sweep at the last count that does
+// not saturate instead of dropping the candidate (any other exception still propagates, ABT #1456).
+// Until ABT #1855 the inductance model refused such a point with a SaturationException and the filters
+// acted on that exception; since then (Alf approved this rewrite 2026-10-14, ABT #1855) the model gives
+// its numbers for a saturated core and the filters judge them with the shared saturation check
+// analyze_results makes (ResultsAnalyzer::check_saturation).
 //
 // The design: an ungapped E 35 / 3C97 inductor carrying 10 A of DC. The bias MMF N I is imposed by the
-// current, so the DC point moves up the material's curve with every turn until the model's permeability
-// there falls to the vacuum's, where the model refuses it. The current is given as a raw waveform
+// current, so the DC point moves up the material's magnetisation curve with every turn, past the knee
+// on the vacuum's slope, until its B peak passes the material's B_sat. The current is given as a raw waveform
 // (no processed data), which keeps the losses filter's saturation-current cap (it reads the processed
 // peak) out of the way, so the sweep meets the model's refusal itself.
 namespace {
@@ -2115,17 +2119,23 @@ OpenMagnetics::Magnetic saturating_dc_inductor(int64_t numberTurns) {
     return magnetic;
 }
 
-// The highest turn count the inductance model still answers for at that bias; one more is refused.
+// Whether the shared saturation check (margin 1, the operating point's ambient) calls that turn count
+// saturated: the inductance model's B peak above the material's B_sat, or the bias collapsing the
+// permeability to mu_r = 1 at the model's DC point (both criteria, Alf 2026-10-14).
+bool saturating_dc_inductor_saturates(int64_t numberTurns, const OpenMagnetics::Inputs& inputs) {
+    auto magnetic = saturating_dc_inductor(numberTurns);
+    auto operatingPoint = inputs.get_operating_points()[0];
+    MagnetizingInductance model;
+    auto fluxDensity = model.calculate_inductance_and_magnetic_flux_density(magnetic.get_core(), magnetic.get_coil(), &operatingPoint).second;
+    return ResultsAnalyzer::check_saturation(magnetic.get_core().resolve_material(), ResultsAnalyzer::get_peak_flux_density(fluxDensity),
+                                             operatingPoint.get_conditions().get_ambient_temperature(), 1.0, model.get_last_dc_bias_point()).saturates;
+}
+
+// The highest turn count whose B peak at that bias is not above B_sat; one more is.
 int64_t last_turn_count_before_saturation_refusal() {
     auto inputs = saturating_dc_inductor_inputs();
-    MagnetizingInductance magnetizingInductance;
     for (int64_t numberTurns = 1; numberTurns <= 200; ++numberTurns) {
-        auto magnetic = saturating_dc_inductor(numberTurns);
-        auto operatingPoint = inputs.get_operating_point(0);
-        try {
-            magnetizingInductance.calculate_inductance_and_magnetic_flux_density(magnetic.get_core(), magnetic.get_coil(), &operatingPoint);
-        }
-        catch (const SaturationException&) {
+        if (saturating_dc_inductor_saturates(numberTurns, inputs)) {
             return numberTurns - 1;
         }
     }
@@ -2142,11 +2152,20 @@ TEST_CASE("MagneticFilter SATURATION rejects a candidate the inductance model re
     INFO("last turn count before the refusal: " << lastWorking);
     REQUIRE(lastWorking >= 2);
 
-    // The model's refusal is a SaturationException, and it names the saturation.
+    // The model gives its numbers for the saturated count, and the shared check says it saturates.
     auto saturated = saturating_dc_inductor(lastWorking + 1);
     auto operatingPoint = inputs.get_operating_point(0);
-    CHECK_THROWS_AS(MagnetizingInductance().calculate_inductance_and_magnetic_flux_density(saturated.get_core(), saturated.get_coil(), &operatingPoint),
-                    SaturationException);
+    std::pair<MagnetizingInductanceOutput, SignalDescriptor> saturatedResult;
+    MagnetizingInductance saturatedModel;
+    REQUIRE_NOTHROW(saturatedResult = saturatedModel.calculate_inductance_and_magnetic_flux_density(saturated.get_core(), saturated.get_coil(), &operatingPoint));
+    double saturatedInductance = resolve_dimensional_values(saturatedResult.first.get_magnetizing_inductance());
+    auto saturationVerdict = ResultsAnalyzer::check_saturation(saturated.get_core().resolve_material(), ResultsAnalyzer::get_peak_flux_density(saturatedResult.second), 25,
+                                                               1.0, saturatedModel.get_last_dc_bias_point());
+    INFO(lastWorking + 1 << " turns: L " << saturatedInductance << " H, B peak " << saturationVerdict.peakFluxDensity << " T, B_sat " << saturationVerdict.saturationFluxDensity << " T");
+    CHECK(std::isfinite(saturatedInductance));
+    CHECK(saturatedInductance > 0);
+    CHECK(saturationVerdict.saturates);
+    CHECK_FALSE(saturating_dc_inductor_saturates(lastWorking, inputs));
 
     // The filter's verdict on it is a reject, not an exception.
     MagneticFilterSaturation filter;

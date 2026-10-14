@@ -10,6 +10,7 @@
 #include "support/Exceptions.h"
 #include "physical_models/Reluctance.h"
 #include "physical_models/MagnetizingInductance.h"
+#include "processors/ResultsAnalyzer.h"
 #include "processors/Inputs.h"
 #include <cmath>
 #include "TestingUtils.h"
@@ -586,9 +587,12 @@ namespace {
         auto impedanceSweep = Sweeper().sweep_magnetizing_inductance_over_dc_bias(magnetic, 0, 260, 100);
 
         // ABT #1790: 12 turns on a 1 mm gap swept to 260 A (3120 A-turn) runs far past the saturation of
-        // 3C95, where MagnetizingInductance refuses the bias (ABT #1740). The sweep continues there with
-        // the core as air (mu_r = 1 in the reluctance model), flags those points and names them in the
-        // title; the unsaturated part is the model's own value at each bias, untouched.
+        // 3C95. Rewritten for ABT #1855 (Alf approved 2026-10-14): MagnetizingInductance no longer refuses
+        // that bias, it takes mu_r = 1 past the knee, so every point of the curve is the model's own value
+        // and the saturated ones are the air-core inductance. A point is flagged by the saturation check
+        // analyze_results makes (ResultsAnalyzer::check_saturation). Here it is its second criterion that
+        // fires: 3C95's permeability model collapses below 1 from ~44.6 A while the flux density on its
+        // magnetisation curve stays under B_sat (0.49 T against 0.53 T), so B alone would flag nothing.
         {
             const auto& currents = impedanceSweep.get_x_points();
             const auto& inductances = impedanceSweep.get_y_points();
@@ -606,25 +610,31 @@ namespace {
             inductorCoil.set_functional_description({coil.get_functional_description()[0]});
             MagnetizingInductance magnetizingInductanceModel;
             double staticMagnetizingInductance = resolve_dimensional_values(magnetizingInductanceModel.calculate_inductance_from_number_turns_and_gapping(core, inductorCoil).get_magnetizing_inductance());
+            auto coreMaterial = core.resolve_material();
 
             CHECK_FALSE(saturatedPoints.front());
             CHECK(saturatedPoints.back());
             size_t firstSaturatedIndex = saturatedPoints.size();
             for (size_t index = 0; index < saturatedPoints.size(); ++index) {
                 INFO("point " << index << ", " << currents[index] << " A, L = " << inductances[index] << " H");
+                // Every point is the model's value at that bias: the sweep adds nothing of its own.
+                auto operatingPoint = OpenMagnetics::Inputs::create_operating_point_with_sinusoidal_current_mask(defaults.measurementFrequency, staticMagnetizingInductance, defaults.ambientTemperature, {}, {sqrt(2)}, currents[index]);
+                auto [modelOutput, modelFluxDensity] = magnetizingInductanceModel.calculate_inductance_and_magnetic_flux_density(core, inductorCoil, &operatingPoint);
+                CHECK_THAT(inductances[index], Catch::Matchers::WithinRel(resolve_dimensional_values(modelOutput.get_magnetizing_inductance()), 1e-12));
+                auto verdict = ResultsAnalyzer::check_saturation(coreMaterial, ResultsAnalyzer::get_peak_flux_density(modelFluxDensity),
+                                                                 defaults.ambientTemperature, 1.0, magnetizingInductanceModel.get_last_dc_bias_point());
+                CHECK(verdict.saturates == saturatedPoints[index]);
                 if (saturatedPoints[index]) {
                     firstSaturatedIndex = std::min(firstSaturatedIndex, index);
                     // The saturated region: exactly the air-core value, flat.
                     CHECK_THAT(inductances[index], Catch::Matchers::WithinRel(airCoreInductance, 1e-12));
+                    // Flagged by the collapse of the permeability, B on the curve being under B_sat.
+                    CHECK(verdict.permeabilityCollapsed);
+                    CHECK_FALSE(verdict.fluxDensityAboveSaturation);
                 }
                 else {
                     // Once saturated, a larger bias is saturated too.
                     CHECK(index < firstSaturatedIndex);
-                    // The unsaturated region is the model's value at that bias, as before the
-                    // saturated-state model existed: the sweep did not change it.
-                    auto operatingPoint = OpenMagnetics::Inputs::create_operating_point_with_sinusoidal_current_mask(defaults.measurementFrequency, staticMagnetizingInductance, defaults.ambientTemperature, {}, {sqrt(2)}, currents[index]);
-                    double modelInductance = resolve_dimensional_values(magnetizingInductanceModel.calculate_inductance_from_number_turns_and_gapping(core, inductorCoil, &operatingPoint).get_magnetizing_inductance());
-                    CHECK_THAT(inductances[index], Catch::Matchers::WithinRel(modelInductance, 1e-12));
                     // A core, however biased, carries more flux than air.
                     CHECK(inductances[index] > airCoreInductance);
                     if (index > 0) {
@@ -634,11 +644,6 @@ namespace {
             }
             REQUIRE(firstSaturatedIndex < saturatedPoints.size());
             REQUIRE(firstSaturatedIndex > 0);
-            // The model itself refuses the first saturated bias: outside Sweeper the refusal stands.
-            {
-                auto operatingPoint = OpenMagnetics::Inputs::create_operating_point_with_sinusoidal_current_mask(defaults.measurementFrequency, staticMagnetizingInductance, defaults.ambientTemperature, {}, {sqrt(2)}, currents[firstSaturatedIndex]);
-                CHECK_THROWS_AS(magnetizingInductanceModel.calculate_inductance_from_number_turns_and_gapping(core, inductorCoil, &operatingPoint), SaturationException);
-            }
             CHECK(impedanceSweep.get_title().find("core saturated from") != std::string::npos);
             CHECK(impedanceSweep.get_title().find("air-core inductance, mu_r = 1") != std::string::npos);
             WARN("ABT #1790 DC-bias sweep: L(0 A) = " << inductances[0] << " H; last unsaturated point " << currents[firstSaturatedIndex - 1] << " A, L = " << inductances[firstSaturatedIndex - 1]

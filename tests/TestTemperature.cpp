@@ -3179,7 +3179,7 @@ TEST_CASE("Temperature: Cooling Utils Type Detection", "[temperature][cooling][s
     REQUIRE(h_mixed < 51.0);  // But natural should add a small amount
 }
 
-TEST_CASE("Temperature: 220kW Transformer", "[temperature][transformer][smoke-test]") {
+TEST_CASE("Temperature: 220kW Transformer", "[temperature][transformer][smoke-test][abt-1855]") {
     auto jsonPath = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "220kW_trafo.json");
     auto mas = OpenMagneticsTesting::mas_loader(jsonPath);
 
@@ -3200,16 +3200,28 @@ TEST_CASE("Temperature: 220kW Transformer", "[temperature][transformer][smoke-te
     // 2026-10-10): its copper alone dissipates ~1.4 kW at 60 C (360 A / 514 A rms at 20 kHz,
     // ~42 A/mm2 in the primary litz; R_dc * I^2 checked by hand), while 4 m/s over its ~0.075 m2
     // of surface gives ~0.4 K/W by hand (0.74 K/W in the thermal network), a 0.5-1 kK rise: core
-    // and copper heat each other past the Curie temperature. simulate() refuses that instead of
-    // reporting losses at a temperature the design never reaches.
-    // The refusal that arrives is the saturation one (ABT #838, Alf 2026-10-12): on the way up, at
-    // the 224.69 C iterate, the volt-seconds on the 6 turns (A_e 4085 mm2, flux swing 0.5019 T
-    // peak-to-peak) ask B_pk 0.2509 T of DMR96A, above its B_sat of 0.2471 T at that temperature,
-    // one or two iterates before the loop reaches the 230 C ceiling where it would report "No
-    // operating temperature was found where the core is ferromagnetic". Either way the design has
-    // no operating point; the core saturating at the temperature its losses heat it to is the
-    // expected refusal (CALCULATION_CORE_SATURATES).
-    REQUIRE_THROWS_AS(getLossesFromSimulation(magnetic, inputs), OpenMagnetics::SaturationException);
+    // and copper heat each other past the Curie temperature.
+    // Rewritten for ABT #1855, Alf approved 2026-10-14: simulate no longer refuses a saturating core
+    // (it gives the numbers and ResultsAnalyzer names the saturation), and a core driven to its Curie
+    // temperature (DMR96A: 230 C) is held there with mu_r = 1 while the winding is iterated alone.
+    // The winding alone has no fixed point: the turn temperature the network returns grows ~1.8 K per
+    // kelvin of winding temperature its losses are evaluated at (2.8 kW at 60 C -> 1538 C turns,
+    // 16.9 kW at 1538 C -> 4262 C). The loss loop detects that from its own iterates and refuses with
+    // a runaway error carrying the loss and temperature history, instead of iterating on until the
+    // thermal network fails to converge (what main's held loop did, at ~2.3 MW).
+    try {
+        getLossesFromSimulation(magnetic, inputs);
+        FAIL("simulate gave an operating point for a winding that runs away");
+    }
+    catch (const OpenMagnetics::CalculationException& error) {
+        INFO(error.what());
+        CHECK(error.code() == OpenMagnetics::ErrorCode::CALCULATION_DIVERGED);
+        const std::string message = error.what();
+        CHECK_THAT(message, Catch::Matchers::ContainsSubstring("No thermal operating point: the winding runs away"));
+        CHECK_THAT(message, Catch::Matchers::ContainsSubstring("dT_turn/dT_w"));
+        CHECK_THAT(message, Catch::Matchers::ContainsSubstring("History:"));
+        CHECK_THAT(message, Catch::Matchers::ContainsSubstring("Pcu="));
+    }
 }
 
 TEST_CASE("Temperature: PQ Single Turn Quadrant Surface Areas", "[temperature][concentric][geometry][smoke-test]") {

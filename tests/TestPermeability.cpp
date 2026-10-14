@@ -1077,16 +1077,17 @@ namespace {
         // Past the knee the amplitude permeability of a ferrite (the slope of its Roshen loop) tends to 0, not
         // to the vacuum's 1: 3C96 gave mu_r = 0.499 at 6.2 kA/m and 8e-13 at 5e9 A/m, which the DC-bias fixed
         // point then used as a material property. A relative permeability below 1 is the model extrapolated
-        // past saturation, and is refused.
+        // past saturation. Under a bias that is the material saturated: until ABT #1855 it was refused with a
+        // SaturationException; since then (Alf approved this rewrite 2026-10-14, ABT #1855) the saturated
+        // material takes the vacuum's permeability, 1, and the saturation is reported by
+        // ResultsAnalyzer::check_saturation on the flux density, not by this call.
         auto material = OpenMagnetics::Core::resolve_material("3C96");
         double modelValue = OpenMagnetics::InitialPermeability::get_initial_permeability_model_value(material, 25.0, 6.2e3, 100e3);
         INFO("3C96 model permeability at 6.2 kA/m: " << modelValue);
         REQUIRE(modelValue < 1);
-        CHECK_THROWS_WITH(OpenMagnetics::InitialPermeability::get_initial_permeability(material, 25.0, 6.2e3, 100e3),
-                          Catch::Matchers::ContainsSubstring("is saturated") && Catch::Matchers::ContainsSubstring("3C96"));
-        // It is a SaturationException, the type an adviser rejects a candidate on (ABT #1740, #1534).
-        CHECK_THROWS_AS(OpenMagnetics::InitialPermeability::get_initial_permeability(material, 25.0, 6.2e3, 100e3),
-                        OpenMagnetics::SaturationException);
+        double saturatedPermeability = 0;
+        REQUIRE_NOTHROW(saturatedPermeability = OpenMagnetics::InitialPermeability::get_initial_permeability(material, 25.0, 6.2e3, 100e3));
+        CHECK(saturatedPermeability == 1);
 
         // Without a bias, a value below 1 is not a saturation and must not be reported as one: the Magnetics
         // frequencyFactor quartic of Kool Mu 60 goes negative near 30 MHz. In the CoreAdviser's suppression
