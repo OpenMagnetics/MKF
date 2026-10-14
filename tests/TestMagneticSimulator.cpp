@@ -2240,3 +2240,229 @@ TEST_CASE("A DC bias that collapses the permeability to mu_r = 1 is a saturation
     }
     settings.reset();
 }
+
+// ABT #1876 (Alf decision 2026-10-14): an operating point with no thermal operating point (the thermal
+// network does not converge on its losses inside the loss loop, or its winding runs away) affects only
+// that point: its core and winding losses are those at ambient (as before ABT #838), it gets no
+// temperature output, and analyze_results reports NO_THERMAL_OPERATING_POINT for it with MKF's message.
+// The other points simulate normally; any other error still refuses the whole design.
+namespace {
+    // The WebFrontend's default design (tests/fixtures/default_two_winding_pq2715.json there): PQ 27/15,
+    // 13 + 13 turns of the "Dummy" wire, +-5 A triangular at 100 kHz, 25 C. About 2 kW of copper.
+    std::pair<OpenMagnetics::Magnetic, OpenMagnetics::Inputs> load_web_default_design() {
+        auto path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "default_two_winding_pq2715.json");
+        auto mas = OpenMagneticsTesting::mas_loader(path);
+        auto magnetic = OpenMagnetics::magnetic_autocomplete(mas.get_magnetic());
+        auto inputs = OpenMagnetics::inputs_autocomplete(mas.get_inputs(), magnetic);
+        return {magnetic, inputs};
+    }
+
+    json read_web_default_fixture() {
+        auto path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "default_two_winding_pq2715.json");
+        std::ifstream file(path);
+        return json::parse(file);
+    }
+
+    // The fixture's operating point as stored, with every winding current and voltage scaled and the derived signals
+    // dropped: the Inputs constructor and inputs_autocomplete derive them again.
+    json scaled_operating_point(double factor, const std::string& name) {
+        json operatingPointJson = read_web_default_fixture()["inputs"]["operatingPoints"][0];
+        operatingPointJson["name"] = name;
+        for (auto& excitation : operatingPointJson["excitationsPerWinding"]) {
+            for (const std::string signal : {"current", "voltage"}) {
+                if (!excitation.contains(signal)) {
+                    continue;
+                }
+                for (auto& value : excitation[signal]["waveform"]["data"]) {
+                    value = factor * value.get<double>();
+                }
+                excitation[signal].erase("processed");
+                excitation[signal].erase("harmonics");
+            }
+            excitation.erase("magnetizingCurrent");
+            excitation.erase("magneticFluxDensity");
+            excitation.erase("magneticFieldStrength");
+        }
+        return operatingPointJson;
+    }
+
+    // The fixture's inputs with these operating points, processed as mas_loader processes the fixture's own
+    // (the fixture has no outputs: Inputs with the magnetizing inductance of its turns and gapping), then autocompleted.
+    OpenMagnetics::Inputs web_default_inputs_with(const json& operatingPoints, const OpenMagnetics::Magnetic& magnetic) {
+        json inputsJson = read_web_default_fixture()["inputs"];
+        inputsJson["operatingPoints"] = operatingPoints;
+        double magnetizingInductance = resolve_dimensional_values(MagnetizingInductance().calculate_inductance_from_number_turns_and_gapping(
+            magnetic.get_core(), magnetic.get_coil()).get_magnetizing_inductance());
+        return OpenMagnetics::inputs_autocomplete(OpenMagnetics::Inputs(inputsJson, true, magnetizingInductance), magnetic);
+    }
+
+    std::string describe_findings(const std::vector<ResultFinding>& findings) {
+        std::string all;
+        for (const auto& finding : findings) {
+            all += "\n[" + std::to_string(finding.operatingPointIndex) + "] " + to_string(finding.code) + ": " + finding.message;
+        }
+        return all;
+    }
+}
+
+TEST_CASE("The web's default design simulates with its losses at ambient and a NO_THERMAL_OPERATING_POINT finding",
+          "[processor][magnetic-simulator][abt-1876]") {
+    // Alf decision 2026-10-14, ABT #1876. On 98e62c64 simulate threw for the whole design: "Thermal network
+    // did not converge in 100 iterations ... Loss loop at iterate 2 (core losses at 122.5 C, winding losses at
+    // 13518.7 C)". Prod 426ec505 (losses at ambient) gave 1996.6 W of copper.
+    settings.reset();
+    auto [magnetic, inputs] = load_web_default_design();
+    REQUIRE(inputs.get_operating_points().size() == 1);
+    const double ambientTemperature = inputs.get_operating_points()[0].get_conditions().get_ambient_temperature();
+    REQUIRE(ambientTemperature == 25);
+
+    MagneticSimulator magneticSimulator;
+    OpenMagnetics::Mas simulated;
+    REQUIRE_NOTHROW(simulated = magneticSimulator.simulate(inputs, magnetic));
+    REQUIRE(simulated.get_outputs().size() == 1);
+    const auto& output = simulated.get_outputs()[0];
+    CHECK_FALSE(output.get_temperature());
+    REQUIRE(output.get_core_losses());
+    REQUIRE(output.get_winding_losses());
+    CHECK(output.get_core_losses()->get_temperature() == ambientTemperature);
+
+    // The same losses evaluated at ambient, independently of the loss loop.
+    OpenMagnetics::Magnetic woundMagnetic = magnetic;
+    if (!woundMagnetic.get_coil().get_turns_description()) {
+        woundMagnetic.get_mutable_coil().wind();
+    }
+    OperatingPoint operatingPoint = inputs.get_operating_points()[0];
+    double windingLossesAtAmbient = MagneticSimulator().calculate_winding_losses(operatingPoint, woundMagnetic, ambientTemperature).get_winding_losses();
+    MagnetizingInductance magnetizingInductanceModel(to_string(settings.get_reluctance_model()));
+    magnetizingInductanceModel.set_topology(inputs.get_design_requirements().get_topology());
+    OperatingPoint operatingPointForCore = inputs.get_operating_points()[0];
+    auto fluxDensity = magnetizingInductanceModel.calculate_inductance_and_magnetic_flux_density(woundMagnetic, &operatingPointForCore).second;
+    auto excitation = operatingPointForCore.get_excitations_per_winding()[0];
+    excitation.set_magnetic_flux_density(fluxDensity);
+    double coreLossesAtAmbient = CoreLosses().calculate_core_losses(woundMagnetic.get_core(), excitation, ambientTemperature).get_core_losses();
+    INFO("winding " << output.get_winding_losses()->get_winding_losses() << " W (at ambient " << windingLossesAtAmbient
+         << " W), core " << output.get_core_losses()->get_core_losses() << " W (at ambient " << coreLossesAtAmbient << " W)");
+    CHECK_THAT(output.get_winding_losses()->get_winding_losses(), Catch::Matchers::WithinRel(windingLossesAtAmbient, 1e-12));
+    CHECK_THAT(output.get_core_losses()->get_core_losses(), Catch::Matchers::WithinRel(coreLossesAtAmbient, 1e-12));
+    // Prod 426ec505: 1996.6 W of copper.
+    CHECK_THAT(output.get_winding_losses()->get_winding_losses(), Catch::Matchers::WithinRel(1996.6, 0.01));
+
+    auto findings = ResultsAnalyzer::analyze_results(simulated);
+    INFO("findings:" << describe_findings(findings));
+    std::vector<ResultFinding> noThermal;
+    for (const auto& finding : findings) {
+        if (finding.code == ResultFindingCode::NO_THERMAL_OPERATING_POINT) {
+            noThermal.push_back(finding);
+        }
+        // No temperature output: no temperature verdicts for it.
+        CHECK(finding.code != ResultFindingCode::WINDING_TEMPERATURE_ABOVE_LIMIT);
+        CHECK(finding.code != ResultFindingCode::WINDING_TEMPERATURE_LIMIT_NOT_STATED);
+    }
+    REQUIRE(noThermal.size() == 1);
+    CHECK(noThermal[0].operatingPointIndex == 0);
+    CHECK_THAT(noThermal[0].message, Catch::Matchers::ContainsSubstring("No thermal operating point") &&
+                                     Catch::Matchers::ContainsSubstring("Thermal network did not converge") &&
+                                     Catch::Matchers::ContainsSubstring("History:") &&
+                                     Catch::Matchers::ContainsSubstring("Pcu=") &&
+                                     Catch::Matchers::ContainsSubstring("evaluated at the ambient temperature"));
+    json findingsJson;
+    to_json(findingsJson, findings);
+    bool codeInJson = false;
+    for (const auto& entry : findingsJson) {
+        codeInJson = codeInJson || entry["code"] == "NO_THERMAL_OPERATING_POINT";
+    }
+    CHECK(codeInJson);
+    settings.reset();
+}
+
+TEST_CASE("A point with no thermal operating point leaves the other points as they simulate alone",
+          "[processor][magnetic-simulator][abt-1876]") {
+    // Alf decision 2026-10-14, ABT #1876: point 0 is the web default with a hundredth of its currents (0.23 W of copper, it has a
+    // thermal operating point at about 58 C), point 1 the web default itself (it has none).
+    settings.reset();
+    auto magnetic = load_web_default_design().first;
+    json coolPoint = scaled_operating_point(0.01, "A hundredth of the current");
+    json hotPoint = scaled_operating_point(1.0, "The web default");
+    auto twoPoints = web_default_inputs_with(json::array({coolPoint, hotPoint}), magnetic);
+    auto onePoint = web_default_inputs_with(json::array({coolPoint}), magnetic);
+
+    SECTION("point 0 is bit-identical to simulating it alone; point 1 has ambient losses, no temperature and the finding") {
+        OpenMagnetics::Mas alone;
+        OpenMagnetics::Mas both;
+        REQUIRE_NOTHROW(alone = MagneticSimulator().simulate(onePoint, magnetic));
+        REQUIRE_NOTHROW(both = MagneticSimulator().simulate(twoPoints, magnetic));
+        REQUIRE(alone.get_outputs().size() == 1);
+        REQUIRE(both.get_outputs().size() == 2);
+        REQUIRE(alone.get_outputs()[0].get_temperature());
+        INFO("point 0: core " << alone.get_outputs()[0].get_core_losses()->get_core_losses() << " W, winding "
+             << alone.get_outputs()[0].get_winding_losses()->get_winding_losses() << " W, hottest "
+             << alone.get_outputs()[0].get_temperature()->get_maximum_temperature() << " C");
+        json aloneOutput, bothOutput, aloneOperatingPoint, bothOperatingPoint;
+        to_json(aloneOutput, alone.get_outputs()[0]);
+        to_json(bothOutput, both.get_outputs()[0]);
+        to_json(aloneOperatingPoint, alone.get_inputs().get_operating_points()[0]);
+        to_json(bothOperatingPoint, both.get_inputs().get_operating_points()[0]);
+        CHECK(aloneOutput.dump() == bothOutput.dump());
+        CHECK(aloneOperatingPoint.dump() == bothOperatingPoint.dump());
+
+        CHECK_FALSE(both.get_outputs()[1].get_temperature());
+        CHECK(both.get_outputs()[1].get_core_losses()->get_temperature() ==
+              both.get_inputs().get_operating_points()[1].get_conditions().get_ambient_temperature());
+
+        auto findings = ResultsAnalyzer::analyze_results(both);
+        INFO("findings:" << describe_findings(findings));
+        size_t noThermalAt1 = 0;
+        for (const auto& finding : findings) {
+            CHECK_FALSE((finding.code == ResultFindingCode::NO_THERMAL_OPERATING_POINT && finding.operatingPointIndex == 0));
+            if (finding.code == ResultFindingCode::NO_THERMAL_OPERATING_POINT && finding.operatingPointIndex == 1) {
+                ++noThermalAt1;
+                REQUIRE(finding.operatingPointName);
+                CHECK(finding.operatingPointName.value() == "The web default");
+            }
+        }
+        CHECK(noThermalAt1 == 1);
+    }
+
+    SECTION("fast mode publishes no temperature either, and analyze_results does not take it for no thermal operating point") {
+        OpenMagnetics::Mas fast;
+        REQUIRE_NOTHROW(fast = MagneticSimulator().simulate(twoPoints, magnetic, true));
+        REQUIRE(fast.get_outputs().size() == 2);
+        CHECK_FALSE(fast.get_outputs()[0].get_temperature());
+        CHECK_FALSE(fast.get_outputs()[1].get_temperature());
+        try {
+            ResultsAnalyzer::analyze_results(fast);
+            FAIL("analyze_results read a fast-mode output as one with no thermal operating point");
+        }
+        catch (const OpenMagnetics::InvalidInputException& error) {
+            CHECK_THAT(std::string(error.what()), Catch::Matchers::ContainsSubstring("fast mode") &&
+                                                  Catch::Matchers::ContainsSubstring("operating point 0"));
+        }
+    }
+    settings.reset();
+}
+
+TEST_CASE("A malformed operating point still refuses the whole design next to one with no thermal operating point",
+          "[processor][magnetic-simulator][abt-1876]") {
+    // Alf decision 2026-10-14, ABT #1876: only thermal non-convergence and the winding runaway are per point.
+    // Point 0 has no thermal operating point (the web default); point 1 has no current in its second winding.
+    // simulate must throw point 1's error, not stop at point 0's thermal one.
+    settings.reset();
+    auto magnetic = load_web_default_design().first;
+    json hotPoint = scaled_operating_point(1.0, "The web default");
+    auto twoPoints = web_default_inputs_with(json::array({hotPoint, hotPoint}), magnetic);
+    twoPoints.get_mutable_operating_points()[1].get_mutable_excitations_per_winding()[1].set_current(std::nullopt);
+
+    try {
+        MagneticSimulator().simulate(twoPoints, magnetic);
+        FAIL("simulate accepted a winding without a current");
+    }
+    catch (const OpenMagnetics::NoThermalOperatingPointException& error) {
+        FAIL("simulate stopped at point 0's thermal error instead of point 1's malformed input: " << error.what());
+    }
+    catch (const OpenMagnetics::OpenMagneticsException& error) {
+        INFO(error.what());
+        CHECK_THAT(std::string(error.what()), !Catch::Matchers::ContainsSubstring("Thermal network did not converge"));
+        CHECK_THAT(std::string(error.what()), Catch::Matchers::ContainsSubstring("urrent"));
+    }
+    settings.reset();
+}
