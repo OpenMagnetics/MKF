@@ -6,6 +6,8 @@
 #include <limits>
 #include <math.h>
 #include "support/Exceptions.h"
+#include "support/Logger.h"
+#include <tuple>
 
 
 namespace OpenMagnetics {
@@ -368,7 +370,7 @@ std::pair<double, double> ComplexPermeability::get_frequency_range(CoreMaterial 
     return {minimum, maximum};
 }
 
-std::pair<double, double> ComplexPermeability::get_complex_permeability(CoreMaterial coreMaterial, double frequency) {
+std::pair<double, double> ComplexPermeability::get_tabulated_complex_permeability(const CoreMaterial& coreMaterial, double frequency) {
     // Inside the tabulated range only. Outside it there is no data: holding the last point
     // (as this used to) read K081's stale 1 MHz point at 350 MHz, and a mu' floor of 1 hid a
     // tabulated value below vacuum instead of reporting it. Both are gone; a mu' below 1 in
@@ -387,6 +389,103 @@ std::pair<double, double> ComplexPermeability::get_complex_permeability(CoreMate
         throw NaNResultException("complex Permeability imaginary part must be a number, not NaN");
     }
     return {complexPermeabilityRealValue, complexPermeabilityImaginaryValue};
+}
+
+std::shared_ptr<const ComplexPermeabilityEstimate> ComplexPermeability::find_or_build_estimate(const CoreMaterial& coreMaterial) {
+    const std::string& materialName = coreMaterial.get_name();
+    if (complexPermeabilityEstimateRefusals.contains(materialName)) {
+        return nullptr;
+    }
+    auto cached = complexPermeabilityEstimates.find(materialName);
+    if (cached != complexPermeabilityEstimates.end()) {
+        return cached->second;
+    }
+    std::shared_ptr<const ComplexPermeabilityEstimate> estimate;
+    try {
+        estimate = std::make_shared<const ComplexPermeabilityEstimate>(estimate_complex_permeability(coreMaterial));
+    }
+    catch (const ComplexPermeabilityEstimatorRefusal& exception) {
+        // Only the estimator's own refusal (unsupported class, too few donors, ...) is recorded; the
+        // caller turns it into ComplexPermeabilityEstimateUnavailableException. Anything else (e.g.
+        // malformed MAS data) propagates.
+        complexPermeabilityEstimateRefusals.emplace(materialName, exception.reason());
+        return nullptr;
+    }
+    // One WARNING per material, as the heat-conductivity estimate (ABT #1753).
+    OM_WARNING(estimate->summary());
+    complexPermeabilityEstimates[materialName] = estimate;
+    return estimate;
+}
+
+const ComplexPermeabilityEstimate& ComplexPermeability::estimate_for(const CoreMaterial& coreMaterial, double frequency) {
+    auto estimate = find_or_build_estimate(coreMaterial);
+    if (!estimate) {
+        auto [minimumFrequency, maximumFrequency] = get_frequency_range(coreMaterial);
+        throw ComplexPermeabilityEstimateUnavailableException(coreMaterial.get_name(), frequency, minimumFrequency, maximumFrequency,
+                                                              complexPermeabilityEstimateRefusals.at(coreMaterial.get_name()));
+    }
+    return *estimate;
+}
+
+ComplexPermeabilityValue ComplexPermeability::get_complex_permeability_with_source(const CoreMaterial& coreMaterial, double frequency) {
+    // get_frequency_range first: it builds the tables and throws for parts that do not overlap.
+    auto [minimumFrequency, maximumFrequency] = get_frequency_range(coreMaterial);
+    if (frequency >= minimumFrequency && frequency <= maximumFrequency) {
+        auto [real, imaginary] = get_tabulated_complex_permeability(coreMaterial, frequency);
+        return {real, imaginary, ComplexPermeabilitySource::TABULATED, ComplexPermeabilitySource::TABULATED, "", ""};
+    }
+    // A frequency that is not a finite positive number has no complex permeability, tabulated or not.
+    if (!std::isfinite(frequency) || frequency <= 0) {
+        throw ComplexPermeabilityFrequencyOutOfRangeException(coreMaterial.get_name(), frequency, minimumFrequency, maximumFrequency);
+    }
+    // Outside the range where both parts are tabulated: each part from its own table where it has
+    // one, the approved estimate where it has not (ABT #1861).
+    const std::string& materialName = coreMaterial.get_name();
+    const auto& estimate = estimate_for(coreMaterial, frequency);
+    ComplexPermeabilityValue value;
+    auto evaluatePart = [&](ComplexPermeabilityPart part, std::map<std::string, tk::spline>& interps,
+                            std::map<std::string, std::pair<double, double>>& spans,
+                            double& result, ComplexPermeabilitySource& source, std::string& method) {
+        const auto& span = spans[materialName];
+        if (frequency >= span.first && frequency <= span.second) {
+            result = interps[materialName](frequency);
+            if (std::isnan(result)) {
+                throw NaNResultException("complex permeability " + std::string(part == ComplexPermeabilityPart::REAL ? "real" : "imaginary") +
+                                         " part must be a number, not NaN");
+            }
+            source = ComplexPermeabilitySource::TABULATED;
+            return;
+        }
+        auto side = frequency < span.first ? ComplexPermeabilityGapSide::BELOW : ComplexPermeabilityGapSide::ABOVE;
+        const auto& gap = estimate.gap(part, side);
+        try {
+            std::tie(result, source) = gap.evaluate(frequency);
+        }
+        catch (const ComplexPermeabilityEstimatorRefusal& exception) {
+            throw ComplexPermeabilityEstimateUnavailableException(materialName, frequency, minimumFrequency, maximumFrequency, exception.reason());
+        }
+        method = gap.method(source);
+    };
+    evaluatePart(ComplexPermeabilityPart::REAL, complexPermeabilityRealInterps, complexPermeabilityRealFrequencySpans,
+                 value.real, value.realSource, value.realMethod);
+    evaluatePart(ComplexPermeabilityPart::IMAGINARY, complexPermeabilityImaginaryInterps, complexPermeabilityImaginaryFrequencySpans,
+                 value.imaginary, value.imaginarySource, value.imaginaryMethod);
+    return value;
+}
+
+std::pair<double, double> ComplexPermeability::get_complex_permeability(CoreMaterial coreMaterial, double frequency) {
+    auto value = get_complex_permeability_with_source(coreMaterial, frequency);
+    return {value.real, value.imaginary};
+}
+
+std::vector<ComplexPermeabilityEstimatedRange> ComplexPermeability::get_estimated_ranges(const CoreMaterial& coreMaterial) {
+    ensure_interpolators(coreMaterial);
+    auto estimate = find_or_build_estimate(coreMaterial);
+    if (!estimate) {
+        // Refused: nothing outside the table is answered, so nothing is estimated.
+        return {};
+    }
+    return OpenMagnetics::get_estimated_ranges(*estimate);
 }
 
 } // namespace OpenMagnetics

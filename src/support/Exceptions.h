@@ -327,8 +327,12 @@ public:
  * a frequency-dependent initial permeability, derived) points. Outside that table there is no data:
  * holding the last point made every higher frequency read the same mu' and mu'' (stale K081 data
  * tabulated 1 Hz to 1 MHz returned its 1 MHz point at 350 MHz and put a common-mode choke's
- * resonance there). Callers that sweep frequency read ComplexPermeability::get_frequency_range first
- * and decide what to do; nothing clamps.
+ * resonance there). Nothing clamps.
+ *
+ * ComplexPermeability::get_tabulated_complex_permeability throws this outside the tabulated range
+ * (the advisers and filters, which stay on the data). ComplexPermeability::get_complex_permeability
+ * estimates the missing range instead (ComplexPermeabilityEstimator, ABT #1861) and throws only the
+ * subclass ComplexPermeabilityEstimateUnavailableException, for the materials it cannot estimate.
  */
 class ComplexPermeabilityFrequencyOutOfRangeException : public MaterialException {
     std::string _materialName;
@@ -337,13 +341,14 @@ class ComplexPermeabilityFrequencyOutOfRangeException : public MaterialException
     double _rangeMaximum;
 public:
     ComplexPermeabilityFrequencyOutOfRangeException(const std::string& materialName, double frequency,
-                                                    double rangeMinimum, double rangeMaximum)
+                                                    double rangeMinimum, double rangeMaximum,
+                                                    const std::string& reason = "")
         : MaterialException(ErrorCode::MATERIAL_FREQUENCY_OUT_OF_SPAN,
                             "Material " + materialName + ": complex permeability is tabulated from " +
                             std::to_string(rangeMinimum) + " Hz to " + std::to_string(rangeMaximum) +
                             " Hz; " + std::to_string(frequency) + " Hz is " +
                             (frequency < rangeMinimum ? "below" : "above") +
-                            " that range and there is no data there",
+                            " that range and there is no data there" + (reason.empty() ? "" : "; " + reason),
                             materialName),
           _materialName(materialName), _frequency(frequency), _rangeMinimum(rangeMinimum), _rangeMaximum(rangeMaximum) {}
 
@@ -351,6 +356,28 @@ public:
     double frequency() const noexcept { return _frequency; }
     double range_minimum() const noexcept { return _rangeMinimum; }
     double range_maximum() const noexcept { return _rangeMaximum; }
+};
+
+/**
+ * @brief Complex permeability outside the tabulated range, for a material the estimator cannot cover.
+ *
+ * ComplexPermeability::get_complex_permeability estimates a material's missing frequency range from
+ * the other materials of its class (ComplexPermeabilityEstimator, ABT #1861). It cannot for: a class
+ * other than FERRITE MN_ZN / NI_ZN (powders, MgZn, a proprietary or missing composition), a material
+ * whose complex permeability is derived from its initial permeability (no tabulated MAS data), a
+ * class with fewer than 3 donors, and a material whose own data next to the gap cannot be matched.
+ * reason() says which; the message names the material, the frequency and the tabulated range.
+ */
+class ComplexPermeabilityEstimateUnavailableException : public ComplexPermeabilityFrequencyOutOfRangeException {
+    std::string _reason;
+public:
+    ComplexPermeabilityEstimateUnavailableException(const std::string& materialName, double frequency,
+                                                    double rangeMinimum, double rangeMaximum, const std::string& reason)
+        : ComplexPermeabilityFrequencyOutOfRangeException(materialName, frequency, rangeMinimum, rangeMaximum,
+                                                          "and it cannot be estimated: " + reason),
+          _reason(reason) {}
+
+    const std::string& reason() const noexcept { return _reason; }
 };
 
 /**
