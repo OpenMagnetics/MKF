@@ -2142,6 +2142,64 @@ TEST_CASE("Test_Number_Turns_From_Inductance_Unreachable_Under_Dc_Bias_Throws", 
     CHECK(inductance <= 26.4e-6);
 }
 
+TEST_CASE("Test_Gap_From_Inductance_Refuses_A_Bias_That_Collapses_The_Permeability", "[physical-model][magnetizing-inductance][gapping][abt-1855]") {
+    // ABT #1855 (Alf, 2026-10-14): a design operation refuses a solution the saturation check flags. 3C95's
+    // permeability model falls to the vacuum's at a field strength where its magnetisation curve still
+    // carries less than B_sat (criterion 2). Sizing a gap for a DC bias there used to throw from the
+    // permeability (main's SaturationException); with mu_r = 1 taken past the knee it would return the
+    // gap of an air core instead.
+    settings.reset();
+    clear_databases();
+    const double ambientTemperature = 25;
+    const double frequency = 100000;
+    const double numberTurns = 20;
+    const double desiredMagnetizingInductance = 100e-6;
+    const std::string coreMaterial = "3C95";
+    Core core;
+    OpenMagnetics::Coil coil;
+    OpenMagnetics::Inputs inputs;
+    prepare_test_parameters(0, ambientTemperature, frequency, numberTurns, desiredMagnetizingInductance, {}, "E 42/21/20",
+                            coreMaterial, core, coil, inputs);
+    const auto material = core.resolve_material();
+    std::optional<double> collapseField;
+    for (double field = 10; field < 1e6; field *= 1.05) {
+        if (InitialPermeability::get_initial_permeability_model_value(material, ambientTemperature, field, frequency) <= 1) {
+            collapseField = field;
+            break;
+        }
+    }
+    REQUIRE(collapseField);
+    const double collapseFluxDensity = InitialPermeability::get_flux_density_for_magnetic_field_dc_bias(material, collapseField.value(), ambientTemperature, frequency);
+    const double saturationFluxDensity = Core::get_magnetic_flux_density_saturation(material, ambientTemperature, false);
+    INFO("3C95 permeability model collapses at H = " << collapseField.value() << " A/m, B = " << collapseFluxDensity
+         << " T on its curve, B_sat " << saturationFluxDensity << " T");
+    REQUIRE(collapseFluxDensity < 0.97 * saturationFluxDensity);
+    const double effectiveArea = core.get_processed_description()->get_effective_parameters().get_effective_area();
+    // B = L I / (N A_e) at the solution; a 0.1 A ripple keeps the peak within B_sat.
+    auto inputsWithBiasFluxDensity = [&](double biasFluxDensity) {
+        OpenMagnetics::Coil unused;
+        Core unusedCore;
+        OpenMagnetics::Inputs biasedInputs;
+        prepare_test_parameters(biasFluxDensity * numberTurns * effectiveArea / desiredMagnetizingInductance, ambientTemperature, frequency,
+                                numberTurns, desiredMagnetizingInductance, {}, "E 42/21/20", coreMaterial, unusedCore, unused, biasedInputs, 0.1);
+        return biasedInputs;
+    };
+    MagnetizingInductance magnetizingInductance("ZHANG");
+
+    auto collapsing = inputsWithBiasFluxDensity(0.5 * (collapseFluxDensity + 0.97 * saturationFluxDensity));
+    REQUIRE_THROWS_AS(magnetizingInductance.calculate_gapping_from_number_turns_and_inductance(core, coil, &collapsing, GappingType::GROUND),
+                      SaturationException);
+    REQUIRE_THROWS_WITH(magnetizingInductance.calculate_gapping_from_number_turns_and_inductance(core, coil, &collapsing, GappingType::GROUND),
+                        Catch::Matchers::ContainsSubstring("permeability model"));
+
+    // Control: half that bias keeps a real gap.
+    auto moderate = inputsWithBiasFluxDensity(0.5 * collapseFluxDensity);
+    std::vector<CoreGap> gapping;
+    REQUIRE_NOTHROW(gapping = magnetizingInductance.calculate_gapping_from_number_turns_and_inductance(core, coil, &moderate, GappingType::GROUND));
+    REQUIRE(!gapping.empty());
+    CHECK(gapping[0].get_length() > 0);
+}
+
 TEST_CASE("Test_Dc_Bias_Is_The_Time_Average_Not_The_Midpoint", "[physical-model][magnetizing-inductance][dc-bias][abt-1223]") {
     // A voltage with zero volt-second average carries no DC, whatever its shape. With a dead time
     // (+V for T/4, -V for T/4, 0 for T/2) the flux is a triangle followed by a flat stretch at its

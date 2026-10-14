@@ -12,6 +12,7 @@
 #include "physical_models/Temperature.h"
 #include "constructive_models/Mas.h"
 #include "processors/MagneticSimulator.h"
+#include "processors/ResultsAnalyzer.h"
 #include "support/Settings.h"
 #include "support/Utils.h"
 #include "TestingUtils.h"
@@ -503,6 +504,44 @@ TEST_CASE("ThermalNetwork ABT 1540: stored stacked-section designs simulate as t
         CHECK(std::isfinite(maximumTemperature));
         CHECK(maximumTemperature > ambient);
     }
+    settings.reset();
+}
+
+TEST_CASE("ThermalNetwork ABT 1540: a core driven past its Curie temperature is held at its data limit and reported", "[temperature][abt-1540][abt-1855]") {
+    // ABT #1855 (Alf, 2026-10-14, an explicit exception to the no-fallback rule): the PQ 35/40 file's
+    // 681 W of copper drive its DMR51W core (Curie 290 C) to about 800 C. The loss solve refused it at the
+    // Curie temperature; it now holds the core at the last temperature its data covers, magnetizes it
+    // with mu_r = 1, and analyze_results says so for that operating point.
+    settings.reset();
+    auto autocompleted = autocomplete_like_the_web(load_abt1540_fixture(kLitzAndStripPq3540));
+    auto coreMaterial = autocompleted.get_magnetic().get_core().resolve_material();
+    REQUIRE(coreMaterial.get_curie_temperature());
+    double curieTemperature = coreMaterial.get_curie_temperature().value();
+    OpenMagnetics::MagneticSimulator magneticSimulator;
+    OpenMagnetics::Mas simulated;
+    REQUIRE_NOTHROW(simulated = magneticSimulator.simulate(autocompleted.get_inputs(), autocompleted.get_magnetic()));
+    REQUIRE(!simulated.get_outputs().empty());
+    const auto& output = simulated.get_outputs()[0];
+    REQUIRE(output.get_core_losses());
+    double coreLossesTemperature = output.get_core_losses()->get_temperature();
+    INFO("core losses at " << coreLossesTemperature << " C, hottest point " << output.get_temperature()->get_maximum_temperature() << " C");
+    CHECK(coreLossesTemperature < curieTemperature);
+    CHECK(coreLossesTemperature > curieTemperature - OpenMagnetics::MagneticSimulator::kOperatingTemperatureTolerance);
+    CHECK(output.get_temperature()->get_maximum_temperature() > curieTemperature);
+
+    auto findings = OpenMagnetics::ResultsAnalyzer::analyze_results(simulated);
+    size_t dataLimitFindings = 0;
+    for (const auto& finding : findings) {
+        INFO(finding.message);
+        if (finding.code == OpenMagnetics::ResultFindingCode::CORE_ABOVE_MATERIAL_DATA_LIMIT) {
+            ++dataLimitFindings;
+            CHECK(finding.operatingPointIndex == 0);
+            CHECK_THAT(finding.message, Catch::Matchers::ContainsSubstring("Curie temperature") &&
+                                        Catch::Matchers::ContainsSubstring("mu_r = 1") &&
+                                        Catch::Matchers::ContainsSubstring("real temperature is higher"));
+        }
+    }
+    CHECK(dataLimitFindings == 1);
     settings.reset();
 }
 

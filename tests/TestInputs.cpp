@@ -3,6 +3,7 @@
 #include "support/Painter.h"
 #include "physical_models/InitialPermeability.h"
 #include "processors/Inputs.h"
+#include "processors/ResultsAnalyzer.h"
 #include "support/Utils.h"
 #include "json.hpp"
 
@@ -2305,6 +2306,54 @@ TEST_CASE("Test_Volt_Second_Balance_Balanced_Voltage_Integrates", "[processor][i
     auto magnetizingCurrent = OpenMagnetics::Inputs::calculate_magnetizing_current(excitation, balanced, 100e-6, false);
     // 10 V over half of 10 us across 100 uH: 0.5 A peak to peak.
     REQUIRE_THAT(magnetizingCurrent.get_processed()->get_peak_to_peak().value(), Catch::Matchers::WithinRel(0.5, 0.02));
+}
+
+TEST_CASE("Test_Unbalanced_Voltage_Loads_And_Is_Reported_For_Its_Operating_Point", "[processor][inputs][abt-1855]") {
+    // ABT #1855 (Alf, 2026-10-14): a voltage that is not volt-second balanced stops only its own
+    // operating point's induced-current calculation (calculate_magnetizing_current of an excitation,
+    // the bindings' calculate_induced_current, whose message the web shows next to the voltage).
+    // Loading the design integrates its balanced part, and analyze_results reports the imbalance for
+    // that operating point. Two points: a balanced +-10 V square and the +10 / -5 V one (mean 2.5 V).
+    auto operatingPointJson = [](const std::string& name, double lowVoltage) {
+        json operatingPoint;
+        operatingPoint["name"] = name;
+        operatingPoint["conditions"]["ambientTemperature"] = 25;
+        json windingExcitation;
+        windingExcitation["name"] = "Primary";
+        windingExcitation["frequency"] = 100000;
+        windingExcitation["voltage"]["waveform"]["data"] = {10, 10, lowVoltage, lowVoltage, 10};
+        windingExcitation["voltage"]["waveform"]["time"] = {0, 5e-6, 5e-6, 1e-5, 1e-5};
+        operatingPoint["excitationsPerWinding"] = json::array({windingExcitation});
+        return operatingPoint;
+    };
+    json inputsJson;
+    inputsJson["operatingPoints"] = json::array({operatingPointJson("Balanced", -10), operatingPointJson("Unbalanced", -5)});
+    inputsJson["designRequirements"]["magnetizingInductance"]["nominal"] = 100e-6;
+    inputsJson["designRequirements"]["turnsRatios"] = json::array();
+
+    OpenMagnetics::Inputs inputs;
+    REQUIRE_NOTHROW(inputs = OpenMagnetics::Inputs(inputsJson));
+    REQUIRE(inputs.get_operating_points().size() == 2);
+    // The unbalanced point's magnetizing current is the integral of its balanced part: the +-7.5 V
+    // square left once the 2.5 V mean is removed, 7.5 V over 5 us across 100 uH = 0.375 A peak to peak.
+    auto unbalancedExcitation = inputs.get_operating_points()[1].get_excitations_per_winding()[0];
+    REQUIRE(unbalancedExcitation.get_magnetizing_current());
+    CHECK_THAT(unbalancedExcitation.get_magnetizing_current()->get_processed()->get_peak_to_peak().value(),
+               Catch::Matchers::WithinRel(0.375, 0.02));
+
+    CHECK(OpenMagnetics::ResultsAnalyzer::analyze_volt_second_balance(inputs.get_operating_points()[0], 0).empty());
+    auto findings = OpenMagnetics::ResultsAnalyzer::analyze_volt_second_balance(inputs.get_operating_points()[1], 1);
+    REQUIRE(findings.size() == 1);
+    CHECK(findings[0].code == OpenMagnetics::ResultFindingCode::VOLT_SECOND_IMBALANCE);
+    CHECK(findings[0].operatingPointIndex == 1);
+    CHECK(findings[0].operatingPointName.value() == "Unbalanced");
+    CHECK_THAT(findings[0].message, Catch::Matchers::ContainsSubstring("not volt-second balanced"));
+
+    // The induced current asked for that voltage alone still refuses it, as the web requires.
+    OperatingPointExcitation excitation = inputs.get_operating_points()[1].get_excitations_per_winding()[0];
+    excitation.set_magnetizing_current(std::nullopt);
+    CHECK_THROWS_WITH(OpenMagnetics::Inputs::calculate_magnetizing_current(excitation, 100e-6, false, 0.0),
+                      Catch::Matchers::ContainsSubstring("not volt-second balanced"));
 }
 
 TEST_CASE("Test_Single_Winding_Inductor_With_Current_Uses_It_As_Magnetizing_Current", "[processor][inputs][abt-1585]") {
