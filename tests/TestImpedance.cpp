@@ -18,6 +18,7 @@
 #include "support/Utils.h"
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
+#include <catch2/matchers/catch_matchers_string.hpp>
 
 using namespace MAS;
 using namespace OpenMagnetics;
@@ -730,6 +731,85 @@ TEST_CASE("Test_Impedance_DMR51W_Answers_At_1kHz_With_Estimated_Ranges_Marked", 
         CHECK(range.tabulatedMaximum == maximumMaterialFrequency);
         CHECK_FALSE(range.source.empty());
     }
+    REQUIRE(sweep.get_unavailable_ranges());
+    CHECK(sweep.get_unavailable_ranges()->empty());
+}
+
+
+// ABT #1861 guard (Alf, 2026-10-14): where the estimator refuses a gap -- A072's mu' above its table
+// (97.2 MHz): the best-matching donors' median there is 0 -- the impedance sweep returns the curve up
+// to the cut and marks the cut with the specific "cannot be estimated" error, instead of throwing for
+// the whole sweep.
+TEST_CASE("Test_Impedance_Sweep_Stops_Where_Complex_Permeability_Cannot_Be_Estimated", "[physical-model][impedance][abt-1861]") {
+    settings.reset();
+    std::vector<int64_t> numberTurns = {10};
+    std::vector<int64_t> numberParallels = {1};
+    std::string shapeName = "T 12.5/7.5/5";
+    auto wire = find_wire_by_name("Round 0.15 - Grade 1");
+    std::vector<OpenMagnetics::Wire> wires = {wire};
+    auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, shapeName, 1, WindingOrientation::CONTIGUOUS,
+                                                     WindingOrientation::OVERLAPPING, CoilAlignment::CENTERED, CoilAlignment::CENTERED,
+                                                     wires, false);
+    std::string coreMaterial = "A072";
+    std::vector<CoreGap> gapping = {};
+    auto core = OpenMagneticsTesting::get_quick_core(shapeName, gapping, 1, coreMaterial);
+    OpenMagnetics::Magnetic magnetic;
+    magnetic.set_core(core);
+    magnetic.set_coil(coil);
+
+    auto material = find_core_material_by_name(coreMaterial);
+    auto [minimumMaterialFrequency, maximumMaterialFrequency] = ComplexPermeability().get_frequency_range(material);
+    REQUIRE(maximumMaterialFrequency < 1e8);
+    // The refused gap: past the top of the table, A072's complex permeability cannot be estimated.
+    double refusedFrequency = 3e8;
+    try {
+        ComplexPermeability().get_complex_permeability(material, refusedFrequency);
+        FAIL("A072's mu' above its table is a refused gap and must throw");
+    }
+    catch (const ComplexPermeabilityEstimateUnavailableException& e) {
+        CHECK(e.material_name() == "A072");
+        CHECK_THAT(e.reason(), Catch::Matchers::ContainsSubstring("mu' above"));
+    }
+
+    const size_t numberPoints = 60;
+    const double start = 1e6, stop = 1e9;
+    auto requested = logarithmic_spaced_array(start, stop, numberPoints);
+    Curve2D sweep;
+    REQUIRE_NOTHROW(sweep = Sweeper::sweep_impedance_over_frequency(magnetic, start, stop, numberPoints));
+    const auto& frequencies = sweep.get_x_points();
+    const auto& impedances = sweep.get_y_points();
+    REQUIRE(sweep.get_unavailable_ranges());
+    const auto& cuts = sweep.get_unavailable_ranges().value();
+    REQUIRE(cuts.size() == 1);
+    const auto& cut = cuts.front();
+    INFO(cut.reason);
+    // The curve runs up to the cut: every swept frequency below it is there, none from it on.
+    REQUIRE_FALSE(frequencies.empty());
+    CHECK(frequencies.front() == requested.front());
+    CHECK(frequencies.back() < cut.from);
+    CHECK(cut.from > maximumMaterialFrequency);
+    CHECK(cut.to == requested.back());
+    size_t numberOmitted = std::count_if(requested.begin(), requested.end(), [&](double f) { return f >= cut.from && f <= cut.to; });
+    CHECK(frequencies.size() + numberOmitted == numberPoints);
+    CHECK(frequencies.size() > numberPoints / 2);
+    for (size_t index = 0; index < frequencies.size(); ++index) {
+        CHECK(frequencies[index] == requested[index]);
+        CHECK(std::isfinite(impedances[index]));
+        CHECK(impedances[index] > 0);
+    }
+    // The cut names the material and the gap, with the estimator's specific error.
+    CHECK(cut.material == "A072");
+    CHECK_THAT(cut.reason, Catch::Matchers::ContainsSubstring("A072"));
+    CHECK_THAT(cut.reason, Catch::Matchers::ContainsSubstring("cannot be estimated"));
+    CHECK_THAT(cut.reason, Catch::Matchers::ContainsSubstring("mu' above"));
+    // The points kept are flagged as usual, one flag each, and the cut survives the JSON.
+    REQUIRE(sweep.get_extrapolated_points());
+    CHECK(sweep.get_extrapolated_points()->size() == frequencies.size());
+    nlohmann::json sweepJson;
+    to_json(sweepJson, sweep);
+    REQUIRE(sweepJson.contains("unavailableRanges"));
+    CHECK(sweepJson["unavailableRanges"].size() == 1);
+    CHECK(sweepJson["unavailableRanges"][0]["material"] == "A072");
 }
 
 

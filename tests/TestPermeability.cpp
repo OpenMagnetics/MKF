@@ -793,6 +793,67 @@ namespace {
         CHECK_THAT(imaginaryAbove.evaluate(imaginaryAbove.edgeFrequency).first, Catch::Matchers::WithinRel(edgeImaginary, 1e-9));
     }
 
+    // ABT #1861 guard (Alf, 2026-10-14): mu' crosses zero above resonance, so it joins its own edge value
+    // through an additive offset (fading to 0 a decade from the edge), not a scale. 3C97's mu' table ends
+    // at 30 MHz and the best-matching donors' median there lies on the other side of zero from 3C97's
+    // own value: a scale (own / median < 0) turned the donors' whole trend upside down. The estimate
+    // must be continuous at the edge (its right-hand limit too: the donors are read just inside the gap)
+    // and, from a decade beyond it, take the sign the far-reaching donors' own tables end on. Those
+    // signs are read from the donors' cleaned tables (gap.donors[].table), not from the estimate.
+    TEST_CASE("Test_Complex_Permeability_Estimator_3C97_Real_Part_Joins_Edge_Without_Sign_Flip", "[physical-model][complex-permeability][abt-1861]") {
+        auto material = find_core_material_by_name("3C97");
+        auto realPoints = std::get<std::vector<PermeabilityPoint>>(material.get_permeability().get_complex()->get_real());
+        double edgeFrequency = 0, sum = 0;
+        size_t count = 0;
+        for (const auto& point : realPoints) {
+            double frequency = point.get_frequency().value();
+            if (frequency > edgeFrequency) { edgeFrequency = frequency; sum = 0; count = 0; }
+            if (frequency == edgeFrequency) { sum += point.get_value(); ++count; }
+        }
+        double ownEdge = sum / static_cast<double>(count);
+        REQUIRE_THAT(edgeFrequency, Catch::Matchers::WithinRel(3e7, 1e-3));
+
+        auto estimate = estimate_complex_permeability(material);
+        const auto& gap = estimate.gap(ComplexPermeabilityPart::REAL, ComplexPermeabilityGapSide::ABOVE);
+        REQUIRE(gap.refusal.empty());
+        REQUIRE(gap.source == ComplexPermeabilitySource::ESTIMATED_NEIGHBOURS);
+        REQUIRE_THAT(gap.edgeFrequency, Catch::Matchers::WithinRel(edgeFrequency, 1e-9));
+        // The case this guards: the donors' median at the edge and the own value differ in sign.
+        REQUIRE(gap.edgeSignMismatch);
+        CHECK(gap.edgeScale == 1);
+
+        // Continuous at the edge, from the right as well.
+        INFO("own mu' at the edge " << ownEdge << ", offset " << gap.edgeOffset);
+        CHECK_THAT(gap.evaluate(edgeFrequency).first, Catch::Matchers::WithinAbs(ownEdge, 1e-9 * std::max(1.0, std::fabs(ownEdge))));
+        double justAbove = gap.evaluate(edgeFrequency * 1.0001).first;
+        CHECK(std::fabs(justAbove - ownEdge) <= 1e-3 * std::max(std::fabs(ownEdge), std::fabs(gap.edgeOffset)));
+
+        // Past a decade beyond the edge (the offset faded), the sign of the donors' trend: the
+        // best-matching donors whose (shifted) data reach past twice the edge all end on the same side
+        // of zero (3C97: 31 and 95, negative at 79 MHz), and the estimate must take that side. A scale
+        // by own / median (< 0 here) put it on the other side.
+        std::vector<double> farEnds;
+        for (const auto& donor : gap.donors) {
+            if (donor.table.logFrequencies.back() + donor.shiftDecades >= std::log10(2 * edgeFrequency)) {
+                farEnds.push_back(donor.table.values.back());
+            }
+        }
+        REQUIRE(farEnds.size() >= 2);
+        bool farPositive = std::all_of(farEnds.begin(), farEnds.end(), [](double v) { return v > 0; });
+        bool farNegative = std::all_of(farEnds.begin(), farEnds.end(), [](double v) { return v < 0; });
+        REQUIRE((farPositive || farNegative));
+        size_t numberChecked = 0;
+        for (int step = 11; step <= 31; ++step) {
+            double frequency = edgeFrequency * std::pow(10.0, step / 10.0);
+            double estimated = gap.evaluate(frequency).first;
+            INFO("f = " << frequency << " Hz: estimate " << estimated << ", donors' far ends " << (farPositive ? "positive" : "negative"));
+            CHECK((farPositive ? estimated > 0 : estimated < 0));
+            CHECK(gap.edge_offset_at(frequency) == 0);
+            ++numberChecked;
+        }
+        CHECK(numberChecked == 21);
+    }
+
     // ABT #1861 guard: the estimator covers FERRITE MnZn and NiZn only (Alf, 2026-10-14: powders, MgZn
     // and unclassified keep throwing). Mix 26 (iron powder, tabulated 10 kHz..70 MHz) and 46 (MgZn)
     // outside their tables throw ComplexPermeabilityEstimateUnavailableException, saying the class is
