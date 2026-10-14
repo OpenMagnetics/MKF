@@ -1284,3 +1284,86 @@ TEST_CASE("Test_Rectangle_Label_Volt_Second_Balance_Is_Relative_To_Amplitude", "
     }
 }
 
+
+// ABT #1878. A stored design's waveform carried "ancillaryLabel": "Triangular", the
+// pre-1.0 spelling. MAS.hpp's generated from_json(WaveformLabel) ignores a string that is
+// not in the enum and leaves its first value, bipolarRectangular, so a 3-vertex triangle
+// reached calculate_processed_data labelled as a 10-vertex bipolar rectangle. Its duty was
+// read as (time[3] - time[2]) / T, past the end of the vector: -1 (or 6.4e11), which the
+// schema refuses, with offset 0 for a 20 A dc current. A waveform that cannot be the shape
+// its label names must throw, not be read. These are the web's reported shapes, rebuilt
+// synthetically.
+namespace {
+Waveform abt1878_waveform(std::vector<double> data, std::vector<double> time, std::optional<WaveformLabel> label) {
+    Waveform waveform;
+    waveform.set_data(data);
+    waveform.set_time(time);
+    if (label) {
+        waveform.set_ancillary_label(label.value());
+    }
+    return waveform;
+}
+
+struct Abt1878Case {
+    std::string name;
+    Waveform waveform;  // unlabelled
+    double frequency;
+    double offset;      // the dc level the processed data must carry once the label is right
+    double dutyCycle;   // trough-to-peak fraction of the period, MKF's triangle duty
+};
+
+std::vector<Abt1878Case> abt1878_cases() {
+    std::vector<Abt1878Case> cases;
+    // Inductor current, 20 A dc / 40 A peak, 50 kHz, as three vertices.
+    cases.push_back({"dc-biased triangle 0/40/0 A", abt1878_waveform({0, 40, 0}, {0, 1e-5, 2e-5}, std::nullopt), 50000, 20, 0.5});
+    // Bipolar dc-biased triangle -3/27/-3 A at 40 kHz.
+    cases.push_back({"dc-biased triangle -3/27/-3 A", abt1878_waveform({-3, 27, -3}, {0, 1.25e-5, 2.5e-5}, std::nullopt), 40000, 12, 0.5});
+    // Flyback magnetizing current, 0 to 0.92 A at 100 kHz, stored as 128 samples. Duty 0.3,
+    // so the guard does not rely on a symmetric triangle.
+    auto magnetizing = WaveformProcessor::create_waveform(WaveformLabel::TRIANGULAR, 0.92, 100000, 0.3, 0.46);
+    auto sampled = WaveformProcessor::calculate_sampled_waveform(magnetizing, 100000);
+    sampled.set_ancillary_label(std::nullopt);
+    cases.push_back({"128-sample magnetizing current 0/0.92 A", sampled, 100000, 0.46, 0.3});
+    return cases;
+}
+}  // namespace
+
+TEST_CASE("Test_Triangle_Labelled_Bipolar_Rectangular_Throws_Instead_Of_A_Negative_Duty", "[processor][waveform-processor][abt-1878]") {
+    for (auto& testCase : abt1878_cases()) {
+        INFO(testCase.name);
+        auto waveform = testCase.waveform;
+        waveform.set_ancillary_label(WaveformLabel::BIPOLAR_RECTANGULAR);
+        auto harmonics = OpenMagnetics::Inputs::calculate_harmonics_data(testCase.waveform, testCase.frequency);
+        // What the WASM calculate_processed binding calls.
+        CHECK_THROWS_AS(OpenMagnetics::Inputs::calculate_processed_data(harmonics, waveform, true), std::invalid_argument);
+        CHECK_THROWS_AS(OpenMagnetics::Inputs::calculate_processed_data(waveform, testCase.frequency), std::invalid_argument);
+        auto compressed = WaveformProcessor::compress_waveform(WaveformProcessor::calculate_sampled_waveform(waveform, testCase.frequency));
+        CHECK_THROWS_AS(WaveformProcessor::try_guess_duty_cycle(compressed, WaveformLabel::BIPOLAR_RECTANGULAR, testCase.frequency), std::invalid_argument);
+    }
+}
+
+TEST_CASE("Test_Pre_1_0_Triangular_Label_Throws_Unmigrated_And_Gives_The_Triangle_Duty_Migrated", "[processor][waveform-processor][abt-1878]") {
+    for (auto& testCase : abt1878_cases()) {
+        INFO(testCase.name);
+        json waveformJson;
+        to_json(waveformJson, testCase.waveform);
+        waveformJson["ancillaryLabel"] = "Triangular";
+        auto harmonics = OpenMagnetics::Inputs::calculate_harmonics_data(testCase.waveform, testCase.frequency);
+
+        Waveform unmigrated;
+        from_json(waveformJson, unmigrated);
+        CHECK_THROWS_AS(OpenMagnetics::Inputs::calculate_processed_data(harmonics, unmigrated, true), std::invalid_argument);
+
+        OpenMagnetics::compat::migrate_pre_1_0(waveformJson);
+        Waveform migrated;
+        from_json(waveformJson, migrated);
+        REQUIRE(migrated.get_ancillary_label() == WaveformLabel::TRIANGULAR);
+        for (const auto& waveform : {migrated, testCase.waveform}) {
+            auto processed = OpenMagnetics::Inputs::calculate_processed_data(harmonics, waveform, true);
+            CHECK(processed.get_label() == WaveformLabel::TRIANGULAR);
+            REQUIRE(processed.get_duty_cycle());
+            CHECK_THAT(processed.get_duty_cycle().value(), Catch::Matchers::WithinAbs(testCase.dutyCycle, 1.0 / 128));
+            CHECK_THAT(processed.get_offset(), Catch::Matchers::WithinRel(testCase.offset, 0.02));
+        }
+    }
+}
