@@ -44,10 +44,10 @@ class InitialPermeability {
         // The material model's value as it stands, which past the saturation knee may fall BELOW 1: the
         // amplitude-permeability (Roshen loop) slope and the vendors' 1/(a + b H^c) fits tend to 0 there,
         // while a real material's reversible permeability never drops under the vacuum's (B = mu0 (H + M)).
-        // get_initial_permeability refuses such a value (ABT #1740); only callers that model the vacuum
-        // asymptote themselves read it here -- the magnetisation-curve builder, which carries B on the
-        // vacuum slope past that point, and the DC-bias fixed point, which reports the saturation with
-        // its operating point.
+        // get_initial_permeability gives 1 for it under a bias (the saturated material, ABT #1855) and
+        // refuses it without one (the model outside its frequency or temperature range, ABT #1740); only
+        // callers that model the vacuum asymptote themselves read it here -- the magnetisation-curve
+        // builder, which carries B on the vacuum slope past that point, and the DC-bias fixed point.
         static double get_initial_permeability_model_value(const CoreMaterial& coreMaterial,
                                         std::optional<double> temperature = std::nullopt,
                                         std::optional<double> magneticFieldDcBias = std::nullopt,
@@ -95,6 +95,13 @@ class InitialPermeability {
                                         double temperature,
                                         std::optional<double> frequency = std::nullopt,
                                         bool refuseAboveSaturation = true);
+        // The inverse of get_magnetic_field_dc_bias_for_flux_density (ABT #1855): the DC flux density B(H) the
+        // material carries at the field strength H, read on its magnetisation curve (on the vacuum slope past its
+        // end). Throws for a negative H.
+        static double get_flux_density_for_magnetic_field_dc_bias(const CoreMaterial& coreMaterial,
+                                        double magneticFieldDcBias,
+                                        double temperature,
+                                        std::optional<double> frequency = std::nullopt);
         // The material's magnetisation curve B(H) = mu0 * integral of mu_rev, tabulated and cached per material,
         // temperature and frequency (ABT #1223). The cache keeps the most recently used curves only (ABT #838: the
         // loss-temperature loop asks for a new temperature on every pass, and an unbounded cache grew without end);

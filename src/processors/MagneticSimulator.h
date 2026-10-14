@@ -36,6 +36,10 @@ struct SolvedLosses {
     OperatingPointExcitation excitation;
     std::optional<WindingLossesOutput> windingLosses;
     TemperatureOutput temperature;
+    // The DC point of the magnetizing model at the solved core temperature (MagnetizingInductance::
+    // get_last_dc_bias_point), for the saturation check's second criterion (ABT #1855). Empty when the
+    // model ran no DC-bias fixed point, or magnetized a core held at its Curie temperature as paramagnetic.
+    std::optional<DcBiasPoint> dcBiasPoint;
 };
 
 class LossSolveMemoScope {
@@ -57,6 +61,7 @@ class LossSolveMemoScope {
 
 class MagneticSimulator {
     private:
+        std::optional<DcBiasPoint> _lastDcBiasPoint;
         ReluctanceModels _reluctanceModelName;
 
         MagnetizingInductance _magnetizingInductanceModel;
@@ -68,6 +73,9 @@ class MagneticSimulator {
                                    WindingLossesScope windingLossesScope) const;
 
     public:
+        // The magnetic with its core material made paramagnetic (mu_r = 1, its own material name): what the
+        // magnetizing model sees of a core the loss solve holds at its Curie temperature (ABT #1855).
+        static Magnetic make_paramagnetic_magnetic(const Magnetic& magnetic);
 
         MagneticSimulator() {
             // Use Settings instead of defaults
@@ -127,8 +135,12 @@ class MagneticSimulator {
         // highest temperature where its material is ferromagnetic and its mu_i(T) has data
         // (InitialPermeability::get_maximum_ferromagnetic_data_temperature: the last table point
         // when the table ends below Curie, else Curie). Not settling within
-        // kOperatingTemperatureMaximumIterations, or being driven to that ceiling, THROWS
-        // (thermal runaway: there is no operating point to report, and the last iterate is not one).
+        // kOperatingTemperatureMaximumIterations THROWS (there is no operating point to report, and
+        // the last iterate is not one). Being driven to that ceiling holds the core there and settles the
+        // winding alone; the held core is magnetized with mu_r = 1 only when the ceiling is its Curie
+        // temperature, and keeps its last tabulated permeability when it is the end of a mu_i(T) table
+        // below Curie (explicit exception approved by Alf, 2026-10-14,
+        // ABT #1855; analyze_results reports it).
         // `windingLossesOutput` / `temperatureOutput`, when given, receive the winding losses and
         // the full-network temperature solved together with the returned core losses (asking for
         // winding losses of an unwound coil throws). `windingLossesScope` selects the winding-loss
@@ -138,6 +150,14 @@ class MagneticSimulator {
         // <= 2 K and the total loss by <= 0.96%, and saves ~300 of 1775 iterations.
         static constexpr double kOperatingTemperatureTolerance = 2.0;
         static constexpr size_t kOperatingTemperatureMaximumIterations = 100;
+        // ABT #1855: whether a solve held the core at its material's data ceiling (the losses drove it
+        // there, solve_losses_at_operating_temperature): its core losses were evaluated within
+        // kOperatingTemperatureTolerance below InitialPermeability::get_maximum_ferromagnetic_data_temperature
+        // and the network's maximum temperature lies above that ceiling.
+        static bool is_core_held_at_data_ceiling(const CoreMaterial& coreMaterial, double coreLossesTemperature,
+                                                 double maximumTemperature);
+        // The DC point of the last calculate_core_losses' solve (SolvedLosses::dcBiasPoint).
+        std::optional<DcBiasPoint> get_last_dc_bias_point() const { return _lastDcBiasPoint; }
         CoreLossesOutput calculate_core_losses(OperatingPoint& operatingPoint, Magnetic magnetic,
                                                std::optional<WindingLossesOutput>* windingLossesOutput = nullptr,
                                                std::optional<TemperatureOutput>* temperatureOutput = nullptr,

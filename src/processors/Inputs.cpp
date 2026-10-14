@@ -10,6 +10,7 @@
 #include <algorithm>
 #include <cctype>
 #include <cfloat>
+#include <limits>
 #include <cmath>
 #include <complex>
 #include <filesystem>
@@ -1678,7 +1679,7 @@ std::pair<bool, std::string> Inputs::check_integrity() {
                 auto voltageWaveform = excitation.get_voltage()->get_waveform().value();
                 auto sampledWaveform = calculate_sampled_waveform(voltageWaveform, excitation.get_frequency());
                 // This winding has no current, so no current gives its magnetizing DC: Faraday alone.
-                excitation.set_current(calculate_magnetizing_current(excitation, sampledWaveform, magnetizing_inductance(), true, 0.0));
+                excitation.set_current(integrate_magnetizing_current(excitation, sampledWaveform, magnetizing_inductance(), true, 0.0));
             }
             processedExcitationsPerWinding.push_back(excitation);
         }
@@ -2073,7 +2074,7 @@ Waveform Inputs::compress_waveform(const Waveform& waveform, std::optional<doubl
     return WaveformProcessor::compress_waveform(waveform, frequency);
 }
 
-void Inputs::check_volt_second_balance(const Waveform& voltageSampledWaveform, const std::string& context) {
+Inputs::VoltSecondBalance Inputs::calculate_volt_second_balance(const Waveform& voltageSampledWaveform, const std::string& context) {
     // ABT #1585: the magnetizing current is the integral of the voltage over the inductance. Only
     // the integration constant is removed (calculate_integral_waveform), so a voltage whose
     // volt-seconds do not balance over the period ramps the "current" by its imbalance instead of
@@ -2083,38 +2084,57 @@ void Inputs::check_volt_second_balance(const Waveform& voltageSampledWaveform, c
         throw InvalidInputException(ErrorCode::MISSING_DATA,
             context + ": the voltage needs a sampled waveform with a time axis to check its volt-second balance");
     }
-    double meanVoltage = calculate_waveform_average(voltageSampledWaveform);
+    VoltSecondBalance balance;
+    balance.meanVoltage = calculate_waveform_average(voltageSampledWaveform);
     const auto time = voltageSampledWaveform.get_time().value();
-    double period = time.back() - time.front();
-    double netVoltSeconds = meanVoltage * period;
-    auto acFluxLinkage = calculate_integral_waveform(sum_waveform(voltageSampledWaveform, -meanVoltage), true);
+    balance.period = time.back() - time.front();
+    balance.netVoltSeconds = balance.meanVoltage * balance.period;
+    auto acFluxLinkage = calculate_integral_waveform(sum_waveform(voltageSampledWaveform, -balance.meanVoltage), true);
     const auto& acData = acFluxLinkage.get_data();
-    double acSwing = *std::max_element(acData.begin(), acData.end()) - *std::min_element(acData.begin(), acData.end());
-    if (acSwing <= 0) {
-        // A constant voltage: any non-zero value is pure imbalance; zero is no voltage at all.
-        if (meanVoltage != 0) {
-            throw InvalidInputException(ErrorCode::INVALID_INPUT,
-                context + ": the voltage is a constant " + std::to_string(meanVoltage) +
-                " V, which has no periodic steady state; its integral is not a magnetizing current");
-        }
-        return;
+    balance.acSwing = *std::max_element(acData.begin(), acData.end()) - *std::min_element(acData.begin(), acData.end());
+    if (balance.acSwing > 0) {
+        balance.imbalance = std::fabs(balance.netVoltSeconds) / balance.acSwing;
     }
-    double imbalance = std::fabs(netVoltSeconds) / acSwing;
-    if (imbalance > maximumVoltSecondImbalance) {
-        throw InvalidInputException(ErrorCode::INVALID_INPUT,
-            context + ": the voltage is not volt-second balanced (mean " + std::to_string(meanVoltage) +
-            " V over a " + std::to_string(period) + " s period, so its integral drifts by " +
-            std::to_string(netVoltSeconds) + " V*s per period against an AC swing of " + std::to_string(acSwing) +
-            " V*s, " + std::to_string(imbalance) + " of it; the limit is " + std::to_string(maximumVoltSecondImbalance) +
+    else {
+        // A constant voltage: any non-zero value is pure imbalance; zero is no voltage at all.
+        balance.imbalance = balance.meanVoltage != 0 ? std::numeric_limits<double>::infinity() : 0;
+    }
+    return balance;
+}
+
+std::optional<std::string> Inputs::describe_volt_second_imbalance(const Waveform& voltageSampledWaveform, const std::string& context) {
+    auto balance = calculate_volt_second_balance(voltageSampledWaveform, context);
+    if (balance.acSwing <= 0) {
+        if (balance.meanVoltage != 0) {
+            return context + ": the voltage is a constant " + std::to_string(balance.meanVoltage) +
+                " V, which has no periodic steady state; its integral is not a magnetizing current";
+        }
+        return std::nullopt;
+    }
+    if (balance.imbalance > maximumVoltSecondImbalance) {
+        return context + ": the voltage is not volt-second balanced (mean " + std::to_string(balance.meanVoltage) +
+            " V over a " + std::to_string(balance.period) + " s period, so its integral drifts by " +
+            std::to_string(balance.netVoltSeconds) + " V*s per period against an AC swing of " + std::to_string(balance.acSwing) +
+            " V*s, " + std::to_string(balance.imbalance) + " of it; the limit is " + std::to_string(maximumVoltSecondImbalance) +
             "). A magnetizing current integrated from it would describe the drift: give a balanced steady-state "
-            "voltage, or the magnetizing current itself");
+            "voltage, or the magnetizing current itself";
+    }
+    return std::nullopt;
+}
+
+void Inputs::check_volt_second_balance(const Waveform& voltageSampledWaveform, const std::string& context) {
+    auto imbalance = describe_volt_second_imbalance(voltageSampledWaveform, context);
+    if (imbalance) {
+        throw InvalidInputException(ErrorCode::INVALID_INPUT, imbalance.value());
     }
 }
 
 double Inputs::calculate_steady_state_mean_voltage(const OperatingPointExcitation& excitation,
                                                    const Waveform& voltageSampledWaveform,
                                                    const std::string& context) {
-    check_volt_second_balance(voltageSampledWaveform, context);
+    // The sampled voltage must have a time axis (the same refusal as the balance check), but an
+    // unbalanced voltage is not refused here: its mean is removed like any other (ABT #1855).
+    calculate_volt_second_balance(voltageSampledWaveform, context);
     // The mean is taken from the voltage as given, not from its resampled copy: resampling a clean
     // rectangle moves its edges by a fraction of a sample and invents a mean of ~1 % of the swing,
     // which is not in the data and must not bend the integral.
@@ -2311,7 +2331,7 @@ SignalDescriptor Inputs::calculate_magnetizing_current(const OperatingPoint& ope
             dcCurrent = calculate_magnetizing_current_dc_anchor(excitation, conduction.value(), windingIndex, voltageSampledWaveform.value(), magnetizingInductance);
         }
     }
-    return calculate_magnetizing_current(excitation, voltageSampledWaveform.value(), magnetizingInductance, compress, dcCurrent);
+    return integrate_magnetizing_current(excitation, voltageSampledWaveform.value(), magnetizingInductance, compress, dcCurrent);
 }
 
 bool is_continuously_conducting_power(OperatingPointExcitation excitation) {
@@ -2382,6 +2402,16 @@ SignalDescriptor Inputs::calculate_magnetizing_current(OperatingPointExcitation&
                                                                 double magnetizingInductance,
                                                                 bool compress,
                                                                 double dcCurrent) {
+    // The induced current asked for this voltage: an unbalanced one is refused with its own message (ABT #1855).
+    check_volt_second_balance(voltageSampledWaveform, "Excitation '" + excitation.get_name().value_or("unnamed") + "'");
+    return integrate_magnetizing_current(excitation, voltageSampledWaveform, magnetizingInductance, compress, dcCurrent);
+}
+
+SignalDescriptor Inputs::integrate_magnetizing_current(OperatingPointExcitation& excitation,
+                                                       Waveform voltageSampledWaveform,
+                                                       double magnetizingInductance,
+                                                       bool compress,
+                                                       double dcCurrent) {
     if (magnetizingInductance <= 0) {
         throw InvalidInputException(ErrorCode::INVALID_INPUT, "magnetizingInductance cannot be zero or negative");
     }
@@ -2445,6 +2475,21 @@ SignalDescriptor Inputs::calculate_magnetizing_current(OperatingPointExcitation&
 
     auto voltageSampledWaveform = calculate_sampled_waveform(waveform, excitation.get_frequency());
     return calculate_magnetizing_current(excitation, voltageSampledWaveform, magnetizingInductance, compress, dcCurrent);
+}
+
+SignalDescriptor Inputs::integrate_magnetizing_current(OperatingPointExcitation& excitation,
+                                                       double magnetizingInductance,
+                                                       bool compress,
+                                                       double dcCurrent) {
+    if (!excitation.get_voltage()) {
+        throw std::invalid_argument("Missing voltage signal");
+    }
+    auto voltageExcitation = excitation.get_voltage().value();
+    voltageExcitation = standardize_waveform(voltageExcitation, excitation.get_frequency());
+    auto waveform = voltageExcitation.get_waveform().value();
+
+    auto voltageSampledWaveform = calculate_sampled_waveform(waveform, excitation.get_frequency());
+    return integrate_magnetizing_current(excitation, voltageSampledWaveform, magnetizingInductance, compress, dcCurrent);
 }
 
 OperatingPoint Inputs::process_operating_point(OperatingPoint operatingPoint, double magnetizingInductance, std::optional<std::vector<double>> turnsRatios, bool isDmcTopology,
@@ -2748,7 +2793,7 @@ OperatingPoint Inputs::create_operating_point_with_sinusoidal_current_mask(doubl
             auto voltage = calculate_induced_voltage(excitation, magnetizingInductance);
             voltage.set_processed(calculate_basic_processed_data(voltage.get_waveform().value()));
             excitation.set_voltage(voltage);
-            auto magnetizingCurrent = calculate_magnetizing_current(excitation, magnetizingInductance, true, 0.0);
+            auto magnetizingCurrent = integrate_magnetizing_current(excitation, magnetizingInductance, true, 0.0);
             magnetizingCurrent.set_processed(calculate_basic_processed_data(magnetizingCurrent.get_waveform().value()));
             excitation.set_magnetizing_current(magnetizingCurrent);
         }
@@ -2771,7 +2816,7 @@ OperatingPoint Inputs::create_operating_point_with_sinusoidal_current_mask(doubl
             auto voltage = calculate_induced_voltage(excitation, magnetizingInductance / pow(turnsRatio, 2));
             voltage.set_processed(calculate_basic_processed_data(voltage.get_waveform().value()));
             excitation.set_voltage(voltage);
-            auto magnetizingCurrent = calculate_magnetizing_current(excitation, magnetizingInductance, true, 0.0);
+            auto magnetizingCurrent = integrate_magnetizing_current(excitation, magnetizingInductance, true, 0.0);
             magnetizingCurrent.set_processed(calculate_basic_processed_data(magnetizingCurrent.get_waveform().value()));
             excitation.set_magnetizing_current(magnetizingCurrent);
         }
@@ -2848,7 +2893,7 @@ Inputs Inputs::create_quick_operating_point(double frequency,
 
         excitation.set_voltage(voltage);
         if (magnetizingInductance > 0) {
-            auto current = calculate_magnetizing_current(excitation, magnetizingInductance, true, dcCurrent);
+            auto current = integrate_magnetizing_current(excitation, magnetizingInductance, true, dcCurrent);
             excitation.set_current(current);
             excitation.set_magnetizing_current(current);
         }
@@ -2867,7 +2912,7 @@ Inputs Inputs::create_quick_operating_point(double frequency,
         voltage = standardize_waveform(voltage, frequency);
         excitation.set_voltage(voltage);
         if (magnetizingInductance > 0) {
-            auto current = calculate_magnetizing_current(excitation, magnetizingInductance * pow(turnsRatio, 2), true, dcCurrent);
+            auto current = integrate_magnetizing_current(excitation, magnetizingInductance * pow(turnsRatio, 2), true, dcCurrent);
             excitation.set_current(current);
             excitation.set_magnetizing_current(current);
         }

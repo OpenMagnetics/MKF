@@ -280,7 +280,7 @@ OpenMagnetics::Mas MagneticCombinator::devirtualize_mas(OpenMagnetics::Magnetic 
                 voltage.set_waveform(currentWaveform);
                 emptyExcitation.set_voltage(voltage);
 
-                auto magnetizingCurrent = OpenMagnetics::Inputs::calculate_magnetizing_current(emptyExcitation, magnetizingInductanceValue, false, 0.0);
+                auto magnetizingCurrent = OpenMagnetics::Inputs::integrate_magnetizing_current(emptyExcitation, magnetizingInductanceValue, false, 0.0);
                 emptyExcitation.set_magnetizing_current(magnetizingCurrent);
 
                 devirtualizedOperatingPoint.get_mutable_excitations_per_winding().push_back(emptyExcitation);

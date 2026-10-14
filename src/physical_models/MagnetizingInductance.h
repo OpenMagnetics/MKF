@@ -21,9 +21,23 @@ using namespace MAS;
 
 namespace OpenMagnetics {
 
+// The DC point the DC-bias fixed point of MagnetizingInductance converged on (ABT #1855): the bias field
+// strength it read the material's permeability at, with the temperature and frequency of that reading.
+// ResultsAnalyzer::check_saturation asks the material's permeability model there whether it has collapsed
+// to the vacuum's (Alf, 2026-10-14: the second saturation criterion, main's old throw condition).
+struct DcBiasPoint {
+    double magneticFieldDcBias;
+    double temperature;
+    double frequency;
+};
+
 class MagnetizingInductance {
   private:
     std::map<std::string, std::string> _models;
+    // Set by every calculate_inductance_and_magnetic_flux_density(Core, Coil, ...): the DC point of its
+    // last evaluation of the DC-bias fixed point, empty when that calculation did not run one (no
+    // operating point, or a branch that models its bias otherwise: drums, moulded bodies, rods, open cores).
+    std::optional<DcBiasPoint> _lastDcBiasPoint;
     // The design's topology (designRequirements.topology). A multi-winding differential-mode
     // choke and a common-mode choke both carry matching currents on every winding, so the
     // operating point alone cannot tell them apart; the topology decides which magnetizing
@@ -48,6 +62,8 @@ class MagnetizingInductance {
         _models["gapReluctance"] = model;
     }
     std::map<std::string, std::string> get_models() const { return _models; }
+    // The DC point of the last calculate_inductance_and_magnetic_flux_density (see _lastDcBiasPoint).
+    std::optional<DcBiasPoint> get_last_dc_bias_point() const { return _lastDcBiasPoint; }
     MagnetizingInductanceOutput calculate_inductance_from_number_turns_and_gapping(Core core,
                                                                                    Coil coil,
                                                                                    OperatingPoint* operatingPoint = nullptr);

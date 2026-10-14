@@ -2,9 +2,11 @@
 #include "advisers/MagneticFilterInternal.h"
 #include "constructive_models/NumberTurns.h"
 #include "physical_models/ComplexPermeability.h"
+#include "physical_models/InitialPermeability.h"
 #include "physical_models/Impedance.h"
 #include "physical_models/WindingLosses.h"
 #include "physical_models/WindingSkinEffectLosses.h"
+#include "processors/ResultsAnalyzer.h"
 #include "support/Exceptions.h"
 
 #include <algorithm>
@@ -25,15 +27,23 @@ namespace OpenMagnetics {
 // advisers/MagneticFilterInternal.h.
 
 // ABT #1794 (Alf, 2026-10-12): a candidate whose core saturates at the bias it would carry is not a
-// choke for this requirement. The impedance model refuses that bias (CALCULATION_CORE_SATURATES,
-// ABT #1740: the material's permeability model gives mu_r < 1 there); the filter takes that as its
-// verdict and rejects the candidate, as the saturation filter does, so the adviser goes on with the
-// others. Only that error code: anything else the model throws still stops the run.
-static void rethrow_unless_core_saturates(const OpenMagneticsException& exception, const Core& core) {
-    if (exception.code() != ErrorCode::CALCULATION_CORE_SATURATES) {
-        throw;
+// choke for this requirement; the filter rejects it, as the saturation filter does, so the adviser goes
+// on with the others. Until ABT #1855 the impedance model refused that bias (CALCULATION_CORE_SATURATES)
+// and the filter caught it; the model now gives its numbers for a saturated core (mu_r = 1), and the
+// verdict is the saturation check analyze_results makes (ResultsAnalyzer::check_saturation), on the DC
+// flux density the material's magnetisation curve gives at the bias H_dc, asked before the impedance.
+// The bias's permeability is the one the impedance model reads at that frequency: the check's second
+// criterion (the bias collapsed it to mu_r = 1, Alf 2026-10-14) asks the material's model there.
+static bool core_saturates_at_bias(const Core& core, double magneticFieldDcBias, double temperature, double frequency) {
+    auto coreMaterial = core.resolve_material();
+    double biasFluxDensity = InitialPermeability::get_flux_density_for_magnetic_field_dc_bias(coreMaterial, magneticFieldDcBias, temperature);
+    auto saturation = ResultsAnalyzer::check_saturation(coreMaterial, biasFluxDensity, temperature, 1.0,
+                                                        DcBiasPoint{magneticFieldDcBias, temperature, frequency});
+    if (saturation.saturates) {
+        logEntry(std::string("Core minimum impedance filter: rejecting candidate ") + core.get_name().value_or("(unnamed core)") +
+                 " at H_dc = " + std::to_string(magneticFieldDcBias) + " A/m: " + saturation.message, "MagneticFilter", 2);
     }
-    logEntry(std::string("Core minimum impedance filter: rejecting candidate ") + core.get_name().value_or("(unnamed core)") + ": " + exception.what(), "MagneticFilter", 2);
+    return saturation.saturates;
 }
 
 std::pair<bool, double> MagneticFilterCoreMinimumImpedance::evaluate_magnetic(Magnetic* magnetic, Inputs* inputs, std::vector<Outputs>* outputs) {
@@ -124,6 +134,11 @@ std::pair<bool, double> MagneticFilterCoreMinimumImpedance::evaluate_magnetic(Ma
                 double zUnit;
                 if (magnetizingCurrentPeak > 0 && effectiveLength > 0) {
                     double H_dc_unit = 1.0 * magnetizingCurrentPeak / effectiveLength;
+                    if (core_saturates_at_bias(core, H_dc_unit, ambientTemperature, frequency)) {
+                        // Saturated with a single turn at this current: more turns only raise the bias.
+                        magnetic->set_coil(std::move(coil));
+                        return {false, 0};
+                    }
                     zUnit = abs(_impedanceModel.calculate_impedance(core, unitCoil, frequency, H_dc_unit, ambientTemperature));
                 } else {
                     zUnit = abs(_impedanceModel.calculate_impedance(core, unitCoil, frequency));
@@ -138,11 +153,6 @@ std::pair<bool, double> MagneticFilterCoreMinimumImpedance::evaluate_magnetic(Ma
             } catch (const ModelNotAvailableException&) {
                 jumpOk = false;
                 break;
-            } catch (const OpenMagneticsException& exception) {
-                // Saturated with a single turn at this current: more turns only raise the bias.
-                rethrow_unless_core_saturates(exception, core);
-                magnetic->set_coil(std::move(coil));
-                return {false, 0};
             }
         }
         if (jumpOk) {
@@ -179,6 +189,11 @@ std::pair<bool, double> MagneticFilterCoreMinimumImpedance::evaluate_magnetic(Ma
                         double impedance;
                         if (magnetizingCurrentPeak > 0 && effectiveLength > 0) {
                             double H_dc = static_cast<double>(requiredN) * magnetizingCurrentPeak / effectiveLength;
+                            if (core_saturates_at_bias(core, H_dc, ambientTemperature, frequency)) {
+                                // Saturated at the turns the requirement needs.
+                                magnetic->set_coil(std::move(coil));
+                                return {false, 0};
+                            }
                             impedance = abs(_impedanceModel.calculate_impedance(core, coil, frequency, H_dc, ambientTemperature));
                         } else {
                             impedance = abs(_impedanceModel.calculate_impedance(core, coil, frequency));
@@ -193,11 +208,6 @@ std::pair<bool, double> MagneticFilterCoreMinimumImpedance::evaluate_magnetic(Ma
                     } catch (const ModelNotAvailableException&) {
                         modelMissing = true;
                         break;
-                    } catch (const OpenMagneticsException& exception) {
-                        // Saturated at the turns the requirement needs.
-                        rethrow_unless_core_saturates(exception, core);
-                        magnetic->set_coil(std::move(coil));
-                        return {false, 0};
                     }
                 }
                 if (modelMissing) {
@@ -264,6 +274,11 @@ std::pair<bool, double> MagneticFilterCoreMinimumImpedance::evaluate_magnetic(Ma
                 double impedance;
                 if (magnetizingCurrentPeak > 0 && effectiveLength > 0) {
                     double H_dc = numberTurnsCombination[0] * magnetizingCurrentPeak / effectiveLength;
+                    if (core_saturates_at_bias(core, H_dc, defaults.ambientTemperature, frequency)) {
+                        // Saturated at this turn count; the search only goes up in turns, so in bias.
+                        magnetic->set_coil(std::move(coil));
+                        return {false, 0};
+                    }
                     impedance = abs(_impedanceModel.calculate_impedance(core, coil, frequency, H_dc, defaults.ambientTemperature));
                 } else {
                     impedance = abs(_impedanceModel.calculate_impedance(core, coil, frequency));
@@ -281,12 +296,6 @@ std::pair<bool, double> MagneticFilterCoreMinimumImpedance::evaluate_magnetic(Ma
             catch (const ModelNotAvailableException &exc) {
 
                 validMaterial = false;
-            }
-            catch (const OpenMagneticsException& exception) {
-                // Saturated at this turn count; the search only goes up in turns, so in bias.
-                rethrow_unless_core_saturates(exception, core);
-                magnetic->set_coil(std::move(coil));
-                return {false, 0};
             }
         }
 

@@ -3,6 +3,7 @@
 #include "processors/Inputs.h"
 #include "advisers/CoilAdviser.h"
 #include "advisers/MagneticFilter.h"
+#include "processors/ResultsAnalyzer.h"
 #include "support/LibraryContext.h"
 #include "Models.h"
 #include "constructive_models/Insulation.h"
@@ -1698,20 +1699,42 @@ namespace OpenMagnetics {
             // frequency, the thermal network does not converge, the filter refuses the coil) has
             // no loss to rank by: it is dropped from the ranking with its reason logged, and no
             // loss is invented for it.
-            // A coil whose core saturates at the temperature its own losses heat it to
-            // (CALCULATION_CORE_SATURATES, thrown by the loss-temperature solve) is a different
-            // case: that is a verdict on the design, as in the saturation filter (ABT #1740), so the
-            // coil is REJECTED, here and in the unranked return below (ABT #838, Alf 2026-10-12).
-            // Only that code is treated so; any other error still propagates.
+            // A coil whose core saturates at the temperature its own losses heat it to is a
+            // different case: that is a verdict on the design, as in the saturation filter (ABT
+            // #1740), so the coil is REJECTED, here and in the unranked return below (ABT #838, Alf
+            // 2026-10-12). The loss filter refuses it with the saturating operating point's solved
+            // losses in its outputs, and the verdict is the saturation check analyze_results makes
+            // on them (ABT #1855: the loss solve no longer throws for a saturated core).
             MagneticFilterLosses lossesFilter;
             std::vector<std::pair<Mas, double>> masesWithLosses;
             std::vector<Mas> masesUnranked;
             for (auto& woundMas : masesWithCoil) {
                 std::string reason;
                 try {
-                    auto [valid, losses] = lossesFilter.evaluate_magnetic(&woundMas.get_mutable_magnetic(), &woundMas.get_mutable_inputs());
+                    std::vector<Outputs> lossesOutputs;
+                    auto [valid, losses] = lossesFilter.evaluate_magnetic(&woundMas.get_mutable_magnetic(), &woundMas.get_mutable_inputs(), &lossesOutputs);
                     if (valid) {
                         masesWithLosses.push_back({woundMas, losses});
+                        continue;
+                    }
+                    std::vector<ResultFinding> saturationFindings;
+                    const auto& operatingPoints = woundMas.get_inputs().get_operating_points();
+                    for (size_t operatingPointIndex = 0; operatingPointIndex < lossesOutputs.size() && operatingPointIndex < operatingPoints.size(); ++operatingPointIndex) {
+                        if (!lossesOutputs[operatingPointIndex].get_core_losses()) {
+                            continue;
+                        }
+                        for (auto& finding : ResultsAnalyzer::analyze_saturation(woundMas.get_magnetic(), operatingPoints[operatingPointIndex],
+                                                                                 lossesOutputs[operatingPointIndex], operatingPointIndex,
+                                                                                 woundMas.get_inputs().get_design_requirements().get_topology())) {
+                            saturationFindings.push_back(finding);
+                        }
+                    }
+                    if (!saturationFindings.empty()) {
+                        logEntry("Wound coil '" + woundMas.get_mutable_magnetic().get_reference() + "' (material " +
+                                 woundMas.get_mutable_magnetic().get_mutable_core().resolve_material().get_name() + ", " +
+                                 describe_operating_frequencies(woundMas.get_inputs()) +
+                                 ") rejected: its core saturates at the temperature its losses heat it to: " +
+                                 saturationFindings.front().message, "CoilAdviser");
                         continue;
                     }
                     reason = "MagneticFilterLosses refused the coil (its windings do not match the operating point's excitations)";
@@ -1720,14 +1743,6 @@ namespace OpenMagnetics {
                     reason = exception.what();
                 }
                 catch (const CalculationException& exception) {
-                    if (exception.code() == ErrorCode::CALCULATION_CORE_SATURATES) {
-                        logEntry("Wound coil '" + woundMas.get_mutable_magnetic().get_reference() + "' (material " +
-                                 woundMas.get_mutable_magnetic().get_mutable_core().resolve_material().get_name() + ", " +
-                                 describe_operating_frequencies(woundMas.get_inputs()) +
-                                 ") rejected: its core saturates at the temperature its losses heat it to: " +
-                                 exception.what(), "CoilAdviser");
-                        continue;
-                    }
                     if (exception.code() != ErrorCode::CALCULATION_INVALID_RESULT &&
                         exception.code() != ErrorCode::MATERIAL_FREQUENCY_OUT_OF_SPAN) {
                         throw;

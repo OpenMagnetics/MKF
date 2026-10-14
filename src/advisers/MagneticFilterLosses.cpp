@@ -6,6 +6,7 @@
 // Class declarations remain in advisers/MagneticFilter.h; this file
 // supplies the definitions only.
 
+#include "processors/ResultsAnalyzer.h"
 #include "advisers/MagneticFilter.h"
 #include "advisers/MagneticFilterInternal.h"
 #include "constructive_models/Bobbin.h"
@@ -148,24 +149,27 @@ std::pair<bool, double> MagneticFilterCoreAndDcLosses::evaluate_magnetic(Magneti
             }
 
             _magnetizingInductance.set_topology(inputs->get_design_requirements().get_topology());
-            // A turn count whose operating point saturates the core is refused by the inductance model
-            // (SaturationException). The sweep stops there and keeps the best count it already evaluated,
-            // restored below; only when no count has worked yet is the candidate rejected. Any other
-            // exception still propagates (ABT #1740).
-            std::pair<MagnetizingInductanceOutput, SignalDescriptor> inductanceAndFluxDensity;
-            try {
-                inductanceAndFluxDensity = _magnetizingInductance.calculate_inductance_and_magnetic_flux_density(core, coil, &operatingPoint);
-            }
-            catch (const SaturationException& e) {
-                if (!std::isfinite(bestTotalLosses)) {
-                    logEntry(std::string("Losses filter: rejecting candidate, its first turn count saturates: ") + e.what(), "CoreAdviser", 2);
-                    return {false, 0.0};
-                }
-                logEntry(std::string("Losses filter: turn sweep stops at ") + std::to_string(numberTurnsCombination[0]) +
-                         " turns, which saturate: " + e.what(), "CoreAdviser", 2);
-                break;
-            }
+            // A turn count whose operating point saturates the core stops the sweep, which keeps the best
+            // count it already evaluated, restored below; only when no count has worked yet is the candidate
+            // rejected (ABT #1740). The verdict is the saturation check analyze_results makes, on the flux
+            // density the model gives at the operating point's temperature (ABT #1855; the model no longer
+            // refuses a saturated core).
+            auto inductanceAndFluxDensity = _magnetizingInductance.calculate_inductance_and_magnetic_flux_density(core, coil, &operatingPoint);
             auto& [magnetizingInductance, magneticFluxDensity] = inductanceAndFluxDensity;
+            {
+                auto saturation = ResultsAnalyzer::check_saturation(core.resolve_material(),
+                    ResultsAnalyzer::get_peak_flux_density(magneticFluxDensity), operatingPoint.get_conditions().get_ambient_temperature(),
+                    1.0, _magnetizingInductance.get_last_dc_bias_point());
+                if (saturation.saturates) {
+                    if (!std::isfinite(bestTotalLosses)) {
+                        logEntry(std::string("Losses filter: rejecting candidate, its first turn count saturates: ") + saturation.message, "CoreAdviser", 2);
+                        return {false, 0.0};
+                    }
+                    logEntry(std::string("Losses filter: turn sweep stops at ") + std::to_string(numberTurnsCombination[0]) +
+                             " turns, which saturate: " + saturation.message, "CoreAdviser", 2);
+                    break;
+                }
+            }
 
             if (!check_requirement(inputs->get_design_requirements().get_magnetizing_inductance(), magnetizingInductance.get_magnetizing_inductance().get_nominal().value())) {
                 if (resolve_dimensional_values(inputs->get_design_requirements().get_magnetizing_inductance()) < resolve_dimensional_values(magnetizingInductance.get_magnetizing_inductance().get_nominal().value())) {
@@ -476,24 +480,27 @@ std::pair<bool, double> MagneticFilterCoreDcAndSkinLosses::evaluate_magnetic(Mag
             }
 
             _magnetizingInductance.set_topology(inputs->get_design_requirements().get_topology());
-            // A turn count whose operating point saturates the core is refused by the inductance model
-            // (SaturationException). The sweep stops there and keeps the best count it already evaluated,
-            // restored below; only when no count has worked yet is the candidate rejected. Any other
-            // exception still propagates (ABT #1740).
-            std::pair<MagnetizingInductanceOutput, SignalDescriptor> inductanceAndFluxDensity;
-            try {
-                inductanceAndFluxDensity = _magnetizingInductance.calculate_inductance_and_magnetic_flux_density(core, coil, &operatingPoint);
-            }
-            catch (const SaturationException& e) {
-                if (!std::isfinite(bestTotalLosses)) {
-                    logEntry(std::string("Losses filter: rejecting candidate, its first turn count saturates: ") + e.what(), "CoreAdviser", 2);
-                    return {false, 0.0};
-                }
-                logEntry(std::string("Losses filter: turn sweep stops at ") + std::to_string(numberTurnsCombination[0]) +
-                         " turns, which saturate: " + e.what(), "CoreAdviser", 2);
-                break;
-            }
+            // A turn count whose operating point saturates the core stops the sweep, which keeps the best
+            // count it already evaluated, restored below; only when no count has worked yet is the candidate
+            // rejected (ABT #1740). The verdict is the saturation check analyze_results makes, on the flux
+            // density the model gives at the operating point's temperature (ABT #1855; the model no longer
+            // refuses a saturated core).
+            auto inductanceAndFluxDensity = _magnetizingInductance.calculate_inductance_and_magnetic_flux_density(core, coil, &operatingPoint);
             auto& [magnetizingInductance, magneticFluxDensity] = inductanceAndFluxDensity;
+            {
+                auto saturation = ResultsAnalyzer::check_saturation(core.resolve_material(),
+                    ResultsAnalyzer::get_peak_flux_density(magneticFluxDensity), operatingPoint.get_conditions().get_ambient_temperature(),
+                    1.0, _magnetizingInductance.get_last_dc_bias_point());
+                if (saturation.saturates) {
+                    if (!std::isfinite(bestTotalLosses)) {
+                        logEntry(std::string("Losses filter: rejecting candidate, its first turn count saturates: ") + saturation.message, "CoreAdviser", 2);
+                        return {false, 0.0};
+                    }
+                    logEntry(std::string("Losses filter: turn sweep stops at ") + std::to_string(numberTurnsCombination[0]) +
+                             " turns, which saturate: " + saturation.message, "CoreAdviser", 2);
+                    break;
+                }
+            }
 
             if (!check_requirement(inputs->get_design_requirements().get_magnetizing_inductance(), magnetizingInductance.get_magnetizing_inductance().get_nominal().value())) {
                 if (resolve_dimensional_values(inputs->get_design_requirements().get_magnetizing_inductance()) < resolve_dimensional_values(magnetizingInductance.get_magnetizing_inductance().get_nominal().value())) {
@@ -627,6 +634,24 @@ std::pair<bool, double> MagneticFilterLosses::evaluate_magnetic(Magnetic* magnet
         std::optional<WindingLossesOutput> solvedWindingLosses;
         auto coreLosses = _magneticSimulator.calculate_core_losses(operatingPoint, *magnetic, &solvedWindingLosses, nullptr,
                                                                    WindingLossesScope::FULL);
+        // A core that saturates at the temperature its losses heat it to is not a candidate: the loss solve
+        // gives its numbers (ABT #1855) and the verdict is the saturation check analyze_results makes, on the
+        // solved flux density at the solved core temperature. The outputs keep this operating point's losses so
+        // a caller can tell this rejection from the others (CoilAdviser).
+        auto saturation = ResultsAnalyzer::check_saturation(magnetic->get_mutable_core().resolve_material(),
+            ResultsAnalyzer::get_peak_flux_density(coreLosses.get_magnetic_flux_density().value()), coreLosses.get_temperature(),
+            1.0, _magneticSimulator.get_last_dc_bias_point());
+        if (saturation.saturates) {
+            if (outputs != nullptr) {
+                while (outputs->size() < operatingPointIndex + 1) {
+                    outputs->push_back(Outputs());
+                }
+                (*outputs)[operatingPointIndex].set_core_losses(coreLosses);
+                (*outputs)[operatingPointIndex].set_winding_losses(solvedWindingLosses.value());
+            }
+            logEntry(std::string("Losses filter: rejecting candidate: ") + saturation.message, "MagneticFilter", 2);
+            return {false, 0.0};
+        }
         auto windingLosses = solvedWindingLosses.value();
         auto windingLossesValue = windingLosses.get_winding_losses();
         auto coreLossesValue = coreLosses.get_core_losses();
@@ -665,6 +690,24 @@ std::pair<bool, double> MagneticFilterLossesNoProximity::evaluate_magnetic(Magne
         std::optional<WindingLossesOutput> solvedWindingLosses;
         auto coreLosses = _magneticSimulator.calculate_core_losses(operatingPoint, *magnetic, &solvedWindingLosses, nullptr,
                                                                    WindingLossesScope::OHMIC_AND_SKIN_EFFECT);
+        // A core that saturates at the temperature its losses heat it to is not a candidate: the loss solve
+        // gives its numbers (ABT #1855) and the verdict is the saturation check analyze_results makes, on the
+        // solved flux density at the solved core temperature. The outputs keep this operating point's losses so
+        // a caller can tell this rejection from the others (CoilAdviser).
+        auto saturation = ResultsAnalyzer::check_saturation(magnetic->get_mutable_core().resolve_material(),
+            ResultsAnalyzer::get_peak_flux_density(coreLosses.get_magnetic_flux_density().value()), coreLosses.get_temperature(),
+            1.0, _magneticSimulator.get_last_dc_bias_point());
+        if (saturation.saturates) {
+            if (outputs != nullptr) {
+                while (outputs->size() < operatingPointIndex + 1) {
+                    outputs->push_back(Outputs());
+                }
+                (*outputs)[operatingPointIndex].set_core_losses(coreLosses);
+                (*outputs)[operatingPointIndex].set_winding_losses(solvedWindingLosses.value());
+            }
+            logEntry(std::string("Losses filter: rejecting candidate: ") + saturation.message, "MagneticFilter", 2);
+            return {false, 0.0};
+        }
         auto windingLosses = solvedWindingLosses.value();
         double windingLossesValue = windingLosses.get_winding_losses();
         auto coreLossesValue = coreLosses.get_core_losses();

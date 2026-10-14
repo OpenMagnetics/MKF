@@ -173,14 +173,34 @@ class Inputs : public MAS::Inputs {
     // current describes the drift, not the magnetizing current: the line-cycle PFC inductor
     // voltages that motivated it carried 16-46 times their swing and gave kA peaks.
     static constexpr double maximumVoltSecondImbalance = 0.25;
-    // Throws InvalidInputException when the voltage's net volt-seconds over its period exceed
-    // maximumVoltSecondImbalance of its AC flux-linkage swing. `context` names the operating point
-    // and winding for the message.
+    // The volt-second balance of a sampled voltage over its period (ABT #1855): its mean, the net
+    // volt-seconds that mean leaves per period, the AC flux-linkage swing of the rest, and the net
+    // as a fraction of that swing. A constant voltage has no swing (acSwing 0, fraction not finite
+    // when its mean is not zero).
+    struct VoltSecondBalance {
+        double meanVoltage;
+        double period;
+        double netVoltSeconds;
+        double acSwing;
+        double imbalance;
+    };
+    static VoltSecondBalance calculate_volt_second_balance(const Waveform& voltageSampledWaveform, const std::string& context);
+    // The per-topic imbalance check (ABT #1855), shared by check_volt_second_balance and by
+    // ResultsAnalyzer: MKF's message when the voltage's net volt-seconds over its period exceed
+    // maximumVoltSecondImbalance of its AC flux-linkage swing (or it is a non-zero constant), nullopt
+    // when it is balanced. `context` names the operating point and winding for the message.
+    static std::optional<std::string> describe_volt_second_imbalance(const Waveform& voltageSampledWaveform, const std::string& context);
+    // Throws InvalidInputException with describe_volt_second_imbalance's message when the voltage is
+    // not balanced. Since ABT #1855 only the calculation of an induced current asked for that voltage
+    // (calculate_magnetizing_current of an excitation, the bindings' calculate_induced_current) and
+    // the advisers' up-front input check refuse it; loading, autocompleting and simulating a design
+    // integrate the voltage's balanced part and ResultsAnalyzer reports the imbalance.
     static void check_volt_second_balance(const Waveform& voltageSampledWaveform, const std::string& context);
-    // check_volt_second_balance, then the mean of the voltage AS GIVEN (not its resampled copy). A
-    // winding in periodic steady state has zero net volt-seconds, so what remains (probe offset, I*R
-    // drop, a capture that is not a whole number of periods) is subtracted before integrating the
-    // magnetizing current, and logged as a warning above voltSecondImbalanceWarningThreshold.
+    // The mean of the voltage AS GIVEN (not its resampled copy). A winding in periodic steady state
+    // has zero net volt-seconds, so what remains (probe offset, I*R drop, a capture that is not a
+    // whole number of periods, or a voltage that is not balanced at all) is subtracted before
+    // integrating the magnetizing current, and logged as a warning above
+    // voltSecondImbalanceWarningThreshold. It does not refuse an unbalanced voltage (ABT #1855).
     static constexpr double voltSecondImbalanceWarningThreshold = 0.01;
     static double calculate_steady_state_mean_voltage(const OperatingPointExcitation& excitation,
                                                       const Waveform& voltageSampledWaveform,
@@ -227,11 +247,27 @@ class Inputs : public MAS::Inputs {
                                                             double magnetizingInductance,
                                                             bool compress,
                                                             double dcCurrent=0);
+    // The two excitation overloads above are the induced current asked for one voltage (the
+    // bindings' calculate_induced_current): they refuse a voltage that is not volt-second balanced
+    // (check_volt_second_balance), whose message the web shows next to it. Everything that loads,
+    // autocompletes or simulates a design integrates through these instead, which take the voltage's
+    // balanced part (its mean removed) and do not refuse it (ABT #1855).
+    static SignalDescriptor integrate_magnetizing_current(OperatingPointExcitation& excitation,
+                                                          double magnetizingInductance,
+                                                          bool compress,
+                                                          double dcCurrent);
+    static SignalDescriptor integrate_magnetizing_current(OperatingPointExcitation& excitation,
+                                                          Waveform voltageSampledWaveform,
+                                                          double magnetizingInductance,
+                                                          bool compress,
+                                                          double dcCurrent);
     // A bool in the dcCurrent slot is the removed (addOffset, alternatingConduction) signature: it
     // converted silently to a 1 A DC (PyOpenMagnetics did exactly that). Callers that want the
     // currents' DC use the OperatingPoint overload above.
     static SignalDescriptor calculate_magnetizing_current(OperatingPointExcitation& excitation, double magnetizingInductance, bool compress, bool dcCurrent) = delete;
     static SignalDescriptor calculate_magnetizing_current(OperatingPointExcitation& excitation, Waveform voltageSampledWaveform, double magnetizingInductance, bool compress, bool dcCurrent) = delete;
+    static SignalDescriptor integrate_magnetizing_current(OperatingPointExcitation& excitation, double magnetizingInductance, bool compress, bool dcCurrent) = delete;
+    static SignalDescriptor integrate_magnetizing_current(OperatingPointExcitation& excitation, Waveform voltageSampledWaveform, double magnetizingInductance, bool compress, bool dcCurrent) = delete;
     static SignalDescriptor add_offset_to_excitation(SignalDescriptor signalDescriptor,
                                                              double offset,
                                                              double frequency);

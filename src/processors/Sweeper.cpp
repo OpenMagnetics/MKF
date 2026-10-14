@@ -1,4 +1,5 @@
 #include "processors/Sweeper.h"
+#include "processors/ResultsAnalyzer.h"
 #include "physical_models/ComplexPermeability.h"
 #include "Constants.h"
 #include "physical_models/WindingLosses.h"
@@ -314,41 +315,25 @@ Curve2D Sweeper::sweep_magnetizing_inductance_over_dc_bias(Magnetic magnetic, do
         currentMask.push_back(virtualCurrentRms * sqrt(2) * turnsRatio);
     }
 
-    // Saturated-state model of this sweep (ABT #1790, Alf 2026-10-12). MagnetizingInductance refuses a
-    // bias that saturates the core (CALCULATION_CORE_SATURATES, ABT #1740), and everywhere else that
-    // refusal stands. A DC-bias sweep is drawn to see where the inductance collapses, so here the curve
-    // continues past that point with the core treated as air: mu_r = 1 in the same reluctance model
-    // (ungapped core path at mu_r = 1 in series with the gaps), L = N^2 / R. Those points are flagged in
-    // the curve and named in its title. Only that error code is taken; anything else propagates.
-    std::optional<double> airCoreMagnetizingInductance;
-    auto get_air_core_magnetizing_inductance = [&]() {
-        if (!airCoreMagnetizingInductance) {
-            double numberTurns = static_cast<double>(inductorCoil.get_functional_description()[0].get_number_turns());
-            double airCoreReluctance = ReluctanceModel::factory()->get_core_reluctance(magnetic.get_core(), 1.0).get_core_reluctance();
-            airCoreMagnetizingInductance = numberTurns * numberTurns / airCoreReluctance;
-        }
-        return airCoreMagnetizingInductance.value();
-    };
-
+    // Saturated points of this sweep (ABT #1790, Alf 2026-10-12). A DC-bias sweep is drawn to see where the
+    // inductance collapses. Since ABT #1855 MagnetizingInductance gives its numbers for a saturated core
+    // too (past the knee the material takes the vacuum's permeability, mu_r = 1, in the same reluctance
+    // model, so the curve runs on to the air-core inductance); a saturated point by the saturation check
+    // analyze_results makes (ResultsAnalyzer::check_saturation: B peak above the material's B_sat at the
+    // sweep's temperature, or the bias collapsed the permeability to mu_r = 1, Alf 2026-10-14) is flagged
+    // in the curve and named in its title.
+    const auto coreMaterial = magnetic.get_core().resolve_material();
     std::vector<double> magnetizingInductances;
     std::vector<bool> saturatedPoints;
     std::optional<double> firstSaturatedCurrentOffset;
     for (auto currentOffset : currentOffsets) {
         auto operatingPoint = Inputs::create_operating_point_with_sinusoidal_current_mask(defaults.measurementFrequency, staticMagnetizingInductance, temperature, turnsRatios, currentMask, currentOffset);
-        double magnetizingInductance;
-        bool saturated = false;
-        try {
-            magnetizingInductance = resolve_dimensional_values(magnetizingInductanceModel.calculate_inductance_from_number_turns_and_gapping(magnetic.get_core(), inductorCoil, &operatingPoint).get_magnetizing_inductance());
-        }
-        catch (const OpenMagneticsException& exception) {
-            if (exception.code() != ErrorCode::CALCULATION_CORE_SATURATES) {
-                throw;
-            }
-            saturated = true;
-            magnetizingInductance = get_air_core_magnetizing_inductance();
-            if (!firstSaturatedCurrentOffset) {
-                firstSaturatedCurrentOffset = currentOffset;
-            }
+        auto [magnetizingInductanceOutput, magneticFluxDensity] = magnetizingInductanceModel.calculate_inductance_and_magnetic_flux_density(magnetic.get_core(), inductorCoil, &operatingPoint);
+        double magnetizingInductance = resolve_dimensional_values(magnetizingInductanceOutput.get_magnetizing_inductance());
+        bool saturated = ResultsAnalyzer::check_saturation(coreMaterial, ResultsAnalyzer::get_peak_flux_density(magneticFluxDensity), temperature,
+                                                           1.0, magnetizingInductanceModel.get_last_dc_bias_point()).saturates;
+        if (saturated && !firstSaturatedCurrentOffset) {
+            firstSaturatedCurrentOffset = currentOffset;
         }
         magnetizingInductances.push_back(magnetizingInductance);
         saturatedPoints.push_back(saturated);
@@ -357,8 +342,7 @@ Curve2D Sweeper::sweep_magnetizing_inductance_over_dc_bias(Magnetic magnetic, do
     if (firstSaturatedCurrentOffset) {
         std::ostringstream note;
         note << " (core saturated from " << firstSaturatedCurrentOffset.value()
-             << " A: those points are the air-core inductance, mu_r = 1, "
-             << get_air_core_magnetizing_inductance() << " H)";
+             << " A: B peak above B_sat or the permeability collapsed; past the knee the model takes the air-core inductance, mu_r = 1)";
         title += note.str();
     }
 
@@ -554,12 +538,14 @@ Curve2D Sweeper::sweep_core_losses_over_frequency(Magnetic magnetic, OperatingPo
     operatingPoint.get_mutable_conditions().set_ambient_temperature(temperature);
 
     std::vector<double> coreLossesPerFrequency;
-    // Saturated-state model of this sweep (ABT #1790, Alf 2026-10-12). The sweep holds the applied
-    // voltage, so the flux swing grows as the frequency falls and the low end of a sweep can ask for
-    // volt-seconds the core cannot take; MagnetizingInductance refuses those (CALCULATION_CORE_SATURATES,
-    // ABT #1740). A saturated core is treated as air, and no core loss is computed for air or read from a
-    // loss model past saturation: such a point stays in the curve at its frequency, flagged, with no
-    // value (NaN), and the title names the saturated points. Only that error code is taken.
+    // Saturated points of this sweep (ABT #1790, Alf 2026-10-12). The sweep holds the applied voltage, so
+    // the flux swing grows as the frequency falls and the low end of a sweep can ask for volt-seconds the
+    // core cannot take. Since ABT #1855 MagnetizingInductance gives its numbers for those too; a point
+    // the saturation check analyze_results makes calls saturated (ResultsAnalyzer::check_saturation: B peak
+    // above the material's B_sat at the sweep's temperature, or the bias collapsed the permeability to
+    // mu_r = 1) is a saturated core, for which no loss
+    // model holds: it stays in the curve at its frequency, flagged, with no value (NaN), and the title
+    // names the saturated points.
     std::vector<bool> saturatedPoints;
     std::vector<double> saturatedFrequencies;
     CoreLosses coreLossesModel;
@@ -587,23 +573,16 @@ Curve2D Sweeper::sweep_core_losses_over_frequency(Magnetic magnetic, OperatingPo
             excitation.set_magnetic_flux_density(std::nullopt);
         }
 
-        std::optional<SignalDescriptor> magneticFluxDensity;
-        try {
-            magneticFluxDensity = magnetizingInductanceModel.calculate_inductance_and_magnetic_flux_density(magnetic, &sweptOperatingPoint).second;
-        }
-        catch (const OpenMagneticsException& exception) {
-            if (exception.code() != ErrorCode::CALCULATION_CORE_SATURATES) {
-                throw;
-            }
-        }
-        if (!magneticFluxDensity) {
+        auto magneticFluxDensity = magnetizingInductanceModel.calculate_inductance_and_magnetic_flux_density(magnetic, &sweptOperatingPoint).second;
+        if (ResultsAnalyzer::check_saturation(core.resolve_material(), ResultsAnalyzer::get_peak_flux_density(magneticFluxDensity), temperature,
+                                              1.0, magnetizingInductanceModel.get_last_dc_bias_point()).saturates) {
             coreLossesPerFrequency.push_back(std::numeric_limits<double>::quiet_NaN());
             saturatedPoints.push_back(true);
             saturatedFrequencies.push_back(frequency);
             continue;
         }
         auto excitation = sweptOperatingPoint.get_excitations_per_winding()[0];
-        excitation.set_magnetic_flux_density(magneticFluxDensity.value());
+        excitation.set_magnetic_flux_density(magneticFluxDensity);
 
         auto coreLosses = coreLossesModel.calculate_core_losses(core, excitation, temperature).get_core_losses();
         coreLossesPerFrequency.push_back(coreLosses);
@@ -615,7 +594,7 @@ Curve2D Sweeper::sweep_core_losses_over_frequency(Magnetic magnetic, OperatingPo
         note << " (core saturated at " << saturatedFrequencies.size() << " of " << frequencies.size() << " points, "
              << *std::min_element(saturatedFrequencies.begin(), saturatedFrequencies.end()) << " Hz to "
              << *std::max_element(saturatedFrequencies.begin(), saturatedFrequencies.end())
-             << " Hz: the core is air there (mu_r = 1) and no core loss is computed)";
+             << " Hz: B peak above B_sat, no core loss is computed)";
         title += note.str();
     }
 

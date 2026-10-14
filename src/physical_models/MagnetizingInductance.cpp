@@ -6,6 +6,7 @@
 #include "physical_models/MagneticField.h"
 #include "physical_models/Reluctance.h"
 #include "physical_models/InitialPermeability.h"
+#include "processors/ResultsAnalyzer.h"
 #include "constructive_models/CorePiece.h"
 #include "support/Settings.h"
 #include "support/Utils.h"
@@ -489,6 +490,7 @@ SignalDescriptor MagnetizingInductance::calculate_magnetic_flux_density_from_ind
 }
 
 std::pair<MagnetizingInductanceOutput, SignalDescriptor> MagnetizingInductance::calculate_inductance_and_magnetic_flux_density(Core core, Coil coil, OperatingPoint* operatingPoint) {
+    _lastDcBiasPoint.reset();
     // Every path below reads the effective area / columns from the processed
     // description. A core deserialized as a Magnetic member (from_json never
     // processes it) can arrive without one; `->` on the empty optional was UB and
@@ -741,20 +743,6 @@ std::pair<MagnetizingInductanceOutput, SignalDescriptor> MagnetizingInductance::
     modifiedTotalReluctance = magnetizingInductanceOutput.get_core_reluctance();
     modifiedMagnetizingInductance = pow(numberTurnsPrimary, 2) / modifiedTotalReluctance;
 
-    // What the last evaluation of the fixed point saw, for the saturation refusal below (ABT #1740).
-    std::optional<double> voltSecondFluxDensitySwing;   // B peak-to-peak the volt-seconds impose, mu-independent
-    double lastBiasFieldStrength = 0;
-    double lastPeakFluxDensity = 0;
-    // Read only when a saturation is reported: a design without an operating point needs no saturation data.
-    auto saturationFluxDensityAt = [&]() { return Core::get_magnetic_flux_density_saturation(core.resolve_material(), temperature, false); };
-    auto describeOperatingPoint = [&]() {
-        std::string description = "operating point '" + (operatingPoint && operatingPoint->get_name() ? operatingPoint->get_name().value() : std::string("unnamed")) +
-                                  "', winding '" + coil.get_functional_description()[0].get_name() + "' (" +
-                                  std::to_string(static_cast<int>(numberTurnsPrimary)) + " turns, A_e " +
-                                  std::to_string(effectiveArea * 1e6) + " mm2, material " + core.resolve_material().get_name() + ")";
-        return description;
-    };
-
     // ABT #1223: under DC bias the permeability is a fixed point mu = F(mu): the bias flux density
     // follows from the magnetizing current and the reluctance, both of which depend on mu, and the
     // bias field is read from that flux density on the material's magnetisation curve. The previous
@@ -775,8 +763,6 @@ std::pair<MagnetizingInductanceOutput, SignalDescriptor> MagnetizingInductance::
         // whose DC comes from its own volt-seconds fixes the flux (Faraday); everything else (a
         // current, or a DC set by the load currents) fixes the MMF.
         bool biasFluxImposed = false;
-        // Whether the flux below comes from this winding's volt-seconds (Faraday), and so its swing is fixed.
-        bool fluxFromVoltSeconds = false;
 
         if (operatingPoint) {
             if (operatingPoint->get_mutable_excitations_per_winding().size() > 0) {
@@ -890,7 +876,6 @@ std::pair<MagnetizingInductanceOutput, SignalDescriptor> MagnetizingInductance::
                     auto turnsRatios = coil.get_turns_ratios();
                     bool addOffset = Inputs::include_dc_offset_into_magnetizing_current(*operatingPoint, turnsRatios);
                     biasFluxImposed = !addOffset;
-                    fluxFromVoltSeconds = true;
 
                     auto magnetizingCurrent = Inputs::calculate_magnetizing_current(*operatingPoint, 0, modifiedMagnetizingInductance, turnsRatios, false,
                                                                                     sampledVoltageWaveform);
@@ -925,23 +910,10 @@ std::pair<MagnetizingInductanceOutput, SignalDescriptor> MagnetizingInductance::
 
                 // A voltage fixes the flux swing by Faraday: N * A_e * dB = integral of v dt, whatever the
                 // permeability (the magnetizing current scales with 1/L and the flux with L). A swing wider than
-                // twice the saturation flux density fits no bias at all, so it is refused here, before the DC-bias
-                // iteration (ABT #1740).
-                if (fluxFromVoltSeconds) {
-                    double saturationFluxDensity = saturationFluxDensityAt();
-                    auto fluxDensityWaveformForSwing = magneticFluxDensity.get_waveform().value();
-                    const auto& fluxDensityData = fluxDensityWaveformForSwing.get_data();
-                    double swing = *std::max_element(fluxDensityData.begin(), fluxDensityData.end()) -
-                                   *std::min_element(fluxDensityData.begin(), fluxDensityData.end());
-                    voltSecondFluxDensitySwing = swing;
-                    if (swing / 2 > saturationFluxDensity) {
-                        throw SaturationException(
-                            "The core saturates: at " + describeOperatingPoint() + " the volt-seconds impose a flux swing dB = " +
-                            std::to_string(swing) + " T peak-to-peak, so B_peak >= dB / 2 = " + std::to_string(swing / 2) +
-                            " T for any bias, above B_sat = " + std::to_string(saturationFluxDensity) + " T at " + std::to_string(temperature) +
-                            " C. More turns, a larger core or less volt-seconds are needed");
-                    }
-                }
+                // twice the saturation flux density fits no bias at all: the core saturates. That used to be refused
+                // here (ABT #1740); since ABT #1855 the model gives its numbers for it (the flux density is what the
+                // volt-seconds impose, the DC point is found below on the material's curve, which continues past
+                // saturation on the vacuum slope) and ResultsAnalyzer::check_saturation reports the saturation.
                 double switchingFrequency = Inputs::get_switching_frequency(operatingPoint->get_mutable_excitations_per_winding()[0]);
 
                 // The bias is a flux density: the DC offset, or the largest harmonic below the
@@ -1020,16 +992,11 @@ std::pair<MagnetizingInductanceOutput, SignalDescriptor> MagnetizingInductance::
                     }
                 }
 
-                lastBiasFieldStrength = hFieldDcBias;
-                {
-                    auto fluxDensityWaveformForPeak = result.second.get_waveform().value();
-                    const auto& fluxDensityData = fluxDensityWaveformForPeak.get_data();
-                    lastPeakFluxDensity = std::max(fabs(*std::max_element(fluxDensityData.begin(), fluxDensityData.end())),
-                                                   fabs(*std::min_element(fluxDensityData.begin(), fluxDensityData.end())));
-                }
                 // The model's value, not the checked one: a value at or below the vacuum's means the DC point
-                // has left the material's curve, and the loop below says so with this operating point.
+                // has left the material's curve, and the loop below takes the saturated material's 1.
                 nextPermeability = initialPermeability.get_initial_permeability_model_value(core.resolve_material(), temperature, hFieldDcBias, frequency);
+                // The last evaluation is the converged one: the output above is built at its permeability.
+                _lastDcBiasPoint = DcBiasPoint{hFieldDcBias, temperature, frequency};
             }
         }
         return nextPermeability;
@@ -1051,20 +1018,16 @@ std::pair<MagnetizingInductanceOutput, SignalDescriptor> MagnetizingInductance::
         }
         // The DC point has reached the vacuum's permeability, or a model value below it (the amplitude
         // permeability and the 1/(a + b H^c) fits fall to 0 past the knee): the core material is saturated at
-        // that bias. With the flux swing fixed by volt-seconds, a lower permeability means more magnetizing
-        // current and so more bias, and the iteration ran away to H = 3.6e17 A/m and mu = 8e-13 before this
-        // check (ABT #1740). A material whose own permeability is the vacuum's is left alone.
+        // that bias, and its reversible permeability there is the vacuum's, 1: the slope the material's own
+        // magnetisation curve takes past the knee (InitialPermeability::get_magnetisation_curve), and the
+        // saturated state of the DC-bias sweep (ABT #1790). With the flux swing fixed by volt-seconds, a lower
+        // permeability means more magnetizing current and so more bias, and the iteration ran away to
+        // H = 3.6e17 A/m and mu = 8e-13 on the model value (ABT #1740); at 1 it has its fixed point. Until
+        // ABT #1855 this was refused (SaturationException); the model now gives its numbers for the saturated
+        // core and ResultsAnalyzer::check_saturation reports the saturation. A material whose own permeability
+        // is the vacuum's is left alone.
         if (nextPermeability <= 1 && currentInitialPermeabilityUnbiased > 1) {
-            std::ostringstream message;
-            message << "The core saturates: at " << describeOperatingPoint() << " the DC-bias operating point reaches H = "
-                    << lastBiasFieldStrength << " A/m, where the material's permeability is " << nextPermeability
-                    << " (the vacuum's is 1; unbiased " << currentInitialPermeabilityUnbiased << "), with |B| up to "
-                    << lastPeakFluxDensity << " T against B_sat = " << saturationFluxDensityAt() << " T at " << temperature << " C";
-            if (voltSecondFluxDensitySwing) {
-                message << "; the volt-seconds impose a flux swing dB = " << voltSecondFluxDensitySwing.value() << " T peak-to-peak";
-            }
-            message << ". More turns, a larger gap or core, or less volt-seconds are needed";
-            throw SaturationException(message.str());
+            nextPermeability = 1;
         }
         double residual = nextPermeability - permeability;
         if (fabs(residual) <= biasConvergenceTolerance * permeability) {
@@ -1369,11 +1332,27 @@ int MagnetizingInductance::calculate_number_turns_from_gapping_and_inductance(Co
              << desiredMagnetizingInductance * 1e6 << " uH";
         return text.str();
     };
-    double finalInductance = inductanceAtTurns(numberTurnsPrimary);
+    coil.get_mutable_functional_description()[0].set_number_turns(static_cast<int64_t>(numberTurnsPrimary));
+    auto [finalInductanceOutput, finalFluxDensity] = calculate_inductance_and_magnetic_flux_density(core, coil, operatingPointPtr);
+    const auto finalDcBiasPoint = get_last_dc_bias_point();
+    double finalInductance = resolve_dimensional_values(finalInductanceOutput.get_magnetizing_inductance());
     if (!std::isfinite(finalInductance) || finalInductance <= 0) {
         throw CalculationException(ErrorCode::CALCULATION_INVALID_RESULT,
                                    describeTarget() + ": the inductance model returned " + std::to_string(finalInductance) +
                                    " H at " + std::to_string(numberTurnsPrimary) + " turns");
+    }
+    // ABT #1855 (Alf, 2026-10-14): only simulate gives numbers through saturation. A design operation
+    // refuses a solution the saturation check flags (either criterion: B peak above B_sat at the
+    // operating point's temperature, or the DC bias collapsing the permeability to the vacuum's), as the
+    // advisers reject such a candidate. With mu = 1 under a collapsing bias the model's inductance is the
+    // air-core one, so without this the solve returned the air-core turn count (T 2.03/1.27/0.64,
+    // 75-Series 26, 10 A dc: 605 turns, H_dc 1.19 MA/m) as if it were a design.
+    const auto saturation = ResultsAnalyzer::check_saturation(core.resolve_material(),
+                                                              ResultsAnalyzer::get_peak_flux_density(finalFluxDensity),
+                                                              temperature, 1.0, finalDcBiasPoint);
+    if (saturation.saturates) {
+        throw SaturationException(describeTarget() + " with a core that is not saturated: at " +
+                                  std::to_string(numberTurnsPrimary) + " turns " + saturation.message);
     }
     // The same winding on the core as if its material had relative permeability 1: nothing
     // magnetic can carry less flux than vacuum, so an operating inductance below it is the
@@ -1628,10 +1607,26 @@ std::vector<CoreGap> MagnetizingInductance::calculate_gapping_from_number_turns_
         auto magneticFlux = OpenMagnetics::MagneticField::calculate_magnetic_flux(operatingPoint.get_mutable_excitations_per_winding()[0].get_magnetizing_current().value(), neededTotalReluctance, numberTurnsPrimary, operatingPoint.get_mutable_excitations_per_winding()[0].get_frequency());
         auto magneticFluxDensity = OpenMagnetics::MagneticField::calculate_magnetic_flux_density(magneticFlux, effectiveArea);
         double biasFluxDensity = fabs(magneticFluxDensity.get_processed().value().get_offset());
+        auto material = core.resolve_material();
+        std::optional<DcBiasPoint> dcBiasPoint;
         if (biasFluxDensity > 0) {
-            auto material = core.resolve_material();
             double biasFieldStrength = InitialPermeability::get_magnetic_field_dc_bias_for_flux_density(material, biasFluxDensity, temperature, frequency);
             currentInitialPermeability = initialPermeability.get_initial_permeability(material, temperature, biasFieldStrength, frequency);
+            dcBiasPoint = DcBiasPoint{biasFieldStrength, temperature, frequency};
+        }
+        // ABT #1855 (Alf, 2026-10-14): a design operation refuses a solution the saturation check flags
+        // (either criterion), as the advisers reject such a candidate; only simulate gives numbers through
+        // saturation. At the solution the gapped core carries the flux the target inductance imposes
+        // (computed above with the needed reluctance). Without this, a bias that collapses the
+        // permeability model to the vacuum's while the curve's B stays under B_sat (3C95, 3C96) was sized
+        // with mu_r = 1: an air-core gap returned as a design.
+        const auto saturation = ResultsAnalyzer::check_saturation(material, ResultsAnalyzer::get_peak_flux_density(magneticFluxDensity),
+                                                                  temperature, 1.0, dcBiasPoint);
+        if (saturation.saturates) {
+            std::ostringstream reason;
+            reason << "No gap of core '" << core.get_name().value_or("unnamed") << "' holds " << desiredMagnetizingInductance * 1e6
+                   << " uH with " << numberTurnsPrimary << " turns and a core that is not saturated: " << saturation.message;
+            throw SaturationException(reason.str());
         }
     }
 

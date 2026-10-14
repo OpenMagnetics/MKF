@@ -315,6 +315,14 @@ double InitialPermeability::get_magnetic_field_dc_bias_for_flux_density(const Co
                              std::to_string(saturationFluxDensity) + " T: the material's DC-bias factor is inconsistent with its saturation data");
 }
 
+double InitialPermeability::get_flux_density_for_magnetic_field_dc_bias(const CoreMaterial& coreMaterial, double magneticFieldDcBias, double temperature, std::optional<double> frequency) {
+    if (!(magneticFieldDcBias >= 0)) {
+        throw InvalidInputException(ErrorCode::INVALID_INPUT, "A DC bias field strength must be a non-negative number: " + std::to_string(magneticFieldDcBias) + " A/m");
+    }
+    // Ampere with no gap on a 1 m path: the MMF is the field strength itself, and the crossing is the curve's B(H).
+    return get_dc_operating_point_for_magnetomotive_force(coreMaterial, magneticFieldDcBias, 1.0, 1.0, 0.0, temperature, frequency).second;
+}
+
 std::pair<double, double> InitialPermeability::get_dc_operating_point_for_magnetomotive_force(const CoreMaterial& coreMaterial, double magnetomotiveForce, double effectiveLength, double effectiveArea, double gapReluctance, double temperature, std::optional<double> frequency) {
     if (magnetomotiveForce < 0 || effectiveLength <= 0 || effectiveArea <= 0 || gapReluctance < 0) {
         throw InvalidInputException(ErrorCode::INVALID_INPUT,
@@ -1199,7 +1207,7 @@ double InitialPermeability::get_initial_permeability(const CoreMaterial& coreMat
     double permeability = get_initial_permeability_model_value(coreMaterial, temperature, magneticFieldDcBias, frequency, magneticFluxDensity, shapeFamily);
     // A relative permeability below the vacuum's is not a material property: it is the model extrapolated
     // past the knee, where its B-H slope tends to 0 instead of to mu0 (ABT #1740: 3C96 read 0.499 at
-    // 6.2 kA/m and 8e-13 at 5e9 A/m). The material there is saturated, and that is what is said.
+    // 6.2 kA/m and 8e-13 at 5e9 A/m). The material there is saturated, with the vacuum's permeability.
     if (permeability < 1) {
         // Tell the two causes apart, as they need different answers: the same material and conditions
         // without the bias. If that is physical, the bias drove the model past the knee (the material is
@@ -1210,6 +1218,15 @@ double InitialPermeability::get_initial_permeability(const CoreMaterial& coreMat
         std::optional<double> unbiasedPermeability;
         if (biased) {
             unbiasedPermeability = get_initial_permeability_model_value(coreMaterial, temperature, std::nullopt, frequency, std::nullopt, shapeFamily);
+        }
+        // The bias case is the material saturated at that bias: past the knee its reversible permeability is
+        // the vacuum's, 1, the slope its own magnetisation curve takes there (get_magnetisation_curve) and the
+        // saturated state of the DC-bias sweep (ABT #1790). Until ABT #1855 this was refused
+        // (SaturationException); a saturated core now gets its numbers and ResultsAnalyzer::check_saturation
+        // reports the saturation. A model outside its frequency or temperature range is not saturation: it
+        // has no value to give, and must stop the run.
+        if (biased && unbiasedPermeability.value() >= 1) {
+            return 1;
         }
         std::ostringstream message;
         message << "Material " << coreMaterial.get_name() << ": its permeability model gives mu_r = " << permeability
@@ -1222,21 +1239,12 @@ double InitialPermeability::get_initial_permeability(const CoreMaterial& coreMat
         }
         message << ", frequency " << (frequency ? std::to_string(frequency.value()) + " Hz" : std::string("not given"));
         message << ", temperature " << (temperature ? std::to_string(temperature.value()) + " C" : std::string("not given"));
-        if (biased && unbiasedPermeability.value() >= 1) {
-            message << ". Without the bias it is " << unbiasedPermeability.value()
-                    << ": the material is saturated at this bias, past the knee where its model no longer holds";
-        }
-        else if (biased) {
+        if (biased) {
             message << ". Without the bias it is still " << unbiasedPermeability.value()
                     << ": the material's frequency or temperature dependence is outside its valid range here";
         }
         else {
             message << ": the material's frequency or temperature dependence is outside its valid range here";
-        }
-        // Only the bias case is a saturation verdict on the design (an adviser rejects the candidate on
-        // it); a model outside its frequency or temperature range is not, and must stop the run.
-        if (biased && unbiasedPermeability.value() >= 1) {
-            throw SaturationException(message.str());
         }
         throw CalculationException(ErrorCode::CALCULATION_INVALID_RESULT, message.str());
     }
