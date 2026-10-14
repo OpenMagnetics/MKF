@@ -162,13 +162,14 @@ TEST_CASE("Test_Impedance_Many_Turns", "[physical-model][impedance][smoke-test]"
     };
     settings._debug = true;
 
-    // A07's complex permeability starts at 9935 Hz (its mu'' table begins there), so the 2 kHz and
-    // 5 kHz points have no data: those must throw, the rest keep the measured check.
+    // A07's complex permeability is tabulated from 9935 Hz (its mu'' table begins there), so at 2 kHz
+    // and 5 kHz it is estimated (ABT #1861); every point keeps the measured check.
     auto [minimumMaterialFrequency, maximumMaterialFrequency] = ComplexPermeability().get_frequency_range(coreMaterial);
     for (auto [frequency, expectedImpedance] : expectedImpedances) {
         if (frequency < minimumMaterialFrequency || frequency > maximumMaterialFrequency) {
-            CHECK_THROWS_AS(OpenMagnetics::Impedance().calculate_impedance(magnetic, frequency), ComplexPermeabilityFrequencyOutOfRangeException);
-            continue;
+            // ABT #1861 (Alf approved 2026-10-14): outside the tabulated range the complex
+            // permeability is estimated, and says so; the measured check below holds there too.
+            CHECK(ComplexPermeability().get_complex_permeability_with_source(find_core_material_by_name(coreMaterial), frequency).is_estimated());
         }
         auto impedance = OpenMagnetics::Impedance().calculate_impedance(magnetic, frequency);
         REQUIRE_THAT(expectedImpedance, Catch::Matchers::WithinAbs(abs(impedance), expectedImpedance * maximumError));
@@ -299,13 +300,14 @@ TEST_CASE("Test_Impedance_Few_Turns", "[physical-model][impedance][smoke-test]")
         {50000, 305},
     };
 
-    // A07's complex permeability starts at 9935 Hz (its mu'' table begins there), so the 2 kHz and
-    // 5 kHz points have no data: those must throw, the rest keep the measured check.
+    // A07's complex permeability is tabulated from 9935 Hz (its mu'' table begins there), so at 2 kHz
+    // and 5 kHz it is estimated (ABT #1861); every point keeps the measured check.
     auto [minimumMaterialFrequency, maximumMaterialFrequency] = ComplexPermeability().get_frequency_range(coreMaterial);
     for (auto [frequency, expectedImpedance] : expectedImpedances) {
         if (frequency < minimumMaterialFrequency || frequency > maximumMaterialFrequency) {
-            CHECK_THROWS_AS(OpenMagnetics::Impedance().calculate_impedance(magnetic, frequency), ComplexPermeabilityFrequencyOutOfRangeException);
-            continue;
+            // ABT #1861 (Alf approved 2026-10-14): outside the tabulated range the complex
+            // permeability is estimated, and says so; the measured check below holds there too.
+            CHECK(ComplexPermeability().get_complex_permeability_with_source(find_core_material_by_name(coreMaterial), frequency).is_estimated());
         }
         auto impedance = OpenMagnetics::Impedance().calculate_impedance(magnetic, frequency);
         REQUIRE_THAT(expectedImpedance, Catch::Matchers::WithinAbs(abs(impedance), expectedImpedance * maximumError));
@@ -355,12 +357,14 @@ TEST_CASE("Test_Impedance_Many_Turns_Larger_Core", "[physical-model][impedance][
     };
 
     // A05's mu'' table starts at 40973 Hz (mu' starts at 1 kHz), so only the 50 kHz point is inside
-    // its complex-permeability data: the points below must throw, 50 kHz keeps the measured check.
+    // its complex-permeability data; below it mu'' is estimated (ABT #1861). Every point keeps the
+    // measured check.
     auto [minimumMaterialFrequency, maximumMaterialFrequency] = ComplexPermeability().get_frequency_range(coreMaterial);
     for (auto [frequency, expectedImpedance] : expectedImpedances) {
         if (frequency < minimumMaterialFrequency || frequency > maximumMaterialFrequency) {
-            CHECK_THROWS_AS(OpenMagnetics::Impedance().calculate_impedance(magnetic, frequency), ComplexPermeabilityFrequencyOutOfRangeException);
-            continue;
+            // ABT #1861 (Alf approved 2026-10-14): outside the tabulated range the complex
+            // permeability is estimated, and says so; the measured check below holds there too.
+            CHECK(ComplexPermeability().get_complex_permeability_with_source(find_core_material_by_name(coreMaterial), frequency).is_estimated());
         }
         auto impedance = OpenMagnetics::Impedance().calculate_impedance(magnetic, frequency);
         REQUIRE_THAT(expectedImpedance, Catch::Matchers::WithinAbs(abs(impedance), expectedImpedance * maximumError));
@@ -414,12 +418,14 @@ TEST_CASE("Test_Impedance_Few_Turns_Larger_Core", "[physical-model][impedance][s
     };
 
     // A05's mu'' table starts at 40973 Hz (mu' starts at 1 kHz), so only the 50 kHz point is inside
-    // its complex-permeability data: the points below must throw, 50 kHz keeps the measured check.
+    // its complex-permeability data; below it mu'' is estimated (ABT #1861). Every point keeps the
+    // measured check.
     auto [minimumMaterialFrequency, maximumMaterialFrequency] = ComplexPermeability().get_frequency_range(coreMaterial);
     for (auto [frequency, expectedImpedance] : expectedImpedances) {
         if (frequency < minimumMaterialFrequency || frequency > maximumMaterialFrequency) {
-            CHECK_THROWS_AS(OpenMagnetics::Impedance().calculate_impedance(magnetic, frequency), ComplexPermeabilityFrequencyOutOfRangeException);
-            continue;
+            // ABT #1861 (Alf approved 2026-10-14): outside the tabulated range the complex
+            // permeability is estimated, and says so; the measured check below holds there too.
+            CHECK(ComplexPermeability().get_complex_permeability_with_source(find_core_material_by_name(coreMaterial), frequency).is_estimated());
         }
         auto impedance = OpenMagnetics::Impedance().calculate_impedance(magnetic, frequency);
         REQUIRE_THAT(expectedImpedance, Catch::Matchers::WithinAbs(abs(impedance), expectedImpedance * maximumError));
@@ -550,25 +556,43 @@ TEST_CASE("Test_Impedance_Common_Mode_No_Leakage_Spike", "[physical-model][imped
 // ABT #167: complex-permeability splines are interpolators — past the last measured
 // point they diverged polynomially (A10's data ends near 1.2 MHz; µ'' extrapolated to
 // -2.5e6 at 1 GHz, i.e. an ACTIVE element), making CMC impedance sweeps rise
-// monotonically to 1 GHz instead of rolling off. This was first fixed by clamping to
-// the nearest measured endpoint, which froze µ above the data instead. Neither is
-// physics: a query outside the tabulated span now throws
-// ComplexPermeabilityFrequencyOutOfRangeException, and so does a sweep that reaches
-// past it. Inside the span the values stay passive (µ'' >= 0); µ' is signed (A10's goes negative
-// above its ferromagnetic resonance, MAS Kramers-Kronig extension) and is not floored.
-TEST_CASE("Test_Impedance_Complex_Permeability_No_Extrapolation", "[physical-model][impedance]") {
+// monotonically to 1 GHz instead of rolling off. Clamping to the nearest measured endpoint
+// froze µ above the data instead, and throwing outside the tabulated span (86c514b3) refused
+// the graph. ABT #1861 (Alf approved 2026-10-14): outside the span the complex permeability is
+// ESTIMATED from the material's class neighbours (ComplexPermeabilityEstimator) and marked as
+// such: get_complex_permeability_with_source says which part is estimated, the tabulated-only
+// getter still throws there, and the impedance sweeps flag the estimated points and ranges.
+// Inside the span the values stay passive (µ'' >= 0); µ' is signed (A10's goes negative above its
+// ferromagnetic resonance, MAS Kramers-Kronig extension) and is not floored.
+TEST_CASE("Test_Impedance_Complex_Permeability_Extrapolation_Marked", "[physical-model][impedance]") {
     settings.reset();
     OpenMagnetics::ComplexPermeability complexPermeabilityModel;
-    auto [minimumMaterialFrequency, maximumMaterialFrequency] = complexPermeabilityModel.get_frequency_range(std::string("A10"));
+    auto a10 = find_core_material_by_name("A10");
+    auto [minimumMaterialFrequency, maximumMaterialFrequency] = complexPermeabilityModel.get_frequency_range(a10);
     REQUIRE(maximumMaterialFrequency < 1e9);
 
     for (double frequency : {minimumMaterialFrequency, maximumMaterialFrequency}) {
-        auto [real, imaginary] = complexPermeabilityModel.get_complex_permeability(std::string("A10"), frequency);
-        CHECK(std::isfinite(real));
-        CHECK(imaginary >= 0.0);
+        auto value = complexPermeabilityModel.get_complex_permeability_with_source(a10, frequency);
+        CHECK(std::isfinite(value.real));
+        CHECK(value.imaginary >= 0.0);
+        CHECK_FALSE(value.is_estimated());
     }
     for (double frequency : {2 * maximumMaterialFrequency, 1e9}) {
-        CHECK_THROWS_AS(complexPermeabilityModel.get_complex_permeability(std::string("A10"), frequency), ComplexPermeabilityFrequencyOutOfRangeException);
+        auto value = complexPermeabilityModel.get_complex_permeability_with_source(a10, frequency);
+        CHECK(value.is_estimated());
+        CHECK(value.realSource != ComplexPermeabilitySource::TABULATED);
+        CHECK(value.imaginarySource != ComplexPermeabilitySource::TABULATED);
+        CHECK(std::isfinite(value.real));
+        CHECK(value.imaginary > 0.0);
+        CHECK_FALSE(value.realMethod.empty());
+        CHECK_FALSE(value.imaginaryMethod.empty());
+        // The estimate rolls off above the resonance: no polynomial blow-up, no frozen endpoint.
+        auto edge = complexPermeabilityModel.get_complex_permeability(a10, maximumMaterialFrequency);
+        CHECK(std::hypot(value.real, value.imaginary) < std::hypot(edge.first, edge.second));
+        auto [real, imaginary] = complexPermeabilityModel.get_complex_permeability(std::string("A10"), frequency);
+        CHECK(real == value.real);
+        CHECK(imaginary == value.imaginary);
+        CHECK_THROWS_AS(complexPermeabilityModel.get_tabulated_complex_permeability(a10, frequency), ComplexPermeabilityFrequencyOutOfRangeException);
     }
 
     auto testDataPath = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "cmc_redexpert_744834622.json");
@@ -577,9 +601,54 @@ TEST_CASE("Test_Impedance_Complex_Permeability_No_Extrapolation", "[physical-mod
     auto magneticJson = nlohmann::json::parse(file);
     OpenMagnetics::Magnetic magnetic(magneticJson);
     magnetic = magnetic_autocomplete(magnetic);
+    REQUIRE(magnetic.get_core().resolve_material().get_name() == "A10");
 
-    // The 744834622 CMC is wound on A10: a sweep to 1 GHz runs past its data and must say so.
-    CHECK_THROWS_AS(Sweeper::sweep_common_mode_impedance_over_frequency(magnetic, 10e3, 1e9, 300), ComplexPermeabilityFrequencyOutOfRangeException);
+    // The 744834622 CMC is wound on A10: a sweep to 1 GHz runs past its data, answers there, and
+    // says where the core's complex permeability is estimated.
+    const size_t numberPoints = 300;
+    auto sweep = Sweeper::sweep_common_mode_impedance_over_frequency(magnetic, 10e3, 1e9, numberPoints);
+    const auto& frequencies = sweep.get_x_points();
+    const auto& impedances = sweep.get_y_points();
+    REQUIRE(frequencies.size() == numberPoints);
+    REQUIRE(sweep.get_extrapolated_points());
+    REQUIRE(sweep.get_extrapolated_ranges());
+    const auto& flags = sweep.get_extrapolated_points().value();
+    const auto& ranges = sweep.get_extrapolated_ranges().value();
+    REQUIRE(flags.size() == numberPoints);
+    REQUIRE_FALSE(ranges.empty());
+    size_t numberFlagged = 0;
+    for (size_t index = 0; index < numberPoints; ++index) {
+        INFO("f = " << frequencies[index] << " Hz");
+        CHECK(std::isfinite(impedances[index]));
+        CHECK(impedances[index] > 0);
+        bool outside = frequencies[index] < minimumMaterialFrequency || frequencies[index] > maximumMaterialFrequency;
+        CHECK(flags[index] == outside);
+        if (flags[index]) {
+            ++numberFlagged;
+            bool covered = std::any_of(ranges.begin(), ranges.end(), [&](const Curve2DRange& range) {
+                return frequencies[index] >= range.from && frequencies[index] <= range.to;
+            });
+            CHECK(covered);
+        }
+    }
+    CHECK(numberFlagged > 0);
+    for (const auto& range : ranges) {
+        CHECK(range.material == "A10");
+        CHECK(range.tabulatedMinimum == minimumMaterialFrequency);
+        CHECK(range.tabulatedMaximum == maximumMaterialFrequency);
+        CHECK_FALSE(range.parts.empty());
+        CHECK_FALSE(range.source.empty());
+        CHECK(range.from <= range.to);
+    }
+    // The flags and ranges survive the JSON the web and PyOM receive.
+    nlohmann::json sweepJson;
+    to_json(sweepJson, sweep);
+    REQUIRE(sweepJson.contains("extrapolatedPoints"));
+    REQUIRE(sweepJson.contains("extrapolatedRanges"));
+    CHECK(sweepJson["extrapolatedPoints"].size() == numberPoints);
+    CHECK(sweepJson["extrapolatedRanges"].size() == ranges.size());
+    // ABT #167's symptom: no monotonic rise to 1 GHz. The top of the sweep is below its peak.
+    CHECK(impedances.back() < *std::max_element(impedances.begin(), impedances.end()));
 }
 
 

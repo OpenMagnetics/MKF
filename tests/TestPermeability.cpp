@@ -11,6 +11,7 @@
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
 #include <catch2/matchers/catch_matchers_string.hpp>
+#include <algorithm>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -636,24 +637,61 @@ namespace {
         REQUIRE(complexPermeabilityValueAt100000.second > complexPermeabilityValueAt10000000.second);
     }
 
-    // Outside its tabulated range a material has no complex permeability. It used to hold the
-    // last point: stale inline K081 data tabulated 1 Hz..1 MHz returned its 1 MHz point at
-    // 350 MHz and put a common-mode choke's resonance there. Now it throws, naming the
-    // material, the frequency and the range. K081's table (MAS) runs from 113335.906 Hz (its
-    // mu'' below that is a winding-resistance tail, removed) to 1 GHz.
-    TEST_CASE("Test_Complex_Permeability_Outside_Range_Throws", "[physical-model][complex-permeability][complex-permeability-range]") {
+    // Outside its tabulated range a material's complex permeability used to hold the last point:
+    // stale inline K081 data tabulated 1 Hz..1 MHz returned its 1 MHz point at 350 MHz and put a
+    // common-mode choke's resonance there. It then threw (86c514b3). ABT #1861 (Alf approved
+    // 2026-10-14): it is now ESTIMATED from the material's class neighbours
+    // (ComplexPermeabilityEstimator) and marked as estimated, part by part; the tabulated-only getter
+    // keeps throwing, naming the material, the frequency and the range. K081's table (MAS) runs from
+    // 113335.906 Hz (its mu'' below that is a winding-resistance tail, removed) to 1 GHz; its mu' is
+    // tabulated further down, so at 10 kHz only mu'' is estimated.
+    TEST_CASE("Test_Complex_Permeability_Outside_Range_Estimated", "[physical-model][complex-permeability][complex-permeability-range]") {
         ComplexPermeability complexPermeability;
+        auto k081 = find_core_material_by_name("K081");
         auto [minimumFrequency, maximumFrequency] = complexPermeability.get_frequency_range("K081");
         REQUIRE_THAT(minimumFrequency, Catch::Matchers::WithinRel(113335.906, 1e-9));
         REQUIRE_THAT(maximumFrequency, Catch::Matchers::WithinRel(1e9, 1e-9));
 
-        CHECK_NOTHROW(complexPermeability.get_complex_permeability("K081", minimumFrequency));
-        CHECK_NOTHROW(complexPermeability.get_complex_permeability("K081", maximumFrequency));
-        CHECK_THROWS_AS(complexPermeability.get_complex_permeability("K081", minimumFrequency / 2), ComplexPermeabilityFrequencyOutOfRangeException);
-        CHECK_THROWS_AS(complexPermeability.get_complex_permeability("K081", maximumFrequency * 2), ComplexPermeabilityFrequencyOutOfRangeException);
+        for (double frequency : {minimumFrequency, maximumFrequency}) {
+            auto value = complexPermeability.get_complex_permeability_with_source(k081, frequency);
+            CHECK_FALSE(value.is_estimated());
+            CHECK_NOTHROW(complexPermeability.get_tabulated_complex_permeability(k081, frequency));
+        }
+
+        auto below = complexPermeability.get_complex_permeability_with_source(k081, 10000);
+        CHECK(below.is_estimated());
+        CHECK(below.realSource == ComplexPermeabilitySource::TABULATED);
+        CHECK(below.imaginarySource == ComplexPermeabilitySource::ESTIMATED_NEIGHBOURS);
+        CHECK(std::isfinite(below.real));
+        CHECK(below.imaginary > 0);
+        CHECK_THAT(below.imaginaryMethod, Catch::Matchers::ContainsSubstring("FERRITE NI_ZN"));
+
+        auto above = complexPermeability.get_complex_permeability_with_source(k081, maximumFrequency * 2);
+        CHECK(above.realSource != ComplexPermeabilitySource::TABULATED);
+        CHECK(above.imaginarySource != ComplexPermeabilitySource::TABULATED);
+        CHECK(std::isfinite(above.real));
+        CHECK(above.imaginary > 0);
+
+        // The plain getter answers the same estimate.
+        auto [real, imaginary] = complexPermeability.get_complex_permeability("K081", 10000);
+        CHECK(real == below.real);
+        CHECK(imaginary == below.imaginary);
+
+        // The estimated stretches are labelled: below the mu'' table, and above both tables.
+        auto ranges = complexPermeability.get_estimated_ranges(k081);
+        CHECK(std::any_of(ranges.begin(), ranges.end(), [&](const ComplexPermeabilityEstimatedRange& range) {
+            return range.part == ComplexPermeabilityPart::IMAGINARY && range.fromFrequency <= 10000 && range.toFrequency >= 10000;
+        }));
+        CHECK(std::any_of(ranges.begin(), ranges.end(), [&](const ComplexPermeabilityEstimatedRange& range) {
+            return range.part == ComplexPermeabilityPart::REAL && range.fromFrequency <= 2 * maximumFrequency && range.toFrequency >= 2 * maximumFrequency;
+        }));
+
+        // Selection stays on data: the tabulated-only getter throws outside the range.
+        CHECK_THROWS_AS(complexPermeability.get_tabulated_complex_permeability(k081, minimumFrequency / 2), ComplexPermeabilityFrequencyOutOfRangeException);
+        CHECK_THROWS_AS(complexPermeability.get_tabulated_complex_permeability(k081, maximumFrequency * 2), ComplexPermeabilityFrequencyOutOfRangeException);
         try {
-            complexPermeability.get_complex_permeability("K081", 10000);
-            FAIL("10 kHz is below K081's tabulated range and must throw");
+            complexPermeability.get_tabulated_complex_permeability(k081, 10000);
+            FAIL("10 kHz is below K081's tabulated range and the tabulated-only getter must throw");
         }
         catch (const ComplexPermeabilityFrequencyOutOfRangeException& e) {
             CHECK(e.material_name() == "K081");
@@ -662,11 +700,12 @@ namespace {
             CHECK(e.range_maximum() == maximumFrequency);
         }
 
-        // A material whose complex permeability is derived from its initial-permeability table
-        // throws outside the derived table's range too.
+        // A material whose complex permeability is derived from its initial-permeability table has
+        // no MAS table to estimate from: it still throws outside the derived table's range, as
+        // ComplexPermeabilityEstimateUnavailableException (a ComplexPermeabilityFrequencyOutOfRangeException).
         auto [derivedMinimum, derivedMaximum] = complexPermeability.get_frequency_range("XFlux 60");
-        CHECK_THROWS_AS(complexPermeability.get_complex_permeability("XFlux 60", derivedMinimum / 2), ComplexPermeabilityFrequencyOutOfRangeException);
-        CHECK_THROWS_AS(complexPermeability.get_complex_permeability("XFlux 60", derivedMaximum * 2), ComplexPermeabilityFrequencyOutOfRangeException);
+        CHECK_THROWS_AS(complexPermeability.get_complex_permeability("XFlux 60", derivedMinimum / 2), ComplexPermeabilityEstimateUnavailableException);
+        CHECK_THROWS_AS(complexPermeability.get_complex_permeability("XFlux 60", derivedMaximum * 2), ComplexPermeabilityEstimateUnavailableException);
     }
 
     // mu' is returned as tabulated, not floored at 1: past its ferromagnetic resonance K081's
