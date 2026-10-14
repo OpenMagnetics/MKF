@@ -6,6 +6,7 @@
 #include "support/Exceptions.h"
 #include "support/Painter.h"
 #include "processors/MagneticSimulator.h"
+#include "processors/ResultsAnalyzer.h"
 #include "physical_models/MagnetizingInductance.h"
 #include "Definitions.h"
 #include "TestingUtils.h"
@@ -3179,7 +3180,7 @@ TEST_CASE("Temperature: Cooling Utils Type Detection", "[temperature][cooling][s
     REQUIRE(h_mixed < 51.0);  // But natural should add a small amount
 }
 
-TEST_CASE("Temperature: 220kW Transformer", "[temperature][transformer][smoke-test][abt-1855]") {
+TEST_CASE("Temperature: 220kW Transformer", "[temperature][transformer][smoke-test][abt-1855][abt-1876]") {
     auto jsonPath = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "220kW_trafo.json");
     auto mas = OpenMagneticsTesting::mas_loader(jsonPath);
 
@@ -3206,22 +3207,45 @@ TEST_CASE("Temperature: 220kW Transformer", "[temperature][transformer][smoke-te
     // temperature (DMR96A: 230 C) is held there with mu_r = 1 while the winding is iterated alone.
     // The winding alone has no fixed point: the turn temperature the network returns grows ~1.8 K per
     // kelvin of winding temperature its losses are evaluated at (2.8 kW at 60 C -> 1538 C turns,
-    // 16.9 kW at 1538 C -> 4262 C). The loss loop detects that from its own iterates and refuses with
-    // a runaway error carrying the loss and temperature history, instead of iterating on until the
-    // thermal network fails to converge (what main's held loop did, at ~2.3 MW).
-    try {
-        getLossesFromSimulation(magnetic, inputs);
-        FAIL("simulate gave an operating point for a winding that runs away");
+    // 16.9 kW at 1538 C -> 4262 C). The loss loop detects that from its own iterates (the winding runs away).
+    // Rewritten again, Alf decision 2026-10-14, ABT #1876: that runaway no longer refuses the design. The
+    // operating point has no thermal operating point, so simulate gives it its core and winding losses at
+    // ambient and no temperature output, and analyze_results reports NO_THERMAL_OPERATING_POINT for it with
+    // the runaway message and the loop history.
+    OpenMagnetics::MagneticSimulator magneticSimulator;
+    OpenMagnetics::Mas simulated;
+    REQUIRE_NOTHROW(simulated = magneticSimulator.simulate(inputs, magnetic));
+    REQUIRE(simulated.get_outputs().size() == inputs.get_operating_points().size());
+    for (size_t index = 0; index < simulated.get_outputs().size(); ++index) {
+        INFO("operating point " << index);
+        const auto& output = simulated.get_outputs()[index];
+        const double ambientTemperature = inputs.get_operating_points()[index].get_conditions().get_ambient_temperature();
+        CHECK_FALSE(output.get_temperature());
+        REQUIRE(output.get_core_losses());
+        REQUIRE(output.get_winding_losses());
+        CHECK(output.get_core_losses()->get_temperature() == ambientTemperature);
+        OpenMagnetics::Magnetic woundMagnetic = magnetic;
+        if (!woundMagnetic.get_coil().get_turns_description()) {
+            woundMagnetic.get_mutable_coil().wind();
+        }
+        MAS::OperatingPoint operatingPoint = inputs.get_operating_points()[index];
+        double windingLossesAtAmbient = OpenMagnetics::MagneticSimulator().calculate_winding_losses(operatingPoint, woundMagnetic, ambientTemperature).get_winding_losses();
+        INFO("winding losses " << output.get_winding_losses()->get_winding_losses() << " W, at ambient " << windingLossesAtAmbient << " W");
+        CHECK_THAT(output.get_winding_losses()->get_winding_losses(), Catch::Matchers::WithinRel(windingLossesAtAmbient, 1e-12));
     }
-    catch (const OpenMagnetics::CalculationException& error) {
-        INFO(error.what());
-        CHECK(error.code() == OpenMagnetics::ErrorCode::CALCULATION_DIVERGED);
-        const std::string message = error.what();
-        CHECK_THAT(message, Catch::Matchers::ContainsSubstring("No thermal operating point: the winding runs away"));
-        CHECK_THAT(message, Catch::Matchers::ContainsSubstring("dT_turn/dT_w"));
-        CHECK_THAT(message, Catch::Matchers::ContainsSubstring("History:"));
-        CHECK_THAT(message, Catch::Matchers::ContainsSubstring("Pcu="));
+    auto findings = OpenMagnetics::ResultsAnalyzer::analyze_results(simulated);
+    size_t runawayFindings = 0;
+    for (const auto& finding : findings) {
+        INFO(OpenMagnetics::to_string(finding.code) << ": " << finding.message);
+        if (finding.code == OpenMagnetics::ResultFindingCode::NO_THERMAL_OPERATING_POINT) {
+            ++runawayFindings;
+            CHECK_THAT(finding.message, Catch::Matchers::ContainsSubstring("No thermal operating point: the winding runs away"));
+            CHECK_THAT(finding.message, Catch::Matchers::ContainsSubstring("dT_turn/dT_w"));
+            CHECK_THAT(finding.message, Catch::Matchers::ContainsSubstring("History:"));
+            CHECK_THAT(finding.message, Catch::Matchers::ContainsSubstring("Pcu="));
+        }
     }
+    CHECK(runawayFindings == simulated.get_outputs().size());
 }
 
 TEST_CASE("Temperature: PQ Single Turn Quadrant Surface Areas", "[temperature][concentric][geometry][smoke-test]") {
