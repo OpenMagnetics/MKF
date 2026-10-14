@@ -1338,7 +1338,15 @@ Harmonics WaveformProcessor::calculate_harmonics_data(Waveform waveform, double 
         // N points count as samples only on a uniform axis. The simulator's 128 samples, resampled
         // over their own span and compressed, come back as 128 uneven knots (autocomplete's
         // magnetizing current): those are knots, and their exact series is below.
-        if (is_waveform_sampled(waveform, numberPointsSampledWaveforms) && has_uniform_time_step(waveform.get_time().value())) {
+        // A uniform axis is read as samples only when it is OPEN ([t0, t0 + N dt), the sampled
+        // convention). The same N points on a CLOSED axis ([t0, t0 + T], step T / (N - 1), as
+        // stored designs carry them) are N knots: read as samples, their period came out one step
+        // long, N T / (N - 1), and a pure sine leaked into every harmonic up to N/2 (ABT #1879).
+        // check_time_axis_spans_one_period tells the two apart against the excitation period, and
+        // throws for an axis that spans neither.
+        const auto time = waveform.get_time().value();
+        if (is_waveform_sampled(waveform, numberPointsSampledWaveforms) && has_uniform_time_step(time) &&
+            check_time_axis_spans_one_period(time, frequency)) {
             coefficients = uniform_samples_exact_coefficients(waveform);
         }
         else if (waveform.get_data().size() > numberPointsSampledWaveforms) {
@@ -1349,7 +1357,7 @@ Harmonics WaveformProcessor::calculate_harmonics_data(Waveform waveform, double 
             coefficients = uniform_samples_exact_coefficients(calculate_sampled_waveform(waveform, frequency, std::nullopt, numberPointsSampledWaveforms));
         }
         else {
-            coefficients = calculate_exact_fourier_coefficients(waveform.get_time().value(), waveform.get_data(), numberPointsSampledWaveforms / 2);
+            coefficients = calculate_exact_fourier_coefficients(time, waveform.get_data(), numberPointsSampledWaveforms / 2);
         }
         harmonics.get_mutable_amplitudes().push_back(std::abs(coefficients[0]));
         harmonics.get_mutable_frequencies().push_back(0);

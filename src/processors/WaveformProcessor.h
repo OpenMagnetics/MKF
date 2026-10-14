@@ -67,7 +67,8 @@ class WaveformProcessor {
     //    its piecewise-linear knots (calculate_exact_fourier_coefficients), K = N/2;
     //  - a sampled waveform (is_waveform_sampled: N uniform samples on [t0, t0 + N dt)): the
     //    exact series of the periodic linear interpolant of the samples, which is the N-point
-    //    DFT times sinc^2(pi k / N), K = N/2; N points on an uneven time axis are knots, as above;
+    //    DFT times sinc^2(pi k / N), K = N/2; N points on an uneven time axis, or on a CLOSED
+    //    uniform axis ([t0, t0 + T], last point = first), are knots, as above (ABT #1879);
     //  - denser knots than N that are not a sampled waveform: sampled at their own power-of-2
     //    resolution first (a closed form over thousands of knots costs O(knots x harmonics)),
     //    then as above;
