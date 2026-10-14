@@ -21,6 +21,53 @@
 
 namespace OpenMagnetics {
 
+namespace {
+
+// ABT #1861 (Alf, 2026-10-14): complex permeability always extrapolates, and the impedance sweeps
+// say where. Flags every swept frequency at which the core's complex permeability is ESTIMATED
+// (outside the material's tabulated range; ComplexPermeabilityEstimator) and groups the flagged
+// points into labelled stretches: which part is estimated, how, and the material's tabulated range.
+// The impedance itself is computed unchanged (Impedance::impedance_from_model).
+void mark_estimated_complex_permeability(Curve2D& curve, const std::optional<CoreMaterial>& coreMaterial) {
+    const auto& frequencies = curve.get_x_points();
+    std::vector<bool> extrapolatedPoints(frequencies.size(), false);
+    std::vector<Curve2DRange> extrapolatedRanges;
+    if (coreMaterial) {
+        ComplexPermeability complexPermeabilityModel;
+        auto [tabulatedMinimum, tabulatedMaximum] = complexPermeabilityModel.get_frequency_range(coreMaterial.value());
+        std::string currentKey;
+        for (size_t index = 0; index < frequencies.size(); ++index) {
+            auto value = complexPermeabilityModel.get_complex_permeability_with_source(coreMaterial.value(), frequencies[index]);
+            if (!value.is_estimated()) {
+                currentKey.clear();
+                continue;
+            }
+            extrapolatedPoints[index] = true;
+            std::vector<std::string> parts;
+            std::string source;
+            if (value.realSource != ComplexPermeabilitySource::TABULATED) {
+                parts.push_back("real");
+                source = value.realMethod;
+            }
+            if (value.imaginarySource != ComplexPermeabilitySource::TABULATED) {
+                parts.push_back("imaginary");
+                source += (source.empty() ? "" : "; ") + value.imaginaryMethod;
+            }
+            if (source == currentKey && !extrapolatedRanges.empty()) {
+                extrapolatedRanges.back().to = frequencies[index];
+                continue;
+            }
+            currentKey = source;
+            extrapolatedRanges.push_back({frequencies[index], frequencies[index], parts, source, coreMaterial->get_name(),
+                                          tabulatedMinimum, tabulatedMaximum});
+        }
+    }
+    curve.set_extrapolated_points(extrapolatedPoints);
+    curve.set_extrapolated_ranges(extrapolatedRanges);
+}
+
+}  // namespace
+
 
 Curve2D Sweeper::sweep_impedance_over_frequency(Magnetic magnetic, double start, double stop, size_t numberElements, std::string mode, std::string title, bool fast, bool fastCapacitance) {
     std::vector<double> frequencies;
@@ -60,7 +107,9 @@ Curve2D Sweeper::sweep_impedance_over_frequency(Magnetic magnetic, double start,
         impedances.push_back(abs(impedanceModel.impedance_from_model(model, frequency)));
     }
 
-    return Curve2D(frequencies, impedances, title);
+    Curve2D curve(frequencies, impedances, title);
+    mark_estimated_complex_permeability(curve, model.coreMaterial);
+    return curve;
 }
 
 Curve2D Sweeper::sweep_common_mode_impedance_over_frequency(Magnetic magnetic, double start, double stop, size_t numberElements, std::string mode, std::string title, bool fastCapacitance) {
@@ -90,7 +139,9 @@ Curve2D Sweeper::sweep_common_mode_impedance_over_frequency(Magnetic magnetic, d
         impedances.push_back(abs(impedanceModel.impedance_from_model(model, frequency)));
     }
 
-    return Curve2D(frequencies, impedances, title);
+    Curve2D curve(frequencies, impedances, title);
+    mark_estimated_complex_permeability(curve, model.coreMaterial);
+    return curve;
 }
 
 Curve2D Sweeper::sweep_differential_mode_impedance_over_frequency(Magnetic magnetic, double start, double stop, size_t numberElements, std::string mode, std::string title) {
@@ -140,9 +191,9 @@ Curve2D Sweeper::sweep_q_factor_over_frequency(Magnetic magnetic, double start, 
         qFactors.push_back(qFactor);
     }
 
-    auto core = magnetic.get_core();
-    auto coil = magnetic.get_coil();
-    return Curve2D(frequencies, qFactors, title);
+    Curve2D curve(frequencies, qFactors, title);
+    mark_estimated_complex_permeability(curve, magnetic.get_core().resolve_material());
+    return curve;
 }
 
 Curve2D Sweeper::sweep_magnetizing_inductance_over_frequency(Magnetic magnetic, double start, double stop, size_t numberElements, double temperature, std::string mode, std::string title) {

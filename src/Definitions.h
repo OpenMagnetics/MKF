@@ -499,6 +499,42 @@ inline void from_json(const json & j, StrayCapacitanceModels & x) {
 }
 
 
+// A stretch of a curve's x axis whose points are estimated rather than computed from data (ABT #1861:
+// the impedance sweeps, where the core's complex permeability lies outside its tabulated range).
+// from/to are the first and last swept x of the stretch; parts names what is estimated in it
+// ("real" = mu', "imaginary" = mu''); source says how; material and tabulatedMinimum/Maximum name
+// the material and the range (Hz) over which both its parts are tabulated.
+struct Curve2DRange {
+    double from;
+    double to;
+    std::vector<std::string> parts;
+    std::string source;
+    std::string material;
+    double tabulatedMinimum;
+    double tabulatedMaximum;
+};
+
+inline void to_json(json & j, const Curve2DRange & x) {
+    j = json::object();
+    j["from"] = x.from;
+    j["to"] = x.to;
+    j["parts"] = x.parts;
+    j["source"] = x.source;
+    j["material"] = x.material;
+    j["tabulatedMinimum"] = x.tabulatedMinimum;
+    j["tabulatedMaximum"] = x.tabulatedMaximum;
+}
+
+inline void from_json(const json & j, Curve2DRange & x) {
+    x.from = j.at("from").get<double>();
+    x.to = j.at("to").get<double>();
+    x.parts = j.at("parts").get<std::vector<std::string>>();
+    x.source = j.at("source").get<std::string>();
+    x.material = j.at("material").get<std::string>();
+    x.tabulatedMinimum = j.at("tabulatedMinimum").get<double>();
+    x.tabulatedMaximum = j.at("tabulatedMaximum").get<double>();
+}
+
 class Curve2D {
 
     std::vector<double> xPoints;
@@ -511,6 +547,13 @@ class Curve2D {
     // (NaN, a JSON null), since no core loss is computed for a saturated core. Unset for every curve
     // without that model, where a saturating point still throws.
     std::optional<std::vector<bool>> saturatedPoints;
+    // One flag per point, set only by the impedance sweeps (Sweeper: impedance, common-mode
+    // impedance, Q factor; ABT #1861): true where the core's complex permeability is ESTIMATED
+    // (ComplexPermeabilityEstimator) because the frequency lies outside the material's tabulated
+    // range. extrapolatedRanges groups the flagged points into labelled stretches. Unset for every
+    // other curve.
+    std::optional<std::vector<bool>> extrapolatedPoints;
+    std::optional<std::vector<Curve2DRange>> extrapolatedRanges;
 
     public: 
         Curve2D() = default;
@@ -531,6 +574,12 @@ class Curve2D {
 
         const std::optional<std::vector<bool>> & get_saturated_points() const { return saturatedPoints; }
         void set_saturated_points(const std::optional<std::vector<bool>> & value) { this->saturatedPoints = value; }
+
+        const std::optional<std::vector<bool>> & get_extrapolated_points() const { return extrapolatedPoints; }
+        void set_extrapolated_points(const std::optional<std::vector<bool>> & value) { this->extrapolatedPoints = value; }
+
+        const std::optional<std::vector<Curve2DRange>> & get_extrapolated_ranges() const { return extrapolatedRanges; }
+        void set_extrapolated_ranges(const std::optional<std::vector<Curve2DRange>> & value) { this->extrapolatedRanges = value; }
 };
                 
 void from_json(const json & j, Curve2D & x);
@@ -548,6 +597,12 @@ inline void from_json(const json & j, Curve2D& x) {
     if (j.contains("saturatedPoints")) {
         x.set_saturated_points(j.at("saturatedPoints").get<std::vector<bool>>());
     }
+    if (j.contains("extrapolatedPoints")) {
+        x.set_extrapolated_points(j.at("extrapolatedPoints").get<std::vector<bool>>());
+    }
+    if (j.contains("extrapolatedRanges")) {
+        x.set_extrapolated_ranges(j.at("extrapolatedRanges").get<std::vector<Curve2DRange>>());
+    }
 }
 
 inline void to_json(json & j, const Curve2D & x) {
@@ -557,6 +612,12 @@ inline void to_json(json & j, const Curve2D & x) {
     j["title"] = x.get_title();
     if (x.get_saturated_points()) {
         j["saturatedPoints"] = x.get_saturated_points().value();
+    }
+    if (x.get_extrapolated_points()) {
+        j["extrapolatedPoints"] = x.get_extrapolated_points().value();
+    }
+    if (x.get_extrapolated_ranges()) {
+        j["extrapolatedRanges"] = x.get_extrapolated_ranges().value();
     }
 }
 

@@ -28,6 +28,10 @@ class Sweeper {
     // capacitance to compute. Its impedance is still meaningful -- for a bead |Z| is set by
     // the core, and the capacitance only moves the self-resonance -- but the caller has to
     // say it is accepting the one-layer estimate.
+    // The impedance, common-mode impedance and Q-factor sweeps answer at every frequency for a core
+    // material the complex-permeability estimator covers (ABT #1861); the curve's
+    // extrapolatedPoints flags the points where the core's mu' or mu'' is estimated (outside the
+    // material's tabulated range) and extrapolatedRanges labels those stretches.
     static Curve2D sweep_impedance_over_frequency(Magnetic magnetic, double start, double stop, size_t numberElements, std::string mode="log", std::string title = "Impedance over frequency", bool fast = true, bool fastCapacitance = false);
     // Common-mode impedance (all windings driven in parallel — the CMC datasheet /
     // REDEXPERT CM measurement): the magnetizing tank alone, no leakage resonance.
