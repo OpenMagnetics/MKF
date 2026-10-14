@@ -14224,14 +14224,22 @@ std::vector<double> Coil::get_contiguous_toroid_proportion_per_winding_by_needed
     }
     std::sort(depthCandidates.begin(), depthCandidates.end());
 
-    // Mirrors get_number_layers_needed_and_number_physical_turns ring by ring.
+    // Mirrors get_number_layers_needed_and_number_physical_turns ring by ring, with one deliberate
+    // difference: a ring holds the turns that FIT it, floor(a / theta) - blocked, and none when that
+    // is not positive. The winder lays at least one turn per ring whatever its angle (max(1, ...)),
+    // so an under-sized section is caught afterwards by the fill-factor check; counted that way
+    // here, every ring "holds" a turn at any angle, a winding of N turns in N or more rings needs
+    // no angle at all, and the bisection below converges to zero. ABT #1860: the one-turn primary
+    // of a current transformer (T 25.3/14.8/10, one 4.19 mm turn needing 46.5 deg, beside 100
+    // turns of 0.5 mm) claimed 0 deg, was given a 0.29 deg layer (fill factor 158) and the real
+    // wind was refused before any blocking ran.
     auto ringsHold = [](const WindingNeed& need, size_t rings, double angle) {
         double radius = need.firstRingRadius;
         int64_t held = 0;
         for (size_t ring = 0; ring < rings; ++ring) {
             double wireAngle = wound_distance_to_angle(need.wireHeight, std::max(need.wireWidth, radius));
             int64_t blocked = ring >= 1 ? need.corridorSlots : 0;
-            held += int64_t(std::max(1.0, std::floor(angle / wireAngle) - double(blocked)));
+            held += int64_t(std::max(0.0, std::floor(angle / wireAngle) - double(blocked)));
             if (radius > need.wireWidth) {
                 radius -= need.wireWidth;
             }

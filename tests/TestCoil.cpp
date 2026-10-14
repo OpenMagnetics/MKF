@@ -15222,6 +15222,61 @@ TEST_CASE("Test_Toroidal_Real_Winding_No_Turn_Is_Left_In_A_Lead_Corridor", "[coi
     settings.reset();
 }
 
+TEST_CASE("Test_Toroidal_Real_Winding_One_Turn_Pass_Through_Gets_The_Angle_Its_Turn_Needs", "[coil][toroidal][real-geometry]") {
+    // ABT #1860: a current transformer, T 25.3/14.8/10, a ONE-turn primary of Round 6.0 (4.19 mm
+    // outer) beside a 100-turn secondary of Round 0.5, contiguous. The real-winding sector
+    // allocation (ABT #1734) sizes each winding's sector for the angle it needs, counting what its
+    // rings hold. It counted a ring as holding at least one turn at ANY angle, as the winder lays
+    // it, so the one-turn primary "needed" 0 deg: it was given a 0.29 deg layer for a turn that
+    // subtends 46.5 deg (fill factor 158) and the wind failed its fit check before any connection
+    // blocking ran. The primary's sector must hold its turn, and the wind must apply blocking.
+    settings.reset();
+    settings.set_coil_use_real_winding_geometry(true);
+    auto primaryWire = OpenMagnetics::find_wire_by_name("Round 6.0 - Single Build");
+    auto secondaryWire = OpenMagnetics::find_wire_by_name("Round 0.5 - Grade 1");
+    OpenMagnetics::Coil coil;
+    REQUIRE_NOTHROW(coil = OpenMagneticsTesting::get_quick_coil({1, 100}, {1, 1}, "T 25.3/14.8/10", 1,
+                                                                MAS::WindingOrientation::CONTIGUOUS,
+                                                                MAS::WindingOrientation::OVERLAPPING,
+                                                                MAS::CoilAlignment::CENTERED,
+                                                                MAS::CoilAlignment::SPREAD,
+                                                                {primaryWire, secondaryWire}));
+    INFO(coil.get_last_fit_failure());
+    REQUIRE(coil.get_turns_description());
+    REQUIRE(coil.get_layers_description());
+    CHECK(coil.is_real_winding_blocking_applied());
+
+    // The angle the primary's single turn subtends on its ring (the only ring the window has room
+    // for: 7.4 mm of radial height, a 4.19 mm wire).
+    const auto windingWindows = coil.resolve_bobbin().get_processed_description().value().get_winding_windows();
+    REQUIRE(!windingWindows.empty());
+    REQUIRE(windingWindows[0].get_radial_height());
+    const double windowRadius = windingWindows[0].get_radial_height().value();
+    const double primaryWidth = primaryWire.get_maximum_outer_width();
+    const double primaryHeight = primaryWire.get_maximum_outer_height();
+    const double primaryTurnAngle = OpenMagnetics::wound_distance_to_angle(primaryHeight, windowRadius - primaryWidth / 2);
+    REQUIRE(primaryTurnAngle > 40);   // the fixture must keep a pass-through that needs a wide sector
+
+    size_t primaryLayers = 0;
+    for (const auto& layer : coil.get_layers_description().value()) {
+        if (layer.get_type() != MAS::ElectricalType::CONDUCTION) {
+            continue;
+        }
+        INFO(layer.get_name() << " " << layer.get_dimensions()[1] << " deg, fill factor "
+             << layer.get_filling_factor().value_or(-1));
+        REQUIRE(layer.get_filling_factor());
+        CHECK(layer.get_filling_factor().value() <= 1.0 + 1e-6);
+        if (layer.get_partial_windings()[0].get_winding() == coil.get_name(0)) {
+            ++primaryLayers;
+            CHECK(layer.get_dimensions()[1] >= primaryTurnAngle * (1 - 1e-9));
+        }
+    }
+    CHECK(primaryLayers == 1);
+    CHECK(OpenMagneticsTesting::check_turns_description(coil));
+    CHECK(OpenMagneticsTesting::check_toroidal_sections_keep_their_sectors(coil));
+    settings.reset();
+}
+
 // ABT #374: a bore-capacity claim of the form (N_turns + N_leads) * wireOD <= pi * ID says these
 // toroidal fixtures cannot hold their own leads. That inequality is the capacity of a SINGLE ring
 // at the inner surface, and it is not what MKF winds: the toroidal winder fills concentric rings
