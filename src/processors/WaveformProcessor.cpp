@@ -127,6 +127,54 @@ bool is_close_enough(double x, double y, double error){
     return fabs(x - y) <= error;
 }
 
+// The vertices create_waveform gives each label that calculate_offset and
+// try_guess_duty_cycle read at FIXED vertex indices: a bipolar rectangle's duty is
+// (time[3] - time[2]) / T, a rectangle's time[2] / T, and so on. Those reads only
+// mean anything on a waveform that has at least that many vertices; one with fewer
+// cannot be the shape its label names. Labels whose values are measured from the
+// samples, not read at fixed indices (sinusoidal, custom, the dead-time variants),
+// are not listed.
+std::optional<size_t> label_vertex_count(WaveformLabel label) {
+    switch (label) {
+        case WaveformLabel::TRIANGULAR: return 3;
+        case WaveformLabel::UNIPOLAR_TRIANGULAR: return 4;
+        case WaveformLabel::RECTANGULAR: return 5;
+        case WaveformLabel::UNIPOLAR_RECTANGULAR: return 5;
+        case WaveformLabel::BIPOLAR_RECTANGULAR: return 10;
+        case WaveformLabel::BIPOLAR_TRIANGULAR: return 6;
+        case WaveformLabel::FLYBACK_PRIMARY: return 4;
+        case WaveformLabel::FLYBACK_SECONDARY: return 4;
+        default: return std::nullopt;
+    }
+}
+
+// Throw when a waveform cannot be the shape its label names, instead of reading the
+// label's vertex indices past the end of its vectors. That read is what returned a
+// processed dutyCycle of -1 (and 6.4e11) for a 3-vertex triangle labelled
+// bipolarRectangular, with offset 0 for a 20 A dc current (ABT #1878). The label got
+// there from a stored "ancillaryLabel": "Triangular", the pre-1.0 spelling: MAS.hpp's
+// generated from_json(WaveformLabel) ignores a string that is not in the enum and
+// leaves its first value, bipolarRectangular.
+void throw_if_waveform_cannot_be_its_label(const Waveform& waveform, WaveformLabel label) {
+    const auto vertexCount = label_vertex_count(label);
+    if (!vertexCount) {
+        return;
+    }
+    const size_t numberPoints = waveform.get_data().size();
+    const auto time = waveform.get_time();
+    if (time && time->size() == numberPoints && numberPoints >= vertexCount.value()) {
+        return;
+    }
+    json labelJson;
+    to_json(labelJson, label);
+    std::string reason = !time ? "has no time axis"
+                       : time->size() != numberPoints ? "has " + std::to_string(time->size()) + " times for " + std::to_string(numberPoints) + " values"
+                       : "has " + std::to_string(numberPoints) + " vertices, and a " + labelJson.get<std::string>() + " has at least " + std::to_string(vertexCount.value());
+    throw std::invalid_argument("Waveform labelled " + labelJson.get<std::string>() + " " + reason +
+                                ": its label does not describe its data, so no offset or duty cycle can be read from it. "
+                                "A label spelled the pre-1.0 way (e.g. \"Triangular\") is not a MAS waveformLabel and must be migrated before the waveform is parsed.");
+}
+
 double calculate_offset(Waveform waveform, WaveformLabel label) {
     switch (label) {
         case WaveformLabel::TRIANGULAR:
@@ -379,6 +427,7 @@ static double measure_duty_cycle_from_samples(const Waveform& waveform) {
 }
 
 double WaveformProcessor::try_guess_duty_cycle(Waveform waveform, WaveformLabel label, double frequency, size_t numberPointsSampledWaveforms) {
+    throw_if_waveform_cannot_be_its_label(waveform, label);
     if (label != WaveformLabel::CUSTOM) {
         switch(label) {
             case WaveformLabel::TRIANGULAR: {
@@ -1511,6 +1560,9 @@ ProcessedWaveform WaveformProcessor::calculate_basic_processed_data(Waveform wav
         // processed.set_average(average);
     }
 
+    // The label's vertices are read off the compressed waveform, so that is the one
+    // that has to have them.
+    throw_if_waveform_cannot_be_its_label(compressedWaveform, label);
     double offset = calculate_offset(compressedWaveform, label);
     processed.set_offset(offset);
 
