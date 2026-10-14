@@ -17,6 +17,7 @@
 #include "TestingUtils.h"
 #include "json.hpp"
 
+#include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/generators/catch_generators.hpp>
 #include <catch2/matchers/catch_matchers_string.hpp>
@@ -25,6 +26,7 @@
 #include <fstream>
 #include <limits>
 #include <map>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -583,6 +585,86 @@ TEST_CASE("ThermalNetwork ABT 1540: layouts drawn with copper inside copper stil
             REQUIRE(std::isfinite(temperature));
             CHECK(temperature >= ambient);
         }
+        auto [lowest, highest] = network->turn_temperature_range();
+        INFO("turns " << lowest << " to " << highest << " C, core " << network->result.averageCoreTemperature
+             << " C, hot spot bound " << hottestSpot << " C");
+        CHECK(lowest > ambient);
+        CHECK(highest < hottestSpot);
+    }
+    CHECK(primaryOnly.mean_turn_temperature(0) > primaryOnly.mean_turn_temperature(1));
+    CHECK(secondaryOnly.mean_turn_temperature(1) > secondaryOnly.mean_turn_temperature(0));
+}
+
+TEST_CASE("ThermalNetwork ABT 1856: planar turns stacked in one layer conduct through the board between them", "[temperature][abt-1856][smoke-test]") {
+    // E 38/8/25, 4 primary turns of 5.665 x 0.313 mm copper and 5 secondary turns of
+    // 3.747 x 0.035 mm, each winding drawn as ONE overlapping layer: the turns of a winding are
+    // stacked 1.11 mm (primary) and 0.89 mm (secondary) apart with nothing described between
+    // them, and the two stacks touch across a zero-thickness tape. Planar turns are copper on a
+    // board; the space between two of them stacked in one column is that board's dielectric, not
+    // air. The network had no edge across it (the gap is far above the touching threshold), and
+    // the tape, which used to be a zero-height node every turn conducted into, is not a node since
+    // ABT #1540: "7 disconnected node(s)". Each turn now conducts to the next one of its stack
+    // through the dielectric, as the planar path conducts a turn to a stated board layer
+    // (kFR4_ThermalConductivity, through-plane): the board's material is not in the file.
+    // Only the magnetic is autocompleted: the file's excitation is not volt-second balanced, which
+    // mas_autocomplete refuses (ABT #1855) and which is not this network's business.
+    settings.reset();
+    auto masJson = load_abt1540_fixture("test_coiladviser_web_4_2064.json");
+    auto magnetic = OpenMagnetics::magnetic_autocomplete(OpenMagnetics::Magnetic(masJson["magnetic"]));
+    const double ambient = 40.0;
+    auto even = build_network(magnetic, ambient, 1.0, {1.0, 1.0});
+    INFO(even.error);
+    REQUIRE(even.error == "");
+    REQUIRE(even.result.converged);
+
+    // Each turn and the next one of its stack: one conduction edge between facing copper
+    // faces, of the board's through-plane resistance over the gap and the narrower copper face.
+    auto turns = even.of_part(ThermalNodePartType::TURN);
+    REQUIRE(turns.size() == 9);
+    size_t stackedPairs = 0;
+    for (size_t upper : turns) {
+        // The next turn below, among those under the same copper.
+        std::optional<size_t> lower;
+        for (size_t candidate : turns) {
+            if (candidate == upper) continue;
+            bool sameColumn = even.right(candidate) > even.left(upper) && even.left(candidate) < even.right(upper);
+            if (!sameColumn || even.top(candidate) > even.bottom(upper) + kTouching) continue;
+            if (!lower || even.top(candidate) > even.top(*lower)) lower = candidate;
+        }
+        if (!lower) continue;
+        const double gap = even.bottom(upper) - even.top(*lower);
+        INFO(even.nodes[upper].name << " over " << even.nodes[*lower].name << ", " << gap * 1e3 << " mm apart");
+        REQUIRE(even.has_conduction_edge(upper, *lower));
+        CHECK(even.face_towards(upper, *lower) == ThermalNodeFace::TANGENTIAL_RIGHT);  // upper's bottom
+        CHECK(even.face_towards(*lower, upper) == ThermalNodeFace::TANGENTIAL_LEFT);   // lower's top
+        if (gap < kTouching) continue;  // the two stacks touch across the zero-thickness tape
+        ++stackedPairs;
+        for (const auto& r : even.resistances) {
+            bool thisPair = (r.nodeFromId == upper && r.nodeToId == *lower) || (r.nodeFromId == *lower && r.nodeToId == upper);
+            if (!thisPair || r.type != HeatTransferType::CONDUCTION) continue;
+            const auto* upperFace = even.nodes[upper].getQuadrant(ThermalNodeFace::TANGENTIAL_RIGHT);
+            const auto* lowerFace = even.nodes[*lower].getQuadrant(ThermalNodeFace::TANGENTIAL_LEFT);
+            const double area = std::min(upperFace->surfaceArea, lowerFace->surfaceArea);
+            // Plus the copper's coating films, as on every turn-to-turn edge.
+            double films = 0;
+            for (const auto* face : {upperFace, lowerFace}) {
+                if (face->coating) films += WireCoatingUtils::calculateCoatingResistance(face->coating.value(), area);
+            }
+            CHECK(r.resistance == Catch::Approx(gap / (ThermalDefaults::kFR4_ThermalConductivity * area) + films).epsilon(1e-6));
+        }
+    }
+    CHECK(stackedPairs == 7);  // 3 in the primary stack, 4 in the secondary
+
+    // Temperatures follow the losses, with the bounds of the stacked-section tests above.
+    auto core = magnetic.get_core().get_processed_description().value();
+    const double boxArea = 2 * (core.get_width() * core.get_height() + core.get_width() * core.get_depth() +
+                                core.get_height() * core.get_depth());
+    const double hottestSpot = ambient + 2 * 3.0 / (5.0 * boxArea);
+    auto primaryOnly = build_network(magnetic, ambient, 1.0, {2.0, 0.0});
+    auto secondaryOnly = build_network(magnetic, ambient, 1.0, {0.0, 2.0});
+    for (const BuiltNetwork* network : {&even, &primaryOnly, &secondaryOnly}) {
+        REQUIRE(network->error == "");
+        REQUIRE(network->result.converged);
         auto [lowest, highest] = network->turn_temperature_range();
         INFO("turns " << lowest << " to " << highest << " C, core " << network->result.averageCoreTemperature
              << " C, hot spot bound " << hottestSpot << " C");

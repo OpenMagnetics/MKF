@@ -354,6 +354,9 @@ private:
         std::optional<Wire> wire;
     };
     std::map<size_t, WindingWireProperties> _perWindingWireProps;
+    bool isPlanarTurn(const ThermalNetworkNode& node) const;
+    /// True when another turn lies in the axial gap between two turns, radially under both.
+    bool turnBetweenAlongAxis(const std::vector<size_t>& turnNodeIndices, size_t node1Idx, size_t node2Idx) const;
 
     // ABT #1735: a winding wound on a lateral leg of a three-column shell. The concentric
     // network then splits the lateral-column node into the two legs and gives the wound leg's

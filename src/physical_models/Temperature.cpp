@@ -2407,6 +2407,44 @@ TurnOutlineGap turnOutlineGap(const ThermalNetworkNode& node1, const ThermalNetw
 }
 } // namespace
 
+bool Temperature::isPlanarTurn(const ThermalNetworkNode& node) const {
+    if (!node.windingIndex.has_value()) {
+        throw std::runtime_error("Temperature::isPlanarTurn: turn node " + node.name + " has no winding index.");
+    }
+    auto props = _perWindingWireProps.find(node.windingIndex.value());
+    if (props == _perWindingWireProps.end()) {
+        throw std::runtime_error("Temperature::isPlanarTurn: no wire properties for winding " +
+                                 std::to_string(node.windingIndex.value()) + " of turn node " + node.name + ".");
+    }
+    return props->second.isPlanar;
+}
+
+bool Temperature::turnBetweenAlongAxis(const std::vector<size_t>& turnNodeIndices, size_t node1Idx, size_t node2Idx) const {
+    // A third turn lying in the gap between the two along the axis, overlapping both radially.
+    const auto& node1 = _nodes[node1Idx];
+    const auto& node2 = _nodes[node2Idx];
+    const auto& upper = node1.physicalCoordinates[1] > node2.physicalCoordinates[1] ? node1 : node2;
+    const auto& lower = node1.physicalCoordinates[1] > node2.physicalCoordinates[1] ? node2 : node1;
+    const double gapTop = upper.physicalCoordinates[1] - upper.dimensions.height / 2.0;
+    const double gapBottom = lower.physicalCoordinates[1] + lower.dimensions.height / 2.0;
+    const double left = std::max(node1.physicalCoordinates[0] - node1.dimensions.width / 2.0,
+                                 node2.physicalCoordinates[0] - node2.dimensions.width / 2.0);
+    const double right = std::min(node1.physicalCoordinates[0] + node1.dimensions.width / 2.0,
+                                  node2.physicalCoordinates[0] + node2.dimensions.width / 2.0);
+    for (size_t otherIdx : turnNodeIndices) {
+        if (otherIdx == node1Idx || otherIdx == node2Idx) continue;
+        const auto& other = _nodes[otherIdx];
+        const double otherTop = other.physicalCoordinates[1] + other.dimensions.height / 2.0;
+        const double otherBottom = other.physicalCoordinates[1] - other.dimensions.height / 2.0;
+        const double otherLeft = other.physicalCoordinates[0] - other.dimensions.width / 2.0;
+        const double otherRight = other.physicalCoordinates[0] + other.dimensions.width / 2.0;
+        const bool inTheGap = otherTop > gapBottom + kEnclosureGeometryTolerance && otherBottom < gapTop - kEnclosureGeometryTolerance;
+        const bool underBoth = otherRight > left + kEnclosureGeometryTolerance && otherLeft < right - kEnclosureGeometryTolerance;
+        if (inTheGap && underBoth) return true;
+    }
+    return false;
+}
+
 void Temperature::createConcentricTurnToTurnConnections(const std::vector<size_t>& turnNodeIndices, double minConductionDist) {
     // NOTE: O(N^2) complexity over turn nodes. For designs with >1000 turns,
     // consider implementing spatial indexing (grid hash or k-d tree) for neighbor search.
@@ -2432,7 +2470,14 @@ void Temperature::createConcentricTurnToTurnConnections(const std::vector<size_t
             if (!outlineGap.facing) continue;
             const double surfaceDistance = outlineGap.distance;
 
-            if (surfaceDistance > thresholdDist) continue;
+            // ABT #1856: planar turns are copper on a board. Two of them stacked in one column with
+            // no turn between face each other through that board's dielectric, not through air,
+            // however far apart they are; a stated board layer between them is a node and the
+            // insulation checks below route the pair through it instead.
+            const bool throughBoard = surfaceDistance > thresholdDist && !outlineGap.horizontal &&
+                                      isPlanarTurn(node1) && isPlanarTurn(node2) &&
+                                      !turnBetweenAlongAxis(turnNodeIndices, node1Idx, node2Idx);
+            if (surfaceDistance > thresholdDist && !throughBoard) continue;
             
             // Find which quadrants are facing each other
             ThermalNodeFace face1, face2;
@@ -2575,7 +2620,14 @@ void Temperature::createConcentricTurnToTurnConnections(const std::vector<size_t
                 // Only create direct turn-to-turn connection if there's NO solid insulation layer
                 // Solid insulation layers are now modeled as separate thermal nodes
                 if (!hasSolidInsulationBetween && !insulationNodeBetween) {
-                    r.resistance = getInsulationLayerThermalResistance(turn1Idx, turn2Idx, contactArea);
+                    if (throughBoard) {
+                        // The board's material is not described with the turns; the planar path
+                        // takes the same through-plane FR4 conductivity for a turn on a board layer.
+                        r.resistance = ThermalResistance::calculateConductionResistance(surfaceDistance, kFR4_ThermalConductivity, contactArea);
+                    }
+                    else {
+                        r.resistance = getInsulationLayerThermalResistance(turn1Idx, turn2Idx, contactArea);
+                    }
                     
                     if (q1->coating.has_value()) {
                         r.resistance += WireCoatingUtils::calculateCoatingResistance(q1->coating.value(), contactArea);
