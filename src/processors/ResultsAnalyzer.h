@@ -45,6 +45,10 @@ enum class ResultFindingCode {
     WINDING_TEMPERATURE_ABOVE_LIMIT,
     // A winding's wire states no temperature limit: its temperature was not checked.
     WINDING_TEMPERATURE_LIMIT_NOT_STATED,
+    // ABT #1876 (Alf, 2026-10-14): the operating point has no thermal operating point (the thermal network
+    // does not converge on its losses, or its winding runs away with the core held at its data limit).
+    // simulate gave it its losses at ambient and no temperature; the message is MKF's, with the loop history.
+    NO_THERMAL_OPERATING_POINT,
 };
 
 std::string to_string(ResultFindingCode code);
@@ -107,11 +111,22 @@ class ResultsAnalyzer {
     static std::vector<ResultFinding> analyze_volt_second_balance(const OperatingPoint& operatingPoint, size_t operatingPointIndex);
     static std::vector<ResultFinding> analyze_temperature(const Magnetic& magnetic, const OperatingPoint& operatingPoint,
                                                           const Outputs& output, size_t operatingPointIndex);
+    // ABT #1876: for an output WITHOUT a temperature. The MAS cannot say why a point has none (simulate gives
+    // none to a point with no thermal operating point, and none to any point in fast mode), so this solves the
+    // point's losses at its operating temperature again (MagneticSimulator::calculate_core_losses, the solve
+    // simulate ran) and returns the NO_THERMAL_OPERATING_POINT finding with the solve's message when it finds
+    // none. When the solve DOES find a thermal operating point, the missing temperature is not this case (fast
+    // mode, or an output edited after simulate) and this THROWS: such an output cannot be analyzed.
+    static std::vector<ResultFinding> analyze_missing_temperature(const Magnetic& magnetic, const OperatingPoint& operatingPoint,
+                                                                  size_t operatingPointIndex,
+                                                                  std::optional<Topology> topology = std::nullopt);
 
     // Every finding of a simulated MAS (as MagneticSimulator::simulate returns it: one output per
     // operating point), ordered by operating point, then saturation, volt-second balance, temperature.
+    // An output without a temperature goes to analyze_missing_temperature instead of the temperature checks
+    // (ABT #1876): NO_THERMAL_OPERATING_POINT, or a throw for a fast-mode output.
     // Throws when the MAS has no output for an operating point, or an output lacks what a check reads
-    // (the core losses' flux density and temperature, the temperature output's maximum).
+    // (the core losses' flux density and temperature).
     static std::vector<ResultFinding> analyze_results(const Mas& mas);
 };
 

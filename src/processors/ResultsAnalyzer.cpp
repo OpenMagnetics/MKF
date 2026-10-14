@@ -23,6 +23,7 @@ std::string to_string(ResultFindingCode code) {
         case ResultFindingCode::CORE_ABOVE_MATERIAL_DATA_LIMIT: return "CORE_ABOVE_MATERIAL_DATA_LIMIT";
         case ResultFindingCode::WINDING_TEMPERATURE_ABOVE_LIMIT: return "WINDING_TEMPERATURE_ABOVE_LIMIT";
         case ResultFindingCode::WINDING_TEMPERATURE_LIMIT_NOT_STATED: return "WINDING_TEMPERATURE_LIMIT_NOT_STATED";
+        case ResultFindingCode::NO_THERMAL_OPERATING_POINT: return "NO_THERMAL_OPERATING_POINT";
     }
     throw InvalidInputException(ErrorCode::INVALID_INPUT, "Unknown result finding code " + std::to_string(static_cast<int>(code)));
 }
@@ -338,6 +339,34 @@ std::vector<ResultFinding> ResultsAnalyzer::analyze_temperature(const Magnetic& 
     return findings;
 }
 
+std::vector<ResultFinding> ResultsAnalyzer::analyze_missing_temperature(const Magnetic& magnetic, const OperatingPoint& operatingPoint,
+                                                                        size_t operatingPointIndex, std::optional<Topology> topology) {
+    std::string where = describe_operating_point(operatingPoint, operatingPointIndex);
+    // The same solve simulate ran for this point: wound as simulate winds it, the full winding-loss model.
+    Magnetic woundMagnetic = magnetic;
+    if (!woundMagnetic.get_coil().get_turns_description()) {
+        woundMagnetic.get_mutable_coil().wind();
+    }
+    OperatingPoint solvedOperatingPoint = operatingPoint;
+    MagneticSimulator simulator;
+    simulator.set_topology(topology);
+    std::optional<WindingLossesOutput> windingLossesOutput;
+    std::optional<TemperatureOutput> temperatureOutput;
+    try {
+        simulator.calculate_core_losses(solvedOperatingPoint, woundMagnetic, &windingLossesOutput, &temperatureOutput);
+    }
+    catch (const NoThermalOperatingPointException& noThermalOperatingPoint) {
+        return {make_finding(operatingPoint, operatingPointIndex, ResultFindingCode::NO_THERMAL_OPERATING_POINT,
+            "At " + where + ": " + noThermalOperatingPoint.message() + " Its core and winding losses are those evaluated at the "
+            "ambient temperature (" + format_number(operatingPoint.get_conditions().get_ambient_temperature()) +
+            " C), and it has no temperature output: its temperatures are not checked")};
+    }
+    throw InvalidInputException(ErrorCode::MISSING_DATA,
+        "analyze_results: the output of " + where + " has no temperature, yet its losses have a thermal operating point "
+        "(hottest point " + format_number(temperatureOutput.value().get_maximum_temperature()) + " C): it was simulated in "
+        "fast mode (or edited after simulate), which publishes no temperature; analyze_results needs simulate's full output");
+}
+
 std::vector<ResultFinding> ResultsAnalyzer::analyze_results(const Mas& mas) {
     const auto& operatingPoints = mas.get_inputs().get_operating_points();
     const auto& outputs = mas.get_outputs();
@@ -354,6 +383,13 @@ std::vector<ResultFinding> ResultsAnalyzer::analyze_results(const Mas& mas) {
         }
         for (auto& finding : analyze_volt_second_balance(operatingPoints[index], index)) {
             findings.push_back(finding);
+        }
+        if (!outputs[index].get_temperature()) {
+            for (auto& finding : analyze_missing_temperature(mas.get_magnetic(), operatingPoints[index], index,
+                                                             mas.get_inputs().get_design_requirements().get_topology())) {
+                findings.push_back(finding);
+            }
+            continue;
         }
         for (auto& finding : analyze_temperature(mas.get_magnetic(), operatingPoints[index], outputs[index], index)) {
             findings.push_back(finding);

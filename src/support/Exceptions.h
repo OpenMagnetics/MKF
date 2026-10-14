@@ -517,6 +517,16 @@ public:
         : CalculationException(ErrorCode::CALCULATION_CORE_SATURATES, message) {}
 };
 
+// The thermal network's fixed point did not converge within its iteration limit (Temperature::
+// calculateTemperatures with requireConvergence): the losses it was given have no steady temperature on
+// that network. Its own type so the loss <-> temperature solve can tell it from every other calculation
+// error (ABT #1876): inside that solve it means the operating point has no thermal operating point.
+class ThermalNetworkNotConvergedException : public CalculationException {
+public:
+    explicit ThermalNetworkNotConvergedException(const std::string& message)
+        : CalculationException(ErrorCode::CALCULATION_INVALID_RESULT, message) {}
+};
+
 // A requirement point outside the material's mu(f) range is judged on the part's own measured
 // common-mode |Z| (datasheet impedancePoints). This says why that measured curve cannot be read:
 // a point with a non-positive or non-finite frequency or magnitude, two values at one frequency,

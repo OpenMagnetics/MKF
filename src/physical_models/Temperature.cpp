@@ -7196,7 +7196,7 @@ ThermalResult Temperature::solveThermalCircuit() {
     // confident wrong number, and rated currents and datasheet temperature rises are derived
     // from this value.
     if (!converged && _config.requireConvergence) {
-        throw CalculationException(ErrorCode::CALCULATION_INVALID_RESULT,
+        throw ThermalNetworkNotConvergedException(
             "Thermal network did not converge in " + std::to_string(_config.maxIterations) +
             " iterations (tolerance " + std::to_string(_config.convergenceTolerance) + " K). The "
             "last iterate is not a temperature estimate and must not be reported. Check the "

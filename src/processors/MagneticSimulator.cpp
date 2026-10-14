@@ -75,7 +75,23 @@ Mas MagneticSimulator::simulate(const Inputs& inputs, const Magnetic& magnetic, 
         }
         std::optional<WindingLossesOutput> windingLossesOutput;
         std::optional<TemperatureOutput> temperatureOutput;
-        output.set_core_losses(calculate_core_losses(operatingPoint, woundMagnetic, &windingLossesOutput, &temperatureOutput));
+        try {
+            output.set_core_losses(calculate_core_losses(operatingPoint, woundMagnetic, &windingLossesOutput, &temperatureOutput));
+        }
+        catch (const NoThermalOperatingPointException& noThermalOperatingPoint) {
+            // ABT #1876 (Alf, 2026-10-14): this point has no thermal operating point (the network did not
+            // converge on its losses, or its winding runs away). Only this point is affected: its core and
+            // winding losses are those evaluated at ambient, as before ABT #838, and it gets NO temperature
+            // output. ResultsAnalyzer::analyze_results names it (NO_THERMAL_OPERATING_POINT). Any other
+            // error is not caught here and refuses the whole design.
+            const auto& lossesAtAmbient = noThermalOperatingPoint.get_losses_at_ambient();
+            operatingPoint.get_mutable_excitations_per_winding()[0] = lossesAtAmbient.excitation;
+            output.set_core_losses(lossesAtAmbient.coreLosses);
+            output.set_winding_losses(lossesAtAmbient.windingLosses.value());
+            outputs.push_back(output);
+            simulatedOperatingPoints.push_back(operatingPoint);
+            continue;
+        }
         output.set_winding_losses(windingLossesOutput.value());
         if (!fastMode) {
             // Full-network hot-spot from exactly the losses published above -- the same config
@@ -323,6 +339,9 @@ SolvedLosses MagneticSimulator::solve_losses_at_operating_temperature(const Oper
         double windingLosses;
     };
     std::optional<HeldWindingIterate> heldWindingIterate;
+    // The first iterate's losses: core and winding at ambient (ABT #1876), what a point with no thermal
+    // operating point publishes.
+    std::optional<LossesAtAmbient> lossesAtAmbient;
 
     for (size_t iteration = 1; iteration <= kOperatingTemperatureMaximumIterations; ++iteration) {
         // Core losses at the core's temperature. The magnetizing model reads the core temperature
@@ -383,9 +402,21 @@ SolvedLosses MagneticSimulator::solve_losses_at_operating_temperature(const Oper
             config.coreLosses = coreLossesOutput.get_core_losses();
             config.coreOnly = true;
         }
+        if (!lossesAtAmbient) {
+            lossesAtAmbient = LossesAtAmbient{coreLossesOutput, excitation, windingLosses};
+        }
         ThermalResult thermalResult;
         try {
             thermalResult = Temperature(magnetic, config).calculateTemperatures();
+        }
+        catch (const ThermalNetworkNotConvergedException& error) {
+            // No steady temperature exists on the network for this iterate's losses: the operating point has
+            // no thermal operating point (ABT #1876, Alf 2026-10-14).
+            throw NoThermalOperatingPointException(error.code(), "No thermal operating point: " + error.message() +
+                " Loss loop at iterate " + std::to_string(iteration) + " (core losses at " + std::to_string(coreTemperature) +
+                " C, winding losses at " + std::to_string(windingTemperature) + " C" +
+                (coreHeldAtCeiling ? ", core held at its data limit" : "") + "). History:" + history,
+                lossesAtAmbient.value());
         }
         catch (const CalculationException& error) {
             // Not handled: the same error, with the loss loop's iterates up to it, so the losses and
@@ -470,7 +501,8 @@ SolvedLosses MagneticSimulator::solve_losses_at_operating_temperature(const Oper
                                << heldWindingIterate->nextWindingTemperature << " C to " << nextWindingTemperature
                                << " C: dT_turn/dT_w = " << slope << ", at or above 1, where a fixed point needs it below 1."
                                << " History:" << history;
-                        throw CalculationException(ErrorCode::CALCULATION_DIVERGED, reason.str());
+                        throw NoThermalOperatingPointException(ErrorCode::CALCULATION_DIVERGED, reason.str(),
+                                                               lossesAtAmbient.value());
                     }
                 }
             }

@@ -42,6 +42,32 @@ struct SolvedLosses {
     std::optional<DcBiasPoint> dcBiasPoint;
 };
 
+// ABT #1876 (Alf, 2026-10-14): the losses of an operating point evaluated at its ambient temperature,
+// the core and the winding both, as the engine did before ABT #838: the loss <-> temperature solve's
+// first iterate, before any temperature feedback.
+struct LossesAtAmbient {
+    CoreLossesOutput coreLosses;
+    OperatingPointExcitation excitation;
+    std::optional<WindingLossesOutput> windingLosses;
+};
+
+// ABT #1876 (Alf, 2026-10-14): the loss <-> temperature solve found that this operating point has NO
+// thermal operating point. Exactly two cases:
+//   - the thermal network did not converge on the losses of a loop iterate
+//     (ThermalNetworkNotConvergedException; code CALCULATION_INVALID_RESULT), or
+//   - the winding runs away with the core held at its data ceiling (code CALCULATION_DIVERGED).
+// The message is MKF's, with the loop's history. It carries the point's losses at ambient, which
+// MagneticSimulator::simulate publishes for that point (and no temperature); every other caller sees it
+// as the CalculationException it is. Any other error of the solve is not this exception.
+class NoThermalOperatingPointException : public CalculationException {
+  public:
+    NoThermalOperatingPointException(ErrorCode code, const std::string& message, LossesAtAmbient lossesAtAmbient)
+        : CalculationException(code, message), _lossesAtAmbient(std::move(lossesAtAmbient)) {}
+    const LossesAtAmbient& get_losses_at_ambient() const { return _lossesAtAmbient; }
+  private:
+    LossesAtAmbient _lossesAtAmbient;
+};
+
 class LossSolveMemoScope {
     public:
         LossSolveMemoScope();
@@ -104,6 +130,12 @@ class MagneticSimulator {
             _magnetizingInductanceModel.set_topology(topology);
         }
 
+        // One output per operating point. A point with no thermal operating point
+        // (NoThermalOperatingPointException, ABT #1876, Alf 2026-10-14) gets its core and winding losses
+        // evaluated at ambient (LossesAtAmbient) and NO temperature output; the other points are simulated
+        // normally, and ResultsAnalyzer::analyze_results reports NO_THERMAL_OPERATING_POINT for it. Every
+        // other error still throws for the whole design. fastMode publishes no temperature for ANY point
+        // (and skips the leakage inductance); analyze_results tells the two apart by solving again.
         Mas simulate(Mas mas, bool fastMode=false);
         Mas simulate(const Inputs& inputs, const Magnetic& magnetic, bool fastMode=false);
 
@@ -140,7 +172,9 @@ class MagneticSimulator {
         // winding alone; the held core is magnetized with mu_r = 1 only when the ceiling is its Curie
         // temperature, and keeps its last tabulated permeability when it is the end of a mu_i(T) table
         // below Curie (explicit exception approved by Alf, 2026-10-14,
-        // ABT #1855; analyze_results reports it).
+        // ABT #1855; analyze_results reports it). The thermal network failing to converge on an
+        // iterate's losses, and the held winding running away, throw NoThermalOperatingPointException
+        // carrying the losses at ambient (ABT #1876).
         // `windingLossesOutput` / `temperatureOutput`, when given, receive the winding losses and
         // the full-network temperature solved together with the returned core losses (asking for
         // winding losses of an unwound coil throws). `windingLossesScope` selects the winding-loss
