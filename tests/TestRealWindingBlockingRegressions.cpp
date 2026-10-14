@@ -61,6 +61,36 @@ TEST_CASE("Real winding: the interleaved N-filar E16 (MVB++ cm37) gets connectio
     settings.reset();
 }
 
+// ABT #1860: MVB++'s current_transformer_complete, a one-turn pass-through primary (one Round 6.0
+// turn, 4.19 mm, subtending 46.5 deg of T 25.3/14.8/10) beside 100 turns of Round 0.5. Built the
+// way magnetic_autocomplete_safe builds it, for both toroid mountings. The contiguous sector
+// apportioning (ABT #1734) counted every ring as holding a turn at any angle, so the primary
+// claimed 0 deg, got a 0.29 deg layer (fill factor 158), and magnetic_autocomplete refused the
+// real wind before any connection blocking ran.
+TEST_CASE("Real winding: a one-turn pass-through toroid primary (MVB++ current_transformer_complete) gets connection blocking",
+          "[constructive-model][coil][real-winding][abt1860]") {
+    auto& settings = OpenMagnetics::Settings::GetInstance();
+    const auto magneticJson = json::parse(R"({"core": {"name": "Toroid T 25.3/14.8/10 N30", "functionalDescription": {"type": "toroidal", "material": "N30", "shape": "T 25.3/14.8/10", "gapping": [], "numberStacks": 1}}, "coil": {"bobbin": "Basic", "functionalDescription": [{"name": "Primary", "numberTurns": 1, "numberParallels": 1, "isolationSide": "primary", "wire": "Round 6.0 - Single Build"}, {"name": "Secondary", "numberTurns": 100, "numberParallels": 1, "isolationSide": "secondary", "wire": "Round 0.5 - Grade 1"}]}})");
+    for (auto mounting : {MAS::OrientationEnum::VERTICAL, MAS::OrientationEnum::HORIZONTAL}) {
+        settings.reset();
+        settings.set_coil_use_real_winding_geometry(true);
+        settings.set_toroid_mounting(mounting);
+        OpenMagnetics::Core core(magneticJson.at("core"));
+        OpenMagnetics::Coil coil(magneticJson.at("coil"), false);
+        OpenMagnetics::Magnetic magnetic;
+        magnetic.set_core(core);
+        magnetic.set_coil(coil);
+
+        OpenMagnetics::Magnetic enriched;
+        REQUIRE_NOTHROW(enriched = OpenMagnetics::magnetic_autocomplete(magnetic, json{}));
+        auto& enrichedCoil = enriched.get_mutable_coil();
+        INFO(enrichedCoil.get_last_fit_failure());
+        CHECK(enrichedCoil.is_real_winding_blocking_applied());
+        CHECK(enrichedCoil.are_sections_and_layers_fitting());
+    }
+    settings.reset();
+}
+
 namespace {
 
 // The parallels each conduction section of `winding` carries, in wound order.

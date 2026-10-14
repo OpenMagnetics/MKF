@@ -15258,7 +15258,8 @@ TEST_CASE("Test_Toroidal_Real_Winding_One_Turn_Pass_Through_Gets_The_Angle_Its_T
     REQUIRE(primaryTurnAngle > 40);   // the fixture must keep a pass-through that needs a wide sector
 
     size_t primaryLayers = 0;
-    for (const auto& layer : coil.get_layers_description().value()) {
+    const auto layers = coil.get_layers_description().value();
+    for (const auto& layer : layers) {
         if (layer.get_type() != MAS::ElectricalType::CONDUCTION) {
             continue;
         }
