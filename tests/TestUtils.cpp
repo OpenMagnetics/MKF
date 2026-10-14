@@ -703,12 +703,14 @@ namespace {
         settings.set_use_only_cores_in_stock(false);
         auto core = find_core_by_name("PQ 32/30 - 3C90 - Gapped 0.492 mm");
         OpenMagnetics::Coil coil;
-        OpenMagnetics::Winding dummyWinding;
-        dummyWinding.set_name("");
-        dummyWinding.set_number_turns(0);
-        dummyWinding.set_number_parallels(0);
-        dummyWinding.set_wire("");
-        coil.get_mutable_functional_description().push_back(dummyWinding);
+        // A real winding (ABT #1849: mas_autocomplete refuses to simulate the placeholder it
+        // would invent for a winding with no turns, no parallels and no wire).
+        OpenMagnetics::Winding winding;
+        winding.set_name("Primary");
+        winding.set_number_turns(10);
+        winding.set_number_parallels(1);
+        winding.set_wire("Round 1.00 - Grade 1");
+        coil.get_mutable_functional_description().push_back(winding);
         OpenMagnetics::Magnetic magnetic;
         magnetic.set_core(core);
         magnetic.set_coil(coil);
