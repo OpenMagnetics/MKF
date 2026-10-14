@@ -3,7 +3,7 @@
   "generator": "gen_omfem_refs.py (ABT #461 / #454)",
   "source": "omfem_mas: 2D mesh -> FEM losses -> solve_thermal_fem (h from MKF natural-convection law per boundary, out-of-plane face sink, open toroid bore with view factor, k_core from MKF resolve_core_material_heat_conductivity, eps=0.9, radiating; ABT #1751)",
   "losses": "OMFEM's own FEM losses, stored here and fed IDENTICALLY to both models by the test",
-  "date": "2026-10-13"
+  "date": "2026-10-14"
  },
  "examples": {
   "000_debug.json": {
@@ -15,7 +15,7 @@
    "omfem_t_core": 25.7670690854,
    "omfem_t_winding": 26.1782412522,
    "omfem_t_max": 26.1783088536,
-   "seconds": 18.1
+   "seconds": 17.2
   },
   "00_debug.json": {
    "status": "ok",
@@ -26,7 +26,7 @@
    "omfem_t_core": 25.1022359387,
    "omfem_t_winding": 25.1534543118,
    "omfem_t_max": 25.1534627412,
-   "seconds": 14.0
+   "seconds": 14.4
   },
   "01_simple_inductor_etd34_n87.json": {
    "status": "ok",
@@ -37,7 +37,7 @@
    "omfem_t_core": 43.0303148961,
    "omfem_t_winding": 52.3014861621,
    "omfem_t_max": 58.5591619603,
-   "seconds": 30.0
+   "seconds": 28.7
   },
   "01_simple_inductor_etd34_n87_1Hz.json": {
    "status": "ok",
@@ -54,7 +54,7 @@
    "omfem_t_core": 40.3163768949,
    "omfem_t_winding": 47.3623211028,
    "omfem_t_max": 48.6463150796,
-   "seconds": 19.0
+   "seconds": 18.3
   },
   "02_flyback_efd25_3c95.json": {
    "status": "ok",
@@ -65,7 +65,7 @@
    "omfem_t_core": 47.6552026235,
    "omfem_t_winding": 50.8817138538,
    "omfem_t_max": 53.0871715917,
-   "seconds": 37.3
+   "seconds": 35.4
   },
   "03_buck_inductor_pq3230_n95.json": {
    "status": "ok",
@@ -76,7 +76,7 @@
    "omfem_t_core": 95.5509128384,
    "omfem_t_winding": 104.023039208,
    "omfem_t_max": 119.068305409,
-   "seconds": 69.6
+   "seconds": 65.1
   },
   "04_forward_xfmr_e3216_n87.json": {
    "status": "ok",
@@ -87,7 +87,7 @@
    "omfem_t_core": 45.1245179506,
    "omfem_t_winding": 53.072259332,
    "omfem_t_max": 55.9090996373,
-   "seconds": 219.3
+   "seconds": 231.1
   },
   "05_pfc_inductor_t4020_hf60.json": {
    "status": "ok",
@@ -98,7 +98,7 @@
    "omfem_t_core": 86.6080067963,
    "omfem_t_winding": 87.1805822585,
    "omfem_t_max": 87.5269936626,
-   "seconds": 29.8
+   "seconds": 25.7
   },
   "06_llc_xfmr_eq4128_3c97.json": {
    "status": "ok",
@@ -109,13 +109,18 @@
    "omfem_t_core": 36.7584999396,
    "omfem_t_winding": 38.989749287,
    "omfem_t_max": 39.4179740009,
-   "seconds": 90.5
+   "seconds": 88.5
   },
   "07_cmc_t2515_w800.json": {
-   "status": "failed",
+   "status": "ok",
    "shape_family": "unknown",
-   "error": "error: [MATERIAL_FREQUENCY_OUT_OF_SPAN] Material 3C90: Steinmetz loss coefficients are fitted over 25000.000000 Hz to 446690.000000 Hz; 50.000000 Hz is below that span and would be an extrapolation of the fit (Context: 3C90)",
-   "seconds": 0.3
+   "ambient": 25,
+   "p_core": 0.012565617335730705,
+   "p_cu": 0.422046258076,
+   "omfem_t_core": 37.0746209056,
+   "omfem_t_winding": 37.2945318786,
+   "omfem_t_max": 37.9574818557,
+   "seconds": 37.3
   },
   "08_pq_inductor_pq5050_n27.json": {
    "status": "ok",
@@ -126,13 +131,13 @@
    "omfem_t_core": 57.5987170412,
    "omfem_t_winding": 63.4612579054,
    "omfem_t_max": 67.0016191767,
-   "seconds": 54.2
+   "seconds": 51.0
   },
   "09_planar_xfmr_er2510_3c94.json": {
    "status": "failed",
    "shape_family": "planarER",
-   "error": "error: FR4Builder: the PCB's core cut-out clearance (0.300000 mm) puts the board edge beyond the printed group's inner edge (0.250000 mm from the column face): the copper would hang off the board",
-   "seconds": 0.4
+   "error": "error: FR4Builder: the PCB's core cut-out clearance (0.300000 mm) puts the board edge beyond the printed group's inner edge (0.300000 mm from the column face): the copper would hang off the board",
+   "seconds": 0.3
   },
   "10_emi_filter_ep13_3f46.json": {
    "status": "ok",
@@ -143,7 +148,7 @@
    "omfem_t_core": 35.7258443948,
    "omfem_t_winding": 37.7743309903,
    "omfem_t_max": 39.5112237007,
-   "seconds": 62.2
+   "seconds": 60.6
   },
   "11_pushpull_etd49_tp4a.json": {
    "status": "ok",
@@ -154,7 +159,7 @@
    "omfem_t_core": 96.8754498268,
    "omfem_t_winding": 93.9621442032,
    "omfem_t_max": 103.527317734,
-   "seconds": 534.7
+   "seconds": 625.5
   },
   "12_boost_inductor_t5026_26.json": {
    "status": "ok",
@@ -165,7 +170,7 @@
    "omfem_t_core": 70.954402755,
    "omfem_t_winding": 70.9442419069,
    "omfem_t_max": 70.9829148273,
-   "seconds": 78.1
+   "seconds": 74.3
   },
   "13_current_sense_er95_n87.json": {
    "status": "ok",
@@ -176,7 +181,7 @@
    "omfem_t_core": 87.524731754,
    "omfem_t_winding": 108.594141766,
    "omfem_t_max": 125.378048314,
-   "seconds": 242.5
+   "seconds": 272.5
   },
   "14_dab_xfmr_pm8770_n97.json": {
    "status": "ok",
@@ -198,7 +203,7 @@
    "omfem_t_core": 62.4043250119,
    "omfem_t_winding": 76.3098295201,
    "omfem_t_max": 85.9520391218,
-   "seconds": 2.5
+   "seconds": 2.4
   },
   "16_coupled_inductor_e2513_dmr95.json": {
    "status": "ok",
@@ -209,7 +214,7 @@
    "omfem_t_core": 62.2982516901,
    "omfem_t_winding": 69.121158052,
    "omfem_t_max": 70.6895152753,
-   "seconds": 19.5
+   "seconds": 19.0
   },
   "17_cllc_xfmr_e5528_3c92a.json": {
    "status": "ok",
@@ -220,7 +225,7 @@
    "omfem_t_core": 61.987648658,
    "omfem_t_winding": 63.0411306639,
    "omfem_t_max": 63.4073164802,
-   "seconds": 91.9
+   "seconds": 85.6
   },
   "18_stacked_inductor_e7033_n27.json": {
    "status": "ok",
@@ -231,7 +236,7 @@
    "omfem_t_core": 84.7917064364,
    "omfem_t_winding": 96.1835971113,
    "omfem_t_max": 104.272396989,
-   "seconds": 75.4
+   "seconds": 69.6
   },
   "19_multi_op_xfmr_etd3920_pc95.json": {
    "status": "ok",
@@ -242,7 +247,7 @@
    "omfem_t_core": 25.4078447209,
    "omfem_t_winding": 25.5725269901,
    "omfem_t_max": 25.6109751266,
-   "seconds": 182.4
+   "seconds": 186.8
   },
   "20_iso_buckboost_epc25_3c91.json": {
    "status": "ok",
@@ -253,7 +258,7 @@
    "omfem_t_core": 34.0853554978,
    "omfem_t_winding": 36.249856687,
    "omfem_t_max": 36.7988693349,
-   "seconds": 47.2
+   "seconds": 45.5
   },
   "21_interleaved_flyback_etd39_n87.json": {
    "status": "ok",
@@ -264,7 +269,7 @@
    "omfem_t_core": 44.5051962438,
    "omfem_t_winding": 51.3232469613,
    "omfem_t_max": 53.8748269323,
-   "seconds": 84.2
+   "seconds": 81.0
   },
   "22_margin_tape_forward_e4218_3c95.json": {
    "status": "ok",
@@ -275,7 +280,7 @@
    "omfem_t_core": 30.3209973005,
    "omfem_t_winding": 32.7886881216,
    "omfem_t_max": 33.2759991782,
-   "seconds": 181.0
+   "seconds": 181.4
   },
   "23_interleaved_llc_pq3530_n97.json": {
    "status": "ok",
@@ -286,7 +291,7 @@
    "omfem_t_core": 48.6192804615,
    "omfem_t_winding": 53.9478286147,
    "omfem_t_max": 55.3374991033,
-   "seconds": 64.4
+   "seconds": 70.5
   },
   "24_margin_interleaved_flyback_pq3230_3c94.json": {
    "status": "ok",
@@ -297,7 +302,7 @@
    "omfem_t_core": 33.5497114951,
    "omfem_t_winding": 35.9116975424,
    "omfem_t_max": 37.3779253982,
-   "seconds": 128.2
+   "seconds": 116.8
   }
  }
 }
