@@ -1831,25 +1831,49 @@ TEST_CASE("Test_CoilAdviser_Random_11", "[adviser][coil-adviser][bug]") {
     masMagnetic.set_inputs(inputs);
     masMagnetic.set_magnetic(magnetic);
 
+    // Root cause (ABT #1855; Alf approved this rewrite 2026-10-14): these inputs cannot be wound.
+    // The magnetic as given (U 15/11/6, 3C91, 72 turns, one 1.424 mm gap) has L = 246.7 uH against
+    // the 86 uH required (2.9x), and the operating point is current-driven (19 A peak to peak), so
+    // B peak = 1.01 T already at the 23 C ambient, against 3C91's B_sat 0.473 T (0.37 T at 100 C,
+    // 0.21 T at the 220 C its losses drive it to). No turn count on this gap carries it either: the
+    // turns solve for 86 uH gives 43 turns at 0.60 T. Main passed this test only through the loss
+    // solve's thermal-runaway refusal (27,000 C), after which the coils came back unranked and
+    // invalid (current density > 12 A/mm2, 8-9 parallels against 5). Now the loss solve holds the
+    // core at the end of its data and the coil adviser rejects every wound coil because its core
+    // saturates: 0 coils is the right answer, and the rejection must say so.
+    {
+        auto operatingPoint = masMagnetic.get_inputs().get_operating_points()[0];
+        MagnetizingInductance magnetizingInductanceModel;
+        auto [magnetizingInductanceOutput, magneticFluxDensity] = magnetizingInductanceModel.calculate_inductance_and_magnetic_flux_density(
+            masMagnetic.get_magnetic().get_core(), masMagnetic.get_magnetic().get_coil(), &operatingPoint);
+        double inductance = resolve_dimensional_values(magnetizingInductanceOutput.get_magnetizing_inductance());
+        double peak = ResultsAnalyzer::get_peak_flux_density(magneticFluxDensity);
+        auto verdict = ResultsAnalyzer::check_saturation(masMagnetic.get_mutable_magnetic().get_mutable_core().resolve_material(), peak, temperature);
+        INFO("L " << inductance << " H, B peak " << peak << " T, B_sat " << verdict.saturationFluxDensity << " T at " << temperature << " C");
+        CHECK_THAT(inductance, Catch::Matchers::WithinRel(246.7e-6, 0.02));
+        CHECK_THAT(peak, Catch::Matchers::WithinRel(1.01, 0.02));
+        CHECK_THAT(verdict.saturationFluxDensity, Catch::Matchers::WithinRel(0.473, 0.01));
+        CHECK(verdict.saturates);
+    }
+
+    Logger::getInstance().disableCollector();
+    Logger::getInstance().enableCollector(LogLevel::WARNING);
+    Logger::getInstance().drainCollected();
     CoilAdviser coilAdviser;
     auto masMagneticsWithCoil = coilAdviser.get_advised_coil(masMagnetic, 2);
-
-    // The adviser silently returning 0 candidates used to pass this test (the JsonLV failure mode).
-    REQUIRE(masMagneticsWithCoil.size() > 0);
-    if (masMagneticsWithCoil.size() > 0) {
-        auto masMagneticWithCoil = masMagneticsWithCoil[0];
-        // OpenMagneticsTesting::check_turns_description(masMagneticWithCoil.get_magnetic().get_coil());
-        auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
-        auto outFile = outputFilePath;
-        std::string filename = "Test_CoilAdviser" + std::to_string(OpenMagnetics::TestUtils::randomInt(0, RAND_MAX)) + ".svg";
-        outFile.append(filename);
-        Painter painter(outFile);
-
-        painter.paint_core(masMagneticWithCoil.get_mutable_magnetic());
-        painter.paint_bobbin(masMagneticWithCoil.get_mutable_magnetic());
-        painter.paint_coil_turns(masMagneticWithCoil.get_mutable_magnetic());
-        painter.export_svg();
+    size_t saturationRejections = 0;
+    for (const auto& record : Logger::getInstance().drainCollected()) {
+        if (record.message.find("rejected: its core saturates") != std::string::npos) {
+            INFO(record.message);
+            CHECK(record.message.find("B_sat") != std::string::npos);
+            saturationRejections += record.count;
+        }
     }
+    Logger::getInstance().disableCollector();
+
+    CHECK(saturationRejections > 0);
+    REQUIRE(masMagneticsWithCoil.size() == 0);
+    settings.reset();
 }
 
 TEST_CASE("Test_CoilAdviser_Random_12", "[adviser][coil-adviser][bug]") {

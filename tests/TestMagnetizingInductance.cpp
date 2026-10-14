@@ -823,7 +823,11 @@ namespace {
         settings.reset();
         clear_databases();
 
-        // This tests checks that the operating is not crashing
+        // A web request: ETD 54 3C95 with ONE turn, 46.5 uH, current-only excitation -3..7 A at 100 kHz.
+        // No gap gives 46.5 uH with one turn on an unsaturated core: B pk = 1.16 T against
+        // B_sat 0.53 T (3C95, 25 C). The gap solve must REFUSE with CALCULATION_CORE_SATURATES naming
+        // B and B_sat, never return an air-core gap as a design. (Formerly asserted a returned gap and
+        // an induced voltage; rewritten to expect the refusal, Alf approved 2026-10-14, ABT #1855.)
         json coreData = json::parse(
             R"({"functionalDescription": {"bobbin": null, "gapping": [{"area": 0.000369, "coordinates": [0.0,
             0.0, 0.0], "distanceClosestNormalSurface": 0.022448, "distanceClosestParallelSurface":
@@ -860,35 +864,20 @@ namespace {
         OpenMagnetics::Coil winding(windingData);
         OpenMagnetics::Inputs inputs(inputsData);
         MagnetizingInductance magnetizing_inductance("CLASSIC");
-        auto gapping =
+        bool refused = false;
+        try {
             magnetizing_inductance.calculate_gapping_from_number_turns_and_inductance(core, winding, &inputs, gappingType, 5);
-        auto primaryExcitation = inputs.get_operating_point(0).get_mutable_excitations_per_winding()[0];
-        double currentPeakToPeak = 10;
-
-        REQUIRE(bool(primaryExcitation.get_voltage()));
-        REQUIRE(bool(primaryExcitation.get_current()));
-        REQUIRE(bool(primaryExcitation.get_magnetizing_current()));
-
-        if (primaryExcitation.get_current()) {
-            auto currentProcessed = primaryExcitation.get_current().value().get_processed().value();
-            auto magnetizingCurrentProcessed = primaryExcitation.get_current().value().get_processed().value();
-            REQUIRE_THAT(currentPeakToPeak, Catch::Matchers::WithinAbs(inputs.get_operating_point(0)
-                            .get_mutable_excitations_per_winding()[0]
-                            .get_magnetizing_current()
-                            .value()
-                            .get_processed()
-                            .value()
-                            .get_peak_to_peak()
-                            .value(), max_error * currentPeakToPeak));
-            REQUIRE_THAT(currentPeakToPeak, Catch::Matchers::WithinAbs(inputs.get_operating_point(0)
-                            .get_mutable_excitations_per_winding()[0]
-                            .get_current()
-                            .value()
-                            .get_processed()
-                            .value()
-                            .get_peak_to_peak()
-                            .value(), max_error * currentPeakToPeak));
         }
+        catch (const SaturationException& e) {
+            refused = true;
+            CHECK(e.code() == OpenMagnetics::ErrorCode::CALCULATION_CORE_SATURATES);
+            const std::string message = e.what();
+            CHECK_THAT(message, Catch::Matchers::ContainsSubstring("CALCULATION_CORE_SATURATES"));
+            CHECK_THAT(message, Catch::Matchers::ContainsSubstring("B peak = 1.16"));
+            CHECK_THAT(message, Catch::Matchers::ContainsSubstring("B_sat = 0.53"));
+            CHECK_THAT(message, Catch::Matchers::ContainsSubstring("3C95"));
+        }
+        REQUIRE(refused);
     }
 
     TEST_CASE("Test_Inductance_Ferrite_Web_No_Voltage", "[physical-model][magnetizing-inductance][smoke-test]") {
