@@ -48,6 +48,24 @@ namespace OpenMagnetics {
  * with the edge join and the weights above; the proposal's Python: 19 % / 68 %), against
  * 182 % / 1696 % for the best simple baseline.
  *
+ * Anchored Kramers-Kronig, FERRITE NI_ZN only (ABT #1870, Alf 2026-10-14): where a NiZn ferrite's mu' is
+ * missing above its data but its OWN mu'' is tabulated further, mu' there is the singly-subtracted
+ * Kramers-Kronig transform of that tabulated mu'', anchored at the last tabulated mu' point:
+ *     mu'(f) = mu'(f_a) + KK[mu''](f) - KK[mu''](f_a),
+ *     KK[mu''](f) = 1 + (2/pi) PV int mu''(f') f'^2 / (f'^2 - f^2) d ln f'
+ * (port of .cperm-estimator/physical/kk.py and knn_kk.py: mu'' on a 200-per-decade log grid, padded one
+ * decade each side with its edge decade's power-law slope, the high slope capped at -0.5, starting from
+ * the table's end value (kk.py starts from the fitted line, which jumps at the end); the singularity
+ * subtracted analytically). Estimated mu'' is NEVER fed into it (the research shows it makes |Z| worse):
+ * the pad is the own table's power law, not the neighbours. Over the last 0.25 decade of the own mu''
+ * table KK moves linearly in log f into the neighbours' mu', which continue alone beyond it.
+ * Hold-out (TDK pattern, mu' hidden above the mu'' peak; C++ port): NiZn mu' median / P90 error 1 / 7 %
+ * against 8 / 55 % for the neighbours. MnZn keeps the neighbours: there the anchor offset
+ * mu'(f_a) - KK(f_a) is mu'(infinity) - 1, and on TDK MnZn records whose mu' and mu'' curves were
+ * digitised slightly apart in frequency it sets implausible high-frequency levels (N51: +465 at 1 GHz)
+ * that no check on the overlap can see. The datasheet lossFactor (tan d / mu_i) was tried as an anchor
+ * for mu'' below the data and lost to the neighbours on the hold-out, so it is not used.
+ *
  * It refuses (ComplexPermeabilityEstimatorRefusal) powders, MgZn, a proprietary or missing
  * composition, materials without tabulated complex data, a class with fewer than 3 donors, and a
  * target whose data next to the gap cannot be matched. The advisers and filters never use it: they
@@ -57,7 +75,8 @@ enum class ComplexPermeabilitySource {
     TABULATED,             // the material's own MAS table
     ESTIMATED_NEIGHBOURS,  // median of the shape-matched class donors
     ESTIMATED_TAIL,        // beyond the donors' reach: the class tail slope
-    HELD_FLAT              // mu' below its data: its lowest tabulated value
+    HELD_FLAT,             // mu' below its data: its lowest tabulated value
+    ESTIMATED_KRAMERS_KRONIG  // NiZn mu' above its data, from its own tabulated mu'' (ABT #1870)
 };
 
 enum class ComplexPermeabilityPart { REAL, IMAGINARY };
@@ -98,6 +117,26 @@ struct ComplexPermeabilityDonorFit {
 };
 
 /**
+ * @brief mu' above its tabulated data from the material's own tabulated mu'' by the anchored
+ * Kramers-Kronig transform (ABT #1870). Built from the own mu'' table only.
+ */
+struct ComplexPermeabilityKramersKronig {
+    double anchorFrequency;   // the last tabulated mu' point, Hz
+    double anchorValue;       // mu' there
+    double toFrequency;       // the last tabulated (positive) mu'' point, Hz: the transform is used up to here
+    std::vector<double> gridLogFrequencies;  // ln f of the grid (natural log, as kk.py)
+    std::vector<double> gridFrequencies;     // Hz
+    std::vector<double> gridImaginary;       // the own mu'' on the grid (with the power-law pads)
+    double transformAtAnchor = 0;            // KK[mu''](anchorFrequency)
+    std::string method;
+
+    // KK[mu''](f) = 1 + (2/pi) PV int mu''(f') f'^2 / (f'^2 - f^2) d ln f', singularity subtracted.
+    double transform(double frequency) const;
+    // mu'(f) = anchorValue + transform(f) - transformAtAnchor.
+    double real_part(double frequency) const;
+};
+
+/**
  * @brief The estimate of one part (mu' or mu'') on one side of its tabulated data.
  */
 struct ComplexPermeabilityGapEstimate {
@@ -123,6 +162,12 @@ struct ComplexPermeabilityGapEstimate {
     // mu' only: the donors' median at the edge lies on the other side of zero from the own value. The
     // additive offset joins the two without flipping the donors' trend.
     bool edgeSignMismatch = false;
+    // mu' above its data only, FERRITE NI_ZN only (ABT #1870): where the own mu'' is tabulated beyond the mu'
+    // edge, mu' up to kramersKronig->toFrequency is the anchored KK transform (ESTIMATED_KRAMERS_KRONIG),
+    // even when the neighbours are refused. Over the last 0.25 decade of the own mu'' table it moves
+    // linearly in log f from KK to the neighbours (when they answer); beyond the table, the neighbours
+    // alone, exactly as without KK. Never engaged for MnZn.
+    std::optional<ComplexPermeabilityKramersKronig> kramersKronig;
     std::string neighboursMethod;                // human-readable, as CoreHeatConductivityEstimate::method
     std::string tailMethod;
     // Non-empty when this part and side cannot be estimated (e.g. no donor's data reach past the
@@ -131,6 +176,11 @@ struct ComplexPermeabilityGapEstimate {
 
     // The estimated value at a frequency beyond the edge, and where it came from.
     std::pair<double, ComplexPermeabilitySource> evaluate(double frequency) const;
+    // The neighbours' (or their tail's) value, with the mu' edge offset (ABT #1861), without Kramers-Kronig.
+    std::pair<double, ComplexPermeabilitySource> evaluate_neighbours(double frequency) const;
+    // Where the blend from Kramers-Kronig into the neighbours starts, Hz (only with kramersKronig and
+    // the neighbours answering): 0.25 decade below the end of the own mu'' table, not below the edge.
+    double kramers_kronig_blend_start() const;
     // mu': the part of edgeOffset still added at this frequency (edgeOffset at the edge, 0 from one
     // decade beyond it). 0 for mu'' and for HELD_FLAT.
     double edge_offset_at(double frequency) const;

@@ -7,6 +7,7 @@
 #include <cstdlib>
 #include <iomanip>
 #include <map>
+#include <numbers>
 #include <magic_enum.hpp>
 #include <sstream>
 
@@ -68,6 +69,25 @@ constexpr size_t kTailMinimumPoints = 3;
 constexpr double kTailMinimumSpan = 3;
 // - log-frequency tolerance at a table's ends.
 constexpr double kLogTolerance = 1e-9;
+// - anchored Kramers-Kronig mu' (ABT #1870; port of .cperm-estimator/physical/kk.py and knn_kk.py
+//   im_curve): the own mu'' on a 200-per-decade log grid, padded 1 decade each side with the slope of the
+//   power law fitted to the table's outermost decade (the high slope capped at -0.5: the tail must fall),
+//   starting from the table's end value, grid points within 1e-12 f^2 of the singularity left out of the
+//   quadrature;
+constexpr double kKramersKronigGridPerDecade = 200;
+constexpr double kKramersKronigPadDecades = 1;
+constexpr double kKramersKronigEdgeFitDecades = 1;
+constexpr double kKramersKronigMaximumHighSlope = -0.5;
+constexpr double kKramersKronigSingularTolerance = 1e-12;
+// - KK hands over to the neighbours over the last 0.25 decade of the own mu'' table, linearly in log f;
+//   beyond the table the neighbours alone (Alf, 2026-10-14; options study: the 1-decade offset fade carried
+//   KK's end level into the neighbours and flipped the sign of 5 records' mu');
+constexpr double kKramersKronigBlendDecades = 0.25;
+// - KK only for FERRITE NI_ZN (Alf, 2026-10-14). For MnZn the anchor offset C = mu'(f_a) - KK(f_a) is
+//   mu'(infinity) - 1, and on TDK MnZn records whose mu' and mu'' curves were digitised a few hundredths of
+//   a decade apart (N41, N45, N51, N92, N96, T36, T57, T66) C sets an implausible high-frequency mu' (N51:
+//   +465 at 1 GHz) that no check on the overlap can see; MnZn keeps the neighbours (ABT #1861).
+constexpr MaterialComposition kKramersKronigComposition = MaterialComposition::NI_ZN;
 
 struct CatalogueMaterial {
     std::string name;
@@ -82,6 +102,37 @@ double median(std::vector<double> values) {
     std::sort(values.begin(), values.end());
     const size_t n = values.size();
     return n % 2 == 1 ? values[n / 2] : (values[n / 2 - 1] + values[n / 2]) / 2.0;
+}
+
+// Least-squares straight line y = slope * x + intercept (numpy polyfit degree 1).
+std::pair<double, double> linear_fit(const std::vector<double>& xs, const std::vector<double>& ys) {
+    double meanX = 0, meanY = 0;
+    for (size_t index = 0; index < xs.size(); ++index) {
+        meanX += xs[index];
+        meanY += ys[index];
+    }
+    meanX /= static_cast<double>(xs.size());
+    meanY /= static_cast<double>(xs.size());
+    double sxy = 0, sxx = 0;
+    for (size_t index = 0; index < xs.size(); ++index) {
+        sxy += (xs[index] - meanX) * (ys[index] - meanY);
+        sxx += (xs[index] - meanX) * (xs[index] - meanX);
+    }
+    double slope = sxy / sxx;
+    return {slope, meanY - slope * meanX};
+}
+
+// Linear interpolation, clamped to the end values outside x (numpy interp). x strictly increasing.
+double interpolate_clamped(const std::vector<double>& x, const std::vector<double>& y, double at) {
+    if (at <= x.front()) {
+        return y.front();
+    }
+    if (at >= x.back()) {
+        return y.back();
+    }
+    size_t index = static_cast<size_t>(std::upper_bound(x.begin(), x.end(), at) - x.begin());
+    double fraction = (at - x[index - 1]) / (x[index] - x[index - 1]);
+    return y[index - 1] + fraction * (y[index] - y[index - 1]);
 }
 
 std::string format_frequency(double frequency) {
@@ -422,19 +473,7 @@ std::optional<std::pair<double, size_t>> learned_tail_slope(const std::vector<co
         if (!positive || xs.size() < kTailMinimumPoints || !(xs.back() - xs.front() > std::log10(kTailMinimumSpan))) {
             continue;
         }
-        double meanX = 0, meanY = 0;
-        for (size_t index = 0; index < xs.size(); ++index) {
-            meanX += xs[index];
-            meanY += ys[index];
-        }
-        meanX /= static_cast<double>(xs.size());
-        meanY /= static_cast<double>(xs.size());
-        double sxy = 0, sxx = 0;
-        for (size_t index = 0; index < xs.size(); ++index) {
-            sxy += (xs[index] - meanX) * (ys[index] - meanY);
-            sxx += (xs[index] - meanX) * (xs[index] - meanX);
-        }
-        slopes.push_back(sxy / sxx);
+        slopes.push_back(linear_fit(xs, ys).first);
     }
     if (slopes.empty()) {
         return std::nullopt;
@@ -500,6 +539,78 @@ std::optional<double> neighbours_reach(const std::vector<ComplexPermeabilityDono
         previous = boundary;
     }
     return reach;
+}
+
+// ABT #1870: mu' above its data from the material's OWN tabulated mu'' (never an estimated mu''),
+// anchored at its last tabulated mu' point. Disengaged when its mu'' table does not reach past the mu'
+// edge.
+std::optional<ComplexPermeabilityKramersKronig> kramers_kronig_real(const CatalogueMaterial& target) {
+    const auto& imaginary = target.imaginary;
+    const auto& lf = imaginary.logFrequencies;
+    const auto& lv = imaginary.logValues;
+    double logRealEdge = target.real.logFrequencies.back();
+    if (!(lf.back() > logRealEdge + kLogTolerance)) {
+        return std::nullopt;
+    }
+    ComplexPermeabilityKramersKronig kk;
+    kk.anchorFrequency = std::pow(10.0, logRealEdge);
+    kk.anchorValue = target.real.values.back();
+    kk.toFrequency = std::pow(10.0, lf.back());
+
+    // The grid: numpy arange(lf[0] - pad, lf[-1] + pad, 1 / 200).
+    const double step = 1.0 / kKramersKronigGridPerDecade;
+    const double start = lf.front() - kKramersKronigPadDecades;
+    const double stop = lf.back() + kKramersKronigPadDecades;
+    const size_t numberPoints = static_cast<size_t>(std::ceil((stop - start) / step));
+    std::vector<double> grid(numberPoints);
+    std::vector<double> logGridValues(numberPoints);
+    for (size_t index = 0; index < numberPoints; ++index) {
+        grid[index] = start + static_cast<double>(index) * step;
+        logGridValues[index] = interpolate_clamped(lf, lv, grid[index]);
+    }
+    // The pads: the power law of the table's outermost decade on each side (where it has 2 points).
+    for (bool high : {false, true}) {
+        std::vector<double> xs, ys;
+        for (size_t index = 0; index < lf.size(); ++index) {
+            bool selected = high ? lf[index] >= lf.back() - kKramersKronigEdgeFitDecades : lf[index] <= lf.front() + kKramersKronigEdgeFitDecades;
+            if (selected) {
+                xs.push_back(lf[index]);
+                ys.push_back(lv[index]);
+            }
+        }
+        if (xs.size() < 2) {
+            continue;
+        }
+        double slope = linear_fit(xs, ys).first;
+        if (high) {
+            slope = std::min(slope, kKramersKronigMaximumHighSlope);
+        }
+        // The pad starts from the table's own end value. (kk.py keeps the fitted intercept: the pad then
+        // jumps at the table's end wherever the slope was capped or the fit misses the end point, and the
+        // transform has a logarithmic singularity there. Hold-out: identical MnZn cells, NiZn mu' P90 21 -> 7 %;
+        // production: A13's mu' went from -1398 to -4861 within 3 % of frequency, R10KC's from 112 to -5904 within 6 %.)
+        double intercept = high ? lv.back() - slope * lf.back() : lv.front() - slope * lf.front();
+        for (size_t index = 0; index < numberPoints; ++index) {
+            if (high ? grid[index] > lf.back() : grid[index] < lf.front()) {
+                logGridValues[index] = slope * grid[index] + intercept;
+            }
+        }
+    }
+    kk.gridLogFrequencies.resize(numberPoints);
+    kk.gridFrequencies.resize(numberPoints);
+    kk.gridImaginary.resize(numberPoints);
+    for (size_t index = 0; index < numberPoints; ++index) {
+        kk.gridFrequencies[index] = std::pow(10.0, grid[index]);
+        kk.gridLogFrequencies[index] = std::log(kk.gridFrequencies[index]);
+        kk.gridImaginary[index] = std::pow(10.0, logGridValues[index]);
+    }
+    kk.transformAtAnchor = kk.transform(kk.anchorFrequency);
+    std::ostringstream method;
+    method << "mu' ESTIMATED by Kramers-Kronig from " << target.name << "'s own tabulated mu'' (" << format_frequency(std::pow(10.0, lf.front()))
+           << " to " << format_frequency(kk.toFrequency) << "), anchored at its last tabulated mu', " << kk.anchorValue << " at "
+           << format_frequency(kk.anchorFrequency);
+    kk.method = method.str();
+    return kk;
 }
 
 std::string class_name(const CoreMaterial& material) {
@@ -656,7 +767,75 @@ ComplexPermeabilityGapEstimate neighbours_gap(const CatalogueMaterial& target, c
 
 }  // namespace
 
+double ComplexPermeabilityKramersKronig::transform(double frequency) const {
+    // Port of kk.py kk_real: (vg fg^2 - m0 f0^2) / (fg^2 - f0^2) integrated by the trapezoid rule in
+    // ln f over the grid points away from the singularity, plus the analytic principal value of
+    // m0 f0^2 / (fg^2 - f0^2) over the grid, (m0 / 2) [ln|1 - f0^2 / fg^2|] between the grid's ends.
+    const double f0Squared = frequency * frequency;
+    const double m0 = interpolate_clamped(gridLogFrequencies, gridImaginary, std::log(frequency));
+    double integral = 0;
+    bool havePrevious = false;
+    double previousU = 0, previousValue = 0;
+    for (size_t index = 0; index < gridFrequencies.size(); ++index) {
+        double fgSquared = gridFrequencies[index] * gridFrequencies[index];
+        double denominator = fgSquared - f0Squared;
+        if (!(std::fabs(denominator) > kKramersKronigSingularTolerance * f0Squared)) {
+            continue;
+        }
+        double value = (gridImaginary[index] * fgSquared - m0 * f0Squared) / denominator;
+        double u = gridLogFrequencies[index];
+        if (havePrevious) {
+            integral += (u - previousU) * (value + previousValue) / 2;
+        }
+        previousU = u;
+        previousValue = value;
+        havePrevious = true;
+    }
+    auto principal = [&](double gridFrequency) {
+        return std::log(std::fabs(1 - f0Squared / (gridFrequency * gridFrequency)));
+    };
+    double singular = m0 / 2 * (principal(gridFrequencies.back()) - principal(gridFrequencies.front()));
+    return 1 + 2 / std::numbers::pi * (integral + singular);
+}
+
+double ComplexPermeabilityKramersKronig::real_part(double frequency) const {
+    return anchorValue + transform(frequency) - transformAtAnchor;
+}
+
 std::pair<double, ComplexPermeabilitySource> ComplexPermeabilityGapEstimate::evaluate(double frequency) const {
+    // ABT #1870 (NiZn only): mu' where the own mu'' is tabulated comes from it, whatever the neighbours
+    // say (or refuse); over the last 0.25 decade of that table it moves linearly in log f into the
+    // neighbours, which alone continue beyond it. Without KK this is the neighbours exactly (ABT #1861).
+    if (kramersKronig) {
+        if (!std::isfinite(frequency) || frequency <= 0) {
+            throw InvalidInputException(ErrorCode::INVALID_INPUT, "Complex permeability of " + materialName + " asked at " +
+                                        std::to_string(frequency) + " Hz: a frequency must be a finite positive number");
+        }
+        if (frequency <= kramersKronig->toFrequency) {
+            double kramersKronigValue = kramersKronig->real_part(frequency);
+            if (refusal.empty()) {
+                double start = kramers_kronig_blend_start();
+                if (frequency > start) {
+                    double weight = std::log10(frequency / start) / std::log10(kramersKronig->toFrequency / start);
+                    return {(1 - weight) * kramersKronigValue + weight * evaluate_neighbours(frequency).first,
+                            ComplexPermeabilitySource::ESTIMATED_KRAMERS_KRONIG};
+                }
+            }
+            return {kramersKronigValue, ComplexPermeabilitySource::ESTIMATED_KRAMERS_KRONIG};
+        }
+    }
+    return evaluate_neighbours(frequency);
+}
+
+double ComplexPermeabilityGapEstimate::kramers_kronig_blend_start() const {
+    if (!kramersKronig) {
+        throw CalculationException(ErrorCode::CALCULATION_INVALID_RESULT, "Complex permeability estimate of " + materialName +
+                                   ": a Kramers-Kronig blend was asked for a gap without a Kramers-Kronig range");
+    }
+    return std::max(edgeFrequency, kramersKronig->toFrequency / std::pow(10.0, kKramersKronigBlendDecades));
+}
+
+std::pair<double, ComplexPermeabilitySource> ComplexPermeabilityGapEstimate::evaluate_neighbours(double frequency) const {
     if (!refusal.empty()) {
         throw ComplexPermeabilityEstimatorRefusal(materialName, refusal);
     }
@@ -704,6 +883,13 @@ double ComplexPermeabilityGapEstimate::edge_offset_at(double frequency) const {
 }
 
 const std::string& ComplexPermeabilityGapEstimate::method(ComplexPermeabilitySource valueSource) const {
+    if (valueSource == ComplexPermeabilitySource::ESTIMATED_KRAMERS_KRONIG) {
+        if (!kramersKronig) {
+            throw CalculationException(ErrorCode::CALCULATION_INVALID_RESULT, "Complex permeability estimate of " + materialName +
+                                       ": a Kramers-Kronig value was asked for a gap without a Kramers-Kronig range");
+        }
+        return kramersKronig->method;
+    }
     return valueSource == ComplexPermeabilitySource::ESTIMATED_TAIL ? tailMethod : neighboursMethod;
 }
 
@@ -729,6 +915,9 @@ std::string ComplexPermeabilityEstimate::summary() const {
     text << ".";
     for (const auto& gap : gaps) {
         text << " " << (gap.side == ComplexPermeabilityGapSide::BELOW ? "Below " : "Above ") << format_frequency(gap.edgeFrequency) << ": ";
+        if (gap.kramersKronig) {
+            text << gap.kramersKronig->method << " up to " << format_frequency(gap.kramersKronig->toFrequency) << "; beyond it: ";
+        }
         if (!gap.refusal.empty()) {
             text << "NOT estimated (" << gap.refusal << ").";
         }
@@ -825,6 +1014,25 @@ ComplexPermeabilityEstimate estimate_complex_permeability(const CoreMaterial& co
 
     estimate.gaps.push_back(held_flat_gap(target.value()));
     estimate.gaps.push_back(neighbours_gap(target.value(), materialClass, donors, ComplexPermeabilityPart::REAL, ComplexPermeabilityGapSide::ABOVE));
+    // ABT #1870: a NiZn ferrite's mu' above its data comes from its own tabulated mu'' where that reaches
+    // further (anchored KK); the neighbours take over over the last 0.25 decade of the mu'' table and
+    // continue alone beyond it. MnZn keeps the neighbours (kKramersKronigComposition).
+    if (composition.value() == kKramersKronigComposition) {
+        if (auto kramersKronig = kramers_kronig_real(target.value())) {
+            auto& realAbove = estimate.gaps.back();
+            realAbove.kramersKronig = std::move(kramersKronig);
+            std::ostringstream join;
+            if (realAbove.refusal.empty()) {
+                join << "; from " << format_frequency(realAbove.kramers_kronig_blend_start()) << " to "
+                     << format_frequency(realAbove.kramersKronig->toFrequency)
+                     << " (the last 0.25 decade of its own mu'') moved linearly in log f into the neighbours' mu', which continue alone beyond it";
+            }
+            else {
+                join << "; beyond its own mu'' it is NOT estimated (" << realAbove.refusal << ")";
+            }
+            realAbove.kramersKronig->method += join.str();
+        }
+    }
     estimate.gaps.push_back(neighbours_gap(target.value(), materialClass, donors, ComplexPermeabilityPart::IMAGINARY, ComplexPermeabilityGapSide::BELOW));
     estimate.gaps.push_back(neighbours_gap(target.value(), materialClass, donors, ComplexPermeabilityPart::IMAGINARY, ComplexPermeabilityGapSide::ABOVE));
     return estimate;
@@ -834,11 +1042,17 @@ std::vector<ComplexPermeabilityEstimatedRange> get_estimated_ranges(const Comple
     std::vector<ComplexPermeabilityEstimatedRange> ranges;
     const double infinity = std::numeric_limits<double>::infinity();
     for (const auto& gap : estimate.gaps) {
+        const auto& span = gap.part == ComplexPermeabilityPart::REAL ? estimate.realSpan : estimate.imaginarySpan;
+        double edge = gap.side == ComplexPermeabilityGapSide::BELOW ? span.first : span.second;
+        if (gap.kramersKronig) {
+            // ABT #1870: mu' from its own tabulated mu'' first; the neighbours' ranges start where it ends.
+            ranges.push_back({edge, gap.kramersKronig->toFrequency, gap.part, ComplexPermeabilitySource::ESTIMATED_KRAMERS_KRONIG,
+                              estimate.materialClass, {}, gap.kramersKronig->method});
+            edge = gap.kramersKronig->toFrequency;
+        }
         if (!gap.refusal.empty()) {
             continue;
         }
-        const auto& span = gap.part == ComplexPermeabilityPart::REAL ? estimate.realSpan : estimate.imaginarySpan;
-        double edge = gap.side == ComplexPermeabilityGapSide::BELOW ? span.first : span.second;
         std::vector<std::string> donorNames;
         for (size_t index = 0; index < std::min(kNeighbours, gap.donors.size()); ++index) {
             donorNames.push_back(gap.donors[index].name);
@@ -852,8 +1066,11 @@ std::vector<ComplexPermeabilityEstimatedRange> get_estimated_ranges(const Comple
             ranges.push_back({0, gap.reachFrequency, gap.part, ComplexPermeabilitySource::ESTIMATED_TAIL, estimate.materialClass, donorNames, gap.tailMethod});
         }
         else {
-            ranges.push_back({edge, gap.reachFrequency, gap.part, ComplexPermeabilitySource::ESTIMATED_NEIGHBOURS, estimate.materialClass, donorNames, gap.neighboursMethod});
-            ranges.push_back({gap.reachFrequency, infinity, gap.part, ComplexPermeabilitySource::ESTIMATED_TAIL, estimate.materialClass, donorNames, gap.tailMethod});
+            // With KK the neighbours' ranges start at the end of the own mu'' table, which may lie past their reach.
+            if (!gap.kramersKronig || gap.reachFrequency > edge) {
+                ranges.push_back({edge, gap.reachFrequency, gap.part, ComplexPermeabilitySource::ESTIMATED_NEIGHBOURS, estimate.materialClass, donorNames, gap.neighboursMethod});
+            }
+            ranges.push_back({gap.kramersKronig ? std::max(edge, gap.reachFrequency) : gap.reachFrequency, infinity, gap.part, ComplexPermeabilitySource::ESTIMATED_TAIL, estimate.materialClass, donorNames, gap.tailMethod});
         }
     }
     return ranges;
