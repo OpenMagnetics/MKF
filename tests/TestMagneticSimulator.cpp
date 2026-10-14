@@ -1,6 +1,7 @@
 #include "RandomUtils.h"
 #include <source_location>
 #include "support/Painter.h"
+#include "support/Utils.h"
 #include "processors/MagneticSimulator.h"
 #include "physical_models/Temperature.h"
 #include "physical_models/InitialPermeability.h"
@@ -2463,6 +2464,42 @@ TEST_CASE("A malformed operating point still refuses the whole design next to on
         INFO(error.what());
         CHECK_THAT(std::string(error.what()), !Catch::Matchers::ContainsSubstring("Thermal network did not converge"));
         CHECK_THAT(std::string(error.what()), Catch::Matchers::ContainsSubstring("urrent"));
+    }
+    settings.reset();
+}
+
+// ABT #1879: three web-stored designs whose winding currents are 128 points on a CLOSED uniform
+// axis ([0, T], last point = first). Their harmonics were taken as 128 OPEN samples (period one
+// step long), so a pure sine carried fake content at every harmonic, and CoilMesher's phase check
+// refused the design: "does not contain the harmonic its MAS harmonics list at 12600000 Hz" (web
+// path) or 12800000 Hz (after mas_autocomplete). Both paths must simulate.
+TEST_CASE("Web designs with 128-point closed-axis currents simulate", "[processor][magnetic-simulator][abt-1879]") {
+    settings.reset();
+    for (std::string name : {"simplest_transformer.json", "low_filling_transformer.json", "mas_autocomplete_bug.json"}) {
+        std::ifstream file(OpenMagneticsTesting::get_test_data_path(std::source_location::current(), name));
+        REQUIRE(file.good());
+        auto masJson = nlohmann::json::parse(file);
+
+        SECTION("web simulate: Inputs and Magnetic from json " + name) {
+            OpenMagnetics::Inputs inputs(masJson["inputs"]);
+            OpenMagnetics::Magnetic magnetic(masJson["magnetic"]);
+            MagneticSimulator magneticSimulator;
+            OpenMagnetics::Mas simulated;
+            REQUIRE_NOTHROW(simulated = magneticSimulator.simulate(inputs, magnetic));
+            CHECK(simulated.get_outputs().size() == inputs.get_operating_points().size());
+        }
+        SECTION("mas_autocomplete then simulate " + name) {
+            OpenMagnetics::Mas mas(masJson);
+            auto autocompleted = OpenMagnetics::mas_autocomplete(mas, false);
+            nlohmann::json autocompletedJson;
+            to_json(autocompletedJson, autocompleted);
+            OpenMagnetics::Inputs inputs(autocompletedJson["inputs"]);
+            OpenMagnetics::Magnetic magnetic(autocompletedJson["magnetic"]);
+            MagneticSimulator magneticSimulator;
+            OpenMagnetics::Mas simulated;
+            REQUIRE_NOTHROW(simulated = magneticSimulator.simulate(inputs, magnetic));
+            CHECK(simulated.get_outputs().size() == inputs.get_operating_points().size());
+        }
     }
     settings.reset();
 }

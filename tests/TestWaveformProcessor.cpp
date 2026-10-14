@@ -440,6 +440,86 @@ TEST_CASE("Test_Compress_A_Closed_Axis_Of_128_Points_Spans_One_Period", "[proces
     }
 }
 
+namespace {
+// 128 points of amplitude * sin(2 pi t / period) on a uniform axis of step period / stepsPerPeriod.
+Waveform sine_on_128_points(double period, double amplitude, double stepsPerPeriod) {
+    std::vector<double> time, data;
+    for (size_t i = 0; i < 128; ++i) {
+        const double t = period * static_cast<double>(i) / stepsPerPeriod;
+        time.push_back(t);
+        data.push_back(amplitude * sin(2 * std::numbers::pi * t / period));
+    }
+    Waveform waveform;
+    waveform.set_time(time);
+    waveform.set_data(data);
+    return waveform;
+}
+} // namespace
+
+TEST_CASE("Test_Harmonics_Of_A_Closed_128_Point_Axis_Are_Its_Knots_Series", "[processor][waveform-processor][abt-1879]") {
+    // ABT #1879: 128 points on a CLOSED uniform axis ([0, T], step T / 127, last point = first),
+    // as web-stored designs carry them, have the size of a sampled waveform. calculate_harmonics_data
+    // read them as 128 OPEN samples, period 128 T / 127, so a pure sine leaked into every harmonic
+    // (a1 0.4 % low, a2 about 1 %, a tail down to a64) and CoilMesher refused the design: the
+    // waveform has no content, so no phase, at harmonics its MAS list claimed. A closed axis is a
+    // knot list: its harmonics are the exact series of the 127-segment linear interpolant, whose
+    // only content up to N/2 is the fundamental, amplitude * sinc^2(pi / 127).
+    const double frequency = 200000;
+    const double period = 1 / frequency;
+    const double amplitude = 0.2256;
+    auto waveform = sine_on_128_points(period, amplitude, 127);
+    REQUIRE(WaveformProcessor::is_waveform_sampled(waveform));
+    REQUIRE_FALSE(WaveformProcessor::check_time_axis_spans_one_period(waveform.get_time().value(), frequency));
+
+    auto harmonics = WaveformProcessor::calculate_harmonics_data(waveform, frequency, false);
+    const auto& amplitudes = harmonics.get_amplitudes();
+    REQUIRE(amplitudes.size() == 65);
+    for (size_t k = 0; k < amplitudes.size(); ++k) {
+        CHECK(harmonics.get_frequencies()[k] == frequency * static_cast<double>(k));
+    }
+    const double x = std::numbers::pi / 127;
+    const double interpolantFundamental = amplitude * (sin(x) / x) * (sin(x) / x);
+    CHECK_THAT(amplitudes[1], Catch::Matchers::WithinRel(interpolantFundamental, 1e-9));
+    // The interpolant's fundamental is the sine's to sinc^2(pi / 127) = 1 - 2.0e-4.
+    CHECK_THAT(amplitudes[1], Catch::Matchers::WithinRel(amplitude, 2.1e-4));
+    CHECK(amplitudes[0] < 1e-12 * amplitude);
+    for (size_t k = 2; k < amplitudes.size(); ++k) {
+        INFO("harmonic " << k);
+        CHECK(amplitudes[k] < 1e-12 * amplitude);
+    }
+}
+
+TEST_CASE("Test_Harmonics_Of_An_Open_128_Point_Axis_Are_Its_Samples_Series", "[processor][waveform-processor][abt-1879]") {
+    // ABT #1879: the open axis ([0, T), step T / 128, MKF's own sampled convention) stays 128
+    // samples. Their interpolant's series is the DFT times sinc^2(pi k / 128): a pure sine gives
+    // amplitude * sinc^2(pi / 128) at the fundamental and nothing else up to N/2. Read as knots
+    // (period = span = 127 T / 128), the same points would leak into every harmonic.
+    const double frequency = 200000;
+    const double period = 1 / frequency;
+    const double amplitude = 0.2256;
+    auto waveform = sine_on_128_points(period, amplitude, 128);
+    REQUIRE(WaveformProcessor::is_waveform_sampled(waveform));
+    REQUIRE(WaveformProcessor::check_time_axis_spans_one_period(waveform.get_time().value(), frequency));
+
+    auto harmonics = WaveformProcessor::calculate_harmonics_data(waveform, frequency, false);
+    const auto& amplitudes = harmonics.get_amplitudes();
+    REQUIRE(amplitudes.size() == 65);
+    const double x = std::numbers::pi / 128;
+    CHECK_THAT(amplitudes[1], Catch::Matchers::WithinRel(amplitude * (sin(x) / x) * (sin(x) / x), 1e-12));
+    for (size_t k = 2; k < amplitudes.size(); ++k) {
+        INFO("harmonic " << k);
+        CHECK(amplitudes[k] < 1e-12 * amplitude);
+    }
+}
+
+TEST_CASE("Test_Harmonics_Of_A_128_Point_Uniform_Axis_Spanning_No_Period_Throw", "[processor][waveform-processor][abt-1879]") {
+    // ABT #1879: open and closed are told apart against the excitation period; 128 uniform points
+    // spanning neither T - dt nor T (here half the period) are refused, not read as either.
+    const double frequency = 200000;
+    auto waveform = sine_on_128_points(0.5 / frequency, 1, 127);
+    CHECK_THROWS(WaveformProcessor::calculate_harmonics_data(waveform, frequency, false));
+}
+
 TEST_CASE("Test_Sample_And_Compress_Rectangular", "[processor][waveform-processor][smoke-test]") {
     Waveform waveform;
     waveform.set_data(std::vector<double>({-2.5, 7.5, 7.5, -2.5, -2.5}));
