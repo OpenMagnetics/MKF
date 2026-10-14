@@ -17,6 +17,8 @@
 #include <iostream>
 #include <magic_enum.hpp>
 #include <vector>
+#include <set>
+#include <map>
 #include <random>
 using json = nlohmann::json;
 #include <typeinfo>
@@ -877,6 +879,291 @@ namespace {
                 CHECK_THAT(e.reason(), Catch::Matchers::ContainsSubstring("is not covered"));
             }
             CHECK(complexPermeability.get_estimated_ranges(material).empty());
+        }
+    }
+
+    // ABT #1870 guards. A view of a material with its mu' cut at its mu'' peak and its mu'' whole: the
+    // hold-out's S4 scenario (the TDK datasheet pattern, mu' ends early, mu'' is tabulated further).
+    struct KramersKronigView {
+        CoreMaterial full, truncated;
+        std::vector<double> hiddenFrequencies;  // the hidden mu' points up to the end of its mu'' table
+        double lastImaginaryFrequency = 0;
+    };
+    KramersKronigView mu_real_cut_at_loss_peak(const std::string& name) {
+        KramersKronigView view;
+        view.full = find_core_material_by_name(name);
+        auto complexData = view.full.get_permeability().get_complex().value();
+        auto realPoints = std::get<std::vector<PermeabilityPoint>>(complexData.get_real());
+        auto imaginaryPoints = std::get<std::vector<PermeabilityPoint>>(complexData.get_imaginary());
+        double peakFrequency = 0, peakValue = 0;
+        for (const auto& point : imaginaryPoints) {
+            if (point.get_value() > peakValue) { peakValue = point.get_value(); peakFrequency = point.get_frequency().value(); }
+            if (point.get_value() > 0) view.lastImaginaryFrequency = std::max(view.lastImaginaryFrequency, point.get_frequency().value());
+        }
+        REQUIRE(peakFrequency > 0);
+        std::vector<PermeabilityPoint> keptReal;
+        for (const auto& point : realPoints) {
+            double frequency = point.get_frequency().value();
+            if (frequency <= peakFrequency) keptReal.push_back(point);
+            else if (frequency <= view.lastImaginaryFrequency) view.hiddenFrequencies.push_back(frequency);
+        }
+        REQUIRE(keptReal.size() >= 3);
+        view.truncated = view.full;
+        ComplexPermeabilityData truncatedData;
+        truncatedData.set_real(keptReal);
+        truncatedData.set_imaginary(imaginaryPoints);
+        auto permeability = view.truncated.get_permeability();
+        permeability.set_complex(truncatedData);
+        view.truncated.set_permeability(permeability);
+        return view;
+    }
+
+    // ABT #1870 guard: a NiZn ferrite with the TDK pattern gets its mu' above its data from the anchored
+    // Kramers-Kronig transform of its own tabulated mu'', and says so. TDK K10 with its mu' hidden above
+    // its mu'' peak (S4): every hidden mu' point below the blend into the neighbours comes from KK, the
+    // median error is inside the NiZn hold-out band (P90 7 %; the neighbours: 55 %), and no point with |mu'|
+    // above 10 % of the gap maximum has the wrong sign. In production, K10 (mu' tabulated to 284 MHz, mu''
+    // to 1 GHz) answers mu' at 400 MHz from KK, marks it, is continuous at its mu' edge, and its estimated
+    // ranges name KK from its mu' edge to the end of its mu''.
+    TEST_CASE("Test_Complex_Permeability_Kramers_Kronig_Real_Part_NiZn_TDK_Pattern", "[physical-model][complex-permeability][abt-1870]") {
+        auto view = mu_real_cut_at_loss_peak("K10");
+        REQUIRE(view.full.get_material_composition() == MaterialComposition::NI_ZN);
+        REQUIRE(view.hiddenFrequencies.size() >= 10);
+        auto estimate = estimate_complex_permeability(view.truncated);
+        const auto& realAbove = estimate.gap(ComplexPermeabilityPart::REAL, ComplexPermeabilityGapSide::ABOVE);
+        REQUIRE(realAbove.kramersKronig);
+        REQUIRE(realAbove.refusal.empty());
+        CHECK_THAT(realAbove.kramersKronig->toFrequency, Catch::Matchers::WithinRel(view.lastImaginaryFrequency, 1e-9));
+        ComplexPermeability tabulated;
+        double gapMaximum = 0;
+        for (double frequency : view.hiddenFrequencies) {
+            gapMaximum = std::max(gapMaximum, std::fabs(tabulated.get_tabulated_complex_permeability(view.full, frequency).first));
+        }
+        std::vector<double> errors;
+        size_t numberWrongSign = 0, numberLarge = 0, numberKramersKronig = 0;
+        for (double frequency : view.hiddenFrequencies) {
+            auto [trueReal, trueImaginary] = tabulated.get_tabulated_complex_permeability(view.full, frequency);
+            auto [predicted, source] = realAbove.evaluate(frequency);
+            INFO("f = " << frequency << " Hz: mu' true " << trueReal << ", estimated " << predicted);
+            CHECK(source == ComplexPermeabilitySource::ESTIMATED_KRAMERS_KRONIG);
+            if (frequency <= realAbove.kramers_kronig_blend_start()) {
+                CHECK(predicted == realAbove.kramersKronig->real_part(frequency));
+                ++numberKramersKronig;
+            }
+            if (std::fabs(trueReal) > 0.1 * gapMaximum) {
+                ++numberLarge;
+                numberWrongSign += (predicted > 0) != (trueReal > 0);
+            }
+            // As the hold-out: the ratio only where mu' is clear of its zero crossing and both are positive.
+            if (trueReal > 0.1 * std::hypot(trueReal, trueImaginary) && predicted > 0) {
+                errors.push_back(std::fabs(std::log10(predicted / trueReal)));
+            }
+        }
+        CHECK(numberKramersKronig >= 10);
+        REQUIRE(errors.size() >= 5);
+        std::sort(errors.begin(), errors.end());
+        double medianError = errors.size() % 2 ? errors[errors.size() / 2] : (errors[errors.size() / 2 - 1] + errors[errors.size() / 2]) / 2;
+        INFO("median mu' error " << (std::pow(10.0, medianError) - 1) * 100 << " % over " << errors.size() << " points; wrong sign "
+             << numberWrongSign << " of " << numberLarge);
+        CHECK(medianError <= std::log10(1.07));
+        CHECK(numberLarge >= 5);
+        CHECK(numberWrongSign == 0);
+
+        // Production: TDK K10 as tabulated.
+        ComplexPermeability complexPermeability;
+        auto k10 = find_core_material_by_name("K10");
+        auto k10Real = std::get<std::vector<PermeabilityPoint>>(k10.get_permeability().get_complex()->get_real());
+        auto k10Imaginary = std::get<std::vector<PermeabilityPoint>>(k10.get_permeability().get_complex()->get_imaginary());
+        double realEdge = 0, edgeSum = 0, imaginaryEnd = 0;
+        size_t edgeCount = 0;
+        for (const auto& point : k10Real) {
+            double frequency = point.get_frequency().value();
+            if (frequency > realEdge) { realEdge = frequency; edgeSum = 0; edgeCount = 0; }
+            if (frequency == realEdge) { edgeSum += point.get_value(); ++edgeCount; }
+        }
+        for (const auto& point : k10Imaginary) {
+            if (point.get_value() > 0) imaginaryEnd = std::max(imaginaryEnd, point.get_frequency().value());
+        }
+        REQUIRE(realEdge > 1e8);
+        REQUIRE(realEdge < 4e8);
+        REQUIRE(imaginaryEnd > 5e8);
+        auto at400MHz = complexPermeability.get_complex_permeability_with_source(k10, 4e8);
+        CHECK(at400MHz.realSource == ComplexPermeabilitySource::ESTIMATED_KRAMERS_KRONIG);
+        CHECK(at400MHz.imaginarySource == ComplexPermeabilitySource::TABULATED);
+        CHECK_THAT(at400MHz.realMethod, Catch::Matchers::ContainsSubstring("Kramers-Kronig from K10's own tabulated mu''"));
+        auto justAbove = complexPermeability.get_complex_permeability_with_source(k10, realEdge * (1 + 1e-8));
+        CHECK(justAbove.realSource == ComplexPermeabilitySource::ESTIMATED_KRAMERS_KRONIG);
+        double ownEdge = edgeSum / static_cast<double>(edgeCount);
+        INFO("K10 mu' at its edge " << ownEdge << ", just above it " << justAbove.real);
+        CHECK(std::fabs(justAbove.real - ownEdge) <= 1e-3 * std::max(1.0, std::fabs(ownEdge)));
+        size_t numberKramersKronigRanges = 0;
+        for (const auto& range : complexPermeability.get_estimated_ranges(k10)) {
+            if (range.source == ComplexPermeabilitySource::ESTIMATED_KRAMERS_KRONIG) {
+                ++numberKramersKronigRanges;
+                CHECK(range.part == ComplexPermeabilityPart::REAL);
+                CHECK_THAT(range.fromFrequency, Catch::Matchers::WithinRel(realEdge, 1e-9));
+                CHECK_THAT(range.toFrequency, Catch::Matchers::WithinRel(imaginaryEnd, 1e-9));
+                CHECK_THAT(range.method, Catch::Matchers::ContainsSubstring("Kramers-Kronig from K10's own tabulated mu''"));
+            }
+        }
+        CHECK(numberKramersKronigRanges == 1);
+    }
+
+    // ABT #1870 guard (Alf, 2026-10-14): MnZn does NOT use Kramers-Kronig; it keeps the neighbours
+    // estimate of ABT #1861 exactly. On TDK MnZn records whose mu' and mu'' curves were digitised a few
+    // hundredths of a decade apart, the KK anchor offset sets an implausible high-frequency mu' (N51: +465
+    // at 1 GHz). The same S4 view of 3C97 that would get KK as NiZn, and TDK N48 / N51 as tabulated (mu'
+    // ends at 20 / 2.8 MHz, mu'' runs to 1 GHz), have no KK range, no KK value and no KK text.
+    TEST_CASE("Test_Complex_Permeability_Kramers_Kronig_Not_Used_For_MnZn", "[physical-model][complex-permeability][abt-1870]") {
+        auto view = mu_real_cut_at_loss_peak("3C97");
+        REQUIRE(view.full.get_material_composition() == MaterialComposition::MN_ZN);
+        REQUIRE(view.hiddenFrequencies.size() >= 10);
+        auto estimate = estimate_complex_permeability(view.truncated);
+        const auto& realAbove = estimate.gap(ComplexPermeabilityPart::REAL, ComplexPermeabilityGapSide::ABOVE);
+        CHECK_FALSE(realAbove.kramersKronig);
+        for (double frequency : view.hiddenFrequencies) {
+            auto [value, source] = realAbove.evaluate(frequency);
+            auto [neighboursValue, neighboursSource] = realAbove.evaluate_neighbours(frequency);
+            CHECK(source != ComplexPermeabilitySource::ESTIMATED_KRAMERS_KRONIG);
+            CHECK(source == neighboursSource);
+            CHECK(value == neighboursValue);
+        }
+
+        ComplexPermeability complexPermeability;
+        for (std::string name : {"N48", "N51"}) {
+            INFO(name);
+            auto material = find_core_material_by_name(name);
+            REQUIRE(material.get_material_composition() == MaterialComposition::MN_ZN);
+            auto [minimumFrequency, maximumFrequency] = complexPermeability.get_frequency_range(material);
+            REQUIRE(maximumFrequency < 1e8);
+            auto productionEstimate = estimate_complex_permeability(material);
+            CHECK_FALSE(productionEstimate.gap(ComplexPermeabilityPart::REAL, ComplexPermeabilityGapSide::ABOVE).kramersKronig);
+            for (double frequency : {1e8, 5e8}) {
+                auto value = complexPermeability.get_complex_permeability_with_source(material, frequency);
+                CHECK(value.realSource != ComplexPermeabilitySource::ESTIMATED_KRAMERS_KRONIG);
+                CHECK(value.realMethod.find("Kramers-Kronig") == std::string::npos);
+            }
+            for (const auto& range : complexPermeability.get_estimated_ranges(material)) {
+                CHECK(range.source != ComplexPermeabilitySource::ESTIMATED_KRAMERS_KRONIG);
+                CHECK(range.method.find("Kramers-Kronig") == std::string::npos);
+            }
+        }
+    }
+
+    // ABT #1870 guard: KK hands over to the neighbours continuously. Over the last 0.25 decade of the own
+    // mu'' table the value moves linearly in log f from KK to the neighbours; at the end of the table it IS
+    // the neighbours' value, so nothing jumps there (a KK value carried past the table flipped the sign of
+    // 5 records' mu' in the options study). Every NiZn record with a KK range and answering neighbours.
+    TEST_CASE("Test_Complex_Permeability_Kramers_Kronig_Blend_Is_Continuous", "[physical-model][complex-permeability][abt-1870]") {
+        if (coreMaterialDatabase.empty()) {
+            load_core_materials();
+        }
+        size_t numberChecked = 0;
+        for (const auto& [name, material] : coreMaterialDatabase) {
+            if (material.get_material() != MaterialType::FERRITE || material.get_material_composition() != MaterialComposition::NI_ZN ||
+                !material.get_permeability().get_complex()) {
+                continue;
+            }
+            ComplexPermeabilityEstimate estimate;
+            try {
+                estimate = estimate_complex_permeability(material);
+            }
+            catch (const ComplexPermeabilityEstimatorRefusal&) {
+                continue;
+            }
+            const auto& gap = estimate.gap(ComplexPermeabilityPart::REAL, ComplexPermeabilityGapSide::ABOVE);
+            if (!gap.kramersKronig || !gap.refusal.empty()) {
+                continue;
+            }
+            INFO(name);
+            ++numberChecked;
+            const double start = gap.kramers_kronig_blend_start();
+            const double end = gap.kramersKronig->toFrequency;
+            REQUIRE(end > start);
+            auto close = [](double a, double b) { return std::fabs(a - b) <= 1e-5 * std::max(1.0, std::fabs(a)); };
+            // At the blend start: KK alone, on both sides.
+            CHECK(gap.evaluate(start).first == gap.kramersKronig->real_part(start));
+            CHECK(close(gap.evaluate(start * (1 + 1e-9)).first, gap.kramersKronig->real_part(start)));
+            // Halfway (in log f): half and half.
+            double middle = std::sqrt(start * end);
+            CHECK(close(gap.evaluate(middle).first, (gap.kramersKronig->real_part(middle) + gap.evaluate_neighbours(middle).first) / 2));
+            // At the end of the own mu'' table: the neighbours' value, and the neighbours alone just past it.
+            double atEnd = gap.evaluate(end).first;
+            CHECK(close(atEnd, gap.evaluate_neighbours(end).first));
+            auto pastEnd = gap.evaluate(end * (1 + 1e-9));
+            CHECK(pastEnd.second != ComplexPermeabilitySource::ESTIMATED_KRAMERS_KRONIG);
+            CHECK(close(atEnd, pastEnd.first));
+        }
+        CHECK(numberChecked >= 3);
+    }
+
+    // ABT #1870 guard: Kramers-Kronig reads the material's OWN tabulated mu'' only, never an estimated
+    // mu'' (the research: KK of the neighbours' mu'' makes |Z| worse). The estimated mu'' beyond the
+    // table depends on the class donors; the KK mu' must not. TDK K10 is estimated twice, the second time
+    // with the donors of its answered mu'' gaps taken out of the database: its estimated mu'' changes, its
+    // KK mu' between its mu' edge and the start of the blend into the neighbours stays bit for bit the same.
+    TEST_CASE("Test_Complex_Permeability_Kramers_Kronig_Never_Reads_Estimated_Imaginary_Part", "[physical-model][complex-permeability][abt-1870]") {
+        if (coreMaterialDatabase.empty()) {
+            load_core_materials();
+        }
+        auto material = find_core_material_by_name("K10");
+        auto first = estimate_complex_permeability(material);
+        const auto& realAbove = first.gap(ComplexPermeabilityPart::REAL, ComplexPermeabilityGapSide::ABOVE);
+        REQUIRE(realAbove.kramersKronig);
+        const double blendStart = realAbove.kramers_kronig_blend_start();
+        REQUIRE(blendStart > realAbove.edgeFrequency);
+        std::vector<double> frequencies;
+        for (int step = 0; step <= 20; ++step) {
+            frequencies.push_back(realAbove.edgeFrequency * std::pow(blendStart / realAbove.edgeFrequency, step / 20.0));
+        }
+        std::vector<double> firstReal;
+        for (double frequency : frequencies) {
+            firstReal.push_back(realAbove.evaluate(frequency).first);
+        }
+        std::set<std::string> removed;
+        struct ImaginaryProbe { ComplexPermeabilityGapSide side; double frequency, estimate; };
+        std::vector<ImaginaryProbe> firstImaginary;  // outside the mu'' table, in the gaps that are answered
+        for (auto side : {ComplexPermeabilityGapSide::BELOW, ComplexPermeabilityGapSide::ABOVE}) {
+            const auto& gap = first.gap(ComplexPermeabilityPart::IMAGINARY, side);
+            if (!gap.refusal.empty()) {
+                continue;
+            }
+            for (size_t index = 0; index < std::min<size_t>(5, gap.donors.size()); ++index) {
+                removed.insert(gap.donors[index].name);
+            }
+            double outside = side == ComplexPermeabilityGapSide::BELOW ? gap.edgeFrequency / 3 : gap.edgeFrequency * 3;
+            firstImaginary.push_back({side, outside, gap.evaluate(outside).first});
+        }
+        REQUIRE(firstImaginary.size() >= 1);
+        REQUIRE(removed.size() >= 3);
+        std::map<std::string, CoreMaterial> saved;
+        for (const auto& name : removed) {
+            saved.emplace(name, coreMaterialDatabase.at(name));
+        }
+        struct Restore {
+            std::map<std::string, CoreMaterial>& saved;
+            ~Restore() { for (auto& [name, entry] : saved) coreMaterialDatabase[name] = entry; }
+        } restore{saved};
+        for (const auto& name : removed) {
+            coreMaterialDatabase.erase(name);
+        }
+        auto second = estimate_complex_permeability(material);
+        // The estimated mu'' did change with the donors ...
+        bool imaginaryChanged = false;
+        for (const auto& probe : firstImaginary) {
+            const auto& gap = second.gap(ComplexPermeabilityPart::IMAGINARY, probe.side);
+            REQUIRE(gap.refusal.empty());
+            imaginaryChanged = imaginaryChanged || gap.evaluate(probe.frequency).first != probe.estimate;
+        }
+        CHECK(imaginaryChanged);
+        // ... the KK mu' did not.
+        const auto& secondRealAbove = second.gap(ComplexPermeabilityPart::REAL, ComplexPermeabilityGapSide::ABOVE);
+        REQUIRE(secondRealAbove.kramersKronig);
+        for (size_t index = 0; index < frequencies.size(); ++index) {
+            INFO("f = " << frequencies[index] << " Hz");
+            auto [value, source] = secondRealAbove.evaluate(frequencies[index]);
+            CHECK(source == ComplexPermeabilitySource::ESTIMATED_KRAMERS_KRONIG);
+            CHECK(value == firstReal[index]);
         }
     }
 

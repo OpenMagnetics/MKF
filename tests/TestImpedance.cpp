@@ -736,6 +736,84 @@ TEST_CASE("Test_Impedance_DMR51W_Answers_At_1kHz_With_Estimated_Ranges_Marked", 
 }
 
 
+// ABT #1870 guard: the impedance sweep's extrapolatedRanges say which method produced each range.
+// TDK K10 (NiZn; mu' tabulated to 284 MHz, mu'' to 1 GHz): from its mu' edge to the end of its mu''
+// only mu' is estimated, by Kramers-Kronig from K10's own mu'', moving into the neighbours over the
+// last 0.25 decade of that table; above it both parts come from the neighbours, with no Kramers-Kronig
+// in their text.
+TEST_CASE("Test_Impedance_Sweep_Marks_Kramers_Kronig_Ranges", "[physical-model][impedance][abt-1870]") {
+    settings.reset();
+    std::vector<int64_t> numberTurns = {10};
+    std::vector<int64_t> numberParallels = {1};
+    std::string shapeName = "T 12.5/7.5/5";
+    auto wire = find_wire_by_name("Round 0.15 - Grade 1");
+    std::vector<OpenMagnetics::Wire> wires = {wire};
+    auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, shapeName, 1, WindingOrientation::CONTIGUOUS,
+                                                     WindingOrientation::OVERLAPPING, CoilAlignment::CENTERED, CoilAlignment::CENTERED,
+                                                     wires, false);
+    std::string coreMaterial = "K10";
+    std::vector<CoreGap> gapping = {};
+    auto core = OpenMagneticsTesting::get_quick_core(shapeName, gapping, 1, coreMaterial);
+    OpenMagnetics::Magnetic magnetic;
+    magnetic.set_core(core);
+    magnetic.set_coil(coil);
+
+    auto material = find_core_material_by_name(coreMaterial);
+    auto [minimumMaterialFrequency, maximumMaterialFrequency] = ComplexPermeability().get_frequency_range(material);
+    // The edges as tabulated, not as rounded numbers. Copies, not a range-for over a temporary's member
+    // (it would dangle).
+    auto complexData = material.get_permeability().get_complex();
+    REQUIRE(complexData);
+    auto realPoints = std::get<std::vector<PermeabilityPoint>>(complexData->get_real());
+    auto imaginaryPoints = std::get<std::vector<PermeabilityPoint>>(complexData->get_imaginary());
+    double realEdge = 0, imaginaryEnd = 0;
+    for (const auto& point : realPoints) {
+        realEdge = std::max(realEdge, point.get_frequency().value());
+    }
+    for (const auto& point : imaginaryPoints) {
+        if (point.get_value() > 0) imaginaryEnd = std::max(imaginaryEnd, point.get_frequency().value());
+    }
+    REQUIRE_THAT(maximumMaterialFrequency, Catch::Matchers::WithinRel(realEdge, 1e-9));
+    REQUIRE(imaginaryEnd > 5e8);
+    REQUIRE(imaginaryEnd < 3e9);
+    // The sweep starts inside the tabulated range: nothing estimated below it.
+    const double startFrequency = realEdge / 10;
+    REQUIRE(startFrequency >= minimumMaterialFrequency);
+
+    const size_t numberPoints = 60;
+    auto sweep = Sweeper::sweep_impedance_over_frequency(magnetic, startFrequency, 3e9, numberPoints);
+    REQUIRE(sweep.get_extrapolated_ranges());
+    REQUIRE(sweep.get_unavailable_ranges());
+    CHECK(sweep.get_unavailable_ranges()->empty());
+    size_t numberKramersKronig = 0, numberNeighbours = 0;
+    for (const auto& range : sweep.get_extrapolated_ranges().value()) {
+        INFO(range.from << " .. " << range.to << " Hz: " << range.source);
+        CHECK(range.material == "K10");
+        CHECK(range.from > maximumMaterialFrequency);
+        bool kramersKronig = range.source.find("Kramers-Kronig from K10's own tabulated mu''") != std::string::npos;
+        bool neighbours = range.source.find("best shape-matched") != std::string::npos ||
+                          range.source.find("beyond the donors' reach") != std::string::npos;
+        if (range.to <= imaginaryEnd * (1 + 1e-9)) {
+            CHECK(kramersKronig);
+            CHECK_FALSE(neighbours);
+            CHECK(range.parts == std::vector<std::string>{"real"});
+            // The join: KK moves into the neighbours over the last 0.25 decade of K10's own mu''.
+            CHECK_THAT(range.source, Catch::Matchers::ContainsSubstring("(the last 0.25 decade of its own mu'') moved linearly in log f into the neighbours' mu'"));
+            ++numberKramersKronig;
+        }
+        else {
+            CHECK(range.from >= imaginaryEnd * (1 - 1e-9));
+            CHECK(neighbours);
+            CHECK(range.source.find("Kramers-Kronig") == std::string::npos);
+            CHECK(range.parts == std::vector<std::string>({"real", "imaginary"}));
+            ++numberNeighbours;
+        }
+    }
+    CHECK(numberKramersKronig == 1);
+    CHECK(numberNeighbours >= 1);
+}
+
+
 // ABT #1861 guard (Alf, 2026-10-14): where the estimator refuses a gap -- A072's mu' above its table
 // (97.2 MHz): the best-matching donors' median there is 0 -- the impedance sweep returns the curve up
 // to the cut and marks the cut with the specific "cannot be estimated" error, instead of throwing for
