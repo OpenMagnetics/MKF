@@ -1593,6 +1593,65 @@ TEST_CASE("MagneticAdviser_Reports_Candidates_Whose_Evaluation_Throws", "[magnet
     CHECK_THAT(failedCandidates[0].second, Catch::Matchers::ContainsSubstring("A07"));
 }
 
+// ABT #1861 guard: the advisers select parts on data, never on the complex-permeability estimate
+// (Alf, 2026-10-14; proposal D5). ComplexPermeability now answers A07 at 1 kHz with an estimate
+// (its mu'' is tabulated from 9.9 kHz), but the CORE_MINIMUM_IMPEDANCE filter keeps the tabulated
+// span: a 1 kHz minimum-impedance requirement on 7448229004 still throws the span exception, not
+// the "cannot be estimated" one.
+TEST_CASE("MagneticFilter_Core_Minimum_Impedance_Stays_On_Tabulated_Complex_Permeability", "[magnetic-filter][impedance][mu-span][abt-1861]") {
+    settings.reset();
+    auto part = without_measured_impedance(load_wound_cmc_catalogue_part("7448229004"));
+    auto material = part.get_core().resolve_material();
+    REQUIRE(material.get_name() == "A07");
+    const double requirementFrequency = 1000;
+    REQUIRE(ComplexPermeability().get_frequency_range(material).first > requirementFrequency);
+    auto estimated = ComplexPermeability().get_complex_permeability_with_source(material, requirementFrequency);
+    REQUIRE(estimated.is_estimated());
+
+    auto inputs = make_cmc_inputs(150000);
+    set_minimum_impedance(inputs, requirementFrequency, 1e-3);
+    MagneticFilterCoreMinimumImpedance filter;
+    try {
+        filter.evaluate_magnetic(&part, &inputs);
+        FAIL("CORE_MINIMUM_IMPEDANCE must not judge A07 at 1 kHz on the estimate");
+    }
+    catch (const ComplexPermeabilityEstimateUnavailableException& e) {
+        FAIL(std::string("the estimator was asked, and refused: ") + e.what());
+    }
+    catch (const ComplexPermeabilityFrequencyOutOfRangeException& e) {
+        CHECK(e.material_name() == "A07");
+        CHECK(e.frequency() == requirementFrequency);
+    }
+}
+
+// ABT #1861 guard: Impedance::calculate_minimum_number_turns is a design decision and stays on the
+// tabulated complex permeability (Alf, 2026-10-14), whatever the instance's flag says, and gives the
+// flag back as it found it, also when it throws.
+TEST_CASE("Impedance_Minimum_Number_Turns_Stays_On_Tabulated_Complex_Permeability", "[physical-model][impedance][mu-span][abt-1861]") {
+    settings.reset();
+    auto part = without_measured_impedance(load_wound_cmc_catalogue_part("7448229004"));
+    REQUIRE(part.get_core().resolve_material().get_name() == "A07");
+    const double requirementFrequency = 1000;
+    REQUIRE(ComplexPermeability().get_complex_permeability_with_source(part.get_core().resolve_material(), requirementFrequency).is_estimated());
+    auto inputs = make_cmc_inputs(150000);
+    set_minimum_impedance(inputs, requirementFrequency, 1e-3);
+
+    OpenMagnetics::Impedance impedance;
+    REQUIRE_FALSE(impedance.get_tabulated_complex_permeability_only());
+    try {
+        impedance.calculate_minimum_number_turns(part, inputs);
+        FAIL("calculate_minimum_number_turns must not size A07 at 1 kHz on the estimate");
+    }
+    catch (const ComplexPermeabilityEstimateUnavailableException& e) {
+        FAIL(std::string("the estimator was asked, and refused: ") + e.what());
+    }
+    catch (const ComplexPermeabilityFrequencyOutOfRangeException& e) {
+        CHECK(e.material_name() == "A07");
+        CHECK(e.frequency() == requirementFrequency);
+    }
+    CHECK_FALSE(impedance.get_tabulated_complex_permeability_only());
+}
+
 // =============================================================================
 // Rank on the covered part: IMPEDANCE judges a minimumImpedance point only inside the core
 // material's tabulated mu(f) range (El Choker CISPR-band request up to 30 MHz; 142 of 299 chokes

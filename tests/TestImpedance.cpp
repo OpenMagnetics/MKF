@@ -652,6 +652,87 @@ TEST_CASE("Test_Impedance_Complex_Permeability_Extrapolation_Marked", "[physical
 }
 
 
+// ABT #1861 guard. The web's impedance graph refused DMR51W at 1 kHz: "material DMR51W has complex
+// permeability data only from 2.02 MHz to 11.23 MHz" (MAS: mu' from 11 kHz to 11.2 MHz, mu'' from
+// 2.02 MHz to 98.5 MHz). Alf, 2026-10-14: complex permeability always extrapolates, and the
+// impedance sweep marks the extrapolated ranges. Below 2.02 MHz mu'' is estimated (class
+// neighbours, then the class tail) and mu' held flat below 11 kHz; above 11.2 MHz mu' is estimated.
+TEST_CASE("Test_Impedance_DMR51W_Answers_At_1kHz_With_Estimated_Ranges_Marked", "[physical-model][impedance][abt-1861]") {
+    settings.reset();
+    std::vector<int64_t> numberTurns = {110, 110};
+    std::vector<int64_t> numberParallels = {1, 1};
+    std::string shapeName = "T 12.5/7.5/5";
+    auto wire = find_wire_by_name("Round 0.15 - Grade 1");
+    std::vector<OpenMagnetics::Wire> wires = {wire, wire};
+    auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, shapeName, 1, WindingOrientation::CONTIGUOUS,
+                                                     WindingOrientation::OVERLAPPING, CoilAlignment::CENTERED, CoilAlignment::CENTERED,
+                                                     wires, false);
+    std::string coreMaterial = "DMR51W";
+    std::vector<CoreGap> gapping = {};
+    auto core = OpenMagneticsTesting::get_quick_core(shapeName, gapping, 1, coreMaterial);
+    OpenMagnetics::Magnetic magnetic;
+    magnetic.set_core(core);
+    magnetic.set_coil(coil);
+
+    auto material = find_core_material_by_name(coreMaterial);
+    auto [minimumMaterialFrequency, maximumMaterialFrequency] = ComplexPermeability().get_frequency_range(material);
+    REQUIRE_THAT(minimumMaterialFrequency, Catch::Matchers::WithinRel(2021085.111, 1e-6));
+    REQUIRE(maximumMaterialFrequency > 1.1e7);
+    REQUIRE(maximumMaterialFrequency < 1.13e7);
+
+    // The point the web refused.
+    auto impedanceAt1kHz = OpenMagnetics::Impedance().calculate_impedance(magnetic, 1000);
+    CHECK(std::isfinite(std::abs(impedanceAt1kHz)));
+    CHECK(std::abs(impedanceAt1kHz) > 0);
+    auto valueAt1kHz = ComplexPermeability().get_complex_permeability_with_source(material, 1000);
+    CHECK(valueAt1kHz.realSource == ComplexPermeabilitySource::HELD_FLAT);
+    CHECK(valueAt1kHz.imaginarySource != ComplexPermeabilitySource::TABULATED);
+    CHECK(valueAt1kHz.imaginary > 0);
+
+    const size_t numberPoints = 100;
+    auto sweep = Sweeper::sweep_impedance_over_frequency(magnetic, 1e3, 1e8, numberPoints);
+    const auto& frequencies = sweep.get_x_points();
+    const auto& impedances = sweep.get_y_points();
+    REQUIRE(frequencies.size() == numberPoints);
+    REQUIRE(sweep.get_extrapolated_points());
+    REQUIRE(sweep.get_extrapolated_ranges());
+    const auto& flags = sweep.get_extrapolated_points().value();
+    const auto& ranges = sweep.get_extrapolated_ranges().value();
+    REQUIRE(flags.size() == numberPoints);
+    size_t numberFlaggedBelow = 0, numberUnflaggedInside = 0, numberFlaggedAbove = 0;
+    for (size_t index = 0; index < numberPoints; ++index) {
+        double frequency = frequencies[index];
+        INFO("f = " << frequency << " Hz");
+        CHECK(std::isfinite(impedances[index]));
+        CHECK(impedances[index] > 0);
+        if (frequency < minimumMaterialFrequency) {
+            CHECK(flags[index]);
+            numberFlaggedBelow += flags[index];
+        }
+        else if (frequency >= 2.03e6 && frequency <= 1.12e7) {
+            CHECK_FALSE(flags[index]);
+            numberUnflaggedInside += !flags[index];
+        }
+        else if (frequency > maximumMaterialFrequency) {
+            CHECK(flags[index]);
+            numberFlaggedAbove += flags[index];
+        }
+    }
+    CHECK(numberFlaggedBelow > 50);
+    CHECK(numberUnflaggedInside > 5);
+    CHECK(numberFlaggedAbove > 5);
+    REQUIRE_FALSE(ranges.empty());
+    CHECK(ranges.front().from == frequencies.front());
+    CHECK(ranges.back().to == frequencies.back());
+    for (const auto& range : ranges) {
+        CHECK(range.material == "DMR51W");
+        CHECK(range.tabulatedMinimum == minimumMaterialFrequency);
+        CHECK(range.tabulatedMaximum == maximumMaterialFrequency);
+        CHECK_FALSE(range.source.empty());
+    }
+}
+
+
 TEST_CASE("Test_Complex_Permeability_Keeps_Falling_Above_The_Anchor", "[physical-model][impedance]") {
     // ABT #843. get_complex_permeability CLAMPS its interpolation to the tabulated
     // frequency range, so a table that stopped at 100x the anchor handed back the same

@@ -708,6 +708,117 @@ namespace {
         CHECK_THROWS_AS(complexPermeability.get_complex_permeability("XFlux 60", derivedMaximum * 2), ComplexPermeabilityEstimateUnavailableException);
     }
 
+    // ABT #1861 guard: the approved estimator reproduces hidden data. 3C97 (Ferroxcube MnZn, tabulated
+    // 100 kHz..30 MHz) with everything above 1 MHz removed: the estimate of |mu| at its own tabulated
+    // frequencies above 1 MHz must be within the hold-out's class median for that pattern (MnZn,
+    // nothing above 1 MHz: 19 %; 3C97 itself: 9 %). The truncated copy keeps the name, so 3C97 is
+    // its own donor neither way; it is estimated directly, not through ComplexPermeability, which
+    // caches per material name.
+    // It must also beat holding mu' and mu'' at their last tabulated values: an estimate that only meets
+    // the edge (D7) and then stays flat passes the 19 % bound on its first points but not this.
+    TEST_CASE("Test_Complex_Permeability_Estimator_Holdout_3C97_Above_1MHz", "[physical-model][complex-permeability][abt-1861]") {
+        auto full = find_core_material_by_name("3C97");
+        auto complexData = full.get_permeability().get_complex().value();
+        auto realPoints = std::get<std::vector<PermeabilityPoint>>(complexData.get_real());
+        auto imaginaryPoints = std::get<std::vector<PermeabilityPoint>>(complexData.get_imaginary());
+        const double cut = 1e6;
+        std::vector<PermeabilityPoint> keptReal, keptImaginary;
+        std::vector<double> hiddenFrequencies;
+        for (const auto& point : realPoints) {
+            if (point.get_frequency().value() <= cut) keptReal.push_back(point);
+            else hiddenFrequencies.push_back(point.get_frequency().value());
+        }
+        for (const auto& point : imaginaryPoints) {
+            if (point.get_frequency().value() <= cut) keptImaginary.push_back(point);
+            else hiddenFrequencies.push_back(point.get_frequency().value());
+        }
+        REQUIRE(keptReal.size() >= 3);
+        REQUIRE(keptImaginary.size() >= 3);
+        REQUIRE(hiddenFrequencies.size() >= 10);
+        auto truncated = full;
+        ComplexPermeabilityData truncatedData;
+        truncatedData.set_real(keptReal);
+        truncatedData.set_imaginary(keptImaginary);
+        auto permeability = truncated.get_permeability();
+        permeability.set_complex(truncatedData);
+        truncated.set_permeability(permeability);
+
+        auto estimate = estimate_complex_permeability(truncated);
+        const auto& realAbove = estimate.gap(ComplexPermeabilityPart::REAL, ComplexPermeabilityGapSide::ABOVE);
+        const auto& imaginaryAbove = estimate.gap(ComplexPermeabilityPart::IMAGINARY, ComplexPermeabilityGapSide::ABOVE);
+        REQUIRE(realAbove.refusal.empty());
+        REQUIRE(imaginaryAbove.refusal.empty());
+        for (const auto* gap : {&realAbove, &imaginaryAbove}) {
+            REQUIRE(gap->donors.size() >= 3);
+            for (const auto& donor : gap->donors) {
+                CHECK(donor.name != "3C97");
+            }
+        }
+
+        // The baseline the estimate has to beat: mu' and mu'' held at the truncated table's last points.
+        ComplexPermeability tabulated;
+        // (Read from the kept points: ComplexPermeability caches its tables per material name.)
+        auto lastValue = [](const std::vector<PermeabilityPoint>& points) {
+            double lastFrequency = 0, sum = 0;
+            size_t count = 0;
+            for (const auto& point : points) {
+                double frequency = point.get_frequency().value();
+                if (frequency > lastFrequency) { lastFrequency = frequency; sum = 0; count = 0; }
+                if (frequency == lastFrequency) { sum += point.get_value(); ++count; }
+            }
+            return sum / static_cast<double>(count);
+        };
+        double edgeReal = lastValue(keptReal);
+        double edgeImaginary = lastValue(keptImaginary);
+        std::vector<double> errors, heldEdgeErrors;
+        for (double frequency : hiddenFrequencies) {
+            auto [trueReal, trueImaginary] = tabulated.get_tabulated_complex_permeability(full, frequency);
+            double predictedReal = realAbove.evaluate(frequency).first;
+            double predictedImaginary = imaginaryAbove.evaluate(frequency).first;
+            errors.push_back(std::fabs(std::log10(std::hypot(predictedReal, predictedImaginary) / std::hypot(trueReal, trueImaginary))));
+            heldEdgeErrors.push_back(std::fabs(std::log10(std::hypot(edgeReal, edgeImaginary) / std::hypot(trueReal, trueImaginary))));
+        }
+        auto median = [](std::vector<double> values) {
+            std::sort(values.begin(), values.end());
+            return values.size() % 2 ? values[values.size() / 2] : (values[values.size() / 2 - 1] + values[values.size() / 2]) / 2;
+        };
+        double medianError = median(errors);
+        double heldEdgeMedianError = median(heldEdgeErrors);
+        INFO("median |Z| error " << (std::pow(10.0, medianError) - 1) * 100 << " % over " << errors.size() << " hidden points; holding the "
+             << "edge values: " << (std::pow(10.0, heldEdgeMedianError) - 1) * 100 << " %");
+        CHECK(medianError <= std::log10(1.19));
+        CHECK(medianError < heldEdgeMedianError);
+        // D7 (Alf, 2026-10-14): the estimate meets the truncated table's own last value at the edge.
+        CHECK_THAT(realAbove.evaluate(realAbove.edgeFrequency).first, Catch::Matchers::WithinRel(edgeReal, 1e-9));
+        CHECK_THAT(imaginaryAbove.evaluate(imaginaryAbove.edgeFrequency).first, Catch::Matchers::WithinRel(edgeImaginary, 1e-9));
+    }
+
+    // ABT #1861 guard: the estimator covers FERRITE MnZn and NiZn only (Alf, 2026-10-14: powders, MgZn
+    // and unclassified keep throwing). Mix 26 (iron powder, tabulated 10 kHz..70 MHz) and 46 (MgZn)
+    // outside their tables throw ComplexPermeabilityEstimateUnavailableException, saying the class is
+    // not covered.
+    TEST_CASE("Test_Complex_Permeability_Estimator_Refuses_Powder_And_MgZn", "[physical-model][complex-permeability][abt-1861]") {
+        ComplexPermeability complexPermeability;
+        for (std::string name : {"Mix 26", "46"}) {
+            INFO(name);
+            auto material = find_core_material_by_name(name);
+            REQUIRE(material.get_permeability().get_complex());
+            auto [minimumFrequency, maximumFrequency] = complexPermeability.get_frequency_range(material);
+            double outside = minimumFrequency > 1000 ? 1000 : maximumFrequency * 2;
+            CHECK_NOTHROW(complexPermeability.get_complex_permeability(material, minimumFrequency));
+            try {
+                complexPermeability.get_complex_permeability(material, outside);
+                FAIL(name + " outside its tabulated range must throw: the estimator does not cover its class");
+            }
+            catch (const ComplexPermeabilityEstimateUnavailableException& e) {
+                CHECK(e.material_name() == name);
+                CHECK(e.frequency() == outside);
+                CHECK_THAT(e.reason(), Catch::Matchers::ContainsSubstring("is not covered"));
+            }
+            CHECK(complexPermeability.get_estimated_ranges(material).empty());
+        }
+    }
+
     // mu' is returned as tabulated, not floored at 1: past its ferromagnetic resonance K081's
     // table goes negative (-3.4 at 337 MHz), and that is data to report, not to clamp.
     TEST_CASE("Test_Complex_Permeability_Real_Part_Not_Floored", "[physical-model][complex-permeability][complex-permeability-range]") {
