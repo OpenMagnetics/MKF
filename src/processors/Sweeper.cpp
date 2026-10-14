@@ -16,6 +16,7 @@
 #include <sstream>
 #include <numbers>
 #include <complex>
+#include <exception>
 #include "support/Exceptions.h"
 
 
@@ -66,6 +67,49 @@ void mark_estimated_complex_permeability(Curve2D& curve, const std::optional<Cor
     curve.set_extrapolated_ranges(extrapolatedRanges);
 }
 
+// ABT #1861 (Alf, 2026-10-14): where the core's complex permeability cannot be estimated (e.g. A072's
+// mu' above 97.2 MHz: the donors' median there is 0), the impedance sweep stops there instead of
+// throwing for the whole sweep: those points are left out and marked, with the specific "cannot be
+// estimated" error, in unavailableRanges. Only ComplexPermeabilityEstimateUnavailableException is
+// caught; any other error propagates. When no point at all can be computed, it throws.
+template <typename Evaluate>
+Curve2D sweep_up_to_unavailable_complex_permeability(const std::vector<double>& frequencies, const std::string& title, Evaluate evaluate) {
+    std::vector<double> keptFrequencies;
+    std::vector<double> values;
+    std::vector<Curve2DUnavailableRange> unavailableRanges;
+    std::exception_ptr firstUnavailable;
+    bool previousUnavailable = false;
+    std::string previousReason;
+    for (auto frequency : frequencies) {
+        try {
+            values.push_back(evaluate(frequency));
+            keptFrequencies.push_back(frequency);
+            previousUnavailable = false;
+        }
+        catch (const ComplexPermeabilityEstimateUnavailableException& exception) {
+            if (!firstUnavailable) {
+                firstUnavailable = std::current_exception();
+            }
+            // One range per run of consecutive points refused for the same reason; its message is the
+            // first point's.
+            if (previousUnavailable && previousReason == exception.reason()) {
+                unavailableRanges.back().to = frequency;
+            }
+            else {
+                unavailableRanges.push_back({frequency, frequency, exception.material_name(), exception.what()});
+            }
+            previousUnavailable = true;
+            previousReason = exception.reason();
+        }
+    }
+    if (keptFrequencies.empty()) {
+        std::rethrow_exception(firstUnavailable);
+    }
+    Curve2D curve(keptFrequencies, values, title);
+    curve.set_unavailable_ranges(unavailableRanges);
+    return curve;
+}
+
 }  // namespace
 
 
@@ -101,13 +145,9 @@ Curve2D Sweeper::sweep_impedance_over_frequency(Magnetic magnetic, double start,
     auto impedanceModel = OpenMagnetics::Impedance(fastCapacitance);
     auto model = impedanceModel.build_wideband_impedance_model(magnetic, referenceFrequency, temperature, fast);
 
-    std::vector<double> impedances;
-    impedances.reserve(frequencies.size());
-    for (auto frequency : frequencies) {
-        impedances.push_back(abs(impedanceModel.impedance_from_model(model, frequency)));
-    }
-
-    Curve2D curve(frequencies, impedances, title);
+    auto curve = sweep_up_to_unavailable_complex_permeability(frequencies, title, [&](double frequency) {
+        return abs(impedanceModel.impedance_from_model(model, frequency));
+    });
     mark_estimated_complex_permeability(curve, model.coreMaterial);
     return curve;
 }
@@ -133,13 +173,9 @@ Curve2D Sweeper::sweep_common_mode_impedance_over_frequency(Magnetic magnetic, d
     auto impedanceModel = OpenMagnetics::Impedance(fastCapacitance);
     auto model = impedanceModel.build_common_mode_impedance_model(magnetic);
 
-    std::vector<double> impedances;
-    impedances.reserve(frequencies.size());
-    for (auto frequency : frequencies) {
-        impedances.push_back(abs(impedanceModel.impedance_from_model(model, frequency)));
-    }
-
-    Curve2D curve(frequencies, impedances, title);
+    auto curve = sweep_up_to_unavailable_complex_permeability(frequencies, title, [&](double frequency) {
+        return abs(impedanceModel.impedance_from_model(model, frequency));
+    });
     mark_estimated_complex_permeability(curve, model.coreMaterial);
     return curve;
 }
@@ -185,13 +221,9 @@ Curve2D Sweeper::sweep_q_factor_over_frequency(Magnetic magnetic, double start, 
         throw ModelNotAvailableException("Unknown spaced array mode");
     }
 
-    std::vector<double> qFactors;
-    for (auto frequency : frequencies) {
-        auto qFactor = abs(OpenMagnetics::Impedance().calculate_q_factor(magnetic, frequency));
-        qFactors.push_back(qFactor);
-    }
-
-    Curve2D curve(frequencies, qFactors, title);
+    auto curve = sweep_up_to_unavailable_complex_permeability(frequencies, title, [&](double frequency) {
+        return abs(OpenMagnetics::Impedance().calculate_q_factor(magnetic, frequency));
+    });
     mark_estimated_complex_permeability(curve, magnetic.get_core().resolve_material());
     return curve;
 }

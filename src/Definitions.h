@@ -535,6 +535,32 @@ inline void from_json(const json & j, Curve2DRange & x) {
     x.tabulatedMaximum = j.at("tabulatedMaximum").get<double>();
 }
 
+// A stretch of a curve's x axis where no point could be computed (ABT #1861: an impedance sweep
+// past where the core's complex permeability can be estimated, e.g. A072's mu' above 97.2 MHz). The
+// curve stops there: its points in the stretch are left out. from/to are the first and last swept x
+// left out; reason is the specific "cannot be estimated" error (it names the material and the gap).
+struct Curve2DUnavailableRange {
+    double from;
+    double to;
+    std::string material;
+    std::string reason;
+};
+
+inline void to_json(json & j, const Curve2DUnavailableRange & x) {
+    j = json::object();
+    j["from"] = x.from;
+    j["to"] = x.to;
+    j["material"] = x.material;
+    j["reason"] = x.reason;
+}
+
+inline void from_json(const json & j, Curve2DUnavailableRange & x) {
+    x.from = j.at("from").get<double>();
+    x.to = j.at("to").get<double>();
+    x.material = j.at("material").get<std::string>();
+    x.reason = j.at("reason").get<std::string>();
+}
+
 class Curve2D {
 
     std::vector<double> xPoints;
@@ -554,6 +580,9 @@ class Curve2D {
     // other curve.
     std::optional<std::vector<bool>> extrapolatedPoints;
     std::optional<std::vector<Curve2DRange>> extrapolatedRanges;
+    // Set only by the impedance sweeps: the stretches of the swept range left out because the core's
+    // complex permeability cannot be estimated there (empty when none is).
+    std::optional<std::vector<Curve2DUnavailableRange>> unavailableRanges;
 
     public: 
         Curve2D() = default;
@@ -580,6 +609,9 @@ class Curve2D {
 
         const std::optional<std::vector<Curve2DRange>> & get_extrapolated_ranges() const { return extrapolatedRanges; }
         void set_extrapolated_ranges(const std::optional<std::vector<Curve2DRange>> & value) { this->extrapolatedRanges = value; }
+
+        const std::optional<std::vector<Curve2DUnavailableRange>> & get_unavailable_ranges() const { return unavailableRanges; }
+        void set_unavailable_ranges(const std::optional<std::vector<Curve2DUnavailableRange>> & value) { this->unavailableRanges = value; }
 };
                 
 void from_json(const json & j, Curve2D & x);
@@ -603,6 +635,9 @@ inline void from_json(const json & j, Curve2D& x) {
     if (j.contains("extrapolatedRanges")) {
         x.set_extrapolated_ranges(j.at("extrapolatedRanges").get<std::vector<Curve2DRange>>());
     }
+    if (j.contains("unavailableRanges")) {
+        x.set_unavailable_ranges(j.at("unavailableRanges").get<std::vector<Curve2DUnavailableRange>>());
+    }
 }
 
 inline void to_json(json & j, const Curve2D & x) {
@@ -618,6 +653,9 @@ inline void to_json(json & j, const Curve2D & x) {
     }
     if (x.get_extrapolated_ranges()) {
         j["extrapolatedRanges"] = x.get_extrapolated_ranges().value();
+    }
+    if (x.get_unavailable_ranges()) {
+        j["unavailableRanges"] = x.get_unavailable_ranges().value();
     }
 }
 

@@ -31,7 +31,9 @@ class Sweeper {
     // The impedance, common-mode impedance and Q-factor sweeps answer at every frequency for a core
     // material the complex-permeability estimator covers (ABT #1861); the curve's
     // extrapolatedPoints flags the points where the core's mu' or mu'' is estimated (outside the
-    // material's tabulated range) and extrapolatedRanges labels those stretches.
+    // material's tabulated range) and extrapolatedRanges labels those stretches. Where the estimator
+    // refuses (ComplexPermeabilityEstimateUnavailableException, e.g. A072's mu' above 97.2 MHz) the
+    // curve stops: those points are left out and unavailableRanges marks them with the error.
     static Curve2D sweep_impedance_over_frequency(Magnetic magnetic, double start, double stop, size_t numberElements, std::string mode="log", std::string title = "Impedance over frequency", bool fast = true, bool fastCapacitance = false);
     // Common-mode impedance (all windings driven in parallel — the CMC datasheet /
     // REDEXPERT CM measurement): the magnetizing tank alone, no leakage resonance.
