@@ -278,7 +278,10 @@ std::vector<std::pair<Magnetic, double>> CoreAdviser::add_ferrite_materials_by_i
         try {
             for (auto impedanceAtFrequency : minimumImpedanceRequirement) {
                 auto frequency = impedanceAtFrequency.get_frequency();
-                auto [complexPermeabilityRealPart, complexPermeabilityImaginaryPart] = complexPermeabilityModel.get_complex_permeability(coreMaterial, frequency);
+                // Ranked on the tabulated data only: a material whose table does not reach a
+                // requirement frequency is skipped below, never ranked on an estimate (ABT #1861,
+                // proposal D5).
+                auto [complexPermeabilityRealPart, complexPermeabilityImaginaryPart] = complexPermeabilityModel.get_tabulated_complex_permeability(coreMaterial, frequency);
                 totalComplexPermeability += hypot(complexPermeabilityRealPart, complexPermeabilityImaginaryPart);
             }
         }

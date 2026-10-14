@@ -576,6 +576,10 @@ std::vector<std::pair<Core, double>> CoreCrossReferencer::MagneticCoreFilterImpe
     // ranking is unaffected.
     constexpr bool kFastCapacitanceForScoring = true;
     auto impedanceModel = Impedance(kFastCapacitanceForScoring);
+    // Candidates are compared on their materials' tabulated complex permeability only: one whose
+    // data do not cover a sampled frequency drops out of this filter (the catch below), and is never
+    // ranked on an estimate (ABT #1861, proposal D5).
+    impedanceModel.set_tabulated_complex_permeability_only(true);
     // The placeholder winding is the one MagnetizingInductance uses for its coil-less shim:
     // a quick bobbin built from the core itself and one real wire. A DUMMY_SENTINEL_NAME
     // bobbin is rejected outright by the capacitance model ("Bobbin is dummy"), and the

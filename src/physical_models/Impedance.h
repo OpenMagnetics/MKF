@@ -67,6 +67,11 @@ struct ImpedanceTank {
 // evaluated cheaply at each frequency by impedance_from_model().
 struct WidebandImpedanceModel {
     std::optional<CoreMaterial> coreMaterial;   // complex permeability µ(f) for the magnetizing tank
+    // true: µ(f) only inside the material's tabulated range (ComplexPermeability::
+    // get_tabulated_complex_permeability; throws outside it). The advisers' filters set it, so they
+    // rank parts on data and never on the estimate (ABT #1861, proposal D5). false (default): µ(f)
+    // everywhere, estimated outside the table (ComplexPermeability::get_complex_permeability).
+    bool tabulatedComplexPermeabilityOnly = false;
     // ABT #848: the core's cross-section (column width, depth) for the dimensional / eddy-
     // dielectric attenuation of the magnetizing permeability. Only acts when the material
     // carries permittivity data; empty or missing data means no correction, never a guess.
@@ -93,6 +98,7 @@ double interpolate_permittivity_points(const MAS::Permittivity& data, double fre
 class Impedance {
     private:
         bool _fastCapacitance;
+        bool _tabulatedComplexPermeabilityOnly = false;  // see WidebandImpedanceModel
         size_t _maximumNumberTurns = 200;
         // The magnetizing tank (air-cored inductance ∥ winding self-capacitance),
         // the first resonance shared by calculate_impedance and the wideband model.
@@ -120,6 +126,12 @@ class Impedance {
     } 
 
     virtual ~Impedance() = default;
+
+    // Restrict the core's complex permeability to its tabulated range (throws outside it), for the
+    // advisers and filters, which select parts on data only (ABT #1861). Off by default: graphs and
+    // the analysis of a chosen design read the estimate outside the table.
+    void set_tabulated_complex_permeability_only(bool value) { _tabulatedComplexPermeabilityOnly = value; }
+    bool get_tabulated_complex_permeability_only() const { return _tabulatedComplexPermeabilityOnly; }
 
         // ABT #848: complex factor mu_eff/mu for the EM wave crossing the core cross-section,
         // tan(k d/2)/(k d/2) per dimension (Snelling, Soft Ferrites, dimensional resonance), with

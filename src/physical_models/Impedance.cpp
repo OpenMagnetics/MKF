@@ -349,7 +349,9 @@ std::complex<double> Impedance::impedance_from_model(const WidebandImpedanceMode
     double complexPermeabilityRealPart = 1.0;
     double complexPermeabilityImaginaryPart = 0.0;
     if (model.coreMaterial) {
-        auto [muReal, muImag] = OpenMagnetics::ComplexPermeability().get_complex_permeability(model.coreMaterial.value(), frequency);
+        auto [muReal, muImag] = model.tabulatedComplexPermeabilityOnly
+            ? OpenMagnetics::ComplexPermeability().get_tabulated_complex_permeability(model.coreMaterial.value(), frequency)
+            : OpenMagnetics::ComplexPermeability().get_complex_permeability(model.coreMaterial.value(), frequency);
         // ABT #848: dimensional / eddy-dielectric attenuation across the core cross-section.
         // Complex multiply in e^{jwt}: (mu' - j mu'') * factor, then read back mu', mu''.
         auto factor = core_dimensional_attenuation(model.coreMaterial.value(), frequency, std::complex<double>(muReal, muImag), model.coreCrossSectionDimensions);
@@ -427,6 +429,7 @@ WidebandImpedanceModel Impedance::build_wideband_impedance_model(Magnetic magnet
 
     WidebandImpedanceModel model;
     model.coreMaterial = core.resolve_material();
+    model.tabulatedComplexPermeabilityOnly = _tabulatedComplexPermeabilityOnly;
     if (core.get_processed_description() && !core.get_processed_description()->get_columns().empty()) {
         auto column = core.get_processed_description()->get_columns()[0];
         model.coreCrossSectionDimensions = {column.get_width(), column.get_depth()};
@@ -539,6 +542,7 @@ WidebandImpedanceModel Impedance::build_common_mode_impedance_model(Magnetic mag
 
     WidebandImpedanceModel model;
     model.coreMaterial = core.resolve_material();
+    model.tabulatedComplexPermeabilityOnly = _tabulatedComplexPermeabilityOnly;
     if (core.get_processed_description() && !core.get_processed_description()->get_columns().empty()) {
         auto column = core.get_processed_description()->get_columns()[0];
         model.coreCrossSectionDimensions = {column.get_width(), column.get_depth()};
@@ -553,6 +557,7 @@ std::complex<double> Impedance::calculate_impedance(Core core, Coil coil, double
     // first resonance). The wideband sweep adds the leakage tanks on top of this.
     WidebandImpedanceModel model;
     model.coreMaterial = core.resolve_material();
+    model.tabulatedComplexPermeabilityOnly = _tabulatedComplexPermeabilityOnly;
     if (core.get_processed_description() && !core.get_processed_description()->get_columns().empty()) {
         auto column = core.get_processed_description()->get_columns()[0];
         model.coreCrossSectionDimensions = {column.get_width(), column.get_depth()};
@@ -577,6 +582,7 @@ std::complex<double> Impedance::calculate_impedance(Core core, Coil coil, double
     // scaled by µ(H_dc)/µ(0) to account for permeability rolloff under DC bias.
     WidebandImpedanceModel model;
     model.coreMaterial = coreMaterial;
+    model.tabulatedComplexPermeabilityOnly = _tabulatedComplexPermeabilityOnly;
     if (core.get_processed_description() && !core.get_processed_description()->get_columns().empty()) {
         auto column = core.get_processed_description()->get_columns()[0];
         model.coreCrossSectionDimensions = {column.get_width(), column.get_depth()};
@@ -588,6 +594,17 @@ std::complex<double> Impedance::calculate_impedance(Core core, Coil coil, double
 }
 
 int64_t Impedance::calculate_minimum_number_turns(Magnetic magnetic, Inputs inputs) {
+    // A design decision: it stays on the material's tabulated complex permeability, as the advisers
+    // and filters do (Alf, 2026-10-14, ABT #1861). The flag is restored on every exit, exceptions included.
+    struct TabulatedOnlyScope {
+        bool& flag;
+        bool previous;
+        explicit TabulatedOnlyScope(bool& value) : flag(value), previous(value) { flag = true; }
+        ~TabulatedOnlyScope() { flag = previous; }
+        TabulatedOnlyScope(const TabulatedOnlyScope&) = delete;
+        TabulatedOnlyScope& operator=(const TabulatedOnlyScope&) = delete;
+    } tabulatedOnly(_tabulatedComplexPermeabilityOnly);
+
     NumberTurns numberTurns(1, inputs.get_design_requirements());
     if (!inputs.get_design_requirements().get_minimum_impedance()) {
         throw std::invalid_argument("Missing impedance requirement");

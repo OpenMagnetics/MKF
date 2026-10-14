@@ -430,7 +430,9 @@ class MagneticFilterCoreMinimumImpedance : public MagneticFilter {
         // Rank the catalogue with the fast model; analyse the chosen design with the full one.
         Impedance _impedanceModel{/*fastCapacitance=*/true};
     public:
-        MagneticFilterCoreMinimumImpedance() {};
+        // The filter selects parts on data: the complex permeability only inside the material's
+        // tabulated range, as before the estimator existed (ABT #1861, proposal D5).
+        MagneticFilterCoreMinimumImpedance() { _impedanceModel.set_tabulated_complex_permeability_only(true); };
         std::pair<bool, double> evaluate_magnetic(Magnetic* magnetic, Inputs* inputs, std::vector<Outputs>* outputs = nullptr);
 };
 
