@@ -359,7 +359,15 @@ static double triangle_duty_from_samples(const Waveform& waveform) {
     const auto timeOptional = waveform.get_time();
     if (timeOptional && timeOptional->size() == numberPoints && numberPoints > 1) {
         const auto& time = *timeOptional;
-        double period = (time.back() - time.front()) * numberPoints / (numberPoints - 1.0);
+        // Raw uniform samples stop one step short of the period, so their span is
+        // T - dt and is extended by the mean step. A COMPRESSED waveform already
+        // spans the whole T: it ends on the wrapped copy of its first point.
+        // Extending that again stretched the period by n/(n-1): the 5-vertex
+        // magnetizing current of a 0.3-duty rectangle read 0.2969 / 1.25 = 0.2375
+        // (ABT #1878). Same tell as the reference sine in the label guess.
+        const double span = time.back() - time.front();
+        const bool spansWholePeriod = data.back() == data.front();
+        double period = spansWholePeriod ? span : span * numberPoints / (numberPoints - 1.0);
         if (period > 0) {
             double rise = time[peakIndex] - time[troughIndex];
             if (rise < 0) {
