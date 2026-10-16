@@ -420,13 +420,28 @@ std::vector<std::pair<Mas, double>> CoreAdviser::post_process_and_cut(std::vecto
                                                                       size_t maximumNumberResults,
                                                                       bool withAlternativeMaterials,
                                                                       std::optional<double> maximumTemperature) {
+    std::vector<std::pair<Mas, double>> masWithScoring;
+    post_process_and_append(magneticsWithScoring, inputs, maximumNumberResults, withAlternativeMaterials, maximumTemperature, masWithScoring);
+    return masWithScoring;
+}
+
+void CoreAdviser::post_process_and_append(std::vector<std::pair<Magnetic, double>>& magneticsWithScoring,
+                                          Inputs& inputs,
+                                          size_t maximumNumberResults,
+                                          bool withAlternativeMaterials,
+                                          std::optional<double> maximumTemperature,
+                                          std::vector<std::pair<Mas, double>>& masWithScoring) {
     // See the declaration comment (ABT #126): walk in score order, keep the first
     // maximumNumberResults candidates that SURVIVE post-processing. Windings are
     // corrected (and alternative materials looked up) per candidate, so tail
     // candidates that are never reached cost nothing.
-    std::vector<std::pair<Mas, double>> masWithScoring;
     std::vector<std::string> usedShapes;
     const bool uniqueShapes = get_unique_core_shapes();
+    if (uniqueShapes) {
+        for (const auto& [keptMas, keptScoring] : masWithScoring) {
+            usedShapes.push_back(keptMas.get_magnetic().get_core().get_shape_name());
+        }
+    }
     log_probe("entering post_process_and_cut", magneticsWithScoring.size());
     size_t candidatesExamined = 0;
     size_t candidatesDropped = 0;
@@ -455,8 +470,14 @@ std::vector<std::pair<Mas, double>> CoreAdviser::post_process_and_cut(std::vecto
         }
         ++candidatesExamined;
         std::string shapeName;
-        if (uniqueShapes) {
+        if (uniqueShapes || !_excludedCoreShapes.empty()) {
             shapeName = magneticWithScoring.first.get_core().get_shape_name();
+        }
+        // ABT #1875: a shape the caller has already evaluated takes no place in the results.
+        if (_excludedCoreShapes.contains(shapeName)) {
+            continue;
+        }
+        if (uniqueShapes) {
             if (std::find(usedShapes.begin(), usedShapes.end(), shapeName) != usedShapes.end()) {
                 continue;
             }
@@ -505,7 +526,6 @@ std::vector<std::pair<Mas, double>> CoreAdviser::post_process_and_cut(std::vecto
                   ", dropped " + std::to_string(candidatesDropped) + ")",
                   magneticsWithScoring.size());
     }
-    return masWithScoring;
 }
 
 std::vector<std::pair<Mas, double>> CoreAdviser::filter_available_cores_power_application(std::vector<std::pair<Magnetic, double>>* magnetics, Inputs inputs, std::map<CoreAdviserFilters, double> weights, size_t maximumMagneticsAfterFiltering, size_t maximumNumberResults){
@@ -1072,6 +1092,25 @@ std::vector<std::pair<Mas, double>> CoreAdviser::filter_standard_cores_power_app
 
     ferriteCores = processFerriteCores(ferriteCores, true, "");
 
+    // ABT #126: post-process before cutting (backfill; see post_process_and_cut)
+    // ABT #1802: where the temperature gate ran, the returned parts are held to its limit on the
+    // temperature their loss solve found.
+    std::optional<double> solvedTemperatureLimit;
+    if (temperatureGateActive) {
+        solvedTemperatureLimit = resolve_maximum_design_temperature(inputs);
+    }
+    // ABT #1875: the ferrite parts are post-processed here, before the walk below, because the
+    // walk's "enough" is the number of parts post_process_and_cut's gates (the wire within limits and
+    // the #1802 solved temperature) let through: those are the verdicts a returned part is held to.
+    // Counting the single-pass temperature filter's passes instead stopped the walk on a batch the
+    // solved gate then rejected almost whole (46 counted, 43 rejected; 28 counted, 30 of 30 rejected),
+    // and the adviser returned 3 or 0 parts where larger cores would have passed. Ferrite parts are
+    // kept first and powder parts appended after them, the order the single post-processing of the
+    // ferrite-then-powder list had.
+    std::vector<std::pair<Mas, double>> results;
+    post_process_and_append(ferriteCores, inputs, maximumNumberResults, /*withAlternativeMaterials=*/true, solvedTemperatureLimit, results);
+    const size_t ferriteFirstPass = ferriteCores.size();
+
     // ABT #1412: when losses, not saturation, size the core (a resonant inductor with no
     // DC bias swings the full flux every cycle), the ranking above favours small, cheap
     // cores and the temperature gate can reject all of them. The answer is the next larger
@@ -1079,7 +1118,7 @@ std::vector<std::pair<Mas, double>> CoreAdviser::filter_standard_cores_power_app
     // never let through. Walk up the area-product survivors by volume, above the largest
     // core the gate has already seen, a batch at a time, until enough pass. The walk is
     // bounded by the same maximumMagneticsAfterFiltering budget the first pass uses.
-    if (temperatureGateActive && largestVolumeAtTemperatureGate > 0 && ferriteCores.size() < maximumNumberResults) {
+    if (temperatureGateActive && largestVolumeAtTemperatureGate > 0 && results.size() < maximumNumberResults) {
         std::vector<std::pair<Magnetic, double>> largerCores;
         for (const auto& [magnetic, scoring] : magneticsWithScoring) {
             if (magnetic.get_core().get_functional_description().get_type() != CoreType::TOROIDAL &&
@@ -1094,17 +1133,19 @@ std::vector<std::pair<Mas, double>> CoreAdviser::filter_standard_cores_power_app
         const size_t budget = std::min(largerCores.size(), maximumMagneticsAfterFiltering);
         const size_t batchSize = std::max<size_t>(maximumNumberResults * 5, 50);
         size_t examined = 0;
-        while (examined < budget && ferriteCores.size() < maximumNumberResults) {
+        while (examined < budget && results.size() < maximumNumberResults) {
             size_t end = std::min(examined + batchSize, budget);
             std::vector<std::pair<Magnetic, double>> batch(largerCores.begin() + examined, largerCores.begin() + end);
             examined = end;
             auto passed = processFerriteCores(batch, false, " (larger cores)");
             ferriteCores.insert(ferriteCores.end(), passed.begin(), passed.end());
+            post_process_and_append(passed, inputs, maximumNumberResults, /*withAlternativeMaterials=*/true, solvedTemperatureLimit, results);
         }
         logEntry("Temperature walk to larger ferrite cores examined " + std::to_string(examined) + " of " +
                  std::to_string(largerCores.size()) + " larger cores (budget " + std::to_string(budget) + "); " +
-                 std::to_string(ferriteCores.size()) + " ferrite cores now pass" +
-                 (ferriteCores.size() < maximumNumberResults ? " - fewer than requested, budget or catalogue exhausted." : "."),
+                 std::to_string(ferriteCores.size()) + " ferrite cores pass the filters (" + std::to_string(ferriteFirstPass) +
+                 " before the walk) and " + std::to_string(results.size()) + " pass post-processing" +
+                 (results.size() < maximumNumberResults ? " - fewer than requested, budget or catalogue exhausted." : "."),
                  "CoreAdviser");
     }
 
@@ -1196,41 +1237,18 @@ std::vector<std::pair<Mas, double>> CoreAdviser::filter_standard_cores_power_app
     // ========================================================================
     // STEP 5: Combine ferrite and powder results
     // ========================================================================
-    magneticsWithScoring.clear();
-    
-    // Add ferrite cores first (they typically perform better for gapped applications)
-    for (const auto& core : ferriteCores) {
-        magneticsWithScoring.push_back(core);
-    }
-    
-    // Add powder cores
-    for (const auto& core : powderCores) {
-        magneticsWithScoring.push_back(core);
-    }
-    
-    logEntry("Combined results: " + std::to_string(magneticsWithScoring.size()) + 
-             " (ferrite: " + std::to_string(ferriteCores.size()) + 
-             ", powder: " + std::to_string(powderCores.size()) + ")", "CoreAdviser");
-
-    if (magneticsWithScoring.size() == 0) {
-        return {};
-    }
-
-    // ========================================================================
-    // STEP 6: Final processing
-    // ========================================================================
+    // Ferrite parts first (they typically perform better for gapped applications), already
+    // post-processed above; the powder parts backfill what the ferrite ones left.
     // ABT #4's proximity-aware re-rank was removed here in ABT #14; the post-gap
     // fringing ceiling (1.3) now prunes the catastrophic gap-fringing cores up
     // front, making the per-advise re-rank winding cost redundant. See the
     // matching note in the standard-cores pipeline above.
-    // ABT #126: post-process before cutting (backfill; see post_process_and_cut)
-    // ABT #1802: where the temperature gate ran, the returned parts are held to its limit on the
-    // temperature their loss solve found.
-    std::optional<double> solvedTemperatureLimit;
-    if (temperatureGateActive) {
-        solvedTemperatureLimit = resolve_maximum_design_temperature(inputs);
-    }
-    return post_process_and_cut(magneticsWithScoring, inputs, maximumNumberResults, /*withAlternativeMaterials=*/true, solvedTemperatureLimit);
+    const size_t ferriteResults = results.size();
+    post_process_and_append(powderCores, inputs, maximumNumberResults, /*withAlternativeMaterials=*/true, solvedTemperatureLimit, results);
+    logEntry("Combined results: " + std::to_string(results.size()) +
+             " (ferrite: " + std::to_string(ferriteResults) + " of " + std::to_string(ferriteCores.size()) +
+             ", powder: " + std::to_string(results.size() - ferriteResults) + " of " + std::to_string(powderCores.size()) + ")", "CoreAdviser");
+    return results;
 }
 
 std::vector<std::pair<Mas, double>> CoreAdviser::filter_standard_cores_interference_suppression_application(std::vector<std::pair<Magnetic, double>>* magnetics, Inputs inputs, std::map<CoreAdviserFilters, double> weights, size_t maximumMagneticsAfterFiltering, size_t maximumNumberResults){
