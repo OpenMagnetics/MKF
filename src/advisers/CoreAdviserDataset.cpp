@@ -559,6 +559,11 @@ void add_initial_turns_by_inductance(std::vector<std::pair<Magnetic, double>> *m
     std::vector<size_t> indexesToEraseForSizing;
     for (size_t i = 0; i < (*magneticsWithScoring).size(); ++i){
       try {
+        // ABT #1875: set when the inductor turns solve refused its answer as saturating; the
+        // candidate then lives only if the saturation-aware re-gap clears it (see below).
+        std::optional<SaturationException> turnsSolveRefusal;
+        bool regapAccepted = false;
+        std::string regapOutcome;
 
         Core core = (*magneticsWithScoring)[i].first.get_core();
         if (!core.get_processed_description()) {
@@ -696,8 +701,22 @@ void add_initial_turns_by_inductance(std::vector<std::pair<Magnetic, double>> *m
                 // inductance model (calculate_number_turns_from_gapping_and_inductance),
                 // which is consistent with the downstream inductance filter.
                 Inputs inputsCopy(inputs);
-                initialNumberTurns = magnetizingInductance.calculate_number_turns_from_gapping_and_inductance(
-                    core, (*magneticsWithScoring)[i].first.get_coil(), &inputsCopy, DimensionalValues::MINIMUM);
+                // ABT #1875: the turns solve refuses an answer that saturates at the seeded gap
+                // (ABT #1855). The saturation-aware re-gap below owns the final (N, gap) and exists to
+                // raise N and re-solve the gap until the design clears saturation, so run it from the
+                // refused turn count before refusing. The refusal carries that count; one that names
+                // none has nothing to re-gap from and drops the candidate as before.
+                try {
+                    initialNumberTurns = magnetizingInductance.calculate_number_turns_from_gapping_and_inductance(
+                        core, (*magneticsWithScoring)[i].first.get_coil(), &inputsCopy, DimensionalValues::MINIMUM);
+                }
+                catch (const SaturationException& e) {
+                    if (!e.number_turns()) {
+                        throw;
+                    }
+                    turnsSolveRefusal.emplace(e);
+                    initialNumberTurns = static_cast<double>(e.number_turns().value());
+                }
 
                 // Energy-storing topologies (flyback / buck / boost / …): the
                 // inductance-determined N minimises turns, which maximises peak flux
@@ -740,7 +759,18 @@ void add_initial_turns_by_inductance(std::vector<std::pair<Magnetic, double>> *m
                                      core.get_name().value_or("?") + ": " + e.what() +
                                      " — saturation-aware re-gap skipped", "CoreAdviser", 2);
                             seededIsat = std::nullopt;
+                            regapOutcome = std::string("the saturation current at the refused turns could not be calculated (") + e.what() + ")";
                         }
+                    }
+                    else {
+                        regapOutcome = "the inputs give no peak current, so the re-gap has no saturation current to size against";
+                    }
+                    if (seededIsat && seededIsat.value() <= 0) {
+                        regapOutcome = "the saturation current at the refused turns is " + std::to_string(seededIsat.value()) + " A";
+                    }
+                    else if (seededIsat && seededIsat.value() >= requiredIsat) {
+                        regapOutcome = "the saturation current at the refused turns, " + std::to_string(seededIsat.value()) +
+                                       " A, already meets the required " + std::to_string(requiredIsat) + " A, so the re-gap is not entered";
                     }
 
                     if (seededIsat && seededIsat.value() > 0 && seededIsat.value() < requiredIsat) {
@@ -784,8 +814,12 @@ void add_initial_turns_by_inductance(std::vector<std::pair<Magnetic, double>> *m
                             initialNumberTurns = n;
                             core = acceptedCore;
                             (*magneticsWithScoring)[i].first.set_core(core);
+                            regapAccepted = true;
+                            regapOutcome = "re-gapped to " + std::to_string(std::llround(n)) + " turns, saturation current " +
+                                           std::to_string(isatAtN) + " A against the required " + std::to_string(requiredIsat) + " A";
                         }
                         else {
+                            regapOutcome = "the re-gap search found no gap for more turns than the refused ones";
                             // ABT #121.4: was silent — the candidate proceeds with the
                             // seeded N and an unmet Isat requirement; the saturation
                             // filter downstream is the remaining gate.
@@ -795,6 +829,9 @@ void add_initial_turns_by_inductance(std::vector<std::pair<Magnetic, double>> *m
                                      " A) — proceeding with seeded turns, saturation filter must gate", "CoreAdviser", 2);
                         }
                     }
+                }
+                else {
+                    regapOutcome = "a toroid takes no discrete gap, so there is no re-gap";
                 }
             }
         }
@@ -848,6 +885,26 @@ void add_initial_turns_by_inductance(std::vector<std::pair<Magnetic, double>> *m
                              "); the inductance filter decides it at the snapped turns", "CoreAdviser", 2);
                 }
             }
+        }
+
+        // ABT #1875: a candidate the turns solve refused lives only if the re-gap was accepted and the
+        // final (N, gap) passes the very check the solve refused on. Otherwise the original refusal is
+        // thrown again, with what the re-gap did, and the catch below drops the candidate.
+        if (turnsSolveRefusal) {
+            const std::string refusedAt = turnsSolveRefusal->message() + "; re-gap before refusing: ";
+            if (!regapAccepted) {
+                throw SaturationException(refusedAt + regapOutcome, turnsSolveRefusal->number_turns().value());
+            }
+            Inputs checkInputs(inputs);
+            auto [saturates, saturationMessage] = magnetizingInductance.check_sizing_saturation(
+                core, (*magneticsWithScoring)[i].first.get_coil(), static_cast<int64_t>(std::llround(initialNumberTurns)), &checkInputs);
+            if (saturates) {
+                throw SaturationException(refusedAt + regapOutcome + ", and that design still saturates: " + saturationMessage,
+                                          turnsSolveRefusal->number_turns().value());
+            }
+            logEntry("Inductor seeding: core " + core.get_name().value_or("?") + " refused by the turns solve at " +
+                     std::to_string(turnsSolveRefusal->number_turns().value()) + " turns is kept: " + regapOutcome,
+                     "CoreAdviser", 2);
         }
 
         (*magneticsWithScoring)[i].first.get_mutable_coil().get_mutable_functional_description()[0].set_number_turns(initialNumberTurns);

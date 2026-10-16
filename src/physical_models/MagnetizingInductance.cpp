@@ -1219,6 +1219,44 @@ MagnetizingInductanceOutput MagnetizingInductance::calculate_inductance_from_num
     return inductance_and_magnetic_flux_density.first;
 }
 
+// The operating point the turns solve sizes against: a current-only excitation drives the core
+// with its current as the magnetizing current. Returns the point's ambient temperature, the
+// temperature the solve evaluates the material at.
+static double prepare_sizing_operating_point(OperatingPoint& operatingPoint) {
+    OperatingPointExcitation excitation = Inputs::get_primary_excitation(operatingPoint);
+    if (!excitation.get_magnetizing_current() && !excitation.get_voltage()) {
+        Inputs::set_current_as_magnetizing_current(&operatingPoint);
+    }
+    return operatingPoint.get_conditions().get_ambient_temperature();
+}
+
+// The saturation verdict the turns solve refuses on (ABT #1855): either criterion of
+// ResultsAnalyzer::check_saturation at margin 1, with the DC point of the converged magnetizing model.
+static SaturationVerdict sizing_saturation_verdict(Core& core, const SignalDescriptor& fluxDensity, double temperature,
+                                                   std::optional<DcBiasPoint> dcBiasPoint) {
+    return ResultsAnalyzer::check_saturation(core.resolve_material(), ResultsAnalyzer::get_peak_flux_density(fluxDensity),
+                                             temperature, 1.0, dcBiasPoint);
+}
+
+std::pair<bool, std::string> MagnetizingInductance::check_sizing_saturation(Core core, Coil coil, int64_t numberTurns, Inputs* inputs) {
+    if (inputs->get_operating_points().empty()) {
+        throw InvalidInputException(ErrorCode::MISSING_DATA,
+                                    "check_sizing_saturation: the inputs have no operating point, so there is no flux to check on core '" +
+                                    core.get_name().value_or("unnamed") + "'");
+    }
+    if (coil.get_functional_description().empty()) {
+        throw InvalidInputException(ErrorCode::MISSING_DATA,
+                                    "check_sizing_saturation: the coil has no winding to put " + std::to_string(numberTurns) +
+                                    " turns on, core '" + core.get_name().value_or("unnamed") + "'");
+    }
+    OperatingPoint operatingPoint = inputs->get_operating_point(0);
+    double temperature = prepare_sizing_operating_point(operatingPoint);
+    coil.get_mutable_functional_description()[0].set_number_turns(numberTurns);
+    auto [inductanceOutput, fluxDensity] = calculate_inductance_and_magnetic_flux_density(core, coil, &operatingPoint);
+    const auto verdict = sizing_saturation_verdict(core, fluxDensity, temperature, get_last_dc_bias_point());
+    return {verdict.saturates, verdict.message};
+}
+
 int MagnetizingInductance::calculate_number_turns_from_gapping_and_inductance(Core core, Coil coil, Inputs* inputs, DimensionalValues preferredValue) {
     // Single source of truth for "turns for a target inductance": the EXACT
     // inverse of calculate_inductance_from_number_turns_and_gapping (the model
@@ -1244,12 +1282,8 @@ int MagnetizingInductance::calculate_number_turns_from_gapping_and_inductance(Co
     OperatingPoint* operatingPointPtr = nullptr;
     if (inputs->get_operating_points().size() > 0) {
         operatingPoint = inputs->get_operating_point(0);
-        temperature = operatingPoint.get_conditions().get_ambient_temperature();
         frequency = operatingPoint.get_mutable_excitations_per_winding()[0].get_frequency();
-        OperatingPointExcitation excitation = Inputs::get_primary_excitation(operatingPoint);
-        if (!excitation.get_magnetizing_current() && !excitation.get_voltage()) {
-            Inputs::set_current_as_magnetizing_current(&operatingPoint);
-        }
+        temperature = prepare_sizing_operating_point(operatingPoint);
         operatingPointPtr = &operatingPoint;
     }
 
@@ -1347,12 +1381,12 @@ int MagnetizingInductance::calculate_number_turns_from_gapping_and_inductance(Co
     // advisers reject such a candidate. With mu = 1 under a collapsing bias the model's inductance is the
     // air-core one, so without this the solve returned the air-core turn count (T 2.03/1.27/0.64,
     // 75-Series 26, 10 A dc: 605 turns, H_dc 1.19 MA/m) as if it were a design.
-    const auto saturation = ResultsAnalyzer::check_saturation(core.resolve_material(),
-                                                              ResultsAnalyzer::get_peak_flux_density(finalFluxDensity),
-                                                              temperature, 1.0, finalDcBiasPoint);
+    const auto saturation = sizing_saturation_verdict(core, finalFluxDensity, temperature, finalDcBiasPoint);
     if (saturation.saturates) {
+        // The refused turn count travels with the exception (ABT #1875): the core adviser re-gaps from it.
         throw SaturationException(describeTarget() + " with a core that is not saturated: at " +
-                                  std::to_string(numberTurnsPrimary) + " turns " + saturation.message);
+                                  std::to_string(numberTurnsPrimary) + " turns " + saturation.message,
+                                  numberTurnsPrimary);
     }
     // The same winding on the core as if its material had relative permeability 1: nothing
     // magnetic can carry less flux than vacuum, so an operating inductance below it is the

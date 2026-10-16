@@ -512,9 +512,17 @@ public:
 // An adviser rejects the candidate on exactly this exception; every other one still stops the run
 // (ABT #1534, #1740). The message names the operating point and the flux against B_sat.
 class SaturationException : public CalculationException {
+    std::optional<int64_t> _numberTurns;
 public:
     explicit SaturationException(const std::string& message)
         : CalculationException(ErrorCode::CALCULATION_CORE_SATURATES, message) {}
+    // The turns-from-inductance solve refuses at a definite turn count. It carries that count so a caller
+    // that can re-gap from it (the core adviser's seeding, ABT #1875) reads it here, never from the text.
+    SaturationException(const std::string& message, int64_t numberTurns)
+        : CalculationException(ErrorCode::CALCULATION_CORE_SATURATES, message), _numberTurns(numberTurns) {}
+
+    // The turn count the refused solution had; empty when the refusal is not about one turn count.
+    std::optional<int64_t> number_turns() const noexcept { return _numberTurns; }
 };
 
 // The thermal network's fixed point did not converge within its iteration limit (Temperature::

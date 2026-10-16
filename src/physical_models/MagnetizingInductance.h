@@ -79,6 +79,14 @@ class MagnetizingInductance {
 
     int calculate_number_turns_from_gapping_and_inductance(Core core, Coil coil, Inputs* inputs, DimensionalValues preferredValue = DimensionalValues::NOMINAL);
 
+    // The saturation check calculate_number_turns_from_gapping_and_inductance refuses its answer on
+    // (ABT #1855), for numberTurns of coil's first winding on core: the first operating point of
+    // inputs at its ambient temperature, margin 1, with the DC point of the converged magnetizing
+    // model. Returns {saturates, the check's message}. Throws when inputs has no operating point:
+    // without one there is no flux to check. A caller that changes the gap after a refusal (the
+    // core adviser's re-gap, ABT #1875) asks this whether the changed design still saturates.
+    std::pair<bool, std::string> check_sizing_saturation(Core core, Coil coil, int64_t numberTurns, Inputs* inputs);
+
     // Flux density a winding of numberTurns imposes when the magnetic has exactly
     // magnetizingInductance: flux from the operating point's magnetizing current through the
     // driving-point reluctance N^2 / L, divided by the flux-carrying area. The same
