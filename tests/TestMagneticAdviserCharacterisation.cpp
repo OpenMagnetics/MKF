@@ -860,3 +860,29 @@ TEST_CASE("MagneticAdviser web DMC whose switching ripple is resolved returns wo
     settings.reset();
     clear_databases();
 }
+
+TEST_CASE("MagneticAdviser second core request brings cores not evaluated yet", "[adviser][magnetic-adviser][abt-1875]") {
+    // ABT #1875 part C. huge_losses: every core of the first CoreAdviser request fails the final
+    // hot-spot gate, and the cores that wind cool (98 EP 30, 98 EQ 36/26/14 on main) come in the
+    // second request. That request (45 cores) used to repeat the first one's 25, so the 40-core
+    // evaluation budget ran out on a handful of new cores: with the turns-solve refusals re-gapped
+    // (part A) the rescued cores took those few places and the adviser returned no design (main
+    // before ABT #1875 returned 3). Excluding the evaluated shapes from the second request gives it
+    // only new cores.
+    settings.reset();
+    clear_databases();
+    settings.set_coil_delimit_and_compact(true);
+    auto path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "huge_losses.json");
+    std::ifstream file(path);
+    json masJson = json::parse(file);
+    OpenMagnetics::Inputs inputs(masJson.contains("inputs") ? masJson["inputs"] : masJson);
+    OpenMagnetics::MagneticAdviser adviser;
+    auto results = adviser.get_advised_magnetic(inputs, 5);
+    std::string references;
+    for (auto& [mas, scoring] : results) {
+        references += mas.get_magnetic().get_reference() + "; ";
+    }
+    INFO("results: " << references);
+    CHECK(results.size() >= 3);
+    settings.reset();
+}

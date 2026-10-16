@@ -4188,3 +4188,94 @@ TEST_CASE("Test_CoreAdviser_Stand_In_Transformer_Losses_And_Temperature_Count_Th
     CHECK(standIn.get_coil().get_functional_description().size() == 1);
     settings.reset();
 }
+
+// ABT #1875 guards. The inputs and adviser settings are the IMPACT.md / TRACE.md ones
+// (.mkf-p1875-runs): CoreAdviser weights E/D/C 40/30/30, standard cores, 10 results.
+static OpenMagnetics::Inputs load_abt1875_inputs(const std::string& fileName) {
+    auto path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), fileName);
+    std::ifstream file(path);
+    json masJson = json::parse(file);
+    return OpenMagnetics::Inputs(masJson.contains("inputs") ? masJson["inputs"] : masJson);
+}
+
+static std::map<CoreAdviser::CoreAdviserFilters, double> abt1875_weights() {
+    return {{CoreAdviser::CoreAdviserFilters::EFFICIENCY, 0.4},
+            {CoreAdviser::CoreAdviserFilters::DIMENSIONS, 0.3},
+            {CoreAdviser::CoreAdviserFilters::COST, 0.3}};
+}
+
+TEST_CASE("Test_CoreAdviser_Seeding_Regaps_A_Turns_Solve_Refusal", "[adviser][core-adviser][abt-1875]") {
+    // The 225 uH DCM flyback on 95 E 10/5.5/5, 4 stacks, at the 0.087 mm gap the standard-cores
+    // gapping gave it: the turns solve meets saturation at 20 turns (B peak 0.64 T above 0.478 T)
+    // and refuses. The seeder's saturation-aware re-gap raises N and re-solves the gap (IMPACT.md:
+    // 42 turns, 0.6 mm, B peak 0.30 T). Before ABT #1875 the refusal dropped the candidate first.
+    settings.reset();
+    clear_databases();
+    auto inputs = pre_process_inputs(load_abt1875_inputs("Test_Magnetizing_Current_Dcm_Flyback_Balanced.json"));
+    std::vector<OpenMagnetics::Core> cores = {OpenMagneticsTesting::get_quick_core("E 10/5.5/5", OpenMagneticsTesting::get_ground_gap(8.72791e-05), 4, "95")};
+    CoreAdviser coreAdviser;
+    auto magnetics = coreAdviser.create_magnetic_dataset(inputs, &cores, false);
+    REQUIRE(magnetics.size() == 1);
+
+    // The refusal says at how many turns it refused, as a typed field.
+    MagnetizingInductance magnetizingInductance;
+    std::optional<int64_t> refusedTurns;
+    {
+        OpenMagnetics::Inputs solveInputs(inputs);
+        try {
+            magnetizingInductance.calculate_number_turns_from_gapping_and_inductance(
+                magnetics[0].first.get_core(), magnetics[0].first.get_coil(), &solveInputs, DimensionalValues::MINIMUM);
+        }
+        catch (const SaturationException& e) {
+            refusedTurns = e.number_turns();
+        }
+    }
+    REQUIRE(refusedTurns);
+    INFO("refused at " << refusedTurns.value() << " turns");
+
+    add_initial_turns_by_inductance(&magnetics, inputs);
+    REQUIRE(magnetics.size() == 1);
+    auto magnetic = magnetics[0].first;
+    int64_t numberTurns = magnetic.get_coil().get_functional_description()[0].get_number_turns();
+    INFO("kept with " << numberTurns << " turns");
+    CHECK(numberTurns > refusedTurns.value());
+    // The kept design passes the very check the solve refused on.
+    OpenMagnetics::Inputs checkInputs(inputs);
+    auto [saturates, message] = magnetizingInductance.check_sizing_saturation(magnetic.get_core(), magnetic.get_coil(), numberTurns, &checkInputs);
+    INFO(message);
+    CHECK_FALSE(saturates);
+    settings.reset();
+}
+
+TEST_CASE("Test_CoreAdviser_Temperature_Walk_Counts_Parts_Post_Processing_Keeps", "[adviser][core-adviser][abt-1875]") {
+    // simple_inductor, standard cores: with the turns-solve refusals re-gapped, the rescued cores
+    // shift the ABT #1412 walk to smaller cores, and its first batch passes the single-pass
+    // temperature filter 46 times while the ABT #1802 solved-temperature gate keeps 3 of them.
+    // Counting the filter's passes stopped the walk there and returned 3 parts; counting the parts
+    // post-processing keeps walks on to the 10 asked for (main before ABT #1875 also returned 10).
+    settings.reset();
+    clear_databases();
+    settings.set_coil_delimit_and_compact(true);
+    auto inputs = load_abt1875_inputs("simple_inductor.json");
+    CoreAdviser coreAdviser;
+    coreAdviser.set_mode(CoreAdviser::CoreAdviserModes::STANDARD_CORES);
+    auto results = coreAdviser.get_advised_core(inputs, abt1875_weights(), 10);
+    CHECK(results.size() == 10);
+
+    // ABT #1875 part C's mechanism: excluded shapes take no place in the results, the next
+    // candidates backfill them.
+    std::set<std::string> firstShapes;
+    for (auto& [mas, scoring] : results) {
+        firstShapes.insert(mas.get_magnetic().get_core().get_shape_name());
+    }
+    CoreAdviser excludingAdviser;
+    excludingAdviser.set_mode(CoreAdviser::CoreAdviserModes::STANDARD_CORES);
+    excludingAdviser.set_excluded_core_shapes(firstShapes);
+    auto moreResults = excludingAdviser.get_advised_core(inputs, abt1875_weights(), 10);
+    CHECK(!moreResults.empty());
+    for (auto& [mas, scoring] : moreResults) {
+        INFO(mas.get_magnetic().get_core().get_name().value_or("unnamed"));
+        CHECK(!firstShapes.contains(mas.get_magnetic().get_core().get_shape_name()));
+    }
+    settings.reset();
+}
