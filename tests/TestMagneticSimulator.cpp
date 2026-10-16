@@ -2468,6 +2468,108 @@ TEST_CASE("A malformed operating point still refuses the whole design next to on
     settings.reset();
 }
 
+TEST_CASE("calculate_core_losses of a point with no thermal operating point returns its core losses at ambient and no temperature",
+          "[processor][magnetic-simulator][abt-1876]") {
+    // Alf decision 2026-10-14, ABT #1876: the public per-point entry point answers as simulate does per point. On 28d80298
+    // the standalone call (the WASM and PyOM calculate_core_losses bindings) still threw "[CALCULATION_INVALID_RESULT]
+    // No thermal operating point: ..." for the web's default design.
+    settings.reset();
+    auto [magnetic, inputs] = load_web_default_design();
+    const double ambientTemperature = inputs.get_operating_points()[0].get_conditions().get_ambient_temperature();
+    REQUIRE(ambientTemperature == 25);
+    OpenMagnetics::Magnetic woundMagnetic = magnetic;
+    if (!woundMagnetic.get_coil().get_turns_description()) {
+        woundMagnetic.get_mutable_coil().wind();
+    }
+
+    // The same losses evaluated at ambient, independently of the loss loop.
+    OperatingPoint operatingPointForWinding = inputs.get_operating_points()[0];
+    double windingLossesAtAmbient = MagneticSimulator().calculate_winding_losses(operatingPointForWinding, woundMagnetic, ambientTemperature).get_winding_losses();
+    MagnetizingInductance magnetizingInductanceModel(to_string(settings.get_reluctance_model()));
+    magnetizingInductanceModel.set_topology(inputs.get_design_requirements().get_topology());
+    OperatingPoint operatingPointForCore = inputs.get_operating_points()[0];
+    auto fluxDensity = magnetizingInductanceModel.calculate_inductance_and_magnetic_flux_density(woundMagnetic, &operatingPointForCore).second;
+    auto excitation = operatingPointForCore.get_excitations_per_winding()[0];
+    excitation.set_magnetic_flux_density(fluxDensity);
+    double coreLossesAtAmbient = CoreLosses().calculate_core_losses(woundMagnetic.get_core(), excitation, ambientTemperature).get_core_losses();
+
+    MagneticSimulator simulator;
+    simulator.set_topology(inputs.get_design_requirements().get_topology());
+    OperatingPoint operatingPoint = inputs.get_operating_points()[0];
+
+    SECTION("the standalone call, as the bindings make it: the core losses at ambient") {
+        CoreLossesOutput coreLosses;
+        REQUIRE_NOTHROW(coreLosses = simulator.calculate_core_losses(operatingPoint, woundMagnetic));
+        INFO("core " << coreLosses.get_core_losses() << " W (at ambient " << coreLossesAtAmbient << " W) at " << coreLosses.get_temperature() << " C");
+        CHECK(coreLosses.get_temperature() == ambientTemperature);
+        CHECK_THAT(coreLosses.get_core_losses(), Catch::Matchers::WithinRel(coreLossesAtAmbient, 1e-12));
+    }
+
+    SECTION("asked for them, no temperature and the winding losses at ambient") {
+        std::optional<WindingLossesOutput> windingLossesOutput;
+        // Engaged beforehand: the call must empty it, not leave a stale temperature behind.
+        std::optional<TemperatureOutput> temperatureOutput = TemperatureOutput();
+        CoreLossesOutput coreLosses;
+        REQUIRE_NOTHROW(coreLosses = simulator.calculate_core_losses(operatingPoint, woundMagnetic, &windingLossesOutput, &temperatureOutput));
+        CHECK_FALSE(temperatureOutput);
+        CHECK(coreLosses.get_temperature() == ambientTemperature);
+        CHECK_THAT(coreLosses.get_core_losses(), Catch::Matchers::WithinRel(coreLossesAtAmbient, 1e-12));
+        REQUIRE(windingLossesOutput);
+        CHECK_THAT(windingLossesOutput->get_winding_losses(), Catch::Matchers::WithinRel(windingLossesAtAmbient, 1e-12));
+    }
+
+    SECTION("the advisers' policy still throws NoThermalOperatingPointException") {
+        CHECK_THROWS_AS(simulator.calculate_core_losses(operatingPoint, woundMagnetic, nullptr, nullptr, WindingLossesScope::FULL,
+                                                        NoThermalOperatingPointPolicy::THROW),
+                        NoThermalOperatingPointException);
+    }
+    settings.reset();
+}
+
+TEST_CASE("simulate's JSON has no temperature key, not a null, for a point with no thermal operating point",
+          "[processor][magnetic-simulator][abt-1876]") {
+    // Alf decision 2026-10-14, ABT #1876: objects are schema-valid at every stage. On 28d80298 outputs[i].temperature
+    // was written as an explicit null for the point with no thermal operating point.
+    settings.reset();
+    auto magnetic = load_web_default_design().first;
+    json coolPoint = scaled_operating_point(0.01, "A hundredth of the current");
+    json hotPoint = scaled_operating_point(1.0, "The web default");
+    auto twoPoints = web_default_inputs_with(json::array({coolPoint, hotPoint}), magnetic);
+
+    OpenMagnetics::Mas simulated;
+    REQUIRE_NOTHROW(simulated = MagneticSimulator().simulate(twoPoints, magnetic));
+    json masJson;
+    to_json(masJson, simulated);
+    REQUIRE(masJson["outputs"].size() == 2);
+    REQUIRE(masJson["outputs"][0].contains("temperature"));
+    CHECK(masJson["outputs"][0]["temperature"].is_object());
+    CHECK_FALSE(masJson["outputs"][1].contains("temperature"));
+    for (size_t index = 0; index < 2; ++index) {
+        for (const auto& [key, value] : masJson["outputs"][index].items()) {
+            INFO("outputs[" << index << "]." << key);
+            CHECK_FALSE(value.is_null());
+        }
+    }
+
+    // Read back as the web reads it: still no temperature at point 1, and analyze_results still names it.
+    OpenMagnetics::Mas reread;
+    from_json(masJson, reread);
+    REQUIRE(reread.get_outputs().size() == 2);
+    CHECK(reread.get_outputs()[0].get_temperature());
+    CHECK_FALSE(reread.get_outputs()[1].get_temperature());
+    auto findings = ResultsAnalyzer::analyze_results(reread);
+    INFO("findings:" << describe_findings(findings));
+    size_t noThermalAt1 = 0;
+    for (const auto& finding : findings) {
+        if (finding.code == ResultFindingCode::NO_THERMAL_OPERATING_POINT) {
+            CHECK(finding.operatingPointIndex == 1);
+            ++noThermalAt1;
+        }
+    }
+    CHECK(noThermalAt1 == 1);
+    settings.reset();
+}
+
 // ABT #1879: three web-stored designs whose winding currents are 128 points on a CLOSED uniform
 // axis ([0, T], last point = first). Their harmonics were taken as 128 OPEN samples (period one
 // step long), so a pure sine carried fake content at every harmonic, and CoilMesher's phase check
