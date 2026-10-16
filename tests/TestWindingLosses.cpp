@@ -885,11 +885,21 @@ namespace TestWindingLossesPlanar {
         // single-window planar core) against 2D OMFEM, not an MKF snapshot. The previous pins were MKF snapshots under an
         // explicitly pinned ALBACH field/fringing model, 10-40x above FEM (the 16 paralleled traces screen each other,
         // which per-trace superposition could not see; ABT #139). References: OMFEM P_cu (omfem_mas, full geometry),
-        // /home/alf/OpenMagnetics/.mkf-1645-fem/ref3_parallels. Tolerance unchanged (30 %); a point MKF misses stays red.
+        // /home/alf/OpenMagnetics/.mkf-1645-fem/ref3_parallels. A point MKF misses stays red.
+        //
+        // Band widened 30 -> 35 %, Alf approved 2026-10-15, ABT #1879, for this test only. The fixture current
+        // is a 500 A-peak sine stored on a CLOSED 128-point axis; until #1879 it was read as 128 open samples,
+        // which put its fundamental 0.4 % low. Read as knots it is exact, and the losses rise ~0.78 % (I^2).
+        // Measured against OMFEM, pre -> post #1879: 20 kHz 16.509 -> 16.596 W (OMFEM 21.232), 100 kHz
+        // 39.140 -> 39.410 W (51.039), 500 kHz 153.82 W (+29.8 %) -> 155.02 W (+30.8 %, OMFEM 118.54, was
+        // outside +-30 %), 2 MHz 312.83 W (+27.4 %) -> 315.31 W (+28.4 %, OMFEM 245.59). The model gap
+        // itself (over-read at 500 kHz / 2 MHz, under-read at 20 / 100 kHz) is ABT #1884; the band is not a
+        // re-baseline of it.
+        constexpr double sixteenTurnsMaximumError = 0.35;
         WindingLossesTestHelpers::runJsonBasedWindingLossesTest(
             "Test_Winding_Losses_Sixteen_Turns_Planar_Sinusoidal_No_Fringing.json", 22,
             {{20000, 21.232}, {100000, 51.039}, {500000, 118.54}, {2000000, 245.59}},
-            maximumError, true, std::nullopt, std::nullopt);
+            sixteenTurnsMaximumError, true, std::nullopt, std::nullopt);
     }
 
     TEST_CASE("Test_Winding_Losses_Sixteen_Turns_Planar_Sinusoidal_Fringing_Close", "[physical-model][winding-losses][planar]") {
