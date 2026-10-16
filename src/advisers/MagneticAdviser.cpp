@@ -1,4 +1,3 @@
-#include <set>
 #include "processors/Inputs.h"
 #include <algorithm>
 #include <source_location>
@@ -782,14 +781,10 @@ std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic(Inputs
     size_t expectedWoundCores = std::min(maximumNumberResults, std::max(size_t(2), size_t(floor(double(maximumNumberResults) / numberWindings))));
     size_t requestedCores = expectedWoundCores;
     std::vector<std::string> evaluatedCores;
-    // ABT #1875: the shapes of the evaluated cores. The repeated CoreAdviser request excludes them,
-    // so it returns cores this search has not wound yet. Without it the second request (45 cores)
-    // returned the first request's 25 again among them, and the 40-core evaluation budget ran out
-    // on 14 new cores (huge_losses: the cores that wind cool were never reached).
-    std::set<std::string> evaluatedCoreShapes;
     // Toroids among the evaluated cores: the retry without toroids only has something new to
     // try when some of the evaluated slots went to toroids.
     size_t numberEvaluatedToroidalCores = 0;
+    size_t previouslyObtainedCores = SIZE_MAX;
     size_t whileIteration = 0;
     const size_t maxWhileIterations = 2;  // Limit exponential growth
     const size_t maxEvaluatedCores = 40;  // OPTIMIZATION: Balanced - 40 cores to capture variety including medium-sized
@@ -853,13 +848,12 @@ std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic(Inputs
         // (ctx=nullptr; any ctx catalog override was already applied by the
         // outer LibraryContext::Scope). Empty _constraints => identical to the
         // plain get_advised_core(inputs, weights, requestedCores) path.
-        coreAdviser.set_excluded_core_shapes(evaluatedCoreShapes);
         auto masMagneticsWithCore = coreAdviser.get_advised_core(inputs, coreWeights, requestedCores, nullptr, _constraints);
 
-        // Every returned core is one not evaluated yet (its shape is not excluded): none left, nothing to wind.
-        if (masMagneticsWithCore.empty()) {
+        if (previouslyObtainedCores == masMagneticsWithCore.size()) {
             break;
         }
+        previouslyObtainedCores = masMagneticsWithCore.size();
 
         for (auto& [mas, coreScoring] : masMagneticsWithCore) {
             auto coreNameOpt = mas.get_magnetic().get_core().get_name();
@@ -873,7 +867,6 @@ std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic(Inputs
             }
             else {
                 evaluatedCores.push_back(coreName);
-                evaluatedCoreShapes.insert(mas.get_magnetic().get_core().get_shape_name());
                 if (mas.get_magnetic().get_core().get_functional_description().get_type() == CoreType::TOROIDAL) {
                     numberEvaluatedToroidalCores++;
                 }
@@ -973,23 +966,23 @@ std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic(Inputs
         clear_loaded_cores();
         // Reset evaluated cores to allow re-evaluation
         evaluatedCores.clear();
-        evaluatedCoreShapes.clear();
         coresWound = 0;
         masData.clear();
         
         // Retry the core search
         whileIteration = 0;
         requestedCores = expectedWoundCores;
+        previouslyObtainedCores = SIZE_MAX;
         globalCapReached = false;
         while (coresWound < expectedWoundCores && whileIteration < maxWhileIterations && evaluatedCores.size() < maxEvaluatedCores && !globalCapReached) {
             whileIteration++;
             requestedCores += 20;
-            coreAdviser.set_excluded_core_shapes(evaluatedCoreShapes);
             auto masMagneticsWithCore = coreAdviser.get_advised_core(inputs, coreWeights, requestedCores, nullptr, _constraints);
 
-            if (masMagneticsWithCore.empty()) {
+            if (previouslyObtainedCores == masMagneticsWithCore.size()) {
                 break;
             }
+            previouslyObtainedCores = masMagneticsWithCore.size();
 
             for (auto& [mas, coreScoring] : masMagneticsWithCore) {
                 auto coreNameOpt = mas.get_magnetic().get_core().get_name();
@@ -1003,7 +996,6 @@ std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic(Inputs
                 }
                 else {
                     evaluatedCores.push_back(coreName);
-                    evaluatedCoreShapes.insert(mas.get_magnetic().get_core().get_shape_name());
                 }
 
                 if (evaluatedCores.size() >= maxEvaluatedCores) {
