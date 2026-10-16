@@ -62,6 +62,38 @@ class WaveformProcessor {
                                                                                   const std::vector<double>& data,
                                                                                   size_t numberHarmonics);
 
+    // Complex Fourier coefficients c_0..c_K of one period of a waveform, by harmonic index k
+    // (frequency k * excitation frequency), referred to the waveform's first instant:
+    //   x(t) = c_0 + sum_k 2 Re(c_k exp(+j 2 pi k (t - timeOrigin) / period)).
+    // The ONE source of every harmonic's amplitude (calculate_harmonics_data: |c_0|, 2 |c_k|) and
+    // phase (calculate_harmonic_phasor), so the two can never disagree (ABT #1880). The method
+    // and period rule are those listed under calculate_harmonics_data below: open uniform axis
+    // = samples (period N dt), closed axis = knots (period = span), denser = resampled, no axis
+    // = plain DFT of the samples (period 1 / frequency).
+    struct FourierSeries {
+        std::vector<std::complex<double>> coefficients;
+        double timeOrigin;  // s, the instant the coefficients are referred to
+        double period;      // s, the period the coefficients were computed over
+    };
+    static FourierSeries calculate_fourier_series(const MAS::Waveform& waveform,
+                                                  double frequency,
+                                                  size_t numberPointsSampledWaveforms = 128);
+
+    // Peak phasor X of the harmonic at harmonicFrequency, x(t) = Re(X exp(+j w t)) with t the
+    // waveform's own (absolute) time: X = 2 c_k (X = c_0 at DC) from calculate_fourier_series, k =
+    // harmonicFrequency / frequency, rotated from the series' time origin to t = 0. |X| is the
+    // MAS amplitude of that harmonic. Throws when harmonicFrequency is not a multiple of frequency
+    // (to 1e-6 of the fundamental) or k is beyond the series. A waveform without a time axis is
+    // sampled over one period first, as Inputs::calculate_harmonics_data(waveform, sampled, f)
+    // does when it lists its harmonics.
+    static std::complex<double> calculate_harmonic_phasor(const FourierSeries& series,
+                                                          double frequency,
+                                                          double harmonicFrequency);
+    static std::complex<double> calculate_harmonic_phasor(const MAS::Waveform& waveform,
+                                                          double frequency,
+                                                          double harmonicFrequency,
+                                                          size_t numberPointsSampledWaveforms = 128);
+
     // Harmonics 0..K of a waveform (ABT #1460):
     //  - with a time axis and fewer knots than numberPointsSampledWaveforms: the exact series of
     //    its piecewise-linear knots (calculate_exact_fourier_coefficients), K = N/2;
@@ -74,6 +106,8 @@ class WaveformProcessor {
     //    then as above;
     //  - no time axis: samples only, no knots to be exact about: the plain DFT, harmonics
     //    0..N/2-1, as before.
+    // The coefficients come from calculate_fourier_series, the same ones that give the phases
+    // (calculate_harmonic_phasor): amplitude and phase of a harmonic are one complex number.
     static MAS::Harmonics calculate_harmonics_data(MAS::Waveform waveform,
                                                    double frequency,
                                                    bool trimHarmonics = true,

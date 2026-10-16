@@ -1307,10 +1307,8 @@ std::vector<std::complex<double>> uniform_samples_exact_coefficients(const Wavef
 }
 } // namespace
 
-Harmonics WaveformProcessor::calculate_harmonics_data(Waveform waveform, double frequency, bool trimHarmonics, double harmonicAmplitudeThreshold, size_t numberPointsSampledWaveforms) {
-    bool isWaveformImported = is_waveform_imported(waveform, numberPointsSampledWaveforms);
-    Harmonics harmonics;
-
+WaveformProcessor::FourierSeries WaveformProcessor::calculate_fourier_series(const Waveform& waveform, double frequency, size_t numberPointsSampledWaveforms) {
+    FourierSeries series;
     if (!waveform.get_time()) {
         // Data only: samples with no knots to be exact about, so this keeps the plain DFT of the
         // samples, harmonics 0..N/2-1. Every MKF path that has knots or a time axis goes through
@@ -1324,17 +1322,18 @@ Harmonics WaveformProcessor::calculate_harmonics_data(Waveform waveform, double 
             throw std::invalid_argument("Data vector size is not a power of 2: " + std::to_string(data.size()));
         }
         fft(data);
-
-        harmonics.get_mutable_amplitudes().push_back(abs(data[0] / static_cast<double>(data.size())));
-        for (size_t i = 1; i < data.size() / 2; ++i) {
-            harmonics.get_mutable_amplitudes().push_back(abs(2. * data[i] / static_cast<double>(data.size())));
-        }
+        // N is a power of 2, so dividing by it is exact: 2 * (X/N) is bit-identical to (2 X) / N.
         for (size_t i = 0; i < data.size() / 2; ++i) {
-            harmonics.get_mutable_frequencies().push_back(frequency * i);
+            series.coefficients.push_back(data[i] / static_cast<double>(data.size()));
         }
+        // Sample 0 sits at t = 0: no rotation is ever applied, the period is only informative.
+        series.timeOrigin = 0;
+        series.period = 1.0 / frequency;
+        return series;
     }
-    else {
-        std::vector<std::complex<double>> coefficients;
+
+    std::vector<std::complex<double>>& coefficients = series.coefficients;
+    {
         // N points count as samples only on a uniform axis. The simulator's 128 samples, resampled
         // over their own span and compressed, come back as 128 uneven knots (autocomplete's
         // magnetizing current): those are knots, and their exact series is below.
@@ -1348,17 +1347,90 @@ Harmonics WaveformProcessor::calculate_harmonics_data(Waveform waveform, double 
         if (is_waveform_sampled(waveform, numberPointsSampledWaveforms) && has_uniform_time_step(time) &&
             check_time_axis_spans_one_period(time, frequency)) {
             coefficients = uniform_samples_exact_coefficients(waveform);
+            // N open samples: the period is N steps, one more than the axis spans.
+            series.timeOrigin = time.front();
+            series.period = (time.back() - time.front()) * static_cast<double>(time.size()) / static_cast<double>(time.size() - 1);
         }
         else if (waveform.get_data().size() > numberPointsSampledWaveforms) {
             // Denser than the sampling grid (imports, 2N+1-sample converter models): the closed
             // form would cost O(knots x harmonics) with thousands of both, so these are sampled
             // at their own power-of-2 resolution and the samples' interpolant is used. It
             // differs from the knots only where a knot falls between two samples.
-            coefficients = uniform_samples_exact_coefficients(calculate_sampled_waveform(waveform, frequency, std::nullopt, numberPointsSampledWaveforms));
+            auto sampledWaveform = calculate_sampled_waveform(waveform, frequency, std::nullopt, numberPointsSampledWaveforms);
+            coefficients = uniform_samples_exact_coefficients(sampledWaveform);
+            const auto sampledTime = sampledWaveform.get_time().value();
+            series.timeOrigin = sampledTime.front();
+            series.period = (sampledTime.back() - sampledTime.front()) * static_cast<double>(sampledTime.size()) / static_cast<double>(sampledTime.size() - 1);
         }
         else {
             coefficients = calculate_exact_fourier_coefficients(time, waveform.get_data(), numberPointsSampledWaveforms / 2);
+            // Knots: the period is their span (calculate_exact_fourier_coefficients' rule).
+            series.timeOrigin = time.front();
+            series.period = time.back() - time.front();
         }
+    }
+    return series;
+}
+
+std::complex<double> WaveformProcessor::calculate_harmonic_phasor(const FourierSeries& series, double frequency, double harmonicFrequency) {
+    if (!std::isfinite(frequency) || frequency <= 0) {
+        throw InvalidInputException(ErrorCode::INVALID_INPUT, "Harmonic phasor: the excitation frequency must be positive and finite, got " + std::to_string(frequency));
+    }
+    if (!std::isfinite(harmonicFrequency) || harmonicFrequency < 0) {
+        throw InvalidInputException(ErrorCode::INVALID_INPUT, "Harmonic phasor: the harmonic frequency must be non-negative and finite, got " + std::to_string(harmonicFrequency));
+    }
+    // By index, as calculate_harmonics_data labels harmonic k with k * frequency.
+    const double order = harmonicFrequency / frequency;
+    const double roundedOrder = std::round(order);
+    if (std::fabs(order - roundedOrder) > 1e-6) {
+        std::ostringstream message;
+        message << std::setprecision(12) << "Harmonic phasor: " << harmonicFrequency << " Hz is not a harmonic of the excitation frequency "
+                << frequency << " Hz (order " << order << "), so it has no Fourier coefficient";
+        throw InvalidInputException(ErrorCode::INVALID_INPUT, message.str());
+    }
+    const size_t index = static_cast<size_t>(roundedOrder);
+    if (index >= series.coefficients.size()) {
+        throw InvalidInputException(ErrorCode::INVALID_INPUT, "Harmonic phasor: harmonic " + std::to_string(index) + " (" + std::to_string(harmonicFrequency) +
+                                    " Hz) is beyond the waveform's Fourier series, which ends at harmonic " + std::to_string(series.coefficients.size() - 1));
+    }
+    std::complex<double> phasor = index == 0 ? series.coefficients[0] : 2.0 * series.coefficients[index];
+    if (index > 0 && series.timeOrigin != 0) {
+        if (!(series.period > 0)) {
+            throw InvalidInputException(ErrorCode::INVALID_INPUT, "Harmonic phasor: the Fourier series has no positive period");
+        }
+        // c_k is referred to t0: c_k exp(+j k w (t - t0)) = (c_k exp(-j k w t0)) exp(+j k w t).
+        phasor *= std::polar(1.0, -2 * kWaveformPi * static_cast<double>(index) * series.timeOrigin / series.period);
+    }
+    return phasor;
+}
+
+std::complex<double> WaveformProcessor::calculate_harmonic_phasor(const Waveform& waveform, double frequency, double harmonicFrequency, size_t numberPointsSampledWaveforms) {
+    if (!waveform.get_time()) {
+        // MKF lists the harmonics of a waveform without a time axis from its sampled version
+        // (Inputs::calculate_harmonics_data(waveform, sampledWaveform, f)): the same here.
+        auto sampledWaveform = calculate_sampled_waveform(waveform, frequency, std::nullopt, numberPointsSampledWaveforms);
+        return calculate_harmonic_phasor(calculate_fourier_series(sampledWaveform, frequency, numberPointsSampledWaveforms), frequency, harmonicFrequency);
+    }
+    return calculate_harmonic_phasor(calculate_fourier_series(waveform, frequency, numberPointsSampledWaveforms), frequency, harmonicFrequency);
+}
+
+Harmonics WaveformProcessor::calculate_harmonics_data(Waveform waveform, double frequency, bool trimHarmonics, double harmonicAmplitudeThreshold, size_t numberPointsSampledWaveforms) {
+    bool isWaveformImported = is_waveform_imported(waveform, numberPointsSampledWaveforms);
+    Harmonics harmonics;
+
+    const auto series = calculate_fourier_series(waveform, frequency, numberPointsSampledWaveforms);
+    const auto& coefficients = series.coefficients;
+    if (!waveform.get_time()) {
+        // The plain DFT of the samples, harmonics 0..N/2-1 (amplitude expressions unchanged).
+        harmonics.get_mutable_amplitudes().push_back(std::abs(coefficients[0]));
+        for (size_t i = 1; i < coefficients.size(); ++i) {
+            harmonics.get_mutable_amplitudes().push_back(std::abs(2. * coefficients[i]));
+        }
+        for (size_t i = 0; i < coefficients.size(); ++i) {
+            harmonics.get_mutable_frequencies().push_back(frequency * i);
+        }
+    }
+    else {
         harmonics.get_mutable_amplitudes().push_back(std::abs(coefficients[0]));
         harmonics.get_mutable_frequencies().push_back(0);
         for (size_t k = 1; k < coefficients.size(); ++k) {

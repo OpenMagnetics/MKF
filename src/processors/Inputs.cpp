@@ -3871,16 +3871,8 @@ double Inputs::get_magnetic_flux_density_peak(OperatingPointExcitation excitatio
     if (!excitation.get_magnetic_flux_density()->get_harmonics() && magneticFluxDensity.get_waveform()) {
         auto magneticFluxDensityWaveform = magneticFluxDensity.get_waveform().value();
         auto sampledWaveform = Inputs::calculate_sampled_waveform(magneticFluxDensityWaveform, excitation.get_frequency());
-        double physFreq = excitation.get_frequency();
-        if (sampledWaveform.get_time()) {
-            auto t = sampledWaveform.get_time().value();
-            if (t.size() >= 2) {
-                double step = t[1] - t[0];
-                double period = step * static_cast<double>(t.size());
-                if (period > 0 && std::isfinite(1.0 / period)) physFreq = 1.0 / period;
-            }
-        }
-        magneticFluxDensity.set_harmonics(calculate_harmonics_data(magneticFluxDensityWaveform, sampledWaveform, physFreq));
+        // Harmonic k at k times the excitation frequency, as every other MKF harmonics list (ABT #1880).
+        magneticFluxDensity.set_harmonics(calculate_harmonics_data(magneticFluxDensityWaveform, sampledWaveform, excitation.get_frequency()));
         excitation.set_magnetic_flux_density(magneticFluxDensity);
     }
 
@@ -3904,16 +3896,8 @@ double Inputs::get_magnetic_flux_density_peak_to_peak(OperatingPointExcitation e
     if (!excitation.get_magnetic_flux_density()->get_harmonics() && magneticFluxDensity.get_waveform()) {
         auto magneticFluxDensityWaveform = magneticFluxDensity.get_waveform().value();
         auto sampledWaveform = Inputs::calculate_sampled_waveform(magneticFluxDensityWaveform, excitation.get_frequency());
-        double physFreq = excitation.get_frequency();
-        if (sampledWaveform.get_time()) {
-            auto t = sampledWaveform.get_time().value();
-            if (t.size() >= 2) {
-                double step = t[1] - t[0];
-                double period = step * static_cast<double>(t.size());
-                if (period > 0 && std::isfinite(1.0 / period)) physFreq = 1.0 / period;
-            }
-        }
-        magneticFluxDensity.set_harmonics(calculate_harmonics_data(magneticFluxDensityWaveform, sampledWaveform, physFreq));
+        // Harmonic k at k times the excitation frequency, as every other MKF harmonics list (ABT #1880).
+        magneticFluxDensity.set_harmonics(calculate_harmonics_data(magneticFluxDensityWaveform, sampledWaveform, excitation.get_frequency()));
         excitation.set_magnetic_flux_density(magneticFluxDensity);
     }
 

@@ -45,7 +45,8 @@ struct WindowWallSheet {
 // (MKF's MAS harmonic amplitude x the turn's current divider x the winding's direction c_k),
 // exactly as generate_mesh_inducing_coil always did. currentPhasePerHarmonicPerWinding[i][k]
 // is the phase (rad) of winding k's current at the harmonic of fieldPerHarmonic[i], taken
-// from a DFT of the winding's current waveform and referred to the gauge winding (the
+// from the winding's Fourier coefficient at that harmonic (the one its MAS amplitude comes
+// from, ABT #1880) and referred to the gauge winding (the
 // reference winding, see calculate_current_phase_per_winding), so the complex current of a
 // turn of winding k is  value * exp(j * phase[k]).  Inducing points that belong to no turn
 // (equivalent fringing sources) carry the gauge phase 0.
@@ -76,8 +77,8 @@ class CoilMesher {
     // winding k is c_k * i_k with c_k = +1 for isolationSide "primary" and -1 otherwise.
     static std::vector<int8_t> calculate_current_direction_per_winding(Coil coil);
     // Phase (rad, e^{+j w t} convention) of each winding's current at each of the given
-    // harmonic indexes, from a DFT of the winding's current waveform at the frequency MAS
-    // lists for that harmonic. Referred to a gauge: the reference winding's phase at that
+    // harmonic indexes: arg of the waveform's Fourier coefficient at the frequency MAS lists for
+    // that harmonic, the same coefficient its MAS amplitude comes from (ABT #1880). Referred to a gauge: the reference winding's phase at that
     // harmonic, or — when the reference winding carries none of that harmonic — the first
     // winding (by index) that does. A global rotation leaves every |H|^2 unchanged; the gauge
     // only fixes WHICH component is reported as in-phase, and makes a single winding and
@@ -88,8 +89,9 @@ class CoilMesher {
     // Result: [position in harmonicIndexes][winding index].
     // gaugePhasePerHarmonic, when given, receives the gauge's absolute phase per harmonic.
     static std::vector<std::vector<double>> calculate_current_phase_per_winding(Coil coil, OperatingPoint operatingPoint, const std::vector<size_t>& harmonicIndexes, std::vector<std::optional<double>>* gaugePhasePerHarmonic = nullptr);
-    // Peak phasor X of a waveform at harmonicFrequency, x(t) = Re(X exp(+j w t)), from a DFT of
-    // the waveform sampled over one period of excitationFrequency (the sampler MKF's harmonics use).
+    // Peak phasor X of a waveform at harmonicFrequency, x(t) = Re(X exp(+j w t)): 2 c_k from the
+    // same Fourier coefficients its MAS amplitude comes from (WaveformProcessor::calculate_harmonic_phasor,
+    // ABT #1880), so |X| is that amplitude and the phase is consistent with it by construction.
     static std::complex<double> calculate_harmonic_phasor(const Waveform& waveform, double excitationFrequency, double harmonicFrequency);
     InducingCoilMesh generate_mesh_inducing_coil_phasors(Magnetic magnetic, OperatingPoint operatingPoint, double windingLossesHarmonicAmplitudeThreshold = defaults.harmonicAmplitudeThreshold, std::optional<std::vector<int8_t>> customCurrentDirectionPerWinding = std::nullopt, std::optional<CoilMesherModels> coilMesherModel = std::nullopt, bool unitCurrentForSilentParallels = false);
     // Amplitude-and-direction part only (generate_mesh_inducing_coil_phasors().fieldPerHarmonic).
@@ -153,4 +155,4 @@ class CoilMesherWangModel : public CoilMesherModel {
 
 
 
-} // namespace OpenMagnetics
+} // namespace OpenMagnetics

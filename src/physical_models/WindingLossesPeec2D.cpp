@@ -277,7 +277,7 @@ WindingLossesOutput WindingLossesPeec2D::calculate_losses(Magnetic magnetic, Ope
     for (auto direction : CoilMesher::calculate_current_direction_per_winding(coil)) {
         currentDirectionPerWinding.push_back(static_cast<double>(direction));
     }
-    // Phase of each winding's current per common harmonic (DFT of its waveform, referred to the
+    // Phase of each winding's current per common harmonic (arg of the Fourier coefficient its amplitude comes from, ABT #1880, referred to the
     // reference winding): the bordered solve takes the COMPLEX terminal current.
     auto currentPhasePerCommonHarmonic = CoilMesher::calculate_current_phase_per_winding(coil, operatingPoint, commonHarmonicIndexes);
 

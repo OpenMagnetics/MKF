@@ -2,6 +2,7 @@
 #include "physical_models/Reluctance.h"
 #include "physical_models/WindingOhmicLosses.h"
 #include "processors/Inputs.h"
+#include "processors/WaveformProcessor.h"
 #include "constructive_models/Coil.h"
 #include "support/Utils.h"
 
@@ -366,23 +367,10 @@ std::vector<int8_t> CoilMesher::calculate_current_direction_per_winding(Coil coi
 }
 
 std::complex<double> CoilMesher::calculate_harmonic_phasor(const Waveform& waveform, double excitationFrequency, double harmonicFrequency) {
-    auto sampledWaveform = Inputs::calculate_sampled_waveform(waveform, excitationFrequency);
-    const auto& sampledData = sampledWaveform.get_data();
-    // get_time() returns the optional BY VALUE: copy, never bind a reference into it.
-    const auto sampledTimeOptional = sampledWaveform.get_time();
-    if (!sampledTimeOptional || sampledTimeOptional->size() != sampledData.size() || sampledData.empty()) {
-        throw CalculationException(ErrorCode::CALCULATION_ERROR, "Sampled waveform has no matching time axis");
-    }
-    const auto& sampledTime = sampledTimeOptional.value();
-    // Peak phasor X = (2/N) sum x_n exp(-j w t_n): x(t) = Re(X exp(+j w t)).
-    double realPart = 0;
-    double imaginaryPart = 0;
-    double angularFrequency = 2 * std::numbers::pi * harmonicFrequency;
-    for (size_t sampleIndex = 0; sampleIndex < sampledData.size(); ++sampleIndex) {
-        realPart += sampledData[sampleIndex] * std::cos(angularFrequency * sampledTime[sampleIndex]);
-        imaginaryPart -= sampledData[sampleIndex] * std::sin(angularFrequency * sampledTime[sampleIndex]);
-    }
-    return std::complex<double>(realPart, imaginaryPart) * (2.0 / static_cast<double>(sampledData.size()));
+    // The same Fourier coefficients the MAS amplitudes come from (ABT #1880), never a second,
+    // resampled DFT: that one added its own resampling error and, at noise-level harmonics,
+    // compared noise against noise.
+    return WaveformProcessor::calculate_harmonic_phasor(waveform, excitationFrequency, harmonicFrequency, settings.get_inputs_number_points_sampled_waveforms());
 }
 
 std::vector<std::vector<double>> CoilMesher::calculate_current_phase_per_winding(Coil coil, OperatingPoint operatingPoint, const std::vector<size_t>& harmonicIndexes, std::vector<std::optional<double>>* gaugePhasePerHarmonic) {
@@ -393,6 +381,8 @@ std::vector<std::vector<double>> CoilMesher::calculate_current_phase_per_winding
                                     " excitations for a coil with " + std::to_string(numberWindings) + " windings");
     }
     size_t referenceWindingIndex = get_reference_winding_index(coil);
+    // Each winding's Fourier series, computed once, on first use (ABT #1880).
+    std::vector<std::optional<WaveformProcessor::FourierSeries>> seriesPerWinding(numberWindings);
 
     std::vector<std::vector<double>> phasePerHarmonicPerWinding;
     for (auto harmonicIndex : harmonicIndexes) {
@@ -414,12 +404,21 @@ std::vector<std::vector<double>> CoilMesher::calculate_current_phase_per_winding
                                             " has a harmonic at " + std::to_string(harmonicFrequency) +
                                             " Hz but no waveform to take its phase from");
             }
-            auto phasor = calculate_harmonic_phasor(current->get_waveform().value(), excitations[windingIndex].get_frequency(), harmonicFrequency);
+            if (!seriesPerWinding[windingIndex]) {
+                auto waveform = current->get_waveform().value();
+                if (!waveform.get_time()) {
+                    // As MKF lists its harmonics: Inputs::calculate_harmonics_data(waveform, sampled, f).
+                    waveform = Inputs::calculate_sampled_waveform(waveform, excitations[windingIndex].get_frequency());
+                }
+                seriesPerWinding[windingIndex] = WaveformProcessor::calculate_fourier_series(waveform, excitations[windingIndex].get_frequency(),
+                                                                                             settings.get_inputs_number_points_sampled_waveforms());
+            }
+            auto phasor = WaveformProcessor::calculate_harmonic_phasor(seriesPerWinding[windingIndex].value(), excitations[windingIndex].get_frequency(), harmonicFrequency);
             double phasorAmplitude = std::abs(phasor);
             if (!(phasorAmplitude >= 1e-6 * amplitude)) {
                 throw InvalidInputException(ErrorCode::INVALID_INPUT, "Current waveform of winding " + std::to_string(windingIndex) +
                                             " does not contain the harmonic its MAS harmonics list at " + std::to_string(harmonicFrequency) +
-                                            " Hz (DFT amplitude " + std::to_string(phasorAmplitude) + " A vs " + std::to_string(amplitude) +
+                                            " Hz (Fourier amplitude " + std::to_string(phasorAmplitude) + " A vs " + std::to_string(amplitude) +
                                             " A): its phase is undefined");
             }
             phasePerWinding[windingIndex] = std::arg(phasor);

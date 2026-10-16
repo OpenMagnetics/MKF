@@ -1564,7 +1564,7 @@ WindingWindowMagneticStrengthFieldPhasorOutput MagneticField::calculate_magnetic
         // is exactly N_p I_mag = R_core Phi: no threshold, no decomposition of the currents. The
         // flux itself comes from the source that is exact for the input:
         //  - one winding: its current is the magnetizing current (nothing can cancel it), so
-        //    M_h = c N I_h (MAS amplitude, DFT phase against the gauge -- phase 0 when it is the
+        //    M_h = c N I_h (MAS amplitude, Fourier phase against the gauge -- phase 0 when it is the
         //    gauge) and H_gap,h = M_h / (R_core(f_h) A_e mu_0);
         //  - several windings: Faraday on winding 0, v_0 = N_0 dPhi/dt (dot convention; Phi counts
         //    positive for current into the dot, which is the turn-field frame: filament current =
@@ -3995,12 +3995,13 @@ std::optional<ParallelCurrentSplit> MagneticField::calculate_parallel_current_sp
     }
 
     // Each winding's complex current at a harmonic is its MAS amplitude a (the amplitude the field mesher and the loss
-    // models use) on the phase of its waveform's DFT phasor P there, rotated to the gauge winding's phase like the field
-    // mesher does. MAS's harmonics and the DFT of the waveform agree only to the two transforms' sampling: on
-    // Test_Resistance_Matrix's pure sinusoid they differ by 4e-3 A on the 1 A fundamental, and MAS lists 1.6e-4 A at
-    // 7.78 MHz where the sinusoid has nothing (|P| ~ 0, no phase). An entry whose amplitude does not exceed that winding's
-    // transform disagreement (|a - |P|| on its largest harmonic) is not resolved by its waveform: its current is the
-    // waveform's own phasor P, ~0+0j, which needs no phase. A resolved entry the waveform does not contain throws.
+    // models use) on the phase of its waveform's phasor P there (CoilMesher::calculate_harmonic_phasor: 2 c_k from the
+    // same Fourier coefficients MKF's harmonics come from, ABT #1880), rotated to the gauge winding's phase like the field
+    // mesher does. Harmonics MKF computed from this waveform give |P| = a exactly. A harmonics list that came from
+    // elsewhere can disagree with the waveform (before #1880 the phasor was a second, resampled DFT: on
+    // Test_Resistance_Matrix's pure sinusoid the two differed by 4e-3 A on the 1 A fundamental). An entry whose amplitude
+    // does not exceed that winding's disagreement (|a - |P|| on its largest harmonic) is not resolved by its waveform:
+    // its current is the waveform's own phasor P, which needs no phase. A resolved entry the waveform does not contain throws.
     std::vector<double> transformDisagreementPerWinding(numberWindings, 0.0);
     for (size_t windingIndex = 0; windingIndex < numberWindings; ++windingIndex) {
         auto current = excitations[windingIndex].get_current();
@@ -4042,7 +4043,7 @@ std::optional<ParallelCurrentSplit> MagneticField::calculate_parallel_current_sp
             const bool resolved = entry.amplitude > transformDisagreementPerWinding[windingIndex];
             if (resolved && !(std::abs(phasor) >= 1e-6 * entry.amplitude)) {
                 throw InvalidInputException(ErrorCode::INVALID_INPUT, "Parallel current split (ABT #1314): the current waveform of winding " + std::to_string(windingIndex) +
-                                            " does not contain the harmonic its MAS harmonics list has at " + std::to_string(entry.frequency) + " Hz (DFT amplitude " +
+                                            " does not contain the harmonic its MAS harmonics list has at " + std::to_string(entry.frequency) + " Hz (Fourier amplitude " +
                                             std::to_string(std::abs(phasor)) + " A vs " + std::to_string(entry.amplitude) + " A)");
             }
             windingCurrent[windingIndex] = resolved ? entry.amplitude * phasor / std::abs(phasor) : phasor;

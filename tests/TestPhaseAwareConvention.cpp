@@ -6,6 +6,7 @@
 #include "physical_models/WindingOhmicLosses.h"
 #include "physical_models/WindingProximityEffectLosses.h"
 #include "processors/Inputs.h"
+#include "processors/WaveformProcessor.h"
 #include "support/CoilMesher.h"
 #include "support/Settings.h"
 #include "json.hpp"
@@ -17,6 +18,8 @@
 #include <cmath>
 #include <complex>
 #include <cstdio>
+#include <limits>
+#include <optional>
 #include <numbers>
 #include <string>
 #include <vector>
@@ -381,4 +384,229 @@ TEST_CASE("Test_Phase_Aware_Gap_Fringing_Needs_Magnetizing_Waveform", "[physical
     MagneticField magneticField(MagneticFieldStrengthModels::BINNS_LAWRENSON, MagneticFieldStrengthFringingEffectModels::ROSHEN);
     CHECK_THROWS(magneticField.calculate_magnetic_field_strength_field(operatingPoint, magnetic));
     settings.reset();
+}
+
+// ABT #1880: a harmonic's phase comes from the same Fourier coefficient as its MAS amplitude
+// (X_k = 2 c_k, WaveformProcessor::calculate_fourier_series), never from a second, resampled DFT.
+namespace {
+
+const double period1880 = 1.0 / frequency;
+
+// Two-tone sine A1 sin(w t + p1) + A2 sin(2 w t + p2): closed axis (128 points over [0, T], the
+// last equal to the first) or open axis (128 samples over [0, T)).
+Waveform two_tone_1880(bool closed, double a1, double p1, double a2, double p2) {
+    const size_t numberPoints = 128;
+    const double step = period1880 / static_cast<double>(closed ? numberPoints - 1 : numberPoints);
+    std::vector<double> time, data;
+    for (size_t i = 0; i < numberPoints; ++i) {
+        double t = static_cast<double>(i) * step;
+        time.push_back(t);
+        double wt = 2 * std::numbers::pi * frequency * t;
+        data.push_back(a1 * std::sin(wt + p1) + a2 * std::sin(2 * wt + p2));
+    }
+    if (closed) {
+        time.back() = period1880;
+        data.back() = data.front();
+    }
+    Waveform waveform;
+    waveform.set_time(time);
+    waveform.set_data(data);
+    return waveform;
+}
+
+// Triangle between 0 and 1, minimum at tau, maximum at tau + T/2:
+//   x(t) = 1/2 - 4/pi^2 sum_{k odd} cos(k w (t - tau)) / k^2, so X_k = -4/(pi^2 k^2) exp(-j k w tau).
+double triangle_value_1880(double t, double tau) {
+    double u = std::fmod(t - tau + 2 * period1880, period1880);
+    return u < period1880 / 2 ? 2 * u / period1880 : 2 * (period1880 - u) / period1880;
+}
+
+std::complex<double> triangle_phasor_1880(size_t k, double tau) {
+    if (k == 0) {
+        return 0.5;
+    }
+    if (k % 2 == 0) {
+        return 0;
+    }
+    double kd = static_cast<double>(k);
+    return -4 / (std::numbers::pi * std::numbers::pi * kd * kd) * std::polar(1.0, -kd * 2 * std::numbers::pi * frequency * tau);
+}
+
+// Closed: the four knots of the triangle. Open: 128 samples, tau on the sample grid, so the
+// samples' linear interpolant IS the triangle.
+Waveform triangle_1880(bool closed, double tau) {
+    std::vector<double> time, data;
+    if (closed) {
+        time = {0, tau, tau + period1880 / 2, period1880};
+    }
+    else {
+        for (size_t i = 0; i < 128; ++i) {
+            time.push_back(static_cast<double>(i) * period1880 / 128);
+        }
+    }
+    for (auto t : time) {
+        data.push_back(triangle_value_1880(t, tau));
+    }
+    Waveform waveform;
+    waveform.set_time(time);
+    waveform.set_data(data);
+    return waveform;
+}
+
+SignalDescriptor signal_1880(const Waveform& waveform) {
+    SignalDescriptor signal;
+    signal.set_waveform(waveform);
+    auto sampled = OpenMagnetics::Inputs::calculate_sampled_waveform(waveform, frequency);
+    signal.set_harmonics(OpenMagnetics::Inputs::calculate_harmonics_data(waveform, sampled, frequency));
+    return signal;
+}
+
+OperatingPointExcitation excitation_1880(const Waveform& waveform) {
+    OperatingPointExcitation excitation;
+    excitation.set_frequency(frequency);
+    excitation.set_current(signal_1880(waveform));
+    return excitation;
+}
+
+}  // namespace
+
+TEST_CASE("Test_Harmonic_Phase_Analytic_Waveforms", "[physical-model][phase-aware][abt-1880]") {
+    settings.reset();
+    // Phase-shifted two-tone sine: the interpolant of its points has, at k = 1 and 2, exactly the
+    // sine's phase (p - pi/2 in the exp(+j w t) convention), closed knots and open samples alike.
+    for (bool closed : {true, false}) {
+        const double p1 = 0.7, p2 = -1.9;
+        auto waveform = two_tone_1880(closed, 1.0, p1, 0.3, p2);
+        for (auto [k, phase] : std::vector<std::pair<size_t, double>>{{1, p1 - std::numbers::pi / 2}, {2, p2 - std::numbers::pi / 2}}) {
+            auto phasor = CoilMesher::calculate_harmonic_phasor(waveform, frequency, frequency * static_cast<double>(k));
+            INFO("two-tone sine, " << (closed ? "closed" : "open") << " axis, harmonic " << k);
+            CHECK_THAT(std::remainder(std::arg(phasor) - phase, 2 * std::numbers::pi), Catch::Matchers::WithinAbs(0, 1e-9));
+        }
+    }
+    // Shifted triangle: the whole complex phasor of every harmonic, X_k = -4/(pi^2 k^2) exp(-j k w tau).
+    for (bool closed : {true, false}) {
+        const double tau = period1880 / 8;
+        auto waveform = triangle_1880(closed, tau);
+        for (size_t k = 0; k <= 9; ++k) {
+            auto phasor = CoilMesher::calculate_harmonic_phasor(waveform, frequency, frequency * static_cast<double>(k));
+            auto expected = triangle_phasor_1880(k, tau);
+            INFO("triangle, " << (closed ? "closed" : "open") << " axis, harmonic " << k << ": " << phasor << " vs " << expected);
+            CHECK(std::abs(phasor - expected) <= 1e-9 * std::abs(triangle_phasor_1880(1, tau)));
+            if (k % 2 == 1) {
+                CHECK_THAT(std::remainder(std::arg(phasor) - std::arg(expected), 2 * std::numbers::pi), Catch::Matchers::WithinAbs(0, 1e-9));
+            }
+        }
+    }
+    // A waveform whose axis does not start at 0: the phase is still referred to t = 0.
+    {
+        const double tau = period1880 / 8;
+        // The same periodic triangle given over [-T/4, 3T/4].
+        std::vector<double> shiftedTime = {-period1880 / 4, 0, tau, tau + period1880 / 2, 3 * period1880 / 4};
+        std::vector<double> shiftedData;
+        for (auto t : shiftedTime) {
+            shiftedData.push_back(triangle_value_1880(t, tau));
+        }
+        Waveform shifted;
+        shifted.set_time(shiftedTime);
+        shifted.set_data(shiftedData);
+        for (size_t k : {1, 3, 5}) {
+            auto phasor = WaveformProcessor::calculate_harmonic_phasor(shifted, frequency, frequency * static_cast<double>(k));
+            INFO("triangle over [-T/4, 3T/4], harmonic " << k);
+            CHECK(std::abs(phasor - triangle_phasor_1880(k, tau)) <= 1e-9 * std::abs(triangle_phasor_1880(1, tau)));
+        }
+    }
+}
+
+TEST_CASE("Test_Harmonic_Phase_Is_Arg_Of_Harmonics_Coefficient", "[physical-model][phase-aware][abt-1880]") {
+    settings.reset();
+    // Two windings with content up to the Nyquist harmonic: a shifted triangle (odd harmonics
+    // to k = 63) and a two-tone sine whose higher harmonics are rounding noise (c_k ~ 1e-17).
+    // CoilMesher's phase of every listed harmonic is arg(X_k) of the coefficient the harmonics
+    // function's amplitude comes from, bit for bit, the noise-level ones included.
+    auto magnetic = make_magnetic({4, 4}, {"primary", "secondary"});
+    for (bool closed : {true, false}) {
+        auto triangleWaveform = triangle_1880(closed, period1880 / 8);
+        auto sineWaveform = two_tone_1880(closed, 2.0, 0.4, 0.5, 1.3);
+        auto operatingPoint = make_operating_point({excitation_1880(triangleWaveform), excitation_1880(sineWaveform)});
+        std::vector<Waveform> waveforms = {triangleWaveform, sineWaveform};
+        std::vector<WaveformProcessor::FourierSeries> seriesPerWinding;
+        for (auto& waveform : waveforms) {
+            seriesPerWinding.push_back(WaveformProcessor::calculate_fourier_series(waveform, frequency, settings.get_inputs_number_points_sampled_waveforms()));
+        }
+        auto harmonics0 = operatingPoint.get_excitations_per_winding()[0].get_current()->get_harmonics().value();
+        std::vector<size_t> indexes;
+        for (size_t index = 0; index < harmonics0.get_frequencies().size(); ++index) {
+            indexes.push_back(index);
+        }
+        REQUIRE(indexes.size() == 65);
+        std::vector<std::optional<double>> gauge;
+        auto phases = CoilMesher::calculate_current_phase_per_winding(magnetic.get_coil(), operatingPoint, indexes, &gauge);
+        REQUIRE(phases.size() == indexes.size());
+        size_t compared = 0;
+        for (size_t position = 0; position < indexes.size(); ++position) {
+            size_t index = indexes[position];
+            std::vector<std::complex<double>> phasorPerWinding;
+            std::vector<bool> excited;
+            for (size_t windingIndex = 0; windingIndex < 2; ++windingIndex) {
+                auto harmonics = operatingPoint.get_excitations_per_winding()[windingIndex].get_current()->get_harmonics().value();
+                double harmonicFrequency = harmonics.get_frequencies()[index];
+                auto phasor = WaveformProcessor::calculate_harmonic_phasor(seriesPerWinding[windingIndex], frequency, harmonicFrequency);
+                phasorPerWinding.push_back(phasor);
+                excited.push_back(harmonics.get_amplitudes()[index] != 0);
+                // The amplitude MAS lists is |X_k| of the same coefficient.
+                if (excited.back()) {
+                    INFO((closed ? "closed" : "open") << " axis, winding " << windingIndex << ", harmonic " << index);
+                    CHECK(std::abs(std::abs(phasor) - harmonics.get_amplitudes()[index]) <= 4 * std::numeric_limits<double>::epsilon() * harmonics.get_amplitudes()[index]);
+                }
+            }
+            if (!excited[0] && !excited[1]) {
+                continue;
+            }
+            size_t gaugeWinding = excited[0] ? 0 : 1;
+            double gaugePhase = std::arg(phasorPerWinding[gaugeWinding]);
+            INFO((closed ? "closed" : "open") << " axis, harmonic " << index);
+            REQUIRE(gauge[position].has_value());
+            CHECK(gauge[position].value() == gaugePhase);
+            for (size_t windingIndex = 0; windingIndex < 2; ++windingIndex) {
+                double expected = excited[windingIndex] ? std::arg(phasorPerWinding[windingIndex]) - gaugePhase : 0.0;
+                CHECK(phases[position][windingIndex] == expected);
+                ++compared;
+            }
+        }
+        CHECK(compared >= 2 * 64);
+    }
+}
+
+TEST_CASE("Test_Harmonic_Phase_Inconsistent_Harmonics_Throw", "[physical-model][phase-aware][abt-1880]") {
+    settings.reset();
+    auto magnetic = make_magnetic({4, 4}, {"primary", "secondary"});
+    auto sineWaveform = two_tone_1880(true, 2.0, 0.4, 0.0, 0.0);
+    auto triangleWaveform = triangle_1880(true, period1880 / 8);
+
+    // The harmonics list claims 0.5 A at 3 f; the pure sine it belongs to has none there (c_3 ~ 1e-17).
+    {
+        auto operatingPoint = make_operating_point({excitation_1880(triangleWaveform), excitation_1880(sineWaveform)});
+        auto current = operatingPoint.get_excitations_per_winding()[1].get_current().value();
+        auto harmonics = current.get_harmonics().value();
+        REQUIRE(harmonics.get_frequencies()[3] == 3 * frequency);
+        harmonics.get_mutable_amplitudes()[3] = 0.5;
+        current.set_harmonics(harmonics);
+        operatingPoint.get_mutable_excitations_per_winding()[1].set_current(current);
+        CHECK_THROWS(CoilMesher::calculate_current_phase_per_winding(magnetic.get_coil(), operatingPoint, {3}));
+        // The consistent list goes through.
+        CHECK_NOTHROW(CoilMesher::calculate_current_phase_per_winding(magnetic.get_coil(), operatingPoint, {1}));
+    }
+    // A listed frequency that is not a harmonic of the excitation (1.5 f) has no coefficient.
+    {
+        auto operatingPoint = make_operating_point({excitation_1880(triangleWaveform), excitation_1880(sineWaveform)});
+        auto current = operatingPoint.get_excitations_per_winding()[1].get_current().value();
+        auto harmonics = current.get_harmonics().value();
+        harmonics.get_mutable_frequencies()[1] = 1.5 * frequency;
+        current.set_harmonics(harmonics);
+        operatingPoint.get_mutable_excitations_per_winding()[1].set_current(current);
+        CHECK_THROWS(CoilMesher::calculate_current_phase_per_winding(magnetic.get_coil(), operatingPoint, {1}));
+    }
+    // Beyond the series (k = 65 on a 128-point waveform) and off-grid frequencies throw.
+    CHECK_THROWS(CoilMesher::calculate_harmonic_phasor(sineWaveform, frequency, 65 * frequency));
+    CHECK_THROWS(CoilMesher::calculate_harmonic_phasor(sineWaveform, frequency, 2.5 * frequency));
 }
