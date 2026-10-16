@@ -470,14 +470,8 @@ void CoreAdviser::post_process_and_append(std::vector<std::pair<Magnetic, double
         }
         ++candidatesExamined;
         std::string shapeName;
-        if (uniqueShapes || !_excludedCoreShapes.empty()) {
-            shapeName = magneticWithScoring.first.get_core().get_shape_name();
-        }
-        // ABT #1875: a shape the caller has already evaluated takes no place in the results.
-        if (_excludedCoreShapes.contains(shapeName)) {
-            continue;
-        }
         if (uniqueShapes) {
+            shapeName = magneticWithScoring.first.get_core().get_shape_name();
             if (std::find(usedShapes.begin(), usedShapes.end(), shapeName) != usedShapes.end()) {
                 continue;
             }

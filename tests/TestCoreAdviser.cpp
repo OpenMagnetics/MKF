@@ -4261,21 +4261,5 @@ TEST_CASE("Test_CoreAdviser_Temperature_Walk_Counts_Parts_Post_Processing_Keeps"
     coreAdviser.set_mode(CoreAdviser::CoreAdviserModes::STANDARD_CORES);
     auto results = coreAdviser.get_advised_core(inputs, abt1875_weights(), 10);
     CHECK(results.size() == 10);
-
-    // ABT #1875 part C's mechanism: excluded shapes take no place in the results, the next
-    // candidates backfill them.
-    std::set<std::string> firstShapes;
-    for (auto& [mas, scoring] : results) {
-        firstShapes.insert(mas.get_magnetic().get_core().get_shape_name());
-    }
-    CoreAdviser excludingAdviser;
-    excludingAdviser.set_mode(CoreAdviser::CoreAdviserModes::STANDARD_CORES);
-    excludingAdviser.set_excluded_core_shapes(firstShapes);
-    auto moreResults = excludingAdviser.get_advised_core(inputs, abt1875_weights(), 10);
-    CHECK(!moreResults.empty());
-    for (auto& [mas, scoring] : moreResults) {
-        INFO(mas.get_magnetic().get_core().get_name().value_or("unnamed"));
-        CHECK(!firstShapes.contains(mas.get_magnetic().get_core().get_shape_name()));
-    }
     settings.reset();
 }

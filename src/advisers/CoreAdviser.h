@@ -14,7 +14,6 @@
 #include "constructive_models/Core.h"
 #include "constructive_models/Mas.h"
 #include <cmath>
-#include <set>
 #include <MAS.hpp>
 #include "support/Exceptions.h"
 #include "support/LibraryContext.h"
@@ -138,9 +137,6 @@ class CoreAdviser {
     protected:
         std::map<std::string, std::string> _models;
         bool _uniqueCoreShapes = false;
-        // Shape names a caller has already evaluated (ABT #1875): post-processing skips them and
-        // backfills, so a repeated request returns cores the caller has not seen.
-        std::set<std::string> _excludedCoreShapes;
         std::map<CoreAdviserFilters, double> _weights;
         MagneticSimulator _magneticSimulator;
         WindingOhmicLosses _windingOhmicLosses;
@@ -193,11 +189,6 @@ class CoreAdviser {
 
         void set_unique_core_shapes(bool value);
         bool get_unique_core_shapes();
-        // ABT #1875: cores of these shapes are not returned; the next-scored candidates take their
-        // places. The MagneticAdviser passes the shapes it has already wound, so its second request
-        // brings new cores instead of the first request's again.
-        void set_excluded_core_shapes(std::set<std::string> shapeNames) { _excludedCoreShapes = std::move(shapeNames); }
-        const std::set<std::string>& get_excluded_core_shapes() const { return _excludedCoreShapes; }
         void set_application(MAS::MagneticApplication value);
         MAS::MagneticApplication get_application();
         void set_mode(CoreAdviserModes value);
@@ -253,7 +244,7 @@ class CoreAdviser {
                                                                  bool withAlternativeMaterials = false,
                                                                  std::optional<double> maximumTemperature = std::nullopt);
         // The same walk, appending to parts already kept (ABT #1875): it stops when `kept` holds
-        // maximumNumberResults, and a shape already in `kept` (with unique core shapes) or excluded is
+        // maximumNumberResults, and a shape already in `kept` (with unique core shapes) is
         // skipped. post_process_and_cut(list) is post_process_and_append(list, ..., kept = {}), and
         // appending two lists one after the other keeps what post-processing their concatenation would.
         // The pipeline's temperature walk counts its "enough" on `kept`, the parts these gates pass.
