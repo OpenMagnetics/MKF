@@ -128,6 +128,14 @@ Waveform Inputs::multiply_waveform(Waveform waveform, double scalarValue){
     for (auto& datum : data) {
         datum *= scalarValue;
     }
+    // A positive factor keeps the shape, so it keeps the label. Zero leaves an identically
+    // zero waveform, which is no shape at all: a current scaled to zero kept "rectangular" on
+    // 2 vertices and its duty was read from a third that does not exist (ABT #1878). A
+    // negative factor flips the shape: a unipolar or flyback waveform is no longer one, and a
+    // rectangle's duty becomes 1 - D, not the one its vertices are read for.
+    if (!(scalarValue > 0)) {
+        waveform.set_ancillary_label(std::nullopt);
+    }
     return waveform;
 }
 
@@ -1321,6 +1329,12 @@ Waveform Inputs::calculate_integral_waveform(Waveform waveform, bool subtractAve
     std::vector<double> time = waveform.get_time().value();
     std::vector<double> integration;
     Waveform resultWaveform(waveform);
+    // The integral is a different shape from its integrand: a rectangular voltage integrates
+    // to a triangular magnetizing current. Copying the voltage's label onto it made a 3- or
+    // 4-vertex triangle "rectangular" or "bipolarRectangular", whose offset and duty were then
+    // read at vertex indices it does not have (ABT #1878). The integral's shape is the one its
+    // data shows, so it carries no label.
+    resultWaveform.set_ancillary_label(std::nullopt);
 
     // FIXED: BUG-02 — Ensure integration result matches time vector size
     double integral = 0;
@@ -1409,10 +1423,11 @@ OperatingPointExcitation Inputs::get_excitation_with_proportional_current(Operat
     auto sampledCurrentWaveform = calculate_sampled_waveform(multipliedWaveform, excitation.get_frequency());
     current.set_harmonics(calculate_harmonics_data(multipliedWaveform, sampledCurrentWaveform, excitation.get_frequency()));
     // The basic processed data (peak, peak to peak, offset) scale with the waveform, so they are calculated again:
-    // handing over the previous processed data would keep its values. Only the label survives, as the shape does.
+    // handing over the previous processed data would keep its values. Only the label survives, as the shape does,
+    // which is only for a positive proportion (see multiply_waveform).
     auto previousProcessedCurrent = current.get_processed();
     auto processedCurrent = calculate_processed_data(current, sampledCurrentWaveform, true, std::nullopt);
-    if (previousProcessedCurrent) {
+    if (previousProcessedCurrent && proportion > 0) {
         processedCurrent.set_label(previousProcessedCurrent->get_label());
     }
     current.set_processed(processedCurrent);
@@ -1434,10 +1449,11 @@ OperatingPointExcitation Inputs::get_excitation_with_proportional_voltage(Operat
     auto sampledVoltageWaveform = calculate_sampled_waveform(multipliedWaveform, excitation.get_frequency());
     voltage.set_harmonics(calculate_harmonics_data(multipliedWaveform, sampledVoltageWaveform, excitation.get_frequency()));
     // The basic processed data (peak, peak to peak, offset) scale with the waveform, so they are calculated again:
-    // handing over the previous processed data would keep its values. Only the label survives, as the shape does.
+    // handing over the previous processed data would keep its values. Only the label survives, as the shape does,
+    // which is only for a positive proportion (see multiply_waveform).
     auto previousProcessedVoltage = voltage.get_processed();
     auto processedVoltage = calculate_processed_data(voltage, sampledVoltageWaveform, true, std::nullopt);
-    if (previousProcessedVoltage) {
+    if (previousProcessedVoltage && proportion > 0) {
         processedVoltage.set_label(previousProcessedVoltage->get_label());
     }
     voltage.set_processed(processedVoltage);
