@@ -279,14 +279,10 @@ WindingLossesOutput WindingLossesPeec2D::calculate_losses(Magnetic magnetic, Ope
     }
     // Phase of each winding's current per common harmonic (arg of the Fourier coefficient its amplitude comes from, ABT #1880, referred to the
     // reference winding): the bordered solve takes the COMPLEX terminal current.
-    auto currentPhasePerCommonHarmonic = CoilMesher::calculate_current_phase_per_winding(coil, operatingPoint, commonHarmonicIndexes);
-
-    // Per-winding harmonic amplitudes on the COMMON harmonic grid.
-    std::vector<Harmonics> harmonicsPerWinding;
-    for (size_t windingIndex = 0; windingIndex < coil.get_functional_description().size(); ++windingIndex) {
-        harmonicsPerWinding.push_back(operatingPoint.get_excitations_per_winding()[windingIndex]
-                                          .get_current()->get_harmonics().value());
-    }
+    // currentAmplitudePerCommonHarmonic: each winding's MAS amplitude there, 0 where it carries none (a harmonic zero both
+    // in the list and in the waveform, ABT #1880), so such a harmonic contributes nothing and needs no phase.
+    std::vector<std::vector<double>> currentAmplitudePerCommonHarmonic;
+    auto currentPhasePerCommonHarmonic = CoilMesher::calculate_current_phase_per_winding(coil, operatingPoint, commonHarmonicIndexes, nullptr, &currentAmplitudePerCommonHarmonic);
 
     // ---- Resistivity and skin depth bounds. ----
     auto resistivityModel = ResistivityModel::factory(ResistivityModels::WIRE_MATERIAL);
@@ -663,13 +659,14 @@ WindingLossesOutput WindingLossesPeec2D::calculate_losses(Magnetic magnetic, Ope
     for (size_t commonPosition = 0; commonPosition < commonHarmonicIndexes.size(); ++commonPosition) {
         size_t harmonicIndex = commonHarmonicIndexes[commonPosition];
         const auto& currentPhasePerWinding = currentPhasePerCommonHarmonic[commonPosition];
+        const auto& currentAmplitudePerWinding = currentAmplitudePerCommonHarmonic[commonPosition];
         double frequency = primaryHarmonics.get_frequencies()[harmonicIndex];
         if (frequency <= 0) {
             continue;  // DC is the ohmic stage's job
         }
         double omega = 2 * std::numbers::pi * frequency;
 
-        double primaryAmplitude = harmonicsPerWinding[0].get_amplitudes()[harmonicIndex];
+        double primaryAmplitude = currentAmplitudePerWinding[0];
 
         // One bordered solve for a given coupling model; returns the per-conductor
         // per-metre losses.
@@ -699,7 +696,7 @@ WindingLossesOutput WindingLossesPeec2D::calculate_losses(Magnetic magnetic, Ope
             }
             for (size_t c = 0; c < numberConductors; ++c) {
                 size_t windingIndex = conductorWinding[c];
-                double amplitude = harmonicsPerWinding[windingIndex].get_amplitudes()[harmonicIndex];
+                double amplitude = currentAmplitudePerWinding[windingIndex];
                 // The gauge winding has phase exactly 0, so single-winding and exact-antiphase
                 // excitations keep the real right-hand side they always had.
                 rhs(numberCells + c) = currentDirectionPerWinding[windingIndex] * amplitude * std::polar(1.0, currentPhasePerWinding[windingIndex]);
@@ -724,7 +721,7 @@ WindingLossesOutput WindingLossesPeec2D::calculate_losses(Magnetic magnetic, Ope
             // problem — backed by core over the covered fraction, open air elsewhere.
             double fullLossPerMetre = coverage * coveredLoss[c] + (1 - coverage) * openLoss[c];
             size_t windingIndex = conductorWinding[c];
-            double amplitude = harmonicsPerWinding[windingIndex].get_amplitudes()[harmonicIndex];
+            double amplitude = currentAmplitudePerWinding[windingIndex];
             double dcEquivalentPerMetre = 0.5 * conductorDcResistancePerMetre[c] * amplitude * amplitude;
             double isolatedPerMetre = solveIsolated(c, omega) * amplitude * amplitude;
 

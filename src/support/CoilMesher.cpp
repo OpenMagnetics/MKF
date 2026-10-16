@@ -12,7 +12,9 @@
 #include <complex>
 #include <filesystem>
 #include <fstream>
+#include <iomanip>
 #include <iostream>
+#include <sstream>
 #include <numbers>
 #include <streambuf>
 #include <vector>
@@ -373,7 +375,7 @@ std::complex<double> CoilMesher::calculate_harmonic_phasor(const Waveform& wavef
     return WaveformProcessor::calculate_harmonic_phasor(waveform, excitationFrequency, harmonicFrequency, settings.get_inputs_number_points_sampled_waveforms());
 }
 
-std::vector<std::vector<double>> CoilMesher::calculate_current_phase_per_winding(Coil coil, OperatingPoint operatingPoint, const std::vector<size_t>& harmonicIndexes, std::vector<std::optional<double>>* gaugePhasePerHarmonic) {
+std::vector<std::vector<double>> CoilMesher::calculate_current_phase_per_winding(Coil coil, OperatingPoint operatingPoint, const std::vector<size_t>& harmonicIndexes, std::vector<std::optional<double>>* gaugePhasePerHarmonic, std::vector<std::vector<double>>* currentAmplitudePerHarmonic) {
     size_t numberWindings = coil.get_functional_description().size();
     auto excitations = operatingPoint.get_excitations_per_winding();
     if (excitations.size() < numberWindings) {
@@ -387,6 +389,7 @@ std::vector<std::vector<double>> CoilMesher::calculate_current_phase_per_winding
     std::vector<std::vector<double>> phasePerHarmonicPerWinding;
     for (auto harmonicIndex : harmonicIndexes) {
         std::vector<double> phasePerWinding(numberWindings, 0.0);
+        std::vector<double> amplitudePerWinding(numberWindings, 0.0);
         std::vector<bool> excitedPerWinding(numberWindings, false);
         for (size_t windingIndex = 0; windingIndex < numberWindings; ++windingIndex) {
             auto current = excitations[windingIndex].get_current();
@@ -415,13 +418,19 @@ std::vector<std::vector<double>> CoilMesher::calculate_current_phase_per_winding
             }
             auto phasor = WaveformProcessor::calculate_harmonic_phasor(seriesPerWinding[windingIndex].value(), excitations[windingIndex].get_frequency(), harmonicFrequency);
             double phasorAmplitude = std::abs(phasor);
-            if (!(phasorAmplitude >= 1e-6 * amplitude)) {
-                throw InvalidInputException(ErrorCode::INVALID_INPUT, "Current waveform of winding " + std::to_string(windingIndex) +
-                                            " does not contain the harmonic its MAS harmonics list at " + std::to_string(harmonicFrequency) +
-                                            " Hz (Fourier amplitude " + std::to_string(phasorAmplitude) + " A vs " + std::to_string(amplitude) +
-                                            " A): its phase is undefined");
+            if (WaveformProcessor::is_zero_harmonic(seriesPerWinding[windingIndex].value(), amplitude, phasor)) {
+                continue;  // zero in the list and in the waveform (a symmetric wave's even harmonics): no current, no phase (ABT #1880)
+            }
+            if (!(phasorAmplitude >= WaveformProcessor::harmonicConsistencyTolerance * amplitude)) {
+                std::ostringstream message;
+                message << std::setprecision(6) << "MAS harmonics list a component of " << amplitude << " A at " << harmonicFrequency
+                        << " Hz that the current waveform of winding " << windingIndex << " does not contain (its Fourier amplitude there is "
+                        << phasorAmplitude << " A, its largest harmonic "
+                        << WaveformProcessor::calculate_largest_harmonic_amplitude(seriesPerWinding[windingIndex].value()) << " A): its phase is undefined";
+                throw InvalidInputException(ErrorCode::INVALID_INPUT, message.str());
             }
             phasePerWinding[windingIndex] = std::arg(phasor);
+            amplitudePerWinding[windingIndex] = amplitude;
             excitedPerWinding[windingIndex] = true;
         }
 
@@ -450,6 +459,9 @@ std::vector<std::vector<double>> CoilMesher::calculate_current_phase_per_winding
         phasePerHarmonicPerWinding.push_back(phasePerWinding);
         if (gaugePhasePerHarmonic) {
             gaugePhasePerHarmonic->push_back(gaugePhaseThisHarmonic);
+        }
+        if (currentAmplitudePerHarmonic) {
+            currentAmplitudePerHarmonic->push_back(amplitudePerWinding);
         }
     }
     return phasePerHarmonicPerWinding;
@@ -544,6 +556,12 @@ InducingCoilMesh CoilMesher::generate_mesh_inducing_coil_phasors(Magnetic magnet
 
 
 
+    // Each winding's phase and the current it carries per common harmonic: its MAS amplitude, 0 where it carries none
+    // (ABT #1880: a harmonic zero both in the list and in the waveform contributes nothing, whatever its phase).
+    std::vector<std::optional<double>> gaugePhasePerCommonHarmonic;
+    std::vector<std::vector<double>> currentAmplitudePerCommonHarmonic;
+    auto phasePerCommonHarmonic = calculate_current_phase_per_winding(coil, operatingPoint, commonHarmonicIndexes, &gaugePhasePerCommonHarmonic, &currentAmplitudePerCommonHarmonic);
+
     // Hoisted: the MAS getter copies the whole Core (cached material datasets included);
     // fetching it per turn dominated this loop's cost.
     auto meshCore = magnetic.get_core();
@@ -555,15 +573,12 @@ InducingCoilMesh CoilMesher::generate_mesh_inducing_coil_phasors(Magnetic magnet
         if (!excitationCurrent || !excitationCurrent->get_harmonics()) {
             throw InvalidInputException(ErrorCode::MISSING_DATA, "Current for winding " + std::to_string(windingIndex) + " is missing harmonics in Coil Mesher");
         }
-        auto harmonics = excitationCurrent->get_harmonics().value();
 
         auto fieldPoints = breakdownModelPerWinding[windingIndex]->generate_mesh_inducing_turn(turn, wire, turnIndex, turn.get_length(), meshCore);
 
-        for (auto harmonicIndex : commonHarmonicIndexes) {
-            double harmonicCurrentPeak = 0;
-            if (harmonicIndex < harmonics.get_amplitudes().size()) {
-                harmonicCurrentPeak = harmonics.get_amplitudes()[harmonicIndex];  // Because a harmonic is always sinusoidal
-            }
+        for (size_t commonPosition = 0; commonPosition < commonHarmonicIndexes.size(); ++commonPosition) {
+            auto harmonicIndex = commonHarmonicIndexes[commonPosition];
+            double harmonicCurrentPeak = currentAmplitudePerCommonHarmonic[commonPosition][windingIndex];  // Because a harmonic is always sinusoidal
             if (unitCurrentForSilentParallels && harmonicCurrentPeak == 0 && coil.get_number_parallels(windingIndex) > 1) {
                 harmonicCurrentPeak = 1;
             }
@@ -580,12 +595,11 @@ InducingCoilMesh CoilMesher::generate_mesh_inducing_coil_phasors(Magnetic magnet
             }
         }
     }
-    std::vector<std::optional<double>> gaugePhasePerCommonHarmonic;
-    auto phasePerCommonHarmonic = calculate_current_phase_per_winding(coil, operatingPoint, commonHarmonicIndexes, &gaugePhasePerCommonHarmonic);
     std::vector<Field> fieldPerHarmonic;
     std::vector<std::vector<double>> phasePerHarmonicPerWinding;
     std::vector<std::optional<double>> gaugePhasePerHarmonic;
     std::vector<std::vector<double>> amplitudePerHarmonicPerWinding;
+    std::vector<std::vector<double>> currentAmplitudePerHarmonicPerWinding;
     for (size_t harmonicIndex = 0; harmonicIndex < tempFieldPerHarmonic.size(); ++harmonicIndex){
         if (tempFieldPerHarmonic[harmonicIndex].get_data().size() > 0) {
             fieldPerHarmonic.push_back(tempFieldPerHarmonic[harmonicIndex]);
@@ -597,6 +611,7 @@ InducingCoilMesh CoilMesher::generate_mesh_inducing_coil_phasors(Magnetic magnet
             phasePerHarmonicPerWinding.push_back(phasePerCommonHarmonic[static_cast<size_t>(commonPosition - commonHarmonicIndexes.begin())]);
             gaugePhasePerHarmonic.push_back(gaugePhasePerCommonHarmonic[static_cast<size_t>(commonPosition - commonHarmonicIndexes.begin())]);
             amplitudePerHarmonicPerWinding.push_back(amplitudePerWindingPerHarmonic.at(harmonicIndex));
+            currentAmplitudePerHarmonicPerWinding.push_back(currentAmplitudePerCommonHarmonic[static_cast<size_t>(commonPosition - commonHarmonicIndexes.begin())]);
         }
     }
 
@@ -618,7 +633,7 @@ InducingCoilMesh CoilMesher::generate_mesh_inducing_coil_phasors(Magnetic magnet
         }
     }
 
-    return {fieldPerHarmonic, phasePerHarmonicPerWinding, gaugePhasePerHarmonic, amplitudePerHarmonicPerWinding};
+    return {fieldPerHarmonic, phasePerHarmonicPerWinding, gaugePhasePerHarmonic, amplitudePerHarmonicPerWinding, currentAmplitudePerHarmonicPerWinding};
 }
 
 std::vector<Field> CoilMesher::generate_mesh_induced_coil(Magnetic magnetic, OperatingPoint operatingPoint, double windingLossesHarmonicAmplitudeThreshold) {

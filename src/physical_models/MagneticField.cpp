@@ -3,6 +3,7 @@
 #include "constructive_models/Wire.h"
 #include "constructive_models/Magnetic.h"
 #include "support/CoilMesher.h"
+#include "processors/WaveformProcessor.h"
 #include "Models.h"
 #include "physical_models/Reluctance.h"
 #include "processors/MagneticSimulator.h"
@@ -26,7 +27,9 @@ namespace std {
 #endif
 #include <filesystem>
 #include <fstream>
+#include <iomanip>
 #include <iostream>
+#include <sstream>
 #include <numbers>
 #include <complex>
 #include <streambuf>
@@ -883,6 +886,7 @@ WindingWindowMagneticStrengthFieldPhasorOutput MagneticField::calculate_magnetic
     std::vector<std::vector<double>> currentPhasePerHarmonicPerWinding;
     std::vector<std::optional<double>> gaugePhasePerHarmonic;
     std::vector<std::vector<double>> meshAmplitudePerHarmonicPerWinding;
+    std::vector<std::vector<double>> currentAmplitudePerHarmonicPerWinding;
     if (externalInducedField){
         auto aux = coilMesher.generate_mesh_inducing_coil_phasors(magnetic, operatingPoint, settings.get_harmonic_amplitude_threshold(), currentDirectionPerWinding, mesherToUse,
                                                                        parallelCurrentSplit.has_value());
@@ -893,6 +897,7 @@ WindingWindowMagneticStrengthFieldPhasorOutput MagneticField::calculate_magnetic
                 currentPhasePerHarmonicPerWinding.push_back(aux.currentPhasePerHarmonicPerWinding[auxIndex]);
                 gaugePhasePerHarmonic.push_back(aux.gaugePhasePerHarmonic[auxIndex]);
                 meshAmplitudePerHarmonicPerWinding.push_back(aux.amplitudePerHarmonicPerWinding[auxIndex]);
+                currentAmplitudePerHarmonicPerWinding.push_back(aux.currentAmplitudePerHarmonicPerWinding[auxIndex]);
                 break;
             }
         }
@@ -904,6 +909,7 @@ WindingWindowMagneticStrengthFieldPhasorOutput MagneticField::calculate_magnetic
         currentPhasePerHarmonicPerWinding = aux.currentPhasePerHarmonicPerWinding;
         gaugePhasePerHarmonic = aux.gaugePhasePerHarmonic;
         meshAmplitudePerHarmonicPerWinding = aux.amplitudePerHarmonicPerWinding;
+        currentAmplitudePerHarmonicPerWinding = aux.currentAmplitudePerHarmonicPerWinding;
     }
     if (currentPhasePerHarmonicPerWinding.size() != inducingFields.size() || gaugePhasePerHarmonic.size() != inducingFields.size()) {
         throw CalculationException(ErrorCode::CALCULATION_ERROR, "Magnetic field: " + std::to_string(inducingFields.size()) + " inducing harmonics but " +
@@ -1665,7 +1671,7 @@ WindingWindowMagneticStrengthFieldPhasorOutput MagneticField::calculate_magnetic
             double harmonicFrequency = inducingFields[harmonicIndex].get_frequency();
             size_t numberWindings = magnetic.get_coil().get_functional_description().size();
             // Each winding's current at this harmonic, as the CoilMesher reads it (a winding
-            // without this harmonic carries none of it).
+            // without this harmonic, or with it zero in its list and its waveform, carries none of it, ABT #1880).
             std::vector<double> inPhaseCurrentPerWinding(numberWindings, 0.0);
             std::vector<double> quadratureCurrentPerWinding(numberWindings, 0.0);
             // ABT #1314: with a parallel split, the amplitudes, and each turn's complex share in phase and in quadrature.
@@ -1677,6 +1683,9 @@ WindingWindowMagneticStrengthFieldPhasorOutput MagneticField::calculate_magnetic
                 quadratureMultiplierPerTurn.push_back(factor.imag());
             }
             for (size_t windingIndex = 0; windingIndex < numberWindings; ++windingIndex) {
+                if (currentAmplitudePerHarmonicPerWinding.at(harmonicIndex).at(windingIndex) == 0) {
+                    continue;  // its phase entry is a placeholder: it carries nothing at this harmonic (ABT #1880)
+                }
                 auto current = operatingPoint.get_excitations_per_winding()[windingIndex].get_current();
                 if (!current || !current->get_harmonics()) {
                     throw InvalidInputException(ErrorCode::MISSING_DATA, "IMAGED_MMF_SHEETS: winding " + std::to_string(windingIndex) + " has no current harmonics");
@@ -4001,8 +4010,19 @@ std::optional<ParallelCurrentSplit> MagneticField::calculate_parallel_current_sp
     // elsewhere can disagree with the waveform (before #1880 the phasor was a second, resampled DFT: on
     // Test_Resistance_Matrix's pure sinusoid the two differed by 4e-3 A on the 1 A fundamental). An entry whose amplitude
     // does not exceed that winding's disagreement (|a - |P|| on its largest harmonic) is not resolved by its waveform:
-    // its current is the waveform's own phasor P, which needs no phase. A resolved entry the waveform does not contain throws.
+    // its current is the waveform's own phasor P, which needs no phase. An entry zero both in the list and in the waveform
+    // (WaveformProcessor::is_zero_harmonic, ABT #1880) carries no current. A resolved entry the waveform does not contain throws.
     std::vector<double> transformDisagreementPerWinding(numberWindings, 0.0);
+    // Each winding's current Fourier series, computed once, on first use (as CoilMesher::calculate_harmonic_phasor takes it).
+    std::vector<std::optional<WaveformProcessor::FourierSeries>> seriesPerWinding(numberWindings);
+    auto series_of = [&](size_t windingIndex) -> const WaveformProcessor::FourierSeries& {
+        if (!seriesPerWinding[windingIndex]) {
+            seriesPerWinding[windingIndex] = WaveformProcessor::calculate_waveform_fourier_series(excitations[windingIndex].get_current()->get_waveform().value(),
+                                                                                                  excitations[windingIndex].get_frequency(),
+                                                                                                  settings.get_inputs_number_points_sampled_waveforms());
+        }
+        return seriesPerWinding[windingIndex].value();
+    };
     for (size_t windingIndex = 0; windingIndex < numberWindings; ++windingIndex) {
         auto current = excitations[windingIndex].get_current();
         const OrderEntry* largest = nullptr;
@@ -4018,7 +4038,7 @@ std::optional<ParallelCurrentSplit> MagneticField::calculate_parallel_current_sp
             throw InvalidInputException(ErrorCode::MISSING_DATA, "Parallel current split (ABT #1314): the current of winding " + std::to_string(windingIndex) +
                                         " has harmonics but no waveform to take their phases from");
         }
-        auto phasor = CoilMesher::calculate_harmonic_phasor(current->get_waveform().value(), excitations[windingIndex].get_frequency(), largest->frequency);
+        auto phasor = WaveformProcessor::calculate_harmonic_phasor(series_of(windingIndex), excitations[windingIndex].get_frequency(), largest->frequency);
         transformDisagreementPerWinding[windingIndex] = std::abs(std::abs(phasor) - largest->amplitude);
     }
     const size_t referenceWindingIndex = CoilMesher::get_reference_winding_index(coil);
@@ -4027,6 +4047,8 @@ std::optional<ParallelCurrentSplit> MagneticField::calculate_parallel_current_sp
     for (auto order : resolvedOrders) {
         std::vector<std::complex<double>> windingCurrent(numberWindings, 0.0);
         std::vector<bool> excitedPerWinding(numberWindings, false);
+        bool anyZeroHarmonic = false;
+        std::vector<bool> zeroHarmonicPerWinding(numberWindings, false);
         std::vector<double> listedFrequencies;
         for (size_t windingIndex = 0; windingIndex < numberWindings; ++windingIndex) {
             auto found = entryPerOrderPerWinding[windingIndex].find(order);
@@ -4038,13 +4060,19 @@ std::optional<ParallelCurrentSplit> MagneticField::calculate_parallel_current_sp
             if (entry.amplitude == 0) {
                 continue;
             }
-            auto current = excitations[windingIndex].get_current();
-            auto phasor = CoilMesher::calculate_harmonic_phasor(current->get_waveform().value(), excitations[windingIndex].get_frequency(), entry.frequency);
+            auto phasor = WaveformProcessor::calculate_harmonic_phasor(series_of(windingIndex), excitations[windingIndex].get_frequency(), entry.frequency);
+            if (WaveformProcessor::is_zero_harmonic(series_of(windingIndex), entry.amplitude, phasor)) {
+                anyZeroHarmonic = true;
+                zeroHarmonicPerWinding[windingIndex] = true;
+                continue;  // zero in the list and in the waveform: its current is the zero phasor, it has no phase (ABT #1880)
+            }
             const bool resolved = entry.amplitude > transformDisagreementPerWinding[windingIndex];
-            if (resolved && !(std::abs(phasor) >= 1e-6 * entry.amplitude)) {
-                throw InvalidInputException(ErrorCode::INVALID_INPUT, "Parallel current split (ABT #1314): the current waveform of winding " + std::to_string(windingIndex) +
-                                            " does not contain the harmonic its MAS harmonics list has at " + std::to_string(entry.frequency) + " Hz (Fourier amplitude " +
-                                            std::to_string(std::abs(phasor)) + " A vs " + std::to_string(entry.amplitude) + " A)");
+            if (resolved && !(std::abs(phasor) >= WaveformProcessor::harmonicConsistencyTolerance * entry.amplitude)) {
+                std::ostringstream message;
+                message << std::setprecision(6) << "Parallel current split (ABT #1314): MAS harmonics list a component of " << entry.amplitude << " A at "
+                        << entry.frequency << " Hz that the current waveform of winding " << windingIndex << " does not contain (its Fourier amplitude there is "
+                        << std::abs(phasor) << " A)";
+                throw InvalidInputException(ErrorCode::INVALID_INPUT, message.str());
             }
             windingCurrent[windingIndex] = resolved ? entry.amplitude * phasor / std::abs(phasor) : phasor;
             excitedPerWinding[windingIndex] = true;
@@ -4061,12 +4089,16 @@ std::optional<ParallelCurrentSplit> MagneticField::calculate_parallel_current_sp
                 }
             }
         }
-        if (!gaugeWindingIndex) {
+        if (!gaugeWindingIndex && !anyZeroHarmonic) {
             continue;  // no winding carries this harmonic
         }
-        const std::complex<double> gauge = std::polar(1.0, -std::arg(windingCurrent[gaugeWindingIndex.value()]));
-        for (size_t windingIndex = 0; windingIndex < numberWindings; ++windingIndex) {
-            windingCurrent[windingIndex] *= gauge;
+        // Only zero harmonics (ABT #1880): every winding current is the zero phasor, and the split solved from it is the
+        // zero split (the strands carry nothing), which the loss and field models read like any other.
+        if (gaugeWindingIndex) {
+            const std::complex<double> gauge = std::polar(1.0, -std::arg(windingCurrent[gaugeWindingIndex.value()]));
+            for (size_t windingIndex = 0; windingIndex < numberWindings; ++windingIndex) {
+                windingCurrent[windingIndex] *= gauge;
+            }
         }
         const double frequency = static_cast<double>(order) * fundamentalFrequency;
         const double angularFrequency = 2 * std::numbers::pi * frequency;
@@ -4099,6 +4131,7 @@ std::optional<ParallelCurrentSplit> MagneticField::calculate_parallel_current_sp
         split.listedFrequenciesPerFrequency.push_back(std::move(listedFrequencies));
         split.currentPerTurnPerFrequency.push_back(std::move(currentPerTurn));
         split.currentPerWindingPerFrequency.push_back(std::move(windingCurrent));
+        split.zeroHarmonicPerWindingPerFrequency.push_back(std::move(zeroHarmonicPerWinding));
     }
     return split;
 }

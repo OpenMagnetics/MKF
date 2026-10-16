@@ -192,12 +192,12 @@ ComplexField PainterInterface::calculate_toroidal_magnetic_field(OperatingPoint 
 
     // In-phase current of winding w: A_w cos(phi_w - phi_gauge), signed by its MAS direction.
     auto directions = CoilMesher::calculate_current_direction_per_winding(coil);
-    auto phases = CoilMesher::calculate_current_phase_per_winding(coil, operatingPoint, {harmonicIndex})[0];
+    // A winding without this harmonic, or with it zero both in its list and its waveform, carries none of it (ABT #1880).
+    std::vector<std::vector<double>> currentAmplitudes;
+    auto phases = CoilMesher::calculate_current_phase_per_winding(coil, operatingPoint, {harmonicIndex}, nullptr, &currentAmplitudes)[0];
     std::vector<double> realCurrents(numberWindings);
     for (size_t windingIndex = 0; windingIndex < numberWindings; ++windingIndex) {
-        const auto amplitudes = excitations[windingIndex].get_current()->get_harmonics()->get_amplitudes();
-        double amplitude = harmonicIndex < amplitudes.size() ? amplitudes[harmonicIndex] : 0.0;  // a winding without this harmonic carries none of it
-        realCurrents[windingIndex] = amplitude * std::cos(phases[windingIndex]) * static_cast<double>(directions[windingIndex]);
+        realCurrents[windingIndex] = currentAmplitudes[0][windingIndex] * std::cos(phases[windingIndex]) * static_cast<double>(directions[windingIndex]);
     }
     auto conductors = LeakageInductance::calculate_toroidal_ring_plane_conductors(magnetic, realCurrents);
 

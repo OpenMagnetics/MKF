@@ -230,6 +230,11 @@ static std::vector<double> split_current_divider_per_harmonic(const ParallelCurr
             continue;
         }
         const size_t splitIndex = split.frequency_index(harmonics.get_frequencies()[harmonicIndex]);
+        if (split.zeroHarmonicPerWindingPerFrequency.at(splitIndex).at(windingIndex)) {
+            // ABT #1880: zero both in the list and in the waveform. The split carries the zero phasor: so does the strand.
+            divider[harmonicIndex] = 0;
+            continue;
+        }
         const double windingAmplitude = std::abs(split.currentPerWindingPerFrequency[splitIndex].at(windingIndex));
         const double strandAmplitude = std::abs(split.currentPerTurnPerFrequency[splitIndex].at(turnIndex));
         if (windingAmplitude == 0) {

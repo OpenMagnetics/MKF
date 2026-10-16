@@ -93,6 +93,21 @@ class WaveformProcessor {
                                                           double frequency,
                                                           double harmonicFrequency,
                                                           size_t numberPointsSampledWaveforms = 128);
+    // The series calculate_harmonic_phasor(waveform, ...) takes its phasors from: a waveform
+    // without a time axis is sampled over one period first.
+    static FourierSeries calculate_waveform_fourier_series(const MAS::Waveform& waveform,
+                                                           double frequency,
+                                                           size_t numberPointsSampledWaveforms = 128);
+
+    // Relative tolerance a MAS harmonics list and its waveform are held to (ABT #1880): a listed
+    // amplitude a needs a waveform phasor |X| >= harmonicConsistencyTolerance * a to have a phase.
+    static constexpr double harmonicConsistencyTolerance = 1e-6;
+    // Largest MAS amplitude of the series, max(|c_0|, 2 |c_k|): the scale a harmonic is zero on.
+    static double calculate_largest_harmonic_amplitude(const FourierSeries& series);
+    // A harmonic that is zero both in the list (listedAmplitude) and in the waveform (phasor):
+    // both below harmonicConsistencyTolerance times the waveform's largest harmonic. It carries
+    // no current, so it contributes nothing whatever its phase, and it has no phase to take.
+    static bool is_zero_harmonic(const FourierSeries& series, double listedAmplitude, std::complex<double> phasor);
 
     // Harmonics 0..K of a waveform (ABT #1460):
     //  - with a time axis and fewer knots than numberPointsSampledWaveforms: the exact series of

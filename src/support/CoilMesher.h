@@ -62,6 +62,9 @@ struct InducingCoilMesh {
     // unitCurrentForSilentParallels, a winding of several parallels that carries nothing at a harmonic is meshed at 1 A so
     // a parallel current split can place its circulating current there; every consumer then rescales by this amplitude.
     std::vector<std::vector<double>> amplitudePerHarmonicPerWinding;
+    // The peak current each winding carries at each harmonic (calculate_current_phase_per_winding): its MAS amplitude, 0
+    // where it carries none (ABT #1880: a harmonic zero both in the list and in the waveform). No silent-parallel 1 A.
+    std::vector<std::vector<double>> currentAmplitudePerHarmonicPerWinding;
 };
 
 class CoilMesher {
@@ -83,12 +86,17 @@ class CoilMesher {
     // winding (by index) that does. A global rotation leaves every |H|^2 unchanged; the gauge
     // only fixes WHICH component is reported as in-phase, and makes a single winding and
     // windings in exact antiphase (all phases 0) reproduce the amplitude-only field exactly.
-    // A winding whose MAS amplitude at a harmonic is zero gets phase 0 (it contributes nothing).
+    // A winding that carries no current at a harmonic has no phase there: its MAS amplitude is
+    // zero, or the harmonic is zero both in the list and in its waveform
+    // (WaveformProcessor::is_zero_harmonic). Its entry is a placeholder 0 that must not be used:
+    // its current is 0 (currentAmplitudePerHarmonic), so it contributes nothing.
     // Throws when an excited winding has no waveform or its waveform does not contain the
     // harmonic MAS lists.
     // Result: [position in harmonicIndexes][winding index].
     // gaugePhasePerHarmonic, when given, receives the gauge's absolute phase per harmonic.
-    static std::vector<std::vector<double>> calculate_current_phase_per_winding(Coil coil, OperatingPoint operatingPoint, const std::vector<size_t>& harmonicIndexes, std::vector<std::optional<double>>* gaugePhasePerHarmonic = nullptr);
+    // currentAmplitudePerHarmonic, when given, receives [position][winding] the peak current each
+    // winding carries there: its MAS amplitude, 0 where it carries none.
+    static std::vector<std::vector<double>> calculate_current_phase_per_winding(Coil coil, OperatingPoint operatingPoint, const std::vector<size_t>& harmonicIndexes, std::vector<std::optional<double>>* gaugePhasePerHarmonic = nullptr, std::vector<std::vector<double>>* currentAmplitudePerHarmonic = nullptr);
     // Peak phasor X of a waveform at harmonicFrequency, x(t) = Re(X exp(+j w t)): 2 c_k from the
     // same Fourier coefficients its MAS amplitude comes from (WaveformProcessor::calculate_harmonic_phasor,
     // ABT #1880), so |X| is that amplitude and the phase is consistent with it by construction.

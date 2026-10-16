@@ -1505,14 +1505,31 @@ std::complex<double> WaveformProcessor::calculate_harmonic_phasor(const FourierS
     return phasor;
 }
 
-std::complex<double> WaveformProcessor::calculate_harmonic_phasor(const Waveform& waveform, double frequency, double harmonicFrequency, size_t numberPointsSampledWaveforms) {
+WaveformProcessor::FourierSeries WaveformProcessor::calculate_waveform_fourier_series(const Waveform& waveform, double frequency, size_t numberPointsSampledWaveforms) {
     if (!waveform.get_time()) {
         // MKF lists the harmonics of a waveform without a time axis from its sampled version
         // (Inputs::calculate_harmonics_data(waveform, sampledWaveform, f)): the same here.
         auto sampledWaveform = calculate_sampled_waveform(waveform, frequency, std::nullopt, numberPointsSampledWaveforms);
-        return calculate_harmonic_phasor(calculate_fourier_series(sampledWaveform, frequency, numberPointsSampledWaveforms), frequency, harmonicFrequency);
+        return calculate_fourier_series(sampledWaveform, frequency, numberPointsSampledWaveforms);
     }
-    return calculate_harmonic_phasor(calculate_fourier_series(waveform, frequency, numberPointsSampledWaveforms), frequency, harmonicFrequency);
+    return calculate_fourier_series(waveform, frequency, numberPointsSampledWaveforms);
+}
+
+std::complex<double> WaveformProcessor::calculate_harmonic_phasor(const Waveform& waveform, double frequency, double harmonicFrequency, size_t numberPointsSampledWaveforms) {
+    return calculate_harmonic_phasor(calculate_waveform_fourier_series(waveform, frequency, numberPointsSampledWaveforms), frequency, harmonicFrequency);
+}
+
+double WaveformProcessor::calculate_largest_harmonic_amplitude(const FourierSeries& series) {
+    double largest = 0;
+    for (size_t index = 0; index < series.coefficients.size(); ++index) {
+        largest = std::max(largest, (index == 0 ? 1.0 : 2.0) * std::abs(series.coefficients[index]));
+    }
+    return largest;
+}
+
+bool WaveformProcessor::is_zero_harmonic(const FourierSeries& series, double listedAmplitude, std::complex<double> phasor) {
+    const double zeroScale = harmonicConsistencyTolerance * calculate_largest_harmonic_amplitude(series);
+    return std::fabs(listedAmplitude) < zeroScale && std::abs(phasor) < zeroScale;
 }
 
 Harmonics WaveformProcessor::calculate_harmonics_data(Waveform waveform, double frequency, bool trimHarmonics, double harmonicAmplitudeThreshold, size_t numberPointsSampledWaveforms) {

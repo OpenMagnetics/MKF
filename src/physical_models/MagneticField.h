@@ -142,6 +142,9 @@ struct ParallelCurrentSplit {
     std::vector<std::vector<std::complex<double>>> currentPerTurnPerFrequency;
     // Per solved frequency, per winding: the winding's complex peak current (amplitude x exp(j phase)).
     std::vector<std::vector<std::complex<double>>> currentPerWindingPerFrequency;
+    // Per solved frequency, per winding: the winding lists this harmonic but it is zero both in its list and in its
+    // waveform (WaveformProcessor::is_zero_harmonic, ABT #1880). Its current is the zero phasor, and so is every strand's.
+    std::vector<std::vector<bool>> zeroHarmonicPerWindingPerFrequency;
     // The strand (winding, parallel) of every turn, numbered 0 .. numberStrands - 1, and the winding of every strand.
     std::vector<size_t> strandPerTurn;
     std::vector<size_t> windingPerStrand;
