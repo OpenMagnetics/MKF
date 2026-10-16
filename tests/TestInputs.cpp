@@ -2732,3 +2732,57 @@ TEST_CASE("Test_Compressed_Magnetizing_Current_Spans_Exactly_One_Period", "[proc
         CHECK_NOTHROW(OpenMagnetics::Inputs::calculate_sampled_waveform(magnetizingCurrent.get_waveform().value(), frequency));
     }
 }
+
+// ABT #1878. A labelled waveform must have its label's vertices. These are the MKF flows that
+// handed on a label their data did not have: the magnetizing current integrated from a
+// labelled voltage copied the voltage's label (a triangle called "rectangular" or
+// "bipolarRectangular"), and a current scaled to zero kept "rectangular" on 2 vertices.
+TEST_CASE("Test_Magnetizing_Current_Of_A_Labelled_Voltage_Is_Not_Labelled_As_The_Voltage", "[processor][inputs][abt-1878]") {
+    const double frequency = 100000;
+    const double magnetizingInductance = 100e-6;
+    for (auto [label, dutyCycle] : std::vector<std::pair<WaveformLabel, double>>{{WaveformLabel::RECTANGULAR, 0.3},
+                                                                                 {WaveformLabel::BIPOLAR_RECTANGULAR, 0.4}}) {
+        INFO(magic_enum::enum_name(label));
+        auto voltageWaveform = OpenMagnetics::Inputs::create_waveform(label, 20, frequency, dutyCycle);
+        REQUIRE(voltageWaveform.get_ancillary_label() == label);
+        auto sampledVoltage = OpenMagnetics::Inputs::calculate_sampled_waveform(voltageWaveform, frequency);
+        CHECK(!OpenMagnetics::Inputs::calculate_integral_waveform(sampledVoltage, true).get_ancillary_label());
+
+        SignalDescriptor voltage;
+        voltage.set_waveform(voltageWaveform);
+        OperatingPointExcitation excitation;
+        excitation.set_frequency(frequency);
+        excitation.set_voltage(voltage);
+        SignalDescriptor magnetizingCurrent;
+        REQUIRE_NOTHROW(magnetizingCurrent = OpenMagnetics::Inputs::integrate_magnetizing_current(excitation, magnetizingInductance, true, 0.0));
+        auto processed = magnetizingCurrent.get_processed().value();
+        CHECK(processed.get_label() != label);
+        REQUIRE(processed.get_duty_cycle());
+        CHECK(processed.get_duty_cycle().value() >= 0);
+        CHECK(processed.get_duty_cycle().value() <= 1);
+        if (label == WaveformLabel::RECTANGULAR) {
+            // A rectangle integrates to a triangle rising over the rectangle's high level.
+            CHECK(processed.get_label() == WaveformLabel::TRIANGULAR);
+            CHECK_THAT(processed.get_duty_cycle().value(), Catch::Matchers::WithinAbs(dutyCycle, 1.0 / 128));
+        }
+    }
+}
+
+TEST_CASE("Test_Waveform_Scaled_By_Zero_Or_A_Negative_Factor_Keeps_No_Label", "[processor][inputs][abt-1878]") {
+    const double frequency = 100000;
+    auto rectangle = OpenMagnetics::Inputs::create_waveform(WaveformLabel::RECTANGULAR, 10, frequency, 0.3);
+    CHECK(OpenMagnetics::Inputs::multiply_waveform(rectangle, 2).get_ancillary_label() == WaveformLabel::RECTANGULAR);
+    CHECK(!OpenMagnetics::Inputs::multiply_waveform(rectangle, 0).get_ancillary_label());
+    CHECK(!OpenMagnetics::Inputs::multiply_waveform(rectangle, -1).get_ancillary_label());
+
+    OpenMagnetics::Inputs inputs = OpenMagnetics::Inputs::create_quick_operating_point(
+        frequency, 100e-6, 25, WaveformLabel::RECTANGULAR, 10, 0.5, 0);
+    auto excitation = inputs.get_operating_points()[0].get_excitations_per_winding()[0];
+    OperatingPointExcitation unloaded;
+    REQUIRE_NOTHROW(unloaded = OpenMagnetics::Inputs::get_excitation_with_proportional_current(excitation, 0));
+    CHECK(unloaded.get_current()->get_processed()->get_label() != WaveformLabel::RECTANGULAR);
+    CHECK(!unloaded.get_current()->get_waveform()->get_ancillary_label());
+    OperatingPointExcitation silent;
+    REQUIRE_NOTHROW(silent = OpenMagnetics::Inputs::get_excitation_with_proportional_voltage(excitation, 0));
+    CHECK(!silent.get_voltage()->get_waveform()->get_ancillary_label());
+}

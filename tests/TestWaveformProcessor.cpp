@@ -1334,10 +1334,26 @@ TEST_CASE("Test_Triangle_Labelled_Bipolar_Rectangular_Throws_Instead_Of_A_Negati
         auto waveform = testCase.waveform;
         waveform.set_ancillary_label(WaveformLabel::BIPOLAR_RECTANGULAR);
         auto harmonics = OpenMagnetics::Inputs::calculate_harmonics_data(testCase.waveform, testCase.frequency);
+        auto compressed = WaveformProcessor::compress_waveform(WaveformProcessor::calculate_sampled_waveform(waveform, testCase.frequency));
+        if (WaveformProcessor::is_waveform_sampled(testCase.waveform)) {
+            // Alf approved 2026-10-16, ABT #1878; detection of a mislabelled sample is ABT #1893.
+            // A sample is not held to its label's layout, so this only asserts that the label's
+            // reads stay in bounds: no throw from an out-of-bounds read, and a finite duty.
+            ProcessedWaveform processed;
+            REQUIRE_NOTHROW(processed = OpenMagnetics::Inputs::calculate_processed_data(harmonics, waveform, true));
+            REQUIRE(processed.get_duty_cycle());
+            CHECK(std::isfinite(processed.get_duty_cycle().value()));
+            REQUIRE_NOTHROW(processed = OpenMagnetics::Inputs::calculate_processed_data(waveform, testCase.frequency));
+            REQUIRE(processed.get_duty_cycle());
+            CHECK(std::isfinite(processed.get_duty_cycle().value()));
+            double dutyCycle = 0;
+            REQUIRE_NOTHROW(dutyCycle = WaveformProcessor::try_guess_duty_cycle(compressed, WaveformLabel::BIPOLAR_RECTANGULAR, testCase.frequency));
+            CHECK(std::isfinite(dutyCycle));
+            continue;
+        }
         // What the WASM calculate_processed binding calls.
         CHECK_THROWS_AS(OpenMagnetics::Inputs::calculate_processed_data(harmonics, waveform, true), std::invalid_argument);
         CHECK_THROWS_AS(OpenMagnetics::Inputs::calculate_processed_data(waveform, testCase.frequency), std::invalid_argument);
-        auto compressed = WaveformProcessor::compress_waveform(WaveformProcessor::calculate_sampled_waveform(waveform, testCase.frequency));
         CHECK_THROWS_AS(WaveformProcessor::try_guess_duty_cycle(compressed, WaveformLabel::BIPOLAR_RECTANGULAR, testCase.frequency), std::invalid_argument);
     }
 }
@@ -1352,7 +1368,17 @@ TEST_CASE("Test_Pre_1_0_Triangular_Label_Throws_Unmigrated_And_Gives_The_Triangl
 
         Waveform unmigrated;
         from_json(waveformJson, unmigrated);
-        CHECK_THROWS_AS(OpenMagnetics::Inputs::calculate_processed_data(harmonics, unmigrated, true), std::invalid_argument);
+        if (WaveformProcessor::is_waveform_sampled(testCase.waveform)) {
+            // Alf approved 2026-10-16, ABT #1878; detection of a mislabelled sample is ABT #1893.
+            // Only in bounds: no throw from an out-of-bounds read, and a finite duty.
+            ProcessedWaveform processed;
+            REQUIRE_NOTHROW(processed = OpenMagnetics::Inputs::calculate_processed_data(harmonics, unmigrated, true));
+            REQUIRE(processed.get_duty_cycle());
+            CHECK(std::isfinite(processed.get_duty_cycle().value()));
+        }
+        else {
+            CHECK_THROWS_AS(OpenMagnetics::Inputs::calculate_processed_data(harmonics, unmigrated, true), std::invalid_argument);
+        }
 
         OpenMagnetics::compat::migrate_pre_1_0(waveformJson);
         Waveform migrated;
@@ -1364,6 +1390,48 @@ TEST_CASE("Test_Pre_1_0_Triangular_Label_Throws_Unmigrated_And_Gives_The_Triangl
             REQUIRE(processed.get_duty_cycle());
             CHECK_THAT(processed.get_duty_cycle().value(), Catch::Matchers::WithinAbs(testCase.dutyCycle, 1.0 / 128));
             CHECK_THAT(processed.get_offset(), Catch::Matchers::WithinRel(testCase.offset, 0.02));
+        }
+    }
+}
+
+// ABT #1878 (Alf, 2026-10-16: check before sampling). A label is checked on, and read off, the
+// waveform as given. A 0.5-duty bipolar rectangle with no dead time has the 10 vertices of its
+// label, and its 128-point sample compresses to fewer; the compressed copy is not held to the
+// layout. The second waveform is winding 1's voltage in the PQ 35/40 file (thermal_island_pq3540_*).
+TEST_CASE("Test_Bipolar_Rectangle_Without_Dead_Time_Is_Checked_As_Given_Not_As_Its_Compressed_Sample", "[processor][waveform-processor][abt-1878]") {
+    const double frequency = 200000;
+    const double period = 1 / frequency;
+    std::vector<std::pair<std::string, Waveform>> waveforms;
+    waveforms.push_back({"create_waveform bipolarRectangular D 0.5", WaveformProcessor::create_waveform(WaveformLabel::BIPOLAR_RECTANGULAR, 50, frequency, 0.5)});
+    waveforms.push_back({"PQ 35/40 winding 1 voltage", abt1878_waveform({0, 0, 25, 25, 0, 0, -25, -25, 0, 0},
+                                                                        {0, 0, 0, 0.5 * period, 0.5 * period, 0.5 * period, 0.5 * period, period, period, period},
+                                                                        WaveformLabel::BIPOLAR_RECTANGULAR)});
+    for (auto& [name, waveform] : waveforms) {
+        INFO(name);
+        REQUIRE(waveform.get_ancillary_label() == WaveformLabel::BIPOLAR_RECTANGULAR);
+        REQUIRE(waveform.get_data().size() == 10);
+        auto sampled = WaveformProcessor::calculate_sampled_waveform(waveform, frequency);
+        // The case this guards: the compressed sample has fewer vertices than the label's layout.
+        REQUIRE(WaveformProcessor::compress_waveform(sampled).get_data().size() < 10);
+        auto harmonics = OpenMagnetics::Inputs::calculate_harmonics_data(waveform, frequency);
+
+        std::vector<ProcessedWaveform> results;
+        ProcessedWaveform processed;
+        REQUIRE_NOTHROW(processed = OpenMagnetics::Inputs::calculate_processed_data(harmonics, waveform, true));
+        results.push_back(processed);
+        REQUIRE_NOTHROW(processed = OpenMagnetics::Inputs::calculate_processed_data(waveform, frequency));
+        results.push_back(processed);
+        // What process_operating_point calls: the signal and the sample of its waveform.
+        SignalDescriptor signal;
+        signal.set_waveform(waveform);
+        signal.set_harmonics(harmonics);
+        REQUIRE_NOTHROW(processed = OpenMagnetics::Inputs::calculate_processed_data(signal, sampled));
+        results.push_back(processed);
+        for (const auto& result : results) {
+            CHECK(result.get_label() == WaveformLabel::BIPOLAR_RECTANGULAR);
+            REQUIRE(result.get_duty_cycle());
+            CHECK_THAT(result.get_duty_cycle().value(), Catch::Matchers::WithinAbs(0.5, 1.0 / 128));
+            CHECK_THAT(result.get_offset(), Catch::Matchers::WithinAbs(0, 1e-9));
         }
     }
 }
