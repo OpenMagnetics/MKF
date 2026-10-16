@@ -633,7 +633,7 @@ std::pair<bool, double> MagneticFilterLosses::evaluate_magnetic(Magnetic* magnet
         // the winding losses computed twice).
         std::optional<WindingLossesOutput> solvedWindingLosses;
         auto coreLosses = _magneticSimulator.calculate_core_losses(operatingPoint, *magnetic, &solvedWindingLosses, nullptr,
-                                                                   WindingLossesScope::FULL);
+                                                                   WindingLossesScope::FULL, NoThermalOperatingPointPolicy::THROW);
         // A core that saturates at the temperature its losses heat it to is not a candidate: the loss solve
         // gives its numbers (ABT #1855) and the verdict is the saturation check analyze_results makes, on the
         // solved flux density at the solved core temperature. The outputs keep this operating point's losses so
@@ -689,7 +689,7 @@ std::pair<bool, double> MagneticFilterLossesNoProximity::evaluate_magnetic(Magne
         // loss <-> temperature solve, each at the temperature their combined heat produces.
         std::optional<WindingLossesOutput> solvedWindingLosses;
         auto coreLosses = _magneticSimulator.calculate_core_losses(operatingPoint, *magnetic, &solvedWindingLosses, nullptr,
-                                                                   WindingLossesScope::OHMIC_AND_SKIN_EFFECT);
+                                                                   WindingLossesScope::OHMIC_AND_SKIN_EFFECT, NoThermalOperatingPointPolicy::THROW);
         // A core that saturates at the temperature its losses heat it to is not a candidate: the loss solve
         // gives its numbers (ABT #1855) and the verdict is the saturation check analyze_results makes, on the
         // solved flux density at the solved core temperature. The outputs keep this operating point's losses so

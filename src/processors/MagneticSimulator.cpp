@@ -73,27 +73,17 @@ Mas MagneticSimulator::simulate(const Inputs& inputs, const Magnetic& magnetic, 
         if (!woundMagnetic.get_coil().get_turns_description()) {
             woundMagnetic.get_mutable_coil().wind();
         }
+        // ABT #1876 (Alf, 2026-10-14): a point with no thermal operating point (the network did not converge on
+        // its losses, or its winding runs away) affects only itself: calculate_core_losses returns its core and
+        // winding losses evaluated at ambient, as before ABT #838, and leaves temperatureOutput EMPTY, so it gets
+        // NO temperature output. ResultsAnalyzer::analyze_results names it (NO_THERMAL_OPERATING_POINT). Any
+        // other error refuses the whole design.
         std::optional<WindingLossesOutput> windingLossesOutput;
         std::optional<TemperatureOutput> temperatureOutput;
-        try {
-            output.set_core_losses(calculate_core_losses(operatingPoint, woundMagnetic, &windingLossesOutput, &temperatureOutput));
-        }
-        catch (const NoThermalOperatingPointException& noThermalOperatingPoint) {
-            // ABT #1876 (Alf, 2026-10-14): this point has no thermal operating point (the network did not
-            // converge on its losses, or its winding runs away). Only this point is affected: its core and
-            // winding losses are those evaluated at ambient, as before ABT #838, and it gets NO temperature
-            // output. ResultsAnalyzer::analyze_results names it (NO_THERMAL_OPERATING_POINT). Any other
-            // error is not caught here and refuses the whole design.
-            const auto& lossesAtAmbient = noThermalOperatingPoint.get_losses_at_ambient();
-            operatingPoint.get_mutable_excitations_per_winding()[0] = lossesAtAmbient.excitation;
-            output.set_core_losses(lossesAtAmbient.coreLosses);
-            output.set_winding_losses(lossesAtAmbient.windingLosses.value());
-            outputs.push_back(output);
-            simulatedOperatingPoints.push_back(operatingPoint);
-            continue;
-        }
+        output.set_core_losses(calculate_core_losses(operatingPoint, woundMagnetic, &windingLossesOutput, &temperatureOutput,
+                                                     WindingLossesScope::FULL, NoThermalOperatingPointPolicy::LOSSES_AT_AMBIENT));
         output.set_winding_losses(windingLossesOutput.value());
-        if (!fastMode) {
+        if (!fastMode && temperatureOutput) {
             // Full-network hot-spot from exactly the losses published above -- the same config
             // TemperatureConfig::fromSimulatedOutput builds, so the exported MAS carries the
             // temperature the UI's temperature map shows (ABT #906).
@@ -219,7 +209,8 @@ std::string MagneticSimulator::loss_solve_key(const OperatingPoint& operatingPoi
 CoreLossesOutput MagneticSimulator::calculate_core_losses(OperatingPoint& operatingPoint, Magnetic magnetic,
                                                           std::optional<WindingLossesOutput>* windingLossesOutput,
                                                           std::optional<TemperatureOutput>* temperatureOutput,
-                                                          WindingLossesScope windingLossesScope) {
+                                                          WindingLossesScope windingLossesScope,
+                                                          NoThermalOperatingPointPolicy noThermalOperatingPointPolicy) {
     if (!operatingPoint.get_excitations_per_winding()[0].get_current()) {
         throw InvalidInputException(ErrorCode::MISSING_DATA, "Missing current in operating point");
     }
@@ -230,21 +221,39 @@ CoreLossesOutput MagneticSimulator::calculate_core_losses(OperatingPoint& operat
 
     _lastDcBiasPoint.reset();
     SolvedLosses solved;
-    if (activeLossSolveMemo) {
-        std::string key = loss_solve_key(operatingPoint, magnetic, windingLossesScope);
-        auto found = activeLossSolveMemo->entries.find(key);
-        if (found != activeLossSolveMemo->entries.end()) {
-            ++activeLossSolveMemo->hits;
-            solved = found->second;
+    try {
+        if (activeLossSolveMemo) {
+            std::string key = loss_solve_key(operatingPoint, magnetic, windingLossesScope);
+            auto found = activeLossSolveMemo->entries.find(key);
+            if (found != activeLossSolveMemo->entries.end()) {
+                ++activeLossSolveMemo->hits;
+                solved = found->second;
+            }
+            else {
+                ++activeLossSolveMemo->misses;
+                solved = solve_losses_at_operating_temperature(operatingPoint, magnetic, windingLossesScope);
+                activeLossSolveMemo->entries.emplace(std::move(key), solved);
+            }
         }
         else {
-            ++activeLossSolveMemo->misses;
             solved = solve_losses_at_operating_temperature(operatingPoint, magnetic, windingLossesScope);
-            activeLossSolveMemo->entries.emplace(std::move(key), solved);
         }
     }
-    else {
-        solved = solve_losses_at_operating_temperature(operatingPoint, magnetic, windingLossesScope);
+    catch (const NoThermalOperatingPointException& noThermalOperatingPoint) {
+        if (noThermalOperatingPointPolicy == NoThermalOperatingPointPolicy::THROW) {
+            throw;
+        }
+        // ABT #1876 (Alf, 2026-10-14): this point has no thermal operating point. Its losses are those evaluated
+        // at ambient (the solve's first iterate) and it has NO temperature: temperatureOutput is left empty.
+        const auto& lossesAtAmbient = noThermalOperatingPoint.get_losses_at_ambient();
+        operatingPoint.get_mutable_excitations_per_winding()[0] = lossesAtAmbient.excitation;
+        if (windingLossesOutput != nullptr) {
+            *windingLossesOutput = lossesAtAmbient.windingLosses;
+        }
+        if (temperatureOutput != nullptr) {
+            *temperatureOutput = std::nullopt;
+        }
+        return lossesAtAmbient.coreLosses;
     }
 
     // Publish exactly the set that was solved.

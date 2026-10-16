@@ -68,6 +68,17 @@ class NoThermalOperatingPointException : public CalculationException {
     LossesAtAmbient _lossesAtAmbient;
 };
 
+// ABT #1876 (Alf, 2026-10-14): what MagneticSimulator::calculate_core_losses does for an operating point with no
+// thermal operating point (NoThermalOperatingPointException).
+enum class NoThermalOperatingPointPolicy {
+    // The public per-operating-point answer, as simulate gives it per point: the core (and, when asked, winding)
+    // losses evaluated at ambient (LossesAtAmbient) and NO temperature output (*temperatureOutput left empty).
+    // The returned CoreLossesOutput.temperature is that ambient, the temperature the losses were evaluated at.
+    LOSSES_AT_AMBIENT,
+    // The advisers and ResultsAnalyzer: the NoThermalOperatingPointException propagates, as it always did.
+    THROW
+};
+
 class LossSolveMemoScope {
     public:
         LossSolveMemoScope();
@@ -179,6 +190,10 @@ class MagneticSimulator {
         // the full-network temperature solved together with the returned core losses (asking for
         // winding losses of an unwound coil throws). `windingLossesScope` selects the winding-loss
         // model the solve evaluates (and returns) for a wound coil.
+        // `noThermalOperatingPointPolicy` (ABT #1876, Alf 2026-10-14): by default a point with no thermal
+        // operating point returns its losses at ambient and leaves `temperatureOutput` EMPTY (the public
+        // per-point entry point, as simulate does per point); THROW (the advisers, ResultsAnalyzer) lets the
+        // NoThermalOperatingPointException propagate.
         // K, both temperatures. 2 K (was 0.5 K; approved by Alf 2026-10-11): on the 522 solves of the
         // web9 magnetic adviser run it moves the hot spot by <= 0.57 K, the winding temperature by
         // <= 2 K and the total loss by <= 0.96%, and saves ~300 of 1775 iterations.
@@ -195,7 +210,9 @@ class MagneticSimulator {
         CoreLossesOutput calculate_core_losses(OperatingPoint& operatingPoint, Magnetic magnetic,
                                                std::optional<WindingLossesOutput>* windingLossesOutput = nullptr,
                                                std::optional<TemperatureOutput>* temperatureOutput = nullptr,
-                                               WindingLossesScope windingLossesScope = WindingLossesScope::FULL);
+                                               WindingLossesScope windingLossesScope = WindingLossesScope::FULL,
+                                               NoThermalOperatingPointPolicy noThermalOperatingPointPolicy =
+                                                   NoThermalOperatingPointPolicy::LOSSES_AT_AMBIENT);
         LeakageInductanceOutput calculate_leakage_inductance(OperatingPoint& operatingPoint, Magnetic magnetic);
         static LeakageInductanceOutput calculate_leakage_inductance(Magnetic magnetic, double frequency);
         MagnetizingInductanceOutput calculate_magnetizing_inductance(OperatingPoint& operatingPoint, Magnetic magnetic);

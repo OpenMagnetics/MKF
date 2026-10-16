@@ -353,7 +353,8 @@ std::vector<ResultFinding> ResultsAnalyzer::analyze_missing_temperature(const Ma
     std::optional<WindingLossesOutput> windingLossesOutput;
     std::optional<TemperatureOutput> temperatureOutput;
     try {
-        simulator.calculate_core_losses(solvedOperatingPoint, woundMagnetic, &windingLossesOutput, &temperatureOutput);
+        simulator.calculate_core_losses(solvedOperatingPoint, woundMagnetic, &windingLossesOutput, &temperatureOutput,
+                                        WindingLossesScope::FULL, NoThermalOperatingPointPolicy::THROW);
     }
     catch (const NoThermalOperatingPointException& noThermalOperatingPoint) {
         return {make_finding(operatingPoint, operatingPointIndex, ResultFindingCode::NO_THERMAL_OPERATING_POINT,

@@ -367,7 +367,7 @@ Mas CoreAdviser::post_process_core(Magnetic magnetic, Inputs inputs) {
         std::optional<WindingLossesOutput> solvedWindingLosses;
         std::optional<TemperatureOutput> solvedTemperature;
         CoreLossesOutput coreLossesOutput = _magneticSimulator.calculate_core_losses(operatingPoint, magnetic, &solvedWindingLosses, &solvedTemperature,
-                                                                                     WindingLossesScope::OHMIC);
+                                                                                     WindingLossesScope::OHMIC, NoThermalOperatingPointPolicy::THROW);
         WindingLossesOutput windingLossesOutput = solvedWindingLosses.value();
 
         InductanceOutput inductanceOutput;

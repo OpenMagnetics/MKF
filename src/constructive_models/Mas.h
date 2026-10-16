@@ -75,12 +75,6 @@ inline void from_json(const json & j, Mas& x) {
     x.set_outputs(migrated.at("outputs").get<std::vector<Outputs>>());
 }
 
-inline void to_json(json & j, const Mas & x) {
-    j = json::object();
-    j["inputs"] = x.get_inputs();
-    j["magnetic"] = x.get_magnetic();
-    j["outputs"] = x.get_outputs();
-}
 inline void to_file(std::filesystem::path filepath, const Mas & x) {
     json masJson;
     to_json(masJson, x);
@@ -107,11 +101,9 @@ inline void from_json(const json& j, std::vector<Mas>& v) {
 
 inline void to_json(json& j, const std::vector<Mas>& v) {
     j = json::array();
-    for (auto x : v) {
+    for (const auto& x : v) {
         json e;
-        e["inputs"] = x.get_inputs();
-        e["magnetic"] = x.get_magnetic();
-        e["outputs"] = x.get_outputs();
+        to_json(e, x);
         j.push_back(e);
     }
 }
