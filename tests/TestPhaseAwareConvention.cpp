@@ -572,7 +572,8 @@ TEST_CASE("Test_Harmonic_Phase_Is_Arg_Of_Harmonics_Coefficient", "[physical-mode
     // CoilMesher's phase of every listed harmonic is arg(X_k) of the coefficient the harmonics
     // function's amplitude comes from, bit for bit. The noise-level ones are zero both in the list
     // and in the waveform (below 1e-6 of the largest harmonic, WaveformProcessor::is_zero_harmonic):
-    // they carry no current and get no phase (ABT #1880 reopen).
+    // they carry no current and get no phase (ABT #1880 reopen). Changed from "every listed harmonic
+    // keeps its phase, noise included": Alf approved 2026-10-16, ABT #1880.
     auto magnetic = make_magnetic({4, 4}, {"primary", "secondary"});
     for (bool closed : {true, false}) {
         auto triangleWaveform = triangle_1880(closed, period1880 / 8);
