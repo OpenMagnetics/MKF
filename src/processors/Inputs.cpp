@@ -1540,7 +1540,8 @@ SignalDescriptor Inputs::reflect_waveform(SignalDescriptor signal,
     if (is_waveform_sampled(waveformToProcess)) {
         waveformToProcess = compress_waveform(waveformToProcess);
     }
-    ProcessedWaveform processed = calculate_basic_processed_data(waveformToProcess);
+    // The label is checked on, and read off, the waveform as given, not on its compressed copy (ABT #1878).
+    ProcessedWaveform processed = calculate_basic_processed_data(waveformToProcess, signal.get_waveform().value());
     Waveform newWaveform;
 
     double period = signal.get_waveform()->get_time()->back() - signal.get_waveform()->get_time()->front();
@@ -1813,14 +1814,14 @@ double calculate_offset(Waveform waveform, WaveformLabel label) {
     return 0;
 }
 
-ProcessedWaveform Inputs::calculate_basic_processed_data(Waveform waveform) {
+ProcessedWaveform Inputs::calculate_basic_processed_data(Waveform waveform, std::optional<Waveform> givenWaveform) {
     // Delegates to WaveformProcessor, which additionally fixed part of ABT
     // #602 this copy never had: the duty-cycle measurement for a CUSTOM label
     // (i.e. real imported/simulated data) needs the UNCOMPRESSED waveform —
     // this copy always passed the compressed one, so real SPICE data (which
     // compress_waveform collapses to 50-60 points instead of an analytical
     // 3/4/5-point shape) had its duty measured against a thinned-out signal.
-    return WaveformProcessor::calculate_basic_processed_data(waveform, settings.get_inputs_number_points_sampled_waveforms());
+    return WaveformProcessor::calculate_basic_processed_data(waveform, settings.get_inputs_number_points_sampled_waveforms(), givenWaveform);
 }
 
 ProcessedWaveform Inputs::calculate_processed_data(Waveform waveform,

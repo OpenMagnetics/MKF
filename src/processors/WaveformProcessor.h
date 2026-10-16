@@ -130,9 +130,15 @@ class WaveformProcessor {
                                                            MAS::Waveform waveform,
                                                            bool includeAdvancedData = true,
                                                            std::optional<MAS::ProcessedWaveform> processed = std::nullopt,
-                                                           size_t numberPointsSampledWaveforms = 128);
+                                                           size_t numberPointsSampledWaveforms = 128,
+                                                           std::optional<MAS::Waveform> givenWaveform = std::nullopt);
+    // `waveform` is what is measured (peaks, the label guess); `givenWaveform` is the waveform as
+    // its producer gave it, before any sampling, when that differs. A label's vertex layout is
+    // checked on, and its offset and duty are read off, the given waveform when it is not a
+    // sample; a sampled or compressed copy is never held to the label's layout (ABT #1878).
     static MAS::ProcessedWaveform calculate_basic_processed_data(MAS::Waveform waveform,
-                                                                 size_t numberPointsSampledWaveforms = 128);
+                                                                 size_t numberPointsSampledWaveforms = 128,
+                                                                 std::optional<MAS::Waveform> givenWaveform = std::nullopt);
 
     // Waveform-shape helpers (ported alongside the DSP entry points above).
     static bool is_waveform_sampled(MAS::Waveform waveform, size_t numberPointsSampledWaveforms = 128);

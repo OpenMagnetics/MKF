@@ -175,7 +175,48 @@ void throw_if_waveform_cannot_be_its_label(const Waveform& waveform, WaveformLab
                                 "A label spelled the pre-1.0 way (e.g. \"Triangular\") is not a MAS waveformLabel and must be migrated before the waveform is parsed.");
 }
 
+// The vertices calculate_offset and try_guess_duty_cycle actually index for each label:
+// the highest index read, plus one. A sampled or compressed copy of a labelled waveform is
+// not held to the label's layout (a 0.5-duty bipolar rectangle with no dead time compresses
+// from 10 vertices to 6 and is still a bipolar rectangle), but what is read off it must
+// exist. A triangle's duty is measured from its samples when it has neither 3 nor 4
+// vertices, so it only needs a time axis.
+std::optional<size_t> label_vertices_read(WaveformLabel label) {
+    switch (label) {
+        case WaveformLabel::TRIANGULAR: return 1;
+        case WaveformLabel::UNIPOLAR_TRIANGULAR: return 2;
+        case WaveformLabel::RECTANGULAR: return 3;
+        case WaveformLabel::UNIPOLAR_RECTANGULAR: return 3;
+        case WaveformLabel::BIPOLAR_RECTANGULAR: return 4;
+        case WaveformLabel::BIPOLAR_TRIANGULAR: return 3;
+        case WaveformLabel::FLYBACK_PRIMARY: return 2;
+        case WaveformLabel::FLYBACK_SECONDARY: return 4;
+        default: return std::nullopt;
+    }
+}
+
+// Throw rather than read a label's vertex past the end of a waveform's vectors (ABT #1878).
+void throw_if_label_reads_past_the_end(const Waveform& waveform, WaveformLabel label) {
+    const auto verticesRead = label_vertices_read(label);
+    if (!verticesRead) {
+        return;
+    }
+    const size_t numberPoints = waveform.get_data().size();
+    const auto time = waveform.get_time();
+    if (time && time->size() == numberPoints && numberPoints >= verticesRead.value()) {
+        return;
+    }
+    json labelJson;
+    to_json(labelJson, label);
+    std::string reason = !time ? "has no time axis"
+                       : time->size() != numberPoints ? "has " + std::to_string(time->size()) + " times for " + std::to_string(numberPoints) + " values"
+                       : "has " + std::to_string(numberPoints) + " vertices, and the offset and duty cycle of a " + labelJson.get<std::string>() + " are read from vertex " + std::to_string(verticesRead.value() - 1);
+    throw std::invalid_argument("Waveform labelled " + labelJson.get<std::string>() + " " + reason +
+                                ": its label does not describe its data, so no offset or duty cycle can be read from it.");
+}
+
 double calculate_offset(Waveform waveform, WaveformLabel label) {
+    throw_if_label_reads_past_the_end(waveform, label);
     switch (label) {
         case WaveformLabel::TRIANGULAR:
             // The midpoint between the two extremes. This used to read
@@ -435,7 +476,10 @@ static double measure_duty_cycle_from_samples(const Waveform& waveform) {
 }
 
 double WaveformProcessor::try_guess_duty_cycle(Waveform waveform, WaveformLabel label, double frequency, size_t numberPointsSampledWaveforms) {
-    throw_if_waveform_cannot_be_its_label(waveform, label);
+    // This reads vertex indices off whatever it is handed, which may be a compressed copy of a
+    // labelled waveform: those indices must exist. Whether the shape as given is the label's
+    // is checked where the given waveform is known (calculate_basic_processed_data).
+    throw_if_label_reads_past_the_end(waveform, label);
     if (label != WaveformLabel::CUSTOM) {
         switch(label) {
             case WaveformLabel::TRIANGULAR: {
@@ -1524,10 +1568,13 @@ ProcessedWaveform WaveformProcessor::calculate_processed_data(SignalDescriptor e
                                             size_t numberPointsSampledWaveforms) {
 
     auto harmonics = excitation.get_harmonics().value();
-    return calculate_processed_data(harmonics, sampledWaveform, includeAdvancedData, processed, numberPointsSampledWaveforms);
+    // The label is checked on, and read off, the excitation's waveform as given, not on the
+    // sample of it this was handed (ABT #1878).
+    return calculate_processed_data(harmonics, sampledWaveform, includeAdvancedData, processed, numberPointsSampledWaveforms,
+                                    excitation.get_waveform());
 }
 
-ProcessedWaveform WaveformProcessor::calculate_basic_processed_data(Waveform waveform, size_t numberPointsSampledWaveforms) {
+ProcessedWaveform WaveformProcessor::calculate_basic_processed_data(Waveform waveform, size_t numberPointsSampledWaveforms, std::optional<Waveform> givenWaveform) {
     ProcessedWaveform processed;
     std::vector<double> dataToProcess;
     auto sampledWaveform = waveform;
@@ -1568,10 +1615,20 @@ ProcessedWaveform WaveformProcessor::calculate_basic_processed_data(Waveform wav
         // processed.set_average(average);
     }
 
-    // The label's vertices are read off the compressed waveform, so that is the one
-    // that has to have them.
-    throw_if_waveform_cannot_be_its_label(compressedWaveform, label);
-    double offset = calculate_offset(compressedWaveform, label);
+    // ABT #1878 (Alf, 2026-10-16: check before sampling). The label names the shape of the
+    // waveform as its producer gave it, so that is the one held to the label's vertex layout,
+    // and the label's offset and duty are read off its vertices. A sampled or compressed copy
+    // is never held to the layout: a 0.5-duty bipolar rectangle with no dead time compresses
+    // from 10 vertices to 6 and is still one. When the given waveform is itself a sample, the
+    // label's reads come off its compressed copy, which only has to have the vertices read.
+    const Waveform given = givenWaveform ? givenWaveform.value() : waveform;
+    const bool readGivenVertices = given.get_ancillary_label() && given.get_ancillary_label().value() == label &&
+                                   !is_waveform_sampled(given, numberPointsSampledWaveforms);
+    if (readGivenVertices) {
+        throw_if_waveform_cannot_be_its_label(given, label);
+    }
+    const Waveform& labelVertices = readGivenVertices ? given : compressedWaveform;
+    double offset = calculate_offset(labelVertices, label);
     processed.set_offset(offset);
 
     processed.set_peak_to_peak(*max_element(compressedWaveform.get_data().begin(), compressedWaveform.get_data().end()) -
@@ -1596,7 +1653,7 @@ ProcessedWaveform WaveformProcessor::calculate_basic_processed_data(Waveform wav
     // compression would thin out.
     processed.set_duty_cycle(label == WaveformLabel::CUSTOM
         ? try_guess_duty_cycle(waveform, label, 0, numberPointsSampledWaveforms)
-        : try_guess_duty_cycle(compressedWaveform, label, 0, numberPointsSampledWaveforms));
+        : try_guess_duty_cycle(labelVertices, label, 0, numberPointsSampledWaveforms));
 
     return processed;
 }
@@ -1626,7 +1683,8 @@ ProcessedWaveform WaveformProcessor::calculate_processed_data(Harmonics harmonic
                                             Waveform waveform,
                                             bool includeAdvancedData,
                                             std::optional<ProcessedWaveform> processed,
-                                            size_t numberPointsSampledWaveforms) {
+                                            size_t numberPointsSampledWaveforms,
+                                            std::optional<Waveform> givenWaveform) {
     auto sampledDataToProcess = waveform;
 
     if (waveform.get_time() && waveform.get_data().size() < numberPointsSampledWaveforms) {
@@ -1639,7 +1697,7 @@ ProcessedWaveform WaveformProcessor::calculate_processed_data(Harmonics harmonic
         processedResult = processed.value();
     }
     else {
-        processedResult = calculate_basic_processed_data(sampledDataToProcess, numberPointsSampledWaveforms);
+        processedResult = calculate_basic_processed_data(sampledDataToProcess, numberPointsSampledWaveforms, givenWaveform ? givenWaveform.value() : waveform);
     }
 
     {
