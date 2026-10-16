@@ -17,6 +17,7 @@
 
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
+#include <catch2/matchers/catch_matchers_string.hpp>
 #include <chrono>
 #include <vector>
 
@@ -3802,5 +3803,91 @@ TEST_CASE("Test_CoilAdviser_Random_15_Real_Winding", "[adviser][coil-adviser][re
         INFO(refusal.value_or("accepted"));
         CHECK(!refusal);
     }
+    settings.reset();
+}
+
+// ABT #1896: the web's default flyback after Core Advise (97 EQ 26/19/7 gapped 0.18 mm, 42:5 with
+// 2 secondary parallels), wire "Advise all" (WebLibMKF calculate_advised_coil), then the builder's
+// simulate (IGSE core losses, Zhang gap reluctance, Maniktala core temperature).
+static OpenMagnetics::Mas simulate_like_the_web_builder(const OpenMagnetics::Inputs& inputs, const OpenMagnetics::Magnetic& magnetic) {
+    settings.set_core_temperature_model(CoreTemperatureModels::MANIKTALA);
+    MagneticSimulator magneticSimulator;
+    magneticSimulator.set_core_losses_model_name(CoreLossesModels::IGSE);
+    magneticSimulator.set_reluctance_model_name(ReluctanceModels::ZHANG);
+    return magneticSimulator.simulate(inputs, magnetic);
+}
+
+TEST_CASE("Test_CoilAdviser_Web_Flyback_97_Advise_All_Coil_Stays_In_Its_Window", "[adviser][coil-adviser][coil][bug][abt-1896]") {
+    // The builder's coil after "Advise all" laid the Secondary's 5 turns x 2 parallels of a 1.05 mm
+    // served litz as ONE layer 10.5 mm tall in a 5.65 mm window: 'Secondary 0 parallel 1 turn 4'
+    // ended 4.875 mm above it, and the thermal network refused it ('overlaps its enclosure by
+    // 4.875 mm'). The thermal check is right: that copper is outside the window.
+    {
+        auto path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "web_adviser_flows/flyback_97_advised_coil_simulate.json");
+        std::ifstream file(path);
+        REQUIRE(file.good());
+        auto call = json::parse(file);
+        OpenMagnetics::Inputs inputs(call.at("inputs"));
+        OpenMagnetics::Magnetic magnetic(call.at("magnetic"));
+        auto outside = OpenMagneticsTesting::turns_outside_winding_window(magnetic.get_mutable_coil());
+        REQUIRE(!outside.empty());
+        CHECK(outside.back().find("Secondary 0 parallel 1 turn 4") == 0);
+        CHECK_THROWS_WITH(simulate_like_the_web_builder(inputs, magnetic), Catch::Matchers::ContainsSubstring("overlaps its enclosure"));
+    }
+
+    // The adviser's own coil fits (2 Secondary layers, 4.237 mm of the 4.25 mm window).
+    auto mas = load_web_advise_all("flyback_97_calculate_advised_coil.json");
+    CoilAdviser coilAdviser;
+    auto masMagneticsWithCoil = coilAdviser.get_advised_coil(mas, 1);
+    INFO(coilAdviser.get_last_no_results_reason().value_or("returned results"));
+    REQUIRE(masMagneticsWithCoil.size() == 1);
+    auto advisedCoil = masMagneticsWithCoil[0].get_magnetic().get_coil();
+    CHECK(OpenMagneticsTesting::turns_outside_winding_window(advisedCoil).empty());
+
+    // The builder then re-winds it as WebLibMKF wind_impl does: a fresh coil from the bobbin and the
+    // windings, the panel's 0 mm interlayer and 0.1 mm intersection insulation, the 48/52 split of
+    // the advised sections, and wind-even-if-not-fit. The 0 mm interlayer sheets kept the window's
+    // height while compaction shrank their sections to the copper, the fitting layout was judged
+    // unfit, and try_rewind's re-split collapsed the Secondary into one overflowing layer.
+    settings.set_coil_wind_even_if_not_fit(true);
+    settings.set_coil_delimit_and_compact(true);
+    settings.set_coil_include_additional_coordinates(true);
+    OpenMagnetics::Coil coil;
+    coil.set_bobbin(advisedCoil.get_bobbin());
+    coil.set_functional_description(advisedCoil.get_functional_description());
+    coil.preload_margins({{0, 0}, {0, 0}});
+    coil.set_turns_alignment(CoilAlignment::CENTERED, "Primary section 0");
+    coil.set_turns_alignment(CoilAlignment::CENTERED, "Secondary 0 section 0");
+    coil.set_layers_orientation(WindingOrientation::OVERLAPPING, "Primary section 0");
+    coil.set_layers_orientation(WindingOrientation::OVERLAPPING, "Secondary 0 section 0");
+    coil.set_interlayer_insulation(0, std::nullopt, std::nullopt, false);
+    coil.set_intersection_insulation(0.0001, 1, std::nullopt, std::nullopt, false);
+    CHECK(coil.wind({0.48, 0.52}, {0, 1}, 1));
+    REQUIRE(coil.get_turns_description());
+    coil.delimit_and_compact();
+    for (const auto& turn : OpenMagneticsTesting::turns_outside_winding_window(coil)) {
+        INFO(turn);
+        CHECK(false);
+    }
+    // Every layer, the interlayer sheets included, stays inside its own section.
+    const auto layers = coil.get_layers_description().value();
+    for (const auto& layer : layers) {
+        if (!layer.get_section()) {
+            continue;
+        }
+        auto section = coil.get_section_by_name(layer.get_section().value());
+        INFO(layer.get_name());
+        CHECK(layer.get_coordinates()[1] + layer.get_dimensions()[1] / 2 <= section.get_coordinates()[1] + section.get_dimensions()[1] / 2 + 1e-9);
+        CHECK(layer.get_coordinates()[1] - layer.get_dimensions()[1] / 2 >= section.get_coordinates()[1] - section.get_dimensions()[1] / 2 - 1e-9);
+    }
+    CHECK(coil.get_layers_by_winding_index(1).size() == 2);
+
+    // The builder simulates the re-wound coil from its stored form.
+    auto magnetic = masMagneticsWithCoil[0].get_magnetic();
+    magnetic.set_coil(coil);
+    json stored;
+    to_json(stored, magnetic);
+    OpenMagnetics::Magnetic reloaded(stored);
+    CHECK_NOTHROW(simulate_like_the_web_builder(masMagneticsWithCoil[0].get_inputs(), reloaded));
     settings.reset();
 }

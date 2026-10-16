@@ -18945,6 +18945,19 @@ bool Coil::delimit_and_compact_rectangular_window() {
                                                                        layerCoordinates[1]}));
                             layers[i + 1].set_dimensions(std::vector<double>({currentLayerMaximumWidth - currentLayerMinimumWidth, layers[i + 1].get_dimensions()[1]}));
                         }
+                        // ABT #1896: the same for an OVERLAPPING interlayer sheet, along the layer's
+                        // height. It is laid at the section's full height (the window's, before the
+                        // delimit) and the section below shrinks to its conduction layers, so the
+                        // sheet stood out of its own section: the web flyback's 0 mm sheets were
+                        // 5.65 mm tall in a 5.313 mm section, contiguous_filling_factor read 1.063,
+                        // the fitting layout was judged unfit and try_rewind re-split it into a
+                        // single 10.5 mm Secondary layer in a 5.65 mm window. The sheet covers the
+                        // layer it is wound on.
+                        else if (groupType != WiringTechnology::PRINTED && layers[i + 1].get_type() == ElectricalType::INSULATION && layers[i + 1].get_section() == layers[i].get_section() && layers[i + 1].get_orientation() == WindingOrientation::OVERLAPPING) {
+                            layers[i + 1].set_coordinates(std::vector<double>({layerCoordinates[0],
+                                                                       layerCoordinates[1] + (currentLayerMaximumHeight + currentLayerMinimumHeight) / 2}));
+                            layers[i + 1].set_dimensions(std::vector<double>({layers[i + 1].get_dimensions()[0], currentLayerMaximumHeight - currentLayerMinimumHeight}));
+                        }
                     }
                 }
                 set_layers_description(layers);
