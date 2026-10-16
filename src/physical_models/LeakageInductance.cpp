@@ -18,6 +18,25 @@
 
 namespace OpenMagnetics {
 
+// A leakage inductance is measured from one winding against ANOTHER: both indexes must name
+// windings of this coil, and different ones. Unchecked, a single-winding coil asked for the
+// default pair (0, 1) read numberTurns of a winding past the end of the functional description
+// (a heap pointer came back as the turn count) and wrote the destination's current direction
+// past a one-element vector; when that stale memory held 0 the turns ratio was 8 / 0 and the
+// destination current an infinite sine (the Simba exporter on one winding, ABT #1879).
+static void check_leakage_winding_pair(const Magnetic& magnetic, size_t sourceIndex, size_t destinationIndex) {
+    size_t numberWindings = magnetic.get_coil().get_functional_description().size();
+    if (sourceIndex >= numberWindings || destinationIndex >= numberWindings) {
+        throw InvalidInputException(ErrorCode::INVALID_INPUT,
+            "Leakage inductance between windings " + std::to_string(sourceIndex) + " and " + std::to_string(destinationIndex) +
+            ": the coil has " + std::to_string(numberWindings) + " winding" + (numberWindings == 1 ? "" : "s"));
+    }
+    if (sourceIndex == destinationIndex) {
+        throw InvalidInputException(ErrorCode::INVALID_INPUT,
+            "Leakage inductance needs two different windings, got winding " + std::to_string(sourceIndex) + " twice");
+    }
+}
+
 std::pair<size_t, size_t> LeakageInductance::calculate_number_points_needed_for_leakage(Coil coil) {
     if (!coil.get_layers_description()) {
         throw CoilNotProcessedException("Layers description is missing");
@@ -182,6 +201,7 @@ LeakageInductance::PhasorField LeakageInductance::calculate_magnetic_field_phaso
 }
 
 LeakageInductanceOutput LeakageInductance::calculate_leakage_inductance(Magnetic magnetic, double frequency, size_t sourceIndex, size_t destinationIndex, size_t harmonicIndex) {
+    check_leakage_winding_pair(magnetic, sourceIndex, destinationIndex);
     // On an unprocessed magnetic (core shape/material still name strings, no
     // effective parameters) the field/reluctance path fails deep with a cryptic
     // "std::get: wrong index for variant". Surface it clearly instead.
@@ -588,6 +608,7 @@ OperatingPoint LeakageInductance::create_excitation_operating_point(Magnetic& ma
 }
 
 OperatingPoint LeakageInductance::create_leakage_operating_point(Magnetic& magnetic, size_t sourceIndex, size_t destinationIndex, double frequency) {
+    check_leakage_winding_pair(magnetic, sourceIndex, destinationIndex);
     // Create source excitation (1 A RMS sinusoidal)
     ProcessedWaveform sourceProcessed;
     sourceProcessed.set_peak_to_peak(SINUSOIDAL_PEAK_TO_PEAK);

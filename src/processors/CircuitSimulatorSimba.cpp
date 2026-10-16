@@ -447,8 +447,15 @@ std::string CircuitSimulatorExporterSimbaModel::export_magnetic_as_subcircuit(Ma
     // primary is its short-circuit inductance (all other windings shorted). For 2 windings that is
     // exactly calculate_leakage_inductance(0,1); for 3+ windings that pairwise value ignores the
     // other secondaries, so use the consistent extended-cantilever short-circuit output inductance.
+    // A lone winding has no other winding to leak against: there is no pairwise leakage to ask
+    // for, and asking for the default pair (0, 1) read a winding that does not exist (ABT #1879).
+    // Its series leakage element is 0 H, the entry calculate_leakage_inductance_all_windings
+    // gives the source winding itself; the ngspice exporter emits no leakage on winding 0 either.
     double leakageInductance;
-    if (coil.get_functional_description().size() >= 3) {
+    if (coil.get_functional_description().size() == 1) {
+        leakageInductance = 0;
+    }
+    else if (coil.get_functional_description().size() >= 3) {
         auto cantileverModel = ExtendedCantilever::calculate(magnetic, frequency);
         leakageInductance = ExtendedCantilever::short_circuit_output_inductance(cantileverModel, 0);
     }

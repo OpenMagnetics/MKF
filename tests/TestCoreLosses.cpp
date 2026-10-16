@@ -7,6 +7,7 @@
 #include "support/Logger.h"
 #include "processors/Inputs.h"
 #include "physical_models/MagnetizingInductance.h"
+#include "physical_models/LeakageInductance.h"
 #include "processors/CircuitSimulatorInterface.h"
 #include "processors/Sweeper.h"
 #include "processors/MagneticSimulator.h"
@@ -4214,6 +4215,72 @@ TEST_CASE("Test_Subcircuit_Export_Accepts_LossFactor_Materials", "[processor][ci
     std::string simbaSubcircuit;
     REQUIRE_NOTHROW(simbaSubcircuit = simbaExporter.export_magnetic_as_subcircuit(completed, 100000, 25, std::nullopt, std::nullopt));
     CHECK(simbaSubcircuit.size() > 50);
+
+    // ABT #1879: one winding has nothing to leak against, so Simba's series leakage element is
+    // 0 H. It used to come from the pairwise leakage of windings (0, 1), read past the end of
+    // this one-winding coil; when that memory held 0 the turns ratio was infinite and the export
+    // threw "knot 0 is not finite" (once in a full suite, never standalone).
+    std::function<std::optional<double>(const json&)> findLeakageInductor = [&](const json& node) -> std::optional<double> {
+        if (node.is_object()) {
+            if (node.contains("Name") && node["Name"].is_string() && node["Name"].get<std::string>() == "winding 0 Leakage inductance") {
+                return std::stod(node["Parameters"]["Value"].get<std::string>());
+            }
+            for (auto& [key, value] : node.items()) {
+                if (auto found = findLeakageInductor(value)) {
+                    return found;
+                }
+            }
+        }
+        else if (node.is_array()) {
+            for (auto& value : node) {
+                if (auto found = findLeakageInductor(value)) {
+                    return found;
+                }
+            }
+        }
+        return std::nullopt;
+    };
+    auto leakageInductorValue = findLeakageInductor(json::parse(simbaSubcircuit));
+    REQUIRE(leakageInductorValue.has_value());
+    CHECK(leakageInductorValue.value() == 0);
+    settings.reset();
+}
+
+// ABT #1879: a leakage inductance is one winding against another. On a one-winding coil the
+// default pair (0, 1) names a winding that does not exist; it must be refused, not read from
+// whatever memory follows the functional description (a heap pointer came back as the turn
+// count, or 0 and an infinite turns ratio).
+TEST_CASE("Test_Leakage_Inductance_Refuses_A_Winding_The_Coil_Does_Not_Have", "[physical-model][leakage-inductance][abt-1879]") {
+    settings.reset();
+    clear_databases();
+    auto core = OpenMagneticsTesting::get_quick_core("DR 2.3 + SRI 3.0", json::array(), 1, "DL5");
+    json coilJson;
+    coilJson["bobbin"] = "Dummy";
+    coilJson["functionalDescription"] = json::array({{
+        {"name", "winding 0"}, {"numberTurns", 8}, {"numberParallels", 1},
+        {"isolationSide", "primary"}, {"wire", "Round 0.1 - Grade 1"}}});
+    OpenMagnetics::Magnetic magnetic;
+    magnetic.set_core(core);
+    magnetic.set_coil(OpenMagnetics::Coil(coilJson, false));
+    auto completed = OpenMagnetics::magnetic_autocomplete(magnetic);
+    REQUIRE(completed.get_coil().get_functional_description().size() == 1);
+
+    auto expectInvalidInput = [&](auto&& call) {
+        try {
+            call();
+            FAIL("no exception");
+        }
+        catch (const InvalidInputException& exception) {
+            CHECK(exception.code() == ErrorCode::INVALID_INPUT);
+        }
+    };
+    expectInvalidInput([&] { LeakageInductance().calculate_leakage_inductance(completed, 100000); });
+    expectInvalidInput([&] { LeakageInductance().calculate_leakage_inductance(completed, 100000, 1, 0); });
+    expectInvalidInput([&] { LeakageInductance().calculate_leakage_inductance(completed, 100000, 0, 0); });
+    // The all-windings form never asks for a pair: one winding, one 0 H entry (itself).
+    auto allWindings = LeakageInductance().calculate_leakage_inductance_all_windings(completed, 100000).get_leakage_inductance_per_winding();
+    REQUIRE(allWindings.size() == 1);
+    CHECK(allWindings[0].get_nominal().value() == 0);
     settings.reset();
 }
 
