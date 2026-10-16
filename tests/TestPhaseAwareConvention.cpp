@@ -8,6 +8,8 @@
 #include "processors/Inputs.h"
 #include "processors/WaveformProcessor.h"
 #include "support/CoilMesher.h"
+#include "support/Painter.h"
+#include "support/Utils.h"
 #include "support/Settings.h"
 #include "json.hpp"
 #include "TestingUtils.h"
@@ -18,8 +20,14 @@
 #include <cmath>
 #include <complex>
 #include <cstdio>
+#include <filesystem>
+#include <fstream>
+#include <source_location>
 #include <limits>
+#include <map>
 #include <optional>
+#include <algorithm>
+#include <cctype>
 #include <numbers>
 #include <string>
 #include <vector>
@@ -468,6 +476,46 @@ OperatingPointExcitation excitation_1880(const Waveform& waveform) {
     return excitation;
 }
 
+// A painted SVG with its random CSS class names replaced by the style each one names, and the style block dropped:
+// two paintings of the same field compare equal.
+std::string normalized_svg_1880(const std::string& svg) {
+    // Plain string scans: std::regex recurses per character and overflows the stack on a whole painting.
+    const size_t styleBegin = svg.find("<style");
+    const size_t styleEnd = svg.find("</style>");
+    REQUIRE(styleBegin != std::string::npos);
+    REQUIRE(styleEnd != std::string::npos);
+    const std::string style = svg.substr(styleBegin, styleEnd - styleBegin);
+    std::map<std::string, std::string> stylePerClass;
+    for (size_t dot = style.find('.'); dot != std::string::npos; dot = style.find('.', dot + 1)) {
+        size_t open = style.find('{', dot);
+        size_t close = style.find('}', dot);
+        if (open == std::string::npos || close == std::string::npos || open > close) {
+            break;
+        }
+        std::string name = style.substr(dot + 1, open - dot - 1);
+        name.erase(std::remove_if(name.begin(), name.end(), [](unsigned char c) { return std::isspace(c); }), name.end());
+        std::string body = style.substr(open + 1, close - open - 1);
+        body.erase(std::remove_if(body.begin(), body.end(), [](unsigned char c) { return std::isspace(c); }), body.end());
+        stylePerClass[name] = body;
+        dot = close;
+    }
+    const std::string body = svg.substr(0, styleBegin) + svg.substr(styleEnd + 8);
+    std::string result;
+    const std::string marker = "class=\"";
+    size_t last = 0;
+    for (size_t at = body.find(marker); at != std::string::npos; at = body.find(marker, last)) {
+        size_t nameBegin = at + marker.size();
+        size_t nameEnd = body.find('"', nameBegin);
+        REQUIRE(nameEnd != std::string::npos);
+        std::string name = body.substr(nameBegin, nameEnd - nameBegin);
+        auto found = stylePerClass.find(name);
+        result += body.substr(last, nameBegin - last) + (found == stylePerClass.end() ? name : found->second);
+        last = nameEnd;
+    }
+    result += body.substr(last);
+    return result;
+}
+
 }  // namespace
 
 TEST_CASE("Test_Harmonic_Phase_Analytic_Waveforms", "[physical-model][phase-aware][abt-1880]") {
@@ -522,7 +570,9 @@ TEST_CASE("Test_Harmonic_Phase_Is_Arg_Of_Harmonics_Coefficient", "[physical-mode
     // Two windings with content up to the Nyquist harmonic: a shifted triangle (odd harmonics
     // to k = 63) and a two-tone sine whose higher harmonics are rounding noise (c_k ~ 1e-17).
     // CoilMesher's phase of every listed harmonic is arg(X_k) of the coefficient the harmonics
-    // function's amplitude comes from, bit for bit, the noise-level ones included.
+    // function's amplitude comes from, bit for bit. The noise-level ones are zero both in the list
+    // and in the waveform (below 1e-6 of the largest harmonic, WaveformProcessor::is_zero_harmonic):
+    // they carry no current and get no phase (ABT #1880 reopen).
     auto magnetic = make_magnetic({4, 4}, {"primary", "secondary"});
     for (bool closed : {true, false}) {
         auto triangleWaveform = triangle_1880(closed, period1880 / 8);
@@ -540,8 +590,11 @@ TEST_CASE("Test_Harmonic_Phase_Is_Arg_Of_Harmonics_Coefficient", "[physical-mode
         }
         REQUIRE(indexes.size() == 65);
         std::vector<std::optional<double>> gauge;
-        auto phases = CoilMesher::calculate_current_phase_per_winding(magnetic.get_coil(), operatingPoint, indexes, &gauge);
+        std::vector<std::vector<double>> currentAmplitudes;
+        auto phases = CoilMesher::calculate_current_phase_per_winding(magnetic.get_coil(), operatingPoint, indexes, &gauge, &currentAmplitudes);
         REQUIRE(phases.size() == indexes.size());
+        REQUIRE(currentAmplitudes.size() == indexes.size());
+        size_t zeroHarmonics = 0;
         size_t compared = 0;
         for (size_t position = 0; position < indexes.size(); ++position) {
             size_t index = indexes[position];
@@ -552,7 +605,13 @@ TEST_CASE("Test_Harmonic_Phase_Is_Arg_Of_Harmonics_Coefficient", "[physical-mode
                 double harmonicFrequency = harmonics.get_frequencies()[index];
                 auto phasor = WaveformProcessor::calculate_harmonic_phasor(seriesPerWinding[windingIndex], frequency, harmonicFrequency);
                 phasorPerWinding.push_back(phasor);
-                excited.push_back(harmonics.get_amplitudes()[index] != 0);
+                const bool zero = harmonics.get_amplitudes()[index] == 0 ||
+                                  WaveformProcessor::is_zero_harmonic(seriesPerWinding[windingIndex], harmonics.get_amplitudes()[index], phasor);
+                excited.push_back(!zero);
+                if (zero && harmonics.get_amplitudes()[index] != 0) {
+                    ++zeroHarmonics;
+                }
+                CHECK(currentAmplitudes[position][windingIndex] == (zero ? 0.0 : harmonics.get_amplitudes()[index]));
                 // The amplitude MAS lists is |X_k| of the same coefficient.
                 if (excited.back()) {
                     INFO((closed ? "closed" : "open") << " axis, winding " << windingIndex << ", harmonic " << index);
@@ -573,7 +632,9 @@ TEST_CASE("Test_Harmonic_Phase_Is_Arg_Of_Harmonics_Coefficient", "[physical-mode
                 ++compared;
             }
         }
-        CHECK(compared >= 2 * 64);
+        // Triangle: DC and the 32 odd harmonics; sine: k = 1, 2 (k = 1 shared). Every other listed one is noise.
+        CHECK(compared == 2 * 34);
+        CHECK(zeroHarmonics > 0);
     }
 }
 
@@ -609,4 +670,130 @@ TEST_CASE("Test_Harmonic_Phase_Inconsistent_Harmonics_Throw", "[physical-model][
     // Beyond the series (k = 65 on a 128-point waveform) and off-grid frequencies throw.
     CHECK_THROWS(CoilMesher::calculate_harmonic_phasor(sineWaveform, frequency, 65 * frequency));
     CHECK_THROWS(CoilMesher::calculate_harmonic_phasor(sineWaveform, frequency, 2.5 * frequency));
+}
+
+TEST_CASE("Test_Harmonic_Phase_Zero_Harmonics_Contribute_Nothing", "[physical-model][phase-aware][abt-1880]") {
+    // The web's test_wound_coil.json (ER 25/6/15, 15:4x3 turns): winding 1's current is a 3-sample symmetric triangle
+    // at 100 kHz whose even harmonics are zero both in its MAS list (7.1e-15 A at 200 kHz) and in its waveform. A zero
+    // harmonic carries no current whatever its phase: the phases, the mesh and the field plot must go through, and it
+    // must contribute nothing (ABT #1880 reopen: plot_magnetic_field threw "its phase is undefined").
+    settings.reset();
+    clear_databases();
+    auto path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "test_wound_coil_zero_even_harmonics.json");
+    // Parsed as the WASM's plot_magnetic_field does (Magnetic and OperatingPoint straight from JSON): through
+    // OpenMagnetics::Inputs the operating point would be re-processed and its stored harmonics replaced.
+    std::ifstream file(path);
+    auto masJson = json::parse(file);
+    OpenMagnetics::Magnetic magnetic(masJson["magnetic"]);
+    OperatingPoint operatingPoint(masJson["inputs"]["operatingPoints"][0]);
+    auto coil = magnetic.get_coil();
+
+    auto current = operatingPoint.get_excitations_per_winding()[1].get_current().value();
+    REQUIRE(current.get_waveform()->get_data() == std::vector<double>{-20, 20, -20});
+    auto harmonics = current.get_harmonics().value();
+    REQUIRE(harmonics.get_frequencies()[2] == 200000);
+    // Not an exact zero: the case the reopen is about.
+    REQUIRE(harmonics.get_amplitudes()[2] > 0);
+    REQUIRE(harmonics.get_amplitudes()[2] < 1e-13);
+    auto series = WaveformProcessor::calculate_waveform_fourier_series(current.get_waveform().value(), frequency, settings.get_inputs_number_points_sampled_waveforms());
+    const double largest = WaveformProcessor::calculate_largest_harmonic_amplitude(series);
+    // The scale is the fundamental. The stored list was computed by an older MKF (2e-4 off the exact series).
+    REQUIRE_THAT(largest, Catch::Matchers::WithinRel(harmonics.get_amplitudes()[1], 1e-3));
+
+    // Per-winding phases over every listed harmonic: the zero ones carry 0 A and a placeholder phase 0, never a gauge.
+    std::vector<size_t> indexes;
+    for (size_t index = 0; index < harmonics.get_frequencies().size(); ++index) {
+        indexes.push_back(index);
+    }
+    std::vector<std::optional<double>> gauge;
+    std::vector<std::vector<double>> currentAmplitudes;
+    std::vector<std::vector<double>> phases;
+    REQUIRE_NOTHROW(phases = CoilMesher::calculate_current_phase_per_winding(coil, operatingPoint, indexes, &gauge, &currentAmplitudes));
+    std::vector<size_t> zeroIndexes;
+    for (size_t position = 0; position < indexes.size(); ++position) {
+        size_t index = indexes[position];
+        auto phasor = WaveformProcessor::calculate_harmonic_phasor(series, frequency, harmonics.get_frequencies()[index]);
+        INFO("winding 1, harmonic " << index << ": listed " << harmonics.get_amplitudes()[index] << " A, waveform " << std::abs(phasor) << " A");
+        if (WaveformProcessor::is_zero_harmonic(series, harmonics.get_amplitudes()[index], phasor)) {
+            zeroIndexes.push_back(index);
+            CHECK(std::abs(phasor) < 1e-6 * largest);
+            CHECK(currentAmplitudes[position][1] == 0);
+            CHECK(phases[position][1] == 0);
+        }
+        else {
+            CHECK(currentAmplitudes[position][1] == harmonics.get_amplitudes()[index]);
+        }
+    }
+    // DC and the 31 even harmonics are zero; the 32 odd ones carry the triangle.
+    std::vector<size_t> evenIndexes;
+    for (size_t index = 0; index < indexes.size(); index += 2) {
+        evenIndexes.push_back(index);
+    }
+    CHECK(zeroIndexes == evenIndexes);
+
+    // Contributes nothing: the same operating point with winding 1's zero harmonics written as exact zeros gives the
+    // identical mesh (every point, every harmonic), phases and painted field, bit for bit.
+    auto exactZeroOperatingPoint = operatingPoint;
+    {
+        auto exactZeroCurrent = current;
+        auto exactZeroHarmonics = harmonics;
+        size_t written = 0;
+        for (auto index : zeroIndexes) {
+            if (exactZeroHarmonics.get_amplitudes()[index] != 0) {
+                exactZeroHarmonics.get_mutable_amplitudes()[index] = 0;
+                ++written;
+            }
+        }
+        REQUIRE(written == zeroIndexes.size());
+        exactZeroCurrent.set_harmonics(exactZeroHarmonics);
+        exactZeroOperatingPoint.get_mutable_excitations_per_winding()[1].set_current(exactZeroCurrent);
+    }
+    auto mesh = CoilMesher().generate_mesh_inducing_coil_phasors(magnetic, operatingPoint, settings.get_harmonic_amplitude_threshold());
+    auto exactZeroMesh = CoilMesher().generate_mesh_inducing_coil_phasors(magnetic, exactZeroOperatingPoint, settings.get_harmonic_amplitude_threshold());
+    REQUIRE(mesh.fieldPerHarmonic.size() == exactZeroMesh.fieldPerHarmonic.size());
+    CHECK(mesh.currentPhasePerHarmonicPerWinding == exactZeroMesh.currentPhasePerHarmonicPerWinding);
+    CHECK(mesh.gaugePhasePerHarmonic == exactZeroMesh.gaugePhasePerHarmonic);
+    CHECK(mesh.currentAmplitudePerHarmonicPerWinding == exactZeroMesh.currentAmplitudePerHarmonicPerWinding);
+    // The mesher reads harmonic i of every winding, and winding 0 lists only [0, 100k, 300k]: at i = 2 winding 1's
+    // 200 kHz zero is meshed beside winding 0's 300 kHz. That position must carry winding 1's zero.
+    size_t positionsWithAZero = 0;
+    for (size_t position = 0; position < mesh.fieldPerHarmonic.size(); ++position) {
+        INFO("meshed harmonic " << position << " at " << mesh.fieldPerHarmonic[position].get_frequency() << " Hz");
+        const auto& data = mesh.fieldPerHarmonic[position].get_data();
+        const auto& exactZeroData = exactZeroMesh.fieldPerHarmonic[position].get_data();
+        REQUIRE(data.size() == exactZeroData.size());
+        size_t differing = 0;
+        for (size_t pointIndex = 0; pointIndex < data.size(); ++pointIndex) {
+            if (data[pointIndex].get_value() != exactZeroData[pointIndex].get_value()) {
+                ++differing;
+            }
+        }
+        CHECK(differing == 0);
+        if (mesh.currentAmplitudePerHarmonicPerWinding[position][0] > 0 && mesh.currentAmplitudePerHarmonicPerWinding[position][1] == 0) {
+            ++positionsWithAZero;
+        }
+    }
+    CHECK(positionsWithAZero > 0);
+
+    // plot_magnetic_field as the WASM calls it, with and without the gap fringing: it draws, and draws exactly what the
+    // exact-zero list draws.
+    for (bool fringing : {true, false}) {
+        INFO("fringing " << fringing);
+        settings.set_painter_include_fringing(fringing);
+        std::filesystem::path emptyFilepath;
+        std::string svg, exactZeroSvg;
+        {
+            Painter painter(emptyFilepath);
+            REQUIRE_NOTHROW(painter.paint_magnetic_field(operatingPoint, magnetic));
+            svg = painter.export_svg();
+        }
+        {
+            Painter painter(emptyFilepath);
+            REQUIRE_NOTHROW(painter.paint_magnetic_field(exactZeroOperatingPoint, magnetic));
+            exactZeroSvg = painter.export_svg();
+        }
+        CHECK_FALSE(svg.empty());
+        CHECK(normalized_svg_1880(svg) == normalized_svg_1880(exactZeroSvg));
+    }
+    settings.reset();
 }
