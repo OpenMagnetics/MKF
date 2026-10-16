@@ -7026,6 +7026,159 @@ bool Coil::unwind() {
     return true;
 }
 
+void Coil::calculate_insulation_for_wind() {
+    if (_insulationSections.size() == 0) {
+
+        if (_inputs) {
+            if (_inputs->has_insulation_coordination_requirements()) {
+                logEntry("Calculating Required Insulation", "Coil", 2);
+                calculate_insulation();
+            }
+            else {
+                // ABT #1329: designRequirements.insulation without standards is valid MAS and
+                // names no standard to coordinate by, so there is no required insulation to
+                // derive -- the same situation as no insulation block. Say so; never assume one.
+                if (_inputs->get_design_requirements().get_insulation()) {
+                    logEntry("Insulation coordination skipped: designRequirements.insulation names no standards, "
+                             "so clearance, creepage, distance through insulation and lead sleeves are not derived; "
+                             "the coil is wound with mechanical insulation only", "Coil", 1);
+                }
+                logEntry("Calculating Mechanical Insulation", "Coil", 2);
+                calculate_mechanical_insulation();
+            }
+        }
+        else {
+            logEntry("Calculating Mechanical Insulation", "Coil", 2);
+            calculate_mechanical_insulation();
+        }
+    }
+}
+
+void Coil::rebuild_layers_description_from_turns() {
+    // ABT #1886: a coil described by its sections and its turns but not its layers (the web Magnetic
+    // Builder keeps an advised coil's sections and turns and drops its layers). The winding losses
+    // group the turns by layer and the thermal network reads the insulation between the turns from
+    // the layers, so the layers are rebuilt here by the winder's own layer step, from the sections
+    // the coil states, with the insulation the wind lays between them. They must be the layers the
+    // turns name: same names, same sections, same windings and parallels; anything else throws.
+    if (get_layers_description()) {
+        throw InvalidInputException(ErrorCode::INVALID_COIL_CONFIGURATION,
+            "rebuild_layers_description_from_turns: the coil already has a layers description");
+    }
+    if (!get_sections_description()) {
+        throw CoilNotProcessedException("Layers cannot be rebuilt for a coil without a sections description");
+    }
+    if (!get_turns_description()) {
+        throw CoilNotProcessedException("Layers cannot be rebuilt for a coil without a turns description");
+    }
+    InternalWindScope internalWindScope(*this);
+    const auto turns = get_turns_description().value();
+
+    calculate_insulation_for_wind();
+    // As rewind_layers_and_turns: the layer placement math lives in the +x winding frame and the
+    // stated sections sit at their final multi-window positions.
+    const bool rewrapGroupWindowSides = _groupWindowSidesApplied;
+    if (rewrapGroupWindowSides) {
+        apply_group_window_sides(true);
+    }
+    const bool built = wind_by_layers();
+    if (rewrapGroupWindowSides) {
+        apply_group_window_sides(false);
+    }
+    // The turns are the coil's own: the frame round trip above must leave them exactly as given.
+    set_turns_description(turns);
+    if (!built || !get_layers_description()) {
+        throw CoilException(ErrorCode::COIL_WINDING_ERROR,
+            "The winder built no layers from the sections of this coil, so the layers its turns name cannot be rebuilt");
+    }
+    const auto layers = get_layers_description().value();
+
+    std::map<std::string, Layer> conductionLayers;
+    std::string rebuiltNames;
+    for (const auto& layer : layers) {
+        if (layer.get_type() == ElectricalType::CONDUCTION) {
+            conductionLayers.emplace(layer.get_name(), layer);
+            rebuiltNames += (rebuiltNames.empty() ? "'" : ", '") + layer.get_name() + "'";
+        }
+    }
+    std::map<std::string, size_t> turnsPerLayer;
+    for (const auto& turn : turns) {
+        if (!turn.get_layer()) {
+            set_layers_description(std::nullopt);
+            throw CoilException(ErrorCode::COIL_WINDING_ERROR,
+                "Turn '" + turn.get_name() + "' names no layer, so the coil's layers cannot be rebuilt from its turns");
+        }
+        const std::string layerName = turn.get_layer().value();
+        auto found = conductionLayers.find(layerName);
+        if (found == conductionLayers.end()) {
+            set_layers_description(std::nullopt);
+            throw CoilException(ErrorCode::COIL_WINDING_ERROR,
+                "Turn '" + turn.get_name() + "' lies in layer '" + layerName +
+                "', which the coil's sections do not produce (rebuilt layers: " + rebuiltNames + ")");
+        }
+        const auto& layer = found->second;
+        if (turn.get_section() != layer.get_section()) {
+            set_layers_description(std::nullopt);
+            throw CoilException(ErrorCode::COIL_WINDING_ERROR,
+                "Turn '" + turn.get_name() + "' is in section '" + turn.get_section().value_or("") +
+                "', but its layer '" + layerName + "', rebuilt from the sections, belongs to section '" +
+                layer.get_section().value_or("") + "'");
+        }
+        bool carriesParallel = false;
+        for (const auto& partialWinding : layer.get_partial_windings()) {
+            if (partialWinding.get_winding() != turn.get_winding()) {
+                continue;
+            }
+            const auto& proportions = partialWinding.get_parallels_proportion();
+            if (turn.get_parallel() >= 0 && size_t(turn.get_parallel()) < proportions.size() &&
+                proportions[size_t(turn.get_parallel())] > 0) {
+                carriesParallel = true;
+            }
+        }
+        if (!carriesParallel) {
+            set_layers_description(std::nullopt);
+            throw CoilException(ErrorCode::COIL_WINDING_ERROR,
+                "Turn '" + turn.get_name() + "' (winding '" + turn.get_winding() + "', parallel " +
+                std::to_string(turn.get_parallel()) + ") lies in layer '" + layerName +
+                "', which, rebuilt from the sections, carries no share of that parallel");
+        }
+        turnsPerLayer[layerName]++;
+    }
+    for (const auto& [layerName, layer] : conductionLayers) {
+        if (!turnsPerLayer.contains(layerName)) {
+            set_layers_description(std::nullopt);
+            throw CoilException(ErrorCode::COIL_WINDING_ERROR,
+                "Layer '" + layerName + "', rebuilt from the sections, holds none of the coil's turns");
+        }
+    }
+    // The insulation the wind lays must fill each insulation section the coil states: the section's
+    // thickness is what the wind that produced the turns laid there.
+    const auto sections = get_sections_description().value();
+    for (const auto& section : sections) {
+        if (section.get_type() != ElectricalType::INSULATION) {
+            continue;
+        }
+        const size_t axis = section.get_layers_orientation() == WindingOrientation::OVERLAPPING ? 0 : 1;
+        double insulationThickness = 0;
+        size_t numberInsulationLayers = 0;
+        for (const auto& layer : layers) {
+            if (layer.get_type() == ElectricalType::INSULATION && layer.get_section() == section.get_name()) {
+                insulationThickness += layer.get_dimensions()[axis];
+                ++numberInsulationLayers;
+            }
+        }
+        const double sectionThickness = section.get_dimensions()[axis];
+        if (numberInsulationLayers == 0 ||
+            std::abs(insulationThickness - sectionThickness) > 1e-9 + 1e-6 * sectionThickness) {
+            set_layers_description(std::nullopt);
+            throw CoilException(ErrorCode::COIL_WINDING_ERROR,
+                "Insulation section '" + section.get_name() + "' is " + std::to_string(sectionThickness * 1e6) +
+                " um thick, but the insulation the winder lays there is " + std::to_string(numberInsulationLayers) +
+                " layer(s), " + std::to_string(insulationThickness * 1e6) + " um: its layers cannot be rebuilt");
+        }
+    }
+}
+
 bool Coil::rewind_layers_and_turns() {
     if (!get_sections_description()) {
         throw InvalidInputException(ErrorCode::INVALID_COIL_CONFIGURATION,
@@ -7642,31 +7795,7 @@ bool Coil::wind_inner(std::vector<double> proportionPerWinding, std::vector<size
             // centered-single-turn special case has had its chance.
             realWindingCrossingBump.arm();
 
-            if (_insulationSections.size() == 0) {
-
-                if (_inputs) {
-                    if (_inputs->has_insulation_coordination_requirements()) {
-                        logEntry("Calculating Required Insulation", "Coil", 2);
-                        calculate_insulation();
-                    }
-                    else {
-                        // ABT #1329: designRequirements.insulation without standards is valid MAS and
-                        // names no standard to coordinate by, so there is no required insulation to
-                        // derive -- the same situation as no insulation block. Say so; never assume one.
-                        if (_inputs->get_design_requirements().get_insulation()) {
-                            logEntry("Insulation coordination skipped: designRequirements.insulation names no standards, "
-                                     "so clearance, creepage, distance through insulation and lead sleeves are not derived; "
-                                     "the coil is wound with mechanical insulation only", "Coil", 1);
-                        }
-                        logEntry("Calculating Mechanical Insulation", "Coil", 2);
-                        calculate_mechanical_insulation();
-                    }
-                }
-                else {
-                    logEntry("Calculating Mechanical Insulation", "Coil", 2);
-                    calculate_mechanical_insulation();
-                }
-            }
+            calculate_insulation_for_wind();
             logEntry("Winding by sections", "Coil", 2);
             wind_by_sections(proportionPerWinding, pattern, repetitions);
             logEntry("Winding by layers", "Coil", 2);

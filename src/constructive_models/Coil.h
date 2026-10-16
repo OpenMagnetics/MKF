@@ -910,6 +910,10 @@ class Coil : public MAS::Coil {
         // infeasible margins into _marginsPerSection, which survived clearing the
         // descriptions, so every later wind re-applied them and failed too.
         bool wind_inner(std::vector<double> proportionPerWinding, std::vector<size_t> pattern, size_t repetitions);
+        // The insulation a wind lays between sections, computed before the sections are wound: the
+        // insulation coordination of the inputs when they have it, mechanical insulation otherwise.
+        // Does nothing when the insulation sections are already known.
+        void calculate_insulation_for_wind();
         bool wind(std::vector<size_t> pattern, size_t repetitions=1);
         bool wind(size_t repetitions);
         bool wind_planar(std::vector<size_t> stackUp, std::optional<double> borderToWireDistance = std::nullopt, std::map<size_t, double> wireToWireDistance = {}, std::map<std::pair<size_t, size_t>, double> insulationThickness = {}, double coreToLayerDistance = 0);
@@ -1029,6 +1033,13 @@ class Coil : public MAS::Coil {
         // the compaction pass that would undo a hand-edited placement. Handles the
         // final-frame/+x-frame wrap like delimit_and_compact does.
         bool rewind_layers_and_turns();
+        // ABT #1886: a coil described by its sections and its turns but not its layers gets its
+        // layers rebuilt from its sections by the winder's own layer step (wind_by_layers), with the
+        // insulation a wind lays between the sections. The turns are left as given. Throws, naming
+        // the turn, layer or section, when the rebuilt layers are not the ones the turns name (same
+        // names, sections, windings and parallels) or the insulation does not fill an insulation
+        // section the coil states.
+        void rebuild_layers_description_from_turns();
         // Rebuild the outer return crossings of toroidal turns
         // (additionalCoordinates) for paths that skip
         // delimit_and_compact_round_window, the only pass that normally

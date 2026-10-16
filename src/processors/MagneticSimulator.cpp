@@ -117,6 +117,19 @@ LeakageInductanceOutput MagneticSimulator::calculate_leakage_inductance(Magnetic
     return OpenMagnetics::LeakageInductance().calculate_leakage_inductance_all_windings(magnetic, frequency);
 }
 
+namespace {
+    // ABT #1886: a coil described by its sections and turns but not its layers (the web Magnetic Builder keeps an
+    // advised coil's sections and turns and drops its layers) has its layers rebuilt before the losses and the thermal
+    // network read them: the winding losses group the turns by layer, and the network takes the insulation between
+    // turns from the layers. Coil::rebuild_layers_description_from_turns throws when they cannot match the turns.
+    void rebuild_layers_if_missing(Magnetic& magnetic) {
+        const auto& coil = magnetic.get_coil();
+        if (coil.get_turns_description() && coil.get_sections_description() && !coil.get_layers_description()) {
+            magnetic.get_mutable_coil().rebuild_layers_description_from_turns();
+        }
+    }
+}
+
 WindingLossesOutput MagneticSimulator::calculate_winding_losses(OperatingPoint& operatingPoint, Magnetic magnetic, std::optional<double> temperature){
     auto& settings = OpenMagnetics::Settings::GetInstance();
     // RAII: if calculate_losses throws, the manual restore below never ran and the
@@ -130,6 +143,7 @@ WindingLossesOutput MagneticSimulator::calculate_winding_losses(OperatingPoint& 
     else {
         simulationTemperature = temperature.value();
     }
+    rebuild_layers_if_missing(magnetic);
     WindingLosses windingLosses;
     // windingLosses.set_winding_losses_harmonic_amplitude_threshold(0.01);
     auto losses = windingLosses.calculate_losses(magnetic, operatingPoint, simulationTemperature);
@@ -141,6 +155,7 @@ TemperatureOutput MagneticSimulator::calculate_temperature(OperatingPoint& opera
     if (!magnetic.get_coil().get_turns_description()) {
         magnetic.get_mutable_coil().wind();
     }
+    rebuild_layers_if_missing(magnetic);
     auto config = TemperatureConfig::fromSimulatedOutput(operatingPoint, output);
     auto thermalResult = Temperature(magnetic, config).calculateTemperatures();
 
@@ -218,6 +233,7 @@ CoreLossesOutput MagneticSimulator::calculate_core_losses(OperatingPoint& operat
         throw CoilNotProcessedException("Winding losses asked of '" + magnetic.get_reference() +
                                         "', whose coil has no turns: wind it first");
     }
+    rebuild_layers_if_missing(magnetic);
 
     _lastDcBiasPoint.reset();
     SolvedLosses solved;
