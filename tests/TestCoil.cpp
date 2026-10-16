@@ -17641,3 +17641,74 @@ TEST_CASE("Test_Coil_Fast_Wind_Gives_Each_Winding_Its_Whole_Layers", "[construct
     }
     settings.reset();
 }
+
+// ABT #1886: the web Magnetic Builder keeps an advised coil's sections and turns and drops its layers;
+// the losses and the thermal network need them, so the layers are rebuilt from the sections by the
+// winder's own layer step. They must be the layers a normal wind of the same coil produces, the
+// insulation between the sections included, and the turns must be left exactly as given.
+TEST_CASE("Test_Coil_Layers_Rebuilt_From_Turns_Match_The_Wound_Twin", "[constructive-model][coil][abt-1886]") {
+    settings.reset();
+    auto twin = OpenMagneticsTesting::get_quick_coil({40, 20}, {1, 2}, "ETD 34/17/11", 2);
+    REQUIRE(twin.get_turns_description());
+    REQUIRE(twin.get_layers_description());
+    const auto expected = twin.get_layers_description().value();
+    REQUIRE_FALSE(twin.get_layers_by_type(ElectricalType::INSULATION).empty());
+
+    json coilJson;
+    to_json(coilJson, twin);
+    coilJson.erase("layersDescription");
+    OpenMagnetics::Coil coil(coilJson, false);
+    REQUIRE_FALSE(coil.get_layers_description());
+    const json turnsBefore = coilJson["turnsDescription"];
+
+    REQUIRE_NOTHROW(coil.rebuild_layers_description_from_turns());
+    REQUIRE(coil.get_layers_description());
+    const auto rebuilt = coil.get_layers_description().value();
+    REQUIRE(rebuilt.size() == expected.size());
+    for (size_t index = 0; index < expected.size(); ++index) {
+        const auto& want = expected[index];
+        const auto& got = rebuilt[index];
+        INFO(want.get_name());
+        CHECK(got.get_name() == want.get_name());
+        CHECK(got.get_type() == want.get_type());
+        CHECK(got.get_section() == want.get_section());
+        CHECK(got.get_orientation() == want.get_orientation());
+        REQUIRE(got.get_partial_windings().size() == want.get_partial_windings().size());
+        for (size_t partialIndex = 0; partialIndex < want.get_partial_windings().size(); ++partialIndex) {
+            CHECK(got.get_partial_windings()[partialIndex].get_winding() == want.get_partial_windings()[partialIndex].get_winding());
+            CHECK(got.get_partial_windings()[partialIndex].get_parallels_proportion() == want.get_partial_windings()[partialIndex].get_parallels_proportion());
+        }
+        REQUIRE(got.get_coordinates().size() >= 2);
+        REQUIRE(got.get_dimensions().size() >= 2);
+        for (size_t axis = 0; axis < 2; ++axis) {
+            CHECK_THAT(got.get_coordinates()[axis], Catch::Matchers::WithinAbs(want.get_coordinates()[axis], 1e-9));
+            CHECK_THAT(got.get_dimensions()[axis], Catch::Matchers::WithinAbs(want.get_dimensions()[axis], 1e-9));
+        }
+        if (want.get_type() == ElectricalType::INSULATION) {
+            REQUIRE(got.get_insulation_material());
+            REQUIRE(want.get_insulation_material());
+            CHECK(coil.resolve_insulation_layer_insulation_material(got).get_name() ==
+                  twin.resolve_insulation_layer_insulation_material(want).get_name());
+        }
+    }
+    json turnsAfter;
+    to_json(turnsAfter, coil.get_turns_description().value());
+    CHECK(turnsAfter == turnsBefore);
+    settings.reset();
+}
+
+TEST_CASE("Test_Coil_Layers_Rebuilt_From_Turns_Refuse_A_Turn_In_A_Layer_The_Sections_Do_Not_Produce", "[constructive-model][coil][abt-1886]") {
+    settings.reset();
+    auto twin = OpenMagneticsTesting::get_quick_coil({40, 20}, {1, 2}, "ETD 34/17/11", 2);
+    json coilJson;
+    to_json(coilJson, twin);
+    coilJson.erase("layersDescription");
+    coilJson["turnsDescription"][3]["layer"] = "No such layer";
+    const std::string turnName = coilJson["turnsDescription"][3]["name"];
+    OpenMagnetics::Coil coil(coilJson, false);
+    REQUIRE_THROWS_WITH(coil.rebuild_layers_description_from_turns(),
+                        Catch::Matchers::ContainsSubstring("Turn '" + turnName + "' lies in layer 'No such layer'"));
+    // A refused rebuild leaves the coil as it was given.
+    CHECK_FALSE(coil.get_layers_description());
+    settings.reset();
+}

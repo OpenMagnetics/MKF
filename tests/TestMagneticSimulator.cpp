@@ -2570,6 +2570,79 @@ TEST_CASE("simulate's JSON has no temperature key, not a null, for a point with 
     settings.reset();
 }
 
+TEST_CASE("calculate_core_losses of a coil with turns and sections but no layers, as the web's builder calls it",
+          "[processor][magnetic-simulator][abt-1886]") {
+    // ABT #1886: the Magnetic Builder's call straight after Wire Advise (WebFrontend replay, models IGSE / Maniktala /
+    // Zhang): one litz winding, 10 turns, sectionsDescription and turnsDescription but no layersDescription (the builder
+    // keeps the advised coil's sections and turns, not its layers). It threw "[COIL_NOT_PROCESSED] ... Not wound by
+    // layers" from WindingLosses::combine_turn_losses, and past that "Missing layers description" from the thermal
+    // network's turn-to-turn insulation. The layers are now rebuilt from the sections before the solve.
+    // Prod 426ec505 (core-only network): 0.00657 W, 25.8 C.
+    settings.reset();
+    auto path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "builder_core_losses_turns_without_layers.json");
+    std::ifstream file(path);
+    REQUIRE(file.is_open());
+    json call = json::parse(file);
+    json coreJson = call["magnetic"]["core"];
+    // As WebLibMKF's calculate_core_losses builds its inputs.
+    OpenMagnetics::Core core;
+    core.set_functional_description(MAS::CoreFunctionalDescription(coreJson["functionalDescription"]));
+    core.set_processed_description(MAS::CoreProcessedDescription(coreJson["processedDescription"]));
+    core.set_geometrical_description(std::vector<MAS::CoreGeometricalDescriptionElement>(coreJson["geometricalDescription"]));
+    OpenMagnetics::Coil coil(call["magnetic"]["coil"], false);
+    REQUIRE(coil.get_turns_description());
+    REQUIRE(coil.get_sections_description());
+    REQUIRE_FALSE(coil.get_layers_description());
+    double magnetizingInductance = MagnetizingInductance().calculate_inductance_from_number_turns_and_gapping(core, coil)
+                                       .get_magnetizing_inductance().get_nominal().value();
+    OpenMagnetics::Inputs inputs(call["inputs"], true, magnetizingInductance);
+    auto operatingPoint = inputs.get_operating_point(call["operatingPointIndex"].get<size_t>());
+    auto excitation = operatingPoint.get_excitations_per_winding()[0];
+    if (!excitation.get_current()) {
+        excitation.set_current(OpenMagnetics::Inputs::calculate_magnetizing_current(excitation, magnetizingInductance, true, 0.0));
+        operatingPoint.get_mutable_excitations_per_winding()[0] = excitation;
+    }
+    auto coreLossesModelName = OpenMagnetics::defaults.coreLossesModelDefault;
+    OpenMagnetics::from_json(call["models"]["coreLosses"], coreLossesModelName);
+    auto reluctanceModelName = OpenMagnetics::defaults.reluctanceModelDefault;
+    OpenMagnetics::from_json(call["models"]["gapReluctance"], reluctanceModelName);
+    auto coreTemperatureModelName = OpenMagnetics::defaults.coreTemperatureModelDefault;
+    OpenMagnetics::from_json(call["models"]["coreTemperature"], coreTemperatureModelName);
+    settings.set_core_temperature_model(coreTemperatureModelName);
+    OpenMagnetics::Magnetic magnetic;
+    magnetic.set_core(core);
+    magnetic.set_coil(coil);
+    MagneticSimulator simulator;
+    simulator.set_core_losses_model_name(coreLossesModelName);
+    simulator.set_reluctance_model_name(reluctanceModelName);
+
+    std::optional<WindingLossesOutput> windingLossesOutput;
+    std::optional<TemperatureOutput> temperatureOutput;
+    CoreLossesOutput coreLosses;
+    REQUIRE_NOTHROW(coreLosses = simulator.calculate_core_losses(operatingPoint, magnetic, &windingLossesOutput, &temperatureOutput));
+    INFO("core " << coreLosses.get_core_losses() << " W at " << coreLosses.get_temperature() << " C (prod 426ec505: 0.00657 W, 25.8 C)");
+    CHECK(std::isfinite(coreLosses.get_core_losses()));
+    CHECK(coreLosses.get_core_losses() > 0);
+    REQUIRE(windingLossesOutput);
+    if (temperatureOutput) {
+        INFO("hot spot " << temperatureOutput->get_maximum_temperature() << " C");
+        CHECK(std::isfinite(temperatureOutput->get_maximum_temperature()));
+        CHECK(temperatureOutput->get_maximum_temperature() > operatingPoint.get_conditions().get_ambient_temperature());
+    }
+    // Every breakdown, the per-layer one included: the layers the turns name were rebuilt.
+    REQUIRE(windingLossesOutput->get_winding_losses_per_turn());
+    CHECK(windingLossesOutput->get_winding_losses_per_turn()->size() == 10);
+    REQUIRE(windingLossesOutput->get_winding_losses_per_section());
+    CHECK(windingLossesOutput->get_winding_losses_per_section()->size() == 1);
+    REQUIRE(windingLossesOutput->get_winding_losses_per_layer());
+    REQUIRE(windingLossesOutput->get_winding_losses_per_layer()->size() == 2);
+    CHECK(windingLossesOutput->get_winding_losses_per_layer()->at(0).get_name() == "Primary section 0 layer 0");
+    CHECK(windingLossesOutput->get_winding_losses_per_layer()->at(1).get_name() == "Primary section 0 layer 1");
+    // The caller's magnetic is left as given.
+    CHECK_FALSE(magnetic.get_coil().get_layers_description());
+    settings.reset();
+}
+
 // ABT #1879: three web-stored designs whose winding currents are 128 points on a CLOSED uniform
 // axis ([0, T], last point = first). Their harmonics were taken as 128 OPEN samples (period one
 // step long), so a pure sine carried fake content at every harmonic, and CoilMesher's phase check
