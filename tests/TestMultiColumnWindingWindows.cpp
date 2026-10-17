@@ -1,6 +1,8 @@
 #include "constructive_models/Core.h"
 #include "constructive_models/Bobbin.h"
 #include "support/Settings.h"
+#include "support/Utils.h"
+#include "constructive_models/Magnetic.h"
 #include "TestingUtils.h"
 #include "json.hpp"
 
@@ -795,4 +797,40 @@ TEST_CASE("MultiColumnWinding_ThreeWindings_SharedMainPlusLateral", "[constructi
         }
     }
     CHECK(std::abs(primaryX - tertiaryX) > primaryHalfWidth + tertiaryHalfWidth - 1e-9);
+}
+
+// ABT #1899: the Winding Studio pins a drawn section rect and turns its gaps to the window ends into
+// the section's margins; wind_with_columns (Coil::wind + apply_custom_section_rects) stores the drawn
+// rect as the section's dimensions and the gaps as its margins, the convention every MKF winder uses
+// (the margins lie outside the stored dimensions), and leaves its fillingFactor to be measured.
+// computed_filling_factor took the margins off the dimensions a second time
+// (11.193 - 3.89 - 13.217 = -5.914 mm) and magnetic_autocomplete refused the coil MKF had wound.
+TEST_CASE("Test_Winding_Studio_Custom_Rect_With_Margins_Autocompletes", "[constructive-model][coil][multi-column][bug][abt-1899]") {
+    auto path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "web_winding_studio/ws8_custom_rect_margins_magnetic.json");
+    std::ifstream file(path);
+    REQUIRE(file.good());
+    OpenMagnetics::Magnetic magnetic(json::parse(file));
+    auto statedSections = magnetic.get_coil().get_sections_description().value();
+    auto stated = std::find_if(statedSections.begin(), statedSections.end(),
+                               [](const Section& section) { return section.get_name() == "Primary section 0"; });
+    REQUIRE(stated != statedSections.end());
+    REQUIRE(!stated->get_filling_factor());
+
+    OpenMagnetics::Magnetic autocompleted;
+    REQUIRE_NOTHROW(autocompleted = OpenMagnetics::magnetic_autocomplete(magnetic, json::object()));
+
+    auto sections = autocompleted.get_coil().get_sections_description().value();
+    auto primary = std::find_if(sections.begin(), sections.end(),
+                                [](const Section& section) { return section.get_name() == "Primary section 0"; });
+    REQUIRE(primary != sections.end());
+    // The section is kept as it was stated: the drawn rect and the gaps to the window ends.
+    CHECK_THAT(primary->get_dimensions()[0], Catch::Matchers::WithinAbs(0.00171, 1e-9));
+    CHECK_THAT(primary->get_dimensions()[1], Catch::Matchers::WithinAbs(0.011193231068268463, 1e-9));
+    CHECK_THAT(primary->get_coordinates()[1], Catch::Matchers::WithinAbs(0.004663384465865768, 1e-9));
+    auto margin = OpenMagnetics::Coil::resolve_margin(*primary);
+    CHECK_THAT(margin[0], Catch::Matchers::WithinAbs(0.00389, 1e-9));
+    CHECK_THAT(margin[1], Catch::Matchers::WithinAbs(0.013216768931731534, 1e-9));
+    // Margins plus the section fill the 28.3 mm window: they are outside its dimensions.
+    CHECK_THAT(margin[0] + primary->get_dimensions()[1] + margin[1], Catch::Matchers::WithinAbs(0.0283, 1e-9));
+    CHECK(autocompleted.get_coil().get_layers_description()->size() == 6);
 }

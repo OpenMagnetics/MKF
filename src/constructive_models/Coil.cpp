@@ -9634,7 +9634,7 @@ size_t Coil::get_section_index_by_name(std::string name) const {
 double get_area_used_in_wires(OpenMagnetics::Wire wire, uint64_t physicalTurns);
 
 double Coil::computed_filling_factor(const std::string& name, const std::vector<PartialWinding>& partialWindings,
-                                     const std::vector<double>& dimensions, const std::optional<std::vector<double>>& margin) {
+                                     const std::vector<double>& dimensions) {
     if (dimensions.size() < 2) {
         throw CoilException(ErrorCode::INVALID_COIL_CONFIGURATION,
             "'" + name + "' has no fillingFactor and its dimensions do not give one: it states " +
@@ -9657,21 +9657,17 @@ double Coil::computed_filling_factor(const std::string& name, const std::vector<
         }
         usedArea += get_area_used_in_wires(wires[windingIndex], physicalTurns);
     }
+    // ABT #1899: a section's dimensions already exclude its margins. wind_by_rectangular_sections
+    // stores the slot less both margins and sets fillingFactor = area / (those dimensions), and
+    // delimit_and_compact keeps the margins between the delimited section and the window ends. Taking
+    // the margins off the stated dimensions again measured them twice: the Winding Studio's drawn
+    // rect (11.193 mm, margins 3.89 + 13.217 mm to the window ends) read as -5.914 mm and
+    // magnetic_autocomplete refused a coil MKF had just wound.
     double width = dimensions[0];
     double height = dimensions[1];
-    if (margin && margin->size() >= 2) {
-        // wind_by_rectangular_sections: the margins run along the axis the sections stack on --
-        // the height when sections overlap, the width when they are contiguous.
-        if (get_winding_orientation() == WindingOrientation::OVERLAPPING) {
-            height -= (*margin)[0] + (*margin)[1];
-        }
-        else {
-            width -= (*margin)[0] + (*margin)[1];
-        }
-    }
     if (width <= 0 || height <= 0) {
         throw CoilException(ErrorCode::INVALID_COIL_CONFIGURATION,
-            "'" + name + "' has no room left inside its margins: " + std::to_string(width * 1e3) + " x " +
+            "'" + name + "' has no room for its turns: it states " + std::to_string(width * 1e3) + " x " +
             std::to_string(height * 1e3) + " mm");
     }
     return usedArea / (width * height);
@@ -9696,7 +9692,7 @@ std::string Coil::describe_first_section_overflow() {
         }
         double fillingFactor = layer.get_filling_factor()
             ? layer.get_filling_factor().value()
-            : computed_filling_factor(layer.get_name(), layer.get_partial_windings(), layer.get_dimensions(), std::nullopt);
+            : computed_filling_factor(layer.get_name(), layer.get_partial_windings(), layer.get_dimensions());
         if (roundFloat(fillingFactor, 6) > ffLimit) {
             // The layer is one conductor thick across its turn axis, so its square-area filling
             // factor times its turn-axis extent is the length its turns need along that axis.
@@ -9776,17 +9772,17 @@ bool Coil::are_sections_and_layers_fitting() {
     // the bare .value() below threw std::bad_optional_access, which reached a Python caller as
     // "bad optional access" with nothing pointing at the coil. Compute it from what the element
     // holds, with the formula the winders set it with: the square area its physical turns occupy
-    // (get_area_used_in_wires) over its own rectangle, less its margins on the axis they apply to.
+    // (get_area_used_in_wires) over its own rectangle, whose dimensions already exclude its margins.
     for (auto& section : sections) {
         if (section.get_type() == ElectricalType::CONDUCTION && !section.get_filling_factor()) {
             section.set_filling_factor(computed_filling_factor(section.get_name(), section.get_partial_windings(),
-                                                               section.get_dimensions(), resolve_margin(section)));
+                                                               section.get_dimensions()));
         }
     }
     for (auto& layer : layers) {
         if (layer.get_type() == ElectricalType::CONDUCTION && !layer.get_filling_factor()) {
             layer.set_filling_factor(computed_filling_factor(layer.get_name(), layer.get_partial_windings(),
-                                                             layer.get_dimensions(), std::nullopt));
+                                                             layer.get_dimensions()));
         }
     }
 

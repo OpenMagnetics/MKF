@@ -676,7 +676,7 @@ class Coil : public MAS::Coil {
         };
         void throw_if_direct_wind_overflows(const std::string& caller);
         double computed_filling_factor(const std::string& name, const std::vector<PartialWinding>& partialWindings,
-                                       const std::vector<double>& dimensions, const std::optional<std::vector<double>>& margin);
+                                       const std::vector<double>& dimensions);
         // Winding-style overrides (winding studio), keyed by winding name.
         std::map<std::string, WindingStyle> _windingStyleOverridePerWinding;
         // ABT #1487: real-winding crossing stations currently added to each winding's numberTurns
