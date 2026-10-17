@@ -134,13 +134,13 @@ class InitialPermeability {
         static std::vector<PermeabilityPoint> sample_initial_permeability_by_frequency_modifier(PermeabilityPoint permeabilityPoint);
         static double calculate_frequency_for_initial_permeability_drop(const CoreMaterial& coreMaterial, double percentageDrop, double maximumError = 0.01);
         static std::vector<size_t> get_only_temperature_dependent_indexes(const CoreMaterial& coreMaterial);
-        static std::vector<size_t> get_only_temperature_dependent_indexes(std::vector<PermeabilityPoint> permeabilityPoints);
+        static std::vector<size_t> get_only_temperature_dependent_indexes(const std::vector<PermeabilityPoint>& permeabilityPoints);
         static std::vector<PermeabilityPoint> get_only_temperature_dependent_points(const CoreMaterial& coreMaterial);
         static std::vector<size_t> get_only_frequency_dependent_indexes(const CoreMaterial& coreMaterial);
-        static std::vector<size_t> get_only_frequency_dependent_indexes(std::vector<PermeabilityPoint> permeabilityPoints);
+        static std::vector<size_t> get_only_frequency_dependent_indexes(const std::vector<PermeabilityPoint>& permeabilityPoints);
         static std::vector<PermeabilityPoint> get_only_frequency_dependent_points(const CoreMaterial& coreMaterial);
         static std::vector<size_t> get_only_magnetic_field_dc_bias_dependent_indexes(const CoreMaterial& coreMaterial);
-        static std::vector<size_t> get_only_magnetic_field_dc_bias_dependent_indexes(std::vector<PermeabilityPoint> permeabilityPoints);
+        static std::vector<size_t> get_only_magnetic_field_dc_bias_dependent_indexes(const std::vector<PermeabilityPoint>& permeabilityPoints);
         static std::vector<PermeabilityPoint> get_only_magnetic_field_dc_bias_dependent_points(const CoreMaterial& coreMaterial);
         static std::map<std::string, std::string> get_initial_permeability_equations(PermeabilityPoint permeabilityPoint);
         static double get_initial_permeability_formula(const CoreMaterial& coreMaterial,

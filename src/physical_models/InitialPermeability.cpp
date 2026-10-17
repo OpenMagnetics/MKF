@@ -150,7 +150,7 @@ double InitialPermeability::has_frequency_dependency(const CoreMaterial& coreMat
         const auto& permeabilityPoints = std::get<std::vector<PermeabilityPoint>>(initialPermeabilityData);
         for (const auto& point : permeabilityPoints) {
             if (point.get_frequency()) {
-                if (point.get_frequency().value() > Constants().quasiStaticFrequencyLimit) {
+                if (point.get_frequency().value() > constants.quasiStaticFrequencyLimit) {
                     return true;
                 }
             }
@@ -232,7 +232,7 @@ std::shared_ptr<const InitialPermeability::MagnetisationCurve> InitialPermeabili
     if (!(saturationFieldStrength > 0)) {
         throw InvalidInputException(ErrorCode::INVALID_INPUT, "Material " + coreMaterial.get_name() + " has no positive saturation field strength at " + std::to_string(temperature) + " C to build its magnetisation curve");
     }
-    double vacuumPermeability = Constants().vacuumPermeability;
+    double vacuumPermeability = constants.vacuumPermeability;
     auto reversiblePermeabilityAt = [&](double fieldStrength) {
         return std::max(1.0, initialPermeability.get_initial_permeability_model_value(coreMaterial, temperature, fieldStrength, frequency));
     };
@@ -307,7 +307,7 @@ double InitialPermeability::get_magnetic_field_dc_bias_for_flux_density(const Co
     if (!refuseAboveSaturation && biasFluxDensity > saturationFluxDensity) {
         // Analysing a design driven past saturation: a thousand times the saturation field strength
         // is far beyond the knee, the magnetisation no longer grows, and B rises on the vacuum slope.
-        return fieldStrengths.back() + (biasFluxDensity - fluxDensities.back()) / Constants().vacuumPermeability;
+        return fieldStrengths.back() + (biasFluxDensity - fluxDensities.back()) / constants.vacuumPermeability;
     }
     throw std::runtime_error("The DC-bias permeability curve of material " + coreMaterial.get_name() + " integrates to only " +
                              std::to_string(fluxDensities.back()) + " T at " + std::to_string(fieldStrengths.back()) + " A/m, below the " +
@@ -357,7 +357,7 @@ std::pair<double, double> InitialPermeability::get_dc_operating_point_for_magnet
     };
     size_t last = fieldStrengths.size() - 1;
     if (magnetomotiveForce > loadLine(last)) {
-        double vacuumPermeability = Constants().vacuumPermeability;
+        double vacuumPermeability = constants.vacuumPermeability;
         double slope = effectiveLength + vacuumPermeability * effectiveArea * gapReluctance;
         double extraFieldStrength = (magnetomotiveForce - loadLine(last)) / slope;
         return {fieldStrengths[last] + extraFieldStrength, fluxDensities[last] + vacuumPermeability * extraFieldStrength};
@@ -636,12 +636,12 @@ double InitialPermeability::get_initial_permeability_formula(const CoreMaterial&
     return initialPermeabilityValue;
 }
 
-double get_closes_temperature_to_default_in_permeability_points(std::vector<PermeabilityPoint> points) {
+double get_closes_temperature_to_default_in_permeability_points(const std::vector<PermeabilityPoint>& points) {
     double closestDistance = DBL_MAX;
     double closestTemperature = DBL_MAX;
-    for (auto point : points) {
+    for (const auto& point : points) {
         if (point.get_temperature()) {
-            double distance = fabs(point.get_temperature().value() - Defaults().ambientTemperature);
+            double distance = fabs(point.get_temperature().value() - defaults.ambientTemperature);
             if (distance < closestDistance) {
                 closestDistance = distance;
                 closestTemperature = point.get_temperature().value();
@@ -652,7 +652,7 @@ double get_closes_temperature_to_default_in_permeability_points(std::vector<Perm
     return closestTemperature;
 }
 
-double get_minimum_frequency_in_permeability_points(std::vector<PermeabilityPoint> points) {
+double get_minimum_frequency_in_permeability_points(const std::vector<PermeabilityPoint>& points) {
     auto order_frequency = []( const auto &e1, const auto &e2 ) {
         if (!e1.get_frequency()) {
             return false;
@@ -668,11 +668,11 @@ double get_minimum_frequency_in_permeability_points(std::vector<PermeabilityPoin
         return minimumFrequencyPoint->get_frequency().value();
     }
     else {
-        return Constants().quasiStaticFrequencyLimit;
+        return constants.quasiStaticFrequencyLimit;
     }
 }
 
-double get_maximum_frequency_in_permeability_points(std::vector<PermeabilityPoint> points) {
+double get_maximum_frequency_in_permeability_points(const std::vector<PermeabilityPoint>& points) {
     auto order_frequency = []( const auto &e1, const auto &e2 ) {
         if (!e1.get_frequency()) {
             return false;
@@ -692,7 +692,7 @@ double get_maximum_frequency_in_permeability_points(std::vector<PermeabilityPoin
     }
 }
 
-double get_minimum_magnetic_field_dc_bias_in_permeability_points(std::vector<PermeabilityPoint> points) {
+double get_minimum_magnetic_field_dc_bias_in_permeability_points(const std::vector<PermeabilityPoint>& points) {
     auto minimum_magnetic_field_dc_bias = []( const auto &e1, const auto &e2 ) {
         if (!e1.get_magnetic_field_dc_bias()) {
             return false;
@@ -712,12 +712,12 @@ double get_minimum_magnetic_field_dc_bias_in_permeability_points(std::vector<Per
     }
 }
 
-std::vector<size_t> InitialPermeability::get_only_temperature_dependent_indexes(std::vector<PermeabilityPoint> permeabilityPoints) {
+std::vector<size_t> InitialPermeability::get_only_temperature_dependent_indexes(const std::vector<PermeabilityPoint>& permeabilityPoints) {
     std::vector<size_t> temperatureIndexes;
     double minimumFrequency = get_minimum_frequency_in_permeability_points(permeabilityPoints);
     double minimumMagneticFieldDcBias = get_minimum_magnetic_field_dc_bias_in_permeability_points(permeabilityPoints);
     for (size_t index = 0; index < permeabilityPoints.size(); ++index) {
-        auto point = permeabilityPoints[index];
+        const auto& point = permeabilityPoints[index];
         if (point.get_frequency()) {
             if (point.get_frequency().value() > minimumFrequency) {
                 continue;
@@ -761,12 +761,12 @@ std::vector<PermeabilityPoint> InitialPermeability::get_only_temperature_depende
     return temperaturePoints;
 }
 
-std::vector<size_t> InitialPermeability::get_only_frequency_dependent_indexes(std::vector<PermeabilityPoint> permeabilityPoints) {
+std::vector<size_t> InitialPermeability::get_only_frequency_dependent_indexes(const std::vector<PermeabilityPoint>& permeabilityPoints) {
     std::vector<size_t> frequencyIndexes;
     double defaultTemperature = get_closes_temperature_to_default_in_permeability_points(permeabilityPoints);
     double minimumMagneticFieldDcBias = get_minimum_magnetic_field_dc_bias_in_permeability_points(permeabilityPoints);
     for (size_t index = 0; index < permeabilityPoints.size(); ++index) {
-        auto point = permeabilityPoints[index];
+        const auto& point = permeabilityPoints[index];
         if (point.get_temperature()) {
             if (point.get_temperature().value() != defaultTemperature) {
                 continue;
@@ -865,12 +865,12 @@ std::vector<PermeabilityPoint> InitialPermeability::get_only_frequency_dependent
     return frequencyPoints;
 }
 
-std::vector<size_t> InitialPermeability::get_only_magnetic_field_dc_bias_dependent_indexes(std::vector<PermeabilityPoint> permeabilityPoints) {
+std::vector<size_t> InitialPermeability::get_only_magnetic_field_dc_bias_dependent_indexes(const std::vector<PermeabilityPoint>& permeabilityPoints) {
     std::vector<size_t>  magneticFieldDcBiasIndexes;
     double defaultTemperature = get_closes_temperature_to_default_in_permeability_points(permeabilityPoints);
     double minimumFrequency = get_minimum_frequency_in_permeability_points(permeabilityPoints);
     for (size_t index = 0; index < permeabilityPoints.size(); ++index) {
-        auto point = permeabilityPoints[index];
+        const auto& point = permeabilityPoints[index];
         if (point.get_temperature()) {
             if (point.get_temperature().value() != defaultTemperature) {
                 continue;
@@ -936,7 +936,11 @@ std::optional<double> InitialPermeability::get_temperature_table_end(const CoreM
         return std::nullopt;
     }
     std::optional<double> tableEnd;
-    for (const auto& point : get_only_temperature_dependent_points(coreMaterial)) {
+    // By index into the material's points: this runs on every permeability evaluation (each of the ~2600 grid
+    // points of a magnetisation curve), where copying the points was most of the cost.
+    const auto& allPoints = std::get<std::vector<PermeabilityPoint>>(coreMaterial.get_permeability().get_initial());
+    for (size_t index : get_only_temperature_dependent_indexes(allPoints)) {
+        const auto& point = allPoints[index];
         if (point.get_temperature() && (!tableEnd || point.get_temperature().value() > tableEnd.value())) {
             tableEnd = point.get_temperature().value();
         }
@@ -962,12 +966,15 @@ std::optional<double> InitialPermeability::get_maximum_ferromagnetic_data_temper
 
 double InitialPermeability::get_initial_permeability_temperature_dependent(const CoreMaterial& coreMaterial, double temperature) {
     double initialPermeabilityValue = 1;
-    auto permeabilityPoints = get_only_temperature_dependent_points(coreMaterial);
-    if (permeabilityPoints.size() == 0) {
+    // The points are read by index; they are copied only to build the interpolator, once per material.
+    const auto& allPoints = std::get<std::vector<PermeabilityPoint>>(coreMaterial.get_permeability().get_initial());
+    const auto temperatureIndexes = get_only_temperature_dependent_indexes(allPoints);
+    if (temperatureIndexes.size() == 0) {
         throw InvalidInputException(ErrorCode::MISSING_DATA, "No temperature dependent points for material: " + coreMaterial.get_name());
     }
 
     if (!initialPermeabilityTemperatureInterps.contains(coreMaterial.get_name())) {
+        auto permeabilityPoints = get_only_temperature_dependent_points(coreMaterial);
         // Sort by temperature so spline x values are strictly increasing
         std::sort(permeabilityPoints.begin(), permeabilityPoints.end(),
             [](const auto& a, const auto& b) {
@@ -1004,18 +1011,20 @@ double InitialPermeability::get_initial_permeability_temperature_dependent(const
         }
     }
 
-    double tabulatedMinimum = *std::min_element(permeabilityPoints.begin(), permeabilityPoints.end(),
-        [](const auto& a, const auto& b) { return *a.get_temperature() < *b.get_temperature(); })->get_temperature();
-    double tabulatedMaximum = *std::max_element(permeabilityPoints.begin(), permeabilityPoints.end(),
-        [](const auto& a, const auto& b) { return *a.get_temperature() < *b.get_temperature(); })->get_temperature();
+    auto byTemperature = [&](size_t a, size_t b) { return *allPoints[a].get_temperature() < *allPoints[b].get_temperature(); };
+    double tabulatedMinimum = *allPoints[*std::min_element(temperatureIndexes.begin(), temperatureIndexes.end(), byTemperature)].get_temperature();
+    double tabulatedMaximum = *allPoints[*std::max_element(temperatureIndexes.begin(), temperatureIndexes.end(), byTemperature)].get_temperature();
 
     // Above its Curie point a ferrite is paramagnetic: mu_i = 1 is the physics, not an extrapolation.
     // The stored Curie temperature can be a guaranteed minimum (Ferroxcube prints "TC >= 220 C") with
     // the measured mu_i(T) running above it (3C90 to 240 C), so mu_i = 1 starts only above both.
     auto curieTemperature = coreMaterial.get_curie_temperature();
-    auto paramagneticTemperature = get_paramagnetic_temperature(coreMaterial);
-    if (paramagneticTemperature && temperature > paramagneticTemperature.value()) {
-        return 1;
+    // Never below the Curie temperature: its table scan is needed only above the Curie point.
+    if (curieTemperature && temperature > curieTemperature.value()) {
+        auto paramagneticTemperature = get_paramagnetic_temperature(coreMaterial);
+        if (paramagneticTemperature && temperature > paramagneticTemperature.value()) {
+            return 1;
+        }
     }
 
     // ABT #1739: below the Curie point, outside the tabulated mu_i(T) range, the material has no data.
@@ -1053,12 +1062,13 @@ double InitialPermeability::get_initial_permeability_temperature_dependent(const
 
 double InitialPermeability::get_initial_permeability_frequency_dependent(const CoreMaterial& coreMaterial, double frequency) {
     double initialPermeabilityValue = 1;
-    auto permeabilityPoints = get_only_frequency_dependent_points(coreMaterial);
-    if (permeabilityPoints.size() == 0) {
-        throw InvalidInputException(ErrorCode::MISSING_DATA, "No frequency dependent points for material: " + coreMaterial.get_name());
-    }
-
+    // The points are copied only to build the interpolator, once per material: an interpolator is stored only
+    // for a material that has them.
     if (!initialPermeabilityFrequencyInterps.contains(coreMaterial.get_name())) {
+        auto permeabilityPoints = get_only_frequency_dependent_points(coreMaterial);
+        if (permeabilityPoints.size() == 0) {
+            throw InvalidInputException(ErrorCode::MISSING_DATA, "No frequency dependent points for material: " + coreMaterial.get_name());
+        }
         // Sort by frequency so spline x values are strictly increasing (the temperature
         // sibling sorts; this one relied on DB order — tk::spline asserts/UB on unsorted input).
         std::sort(permeabilityPoints.begin(), permeabilityPoints.end(),
@@ -1103,12 +1113,13 @@ double InitialPermeability::get_initial_permeability_frequency_dependent(const C
 
 double InitialPermeability::get_initial_permeability_magnetic_field_dc_bias_dependent(const CoreMaterial& coreMaterial, double magneticFieldDcBias) {
     double initialPermeabilityValue = 1;
-    auto permeabilityPoints = get_only_magnetic_field_dc_bias_dependent_points(coreMaterial);
-    if (permeabilityPoints.size() == 0) {
-        throw InvalidInputException(ErrorCode::MISSING_DATA, "No magnetic field dc bias dependent points for material: " + coreMaterial.get_name());
-    }
-
+    // The points are copied only to build the interpolator, once per material: an interpolator is stored only
+    // for a material that has them.
     if (!initialPermeabilityMagneticFieldDcBiasInterps.contains(coreMaterial.get_name())) {
+        auto permeabilityPoints = get_only_magnetic_field_dc_bias_dependent_points(coreMaterial);
+        if (permeabilityPoints.size() == 0) {
+            throw InvalidInputException(ErrorCode::MISSING_DATA, "No magnetic field dc bias dependent points for material: " + coreMaterial.get_name());
+        }
         // Sort by H bias so spline x values are strictly increasing (see the temperature
         // sibling; unsorted DB order would be UB in tk::spline).
         std::sort(permeabilityPoints.begin(), permeabilityPoints.end(),
@@ -1292,7 +1303,7 @@ double InitialPermeability::get_initial_permeability_model_value(const CoreMater
             initialPermeabilityValue = get_initial_permeability_temperature_dependent(coreMaterial, temperature.value());
         }
         else if (hasTemperatureDependency) {
-            initialPermeabilityValueReference = get_initial_permeability_temperature_dependent(coreMaterial, Defaults().ambientTemperature);
+            initialPermeabilityValueReference = get_initial_permeability_temperature_dependent(coreMaterial, defaults.ambientTemperature);
         }
         else if (hasFrequencyDependency) {
             const auto& initialPermeabilityData = coreMaterial.get_permeability().get_initial();
@@ -1326,8 +1337,8 @@ double InitialPermeability::get_initial_permeability_model_value(const CoreMater
             }
             double closestDistance = DBL_MAX;
             for (const auto& point : permeabilityPoints) {
-                double pointTemperature = point.get_temperature() ? point.get_temperature().value() : Defaults().ambientTemperature;
-                double distance = fabs(pointTemperature - Defaults().ambientTemperature);
+                double pointTemperature = point.get_temperature() ? point.get_temperature().value() : defaults.ambientTemperature;
+                double distance = fabs(pointTemperature - defaults.ambientTemperature);
                 if (distance < closestDistance) {
                     closestDistance = distance;
                     initialPermeabilityValueReference = point.get_value();
@@ -1393,7 +1404,10 @@ double InitialPermeability::get_initial_permeability_model_value(const CoreMater
         }
     }
 
-    if (temperature) {
+    // The paramagnetic temperature is never below the Curie temperature, so its table scan is needed only above
+    // the Curie point (this runs on every grid point of a magnetisation curve).
+    auto curieTemperature = coreMaterial.get_curie_temperature();
+    if (temperature && curieTemperature && temperature.value() > curieTemperature.value()) {
         auto paramagneticTemperature = get_paramagnetic_temperature(coreMaterial);
         if (paramagneticTemperature && temperature.value() > paramagneticTemperature.value()) {
             initialPermeabilityValue = 1;
