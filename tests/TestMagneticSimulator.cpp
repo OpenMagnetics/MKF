@@ -1118,38 +1118,39 @@ namespace {
 
     // ABT #1908: the loss <-> temperature solve kept the core below the end of its mu_i(T) / Curie data only,
     // and the other temperature-dependent data of a grade can end lower. DMR71's saturation points stop at
-    // 120 C and the saturation field strength they model, extrapolated, reaches zero near 211 C, below its
+    // 120 C and the monotonic Hermite spline through them, extrapolated, reached zero at 211.2 C, below its
     // 255 C Curie point (its mu_i(T) table runs to 260 C). The IEEE article 3 ETD 29 in still air at 100 C is
     // driven past that: the magnetizing model's magnetisation curve then threw INVALID_INPUT ("no positive
-    // saturation field strength"), which ended Henry's grade ranking. The core is now held below where its
-    // saturation field strength data end, as at the end of a mu_i(T) table, and analyze_results reports the
-    // data limit.
-    TEST_CASE("Loss-temperature loop holds the core where its saturation field strength data end and reports the data limit", "[processor][magnetic-simulator][abt-1908]") {
+    // saturation field strength"), which ended Henry's grade ranking. Past its data the saturation field
+    // strength now goes linearly to zero at Curie (Alf, 2026-10-17), so it sets no ceiling of its own: the core
+    // settles inside its data (about 233 C), and analyze_results reports no data limit. Rewritten from the
+    // hold at the saturation field strength end (11b51471), Alf approved 2026-10-17.
+    TEST_CASE("Loss-temperature loop settles a core past its saturation field strength points inside its data", "[processor][magnetic-simulator][abt-1908]") {
         auto [inputs, magnetic] = build_ieee_article_3(false, "DMR71");
         auto coreMaterial = magnetic.get_mutable_core().resolve_material();
         REQUIRE(coreMaterial.get_name() == "DMR71");
+        REQUIRE(coreMaterial.get_curie_temperature());
+        const double curieTemperature = coreMaterial.get_curie_temperature().value();
         auto ferromagneticCeiling = InitialPermeability::get_maximum_ferromagnetic_data_temperature(coreMaterial);
         REQUIRE(ferromagneticCeiling);
-        // Below the mu_i(T) / Curie ceiling the saturation field strength data already end, and a direct query
-        // there still refuses.
-        double ferromagneticCeilingTemperature = ferromagneticCeiling.value();
-        REQUIRE(!(Core::get_magnetic_field_strength_saturation(coreMaterial, ferromagneticCeilingTemperature - 10) > 0));
-        CHECK_THROWS_AS(InitialPermeability::get_magnetisation_curve(coreMaterial, ferromagneticCeilingTemperature - 10, std::nullopt), InvalidInputException);
+        REQUIRE(ferromagneticCeiling.value() == curieTemperature);
 
         auto operatingPoint = inputs.get_operating_point(0);
         MagneticSimulator simulator;
         std::optional<TemperatureOutput> temperature;
         CoreLossesOutput coreLosses;
         REQUIRE_NOTHROW(coreLosses = simulator.calculate_core_losses(operatingPoint, magnetic, nullptr, &temperature));
-        // Held where its saturation field strength is still positive, within the tolerance below where it
-        // stops being so, while the network's hottest point is above it.
-        const double heldTemperature = coreLosses.get_temperature();
-        INFO("core held at " << heldTemperature << " C");
-        CHECK(Core::get_magnetic_field_strength_saturation(coreMaterial, heldTemperature) > 0);
-        CHECK(!(Core::get_magnetic_field_strength_saturation(coreMaterial, heldTemperature + MagneticSimulator::kOperatingTemperatureTolerance) > 0));
-        CHECK(heldTemperature < ferromagneticCeilingTemperature - MagneticSimulator::kOperatingTemperatureTolerance);
+        const double coreTemperature = coreLosses.get_temperature();
         REQUIRE(temperature);
-        CHECK(temperature->get_maximum_temperature() > heldTemperature + MagneticSimulator::kOperatingTemperatureTolerance);
+        INFO("core losses " << coreLosses.get_core_losses() << " W at " << coreTemperature << " C, hottest point "
+             << temperature->get_maximum_temperature() << " C");
+        // Past where the extrapolated saturation points used to reach zero, and below Curie: inside the data,
+        // with a positive saturation field strength, and not held at any ceiling.
+        CHECK(coreTemperature > 211.2);
+        CHECK(coreTemperature < curieTemperature - MagneticSimulator::kOperatingTemperatureTolerance);
+        CHECK(Core::get_magnetic_field_strength_saturation(coreMaterial, coreTemperature) > 0);
+        CHECK_NOTHROW(InitialPermeability::get_magnetisation_curve(coreMaterial, coreTemperature, std::nullopt));
+        CHECK(!MagneticSimulator::is_core_held_at_data_ceiling(coreMaterial, coreTemperature, temperature->get_maximum_temperature()));
 
         // The loss filter the advisers rank a candidate with gives its verdict instead of throwing.
         MagneticFilterLosses lossesFilter;
@@ -1161,19 +1162,14 @@ namespace {
         OpenMagnetics::Mas simulated;
         REQUIRE_NOTHROW(simulated = simulator.simulate(mas));
         REQUIRE(simulated.get_outputs().size() == 1);
+        CHECK_THAT(simulated.get_outputs()[0].get_core_losses()->get_temperature(), Catch::Matchers::WithinAbs(coreTemperature, 1e-9));
         std::vector<ResultFinding> findings;
         REQUIRE_NOTHROW(findings = ResultsAnalyzer::analyze_results(simulated));
-        size_t dataLimitFindings = 0;
         for (const auto& finding : findings) {
             INFO(to_string(finding.code) << ": " << finding.message);
-            if (finding.code == ResultFindingCode::CORE_ABOVE_MATERIAL_DATA_LIMIT) {
-                ++dataLimitFindings;
-                CHECK(finding.operatingPointIndex == 0);
-                CHECK_THAT(finding.message, Catch::Matchers::ContainsSubstring("saturation field strength data reach zero"));
-                CHECK_THAT(finding.message, Catch::Matchers::ContainsSubstring("the core's real temperature is higher"));
-            }
+            CHECK(finding.operatingPointIndex == 0);
+            CHECK(finding.code != ResultFindingCode::CORE_ABOVE_MATERIAL_DATA_LIMIT);
         }
-        CHECK(dataLimitFindings == 1);
     }
 
     // ABT #1908: DMR24's Steinmetz range for 400 kHz to 999.3 kHz has ct(T) = 1.137 - 0.0055 T, which stops being
@@ -1241,20 +1237,9 @@ namespace {
 
     // ABT-1908-API-BEGIN
     // ABT #1908: the ceiling's parts are the material's own data ends, found on the models that evaluate them.
-    TEST_CASE("The core data ceiling covers the saturation field strength and Steinmetz ct(T) data ends", "[processor][magnetic-simulator][abt-1908]") {
-        {
-            auto coreMaterial = find_core_material_by_name("DMR71");
-            auto end = Core::get_magnetic_field_strength_saturation_data_end(coreMaterial, 25);
-            REQUIRE(end);
-            INFO("DMR71 saturation field strength data end at " << end.value() << " C");
-            CHECK(Core::get_magnetic_field_strength_saturation(coreMaterial, end.value() - 0.01) > 0);
-            CHECK(!(Core::get_magnetic_field_strength_saturation(coreMaterial, end.value() + 0.01) > 0));
-            CHECK(end.value() < InitialPermeability::get_maximum_ferromagnetic_data_temperature(coreMaterial).value());
-            // From a temperature already past it, the data end there.
-            CHECK(Core::get_magnetic_field_strength_saturation_data_end(coreMaterial, end.value() + 1).value() == end.value() + 1);
-            // A grade whose saturation field strength stays positive has no such end.
-            CHECK(!Core::get_magnetic_field_strength_saturation_data_end(find_core_material_by_name("3C95"), 25));
-        }
+    // The saturation field strength part was removed (Alf, 2026-10-17): past its data H_sat goes linearly to zero
+    // at Curie, so it never ends below the Curie part.
+    TEST_CASE("The core data ceiling covers the Steinmetz ct(T) data ends", "[processor][magnetic-simulator][abt-1908]") {
         {
             SteinmetzCoreLossesMethodRangeDatum linear;
             linear.set_k(1); linear.set_alpha(1); linear.set_beta(2);
@@ -1289,11 +1274,12 @@ namespace {
             REQUIRE(ceiling);
             CHECK(ceiling->source == CoreDataCeilingSource::STEINMETZ_TEMPERATURE_FACTOR_END);
             CHECK_THAT(ceiling->temperature, Catch::Matchers::WithinRel(1.1374362023251179 / 0.005497448093004713, 1e-9));
-            // At 115 kHz DMR24's range has a ct(T) that stays positive, and its saturation field strength data
-            // end first.
+            // At 115 kHz DMR24's range has a ct(T) that stays positive, and the saturation field strength sets no
+            // ceiling of its own (it reaches zero at Curie): the ceiling is the Curie temperature.
             auto ceilingLow = ceilingOf(build_ieee_article_3(false, "DMR24"));
             REQUIRE(ceilingLow);
-            CHECK(ceilingLow->source == CoreDataCeilingSource::SATURATION_FIELD_STRENGTH_END);
+            CHECK(ceilingLow->source == CoreDataCeilingSource::CURIE_TEMPERATURE);
+            CHECK(ceilingLow->temperature == find_core_material_by_name("DMR24").get_curie_temperature().value());
             // 3C95 keeps its mu_i(T) table end.
             auto ceiling3C95 = ceilingOf(build_ieee_article_3(false));
             REQUIRE(ceiling3C95);

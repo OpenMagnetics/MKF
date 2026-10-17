@@ -266,8 +266,7 @@ std::vector<ResultFinding> ResultsAnalyzer::analyze_temperature(const Magnetic& 
     double hottestTemperature = output.get_temperature()->get_maximum_temperature();
 
     // The core held at its material's data limit by the loss solve (ABT #1855, Alf 2026-10-14).
-    // The ceiling covers the mu_i(T) / Curie data, the saturation field strength and the evaluated Steinmetz
-    // ranges' ct(T) (ABT #1908).
+    // The ceiling covers the mu_i(T) / Curie data and the evaluated Steinmetz ranges' ct(T) (ABT #1908).
     const auto dataCeiling = get_solved_core_data_ceiling(magnetic, operatingPoint, output.get_core_losses().value());
     if (MagneticSimulator::is_core_held_at_data_ceiling(dataCeiling, coreTemperature, hottestTemperature)) {
         double ceiling = dataCeiling->temperature;
@@ -281,10 +280,6 @@ std::vector<ResultFinding> ResultsAnalyzer::analyze_temperature(const Magnetic& 
             case CoreDataCeilingSource::PERMEABILITY_TABLE_END:
                 limit = "the last temperature of " + coreMaterial.get_name() + "'s measured permeability data";
                 magnetized = "with its last tabulated permeability";
-                break;
-            case CoreDataCeilingSource::SATURATION_FIELD_STRENGTH_END:
-                limit = "the temperature where " + coreMaterial.get_name() + "'s saturation field strength data reach zero";
-                magnetized = "with its own permeability at that temperature";
                 break;
             case CoreDataCeilingSource::STEINMETZ_TEMPERATURE_FACTOR_END:
                 limit = "the temperature where the Steinmetz temperature factor ct(T) of " + coreMaterial.get_name() +

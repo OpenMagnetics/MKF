@@ -184,11 +184,6 @@ class Core : public MAS::MagneticCore {
     static double get_magnetic_flux_density_saturation(const CoreMaterial& coreMaterial, double temperature, bool proportion = true);
     double get_magnetic_field_strength_saturation(double temperature);
     static double get_magnetic_field_strength_saturation(const CoreMaterial& coreMaterial, double temperature);
-    // ABT #1908: the lowest temperature at or above `fromTemperature` at which the material's saturation
-    // field strength, as get_magnetic_field_strength_saturation models it from its saturation points, is no
-    // longer positive (the magnetisation curve refuses there); `fromTemperature` itself when it is not positive
-    // there already; none when it stays positive above it. A property of the material's data.
-    static std::optional<double> get_magnetic_field_strength_saturation_data_end(const CoreMaterial& coreMaterial, double fromTemperature);
     CoreShapeFamily get_shape_family() const;
     std::string get_material_family() const;
     std::string get_shape_name() const;

@@ -340,13 +340,8 @@ std::optional<CoreDataCeiling> MagneticSimulator::get_core_data_ceiling(const Co
             ceiling = CoreDataCeiling{end.value(), source};
         }
     };
-    // The magnetisation curve the magnetizing model builds at the core's temperature needs a positive
-    // H_sat(T) (InitialPermeability::get_magnetisation_curve refuses otherwise). Without saturation points
-    // there is no such curve to build and no range to respect; whatever needs one still throws.
-    if (!coreMaterial.get_saturation().empty()) {
-        keepLower(Core::get_magnetic_field_strength_saturation_data_end(coreMaterial, ambientTemperature),
-                  CoreDataCeilingSource::SATURATION_FIELD_STRENGTH_END);
-    }
+    // H_sat(T) needs no part of its own: past its data it goes linearly to zero at the Curie temperature
+    // (Core::get_magnetic_field_strength_saturation, Alf 2026-10-17), so it is positive below the Curie part.
     keepLower(coreLossesModel.get_temperature_factor_data_end(core, excitation, ambientTemperature),
               CoreDataCeilingSource::STEINMETZ_TEMPERATURE_FACTOR_END);
     return ceiling;
@@ -372,8 +367,7 @@ SolvedLosses MagneticSimulator::solve_losses_at_operating_temperature(const Oper
     std::optional<double> previousWindingResidual;
     // The loop's ceiling (get_core_data_ceiling): the highest temperature where the material is
     // ferromagnetic, its mu_i(T) has data (the last table point when the table ends below Curie, else
-    // Curie), its saturation field strength is positive and the Steinmetz ranges its losses evaluate
-    // have a positive ct(T) (ABT #1908). Above it the magnetizing model or the core-loss model refuses
+    // Curie), and the Steinmetz ranges its losses evaluate have a positive ct(T) (ABT #1908). Above it the magnetizing model or the core-loss model refuses
     // (ABT #1739), so no iterate may land there. It is taken on the first iterate's excitation, once
     // its losses have been evaluated (so a material or frequency the losses cannot price throws there,
     // as it always did); the frequencies it reads do not change between iterates.
@@ -615,8 +609,7 @@ SolvedLosses MagneticSimulator::solve_losses_at_operating_temperature(const Oper
         //   - ceiling = end of a mu_i(T) table that stops below Curie (3C96: 180 C, Curie above 200 C):
         //     the material is still magnetic there, so the core is held at the table's last temperature
         //     exactly and keeps the last tabulated permeability;
-        //   - ceiling = where the saturation field strength H_sat(T) or an evaluated Steinmetz range's
-        //     ct(T) stops being positive (ABT #1908, the same hold as the mu_i(T) table's end): the
+        //   - ceiling = where an evaluated Steinmetz range's ct(T) stops being positive (ABT #1908, the same hold as the mu_i(T) table's end): the
         //     material is still magnetic, and the models refuse at that temperature itself, so the core
         //     stays at this iterate, within the tolerance below it, with its own permeability there.
         // The numbers are therefore those of a core at its data limit: its real temperature is higher,
@@ -637,9 +630,8 @@ SolvedLosses MagneticSimulator::solve_losses_at_operating_temperature(const Oper
                     case CoreDataCeilingSource::PERMEABILITY_TABLE_END:
                         coreTemperature = dataCeiling->temperature;
                         break;
-                    case CoreDataCeilingSource::SATURATION_FIELD_STRENGTH_END:
                     case CoreDataCeilingSource::STEINMETZ_TEMPERATURE_FACTOR_END:
-                        // ABT #1908: at that temperature itself H_sat or ct is zero and the model refuses,
+                        // ABT #1908: at that temperature itself ct is zero and the model refuses,
                         // so the core stays at this iterate, within the tolerance below it, the material
                         // still magnetic and with its own permeability there.
                         break;

@@ -1539,4 +1539,60 @@ namespace {
         CHECK_NOTHROW(OpenMagnetics::Core::get_remanence(withoutCurie, 60.0));
     }
 
+    // ABT #1908: DMR71's saturation field strength is tabulated to 120 C and DMR24's to 140 C. Extrapolating
+    // the table's monotonic Hermite spline crossed zero far below Curie (DMR71 211.2 C, Curie 255 C; DMR24
+    // 241.1 C, Curie 280 C), where the loss-temperature solve of a hot design asked for the magnetisation curve and got
+    // "no positive saturation field strength" (INVALID_INPUT). Past its last point it now goes linearly to zero
+    // at the Curie temperature, as remanence and coercive force do (Alf, 2026-10-17).
+    TEST_CASE("Saturation field strength goes linearly to zero at Curie past its data, and the magnetisation curve builds up to there", "[physical-model][initial-permeability][abt-1908]") {
+        struct Case { std::string material; double temperature; };
+        for (auto& [materialName, temperature] : std::vector<Case>{{"DMR71", 226.25}, {"DMR24", 248.1}, {"DMR24", 268.5}}) {
+            INFO(materialName << " at " << temperature << " C");
+            auto material = OpenMagnetics::Core::resolve_material(materialName);
+            double curieTemperature = OpenMagnetics::Core::get_curie_temperature(material);
+            REQUIRE(temperature < curieTemperature);
+            // The last tabulated point and the linear anchor to zero at Curie.
+            double lastTemperature = std::numeric_limits<double>::lowest();
+            double lastFieldStrength = 0;
+            for (const auto& datum : material.get_saturation()) {
+                if (datum.get_temperature() > lastTemperature) {
+                    lastTemperature = datum.get_temperature();
+                    lastFieldStrength = datum.get_magnetic_field();
+                }
+            }
+            REQUIRE(temperature > lastTemperature);
+            double expected = lastFieldStrength * (curieTemperature - temperature) / (curieTemperature - lastTemperature);
+            CHECK_THAT(OpenMagnetics::Core::get_magnetic_field_strength_saturation(material, temperature), Catch::Matchers::WithinRel(expected, 1e-12));
+            std::shared_ptr<const OpenMagnetics::InitialPermeability::MagnetisationCurve> curve;
+            CHECK_NOTHROW(curve = OpenMagnetics::InitialPermeability::get_magnetisation_curve(material, temperature, 100e3));
+            if (curve) {
+                CHECK(curve->fluxDensity.size() > 2);
+                CHECK(std::is_sorted(curve->fluxDensity.begin(), curve->fluxDensity.end()));
+            }
+            // Inside the data nothing moved: the tabulated value at its own temperature.
+            CHECK(OpenMagnetics::Core::get_magnetic_field_strength_saturation(material, lastTemperature) == lastFieldStrength);
+        }
+
+        // Just below Curie: Hsat is small and positive, zero at Curie and above, and the curve still builds and
+        // carries a DC bias up to the saturation flux density the saturation gates read at that temperature.
+        auto dmr71 = OpenMagnetics::Core::resolve_material("DMR71");
+        double dmr71Curie = OpenMagnetics::Core::get_curie_temperature(dmr71);
+        CHECK(OpenMagnetics::Core::get_magnetic_field_strength_saturation(dmr71, dmr71Curie) == 0);
+        CHECK(OpenMagnetics::Core::get_magnetic_field_strength_saturation(dmr71, dmr71Curie + 10) == 0);
+        for (double belowCurie : {10.0, 2.0}) {
+            double temperature = dmr71Curie - belowCurie;
+            INFO("DMR71 at " << temperature << " C");
+            double saturationFieldStrength = OpenMagnetics::Core::get_magnetic_field_strength_saturation(dmr71, temperature);
+            CHECK(saturationFieldStrength > 0);
+            REQUIRE_NOTHROW(OpenMagnetics::InitialPermeability::get_magnetisation_curve(dmr71, temperature, 100e3));
+            double saturationFluxDensity = OpenMagnetics::Core::get_magnetic_flux_density_saturation(dmr71, temperature, false);
+            for (double share : {0.1, 0.5, 0.9}) {
+                INFO("bias " << share << " of B_sat " << saturationFluxDensity << " T, H_sat " << saturationFieldStrength << " A/m");
+                double fieldStrength = 0;
+                REQUIRE_NOTHROW(fieldStrength = OpenMagnetics::InitialPermeability::get_magnetic_field_dc_bias_for_flux_density(dmr71, share * saturationFluxDensity, temperature, 100e3, false));
+                CHECK(fieldStrength > 0);
+            }
+        }
+    }
+
 }  // namespace
