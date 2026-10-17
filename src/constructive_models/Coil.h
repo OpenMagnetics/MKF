@@ -544,6 +544,10 @@ class Coil : public MAS::Coil {
         std::optional<Inputs> _inputs;
         std::map<std::string, CoilAlignment> _turnsAlignmentPerSection;
         std::map<std::string, WindingOrientation> _layersOrientationPerSection;
+        // ABT #1531: per litz winding, the oval footprint {width, height} a flattened wind laid it at
+        // and its k. get_wires() and resolve_wire(index) hand the footprint to the wire.
+        std::map<size_t, std::pair<double, double>> _litzWoundFootprintPerWinding;
+        std::map<size_t, double> _litzFlatteningPerWinding;
         // Real-winding turn blocking (global to the winding window). Filled by wind() between
         // re-wind iterations: maps a conduction layer name to the number of connection-lead slots
         // blocked at its {top, bottom}. Consumed by wind_by_rectangular_layers when
@@ -914,6 +918,10 @@ class Coil : public MAS::Coil {
         // insulation coordination of the inputs when they have it, mechanical insulation otherwise.
         // Does nothing when the insulation sections are already known.
         void calculate_insulation_for_wind();
+        // One wind at the litz footprints currently set (wind() without the ABT #1531 search).
+        bool wind_at_current_footprints(std::vector<double> proportionPerWinding, std::vector<size_t> pattern, size_t repetitions);
+        // ABT #1531: the flattening k each litz winding was wound at (absent: a round bundle).
+        std::optional<double> get_litz_flattening(size_t windingIndex) const;
         bool wind(std::vector<size_t> pattern, size_t repetitions=1);
         bool wind(size_t repetitions);
         bool wind_planar(std::vector<size_t> stackUp, std::optional<double> borderToWireDistance = std::nullopt, std::map<size_t, double> wireToWireDistance = {}, std::map<std::pair<size_t, size_t>, double> insulationThickness = {}, double coreToLayerDistance = 0);

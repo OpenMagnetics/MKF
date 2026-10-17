@@ -50,6 +50,8 @@ class Settings
         // ignored. When true, the winder accounts for the space reserved by connection/lead wires
         // (affecting filling factors) and their length is included in the winding losses.
         bool _coilUseRealWindingGeometry = false;
+        // ABT #1531: a wind that does not fit may flatten its litz turns into ovals (Wire::set_wound_footprint).
+        bool _coilLitzDeformation = false;
         // ABT #685 (Alf, 2026-08-16): COATING SQUISH. When true, the sections/layers fit check
         // tolerates a filling factor up to 1 + 1e-3: the helical stacking pitch (turns tangent
         // in 3D, ABT #780) is a second-order correction ((K*od/L)^2/2, always well under 0.1%),
@@ -395,6 +397,8 @@ class Settings
 
         bool get_coil_use_real_winding_geometry() const;
         void set_coil_use_real_winding_geometry(bool value);
+        bool get_coil_litz_deformation() const;
+        void set_coil_litz_deformation(bool value);
 
         bool get_coil_allow_coating_squish() const;
         void set_coil_allow_coating_squish(bool value);

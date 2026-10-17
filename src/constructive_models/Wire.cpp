@@ -1555,6 +1555,8 @@ namespace OpenMagnetics {
     double Wire::get_maximum_outer_width() {
         switch (get_type()) {
             case WireType::LITZ:
+                if (_woundFootprint)
+                    return _woundFootprint->first;
                 if (get_outer_diameter())
                     return resolve_dimensional_values(get_outer_diameter().value());
                 else
@@ -1585,6 +1587,8 @@ namespace OpenMagnetics {
     double Wire::get_maximum_outer_height() {
         switch (get_type()) {
             case WireType::LITZ:
+                if (_woundFootprint)
+                    return _woundFootprint->second;
                 if (get_outer_diameter())
                     return resolve_dimensional_values(get_outer_diameter().value());
                 else
@@ -1609,6 +1613,43 @@ namespace OpenMagnetics {
         }
     }
 
+
+    double Wire::minimum_litz_flattening(const Wire& wire) {
+        if (wire.get_type() != WireType::LITZ) {
+            throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA, "only a litz bundle flattens in a wound layer");
+        }
+        auto coating = Wire::resolve_coating(wire);
+        if (!coating || !coating->get_type()) {
+            throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA,
+                                        "litz wire '" + wire.get_name().value_or("unnamed") + "' has no coating type: served or bare decides how far it may flatten");
+        }
+        switch (coating->get_type().value()) {
+            case InsulationWireCoatingType::SERVED: return 0.90;
+            case InsulationWireCoatingType::BARE: return 0.85;
+            default: return 1.0;   // taped or extruded insulation: no source says it flattens
+        }
+    }
+
+    std::pair<double, double> Wire::flattened_litz_sides(double outerDiameter, double k) {
+        if (!(outerDiameter > 0) || !(k > 0) || k > 1) {
+            throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA, "flattened_litz_sides: needs OD > 0 and 0 < k <= 1");
+        }
+        // Stadium of short side h and long side w has area h (w - h) + pi h^2 / 4; equal to the
+        // bundle's pi OD^2 / 4: w = h + (pi / 4) (OD^2 - h^2) / h.
+        const double h = k * outerDiameter;
+        const double w = h + std::numbers::pi / 4 * (outerDiameter * outerDiameter - h * h) / h;
+        return {h, w};
+    }
+
+    void Wire::set_wound_footprint(double width, double height) {
+        if (get_type() != WireType::LITZ) {
+            throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA, "only a litz bundle takes a wound footprint");
+        }
+        if (!(width > 0) || !(height > 0)) {
+            throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA, "a wound footprint needs a positive width and height");
+        }
+        _woundFootprint = std::make_pair(width, height);
+    }
 
     double Wire::get_maximum_outer_dimension() {
         return std::max(get_maximum_outer_width(), get_maximum_outer_height());
@@ -1670,6 +1711,9 @@ namespace OpenMagnetics {
     }
 
     double Wire::get_minimum_outer_dimension() {
+        if (get_type() == WireType::LITZ && _woundFootprint) {
+            return std::min(_woundFootprint->first, _woundFootprint->second);
+        }
         switch (get_type()) {
             case WireType::LITZ:
             case WireType::ROUND:

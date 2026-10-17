@@ -122,6 +122,7 @@ namespace {
         add_to_fingerprint(text, _coilEqualizeMargins);
         add_to_fingerprint(text, _coilOnlyOneTurnPerLayerInContiguousRectangular);
         add_to_fingerprint(text, _coilUseRealWindingGeometry);
+        add_to_fingerprint(text, _coilLitzDeformation);
         add_to_fingerprint(text, _coilAllowCoatingSquish);
         add_to_fingerprint(text, _coilAllowHorizontalOverflow);
         add_to_fingerprint(text, _coilQuickBobbinGeneratePins);
@@ -265,6 +266,7 @@ namespace {
         _coilEqualizeMargins = true;
         _coilOnlyOneTurnPerLayerInContiguousRectangular = false;
         _coilUseRealWindingGeometry = false;
+        _coilLitzDeformation = false;
         _coilAllowCoatingSquish = false;
         _coilAllowHorizontalOverflow = false;
         _coilQuickBobbinGeneratePins = false;
@@ -538,6 +540,12 @@ namespace {
     }
     void Settings::set_coil_use_real_winding_geometry(bool value) {
         _coilUseRealWindingGeometry = value;
+    }
+    bool Settings::get_coil_litz_deformation() const {
+        return _coilLitzDeformation;
+    }
+    void Settings::set_coil_litz_deformation(bool value) {
+        _coilLitzDeformation = value;
     }
 
     bool Settings::get_coil_allow_coating_squish() const {

@@ -343,6 +343,21 @@ class Wire : public MAS::Wire {
         static Wire create_quick_litz_wire(double conductingDiameter, int64_t numberStrands);
         static Wire create_quick_rectangular_wire(double conductingWidth, double conductingHeight);
 
+        // WOUND LITZ (ABT #1531). A litz bundle in a wound layer is no rigid circle of its free-air OD:
+        // it flattens into an OVAL (a stadium: a rectangle with semicircular ends) of the bundle's
+        // area, its short side k x OD. Elektrisola (Litz Wire Info, "IV Example") gives how far: the
+        // processed OD reduced 10 % for a served bundle and 15-20 % for an unserved one, so k >= 0.90
+        // served and >= 0.85 bare. The winder sets the footprint; the outer width/height getters then
+        // return it, so every layout read sees the flattened turn. Conducting dimensions (the
+        // strands) are unchanged. Not part of MAS: the turns carry it, as crossSectionalShape oval.
+        static double minimum_litz_flattening(const Wire& wire);
+        // The oval of the bundle's area whose short side is k x OD: {short side, long side}.
+        static std::pair<double, double> flattened_litz_sides(double outerDiameter, double k);
+        void set_wound_footprint(double width, double height);
+        std::optional<std::pair<double, double>> get_wound_footprint() const { return _woundFootprint; }
+
+    private:
+        std::optional<std::pair<double, double>> _woundFootprint;   // {width, height}, litz only
 };
 
 bool operator==(Wire lhs, Wire rhs);

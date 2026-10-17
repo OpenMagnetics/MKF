@@ -17086,7 +17086,9 @@ TEST_CASE("Test_One_Turn_Winding_Is_Omega_One_Crossing_Terminals_Same_Height", "
 // station per layer in a layer that holds two, minus the slot the primary's exit leads take,
 // leaves every layer holding nothing beside its own station -- L = N / (c - 1) with c = 1. The
 // raise used to run its budget out silently (18 station-only layers on this very design, wind()
-// false, the layout handed on); it must say so instead.
+// false, the layout handed on); it must say so instead. ABT #1890 (Alf, 2026-10-16): c = 1 is
+// known before the raise runs, so the layer fill refuses the section as one that cannot hold its
+// turns -- a no-fit naming the closing station -- instead of raising until the budget throws.
 TEST_CASE("Test_Real_Winding_Station_Raise_That_Cannot_Converge_Throws", "[constructive-model][coil][real-geometry][omega]") {
     settings.reset();
     settings.set_coil_use_real_winding_geometry(true);
@@ -17102,7 +17104,10 @@ TEST_CASE("Test_Real_Winding_Station_Raise_That_Cannot_Converge_Throws", "[const
     coilJson["bobbin"]["processedDescription"]["windingWindows"][0]["coordinates"][0] = 0.006575 + 0.015;
     coilJson["bobbin"]["processedDescription"]["windingWindows"][0]["area"] = 0.03 * 0.004675;
     OpenMagnetics::Coil coil(coilJson, false);
-    REQUIRE_THROWS_WITH(coil.wind(), Catch::Matchers::ContainsSubstring("do not converge"));
+    bool wound = true;
+    REQUIRE_NOTHROW(wound = coil.wind());
+    CHECK_FALSE(wound);
+    CHECK_THAT(coil.get_last_fit_failure(), Catch::Matchers::ContainsSubstring("only its own closing station"));
     settings.reset();
 }
 
@@ -17710,5 +17715,84 @@ TEST_CASE("Test_Coil_Layers_Rebuilt_From_Turns_Refuse_A_Turn_In_A_Layer_The_Sect
                         Catch::Matchers::ContainsSubstring("Turn '" + turnName + "' lies in layer 'No such layer'"));
     // A refused rebuild leaves the coil as it was given.
     CHECK_FALSE(coil.get_layers_description());
+    settings.reset();
+}
+
+// A layer lays side by side the parallels ITS SECTION carries. The PQ 35/40 fixture interleaves a
+// 4-parallel litz primary over four sections, one parallel each; its 6.695 mm sections hold five
+// 1.339 mm bundles per layer. The real-winding fill rounded every layer down to a multiple of the
+// WINDING's four parallels, so no layer ever held more than four and the sections were refused.
+TEST_CASE("Test_Real_Winding_Layer_Holds_The_Parallels_Its_Section_Carries", "[constructive-model][coil][real-geometry][abt1531]") {
+    settings.reset();
+    settings.set_coil_use_real_winding_geometry(true);
+    auto path = OpenMagneticsTesting::get_test_data_dir(std::source_location::current()) /
+                "thermal_island_pq3540_litz_rect_contiguous_1212121.json";
+    std::ifstream file(path);
+    REQUIRE(file.good());
+    json masJson;
+    file >> masJson;
+    OpenMagnetics::Magnetic magnetic(masJson["magnetic"]);
+    magnetic = OpenMagnetics::magnetic_autocomplete(magnetic);
+    const auto& coil = magnetic.get_coil();
+    REQUIRE(coil.get_turns_description());
+    std::map<std::string, size_t> turnsPerLayer;
+    const auto turns = coil.get_turns_description().value();
+    for (const auto& turn : turns) {
+        if (turn.get_winding() == "Primary" && turn.get_section() == "Primary section 0") {
+            turnsPerLayer[turn.get_layer().value()]++;
+        }
+    }
+    REQUIRE(!turnsPerLayer.empty());
+    size_t fullest = 0;
+    for (const auto& [layer, turns] : turnsPerLayer) {
+        fullest = std::max(fullest, turns);
+    }
+    CHECK(fullest == 5);
+    settings.reset();
+}
+
+// ABT #1531: a litz bundle flattens in a wound layer. Ten served bundles in a one-layer window
+// 9.5 ODs tall do not fit round (nine per layer, and no room for a second layer); squeezed along
+// the layer to 0.95 x OD they do, each an oval of the bundle's own area. With the setting off the
+// wind stays refused, as before.
+TEST_CASE("Test_Wind_Flattens_Litz_Into_Ovals_Only_As_Far_As_The_Window_Needs", "[constructive-model][coil][litz][abt1531]") {
+    settings.reset();
+    settings.set_coil_wind_even_if_not_fit(false);
+    settings.set_coil_try_rewind(false);
+    auto litz = OpenMagnetics::Wire::create_quick_litz_wire(0.0001, 100);
+    const double od = litz.get_maximum_outer_width();
+    REQUIRE(OpenMagnetics::Wire::minimum_litz_flattening(litz) == 0.90);
+    const double windowHeight = 10 * 0.95 * od * 1.0005;
+    const double windowWidth = 1.2 * od;
+    auto wind = [&](bool deformation) {
+        settings.set_coil_litz_deformation(deformation);
+        auto coil = OpenMagneticsTesting::get_quick_coil({10}, {1}, windowHeight, windowWidth, {0.005 + windowWidth / 2, 0, 0},
+                                                         1, WindingOrientation::OVERLAPPING, WindingOrientation::OVERLAPPING,
+                                                         CoilAlignment::CENTERED, CoilAlignment::CENTERED, {litz});
+        const bool fits = coil.wind();
+        return std::make_pair(fits, coil);
+    };
+
+    auto [roundFits, roundCoil] = wind(false);
+    CHECK(!roundFits);
+    CHECK(!roundCoil.get_litz_flattening(0));
+
+    auto [ovalFits, ovalCoil] = wind(true);
+    REQUIRE(ovalFits);
+    REQUIRE(ovalCoil.get_litz_flattening(0));
+    CHECK_THAT(ovalCoil.get_litz_flattening(0).value(), Catch::Matchers::WithinAbs(0.95, 1e-9));
+    const auto [shortSide, longSide] = OpenMagnetics::Wire::flattened_litz_sides(od, 0.95);
+    // Same area as the bundle: short side x (long - short) + pi short^2 / 4.
+    CHECK_THAT(shortSide * (longSide - shortSide) + std::numbers::pi * shortSide * shortSide / 4,
+               Catch::Matchers::WithinRel(std::numbers::pi * od * od / 4, 1e-12));
+    const auto turns = ovalCoil.get_turns_description().value();
+    REQUIRE(turns.size() == 10);
+    for (const auto& turn : turns) {
+        CHECK(turn.get_cross_sectional_shape().value() == TurnCrossSectionalShape::OVAL);
+        // Squeezed along the layer: the turns stack along the window's height.
+        CHECK_THAT(turn.get_dimensions().value()[1], Catch::Matchers::WithinAbs(shortSide, 1e-12));
+        CHECK_THAT(turn.get_dimensions().value()[0], Catch::Matchers::WithinAbs(longSide, 1e-12));
+        CHECK(std::abs(turn.get_coordinates()[1]) + shortSide / 2 <= windowHeight / 2 + 1e-9);
+    }
     settings.reset();
 }

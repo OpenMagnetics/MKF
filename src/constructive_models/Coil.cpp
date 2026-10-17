@@ -7361,7 +7361,118 @@ void Coil::diagnose_empty_wind() {
     }
 }
 
+std::optional<double> Coil::get_litz_flattening(size_t windingIndex) const {
+    auto found = _litzFlatteningPerWinding.find(windingIndex);
+    if (found == _litzFlatteningPerWinding.end()) {
+        return std::nullopt;
+    }
+    return found->second;
+}
+
 bool Coil::wind(std::vector<double> proportionPerWinding, std::vector<size_t> pattern, size_t repetitions) {
+    // ABT #1531: A LITZ BUNDLE FLATTENS IN A WOUND LAYER. Wound round first, as every wind always
+    // has; only a wind that does not fit, with coilLitzDeformation on, tries the bundle as an oval
+    // of its own area (Wire::flattened_litz_sides) with its short side k x OD, k stepped down from
+    // 1 to the bundle's floor (Wire::minimum_litz_flattening: 0.90 served, 0.85 bare). Each k is
+    // tried squeezed ALONG the layer (more turns per layer, thicker layers) and then ACROSS it
+    // (thinner layers, fewer turns per layer): a measured served litz primary lays its turns at 0.878
+    // x OD along the column and 1.0 x OD radially, the other way from the layered winding
+    // Elektrisola describes. The first that fits is kept, so a bundle is flattened no more than
+    // the window needs. Nothing fits: wound round again, so the caller sees the round wind's
+    // verdict and layout, as before.
+    _litzWoundFootprintPerWinding.clear();
+    _litzFlatteningPerWinding.clear();
+    // Every attempt starts from the coil the caller handed in: a wind leaves its sections, layers
+    // and turns behind, and the next one would otherwise lay its turns in sections sized for the
+    // previous bundle.
+    const auto groupsAsGiven = get_groups_description();
+    const auto sectionsAsGiven = get_sections_description();
+    const auto layersAsGiven = get_layers_description();
+    const auto turnsAsGiven = get_turns_description();
+    auto restoreAsGiven = [&]() {
+        set_groups_description(groupsAsGiven);
+        set_sections_description(sectionsAsGiven);
+        set_layers_description(layersAsGiven);
+        set_turns_description(turnsAsGiven);
+    };
+    bool ok = wind_at_current_footprints(proportionPerWinding, pattern, repetitions);
+    if (std::getenv("MKF_LITZ_DIAG")) {
+        std::cerr << "[litz] round wind " << (ok ? "fits" : "does not fit") << ", deformation "
+                  << (settings.get_coil_litz_deformation() ? "on" : "off") << "\n";
+    }
+    if (ok || !settings.get_coil_litz_deformation()) {
+        return ok;
+    }
+    std::vector<std::pair<size_t, double>> litzFloors;
+    for (size_t windingIndex = 0; windingIndex < get_functional_description().size(); ++windingIndex) {
+        auto wire = resolve_wire(windingIndex);
+        if (wire.get_type() != WireType::LITZ) {
+            continue;
+        }
+        const double floor = Wire::minimum_litz_flattening(wire);
+        if (floor < 1) {
+            litzFloors.emplace_back(windingIndex, floor);
+        }
+    }
+    if (litzFloors.empty()) {
+        return ok;
+    }
+    const std::string roundFailure = _lastFitFailure;
+    const bool turnsRunAlongHeight = get_layers_orientation() == WindingOrientation::OVERLAPPING;
+    double lowestTried = 1;
+    for (int step = 1; step <= 100; ++step) {
+        const double k = 1.0 - 0.01 * step;
+        bool anyFlattens = false;
+        for (const auto& [windingIndex, floor] : litzFloors) {
+            anyFlattens = anyFlattens || k >= floor - 1e-9;
+        }
+        if (!anyFlattens) {
+            break;
+        }
+        for (bool alongTheLayer : {true, false}) {
+            _litzWoundFootprintPerWinding.clear();
+            _litzFlatteningPerWinding.clear();
+            for (const auto& [windingIndex, floor] : litzFloors) {
+                const double kWinding = std::max(k, floor);
+                auto wire = resolve_wire(windingIndex);
+                const auto [shortSide, longSide] = Wire::flattened_litz_sides(wire.get_maximum_outer_width(), kWinding);
+                // The turn axis is the layer's height when its layers overlap (turns stack along
+                // the column) and its width when they are contiguous.
+                const bool shortAlongHeight = (alongTheLayer == turnsRunAlongHeight);
+                _litzWoundFootprintPerWinding[windingIndex] = shortAlongHeight ? std::make_pair(longSide, shortSide)
+                                                                               : std::make_pair(shortSide, longSide);
+                _litzFlatteningPerWinding[windingIndex] = kWinding;
+            }
+            lowestTried = k;
+            restoreAsGiven();
+            const bool fits = wind_at_current_footprints(proportionPerWinding, pattern, repetitions);
+            if (std::getenv("MKF_LITZ_DIAG")) {
+                std::cerr << "[litz] k=" << k << (alongTheLayer ? " along" : " across") << " -> "
+                          << (fits ? "fits" : "does not fit: " + _lastFitFailure.substr(0, 300)) << "\n";
+            }
+            if (fits) {
+                if (auto turns = get_turns_description()) {
+                    for (auto& turn : turns.value()) {
+                        if (_litzWoundFootprintPerWinding.count(get_winding_index_by_name(turn.get_winding()))) {
+                            turn.set_cross_sectional_shape(TurnCrossSectionalShape::OVAL);
+                        }
+                    }
+                    set_turns_description(turns.value());
+                }
+                return true;
+            }
+        }
+    }
+    _litzWoundFootprintPerWinding.clear();
+    _litzFlatteningPerWinding.clear();
+    restoreAsGiven();
+    ok = wind_at_current_footprints(proportionPerWinding, pattern, repetitions);
+    _lastFitFailure = roundFailure + " (ABT #1531: its litz flattened down to k = " + std::to_string(lowestTried) +
+                      " along or across the layer does not fit either)";
+    return ok;
+}
+
+bool Coil::wind_at_current_footprints(std::vector<double> proportionPerWinding, std::vector<size_t> pattern, size_t repetitions) {
     // ABT #850: a failed wind must not poison the coil. The ABT #676 margin recovery
     // below loads persisted section margins into TRANSIENT members
     // (_marginsPerSection and friends) that outlive the wind and survive clearing the
@@ -10156,15 +10267,11 @@ std::pair<uint64_t, std::vector<double>> get_parallels_proportions(size_t slotIn
 }
 
 double get_area_used_in_wires(OpenMagnetics::Wire wire, uint64_t physicalTurns) {
-    if (wire.get_type() == WireType::ROUND || wire.get_type() == WireType::LITZ) {
-        double wireDiameter = wire.get_maximum_outer_width();
-        return physicalTurns * pow(wireDiameter, 2);
-    }
-    else {
-        double wireWidth = wire.get_maximum_outer_width();
-        double wireHeight = wire.get_maximum_outer_height();
-        return physicalTurns * wireWidth * wireHeight;
-    }
+    // The footprint each turn takes: OD x OD for a round bundle, and for a flattened litz one
+    // (ABT #1531) its oval's width x height -- the getters return both.
+    double wireWidth = wire.get_maximum_outer_width();
+    double wireHeight = wire.get_maximum_outer_height();
+    return physicalTurns * wireWidth * wireHeight;
 }
 
 void Coil::set_insulation_layers(std::map<std::pair<size_t, size_t>, std::vector<Layer>> insulationLayers) {
@@ -15146,17 +15253,20 @@ bool Coil::wind_by_rectangular_layers() {
                 if (!wirePerWinding[windingIndex].get_outer_diameter()) {
                     throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA, "Missing wire outer diameter");
                 }
-                double wireDiameter = resolve_dimensional_values(wirePerWinding[windingIndex].get_outer_diameter().value());
+                // Width and height, not the diameter: a flattened litz bundle (ABT #1531) is an oval
+                // whose footprint the getters return; a round one returns its OD for both.
+                double wireWidth = wirePerWinding[windingIndex].get_maximum_outer_width();
+                double wireHeight = wirePerWinding[windingIndex].get_maximum_outer_height();
                 if (sections[sectionIndex].get_layers_orientation() == WindingOrientation::OVERLAPPING) {
-                    maximumNumberLayersFittingInSection = sections[sectionIndex].get_dimensions()[0] / wireDiameter;
-                    maximumNumberPhysicalTurnsPerLayer = floor(sections[sectionIndex].get_dimensions()[1] / wireDiameter);
-                    layerWidth = wireDiameter;
+                    maximumNumberLayersFittingInSection = sections[sectionIndex].get_dimensions()[0] / wireWidth;
+                    maximumNumberPhysicalTurnsPerLayer = floor(sections[sectionIndex].get_dimensions()[1] / wireHeight);
+                    layerWidth = wireWidth;
                     layerHeight = sections[sectionIndex].get_dimensions()[1];
                 } else {
-                    maximumNumberLayersFittingInSection = sections[sectionIndex].get_dimensions()[1] / wireDiameter;
-                    maximumNumberPhysicalTurnsPerLayer = floor(sections[sectionIndex].get_dimensions()[0] / wireDiameter);
+                    maximumNumberLayersFittingInSection = sections[sectionIndex].get_dimensions()[1] / wireHeight;
+                    maximumNumberPhysicalTurnsPerLayer = floor(sections[sectionIndex].get_dimensions()[0] / wireWidth);
                     layerWidth = sections[sectionIndex].get_dimensions()[0];
-                    layerHeight = wireDiameter;
+                    layerHeight = wireHeight;
                 }
             }
             else {
@@ -15252,13 +15362,27 @@ bool Coil::wind_by_rectangular_layers() {
             // out of — is the layer's HEIGHT when layers overlap (turns stack axially) and its WIDTH
             // when they are contiguous (the layer is one wire tall, turns run along it), so the slot
             // pitch is the wire's outer height or outer width to match.
-            int64_t numberParallels = int64_t(get_number_parallels(windingIndex));
+            // The parallels laid side by side in a layer are the ones THIS section carries, not the
+            // winding's: an interleaved winding that puts one parallel per section (a 4-parallel litz
+            // primary over four sections) rounded each 5-turn layer down to 4, a
+            // multiple of 4 parallels, and refused a section its stored layout holds.
+            int64_t numberParallels = 0;
+            for (auto proportion : remainingParallelsProportionInSection) {
+                if (proportion > 0) {
+                    numberParallels++;
+                }
+            }
             bool layersStackAlongWidth = (sections[sectionIndex].get_layers_orientation() == WindingOrientation::OVERLAPPING);
             bool realWindingBlocking = settings.get_coil_use_real_winding_geometry()
                 && _applyConnectionBlocking
                 && !sections[sectionIndex].get_number_layers()
+                && numberParallels > 0
                 && maximumNumberPhysicalTurnsPerLayer > 1
-                && maximumNumberPhysicalTurnsPerLayer >= uint64_t(numberParallels);
+                // The gate still reads the WINDING's parallel count, as it always has: on the
+                // section's count, sections narrower than the winding's parallels (abt1487 pq65:
+                // 3-4 turn layers of a 4-parallel secondary, one parallel per section) start being
+                // blocked and the test's fitting design stops fitting (ABT #1894).
+                && maximumNumberPhysicalTurnsPerLayer >= get_number_parallels(windingIndex);
             // ABT #720 cleanup: the toroidal input-connection corridor capacity (ABT #187)
             // used to live HERE gated on a ROUND window shape — unreachable, since
             // wind_by_layers only dispatches rectangular windows to this function. The live
@@ -15368,6 +15492,19 @@ bool Coil::wind_by_rectangular_layers() {
                     capacity = (capacity / uint64_t(numberParallels)) * uint64_t(numberParallels);
                     if (capacity == 0) {
                         break;  // layer too thin to hold one row of every parallel
+                    }
+                    // ABT #1890: a layer the winding SPILLS into pays its own closing station (one
+                    // per parallel), so with one row it holds nothing beside that station; with
+                    // turns still to place after it, the crossing fixpoint L = N / (c - 1) has no
+                    // finite answer (c = 1) and the station raise would only march layers out of
+                    // the window until it threw. That is a section that cannot hold its turns:
+                    // refuse it here, as the fill does when a layer holds no row at all.
+                    if (builtLayers > 0 && capacity <= uint64_t(numberParallels) && remainingTurns > capacity) {
+                        _lastFitFailure = "real winding: section '" + sections[sectionIndex].get_name() + "' cannot hold its " +
+                                          std::to_string(physicalTurnsInSection) + " turns: layer " + std::to_string(builtLayers) +
+                                          " holds one row beside its blocked connection corridors, which is only its own closing" +
+                                          " station, and " + std::to_string(remainingTurns - capacity) + " turns are still left";
+                        return false;
                     }
                     uint64_t turnsThisLayer = std::min<uint64_t>(capacity, remainingTurns);
                     realPerLayerTurns.push_back(turnsThisLayer);
@@ -15844,12 +15981,15 @@ bool Coil::wind_by_round_layers() {
 
 
             if (wirePerWinding[windingIndex].get_type() == WireType::ROUND || wirePerWinding[windingIndex].get_type() == WireType::LITZ) {
-                double wireDiameter = resolve_dimensional_values(wirePerWinding[windingIndex].get_outer_diameter().value());
+                // Radial = the footprint's width, along the layer = its height (ABT #1531: a
+                // flattened litz bundle; a round one is its OD both ways).
+                double wireWidth = wirePerWinding[windingIndex].get_maximum_outer_width();
+                double wireHeight = wirePerWinding[windingIndex].get_maximum_outer_height();
                 if (sections[sectionIndex].get_layers_orientation() == WindingOrientation::OVERLAPPING) {
-                    maximumNumberLayersFittingInSection = roundFloat(sections[sectionIndex].get_dimensions()[0] / wireDiameter, 9);
+                    maximumNumberLayersFittingInSection = roundFloat(sections[sectionIndex].get_dimensions()[0] / wireWidth, 9);
                     double averageLayerPerimeter = 2 * std::numbers::pi * (sections[sectionIndex].get_dimensions()[1] / 360) * (windingWindowRadialHeight - sections[sectionIndex].get_coordinates()[0]);
-                    maximumNumberPhysicalTurnsPerLayer = floor(averageLayerPerimeter / wireDiameter);
-                    layerRadialHeight = wireDiameter;
+                    maximumNumberPhysicalTurnsPerLayer = floor(averageLayerPerimeter / wireHeight);
+                    layerRadialHeight = wireWidth;
                     layerAngle = sections[sectionIndex].get_dimensions()[1];
                 } else {
                     throw std::invalid_argument("Only overlapping layers allowed in toroids");
@@ -19569,8 +19709,7 @@ bool Coil::delimit_and_compact_round_window() {
 std::vector<Wire> Coil::get_wires() {
     std::vector<Wire> wirePerWinding;
     for (size_t windingIndex = 0; windingIndex < get_functional_description().size(); ++windingIndex) {
-        Wire wire = resolve_wire(get_functional_description()[windingIndex]);
-        wirePerWinding.push_back(wire);
+        wirePerWinding.push_back(resolve_wire(windingIndex));
     }
     return wirePerWinding;
 }
@@ -19582,7 +19721,12 @@ void Coil::set_wires(std::vector<Wire> wires) {
 }
 
 Wire Coil::resolve_wire(size_t windingIndex) {
-    return resolve_wire(get_functional_description()[windingIndex]);
+    Wire wire = resolve_wire(get_functional_description()[windingIndex]);
+    auto footprint = _litzWoundFootprintPerWinding.find(windingIndex);
+    if (footprint != _litzWoundFootprintPerWinding.end()) {
+        wire.set_wound_footprint(footprint->second.first, footprint->second.second);
+    }
+    return wire;
 }
 
 Wire Winding::resolve_wire() {
