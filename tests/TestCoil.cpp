@@ -5837,7 +5837,73 @@ TEST_CASE("Test_Wind_By_Section_Pattern", "[constructive-model][coil][rectangula
     settings.reset();
 }
 
-TEST_CASE("Test_Wind_By_Layers_Wind_One_Section_One_Layer", "[constructive-model][coil][rectangular-winding-window][smoke-test]") {
+TEST_CASE("Test_Wind_By_Layers_Exact_Fit_Section_Keeps_Its_Last_Layer_And_Turn", "[constructive-model][coil][rectangular-winding-window][bug][abt-1898]") {
+    // ABT #1898, found on #1896: try_rewind sized a section to exactly two widths of a 1.0525 mm
+    // litz. The width came back 0.0021049999999999997 (one ulp under 2.105 mm), the layer count
+    // was the truncated 0.0021049999999999997 / 0.0010525 = 1.9999999999999998, so 1 layer, and
+    // with wind-even-if-not-fit the 10 turns went into one overflowing layer. The winder must
+    // count what calculate_filling_factor accepts as a fit; a section genuinely short of two
+    // widths must still hold one layer.
+    const double wireOuterDiameter = 0.0010525;
+    // Number of layers wind_by_layers lays in the single section, and the most turns in one of them.
+    auto windSection = [&](double sectionWidth, double sectionHeight) {
+        std::vector<OpenMagnetics::Wire> wires;
+        OpenMagnetics::Wire wire;
+        wire.set_nominal_value_conducting_diameter(0.001);
+        wire.set_nominal_value_outer_diameter(wireOuterDiameter);
+        wire.set_number_conductors(1);
+        wire.set_material("copper");
+        wire.set_type(WireType::ROUND);
+        wires.push_back(wire);
+        auto coil = OpenMagneticsTesting::get_quick_coil({10}, {1}, "PQ 40/40", 1, WindingOrientation::OVERLAPPING,
+                                                         WindingOrientation::OVERLAPPING, CoilAlignment::CENTERED,
+                                                         CoilAlignment::CENTERED, wires);
+        coil.wind_by_sections();
+        auto sections = coil.get_sections_description().value();
+        size_t conductionSections = 0;
+        for (auto& section : sections) {
+            if (section.get_type() == ElectricalType::CONDUCTION) {
+                section.set_dimensions({sectionWidth, sectionHeight});
+                section.set_number_layers(std::nullopt);
+                ++conductionSections;
+            }
+        }
+        REQUIRE(conductionSections == 1);
+        coil.set_sections_description(sections);
+        coil.wind_by_layers();
+        size_t layers = 0;
+        int64_t mostTurns = 0;
+        const auto layersDescription = coil.get_layers_description().value();
+        for (const auto& layer : layersDescription) {
+            if (layer.get_type() == ElectricalType::CONDUCTION) {
+                ++layers;
+                int64_t turns = std::llround(layer.get_partial_windings()[0].get_parallels_proportion()[0] * 10);
+                mostTurns = std::max(mostTurns, turns);
+            }
+        }
+        return std::make_pair(layers, mostTurns);
+    };
+    settings.reset();
+    settings.set_coil_wind_even_if_not_fit(true);
+    const double tallSection = 0.0060;  // 5 turns of 1.0525 mm per layer, 5.7 by plain division
+
+    // The #1896 width: two layers fit exactly, up to floating-point dust.
+    CHECK(0.0021049999999999997 / wireOuterDiameter < 2.0);
+    CHECK(windSection(0.0021049999999999997, tallSection).first == 2);
+    // Genuinely short of two widths, by 1e-8 relative and by 0.1 um: one layer, never rounded up.
+    CHECK(windSection(0.002105 * (1 - 1e-8), tallSection).first == 1);
+    CHECK(windSection(0.0021049, tallSection).first == 1);
+
+    // The same rule along the turn axis: a height one ulp under 5 wire diameters holds 5 turns a
+    // layer (2 layers of 5), and a height genuinely short of it holds 4 (3 layers).
+    const double fiveDiameters = std::nextafter(5 * wireOuterDiameter, 0.0);
+    CHECK(fiveDiameters / wireOuterDiameter < 5.0);
+    CHECK(windSection(0.0060, fiveDiameters) == std::make_pair(size_t(2), int64_t(5)));
+    CHECK(windSection(0.0060, 5 * wireOuterDiameter * (1 - 1e-8)).first == 3);
+    settings.reset();
+}
+
+TEST_CASE("Test_Wind_By_Layers_Wind_One_Section_One_Layer","[constructive-model][coil][rectangular-winding-window][smoke-test]") {
     settings.set_coil_wind_even_if_not_fit(false);
     settings.set_coil_try_rewind(false);
 

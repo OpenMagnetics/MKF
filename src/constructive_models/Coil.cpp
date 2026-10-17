@@ -135,6 +135,21 @@ static int64_t get_layer_bundle_size(const Layer& layer) {
 // and moves a value that is genuinely off-grid toward the wall by at most 4 eps * radialHeight
 // (below 1e-18 m for a 1 mm ring). The stray-capacitance contact check allows 64 eps * A for
 // rounding (A >= 2 * radialHeight), so the dust left is inside what it already forgives.
+// A winding that fills a dimension EXACTLY is a fit, but its size and the room it fills agree
+// only to the last bit (0.0078000000000000005 / 0.0078 = 1.0000000000000002). calculate_filling_factor
+// accepts a filling factor up to 1 + fitTolerance; the tolerance forgives representation dust
+// only, since a real overfill is orders of magnitude larger.
+static constexpr double fitTolerance = 1e-9;
+
+// How many whole pitches fit in a length, by the same rule as calculate_filling_factor:
+// n fit when n * pitch <= length * (1 + fitTolerance). A plain truncation of length / pitch
+// loses one on an exact fit (ABT #1898: a 2.105 mm section of 1.0525 mm litz gives
+// 1.9999999999999998, so it was 1 layer). The tolerance only absorbs floating-point error;
+// a count that is short by more than 1e-9 relative is not rounded up.
+static double whole_fits(double length, double pitch) {
+    return std::floor(length / pitch * (1 + fitTolerance));
+}
+
 static double ceil_radial_height_to_nanometre_grid(double radialHeight) {
     const double scaled = radialHeight * 1e9;
     return std::ceil(scaled - std::abs(scaled) * 4 * std::numeric_limits<double>::epsilon()) / 1e9;
@@ -4082,7 +4097,7 @@ void Coil::redistribute_section_turns_for_blocking() {
                 if (pitch <= 0) {
                     return 0;
                 }
-                return std::max<uint64_t>(numberParallels, uint64_t(std::floor(candidate.get_dimensions()[axis] / pitch)));
+                return std::max<uint64_t>(numberParallels, uint64_t(whole_fits(candidate.get_dimensions()[axis], pitch)));
             };
             // The layers a section holds side by side, across the axis its turns run, counted as
             // wind_by_layers counts them.
@@ -4120,7 +4135,7 @@ void Coil::redistribute_section_turns_for_blocking() {
                 if (wirePitch <= 0) {
                     continue;
                 }
-                uint64_t maximumTurnsPerLayer = std::max<uint64_t>(numberParallels, uint64_t(std::floor(section.get_dimensions()[turnAxis] / wirePitch)));
+                uint64_t maximumTurnsPerLayer = std::max<uint64_t>(numberParallels, uint64_t(whole_fits(section.get_dimensions()[turnAxis], wirePitch)));
                 size_t sectionsRemaining = sectionsOfGroup.size() - k;
 
                 uint64_t sectionTurns;  // per parallel
@@ -10155,8 +10170,8 @@ Coil::FillingFactorsOutput Coil::calculate_filling_factor(size_t groupIndex) {
     // bit: 0.0078000000000000005 / 0.0078 = 1.0000000000000002, and a strict `<= 1`
     // told the builder that WE 7443634700 (15 turns of 2.4 x 0.35 mm flat wire, 5.8 mm
     // of copper in a 7.8 mm PQ 20/13.7 window) "does not fit this core". The tolerance
-    // forgives representation dust only — a real overfill is orders of magnitude larger.
-    constexpr double fitTolerance = 1e-9;
+    // forgives representation dust only — a real overfill is orders of magnitude larger
+    // (fitTolerance, file scope, shared with whole_fits so the winder counts what this accepts).
     output.windingFits = output.areaFillingFactor <= 1 + fitTolerance &&
                          output.maxLayerFillingFactor <= 1 + fitTolerance &&
                          stackingFillingFactor <= 1 + fitTolerance;
@@ -11000,7 +11015,7 @@ std::optional<Coil::WholeLayerSplit> Coil::get_proportion_per_winding_for_whole_
         if (conductorAlongRestrictive <= 0 || conductorAlongFree <= 0) {
             throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA, "A wire in section " + section.get_name() + " has no outer dimensions");
         }
-        const double conductorsAlongFreeAxis = oneTurnPerLayer ? 1.0 : std::floor(section.get_dimensions()[freeAxis] / conductorAlongFree);
+        const double conductorsAlongFreeAxis = oneTurnPerLayer ? 1.0 : whole_fits(section.get_dimensions()[freeAxis], conductorAlongFree);
         if (conductorsAlongFreeAxis < 1) {
             // Not one conductor fits across the section: no split of the window helps.
             return std::nullopt;
@@ -11264,7 +11279,7 @@ std::pair<size_t, std::vector<int64_t>> get_number_layers_needed_and_number_phys
         // geometry) — the ring holds that many fewer turns, spilling them inward to the next ring.
         int64_t blockedSlots = (blockedSlotsPerLayer != nullptr && numberLayers < blockedSlotsPerLayer->size())
             ? (*blockedSlotsPerLayer)[numberLayers] : 0;
-        int64_t numberTurnsFittingThisLayer = std::max(1.0, floor(sectionAvailableAngle / wireAngle) - double(blockedSlots));
+        int64_t numberTurnsFittingThisLayer = std::max(1.0, whole_fits(sectionAvailableAngle, wireAngle) - double(blockedSlots));
         reaminingPhysicalTurnsInSection -= numberTurnsFittingThisLayer;
 
         layerPhysicalTurns.push_back(numberTurnsFittingThisLayer);
@@ -11365,7 +11380,7 @@ static ToroidalBarRingCapacities toroidal_bar_ring_capacities(double startRadial
         const int64_t blockedSlots = (blockedSlotsPerLayer != nullptr && ring < blockedSlotsPerLayer->size()) ? (*blockedSlotsPerLayer)[ring] : 0;
         // Turns whose centres fit between the faces: n turns take n pitches of angle, since the
         // first and last each sit half a pitch plus the bar's angle inside their boundary.
-        const int64_t fitting = available > 0 ? int64_t(floor(available / pitch)) - blockedSlots : -blockedSlots;
+        const int64_t fitting = available > 0 ? int64_t(whole_fits(available, pitch)) - blockedSlots : -blockedSlots;
         if (fitting <= 0) {
             rings << "leaves " << available << " deg between the bar faces";
             if (blockedSlots > 0) {
@@ -14475,7 +14490,7 @@ std::vector<double> Coil::get_contiguous_toroid_proportion_per_winding_by_needed
         for (size_t ring = 0; ring < rings; ++ring) {
             double wireAngle = wound_distance_to_angle(need.wireHeight, std::max(need.wireWidth, radius));
             int64_t blocked = ring >= 1 ? need.corridorSlots : 0;
-            held += int64_t(std::max(0.0, std::floor(angle / wireAngle) - double(blocked)));
+            held += int64_t(std::max(0.0, whole_fits(angle, wireAngle) - double(blocked)));
             if (radius > need.wireWidth) {
                 radius -= need.wireWidth;
             }
@@ -14924,7 +14939,7 @@ std::vector<size_t> Coil::plan_planar_stackup() {
     for (size_t windingIndex = 0; windingIndex < numberWindings; ++windingIndex) {
         const double trackWidth = resolve_wire(windingIndex).get_maximum_outer_width();
         // signed arithmetic: when no turn fits, floor(...) is 0 and "0 - 1" must clamp to 1, not wrap to SIZE_MAX
-        const long turnsThatFit = static_cast<long>(std::floor(spaceForTurns / (trackWidth + rules.get_track_to_track()))) - 1;
+        const long turnsThatFit = static_cast<long>(whole_fits(spaceForTurns, trackWidth + rules.get_track_to_track())) - 1;
         const size_t maximumTurnsPerLayer = static_cast<size_t>(std::max(1L, turnsThatFit));
         const size_t layersPerParallel = static_cast<size_t>(std::ceil(double(get_number_turns(windingIndex)) / maximumTurnsPerLayer));
         layersNeeded[windingIndex] = layersPerParallel * get_number_parallels(windingIndex);
@@ -15258,13 +15273,13 @@ bool Coil::wind_by_rectangular_layers() {
                 double wireWidth = wirePerWinding[windingIndex].get_maximum_outer_width();
                 double wireHeight = wirePerWinding[windingIndex].get_maximum_outer_height();
                 if (sections[sectionIndex].get_layers_orientation() == WindingOrientation::OVERLAPPING) {
-                    maximumNumberLayersFittingInSection = sections[sectionIndex].get_dimensions()[0] / wireWidth;
-                    maximumNumberPhysicalTurnsPerLayer = floor(sections[sectionIndex].get_dimensions()[1] / wireHeight);
+                    maximumNumberLayersFittingInSection = whole_fits(sections[sectionIndex].get_dimensions()[0], wireWidth);
+                    maximumNumberPhysicalTurnsPerLayer = whole_fits(sections[sectionIndex].get_dimensions()[1], wireHeight);
                     layerWidth = wireWidth;
                     layerHeight = sections[sectionIndex].get_dimensions()[1];
                 } else {
-                    maximumNumberLayersFittingInSection = sections[sectionIndex].get_dimensions()[1] / wireHeight;
-                    maximumNumberPhysicalTurnsPerLayer = floor(sections[sectionIndex].get_dimensions()[0] / wireWidth);
+                    maximumNumberLayersFittingInSection = whole_fits(sections[sectionIndex].get_dimensions()[1], wireHeight);
+                    maximumNumberPhysicalTurnsPerLayer = whole_fits(sections[sectionIndex].get_dimensions()[0], wireWidth);
                     layerWidth = sections[sectionIndex].get_dimensions()[0];
                     layerHeight = wireHeight;
                 }
@@ -15279,22 +15294,22 @@ bool Coil::wind_by_rectangular_layers() {
                 double wireWidth = resolve_dimensional_values(wirePerWinding[windingIndex].get_outer_width().value());
                 double wireHeight = resolve_dimensional_values(wirePerWinding[windingIndex].get_outer_height().value());
                 if (sections[sectionIndex].get_layers_orientation() == WindingOrientation::OVERLAPPING) {
-                    maximumNumberLayersFittingInSection = sections[sectionIndex].get_dimensions()[0] / wireWidth;
+                    maximumNumberLayersFittingInSection = whole_fits(sections[sectionIndex].get_dimensions()[0], wireWidth);
                     if (wirePerWinding[windingIndex].get_type() == WireType::FOIL) {
                         maximumNumberPhysicalTurnsPerLayer = 1;
                     }
                     else {
-                        maximumNumberPhysicalTurnsPerLayer = floor(sections[sectionIndex].get_dimensions()[1] / wireHeight);
+                        maximumNumberPhysicalTurnsPerLayer = whole_fits(sections[sectionIndex].get_dimensions()[1], wireHeight);
                     }
                     layerWidth = wireWidth;
                     layerHeight = sections[sectionIndex].get_dimensions()[1];
                 } else {
-                    maximumNumberLayersFittingInSection = sections[sectionIndex].get_dimensions()[1] / wireHeight;
+                    maximumNumberLayersFittingInSection = whole_fits(sections[sectionIndex].get_dimensions()[1], wireHeight);
                     if (wirePerWinding[windingIndex].get_type() == WireType::RECTANGULAR && settings.get_coil_only_one_turn_per_layer_in_contiguous_rectangular()) {
                         maximumNumberPhysicalTurnsPerLayer = 1; 
                     }
                     else {
-                        maximumNumberPhysicalTurnsPerLayer = floor(sections[sectionIndex].get_dimensions()[0] / wireWidth);
+                        maximumNumberPhysicalTurnsPerLayer = whole_fits(sections[sectionIndex].get_dimensions()[0], wireWidth);
                     }
                     layerWidth = sections[sectionIndex].get_dimensions()[0];
                     layerHeight = wireHeight;
@@ -15988,7 +16003,7 @@ bool Coil::wind_by_round_layers() {
                 if (sections[sectionIndex].get_layers_orientation() == WindingOrientation::OVERLAPPING) {
                     maximumNumberLayersFittingInSection = roundFloat(sections[sectionIndex].get_dimensions()[0] / wireWidth, 9);
                     double averageLayerPerimeter = 2 * std::numbers::pi * (sections[sectionIndex].get_dimensions()[1] / 360) * (windingWindowRadialHeight - sections[sectionIndex].get_coordinates()[0]);
-                    maximumNumberPhysicalTurnsPerLayer = floor(averageLayerPerimeter / wireHeight);
+                    maximumNumberPhysicalTurnsPerLayer = whole_fits(averageLayerPerimeter, wireHeight);
                     layerRadialHeight = wireWidth;
                     layerAngle = sections[sectionIndex].get_dimensions()[1];
                 } else {
@@ -16005,7 +16020,7 @@ bool Coil::wind_by_round_layers() {
                         throw std::invalid_argument("Cannot have foil in toroids");
                     }
                     else {
-                        maximumNumberPhysicalTurnsPerLayer = floor(averageLayerPerimeter / wireHeight);
+                        maximumNumberPhysicalTurnsPerLayer = whole_fits(averageLayerPerimeter, wireHeight);
                     }
                     layerRadialHeight = wireWidth;
                     layerAngle = sections[sectionIndex].get_dimensions()[1];

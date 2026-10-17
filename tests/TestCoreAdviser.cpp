@@ -1146,8 +1146,12 @@ TEST_CASE("Core adviser post-processing fits its stand-in strand to the winding 
 // rings stacked a CMC's two windings radially, so fast_wind returned false, post_process_core
 // ignored it, and an unwound stand-in reached the loss and temperature solve. Two 4-turn windings of
 // a 1.47 mm wire fill a 2.75 mm radial window side by side but not stacked (2.94 mm). A coil that the
-// coil-stage layout cannot wind either (two 8-turn windings need 3 rings, 4.4 mm, of a 3.5 mm window)
+// coil-stage layout cannot wind either (two 9-turn windings need 3 rings, 4.4 mm, of a 3.5 mm window)
 // is not a candidate: post_process_core throws with the winder's reason.
+// Alf approved 2026-10-16/17, ABT #1898: the old 3-ring premise came from the truncation. On T 13/7/5
+// each winding's 180 deg sector takes exactly 3 turns on the inner ring (180 / 60.000000000000007 =
+// 2.9999999999999996, truncated to 2), so two 8-turn windings DO fit in 2 rings (5 + 3) per winding,
+// 2.94 mm of the 3.5 mm window; 9 turns per winding is the case that genuinely needs a third ring.
 TEST_CASE("Core adviser post-processing winds a toroid's stand-in coil with the coil stage's layout",
           "[adviser][core-adviser][smoke-test]") {
     clear_databases();
@@ -1183,10 +1187,27 @@ TEST_CASE("Core adviser post-processing winds a toroid's stand-in coil with the 
         CHECK(turns->size() == 8);
         CHECK(magnetic.get_mutable_coil().are_turns_inside_winding_window());
     }
-    SECTION("T 13/7/5, 2 x 8 turns: cannot be wound, and post-processing says why") {
+    SECTION("T 13/7/5, 2 x 8 turns: an exact fit, 2 rings per winding, every turn inside the window") {
+        auto mas = CoreAdviser().post_process_core(standIn("T 13/7/5", 8), inputs);
+        auto magnetic = mas.get_magnetic();
+        auto turns = magnetic.get_coil().get_turns_description();
+        REQUIRE(turns);
+        CHECK(turns->size() == 16);
+        CHECK(magnetic.get_mutable_coil().are_turns_inside_winding_window());
+        auto layers = magnetic.get_coil().get_layers_description();
+        REQUIRE(layers);
+        std::map<std::string, size_t> ringsPerWinding;
+        for (const auto& layer : layers.value()) {
+            if (layer.get_type() == ElectricalType::CONDUCTION) {
+                ringsPerWinding[layer.get_partial_windings()[0].get_winding()]++;
+            }
+        }
+        CHECK(ringsPerWinding == std::map<std::string, size_t>{{"Line", 2}, {"Neutral", 2}});
+    }
+    SECTION("T 13/7/5, 2 x 9 turns: cannot be wound, and post-processing says why") {
         std::optional<std::string> refusal;
         try {
-            CoreAdviser().post_process_core(standIn("T 13/7/5", 8), inputs);
+            CoreAdviser().post_process_core(standIn("T 13/7/5", 9), inputs);
         }
         catch (const OpenMagnetics::CoilException& e) {
             refusal = e.what();
