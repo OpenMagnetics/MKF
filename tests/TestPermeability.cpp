@@ -610,14 +610,44 @@ namespace {
         REQUIRE(complexPermeabilityValueAt100000.second < complexPermeabilityValueAt10000000.second);
     }
 
+    // Alf approved 2026-10-17: pin/fixture came from the pre-85130cf9 wrong data (ABT #1865/#1871). The
+    // old "67" record carried another grade's curve (mu' 2510, mu'' peak 1182 at 1.3 MHz), and this test
+    // asserted that grade's rising mu''. MAS 85130cf9 holds Fair-Rite 67's own curve (1 MHz .. 823 MHz):
+    // a low-loss NiZn with mu' ~ 38 (mu_i 40), mu'' far below mu' up to tens of MHz, then the resonance:
+    // mu'' rises from 10 MHz to its peak near 122 MHz while mu' falls past it. Every point is tabulated.
     TEST_CASE("Test_Complex_Permeability_67", "[physical-model][complex-permeability][smoke-test]") {
         ComplexPermeability complexPermeability;
         std::string materialName = "67";
-        auto materialData = materialName;
-        auto complexPermeabilityValueAt100000 = complexPermeability.get_complex_permeability(materialData, 100000);
-        auto complexPermeabilityValueAt10000000 = complexPermeability.get_complex_permeability(materialData, 10000000);
-        REQUIRE(complexPermeabilityValueAt100000.first > complexPermeabilityValueAt10000000.first);
-        REQUIRE(complexPermeabilityValueAt100000.second < complexPermeabilityValueAt10000000.second);
+        auto at = [&](double frequency) { return complexPermeability.get_complex_permeability(materialName, frequency); };
+        auto [lowestFrequency, highestFrequency] = complexPermeability.get_frequency_range(materialName);
+        REQUIRE(lowestFrequency <= 1e6);
+        REQUIRE(highestFrequency >= 8e8);
+
+        // Below the resonance: mu' at its mu_i of 40, mu'' under 2 % of it.
+        auto at1MHz = at(1e6);
+        auto at10MHz = at(1e7);
+        CHECK_THAT(at1MHz.first, Catch::Matchers::WithinRel(40.0, 0.1));
+        CHECK_THAT(at10MHz.first, Catch::Matchers::WithinRel(40.0, 0.1));
+        CHECK(at1MHz.second < 0.02 * at1MHz.first);
+        CHECK(at10MHz.second < 0.02 * at10MHz.first);
+
+        // mu'' rises from 10 MHz to its peak near 122 MHz, and falls after it.
+        auto at50MHz = at(5e7);
+        auto at100MHz = at(1e8);
+        auto atPeak = at(1.22e8);
+        auto at300MHz = at(3e8);
+        auto at800MHz = at(8e8);
+        CHECK(at10MHz.second < at50MHz.second);
+        CHECK(at50MHz.second < at100MHz.second);
+        CHECK(at100MHz.second < atPeak.second);
+        CHECK(atPeak.second > at300MHz.second);
+        CHECK(at300MHz.second > at800MHz.second);
+        CHECK(atPeak.second > 10 * at10MHz.second);
+
+        // mu' falls past the resonance.
+        CHECK(atPeak.first > at300MHz.first);
+        CHECK(at300MHz.first > at800MHz.first);
+        CHECK(at800MHz.first < 0.1 * at10MHz.first);
     }
 
     TEST_CASE("Test_Complex_Permeability_Nanoperm_8000", "[physical-model][complex-permeability][smoke-test]") {
@@ -796,14 +826,20 @@ namespace {
     }
 
     // ABT #1861 guard (Alf, 2026-10-14): mu' crosses zero above resonance, so it joins its own edge value
-    // through an additive offset (fading to 0 a decade from the edge), not a scale. 3C97's mu' table ends
-    // at 30 MHz and the best-matching donors' median there lies on the other side of zero from 3C97's
-    // own value: a scale (own / median < 0) turned the donors' whole trend upside down. The estimate
+    // through an additive offset (fading to 0 a decade from the edge), not a scale. D1C's mu' table (ACME
+    // NiZn) ends at 1 GHz at -112 and the best-matching donors' median there lies on the other side of
+    // zero: a scale (own / median < 0) would turn the donors' whole trend upside down.
+    // Alf approved 2026-10-17: pin/fixture came from the pre-85130cf9 wrong data (ABT #1865/#1871). The
+    // fixture was 3C97, whose opposite-sign median came from a mis-assigned Fair-Rite "98" donor; with the
+    // corrected records 3C97's mu' above 30 MHz is refused (fewer than 3 donors reach past it). In MAS 85130cf9
+    // two records have an opposite-sign donors' median and far-reaching donors that all end on one side:
+    // D1C and P52. P52's mu' falls through zero so steeply at its 2.53 MHz edge that the 1e-3 right-hand
+    // continuity check below does not hold there, so the fixture is D1C. The estimate
     // must be continuous at the edge (its right-hand limit too: the donors are read just inside the gap)
     // and, from a decade beyond it, take the sign the far-reaching donors' own tables end on. Those
     // signs are read from the donors' cleaned tables (gap.donors[].table), not from the estimate.
-    TEST_CASE("Test_Complex_Permeability_Estimator_3C97_Real_Part_Joins_Edge_Without_Sign_Flip", "[physical-model][complex-permeability][abt-1861]") {
-        auto material = find_core_material_by_name("3C97");
+    TEST_CASE("Test_Complex_Permeability_Estimator_D1C_Real_Part_Joins_Edge_Without_Sign_Flip", "[physical-model][complex-permeability][abt-1861]") {
+        auto material = find_core_material_by_name("D1C");
         auto realPoints = std::get<std::vector<PermeabilityPoint>>(material.get_permeability().get_complex()->get_real());
         double edgeFrequency = 0, sum = 0;
         size_t count = 0;
@@ -813,7 +849,7 @@ namespace {
             if (frequency == edgeFrequency) { sum += point.get_value(); ++count; }
         }
         double ownEdge = sum / static_cast<double>(count);
-        REQUIRE_THAT(edgeFrequency, Catch::Matchers::WithinRel(3e7, 1e-3));
+        REQUIRE_THAT(edgeFrequency, Catch::Matchers::WithinRel(1e9, 1e-6));
 
         auto estimate = estimate_complex_permeability(material);
         const auto& gap = estimate.gap(ComplexPermeabilityPart::REAL, ComplexPermeabilityGapSide::ABOVE);

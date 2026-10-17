@@ -677,7 +677,9 @@ TEST_CASE("Test_Impedance_DMR51W_Answers_At_1kHz_With_Estimated_Ranges_Marked", 
 
     auto material = find_core_material_by_name(coreMaterial);
     auto [minimumMaterialFrequency, maximumMaterialFrequency] = ComplexPermeability().get_frequency_range(material);
-    REQUIRE_THAT(minimumMaterialFrequency, Catch::Matchers::WithinRel(2021085.111, 1e-6));
+    // Alf approved 2026-10-17: pin/fixture came from the pre-85130cf9 wrong data (ABT #1865/#1871). MAS
+    // 85130cf9 re-read DMR51W from the DMEGC sheet: its mu'' now starts at 1.977 MHz (was 2.021 MHz).
+    REQUIRE_THAT(minimumMaterialFrequency, Catch::Matchers::WithinRel(1976968.26872551, 1e-6));
     REQUIRE(maximumMaterialFrequency > 1.1e7);
     REQUIRE(maximumMaterialFrequency < 1.13e7);
 
@@ -814,10 +816,13 @@ TEST_CASE("Test_Impedance_Sweep_Marks_Kramers_Kronig_Ranges", "[physical-model][
 }
 
 
-// ABT #1861 guard (Alf, 2026-10-14): where the estimator refuses a gap -- A072's mu' above its table
-// (97.2 MHz): the best-matching donors' median there is 0 -- the impedance sweep returns the curve up
-// to the cut and marks the cut with the specific "cannot be estimated" error, instead of throwing for
-// the whole sweep.
+// ABT #1861 guard (Alf, 2026-10-14): where the estimator refuses a gap -- A103's mu' above its table
+// (97.2 MHz): fewer than 3 of its best-matching MnZn donors have data past the edge -- the impedance
+// sweep returns the curve up to the cut and marks the cut with the specific "cannot be estimated"
+// error, instead of throwing for the whole sweep.
+// Alf approved 2026-10-17: pin/fixture came from the pre-85130cf9 wrong data (ABT #1865/#1871). The
+// fixture was A072, refused only because mis-assigned Fair-Rite donors read 0 at its edge; with the
+// corrected Fair-Rite records A072's mu' above 97.2 MHz is estimated, so the fixture is now A103.
 TEST_CASE("Test_Impedance_Sweep_Stops_Where_Complex_Permeability_Cannot_Be_Estimated", "[physical-model][impedance][abt-1861]") {
     settings.reset();
     std::vector<int64_t> numberTurns = {10};
@@ -828,7 +833,7 @@ TEST_CASE("Test_Impedance_Sweep_Stops_Where_Complex_Permeability_Cannot_Be_Estim
     auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, shapeName, 1, WindingOrientation::CONTIGUOUS,
                                                      WindingOrientation::OVERLAPPING, CoilAlignment::CENTERED, CoilAlignment::CENTERED,
                                                      wires, false);
-    std::string coreMaterial = "A072";
+    std::string coreMaterial = "A103";
     std::vector<CoreGap> gapping = {};
     auto core = OpenMagneticsTesting::get_quick_core(shapeName, gapping, 1, coreMaterial);
     OpenMagnetics::Magnetic magnetic;
@@ -838,14 +843,14 @@ TEST_CASE("Test_Impedance_Sweep_Stops_Where_Complex_Permeability_Cannot_Be_Estim
     auto material = find_core_material_by_name(coreMaterial);
     auto [minimumMaterialFrequency, maximumMaterialFrequency] = ComplexPermeability().get_frequency_range(material);
     REQUIRE(maximumMaterialFrequency < 1e8);
-    // The refused gap: past the top of the table, A072's complex permeability cannot be estimated.
+    // The refused gap: past the top of the table, A103's complex permeability cannot be estimated.
     double refusedFrequency = 3e8;
     try {
         ComplexPermeability().get_complex_permeability(material, refusedFrequency);
-        FAIL("A072's mu' above its table is a refused gap and must throw");
+        FAIL("A103's mu' above its table is a refused gap and must throw");
     }
     catch (const ComplexPermeabilityEstimateUnavailableException& e) {
-        CHECK(e.material_name() == "A072");
+        CHECK(e.material_name() == "A103");
         CHECK_THAT(e.reason(), Catch::Matchers::ContainsSubstring("mu' above"));
     }
 
@@ -876,8 +881,8 @@ TEST_CASE("Test_Impedance_Sweep_Stops_Where_Complex_Permeability_Cannot_Be_Estim
         CHECK(impedances[index] > 0);
     }
     // The cut names the material and the gap, with the estimator's specific error.
-    CHECK(cut.material == "A072");
-    CHECK_THAT(cut.reason, Catch::Matchers::ContainsSubstring("A072"));
+    CHECK(cut.material == "A103");
+    CHECK_THAT(cut.reason, Catch::Matchers::ContainsSubstring("A103"));
     CHECK_THAT(cut.reason, Catch::Matchers::ContainsSubstring("cannot be estimated"));
     CHECK_THAT(cut.reason, Catch::Matchers::ContainsSubstring("mu' above"));
     // The points kept are flagged as usual, one flag each, and the cut survives the JSON.
@@ -887,7 +892,7 @@ TEST_CASE("Test_Impedance_Sweep_Stops_Where_Complex_Permeability_Cannot_Be_Estim
     to_json(sweepJson, sweep);
     REQUIRE(sweepJson.contains("unavailableRanges"));
     CHECK(sweepJson["unavailableRanges"].size() == 1);
-    CHECK(sweepJson["unavailableRanges"][0]["material"] == "A072");
+    CHECK(sweepJson["unavailableRanges"][0]["material"] == "A103");
 }
 
 
