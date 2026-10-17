@@ -493,6 +493,90 @@ CoreLossesOutput CoreLosses::calculate_core_losses(Core core, OperatingPointExci
     return calculate_periodic_core_losses(core, excitation, temperature);
 }
 
+std::optional<double> CoreLossesModel::get_temperature_factor_data_end(const SteinmetzCoreLossesMethodRangeDatum& steinmetzDatum, double fromTemperature) {
+    // The same coefficients, with the same schema defaults, as get_temperature_factor.
+    double ct0 = steinmetzDatum.get_ct0() ? steinmetzDatum.get_ct0().value() : 1.0;
+    double ct1 = steinmetzDatum.get_ct1() ? steinmetzDatum.get_ct1().value() : 0.0;
+    double ct2 = steinmetzDatum.get_ct2() ? steinmetzDatum.get_ct2().value() : 0.0;
+    auto factorAt = [&](double temperature) { return ct2 * pow(temperature, 2) - ct1 * temperature + ct0; };
+    if (!(factorAt(fromTemperature) > 0)) {
+        return fromTemperature;
+    }
+    // Roots of ct2 T^2 - ct1 T + ct0 = 0.
+    std::vector<double> roots;
+    if (ct2 == 0) {
+        if (ct1 != 0) {
+            roots.push_back(ct0 / ct1);
+        }
+    }
+    else {
+        double discriminant = ct1 * ct1 - 4 * ct2 * ct0;
+        if (discriminant >= 0) {
+            double squareRoot = std::sqrt(discriminant);
+            roots.push_back((ct1 - squareRoot) / (2 * ct2));
+            roots.push_back((ct1 + squareRoot) / (2 * ct2));
+        }
+    }
+    std::optional<double> firstRoot;
+    for (double root : roots) {
+        if (root > fromTemperature && (!firstRoot || root < firstRoot.value())) {
+            firstRoot = root;
+        }
+    }
+    return firstRoot;
+}
+
+std::optional<double> CoreLosses::get_temperature_factor_data_end(Core core, const OperatingPointExcitation& excitation, double fromTemperature) {
+    // The materials calculate_periodic_core_losses prices.
+    std::vector<CoreMaterial> materials;
+    auto regionMaterials = core.get_shape_family() == CoreShapeFamily::MOLDED ? core.resolve_region_materials()
+                                                                                : std::vector<std::optional<CoreMaterial>>{};
+    if (regionMaterials.size() > 1) {
+        for (const auto& regionMaterial : regionMaterials) {
+            if (regionMaterial && !regionMaterial->get_volumetric_losses().empty()) {
+                materials.push_back(regionMaterial.value());
+            }
+        }
+    }
+    else {
+        materials.push_back(core.resolve_material());
+    }
+    // The loops it prices, each looked up at its own switching frequency.
+    std::vector<double> frequencies;
+    if (auto record = CoreLossesModel::split_into_switching_cycles(excitation)) {
+        for (const auto& cycle : record->cycles) {
+            frequencies.push_back(Inputs::get_switching_frequency(cycle));
+        }
+        if (record->envelopePeakToPeak > 0) {
+            frequencies.push_back(Inputs::get_switching_frequency(record->envelope));
+        }
+    }
+    else {
+        frequencies.push_back(Inputs::get_switching_frequency(excitation));
+    }
+
+    std::optional<double> dataEnd;
+    auto keepLowest = [&](std::optional<double> end) {
+        if (end && (!dataEnd || end.value() < dataEnd.value())) {
+            dataEnd = end;
+        }
+    };
+    for (const auto& material : materials) {
+        auto model = get_core_losses_model(material.get_name());
+        if (!CoreLossesModel::evaluates_steinmetz_ranges(model.get())) {
+            continue;
+        }
+        if (model->is_steinmetz_datum_loaded()) {
+            keepLowest(CoreLossesModel::get_temperature_factor_data_end(model->get_steinmetz_datum(), fromTemperature));
+            continue;
+        }
+        for (double frequency : frequencies) {
+            keepLowest(CoreLossesModel::get_temperature_factor_data_end(CoreLossesModel::get_steinmetz_coefficients(material, frequency), fromTemperature));
+        }
+    }
+    return dataEnd;
+}
+
 CoreLossesOutput CoreLosses::calculate_periodic_core_losses(Core core, OperatingPointExcitation excitation, double temperature) {
     // Mixed-material circuit: price each material over its own volume (ABT #362).
     if (core.get_shape_family() == CoreShapeFamily::DRUM_SEMISHIELDED) {

@@ -311,9 +311,45 @@ Magnetic MagneticSimulator::make_paramagnetic_magnetic(const Magnetic& magnetic)
 }
 
 bool MagneticSimulator::is_core_held_at_data_ceiling(const CoreMaterial& coreMaterial, double coreLossesTemperature, double maximumTemperature) {
+    return is_core_held_at_data_ceiling(get_ferromagnetic_data_ceiling(coreMaterial), coreLossesTemperature, maximumTemperature);
+}
+
+bool MagneticSimulator::is_core_held_at_data_ceiling(const std::optional<CoreDataCeiling>& ceiling, double coreLossesTemperature,
+                                                     double maximumTemperature) {
+    return ceiling && coreLossesTemperature > ceiling->temperature - kOperatingTemperatureTolerance &&
+           coreLossesTemperature <= ceiling->temperature && maximumTemperature > ceiling->temperature;
+}
+
+std::optional<CoreDataCeiling> MagneticSimulator::get_ferromagnetic_data_ceiling(const CoreMaterial& coreMaterial) {
     const auto ceiling = InitialPermeability::get_maximum_ferromagnetic_data_temperature(coreMaterial);
-    return ceiling && coreLossesTemperature > ceiling.value() - kOperatingTemperatureTolerance &&
-           coreLossesTemperature <= ceiling.value() && maximumTemperature > ceiling.value();
+    if (!ceiling) {
+        return std::nullopt;
+    }
+    const auto curieTemperature = coreMaterial.get_curie_temperature();
+    const bool isCurie = curieTemperature && ceiling.value() == curieTemperature.value();
+    return CoreDataCeiling{ceiling.value(), isCurie ? CoreDataCeilingSource::CURIE_TEMPERATURE
+                                                    : CoreDataCeilingSource::PERMEABILITY_TABLE_END};
+}
+
+std::optional<CoreDataCeiling> MagneticSimulator::get_core_data_ceiling(const Core& core, const OperatingPointExcitation& excitation,
+                                                                        double ambientTemperature, CoreLosses& coreLossesModel) {
+    const auto coreMaterial = core.resolve_material();
+    auto ceiling = get_ferromagnetic_data_ceiling(coreMaterial);
+    auto keepLower = [&](std::optional<double> end, CoreDataCeilingSource source) {
+        if (end && (!ceiling || end.value() < ceiling->temperature)) {
+            ceiling = CoreDataCeiling{end.value(), source};
+        }
+    };
+    // The magnetisation curve the magnetizing model builds at the core's temperature needs a positive
+    // H_sat(T) (InitialPermeability::get_magnetisation_curve refuses otherwise). Without saturation points
+    // there is no such curve to build and no range to respect; whatever needs one still throws.
+    if (!coreMaterial.get_saturation().empty()) {
+        keepLower(Core::get_magnetic_field_strength_saturation_data_end(coreMaterial, ambientTemperature),
+                  CoreDataCeilingSource::SATURATION_FIELD_STRENGTH_END);
+    }
+    keepLower(coreLossesModel.get_temperature_factor_data_end(core, excitation, ambientTemperature),
+              CoreDataCeilingSource::STEINMETZ_TEMPERATURE_FACTOR_END);
+    return ceiling;
 }
 
 SolvedLosses MagneticSimulator::solve_losses_at_operating_temperature(const OperatingPoint& operatingPoint,
@@ -334,12 +370,15 @@ SolvedLosses MagneticSimulator::solve_losses_at_operating_temperature(const Oper
     double windingRelaxation = 1.0;
     std::optional<double> previousCoreResidual;
     std::optional<double> previousWindingResidual;
-    const auto coreMaterial = magnetic.get_core().resolve_material();
-    // The loop's ceiling: the highest temperature where the material is ferromagnetic and its
-    // mu_i(T) has data (the last table point when the table ends below Curie, else Curie). Above
-    // it the magnetizing model's permeability refuses (ABT #1739), so no iterate may land there.
-    const auto ferromagneticDataCeiling = InitialPermeability::get_maximum_ferromagnetic_data_temperature(coreMaterial);
-    const auto curieTemperature = coreMaterial.get_curie_temperature();
+    // The loop's ceiling (get_core_data_ceiling): the highest temperature where the material is
+    // ferromagnetic, its mu_i(T) has data (the last table point when the table ends below Curie, else
+    // Curie), its saturation field strength is positive and the Steinmetz ranges its losses evaluate
+    // have a positive ct(T) (ABT #1908). Above it the magnetizing model or the core-loss model refuses
+    // (ABT #1739), so no iterate may land there. It is taken on the first iterate's excitation, once
+    // its losses have been evaluated (so a material or frequency the losses cannot price throws there,
+    // as it always did); the frequencies it reads do not change between iterates.
+    std::optional<CoreDataCeiling> dataCeiling;
+    bool dataCeilingTaken = false;
     // The winding losses' field step (H at every turn, and the current split between a winding's
     // parallels that feeds it, ABT #1314) is computed ONCE, at ambient, and every iterate runs only
     // the per-turn kernels at its own winding temperature (the architecture's two steps): the
@@ -355,8 +394,6 @@ SolvedLosses MagneticSimulator::solve_losses_at_operating_temperature(const Oper
     // below Curie, the core is still ferromagnetic there and keeps its last tabulated permeability.
     bool coreHeldAtCeiling = false;
     std::optional<Magnetic> paramagneticMagnetic;
-    const bool ceilingIsCurie = ferromagneticDataCeiling && curieTemperature &&
-                                ferromagneticDataCeiling.value() == curieTemperature.value();
     // The previous iterate of the winding-only loop (core held), for the runaway check below.
     struct HeldWindingIterate {
         double windingTemperature;
@@ -389,6 +426,10 @@ SolvedLosses MagneticSimulator::solve_losses_at_operating_temperature(const Oper
         excitation.set_magnetic_flux_density(magneticFluxDensity);
         CoreLossesOutput coreLossesOutput = _coreLossesModel.calculate_core_losses(magnetic.get_core(), excitation, coreTemperature);
         coreLossesOutput.set_temperature(coreTemperature);
+        if (!dataCeilingTaken) {
+            dataCeiling = get_core_data_ceiling(magnetic.get_core(), excitation, ambientTemperature, _coreLossesModel);
+            dataCeilingTaken = true;
+        }
 
         // One network, every heat source that is modelled.
         std::optional<WindingLossesOutput> windingLosses;
@@ -557,7 +598,8 @@ SolvedLosses MagneticSimulator::solve_losses_at_operating_temperature(const Oper
 
         // The core-loss and permeability models describe the FERROMAGNETIC material and refuse a
         // temperature at or above its Curie point; the permeability also refuses one between the end
-        // of its measured mu_i(T) table and the Curie point. The first steps start from
+        // of its measured mu_i(T) table and the Curie point, the magnetisation curve one where H_sat(T)
+        // is not positive, and the Steinmetz losses one where ct(T) is not (ABT #1908). The first steps start from
         // ambient-temperature losses and can overshoot far past where the answer lies, so the iterate
         // is kept inside the range where the losses and the permeability exist: at most halfway from
         // the current core temperature to that ceiling.
@@ -572,7 +614,11 @@ SolvedLosses MagneticSimulator::solve_losses_at_operating_temperature(const Oper
         //     its Curie point, mu_r = 1 (make_paramagnetic_magnetic);
         //   - ceiling = end of a mu_i(T) table that stops below Curie (3C96: 180 C, Curie above 200 C):
         //     the material is still magnetic there, so the core is held at the table's last temperature
-        //     exactly and keeps the last tabulated permeability.
+        //     exactly and keeps the last tabulated permeability;
+        //   - ceiling = where the saturation field strength H_sat(T) or an evaluated Steinmetz range's
+        //     ct(T) stops being positive (ABT #1908, the same hold as the mu_i(T) table's end): the
+        //     material is still magnetic, and the models refuse at that temperature itself, so the core
+        //     stays at this iterate, within the tolerance below it, with its own permeability there.
         // The numbers are therefore those of a core at its data limit: its real temperature is higher,
         // and ResultsAnalyzer::analyze_temperature says so for this operating point
         // (is_core_held_at_data_ceiling).
@@ -580,15 +626,23 @@ SolvedLosses MagneticSimulator::solve_losses_at_operating_temperature(const Oper
             windingTemperature = proposedWindingTemperature;
             continue;
         }
-        if (ferromagneticDataCeiling && proposedCoreTemperature >= ferromagneticDataCeiling.value()) {
-            const double distanceToCeiling = ferromagneticDataCeiling.value() - coreTemperature;
+        if (dataCeiling && proposedCoreTemperature >= dataCeiling->temperature) {
+            const double distanceToCeiling = dataCeiling->temperature - coreTemperature;
             if (distanceToCeiling < kOperatingTemperatureTolerance) {
                 coreHeldAtCeiling = true;
-                if (ceilingIsCurie) {
-                    paramagneticMagnetic = make_paramagnetic_magnetic(magnetic);
-                }
-                else {
-                    coreTemperature = ferromagneticDataCeiling.value();
+                switch (dataCeiling->source) {
+                    case CoreDataCeilingSource::CURIE_TEMPERATURE:
+                        paramagneticMagnetic = make_paramagnetic_magnetic(magnetic);
+                        break;
+                    case CoreDataCeilingSource::PERMEABILITY_TABLE_END:
+                        coreTemperature = dataCeiling->temperature;
+                        break;
+                    case CoreDataCeilingSource::SATURATION_FIELD_STRENGTH_END:
+                    case CoreDataCeilingSource::STEINMETZ_TEMPERATURE_FACTOR_END:
+                        // ABT #1908: at that temperature itself H_sat or ct is zero and the model refuses,
+                        // so the core stays at this iterate, within the tolerance below it, the material
+                        // still magnetic and with its own permeability there.
+                        break;
                 }
                 windingTemperature = proposedWindingTemperature;
                 continue;

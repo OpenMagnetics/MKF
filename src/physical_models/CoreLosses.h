@@ -175,6 +175,12 @@ class CoreLossesModel {
         return scale;
     }
 
+    // ABT #1908: the lowest temperature at or above `fromTemperature` at which the range's ct(T)
+    // (get_temperature_factor, coefficients and schema defaults alike) is no longer positive, where
+    // get_temperature_factor refuses; `fromTemperature` itself when ct is not positive there already; none
+    // when ct stays positive above it. A property of the range's fitted coefficients.
+    static std::optional<double> get_temperature_factor_data_end(const SteinmetzCoreLossesMethodRangeDatum& steinmetzDatum, double fromTemperature);
+
     double get_magnetic_flux_density_from_volumetric_losses(SteinmetzCoreLossesMethodRangeDatum steinmetzDatum, double volumetricLosses, double frequency, double temperature) {
         double k = steinmetzDatum.get_k();
         double alpha = steinmetzDatum.get_alpha();
@@ -679,6 +685,15 @@ class CoreLosses {
     static bool can_run_requested_model(CoreLossesModels model, const std::vector<CoreLossesModels>& availableMethodsForMaterial);
 
     CoreLossesOutput calculate_core_losses(Core core, OperatingPointExcitation excitation, double temperature);
+    // ABT #1908: the lowest temperature at or above `fromTemperature` at which a Steinmetz range that
+    // calculate_core_losses(core, excitation, .) evaluates has its ct(T) no longer positive
+    // (CoreLossesModel::get_temperature_factor_data_end): the ranges of the core's material(s) that the
+    // model this object runs on each of them reads, at the switching frequency of each loop it prices (a
+    // record of switching cycles: each cycle, and its line envelope when it moves). None when no
+    // evaluated range runs out of positive ct above `fromTemperature`, or when the model reads no Steinmetz
+    // range (loss factor, Roshen, proprietary, ...). A semi-shielded drum's shell material is not included.
+    // Throws what calculate_core_losses throws for a material or frequency it cannot price.
+    std::optional<double> get_temperature_factor_data_end(Core core, const OperatingPointExcitation& excitation, double fromTemperature);
 
     // ABT #362: semi-shielded drums cross TWO materials (ferrite drum + magnetic-epoxy shell),
     // so pricing the drum's loss density over the whole effective volume — shell included —

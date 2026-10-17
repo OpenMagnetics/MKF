@@ -792,7 +792,10 @@ namespace {
 
     // The IEEE article's ETD 29/16/10 3C95 transformer at 100 C ambient. forcedAir: the 2 m/s fan
     // Test_IEEE_Article_Simulation_3 runs it with; without it, the still-air design the fan was added for.
-    std::pair<OpenMagnetics::Inputs, OpenMagnetics::Magnetic> build_ieee_article_3(bool forcedAir) {
+    // `coreMaterial` and `frequency` default to the article's; ABT #1908 drives the same design with other grades
+    // and frequencies.
+    std::pair<OpenMagnetics::Inputs, OpenMagnetics::Magnetic> build_ieee_article_3(bool forcedAir, std::string coreMaterial = "3C95",
+                                                                                   double frequency = 115000) {
         std::vector<int64_t> numberTurns = {32, 2};
         std::vector<int64_t> numberParallels = {1, 1};
         std::vector<double> turnsRatios = {16};
@@ -843,7 +846,6 @@ namespace {
         coil.wind({0, 1}, 1);
 
         int64_t numberStacks = 1;
-        std::string coreMaterial = "3C95";
         auto gapping = OpenMagneticsTesting::get_ground_gap(0.0004);
         auto core = OpenMagneticsTesting::get_quick_core(shapeName, gapping, numberStacks, coreMaterial);
         OpenMagnetics::Magnetic magnetic;
@@ -876,7 +878,7 @@ namespace {
         operatingPointJson["excitationsPerWinding"] = json::array();
         {
             json windingExcitation = json();
-            windingExcitation["frequency"] = 115000;
+            windingExcitation["frequency"] = frequency;
             windingExcitation["current"]["processed"]["label"] = "sinusoidal";
             windingExcitation["current"]["processed"]["peakToPeak"] = 4 * 2;
             windingExcitation["current"]["processed"]["offset"] = 0;
@@ -889,7 +891,7 @@ namespace {
         }
         {
             json windingExcitation = json();
-            windingExcitation["frequency"] = 115000;
+            windingExcitation["frequency"] = frequency;
             windingExcitation["current"]["processed"]["label"] = "sinusoidal";
             windingExcitation["current"]["processed"]["peakToPeak"] = 64 * 2;
             windingExcitation["current"]["processed"]["offset"] = 0;
@@ -1113,6 +1115,193 @@ namespace {
         CHECK_THAT(solvedPeakToPeak, Catch::Matchers::WithinRel(realPeakToPeak, 1e-6));
         CHECK(paramagneticPeakToPeak > 1.5 * realPeakToPeak);
     }
+
+    // ABT #1908: the loss <-> temperature solve kept the core below the end of its mu_i(T) / Curie data only,
+    // and the other temperature-dependent data of a grade can end lower. DMR71's saturation points stop at
+    // 120 C and the saturation field strength they model, extrapolated, reaches zero near 211 C, below its
+    // 255 C Curie point (its mu_i(T) table runs to 260 C). The IEEE article 3 ETD 29 in still air at 100 C is
+    // driven past that: the magnetizing model's magnetisation curve then threw INVALID_INPUT ("no positive
+    // saturation field strength"), which ended Henry's grade ranking. The core is now held below where its
+    // saturation field strength data end, as at the end of a mu_i(T) table, and analyze_results reports the
+    // data limit.
+    TEST_CASE("Loss-temperature loop holds the core where its saturation field strength data end and reports the data limit", "[processor][magnetic-simulator][abt-1908]") {
+        auto [inputs, magnetic] = build_ieee_article_3(false, "DMR71");
+        auto coreMaterial = magnetic.get_mutable_core().resolve_material();
+        REQUIRE(coreMaterial.get_name() == "DMR71");
+        auto ferromagneticCeiling = InitialPermeability::get_maximum_ferromagnetic_data_temperature(coreMaterial);
+        REQUIRE(ferromagneticCeiling);
+        // Below the mu_i(T) / Curie ceiling the saturation field strength data already end, and a direct query
+        // there still refuses.
+        double ferromagneticCeilingTemperature = ferromagneticCeiling.value();
+        REQUIRE(!(Core::get_magnetic_field_strength_saturation(coreMaterial, ferromagneticCeilingTemperature - 10) > 0));
+        CHECK_THROWS_AS(InitialPermeability::get_magnetisation_curve(coreMaterial, ferromagneticCeilingTemperature - 10, std::nullopt), InvalidInputException);
+
+        auto operatingPoint = inputs.get_operating_point(0);
+        MagneticSimulator simulator;
+        std::optional<TemperatureOutput> temperature;
+        CoreLossesOutput coreLosses;
+        REQUIRE_NOTHROW(coreLosses = simulator.calculate_core_losses(operatingPoint, magnetic, nullptr, &temperature));
+        // Held where its saturation field strength is still positive, within the tolerance below where it
+        // stops being so, while the network's hottest point is above it.
+        const double heldTemperature = coreLosses.get_temperature();
+        INFO("core held at " << heldTemperature << " C");
+        CHECK(Core::get_magnetic_field_strength_saturation(coreMaterial, heldTemperature) > 0);
+        CHECK(!(Core::get_magnetic_field_strength_saturation(coreMaterial, heldTemperature + MagneticSimulator::kOperatingTemperatureTolerance) > 0));
+        CHECK(heldTemperature < ferromagneticCeilingTemperature - MagneticSimulator::kOperatingTemperatureTolerance);
+        REQUIRE(temperature);
+        CHECK(temperature->get_maximum_temperature() > heldTemperature + MagneticSimulator::kOperatingTemperatureTolerance);
+
+        // The loss filter the advisers rank a candidate with gives its verdict instead of throwing.
+        MagneticFilterLosses lossesFilter;
+        REQUIRE_NOTHROW(lossesFilter.evaluate_magnetic(&magnetic, &inputs));
+
+        OpenMagnetics::Mas mas;
+        mas.set_inputs(inputs);
+        mas.set_magnetic(magnetic);
+        OpenMagnetics::Mas simulated;
+        REQUIRE_NOTHROW(simulated = simulator.simulate(mas));
+        REQUIRE(simulated.get_outputs().size() == 1);
+        std::vector<ResultFinding> findings;
+        REQUIRE_NOTHROW(findings = ResultsAnalyzer::analyze_results(simulated));
+        size_t dataLimitFindings = 0;
+        for (const auto& finding : findings) {
+            INFO(to_string(finding.code) << ": " << finding.message);
+            if (finding.code == ResultFindingCode::CORE_ABOVE_MATERIAL_DATA_LIMIT) {
+                ++dataLimitFindings;
+                CHECK(finding.operatingPointIndex == 0);
+                CHECK_THAT(finding.message, Catch::Matchers::ContainsSubstring("saturation field strength data reach zero"));
+                CHECK_THAT(finding.message, Catch::Matchers::ContainsSubstring("the core's real temperature is higher"));
+            }
+        }
+        CHECK(dataLimitFindings == 1);
+    }
+
+    // ABT #1908: DMR24's Steinmetz range for 400 kHz to 999.3 kHz has ct(T) = 1.137 - 0.0055 T, which stops being
+    // positive at 206.9 C, below its 280 C Curie point and before its saturation field strength data end. The
+    // same ETD 29 at 500 kHz in still air at 100 C is driven past it: the core-loss model then threw
+    // INVALID_LOSS_DATA ("Steinmetz temperature factor ... <= 0"). The core is now held below where ct(T) ends,
+    // and analyze_results reports the data limit.
+    TEST_CASE("Loss-temperature loop holds the core where its Steinmetz ct(T) data end and reports the data limit", "[processor][magnetic-simulator][abt-1908]") {
+        const double frequency = 500000;
+        auto [inputs, magnetic] = build_ieee_article_3(false, "DMR24", frequency);
+        auto coreMaterial = magnetic.get_mutable_core().resolve_material();
+        REQUIRE(coreMaterial.get_name() == "DMR24");
+        auto ferromagneticCeiling = InitialPermeability::get_maximum_ferromagnetic_data_temperature(coreMaterial);
+        REQUIRE(ferromagneticCeiling);
+        auto steinmetzRange = CoreLossesModel::get_steinmetz_coefficients(coreMaterial, frequency);
+        REQUIRE(steinmetzRange.get_ct0());
+        REQUIRE(steinmetzRange.get_ct1());
+        REQUIRE(steinmetzRange.get_ct2().value_or(0) == 0);
+        const double temperatureFactorEnd = steinmetzRange.get_ct0().value() / steinmetzRange.get_ct1().value();
+        REQUIRE(temperatureFactorEnd < ferromagneticCeiling.value());
+        REQUIRE(Core::get_magnetic_field_strength_saturation(coreMaterial, temperatureFactorEnd + MagneticSimulator::kOperatingTemperatureTolerance) > 0);
+        // A direct query past the end of ct(T) still refuses.
+        try {
+            CoreLossesModel::get_temperature_factor(steinmetzRange, temperatureFactorEnd + 1);
+            FAIL("ct(T) past the end of its positive range must throw");
+        }
+        catch (const CalculationException& error) {
+            CHECK(error.code() == ErrorCode::INVALID_LOSS_DATA);
+        }
+
+        auto operatingPoint = inputs.get_operating_point(0);
+        MagneticSimulator simulator;
+        std::optional<TemperatureOutput> temperature;
+        CoreLossesOutput coreLosses;
+        REQUIRE_NOTHROW(coreLosses = simulator.calculate_core_losses(operatingPoint, magnetic, nullptr, &temperature));
+        const double heldTemperature = coreLosses.get_temperature();
+        INFO("core held at " << heldTemperature << " C, ct(T) ends at " << temperatureFactorEnd << " C");
+        CHECK(heldTemperature < temperatureFactorEnd);
+        CHECK(heldTemperature > temperatureFactorEnd - MagneticSimulator::kOperatingTemperatureTolerance);
+        REQUIRE(temperature);
+        CHECK(temperature->get_maximum_temperature() > temperatureFactorEnd);
+
+        MagneticFilterLosses lossesFilter;
+        REQUIRE_NOTHROW(lossesFilter.evaluate_magnetic(&magnetic, &inputs));
+
+        OpenMagnetics::Mas mas;
+        mas.set_inputs(inputs);
+        mas.set_magnetic(magnetic);
+        OpenMagnetics::Mas simulated;
+        REQUIRE_NOTHROW(simulated = simulator.simulate(mas));
+        REQUIRE(simulated.get_outputs().size() == 1);
+        std::vector<ResultFinding> findings;
+        REQUIRE_NOTHROW(findings = ResultsAnalyzer::analyze_results(simulated));
+        size_t dataLimitFindings = 0;
+        for (const auto& finding : findings) {
+            INFO(to_string(finding.code) << ": " << finding.message);
+            if (finding.code == ResultFindingCode::CORE_ABOVE_MATERIAL_DATA_LIMIT) {
+                ++dataLimitFindings;
+                CHECK(finding.operatingPointIndex == 0);
+                CHECK_THAT(finding.message, Catch::Matchers::ContainsSubstring("Steinmetz temperature factor ct(T)"));
+            }
+        }
+        CHECK(dataLimitFindings == 1);
+    }
+
+    // ABT-1908-API-BEGIN
+    // ABT #1908: the ceiling's parts are the material's own data ends, found on the models that evaluate them.
+    TEST_CASE("The core data ceiling covers the saturation field strength and Steinmetz ct(T) data ends", "[processor][magnetic-simulator][abt-1908]") {
+        {
+            auto coreMaterial = find_core_material_by_name("DMR71");
+            auto end = Core::get_magnetic_field_strength_saturation_data_end(coreMaterial, 25);
+            REQUIRE(end);
+            INFO("DMR71 saturation field strength data end at " << end.value() << " C");
+            CHECK(Core::get_magnetic_field_strength_saturation(coreMaterial, end.value() - 0.01) > 0);
+            CHECK(!(Core::get_magnetic_field_strength_saturation(coreMaterial, end.value() + 0.01) > 0));
+            CHECK(end.value() < InitialPermeability::get_maximum_ferromagnetic_data_temperature(coreMaterial).value());
+            // From a temperature already past it, the data end there.
+            CHECK(Core::get_magnetic_field_strength_saturation_data_end(coreMaterial, end.value() + 1).value() == end.value() + 1);
+            // A grade whose saturation field strength stays positive has no such end.
+            CHECK(!Core::get_magnetic_field_strength_saturation_data_end(find_core_material_by_name("3C95"), 25));
+        }
+        {
+            SteinmetzCoreLossesMethodRangeDatum linear;
+            linear.set_k(1); linear.set_alpha(1); linear.set_beta(2);
+            linear.set_ct0(1.137); linear.set_ct1(0.0055); linear.set_ct2(0.0);
+            CHECK_THAT(CoreLossesModel::get_temperature_factor_data_end(linear, 25).value(), Catch::Matchers::WithinRel(1.137 / 0.0055, 1e-12));
+            SteinmetzCoreLossesMethodRangeDatum parabola;
+            parabola.set_k(1); parabola.set_alpha(1); parabola.set_beta(2);
+            // ct = (T - 150)(T - 250) / 37500: positive below 150 C, refused between 150 C and 250 C.
+            parabola.set_ct0(1.0); parabola.set_ct1(400.0 / 37500); parabola.set_ct2(1.0 / 37500);
+            CHECK_THAT(CoreLossesModel::get_temperature_factor_data_end(parabola, 25).value(), Catch::Matchers::WithinRel(150.0, 1e-9));
+            CHECK(CoreLossesModel::get_temperature_factor_data_end(parabola, 200).value() == 200);
+            CHECK(!CoreLossesModel::get_temperature_factor_data_end(parabola, 260));
+            SteinmetzCoreLossesMethodRangeDatum positive;
+            positive.set_k(1); positive.set_alpha(1); positive.set_beta(2);
+            positive.set_ct0(1.2564); positive.set_ct1(0.0114); positive.set_ct2(4.58e-5);
+            CHECK(!CoreLossesModel::get_temperature_factor_data_end(positive, 25));
+        }
+        {
+            // The solve's ceiling names the datum that ends first, on the excitation the solve prices.
+            auto ceilingOf = [](std::pair<OpenMagnetics::Inputs, OpenMagnetics::Magnetic> design) {
+                auto& [inputs, magnetic] = design;
+                auto operatingPoint = inputs.get_operating_point(0);
+                MagnetizingInductance magnetizingInductanceModel;
+                auto magneticFluxDensity = magnetizingInductanceModel.calculate_inductance_and_magnetic_flux_density(magnetic, &operatingPoint).second;
+                auto excitation = operatingPoint.get_excitations_per_winding()[0];
+                excitation.set_magnetic_flux_density(magneticFluxDensity);
+                CoreLosses coreLossesModel;
+                return MagneticSimulator::get_core_data_ceiling(magnetic.get_core(), excitation,
+                                                                operatingPoint.get_conditions().get_ambient_temperature(), coreLossesModel);
+            };
+            auto ceiling = ceilingOf(build_ieee_article_3(false, "DMR24", 500000));
+            REQUIRE(ceiling);
+            CHECK(ceiling->source == CoreDataCeilingSource::STEINMETZ_TEMPERATURE_FACTOR_END);
+            CHECK_THAT(ceiling->temperature, Catch::Matchers::WithinRel(1.1374362023251179 / 0.005497448093004713, 1e-9));
+            // At 115 kHz DMR24's range has a ct(T) that stays positive, and its saturation field strength data
+            // end first.
+            auto ceilingLow = ceilingOf(build_ieee_article_3(false, "DMR24"));
+            REQUIRE(ceilingLow);
+            CHECK(ceilingLow->source == CoreDataCeilingSource::SATURATION_FIELD_STRENGTH_END);
+            // 3C95 keeps its mu_i(T) table end.
+            auto ceiling3C95 = ceilingOf(build_ieee_article_3(false));
+            REQUIRE(ceiling3C95);
+            CHECK(ceiling3C95->source == CoreDataCeilingSource::PERMEABILITY_TABLE_END);
+            CHECK(ceiling3C95->temperature == InitialPermeability::get_maximum_ferromagnetic_data_temperature(find_core_material_by_name("3C95")).value());
+        }
+    }
+    // ABT-1908-API-END
 
     TEST_CASE("Test_Flyback_Simulation", "[processor][magnetic-simulator]") {
 

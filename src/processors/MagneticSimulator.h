@@ -79,6 +79,20 @@ enum class NoThermalOperatingPointPolicy {
     THROW
 };
 
+// ABT #838 / #1855 / #1908: the highest temperature up to which every temperature-dependent material
+// datum the loss <-> temperature solve evaluates the core with still answers, and which datum ends there.
+// The solve keeps the core below it, and holds it there when the losses drive it to it.
+enum class CoreDataCeilingSource {
+    CURIE_TEMPERATURE,                  // the material's Curie temperature: above it the core is paramagnetic
+    PERMEABILITY_TABLE_END,             // the last point of a mu_i(T) table that ends below Curie (ABT #1739)
+    SATURATION_FIELD_STRENGTH_END,      // where the saturation field strength H_sat(T) stops being positive
+    STEINMETZ_TEMPERATURE_FACTOR_END    // where an evaluated Steinmetz range's ct(T) stops being positive
+};
+struct CoreDataCeiling {
+    double temperature;
+    CoreDataCeilingSource source;
+};
+
 class LossSolveMemoScope {
     public:
         LossSolveMemoScope();
@@ -177,7 +191,8 @@ class MagneticSimulator {
         // with temperature make plain substitution oscillate), and the core is kept below the
         // highest temperature where its material is ferromagnetic and its mu_i(T) has data
         // (InitialPermeability::get_maximum_ferromagnetic_data_temperature: the last table point
-        // when the table ends below Curie, else Curie). Not settling within
+        // when the table ends below Curie, else Curie), and where its saturation field strength and the
+        // evaluated Steinmetz ranges' ct(T) are positive (get_core_data_ceiling, ABT #1908). Not settling within
         // kOperatingTemperatureMaximumIterations THROWS (there is no operating point to report, and
         // the last iterate is not one). Being driven to that ceiling holds the core there and settles the
         // winding alone; the held core is magnetized with mu_r = 1 only when the ceiling is its Curie
@@ -202,9 +217,26 @@ class MagneticSimulator {
         // ABT #1855: whether a solve held the core at its material's data ceiling (the losses drove it
         // there, solve_losses_at_operating_temperature): its core losses were evaluated within
         // kOperatingTemperatureTolerance below InitialPermeability::get_maximum_ferromagnetic_data_temperature
-        // and the network's maximum temperature lies above that ceiling.
+        // and the network's maximum temperature lies above that ceiling. This overload knows only that
+        // mu_i(T) / Curie part (get_ferromagnetic_data_ceiling); the full ceiling the solve uses also depends
+        // on the excitation (get_core_data_ceiling) and is judged by the overload below.
         static bool is_core_held_at_data_ceiling(const CoreMaterial& coreMaterial, double coreLossesTemperature,
                                                  double maximumTemperature);
+        // The same against a ceiling of get_core_data_ceiling (none: never held).
+        static bool is_core_held_at_data_ceiling(const std::optional<CoreDataCeiling>& ceiling, double coreLossesTemperature,
+                                                 double maximumTemperature);
+        // The mu_i(T) / Curie part of the ceiling: InitialPermeability::get_maximum_ferromagnetic_data_temperature,
+        // CURIE_TEMPERATURE when it is the Curie temperature, else PERMEABILITY_TABLE_END. None without either.
+        static std::optional<CoreDataCeiling> get_ferromagnetic_data_ceiling(const CoreMaterial& coreMaterial);
+        // ABT #1908: the ceiling the loss <-> temperature solve keeps the core below, for `core` priced by
+        // `coreLossesModel` on `excitation` (the excitation the solve passes to calculate_core_losses) from
+        // `ambientTemperature` up: the lowest of get_ferromagnetic_data_ceiling, the end of the saturation
+        // field strength data (Core::get_magnetic_field_strength_saturation_data_end; a material with no
+        // saturation points has none) and the end of positive ct(T) of the Steinmetz ranges the losses
+        // evaluate (CoreLosses::get_temperature_factor_data_end). On a tie the earlier source in
+        // CoreDataCeilingSource names it. Every part is derived from the material's data.
+        static std::optional<CoreDataCeiling> get_core_data_ceiling(const Core& core, const OperatingPointExcitation& excitation,
+                                                                    double ambientTemperature, CoreLosses& coreLossesModel);
         // The DC point of the last calculate_core_losses' solve (SolvedLosses::dcBiasPoint).
         std::optional<DcBiasPoint> get_last_dc_bias_point() const { return _lastDcBiasPoint; }
         CoreLossesOutput calculate_core_losses(OperatingPoint& operatingPoint, Magnetic magnetic,

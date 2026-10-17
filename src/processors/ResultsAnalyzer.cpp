@@ -49,6 +49,25 @@ void to_json(nlohmann::json& j, const std::vector<ResultFinding>& findings) {
 
 namespace {
 
+// ABT #1908: the ceiling the loss <-> temperature solve kept this operating point's core below
+// (MagneticSimulator::get_core_data_ceiling), on the excitation it priced: the operating point's first
+// winding with the flux density the output's core losses carry, from the point's ambient up, with the
+// core-loss models the Settings select (as the simulator's).
+std::optional<CoreDataCeiling> get_solved_core_data_ceiling(const Magnetic& magnetic, const OperatingPoint& operatingPoint,
+                                                           const CoreLossesOutput& coreLosses) {
+    if (operatingPoint.get_excitations_per_winding().empty()) {
+        throw InvalidInputException(ErrorCode::MISSING_DATA, "analyze_results: an operating point has no excitation");
+    }
+    if (!coreLosses.get_magnetic_flux_density()) {
+        throw InvalidInputException(ErrorCode::MISSING_DATA, "analyze_results: the core losses carry no magnetic flux density");
+    }
+    OperatingPointExcitation excitation = operatingPoint.get_excitations_per_winding()[0];
+    excitation.set_magnetic_flux_density(coreLosses.get_magnetic_flux_density().value());
+    CoreLosses coreLossesModel;
+    return MagneticSimulator::get_core_data_ceiling(magnetic.get_core(), excitation,
+                                                    operatingPoint.get_conditions().get_ambient_temperature(), coreLossesModel);
+}
+
 std::string describe_operating_point(const OperatingPoint& operatingPoint, size_t operatingPointIndex) {
     std::string description = "operating point " + std::to_string(operatingPointIndex);
     if (operatingPoint.get_name()) {
@@ -189,10 +208,9 @@ std::vector<ResultFinding> ResultsAnalyzer::analyze_saturation(const Magnetic& m
     // its Curie temperature was magnetized there as a paramagnetic core (mu_r = 1, MagneticSimulator::
     // make_paramagnetic_magnetic), which has no knee to be driven past: only criterion 1 applies to it.
     std::optional<DcBiasPoint> dcBiasPoint;
-    const auto curieTemperature = coreMaterial.get_curie_temperature();
-    const auto dataCeiling = InitialPermeability::get_maximum_ferromagnetic_data_temperature(coreMaterial);
-    const bool heldAtCurie = curieTemperature && dataCeiling && dataCeiling.value() == curieTemperature.value() &&
-                             coreTemperature > curieTemperature.value() - MagneticSimulator::kOperatingTemperatureTolerance;
+    const auto dataCeiling = get_solved_core_data_ceiling(magnetic, operatingPoint, coreLosses);
+    const bool heldAtCurie = dataCeiling && dataCeiling->source == CoreDataCeilingSource::CURIE_TEMPERATURE &&
+                             coreTemperature > dataCeiling->temperature - MagneticSimulator::kOperatingTemperatureTolerance;
     if (!heldAtCurie) {
         OperatingPoint operatingPointAtCoreTemperature = operatingPoint;
         operatingPointAtCoreTemperature.get_mutable_conditions().set_ambient_temperature(coreTemperature);
@@ -248,18 +266,37 @@ std::vector<ResultFinding> ResultsAnalyzer::analyze_temperature(const Magnetic& 
     double hottestTemperature = output.get_temperature()->get_maximum_temperature();
 
     // The core held at its material's data limit by the loss solve (ABT #1855, Alf 2026-10-14).
-    if (MagneticSimulator::is_core_held_at_data_ceiling(coreMaterial, coreTemperature, hottestTemperature)) {
-        double ceiling = InitialPermeability::get_maximum_ferromagnetic_data_temperature(coreMaterial).value();
-        bool ceilingIsCurie = coreMaterial.get_curie_temperature() && coreMaterial.get_curie_temperature().value() == ceiling;
+    // The ceiling covers the mu_i(T) / Curie data, the saturation field strength and the evaluated Steinmetz
+    // ranges' ct(T) (ABT #1908).
+    const auto dataCeiling = get_solved_core_data_ceiling(magnetic, operatingPoint, output.get_core_losses().value());
+    if (MagneticSimulator::is_core_held_at_data_ceiling(dataCeiling, coreTemperature, hottestTemperature)) {
+        double ceiling = dataCeiling->temperature;
+        std::string limit;
+        std::string magnetized;
+        switch (dataCeiling->source) {
+            case CoreDataCeilingSource::CURIE_TEMPERATURE:
+                limit = "the Curie temperature of " + coreMaterial.get_name();
+                magnetized = "as a paramagnetic core (mu_r = 1)";
+                break;
+            case CoreDataCeilingSource::PERMEABILITY_TABLE_END:
+                limit = "the last temperature of " + coreMaterial.get_name() + "'s measured permeability data";
+                magnetized = "with its last tabulated permeability";
+                break;
+            case CoreDataCeilingSource::SATURATION_FIELD_STRENGTH_END:
+                limit = "the temperature where " + coreMaterial.get_name() + "'s saturation field strength data reach zero";
+                magnetized = "with its own permeability at that temperature";
+                break;
+            case CoreDataCeilingSource::STEINMETZ_TEMPERATURE_FACTOR_END:
+                limit = "the temperature where the Steinmetz temperature factor ct(T) of " + coreMaterial.get_name() +
+                        "'s loss data at this frequency reaches zero";
+                magnetized = "with its own permeability at that temperature";
+                break;
+        }
         findings.push_back(make_finding(operatingPoint, operatingPointIndex, ResultFindingCode::CORE_ABOVE_MATERIAL_DATA_LIMIT,
-            "At " + where + ": the losses drive the core above " +
-            (ceilingIsCurie ? "the Curie temperature of " + coreMaterial.get_name()
-                            : "the last temperature of " + coreMaterial.get_name() + "'s measured permeability data") +
+            "At " + where + ": the losses drive the core above " + limit +
             " (" + format_number(ceiling) + " C), where its material data ends. Its core losses were evaluated at " +
             format_number(coreTemperature) + " C, the last temperature the data covers, with the core magnetized " +
-            (ceilingIsCurie ? std::string("as a paramagnetic core (mu_r = 1)")
-                            : std::string("with its last tabulated permeability")) +
-            "; the temperatures given for this operating point (hottest point " + format_number(hottestTemperature) +
+            magnetized + "; the temperatures given for this operating point (hottest point " + format_number(hottestTemperature) +
             " C) follow from those losses, and the core's real temperature is higher"));
     }
     std::vector<StatedTemperatureLimit> coreLimits;

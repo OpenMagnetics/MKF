@@ -2269,6 +2269,63 @@ double Core::get_magnetic_field_strength_saturation(const CoreMaterial& coreMate
     return saturationMagneticFieldStrength;
 }
 
+// ABT #1908: the first temperature at or above `fromTemperature` at which interp(data, T) is no longer
+// positive. It follows interp's own model branch by branch (one point: a constant; two distinct temperatures:
+// the straight line through them, inside and outside the data; more: the same monotonic Hermite spline, with
+// its own extrapolation), so it is where interp itself stops being positive, not an estimate of it.
+static std::optional<double> first_non_positive_temperature_of_interp(std::vector<std::pair<double, double>> data, double fromTemperature) {
+    if (data.size() == 0) {
+        throw InvalidInputException(ErrorCode::MISSING_DATA, "Data cannot be empty");
+    }
+    if (!(interp(data, fromTemperature) > 0)) {
+        return fromTemperature;
+    }
+    std::sort(data.begin(), data.end(), [](const std::pair<double, double>& b1, const std::pair<double, double>& b2) {
+        return b1.first < b2.first;
+    });
+    std::vector<double> x, y;
+    for (const auto& datum : data) {
+        if (x.size() == 0 || datum.first != x.back()) {
+            x.push_back(datum.first);
+            y.push_back(datum.second);
+        }
+    }
+    std::vector<double> roots;
+    if (x.size() == 1) {
+        return std::nullopt;  // a constant, positive at fromTemperature: positive everywhere
+    }
+    else if (x.size() == 2) {
+        double slope = (y[1] - y[0]) / (x[1] - x[0]);
+        if (!(slope < 0)) {
+            return std::nullopt;
+        }
+        roots.push_back(x[0] - y[0] / slope);
+    }
+    else {
+        tk::spline spline(x, y, tk::spline::cspline_hermite, true);
+        roots = spline.solve(0.0, false);
+    }
+    std::optional<double> firstRoot;
+    for (double root : roots) {
+        if (root > fromTemperature && (!firstRoot || root < firstRoot.value())) {
+            firstRoot = root;
+        }
+    }
+    return firstRoot;
+}
+
+std::optional<double> Core::get_magnetic_field_strength_saturation_data_end(const CoreMaterial& coreMaterial, double fromTemperature) {
+    const auto& saturationData = coreMaterial.get_saturation();
+    if (saturationData.size() == 0) {
+        throw InvalidInputException(ErrorCode::INVALID_CORE_MATERIAL_DATA, "Missing saturation data for magnetic field strength");
+    }
+    std::vector<std::pair<double, double>> data;
+    for (auto& datum : saturationData) {
+        data.push_back(std::pair<double, double>{datum.get_temperature(), datum.get_magnetic_field()});
+    }
+    return first_non_positive_temperature_of_interp(data, fromTemperature);
+}
+
 double Core::get_magnetic_field_strength_saturation(double temperature) {
     auto coreMaterial = resolve_material();
     return get_magnetic_field_strength_saturation(coreMaterial, temperature);
