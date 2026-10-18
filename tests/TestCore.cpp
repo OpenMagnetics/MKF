@@ -4038,6 +4038,64 @@ TEST_CASE("Test_Slab_Core_Rejects_Impossible_Geometry", "[core][slab-core][smoke
 }
 
 
+// ABT #1950: RM type 1 (RM 6-S family) back plate. The V-notch angle phi of IEC 60205:2016 5.7 Type 1
+// was hardcoded to 90 deg, which put the notch apex 0.5 mm from the centre and gave A_e 12-20 % low
+// (A_e < A_min on RM 6LP and RM 6/ILP). phi now follows from C, G, J (IEC 62317-4 Figure 1, Typ 1).
+// Two references, per SET:
+//  * TDK rm_6.pdf (3/23): B65807 p.3 with / without centre hole (RM 6-S / RM 6/I), B65807P p.11 (RM 6LP).
+//    TDK's own RM 6 sits 3.3-4.2 % above the IEC 62317-4 table in A_e. On the type-3 sizes, where MKF
+//    reproduces the IEC table to 1.3 %, TDK and IEC differ by up to 1.8 % le, 1.7 % A_e and 2.3 % V_e,
+//    with two outliers (RM 14/I A_e +5.8 %, RM 4/I A_e -7.1 %). Bands: 3 % le, 6 % A_e and V_e.
+//  * IEC 62317-4:2005 Tables 3 and 4, computed by the same IEC 60205 method. MKF reproduces the type-3
+//    rows to 1.3 % in C1 (RM 4/ILP), so the band is 2 %.
+// The pre-fix model fails both: A_e -12..-20 % against TDK and -9..-16 % against IEC.
+TEST_CASE("Test_Rm_Type1_Effective_Parameters_Match_Tdk_And_Iec", "[constructive-model][core][effective-parameters][abt-1950]") {
+    settings.reset();
+    clear_databases();
+    struct Row {
+        std::string name;
+        double le, ae, ve;  // mm, mm^2, mm^3 per set
+        double tolLe, tolAe, tolVe;
+        std::string source;
+    };
+    const std::vector<Row> rows = {
+        {"RM 6LP", 21.8, 37.5, 820, 0.03, 0.06, 0.06, "TDK B65807P"},
+        {"RM 6/I", 28.6, 36.6, 1050, 0.03, 0.06, 0.06, "TDK B65807 without centre hole"},
+        {"RM 6-S", 26.9, 31.3, 840, 0.03, 0.06, 0.06, "TDK B65807 with centre hole"},
+        {"RM 6-S", 27.2, 30.3, 830, 0.02, 0.02, 0.02, "IEC 62317-4 Table 3"},
+        {"RM 6/I", 28.9, 35.4, 1020, 0.02, 0.02, 0.02, "IEC 62317-4 Table 3"},
+        {"RM 6/9", 20.7, 31.6, 655, 0.02, 0.02, 0.02, "IEC 62317-4 Table 4"},
+        {"RM 6/ILP", 22.0, 36.0, 791, 0.02, 0.02, 0.02, "IEC 62317-4 Table 4"},
+    };
+    for (const auto& row : rows) {
+        INFO(row.name << " vs " << row.source);
+        auto core = OpenMagneticsTesting::get_quick_core(row.name, json::array(), 1, "Dummy");
+        REQUIRE(core.get_shape_family() == CoreShapeFamily::RM);
+        auto effective = core.get_processed_description()->get_effective_parameters();
+        double le = effective.get_effective_length() * 1e3;
+        double ae = effective.get_effective_area() * 1e6;
+        double ve = effective.get_effective_volume() * 1e9;
+        INFO("le " << le << " vs " << row.le << ", Ae " << ae << " vs " << row.ae << ", Ve " << ve << " vs " << row.ve
+             << ", Amin " << effective.get_minimum_area() * 1e6);
+        CHECK_THAT(le, Catch::Matchers::WithinRel(row.le, row.tolLe));
+        CHECK_THAT(ae, Catch::Matchers::WithinRel(row.ae, row.tolAe));
+        CHECK_THAT(ve, Catch::Matchers::WithinRel(row.ve, row.tolVe));
+        CHECK(effective.get_minimum_area() <= effective.get_effective_area());
+    }
+}
+
+// ABT #1950: an RM piece whose computed A_e falls below its A_min throws instead of returning it.
+// RM 6LP declared as type 2 runs the old b = 0, phi = 90 deg slot model: A_e 30.1 mm^2 < A_min 31.2 mm^2.
+TEST_CASE("Test_Rm_Effective_Area_Below_Minimum_Area_Throws", "[constructive-model][core][effective-parameters][abt-1950]") {
+    settings.reset();
+    clear_databases();
+    auto shape = OpenMagnetics::find_core_shape_by_name("RM 6LP");
+    REQUIRE(shape.get_family_subtype().value() == "1");
+    CHECK_NOTHROW(CorePiece::factory(shape));
+    shape.set_family_subtype("2");
+    CHECK_THROWS_AS(CorePiece::factory(shape), InvalidInputException);
+}
+
 TEST_CASE("Test_Core_Coating_Thickness_Is_A_Dimension_With_Tolerance", "[constructive-model][core][coating]") {
     // MAS core/coating.thickness is a dimensionWithTolerance. Sources bound it rather than state a
     // nominal (ACME epoxy: "0.6 mm max"; Easy Magnet LoPs: a minimum per ring size), and an explicit

@@ -873,6 +873,21 @@ class CorePieceRm : public CorePiece {
         double a7;
         double a8 = alpha / 8 * (pow(d2, 2) - pow(d3, 2));
         if (familySubtype == "1") {
+            // IEC 60205:2016 clause 5.7, Figure 7 Type 1 (RM 6-S, RM 6/9): each wire slot is a V-notch of
+            // opening angle phi (gamma here) cut into the back plate. phi is not a tabulated dimension, so it
+            // comes from the IEC 62317-4 Figure 1 (Typ 1) dimensions: C runs between the two notch apexes
+            // (apex at C/2 on the slot axis) and G is the slot width between the leg tips, which sit on the
+            // J faces (at J/sqrt(2) - G/2 along the slot axis). A straight wall from apex to tip gives
+            // tan(phi/2) = (G/2) / (J/sqrt(2) - G/2 - C/2). The old phi = pi/2 put the apex 0.5 mm from the
+            // centre on RM 6, counting only 43 % of the back plate (A_e 12-20 % low; ABT #1950).
+            double apexToTip = a / sqrt(2) - e / 2 - c / 2;
+            if (!(apexToTip > 0)) {
+                throw InvalidInputException(ErrorCode::INVALID_CORE_DATA,
+                    "RM type 1 shape " + get_shape().get_name().value_or("<unnamed>") +
+                    ": slot apex (C/2) does not lie inside the leg tips (J/sqrt(2) - G/2), J/sqrt(2) - G/2 - C/2 = " +
+                    std::to_string(apexToTip));
+            }
+            gamma = 2 * atan(e / 2 / apexToTip);
             lmax = sqrt(1. / 4 * (pow(d2, 2) + pow(d3, 2)) - 1. / 2 * d2 * d3 * cos(alpha - beta));
             a7 = 1. / 4 *
                  (beta / 2 * pow(d2, 2) + 1. / 2 * pow(e, 2) * tan(beta) - 1. / 2 * pow(e, 2) * tan(alpha - gamma / 2) -
@@ -937,6 +952,16 @@ class CorePieceRm : public CorePiece {
             c2 += lengths_areas_2[i] / 2;
         }
         auto minimumArea = *min_element(areas.begin(), areas.end());
+
+        // A_e = C1/C2 is the (l/A^2)-weighted mean of the five segment areas. A_min is the smallest of
+        // A1, A3, A4, A5 (IEC 60205:2016 4.2), so A_e < A_min means the back-plate segment came out narrower
+        // than every one of them. No RM geometry does that; the type-1 slot model did before ABT #1950.
+        // Checked here, not in get_shape_constants_iec63182: the default IEC 60205 path only calls this.
+        if (minimumArea > c1 / c2 * (1 + 1e-9)) {
+            throw InvalidInputException(ErrorCode::INVALID_CORE_DATA,
+                "RM shape " + get_shape().get_name().value_or("<unnamed>") + ": minimum area " +
+                std::to_string(minimumArea) + " m2 exceeds effective area " + std::to_string(c1 / c2) + " m2");
+        }
 
         return {c1, c2, minimumArea};
     }
