@@ -784,8 +784,38 @@ class CorePieceEpx : public CorePieceEp {
 };
 
 class CorePieceRm : public CorePiece {
+  private:
+    // ABT #784: a dimension the record does not carry used to read as 0 and the geometry carried
+    // on with a zero-sized feature. Every RM type reads A, B, C, D, E, F, G and J (type 2 reads C
+    // for its slot bottom and wall angle since ABT #1950). H, the centre hole, is optional by
+    // design: absent means no hole (the /I and LP variants), so it is not checked.
+    void require_dimensions() {
+        auto shapeName = get_shape().get_name().value_or("<unnamed>");
+        if (!get_shape().get_dimensions()) {
+            throw InvalidInputException(ErrorCode::INVALID_CORE_DATA, "RM shape " + shapeName + " has no dimensions");
+        }
+        if (!get_shape().get_family_subtype()) {
+            throw InvalidInputException(ErrorCode::INVALID_CORE_DATA,
+                "RM shape " + shapeName + " has no familySubtype; RM geometry is defined for types 1 to 4");
+        }
+        auto familySubtype = get_shape().get_family_subtype().value();
+        if (familySubtype != "1" && familySubtype != "2" && familySubtype != "3" && familySubtype != "4") {
+            throw InvalidInputException(ErrorCode::INVALID_CORE_DATA,
+                "RM shape " + shapeName + " has familySubtype '" + familySubtype + "'; RM geometry is defined for types 1 to 4");
+        }
+        const std::vector<std::string> required = {"A", "B", "C", "D", "E", "F", "G", "J"};
+        auto dimensions = get_shape().get_dimensions().value();
+        for (const auto& key : required) {
+            if (!dimensions.contains(key)) {
+                throw InvalidInputException(ErrorCode::INVALID_CORE_DATA,
+                    "RM type " + familySubtype + " shape " + shapeName + " is missing required dimension " + key);
+            }
+        }
+    }
+
   public:
     void process_winding_window() {
+        require_dimensions();
         auto dimensions = flatten_dimensions(get_shape().get_dimensions().value());
         WindingWindowElement windingWindow;
         windingWindow.set_height(dimensions["D"]);
@@ -849,15 +879,16 @@ class CorePieceRm : public CorePiece {
     }
 
     std::tuple<double, double, double> get_shape_constants() {
+        require_dimensions();
         auto dimensions = flatten_dimensions(get_shape().get_dimensions().value());
-        auto familySubtype = *get_shape().get_family_subtype();
+        auto familySubtype = get_shape().get_family_subtype().value();
         std::vector<double> lengths_areas;
         std::vector<double> lengths_areas_2;
         std::vector<double> areas;
 
         double d2 = dimensions["E"];
         double d3 = dimensions["F"];
-        double d4 = dimensions["H"];
+        double d4 = dimensions["H"];  // optional: 0 = no centre hole
         double a = dimensions["J"];
         double c = dimensions["C"];
         double e = dimensions["G"];
@@ -937,8 +968,9 @@ class CorePieceRm : public CorePiece {
                   1. / 2 * pow(c - d3, 2) * tan(gamma / 2) - pi / 4 * pow(d3, 2));
         }
         else {
-            lmax = 0;
-            a7 = 0;
+            // require_dimensions() admits types 1 to 4 only; lmax = a7 = 0 used to give D = 0 here.
+            throw InvalidInputException(ErrorCode::INVALID_CORE_DATA,
+                "RM shape " + get_shape().get_name().value_or("<unnamed>") + " has familySubtype '" + familySubtype + "'");
         }
 
         double f = (lmin + lmax) / (2 * lmin);

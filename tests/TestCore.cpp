@@ -4221,3 +4221,35 @@ TEST_CASE("Test_Core_Mass_Throws_For_A_Material_Without_Density", "[constructive
     auto withDensity = OpenMagneticsTesting::get_quick_core("E 42/21/20", json::parse("[]"), 1, "N87");
     REQUIRE(withDensity.get_mass() > 0);
 }
+
+// ABT #784: a shape record missing a required dimension read it as 0 and computed a plausible,
+// wrong geometry. RM now names the missing key. H (the centre hole) stays optional: RM 7LP has
+// none, which is correct ("without center hole"). C is required by every type: type 2 builds its
+// slot bottom and wall angle from it (ABT #1950).
+TEST_CASE("Test_Rm_Shape_Missing_Required_Dimension_Throws", "[constructive-model][core][core-piece][abt-784]") {
+    auto withoutJ = find_core_shape_by_name("RM 8");
+    REQUIRE(withoutJ.get_family_subtype().value() == "3");
+    auto dimensions = withoutJ.get_dimensions().value();
+    REQUIRE(dimensions.erase("J") == 1);
+    withoutJ.set_dimensions(dimensions);
+    REQUIRE_THROWS_AS(CorePiece::factory(withoutJ), InvalidInputException);
+
+    auto withoutC = find_core_shape_by_name("RM 8");
+    dimensions = withoutC.get_dimensions().value();
+    REQUIRE(dimensions.erase("C") == 1);
+    withoutC.set_dimensions(dimensions);
+    REQUIRE_THROWS_AS(CorePiece::factory(withoutC), InvalidInputException);
+
+    auto unknownType = find_core_shape_by_name("RM 8");
+    unknownType.set_family_subtype("5");
+    REQUIRE_THROWS_AS(CorePiece::factory(unknownType), InvalidInputException);
+
+    auto withoutHole = find_core_shape_by_name("RM 7LP");
+    REQUIRE(!withoutHole.get_dimensions().value().contains("H"));
+    REQUIRE_NOTHROW(CorePiece::factory(withoutHole));
+    auto typeTwoWithoutC = withoutHole;
+    dimensions = typeTwoWithoutC.get_dimensions().value();
+    REQUIRE(dimensions.erase("C") == 1);
+    typeTwoWithoutC.set_dimensions(dimensions);
+    REQUIRE_THROWS_AS(CorePiece::factory(typeTwoWithoutC), InvalidInputException);
+}
