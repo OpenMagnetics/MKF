@@ -4,6 +4,7 @@
 #include "physical_models/MagnetizingInductance.h"
 #include "processors/Inputs.h"
 #include "support/Utils.h"
+#include "support/Exceptions.h"
 #include "advisers/MagneticCombinator.h"
 #include <MAS.hpp>
 #include <algorithm>
@@ -217,14 +218,21 @@ std::pair<std::map<std::string, MagneticCombinator::WindingCombination>, std::ve
         virtualMagnetics = temporalVirtualMagnetics;
     }
 
+    // Each virtual magnetic is named after the source part's reference. That reference was read with
+    // -> and .value() unchecked, right after a guard that only covered the copy above it (ABT #1616).
+    if (virtualMagnetics.empty()) {
+        return {usedCombinations, virtualMagnetics};
+    }
+    if (!magnetic.get_manufacturer_info() || !magnetic.get_manufacturer_info()->get_reference()) {
+        throw InvalidInputException(ErrorCode::INVALID_INPUT,
+                                    "MagneticCombinator: the source magnetic has no manufacturerInfo.reference to name its virtual magnetics after");
+    }
+    const std::string sourceReference = magnetic.get_manufacturer_info()->get_reference().value();
     for (size_t index = 0; index < virtualMagnetics.size(); index++)
     {
-        MagneticManufacturerInfo manufacturerInfo;
-        if (magnetic.get_manufacturer_info()) {
-            manufacturerInfo = magnetic.get_manufacturer_info().value();
-        }
+        MagneticManufacturerInfo manufacturerInfo = magnetic.get_manufacturer_info().value();
         manufacturerInfo.set_name("Wuerth Elektronik");
-        manufacturerInfo.set_reference(magnetic.get_manufacturer_info()->get_reference().value() + " virtual magnetic " + std::to_string(index));
+        manufacturerInfo.set_reference(sourceReference + " virtual magnetic " + std::to_string(index));
         virtualMagnetics[index].set_manufacturer_info(manufacturerInfo);
     }
 

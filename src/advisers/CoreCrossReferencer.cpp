@@ -743,6 +743,11 @@ std::vector<std::pair<Core, double>> CoreCrossReferencer::get_cross_referenced_c
 
     for (auto core : coreDatabase){
         if (referenceShapeName != core.get_shape_name() || referenceMaterialName != core.get_material_name()) {
+            if (_onlyManufacturer && !core.get_manufacturer_info()) {
+                // Was an unchecked ->get_name() on an empty optional (ABT #1616).
+                throw InvalidInputException(ErrorCode::INVALID_CORE_DATA,
+                                            "Core " + core.get_name().value_or("(unnamed)") + " in the cross-referencer database has no manufacturerInfo to filter by manufacturer " + _onlyManufacturer.value());
+            }
             if (!_onlyManufacturer || core.get_manufacturer_info()->get_name() == _onlyManufacturer.value()) {
                 if (!_onlyReferenceMaterial || referenceMaterialName == core.get_material_name()) {
                     if (!core.get_processed_description()) {

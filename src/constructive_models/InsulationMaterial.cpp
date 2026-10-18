@@ -1,5 +1,6 @@
 #include "support/Utils.h"
 #include "constructive_models/InsulationMaterial.h"
+#include "support/Exceptions.h"
 #include <cmath>
 #include <filesystem>
 #include <cfloat>
@@ -104,6 +105,12 @@ namespace OpenMagnetics {
         auto relativePermittivityData = materialData.get_dielectric_strength();
         double relativePermittivity = -1;
 
+        // Both reads below were unchecked (ABT #1616): [0] of an empty list, and .value() of a point
+        // with no thickness when the strength has to be interpolated over thickness.
+        if (relativePermittivityData.empty()) {
+            throw InvalidInputException(ErrorCode::INVALID_INSULATION_DATA,
+                                        "Insulation material " + materialData.get_name() + " has no dielectric strength data");
+        }
         if (relativePermittivityData.size() < 2) {
             relativePermittivity = relativePermittivityData[0].get_value();
         }
@@ -112,6 +119,11 @@ namespace OpenMagnetics {
             std::vector<double> x, y;
 
             for (size_t i = 0; i < n; i++) {
+                if (!relativePermittivityData[i].get_thickness()) {
+                    throw InvalidInputException(ErrorCode::INVALID_INSULATION_DATA,
+                                                "Insulation material " + materialData.get_name() + " lists several dielectric strengths, and point " +
+                                                std::to_string(i) + " has no thickness to interpolate them over");
+                }
                 if (x.size() == 0 || relativePermittivityData[i].get_thickness().value() != x.back()) {
                     x.push_back(relativePermittivityData[i].get_thickness().value());
                     y.push_back(relativePermittivityData[i].get_value());

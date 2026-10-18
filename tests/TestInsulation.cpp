@@ -3,6 +3,7 @@
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
 #include "TestingUtils.h"
 #include "support/Utils.h"
+#include "support/Exceptions.h"
 
 using namespace MAS;
 using namespace OpenMagnetics;
@@ -3182,4 +3183,21 @@ namespace TestInsulationIEC60335CreepageDistance{
         auto creepageDistance = standard.calculate_creepage_distance(inputs);
         REQUIRE(0.0076 == creepageDistance);
     }
+}
+// ABT #1616: get_dielectric_strength_by_thickness read [0] of an empty dielectric-strength list and
+// .value() of a point without thickness. Both now throw INVALID_INSULATION_DATA naming the material.
+TEST_CASE("Test_Dielectric_Strength_By_Thickness_Throws_On_Unusable_Data", "[constructive-model][insulation][abt-1616]") {
+    OpenMagnetics::InsulationMaterial material(find_insulation_material_by_name("Kapton HN"));
+    REQUIRE(material.get_dielectric_strength().size() > 1);
+    REQUIRE(material.get_dielectric_strength_by_thickness(5e-05) > 0);
+
+    auto noData = material;
+    noData.set_dielectric_strength({});
+    REQUIRE_THROWS_AS(OpenMagnetics::InsulationMaterial::get_dielectric_strength_by_thickness(noData, 5e-05), InvalidInputException);
+
+    auto noThickness = material;
+    auto points = noThickness.get_dielectric_strength();
+    points[1].set_thickness(std::nullopt);
+    noThickness.set_dielectric_strength(points);
+    REQUIRE_THROWS_AS(OpenMagnetics::InsulationMaterial::get_dielectric_strength_by_thickness(noThickness, 5e-05), InvalidInputException);
 }

@@ -651,7 +651,13 @@ std::pair<bool, double> MagneticFilterSolidInsulationRequirements::evaluate_wire
 
     if (wire.get_type() == WireType::LITZ) {
         auto strand = wire.resolve_strand();
-        coating = Wire::resolve_coating(strand).value();
+        auto strandCoating = Wire::resolve_coating(strand);
+        if (!strandCoating) {
+            // Was an unchecked .value(): a bare bad_optional_access escaped the adviser's error handling (ABT #1616).
+            throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA,
+                                        "Litz wire " + wire.get_name().value_or("(unnamed)") + " has a strand with no coating");
+        }
+        coating = strandCoating.value();
     }
 
     if (!coating.get_breakdown_voltage()) {

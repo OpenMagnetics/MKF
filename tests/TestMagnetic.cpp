@@ -5,6 +5,8 @@
 #include "advisers/MagneticAdviser.h"
 #include "advisers/CoreAdviser.h"
 #include "advisers/CoilAdviser.h"
+#include "advisers/MagneticCombinator.h"
+#include "support/Exceptions.h"
 
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
@@ -266,6 +268,32 @@ namespace {
             INFO(mas.get_magnetic().get_reference());
             CHECK_FALSE(coil_failed_validity_filters(mas));
         }
+    }
+
+    // ABT #1616: calculate_virtual_magnetics names each virtual magnetic after the source part's
+    // manufacturerInfo.reference, which it read with -> and .value() unchecked. Without one it throws.
+    TEST_CASE("Test_Virtual_Magnetics_Need_The_Source_Reference", "[constructive-model][magnetic][abt-1616]") {
+        auto magnetic = OpenMagneticsTesting::get_quick_magnetic("ETD 39", OpenMagneticsTesting::get_residual_gap(), {10}, 1, "3C97");
+        OpenMagnetics::Inputs inputs;
+        DesignRequirements designRequirements;
+        DimensionWithTolerance anyInductance;
+        anyInductance.set_minimum(1e-12);
+        anyInductance.set_maximum(1);
+        designRequirements.set_magnetizing_inductance(anyInductance);
+        designRequirements.set_turns_ratios({});
+        inputs.set_design_requirements(designRequirements);
+
+        MagneticCombinator combinator;
+        magnetic.set_manufacturer_info(std::nullopt);
+        REQUIRE_THROWS_AS(combinator.calculate_virtual_magnetics(magnetic, inputs), InvalidInputException);
+
+        MagneticManufacturerInfo manufacturerInfo;
+        manufacturerInfo.set_name("Some Manufacturer");
+        manufacturerInfo.set_reference("PART-1");
+        magnetic.set_manufacturer_info(manufacturerInfo);
+        auto virtualMagnetics = combinator.calculate_virtual_magnetics(magnetic, inputs).second;
+        REQUIRE(virtualMagnetics.size() == 1);
+        REQUIRE(virtualMagnetics[0].get_manufacturer_info()->get_reference().value() == "PART-1 virtual magnetic 0");
     }
 
 }  // namespace

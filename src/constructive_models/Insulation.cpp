@@ -74,6 +74,27 @@ bool InsulationCoordinator::can_fully_insulated_wire_be_used(Inputs& inputs) {
     return true;
 }
 
+// A wire's coating, and a litz wire's strand coating, read through std::optional::value() unchecked:
+// a wire record without one threw a bare bad_optional_access that named nothing (ABT #1616).
+static InsulationWireCoating coating_or_throw(Wire& wire) {
+    auto coating = wire.resolve_coating();
+    if (!coating) {
+        throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA,
+                                    "Wire " + wire.get_name().value_or("(unnamed)") + " has no coating to read its insulation from");
+    }
+    return coating.value();
+}
+
+static InsulationWireCoating strand_coating_or_throw(Wire& litzWire) {
+    auto strand = litzWire.resolve_strand();
+    auto coating = Wire::resolve_coating(strand);
+    if (!coating) {
+        throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA,
+                                    "Litz wire " + litzWire.get_name().value_or("(unnamed)") + " has a strand with no coating");
+    }
+    return coating.value();
+}
+
 // How many times one wire's own insulation covers the withstand voltage, or nullopt when its coating
 // states no breakdown voltage (nothing can then be credited to it). A LITZ wire whose served coating
 // states none is read through its strand's coating.
@@ -85,8 +106,7 @@ std::optional<size_t> times_withstand_voltage_is_covered_by_wire(Wire wire, doub
     auto coating = coatingMaybe.value();
 
     if (wire.get_type() == WireType::LITZ && !coating.get_breakdown_voltage()) {
-        auto strand = wire.resolve_strand();
-        coating = Wire::resolve_coating(strand).value();
+        coating = strand_coating_or_throw(wire);
     }
 
     if (!coating.get_breakdown_voltage()) {
@@ -131,11 +151,10 @@ size_t times_withstand_voltage_is_covered_by_wires(Wire leftWire, Wire rightWire
 double insulation_distance_provided_by_wires(Wire leftWire, Wire rightWire, double withstandVoltage, bool canFullyInsulatedWireBeUsed) {
     double distance = 0;
     {
-        auto coating = leftWire.resolve_coating().value();
+        auto coating = coating_or_throw(leftWire);
 
         if (leftWire.get_type() == WireType::LITZ && !coating.get_breakdown_voltage()) {
-            auto strand = leftWire.resolve_strand();
-            coating = Wire::resolve_coating(strand).value();
+            coating = strand_coating_or_throw(leftWire);
         }
 
         if (!coating.get_breakdown_voltage()) {
@@ -155,11 +174,10 @@ double insulation_distance_provided_by_wires(Wire leftWire, Wire rightWire, doub
         }
     }
     {
-        auto coating = rightWire.resolve_coating().value();
+        auto coating = coating_or_throw(rightWire);
 
         if (rightWire.get_type() == WireType::LITZ && !coating.get_breakdown_voltage()) {
-            auto strand = rightWire.resolve_strand();
-            coating = Wire::resolve_coating(strand).value();
+            coating = strand_coating_or_throw(rightWire);
         }
 
         if (!coating.get_breakdown_voltage()) {
