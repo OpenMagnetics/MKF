@@ -265,6 +265,19 @@ std::pair<bool, double> MagneticFilterTemperature::evaluate_magnetic(
     // A stand-in solved with its copper sized to the current is a different coil from the same
     // magnetic solved with its own wires: the two must not share a cached temperature.
     std::string temperatureCacheKey = std::string(_sizeStandInCopper ? "temperature-sized|" : "temperature|") + magneticRef;
+    // The copper is solved too, so the wires are part of the candidate (ABT #1704): two coils on one
+    // core that differ only in wire (diameter, litz, parallels) used to share one temperature.
+    temperatureCacheKey += "|wires";
+    for (const auto& winding : coil.get_functional_description()) {
+        temperatureCacheKey += " " + std::to_string(winding.get_number_parallels()) + "x";
+        const auto& wire = winding.get_wire();
+        if (std::holds_alternative<std::string>(wire)) {
+            temperatureCacheKey += std::get<std::string>(wire);
+        }
+        else {
+            temperatureCacheKey += std::to_string(Wire::calculate_loss_factor_cache_key(std::get<Wire>(wire)));
+        }
+    }
     for (const auto& op : inputs->get_operating_points()) {
         temperatureCacheKey += "|" + json(op.get_conditions()).dump();
         for (const auto& excitation : op.get_excitations_per_winding()) {

@@ -748,6 +748,54 @@ TEST_CASE("MagneticFilter TEMPERATURE snapshot",
     }
 }
 
+TEST_CASE("Test_MagneticFilter_Temperature_Memo_Tells_The_Wires_Apart", "[magnetic-filter][temperature-filter][abt-1704]") {
+    // ABT #1704: the per-advise temperature memo was keyed by the core, turns, gaps and operating
+    // points, not the wires, so the same magnetic wound with another wire read the first one's
+    // temperature. A 1 mm gapped E 35 3C97 with 40 turns of Round 1.00, and the same coil in
+    // Round 0.5 (four times the DC resistance), must each get their own hottest temperature.
+    settings.reset();
+    auto wound = [](const std::string& wireName) {
+        OpenMagneticsTesting::QuickMagneticConfig cfg;
+        cfg.numberTurns = {40};
+        cfg.numberParallels = {1};
+        cfg.coreShapeName = "E 35";
+        cfg.coreMaterialName = "3C97";
+        cfg.wireNames = {wireName};
+        auto magnetic = OpenMagneticsTesting::create_quick_test_magnetic(cfg);
+        magnetic.set_core(OpenMagneticsTesting::get_quick_core("E 35", OpenMagneticsTesting::get_ground_gap(1e-3), 1, "3C97"));
+        magnetic.get_mutable_coil().wind();
+        return magnetic;
+    };
+    auto magnetic = wound("Round 1.00 - Grade 1");
+    auto thinMagnetic = wound("Round 0.5 - Grade 1");
+    OpenMagnetics::Inputs inputs;
+    {
+        MagnetizingInductance magnetizingInductanceModel;
+        const double ownInductance = magnetizingInductanceModel.calculate_inductance_from_number_turns_and_gapping(magnetic)
+                                         .get_magnetizing_inductance().get_nominal().value();
+        OpenMagneticsTesting::QuickInputsConfig cfg;
+        cfg.frequency = 100000;
+        cfg.magnetizingInductance = ownInductance;
+        cfg.temperature = 25;
+        cfg.label = WaveformLabel::TRIANGULAR;
+        cfg.peakToPeak = 1;
+        cfg.dutyCycle = 0.5;
+        cfg.offset = 3;  // a DC current whose copper losses show in the temperature
+        inputs = OpenMagneticsTesting::create_quick_test_inputs(cfg);
+    }
+    const double thickAlone = MagneticFilterTemperature(inputs, 1000.0).evaluate_magnetic(&magnetic, &inputs).second;
+    const double thinAlone = MagneticFilterTemperature(inputs, 1000.0).evaluate_magnetic(&thinMagnetic, &inputs).second;
+    INFO("Round 1.00: " << thickAlone << " C, Round 0.5: " << thinAlone << " C");
+    REQUIRE(thickAlone < 1000.0);
+    REQUIRE(thinAlone < 1000.0);
+    REQUIRE(thinAlone > thickAlone + 0.5);
+
+    MagneticFilterTemperature shared(inputs, 1000.0);
+    CHECK_THAT(shared.evaluate_magnetic(&magnetic, &inputs).second, Catch::Matchers::WithinRel(thickAlone, 1e-9));
+    CHECK_THAT(shared.evaluate_magnetic(&thinMagnetic, &inputs).second, Catch::Matchers::WithinRel(thinAlone, 1e-9));
+    settings.reset();
+}
+
 TEST_CASE("MagneticFilter TURN_COUNT snapshot",
           "[magnetic-filter][characterisation][heavy][turn-count]") {
     evaluate_and_check("TURN_COUNT", MagneticFilters::TURN_COUNT);
