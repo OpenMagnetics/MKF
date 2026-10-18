@@ -1011,6 +1011,14 @@ class Coil : public MAS::Coil {
         const std::vector<Winding> & get_functional_description() const { return functional_description; }
         std::vector<Winding> & get_mutable_functional_description() { return functional_description; }
         void set_functional_description(const std::vector<Winding> & value) { this->functional_description = value; }
+        // ABT #1626: the turns can only change through this setter (MAS::Coil hands them out by
+        // value), so it drops the turn caches built from the previous turns. get_turn_by_name kept
+        // a copy of each turn and returned it unchanged after a rewind moved the turn.
+        void set_turns_description(std::optional<std::vector<Turn>> value) {
+            _turnByName.clear();
+            _turnIndexByName.clear();
+            MAS::Coil::set_turns_description(std::move(value));
+        }
 
 
         std::vector<WindingStyle> wind_by_consecutive_turns(std::vector<uint64_t> numberTurns, std::vector<uint64_t> numberParallels, std::vector<size_t> numberSlots);

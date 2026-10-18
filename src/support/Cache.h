@@ -1,4 +1,5 @@
 #pragma once
+#include <atomic>
 #include "constructive_models/Magnetic.h"
 #include "support/Exceptions.h"
 
@@ -143,6 +144,18 @@ public:
 class MagneticsCache : public Cache<OpenMagnetics::Magnetic> {
 private:
     static thread_local std::map<std::string, double> _magneticEnergyCache;
+    // ABT #1626: the energy memo is per thread, the storage it was computed from is shared, so a
+    // clear() or load() on one thread could not empty the memo of another, and a load() or evict()
+    // never touched any memo: the memo then answered for a catalogue that no longer existed. Every
+    // mutation of the storage bumps _contentVersion; the memo records the version (and the material
+    // catalogue generation it read the cores' materials from) it was computed for, and a read of a
+    // memo computed for another state throws.
+    inline static std::atomic<uint64_t> _contentVersion{0};
+    static thread_local uint64_t _energyCacheContentVersion;
+    static thread_local uint64_t _energyCacheCatalogueGeneration;
+    static void bump_content_version() { _contentVersion.fetch_add(1, std::memory_order_relaxed); }
+    static void throw_if_energy_cache_stale();
+    static void stamp_energy_cache();
 
     // Mutating the shared storage while other threads read it is undefined
     // behaviour, so the freeze flag that guards the other catalogues guards
@@ -153,7 +166,18 @@ private:
 public:
     void load(std::string reference, OpenMagnetics::Magnetic value) {
         throw_if_frozen("load");
+        bump_content_version();
         Cache<OpenMagnetics::Magnetic>::load(std::move(reference), std::move(value));
+    }
+    std::vector<OpenMagnetics::Magnetic> evict(std::vector<std::string> references) {
+        throw_if_frozen("evict");
+        bump_content_version();
+        return Cache<OpenMagnetics::Magnetic>::evict(std::move(references));
+    }
+    OpenMagnetics::Magnetic evict(std::string reference) {
+        throw_if_frozen("evict");
+        bump_content_version();
+        return Cache<OpenMagnetics::Magnetic>::evict(std::move(reference));
     }
     void clear();
     void autocomplete_magnetics();

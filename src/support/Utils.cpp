@@ -270,6 +270,7 @@ std::string select_embedded_cores_catalogue(bool useOnlyCoresInStock, bool stock
 
 void load_cores(std::optional<std::string> fileToLoad) {
     throw_if_databases_frozen("load_cores");
+    bump_catalogue_generation();
     bool includeToroidalCores = settings.get_use_toroidal_cores();
     bool includeConcentricCores = settings.get_use_concentric_cores();
     bool useOnlyCoresInStock = settings.get_use_only_cores_in_stock();
@@ -325,11 +326,13 @@ void load_cores(std::optional<std::string> fileToLoad) {
 
 void clear_loaded_cores() {
     throw_if_databases_frozen("clear_loaded_cores");
+    bump_catalogue_generation();
     coreDatabase.clear();
 }
 
 void clear_loaded_core_shapes() {
     throw_if_databases_frozen("clear_loaded_core_shapes");
+    bump_catalogue_generation();
     coreShapeDatabase.clear();
     coreShapeFamiliesInDatabase.clear();
 }
@@ -344,6 +347,7 @@ void clear_databases() {
     bobbinDatabase.clear();
     insulationMaterialDatabase.clear();
     wireMaterialDatabase.clear();
+    bump_catalogue_generation();
 }
 
 void load_core_materials(std::optional<std::string> fileToLoad) {
@@ -351,6 +355,7 @@ void load_core_materials(std::optional<std::string> fileToLoad) {
     if (!_addInternalData) {
         return;
     }
+    bump_catalogue_generation();
     std::string database = load_ndjson_data("MAS/data/core_materials.ndjson", fileToLoad);
     parse_ndjson(database, [](const json& jf) {
         CoreMaterial coreMaterial(jf);
@@ -528,6 +533,7 @@ void load_core_shapes(bool withAliases, std::optional<std::string> fileToLoad) {
     if (!_addInternalData) {
         return;
     }
+    bump_catalogue_generation();
     bool includeToroidalCores = settings.get_use_toroidal_cores();
     bool includeConcentricCores = settings.get_use_concentric_cores();
 
@@ -592,6 +598,7 @@ void load_wires(std::optional<std::string> fileToLoad) {
     if (!_addInternalData) {
         return;
     }
+    bump_catalogue_generation();
     std::string database = load_ndjson_data("MAS/data/wires.ndjson", fileToLoad);
     parse_ndjson(database, [](const json& jf) {
         OpenMagnetics::Wire wire(jf);
@@ -633,6 +640,7 @@ void load_bobbins() {
     if (!_addInternalData) {
         return;
     }
+    bump_catalogue_generation();
     std::string database = load_ndjson_data("MAS/data/bobbins.ndjson");
     parse_ndjson(database, [](const json& jf) {
         bobbinDatabase[jf["name"]] = load_catalogue_bobbin(jf);
@@ -644,6 +652,7 @@ void load_insulation_materials() {
     if (!_addInternalData) {
         return;
     }
+    bump_catalogue_generation();
     std::string database = load_ndjson_data("MAS/data/insulation_materials.ndjson");
     parse_ndjson(database, [](const json& jf) {
         InsulationMaterial insulationMaterial(jf);
@@ -656,6 +665,7 @@ void load_wire_materials() {
     if (!_addInternalData) {
         return;
     }
+    bump_catalogue_generation();
     std::string database = load_ndjson_data("MAS/data/wire_materials.ndjson");
     parse_ndjson(database, [](const json& jf) {
         WireMaterial wireMaterial(jf);
@@ -665,6 +675,7 @@ void load_wire_materials() {
 
 void load_databases(json data, bool withAliases, bool addInternalData) {
     throw_if_databases_frozen("load_databases");
+    bump_catalogue_generation();
     _addInternalData = addInternalData;
     if (addInternalData) {
         if (coreMaterialDatabase.empty()) {
@@ -1167,12 +1178,19 @@ std::vector<Wire> get_wires(std::optional<WireType> wireType, std::optional<Wire
     // list is safe to memoize by (type, standard).
     using CacheKey = std::pair<int, int>;
     // ABT #113: thread_local — per-thread memo over the frozen wireDatabase.
+    // ABT #1626: keyed on the catalogue generation (bumped by every clear, load and LibraryContext
+    // swap) as well as the size (a direct insertion into wireDatabase does not bump it).
     static thread_local std::map<CacheKey, std::vector<Wire>> filteredWiresCache;
     static thread_local size_t cachedDatabaseSize = 0;
-    if (cachedDatabaseSize != wireDatabase.size()) {
+    static thread_local uint64_t cachedCatalogueGeneration = 0;
+    static thread_local bool filteredWiresCacheBuilt = false;
+    const uint64_t currentCatalogueGeneration = catalogueGeneration.load(std::memory_order_relaxed);
+    if (!filteredWiresCacheBuilt || cachedDatabaseSize != wireDatabase.size() || cachedCatalogueGeneration != currentCatalogueGeneration) {
         // Database was reloaded since we last cached; invalidate.
         filteredWiresCache.clear();
         cachedDatabaseSize = wireDatabase.size();
+        cachedCatalogueGeneration = currentCatalogueGeneration;
+        filteredWiresCacheBuilt = true;
     }
     CacheKey key = {wireType.has_value() ? static_cast<int>(*wireType) : -1,
                     wireStandard.has_value() ? static_cast<int>(*wireStandard) : -1};

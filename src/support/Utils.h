@@ -7,6 +7,7 @@
 #include "constructive_models/InsulationMaterial.h"
 
 #include <MAS.hpp>
+#include <atomic>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -114,6 +115,12 @@ inline std::map<std::string, OpenMagnetics::Wire> wireDatabase;
 inline std::map<std::string, OpenMagnetics::Bobbin> bobbinDatabase;
 inline std::map<std::string, OpenMagnetics::InsulationMaterial> insulationMaterialDatabase;
 inline std::map<std::string, MAS::WireMaterial> wireMaterialDatabase;
+// ABT #1626: bumped whenever the catalogues above are cleared, (re)loaded or swapped by a
+// LibraryContext scope. A memo derived from a catalogue keys itself on it: the wire memo of
+// get_wires() used to key on the database SIZE, so a swap or reload to a different catalogue of the
+// same size returned the old wires.
+inline std::atomic<uint64_t> catalogueGeneration{0};
+inline void bump_catalogue_generation() { catalogueGeneration.fetch_add(1, std::memory_order_relaxed); }
 
 // The loaded part catalogue. SHARED between threads, under the same contract
 // as the catalogues above: load it before the parallel region (or freeze it

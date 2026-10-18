@@ -3,6 +3,7 @@
 
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
+#include <catch2/matchers/catch_matchers_string.hpp>
 
 using json = nlohmann::json;
 #include <typeinfo>
@@ -91,6 +92,32 @@ TEST_CASE("Magnetic_Cache_Autocomplete_Names_Every_Unfit_Record", "[support][cac
     for (const auto& reference : magneticsCache.references()) {
         CHECK_FALSE(magneticsCache.read(reference).get_coil().get_turns_description());
     }
+    magneticsCache.clear();
+}
+
+// ABT #1626: the energy memo is per thread over a shared catalogue, and nothing but a clear() on
+// the same thread ever emptied it: after a load() it still answered for the old set of magnetics.
+TEST_CASE("Magnetic_Cache_Energy_Memo_Does_Not_Outlive_The_Catalogue", "[support][cache][abt-1626]") {
+    std::string masString = R"({"outputs": [], "inputs": {"designRequirements": {"isolationSides": ["primary" ], "magnetizingInductance": {"nominal": 0.0004 }, "name": "My Design Requirements", "turnsRatios": [{"nominal": 1} ] }, "operatingPoints": [{"conditions": {"ambientTemperature": 42 }, "excitationsPerWinding": [{"frequency": 100000, "current": {"processed": {"label": "triangular", "peakToPeak": 0.5, "offset": 0, "dutyCycle": 0.5 } }, "voltage": {"processed": {"label": "rectangular", "peakToPeak": 20, "offset": 0, "dutyCycle": 0.5 } } } ], "name": "Operating Point No. 1" } ] }, "magnetic": {"coil": {"bobbin": "basic", "functionalDescription":[{"name": "Primary", "numberTurns": 4, "numberParallels": 1, "isolationSide": "primary", "wire": "Round 1.00 - Grade 1" }, {"name": "Secondary", "numberTurns": 4, "numberParallels": 1, "isolationSide": "secondary", "wire": "Round 1.00 - Grade 1" } ] }, "core": {"name": "core_E_19_8_5_N87_substractive", "functionalDescription": {"type": "twoPieceSet", "material": "N87", "shape": "PQ 32/20", "gapping": [{"type": "residual", "length": 0.000005 }], "numberStacks": 1 } }, "manufacturerInfo": {"name": "", "reference": "Example" } } })";
+    auto magnetic = magnetic_autocomplete(OpenMagnetics::Mas(json::parse(masString)).get_magnetic());
+    magneticsCache.clear();
+    magneticsCache.load("A", magnetic);
+    magneticsCache.compute_energy_cache();
+    REQUIRE(magneticsCache.filter_magnetics_by_energy(0).size() == 1);
+
+    magneticsCache.load("B", magnetic);
+    CHECK_THROWS_WITH(magneticsCache.filter_magnetics_by_energy(0), Catch::Matchers::ContainsSubstring("stale"));
+    magneticsCache.compute_energy_cache();
+    CHECK(magneticsCache.filter_magnetics_by_energy(0).size() == 2);
+
+    magneticsCache.evict("B");
+    CHECK_THROWS_WITH(magneticsCache.read_magnetic_energy_cache(), Catch::Matchers::ContainsSubstring("stale"));
+    magneticsCache.compute_energy_cache();
+    CHECK(magneticsCache.read_magnetic_energy_cache().size() == 1);
+
+    // the energies read the core materials: a reload of the material catalogue makes them stale too
+    clear_databases();
+    CHECK_THROWS_WITH(magneticsCache.get_maximum_magnetic_energy_in_cache(), Catch::Matchers::ContainsSubstring("stale"));
     magneticsCache.clear();
 }
 }  // namespace

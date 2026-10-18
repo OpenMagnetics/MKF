@@ -244,6 +244,7 @@ LibraryContext::Scope::Scope(const LibraryContext* ctx) {
     }
     _active = true;
     ++activeScopeCount;
+    bump_catalogue_generation();  // ABT #1626: memos over the catalogues must not outlive the swap
     _coreBackup = coreDatabase;
     _coreMaterialBackup = coreMaterialDatabase;
     _coreShapeBackup = coreShapeDatabase;
@@ -300,6 +301,7 @@ LibraryContext::Scope::Scope(const LibraryContext* ctx) {
 LibraryContext::Scope::~Scope() {
     if (!_active) return;
     --activeScopeCount;
+    bump_catalogue_generation();
     coreDatabase = std::move(_coreBackup);
     coreMaterialDatabase = std::move(_coreMaterialBackup);
     coreShapeDatabase = std::move(_coreShapeBackup);

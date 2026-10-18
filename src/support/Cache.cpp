@@ -9,6 +9,25 @@ namespace OpenMagnetics {
 
 // Per-thread derived memo over the shared catalogue storage (ABT #817).
 thread_local std::map<std::string, double> MagneticsCache::_magneticEnergyCache;
+thread_local uint64_t MagneticsCache::_energyCacheContentVersion = 0;
+thread_local uint64_t MagneticsCache::_energyCacheCatalogueGeneration = 0;
+
+void MagneticsCache::stamp_energy_cache() {
+    _energyCacheContentVersion = _contentVersion.load(std::memory_order_relaxed);
+    _energyCacheCatalogueGeneration = catalogueGeneration.load(std::memory_order_relaxed);
+}
+
+void MagneticsCache::throw_if_energy_cache_stale() {
+    if (_magneticEnergyCache.empty()) {
+        return;
+    }
+    if (_energyCacheContentVersion != _contentVersion.load(std::memory_order_relaxed)) {
+        throw InvalidInputException(ErrorCode::MISSING_DATA, "Energy cache is stale: the magnetics in the cache changed (load, evict, clear or autocomplete) after compute_energy_cache; call compute_energy_cache again");
+    }
+    if (_energyCacheCatalogueGeneration != catalogueGeneration.load(std::memory_order_relaxed)) {
+        throw InvalidInputException(ErrorCode::MISSING_DATA, "Energy cache is stale: the material catalogues were cleared or reloaded after compute_energy_cache; call compute_energy_cache again");
+    }
+}
 
 
 void MagneticsCache::autocomplete_magnetics() {
@@ -45,6 +64,7 @@ void MagneticsCache::autocomplete_magnetics() {
         }
         throw OpenMagneticsException(mixedCodes ? ErrorCode::INVALID_INPUT : commonCode.value(), message);
     }
+    bump_content_version();
     for (auto& [reference, magnetic] : autocompleted) {
         _cache[reference] = std::move(magnetic);
     }
@@ -62,6 +82,7 @@ void MagneticsCache::throw_if_frozen(const std::string& operation) {
 
 void MagneticsCache::clear() {
     throw_if_frozen("clear");
+    bump_content_version();
     _cache.clear();
     _magneticEnergyCache.clear();
 }
@@ -92,9 +113,12 @@ void MagneticsCache::compute_energy_cache(double temperature, std::optional<doub
         double coreMaximumMagneticEnergy = MagneticEnergy().calculate_core_maximum_magnetic_energy(magnetic.get_core(), temperature, frequency, saturationProportion);
         _magneticEnergyCache[reference] = coreMaximumMagneticEnergy;
     }
+    // stamped after the loop: the energies may have lazily loaded the material catalogue
+    stamp_energy_cache();
 }
 
 std::pair<std::string, double> MagneticsCache::get_maximum_magnetic_energy_in_cache() {
+    throw_if_energy_cache_stale();
     if (_magneticEnergyCache.empty()) {
         throw InvalidInputException(ErrorCode::MISSING_DATA, "Energy cache is empty, call compute_energy_cache first");
     }
@@ -102,6 +126,7 @@ std::pair<std::string, double> MagneticsCache::get_maximum_magnetic_energy_in_ca
 }
 
 std::vector<std::string> MagneticsCache::filter_magnetics_by_energy(double minimumEnergy, std::optional<double> maximumEnergy) {
+    throw_if_energy_cache_stale();
     std::vector<std::string> filteredReferences;
     for (auto [reference, energy] : _magneticEnergyCache) {
         if (maximumEnergy? energy >= minimumEnergy && energy <= maximumEnergy.value() : energy >= minimumEnergy) {
@@ -113,10 +138,12 @@ std::vector<std::string> MagneticsCache::filter_magnetics_by_energy(double minim
 }
 
 std::map<std::string, double> MagneticsCache::read_magnetic_energy_cache() {
+    throw_if_energy_cache_stale();
     return _magneticEnergyCache;
 }
 
 double MagneticsCache::read_magnetic_energy_cache(std::string reference) {
+    throw_if_energy_cache_stale();
     if (_magneticEnergyCache.contains(reference)) {
         return _magneticEnergyCache[reference];
     } else {

@@ -441,6 +441,28 @@ namespace {
         REQUIRE(allCores.size() > onlyCoresInStock.size());
     }
 
+    TEST_CASE("Test_Get_Wires_Memo_Follows_A_Catalogue_Of_The_Same_Size", "[support][utils][abt-1626]") {
+        // ABT #1626: get_wires() memoised its filtered copy on the wire database SIZE, so a
+        // catalogue swapped for another of the same size returned the old wires.
+        clear_databases();
+        load_wires();
+        const auto originalWires = wireDatabase;
+        const size_t roundWiresBefore = get_wires(WireType::ROUND, std::nullopt).size();
+        const auto round = std::find_if(originalWires.begin(), originalWires.end(), [](const auto& entry) { return entry.second.get_type() == WireType::ROUND; });
+        const auto rectangular = std::find_if(originalWires.begin(), originalWires.end(), [](const auto& entry) { return entry.second.get_type() == WireType::RECTANGULAR; });
+        REQUIRE(round != originalWires.end());
+        REQUIRE(rectangular != originalWires.end());
+
+        auto swappedWires = originalWires;
+        swappedWires.erase(round->first);
+        swappedWires[rectangular->first + " (copy)"] = rectangular->second;
+        REQUIRE(swappedWires.size() == originalWires.size());
+        clear_databases();
+        wireDatabase = swappedWires;
+        CHECK(get_wires(WireType::ROUND, std::nullopt).size() == roundWiresBefore - 1);
+        clear_databases();
+    }
+
     TEST_CASE("Test_Core_Materials_External", "[support][utils][smoke-test]") {
         auto external_core_materials_path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "external_core_materials.ndjson");
 

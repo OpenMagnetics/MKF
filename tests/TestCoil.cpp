@@ -14172,6 +14172,33 @@ TEST_CASE("Test_Real_Geometry_Wind_Survives_Transient_Unfit", "[constructive-mod
     settings.reset();
 }
 
+
+// ABT #1626: get_turn_by_name kept a copy of each turn it found and returned it after the turns
+// were replaced; get_winding_index_by_name kept an index after the windings were renamed.
+TEST_CASE("Test_Coil_Name_Caches_Follow_The_Turns_And_Windings", "[constructive-model][coil][abt-1626]") {
+    settings.reset();
+    auto coil = OpenMagneticsTesting::get_quick_coil({10, 5}, {1, 1}, "PQ 28/20");
+    REQUIRE(coil.get_turns_description());
+    auto turns = coil.get_turns_description().value();
+    const std::string turnName = turns[0].get_name();
+    const auto originalCoordinates = coil.get_turn_by_name(turnName).get_coordinates();
+
+    turns[0].set_coordinates({originalCoordinates[0] + 1e-3, originalCoordinates[1] - 1e-3});
+    coil.set_turns_description(turns);
+    const auto movedCoordinates = coil.get_turn_by_name(turnName).get_coordinates();
+    CHECK_THAT(movedCoordinates[0], Catch::Matchers::WithinAbs(originalCoordinates[0] + 1e-3, 1e-12));
+    CHECK_THAT(movedCoordinates[1], Catch::Matchers::WithinAbs(originalCoordinates[1] - 1e-3, 1e-12));
+
+    const std::string primaryName = coil.get_functional_description()[0].get_name();
+    const std::string secondaryName = coil.get_functional_description()[1].get_name();
+    REQUIRE(coil.get_winding_index_by_name(primaryName) == 0);
+    REQUIRE(coil.get_winding_index_by_name(secondaryName) == 1);
+    std::swap(coil.get_mutable_functional_description()[0], coil.get_mutable_functional_description()[1]);
+    CHECK(coil.get_winding_index_by_name(primaryName) == 1);
+    CHECK(coil.get_winding_index_by_name(secondaryName) == 0);
+    settings.reset();
+}
+
 }  // namespace
 
 

@@ -9659,9 +9659,14 @@ Winding Coil::get_winding_by_name(std::string name) const {
 }
 
 size_t Coil::get_winding_index_by_name(const std::string& name) {
+    // ABT #1626: validated on every hit, like the turn index: the windings can be renamed or
+    // reordered through get_mutable_functional_description(), which no cache can see.
     auto it = _windingIndexByName.find(name);
     if (it != _windingIndexByName.end()) {
-        return it->second;
+        if (it->second < get_functional_description().size() && get_functional_description()[it->second].get_name() == name) {
+            return it->second;
+        }
+        _windingIndexByName.clear();
     }
     size_t index = get_winding_index_by_name(get_functional_description(), name);
     _windingIndexByName[name] = index;
