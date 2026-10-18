@@ -2852,4 +2852,69 @@ void from_json(const json& j, Core& x) {
     MAS::from_json(migrated, static_cast<MAS::MagneticCore&>(x));
 }
 
+namespace {
+
+// ABT #1218: the members core/spacer.json and core/piece.json define. Both are
+// `additionalProperties: false`, so these are also the ONLY keys each variant may carry.
+const std::vector<std::string> spacerElementKeys = {"type", "insulationMaterial", "dimensions", "coordinates"};
+const std::vector<std::string> pieceElementKeys = {"type", "material", "shape", "coordinates", "rotation", "machining"};
+
+// The generated serialiser writes an unset optional as a `null` value under its key. MAS models
+// "unset" as the key being absent (no member of the core schemas is nullable), so drop those keys
+// at every depth. A REQUIRED member is never optional in the generated struct, so it is never
+// null here and is never dropped.
+void drop_unset_keys(json& node) {
+    if (node.is_object()) {
+        for (auto it = node.begin(); it != node.end();) {
+            if (it.value().is_null()) {
+                it = node.erase(it);
+            }
+            else {
+                drop_unset_keys(it.value());
+                ++it;
+            }
+        }
+    }
+    else if (node.is_array()) {
+        for (auto& element : node) {
+            drop_unset_keys(element);
+        }
+    }
+}
+
+// Keep on a serialised geometricalDescription element only the keys of the variant its `type`
+// names. The generated serialiser always writes `type` (it is required in both variants).
+void keep_only_variant_keys(json& element) {
+    const auto& type = element.at("type");
+    const auto& allowedKeys = (type.get<std::string>() == "spacer") ? spacerElementKeys : pieceElementKeys;
+    for (auto it = element.begin(); it != element.end();) {
+        if (std::find(allowedKeys.begin(), allowedKeys.end(), it.key()) == allowedKeys.end()) {
+            it = element.erase(it);
+        }
+        else {
+            ++it;
+        }
+    }
+}
+
+} // anonymous namespace
+
+json geometrical_description_element_to_json(const CoreGeometricalDescriptionElement& element) {
+    json j;
+    MAS::to_json(j, element);
+    keep_only_variant_keys(j);
+    drop_unset_keys(j);
+    return j;
+}
+
+void to_json(json& j, const Core& x) {
+    MAS::to_json(j, static_cast<const MAS::MagneticCore&>(x));
+    if (j.contains("geometricalDescription") && j.at("geometricalDescription").is_array()) {
+        for (auto& element : j.at("geometricalDescription")) {
+            keep_only_variant_keys(element);
+        }
+    }
+    drop_unset_keys(j);
+}
+
 } // namespace OpenMagnetics

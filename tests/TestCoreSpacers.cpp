@@ -15,6 +15,7 @@
 // jsonschema Draft 2020-12 with a $id registry over MAS + PEAS). MKF has no C++ JSON-Schema
 // validator and this test does not invent one.
 #include <cmath>
+#include <functional>
 #include <cstdlib>
 #include <limits>
 #include <filesystem>
@@ -259,4 +260,109 @@ TEST_CASE("Core_Additive_Gap_Fixture_Is_The_Autocompleted_Design_And_Schema_Vali
         }
     }
     CHECK(spacersInFixture == 3u);
+}
+
+
+// ABT #1218: MKF's OWN serialisation of a core must be schema-valid, with no clean-up by the
+// caller. The cases above normalise the generated document with strip_nulls() before validating;
+// this one does not. Every element of the geometricalDescription has to validate against its own
+// variant (core/piece.json or core/spacer.json, both `additionalProperties: false`), and the whole
+// core against core.json, across shape families and every gap kind, through each json <- Core
+// entry point: `json j = core`, a Magnetic's "core", std::vector<Core>, and the per-element helper.
+TEST_CASE("Core_Serialisation_Is_Variant_Aware_And_Schema_Valid_Without_Caller_Cleanup",
+          "[constructive-model][core][geometrical-description][spacer][abt-1218]") {
+    struct Case { std::string shape; json gapping; int stacks; };
+    std::vector<Case> cases = {
+        {"E 42/21/15", OpenMagneticsTesting::get_spacer_gap(0.5e-3), 1},
+        {"E 42/21/15", OpenMagneticsTesting::get_spacer_gap(0.5e-3), 2},
+        {"ETD 34/17/11", OpenMagneticsTesting::get_ground_gap(0.4e-3), 1},
+        {"PQ 32/20", OpenMagneticsTesting::get_distributed_gap(0.3e-3, 3), 1},
+        {"RM 10", OpenMagneticsTesting::get_spacer_gap(0.2e-3), 1},
+        {"U 93/76/30", OpenMagneticsTesting::get_spacer_gap(1e-3), 1},
+        {"EP 13", OpenMagneticsTesting::get_ground_gap(0.1e-3), 1},
+        {"P 18/11", OpenMagneticsTesting::get_spacer_gap(0.1e-3), 1},
+        {"PM 50/39", OpenMagneticsTesting::get_residual_gap(), 1},
+        {"EFD 20/10/7", OpenMagneticsTesting::get_ground_gap(0.2e-3), 1},
+        {"T 40/24/16", json::array(), 1},
+    };
+
+    auto root = testsDir() / ".." / "output" / "abt1218";
+    auto coresDir = root / "cores";
+    auto piecesDir = root / "pieces";
+    auto spacersDir = root / "spacers";
+    std::filesystem::remove_all(root);
+    for (auto& dir : {coresDir, piecesDir, spacersDir}) {
+        std::filesystem::create_directories(dir);
+    }
+
+    // A null anywhere is an unset member written under its key: no core schema allows one.
+    std::function<size_t(const json&)> countNulls = [&](const json& node) -> size_t {
+        size_t nulls = 0;
+        if (node.is_object()) {
+            for (auto& [key, value] : node.items()) {
+                nulls += value.is_null() ? 1 : countNulls(value);
+            }
+        }
+        else if (node.is_array()) {
+            for (auto& value : node) {
+                nulls += countNulls(value);
+            }
+        }
+        return nulls;
+    };
+
+    std::vector<Core> cores;
+    size_t pieces = 0;
+    size_t spacers = 0;
+    for (size_t caseIndex = 0; caseIndex < cases.size(); ++caseIndex) {
+        auto& c = cases[caseIndex];
+        auto core = OpenMagneticsTesting::get_quick_core(c.shape, c.gapping, c.stacks);
+        REQUIRE(core.get_geometrical_description());
+        cores.push_back(core);
+
+        json coreJson = core;
+        INFO(c.shape << " x" << c.stacks);
+        CHECK(countNulls(coreJson) == 0u);
+        {
+            std::ofstream file(coresDir / ("core_" + std::to_string(caseIndex) + ".json"));
+            file << coreJson.dump(2);
+        }
+
+        auto elements = core.get_geometrical_description().value();
+        REQUIRE(coreJson.at("geometricalDescription").size() == elements.size());
+        for (size_t elementIndex = 0; elementIndex < elements.size(); ++elementIndex) {
+            auto elementJson = geometrical_description_element_to_json(elements[elementIndex]);
+            // The element inside the core is written exactly like the element on its own.
+            CHECK(elementJson == coreJson.at("geometricalDescription")[elementIndex]);
+            bool isSpacer = elements[elementIndex].get_type() == CoreGeometricalDescriptionElementType::SPACER;
+            auto name = std::to_string(caseIndex) + "_" + std::to_string(elementIndex) + ".json";
+            std::ofstream file((isSpacer ? spacersDir : piecesDir) / name);
+            file << elementJson.dump(2);
+            (isSpacer ? spacers : pieces)++;
+        }
+    }
+    // The cases above do exercise both variants.
+    REQUIRE(pieces > 0u);
+    REQUIRE(spacers > 0u);
+
+    // A Magnetic writes its core through the same overload.
+    auto magnetic = OpenMagneticsTesting::get_quick_magnetic("E 42/21/15", OpenMagneticsTesting::get_spacer_gap(0.5e-3), {10});
+    json magneticJson = magnetic;
+    CHECK(countNulls(magneticJson.at("core")) == 0u);
+    {
+        std::ofstream file(coresDir / "magnetic_core.json");
+        file << magneticJson.at("core").dump(2);
+    }
+    // ...and so does a std::vector<Core>.
+    json coresJson = cores;
+    REQUIRE(coresJson.size() == cores.size());
+    for (size_t index = 0; index < cores.size(); ++index) {
+        json single = cores[index];
+        CHECK(coresJson[index] == single);
+    }
+
+    INFO("documents written under " << root.string());
+    CHECK(validate_with_mas(coresDir, "schemas/magnetic/core.json") == 0);
+    CHECK(validate_with_mas(piecesDir, "schemas/magnetic/core/piece.json") == 0);
+    CHECK(validate_with_mas(spacersDir, "schemas/magnetic/core/spacer.json") == 0);
 }

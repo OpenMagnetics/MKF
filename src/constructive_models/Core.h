@@ -242,6 +242,26 @@ class Core : public MAS::MagneticCore {
 // survives migration without matching the enum, rather than letting it become value 0.
 void from_json(const json& j, Core& x);
 
+// ABT #1218: the generated MAS serialiser cannot write a schema-valid core. quicktype merges the
+// geometricalDescription oneOf(core/piece.json, core/spacer.json) into ONE struct,
+// CoreGeometricalDescriptionElement, and its to_json writes every member of the union, an unset
+// optional as `null`. Both variant schemas are `additionalProperties: false` and type their
+// optional members without `null`, so every element failed its own schema: a spacer on the piece
+// keys (machining, material, rotation, shape), a piece on the spacer keys (dimensions,
+// insulationMaterial). The same `null`s sink the rest of the core (shape aliases, gap area, ...).
+//
+// MAS.hpp is generated and is not edited, so the variant-aware step lives here: every json <- Core
+// conversion (`json j = core`, a Magnetic's "core", std::vector<Core>) goes through this overload,
+// which wins over the base-class one for the same reason from_json above does. It writes what the
+// generated serialiser writes, keeps on each geometricalDescription element only the keys of the
+// variant its `type` names, and drops every key whose value is unset (`null`) anywhere in the core.
+void to_json(json& j, const Core& x);
+
+// One geometricalDescription element, written as the variant its `type` names (core/spacer.json
+// for "spacer", core/piece.json otherwise), with its unset keys dropped. For callers that write an
+// element on its own (e.g. Core::get_spacers()).
+json geometrical_description_element_to_json(const CoreGeometricalDescriptionElement& element);
+
 void from_json(const json& j, std::vector<BhCycleElement>& v);
 void to_json(json& j, const std::vector<BhCycleElement>& v);
 void from_json(const json& j, std::vector<VolumetricLossesPoint>& v);
