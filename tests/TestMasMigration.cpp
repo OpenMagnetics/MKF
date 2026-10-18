@@ -384,3 +384,28 @@ TEST_CASE("Test_MasMigration_Rewrites_Enum_Fields_Only", "[constructive-model][m
     OpenMagnetics::compat::migrate_pre_1_0(bare);
     CHECK(bare == "Forward");
 }
+
+// ABT #1480: MAS c2432e7 turned a core material's application into an array. A design exported
+// before it carries "application": "Power" on its inline material (750372745rA_PQ65, DMEGC
+// DMR96A), and loading it threw a bare nlohmann type_error 302 that named no field.
+TEST_CASE("Test_MasMigration_Core_Material_Application_String_Becomes_Array", "[constructive-model][core][mas-migration][abt-1480]") {
+    auto core = get_quick_core("ETD 34", get_ground_gap(0.001), 1, "N87");
+    json coreJson;
+    to_json(coreJson, core);
+    json materialJson;
+    to_json(materialJson, OpenMagnetics::find_core_material_by_name("N87"));
+    REQUIRE(materialJson.contains("permeability"));
+    materialJson["application"] = "Power";
+    coreJson["functionalDescription"]["material"] = materialJson;
+
+    std::optional<OpenMagnetics::Core> loaded;
+    REQUIRE_NOTHROW(loaded.emplace(coreJson));
+    auto application = loaded->resolve_material().get_application();
+    REQUIRE(application);
+    CHECK(application.value() == std::vector<MAS::MagneticApplication>{MAS::MagneticApplication::POWER});
+
+    // designRequirements.application is a single enum string and stays one.
+    json requirements = json::parse(R"({"designRequirements": {"application": "Power"}})");
+    OpenMagnetics::compat::migrate_pre_1_0(requirements);
+    CHECK(requirements["designRequirements"]["application"] == "power");
+}

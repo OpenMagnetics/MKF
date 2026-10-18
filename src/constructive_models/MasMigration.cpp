@@ -236,6 +236,15 @@ void migrate(nlohmann::json& j, const std::string* parentKey) {
                 migrate(it.value(), &it.key());
             }
         }
+        // MAS c2432e7 (2026-05-01) turned a core material's application from one string into an
+        // array; older exports carry "application": "Power", which the generated from_json
+        // rejected as a bare nlohmann type_error naming no field (ABT #1480). A core material is
+        // the object carrying "permeability" (required by core/material.json); designRequirements'
+        // own application stays a single string.
+        const auto application = j.find("application");
+        if (application != j.end() && application->is_string() && j.contains("permeability")) {
+            *application = nlohmann::json::array({*application});
+        }
     } else if (j.is_array()) {
         for (auto& e : j) {
             migrate(e, parentKey);
