@@ -548,14 +548,18 @@ std::vector<std::pair<Mas, double>> CoreAdviser::filter_available_cores_power_ap
     // verdict from an earlier seeding would judge a different turn count.
     filterMagneticInductance.set_cache_usage(false);
 
-    std::vector<std::pair<Magnetic, double>> magneticsWithScoring = *magnetics;
-    magneticsWithScoring = filterAreaProduct.filter_magnetics(&magneticsWithScoring, inputs, 1.0, true);  // Fixed weight: pre-filtering criterion, not efficiency scoring
-    log_stage("Area Product filter", magneticsWithScoring.size());
-
-    if (settings.get_core_adviser_enable_intermediate_pruning() && magneticsWithScoring.size() > maximumMagneticsAfterFiltering) {
-        magneticsWithScoring.resize(maximumMagneticsAfterFiltering); // F10 FIX: resize instead of copy-construct
-        log_stage("first-filter score-cull", magneticsWithScoring.size());
+    // ABT #1785: filtered straight out of the dataset, which the retries below and the caller's
+    // stacked second search start from again. Copying the whole dataset first and filtering the
+    // copy held it twice (60 000+ candidates, each with its inline core material, in the stacked search).
+    // The first-filter score-cull is applied inside the filter: only the best
+    // maximumMagneticsAfterFiltering survivors are copied out of the dataset, the same pool as
+    // copying every survivor and then resize() (F10), without holding the ones the cull drops.
+    std::optional<size_t> firstFilterCull;
+    if (settings.get_core_adviser_enable_intermediate_pruning()) {
+        firstFilterCull = maximumMagneticsAfterFiltering;
     }
+    std::vector<std::pair<Magnetic, double>> magneticsWithScoring = filterAreaProduct.filter_magnetics_from(*magnetics, inputs, 1.0, firstFilterCull);  // Fixed weight: pre-filtering criterion, not efficiency scoring
+    log_stage("Area Product filter (+ first-filter score-cull)", magneticsWithScoring.size());
 
     magneticsWithScoring = filterEnergyStored.filter_magnetics(&magneticsWithScoring, inputs, 1.0, true);  // Fixed weight: pre-filtering criterion, not efficiency scoring
     log_stage("Energy Stored filter", magneticsWithScoring.size());
@@ -629,8 +633,7 @@ std::vector<std::pair<Mas, double>> CoreAdviser::filter_available_cores_power_ap
         logEntry("No cores found with standard filters. Retrying without intermediate pruning (keeping larger cores), saturation still enforced...", "CoreAdviser");
 
         // Stage 1: full candidate set, saturation enforced
-        magneticsWithScoring = *magnetics;
-        magneticsWithScoring = filterAreaProduct.filter_magnetics(&magneticsWithScoring, inputs, 1.0, true);
+        magneticsWithScoring = filterAreaProduct.filter_magnetics_from(*magnetics, inputs, 1.0);  // ABT #1785: no whole-dataset copy
         magneticsWithScoring = filterEnergyStored.filter_magnetics(&magneticsWithScoring, inputs, 1.0, true);
 
         // ABT #926: bound the retry BY SIZE, which is the thing it is actually looking for.
@@ -690,8 +693,7 @@ std::vector<std::pair<Mas, double>> CoreAdviser::filter_available_cores_power_ap
                 // RAII (ABT #113 sweep): the retry filters below can throw; a
                 // manual restore would leak the relaxed 1.0 margin.
                 SettingsGuard<double> saturationMarginGuard(settings, &Settings::get_core_adviser_saturation_margin, &Settings::set_core_adviser_saturation_margin, 1.0);
-                magneticsWithScoring = *magnetics;
-                magneticsWithScoring = filterAreaProduct.filter_magnetics(&magneticsWithScoring, inputs, 1.0, true);
+                magneticsWithScoring = filterAreaProduct.filter_magnetics_from(*magnetics, inputs, 1.0);  // ABT #1785: no whole-dataset copy
                 magneticsWithScoring = filterEnergyStored.filter_magnetics(&magneticsWithScoring, inputs, 1.0, true);
                 // Same size bound as stage 1: this stage had none, so a design that failed
                 // stage 1 sized and saturation-checked the entire pool a second time.
@@ -955,8 +957,7 @@ std::vector<std::pair<Mas, double>> CoreAdviser::filter_standard_cores_power_app
     filterSaturation.set_filter_configuration(&_filterConfiguration);
     filterSaturation.set_cache_usage(false);
 
-    std::vector<std::pair<Magnetic, double>> magneticsWithScoring = *magnetics;
-    log_stage("Starting", magneticsWithScoring.size());
+    log_stage("Starting", magnetics->size());
 
     bool usingPowderCores = should_include_powder(inputs);
 
@@ -971,7 +972,8 @@ std::vector<std::pair<Mas, double>> CoreAdviser::filter_standard_cores_power_app
     // ========================================================================
     // STEP 1: Area Product filter on all cores
     // ========================================================================
-    magneticsWithScoring = filterAreaProduct.filter_magnetics(&magneticsWithScoring, inputs, 1, true);
+    // ABT #1785: filtered straight out of the dataset; copying it whole first held it twice.
+    std::vector<std::pair<Magnetic, double>> magneticsWithScoring = filterAreaProduct.filter_magnetics_from(*magnetics, inputs, 1);
     log_stage("AreaProduct", magneticsWithScoring.size());
 
     // ========================================================================

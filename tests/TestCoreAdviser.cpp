@@ -4285,3 +4285,56 @@ TEST_CASE("Test_CoreAdviser_Temperature_Walk_Counts_Parts_Post_Processing_Keeps"
     CHECK(results.size() == 10);
     settings.reset();
 }
+
+// ABT #1785 guard: the first filter of the available-cores pass copies only the survivors its
+// score-cull keeps. filter_magnetics_from(source, ..., keepBest) must give exactly what copying
+// every survivor, sorting and resize(keepBest) gives (same members, order, scores and recorded
+// scorings), while returning only keepBest copies. Before the cut the stacked second search
+// copied all ~60 000 survivors and then dropped all but the cull.
+TEST_CASE("Test_CoreAdviser_AreaProduct_First_Cull_Copies_Only_Kept_Survivors", "[adviser][core-adviser][abt-1785]") {
+    settings.reset();
+    clear_databases();
+    auto inputs = pre_process_inputs(load_abt1875_inputs("Test_Magnetizing_Current_Dcm_Flyback_Balanced.json"));
+    std::vector<OpenMagnetics::Core> cores;
+    for (const std::string shape : {"E 13/7/4", "E 16/8/5", "E 19/8/5", "E 20/10/6", "E 25/13/7", "E 30/15/7",
+                                    "E 32/16/9", "E 42/21/15", "E 55/28/21", "PQ 20/16", "PQ 26/25", "PQ 32/30",
+                                    "PQ 40/40", "PQ 50/50", "ETD 29/16/10", "ETD 34/17/11", "ETD 39/20/13", "ETD 44/22/15"}) {
+        cores.push_back(OpenMagneticsTesting::get_quick_core(shape, OpenMagneticsTesting::get_ground_gap(0.0005), 1, "3C95"));
+    }
+    CoreAdviser coreAdviser;
+    const auto source = coreAdviser.create_magnetic_dataset(inputs, &cores, false);
+    REQUIRE(source.size() == cores.size());
+
+    std::map<CoreAdviser::CoreAdviserFilters, std::map<std::string, bool>> filterConfiguration{
+        {CoreAdviser::CoreAdviserFilters::EFFICIENCY, {{"invert", true}, {"log", true}}}};
+    auto run = [&](std::optional<size_t> keepBest, std::map<CoreAdviser::CoreAdviserFilters, std::map<std::string, double>>& scorings) {
+        CoreAdviser::MagneticCoreFilterAreaProduct filter(inputs);
+        filter.set_scorings(&scorings);
+        filter.set_filter_configuration(&filterConfiguration);
+        return filter.filter_magnetics_from(source, inputs, 1.0, keepBest);
+    };
+
+    std::map<CoreAdviser::CoreAdviserFilters, std::map<std::string, double>> allScorings;
+    auto all = run(std::nullopt, allScorings);
+    const size_t keep = 3;
+    INFO(all.size() << " survivors of " << source.size());
+    REQUIRE(all.size() > keep);  // the cull must actually drop survivors
+    // No tie across the cut, or the kept members would only test std::stable_sort's tie-breaking.
+    for (size_t i = 0; i < keep; ++i) {
+        CHECK(all[i].second > all[i + 1].second);
+    }
+    all.resize(keep);
+
+    std::map<CoreAdviser::CoreAdviserFilters, std::map<std::string, double>> keptScorings;
+    auto kept = run(keep, keptScorings);
+    REQUIRE(kept.size() == keep);
+    REQUIRE(kept.capacity() == keep);  // no copy of a dropped survivor was ever made in the result
+    for (size_t i = 0; i < keep; ++i) {
+        CHECK(kept[i].first.get_reference() == all[i].first.get_reference());
+        CHECK(kept[i].second == all[i].second);
+    }
+    // Every survivor's scoring is still recorded, the dropped ones included.
+    CHECK(keptScorings == allScorings);
+    CHECK(source.size() == cores.size());
+    settings.reset();
+}

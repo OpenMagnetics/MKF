@@ -30,8 +30,9 @@
 #include <algorithm>
 #include <cmath>
 #include <functional>
-#include <list>
+#include <optional>
 #include <map>
+#include <numeric>
 #include <string>
 #include <utility>
 #include <vector>
@@ -47,18 +48,79 @@ using EvalFn = std::function<std::pair<bool, double>(Magnetic*, Inputs*)>;
 // infeasibility — e.g. a degenerate gap committed for an unreachable high-Lm transformer —
 // is not fatal), but the cull is now LOGGED (it used to be silent, hiding a whole pool being
 // emptied by a systematic input error). Returns {survivors, their scores}; on `writeBack` the
-// possibly-mutated magnetic is written back into `unfilteredMagnetics`.
+// survivors carry the possibly-mutated magnetic.
+//
+// ABT #1785: the pool is CONSUMED. Every caller replaces its pool with the result
+// (`pool = filter.filter_magnetics(&pool, ...)`), so the survivors are compacted in place and the
+// vector's buffer is handed back; `*unfilteredMagnetics` is left empty. This used to build the
+// survivors as a second vector of copies beside the untouched input, so every filter held two
+// copies of the pool at once (a Magnetic has no move operations: a "move" is a deep copy, the
+// inline core material included), and the stacked second search of the available-cores adviser
+// ran past 19 GB. A filter that must not consume its source uses evaluate_and_cull_from below.
 std::pair<std::vector<std::pair<Magnetic, double>>, std::vector<double>>
 evaluate_and_cull(std::vector<std::pair<Magnetic, double>>* unfilteredMagnetics,
                   Inputs& inputs, const EvalFn& evaluate, bool writeBack,
                   const std::string& filterName) {
-    std::vector<std::pair<Magnetic, double>> filtered;
+    auto& pool = *unfilteredMagnetics;
     std::vector<double> newScoring;
-    std::list<size_t> listOfIndexesToErase;
+    size_t kept = 0;
 
-    for (size_t magneticIndex = 0; magneticIndex < (*unfilteredMagnetics).size(); ++magneticIndex) {
-        Magnetic magnetic = (*unfilteredMagnetics)[magneticIndex].first;
+    for (size_t magneticIndex = 0; magneticIndex < pool.size(); ++magneticIndex) {
+        bool valid = false;
+        double scoring = 0.0;
+        // A write-back filter keeps whatever its evaluation did to a valid candidate, and an
+        // invalid one is dropped, so it can evaluate the pool's own element. The others must not
+        // keep the evaluation's side effects: they evaluate a copy, as before.
+        std::optional<Magnetic> scratch;
+        if (!writeBack) {
+            scratch.emplace(pool[magneticIndex].first);
+        }
+        Magnetic* magnetic = writeBack ? &pool[magneticIndex].first : &scratch.value();
+        try {
+            auto evalResult = evaluate(magnetic, &inputs);
+            valid = evalResult.first;
+            scoring = evalResult.second;
+        }
+        catch (const OpenMagneticsException& e) {
+            logEntry(std::string("CoreAdviser ") + filterName + ": culling infeasible candidate — " + e.what(),
+                     "CoreAdviser", 2);
+            valid = false;
+        }
 
+        if (valid) {
+            newScoring.push_back(scoring);
+            if (kept != magneticIndex) {
+                pool[kept] = pool[magneticIndex];
+            }
+            ++kept;
+        }
+    }
+    // Shrinking only destroys the tail: no reallocation, no copies.
+    while (pool.size() > kept) {
+        pool.pop_back();
+    }
+    std::vector<std::pair<Magnetic, double>> filtered;
+    filtered.swap(pool);
+
+    if (filtered.size() != newScoring.size()) {
+        throw CalculationException(ErrorCode::CALCULATION_ERROR,
+            "Something wrong happened while filtering (" + filterName + "), size of filtered: " +
+            std::to_string(filtered.size()) + ", size of newScoring: " + std::to_string(newScoring.size()));
+    }
+    return {filtered, newScoring};
+}
+
+// The non-consuming twin of evaluate_and_cull, for a source pool that has to stay intact: each
+// candidate is evaluated on a copy (side effects discarded, as a non-write-back filter does).
+// Nothing is copied out here: it returns the survivors' INDICES into `source` and their scores,
+// so the caller copies only the survivors it keeps.
+std::pair<std::vector<size_t>, std::vector<double>>
+evaluate_and_cull_from(const std::vector<std::pair<Magnetic, double>>& source,
+                       Inputs& inputs, const EvalFn& evaluate, const std::string& filterName) {
+    std::vector<size_t> survivors;
+    std::vector<double> newScoring;
+    for (size_t magneticIndex = 0; magneticIndex < source.size(); ++magneticIndex) {
+        Magnetic magnetic = source[magneticIndex].first;
         bool valid = false;
         double scoring = 0.0;
         try {
@@ -71,33 +133,12 @@ evaluate_and_cull(std::vector<std::pair<Magnetic, double>>* unfilteredMagnetics,
                      "CoreAdviser", 2);
             valid = false;
         }
-
         if (valid) {
+            survivors.push_back(magneticIndex);
             newScoring.push_back(scoring);
-            if (writeBack) {
-                (*unfilteredMagnetics)[magneticIndex].first = magnetic;
-            }
-        }
-        else {
-            listOfIndexesToErase.push_back(magneticIndex);
         }
     }
-
-    for (size_t i = 0; i < (*unfilteredMagnetics).size(); ++i) {
-        if (listOfIndexesToErase.size() > 0 && i == listOfIndexesToErase.front()) {
-            listOfIndexesToErase.pop_front();
-        }
-        else {
-            filtered.push_back((*unfilteredMagnetics)[i]);
-        }
-    }
-
-    if (filtered.size() != newScoring.size()) {
-        throw CalculationException(ErrorCode::CALCULATION_ERROR,
-            "Something wrong happened while filtering (" + filterName + "), size of filtered: " +
-            std::to_string(filtered.size()) + ", size of newScoring: " + std::to_string(newScoring.size()));
-    }
-    return {filtered, newScoring};
+    return {std::move(survivors), std::move(newScoring)};
 }
 
 } // anonymous namespace
@@ -134,6 +175,54 @@ std::vector<std::pair<Magnetic, double>> CoreAdviser::MagneticCoreFilterAreaProd
         apply_normalized_scoring(&filteredMagneticsWithScoring, newScoring, weight, CoreAdviser::CoreAdviserFilters::EFFICIENCY);
     }
     return filteredMagneticsWithScoring;
+}
+
+std::vector<std::pair<Magnetic, double>> CoreAdviser::MagneticCoreFilterAreaProduct::filter_magnetics_from(const std::vector<std::pair<Magnetic, double>>& source, Inputs inputs, double weight, std::optional<size_t> keepBest) {
+    // Same gate and scoring as filter_magnetics (writeBack=false there too), source left intact.
+    auto [survivors, newScoring] = evaluate_and_cull_from(
+        source, inputs,
+        [this](Magnetic* m, Inputs* i) { return _filter.evaluate_magnetic(m, i); },
+        "AreaProduct");
+
+    // Scores and ORDER are decided on the survivors' indices, exactly as apply_normalized_scoring
+    // decides them on a copied pool: normalized over ALL survivors, every survivor's scoring
+    // recorded, stable descending sort. Only then are the candidates copied, and with keepBest
+    // only the first keepBest of that order (ABT #1785): the result is identical to copying every
+    // survivor, sorting and resize(keepBest), without holding the survivors the cull drops (tens
+    // of thousands of candidates on the available-cores adviser's stacked search).
+    std::vector<double> scores(survivors.size());
+    for (size_t i = 0; i < survivors.size(); ++i) {
+        scores[i] = source[survivors[i]].second;
+    }
+    std::vector<size_t> order(survivors.size());
+    std::iota(order.begin(), order.end(), size_t(0));
+    if (weight > 0 && !survivors.empty()) {
+        auto normalizedScoring = normalize_scoring(newScoring, weight,
+                                                   (*_filterConfiguration)[CoreAdviser::CoreAdviserFilters::EFFICIENCY]);
+        if (normalizedScoring.size() != survivors.size()) {
+            throw CalculationException(ErrorCode::CALCULATION_ERROR,
+                "AreaProduct: " + std::to_string(normalizedScoring.size()) + " normalized scores for " +
+                std::to_string(survivors.size()) + " survivors");
+        }
+        for (size_t i = 0; i < survivors.size(); ++i) {
+            scores[i] += normalizedScoring[i];
+            add_scoring(source[survivors[i]].first.get_reference(), CoreAdviser::CoreAdviserFilters::EFFICIENCY,
+                        normalizedScoring[i]);
+        }
+        std::stable_sort(order.begin(), order.end(), [&scores](size_t left, size_t right) {
+            return scores[left] > scores[right];
+        });
+    }
+    size_t kept = order.size();
+    if (keepBest && kept > keepBest.value()) {
+        kept = keepBest.value();
+    }
+    std::vector<std::pair<Magnetic, double>> filtered;
+    filtered.reserve(kept);
+    for (size_t position = 0; position < kept; ++position) {
+        filtered.emplace_back(source[survivors[order[position]]].first, scores[order[position]]);
+    }
+    return filtered;
 }
 
 CoreAdviser::MagneticCoreFilterEnergyStored::MagneticCoreFilterEnergyStored(Inputs inputs, std::map<std::string, std::string> models) {
@@ -206,7 +295,7 @@ std::vector<std::pair<Magnetic, double>> CoreAdviser::MagneticCoreFilterLosses::
         // purely to reproduce a cull the pipeline already performed.
         logEntry("Losses filter skipped at zero weight (optimisation-only; coil-fit "
                  "feasibility is gated by the Cost filter).", "CoreAdviser", 2);
-        return *unfilteredMagnetics;
+        return std::exchange(*unfilteredMagnetics, {});  // consumed, not copied (ABT #1785)
     }
     // Restore coil_delimit_and_compact even if the loss evaluation (which flips it) throws.
     auto& settings = Settings::GetInstance();
@@ -252,7 +341,7 @@ std::vector<std::pair<Magnetic, double>> CoreAdviser::MagneticCoreFilterDimensio
 // the inductance / impedance requirement (e.g. powder cores attempting CMC).
 std::vector<std::pair<Magnetic, double>> CoreAdviser::MagneticCoreFilterTurnCount::filter_magnetics(std::vector<std::pair<Magnetic, double>>* unfilteredMagnetics, Inputs inputs, double weight, bool firstFilter) {
     if (weight <= 0) {
-        return *unfilteredMagnetics;
+        return std::exchange(*unfilteredMagnetics, {});  // consumed, not copied (ABT #1785)
     }
     auto [filteredMagneticsWithScoring, newScoring] = evaluate_and_cull(
         unfilteredMagnetics, inputs,
@@ -291,7 +380,7 @@ std::vector<std::pair<Magnetic, double>> CoreAdviser::MagneticCoreFilterMinimumI
         // feasibility is intentionally not enforced here.
         logEntry("MinimumImpedance filter skipped at zero weight (expensive solve; "
                  "pipeline always gates it at a fixed positive weight).", "CoreAdviser", 2);
-        return *unfilteredMagnetics;
+        return std::exchange(*unfilteredMagnetics, {});  // consumed, not copied (ABT #1785)
     }
     auto& settings = Settings::GetInstance();
     SettingsGuard<bool> coilCompactGuard(settings, &Settings::get_coil_delimit_and_compact,
@@ -361,7 +450,7 @@ std::vector<std::pair<Magnetic, double>> CoreAdviser::MagneticCoreFilterTemperat
         // rather than run it purely to gate.
         logEntry("Temperature filter skipped at zero weight (expensive thermal solve; "
                  "efficiency-scoped preference).", "CoreAdviser", 2);
-        return *unfilteredMagnetics;
+        return std::exchange(*unfilteredMagnetics, {});  // consumed, not copied (ABT #1785)
     }
     auto [filteredMagneticsWithScoring, newScoring] = evaluate_and_cull(
         unfilteredMagnetics, inputs,

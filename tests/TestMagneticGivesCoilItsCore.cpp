@@ -16,6 +16,7 @@
 #include "physical_models/InitialPermeability.h"
 #include "support/Settings.h"
 #include "support/Utils.h"
+#include "TestingUtils.h"
 
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_string.hpp>
@@ -290,4 +291,42 @@ TEST_CASE("An outside series link's run row is blocked in its own turn's column 
     CHECK(outsideLinks == 2);    // Primary section 0 -> 1 and 1 -> 2
     CHECK(endsWithStub >= 1);    // the landing of the first link climbs its column
     settings.reset();
+}
+
+// ABT #1785 guard: the core a Magnetic gives its coil is the outline view, not a second full copy:
+// the material reduced to its name and no geometrical description (an inline material is ~30 kB,
+// held once per candidate by the CoreAdviser's 60 000-candidate datasets). Everything the coil
+// reads for the outside-link room (family, shape dimensions, width, depth, columns) is unchanged.
+TEST_CASE("A Magnetic gives its coil a core outline without the material tables (ABT #1785)",
+          "[constructive-model][magnetic][coil][abt-1785]") {
+    auto& settings = OpenMagnetics::Settings::GetInstance();
+    settings.reset();
+    const auto design = load_abt1533_design();
+    const auto& magneticJson = design.at("magnetic");
+
+    auto core = OpenMagneticsTesting::get_quick_core("PQ 50/50", OpenMagneticsTesting::get_ground_gap(0.0005), 1, "3C95");
+    core.get_mutable_functional_description().set_material(core.resolve_material());
+    REQUIRE(std::holds_alternative<MAS::CoreMaterial>(core.get_functional_description().get_material()));
+    REQUIRE(core.get_geometrical_description());
+    const std::string materialName = core.get_material_name();
+
+    OpenMagnetics::Magnetic magnetic;
+    magnetic.set_coil(OpenMagnetics::Coil(magneticJson.at("coil"), false));
+    magnetic.set_core(core);
+    check_coil_has_core_of(magnetic);
+
+    const auto& outline = magnetic.get_coil().get_core_geometry();
+    REQUIRE(outline);
+    const auto& outlineMaterial = outline->get_functional_description().get_material();
+    REQUIRE(std::holds_alternative<std::string>(outlineMaterial));
+    CHECK(std::get<std::string>(outlineMaterial) == materialName);
+    CHECK_FALSE(outline->get_geometrical_description());
+
+    CHECK(outline->get_shape_family() == magnetic.get_core().get_shape_family());
+    CHECK(json(outline->resolve_shape()) == json(magnetic.get_core().resolve_shape()));
+    CHECK(json(outline->get_columns()) == json(magnetic.get_core().get_columns()));
+    CHECK(json(outline->get_processed_description().value()) == json(magnetic.get_core().get_processed_description().value()));
+    // The Magnetic's own core is untouched.
+    CHECK(std::holds_alternative<MAS::CoreMaterial>(magnetic.get_core().get_functional_description().get_material()));
+    CHECK(magnetic.get_core().get_geometrical_description());
 }

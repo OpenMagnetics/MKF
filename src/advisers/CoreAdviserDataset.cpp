@@ -211,6 +211,10 @@ std::vector<CoreShape> CoreAdviser::create_custom_core_shapes(Inputs inputs) {
 
 std::vector<std::pair<Magnetic, double>> CoreAdviser::create_magnetic_dataset(Inputs inputs, std::vector<Core>* cores, bool includeStacks) {
     std::vector<std::pair<Magnetic, double>> magnetics;
+    // ABT #1785: an upper bound up front (every core, every stack count): a Magnetic has no move
+    // operations, so growing by push_back deep-copied the dataset at each reallocation. Unused slots
+    // are never touched and cost address space only.
+    magnetics.reserve(cores->size() * ((includeStacks && settings.get_core_adviser_include_stacks()) ? defaults.coreAdviserMaximumNumberStacks : 1));
     Coil coil = get_dummy_coil(inputs, get_application() != MAS::MagneticApplication::INTERFERENCE_SUPPRESSION);
     auto includeToroidalCores = settings.get_use_toroidal_cores();
     auto includeConcentricCores = settings.get_use_concentric_cores();
@@ -324,6 +328,10 @@ std::vector<std::pair<Magnetic, double>> CoreAdviser::create_magnetic_dataset(In
 
 std::vector<std::pair<Magnetic, double>> CoreAdviser::create_magnetic_dataset(Inputs inputs, std::vector<CoreShape>* shapes, bool includeStacks) {
     std::vector<std::pair<Magnetic, double>> magnetics;
+    // ABT #1785: an upper bound up front (every core, every stack count): a Magnetic has no move
+    // operations, so growing by push_back deep-copied the dataset at each reallocation. Unused slots
+    // are never touched and cost address space only.
+    magnetics.reserve(shapes->size() * ((includeStacks && settings.get_core_adviser_include_stacks()) ? defaults.coreAdviserMaximumNumberStacks : 1));
     Coil coil = get_dummy_coil(inputs, get_application() != MAS::MagneticApplication::INTERFERENCE_SUPPRESSION);
     auto includeToroidalCores = settings.get_use_toroidal_cores();
     auto includeConcentricCores = settings.get_use_concentric_cores();
@@ -446,13 +454,36 @@ void CoreAdviser::expand_magnetic_dataset_with_stacks(Inputs inputs, std::vector
     Magnetic magnetic;
 
     magnetic.set_coil(std::move(coil));
+
+    // ABT #1785: size the dataset for every stacked variant BEFORE appending any. Grown by
+    // push_back, the vector reallocated as it went, and a Magnetic has no move operations, so each
+    // reallocation deep-copied the whole dataset (inline core material included) and held both
+    // buffers at once: 16 000 -> 60 000 candidates passed through a 32 000 + 65 000 slot peak.
+    // The bound is exact in the family test and an upper bound in the envelope test below; the
+    // slots the envelope rejects are never touched, so they cost address space, not memory.
+    auto isStackable = [](const Core& core) {
+        auto family = core.get_shape_family();
+        return family == CoreShapeFamily::E || family == CoreShapeFamily::PLANAR_E || family == CoreShapeFamily::T ||
+               family == CoreShapeFamily::U || family == CoreShapeFamily::C;
+    };
+    size_t stackedVariantsBound = 0;
+    for (auto& core : *cores) {
+        if (!includeToroidalCores && core.get_type() == CoreType::TOROIDAL) {
+            continue;
+        }
+        if (isStackable(core)) {
+            stackedVariantsBound += defaults.coreAdviserMaximumNumberStacks - 1;
+        }
+    }
+    magnetics->reserve(magnetics->size() + stackedVariantsBound);
+
     for (auto& core : *cores){
         if (!includeToroidalCores && core.get_type() == CoreType::TOROIDAL) {
             continue;
         }
 
 
-        if (core.get_shape_family() == CoreShapeFamily::E || core.get_shape_family() == CoreShapeFamily::PLANAR_E || core.get_shape_family() == CoreShapeFamily::T || core.get_shape_family() == CoreShapeFamily::U || core.get_shape_family() == CoreShapeFamily::C) {
+        if (isStackable(core)) {
 
             core.process_data();
             if (!core.process_gap()) {

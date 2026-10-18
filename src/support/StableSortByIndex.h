@@ -35,12 +35,27 @@ void stable_sort_by_index(std::vector<Item>& items, Compare compare) {
     if (alreadyInOrder) {
         return;
     }
-    std::vector<Item> sorted;
-    sorted.reserve(items.size());
-    for (size_t index : order) {
-        sorted.push_back(std::move(items[index]));
+    // Apply the permutation IN PLACE, one cycle at a time (ABT #1785). Gathering into a second
+    // vector held two full copies of the items at once (the "moves" are copies, see above): on an
+    // adviser pool of 60 000 candidates that alone was gigabytes. Following the cycles holds one
+    // item aside per cycle and assigns each item exactly once, so it costs the same n copies and
+    // gives the same order. order[position] is the index of the item that belongs at `position`.
+    std::vector<bool> placed(items.size(), false);
+    for (size_t start = 0; start < order.size(); ++start) {
+        if (placed[start] || order[start] == start) {
+            placed[start] = true;
+            continue;
+        }
+        Item held = std::move(items[start]);
+        size_t position = start;
+        while (order[position] != start) {
+            items[position] = std::move(items[order[position]]);
+            placed[position] = true;
+            position = order[position];
+        }
+        items[position] = std::move(held);
+        placed[position] = true;
     }
-    items.swap(sorted);
 }
 
 } // namespace OpenMagnetics

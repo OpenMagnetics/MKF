@@ -11,6 +11,7 @@
 #include "processors/MagneticSimulator.h"
 #include "processors/Outputs.h"
 #include "processors/Inputs.h"
+#include <optional>
 #include "constructive_models/Core.h"
 #include "constructive_models/Mas.h"
 #include <cmath>
@@ -440,7 +441,15 @@ class CoreAdviser {
 
         public:
             MagneticCoreFilterAreaProduct(Inputs inputs);
+            // Every filter_magnetics CONSUMES the pool it is given (ABT #1785): callers replace the
+            // pool with the result, and the survivors are handed back without a second copy.
             std::vector<std::pair<Magnetic, double>> filter_magnetics(std::vector<std::pair<Magnetic, double>>* unfilteredMagnetics, Inputs inputs, double weight=1, bool firstFilter=false);
+            // The same filter over a pool that must survive it (the adviser's whole dataset, which
+            // the retries and the stacked second search start from again): only the survivors are
+            // copied, instead of copying the whole dataset first and filtering the copy. With
+            // keepBest only the best keepBest of them are copied: the same result as filtering
+            // everything and then resize(keepBest), without holding the rest.
+            std::vector<std::pair<Magnetic, double>> filter_magnetics_from(const std::vector<std::pair<Magnetic, double>>& source, Inputs inputs, double weight=1, std::optional<size_t> keepBest=std::nullopt);
     };
     
     class MagneticCoreFilterEnergyStored : public MagneticCoreFilter {
