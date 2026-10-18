@@ -635,11 +635,11 @@ std::vector<std::pair<OpenMagnetics::Mas, double>> replay_web_suppression_magnet
     double wDims = weights.at(MagneticFilters::DIMENSIONS);
     std::vector<MagneticFilterOperation> filterFlow{
         MagneticFilterOperation(MagneticFilters::CORE_MINIMUM_IMPEDANCE, true, true, true, std::max(1.0, wDims * 2.0)),
-        MagneticFilterOperation(MagneticFilters::COST, true, true, wCost),
-        MagneticFilterOperation(MagneticFilters::LOSSES, true, true, wLosses),
-        MagneticFilterOperation(MagneticFilters::DIMENSIONS, true, true, wDims),
-        MagneticFilterOperation(MagneticFilters::LEAKAGE_INDUCTANCE, true, true, wDims),
-        MagneticFilterOperation(MagneticFilters::TURN_COUNT, true, false, std::max(wLosses, wDims)),
+        MagneticFilterOperation(MagneticFilters::COST, true, true, false, wCost),
+        MagneticFilterOperation(MagneticFilters::LOSSES, true, true, false, wLosses),
+        MagneticFilterOperation(MagneticFilters::DIMENSIONS, true, true, false, wDims),
+        MagneticFilterOperation(MagneticFilters::LEAKAGE_INDUCTANCE, true, true, false, wDims),
+        MagneticFilterOperation(MagneticFilters::TURN_COUNT, true, false, false, std::max(wLosses, wDims)),
     };
 
     OpenMagnetics::MagneticAdviser adviser;

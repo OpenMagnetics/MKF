@@ -705,7 +705,9 @@ enum class MagneticFilters : int {
 
 class MagneticFilterOperation {
     public:
-    MagneticFilterOperation(MagneticFilters filter, bool invert, bool log, double weight) : filter(filter), invert(invert), log(log), weight(weight) {};
+    // Every construction states whether the filter rejects a part (strictlyRequired) or only ranks it
+    // (ABT #1231): a second constructor without the flag, one bool apart, made dropping it compile and
+    // silently turned seven of the catalogue adviser's eight default gates into rankings.
     MagneticFilterOperation(MagneticFilters filter, bool invert, bool log, bool strictlyRequired, double weight) : filter(filter), invert(invert), log(log), strictlyRequired(strictlyRequired), weight(weight) {};
     MagneticFilterOperation() {};
     virtual ~MagneticFilterOperation() = default;

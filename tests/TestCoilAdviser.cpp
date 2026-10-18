@@ -3107,7 +3107,7 @@ TEST_CASE("Test_CoilAdviser_Scoring_Excludes_Rejected_Designs", "[adviser][coil-
         mas.set_inputs(inputs);
         masMagnetics.push_back(mas);
     }
-    std::vector<MagneticFilterOperation> flow = {MagneticFilterOperation(MagneticFilters::COST, true, true, 1.0)};
+    std::vector<MagneticFilterOperation> flow = {MagneticFilterOperation(MagneticFilters::COST, true, true, false, 1.0)};
     CoilAdviser coilAdviser;
     coilAdviser.load_filter_flow(flow, inputs);
     std::vector<std::pair<OpenMagnetics::Mas, double>> rejected;

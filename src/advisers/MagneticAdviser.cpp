@@ -618,9 +618,9 @@ std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic_fast(
 std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic(Inputs inputs, std::map<MagneticFilters, double> weights, size_t maximumNumberResults) {
     LossSolveMemoScope lossSolveMemoScope;  // exact repeats of a loss solve are answered from this run's memo
     std::vector<MagneticFilterOperation> customMagneticFilterFlow{
-        MagneticFilterOperation(MagneticFilters::COST, true, true, weights[MagneticFilters::COST]),
-        MagneticFilterOperation(MagneticFilters::LOSSES, true, true, weights[MagneticFilters::LOSSES]),
-        MagneticFilterOperation(MagneticFilters::DIMENSIONS, true, true, weights[MagneticFilters::DIMENSIONS]),
+        MagneticFilterOperation(MagneticFilters::COST, true, true, false, weights[MagneticFilters::COST]),
+        MagneticFilterOperation(MagneticFilters::LOSSES, true, true, false, weights[MagneticFilters::LOSSES]),
+        MagneticFilterOperation(MagneticFilters::DIMENSIONS, true, true, false, weights[MagneticFilters::DIMENSIONS]),
     };
     return get_advised_magnetic(inputs, customMagneticFilterFlow, maximumNumberResults);
 }

@@ -182,27 +182,30 @@ class MagneticAdviser{
         /// COST and LOSSES use log normalization (spans orders of magnitude).
         /// DIMENSIONS uses linear normalization (intuitive volume comparison).
         std::vector<MagneticFilterOperation> _defaultCustomMagneticFilterFlow{
-            MagneticFilterOperation(MagneticFilters::COST, true, true, 1.0),
-            MagneticFilterOperation(MagneticFilters::LOSSES, true, true, 1.0),
-            MagneticFilterOperation(MagneticFilters::DIMENSIONS, true, false, 1.0),  // Linear for DIMENSIONS
+            MagneticFilterOperation(MagneticFilters::COST, true, true, false, 1.0),
+            MagneticFilterOperation(MagneticFilters::LOSSES, true, true, false, 1.0),
+            MagneticFilterOperation(MagneticFilters::DIMENSIONS, true, false, false, 1.0),  // Linear for DIMENSIONS
         };
 
         /// @brief Default filter flow for catalogue magnetic selection.
-        /// These filters are strictly required to ensure compatibility with design requirements.
+        /// Strictness is stated per filter (ABT #1231). The strict ones REJECT a part: a catalogue
+        /// part that saturates at the operating point (SATURATION), or exceeds its own published
+        /// rated/saturation currents (DATASHEET_LIMITS), or cannot give the turns ratios is not
+        /// recommended. The others only rank the parts that pass.
         /// DATASHEET_LIMITS goes first: it gates a catalogue part against its OWN published
         /// electrical limits (rated/saturation currents, etc.) from manufacturerInfo.datasheetInfo
         /// — the cheapest reject available, and a pure pass-through for parts without a datasheet
         /// block (every designed/custom magnetic). It existed since ABT #19 but was never wired
         /// into this flow, so catalogue parts were only ever gated by MKF-simulated quantities.
         std::vector<MagneticFilterOperation> _defaultCatalogueMagneticFilterFlow{
-            MagneticFilterOperation(MagneticFilters::DATASHEET_LIMITS, true, false, 1.0),
+            MagneticFilterOperation(MagneticFilters::DATASHEET_LIMITS, true, false, true, 1.0),
             MagneticFilterOperation(MagneticFilters::TURNS_RATIOS, true, false, true, 1.0),
-            MagneticFilterOperation(MagneticFilters::MAXIMUM_DIMENSIONS, true, false, 1.0),
-            MagneticFilterOperation(MagneticFilters::SATURATION, true, false, 1.0),
-            MagneticFilterOperation(MagneticFilters::DC_CURRENT_DENSITY, true, false, 1.0),
-            MagneticFilterOperation(MagneticFilters::EFFECTIVE_CURRENT_DENSITY, true, false, 1.0),
-            MagneticFilterOperation(MagneticFilters::IMPEDANCE, true, false, 1.0),
-            MagneticFilterOperation(MagneticFilters::MAGNETIZING_INDUCTANCE, true, false, 1.0),
+            MagneticFilterOperation(MagneticFilters::MAXIMUM_DIMENSIONS, true, false, false, 1.0),
+            MagneticFilterOperation(MagneticFilters::SATURATION, true, false, true, 1.0),
+            MagneticFilterOperation(MagneticFilters::DC_CURRENT_DENSITY, true, false, false, 1.0),
+            MagneticFilterOperation(MagneticFilters::EFFECTIVE_CURRENT_DENSITY, true, false, false, 1.0),
+            MagneticFilterOperation(MagneticFilters::IMPEDANCE, true, false, false, 1.0),
+            MagneticFilterOperation(MagneticFilters::MAGNETIZING_INDUCTANCE, true, false, false, 1.0),
         };
         bool _simulateResults = true;
         bool _uniqueCoreShapes = false;

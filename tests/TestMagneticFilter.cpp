@@ -1430,7 +1430,7 @@ TEST_CASE("MagneticAdviser keeps a core COST cannot price and ranks it last for 
         return OpenMagnetics::magnetic_autocomplete(magnetic);
     };
     std::vector<OpenMagnetics::Magnetic> catalogue{part("46", 0.001, 21, "unpriced MgZn"), part("N87", 0.001, 21, "priced MnZn")};
-    std::vector<MagneticFilterOperation> flow{MagneticFilterOperation(MagneticFilters::COST, true, false, 1.0)};
+    std::vector<MagneticFilterOperation> flow{MagneticFilterOperation(MagneticFilters::COST, true, false, false, 1.0)};
     MagneticAdviser adviser;
     std::vector<std::pair<OpenMagnetics::Mas, double>> results;
     REQUIRE_NOTHROW(results = adviser.get_advised_magnetic(inputs, catalogue, flow, 5, false));

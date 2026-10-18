@@ -555,3 +555,65 @@ TEST_CASE("A two-winding operating point searches the coupled inductors of a cat
     REQUIRE(results.size() == 1);
     REQUIRE(results[0].first.get_magnetic().get_reference() == "COUPLED");
 }
+
+TEST_CASE("The catalogue adviser's default flow rejects a part beyond its own datasheet limits",
+          "[datasheet-only][datasheet-limits][adviser][abt-1231]") {
+    // ABT #1231: seven of the eight default catalogue filters were built with the constructor that
+    // leaves strictlyRequired false, so a part failing DATASHEET_LIMITS was kept, scored 0 on it and
+    // could be recommended. DATASHEET_LIMITS and SATURATION now reject. PAST has its 10 % saturation
+    // current at 2.5 A against a 2.8 A peak (and the same 3 A rating as ROOMY); ROOMY saturates at 10 A.
+    auto past = ten_microhenry("PAST");
+    auto roomy = ten_microhenry("ROOMY");
+    roomy.saturationCurrents = {{10, 10.0}, {30, 12.0}};
+    std::vector<OpenMagnetics::Magnetic> catalogue{datasheet_part(past), datasheet_part(roomy)};
+    auto inputs = buck_inductor_inputs(10e-6, 2.6);  // peak 2.8 A, RMS below the 3 A rating
+
+    auto filter = MagneticFilter::factory(MagneticFilters::DATASHEET_LIMITS);
+    auto pastMagnetic = datasheet_part(past);
+    auto roomyMagnetic = datasheet_part(roomy);
+    REQUIRE_FALSE(filter->evaluate_magnetic(&pastMagnetic, &inputs).first);
+    REQUIRE(filter->evaluate_magnetic(&roomyMagnetic, &inputs).first);
+
+    MagneticAdviser adviser;
+    auto results = adviser.get_advised_magnetic(inputs, catalogue, 2);
+    std::set<std::string> references;
+    for (auto& [mas, score] : results) {
+        references.insert(mas.get_magnetic().get_reference());
+    }
+    CHECK(references.count("PAST") == 0);
+    CHECK(references.count("ROOMY") == 1);
+}
+
+TEST_CASE("The catalogue adviser's default flow rejects a part that saturates at the operating point",
+          "[adviser][saturation][abt-1231]") {
+    // ABT #1231: a catalogue part whose core saturates at the design current was kept by the
+    // default flow (SATURATION built non-strict), scored 0 on that filter and could rank into the
+    // results. Two otherwise identical E 35 / 3C97 / 10-turn inductors at 8 A DC: UNGAPPED saturates,
+    // GAPPED (2 mm ground gap, B ~ 0.05 T) does not. Only GAPPED may be recommended.
+    settings.reset();
+    clear_databases();
+    auto ungapped = OpenMagneticsTesting::get_quick_magnetic("E 35", json::array(), {10}, 1, "3C97");
+    auto gapped = OpenMagneticsTesting::get_quick_magnetic("E 35", OpenMagneticsTesting::get_ground_gap(0.002), {10}, 1, "3C97");
+    for (auto [magnetic, reference] : {std::pair<OpenMagnetics::Magnetic*, std::string>{&ungapped, "UNGAPPED"}, {&gapped, "GAPPED"}}) {
+        MagneticManufacturerInfo manufacturerInfo;
+        manufacturerInfo.set_name("Test Maker");
+        manufacturerInfo.set_reference(reference);
+        magnetic->set_manufacturer_info(manufacturerInfo);
+    }
+    auto inputs = OpenMagnetics::Inputs::create_quick_operating_point_only_current(100e3, 6e-6, 25, WaveformLabel::TRIANGULAR, 1.0, 0.5, 8.0);
+
+    auto saturation = MagneticFilter::factory(MagneticFilters::SATURATION);
+    REQUIRE_FALSE(saturation->evaluate_magnetic(&ungapped, &inputs).first);
+    REQUIRE(saturation->evaluate_magnetic(&gapped, &inputs).first);
+
+    std::vector<OpenMagnetics::Magnetic> catalogue{ungapped, gapped};
+    MagneticAdviser adviser;
+    auto results = adviser.get_advised_magnetic(inputs, catalogue, 2);
+    std::set<std::string> references;
+    for (auto& [mas, score] : results) {
+        references.insert(mas.get_magnetic().get_reference());
+    }
+    CHECK(references.count("UNGAPPED") == 0);
+    CHECK(references.count("GAPPED") == 1);
+    settings.reset();
+}

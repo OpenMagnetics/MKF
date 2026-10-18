@@ -121,9 +121,9 @@ class CoilAdviser : public WireAdviser {
             ? Settings::GetInstance().get_preferred_wire_standard()
             : std::optional<WireStandard>(defaults.commonWireStandard);
         std::vector<MagneticFilterOperation> _defaultCustomMagneticFilterFlow{
-            MagneticFilterOperation(MagneticFilters::EFFECTIVE_RESISTANCE, true, true, 1.0),
+            MagneticFilterOperation(MagneticFilters::EFFECTIVE_RESISTANCE, true, true, false, 1.0),
             MagneticFilterOperation(MagneticFilters::EFFECTIVE_CURRENT_DENSITY, true, true, true, 1.0),  // Strictly required - designs exceeding current density are invalid
-            MagneticFilterOperation(MagneticFilters::MAGNETOMOTIVE_FORCE, true, true, 1.0),
+            MagneticFilterOperation(MagneticFilters::MAGNETOMOTIVE_FORCE, true, true, false, 1.0),
         };
 
         // ABT #415: zero-result diagnosis, accumulated across every pattern/insulation attempt of
