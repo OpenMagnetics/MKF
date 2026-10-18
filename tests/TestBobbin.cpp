@@ -14,6 +14,7 @@
 #include <filesystem>
 #include <functional>
 #include <optional>
+#include <cmath>
 #include <fstream>
 #include <iostream>
 #include <magic_enum.hpp>
@@ -1389,4 +1390,38 @@ TEST_CASE("Molded cores and the bobbinless WE UI/EI products never take a bobbin
             CHECK(processed.get_column_thickness() > 0);
         }
     }
+}
+
+// ABT #867: MVB++ read the winding windows of the bobbin's processedDescription after
+// magnetic_autocomplete_safe (Core(json), Coil(json, false), then MKF's magnetic_autocomplete)
+// and found uninitialised coordinates. MKF must hand back every window with a position.
+TEST_CASE("Test_Autocompleted_Bobbin_Winding_Windows_Carry_Coordinates", "[constructive-model][bobbin][abt-867]") {
+    settings.reset();
+    clear_databases();
+    for (std::string example : {"01_simple_inductor_etd34_n87.json", "01_simple_inductor_etd34_n87_1Hz.json"}) {
+        INFO(example);
+        std::ifstream file(std::string(__FILE__).substr(0, std::string(__FILE__).rfind('/')) + "/../MAS/examples/" + example);
+        REQUIRE(file.good());
+        json masJson = json::parse(file);
+        json magneticJson = masJson.at("magnetic");
+        OpenMagnetics::Magnetic magnetic;
+        magnetic.set_core(OpenMagnetics::Core(magneticJson.at("core")));
+        magnetic.set_coil(OpenMagnetics::Coil(magneticJson.at("coil"), false));
+        auto completed = OpenMagnetics::magnetic_autocomplete(magnetic);
+        auto bobbin = completed.get_mutable_coil().resolve_bobbin();
+        REQUIRE(bobbin.get_processed_description());
+        auto windingWindows = bobbin.get_processed_description()->get_winding_windows();
+        REQUIRE(!windingWindows.empty());
+        for (auto& windingWindow : windingWindows) {
+            REQUIRE(windingWindow.get_coordinates());
+            auto coordinates = windingWindow.get_coordinates().value();
+            REQUIRE(coordinates.size() >= 2);
+            CHECK(std::isfinite(coordinates[0]));
+            CHECK(std::isfinite(coordinates[1]));
+            // The centre of the window lies between the column and the window's outer edge.
+            CHECK(coordinates[0] > 0);
+            CHECK(coordinates[0] < 0.1);
+        }
+    }
+    settings.reset();
 }
