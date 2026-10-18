@@ -771,11 +771,21 @@ SolvedLosses MagneticSimulator::solve_losses_at_operating_temperature(const Oper
         coreTemperature = proposedCoreTemperature;
         windingTemperature = proposedWindingTemperature;
     }
-    throw CalculationException(ErrorCode::CALCULATION_INVALID_RESULT,
-        "Losses of '" + magnetic.get_reference() + "' and the temperatures they produce did not settle within " +
-        std::to_string(kOperatingTemperatureMaximumIterations) + " iterations (tolerance " +
-        std::to_string(kOperatingTemperatureTolerance) + " K): no self-consistent operating temperature exists "
-        "(thermal runaway?) or the iteration oscillates. History:" + history);
+    // ABT #1960: the loop found no temperatures within its tolerance of the ones their losses produce. That is
+    // the same answer as the network failing on an iterate's losses or the held winding running away: this
+    // point has no thermal operating point the loop can report, and it is that point's finding, under the
+    // caller's NoThermalOperatingPointPolicy (simulate: losses at ambient, no temperature; the advisers: THROW),
+    // not a refusal of the whole design. Seen: a saturating 78 EL 25/6.3 inductor whose B(T) drops 0.637 ->
+    // 0.630 T between 135.890 and 135.895 C, so its core losses jump 4.19 -> 3.81 W and the core temperature
+    // they produce 138.1 -> 131.1 C: the iterates close in on that step from both sides and never land within
+    // the tolerance.
+    throw NoThermalOperatingPointException(ErrorCode::CALCULATION_DIVERGED,
+        "No thermal operating point: the losses of '" + magnetic.get_reference() + "' and the temperatures they "
+        "produce did not settle within " + std::to_string(kOperatingTemperatureMaximumIterations) +
+        " iterations (tolerance " + std::to_string(kOperatingTemperatureTolerance) + " K): no temperature was found "
+        "within the tolerance of the one its own losses produce (thermal runaway, or losses that jump with temperature "
+        "so the iterates close in on the jump from both sides). History:" + history,
+        lossesAtAmbient.value());
 }
 
 namespace {

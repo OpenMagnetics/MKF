@@ -196,14 +196,14 @@ class MagneticSimulator {
         // (InitialPermeability::get_maximum_ferromagnetic_data_temperature: the last table point
         // when the table ends below Curie, else Curie), and where the evaluated Steinmetz ranges' ct(T)
         // are positive (get_core_data_ceiling, ABT #1908). Not settling within
-        // kOperatingTemperatureMaximumIterations THROWS (there is no operating point to report, and
-        // the last iterate is not one). Being driven to that ceiling holds the core there and settles the
-        // winding alone; the held core is magnetized with mu_r = 1 only when the ceiling is its Curie
+        // kOperatingTemperatureMaximumIterations is no thermal operating point (there is none to report,
+        // and the last iterate is not one, ABT #1960). Being driven to that ceiling holds the core there
+        // and settles the winding alone; the held core is magnetized with mu_r = 1 only when the ceiling is its Curie
         // temperature, and keeps its last tabulated permeability when it is the end of a mu_i(T) table
         // below Curie (explicit exception approved by Alf, 2026-10-14,
         // ABT #1855; analyze_results reports it). The thermal network failing to converge on an
-        // iterate's losses, and the held winding running away, throw NoThermalOperatingPointException
-        // carrying the losses at ambient (ABT #1876).
+        // iterate's losses, the held winding running away, and the loop not settling throw
+        // NoThermalOperatingPointException carrying the losses at ambient (ABT #1876, #1960).
         // `windingLossesOutput` / `temperatureOutput`, when given, receive the winding losses and
         // the full-network temperature solved together with the returned core losses (asking for
         // winding losses of an unwound coil throws). `windingLossesScope` selects the winding-loss

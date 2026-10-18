@@ -19,6 +19,7 @@
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
 #include <catch2/matchers/catch_matchers_string.hpp>
 #include <catch2/matchers/catch_matchers_predicate.hpp>
+#include <catch2/matchers/catch_matchers_exception.hpp>
 #include <cmath>
 #include <vector>
 
@@ -2955,3 +2956,64 @@ TEST_CASE("A loss-temperature loop with no fixed point below the data limit pays
     CHECK(simulator.get_last_lowest_fixed_point_search_evaluations() <= coarseSteps);
     settings.reset();
 }
+
+TEST_CASE("A loss-temperature loop that does not settle is that point's NO_THERMAL_OPERATING_POINT, not a refusal of the design",
+          "[processor][magnetic-simulator][abt-1960]") {
+    // ABT #1960: Fair-Rite 78 EL 25/6.3, one winding of 6 turns on the primary side, 200 kHz, 25 C, completed as the
+    // web's loader completes it (mas_autocomplete, not simulated). The core saturates and its B(T) steps down
+    // (0.637 -> 0.630 T between 135.890 and 135.895 C), so the core losses jump 4.19 -> 3.81 W and the loop's
+    // iterates close in on that step from both sides, never within the 2 K tolerance. simulate threw for the whole
+    // design ("did not settle within 100 iterations"); like a network that does not converge or a winding that runs
+    // away (ABT #1876), it is that point having no thermal operating point: losses at ambient, no temperature, and the
+    // finding from analyze_results. The step comes from the magnetizing model's DC point (ABT #1942): if a change
+    // there makes this design settle, this fixture no longer reaches the path and needs another.
+    settings.reset();
+    auto path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "single_winding_78_el25_on_primary.json");
+    auto completed = OpenMagnetics::mas_autocomplete(OpenMagneticsTesting::mas_loader(path), false, json{});
+    auto magnetic = completed.get_magnetic();
+    auto inputs = completed.get_inputs();
+    REQUIRE(inputs.get_operating_points().size() == 1);
+    const double ambientTemperature = inputs.get_operating_points()[0].get_conditions().get_ambient_temperature();
+    REQUIRE(ambientTemperature == 25);
+
+    SECTION("the advisers' policy still throws, as no thermal operating point") {
+        OpenMagnetics::Magnetic woundMagnetic = magnetic;
+        REQUIRE(woundMagnetic.get_coil().get_turns_description());
+        OperatingPoint operatingPoint = inputs.get_operating_points()[0];
+        std::optional<WindingLossesOutput> windingLossesOutput;
+        std::optional<TemperatureOutput> temperatureOutput;
+        CHECK_THROWS_MATCHES(MagneticSimulator().calculate_core_losses(operatingPoint, woundMagnetic, &windingLossesOutput, &temperatureOutput,
+                                                                       WindingLossesScope::FULL, NoThermalOperatingPointPolicy::THROW),
+                             NoThermalOperatingPointException,
+                             Catch::Matchers::MessageMatches(Catch::Matchers::ContainsSubstring("did not settle within")));
+    }
+
+    SECTION("simulate gives the point its losses at ambient, and analyze_results names it") {
+        MagneticSimulator simulator;
+        OpenMagnetics::Mas simulated;
+        REQUIRE_NOTHROW(simulated = simulator.simulate(inputs, magnetic));
+        REQUIRE(simulated.get_outputs().size() == 1);
+        const auto& output = simulated.get_outputs()[0];
+        CHECK_FALSE(output.get_temperature());
+        REQUIRE(output.get_core_losses());
+        REQUIRE(output.get_winding_losses());
+        CHECK(output.get_core_losses()->get_temperature() == ambientTemperature);
+
+        auto findings = ResultsAnalyzer::analyze_results(simulated);
+        INFO("findings:" << describe_findings(findings));
+        std::vector<ResultFinding> noThermal;
+        for (const auto& finding : findings) {
+            if (finding.code == ResultFindingCode::NO_THERMAL_OPERATING_POINT) {
+                noThermal.push_back(finding);
+            }
+        }
+        REQUIRE(noThermal.size() == 1);
+        CHECK(noThermal[0].operatingPointIndex == 0);
+        CHECK_THAT(noThermal[0].message, Catch::Matchers::ContainsSubstring("No thermal operating point") &&
+                                         Catch::Matchers::ContainsSubstring("did not settle within") &&
+                                         Catch::Matchers::ContainsSubstring("History:") &&
+                                         Catch::Matchers::ContainsSubstring("evaluated at the ambient temperature"));
+    }
+    settings.reset();
+}
+
