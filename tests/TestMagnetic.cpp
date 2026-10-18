@@ -272,7 +272,7 @@ namespace {
 
     // ABT #1616: calculate_virtual_magnetics names each virtual magnetic after the source part's
     // manufacturerInfo.reference, which it read with -> and .value() unchecked. Without one it throws.
-    TEST_CASE("Test_Virtual_Magnetics_Need_The_Source_Reference", "[constructive-model][magnetic][abt-1616]") {
+    TEST_CASE("Test_Virtual_Magnetics_Need_The_Source_Reference", "[constructive-model][magnetic][abt-1616][abt-1622]") {
         auto magnetic = OpenMagneticsTesting::get_quick_magnetic("ETD 39", OpenMagneticsTesting::get_residual_gap(), {10}, 1, "3C97");
         OpenMagnetics::Inputs inputs;
         DesignRequirements designRequirements;
@@ -294,6 +294,8 @@ namespace {
         auto virtualMagnetics = combinator.calculate_virtual_magnetics(magnetic, inputs).second;
         REQUIRE(virtualMagnetics.size() == 1);
         REQUIRE(virtualMagnetics[0].get_manufacturer_info()->get_reference().value() == "PART-1 virtual magnetic 0");
+        // ABT #1622: the virtual magnetic keeps the source part's manufacturer (it was hardcoded to Wuerth Elektronik).
+        REQUIRE(virtualMagnetics[0].get_manufacturer_info()->get_name() == "Some Manufacturer");
     }
 
 }  // namespace

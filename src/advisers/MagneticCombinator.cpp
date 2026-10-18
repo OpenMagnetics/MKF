@@ -230,8 +230,9 @@ std::pair<std::map<std::string, MagneticCombinator::WindingCombination>, std::ve
     const std::string sourceReference = magnetic.get_manufacturer_info()->get_reference().value();
     for (size_t index = 0; index < virtualMagnetics.size(); index++)
     {
+        // The source part's manufacturer, whoever it is: a hardcoded "Wuerth Elektronik" here
+        // relabelled every other manufacturer's part (ABT #1622).
         MagneticManufacturerInfo manufacturerInfo = magnetic.get_manufacturer_info().value();
-        manufacturerInfo.set_name("Wuerth Elektronik");
         manufacturerInfo.set_reference(sourceReference + " virtual magnetic " + std::to_string(index));
         virtualMagnetics[index].set_manufacturer_info(manufacturerInfo);
     }
