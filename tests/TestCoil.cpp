@@ -548,6 +548,36 @@ TEST_CASE("Test_Coil_Json_11", "[constructive-model][coil][bug][smoke-test]") {
     REQUIRE(bool(coil.get_turns_description()));
 }
 
+// ABT #1614: delimit_and_compact read turnsInLayer[0] of a conduction layer without checking that the
+// layer had any turns (an out-of-bounds read of an empty vector). A layer with no turns now throws.
+TEST_CASE("Test_Delimit_And_Compact_Throws_On_A_Conduction_Layer_Without_Turns", "[constructive-model][coil][abt-1614]") {
+    settings.reset();
+    // Two windings, so that emptying the first conduction layer still leaves turns and the throw
+    // comes from the emptied layer, not from a coil with no turns at all.
+    for (std::string shapeName : {"PQ 28/20", "T 20/10/7"}) {
+        DYNAMIC_SECTION(shapeName) {
+            auto coil = OpenMagneticsTesting::get_quick_coil({20, 20}, {1, 1}, shapeName, 1);
+            REQUIRE(coil.get_layers_description());
+            REQUIRE(coil.get_turns_description());
+            auto conductionLayers = coil.get_layers_description_conduction();
+            REQUIRE(conductionLayers.size() >= 2);
+            auto emptiedLayerName = conductionLayers[0].get_name();
+            std::vector<Turn> keptTurns;
+            auto turns = coil.get_turns_description().value();
+            for (auto& turn : turns) {
+                if (turn.get_layer().value() != emptiedLayerName) {
+                    keptTurns.push_back(turn);
+                }
+            }
+            REQUIRE(keptTurns.size() < turns.size());
+            REQUIRE(!keptTurns.empty());
+            coil.set_turns_description(keptTurns);
+            REQUIRE_THROWS_AS(coil.delimit_and_compact(), CoilNotProcessedException);
+        }
+    }
+    settings.reset();
+}
+
 // ABT #1627: preload_margins appended to the per-section margins instead of replacing them, so a
 // second preload landed after the first one's entries, at ordinals no section reads, and was ignored.
 TEST_CASE("Test_Preload_Margins_Twice_The_Second_Preload_Wins", "[constructive-model][coil][margin][abt-1627]") {

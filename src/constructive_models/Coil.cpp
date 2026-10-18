@@ -19156,6 +19156,11 @@ bool Coil::delimit_and_compact_rectangular_window() {
                         turnsByLayer = group_turns_by_layer(*this);
                     }
                     const auto& turnsInLayer = turns_of_group(turnsByLayer.value(), layers[i].get_name());
+                    if (turnsInLayer.empty()) {
+                        // Its first turn is read below: a conduction layer with no turns is a coil the
+                        // winder left inconsistent, not a layer to size from garbage (ABT #1614).
+                        throw CoilNotProcessedException("delimit_and_compact_rectangular_window: conduction layer " + layers[i].get_name() + " has no turns");
+                    }
                     auto layerCoordinates = layers[i].get_coordinates();
                     double currentLayerMaximumWidth = (turnsInLayer[0].get_coordinates()[0] - layerCoordinates[0]) + turnsInLayer[0].get_dimensions().value()[0] / 2;
                     double currentLayerMinimumWidth = (turnsInLayer[0].get_coordinates()[0] - layerCoordinates[0]) - turnsInLayer[0].get_dimensions().value()[0] / 2;
@@ -19544,6 +19549,11 @@ bool Coil::delimit_and_compact_round_window() {
                         turnsByLayer = group_turns_by_layer(*this);
                     }
                     const auto& turnsInLayer = turns_of_group(turnsByLayer.value(), layers[i].get_name());
+                    if (turnsInLayer.empty()) {
+                        // Its first turn is read below: a conduction layer with no turns is a coil the
+                        // winder left inconsistent, not a layer to size from garbage (ABT #1614).
+                        throw CoilNotProcessedException("delimit_and_compact_round_window: conduction layer " + layers[i].get_name() + " has no turns");
+                    }
                     auto layerCoordinates = layers[i].get_coordinates();
                     auto section = get_section_by_name(layers[i].get_section().value());
 
@@ -19600,6 +19610,11 @@ bool Coil::delimit_and_compact_round_window() {
                         turnsByLayer = group_turns_by_layer(*this);
                     }
                     const auto& turnsInLayer = turns_of_group(turnsByLayer.value(), layers[i].get_name());
+                    if (turnsInLayer.empty()) {
+                        // Its first turn is read below: a conduction layer with no turns is a coil the
+                        // winder left inconsistent, not a layer to size from garbage (ABT #1614).
+                        throw CoilNotProcessedException("delimit_and_compact_round_window: conduction layer " + layers[i].get_name() + " has no turns");
+                    }
                     auto layerCoordinates = layers[i].get_coordinates();
                     auto section = get_section_by_name(layers[i].get_section().value());
 
