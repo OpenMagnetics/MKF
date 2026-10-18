@@ -246,6 +246,18 @@ double interp(std::vector<std::pair<double, double>> data, double temperature) {
         std::sort(data.begin(), data.end(), [](const std::pair<double, double>& b1, const std::pair<double, double>& b2) {
                 return b1.first < b2.first;
         });
+        // ABT #1951: two points at one temperature made the slope 0/0 and the result NaN. Saturation
+        // data no longer gets here with that (saturation_points_at_highest_field keeps one point per
+        // temperature). The same value twice is that value; two different values at one temperature
+        // (e.g. a remanence tabulated twice at 100 C) contradict each other: nothing to interpolate.
+        if (data[0].first == data[1].first) {
+            if (data[0].second != data[1].second) {
+                throw InvalidInputException(ErrorCode::INVALID_CORE_MATERIAL_DATA,
+                    "Two data points at the same temperature " + std::to_string(data[0].first) + " C with different values " +
+                    std::to_string(data[0].second) + " and " + std::to_string(data[1].second) + ": nothing to interpolate in temperature");
+            }
+            return data[0].second;
+        }
         result = data[0].second -
         (data[0].first - temperature) *
             (data[0].second - data[1].second) /
@@ -2222,6 +2234,37 @@ static double interpolate_ferromagnetic_property_to_curie(const CoreMaterial& co
     return lastPoint.second * (curieTemperature - temperature) / (curieTemperature - lastPoint.first);
 }
 
+// ABT #1951 (Alf, 2026-10-18): a material may tabulate saturation at several field strengths at ONE
+// temperature (TDK prints Bs of its NiZn grades GT1, GT2, GT6, GT9, L5, L6, L8F and L9H at two
+// fields, e.g. 1.6 and 4 kA/m). Bsat is the value at the highest field strength and that field is
+// Hsat; the lower-field points stay in the material as curve data. Interpolating in temperature over
+// two points at one temperature was 0/0 and gave NaN. Two DIFFERENT flux densities at the same field
+// and temperature contradict each other: that throws.
+// Returns one (temperature, Bsat) or (temperature, Hsat) pair per tabulated temperature.
+static std::vector<std::pair<double, double>> saturation_points_at_highest_field(const CoreMaterial& coreMaterial, bool fluxDensity) {
+    std::map<double, std::pair<double, double>> highestFieldPointPerTemperature;  // temperature -> (H, B)
+    for (const auto& datum : coreMaterial.get_saturation()) {
+        const double temperature = datum.get_temperature();
+        const double field = datum.get_magnetic_field();
+        const double flux = datum.get_magnetic_flux_density();
+        auto it = highestFieldPointPerTemperature.find(temperature);
+        if (it == highestFieldPointPerTemperature.end() || field > it->second.first) {
+            highestFieldPointPerTemperature[temperature] = {field, flux};
+        }
+        else if (field == it->second.first && flux != it->second.second) {
+            throw InvalidInputException(ErrorCode::INVALID_CORE_MATERIAL_DATA,
+                "Core material " + coreMaterial.get_name() + " tabulates two different saturation flux densities, " +
+                std::to_string(it->second.second) + " T and " + std::to_string(flux) + " T, at the same field " +
+                std::to_string(field) + " A/m and temperature " + std::to_string(temperature) + " C");
+        }
+    }
+    std::vector<std::pair<double, double>> data;
+    for (const auto& [temperature, point] : highestFieldPointPerTemperature) {
+        data.push_back({temperature, fluxDensity ? point.second : point.first});
+    }
+    return data;
+}
+
 double Core::get_magnetic_flux_density_saturation(const CoreMaterial& coreMaterial, double temperature, bool proportion) {
     auto defaults = Defaults();
     const auto& saturationData = coreMaterial.get_saturation();
@@ -2233,9 +2276,7 @@ double Core::get_magnetic_flux_density_saturation(const CoreMaterial& coreMateri
         // (matches the H-sat sibling getter, FIX M-2).
         throw MaterialException(ErrorCode::MATERIAL_DATA_MISSING, "Missing saturation data in core material " + coreMaterial.get_name());
     }
-    for (auto& datum : saturationData) {
-        data.push_back(std::pair<double, double>{datum.get_temperature(), datum.get_magnetic_flux_density()});
-    }
+    data = saturation_points_at_highest_field(coreMaterial, true);
 
     double saturationMagneticFluxDensity = interp(data, temperature);
 
@@ -2265,9 +2306,7 @@ double Core::get_magnetic_field_strength_saturation(const CoreMaterial& coreMate
         throw InvalidInputException(ErrorCode::INVALID_CORE_MATERIAL_DATA, "Missing saturation data for magnetic field strength"); // FIX M-2
         // throw std::runtime_error("Missing saturation data in core material");
     }
-    for (auto& datum : saturationData) {
-        data.push_back(std::pair<double, double>{datum.get_temperature(), datum.get_magnetic_field()});
-    }
+    data = saturation_points_at_highest_field(coreMaterial, false);
 
     // ABT #1908 (Alf, 2026-10-17): past its last tabulated point the saturation field strength goes
     // linearly to zero at the Curie temperature, as remanence and coercive force do. Extrapolating the
@@ -2281,6 +2320,11 @@ double Core::get_magnetic_field_strength_saturation(const CoreMaterial& coreMate
 double Core::get_magnetic_field_strength_saturation(double temperature) {
     auto coreMaterial = resolve_material();
     return get_magnetic_field_strength_saturation(coreMaterial, temperature);
+}
+
+double Core::get_ferromagnetic_property_to_curie(const CoreMaterial& coreMaterial, const std::vector<std::pair<double, double>>& data,
+                                               double temperature, const std::string& propertyName) {
+    return interpolate_ferromagnetic_property_to_curie(coreMaterial, data, temperature, propertyName);
 }
 
 double Core::get_remanence(const CoreMaterial& coreMaterial, double temperature, bool returnZeroIfMissing) {

@@ -1,8 +1,404 @@
 #include "physical_models/AmplitudePermeability.h"
+#include "physical_models/InitialPermeability.h"
 #include "support/Exceptions.h"
+#include <magic_enum.hpp>
+#include <algorithm>
+#include <mutex>
+#include <set>
+#include <sstream>
 
 
 namespace OpenMagnetics {
+
+// ============================================================================
+// Remanence and coercive force: MAS value, or a flagged class estimate (ABT #1951).
+// Alf, 2026-10-18: "an approved class-based estimator, like the heat-conductivity estimator of
+// #1752/#1753: Br from Bs and the material class's loop type (round/flat/square), Hc likewise from
+// the class; sourced data always wins; throw when the class is unknown."
+//
+// Derivation (MAS da80482, 1073 core materials; values at the tabulated point nearest 25 C, Br/Bs
+// against the material's own Bs at that temperature; one point per document that gives all its
+// grades one value, else one per grade; medians):
+//   pool                        Br/Bs   (points, documents)   Hc A/m (points, documents)   loop
+//   class FERRITE MN_ZN         0.255   (297, 110)            12.7   (295, 109)            round
+//   class FERRITE NI_ZN         0.600   (138, 96)             58     (181, 96)             round
+//   class FERRITE MG_ZN         0.621   (6, 6)                25     (6, 6)                round
+//   material type FERRITE       0.326   (441, 211)            16     (482, 210)            round
+//   NANOCRYSTALLINE: split by loop family, see below.
+//   class AMORPHOUS FE_SI       0.815   (1: Metglas 2605SA1)  -                            square
+//   material type AMORPHOUS     0.728   (2, 2: AF, Metglas 2605SA1)  2.4 (3, 3)            square
+//   material type POWDER        0.0082  (91, 84)              151    (90, 84)              flat (distributed gap)
+//   powder classes, Br/Bs / Hc: FE_SI_AL 0.0068 / 79.6, FE_SI 0.0066 / 267, FE_NI 0.0145 / 191,
+//   FE_NI_MO 0.0122 / 63.7, IRON 0.0202 / 398, CARBONYL_IRON 0.0028 / 239.
+//   ELECTRICAL_STEEL: Hc 0.755 (7 grades, 1 document) but no Br anywhere: a steel without Br throws.
+// The table is what the code below computes from MAS; it is not used as data.
+//
+// NANOCRYSTALLINE is split by loop family (Alf, 2026-10-19). A nanocrystalline grade's permeability is
+// set by its field anneal, which also sets its loop: the low-permeability grades are transverse-field
+// annealed, with a flat (sheared) loop and a remanence of a few mT (Nanoperm 80000: Br 0.31 T at Hc 3
+// A/m; a Nanoperm 1000 loop through the same Hc holds about mu0 x 1000 x 3 A/m = 4 mT), while the
+// high-permeability grades have a round loop near Br/Bs 0.5. A pooled Br/Bs of the round grades is
+// therefore not an estimate for a flat-loop grade. MAS core materials carry no loop-shape field, so the
+// family is read from the initial permeability the record tabulates (InitialPermeability at the default
+// ambient temperature, no bias, no frequency: the mu_i column below). The 18 nanocrystalline grades
+// of MAS c1b29c0, sorted by mu_i (Br and Hc: sourced values at 25 C):
+//   grade              mu_i      Br sourced   Hc sourced   ratio to the next grade's mu_i
+//   Nanoperm 1000        998     -            3 A/m        2.0
+//   Nanoperm 2000       2004     -            3 A/m        2.0
+//   Nanoperm 4000       4044     -            3 A/m        2.1
+//   Nanoperm 8000       8293     -            3 A/m        3.5   <- the only ratio above 2.1
+//   SC-1K107-LP        29342     -            -            1.0
+//   Nanoperm 30000     29787     -            3 A/m        1.3
+//   VITROPERM 500F     40000     -            3.0 A/m      1.0
+//   VITROPERM 550 HF   40000     -            3.0 A/m      1.1
+//   FT-3M              42685     0.60 T       0.8 A/m      1.4
+//   Nanoperm 60000     60000     -            -            1.3
+//   AN, 1K107, Yunlu YNB 80000, Nanoperm 80000 80153 (Br: AN 0.60 T, Nanoperm 80000 0.31 T; Hc 0.8,
+//     1.5, 0.8, 3 A/m); Nanoperm 85000 85000; Nanoperm 90000 87339 (Hc 3 A/m); SC-1K107 87998;
+//     Nanoperm 100000 100000. All ratios above Nanoperm 8000 are 1.4 or less.
+// The boundary sits in that gap: FLAT_LOOP_LOW_PERMEABILITY below 15000 (Nanoperm 1000 to 8000),
+// ROUND_LOOP_HIGH_PERMEABILITY from 15000 up. Each family pools only its own sourced members and never
+// borrows from the other: no flat-loop grade has a sourced remanence, so the Nanoperm 1000/2000/4000/
+// 8000 remanence throws; their coercive force is their own (3 A/m). Round family pools, Br/Bs 0.48 (3
+// points, 3 documents: AN, FT-3M, Nanoperm 80000), Hc 1.15 A/m (6 points, 6 documents).
+// ============================================================================
+namespace {
+
+enum class NanocrystallineLoop { FLAT_LOOP_LOW_PERMEABILITY, ROUND_LOOP_HIGH_PERMEABILITY };
+
+// The initial permeability that separates the two nanocrystalline loop families (derivation above).
+constexpr double nanocrystallineFlatLoopPermeabilityBoundary = 15000;
+
+std::optional<NanocrystallineLoop> nanocrystalline_loop(const CoreMaterial& material) {
+    if (material.get_material() != MaterialType::NANOCRYSTALLINE) {
+        return std::nullopt;
+    }
+    const double initialPermeability = InitialPermeability::get_initial_permeability(material, Defaults().ambientTemperature);
+    if (!std::isfinite(initialPermeability) || initialPermeability <= 0) {
+        throw MaterialException(ErrorCode::MATERIAL_INVALID_PROPERTY,
+            "Core material '" + material.get_name() + "' has an initial permeability of " + std::to_string(initialPermeability) +
+            " at the default ambient temperature: its nanocrystalline loop family cannot be told.");
+    }
+    return initialPermeability < nanocrystallineFlatLoopPermeabilityBoundary ? NanocrystallineLoop::FLAT_LOOP_LOW_PERMEABILITY
+                                                                             : NanocrystallineLoop::ROUND_LOOP_HIGH_PERMEABILITY;
+}
+
+std::string loop_family_label(const std::optional<NanocrystallineLoop>& family) {
+    if (!family) {
+        return "";
+    }
+    std::ostringstream label;
+    label << (family.value() == NanocrystallineLoop::FLAT_LOOP_LOW_PERMEABILITY ? ", flat loop (initial permeability below "
+                                                                                 : ", round loop (initial permeability from ")
+          << nanocrystallineFlatLoopPermeabilityBoundary << ")";
+    return label.str();
+}
+
+enum class LoopProperty { REMANENCE, COERCIVE_FORCE };
+
+const char* loop_property_field(LoopProperty property) {
+    return property == LoopProperty::REMANENCE ? "remanence" : "coerciveForce";
+}
+
+const char* loop_property_name(LoopProperty property) {
+    return property == LoopProperty::REMANENCE ? "remanence" : "coercive force";
+}
+
+bool has_loop_property(const CoreMaterial& material, LoopProperty property) {
+    return property == LoopProperty::REMANENCE ? material.get_remanence().has_value() : material.get_coercive_force().has_value();
+}
+
+// The documents a value is sourced from. A non-retracted provenance entry naming the field decides:
+// its documents, unless it only says the value was derived (not a source). A value no entry names is
+// the maker's catalogue value when its record cites the maker's datasheet.
+std::vector<std::string> loop_property_sources(const CoreMaterial& material, LoopProperty property) {
+    std::vector<std::string> sources;
+    if (!has_loop_property(material, property)) {
+        return sources;
+    }
+    const std::string field = loop_property_field(property);
+    bool named = false;
+    if (material.get_provenance()) {
+        const auto provenance = material.get_provenance().value();
+        for (const auto& entry : provenance) {
+            if (entry.get_retracted() && entry.get_retracted().value()) {
+                continue;
+            }
+            if (!entry.get_fields()) {
+                continue;
+            }
+            const auto fields = entry.get_fields().value();
+            if (std::find(fields.begin(), fields.end(), field) == fields.end()) {
+                continue;
+            }
+            named = true;
+            if (entry.get_source() == ProvenanceSource::DERIVED) {
+                continue;
+            }
+            if (entry.get_source_url()) {
+                sources.push_back(entry.get_source_url().value());
+            }
+            else if (entry.get_source_name()) {
+                sources.push_back(entry.get_source_name().value());
+            }
+        }
+    }
+    if (!named && material.get_manufacturer_info().get_datasheet_url()) {
+        sources.push_back(material.get_manufacturer_info().get_datasheet_url().value());
+    }
+    return sources;
+}
+
+// The member's pooled value: Br/Bs or Hc at its tabulated point nearest the default ambient
+// temperature (ties: the lower temperature). Disengaged when a Br has no Bs to divide by.
+std::optional<double> loop_property_pool_value(const CoreMaterial& material, LoopProperty property) {
+    const double reference = Defaults().ambientTemperature;
+    std::vector<std::pair<double, double>> points;  // (temperature, value)
+    if (property == LoopProperty::REMANENCE) {
+        const auto remanenceData = material.get_remanence().value();
+        for (const auto& datum : remanenceData) {
+            points.push_back({datum.get_temperature(), datum.get_magnetic_flux_density()});
+        }
+    }
+    else {
+        const auto coerciveForceData = material.get_coercive_force().value();
+        for (const auto& datum : coerciveForceData) {
+            points.push_back({datum.get_temperature(), datum.get_magnetic_field()});
+        }
+    }
+    if (points.empty()) {
+        return std::nullopt;
+    }
+    auto nearest = *std::min_element(points.begin(), points.end(), [reference](const auto& a, const auto& b) {
+        const double da = std::abs(a.first - reference);
+        const double db = std::abs(b.first - reference);
+        return da < db || (da == db && a.first < b.first);
+    });
+    double value = nearest.second;
+    if (property == LoopProperty::REMANENCE) {
+        if (material.get_saturation().empty()) {
+            return std::nullopt;
+        }
+        value /= Core::get_magnetic_flux_density_saturation(material, nearest.first, false);
+    }
+    if (!std::isfinite(value) || value <= 0) {
+        std::ostringstream message;
+        message << "Core material '" << material.get_name() << "' has a malformed " << loop_property_name(property)
+                << " in MAS (pooled value " << value << (property == LoopProperty::REMANENCE ? " Br/Bs" : " A/m")
+                << " at " << nearest.first << " C): it must be a finite positive number. Fix the record in MAS.";
+        throw MaterialException(ErrorCode::MATERIAL_INVALID_PROPERTY, message.str());
+    }
+    return value;
+}
+
+struct LoopMember {
+    std::string name;
+    MaterialType materialType;
+    std::optional<MaterialComposition> composition;
+    std::vector<std::string> sources;
+    double value;
+    std::optional<NanocrystallineLoop> loopFamily;
+};
+
+struct LoopPool {
+    double value;
+    std::vector<std::string> sourceMaterials;
+    size_t numberDocuments;
+    size_t numberDataPoints;
+};
+
+double median(std::vector<double> values) {
+    std::sort(values.begin(), values.end());
+    const size_t n = values.size();
+    return n % 2 == 1 ? values[n / 2] : (values[n / 2 - 1] + values[n / 2]) / 2.0;
+}
+
+// As the heat-conductivity estimator's pool_data_points: each member counts under its citing document
+// that covers the most members of the pool (ties: the smallest identifier); a document that gives all
+// its grades one value is ONE point, one that gives each grade its own value is one point per grade.
+std::optional<LoopPool> pool_median(const std::vector<const LoopMember*>& members) {
+    if (members.empty()) {
+        return std::nullopt;
+    }
+    std::map<std::string, size_t> citationsInPool;
+    for (const auto* member : members) {
+        for (const auto& source : std::set<std::string>(member->sources.begin(), member->sources.end())) {
+            ++citationsInPool[source];
+        }
+    }
+    std::map<std::string, std::vector<const LoopMember*>> membersBySource;
+    for (const auto* member : members) {
+        const std::string* widest = nullptr;
+        for (const auto& source : member->sources) {
+            if (!widest || citationsInPool.at(source) > citationsInPool.at(*widest) ||
+                (citationsInPool.at(source) == citationsInPool.at(*widest) && source < *widest)) {
+                widest = &source;
+            }
+        }
+        membersBySource[*widest].push_back(member);
+    }
+    LoopPool pool;
+    std::vector<double> points;
+    for (const auto& [source, sourceMembers] : membersBySource) {
+        std::set<double> distinct;
+        for (const auto* member : sourceMembers) {
+            distinct.insert(member->value);
+            pool.sourceMaterials.push_back(member->name);
+        }
+        if (distinct.size() == 1) {
+            points.push_back(sourceMembers.front()->value);
+            continue;
+        }
+        for (const auto* member : sourceMembers) {
+            points.push_back(member->value);
+        }
+    }
+    std::sort(pool.sourceMaterials.begin(), pool.sourceMaterials.end());
+    pool.numberDocuments = membersBySource.size();
+    pool.numberDataPoints = points.size();
+    pool.value = median(points);
+    return pool;
+}
+
+// The sourced members of every material, per property; rebuilt when the material database changes size.
+const std::vector<LoopMember>& sourced_loop_members(LoopProperty property) {
+    static std::mutex membersMutex;
+    static std::map<LoopProperty, std::pair<size_t, std::vector<LoopMember>>> cache;
+    std::lock_guard<std::mutex> lock(membersMutex);
+    if (coreMaterialDatabase.empty()) {
+        load_core_materials();
+    }
+    auto& entry = cache[property];
+    if (entry.first == coreMaterialDatabase.size() && !entry.second.empty()) {
+        return entry.second;
+    }
+    std::vector<LoopMember> members;
+    for (const auto& [materialName, material] : coreMaterialDatabase) {
+        auto sources = loop_property_sources(material, property);
+        if (sources.empty()) {
+            continue;
+        }
+        const auto value = loop_property_pool_value(material, property);
+        if (!value) {
+            continue;
+        }
+        members.push_back({material.get_name(), material.get_material(), material.get_material_composition(), std::move(sources), value.value(),
+                           nanocrystalline_loop(material)});
+    }
+    entry = {coreMaterialDatabase.size(), std::move(members)};
+    return entry.second;
+}
+
+CoreLoopPropertyEstimate estimate_loop_property(const CoreMaterial& coreMaterial, LoopProperty property) {
+    const auto& sourced = sourced_loop_members(property);
+    const auto materialType = coreMaterial.get_material();
+    const auto composition = coreMaterial.get_material_composition();
+    const bool physicalComposition = composition && composition.value() != MaterialComposition::PROPRIETARY;
+    const std::string typeName(magic_enum::enum_name(materialType));
+    // Nanocrystalline: only members of the material's own loop family (no borrowing across families).
+    const auto loopFamily = nanocrystalline_loop(coreMaterial);
+    const std::string familyLabel = loop_family_label(loopFamily);
+
+    CoreLoopPropertyEstimate estimate;
+    std::optional<LoopPool> pool;
+    std::string skipped;
+    if (physicalComposition) {
+        std::vector<const LoopMember*> members;
+        for (const auto& member : sourced) {
+            if (member.materialType == materialType && member.loopFamily == loopFamily && member.composition &&
+                member.composition.value() == composition.value()) {
+                members.push_back(&member);
+            }
+        }
+        estimate.tier = CoreLoopPropertyTier::CLASS;
+        estimate.pool = "class " + typeName + " " + std::string(magic_enum::enum_name(composition.value())) + familyLabel;
+        pool = pool_median(members);
+        if (!pool) {
+            skipped = estimate.pool + " has no sourced member";
+        }
+    }
+    else {
+        skipped = composition ? "its composition is PROPRIETARY" : "it has no materialComposition";
+    }
+    if (!pool) {
+        std::vector<const LoopMember*> members;
+        for (const auto& member : sourced) {
+            if (member.materialType == materialType && member.loopFamily == loopFamily) {
+                members.push_back(&member);
+            }
+        }
+        estimate.tier = CoreLoopPropertyTier::MATERIAL_TYPE;
+        estimate.pool = "material type " + typeName + familyLabel;
+        pool = pool_median(members);
+    }
+    if (!pool) {
+        throw MaterialException(ErrorCode::MATERIAL_DATA_MISSING,
+            "Core material '" + coreMaterial.get_name() + "' has no " + loop_property_name(property) + " in MAS, and no " +
+            typeName + familyLabel + " material in MAS carries a sourced " + loop_property_name(property) +
+            ": the loop of its class is unknown, so the Roshen hysteresis loop cannot be fitted.");
+    }
+    estimate.classValue = pool->value;
+    estimate.sourceMaterials = pool->sourceMaterials;
+    estimate.numberDocuments = pool->numberDocuments;
+    estimate.numberDataPoints = pool->numberDataPoints;
+    std::ostringstream method;
+    method << "the median " << (property == LoopProperty::REMANENCE ? "Br/Bs " : "Hc ") << pool->value
+           << (property == LoopProperty::REMANENCE ? " of its " : " A/m of its ") << pool->numberDataPoints
+           << " sourced data points";
+    if (property == LoopProperty::REMANENCE) {
+        method << " times the material's own Bs";
+    }
+    if (!skipped.empty()) {
+        method << " (" << skipped << ")";
+    }
+    estimate.method = method.str();
+    return estimate;
+}
+
+// One WARNING per material (manufacturer + name) and property, as the heat-conductivity estimate.
+void warn_loop_estimate_once(const CoreMaterial& coreMaterial, LoopProperty property, const std::string& message) {
+    static std::mutex warnedMutex;
+    static std::set<std::string> warned;
+    std::lock_guard<std::mutex> lock(warnedMutex);
+    if (warned.insert(coreMaterial.get_manufacturer_info().get_name() + "/" + coreMaterial.get_name() + "/" + loop_property_field(property)).second) {
+        OM_WARNING(message);
+    }
+}
+
+CoreLoopProperty resolve_loop_property(const CoreMaterial& coreMaterial, double temperature, LoopProperty property) {
+    if (has_loop_property(coreMaterial, property)) {
+        const double value = property == LoopProperty::REMANENCE ? Core::get_remanence(coreMaterial, temperature)
+                                                                 : Core::get_coercive_force(coreMaterial, temperature);
+        return CoreLoopProperty{value, CoreLoopPropertyTier::MATERIAL, std::nullopt};
+    }
+    auto estimate = estimate_loop_property(coreMaterial, property);
+    double value;
+    if (property == LoopProperty::REMANENCE) {
+        value = estimate.classValue * Core::get_magnetic_flux_density_saturation(coreMaterial, temperature, false);
+    }
+    else {
+        value = Core::get_ferromagnetic_property_to_curie(coreMaterial, {{Defaults().ambientTemperature, estimate.classValue}},
+                                                          temperature, "estimated coercive force");
+    }
+    std::ostringstream message;
+    message << "Core material '" << coreMaterial.get_name() << "' has no " << loop_property_name(property)
+            << " in MAS: ESTIMATED " << value << (property == LoopProperty::REMANENCE ? " T" : " A/m") << " at "
+            << temperature << " C, tier " << magic_enum::enum_name(estimate.tier) << ", from the " << estimate.pool << ": "
+            << estimate.sourceMaterials.size() << " sourced materials, " << estimate.numberDocuments << " documents, "
+            << estimate.numberDataPoints << " independent data points, using " << estimate.method << ".";
+    warn_loop_estimate_once(coreMaterial, property, message.str());
+    return CoreLoopProperty{value, estimate.tier, estimate};
+}
+
+} // namespace
+
+CoreLoopProperty resolve_core_material_remanence(const CoreMaterial& coreMaterial, double temperature) {
+    return resolve_loop_property(coreMaterial, temperature, LoopProperty::REMANENCE);
+}
+
+CoreLoopProperty resolve_core_material_coercive_force(const CoreMaterial& coreMaterial, double temperature) {
+    return resolve_loop_property(coreMaterial, temperature, LoopProperty::COERCIVE_FORCE);
+}
 
 std::optional<double> AmplitudePermeability::get_amplitude_permeability(std::string coreMaterialName, std::optional<double> magneticFluxDensityPeak, std::optional<double> magneticFieldStrengthPeak, double temperature) {
     CoreMaterial coreMaterial = Core::resolve_material(coreMaterialName);
@@ -42,6 +438,14 @@ std::optional<double> AmplitudePermeability::get_amplitude_permeability(const Co
         else {
             return std::nullopt;
         }
+    }
+    // ABT #1951: a NaN or infinite slope is not an answer; callers test the optional, not the number.
+    if (!std::isfinite(amplitudePermeability)) {
+        throw CalculationException(ErrorCode::CALCULATION_INVALID_RESULT,
+            "Amplitude permeability of " + coreMaterial.get_name() + " came out as " + std::to_string(amplitudePermeability) +
+            " at " + (magneticFieldStrengthPeak ? "H peak " + std::to_string(magneticFieldStrengthPeak.value()) + " A/m"
+                                                : "B peak " + std::to_string(magneticFluxDensityPeak.value()) + " T") +
+            ", " + std::to_string(temperature) + " C");
     }
     return amplitudePermeability;
 }
@@ -91,10 +495,16 @@ std::pair<Curve2D, Curve2D> BHLoopRoshenModel::get_hysteresis_loop(const CoreMat
             " C: it is not ferromagnetic at or above its Curie temperature of " +
             std::to_string(coreMaterial.get_curie_temperature().value()) + " C");
     }
+    // ABT #1951: the Roshen loop is fitted through (Hsat, Bsat), (0, Br) and (-Hc, 0); its b1 holds
+    // -Hc/Br. Core::get_remanence and Core::get_coercive_force answer NaN for an absent record
+    // (MaterialValidator reads that), and that NaN went through the fit and out of
+    // get_amplitude_permeability as a value: every Nanoperm grade at any H, and 523 of the 1073 MAS
+    // materials. Absent is missing data, not zero. The resolvers give the material's own value, or
+    // the flagged class estimate Alf approved (2026-10-18), or throw when the class is unknown.
     double saturationMagneticFieldStrength = Core::get_magnetic_field_strength_saturation(coreMaterial, temperature);
     double saturationMagneticFluxDensity = Core::get_magnetic_flux_density_saturation(coreMaterial, temperature, false);
-    double coerciveForce = Core::get_coercive_force(coreMaterial, temperature);
-    double remanence = Core::get_remanence(coreMaterial, temperature);
+    double coerciveForce = resolve_core_material_coercive_force(coreMaterial, temperature).value;
+    double remanence = resolve_core_material_remanence(coreMaterial, temperature).value;
 
     auto majorLoopParameters = get_major_loop_parameters(saturationMagneticFieldStrength, saturationMagneticFluxDensity,
                                                          coerciveForce, remanence);

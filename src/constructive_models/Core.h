@@ -176,6 +176,10 @@ class Core : public MAS::MagneticCore {
     static double get_curie_temperature(const CoreMaterial& coreMaterial);
     double get_remanence(double temperature);
     static double get_remanence(const CoreMaterial& coreMaterial, double temperature, bool returnZeroIfMissing = false);
+    // (temperature, value) data of a remanence or coercive force: interp() inside the data, linear to zero at the
+    // material's Curie temperature past it (ABT #1736). Throws without a Curie temperature past the data.
+    static double get_ferromagnetic_property_to_curie(const CoreMaterial& coreMaterial, const std::vector<std::pair<double, double>>& data,
+                                                      double temperature, const std::string& propertyName);
     double get_coercive_force(double temperature);
     static double get_coercive_force(const CoreMaterial& coreMaterial, double temperature, bool returnZeroIfMissing = false);
     double get_magnetic_flux_density_saturation(bool proportion = true);

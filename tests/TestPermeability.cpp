@@ -1628,4 +1628,153 @@ namespace {
         }
     }
 
+    // ABT #1951: the Roshen loop behind the amplitude permeability is fitted through Br and Hc. A material
+    // without them (Nanoperm grades have no remanence, A07 no coercive force, R12KZ neither) got NaN from
+    // Core::get_remanence / get_coercive_force, and get_amplitude_permeability returned that NaN as a value
+    // at every H. Alf, 2026-10-18: a missing Br or Hc is a flagged class estimate (Br/Bs or Hc median of the
+    // sourced members of the class), the material's own value always wins, and an unknown class throws.
+    // Alf, 2026-10-19: nanocrystalline pools per loop family (flat loop below initial permeability 15000,
+    // round loop from it) and never borrows across families.
+    TEST_CASE("Remanence and coercive force missing from MAS are flagged class estimates, sourced values win", "[physical-model][amplitude-permeability][abt-1951]") {
+        // Round-loop, high-permeability nanocrystalline without Br: estimated from round-loop members only.
+        auto nanoperm30000 = OpenMagnetics::Core::resolve_material("Nanoperm 30000");
+        auto remanence = OpenMagnetics::resolve_core_material_remanence(nanoperm30000, 25);
+        REQUIRE(remanence.is_estimated());
+        CHECK(remanence.tier == OpenMagnetics::CoreLoopPropertyTier::MATERIAL_TYPE);
+        CHECK(remanence.estimate->pool == "material type NANOCRYSTALLINE, round loop (initial permeability from 15000)");
+        CHECK(remanence.estimate->numberDataPoints >= 3);
+        CHECK(remanence.estimate->classValue > 0);
+        CHECK(remanence.estimate->classValue < 1);
+        CHECK_THAT(remanence.value, Catch::Matchers::WithinRel(
+            remanence.estimate->classValue * OpenMagnetics::Core::get_magnetic_flux_density_saturation(nanoperm30000, 25, false), 1e-12));
+        for (const auto& member : remanence.estimate->sourceMaterials) {
+            INFO(member);
+            CHECK(OpenMagnetics::InitialPermeability::get_initial_permeability(OpenMagnetics::Core::resolve_material(member), 25) >= 15000);
+        }
+
+        // Flat-loop, low-permeability nanocrystalline: no flat-loop grade in MAS has a sourced Br, and the
+        // round-loop grades are not borrowed, so the remanence throws.
+        auto nanoperm2000 = OpenMagnetics::Core::resolve_material("Nanoperm 2000");
+        CHECK_THROWS_WITH(OpenMagnetics::resolve_core_material_remanence(nanoperm2000, 25),
+                          Catch::Matchers::ContainsSubstring("NANOCRYSTALLINE, flat loop (initial permeability below 15000)") &&
+                          Catch::Matchers::ContainsSubstring("the loop of its class is unknown"));
+        auto nanoperm1000 = OpenMagnetics::Core::resolve_material("Nanoperm 1000");
+        CHECK_THROWS_WITH(OpenMagnetics::AmplitudePermeability::get_amplitude_permeability(nanoperm1000, std::nullopt, 10.0, 25),
+                          Catch::Matchers::ContainsSubstring("the loop of its class is unknown"));
+        // Nanoperm 2000 tabulates Hc: its own value, not an estimate.
+        auto nanopermCoercive = OpenMagnetics::resolve_core_material_coercive_force(nanoperm2000, 25);
+        CHECK(!nanopermCoercive.is_estimated());
+        CHECK(nanopermCoercive.tier == OpenMagnetics::CoreLoopPropertyTier::MATERIAL);
+        CHECK_THAT(nanopermCoercive.value, Catch::Matchers::WithinRel(3.0, 1e-12));
+
+        // Nanoperm 80000 has the sourced Br of MAS da80482 (0.31 T): sourced data wins over the estimate.
+        auto nanoperm80000 = OpenMagnetics::Core::resolve_material("Nanoperm 80000");
+        auto sourcedRemanence = OpenMagnetics::resolve_core_material_remanence(nanoperm80000, 25);
+        CHECK(!sourcedRemanence.is_estimated());
+        CHECK_THAT(sourcedRemanence.value, Catch::Matchers::WithinRel(0.31, 1e-9));
+
+        // A07 (ACME MnZn): own Br, Hc from the MnZn class; R12KZ (DMEGC MnZn): both from the class.
+        auto a07 = OpenMagnetics::Core::resolve_material("A07");
+        CHECK(!OpenMagnetics::resolve_core_material_remanence(a07, 25).is_estimated());
+        auto a07Coercive = OpenMagnetics::resolve_core_material_coercive_force(a07, 25);
+        REQUIRE(a07Coercive.is_estimated());
+        CHECK(a07Coercive.tier == OpenMagnetics::CoreLoopPropertyTier::CLASS);
+        CHECK(a07Coercive.estimate->pool == "class FERRITE MN_ZN");
+        CHECK_THAT(a07Coercive.value, Catch::Matchers::WithinRel(a07Coercive.estimate->classValue, 1e-12));
+        // Past the 25 C reference the estimated Hc goes linearly to zero at Curie, as tabulated data does.
+        auto a07CoerciveHot = OpenMagnetics::resolve_core_material_coercive_force(a07, 100);
+        CHECK(a07CoerciveHot.value < a07Coercive.value);
+        CHECK(a07CoerciveHot.value > 0);
+        auto r12kz = OpenMagnetics::Core::resolve_material("R12KZ");
+        CHECK(OpenMagnetics::resolve_core_material_remanence(r12kz, 25).is_estimated());
+        CHECK(OpenMagnetics::resolve_core_material_coercive_force(r12kz, 25).is_estimated());
+
+        // Every one of them now answers a finite positive amplitude permeability.
+        for (const auto& material : {nanoperm30000, a07, r12kz, OpenMagnetics::Core::resolve_material("Nanoperm 90000")}) {
+            INFO(material.get_name());
+            for (double fieldStrength : {50.0, 100.0, 861.0, 1000.0}) {
+                INFO("H " << fieldStrength << " A/m");
+                auto value = OpenMagnetics::AmplitudePermeability::get_amplitude_permeability(material, std::nullopt, fieldStrength, 25);
+                REQUIRE(value);
+                CHECK(std::isfinite(value.value()));
+                CHECK(value.value() > 0);
+            }
+        }
+
+        // An unknown class throws: no ELECTRICAL_STEEL record in MAS carries a remanence.
+        auto supermalloy = OpenMagnetics::Core::resolve_material("Supermalloy 2mil");
+        CHECK_THROWS_WITH(OpenMagnetics::resolve_core_material_remanence(supermalloy, 25),
+                          Catch::Matchers::ContainsSubstring("the loop of its class is unknown"));
+    }
+
+    // ABT #1951 (Alf, 2026-10-18): TDK prints Bs of its NiZn grades at two field strengths (GT1: 0.30 T at
+    // 1.6 kA/m, 0.33 T at 4 kA/m, both 25 C). Bsat is the value at the highest field and that field is Hsat;
+    // interpolating in temperature over two points at one temperature was 0/0. Two different flux densities
+    // at the same field and temperature contradict each other and throw.
+    TEST_CASE("Saturation tabulated at two fields at one temperature takes the highest field, contradictory points throw", "[physical-model][amplitude-permeability][abt-1951]") {
+        auto gt1 = OpenMagnetics::Core::resolve_material("TDK GT1");
+        CHECK_THAT(OpenMagnetics::Core::get_magnetic_flux_density_saturation(gt1, 25, false), Catch::Matchers::WithinRel(0.33, 1e-12));
+        CHECK_THAT(OpenMagnetics::Core::get_magnetic_field_strength_saturation(gt1, 25), Catch::Matchers::WithinRel(4000.0, 1e-12));
+        CHECK_THAT(OpenMagnetics::Core::get_magnetic_flux_density_saturation(gt1, 80, false), Catch::Matchers::WithinRel(0.33, 1e-12));
+        auto gt1Value = OpenMagnetics::AmplitudePermeability::get_amplitude_permeability(gt1, std::nullopt, 100.0, 25);
+        REQUIRE(gt1Value);
+        CHECK(std::isfinite(gt1Value.value()));
+        CHECK(gt1Value.value() > 0);
+
+        auto contradictory = gt1;
+        auto saturation = contradictory.get_saturation();
+        auto duplicate = saturation.back();
+        duplicate.set_magnetic_flux_density(duplicate.get_magnetic_flux_density() + 0.01);
+        saturation.push_back(duplicate);
+        contradictory.set_saturation(saturation);
+        CHECK_THROWS_WITH(OpenMagnetics::Core::get_magnetic_flux_density_saturation(contradictory, 25, false),
+                          Catch::Matchers::ContainsSubstring("two different saturation flux densities"));
+
+        // Other data with two different values at one temperature still throws: ACME A061 tabulates its
+        // remanence twice at 100 C (0.060 and 0.065 T) and at no other temperature.
+        auto a061 = OpenMagnetics::Core::resolve_material("A061");
+        CHECK_THROWS_WITH(OpenMagnetics::resolve_core_material_remanence(a061, 25),
+                          Catch::Matchers::ContainsSubstring("nothing to interpolate in temperature"));
+    }
+
+    // ABT #1951 census: for every MAS material, at a few H, an answer is finite or the call throws, and no
+    // throw is about a missing Br or Hc that the class estimator covers.
+    TEST_CASE("Amplitude permeability census: no material returns NaN", "[physical-model][amplitude-permeability][abt-1951]") {
+        size_t answered = 0;
+        size_t nonFinite = 0;
+        size_t estimatorGaps = 0;
+        for (const auto& materialName : OpenMagnetics::get_core_material_names()) {
+            auto material = OpenMagnetics::Core::resolve_material(materialName);
+            for (double fieldStrength : {10.0, 100.0, 1000.0, 10000.0}) {
+                std::optional<double> value;
+                try {
+                    value = OpenMagnetics::AmplitudePermeability::get_amplitude_permeability(material, std::nullopt, fieldStrength, 25);
+                }
+                catch (const std::exception& e) {
+                    // A missing Br or Hc throws only where the class has no sourced value at all
+                    // (ELECTRICAL_STEEL and flat-loop NANOCRYSTALLINE remanence); every other throw is
+                    // about other, malformed data.
+                    const std::string message = e.what();
+                    const bool flatLoopNanocrystalline = message.find("NANOCRYSTALLINE, flat loop") != std::string::npos;
+                    if (message.find("loop of its class is unknown") != std::string::npos &&
+                        material.get_material() != MAS::MaterialType::ELECTRICAL_STEEL && !flatLoopNanocrystalline) {
+                        UNSCOPED_INFO(materialName << " at H " << fieldStrength << " A/m throws: " << message);
+                        ++estimatorGaps;
+                    }
+                    continue;
+                }
+                if (value) {
+                    ++answered;
+                    if (!std::isfinite(value.value())) {
+                        UNSCOPED_INFO(materialName << " at H " << fieldStrength << " A/m: " << value.value());
+                        ++nonFinite;
+                    }
+                }
+            }
+        }
+        CHECK(answered > 0);
+        CHECK(nonFinite == 0);
+        CHECK(estimatorGaps == 0);
+    }
+
 }  // namespace
