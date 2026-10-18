@@ -1655,6 +1655,87 @@ namespace OpenMagnetics {
         return std::max(get_maximum_outer_width(), get_maximum_outer_height());
     }
 
+    std::size_t Wire::calculate_loss_factor_cache_key(const Wire& wire) {
+        std::size_t seed = 0;
+        auto combine = [&seed](std::size_t value) {
+            seed ^= value + 0x9e3779b97f4a7c15ULL + (seed << 6) + (seed >> 2);
+        };
+        combine(std::hash<std::string>{}(wire.get_name() ? wire.get_name().value() : std::string()));
+        combine(std::hash<int>{}(static_cast<int>(wire.get_type())));
+        combine(std::hash<int64_t>{}(wire.get_number_conductors() ? wire.get_number_conductors().value() : 1));
+        // the material as stated (a litz wire states it on its strand); no material database lookup
+        std::optional<WireMaterialDataOrNameUnion> material = wire.get_material();
+        if (wire.get_type() == WireType::LITZ) {
+            // resolved once: the conducting dimensions of a litz wire are its strand's
+            auto strand = wire.resolve_strand();
+            const double strandConductingDiameter = resolve_dimensional_values(strand.get_conducting_diameter());
+            combine(std::hash<double>{}(strandConductingDiameter));
+            if (strand.get_outer_diameter()) {
+                combine(std::hash<double>{}(resolve_dimensional_values(strand.get_outer_diameter().value())));
+            }
+            if (!material) {
+                material = strand.get_material();
+            }
+        }
+        else {
+            combine(std::hash<double>{}(wire.get_maximum_conducting_width()));
+            combine(std::hash<double>{}(wire.get_maximum_conducting_height()));
+        }
+        if (wire.get_type() == WireType::LITZ && !wire.get_outer_diameter() && !wire.get_wound_footprint()) {
+            // The bundle envelope is derived (calculate_outer_diameter) from the strand, the strand
+            // count and the coating, so those are the key: deriving it on every cache lookup would
+            // cost more than the lookup saves.
+            const auto optionalCoating = wire.get_coating();
+            if (optionalCoating) {
+                const auto& coating = optionalCoating.value();
+                if (std::holds_alternative<std::string>(coating)) {
+                    combine(std::hash<std::string>{}(std::get<std::string>(coating)));
+                }
+                else {
+                    // what calculate_outer_diameter reads, field by field (a json dump per lookup cost
+                    // more than the cached factor saves)
+                    const auto& inlineCoating = std::get<InsulationWireCoating>(coating);
+                    auto combineOptional = [&combine](const auto& value) {
+                        combine(value ? std::hash<double>{}(static_cast<double>(value.value())) : 0x51ed270b);
+                    };
+                    combineOptional(inlineCoating.get_grade());
+                    combineOptional(inlineCoating.get_number_layers());
+                    combineOptional(inlineCoating.get_thickness_layers());
+                    combineOptional(inlineCoating.get_breakdown_voltage());
+                    const auto thickness = inlineCoating.get_thickness();
+                    combine(thickness ? std::hash<double>{}(resolve_dimensional_values(thickness.value())) : 0x51ed270b);
+                    const auto type = inlineCoating.get_type();
+                    combine(type ? std::hash<int>{}(static_cast<int>(type.value()) + 1) : 0);
+                    const auto coatingMaterial = inlineCoating.get_material();
+                    if (coatingMaterial) {
+                        combine(std::hash<std::string>{}(std::holds_alternative<std::string>(coatingMaterial.value())
+                                                             ? std::get<std::string>(coatingMaterial.value())
+                                                             : std::get<MAS::InsulationMaterial>(coatingMaterial.value()).get_name()));
+                    }
+                }
+            }
+        }
+        else {
+            combine(std::hash<double>{}(wire.get_maximum_outer_width()));
+            combine(std::hash<double>{}(wire.get_maximum_outer_height()));
+        }
+        if (material) {
+            if (std::holds_alternative<std::string>(material.value())) {
+                combine(std::hash<std::string>{}(std::get<std::string>(material.value())));
+            }
+            else {
+                // an inline material is keyed by what the factors read from it, not by its name alone
+                const auto& wireMaterial = std::get<WireMaterial>(material.value());
+                combine(std::hash<std::string>{}(wireMaterial.get_name()));
+                combine(std::hash<double>{}(wireMaterial.get_permeability()));
+                combine(std::hash<double>{}(wireMaterial.get_resistivity().get_reference_value()));
+                combine(std::hash<double>{}(wireMaterial.get_resistivity().get_reference_temperature()));
+                combine(std::hash<double>{}(wireMaterial.get_resistivity().get_temperature_coefficient()));
+            }
+        }
+        return seed;
+    }
+
     double Wire::get_maximum_conducting_width() const {
         switch (get_type()) {
             case WireType::LITZ:

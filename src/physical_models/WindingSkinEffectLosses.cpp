@@ -42,27 +42,6 @@ inline std::shared_ptr<ResistivityModel>& get_cached_resistivity_model() {
     return m;
 }
 // PERF-002: Composite hash to avoid collisions when wire has no name
-inline std::size_t hash_combine_wire(int64_t n, double w, double h) {
-    std::size_t seed = std::hash<int64_t>{}(n);
-    seed ^= std::hash<double>{}(w) + 0x9e3779b9 + (seed << 6) + (seed >> 2);
-    seed ^= std::hash<double>{}(h) + 0x9e3779b9 + (seed << 6) + (seed >> 2);
-    return seed;
-}
-// The key a wire's cached factor is stored under: its name, or for an unnamed wire its conductor
-// count and outer dimensions, read with one conductor when it states none (the outer dimensions
-// of a litz bundle depend on its count, so that case is measured on a copy carrying it).
-inline std::size_t wire_cache_hash(const Wire& wire) {
-    if (wire.get_name()) {
-        return std::hash<std::string>{}(wire.get_name().value());
-    }
-    if (wire.get_number_conductors()) {
-        return hash_combine_wire(wire.get_number_conductors().value(), wire.get_maximum_outer_width(), wire.get_maximum_outer_height());
-    }
-    Wire oneConductor = wire;
-    oneConductor.set_number_conductors(1);
-    return hash_combine_wire(1, oneConductor.get_maximum_outer_width(), oneConductor.get_maximum_outer_height());
-}
-
 std::shared_ptr<WindingSkinEffectLossesModel> WindingSkinEffectLossesModel::factory(WindingSkinEffectLossesModels modelName){
     if (modelName == WindingSkinEffectLossesModels::WOJDA) {
         return std::make_shared<WindingSkinEffectLossesWojdaModel>();
@@ -425,7 +404,7 @@ WindingLossesOutput WindingSkinEffectLosses::calculate_skin_effect_losses(Coil c
 }
 
 std::optional<double> WindingSkinEffectLossesModel::try_get_skin_factor(const Wire& wire, double frequency, double temperature) {
-    const std::size_t hash = wire_cache_hash(wire);
+    const std::size_t hash = Wire::calculate_loss_factor_cache_key(wire);
 
     if (_skinFactorPerWirePerFrequencyPerTemperature.contains(hash)) {
         if (_skinFactorPerWirePerFrequencyPerTemperature[hash].contains(frequency)) {
@@ -440,7 +419,7 @@ std::optional<double> WindingSkinEffectLossesModel::try_get_skin_factor(const Wi
 
 
 void WindingSkinEffectLossesModel::set_skin_factor(const Wire& wire,  double frequency, double temperature, double skinFactor) {
-    const std::size_t hash = wire_cache_hash(wire);
+    const std::size_t hash = Wire::calculate_loss_factor_cache_key(wire);
 
     _skinFactorPerWirePerFrequencyPerTemperature[hash][frequency][temperature] = skinFactor;
 

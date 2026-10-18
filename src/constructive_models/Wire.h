@@ -299,6 +299,12 @@ class Wire : public MAS::Wire {
         static int calculate_number_parallels_needed(SignalDescriptor current, double temperature, Wire& wire, double maximumEffectiveCurrentDensity);
         static int calculate_number_parallels_needed(double rms, double effectiveFrequency, double temperature, Wire& wire, double maximumEffectiveCurrentDensity);
 
+        // Key of the per-wire skin/proximity factor caches: every property the factors depend on (type,
+        // conductors, conducting and outer dimensions, material), plus the name. A name alone is not enough:
+        // a named planar trace is re-cut to many widths, and an unnamed key of outer dimensions alone made a
+        // 1 mm round wire and a 1 x 1 mm rectangle the same wire (ABT #1498).
+        static std::size_t calculate_loss_factor_cache_key(const Wire& wire);
+
         double get_maximum_outer_width() const;
         double get_maximum_outer_height() const;
         double get_maximum_outer_dimension();
