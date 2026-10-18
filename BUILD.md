@@ -1,58 +1,67 @@
 
 ## Build steps
 
-1. Install dependencies:
+1. Clone with the schema submodules (MAS, PEAS, CAS, CIAS, TAS, RAS, SAS, cci_coords). The
+   build generates its C++ types from these schemas, so a clone without them does not configure:
 
 ```
-wget -O - https://apt.kitware.com/keys/kitware-archive-latest.asc 2>/dev/null | sudo apt-key add -
-sudo apt-add-repository 'deb https://apt.kitware.com/ubuntu/ bionic main'
-sudo apt install cmake
-sudo apt install ninja-build
-nvm install node
-or
-curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash - && sudo apt-get install -y nodejs
+git clone https://github.com/OpenMagnetics/MKF.git
+cd MKF
+git submodule update --init --recursive
+```
 
-npm install -g quicktype
+2. Install dependencies (Ubuntu; CMake >= 3.18 from Kitware's repository, a signed-by keyring
+   instead of the deprecated `apt-key`):
+
+```
+sudo install -d -m 0755 /etc/apt/keyrings
+wget -O - https://apt.kitware.com/keys/kitware-archive-latest.asc 2>/dev/null | gpg --dearmor | sudo tee /etc/apt/keyrings/kitware-archive-keyring.gpg >/dev/null
+echo "deb [signed-by=/etc/apt/keyrings/kitware-archive-keyring.gpg] https://apt.kitware.com/ubuntu/ $(lsb_release -cs) main" | sudo tee /etc/apt/sources.list.d/kitware.list >/dev/null
+sudo apt update
+sudo apt install -y cmake ninja-build git
+
 sudo add-apt-repository -y ppa:ubuntu-toolchain-r/test
 sudo apt install -y gcc-14 g++-14
 sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-14 10
 sudo update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-14 10
+
+# Node.js + quicktype (the MAS/CAS/... C++ types are generated at configure/build time)
+curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash - && sudo apt-get install -y nodejs
+npm install -g quicktype
+
+# libngspice: the Kirchhoff converter library (see below) links it in-process
+sudo apt install -y libngspice0-dev
+
 sudo apt install -y gnuplot
-sudo apt install libopenblas-dev
-
-if node installation fails:
-ln -s /usr/bin/python3 /usr/include/python3
-
 ```
 
-2. Create a build directory:
+3. Kirchhoff. Natively MKF links the Kirchhoff converter-model library (`MKF_USE_KIRCHHOFF`,
+   ON by default, OFF under Emscripten). CMake fetches Kirchhoff and Kelvin from GitHub and builds
+   them in an isolated sub-build (`build/kirchhoff-build`), with Kirchhoff's in-process libngspice
+   runner enabled, so libngspice must be installed (step 2). To build against local checkouts pass
+   `-DKIRCHHOFF_SOURCE_DIR=/path/to/Kirchhoff` and/or `-DKIRCHHOFF_KELVIN_DIR=/path/to/Kelvin`.
+   MKF's own `ENABLE_NGSPICE` stays OFF: circuit simulation goes through Kirchhoff.
+
+4. Configure and build (Ninja):
 
 ```
-mkdir build && cd build
+cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+ninja -C build MKF_tests
 ```
 
-3. Configure the CMake project (Using Ninja in this example):
+   The Kirchhoff sub-build ignores `ninja -j`; bound it with `CMAKE_BUILD_PARALLEL_LEVEL=N` in the
+   environment if memory is short.
+
+5. Run the tests. `MKF_tests` is a Catch2 binary; run it directly from the build directory (the
+   tests read their fixtures from `../tests/testData`), with Catch2 tag or name filters:
 
 ```
-cmake .. -G "Ninja"
+cd build
+./MKF_tests "[coil]"
 ```
 
-4. Build it:
-
-```
-ninja
-```
-
-5. Run the tests:
-
-```
-./MKF_tests
-```
-6. Create Python package
-
-```
-python3 -m pip install -e ../ -vvv
-```
+The Python package is not built from this repository: it lives in
+[PyOpenMagnetics](https://github.com/OpenMagnetics/PyOpenMagnetics).
 
 ### Fast builds with Ninja (recommended)
 
