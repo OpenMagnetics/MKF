@@ -21,6 +21,7 @@
 #include <unordered_map>
 #include <memory>
 #include <vector>
+#include <optional>
 
 namespace OpenMagnetics {
 
@@ -261,7 +262,22 @@ public:
      */
     void addSink(std::shared_ptr<LogSink> sink) {
         std::lock_guard<std::mutex> lock(_mutex);
-        _sinks.push_back(sink);
+        _sinks.push_back({sink, std::nullopt});
+    }
+
+    /**
+     * @brief Add a log sink with its own minimum level
+     *
+     * The sink receives every entry at or above `minimumLevel`, whatever setLevel() says, and
+     * setLevel() never changes what it receives. It lets one reader (read_log) see WARNING entries
+     * without lowering the level of every other sink for the rest of the process (ABT #1643).
+     */
+    void addSink(std::shared_ptr<LogSink> sink, LogLevel minimumLevel) {
+        std::lock_guard<std::mutex> lock(_mutex);
+        _sinks.push_back({sink, minimumLevel});
+        if (minimumLevel < _lowestOwnSinkLevel) {
+            _lowestOwnSinkLevel = minimumLevel;
+        }
     }
     
     /**
@@ -270,6 +286,7 @@ public:
     void clearSinks() {
         std::lock_guard<std::mutex> lock(_mutex);
         _sinks.clear();
+        _lowestOwnSinkLevel = LogLevel::OFF;
     }
     
     /**
@@ -279,9 +296,11 @@ public:
      * @param message The message to log
      */
     void log(LogLevel level, const std::string& moduleOfOrigin, const std::string& message) {
-        // The sinks see what passes the logger level, exactly as before the collector existed; the
-        // collector, when enabled, sees what passes its own level. Neither changes the other.
-        const bool toSinks = !(level < _level);
+        // The sinks see what passes the logger level, exactly as before the collector existed, except
+        // a sink added with its own level, which sees what passes that one; the collector, when
+        // enabled, sees what passes its own level. None changes the others.
+        const LogLevel loggerLevel = _level;
+        const bool toSinks = !(level < loggerLevel) || (level < LogLevel::OFF && !(level < _lowestOwnSinkLevel));
         const bool toCollector = _collectorEnabled && level < LogLevel::OFF && !(level < _collectorLevel);
         if (!toSinks && !toCollector) {
             return;
@@ -290,9 +309,16 @@ public:
         std::lock_guard<std::mutex> lock(_mutex);
 
         if (toSinks) {
-            auto timestamp = getTimestamp();
-            for (auto& sink : _sinks) {
-                sink->write(level, moduleOfOrigin, message, timestamp);
+            std::string timestamp;
+            for (auto& entry : _sinks) {
+                const LogLevel threshold = entry.ownLevel ? entry.ownLevel.value() : loggerLevel;
+                if (level < threshold) {
+                    continue;
+                }
+                if (timestamp.empty()) {
+                    timestamp = getTimestamp();
+                }
+                entry.sink->write(level, moduleOfOrigin, message, timestamp);
             }
         }
         if (toCollector) {
@@ -361,8 +387,8 @@ public:
      */
     void flush() {
         std::lock_guard<std::mutex> lock(_mutex);
-        for (auto& sink : _sinks) {
-            sink->flush();
+        for (auto& entry : _sinks) {
+            entry.sink->flush();
         }
     }
     
@@ -394,7 +420,7 @@ public:
 private:
     Logger() {
         // Default: console sink at ERROR level
-        _sinks.push_back(std::make_shared<ConsoleSink>());
+        _sinks.push_back({std::make_shared<ConsoleSink>(), std::nullopt});
         _level = LogLevel::ERROR;
     }
     
@@ -440,7 +466,12 @@ private:
 
     std::mutex _mutex;
     std::atomic<LogLevel> _level;
-    std::vector<std::shared_ptr<LogSink>> _sinks;
+    struct SinkEntry {
+        std::shared_ptr<LogSink> sink;
+        std::optional<LogLevel> ownLevel;  // empty: follows setLevel()
+    };
+    std::vector<SinkEntry> _sinks;
+    std::atomic<LogLevel> _lowestOwnSinkLevel{LogLevel::OFF};
     std::atomic<bool> _collectorEnabled{false};
     std::atomic<LogLevel> _collectorLevel{LogLevel::WARNING};
     std::vector<LogRecord> _collected;

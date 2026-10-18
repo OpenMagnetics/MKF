@@ -1504,3 +1504,15 @@ TEST_CASE("Test_Autocomplete_Throws_On_An_Unknown_Litz_Outer_Coating_Material", 
                         Catch::Matchers::ContainsSubstring("Not A Real Insulation Material"));
     settings.reset();
 }
+
+// ABT #1643: the first read_log() lowered the global logger level to WARNING for good, so every sink
+// (the console included) got WARNING entries from then on. The capture sink now has its own level.
+TEST_CASE("Test_Read_Log_Captures_Warnings_Without_Changing_The_Logger_Level", "[support][utils][abt-1643]") {
+    auto& logger = Logger::getInstance();
+    const LogLevel levelBefore = logger.getLevel();
+    read_log();  // starts the capture on first use, and drains it
+    CHECK(logger.getLevel() == levelBefore);
+    logEntry("abt-1643 read_log probe", "Test", 1);  // verbosity 1 = WARNING
+    CHECK_THAT(read_log(), Catch::Matchers::ContainsSubstring("abt-1643 read_log probe"));
+    CHECK(logger.getLevel() == levelBefore);
+}

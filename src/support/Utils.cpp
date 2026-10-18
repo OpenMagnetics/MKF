@@ -216,13 +216,11 @@ std::once_flag _readLogOnce;
 std::string read_log() {
     std::call_once(_readLogOnce, [] {
         _readLogSink = std::make_shared<StringSink>();
-        auto& logger = Logger::getInstance();
-        logger.addSink(_readLogSink);
-        // Stage/progress entries are logged at WARNING (logEntry verbosity 1);
-        // the default ERROR level would filter them out before any sink.
-        if (logger.getLevel() > LogLevel::WARNING) {
-            logger.setLevel(LogLevel::WARNING);
-        }
+        // Stage/progress entries are logged at WARNING (logEntry verbosity 1), below the default
+        // ERROR level. The sink gets its own WARNING level: lowering the logger's level instead
+        // (as this did until ABT #1643) sent WARNING entries to the console and every other sink
+        // for the rest of the process, the first time anyone read the log.
+        Logger::getInstance().addSink(_readLogSink, LogLevel::WARNING);
     });
     auto contents = _readLogSink->getContents();
     _readLogSink->clear();
