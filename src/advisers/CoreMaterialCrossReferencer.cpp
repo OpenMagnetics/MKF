@@ -516,6 +516,9 @@ std::vector<std::pair<CoreMaterial, double>> CoreMaterialCrossReferencer::get_cr
 std::vector<std::pair<CoreMaterial, double>> CoreMaterialCrossReferencer::get_cross_referenced_core_material(CoreMaterial referenceCoreMaterial, double temperature, std::map<CoreMaterialCrossReferencerFilters, double> weights, size_t maximumNumberResults) {
     auto defaults = Defaults();
     _weights = weights;
+    // ABT #1620: the scores are distances to THIS reference material; they used to survive across calls.
+    _scorings.clear();
+    _scoredValues.clear();
 
     std::vector<std::pair<CoreMaterial, double>> coreMaterials;
 

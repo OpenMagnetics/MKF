@@ -64,6 +64,38 @@ TEST_CASE("Test_All_Core_Materials_Same_Material", "[adviser][core-cross-referen
     REQUIRE(resultName.find("3C91") != std::string::npos);
 }
 
+TEST_CASE("Test_Core_Cross_Referencer_Second_Reference_Is_Not_Ranked_By_The_First", "[adviser][core-cross-referencer][abt-1620]") {
+    // ABT #1620: the score maps survived across calls and the filters reuse a candidate's stored
+    // valid score, so a second reference core on the same instance was ranked by its distances
+    // to the first reference core.
+    settings.reset();
+    settings.set_use_only_cores_in_stock(false);
+    clear_databases();
+    auto inputs = OpenMagneticsTesting::create_quick_test_inputs();
+    int64_t numberTurns = 28;
+    Core firstReference = find_core_by_name("EC 35/17/10 - 3C91 - Gapped 1.000 mm");
+    Core secondReference = find_core_by_name("E 42/21/15 - 3C91 - Gapped 0.500 mm");
+
+    CoreCrossReferencer freshCrossReferencer;
+    freshCrossReferencer.use_only_reference_material(true);
+    auto alone = freshCrossReferencer.get_cross_referenced_core(secondReference, numberTurns, inputs, 5);
+    REQUIRE(alone.size() > 0);
+
+    CoreCrossReferencer sharedCrossReferencer;
+    sharedCrossReferencer.use_only_reference_material(true);
+    auto first = sharedCrossReferencer.get_cross_referenced_core(firstReference, numberTurns, inputs, 5);
+    REQUIRE(first.size() > 0);
+    auto afterFirst = sharedCrossReferencer.get_cross_referenced_core(secondReference, numberTurns, inputs, 5);
+
+    REQUIRE(afterFirst.size() == alone.size());
+    for (size_t index = 0; index < alone.size(); ++index) {
+        CHECK(afterFirst[index].first.get_name().value() == alone[index].first.get_name().value());
+        CHECK_THAT(afterFirst[index].second, Catch::Matchers::WithinRel(alone[index].second, 1e-12));
+    }
+    CHECK(sharedCrossReferencer.get_scorings() == freshCrossReferencer.get_scorings());
+    settings.reset();
+}
+
 TEST_CASE("Test_All_Core_Materials_Same_Material_Maximum_Height", "[adviser][core-cross-referencer][smoke-test]") {
     settings.reset();
     settings.set_use_only_cores_in_stock(false);

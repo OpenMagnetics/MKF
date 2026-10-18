@@ -1382,6 +1382,42 @@ TEST_CASE("Test_CoreAdviser_Web_0", "[adviser][core-adviser][available-cores][bu
     settings.reset();
 }
 
+TEST_CASE("Test_CoreAdviser_Scorings_Describe_The_Last_Advise_Only", "[adviser][core-adviser][available-cores][abt-1620]") {
+    // ABT #1620: get_scorings() accumulated across advises (and summed a candidate scored twice),
+    // so after a second advise it still listed the first advise's cores.
+    clear_databases();
+    OpenMagnetics::Inputs inputs = OpenMagneticsTesting::fixtures::get_json("core-adviser-web-inductor-inputs");
+    settings.set_use_toroidal_cores(false);
+    auto allCores = load_test_data();
+    REQUIRE(allCores.size() >= 400);
+    std::vector<Core> firstCores(allCores.begin(), allCores.begin() + 200);
+    std::vector<Core> secondCores(allCores.begin() + 200, allCores.begin() + 400);
+
+    CoreAdviser freshCoreAdviser;
+    freshCoreAdviser.set_mode(CoreAdviser::CoreAdviserModes::AVAILABLE_CORES);
+    freshCoreAdviser.get_advised_core(inputs, &secondCores, 3);
+    auto alone = freshCoreAdviser.get_scorings();
+    REQUIRE(!alone.empty());
+
+    CoreAdviser sharedCoreAdviser;
+    sharedCoreAdviser.set_mode(CoreAdviser::CoreAdviserModes::AVAILABLE_CORES);
+    sharedCoreAdviser.get_advised_core(inputs, &firstCores, 3);
+    REQUIRE(!sharedCoreAdviser.get_scorings().empty());
+    sharedCoreAdviser.get_advised_core(inputs, &secondCores, 3);
+    auto afterFirst = sharedCoreAdviser.get_scorings();
+
+    CHECK(afterFirst.size() == alone.size());
+    for (const auto& [reference, scoringPerFilter] : afterFirst) {
+        INFO(reference);
+        REQUIRE(alone.contains(reference));
+        for (const auto& [filter, scoring] : scoringPerFilter) {
+            REQUIRE(alone.at(reference).contains(filter));
+            CHECK_THAT(scoring, Catch::Matchers::WithinRel(alone.at(reference).at(filter), 1e-12));
+        }
+    }
+    settings.reset();
+}
+
 TEST_CASE("Test_CoreAdviser_Web_1", "[adviser][core-adviser][available-cores][bug]") {
     clear_databases();
     json inputsJson = OpenMagneticsTesting::fixtures::get_json("core-adviser-web-inductor-inputs");

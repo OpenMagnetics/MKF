@@ -169,6 +169,26 @@ class CoreAdviser {
                 { CoreAdviserFilters::TURN_COUNT,         { {"invert", true}, {"log", false} } }
             };
         std::map<CoreAdviserFilters, std::map<std::string, double>> _scorings;
+    private:
+        // ABT #1620: _scorings describes ONE advise. The outermost get_advised_core starts it empty;
+        // the overloads it calls (the batches of a batched advise, the stacked retry) fill it in.
+        // It used to survive across calls, so a second advise reported the first one's cores too.
+        size_t _adviseDepth = 0;
+        class AdviseScoringScope {
+            public:
+                explicit AdviseScoringScope(CoreAdviser& coreAdviser) : _coreAdviser(coreAdviser) {
+                    if (_coreAdviser._adviseDepth == 0) {
+                        _coreAdviser._scorings.clear();
+                    }
+                    ++_coreAdviser._adviseDepth;
+                }
+                ~AdviseScoringScope() { --_coreAdviser._adviseDepth; }
+                AdviseScoringScope(const AdviseScoringScope&) = delete;
+                AdviseScoringScope& operator=(const AdviseScoringScope&) = delete;
+            private:
+                CoreAdviser& _coreAdviser;
+        };
+    public:
         CoreAdviser(std::map<std::string, std::string> models) {
             auto defaults = OpenMagnetics::Defaults();
             _models = models;
@@ -407,12 +427,11 @@ class CoreAdviser {
             bool _useCache = true;
 
             void add_scoring(std::string name, CoreAdviser::CoreAdviserFilters filter, double scoring) {
+                // ABT #1620: a candidate's score under a filter is its value, written, not summed: a
+                // core scored by both the first search and the stacked retry of one advise used to
+                // report twice its value.
                 if (scoring != -1) {
-                    if ((*_scorings)[filter].find(name) == (*_scorings)[filter].end()) {
-                        (*_scorings)[filter][name] = 0;
-                    }
-                    auto oldScoring = (*_scorings)[filter][name];
-                    (*_scorings)[filter][name] = oldScoring + scoring;
+                    (*_scorings)[filter][name] = scoring;
                 }
             }
             void set_scorings(std::map<CoreAdviserFilters, std::map<std::string, double>>* scorings) {

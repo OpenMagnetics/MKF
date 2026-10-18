@@ -714,6 +714,13 @@ std::vector<std::pair<Core, double>> CoreCrossReferencer::get_cross_referenced_c
 
 std::vector<std::pair<Core, double>> CoreCrossReferencer::get_cross_referenced_core(Core referenceCore, int64_t referenceNumberTurns, Inputs inputs, std::map<CoreCrossReferencerFilters, double> weights, size_t maximumNumberResults) {
     _weights = weights;
+    // ABT #1620: the scores are distances to THIS reference core. The filters reuse a candidate's
+    // valid score across the widening-limit passes below (the distance does not depend on the
+    // limit), but the maps used to survive across calls, so a second reference core was ranked by
+    // the first one's distances.
+    _scorings.clear();
+    _validScorings.clear();
+    _scoredValues.clear();
 
     if (coreDatabase.empty()) {
         load_cores();
