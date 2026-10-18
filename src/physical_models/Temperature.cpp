@@ -2534,7 +2534,6 @@ void Temperature::createConcentricTurnToTurnConnections(const std::vector<size_t
 
                 // Check if there's a solid insulation layer between these turns
                 // If so, skip direct connection - turns will connect through insulation layer node
-                auto& coil = _magnetic.get_mutable_coil();
                 const auto& turnsDescription = this->turnsDescription();
                 bool hasSolidInsulationBetween = false;
 
@@ -2543,7 +2542,7 @@ void Temperature::createConcentricTurnToTurnConnections(const std::vector<size_t
                     try {
                         auto& turn1 = (*turnsDescription)[turn1Idx];
                         auto& turn2 = (*turnsDescription)[turn2Idx];
-                        auto layersBetween = StrayCapacitance::get_insulation_layers_between_two_turns_in_place(turn1, turn2, coil);
+                        auto layersBetween = insulationLayersBetweenTurns(turn1, turn2);
                         hasSolidInsulationBetween = !layersBetween.empty();
                     } catch (const std::exception& e) { // IMP-8
                         // If we can't determine insulation layers (e.g., missing layer description),
@@ -2765,7 +2764,6 @@ void Temperature::createToroidalTurnToTurnConnections(const std::vector<size_t>&
 
                 // Check if there's a solid insulation layer between these turns
                 // If so, skip direct connection - turns will connect through insulation layer node
-                auto& coil = _magnetic.get_mutable_coil();
                 const auto& turnsDescription = this->turnsDescription();
                 bool hasSolidInsulationBetween = false;
 
@@ -2774,7 +2772,7 @@ void Temperature::createToroidalTurnToTurnConnections(const std::vector<size_t>&
                     try {
                         auto& turn1 = (*turnsDescription)[turn1Idx];
                         auto& turn2 = (*turnsDescription)[turn2Idx];
-                        auto layersBetween = StrayCapacitance::get_insulation_layers_between_two_turns_in_place(turn1, turn2, coil);
+                        auto layersBetween = insulationLayersBetweenTurns(turn1, turn2);
                         // Zero-thickness layers are geometric boundary markers, not physical insulation.
                         // Filter them out so they don't block direct turn-to-turn connections.
                         layersBetween.erase(
@@ -6655,6 +6653,25 @@ const std::optional<std::vector<Turn>>& Temperature::turnsDescription() {
     return _turnsDescription;
 }
 
+const std::vector<Layer>& Temperature::insulationLayers() {
+    if (!_insulationLayers) {
+        const auto& coil = _magnetic.get_coil();
+        if (!coil.get_sections_description()) {
+            throw std::invalid_argument("Missing sections description");
+        }
+        if (!coil.get_layers_description()) {
+            throw std::invalid_argument("Missing layers description");
+        }
+        _insulationLayers = coil.get_layers_description_insulation();
+    }
+    return _insulationLayers.value();
+}
+
+std::vector<Layer> Temperature::insulationLayersBetweenTurns(const Turn& firstTurn, const Turn& secondTurn) {
+    const auto& layers = insulationLayers();
+    return StrayCapacitance::get_insulation_layers_between_two_turns_in_place(firstTurn, secondTurn, _magnetic.get_mutable_coil(), layers);
+}
+
 double Temperature::getInsulationLayerThermalResistance(int turnIdx1, int turnIdx2, double contactArea) {
     if (contactArea <= 0.0) {
         throw std::runtime_error("Temperature::getInsulationLayerThermalResistance: Contact area is zero or negative (" +
@@ -6691,7 +6708,7 @@ double Temperature::getInsulationLayerThermalResistance(int turnIdx1, int turnId
     auto& turn1 = (*turnsDescription)[turnIdx1];
     auto& turn2 = (*turnsDescription)[turnIdx2];
 
-    auto layersBetween = StrayCapacitance::get_insulation_layers_between_two_turns_in_place(turn1, turn2, coil);
+    auto layersBetween = insulationLayersBetweenTurns(turn1, turn2);
 
     double totalLayerResistance = 0.0;
     for (const auto& layer : layersBetween) {

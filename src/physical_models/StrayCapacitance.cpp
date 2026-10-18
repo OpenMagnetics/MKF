@@ -503,8 +503,12 @@ std::vector<Layer> StrayCapacitance::get_insulation_layers_between_two_turns_in_
     if (!coil.get_layers_description()) {
         throw std::invalid_argument("Missing layers description");
     }
+    return get_insulation_layers_between_two_turns_in_place(firstTurn, secondTurn, coil, coil.get_layers_description_insulation());
+}
+
+std::vector<Layer> StrayCapacitance::get_insulation_layers_between_two_turns_in_place(const Turn& firstTurn, const Turn& secondTurn, Coil& coil,
+                                                                                      const std::vector<Layer>& layers) {
     std::vector<Layer> layersInBetween;
-    auto layers = coil.get_layers_description_insulation();
 
     auto bobbin = coil.resolve_bobbin();
     auto layerOrientation = bobbin.get_winding_window_sections_orientation(0);
@@ -518,7 +522,7 @@ std::vector<Layer> StrayCapacitance::get_insulation_layers_between_two_turns_in_
             x2 = coil.cartesian_to_polar(secondTurn.get_coordinates())[0];
         }
 
-        for (auto layer : layers) {
+        for (const auto& layer : layers) {
             if (layer.get_dimensions()[0] > 0 && layer.get_coordinates()[0] > std::min(x1, x2) && layer.get_coordinates()[0] < std::max(x1, x2)) {
                 layersInBetween.push_back(layer);
             }
@@ -530,21 +534,21 @@ std::vector<Layer> StrayCapacitance::get_insulation_layers_between_two_turns_in_
             double y1 = coil.cartesian_to_polar(firstTurn.get_coordinates())[1];
             double y2 = coil.cartesian_to_polar(secondTurn.get_coordinates())[1];
             if (y1 < 90 && y2 > 270) {
-                for (auto layer : layers) {
+                for (const auto& layer : layers) {
                     if (layer.get_dimensions()[1] > 0 && layer.get_coordinates()[1] > y2) {
                         layersInBetween.push_back(layer);
                     }
                 }
             }
             else if (y2 < 90 && y1 > 270) {
-                for (auto layer : layers) {
+                for (const auto& layer : layers) {
                     if (layer.get_dimensions()[1] > 0 && layer.get_coordinates()[1] > y1) {
                         layersInBetween.push_back(layer);
                     }
                 }
             }
             else {
-                for (auto layer : layers) {
+                for (const auto& layer : layers) {
                     if (layer.get_dimensions()[1] > 0 && layer.get_coordinates()[1] > std::min(y1, y2) && layer.get_coordinates()[1] < std::max(y1, y2)) {
                         layersInBetween.push_back(layer);
                     }
@@ -554,7 +558,7 @@ std::vector<Layer> StrayCapacitance::get_insulation_layers_between_two_turns_in_
         else {
             double y1 = firstTurn.get_coordinates()[1];
             double y2 = secondTurn.get_coordinates()[1];
-            for (auto layer : layers) {
+            for (const auto& layer : layers) {
                 if (layer.get_dimensions()[1] > 0 && layer.get_coordinates()[1] > std::min(y1, y2) && layer.get_coordinates()[1] < std::max(y1, y2)) {
                     layersInBetween.push_back(layer);
                 }

@@ -338,6 +338,7 @@ private:
     std::optional<InsulationWireCoating> _wireCoating;  // Wire coating for thermal calculations
     bool _turnsDescriptionRead = false;  // _turnsDescription holds the coil's turns (see turnsDescription())
     std::optional<std::vector<Turn>> _turnsDescription;
+    std::optional<std::vector<Layer>> _insulationLayers;  // the coil's insulation layers (see insulationLayers())
     
     // =========================================================================
     // IMP-NEW-06: Per-winding wire properties for multi-winding transformers
@@ -802,6 +803,21 @@ private:
      * 492-turn coil).
      */
     const std::optional<std::vector<Turn>>& turnsDescription();
+
+    /**
+     * @brief The coil's insulation layers, read once per network (ABT #1840)
+     *
+     * Coil::get_layers_description_insulation copies every layer of the coil (the MAS getter returns them
+     * BY VALUE); the turn-to-turn connections asked for it for every touching pair. Throws, every time it
+     * is asked, what StrayCapacitance::get_insulation_layers_between_two_turns_in_place throws for a coil
+     * without sections or layers description.
+     */
+    const std::vector<Layer>& insulationLayers();
+
+    /**
+     * @brief StrayCapacitance::get_insulation_layers_between_two_turns_in_place on insulationLayers()
+     */
+    std::vector<Layer> insulationLayersBetweenTurns(const Turn& firstTurn, const Turn& secondTurn);
     
     /**
      * @brief Calculate contact area between two quadrants
