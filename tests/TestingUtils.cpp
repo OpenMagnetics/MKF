@@ -336,6 +336,11 @@ OpenMagnetics::Inputs get_quick_insulation_inputs(DimensionWithTolerance altitud
     SignalDescriptor voltage;
     ProcessedWaveform processedVoltage;
 
+    // ABT #1762: label and offset are required plain members of the generated ProcessedWaveform;
+    // unset they carry whatever the heap held. Only rms and peak are specified here, so CUSTOM
+    // with no DC offset.
+    processedVoltage.set_label(WaveformLabel::CUSTOM);
+    processedVoltage.set_offset(0);
     processedVoltage.set_rms(maximumVoltageRms);
     processedVoltage.set_peak(maximumVoltagePeak);
     voltage.set_processed(processedVoltage);

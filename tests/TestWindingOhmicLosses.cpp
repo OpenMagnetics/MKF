@@ -21,6 +21,11 @@ namespace {
         ProcessedWaveform processed;
         std::vector<OperatingPointExcitation> excitations;
         for (auto& dcCurrent : dcCurrents) {
+            // ABT #1762: label and offset are required plain members of the generated
+            // ProcessedWaveform; unset they carry whatever the heap held. A DC current has no
+            // standard shape, so CUSTOM, and its offset is the DC value itself.
+            processed.set_label(WaveformLabel::CUSTOM);
+            processed.set_offset(dcCurrent);
             processed.set_rms(dcCurrent);
             current.set_processed(processed);
             operatingPointExcitation.set_current(current);
@@ -201,6 +206,7 @@ namespace {
             SignalDescriptor current;
             ProcessedWaveform processedWithoutRms;
             processedWithoutRms.set_label(WaveformLabel::TRIANGULAR);
+            processedWithoutRms.set_offset(0);  // required member (ABT #1762)
             current.set_processed(processedWithoutRms);
             excitation.set_current(current);
             unresolvableOperatingPoint.set_excitations_per_winding({excitation});
