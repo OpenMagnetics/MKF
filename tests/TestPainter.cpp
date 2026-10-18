@@ -5698,4 +5698,34 @@ namespace {
         CHECK(svg.find("nan") == std::string::npos);
         settings.reset();
     }
+
+    // ABT #1343: the svg library writes <title>/<text> content verbatim, and turn names are built
+    // from the MAS winding names, so a winding named like markup produced live markup in every
+    // consumer that inserts the SVG. The Painter escapes every label it hands to the library.
+    TEST_CASE("Test_Painter_Escapes_Winding_Names", "[support][painter][abt-1343]") {
+        settings.reset();
+        const std::string hostileName = "<img src=x onerror=1>";
+        auto coil = OpenMagneticsTesting::get_quick_coil({6, 3}, {1, 1}, "ETD 34", 1, WindingOrientation::OVERLAPPING,
+                                                         WindingOrientation::OVERLAPPING, CoilAlignment::CENTERED,
+                                                         CoilAlignment::INNER_OR_TOP, {});
+        coil.get_mutable_functional_description()[0].set_name(hostileName);
+        REQUIRE(coil.wind());
+        auto core = OpenMagneticsTesting::get_quick_core("ETD 34", OpenMagneticsTesting::get_ground_gap(0.001), 1, "N87");
+        OpenMagnetics::Magnetic magnetic;
+        magnetic.set_core(core);
+        magnetic.set_coil(coil);
+
+        auto outFile = outputFilePath;
+        outFile.append("Test_Painter_Escapes_Winding_Names.svg");
+        std::filesystem::remove(outFile);
+        Painter painter(outFile);
+        painter.paint_core(magnetic);
+        painter.paint_bobbin(magnetic);
+        painter.paint_coil_turns(magnetic);
+        auto svg = painter.export_svg();
+
+        CHECK(svg.find("&lt;img src=x onerror=1&gt;") != std::string::npos);
+        CHECK(svg.find("<img") == std::string::npos);
+        settings.reset();
+    }
 }  // namespace

@@ -311,7 +311,7 @@ void Painter::paint_rectangle(double xCoordinate, double yCoordinate, double xDi
     turnSvg->set_attr("class", cssClassName);
     turnSvg->set_attr("transform", "rotate( " + std::to_string(-(angle)) + " " + std::to_string(center[0] * _scale) + " " + std::to_string(center[1] * _scale) + ") ");
     if (label) {
-        turnSvg->add_child<SVG::Title>(label.value());
+        turnSvg->add_child<SVG::Title>(escape_xml(label.value()));
     }
 }
 
@@ -343,7 +343,7 @@ void Painter::paint_circle(double xCoordinate, double yCoordinate, double radius
         group->set_attr("stroke-dasharray", std::to_string(circlePerimeter * angleProportion) + " " + std::to_string(circlePerimeter * (1 - angleProportion)));
     }
     if (label) {
-        turnSvg->add_child<SVG::Title>(label.value());
+        turnSvg->add_child<SVG::Title>(escape_xml(label.value()));
     }
 }
 
@@ -861,9 +861,9 @@ void Painter::paint_toroidal_turn_connections(Magnetic magnetic, bool below) {
         lead->set_attr("fill", "none");
         lead->set_attr("opacity", 0.8);
         lead->set_attr("stroke-linecap", "round");
-        lead->add_child<SVG::Title>(station.get_name() +
+        lead->add_child<SVG::Title>(escape_xml(station.get_name() +
                                     (below ? " input terminal (under the core)"
-                                           : " output terminal (over the core)"));
+                                           : " output terminal (over the core)")));
     }
     for (size_t i = 0; i < turns.size(); ++i) {
         if (!turns[i].get_additional_coordinates()) {
@@ -904,8 +904,8 @@ void Painter::paint_toroidal_turn_connections(Magnetic magnetic, bool below) {
         path->set_attr("fill", "none");
         path->set_attr("opacity", 0.5);
         path->set_attr("stroke-linecap", "round");
-        path->add_child<SVG::Title>(turns[i].get_name() +
-                                    (below ? " return (under the core)" : " crossing (over the core)"));
+        path->add_child<SVG::Title>(escape_xml(turns[i].get_name() +
+                                    (below ? " return (under the core)" : " crossing (over the core)")));
     }
 }
 
@@ -2521,7 +2521,7 @@ void Painter::paint_temperature_field(Magnetic magnetic, const std::map<std::str
             auto* path = shapes->add_child<SVG::Path>();
             path->set_attr("d", pathData.str());
             path->set_attr("class", cssClassName);
-            path->add_child<SVG::Title>(label);
+            path->add_child<SVG::Title>(escape_xml(label));
         }
         
         // Paint ambient area outside the core (where additional turns are located)
@@ -2566,7 +2566,7 @@ void Painter::paint_temperature_field(Magnetic magnetic, const std::map<std::str
                 auto* ambientPath = shapes->add_child<SVG::Path>();
                 ambientPath->set_attr("d", ambientPathData.str());
                 ambientPath->set_attr("class", ambientClassName);
-                ambientPath->add_child<SVG::Title>(ambientLabel);
+                ambientPath->add_child<SVG::Title>(escape_xml(ambientLabel));
             }
         }
     }
@@ -3095,7 +3095,7 @@ void Painter::paint_temperature_field(Magnetic magnetic, const std::map<std::str
             // Position text closer to the color bar
             double textX = (barX + barWidth * 0.6) * _scale;
             double textY = -labelY * _scale;  // Note: SVG Y is inverted
-            auto* text = _root.add_child<SVG::Text>(textX, textY, label);
+            auto* text = _root.add_child<SVG::Text>(textX, textY, escape_xml(label));
             text->set_attr("font-size", std::to_string(barHeight * _scale * 0.08));
             text->set_attr("fill", textColor);
             text->set_attr("text-anchor", "start");
@@ -3270,7 +3270,7 @@ void Painter::paint_waveform_svg(
     path->set_attr("class", cssClassName);
     
     // Add label
-    auto* text = _root.add_child<SVG::Text>(xOffset + 5, yOffset + 15, name);
+    auto* text = _root.add_child<SVG::Text>(xOffset + 5, yOffset + 15, escape_xml(name));
     text->set_attr("font-size", "12");
     text->set_attr("fill", color);
     
@@ -3304,11 +3304,11 @@ void Painter::paint_waveform_svg(
     maxLabel << std::scientific << std::setprecision(2) << maxVal;
     minLabel << std::scientific << std::setprecision(2) << minVal;
     
-    auto* maxText = _root.add_child<SVG::Text>(xOffset - 60, yOffset + 12, maxLabel.str());
+    auto* maxText = _root.add_child<SVG::Text>(xOffset - 60, yOffset + 12, escape_xml(maxLabel.str()));
     maxText->set_attr("font-size", "10");
     maxText->set_attr("fill", "#666666");
     
-    auto* minText = _root.add_child<SVG::Text>(xOffset - 60, yOffset + plotHeight, minLabel.str());
+    auto* minText = _root.add_child<SVG::Text>(xOffset - 60, yOffset + plotHeight, escape_xml(minLabel.str()));
     minText->set_attr("font-size", "10");
     minText->set_attr("fill", "#666666");
 }
@@ -3357,7 +3357,7 @@ std::string Painter::paint_operating_point_waveforms(
     bg->set_attr("fill", "#ffffff");
     
     // Add title
-    auto* titleText = _root.add_child<SVG::Text>(width / 2, 25, title);
+    auto* titleText = _root.add_child<SVG::Text>(width / 2, 25, escape_xml(title));
     titleText->set_attr("font-size", "16");
     titleText->set_attr("font-weight", "bold");
     titleText->set_attr("text-anchor", "middle");
@@ -3718,7 +3718,7 @@ std::string Painter::paint_thermal_circuit_schematic(
         }
         rStr << "K/W";
         
-        auto* rLabel = resistorGroup->add_child<SVG::Text>(labelX, labelY, rStr.str());
+        auto* rLabel = resistorGroup->add_child<SVG::Text>(labelX, labelY, escape_xml(rStr.str()));
         rLabel->set_attr("font-size", "6");
         rLabel->set_attr("fill", "#cc6600");
     };
@@ -4051,7 +4051,7 @@ std::string Painter::paint_thermal_circuit_schematic(
         // Temperature label
         std::stringstream tStr;
         tStr << std::fixed << std::setprecision(0) << node->temperature << "°";
-        auto* tLabel = nodesGroup->add_child<SVG::Text>(x, y + 3, tStr.str());
+        auto* tLabel = nodesGroup->add_child<SVG::Text>(x, y + 3, escape_xml(tStr.str()));
         tLabel->set_attr("font-size", "7");
         tLabel->set_attr("text-anchor", "middle");
         tLabel->set_attr("fill", "#ffffff");
@@ -4067,7 +4067,7 @@ std::string Painter::paint_thermal_circuit_schematic(
             // Use full name for insulation layers (e.g., "IL_0_0_i")
             nodeLabel = node->name;
         }
-        auto* nameLabel = nodesGroup->add_child<SVG::Text>(x, y + defaultNodeRadius + 10, nodeLabel);
+        auto* nameLabel = nodesGroup->add_child<SVG::Text>(x, y + defaultNodeRadius + 10, escape_xml(nodeLabel));
         nameLabel->set_attr("font-size", "6");
         nameLabel->set_attr("text-anchor", "middle");
         nameLabel->set_attr("fill", "#666666");
@@ -4518,7 +4518,7 @@ std::string Painter::paint_thermal_circuit_schematic(
                     }
                     
                     // Draw quadrant initial
-                    auto* qLabel = nodesGroup->add_child<SVG::Text>(labelX, labelY + 2, initial);
+                    auto* qLabel = nodesGroup->add_child<SVG::Text>(labelX, labelY + 2, escape_xml(initial));
                     qLabel->set_attr("font-size", "4");
                     qLabel->set_attr("text-anchor", "middle");
                     qLabel->set_attr("fill", "#ffffff");
@@ -4529,7 +4529,7 @@ std::string Painter::paint_thermal_circuit_schematic(
             // Temperature label
             std::stringstream tStr;
             tStr << std::fixed << std::setprecision(0) << node->temperature << "°";
-            auto* tLabel = nodesGroup->add_child<SVG::Text>(x, y + 3, tStr.str());
+            auto* tLabel = nodesGroup->add_child<SVG::Text>(x, y + 3, escape_xml(tStr.str()));
             tLabel->set_attr("font-size", "7");
             tLabel->set_attr("text-anchor", "middle");
             tLabel->set_attr("fill", "#ffffff");
@@ -4557,7 +4557,7 @@ std::string Painter::paint_thermal_circuit_schematic(
             }
             
             double labelOffset = std::max(nodeHeight, nodeWidth) / 2.0 + 12;
-            auto* numLabel = nodesGroup->add_child<SVG::Text>(x, y + labelOffset, turnLabel);
+            auto* numLabel = nodesGroup->add_child<SVG::Text>(x, y + labelOffset, escape_xml(turnLabel));
             numLabel->set_attr("font-size", "6");
             numLabel->set_attr("text-anchor", "middle");
             numLabel->set_attr("fill", "#666666");
@@ -4912,7 +4912,7 @@ void Painter::paint_yz_projection(Magnetic magnetic) {
         path->set_attr("opacity", 0.55);
         path->set_attr("stroke-linecap", "round");
         path->set_attr("stroke-linejoin", "round");
-        path->add_child<SVG::Title>(label);
+        path->add_child<SVG::Title>(escape_xml(label));
     };
     for (const auto& r : yzReturns) {
         const double sign = (r.side == 0) ? -1.0 : 1.0;
@@ -4970,7 +4970,7 @@ void Painter::paint_yz_projection(Magnetic magnetic) {
             path->set_attr("opacity", 0.8);
             path->set_attr("stroke-linecap", "round");
             path->set_attr("stroke-linejoin", "round");
-            path->add_child<SVG::Title>(label);
+            path->add_child<SVG::Title>(escape_xml(label));
         };
         auto spaces = coil.get_connection_reserved_spaces();
         double tipZ = 0.0;
@@ -5136,7 +5136,7 @@ void Painter::paint_xz_projection(Magnetic magnetic) {
         path->set_attr("opacity", opacity);
         path->set_attr("stroke-linecap", "round");
         path->set_attr("stroke-linejoin", "round");
-        path->add_child<SVG::Title>(label);
+        path->add_child<SVG::Title>(escape_xml(label));
     };
     // The ring a turn at radial position `x` follows, sampled. One helper for all three column
     // shapes: a round column gives a circle, an oblong one a stadium, a rectangular one a
@@ -5220,10 +5220,10 @@ void Painter::paint_xz_projection(Magnetic magnetic) {
         path->set_attr("stroke-dasharray", std::to_string(0.6 * level.height * _scale) + " " +
                                            std::to_string(0.6 * level.height * _scale));
         path->set_attr("fill", "none");
-        path->add_child<SVG::Title>("bump: lane at r=" + std::to_string(level.radius * 1000) +
+        path->add_child<SVG::Title>(escape_xml("bump: lane at r=" + std::to_string(level.radius * 1000) +
                                     " mm displaces everything outside it by " +
                                     std::to_string(level.height * 1000) + " mm (side " +
-                                    std::to_string(level.side) + ")");
+                                    std::to_string(level.side) + ")"));
     }
 
     // --- the connections, on the connection plane ------------------------------------------
