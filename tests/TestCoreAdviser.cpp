@@ -2895,7 +2895,7 @@ TEST_CASE("Test_CoreAdviser_Flyback_From_Frontend_Inputs", "[adviser][core-advis
     // offset is a required field, a plain double the generated class leaves uninitialised: a
     // processed block built by hand must set it, or the flyback magnetizing current is built on
     // whatever the heap held (ABT #1755: 54 A instead of 2.3 A, 0 cores, only after some other
-    // tests had run). 0 is what Inputs' calculate_offset gives these labels and waveforms: the
+    // tests had run). 0 is what WaveformProcessor's calculate_offset gives these labels and waveforms: the
     // first sample for FLYBACK_PRIMARY, the last for FLYBACK_SECONDARY, 0 for RECTANGULAR.
     ProcessedWaveform currentProcessed;
     currentProcessed.set_label(WaveformLabel::FLYBACK_PRIMARY);

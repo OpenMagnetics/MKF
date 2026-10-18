@@ -1799,46 +1799,6 @@ ProcessedWaveform Inputs::calculate_processed_data(SignalDescriptor excitation,
                                                        settings.get_inputs_number_points_sampled_waveforms());
 }
 
-double calculate_offset(Waveform waveform, WaveformLabel label) {
-    switch (label) {
-        case WaveformLabel::TRIANGULAR:
-            return (waveform.get_data()[0] + waveform.get_data()[1]) / 2;
-        case WaveformLabel::UNIPOLAR_TRIANGULAR:
-            return *min_element(waveform.get_data().begin(), waveform.get_data().end());
-        case WaveformLabel::RECTANGULAR:
-            return 0;
-        case WaveformLabel::UNIPOLAR_RECTANGULAR:
-            return *min_element(waveform.get_data().begin(), waveform.get_data().end());
-        case WaveformLabel::BIPOLAR_RECTANGULAR:
-            return 0;
-        case WaveformLabel::BIPOLAR_TRIANGULAR:
-            return 0;
-        case WaveformLabel::SINUSOIDAL:
-            return (*max_element(waveform.get_data().begin(), waveform.get_data().end()) + *min_element(waveform.get_data().begin(), waveform.get_data().end())) / 2;
-        case WaveformLabel::CUSTOM:
-            return (*max_element(waveform.get_data().begin(), waveform.get_data().end()) + *min_element(waveform.get_data().begin(), waveform.get_data().end())) / 2;
-        case WaveformLabel::FLYBACK_PRIMARY:
-            if (waveform.get_data().size() == 4) {
-                return waveform.get_data()[0];
-            }
-            else {
-                return waveform.get_data()[1];
-            }
-        case WaveformLabel::FLYBACK_SECONDARY:
-            return waveform.get_data()[3];
-    // FIXED: BUG-06 — Handle missing waveform labels
-    case WaveformLabel::RECTANGULAR_WITH_DEADTIME:
-    case WaveformLabel::SECONDARY_RECTANGULAR:
-    case WaveformLabel::SECONDARY_RECTANGULAR_WITH_DEADTIME:
-        return 0; // Rectangular variants: zero offset like RECTANGULAR
-    case WaveformLabel::TRIANGULAR_WITH_DEADTIME:
-    case WaveformLabel::FLYBACK_SECONDARY_WITH_DEADTIME:
-        return (*max_element(waveform.get_data().begin(), waveform.get_data().end()) +
-                *min_element(waveform.get_data().begin(), waveform.get_data().end())) / 2;
-    }
-    return 0;
-}
-
 ProcessedWaveform Inputs::calculate_basic_processed_data(Waveform waveform, std::optional<Waveform> givenWaveform) {
     // Delegates to WaveformProcessor, which additionally fixed part of ABT
     // #602 this copy never had: the duty-cycle measurement for a CUSTOM label
