@@ -1,5 +1,6 @@
 #pragma once
 #include "Constants.h"
+#include "support/Exceptions.h"
 #include "constructive_models/Core.h"
 #include "constructive_models/InsulationMaterial.h"
 #include "ThermalNode.h"  // For HeatTransferType
@@ -223,7 +224,13 @@ public:
      */
     static double calculateConductionResistance(double length, double thermalConductivity, double area) {
         if (length <= 0) return 0.0;
-        if (thermalConductivity <= 0 || area <= 0) return 1e9;  // Return high resistance for invalid params
+        // A 1e9 K/W stand-in used to be returned here, an in-band value no caller could tell from a
+        // real resistance (ABT #569). A conductor needs a conductivity and an area.
+        if (thermalConductivity <= 0 || area <= 0) {
+            throw InvalidInputException(ErrorCode::CALCULATION_INVALID_INPUT,
+                                        "Conduction resistance needs a positive thermal conductivity and area, got k = " +
+                                        std::to_string(thermalConductivity) + " W/(m K) and A = " + std::to_string(area) + " m2");
+        }
         return length / (thermalConductivity * area);
     }
     

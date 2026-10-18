@@ -4679,6 +4679,14 @@ TEST_CASE("Temperature: an insulation material is found under its MAS name", "[t
                  Catch::Matchers::WithinAbs(0.15, 1e-12));
 }
 
+// ABT #569: a conduction resistance with no conductivity or no area returned an in-band 1e9 K/W.
+TEST_CASE("Temperature: a conduction resistance without conductivity or area throws", "[temperature][abt-569]") {
+    REQUIRE_THAT(ThermalResistance::calculateConductionResistance(1e-3, 0.2, 1e-4), Catch::Matchers::WithinRel(50.0, 1e-12));
+    REQUIRE_THROWS_AS(ThermalResistance::calculateConductionResistance(1e-3, 0.0, 1e-4), InvalidInputException);
+    REQUIRE_THROWS_AS(ThermalResistance::calculateConductionResistance(1e-3, 0.2, 0.0), InvalidInputException);
+    REQUIRE_THROWS_AS(ThermalResistance::calculateConductionResistance(1e-3, -0.2, 1e-4), InvalidInputException);
+}
+
 // ============================================================================
 // ABT #1753: a core material's heat conductivity — the MAS value, or a flagged estimate (class,
 // family, all sourced materials); absence never throws, malformed data does
