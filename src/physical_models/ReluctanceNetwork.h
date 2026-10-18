@@ -73,17 +73,32 @@ class ReluctanceNetwork {
     static bool has_non_main_placement(Magnetic magnetic);
 
     /**
+     * @brief Sign of the MMF each winding drives into its column per ampere of its reference
+     * current: +1 for a winding wound CLOCKWISE around its column, -1 for COUNTER_CLOCKWISE
+     * (ABT #1346). Read from the turns' orientation when the coil is wound (every turn of a
+     * winding must carry one, and the same one); for a coil not yet wound, the sense the winder
+     * gives it in the window it is placed in (Coil::get_turn_orientation_in_winding_window: a
+     * window on the negative-x side is mirrored into place and wound the opposite way).
+     */
+    static std::vector<double> resolve_winding_polarities(Magnetic magnetic);
+
+    /**
      * @brief Magnetizing inductance matrix L_ij from the network (window leakage not
-     * included). L_ij = N_i·N_j·(δ_{ci,cj}·G_ci − G_ci·G_cj / ΣG), with G_b the branch
-     * admittance of column b and c_w the column of winding w. Off-diagonal terms are
-     * signed: a negative mutual means the two windings link their shared flux with
-     * opposite orientation (flux going up one leg comes down the other).
+     * included). L_ij = s_i·s_j·N_i·N_j·(δ_{ci,cj}·G_ci − G_ci·G_cj / ΣG), with G_b the branch
+     * admittance of column b, c_w the column of winding w and s_w its polarity
+     * (resolve_winding_polarities). The sign of a mutual follows how the two windings are
+     * wound: two windings on opposite legs wound in opposite senses (what the winder does for
+     * a mirrored window) drive the flux the same way round the core and couple positively;
+     * wound in the same sense, they couple negatively (ABT #1346; ABT #396 took the topological
+     * sign alone, always negative for leg-separated windings, which 3-D FEM contradicts:
+     * M/L11 +0.10876 on an E 42/21/20 with both windings on the lateral legs).
      */
     std::vector<std::vector<double>> calculate_magnetizing_inductance_matrix(Magnetic magnetic) const;
 
     /**
      * @brief Per-column magnetic flux for the given winding currents (positive along
-     * the common branch orientation; the fluxes of all columns sum to zero).
+     * the common branch orientation; the fluxes of all columns sum to zero). Each winding
+     * drives s_w·N_w·I_w (resolve_winding_polarities).
      */
     std::vector<double> calculate_column_magnetic_fluxes(Magnetic magnetic, const std::vector<double>& windingCurrents) const;
 

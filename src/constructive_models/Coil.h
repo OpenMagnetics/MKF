@@ -868,6 +868,13 @@ class Coil : public MAS::Coil {
         // (e.g. the painter framing a margin rectangle, ABT #227.7) need this same
         // resolution, not just Coil's own internal winding/placement machinery.
         size_t resolve_section_winding_window_index(const Section& section) const;
+        // ABT #1346: the winder's rule for the sense a winding is wound around its column. Every group
+        // is wound in the +x winding frame with its turns CLOCKWISE; apply_group_window_sides mirrors
+        // a section whose window sits on the negative-x side into place, which winds it the opposite
+        // way (COUNTER_CLOCKWISE). The one rule both the winder and the reluctance network's MMF sign
+        // read. Throws when the window has no coordinates.
+        static bool is_mirrored_winding_window(const WindingWindowElement& windingWindow);
+        static TurnOrientation get_turn_orientation_in_winding_window(const WindingWindowElement& windingWindow);
         // Distribute windings across the bobbin's winding windows. Creates one
         // Group per winding window in the bobbin and assigns windings to
         // groups per the provided indices. The outer vector size MUST equal

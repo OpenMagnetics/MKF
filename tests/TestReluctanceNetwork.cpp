@@ -14,6 +14,8 @@
 #include "advisers/CoilAdviser.h"
 #include "TestingUtils.h"
 #include "json.hpp"
+#include "support/Exceptions.h"
+#include <fstream>
 
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
@@ -125,10 +127,13 @@ TEST_CASE("ReluctanceNetwork_LateralPlacement_FluxDividerCoupling", "[physical-m
     CHECK_THAT(inductanceMatrix[0][0], Catch::Matchers::WithinRel(20.0 * 20.0 / primaryDrivingReluctance, 1e-9));
     CHECK_THAT(inductanceMatrix[1][1], Catch::Matchers::WithinRel(10.0 * 10.0 / secondaryDrivingReluctance, 1e-9));
 
-    // Coupling between leg-separated windings is imperfect and negative in the common
-    // branch orientation (flux up one leg comes down the other).
+    // Coupling between leg-separated windings is imperfect. Its sign follows each winding's
+    // resolved turn orientation (ABT #1346): the secondary here is wound in the mirrored window on
+    // its lateral leg, and the two windings couple positively. OMFEM 3D FEM of windings on the
+    // lateral legs of an E 42/21/20 gives M/L11 = +0.10876 (MKF +0.10974, guard [abt-1346]); the
+    // former always-negative expectation was the #396 sign convention, not physics.
     double couplingCoefficient = inductanceMatrix[0][1] / std::sqrt(inductanceMatrix[0][0] * inductanceMatrix[1][1]);
-    CHECK(couplingCoefficient < 0);
+    CHECK(couplingCoefficient > 0);
     CHECK(std::abs(couplingCoefficient) < 1.0);
     CHECK(std::abs(couplingCoefficient) > 0.1);
 
@@ -395,7 +400,9 @@ TEST_CASE("ReluctanceNetwork_SectionLevelPlacement_MatchesWindingLevel", "[physi
     auto reference = buildTwoWindingMagnetic(2);
     auto referenceCircuit = buildCircuit(reference.get_core());
     auto referenceMatrix = referenceCircuit.calculate_magnetizing_inductance_matrix(reference);
-    REQUIRE(referenceMatrix[0][1] < 0);
+    // Positive since ABT #1346 (sign from the resolved turn orientation; OMFEM 3D FEM M/L11 = +0.10876
+    // on E 42/21/20 lateral legs), see ReluctanceNetwork_LateralPlacement_FluxDividerCoupling.
+    REQUIRE(referenceMatrix[0][1] > 0);
 
     // Same design, placement carried ONLY by the wound sections.
     auto magnetic = buildTwoWindingMagnetic(2);
@@ -408,10 +415,110 @@ TEST_CASE("ReluctanceNetwork_SectionLevelPlacement_MatchesWindingLevel", "[physi
     REQUIRE(ReluctanceNetwork::has_non_main_placement(magnetic));
     auto circuit = buildCircuit(magnetic.get_core());
     auto matrix = circuit.calculate_magnetizing_inductance_matrix(magnetic);
-    CHECK(matrix[0][1] < 0);
+    CHECK(matrix[0][1] > 0);
     for (size_t i = 0; i < 2; ++i) {
         for (size_t j = 0; j < 2; ++j) {
             CHECK_THAT(matrix[i][j], Catch::Matchers::WithinRel(referenceMatrix[i][j], 1e-9));
         }
     }
+}
+
+namespace {
+
+OpenMagnetics::Magnetic load_magnetic(const std::string& fileName) {
+    auto path = std::filesystem::path{std::source_location::current().file_name()}.parent_path().append("testData").append(fileName);
+    std::ifstream masFile(path);
+    REQUIRE(masFile.good());
+    json masJson = json::parse(masFile);
+    return OpenMagnetics::Magnetic(masJson["magnetic"]);
+}
+
+}  // namespace
+
+TEST_CASE("ReluctanceNetwork_MutualSign_Follows_Winding_Orientation_Lateral_Legs_Vs_FEM", "[physical-model][magnetic-circuit][multi-column][abt-1346]") {
+    // ABT #1346: an E 42/21/20 with the 24-turn primary on the lateral leg at +x (window 1) and the
+    // 12-turn secondary on the lateral leg at -x (window 2), centre column free (OMFEM's [multicolumn]
+    // fixture, tests/data/multicolumn_e42_transformer.json at OMFEM 2c593e0). The winder winds the
+    // mirrored window the opposite way (primary clockwise, secondary counter-clockwise), so a positive
+    // current in each drives the flux the same way round the outer loop. 3-D magnetostatic FEM
+    // (OMFEM, primary at 1 A): M/L11 = +0.10876. The network fed unsigned turns and gave -0.10974:
+    // the magnitude within 0.9 %, the sign wrong.
+    settings.reset();
+    auto magnetic = load_magnetic("multicolumn_e42_lateral_legs_transformer.json");
+    REQUIRE(ReluctanceNetwork::has_non_main_placement(magnetic));
+    auto polarities = ReluctanceNetwork::resolve_winding_polarities(magnetic);
+    REQUIRE(polarities.size() == 2);
+    CHECK(polarities[0] == 1.0);
+    CHECK(polarities[1] == -1.0);
+
+    auto circuit = buildCircuit(magnetic.get_core());
+    auto inductanceMatrix = circuit.calculate_magnetizing_inductance_matrix(magnetic);
+    double fluxDivision = inductanceMatrix[0][1] / inductanceMatrix[0][0];
+    INFO("network M/L11 = " << fluxDivision << " (3-D FEM +0.10876)");
+    CHECK(fluxDivision > 0);
+    CHECK_THAT(fluxDivision, Catch::Matchers::WithinRel(0.10876, 0.03));
+    CHECK_THAT(inductanceMatrix[1][0], Catch::Matchers::WithinRel(inductanceMatrix[0][1], 1e-12));
+    settings.reset();
+}
+
+TEST_CASE("ReluctanceNetwork_MutualSign_Reads_The_Turns_Orientation", "[physical-model][magnetic-circuit][multi-column][abt-1346]") {
+    // ABT #1346, a wound coil (tests/testData/multicolumn_e42_transformer.json): primary on the centre
+    // leg, turns clockwise; secondary on the -x lateral leg, turns counter-clockwise (mirrored by the
+    // winder). The polarity is read from the turns, agrees with the winder's rule for the same windows
+    // when the turns are absent, and the mutual's sign follows it: rewinding the secondary clockwise
+    // flips the mutual and keeps its magnitude. A winding whose turns disagree, or a turn with no
+    // orientation, throws.
+    settings.reset();
+    auto magnetic = load_magnetic("multicolumn_e42_transformer.json");
+    REQUIRE(ReluctanceNetwork::has_non_main_placement(magnetic));
+    REQUIRE(magnetic.get_coil().get_turns_description());
+    auto polarities = ReluctanceNetwork::resolve_winding_polarities(magnetic);
+    REQUIRE(polarities == std::vector<double>{1.0, -1.0});
+
+    auto unwound = magnetic;
+    unwound.get_mutable_coil().set_turns_description(std::nullopt);
+    CHECK(ReluctanceNetwork::resolve_winding_polarities(unwound) == polarities);
+
+    auto circuit = buildCircuit(magnetic.get_core());
+    auto inductanceMatrix = circuit.calculate_magnetizing_inductance_matrix(magnetic);
+    CHECK(inductanceMatrix[0][1] > 0);
+
+    auto rewound = magnetic;
+    auto turns = rewound.get_coil().get_turns_description().value();
+    for (auto& turn : turns) {
+        if (turn.get_winding() == "Secondary") {
+            turn.set_orientation(TurnOrientation::CLOCKWISE);
+        }
+    }
+    rewound.get_mutable_coil().set_turns_description(turns);
+    auto rewoundMatrix = circuit.calculate_magnetizing_inductance_matrix(rewound);
+    CHECK(rewoundMatrix[0][1] < 0);
+    CHECK_THAT(rewoundMatrix[0][1], Catch::Matchers::WithinRel(-inductanceMatrix[0][1], 1e-12));
+    CHECK_THAT(rewoundMatrix[1][1], Catch::Matchers::WithinRel(inductanceMatrix[1][1], 1e-12));
+
+    // The column fluxes take the same signed MMF: 1 A in each winding of the original coil drives
+    // the secondary's leg the opposite way to the rewound one.
+    auto fluxes = circuit.calculate_column_magnetic_fluxes(magnetic, {0.0, 1.0});
+    auto rewoundFluxes = circuit.calculate_column_magnetic_fluxes(rewound, {0.0, 1.0});
+    for (size_t columnIndex = 0; columnIndex < fluxes.size(); ++columnIndex) {
+        CHECK_THAT(rewoundFluxes[columnIndex], Catch::Matchers::WithinRel(-fluxes[columnIndex], 1e-12));
+    }
+
+    auto mixed = magnetic;
+    turns = mixed.get_coil().get_turns_description().value();
+    for (auto& turn : turns) {
+        if (turn.get_winding() == "Secondary") {
+            turn.set_orientation(TurnOrientation::CLOCKWISE);
+            break;
+        }
+    }
+    mixed.get_mutable_coil().set_turns_description(turns);
+    CHECK_THROWS_AS(ReluctanceNetwork::resolve_winding_polarities(mixed), NotImplementedException);
+
+    auto missing = magnetic;
+    turns = missing.get_coil().get_turns_description().value();
+    turns[0].set_orientation(std::nullopt);
+    missing.get_mutable_coil().set_turns_description(turns);
+    CHECK_THROWS_AS(ReluctanceNetwork::resolve_winding_polarities(missing), InvalidInputException);
+    settings.reset();
 }

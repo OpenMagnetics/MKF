@@ -344,17 +344,100 @@ std::vector<double> ReluctanceNetwork::solve_column_fluxes_for_magnetomotive_for
     return columnFluxes;
 }
 
+static double polarity_of_orientation(TurnOrientation orientation) {
+    return orientation == TurnOrientation::CLOCKWISE ? 1.0 : -1.0;
+}
+
+std::vector<double> ReluctanceNetwork::resolve_winding_polarities(Magnetic magnetic) {
+    auto coil = magnetic.get_coil();
+    auto windings = coil.get_functional_description();
+    std::vector<double> polarities;
+
+    // Wound: the turns say how each winding goes round its column.
+    auto turnsDescription = coil.get_turns_description();
+    if (turnsDescription) {
+        for (const auto& winding : windings) {
+            std::optional<TurnOrientation> windingOrientation;
+            for (const auto& turn : turnsDescription.value()) {
+                if (turn.get_winding() != winding.get_name()) {
+                    continue;
+                }
+                if (!turn.get_orientation()) {
+                    throw InvalidInputException(ErrorCode::MISSING_DATA,
+                                                "Turn " + turn.get_name() + " of winding " + winding.get_name() +
+                                                    " has no orientation: the sign of the MMF the winding drives into the reluctance network is unknown");
+                }
+                if (windingOrientation && windingOrientation.value() != turn.get_orientation().value()) {
+                    throw NotImplementedException(
+                        "Winding " + winding.get_name() + " has turns wound both clockwise and counter-clockwise: the reluctance "
+                        "network drives one MMF per winding, of one sign");
+                }
+                windingOrientation = turn.get_orientation().value();
+            }
+            if (!windingOrientation) {
+                throw InvalidInputException(ErrorCode::INVALID_COIL_CONFIGURATION,
+                                            "Winding " + winding.get_name() + " has no turn in the coil's turns description");
+            }
+            polarities.push_back(polarity_of_orientation(windingOrientation.value()));
+        }
+        return polarities;
+    }
+
+    // Not wound yet: the sense the winder gives a winding in the window it is placed in, with the
+    // same placement precedence as resolve_winding_column_indexes (winding-level window, else its
+    // sections', else window 0) and against the same windows (the chambers of a split bobbin, else
+    // the core's).
+    auto core = magnetic.get_core();
+    if (!core.get_processed_description()) {
+        throw CoreNotProcessedException("Core is not processed, cannot resolve winding orientations");
+    }
+    std::vector<WindingWindowElement> windingWindows = core.get_winding_windows();
+    {
+        auto bobbin = coil.resolve_bobbin();
+        if (bobbin.get_processed_description() && bobbin.get_number_chambers() > 1) {
+            windingWindows = bobbin.get_processed_description()->get_winding_windows();
+        }
+    }
+    for (const auto& winding : windings) {
+        std::set<int64_t> windows = resolve_distinct_windows_from_sections(coil, winding.get_name());
+        if (winding.get_winding_window()) {
+            windows.insert(winding.get_winding_window().value());
+        }
+        if (windows.empty()) {
+            windows.insert(0);
+        }
+        std::optional<TurnOrientation> windingOrientation;
+        for (auto window : windows) {
+            if (window < 0 || static_cast<size_t>(window) >= windingWindows.size()) {
+                throw InvalidInputException(ErrorCode::INVALID_COIL_CONFIGURATION,
+                                            "Winding " + winding.get_name() + " references winding window " + std::to_string(window) +
+                                                " but there are " + std::to_string(windingWindows.size()) + " winding windows");
+            }
+            auto orientation = OpenMagnetics::Coil::get_turn_orientation_in_winding_window(windingWindows[static_cast<size_t>(window)]);
+            if (windingOrientation && windingOrientation.value() != orientation) {
+                throw NotImplementedException(
+                    "Winding " + winding.get_name() + " is placed in windows on both sides of the main column, which the winder "
+                    "winds in opposite senses: the reluctance network drives one MMF per winding, of one sign");
+            }
+            windingOrientation = orientation;
+        }
+        polarities.push_back(polarity_of_orientation(windingOrientation.value()));
+    }
+    return polarities;
+}
+
 std::vector<std::vector<double>> ReluctanceNetwork::calculate_magnetizing_inductance_matrix(Magnetic magnetic) const {
     auto columnIndexPerWinding = resolve_winding_column_indexes(magnetic);
+    auto polarities = resolve_winding_polarities(magnetic);
     auto windings = magnetic.get_coil().get_functional_description();
 
     std::vector<std::vector<double>> inductanceMatrix(windings.size(), std::vector<double>(windings.size(), 0));
     for (size_t j = 0; j < windings.size(); ++j) {
         std::vector<double> columnMagnetomotiveForces(_columnReluctances.size(), 0);
-        columnMagnetomotiveForces[columnIndexPerWinding[j]] = static_cast<double>(windings[j].get_number_turns());
+        columnMagnetomotiveForces[columnIndexPerWinding[j]] = polarities[j] * static_cast<double>(windings[j].get_number_turns());
         auto columnFluxes = solve_column_fluxes_for_magnetomotive_forces(columnMagnetomotiveForces);
         for (size_t i = 0; i < windings.size(); ++i) {
-            inductanceMatrix[i][j] = static_cast<double>(windings[i].get_number_turns()) * columnFluxes[columnIndexPerWinding[i]];
+            inductanceMatrix[i][j] = polarities[i] * static_cast<double>(windings[i].get_number_turns()) * columnFluxes[columnIndexPerWinding[i]];
         }
     }
     return inductanceMatrix;
@@ -369,10 +452,11 @@ std::vector<double> ReluctanceNetwork::calculate_column_magnetic_fluxes(Magnetic
                                         " currents for " + std::to_string(windings.size()) + " windings");
     }
 
+    auto polarities = resolve_winding_polarities(magnetic);
     std::vector<double> columnMagnetomotiveForces(_columnReluctances.size(), 0);
     for (size_t windingIndex = 0; windingIndex < windings.size(); ++windingIndex) {
         columnMagnetomotiveForces[columnIndexPerWinding[windingIndex]] +=
-            static_cast<double>(windings[windingIndex].get_number_turns()) * windingCurrents[windingIndex];
+            polarities[windingIndex] * static_cast<double>(windings[windingIndex].get_number_turns()) * windingCurrents[windingIndex];
     }
     return solve_column_fluxes_for_magnetomotive_forces(columnMagnetomotiveForces);
 }

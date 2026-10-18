@@ -12799,6 +12799,18 @@ void Coil::refuse_turns_bent_tighter_than_the_wire_allows() {
     throw UnwindableBendException(message);
 }
 
+bool Coil::is_mirrored_winding_window(const WindingWindowElement& windingWindow) {
+    if (!windingWindow.get_coordinates() || windingWindow.get_coordinates()->empty()) {
+        throw InvalidInputException(ErrorCode::INVALID_COIL_CONFIGURATION,
+            "Winding window has no coordinates: which side of the main column it sits on, and so the sense its turns are wound in, is unknown");
+    }
+    return windingWindow.get_coordinates().value()[0] < 0;
+}
+
+TurnOrientation Coil::get_turn_orientation_in_winding_window(const WindingWindowElement& windingWindow) {
+    return is_mirrored_winding_window(windingWindow) ? TurnOrientation::COUNTER_CLOCKWISE : TurnOrientation::CLOCKWISE;
+}
+
 void Coil::apply_group_window_sides(bool inverse) {
     if (!get_groups_description() || !get_sections_description()) {
         return;
@@ -12882,7 +12894,7 @@ void Coil::apply_group_window_sides(bool inverse) {
         }
         auto& windingWindow = windingWindows[windowIndex];
         SectionWindowTransform transform;
-        transform.mirrorSide = windingWindow.get_coordinates().value()[0] < 0;
+        transform.mirrorSide = is_mirrored_winding_window(windingWindow);
         auto columnEdge = windingWindow.get_column();
         // Schema default: a window without a column edge wraps the main column.
         bool lateralWound = columnEdge && (!mainColumnEdge || columnEdge.value() != mainColumnEdge.value());
