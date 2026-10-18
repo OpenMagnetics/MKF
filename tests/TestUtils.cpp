@@ -416,7 +416,15 @@ namespace {
         }
     }
 
-    TEST_CASE("Test_Load_Cores_In_Stock", "[support][utils][smoke-test]") {
+    TEST_CASE("Test_Load_Cores_In_Stock", "[support][utils][smoke-test][abt-1168]") {
+        // ABT #1168: this test ends with the stock-only catalogue loaded. The settings listener
+        // resets the setting before the next test but not the catalogue, so a next test that asks
+        // for the full catalogue (Test_Mas_Autocomplete: PQ 32/30 - 3C90 - Gapped 0.492 mm) found
+        // the stock one already loaded and threw "Core not found". Drop the catalogues on every
+        // exit, a failed REQUIRE included.
+        struct ClearDatabasesOnExit {
+            ~ClearDatabasesOnExit() { clear_databases(); }
+        } clearDatabasesOnExit;
         clear_databases();
         settings.reset();
         settings.set_use_only_cores_in_stock(false);
