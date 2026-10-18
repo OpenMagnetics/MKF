@@ -1484,6 +1484,8 @@ double MagnetizingInductance::calculate_gap_from_saturation_constraint(Core core
     double gapLength = initialGap;
     const double gapStepFactor = 1.5;  // Increase gap by 50% per iteration
     const int maxIterations = 15;
+    double lastGapTried = gapLength;
+    double lastMagneticFluxDensityPeak = 0;
     
     for (int iteration = 0; iteration < maxIterations; ++iteration) {
         // Create core with current gap
@@ -1533,13 +1535,20 @@ double MagnetizingInductance::calculate_gap_from_saturation_constraint(Core core
         if (bPeak <= targetMagneticFluxDensity) {
             return gapLength;
         }
+        lastGapTried = gapLength;
+        lastMagneticFluxDensityPeak = bPeak;
         
         // Increase gap for next iteration
         gapLength *= gapStepFactor;
     }
     
-    // Return last calculated gap even if not converged
-    return gapLength;
+    // Not converged. This used to return the 16th gap, one that was never evaluated (ABT #1872).
+    throw CalculationException(ErrorCode::CALCULATION_DIVERGED,
+                               "calculate_gap_from_saturation_constraint: core " + core.get_name().value_or("(unnamed)") +
+                               " still reaches B = " + std::to_string(lastMagneticFluxDensityPeak) + " T above the target " +
+                               std::to_string(targetMagneticFluxDensity) + " T with a gap of " + std::to_string(lastGapTried) +
+                               " m after " + std::to_string(maxIterations) + " steps from the energy-based " +
+                               std::to_string(initialGap) + " m");
 }
 
 Core get_core_with_ground_gapping(Core core, double gapLength) {

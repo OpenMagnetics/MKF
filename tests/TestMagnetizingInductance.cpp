@@ -2569,3 +2569,23 @@ TEST_CASE("Test_Gapping_Reads_The_Magnetizing_Current_Of_The_Target_Inductance",
         model.calculate_inductance_from_number_turns_and_gapping(gappedCore, magnetic.get_coil()).get_magnetizing_inductance());
     CHECK_THAT(gappedInductance, Catch::Matchers::WithinRel(targetInductance, 0.05));
 }
+
+// ABT #1872: calculate_gap_from_saturation_constraint grows the gap 15 times by 1.5x; when B
+// is still above the target after the last step it used to return the 16th gap, one it had
+// never evaluated, as if it met the target. With 0.1 nH at 1 A on an ETD 39 the turns solve
+// stays at one turn, so B = I / (R A) is bounded by the ungapped core reluctance plus a
+// last tried 1 um x 1.5^14 gap (~4 mT) and never reaches 1 mT: the search must say so.
+TEST_CASE("Test_Gap_From_Saturation_Constraint_Throws_When_Not_Converged", "[physical-model][magnetizing-inductance][gapping][abt-1872]") {
+    settings.reset();
+    clear_databases();
+    auto inputs = OpenMagnetics::Inputs::create_quick_operating_point(100000, 1e-10, 25, WaveformLabel::SINUSOIDAL, 2, 0.5, 0);
+    auto core = OpenMagneticsTesting::get_quick_core("ETD 39", OpenMagneticsTesting::get_residual_gap(), 1, "N87");
+    MagnetizingInductance model;
+
+    REQUIRE_THROWS_AS(model.calculate_gap_from_saturation_constraint(core, &inputs, 0.001, 1.0), CalculationException);
+
+    // A target the search can reach still returns a gap.
+    double gap = 0;
+    REQUIRE_NOTHROW(gap = model.calculate_gap_from_saturation_constraint(core, &inputs, 0.3, 1.0));
+    CHECK(gap > 0);
+}
