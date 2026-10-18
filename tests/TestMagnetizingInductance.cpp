@@ -2424,3 +2424,65 @@ TEST_CASE("Test_Forward_Transformer_Load_Current_Is_Not_Core_Bias", "[physical-m
     CHECK_THAT(inductanceAtOperatingPoint, Catch::Matchers::WithinRel(unbiasedInductance, 0.01));
     CHECK(std::abs(magneticFluxDensity.get_processed()->get_offset()) < 0.01);
 }
+
+TEST_CASE("Test_Gapping_Reads_The_Magnetizing_Current_Of_The_Target_Inductance", "[physical-model][magnetizing-inductance][gapping][abt-1902]") {
+    // ABT #1902: a forward transformer carried in a magnetizing current a converter model had derived from the
+    // winding voltage for its minimum inductance; the gap solve read that current against the reluctance of the
+    // (eight times larger) target and found a B peak eight times the volt-seconds' one: "no gap holds it, the
+    // core saturates". With a voltage the flux is Faraday's, and the gap solve derives the magnetizing current
+    // at the target inductance, as the inductance model does: the carried current does not change the gaps.
+    settings.reset();
+    clear_databases();
+    std::ifstream file(std::string(__FILE__).substr(0, std::string(__FILE__).rfind('/'))
+                       + "/../MAS/examples/04_forward_xfmr_e3216_n87.json");
+    REQUIRE(file.is_open());
+    json masJson = json::parse(file);
+    OpenMagnetics::Magnetic magnetic(masJson["magnetic"]);
+    magnetic = magnetic_autocomplete(magnetic);
+    for (auto& operatingPointJson : masJson["inputs"]["operatingPoints"]) {
+        for (auto& excitationJson : operatingPointJson["excitationsPerWinding"]) {
+            excitationJson.erase("magnetizingCurrent");
+        }
+    }
+    OpenMagnetics::Inputs inputs(masJson["inputs"], false);
+    REQUIRE(inputs.get_operating_points().size() >= 1);
+    REQUIRE(inputs.get_operating_points()[0].get_excitations_per_winding()[0].get_voltage());
+
+    MagnetizingInductance model;
+    double unbiasedInductance = resolve_dimensional_values(
+        model.calculate_inductance_from_number_turns_and_gapping(magnetic.get_core(), magnetic.get_coil()).get_magnetizing_inductance());
+    double targetInductance = unbiasedInductance / 2;
+    DimensionWithTolerance target;
+    target.set_nominal(targetInductance);
+    inputs.get_mutable_design_requirements().set_magnetizing_inductance(target);
+
+    auto inputsWithCurrentAt = [&](double inductance) {
+        OpenMagnetics::Inputs stamped = inputs;
+        auto operatingPoint = stamped.get_operating_point(0);
+        auto magnetizingCurrent = OpenMagnetics::Inputs::calculate_magnetizing_current(operatingPoint, 0, inductance,
+                                                                                         magnetic.get_coil().get_turns_ratios(), false);
+        operatingPoint.get_mutable_excitations_per_winding()[0].set_magnetizing_current(magnetizingCurrent);
+        stamped.set_operating_point_by_index(operatingPoint, 0);
+        return stamped;
+    };
+    auto staleInputs = inputsWithCurrentAt(targetInductance / 8);
+    auto targetInputs = inputsWithCurrentAt(targetInductance);
+
+    auto gapsFromTarget = model.calculate_gapping_from_number_turns_and_inductance(magnetic.get_core(), magnetic.get_coil(), &targetInputs, GappingType::GROUND, 6);
+    std::vector<CoreGap> gapsFromStale;
+    REQUIRE_NOTHROW(gapsFromStale = model.calculate_gapping_from_number_turns_and_inductance(magnetic.get_core(), magnetic.get_coil(), &staleInputs, GappingType::GROUND, 6));
+    REQUIRE(gapsFromStale.size() == gapsFromTarget.size());
+    for (size_t i = 0; i < gapsFromStale.size(); ++i) {
+        CHECK(gapsFromStale[i].get_length() == gapsFromTarget[i].get_length());
+    }
+
+    Core gappedCore = magnetic.get_core();
+    gappedCore.set_processed_description(std::nullopt);
+    gappedCore.set_geometrical_description(std::nullopt);
+    gappedCore.get_mutable_functional_description().set_gapping(gapsFromStale);
+    gappedCore.process_data();
+    gappedCore.process_gap();
+    double gappedInductance = resolve_dimensional_values(
+        model.calculate_inductance_from_number_turns_and_gapping(gappedCore, magnetic.get_coil()).get_magnetizing_inductance());
+    CHECK_THAT(gappedInductance, Catch::Matchers::WithinRel(targetInductance, 0.05));
+}
