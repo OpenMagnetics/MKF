@@ -121,7 +121,7 @@ namespace OpenMagnetics {
 
     }
 
-    WireRound Wire::resolve_strand() {
+    WireRound Wire::resolve_strand() const {
         if (!get_strand())
             throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA, "Litz wire is missing strand information");
 
@@ -137,7 +137,7 @@ namespace OpenMagnetics {
 
     }
 
-    WireMaterial Wire::resolve_material() { 
+    WireMaterial Wire::resolve_material() const { 
         if (get_type() == WireType::LITZ) {
             auto strand = resolve_strand();
             return resolve_material(strand);
@@ -1552,7 +1552,7 @@ namespace OpenMagnetics {
         return numberParallels;
     }
 
-    double Wire::get_maximum_outer_width() {
+    double Wire::get_maximum_outer_width() const {
         switch (get_type()) {
             case WireType::LITZ:
                 if (_woundFootprint)
@@ -1584,7 +1584,7 @@ namespace OpenMagnetics {
         }
     }
 
-    double Wire::get_maximum_outer_height() {
+    double Wire::get_maximum_outer_height() const {
         switch (get_type()) {
             case WireType::LITZ:
                 if (_woundFootprint)
@@ -1655,7 +1655,7 @@ namespace OpenMagnetics {
         return std::max(get_maximum_outer_width(), get_maximum_outer_height());
     }
 
-    double Wire::get_maximum_conducting_width() {
+    double Wire::get_maximum_conducting_width() const {
         switch (get_type()) {
             case WireType::LITZ:
                 {
@@ -1673,7 +1673,7 @@ namespace OpenMagnetics {
         }
     }
 
-    double Wire::get_maximum_conducting_height() {
+    double Wire::get_maximum_conducting_height() const {
         switch (get_type()) {
             case WireType::LITZ:
                 {

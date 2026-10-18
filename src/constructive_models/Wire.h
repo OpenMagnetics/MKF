@@ -194,7 +194,7 @@ class Wire : public MAS::Wire {
         // one point so litz cannot answer differently to different callers.
         static std::optional<InsulationWireCoating> resolve_insulating_coating(const Wire& wire);
         static WireRound resolve_strand(const Wire& wire);
-        WireRound resolve_strand();
+        WireRound resolve_strand() const;
         // The material's thermal conductivity at `temperature` (deg C), W/(m K), interpolated
         // linearly between the points MAS tabulates. Throws when the material has no table,
         // when two points share a temperature, or when `temperature` lies outside the table:
@@ -202,7 +202,7 @@ class Wire : public MAS::Wire {
         static double get_thermal_conductivity(const WireMaterial& material, double temperature);
         static WireMaterial resolve_material(Wire wire);
         static WireMaterial resolve_material(WireRound wire);
-        WireMaterial resolve_material();
+        WireMaterial resolve_material() const;
         static InsulationMaterial resolve_coating_insulation_material(Wire wire);
         static InsulationMaterial resolve_coating_insulation_material(WireRound wire);
         static InsulationMaterial resolve_coating_insulation_material(InsulationWireCoating coating);
@@ -299,11 +299,11 @@ class Wire : public MAS::Wire {
         static int calculate_number_parallels_needed(SignalDescriptor current, double temperature, Wire& wire, double maximumEffectiveCurrentDensity);
         static int calculate_number_parallels_needed(double rms, double effectiveFrequency, double temperature, Wire& wire, double maximumEffectiveCurrentDensity);
 
-        double get_maximum_outer_width();
-        double get_maximum_outer_height();
+        double get_maximum_outer_width() const;
+        double get_maximum_outer_height() const;
         double get_maximum_outer_dimension();
-        double get_maximum_conducting_width();
-        double get_maximum_conducting_height();
+        double get_maximum_conducting_width() const;
+        double get_maximum_conducting_height() const;
         double get_minimum_conducting_dimension();
         double get_minimum_outer_dimension();
 

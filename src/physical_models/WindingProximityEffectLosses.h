@@ -32,7 +32,7 @@ class WindingProximityEffectLossesModel {
     std::map<size_t, std::map<double, std::map<double, double>>> _proximityFactorPerWirePerFrequencyPerTemperature;
   public:
     std::string methodName = "Default";
-    virtual double calculate_turn_losses(Wire wire, double frequency, std::vector<ComplexFieldPoint> data, double temperature) = 0;
+    virtual double calculate_turn_losses(const Wire& wire, double frequency, std::vector<ComplexFieldPoint> data, double temperature) = 0;
     // Turn losses of a PHASOR field (MAS excitation convention, 2026-09-24): inPhaseData and
     // quadratureData are the in-phase and quadrature (Hx, Hy) at the same points, in the same
     // order (see WindingWindowMagneticStrengthFieldPhasorOutput); the loss must be that of
@@ -41,15 +41,15 @@ class WindingProximityEffectLossesModel {
     // coefficients) that is exactly loss(inPhase) + loss(quadrature), which is this default.
     // A model that bridges two DIFFERENT quadratic forms (a low/high-frequency harmonic mean)
     // is not additive and must override it and bridge the summed forms.
-    virtual double calculate_turn_losses_from_phasors(Wire wire, double frequency, std::vector<ComplexFieldPoint> inPhaseData, std::vector<ComplexFieldPoint> quadratureData, double temperature);
+    virtual double calculate_turn_losses_from_phasors(const Wire& wire, double frequency, std::vector<ComplexFieldPoint> inPhaseData, std::vector<ComplexFieldPoint> quadratureData, double temperature);
     // Whether the model consumes the "widthsample" mesh points (width-resolved
     // perpendicular-field samples for flat conductors). Models that average over
     // the lumped surface points must not see them, so the dispatcher strips them
     // unless this returns true.
     virtual bool consumes_width_samples() const { return false; }
     virtual ~WindingProximityEffectLossesModel() = default;
-    std::optional<double> try_get_proximity_factor(Wire wire, double frequency, double temperature);
-    void set_proximity_factor(Wire wire, double frequency, double temperature, double proximityFactor);
+    std::optional<double> try_get_proximity_factor(const Wire& wire, double frequency, double temperature);
+    void set_proximity_factor(const Wire& wire, double frequency, double temperature, double proximityFactor);
     static std::shared_ptr<WindingProximityEffectLossesModel> factory(WindingProximityEffectLossesModels modelName);
 };
 
@@ -64,7 +64,7 @@ class WindingProximityEffectLosses {
     // A plain (real, single-phase) field: there is no quadrature component.
     static WindingLossesOutput calculate_proximity_effect_losses(Coil coil, double temperature, WindingLossesOutput windingLossesOutput, WindingWindowMagneticStrengthFieldOutput windingWindowMagneticStrengthFieldOutput, std::optional<WindingProximityEffectLossesModels> modelOverride = std::nullopt, std::optional<std::map<WireType, WindingProximityEffectLossesModels>> modelPerWireType = std::nullopt);
     // quadratureFields, when given, must match fields harmonic by harmonic and point by point.
-    static std::pair<double, std::vector<std::pair<double, double>>> calculate_proximity_effect_losses_per_meter(Wire wire, double temperature, std::vector<ComplexField> fields, std::optional<WindingProximityEffectLossesModels> modelOverride = std::nullopt, std::optional<std::vector<ComplexField>> quadratureFields = std::nullopt, std::optional<double> perpendicularOutlineFactor = std::nullopt, std::optional<double> stackSharingNumber = std::nullopt);
+    static std::pair<double, std::vector<std::pair<double, double>>> calculate_proximity_effect_losses_per_meter(const Wire& wire, double temperature, std::vector<ComplexField> fields, std::optional<WindingProximityEffectLossesModels> modelOverride = std::nullopt, std::optional<std::vector<ComplexField>> quadratureFields = std::nullopt, std::optional<double> perpendicularOutlineFactor = std::nullopt, std::optional<double> stackSharingNumber = std::nullopt);
   private:
     static WindingLossesOutput calculate_proximity_effect_losses_impl(Coil coil, double temperature, WindingLossesOutput windingLossesOutput, const std::vector<ComplexField>& fieldPerFrequency, const std::optional<std::vector<ComplexField>>& quadratureFieldPerFrequency, std::optional<WindingProximityEffectLossesModels> modelOverride, std::optional<std::map<WireType, WindingProximityEffectLossesModels>> modelPerWireType);
 
@@ -75,8 +75,8 @@ class WindingProximityEffectLosses {
 class WindingProximityEffectLossesRossmanithModel : public WindingProximityEffectLossesModel {
   public:
     std::string methodName = "Rossmanith";
-    static double calculate_proximity_factor(Wire wire, double frequency, double temperature);
-    double calculate_turn_losses(Wire wire, double frequency, std::vector<ComplexFieldPoint> data, double temperature);
+    static double calculate_proximity_factor(const Wire& wire, double frequency, double temperature);
+    double calculate_turn_losses(const Wire& wire, double frequency, std::vector<ComplexFieldPoint> data, double temperature);
 
 };
 
@@ -85,16 +85,16 @@ class WindingProximityEffectLossesRossmanithModel : public WindingProximityEffec
 class WindingProximityEffectLossesWangModel : public WindingProximityEffectLossesModel {
   public:
     std::string methodName = "Wang";
-    double calculate_turn_losses(Wire wire, double frequency, std::vector<ComplexFieldPoint> data, double temperature);
+    double calculate_turn_losses(const Wire& wire, double frequency, std::vector<ComplexFieldPoint> data, double temperature);
     // Its width-sample term bridges two different quadratic forms, so it is not additive.
-    double calculate_turn_losses_from_phasors(Wire wire, double frequency, std::vector<ComplexFieldPoint> inPhaseData, std::vector<ComplexFieldPoint> quadratureData, double temperature) override;
+    double calculate_turn_losses_from_phasors(const Wire& wire, double frequency, std::vector<ComplexFieldPoint> inPhaseData, std::vector<ComplexFieldPoint> quadratureData, double temperature) override;
     bool consumes_width_samples() const override { return true; }
   protected:
     // Multiplies the high-frequency (skin-limited) branch of the width-resolved perpendicular
     // term. 1 for an isolated conductor; WANG_STACKED supplies the stack-outline share.
     virtual double perpendicular_high_frequency_factor() const { return 1.0; }
   private:
-    double calculate_turn_losses_impl(Wire& wire, double frequency, const std::vector<ComplexFieldPoint>& data, const std::vector<ComplexFieldPoint>* quadratureData, double temperature);
+    double calculate_turn_losses_impl(const Wire& wire, double frequency, const std::vector<ComplexFieldPoint>& data, const std::vector<ComplexFieldPoint>* quadratureData, double temperature);
 };
 
 // ABT #1409: WANG for flat conductors that screen each other.
@@ -143,8 +143,8 @@ class WindingProximityEffectLossesWangStackedModel : public WindingProximityEffe
 class WindingProximityEffectLossesFerreiraModel : public WindingProximityEffectLossesModel {
   public:
     std::string methodName = "Ferreira";
-    static double calculate_proximity_factor(Wire wire, double frequency, double temperature);
-    double calculate_turn_losses(Wire wire, double frequency, std::vector<ComplexFieldPoint> data, double temperature);
+    static double calculate_proximity_factor(const Wire& wire, double frequency, double temperature);
+    double calculate_turn_losses(const Wire& wire, double frequency, std::vector<ComplexFieldPoint> data, double temperature);
 };
 
 
@@ -153,7 +153,7 @@ class WindingProximityEffectLossesFerreiraModel : public WindingProximityEffectL
 class WindingProximityEffectLossesAlbachModel : public WindingProximityEffectLossesModel {
   public:
     std::string methodName = "Albach";
-    double calculate_turn_losses(Wire wire, double frequency, std::vector<ComplexFieldPoint> data, double temperature);
+    double calculate_turn_losses(const Wire& wire, double frequency, std::vector<ComplexFieldPoint> data, double temperature);
 };
 
 // Based on "Eddy currents in rectangular conductors: Analytical 2D loss model in the context of
@@ -179,7 +179,7 @@ class WindingProximityEffectLossesAlbachModel : public WindingProximityEffectLos
 class WindingProximityEffectLossesEwaldModel : public WindingProximityEffectLossesModel {
   public:
     std::string methodName = "Ewald";
-    double calculate_turn_losses(Wire wire, double frequency, std::vector<ComplexFieldPoint> data, double temperature);
+    double calculate_turn_losses(const Wire& wire, double frequency, std::vector<ComplexFieldPoint> data, double temperature);
 };
 
 // MARTINEZ MODEL (ABT #1188) - proximity loss with FIELD EXCLUSION.
@@ -246,9 +246,9 @@ class WindingProximityEffectLossesMartinezModel : public WindingProximityEffectL
     static double calculate_exclusion_factor(double wideDimension, double thinDimension, bool fieldAlongWide);
     // Named alias for the perpendicular case, which is what "edge crowding" means at the call site.
     static double calculate_edge_crowding_factor(double wideDimension, double thinDimension);
-    double calculate_turn_losses(Wire wire, double frequency, std::vector<ComplexFieldPoint> data, double temperature);
+    double calculate_turn_losses(const Wire& wire, double frequency, std::vector<ComplexFieldPoint> data, double temperature);
     // Its perpendicular term bridges two different quadratic forms, so it is not additive.
-    double calculate_turn_losses_from_phasors(Wire wire, double frequency, std::vector<ComplexFieldPoint> inPhaseData, std::vector<ComplexFieldPoint> quadratureData, double temperature) override;
+    double calculate_turn_losses_from_phasors(const Wire& wire, double frequency, std::vector<ComplexFieldPoint> inPhaseData, std::vector<ComplexFieldPoint> quadratureData, double temperature) override;
     bool consumes_width_samples() const override { return true; }
     // MUTUAL REACTION of stacked flat conductors to the field normal to their wide faces (ABT #1314 B). A thin strip k
     // (width W_k, thickness t_k) in a normal field H carries the eddy sheet current K = j omega mu0 sigma t_k H x, whose
@@ -267,7 +267,7 @@ class WindingProximityEffectLossesMartinezModel : public WindingProximityEffectL
     void set_stack_sharing_number(std::optional<double> stackSharingNumber) { _stackSharingNumber = stackSharingNumber; }
   private:
     std::optional<double> _stackSharingNumber;
-    double calculate_turn_losses_impl(Wire& wire, double frequency, const std::vector<ComplexFieldPoint>& data, const std::vector<ComplexFieldPoint>* quadratureData, double temperature);
+    double calculate_turn_losses_impl(const Wire& wire, double frequency, const std::vector<ComplexFieldPoint>& data, const std::vector<ComplexFieldPoint>* quadratureData, double temperature);
 };
 
 // Based on Eddy currents by Jiří Lammeraner
@@ -275,8 +275,8 @@ class WindingProximityEffectLossesMartinezModel : public WindingProximityEffectL
 class WindingProximityEffectLossesLammeranerModel : public WindingProximityEffectLossesModel {
   public:
     std::string methodName = "Lammeraner";
-    static double calculate_proximity_factor(Wire wire, double frequency, double temperature);
-    double calculate_turn_losses(Wire wire, double frequency, std::vector<ComplexFieldPoint> data, double temperature);
+    static double calculate_proximity_factor(const Wire& wire, double frequency, double temperature);
+    double calculate_turn_losses(const Wire& wire, double frequency, std::vector<ComplexFieldPoint> data, double temperature);
 };
 
 // Based on Effects of eddy currents in transformer windings by P. L. Dowell
@@ -284,8 +284,8 @@ class WindingProximityEffectLossesLammeranerModel : public WindingProximityEffec
 class WindingProximityEffectLossesDowellModel : public WindingProximityEffectLossesModel {
   public:
     std::string methodName = "Dowell";
-    static double calculate_proximity_factor(Wire wire, double frequency, double temperature);
-    double calculate_turn_losses(Wire wire, double frequency, std::vector<ComplexFieldPoint> data, double temperature);
+    static double calculate_proximity_factor(const Wire& wire, double frequency, double temperature);
+    double calculate_turn_losses(const Wire& wire, double frequency, std::vector<ComplexFieldPoint> data, double temperature);
 };
 
 // ============================================================================
@@ -310,8 +310,8 @@ class WindingProximityEffectLossesDowellModel : public WindingProximityEffectLos
 class WindingProximityEffectLossesNanModel : public WindingProximityEffectLossesModel {
   public:
     std::string methodName = "Nan";
-    static double calculate_proximity_factor(Wire wire, double frequency, double temperature);
-    double calculate_turn_losses(Wire wire, double frequency, std::vector<ComplexFieldPoint> data, double temperature);
+    static double calculate_proximity_factor(const Wire& wire, double frequency, double temperature);
+    double calculate_turn_losses(const Wire& wire, double frequency, std::vector<ComplexFieldPoint> data, double temperature);
 };
 
 // ============================================================================
@@ -337,8 +337,8 @@ class WindingProximityEffectLossesNanModel : public WindingProximityEffectLosses
 class WindingProximityEffectLossesWojdaModel : public WindingProximityEffectLossesModel {
   public:
     std::string methodName = "Wojda";
-    static double calculate_proximity_factor(Wire wire, double frequency, double temperature);
-    double calculate_turn_losses(Wire wire, double frequency, std::vector<ComplexFieldPoint> data, double temperature);
+    static double calculate_proximity_factor(const Wire& wire, double frequency, double temperature);
+    double calculate_turn_losses(const Wire& wire, double frequency, std::vector<ComplexFieldPoint> data, double temperature);
 };
 
 // ============================================================================
@@ -362,8 +362,8 @@ class WindingProximityEffectLossesWojdaModel : public WindingProximityEffectLoss
 class WindingProximityEffectLossesSullivanModel : public WindingProximityEffectLossesModel {
   public:
     std::string methodName = "Sullivan";
-    static double calculate_proximity_factor(Wire wire, double frequency, double temperature);
-    double calculate_turn_losses(Wire wire, double frequency, std::vector<ComplexFieldPoint> data, double temperature);
+    static double calculate_proximity_factor(const Wire& wire, double frequency, double temperature);
+    double calculate_turn_losses(const Wire& wire, double frequency, std::vector<ComplexFieldPoint> data, double temperature);
 };
 
 // ============================================================================
@@ -391,8 +391,8 @@ class WindingProximityEffectLossesSullivanModel : public WindingProximityEffectL
 class WindingProximityEffectLossesBartoliModel : public WindingProximityEffectLossesModel {
   public:
     std::string methodName = "Bartoli";
-    static double calculate_proximity_factor(Wire wire, double frequency, double temperature);
-    double calculate_turn_losses(Wire wire, double frequency, std::vector<ComplexFieldPoint> data, double temperature);
+    static double calculate_proximity_factor(const Wire& wire, double frequency, double temperature);
+    double calculate_turn_losses(const Wire& wire, double frequency, std::vector<ComplexFieldPoint> data, double temperature);
 };
 
 // ============================================================================
@@ -424,8 +424,8 @@ class WindingProximityEffectLossesBartoliModel : public WindingProximityEffectLo
 class WindingProximityEffectLossesVandelacModel : public WindingProximityEffectLossesModel {
   public:
     std::string methodName = "Vandelac";
-    static double calculate_proximity_factor(Wire wire, double frequency, double temperature);
-    double calculate_turn_losses(Wire wire, double frequency, std::vector<ComplexFieldPoint> data, double temperature);
+    static double calculate_proximity_factor(const Wire& wire, double frequency, double temperature);
+    double calculate_turn_losses(const Wire& wire, double frequency, std::vector<ComplexFieldPoint> data, double temperature);
 };
 
 } // namespace OpenMagnetics
