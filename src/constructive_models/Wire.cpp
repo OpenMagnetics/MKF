@@ -1130,10 +1130,20 @@ namespace OpenMagnetics {
                     return resolve_dimensional_values(wire.get_conducting_width().value(), preferredValue);
                 }
             }
-            case WireType::FOIL:
-                // The interleaved film: the pitch a foil layer occupies is foil + film.
-                return resolve_dimensional_values(wire.get_conducting_width().value(), preferredValue) +
-                       Wire::get_foil_interlayer_insulation(wire);
+            case WireType::FOIL: {
+                // ABT #1151 (Alf, 2026-10-18: "outer = conductor"): a foil's outer width is its
+                // conductor, plus a coating only when the wire DECLARES one. The film an undeclared
+                // foil is wound with is a separate interleaf, counted once per turn interval in the
+                // wound width (get_maximum_outer_width), never in the wire's own outer size: a wire
+                // that states no coating but an outer size 25 um past its conductor contradicts
+                // itself (OMFEM refused it as INVALID_WIRE_DATA).
+                const double conducting = resolve_dimensional_values(wire.get_conducting_width().value(), preferredValue);
+                auto coating = Wire::resolve_coating(wire);
+                if (coating && coating->get_type() != InsulationWireCoatingType::BARE) {
+                    return conducting + Wire::get_coating_thickness(coating.value());
+                }
+                return conducting;
+            }
             case WireType::PLANAR:
                 return resolve_dimensional_values(wire.get_conducting_width().value(), preferredValue);
             default:
@@ -1574,11 +1584,41 @@ namespace OpenMagnetics {
                     return get_maximum_conducting_width();
             case WireType::PLANAR:
             case WireType::RECTANGULAR:
-            case WireType::FOIL:
                 if (get_outer_width())
                     return resolve_dimensional_values(get_outer_width().value());
-                else 
+                else
                     return resolve_dimensional_values(get_conducting_width().value());
+            case WireType::FOIL: {
+                // ABT #1151: the WOUND width of a foil -- the slot it takes in its layer -- is its
+                // conductor plus the interleaved film (get_foil_interlayer_insulation), counted once
+                // per turn interval. Like a litz bundle's wound footprint, it is not the wire's own
+                // outerWidth, which is the conductor (+ a declared coating). A foil that DECLARES
+                // its coating carries that insulation itself, so its stated outerWidth is the slot.
+                // For one that declares none, an outerWidth that is neither the conductor nor the
+                // conductor plus its film (the value MKF itself wrote before ABT #1151) states
+                // insulation nothing accounts for, and is refused.
+                if (!get_conducting_width()) {
+                    throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA,
+                        "Foil wire '" + get_name().value_or("<unnamed>") + "' has no conductingWidth (its thickness)");
+                }
+                const double conducting = resolve_dimensional_values(get_conducting_width().value());
+                if (Wire::resolve_coating(*this) && get_outer_width()) {
+                    return resolve_dimensional_values(get_outer_width().value());
+                }
+                const double film = Wire::get_foil_interlayer_insulation(*this);
+                if (get_outer_width()) {
+                    const double outer = resolve_dimensional_values(get_outer_width().value());
+                    const double tolerance = 1e-9 + 1e-9 * conducting;
+                    if (std::abs(outer - conducting) > tolerance && std::abs(outer - (conducting + film)) > tolerance) {
+                        throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA,
+                            "Foil wire '" + get_name().value_or("<unnamed>") + "' states outerWidth " +
+                            std::to_string(outer) + " m for a conductor of " + std::to_string(conducting) +
+                            " m: a foil's outer width is its conductor, and the film it is wound with (" +
+                            std::to_string(film) + " m) is its interleaf. Declare the insulation as the wire's coating.");
+                    }
+                }
+                return conducting + film;
+            }
             default:
                 throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA, "Unknown type of wire");
         }
@@ -1839,11 +1879,11 @@ namespace OpenMagnetics {
         }
         dimensionWithTolerance.set_maximum(cutHeight);
         set_conducting_height(dimensionWithTolerance);
-        // The width the layer occupies is the foil PLUS its interleaved film (see
-        // get_foil_interlayer_insulation); the height is the foil's own.
+        // The wire's outer width is its conductor (+ a declared coating, ABT #1151); the width the
+        // layer occupies, foil PLUS its interleaved film, is the wound width
+        // (get_maximum_outer_width). The height is the foil's own.
         DimensionWithTolerance outerWidth;
-        outerWidth.set_nominal(resolve_dimensional_values(get_conducting_width().value()) +
-                               Wire::get_foil_interlayer_insulation(*this));
+        outerWidth.set_nominal(Wire::calculate_outer_width(*this));
         set_outer_width(outerWidth);
         set_outer_height(get_conducting_height());
     }

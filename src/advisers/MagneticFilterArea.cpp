@@ -371,7 +371,9 @@ static bool fits_in_whole_turns_per_layer(const Wire& wire, const Winding& windi
         if (!wire.get_outer_width() || !wire.get_outer_height()) {
             throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA, "Wire " + wire.get_name().value_or("(unnamed)") + " is missing its outer width or height");
         }
-        double wireWidth = resolve_dimensional_values(wire.get_outer_width().value());
+        // A foil's layer is as thick as its wound width, conductor + interleaved film (ABT #1151).
+        double wireWidth = wire.get_type() == WireType::FOIL ? Wire(wire).get_maximum_outer_width()
+                                                             : resolve_dimensional_values(wire.get_outer_width().value());
         double wireHeight = resolve_dimensional_values(wire.get_outer_height().value());
         if (layersStackAlongWidth) {
             conductorAlongLayer = wireHeight;

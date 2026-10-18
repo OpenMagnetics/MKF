@@ -3375,12 +3375,29 @@ Magnetic magnetic_autocomplete(Magnetic magnetic, json configuration, std::optio
             // uses the standard polyester unless the wire declares otherwise). A foil that
             // really is bare -- anodised aluminium carries its own oxide -- says so explicitly,
             // and that declaration is still honoured.
-            // It must come BEFORE the outer-vs-conductor check: autocomplete itself gives a foil
-            // outerWidth = thickness + film (0.2 mm "Foil 0.2" -> 0.225 mm) and no coating, so a
-            // second autocomplete of its own output tripped that check on the 25 um film and threw
-            // INVALID_WIRE_DATA (two_switch_forward_transformer_complete, OMFEM corpus C1). For a
-            // foil that difference IS the film, not an unstated coating.
+            // It must come BEFORE the outer-vs-conductor check: before ABT #1151 autocomplete gave a
+            // foil outerWidth = thickness + film (0.2 mm "Foil 0.2" -> 0.225 mm) and no coating, and
+            // designs stored then still carry it; a re-autocomplete tripped that check on the 25 um
+            // film and threw INVALID_WIRE_DATA (two_switch_forward_transformer_complete, OMFEM corpus
+            // C1). Now a foil's outerWidth is its conductor (normalised here for such stored
+            // designs) and the film is counted in its wound width (Wire::get_maximum_outer_width).
             if (wire.get_type() == WireType::FOIL) {
+                // ABT #1151: MKF used to write an uncoated foil's outerWidth as conductor + the
+                // default interleaf film. A stored design carrying that value is brought to the
+                // conductor here; the film stays counted, once, in the wound width
+                // (Wire::get_maximum_outer_width). Any other outerWidth is left for that function
+                // to refuse.
+                if (wire.get_outer_width() && wire.get_conducting_width()) {
+                    const double outer = resolve_dimensional_values(wire.get_outer_width().value());
+                    const double conducting = resolve_dimensional_values(wire.get_conducting_width().value());
+                    const double legacyOuter = conducting + Wire::get_foil_interlayer_insulation(wire);
+                    const double tolerance = 1e-9 + 1e-9 * conducting;
+                    if (std::abs(outer - conducting) > tolerance && std::abs(outer - legacyOuter) <= tolerance) {
+                        DimensionWithTolerance conductorWidth;
+                        conductorWidth.set_nominal(conducting);
+                        wire.set_outer_width(conductorWidth);
+                    }
+                }
                 magnetic.get_mutable_coil().get_mutable_functional_description()[i].set_wire(wire);
                 continue;
             }

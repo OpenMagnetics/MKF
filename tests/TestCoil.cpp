@@ -13303,13 +13303,13 @@ TEST_CASE("Test_Abt967_Autocomplete_Accepts_A_Database_Foil", "[constructive-mod
     auto wire = magnetic.get_mutable_coil().resolve_wire(1);
     REQUIRE(wire.get_type() == WireType::FOIL);
     REQUIRE(wire.get_outer_width());
-    // The width a foil OCCUPIES is its thickness plus the film it is wound with (2026-09-04).
-    // This assertion used to demand outer == conducting, which pinned the behaviour that made a
-    // foil stack short: every sheet touching its neighbour. What this test is actually about is
-    // that autocomplete SURVIVES a database foil stating only its thickness -- it used to
-    // dereference an empty optional -- and that is unchanged.
-    REQUIRE_THAT(resolve_dimensional_values(wire.get_outer_width().value()) -
-                     resolve_dimensional_values(wire.get_conducting_width().value()),
+    // The width a foil OCCUPIES is its thickness plus the film it is wound with (2026-09-04); since
+    // ABT #1151 that is its wound width, while its outerWidth is the conductor (it states no
+    // coating). What this test is actually about is that autocomplete SURVIVES a database foil
+    // stating only its thickness -- it used to dereference an empty optional -- and that is unchanged.
+    REQUIRE_THAT(resolve_dimensional_values(wire.get_outer_width().value()),
+                 Catch::Matchers::WithinAbs(resolve_dimensional_values(wire.get_conducting_width().value()), 1e-12));
+    REQUIRE_THAT(wire.get_maximum_outer_width() - resolve_dimensional_values(wire.get_conducting_width().value()),
                  Catch::Matchers::WithinAbs(25e-6, 1e-9));
     settings.reset();
 }
@@ -13341,6 +13341,56 @@ TEST_CASE("Test_Autocomplete_Of_An_Autocompleted_Foil_Is_Accepted", "[constructi
     REQUIRE(wireTwice.get_type() == WireType::FOIL);
     CHECK_THAT(resolve_dimensional_values(wireTwice.get_outer_width().value()),
                Catch::Matchers::WithinAbs(resolve_dimensional_values(wireOnce.get_outer_width().value()), 1e-12));
+    settings.reset();
+}
+
+TEST_CASE("Test_Abt1151_Autocompleted_Foil_Outer_Width_Is_Its_Conductor", "[constructive-model][coil][foil][regression][abt-1151]") {
+    // ABT #1151 (Alf, 2026-10-18: "outer = conductor"): autocomplete gave "Foil 0.2" an outerWidth
+    // 25 um past its conductor while leaving its coating null -- a wire that says it has no
+    // insulation and an outer size that only insulation could fill; OMFEM refused it. The film is
+    // the foil's interleaf, counted once in its WOUND width, not in the wire's outer size.
+    settings.reset();
+    clear_databases();
+    auto mas = OpenMagneticsTesting::mas_loader(std::string(__FILE__).substr(0, std::string(__FILE__).rfind('/'))
+                                                + "/../MAS/examples/04_forward_xfmr_e3216_n87.json");
+    auto magneticIn = mas.get_magnetic();
+    auto& windings = magneticIn.get_mutable_coil().get_mutable_functional_description();
+    REQUIRE(windings.size() >= 2);
+    windings[1].set_wire("Foil 0.2");
+    magneticIn.get_mutable_coil().set_turns_description(std::nullopt);
+    magneticIn.get_mutable_coil().set_layers_description(std::nullopt);
+    magneticIn.get_mutable_coil().set_sections_description(std::nullopt);
+    auto magnetic = OpenMagnetics::magnetic_autocomplete(magneticIn);
+    auto wire = magnetic.get_mutable_coil().resolve_wire(1);
+    REQUIRE(wire.get_type() == WireType::FOIL);
+    CHECK_FALSE(wire.get_coating());
+    REQUIRE(wire.get_outer_width());
+    const double foil = resolve_dimensional_values(wire.get_conducting_width().value());
+    CHECK_THAT(resolve_dimensional_values(wire.get_outer_width().value()), Catch::Matchers::WithinAbs(foil, 1e-12));
+    // The film is still there, once, in the width the foil takes in its layer.
+    CHECK_THAT(wire.get_maximum_outer_width() - foil, Catch::Matchers::WithinAbs(25e-6, 1e-9));
+
+    // A design stored before the fix carries MKF's own old value (conductor + film): a re-autocomplete
+    // brings it to the conductor instead of keeping the contradiction.
+    auto stored = magnetic;
+    {
+        auto storedWire = stored.get_mutable_coil().resolve_wire(1);
+        DimensionWithTolerance legacy;
+        legacy.set_nominal(foil + 25e-6);
+        storedWire.set_outer_width(legacy);
+        stored.get_mutable_coil().get_mutable_functional_description()[1].set_wire(storedWire);
+    }
+    auto again = OpenMagnetics::magnetic_autocomplete(stored);
+    auto againWire = again.get_mutable_coil().resolve_wire(1);
+    CHECK_THAT(resolve_dimensional_values(againWire.get_outer_width().value()), Catch::Matchers::WithinAbs(foil, 1e-12));
+
+    // An outerWidth that is neither the conductor nor conductor + film states insulation nothing
+    // accounts for: refused, not silently re-read.
+    auto contradictory = wire;
+    DimensionWithTolerance tooWide;
+    tooWide.set_nominal(foil + 100e-6);
+    contradictory.set_outer_width(tooWide);
+    CHECK_THROWS_AS(contradictory.get_maximum_outer_width(), InvalidInputException);
     settings.reset();
 }
 
@@ -13495,12 +13545,14 @@ TEST_CASE("Test_Foil_Layer_Pitch_Includes_The_Interleaved_Film", "[constructive-
     REQUIRE(wire.get_conducting_width());
     const double foil = resolve_dimensional_values(wire.get_conducting_width().value());
 
-    // The wire states no coating, so the standard polyester applies and is visible in the pitch.
+    // The wire states no coating, so the standard polyester applies and is visible in the pitch
+    // (the wound width); the wire's own outer width is the conductor (ABT #1151).
     MAS::Section section;
     section.set_dimensions(std::vector<double>{0.005, 0.027});
     wire.cut_foil_wire_to_section(section);
     REQUIRE(wire.get_outer_width());
-    const double pitch = resolve_dimensional_values(wire.get_outer_width().value());
+    CHECK_THAT(resolve_dimensional_values(wire.get_outer_width().value()), Catch::Matchers::WithinRel(foil, 1e-9));
+    const double pitch = wire.get_maximum_outer_width();
     CHECK(pitch > foil);
     CHECK_THAT(pitch - foil, Catch::Matchers::WithinAbs(25e-6, 1e-9));
     // The foil's own height is what it conducts on: the film's extra breadth is the insulation's.
@@ -13517,6 +13569,8 @@ TEST_CASE("Test_Foil_Layer_Pitch_Includes_The_Interleaved_Film", "[constructive-
     film.set_thickness(filmThickness);
     taped.set_coating(film);
     taped.cut_foil_wire_to_section(section);
+    CHECK_THAT(taped.get_maximum_outer_width() - foil, Catch::Matchers::WithinAbs(50e-6, 1e-9));
+    // A DECLARED coating is the wire's own, so its outer width carries it.
     CHECK_THAT(resolve_dimensional_values(taped.get_outer_width().value()) - foil,
                Catch::Matchers::WithinAbs(50e-6, 1e-9));
 
@@ -13526,6 +13580,7 @@ TEST_CASE("Test_Foil_Layer_Pitch_Includes_The_Interleaved_Film", "[constructive-
     bare.cut_foil_wire_to_section(section);
     CHECK_THAT(resolve_dimensional_values(bare.get_outer_width().value()),
                Catch::Matchers::WithinRel(foil, 1e-9));
+    CHECK_THAT(bare.get_maximum_outer_width(), Catch::Matchers::WithinRel(foil, 1e-9));
     settings.reset();
 }
 

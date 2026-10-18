@@ -15394,7 +15394,8 @@ bool Coil::wind_by_rectangular_layers() {
                 if (!wirePerWinding[windingIndex].get_outer_height()) {
                     throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA, "Missing wire outer height");
                 }
-                double wireWidth = resolve_dimensional_values(wirePerWinding[windingIndex].get_outer_width().value());
+                // The wound width: for a foil, conductor + interleaved film (ABT #1151); otherwise the outer width.
+                double wireWidth = wirePerWinding[windingIndex].get_maximum_outer_width();
                 double wireHeight = resolve_dimensional_values(wirePerWinding[windingIndex].get_outer_height().value());
                 if (sections[sectionIndex].get_layers_orientation() == WindingOrientation::OVERLAPPING) {
                     maximumNumberLayersFittingInSection = whole_fits(sections[sectionIndex].get_dimensions()[0], wireWidth);
@@ -16114,7 +16115,8 @@ bool Coil::wind_by_round_layers() {
                 }
             }
             else {
-                double wireWidth = resolve_dimensional_values(wirePerWinding[windingIndex].get_outer_width().value());
+                // The wound width: for a foil, conductor + interleaved film (ABT #1151); otherwise the outer width.
+                double wireWidth = wirePerWinding[windingIndex].get_maximum_outer_width();
                 double wireHeight = resolve_dimensional_values(wirePerWinding[windingIndex].get_outer_height().value());
                 if (sections[sectionIndex].get_layers_orientation() == WindingOrientation::OVERLAPPING) {
                     maximumNumberLayersFittingInSection = roundFloat(sections[sectionIndex].get_dimensions()[0] / wireWidth, 9);
