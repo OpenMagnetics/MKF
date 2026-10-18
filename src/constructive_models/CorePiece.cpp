@@ -894,6 +894,32 @@ class CorePieceRm : public CorePiece {
                   pi / 4 * pow(d3, 2));
         }
         else if (familySubtype == "2") {
+            // IEC 60205:2016 clause 5.7, Figure 7 Type 2 (RM 7, RM 7/10): each wire slot has a flat bottom of width
+            // b, square to the slot axis, and straight walls opening at angle phi (gamma here). Neither b nor phi is a
+            // tabulated dimension; both come from IEC 62317-4 Figure 1 (Typ 2). There C runs between the two slot
+            // bottoms (bottom at C/2 on the slot axis) and the corners of each bottom sit on the centre-post circle
+            // F, so b = sqrt(F^2 - C^2). The walls run from those corners to the leg tips on the J faces, where the
+            // slot is G wide (at J/sqrt(2) - G/2 along the slot axis), so
+            // tan(phi/2) = (G/2 - b/2) / (J/sqrt(2) - G/2 - C/2).
+            // The drawing shows a flat about 0.27 F wide, which the tables cannot reproduce: IEC 62317-4 Tables 1
+            // and 2 give C = F for RM 7 and RM 7/10, so b = 0 and phi = 102.8 deg. The old b = 0, phi = pi/2 gave
+            // A_e 4.6-8.7 % below IEC 62317-4 Tables 3/4; this gives 2.3-4.7 % below (ABT #1950).
+            if (d3 < c) {
+                throw InvalidInputException(ErrorCode::INVALID_CORE_DATA,
+                    "RM type 2 shape " + get_shape().get_name().value_or("<unnamed>") +
+                    ": centre-post diameter F (" + std::to_string(d3) + " m) is smaller than the slot-bottom distance C (" +
+                    std::to_string(c) + " m), so the slot-bottom corners cannot lie on the centre post");
+            }
+            b = sqrt(pow(d3, 2) - pow(c, 2));
+            double bottomToTip = a / sqrt(2) - e / 2 - c / 2;
+            double wallSpread = (e - b) / 2;
+            if (!(bottomToTip > 0) || !(wallSpread > 0)) {
+                throw InvalidInputException(ErrorCode::INVALID_CORE_DATA,
+                    "RM type 2 shape " + get_shape().get_name().value_or("<unnamed>") +
+                    ": slot walls cannot run from the slot bottom to the leg tips, J/sqrt(2) - G/2 - C/2 = " +
+                    std::to_string(bottomToTip) + " m, (G - b)/2 = " + std::to_string(wallSpread) + " m");
+            }
+            gamma = 2 * atan(wallSpread / bottomToTip);
             lmax = sqrt(1. / 4 * (pow(d2, 2) + pow(d3, 2)) - 1. / 2 * d2 * d3 * cos(alpha - beta)) -
                    b / (2 * sin(gamma / 2));
             a7 = 1. / 4 *

@@ -4084,16 +4084,87 @@ TEST_CASE("Test_Rm_Type1_Effective_Parameters_Match_Tdk_And_Iec", "[constructive
     }
 }
 
+// ABT #1950: RM type 2 (RM 7 family) back plate. IEC 60205:2016 5.7 Type 2 needs the slot-bottom width b and
+// the wall angle phi, which were hardcoded to 0 and 90 deg. They now follow from C, F, G, J (IEC 62317-4
+// Figure 1, Typ 2: slot-bottom corners on the centre-post circle F, walls to the leg tips). C = F in the
+// tables, so b = 0 and phi = 102.8 deg.
+//  * IEC 62317-4:2005 Tables 3 and 4 pin le, A_e and V_e at 5 %, not the 2 % of type 1. The figure draws a flat
+//    slot bottom about 0.27 F wide that C = F cannot reproduce, and the tables themselves need phi ~131 deg
+//    (b ~0.9 mm), which no straight-wall construction from the tabulated dimensions gives. The derived geometry
+//    lands 2.3-4.7 % low in A_e, 2.0-3.7 % high in le and within 2.5 % in V_e (Alf approved 5 % for type 2).
+//    The old b = 0, phi = 90 deg is 4.7-8.7 % low in A_e and fails RM 7/I, RM 7/10 and RM 7/ILP.
+//  * TDK rm_7.pdf (Feb 2024) p.3 with / without centre hole (RM 7 / RM 7/I), LP p.8 (RM 7/ILP, RM 7LP) pins
+//    A_e only, at the type-1 band (6 %, reasons above that test): +1.2, +4.2, +0.1, +0.6 %. TDK's le and V_e are
+//    not pinned: le is +3.0 / +4.7 / +4.3 / +4.1 % and V_e +4.3 / +8.9 / +4.9 / +5.2 % against TDK, and le was
+//    already +3.4 / +4.6 / +4.1 / +3.9 % before this change (the slot geometry hardly moves le). The IEC rows
+//    above carry the le and V_e pins.
+TEST_CASE("Test_Rm_Type2_Effective_Parameters_Match_Tdk_And_Iec", "[constructive-model][core][effective-parameters][abt-1950]") {
+    settings.reset();
+    clear_databases();
+    struct Row {
+        std::string name;
+        std::optional<double> le, ve;  // mm, mm^3 per set; empty = not pinned against this source
+        double ae;                     // mm^2 per set
+        double tolerance;
+        std::string source;
+    };
+    const std::vector<Row> rows = {
+        {"RM 7", std::nullopt, std::nullopt, 40.0, 0.06, "TDK rm_7 p.3 with centre hole"},
+        {"RM 7/I", std::nullopt, std::nullopt, 43.0, 0.06, "TDK rm_7 p.3 without centre hole"},
+        {"RM 7/ILP", std::nullopt, std::nullopt, 45.3, 0.06, "TDK rm_7 LP p.8"},
+        {"RM 7LP", std::nullopt, std::nullopt, 45.3, 0.06, "TDK rm_7 LP p.8"},
+        {"RM 7", 29.8, 1240, 41.4, 0.05, "IEC 62317-4 Table 3"},
+        {"RM 7/I", 31.2, 1450, 46.4, 0.05, "IEC 62317-4 Table 3"},
+        {"RM 7/10", 22.8, 987, 43.2, 0.05, "IEC 62317-4 Table 4"},
+        {"RM 7/ILP", 23.9, 1140, 47.6, 0.05, "IEC 62317-4 Table 4"},
+    };
+    for (const auto& row : rows) {
+        INFO(row.name << " vs " << row.source);
+        auto core = OpenMagneticsTesting::get_quick_core(row.name, json::array(), 1, "Dummy");
+        REQUIRE(core.get_shape_family() == CoreShapeFamily::RM);
+        REQUIRE(std::get<CoreShape>(core.get_functional_description().get_shape()).get_family_subtype().value() == "2");
+        auto effective = core.get_processed_description()->get_effective_parameters();
+        double le = effective.get_effective_length() * 1e3;
+        double ae = effective.get_effective_area() * 1e6;
+        double ve = effective.get_effective_volume() * 1e9;
+        INFO("le " << le << ", Ae " << ae << " vs " << row.ae << ", Ve " << ve << ", Amin " << effective.get_minimum_area() * 1e6);
+        CHECK_THAT(ae, Catch::Matchers::WithinRel(row.ae, row.tolerance));
+        if (row.le) {
+            CHECK_THAT(le, Catch::Matchers::WithinRel(*row.le, row.tolerance));
+        }
+        if (row.ve) {
+            CHECK_THAT(ve, Catch::Matchers::WithinRel(*row.ve, row.tolerance));
+        }
+        CHECK(effective.get_minimum_area() <= effective.get_effective_area());
+    }
+}
+
+// ABT #1950: an RM type 2 shape whose centre post F is narrower than the slot-bottom distance C has no slot
+// bottom on the post, so b = sqrt(F^2 - C^2) does not exist; it throws instead of guessing b.
+TEST_CASE("Test_Rm_Type2_Slot_Bottom_Outside_Centre_Post_Throws", "[constructive-model][core][effective-parameters][abt-1950]") {
+    settings.reset();
+    clear_databases();
+    auto shape = OpenMagnetics::find_core_shape_by_name("RM 7");
+    REQUIRE(shape.get_family_subtype().value() == "2");
+    CHECK_NOTHROW(CorePiece::factory(shape));
+    auto dimensions = shape.get_dimensions().value();
+    dimensions["C"] = 0.0080;  // F stays 6.95-7.25 mm
+    shape.set_dimensions(dimensions);
+    CHECK_THROWS_WITH(CorePiece::factory(shape), Catch::Matchers::ContainsSubstring("slot-bottom corners cannot lie on the centre post"));
+}
+
 // ABT #1950: an RM piece whose computed A_e falls below its A_min throws instead of returning it.
-// RM 6LP declared as type 2 runs the old b = 0, phi = 90 deg slot model: A_e 30.1 mm^2 < A_min 31.2 mm^2.
+// RM 6LP with its back plate thinned from 2.1 to 1.2 mm (D 2.35 -> 3.29 mm, same B): A_e 25.8 mm^2 < A_min 27.1 mm^2.
 TEST_CASE("Test_Rm_Effective_Area_Below_Minimum_Area_Throws", "[constructive-model][core][effective-parameters][abt-1950]") {
     settings.reset();
     clear_databases();
     auto shape = OpenMagnetics::find_core_shape_by_name("RM 6LP");
     REQUIRE(shape.get_family_subtype().value() == "1");
     CHECK_NOTHROW(CorePiece::factory(shape));
-    shape.set_family_subtype("2");
-    CHECK_THROWS_AS(CorePiece::factory(shape), InvalidInputException);
+    auto dimensions = shape.get_dimensions().value();
+    dimensions["D"] = 0.00329;
+    shape.set_dimensions(dimensions);
+    CHECK_THROWS_WITH(CorePiece::factory(shape), Catch::Matchers::ContainsSubstring("exceeds effective area"));
 }
 
 TEST_CASE("Test_Core_Coating_Thickness_Is_A_Dimension_With_Tolerance", "[constructive-model][core][coating]") {
