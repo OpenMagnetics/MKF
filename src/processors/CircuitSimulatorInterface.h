@@ -571,8 +571,12 @@ class CircuitSimulatorExporterSimbaModel : public CircuitSimulatorExporterModel 
         std::string generate_id();
         std::mt19937 _gen;
         CircuitSimulatorExporterSimbaModel();
-        std::string export_magnetic_as_symbol(Magnetic magnetic, std::optional<std::string> filePathOrFile = std::nullopt) {
-            return "Not supported";
+        // No Simba symbol exporter exists. Returning a "Not supported" string here was written to
+        // the caller's file as if it were a symbol (ABT #1647): fail loudly, like NL5.
+        std::string export_magnetic_as_symbol(
+            [[maybe_unused]] Magnetic magnetic,
+            [[maybe_unused]] std::optional<std::string> filePathOrFile = std::nullopt) override {
+            throw NotImplementedException("Simba exporter does not support symbol export");
         }
         std::string export_magnetic_as_subcircuit(Magnetic magnetic, double frequency = defaults.measurementFrequency, double temperature = defaults.ambientTemperature, std::optional<std::string> filePathOrFile = std::nullopt, CircuitSimulatorExporterCurveFittingModes mode=CircuitSimulatorExporterCurveFittingModes::LADDER);
         ordered_json create_device(std::string libraryName, std::vector<int> coordinates, int angle, std::string name);
@@ -594,8 +598,11 @@ class CircuitSimulatorExporterSimbaModel : public CircuitSimulatorExporterModel 
 class CircuitSimulatorExporterNgspiceModel : public CircuitSimulatorExporterModel {
     public:
         std::string programName = "Ngspice";
-        std::string export_magnetic_as_symbol(Magnetic magnetic, std::optional<std::string> filePathOrFile = std::nullopt) {
-            return "Not supported";
+        // NgSpice has no symbol files; see the Simba note above (ABT #1647).
+        std::string export_magnetic_as_symbol(
+            [[maybe_unused]] Magnetic magnetic,
+            [[maybe_unused]] std::optional<std::string> filePathOrFile = std::nullopt) override {
+            throw NotImplementedException("NgSpice exporter does not support symbol export");
         }
         std::string export_magnetic_as_subcircuit(Magnetic magnetic, double frequency = defaults.measurementFrequency, double temperature = defaults.ambientTemperature, std::optional<std::string> filePathOrFile = std::nullopt, CircuitSimulatorExporterCurveFittingModes mode=CircuitSimulatorExporterCurveFittingModes::LADDER);
 };

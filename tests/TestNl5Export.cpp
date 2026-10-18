@@ -50,6 +50,16 @@ TEST_CASE("nl5: symbol export fails loudly (not implemented)", "[circuit][export
     CHECK_THROWS(exporter.export_magnetic_as_symbol(magnetic));
 }
 
+// ABT #1647: Simba and NgSpice returned the string "Not supported" as if it were a symbol, and
+// CircuitSimulatorExporter wrote it to the caller's file. They have no symbol format: they throw.
+TEST_CASE("Simba and NgSpice symbol export throw instead of returning a placeholder string", "[circuit][export][abt-1647]") {
+    auto magnetic = wound_magnetic({10});
+    for (auto program : {CircuitSimulatorExporterModels::SIMBA, CircuitSimulatorExporterModels::NGSPICE}) {
+        CircuitSimulatorExporter exporter(program);
+        REQUIRE_THROWS_AS(exporter.export_magnetic_as_symbol(magnetic), NotImplementedException);
+    }
+}
+
 // ABT #1456 (Alf's decision): the NL5 exporter built the core fractional-pole network inside
 // try{}catch(...){}, so a network that could not be built was silently left out. N22 carries only a loss
 // factor, no Steinmetz, and the core fracpole network is anchored on Steinmetz: the FRACPOLE export must
