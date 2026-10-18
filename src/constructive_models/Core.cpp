@@ -176,7 +176,12 @@ double Core::get_mass() {
         process_data();
     }
     double density = get_density();
-    if (std::isnan(density)) return std::numeric_limits<double>::quiet_NaN();
+    if (std::isnan(density)) {
+        // A NaN mass let every caller that forgot to check compute NaN costs, masses and heat
+        // capacities (ABT #1565): no density, no mass.
+        throw InvalidInputException(ErrorCode::INVALID_CORE_MATERIAL_DATA,
+                                    "core material " + get_material_name() + " has no density: its mass is unknown");
+    }
 
     auto shapeFamily = get_shape_family();
     if (shapeFamily == CoreShapeFamily::T) {

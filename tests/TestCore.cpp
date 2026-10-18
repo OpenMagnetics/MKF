@@ -4203,3 +4203,21 @@ TEST_CASE("Test_Core_Coating_Thickness_Is_A_Dimension_With_Tolerance", "[constru
         REQUIRE_THROWS_AS(makeCore({{"nominal", -0.0001}}), InvalidInputException);
     }
 }
+
+// ABT #1565: Core::get_mass() returned NaN for a material with no density, and every caller had to
+// remember to check. It throws INVALID_CORE_MATERIAL_DATA naming the material.
+TEST_CASE("Test_Core_Mass_Throws_For_A_Material_Without_Density", "[constructive-model][core][abt-1565]") {
+    auto noDensity = OpenMagneticsTesting::get_quick_core("E 42/21/20", json::parse("[]"), 1, "75-Series 60");
+    REQUIRE(!noDensity.resolve_material().get_density());
+    try {
+        noDensity.get_mass();
+        FAIL("get_mass() returned for a material with no density");
+    }
+    catch (const InvalidInputException& e) {
+        CHECK(e.code() == ErrorCode::INVALID_CORE_MATERIAL_DATA);
+        CHECK(std::string(e.what()).find("75-Series 60") != std::string::npos);
+    }
+
+    auto withDensity = OpenMagneticsTesting::get_quick_core("E 42/21/20", json::parse("[]"), 1, "N87");
+    REQUIRE(withDensity.get_mass() > 0);
+}

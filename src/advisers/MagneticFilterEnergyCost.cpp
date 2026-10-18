@@ -244,10 +244,8 @@ CostBreakdown MagneticFilterCost::calculate_cost(Magnetic& magnetic) const {
     if (price == basis.corePrice.end()) {
         return {std::nullopt, conductor, labour, "the COST filter has no price law for " + composition + " cores (" + material.get_name() + ")"};
     }
+    // Throws INVALID_CORE_MATERIAL_DATA when the material has no density (ABT #1565).
     double coreMass = core.get_mass();
-    if (std::isnan(coreMass)) {
-        throw InvalidInputException(ErrorCode::INVALID_CORE_MATERIAL_DATA, "core material " + material.get_name() + " has no density: its mass cannot be priced");
-    }
     return {price->second.coefficient * std::pow(coreMass, price->second.exponent), conductor, labour, ""};
 }
 
