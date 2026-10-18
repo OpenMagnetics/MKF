@@ -249,19 +249,40 @@ bool is_close_enough(double x, double y, double error){
 // lost its magnetizing DC. Here every current is resampled onto the same numberPoints over the
 // period first. Conduction is judged on the current (Ampere: a winding carries ampere-turns iff it
 // carries current), against 1 % of that winding's own peak, the classifier's existing figure.
-// std::nullopt when a winding has no current: the currents then say nothing about the
-// magnetizing MMF (voltage-only, transformer mode, as before).
+// std::nullopt when no winding has a current: the operating point is given by its voltages
+// alone (transformer mode), and the currents say nothing about the magnetizing MMF. When some
+// windings have a current and another has none, the ampere-turns cannot be summed: that throws
+// (ABT #1814), where it used to return std::nullopt and the magnetizing current lost its DC
+// without a word.
 std::optional<Inputs::WindingConduction> Inputs::calculate_winding_conduction(const OperatingPoint& operatingPoint, std::optional<size_t> numberPoints) {
     const auto excitations = operatingPoint.get_excitations_per_winding();
     if (excitations.empty()) {
         throw InvalidInputException(ErrorCode::INVALID_INPUT, "calculate_winding_conduction: the operating point has no excitations");
     }
+    std::optional<size_t> windingWithCurrent;
+    std::optional<size_t> windingWithoutCurrent;
+    for (size_t windingIndex = 0; windingIndex < excitations.size(); ++windingIndex) {
+        if (excitations[windingIndex].get_current()) {
+            if (!windingWithCurrent) {
+                windingWithCurrent = windingIndex;
+            }
+        }
+        else if (!windingWithoutCurrent) {
+            windingWithoutCurrent = windingIndex;
+        }
+    }
+    if (!windingWithCurrent) {
+        return std::nullopt;
+    }
+    if (windingWithoutCurrent) {
+        throw InvalidInputException(ErrorCode::MISSING_DATA, "calculate_winding_conduction: winding " + std::to_string(windingWithoutCurrent.value()) +
+                                    " has no current while winding " + std::to_string(windingWithCurrent.value()) +
+                                    " has one: the magnetizing MMF is the sum of every winding's ampere-turns, so the DC of the magnetizing current"
+                                    " cannot be told from the currents unless every winding carries one");
+    }
     size_t gridPoints = settings.get_inputs_number_points_sampled_waveforms();
     for (size_t windingIndex = 0; windingIndex < excitations.size(); ++windingIndex) {
         const auto current = excitations[windingIndex].get_current();
-        if (!current) {
-            return std::nullopt;
-        }
         if (!current->get_waveform()) {
             throw InvalidInputException(ErrorCode::MISSING_DATA, "calculate_winding_conduction: winding " + std::to_string(windingIndex) +
                                         " has a current without a waveform; processed values carry no timing to compare the windings on");
@@ -406,19 +427,23 @@ double Inputs::calculate_magnetizing_current_dc_anchor(const OperatingPoint& ope
     }
     auto excitation = excitations[windingIndex];
     if (!excitation.get_current()) {
-        return 0;
+        throw InvalidInputException(ErrorCode::MISSING_DATA, "calculate_magnetizing_current_dc_anchor: winding " + std::to_string(windingIndex) +
+                                    " has no current to anchor the DC of its magnetizing current on");
     }
-    auto conduction = calculate_winding_conduction(operatingPoint);
-    if (!conduction) {
-        return 0;
-    }
-    return calculate_magnetizing_current_dc_anchor(excitation, conduction.value(), windingIndex, voltageSampledWaveform, magnetizingInductance);
+    // Every winding has a current here, or calculate_winding_conduction throws (ABT #1814).
+    auto conduction = calculate_winding_conduction(operatingPoint).value();
+    return calculate_magnetizing_current_dc_anchor(excitation, conduction, windingIndex, voltageSampledWaveform, magnetizingInductance);
 }
 
 double Inputs::calculate_magnetizing_current_dc_anchor(OperatingPointExcitation excitation, const WindingConduction& conduction, size_t windingIndex,
                                                        Waveform voltageSampledWaveform, double magnetizingInductance) {
     if (!excitation.get_current()) {
-        return 0;
+        throw InvalidInputException(ErrorCode::MISSING_DATA, "calculate_magnetizing_current_dc_anchor: winding " + std::to_string(windingIndex) +
+                                    " has no current to anchor the DC of its magnetizing current on");
+    }
+    if (windingIndex >= conduction.currents.size()) {
+        throw InvalidInputException(ErrorCode::INVALID_INPUT, "calculate_magnetizing_current_dc_anchor: winding " + std::to_string(windingIndex) +
+                                    " of a conduction map with " + std::to_string(conduction.currents.size()) + " windings");
     }
     const auto& current = conduction.currents[windingIndex];
 
@@ -2340,9 +2365,10 @@ SignalDescriptor Inputs::calculate_magnetizing_current(const OperatingPoint& ope
     }
 
     double dcCurrent = 0;
-    if (excitation.get_current() && excitations.size() > 1) {
+    if (excitations.size() > 1) {
         // Several windings: the same classification as include_dc_offset_into_magnetizing_current,
-        // on one conduction map shared with the anchor.
+        // on one conduction map shared with the anchor. No winding with a current: a voltage-only
+        // operating point, no DC from the currents. Some with and some without: throws (ABT #1814).
         auto conduction = calculate_winding_conduction(operatingPoint);
         if (conduction && windings_alternate(conduction.value())) {
             dcCurrent = calculate_magnetizing_current_dc_anchor(excitation, conduction.value(), windingIndex, voltageSampledWaveform.value(), magnetizingInductance);

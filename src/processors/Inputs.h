@@ -133,7 +133,8 @@ class Inputs : public MAS::Inputs {
     static double calculate_max_volt_seconds(const OperatingPoint& operatingPoint);
     // Every winding's current sampled on ONE time grid over the period (numberPoints, or the
     // finest power of 2 the currents need), and whether it carries current at each instant
-    // (|i| above 1 % of that winding's peak). std::nullopt when a winding has no current.
+    // (|i| above 1 % of that winding's peak). std::nullopt when no winding has a current (a voltage-only
+    // operating point); throws when some windings have one and another has none (ABT #1814).
     struct WindingConduction {
         std::vector<std::vector<double>> currents;
         std::vector<std::vector<bool>> conducting;
@@ -146,7 +147,7 @@ class Inputs : public MAS::Inputs {
     // not always conduct together (flyback, forward reset). Time-aware (ABT #1467).
     static bool include_dc_offset_into_magnetizing_current(OperatingPoint operatingPoint, std::vector<double> turnsRatios);
     // The DC of a winding's magnetizing current, taken where that winding carries the magnetizing
-    // MMF alone (ABT #907, #1467); 0 when it never does.
+    // MMF alone (ABT #907, #1467); 0 when it never does. Throws when a winding has no current (ABT #1814).
     static double calculate_magnetizing_current_dc_anchor(const OperatingPoint& operatingPoint, size_t windingIndex, Waveform voltageSampledWaveform, double magnetizingInductance);
     static double calculate_magnetizing_current_dc_anchor(OperatingPointExcitation excitation, const WindingConduction& conduction, size_t windingIndex,
                                                           Waveform voltageSampledWaveform, double magnetizingInductance);

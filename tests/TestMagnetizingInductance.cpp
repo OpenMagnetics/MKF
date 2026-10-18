@@ -2425,6 +2425,89 @@ TEST_CASE("Test_Forward_Transformer_Load_Current_Is_Not_Core_Bias", "[physical-m
     CHECK(std::abs(magneticFluxDensity.get_processed()->get_offset()) < 0.01);
 }
 
+TEST_CASE("Test_Forward_And_Multi_Operating_Point_Transformers_Load_Current_Is_Not_Core_Bias", "[physical-model][magnetizing-inductance][abt-1814]") {
+    // ABT #1814, the two other MAS examples the collapse hit (only 04 was guarded): the primary's
+    // reflected load current was taken as the core's DC bias. 22 (forward, E 42/21/20 3C95, 2
+    // windings) fell from 3438 uH to 359.7 uH with a B offset of 0.377 T; 19 (2 operating points,
+    // ETD 39/20 PC95) fell at its first operating point from 1583 uH to 954 uH with 0.302 T. Their
+    // windings' net ampere-turns average zero, so the B offset is a few mT at every operating point
+    // and the inductance stays near the unbiased one (19's sits 1.7 % above it: the permeability at
+    // its small flux swing and temperature).
+    struct Example { std::string file; double unbiasedInductance; double tolerance; };
+    for (const auto& example : {Example{"22_margin_tape_forward_e4218_3c95", 3438.18e-6, 0.01},
+                                Example{"19_multi_op_xfmr_etd3920_pc95", 1583.49e-6, 0.03}}) {
+        settings.reset();
+        clear_databases();
+        std::ifstream file(std::string(__FILE__).substr(0, std::string(__FILE__).rfind('/'))
+                           + "/../MAS/examples/" + example.file + ".json");
+        REQUIRE(file.is_open());
+        json masJson = json::parse(file);
+        OpenMagnetics::Magnetic magnetic(masJson["magnetic"]);
+        magnetic = magnetic_autocomplete(magnetic);
+        for (auto& operatingPointJson : masJson["inputs"]["operatingPoints"]) {
+            for (auto& excitationJson : operatingPointJson["excitationsPerWinding"]) {
+                excitationJson.erase("magnetizingCurrent");
+            }
+        }
+        OpenMagnetics::Inputs inputs(masJson["inputs"], false);
+        REQUIRE(inputs.get_operating_points().size() >= 1);
+
+        MagnetizingInductance model;
+        double unbiasedInductance = resolve_dimensional_values(
+            model.calculate_inductance_from_number_turns_and_gapping(magnetic.get_core(), magnetic.get_coil()).get_magnetizing_inductance());
+        CHECK_THAT(unbiasedInductance, Catch::Matchers::WithinRel(example.unbiasedInductance, 0.01));
+        for (size_t operatingPointIndex = 0; operatingPointIndex < inputs.get_operating_points().size(); ++operatingPointIndex) {
+            OperatingPoint operatingPoint = inputs.get_operating_points()[operatingPointIndex];
+            REQUIRE(operatingPoint.get_excitations_per_winding().size() >= 2);
+            auto [output, magneticFluxDensity] = model.calculate_inductance_and_magnetic_flux_density(magnetic.get_core(), magnetic.get_coil(), &operatingPoint);
+            double inductanceAtOperatingPoint = resolve_dimensional_values(output.get_magnetizing_inductance());
+            INFO(example.file << " operating point " << operatingPointIndex << ": L " << inductanceAtOperatingPoint * 1e6
+                 << " uH (unbiased " << unbiasedInductance * 1e6 << " uH), B offset " << magneticFluxDensity.get_processed()->get_offset() << " T");
+            CHECK_THAT(inductanceAtOperatingPoint, Catch::Matchers::WithinRel(unbiasedInductance, example.tolerance));
+            CHECK(std::abs(magneticFluxDensity.get_processed()->get_offset()) < 0.01);
+        }
+    }
+}
+
+TEST_CASE("Test_Magnetizing_Current_Throws_When_A_Winding_Has_No_Current", "[physical-model][magnetizing-inductance][abt-1814]") {
+    // ABT #1814 (3): the DC of a multi-winding magnetizing current comes from the sum of every
+    // winding's ampere-turns. With a current on the primary and none on a secondary that sum
+    // cannot be formed; the conduction map used to come back empty and the magnetizing current
+    // silently lost its DC. It throws now, naming the winding. An operating point given by its
+    // voltages alone (no winding with a current) stays a voltage-only one: no DC from currents.
+    settings.reset();
+    clear_databases();
+    std::ifstream file(std::string(__FILE__).substr(0, std::string(__FILE__).rfind('/'))
+                       + "/../MAS/examples/04_forward_xfmr_e3216_n87.json");
+    REQUIRE(file.is_open());
+    json masJson = json::parse(file);
+    OpenMagnetics::Magnetic magnetic(masJson["magnetic"]);
+    magnetic = magnetic_autocomplete(magnetic);
+    for (auto& excitationJson : masJson["inputs"]["operatingPoints"][0]["excitationsPerWinding"]) {
+        excitationJson.erase("magnetizingCurrent");
+    }
+    json partialJson = masJson["inputs"]["operatingPoints"][0];
+    partialJson["excitationsPerWinding"][2].erase("current");
+    OperatingPoint partial(partialJson);
+    REQUIRE(partial.get_excitations_per_winding()[0].get_current());
+    REQUIRE_FALSE(partial.get_excitations_per_winding()[2].get_current());
+
+    CHECK_THROWS_WITH(OpenMagnetics::Inputs::calculate_winding_conduction(partial),
+                      Catch::Matchers::ContainsSubstring("winding 2 has no current"));
+    CHECK_THROWS_WITH(OpenMagnetics::Inputs::calculate_magnetizing_current(partial, 0, 673e-6, magnetic.get_coil().get_turns_ratios(), false),
+                      Catch::Matchers::ContainsSubstring("winding 2 has no current"));
+    CHECK_THROWS_WITH(OpenMagnetics::Inputs::include_dc_offset_into_magnetizing_current(partial, magnetic.get_coil().get_turns_ratios()),
+                      Catch::Matchers::ContainsSubstring("winding 2 has no current"));
+
+    json voltageOnlyJson = masJson["inputs"]["operatingPoints"][0];
+    for (auto& excitationJson : voltageOnlyJson["excitationsPerWinding"]) {
+        excitationJson.erase("current");
+    }
+    OperatingPoint voltageOnly(voltageOnlyJson);
+    CHECK_FALSE(OpenMagnetics::Inputs::calculate_winding_conduction(voltageOnly).has_value());
+    CHECK_NOTHROW(OpenMagnetics::Inputs::calculate_magnetizing_current(voltageOnly, 0, 673e-6, magnetic.get_coil().get_turns_ratios(), false));
+}
+
 TEST_CASE("Test_Gapping_Reads_The_Magnetizing_Current_Of_The_Target_Inductance", "[physical-model][magnetizing-inductance][gapping][abt-1902]") {
     // ABT #1902: a forward transformer carried in a magnetizing current a converter model had derived from the
     // winding voltage for its minimum inductance; the gap solve read that current against the reluctance of the
