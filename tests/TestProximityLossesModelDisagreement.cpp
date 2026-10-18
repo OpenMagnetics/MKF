@@ -36,6 +36,8 @@
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
 #include <cmath>
+#include <magic_enum.hpp>
+#include "physical_models/WindingProximityEffectLosses.h"
 
 using namespace MAS;
 using namespace OpenMagnetics;
@@ -109,4 +111,31 @@ TEST_CASE("Test_Proximity_Loss_Models_Disagree_By_Orders_Of_Magnitude_ABT_605", 
     // it does not assert WHICH model is right, only that models of the same geometry must
     // agree to an engineering margin.
     CHECK(maxTotal / minTotal < 2.0);
+}
+
+// ABT #956: the derived models REDECLARED methodName instead of setting the inherited one, and
+// the losses read model->methodName through the base pointer, so every result said "Default".
+TEST_CASE("Test_Proximity_Effect_Models_Report_Their_Own_Name", "[physical-model][proximity-effect-losses][abt-956]") {
+    std::map<WindingProximityEffectLossesModels, std::string> expectedNames = {
+        {WindingProximityEffectLossesModels::ROSSMANITH, "Rossmanith"},
+        {WindingProximityEffectLossesModels::WANG, "Wang"},
+        {WindingProximityEffectLossesModels::FERREIRA, "Ferreira"},
+        {WindingProximityEffectLossesModels::LAMMERANER, "Lammeraner"},
+        {WindingProximityEffectLossesModels::ALBACH, "Albach"},
+        {WindingProximityEffectLossesModels::DOWELL, "Dowell"},
+        {WindingProximityEffectLossesModels::XI_NAN, "Nan"},
+        {WindingProximityEffectLossesModels::WOJDA, "Wojda"},
+        {WindingProximityEffectLossesModels::SULLIVAN, "Sullivan"},
+        {WindingProximityEffectLossesModels::BARTOLI, "Bartoli"},
+        {WindingProximityEffectLossesModels::VANDELAC, "Vandelac"},
+        {WindingProximityEffectLossesModels::MARTINEZ, "Martinez"},
+        {WindingProximityEffectLossesModels::EWALD, "Ewald"},
+        {WindingProximityEffectLossesModels::WANG_STACKED, "WangStacked"},
+    };
+    REQUIRE(expectedNames.size() == magic_enum::enum_count<WindingProximityEffectLossesModels>());
+    for (auto& [model, expectedName] : expectedNames) {
+        INFO(magic_enum::enum_name(model));
+        std::shared_ptr<WindingProximityEffectLossesModel> base = WindingProximityEffectLossesModel::factory(model);
+        CHECK(base->methodName == expectedName);
+    }
 }

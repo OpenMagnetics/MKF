@@ -118,6 +118,34 @@ namespace {
         CHECK(sharedNamed->calculate_turn_losses(named(0.5e-3, 4 * copperResistivity), dcLoss, frequency, temperature) == Catch::Approx(resistiveAlone).epsilon(1e-12));
     }
 
+    // ABT #956: the derived models REDECLARED methodName instead of setting the inherited one, and
+    // the losses read model->methodName through the base pointer, so every result said "Default".
+    // Albach, Payne, Kutkut, Ferreira and Lotfi had no name at all.
+    TEST_CASE("Test_Skin_Effect_Models_Report_Their_Own_Name", "[physical-model][skin-effect-losses][abt-956]") {
+        std::map<WindingSkinEffectLossesModels, std::string> expectedNames = {
+            {WindingSkinEffectLossesModels::DOWELL, "Dowell"},
+            {WindingSkinEffectLossesModels::WOJDA, "Wojda"},
+            {WindingSkinEffectLossesModels::ALBACH, "Albach"},
+            {WindingSkinEffectLossesModels::PAYNE, "Payne"},
+            {WindingSkinEffectLossesModels::LOTFI, "Lotfi"},
+            {WindingSkinEffectLossesModels::XI_NAN, "Nan"},
+            {WindingSkinEffectLossesModels::KAZIMIERCZUK, "Kazimierczuk"},
+            {WindingSkinEffectLossesModels::KUTKUT, "Kutkut"},
+            {WindingSkinEffectLossesModels::FERREIRA, "Ferreira"},
+            {WindingSkinEffectLossesModels::DIMITRAKAKIS, "Dimitrakakis"},
+            {WindingSkinEffectLossesModels::MUEHLETHALER, "Muehlethaler"},
+            {WindingSkinEffectLossesModels::WANG, "Wang"},
+            {WindingSkinEffectLossesModels::HOLGUIN, "Holguin"},
+            {WindingSkinEffectLossesModels::PERRY, "Perry"},
+        };
+        REQUIRE(expectedNames.size() == magic_enum::enum_count<WindingSkinEffectLossesModels>());
+        for (auto& [model, expectedName] : expectedNames) {
+            INFO(magic_enum::enum_name(model));
+            std::shared_ptr<WindingSkinEffectLossesModel> base = WindingSkinEffectLossesModel::factory(model);
+            CHECK(base->methodName == expectedName);
+        }
+    }
+
 // End of SUITE
 
 }  // namespace

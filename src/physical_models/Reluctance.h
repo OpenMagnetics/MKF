@@ -22,8 +22,9 @@ namespace OpenMagnetics {
 class ReluctanceModel {
   private:
     double _magneticFluxDensitySaturation = 0.4;
-    std::string methodName = "Default";
   protected:
+    // Each derived model sets this in its constructor (ABT #956); get_gapping_reluctance reports it.
+    std::string methodName = "Default";
   public:
     virtual AirGapReluctanceOutput get_gap_reluctance(CoreGap gapInfo) = 0;
 
@@ -140,7 +141,9 @@ class ReluctanceModel {
 // https://sci-hub.wf/https://ieeexplore.ieee.org/document/9332553
 class ReluctanceZhangModel : public ReluctanceModel {
   public:
-    std::string methodName = "Zhang";
+    // Sets the INHERITED methodName: a redeclared member shadowed the base one, which is what
+    // results read through the base pointer, so every result reported "Default" (ABT #956).
+    ReluctanceZhangModel() { methodName = "Zhang"; }
     AirGapReluctanceOutput get_gap_reluctance(CoreGap gapInfo);
 };
 
@@ -148,7 +151,9 @@ class ReluctanceZhangModel : public ReluctanceModel {
 // https://www.pes-publications.ee.ethz.ch/uploads/tx_ethpublications/10_A_Novel_Approach_ECCEAsia2011_01.pdf
 class ReluctanceMuehlethalerModel : public ReluctanceModel {
   public:
-    std::string methodName = "Muehlethaler";
+    // Sets the INHERITED methodName: a redeclared member shadowed the base one, which is what
+    // results read through the base pointer, so every result reported "Default" (ABT #956).
+    ReluctanceMuehlethalerModel() { methodName = "Muehlethaler"; }
     AirGapReluctanceOutput get_gap_reluctance(CoreGap gapInfo);
 
     double get_basic_reluctance(double l, double w, double h);
@@ -157,25 +162,33 @@ class ReluctanceMuehlethalerModel : public ReluctanceModel {
 
 class ReluctanceEffectiveAreaModel : public ReluctanceModel {
   public:
-    std::string methodName = "EffectiveArea";
+    // Sets the INHERITED methodName: a redeclared member shadowed the base one, which is what
+    // results read through the base pointer, so every result reported "Default" (ABT #956).
+    ReluctanceEffectiveAreaModel() { methodName = "EffectiveArea"; }
     AirGapReluctanceOutput get_gap_reluctance(CoreGap gapInfo);
 };
 
 class ReluctanceEffectiveLengthModel : public ReluctanceModel {
   public:
-    std::string methodName = "EffectiveLength";
+    // Sets the INHERITED methodName: a redeclared member shadowed the base one, which is what
+    // results read through the base pointer, so every result reported "Default" (ABT #956).
+    ReluctanceEffectiveLengthModel() { methodName = "EffectiveLength"; }
     AirGapReluctanceOutput get_gap_reluctance(CoreGap gapInfo);
 };
 
 class ReluctancePartridgeModel : public ReluctanceModel {
   public:
-    std::string methodName = "Partridge";
+    // Sets the INHERITED methodName: a redeclared member shadowed the base one, which is what
+    // results read through the base pointer, so every result reported "Default" (ABT #956).
+    ReluctancePartridgeModel() { methodName = "Partridge"; }
     AirGapReluctanceOutput get_gap_reluctance(CoreGap gapInfo);
 };
 
 class ReluctanceClassicModel : public ReluctanceModel {
   public:
-    std::string methodName = "Classic";
+    // Sets the INHERITED methodName: a redeclared member shadowed the base one, which is what
+    // results read through the base pointer, so every result reported "Default" (ABT #956).
+    ReluctanceClassicModel() { methodName = "Classic"; }
     AirGapReluctanceOutput get_gap_reluctance(CoreGap gapInfo);
 };
 
@@ -183,7 +196,9 @@ class ReluctanceClassicModel : public ReluctanceModel {
 // transformation by A. Balakrishnan https://sci-hub.wf/https://ieeexplore.ieee.org/document/602560
 class ReluctanceBalakrishnanModel : public ReluctanceModel {
   public:
-    std::string methodName = "Balakrishnan";
+    // Sets the INHERITED methodName: a redeclared member shadowed the base one, which is what
+    // results read through the base pointer, so every result reported "Default" (ABT #956).
+    ReluctanceBalakrishnanModel() { methodName = "Balakrishnan"; }
     AirGapReluctanceOutput get_gap_reluctance(CoreGap gapInfo);
 };
 
@@ -191,7 +206,9 @@ class ReluctanceBalakrishnanModel : public ReluctanceModel {
 // https://sci-hub.wf/10.1109/EPE.2016.7695271
 class ReluctanceStengleinModel : public ReluctanceModel {
   public:
-    std::string methodName = "Stenglein";
+    // Sets the INHERITED methodName: a redeclared member shadowed the base one, which is what
+    // results read through the base pointer, so every result reported "Default" (ABT #956).
+    ReluctanceStengleinModel() { methodName = "Stenglein"; }
     AirGapReluctanceOutput get_gap_reluctance(CoreGap gapInfo);
 
     double u(double rx, double l1) { return 42.7 * rx / l1 - 50.2; }

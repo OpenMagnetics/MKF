@@ -72,7 +72,9 @@ class WindingSkinEffectLosses {
 // ============================================================================
 class WindingSkinEffectLossesDowellModel : public WindingSkinEffectLossesModel {
 public:
-    std::string methodName = "Dowell";
+    // Sets the INHERITED methodName: a redeclared member shadowed the base one, which is what
+    // results read through the base pointer, so every result reported "Default" (ABT #956).
+    WindingSkinEffectLossesDowellModel() { methodName = "Dowell"; }
     double calculate_skin_factor(const Wire& wire, double frequency, double temperature);
     double calculate_turn_losses(const Wire& wire, double dcLossTurn, double frequency, double temperature, double currentRms = 0);
 };
@@ -93,7 +95,9 @@ public:
 // ============================================================================
 class WindingSkinEffectLossesWojdaModel : public WindingSkinEffectLossesModel {
 public:
-    std::string methodName = "Wojda";
+    // Sets the INHERITED methodName: a redeclared member shadowed the base one, which is what
+    // results read through the base pointer, so every result reported "Default" (ABT #956).
+    WindingSkinEffectLossesWojdaModel() { methodName = "Wojda"; }
     double calculate_skin_factor(const Wire& wire, double frequency, double temperature);
     double calculate_penetration_ratio(const Wire& wire, double frequency, double temperature);
     double calculate_turn_losses(const Wire& wire, double dcLossTurn, double frequency, double temperature, double currentRms = 0);
@@ -118,6 +122,8 @@ public:
 // ============================================================================
 class WindingSkinEffectLossesAlbachModel : public WindingSkinEffectLossesModel {
 public:
+    // Named like its siblings so its results do not report "Default" (ABT #956).
+    WindingSkinEffectLossesAlbachModel() { methodName = "Albach"; }
     double calculate_skin_factor(const Wire& wire, double frequency, double temperature);
     double calculate_turn_losses(const Wire& wire, double dcLossTurn, double frequency, double temperature, double currentRms = 0);
 };
@@ -140,6 +146,8 @@ public:
 // ============================================================================
 class WindingSkinEffectLossesPayneModel : public WindingSkinEffectLossesModel {
 public:
+    // Named like its siblings so its results do not report "Default" (ABT #956).
+    WindingSkinEffectLossesPayneModel() { methodName = "Payne"; }
     double calculate_turn_losses(const Wire& wire, double dcLossTurn, double frequency, double temperature, double currentRms = 0);
 };
 
@@ -162,7 +170,9 @@ public:
 // ============================================================================
 class WindingSkinEffectLossesNanModel : public WindingSkinEffectLossesModel {
 public:
-    std::string methodName = "Nan";
+    // Sets the INHERITED methodName: a redeclared member shadowed the base one, which is what
+    // results read through the base pointer, so every result reported "Default" (ABT #956).
+    WindingSkinEffectLossesNanModel() { methodName = "Nan"; }
     double calculate_skin_factor(const Wire& wire, double frequency, double temperature);
     double calculate_turn_losses(const Wire& wire, double dcLossTurn, double frequency, double temperature, double currentRms = 0);
 };
@@ -189,7 +199,9 @@ public:
 // ============================================================================
 class WindingSkinEffectLossesKazimierczukModel : public WindingSkinEffectLossesModel {
 public:
-    std::string methodName = "Kazimierczuk";
+    // Sets the INHERITED methodName: a redeclared member shadowed the base one, which is what
+    // results read through the base pointer, so every result reported "Default" (ABT #956).
+    WindingSkinEffectLossesKazimierczukModel() { methodName = "Kazimierczuk"; }
     double calculate_skin_factor(const Wire& wire, double frequency, double temperature);
     double calculate_turn_losses(const Wire& wire, double dcLossTurn, double frequency, double temperature, double currentRms = 0);
 };
@@ -212,6 +224,8 @@ public:
 // ============================================================================
 class WindingSkinEffectLossesKutkutModel : public WindingSkinEffectLossesModel {
 public:
+    // Named like its siblings so its results do not report "Default" (ABT #956).
+    WindingSkinEffectLossesKutkutModel() { methodName = "Kutkut"; }
     double calculate_turn_losses(const Wire& wire, double dcLossTurn, double frequency, double temperature, double currentRms = 0);
 };
 
@@ -234,6 +248,8 @@ public:
 // ============================================================================
 class WindingSkinEffectLossesFerreiraModel : public WindingSkinEffectLossesModel {
 public:
+    // Named like its siblings so its results do not report "Default" (ABT #956).
+    WindingSkinEffectLossesFerreiraModel() { methodName = "Ferreira"; }
     double calculate_skin_factor(const Wire& wire, double frequency, double temperature);
     double calculate_turn_losses(const Wire& wire, double dcLossTurn, double frequency, double temperature, double currentRms = 0);
 };
@@ -261,7 +277,9 @@ public:
 // ============================================================================
 class WindingSkinEffectLossesDimitrakakisModel : public WindingSkinEffectLossesModel {
 public:
-    std::string methodName = "Dimitrakakis";
+    // Sets the INHERITED methodName: a redeclared member shadowed the base one, which is what
+    // results read through the base pointer, so every result reported "Default" (ABT #956).
+    WindingSkinEffectLossesDimitrakakisModel() { methodName = "Dimitrakakis"; }
     double calculate_skin_factor(const Wire& wire, double frequency, double temperature);
     double calculate_turn_losses(const Wire& wire, double dcLossTurn, double frequency, double temperature, double currentRms = 0);
 };
@@ -292,7 +310,9 @@ public:
 // ============================================================================
 class WindingSkinEffectLossesMuehlethalerModel : public WindingSkinEffectLossesModel {
 public:
-    std::string methodName = "Muehlethaler";
+    // Sets the INHERITED methodName: a redeclared member shadowed the base one, which is what
+    // results read through the base pointer, so every result reported "Default" (ABT #956).
+    WindingSkinEffectLossesMuehlethalerModel() { methodName = "Muehlethaler"; }
     double calculate_skin_factor(const Wire& wire, double frequency, double temperature);
     double calculate_turn_losses(const Wire& wire, double dcLossTurn, double frequency, double temperature, double currentRms = 0);
 };
@@ -320,7 +340,9 @@ public:
 // ============================================================================
 class WindingSkinEffectLossesWangModel : public WindingSkinEffectLossesModel {
 public:
-    std::string methodName = "Wang";
+    // Sets the INHERITED methodName: a redeclared member shadowed the base one, which is what
+    // results read through the base pointer, so every result reported "Default" (ABT #956).
+    WindingSkinEffectLossesWangModel() { methodName = "Wang"; }
     double calculate_turn_losses(const Wire& wire, double dcLossTurn, double frequency, double temperature, double currentRms = 0);
 };
 
@@ -344,7 +366,9 @@ public:
 // ============================================================================
 class WindingSkinEffectLossesHolguinModel : public WindingSkinEffectLossesModel {
 public:
-    std::string methodName = "Holguin";
+    // Sets the INHERITED methodName: a redeclared member shadowed the base one, which is what
+    // results read through the base pointer, so every result reported "Default" (ABT #956).
+    WindingSkinEffectLossesHolguinModel() { methodName = "Holguin"; }
     double calculate_skin_factor(const Wire& wire, double frequency, double temperature);
     double calculate_turn_losses(const Wire& wire, double dcLossTurn, double frequency, double temperature, double currentRms = 0);
 };
@@ -357,6 +381,8 @@ public:
 // ============================================================================
 class WindingSkinEffectLossesLotfiModel : public WindingSkinEffectLossesModel {
 public:
+    // Named like its siblings so its results do not report "Default" (ABT #956).
+    WindingSkinEffectLossesLotfiModel() { methodName = "Lotfi"; }
     double calculate_turn_losses(const Wire& wire, double dcLossTurn, double frequency, double temperature, double currentRms = 0);
 };
 
@@ -380,7 +406,9 @@ public:
 // ============================================================================
 class WindingSkinEffectLossesPerryModel : public WindingSkinEffectLossesModel {
 public:
-    std::string methodName = "Perry";
+    // Sets the INHERITED methodName: a redeclared member shadowed the base one, which is what
+    // results read through the base pointer, so every result reported "Default" (ABT #956).
+    WindingSkinEffectLossesPerryModel() { methodName = "Perry"; }
     double calculate_skin_factor(const Wire& wire, double frequency, double temperature);
     double calculate_turn_losses(const Wire& wire, double dcLossTurn, double frequency, double temperature, double currentRms = 0);
 };

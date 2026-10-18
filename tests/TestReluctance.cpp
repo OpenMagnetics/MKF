@@ -589,3 +589,26 @@ TEST_CASE("Test_Annular_Clearance_Reluctance_Drum_Ring", "[physical-model][reluc
                    Catch::Matchers::WithinRel(2 * oneGap, 0.01));
     }
 }
+
+// ABT #956: every derived model REDECLARED methodName instead of setting the inherited one, and
+// get_gapping_reluctance (a base method) reported the base member, so every magnetizing
+// inductance result said "Default" whatever model ran.
+TEST_CASE("Test_Reluctance_Reports_The_Model_That_Ran", "[physical-model][reluctance][abt-956]") {
+    auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", OpenMagneticsTesting::get_ground_gap(0.001));
+    std::map<ReluctanceModels, std::string> expectedNames = {
+        {ReluctanceModels::ZHANG, "Zhang"},
+        {ReluctanceModels::PARTRIDGE, "Partridge"},
+        {ReluctanceModels::EFFECTIVE_AREA, "EffectiveArea"},
+        {ReluctanceModels::EFFECTIVE_LENGTH, "EffectiveLength"},
+        {ReluctanceModels::MUEHLETHALER, "Muehlethaler"},
+        {ReluctanceModels::STENGLEIN, "Stenglein"},
+        {ReluctanceModels::BALAKRISHNAN, "Balakrishnan"},
+        {ReluctanceModels::CLASSIC, "Classic"},
+    };
+    REQUIRE(expectedNames.size() == magic_enum::enum_count<ReluctanceModels>());
+    for (auto& [model, expectedName] : expectedNames) {
+        INFO(magic_enum::enum_name(model));
+        auto reluctanceModel = ReluctanceModel::factory(model);
+        CHECK(reluctanceModel->get_core_reluctance(core).get_method_used() == expectedName);
+    }
+}
