@@ -184,7 +184,7 @@
                     "maximumCoreWidth": null,
                     "catalogueCoreWidths": [
                         0.01445,
-                        0.0172
+                        0.0176
                     ],
                     "footprints": 2,
                     "pitch": 0.00381,
@@ -193,15 +193,15 @@
             ],
             "edgeMargin": {
                 "footprints": 2,
-                "minimum": 0.00095,
-                "median": 0.003188,
+                "minimum": 0.00115,
+                "median": 0.003287,
                 "maximum": 0.005425
             },
             "verticalRowClearance": {
                 "footprints": 2,
                 "minimum": 0.0002,
-                "median": 0.000825,
-                "maximum": 0.00145
+                "median": 0.000763,
+                "maximum": 0.001325
             },
             "horizontalRowClearance": null
         },

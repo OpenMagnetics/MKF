@@ -2907,20 +2907,21 @@ static std::pair<Core, OperatingPointExcitation> abt1497_core_and_excitation(con
 }
 
 TEST_CASE("Test_CoreLosses_Explicit_Request_Of_A_Model_The_Material_Lacks_Throws", "[physical-model][core-losses][smoke-test][abt-1497]") {
-    // ABT #1497 (and #1485 problem 2): asking STEINMETZ or IGSE of PC95, which carries only Roshen data
-    // in MAS, returned the Roshen result, visible only in method_used. An explicit request must run
-    // exactly the requested model or throw, naming the model, the material and why.
+    // ABT #1497 (and #1485 problem 2): asking STEINMETZ or IGSE of a grade that carries only Roshen data
+    // in MAS returned the Roshen result, visible only in method_used. An explicit request must run
+    // exactly the requested model or throw, naming the model, the material and why. DMR40B is such a
+    // grade; it replaces PC95, which gained a Steinmetz fit in MAS 0ceffb3 (ABT #1512).
     settings.reset();
     double temperature = 25;
     {
-        auto [core, excitation] = abt1497_core_and_excitation("PC95");
+        auto [core, excitation] = abt1497_core_and_excitation("DMR40B");
         for (auto requested : {CoreLossesModels::STEINMETZ, CoreLossesModels::IGSE, CoreLossesModels::LOSS_FACTOR, CoreLossesModels::PROPRIETARY}) {
             INFO("requested " << magic_enum::enum_name(requested));
             CoreLosses coreLosses;
             coreLosses.set_core_losses_requested_model_name(requested);
             CHECK_THROWS_AS(coreLosses.calculate_core_losses(core, excitation, temperature), RequestedCoreLossesModelNotAvailableException);
             CHECK_THROWS_AS(coreLosses.get_core_volumetric_losses(core.resolve_material(), excitation, temperature), RequestedCoreLossesModelNotAvailableException);
-            CHECK_THROWS_AS(coreLosses.get_core_losses_model("PC95"), RequestedCoreLossesModelNotAvailableException);
+            CHECK_THROWS_AS(coreLosses.get_core_losses_model("DMR40B"), RequestedCoreLossesModelNotAvailableException);
         }
         // The same request through the simulator, the path PyOM and the web take.
         MagneticSimulator magneticSimulator;
@@ -2928,7 +2929,7 @@ TEST_CASE("Test_CoreLosses_Explicit_Request_Of_A_Model_The_Material_Lacks_Throws
         auto inputs = OpenMagneticsTesting::create_quick_test_inputs();
         auto operatingPoint = inputs.get_operating_points()[0];
         std::vector<int64_t> numberTurns = {20};
-        auto magnetic = OpenMagneticsTesting::get_quick_magnetic("E 42/21/15", OpenMagneticsTesting::get_ground_gap(0.001), numberTurns, 1, "PC95");
+        auto magnetic = OpenMagneticsTesting::get_quick_magnetic("E 42/21/15", OpenMagneticsTesting::get_ground_gap(0.001), numberTurns, 1, "DMR40B");
         CHECK_THROWS_AS(magneticSimulator.calculate_core_losses(operatingPoint, magnetic), RequestedCoreLossesModelNotAvailableException);
 
         CoreLosses coreLosses;
@@ -2940,11 +2941,11 @@ TEST_CASE("Test_CoreLosses_Explicit_Request_Of_A_Model_The_Material_Lacks_Throws
         catch (const RequestedCoreLossesModelNotAvailableException& exception) {
             thrown = true;
             CHECK(exception.code() == ErrorCode::MATERIAL_REQUESTED_LOSS_MODEL_NOT_AVAILABLE);
-            CHECK(exception.material_name() == "PC95");
+            CHECK(exception.material_name() == "DMR40B");
             CHECK(exception.model_name() == "STEINMETZ");
             std::string message = exception.what();
             INFO(message);
-            CHECK_THAT(message, Catch::Matchers::ContainsSubstring("PC95"));
+            CHECK_THAT(message, Catch::Matchers::ContainsSubstring("DMR40B"));
             CHECK_THAT(message, Catch::Matchers::ContainsSubstring("STEINMETZ"));
             CHECK_THAT(message, Catch::Matchers::ContainsSubstring("explicitly requested"));
             CHECK_THAT(message, Catch::Matchers::ContainsSubstring("steinmetz"));
@@ -2995,7 +2996,8 @@ TEST_CASE("Test_CoreLosses_Explicit_Request_Of_An_Available_Model_Runs_Exactly_T
 
 TEST_CASE("Test_CoreLosses_Default_Preference_Keeps_The_Cascade", "[physical-model][core-losses][smoke-test][abt-1497]") {
     // Without an explicit request the preference only heads the PROPRIETARY/LOSS_FACTOR/STEINMETZ/ROSHEN
-    // cascade: the default IGSE reaches PC95's Roshen model and 3C95's iGSE, unchanged by ABT #1497.
+    // cascade: the default IGSE reaches PC95's and 3C95's iGSE, unchanged by ABT #1497. PC95 read Roshen
+    // here until MAS 0ceffb3 (ABT #1512) gave it a Steinmetz fit, so the cascade now stops at iGSE/Steinmetz.
     settings.reset();
     REQUIRE_FALSE(settings.get_core_losses_requested_model());
     double temperature = 25;
@@ -3005,17 +3007,17 @@ TEST_CASE("Test_CoreLosses_Default_Preference_Keeps_The_Cascade", "[physical-mod
         CoreLosses coreLosses;
         REQUIRE_FALSE(coreLosses.get_core_losses_requested_model_name());
         auto pc95Output = coreLosses.calculate_core_losses(pc95Core, pc95Excitation, temperature);
-        CHECK(pc95Output.get_method_used() == "Roshen");
-        CHECK(pc95Output.get_core_losses() == CoreLossesRoshenModel().get_core_losses(pc95Core, pc95Excitation, temperature).get_core_losses());
+        CHECK(pc95Output.get_method_used() == "iGSE");
+        CHECK(pc95Output.get_core_losses() == CoreLossesIGSEModel().get_core_losses(pc95Core, pc95Excitation, temperature).get_core_losses());
         auto output = coreLosses.calculate_core_losses(core, excitation, temperature);
         CHECK(output.get_method_used() == "iGSE");
         CHECK(output.get_core_losses() == CoreLossesIGSEModel().get_core_losses(core, excitation, temperature).get_core_losses());
     }
     {
-        // A preference for STEINMETZ still reaches PC95's Roshen model.
+        // A preference for STEINMETZ reaches PC95's Steinmetz fit (MAS 0ceffb3, ABT #1512).
         CoreLosses coreLosses;
         coreLosses.set_core_losses_model_name(CoreLossesModels::STEINMETZ);
-        CHECK(coreLosses.calculate_core_losses(pc95Core, pc95Excitation, temperature).get_method_used() == "Roshen");
+        CHECK(coreLosses.calculate_core_losses(pc95Core, pc95Excitation, temperature).get_method_used() == "Steinmetz");
         CHECK(coreLosses.calculate_core_losses(core, excitation, temperature).get_method_used() == "Steinmetz");
     }
     {
@@ -3027,7 +3029,7 @@ TEST_CASE("Test_CoreLosses_Default_Preference_Keeps_The_Cascade", "[physical-mod
         CHECK(CoreLosses().get_core_losses_requested_model_name() == CoreLossesModels::STEINMETZ);
         coreLosses.set_core_losses_model_name(CoreLossesModels::STEINMETZ);
         CHECK_FALSE(settings.get_core_losses_requested_model());
-        CHECK(coreLosses.calculate_core_losses(pc95Core, pc95Excitation, temperature).get_method_used() == "Roshen");
+        CHECK(coreLosses.calculate_core_losses(pc95Core, pc95Excitation, temperature).get_method_used() == "Steinmetz");
         coreLosses.set_core_losses_requested_model_name(CoreLossesModels::IGSE);
         settings.reset();
         CHECK_FALSE(settings.get_core_losses_requested_model());

@@ -166,12 +166,14 @@ const std::vector<TopEntry> kTopFerriteDefault = {
 // candidate pool shifts the normalization, and PCL47/PC47 leave the five for N51/PEL95.
 // Re-pinned 2026-10-11 (ABT #1739, Alf-approved): same cause as above (3C97's unrounded measured mu_i(T)
 // and Curie 221 C instead of 215 C). Same five names, same order; scores move by <= 3.6e-4 relative.
+// Re-pinned 2026-10-18 (Alf-approved): PC95 enters at slot 0 since MAS 0ceffb3 (PC95 Steinmetz, ABT #1512); the
+// other four keep their scores to the last digit one slot down, and PEL95 leaves the five.
 const std::vector<TopEntry> kTopFerriteOnlyTdk = {
+    {"PC95",  2.5537264041224832},
     {"N95",   2.4844834154655544},
     {"PEM95", 2.4712909529748712},
     {"N97",   2.4134601008148024},
     {"N51",   2.3877902091228509},
-    {"PEL95", 2.3815691962334045},
 };
 
 // Refreshed 2026-08-20 (ABT #834, user-approved): same normalization shift. Kool Mµ

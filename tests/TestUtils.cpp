@@ -357,7 +357,10 @@ namespace {
 
         REQUIRE(find_core_shape_by_name("RM 6-S").get_name().value() == "RM 6-S");
         REQUIRE(find_core_shape_by_name("RM 6/I").get_name().value() == "RM 6/I");
-        REQUIRE(find_core_shape_by_name("RM 6").get_name().value() == "RM 6");
+        // Since MAS 5158b4f "RM 6" is an alias of RM 6-S (one record): it resolves to its owner, and
+        // the other RM 6 aliases still resolve to theirs.
+        REQUIRE(find_core_shape_by_name("RM 6").get_name().value() == "RM 6-S");
+        REQUIRE(find_core_shape_by_name("RM 6S/I").get_name().value() == "RM 6/I");
         REQUIRE(find_core_shape_by_name("ER 28L").get_name().value() == "ER 28L");
         REQUIRE(find_core_shape_by_name("EER 35/21/11").get_name().value() == "EER 35/21/11");
     }

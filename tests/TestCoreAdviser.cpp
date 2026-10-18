@@ -3785,12 +3785,13 @@ TEST_CASE("Test_Loss_Model_Frequency_Span_Honours_An_Explicit_Model_Request", "[
     settings.reset();
     auto inputs = OpenMagneticsTesting::create_quick_test_inputs();  // 100 kHz
     auto operatingPoint = inputs.get_operating_points()[0];
-    // Default: PC95 (Roshen only) is evaluable, its Roshen model runs.
-    REQUIRE(MagneticFilterLossModelFrequencySpan::is_material_evaluable(Core::resolve_material("PC95"), inputs));
+    // Default: DMR40B (Roshen only in MAS) is evaluable, its Roshen model runs. It replaces PC95, which
+    // gained a Steinmetz fit in MAS 0ceffb3 (ABT #1512).
+    REQUIRE(MagneticFilterLossModelFrequencySpan::is_material_evaluable(Core::resolve_material("DMR40B"), inputs));
 
     settings.set_core_losses_requested_model(CoreLossesModels::IGSE);
-    CHECK_FALSE(MagneticFilterLossModelFrequencySpan::is_material_evaluable(Core::resolve_material("PC95"), inputs));
-    CHECK_FALSE(MagneticFilterLossModelFrequencySpan::is_material_evaluable(Core::resolve_material("PC95"), inputs, CoreLossesModels::ROSHEN));
+    CHECK_FALSE(MagneticFilterLossModelFrequencySpan::is_material_evaluable(Core::resolve_material("DMR40B"), inputs));
+    CHECK_FALSE(MagneticFilterLossModelFrequencySpan::is_material_evaluable(Core::resolve_material("DMR40B"), inputs, CoreLossesModels::ROSHEN));
     CHECK(MagneticFilterLossModelFrequencySpan::is_material_evaluable(Core::resolve_material("N87"), inputs));
     // A simulator built now carries the request, as the adviser's own simulators do.
     REQUIRE(CoreLosses().get_core_losses_requested_model_name() == CoreLossesModels::IGSE);
@@ -3799,7 +3800,7 @@ TEST_CASE("Test_Loss_Model_Frequency_Span_Honours_An_Explicit_Model_Request", "[
     MagneticFilterLossModelFrequencySpan filter;
     size_t evaluable = 0;
     size_t notEvaluable = 0;
-    for (std::string grade : {"PC95", "N87", "3C95", "2HM4", "75-Series 26", "TP5H", "NP7"}) {
+    for (std::string grade : {"DMR40B", "N87", "3C95", "2HM4", "75-Series 26", "TP5H", "NP7"}) {
         INFO(grade);
         auto magnetic = OpenMagneticsTesting::get_quick_magnetic("E 42/21/15", OpenMagneticsTesting::get_ground_gap(0.001), numberTurns, 1, grade);
         bool filterVerdict = MagneticFilterLossModelFrequencySpan::is_material_evaluable(Core::resolve_material(grade), inputs);
@@ -3823,7 +3824,7 @@ TEST_CASE("Test_Loss_Model_Frequency_Span_Honours_An_Explicit_Model_Request", "[
     CHECK(notEvaluable >= 3);
 
     settings.reset();
-    CHECK(MagneticFilterLossModelFrequencySpan::is_material_evaluable(Core::resolve_material("PC95"), inputs));
+    CHECK(MagneticFilterLossModelFrequencySpan::is_material_evaluable(Core::resolve_material("DMR40B"), inputs));
 }
 
 // ABT #1456: at 100 kHz MKF used to rank nine 0.5-5 MHz MnZn grades best by far (TP5H read 2 % of 3C95's

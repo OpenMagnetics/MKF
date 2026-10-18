@@ -144,7 +144,8 @@ namespace {
         //   volumetric losses (the other weight-1 filter): N95 also closer than PC47
         // so N95 wins on both dominant filters. The TDK pool is unaffected by the TDG import;
         // this was a pre-existing mis-pin, surfaced while triaging #224.
-        REQUIRE(crossReferencedCoreMaterials[0].first.get_name() == "N95");
+        // PC95 overtakes N95 since MAS 0ceffb3 (ABT #1512) gave PC95 a Steinmetz fit (losses now compared).
+        REQUIRE(crossReferencedCoreMaterials[0].first.get_name() == "PC95");
     }
 
     TEST_CASE("Test_CoreMaterialCrossReferencer_All_Core_Materials_Powder", "[adviser][core-material-cross-referencer][smoke-test]") {
