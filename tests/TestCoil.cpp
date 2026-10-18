@@ -548,6 +548,26 @@ TEST_CASE("Test_Coil_Json_11", "[constructive-model][coil][bug][smoke-test]") {
     REQUIRE(bool(coil.get_turns_description()));
 }
 
+// ABT #1627: preload_margins appended to the per-section margins instead of replacing them, so a
+// second preload landed after the first one's entries, at ordinals no section reads, and was ignored.
+TEST_CASE("Test_Preload_Margins_Twice_The_Second_Preload_Wins", "[constructive-model][coil][margin][abt-1627]") {
+    settings.reset();
+    settings.set_coil_wind_even_if_not_fit(true);
+    settings.set_coil_fill_sections_with_margin_tape(false);
+    auto coil = OpenMagneticsTesting::get_quick_coil({20}, {1}, "PQ 28/20", 1,
+                                                     WindingOrientation::OVERLAPPING, WindingOrientation::OVERLAPPING,
+                                                     CoilAlignment::CENTERED, CoilAlignment::CENTERED);
+    double firstMargin = 0.001;
+    double secondMargin = 0.002;
+    coil.preload_margins({{firstMargin, firstMargin}});
+    coil.preload_margins({{secondMargin, secondMargin}});
+    REQUIRE(coil.wind());
+    auto margin = OpenMagnetics::Coil::resolve_margin(coil.get_sections_description_conduction()[0]);
+    REQUIRE_THAT(margin[0], Catch::Matchers::WithinAbs(secondMargin, 1e-12));
+    REQUIRE_THAT(margin[1], Catch::Matchers::WithinAbs(secondMargin, 1e-12));
+    settings.reset();
+}
+
 TEST_CASE("Test_Add_Margin_Centered_No_Filling_Then_Filling_Horizontal_Centered", "[constructive-model][coil][margin][smoke-test]") {
     settings.reset();
     std::vector<int64_t> numberTurns = {47};

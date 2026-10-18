@@ -20377,9 +20377,9 @@ void Coil::preload_margins(std::vector<std::vector<double>> marginPairs) {
     // conduction section, in wound order across all groups. (The old flat interleaved keying
     // forced a duplicated entry here "for the insulation layer", which broke the moment two
     // conduction sections sat adjacent without insulation.)
-    for (auto margins : marginPairs) {
-        _marginsPerSection.push_back(margins);
-    }
+    // The preloaded pairs REPLACE what was there: appending them (ABT #1627) put a second
+    // preload after the first one's entries, at ordinals no section reads.
+    _marginsPerSection = marginPairs;
 }
 
 void Coil::add_margin_to_section_by_index(size_t sectionIndex, std::vector<double> margins) {
