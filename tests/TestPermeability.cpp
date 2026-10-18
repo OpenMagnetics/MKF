@@ -558,6 +558,39 @@ namespace {
         REQUIRE(complexPermeabilityValueAt100000.second < complexPermeabilityValueAt10000000.second);
     }
 
+    TEST_CASE("Test_Complex_Permeability_Answers_From_The_Material_Passed_In", "[physical-model][complex-permeability][abt-710]") {
+        // ABT #710: the interpolators were cached by material NAME, so an inline material that shared
+        // its name with one evaluated before got the earlier curves and its own data was ignored.
+        ComplexPermeability complexPermeability;
+        auto tabulated = find_core_material_by_name("N22");
+        const auto original = complexPermeability.get_complex_permeability(tabulated, 100000);
+        auto edited = tabulated;
+        auto complexData = edited.get_permeability().get_complex().value();
+        auto realPoints = std::get<std::vector<PermeabilityPoint>>(complexData.get_real());
+        for (auto& point : realPoints) {
+            point.set_value(2 * point.get_value());
+        }
+        complexData.set_real(realPoints);
+        edited.get_mutable_permeability().set_complex(complexData);
+        CHECK_THAT(complexPermeability.get_complex_permeability(edited, 100000).first, Catch::Matchers::WithinRel(2 * original.first, 1e-9));
+        CHECK_THAT(complexPermeability.get_complex_permeability(tabulated, 100000).first, Catch::Matchers::WithinRel(original.first, 1e-12));
+
+        // a material whose curves are derived from its initial permeability
+        auto derived = find_core_material_by_name("PC47");
+        const auto derivedOriginal = complexPermeability.get_complex_permeability(derived, 100000);
+        auto derivedEdited = derived;
+        auto initialPoints = std::get<std::vector<PermeabilityPoint>>(derivedEdited.get_permeability().get_initial());
+        for (auto& point : initialPoints) {
+            point.set_value(2 * point.get_value());
+        }
+        derivedEdited.get_mutable_permeability().set_initial(initialPoints);
+        // the derived curve reads the initial-permeability interpolators, which were name-keyed too
+        const double initialOriginal = InitialPermeability::get_initial_permeability(derived, 25, std::nullopt, 10000);
+        CHECK_THAT(InitialPermeability::get_initial_permeability(derivedEdited, 25, std::nullopt, 10000), Catch::Matchers::WithinRel(2 * initialOriginal, 1e-9));
+        CHECK(std::abs(complexPermeability.get_complex_permeability(derivedEdited, 100000).first / derivedOriginal.first - 1) > 0.5);
+        CHECK_THAT(complexPermeability.get_complex_permeability(derived, 100000).first, Catch::Matchers::WithinRel(derivedOriginal.first, 1e-12));
+    }
+
     TEST_CASE("Test_Complex_Permeability_3C97", "[physical-model][complex-permeability][smoke-test]") {
         ComplexPermeability complexPermeability;
         std::string materialName = "3C97";

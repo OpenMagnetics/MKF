@@ -133,6 +133,11 @@ class InitialPermeability {
                                         double gapReluctance);
         static std::vector<PermeabilityPoint> sample_initial_permeability_by_frequency_modifier(PermeabilityPoint permeabilityPoint);
         static double calculate_frequency_for_initial_permeability_drop(const CoreMaterial& coreMaterial, double percentageDrop, double maximumError = 0.01);
+        // ABT #710: the interpolators below are cached under the material's name AND a hash of the
+        // initial-permeability data they are built from, so an inline material that shares its name
+        // with one evaluated before is answered from its own points, never from the earlier one's.
+        static std::size_t hash_permeability(const Permeability& permeability);
+        static std::string interpolator_cache_key(const CoreMaterial& coreMaterial);
         static std::vector<size_t> get_only_temperature_dependent_indexes(const CoreMaterial& coreMaterial);
         static std::vector<size_t> get_only_temperature_dependent_indexes(const std::vector<PermeabilityPoint>& permeabilityPoints);
         static std::vector<PermeabilityPoint> get_only_temperature_dependent_points(const CoreMaterial& coreMaterial);

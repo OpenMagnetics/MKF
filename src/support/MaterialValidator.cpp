@@ -120,10 +120,20 @@ std::string point_label(double f, double b, double t) {
     return fmt(f / 1e3) + " kHz / " + fmt(b * 1e3) + " mT / " + fmt(t) + " C";
 }
 
+// The initial-permeability interpolators are keyed "name#<hash of the data>" (ABT #710): drop every
+// entry of this material, whatever data it was built from.
+template <typename Map>
+void erase_material_interpolators(Map& interps, const std::string& name) {
+    const std::string prefix = name + "#";
+    for (auto it = interps.lower_bound(prefix); it != interps.end() && it->first.compare(0, prefix.size(), prefix) == 0;) {
+        it = interps.erase(it);
+    }
+}
+
 void erase_name_keyed_caches(const std::string& name) {
-    initialPermeabilityTemperatureInterps.erase(name);
-    initialPermeabilityFrequencyInterps.erase(name);
-    initialPermeabilityMagneticFieldDcBiasInterps.erase(name);
+    erase_material_interpolators(initialPermeabilityTemperatureInterps, name);
+    erase_material_interpolators(initialPermeabilityFrequencyInterps, name);
+    erase_material_interpolators(initialPermeabilityMagneticFieldDcBiasInterps, name);
     lossFactorInterps.erase(name);
 }
 

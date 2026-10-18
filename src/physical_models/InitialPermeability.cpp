@@ -964,7 +964,50 @@ std::optional<double> InitialPermeability::get_maximum_ferromagnetic_data_temper
     return tableEnd;
 }
 
+namespace {
+void combine_permeability_hash(std::size_t& seed, std::size_t value) {
+    seed ^= value + 0x9e3779b97f4a7c15ULL + (seed << 6) + (seed >> 2);
+}
+
+void combine_permeability_optional_double(std::size_t& seed, const std::optional<double>& value) {
+    combine_permeability_hash(seed, value ? std::hash<double>{}(value.value()) : 0x51ed270b);
+}
+
+void combine_permeability_point(std::size_t& seed, const PermeabilityPoint& point) {
+    combine_permeability_hash(seed, std::hash<double>{}(point.get_value()));
+    combine_permeability_optional_double(seed, point.get_frequency());
+    combine_permeability_optional_double(seed, point.get_temperature());
+    combine_permeability_optional_double(seed, point.get_magnetic_field_dc_bias());
+    combine_permeability_optional_double(seed, point.get_magnetic_field_peak());
+    combine_permeability_optional_double(seed, point.get_magnetic_flux_density_peak());
+    combine_permeability_optional_double(seed, point.get_tolerance());
+    if (point.get_modifiers()) {
+        // the frequency/temperature/DC-bias formulas of a formula material: small, and rare
+        combine_permeability_hash(seed, std::hash<std::string>{}(json(point.get_modifiers().value()).dump()));
+    }
+}
+} // namespace
+
+std::size_t InitialPermeability::hash_permeability(const Permeability& permeability) {
+    std::size_t seed = 0;
+    if (std::holds_alternative<PermeabilityPoint>(permeability)) {
+        combine_permeability_point(seed, std::get<PermeabilityPoint>(permeability));
+        return seed;
+    }
+    const auto& points = std::get<std::vector<PermeabilityPoint>>(permeability);
+    combine_permeability_hash(seed, points.size());
+    for (const auto& point : points) {
+        combine_permeability_point(seed, point);
+    }
+    return seed;
+}
+
+std::string InitialPermeability::interpolator_cache_key(const CoreMaterial& coreMaterial) {
+    return coreMaterial.get_name() + "#" + std::to_string(hash_permeability(coreMaterial.get_permeability().get_initial()));
+}
+
 double InitialPermeability::get_initial_permeability_temperature_dependent(const CoreMaterial& coreMaterial, double temperature) {
+    const std::string cacheKey = interpolator_cache_key(coreMaterial);
     double initialPermeabilityValue = 1;
     // The points are read by index; they are copied only to build the interpolator, once per material.
     const auto& allPoints = std::get<std::vector<PermeabilityPoint>>(coreMaterial.get_permeability().get_initial());
@@ -973,7 +1016,7 @@ double InitialPermeability::get_initial_permeability_temperature_dependent(const
         throw InvalidInputException(ErrorCode::MISSING_DATA, "No temperature dependent points for material: " + coreMaterial.get_name());
     }
 
-    if (!initialPermeabilityTemperatureInterps.contains(coreMaterial.get_name())) {
+    if (!initialPermeabilityTemperatureInterps.contains(cacheKey)) {
         auto permeabilityPoints = get_only_temperature_dependent_points(coreMaterial);
         // Sort by temperature so spline x values are strictly increasing
         std::sort(permeabilityPoints.begin(), permeabilityPoints.end(),
@@ -993,20 +1036,20 @@ double InitialPermeability::get_initial_permeability_temperature_dependent(const
 
         if (x.size() >= 3) {
             tk::spline interp(x, y, tk::spline::cspline_hermite);
-            initialPermeabilityTemperatureInterps[coreMaterial.get_name()] =
+            initialPermeabilityTemperatureInterps[cacheKey] =
                 [interp](double t) { return interp(t); };
         }
         else if (x.size() == 2) {
             // tk::spline requires >= 3 points. Do manual linear interpolation.
             double x0 = x[0], x1 = x[1], y0 = y[0], y1 = y[1];
-            initialPermeabilityTemperatureInterps[coreMaterial.get_name()] =
+            initialPermeabilityTemperatureInterps[cacheKey] =
                 [x0, x1, y0, y1](double t) {
                     return y0 + (y1 - y0) * (t - x0) / (x1 - x0);
                 };
         }
         else {
             double c = y[0];
-            initialPermeabilityTemperatureInterps[coreMaterial.get_name()] =
+            initialPermeabilityTemperatureInterps[cacheKey] =
                 [c](double) { return c; };
         }
     }
@@ -1038,7 +1081,7 @@ double InitialPermeability::get_initial_permeability_temperature_dependent(const
         }
     }
 
-    initialPermeabilityValue = initialPermeabilityTemperatureInterps[coreMaterial.get_name()](temperature);
+    initialPermeabilityValue = initialPermeabilityTemperatureInterps[cacheKey](temperature);
 
     // A ferromagnetic material below its Curie point has mu_i > 1. A value below 1 means the table (or its
     // extrapolation) says something unphysical there; it is reported, not floored to 1.
@@ -1061,10 +1104,11 @@ double InitialPermeability::get_initial_permeability_temperature_dependent(const
 }
 
 double InitialPermeability::get_initial_permeability_frequency_dependent(const CoreMaterial& coreMaterial, double frequency) {
+    const std::string cacheKey = interpolator_cache_key(coreMaterial);
     double initialPermeabilityValue = 1;
     // The points are copied only to build the interpolator, once per material: an interpolator is stored only
     // for a material that has them.
-    if (!initialPermeabilityFrequencyInterps.contains(coreMaterial.get_name())) {
+    if (!initialPermeabilityFrequencyInterps.contains(cacheKey)) {
         auto permeabilityPoints = get_only_frequency_dependent_points(coreMaterial);
         if (permeabilityPoints.size() == 0) {
             throw InvalidInputException(ErrorCode::MISSING_DATA, "No frequency dependent points for material: " + coreMaterial.get_name());
@@ -1088,18 +1132,18 @@ double InitialPermeability::get_initial_permeability_frequency_dependent(const C
 
         if (x.size() > 1) {
             tk::spline interp(x, y, tk::spline::cspline_hermite);
-            initialPermeabilityFrequencyInterps[coreMaterial.get_name()] = interp;
+            initialPermeabilityFrequencyInterps[cacheKey] = interp;
         }
         else {
-            initialPermeabilityFrequencyInterps[coreMaterial.get_name()] = permeabilityPoints[0].get_value();
+            initialPermeabilityFrequencyInterps[cacheKey] = permeabilityPoints[0].get_value();
         }
     }
 
-    if (std::holds_alternative<double>(initialPermeabilityFrequencyInterps[coreMaterial.get_name()])) {
-        initialPermeabilityValue = std::get<double>(initialPermeabilityFrequencyInterps[coreMaterial.get_name()]);
+    if (std::holds_alternative<double>(initialPermeabilityFrequencyInterps[cacheKey])) {
+        initialPermeabilityValue = std::get<double>(initialPermeabilityFrequencyInterps[cacheKey]);
     }
     else {
-        auto value = std::get<tk::spline>(initialPermeabilityFrequencyInterps[coreMaterial.get_name()])(frequency);
+        auto value = std::get<tk::spline>(initialPermeabilityFrequencyInterps[cacheKey])(frequency);
         initialPermeabilityValue = std::max(1., value);
     }
 
@@ -1112,10 +1156,11 @@ double InitialPermeability::get_initial_permeability_frequency_dependent(const C
 }
 
 double InitialPermeability::get_initial_permeability_magnetic_field_dc_bias_dependent(const CoreMaterial& coreMaterial, double magneticFieldDcBias) {
+    const std::string cacheKey = interpolator_cache_key(coreMaterial);
     double initialPermeabilityValue = 1;
     // The points are copied only to build the interpolator, once per material: an interpolator is stored only
     // for a material that has them.
-    if (!initialPermeabilityMagneticFieldDcBiasInterps.contains(coreMaterial.get_name())) {
+    if (!initialPermeabilityMagneticFieldDcBiasInterps.contains(cacheKey)) {
         auto permeabilityPoints = get_only_magnetic_field_dc_bias_dependent_points(coreMaterial);
         if (permeabilityPoints.size() == 0) {
             throw InvalidInputException(ErrorCode::MISSING_DATA, "No magnetic field dc bias dependent points for material: " + coreMaterial.get_name());
@@ -1139,18 +1184,18 @@ double InitialPermeability::get_initial_permeability_magnetic_field_dc_bias_depe
 
         if (x.size() > 1) {
             tk::spline interp(x, y, tk::spline::cspline_hermite);
-            initialPermeabilityMagneticFieldDcBiasInterps[coreMaterial.get_name()] = interp;
+            initialPermeabilityMagneticFieldDcBiasInterps[cacheKey] = interp;
         }
         else {
-            initialPermeabilityMagneticFieldDcBiasInterps[coreMaterial.get_name()] = permeabilityPoints[0].get_value();
+            initialPermeabilityMagneticFieldDcBiasInterps[cacheKey] = permeabilityPoints[0].get_value();
         }
     }
 
-    if (std::holds_alternative<double>(initialPermeabilityMagneticFieldDcBiasInterps[coreMaterial.get_name()])) {
-        initialPermeabilityValue = std::get<double>(initialPermeabilityMagneticFieldDcBiasInterps[coreMaterial.get_name()]);
+    if (std::holds_alternative<double>(initialPermeabilityMagneticFieldDcBiasInterps[cacheKey])) {
+        initialPermeabilityValue = std::get<double>(initialPermeabilityMagneticFieldDcBiasInterps[cacheKey]);
     }
     else {
-        auto value = std::get<tk::spline>(initialPermeabilityMagneticFieldDcBiasInterps[coreMaterial.get_name()])(magneticFieldDcBias);
+        auto value = std::get<tk::spline>(initialPermeabilityMagneticFieldDcBiasInterps[cacheKey])(magneticFieldDcBias);
         initialPermeabilityValue = std::max(1., value);
     }
 

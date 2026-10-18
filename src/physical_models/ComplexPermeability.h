@@ -25,6 +25,9 @@ inline thread_local std::map<std::string, std::pair<double, double>> complexPerm
 // the estimator refuses, so the refusal is not recomputed per call.
 inline thread_local std::map<std::string, std::shared_ptr<const ComplexPermeabilityEstimate>> complexPermeabilityEstimates;
 inline thread_local std::map<std::string, std::string> complexPermeabilityEstimateRefusals;
+// The catalogue generation (Utils.h) the maps above were filled under: the estimates read donor
+// materials from the catalogue, so a cleared or reloaded catalogue empties them (ABT #710).
+inline thread_local uint64_t complexPermeabilityCachesCatalogueGeneration = 0;
 
 // A complex permeability and, per part, where it came from (TABULATED inside the part's table).
 // realMethod / imaginaryMethod describe an estimated part (empty for a tabulated one).
@@ -48,14 +51,21 @@ class ComplexPermeability {
         // lookup, monotonically increasing, clamped at the edges (F_µ → 1
         // for ΔF < 0.31, F_µ → 1000 for ΔF > 0.755). Linear in (ΔF, log F_µ).
         static double infer_F_mu_from_delta_FL(double deltaFL_95_90);
-        // Builds (once per material) the real and imaginary interpolators and their spans.
-        void ensure_interpolators(const CoreMaterial& coreMaterial);
+        // Builds (once per material content) the real and imaginary interpolators and their spans,
+        // and returns the key they are cached under (cache_key).
+        std::string ensure_interpolators(const CoreMaterial& coreMaterial);
+        // ABT #710: the caches are keyed by the material's name AND its permeability data. Keyed by
+        // the name alone, an inline material that shared a name with one evaluated before (a database
+        // record, or an edited copy) silently got the earlier material's curves.
+        static std::string cache_key(const CoreMaterial& coreMaterial);
+        // The tabulated range of the interpolators cached under cacheKey (both parts).
+        static std::pair<double, double> frequency_range_for_key(const std::string& cacheKey, const std::string& materialName);
         // The cached estimate of the material's untabulated range; throws
         // ComplexPermeabilityEstimateUnavailableException (naming frequency) when there is none.
-        const ComplexPermeabilityEstimate& estimate_for(const CoreMaterial& coreMaterial, double frequency);
+        const ComplexPermeabilityEstimate& estimate_for(const CoreMaterial& coreMaterial, const std::string& cacheKey, double frequency);
         // The cached estimate, built on first use; nullptr when the estimator refuses the material
         // (the reason is kept in complexPermeabilityEstimateRefusals).
-        std::shared_ptr<const ComplexPermeabilityEstimate> find_or_build_estimate(const CoreMaterial& coreMaterial);
+        std::shared_ptr<const ComplexPermeabilityEstimate> find_or_build_estimate(const CoreMaterial& coreMaterial, const std::string& cacheKey);
     protected:
     public:
         // mu' and mu'' at a frequency, ALWAYS answered for a material the estimator covers (ABT #1861,
@@ -85,4 +95,4 @@ class ComplexPermeability {
         ComplexPermeabilityData calculate_complex_permeability_from_frequency_dependent_initial_permeability(std::string coreMaterialName);
 };
 
-} // namespace OpenMagnetics
+} // namespace OpenMagnetics
