@@ -1653,10 +1653,12 @@ ProcessedWaveform WaveformProcessor::calculate_basic_processed_data(Waveform wav
 
     if (label == WaveformLabel::FLYBACK_PRIMARY ||
         label == WaveformLabel::FLYBACK_SECONDARY) {
-        // Flyback waveforms include a 0-level floor, so max - min overstates the
-        // ramp peak-to-peak by the offset. UNIPOLAR_* waveforms never touch 0
-        // (their minimum IS the offset), so max - min is already correct for them.
-        processed.set_peak_to_peak(processed.get_peak_to_peak().value() - offset);
+        // A flyback waveform's peak-to-peak is its ramp: from the offset (the ramp's start, read off its
+        // vertices) to its maximum, as the synthesis above builds it (max = peakToPeak + offset). Its floor
+        // between ramps is not part of it. This was max - min - offset, which is the ramp only on a floor
+        // at 0: a flux density whose DC point lifted it onto a 0.27 T floor came out at -0.21 T, and iGSE
+        // raised that to a fractional power (ABT #1843).
+        processed.set_peak_to_peak(*max_element(compressedWaveform.get_data().begin(), compressedWaveform.get_data().end()) - offset);
     }
 
     double positivePeak = *max_element(compressedWaveform.get_data().begin(), compressedWaveform.get_data().end());

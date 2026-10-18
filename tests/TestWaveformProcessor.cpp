@@ -1435,3 +1435,33 @@ TEST_CASE("Test_Bipolar_Rectangle_Without_Dead_Time_Is_Checked_As_Given_Not_As_I
         }
     }
 }
+
+TEST_CASE("Test_Flyback_Waveform_On_A_Floor_Has_The_Peak_To_Peak_Of_Its_Ramp", "[processor][waveform-processor][abt-1843]") {
+    // ABT #1843: a flyback waveform's peak-to-peak is its ramp, max - offset (the synthesis reads
+    // max = peakToPeak + offset). It was max - min - offset, right only on a 0 floor: a flux density
+    // the DC point lifted onto a 0.27 T floor came out at -0.21 T, and iGSE raised it to a fractional
+    // power: NaN core losses.
+    const double floor = 0.3;
+    const double period = 5e-6;
+    const double dutyCycle = 0.4;
+    {
+        Waveform waveform;
+        waveform.set_time(std::vector<double>{0, 0, dutyCycle * period, dutyCycle * period, period});
+        waveform.set_data(std::vector<double>{floor, floor + 0.05, floor + 0.12, floor, floor});
+        auto processed = OpenMagnetics::Inputs::calculate_basic_processed_data(waveform);
+        REQUIRE(processed.get_label() == WaveformLabel::FLYBACK_PRIMARY);
+        CHECK_THAT(processed.get_offset(), Catch::Matchers::WithinAbs(floor + 0.05, 1e-12));
+        REQUIRE(processed.get_peak_to_peak());
+        CHECK_THAT(processed.get_peak_to_peak().value(), Catch::Matchers::WithinAbs(0.07, 1e-12));
+    }
+    {
+        Waveform waveform;
+        waveform.set_time(std::vector<double>{0, dutyCycle * period, dutyCycle * period, period, period});
+        waveform.set_data(std::vector<double>{floor, floor, floor + 0.12, floor + 0.05, floor});
+        auto processed = OpenMagnetics::Inputs::calculate_basic_processed_data(waveform);
+        REQUIRE(processed.get_label() == WaveformLabel::FLYBACK_SECONDARY);
+        CHECK_THAT(processed.get_offset(), Catch::Matchers::WithinAbs(floor + 0.05, 1e-12));
+        REQUIRE(processed.get_peak_to_peak());
+        CHECK_THAT(processed.get_peak_to_peak().value(), Catch::Matchers::WithinAbs(0.07, 1e-12));
+    }
+}

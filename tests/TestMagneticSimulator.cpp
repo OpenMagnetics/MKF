@@ -2853,3 +2853,20 @@ TEST_CASE("Web designs with 128-point closed-axis currents simulate", "[processo
     }
     settings.reset();
 }
+
+TEST_CASE("A coil with no primary winding is refused by name, not priced to NaN", "[processor][magnetic-simulator][abt-1843]") {
+    // ABT #1843: one winding on isolationSide "secondary" and no primary. The winding losses refuse it
+    // (no reference winding to refer the currents to); the core losses ahead of them used to end in
+    // iGSE NaN on a negative flyback peak-to-peak instead.
+    settings.reset();
+    std::ifstream file(OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "low_filling_inductor.json"));
+    REQUIRE(file.good());
+    auto masJson = nlohmann::json::parse(file);
+    OpenMagnetics::Inputs inputs(masJson["inputs"]);
+    OpenMagnetics::Magnetic magnetic(masJson["magnetic"]);
+    MagneticSimulator magneticSimulator;
+    REQUIRE_THROWS_WITH(magneticSimulator.simulate(inputs, magnetic),
+                        Catch::Matchers::ContainsSubstring("INVALID_COIL_CONFIGURATION") &&
+                        Catch::Matchers::ContainsSubstring("no winding with isolationSide \"primary\""));
+    settings.reset();
+}

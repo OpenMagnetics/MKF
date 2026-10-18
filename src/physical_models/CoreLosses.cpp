@@ -619,7 +619,7 @@ CoreLossesOutput CoreLosses::calculate_periodic_core_losses(Core core, Operating
             "Core losses model '" + coreLossesOutput.get_method_used() +
             "' produced non-finite result (" + std::to_string(cl) +
             ") for material '" + core.get_material_name() +
-            "' at temperature " + std::to_string(temperature) + " K");
+            "' at temperature " + std::to_string(temperature) + " C");
     }
 
     return coreLossesOutput;
