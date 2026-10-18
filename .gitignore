@@ -124,6 +124,9 @@ website/package-lock.json
 *.so
 
 *.csv
+# Tracked CSV fixtures and cost tables are source, not output (ABT #1599)
+!tests/testData/*.csv
+!docs/cost/*.csv
 *.Identifier
 
 # Ignore Doxygen generated docs and MkDocs site output.
@@ -167,3 +170,8 @@ norwe_bobbins.ndjson
 
 # Editor/backup files
 *.bak
+
+# LaTeX build output next to the report templates (ABT #1599)
+templates/*.aux
+templates/*.log
+templates/*.out
