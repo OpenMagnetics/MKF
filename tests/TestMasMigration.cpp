@@ -339,3 +339,48 @@ TEST_CASE("Test_MasMigration_Old_Plastic_Spacer_Designs_Load_And_Compute_On_Ever
         }
     }
 }
+
+// ABT #1625: the pre-1.0 migration rewrote every string equal to an old enum spelling, wherever it
+// sat, so a winding named "Forward" became "forward" and a bobbin named "Basic" became "basic".
+// It now rewrites only the values of the keys whose enum carries the new spelling.
+TEST_CASE("Test_MasMigration_Rewrites_Enum_Fields_Only", "[constructive-model][mas-migration][abt-1625]") {
+    json document = json::parse(R"({
+        "coil": {"bobbin": "Basic",
+                 "functionalDescription": [{"name": "Forward", "isolationSide": "primary", "wire": "Custom"}],
+                 "layersDescription": [{"name": "Reverse", "insulationMaterial": "Industrial"}]},
+        "core": {"functionalDescription": {"type": "two-piece set", "name": "Power"}},
+        "inputs": {"designRequirements": {"topology": "Phase-Shifted Full-Bridge Converter",
+                                          "market": "Industrial",
+                                          "insulation": {"pollutionDegree": "P2", "overvoltageCategory": "OVC-II",
+                                                         "insulationType": "Basic", "cti": "Group I"}},
+                   "operatingPoints": [{"excitationsPerWinding": [{"current": {"processed": {"label": "Triangular"}}}]}]},
+        "application": ["Power", "Signal Processing"],
+        "sectionsAlignment": "inner or top"
+    })");
+    OpenMagnetics::compat::migrate_pre_1_0(document);
+
+    // Free text under non-enum keys is left alone.
+    CHECK(document["coil"]["bobbin"] == "Basic");
+    CHECK(document["coil"]["functionalDescription"][0]["name"] == "Forward");
+    CHECK(document["coil"]["functionalDescription"][0]["wire"] == "Custom");
+    CHECK(document["coil"]["layersDescription"][0]["name"] == "Reverse");
+    CHECK(document["coil"]["layersDescription"][0]["insulationMaterial"] == "Industrial");
+    CHECK(document["core"]["functionalDescription"]["name"] == "Power");
+
+    // Enum fields, including array elements under an enum key, are migrated.
+    CHECK(document["core"]["functionalDescription"]["type"] == "twoPieceSet");
+    CHECK(document["inputs"]["designRequirements"]["topology"] == "phaseShiftedFullBridgeConverter");
+    CHECK(document["inputs"]["designRequirements"]["market"] == "industrial");
+    CHECK(document["inputs"]["designRequirements"]["insulation"]["pollutionDegree"] == "PD2");
+    CHECK(document["inputs"]["designRequirements"]["insulation"]["overvoltageCategory"] == "II");
+    CHECK(document["inputs"]["designRequirements"]["insulation"]["insulationType"] == "basic");
+    CHECK(document["inputs"]["designRequirements"]["insulation"]["cti"] == "groupI");
+    CHECK(document["inputs"]["operatingPoints"][0]["excitationsPerWinding"][0]["current"]["processed"]["label"] == "triangular");
+    CHECK(document["application"] == json::array({"power", "signalProcessing"}));
+    CHECK(document["sectionsAlignment"] == "innerOrTop");
+
+    // A bare string has no key, so nothing says it is an enum value.
+    json bare = "Forward";
+    OpenMagnetics::compat::migrate_pre_1_0(bare);
+    CHECK(bare == "Forward");
+}

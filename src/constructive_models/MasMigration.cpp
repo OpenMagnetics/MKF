@@ -6,159 +6,175 @@
 #include "constructive_models/MasMigration.h"
 #include "Defaults.h"
 
+#include <algorithm>
 #include <string>
 #include <unordered_map>
+#include <vector>
 
 namespace OpenMagnetics::compat {
 
 namespace {
 
-const std::unordered_map<std::string, std::string>& mapping() {
-    static const std::unordered_map<std::string, std::string> m = {
+// An old spelling is rewritten only when it is the value of one of the listed keys (or an element
+// of an array under one): the keys whose CURRENT schema enum carries the new spelling. Matching by
+// value alone rewrote free text too, e.g. a winding named "Forward" or a bobbin named "Basic"
+// (ABT #1625; the same bug as MAS #1392 in migrate-to-1.0.py). The key lists were derived from the
+// MAS schemas' properties whose enum contains the new value; subApplication (now a PEAS string)
+// and the three topologies MAS later dropped keep the key they had before 1.0.
+struct EnumMigration {
+    std::string newValue;
+    std::vector<std::string> keys;
+};
+
+const std::unordered_map<std::string, EnumMigration>& mapping() {
+    static const std::unordered_map<std::string, EnumMigration> m = {
         // insulationType
-        {"Functional", "functional"},
-        {"Basic", "basic"},
-        {"Supplementary", "supplementary"},
-        {"Double", "double"},
-        {"Reinforced", "reinforced"},
+        {"Functional", {"functional", {"insulationGrade", "insulationType", "type"}}},
+        {"Basic", {"basic", {"insulationGrade", "insulationType"}}},
+        {"Supplementary", {"supplementary", {"insulationGrade", "insulationType"}}},
+        {"Double", {"double", {"insulationGrade", "insulationType"}}},
+        {"Reinforced", {"reinforced", {"insulationGrade", "insulationType"}}},
         // wiringTechnology
-        {"Wound", "wound"},
-        {"Printed", "printed"},
-        {"Stamped", "stamped"},
-        {"Deposition", "deposition"},
+        {"Wound", {"wound", {"type", "wiringTechnology"}}},
+        {"Printed", {"printed", {"type", "wiringTechnology"}}},
+        {"Stamped", {"stamped", {"type", "wiringTechnology"}}},
+        {"Deposition", {"deposition", {"type", "wiringTechnology"}}},
         // application
-        {"Power", "power"},
-        {"Signal Processing", "signalProcessing"},
-        {"Interference Suppression", "interferenceSuppression"},
+        {"Power", {"power", {"application", "function"}}},
+        {"Signal Processing", {"signalProcessing", {"application"}}},
+        {"Interference Suppression", {"interferenceSuppression", {"application"}}},
         // subApplication
-        {"Power Filtering", "powerFiltering"},
-        {"Transforming", "transforming"},
-        {"Isolation", "isolation"},
-        {"Common Mode Noise Filtering", "commonModeNoiseFiltering"},
-        {"Differential Mode Noise Filtering", "differentialModeNoiseFiltering"},
+        {"Power Filtering", {"powerFiltering", {"subApplication"}}},
+        {"Transforming", {"transforming", {"subApplication"}}},
+        {"Isolation", {"isolation", {"subApplication"}}},
+        {"Common Mode Noise Filtering", {"commonModeNoiseFiltering", {"subApplication"}}},
+        {"Differential Mode Noise Filtering", {"differentialModeNoiseFiltering", {"subApplication"}}},
         // connectionType
-        {"Pin", "pin"},
-        {"Screw", "screw"},
-        {"SMT", "smt"},
-        {"Flying Lead", "flyingLead"},
-        {"THT", "tht"},
-        {"PCB Pad", "pcbPad"},
+        {"Pin", {"pin", {"assemblyType", "mounting", "terminalType", "type"}}},
+        {"Screw", {"screw", {"assemblyType", "mounting", "terminalType", "type"}}},
+        {"SMT", {"smt", {"assemblyType", "mounting", "terminalType", "type"}}},
+        {"Flying Lead", {"flyingLead", {"assemblyType", "mounting", "terminalType", "type"}}},
+        {"THT", {"tht", {"assemblyType", "mounting", "terminalType", "type"}}},
+        {"PCB Pad", {"pcbPad", {"assemblyType", "mounting", "terminalType", "type"}}},
         // coilAlignment
-        {"inner or top", "innerOrTop"},
-        {"outer or bottom", "outerOrBottom"},
+        {"inner or top", {"innerOrTop", {"layersAlignment", "sectionsAlignment", "turnsAlignment"}}},
+        {"outer or bottom", {"outerOrBottom", {"layersAlignment", "sectionsAlignment", "turnsAlignment"}}},
         // coreType
-        {"two-piece set", "twoPieceSet"},
-        {"piece and plate", "pieceAndPlate"},
-        {"closed shape", "closedShape"},
+        {"two-piece set", {"twoPieceSet", {"type"}}},
+        {"piece and plate", {"pieceAndPlate", {"type"}}},
+        {"closed shape", {"closedShape", {"type"}}},
         // piece type
-        {"half set", "halfSet"},
+        {"half set", {"halfSet", {"type"}}},
         // DMC configuration
-        {"SINGLE_PHASE", "singlePhase"},
-        {"THREE_PHASE", "threePhase"},
-        {"THREE_PHASE_WITH_NEUTRAL", "threePhaseWithNeutral"},
+        {"SINGLE_PHASE", {"singlePhase", {"configuration"}}},
+        {"THREE_PHASE", {"threePhase", {"configuration"}}},
+        {"THREE_PHASE_WITH_NEUTRAL", {"threePhaseWithNeutral", {"configuration"}}},
         // waveformLabel
-        {"Custom", "custom"},
-        {"Triangular", "triangular"},
-        {"Sinusoidal", "sinusoidal"},
-        {"Rectangular", "rectangular"},
-        {"Unipolar Rectangular", "unipolarRectangular"},
-        {"Unipolar Triangular", "unipolarTriangular"},
-        {"Bipolar Rectangular", "bipolarRectangular"},
-        {"Bipolar Triangular", "bipolarTriangular"},
-        {"Flyback Primary", "flybackPrimary"},
-        {"Flyback Secondary", "flybackSecondary"},
-        {"Rectangular With Deadtime", "rectangularWithDeadtime"},
-        {"Flyback Secondary With Deadtime", "flybackSecondaryWithDeadtime"},
-        {"Rectangular DCM", "rectangularDCM"},
-        {"Secondary Rectangular", "secondaryRectangular"},
-        {"Secondary Rectangular With Deadtime", "secondaryRectangularWithDeadtime"},
-        {"Triangular With Deadtime", "triangularWithDeadtime"},
+        {"Custom", {"custom", {"ancillaryLabel", "label", "pattern", "type", "waveformLabel"}}},
+        {"Triangular", {"triangular", {"ancillaryLabel", "label", "waveformLabel"}}},
+        {"Sinusoidal", {"sinusoidal", {"ancillaryLabel", "label", "waveformLabel"}}},
+        {"Rectangular", {"rectangular", {"ancillaryLabel", "columnShape", "crossSectionalShape", "label", "shape", "type", "waveformLabel"}}},
+        {"Unipolar Rectangular", {"unipolarRectangular", {"ancillaryLabel", "label", "waveformLabel"}}},
+        {"Unipolar Triangular", {"unipolarTriangular", {"ancillaryLabel", "label", "waveformLabel"}}},
+        {"Bipolar Rectangular", {"bipolarRectangular", {"ancillaryLabel", "label", "waveformLabel"}}},
+        {"Bipolar Triangular", {"bipolarTriangular", {"ancillaryLabel", "label", "waveformLabel"}}},
+        {"Flyback Primary", {"flybackPrimary", {"ancillaryLabel", "label", "waveformLabel"}}},
+        {"Flyback Secondary", {"flybackSecondary", {"ancillaryLabel", "label", "waveformLabel"}}},
+        {"Rectangular With Deadtime", {"rectangularWithDeadtime", {"ancillaryLabel", "label", "waveformLabel"}}},
+        {"Flyback Secondary With Deadtime", {"flybackSecondaryWithDeadtime", {"ancillaryLabel", "label", "waveformLabel"}}},
+        {"Rectangular DCM", {"rectangularDCM", {"ancillaryLabel", "label", "waveformLabel"}}},
+        {"Secondary Rectangular", {"secondaryRectangular", {"ancillaryLabel", "label", "waveformLabel"}}},
+        {"Secondary Rectangular With Deadtime", {"secondaryRectangularWithDeadtime", {"ancillaryLabel", "label", "waveformLabel"}}},
+        {"Triangular With Deadtime", {"triangularWithDeadtime", {"ancillaryLabel", "label", "waveformLabel"}}},
         // topology
-        {"Buck Converter", "buckConverter"},
-        {"Boost Converter", "boostConverter"},
-        {"Inverting Buck-Boost Converter", "invertingBuckBoostConverter"},
-        {"Cuk Converter", "cukConverter"},
-        {"SEPIC Converter", "sepicConverter"},
-        {"Zeta Converter", "zetaConverter"},
-        {"Weinberg Converter", "weinbergConverter"},
-        {"Flyback Converter", "flybackConverter"},
-        {"Active Clamp Forward Converter", "activeClampForwardConverter"},
-        {"Single Switch Forward Converter", "singleSwitchForwardConverter"},
-        {"Two Switch Forward Converter", "twoSwitchForwardConverter"},
-        {"Push-Pull Converter", "pushPullConverter"},
-        {"Weinberg Converter", "weinbergConverter"},
-        {"4-Switch Buck-Boost Converter", "fourSwitchBuckBoostConverter"},
-        {"Half-Bridge Converter", "halfBridgeConverter"},
-        {"Full-Bridge Converter", "fullBridgeConverter"},
-        {"Phase-Shifted Full-Bridge Converter", "phaseShiftedFullBridgeConverter"},
-        {"Phase-Shifted Half-Bridge Converter", "phaseShiftedHalfBridgeConverter"},
-        {"Current Transformer", "currentTransformer"},
-        {"Isolated Buck Converter", "isolatedBuckConverter"},
-        {"Isolated Buck-Boost Converter", "isolatedBuckBoostConverter"},
-        {"Dual Active Bridge Converter", "dualActiveBridgeConverter"},
-        {"LLC Resonant Converter", "llcResonantConverter"},
-        {"CLLC Resonant Converter", "cllcResonantConverter"},
-        {"CLLLC Resonant Converter", "clllcResonantConverter"},
-        {"Common Mode Choke", "commonModeChoke"},
-        {"Differential Mode Choke", "differentialModeChoke"},
-        {"Power Factor Correction", "powerFactorCorrection"},
+        {"Buck Converter", {"buckConverter", {"topology"}}},
+        {"Boost Converter", {"boostConverter", {"topology"}}},
+        {"Inverting Buck-Boost Converter", {"invertingBuckBoostConverter", {"topology"}}},
+        {"Cuk Converter", {"cukConverter", {"topology"}}},
+        {"SEPIC Converter", {"sepicConverter", {"topology"}}},
+        {"Zeta Converter", {"zetaConverter", {"topology"}}},
+        {"Weinberg Converter", {"weinbergConverter", {"topology"}}},
+        {"Flyback Converter", {"flybackConverter", {"topology"}}},
+        {"Active Clamp Forward Converter", {"activeClampForwardConverter", {"topology"}}},
+        {"Single Switch Forward Converter", {"singleSwitchForwardConverter", {"topology"}}},
+        {"Two Switch Forward Converter", {"twoSwitchForwardConverter", {"topology"}}},
+        {"Push-Pull Converter", {"pushPullConverter", {"topology"}}},
+        {"Weinberg Converter", {"weinbergConverter", {"topology"}}},
+        {"4-Switch Buck-Boost Converter", {"fourSwitchBuckBoostConverter", {"topology"}}},
+        {"Half-Bridge Converter", {"halfBridgeConverter", {"topology"}}},
+        {"Full-Bridge Converter", {"fullBridgeConverter", {"topology"}}},
+        {"Phase-Shifted Full-Bridge Converter", {"phaseShiftedFullBridgeConverter", {"topology"}}},
+        {"Phase-Shifted Half-Bridge Converter", {"phaseShiftedHalfBridgeConverter", {"topology"}}},
+        {"Current Transformer", {"currentTransformer", {"topology"}}},
+        {"Isolated Buck Converter", {"isolatedBuckConverter", {"topology"}}},
+        {"Isolated Buck-Boost Converter", {"isolatedBuckBoostConverter", {"topology"}}},
+        {"Dual Active Bridge Converter", {"dualActiveBridgeConverter", {"topology"}}},
+        {"LLC Resonant Converter", {"llcResonantConverter", {"topology"}}},
+        {"CLLC Resonant Converter", {"cllcResonantConverter", {"topology"}}},
+        {"CLLLC Resonant Converter", {"clllcResonantConverter", {"topology"}}},
+        {"Common Mode Choke", {"commonModeChoke", {"subtype", "topology"}}},
+        {"Differential Mode Choke", {"differentialModeChoke", {"topology"}}},
+        {"Power Factor Correction", {"powerFactorCorrection", {"topology"}}},
         // flybackModes
-        {"Continuous Conduction Mode", "continuousConductionMode"},
-        {"Discontinuous Conduction Mode", "discontinuousConductionMode"},
-        {"Quasi Resonant Mode", "quasiResonantMode"},
-        {"Boundary Mode Operation", "boundaryModeOperation"},
+        {"Continuous Conduction Mode", {"continuousConductionMode", {"mode"}}},
+        {"Discontinuous Conduction Mode", {"discontinuousConductionMode", {"mode"}}},
+        {"Quasi Resonant Mode", {"quasiResonantMode", {"mode"}}},
+        {"Boundary Mode Operation", {"boundaryModeOperation", {"mode"}}},
         // pfcModes
-        {"Critical Conduction Mode", "criticalConductionMode"},
-        {"Transition Mode", "transitionMode"},
+        {"Critical Conduction Mode", {"criticalConductionMode", {"mode"}}},
+        {"Transition Mode", {"transitionMode", {"mode"}}},
         // bridge types
-        {"Half Bridge", "halfBridge"},
-        {"Full Bridge", "fullBridge"},
-        {"Center Tapped", "centerTapped"},
-        {"Current Doubler", "currentDoubler"},
+        {"Half Bridge", {"halfBridge", {"bridgeType", "bridgeTypePrimary", "bridgeTypeSecondary"}}},
+        {"Full Bridge", {"fullBridge", {"bridgeType", "bridgeTypePrimary", "bridgeTypeSecondary", "rectifierType"}}},
+        {"Center Tapped", {"centerTapped", {"rectifierType"}}},
+        {"Current Doubler", {"currentDoubler", {"rectifierType"}}},
         // cllcPowerFlow
-        {"Forward", "forward"},
-        {"Reverse", "reverse"},
+        {"Forward", {"forward", {"powerFlow", "powerFlowDirection"}}},
+        {"Reverse", {"reverse", {"powerFlow", "powerFlowDirection"}}},
         // market
-        {"Medical", "medical"},
-        {"Commercial", "commercial"},
-        {"Industrial", "industrial"},
-        {"Military", "military"},
-        {"Space", "space"},
+        {"Medical", {"medical", {"market"}}},
+        {"Commercial", {"commercial", {"market", "type"}}},
+        {"Industrial", {"industrial", {"market"}}},
+        {"Military", {"military", {"market"}}},
+        {"Space", {"space", {"market"}}},
         // materialComposition
-        {"Carbonyl Iron", "carbonylIron"},
-        {"Iron", "iron"},
-        {"Proprietary", "proprietary"},
+        {"Carbonyl Iron", {"carbonylIron", {"materialComposition"}}},
+        {"Iron", {"iron", {"materialComposition"}}},
+        {"Proprietary", {"proprietary", {"materialComposition"}}},
         // cti
-        {"Group I", "groupI"},
-        {"Group II", "groupII"},
-        {"Group IIIA", "groupIIIA"},
-        {"Group IIIB", "groupIIIB"},
+        {"Group I", {"groupI", {"cti"}}},
+        {"Group II", {"groupII", {"cti"}}},
+        {"Group IIIA", {"groupIIIA", {"cti"}}},
+        {"Group IIIB", {"groupIIIB", {"cti"}}},
         // pollutionDegree (RFC 0008)
-        {"P1", "PD1"},
-        {"P2", "PD2"},
-        {"P3", "PD3"},
+        {"P1", {"PD1", {"pollutionDegree"}}},
+        {"P2", {"PD2", {"pollutionDegree"}}},
+        {"P3", {"PD3", {"pollutionDegree"}}},
         // overvoltageCategory (RFC 0008)
-        {"OVC-I", "I"},
-        {"OVC-II", "II"},
-        {"OVC-III", "III"},
-        {"OVC-IV", "IV"},
+        {"OVC-I", {"I", {"overvoltageCategory"}}},
+        {"OVC-II", {"II", {"overvoltageCategory"}}},
+        {"OVC-III", {"III", {"overvoltageCategory"}}},
+        {"OVC-IV", {"IV", {"overvoltageCategory"}}},
         // shape family
-        {"planar e", "planarE"},
-        {"planar er", "planarER"},
-        {"planar el", "planarEL"},
+        {"planar e", {"planarE", {"family"}}},
+        {"planar er", {"planarER", {"family"}}},
+        {"planar el", {"planarEL", {"family"}}},
     };
     return m;
 }
 
-}  // namespace
-
-void migrate_pre_1_0(nlohmann::json& j) {
+// parentKey: the object key this value sits under (array elements inherit their array's key);
+// nullptr at the root of the walk.
+void migrate(nlohmann::json& j, const std::string* parentKey) {
     if (j.is_string()) {
+        if (parentKey == nullptr) {
+            return;
+        }
         const auto& m = mapping();
-        const std::string s = j.get<std::string>();
-        auto it = m.find(s);
-        if (it != m.end()) {
-            j = it->second;
+        auto it = m.find(j.get_ref<const std::string&>());
+        if (it != m.end() &&
+            std::find(it->second.keys.begin(), it->second.keys.end(), *parentKey) != it->second.keys.end()) {
+            j = it->second.newValue;
         }
     } else if (j.is_object()) {
         // Core spacers written by older MKF, both rewritten to the dielectric MKF now stamps --
@@ -217,14 +233,20 @@ void migrate_pre_1_0(nlohmann::json& j) {
                 }
                 // object and null forms pass through unchanged
             } else {
-                migrate_pre_1_0(it.value());
+                migrate(it.value(), &it.key());
             }
         }
     } else if (j.is_array()) {
         for (auto& e : j) {
-            migrate_pre_1_0(e);
+            migrate(e, parentKey);
         }
     }
+}
+
+}  // namespace
+
+void migrate_pre_1_0(nlohmann::json& j) {
+    migrate(j, nullptr);
 }
 
 }  // namespace OpenMagnetics::compat
