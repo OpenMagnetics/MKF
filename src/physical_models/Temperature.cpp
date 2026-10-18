@@ -2546,20 +2546,12 @@ void Temperature::createConcentricTurnToTurnConnections(const std::vector<size_t
 
                 if (turnsDescription && turn1Idx >= 0 && turn1Idx < static_cast<int>(turnsDescription->size()) &&
                     turn2Idx >= 0 && turn2Idx < static_cast<int>(turnsDescription->size())) {
-                    try {
-                        auto& turn1 = (*turnsDescription)[turn1Idx];
-                        auto& turn2 = (*turnsDescription)[turn2Idx];
-                        auto layersBetween = insulationLayersBetweenTurns(turn1, turn2);
-                        hasSolidInsulationBetween = !layersBetween.empty();
-                    } catch (const std::exception& e) { // IMP-8
-                        // If we can't determine insulation layers (e.g., missing layer description),
-                        // assume no solid insulation and create direct connection
-                        hasSolidInsulationBetween = false;
-                        if (THERMAL_DEBUG) {
-                            std::cout << "Temperature: insulation-layer query failed for concentric turn pair, assuming none: "
-                                      << e.what() << std::endl;
-                        }
-                    }
+                    // A failed insulation-layer query propagates: taking it as "no insulation" made a
+                    // direct turn-to-turn connection and underestimated R_th (ABT #1887).
+                    auto& turn1 = (*turnsDescription)[turn1Idx];
+                    auto& turn2 = (*turnsDescription)[turn2Idx];
+                    auto layersBetween = insulationLayersBetweenTurns(turn1, turn2);
+                    hasSolidInsulationBetween = !layersBetween.empty();
                 }
                 
                 // Also check geometrically if an insulation layer node is between these turns
@@ -2776,29 +2768,20 @@ void Temperature::createToroidalTurnToTurnConnections(const std::vector<size_t>&
 
                 if (turnsDescription && turn1Idx >= 0 && turn1Idx < static_cast<int>(turnsDescription->size()) &&
                     turn2Idx >= 0 && turn2Idx < static_cast<int>(turnsDescription->size())) {
-                    try {
-                        auto& turn1 = (*turnsDescription)[turn1Idx];
-                        auto& turn2 = (*turnsDescription)[turn2Idx];
-                        auto layersBetween = insulationLayersBetweenTurns(turn1, turn2);
-                        // Zero-thickness layers are geometric boundary markers, not physical insulation.
-                        // Filter them out so they don't block direct turn-to-turn connections.
-                        layersBetween.erase(
-                            std::remove_if(layersBetween.begin(), layersBetween.end(),
-                                [](const auto& layer) {
-                                    return layer.get_dimensions().empty() || layer.get_dimensions()[0] < 1e-9;
-                                }),
-                            layersBetween.end()
-                        );
-                        hasSolidInsulationBetween = !layersBetween.empty();
-                    } catch (const std::exception& e) { // IMP-8
-                        // If we can't determine insulation layers (e.g., missing layer description),
-                        // assume no solid insulation and create direct connection
-                        hasSolidInsulationBetween = false;
-                        if (THERMAL_DEBUG) {
-                            std::cout << "Temperature: insulation-layer query failed for toroidal turn pair, assuming none: "
-                                      << e.what() << std::endl;
-                        }
-                    }
+                    // A failed insulation-layer query propagates (ABT #1887), as in the concentric case.
+                    auto& turn1 = (*turnsDescription)[turn1Idx];
+                    auto& turn2 = (*turnsDescription)[turn2Idx];
+                    auto layersBetween = insulationLayersBetweenTurns(turn1, turn2);
+                    // Zero-thickness layers are geometric boundary markers, not physical insulation.
+                    // Filter them out so they don't block direct turn-to-turn connections.
+                    layersBetween.erase(
+                        std::remove_if(layersBetween.begin(), layersBetween.end(),
+                            [](const auto& layer) {
+                                return layer.get_dimensions().empty() || layer.get_dimensions()[0] < 1e-9;
+                            }),
+                        layersBetween.end()
+                    );
+                    hasSolidInsulationBetween = !layersBetween.empty();
                 }
 
                 // Also check geometrically if an insulation layer node is between these turns
