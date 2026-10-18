@@ -178,7 +178,31 @@ double solve_exclusion_factor(double aspect, bool fieldAlongWide, size_t capPane
 // The factor depends ONLY on the aspect ratio (scale-invariant to 1e-9, verified), and is smooth
 // in log(aspect), so a 25-point table over 1..200 interpolates to +-0.05%. That keeps the per-call
 // cost a lookup rather than a 200x200 solve: the WireAdviser sweeps many wire sizes, each its own
-// aspect, and a solve per size would dominate the sweep. Aspects beyond the table solve directly.
+// aspect, and a solve per size would dominate the sweep. Aspects beyond the table (ordinary foil:
+// 0.1 x 33 mm is 330) solve directly, once per exact (aspect, orientation) pair: the solve is a
+// dense ~700-panel collocation system costing ~35 ms, and the Martinez kernel asks for the same
+// pair for every turn, harmonic, loss-temperature iteration and material a caller ranks (ABT #1914,
+// a foil design took > 9 min uncached). The memo is keyed on the exact double, so the value is
+// bit-identical to an uncached solve.
+double cached_direct_exclusion_factor(double aspect, bool fieldAlongLong) {
+    static std::mutex cacheMutex;
+    static std::map<std::pair<double, bool>, double> cache;
+    const auto key = std::make_pair(aspect, fieldAlongLong);
+    {
+        std::lock_guard<std::mutex> lock(cacheMutex);
+        auto found = cache.find(key);
+        if (found != cache.end()) {
+            return found->second;
+        }
+    }
+    // Solve outside the lock: two threads racing on one key both compute the same deterministic
+    // value, and the second insert is a no-op.
+    const double factor = solve_exclusion_factor(aspect, fieldAlongLong);
+    std::lock_guard<std::mutex> lock(cacheMutex);
+    cache.emplace(key, factor);
+    return factor;
+}
+
 double stadium_exclusion_factor(double wideDimension, double thinDimension, bool fieldAlongWide) {
     if (!(wideDimension > 0) || !(thinDimension > 0)) {
         throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA,
@@ -204,7 +228,7 @@ double stadium_exclusion_factor(double wideDimension, double thinDimension, bool
     constexpr double kMaxAspect = 200.0;
     constexpr size_t kPoints = 25;
     if (aspect > kMaxAspect) {
-        return renormalise * solve_exclusion_factor(aspect, fieldAlongLong);
+        return renormalise * cached_direct_exclusion_factor(aspect, fieldAlongLong);
     }
     struct Table { std::vector<double> logAspect, perpendicular, parallel; };
     static Table table;

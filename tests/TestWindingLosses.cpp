@@ -4155,6 +4155,41 @@ TEST_CASE("Test_Winding_Losses_Martinez_E42_Foil_Stack_Screens_The_Gap_Field", "
     CHECK(factors[0] / factors[7] >= 50);
 }
 
+TEST_CASE("Test_Winding_Losses_Martinez_Foil_Exclusion_Factor_Solved_Once_Per_Aspect", "[winding-losses][martinez-flat][abt-1914]") {
+    // ABT #1914: aspects above the 1..200 table (ordinary foil: 0.1 x 33 mm is 330) take a direct ~700-panel
+    // collocation solve. The Martinez kernel asks for the same factor for every turn, harmonic, loss-temperature
+    // iteration and ranked material, so uncached one foil design took > 9 min. The solve is memoised on the exact
+    // (aspect, orientation): repeated calls must return the bit-identical value and cost a lookup, not a solve.
+    // The dimensions are odd on purpose so no other test has already cached this aspect: the first call below is
+    // the direct solve itself, and its time is the per-solve cost the repeats are measured against.
+    const double thin = 0.1e-3;
+    const double wide = 33.0123457e-3;
+    for (bool fieldAlongWide : {false, true}) {
+        INFO("fieldAlongWide " << fieldAlongWide);
+        const auto solveStart = std::chrono::steady_clock::now();
+        const double solved = WindingProximityEffectLossesMartinezModel::calculate_exclusion_factor(wide, thin, fieldAlongWide);
+        const double solveSeconds = std::chrono::duration<double>(std::chrono::steady_clock::now() - solveStart).count();
+        REQUIRE(std::isfinite(solved));
+        REQUIRE(solved > 0);
+
+        constexpr size_t kRepeats = 200;
+        bool allIdentical = true;
+        const auto repeatStart = std::chrono::steady_clock::now();
+        for (size_t repeat = 0; repeat < kRepeats; ++repeat) {
+            const double again = WindingProximityEffectLossesMartinezModel::calculate_exclusion_factor(wide, thin, fieldAlongWide);
+            allIdentical = allIdentical && (again == solved);
+        }
+        const double repeatSeconds = std::chrono::duration<double>(std::chrono::steady_clock::now() - repeatStart).count();
+        INFO("one direct solve " << solveSeconds << " s, " << kRepeats << " repeats " << repeatSeconds << " s");
+        CHECK(allIdentical);
+        // Uncached, 200 repeats cost 200 solves; allow 20 solves' worth so scheduler noise cannot flake it.
+        CHECK(repeatSeconds < 20 * solveSeconds);
+    }
+    // The edge-crowding factor is the perpendicular exclusion factor and reads the same memo.
+    CHECK(WindingProximityEffectLossesMartinezModel::calculate_edge_crowding_factor(wide, thin) ==
+          WindingProximityEffectLossesMartinezModel::calculate_exclusion_factor(wide, thin, false));
+}
+
 // ABT #1314: the 1 turn x 16 parallel planar fixtures prepared at `frequency` exactly as the scorecard driver and
 // runJsonBasedWindingLossesTest prepare them (ZHANG magnetizing inductance, 22 C, mirroring 1, fringing on).
 // The inductance is the unbiased one (no operating point): 500 A on one turn of an ungapped ferrite saturates the core,
