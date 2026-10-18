@@ -1326,3 +1326,103 @@ TEST_CASE("Real winding: a foil end with no stated lead is not judged for a tang
     }
     OpenMagnetics::Settings::GetInstance().reset();
 }
+
+TEST_CASE("Real winding: a foil end's axial lead lies on the sheet and leaves past the flange (ABT #1907)",
+          "[constructive-model][coil][real-winding][foil][abt1907]") {
+    // ABT #1907 (Alf, 2026-10-18): a foil end that exits axially on a stated lead conductor is that
+    // conductor laid TANGENT to the sheet's outer face along the sheet's height, running on along the
+    // turn axis through the end face to one lead diameter past the flange's outer face. The reserved
+    // run starts at the sheet's edge, not at the sheet's centre inside its copper, and a winding
+    // end's leads stand side by side along the face, one outer diameter each, in parallel order.
+    auto& settings = OpenMagnetics::Settings::GetInstance();
+    settings.reset();
+    const std::string leadName = "Round 0.5 - Grade 1";
+    auto mas = OpenMagneticsTesting::mas_loader(std::string(__FILE__).substr(0, std::string(__FILE__).rfind('/')) +
+                                                "/../MAS/examples/17_cllc_xfmr_e5528_3c92a.json");
+    auto magneticIn = mas.get_magnetic();
+    auto& windings = magneticIn.get_mutable_coil().get_mutable_functional_description();
+    windings[1].set_wire("Foil 0.2");
+    windings[1].set_number_turns(1);
+    windings[1].set_number_parallels(4);
+    windings[1].set_connections(std::vector<MAS::ConnectionElement>{foil_end(MAS::End::START, leadName, MAS::LeadExit::AXIAL),
+                                                                    foil_end(MAS::End::FINISH, leadName, MAS::LeadExit::AXIAL)});
+    magneticIn.get_mutable_coil().set_turns_description(std::nullopt);
+    magneticIn.get_mutable_coil().set_layers_description(std::nullopt);
+    magneticIn.get_mutable_coil().set_sections_description(std::nullopt);
+    settings.set_coil_use_real_winding_geometry(true);
+    auto magnetic = OpenMagnetics::magnetic_autocomplete(magneticIn);
+    auto& coil = magnetic.get_mutable_coil();
+    REQUIRE(coil.is_real_winding_blocking_applied());
+    const auto foilName = coil.get_functional_description()[1].get_name();
+    auto sheet = coil.resolve_wire(1);
+    REQUIRE(sheet.get_type() == MAS::WireType::FOIL);
+    auto lead = OpenMagnetics::Wire(OpenMagnetics::find_wire_by_name(leadName));
+    const double leadCopper = lead.get_maximum_conducting_width();
+    const double leadOuter = lead.get_maximum_outer_width();
+    const double sheetThickness = sheet.get_maximum_conducting_width();
+    const double sheetHeight = sheet.get_maximum_conducting_height();
+    const double wall = coil.resolve_bobbin().get_processed_description().value().get_wall_thickness();
+    REQUIRE(wall > 0);
+    const auto turns = coil.get_turns_description().value();
+    std::vector<OpenMagnetics::ConnectionRoute> routes;
+    const auto spaces = coil.get_connection_reserved_spaces(&routes);
+    std::map<OpenMagnetics::ConnectionKind, std::map<int64_t, double>> alongFaceByEnd;
+    size_t axialRoutes = 0;
+    for (const auto& route : routes) {
+        if (route.winding != foilName || (route.kind != OpenMagnetics::ConnectionKind::TERMINAL_ENTRANCE &&
+                                          route.kind != OpenMagnetics::ConnectionKind::TERMINAL_EXIT)) {
+            continue;
+        }
+        ++axialRoutes;
+        REQUIRE(route.axialLead);
+        const auto& axial = route.axialLead.value();
+        const bool entrance = route.kind == OpenMagnetics::ConnectionKind::TERMINAL_ENTRANCE;
+        const std::string turnName = entrance ? route.toTurn : route.fromTurn;
+        const auto turn = std::find_if(turns.begin(), turns.end(), [&](const auto& t) { return t.get_name() == turnName; });
+        REQUIRE(turn != turns.end());
+        const double sheetX = turn->get_coordinates()[0];
+        const double sheetY = turn->get_coordinates()[1];
+        INFO(turnName << ": layerAxis " << axial.layerAxis * 1e3 << " mm, sheet at " << sheetX * 1e3 << " mm");
+        // Tangent, copper on copper: no gap, no overlap.
+        CHECK_THAT(axial.layerAxis - sheetX, Catch::Matchers::WithinAbs((sheetThickness + leadCopper) / 2, 1e-9));
+        CHECK_THAT(axial.conductingDiameter, Catch::Matchers::WithinAbs(leadCopper, 1e-12));
+        CHECK_THAT(axial.outerDiameter, Catch::Matchers::WithinAbs(leadOuter, 1e-12));
+        // The attach is the sheet's whole height, ending at the edge the lead leaves by.
+        const double outward = axial.windowEdge > sheetY ? 1.0 : -1.0;
+        CHECK_THAT(axial.attachTo - sheetY, Catch::Matchers::WithinAbs(outward * sheetHeight / 2, 1e-9));
+        CHECK_THAT(axial.attachFrom - sheetY, Catch::Matchers::WithinAbs(-outward * sheetHeight / 2, 1e-9));
+        // Through the flange, one lead diameter past its outer face.
+        CHECK_THAT(axial.flangeOuterFace - axial.windowEdge, Catch::Matchers::WithinAbs(outward * wall, 1e-12));
+        CHECK_THAT(axial.end - axial.flangeOuterFace, Catch::Matchers::WithinAbs(outward * leadOuter, 1e-12));
+        CHECK_THAT(axial.length, Catch::Matchers::WithinAbs(std::abs(axial.end - axial.attachFrom), 1e-12));
+        CHECK_FALSE(route.exitSlot);
+        CHECK_FALSE(route.tangentDeparture);
+        // The projection on the window: the lead's own column, from the attach's far end to the edge.
+        REQUIRE(route.waypoints.size() == 2);
+        for (const auto& waypoint : route.waypoints) {
+            CHECK_THAT(waypoint[0], Catch::Matchers::WithinAbs(axial.layerAxis, 1e-12));
+        }
+        alongFaceByEnd[route.kind][route.parallel] = axial.alongFace;
+        // The reserved run starts at the sheet's edge: it never lies inside the sheet's copper.
+        size_t reserved = 0;
+        for (const auto& space : spaces) {
+            if (!space.isTerminal || space.winding != foilName || space.parallel != route.parallel || space.kind != route.kind) {
+                continue;
+            }
+            ++reserved;
+            const double low = space.coordinates[1] - space.dimensions[1] / 2;
+            const double high = space.coordinates[1] + space.dimensions[1] / 2;
+            CHECK_THAT(space.coordinates[0], Catch::Matchers::WithinAbs(axial.layerAxis, 1e-9));
+            CHECK((high <= sheetY - sheetHeight / 2 + 1e-9 || low >= sheetY + sheetHeight / 2 - 1e-9));
+        }
+        CHECK(reserved == 1);
+    }
+    CHECK(axialRoutes == 8);
+    for (const auto& [kind, byParallel] : alongFaceByEnd) {
+        REQUIRE(byParallel.size() == 4);
+        for (const auto& [parallel, alongFace] : byParallel) {
+            CHECK_THAT(alongFace, Catch::Matchers::WithinAbs((double(parallel) + 0.5) * leadOuter, 1e-9));
+        }
+    }
+    settings.reset();
+}

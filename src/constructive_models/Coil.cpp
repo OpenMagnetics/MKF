@@ -2102,8 +2102,66 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces(
         if (axialExit) {
             const size_t axialWindowIndex = windowIndexOf(connectingTurn.get_section().value_or(""));
             const double edgeY = windowEdgeY(axialWindowIndex, atTopEdge);
-            const double runLow = std::min(turnY, edgeY);
-            const double runHigh = std::max(turnY, edgeY);
+            // ABT #1907: a FOIL end with a stated lead conductor: the lead lies on the sheet's outer
+            // face and leaves through the end face past the flange (AxialLead). Its column is the
+            // lead's own, beside the sheet, from the sheet's edge to the window edge.
+            const size_t axialWindingIndex = get_winding_index_by_name(windingName);
+            const auto axialLeadConductor = resolve_lead_conductor(windingName, isEntrance ? End::START : End::FINISH, parallel);
+            std::optional<AxialLead> axialLead;
+            double columnX = turnX;
+            double runLow = std::min(turnY, edgeY);
+            double runHigh = std::max(turnY, edgeY);
+            if (axialLeadConductor && wires[axialWindingIndex].get_type() == WireType::FOIL) {
+                const std::string who = std::string(isEntrance ? "start" : "finish") + " lead of winding '" + windingName +
+                                        "' parallel " + std::to_string(parallel);
+                if (layersAreContiguous) {
+                    throw CoilException(ErrorCode::COIL_WINDING_ERROR,
+                        "The " + who + " leaves axially on its stated lead conductor, but its layers are contiguous: an axial "
+                        "foil lead is modelled only on layers stacked along the layer axis (ABT #1907)");
+                }
+                auto leadConductor = axialLeadConductor.value();
+                if (leadConductor.get_type() != WireType::ROUND) {
+                    throw CoilException(ErrorCode::COIL_WINDING_ERROR,
+                        "The " + who + " leaves axially on its stated lead conductor '" + leadConductor.get_name().value_or("?") +
+                        "', which is not a round wire: only a round lead laid tangent to the sheet is modelled (ABT #1907)");
+                }
+                auto sheet = wires[axialWindingIndex];
+                const double sheetThickness = sheet.get_maximum_conducting_width();
+                const double sheetHeight = sheet.get_maximum_conducting_height();
+                const double leadConducting = leadConductor.get_maximum_conducting_width();
+                const double leadOuter = leadConductor.get_maximum_outer_width();
+                if (!(sheetThickness > 0) || !(sheetHeight > 0) || !(leadConducting > 0) || !(leadOuter >= leadConducting)) {
+                    throw CoilException(ErrorCode::COIL_WINDING_ERROR,
+                        "The " + who + " leaves axially, but the sheet (" + std::to_string(sheetThickness * 1e3) + " x " +
+                        std::to_string(sheetHeight * 1e3) + " mm copper) or its lead conductor (" + std::to_string(leadConducting * 1e3) +
+                        " mm copper, " + std::to_string(leadOuter * 1e3) + " mm outer) states no usable dimensions (ABT #1907)");
+                }
+                const double wallThickness = bobbin.get_processed_description().value().get_wall_thickness();
+                if (wallThickness < 0) {
+                    throw CoilException(ErrorCode::INVALID_BOBBIN_DATA,
+                        "The " + who + " leaves axially through the flange, but the bobbin states a negative wall thickness (ABT #1907)");
+                }
+                const double outward = atTopEdge ? 1.0 : -1.0;
+                AxialLead record;
+                record.layerAxis = roundFloat(turnX + (sheetThickness + leadConducting) / 2, 12);
+                record.conductingDiameter = leadConducting;
+                record.outerDiameter = leadOuter;
+                record.attachFrom = roundFloat(turnY - outward * sheetHeight / 2, 12);
+                record.attachTo = roundFloat(turnY + outward * sheetHeight / 2, 12);
+                if (outward * (edgeY - record.attachTo) < -1e-12) {
+                    throw CoilException(ErrorCode::COIL_WINDING_ERROR,
+                        "The " + who + " leaves axially, but its sheet's edge lies " + std::to_string(outward * (record.attachTo - edgeY) * 1e3) +
+                        " mm beyond the window edge (ABT #1907)");
+                }
+                record.windowEdge = edgeY;
+                record.flangeOuterFace = edgeY + outward * wallThickness;
+                record.end = record.flangeOuterFace + outward * leadOuter;
+                record.length = std::abs(record.end - record.attachFrom);
+                columnX = record.layerAxis;
+                runLow = std::min(record.attachTo, edgeY);
+                runHigh = std::max(record.attachTo, edgeY);
+                axialLead = record;
+            }
             for (const auto& other : turns) {
                 if (other.get_name() == connectingTurn.get_name()) {
                     continue;
@@ -2116,7 +2174,7 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces(
                 }
                 const double otherX = other.get_coordinates()[0];
                 const double otherY = other.get_coordinates()[1];
-                if (std::abs(otherX - turnX) < (otherWidth + wireOuterWidth) / 2 - 1e-9 &&
+                if (std::abs(otherX - columnX) < (otherWidth + wireOuterWidth) / 2 - 1e-9 &&
                     otherY + otherHeight / 2 > runLow + 1e-9 && otherY - otherHeight / 2 < runHigh - 1e-9 &&
                     std::abs(otherY - turnY) > 1e-12) {
                     throw CoilException(
@@ -2132,20 +2190,33 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces(
             lead.parallel = parallel;
             lead.section = connectingTurn.get_section().value_or("");
             lead.layer = "";
-            lead.coordinates = {turnX, roundFloat((turnY + edgeY) / 2, 9)};
+            // The reserved run: the lead's own column, from where it leaves the sheet (a foil's
+            // axial lead, ABT #1907) or the end's centre to the window edge.
+            lead.coordinates = {columnX, roundFloat((runLow + runHigh) / 2, 9)};
             lead.dimensions = {wireOuterWidth, roundFloat(runHigh - runLow, 9)};
-            lead.routedLength = roundFloat(runHigh - runLow, 9);
+            lead.routedLength = axialLead ? roundFloat(axialLead->length, 9) : roundFloat(runHigh - runLow, 9);
             lead.kind = terminalKind;
             (isEntrance ? lead.toTurn : lead.fromTurn) = connectingTurn.get_name();
             lead.sleeveOuterDiameter = sleeveOuterDiameter;
             spaces.push_back(lead);
             const size_t axialLeadSpaceIndex = spaces.size() - 1;
             size_t routesBefore = routes.size();
+            const double routeStartY = axialLead ? axialLead->attachFrom : turnY;
             addTerminalRoute(windingName, parallel, connectingTurn, isEntrance, terminalKind,
-                             {{turnX, turnY}, {turnX, edgeY}});
+                             {{columnX, routeStartY}, {columnX, edgeY}});
+            if (axialLead && routes.size() > routesBefore) {
+                routes.back().axialLead = axialLead;
+                routes.back().routedLength = roundFloat(axialLead->length, 9);
+            }
             tagSleevedRoute(routesBefore);
             tagBendRadius(routesBefore, std::max({wireOuterWidth, wireOuterHeight, sleeveOuterDiameter.value_or(0.0)}));
-            deferPinLeg(routesBefore, axialLeadSpaceIndex, windingName, parallel, isEntrance, turnX, edgeY,
+            if (axialLead && terminalPinByConductor.count({windingName, parallel, isEntrance})) {
+                throw CoilException(ErrorCode::COIL_WINDING_ERROR,
+                    "The " + std::string(isEntrance ? "start" : "finish") + " lead of winding '" + windingName + "' parallel " +
+                    std::to_string(parallel) + " leaves axially through the end face and is also assigned to a pin: a run "
+                    "from an axial foil lead to a pin is not modelled (ABT #1907)");
+            }
+            deferPinLeg(routesBefore, axialLeadSpaceIndex, windingName, parallel, isEntrance, columnX, edgeY,
                         std::max({wireOuterWidth, wireOuterHeight, sleeveOuterDiameter.value_or(0.0)}));
             return;
         }
@@ -3410,6 +3481,33 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces(
         // instead of re-deriving it (the contract at the head of get_connection_layout).
         for (size_t index = 0; index < routes.size(); ++index) {
             routes[index].exitSlot = exitSlots[index];
+        }
+        // ABT #1907: a foil's axial leads take no slot on the connection plane's radial lanes; each
+        // winding end's leads stand side by side along the face in parallel order (AxialLead::alongFace).
+        {
+            std::map<std::pair<std::string, ConnectionKind>, std::vector<size_t>> axialBundles;
+            for (size_t index = 0; index < routes.size(); ++index) {
+                if (routes[index].axialLead) {
+                    axialBundles[{routes[index].winding, routes[index].kind}].push_back(index);
+                }
+            }
+            for (auto& [bundleKey, members] : axialBundles) {
+                std::stable_sort(members.begin(), members.end(),
+                                 [&](size_t a, size_t b) { return routes[a].parallel < routes[b].parallel; });
+                double before = 0;
+                for (size_t position = 0; position < members.size(); ++position) {
+                    auto& route = routes[members[position]];
+                    if (position > 0 && route.parallel == routes[members[position - 1]].parallel) {
+                        throw std::logic_error("Winding '" + route.winding + "' parallel " + std::to_string(route.parallel) +
+                                               " carries two axial leads at one end (ABT #1907)");
+                    }
+                    const double diameter = route.axialLead->outerDiameter;
+                    route.axialLead->alongFace = roundFloat(before + diameter / 2, 12);
+                    before += diameter;
+                    route.exitSlot = std::nullopt;
+                    exitSlots[members[position]] = std::nullopt;
+                }
+            }
         }
         // ABT #1423: a terminal lead whose radial bend cannot fit on the connection face's straight
         // leaves tangentially off the lateral face instead (TangentDeparture). It then has no slot on
@@ -4743,6 +4841,10 @@ std::optional<TangentDeparture> Coil::plan_tangent_departure(const ConnectionRou
     // The coil's own record, not the ambient setting: a consumer reads the layout long after the
     // wind that decided it (MVB++ restores its settings as soon as autocomplete returns).
     if (!is_real_winding_blocking_applied()) {
+        return std::nullopt;
+    }
+    // ABT #1907: an axial foil lead leaves through the end face; it has no radial bend to fit.
+    if (route.axialLead) {
         return std::nullopt;
     }
     const std::string& turnName = entrance ? route.toTurn : route.fromTurn;

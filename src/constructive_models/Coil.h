@@ -270,6 +270,46 @@ struct TangentDeparture {
     std::string shortenedTurn;
 };
 
+// ABT #1907 (Alf, 2026-10-18): a FOIL end that leaves through the END FACE (connections[].exit:
+// axial) on its stated lead conductor (connections[].leadConductor, a round wire). The lead lies
+// on the sheet's OUTER face, tangent to it -- copper on copper, no gap and no overlap ("the lead
+// touches the foil") -- along the sheet's whole height (the ATTACH), and runs on, straight along
+// the turn axis, out of the window, through the bobbin's flange, to one lead diameter beyond the
+// flange's outer face (with no bobbin wall: one lead diameter beyond the window edge).
+//
+// Frame: the window half-plane of ConnectionRoute::waypoints (layer axis, turn axis), metres, at
+// the crossing on the connection face; `alongFace` is the one coordinate off that plane. The
+// route's `waypoints` are the lead's projection on the half-plane inside the window, from the
+// attach's far end to the window edge, at `layerAxis`; `exitSlot` is empty (the lane along the
+// face is `alongFace`).
+struct AxialLead {
+    // The lead's centreline on the layer axis: the sheet's centre plus half the sheet's conducting
+    // thickness plus half the lead's conducting diameter, so the two coppers are tangent.
+    double layerAxis = 0;
+    // The stated lead conductor: its conducting (copper) and outer (coated) diameters.
+    double conductingDiameter = 0;
+    double outerDiameter = 0;
+    // The attach, on the turn axis: from the sheet edge away from the exit (attachFrom) to the
+    // sheet edge the lead leaves by (attachTo). The lead touches the sheet along all of it.
+    double attachFrom = 0;
+    double attachTo = 0;
+    // The window edge the lead crosses, the outer face of the flange there (= windowEdge when the
+    // bobbin has no wall) and where the lead ends: one outer diameter past that face.
+    double windowEdge = 0;
+    double flangeOuterFace = 0;
+    double end = 0;
+    // Distance along the connection face from the crossing to the lead's centreline, measured the
+    // way the sheet runs away from the crossing at this end (an entrance: the way its first turn
+    // leaves; an exit: back along the way its last turn arrives). The leads of one winding end
+    // stand side by side in parallel order, each one outer diameter wide: the k-th at the sum of
+    // the earlier ones' outer diameters plus half its own. So the sheet's end at the crossing is
+    // alongFace - outerDiameter / 2 from it, and the next parallel's sheet -- wound over this one
+    // -- begins exactly past this lead.
+    double alongFace = 0;
+    // The lead's copper length: from attachFrom to end.
+    double length = 0;
+};
+
 // ABT #685: one connection of one conductor, as MKF drew it — the record MVB++ realises in 3D and
 // the painters draw. `waypoints` is the route in the winding-window half-plane, (layer axis, turn
 // axis), in path order from `fromTurn` to `toTurn`; a consumer follows it, it never invents one.
@@ -360,6 +400,10 @@ struct ConnectionRoute {
     // ->direction and ends the turn there, and follows neither `waypoints` (then only the lead's
     // projection on the window half-plane, at the turn's own radius) nor `exitSlot` (empty).
     std::optional<TangentDeparture> tangentDeparture;
+    // ABT #1907: set when this TERMINAL lead is a foil end's stated lead conductor leaving axially
+    // through the end face (see AxialLead): a consumer draws the lead from it, and reads neither
+    // `exitSlot` (empty) nor a radial run.
+    std::optional<AxialLead> axialLead;
 };
 
 // ABT #1172 (WP3): the lead's run from the window exit to its assigned pin, see
