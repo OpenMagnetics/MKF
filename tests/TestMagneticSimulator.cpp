@@ -2870,3 +2870,88 @@ TEST_CASE("A coil with no primary winding is refused by name, not priced to NaN"
                         Catch::Matchers::ContainsSubstring("no winding with isolationSide \"primary\""));
     settings.reset();
 }
+
+namespace {
+    // ABT #1840 fixture: ETD 29/16/10 N87 with residual gaps, 10:10 turns of Round 0.5, 25 C, 100 kHz sinusoidal
+    // voltage at `level` of B_sat(25 C), 1 A peak-to-peak.
+    std::pair<OpenMagnetics::Magnetic, OpenMagnetics::Inputs> abt1840_design(double level) {
+        const double frequency = 100e3;
+        json magneticJson = {
+            {"core", {{"name", "abt1840"}, {"functionalDescription", {{"type", "two-piece set"}, {"material", "N87"}, {"shape", "ETD 29/16/10"},
+                      {"gapping", json::array({{{"type", "residual"}, {"length", 1e-5}}, {{"type", "residual"}, {"length", 1e-5}}, {{"type", "residual"}, {"length", 1e-5}}})},
+                      {"numberStacks", 1}}}}},
+            {"coil", {{"bobbin", "Basic"}, {"functionalDescription", json::array({
+                      {{"name", "Primary"}, {"numberTurns", 10}, {"numberParallels", 1}, {"isolationSide", "primary"}, {"wire", "Round 0.5 - Grade 1"}},
+                      {{"name", "Secondary"}, {"numberTurns", 10}, {"numberParallels", 1}, {"isolationSide", "secondary"}, {"wire", "Round 0.5 - Grade 1"}}})}}}};
+        OpenMagnetics::Magnetic magnetic = magnetic_autocomplete(OpenMagnetics::Magnetic(magneticJson));
+        auto material = magnetic.get_core().resolve_material();
+        const double saturationFluxDensity = Core::get_magnetic_flux_density_saturation(material, 25.0, false);
+        const double effectiveArea = magnetic.get_core().get_processed_description()->get_effective_parameters().get_effective_area();
+        const double peakVoltage = 2 * M_PI * frequency * 10 * effectiveArea * level * saturationFluxDensity;
+        auto excitation = [&](const std::string& name) {
+            return json{{"name", name}, {"frequency", frequency},
+                        {"voltage", {{"processed", {{"label", "sinusoidal"}, {"peakToPeak", 2 * peakVoltage}, {"offset", 0}, {"dutyCycle", 0.5}}}}},
+                        {"current", {{"processed", {{"label", "sinusoidal"}, {"peakToPeak", 1.0}, {"offset", 0}, {"dutyCycle", 0.5}}}}}};
+        };
+        json inputsJson = {{"designRequirements", {{"magnetizingInductance", {{"nominal", 1e-3}}}, {"turnsRatios", json::array({{{"nominal", 1}}})}}},
+                           {"operatingPoints", json::array({{{"name", "op"}, {"conditions", {{"ambientTemperature", 25.0}}},
+                                                             {"excitationsPerWinding", json::array({excitation("Primary"), excitation("Secondary")})}}})}};
+        return {magnetic, OpenMagnetics::Inputs(inputsJson)};
+    }
+}
+
+TEST_CASE("Loss-temperature loop settles at the lowest stable operating point, not past the unstable one", "[processor][magnetic-simulator][abt-1840]") {
+    // ABT #1840: the fixture above at 0.44 of B_sat(25 C). Its map g(T) (the core temperature the network returns
+    // for the losses at T) has a stable fixed point near 97 C and an unstable one near 172 C; g(25 C) = 186 C. The
+    // first step from ambient overshot the unstable point and the loop climbed to the data ceiling (208 C, 13 W
+    // instead of 3 W) and held the core there with a data-limit finding. A part heated from ambient stops at the
+    // lowest stable point.
+    settings.reset();
+    auto [magnetic, inputs] = abt1840_design(0.44);
+
+    MagneticSimulator simulator;
+    OpenMagnetics::Mas simulated;
+    REQUIRE_NOTHROW(simulated = simulator.simulate(inputs, magnetic));
+    REQUIRE(simulated.get_outputs().size() == 1);
+    REQUIRE(simulated.get_outputs()[0].get_core_losses());
+    const double coreTemperature = simulated.get_outputs()[0].get_core_losses()->get_temperature();
+    INFO("core temperature " << coreTemperature << " C, core losses " << simulated.get_outputs()[0].get_core_losses()->get_core_losses() << " W");
+    CHECK_THAT(coreTemperature, Catch::Matchers::WithinAbs(97, 5));
+    // It got there through the search: the loop reached the ceiling first.
+    CHECK(simulator.get_last_lowest_fixed_point_search_evaluations() > 0);
+    for (const auto& finding : ResultsAnalyzer::analyze_results(simulated)) {
+        CHECK(finding.code != ResultFindingCode::CORE_ABOVE_MATERIAL_DATA_LIMIT);
+    }
+    settings.reset();
+}
+
+TEST_CASE("A loss-temperature loop with no fixed point below the data limit pays only the search's coarse pass", "[processor][magnetic-simulator][abt-1840]") {
+    // ABT #1840: the fixture above at 0.60 of B_sat(25 C), where h(T) = g(T) - T stays positive from
+    // ambient to the data ceiling and the core is held there. The search for the lowest stable fixed point walks the
+    // bracket from ambient to the loop's iterate next to the ceiling in ceil(sqrt(width / tolerance)) steps and evaluates the n points they reach.
+    // The tolerance-spaced scan it replaced evaluated every 2 K of the bracket (63 networks here).
+    settings.reset();
+    auto [magnetic, inputs] = abt1840_design(0.60);
+
+    MagneticSimulator simulator;
+    OpenMagnetics::Mas simulated;
+    REQUIRE_NOTHROW(simulated = simulator.simulate(inputs, magnetic));
+    REQUIRE(simulated.get_outputs().size() == 1);
+    REQUIRE(simulated.get_outputs()[0].get_core_losses());
+    const double coreTemperature = simulated.get_outputs()[0].get_core_losses()->get_temperature();
+    const double ambientTemperature = 25.0;
+    INFO("core temperature " << coreTemperature << " C, search evaluations " << simulator.get_last_lowest_fixed_point_search_evaluations());
+    // Held at the ceiling, with the finding that says so.
+    bool heldAtDataLimit = false;
+    for (const auto& finding : ResultsAnalyzer::analyze_results(simulated)) {
+        heldAtDataLimit = heldAtDataLimit || finding.code == ResultFindingCode::CORE_ABOVE_MATERIAL_DATA_LIMIT;
+    }
+    REQUIRE(heldAtDataLimit);
+    // The search walks from ambient to the loop's iterate next to the ceiling, where the core is held: at most that
+    // wide (a core held at the end of a mu_i(T) table is reported at the ceiling, past the iterate).
+    const double bracketWidth = coreTemperature - ambientTemperature;
+    const size_t coarseSteps = static_cast<size_t>(std::ceil(std::sqrt(bracketWidth / MagneticSimulator::kOperatingTemperatureTolerance)));
+    CHECK(simulator.get_last_lowest_fixed_point_search_evaluations() > 0);
+    CHECK(simulator.get_last_lowest_fixed_point_search_evaluations() <= coarseSteps);
+    settings.reset();
+}

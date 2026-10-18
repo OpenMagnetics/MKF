@@ -40,6 +40,9 @@ struct SolvedLosses {
     // get_last_dc_bias_point), for the saturation check's second criterion (ABT #1855). Empty when the
     // model ran no DC-bias fixed point, or magnetized a core held at its Curie temperature as paramagnetic.
     std::optional<DcBiasPoint> dcBiasPoint;
+    // How many points the search for the loss loop's lowest stable fixed point evaluated (ABT #1840), each one
+    // the losses and the thermal network at one temperature; 0 when the loop never reached the data ceiling.
+    size_t lowestFixedPointSearchEvaluations = 0;
 };
 
 // ABT #1876 (Alf, 2026-10-14): the losses of an operating point evaluated at its ambient temperature,
@@ -112,6 +115,7 @@ class LossSolveMemoScope {
 class MagneticSimulator {
     private:
         std::optional<DcBiasPoint> _lastDcBiasPoint;
+        size_t _lastLowestFixedPointSearchEvaluations = 0;
         ReluctanceModels _reluctanceModelName;
 
         MagnetizingInductance _magnetizingInductanceModel;
@@ -238,6 +242,8 @@ class MagneticSimulator {
                                                                     double ambientTemperature, CoreLosses& coreLossesModel);
         // The DC point of the last calculate_core_losses' solve (SolvedLosses::dcBiasPoint).
         std::optional<DcBiasPoint> get_last_dc_bias_point() const { return _lastDcBiasPoint; }
+        // SolvedLosses::lowestFixedPointSearchEvaluations of the last calculate_core_losses' solve (ABT #1840).
+        size_t get_last_lowest_fixed_point_search_evaluations() const { return _lastLowestFixedPointSearchEvaluations; }
         CoreLossesOutput calculate_core_losses(OperatingPoint& operatingPoint, Magnetic magnetic,
                                                std::optional<WindingLossesOutput>* windingLossesOutput = nullptr,
                                                std::optional<TemperatureOutput>* temperatureOutput = nullptr,
