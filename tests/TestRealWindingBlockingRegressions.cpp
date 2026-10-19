@@ -1403,6 +1403,35 @@ TEST_CASE("Real winding: a foil end's axial lead lies on the sheet and leaves pa
             CHECK_THAT(waypoint[0], Catch::Matchers::WithinAbs(axial.layerAxis, 1e-12));
         }
         alongFaceByEnd[route.kind][route.parallel] = axial.alongFace;
+        // The weld strip (Alf, 2026-10-19): the copper that makes lead and sheet one conductor.
+        // Sized by MKF's rule: sheet centre to lead centreline, sqrt(3)/2 of the lead's copper
+        // diameter wide, along the whole attach.
+        const auto& weld = axial.weld;
+        INFO("weld: layer " << weld.layerFrom * 1e3 << " -> " << weld.layerTo * 1e3 << " mm, width " << weld.width * 1e3
+                            << " mm, turn axis " << weld.from * 1e3 << " -> " << weld.to * 1e3 << " mm");
+        CHECK_THAT(weld.layerFrom, Catch::Matchers::WithinAbs(sheetX, 1e-9));
+        CHECK_THAT(weld.layerTo, Catch::Matchers::WithinAbs(axial.layerAxis, 1e-12));
+        CHECK_THAT(weld.width, Catch::Matchers::WithinAbs(std::sqrt(3.0) / 2 * leadCopper, 1e-9));
+        CHECK_THAT(weld.from, Catch::Matchers::WithinAbs(axial.attachFrom, 1e-12));
+        CHECK_THAT(weld.to, Catch::Matchers::WithinAbs(axial.attachTo, 1e-12));
+        // It lies ACROSS the contact line (the sheet's outer face, at the lead's centreline) ...
+        const double contactLayer = sheetX + sheetThickness / 2;
+        CHECK(weld.layerFrom < contactLayer - 1e-6);
+        CHECK(weld.layerTo > contactLayer + 1e-6);
+        // ... inside the sheet's copper and the lead's copper on the layer axis ...
+        CHECK(weld.layerFrom >= sheetX - sheetThickness / 2 - 1e-12);
+        CHECK(weld.layerTo <= axial.layerAxis + leadCopper / 2 + 1e-12);
+        // ... on this parallel's own sheet along the face, inside the lead's own column ...
+        CHECK(axial.alongFace - weld.width / 2 >= double(route.parallel) * leadOuter - 1e-9);
+        CHECK(weld.width < leadCopper);
+        // ... and within the sheet's height and the lead's extent on the turn axis.
+        const double weldLow = std::min(weld.from, weld.to);
+        const double weldHigh = std::max(weld.from, weld.to);
+        CHECK(weldHigh - weldLow > 0);
+        CHECK(weldLow >= sheetY - sheetHeight / 2 - 1e-9);
+        CHECK(weldHigh <= sheetY + sheetHeight / 2 + 1e-9);
+        CHECK(weldLow >= std::min(axial.attachFrom, axial.end) - 1e-12);
+        CHECK(weldHigh <= std::max(axial.attachFrom, axial.end) + 1e-12);
         // The reserved run starts at the sheet's edge: it never lies inside the sheet's copper.
         size_t reserved = 0;
         for (const auto& space : spaces) {

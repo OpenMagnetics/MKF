@@ -2157,6 +2157,21 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces(
                 record.flangeOuterFace = edgeY + outward * wallThickness;
                 record.end = record.flangeOuterFace + outward * leadOuter;
                 record.length = std::abs(record.end - record.attachFrom);
+                // The weld strip (AxialLead::WeldStrip): sheet centre to lead centreline, the lead
+                // copper's chord at half a radius from the sheet, along the whole attach.
+                record.weld.layerFrom = roundFloat(turnX, 12);
+                record.weld.layerTo = record.layerAxis;
+                record.weld.width = roundFloat(std::sqrt(3.0) / 2 * leadConducting, 12);
+                record.weld.from = record.attachFrom;
+                record.weld.to = record.attachTo;
+                if (!(record.weld.layerTo - record.weld.layerFrom > 0) || !(record.weld.width > 0) ||
+                    !(record.weld.width < leadOuter) || !(std::abs(record.weld.to - record.weld.from) > 0)) {
+                    throw CoilException(ErrorCode::COIL_WINDING_ERROR,
+                        "The " + who + " leaves axially, but its weld strip cannot be laid: " +
+                        std::to_string((record.weld.layerTo - record.weld.layerFrom) * 1e3) + " mm deep, " +
+                        std::to_string(record.weld.width * 1e3) + " mm wide (the lead is " + std::to_string(leadOuter * 1e3) +
+                        " mm outer), " + std::to_string(std::abs(record.weld.to - record.weld.from) * 1e3) + " mm long (ABT #1907)");
+                }
                 columnX = record.layerAxis;
                 runLow = std::min(record.attachTo, edgeY);
                 runHigh = std::max(record.attachTo, edgeY);
@@ -3503,6 +3518,12 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces(
                     }
                     const double diameter = route.axialLead->outerDiameter;
                     route.axialLead->alongFace = roundFloat(before + diameter / 2, 12);
+                    // The weld strip lies on this parallel's own sheet, which begins at `before`.
+                    if (route.axialLead->alongFace - route.axialLead->weld.width / 2 < before - 1e-12) {
+                        throw CoilException(ErrorCode::COIL_WINDING_ERROR,
+                            "Winding '" + route.winding + "' parallel " + std::to_string(route.parallel) +
+                            ": the axial lead's weld strip would reach past its own sheet's end on the connection face (ABT #1907)");
+                    }
                     before += diameter;
                     route.exitSlot = std::nullopt;
                     exitSlots[members[position]] = std::nullopt;

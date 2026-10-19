@@ -308,6 +308,27 @@ struct AxialLead {
     double alongFace = 0;
     // The lead's copper length: from attachFrom to end.
     double length = 0;
+    // ABT #1907 (Alf, 2026-10-19): the WELD STRIP that joins lead and sheet, like the solder/weld
+    // seam along a real foil tab. Tangent copper touches along a line only, which carries no
+    // current, so the strip is the copper that makes lead and sheet ONE conductor. A consumer
+    // draws it as a rectangular bar fused to both coppers; its numbers are these, never its own.
+    //   - Layer axis: from the sheet's centre (layerFrom, half-way through the sheet's copper) to
+    //     the lead's centreline (layerTo = layerAxis). It therefore crosses the sheet's outer face
+    //     and the tangent line, so its faces cut both coppers across instead of touching them.
+    //   - Along the face: centred on the lead's centreline (alongFace), `width` wide: the chord of
+    //     the lead's copper circle at half a radius from the sheet face, sqrt(3)/2 of the lead's
+    //     conducting diameter. Its side faces meet the lead's surface at 30 degrees, half a radius
+    //     off the sheet, never tangentially, and the strip stays inside the lead's own column (it
+    //     is narrower than the lead's outer diameter, so it lies on this parallel's sheet only).
+    //   - Turn axis: the attach, from attachFrom to attachTo (from = attachFrom, to = attachTo).
+    // The wind is refused when the strip cannot be laid this way (see Coil.cpp addTerminalLead).
+    struct WeldStrip {
+        double layerFrom = 0;
+        double layerTo = 0;
+        double width = 0;
+        double from = 0;
+        double to = 0;
+    } weld;
 };
 
 // ABT #685: one connection of one conductor, as MKF drew it — the record MVB++ realises in 3D and
