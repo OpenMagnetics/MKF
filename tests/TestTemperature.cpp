@@ -5552,3 +5552,112 @@ TEST_CASE("Temperature: ABT 1735 without an outer-leg winding the network keeps 
     CHECK_THAT(solved.heatToAmbient, Catch::Matchers::WithinRel(solved.injected, 0.02));
     settings.reset();
 }
+
+// ============================================================================
+// ABT #1643 (bobbin half, Alf 2026-10-18): a bobbin material's conductivity is its MAS value or a
+// WARNING-flagged estimate from its polymer class; never a built-in constant. Material names MAS
+// has no record of throw.
+// ============================================================================
+TEST_CASE("Bobbin thermal conductivity: the MAS value, or a flagged estimate from the polymer class", "[temperature][thermal][bobbin][abt-1643]") {
+    clear_databases();
+    // Sourced values win (MAS 33f771a: Toray Torelina A504X90; BASF Ultramid A3X2G5).
+    auto pps = resolve_bobbin_material_thermal_conductivity(find_insulation_material_by_name("PPS"));
+    CHECK(pps.tier == BobbinThermalConductivityTier::MATERIAL);
+    CHECK(pps.source.has_value());
+    CHECK_FALSE(pps.is_estimated());
+    CHECK_THAT(pps.value, Catch::Matchers::WithinAbs(0.3, 1e-12));
+    // A value MAS carries without a source is the material's own, flagged unsourced.
+    auto pet = resolve_bobbin_material_thermal_conductivity(find_insulation_material_by_name("PET"));
+    CHECK(pet.is_unsourced());
+    CHECK_FALSE(pet.is_estimated());
+
+    // PA66 = Durethan AKV30H2.0 (PA66-GF30), no published conductivity: the median of the three BASF
+    // PA66-GF points in MAS c1b29c0 (A3X2G5 0.33 -- one document for its two records --, A3X2G10 0.35
+    // and the GFN (Natural) representative grade A3EG7 0.35).
+    auto pa66 = resolve_bobbin_material_thermal_conductivity(find_insulation_material_by_name("PA66"));
+    REQUIRE(pa66.is_estimated());
+    CHECK(pa66.tier == BobbinThermalConductivityTier::CLASS);
+    CHECK(pa66.estimate->polymerClass == "PA66, glass-fibre reinforced");
+    CHECK(pa66.estimate->datasheetGrades.empty());
+    CHECK(pa66.estimate->numberDataPoints == 3);
+    CHECK_THAT(pa66.value, Catch::Matchers::WithinAbs(0.35, 1e-12));
+
+    // SKYT.5220FR = Skytra 5220FR (PET-GF30 FR): the sourced polyesters in MAS (Pocan B4225 0.23,
+    // Valox 420SE0 0.25) and the cited DuPont Crastin/Rynite glass-fibre grades, median 0.29.
+    auto skytra = resolve_bobbin_material_thermal_conductivity(find_insulation_material_by_name("SKYT.5220FR"));
+    REQUIRE(skytra.is_estimated());
+    CHECK(skytra.estimate->polymerClass == "PET/PBT, glass-fibre reinforced");
+    CHECK(skytra.estimate->datasheetGrades.size() == 7);
+    CHECK_THAT(skytra.value, Catch::Matchers::WithinAbs(0.29, 1e-12));
+
+    // Zen.6130L = Zenite 6130L (LCP-GF30): the cited Celanese VECTRA E130i point.
+    auto zenite = resolve_bobbin_material_thermal_conductivity(find_insulation_material_by_name("Zen.6130L"));
+    REQUIRE(zenite.is_estimated());
+    CHECK(zenite.estimate->polymerClass == "LCP, glass-fibre reinforced");
+    CHECK_THAT(zenite.value, Catch::Matchers::WithinAbs(0.348, 1e-12));
+
+    // No class, no estimate: a material without composition, or of a polymer no class covers.
+    auto anonymous = find_insulation_material_by_name("PA66");
+    anonymous.set_composition(std::nullopt);
+    CHECK_THROWS_AS(resolve_bobbin_material_thermal_conductivity(anonymous), MaterialException);
+    auto polyurethane = find_insulation_material_by_name("Polyurethane 155");
+    REQUIRE_FALSE(polyurethane.get_thermal_conductivity());
+    CHECK_THROWS_AS(resolve_bobbin_material_thermal_conductivity(polyurethane), MaterialException);
+    // A class with no sourced data point (unreinforced PA66) throws instead of borrowing the filled one.
+    auto unfilled = find_insulation_material_by_name("PA66");
+    unfilled.set_composition("Polyamide 6.6");
+    CHECK_THROWS_AS(resolve_bobbin_material_thermal_conductivity(unfilled), MaterialException);
+}
+
+TEST_CASE("Temperature: the bobbin conductivity is the resolver's, and a material MAS lacks throws", "[temperature][thermal][bobbin][abt-1643]") {
+    clear_databases();
+    std::string shapeName = "ETD 29/16/10";
+    auto coil = OpenMagneticsTesting::get_quick_coil({10}, {1}, shapeName, 1,
+        WindingOrientation::OVERLAPPING, WindingOrientation::OVERLAPPING,
+        CoilAlignment::CENTERED, CoilAlignment::CENTERED);
+    auto core = OpenMagneticsTesting::get_quick_core(shapeName, json::array(), 1, "N87");
+    OpenMagnetics::Magnetic magnetic;
+    magnetic.set_coil(coil);
+    magnetic.set_core(core);
+    TemperatureConfig config;
+    config.ambientTemperature = 25.0;
+    config.plotSchematic = false;
+    applySimulatedLosses(config, magnetic);
+
+    auto solve = [&](MAS::InsulationMaterialDataOrNameUnion material) {
+        auto bobbin = magnetic.get_mutable_coil().resolve_bobbin();
+        MAS::BobbinFunctionalDescription functionalDescription;
+        functionalDescription.set_family(MAS::BobbinFamily::ETD);
+        functionalDescription.set_shape(shapeName);
+        functionalDescription.set_type(MAS::FunctionalDescriptionType::CUSTOM);
+        functionalDescription.set_dimensions({});
+        functionalDescription.set_material(material);
+        bobbin.set_functional_description(functionalDescription);
+        magnetic.get_mutable_coil().set_bobbin(bobbin);
+        auto result = Temperature(magnetic, config).calculateTemperatures();
+        REQUIRE(result.converged);
+        return result.maximumTemperature;
+    };
+    auto with_conductivity = [](std::string name, double k) {
+        MAS::InsulationMaterial material = find_insulation_material_by_name(name);
+        material.set_thermal_conductivity(k);
+        return MAS::InsulationMaterialDataOrNameUnion(material);
+    };
+
+    // SKYT.5220FR has no conductivity in MAS: the network runs on the class estimate, 0.29, not
+    // on the old built-in 0.2.
+    const double estimated = solve(std::string("SKYT.5220FR"));
+    CHECK_THAT(estimated, Catch::Matchers::WithinAbs(solve(with_conductivity("SKYT.5220FR", 0.29)), 1e-9));
+    CHECK(std::abs(estimated - solve(with_conductivity("SKYT.5220FR", 0.2))) > 1e-4);
+
+    // 'Valox 420-SE0' is not a MAS record name (MAS calls it 'PBT GF30 FR (Valox 420SE0)'): a
+    // material name MAS has no record of is a named error, not an estimate.
+    try {
+        solve(std::string("Valox 420-SE0"));
+        FAIL("a bobbin material MAS has no record of must throw");
+    }
+    catch (const MaterialException& e) {
+        CHECK(e.code() == ErrorCode::MATERIAL_NOT_FOUND);
+        CHECK(std::string(e.what()).find("Valox 420-SE0") != std::string::npos);
+    }
+}

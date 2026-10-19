@@ -206,35 +206,42 @@ double Temperature::getCoreThermalConductivity() const {
 }
 
 double Temperature::getBobbinThermalConductivity() const {
-    try {
-        auto bobbinOpt = _magnetic.get_coil().get_bobbin();
-        if (std::holds_alternative<Bobbin>(bobbinOpt)) {
-            auto bobbin = std::get<Bobbin>(bobbinOpt);
-            auto funcDesc = bobbin.get_functional_description();
-            if (funcDesc) {
-                auto materialOpt = funcDesc->get_material();
-                if (materialOpt) {
-                    auto& materialVariant = *materialOpt;
-                    if (std::holds_alternative<MAS::InsulationMaterial>(materialVariant)) {
-                        OpenMagnetics::InsulationMaterial resolved(
-                            std::get<MAS::InsulationMaterial>(materialVariant));
-                        return ThermalResistance::getInsulationMaterialThermalConductivity(resolved);
-                    } else if (std::holds_alternative<std::string>(materialVariant)) {
-                        auto material = find_insulation_material_by_name(
-                            std::get<std::string>(materialVariant));
-                        return ThermalResistance::getInsulationMaterialThermalConductivity(material);
-                    }
+    // ABT #1643 (Alf, 2026-10-18): no built-in bobbin conductivity. The bobbin material's own MAS
+    // value, or the WARNING-flagged estimate from its polymer class
+    // (resolve_bobbin_material_thermal_conductivity); a class that cannot be determined throws.
+    std::optional<OpenMagnetics::InsulationMaterial> material;
+    auto bobbinOpt = _magnetic.get_coil().get_bobbin();
+    if (std::holds_alternative<Bobbin>(bobbinOpt)) {
+        auto bobbin = std::get<Bobbin>(bobbinOpt);
+        auto funcDesc = bobbin.get_functional_description();
+        if (funcDesc && funcDesc->get_material()) {
+            const auto materialVariant = funcDesc->get_material().value();
+            if (std::holds_alternative<MAS::InsulationMaterial>(materialVariant)) {
+                material = OpenMagnetics::InsulationMaterial(std::get<MAS::InsulationMaterial>(materialVariant));
+            }
+            else {
+                const auto& name = std::get<std::string>(materialVariant);
+                try {
+                    material = find_insulation_material_by_name(name);
+                }
+                catch (const InvalidInputException&) {
+                    // A name MAS has no record of is not estimated: nothing says what it is made of
+                    // (ABT #1980 lists the catalogue bobbins naming such materials).
+                    throw MaterialException(ErrorCode::MATERIAL_NOT_FOUND,
+                        "Bobbin material '" + name + "' has no record in the MAS insulation materials: its thermal "
+                        "conductivity can be neither read nor estimated from its polymer class. Add the material to "
+                        "MAS or name one it has.");
                 }
             }
         }
-        // No material on bobbin: use default bobbin material (PET)
-        auto defaultMaterial = find_insulation_material_by_name(Defaults().defaultBobbinMaterial);
-        return ThermalResistance::getInsulationMaterialThermalConductivity(defaultMaterial);
-    } catch (const MaterialException&) {
-        // Only material-data-missing falls back to the constant; other failures
-        // (bad bobbin data, lookup bugs) must propagate.
-        return kBobbin_ThermalConductivity;
     }
+    if (!material) {
+        // A bobbin that states no material is Defaults().defaultBobbinMaterial (PET), the same
+        // project-wide answer StrayCapacitance gives for its wall permittivity (Alf's ruling,
+        // 2026-09-12). PET's MAS conductivity is itself unsourced, which the resolver flags.
+        material = find_insulation_material_by_name(Defaults().defaultBobbinMaterial);
+    }
+    return resolve_bobbin_material_thermal_conductivity(material.value()).value;
 }
 
 // ============================================================================

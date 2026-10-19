@@ -508,10 +508,12 @@ private:
     
     /**
      * @brief Get bobbin thermal conductivity from bobbin material data
-     * 
-     * Checks if the bobbin has a material specified in its functional description.
-     * If so, resolves it and returns its thermal conductivity.
-     * Falls back to the default bobbin material (PET) from Defaults.
+     *
+     * The bobbin's material (functional description) through
+     * resolve_bobbin_material_thermal_conductivity: its MAS value, or a WARNING-flagged estimate
+     * from its polymer class (ABT #1643). A material name MAS has no record of throws
+     * MATERIAL_NOT_FOUND. A bobbin that states no material is Defaults().defaultBobbinMaterial
+     * (PET), the same answer the stray-capacitance model gives (Alf's ruling 2026-09-12).
      */
     double getBobbinThermalConductivity() const;
     

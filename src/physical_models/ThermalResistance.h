@@ -97,6 +97,71 @@ struct CoreHeatConductivity {
 CoreHeatConductivity resolve_core_material_heat_conductivity(const CoreMaterial& coreMaterial);
 
 /**
+ * @brief Where a bobbin material's thermal conductivity came from (see
+ * resolve_bobbin_material_thermal_conductivity). ABT #1643, Alf 2026-10-18: bobbin plastics with
+ * no published conductivity take a class-based ESTIMATE, like the approved core-material one
+ * (ABT #1752/#1753), flagged as an estimate; MAS itself keeps only sourced values.
+ */
+enum class BobbinThermalConductivityTier {
+    MATERIAL,  // the material's own MAS value
+    CLASS      // the sourced data points of its polymer class (polymer + glass-fibre reinforcement)
+};
+
+/**
+ * @brief How a bobbin thermal conductivity that MAS does not carry was estimated.
+ */
+struct BobbinThermalConductivityEstimate {
+    // The class the material was put in from its MAS composition, e.g. "PA66, glass-fibre reinforced".
+    std::string polymerClass;
+    // The MAS insulation materials of that class whose thermalConductivity a provenance entry cites.
+    std::vector<std::string> sourceMaterials;
+    // The datasheet grades of that class cited in MKF (ThermalResistance.cpp), for classes MAS has
+    // no sourced member of.
+    std::vector<std::string> datasheetGrades;
+    // The documents all those values come from.
+    size_t numberDocuments = 0;
+    // Independent data points: a document giving one value to several grades is ONE point.
+    size_t numberDataPoints = 0;
+    // Human-readable method, e.g. "the median of its 2 sourced data points".
+    std::string method;
+};
+
+/**
+ * @brief A bobbin material's thermal conductivity in W/(m·K), where it came from, and whether it
+ * is backed by a document.
+ */
+struct BobbinThermalConductivity {
+    double value;
+    BobbinThermalConductivityTier tier;
+    // Tier MATERIAL only: the document a provenance entry cites for the material's own value.
+    // Disengaged for a value MAS carries without a source (PET, PBT today): it is still the
+    // material's value, but flagged unsourced (WARNING) and never pooled for others.
+    std::optional<std::string> source;
+    // Engaged if and only if MAS carries no thermalConductivity for the material.
+    std::optional<BobbinThermalConductivityEstimate> estimate;
+    bool is_estimated() const { return estimate.has_value(); }
+    bool is_unsourced() const { return tier == BobbinThermalConductivityTier::MATERIAL && !source; }
+};
+
+/**
+ * @brief THE resolver of a bobbin material's thermal conductivity (thermal network).
+ *
+ * 1. MATERIAL: MAS has thermalConductivity: that value (flagged unsourced, with a WARNING, when no
+ *    provenance entry cites it). Sourced data always wins.
+ * 2. CLASS: the polymer class is read from the material's MAS composition (PA66, PET/PBT
+ *    thermoplastic polyester, LCP, PPS, phenolic; glass-fibre reinforced or not), and the value is
+ *    the median of the class's data points: every MAS insulation material of the class whose
+ *    thermalConductivity a provenance entry cites, plus the datasheet grades of the class cited in
+ *    ThermalResistance.cpp. A WARNING names the material, class, pool, documents and method, once
+ *    per material.
+ * Throws MaterialException(MATERIAL_DATA_MISSING) when the class cannot be determined (no
+ * composition, or one naming no known polymer, or glass in a form other than fibre) or when the
+ * class has no sourced data point; MATERIAL_INVALID_PROPERTY when a value present is not a finite
+ * positive number. Never a built-in default.
+ */
+BobbinThermalConductivity resolve_bobbin_material_thermal_conductivity(const InsulationMaterial& material);
+
+/**
  * @brief Air and fluid properties for convection calculations
  */
 struct FluidProperties {
@@ -240,7 +305,9 @@ public:
     static double getCoreMaterialHeatCapacity(const CoreMaterial& coreMaterial);
     
     /**
-     * @brief Get thermal conductivity from insulation material
+     * @brief Thermal conductivity of an insulation material's own MAS record, W/(m·K); throws
+     * MATERIAL_DATA_MISSING when the record has none (bobbins go through
+     * resolve_bobbin_material_thermal_conductivity, which estimates from the polymer class).
      */
     static double getInsulationMaterialThermalConductivity(const InsulationMaterial& material);
     

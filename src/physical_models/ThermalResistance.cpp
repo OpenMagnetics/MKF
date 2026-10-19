@@ -774,14 +774,277 @@ CoreHeatConductivity resolve_core_material_heat_conductivity(const CoreMaterial&
     return resolved;
 }
 
+
+// ============================================================================
+// Bobbin material thermal conductivity: the MAS value, or a flagged estimate from the sourced
+// data points of the material's polymer class (ABT #1643, Alf 2026-10-18: "use a class-based
+// estimator like the approved #1752/#1753 core one: k from the polymer class, flagged as an
+// estimate in the results. MAS keeps only sourced values").
+// ============================================================================
+namespace {
+
+// The documents a non-retracted provenance entry naming `field` cites (as the core-material
+// heat_conductivity_sources does): an entry naming the field but no document is not a citation.
+std::vector<std::string> provenance_sources(const std::optional<std::vector<MAS::Provenance>>& provenance,
+                                            const std::string& field) {
+    std::vector<std::string> sources;
+    if (!provenance) {
+        return sources;
+    }
+    for (const auto& entry : provenance.value()) {
+        if (entry.get_retracted() && entry.get_retracted().value()) {
+            continue;
+        }
+        if (!entry.get_fields()) {
+            continue;
+        }
+        const auto fields = entry.get_fields().value();
+        if (std::find(fields.begin(), fields.end(), field) == fields.end()) {
+            continue;
+        }
+        if (entry.get_source_url()) {
+            sources.push_back(entry.get_source_url().value());
+        }
+        else if (entry.get_source_name()) {
+            sources.push_back(entry.get_source_name().value());
+        }
+    }
+    return sources;
+}
+
+
+// A polymer class: the base polymer plus whether it is glass-fibre reinforced. Fibre content moves
+// a moulding compound's conductivity well beyond the spread between grades of one polymer (DuPont
+// Rynite PET: 0.29 at GF30, 0.33 at GF55), so unfilled and filled grades are separate classes.
+struct BobbinPolymerClass {
+    std::string polymer;  // "PA66", "PET/PBT", "LCP", "PPS", "PHENOLIC"
+    bool glassFibre;
+    bool operator==(const BobbinPolymerClass&) const = default;
+    std::string name() const { return polymer + (glassFibre ? ", glass-fibre reinforced" : ", unreinforced"); }
+};
+
+// A thermal-conductivity data point MKF cites for a class MAS has no sourced member of. Each is
+// read from a maker's document of the same polymer class; the document is named so it can be
+// checked, and its value is never written into MAS (MAS keeps only the values of its own records).
+struct BobbinDatasheetPoint {
+    BobbinPolymerClass polymerClass;
+    std::string grade;
+    double value;  // W/(m K)
+    std::string document;
+};
+
+// THE CITED DATASHEET POINTS (retrieved 2026-10-18; copies kept in the ABT #1643 run directory).
+//
+// PET/PBT, glass-fibre reinforced (for SKYT.5220FR = Skytra 5220FR, PET-GF30 FR; besides the
+// sourced MAS polyesters, Pocan B4225 0.23 and Valox 420SE0 0.25): DuPont "Crastin PBT and Rynite PET thermoplastic polyester resins, Design
+// Information, Module IV" (L-10978), section 2 property tables. One document giving each grade
+// its own value is one point per grade. Rynite rows by ASTM C-177, Crastin rows by DIN 51046; the
+// unreinforced, impact-modified and PBT-ASA blend columns of the same tables are left out (not the
+// class). The FR530L row is the closest grade to Skytra 5220FR (PET-GF30 FR); the class median,
+// 0.29, is what is used.
+//
+// LCP, glass-fibre reinforced (for Zen.6130L = Zenite 6130L, LCP-GF30; MAS has no sourced LCP):
+// Celanese VECTRA E130i (LCP-GF30) data sheet, "Thermal conductivity, flow 0.348 W/(m K), ISO
+// 22007-2", marked [OT] one-time tested. Caveats: it is the IN-FLOW value, and a moulded LCP wall
+// conducts less across its thickness than along the flow, so this over-states the through-wall
+// conductance of an LCP bobbin; and the copy read is a distributor-hosted one of the Celanese
+// sheet. It is the only maker value of the class found.
+//
+// PA66-GF and PPS-GF take their points from MAS (BASF Ultramid A3X2G5 0.33 and A3X2G10 0.35, both
+// DIN 52612-1, and the GFN (Natural) representative grade Ultramid A3EG7 0.35; Toray Torelina
+// A504X90 0.3 through-thickness), so no datasheet point is cited here. A PA66-GF material without
+// its own value (PA66 = Durethan AKV30H2.0, PA66-GF30) is therefore estimated at the median of
+// those three BASF points, 0.35 (MAS c1b29c0). Phenolic (PF) has no sourced point in MAS or here,
+// so a PF bobbin without its own value throws.
+const std::vector<BobbinDatasheetPoint>& bobbin_datasheet_points() {
+    static const std::string crastinRynite =
+        "DuPont, Crastin PBT and Rynite PET Design Information, Module IV (L-10978), section 2: "
+        "https://www.distrupol.com/Crastin_PBT_and_Rynite_PET_Design_Info_Module_IV.pdf";
+    static const std::string vectra =
+        "Celanese VECTRA E130i data sheet (LCP-GF30), thermal conductivity flow, ISO 22007-2: "
+        "http://hongrunplastics.com/public/uploads/images/20250611/Celanese%20LCP%20VECTRA%20E130i.pdf";
+    static const BobbinPolymerClass polyesterGf{"PET/PBT", true};
+    static const BobbinPolymerClass lcpGf{"LCP", true};
+    static const std::vector<BobbinDatasheetPoint> points = {
+        {polyesterGf, "Rynite 530 (PET-GF30)", 0.29, crastinRynite},
+        {polyesterGf, "Rynite 545 (PET-GF45)", 0.32, crastinRynite},
+        {polyesterGf, "Rynite 555 (PET-GF55)", 0.33, crastinRynite},
+        {polyesterGf, "Rynite FR530L (PET-GF30 FR)", 0.25, crastinRynite},
+        {polyesterGf, "Crastin SK605 (PBT-GF30)", 0.28, crastinRynite},
+        {polyesterGf, "Crastin SK645FR (PBT-GF30 FR)", 0.29, crastinRynite},
+        {polyesterGf, "Crastin T845FR (co-PBT GF30 FR)", 0.29, crastinRynite},
+        {lcpGf, "VECTRA E130i (LCP-GF30)", 0.348, vectra},
+    };
+    return points;
+}
+
+std::string lower_case(std::string text) {
+    std::transform(text.begin(), text.end(), text.begin(), [](unsigned char c) { return std::tolower(c); });
+    return text;
+}
+
+// The class of a bobbin material, read from its MAS composition ("Polyamide 6.6, 30% glass
+// fibre", "Polyethylene terephthalate, 30% glass fibre, flame retardant", "Liquid crystal polymer,
+// 30% glass fibre, lubricated", ...). Disengaged when the composition does not say it.
+std::optional<BobbinPolymerClass> bobbin_polymer_class(const InsulationMaterial& material, std::string& why) {
+    if (!material.get_composition()) {
+        why = "its MAS record states no composition";
+        return std::nullopt;
+    }
+    const auto composition = lower_case(material.get_composition().value());
+    std::optional<std::string> polymer;
+    auto names = [&](std::initializer_list<const char*> keys) {
+        for (auto key : keys) {
+            if (composition.find(key) != std::string::npos) {
+                return true;
+            }
+        }
+        return false;
+    };
+    if (names({"polyamide 6.6", "polyamide 66", "pa66", "pa 66"})) {
+        polymer = "PA66";
+    }
+    else if (names({"polyethylene terephthalate", "polybutylene terephthalate"})) {
+        polymer = "PET/PBT";
+    }
+    else if (names({"liquid crystal polymer"})) {
+        polymer = "LCP";
+    }
+    else if (names({"polyphenylene sulfide", "polyphenylene sulphide"})) {
+        polymer = "PPS";
+    }
+    else if (names({"phenol"})) {
+        polymer = "PHENOLIC";
+    }
+    if (!polymer) {
+        why = "its composition '" + material.get_composition().value() + "' names no polymer class MKF estimates "
+              "(PA66, PET/PBT, LCP, PPS, phenolic)";
+        return std::nullopt;
+    }
+    const bool glass = composition.find("glass") != std::string::npos;
+    const bool glassFibre = names({"glass fibre", "glass fiber"});
+    if (glass && !glassFibre) {
+        why = "its composition '" + material.get_composition().value() + "' states glass in a form other than "
+              "fibre, which no class covers";
+        return std::nullopt;
+    }
+    return BobbinPolymerClass{polymer.value(), glassFibre};
+}
+
+// A thermalConductivity that is present must be a finite positive number.
+double checked_insulation_thermal_conductivity(const InsulationMaterial& material) {
+    const double value = material.get_thermal_conductivity().value();
+    if (!std::isfinite(value) || value <= 0) {
+        std::ostringstream message;
+        message << "Insulation material '" << material.get_name() << "' has a malformed thermalConductivity in MAS ("
+                << value << " W/(m K)): it must be a finite positive number. Fix the record in MAS.";
+        throw MaterialException(ErrorCode::MATERIAL_INVALID_PROPERTY, message.str());
+    }
+    return value;
+}
+
+void warn_once_bobbin(const InsulationMaterial& material, const std::string& message) {
+    static std::mutex warnedMutex;
+    static std::set<std::string> warned;
+    std::lock_guard<std::mutex> lock(warnedMutex);
+    if (warned.insert(material.get_name()).second) {
+        OM_WARNING(message);
+    }
+}
+
+}  // namespace
+
+BobbinThermalConductivity resolve_bobbin_material_thermal_conductivity(const InsulationMaterial& material) {
+    if (material.get_thermal_conductivity()) {
+        const auto sources = provenance_sources(material.get_provenance(), "thermalConductivity");
+        BobbinThermalConductivity resolved{checked_insulation_thermal_conductivity(material),
+                                           BobbinThermalConductivityTier::MATERIAL,
+                                           sources.empty() ? std::nullopt : std::optional<std::string>(sources.front()),
+                                           std::nullopt};
+        if (resolved.is_unsourced()) {
+            std::ostringstream message;
+            message << "Bobbin material '" << material.get_name() << "': its MAS thermalConductivity " << resolved.value
+                    << " W/(m K) is UNSOURCED (no provenance entry cites it); used for this material, never pooled "
+                       "for others.";
+            warn_once_bobbin(material, message.str());
+        }
+        return resolved;
+    }
+
+    std::string why;
+    const auto polymerClass = bobbin_polymer_class(material, why);
+    if (!polymerClass) {
+        throw MaterialException(ErrorCode::MATERIAL_DATA_MISSING,
+            "Bobbin material '" + material.get_name() + "' has no thermalConductivity in MAS, and its polymer class "
+            "cannot be determined to estimate one: " + why + ".");
+    }
+
+    // The class's data points: one per (document, value) -- a document giving one value to several
+    // grades or records is one point, as in the core-material estimator.
+    BobbinThermalConductivityEstimate estimate;
+    estimate.polymerClass = polymerClass->name();
+    std::set<std::pair<std::string, double>> points;
+    std::set<std::string> documents;
+    if (insulationMaterialDatabase.empty()) {
+        load_insulation_materials();
+    }
+    for (const auto& [name, member] : insulationMaterialDatabase) {
+        if (!member.get_thermal_conductivity()) {
+            continue;
+        }
+        const auto sources = provenance_sources(member.get_provenance(), "thermalConductivity");
+        if (sources.empty()) {
+            continue;  // an unsourced value is not evidence about another material
+        }
+        std::string ignored;
+        const auto memberClass = bobbin_polymer_class(member, ignored);
+        if (!memberClass || !(memberClass.value() == polymerClass.value())) {
+            continue;
+        }
+        const double value = checked_insulation_thermal_conductivity(member);
+        estimate.sourceMaterials.push_back(member.get_name());
+        for (const auto& source : sources) {
+            documents.insert(source);
+        }
+        points.insert({sources.front(), value});
+    }
+    for (const auto& point : bobbin_datasheet_points()) {
+        if (!(point.polymerClass == polymerClass.value())) {
+            continue;
+        }
+        estimate.datasheetGrades.push_back(point.grade);
+        documents.insert(point.document);
+        points.insert({point.document + " / " + point.grade, point.value});
+    }
+    if (points.empty()) {
+        throw MaterialException(ErrorCode::MATERIAL_DATA_MISSING,
+            "Bobbin material '" + material.get_name() + "' has no thermalConductivity in MAS, and its class (" +
+            polymerClass->name() + ") has no sourced data point to estimate it from: no MAS insulation material of "
+            "the class carries a sourced value and MKF cites no datasheet of the class.");
+    }
+    std::vector<double> values;
+    for (const auto& point : points) {
+        values.push_back(point.second);
+    }
+    estimate.numberDocuments = documents.size();
+    estimate.numberDataPoints = values.size();
+    estimate.method = "the median of its " + std::to_string(values.size()) + " sourced data points";
+    BobbinThermalConductivity resolved{median(values), BobbinThermalConductivityTier::CLASS, std::nullopt, estimate};
+
+    std::ostringstream message;
+    message << "Bobbin material '" << material.get_name() << "' has no thermalConductivity in MAS: ESTIMATED "
+            << resolved.value << " W/(m K) from its polymer class (" << estimate.polymerClass << "): "
+            << estimate.sourceMaterials.size() << " sourced MAS materials, " << estimate.datasheetGrades.size()
+            << " cited datasheet grades, " << estimate.numberDocuments << " documents, using " << estimate.method << ".";
+    warn_once_bobbin(material, message.str());
+    return resolved;
+}
+
 double ThermalResistance::getInsulationMaterialThermalConductivity(const InsulationMaterial& material) {
     auto thermalCond = material.get_thermal_conductivity();
     if (thermalCond) {
         return *thermalCond;
     }
-    // No conductivity data: signal missing-material-data so the caller decides
-    // (Temperature::getBobbinThermalConductivity catches this and falls back to the
-    // configured bobbin conductivity) instead of silently hardcoding 0.2 here.
     throw MaterialException(ErrorCode::MATERIAL_DATA_MISSING,
         "Insulation material '" + material.get_name() + "' has no thermal_conductivity defined");
 }
