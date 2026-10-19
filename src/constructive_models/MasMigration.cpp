@@ -216,6 +216,18 @@ void migrate(nlohmann::json& j, const std::string* parentKey) {
             }
         }
         for (auto it = j.begin(); it != j.end(); ++it) {
+            // A coating's thickness written as a bare number (ABT #1995). Core coating.thickness was a
+            // number until MAS efa299f (2026-10-01) made it a dimensionWithTolerance; read without this,
+            // the generated converter turns the number into an EMPTY dimension and the first consumer
+            // throws. The number is that thickness, so it becomes {nominal: number}. Scoped to a
+            // "coating" object (core and wire coatings, the only "coating" keys in MAS): other
+            // "thickness" keys (bobbin walls, dielectric-strength points) are plain numbers by schema.
+            if (it.key() == "coating" && it.value().is_object()) {
+                auto thickness = it.value().find("thickness");
+                if (thickness != it.value().end() && thickness->is_number()) {
+                    *thickness = nlohmann::json{{"nominal", thickness->get<double>()}};
+                }
+            }
             // Current schema: distributorInfo.cost is a {value, currency} object (CurrencyAmount).
             // Normalize legacy forms UP to it so old data still loads:
             //   bare number   -> {value: <number>, currency: "USD"}  (pre-CurrencyAmount / PEAS-number era)

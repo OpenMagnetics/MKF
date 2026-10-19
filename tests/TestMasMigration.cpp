@@ -409,3 +409,69 @@ TEST_CASE("Test_MasMigration_Core_Material_Application_String_Becomes_Array", "[
     OpenMagnetics::compat::migrate_pre_1_0(requirements);
     CHECK(requirements["designRequirements"]["application"] == "power");
 }
+
+// ABT #1995: a coating thickness written as a bare number -- the core-coating form before MAS
+// efa299f (2026-10-01) made it a dimensionWithTolerance, and the same bare form on a wire coating.
+// Unmigrated, the generated converter read the number as an EMPTY dimension and the first consumer
+// threw ("DimensionWithTolerance has neither nominal, minimum nor maximum set"); 97 corpus chokes
+// saved by PyOM before efa299f were refused that way. Every entry point must read it as
+// {nominal: number} and give exactly what the wrapped form gives.
+namespace {
+json abt1995_toroid(json coatingThickness, json wireCoatingThickness) {
+    json magnetic = json::parse(R"({
+        "core": {"name": "abt1995", "functionalDescription": {"type": "toroidal", "material": "N30",
+                 "shape": "T 22/14/7.9", "gapping": [], "numberStacks": 1,
+                 "coating": {"type": "epoxy", "thickness": 0}}},
+        "coil": {"bobbin": "Dummy", "functionalDescription": [
+            {"name": "primary", "numberTurns": 12, "numberParallels": 1, "isolationSide": "primary",
+             "wire": {"type": "round", "material": "copper", "numberConductors": 1,
+                      "conductingDiameter": {"nominal": 0.0005}, "outerDiameter": {"nominal": 0.00056},
+                      "coating": {"type": "enamelled", "grade": 1, "thickness": 0, "material": "Polyurethane 155"}}}]}
+    })");
+    magnetic["core"]["functionalDescription"]["coating"]["thickness"] = coatingThickness;
+    magnetic["coil"]["functionalDescription"][0]["wire"]["coating"]["thickness"] = wireCoatingThickness;
+    return magnetic;
+}
+}
+
+TEST_CASE("Test_MasMigration_Bare_Number_Coating_Thickness_Reads_As_Nominal", "[constructive-model][mas-migration][abt1995][smoke-test]") {
+    const double coreCoating = 0.0003;
+    const double wireCoating = 0.00003;
+    json bare = abt1995_toroid(coreCoating, wireCoating);
+    json wrapped = abt1995_toroid(json{{"nominal", coreCoating}}, json{{"nominal", wireCoating}});
+    REQUIRE(bare["core"]["functionalDescription"]["coating"]["thickness"].is_number());
+    REQUIRE(bare["coil"]["functionalDescription"][0]["wire"]["coating"]["thickness"].is_number());
+
+    SECTION("Core(json)") {
+        OpenMagnetics::Core core(bare["core"]);
+        CHECK(core.get_coating_thickness() == coreCoating);
+    }
+    SECTION("Wire(json)") {
+        OpenMagnetics::Wire wire(bare["coil"]["functionalDescription"][0]["wire"]);
+        REQUIRE(wire.get_coating());
+        auto thickness = wire.resolve_coating()->get_thickness();
+        REQUIRE(thickness);
+        REQUIRE(thickness->get_nominal());
+        CHECK(thickness->get_nominal().value() == wireCoating);
+    }
+    SECTION("Magnetic(json) and from_json give the wrapped form's result") {
+        OpenMagnetics::Magnetic fromConstructor(bare);
+        OpenMagnetics::Magnetic fromJson;
+        OpenMagnetics::from_json(bare, fromJson);
+        OpenMagnetics::Magnetic reference(wrapped);
+        CHECK(fromConstructor.get_core().get_coating_thickness() == coreCoating);
+        CHECK(fromJson.get_core().get_coating_thickness() == coreCoating);
+
+        // End to end: the stray capacitance reads the core jacket and the wire enamel, so it is the
+        // number a lost or mis-read thickness changes (or throws on).
+        auto capacitanceOf = [](OpenMagnetics::Magnetic magnetic) {
+            auto completed = OpenMagnetics::magnetic_autocomplete(magnetic);
+            auto output = OpenMagnetics::StrayCapacitance().calculate_capacitance(completed);
+            return output.get_capacitance_among_windings().value().at("primary").at("primary");
+        };
+        double expected = capacitanceOf(reference);
+        CHECK(expected > 0);
+        CHECK(capacitanceOf(fromConstructor) == expected);
+        CHECK(capacitanceOf(fromJson) == expected);
+    }
+}

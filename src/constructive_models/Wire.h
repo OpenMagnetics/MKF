@@ -1,6 +1,7 @@
 #pragma once
 
 #include "constructive_models/InsulationMaterial.h"
+#include "constructive_models/MasMigration.h"
 #include "processors/Inputs.h"
 #include "Defaults.h"
 #include "json.hpp"
@@ -122,7 +123,19 @@ class WireMagneticStrengthFieldOutput : public WindingWindowMagneticStrengthFiel
 
 
 class Wire : public MAS::Wire {
+    private:
+        static MAS::Wire migrated(json j) {
+            OpenMagnetics::compat::migrate_pre_1_0(j);
+            MAS::Wire wire;
+            MAS::from_json(j, wire);
+            return wire;
+        }
     public:
+        // A wire read straight from json goes through the legacy-form migration first, like every
+        // other json entry point (Core, Coil, Magnetic, Mas, Inputs). Without this constructor the
+        // json converted implicitly to MAS::Wire through the generated from_json and skipped it, so
+        // an old wire (e.g. a bare-number coating.thickness, ABT #1995) lost its data silently.
+        Wire(const json& j) : Wire(migrated(j)) {}
         Wire(MAS::Wire wire) {
             set_type(wire.get_type());
             if (wire.get_coating())
