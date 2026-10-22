@@ -459,14 +459,18 @@ static bool stamp_magnetizing_current(OperatingPoint* operatingPoint, Core& core
     bool biasFluxImposed = false;
     OperatingPointExcitation excitation = Inputs::get_primary_excitation(*operatingPoint);
 
-    // If the converter model already computed the magnetizing current
-    // (e.g. DMC summing all winding currents), respect it — don't overwrite.
-    // BUT: only honor a preset MC when there is no voltage. When voltage is
-    // present, re-derive MC from voltage (V = L * dI/dt) using the runtime-
-    // computed magnetizing inductance — otherwise stale preset MCs (e.g.
-    // generated against a slightly different reluctance) cause B to drift
-    // and downstream loss tests to fail.
-    if (excitation.get_magnetizing_current() && !excitation.get_voltage()) {
+    // Which excitation drives the core (Alf 2026-10-20, ABT #1814): a magnetic with more than one winding
+    // in the circuit derives its magnetizing current from the voltage; a single-winding inductor uses the
+    // current it is given. So a carried magnetizing current is honoured as it comes when there is no
+    // voltage to derive one from (a converter model's DMC sum, say), and, with a voltage, only on a
+    // single-winding inductor that carries no winding current (its given current is that magnetizing
+    // current; with a winding current the branch below makes that current the magnetizing current).
+    // With several windings a carried one is derived again from the voltage (V = L * dI/dt) at the
+    // inductance evaluated here, whoever stamped it: one made for another inductance (a converter
+    // model's minimum Lm, an earlier pass of this model round-tripped through JSON) scales B by the ratio
+    // of the two (ABT #1902).
+    bool singleWindingInductor = numberWindings == 1 && operatingPoint->get_excitations_per_winding().size() == 1;
+    if (excitation.get_magnetizing_current() && (!excitation.get_voltage() || (singleWindingInductor && !excitation.get_current()))) {
         // Already set — skip derivation. But upstream callers
         // (MagneticField::get_magnetic_field_strength_gap and
         // siblings) persist a *compressed* magnetizing_current
@@ -510,7 +514,7 @@ static bool stamp_magnetizing_current(OperatingPoint* operatingPoint, Core& core
     // magnetizing current of every transformer at the core stage (a 228 W forward
     // transformer: 0.4-1.7 T and core temperatures of thousands of degrees instead
     // of 0.05-0.3 T from its volt-seconds), so the operating point decides.
-    else if (numberWindings == 1 && operatingPoint->get_excitations_per_winding().size() == 1 && excitation.get_current()) {
+    else if (singleWindingInductor && excitation.get_current()) {
         Inputs::set_current_as_magnetizing_current(operatingPoint);
     }
     // CMC check must come BEFORE is_multiport_inductor. CMCs
@@ -1655,8 +1659,9 @@ std::vector<CoreGap> MagnetizingInductance::calculate_gapping_from_number_turns_
     }
 
     // ABT #1902: a voltage fixes the flux by Faraday, and the magnetizing current at the target inductance is
-    // the one the inductance model derives from it for the gapped core (stamp_magnetizing_current, which honours a
-    // carried magnetizing current only without a voltage). A carried one was derived for another inductance (a
+    // the one the inductance model derives from it for the gapped core (stamp_magnetizing_current, which with a
+    // voltage honours a carried magnetizing current only on a single-winding inductor with no winding current,
+    // ABT #1814). A carried one was derived for another inductance (a
     // converter model's minimum Lm): read against the target's reluctance it scaled B by the ratio of the two
     // inductances (a forward transformer gapped to 364 uH, its current derived for 84.2 uH: 0.65 T for 0.15 T).
     if (excitation.get_voltage()) {

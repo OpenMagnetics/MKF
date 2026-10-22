@@ -2589,3 +2589,112 @@ TEST_CASE("Test_Gap_From_Saturation_Constraint_Throws_When_Not_Converged", "[phy
     REQUIRE_NOTHROW(gap = model.calculate_gap_from_saturation_constraint(core, &inputs, 0.3, 1.0));
     CHECK(gap > 0);
 }
+
+// ABT #1814 (4), Alf 2026-10-20: "use voltage for anything with more than one winding, and current for inductors".
+// Which excitation drives the core is decided by the circuit's winding count, never by who stamped a carried
+// magnetizing current (a stamp round-tripped through JSON cannot be told from the caller's own).
+namespace {
+    double magnetizing_current_peak(const OperatingPoint& operatingPoint) {
+        auto magnetizingCurrent = operatingPoint.get_excitations_per_winding()[0].get_magnetizing_current();
+        REQUIRE(magnetizingCurrent);
+        double peak = 0;
+        const auto data = magnetizingCurrent->get_waveform().value().get_data();
+        for (double value : data) {
+            peak = std::max(peak, std::abs(value));
+        }
+        return peak;
+    }
+}
+
+TEST_CASE("Test_Transformer_Derives_Its_Magnetizing_Current_From_The_Voltage", "[physical-model][magnetizing-inductance][abt-1814]") {
+    // The forward transformer of MAS example 04 carries, with its voltages, a magnetizing current derived for an
+    // eighth of its inductance (as a converter model's minimum-Lm current would be), set in memory or read back
+    // from JSON: either way the core is driven by the current the voltage gives at the inductance evaluated.
+    settings.reset();
+    clear_databases();
+    std::ifstream file(std::string(__FILE__).substr(0, std::string(__FILE__).rfind('/'))
+                       + "/../MAS/examples/04_forward_xfmr_e3216_n87.json");
+    REQUIRE(file.is_open());
+    json masJson = json::parse(file);
+    OpenMagnetics::Magnetic magnetic(masJson["magnetic"]);
+    magnetic = magnetic_autocomplete(magnetic);
+    json inputsJson = masJson["inputs"];
+    for (auto& operatingPointJson : inputsJson["operatingPoints"]) {
+        for (auto& excitationJson : operatingPointJson["excitationsPerWinding"]) {
+            excitationJson.erase("magnetizingCurrent");
+        }
+    }
+
+    MagnetizingInductance model;
+    double inductance = resolve_dimensional_values(
+        model.calculate_inductance_from_number_turns_and_gapping(magnetic.get_core(), magnetic.get_coil()).get_magnetizing_inductance());
+
+    OpenMagnetics::Inputs inputs(inputsJson, false);
+    auto withoutMagnetizingCurrent = inputs.get_operating_point(0);
+    REQUIRE(withoutMagnetizingCurrent.get_excitations_per_winding().size() > 1);
+    REQUIRE(withoutMagnetizingCurrent.get_excitations_per_winding()[0].get_voltage());
+    auto eightfoldCurrent = OpenMagnetics::Inputs::calculate_magnetizing_current(withoutMagnetizingCurrent, 0, inductance / 8,
+                                                                                 magnetic.get_coil().get_turns_ratios(), false);
+
+    auto fromVoltage = withoutMagnetizingCurrent;
+    model.calculate_inductance_and_magnetic_flux_density(magnetic.get_core(), magnetic.get_coil(), &fromVoltage);
+    double voltagePeak = magnetizing_current_peak(fromVoltage);
+
+    auto carried = withoutMagnetizingCurrent;
+    carried.get_mutable_excitations_per_winding()[0].set_magnetizing_current(eightfoldCurrent);
+    model.calculate_inductance_and_magnetic_flux_density(magnetic.get_core(), magnetic.get_coil(), &carried);
+
+    json carriedJson = inputsJson;
+    carriedJson["operatingPoints"][0]["excitationsPerWinding"][0]["magnetizingCurrent"] = eightfoldCurrent;
+    OpenMagnetics::Inputs fromJson(carriedJson, false);
+    auto readBack = fromJson.get_operating_point(0);
+    REQUIRE(readBack.get_excitations_per_winding()[0].get_magnetizing_current());
+    model.calculate_inductance_and_magnetic_flux_density(magnetic.get_core(), magnetic.get_coil(), &readBack);
+
+    INFO("magnetizing current peak: from the voltage " << voltagePeak << " A, carried eightfold " << magnetizing_current_peak(carried)
+         << " A, read back from JSON " << magnetizing_current_peak(readBack) << " A");
+    CHECK_THAT(magnetizing_current_peak(carried), Catch::Matchers::WithinRel(voltagePeak, 1e-6));
+    CHECK_THAT(magnetizing_current_peak(readBack), Catch::Matchers::WithinRel(voltagePeak, 1e-6));
+}
+
+TEST_CASE("Test_Inductor_Uses_The_Current_It_Is_Given", "[physical-model][magnetizing-inductance][abt-1814]") {
+    // A single-winding inductor with a voltage: its given current drives the core, never the volt-seconds. With a
+    // winding current that current is the magnetizing current, whatever magnetizing current is carried; with only
+    // a magnetizing current, that one is used as it comes.
+    settings.reset();
+    clear_databases();
+    Core core;
+    OpenMagnetics::Coil coil;
+    OpenMagnetics::Inputs inputs;
+    prepare_test_parameters(0, 25, 100000, 40, 200e-6, OpenMagneticsTesting::get_ground_gap(0.0005), "ETD 29", "3C97",
+                            core, coil, inputs, 2);
+    auto operatingPoint = inputs.get_operating_point(0);
+    REQUIRE(operatingPoint.get_excitations_per_winding().size() == 1);
+    auto excitation = operatingPoint.get_excitations_per_winding()[0];
+    REQUIRE(excitation.get_voltage());
+    REQUIRE(excitation.get_current());
+    auto tripledCurrent = OpenMagnetics::Inputs::get_excitation_with_proportional_current(excitation, 3).get_current().value();
+    double currentPeak = 0;
+    const auto currentData = excitation.get_current()->get_waveform().value().get_data();
+    for (double value : currentData) {
+        currentPeak = std::max(currentPeak, std::abs(value));
+    }
+    REQUIRE(currentPeak > 0);
+
+    MagnetizingInductance model;
+
+    auto withCurrent = operatingPoint;
+    withCurrent.get_mutable_excitations_per_winding()[0].set_magnetizing_current(tripledCurrent);
+    model.calculate_inductance_and_magnetic_flux_density(core, coil, &withCurrent);
+
+    auto onlyMagnetizingCurrent = operatingPoint;
+    onlyMagnetizingCurrent.get_mutable_excitations_per_winding()[0].set_current(std::nullopt);
+    onlyMagnetizingCurrent.get_mutable_excitations_per_winding()[0].set_magnetizing_current(tripledCurrent);
+    model.calculate_inductance_and_magnetic_flux_density(core, coil, &onlyMagnetizingCurrent);
+
+    INFO("current peak " << currentPeak << " A; magnetizing current peak with the winding current "
+         << magnetizing_current_peak(withCurrent) << " A, with only a tripled magnetizing current "
+         << magnetizing_current_peak(onlyMagnetizingCurrent) << " A");
+    CHECK_THAT(magnetizing_current_peak(withCurrent), Catch::Matchers::WithinRel(currentPeak, 0.02));
+    CHECK_THAT(magnetizing_current_peak(onlyMagnetizingCurrent), Catch::Matchers::WithinRel(3 * currentPeak, 0.02));
+}
