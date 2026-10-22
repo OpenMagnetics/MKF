@@ -925,6 +925,9 @@ std::vector<std::pair<Mas, double>> CoreAdviser::filter_standard_cores_power_app
 
     MagneticCoreFilterAreaProduct filterAreaProduct(inputs);
     MagneticCoreFilterEnergyStored filterEnergyStored(inputs, _models);
+    // ABT #1891: the ferrite path's energy cull (see its call). A voltage-driven design passes it.
+    MagneticCoreFilterEnergyStored filterEnergyStoredFerrite(inputs, _models);
+    filterEnergyStoredFerrite.set_pass_voltage_driven(true);
     MagneticCoreFilterCost filterCost(inputs);
     MagneticCoreFilterLosses filterLosses(inputs, _models, get_application());
     MagneticCoreFilterDimensions filterDimensions;
@@ -938,6 +941,9 @@ std::vector<std::pair<Mas, double>> CoreAdviser::filter_standard_cores_power_app
     filterEnergyStored.set_scorings(&_scorings);
     filterEnergyStored.set_filter_configuration(&_filterConfiguration);
     filterEnergyStored.set_cache_usage(false);
+    filterEnergyStoredFerrite.set_scorings(&_scorings);
+    filterEnergyStoredFerrite.set_filter_configuration(&_filterConfiguration);
+    filterEnergyStoredFerrite.set_cache_usage(false);
     filterCost.set_scorings(&_scorings);
     filterCost.set_filter_configuration(&_filterConfiguration);
     filterCost.set_cache_usage(false);
@@ -1045,6 +1051,13 @@ std::vector<std::pair<Mas, double>> CoreAdviser::filter_standard_cores_power_app
         // Filter by saturation
         cores = filterSaturation.filter_magnetics(&cores, inputs, 1, true);
         log_stage("Saturation (ferrite)" + stage, cores.size());
+
+        // ABT #1891: drop the cores whose gapped core cannot store the energy the inductor needs
+        // (EnergyStored, as the powder path runs it), before the pre-loss prune ranks the pool. A cull
+        // only (weight 0): it adds no score and does not re-rank. Without it, cheap cores that cannot
+        // hold the energy outscored the ones that can and pushed them out of the pruned pool.
+        cores = filterEnergyStoredFerrite.filter_magnetics(&cores, inputs, 0, true);
+        log_stage("EnergyStored (ferrite)" + stage, cores.size());
 
         // Prune to top candidates by accumulated score before the expensive Loss filter
         // (which sweeps N per core). Cores already losing on cost+dimensions+inductance

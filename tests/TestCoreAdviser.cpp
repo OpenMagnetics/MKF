@@ -4322,6 +4322,23 @@ TEST_CASE("Test_CoreAdviser_Temperature_Walk_Counts_Parts_Post_Processing_Keeps"
     settings.reset();
 }
 
+TEST_CASE("Test_MagneticAdviser_Huge_Losses_Ferrite_Energy_Cull_Keeps_Windable_Cores", "[adviser][core-adviser][abt-1891]") {
+    // huge_losses, MagneticAdviser, 5 asked. After ABT #1875 the rescued cheap ferrite cores that
+    // cannot store the inductor's energy outscored the cores that can in the pre-loss prune, so
+    // every core the MagneticAdviser wound failed its temperature and it returned nothing. The
+    // ferrite path's EnergyStored cull (ABT #1891) drops them before the prune; the gate run gave
+    // 4 designs (top 98 E 31/13/9, 2 stacks).
+    settings.reset();
+    clear_databases();
+    settings.set_coil_delimit_and_compact(true);
+    auto inputs = load_abt1875_inputs("huge_losses.json");
+    MagneticAdviser magneticAdviser;
+    auto results = magneticAdviser.get_advised_magnetic(inputs, 5);
+    INFO(results.size() << " designs");
+    CHECK(results.size() >= 3);
+    settings.reset();
+}
+
 // ABT #1785 guard: the first filter of the available-cores pass copies only the survivors its
 // score-cull keeps. filter_magnetics_from(source, ..., keepBest) must give exactly what copying
 // every survivor, sorting and resize(keepBest) gives (same members, order, scores and recorded

@@ -238,8 +238,13 @@ class MagneticFilterEnergyStored : public MagneticFilter {
         std::map<std::string, std::string> _models;
         MagneticEnergy _magneticEnergy;
         double _requiredMagneticEnergy;
+        // ABT #1891: when set, a design that is not an inductor (its windings are voltage-driven) passes:
+        // its flux is the saturation filter's (Faraday) check, and 1/2 L I^2 of the spec's magnetizing
+        // inductance and current is not an energy it has to store.
+        bool _passVoltageDriven = false;
 
     public:
+        void set_pass_voltage_driven(bool value) { _passVoltageDriven = value; }
         MagneticFilterEnergyStored() {};
         MagneticFilterEnergyStored(Inputs inputs);
         MagneticFilterEnergyStored(Inputs inputs, std::map<std::string, std::string> models);

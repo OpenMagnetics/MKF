@@ -1220,6 +1220,60 @@ TEST_CASE("Processed-only excitation advises without a bad optional access (ABT 
     CHECK_THAT(requiredEnergy, Catch::Matchers::WithinRel(1.25e-3, 0.05));
 }
 
+TEST_CASE("EnergyStored passes a voltage-driven design only when told to, never an inductor (ABT #1891)",
+          "[adviser][magnetic-filter][abt-1891]") {
+    // The core adviser's ferrite path culls with EnergyStored before its pre-loss prune. A
+    // transformer's windings are voltage-driven: its flux is the saturation filter's check, and
+    // 1/2 L I^2 of its magnetizing inductance and current is not an energy it has to store, so the
+    // ferrite cull passes it (set_pass_voltage_driven). An inductor is still judged on its energy.
+    auto make_inputs = [](bool transformer) {
+        json excitation = json();
+        excitation["frequency"] = 100000;
+        excitation["current"]["processed"]["dutyCycle"] = 0.5;
+        excitation["current"]["processed"]["label"] = "Triangular";
+        excitation["current"]["processed"]["offset"] = 0;
+        excitation["current"]["processed"]["peakToPeak"] = 10;
+        json operatingPoint = json();
+        operatingPoint["name"] = "Nominal";
+        operatingPoint["conditions"]["ambientTemperature"] = 25;
+        json inputsJson = json();
+        if (transformer) {
+            inputsJson["designRequirements"]["magnetizingInductance"]["minimum"] = 1e-3;
+            inputsJson["designRequirements"]["turnsRatios"] = json::array({json{{"nominal", 1}}});
+            inputsJson["designRequirements"]["isolationSides"] = json::array({"primary", "secondary"});
+            // A transformer's required energy is read from its magnetizing current.
+            excitation["magnetizingCurrent"] = excitation["current"];
+            excitation["magnetizingCurrent"]["processed"]["peak"] = 5;
+            operatingPoint["excitationsPerWinding"] = json::array({excitation, excitation});
+        }
+        else {
+            inputsJson["designRequirements"]["magnetizingInductance"]["nominal"] = 1e-3;
+            inputsJson["designRequirements"]["turnsRatios"] = json::array();
+            operatingPoint["excitationsPerWinding"] = json::array({excitation});
+        }
+        inputsJson["operatingPoints"] = json::array({operatingPoint});
+        return OpenMagnetics::Inputs(inputsJson);
+    };
+    auto magnetic = OpenMagneticsTesting::get_quick_magnetic("E 13/7/4", OpenMagneticsTesting::get_ground_gap(1e-4), {10, 10});
+
+    for (bool transformer : {true, false}) {
+        INFO((transformer ? "transformer" : "inductor"));
+        auto inputs = make_inputs(transformer);
+        OpenMagnetics::MagneticEnergy magneticEnergy;
+        const double required = OpenMagnetics::resolve_dimensional_values(magneticEnergy.calculate_required_magnetic_energy(inputs));
+        const double storable = magneticEnergy.calculate_core_maximum_magnetic_energy(magnetic.get_core(), inputs.get_operating_point(0));
+        INFO("required " << required << " J, storable " << storable << " J");
+        // The core cannot hold the energy, so the plain filter rejects it either way.
+        REQUIRE(storable < required * OpenMagnetics::defaults.coreAdviserThresholdValidity);
+        OpenMagnetics::MagneticFilterEnergyStored plain(inputs, {});
+        CHECK_FALSE(plain.evaluate_magnetic(&magnetic, &inputs).first);
+
+        OpenMagnetics::MagneticFilterEnergyStored passVoltageDriven(inputs, {});
+        passVoltageDriven.set_pass_voltage_driven(true);
+        CHECK(passVoltageDriven.evaluate_magnetic(&magnetic, &inputs).first == transformer);
+    }
+}
+
 // ABT #1410: design mode holds maximumDimensions as the part can be mounted. A bobbin-wound
 // part keeps its height (laying it down needs a horizontal bobbin the design doesn't have) but
 // may be turned on the board (width and depth swap). A toroid mounts flat or on edge on a

@@ -37,7 +37,8 @@ std::pair<bool, double> MagneticFilterEnergyStored::evaluate_magnetic(Magnetic* 
         double storableEnergy = _magneticEnergy.calculate_core_maximum_magnetic_energy(magnetic->get_core(), operatingPoint);
         totalStorableMagneticEnergy = std::max(totalStorableMagneticEnergy, storableEnergy);
 
-        if (totalStorableMagneticEnergy >= _requiredMagneticEnergy * defaults.coreAdviserThresholdValidity) {
+        const bool voltageDrivenPass = _passVoltageDriven && !is_inductor(*inputs);
+        if (voltageDrivenPass || totalStorableMagneticEnergy >= _requiredMagneticEnergy * defaults.coreAdviserThresholdValidity) {
             if (outputs != nullptr) {
                 while (outputs->size() < operatingPointIndex + 1) {
                     outputs->push_back(Outputs());

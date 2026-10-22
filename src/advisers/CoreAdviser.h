@@ -477,6 +477,7 @@ class CoreAdviser {
 
         public:
             MagneticCoreFilterEnergyStored(Inputs inputs, std::map<std::string, std::string> models);
+            void set_pass_voltage_driven(bool value) { _filter.set_pass_voltage_driven(value); }
             std::vector<std::pair<Magnetic, double>> filter_magnetics(std::vector<std::pair<Magnetic, double>>* unfilteredMagnetics, Inputs inputs, double weight=1, bool firstFilter=false);
     };
     
