@@ -2598,6 +2598,13 @@ TEST_CASE("Choke corpus: corrected model against measured RedExpert curves", "[.
     // Every part the corpus lists that this build could not run, with why. Counted and named
     // below, and they fail the case: a part dropped without a word changes what the medians mean.
     std::vector<std::pair<std::string, std::string>> unrunnable;
+    // Parts the CORPUS itself declares not runnable: "notRunnable": {"reason": "..."} on the part's
+    // dataset_all.json row, written when the stored construction is known to be wrong and no source
+    // gives the right one (e.g. a winding that cannot fit its core). They are listed with the
+    // corpus's reason and counted apart, and do not fail the case. The exclusion lives in the data,
+    // not here, so it is visible where the part is recorded; a mark without a reason is not a mark.
+    // An UNMARKED part that cannot run still fails below.
+    std::vector<std::pair<std::string, std::string>> markedNotRunnable;
     size_t corpusParts = 0;
 
     for (const auto& entry : dataset) {
@@ -2608,6 +2615,17 @@ TEST_CASE("Choke corpus: corrected model against measured RedExpert curves", "[.
         Row row;
         row.part = entry["part"].is_string() ? entry["part"].get<std::string>()
                                              : std::to_string(entry["part"].get<int64_t>());
+        if (entry.contains("notRunnable")) {
+            const auto& mark = entry["notRunnable"];
+            if (mark.is_object() && mark.contains("reason") && mark["reason"].is_string() &&
+                !mark["reason"].get<std::string>().empty()) {
+                markedNotRunnable.emplace_back(row.part, mark["reason"].get<std::string>());
+            }
+            else {
+                unrunnable.emplace_back(row.part, "corpus marks it notRunnable without a reason string");
+            }
+            continue;
+        }
         const auto& measured = entry["meas"];
         if (!measured.contains("f_peak") || measured["f_peak"].is_null()) {
             unrunnable.emplace_back(row.part, "corpus has no measured peak frequency");
@@ -2711,9 +2729,13 @@ TEST_CASE("Choke corpus: corrected model against measured RedExpert curves", "[.
     }
 
     std::cout << "\n=== WE common-mode choke corpus: ran " << rows.size() << " of " << corpusParts
-              << " parts; could NOT run " << unrunnable.size() << " ===\n";
+              << " parts; could NOT run " << unrunnable.size() << "; marked NOT RUNNABLE by the corpus "
+              << markedNotRunnable.size() << " ===\n";
     for (const auto& [part, reason] : unrunnable) {
         std::cout << "  NOT RUN " << part << ": " << reason.substr(0, 240) << "\n";
+    }
+    for (const auto& [part, reason] : markedNotRunnable) {
+        std::cout << "  NOT RUNNABLE " << part << " (corpus mark): " << reason << "\n";
     }
     REQUIRE(rows.size() > 0);
 
@@ -2846,8 +2868,11 @@ TEST_CASE("Choke corpus: corrected model against measured RedExpert curves", "[.
         REQUIRE(std::isfinite(ratio));
         REQUIRE(ratio > 0);
     }
-    // Last, so the report above is printed in full: every corpus part must have run.
-    INFO(unrunnable.size() << " of " << corpusParts << " corpus parts could not be run; they are listed above as NOT RUN");
+    // Last, so the report above is printed in full: every corpus part not marked notRunnable must
+    // have run.
+    INFO(unrunnable.size() << " of " << corpusParts << " corpus parts could not be run; they are listed above as NOT RUN ("
+         << markedNotRunnable.size() << " more are marked NOT RUNNABLE by the corpus)");
+    CHECK(rows.size() + unrunnable.size() + markedNotRunnable.size() == corpusParts);
     CHECK(unrunnable.empty());
 }
 
