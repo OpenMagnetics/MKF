@@ -7,6 +7,7 @@
 #include "support/Settings.h"
 #include "support/Painter.h"
 #include "processors/Sweeper.h"
+#include "physical_models/Impedance.h"
 #include "processors/CircuitSimulatorInterface.h"
 #include "advisers/MagneticAdviser.h"
 #include "TestingUtils.h"
@@ -2511,10 +2512,12 @@ TEST_CASE("Autocomplete refuses to call an insulated-looking wire bare", "[suppo
 // wire enamel a second time as air. The two push the series gap in opposite directions, so the
 // corpus was matched with both present and neither could be corrected alone without moving it.
 //
-// This walks the corpus and reports where the corrected model lands. It asserts only that the
-// run completed and stayed finite: the numbers are the deliverable, and pinning an agreement
-// ratio would turn a measurement into a target. Hidden by default ([.]) because it needs an
-// external corpus and runs a few hundred impedance sweeps. Run with:
+// This walks the corpus and reports where the corrected model lands. It asserts that EVERY part
+// in the corpus ran and stayed finite -- each part it cannot run is counted and named, and fails
+// the case, because a part silently dropped changes the corpus the numbers describe. It pins no
+// agreement ratio: the numbers are the deliverable, and pinning one would turn a measurement into
+// a target. Hidden by default ([.]) because it needs an external corpus and runs a few hundred
+// impedance sweeps. Run with:
 //     ./MKF_tests "[cmc-corpus]"
 TEST_CASE("Choke corpus: corrected model against measured RedExpert curves", "[.][cmc-corpus]") {
     const std::filesystem::path corpusRoot = "/home/alf/wuerth/cmc_score";
@@ -2539,11 +2542,12 @@ TEST_CASE("Choke corpus: corrected model against measured RedExpert curves", "[.
         double uncasedInductance = 0, uncasedCapacitance = 0, uncasedPeak = 0;
     };
 
-    // The same two metrics the corpus itself was built with, read off a swept |Z| curve:
-    // the low-frequency inductive line, and the 1/(omega C) fall above the peak. Reading BOTH
-    // is what separates a capacitance error from an inductance one -- the peak frequency alone
-    // cannot, since it moves as 1/sqrt(L C) and a compensating pair looks like agreement.
-    struct CurveMetrics { double peakFrequency = 0, inductance = 0, capacitance = 0; };
+    // The same metrics the corpus itself was built with (cmc_score/curve_metrics.py), read off a
+    // swept |Z| curve: the peak, and the 1/(omega C) fall above it. Reading the capacitance AND the
+    // inductance is what separates the two legs -- the peak frequency alone cannot, since it moves
+    // as 1/sqrt(L C) and a compensating pair looks like agreement. The inductance is NOT read here:
+    // see inductanceInMeasuredWindow.
+    struct CurveMetrics { double peakFrequency = 0, capacitance = 0; };
     auto metricsOf = [](const std::vector<double>& frequencies, const std::vector<double>& impedances) {
         CurveMetrics metrics;
         size_t peakIndex = 0;
@@ -2553,20 +2557,6 @@ TEST_CASE("Choke corpus: corrected model against measured RedExpert curves", "[.
             }
         }
         metrics.peakFrequency = frequencies[peakIndex];
-
-        std::vector<double> inductive;
-        for (size_t i = 0; i < frequencies.size(); ++i) {
-            if (frequencies[i] < metrics.peakFrequency / 30 && impedances[i] > 0) {
-                inductive.push_back(impedances[i] / (2 * std::numbers::pi * frequencies[i]));
-            }
-        }
-        if (inductive.size() >= 3) {
-            // The upper third of the inductive run: above the R_dc plateau, below the peak.
-            std::vector<double> upper(inductive.end() - std::max<size_t>(3, inductive.size() / 3),
-                                      inductive.end());
-            std::sort(upper.begin(), upper.end());
-            metrics.inductance = upper[upper.size() / 2];
-        }
 
         std::vector<double> capacitive;
         for (size_t j = peakIndex + 2; j + 1 < frequencies.size(); ++j) {
@@ -2585,19 +2575,52 @@ TEST_CASE("Choke corpus: corrected model against measured RedExpert curves", "[.
         }
         return metrics;
     };
+
+    // The inductive line, read at the SAME frequencies as the measurement: the corpus stores the
+    // measured curve's window (the upper third of its points below ITS peak / 30) as
+    // meas.L_window, and the model's |Z|/(2 pi f) is evaluated at exactly those frequencies, median.
+    // Reading each curve below its own peak compared different frequencies whenever the modelled
+    // peak was off: on the SC-1K107 chokes the model resonates ~7x high (the capacitance leg), so
+    // its L was read ~7x higher up a nanocrystalline mu(f) falling ~f^-0.86, and looked 2.5-3.5x
+    // low while it matches the measurement at equal frequency (ABT #976).
+    auto inductanceInMeasuredWindow = [](OpenMagnetics::Magnetic& magnetic, const std::vector<double>& window) {
+        OpenMagnetics::Impedance impedanceModel;
+        auto model = impedanceModel.build_common_mode_impedance_model(magnetic);
+        std::vector<double> inductances;
+        for (double frequency : window) {
+            inductances.push_back(std::abs(impedanceModel.impedance_from_model(model, frequency)) /
+                                  (2 * std::numbers::pi * frequency));
+        }
+        std::sort(inductances.begin(), inductances.end());
+        return inductances[inductances.size() / 2];
+    };
     std::vector<Row> rows;
+    // Every part the corpus lists that this build could not run, with why. Counted and named
+    // below, and they fail the case: a part dropped without a word changes what the medians mean.
+    std::vector<std::pair<std::string, std::string>> unrunnable;
+    size_t corpusParts = 0;
 
     for (const auto& entry : dataset) {
         if (!entry.contains("part") || !entry.contains("meas")) {
             continue;
         }
-        const auto& measured = entry["meas"];
-        if (!measured.contains("f_peak") || measured["f_peak"].is_null()) {
-            continue;
-        }
+        ++corpusParts;
         Row row;
         row.part = entry["part"].is_string() ? entry["part"].get<std::string>()
                                              : std::to_string(entry["part"].get<int64_t>());
+        const auto& measured = entry["meas"];
+        if (!measured.contains("f_peak") || measured["f_peak"].is_null()) {
+            unrunnable.emplace_back(row.part, "corpus has no measured peak frequency");
+            continue;
+        }
+        std::vector<double> measuredWindow;
+        if (measured.contains("L_window") && measured["L_window"].is_array()) {
+            measuredWindow = measured["L_window"].get<std::vector<double>>();
+        }
+        if (measuredWindow.empty()) {
+            unrunnable.emplace_back(row.part, "corpus has no measured inductance window (meas.L_window); rebuild it with curve_metrics.py");
+            continue;
+        }
         row.measured = measured["f_peak"].get<double>();
         if (measured.contains("L_low") && measured["L_low"].is_number()) {
             row.measuredInductance = measured["L_low"].get<double>();
@@ -2616,6 +2639,7 @@ TEST_CASE("Choke corpus: corrected model against measured RedExpert curves", "[.
 
         const std::filesystem::path partPath = corpusRoot / "parts_all" / (row.part + ".json");
         if (!std::filesystem::exists(partPath)) {
+            unrunnable.emplace_back(row.part, "no parts_all/" + row.part + ".json");
             continue;
         }
         try {
@@ -2624,6 +2648,7 @@ TEST_CASE("Choke corpus: corrected model against measured RedExpert curves", "[.
             if (magneticJson.contains("magnetic")) {
                 magneticJson = magneticJson["magnetic"];
             }
+            OpenMagnetics::Magnetic magnetic(magneticJson);
             const auto& coreFunctional = magneticJson["core"]["functionalDescription"];
             if (!coreFunctional.contains("coating") || coreFunctional["coating"].is_null()) {
                 row.jacket = "no coating (defaulted)";
@@ -2636,27 +2661,28 @@ TEST_CASE("Choke corpus: corrected model against measured RedExpert curves", "[.
                 std::string type = coatingRecord.contains("type") && coatingRecord["type"].is_string()
                                        ? coatingRecord["type"].get<std::string>()
                                        : "untyped";
-                // thickness is required by MAS and is a dimensionWithTolerance: resolve it, and let
-                // .at() throw on a record that lacks it instead of labelling it 0 mm.
-                double thickness = OpenMagnetics::resolve_dimensional_values(
-                    coatingRecord.at("thickness").get<MAS::DimensionWithTolerance>());
+                // The thickness as MKF read it, not off the raw json: corpus parts saved before MAS
+                // efa299f store it as a bare number, which only the loader's migration turns into the
+                // dimensionWithTolerance the schema now has (ABT #1995). A record without one throws.
+                double thickness = magnetic.get_core().get_coating_thickness();
                 std::ostringstream label;
                 label << type << " case " << std::fixed << std::setprecision(2) << thickness * 1e3 << " mm";
                 row.jacket = label.str();
             }
-            OpenMagnetics::Magnetic magnetic(magneticJson);
             auto curve = Sweeper::sweep_common_mode_impedance_over_frequency(magnetic, 1e3, 2e8, 400);
             const auto& frequencies = curve.get_x_points();
             const auto& impedances = curve.get_y_points();
             if (frequencies.size() < 2 || impedances.size() != frequencies.size()) {
+                unrunnable.emplace_back(row.part, "swept curve has " + std::to_string(frequencies.size()) + " points");
                 continue;
             }
             auto modelled = metricsOf(frequencies, impedances);
             if (!std::isfinite(modelled.peakFrequency) || modelled.peakFrequency <= 0) {
+                unrunnable.emplace_back(row.part, "modelled peak frequency is not finite and positive");
                 continue;
             }
             row.corrected = modelled.peakFrequency;
-            row.correctedInductance = modelled.inductance;
+            row.correctedInductance = inductanceInMeasuredWindow(magnetic, measuredWindow);
             row.correctedCapacitance = modelled.capacitance;
 
             // A/B on the case itself: is the jacket what is suppressing the capacitance?
@@ -2667,18 +2693,28 @@ TEST_CASE("Choke corpus: corrected model against measured RedExpert curves", "[.
                 auto uncasedCurve = Sweeper::sweep_common_mode_impedance_over_frequency(uncased, 1e3, 2e8, 400);
                 auto uncasedMetrics = metricsOf(uncasedCurve.get_x_points(), uncasedCurve.get_y_points());
                 row.uncasedPeak = uncasedMetrics.peakFrequency;
-                row.uncasedInductance = uncasedMetrics.inductance;
+                row.uncasedInductance = inductanceInMeasuredWindow(uncased, measuredWindow);
                 row.uncasedCapacitance = uncasedMetrics.capacitance;
             }
         }
-        catch (const std::exception&) {
-            continue;  // a part the current model cannot build is not evidence either way
+        catch (const std::exception& exception) {
+            // Not evidence either way about the model -- but never dropped silently.
+            unrunnable.emplace_back(row.part, exception.what());
+            continue;
         }
         if (row.corrected > 0 && row.measured > 0) {
             rows.push_back(row);
         }
+        else {
+            unrunnable.emplace_back(row.part, "measured or modelled peak frequency is not positive");
+        }
     }
 
+    std::cout << "\n=== WE common-mode choke corpus: ran " << rows.size() << " of " << corpusParts
+              << " parts; could NOT run " << unrunnable.size() << " ===\n";
+    for (const auto& [part, reason] : unrunnable) {
+        std::cout << "  NOT RUN " << part << ": " << reason.substr(0, 240) << "\n";
+    }
     REQUIRE(rows.size() > 0);
 
     auto report = [](const std::string& label, std::vector<double> ratios) {
@@ -2713,8 +2749,8 @@ TEST_CASE("Choke corpus: corrected model against measured RedExpert curves", "[.
     }
 
     std::cout << "\n=== WE common-mode choke corpus: modelled peak frequency / measured ===\n";
-    report("BEFORE ABT #964 (corpus as recorded)", previousAll);
-    report("AFTER  ABT #964 (this build)        ", correctedAll);
+    report("BEFORE the correction (corpus as recorded)", previousAll);
+    report("AFTER  the correction (this build)        ", correctedAll);
     report("  of which jacket was DEFAULTED     ", correctedDefaulted);
     report("  of which jacket was EXPLICIT      ", correctedExplicit);
     std::cout << "(a ratio above 1 means the model resonates HIGH, i.e. it under-predicts"
@@ -2729,7 +2765,12 @@ TEST_CASE("Choke corpus: corrected model against measured RedExpert curves", "[.
                         {"measured", row.measured},
                         {"previous", row.previous},
                         {"corrected", row.corrected},
-                        {"coatingWasDefaulted", row.coatingWasDefaulted}});
+                        {"coatingWasDefaulted", row.coatingWasDefaulted},
+                        {"jacket", row.jacket},
+                        {"measuredInductance", row.measuredInductance},
+                        {"correctedInductance", row.correctedInductance},
+                        {"measuredCapacitance", row.measuredCapacitance},
+                        {"correctedCapacitance", row.correctedCapacitance}});
     }
     std::ofstream dumpStream(dumpPath);
     dumpStream << dump.dump();
@@ -2805,6 +2846,9 @@ TEST_CASE("Choke corpus: corrected model against measured RedExpert curves", "[.
         REQUIRE(std::isfinite(ratio));
         REQUIRE(ratio > 0);
     }
+    // Last, so the report above is printed in full: every corpus part must have run.
+    INFO(unrunnable.size() << " of " << corpusParts << " corpus parts could not be run; they are listed above as NOT RUN");
+    CHECK(unrunnable.empty());
 }
 
 // ====================================================================================// ABT #1164: the bobbin wall is a dielectric, not air.
