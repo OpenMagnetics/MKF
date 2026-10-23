@@ -589,7 +589,7 @@ std::vector<std::optional<double>> Coil::terminal_exit_slots(const std::vector<C
             throw InvalidInputException(ErrorCode::INVALID_INPUT,
                 "The terminal route of " + label_of(routes[index]) + " carries a planned bend radius of " +
                 std::to_string(routes[index].plannedBendRadius * 1e3) + " mm, below its coated radius " +
-                std::to_string(diameters[index] / 2 * 1e3) + " mm, so its lane cannot be planned for its bends (ABT #1705).");
+                std::to_string(diameters[index] / 2 * 1e3) + " mm, so its lane cannot be planned for its bends.");
         }
     }
     const double tolerance = 1e-9;
@@ -754,7 +754,7 @@ std::vector<std::optional<double>> Coil::terminal_exit_slots(const std::vector<C
                 if (!anchor) {
                     // The highest edge clears every pair by construction, so this is a defect here.
                     throw std::logic_error("terminal_exit_slots: no anchor clears the " + terminal_route_label(routes[members.front()]) +
-                                           " bundle, although the highest blocking edge should (ABT #1705).");
+                                           " bundle, although the highest blocking edge should.");
                 }
                 for (size_t position = 0; position < members.size(); ++position) {
                     const double x = anchor.value() + offsets[position];
@@ -799,14 +799,14 @@ void Coil::check_terminal_lanes(const std::vector<ConnectionRoute>& routes, cons
                        terminal_route_label(routes[j]) + " at x " + millimetres(slots[j].value()) + ": ";
             };
             if (gap < radii - tolerance && section < radii - tolerance) {
-                throw std::logic_error("Terminal lanes collide (ABT #1705): " + witness() + "their footprints along the connection face are " +
+                throw std::logic_error("Terminal lanes collide: " + witness() + "their footprints along the connection face are " +
                                        millimetres(gap) + " apart and their routes in the winding window " + millimetres(section) +
                                        ", both under the " + millimetres(radii) + " their coated radii need.");
             }
             if (realWinding && !same_bundle(routes[i], routes[j])) {
                 const auto [reach, requiredGap] = cross_bundle_clearance(routes[i], diameters[i], routes[j], diameters[j]);
                 if (section < reach - tolerance && gap < requiredGap - tolerance) {
-                    throw std::logic_error("Terminal lanes collide (ABT #1705): " + witness() + "the two leads belong to different bundles and their routes in the winding window come " +
+                    throw std::logic_error("Terminal lanes collide: " + witness() + "the two leads belong to different bundles and their routes in the winding window come " +
                                            millimetres(section) + " apart, within the " + millimetres(reach) +
                                            " their coated radii and bends reach, yet their footprints along the connection face stand only " +
                                            millimetres(gap) + " apart, under the " + millimetres(requiredGap) +

@@ -76,7 +76,7 @@ void MagneticsCache::throw_if_frozen(const std::string& operation) {
             ErrorCode::INVALID_INPUT,
             "magneticsCache::" + operation + " while the databases are frozen: the catalogue is "
             "shared between threads, so mutating it inside a parallel region is a data race. "
-            "Load before the parallel region, or unfreeze first (ABT #817).");
+            "Load before the parallel region, or unfreeze first.");
     }
 }
 

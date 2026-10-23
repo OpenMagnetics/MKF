@@ -125,7 +125,7 @@ void set_databases_frozen(bool frozen) {
 static void throw_if_databases_frozen(const char* operation) {
     if (databases_frozen()) {
         throw std::runtime_error(
-            std::string("ABT #113: '") + operation +
+            std::string("'") + operation +
             "' would mutate a shared catalog while databases are frozen (a parallel "
             "region is active). Call load_all_databases() BEFORE set_databases_frozen(true), "
             "and never lazy-load, reload, or clear catalogs from worker threads.");

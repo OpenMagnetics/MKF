@@ -457,7 +457,7 @@ double InsulationCoordinator::lead_sleeve_overlap_into_winding(Wire& wire) {
     };
     if (!rules.contains("leadSleeve")) {
         throw std::runtime_error("src/data/dfm_rules.json has no leadSleeve block; the sleeve's overlap "
-                                 "into the winding is rule data, not a constant (ABT #1269)");
+                                 "into the winding is rule data, not a constant");
     }
     const auto& block = rules.at("leadSleeve");
     const double turns = number(block, "captureTurnsIntoWinding");

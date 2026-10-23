@@ -16,6 +16,10 @@
 #include "constructive_models/Coil.h"
 #include "constructive_models/Wire.h"
 #include "physical_models/WireBend.h"
+#include "physical_models/MagneticField.h"
+#include "physical_models/StrayCapacitance.h"
+#include "physical_models/WindingOhmicLosses.h"
+#include "support/CoilMesher.h"
 #include "support/Exceptions.h"
 #include "support/Settings.h"
 #include "support/Utils.h"
@@ -138,4 +142,79 @@ TEST_CASE("The ideal layout is not judged against the wire's bend limit",
     set_former_corner_radius(coil, 0.0);  // as sharp as a former can be asked to be
     REQUIRE_NOTHROW(coil.wind());
     REQUIRE(coil.get_turns_description());
+}
+
+// User-facing text states the fact, never a tracker number: exception messages that used to cite
+// internal tickets ("Real winding (ABT #1487): ...", "Neutral window field (ABT #1304): ...") are
+// read by users who cannot look those numbers up. Each case below triggers one such refusal and
+// checks its what() carries no "ABT" while still saying what went wrong.
+TEST_CASE("User-facing refusals state the fact and cite no tracker numbers",
+          "[constructive-model][coil][wire-bend][no-abt-in-messages]") {
+    auto& settings = Settings::GetInstance();
+    settings.reset();
+    auto messageOf = [](auto&& call) {
+        std::string message;
+        try {
+            call();
+        }
+        catch (const std::exception& exception) {
+            message = exception.what();
+        }
+        return message;
+    };
+    auto checkClean = [](const std::string& message, const std::string& fact) {
+        INFO(message);
+        REQUIRE_FALSE(message.empty());
+        CHECK(message.find(fact) != std::string::npos);
+        CHECK(message.find("ABT") == std::string::npos);
+        CHECK(message.find("abt #") == std::string::npos);
+    };
+
+    SECTION("the real-winding bend refusal (Coil)") {
+        auto coil = build_test_coil();
+        settings.set_coil_use_real_winding_geometry(true);
+        auto wire = coil.resolve_wire(0);
+        const double flexibilityRadius =
+            WireBend::get_minimum_bend_radius(wire, BendCriterion::FLEXIBILITY, BendAxis::ROUND);
+        set_former_corner_radius(coil, flexibilityRadius);
+        REQUIRE_NOTHROW(coil.wind());
+        const double justUnder = 0.99 * flexibilityRadius - innermost_turn_standoff(coil);
+        REQUIRE(justUnder > 0);
+        set_former_corner_radius(coil, justUnder);
+        checkClean(messageOf([&]() { coil.wind(); }), "Real winding only");
+    }
+
+    SECTION("the neutral window field on a toroid (CoilMesher)") {
+        auto magnetic = OpenMagneticsTesting::get_quick_magnetic("T 36/23/15", json::array(), {12, 12}, 1, "3C90");
+        checkClean(messageOf([&]() { CoilMesher::generate_window_wall_sheets(magnetic, std::nullopt); }),
+                   "Neutral window field: toroids have no rectangular window boundary");
+    }
+
+    SECTION("the parallel current split losses with no per-turn losses (WindingOhmicLosses)") {
+        auto coil = build_test_coil();
+        REQUIRE(coil.get_turns_description());
+        checkClean(messageOf([&]() {
+                       WindingOhmicLosses::apply_parallel_current_split(coil, WindingLossesOutput(), ParallelCurrentSplit(), 25);
+                   }),
+                   "Parallel current split losses: the split needs the losses per turn and per winding");
+    }
+
+    SECTION("the gap capacitance of an additive gap with no geometrical description (StrayCapacitance)") {
+        auto coil = OpenMagneticsTesting::get_quick_coil({20, 20}, {1, 1}, "ETD 49/25/16", 1,
+                                                         WindingOrientation::CONTIGUOUS,
+                                                         WindingOrientation::OVERLAPPING);
+        auto spacerCore = OpenMagneticsTesting::get_quick_core("ETD 49/25/16", OpenMagneticsTesting::get_spacer_gap(0.001), 1, "N87");
+        spacerCore.set_geometrical_description(std::nullopt);
+        checkClean(messageOf([&]() { StrayCapacitance::core_gap_topology(spacerCore, coil, "winding 0", "winding 1"); }),
+                   "capacitance depends directly on that dielectric");
+    }
+
+    SECTION("a catalogue mutation while the databases are frozen (Utils)") {
+        set_databases_frozen(true);
+        auto message = messageOf([&]() { clear_loaded_cores(); });
+        set_databases_frozen(false);
+        checkClean(message, "would mutate a shared catalog while databases are frozen");
+    }
+
+    settings.reset();
 }

@@ -536,7 +536,7 @@ std::pair<bool, double> MagneticFilterRealWinding::evaluate_magnetic(Magnetic* m
     }
     if (magnetic->get_mutable_coil().is_planar()) {
         throw InvalidInputException(ErrorCode::INVALID_COIL_CONFIGURATION,
-            "Real winding check: a planar coil has no real-winding model (ABT #492)");
+            "Real winding check: a planar coil has no real-winding model");
     }
     std::optional<Inputs> realWindingInputs;
     if (inputs) {

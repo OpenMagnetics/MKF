@@ -908,7 +908,7 @@ std::string ComplexPermeabilityEstimate::summary() const {
     text << "Core material '" << materialName << "': complex permeability is tabulated for mu' from "
          << format_frequency(realSpan.first) << " to " << format_frequency(realSpan.second) << " and for mu'' from "
          << format_frequency(imaginarySpan.first) << " to " << format_frequency(imaginarySpan.second)
-         << "; outside that it is ESTIMATED (ABT #1861) from " << numberClassDonors << " " << materialClass << " donors";
+         << "; outside that it is ESTIMATED from " << numberClassDonors << " " << materialClass << " donors";
     if (!snoekScreened.empty()) {
         text << " (" << snoekScreened.size() << " screened out: mu_i * f(mu'' peak) more than 2 decades off the class median)";
     }

@@ -525,7 +525,7 @@ std::pair<double, double> MagneticFieldStrengthMmfBoundaryModel::calculate_sheet
     const double segmentY = sheet.end[1] - sheet.start[1];
     const double length = hypot(segmentX, segmentY);
     if (!(length > 0)) {
-        throw CalculationException(ErrorCode::CALCULATION_INVALID_RESULT, "Neutral window field (ABT #1304): zero-length wall sheet");
+        throw CalculationException(ErrorCode::CALCULATION_INVALID_RESULT, "Neutral window field: zero-length wall sheet");
     }
     const double tangentX = segmentX / length;
     const double tangentY = segmentY / length;
@@ -539,7 +539,7 @@ std::pair<double, double> MagneticFieldStrengthMmfBoundaryModel::calculate_sheet
     const double squaredDistanceStart = u * u + v * v;
     const double squaredDistanceEnd = (u - length) * (u - length) + v * v;
     if (!(squaredDistanceStart > 0) || !(squaredDistanceEnd > 0)) {
-        throw CalculationException(ErrorCode::CALCULATION_INVALID_RESULT, "Neutral window field (ABT #1304): field point on a wall sheet's end");
+        throw CalculationException(ErrorCode::CALCULATION_INVALID_RESULT, "Neutral window field: field point on a wall sheet's end");
     }
     const double logTerm = 0.5 * log(squaredDistanceStart / squaredDistanceEnd);
     const double prefactor = current / (2 * std::numbers::pi * length);
@@ -561,7 +561,7 @@ void MagneticFieldStrengthMmfBoundaryModel::setup_window_boundary(Magnetic magne
         const double segmentY = sheet.end[1] - sheet.start[1];
         const double length = hypot(segmentX, segmentY);
         if (!(length > 0)) {
-            throw CalculationException(ErrorCode::CALCULATION_INVALID_RESULT, "Neutral window field (ABT #1304): zero-length wall sheet");
+            throw CalculationException(ErrorCode::CALCULATION_INVALID_RESULT, "Neutral window field: zero-length wall sheet");
         }
         SheetMultipole multipole;
         multipole.centreX = 0.5 * (sheet.start[0] + sheet.end[0]);
@@ -958,7 +958,7 @@ WindingWindowMagneticStrengthFieldPhasorOutput MagneticField::calculate_magnetic
     std::vector<double> dcDividerPerTurn;
     if (parallelCurrentSplit) {
         if (parallelCurrentSplit->strandPerTurn.size() != turns.size()) {
-            throw CalculationException(ErrorCode::CALCULATION_ERROR, "Parallel current split (ABT #1314): split for " + std::to_string(parallelCurrentSplit->strandPerTurn.size()) +
+            throw CalculationException(ErrorCode::CALCULATION_ERROR, "Parallel current split: split for " + std::to_string(parallelCurrentSplit->strandPerTurn.size()) +
                                        " turns, coil has " + std::to_string(turns.size()));
         }
         groupPerTurn = parallelCurrentSplit->strandPerTurn;
@@ -977,13 +977,13 @@ WindingWindowMagneticStrengthFieldPhasorOutput MagneticField::calculate_magnetic
             continue;
         }
         if (!wire.get_conducting_width() || !wire.get_conducting_height()) {
-            throw InvalidInputException(ErrorCode::MISSING_DATA, "Foil screening (ABT #1645): the foil of turn " + turns[turnIndex].get_name() + " has no conducting width or height");
+            throw InvalidInputException(ErrorCode::MISSING_DATA, "Foil screening: the foil of turn " + turns[turnIndex].get_name() + " has no conducting width or height");
         }
         const double conductingWidth = resolve_dimensional_values(wire.get_conducting_width().value());
         const double conductingHeight = resolve_dimensional_values(wire.get_conducting_height().value());
         const auto& coordinates = turns[turnIndex].get_coordinates();
         if (coordinates.size() < 2) {
-            throw InvalidInputException(ErrorCode::MISSING_DATA, "Foil screening (ABT #1645): turn " + turns[turnIndex].get_name() + " has no 2D coordinates");
+            throw InvalidInputException(ErrorCode::MISSING_DATA, "Foil screening: turn " + turns[turnIndex].get_name() + " has no 2D coordinates");
         }
         // In the conductor's own frame (the Binns-Lawrenson kernel's) the width runs along x and the height along y;
         // the turn's rotation turns that frame by +rotation.
@@ -1541,14 +1541,14 @@ WindingWindowMagneticStrengthFieldPhasorOutput MagneticField::calculate_magnetic
                     double amplitude = meshAmplitudePerHarmonicPerWinding.at(harmonicIndex).at(windingIndex);
                     if (amplitude == 0) {
                         if (std::abs(splitCurrentPerTurn[turnIndex]) > 0) {
-                            throw NotImplementedException("Parallel current split (ABT #1314): the parallels of winding " + std::to_string(windingIndex) +
+                            throw NotImplementedException("Parallel current split: the parallels of winding " + std::to_string(windingIndex) +
                                                           " carry a circulating current at " + std::to_string(inducingFields[harmonicIndex].get_frequency()) +
                                                           " Hz where the winding carries none; the inducing mesh has no current to scale");
                         }
                     }
                     else {
                         if (!(dcDividerPerTurn[turnIndex] > 0)) {
-                            throw CalculationException(ErrorCode::CALCULATION_INVALID_RESULT, "Parallel current split (ABT #1314): turn " + std::to_string(turnIndex) +
+                            throw CalculationException(ErrorCode::CALCULATION_INVALID_RESULT, "Parallel current split: turn " + std::to_string(turnIndex) +
                                                        " has no DC current share to rescale");
                         }
                         factor = splitCurrentPerTurn[turnIndex] / (amplitude * dcDividerPerTurn[turnIndex]);
@@ -2225,7 +2225,7 @@ WindingWindowMagneticStrengthFieldPhasorOutput MagneticField::calculate_magnetic
                     screenedWallSums = &wallScreening->second;
                 }
                 if (std::isnan(boundaryFieldX) || std::isnan(boundaryFieldY)) {
-                    throw NaNResultException("NaN found in the MMF_BOUNDARY window field (ABT #1304)");
+                    throw NaNResultException("NaN found in the MMF_BOUNDARY window field");
                 }
                 totalInducedFieldX += boundaryFieldX * netAmpereTurns;
                 totalInducedFieldY += boundaryFieldY * netAmpereTurns;
@@ -3671,7 +3671,7 @@ double split_mean_log(const SplitSection& target, const SplitSection& source) {
     const double y0 = target.y - target.halfHeight, y1 = target.y + target.halfHeight;
     const double area = (x1 - x0) * (y1 - y0);
     if (!(area > 0)) {
-        throw CalculationException(ErrorCode::CALCULATION_INVALID_RESULT, "Parallel current split (ABT #1314): a conductor section has no area");
+        throw CalculationException(ErrorCode::CALCULATION_INVALID_RESULT, "Parallel current split: a conductor section has no area");
     }
     if (source.round) {
         // The disk is its centre filament outside itself: the mean over the rectangle of ln |p - c|.
@@ -3724,7 +3724,7 @@ std::optional<size_t> ParallelCurrentSplit::find_frequency_index(double frequenc
 size_t ParallelCurrentSplit::frequency_index(double frequency) const {
     auto index = find_frequency_index(frequency);
     if (!index) {
-        throw CalculationException(ErrorCode::CALCULATION_ERROR, "Parallel current split (ABT #1314): no split was solved at " + std::to_string(frequency) + " Hz");
+        throw CalculationException(ErrorCode::CALCULATION_ERROR, "Parallel current split: no split was solved at " + std::to_string(frequency) + " Hz");
     }
     return index.value();
 }
@@ -3765,7 +3765,7 @@ std::optional<ParallelCurrentSplit> MagneticField::calculate_parallel_current_sp
         return std::nullopt;
     }
     if (!coil.get_turns_description()) {
-        throw CoilNotProcessedException("Parallel current split (ABT #1314): the coil has no turns description");
+        throw CoilNotProcessedException("Parallel current split: the coil has no turns description");
     }
     const auto turns = coil.get_turns_description().value();
     auto core = magnetic.get_core();
@@ -3789,7 +3789,7 @@ std::optional<ParallelCurrentSplit> MagneticField::calculate_parallel_current_sp
     std::optional<SettingsGuard<bool>> neutralCellsGuard;
     if (impedanceModel) {
         if (settings.get_magnetic_field_mirroring_dimension() < 1) {
-            throw InvalidInputException(ErrorCode::INVALID_INPUT, "Parallel current split (ABT #1314): needs the core image lattice (mirroring dimension >= 1)");
+            throw InvalidInputException(ErrorCode::INVALID_INPUT, "Parallel current split: needs the core image lattice (mirroring dimension >= 1)");
         }
         completeCellsGuard.emplace(settings, &Settings::get_magnetic_field_mirroring_complete_cells, &Settings::set_magnetic_field_mirroring_complete_cells, true);
         neutralCellsGuard.emplace(settings, &Settings::get_magnetic_field_mirroring_neutral_cells, &Settings::set_magnetic_field_mirroring_neutral_cells, true);
@@ -3799,7 +3799,7 @@ std::optional<ParallelCurrentSplit> MagneticField::calculate_parallel_current_sp
     std::vector<int8_t> directionPerWinding = customCurrentDirectionPerWinding ? customCurrentDirectionPerWinding.value() :
                                                                                  CoilMesher::calculate_current_direction_per_winding(coil);
     if (directionPerWinding.size() != numberWindings) {
-        throw InvalidInputException(ErrorCode::INVALID_INPUT, "Parallel current split (ABT #1314): " + std::to_string(directionPerWinding.size()) +
+        throw InvalidInputException(ErrorCode::INVALID_INPUT, "Parallel current split: " + std::to_string(directionPerWinding.size()) +
                                     " current directions for " + std::to_string(numberWindings) + " windings");
     }
 
@@ -3833,7 +3833,7 @@ std::optional<ParallelCurrentSplit> MagneticField::calculate_parallel_current_sp
             SplitSection section;
             if (wire.get_type() == WireType::ROUND) {
                 if (!wire.get_conducting_diameter()) {
-                    throw InvalidInputException(ErrorCode::MISSING_DATA, "Parallel current split (ABT #1314): round wire of turn " + turn.get_name() + " has no conducting diameter");
+                    throw InvalidInputException(ErrorCode::MISSING_DATA, "Parallel current split: round wire of turn " + turn.get_name() + " has no conducting diameter");
                 }
                 section.round = true;
                 section.radius = resolve_dimensional_values(wire.get_conducting_diameter().value()) / 2;
@@ -3845,14 +3845,14 @@ std::optional<ParallelCurrentSplit> MagneticField::calculate_parallel_current_sp
             }
             else {
                 if (!wire.get_conducting_width() || !wire.get_conducting_height()) {
-                    throw InvalidInputException(ErrorCode::MISSING_DATA, "Parallel current split (ABT #1314): the wire of turn " + turn.get_name() + " has no conducting width or height");
+                    throw InvalidInputException(ErrorCode::MISSING_DATA, "Parallel current split: the wire of turn " + turn.get_name() + " has no conducting width or height");
                 }
                 double width = resolve_dimensional_values(wire.get_conducting_width().value());
                 double height = resolve_dimensional_values(wire.get_conducting_height().value());
                 double rotation = turn.get_rotation().value_or(0.0);
                 double quarterTurns = rotation / 90.0;
                 if (std::abs(quarterTurns - std::round(quarterTurns)) > 1e-9) {
-                    throw NotImplementedException("Parallel current split (ABT #1314): turn " + turn.get_name() + " is rotated " + std::to_string(rotation) +
+                    throw NotImplementedException("Parallel current split: turn " + turn.get_name() + " is rotated " + std::to_string(rotation) +
                                                   " degrees; only axis-aligned rectangular sections are integrated");
                 }
                 if (static_cast<int64_t>(std::llround(quarterTurns)) % 2 != 0) {
@@ -3861,7 +3861,7 @@ std::optional<ParallelCurrentSplit> MagneticField::calculate_parallel_current_sp
                 section.halfWidth = width / 2;
                 section.halfHeight = height / 2;
                 if (!(section.halfWidth > 0) || !(section.halfHeight > 0)) {
-                    throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA, "Parallel current split (ABT #1314): the wire of turn " + turn.get_name() + " has a zero conducting dimension");
+                    throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA, "Parallel current split: the wire of turn " + turn.get_name() + " has a zero conducting dimension");
                 }
             }
             section.x = turn.get_coordinates()[0];
@@ -3887,7 +3887,7 @@ std::optional<ParallelCurrentSplit> MagneticField::calculate_parallel_current_sp
             source.halfWidth = 0.5 * std::abs(sheet.end[0] - sheet.start[0]);
             source.halfHeight = 0.5 * std::abs(sheet.end[1] - sheet.start[1]);
             if (source.halfWidth != 0 && source.halfHeight != 0) {
-                throw CalculationException(ErrorCode::CALCULATION_INVALID_RESULT, "Parallel current split (ABT #1314): a window-wall sheet is not axis-aligned");
+                throw CalculationException(ErrorCode::CALCULATION_INVALID_RESULT, "Parallel current split: a window-wall sheet is not axis-aligned");
             }
             for (size_t turnIndex = 0; turnIndex < turns.size(); ++turnIndex) {
                 wallPotentialPerTurn[turnIndex] -= mu0Over2Pi * sheet.current * split_mean_log(sectionPerTurn[turnIndex], source);
@@ -3934,7 +3934,7 @@ std::optional<ParallelCurrentSplit> MagneticField::calculate_parallel_current_sp
     // harmonics of one period and throw. A winding with no entry at an order carries no current there (exactly zero).
     const auto& excitations = operatingPoint.get_excitations_per_winding();
     if (excitations.size() < numberWindings) {
-        throw InvalidInputException(ErrorCode::MISSING_DATA, "Parallel current split (ABT #1314): the operating point has " + std::to_string(excitations.size()) +
+        throw InvalidInputException(ErrorCode::MISSING_DATA, "Parallel current split: the operating point has " + std::to_string(excitations.size()) +
                                     " excitations for " + std::to_string(numberWindings) + " windings");
     }
     std::vector<Harmonics> harmonicsPerWinding;
@@ -3942,7 +3942,7 @@ std::optional<ParallelCurrentSplit> MagneticField::calculate_parallel_current_sp
     for (size_t windingIndex = 0; windingIndex < numberWindings; ++windingIndex) {
         auto current = excitations[windingIndex].get_current();
         if (!current || !current->get_harmonics()) {
-            throw InvalidInputException(ErrorCode::MISSING_DATA, "Parallel current split (ABT #1314): the current of winding " + std::to_string(windingIndex) + " has no harmonics");
+            throw InvalidInputException(ErrorCode::MISSING_DATA, "Parallel current split: the current of winding " + std::to_string(windingIndex) + " has no harmonics");
         }
         harmonicsPerWinding.push_back(current->get_harmonics().value());
         for (double frequency : harmonicsPerWinding.back().get_frequencies()) {
@@ -3957,7 +3957,7 @@ std::optional<ParallelCurrentSplit> MagneticField::calculate_parallel_current_sp
         const double ratio = frequency / fundamentalFrequency;
         const auto order = static_cast<int64_t>(std::llround(ratio));
         if (!(fundamentalFrequency > 0) || std::abs(ratio - static_cast<double>(order)) > 0.25) {
-            throw InvalidInputException(ErrorCode::INVALID_INPUT, "Parallel current split (ABT #1314): a harmonic at " + std::to_string(frequency) +
+            throw InvalidInputException(ErrorCode::INVALID_INPUT, "Parallel current split: a harmonic at " + std::to_string(frequency) +
                                         " Hz is no multiple of the operating point's fundamental " + std::to_string(fundamentalFrequency) + " Hz");
         }
         return order;
@@ -3971,7 +3971,7 @@ std::optional<ParallelCurrentSplit> MagneticField::calculate_parallel_current_sp
             }
             auto order = order_of(frequencies[harmonicIndex]);
             if (entryPerOrderPerWinding[windingIndex].count(order)) {
-                throw InvalidInputException(ErrorCode::INVALID_INPUT, "Parallel current split (ABT #1314): winding " + std::to_string(windingIndex) + " lists harmonic " +
+                throw InvalidInputException(ErrorCode::INVALID_INPUT, "Parallel current split: winding " + std::to_string(windingIndex) + " lists harmonic " +
                                             std::to_string(order) + " of " + std::to_string(fundamentalFrequency) + " Hz twice");
             }
             entryPerOrderPerWinding[windingIndex][order] = OrderEntry{amplitudes[harmonicIndex], frequencies[harmonicIndex]};
@@ -4035,7 +4035,7 @@ std::optional<ParallelCurrentSplit> MagneticField::calculate_parallel_current_sp
             continue;
         }
         if (!current->get_waveform()) {
-            throw InvalidInputException(ErrorCode::MISSING_DATA, "Parallel current split (ABT #1314): the current of winding " + std::to_string(windingIndex) +
+            throw InvalidInputException(ErrorCode::MISSING_DATA, "Parallel current split: the current of winding " + std::to_string(windingIndex) +
                                         " has harmonics but no waveform to take their phases from");
         }
         auto phasor = WaveformProcessor::calculate_harmonic_phasor(series_of(windingIndex), excitations[windingIndex].get_frequency(), largest->frequency);
@@ -4069,7 +4069,7 @@ std::optional<ParallelCurrentSplit> MagneticField::calculate_parallel_current_sp
             const bool resolved = entry.amplitude > transformDisagreementPerWinding[windingIndex];
             if (resolved && !(std::abs(phasor) >= WaveformProcessor::harmonicConsistencyTolerance * entry.amplitude)) {
                 std::ostringstream message;
-                message << std::setprecision(6) << "Parallel current split (ABT #1314): MAS harmonics list a component of " << entry.amplitude << " A at "
+                message << std::setprecision(6) << "Parallel current split: MAS harmonics list a component of " << entry.amplitude << " A at "
                         << entry.frequency << " Hz that the current waveform of winding " << windingIndex << " does not contain (its Fourier amplitude there is "
                         << std::abs(phasor) << " A)";
                 throw InvalidInputException(ErrorCode::INVALID_INPUT, message.str());
@@ -4124,7 +4124,7 @@ std::optional<ParallelCurrentSplit> MagneticField::calculate_parallel_current_sp
             // A winding of one strand carries exactly its own current.
             currentPerTurn[turnIndex] = coil.get_number_parallels(windingIndex) == 1 ? windingCurrent[windingIndex] : solution(split.strandPerTurn[turnIndex]);
             if (std::isnan(currentPerTurn[turnIndex].real()) || std::isnan(currentPerTurn[turnIndex].imag())) {
-                throw NaNResultException("Parallel current split (ABT #1314): NaN strand current at " + std::to_string(frequency) + " Hz");
+                throw NaNResultException("Parallel current split: NaN strand current at " + std::to_string(frequency) + " Hz");
             }
         }
         split.frequencies.push_back(frequency);

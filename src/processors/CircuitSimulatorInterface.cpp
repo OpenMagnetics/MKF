@@ -1567,7 +1567,7 @@ std::string emit_mutual_resistance_network_spice(
                "auxiliary-winding (Hesterman 2020) coupled-inductor realization yields a "
                "non-positive-definite\n* coupled-L matrix in ngspice for >=3 windings (incomplete "
                "LA-LA K couplings). The dominant per-winding\n* self AC resistance is still "
-               "modelled; only the second-order cross-coupling loss term is omitted (abt #50).\n";
+               "modelled; only the second-order cross-coupling loss term is omitted.\n";
     }
 
     std::string s;
@@ -1692,7 +1692,7 @@ std::string emit_mutual_resistance_behavioural_spice(
     s += "\n* ==== MUTUAL RESISTANCE NETWORK (PD-safe behavioural, n>=2) ====\n";
     s += "* Cross-coupling loss sum_{i!=j} R_ij*I_i*I_j via linear current-controlled\n";
     s += "* voltage sources (no inductors, no coupling) so the Lmag matrix stays\n";
-    s += "* positive-definite (abt #50/#72/#76). R_ij is the mutual resistance at the export\n";
+    s += "* positive-definite. R_ij is the mutual resistance at the export\n";
     s += "* frequency (real part of the fitted ladder; the reactance lives in the K's).\n\n";
 
     for (const auto& mc : mutualCoeffs) {

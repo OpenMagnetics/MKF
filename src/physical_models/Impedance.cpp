@@ -207,7 +207,7 @@ ImpedanceTank Impedance::build_magnetizing_tank(Core& core, Coil& coil) {
             if (!coil.get_turns_description()) {
                 throw InvalidInputException(ErrorCode::INVALID_INPUT,
                     "Impedance could not wind this coil: the winder returned no turns with the "
-                    "preset sections and none on a fresh wind either (see ABT #850).");
+                    "preset sections and none on a fresh wind either.");
             }
         }
         // Pass the core: the winding-to-core self term (ABT #848) needs it, and on

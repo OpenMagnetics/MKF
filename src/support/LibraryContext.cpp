@@ -238,7 +238,7 @@ LibraryContext::Scope::Scope(const LibraryContext* ctx) {
     // (parallel) region.
     if (databases_frozen()) {
         throw std::runtime_error(
-            "ABT #113: LibraryContext::Scope would swap the shared catalogs while "
+            "LibraryContext::Scope would swap the shared catalogs while "
             "databases are frozen (a parallel region is active). Apply the Scope "
             "before set_databases_frozen(true).");
     }

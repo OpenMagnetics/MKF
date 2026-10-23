@@ -3020,13 +3020,13 @@ static double gap_relative_permittivity(Core& core, const std::vector<const Core
         throw InvalidInputException(ErrorCode::INVALID_CORE_DATA,
             "The " + describeCoreAndGap() + " is a spacer shimmed between the halves, but the core has"
             " no geometrical description, so the spacer and its insulationMaterial are missing. The gap"
-            " capacitance (ABT #1166) depends directly on that dielectric and it will not be assumed air");
+            " capacitance depends directly on that dielectric and it will not be assumed air");
     }
     auto spacers = core.get_spacers();
     if (spacers.empty()) {
         throw InvalidInputException(ErrorCode::INVALID_CORE_DATA,
             "The " + describeCoreAndGap() + " is a spacer shimmed between the halves, but the core's"
-            " geometrical description has no spacer element for it. The gap capacitance (ABT #1166)"
+            " geometrical description has no spacer element for it. The gap capacitance"
             " depends directly on the spacer's dielectric and it will not be assumed air");
     }
 
@@ -3037,7 +3037,7 @@ static double gap_relative_permittivity(Core& core, const std::vector<const Core
             throw InvalidInputException(ErrorCode::INVALID_CORE_DATA,
                 "A spacer in the geometrical description of the " + describeCoreAndGap() +
                 " declares no insulationMaterial, which core/spacer.json requires. The gap capacitance"
-                " (ABT #1166) depends directly on the spacer's relative permittivity and it will not be"
+                " depends directly on the spacer's relative permittivity and it will not be"
                 " guessed: record the spacer material");
         }
         auto materialUnion = spacer.get_insulation_material().value();
@@ -3047,14 +3047,14 @@ static double gap_relative_permittivity(Core& core, const std::vector<const Core
         if (!material.get_relative_permittivity()) {
             throw InvalidInputException(ErrorCode::INVALID_CORE_DATA,
                 "Spacer insulation material '" + material.get_name() + "' of the " + describeCoreAndGap() +
-                " has no relative permittivity in the database, so the gap capacitance (ABT #1166)"
+                " has no relative permittivity in the database, so the gap capacitance"
                 " cannot be computed");
         }
         double thisPermittivity = material.get_relative_permittivity().value();
         if (haveSpacer && thisPermittivity != relativePermittivity) {
             throw InvalidInputException(ErrorCode::INVALID_CORE_DATA,
                 "The spacers of the " + describeCoreAndGap() + " declare different insulation materials;"
-                " which dielectric the gap capacitance (ABT #1166) should use is ambiguous and will not be"
+                " which dielectric the gap capacitance should use is ambiguous and will not be"
                 " picked");
         }
         relativePermittivity = thisPermittivity;
@@ -3237,13 +3237,13 @@ StrayCapacitance::ThroughCoreGapSplit StrayCapacitance::core_gap_topology(
     if (!(totalArea > 0)) {
         throw InvalidInputException(ErrorCode::INVALID_CORE_DATA,
             "An all-legs-gapped core with side-by-side windings puts the gap in series with the"
-            " inter-winding path (ABT #1166), but at least one of its gaps carries no area: the"
+            " inter-winding path, but at least one of its gaps carries no area: the"
             " gap capacitance cannot be computed and will not be guessed");
     }
     if (!(shortestGap > 0)) {
         throw InvalidInputException(ErrorCode::INVALID_CORE_DATA,
             "An all-legs-gapped core with side-by-side windings puts the gap in series with the"
-            " inter-winding path (ABT #1166), but its gap length is not positive");
+            " inter-winding path, but its gap length is not positive");
     }
     // The gaps of the different columns are in PARALLEL between the two core bodies, so the
     // total gapped cross-section is what enters; the length is the one plane's thickness, and
@@ -3298,7 +3298,7 @@ static double through_core_split_core_energy(const std::vector<double>& turnCore
     }
     if (!(capacitanceFirstBody > 0) || !(capacitanceSecondBody > 0) || !(gapCapacitance > 0)) {
         throw InvalidInputException(ErrorCode::INVALID_CORE_DATA,
-            "The split-core through-core path (ABT #1166) needs a positive turn-to-core"
+            "The split-core through-core path needs a positive turn-to-core"
             " capacitance on each core body and a positive gap capacitance");
     }
     double determinant = capacitanceFirstBody * capacitanceSecondBody +

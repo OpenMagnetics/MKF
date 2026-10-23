@@ -692,7 +692,7 @@ struct OutsideLinkRoomGeometry {
             }
             default:
                 throw CoilException(ErrorCode::COIL_WINDING_ERROR,
-                                    "Real winding (ABT #1487): the room around a winding build is not known for a bobbin column of shape '" +
+                                    "Real winding: the room around a winding build is not known for a bobbin column of shape '" +
                                         std::string(magic_enum::enum_name(columnShape)) + "'");
         }
     }
@@ -791,7 +791,7 @@ static OutsideLinkRoomGeometry outside_link_room_geometry(Coil& coil) {
     const auto bobbinProcessed = coil.resolve_bobbin().get_processed_description();
     if (!bobbinProcessed || !bobbinProcessed->get_column_width()) {
         throw CoilException(ErrorCode::COIL_NOT_PROCESSED,
-                            "Real winding (ABT #1487): the bobbin states no processed column width, so the room around the winding build is unknown");
+                            "Real winding: the bobbin states no processed column width, so the room around the winding build is unknown");
     }
     geometry.columnShape = bobbinProcessed->get_column_shape();
     geometry.columnHalfWidth = bobbinProcessed->get_column_width().value();
@@ -799,14 +799,14 @@ static OutsideLinkRoomGeometry outside_link_room_geometry(Coil& coil) {
     const auto windows = bobbinProcessed->get_winding_windows();
     if (windows.empty() || !windows[0].get_coordinates() || !windows[0].get_width()) {
         throw CoilException(ErrorCode::COIL_NOT_PROCESSED,
-                            "Real winding (ABT #1487): the bobbin's winding window states no coordinates and width");
+                            "Real winding: the bobbin's winding window states no coordinates and width");
     }
     geometry.windowThickness = windows[0].get_coordinates().value()[0] + windows[0].get_width().value() / 2 - geometry.columnHalfWidth;
 
     const auto& core = coil.get_core_geometry();
     if (!core) {
         throw CoilException(ErrorCode::COIL_NOT_PROCESSED,
-                            "Real winding (ABT #1487): an outside series link needs the core outline around the winding build, "
+                            "Real winding: an outside series link needs the core outline around the winding build, "
                             "but the coil was given no core (Coil::set_core_geometry)");
     }
     const auto family = core->get_shape_family();
@@ -830,7 +830,7 @@ static OutsideLinkRoomGeometry outside_link_room_geometry(Coil& coil) {
         }
         else {
             throw CoilException(ErrorCode::COIL_WINDING_ERROR,
-                                "Real winding (ABT #1487): an outside series link runs where the core has no outer leg, but where a " +
+                                "Real winding: an outside series link runs where the core has no outer leg, but where a " +
                                     geometry.coreFamily + " core's outer legs leave the window open (its lateral column is " +
                                     std::string(magic_enum::enum_name(column.get_shape())) + ") is not known to MKF");
         }
@@ -840,7 +840,7 @@ static OutsideLinkRoomGeometry outside_link_room_geometry(Coil& coil) {
         for (const std::string key : {"E", "G"}) {
             if (!dimensions.contains(key) || dimensions.at(key) <= 0) {
                 throw CoilException(ErrorCode::COIL_WINDING_ERROR,
-                                    "Real winding (ABT #1487): the " + geometry.coreFamily + " shape '" + core->get_shape_name() +
+                                    "Real winding: the " + geometry.coreFamily + " shape '" + core->get_shape_name() +
                                         "' states no dimension " + key + ", so where its outer legs leave the window open is unknown");
             }
         }
@@ -915,7 +915,7 @@ static std::map<std::pair<std::string, int64_t>, std::string> full_parallel_sect
     const auto sections = coil.get_sections_description();
     if (!sections) {
         throw CoilException(ErrorCode::COIL_NOT_PROCESSED,
-                            "Real winding (ABT #1487): the coil has no sections, so which section holds each parallel is unknown");
+                            "Real winding: the coil has no sections, so which section holds each parallel is unknown");
     }
     for (const auto& section : sections.value()) {
         if (section.get_type() != ElectricalType::CONDUCTION) {
@@ -927,7 +927,7 @@ static std::map<std::pair<std::string, int64_t>, std::string> full_parallel_sect
             const auto proportions = partialWinding.get_parallels_proportion();
             if (proportions.size() != size_t(numberParallels)) {
                 throw CoilException(ErrorCode::COIL_WINDING_ERROR,
-                                    "Real winding (ABT #1487): section '" + section.get_name() + "' states " +
+                                    "Real winding: section '" + section.get_name() + "' states " +
                                         std::to_string(proportions.size()) + " parallels proportions for winding '" +
                                         windingName + "', which has " + std::to_string(numberParallels) + " parallels");
             }
@@ -939,7 +939,7 @@ static std::map<std::pair<std::string, int64_t>, std::string> full_parallel_sect
                 auto found = sectionByConductor.find(key);
                 if (found != sectionByConductor.end()) {
                     throw CoilException(ErrorCode::COIL_WINDING_ERROR,
-                                        "Real winding (ABT #1487): parallel " + std::to_string(parallel) + " of winding '" +
+                                        "Real winding: parallel " + std::to_string(parallel) + " of winding '" +
                                             windingName + "' is held whole by both '" + found->second + "' and '" +
                                             section.get_name() + "'");
                 }
@@ -1457,13 +1457,13 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces(
         const auto turnSection = connectingTurn.get_section();
         if (!turnSection || turnSection->empty()) {
             throw CoilException(ErrorCode::COIL_WINDING_ERROR,
-                                "Real winding (ABT #1487): turn '" + connectingTurn.get_name() +
+                                "Real winding: turn '" + connectingTurn.get_name() +
                                     "' carries a terminal but names no section, so the section its lead leaves by is unknown");
         }
         if (auto wholeSection = sectionLocalConductorSection(connectingTurn.get_winding(), connectingTurn.get_parallel())) {
             if (wholeSection.value() != turnSection.value()) {
                 throw CoilException(ErrorCode::COIL_WINDING_ERROR,
-                                    "Real winding (ABT #1487): parallel " + std::to_string(connectingTurn.get_parallel()) +
+                                    "Real winding: parallel " + std::to_string(connectingTurn.get_parallel()) +
                                         " of winding '" + connectingTurn.get_winding() + "' is held whole by section '" +
                                         wholeSection.value() + "', but its terminal turn '" + connectingTurn.get_name() +
                                         "' lies in '" + turnSection.value() + "'");
@@ -1475,7 +1475,7 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces(
         auto found = sectionAxialExtent.find(sectionName);
         if (found == sectionAxialExtent.end()) {
             throw CoilException(ErrorCode::COIL_WINDING_ERROR,
-                                "Real winding (ABT #1487): section '" + sectionName +
+                                "Real winding: section '" + sectionName +
                                     "' holds a section-local lead but is not a conduction section with coordinates and dimensions");
         }
         return found->second;
@@ -1550,7 +1550,7 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces(
             const auto& ownLayerName = turn.get_layer();
             if (!ownLayerName) {
                 throw CoilException(ErrorCode::COIL_WINDING_ERROR,
-                                    "Real winding (ABT #1535): turn '" + turn.get_name() +
+                                    "Real winding: turn '" + turn.get_name() +
                                         "' ends an outside series link but names no layer, so the run-in row "
                                         "cannot be blocked in its column");
             }
@@ -1563,7 +1563,7 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces(
             }
             if (ownLayer == nullptr) {
                 throw CoilException(ErrorCode::COIL_WINDING_ERROR,
-                                    "Real winding (ABT #1535): turn '" + turn.get_name() + "' names layer '" +
+                                    "Real winding: turn '" + turn.get_name() + "' names layer '" +
                                         ownLayerName.value() + "', which the coil does not have");
             }
             ConnectionReservedSpace squeeze;
@@ -2049,7 +2049,7 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces(
                     if (columnShape == ColumnShape::IRREGULAR) {
                         throw InvalidInputException(ErrorCode::INVALID_BOBBIN_DATA,
                             "The terminal lead of winding '" + windingName + "' parallel " + std::to_string(parallel) +
-                            " needs a ramp off its turn, but an IRREGULAR column states no surface curvature to plan it on (ABT #1336)");
+                            " needs a ramp off its turn, but an IRREGULAR column states no surface curvature to plan it on");
                     }
                     double surfaceCurvature = 0.0;
                     if (columnShape != ColumnShape::RECTANGULAR) {
@@ -2069,7 +2069,7 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces(
                         throw InvalidInputException(ErrorCode::INVALID_INPUT,
                             "The terminal lead of winding '" + windingName + "' parallel " + std::to_string(parallel) +
                             " must bend no tighter than " + std::to_string(isotropicRadius * 1e3) + " mm, but its turn's own radius is " +
-                            std::to_string(turnX * 1e3) + " mm, so no ramp off that turn can climb at all (ABT #1336)");
+                            std::to_string(turnX * 1e3) + " mm, so no ramp off that turn can climb at all");
                     }
                     double inSurfaceRadius = 1.0 / std::sqrt(inSurfaceCurvature2);
                     // A rectangular wire's limits are per axis (IEC 60317-0-2 Table 6 tests flatwise and
@@ -2117,13 +2117,13 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces(
                 if (layersAreContiguous) {
                     throw CoilException(ErrorCode::COIL_WINDING_ERROR,
                         "The " + who + " leaves axially on its stated lead conductor, but its layers are contiguous: an axial "
-                        "foil lead is modelled only on layers stacked along the layer axis (ABT #1907)");
+                        "foil lead is modelled only on layers stacked along the layer axis");
                 }
                 auto leadConductor = axialLeadConductor.value();
                 if (leadConductor.get_type() != WireType::ROUND) {
                     throw CoilException(ErrorCode::COIL_WINDING_ERROR,
                         "The " + who + " leaves axially on its stated lead conductor '" + leadConductor.get_name().value_or("?") +
-                        "', which is not a round wire: only a round lead laid tangent to the sheet is modelled (ABT #1907)");
+                        "', which is not a round wire: only a round lead laid tangent to the sheet is modelled");
                 }
                 auto sheet = wires[axialWindingIndex];
                 const double sheetThickness = sheet.get_maximum_conducting_width();
@@ -2134,12 +2134,12 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces(
                     throw CoilException(ErrorCode::COIL_WINDING_ERROR,
                         "The " + who + " leaves axially, but the sheet (" + std::to_string(sheetThickness * 1e3) + " x " +
                         std::to_string(sheetHeight * 1e3) + " mm copper) or its lead conductor (" + std::to_string(leadConducting * 1e3) +
-                        " mm copper, " + std::to_string(leadOuter * 1e3) + " mm outer) states no usable dimensions (ABT #1907)");
+                        " mm copper, " + std::to_string(leadOuter * 1e3) + " mm outer) states no usable dimensions");
                 }
                 const double wallThickness = bobbin.get_processed_description().value().get_wall_thickness();
                 if (wallThickness < 0) {
                     throw CoilException(ErrorCode::INVALID_BOBBIN_DATA,
-                        "The " + who + " leaves axially through the flange, but the bobbin states a negative wall thickness (ABT #1907)");
+                        "The " + who + " leaves axially through the flange, but the bobbin states a negative wall thickness");
                 }
                 const double outward = atTopEdge ? 1.0 : -1.0;
                 AxialLead record;
@@ -2151,7 +2151,7 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces(
                 if (outward * (edgeY - record.attachTo) < -1e-12) {
                     throw CoilException(ErrorCode::COIL_WINDING_ERROR,
                         "The " + who + " leaves axially, but its sheet's edge lies " + std::to_string(outward * (record.attachTo - edgeY) * 1e3) +
-                        " mm beyond the window edge (ABT #1907)");
+                        " mm beyond the window edge");
                 }
                 record.windowEdge = edgeY;
                 record.flangeOuterFace = edgeY + outward * wallThickness;
@@ -2170,7 +2170,7 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces(
                         "The " + who + " leaves axially, but its weld strip cannot be laid: " +
                         std::to_string((record.weld.layerTo - record.weld.layerFrom) * 1e3) + " mm deep, " +
                         std::to_string(record.weld.width * 1e3) + " mm wide (the lead is " + std::to_string(leadOuter * 1e3) +
-                        " mm outer), " + std::to_string(std::abs(record.weld.to - record.weld.from) * 1e3) + " mm long (ABT #1907)");
+                        " mm outer), " + std::to_string(std::abs(record.weld.to - record.weld.from) * 1e3) + " mm long");
                 }
                 columnX = record.layerAxis;
                 runLow = std::min(record.attachTo, edgeY);
@@ -2229,7 +2229,7 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces(
                 throw CoilException(ErrorCode::COIL_WINDING_ERROR,
                     "The " + std::string(isEntrance ? "start" : "finish") + " lead of winding '" + windingName + "' parallel " +
                     std::to_string(parallel) + " leaves axially through the end face and is also assigned to a pin: a run "
-                    "from an axial foil lead to a pin is not modelled (ABT #1907)");
+                    "from an axial foil lead to a pin is not modelled");
             }
             deferPinLeg(routesBefore, axialLeadSpaceIndex, windingName, parallel, isEntrance, columnX, edgeY,
                         std::max({wireOuterWidth, wireOuterHeight, sleeveOuterDiameter.value_or(0.0)}));
@@ -2916,7 +2916,7 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces(
                              ConnectionKind::EDGE_CONTINUATION,
                              {{x1, y1}, {x1, runA}, {linkX, runA}, {linkX, runB}, {x2, runB}, {x2, y2}});
                     if (routes.size() != routesBeforeLink + 1) {
-                        throw std::logic_error("Real winding (ABT #1487): the outside link of winding '" + windingName +
+                        throw std::logic_error("Real winding: the outside link of winding '" + windingName +
                                                "' parallel " + std::to_string(parallel) + " recorded no route");
                     }
                     outsideLinkRouteIndices.push_back(routes.size() - 1);
@@ -3514,7 +3514,7 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces(
                     auto& route = routes[members[position]];
                     if (position > 0 && route.parallel == routes[members[position - 1]].parallel) {
                         throw std::logic_error("Winding '" + route.winding + "' parallel " + std::to_string(route.parallel) +
-                                               " carries two axial leads at one end (ABT #1907)");
+                                               " carries two axial leads at one end");
                     }
                     const double diameter = route.axialLead->outerDiameter;
                     route.axialLead->alongFace = roundFloat(before + diameter / 2, 12);
@@ -3522,7 +3522,7 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces(
                     if (route.axialLead->alongFace - route.axialLead->weld.width / 2 < before - 1e-12) {
                         throw CoilException(ErrorCode::COIL_WINDING_ERROR,
                             "Winding '" + route.winding + "' parallel " + std::to_string(route.parallel) +
-                            ": the axial lead's weld strip would reach past its own sheet's end on the connection face (ABT #1907)");
+                            ": the axial lead's weld strip would reach past its own sheet's end on the connection face");
                     }
                     before += diameter;
                     route.exitSlot = std::nullopt;
@@ -5928,7 +5928,7 @@ bool Coil::are_turns_inside_winding_window() {
                 worstOverrun = worstHere.first;
                 std::ostringstream reason;
                 reason << std::fixed << std::setprecision(3) << "turn '" << turn.get_name() << "' at ("
-                       << coordinates[0] * 1e3 << ", " << coordinates[1] * 1e3 << ") mm lies outside every winding window (ABT #624), "
+                       << coordinates[0] * 1e3 << ", " << coordinates[1] * 1e3 << ") mm lies outside every winding window, "
                        << worstHere.first * 1e3 << " mm " << worstHere.second;
                 worstReason = reason.str();
             }
@@ -7605,7 +7605,7 @@ bool Coil::wind(std::vector<double> proportionPerWinding, std::vector<size_t> pa
     _litzFlatteningPerWinding.clear();
     restoreAsGiven();
     ok = wind_at_current_footprints(proportionPerWinding, pattern, repetitions);
-    _lastFitFailure = roundFailure + " (ABT #1531: its litz flattened down to k = " + std::to_string(lowestTried) +
+    _lastFitFailure = roundFailure + " (its litz flattened down to k = " + std::to_string(lowestTried) +
                       " along or across the layer does not fit either)";
     return ok;
 }
@@ -7649,7 +7649,7 @@ bool Coil::wind_at_current_footprints(std::vector<double> proportionPerWinding, 
             ownCheck.find(_lastFitFailure) == std::string::npos) {
             ownCheck += "; " + _lastFitFailure;
         }
-        _lastFitFailure = "real winding does not fit (ABT #1487): " + reasons + ownCheck;
+        _lastFitFailure = "real winding does not fit: " + reasons + ownCheck;
     }
     // ABT #1174: record the lead-sleeve decision on the connections, where MAS carries it, once
     // the wind has placed the margins the decision depends on.
@@ -12815,7 +12815,7 @@ void Coil::refuse_turns_bent_tighter_than_the_wire_allows() {
         " turns in this coil are bent below their wire's limit; this is the worst. MKF does not "
         "emit geometry for a bend the wire cannot make: give the former a corner radius, choose a "
         "wire whose conductor is small enough to take this corner, or move the winding further "
-        "out. (ABT #1290; real winding only - the ideal layout is unchanged.)";
+        "out. (Real winding only; the ideal layout is unchanged.)";
 
     throw UnwindableBendException(message);
 }
@@ -13970,7 +13970,7 @@ void Coil::preload_stored_section_heights_from_sections() {
         const auto dimensions = section.get_dimensions();
         if (dimensions.size() < 2 || dimensions[1] <= 0) {
             throw InvalidInputException(ErrorCode::INVALID_COIL_CONFIGURATION,
-                                        "Real winding (ABT #1487): stored section '" + section.get_name() +
+                                        "Real winding: stored section '" + section.get_name() +
                                             "' states no height, so the height to keep through the re-wind is unknown");
         }
         _storedSectionHeights[section.get_name()] = dimensions[1];
@@ -14012,7 +14012,7 @@ std::map<size_t, double> Coil::keep_stored_section_heights(
         auto stored = _storedSectionHeights.find(name);
         if (stored == _storedSectionHeights.end()) {
             throw InvalidInputException(ErrorCode::INVALID_COIL_CONFIGURATION,
-                                        "Real winding (ABT #1487): the re-wind lays out section '" + name +
+                                        "Real winding: the re-wind lays out section '" + name +
                                             "', which the stored design does not have, so there is no stored height to keep");
         }
         // Its need: the cross-sections it must hold -- its turns of every parallel it carries, plus
@@ -14030,7 +14030,7 @@ std::map<size_t, double> Coil::keep_stored_section_heights(
         if (wire.get_type() != WireType::FOIL && wire.get_type() != WireType::PLANAR) {
             if (marginIndex >= _marginsPerSection.size()) {
                 throw CoilException(ErrorCode::COIL_NOT_PROCESSED,
-                                    "Real winding (ABT #1487): section '" + name + "' has no margins at this point of the wind");
+                                    "Real winding: section '" + name + "' has no margins at this point of the wind");
             }
             const double width = availableWidth - _marginsPerSection[marginIndex][0] - _marginsPerSection[marginIndex][1];
             const double wireWidth = resolve_dimensional_values(wire.get_maximum_outer_width());
@@ -16648,7 +16648,7 @@ bool Coil::wind_by_rectangular_turns() {
         }
         if (!layer.get_section() || layer.get_section()->empty()) {
             throw CoilException(ErrorCode::COIL_WINDING_ERROR,
-                                "Real winding (ABT #1487): layer '" + layer.get_name() +
+                                "Real winding: layer '" + layer.get_name() +
                                     "' names no section, so the window end its start faces is unknown");
         }
         const std::string sectionName = layer.get_section().value();
@@ -16666,7 +16666,7 @@ bool Coil::wind_by_rectangular_turns() {
         const auto windowIndex = resolve_section_winding_window_index(section);
         if (windowIndex >= windingWindows.size() || !windingWindows[windowIndex].get_coordinates()) {
             throw CoilException(ErrorCode::COIL_WINDING_ERROR,
-                                "Real winding (ABT #1487): the winding window of section '" + sectionName +
+                                "Real winding: the winding window of section '" + sectionName +
                                     "' has no coordinates, so the window end its start faces is unknown");
         }
         return section.get_coordinates()[1] >= windingWindows[windowIndex].get_coordinates().value()[1];
@@ -17455,7 +17455,7 @@ bool Coil::wind_by_round_turns() {
                                  "': a Z ring-to-ring return needs a reserved angular return "
                                  "corridor, which toroidal geometry does not model yet. Winding "
                                  "the rings as U instead — each ring starts where the previous one "
-                                 "closed (ABT #1253).",
+                                 "closed.",
                              "Coil", 1);
                 }
             }
@@ -21496,7 +21496,7 @@ void Coil::check_lead_margin_keep_out(double edgeCoordinate, double margin, bool
     // floating-point noise is a real intrusion.
     if (depthOfOuterFace < margin - 1e-9) {
         throw InvalidInputException(ErrorCode::INVALID_INPUT,
-            "ABT #684: the " + leadDescription + " is not sleeved but its run reaches " +
+            "The " + leadDescription + " is not sleeved but its run reaches " +
             std::to_string((margin - depthOfOuterFace) * 1e3) + " mm into the " + std::to_string(margin * 1e3) +
             " mm margin band; only a sleeved lead may cross a margin");
     }

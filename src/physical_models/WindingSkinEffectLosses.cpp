@@ -214,7 +214,7 @@ std::pair<double, std::vector<std::pair<double, double>>> WindingSkinEffectLosse
 static std::vector<double> split_current_divider_per_harmonic(const ParallelCurrentSplit& split, size_t turnIndex, size_t windingIndex,
                                                               const SignalDescriptor& current, double dcDivider) {
     if (!current.get_harmonics()) {
-        throw InvalidInputException(ErrorCode::MISSING_DATA, "Skin effect losses (ABT #1314): current is missing harmonics");
+        throw InvalidInputException(ErrorCode::MISSING_DATA, "Skin effect losses: current is missing harmonics");
     }
     const auto harmonics = current.get_harmonics().value();
     std::vector<double> divider(harmonics.get_amplitudes().size(), dcDivider);
@@ -231,7 +231,7 @@ static std::vector<double> split_current_divider_per_harmonic(const ParallelCurr
         const double windingAmplitude = std::abs(split.currentPerWindingPerFrequency[splitIndex].at(windingIndex));
         const double strandAmplitude = std::abs(split.currentPerTurnPerFrequency[splitIndex].at(turnIndex));
         if (windingAmplitude == 0) {
-            throw NotImplementedException("Skin effect losses (ABT #1314): winding " + std::to_string(windingIndex) + " has a harmonic at " +
+            throw NotImplementedException("Skin effect losses: winding " + std::to_string(windingIndex) + " has a harmonic at " +
                                           std::to_string(harmonics.get_frequencies()[harmonicIndex]) + " Hz that its parallel current split carries no current for");
         }
         divider[harmonicIndex] = strandAmplitude / windingAmplitude;

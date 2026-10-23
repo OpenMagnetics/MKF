@@ -1588,7 +1588,7 @@ double Bobbin::get_pin_rail_distance(const MAS::BobbinFunctionalDescription& fun
     if (!datum.distance) {
         throw InvalidInputException(ErrorCode::INVALID_BOBBIN_DATA,
             "Cannot place pins: " + datum.missing + ". A pin hung from a flange face instead runs "
-            "through the core's back plate (ABT #1207), and an invented standoff is worse than no pin.");
+            "through the core's back plate, and an invented standoff is worse than no pin.");
     }
     return datum.distance.value();
 }

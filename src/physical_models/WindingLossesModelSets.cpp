@@ -27,7 +27,7 @@ std::map<WindingLossesModelSets, WindingLossesModelSet> build_registry() {
     add({WindingLossesModelSets::LEGACY_DEFAULT, "Legacy default",
          "MKF's historical automatic choice: field model by wire type (LAMMERANER round/litz, BINNS_LAWRENSON "
          "rectangular, WANG planar and foil), ROSHEN gap fringing, FERREIRA proximity for round/litz, WANG for flat wire.",
-         "Reference behaviour. Known limits (ABT #1304): a flat turn's current is counted twice under BINNS_LAWRENSON "
+         "Reference behaviour. Known limits: a flat turn's current is counted twice under BINNS_LAWRENSON "
          "with the Wang mesher, residual gaps carry no field, the image lattice holds net current.",
          std::nullopt, Fringing::ROSHEN, historicalSkin,
          {{WireType::ROUND, Proximity::FERREIRA}, {WireType::LITZ, Proximity::FERREIRA}, {WireType::PLANAR, Proximity::WANG},
@@ -39,7 +39,7 @@ std::map<WindingLossesModelSets, WindingLossesModelSet> build_registry() {
          "window boundary, every conductor imaged with its own images. MARTINEZ field-exclusion proximity for flat wire, "
          "FERREIRA (exact Bessel) for round and litz.",
          "Flat wire, per-turn R_ac/R_dc vs 2D OMFEM: E 42/21/20 0.75-1.73 per turn, 0.92-0.98 in total; PQ 27/17 "
-         "0.67-1.29 / 0.79-0.82 (ABT #1304). Round and litz: not yet validated per turn.",
+         "0.67-1.29 / 0.79-0.82. Round and litz: not yet validated per turn.",
          Field::BINNS_LAWRENSON, Fringing::MMF_BOUNDARY, historicalSkin,
          {{WireType::ROUND, Proximity::FERREIRA}, {WireType::LITZ, Proximity::FERREIRA}, {WireType::PLANAR, Proximity::MARTINEZ},
           {WireType::RECTANGULAR, Proximity::MARTINEZ}, {WireType::FOIL, Proximity::MARTINEZ}},
@@ -47,7 +47,7 @@ std::map<WindingLossesModelSets, WindingLossesModelSet> build_registry() {
 
     add({WindingLossesModelSets::NEUTRAL_WINDOW_WANG, "Neutral window with Wang proximity",
          "The neutral-window field with WANG slab proximity for flat wire, for comparison with NEUTRAL_WINDOW.",
-         "Flat wire vs 2D OMFEM: E 42/21/20 totals 0.78-0.89 (ABT #1304). Round and litz: not validated per turn.",
+         "Flat wire vs 2D OMFEM: E 42/21/20 totals 0.78-0.89. Round and litz: not validated per turn.",
          Field::BINNS_LAWRENSON, Fringing::MMF_BOUNDARY, historicalSkin,
          {{WireType::ROUND, Proximity::FERREIRA}, {WireType::LITZ, Proximity::FERREIRA}, {WireType::PLANAR, Proximity::WANG},
           {WireType::RECTANGULAR, Proximity::WANG}, {WireType::FOIL, Proximity::WANG}},
@@ -57,7 +57,7 @@ std::map<WindingLossesModelSets, WindingLossesModelSet> build_registry() {
          "Wang's field model with its own two-point mesh and Wang proximity: the original calibrated pair for flat "
          "conductors.",
          "Field and loss are a calibrated pair: their product scales as width^2/thickness, right near the geometry it "
-         "was tuned on (ABT #1274).",
+         "was tuned on.",
          Field::WANG, Fringing::ROSHEN,
          {{WireType::PLANAR, Skin::ALBACH}, {WireType::RECTANGULAR, Skin::KUTKUT}, {WireType::FOIL, Skin::KUTKUT}},
          {{WireType::PLANAR, Proximity::WANG}, {WireType::RECTANGULAR, Proximity::WANG}, {WireType::FOIL, Proximity::WANG}},
@@ -73,7 +73,7 @@ std::map<WindingLossesModelSets, WindingLossesModelSet> build_registry() {
     add({WindingLossesModelSets::AXISYMMETRIC, "Axisymmetric (Albach)",
          "ALBACH axisymmetric conductor field around a round central post with ALBACH gap fringing (gaps outside its "
          "fitted range go through Roshen), FERREIRA proximity.",
-         "Not validated per turn. Albach's fitted equivalent current loop diverged on real gaps (ABT #832), so every "
+         "Not validated per turn. Albach's fitted equivalent current loop diverged on real gaps, so every "
          "gap in its validity range is currently routed to Roshen.",
          Field::ALBACH, Fringing::ALBACH, {{WireType::ROUND, Skin::ALBACH}, {WireType::LITZ, Skin::ALBACH}},
          {{WireType::ROUND, Proximity::FERREIRA}, {WireType::LITZ, Proximity::FERREIRA}},
