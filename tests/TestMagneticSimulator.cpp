@@ -2476,7 +2476,7 @@ namespace {
     std::string describe_findings(const std::vector<ResultFinding>& findings) {
         std::string all;
         for (const auto& finding : findings) {
-            all += "\n[" + std::to_string(finding.operatingPointIndex) + "] " + to_string(finding.code) + ": " + finding.message;
+            all += "\n[" + (finding.operatingPointIndex ? std::to_string(finding.operatingPointIndex.value()) : std::string("magnetic")) + "] " + to_string(finding.code) + ": " + finding.message;
         }
         return all;
     }

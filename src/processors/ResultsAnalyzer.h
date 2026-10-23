@@ -49,14 +49,22 @@ enum class ResultFindingCode {
     // does not converge on its losses, or its winding runs away with the core held at its data limit).
     // simulate gave it its losses at ambient and no temperature; the message is MKF's, with the loop history.
     NO_THERMAL_OPERATING_POINT,
+    // ABT #2004 (Alf, 2026-10-22): a winding of rectangular wire is drawn (real winding) around an
+    // EDGEWISE bend tighter than the IEC 60317-0-2 Table 6 mandrel its coating was qualified at. The
+    // coil is drawn as laid; the coating's integrity at that bend is outside the IEC qualification.
+    // One per winding, naming the winding, its drawn centreline radius and the mandrel. A property of
+    // the magnetic, not of an operating point: the finding carries no operating point.
+    EDGEWISE_BEND_BELOW_COATING_MANDREL,
 };
 
 std::string to_string(ResultFindingCode code);
 
 // One finding: which operating point (its index in the MAS, and its name when it has one), what
-// (code) and MKF's message, readable as it stands.
+// (code) and MKF's message, readable as it stands. A finding about the magnetic itself rather than
+// one operating point (EDGEWISE_BEND_BELOW_COATING_MANDREL) carries no operating point, and its JSON
+// has no operatingPointIndex.
 struct ResultFinding {
-    size_t operatingPointIndex;
+    std::optional<size_t> operatingPointIndex;
     std::optional<std::string> operatingPointName;
     ResultFindingCode code;
     std::string message;
@@ -121,8 +129,16 @@ class ResultsAnalyzer {
                                                                   size_t operatingPointIndex,
                                                                   std::optional<Topology> topology = std::nullopt);
 
+    // ABT #2004: one EDGEWISE_BEND_BELOW_COATING_MANDREL finding per winding whose real-winding layout
+    // bends its rectangular wire edgewise tighter than the IEC 60317-0-2 Table 6 mandrel, from the same
+    // judgement real winding makes (Coil::judge_corners_against_wire_flexibility). Nothing under ideal
+    // winding (the flag off judges no corner). A round or flatwise bend below its limit is refused by
+    // real winding and is never a finding: this throws UnwindableBendException for it, as wind does.
+    static std::vector<ResultFinding> analyze_winding_bends(const Magnetic& magnetic);
+
     // Every finding of a simulated MAS (as MagneticSimulator::simulate returns it: one output per
-    // operating point), ordered by operating point, then saturation, volt-second balance, temperature.
+    // operating point), ordered by operating point, then saturation, volt-second balance, temperature;
+    // then the findings about the magnetic itself (analyze_winding_bends).
     // An output without a temperature goes to analyze_missing_temperature instead of the temperature checks
     // (ABT #1876): NO_THERMAL_OPERATING_POINT, or a throw for a fast-mode output.
     // Throws when the MAS has no output for an operating point, or an output lacks what a check reads

@@ -8,8 +8,11 @@
 #include "support/Exceptions.h"
 #include "support/Utils.h"
 
+#include <magic_enum.hpp>
+
 #include <algorithm>
 #include <cmath>
+#include <iomanip>
 #include <sstream>
 
 namespace OpenMagnetics {
@@ -24,13 +27,16 @@ std::string to_string(ResultFindingCode code) {
         case ResultFindingCode::WINDING_TEMPERATURE_ABOVE_LIMIT: return "WINDING_TEMPERATURE_ABOVE_LIMIT";
         case ResultFindingCode::WINDING_TEMPERATURE_LIMIT_NOT_STATED: return "WINDING_TEMPERATURE_LIMIT_NOT_STATED";
         case ResultFindingCode::NO_THERMAL_OPERATING_POINT: return "NO_THERMAL_OPERATING_POINT";
+        case ResultFindingCode::EDGEWISE_BEND_BELOW_COATING_MANDREL: return "EDGEWISE_BEND_BELOW_COATING_MANDREL";
     }
     throw InvalidInputException(ErrorCode::INVALID_INPUT, "Unknown result finding code " + std::to_string(static_cast<int>(code)));
 }
 
 void to_json(nlohmann::json& j, const ResultFinding& finding) {
     j = nlohmann::json::object();
-    j["operatingPointIndex"] = finding.operatingPointIndex;
+    if (finding.operatingPointIndex) {
+        j["operatingPointIndex"] = finding.operatingPointIndex.value();
+    }
     if (finding.operatingPointName) {
         j["operatingPointName"] = finding.operatingPointName.value();
     }
@@ -400,6 +406,59 @@ std::vector<ResultFinding> ResultsAnalyzer::analyze_missing_temperature(const Ma
         "fast mode (or edited after simulate), which publishes no temperature; analyze_results needs simulate's full output");
 }
 
+std::vector<ResultFinding> ResultsAnalyzer::analyze_winding_bends(const Magnetic& magnetic) {
+    // A copy: judging resolves the coil's bobbin and column frames, and the magnetic is const here.
+    OpenMagnetics::Coil coil = magnetic.get_coil();
+    // A round or flatwise bend below its wire's limit is a layout real winding refuses (ABT #1290).
+    // Reaching here with one means the coil was not wound by MKF under these settings; it is refused
+    // the same way, never turned into a finding.
+    coil.refuse_turns_bent_tighter_than_the_wire_allows();
+    const auto judgement = coil.judge_corners_against_wire_flexibility();
+
+    auto millimetres = [](double metres) {
+        std::ostringstream text;
+        text << std::fixed << std::setprecision(4) << metres * 1000;
+        return text.str();
+    };
+
+    std::vector<ResultFinding> findings;
+    for (const auto& winding : judgement.windingsBelowFlexibility) {
+        if (winding.axis != BendAxis::EDGEWISE) {
+            // Unreachable after the refusal above, which throws for every non-edgewise winding here.
+            throw InvalidInputException(ErrorCode::INVALID_INPUT,
+                "analyze_winding_bends: winding '" + winding.windingName + "' is bent below its wire's flexibility radius "
+                "on a non-edgewise axis, which real winding refuses");
+        }
+        const auto& wire = winding.wire;
+        std::string wireDescription = "rectangular";
+        if (wire.get_name()) {
+            wireDescription += " '" + wire.get_name().value() + "'";
+        }
+        if (wire.get_standard()) {
+            wireDescription += ", " + std::string(magic_enum::enum_name(wire.get_standard().value()));
+        }
+        const double conductingWidth = resolve_dimensional_values(wire.get_conducting_width().value());
+        const double conductingHeight = resolve_dimensional_values(wire.get_conducting_height().value());
+        const double outerWidth = OpenMagnetics::Wire::calculate_outer_width(wire);
+
+        ResultFinding finding;
+        finding.code = ResultFindingCode::EDGEWISE_BEND_BELOW_COATING_MANDREL;
+        finding.message =
+            "Warning: winding '" + winding.windingName + "' (" + wireDescription + ", conducting " +
+            millimetres(conductingWidth) + " x " + millimetres(conductingHeight) + " mm) is bent edgewise around a "
+            "drawn centreline radius of " + millimetres(winding.bendRadius) + " mm (turn '" + winding.turnName +
+            "', the tightest of " + std::to_string(winding.numberTightCorners) + " such turns), tighter than the " +
+            millimetres(winding.asLaid.mandrelDiameterUsed) + " mm mandrel of IEC 60317-0-2 Table 6 its coating was "
+            "qualified at (IEC 60851-3 5.1.1 winds the wire on that mandrel: centreline radius mandrel/2 + outer width/2 = " +
+            millimetres(0.5 * winding.asLaid.mandrelDiameterUsed) + " + " + millimetres(0.5 * outerWidth) + " = " +
+            millimetres(winding.asLaid.flexibilityRadius) + " mm). The coil is drawn as laid: edgewise winding is a "
+            "forming process of its own and the mandrel is a coating test, not a forming limit, but the coating's "
+            "integrity at this bend is outside the IEC qualification.";
+        findings.push_back(finding);
+    }
+    return findings;
+}
+
 std::vector<ResultFinding> ResultsAnalyzer::analyze_results(const Mas& mas) {
     const auto& operatingPoints = mas.get_inputs().get_operating_points();
     const auto& outputs = mas.get_outputs();
@@ -427,6 +486,9 @@ std::vector<ResultFinding> ResultsAnalyzer::analyze_results(const Mas& mas) {
         for (auto& finding : analyze_temperature(mas.get_magnetic(), operatingPoints[index], outputs[index], index)) {
             findings.push_back(finding);
         }
+    }
+    for (auto& finding : analyze_winding_bends(mas.get_magnetic())) {
+        findings.push_back(finding);
     }
     return findings;
 }

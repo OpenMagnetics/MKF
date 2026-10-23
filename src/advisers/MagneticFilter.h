@@ -547,6 +547,11 @@ class MagneticFilterProximityFactor : public MagneticFilter {
  * standing off the former, which is not the layup the layout assumed. Below the heat-shock floor
  * it stays valid but scores worse, in proportion to how far short the bend falls.
  *
+ * ABT #2004 (Alf, 2026-10-22): an EDGEWISE bend of rectangular wire below the flexibility floor
+ * stays VALID, as real winding draws it: IEC 60317-0-2 Table 6 qualifies the coating, it is not a
+ * forming limit for edgewise winding. analyze_results reports it. IEC 60317-0-2 9 gives no edgewise
+ * heat-shock bend, so it adds nothing to the score. Round wire and flatwise rectangular bends below the floor stay invalid.
+ *
  * Wire types the standards do not cover (litz, foil, planar) are passed through untouched rather
  * than judged by a rule that was not written for them.
  */

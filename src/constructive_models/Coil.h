@@ -7,6 +7,7 @@
 #include "processors/Inputs.h"
 #include "constructive_models/Wire.h"
 #include "constructive_models/Bobbin.h"
+#include "physical_models/WireBend.h"
 #include "json.hpp"
 
 #include <MAS.hpp>
@@ -555,6 +556,30 @@ struct WoundColumnFrame {
     double cornerRadius = 0;
 };
 
+// ABT #1290 / #2004: one winding whose drawn corners fall below its wire's FLEXIBILITY radius
+// (IEC 60317-0-1 / -0-2 Table 6 read through IEC 60851-3 5.1.1), reported at its worst corner --
+// the one furthest short of the wire's own limit.
+struct WindingBendBelowFlexibility {
+    std::string windingName;
+    std::string turnName;            // the winding's worst corner
+    double bendRadius = 0;           // drawn centreline radius at that corner [m]
+    double formerCornerRadius = 0;   // the former's corner it bends around [m]
+    double standoff = 0;             // the turn's standoff from the former's face [m]
+    WoundCorner asLaid;              // WireBend::evaluate of the drawn radius
+    BendAxis axis = BendAxis::ROUND; // ROUND, FLATWISE or EDGEWISE, as the coil lays the wire
+    Wire wire;
+    size_t numberTightCorners = 0;   // turns of this winding bent below the limit
+};
+
+// Every corner of a real-winding layout judged against its wire's FLEXIBILITY radius.
+struct CoilBendJudgement {
+    size_t numberTurns = 0;
+    size_t numberCornersJudged = 0;
+    // The smallest drawn / limit ratio over every judged corner; empty when none was judged.
+    std::optional<double> tightestRatioJudged;
+    std::vector<WindingBendBelowFlexibility> windingsBelowFlexibility;
+};
+
 class Coil : public MAS::Coil {
     private:
         std::map<std::pair<size_t, size_t>, Section> _insulationSections;
@@ -827,16 +852,6 @@ class Coil : public MAS::Coil {
         // each lateral winding the outer side of its own — halve and anchor each
         // wound group accordingly so they can never claim overlapping space.
         void split_shared_window_groups(std::vector<Group>& groups, const std::vector<WindingWindowElement>& windingWindows);
-        // ABT #1290 (Alf, 2026-09-20): under REAL WINDING, refuse a layout that draws a corner
-        // tighter than the wire itself can be bent. The limit is the wire's own, from its
-        // requirement standard (WireBend / IEC 60317-0-1 Table 6 for round copper, -0-2 Table 6
-        // for rectangular) -- never a constant. A turn laid against a rectangular former bends
-        // around exactly the radius get_turn_length_in_frame charges it for, former corner plus
-        // standoff, so that is the radius judged. Throws UnwindableBendException naming the
-        // winding, the turn, the drawn radius, the wire's limit and the criterion; per the
-        // no-fallbacks rule it never clamps the radius up to the floor and never drops the turn.
-        // Ideal winding is untouched: the classic 2D layout is a separate contract.
-        void refuse_turns_bent_tighter_than_the_wire_allows();
         // ABT #1424: sibling parallels' radial layer links (drawn in the connection plane from each
         // departure station to the arrival station) must keep their centrelines one coated OD apart,
         // the invariant ABT #1401 enforces for wraps. Throws, naming the pair, when they do not.
@@ -857,6 +872,24 @@ class Coil : public MAS::Coil {
         // other windows resolve their column edge against the core columns
         // provided via set_core_columns (throws if those are missing).
         WoundColumnFrame get_wound_column_frame_for_section(const std::string& sectionName);
+        // ABT #1290 / #2004: judge every corner of the REAL-WINDING layout against its wire's own
+        // FLEXIBILITY radius (WireBend), per winding. The one judgement both consumers read:
+        // refuse_turns_bent_tighter_than_the_wire_allows refuses round and flatwise bends below
+        // it, and ResultsAnalyzer reports edgewise ones (Alf, 2026-10-22). Empty with the flag
+        // off, on planar, dummy and round-window coils, and for wires the standards do not cover.
+        CoilBendJudgement judge_corners_against_wire_flexibility();
+        // ABT #1290 (Alf, 2026-09-20): under REAL WINDING, refuse a layout that draws a corner
+        // tighter than the wire itself can be bent. ABT #2004 (Alf, 2026-10-22): an EDGEWISE bend
+        // of rectangular wire is not refused -- IEC 60317-0-2 Table 6 qualifies the coating, it is
+        // not a forming limit for edgewise winding -- and analyze_results warns about it instead. The limit is the wire's own, from its
+        // requirement standard (WireBend / IEC 60317-0-1 Table 6 for round copper, -0-2 Table 6
+        // for rectangular) -- never a constant. A turn laid against a rectangular former bends
+        // around exactly the radius get_turn_length_in_frame charges it for, former corner plus
+        // standoff, so that is the radius judged. Throws UnwindableBendException naming the
+        // winding, the turn, the drawn radius, the wire's limit and the criterion; per the
+        // no-fallbacks rule it never clamps the radius up to the floor and never drops the turn.
+        // Ideal winding is untouched: the classic 2D layout is a separate contract.
+        void refuse_turns_bent_tighter_than_the_wire_allows();
         // Length of one turn at radial position turnX wrapped around the given
         // column frame; nullopt when the geometry is invalid (negative length),
         // matching the winder's historical soft-failure.

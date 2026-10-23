@@ -12602,24 +12602,25 @@ void Coil::refuse_sibling_layer_links_closer_than_the_wire() {
 // other consumer thinks they do; dropping the turn would hand back a coil with the wrong number
 // of turns. Both are silent substitutions of a part nobody asked for. The layout asked for a bend
 // the wire cannot make, so the layout does not physically exist, and the caller has to hear that.
-void Coil::refuse_turns_bent_tighter_than_the_wire_allows() {
+CoilBendJudgement Coil::judge_corners_against_wire_flexibility() {
+    CoilBendJudgement judgement;
     if (!settings.get_coil_use_real_winding_geometry()) {
-        return;  // the ideal 2D layout is a separate contract (Alf, explicit scope)
+        return judgement;  // the ideal 2D layout is a separate contract (Alf, explicit scope)
     }
     if (!get_turns_description() || !get_sections_description()) {
-        return;
+        return judgement;
     }
     if (is_planar()) {
         // A planar conductor is etched, not bent: there is no wire being pulled over a former,
         // and IEC 60317 has nothing to say about a copper track on FR4.
-        return;
+        return judgement;
     }
     if (std::holds_alternative<std::string>(get_bobbin()) &&
         std::get<std::string>(get_bobbin()) == "Dummy") {
         // No former at all was ever named, so there is no corner to judge and nothing to read a
         // corner radius off. resolve_bobbin() refuses a dummy outright, and turning that refusal
         // into a bend verdict would report the wrong fault.
-        return;
+        return judgement;
     }
     {
         // A toroid's turns are placed in polar coordinates around the core's cross-section, not
@@ -12628,7 +12629,7 @@ void Coil::refuse_turns_bent_tighter_than_the_wire_allows() {
         // judged where it is decided, not here on coordinates that do not describe it.
         auto bobbin = resolve_bobbin();
         if (!bobbin.get_processed_description()) {
-            return;
+            return judgement;
         }
         // get_processed_description() hands the optional back BY VALUE and get_winding_windows()
         // returns a reference INTO it, so the description has to be a named local or the vector
@@ -12636,32 +12637,20 @@ void Coil::refuse_turns_bent_tighter_than_the_wire_allows() {
         const auto processedDescription = bobbin.get_processed_description().value();
         const auto& windingWindows = processedDescription.get_winding_windows();
         if (windingWindows.empty()) {
-            return;
+            return judgement;
         }
         if (windingWindows[0].get_shape() &&
             windingWindows[0].get_shape().value() == WindingWindowShape::ROUND) {
-            return;
+            return judgement;
         }
     }
 
     auto turns = get_turns_description().value();
+    judgement.numberTurns = turns.size();
 
-    struct TightCorner {
-        std::string turnName;
-        std::string windingName;
-        double bendRadius = 0;
-        double formerCornerRadius = 0;
-        double standoff = 0;
-        WoundCorner asLaid;
-        Wire wire;
-    };
-    std::optional<TightCorner> tightest;
-    size_t numberTightCorners = 0;
-    // MKF_BEND_DIAG: the rule is only worth anything if it REACHES the corners, and a run that
-    // refuses nothing looks exactly like a run that judged nothing. These two counters, printed
-    // below, are what tells those apart on a coil that passes.
-    size_t numberCornersJudged = 0;
-    double worstRatioJudged = std::numeric_limits<double>::max();
+    // The worst corner of each winding below its wire's limit, in the order the windings are met.
+    std::vector<std::string> windingOrder;
+    std::map<std::string, WindingBendBelowFlexibility> worstByWinding;
     std::map<std::string, WoundColumnFrame> frameBySection;
     std::map<std::string, Wire> wireByWinding;
 
@@ -12722,31 +12711,85 @@ void Coil::refuse_turns_bent_tighter_than_the_wire_allows() {
             continue;
         }
 
-        ++numberCornersJudged;
-        worstRatioJudged = std::min(worstRatioJudged, bendRadius / asLaid.flexibilityRadius);
+        ++judgement.numberCornersJudged;
+        const double ratio = bendRadius / asLaid.flexibilityRadius;
+        if (!judgement.tightestRatioJudged || ratio < judgement.tightestRatioJudged.value()) {
+            judgement.tightestRatioJudged = ratio;
+        }
 
         if (asLaid.verdict != BendVerdict::BELOW_FLEXIBILITY) {
             continue;
         }
-        ++numberTightCorners;
-        // Report the worst corner in the coil, measured as how far short of its OWN wire's limit
-        // it falls -- a coil may hold several wires, and the tightest absolute radius is not
+        // Keep each winding's worst corner, measured as how far short of its OWN wire's limit it
+        // falls -- a coil may hold several wires, and the tightest absolute radius is not
         // necessarily the one furthest beyond what its wire can do.
-        const double shortfall = bendRadius / asLaid.flexibilityRadius;
-        if (!tightest || shortfall < tightest->bendRadius / tightest->asLaid.flexibilityRadius) {
-            tightest = TightCorner{turn.get_name(), windingName, bendRadius, frame.cornerRadius,
-                                   standoff, asLaid, wire};
+        auto found = worstByWinding.find(windingName);
+        if (found == worstByWinding.end()) {
+            windingOrder.push_back(windingName);
+            worstByWinding.insert({windingName, WindingBendBelowFlexibility{windingName, turn.get_name(), bendRadius,
+                                                                            frame.cornerRadius, standoff, asLaid,
+                                                                            axis, wire, 1}});
+            continue;
+        }
+        auto& worst = found->second;
+        ++worst.numberTightCorners;
+        if (ratio < worst.bendRadius / worst.asLaid.flexibilityRadius) {
+            worst.turnName = turn.get_name();
+            worst.bendRadius = bendRadius;
+            worst.formerCornerRadius = frame.cornerRadius;
+            worst.standoff = standoff;
+            worst.asLaid = asLaid;
         }
     }
+    for (const auto& windingName : windingOrder) {
+        judgement.windingsBelowFlexibility.push_back(worstByWinding.at(windingName));
+    }
+    return judgement;
+}
 
+
+// ABT #2004 (Alf, 2026-10-22): an EDGEWISE bend of rectangular wire below the IEC 60317-0-2
+// Table 6 mandrel is NOT refused. That table is the mandrel-winding test of the coating (IEC 60851-3
+// 5.1.1): it qualifies the enamel at that diameter, it is not the smallest radius copper strip can be
+// formed to, and edgewise winding is its own forming process (the inner edge upsets, the outer edge
+// thins) that real coils take far tighter than 5 x width. The coil is drawn as laid, and
+// ResultsAnalyzer::analyze_winding_bends reports the bend as a finding. Round wire and FLATWISE
+// rectangular bends keep this refusal unchanged: there the mandrel rule is the forming limit.
+void Coil::refuse_turns_bent_tighter_than_the_wire_allows() {
+    const auto judgement = judge_corners_against_wire_flexibility();
+
+    // MKF_BEND_DIAG: the rule is only worth anything if it REACHES the corners, and a run that
+    // refuses nothing looks exactly like a run that judged nothing. These counters are what tells
+    // those apart on a coil that passes.
     if (std::getenv("MKF_BEND_DIAG")) {
-        std::cerr << "[bend] corners judged=" << numberCornersJudged
-                  << " of " << turns.size() << " turns, tightest drawn/limit="
-                  << (numberCornersJudged == 0 ? std::numeric_limits<double>::quiet_NaN()
-                                               : worstRatioJudged)
-                  << ", below flexibility=" << numberTightCorners << "\n";
+        size_t numberBelow = 0;
+        size_t numberEdgewiseBelow = 0;
+        for (const auto& winding : judgement.windingsBelowFlexibility) {
+            numberBelow += winding.numberTightCorners;
+            if (winding.axis == BendAxis::EDGEWISE) {
+                numberEdgewiseBelow += winding.numberTightCorners;
+            }
+        }
+        std::cerr << "[bend] corners judged=" << judgement.numberCornersJudged
+                  << " of " << judgement.numberTurns << " turns, tightest drawn/limit="
+                  << (judgement.tightestRatioJudged ? judgement.tightestRatioJudged.value()
+                                                    : std::numeric_limits<double>::quiet_NaN())
+                  << ", below flexibility=" << numberBelow
+                  << " (edgewise, not refused=" << numberEdgewiseBelow << ")\n";
     }
 
+    std::optional<WindingBendBelowFlexibility> tightest;
+    size_t numberTightCorners = 0;
+    for (const auto& winding : judgement.windingsBelowFlexibility) {
+        if (winding.axis == BendAxis::EDGEWISE) {
+            continue;  // ABT #2004: reported by analyze_results, not refused
+        }
+        numberTightCorners += winding.numberTightCorners;
+        if (!tightest || winding.bendRadius / winding.asLaid.flexibilityRadius <
+                             tightest->bendRadius / tightest->asLaid.flexibilityRadius) {
+            tightest = winding;
+        }
+    }
     if (!tightest) {
         return;
     }
@@ -12811,7 +12854,7 @@ void Coil::refuse_turns_bent_tighter_than_the_wire_allows() {
         millimetres(corner.standoff) + " mm. For this wire the former's corner would have to be "
         "at least " + millimetres(corner.asLaid.flexibilityRadius - corner.standoff) +
         " mm, or the turn would have to sit that much further out.\n" +
-        "  " + std::to_string(numberTightCorners) + " of " + std::to_string(turns.size()) +
+        "  " + std::to_string(numberTightCorners) + " of " + std::to_string(judgement.numberTurns) +
         " turns in this coil are bent below their wire's limit; this is the worst. MKF does not "
         "emit geometry for a bend the wire cannot make: give the former a corner radius, choose a "
         "wire whose conductor is small enough to take this corner, or move the winding further "

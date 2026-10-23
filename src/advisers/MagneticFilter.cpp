@@ -582,8 +582,13 @@ std::pair<bool, double> MagneticFilterWindability::evaluate_magnetic(Magnetic* m
             continue;
         }
 
-        if (asLaid.verdict == BendVerdict::BELOW_FLEXIBILITY) {
+        if (asLaid.verdict == BendVerdict::BELOW_FLEXIBILITY && axis != BendAxis::EDGEWISE) {
             // Not windable: that wire cannot be bent around that former without cracking.
+            // ABT #2004 (Alf, 2026-10-22): an EDGEWISE bend of rectangular wire below the
+            // IEC 60317-0-2 Table 6 mandrel stays valid, exactly as real winding draws it
+            // (Coil::refuse_turns_bent_tighter_than_the_wire_allows): that table qualifies the
+            // coating, it is not a forming limit for edgewise winding. analyze_results reports it.
+            // (IEC 60317-0-2 9 gives no edgewise heat-shock bend, so the scoring below adds nothing.)
             valid = false;
         }
         // How far the bend falls short of the comfortable (heat-shock) radius, as a fraction of

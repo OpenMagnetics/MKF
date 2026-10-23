@@ -14,7 +14,11 @@
 // its radius is its own, and the rule has nothing to judge there.
 #include "constructive_models/Bobbin.h"
 #include "constructive_models/Coil.h"
+#include "constructive_models/Magnetic.h"
 #include "constructive_models/Wire.h"
+#include "advisers/MagneticFilter.h"
+#include "processors/ResultsAnalyzer.h"
+#include "processors/MagneticSimulator.h"
 #include "physical_models/WireBend.h"
 #include "physical_models/MagneticField.h"
 #include "physical_models/StrayCapacitance.h"
@@ -218,3 +222,187 @@ TEST_CASE("User-facing refusals state the fact and cite no tracker numbers",
 
     settings.reset();
 }
+
+// ABT #2004 (Alf, 2026-10-22). IEC 60317-0-2 Table 6 (5 x width above 10 mm) is the mandrel-winding
+// TEST of the coating (IEC 60851-3 5.1.1): it qualifies the enamel at that diameter. It is not the
+// smallest radius copper strip can be formed to, and an edgewound coil is formed far tighter. So under
+// real winding an EDGEWISE bend of rectangular wire below that mandrel is DRAWN, and analyze_results
+// reports one warning per winding; the round (above) and FLATWISE (below) refusals of ABT #1290 stay.
+namespace {
+
+// Rectangular IEC 60317 grade-1 copper 4.50 x 1 mm from the catalogue, laid as the coil lays it:
+// its 4.5 mm width radial, in the bend plane, so the former's corners bend it EDGEWISE.
+OpenMagnetics::Wire edgewise_strip() {
+    return find_wire_by_name("Rectangular 4.50x1 - Grade 1");
+}
+
+// A rectangular IEC 60317 wire stood on its edge: its conducting WIDTH (the dimension the coil lays
+// radially, in the bend plane) is the SMALL one, so the corner bends it FLATWISE. The catalogue's
+// 2 x 0.80 mm with width and height exchanged.
+OpenMagnetics::Wire flatwise_strip_0_8_by_2() {
+    auto wire = find_wire_by_name("Rectangular 2x0.80 - Grade 1");
+    const auto conductingWidth = wire.get_conducting_width().value();
+    const auto conductingHeight = wire.get_conducting_height().value();
+    const auto outerWidth = wire.get_outer_width().value();
+    const auto outerHeight = wire.get_outer_height().value();
+    wire.set_conducting_width(conductingHeight);
+    wire.set_conducting_height(conductingWidth);
+    wire.set_outer_width(outerHeight);
+    wire.set_outer_height(outerWidth);
+    wire.set_name("Rectangular 0.80x2 - Grade 1");
+    return wire;
+}
+
+// A moulded former's 0.5 mm column corner: the strip's edgewise bend around it is far tighter than
+// the 4 x width mandrel of IEC 60317-0-2 Table 6.
+const double edgewiseFormerCornerRadius = 0.0005;
+const std::string edgewiseCoreShape = "E 70/33/32";
+
+OpenMagnetics::Magnetic edgewise_magnetic(const OpenMagnetics::Coil& coil) {
+    OpenMagnetics::Magnetic magnetic;
+    magnetic.set_core(OpenMagneticsTesting::get_quick_core(edgewiseCoreShape, OpenMagneticsTesting::get_ground_gap(0.001), 1, "N87"));
+    magnetic.set_coil(coil);
+    return magnetic;
+}
+
+}  // namespace
+
+TEST_CASE("Real winding draws an edgewise bend of rectangular wire below the IEC 60317-0-2 mandrel, "
+          "and analyze_results warns once for its winding",
+          "[constructive-model][coil][real-geometry][wire-bend][abt-2004]") {
+    auto& bendSettings = Settings::GetInstance();
+    bendSettings.reset();
+    auto wires = std::vector<OpenMagnetics::Wire>({edgewise_strip()});
+    // An edgewound inductor that fits its window and whose terminal leads route: 10 turns of the
+    // strip on an E 70/33/32. (The reported 13.6 x 2.5 mm strip on a U 46/40/28 is, once its bends
+    // are drawn, refused one step later by its terminal-lead route, which plans the lead at the same
+    // Table 6 mandrel; that is a separate rule.)
+    auto coil = OpenMagneticsTesting::get_quick_coil({10}, {1}, edgewiseCoreShape, 1,
+                                                     WindingOrientation::OVERLAPPING,
+                                                     WindingOrientation::OVERLAPPING,
+                                                     CoilAlignment::CENTERED,
+                                                     CoilAlignment::CENTERED, wires);
+    bendSettings.set_coil_use_real_winding_geometry(true);
+    set_former_corner_radius(coil, edgewiseFormerCornerRadius);
+
+    // Wound, fitting and drawn: no refusal (the reported COIL_WINDING_ERROR). The bend rule judges
+    // only a layout that fits, so the fit is part of what this proves. Real winding names each
+    // station where a turn BEGINS and adds each layer's closing station "..._ending".
+    bool fits = false;
+    REQUIRE_NOTHROW(fits = coil.wind());
+    REQUIRE(fits);
+    REQUIRE(coil.get_turns_description());
+    {
+        const auto stations = coil.get_turns_description().value();
+        size_t numberEndings = 0;
+        for (const auto& station : stations) {
+            if (station.get_name().ends_with("_ending")) {
+                ++numberEndings;
+            }
+        }
+        CHECK(stations.size() - numberEndings == 10);
+        CHECK(numberEndings == coil.get_layers_description()->size());
+    }
+
+    // Not vacuous: the layout really bends this wire EDGEWISE below its own Table 6 limit. Nothing
+    // here knows a number; the limit is the wire's own and the radius the coil's own.
+    const auto judgement = coil.judge_corners_against_wire_flexibility();
+    REQUIRE(judgement.numberCornersJudged > 0);
+    REQUIRE(judgement.windingsBelowFlexibility.size() == 1);
+    const auto& winding = judgement.windingsBelowFlexibility[0];
+    CHECK(winding.axis == BendAxis::EDGEWISE);
+    CHECK(winding.bendRadius < winding.asLaid.flexibilityRadius);
+    CHECK(winding.asLaid.flexibilityRadius ==
+          WireBend::get_minimum_bend_radius(coil.resolve_wire(0), BendCriterion::FLEXIBILITY, BendAxis::EDGEWISE));
+
+    using Catch::Matchers::ContainsSubstring;
+    auto magnetic = edgewise_magnetic(coil);
+
+    SECTION("the bend is reported once, for its winding, with the drawn radius and the mandrel") {
+        const auto findings = ResultsAnalyzer::analyze_winding_bends(magnetic);
+        REQUIRE(findings.size() == 1);
+        CHECK(findings[0].code == ResultFindingCode::EDGEWISE_BEND_BELOW_COATING_MANDREL);
+        CHECK_FALSE(findings[0].operatingPointIndex);
+        CHECK_THAT(findings[0].message,
+                   ContainsSubstring(coil.get_functional_description()[0].get_name()) &&
+                       ContainsSubstring("edgewise") && ContainsSubstring("centreline radius") &&
+                       ContainsSubstring("mandrel") && ContainsSubstring("IEC 60317-0-2 Table 6"));
+        json findingsJson;
+        to_json(findingsJson, findings);
+        CHECK_FALSE(findingsJson[0].contains("operatingPointIndex"));
+        CHECK(findingsJson[0]["code"] == "EDGEWISE_BEND_BELOW_COATING_MANDREL");
+    }
+
+    SECTION("analyze_results of the simulated design carries that one finding") {
+        auto inputs = OpenMagnetics::Inputs::create_quick_operating_point_only_current(
+            100000, 50e-6, 25, WaveformLabel::TRIANGULAR, 5, 0.5, 0);
+        MagneticSimulator magneticSimulator;
+        OpenMagnetics::Mas simulated;
+        REQUIRE_NOTHROW(simulated = magneticSimulator.simulate(inputs, magnetic));
+        const auto findings = ResultsAnalyzer::analyze_results(simulated);
+        size_t numberEdgewise = 0;
+        for (const auto& finding : findings) {
+            if (finding.code == ResultFindingCode::EDGEWISE_BEND_BELOW_COATING_MANDREL) {
+                ++numberEdgewise;
+                CHECK_FALSE(finding.operatingPointIndex);
+            }
+        }
+        CHECK(numberEdgewise == 1);
+    }
+
+    SECTION("the windability filter agrees with real winding: the candidate stays valid") {
+        MagneticFilterWindability filter;
+        const auto [valid, scoring] = filter.evaluate_magnetic(&magnetic, nullptr);
+        CHECK(valid);
+        // IEC 60317-0-2 9 states the heat-shock bend flatwise only, so an edgewise bend has no
+        // heat-shock radius to fall short of: WireBend gives none and the filter scores nothing.
+        CHECK(scoring == 0);
+    }
+
+    bendSettings.reset();
+}
+
+TEST_CASE("Real winding still refuses a FLATWISE bend of rectangular wire below its IEC 60317-0-2 limit",
+          "[constructive-model][coil][real-geometry][wire-bend][abt-2004][abt1290]") {
+    auto& bendSettings = Settings::GetInstance();
+    bendSettings.reset();
+    auto wires = std::vector<OpenMagnetics::Wire>({flatwise_strip_0_8_by_2()});
+    auto coil = OpenMagneticsTesting::get_quick_coil({6}, {1}, "E 42/21/15", 1,
+                                                     WindingOrientation::OVERLAPPING,
+                                                     WindingOrientation::OVERLAPPING,
+                                                     CoilAlignment::CENTERED,
+                                                     CoilAlignment::CENTERED, wires);
+    bendSettings.set_coil_use_real_winding_geometry(true);
+
+    auto wire = coil.resolve_wire(0);
+    REQUIRE(WireBend::axis_from_bend_plane_dimension(wire, true) == BendAxis::FLATWISE);
+    const double flexibilityRadius =
+        WireBend::get_minimum_bend_radius(wire, BendCriterion::FLEXIBILITY, BendAxis::FLATWISE);
+    REQUIRE(flexibilityRadius > 0);
+
+    set_former_corner_radius(coil, flexibilityRadius);
+    REQUIRE_NOTHROW(coil.wind());
+    REQUIRE(coil.get_turns_description());
+    const double standoff = innermost_turn_standoff(coil);
+    REQUIRE(standoff > 0);
+    const double justUnder = 0.99 * flexibilityRadius - standoff;
+    REQUIRE(justUnder > 0);
+
+    set_former_corner_radius(coil, justUnder);
+    using Catch::Matchers::ContainsSubstring;
+    REQUIRE_THROWS_AS(coil.wind(), UnwindableBendException);
+    REQUIRE_THROWS_WITH(coil.wind(), ContainsSubstring(coil.get_functional_description()[0].get_name()) &&
+                                         ContainsSubstring("FLEXIBILITY") && ContainsSubstring("IEC 60317-0-2"));
+
+    // The adviser's filter refuses the same former: it judges the turn tangent to the former
+    // (corner + half the outer width), which is no further out than the coil's own standoff.
+    OpenMagnetics::Magnetic magnetic;
+    magnetic.set_core(OpenMagneticsTesting::get_quick_core("E 42/21/15", OpenMagneticsTesting::get_ground_gap(0.001), 1, "N87"));
+    magnetic.set_coil(coil);
+    MagneticFilterWindability filter;
+    CHECK_FALSE(filter.evaluate_magnetic(&magnetic, nullptr).first);
+
+    bendSettings.reset();
+}
+
+
