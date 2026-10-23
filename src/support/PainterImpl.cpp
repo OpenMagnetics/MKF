@@ -1507,20 +1507,12 @@ void Painter::paint_toroidal_margin(Magnetic magnetic) {
 }
 
 void Painter::set_image_size(Wire wire) {
+    // The wire's canvas: its outer size plus the same margin, 10 % of its larger side, on all
+    // four sides, so the wire sits centred with equal space left/right and top/bottom.
     _extraDimension = 0.1;
-    double margin = std::max(wire.get_maximum_outer_width() * _extraDimension, wire.get_maximum_outer_height() * _extraDimension);
-    auto showingWireWidth = wire.get_maximum_outer_width();
-    if (wire.get_maximum_outer_width() > wire.get_maximum_outer_height()) {
-        showingWireWidth += margin * 2;
-    }
-    else {
-        showingWireWidth += margin;
-    }
-
-    double showingWireHeight = wire.get_maximum_outer_height() + 2 * margin;
-
-    _imageHeight = showingWireHeight;
-    _imageWidth = showingWireWidth;
+    double margin = std::max(wire.get_maximum_outer_width(), wire.get_maximum_outer_height()) * _extraDimension;
+    _imageWidth = wire.get_maximum_outer_width() + 2 * margin;
+    _imageHeight = wire.get_maximum_outer_height() + 2 * margin;
 }
 
 void Painter::set_image_size(Magnetic magnetic) {
@@ -1549,8 +1541,16 @@ void Painter::paint_wire(Wire wire) {
         default:
             throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA, "Unknown error");
     }
-    _root.autoscale();
-    _root.set_attr("width", _imageWidth * _scale).set_attr("height", _imageHeight * _scale);  // TODO remove
+    // Frame the drawing with the wire's canvas, centred on the wire (painted at x = _imageWidth / 2,
+    // y = 0), instead of the content's bounding box: the canvas keeps the margin of
+    // set_image_size(Wire) on every side.
+    std::stringstream viewBox;
+    viewBox << std::fixed << std::setprecision(2)
+            << 0.0 << " " << -_imageHeight / 2 * _scale << " "
+            << _imageWidth * _scale << " " << _imageHeight * _scale;
+    _root.set_attr("viewBox", viewBox.str());
+    _root.set_attr("width", _imageWidth * _scale).set_attr("height", _imageHeight * _scale);
+    _frameFixedByWire = true;
 }
 
 void Painter::paint_core(Magnetic magnetic) {
@@ -3122,8 +3122,11 @@ void Painter::paint_temperature_field(Magnetic magnetic, const std::map<std::str
 }
 
 std::string Painter::export_svg() {
-    // Autoscale to fit all content before exporting
-    _root.autoscale();
+    // Autoscale to fit all content before exporting, except a wire drawing, which paint_wire
+    // already framed with the wire's own canvas.
+    if (!_frameFixedByWire) {
+        _root.autoscale();
+    }
     
     std::string svgString;
     

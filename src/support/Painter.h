@@ -410,6 +410,9 @@ class Painter : public PainterInterface {
     double _imageWidth = 0;
     double _scale = constants.coilPainterScale;
     bool _fieldPainted = false;
+    // Set by paint_wire: the frame is the wire's own canvas (set_image_size(Wire)), so
+    // export_svg must not replace it with autoscale's bounding box plus default margins.
+    bool _frameFixedByWire = false;
     std::optional<CoreShapeFamily> _coreFamily = std::nullopt;
 
     std::vector<double> get_image_size(Magnetic magnetic);

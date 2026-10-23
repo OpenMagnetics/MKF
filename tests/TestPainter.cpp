@@ -3553,6 +3553,111 @@ namespace {
         settings.reset();
     }
 
+    // ABT #2005: a painted wire's SVG frame is the wire's own canvas, centred on it: the drawn
+    // wire with a margin of 10 % of its larger side on every side, so a wide wire covers 1/1.2 of
+    // the width, with equal space left/right and top/bottom, and nothing drawn outside the frame.
+    // Before, the frame came from the svg library's autoscale, whose width |x1| + |x2| left an
+    // empty band right of a wire drawn at x > 0.
+    TEST_CASE("Test_Wire_Painter_Frame_Is_Centred_Wire_Canvas", "[support][painter][wire-painter][abt-2005]") {
+        clear_databases();
+        // The same painter settings as the web's plot_wire.
+        settings.set_painter_simple_litz(false);
+        settings.set_painter_advanced_litz(true);
+
+        auto numbersIn = [](const std::string& text) {
+            std::vector<double> values;
+            std::regex numberRegex(R"re(-?[0-9]+(?:\.[0-9]+)?(?:[eE][-+]?[0-9]+)?)re");
+            for (auto it = std::sregex_iterator(text.begin(), text.end(), numberRegex); it != std::sregex_iterator(); ++it) {
+                values.push_back(std::stod(it->str()));
+            }
+            return values;
+        };
+
+        for (const auto& wireName : {std::string("Rectangular 10x2.50 - Grade 1"),
+                                     std::string("Rectangular 2x0.80 - Grade 1"),
+                                     std::string("Round 0.80 - Grade 3"),
+                                     std::string("Litz TXXL07/28FXXX-2(MWXX)")}) {
+            INFO("Wire: " << wireName);
+            auto wire = find_wire_by_name(wireName);
+            Painter painter("");
+            painter.paint_wire(wire);
+            std::string svg = painter.export_svg();
+
+            double minX = std::numeric_limits<double>::max();
+            double maxX = std::numeric_limits<double>::lowest();
+            double minY = std::numeric_limits<double>::max();
+            double maxY = std::numeric_limits<double>::lowest();
+            size_t drawnElements = 0;
+
+            std::regex circleRegex(R"re(<circle[^>]*\bcx="([^"]+)"[^>]*\bcy="([^"]+)"[^>]*\br="([^"]+)")re");
+            for (auto it = std::sregex_iterator(svg.begin(), svg.end(), circleRegex); it != std::sregex_iterator(); ++it) {
+                double cx = std::stod((*it)[1].str());
+                double cy = std::stod((*it)[2].str());
+                double r = std::stod((*it)[3].str());
+                minX = std::min(minX, cx - r);
+                maxX = std::max(maxX, cx + r);
+                minY = std::min(minY, cy - r);
+                maxY = std::max(maxY, cy + r);
+                ++drawnElements;
+            }
+            std::regex polygonRegex(R"re(<polygon[^>]*\bpoints="([^"]+)")re");
+            for (auto it = std::sregex_iterator(svg.begin(), svg.end(), polygonRegex); it != std::sregex_iterator(); ++it) {
+                auto values = numbersIn((*it)[1].str());
+                REQUIRE(values.size() % 2 == 0);
+                for (size_t i = 0; i < values.size(); i += 2) {
+                    minX = std::min(minX, values[i]);
+                    maxX = std::max(maxX, values[i]);
+                    minY = std::min(minY, values[i + 1]);
+                    maxY = std::max(maxY, values[i + 1]);
+                }
+                ++drawnElements;
+            }
+            REQUIRE(drawnElements > 0);
+            // Every drawn shape is a circle or a polygon; anything else would escape this check.
+            CHECK(svg.find("<path") == std::string::npos);
+            CHECK(svg.find("<rect") == std::string::npos);
+            CHECK(svg.find("<line") == std::string::npos);
+
+            double maximumStrokeWidth = 0;
+            std::regex strokeRegex(R"re(stroke-width:\s*([0-9.eE+-]+))re");
+            for (auto it = std::sregex_iterator(svg.begin(), svg.end(), strokeRegex); it != std::sregex_iterator(); ++it) {
+                maximumStrokeWidth = std::max(maximumStrokeWidth, std::stod((*it)[1].str()));
+            }
+
+            std::smatch viewBoxMatch;
+            REQUIRE(std::regex_search(svg, viewBoxMatch, std::regex(R"re(viewBox="([^"]+)")re")));
+            auto viewBox = numbersIn(viewBoxMatch[1].str());
+            REQUIRE(viewBox.size() == 4);
+
+            double leftMargin = minX - viewBox[0];
+            double rightMargin = viewBox[0] + viewBox[2] - maxX;
+            double topMargin = minY - viewBox[1];
+            double bottomMargin = viewBox[1] + viewBox[3] - maxY;
+            double contentWidth = maxX - minX;
+            double contentHeight = maxY - minY;
+            double expectedMargin = 0.1 * std::max(contentWidth, contentHeight);
+            // Coordinates are printed with one decimal.
+            const double printTolerance = 0.16;
+
+            // Nothing drawn outside the frame, strokes included.
+            CHECK(leftMargin > maximumStrokeWidth / 2);
+            CHECK(rightMargin > maximumStrokeWidth / 2);
+            CHECK(topMargin > maximumStrokeWidth / 2);
+            CHECK(bottomMargin > maximumStrokeWidth / 2);
+            // Centred, with the canvas margin on every side.
+            CHECK_THAT(leftMargin, Catch::Matchers::WithinAbs(rightMargin, printTolerance));
+            CHECK_THAT(topMargin, Catch::Matchers::WithinAbs(bottomMargin, printTolerance));
+            CHECK_THAT(leftMargin, Catch::Matchers::WithinAbs(expectedMargin, printTolerance));
+            CHECK_THAT(topMargin, Catch::Matchers::WithinAbs(expectedMargin, printTolerance));
+            // The width and height attributes are the frame's, so the drawing keeps its scale.
+            std::smatch sizeMatch;
+            REQUIRE(std::regex_search(svg, sizeMatch, std::regex(R"re(<svg[^>]*\bheight="([^"]+)"[^>]*\bwidth="([^"]+)")re")));
+            CHECK_THAT(std::stod(sizeMatch[1].str()), Catch::Matchers::WithinAbs(viewBox[3], printTolerance));
+            CHECK_THAT(std::stod(sizeMatch[2].str()), Catch::Matchers::WithinAbs(viewBox[2], printTolerance));
+        }
+        settings.reset();
+    }
+
     TEST_CASE("Test_Wire_Painter_Litz_Simple_Bare", "[support][painter][wire-painter][smoke-test]") {
         clear_databases();
 
