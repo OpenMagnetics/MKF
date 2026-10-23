@@ -491,6 +491,19 @@ public:
         : OpenMagneticsException(code, message, context) {}
 };
 
+/**
+ * @brief A material's magnetisation curve ends (at 1000 times its saturation field strength) below a flux
+ * density that is still under its B_sat: the curve and the saturation data contradict each other there, and
+ * no field strength can be read for that flux (InitialPermeability::get_magnetomotive_force_for_flux_density,
+ * ABT #1942). Seen near the Curie point, where H_sat(T) goes to zero. The loss-temperature solve turns it, at a
+ * heated iterate, into that operating point's NoThermalOperatingPointException (Alf, 2026-10-19).
+ */
+class MagnetisationCurveExhaustedException : public CalculationException {
+public:
+    explicit MagnetisationCurveExhaustedException(const std::string& message)
+        : CalculationException(ErrorCode::CALCULATION_INVALID_RESULT, message) {}
+};
+
 class NaNResultException : public CalculationException {
 public:
     explicit NaNResultException(const std::string& calculationName)

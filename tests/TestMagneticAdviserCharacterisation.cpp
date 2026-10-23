@@ -44,6 +44,7 @@
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/benchmark/catch_benchmark.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
+#include <catch2/matchers/catch_matchers_string.hpp>
 
 #include "advisers/MagneticAdviser.h"
 #include "constructive_models/Mas.h"
@@ -856,6 +857,66 @@ TEST_CASE("MagneticAdviser web DMC whose switching ripple is resolved returns wo
              << lineFrequencyFluxDensityPeak << " T, saturation " << saturationFluxDensity << " T");
         CHECK(fluxDensityPeak < saturationFluxDensity);
         CHECK_THAT(fluxDensityPeak, Catch::Matchers::WithinRel(lineFrequencyFluxDensityPeak, 0.02));
+    }
+    settings.reset();
+    clear_databases();
+}
+
+static void strip_nulls_abt1942_adviser(nlohmann::json& value) {
+    if (value.is_array()) {
+        for (auto& element : value) {
+            strip_nulls_abt1942_adviser(element);
+        }
+        return;
+    }
+    if (!value.is_object()) {
+        return;
+    }
+    for (auto it = value.begin(); it != value.end();) {
+        if (it->is_null()) {
+            it = value.erase(it);
+        }
+        else {
+            strip_nulls_abt1942_adviser(*it);
+            ++it;
+        }
+    }
+}
+
+// ABT #1942 (Alf, 2026-10-22): a wound candidate one of whose operating points has no thermal operating point (here a
+// 95/97 ferrite core whose losses heat it towards its Curie point, where the magnetisation curve can no longer carry the
+// voltage's flux) gets no temperature from simulate (ABT #1876). The MagneticAdviser's temperature filter threw
+// "[MISSING_DATA] simulate() returned no temperature" and took the whole call with it; such a candidate is rejected,
+// recorded in get_failed_candidates with the solve's reason, and the search goes on.
+TEST_CASE("MagneticAdviser rejects a wound candidate with no thermal operating point instead of failing the call",
+          "[adviser][magnetic-adviser][abt-1942]") {
+    settings.reset();
+    clear_databases();
+    std::ifstream file(OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "catalogue_missing_turns.json"));
+    REQUIRE(file.good());
+    auto masJson = nlohmann::json::parse(file);
+    strip_nulls_abt1942_adviser(masJson);
+    OpenMagnetics::Inputs inputs(masJson.at("inputs"));
+
+    OpenMagnetics::MagneticAdviser adviser;
+    std::vector<std::pair<OpenMagnetics::Mas, double>> results;
+    REQUIRE_NOTHROW(results = adviser.get_advised_magnetic(inputs, 3));
+    CHECK(!results.empty());
+
+    const auto& failedCandidates = adviser.get_failed_candidates();
+    bool noThermalOperatingPointRecorded = false;
+    for (const auto& [reference, reason] : failedCandidates) {
+        INFO(reference << ": " << reason);
+        if (reason.find("no thermal operating point") != std::string::npos) {
+            noThermalOperatingPointRecorded = true;
+            CHECK_THAT(reason, Catch::Matchers::ContainsSubstring("No thermal operating point"));
+        }
+    }
+    CHECK(noThermalOperatingPointRecorded);
+    for (const auto& [mas, scoring] : results) {
+        for (const auto& output : mas.get_outputs()) {
+            CHECK(output.get_temperature());
+        }
     }
     settings.reset();
     clear_databases();

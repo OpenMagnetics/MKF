@@ -38,7 +38,7 @@ static bool core_saturates_at_bias(const Core& core, double magneticFieldDcBias,
     auto coreMaterial = core.resolve_material();
     double biasFluxDensity = InitialPermeability::get_flux_density_for_magnetic_field_dc_bias(coreMaterial, magneticFieldDcBias, temperature);
     auto saturation = ResultsAnalyzer::check_saturation(coreMaterial, biasFluxDensity, temperature, 1.0,
-                                                        DcBiasPoint{magneticFieldDcBias, temperature, frequency});
+                                                        DcBiasPoint{magneticFieldDcBias, temperature, frequency, std::nullopt});
     if (saturation.saturates) {
         logEntry(std::string("Core minimum impedance filter: rejecting candidate ") + core.get_name().value_or("(unnamed core)") +
                  " at H_dc = " + std::to_string(magneticFieldDcBias) + " A/m: " + saturation.message, "MagneticFilter", 2);

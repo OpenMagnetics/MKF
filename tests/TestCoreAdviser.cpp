@@ -4264,9 +4264,15 @@ static std::map<CoreAdviser::CoreAdviserFilters, double> abt1875_weights() {
 
 TEST_CASE("Test_CoreAdviser_Seeding_Regaps_A_Turns_Solve_Refusal", "[adviser][core-adviser][abt-1875]") {
     // The 225 uH DCM flyback on 95 E 10/5.5/5, 4 stacks, at the 0.087 mm gap the standard-cores
-    // gapping gave it: the turns solve meets saturation at 20 turns (B peak 0.64 T above 0.478 T)
-    // and refuses. The seeder's saturation-aware re-gap raises N and re-solves the gap (IMPACT.md:
-    // 42 turns, 0.6 mm, B peak 0.30 T). Before ABT #1875 the refusal dropped the candidate first.
+    // gapping gave it: the turns solve meets saturation and refuses. The seeder's saturation-aware
+    // re-gap raises N and re-solves the gap. Before ABT #1875 the refusal dropped the candidate first.
+    // Premise moved by ABT #1942 (approved by Alf, 2026-10-18): it used to refuse at 20 turns on a
+    // 0.64 T B peak, which was the DC floor the small-signal superposition put under a current that
+    // comes back to zero (the re-gap then kept 42 turns, 0.6 mm, B peak 0.30 T). B now rises from zero
+    // each cycle (Faraday, the current read back on the curve) and the solve refuses at 32 turns: B
+    // peaks at 0.395 T, under B_sat 0.478 T at 40 C, but material 95's curve at 40 C carries that flux
+    // only at H = 23.2 kA/m, far past its H_sat of 397 A/m (the peak-H criterion of check_saturation).
+    // The re-gap keeps 97 turns at a B peak of 0.13 T.
     settings.reset();
     clear_databases();
     auto inputs = pre_process_inputs(load_abt1875_inputs("Test_Magnetizing_Current_Dcm_Flyback_Balanced.json"));
@@ -4278,6 +4284,7 @@ TEST_CASE("Test_CoreAdviser_Seeding_Regaps_A_Turns_Solve_Refusal", "[adviser][co
     // The refusal says at how many turns it refused, as a typed field.
     MagnetizingInductance magnetizingInductance;
     std::optional<int64_t> refusedTurns;
+    std::string refusal;
     {
         OpenMagnetics::Inputs solveInputs(inputs);
         try {
@@ -4286,10 +4293,11 @@ TEST_CASE("Test_CoreAdviser_Seeding_Regaps_A_Turns_Solve_Refusal", "[adviser][co
         }
         catch (const SaturationException& e) {
             refusedTurns = e.number_turns();
+            refusal = e.what();
         }
     }
     REQUIRE(refusedTurns);
-    INFO("refused at " << refusedTurns.value() << " turns");
+    INFO("refused at " << refusedTurns.value() << " turns: " << refusal);
 
     add_initial_turns_by_inductance(&magnetics, inputs);
     REQUIRE(magnetics.size() == 1);

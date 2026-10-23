@@ -82,6 +82,12 @@ struct SaturationVerdict {
     bool fluxDensityAboveSaturation;
     // Criterion 2: the permeability model at the DC bias point at or below the vacuum's (unbiased above it).
     bool permeabilityCollapsed;
+    // Criterion 3 (ABT #1942): the B was read on the magnetisation curve (DcBiasPoint::peakMagneticFieldStrength)
+    // and its peak field strength (times the margin) is above the material's H_sat at the temperature.
+    bool fieldStrengthAboveSaturation;
+    // The curve's peak field strength and the material's H_sat it was held against, when criterion 3 applied.
+    std::optional<double> peakFieldStrength;
+    std::optional<double> saturationFieldStrength;
     // The permeability model's value at the DC bias point, when one was given with a non-zero bias.
     std::optional<double> biasedPermeability;
     double peakFluxDensity;
@@ -101,7 +107,11 @@ class ResultsAnalyzer {
     //   2. a DC bias point is given (MagnetizingInductance::get_last_dc_bias_point) and the material's
     //      permeability model there is at or below the vacuum's 1 while it is above 1 without the bias:
     //      the bias collapsed the permeability to mu_r = 1 (main's SaturationException condition until
-    //      ABT #1855).
+    //      ABT #1855), OR
+    //   3. the DC bias point carries a peak field strength (the magnetizing model read B on the material's
+    //      magnetisation curve, a unipolar DCM magnetizing current, ABT #1942) and peak H * margin >
+    //      H_sat(temperature) (Core::get_magnetic_field_strength_saturation): on the curve B rises only on
+    //      the vacuum slope past the knee, so B_sat alone misses a core driven past it (Alf, 2026-10-18).
     // Callers that ran the magnetizing model pass its DC point; without one only criterion 1 applies.
     static SaturationVerdict check_saturation(const CoreMaterial& coreMaterial, double peakFluxDensity, double temperature,
                                               double margin = 1.0, std::optional<DcBiasPoint> dcBiasPoint = std::nullopt);

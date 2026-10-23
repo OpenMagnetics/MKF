@@ -843,6 +843,10 @@ bool Inputs::can_be_common_mode_choke(OperatingPoint operatingPoint, std::option
     return false;
 }
 
+bool Inputs::is_multiport_inductor_magnetizing_current_from_voltage(const OperatingPointExcitation& primaryExcitation) {
+    return has_flyback_label(primaryExcitation) && primaryExcitation.get_voltage().has_value();
+}
+
 SignalDescriptor Inputs::get_multiport_inductor_magnetizing_current(OperatingPoint operatingPoint,
                                                                    double magnetizingInductance,
                                                                    const std::vector<double>& turnsRatios,
@@ -857,7 +861,7 @@ SignalDescriptor Inputs::get_multiport_inductor_magnetizing_current(OperatingPoi
     }
     SignalDescriptor magnetizingCurrent;
     size_t numberWindings = operatingPoint.get_excitations_per_winding().size();
-    if (has_flyback_label(excitation) && excitation.get_voltage()) {
+    if (is_multiport_inductor_magnetizing_current_from_voltage(excitation)) {
         // The windings conduct alternately: the flux comes from the primary voltage (Faraday),
         // anchored where the primary carries the whole magnetizing MMF alone.
         magnetizingCurrent = calculate_magnetizing_current(operatingPoint, 0, magnetizingInductance, turnsRatios, false);

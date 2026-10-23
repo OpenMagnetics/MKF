@@ -1,6 +1,7 @@
 #include <source_location>
 #include "processors/CircuitSimulatorInterface.h"
 #include "processors/ResultsAnalyzer.h"
+#include "processors/MagneticSimulator.h"
 #include "physical_models/MagnetizingInductance.h"
 #include "physical_models/InitialPermeability.h"
 #include "constructive_models/CorePiece.h"
@@ -2697,4 +2698,351 @@ TEST_CASE("Test_Inductor_Uses_The_Current_It_Is_Given", "[physical-model][magnet
          << magnetizing_current_peak(onlyMagnetizingCurrent) << " A");
     CHECK_THAT(magnetizing_current_peak(withCurrent), Catch::Matchers::WithinRel(currentPeak, 0.02));
     CHECK_THAT(magnetizing_current_peak(onlyMagnetizingCurrent), Catch::Matchers::WithinRel(3 * currentPeak, 0.02));
+}
+
+namespace {
+// ABT #1942 fixtures: the MAS file's magnetic and one operating point, nulls dropped as the app's own loader does.
+void strip_nulls_abt1942(json& value) {
+    if (value.is_array()) {
+        for (auto& element : value) {
+            strip_nulls_abt1942(element);
+        }
+        return;
+    }
+    if (!value.is_object()) {
+        return;
+    }
+    for (auto it = value.begin(); it != value.end();) {
+        if (it->is_null()) {
+            it = value.erase(it);
+        }
+        else {
+            strip_nulls_abt1942(*it);
+            ++it;
+        }
+    }
+}
+json load_abt1942(const std::string& fileName) {
+    std::ifstream file(OpenMagneticsTesting::get_test_data_path(std::source_location::current(), fileName));
+    REQUIRE(file.good());
+    json masJson = json::parse(file);
+    strip_nulls_abt1942(masJson);
+    return masJson;
+}
+// The gaps' reluctance (with their fringing) of the default reluctance model: the core's total minus the ungapped core's.
+double gap_reluctance_abt1942(const Core& core, double permeability) {
+    auto reluctance = ReluctanceModel::factory()->get_core_reluctance(core, permeability);
+    return reluctance.get_core_reluctance() - reluctance.get_ungapped_core_reluctance().value();
+}
+std::pair<double, double> extremes_abt1942(const std::vector<double>& data) {
+    return {*std::min_element(data.begin(), data.end()), *std::max_element(data.begin(), data.end())};
+}
+}
+
+TEST_CASE("Test_Dcm_Imposed_Current_Flux_Density_Rises_From_Zero_On_The_Magnetisation_Curve", "[physical-model][magnetizing-inductance][dc-bias][abt-1942]") {
+    // ABT #1942: low_filling_inductor (EL 25/6.3, Fair-Rite 78, 6 turns, residual gaps) carries 0 -> 5.73 A -> 0 every
+    // 200 kHz cycle, average 2.25 A. One winding, so its current is the magnetizing current: the MMF is imposed. The load
+    // line of the average MMF (H 275 A/m) and the ripple linear about it put B at 0.273 -> 0.537 T, a DC floor and a
+    // peak above the magnetisation curve. The core comes back to zero MMF every cycle, so B is the curve's from zero:
+    // 0 when the current is, B_LL(N * 5.73 A) = 0.439 T at the peak, on the load line N i = H l_e + B A_e R_gap.
+    // (The fixture's voltage, 7.29 V for 2.25 us, implies 2.9 uH and contradicts its current; the current decides.)
+    settings.reset();
+    auto masJson = load_abt1942("low_filling_inductor.json");
+    OpenMagnetics::Magnetic magnetic(masJson["magnetic"]);
+    OpenMagnetics::Inputs inputs(masJson["inputs"]);
+    auto operatingPoint = inputs.get_operating_points()[0];
+    auto core = magnetic.get_core();
+    auto material = core.resolve_material();
+    double numberTurns = magnetic.get_coil().get_functional_description()[0].get_number_turns();
+    double effectiveArea = core.get_processed_description()->get_effective_parameters().get_effective_area();
+    double effectiveLength = core.get_processed_description()->get_effective_parameters().get_effective_length();
+    double temperature = operatingPoint.get_conditions().get_ambient_temperature();
+    double frequency = operatingPoint.get_excitations_per_winding()[0].get_frequency();
+
+    MagnetizingInductance magnetizingInductance;
+    auto [output, fluxDensity] = magnetizingInductance.calculate_inductance_and_magnetic_flux_density(core, magnetic.get_coil(), &operatingPoint);
+    auto current = operatingPoint.get_excitations_per_winding()[0].get_magnetizing_current().value().get_waveform().value().get_data();
+    auto [currentMinimum, currentMaximum] = extremes_abt1942(current);
+    auto [fluxDensityMinimum, fluxDensityMaximum] = extremes_abt1942(fluxDensity.get_waveform().value().get_data());
+
+    double gapReluctance = gap_reluctance_abt1942(core, InitialPermeability::get_initial_permeability(material, temperature, std::nullopt, frequency));
+    double curvePeak = InitialPermeability::get_dc_operating_point_for_magnetomotive_force(
+        material, numberTurns * currentMaximum, effectiveLength, effectiveArea, gapReluctance, temperature, frequency).second;
+    INFO("i " << currentMinimum << " -> " << currentMaximum << " A; B " << fluxDensityMinimum << " -> " << fluxDensityMaximum
+         << " T; curve peak " << curvePeak << " T; Lm " << resolve_dimensional_values(output.get_magnetizing_inductance()) * 1e6 << " uH");
+    REQUIRE(currentMinimum == 0);
+    REQUIRE_THAT(currentMaximum, Catch::Matchers::WithinRel(5.73, 0.01));
+    CHECK_THAT(curvePeak, Catch::Matchers::WithinAbs(0.439, 0.005));
+    CHECK_THAT(fluxDensityMinimum, Catch::Matchers::WithinAbs(0, 1e-9));
+    CHECK_THAT(fluxDensityMaximum, Catch::Matchers::WithinRel(curvePeak, 1e-3));
+    settings.reset();
+}
+
+TEST_CASE("Test_Dcm_Flyback_Flux_Density_Is_Faraday_From_Zero_With_The_Current_From_The_Curve", "[physical-model][magnetizing-inductance][dc-bias][abt-1942]") {
+    // ABT #1942: slow_simulation's second operating point (flyback, material 95, 62:7:3, primary voltage given) has
+    // its magnetizing current from the voltage: the flux swing is Faraday's, 0.464 T. The load line of that current's
+    // average MMF lifted it onto a 0.588 T floor (0.588 -> 1.052 T, above saturation). The core comes back to zero MMF
+    // in the dead time, so B is Faraday's anchored at zero there, and the magnetizing current is read back from the
+    // material's curve on the gaps' load line: at the peak B_LL(N i_pk) is Faraday's peak.
+    settings.reset();
+    auto masJson = load_abt1942("slow_simulation.json");
+    OpenMagnetics::Magnetic magnetic(masJson["magnetic"]);
+    OpenMagnetics::Inputs inputs(masJson["inputs"]);
+    REQUIRE(inputs.get_operating_points().size() > 1);
+    auto operatingPoint = inputs.get_operating_points()[1];
+    auto core = magnetic.get_core();
+    auto material = core.resolve_material();
+    double numberTurns = magnetic.get_coil().get_functional_description()[0].get_number_turns();
+    double effectiveArea = core.get_processed_description()->get_effective_parameters().get_effective_area();
+    double effectiveLength = core.get_processed_description()->get_effective_parameters().get_effective_length();
+    double temperature = operatingPoint.get_conditions().get_ambient_temperature();
+    double frequency = operatingPoint.get_excitations_per_winding()[0].get_frequency();
+
+    // Faraday on the primary voltage: the swing of the integral of v over N A_e.
+    auto voltage = OpenMagnetics::Inputs::calculate_sampled_waveform(operatingPoint.get_excitations_per_winding()[0].get_voltage()->get_waveform().value(), frequency).get_data();
+    double voltageAverage = 0;
+    for (auto value : voltage) {
+        voltageAverage += value / voltage.size();
+    }
+    double fluxLinkage = 0, fluxLinkageMinimum = 0, fluxLinkageMaximum = 0;
+    for (auto value : voltage) {
+        fluxLinkage += (value - voltageAverage) / frequency / voltage.size();
+        fluxLinkageMinimum = std::min(fluxLinkageMinimum, fluxLinkage);
+        fluxLinkageMaximum = std::max(fluxLinkageMaximum, fluxLinkage);
+    }
+    double faradaySwing = (fluxLinkageMaximum - fluxLinkageMinimum) / (numberTurns * effectiveArea);
+
+    MagnetizingInductance magnetizingInductance;
+    auto [output, fluxDensity] = magnetizingInductance.calculate_inductance_and_magnetic_flux_density(core, magnetic.get_coil(), &operatingPoint);
+    auto [fluxDensityMinimum, fluxDensityMaximum] = extremes_abt1942(fluxDensity.get_waveform().value().get_data());
+    auto current = operatingPoint.get_excitations_per_winding()[0].get_magnetizing_current().value().get_waveform().value().get_data();
+    auto [currentMinimum, currentMaximum] = extremes_abt1942(current);
+    double gapReluctance = gap_reluctance_abt1942(core, InitialPermeability::get_initial_permeability(material, temperature, std::nullopt, frequency));
+    double curveAtPeakCurrent = InitialPermeability::get_dc_operating_point_for_magnetomotive_force(
+        material, numberTurns * currentMaximum, effectiveLength, effectiveArea, gapReluctance, temperature, frequency).second;
+    INFO("B " << fluxDensityMinimum << " -> " << fluxDensityMaximum << " T, Faraday swing " << faradaySwing << " T; i_m "
+         << currentMinimum << " -> " << currentMaximum << " A, B_LL(N i_pk) " << curveAtPeakCurrent << " T; Lm "
+         << resolve_dimensional_values(output.get_magnetizing_inductance()) * 1e6 << " uH");
+    REQUIRE_THAT(faradaySwing, Catch::Matchers::WithinAbs(0.464, 0.005));
+    CHECK_THAT(fluxDensityMaximum - fluxDensityMinimum, Catch::Matchers::WithinRel(faradaySwing, 0.01));
+    CHECK_THAT(fluxDensityMinimum, Catch::Matchers::WithinAbs(0, 0.002 * faradaySwing));
+    CHECK_THAT(curveAtPeakCurrent, Catch::Matchers::WithinRel(fluxDensityMaximum, 1e-3));
+    settings.reset();
+}
+
+namespace {
+// low_filling_inductor's current lifted by `lift` amperes, through the magnetizing model: the small-signal model's
+// signature (the average of B is the load line's B at the average MMF, the ripple linear at the incremental
+// permeability of that point, whose inductance the model reports), and the curve-from-zero model's swing, which must
+// differ from it for the case to tell the two apart. `reverses` says which side of zero the lifted current's minimum
+// is required on: above it (CCM), or below it (a current reversing through zero; an imposed current reverses by any
+// amount above rounding, ABT #1942).
+void check_small_signal_load_line_abt1942(double lift, bool reverses) {
+    settings.reset();
+    auto masJson = load_abt1942("low_filling_inductor.json");
+    auto& currentData = masJson["inputs"]["operatingPoints"][0]["excitationsPerWinding"][0]["current"]["waveform"]["data"];
+    for (auto& datum : currentData) {
+        datum = datum.get<double>() + lift;
+    }
+    OpenMagnetics::Magnetic magnetic(masJson["magnetic"]);
+    OpenMagnetics::Inputs inputs(masJson["inputs"]);
+    auto operatingPoint = inputs.get_operating_points()[0];
+    auto core = magnetic.get_core();
+    auto material = core.resolve_material();
+    double numberTurns = magnetic.get_coil().get_functional_description()[0].get_number_turns();
+    double effectiveArea = core.get_processed_description()->get_effective_parameters().get_effective_area();
+    double effectiveLength = core.get_processed_description()->get_effective_parameters().get_effective_length();
+    double temperature = operatingPoint.get_conditions().get_ambient_temperature();
+    double frequency = operatingPoint.get_excitations_per_winding()[0].get_frequency();
+
+    MagnetizingInductance magnetizingInductance;
+    auto [output, fluxDensity] = magnetizingInductance.calculate_inductance_and_magnetic_flux_density(core, magnetic.get_coil(), &operatingPoint);
+    double inductance = resolve_dimensional_values(output.get_magnetizing_inductance());
+    auto currentWaveform = operatingPoint.get_excitations_per_winding()[0].get_magnetizing_current().value().get_waveform().value();
+    auto [currentMinimum, currentMaximum] = extremes_abt1942(currentWaveform.get_data());
+    double currentAverage = OpenMagnetics::Inputs::calculate_waveform_average(currentWaveform);
+    auto fluxDensityWaveform = fluxDensity.get_waveform().value();
+    auto [fluxDensityMinimum, fluxDensityMaximum] = extremes_abt1942(fluxDensityWaveform.get_data());
+    double fluxDensityAverage = OpenMagnetics::Inputs::calculate_waveform_average(fluxDensityWaveform);
+
+    double gapReluctance = gap_reluctance_abt1942(core, InitialPermeability::get_initial_permeability(material, temperature, std::nullopt, frequency));
+    auto curve = [&](double current) {
+        double magnetomotiveForce = numberTurns * current;
+        return std::copysign(InitialPermeability::get_dc_operating_point_for_magnetomotive_force(
+            material, std::fabs(magnetomotiveForce), effectiveLength, effectiveArea, gapReluctance, temperature, frequency).second, magnetomotiveForce);
+    };
+    double loadLineFluxDensity = curve(currentAverage);
+    double incrementalSwing = inductance * (currentMaximum - currentMinimum) / (numberTurns * effectiveArea);
+    double curveSwing = curve(currentMaximum) - curve(currentMinimum);
+    INFO("lift " << lift << " A: i " << currentMinimum << " -> " << currentMaximum << " A (avg " << currentAverage << "); B " << fluxDensityMinimum << " -> " << fluxDensityMaximum << " T (avg " << fluxDensityAverage
+         << "); load line B(N I_avg) " << loadLineFluxDensity << " T; swing incremental " << incrementalSwing << " T, curve "
+         << curveSwing << " T; Lm " << inductance * 1e6 << " uH");
+    if (reverses) {
+        REQUIRE(currentMinimum < -0.1 * currentMaximum);
+    }
+    else {
+        REQUIRE(currentMinimum > 0);
+    }
+    // The case tells the two models apart only if their swings differ.
+    REQUIRE(std::fabs(curveSwing - incrementalSwing) > 0.05 * incrementalSwing);
+    CHECK_THAT(fluxDensityMaximum - fluxDensityMinimum, Catch::Matchers::WithinRel(incrementalSwing, 2e-3));
+    if (!reverses) {
+        // A DC point the current rides on: the offset is the load line's. Through zero the waveform average is not
+        // what today's path anchors (its harmonic DC), which ABT #1959 revisits; only its swing is pinned here.
+        CHECK_THAT(fluxDensityAverage, Catch::Matchers::WithinRel(loadLineFluxDensity, 2e-3));
+    }
+    settings.reset();
+}
+}
+
+TEST_CASE("Test_Ccm_Choke_Keeps_The_Small_Signal_Load_Line_Flux_Density", "[physical-model][magnetizing-inductance][dc-bias][abt-1942]") {
+    // ABT #1942: the curve-from-zero path is for a magnetizing current that comes back to zero. A CCM choke (here
+    // low_filling_inductor's current lifted by 3 A, so it never reaches zero) rides a minor loop on its DC point and
+    // keeps the small-signal model.
+    check_small_signal_load_line_abt1942(3.0, false);
+}
+
+TEST_CASE("Test_Magnetizing_Current_Through_Zero_Keeps_The_Small_Signal_Load_Line_Flux_Density", "[physical-model][magnetizing-inductance][dc-bias][abt-1942]") {
+    // ABT #1942, unipolar DCM only (Alf, 2026-10-18): a magnetizing current that goes on through zero to the other
+    // polarity (here low_filling_inductor's 0 -> 5.73 A lowered by 2 A, so it swings -2 -> 3.73 A) is not a core
+    // starting from zero every cycle and keeps today's small-signal model (its own model is ABT #1959). This current
+    // falls by its whole 5.73 A in one sample, so a tolerance of one sample step would have let it through: an imposed
+    // current reaches zero only within rounding.
+    check_small_signal_load_line_abt1942(-2.0, true);
+}
+
+TEST_CASE("Test_Magnetomotive_Force_For_Flux_Density_Throws_Past_The_Curve", "[physical-model][permeability][dc-bias][abt-1942]") {
+    // ABT #1942 (Alf, 2026-10-18, no silent extrapolation): the inverse load line reads the magnetisation curve and
+    // nothing beyond it. On the table it inverts the forward crossing; past the table's last point (1000 Hsat) it
+    // throws instead of going on along the vacuum slope: a SaturationException above the material's B_sat, and a
+    // data error when the curve ends below B_sat.
+    settings.reset();
+    auto material = Core::resolve_material(std::string("3C95"));
+    auto curve = InitialPermeability::get_magnetisation_curve(material, 25, std::nullopt);
+    const double effectiveLength = 0.05, effectiveArea = 1e-4, gapReluctance = 1e6;
+    double lastFluxDensity = curve->fluxDensity.back();
+    INFO("3C95 at 25 C: curve ends at " << lastFluxDensity << " T, H " << curve->fieldStrength.back() << " A/m; B_sat " << curve->saturationFluxDensity << " T");
+    REQUIRE(lastFluxDensity > curve->saturationFluxDensity);
+    for (double fraction : {0.3, 0.999}) {
+        auto [fieldStrength, magnetomotiveForce] = InitialPermeability::get_magnetomotive_force_for_flux_density(
+            *curve, fraction * lastFluxDensity, effectiveLength, effectiveArea, gapReluctance);
+        auto forward = InitialPermeability::get_dc_operating_point_for_magnetomotive_force(*curve, magnetomotiveForce, effectiveLength, effectiveArea, gapReluctance);
+        CHECK_THAT(forward.second, Catch::Matchers::WithinRel(fraction * lastFluxDensity, 1e-9));
+        CHECK_THAT(forward.first, Catch::Matchers::WithinRel(fieldStrength, 1e-9));
+    }
+    CHECK_THROWS_AS(InitialPermeability::get_magnetomotive_force_for_flux_density(
+        *curve, 1.001 * lastFluxDensity, effectiveLength, effectiveArea, gapReluctance), SaturationException);
+
+    // A curve that ends below its material's B_sat: past its end is a contradiction in the data, not saturation.
+    InitialPermeability::MagnetisationCurve shortCurve{{0, 10, 20}, {0, 0.1, 0.2}, "short", 0.5, false};
+    bool saturationThrown = false, otherThrown = false;
+    try {
+        InitialPermeability::get_magnetomotive_force_for_flux_density(shortCurve, 0.3, effectiveLength, effectiveArea, gapReluctance);
+    }
+    catch (const SaturationException&) {
+        saturationThrown = true;
+    }
+    catch (const std::exception&) {
+        otherThrown = true;
+    }
+    CHECK_FALSE(saturationThrown);
+    CHECK(otherThrown);
+    settings.reset();
+}
+
+TEST_CASE("Test_Dcm_Imposed_Current_Past_The_Knee_Is_Flagged_On_Hsat", "[physical-model][magnetizing-inductance][dc-bias][saturation][abt-1942]") {
+    // ABT #1942 (Alf, 2026-10-18, peak H against the material's Hsat): where B is read on the magnetisation curve it
+    // rises past the knee only on the vacuum slope, so it can stay under B_sat while the core is driven deep into
+    // saturation. low_filling_inductor (Fair-Rite 78, 0 -> 5.73 A) peaks at 0.439 T on its curve, under B_sat 0.455 T,
+    // but the curve gives it that flux at a field strength above Hsat 397 A/m (B(Hsat) = 0.404 T): the saturation check
+    // analyze_results and the advisers make flags it, on the field strength (813 A/m). At 40 % of the current it stays
+    // under Hsat and is not flagged.
+    settings.reset();
+    auto verdict_at = [](double scale) {
+        auto masJson = load_abt1942("low_filling_inductor.json");
+        auto& currentData = masJson["inputs"]["operatingPoints"][0]["excitationsPerWinding"][0]["current"]["waveform"]["data"];
+        for (auto& datum : currentData) {
+            datum = datum.get<double>() * scale;
+        }
+        OpenMagnetics::Magnetic magnetic(masJson["magnetic"]);
+        OpenMagnetics::Inputs inputs(masJson["inputs"]);
+        auto operatingPoint = inputs.get_operating_points()[0];
+        auto core = magnetic.get_core();
+        double temperature = operatingPoint.get_conditions().get_ambient_temperature();
+        MagnetizingInductance magnetizingInductance;
+        auto fluxDensity = magnetizingInductance.calculate_inductance_and_magnetic_flux_density(core, magnetic.get_coil(), &operatingPoint).second;
+        auto dcBiasPoint = magnetizingInductance.get_last_dc_bias_point();
+        REQUIRE(dcBiasPoint);
+        REQUIRE(dcBiasPoint->peakMagneticFieldStrength);
+        return ResultsAnalyzer::check_saturation(core.resolve_material(), ResultsAnalyzer::get_peak_flux_density(fluxDensity), temperature, 1.0, dcBiasPoint);
+    };
+
+    auto full = verdict_at(1.0);
+    INFO(full.message);
+    REQUIRE(full.peakFieldStrength);
+    REQUIRE(full.saturationFieldStrength);
+    CHECK(full.peakFieldStrength.value() > full.saturationFieldStrength.value());
+    CHECK_FALSE(full.fluxDensityAboveSaturation);
+    CHECK(full.fieldStrengthAboveSaturation);
+    CHECK(full.saturates);
+
+    auto reduced = verdict_at(0.4);
+    INFO(reduced.message);
+    REQUIRE(reduced.peakFieldStrength);
+    CHECK(reduced.peakFieldStrength.value() < reduced.saturationFieldStrength.value());
+    CHECK_FALSE(reduced.saturates);
+    settings.reset();
+}
+
+TEST_CASE("Test_Dcm_Voltage_Driven_Paramagnetic_Core_Reads_The_Current_On_Mu0", "[physical-model][magnetizing-inductance][dc-bias][abt-1942]") {
+    // ABT #1942 (Alf, 2026-10-19): a core the loss solve holds at its Curie temperature is magnetized as the
+    // paramagnetic core it is above it (mu_r = 1, MagneticSimulator::make_paramagnetic_magnetic). Its magnetisation
+    // curve is mu0*H at every H; the table that stores it ends at 1000 Hsat(T), a few A/m and a few mT just under the
+    // Curie point (Hsat(T) goes to zero there). A voltage-driven DCM point reads its magnetizing current back from the
+    // curve: on the paramagnetic core that is mu0's, H = B/mu0, at any B. Before, the readback refused a Faraday flux
+    // past the table's end ("integrates to only 0.006346 T at 5049.8 A/m"), and the MagneticAdviser lost the whole call
+    // on slow_simulation, error_paint_field and catalogue_missing_turns. slow_simulation's second operating point
+    // (flyback, material 95, primary voltage given), held 1 K under 95's Curie temperature.
+    settings.reset();
+    auto masJson = load_abt1942("slow_simulation.json");
+    OpenMagnetics::Magnetic magnetic(masJson["magnetic"]);
+    OpenMagnetics::Inputs inputs(masJson["inputs"]);
+    REQUIRE(inputs.get_operating_points().size() > 1);
+    auto operatingPoint = inputs.get_operating_points()[1];
+    auto paramagnetic = MagneticSimulator::make_paramagnetic_magnetic(magnetic);
+    auto core = paramagnetic.get_core();
+    auto material = core.resolve_material();
+    auto curieTemperature = magnetic.get_core().resolve_material().get_curie_temperature();
+    REQUIRE(curieTemperature);
+    double temperature = curieTemperature.value() - 1;
+    operatingPoint.get_mutable_conditions().set_ambient_temperature(temperature);
+    double numberTurns = magnetic.get_coil().get_functional_description()[0].get_number_turns();
+    double effectiveArea = core.get_processed_description()->get_effective_parameters().get_effective_area();
+    double frequency = operatingPoint.get_excitations_per_winding()[0].get_frequency();
+
+    REQUIRE(InitialPermeability::is_paramagnetic(material, temperature));
+    REQUIRE_FALSE(InitialPermeability::is_paramagnetic(magnetic.get_core().resolve_material(), temperature));
+    auto curve = InitialPermeability::get_magnetisation_curve(material, temperature, frequency);
+    REQUIRE(curve->paramagnetic);
+
+    MagnetizingInductance magnetizingInductance;
+    auto [output, fluxDensity] = magnetizingInductance.calculate_inductance_and_magnetic_flux_density(core, paramagnetic.get_coil(), &operatingPoint);
+    auto [fluxDensityMinimum, fluxDensityMaximum] = extremes_abt1942(fluxDensity.get_waveform().value().get_data());
+    auto current = operatingPoint.get_excitations_per_winding()[0].get_magnetizing_current().value().get_waveform().value().get_data();
+    auto [currentMinimum, currentMaximum] = extremes_abt1942(current);
+    // mu_r = 1 in the core: N i = B A_e R_total(mu_r = 1) at every sample, the peak included.
+    double totalReluctance = ReluctanceModel::factory()->get_core_reluctance(core, 1.0).get_core_reluctance();
+    double expectedPeakCurrent = fluxDensityMaximum * effectiveArea * totalReluctance / numberTurns;
+    INFO("paramagnetic 95 at " << temperature << " C: curve table ends at " << curve->fluxDensity.back() << " T, "
+         << curve->fieldStrength.back() << " A/m; B " << fluxDensityMinimum << " -> " << fluxDensityMaximum << " T; i_m "
+         << currentMinimum << " -> " << currentMaximum << " A, mu0 load line " << expectedPeakCurrent << " A");
+    REQUIRE(fluxDensityMaximum > curve->fluxDensity.back());
+    CHECK_THAT(fluxDensityMinimum, Catch::Matchers::WithinAbs(0, 0.002 * fluxDensityMaximum));
+    CHECK_THAT(currentMaximum, Catch::Matchers::WithinRel(expectedPeakCurrent, 1e-3));
+
+    // The inverse itself, far past the table: H = B/mu0.
+    auto [fieldStrength, magnetomotiveForce] = InitialPermeability::get_magnetomotive_force_for_flux_density(*curve, 0.3, 0.05, 1e-4, 1e6);
+    CHECK_THAT(fieldStrength, Catch::Matchers::WithinRel(0.3 / constants.vacuumPermeability, 1e-12));
+    CHECK_THAT(magnetomotiveForce, Catch::Matchers::WithinRel(fieldStrength * 0.05 + 0.3 * 1e-4 * 1e6, 1e-12));
+    settings.reset();
 }

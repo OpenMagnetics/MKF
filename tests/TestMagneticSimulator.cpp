@@ -2959,16 +2959,22 @@ TEST_CASE("A loss-temperature loop with no fixed point below the data limit pays
 
 TEST_CASE("A loss-temperature loop that does not settle is that point's NO_THERMAL_OPERATING_POINT, not a refusal of the design",
           "[processor][magnetic-simulator][abt-1960]") {
-    // ABT #1960: Fair-Rite 78 EL 25/6.3, one winding of 6 turns on the primary side, 200 kHz, 25 C, completed as the
-    // web's loader completes it (mas_autocomplete, not simulated). The core saturates and its B(T) steps down
-    // (0.637 -> 0.630 T between 135.890 and 135.895 C), so the core losses jump 4.19 -> 3.81 W and the loop's
-    // iterates close in on that step from both sides, never within the 2 K tolerance. simulate threw for the whole
-    // design ("did not settle within 100 iterations"); like a network that does not converge or a winding that runs
-    // away (ABT #1876), it is that point having no thermal operating point: losses at ambient, no temperature, and the
-    // finding from analyze_results. The step comes from the magnetizing model's DC point (ABT #1942): if a change
-    // there makes this design settle, this fixture no longer reaches the path and needs another.
+    // Fair-Rite 78 EL 25/6.3, one winding of 6 turns on the primary side, 200 kHz, 25 C, completed as the web's
+    // loader completes it (mas_autocomplete, not simulated). simulate threw for the whole design ("did not settle
+    // within 100 iterations"); like a network that does not converge or a winding that runs away, it is that point
+    // having no thermal operating point: losses at ambient, no temperature, and the finding from analyze_results.
+    // The fixture was first that design as the web loaded it (single_winding_78_el25_on_primary.json): its core
+    // losses jumped 4.19 -> 3.81 W where B(T) stepped down at 135.89 C. The unipolar DCM flux density read on the
+    // magnetisation curve made that design settle (its core at 198.03 C, under the 200 C Curie point), so the path
+    // was no longer reached. This fixture is the same design with its current scaled by 1.6 (3.6 A average, 9.18 A
+    // peak; voltage unchanged). Its core heats towards the Curie point, where H_sat(T) goes to zero, and near
+    // 197.97 C its losses step between 23.8 W and 0.11 W within a microkelvin, at the same peak flux density: the
+    // core temperatures they produce, 387 C and 93 C, lie on either side of the step, so no temperature is within
+    // the 2 K tolerance of the one its own losses produce and the damped iterates close in on the step from both
+    // sides. If a change to the magnetizing or loss model removes that step, this fixture no longer reaches the
+    // path and needs another.
     settings.reset();
-    auto path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "single_winding_78_el25_on_primary.json");
+    auto path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "single_winding_78_el25_on_primary_curie_step.json");
     auto completed = OpenMagnetics::mas_autocomplete(OpenMagneticsTesting::mas_loader(path), false, json{});
     auto magnetic = completed.get_magnetic();
     auto inputs = completed.get_inputs();
@@ -3208,4 +3214,92 @@ TEST_CASE("Under an adviser the loss solve runs the loss-temperature loop whatev
     CHECK_FALSE(settings.get_simulator_loss_temperature_loop());
     OperatingPoint operatingPoint = inputs.get_operating_points()[0];
     CHECK(MagneticSimulator().calculate_core_losses(operatingPoint, magnetic).get_temperature() == ambientTemperature);
+}
+
+
+namespace {
+void strip_nulls_abt1942_simulator(json& value) {
+    if (value.is_array()) {
+        for (auto& element : value) {
+            strip_nulls_abt1942_simulator(element);
+        }
+        return;
+    }
+    if (!value.is_object()) {
+        return;
+    }
+    for (auto it = value.begin(); it != value.end();) {
+        if (it->is_null()) {
+            it = value.erase(it);
+        }
+        else {
+            strip_nulls_abt1942_simulator(*it);
+            ++it;
+        }
+    }
+}
+}
+
+TEST_CASE("Loss loop whose heated core cannot carry the voltage's flux on its curve has no thermal operating point",
+          "[processor][magnetic-simulator][abt-1942]") {
+    // ABT #1942 (Alf, 2026-10-19): a voltage-driven DCM point has its flux from Faraday and its magnetizing current read
+    // back from the material's magnetisation curve at the core's temperature. slow_simulation's second operating point
+    // (flyback, material 95, Curie 220 C) is fine at 25 C ambient (core ~110 C), but from a hotter ambient its losses
+    // drive the core to where 95's curve cannot carry that flux: past its end above B_sat(T) (the readback's
+    // SaturationException) or, closer to Curie where H_sat(T) goes to zero and the curve ends at 1000 H_sat(T), past
+    // its end while still under B_sat(T) (MagnetisationCurveExhaustedException). Either refusal escaped the loss solve
+    // and took the MagneticAdviser's whole call with it (error_paint_field, catalogue_missing_turns,
+    // slow_simulation). At a heated iterate it is that point's NoThermalOperatingPointException (ABT #1876, #1960):
+    // losses at ambient, no temperature, and analyze_results' NO_THERMAL_OPERATING_POINT.
+    settings.reset();
+    std::ifstream file(OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "slow_simulation.json"));
+    REQUIRE(file.good());
+    json masJson = json::parse(file);
+    strip_nulls_abt1942_simulator(masJson);
+    OpenMagnetics::Magnetic magnetic(masJson["magnetic"]);
+    if (!magnetic.get_coil().get_turns_description()) {
+        magnetic.get_mutable_coil().wind();
+    }
+    OpenMagnetics::Inputs allInputs(masJson["inputs"]);
+    REQUIRE(allInputs.get_operating_points().size() > 1);
+
+    // 85 C: past the curve's end above B_sat; 115 C: past its end under B_sat (near Curie).
+    for (double ambientTemperature : {85.0, 115.0}) {
+        DYNAMIC_SECTION("ambient " << ambientTemperature << " C") {
+            OperatingPoint operatingPoint = allInputs.get_operating_points()[1];
+            operatingPoint.get_mutable_conditions().set_ambient_temperature(ambientTemperature);
+            const std::string refusal = ambientTemperature < 100 ? "lies past the end of its magnetisation curve" : "integrates to only";
+            {
+                OperatingPoint thrown = operatingPoint;
+                std::optional<WindingLossesOutput> windingLossesOutput;
+                std::optional<TemperatureOutput> temperatureOutput;
+                CHECK_THROWS_MATCHES(MagneticSimulator().calculate_core_losses(thrown, magnetic, &windingLossesOutput, &temperatureOutput,
+                                                                               WindingLossesScope::OHMIC, NoThermalOperatingPointPolicy::THROW),
+                                     NoThermalOperatingPointException,
+                                     Catch::Matchers::MessageMatches(Catch::Matchers::ContainsSubstring("No thermal operating point: at a core temperature of") &&
+                                                                     Catch::Matchers::ContainsSubstring(refusal)));
+            }
+            OpenMagnetics::Inputs inputs = allInputs;
+            inputs.set_operating_points({operatingPoint});
+            MagneticSimulator simulator;
+            OpenMagnetics::Mas simulated;
+            REQUIRE_NOTHROW(simulated = simulator.simulate(inputs, magnetic));
+            REQUIRE(simulated.get_outputs().size() == 1);
+            const auto& output = simulated.get_outputs()[0];
+            CHECK_FALSE(output.get_temperature());
+            REQUIRE(output.get_core_losses());
+            CHECK(output.get_core_losses()->get_temperature() == ambientTemperature);
+            auto findings = ResultsAnalyzer::analyze_results(simulated);
+            INFO("findings:" << describe_findings(findings));
+            size_t noThermal = 0;
+            for (const auto& finding : findings) {
+                if (finding.code == ResultFindingCode::NO_THERMAL_OPERATING_POINT) {
+                    ++noThermal;
+                    CHECK_THAT(finding.message, Catch::Matchers::ContainsSubstring(refusal));
+                }
+            }
+            CHECK(noThermal == 1);
+        }
+    }
+    settings.reset();
 }

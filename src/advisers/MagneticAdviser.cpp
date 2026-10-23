@@ -9,6 +9,7 @@
 #include "advisers/MagneticFilterInternal.h"  // is_energy_storing_topology()
 #include "physical_models/Impedance.h"
 #include "processors/MagneticSimulator.h"
+#include "processors/ResultsAnalyzer.h"
 #include "support/Painter.h"
 #include <magic_enum_utility.hpp>
 #include "support/Logger.h"
@@ -75,7 +76,8 @@ WoundCandidateOutcome process_wound_candidate(
     size_t globalCandidateCap,
     std::vector<std::pair<size_t, double>>& usedNumberSectionsAndMargin,
     std::vector<Mas>& masData,
-    size_t& processedCoils) {
+    size_t& processedCoils,
+    std::vector<std::pair<std::string, std::string>>& failedCandidates) {
 
     auto sectionsOpt = mas.get_magnetic().get_coil().get_sections_description();
     if (!sectionsOpt || sectionsOpt->empty()) {
@@ -178,11 +180,33 @@ WoundCandidateOutcome process_wound_candidate(
     // let through can still exceed the limit once its winding losses are in.
     if (settings.get_core_adviser_enable_temperature_filter()) {
         const double maximumTemperature = resolve_maximum_design_temperature(mas.get_mutable_inputs());
-        for (const auto& output : mas.get_outputs()) {
+        const auto& outputs = mas.get_outputs();
+        for (size_t operatingPointIndex = 0; operatingPointIndex < outputs.size(); ++operatingPointIndex) {
+            const auto& output = outputs[operatingPointIndex];
             if (!output.get_temperature()) {
-                throw InvalidInputException(ErrorCode::MISSING_DATA,
-                    "MagneticAdviser: simulate() returned no temperature for '" + mas.get_mutable_magnetic().get_reference()
-                    + "', so the temperature filter cannot judge it");
+                // ABT #1942 / #1876: simulate gives no temperature to an operating point with no thermal operating
+                // point (e.g. a core heated past its Curie point that cannot carry the voltage's flux). Such a
+                // candidate cannot pass the temperature filter: it is rejected and recorded, the search goes on.
+                // analyze_missing_temperature re-solves the point and THROWS when the missing temperature is not
+                // that case, so any other cause still fails loudly.
+                const auto& operatingPoints = mas.get_inputs().get_operating_points();
+                if (operatingPointIndex >= operatingPoints.size()) {
+                    throw InvalidInputException(ErrorCode::MISSING_DATA,
+                        "MagneticAdviser: simulate() returned output " + std::to_string(operatingPointIndex) + " for '"
+                        + mas.get_mutable_magnetic().get_reference() + "', which has only " + std::to_string(operatingPoints.size())
+                        + " operating points");
+                }
+                auto findings = ResultsAnalyzer::analyze_missing_temperature(
+                    mas.get_magnetic(), operatingPoints[operatingPointIndex], operatingPointIndex,
+                    mas.get_inputs().get_design_requirements().get_topology());
+                std::string reason = "temperature filter: no thermal operating point";
+                for (const auto& finding : findings) {
+                    reason += ": " + finding.message;
+                }
+                logEntry("MagneticAdviser: dropping '" + mas.get_mutable_magnetic().get_reference() + "' - " + reason,
+                         "MagneticAdviser", 2);
+                failedCandidates.push_back({mas.get_mutable_magnetic().get_reference(), reason});
+                return WoundCandidateOutcome::Skipped;
             }
             if (output.get_temperature()->get_maximum_temperature() > maximumTemperature) {
                 logEntry("MagneticAdviser: dropping '" + mas.get_mutable_magnetic().get_reference()
@@ -631,6 +655,7 @@ std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic(Inputs
     Inputs::check_adviser_inputs_volt_second_balance(inputs);
     clear_scoring();
     _failedScorings.clear();  // stale rejections would mis-rank the next run (ABT #801)
+    _failedCandidates.clear();  // this run's wound candidates the final gates reject (ABT #1942)
     load_filter_flow(filterFlow, inputs);
     std::vector<Mas> masData;
 
@@ -830,7 +855,7 @@ std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic(Inputs
             for (auto& masWithCoil : invalidCoilsOfOneCore) {
                 auto outcome = process_wound_candidate(
                     masWithCoil, magneticSimulator, settings, previousCoilIncludeAdditionalCoordinates,
-                    perCoreCoilCap, globalCandidateCap, usedNumberSectionsAndMargin, masData, processedCoils);
+                    perCoreCoilCap, globalCandidateCap, usedNumberSectionsAndMargin, masData, processedCoils, _failedCandidates);
                 if (outcome == WoundCandidateOutcome::GlobalCapHit) {
                     return;
                 }
@@ -898,7 +923,7 @@ std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic(Inputs
                 }
                 auto outcome = process_wound_candidate(
                     mas, magneticSimulator, settings, previousCoilIncludeAdditionalCoordinates,
-                    perCoreCoilCap, globalCandidateCap, usedNumberSectionsAndMargin, masData, processedCoils);
+                    perCoreCoilCap, globalCandidateCap, usedNumberSectionsAndMargin, masData, processedCoils, _failedCandidates);
                 if (outcome != WoundCandidateOutcome::Skipped) {
                     coreAccepted = true;
                 }
@@ -1021,7 +1046,7 @@ std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic(Inputs
                     }
                     auto outcome = process_wound_candidate(
                         masWithCoil, magneticSimulator, settings, previousCoilIncludeAdditionalCoordinates,
-                        perCoreCoilCap, globalCandidateCap, usedNumberSectionsAndMargin, masData, processedCoils);
+                        perCoreCoilCap, globalCandidateCap, usedNumberSectionsAndMargin, masData, processedCoils, _failedCandidates);
                     if (outcome != WoundCandidateOutcome::Skipped) {
                         coreAccepted = true;
                     }

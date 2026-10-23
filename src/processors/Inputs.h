@@ -389,6 +389,9 @@ class Inputs : public MAS::Inputs {
                                                                        double magnetizingInductance,
                                                                        const std::vector<double>& turnsRatios,
                                                                        std::optional<std::vector<IsolationSide>> isolationSides);
+    // Whether get_multiport_inductor_magnetizing_current takes the magnetizing current from the primary voltage
+    // (Faraday, a flyback with a primary voltage) rather than from the windings' ampere-turn sum (ABT #1942).
+    static bool is_multiport_inductor_magnetizing_current_from_voltage(const OperatingPointExcitation& primaryExcitation);
     // The primary current carries a FLYBACK_PRIMARY / FLYBACK_SECONDARY label (processed or ancillary).
     static bool has_flyback_label(const OperatingPointExcitation& excitation);
     static SignalDescriptor get_common_mode_choke_magnetizing_current(OperatingPoint operatingPoint);

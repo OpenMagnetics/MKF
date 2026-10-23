@@ -237,6 +237,9 @@ std::shared_ptr<const InitialPermeability::MagnetisationCurve> InitialPermeabili
         return std::max(1.0, initialPermeability.get_initial_permeability_model_value(coreMaterial, temperature, fieldStrength, frequency));
     };
     auto curve = std::make_shared<MagnetisationCurve>();
+    curve->materialName = coreMaterial.get_name();
+    curve->saturationFluxDensity = Core::get_magnetic_flux_density_saturation(coreMaterial, temperature, false);
+    curve->paramagnetic = is_paramagnetic(coreMaterial, temperature);
     const double firstFieldStrength = 1e-6 * saturationFieldStrength;
     const double lastFieldStrength = 1000 * saturationFieldStrength;
     const double ratio = 1.008;
@@ -376,6 +379,45 @@ std::pair<double, double> InitialPermeability::get_dc_operating_point_for_magnet
     double fraction = (magnetomotiveForce - loadLine(lower)) / (loadLine(upper) - loadLine(lower));
     return {fieldStrengths[lower] + fraction * (fieldStrengths[upper] - fieldStrengths[lower]),
             fluxDensities[lower] + fraction * (fluxDensities[upper] - fluxDensities[lower])};
+}
+
+std::pair<double, double> InitialPermeability::get_magnetomotive_force_for_flux_density(const MagnetisationCurve& curve, double fluxDensity, double effectiveLength, double effectiveArea, double gapReluctance) {
+    if (!(fluxDensity >= 0) || effectiveLength <= 0 || effectiveArea <= 0 || gapReluctance < 0) {
+        throw InvalidInputException(ErrorCode::INVALID_INPUT,
+            "Inverse DC-bias load line needs a non-negative flux density and gap reluctance and positive core dimensions: B " + std::to_string(fluxDensity) +
+            " T, l_e " + std::to_string(effectiveLength) + " m, A_e " + std::to_string(effectiveArea) + " m2, R_gap " + std::to_string(gapReluctance) + " 1/H");
+    }
+    if (fluxDensity == 0) {
+        return {0, 0};
+    }
+    if (curve.paramagnetic) {
+        // mu_r = 1 at every H: the inverse is mu0's at any flux density, the table's end is only where it was
+        // sampled (1000 Hsat(T), a few A/m near the Curie point) (ABT #1942, Alf 2026-10-19).
+        double fieldStrength = fluxDensity / constants.vacuumPermeability;
+        return {fieldStrength, fieldStrength * effectiveLength + fluxDensity * effectiveArea * gapReluctance};
+    }
+    const auto& fieldStrengths = curve.fieldStrength;
+    const auto& fluxDensities = curve.fluxDensity;
+    if (fluxDensity > fluxDensities.back()) {
+        // No extrapolation past the table (1000 Hsat, Alf 2026-10-18): the curve says nothing there.
+        if (fluxDensity > curve.saturationFluxDensity) {
+            throw SaturationException(
+                "The flux density " + std::to_string(fluxDensity) + " T asked of material " + curve.materialName +
+                " lies past the end of its magnetisation curve, " + std::to_string(fluxDensities.back()) + " T at " +
+                std::to_string(fieldStrengths.back()) + " A/m (1000 times its saturation field strength), and above its B_sat of " +
+                std::to_string(curve.saturationFluxDensity) + " T: the core is driven far past saturation, and its curve has no field strength for that flux");
+        }
+        throw MagnetisationCurveExhaustedException("The magnetisation curve of material " + curve.materialName + " integrates to only " +
+                                 std::to_string(fluxDensities.back()) + " T at " + std::to_string(fieldStrengths.back()) + " A/m, below the " +
+                                 std::to_string(fluxDensity) + " T asked, although that is under its saturation of " +
+                                 std::to_string(curve.saturationFluxDensity) + " T: the material's DC-bias factor is inconsistent with its saturation data");
+    }
+    // B(H) is strictly increasing (mu_rev >= 1); the segment and its linear interpolation are the forward
+    // crossing's, so the two are exact inverses on the table.
+    size_t upper = std::lower_bound(fluxDensities.begin(), fluxDensities.end(), fluxDensity) - fluxDensities.begin();
+    size_t lower = upper - 1;
+    double fieldStrength = fieldStrengths[lower] + (fluxDensity - fluxDensities[lower]) / (fluxDensities[upper] - fluxDensities[lower]) * (fieldStrengths[upper] - fieldStrengths[lower]);
+    return {fieldStrength, fieldStrength * effectiveLength + fluxDensity * effectiveArea * gapReluctance};
 }
 
 double InitialPermeability::has_magnetic_field_dc_bias_dependency(const CoreMaterial& coreMaterial) {
@@ -929,6 +971,23 @@ std::optional<double> InitialPermeability::get_paramagnetic_temperature(const Co
         paramagneticTemperature = std::max(paramagneticTemperature, tableEnd.value());
     }
     return paramagneticTemperature;
+}
+
+bool InitialPermeability::is_paramagnetic(const CoreMaterial& coreMaterial, double temperature) {
+    const auto& initialPermeabilityData = coreMaterial.get_permeability().get_initial();
+    if (std::holds_alternative<PermeabilityPoint>(initialPermeabilityData)) {
+        const auto& point = std::get<PermeabilityPoint>(initialPermeabilityData);
+        if (point.get_value() == 1 && !point.get_modifiers()) {
+            return true;
+        }
+    }
+    // As get_initial_permeability_model_value: mu_i = 1 above the paramagnetic temperature.
+    auto curieTemperature = coreMaterial.get_curie_temperature();
+    if (!curieTemperature || temperature <= curieTemperature.value()) {
+        return false;
+    }
+    auto paramagneticTemperature = get_paramagnetic_temperature(coreMaterial);
+    return paramagneticTemperature && temperature > paramagneticTemperature.value();
 }
 
 std::optional<double> InitialPermeability::get_temperature_table_end(const CoreMaterial& coreMaterial) {

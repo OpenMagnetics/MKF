@@ -163,7 +163,9 @@ class MagneticAdviser{
         /// A filter or the final simulation that throws on a candidate keeps it out of the
         /// ranking, as before; it is recorded here with the error instead of vanishing from the
         /// result without a word. Filled by the catalogue get_advised_magnetic, cleared at its
-        /// start. A vector, not a map: two catalogue parts may share a reference.
+        /// start; the designed-magnetic get_advised_magnetic also records the wound candidates
+        /// with no thermal operating point that its temperature filter rejects (ABT #1942).
+        /// A vector, not a map: two catalogue parts may share a reference.
         std::vector<std::pair<std::string, std::string>> _failedCandidates;
         /// @brief Requirement frequencies each ranked candidate was judged on, reference -> filter -> Hz.
         ///
@@ -336,10 +338,11 @@ class MagneticAdviser{
         const std::map<std::string, std::string>& get_losses_not_evaluable() const { return _lossesNotEvaluable; }
 
         /**
-         * @brief Catalogue candidates of the last catalogue run that were excluded because
-         *        evaluating them raised.
+         * @brief Candidates of the last run that were excluded: catalogue candidates whose
+         *        evaluation raised, and (designed-magnetic runs) wound candidates the temperature
+         *        filter rejected because an operating point has no thermal operating point.
          * @return (reference, error) pairs; the error names the filter (or "final simulation")
-         *         and carries the exception's message. A listed candidate is not in the ranking.
+         *         and carries the exception's or finding's message. A listed candidate is not in the ranking.
          */
         const std::vector<std::pair<std::string, std::string>>& get_failed_candidates() const { return _failedCandidates; }
 

@@ -25,10 +25,15 @@ namespace OpenMagnetics {
 // strength it read the material's permeability at, with the temperature and frequency of that reading.
 // ResultsAnalyzer::check_saturation asks the material's permeability model there whether it has collapsed
 // to the vacuum's (Alf, 2026-10-14: the second saturation criterion, main's old throw condition).
+// When the model read B on the magnetisation curve sample by sample (a unipolar DCM magnetizing current, ABT
+// #1942), its B peak sits on the curve and rises only on the vacuum slope past the knee, so B_sat alone does not
+// see a core driven past it: the point then also carries the peak field strength the curve gave, which
+// check_saturation holds against the material's H_sat (Alf, 2026-10-18). Empty on every other path.
 struct DcBiasPoint {
     double magneticFieldDcBias;
     double temperature;
     double frequency;
+    std::optional<double> peakMagneticFieldStrength;
 };
 
 class MagnetizingInductance {

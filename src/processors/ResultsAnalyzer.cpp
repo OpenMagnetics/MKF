@@ -141,7 +141,17 @@ SaturationVerdict ResultsAnalyzer::check_saturation(const CoreMaterial& coreMate
             verdict.permeabilityCollapsed = unbiasedPermeability.value() > 1;
         }
     }
-    verdict.saturates = verdict.fluxDensityAboveSaturation || verdict.permeabilityCollapsed;
+    // Criterion 3 (ABT #1942, Alf 2026-10-18): where the magnetizing model read B on the magnetisation curve
+    // sample by sample, the B peak is the curve's, which past the knee rises only on the vacuum slope and can stay
+    // under B_sat while the core is driven deep into saturation. The field strength says it: its peak against the
+    // material's H_sat at the check's temperature (the one B_sat is read at), times the same margin as B.
+    verdict.fieldStrengthAboveSaturation = false;
+    if (dcBiasPoint && dcBiasPoint->peakMagneticFieldStrength) {
+        verdict.peakFieldStrength = dcBiasPoint->peakMagneticFieldStrength.value();
+        verdict.saturationFieldStrength = Core::get_magnetic_field_strength_saturation(coreMaterial, temperature);
+        verdict.fieldStrengthAboveSaturation = verdict.peakFieldStrength.value() * margin > verdict.saturationFieldStrength.value();
+    }
+    verdict.saturates = verdict.fluxDensityAboveSaturation || verdict.permeabilityCollapsed || verdict.fieldStrengthAboveSaturation;
 
     std::ostringstream message;
     if (verdict.saturates) {
@@ -167,6 +177,22 @@ SaturationVerdict ResultsAnalyzer::check_saturation(const CoreMaterial& coreMate
                         << " T at " << temperature << " C: the material's B_sat, magnetisation curve and permeability model disagree)";
             }
         }
+        if (verdict.fieldStrengthAboveSaturation) {
+            if (verdict.fluxDensityAboveSaturation || verdict.permeabilityCollapsed) {
+                message << ", and";
+            }
+            message << " the flux density, read on the magnetisation curve of material " << coreMaterial.get_name()
+                    << ", peaks at H = " << verdict.peakFieldStrength.value() << " A/m";
+            if (margin != 1) {
+                message << " (x " << margin << " margin = " << verdict.peakFieldStrength.value() * margin << " A/m)";
+            }
+            message << ", above its H_sat = " << verdict.saturationFieldStrength.value() << " A/m at " << temperature
+                    << " C: the core is driven past its knee";
+            if (!verdict.fluxDensityAboveSaturation) {
+                message << " (on the curve B peak " << peakFluxDensity << " T stays within B_sat = " << verdict.saturationFluxDensity
+                        << " T, rising only on the vacuum slope there)";
+            }
+        }
         message << ". Numbers computed for this operating point are those of the saturated core;"
                 << " more turns, a larger gap or core, or less volt-seconds are needed";
     }
@@ -177,6 +203,10 @@ SaturationVerdict ResultsAnalyzer::check_saturation(const CoreMaterial& coreMate
         }
         message << " is within B_sat = " << verdict.saturationFluxDensity << " T of material " << coreMaterial.get_name()
                 << " at " << temperature << " C";
+        if (verdict.peakFieldStrength) {
+            message << ", and its peak field strength on the magnetisation curve, H = " << verdict.peakFieldStrength.value()
+                    << " A/m, within H_sat = " << verdict.saturationFieldStrength.value() << " A/m";
+        }
     }
     verdict.message = message.str();
     return verdict;

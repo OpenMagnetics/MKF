@@ -419,6 +419,22 @@ SolvedLosses MagneticSimulator::solve_losses_at_operating_temperature(const Oper
         std::optional<WindingLossesOutput> windingLosses;
         TemperatureConfig config;
     };
+    // ABT #1942 (Alf, 2026-10-19): the magnetizing model reads the current of a flux given by the voltage back from the
+    // material's magnetisation curve at the core's temperature, and refuses where that curve cannot carry the flux: past
+    // its end above B_sat (SaturationException: the core is driven far past saturation there), or past its end while
+    // still under B_sat (MagnetisationCurveExhaustedException: near the Curie point H_sat(T) goes to zero and the curve
+    // ends low). At a temperature the loss loop's iterates drove the core to, that point has no thermal operating point
+    // the models can evaluate: the same answer as a loop that does not settle (ABT #1876, #1960), with its losses at
+    // ambient. Before any heating (the first iterate, at ambient) the refusal is the design's own and propagates.
+    auto throwNoThermalOperatingPoint = [&](double coreAt, const std::string& reason) {
+        if (!lossesAtAmbient) {
+            throw;
+        }
+        throw NoThermalOperatingPointException(ErrorCode::CALCULATION_INVALID_RESULT, "No thermal operating point: at a core "
+            "temperature of " + std::to_string(coreAt) + " C, where the loss loop's iterates drove it, the magnetizing model "
+            "cannot read this point's current on the material's curve: " + reason + " History:" + history,
+            lossesAtAmbient.value());
+    };
     auto evaluateLosses = [&](double coreAt, double windingAt) {
         LoopEvaluation evaluation;
         // Core losses at the core's temperature. The magnetizing model reads the core temperature
@@ -426,8 +442,16 @@ SolvedLosses MagneticSimulator::solve_losses_at_operating_temperature(const Oper
         // part), so it gets a COPY at T_core; the caller's operating point keeps its real ambient.
         OperatingPoint operatingPointAtCoreTemperature = operatingPoint;
         operatingPointAtCoreTemperature.get_mutable_conditions().set_ambient_temperature(coreAt);
-        evaluation.magneticFluxDensity = _magnetizingInductanceModel.calculate_inductance_and_magnetic_flux_density(
-            paramagneticMagnetic ? paramagneticMagnetic.value() : magnetic, &operatingPointAtCoreTemperature).second;
+        try {
+            evaluation.magneticFluxDensity = _magnetizingInductanceModel.calculate_inductance_and_magnetic_flux_density(
+                paramagneticMagnetic ? paramagneticMagnetic.value() : magnetic, &operatingPointAtCoreTemperature).second;
+        }
+        catch (const MagnetisationCurveExhaustedException& error) {
+            throwNoThermalOperatingPoint(coreAt, error.message());
+        }
+        catch (const SaturationException& error) {
+            throwNoThermalOperatingPoint(coreAt, error.message());
+        }
         // A paramagnetic core has no knee for a bias to drive it past.
         if (!paramagneticMagnetic) {
             evaluation.dcBiasPoint = _magnetizingInductanceModel.get_last_dc_bias_point();

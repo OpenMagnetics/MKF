@@ -1742,6 +1742,12 @@ namespace OpenMagnetics {
                 catch (const MaterialFrequencyOutOfSpanException& exception) {
                     reason = exception.what();
                 }
+                catch (const NoThermalOperatingPointException& exception) {
+                    // The point has no thermal operating point (ABT #1876, #1942): whatever its code (a network that does
+                    // not converge, a winding that runs away, a curve that cannot carry the flux at the temperature its
+                    // losses reach), this coil's losses cannot be ranked; the other coils still can.
+                    reason = exception.what();
+                }
                 catch (const CalculationException& exception) {
                     if (exception.code() != ErrorCode::CALCULATION_INVALID_RESULT &&
                         exception.code() != ErrorCode::MATERIAL_FREQUENCY_OUT_OF_SPAN) {

@@ -72,6 +72,11 @@ class InitialPermeability {
         static double has_frequency_dependency(const CoreMaterial& coreMaterial);
         static double has_magnetic_field_dc_bias_dependency(const CoreMaterial& coreMaterial);
         static std::optional<double> get_paramagnetic_temperature(const CoreMaterial& coreMaterial);
+        // Whether the material is paramagnetic (mu_r = 1 at every field strength) at that temperature: above its
+        // paramagnetic temperature (get_initial_permeability then answers 1), or a material whose initial permeability
+        // is the single value 1 with no modifiers (MagneticSimulator::make_paramagnetic_magnetic, a core held at its
+        // Curie temperature). Its B(H) is mu0*H at every H, with no knee and no end (ABT #1942).
+        static bool is_paramagnetic(const CoreMaterial& coreMaterial, double temperature);
         // The highest temperature at which the material is ferromagnetic AND its mu_i(T) model has data:
         // the last point of the measured mu_i(T) table when the table ends below the Curie temperature
         // (between the two, mu_i(T) refuses, ABT #1739), otherwise the Curie temperature. Without a
@@ -109,6 +114,14 @@ class InitialPermeability {
         struct MagnetisationCurve {
             std::vector<double> fieldStrength;
             std::vector<double> fluxDensity;
+            // The material the curve was built for and its raw B_sat at the curve's temperature
+            // (Core::get_magnetic_flux_density_saturation, proportion false): what a reading past the curve's end
+            // reports (ABT #1942).
+            std::string materialName;
+            double saturationFluxDensity;
+            // InitialPermeability::is_paramagnetic at the curve's temperature: B = mu0*H everywhere, so a reading
+            // past the table is mu0's, not past the curve's end (ABT #1942, Alf 2026-10-19).
+            bool paramagnetic;
         };
         static constexpr size_t magnetisationCurveCacheCapacity = 256;
         static std::shared_ptr<const MagnetisationCurve> get_magnetisation_curve(const CoreMaterial& coreMaterial, double temperature, std::optional<double> frequency);
@@ -128,6 +141,17 @@ class InitialPermeability {
         // switching cycle of a line-cycle record, ABT #1764) pays once by fetching the curve itself.
         static std::pair<double, double> get_dc_operating_point_for_magnetomotive_force(const MagnetisationCurve& curve,
                                         double magnetomotiveForce,
+                                        double effectiveLength,
+                                        double effectiveArea,
+                                        double gapReluctance);
+        // The inverse of the crossing above, on the same curve (ABT #1942): the {H, N*I} at which the load line
+        // N*I = H*l_e + B(H)*A_e*R_gap carries the flux density B. Throws for a negative B, and for a B past the
+        // curve's last point (1000 Hsat): no extrapolation, except on a paramagnetic curve, whose B(H) is mu0*H at
+        // every H: there H = B/mu0 for any B. Above the material's B_sat that is a SaturationException
+        // (the core is driven past the end of its curve); at or below it the curve contradicts the saturation data
+        // and the throw (MagnetisationCurveExhaustedException) says so.
+        static std::pair<double, double> get_magnetomotive_force_for_flux_density(const MagnetisationCurve& curve,
+                                        double fluxDensity,
                                         double effectiveLength,
                                         double effectiveArea,
                                         double gapReluctance);
