@@ -2805,6 +2805,24 @@ static void throw_if_a_winding_would_be_invented(const Magnetic& magnetic) {
     }
 }
 
+namespace {
+// ABT #2052: the magnetizing inductance the given magnetizing-model call returns, or none when at the operating
+// point's ambient temperature its flux density lies past the end of the material's magnetisation curve
+// (SaturationException above B_sat, MagnetisationCurveExhaustedException below it). Any other error propagates.
+template <typename MagnetizingModelCall>
+std::optional<double> magnetizing_inductance_unless_past_magnetisation_curve(MagnetizingModelCall call) {
+    try {
+        return call().get_magnetizing_inductance().get_nominal().value();
+    }
+    catch (const SaturationException&) {
+        return std::nullopt;
+    }
+    catch (const MagnetisationCurveExhaustedException&) {
+        return std::nullopt;
+    }
+}
+} // namespace
+
 Mas mas_autocomplete(Mas mas, bool simulate, json configuration) {
 
     if (simulate) {
@@ -2829,14 +2847,26 @@ Mas mas_autocomplete(Mas mas, bool simulate, json configuration) {
     MagnetizingInductance magnetizingInductanceObj;
     // Because Simulation may remove some processed data, and we are in no rush here
     for (size_t operatingPointIndex = 0; operatingPointIndex < mas.get_inputs().get_operating_points().size(); operatingPointIndex++) {
-        double magnetizingInductance = magnetizingInductanceObj.calculate_inductance_from_number_turns_and_gapping(mas.get_magnetic(), &mas.get_mutable_inputs().get_mutable_operating_points()[operatingPointIndex]).get_magnetizing_inductance().get_nominal().value();
+        // ABT #2052: a point whose flux density lies past the end of the magnetisation curve at its ambient temperature has
+        // no magnetizing inductance; it keeps its operating point as given (no magnetizing current is derived for it),
+        // and simulate / analyze_results report it (CORE_SATURATES). Autocomplete never refuses a design for it.
+        // The model stamps its iterate's magnetizing current on the operating point it is given before it reads the
+        // curve, so it works on a copy that replaces the point only when the model reads it.
+        OperatingPoint modelledOperatingPoint = mas.get_inputs().get_operating_points()[operatingPointIndex];
+        auto magnetizingInductance = magnetizing_inductance_unless_past_magnetisation_curve([&]() {
+            return magnetizingInductanceObj.calculate_inductance_from_number_turns_and_gapping(mas.get_magnetic(), &modelledOperatingPoint);
+        });
+        if (!magnetizingInductance) {
+            continue;
+        }
+        mas.get_mutable_inputs().get_mutable_operating_points()[operatingPointIndex] = modelledOperatingPoint;
         auto coilTurnsRatios = mas.get_magnetic().get_coil().get_turns_ratios();
-        mas.get_mutable_inputs().get_mutable_operating_points()[operatingPointIndex] = Inputs::process_operating_point(mas.get_inputs().get_operating_points()[operatingPointIndex], magnetizingInductance,
+        mas.get_mutable_inputs().get_mutable_operating_points()[operatingPointIndex] = Inputs::process_operating_point(mas.get_inputs().get_operating_points()[operatingPointIndex], magnetizingInductance.value(),
                                                                                                                      coilTurnsRatios, false, mas.get_magnetic().get_coil().get_isolation_sides());
         // The decision process_operating_point makes, compressed (ABT #1467).
         auto processedOperatingPoint = mas.get_inputs().get_operating_points()[operatingPointIndex];
         for (size_t windingIndex = 0; windingIndex < numberWindings; windingIndex++) {
-            auto magnetizingCurrent = Inputs::calculate_magnetizing_current(processedOperatingPoint, windingIndex, magnetizingInductance, coilTurnsRatios, true);
+            auto magnetizingCurrent = Inputs::calculate_magnetizing_current(processedOperatingPoint, windingIndex, magnetizingInductance.value(), coilTurnsRatios, true);
             auto processed = Inputs::calculate_processed_data(magnetizingCurrent.get_waveform().value(), mas.get_inputs().get_operating_points()[operatingPointIndex].get_excitations_per_winding()[windingIndex].get_frequency(), true);
             magnetizingCurrent.set_processed(processed);
             mas.get_mutable_inputs().get_mutable_operating_points()[operatingPointIndex].get_mutable_excitations_per_winding()[windingIndex].set_magnetizing_current(magnetizingCurrent);
@@ -2909,9 +2939,14 @@ Inputs inputs_autocomplete(Inputs inputs, std::optional<Magnetic> magnetic, json
     for (size_t operatingPointIndex = 0; operatingPointIndex <  inputs.get_operating_points().size(); operatingPointIndex++) {
         for (size_t windingIndex = 0; windingIndex < numberWindings; windingIndex++) {
             auto operatingPoint = inputs.get_operating_points()[operatingPointIndex];
-            double magnetizingInductance = 0;
+            std::optional<double> magnetizingInductance;
             if (magnetic) {
-                magnetizingInductance = magnetizingInductanceObj.calculate_inductance_from_number_turns_and_gapping(magnetic->get_core(), magnetic->get_coil(), &operatingPoint).get_magnetizing_inductance().get_nominal().value();
+                // ABT #2052: none for a point past the end of the magnetisation curve at its ambient temperature: that
+                // point gets no magnetizing current here (it is the core's flux that cannot be read), the rest of it is
+                // completed as for any other point.
+                magnetizingInductance = magnetizing_inductance_unless_past_magnetisation_curve([&]() {
+                    return magnetizingInductanceObj.calculate_inductance_from_number_turns_and_gapping(magnetic->get_core(), magnetic->get_coil(), &operatingPoint);
+                });
             }
             else {
                 magnetizingInductance = OpenMagnetics::resolve_dimensional_values(inputs.get_design_requirements().get_magnetizing_inductance());
@@ -2925,14 +2960,16 @@ Inputs inputs_autocomplete(Inputs inputs, std::optional<Magnetic> magnetic, json
             for (auto& turnsRatio : inputs.get_design_requirements().get_turns_ratios()) {
                 requiredTurnsRatios.push_back(resolve_dimensional_values(turnsRatio));
             }
-            auto magnetizingCurrent = Inputs::calculate_magnetizing_current(operatingPoint, windingIndex, magnetizingInductance, requiredTurnsRatios, true);
+            if (magnetizingInductance) {
+                auto magnetizingCurrent = Inputs::calculate_magnetizing_current(operatingPoint, windingIndex, magnetizingInductance.value(), requiredTurnsRatios, true);
 
-            if (excitation.get_voltage() && excitation.get_voltage()->get_processed() && excitation.get_voltage()->get_processed()->get_duty_cycle()) {
-                auto processed = magnetizingCurrent.get_processed().value();
-                processed.set_duty_cycle(excitation.get_voltage()->get_processed()->get_duty_cycle().value());
-                magnetizingCurrent.set_processed(processed);
+                if (excitation.get_voltage() && excitation.get_voltage()->get_processed() && excitation.get_voltage()->get_processed()->get_duty_cycle()) {
+                    auto processed = magnetizingCurrent.get_processed().value();
+                    processed.set_duty_cycle(excitation.get_voltage()->get_processed()->get_duty_cycle().value());
+                    magnetizingCurrent.set_processed(processed);
+                }
+                inputs.get_mutable_operating_points()[operatingPointIndex].get_mutable_excitations_per_winding()[windingIndex].set_magnetizing_current(magnetizingCurrent);
             }
-            inputs.get_mutable_operating_points()[operatingPointIndex].get_mutable_excitations_per_winding()[windingIndex].set_magnetizing_current(magnetizingCurrent);
 
             if (windingIndex == 0 && numberWindings == 2 && inputs.get_mutable_operating_points()[operatingPointIndex].get_mutable_excitations_per_winding().size() == 1) {
                 double turnRatioPrimary = 0;

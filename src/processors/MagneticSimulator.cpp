@@ -57,8 +57,45 @@ Mas MagneticSimulator::simulate(const Inputs& inputs, const Magnetic& magnetic, 
 
     for (auto& operatingPoint : mas.get_mutable_inputs().get_mutable_operating_points()){
         Outputs output;
+        // The full network needs turn nodes; wind a local copy if the coil is bare (as
+        // calculate_temperature does).
+        Magnetic woundMagnetic = magnetic;
+        if (!woundMagnetic.get_coil().get_turns_description()) {
+            woundMagnetic.get_mutable_coil().wind();
+        }
+        // ABT #2052 (Alf, 2026-10-24): at its ambient temperature the magnetizing model cannot read this point's
+        // flux density on the material's magnetisation curve: it lies past the curve's end, above B_sat
+        // (SaturationException) or, with a curve that ends below B_sat, under it (MagnetisationCurveExhaustedException).
+        // The core is driven far past saturation there. That refusal affects only this point: its flux-dependent
+        // outputs -- the magnetizing inductance, the flux density and core losses, and the temperature they heat
+        // the part to -- are left unset (no value stands in for them), its winding losses are those of its
+        // currents at the ambient temperature (as a point with no thermal operating point publishes them, ABT
+        // #1876), and every other point is simulated. ResultsAnalyzer::analyze_results reports CORE_SATURATES for it.
+        // At a heated iterate of the loss solve the same refusal is that point's NoThermalOperatingPointException
+        // (ABT #1942); only at ambient does it reach here.
+        auto simulateSaturatedPoint = [&]() {
+            Outputs saturatedOutput;
+            saturatedOutput.set_winding_losses(calculate_winding_losses(operatingPoint, woundMagnetic, std::nullopt));
+            outputs.push_back(saturatedOutput);
+            simulatedOperatingPoints.push_back(operatingPoint);
+        };
         InductanceOutput inductanceOutput;
-        inductanceOutput.set_magnetizing_inductance(calculate_magnetizing_inductance(operatingPoint, magnetic));
+        // The model stamps its iterate's magnetizing current on the operating point before it reads the curve; a point
+        // it refuses keeps its operating point as given.
+        const OperatingPoint givenOperatingPoint = operatingPoint;
+        try {
+            inductanceOutput.set_magnetizing_inductance(calculate_magnetizing_inductance(operatingPoint, magnetic));
+        }
+        catch (const SaturationException&) {
+            operatingPoint = givenOperatingPoint;
+            simulateSaturatedPoint();
+            continue;
+        }
+        catch (const MagnetisationCurveExhaustedException&) {
+            operatingPoint = givenOperatingPoint;
+            simulateSaturatedPoint();
+            continue;
+        }
         if (!fastMode) {
             if (magnetic.get_coil().get_functional_description().size() > 1) {
                 inductanceOutput.set_leakage_inductance(calculate_leakage_inductance(operatingPoint, magnetic));
@@ -68,12 +105,6 @@ Mas MagneticSimulator::simulate(const Inputs& inputs, const Magnetic& magnetic, 
         // ABT #838: core and winding losses together, each at the temperature the COMBINED
         // dissipation produces (calculate_core_losses iterates both on one network). Fast mode
         // runs the same solve: the published core temperature is the same quantity in both.
-        // The full network needs turn nodes; wind a local copy if the coil is bare (as
-        // calculate_temperature does).
-        Magnetic woundMagnetic = magnetic;
-        if (!woundMagnetic.get_coil().get_turns_description()) {
-            woundMagnetic.get_mutable_coil().wind();
-        }
         // ABT #1876 (Alf, 2026-10-14): a point with no thermal operating point (the network did not converge on
         // its losses, or its winding runs away) affects only itself: calculate_core_losses returns its core and
         // winding losses evaluated at ambient, as before ABT #838, and leaves temperatureOutput EMPTY, so it gets

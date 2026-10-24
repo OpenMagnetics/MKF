@@ -161,8 +161,11 @@ class MagneticSimulator {
         // One output per operating point. A point with no thermal operating point
         // (NoThermalOperatingPointException, ABT #1876, Alf 2026-10-14) gets its core and winding losses
         // evaluated at ambient (LossesAtAmbient) and NO temperature output; the other points are simulated
-        // normally, and ResultsAnalyzer::analyze_results reports NO_THERMAL_OPERATING_POINT for it. Every
-        // other error still throws for the whole design. fastMode publishes no temperature for ANY point
+        // normally, and ResultsAnalyzer::analyze_results reports NO_THERMAL_OPERATING_POINT for it. A point whose
+        // flux density the magnetizing model cannot read on the magnetisation curve at its ambient temperature (past the
+        // curve's end: SaturationException, MagnetisationCurveExhaustedException; ABT #2052, Alf 2026-10-24) gets only
+        // its winding losses at ambient: no inductance, core losses or temperature output, and analyze_results reports
+        // CORE_SATURATES for it. Every other error still throws for the whole design. fastMode publishes no temperature for ANY point
         // (and skips the leakage inductance); analyze_results tells the two apart by solving again.
         // Settings::simulatorLossTemperatureLoop off: each point's losses at its operating temperature and
         // its temperature output from one pass of the network on them (see calculate_core_losses).

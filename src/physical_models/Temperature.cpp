@@ -184,9 +184,15 @@ TemperatureConfig TemperatureConfig::fromSimulatedOutput(const MAS::OperatingPoi
                                                          const MAS::Outputs& output) {
     TemperatureConfig config = fromMasOperatingConditions(operatingPoint.get_conditions());
     config.plotSchematic = false;
-    if (output.get_core_losses()) {
-        config.coreLosses = output.get_core_losses()->get_core_losses();
+    // ABT #2052: an operating point whose flux density lies past the end of its material's magnetisation curve has no
+    // core losses in simulate's output (ResultsAnalyzer reports CORE_SATURATES for it). Its temperature cannot be
+    // computed: a network run without the core's heat would give a number for a part that does not exist.
+    if (!output.get_core_losses()) {
+        throw InvalidInputException(ErrorCode::MISSING_DATA,
+            "No temperature for this operating point: its simulated output has no core losses (simulate leaves them unset "
+            "where the core saturates past the end of its material's magnetisation curve)");
     }
+    config.coreLosses = output.get_core_losses()->get_core_losses();
     if (output.get_winding_losses()) {
         config.windingLosses = output.get_winding_losses()->get_winding_losses();
         config.windingLossesOutput = output.get_winding_losses();

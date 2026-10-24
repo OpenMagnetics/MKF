@@ -149,6 +149,16 @@ class ResultsAnalyzer {
                                                                   size_t operatingPointIndex,
                                                                   std::optional<Topology> topology = std::nullopt);
 
+    // ABT #2052: for an output WITHOUT core losses. simulate leaves them (and the point's inductance and
+    // temperature) unset when the magnetizing model, at the point's ambient temperature, cannot read its flux
+    // density on the material's magnetisation curve (SaturationException / MagnetisationCurveExhaustedException:
+    // past the curve's end). This runs that model again and returns the CORE_SATURATES finding with its reason;
+    // when the model DOES read the point, the missing core losses are not this case and this THROWS.
+    static std::vector<ResultFinding> analyze_flux_density_past_magnetisation_curve(const Magnetic& magnetic,
+                                                                                   const OperatingPoint& operatingPoint,
+                                                                                   size_t operatingPointIndex,
+                                                                                   std::optional<Topology> topology = std::nullopt);
+
     // ABT #2004: one EDGEWISE_BEND_BELOW_COATING_MANDREL finding per winding whose real-winding layout
     // bends its rectangular wire edgewise tighter than the IEC 60317-0-2 Table 6 mandrel, from the same
     // judgement real winding makes (Coil::judge_corners_against_wire_flexibility). Nothing under ideal
@@ -160,7 +170,9 @@ class ResultsAnalyzer {
     // operating point), ordered by operating point, then saturation, volt-second balance, temperature;
     // then the findings about the magnetic itself (analyze_winding_bends).
     // An output without a temperature goes to analyze_missing_temperature instead of the temperature checks
-    // (ABT #1876): NO_THERMAL_OPERATING_POINT, or a throw for a fast-mode output.
+    // (ABT #1876): NO_THERMAL_OPERATING_POINT, or a throw for a fast-mode output. An output without core losses
+    // goes to analyze_flux_density_past_magnetisation_curve instead of the saturation and temperature checks
+    // (ABT #2052): CORE_SATURATES, or a throw.
     // Throws when the MAS has no output for an operating point, or an output lacks what a check reads
     // (the core losses' flux density and temperature).
     static std::vector<ResultFinding> analyze_results(const Mas& mas);

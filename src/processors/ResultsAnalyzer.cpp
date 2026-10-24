@@ -479,6 +479,37 @@ std::vector<ResultFinding> ResultsAnalyzer::analyze_missing_temperature(const Ma
         "fast mode (or edited after simulate), which publishes no temperature; analyze_results needs simulate's full output");
 }
 
+std::vector<ResultFinding> ResultsAnalyzer::analyze_flux_density_past_magnetisation_curve(const Magnetic& magnetic,
+                                                                                          const OperatingPoint& operatingPoint,
+                                                                                          size_t operatingPointIndex,
+                                                                                          std::optional<Topology> topology) {
+    std::string where = describe_operating_point(operatingPoint, operatingPointIndex);
+    // The magnetizing model as simulate ran it on this point, at its ambient temperature.
+    OperatingPoint operatingPointAtAmbient = operatingPoint;
+    MagnetizingInductance magnetizingInductanceModel;
+    magnetizingInductanceModel.set_topology(topology);
+    std::string reason;
+    try {
+        magnetizingInductanceModel.calculate_inductance_and_magnetic_flux_density(magnetic, &operatingPointAtAmbient);
+    }
+    catch (const SaturationException& error) {
+        reason = error.message();
+    }
+    catch (const MagnetisationCurveExhaustedException& error) {
+        reason = error.message();
+    }
+    if (reason.empty()) {
+        throw InvalidInputException(ErrorCode::MISSING_DATA,
+            "analyze_results: the output of " + where + " has no core losses, yet its flux density reads on the magnetisation "
+            "curve at its ambient temperature: it was edited after simulate, which gives every other point its core losses");
+    }
+    return {make_finding(operatingPoint, operatingPointIndex, ResultFindingCode::CORE_SATURATES,
+        "At " + where + ": the core saturates: " + reason + ". Its magnetizing inductance, flux density, core losses and "
+        "temperatures are not computed for this operating point (its winding losses are those of its currents at the ambient "
+        "temperature, " + format_number(operatingPoint.get_conditions().get_ambient_temperature()) + " C); more turns, a larger "
+        "gap or core, or less volt-seconds are needed")};
+}
+
 std::vector<ResultFinding> ResultsAnalyzer::analyze_winding_bends(const Magnetic& magnetic) {
     // A copy: judging resolves the coil's bobbin and column frames, and the magnetic is const here.
     OpenMagnetics::Coil coil = magnetic.get_coil();
@@ -542,6 +573,18 @@ std::vector<ResultFinding> ResultsAnalyzer::analyze_results(const Mas& mas) {
     }
     std::vector<ResultFinding> findings;
     for (size_t index = 0; index < operatingPoints.size(); ++index) {
+        if (!outputs[index].get_core_losses()) {
+            // ABT #2052: simulate leaves the core losses (and the temperature) of a point whose flux density lies past
+            // the end of the magnetisation curve at ambient unset; there is no flux density or temperature to check.
+            for (auto& finding : analyze_flux_density_past_magnetisation_curve(mas.get_magnetic(), operatingPoints[index], index,
+                                                                               mas.get_inputs().get_design_requirements().get_topology())) {
+                findings.push_back(finding);
+            }
+            for (auto& finding : analyze_volt_second_balance(operatingPoints[index], index)) {
+                findings.push_back(finding);
+            }
+            continue;
+        }
         for (auto& finding : analyze_saturation(mas.get_magnetic(), operatingPoints[index], outputs[index], index,
                                                      mas.get_inputs().get_design_requirements().get_topology())) {
             findings.push_back(finding);

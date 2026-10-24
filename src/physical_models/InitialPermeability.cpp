@@ -2,6 +2,7 @@
 #include "physical_models/AmplitudePermeability.h"
 
 #include "support/Utils.h"
+#include "support/NumberFormat.h"
 
 #include <cmath>
 #include <filesystem>
@@ -400,17 +401,22 @@ std::pair<double, double> InitialPermeability::get_magnetomotive_force_for_flux_
     const auto& fluxDensities = curve.fluxDensity;
     if (fluxDensity > fluxDensities.back()) {
         // No extrapolation past the table (1000 Hsat, Alf 2026-10-18): the curve says nothing there.
+        // The numbers as ResultsAnalyzer's findings print them (ABT #2001): these messages are the CORE_SATURATES
+        // finding's reason for a point past the curve at ambient (ABT #2052).
+        auto number = [](double value) {
+            return format_significant(value);
+        };
         if (fluxDensity > curve.saturationFluxDensity) {
             throw SaturationException(
-                "The flux density " + std::to_string(fluxDensity) + " T asked of material " + curve.materialName +
-                " lies past the end of its magnetisation curve, " + std::to_string(fluxDensities.back()) + " T at " +
-                std::to_string(fieldStrengths.back()) + " A/m (1000 times its saturation field strength), and above its B_sat of " +
-                std::to_string(curve.saturationFluxDensity) + " T: the core is driven far past saturation, and its curve has no field strength for that flux");
+                "The flux density " + number(fluxDensity) + " T asked of material " + curve.materialName +
+                " lies past the end of its magnetisation curve, " + number(fluxDensities.back()) + " T at " +
+                number(fieldStrengths.back()) + " A/m (1000 times its saturation field strength), and above its B_sat of " +
+                number(curve.saturationFluxDensity) + " T: the core is driven far past saturation, and its curve has no field strength for that flux");
         }
         throw MagnetisationCurveExhaustedException("The magnetisation curve of material " + curve.materialName + " integrates to only " +
-                                 std::to_string(fluxDensities.back()) + " T at " + std::to_string(fieldStrengths.back()) + " A/m, below the " +
-                                 std::to_string(fluxDensity) + " T asked, although that is under its saturation of " +
-                                 std::to_string(curve.saturationFluxDensity) + " T: the material's DC-bias factor is inconsistent with its saturation data");
+                                 number(fluxDensities.back()) + " T at " + number(fieldStrengths.back()) + " A/m, below the " +
+                                 number(fluxDensity) + " T asked, although that is under its saturation of " +
+                                 number(curve.saturationFluxDensity) + " T: the material's DC-bias factor is inconsistent with its saturation data");
     }
     // B(H) is strictly increasing (mu_rev >= 1); the segment and its linear interpolation are the forward
     // crossing's, so the two are exact inverses on the table.

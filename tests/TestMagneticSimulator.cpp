@@ -3348,3 +3348,155 @@ TEST_CASE("Analyze_results states a winding above its coating's thermal class in
     CHECK_THAT(windingFindings[0].message, Catch::Matchers::EndsWith(
         ": the hottest point, 2474 C, is above the 155 C thermal class of the coating material (Polyurethane 155) of winding 0 ('Primary')."));
 }
+
+namespace {
+    // ABT #2052: slow_simulation (flyback, material 95, Curie 220 C) whose second operating point ('Max. input volt.')
+    // is simulated twice: at its own 25 C, where it is fine, and at an ambient so hot that its voltage's flux density,
+    // read on 95's magnetisation curve at that ambient, lies past the curve's end: at 160 C above B_sat
+    // (SaturationException: 0.404 T asked, the curve ends at 0.393 T), at 190 C under it, where the curve ends below
+    // B_sat (MagnetisationCurveExhaustedException: 0.225 T asked, the curve ends at 0.219 T).
+    struct PastCurveAtAmbientDesign {
+        OpenMagnetics::Magnetic magnetic;
+        OpenMagnetics::Inputs inputs;
+    };
+    PastCurveAtAmbientDesign past_curve_at_ambient_design(double hotAmbientTemperature) {
+        std::ifstream file(OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "slow_simulation.json"));
+        REQUIRE(file.good());
+        json masJson = json::parse(file);
+        strip_nulls_abt1942_simulator(masJson);
+        PastCurveAtAmbientDesign design{OpenMagnetics::Magnetic(masJson["magnetic"]), OpenMagnetics::Inputs(masJson["inputs"])};
+        if (!design.magnetic.get_coil().get_turns_description()) {
+            design.magnetic.get_mutable_coil().wind();
+        }
+        // Its second operating point twice: as given (25 C, where its loss loop settles) and at the hot ambient.
+        REQUIRE(design.inputs.get_operating_points().size() == 2);
+        OperatingPoint hot = design.inputs.get_operating_points()[1];
+        REQUIRE(hot.get_conditions().get_ambient_temperature() == 25);
+        hot.get_mutable_conditions().set_ambient_temperature(hotAmbientTemperature);
+        design.inputs.set_operating_points({design.inputs.get_operating_points()[1], hot});
+        return design;
+    }
+    // The two ambients of the guards below and the refusal each meets at it.
+    const std::vector<std::pair<double, std::string>> pastCurveAtAmbientCases = {
+        {160.0, "lies past the end of its magnetisation curve"},
+        {190.0, "integrates to only"}};
+}
+
+TEST_CASE("A point whose flux density lies past the end of the magnetisation curve at ambient is that point's CORE_SATURATES",
+          "[processor][magnetic-simulator][abt-2052]") {
+    // ABT #2052 (Alf, 2026-10-24): since ABT #1942 the magnetizing model refuses a flux density past the end of the
+    // material's curve; at a heated iterate of the loss solve that is the point's NoThermalOperatingPointException, but at
+    // ambient it propagated and failed the whole simulation. It is that point's finding: simulate leaves its
+    // flux-dependent outputs (inductance, core losses, temperature) unset, gives it its winding losses at ambient,
+    // simulates every other point, and analyze_results reports CORE_SATURATES for it.
+    settings.reset();
+    for (const auto& [hotAmbientTemperature, refusal] : pastCurveAtAmbientCases) {
+        DYNAMIC_SECTION("ambient " << hotAmbientTemperature << " C") {
+            auto design = past_curve_at_ambient_design(hotAmbientTemperature);
+            {
+                // The precondition: at that ambient the magnetizing model cannot read the point.
+                OperatingPoint operatingPoint = design.inputs.get_operating_points()[1];
+                MagnetizingInductance magnetizingInductanceModel;
+                magnetizingInductanceModel.set_topology(design.inputs.get_design_requirements().get_topology());
+                CHECK_THROWS_WITH(magnetizingInductanceModel.calculate_inductance_and_magnetic_flux_density(design.magnetic, &operatingPoint),
+                                  Catch::Matchers::ContainsSubstring(refusal));
+            }
+            MagneticSimulator simulator;
+            OpenMagnetics::Mas simulated;
+            REQUIRE_NOTHROW(simulated = simulator.simulate(design.inputs, design.magnetic));
+            REQUIRE(simulated.get_outputs().size() == 2);
+
+            // The other point is complete.
+            const auto& complete = simulated.get_outputs()[0];
+            REQUIRE(complete.get_inductance());
+            REQUIRE(complete.get_core_losses());
+            CHECK(complete.get_core_losses()->get_magnetic_flux_density());
+            CHECK(complete.get_core_losses()->get_core_losses() > 0);
+            CHECK(complete.get_temperature());
+            REQUIRE(complete.get_winding_losses());
+            CHECK(complete.get_winding_losses()->get_winding_losses() > 0);
+
+            // The saturated point: its flux-dependent outputs unset, its winding losses at ambient.
+            const auto& saturated = simulated.get_outputs()[1];
+            CHECK_FALSE(saturated.get_inductance());
+            CHECK_FALSE(saturated.get_core_losses());
+            CHECK_FALSE(saturated.get_temperature());
+            REQUIRE(saturated.get_winding_losses());
+            CHECK(saturated.get_winding_losses()->get_winding_losses() > 0);
+            REQUIRE(saturated.get_winding_losses()->get_temperature());
+            CHECK(saturated.get_winding_losses()->get_temperature().value() == hotAmbientTemperature);
+            // No magnetizing current was derived for it: its excitation is as given.
+            const auto& givenExcitation = design.inputs.get_operating_points()[1].get_excitations_per_winding()[0];
+            const auto& simulatedExcitation = simulated.get_inputs().get_operating_points()[1].get_excitations_per_winding()[0];
+            CHECK(simulatedExcitation.get_magnetizing_current().has_value() == givenExcitation.get_magnetizing_current().has_value());
+            CHECK_FALSE(simulatedExcitation.get_magnetic_flux_density());
+            // Its temperature cannot be computed from that output.
+            CHECK_THROWS_AS(TemperatureConfig::fromSimulatedOutput(simulated.get_inputs().get_operating_points()[1], saturated),
+                            InvalidInputException);
+
+            auto findings = ResultsAnalyzer::analyze_results(simulated);
+            INFO("findings:" << describe_findings(findings));
+            size_t coreSaturates = 0;
+            for (const auto& finding : findings) {
+                CHECK_THAT(finding.message, !Catch::Matchers::ContainsSubstring("ABT #"));
+                if (finding.operatingPointIndex && finding.operatingPointIndex.value() == 1) {
+                    CHECK(finding.code != ResultFindingCode::NO_THERMAL_OPERATING_POINT);
+                }
+                // Point 0 has its own CORE_SATURATES (its heated core, ~141 C, is past its knee); only point 1's is counted.
+                if (finding.code == ResultFindingCode::CORE_SATURATES && finding.operatingPointIndex && finding.operatingPointIndex.value() == 1) {
+                    ++coreSaturates;
+                    CHECK_THAT(finding.message, Catch::Matchers::ContainsSubstring(refusal) &&
+                                                Catch::Matchers::ContainsSubstring("are not computed for this operating point"));
+                }
+            }
+            CHECK(coreSaturates == 1);
+
+            // An output without core losses at a point the model DOES read is not this case: analyze_results throws.
+            auto edited = simulated;
+            auto outputs = edited.get_outputs();
+            outputs[0].set_core_losses(std::nullopt);
+            edited.set_outputs(outputs);
+            CHECK_THROWS_AS(ResultsAnalyzer::analyze_results(edited), InvalidInputException);
+        }
+    }
+    settings.reset();
+}
+
+TEST_CASE("mas_autocomplete completes a design with a point past the end of the magnetisation curve at ambient",
+          "[processor][magnetic-simulator][autocomplete][abt-2052]") {
+    // ABT #2052: autocomplete never refuses a design for a saturating point. It fills the design, derives no magnetizing
+    // current for that point, and its simulation leaves that point's flux-dependent outputs unset.
+    settings.reset();
+    for (const auto& [hotAmbientTemperature, refusal] : pastCurveAtAmbientCases) {
+        DYNAMIC_SECTION("ambient " << hotAmbientTemperature << " C") {
+            auto design = past_curve_at_ambient_design(hotAmbientTemperature);
+            // As the web hands it over: the operating points without the magnetizing currents autocomplete derives.
+            auto operatingPoints = design.inputs.get_operating_points();
+            for (auto& operatingPoint : operatingPoints) {
+                for (auto& excitation : operatingPoint.get_mutable_excitations_per_winding()) {
+                    excitation.set_magnetizing_current(std::nullopt);
+                }
+            }
+            design.inputs.set_operating_points(operatingPoints);
+            OpenMagnetics::Mas mas;
+            mas.set_inputs(design.inputs);
+            mas.set_magnetic(design.magnetic);
+            OpenMagnetics::Mas completed;
+            REQUIRE_NOTHROW(completed = OpenMagnetics::mas_autocomplete(mas));
+            REQUIRE(completed.get_outputs().size() == 2);
+            CHECK(completed.get_outputs()[0].get_core_losses());
+            CHECK(completed.get_outputs()[0].get_temperature());
+            CHECK_FALSE(completed.get_outputs()[1].get_core_losses());
+            CHECK_FALSE(completed.get_outputs()[1].get_temperature());
+            CHECK(completed.get_outputs()[1].get_winding_losses());
+            const auto& completedOperatingPoints = completed.get_inputs().get_operating_points();
+            REQUIRE(completedOperatingPoints.size() == 2);
+            CHECK(completedOperatingPoints[0].get_excitations_per_winding()[0].get_magnetizing_current());
+            CHECK_FALSE(completedOperatingPoints[1].get_excitations_per_winding()[0].get_magnetizing_current());
+
+            // Without simulating as well.
+            REQUIRE_NOTHROW(OpenMagnetics::mas_autocomplete(mas, false));
+        }
+    }
+    settings.reset();
+}

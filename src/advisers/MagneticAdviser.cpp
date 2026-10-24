@@ -52,6 +52,33 @@ struct ConstraintsScope {
     ConstraintsScope& operator=(const ConstraintsScope&) = delete;
 };
 
+// ABT #2052: why a simulated candidate is rejected because simulate left an operating point without core losses: at
+// its ambient temperature that point's flux density lies past the end of the material's magnetisation curve
+// (ResultsAnalyzer's CORE_SATURATES finding, which throws when the missing core losses are not that case). None when
+// every point has its core losses.
+std::optional<std::string> reason_core_saturates_past_magnetisation_curve(const Mas& mas) {
+    const auto& outputs = mas.get_outputs();
+    const auto& operatingPoints = mas.get_inputs().get_operating_points();
+    for (size_t operatingPointIndex = 0; operatingPointIndex < outputs.size(); ++operatingPointIndex) {
+        if (outputs[operatingPointIndex].get_core_losses()) {
+            continue;
+        }
+        if (operatingPointIndex >= operatingPoints.size()) {
+            throw InvalidInputException(ErrorCode::MISSING_DATA,
+                "MagneticAdviser: simulate() returned output " + std::to_string(operatingPointIndex) + " for '" +
+                mas.get_magnetic().get_reference() + "', which has only " + std::to_string(operatingPoints.size()) + " operating points");
+        }
+        std::string reason = "core saturates";
+        for (const auto& finding : ResultsAnalyzer::analyze_flux_density_past_magnetisation_curve(
+                 mas.get_magnetic(), operatingPoints[operatingPointIndex], operatingPointIndex,
+                 mas.get_inputs().get_design_requirements().get_topology())) {
+            reason += ": " + finding.message;
+        }
+        return reason;
+    }
+    return std::nullopt;
+}
+
 // Outcome of processing one wound candidate through the full validation path.
 enum class WoundCandidateOutcome {
     Skipped,       // failed a guard/dedup/simulate/saturation check — drop, keep going
@@ -122,6 +149,14 @@ WoundCandidateOutcome process_wound_candidate(
         mas = magneticSimulator.simulate(mas);
     } catch (const std::exception& e) {
         logEntry(std::string("MagneticAdviser: skipping candidate, simulate failed: ") + e.what(), "MagneticAdviser", 2);
+        return WoundCandidateOutcome::Skipped;
+    }
+    // ABT #2052: simulate gives a point past the end of the magnetisation curve at ambient no core losses or
+    // temperature (until then it threw here, which skipped the candidate). Such a candidate is rejected and recorded.
+    if (auto saturates = reason_core_saturates_past_magnetisation_curve(mas)) {
+        logEntry("MagneticAdviser: dropping '" + mas.get_mutable_magnetic().get_reference() + "' - " + saturates.value(),
+                 "MagneticAdviser", 2);
+        failedCandidates.push_back({mas.get_mutable_magnetic().get_reference(), saturates.value()});
         return WoundCandidateOutcome::Skipped;
     }
 
@@ -1459,6 +1494,12 @@ std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic(std::v
                     _failedCandidates.push_back({mas.get_magnetic().get_reference(), std::string("final simulation: ") + e.what()});
                     continue;
                 }
+                // ABT #2052: a point past the end of the magnetisation curve no longer throws out of simulate.
+                if (auto saturates = reason_core_saturates_past_magnetisation_curve(mas)) {
+                    logEntry("MagneticAdviser: skipping final-simulate candidate: " + saturates.value(), "MagneticAdviser", 2);
+                    _failedCandidates.push_back({mas.get_magnetic().get_reference(), "final simulation: " + saturates.value()});
+                    continue;
+                }
                 masMagneticsWithScoringSimulated.push_back({mas, scoring});
             }
 
@@ -1612,7 +1653,10 @@ void MagneticAdviser::preview_magnetic(Mas mas) {
     for (size_t operatingPointIndex = 0; operatingPointIndex < mas.get_outputs().size(); ++operatingPointIndex) {
         auto output = mas.get_outputs()[operatingPointIndex];
         text += "Operating Point: " + std::to_string(operatingPointIndex + 1) + "\n";
-        text += "\tMagnetizing Inductance: " + std::to_string(resolve_dimensional_values(output.get_inductance()->get_magnetizing_inductance().get_magnetizing_inductance())) + "\n";
+        // ABT #2052: a point past the end of the magnetisation curve has no inductance output.
+        if (output.get_inductance()) {
+            text += "\tMagnetizing Inductance: " + std::to_string(resolve_dimensional_values(output.get_inductance()->get_magnetizing_inductance().get_magnetizing_inductance())) + "\n";
+        }
         
         if (output.get_core_losses()) {
             auto coreLosses = output.get_core_losses().value();
