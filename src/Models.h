@@ -66,7 +66,8 @@ enum class CoreLossesModels : int {
     ALBACH,
     NSE,
     MSE,
-    LOSS_FACTOR
+    LOSS_FACTOR,
+    LOSS_FACTOR_HYSTERESIS
 };
 
 

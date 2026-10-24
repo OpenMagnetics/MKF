@@ -39,7 +39,7 @@ namespace OpenMagnetics {
         _painterMirroringDimension = defaults.magneticFieldMirroringDimension;
         _magneticFieldMirroringDimension = defaults.magneticFieldMirroringDimension;
         _harmonicAmplitudeThreshold = defaults.harmonicAmplitudeThreshold;
-        _coreLossesModelNames = {defaults.coreLossesModelDefault, CoreLossesModels::PROPRIETARY, CoreLossesModels::LOSS_FACTOR, CoreLossesModels::STEINMETZ, CoreLossesModels::ROSHEN};
+        _coreLossesModelNames = {defaults.coreLossesModelDefault, CoreLossesModels::PROPRIETARY, CoreLossesModels::LOSS_FACTOR, CoreLossesModels::LOSS_FACTOR_HYSTERESIS, CoreLossesModels::STEINMETZ, CoreLossesModels::ROSHEN};
 
         // Initialize centralized model configuration from defaults
         _magneticFieldStrengthModel = defaults.magneticFieldStrengthModelDefault;
@@ -395,7 +395,7 @@ namespace {
 
         // Previously these survived reset(), leaking setter state across
         // tests/sessions (one cause of order-dependent adviser test results)
-        _coreLossesModelNames = {Defaults().coreLossesModelDefault, CoreLossesModels::PROPRIETARY, CoreLossesModels::LOSS_FACTOR, CoreLossesModels::STEINMETZ, CoreLossesModels::ROSHEN};
+        _coreLossesModelNames = {Defaults().coreLossesModelDefault, CoreLossesModels::PROPRIETARY, CoreLossesModels::LOSS_FACTOR, CoreLossesModels::LOSS_FACTOR_HYSTERESIS, CoreLossesModels::STEINMETZ, CoreLossesModels::ROSHEN};
         _coreLossesRequestedModel = std::nullopt;
         _circuitSimulatorCurveFittingMode = 0;
         _circuitSimulatorFracpoleOptions = std::nullopt;
@@ -1310,7 +1310,7 @@ namespace {
         return _coreLossesModelNames;
     }
     void Settings::set_core_losses_preferred_model_name(CoreLossesModels value) {
-        _coreLossesModelNames = {value, CoreLossesModels::PROPRIETARY, CoreLossesModels::LOSS_FACTOR, CoreLossesModels::STEINMETZ, CoreLossesModels::ROSHEN};
+        _coreLossesModelNames = {value, CoreLossesModels::PROPRIETARY, CoreLossesModels::LOSS_FACTOR, CoreLossesModels::LOSS_FACTOR_HYSTERESIS, CoreLossesModels::STEINMETZ, CoreLossesModels::ROSHEN};
         _coreLossesRequestedModel = std::nullopt;
     }
     std::optional<CoreLossesModels> Settings::get_core_losses_requested_model() const {

@@ -50,6 +50,7 @@ enum class ErrorCode : int {
     MATERIAL_ABOVE_CURIE_TEMPERATURE = 304,  // loss asked of a material hotter than its Curie point (ABT #1485)
     MATERIAL_REQUESTED_LOSS_MODEL_NOT_AVAILABLE = 305,  // an explicitly requested core-loss model the material cannot run (ABT #1497)
     MATERIAL_TEMPERATURE_OUT_OF_RANGE = 306,  // mu_i(T) asked below Curie but outside the tabulated temperatures (ABT #1739)
+    MATERIAL_LOSS_FACTOR_ABOVE_SMALL_SIGNAL_FLUX = 307,  // a small-signal loss factor asked at a larger flux (ABT #2006)
     
     // Calculation errors (400-499)
     CALCULATION_NAN_RESULT = 400,
@@ -122,6 +123,7 @@ inline std::string to_string(ErrorCode code) {
         case ErrorCode::MATERIAL_FREQUENCY_OUT_OF_SPAN: return "MATERIAL_FREQUENCY_OUT_OF_SPAN";
         case ErrorCode::MATERIAL_ABOVE_CURIE_TEMPERATURE: return "MATERIAL_ABOVE_CURIE_TEMPERATURE";
         case ErrorCode::MATERIAL_REQUESTED_LOSS_MODEL_NOT_AVAILABLE: return "MATERIAL_REQUESTED_LOSS_MODEL_NOT_AVAILABLE";
+        case ErrorCode::MATERIAL_LOSS_FACTOR_ABOVE_SMALL_SIGNAL_FLUX: return "MATERIAL_LOSS_FACTOR_ABOVE_SMALL_SIGNAL_FLUX";
         case ErrorCode::MATERIAL_TEMPERATURE_OUT_OF_RANGE: return "MATERIAL_TEMPERATURE_OUT_OF_RANGE";
         case ErrorCode::CALCULATION_NAN_RESULT: return "CALCULATION_NAN_RESULT";
         case ErrorCode::CALCULATION_DIVERGED: return "CALCULATION_DIVERGED";
@@ -463,6 +465,28 @@ public:
 // A caller explicitly asked for one core-loss model and the material cannot be evaluated with it
 // (no data for it). Only an explicit request throws this; the default preference walks its cascade
 // to the material's own model instead (ABT #1497).
+// A loss factor tan(delta)/mu_i is measured at small signal (B <= 0.25 mT, IEC 60401-3). At a larger flux the
+// hysteresis loss it leaves out dominates, so a loss computed from it there is not the material's loss (ABT #2006).
+class LossFactorAboveSmallSignalFluxException : public MaterialException {
+    std::string _materialName;
+    double _magneticFluxDensityAmplitude;
+    double _maximumMagneticFluxDensity;
+public:
+    LossFactorAboveSmallSignalFluxException(const std::string& materialName, double magneticFluxDensityAmplitude,
+                                            double maximumMagneticFluxDensity)
+        : MaterialException(ErrorCode::MATERIAL_LOSS_FACTOR_ABOVE_SMALL_SIGNAL_FLUX,
+                            "Material " + materialName + ": its loss factor (tan(delta)/mu_i) is small-signal data, defined up to " +
+                            std::to_string(maximumMagneticFluxDensity) + " T, and the core losses were asked at a flux amplitude of " +
+                            std::to_string(magneticFluxDensityAmplitude) + " T, where it does not give the material's loss",
+                            materialName),
+          _materialName(materialName), _magneticFluxDensityAmplitude(magneticFluxDensityAmplitude),
+          _maximumMagneticFluxDensity(maximumMagneticFluxDensity) {}
+
+    const std::string& material_name() const noexcept { return _materialName; }
+    double magnetic_flux_density_amplitude() const noexcept { return _magneticFluxDensityAmplitude; }
+    double maximum_magnetic_flux_density() const noexcept { return _maximumMagneticFluxDensity; }
+};
+
 class RequestedCoreLossesModelNotAvailableException : public MaterialException {
     std::string _materialName;
     std::string _modelName;

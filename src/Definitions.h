@@ -336,6 +336,7 @@ inline void to_json(json & j, const CoreLossesModels & x) {
         case CoreLossesModels::NSE: j = "NSE"; break;
         case CoreLossesModels::MSE: j = "MSE"; break;
         case CoreLossesModels::LOSS_FACTOR: j = "LossFactor"; break;
+        case CoreLossesModels::LOSS_FACTOR_HYSTERESIS: j = "LossFactorHysteresis"; break;
         default: throw std::runtime_error("Unexpected value in enumeration \"CoreLossesModels\": " + std::to_string(static_cast<int>(x)));
     }
 }
@@ -351,6 +352,7 @@ inline void from_json(const json & j, CoreLossesModels & x) {
     else if (j == "Nse" || j == "nse" || j == "NSE") x = CoreLossesModels::NSE;
     else if (j == "Mse" || j == "mse" || j == "MSE") x = CoreLossesModels::MSE;
     else if (j == "LossFactor" || j == "lossfactor" || j == "LOSSFACTOR") x = CoreLossesModels::LOSS_FACTOR;
+    else if (j == "LossFactorHysteresis" || j == "lossfactorhysteresis" || j == "LOSS_FACTOR_HYSTERESIS") x = CoreLossesModels::LOSS_FACTOR_HYSTERESIS;
     else { throw std::runtime_error("Input JSON does not conform to CoreLossesModels schema: " + to_string(j)); }
 }
 

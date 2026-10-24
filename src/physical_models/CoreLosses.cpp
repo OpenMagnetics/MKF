@@ -4,6 +4,7 @@
 #include <algorithm>
 #include "physical_models/Resistivity.h"
 #include "physical_models/InitialPermeability.h"
+#include "physical_models/AmplitudePermeability.h"
 
 #include "processors/Inputs.h"
 #include "processors/WaveformProcessor.h"
@@ -127,6 +128,8 @@ std::vector<CoreLossesModels> CoreLossesModel::get_methods(CoreMaterialDataOrNam
         }
         if (std::count(methods.begin(), methods.end(), VolumetricCoreLossesMethodType::LOSS_FACTOR)) {
             models.push_back(CoreLossesModels::LOSS_FACTOR);
+            // ABT #2006: the loss factor plus the hysteresis of the material's major loop.
+            models.push_back(CoreLossesModels::LOSS_FACTOR_HYSTERESIS);
         }
     }
 
@@ -169,6 +172,8 @@ static std::string required_loss_data(CoreLossesModels model) {
             return "a manufacturer loss model (a 'magnetics', 'micrometals', 'poco' or 'tdg' volumetricLosses method, or 'magnetec' massLosses)";
         case CoreLossesModels::LOSS_FACTOR:
             return "loss-factor data (a 'lossFactor' volumetricLosses method)";
+        case CoreLossesModels::LOSS_FACTOR_HYSTERESIS:
+            return "loss-factor data (a 'lossFactor' volumetricLosses method) and a major loop (coercive force and remanence, the material's own or its class's)";
     }
     throw InvalidInputException(ErrorCode::INVALID_ARGUMENT,
         "Unknown core-loss model " + std::to_string(static_cast<int>(model)));
@@ -204,6 +209,29 @@ static void throw_if_requested_model_not_available(CoreLossesModels model, const
 
 void CoreLosses::throw_if_requested_model_not_available(CoreLossesModels model, const CoreMaterial& material) {
     OpenMagnetics::throw_if_requested_model_not_available(model, material.get_name(), CoreLossesModel::get_methods(material));
+}
+
+std::shared_ptr<CoreLossesModel> CoreLosses::get_core_losses_model(const CoreMaterial& material, const OperatingPointExcitation& excitation) {
+    if (_requestedCoreLossesModel) {
+        return get_core_losses_model(material.get_name());
+    }
+    auto availableMethodsForMaterial = CoreLossesModel::get_methods(material.get_name());
+    std::shared_ptr<CoreLossesModel> firstSupported = nullptr;
+    for (auto& [modelName, coreLossesModel] : _coreLossesModels) {
+        if (std::find(availableMethodsForMaterial.begin(), availableMethodsForMaterial.end(), modelName) == availableMethodsForMaterial.end()) {
+            continue;
+        }
+        if (!coreLossesModel->not_valid_at(material, excitation)) {
+            return coreLossesModel;
+        }
+        if (!firstSupported) {
+            firstSupported = coreLossesModel;
+        }
+    }
+    if (firstSupported) {
+        return firstSupported;
+    }
+    return get_core_losses_model(material.get_name());
 }
 
 std::shared_ptr<CoreLossesModel> CoreLosses::get_core_losses_model(std::string materialName) {
@@ -562,7 +590,7 @@ std::optional<double> CoreLosses::get_temperature_factor_data_end(Core core, con
         }
     };
     for (const auto& material : materials) {
-        auto model = get_core_losses_model(material.get_name());
+        auto model = get_core_losses_model(material, excitation);
         if (!CoreLossesModel::evaluates_steinmetz_ranges(model.get())) {
             continue;
         }
@@ -588,7 +616,7 @@ CoreLossesOutput CoreLosses::calculate_periodic_core_losses(Core core, Operating
     }
 
     throw_if_above_curie_temperature(core.resolve_material(), temperature);
-    auto coreLossesModelForMaterial = get_core_losses_model(core.get_material_name());
+    auto coreLossesModelForMaterial = get_core_losses_model(core.resolve_material(), excitation);
 
     CoreLossesOutput coreLossesOutput = coreLossesModelForMaterial->compute_core_losses(core, excitation, temperature);
 
@@ -636,7 +664,7 @@ double CoreLosses::get_core_volumetric_losses(CoreMaterial coreMaterial, Operati
 
 double CoreLosses::get_periodic_core_volumetric_losses(CoreMaterial coreMaterial, OperatingPointExcitation excitation, double temperature) {
     throw_if_above_curie_temperature(coreMaterial, temperature);
-    auto coreLossesModelForMaterial = get_core_losses_model(coreMaterial.get_name());
+    auto coreLossesModelForMaterial = get_core_losses_model(coreMaterial, excitation);
 
     double coreVolumetricLosses = coreLossesModelForMaterial->compute_core_volumetric_losses(coreMaterial, excitation, temperature);
 
@@ -701,10 +729,13 @@ std::shared_ptr<CoreLossesModel> CoreLossesModel::factory(CoreLossesModels model
     else if (modelName == CoreLossesModels::LOSS_FACTOR) {
         return std::make_shared<CoreLossesLossFactorModel>();
     }
+    else if (modelName == CoreLossesModels::LOSS_FACTOR_HYSTERESIS) {
+        return std::make_shared<CoreLossesLossFactorHysteresisModel>();
+    }
 
     else
         throw ModelNotAvailableException("Unknown Core losses mode, available options are: {STEINMETZ, IGSE, ciGSE, BARG, ALBACH, "
-                                 "ROSHEN, OUYANG, NSE, MSE, PROPRIETARY, LOSS_FACTOR}");
+                                 "ROSHEN, OUYANG, NSE, MSE, PROPRIETARY, LOSS_FACTOR, LOSS_FACTOR_HYSTERESIS}");
 }
 
 std::vector<VolumetricLossesPoint> CoreLossesModel::get_volumetric_losses_data(CoreMaterial materialData) {
@@ -2813,6 +2844,15 @@ double CoreLossesRoshenModel::compute_core_volumetric_losses(CoreMaterial coreMa
     return volumetricLosses;
 } 
  
+std::map<std::string, double> CoreLossesRoshenModel::get_hysteresis_parameters(const CoreMaterial& coreMaterial, double temperature) {
+    std::map<std::string, double> parameters;
+    parameters["coerciveForce"] = resolve_core_material_coercive_force(coreMaterial, temperature).value;
+    parameters["remanence"] = resolve_core_material_remanence(coreMaterial, temperature).value;
+    parameters["saturationMagneticFluxDensity"] = Core::get_magnetic_flux_density_saturation(coreMaterial, temperature, false);
+    parameters["saturationMagneticFieldStrength"] = Core::get_magnetic_field_strength_saturation(coreMaterial, temperature);
+    return parameters;
+}
+
 std::map<std::string, double> CoreLossesRoshenModel::get_roshen_parameters(Core core,
                                                                            OperatingPointExcitation excitation,
                                                                            double temperature) {
@@ -2821,10 +2861,7 @@ std::map<std::string, double> CoreLossesRoshenModel::get_roshen_parameters(Core 
 
     auto roshenData = CoreLossesModel::get_method_data(materialData, "roshen");
 
-    roshenParameters["coerciveForce"] = core.get_coercive_force(temperature);
-    roshenParameters["remanence"] = core.get_remanence(temperature);
-    roshenParameters["saturationMagneticFluxDensity"] = core.get_magnetic_flux_density_saturation(temperature, false);
-    roshenParameters["saturationMagneticFieldStrength"] = core.get_magnetic_field_strength_saturation(temperature);
+    roshenParameters = get_hysteresis_parameters(materialData, temperature);
 
     if (roshenData.get_coefficients()) {
         auto magneticFluxDensity = excitation.get_magnetic_flux_density().value();
@@ -3675,6 +3712,48 @@ double CoreLossesLossFactorModel::calculate_magnetizing_inductance_from_excitati
     return magnetizingInductance;
 }
 
+// The loss factor is small-signal data (ABT #2006): above its flux bound it leaves out the hysteresis
+// loss, so the loss it gives is not the material's. The bound is on the AC amplitude of the excitation.
+std::exception_ptr CoreLossesLossFactorModel::not_valid_at(const CoreMaterial& coreMaterial, const OperatingPointExcitation& excitation) const {
+    if (!excitation.get_magnetic_flux_density()) {
+        throw InvalidInputException(ErrorCode::MISSING_DATA, "Core material " + coreMaterial.get_name() +
+            " (loss-factor model): missing magnetic flux density in excitation, needed to check the small-signal range");
+    }
+    auto magneticFluxDensity = excitation.get_magnetic_flux_density().value();
+    if (!magneticFluxDensity.get_processed() || !magneticFluxDensity.get_processed()->get_peak_to_peak()) {
+        if (!magneticFluxDensity.get_waveform()) {
+            throw InvalidInputException(ErrorCode::MISSING_DATA, "Core material " + coreMaterial.get_name() +
+                " (loss-factor model): magnetic flux density has neither a processed peak-to-peak nor a waveform");
+        }
+        magneticFluxDensity.set_processed(Inputs::calculate_processed_data(magneticFluxDensity.get_waveform().value(), excitation.get_frequency()));
+    }
+    double amplitude = magneticFluxDensity.get_processed()->get_peak_to_peak().value() / 2;
+    double maximum = Defaults().lossFactorMaximumMagneticFluxDensity;
+    if (amplitude > maximum) {
+        return std::make_exception_ptr(LossFactorAboveSmallSignalFluxException(coreMaterial.get_name(), amplitude, maximum));
+    }
+    return nullptr;
+}
+
+static void throw_if_loss_factor_above_small_signal_flux(const CoreLossesLossFactorModel& model, const CoreMaterial& coreMaterial,
+                                                         const OperatingPointExcitation& excitation) {
+    auto notValid = model.not_valid_at(coreMaterial, excitation);
+    if (!notValid) {
+        return;
+    }
+    try {
+        std::rethrow_exception(notValid);
+    }
+    catch (const LossFactorAboveSmallSignalFluxException& aboveSmallSignal) {
+        // Settings::allowMaterialDataExtrapolation (explicit opt-in): evaluate the loss factor there anyway, with a
+        // WARNING naming the material, the flux and the bound.
+        if (material_data_extrapolation_allowed(aboveSmallSignal.what())) {
+            return;
+        }
+        throw;
+    }
+}
+
 CoreLossesOutput CoreLossesLossFactorModel::compute_core_losses(const Core& core,
                                                         OperatingPointExcitation excitation,
                                                         double temperature) {
@@ -3729,6 +3808,7 @@ double CoreLossesLossFactorModel::compute_core_volumetric_losses(CoreMaterial co
         excitation.set_magnetizing_current(magnetizingCurrent);
         // throw std::runtime_error("Missing RMS value in magnetizing current");
     }
+    throw_if_loss_factor_above_small_signal_flux(*this, coreMaterial, excitation);
     auto currentRms = excitation.get_magnetizing_current()->get_processed()->get_rms().value();
     double frequency = Inputs::get_switching_frequency(excitation);
 
@@ -3738,14 +3818,7 @@ double CoreLossesLossFactorModel::compute_core_volumetric_losses(CoreMaterial co
     return volumetricLosses;
 }
 
-double CoreLossesLossFactorModel::get_core_losses_series_resistance(CoreMaterial coreMaterial,
-                                                                    double frequency,
-                                                                    double temperature,
-                                                                    double magnetizingInductance) {
-
-    CoreLossesOutput result;
-    double initialPermeability = InitialPermeability::get_initial_permeability(coreMaterial, temperature);
-
+double CoreLossesLossFactorModel::get_loss_factor(const CoreMaterial& coreMaterial, double frequency) {
     if (!lossFactorInterps.contains(coreMaterial.get_name())) {
 
         auto lossFactorData = CoreLossesModel::get_method_data(coreMaterial, "lossFactor");
@@ -3804,10 +3877,76 @@ double CoreLossesLossFactorModel::get_core_losses_series_resistance(CoreMaterial
             ") for material " + coreMaterial.get_name() + " at " + std::to_string(frequency) + " Hz");
     }
 
+    return lossFactorValue;
+}
+
+double CoreLossesLossFactorModel::get_core_losses_series_resistance(CoreMaterial coreMaterial,
+                                                                    double frequency,
+                                                                    double temperature,
+                                                                    double magnetizingInductance) {
+
+    CoreLossesOutput result;
+    double initialPermeability = InitialPermeability::get_initial_permeability(coreMaterial, temperature);
+
+    double lossFactorValue = get_loss_factor(coreMaterial, frequency);
     auto lossTangent = lossFactorValue * initialPermeability;
     auto seriesResistance = lossTangent * 2 * std::numbers::pi * frequency * magnetizingInductance;
 
     return seriesResistance;
+}
+
+double CoreLossesLossFactorHysteresisModel::get_linear_losses_density(const CoreMaterial& coreMaterial, const OperatingPointExcitation& excitation) {
+    if (!excitation.get_magnetic_flux_density()) {
+        throw InvalidInputException(ErrorCode::MISSING_DATA, "Core material " + coreMaterial.get_name() +
+            " (loss-factor + hysteresis model): missing magnetic flux density in excitation");
+    }
+    auto magneticFluxDensity = excitation.get_magnetic_flux_density().value();
+    Harmonics harmonics;
+    if (magneticFluxDensity.get_harmonics()) {
+        harmonics = magneticFluxDensity.get_harmonics().value();
+    }
+    else {
+        if (!magneticFluxDensity.get_waveform()) {
+            throw InvalidInputException(ErrorCode::MISSING_DATA, "Core material " + coreMaterial.get_name() +
+                " (loss-factor + hysteresis model): magnetic flux density has neither harmonics nor a waveform");
+        }
+        harmonics = Inputs::calculate_harmonics_data(magneticFluxDensity.get_waveform().value(), excitation.get_frequency());
+    }
+    auto amplitudes = harmonics.get_amplitudes();
+    auto frequencies = harmonics.get_frequencies();
+    // Index 0 is the DC offset, which dissipates nothing.
+    double linearLosses = 0;
+    for (size_t index = 1; index < amplitudes.size(); ++index) {
+        if (amplitudes[index] == 0) {
+            continue;
+        }
+        double lossFactor = CoreLossesLossFactorModel::get_loss_factor(coreMaterial, frequencies[index]);
+        linearLosses += std::numbers::pi * frequencies[index] * amplitudes[index] * amplitudes[index] * lossFactor / constants.vacuumPermeability;
+    }
+    return linearLosses;
+}
+
+double CoreLossesLossFactorHysteresisModel::get_hysteresis_losses_density(const CoreMaterial& coreMaterial, const OperatingPointExcitation& excitation, double temperature) {
+    auto parameters = CoreLossesRoshenModel::get_hysteresis_parameters(coreMaterial, temperature);
+    return CoreLossesRoshenModel().get_hysteresis_losses_density(parameters, excitation);
+}
+
+double CoreLossesLossFactorHysteresisModel::compute_core_volumetric_losses(CoreMaterial coreMaterial, OperatingPointExcitation excitation, double temperature) {
+    return get_linear_losses_density(coreMaterial, excitation) + get_hysteresis_losses_density(coreMaterial, excitation, temperature);
+}
+
+CoreLossesOutput CoreLossesLossFactorHysteresisModel::compute_core_losses(const Core& core, OperatingPointExcitation excitation, double temperature) {
+    double effectiveVolume = core.get_processed_description().value().get_effective_parameters().get_effective_volume();
+    double volumetricLosses = compute_core_volumetric_losses(core.resolve_material(), excitation, temperature);
+
+    CoreLossesOutput result;
+    result.set_core_losses(volumetricLosses * effectiveVolume);
+    result.set_magnetic_flux_density(excitation.get_magnetic_flux_density().value());
+    result.set_method_used(_modelName);
+    result.set_origin(ResultOrigin::SIMULATION);
+    result.set_temperature(temperature);
+    result.set_volumetric_losses(volumetricLosses);
+    return result;
 }
 
 double CoreLossesProprietaryModel::get_frequency_from_core_losses(Core core,

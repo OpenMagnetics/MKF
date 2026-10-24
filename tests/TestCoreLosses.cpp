@@ -13,6 +13,7 @@
 #include "processors/MagneticSimulator.h"
 #include "physical_models/Reluctance.h"
 #include "physical_models/InitialPermeability.h"
+#include "physical_models/AmplitudePermeability.h"
 #include "support/MaterialValidator.h"
 #include "TestingUtils.h"
 #include "Fixtures.h"
@@ -2343,8 +2344,10 @@ TEST_CASE("Test_Methods", "[physical-model][core-losses][smoke-test]") {
     REQUIRE(methods.size() == 1);
     REQUIRE(methods[0] == "Proprietary");
     methods = CoreLossesModel::get_methods_string("A07");
-    REQUIRE(methods.size() == 1);
+    // The loss factor, and above small signal the loss factor plus the major loop's hysteresis (ABT #2006).
+    REQUIRE(methods.size() == 2);
     REQUIRE(methods[0] == "LossFactor");
+    REQUIRE(methods[1] == "LossFactorHysteresis");
 }
 
 TEST_CASE("Test_Manufacturer_Magnetics", "[physical-model][core-losses]") {
@@ -4397,6 +4400,127 @@ TEST_CASE("Test_Loss_Factor_Model_Throws_On_Missing_Peak_Instead_Of_Crashing", "
     REQUIRE_THROWS_WITH(CoreLossesLossFactorModel().get_core_losses(core, noBPeakExcitation, 25),
         Catch::Matchers::ContainsSubstring("magnetic flux density's processed data has no peak"));
 
+    settings.reset();
+}
+
+// ABT #2006: a loss factor tan(delta)/mu_i is small-signal data (B <= 0.25 mT, IEC 60401-3). MKF's default
+// cascade ran it at power flux for a material carrying only a loss factor: KM42B gave 0.19 W at 337 mT and
+// 200 kHz in 2 cm3, ranking it ahead of every power ferrite.
+static OperatingPointExcitation abt2006_sinusoidal_excitation(double frequency, double magneticFluxDensityAmplitude) {
+    json excitationJson;
+    excitationJson["frequency"] = frequency;
+    excitationJson["magneticFluxDensity"]["processed"]["label"] = WaveformLabel::SINUSOIDAL;
+    excitationJson["magneticFluxDensity"]["processed"]["offset"] = 0;
+    excitationJson["magneticFluxDensity"]["processed"]["peak"] = magneticFluxDensityAmplitude;
+    excitationJson["magneticFluxDensity"]["processed"]["peakToPeak"] = 2 * magneticFluxDensityAmplitude;
+    MAS::ProcessedWaveform processed(excitationJson["magneticFluxDensity"]["processed"]);
+    json waveformJson;
+    to_json(waveformJson, OpenMagnetics::Inputs::create_waveform(processed, frequency));
+    excitationJson["magneticFluxDensity"]["waveform"] = waveformJson;
+    excitationJson["magnetizingCurrent"]["processed"]["label"] = WaveformLabel::SINUSOIDAL;
+    excitationJson["magnetizingCurrent"]["processed"]["offset"] = 0;
+    excitationJson["magnetizingCurrent"]["processed"]["peak"] = 0.01;
+    excitationJson["magnetizingCurrent"]["processed"]["rms"] = 0.01 / sqrt(2);
+    return OperatingPointExcitation(excitationJson);
+}
+
+TEST_CASE("Test_Loss_Factor_Model_Throws_Above_Small_Signal_Flux", "[physical-model][core-losses][loss-factor][abt-2006]") {
+    settings.reset();
+    clear_databases();
+    auto smallSignal = abt2006_sinusoidal_excitation(200000, 0.1e-3);
+    auto powerFlux = abt2006_sinusoidal_excitation(200000, 0.1);
+
+    // Within the definition the loss factor gives the loss, and the default cascade runs it.
+    auto core = OpenMagneticsTesting::get_quick_core("T 20/10/7", json::array(), 1, "KM42B");
+    CHECK(CoreLossesLossFactorModel().get_core_losses(core, smallSignal, 25).get_core_losses() > 0);
+    CHECK(CoreLosses().calculate_core_losses(core, smallSignal, 25).get_method_used() == "Loss Factor");
+
+    // At power flux the loss-factor model throws.
+    CHECK_THROWS_AS(CoreLossesLossFactorModel().get_core_losses(core, powerFlux, 25), LossFactorAboveSmallSignalFluxException);
+    try {
+        CoreLossesLossFactorModel().get_core_losses(core, powerFlux, 25);
+    }
+    catch (const LossFactorAboveSmallSignalFluxException& exception) {
+        CHECK(exception.code() == ErrorCode::MATERIAL_LOSS_FACTOR_ABOVE_SMALL_SIGNAL_FLUX);
+        CHECK(exception.material_name() == "KM42B");
+        CHECK_THAT(exception.magnetic_flux_density_amplitude(), Catch::Matchers::WithinAbs(0.1, 1e-12));
+        CHECK_THAT(exception.maximum_magnetic_flux_density(), Catch::Matchers::WithinAbs(0.25e-3, 1e-12));
+    }
+    // Settings::allowMaterialDataExtrapolation (explicit opt-in) evaluates it there anyway.
+    settings.set_allow_material_data_extrapolation(true);
+    double lossFactorAlone = CoreLossesLossFactorModel().get_core_losses(core, powerFlux, 25).get_core_losses();
+    CHECK(lossFactorAlone > 0);
+    settings.reset();
+
+    // There the cascade runs the loss factor plus the hysteresis of KM42B's own major loop, which is larger
+    // than the loss factor alone.
+    auto atPowerFlux = CoreLosses().calculate_core_losses(core, powerFlux, 25);
+    CHECK(atPowerFlux.get_method_used() == "Loss Factor + Hysteresis");
+    CHECK(atPowerFlux.get_core_losses() > lossFactorAlone);
+
+    // An explicit request is never passed over: asked for the loss factor at power flux, MKF says why not.
+    CoreLosses requested;
+    requested.set_core_losses_requested_model_name(CoreLossesModels::LOSS_FACTOR);
+    CHECK_THROWS_AS(requested.calculate_core_losses(core, powerFlux, 25), LossFactorAboveSmallSignalFluxException);
+    settings.reset();
+}
+
+TEST_CASE("Test_Loss_Factor_Hysteresis_Model_Adds_The_Major_Loop_Hysteresis_To_The_Loss_Factor", "[physical-model][core-losses][loss-factor][abt-2006]") {
+    settings.reset();
+    clear_databases();
+    // Fair-Rite 76, a CMC ferrite with only a loss factor, at the 5.7 mT median flux the CMC adviser runs it at.
+    double frequency = 100000;
+    double amplitude = 5.7e-3;
+    auto excitation = abt2006_sinusoidal_excitation(frequency, amplitude);
+    auto core = OpenMagneticsTesting::get_quick_core("T 20/10/7", json::array(), 1, "76");
+    auto material = core.resolve_material();
+    CoreLossesLossFactorHysteresisModel model;
+
+    // Linear term: pi f B^2 (tan(delta)/mu_i) / mu_0 for a sinusoid.
+    double expectedLinear = std::numbers::pi * frequency * amplitude * amplitude * CoreLossesLossFactorModel::get_loss_factor(material, frequency) / (4e-7 * std::numbers::pi);
+    double linear = model.get_linear_losses_density(material, excitation);
+    CHECK_THAT(linear, Catch::Matchers::WithinRel(expectedLinear, 0.01));
+    // Hysteresis term: the Roshen loop of the material's own coercive force, remanence and saturation.
+    double hysteresis = model.get_hysteresis_losses_density(material, excitation, 25);
+    CHECK_THAT(hysteresis, Catch::Matchers::WithinRel(CoreLossesRoshenModel().get_hysteresis_losses_density(CoreLossesRoshenModel::get_hysteresis_parameters(material, 25), excitation), 1e-12));
+    CHECK(hysteresis > 0);
+    CHECK_THAT(model.get_core_volumetric_losses(material, excitation, 25), Catch::Matchers::WithinRel(linear + hysteresis, 1e-12));
+
+    // The default cascade: the loss factor at small signal, the loss factor plus hysteresis above it.
+    CHECK(CoreLosses().calculate_core_losses(core, abt2006_sinusoidal_excitation(frequency, 0.1e-3), 25).get_method_used() == "Loss Factor");
+    auto losses = CoreLosses().calculate_core_losses(core, excitation, 25);
+    CHECK(losses.get_method_used() == "Loss Factor + Hysteresis");
+    CHECK_THAT(losses.get_volumetric_losses().value(), Catch::Matchers::WithinRel(linear + hysteresis, 1e-9));
+    settings.reset();
+}
+
+// ABT #2014: Roshen read a missing coercive force as NaN, dropping the hysteresis term, and reported the eddy-current
+// loss alone (R12KZ: exactly f^2 B^2). Its loop now comes from the resolvers of ABT #1951: R12KZ carries neither
+// coercive force nor remanence, so both are its class's flagged estimates, and the hysteresis loss is there.
+TEST_CASE("Test_Roshen_Loop_Of_A_Material_Without_Coercive_Force_Or_Remanence_Is_Its_Class_Estimate", "[physical-model][core-losses][abt-2014]") {
+    settings.reset();
+    clear_databases();
+    auto core = OpenMagneticsTesting::get_quick_core("T 20/10/7", json::array(), 1, "R12KZ");
+    auto material = core.resolve_material();
+    REQUIRE_FALSE(material.get_coercive_force());
+    REQUIRE_FALSE(material.get_remanence());
+    CHECK(resolve_core_material_coercive_force(material, 25).is_estimated());
+    CHECK(resolve_core_material_remanence(material, 25).is_estimated());
+    auto parameters = CoreLossesRoshenModel::get_hysteresis_parameters(material, 25);
+    CHECK(std::isfinite(parameters["coerciveForce"]));
+    CHECK(parameters["coerciveForce"] > 0);
+    CHECK(std::isfinite(parameters["remanence"]));
+    CHECK(parameters["remanence"] > 0);
+
+    auto excitation = abt2006_sinusoidal_excitation(200000, 0.1);
+    CoreLossesRoshenModel roshen;
+    double hysteresis = roshen.get_hysteresis_losses_density(parameters, excitation);
+    CHECK(hysteresis > 0);
+    // The whole Roshen loss is more than its eddy-current part, which was all it reported.
+    double total = roshen.get_core_losses(core, excitation, 25).get_volumetric_losses().value();
+    CHECK(total >= hysteresis);
+    // The default cascade passes over the loss factor at power flux to the loss factor plus hysteresis.
+    CHECK(CoreLosses().calculate_core_losses(core, excitation, 25).get_method_used() == "Loss Factor + Hysteresis");
     settings.reset();
 }
 

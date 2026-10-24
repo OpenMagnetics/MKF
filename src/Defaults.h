@@ -31,6 +31,9 @@ struct Defaults {
     // MOLDED) have no window frame for the neutral window; they keep the historical automatic choice, like toroids.
     const OpenMagnetics::WindingLossesModelSets windingLossesModelSetDefaultNoWindowFrame = OpenMagnetics::WindingLossesModelSets::LEGACY_DEFAULT;
     const OpenMagnetics::CoreThermalResistanceModels coreThermalResistanceModelDefault = OpenMagnetics::CoreThermalResistanceModels::MANIKTALA;
+    // tan(delta)/mu_i is defined at small signal, B <= 0.25 mT (IEC 60401-3), and MAS records no flux for a
+    // loss-factor point: the definition bounds the flux amplitude the loss-factor model holds at (ABT #2006).
+    const double lossFactorMaximumMagneticFluxDensity = 0.25e-3;
     const double maximumProportionMagneticFluxDensitySaturation = 0.7;
     const double coreAdviserFrequencyReference = 100000;
     const double coreAdviserMagneticFluxDensityReference = 0.5;

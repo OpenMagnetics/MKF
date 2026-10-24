@@ -682,7 +682,7 @@ class Settings
         void set_harmonic_amplitude_threshold(double value);
 
         std::vector<CoreLossesModels> get_core_losses_model_names() const;
-        // The default preference: `value` heads the PROPRIETARY/LOSS_FACTOR/STEINMETZ/ROSHEN cascade,
+        // The default preference: `value` heads the PROPRIETARY/LOSS_FACTOR/LOSS_FACTOR_HYSTERESIS/STEINMETZ/ROSHEN cascade,
         // and a material without it is evaluated with the next model it supports. Setting a
         // preference withdraws any explicit request.
         void set_core_losses_preferred_model_name(CoreLossesModels value);
