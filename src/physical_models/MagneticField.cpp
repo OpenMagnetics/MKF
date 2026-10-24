@@ -3086,18 +3086,21 @@ ComplexFieldPoint MagneticFieldStrengthSullivanModel::get_magnetic_field_strengt
             filY = -(gapLength - gapGrid) / 2.0 + gapIdx * gapGrid;
         }
 
-        // Absolute position of the "cross" current (into page)
-        // For center-leg gap (gapX~0): place at the centerpost edge
+        // Absolute position of the "cross" current (into page). A lateral gap's sits at the leg; a
+        // central gap's at the centre post's surface facing the +x window (x = +columnWidth/2): a gap
+        // in a leg is the negative of the leg's magnetisation, i.e. opposite surface currents on its
+        // two faces, and the post's +x face carries the same sign as a lateral leg's window face.
         double crossX, crossY;
         if (std::abs(gapX) < 1e-10) {
-            crossX = 0.0;
+            crossX = columnWidth / 2;
             crossY = gapY + filY;
         } else {
             crossX = gapX;
             crossY = gapY + filY;
         }
 
-        // Mirror image "dot" current (out of page): reflected about x=0
+        // Mirror image "dot" current (out of page), reflected about x=0: the other lateral leg, or
+        // the centre post's -x face.
         double dotX = -crossX;
         double dotY = crossY;
 
@@ -3155,8 +3158,8 @@ ComplexFieldPoint MagneticFieldStrengthSullivanModel::get_magnetic_field_strengt
     // of a positive magnetizing MMF, whose flux runs -y down a lateral leg. As summed above, the
     // lateral gap's "cross" (at the leg, x = gapX) and mirrored "dot" (x = -gapX) filaments both
     // give +y in the window between them for H_g > 0, the opposite; hence the minus. A central
-    // gap's cross and dot filaments both sit at x = 0 and cancel exactly, so this model returns
-    // no field for a central-leg gap (a separate defect, not a sign).
+    // gap's filaments sit on the post's two faces (they used to coincide at x = 0 and cancel, so a
+    // central-leg gap had no field); the +x face carries the lateral leg's window-face sign.
     double Hx = -attenuationFactor * Bx_total / u0;
     double Hy = -attenuationFactor * By_total / u0;
 

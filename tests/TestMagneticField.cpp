@@ -1091,4 +1091,35 @@ namespace {
         settings.reset();
     }
 
+// Sullivan's fringing model gives a central-leg gap a field: its cross and dot filaments sit on the
+// centre post's two faces. They used to coincide at x = 0 with opposite currents and cancel, so every
+// central gap returned exactly zero. Beside the post's +x face the field must point the way Roshen's
+// mouth field does (both are a positive gap MMF's fringing field there).
+TEST_CASE("Sullivan fringing field of a central-leg gap is not zero", "[physical-model][magnetic-field][fringing][abt-1466]") {
+    settings.reset();
+    auto core = OpenMagneticsTesting::get_quick_core("E 42/21/15", OpenMagneticsTesting::get_ground_gap(1e-3), 1, "3C97");
+    std::optional<CoreGap> mainGap;
+    for (auto& gap : core.get_functional_description().get_gapping()) {
+        if (static_cast<size_t>(core.find_closest_column_index_by_coordinates(gap.get_coordinates().value())) == core.get_main_column_index()) {
+            mainGap = gap;
+        }
+    }
+    REQUIRE(mainGap);
+    REQUIRE(std::abs(mainGap->get_coordinates().value()[0]) < 1e-10);
+    const double x0 = core.get_columns()[core.get_main_column_index()].get_width() / 2;
+    const double gapY = mainGap->get_coordinates().value()[1];
+    for (std::vector<double> probe : {std::vector<double>{x0 + 0.3e-3, gapY + 0.2e-3}, {x0 + 0.5e-3, gapY - 0.4e-3}}) {
+        FieldPoint point;
+        point.set_point(probe);
+        auto sullivan = MagneticFieldStrengthSullivanModel().get_magnetic_field_strength_between_gap_and_point(mainGap.value(), 1000.0, point);
+        auto roshen = MagneticFieldStrengthRoshenModel().get_magnetic_field_strength_between_gap_and_point(mainGap.value(), 1000.0, point);
+        INFO("probe (" << probe[0] << ", " << probe[1] << "): Sullivan (" << sullivan.get_real() << ", " << sullivan.get_imaginary()
+             << ") A/m, Roshen (" << roshen.get_real() << ", " << roshen.get_imaginary() << ") A/m");
+        REQUIRE(std::abs(roshen.get_real()) > 1);
+        REQUIRE(std::abs(roshen.get_imaginary()) > 1);
+        CHECK(sullivan.get_real() * roshen.get_real() > 0);
+        CHECK(sullivan.get_imaginary() * roshen.get_imaginary() > 0);
+    }
+}
+
 }  // namespace
