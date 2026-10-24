@@ -487,9 +487,12 @@ double Coil::lead_bend_radius(const Wire& wire, const std::optional<ConnectionSl
 
     // Physics of the wire: its insulation must survive the bend (IEC 60317-0-1 Table 6 /
     // IEC 60317-0-2 Table 6). A lead leaving for a pin turns in 3D, so a rectangular wire bends
-    // on both of its axes somewhere along the run and the tighter-limited one rules.
+    // on both of its axes somewhere along the run. Its FLATWISE limit rules the lead. Its EDGEWISE
+    // one does not (ABT #2012, Alf 2026-10-23, as for the turns in ABT #2004): the edgewise mandrel
+    // of Table 6 qualifies the coating, it is not a forming limit, so an edgewise lead bend below it
+    // is drawn and analyze_results reports it (Coil::judge_leads_against_wire_flexibility).
     std::vector<BendAxis> axes = wire.get_type() == WireType::RECTANGULAR
-                                     ? std::vector<BendAxis>{BendAxis::FLATWISE, BendAxis::EDGEWISE}
+                                     ? std::vector<BendAxis>{BendAxis::FLATWISE}
                                      : std::vector<BendAxis>{BendAxis::ROUND};
     for (auto axis : axes) {
         if (auto wireMinimum = WireBend::get_flexibility_bend_radius_if_standardised(wire, axis)) {
@@ -558,7 +561,10 @@ double Coil::lead_ramp_governing_radius(const Wire& leadWire, double isotropicRa
     // about the RADIAL axis, with the axial dimension -- the wire's height in this frame
     // (the ramp is only planned for non-contiguous layers) -- in the bend plane. So the S
     // answers to that one axis's minimum alone, not to the tighter of the two (ABT #1481).
-    if (leadWire.get_type() == WireType::RECTANGULAR) {
+    // ABT #2012: an EDGEWISE S answers to no Table 6 minimum -- that mandrel qualifies the
+    // coating, it is not a forming limit -- and analyze_results reports the lead instead.
+    if (leadWire.get_type() == WireType::RECTANGULAR &&
+        WireBend::axis_from_bend_plane_dimension(leadWire, false) != BendAxis::EDGEWISE) {
         const auto inSurfaceAxis = WireBend::axis_from_bend_plane_dimension(leadWire, false);
         if (auto axisMinimum = WireBend::get_flexibility_bend_radius_if_standardised(leadWire, inSurfaceAxis)) {
             inSurfaceRadius = std::max(inSurfaceRadius, axisMinimum.value());

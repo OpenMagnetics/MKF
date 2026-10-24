@@ -30,10 +30,12 @@
 #include "TestingUtils.h"
 
 #include <catch2/catch_test_macros.hpp>
+#include <catch2/matchers/catch_matchers_floating_point.hpp>
 #include <catch2/matchers/catch_matchers_string.hpp>
 
 #include <cmath>
 #include <limits>
+#include <numbers>
 #include <vector>
 
 using namespace MAS;
@@ -405,4 +407,95 @@ TEST_CASE("Real winding still refuses a FLATWISE bend of rectangular wire below 
     bendSettings.reset();
 }
 
+// ABT #2012 (Alf, 2026-10-23, "same as #2004"): a rectangular wire's terminal lead is planned for its
+// FLATWISE limit and its coated radius, not for the IEC 60317-0-2 Table 6 EDGEWISE mandrel (a coating
+// test, not a forming limit). An edgewise lead bend below that mandrel is drawn, and the winding's
+// EDGEWISE_BEND_BELOW_COATING_MANDREL finding names the lead. The design is the reported one: the
+// 13.6 x 2.5 mm strip on a U 46/40/28 former with a 3.2 mm corner, with as many turns as fit its window.
+namespace {
 
+// Rectangular IEC 60317 grade-1 copper 13.6 x 2.5 mm, the strip of the reported edgewound inductor:
+// the catalogue's neighbour 13.20 x 2.50 with its width moved to 13.6 mm; its coating build-up, edge
+// radius, standard and grade are kept, and the conducting area follows the new width.
+OpenMagnetics::Wire edgewise_strip_13_6_by_2_5() {
+    auto wire = find_wire_by_name("Rectangular 13.20x2.50 - Grade 1");
+    const double oldWidth = resolve_dimensional_values(wire.get_conducting_width().value());
+    const double newWidth = 0.0136;
+    const double height = resolve_dimensional_values(wire.get_conducting_height().value());
+    const double edgeRadius = resolve_dimensional_values(wire.get_edge_radius().value());
+    MAS::DimensionWithTolerance conductingWidth;
+    conductingWidth.set_nominal(newWidth);
+    wire.set_conducting_width(conductingWidth);
+    auto outerWidth = wire.get_outer_width().value();
+    outerWidth.set_minimum(outerWidth.get_minimum().value() - oldWidth + newWidth);
+    outerWidth.set_maximum(outerWidth.get_maximum().value() - oldWidth + newWidth);
+    wire.set_outer_width(outerWidth);
+    MAS::DimensionWithTolerance conductingArea;
+    conductingArea.set_nominal(newWidth * height - (4 - std::numbers::pi) * edgeRadius * edgeRadius);
+    wire.set_conducting_area(conductingArea);
+    wire.set_name("Rectangular 13.60x2.50 - Grade 1");
+    return wire;
+}
+
+const std::string reportedCoreShape = "U 46/40/28";
+const double reportedFormerCornerRadius = 0.0032;   // the reported former's ~3.2 mm corner
+
+}  // namespace
+
+TEST_CASE("Real winding draws the edgewise terminal leads of the reported strip below the IEC 60317-0-2 mandrel, "
+          "and the winding's edgewise finding names them",
+          "[constructive-model][coil][real-geometry][wire-bend][abt-2012]") {
+    auto& bendSettings = Settings::GetInstance();
+    bendSettings.reset();
+    const auto strip = edgewise_strip_13_6_by_2_5();
+    const double edgewise = WireBend::get_flexibility_bend_radius_if_standardised(strip, BendAxis::EDGEWISE).value();
+    // 16 turns: the most of this strip that fit the U 46/40/28 window under real winding (18, the
+    // reported count, overflow it).
+    auto coil = OpenMagneticsTesting::get_quick_coil({16}, {1}, reportedCoreShape, 1,
+                                                     WindingOrientation::OVERLAPPING,
+                                                     WindingOrientation::OVERLAPPING,
+                                                     CoilAlignment::CENTERED,
+                                                     CoilAlignment::CENTERED, {strip});
+    bendSettings.set_coil_use_real_winding_geometry(true);
+    set_former_corner_radius(coil, reportedFormerCornerRadius);
+
+    bool fits = false;
+    REQUIRE_NOTHROW(fits = coil.wind());
+    REQUIRE(fits);
+    REQUIRE(coil.is_real_winding_blocking_applied());
+
+    // Both leads are drawn, planned below the edgewise mandrel: at the strip's flatwise limit or its
+    // coated radius, whichever is larger.
+    const double flatwise = WireBend::get_flexibility_bend_radius_if_standardised(strip, BendAxis::FLATWISE).value();
+    const double coatedRadius = 0.5 * std::max(strip.get_maximum_outer_width(), strip.get_maximum_outer_height());
+    size_t terminals = 0;
+    for (const auto& route : coil.get_connection_layout().routes) {
+        if (route.kind != ConnectionKind::TERMINAL_ENTRANCE && route.kind != ConnectionKind::TERMINAL_EXIT) {
+            continue;
+        }
+        ++terminals;
+        CHECK(route.plannedBendRadius < edgewise);
+        CHECK_THAT(route.plannedBendRadius, Catch::Matchers::WithinRel(std::max(coatedRadius, flatwise), 1e-12));
+    }
+    REQUIRE(terminals == 2);
+
+    const auto leads = coil.judge_leads_against_wire_flexibility();
+    REQUIRE(leads.size() == 1);
+    REQUIRE(leads[0].leads.size() == 2);
+    for (const auto& lead : leads[0].leads) {
+        CHECK(lead.plannedBendRadius < lead.asLaid.flexibilityRadius);
+        CHECK(lead.asLaid.flexibilityRadius == edgewise);
+    }
+
+    OpenMagnetics::Magnetic magnetic;
+    magnetic.set_core(OpenMagneticsTesting::get_quick_core(reportedCoreShape, OpenMagneticsTesting::get_ground_gap(0.001), 1, "N87"));
+    magnetic.set_coil(coil);
+    const auto findings = ResultsAnalyzer::analyze_winding_bends(magnetic);
+    REQUIRE(findings.size() == 1);   // one per winding: its turns and its leads together
+    CHECK(findings[0].code == ResultFindingCode::EDGEWISE_BEND_BELOW_COATING_MANDREL);
+    using Catch::Matchers::ContainsSubstring;
+    CHECK_THAT(findings[0].message, ContainsSubstring("entrance lead of '") && ContainsSubstring("exit lead of '") &&
+                                        ContainsSubstring("planned for edgewise bends of") &&
+                                        ContainsSubstring("IEC 60317-0-2 Table 6"));
+    bendSettings.reset();
+}

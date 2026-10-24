@@ -12930,6 +12930,51 @@ CoilBendJudgement Coil::judge_corners_against_wire_flexibility() {
     return judgement;
 }
 
+std::vector<WindingLeadsBelowFlexibility> Coil::judge_leads_against_wire_flexibility() {
+    std::vector<WindingLeadsBelowFlexibility> windings;
+    // The coil's own record of how it was wound, not the ambient setting: the leads were planned
+    // for the bends of the layout this coil carries.
+    if (!is_real_winding_blocking_applied() || !get_turns_description()) {
+        return windings;
+    }
+    const auto routes = get_connection_layout().routes;
+    for (const auto& route : routes) {
+        const bool entrance = route.kind == ConnectionKind::TERMINAL_ENTRANCE;
+        if (!entrance && route.kind != ConnectionKind::TERMINAL_EXIT) {
+            continue;
+        }
+        // The wire this lead IS: its stated lead conductor, else the winding's own (as planned).
+        Wire wire = resolve_wire(get_winding_index_by_name(route.winding));
+        if (auto leadConductor = resolve_lead_conductor(route.winding, entrance ? End::START : End::FINISH, route.parallel)) {
+            wire = leadConductor.value();
+        }
+        if (wire.get_type() != WireType::RECTANGULAR) {
+            continue;
+        }
+        const auto edgewiseRadius = WireBend::get_flexibility_bend_radius_if_standardised(wire, BendAxis::EDGEWISE);
+        if (!edgewiseRadius || !(route.plannedBendRadius > 0)) {
+            continue;
+        }
+        if (route.plannedBendRadius >= edgewiseRadius.value() - 1e-12) {
+            continue;
+        }
+        LeadBendBelowFlexibility lead;
+        lead.leadName = std::string(entrance ? "entrance" : "exit") + " lead of '" +
+                        (entrance ? route.toTurn : route.fromTurn) + "'";
+        lead.plannedBendRadius = route.plannedBendRadius;
+        lead.asLaid = WireBend::evaluate(route.plannedBendRadius, wire, BendAxis::EDGEWISE);
+        lead.wire = wire;
+        auto found = std::find_if(windings.begin(), windings.end(),
+                                  [&](const WindingLeadsBelowFlexibility& winding) { return winding.windingName == route.winding; });
+        if (found == windings.end()) {
+            windings.push_back(WindingLeadsBelowFlexibility{route.winding, {}});
+            found = windings.end() - 1;
+        }
+        found->leads.push_back(lead);
+    }
+    return windings;
+}
+
 
 // ABT #2004 (Alf, 2026-10-22): an EDGEWISE bend of rectangular wire below the IEC 60317-0-2
 // Table 6 mandrel is NOT refused. That table is the mandrel-winding test of the coating (IEC 60851-3

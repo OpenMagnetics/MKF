@@ -1663,6 +1663,7 @@ TEST_CASE("An edge-wound rectangular secondary held whole by its section leaves 
     const double flatwise = WireBend::get_flexibility_bend_radius_if_standardised(rectangular, BendAxis::FLATWISE).value();
     const double edgewise = WireBend::get_flexibility_bend_radius_if_standardised(rectangular, BendAxis::EDGEWISE).value();
     REQUIRE(flatwise < edgewise);
+    const double coatedRadius = 0.5 * std::max(rectangular.get_maximum_outer_width(), rectangular.get_maximum_outer_height());
 
     // R1's premise: each secondary parallel's turns all lie in one section.
     const auto turns = coil.get_turns_description().value();
@@ -1703,8 +1704,11 @@ TEST_CASE("An edge-wound rectangular secondary held whole by its section leaves 
         CHECK(turnEnd[1] == turn->get_coordinates()[1]);
         CHECK(windowEnd[1] == turnEnd[1]);
         CHECK(windowEnd[0] > turnEnd[0]);
-        // Its corners are still planned for the tighter-limited (edgewise) axis.
-        CHECK(route.plannedBendRadius >= edgewise);
+        // Its corners are planned for its FLATWISE limit and its coated radius only, below the
+        // edgewise one (ABT #2012, Alf 2026-10-23: the IEC 60317-0-2 Table 6 edgewise mandrel qualifies
+        // the coating, it is not a forming limit; analyze_results reports the lead instead).
+        CHECK(route.plannedBendRadius < edgewise);
+        CHECK_THAT(route.plannedBendRadius, Catch::Matchers::WithinRel(std::max(coatedRadius, flatwise), 1e-12));
     }
     REQUIRE(terminals.size() == 8);   // an entrance and an exit for each of the 4 parallels
     settings.reset();

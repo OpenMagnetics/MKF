@@ -518,13 +518,43 @@ std::vector<ResultFinding> ResultsAnalyzer::analyze_winding_bends(const Magnetic
     // the same way, never turned into a finding.
     coil.refuse_turns_bent_tighter_than_the_wire_allows();
     const auto judgement = coil.judge_corners_against_wire_flexibility();
+    const auto leadJudgement = coil.judge_leads_against_wire_flexibility();
 
     // Three significant figures in mm, as every finding's numbers (ABT #2001).
     auto millimetres = [](double metres) {
         return format_significant(metres * 1000, 3);
     };
+    auto describe = [&](const OpenMagnetics::Wire& wire) {
+        std::string description = "rectangular";
+        if (wire.get_name()) {
+            description += " '" + wire.get_name().value() + "'";
+        }
+        if (wire.get_standard()) {
+            description += ", " + std::string(magic_enum::enum_name(wire.get_standard().value()));
+        }
+        const double conductingWidth = resolve_dimensional_values(wire.get_conducting_width().value());
+        const double conductingHeight = resolve_dimensional_values(wire.get_conducting_height().value());
+        return description + ", conducting " + millimetres(conductingWidth) + " x " + millimetres(conductingHeight) + " mm";
+    };
+    // The limit a bend is held to, and how the mandrel's own centreline radius follows from it:
+    // IEC 60851-3 5.1.1 winds the wire on the mandrel, so its centreline sits half the wire's outer
+    // width beyond the mandrel's surface.
+    auto limit = [&](const WoundCorner& asLaid) {
+        return millimetres(asLaid.flexibilityRadius) + " mm its coating was qualified at on the " +
+               millimetres(asLaid.mandrelDiameterUsed) + " mm mandrel of IEC 60317-0-2 Table 6";
+    };
+    auto derivation = [&](const WoundCorner& asLaid, const OpenMagnetics::Wire& wire) {
+        const double outerWidth = OpenMagnetics::Wire::calculate_outer_width(wire);
+        return "IEC 60851-3 5.1.1 winds the wire on that mandrel: centreline radius mandrel/2 + outer width/2 = " +
+               millimetres(0.5 * asLaid.mandrelDiameterUsed) + " + " + millimetres(0.5 * outerWidth) + " = " +
+               millimetres(asLaid.flexibilityRadius) + " mm";
+    };
+    const std::string trailer =
+        " The coil is drawn as laid: edgewise winding is a forming process of its own and the mandrel is a "
+        "coating test, not a forming limit, but the coating's integrity at this bend is outside the IEC qualification.";
 
-    std::vector<ResultFinding> findings;
+    // One finding per winding, in the order the windings are met: its turns first, then its leads.
+    std::vector<std::string> windingOrder;
     for (const auto& winding : judgement.windingsBelowFlexibility) {
         if (winding.axis != BendAxis::EDGEWISE) {
             // Unreachable after the refusal above, which throws for every non-edgewise winding here.
@@ -532,32 +562,54 @@ std::vector<ResultFinding> ResultsAnalyzer::analyze_winding_bends(const Magnetic
                 "analyze_winding_bends: winding '" + winding.windingName + "' is bent below its wire's flexibility radius "
                 "on a non-edgewise axis, which real winding refuses");
         }
-        const auto& wire = winding.wire;
-        std::string wireDescription = "rectangular";
-        if (wire.get_name()) {
-            wireDescription += " '" + wire.get_name().value() + "'";
+        windingOrder.push_back(winding.windingName);
+    }
+    for (const auto& winding : leadJudgement) {
+        if (std::find(windingOrder.begin(), windingOrder.end(), winding.windingName) == windingOrder.end()) {
+            windingOrder.push_back(winding.windingName);
         }
-        if (wire.get_standard()) {
-            wireDescription += ", " + std::string(magic_enum::enum_name(wire.get_standard().value()));
+    }
+
+    std::vector<ResultFinding> findings;
+    for (const auto& windingName : windingOrder) {
+        const auto turns = std::find_if(judgement.windingsBelowFlexibility.begin(), judgement.windingsBelowFlexibility.end(),
+                                        [&](const WindingBendBelowFlexibility& winding) { return winding.windingName == windingName; });
+        const auto leads = std::find_if(leadJudgement.begin(), leadJudgement.end(),
+                                        [&](const WindingLeadsBelowFlexibility& winding) { return winding.windingName == windingName; });
+        const bool hasTurns = turns != judgement.windingsBelowFlexibility.end();
+        const bool hasLeads = leads != leadJudgement.end() && !leads->leads.empty();
+        if (!hasTurns && !hasLeads) {
+            throw std::logic_error("analyze_winding_bends: winding '" + windingName + "' was listed with no turn and no lead below its mandrel");
         }
-        const double conductingWidth = resolve_dimensional_values(wire.get_conducting_width().value());
-        const double conductingHeight = resolve_dimensional_values(wire.get_conducting_height().value());
-        const double outerWidth = OpenMagnetics::Wire::calculate_outer_width(wire);
+        std::string message = "Warning: winding '" + windingName + "'";
+        if (hasTurns) {
+            message += " is bent edgewise to a " + millimetres(turns->bendRadius) + " mm centreline radius, tighter than the " +
+                       limit(turns->asLaid) + ".";
+        }
+        if (hasLeads) {
+            const auto describedWireName = hasTurns ? turns->wire.get_name() : leads->leads.front().wire.get_name();
+            for (const auto& lead : leads->leads) {
+                message += (hasTurns || &lead != &leads->leads.front()) ? " Its " : " has its ";
+                message += lead.leadName;
+                if (lead.wire.get_name() != describedWireName) {
+                    message += " (" + describe(lead.wire) + ")";   // a lead conductor of its own
+                }
+                message += " planned for edgewise bends of " + millimetres(lead.plannedBendRadius) +
+                           " mm centreline radius, tighter than the " + limit(lead.asLaid) + ".";
+            }
+        }
+        const OpenMagnetics::Wire& wire = hasTurns ? turns->wire : leads->leads.front().wire;
+        const WoundCorner& asLaid = hasTurns ? turns->asLaid : leads->leads.front().asLaid;
+        message += " The wire is " + describe(wire);
+        if (hasTurns) {
+            message += "; the tightest bend is turn '" + turns->turnName + "', of " + std::to_string(turns->numberTightCorners) +
+                       " such turns";
+        }
+        message += " (" + derivation(asLaid, wire) + ")." + trailer;
 
         ResultFinding finding;
         finding.code = ResultFindingCode::EDGEWISE_BEND_BELOW_COATING_MANDREL;
-        finding.message =
-            "Warning: winding '" + winding.windingName + "' is bent edgewise to a " + millimetres(winding.bendRadius) +
-            " mm centreline radius, tighter than the " + millimetres(winding.asLaid.flexibilityRadius) + " mm its coating was "
-            "qualified at on the " + millimetres(winding.asLaid.mandrelDiameterUsed) + " mm mandrel of IEC 60317-0-2 Table 6. "
-            "The wire is " + wireDescription + ", conducting " + millimetres(conductingWidth) + " x " +
-            millimetres(conductingHeight) + " mm; the tightest bend is turn '" + winding.turnName + "', of " +
-            std::to_string(winding.numberTightCorners) + " such turns (IEC 60851-3 5.1.1 winds the wire on that mandrel: "
-            "centreline radius mandrel/2 + outer width/2 = " +
-            millimetres(0.5 * winding.asLaid.mandrelDiameterUsed) + " + " + millimetres(0.5 * outerWidth) + " = " +
-            millimetres(winding.asLaid.flexibilityRadius) + " mm). The coil is drawn as laid: edgewise winding is a "
-            "forming process of its own and the mandrel is a coating test, not a forming limit, but the coating's "
-            "integrity at this bend is outside the IEC qualification.";
+        finding.message = message;
         findings.push_back(finding);
     }
     return findings;

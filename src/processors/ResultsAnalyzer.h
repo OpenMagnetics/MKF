@@ -52,8 +52,9 @@ enum class ResultFindingCode {
     // ABT #2004 (Alf, 2026-10-22): a winding of rectangular wire is drawn (real winding) around an
     // EDGEWISE bend tighter than the IEC 60317-0-2 Table 6 mandrel its coating was qualified at. The
     // coil is drawn as laid; the coating's integrity at that bend is outside the IEC qualification.
-    // One per winding, naming the winding, its drawn centreline radius and the mandrel. A property of
-    // the magnetic, not of an operating point: the finding carries no operating point.
+    // One per winding, naming the winding, its drawn centreline radius and the mandrel. ABT #2012: the
+    // same finding names the winding's terminal leads planned for edgewise bends below that mandrel.
+    // A property of the magnetic, not of an operating point: the finding carries no operating point.
     EDGEWISE_BEND_BELOW_COATING_MANDREL,
 };
 
@@ -161,7 +162,8 @@ class ResultsAnalyzer {
 
     // ABT #2004: one EDGEWISE_BEND_BELOW_COATING_MANDREL finding per winding whose real-winding layout
     // bends its rectangular wire edgewise tighter than the IEC 60317-0-2 Table 6 mandrel, from the same
-    // judgement real winding makes (Coil::judge_corners_against_wire_flexibility). Nothing under ideal
+    // judgement real winding makes (Coil::judge_corners_against_wire_flexibility), naming also the
+    // winding's terminal leads planned below it (Coil::judge_leads_against_wire_flexibility). Nothing under ideal
     // winding (the flag off judges no corner). A round or flatwise bend below its limit is refused by
     // real winding and is never a finding: this throws UnwindableBendException for it, as wind does.
     static std::vector<ResultFinding> analyze_winding_bends(const Magnetic& magnetic);

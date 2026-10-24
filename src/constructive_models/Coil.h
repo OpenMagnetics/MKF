@@ -571,6 +571,21 @@ struct WindingBendBelowFlexibility {
     size_t numberTightCorners = 0;   // turns of this winding bent below the limit
 };
 
+// ABT #2012: one terminal lead of rectangular wire planned (and drawn) at a bend radius below its
+// wire's EDGEWISE FLEXIBILITY radius (IEC 60317-0-2 Table 6). A lead turns in 3D, so it bends on both
+// axes somewhere along its run; its FLATWISE limit is planned for, its edgewise one is not.
+struct LeadBendBelowFlexibility {
+    std::string leadName;            // "entrance lead of '<turn>'" / "exit lead of '<turn>'"
+    double plannedBendRadius = 0;    // the centreline radius its corners are planned for [m]
+    WoundCorner asLaid;              // WireBend::evaluate of that radius, EDGEWISE
+    Wire wire;                       // the lead's own wire (its lead conductor, else the winding's)
+};
+
+struct WindingLeadsBelowFlexibility {
+    std::string windingName;
+    std::vector<LeadBendBelowFlexibility> leads;
+};
+
 // Every corner of a real-winding layout judged against its wire's FLEXIBILITY radius.
 struct CoilBendJudgement {
     size_t numberTurns = 0;
@@ -878,6 +893,11 @@ class Coil : public MAS::Coil {
         // it, and ResultsAnalyzer reports edgewise ones (Alf, 2026-10-22). Empty with the flag
         // off, on planar, dummy and round-window coils, and for wires the standards do not cover.
         CoilBendJudgement judge_corners_against_wire_flexibility();
+        // ABT #2012: the terminal leads of the REAL-WINDING layout whose planned bend radius is below
+        // their rectangular wire's EDGEWISE flexibility radius, per winding (in route order). Never a
+        // refusal: ResultsAnalyzer reports them with the winding's edgewise finding. Empty for an
+        // ideal layout, which plans no lead bends.
+        std::vector<WindingLeadsBelowFlexibility> judge_leads_against_wire_flexibility();
         // ABT #1290 (Alf, 2026-09-20): under REAL WINDING, refuse a layout that draws a corner
         // tighter than the wire itself can be bent. ABT #2004 (Alf, 2026-10-22): an EDGEWISE bend
         // of rectangular wire is not refused -- IEC 60317-0-2 Table 6 qualifies the coating, it is

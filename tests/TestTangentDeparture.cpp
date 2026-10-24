@@ -17,6 +17,8 @@
 #include "constructive_models/Coil.h"
 #include "constructive_models/Core.h"
 #include "constructive_models/Magnetic.h"
+#include "constructive_models/Wire.h"
+#include "physical_models/WireBend.h"
 #include "support/Settings.h"
 #include "support/Utils.h"
 #include "support/Exceptions.h"
@@ -46,7 +48,14 @@ OpenMagnetics::Coil wind_tangent_fixture() {
     auto& settings = OpenMagnetics::Settings::GetInstance();
     settings.set_coil_use_real_winding_geometry(true);
     settings.set_coil_lead_bend_radius_factor(1.05);
-    settings.set_coil_lead_minimum_bend_radius(std::nullopt);
+    // ABT #2012: a rectangular lead is no longer planned at its wire's IEC 60317-0-2 Table 6 EDGEWISE
+    // mandrel (a coating test, not a forming limit), so on its own this lead's bend (its coated radius)
+    // fits on the connection face and it leaves radially. The tangent departure this test is about is
+    // kept by DECLARING that same 12.5425 mm radius as the consumer's minimum lead bend, which is what
+    // the reported MVB++ refusal drew it at. Every expected value below is still derived from the frame.
+    const OpenMagnetics::Wire fixtureWire(magneticJson.at("coil").at("functionalDescription").at(0).at("wire"));
+    settings.set_coil_lead_minimum_bend_radius(
+        OpenMagnetics::WireBend::get_flexibility_bend_radius_if_standardised(fixtureWire, OpenMagnetics::BendAxis::EDGEWISE).value());
     OpenMagnetics::Core core(magneticJson.at("core"));
     OpenMagnetics::Coil coil(magneticJson.at("coil"), false);
     OpenMagnetics::Magnetic magnetic;
@@ -54,7 +63,8 @@ OpenMagnetics::Coil wind_tangent_fixture() {
     magnetic.set_coil(coil);
     auto enriched = OpenMagnetics::magnetic_autocomplete(magnetic, json{});
     auto wound = enriched.get_coil();
-    settings.reset();
+    // The settings stay until the caller has read the layout: get_connection_layout re-plans the
+    // leads under the ambient lead settings (the caller resets them).
     REQUIRE(wound.is_real_winding_blocking_applied());
     return wound;
 }
@@ -149,6 +159,7 @@ TEST_CASE("Real winding: a rectangular wire's terminal leads leave tangentially 
         full += shortened ? 0 : 1;
     }
     CHECK(full == turns.size() - 3);
+    OpenMagnetics::Settings::GetInstance().reset();
 }
 
 // ABT #2012: the clash check of a tangent lead judges each other turn WHERE its corner meets the
