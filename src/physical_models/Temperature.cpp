@@ -7653,8 +7653,9 @@ void Temperature::applyColdPlateCooling(const MAS::Cooling& cooling) {
     for (size_t nodeIdx : surfaceNodes) {
         double timResistance = kTIM_DefaultResistance;
         
-        if (cooling.get_interface_thickness().has_value() && 
-            cooling.get_interface_thermal_resistance().has_value()) {
+        // Gate ONLY on interface_thermal_resistance, as the heatsink does: interface_thickness is not
+        // used in the computation, and requiring it dropped a supplied resistance in favour of the default.
+        if (cooling.get_interface_thermal_resistance().has_value()) {
             // Issue 25: interface_thermal_resistance is area-specific resistance (K*m^2/W)
             // R_total = R_specific / area
             double areaSpecificResistance = cooling.get_interface_thermal_resistance().value();

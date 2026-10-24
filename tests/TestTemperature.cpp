@@ -3131,6 +3131,58 @@ TEST_CASE("Temperature: Cold Plate Cooling", "[temperature][cooling][smoke-test]
     REQUIRE(result.converged);
 }
 
+// The cold plate's interface resistance is the supplied interface_thermal_resistance whether or not
+// an interface_thickness is given (thickness is not used): without a thickness it used to be dropped
+// for the 0.5 K/W default, while the heatsink path already read the resistance alone.
+TEST_CASE("Temperature: cold plate reads the interface resistance without a thickness", "[temperature][cooling][abt-1611]") {
+    auto jsonPath = OpenMagneticsTesting::get_test_data_path(
+        std::source_location::current(), "toroidal_inductor_round_wire_multilayer.json");
+    auto mas = OpenMagneticsTesting::mas_loader(jsonPath);
+    auto magnetic = OpenMagnetics::magnetic_autocomplete(mas.get_magnetic());
+    auto inputs = OpenMagnetics::inputs_autocomplete(mas.get_inputs(), magnetic);
+    auto losses = getLossesFromSimulation(magnetic, inputs);
+    auto coldPlateResistances = [&](bool withThickness) {
+        TemperatureConfig config;
+        config.ambientTemperature = losses.ambientTemperature;
+        config.coreLosses = losses.coreLosses;
+        REQUIRE(losses.windingLossesOutput.has_value());
+        config.windingLosses = losses.windingLosses;
+        config.windingLossesOutput = losses.windingLossesOutput.value();
+        MAS::Cooling coldPlateCooling;
+        coldPlateCooling.set_maximum_temperature(40.0);
+        coldPlateCooling.set_interface_thermal_resistance(3e-4);
+        if (withThickness) {
+            coldPlateCooling.set_interface_thickness(0.0002);
+        }
+        { MAS::Dimensions d; d.set_width(0.06); d.set_height(0.06); d.set_depth(0.01); coldPlateCooling.set_dimensions(d); }
+        config.masCooling = coldPlateCooling;
+        Temperature temperature(magnetic, config);
+        temperature.calculateTemperatures();
+        std::optional<size_t> coldPlateIndex;
+        for (size_t index = 0; index < temperature.getNodes().size(); ++index) {
+            if (temperature.getNodes()[index].name == "ColdPlate") {
+                coldPlateIndex = index;
+            }
+        }
+        REQUIRE(coldPlateIndex);
+        std::vector<double> resistances;
+        for (const auto& resistance : temperature.getResistances()) {
+            if (resistance.nodeToId == coldPlateIndex.value()) {
+                resistances.push_back(resistance.resistance);
+            }
+        }
+        return resistances;
+    };
+    auto withThickness = coldPlateResistances(true);
+    auto withoutThickness = coldPlateResistances(false);
+    REQUIRE(!withThickness.empty());
+    REQUIRE(withThickness.size() == withoutThickness.size());
+    for (size_t index = 0; index < withThickness.size(); ++index) {
+        INFO("contact " << index << ": " << withThickness[index] << " K/W with a thickness, " << withoutThickness[index] << " K/W without");
+        CHECK_THAT(withoutThickness[index], Catch::Matchers::WithinRel(withThickness[index], 1e-12));
+    }
+}
+
 TEST_CASE("Temperature: Cooling Utils Type Detection", "[temperature][cooling][smoke-test]") {
     using namespace OpenMagnetics;
     
