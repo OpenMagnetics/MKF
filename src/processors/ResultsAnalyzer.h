@@ -56,6 +56,11 @@ enum class ResultFindingCode {
     // same finding names the winding's terminal leads planned for edgewise bends below that mandrel.
     // A property of the magnetic, not of an operating point: the finding carries no operating point.
     EDGEWISE_BEND_BELOW_COATING_MANDREL,
+    // Alf, 2026-10-24: a terminal lead of the real-winding layout is drawn across another turn (its
+    // tangent straight crosses that turn's corner closer than their half heights). The design is drawn
+    // as routed; the copper collides there. One per lead, naming the winding, the lead, the turn it hits
+    // (the worst of them) and the overlap. A property of the magnetic: no operating point.
+    LEAD_COLLIDES_WITH_TURNS,
 };
 
 std::string to_string(ResultFindingCode code);
@@ -168,9 +173,13 @@ class ResultsAnalyzer {
     // real winding and is never a finding: this throws UnwindableBendException for it, as wind does.
     static std::vector<ResultFinding> analyze_winding_bends(const Magnetic& magnetic);
 
+    // One LEAD_COLLIDES_WITH_TURNS finding per terminal lead the real-winding layout draws across
+    // another turn (Coil::judge_lead_collisions). Nothing under ideal winding.
+    static std::vector<ResultFinding> analyze_lead_collisions(const Magnetic& magnetic);
+
     // Every finding of a simulated MAS (as MagneticSimulator::simulate returns it: one output per
     // operating point), ordered by operating point, then saturation, volt-second balance, temperature;
-    // then the findings about the magnetic itself (analyze_winding_bends).
+    // then the findings about the magnetic itself (analyze_winding_bends, analyze_lead_collisions).
     // An output without a temperature goes to analyze_missing_temperature instead of the temperature checks
     // (ABT #1876): NO_THERMAL_OPERATING_POINT, or a throw for a fast-mode output. An output without core losses
     // goes to analyze_flux_density_past_magnetisation_curve instead of the saturation and temperature checks

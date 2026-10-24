@@ -22,11 +22,13 @@
 #include "support/Settings.h"
 #include "support/Utils.h"
 #include "support/Exceptions.h"
+#include "processors/ResultsAnalyzer.h"
 #include "TestingUtils.h"
 
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 
+#include <algorithm>
 #include <cmath>
 #include <filesystem>
 #include <fstream>
@@ -181,6 +183,32 @@ OpenMagnetics::Coil round_wire_coil(int64_t numberTurns) {
                                                 MAS::CoilAlignment::CENTERED, wires);
 }
 
+size_t number_conduction_layers(const OpenMagnetics::Coil& coil) {
+    const auto layers = coil.get_layers_description().value();   // bound: never range over a temporary
+    size_t numberTurnLayers = 0;
+    for (const auto& layer : layers) {
+        numberTurnLayers += layer.get_type() == MAS::ElectricalType::CONDUCTION ? 1 : 0;
+    }
+    return numberTurnLayers;
+}
+
+// The most turns of round_wire_coil that still wind in one layer (real winding spreads a part-filled
+// layer over the window; the layer is closely wound once it is full).
+int64_t fullest_single_layer() {
+    auto& settings = OpenMagnetics::Settings::GetInstance();
+    int64_t numberTurns = 0;
+    for (int64_t n = 20; n <= 60; ++n) {
+        settings.reset();
+        settings.set_coil_use_real_winding_geometry(true);
+        auto probe = round_wire_coil(n);
+        if (number_conduction_layers(probe) > 1) {
+            break;
+        }
+        numberTurns = n;
+    }
+    return numberTurns;
+}
+
 // The connection face's half straight of the first turn, read off a plain real-winding wind.
 double first_turn_face_half_straight(int64_t numberTurns) {
     auto& settings = OpenMagnetics::Settings::GetInstance();
@@ -199,28 +227,13 @@ double first_turn_face_half_straight(int64_t numberTurns) {
 }  // namespace
 
 TEST_CASE("Real winding: a closely wound round-wire layer's tangent lead is not refused by its own next revolution, "
-          "while a turn wound across the lead still refuses it",
+          "while a turn wound across the lead is reported as a collision",
           "[constructive-model][coil][real-winding][tangent-departure][abt-2012]") {
     auto& settings = OpenMagnetics::Settings::GetInstance();
 
     SECTION("one closely wound layer: both leads leave tangentially") {
-        // Real winding spreads a part-filled layer over the window; the layer is closely wound once it
-        // is full. The fullest single layer: the most turns that still wind in one layer.
-        int64_t numberTurns = 0;
-        for (int64_t n = 20; n <= 60; ++n) {
-            settings.reset();
-            settings.set_coil_use_real_winding_geometry(true);
-            auto probe = round_wire_coil(n);
-            const auto layers = probe.get_layers_description().value();
-            size_t numberTurnLayers = 0;
-            for (const auto& layer : layers) {
-                numberTurnLayers += layer.get_type() == MAS::ElectricalType::CONDUCTION ? 1 : 0;
-            }
-            if (numberTurnLayers > 1) {
-                break;
-            }
-            numberTurns = n;
-        }
+        // The fullest single layer: closely wound.
+        const int64_t numberTurns = fullest_single_layer();
         REQUIRE(numberTurns >= 20);
         const double faceHalfStraight = first_turn_face_half_straight(numberTurns);
         REQUIRE(faceHalfStraight > 0);
@@ -263,23 +276,93 @@ TEST_CASE("Real winding: a closely wound round-wire layer's tangent lead is not 
         CHECK(tangent == 2);
     }
 
-    SECTION("a second layer wound over the first lies across the entrance lead: refused, naming the turn") {
-        const double faceHalfStraight = first_turn_face_half_straight(60);
+    SECTION("a second layer wound back over the first lies across the entrance lead: drawn, and the collision reported") {
+        // Alf, 2026-10-24: a lead that cannot be routed without a collision is still drawn along its
+        // route -- the customer sees the design -- and analyze_results reports the collision. The clash
+        // check is the judge of that finding, not a refusal. Wound in U order: the second layer comes
+        // back over the first, so its last turns cross the entrance lead, and the layer link is a
+        // tangential U run, not a Z dragback (a tangent lead off a face a dragback lane rides over is a
+        // different, unmodelled case).
+        // The fullest two layers: the most turns that still wind in two.
+        const int64_t singleLayer = fullest_single_layer();
+        REQUIRE(singleLayer >= 20);
+        int64_t numberTurns = 0;
+        for (int64_t n = 2 * singleLayer; n > singleLayer; --n) {
+            settings.reset();
+            settings.set_coil_use_real_winding_geometry(true);
+            if (number_conduction_layers(round_wire_coil(n)) == 2) {
+                numberTurns = n;
+                break;
+            }
+        }
+        REQUIRE(numberTurns > 0);
+        const double faceHalfStraight = first_turn_face_half_straight(numberTurns);
         settings.reset();
         settings.set_coil_use_real_winding_geometry(true);
+        OpenMagnetics::Coil coil = round_wire_coil(numberTurns);
+        auto bobbin = std::get<OpenMagnetics::Bobbin>(coil.get_bobbin());
+        auto processed = bobbin.get_processed_description().value();
+        auto windingWindows = processed.get_winding_windows();
+        windingWindows[0].set_winding_order(MAS::WindingOrder::U);
+        processed.set_winding_windows(windingWindows);
+        bobbin.set_processed_description(processed);
+        coil.set_bobbin(bobbin);
         settings.set_coil_lead_minimum_bend_radius(1.5 * faceHalfStraight);
-        try {
-            // get_quick_coil winds the coil it builds, under these settings
-            auto coil = round_wire_coil(60);
-            coil.wind();
-            FAIL("the entrance lead runs under the second layer and was not refused");
+        bool fits = false;
+        REQUIRE_NOTHROW(fits = coil.wind());
+        REQUIRE(fits);
+        REQUIRE(number_conduction_layers(coil) == 2);
+        const auto turns = coil.get_turns_description().value();
+        REQUIRE(coil.get_winding_order(turns[0].get_section().value()) == MAS::WindingOrder::U);
+        const std::string windingName = coil.get_functional_description()[0].get_name();
+        // Every turn and both leads are drawn, tangentially; the entrance runs under the second layer.
+        std::optional<OpenMagnetics::TangentDeparture> entranceDeparture;
+        size_t terminals = 0;
+        size_t collidingLeads = 0;
+        for (const auto& route : coil.get_connection_layout().routes) {
+            if (route.kind != OpenMagnetics::ConnectionKind::TERMINAL_ENTRANCE &&
+                route.kind != OpenMagnetics::ConnectionKind::TERMINAL_EXIT) {
+                continue;
+            }
+            ++terminals;
+            REQUIRE(route.tangentDeparture.has_value());
+            if (route.kind == OpenMagnetics::ConnectionKind::TERMINAL_ENTRANCE) {
+                entranceDeparture = route.tangentDeparture;
+            }
+            const auto& departure = route.tangentDeparture.value();
+            collidingLeads += departure.collisions.empty() ? 0 : 1;
+            // Each collision is an outer turn whose copper really overlaps the lead's.
+            const double leadX = std::abs(departure.point[0]);
+            for (const auto& collision : departure.collisions) {
+                const auto turn = std::find_if(turns.begin(), turns.end(),
+                                               [&](const MAS::Turn& candidate) { return candidate.get_name() == collision.turnName; });
+                REQUIRE(turn != turns.end());
+                CHECK(std::abs(turn->get_coordinates()[0]) > leadX);
+                CHECK(collision.overlap > 0);
+                CHECK(collision.overlap == Catch::Approx(turns[0].get_dimensions().value()[1] / 2 + turn->get_dimensions().value()[1] / 2 -
+                                                         std::abs(collision.leadHeight - collision.turnHeight)).margin(1e-12));
+            }
         }
-        catch (const OpenMagnetics::CoilException& e) {
-            const std::string what = e.what();
-            INFO(what);
-            CHECK(what.find("entrance lead") != std::string::npos);
-            CHECK(what.find("winds its corner across the lead's straight") != std::string::npos);
+        REQUIRE(terminals == 2);
+        REQUIRE(entranceDeparture.has_value());
+        REQUIRE_FALSE(entranceDeparture->collisions.empty());
+
+        OpenMagnetics::Magnetic magnetic;
+        magnetic.set_core(OpenMagneticsTesting::get_quick_core("E 25/13/7", OpenMagneticsTesting::get_ground_gap(0.001), 1, "N87"));
+        magnetic.set_coil(coil);
+        const auto findings = OpenMagnetics::ResultsAnalyzer::analyze_lead_collisions(magnetic);
+        REQUIRE(findings.size() == collidingLeads);   // one per colliding lead
+        bool entranceReported = false;
+        for (const auto& finding : findings) {
+            CHECK(finding.code == OpenMagnetics::ResultFindingCode::LEAD_COLLIDES_WITH_TURNS);
+            CHECK_FALSE(finding.operatingPointIndex);
+            CHECK(finding.message.find("winding '" + windingName + "'") != std::string::npos);
+            CHECK(finding.message.find("drawn across turn '") != std::string::npos);
+            CHECK(finding.message.find("overlaps by") != std::string::npos);
+            CHECK(finding.message.find("ABT") == std::string::npos);
+            entranceReported |= finding.message.find("entrance lead of '" + turns[0].get_name() + "'") != std::string::npos;
         }
+        CHECK(entranceReported);
     }
     settings.reset();
 }

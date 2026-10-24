@@ -29,6 +29,7 @@ std::string to_string(ResultFindingCode code) {
         case ResultFindingCode::WINDING_TEMPERATURE_ABOVE_LIMIT: return "WINDING_TEMPERATURE_ABOVE_LIMIT";
         case ResultFindingCode::WINDING_TEMPERATURE_LIMIT_NOT_STATED: return "WINDING_TEMPERATURE_LIMIT_NOT_STATED";
         case ResultFindingCode::NO_THERMAL_OPERATING_POINT: return "NO_THERMAL_OPERATING_POINT";
+        case ResultFindingCode::LEAD_COLLIDES_WITH_TURNS: return "LEAD_COLLIDES_WITH_TURNS";
         case ResultFindingCode::EDGEWISE_BEND_BELOW_COATING_MANDREL: return "EDGEWISE_BEND_BELOW_COATING_MANDREL";
     }
     throw InvalidInputException(ErrorCode::INVALID_INPUT, "Unknown result finding code " + std::to_string(static_cast<int>(code)));
@@ -510,6 +511,34 @@ std::vector<ResultFinding> ResultsAnalyzer::analyze_flux_density_past_magnetisat
         "gap or core, or less volt-seconds are needed")};
 }
 
+std::vector<ResultFinding> ResultsAnalyzer::analyze_lead_collisions(const Magnetic& magnetic) {
+    // A copy: judging resolves the coil's bobbin and column frames, and the magnetic is const here.
+    OpenMagnetics::Coil coil = magnetic.get_coil();
+    // Three significant figures in mm, as every finding's numbers (ABT #2001).
+    auto millimetres = [](double metres) {
+        return format_significant(metres * 1000, 3);
+    };
+    std::vector<ResultFinding> findings;
+    for (const auto& lead : coil.judge_lead_collisions()) {
+        const auto worst = std::max_element(lead.collisions.begin(), lead.collisions.end(),
+                                            [](const LeadTurnCollision& a, const LeadTurnCollision& b) { return a.overlap < b.overlap; });
+        std::string message = "Warning: winding '" + lead.windingName + "' has its " + lead.leadName +
+                              " drawn across turn '" + worst->turnName + "': " + millimetres(worst->distanceOut) +
+                              " mm out along the lead, that turn runs at height " + millimetres(worst->turnHeight) +
+                              " mm and the lead at " + millimetres(worst->leadHeight) + " mm, so their copper overlaps by " +
+                              millimetres(worst->overlap) + " mm";
+        if (lead.collisions.size() > 1) {
+            message += " (the worst of " + std::to_string(lead.collisions.size()) + " turns it crosses)";
+        }
+        message += ". The coil is drawn as routed; the lead collides with the winding there.";
+        ResultFinding finding;
+        finding.code = ResultFindingCode::LEAD_COLLIDES_WITH_TURNS;
+        finding.message = message;
+        findings.push_back(finding);
+    }
+    return findings;
+}
+
 std::vector<ResultFinding> ResultsAnalyzer::analyze_winding_bends(const Magnetic& magnetic) {
     // A copy: judging resolves the coil's bobbin and column frames, and the magnetic is const here.
     OpenMagnetics::Coil coil = magnetic.get_coil();
@@ -656,6 +685,9 @@ std::vector<ResultFinding> ResultsAnalyzer::analyze_results(const Mas& mas) {
         }
     }
     for (auto& finding : analyze_winding_bends(mas.get_magnetic())) {
+        findings.push_back(finding);
+    }
+    for (auto& finding : analyze_lead_collisions(mas.get_magnetic())) {
         findings.push_back(finding);
     }
     return findings;

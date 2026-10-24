@@ -3529,21 +3529,17 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces(
                 auto& route = routes[index];
                 const bool isEntrance = route.kind == ConnectionKind::TERMINAL_ENTRANCE;
                 const std::string& turnName = isEntrance ? route.toTurn : route.fromTurn;
-                size_t matching = 0;
-                size_t spaceIndex = 0;
+                std::vector<size_t> matching;   // the radial lead's rectangles, inside out
                 for (size_t k = 0; k < spaces.size(); ++k) {
                     const auto& space = spaces[k];
                     if (space.isTerminal && space.winding == route.winding && space.parallel == route.parallel &&
                         space.kind == route.kind && (isEntrance ? space.toTurn : space.fromTurn) == turnName) {
-                        ++matching;
-                        spaceIndex = k;
+                        matching.push_back(k);
                     }
                 }
-                if (matching != 1) {
-                    throw CoilException(ErrorCode::COIL_WINDING_ERROR,
-                                        "Real winding: the tangent departure of '" + turnName + "' replaces a lead "
-                                        "reserved as " + std::to_string(matching) + " rectangles; only the "
-                                        "outermost radial exit (one rectangle, crossing no layer) is modelled");
+                if (matching.empty()) {
+                    throw std::logic_error("The tangent departure of '" + turnName + "' has no reserved space of its "
+                                           "radial lead to replace");
                 }
                 double turnX = 0, turnY = 0, turnWidth = 0, turnHeight = 0;
                 for (const auto& turn : turnsForDeparture) {
@@ -3563,6 +3559,17 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces(
                 route.routedLength = roundFloat(departure->length, 9);
                 route.exitSlot = std::nullopt;
                 exitSlots[index] = std::nullopt;
+                // The tangent lead replaces the radial one: its footprint takes the rectangle at the
+                // turn's own radius, and the rectangles the radial run would have crossed outer layers
+                // with go (an inner layer's lead then runs under the layers wound over it, which the
+                // clash check records as collisions -- Alf, 2026-10-24: drawn and reported, not refused).
+                size_t spaceIndex = matching.front();
+                for (size_t k : matching) {
+                    if (std::abs(std::abs(spaces[k].coordinates[0]) - std::abs(turnX)) <
+                        std::abs(std::abs(spaces[spaceIndex].coordinates[0]) - std::abs(turnX))) {
+                        spaceIndex = k;
+                    }
+                }
                 auto& space = spaces[spaceIndex];
                 const double yLow = std::min({turnY, departure->point[1], departure->end[1]});
                 const double yHigh = std::max({turnY, departure->point[1], departure->end[1]});
@@ -3570,6 +3577,11 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces(
                 space.dimensions = {roundFloat(turnWidth, 9), roundFloat(yHigh - yLow + turnHeight, 9)};
                 space.routedLength = roundFloat(departure->length, 9);
                 route.tangentDeparture = std::move(departure);
+                for (auto k = matching.rbegin(); k != matching.rend(); ++k) {
+                    if (*k != spaceIndex) {
+                        spaces.erase(spaces.begin() + static_cast<std::ptrdiff_t>(*k));
+                    }
+                }
             }
         }
     }
@@ -5190,14 +5202,17 @@ std::optional<TangentDeparture> Coil::plan_tangent_departure(const ConnectionRou
         }
         const double leadHeight = y + (entrance ? -slope : slope) * std::max(0.0, depth - faceStraightEnd);
         const double otherHeight = heightAlong(t, along);
+        // A turn across the lead is a collision of the drawn design, not a reason to draw nothing
+        // (Alf, 2026-10-24): the lead is drawn along this route and the collision is recorded for
+        // analyze_results (Coil::judge_lead_collisions).
         if (std::abs(leadHeight - otherHeight) < (dims[1] + otherDims[1]) / 2 - 1e-9) {
-            std::ostringstream message;
-            message.precision(9);
-            message << who << "turn '" << other.get_name() << "' (at " << otherX << ", " << other.get_coordinates()[1]
-                    << " m) winds its corner across the lead's straight " << depth << " m out along it, at height "
-                    << otherHeight << " m where the lead runs at " << leadHeight << " m: closer than their "
-                    << (dims[1] + otherDims[1]) / 2 << " m half heights";
-            throw CoilException(ErrorCode::COIL_WINDING_ERROR, message.str());
+            LeadTurnCollision collision;
+            collision.turnName = other.get_name();
+            collision.distanceOut = depth;
+            collision.leadHeight = leadHeight;
+            collision.turnHeight = otherHeight;
+            collision.overlap = (dims[1] + otherDims[1]) / 2 - std::abs(leadHeight - otherHeight);
+            departure.collisions.push_back(collision);
         }
     }
     return departure;
@@ -12928,6 +12943,27 @@ CoilBendJudgement Coil::judge_corners_against_wire_flexibility() {
         judgement.windingsBelowFlexibility.push_back(worstByWinding.at(windingName));
     }
     return judgement;
+}
+
+std::vector<Coil::LeadCollisionJudgement> Coil::judge_lead_collisions() {
+    std::vector<LeadCollisionJudgement> leads;
+    if (!is_real_winding_blocking_applied() || !get_turns_description()) {
+        return leads;
+    }
+    const auto routes = get_connection_layout().routes;
+    for (const auto& route : routes) {
+        if (!route.tangentDeparture || route.tangentDeparture->collisions.empty()) {
+            continue;
+        }
+        const bool entrance = route.kind == ConnectionKind::TERMINAL_ENTRANCE;
+        LeadCollisionJudgement lead;
+        lead.windingName = route.winding;
+        lead.leadName = std::string(entrance ? "entrance" : "exit") + " lead of '" +
+                        (entrance ? route.toTurn : route.fromTurn) + "'";
+        lead.collisions = route.tangentDeparture->collisions;
+        leads.push_back(lead);
+    }
+    return leads;
 }
 
 std::vector<WindingLeadsBelowFlexibility> Coil::judge_leads_against_wire_flexibility() {

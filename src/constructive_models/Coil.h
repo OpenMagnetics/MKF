@@ -245,6 +245,16 @@ struct ConnectionRideLevel {
 // CLOCKWISE seen from +Y: from the crossing on the -Z face a turn runs towards -X, round the -X-Z
 // corner, along the -X face towards +Z, ..., along the +X face towards -Z and back to the crossing.
 // So the entrance leaves along the -X face and the exit along the +X face.
+// One turn found across a terminal lead's drawn straight: where it meets the lead's line, the two
+// heights there and by how much their copper overlaps axially (half heights summed minus the gap).
+struct LeadTurnCollision {
+    std::string turnName;
+    double distanceOut = 0;   // |z| of the meeting point, in the TangentDeparture frame [m]
+    double leadHeight = 0;    // the lead's y there [m]
+    double turnHeight = 0;    // the turn's pitch-true y there [m]
+    double overlap = 0;       // (lead height + turn height) / 2 - |leadHeight - turnHeight| [m], > 0
+};
+
 struct TangentDeparture {
     // The lateral face the lead continues: -1 = the -X face (entrance), +1 = the +X face (exit).
     int face = 0;
@@ -269,6 +279,10 @@ struct TangentDeparture {
     double turnLengthRemoved = 0;
     // The turn whose revolution was shortened (the one that carries its length).
     std::string shortenedTurn;
+    // Every other turn that winds its corner across this lead's straight, closer than their half
+    // heights (Alf, 2026-10-24: a lead that cannot be routed without a collision is still drawn along
+    // this route, and analyze_results reports the collision; real winding does not refuse it).
+    std::vector<LeadTurnCollision> collisions;
 };
 
 // ABT #1907 (Alf, 2026-10-18): a FOIL end that leaves through the END FACE (connections[].exit:
@@ -898,6 +912,16 @@ class Coil : public MAS::Coil {
         // refusal: ResultsAnalyzer reports them with the winding's edgewise finding. Empty for an
         // ideal layout, which plans no lead bends.
         std::vector<WindingLeadsBelowFlexibility> judge_leads_against_wire_flexibility();
+        // The terminal leads of the REAL-WINDING layout that are drawn across other turns (a tangent
+        // departure whose straight another turn's corner crosses), each with the turns it hits. Never
+        // a refusal: the lead is drawn along its route and ResultsAnalyzer reports the collision.
+        // Empty for an ideal layout.
+        struct LeadCollisionJudgement {
+            std::string windingName;
+            std::string leadName;   // "entrance lead of '<turn>'" / "exit lead of '<turn>'"
+            std::vector<LeadTurnCollision> collisions;
+        };
+        std::vector<LeadCollisionJudgement> judge_lead_collisions();
         // ABT #1290 (Alf, 2026-09-20): under REAL WINDING, refuse a layout that draws a corner
         // tighter than the wire itself can be bent. ABT #2004 (Alf, 2026-10-22): an EDGEWISE bend
         // of rectangular wire is not refused -- IEC 60317-0-2 Table 6 qualifies the coating, it is
