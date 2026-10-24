@@ -5004,3 +5004,32 @@ TEST_CASE("Debug_Abt1759_Foil_Field_Probe", "[debug][abt1759-foil][.]") {
     }
     settings.reset();
 }
+
+// The per-winding breakdown carries the connection copper the total includes (terminal leads,
+// layer-to-layer links: DC on the ohmic term, AC on the skin term), so with real winding geometry
+// the windings sum to the total. combine_turn_losses rebuilt each winding from its turns alone.
+TEST_CASE("Winding loss breakdown per winding sums to the total with connection copper", "[physical-model][winding-losses][real-geometry][abt-1225]") {
+    settings.reset();
+    clear_databases();
+    settings.set_coil_use_real_winding_geometry(true);
+    double temperature = 25;
+    auto coil = OpenMagneticsTesting::get_quick_coil({40, 40}, {1, 1}, "PQ 28/20", 2);
+    REQUIRE(coil.get_turns_description());
+    auto connectionLength = WindingOhmicLosses::calculate_connection_length_per_winding_per_parallel(coil);
+    REQUIRE(connectionLength[0][0] > 0);
+    auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", OpenMagneticsTesting::get_ground_gap(2e-4), 1, "3C97");
+    OpenMagnetics::Magnetic magnetic;
+    magnetic.set_core(core);
+    magnetic.set_coil(coil);
+    auto inputs = OpenMagnetics::Inputs::create_quick_operating_point_only_current(
+        100000, 100e-6, temperature, WaveformLabel::TRIANGULAR, 2, 0.5, 0, {1});
+    auto losses = WindingLosses().calculate_losses(magnetic, inputs.get_operating_point(0), temperature);
+    double sumPerWinding = 0;
+    auto perWinding = losses.get_winding_losses_per_winding().value();
+    for (const auto& element : perWinding) {
+        sumPerWinding += WindingLosses::get_total_winding_losses(element);
+    }
+    INFO("total " << losses.get_winding_losses() << " W, sum of the windings " << sumPerWinding << " W");
+    CHECK_THAT(sumPerWinding, Catch::Matchers::WithinRel(losses.get_winding_losses(), 1e-9));
+    settings.reset();
+}

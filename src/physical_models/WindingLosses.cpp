@@ -1,3 +1,4 @@
+#include <algorithm>
 #include "support/Settings.h"
 #include "physical_models/WindingLosses.h"
 #include "physical_models/WindingLossesModelSets.h"
@@ -135,16 +136,56 @@ WindingLossesOutput WindingLosses::combine_turn_losses(WindingLossesOutput windi
     }
     windingLossesOutput.set_winding_losses_per_section(windingLossesPerSection);
 
+    // Connection copper (terminal leads, layer-to-layer links) is not a turn: the ohmic step books its DC loss on the
+    // per-winding element (whose ohmic loss is the whole branch, turns plus connections) and the skin step books its AC
+    // loss there as the per-winding skin element. The per-winding breakdown keeps both, so it sums to the total.
+    auto connectionLengthPerWindingPerParallel = WindingOhmicLosses::calculate_connection_length_per_winding_per_parallel(coil);
+    std::optional<std::vector<WindingLossesPerElement>> incomingLossesPerWinding = windingLossesOutput.get_winding_losses_per_winding();
     std::vector<WindingLossesPerElement> windingLossesPerWinding;
     for (size_t windingIndex = 0; windingIndex < coil.get_functional_description().size(); ++windingIndex) {
-        OhmicLosses ohmicLossesThisWinding;
-        LossElementPerHarmonic skinEffectLossesThisWinding;
-        LossElementPerHarmonic proximityEffectLossesThisWinding;
-
         auto winding = coil.get_functional_description()[windingIndex];
         auto turnsIndexes = coil.get_turns_indexes_by_winding(winding.get_name());
         WindingLossesPerElement windingLossesThisWinding = combine_turn_losses_per_element(windingLossesPerTurn, turnsIndexes);
         windingLossesThisWinding.set_name(winding.get_name());
+
+        bool hasConnectionCopper = false;
+        for (double length : connectionLengthPerWindingPerParallel[windingIndex]) {
+            if (length > 0) {
+                hasConnectionCopper = true;
+            }
+        }
+        if (hasConnectionCopper) {
+            if (!incomingLossesPerWinding || incomingLossesPerWinding->size() != coil.get_functional_description().size() ||
+                !incomingLossesPerWinding->at(windingIndex).get_ohmic_losses()) {
+                throw CalculationException(ErrorCode::CALCULATION_ERROR, "Winding losses: winding '" + winding.get_name() +
+                    "' has connection copper but no per-winding ohmic loss carrying it");
+            }
+            const auto& incoming = incomingLossesPerWinding->at(windingIndex);
+            auto ohmicLosses = windingLossesThisWinding.get_ohmic_losses().value();
+            ohmicLosses.set_losses(incoming.get_ohmic_losses()->get_losses());
+            windingLossesThisWinding.set_ohmic_losses(ohmicLosses);
+            if (incoming.get_skin_effect_losses()) {
+                const auto connectionSkin = incoming.get_skin_effect_losses().value();
+                auto skinEffectLosses = windingLossesThisWinding.get_skin_effect_losses().value();
+                auto& frequencies = skinEffectLosses.get_mutable_harmonic_frequencies();
+                auto& losses = skinEffectLosses.get_mutable_losses_per_harmonic();
+                for (size_t harmonicIndex = 0; harmonicIndex < connectionSkin.get_harmonic_frequencies().size(); ++harmonicIndex) {
+                    double loss = connectionSkin.get_losses_per_harmonic().at(harmonicIndex);
+                    if (loss == 0) {
+                        continue;
+                    }
+                    double frequency = connectionSkin.get_harmonic_frequencies()[harmonicIndex];
+                    auto found = std::find(frequencies.begin(), frequencies.end(), frequency);
+                    if (found == frequencies.end()) {
+                        throw CalculationException(ErrorCode::CALCULATION_ERROR, "Winding losses: the connections of winding '" +
+                            winding.get_name() + "' carry skin-effect loss at " + std::to_string(frequency) +
+                            " Hz, a harmonic none of its turns lists");
+                    }
+                    losses[static_cast<size_t>(found - frequencies.begin())] += loss;
+                }
+                windingLossesThisWinding.set_skin_effect_losses(skinEffectLosses);
+            }
+        }
         windingLossesPerWinding.push_back(windingLossesThisWinding);
     }
     windingLossesOutput.set_winding_losses_per_winding(windingLossesPerWinding);
