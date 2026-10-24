@@ -2786,3 +2786,42 @@ TEST_CASE("Test_Waveform_Scaled_By_Zero_Or_A_Negative_Factor_Keeps_No_Label", "[
     REQUIRE_NOTHROW(silent = OpenMagnetics::Inputs::get_excitation_with_proportional_voltage(excitation, 0));
     CHECK(!silent.get_voltage()->get_waveform()->get_ancillary_label());
 }
+
+// ABT #2022: the common-mode choke's magnetizing current is the windings' mean current. Taking the primary's own
+// swing read a differential-mode line point (the two windings' currents opposite, which their harmonic amplitudes
+// cannot tell from identical ones) as common-mode current: 14 A of it, 18.8 T in a 4-turn R10KZ toroid.
+TEST_CASE("Common-mode choke magnetizing current is the windings' mean current", "[processor][inputs][cmc][abt-2022]") {
+    auto winding_current = [](double frequency, double offset, double peakToPeak, double sign) {
+        Waveform waveform;
+        std::vector<double> data, time;
+        size_t numberPoints = 512;
+        for (size_t index = 0; index <= numberPoints; ++index) {
+            double t = index / (frequency * numberPoints);
+            time.push_back(t);
+            data.push_back(sign * (offset + peakToPeak / 2 * std::sin(2 * std::numbers::pi * frequency * t)));
+        }
+        waveform.set_data(data);
+        waveform.set_time(time);
+        SignalDescriptor current;
+        current.set_waveform(waveform);
+        current.set_processed(OpenMagnetics::Inputs::calculate_processed_data(waveform, frequency, false));
+        OperatingPointExcitation excitation;
+        excitation.set_frequency(frequency);
+        excitation.set_current(current);
+        return excitation;
+    };
+    auto peak_to_peak = [](OperatingPoint operatingPoint) {
+        return OpenMagnetics::Inputs::get_common_mode_choke_magnetizing_current(operatingPoint).get_processed()->get_peak_to_peak().value();
+    };
+
+    // Differential mode: +-14.1 A at 50 Hz, opposite in the two windings. No common-mode current drives the core.
+    OperatingPoint differentialMode;
+    differentialMode.set_excitations_per_winding({winding_current(50, 0, 28.28, 1), winding_current(50, 0, 28.28, -1)});
+    CHECK_THAT(peak_to_peak(differentialMode), Catch::Matchers::WithinAbs(0, 1e-9));
+
+    // Common mode on the line current: the same 1 A swing in both windings, on +10 A and -10 A of line current.
+    // The line current cancels; the common-mode swing is the primary's, as before.
+    OperatingPoint commonMode;
+    commonMode.set_excitations_per_winding({winding_current(150000, 10, 1, 1), winding_current(150000, -10, 1, 1)});
+    CHECK_THAT(peak_to_peak(commonMode), Catch::Matchers::WithinRel(1, 1e-6));
+}

@@ -917,32 +917,44 @@ SignalDescriptor Inputs::get_common_mode_choke_magnetizing_current(OperatingPoin
     // By CMC symmetry all windings carry identical waveforms, so:
     //   sum  = 2·I_cm   (drives core flux)
     //   diff = 0        (DM, cancels — not a core excitation)
-    //
-    // The previous implementation used |secondary_rms − primary_rms| to get
-    // the CM current, which for a symmetric CMC is identically zero — the
-    // flux model then saw no excitation at all and under-reported core
-    // saturation / loss. Correct answer: the AC component of any one
-    // winding IS the CM current, because the DC bias (DM line current) is
-    // the same in both windings and cancels in the net core MMF.
-    //
-    // So take peak_to_peak/2 from the primary winding as the CM peak, and
-    // build the triangular magnetizing current from that — the DC offset
-    // is dropped because it doesn't drive flux in a common-mode choke.
-    auto primaryCurrent = operatingPoint.get_excitations_per_winding()[0].get_current().value();
-    if (!primaryCurrent.get_processed()) {
-        throw std::invalid_argument("Current is not processed");
-    }
-    auto primaryProcessed = primaryCurrent.get_processed().value();
-    if (!primaryProcessed.get_peak_to_peak()) {
-        throw std::invalid_argument("Primary current is missing peak-to-peak");
-    }
-
     double frequency = Inputs::get_switching_frequency(excitation);
 
-    // AC peak of the CM component = half the primary's p-p swing.
-    // We model the magnetizing current as a triangular of the same p-p
-    // centered around zero (no DC flux bias in a CMC).
-    double peakToPeak = primaryProcessed.get_peak_to_peak().value();
+    // The core's MMF is the sum of the windings' ampere-turns. A CMC's windings have the same turns and their
+    // currents are stored into the dot, so the current that drives the core is the windings' mean: their
+    // common-mode part is the same in all of them and stays, their differential-mode part cancels. Taking the
+    // primary's own swing read a differential-mode line point (+/-14 A on the two windings, opposite, which
+    // the harmonic amplitudes cannot tell from identical currents) as 14 A of common-mode current: 18.8 T in
+    // a 4-turn R10KZ toroid whose real flux there is ~0 (ABT #2022). For a symmetric CMC point the mean's
+    // swing is the primary's, as before.
+    // We model the magnetizing current as a triangular of the mean's p-p centered around zero (no DC flux
+    // bias in a CMC).
+    std::vector<double> meanCurrent;
+    std::optional<Waveform> meanWaveform;
+    const auto& excitations = operatingPoint.get_excitations_per_winding();
+    for (const auto& windingExcitation : excitations) {
+        if (!windingExcitation.get_current()) {
+            throw InvalidInputException(ErrorCode::MISSING_DATA, "Common-mode choke: a winding carries no current, so the windings' mean current cannot be formed");
+        }
+        // Each current is sampled over the period it is given over, its excitation's (a line-cycle record
+        // spans the line period, not the switching period the triangle below is built at).
+        auto current = windingExcitation.get_current().value();
+        if (!current.get_waveform()) {
+            current = Inputs::standardize_waveform(current, windingExcitation.get_frequency());
+        }
+        auto sampled = Inputs::calculate_sampled_waveform(current.get_waveform().value(), windingExcitation.get_frequency());
+        if (!meanWaveform) {
+            meanWaveform = sampled;
+            meanCurrent.assign(sampled.get_data().size(), 0.0);
+        }
+        else if (sampled.get_data().size() != meanCurrent.size()) {
+            throw InvalidInputException(ErrorCode::INVALID_INPUT, "Common-mode choke: the windings' currents sample to different lengths (" +
+                                        std::to_string(meanCurrent.size()) + " and " + std::to_string(sampled.get_data().size()) + ")");
+        }
+        for (size_t index = 0; index < meanCurrent.size(); ++index) {
+            meanCurrent[index] += sampled.get_data()[index] / excitations.size();
+        }
+    }
+    double peakToPeak = *std::max_element(meanCurrent.begin(), meanCurrent.end()) - *std::min_element(meanCurrent.begin(), meanCurrent.end());
 
     ProcessedWaveform triangularProcessed;
     triangularProcessed.set_label(WaveformLabel::TRIANGULAR);
