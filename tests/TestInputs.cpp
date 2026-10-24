@@ -3,7 +3,9 @@
 #include "support/Painter.h"
 #include "physical_models/InitialPermeability.h"
 #include "processors/Inputs.h"
+#include "processors/WaveformProcessor.h"
 #include "processors/ResultsAnalyzer.h"
+#include "physical_models/WindingOhmicLosses.h"
 #include "support/NumberFormat.h"
 #include <regex>
 #include "support/Utils.h"
@@ -2856,4 +2858,208 @@ TEST_CASE("Test_Volt_Second_Imbalance_Message_Reads_With_Rounded_Numbers", "[pro
         "flux linkage by 24.8 uV*s every 9.92 us period, 0.66 times its AC swing of 37.5 uV*s (the limit is 0.25)."));
     // No std::to_string six-decimal number is left.
     CHECK_FALSE(std::regex_search(message.value(), std::regex("[0-9]\\.[0-9]{6}")));
+}
+
+namespace {
+// ABT #2002: a single-winding inductor with a large DC current, i = 900 A +- 7.5 A triangle at 45 kHz, whose
+// winding voltage is L di/dt + R i: a +-VL rectangle plus the resistive drop R i(t) (24.3 V mean at 27 mOhm).
+OperatingPointExcitation abt2002_resistive_inductor_excitation(double resistance, double extraOffset) {
+    double frequency = 45000;
+    double period = 1.0 / frequency;
+    double inductance = 1.33e-6;
+    double minimum = 892.5;
+    double maximum = 907.5;
+    double inductiveVoltage = inductance * (maximum - minimum) / (period / 2);
+    Waveform current;
+    current.set_time(std::vector<double>{0, period / 2, period});
+    current.set_data({minimum, maximum, minimum});
+    Waveform voltage;
+    voltage.set_time(std::vector<double>{0, period / 2, period / 2, period});
+    voltage.set_data({inductiveVoltage + resistance * minimum + extraOffset, inductiveVoltage + resistance * maximum + extraOffset,
+                      -inductiveVoltage + resistance * maximum + extraOffset, -inductiveVoltage + resistance * minimum + extraOffset});
+    SignalDescriptor currentSignal;
+    currentSignal.set_waveform(current);
+    SignalDescriptor voltageSignal;
+    voltageSignal.set_waveform(voltage);
+    OperatingPointExcitation excitation;
+    excitation.set_frequency(frequency);
+    excitation.set_name("Primary");
+    excitation.set_current(currentSignal);
+    excitation.set_voltage(voltageSignal);
+    return excitation;
+}
+
+OperatingPoint abt2002_operating_point(const OperatingPointExcitation& excitation) {
+    OperatingPoint operatingPoint;
+    OperatingConditions conditions;
+    conditions.set_ambient_temperature(25);
+    operatingPoint.set_conditions(conditions);
+    operatingPoint.set_excitations_per_winding({excitation});
+    return operatingPoint;
+}
+}
+
+TEST_CASE("Test_Volt_Second_Balance_Takes_Out_The_Winding_Resistive_Drop", "[processor][inputs][abt-2002]") {
+    const double resistance = 0.027;
+    auto excitation = abt2002_resistive_inductor_excitation(resistance, 0);
+    double inductiveVoltage = 1.33e-6 * 15 / (0.5 / 45000);
+
+    // What remains once R i(t) is taken out is the inductive rectangle, exactly, on the knots of both waveforms.
+    auto magnetizing = OpenMagnetics::Inputs::remove_resistive_drop(excitation, resistance);
+    auto waveform = magnetizing.get_voltage()->get_waveform().value();
+    const auto& data = waveform.get_data();
+    REQUIRE(data.size() == 4);
+    CHECK_THAT(data[0], Catch::Matchers::WithinAbs(inductiveVoltage, 1e-9));
+    CHECK_THAT(data[1], Catch::Matchers::WithinAbs(inductiveVoltage, 1e-9));
+    CHECK_THAT(data[2], Catch::Matchers::WithinAbs(-inductiveVoltage, 1e-9));
+    CHECK_THAT(data[3], Catch::Matchers::WithinAbs(-inductiveVoltage, 1e-9));
+
+    auto operatingPoint = abt2002_operating_point(excitation);
+    // The voltage as given: its 24.3 V mean is 27 times the AC swing, the ticket's finding.
+    auto asGiven = OpenMagnetics::ResultsAnalyzer::analyze_volt_second_balance(operatingPoint, 0);
+    REQUIRE(asGiven.size() == 1);
+    CHECK(asGiven[0].code == OpenMagnetics::ResultFindingCode::VOLT_SECOND_IMBALANCE);
+    // With the winding's resistance the mean is R * mean(i): balanced, no finding.
+    CHECK(OpenMagnetics::ResultsAnalyzer::analyze_volt_second_balance(operatingPoint, 0, std::vector<double>{resistance}, 25.0).empty());
+
+    // A genuine imbalance on top of the resistive drop is still reported, and names the drop taken out.
+    auto unbalanced = abt2002_operating_point(abt2002_resistive_inductor_excitation(resistance, 5));
+    auto findings = OpenMagnetics::ResultsAnalyzer::analyze_volt_second_balance(unbalanced, 0, std::vector<double>{resistance}, 25.0);
+    REQUIRE(findings.size() == 1);
+    INFO(findings[0].message);
+    CHECK(findings[0].code == OpenMagnetics::ResultFindingCode::VOLT_SECOND_IMBALANCE);
+    CHECK_THAT(findings[0].message, Catch::Matchers::ContainsSubstring("its mean of 5 V") &&
+                                    Catch::Matchers::ContainsSubstring("resistive drop (27 mOhm at 25 C, 24.3 V on average)"));
+
+    // An excitation without a current has no known drop.
+    OperatingPointExcitation voltageOnly = excitation;
+    voltageOnly.set_current(std::nullopt);
+    CHECK_THROWS_AS(OpenMagnetics::Inputs::remove_resistive_drop(voltageOnly, resistance), InvalidInputException);
+}
+
+TEST_CASE("Test_Resistive_Drop_Of_A_Sampled_Voltage_Is_Given_Over_One_Period", "[processor][inputs][abt-2002]") {
+    // A sampled voltage's axis is open, 0 .. T - dt. Built on its own knots, the corrected voltage stopped at
+    // T - dt as well, a non-uniform axis that spans neither T nor T - dt once the current's knots are in it,
+    // and the sampler refused it ("Waveform time axis spans 2.2e-05 s ... the excitation period is 2.22e-05 s").
+    const double resistance = 0.027;
+    auto excitation = abt2002_resistive_inductor_excitation(resistance, 0);
+    const double frequency = excitation.get_frequency();
+    const double period = 1.0 / frequency;
+    const double inductiveVoltage = 1.33e-6 * 15 / (period / 2);
+    const size_t numberSamples = 128;
+    std::vector<double> time;
+    std::vector<double> data;
+    for (size_t index = 0; index < numberSamples; ++index) {
+        double instant = period * index / numberSamples;
+        // i(t): 892.5 A rising to 907.5 A at T/2 and back; v = +-VL + R i, the falling half from T/2 on.
+        double current = instant < period / 2 ? 892.5 + 15 * instant / (period / 2) : 907.5 - 15 * (instant - period / 2) / (period / 2);
+        time.push_back(instant);
+        data.push_back((instant < period / 2 ? inductiveVoltage : -inductiveVoltage) + resistance * current);
+    }
+    Waveform sampledVoltage;
+    sampledVoltage.set_time(time);
+    sampledVoltage.set_data(data);
+    SignalDescriptor voltageSignal;
+    voltageSignal.set_waveform(sampledVoltage);
+    excitation.set_voltage(voltageSignal);
+
+    // The current's knots (0, T/2, T) are samples of the voltage: the corrected voltage is the same sampled
+    // waveform, on the voltage's own open axis.
+    {
+        auto magnetizing = OpenMagnetics::Inputs::remove_resistive_drop(excitation, resistance);
+        auto waveform = magnetizing.get_voltage()->get_waveform().value();
+        const auto magnetizingTime = waveform.get_time().value();
+        const auto& magnetizingData = waveform.get_data();
+        CHECK(magnetizingTime == time);
+        CHECK(OpenMagnetics::WaveformProcessor::check_time_axis_spans_one_period(magnetizingTime, frequency));
+        REQUIRE_NOTHROW(OpenMagnetics::Inputs::calculate_sampled_waveform(waveform, frequency));
+        CHECK(OpenMagnetics::Inputs::calculate_sampled_waveform(waveform, frequency).get_data().size() ==
+              OpenMagnetics::Inputs::calculate_sampled_waveform(sampledVoltage, frequency).get_data().size());
+        // The drop is gone on every sample: +VL on the rising half, -VL from T/2 on.
+        REQUIRE(magnetizingData.size() == numberSamples);
+        for (size_t index = 0; index < numberSamples; ++index) {
+            INFO("sample " << index);
+            CHECK_THAT(magnetizingData[index], Catch::Matchers::WithinAbs(index < numberSamples / 2 ? inductiveVoltage : -inductiveVoltage, 1e-6));
+        }
+    }
+    // A current whose peak falls between two samples puts a knot off the voltage's grid: the corrected
+    // voltage is given on the closed axis [0, T], with the knots of both.
+    {
+        const double peakInstant = period / 2 + period / numberSamples / 3;
+        Waveform offGridCurrent;
+        offGridCurrent.set_time(std::vector<double>{0, peakInstant, period});
+        offGridCurrent.set_data({892.5, 907.5, 892.5});
+        SignalDescriptor currentSignal;
+        currentSignal.set_waveform(offGridCurrent);
+        OperatingPointExcitation offGrid = excitation;
+        offGrid.set_current(currentSignal);
+        auto current_at = [&](double instant) {
+            return instant <= peakInstant ? 892.5 + 15 * instant / peakInstant : 907.5 - 15 * (instant - peakInstant) / (period - peakInstant);
+        };
+        auto magnetizing = OpenMagnetics::Inputs::remove_resistive_drop(offGrid, resistance);
+        auto waveform = magnetizing.get_voltage()->get_waveform().value();
+        const auto magnetizingTime = waveform.get_time().value();
+        const auto& magnetizingData = waveform.get_data();
+        CHECK(magnetizingTime.front() == 0);
+        CHECK(magnetizingTime.back() == period);
+        CHECK(magnetizingTime.size() == numberSamples + 2);
+        CHECK_FALSE(OpenMagnetics::WaveformProcessor::check_time_axis_spans_one_period(magnetizingTime, frequency));
+        REQUIRE_NOTHROW(OpenMagnetics::Inputs::calculate_sampled_waveform(waveform, frequency));
+        // Every sample of the voltage less R i at that instant; t0 + T closes back onto the first sample.
+        size_t checked = 0;
+        for (size_t index = 0; index < magnetizingTime.size(); ++index) {
+            double samplePosition = magnetizingTime[index] / (period / numberSamples);
+            if (std::fabs(samplePosition - std::round(samplePosition)) > 1e-6) {
+                continue;
+            }
+            size_t sample = static_cast<size_t>(std::lround(samplePosition)) % numberSamples;
+            INFO("sample " << samplePosition);
+            CHECK_THAT(magnetizingData[index], Catch::Matchers::WithinAbs(data[sample] - resistance * current_at(magnetizingTime[index]), 1e-6));
+            checked++;
+        }
+        CHECK(checked == numberSamples + 1);
+    }
+}
+
+TEST_CASE("Test_Volt_Second_Balance_Reads_The_Wound_Coil_Resistance_At_The_Solved_Temperature", "[processor][inputs][abt-2002]") {
+    auto path = std::filesystem::path{std::source_location::current().file_name()}
+                    .parent_path().append("..").append("MAS").append("examples").append("02_flyback_efd25_3c95.json");
+    REQUIRE(std::filesystem::exists(path));
+    auto mas = OpenMagneticsTesting::mas_loader(path.string());
+    auto magnetic = OpenMagnetics::magnetic_autocomplete(mas.get_magnetic());
+    if (!magnetic.get_coil().get_turns_description()) {
+        magnetic.get_mutable_coil().wind();
+    }
+    REQUIRE(magnetic.get_coil().get_turns_description());
+
+    // No turns, no length: MKF cannot know the resistance and judges the voltage as given.
+    OpenMagnetics::Coil unwound = magnetic.get_coil();
+    unwound.set_turns_description(std::nullopt);
+    CHECK_FALSE(OpenMagnetics::Inputs::get_winding_dc_resistances(unwound, 25));
+
+    const double solvedTemperature = 120;
+    auto resistances = OpenMagnetics::Inputs::get_winding_dc_resistances(magnetic.get_coil(), solvedTemperature);
+    REQUIRE(resistances);
+    auto expected = OpenMagnetics::WindingOhmicLosses::calculate_dc_resistance_per_winding(magnetic.get_coil(), solvedTemperature);
+    REQUIRE(resistances->size() == expected.size());
+    CHECK(resistances->at(0) == expected[0]);
+
+    // A primary whose mean is its own drop at the solved winding temperature (the output's winding losses).
+    auto excitation = abt2002_resistive_inductor_excitation(resistances->at(0), 0);
+    auto operatingPoint = abt2002_operating_point(excitation);
+    OpenMagnetics::Outputs output;
+    WindingLossesOutput windingLosses;
+    windingLosses.set_origin(ResultOrigin::SIMULATION);
+    windingLosses.set_method_used("test");
+    windingLosses.set_winding_losses(0);
+    windingLosses.set_temperature(solvedTemperature);
+    output.set_winding_losses(windingLosses);
+    auto atSolved = OpenMagnetics::ResultsAnalyzer::analyze_volt_second_balance(magnetic, operatingPoint, output, 0);
+    INFO((atSolved.empty() ? std::string("no finding") : atSolved[0].message));
+    CHECK(atSolved.empty());
+    // At the ambient (the operating point's own temperature when the output has no winding losses) the copper's
+    // resistance is ~27 % lower: the remaining mean is drift and is reported.
+    auto atAmbient = OpenMagnetics::ResultsAnalyzer::analyze_volt_second_balance(magnetic, operatingPoint, OpenMagnetics::Outputs(), 0);
+    REQUIRE(atAmbient.size() == 1);
+    CHECK_THAT(atAmbient[0].message, Catch::Matchers::ContainsSubstring("at 25 C"));
 }

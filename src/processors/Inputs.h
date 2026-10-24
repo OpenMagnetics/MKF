@@ -19,6 +19,8 @@ using namespace MAS;
 
 namespace OpenMagnetics {
 
+class Coil;
+
 class Inputs : public MAS::Inputs {
   public:
     Inputs(json j, bool processWaveform = true, std::optional<std::variant<double, std::vector<double>>> magnetizingInductance = std::nullopt) {
@@ -197,6 +199,20 @@ class Inputs : public MAS::Inputs {
     // the advisers' up-front input check refuse it; loading, autocompleting and simulating a design
     // integrate the voltage's balanced part and ResultsAnalyzer reports the imbalance.
     static void check_volt_second_balance(const Waveform& voltageSampledWaveform, const std::string& context);
+    // ABT #2002: a winding's terminal voltage is its own resistive drop plus what moves the flux,
+    // v(t) = R_dc i(t) + N dPhi/dt. A DC current through the winding's resistance gives the voltage a
+    // mean that is not flux drift, so the volt-second balance finding judges the voltage with that
+    // drop taken out. A magnetizing current is derived from the voltage as given, which MKF treats as
+    // the induced voltage (converter models and the web give ideal voltages). `remove_resistive_drop`
+    // returns the excitation with its voltage replaced by v(t) - R_dc i(t), exact on the knots of
+    // both waveforms, over one period (the voltage's own sampled axis, or [t0, t0 + T]); it throws when
+    // the excitation has no voltage or no current, or `dcResistance` is not a finite value >= 0.
+    static OperatingPointExcitation remove_resistive_drop(const OperatingPointExcitation& excitation, double dcResistance);
+    // Each winding's DC resistance at `temperature` from its wire and turns (WindingOhmicLosses::
+    // calculate_dc_resistance_per_winding), or nullopt when the coil has not been wound: without turns
+    // MKF cannot know the winding's length, hence its resistance. A wound coil whose resistance cannot
+    // be computed throws.
+    static std::optional<std::vector<double>> get_winding_dc_resistances(const Coil& coil, double temperature);
     // The mean of the voltage AS GIVEN (not its resampled copy). A winding in periodic steady state
     // has zero net volt-seconds, so what remains (probe offset, I*R drop, a capture that is not a
     // whole number of periods, or a voltage that is not balanced at all) is subtracted before

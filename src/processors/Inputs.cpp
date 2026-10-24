@@ -6,6 +6,8 @@
 
 #include "support/Utils.h"
 #include "support/NumberFormat.h"
+#include "constructive_models/Coil.h"
+#include "physical_models/WindingOhmicLosses.h"
 #include "json.hpp"
 
 #include <algorithm>
@@ -2146,6 +2148,191 @@ void Inputs::check_volt_second_balance(const Waveform& voltageSampledWaveform, c
     if (imbalance) {
         throw InvalidInputException(ErrorCode::INVALID_INPUT, imbalance.value());
     }
+}
+
+namespace {
+
+// The left and right limits of a piecewise-linear waveform at `time`, inside its time axis: a vertical
+// edge (repeated time) has a value on each side, any other instant one value.
+std::pair<double, double> waveform_limits_at(const std::vector<double>& time, const std::vector<double>& data, double instant, double tolerance) {
+    auto first = std::lower_bound(time.begin(), time.end(), instant - tolerance);
+    auto last = std::upper_bound(time.begin(), time.end(), instant + tolerance);
+    if (first != last) {
+        return {data[first - time.begin()], data[(last - time.begin()) - 1]};
+    }
+    if (first == time.begin() || first == time.end()) {
+        throw InvalidInputException(ErrorCode::INVALID_INPUT, "remove_resistive_drop: instant " + format_quantity(instant, "s") +
+                                    " is outside the waveform's time axis");
+    }
+    size_t after = first - time.begin();
+    size_t before = after - 1;
+    double fraction = (instant - time[before]) / (time[after] - time[before]);
+    double value = data[before] + fraction * (data[after] - data[before]);
+    return {value, value};
+}
+
+// The same limits for a periodic waveform at any instant: `instant` is mapped into the waveform's own
+// period [t0, t0 + period], and the stretch between its last knot and t0 + period (an axis that stops
+// one sample short of the period) runs linearly back to its first value. At the period boundary the
+// left limit is the end of the period and the right limit its start.
+std::pair<double, double> periodic_waveform_limits_at(const std::vector<double>& time, const std::vector<double>& data, double instant,
+                                                      double period, double tolerance) {
+    auto limits_at_shift = [&](double shift) -> std::pair<double, double> {
+        double mapped = time.front() + shift;
+        if (mapped <= time.back() + tolerance) {
+            return waveform_limits_at(time, data, std::min(mapped, time.back()), tolerance);
+        }
+        double fraction = (mapped - time.back()) / (time.front() + period - time.back());
+        double value = data.back() + fraction * (data.front() - data.back());
+        return {value, value};
+    };
+    double shift = std::fmod(instant - time.front(), period);
+    if (shift < 0) {
+        shift += period;
+    }
+    if (period - shift <= tolerance) {
+        shift = 0;
+    }
+    if (shift <= tolerance) {
+        auto start = limits_at_shift(0);
+        auto end = limits_at_shift(period);
+        return {end.first, start.second};
+    }
+    return limits_at_shift(shift);
+}
+
+} // namespace
+
+OperatingPointExcitation Inputs::remove_resistive_drop(const OperatingPointExcitation& excitation, double dcResistance) {
+    std::string name = "Excitation '" + excitation.get_name().value_or("unnamed") + "'";
+    if (!std::isfinite(dcResistance) || dcResistance < 0) {
+        throw InvalidInputException(ErrorCode::INVALID_INPUT, name + ": a winding's DC resistance must be a finite value >= 0, not " +
+                                    format_quantity(dcResistance, "Ohm"));
+    }
+    if (!excitation.get_voltage()) {
+        throw InvalidInputException(ErrorCode::MISSING_DATA, name + ": no voltage to remove the resistive drop from");
+    }
+    if (!excitation.get_current()) {
+        throw InvalidInputException(ErrorCode::MISSING_DATA, name + ": no current, so its resistive drop is not known");
+    }
+    double frequency = excitation.get_frequency();
+    if (!(frequency > 0)) {
+        throw InvalidInputException(ErrorCode::INVALID_INPUT, name + ": the frequency must be positive to read its current periodically");
+    }
+    double period = 1.0 / frequency;
+    auto voltage = standardize_waveform(excitation.get_voltage().value(), frequency).get_waveform().value();
+    auto current = standardize_waveform(excitation.get_current().value(), frequency).get_waveform().value();
+    const auto voltageTime = voltage.get_time().value();
+    const auto& voltageData = voltage.get_data();
+    const auto currentTime = current.get_time().value();
+    const auto& currentData = current.get_data();
+    if (voltageTime.size() < 2 || currentTime.size() < 2 || voltageTime.size() != voltageData.size() || currentTime.size() != currentData.size()) {
+        throw InvalidInputException(ErrorCode::INVALID_INPUT, name + ": the voltage and the current need at least two points with one time each");
+    }
+    double tolerance = period * 1e-9;
+    if (currentTime.back() - currentTime.front() > period + tolerance * 1e3) {
+        throw InvalidInputException(ErrorCode::INVALID_INPUT, name + ": the current spans " + format_quantity(currentTime.back() - currentTime.front(), "s") +
+                                    ", more than one period (" + format_quantity(period, "s") + "), so it cannot be read periodically");
+    }
+
+    // The voltage must be given over one period, on a closed axis [t0, t0 + T] or on an open sampled one
+    // [t0, t0 + T - dt] (WaveformProcessor::check_time_axis_spans_one_period, which throws otherwise). Both
+    // are read periodically, an open axis running linearly from its last sample back to its first one at
+    // t0 + T, as the sampler reads it. The corrected voltage keeps the voltage's own axis when it can: a
+    // sampled voltage whose current has no knot and no edge off its samples (both sampled on one grid)
+    // stays the same sampled waveform, so it is sampled to the same number of points as the voltage it
+    // replaces. Otherwise it is given on the closed axis [t0, t0 + T], with the knots of both waveforms.
+    const bool openVoltageAxis = WaveformProcessor::check_time_axis_spans_one_period(voltageTime, frequency);
+    const double periodStart = voltageTime.front();
+    const double periodEnd = periodStart + period;
+    std::vector<double> instants;
+    for (double instant : voltageTime) {
+        // A closed axis ends at t0 + T within the period check's tolerance: that end is periodEnd.
+        if (instant < periodEnd - tolerance) {
+            instants.push_back(instant);
+        }
+    }
+    const size_t numberVoltageKnots = instants.size();
+    for (double instant : currentTime) {
+        double shift = std::fmod(instant - periodStart, period);
+        if (shift < 0) {
+            shift += period;
+        }
+        if (period - shift > tolerance) {
+            instants.push_back(periodStart + shift);
+        }
+    }
+    std::sort(instants.begin(), instants.end());
+    std::vector<double> uniqueInstants;
+    for (double instant : instants) {
+        if (uniqueInstants.empty() || instant - uniqueInstants.back() > tolerance) {
+            uniqueInstants.push_back(instant);
+        }
+    }
+    // Instants within tolerance of t0 + T are that period end, which the closed axis adds below.
+    if (periodEnd - uniqueInstants.back() <= tolerance) {
+        uniqueInstants.pop_back();
+    }
+
+    std::vector<std::pair<double, double>> limits;
+    double voltagePeak = 0;
+    for (double value : voltageData) {
+        voltagePeak = std::max(voltagePeak, std::fabs(value));
+    }
+    bool singleValued = true;
+    for (double instant : uniqueInstants) {
+        auto [voltageLeft, voltageRight] = periodic_waveform_limits_at(voltageTime, voltageData, instant, period, tolerance);
+        auto [currentLeft, currentRight] = periodic_waveform_limits_at(currentTime, currentData, instant, period, tolerance);
+        double left = voltageLeft - dcResistance * currentLeft;
+        double right = voltageRight - dcResistance * currentRight;
+        limits.emplace_back(left, right);
+        if (std::fabs(right - left) > 1e-12 * std::max({voltagePeak, std::fabs(left), std::fabs(right)})) {
+            singleValued = false;
+        }
+    }
+
+    std::vector<double> time;
+    std::vector<double> data;
+    if (openVoltageAxis && uniqueInstants.size() == numberVoltageKnots && singleValued) {
+        // The voltage's own sampled axis, one value per sample.
+        for (size_t index = 0; index < uniqueInstants.size(); ++index) {
+            time.push_back(voltageTime[index]);
+            data.push_back(limits[index].second);
+        }
+    }
+    else {
+        // The closed axis [t0, t0 + T]: the first knot starts the period, t0 + T ends it with the left
+        // limit at the period boundary, and every edge inside keeps its value on both sides.
+        for (size_t index = 0; index < uniqueInstants.size(); ++index) {
+            auto [left, right] = limits[index];
+            if (index > 0) {
+                time.push_back(uniqueInstants[index]);
+                data.push_back(left);
+            }
+            if (index == 0 || right != left) {
+                time.push_back(uniqueInstants[index]);
+                data.push_back(right);
+            }
+        }
+        time.push_back(periodEnd);
+        data.push_back(limits[0].first);
+    }
+
+    Waveform magnetizingVoltageWaveform;
+    magnetizingVoltageWaveform.set_time(time);
+    magnetizingVoltageWaveform.set_data(data);
+    SignalDescriptor magnetizingVoltage;
+    magnetizingVoltage.set_waveform(magnetizingVoltageWaveform);
+    OperatingPointExcitation result = excitation;
+    result.set_voltage(magnetizingVoltage);
+    return result;
+}
+
+std::optional<std::vector<double>> Inputs::get_winding_dc_resistances(const Coil& coil, double temperature) {
+    if (!coil.get_turns_description()) {
+        return std::nullopt;
+    }
+    return WindingOhmicLosses::calculate_dc_resistance_per_winding(coil, temperature);
 }
 
 double Inputs::calculate_steady_state_mean_voltage(const OperatingPointExcitation& excitation,

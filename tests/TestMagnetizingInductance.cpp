@@ -3127,3 +3127,81 @@ TEST_CASE("Test_Line_Cycle_Swing_Past_The_Curve_End_Throws", "[physical-model][m
                     SaturationException);
     settings.reset();
 }
+
+
+// ABT #2002 (Alf, 2026-10-24): the winding's resistive drop is taken out only to judge volt-second balance. The
+// magnetizing current is derived from the voltage as given, which MKF treats as the induced voltage (converter
+// models and the web give ideal voltages): a wound primary (R0 > 0) and the same coil unwound (no length, no
+// resistance) give the same magnetizing current from the same voltage, even one carrying R0 i0(t). Taking the
+// drop out here tilted a DCM flyback's dead time and gave a common-mode choke's 50 Hz line point a flux of -R i.
+TEST_CASE("Test_Magnetizing_Current_Is_Derived_From_The_Voltage_As_Given", "[physical-model][magnetizing-inductance][abt-2002]") {
+    settings.reset();
+    auto path = std::filesystem::path{std::source_location::current().file_name()}
+                    .parent_path().append("..").append("MAS").append("examples").append("02_flyback_efd25_3c95.json");
+    REQUIRE(std::filesystem::exists(path));
+    auto mas = OpenMagneticsTesting::mas_loader(path.string());
+    auto wound = OpenMagnetics::magnetic_autocomplete(mas.get_magnetic());
+    if (!wound.get_coil().get_turns_description()) {
+        wound.get_mutable_coil().wind();
+    }
+    REQUIRE(wound.get_coil().get_turns_description());
+    OpenMagnetics::Magnetic unwound = wound;
+    unwound.get_mutable_coil().set_turns_description(std::nullopt);
+
+    OperatingPoint given = mas.get_inputs().get_operating_points()[0];
+    REQUIRE(given.get_excitations_per_winding().size() == 2);
+    double temperature = given.get_conditions().get_ambient_temperature();
+    double primaryResistance = OpenMagnetics::Inputs::get_winding_dc_resistances(wound.get_coil(), temperature).value()[0];
+    REQUIRE(primaryResistance > 0);
+
+    // Both operating points on one sampled grid, with the same primary voltage carrying R0 i0(t).
+    auto primary = given.get_excitations_per_winding()[0];
+    double frequency = primary.get_frequency();
+    auto sampledVoltage = OpenMagnetics::Inputs::calculate_sampled_waveform(
+        OpenMagnetics::Inputs::standardize_waveform(primary.get_voltage().value(), frequency).get_waveform().value(), frequency);
+    auto sampledCurrent = OpenMagnetics::Inputs::calculate_sampled_waveform(
+        OpenMagnetics::Inputs::standardize_waveform(primary.get_current().value(), frequency).get_waveform().value(), frequency);
+    REQUIRE(sampledVoltage.get_data().size() == sampledCurrent.get_data().size());
+    Waveform voltageWithDrop = sampledVoltage;
+    std::vector<double> dataWithDrop;
+    for (size_t index = 0; index < sampledVoltage.get_data().size(); ++index) {
+        dataWithDrop.push_back(sampledVoltage.get_data()[index] + primaryResistance * sampledCurrent.get_data()[index]);
+    }
+    voltageWithDrop.set_data(dataWithDrop);
+
+    auto with_primary = [&](const Waveform& voltage) {
+        OperatingPoint operatingPoint = given;
+        for (auto& excitation : operatingPoint.get_mutable_excitations_per_winding()) {
+            excitation.set_magnetizing_current(std::nullopt);
+            excitation.set_magnetic_flux_density(std::nullopt);
+            excitation.set_magnetic_field_strength(std::nullopt);
+        }
+        SignalDescriptor voltageSignal;
+        voltageSignal.set_waveform(voltage);
+        SignalDescriptor currentSignal;
+        currentSignal.set_waveform(sampledCurrent);
+        operatingPoint.get_mutable_excitations_per_winding()[0].set_voltage(voltageSignal);
+        operatingPoint.get_mutable_excitations_per_winding()[0].set_current(currentSignal);
+        return operatingPoint;
+    };
+    OperatingPoint woundOperatingPoint = with_primary(voltageWithDrop);
+    OperatingPoint unwoundOperatingPoint = with_primary(voltageWithDrop);
+
+    MagnetizingInductance model;
+    auto woundResult = model.calculate_inductance_and_magnetic_flux_density(wound, &woundOperatingPoint);
+    auto unwoundResult = model.calculate_inductance_and_magnetic_flux_density(unwound, &unwoundOperatingPoint);
+    REQUIRE(resolve_dimensional_values(woundResult.first.get_magnetizing_inductance()) ==
+            resolve_dimensional_values(unwoundResult.first.get_magnetizing_inductance()));
+
+    auto woundCurrent = woundOperatingPoint.get_excitations_per_winding()[0].get_magnetizing_current()->get_waveform()->get_data();
+    auto unwoundCurrent = unwoundOperatingPoint.get_excitations_per_winding()[0].get_magnetizing_current()->get_waveform()->get_data();
+    REQUIRE(woundCurrent.size() == unwoundCurrent.size());
+    double peakToPeak = *std::max_element(unwoundCurrent.begin(), unwoundCurrent.end()) - *std::min_element(unwoundCurrent.begin(), unwoundCurrent.end());
+    REQUIRE(peakToPeak > 0);
+    double largestDifference = 0;
+    for (size_t index = 0; index < woundCurrent.size(); ++index) {
+        largestDifference = std::max(largestDifference, std::fabs(woundCurrent[index] - unwoundCurrent[index]));
+    }
+    INFO("R0 = " << primaryResistance << " Ohm, magnetizing current pk-pk " << peakToPeak << " A, largest difference " << largestDifference << " A");
+    CHECK(largestDifference < 1e-9 * peakToPeak);
+}

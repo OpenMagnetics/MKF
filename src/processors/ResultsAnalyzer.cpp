@@ -8,6 +8,7 @@
 #include "support/Exceptions.h"
 #include "support/Utils.h"
 #include "support/NumberFormat.h"
+#include "physical_models/WindingOhmicLosses.h"
 
 #include <magic_enum.hpp>
 
@@ -269,13 +270,30 @@ std::vector<ResultFinding> ResultsAnalyzer::analyze_saturation(const Magnetic& m
     return {make_finding(operatingPoint, operatingPointIndex, ResultFindingCode::CORE_SATURATES, "At " + where + ": " + verdict.message)};
 }
 
-std::vector<ResultFinding> ResultsAnalyzer::analyze_volt_second_balance(const OperatingPoint& operatingPoint, size_t operatingPointIndex) {
+std::vector<ResultFinding> ResultsAnalyzer::analyze_volt_second_balance(const OperatingPoint& operatingPoint, size_t operatingPointIndex,
+                                                                        std::optional<std::vector<double>> windingDcResistances,
+                                                                        std::optional<double> resistanceTemperature) {
+    if (windingDcResistances.has_value() != resistanceTemperature.has_value()) {
+        throw InvalidInputException(ErrorCode::INVALID_INPUT,
+            "analyze_volt_second_balance: the windings' DC resistances and the temperature they were computed at go together");
+    }
     std::vector<ResultFinding> findings;
     const auto& excitations = operatingPoint.get_excitations_per_winding();
     for (size_t windingIndex = 0; windingIndex < excitations.size(); ++windingIndex) {
-        const auto& excitation = excitations[windingIndex];
+        auto excitation = excitations[windingIndex];
         if (!excitation.get_voltage() || !excitation.get_voltage()->get_waveform()) {
             continue;
+        }
+        // ABT #2002: the winding's own resistive drop i(t) R_dc is not flux drift; only what remains
+        // once it is taken out is judged. Without a resistance (no wound coil) or a current, the voltage
+        // is judged as given.
+        std::optional<double> dcResistance;
+        std::optional<double> meanResistiveDrop;
+        if (windingDcResistances && windingIndex < windingDcResistances->size() && excitation.get_current()) {
+            dcResistance = windingDcResistances->at(windingIndex);
+            auto currentWaveform = Inputs::standardize_waveform(excitation.get_current().value(), excitation.get_frequency()).get_waveform().value();
+            meanResistiveDrop = dcResistance.value() * Inputs::calculate_waveform_average(currentWaveform, excitation.get_frequency());
+            excitation = Inputs::remove_resistive_drop(excitation, dcResistance.value());
         }
         double frequency = excitation.get_frequency();
         auto voltage = Inputs::standardize_waveform(excitation.get_voltage().value(), frequency);
@@ -284,12 +302,30 @@ std::vector<ResultFinding> ResultsAnalyzer::analyze_volt_second_balance(const Op
                               std::to_string(windingIndex) + " ('" + excitation.get_name().value_or("unnamed") + "')";
         auto imbalance = Inputs::describe_volt_second_imbalance(sampledVoltage, context);
         if (imbalance) {
-            findings.push_back(make_finding(operatingPoint, operatingPointIndex, ResultFindingCode::VOLT_SECOND_IMBALANCE,
-                imbalance.value() + ". Where MKF derives a magnetizing current from this voltage, it integrates "
-                "only its balanced part (the mean removed), so the numbers given describe that part"));
+            std::string message = imbalance.value() + ". Where MKF derives a magnetizing current from this voltage, it integrates "
+                                  "only its balanced part (the mean removed), so the numbers given describe that part";
+            if (dcResistance) {
+                message += ". The winding's own resistive drop (" + format_quantity(dcResistance.value(), "Ohm") + " at " +
+                           format_number(resistanceTemperature.value()) + " C, " + format_quantity(meanResistiveDrop.value(), "V") +
+                           " on average) was taken out of the voltage before this check";
+            }
+            findings.push_back(make_finding(operatingPoint, operatingPointIndex, ResultFindingCode::VOLT_SECOND_IMBALANCE, message));
         }
     }
     return findings;
+}
+
+std::vector<ResultFinding> ResultsAnalyzer::analyze_volt_second_balance(const Magnetic& magnetic, const OperatingPoint& operatingPoint,
+                                                                        const Outputs& output, size_t operatingPointIndex) {
+    // The resistance at the temperature the output's winding losses were evaluated at (the solved one),
+    // or, for an output without them, at the operating point's own temperature.
+    double temperature = operatingPoint.get_conditions().get_ambient_temperature();
+    if (output.get_winding_losses() && output.get_winding_losses()->get_temperature()) {
+        temperature = output.get_winding_losses()->get_temperature().value();
+    }
+    auto windingDcResistances = Inputs::get_winding_dc_resistances(magnetic.get_coil(), temperature);
+    return analyze_volt_second_balance(operatingPoint, operatingPointIndex, windingDcResistances,
+                                       windingDcResistances ? std::optional<double>(temperature) : std::nullopt);
 }
 
 std::vector<ResultFinding> ResultsAnalyzer::analyze_temperature(const Magnetic& magnetic, const OperatingPoint& operatingPoint,
@@ -510,7 +546,7 @@ std::vector<ResultFinding> ResultsAnalyzer::analyze_results(const Mas& mas) {
                                                      mas.get_inputs().get_design_requirements().get_topology())) {
             findings.push_back(finding);
         }
-        for (auto& finding : analyze_volt_second_balance(operatingPoints[index], index)) {
+        for (auto& finding : analyze_volt_second_balance(mas.get_magnetic(), operatingPoints[index], outputs[index], index)) {
             findings.push_back(finding);
         }
         if (!outputs[index].get_temperature()) {

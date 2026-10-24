@@ -126,7 +126,17 @@ class ResultsAnalyzer {
     static std::vector<ResultFinding> analyze_saturation(const Magnetic& magnetic, const OperatingPoint& operatingPoint,
                                                          const Outputs& output, size_t operatingPointIndex,
                                                          std::optional<Topology> topology = std::nullopt);
-    static std::vector<ResultFinding> analyze_volt_second_balance(const OperatingPoint& operatingPoint, size_t operatingPointIndex);
+    // Volt-second balance of each winding voltage. ABT #2002: with `windingDcResistances` (each winding's
+    // R_dc at `resistanceTemperature`) a winding with a current is judged on v(t) - R_dc i(t), its own
+    // resistive drop taken out (Inputs::remove_resistive_drop); without them the voltage is judged as given.
+    static std::vector<ResultFinding> analyze_volt_second_balance(const OperatingPoint& operatingPoint, size_t operatingPointIndex,
+                                                                  std::optional<std::vector<double>> windingDcResistances = std::nullopt,
+                                                                  std::optional<double> resistanceTemperature = std::nullopt);
+    // The same for a simulated point: the resistances come from the magnetic's coil when it is wound
+    // (Inputs::get_winding_dc_resistances), at the temperature of the output's winding losses, or the
+    // operating point's temperature when the output has none.
+    static std::vector<ResultFinding> analyze_volt_second_balance(const Magnetic& magnetic, const OperatingPoint& operatingPoint,
+                                                                  const Outputs& output, size_t operatingPointIndex);
     static std::vector<ResultFinding> analyze_temperature(const Magnetic& magnetic, const OperatingPoint& operatingPoint,
                                                           const Outputs& output, size_t operatingPointIndex);
     // ABT #1876: for an output WITHOUT a temperature. The MAS cannot say why a point has none (simulate gives
