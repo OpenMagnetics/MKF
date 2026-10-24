@@ -1260,8 +1260,23 @@ double InitialPermeability::get_initial_permeability_magnetic_field_dc_bias_depe
         initialPermeabilityValue = std::get<double>(initialPermeabilityMagneticFieldDcBiasInterps[cacheKey]);
     }
     else {
-        auto value = std::get<tk::spline>(initialPermeabilityMagneticFieldDcBiasInterps[cacheKey])(magneticFieldDcBias);
-        initialPermeabilityValue = std::max(1., value);
+        const auto& interp = std::get<tk::spline>(initialPermeabilityMagneticFieldDcBiasInterps[cacheKey]);
+        double tableEnd = interp.get_x_max();
+        if (magneticFieldDcBias > tableEnd) {
+            // Past the last tabulated bias the core is taken as fully saturated: mu_r = 1, the vacuum
+            // value. The spline through the table is not a model of the material there, so it is not
+            // evaluated (it used to be, and its value floored to 1).
+            return 1;
+        }
+        initialPermeabilityValue = interp(magneticFieldDcBias);
+        if (!std::isfinite(initialPermeabilityValue) || initialPermeabilityValue < 1) {
+            throw MaterialException(ErrorCode::MATERIAL_INVALID_PROPERTY,
+                                    "Material " + coreMaterial.get_name() + ": initial permeability at a DC bias of " +
+                                    std::to_string(magneticFieldDcBias) + " A/m evaluates to " + std::to_string(initialPermeabilityValue) +
+                                    ", which is not a relative permeability (finite and at least 1); its mu(H_dc) table runs from " +
+                                    std::to_string(interp.get_x_min()) + " A/m to " + std::to_string(tableEnd) + " A/m",
+                                    coreMaterial.get_name());
+        }
     }
 
     if (std::isnan(initialPermeabilityValue)) {

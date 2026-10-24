@@ -1780,4 +1780,60 @@ namespace {
         CHECK(estimatorGaps == 0);
     }
 
+    TEST_CASE("DC-bias permeability past the end of its table is the saturated core's mu_r = 1, inside the table it is the table's", "[physical-model][initial-permeability][abt-1809]") {
+        // Nanoperm 2000 tabulates mu(H_dc) up to 861.1 A/m (mu = 210 there). Past that bias the material has no
+        // data, and the core is taken as fully saturated: mu_r = 1 (Alf's decision, 2026-10-23). The spline through
+        // the table used to be evaluated out there and its value floored to 1, so the permeability fell from 210 to
+        // 1 along an extrapolation (about 140 at 1000 A/m, 1 from about 1300 A/m on), and the floor made 1330, 1554
+        // and 3497 A/m read the same.
+        auto material = OpenMagnetics::Core::resolve_material("Nanoperm 2000");
+        auto points = OpenMagnetics::InitialPermeability::get_only_magnetic_field_dc_bias_dependent_points(material);
+        REQUIRE(points.size() > 2);
+        double tableEnd = 0;
+        double valueAtTableEnd = 0;
+        for (const auto& point : points) {
+            if (point.get_magnetic_field_dc_bias().value() > tableEnd) {
+                tableEnd = point.get_magnetic_field_dc_bias().value();
+                valueAtTableEnd = point.get_value();
+            }
+        }
+        REQUIRE_THAT(tableEnd, Catch::Matchers::WithinRel(861.1111, 1e-4));
+
+        // Inside the table: the table's own values, unchanged, at every tabulated bias.
+        for (const auto& point : points) {
+            double fieldStrength = point.get_magnetic_field_dc_bias().value();
+            INFO("H_dc = " << fieldStrength << " A/m");
+            CHECK_THAT(OpenMagnetics::InitialPermeability::get_initial_permeability_magnetic_field_dc_bias_dependent(material, fieldStrength),
+                       Catch::Matchers::WithinRel(point.get_value(), 1e-9));
+        }
+        CHECK_THAT(OpenMagnetics::InitialPermeability::get_initial_permeability_magnetic_field_dc_bias_dependent(material, tableEnd),
+                   Catch::Matchers::WithinRel(valueAtTableEnd, 1e-9));
+        CHECK(valueAtTableEnd > 100);
+
+        // Past the end: 1, right after the end as well as far beyond it.
+        for (double fieldStrength : {1.001 * tableEnd, 1000.0, 1330.6, 1554.28, 3497.14, 1e6}) {
+            INFO("H_dc = " << fieldStrength << " A/m");
+            CHECK(OpenMagnetics::InitialPermeability::get_initial_permeability_magnetic_field_dc_bias_dependent(material, fieldStrength) == 1);
+        }
+
+        // In the full model the DC-bias factor is that 1 over the material's reference permeability (its unbiased
+        // value at 25 C, no frequency), and the frequency factor still multiplies it. At 150 kHz that factor is
+        // below 1, so the model value past the end is below the vacuum's 1 (0.963 here), the same at every bias
+        // past the end; get_initial_permeability then reads 1 for it under a bias, the saturated material.
+        double reference = OpenMagnetics::InitialPermeability::get_initial_permeability_model_value(material, 25.0, std::nullopt, std::nullopt);
+        double unbiasedAt150kHz = OpenMagnetics::InitialPermeability::get_initial_permeability_model_value(material, 25.0, std::nullopt, 150e3);
+        double frequencyFactor = unbiasedAt150kHz / reference;
+        INFO("reference " << reference << ", unbiased at 150 kHz " << unbiasedAt150kHz);
+        REQUIRE(frequencyFactor < 1);
+        for (double fieldStrength : {1000.0, 1330.6, 3497.14}) {
+            INFO("H_dc = " << fieldStrength << " A/m");
+            CHECK_THAT(OpenMagnetics::InitialPermeability::get_initial_permeability_model_value(material, 25.0, fieldStrength, 150e3),
+                       Catch::Matchers::WithinRel(frequencyFactor, 1e-9));
+            CHECK(OpenMagnetics::InitialPermeability::get_initial_permeability(material, 25.0, fieldStrength, 150e3) == 1);
+        }
+        // Inside the table the full model is still the table's value times the frequency factor.
+        CHECK_THAT(OpenMagnetics::InitialPermeability::get_initial_permeability_model_value(material, 25.0, tableEnd, 150e3),
+                   Catch::Matchers::WithinRel(valueAtTableEnd * frequencyFactor, 1e-9));
+    }
+
 }  // namespace
