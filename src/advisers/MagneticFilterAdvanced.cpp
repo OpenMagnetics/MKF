@@ -191,6 +191,9 @@ std::pair<bool, double> MagneticFilterLeakageInductance::evaluate_minimize_leaka
 
     // Get magnetizing inductance for normalization
     OpenMagnetics::MagnetizingInductance magnetizingInductanceModel("ZHANG");
+    // ABT #1787: the topology tells a DMC from a CMC (their magnetizing currents differ); without it
+    // a DMC took the CMC branch, as the Sweeper did before ABT #1754.
+    magnetizingInductanceModel.set_topology(inputs->get_design_requirements().get_topology());
     OperatingPoint* operatingPoint = nullptr;
     if (inputs->get_operating_points().size() > 0) {
         operatingPoint = &inputs->get_mutable_operating_points()[0];

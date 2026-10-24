@@ -70,6 +70,7 @@
 #include "processors/Inputs.h"
 #include "processors/ResultsAnalyzer.h"
 #include "physical_models/MagnetizingInductance.h"
+#include "physical_models/LeakageInductance.h"
 #include "support/Settings.h"
 #include "support/Utils.h"
 #include "support/Exceptions.h"
@@ -2372,5 +2373,42 @@ TEST_CASE("MagneticFilter SATURATION keeps a powder DMC choke driven past 100 Oe
         MagneticFilterSaturation filter;
         CHECK(filter.evaluate_magnetic(&magnetic, &inputs).first);
     }
+    settings.reset();
+}
+
+TEST_CASE("MagneticFilter LEAKAGE_INDUCTANCE normalises a DMC by the magnetizing inductance of the DMC topology",
+          "[magnetic-filter][leakage-inductance][dmc][abt-1787]") {
+    // Without the topology the magnetizing-inductance model cannot tell the DMC from a CMC and drives the
+    // core with the CMC's magnetizing current (a triangle of the whole line swing at the switching frequency).
+    settings.reset();
+    clear_databases();
+    std::ifstream file(OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "dmc/dmc_default_inputs.json"));
+    REQUIRE(file.good());
+    OpenMagnetics::Inputs inputs(json::parse(file));
+    REQUIRE(inputs.get_design_requirements().get_topology() == Topology::DIFFERENTIAL_MODE_CHOKE);
+    auto magnetic = OpenMagneticsTesting::get_quick_magnetic("T 75/44/36", json::array(), {46, 46}, 1, "Edge 90");
+    // get_quick_magnetic strips the turns; the leakage needs them, so keep the same quick coil wound.
+    magnetic.set_coil(OpenMagneticsTesting::get_quick_coil({46, 46}, {1, 1}, "T 75/44/36", 1));
+    REQUIRE(magnetic.get_coil().get_turns_description());
+
+    double frequency = inputs.get_operating_point(0).get_excitations_per_winding()[0].get_frequency();
+    double leakageInductance = resolve_dimensional_values(
+        LeakageInductance().calculate_leakage_inductance(magnetic, frequency, 0, 1).get_leakage_inductance_per_winding()[0]);
+    auto magnetizingInductanceWith = [&](std::optional<Topology> topology) {
+        MagnetizingInductance model("ZHANG");
+        model.set_topology(topology);
+        auto operatingPoint = inputs.get_operating_point(0);
+        return resolve_dimensional_values(model.calculate_inductance_from_number_turns_and_gapping(
+            magnetic.get_mutable_core(), magnetic.get_mutable_coil(), &operatingPoint).get_magnetizing_inductance());
+    };
+    double dmcMagnetizingInductance = magnetizingInductanceWith(inputs.get_design_requirements().get_topology());
+    double cmcBranchMagnetizingInductance = magnetizingInductanceWith(std::nullopt);
+    INFO("Lk " << leakageInductance << " H; Lm " << dmcMagnetizingInductance << " H as a DMC, " << cmcBranchMagnetizingInductance << " H without the topology");
+    REQUIRE(std::abs(dmcMagnetizingInductance / cmcBranchMagnetizingInductance - 1) > 1e-3);  // the check can tell them apart
+
+    MagneticFilterLeakageInductance filter;
+    auto [valid, scoring] = filter.evaluate_magnetic(&magnetic, &inputs);
+    CHECK(valid);
+    CHECK_THAT(scoring, Catch::Matchers::WithinRel(leakageInductance / dmcMagnetizingInductance, 1e-9));
     settings.reset();
 }
