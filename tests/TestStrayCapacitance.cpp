@@ -4400,3 +4400,52 @@ TEST_CASE("Test_StrayCapacitance_Rectangular_Window_Turn_To_Core_Yoke_Share_And_
     }
     settings.reset();
 }
+
+// The insulation layers between two turns form a series stack: eps_eff = sum(t_i) / sum(t_i / eps_i).
+// Folding layer by layer, each next layer combines with the ACCUMULATED thickness of those before it;
+// it used to combine with the previous layer's thickness alone, wrong from the third layer on.
+TEST_CASE("Insulation layers between two turns combine as one series stack", "[physical-model][stray-capacitance][abt-1605]") {
+    settings.reset();
+    auto coilJsonStr = R"({"bobbin": "Dummy", "functionalDescription":[{"name": "Primary", "numberTurns": 1, "numberParallels": 1, "isolationSide": "primary", "wire": "Round 1.00 - Grade 1" }, {"name": "Secondary", "numberTurns": 1, "numberParallels": 1, "isolationSide": "secondary", "wire": "Round 1.00 - Grade 1" } ] })";
+    auto coreJsonStr = R"({"name": "core_E_19_8_5_N87_substractive", "functionalDescription": {"type": "twoPieceSet", "material": "N87", "shape": "PQ 32/20", "gapping": [{"type": "residual", "length": 0.000005 }], "numberStacks": 1 } })";
+    auto [core, coil] = prepare_core_and_coil_from_json(coreJsonStr, coilJsonStr);
+    auto turns = coil.get_turns_description().value();
+    REQUIRE(turns.size() == 2);
+    std::optional<Layer> insulationLayer;
+    auto coilLayers = coil.get_layers_description().value();
+    for (const auto& layer : coilLayers) {
+        if (layer.get_type() == ElectricalType::INSULATION) {
+            insulationLayer = layer;
+        }
+    }
+    REQUIRE(insulationLayer);
+    // The two turns are 25 um apart; the stack must fit in that gap, or the layers' thickness is capped
+    // to the gap (ABT #173) and data[3] no longer reads the stack.
+    std::vector<std::pair<double, std::string>> stack = {{4e-6, "ETFE"}, {10e-6, "Kapton HN"}, {6e-6, "FR4"}};
+    std::vector<Layer> layers;
+    double sumThickness = 0;
+    double sumThicknessOverPermittivity = 0;
+    for (const auto& [thickness, material] : stack) {
+        auto layer = insulationLayer.value();
+        auto dimensions = layer.get_dimensions();
+        if (layer.get_orientation() == WindingOrientation::CONTIGUOUS) {
+            dimensions[1] = thickness;
+        }
+        else {
+            dimensions[0] = thickness;
+        }
+        layer.set_dimensions(dimensions);
+        layer.set_insulation_material(material);
+        REQUIRE_THAT(coil.get_insulation_layer_thickness(layer), WithinRel(thickness, 1e-12));
+        sumThickness += thickness;
+        sumThicknessOverPermittivity += thickness / coil.get_insulation_layer_relative_permittivity(layer);
+        layers.push_back(layer);
+    }
+    auto wires = coil.get_wires();
+    auto data = StrayCapacitanceAlbachModel().preprocess_data_for_round_wires(turns[0], wires[0], turns[1], wires[1], coil, layers);
+    // {coating thickness, turn length, conducting radius, distance through layers, distance through air, eps coating, eps layers}
+    REQUIRE(data.size() == 7);
+    REQUIRE(sumThickness < data[3] + data[4]);
+    REQUIRE_THAT(data[3], WithinRel(sumThickness, 1e-9));
+    CHECK_THAT(data[6], WithinRel(sumThickness / sumThicknessOverPermittivity, 1e-9));
+}

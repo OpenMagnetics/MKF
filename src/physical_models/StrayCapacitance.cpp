@@ -923,13 +923,17 @@ std::vector<double> StrayCapacitanceModel::preprocess_data_for_round_wires(Turn 
         }
     }
 
+    // Series stack: the layers folded so far act as ONE dielectric of their accumulated thickness, so
+    // each next layer combines with that thickness, not with the previous layer's alone.
+    double accumulatedThickness = 0;
     for (size_t index = 0; index < distancesThroughLayers.size(); ++index) {
         if (index == 0) {
             effectiveRelativePermittivityLayers = relativePermittivityLayers[index];
         }
         else {
-            effectiveRelativePermittivityLayers = get_effective_relative_permittivity(distancesThroughLayers[index - 1], effectiveRelativePermittivityLayers, distancesThroughLayers[index], relativePermittivityLayers[index]);
+            effectiveRelativePermittivityLayers = get_effective_relative_permittivity(accumulatedThickness, effectiveRelativePermittivityLayers, distancesThroughLayers[index], relativePermittivityLayers[index]);
         }
+        accumulatedThickness += distancesThroughLayers[index];
     }
     // The insulation layers are collected along the winding path, not the turns'
     // closest approach, so their summed thickness can exceed the actual
