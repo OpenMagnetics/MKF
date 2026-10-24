@@ -260,6 +260,35 @@ TEST_CASE("Test_Self_Resonant_Frequency_Many_Turns", "[physical-model][impedance
     REQUIRE(std::abs(std::log(selfResonantFrequency / s4pPeak)) <= tolerance);
 
 }
+TEST_CASE("Test_Self_Resonant_Frequency_Uses_Settings_Stray_Capacitance_Model", "[physical-model][impedance][abt-1221]") {
+    // The self-resonance must use the stray-capacitance model selected in the settings, like the
+    // magnetizing tank and the differential-mode parameters: with Massarini selected, the SRF must
+    // be the one Massarini's capacitance gives, not Albach's (the constructor default).
+    auto path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "cmc_we_coated_anchor/744821039.json");
+    std::ifstream file(path);
+    REQUIRE(file.good());
+    OpenMagnetics::Magnetic magnetic(nlohmann::json::parse(file));
+    magnetic = magnetic_autocomplete(magnetic);
+    REQUIRE(magnetic.get_coil().get_turns_description());
+
+    auto& settings = Settings::GetInstance();
+    settings.reset();
+    settings.set_stray_capacitance_model(StrayCapacitanceModels::ALBACH);
+    auto albachFrequency = OpenMagnetics::Impedance().calculate_self_resonant_frequency(magnetic);
+    settings.set_stray_capacitance_model(StrayCapacitanceModels::MASSARINI);
+    auto massariniFrequency = OpenMagnetics::Impedance().calculate_self_resonant_frequency(magnetic);
+    settings.reset();
+
+    auto core = magnetic.get_core();
+    auto coil = magnetic.get_coil();
+    auto windingName = coil.get_functional_description()[0].get_name();
+    auto albachCapacitance = StrayCapacitance(StrayCapacitanceModels::ALBACH).calculate_capacitance(coil, core, std::nullopt, magnetic.get_core_electrical_reference()).get_capacitance_among_windings().value()[windingName][windingName];
+    auto massariniCapacitance = StrayCapacitance(StrayCapacitanceModels::MASSARINI).calculate_capacitance(coil, core, std::nullopt, magnetic.get_core_electrical_reference()).get_capacitance_among_windings().value()[windingName][windingName];
+    INFO("Albach C " << albachCapacitance << " F, SRF " << albachFrequency << " Hz; Massarini C " << massariniCapacitance << " F, SRF " << massariniFrequency << " Hz");
+    // The two models disagree on this part, so the setting must move the SRF.
+    REQUIRE(std::abs(albachCapacitance / massariniCapacitance - 1) > 0.01);
+    CHECK(std::abs(albachFrequency / massariniFrequency - 1) > 0.001);
+}
 TEST_CASE("Test_Impedance_Few_Turns", "[physical-model][impedance][smoke-test]") {
 
     std::vector<int64_t> numberTurns = {18, 18};
