@@ -49,6 +49,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <numbers>
 #include <cmrc/cmrc.hpp>
 #include <iomanip>
 #include <limits>
@@ -540,6 +541,34 @@ double Coil::lead_isotropic_bend_radius(const std::optional<ConnectionSleeve>& s
         }
     }
     return radius;
+}
+
+double Coil::lead_ramp_governing_radius(const Wire& leadWire, double isotropicRadius, double surfaceCurvature) {
+    const double inSurfaceCurvature2 = 1.0 / (isotropicRadius * isotropicRadius) - surfaceCurvature * surfaceCurvature;
+    if (!(inSurfaceCurvature2 > 0)) {
+        throw InvalidInputException(ErrorCode::INVALID_INPUT,
+            "A ramp that must bend no tighter than " + std::to_string(isotropicRadius * 1e3) +
+            " mm cannot climb a surface of curvature " + std::to_string(surfaceCurvature) + " 1/m");
+    }
+    double inSurfaceRadius = 1.0 / std::sqrt(inSurfaceCurvature2);
+    // A rectangular wire's limits are per axis (IEC 60317-0-2 Table 6 tests flatwise and
+    // edgewise separately). The column's curvature bends the turn about the AXIAL axis:
+    // that is the turn's own bend, already wound, and the ramp does not add to it (on a
+    // cylinder the normal curvature of any direction is at most 1/rho). The S bends it
+    // about the RADIAL axis, with the axial dimension -- the wire's height in this frame
+    // (the ramp is only planned for non-contiguous layers) -- in the bend plane. So the S
+    // answers to that one axis's minimum alone, not to the tighter of the two (ABT #1481).
+    if (leadWire.get_type() == WireType::RECTANGULAR) {
+        const auto inSurfaceAxis = WireBend::axis_from_bend_plane_dimension(leadWire, false);
+        if (auto axisMinimum = WireBend::get_flexibility_bend_radius_if_standardised(leadWire, inSurfaceAxis)) {
+            inSurfaceRadius = std::max(inSurfaceRadius, axisMinimum.value());
+        }
+    }
+    return inSurfaceRadius;
+}
+
+double Coil::lead_ramp_length(double stubHeight, double governingRadius) {
+    return std::numbers::pi * std::sqrt(stubHeight * governingRadius / 2);
 }
 
 int64_t Coil::pin_wrap_turns() {

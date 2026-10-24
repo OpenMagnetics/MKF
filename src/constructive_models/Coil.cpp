@@ -2071,24 +2071,10 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces(
                             " must bend no tighter than " + std::to_string(isotropicRadius * 1e3) + " mm, but its turn's own radius is " +
                             std::to_string(turnX * 1e3) + " mm, so no ramp off that turn can climb at all");
                     }
-                    double inSurfaceRadius = 1.0 / std::sqrt(inSurfaceCurvature2);
-                    // A rectangular wire's limits are per axis (IEC 60317-0-2 Table 6 tests flatwise and
-                    // edgewise separately). The column's curvature bends the turn about the AXIAL axis:
-                    // that is the turn's own bend, already wound, and the ramp does not add to it (on a
-                    // cylinder the normal curvature of any direction is at most 1/rho). The S bends it
-                    // about the RADIAL axis, with the axial dimension -- the wire's height in this frame
-                    // (the ramp is only planned for non-contiguous layers) -- in the bend plane. So the S
-                    // answers to that one axis's minimum alone, not to the tighter of the two (ABT #1481).
-                    if (leadWire.get_type() == WireType::RECTANGULAR) {
-                        const auto inSurfaceAxis = WireBend::axis_from_bend_plane_dimension(leadWire, false);
-                        if (auto axisMinimum = WireBend::get_flexibility_bend_radius_if_standardised(leadWire, inSurfaceAxis)) {
-                            inSurfaceRadius = std::max(inSurfaceRadius, axisMinimum.value());
-                        }
-                    }
-                    // A cosine S, y = h (1 - cos(pi s / S)) / 2 over the extent S: its tangent is along
-                    // the turn at both ends and its curvature is continuous, largest at the ends,
-                    // h pi^2 / (2 S^2) -- which is 1/Rg when S = pi sqrt(h Rg / 2).
-                    routes.back().rampLength = std::numbers::pi * std::sqrt(stubHeight * inSurfaceRadius / 2);
+                    // The per-axis rule for a rectangular wire (ABT #1481) lives in
+                    // lead_ramp_governing_radius; the cosine S's extent in lead_ramp_length.
+                    const double inSurfaceRadius = lead_ramp_governing_radius(leadWire, isotropicRadius, surfaceCurvature);
+                    routes.back().rampLength = lead_ramp_length(stubHeight, inSurfaceRadius);
                 }
             }
         };

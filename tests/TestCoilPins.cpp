@@ -1631,14 +1631,16 @@ TEST_CASE("A stub too short for its two bends is published as a ramp, only under
     }
 }
 
-TEST_CASE("An edge-wound rectangular lead ramps on the axis the ramp bends, not the tighter of both (ABT #1481)",
+TEST_CASE("An edge-wound rectangular secondary held whole by its section leaves by local radial leads at its own turns' height, with no ramp (ABT #1481, #1487)",
           "[constructive-model][coil][pins][abt1336][abt1481]") {
-    // A 10 x 0.8 mm rectangular wire lying with its width radial is wound EDGEWISE round the
-    // column: its edgewise minimum (about 25 mm) exceeds the turn's own radius. The ramp's S lies
-    // on the turn's surface and bends the wire about the radial axis -- flatwise here -- while the
-    // column's curvature is the turn's own bend, already wound. Checking the S against the combined
-    // curvature at the larger (edgewise) radius declared every such lead unbuildable, and the web's
-    // real-winding views of a PQ 65 with this secondary went blank.
+    // The web's PQ 65/60 with a 10 x 0.8 mm rectangular secondary lying with its width radial, so
+    // wound EDGEWISE round the column: its edgewise minimum (about 25 mm) exceeds the turn's own
+    // radius. This layout once blanked the web's real-winding views (ABT #1481: the leads' ramps
+    // were checked at the edgewise radius). Under ABT #1487 R1 the secondary's section holds each
+    // of its parallels whole, so every one of its terminals is LOCAL to that section; with one
+    // layer there is nothing of its own section outward of the turn to cross, so each lead leaves
+    // radially at its own turn's height: no stub, and so no ramp. The ramp rule of #1481 itself is
+    // tested directly, on the strip's own numbers, in the next test case.
     auto& settings = OpenMagnetics::Settings::GetInstance();
     settings.reset();
     settings.set_coil_use_real_winding_geometry(true);
@@ -1647,19 +1649,13 @@ TEST_CASE("An edge-wound rectangular lead ramps on the axis the ramp bends, not 
         "outerWidth": {"nominal": 0.010085}, "outerHeight": {"nominal": 0.000885},
         "coating": {"type": "enamelled", "grade": 1, "breakdownVoltage": 750}})");
     OpenMagnetics::Wire rectangular(rectangularJson);
-    // ABT #1487: this fixture used to lay the sections out as the web does, stacked axially. There
-    // the secondary's section holds every one of its parallels whole, and its terminals are now
-    // LOCAL to that section (Alf, 2026-09-29): a one-layer section's leads leave radially at their
-    // own turns' height, with no stub and so no ramp at all -- the premise below no longer arises
-    // in that layout. The same wire and turns stacked RADIALLY, the rectangular winding innermost,
-    // keep what this test is about: its leads cross the primary's layer to the window edge, climb a
-    // stub shorter than their two bends, and ramp on the edge-wound wire.
-    auto coil = OpenMagneticsTesting::get_quick_coil({3, 45}, {4, 1}, "PQ 65/60", 1,
-                                                     WindingOrientation::OVERLAPPING, WindingOrientation::OVERLAPPING,
+    // As the web lays it out: sections stacked axially, turns concentric inside each.
+    auto coil = OpenMagneticsTesting::get_quick_coil({45, 3}, {1, 4}, "PQ 65/60", 1,
+                                                     WindingOrientation::CONTIGUOUS, WindingOrientation::OVERLAPPING,
                                                      CoilAlignment::CENTERED, CoilAlignment::CENTERED,
-                                                     {rectangular, find_wire_by_name("Round 0.5 - Grade 1")});
+                                                     {find_wire_by_name("Round 0.5 - Grade 1"), rectangular});
     // Wound by consecutive turns, as the web does, so each parallel's end turn is off its own row.
-    const std::string secondaryName = coil.get_functional_description()[0].get_name();
+    const std::string secondaryName = coil.get_functional_description()[1].get_name();
     coil.preload_winding_style_overrides({{secondaryName, WindingStyle::WIND_BY_CONSECUTIVE_TURNS}});
     REQUIRE(coil.wind());
     REQUIRE(coil.is_real_winding_blocking_applied());
@@ -1667,32 +1663,91 @@ TEST_CASE("An edge-wound rectangular lead ramps on the axis the ramp bends, not 
     const double flatwise = WireBend::get_flexibility_bend_radius_if_standardised(rectangular, BendAxis::FLATWISE).value();
     const double edgewise = WireBend::get_flexibility_bend_radius_if_standardised(rectangular, BendAxis::EDGEWISE).value();
     REQUIRE(flatwise < edgewise);
-    const double coatedRadius = 0.5 * std::max(rectangular.get_maximum_outer_width(), rectangular.get_maximum_outer_height());
+
+    // R1's premise: each secondary parallel's turns all lie in one section.
+    const auto turns = coil.get_turns_description().value();
+    std::map<int64_t, std::set<std::string>> sectionsByParallel;
+    for (const auto& turn : turns) {
+        if (turn.get_winding() == secondaryName) {
+            sectionsByParallel[turn.get_parallel()].insert(turn.get_section().value());
+        }
+    }
+    REQUIRE(sectionsByParallel.size() == 4);
+    for (const auto& [parallel, sections] : sectionsByParallel) {
+        INFO("Secondary parallel " << parallel);
+        REQUIRE(sections.size() == 1);
+    }
 
     OpenMagnetics::ConnectionLayout layout;
     REQUIRE_NOTHROW(layout = coil.get_connection_layout());
-    size_t ramps = 0;
+    std::set<std::pair<int64_t, bool>> terminals;   // (parallel, entrance)
     for (const auto& route : layout.routes) {
-        if (route.winding != secondaryName || !route.rampLength) continue;
+        if (route.winding != secondaryName) continue;
         if (route.kind != ConnectionKind::TERMINAL_ENTRANCE && route.kind != ConnectionKind::TERMINAL_EXIT) continue;
         const bool entrance = route.kind == ConnectionKind::TERMINAL_ENTRANCE;
         INFO("Secondary parallel " << route.parallel << (entrance ? " entrance" : " exit"));
+        terminals.insert({route.parallel, entrance});
+        // Local and radial: the turn and the window exit, nothing between -- no stub, so no ramp.
+        REQUIRE(route.waypoints.size() == 2);
+        CHECK_FALSE(route.rampLength.has_value());
         const auto& turnEnd = entrance ? route.waypoints.back() : route.waypoints.front();
-        const auto& next = entrance ? route.waypoints[route.waypoints.size() - 2] : route.waypoints[1];
-        const double rho = turnEnd[0];
-        const double h = std::abs(next[1] - turnEnd[1]);
-        // The premise: the route's corners are still planned for the tighter-limited (edgewise)
-        // axis, and that radius exceeds the turn's own, so the combined rule could not climb.
+        const auto& windowEnd = entrance ? route.waypoints.front() : route.waypoints.back();
+        const std::string turnName = entrance ? route.toTurn : route.fromTurn;
+        const auto turn = std::find_if(turns.begin(), turns.end(), [&](const Turn& t) { return t.get_name() == turnName; });
+        REQUIRE(turn != turns.end());
+        CHECK(turn->get_winding() == secondaryName);
+        CHECK(turn->get_parallel() == route.parallel);
+        CHECK(turn->get_section().value() == *sectionsByParallel.at(route.parallel).begin());
+        // The lead leaves at its own turn's height, straight outward.
+        CHECK(turnEnd[0] == turn->get_coordinates()[0]);
+        CHECK(turnEnd[1] == turn->get_coordinates()[1]);
+        CHECK(windowEnd[1] == turnEnd[1]);
+        CHECK(windowEnd[0] > turnEnd[0]);
+        // Its corners are still planned for the tighter-limited (edgewise) axis.
         CHECK(route.plannedBendRadius >= edgewise);
-        REQUIRE(route.plannedBendRadius > rho);
-        // Nothing declared, no sleeve: the isotropic part is the coated radius, with the column's
-        // curvature taken out; the wire's flatwise minimum on top.
-        const double isotropic = 1.0 / std::sqrt(1.0 / (coatedRadius * coatedRadius) - 1.0 / (rho * rho));
-        const double Rg = std::max(isotropic, flatwise);
-        CHECK_THAT(*route.rampLength, Catch::Matchers::WithinRel(std::numbers::pi * std::sqrt(h * Rg / 2), 1e-12));
-        ++ramps;
     }
-    REQUIRE(ramps > 0);
+    REQUIRE(terminals.size() == 8);   // an entrance and an exit for each of the 4 parallels
+    settings.reset();
+}
+
+TEST_CASE("A rectangular lead's ramp is planned at the in-surface axis's minimum, not the tighter of both (ABT #1481)",
+          "[constructive-model][coil][pins][abt1481]") {
+    // The S of a ramp lies ON the turn's surface and bends the wire about the RADIAL axis; the
+    // column's curvature is the turn's own bend, already wound. So a rectangular lead's ramp is
+    // checked at Rg = max(isotropic coated radius with the column curvature taken out, the
+    // flatwise minimum), never at the edgewise minimum. Fed the 10 x 0.8 mm strip's own numbers.
+    auto& settings = OpenMagnetics::Settings::GetInstance();
+    settings.reset();
+    const json rectangularJson = json::parse(R"({"type": "rectangular", "standard": "IEC 60317", "material": "copper",
+        "numberConductors": 1, "conductingWidth": {"nominal": 0.01}, "conductingHeight": {"nominal": 0.0008},
+        "outerWidth": {"nominal": 0.010085}, "outerHeight": {"nominal": 0.000885},
+        "coating": {"type": "enamelled", "grade": 1, "breakdownVoltage": 750}})");
+    OpenMagnetics::Wire rectangular(rectangularJson);
+    const double flatwise = WireBend::get_flexibility_bend_radius_if_standardised(rectangular, BendAxis::FLATWISE).value();
+    const double edgewise = WireBend::get_flexibility_bend_radius_if_standardised(rectangular, BendAxis::EDGEWISE).value();
+    REQUIRE(flatwise < edgewise);
+    // The coated half-size c, the radius the lead's corner sweeps; nothing declared, no sleeve, so
+    // the isotropic part of the lead's limit is c itself.
+    const double c = 0.5 * std::max(rectangular.get_maximum_outer_width(), rectangular.get_maximum_outer_height());
+    const double isotropicRadius = OpenMagnetics::Coil::lead_isotropic_bend_radius(std::nullopt, c, true);
+    REQUIRE(isotropicRadius == c);
+
+    for (const double rho : {0.006, 0.010, 0.0125, 0.020, 0.050}) {
+        INFO("turn radius " << rho * 1e3 << " mm");
+        const double Rg = OpenMagnetics::Coil::lead_ramp_governing_radius(rectangular, isotropicRadius, 1.0 / rho);
+        const double isotropic = 1.0 / std::sqrt(1.0 / (c * c) - 1.0 / (rho * rho));
+        CHECK_THAT(Rg, Catch::Matchers::WithinRel(std::max(isotropic, flatwise), 1e-12));
+        CHECK(Rg < edgewise);
+        for (const double h : {0.0005, 0.002, 0.01}) {
+            INFO("stub height " << h * 1e3 << " mm");
+            CHECK_THAT(OpenMagnetics::Coil::lead_ramp_length(h, Rg), Catch::Matchers::WithinRel(std::numbers::pi * std::sqrt(h * Rg / 2), 1e-12));
+        }
+    }
+    // A flat face adds no curvature: Rg is the larger of c and the flatwise minimum.
+    CHECK_THAT(OpenMagnetics::Coil::lead_ramp_governing_radius(rectangular, isotropicRadius, 0.0),
+               Catch::Matchers::WithinRel(std::max(c, flatwise), 1e-12));
+    // A column curved tighter than the lead may bend leaves no ramp that can climb.
+    CHECK_THROWS(OpenMagnetics::Coil::lead_ramp_governing_radius(rectangular, isotropicRadius, 1.0 / (0.9 * c)));
     settings.reset();
 }
 

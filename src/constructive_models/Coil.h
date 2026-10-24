@@ -1485,6 +1485,19 @@ class Coil : public MAS::Coil {
         /// which of the wire's axes a bend is about takes that axis's minimum separately.
         static double lead_isotropic_bend_radius(const std::optional<ConnectionSleeve>& sleeve, double sweptRadius,
                                                  bool realWinding);
+        /// The radius Rg a terminal lead's S ramp (ConnectionRoute::rampLength) is planned at. The S
+        /// lies ON the turn's surface, so what bends alike on every axis, `isotropicRadius`, sees the
+        /// S combined with the surface's own curvature across it, `surfaceCurvature` (1/rho on a round
+        /// or oblong column, 0 on a flat face): 1/Rg^2 = 1/isotropicRadius^2 - surfaceCurvature^2.
+        /// A rectangular wire's own minimum is per axis, and the S bends it about the RADIAL axis
+        /// only, with the wire's height in the bend plane, so Rg is raised to THAT axis's minimum
+        /// alone, never to the tighter of both (ABT #1481). A round wire's minimum is already in
+        /// `isotropicRadius`. Throws when the surface is curved tighter than `isotropicRadius`.
+        static double lead_ramp_governing_radius(const Wire& leadWire, double isotropicRadius, double surfaceCurvature);
+        /// The extent S, along the turn, of the cosine S ramp y = h (1 - cos(pi s / S)) / 2 that
+        /// climbs `stubHeight` h: its curvature peaks at h pi^2 / (2 S^2), which is 1/Rg at
+        /// S = pi sqrt(h Rg / 2), Rg = `governingRadius` (lead_ramp_governing_radius).
+        static double lead_ramp_length(double stubHeight, double governingRadius);
         /// RFC 0013 R4's wrap turns per wire end, from src/data/dfm_rules.json.
         static int64_t pin_wrap_turns();
         /// How much deeper the front face lies than MKF's radial coordinate: 0 for a round column,
