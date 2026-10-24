@@ -1216,6 +1216,12 @@ std::pair<MagnetizingInductanceOutput, SignalDescriptor> MagnetizingInductance::
     // bounded by the valleys of the magnetizing current, keeps the line flux density computed above (its mean),
     // and its ripple swings about it with the incremental permeability at the cycle's own line bias: the field
     // of its mean MMF on the same load line as the bias above.
+    // ABT #1786: the cycle's line flux density is that load line's B on the material's magnetisation curve, as the
+    // DC case reads its bias (Alf, 2026-10-18), not N i / (R(mu_peak) A_e): the curve's B(H) = mu0 * integral of
+    // mu_rev lies well above mu0 mu_rev(H) H at the line peak (the web DMC fixture's T 48/23/19 MPP 300 at 2381 A/m:
+    // 0.354 T linear). A line MMF past the load line at the curve's end (1000 times H_sat) has no B on the curve: it
+    // throws, as the inverse does (ABT #1942). The peak field strength, the load line's H at the record's largest
+    // MMF, goes to the saturation check against H_sat with the DC point (DcBiasPoint::peakMagneticFieldStrength).
     if (lineCycleRecordUnderImposedMagnetomotiveForce) {
         // The flux density is built on the magnetizing current's own samples: the core-loss split reads the two
         // records over the same span.
@@ -1242,11 +1248,26 @@ std::pair<MagnetizingInductanceOutput, SignalDescriptor> MagnetizingInductance::
             std::vector<size_t> bounds = valleys.value();
             bounds.front() = 0;
             bounds.back() = current.size();
-            // The flux density above is linear in the magnetizing current through this reluctance, plus the offset
-            // the DC bias may have moved it by.
-            double currentAverage = Inputs::calculate_waveform_average(magnetizingCurrentWaveform);
-            double fluxDensityOffset = Inputs::calculate_waveform_average(result.second.get_waveform().value()) -
-                                       numberTurnsPrimary * currentAverage / (currentTotalReluctance * effectiveArea);
+            // The line load line, read on the curve; past the curve's end it throws.
+            double curveEndFieldStrength = magnetisationCurve->fieldStrength.back();
+            double curveEndFluxDensity = magnetisationCurve->fluxDensity.back();
+            double curveEndMagnetomotiveForce = curveEndFieldStrength * effectiveLength + curveEndFluxDensity * effectiveArea * gapReluctance;
+            auto lineLoadLine = [&](double magnetomotiveForce) {
+                if (fabs(magnetomotiveForce) > curveEndMagnetomotiveForce) {
+                    throw SaturationException(
+                        "The line-cycle MMF " + std::to_string(fabs(magnetomotiveForce)) + " A-turns on material " + magnetisationCurve->materialName +
+                        " lies past the load line at the end of its magnetisation curve, " + std::to_string(curveEndMagnetomotiveForce) +
+                        " A-turns (" + std::to_string(curveEndFluxDensity) + " T at " + std::to_string(curveEndFieldStrength) +
+                        " A/m, 1000 times its saturation field strength): the core is driven far past saturation, and its curve has no flux density for that MMF");
+                }
+                return InitialPermeability::get_dc_operating_point_for_magnetomotive_force(
+                    *magnetisationCurve, fabs(magnetomotiveForce), effectiveLength, effectiveArea, gapReluctance);
+            };
+            double largestCurrentMagnitude = 0;
+            for (auto sample : current) {
+                largestCurrentMagnitude = std::max(largestCurrentMagnitude, fabs(sample));
+            }
+            double peakFieldStrength = lineLoadLine(numberTurnsPrimary * largestCurrentMagnitude).first;
             std::vector<double> fluxDensityData(current.size());
             for (size_t cycleIndex = 0; cycleIndex + 1 < bounds.size(); ++cycleIndex) {
                 size_t first = bounds[cycleIndex];
@@ -1265,11 +1286,10 @@ std::pair<MagnetizingInductanceOutput, SignalDescriptor> MagnetizingInductance::
                     cycleCurrent = current[first];
                 }
                 double lineMagnetomotiveForce = numberTurnsPrimary * cycleCurrent;
-                double lineFieldStrength = InitialPermeability::get_dc_operating_point_for_magnetomotive_force(
-                    *magnetisationCurve, fabs(lineMagnetomotiveForce), effectiveLength, effectiveArea, gapReluctance).first;
+                auto [lineFieldStrength, lineFluxDensity] = lineLoadLine(lineMagnetomotiveForce);
                 double incrementalPermeability = initialPermeability.get_initial_permeability(coreMaterial, temperature, lineFieldStrength, frequency);
                 double incrementalReluctance = reluctanceModel->get_ungapped_core_reluctance(core, incrementalPermeability) + gapReluctance;
-                double cycleFluxDensity = lineMagnetomotiveForce / (currentTotalReluctance * effectiveArea) + fluxDensityOffset;
+                double cycleFluxDensity = std::copysign(lineFluxDensity, lineMagnetomotiveForce);
                 for (size_t sampleIndex = first; sampleIndex < end; ++sampleIndex) {
                     fluxDensityData[sampleIndex] = cycleFluxDensity +
                         numberTurnsPrimary * (current[sampleIndex] - cycleCurrent) / (incrementalReluctance * effectiveArea);
@@ -1283,6 +1303,11 @@ std::pair<MagnetizingInductanceOutput, SignalDescriptor> MagnetizingInductance::
             magneticFluxDensity.set_harmonics(Inputs::calculate_harmonics_data(fluxDensityWaveform, frequency));
             magneticFluxDensity.set_processed(Inputs::calculate_basic_processed_data(fluxDensityWaveform));
             result.second = magneticFluxDensity;
+            if (!_lastDcBiasPoint) {
+                throw CalculationException(ErrorCode::CALCULATION_INVALID_RESULT,
+                    "Magnetizing inductance of a line-cycle record: the DC-bias fixed point left no DC point to carry the peak field strength");
+            }
+            _lastDcBiasPoint->peakMagneticFieldStrength = peakFieldStrength;
         }
     }
 

@@ -3046,3 +3046,84 @@ TEST_CASE("Test_Dcm_Voltage_Driven_Paramagnetic_Core_Reads_The_Current_On_Mu0", 
     CHECK_THAT(magnetomotiveForce, Catch::Matchers::WithinRel(fieldStrength * 0.05 + 0.3 * 1e-4 * 1e6, 1e-12));
     settings.reset();
 }
+
+namespace {
+// The web DMC wizard's switching-ripple record (ABT #1764/#1786): two windings, each with the 50 Hz line current
+// (4.8 A peak) and a 0.44 A, 100 kHz ripple, 16384 samples; the currents scaled by currentScale.
+std::pair<OpenMagnetics::Inputs, OperatingPoint> load_dmc_line_cycle_abt1786(double currentScale) {
+    std::ifstream file(OpenMagneticsTesting::get_test_data_path(std::source_location::current(),
+                                                                "web_adviser_flows/dmc_calculate_advised_magnetics_switching_ripple.json"));
+    REQUIRE(file.good());
+    json inputsJson = json::parse(file).at("inputs");
+    for (auto& excitation : inputsJson["operatingPoints"][0]["excitationsPerWinding"]) {
+        excitation.erase("magnetizingCurrent");
+        for (auto& datum : excitation["current"]["waveform"]["data"]) {
+            datum = datum.get<double>() * currentScale;
+        }
+    }
+    OpenMagnetics::Inputs inputs(inputsJson);
+    return {inputs, inputs.get_operating_point(0)};
+}
+}
+
+TEST_CASE("Test_Line_Cycle_Swing_Follows_The_Load_Line_On_The_Magnetisation_Curve", "[physical-model][magnetizing-inductance][dc-bias][line-cycle][abt-1786]") {
+    // ABT #1786: a line-cycle record under an imposed MMF (a DMC choke carrying its 50 Hz line current with the
+    // switching ripple) read each switching cycle's line flux density linearly, N i / (R(mu_peak) A_e), with mu_peak the
+    // reversible permeability at the line peak: 0.354 T at the peak on the web DMC fixture's ungapped T 48/23/19 MPP 300
+    // with 30 + 30 turns (H_pk 2381 A/m). The material's magnetisation curve, B(H) = mu0 * integral of mu_rev, lies well
+    // above mu0 mu_rev(H) H there. Alf, 2026-10-18: the line swing follows the load line on the curve like the DC case,
+    // so the flux density at the line peak is B_LL(N i_pk) (each cycle at its own mean; the ripple about it is small),
+    // the most negative line cycle its mirror, and the DC point carries the load line's H at the peak for the H_sat check.
+    settings.reset();
+    auto [inputs, operatingPoint] = load_dmc_line_cycle_abt1786(1.0);
+    auto magnetic = OpenMagneticsTesting::get_quick_magnetic("T 48/23/19", json::array(), {30, 30}, 1, "MPP 300");
+    auto core = magnetic.get_core();
+    auto material = core.resolve_material();
+    double numberTurns = 30;
+    double effectiveArea = core.get_processed_description()->get_effective_parameters().get_effective_area();
+    double effectiveLength = core.get_processed_description()->get_effective_parameters().get_effective_length();
+    double temperature = operatingPoint.get_conditions().get_ambient_temperature();
+    double frequency = operatingPoint.get_excitations_per_winding()[0].get_frequency();
+
+    MagnetizingInductance magnetizingInductance;
+    magnetizingInductance.set_topology(inputs.get_design_requirements().get_topology());
+    auto [output, fluxDensity] = magnetizingInductance.calculate_inductance_and_magnetic_flux_density(core, magnetic.get_coil(), &operatingPoint);
+    auto current = operatingPoint.get_excitations_per_winding()[0].get_magnetizing_current().value().get_waveform().value().get_data();
+    auto [currentMinimum, currentMaximum] = extremes_abt1942(current);
+    auto [fluxDensityMinimum, fluxDensityMaximum] = extremes_abt1942(fluxDensity.get_waveform().value().get_data());
+
+    double gapReluctance = gap_reluctance_abt1942(core, InitialPermeability::get_initial_permeability(material, temperature, std::nullopt, frequency));
+    auto [peakFieldStrength, curvePeak] = InitialPermeability::get_dc_operating_point_for_magnetomotive_force(
+        material, numberTurns * currentMaximum, effectiveLength, effectiveArea, gapReluctance, temperature, frequency);
+    double curveValley = InitialPermeability::get_dc_operating_point_for_magnetomotive_force(
+        material, numberTurns * fabs(currentMinimum), effectiveLength, effectiveArea, gapReluctance, temperature, frequency).second;
+    auto dcBiasPoint = magnetizingInductance.get_last_dc_bias_point();
+    INFO("i_m " << currentMinimum << " -> " << currentMaximum << " A; B " << fluxDensityMinimum << " -> " << fluxDensityMaximum
+         << " T; curve " << -curveValley << " -> " << curvePeak << " T at H " << peakFieldStrength << " A/m");
+    REQUIRE(currentMaximum > 9);
+    REQUIRE(currentMinimum < -9);
+    CHECK(curvePeak > 0.5);
+    CHECK_THAT(fluxDensityMaximum, Catch::Matchers::WithinRel(curvePeak, 0.03));
+    CHECK_THAT(fluxDensityMinimum, Catch::Matchers::WithinRel(-curveValley, 0.03));
+    REQUIRE(dcBiasPoint);
+    REQUIRE(dcBiasPoint->peakMagneticFieldStrength);
+    // At the record's largest |N i|, which is the negative line peak here.
+    double largestFieldStrength = InitialPermeability::get_dc_operating_point_for_magnetomotive_force(
+        material, numberTurns * std::max(currentMaximum, fabs(currentMinimum)), effectiveLength, effectiveArea, gapReluctance, temperature, frequency).first;
+    CHECK_THAT(dcBiasPoint->peakMagneticFieldStrength.value(), Catch::Matchers::WithinRel(largestFieldStrength, 1e-6));
+    settings.reset();
+}
+
+TEST_CASE("Test_Line_Cycle_Swing_Past_The_Curve_End_Throws", "[physical-model][magnetizing-inductance][dc-bias][line-cycle][abt-1786]") {
+    // ABT #1786: a line MMF past the load line at the end of the magnetisation curve (1000 times H_sat) has no flux
+    // density on it; the line swing throws there rather than extrapolate (as the inverse does, ABT #1942). The DMC
+    // fixture's currents scaled 10^5 drive the MPP 300 toroid's line peak to ~2.4e8 A/m.
+    settings.reset();
+    auto [inputs, operatingPoint] = load_dmc_line_cycle_abt1786(1e5);
+    auto magnetic = OpenMagneticsTesting::get_quick_magnetic("T 48/23/19", json::array(), {30, 30}, 1, "MPP 300");
+    MagnetizingInductance magnetizingInductance;
+    magnetizingInductance.set_topology(inputs.get_design_requirements().get_topology());
+    CHECK_THROWS_AS(magnetizingInductance.calculate_inductance_and_magnetic_flux_density(magnetic.get_core(), magnetic.get_coil(), &operatingPoint),
+                    SaturationException);
+    settings.reset();
+}

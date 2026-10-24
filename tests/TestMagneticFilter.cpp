@@ -2308,3 +2308,47 @@ TEST_CASE("MagneticFilter CORE_AND_DC_LOSSES turn sweep stops at the last count 
     CHECK(verdict == std::pair<bool, double>{false, 0.0});
     settings.reset();
 }
+
+TEST_CASE("MagneticFilter SATURATION keeps a powder DMC choke driven past 100 Oe but short of its saturation field",
+          "[magnetic-filter][saturation][dmc][abt-1786]") {
+    // The default DMC wizard inputs (two windings, 50 Hz line current with its switching ripple). With the line swing
+    // read on the magnetisation curve (ABT #1786), the line peak of these powder chokes lies above 7957 A/m (100 Oe),
+    // the placeholder saturation field every powder material in MAS used to carry: the filter's field criterion
+    // (peak H * margin > H_sat) refused every DMC candidate there although B on the curve stayed at 0.3-0.6 of B_sat.
+    // MAS now gives each such material's H_sat as H10, the field where its own DC-bias curve has fallen to 10 % of
+    // the initial permeability (material.json's definition): Edge 90 22.4 kA/m, Kool Mu MAX 26 64.7 kA/m.
+    // Edge 90 on T 75/44/36 with 46 + 46 turns is the default DMC adviser's pick.
+    settings.reset();
+    clear_databases();
+    std::ifstream file(OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "dmc/dmc_default_inputs.json"));
+    REQUIRE(file.good());
+    OpenMagnetics::Inputs inputs(json::parse(file));
+    double placeholderFieldStrength = 7957;
+    double margin = settings.get_core_adviser_saturation_margin();
+    // The filter judges at the hot corner: the ambient, or the derating temperature when that is hotter.
+    double temperature = std::max(inputs.get_operating_point(0).get_conditions().get_ambient_temperature(),
+                                  settings.get_core_adviser_saturation_derating_temperature());
+    for (std::string materialName : {"Edge 90", "Kool Mµ MAX 26"}) {
+        auto magnetic = OpenMagneticsTesting::get_quick_magnetic("T 75/44/36", json::array(), {46, 46}, 1, materialName);
+        auto operatingPoint = inputs.get_operating_point(0);
+        MagnetizingInductance model;
+        model.set_topology(inputs.get_design_requirements().get_topology());
+        auto fluxDensity = model.calculate_inductance_and_magnetic_flux_density(magnetic.get_core(), magnetic.get_coil(), &operatingPoint).second;
+        auto dcBiasPoint = model.get_last_dc_bias_point();
+        REQUIRE(dcBiasPoint);
+        REQUIRE(dcBiasPoint->peakMagneticFieldStrength);
+        double peakFieldStrength = dcBiasPoint->peakMagneticFieldStrength.value();
+        double saturationFieldStrength = magnetic.get_mutable_core().get_magnetic_field_strength_saturation(temperature);
+        double peakFluxDensity = ResultsAnalyzer::get_peak_flux_density(fluxDensity);
+        double saturationFluxDensity = magnetic.get_mutable_core().get_magnetic_flux_density_saturation(temperature, false);
+        INFO(materialName << ": H peak " << peakFieldStrength << " A/m (x " << margin << "), H_sat " << saturationFieldStrength
+             << " A/m at " << temperature << " C; B peak " << peakFluxDensity << " T, B_sat " << saturationFluxDensity << " T");
+        // Past the old placeholder: the case it refused.
+        CHECK(peakFieldStrength * margin > placeholderFieldStrength);
+        CHECK(peakFieldStrength * margin < saturationFieldStrength);
+        CHECK(peakFluxDensity * margin < saturationFluxDensity);
+        MagneticFilterSaturation filter;
+        CHECK(filter.evaluate_magnetic(&magnetic, &inputs).first);
+    }
+    settings.reset();
+}

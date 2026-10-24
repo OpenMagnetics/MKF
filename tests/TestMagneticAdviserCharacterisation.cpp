@@ -810,14 +810,19 @@ TEST_CASE("MagneticAdviser web DMC whose switching ripple is resolved returns wo
 
     // Each switching cycle swings at its own instantaneous line bias (ABT #1764): with the permeability of the
     // line swing's peak (~104) for every cycle the ripple near the zero crossings was priced ~4x low, 1.74 W.
-    // Reference: the record split at its current's valleys, each cycle's ripple B = mu0 * mu(H of the cycle's
+    // Reference then: the record split at its current's valleys, each cycle's ripple B = mu0 * mu(H of the cycle's
     // mean current) * N * di / l_e on the material's DC-bias curve, Steinmetz per cycle at its own rate: 6.84 W
-    // (first-principles script on this magnetic, the ungapped T 48/23/19 MPP 300 with 30 + 30 turns).
+    // (first-principles script on the then top pick, the ungapped T 48/23/19 MPP 300 with 30 + 30 turns).
+    // Re-pinned (Alf, 2026-10-24): since ABT #1786 the line swing's B is read on the material's B(H) curve, no
+    // longer linearly. MPP 300 with 30 + 30 turns peaks at 0.689 T there (0.354 T linear), 0.827 T with the 1.2
+    // saturation margin, above its B_sat of 0.8 T, so the adviser now picks the ungapped T 48/23/19 MPP 200 with
+    // 33 + 33 turns. 5.00 W is the simulator's core loss on that pick (solved core 65.0 C), not re-derived by the
+    // first-principles script.
     REQUIRE(magnetic.get_core().get_shape_name() == "T 48/23/19");
-    REQUIRE(magnetic.get_core().get_material_name() == "MPP 300");
+    REQUIRE(magnetic.get_core().get_material_name() == "MPP 200");
     REQUIRE(magnetic.get_core().get_functional_description().get_gapping().empty());
-    REQUIRE(magnetic.get_coil().get_functional_description()[0].get_number_turns() == 30);
-    CHECK_THAT(simulatedCoreLosses.get_core_losses(), Catch::Matchers::WithinRel(6.84, 0.05));
+    REQUIRE(magnetic.get_coil().get_functional_description()[0].get_number_turns() == 33);
+    CHECK_THAT(simulatedCoreLosses.get_core_losses(), Catch::Matchers::WithinRel(5.00, 0.05));
 
     // The operating point as stored (waveforms, no harmonics) is the same excitation as its processed
     // copy, so the sweep must price it the same (ABT #1764): it read 16.3 W against 1.74 W, because
