@@ -5,6 +5,7 @@
 #include "support/Painter.h"
 
 #include "support/Utils.h"
+#include "support/NumberFormat.h"
 #include "json.hpp"
 
 #include <algorithm>
@@ -2124,18 +2125,18 @@ std::optional<std::string> Inputs::describe_volt_second_imbalance(const Waveform
     auto balance = calculate_volt_second_balance(voltageSampledWaveform, context);
     if (balance.acSwing <= 0) {
         if (balance.meanVoltage != 0) {
-            return context + ": the voltage is a constant " + std::to_string(balance.meanVoltage) +
-                " V, which has no periodic steady state; its integral is not a magnetizing current";
+            return context + ": the voltage is a constant " + format_quantity(balance.meanVoltage, "V") +
+                ". A constant voltage has no periodic steady state, so its integral is not a magnetizing current";
         }
         return std::nullopt;
     }
     if (balance.imbalance > maximumVoltSecondImbalance) {
-        return context + ": the voltage is not volt-second balanced (mean " + std::to_string(balance.meanVoltage) +
-            " V over a " + std::to_string(balance.period) + " s period, so its integral drifts by " +
-            std::to_string(balance.netVoltSeconds) + " V*s per period against an AC swing of " + std::to_string(balance.acSwing) +
-            " V*s, " + std::to_string(balance.imbalance) + " of it; the limit is " + std::to_string(maximumVoltSecondImbalance) +
-            "). A magnetizing current integrated from it would describe the drift: give a balanced steady-state "
-            "voltage, or the magnetizing current itself";
+        return context + ": the voltage is not volt-second balanced: its mean of " + format_quantity(balance.meanVoltage, "V") +
+            " drifts the flux linkage by " + format_quantity(balance.netVoltSeconds, "V*s") + " every " +
+            format_quantity(balance.period, "s") + " period, " + format_significant(balance.imbalance, 2) +
+            " times its AC swing of " + format_quantity(balance.acSwing, "V*s") + " (the limit is " +
+            format_significant(maximumVoltSecondImbalance, 2) + "). A magnetizing current integrated from it would "
+            "describe the drift: give a balanced steady-state voltage, or the magnetizing current itself";
     }
     return std::nullopt;
 }
@@ -2173,10 +2174,10 @@ double Inputs::calculate_steady_state_mean_voltage(const OperatingPointExcitatio
     double acSwing = *std::max_element(acData.begin(), acData.end()) - *std::min_element(acData.begin(), acData.end());
     double imbalance = acSwing > 0 ? std::fabs(meanVoltage * period) / acSwing : 0;
     if (imbalance > voltSecondImbalanceWarningThreshold) {
-        Logger::getInstance().warning(context + ": the voltage's mean of " + std::to_string(meanVoltage) +
-            " V (net volt-seconds " + std::to_string(imbalance * 100) + " % of the AC swing) was removed before integrating "
-            "the magnetizing current; a winding in periodic steady state has none (probe offset, resistive drop or a "
-            "capture that is not a whole number of periods)", "Inputs");
+        Logger::getInstance().warning(context + ": the voltage has a mean of " + format_quantity(meanVoltage, "V") +
+            ", whose net volt-seconds are " + format_significant(imbalance * 100, 2) + " % of its AC swing. MKF removed it "
+            "before integrating the magnetizing current, since a winding in periodic steady state has none (it comes "
+            "from a probe offset, a resistive drop or a capture that is not a whole number of periods)", "Inputs");
     }
     return meanVoltage;
 }

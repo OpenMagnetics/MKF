@@ -3303,3 +3303,48 @@ TEST_CASE("Loss loop whose heated core cannot carry the voltage's flux on its cu
     }
     settings.reset();
 }
+
+
+// ABT #2001: the winding-temperature finding is one plain sentence with rounded numbers. It read "the design's
+// hottest point is 2474.39 C, above winding 0 ('Primary')'s the thermal class of its coating material
+// Polyurethane 155 of 155 C".
+TEST_CASE("Analyze_results states a winding above its coating's thermal class in one rounded sentence",
+          "[processor][magnetic-simulator][abt-2001]") {
+    settings.reset();
+    auto path = std::filesystem::path{std::source_location::current().file_name()}
+                    .parent_path().append("..").append("MAS").append("examples").append("02_flyback_efd25_3c95.json");
+    REQUIRE(std::filesystem::exists(path));
+    auto mas = OpenMagneticsTesting::mas_loader(path.string());
+    auto magnetic = OpenMagnetics::magnetic_autocomplete(mas.get_magnetic());
+    // The primary's enamel names its material, whose thermal class is 155 C.
+    auto& primary = magnetic.get_mutable_coil().get_mutable_functional_description()[0];
+    json wireJson;
+    to_json(wireJson, OpenMagnetics::Coil::resolve_wire(primary));
+    wireJson["coating"]["material"] = "Polyurethane 155";
+    wireJson["coating"].erase("temperatureRating");
+    primary.set_wire(OpenMagnetics::Wire(wireJson));
+
+    MagneticSimulator magneticSimulator;
+    OpenMagnetics::Mas simulated;
+    REQUIRE_NOTHROW(simulated = magneticSimulator.simulate(mas.get_inputs(), magnetic));
+    REQUIRE(simulated.get_outputs().size() == 1);
+    auto output = simulated.get_outputs()[0];
+    REQUIRE(output.get_temperature());
+    auto temperature = output.get_temperature().value();
+    temperature.set_maximum_temperature(2474.39);
+    output.set_temperature(temperature);
+
+    auto findings = ResultsAnalyzer::analyze_temperature(simulated.get_magnetic(), simulated.get_inputs().get_operating_points()[0], output, 0);
+    std::vector<ResultFinding> windingFindings;
+    std::string all;
+    for (const auto& finding : findings) {
+        all += "\n" + to_string(finding.code) + ": " + finding.message;
+        if (finding.code == ResultFindingCode::WINDING_TEMPERATURE_ABOVE_LIMIT) {
+            windingFindings.push_back(finding);
+        }
+    }
+    INFO("findings:" << all);
+    REQUIRE(!windingFindings.empty());
+    CHECK_THAT(windingFindings[0].message, Catch::Matchers::EndsWith(
+        ": the hottest point, 2474 C, is above the 155 C thermal class of the coating material (Polyurethane 155) of winding 0 ('Primary')."));
+}

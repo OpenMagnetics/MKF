@@ -5,6 +5,7 @@
 #include "StrayCapacitance.h"
 #include "support/Painter.h"
 #include "support/Utils.h"
+#include "support/NumberFormat.h"
 #include "Constants.h"
 #include <filesystem>
 #include <fstream>
@@ -7205,7 +7206,7 @@ ThermalResult Temperature::solveThermalCircuit() {
     if (!converged && _config.requireConvergence) {
         throw ThermalNetworkNotConvergedException(
             "Thermal network did not converge in " + std::to_string(_config.maxIterations) +
-            " iterations (tolerance " + std::to_string(_config.convergenceTolerance) + " K). The "
+            " iterations (tolerance " + format_significant(_config.convergenceTolerance) + " K). The "
             "last iterate is not a temperature estimate and must not be reported. Check the "
             "operating point's losses and cooling conditions.");
     }

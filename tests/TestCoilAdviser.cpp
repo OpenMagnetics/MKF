@@ -3223,9 +3223,9 @@ TEST_CASE("Test_CoilAdviser_Unbalanced_Voltage_Rejected_Before_Winding", "[advis
     REQUIRE(message.find("Adviser inputs are invalid: operating point 0") != std::string::npos);
     CHECK(message.find("winding 0 ('Primary')") != std::string::npos);
     // The captured primary is -20.5 / +70.5 V at 50 % duty: a mean of +25 V.
-    auto meanPosition = message.find("not volt-second balanced (mean ");
+    auto meanPosition = message.find("not volt-second balanced: its mean of ");
     REQUIRE(meanPosition != std::string::npos);
-    double reportedMean = std::stod(message.substr(meanPosition + std::string("not volt-second balanced (mean ").size()));
+    double reportedMean = std::stod(message.substr(meanPosition + std::string("not volt-second balanced: its mean of ").size()));
     CHECK_THAT(reportedMean, Catch::Matchers::WithinAbs(25, 0.5));
 }
 

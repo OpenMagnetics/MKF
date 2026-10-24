@@ -4,6 +4,8 @@
 #include "physical_models/InitialPermeability.h"
 #include "processors/Inputs.h"
 #include "processors/ResultsAnalyzer.h"
+#include "support/NumberFormat.h"
+#include <regex>
 #include "support/Utils.h"
 #include "json.hpp"
 
@@ -2824,4 +2826,34 @@ TEST_CASE("Common-mode choke magnetizing current is the windings' mean current",
     OperatingPoint commonMode;
     commonMode.set_excitations_per_winding({winding_current(150000, 10, 1, 1), winding_current(150000, -10, 1, 1)});
     CHECK_THAT(peak_to_peak(commonMode), Catch::Matchers::WithinRel(1, 1e-6));
+}
+
+
+
+// ABT #2001: numbers in findings read with sensible significant figures and scaled SI units.
+TEST_CASE("Test_Finding_Numbers_Use_Significant_Figures_And_SI_Prefixes", "[processor][inputs][abt-2001]") {
+    CHECK(OpenMagnetics::format_quantity(1.0 / 45000, "s") == "22.2 us");
+    CHECK(OpenMagnetics::format_quantity(0.000536, "V*s") == "536 uV*s");
+    CHECK(OpenMagnetics::format_quantity(0.027, "Ohm") == "27 mOhm");
+    CHECK(OpenMagnetics::format_quantity(999.96e-6, "s") == "1 ms");
+    CHECK(OpenMagnetics::format_quantity(24.289608, "V") == "24.3 V");
+    CHECK(OpenMagnetics::format_significant(26.84751, 2) == "27");
+    CHECK(OpenMagnetics::format_significant(0.25) == "0.25");
+    CHECK(OpenMagnetics::format_significant(2474.39) == "2474");
+    CHECK(OpenMagnetics::format_significant(-0.0) == "0");
+}
+
+TEST_CASE("Test_Volt_Second_Imbalance_Message_Reads_With_Rounded_Numbers", "[processor][inputs][abt-2001]") {
+    double frequency = 100000;
+    // Mean 2.5 V: 24.8 uV*s against a 37.5 uV*s AC swing, 0.66 of it. calculate_volt_second_balance takes the
+    // period from the sampled axis, which stops one sample short of the 10 us period (9.92 us at 128 points).
+    auto unbalanced = abt1585_sampled_rectangular_voltage(-5, frequency);
+    auto message = OpenMagnetics::Inputs::describe_volt_second_imbalance(unbalanced, "At operating point 0, winding 0 ('Primary')");
+    REQUIRE(message);
+    INFO(message.value());
+    CHECK_THAT(message.value(), Catch::Matchers::StartsWith(
+        "At operating point 0, winding 0 ('Primary'): the voltage is not volt-second balanced: its mean of 2.5 V drifts the "
+        "flux linkage by 24.8 uV*s every 9.92 us period, 0.66 times its AC swing of 37.5 uV*s (the limit is 0.25)."));
+    // No std::to_string six-decimal number is left.
+    CHECK_FALSE(std::regex_search(message.value(), std::regex("[0-9]\\.[0-9]{6}")));
 }

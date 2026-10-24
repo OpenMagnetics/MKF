@@ -7,6 +7,7 @@
 #include "processors/MagneticSimulator.h"
 #include "support/Exceptions.h"
 #include "support/Utils.h"
+#include "support/NumberFormat.h"
 
 #include <magic_enum.hpp>
 
@@ -87,14 +88,14 @@ ResultFinding make_finding(const OperatingPoint& operatingPoint, size_t operatin
     finding.operatingPointIndex = operatingPointIndex;
     finding.operatingPointName = operatingPoint.get_name();
     finding.code = code;
-    finding.message = message;
+    // Every finding reads as whole sentences (ABT #2001).
+    finding.message = (!message.empty() && message.back() != '.') ? message + "." : message;
     return finding;
 }
 
+// A number in a message: three significant figures, all integer digits kept (2474.39 C -> "2474") (ABT #2001).
 std::string format_number(double value) {
-    std::ostringstream stream;
-    stream << value;
-    return stream.str();
+    return format_significant(value, 3);
 }
 
 // A temperature limit a part states, and where it states it.
@@ -153,59 +154,65 @@ SaturationVerdict ResultsAnalyzer::check_saturation(const CoreMaterial& coreMate
     }
     verdict.saturates = verdict.fluxDensityAboveSaturation || verdict.permeabilityCollapsed || verdict.fieldStrengthAboveSaturation;
 
+    // ABT #2001: the first sentence says the problem with rounded numbers; the explanation follows.
     std::ostringstream message;
+    std::string marginNote = margin != 1 ? " (" + format_number(peakFluxDensity * margin) + " T with the " + format_number(margin) + " margin)" : "";
     if (verdict.saturates) {
-        message << "The core saturates:";
+        // One clause per criterion that fired, joined into the first sentence.
+        std::vector<std::string> clauses;
         if (verdict.fluxDensityAboveSaturation) {
-            message << " B peak = " << peakFluxDensity << " T";
-            if (margin != 1) {
-                message << " (x " << margin << " margin = " << peakFluxDensity * margin << " T)";
-            }
-            message << " is above B_sat = " << verdict.saturationFluxDensity << " T of material " << coreMaterial.get_name()
-                    << " at " << temperature << " C";
+            std::ostringstream clause;
+            clause << "B peak = " << format_number(peakFluxDensity) << " T" << marginNote << " is above B_sat = "
+                   << format_number(verdict.saturationFluxDensity) << " T of " << coreMaterial.get_name() << " at "
+                   << format_number(temperature) << " C";
+            clauses.push_back(clause.str());
         }
         if (verdict.permeabilityCollapsed) {
-            if (verdict.fluxDensityAboveSaturation) {
-                message << ", and";
-            }
-            message << " at the DC bias H = " << dcBiasPoint->magneticFieldDcBias << " A/m (" << dcBiasPoint->temperature
-                    << " C, " << dcBiasPoint->frequency << " Hz) the permeability model of material " << coreMaterial.get_name()
-                    << " gives mu_r = " << verdict.biasedPermeability.value() << ", at or below the vacuum's 1 (unbiased "
-                    << unbiasedPermeability.value() << "): the bias has driven it past its knee, and the model takes mu_r = 1 there";
-            if (!verdict.fluxDensityAboveSaturation) {
-                message << " (B peak " << peakFluxDensity << " T is still within B_sat = " << verdict.saturationFluxDensity
-                        << " T at " << temperature << " C: the material's B_sat, magnetisation curve and permeability model disagree)";
-            }
+            std::ostringstream clause;
+            clause << "its DC bias of " << format_quantity(dcBiasPoint->magneticFieldDcBias, "A/m")
+                   << " drives the permeability model of " << coreMaterial.get_name() << " to mu_r = " << format_number(verdict.biasedPermeability.value())
+                   << " (unbiased " << format_number(unbiasedPermeability.value()) << ") at " << format_number(dcBiasPoint->temperature)
+                   << " C and " << format_quantity(dcBiasPoint->frequency, "Hz") << ", past its knee, where the model takes mu_r = 1";
+            clauses.push_back(clause.str());
         }
         if (verdict.fieldStrengthAboveSaturation) {
-            if (verdict.fluxDensityAboveSaturation || verdict.permeabilityCollapsed) {
-                message << ", and";
-            }
-            message << " the flux density, read on the magnetisation curve of material " << coreMaterial.get_name()
-                    << ", peaks at H = " << verdict.peakFieldStrength.value() << " A/m";
+            std::ostringstream clause;
+            clause << "its peak field strength on the magnetisation curve of " << coreMaterial.get_name() << ", H = "
+                   << format_quantity(verdict.peakFieldStrength.value(), "A/m");
             if (margin != 1) {
-                message << " (x " << margin << " margin = " << verdict.peakFieldStrength.value() * margin << " A/m)";
+                clause << " (" << format_quantity(verdict.peakFieldStrength.value() * margin, "A/m") << " with the " << format_number(margin) << " margin)";
             }
-            message << ", above its H_sat = " << verdict.saturationFieldStrength.value() << " A/m at " << temperature
-                    << " C: the core is driven past its knee";
-            if (!verdict.fluxDensityAboveSaturation) {
-                message << " (on the curve B peak " << peakFluxDensity << " T stays within B_sat = " << verdict.saturationFluxDensity
-                        << " T, rising only on the vacuum slope there)";
+            clause << ", is above its H_sat = " << format_quantity(verdict.saturationFieldStrength.value(), "A/m") << " at "
+                   << format_number(temperature) << " C, past its knee";
+            clauses.push_back(clause.str());
+        }
+        message << "The core saturates: ";
+        for (size_t index = 0; index < clauses.size(); ++index) {
+            if (index > 0) {
+                message << (index + 1 == clauses.size() ? ", and " : ", ");
+            }
+            message << clauses[index];
+        }
+        message << ".";
+        if (!verdict.fluxDensityAboveSaturation) {
+            message << " B peak = " << format_number(peakFluxDensity) << " T is still below B_sat = " << format_number(verdict.saturationFluxDensity)
+                    << " T at " << format_number(temperature) << " C";
+            if (verdict.fieldStrengthAboveSaturation) {
+                message << ": past the knee the curve's B rises only on the vacuum slope.";
+            }
+            else {
+                message << ": the material's B_sat, magnetisation curve and permeability model disagree.";
             }
         }
-        message << ". Numbers computed for this operating point are those of the saturated core;"
-                << " more turns, a larger gap or core, or less volt-seconds are needed";
+        message << " The numbers for this operating point are those of the saturated core; it needs more turns, a larger gap or core,"
+                << " or fewer volt-seconds";
     }
     else {
-        message << "B peak = " << peakFluxDensity << " T";
-        if (margin != 1) {
-            message << " (x " << margin << " margin = " << peakFluxDensity * margin << " T)";
-        }
-        message << " is within B_sat = " << verdict.saturationFluxDensity << " T of material " << coreMaterial.get_name()
-                << " at " << temperature << " C";
+        message << "B peak = " << format_number(peakFluxDensity) << " T" << marginNote << " is within B_sat = "
+                << format_number(verdict.saturationFluxDensity) << " T of " << coreMaterial.get_name() << " at " << format_number(temperature) << " C";
         if (verdict.peakFieldStrength) {
-            message << ", and its peak field strength on the magnetisation curve, H = " << verdict.peakFieldStrength.value()
-                    << " A/m, within H_sat = " << verdict.saturationFieldStrength.value() << " A/m";
+            message << ", and its peak field strength on the magnetisation curve, H = " << format_quantity(verdict.peakFieldStrength.value(), "A/m")
+                    << ", within H_sat = " << format_quantity(verdict.saturationFieldStrength.value(), "A/m");
         }
     }
     verdict.message = message.str();
@@ -278,8 +285,8 @@ std::vector<ResultFinding> ResultsAnalyzer::analyze_volt_second_balance(const Op
         auto imbalance = Inputs::describe_volt_second_imbalance(sampledVoltage, context);
         if (imbalance) {
             findings.push_back(make_finding(operatingPoint, operatingPointIndex, ResultFindingCode::VOLT_SECOND_IMBALANCE,
-                imbalance.value() + ". Where MKF derives a magnetizing current from this voltage it integrated its "
-                "balanced part (the mean removed), so these numbers describe that part"));
+                imbalance.value() + ". Where MKF derives a magnetizing current from this voltage, it integrates "
+                "only its balanced part (the mean removed), so the numbers given describe that part"));
         }
     }
     return findings;
@@ -324,38 +331,38 @@ std::vector<ResultFinding> ResultsAnalyzer::analyze_temperature(const Magnetic& 
                 break;
         }
         findings.push_back(make_finding(operatingPoint, operatingPointIndex, ResultFindingCode::CORE_ABOVE_MATERIAL_DATA_LIMIT,
-            "At " + where + ": the losses drive the core above " + limit +
-            " (" + format_number(ceiling) + " C), where its material data ends. Its core losses were evaluated at " +
-            format_number(coreTemperature) + " C, the last temperature the data covers, with the core magnetized " +
-            magnetized + "; the temperatures given for this operating point (hottest point " + format_number(hottestTemperature) +
-            " C) follow from those losses, and the core's real temperature is higher"));
+            "At " + where + ": the losses drive the core above " + limit + " (" + format_number(ceiling) +
+            " C), where its material data ends. MKF evaluated its core losses at " + format_number(coreTemperature) +
+            " C, the last temperature the data covers, with the core magnetized " + magnetized + "; the temperatures given "
+            "for this operating point (hottest point " + format_number(hottestTemperature) + " C) follow from those losses, "
+            "and the core's real temperature is higher"));
     }
     std::vector<StatedTemperatureLimit> coreLimits;
     if (coreMaterial.get_curie_temperature()) {
-        coreLimits.push_back({coreMaterial.get_curie_temperature().value(), "its Curie temperature"});
+        coreLimits.push_back({coreMaterial.get_curie_temperature().value(), "Curie temperature"});
     }
     if (coreMaterial.get_recommendations() && coreMaterial.get_recommendations()->get_maximum_operating_temperature()) {
         coreLimits.push_back({coreMaterial.get_recommendations()->get_maximum_operating_temperature().value(),
-                              "its maximum recommended operating temperature"});
+                              "maximum recommended operating temperature"});
     }
     if (coreLimits.empty()) {
         findings.push_back(make_finding(operatingPoint, operatingPointIndex, ResultFindingCode::CORE_TEMPERATURE_LIMIT_NOT_STATED,
-            "At " + where + ": the core runs at " + format_number(coreTemperature) + " C, and material " + coreMaterial.get_name() +
-            " states no temperature limit (no Curie temperature, no maximum operating temperature): its temperature is not checked"));
+            "At " + where + ": the core runs at " + format_number(coreTemperature) + " C, and its material " + coreMaterial.get_name() +
+            " states no temperature limit (no Curie temperature, no maximum operating temperature), so its temperature is not checked"));
     }
     else {
         std::vector<std::string> exceeded;
         for (const auto& limit : coreLimits) {
             if (coreTemperature > limit.temperature) {
-                exceeded.push_back(limit.source + " of " + format_number(limit.temperature) + " C");
+                exceeded.push_back("the " + format_number(limit.temperature) + " C " + limit.source);
             }
         }
         if (!exceeded.empty()) {
-            std::string message = "At " + where + ": the core runs at " + format_number(coreTemperature) + " C, above material " +
-                                  coreMaterial.get_name() + "'s ";
+            std::string message = "At " + where + ": the core runs at " + format_number(coreTemperature) + " C, above ";
             for (size_t index = 0; index < exceeded.size(); ++index) {
                 message += (index > 0 ? " and " : "") + exceeded[index];
             }
+            message += " of its material " + coreMaterial.get_name();
             findings.push_back(make_finding(operatingPoint, operatingPointIndex, ResultFindingCode::CORE_TEMPERATURE_ABOVE_LIMIT, message));
         }
     }
@@ -369,7 +376,7 @@ std::vector<ResultFinding> ResultsAnalyzer::analyze_temperature(const Magnetic& 
         auto coating = Wire::resolve_coating(wire);
         if (coating) {
             if (coating->get_temperature_rating()) {
-                windingLimits.push_back({coating->get_temperature_rating().value(), "its wire coating's temperature rating"});
+                windingLimits.push_back({coating->get_temperature_rating().value(), "temperature rating of the wire coating"});
             }
             // Only a material the coating names: an unnamed one is not assumed (Wire::resolve_coating_insulation_material
             // would take the default enamel).
@@ -377,30 +384,30 @@ std::vector<ResultFinding> ResultsAnalyzer::analyze_temperature(const Magnetic& 
                 auto insulationMaterial = Wire::resolve_coating_insulation_material(coating.value());
                 if (insulationMaterial.get_temperature_class()) {
                     windingLimits.push_back({InsulationCoordinator::temperature_class_to_celsius(insulationMaterial.get_temperature_class().value()),
-                                             "the thermal class of its coating material " + insulationMaterial.get_name()});
+                                             "thermal class of the coating material (" + insulationMaterial.get_name() + ")"});
                 }
             }
         }
         if (windingLimits.empty()) {
             findings.push_back(make_finding(operatingPoint, operatingPointIndex, ResultFindingCode::WINDING_TEMPERATURE_LIMIT_NOT_STATED,
-                "At " + where + ": the design's hottest point is " + format_number(hottestTemperature) + " C, and the wire of " +
+                "At " + where + ": the hottest point is " + format_number(hottestTemperature) + " C, and the wire of " +
                 windingLabel + " states no temperature limit (" + (coating ? "its coating has no temperature rating and no rated material"
                                                                             : "it has no coating") +
-                "): its temperature is not checked"));
+                "), so its temperature is not checked"));
             continue;
         }
         std::vector<std::string> exceeded;
         for (const auto& limit : windingLimits) {
             if (hottestTemperature > limit.temperature) {
-                exceeded.push_back(limit.source + " of " + format_number(limit.temperature) + " C");
+                exceeded.push_back("the " + format_number(limit.temperature) + " C " + limit.source);
             }
         }
         if (!exceeded.empty()) {
-            std::string message = "At " + where + ": the design's hottest point is " + format_number(hottestTemperature) + " C, above " +
-                                  windingLabel + "'s ";
+            std::string message = "At " + where + ": the hottest point, " + format_number(hottestTemperature) + " C, is above ";
             for (size_t index = 0; index < exceeded.size(); ++index) {
                 message += (index > 0 ? " and " : "") + exceeded[index];
             }
+            message += " of " + windingLabel;
             findings.push_back(make_finding(operatingPoint, operatingPointIndex, ResultFindingCode::WINDING_TEMPERATURE_ABOVE_LIMIT, message));
         }
     }
@@ -428,7 +435,7 @@ std::vector<ResultFinding> ResultsAnalyzer::analyze_missing_temperature(const Ma
         return {make_finding(operatingPoint, operatingPointIndex, ResultFindingCode::NO_THERMAL_OPERATING_POINT,
             "At " + where + ": " + noThermalOperatingPoint.message() + " Its core and winding losses are those evaluated at the "
             "ambient temperature (" + format_number(operatingPoint.get_conditions().get_ambient_temperature()) +
-            " C), and it has no temperature output: its temperatures are not checked")};
+            " C), and it has no temperature output, so its temperatures are not checked")};
     }
     throw InvalidInputException(ErrorCode::MISSING_DATA,
         "analyze_results: the output of " + where + " has no temperature, yet its losses have a thermal operating point "
@@ -445,10 +452,9 @@ std::vector<ResultFinding> ResultsAnalyzer::analyze_winding_bends(const Magnetic
     coil.refuse_turns_bent_tighter_than_the_wire_allows();
     const auto judgement = coil.judge_corners_against_wire_flexibility();
 
+    // Three significant figures in mm, as every finding's numbers (ABT #2001).
     auto millimetres = [](double metres) {
-        std::ostringstream text;
-        text << std::fixed << std::setprecision(4) << metres * 1000;
-        return text.str();
+        return format_significant(metres * 1000, 3);
     };
 
     std::vector<ResultFinding> findings;
@@ -474,12 +480,13 @@ std::vector<ResultFinding> ResultsAnalyzer::analyze_winding_bends(const Magnetic
         ResultFinding finding;
         finding.code = ResultFindingCode::EDGEWISE_BEND_BELOW_COATING_MANDREL;
         finding.message =
-            "Warning: winding '" + winding.windingName + "' (" + wireDescription + ", conducting " +
-            millimetres(conductingWidth) + " x " + millimetres(conductingHeight) + " mm) is bent edgewise around a "
-            "drawn centreline radius of " + millimetres(winding.bendRadius) + " mm (turn '" + winding.turnName +
-            "', the tightest of " + std::to_string(winding.numberTightCorners) + " such turns), tighter than the " +
-            millimetres(winding.asLaid.mandrelDiameterUsed) + " mm mandrel of IEC 60317-0-2 Table 6 its coating was "
-            "qualified at (IEC 60851-3 5.1.1 winds the wire on that mandrel: centreline radius mandrel/2 + outer width/2 = " +
+            "Warning: winding '" + winding.windingName + "' is bent edgewise to a " + millimetres(winding.bendRadius) +
+            " mm centreline radius, tighter than the " + millimetres(winding.asLaid.flexibilityRadius) + " mm its coating was "
+            "qualified at on the " + millimetres(winding.asLaid.mandrelDiameterUsed) + " mm mandrel of IEC 60317-0-2 Table 6. "
+            "The wire is " + wireDescription + ", conducting " + millimetres(conductingWidth) + " x " +
+            millimetres(conductingHeight) + " mm; the tightest bend is turn '" + winding.turnName + "', of " +
+            std::to_string(winding.numberTightCorners) + " such turns (IEC 60851-3 5.1.1 winds the wire on that mandrel: "
+            "centreline radius mandrel/2 + outer width/2 = " +
             millimetres(0.5 * winding.asLaid.mandrelDiameterUsed) + " + " + millimetres(0.5 * outerWidth) + " = " +
             millimetres(winding.asLaid.flexibilityRadius) + " mm). The coil is drawn as laid: edgewise winding is a "
             "forming process of its own and the mandrel is a coating test, not a forming limit, but the coating's "
