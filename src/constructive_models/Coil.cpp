@@ -5119,14 +5119,44 @@ std::optional<TangentDeparture> Coil::plan_tangent_departure(const ConnectionRou
                      -borderDepth};
     departure.turnLengthRemoved = removed;
     departure.shortenedTurn = turns[to].get_name();
-    // Nothing else may lie on that straight. Its footprint on the window half-plane is the band
-    // [radius - w/2, radius + w/2] x [min y, max y] +- h/2; any station of ANOTHER turn whose own band
-    // overlaps it, at or outside the lead's radius, winds a corner across the lead's line (inner
-    // turns' corners never reach this radius). The lead's own station and the conductor's own next
-    // revolution are the wire itself.
+    // Nothing else may lie on that straight. Every other turn at or outside the lead's radius on this
+    // column winds its connection-face corner across the lead's line (inner turns' corners never reach
+    // this radius); each is judged WHERE it meets that line, at its own pitch-true height there, against
+    // the lead's height at the same place (ABT #2012). Comparing a turn's crossing-station height with
+    // the lead's height a quarter corner further along the helix refused every closely wound layer: its
+    // next revolution sits one coated height above the lead along the whole straight, but its station
+    // sits one coated height above a lead that has already climbed slope * removed by the departure.
+    // The lead's own station and the conductor's own next revolution are the wire itself.
     const auto dims = attached.get_dimensions().value();
-    const double yLow = std::min(y, departure.end[1]) - dims[1] / 2;
-    const double yHigh = std::max(y, departure.end[1]) + dims[1] / 2;
+    std::map<std::pair<std::string, int64_t>, std::vector<size_t>> sequenceByConductor;
+    for (size_t t = 0; t < turns.size(); ++t) {
+        sequenceByConductor[{turns[t].get_winding(), turns[t].get_parallel()}].push_back(t);
+    }
+    // A station's height a path distance `along` downstream (entrance) or upstream (exit) of its
+    // crossing, on the revolution that leaves (entrance) or reaches (exit) it; a conductor's first or
+    // last station takes the one revolution it has.
+    auto heightAlong = [&](size_t t, double along) {
+        const auto& stations = sequenceByConductor.at({turns[t].get_winding(), turns[t].get_parallel()});
+        const size_t k = size_t(std::find(stations.begin(), stations.end(), t) - stations.begin());
+        if (stations.size() < 2) {
+            return turns[t].get_coordinates()[1];
+        }
+        size_t a = entrance ? k : k - 1;
+        if (entrance && k + 1 >= stations.size()) {
+            a = k - 1;
+        }
+        if (!entrance && k == 0) {
+            a = 0;
+        }
+        const Turn& lower = turns[stations[a]];
+        const Turn& upper = turns[stations[a + 1]];
+        const double otherStandoff = std::abs(turns[t].get_coordinates()[0]) - frame.columnWidth;   // axisX == 0 here
+        const double otherBend = get_turn_bend_radius_in_frame(frame, std::abs(turns[t].get_coordinates()[0]));
+        const double otherLength = 4 * frame.columnDepth + 4 * frame.columnWidth + 8 * otherStandoff +
+                                   (2 * std::numbers::pi - 8) * otherBend;
+        const double otherSlope = (upper.get_coordinates()[1] - lower.get_coordinates()[1]) / otherLength;
+        return turns[t].get_coordinates()[1] + (entrance ? otherSlope : -otherSlope) * along;
+    };
     for (size_t t = 0; t < turns.size(); ++t) {
         if (t == *attachedIt || !turns[t].get_dimensions()) {
             continue;
@@ -5140,13 +5170,33 @@ std::optional<TangentDeparture> Coil::plan_tangent_departure(const ConnectionRou
         if (otherX + otherDims[0] / 2 <= turnX - dims[0] / 2 + 1e-12) {
             continue;   // radially inside the lead
         }
-        const double otherY = other.get_coordinates()[1];
-        if (otherY + otherDims[1] / 2 > yLow + 1e-12 && otherY - otherDims[1] / 2 < yHigh - 1e-12) {
+        // Where its corner meets the lead's line x = columnWidth + standoff (the frame of
+        // get_turn_length_in_frame: corner centre inset by its bend radius from the face straights).
+        const double otherStandoff = otherX - frame.columnWidth;   // axisX == 0: a lateral column threw above
+        const double otherBend = get_turn_bend_radius_in_frame(frame, otherX);
+        const double inset = std::min(standoff - otherStandoff + otherBend, otherBend);
+        double along;   // path distance from its crossing (the connection face's midpoint)
+        double depth;   // |z| of the meeting point
+        if (inset <= 0) {
+            along = frame.columnWidth + standoff;              // on its connection-face straight
+            depth = frame.columnDepth + otherStandoff;
+        }
+        else {
+            along = frame.columnWidth + otherStandoff - otherBend + otherBend * std::asin(inset / otherBend);
+            depth = frame.columnDepth + otherStandoff - otherBend + std::sqrt(std::max(0.0, otherBend * otherBend - inset * inset));
+        }
+        if (depth > borderDepth + 1e-12) {
+            continue;   // it meets the line beyond the drawn lead
+        }
+        const double leadHeight = y + (entrance ? -slope : slope) * std::max(0.0, depth - faceStraightEnd);
+        const double otherHeight = heightAlong(t, along);
+        if (std::abs(leadHeight - otherHeight) < (dims[1] + otherDims[1]) / 2 - 1e-9) {
             std::ostringstream message;
             message.precision(9);
-            message << who << "turn '" << other.get_name() << "' (at " << otherX << ", " << otherY
-                    << " m) lies across its straight, which runs at radius " << turnX << " m over y "
-                    << yLow << " .. " << yHigh << " m";
+            message << who << "turn '" << other.get_name() << "' (at " << otherX << ", " << other.get_coordinates()[1]
+                    << " m) winds its corner across the lead's straight " << depth << " m out along it, at height "
+                    << otherHeight << " m where the lead runs at " << leadHeight << " m: closer than their "
+                    << (dims[1] + otherDims[1]) / 2 << " m half heights";
             throw CoilException(ErrorCode::COIL_WINDING_ERROR, message.str());
         }
     }

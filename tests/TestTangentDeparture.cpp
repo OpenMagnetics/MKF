@@ -19,6 +19,8 @@
 #include "constructive_models/Magnetic.h"
 #include "support/Settings.h"
 #include "support/Utils.h"
+#include "support/Exceptions.h"
+#include "TestingUtils.h"
 
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
@@ -147,4 +149,126 @@ TEST_CASE("Real winding: a rectangular wire's terminal leads leave tangentially 
         full += shortened ? 0 : 1;
     }
     CHECK(full == turns.size() - 3);
+}
+
+// ABT #2012: the clash check of a tangent lead judges each other turn WHERE its corner meets the
+// lead's line, at its own pitch-true height there. Comparing the lead's height at the departure
+// point (already climbed slope * removed along the cut-off copper) with the next revolution's
+// height at its crossing station put them closer than one coated height in EVERY closely wound
+// layer, so every such tangent lead was refused -- round wire too -- on a clash that is not there:
+// along the whole straight the next revolution runs one pitch above the lead.
+//
+// Fixture: round wire on the rectangular column of an E 25/13/7, its terminal leads declared (by
+// the consumer's minimum lead bend radius) too wide for the connection-face straight, so they leave
+// tangentially. The radius is derived from the wound frame, not pinned.
+namespace {
+
+OpenMagnetics::Coil round_wire_coil(int64_t numberTurns) {
+    auto wires = std::vector<OpenMagnetics::Wire>({OpenMagnetics::find_wire_by_name("Round 0.4 - Grade 1")});
+    return OpenMagneticsTesting::get_quick_coil({numberTurns}, {1}, "E 25/13/7", 1, MAS::WindingOrientation::OVERLAPPING,
+                                                MAS::WindingOrientation::OVERLAPPING, MAS::CoilAlignment::CENTERED,
+                                                MAS::CoilAlignment::CENTERED, wires);
+}
+
+// The connection face's half straight of the first turn, read off a plain real-winding wind.
+double first_turn_face_half_straight(int64_t numberTurns) {
+    auto& settings = OpenMagnetics::Settings::GetInstance();
+    settings.reset();
+    settings.set_coil_use_real_winding_geometry(true);
+    auto coil = round_wire_coil(numberTurns);
+    REQUIRE(coil.wind());
+    const auto turns = coil.get_turns_description().value();
+    const auto frame = coil.get_wound_column_frame_for_section(turns.front().get_section().value());
+    const double x = std::abs(turns.front().get_coordinates()[0]);
+    const double standoff = x - frame.columnWidth;
+    const double bend = frame.cornerRadius + standoff;
+    return frame.columnWidth + standoff - bend;
+}
+
+}  // namespace
+
+TEST_CASE("Real winding: a closely wound round-wire layer's tangent lead is not refused by its own next revolution, "
+          "while a turn wound across the lead still refuses it",
+          "[constructive-model][coil][real-winding][tangent-departure][abt-2012]") {
+    auto& settings = OpenMagnetics::Settings::GetInstance();
+
+    SECTION("one closely wound layer: both leads leave tangentially") {
+        // Real winding spreads a part-filled layer over the window; the layer is closely wound once it
+        // is full. The fullest single layer: the most turns that still wind in one layer.
+        int64_t numberTurns = 0;
+        for (int64_t n = 20; n <= 60; ++n) {
+            settings.reset();
+            settings.set_coil_use_real_winding_geometry(true);
+            auto probe = round_wire_coil(n);
+            const auto layers = probe.get_layers_description().value();
+            size_t numberTurnLayers = 0;
+            for (const auto& layer : layers) {
+                numberTurnLayers += layer.get_type() == MAS::ElectricalType::CONDUCTION ? 1 : 0;
+            }
+            if (numberTurnLayers > 1) {
+                break;
+            }
+            numberTurns = n;
+        }
+        REQUIRE(numberTurns >= 20);
+        const double faceHalfStraight = first_turn_face_half_straight(numberTurns);
+        REQUIRE(faceHalfStraight > 0);
+        settings.reset();
+        settings.set_coil_use_real_winding_geometry(true);
+        settings.set_coil_lead_minimum_bend_radius(1.5 * faceHalfStraight);
+        OpenMagnetics::Coil coil;
+        bool fits = false;
+        // get_quick_coil winds the coil it builds, under these settings
+        REQUIRE_NOTHROW(coil = round_wire_coil(numberTurns));
+        REQUIRE_NOTHROW(fits = coil.wind());
+        REQUIRE(fits);
+        const auto turns = coil.get_turns_description().value();
+        // The premise: the next revolution's station is closer to the lead's departure height than one
+        // coated diameter -- by less than the lead's climb over the cut-off copper -- so judging the
+        // station against the departure point (the old check) collides, while along the whole straight
+        // the next revolution runs one pitch above the lead.
+        const auto frame = coil.get_wound_column_frame_for_section(turns.front().get_section().value());
+        const double x = std::abs(turns.front().get_coordinates()[0]);
+        const double standoff = x - frame.columnWidth;
+        const double bend = frame.cornerRadius + standoff;
+        const double removed = frame.columnWidth + standoff - bend + std::numbers::pi / 2 * bend;
+        const double fullLength = 4 * frame.columnDepth + 4 * frame.columnWidth + 8 * standoff +
+                                  (2 * std::numbers::pi - 8) * bend;
+        const double coatedDiameter = turns[0].get_dimensions().value()[1];
+        const double pitch = std::abs(turns[1].get_coordinates()[1] - turns[0].get_coordinates()[1]);
+        INFO(numberTurns << " turns, pitch " << pitch * 1e3 << " mm, coated diameter " << coatedDiameter * 1e3 << " mm");
+        REQUIRE(pitch >= coatedDiameter - 1e-12);
+        REQUIRE(pitch - coatedDiameter < pitch / fullLength * removed);
+        size_t tangent = 0;
+        for (const auto& route : coil.get_connection_layout().routes) {
+            if (route.kind != OpenMagnetics::ConnectionKind::TERMINAL_ENTRANCE &&
+                route.kind != OpenMagnetics::ConnectionKind::TERMINAL_EXIT) {
+                continue;
+            }
+            REQUIRE(route.plannedBendRadius > faceHalfStraight);   // its bend does not fit on the face
+            CHECK(route.tangentDeparture.has_value());
+            tangent += route.tangentDeparture ? 1 : 0;
+        }
+        CHECK(tangent == 2);
+    }
+
+    SECTION("a second layer wound over the first lies across the entrance lead: refused, naming the turn") {
+        const double faceHalfStraight = first_turn_face_half_straight(60);
+        settings.reset();
+        settings.set_coil_use_real_winding_geometry(true);
+        settings.set_coil_lead_minimum_bend_radius(1.5 * faceHalfStraight);
+        try {
+            // get_quick_coil winds the coil it builds, under these settings
+            auto coil = round_wire_coil(60);
+            coil.wind();
+            FAIL("the entrance lead runs under the second layer and was not refused");
+        }
+        catch (const OpenMagnetics::CoilException& e) {
+            const std::string what = e.what();
+            INFO(what);
+            CHECK(what.find("entrance lead") != std::string::npos);
+            CHECK(what.find("winds its corner across the lead's straight") != std::string::npos);
+        }
+    }
+    settings.reset();
 }
