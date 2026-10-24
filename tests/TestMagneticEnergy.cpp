@@ -155,4 +155,23 @@ namespace {
         REQUIRE_THAT(expectedValue, Catch::Matchers::WithinAbs(calculatedValue, max_error * expectedValue));
     }
 
+// calculate_core_maximum_magnetic_energy(core, T, f, saturationProportion = false) prices the gaps at
+// the full Bsat; the ungapped core term must use the same Bsat. It dropped the flag and always took
+// the derated (saturation-proportion) Bsat for the core term.
+TEST_CASE("Core maximum magnetic energy passes the saturation proportion to the ungapped term", "[physical-model][magnetic-energy][abt-1609]") {
+    settings.reset();
+    Core core = OpenMagneticsTesting::get_quick_core("E 42/21/15", json::array(), 1, "3C97");
+    double temperature = 25;
+    double derated = MagneticEnergy::get_ungapped_core_maximum_magnetic_energy(core, temperature, 100000.0, true);
+    double full = MagneticEnergy::get_ungapped_core_maximum_magnetic_energy(core, temperature, 100000.0, false);
+    REQUIRE(full > derated);
+    double gapsAtFullSaturation = 0;
+    double magneticFluxDensitySaturation = core.get_magnetic_flux_density_saturation(temperature, false);
+    for (auto& gap : core.get_functional_description().get_gapping()) {
+        gapsAtFullSaturation += MagneticEnergy().get_gap_maximum_magnetic_energy(gap, magneticFluxDensitySaturation);
+    }
+    double total = MagneticEnergy().calculate_core_maximum_magnetic_energy(core, temperature, 100000.0, false);
+    CHECK_THAT(total, Catch::Matchers::WithinRel(full + gapsAtFullSaturation, 1e-12));
+}
+
 }  // namespace

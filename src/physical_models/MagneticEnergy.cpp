@@ -141,7 +141,7 @@ double MagneticEnergy::calculate_core_maximum_magnetic_energy(Core core, double 
     double totalEnergy = 0;
     double magneticFluxDensitySaturation = core.get_magnetic_flux_density_saturation(temperature, saturationProportion);
 
-    totalEnergy = get_ungapped_core_maximum_magnetic_energy(core, temperature, frequency);
+    totalEnergy = get_ungapped_core_maximum_magnetic_energy(core, temperature, frequency, saturationProportion);
     for (auto& gap_info : core.get_functional_description().get_gapping()) {
         auto gapEnergy = get_gap_maximum_magnetic_energy(gap_info, magneticFluxDensitySaturation);
         totalEnergy += gapEnergy;
