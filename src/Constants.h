@@ -154,9 +154,6 @@ namespace ThermalDefaults {
     // surface and the predicted temperature rise came out ~2.5x low.
     constexpr double kConvection_StagnantAirGap = 1.0e-3;      // [m]
     
-    // TIM
-    constexpr double kTIM_DefaultResistance = 0.5;             // [K/W]
-    
     // Solver
     constexpr double kSolver_MinConductance = 1e-9;            // [W/K]
 } // namespace ThermalDefaults

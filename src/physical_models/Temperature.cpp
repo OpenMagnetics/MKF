@@ -7490,6 +7490,53 @@ void Temperature::applyForcedConvection(const MAS::Cooling& cooling) {
     }
 }
 
+// ABT #1611 (Alf 2026-10-24): only the face of a node that touches the plate conducts into it. A
+// yoke (core or bobbin, concentric) touches with its face normal to the plate: TANGENTIAL_LEFT is its
+// +Y face, TANGENTIAL_RIGHT its -Y face (initializeConcentricCoreQuadrants). A toroidal segment's
+// exterior faces are its two radial faces (the tangential ones join it to its neighbours); the one
+// whose outward normal points at the plate is the one in contact.
+static double plate_contact_area(const ThermalNetworkNode& node, double plateDirectionY) {
+    if (node.part == ThermalNodePartType::CORE_TOROIDAL_SEGMENT) {
+        double x = node.physicalCoordinates[0];
+        double y = node.physicalCoordinates[1];
+        double radius = std::hypot(x, y);
+        if (!(radius > 0)) {
+            throw InvalidInputException(ErrorCode::INVALID_INPUT,
+                "Temperature: toroidal segment " + node.name + " sits at the ring centre, so its radial faces have no direction");
+        }
+        // Outward normal of RADIAL_OUTER is (x, y)/r; RADIAL_INNER's is its opposite.
+        double outerNormalTowardPlate = (y / radius) * plateDirectionY;
+        ThermalNodeFace contactFace = outerNormalTowardPlate > 0 ? ThermalNodeFace::RADIAL_OUTER : ThermalNodeFace::RADIAL_INNER;
+        if (outerNormalTowardPlate == 0) {
+            throw InvalidInputException(ErrorCode::INVALID_INPUT,
+                "Temperature: toroidal segment " + node.name + " has no radial face pointing at the plate");
+        }
+        auto quadrant = node.getQuadrant(contactFace);
+        if (!quadrant || !(quadrant->surfaceArea > 0)) {
+            throw InvalidInputException(ErrorCode::INVALID_INPUT,
+                "Temperature: toroidal segment " + node.name + " has no area on the face touching the plate");
+        }
+        return quadrant->surfaceArea;
+    }
+    auto quadrant = node.getQuadrant(plateDirectionY > 0 ? ThermalNodeFace::TANGENTIAL_LEFT : ThermalNodeFace::TANGENTIAL_RIGHT);
+    if (!quadrant || !(quadrant->surfaceArea > 0)) {
+        throw InvalidInputException(ErrorCode::INVALID_INPUT,
+            "Temperature: node " + node.name + " has no area on the face touching the plate");
+    }
+    return quadrant->surfaceArea;
+}
+
+// ABT #1611 (Alf 2026-10-24): a heatsink or cold plate conducts through its interface; without the
+// interface's area-specific resistance there is no number to use (was a silent 0.5 K/W).
+static double interface_area_specific_resistance(const MAS::Cooling& cooling, const std::string& coolingName) {
+    if (!cooling.get_interface_thermal_resistance()) {
+        throw InvalidInputException(ErrorCode::MISSING_DATA,
+            "Temperature: the " + coolingName + " has no interfaceThermalResistance (area-specific, K*m^2/W) "
+            "for the thermal interface between the core and the " + coolingName);
+    }
+    return cooling.get_interface_thermal_resistance().value();
+}
+
 void Temperature::applyHeatsinkCooling(const MAS::Cooling& cooling) {
     // NOTE: Heatsink currently always mounts on top yoke (for concentric cores).
     // Future improvement: add heatsinkPlacement config option (TOP, BOTTOM, SIDE)
@@ -7529,15 +7576,9 @@ void Temperature::applyHeatsinkCooling(const MAS::Cooling& cooling) {
     // interface_thickness, which is never used in the computation, so a user who
     // supplied only the (correct) area-specific resistance had it silently dropped
     // in favour of the default.
-    double timResistance = kTIM_DefaultResistance;
-    if (cooling.get_interface_thermal_resistance().has_value()) {
-        // interface_thermal_resistance is area-specific resistance (K*m^2/W).
-        double areaSpecificResistance = cooling.get_interface_thermal_resistance().value();
-        double area = _nodes[topYokeIdx].getTotalSurfaceArea();
-        if (area > 0) {
-            timResistance = areaSpecificResistance / area;
-        }
-    }
+ // interface_thermal_resistance is area-specific resistance (K*m^2/W), over the top face only.
+    double contactArea = plate_contact_area(_nodes[topYokeIdx], +1.0);
+    double timResistance = interface_area_specific_resistance(cooling, "heatsink") / contactArea;
     
     ThermalResistanceElement timR;
     timR.nodeFromId = topYokeIdx;
@@ -7546,7 +7587,7 @@ void Temperature::applyHeatsinkCooling(const MAS::Cooling& cooling) {
     timR.quadrantTo = ThermalNodeFace::NONE;
     timR.type = HeatTransferType::CONDUCTION;
     timR.resistance = timResistance;
-    timR.area = _nodes[topYokeIdx].getTotalSurfaceArea();
+    timR.area = contactArea;
     _resistances.push_back(timR);
     
     // Create heatsink-to-ambient resistance
@@ -7651,19 +7692,11 @@ void Temperature::applyColdPlateCooling(const MAS::Cooling& cooling) {
     
     // Connect surface nodes to cold plate
     for (size_t nodeIdx : surfaceNodes) {
-        double timResistance = kTIM_DefaultResistance;
-        
-        // Gate ONLY on interface_thermal_resistance, as the heatsink does: interface_thickness is not
-        // used in the computation, and requiring it dropped a supplied resistance in favour of the default.
-        if (cooling.get_interface_thermal_resistance().has_value()) {
-            // Issue 25: interface_thermal_resistance is area-specific resistance (K*m^2/W)
-            // R_total = R_specific / area
-            double areaSpecificResistance = cooling.get_interface_thermal_resistance().value();
-            double area = _nodes[nodeIdx].getTotalSurfaceArea();
-            if (area > 0) {
-                timResistance = areaSpecificResistance / area;
-            }
-        }
+ // Gate ONLY on interface_thermal_resistance, as the heatsink does: interface_thickness is not
+        // used in the computation. Issue 25: it is area-specific (K*m^2/W), R = R_specific / area,
+        // over the face that touches the plate (ABT #1611).
+        double contactArea = plate_contact_area(_nodes[nodeIdx], -1.0);
+        double timResistance = interface_area_specific_resistance(cooling, "cold plate") / contactArea;
         
         ThermalResistanceElement r;
         r.nodeFromId = nodeIdx;
@@ -7672,7 +7705,7 @@ void Temperature::applyColdPlateCooling(const MAS::Cooling& cooling) {
         r.quadrantTo = ThermalNodeFace::NONE;
         r.type = HeatTransferType::CONDUCTION;
         r.resistance = timResistance;
-        r.area = _nodes[nodeIdx].getTotalSurfaceArea();
+        r.area = contactArea;
         _resistances.push_back(r);
     }
 }

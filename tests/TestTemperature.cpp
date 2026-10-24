@@ -3183,6 +3183,83 @@ TEST_CASE("Temperature: cold plate reads the interface resistance without a thic
     }
 }
 
+// ABT #1611 (Alf 2026-10-24): only the face touching the plate conducts into it, and a plate or a
+// heatsink without its interface resistance is an error, not a silent 0.5 K/W.
+TEST_CASE("Temperature: a cold plate conducts through the face touching it, and needs its interface resistance", "[temperature][cooling][abt-1611]") {
+    auto jsonPath = OpenMagneticsTesting::get_test_data_path(
+        std::source_location::current(), "toroidal_inductor_round_wire_multilayer.json");
+    auto mas = OpenMagneticsTesting::mas_loader(jsonPath);
+    auto magnetic = OpenMagnetics::magnetic_autocomplete(mas.get_magnetic());
+    auto inputs = OpenMagnetics::inputs_autocomplete(mas.get_inputs(), magnetic);
+    auto losses = getLossesFromSimulation(magnetic, inputs);
+    auto configWith = [&](const MAS::Cooling& cooling) {
+        TemperatureConfig config;
+        config.ambientTemperature = losses.ambientTemperature;
+        config.coreLosses = losses.coreLosses;
+        REQUIRE(losses.windingLossesOutput.has_value());
+        config.windingLosses = losses.windingLosses;
+        config.windingLossesOutput = losses.windingLossesOutput.value();
+        config.masCooling = cooling;
+        return config;
+    };
+    const double areaSpecificResistance = 3e-4;
+    MAS::Cooling coldPlateCooling;
+    coldPlateCooling.set_maximum_temperature(40.0);
+    coldPlateCooling.set_interface_thermal_resistance(areaSpecificResistance);
+    { MAS::Dimensions d; d.set_width(0.06); d.set_height(0.06); d.set_depth(0.01); coldPlateCooling.set_dimensions(d); }
+
+    Temperature temperature(magnetic, configWith(coldPlateCooling));
+    temperature.calculateTemperatures();
+    const auto& nodes = temperature.getNodes();
+    std::optional<size_t> coldPlateIndex;
+    for (size_t index = 0; index < nodes.size(); ++index) {
+        if (nodes[index].name == "ColdPlate") {
+            coldPlateIndex = index;
+        }
+    }
+    REQUIRE(coldPlateIndex);
+    size_t contacts = 0;
+    for (const auto& resistance : temperature.getResistances()) {
+        if (resistance.nodeToId != coldPlateIndex.value()) {
+            continue;
+        }
+        const auto& segment = nodes[resistance.nodeFromId];
+        REQUIRE(segment.part == ThermalNodePartType::CORE_TOROIDAL_SEGMENT);
+        REQUIRE(segment.physicalCoordinates[1] < 0);  // a bottom segment: its outer face looks at the plate
+        double outerFaceArea = segment.getQuadrant(ThermalNodeFace::RADIAL_OUTER)->surfaceArea;
+        INFO(segment.name << ": " << resistance.resistance << " K/W, outer face " << outerFaceArea << " m2, all faces " << segment.getTotalSurfaceArea() << " m2");
+        CHECK_THAT(resistance.resistance, Catch::Matchers::WithinRel(areaSpecificResistance / outerFaceArea, 1e-12));
+        ++contacts;
+    }
+    REQUIRE(contacts > 0);
+
+    MAS::Cooling withoutInterface = coldPlateCooling;
+    withoutInterface.set_interface_thermal_resistance(std::nullopt);
+    REQUIRE_THROWS_WITH(Temperature(magnetic, configWith(withoutInterface)).calculateTemperatures(),
+                        Catch::Matchers::ContainsSubstring("interfaceThermalResistance"));
+}
+
+TEST_CASE("Temperature: a heatsink without its interface resistance throws", "[temperature][cooling][abt-1611]") {
+    auto jsonPath = OpenMagneticsTesting::get_test_data_path(
+        std::source_location::current(), "concentric_round_wire_simple.json");
+    auto mas = OpenMagneticsTesting::mas_loader(jsonPath);
+    auto magnetic = OpenMagnetics::magnetic_autocomplete(mas.get_magnetic());
+    auto inputs = OpenMagnetics::inputs_autocomplete(mas.get_inputs(), magnetic);
+    auto losses = getLossesFromSimulation(magnetic, inputs);
+    TemperatureConfig config;
+    config.ambientTemperature = losses.ambientTemperature;
+    config.coreLosses = losses.coreLosses;
+    REQUIRE(losses.windingLossesOutput.has_value());
+    config.windingLosses = losses.windingLosses;
+    config.windingLossesOutput = losses.windingLossesOutput.value();
+    MAS::Cooling heatsinkCooling;
+    heatsinkCooling.set_thermal_resistance(2.5);
+    { MAS::Dimensions d; d.set_width(0.05); d.set_height(0.05); d.set_depth(0.02); heatsinkCooling.set_dimensions(d); }
+    config.masCooling = heatsinkCooling;
+    REQUIRE_THROWS_WITH(Temperature(magnetic, config).calculateTemperatures(),
+                        Catch::Matchers::ContainsSubstring("interfaceThermalResistance"));
+}
+
 TEST_CASE("Temperature: Cooling Utils Type Detection", "[temperature][cooling][smoke-test]") {
     using namespace OpenMagnetics;
     
