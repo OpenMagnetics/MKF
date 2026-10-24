@@ -217,6 +217,8 @@ std::string MagneticSimulator::loss_solve_key(const OperatingPoint& operatingPoi
     modelsJson["coreLosses"] = coreLossesModels;
     auto requestedModel = _coreLossesModel.get_core_losses_requested_model_name();
     modelsJson["coreLossesRequested"] = requestedModel ? static_cast<int>(requestedModel.value()) : -1;
+    // The effective value: the fingerprint holds what the caller set, which an adviser overrides.
+    modelsJson["lossTemperatureLoop"] = Settings::GetInstance().get_simulator_loss_temperature_loop();
     return magneticJson.dump() + "\n" + operatingPointJson.dump() + "\n" + modelsJson.dump() + "\n" +
            Settings::GetInstance().fingerprint();
 }
@@ -358,6 +360,11 @@ SolvedLosses MagneticSimulator::solve_losses_at_operating_temperature(const Oper
     // compute and no turn nodes to put them in (the core advisers' sentinel-coil candidates): the
     // core is then solved on the core-only network with its own losses.
     const bool withWinding = magnetic.get_coil().get_turns_description().has_value();
+    // Settings::simulatorLossTemperatureLoop off (a user choice for simulate and the builder; advisers read it
+    // on, see Settings::get_simulator_loss_temperature_loop): no loop. The first iterate below IS the one pass --
+    // core and winding losses at the operating temperature, the network run once on them for the hottest
+    // point -- and it is returned as it is, its temperature fed back into nothing (Alf, 2026-10-22).
+    const bool lossTemperatureLoop = Settings::GetInstance().get_simulator_loss_temperature_loop();
 
     const double ambientTemperature = operatingPoint.get_conditions().get_ambient_temperature();
     double coreTemperature = ambientTemperature;
@@ -568,6 +575,13 @@ SolvedLosses MagneticSimulator::solve_losses_at_operating_temperature(const Oper
             thermalResult = Temperature(magnetic, config).calculateTemperatures();
         }
         catch (const ThermalNetworkNotConvergedException& error) {
+            if (!lossTemperatureLoop) {
+                // One pass: there is no loop whose operating point could be missing. The network gives no
+                // temperature for these losses, and the one-pass estimate cannot be made.
+                throw ThermalNetworkNotConvergedException(error.message() + " One-pass temperature estimate of '" +
+                    magnetic.get_reference() + "' (loss-temperature loop off): core and winding losses at the operating "
+                    "temperature, " + std::to_string(coreTemperature) + " C.");
+            }
             // No steady temperature exists on the network for this iterate's losses: the operating point has
             // no thermal operating point (ABT #1876, Alf 2026-10-14).
             throw NoThermalOperatingPointException(error.code(), "No thermal operating point: " + error.message() +
@@ -579,6 +593,10 @@ SolvedLosses MagneticSimulator::solve_losses_at_operating_temperature(const Oper
         catch (const CalculationException& error) {
             // Not handled: the same error, with the loss loop's iterates up to it, so the losses and
             // temperatures that drove the network there can be read.
+            if (!lossTemperatureLoop) {
+                throw CalculationException(error.code(), error.message() + " One-pass temperature estimate (loss-temperature "
+                    "loop off): core and winding losses at the operating temperature, " + std::to_string(coreTemperature) + " C.");
+            }
             throw CalculationException(error.code(), error.message() + " Loss loop at iterate " +
                 std::to_string(iteration) + " (core losses at " + std::to_string(coreTemperature) + " C, winding losses at " +
                 std::to_string(windingTemperature) + " C" + (coreHeldAtCeiling ? ", core held at its data limit" : "") +
@@ -614,10 +632,13 @@ SolvedLosses MagneticSimulator::solve_losses_at_operating_temperature(const Oper
         }
         history += ";";
 
+        // One pass (loss-temperature loop off): these losses, at the operating temperature, and the hottest point
+        // the network gives for them. Nothing is iterated, held or checked for runaway: there is no loop.
         // Held at the ceiling, the core's temperature is no longer iterated: only the winding's must settle.
-        if ((coreHeldAtCeiling || std::fabs(nextCoreTemperature - coreTemperature) < kOperatingTemperatureTolerance) &&
-            std::fabs(nextWindingTemperature - windingTemperature) < kOperatingTemperatureTolerance) {
-            // Converged: the losses were evaluated at temperatures within the tolerance of the
+        if (!lossTemperatureLoop ||
+            ((coreHeldAtCeiling || std::fabs(nextCoreTemperature - coreTemperature) < kOperatingTemperatureTolerance) &&
+             std::fabs(nextWindingTemperature - windingTemperature) < kOperatingTemperatureTolerance)) {
+            // Converged (loop on): the losses were evaluated at temperatures within the tolerance of the
             // ones these very losses produce.
             SolvedLosses solved;
             solved.coreLosses = coreLossesOutput;

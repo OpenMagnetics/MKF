@@ -315,6 +315,45 @@ TEST_CASE("Advisers never extrapolate material data, whatever the flag says (ABT
     settings.reset();
 }
 
+// Settings::simulatorLossTemperatureLoop is for simulate and the builder: every adviser class, its copies and the
+// worker threads it fans out to (on a snapshot of the caller's Settings) read it ON while the adviser exists, through
+// the same barrier. The adviser gone, the caller's choice reads back.
+template <typename Adviser>
+static void check_adviser_keeps_loss_temperature_loop(const std::string& adviserName) {
+    INFO(adviserName);
+    REQUIRE_FALSE(settings.get_simulator_loss_temperature_loop());
+    {
+        Adviser adviser;
+        CHECK(settings.get_simulator_loss_temperature_loop());
+        const Settings parentSnapshot = Settings::GetInstance();
+        bool workerLoop = false;
+        std::thread worker([&]() {
+            Settings::GetInstance() = parentSnapshot;
+            workerLoop = Settings::GetInstance().get_simulator_loss_temperature_loop();
+        });
+        worker.join();
+        CHECK(workerLoop);
+        { Adviser copy(adviser); }
+        CHECK(settings.get_simulator_loss_temperature_loop());
+    }
+    CHECK_FALSE(settings.get_simulator_loss_temperature_loop());
+}
+
+TEST_CASE("Advisers keep the loss-temperature loop, whatever simulatorLossTemperatureLoop says", "[adviser-barrier][abt-2003]") {
+    settings.reset();
+    REQUIRE(MaterialDataExtrapolationBarrier::active_count() == 0);
+    struct Restore {
+        ~Restore() { Settings::GetInstance().reset(); }
+    } restore;
+    settings.set_simulator_loss_temperature_loop(false);
+    check_adviser_keeps_loss_temperature_loop<CoreAdviser>("CoreAdviser");
+    check_adviser_keeps_loss_temperature_loop<WireAdviser>("WireAdviser");
+    check_adviser_keeps_loss_temperature_loop<CoilAdviser>("CoilAdviser");
+    check_adviser_keeps_loss_temperature_loop<MagneticAdviser>("MagneticAdviser");
+    check_adviser_keeps_loss_temperature_loop<CoreCrossReferencer>("CoreCrossReferencer");
+    check_adviser_keeps_loss_temperature_loop<CoreMaterialCrossReferencer>("CoreMaterialCrossReferencer");
+}
+
 TEST_CASE("The core-resistance sweep keeps the requested window only with the flag on", "[material-extrapolation][sweeper]") {
     settings.reset();
     clear_databases();

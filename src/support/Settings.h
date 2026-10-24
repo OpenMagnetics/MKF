@@ -243,6 +243,16 @@ class Settings
         // ABT #1652: advisers never extrapolate. While any adviser object exists the getter reads
         // false whatever this holds (see MaterialDataExtrapolationBarrier below). Keep in sync with reset().
         bool   _allowMaterialDataExtrapolation = false;
+        // What MagneticSimulator does with the loss <-> temperature coupling. TRUE (default): the losses
+        // are evaluated at the temperatures their own dissipation produces, by the fixed-point loop of
+        // MagneticSimulator::solve_losses_at_operating_temperature. FALSE (a user choice for simulate and
+        // the builder): ONE pass -- core losses, winding losses and every material parameter at the
+        // operating point's temperature (conditions.ambientTemperature), then the hottest point estimated
+        // once from those losses on the same thermal network and published as the temperature output,
+        // with no feedback into the losses (Alf, 2026-10-22). Advisers always run the loop: while any
+        // adviser object exists the getter reads true whatever this holds (the adviser barrier below).
+        // Keep in sync with reset().
+        bool   _simulatorLossTemperatureLoop = true;
         GappingOptimizationStrategy _gappingStrategy = GappingOptimizationStrategy::SIMPLE;
 
 
@@ -633,6 +643,12 @@ class Settings
         bool   get_allow_material_data_extrapolation() const;
         void   set_allow_material_data_extrapolation(bool value);
 
+        // The EFFECTIVE value: what the caller set, OR an adviser alive anywhere in the process
+        // (MaterialDataExtrapolationBarrier: advisers keep the loop). The setter stores the caller's
+        // choice untouched; it reads back once the advisers are gone.
+        bool   get_simulator_loss_temperature_loop() const;
+        void   set_simulator_loss_temperature_loop(bool value);
+
         GappingOptimizationStrategy get_gapping_strategy() const;
         void set_gapping_strategy(GappingOptimizationStrategy value);
 
@@ -757,6 +773,10 @@ class Settings
 // CoilAdviser) would restore out of order, and a restore would overwrite a value the caller set
 // meanwhile. The cost: a hand simulation running on another thread while an adviser is alive does not
 // extrapolate either -- it throws MaterialFrequencyOutOfSpanException as it would with the flag off.
+//
+// The same count keeps advisers on the loss <-> temperature loop: while a barrier exists,
+// Settings::get_simulator_loss_temperature_loop() reads true whatever the caller set (a hand simulation on
+// another thread then also runs the loop).
 class MaterialDataExtrapolationBarrier {
 public:
     MaterialDataExtrapolationBarrier();

@@ -3017,3 +3017,195 @@ TEST_CASE("A loss-temperature loop that does not settle is that point's NO_THERM
     settings.reset();
 }
 
+
+namespace {
+    // Settings::simulatorLossTemperatureLoop is global: every test that turns it off restores it on every exit
+    // path, a failed REQUIRE included.
+    struct LossTemperatureLoopOff {
+        SettingsGuard<bool> guard{Settings::GetInstance(), &Settings::get_simulator_loss_temperature_loop,
+                                  &Settings::set_simulator_loss_temperature_loop, false};
+        ~LossTemperatureLoopOff() { Settings::GetInstance().reset(); }
+    };
+
+    std::string simulated_json(const OpenMagnetics::Inputs& inputs, const OpenMagnetics::Magnetic& magnetic) {
+        json masJson;
+        to_json(masJson, MagneticSimulator().simulate(inputs, magnetic));
+        return masJson.dump();
+    }
+}
+
+// Alf, 2026-10-22: the loss-temperature loop is a setting (Settings::simulatorLossTemperatureLoop), on by default.
+// On, simulate is what it was before the setting existed: setting it on explicitly changes no byte of its output.
+TEST_CASE("The loss-temperature loop is on by default, and on is the simulate it always was",
+          "[processor][magnetic-simulator][abt-2003]") {
+    settings.reset();
+    REQUIRE(settings.get_simulator_loss_temperature_loop());
+    auto path = get_examples_dir() / "01_simple_inductor_etd34_n87.json";
+    REQUIRE(std::filesystem::exists(path));
+    auto mas = OpenMagneticsTesting::mas_loader(path.string());
+    auto magnetic = OpenMagnetics::magnetic_autocomplete(mas.get_magnetic());
+    auto inputs = OpenMagnetics::inputs_autocomplete(mas.get_inputs(), magnetic);
+    const std::string byDefault = simulated_json(inputs, magnetic);
+    std::string explicitlyOn;
+    {
+        SettingsGuard<bool> on(settings, &Settings::get_simulator_loss_temperature_loop, &Settings::set_simulator_loss_temperature_loop, true);
+        explicitlyOn = simulated_json(inputs, magnetic);
+    }
+    CHECK(byDefault == explicitlyOn);
+    {
+        LossTemperatureLoopOff off;
+        CHECK_FALSE(settings.get_simulator_loss_temperature_loop());
+        CHECK(simulated_json(inputs, magnetic) != byDefault);
+    }
+    // reset() turns it back on.
+    CHECK(settings.get_simulator_loss_temperature_loop());
+    settings.set_simulator_loss_temperature_loop(false);
+    settings.reset();
+    CHECK(settings.get_simulator_loss_temperature_loop());
+}
+
+// Alf, 2026-10-22: with the loop off, simulate evaluates every loss at the operating point's temperature and still
+// publishes a temperature: the hottest point the thermal network gives ONCE for exactly those losses, fed back
+// into nothing. There is no loop, so no finding about one.
+TEST_CASE("With the loss-temperature loop off, simulate gives the losses at the operating temperature and one thermal pass on them",
+          "[processor][magnetic-simulator][abt-2003]") {
+    settings.reset();
+    const double tolerance = MagneticSimulator::kOperatingTemperatureTolerance;
+    auto path = get_examples_dir() / "01_simple_inductor_etd34_n87.json";
+    REQUIRE(std::filesystem::exists(path));
+    auto mas = OpenMagneticsTesting::mas_loader(path.string());
+    auto magnetic = OpenMagnetics::magnetic_autocomplete(mas.get_magnetic());
+    auto inputs = OpenMagnetics::inputs_autocomplete(mas.get_inputs(), magnetic);
+    if (!magnetic.get_coil().get_turns_description()) {
+        magnetic.get_mutable_coil().wind();
+    }
+    const auto looped = MagneticSimulator().simulate(inputs, magnetic);
+
+    LossTemperatureLoopOff off;
+    MagneticSimulator simulator;
+    const auto simulated = simulator.simulate(inputs, magnetic);
+    REQUIRE(simulated.get_outputs().size() == inputs.get_operating_points().size());
+    for (size_t index = 0; index < simulated.get_outputs().size(); ++index) {
+        INFO("operating point " << index);
+        const auto& output = simulated.get_outputs()[index];
+        const auto& operatingPoint = simulated.get_inputs().get_operating_points()[index];
+        const double ambientTemperature = inputs.get_operating_points()[index].get_conditions().get_ambient_temperature();
+        REQUIRE(operatingPoint.get_conditions().get_ambient_temperature() == ambientTemperature);
+
+        // The losses: at the operating temperature, as the models give them there.
+        REQUIRE(output.get_core_losses());
+        REQUIRE(output.get_winding_losses());
+        CHECK(output.get_core_losses()->get_temperature() == ambientTemperature);
+        REQUIRE(output.get_winding_losses()->get_temperature());
+        CHECK(output.get_winding_losses()->get_temperature().value() == ambientTemperature);
+        auto excitation = operatingPoint.get_excitations_per_winding()[0];
+        REQUIRE(excitation.get_magnetic_flux_density());
+        const double coreLossesAtAmbient = CoreLosses().calculate_core_losses(magnetic.get_core(), excitation, ambientTemperature).get_core_losses();
+        OperatingPoint operatingPointForWinding = inputs.get_operating_points()[index];
+        const double windingLossesAtAmbient =
+            MagneticSimulator().calculate_winding_losses(operatingPointForWinding, magnetic, ambientTemperature).get_winding_losses();
+        CAPTURE(output.get_core_losses()->get_core_losses(), coreLossesAtAmbient, output.get_winding_losses()->get_winding_losses(),
+                windingLossesAtAmbient);
+        CHECK_THAT(output.get_core_losses()->get_core_losses(), Catch::Matchers::WithinRel(coreLossesAtAmbient, 1e-12));
+        CHECK_THAT(output.get_winding_losses()->get_winding_losses(), Catch::Matchers::WithinRel(windingLossesAtAmbient, 1e-12));
+
+        // The temperature: one pass of the thermal network on exactly those losses.
+        REQUIRE(output.get_temperature());
+        auto onePass = Temperature(magnetic, TemperatureConfig::fromSimulatedOutput(operatingPoint, output)).calculateTemperatures();
+        CAPTURE(output.get_temperature()->get_maximum_temperature(), onePass.maximumTemperature);
+        CHECK_THAT(output.get_temperature()->get_maximum_temperature(), Catch::Matchers::WithinRel(onePass.maximumTemperature, 1e-12));
+        CHECK(output.get_temperature()->get_initial_temperature() == ambientTemperature);
+        // A real rise, so the pass is measured: the losses heat the part well past the loop's tolerance ...
+        CHECK(onePass.maximumTemperature > ambientTemperature + tolerance);
+        // ... and they are not the loop's: the loop evaluates them at that higher temperature.
+        const auto& loopedOutput = looped.get_outputs()[index];
+        CAPTURE(loopedOutput.get_core_losses()->get_temperature(), loopedOutput.get_core_losses()->get_core_losses());
+        CHECK(loopedOutput.get_core_losses()->get_temperature() > ambientTemperature + tolerance);
+        CHECK(std::fabs(loopedOutput.get_core_losses()->get_core_losses() / output.get_core_losses()->get_core_losses() - 1) > 1e-3);
+    }
+
+    // No loop, no finding about one.
+    auto findings = ResultsAnalyzer::analyze_results(simulated);
+    INFO("findings:" << describe_findings(findings));
+    for (const auto& finding : findings) {
+        CHECK(finding.code != ResultFindingCode::NO_THERMAL_OPERATING_POINT);
+        CHECK(finding.code != ResultFindingCode::CORE_ABOVE_MATERIAL_DATA_LIMIT);
+    }
+}
+
+// The web's default design has no thermal operating point with the loop on (NO_THERMAL_OPERATING_POINT, ABT #1876):
+// the loop runs away from its first iterate. With the loop off that first iterate is the answer: losses at ambient
+// and the network's hottest point for them, published, and no NO_THERMAL_OPERATING_POINT finding.
+TEST_CASE("With the loss-temperature loop off, the web's default design gets its one-pass temperature and no loop finding",
+          "[processor][magnetic-simulator][abt-2003]") {
+    settings.reset();
+    auto [magnetic, inputs] = load_web_default_design();
+    REQUIRE(inputs.get_operating_points().size() == 1);
+    const double ambientTemperature = inputs.get_operating_points()[0].get_conditions().get_ambient_temperature();
+    const auto looped = MagneticSimulator().simulate(inputs, magnetic);
+    REQUIRE(looped.get_outputs().size() == 1);
+    // The loop's answer for this design: no temperature (see the ABT #1876 test above).
+    REQUIRE_FALSE(looped.get_outputs()[0].get_temperature());
+
+    LossTemperatureLoopOff off;
+    OpenMagnetics::Mas simulated;
+    REQUIRE_NOTHROW(simulated = MagneticSimulator().simulate(inputs, magnetic));
+    REQUIRE(simulated.get_outputs().size() == 1);
+    const auto& output = simulated.get_outputs()[0];
+    // Same losses as the loop's no-thermal-operating-point answer: both are the losses at ambient.
+    CHECK(output.get_core_losses()->get_temperature() == ambientTemperature);
+    CHECK_THAT(output.get_core_losses()->get_core_losses(),
+               Catch::Matchers::WithinRel(looped.get_outputs()[0].get_core_losses()->get_core_losses(), 1e-12));
+    CHECK_THAT(output.get_winding_losses()->get_winding_losses(),
+               Catch::Matchers::WithinRel(looped.get_outputs()[0].get_winding_losses()->get_winding_losses(), 1e-12));
+    REQUIRE(output.get_temperature());
+    OpenMagnetics::Magnetic woundMagnetic = magnetic;
+    if (!woundMagnetic.get_coil().get_turns_description()) {
+        woundMagnetic.get_mutable_coil().wind();
+    }
+    auto onePass = Temperature(woundMagnetic, TemperatureConfig::fromSimulatedOutput(simulated.get_inputs().get_operating_points()[0], output))
+                       .calculateTemperatures();
+    CAPTURE(output.get_temperature()->get_maximum_temperature(), onePass.maximumTemperature);
+    CHECK_THAT(output.get_temperature()->get_maximum_temperature(), Catch::Matchers::WithinRel(onePass.maximumTemperature, 1e-12));
+
+    auto findings = ResultsAnalyzer::analyze_results(simulated);
+    INFO("findings:" << describe_findings(findings));
+    for (const auto& finding : findings) {
+        CHECK(finding.code != ResultFindingCode::NO_THERMAL_OPERATING_POINT);
+        CHECK(finding.code != ResultFindingCode::CORE_ABOVE_MATERIAL_DATA_LIMIT);
+    }
+}
+
+// Advisers keep their own behaviour: the setting is for simulate and the builder. While an adviser exists the
+// effective setting reads on (Settings::get_simulator_loss_temperature_loop), so the loss solves its filters and
+// its simulate run are the loop's, bit for bit.
+TEST_CASE("Under an adviser the loss solve runs the loss-temperature loop whatever the setting says",
+          "[processor][magnetic-simulator][abt-2003]") {
+    settings.reset();
+    auto path = get_examples_dir() / "01_simple_inductor_etd34_n87.json";
+    REQUIRE(std::filesystem::exists(path));
+    auto mas = OpenMagneticsTesting::mas_loader(path.string());
+    auto magnetic = OpenMagnetics::magnetic_autocomplete(mas.get_magnetic());
+    auto inputs = OpenMagnetics::inputs_autocomplete(mas.get_inputs(), magnetic);
+    if (!magnetic.get_coil().get_turns_description()) {
+        magnetic.get_mutable_coil().wind();
+    }
+    const double ambientTemperature = inputs.get_operating_points()[0].get_conditions().get_ambient_temperature();
+    OperatingPoint loopedOperatingPoint = inputs.get_operating_points()[0];
+    const auto looped = MagneticSimulator().calculate_core_losses(loopedOperatingPoint, magnetic);
+    REQUIRE(looped.get_temperature() > ambientTemperature + MagneticSimulator::kOperatingTemperatureTolerance);
+
+    LossTemperatureLoopOff off;
+    {
+        MagneticAdviser adviser;
+        CHECK(settings.get_simulator_loss_temperature_loop());
+        OperatingPoint operatingPoint = inputs.get_operating_points()[0];
+        const auto underAdviser = MagneticSimulator().calculate_core_losses(operatingPoint, magnetic);
+        CHECK(underAdviser.get_temperature() == looped.get_temperature());
+        CHECK(underAdviser.get_core_losses() == looped.get_core_losses());
+    }
+    // The adviser gone, the caller's choice reads back.
+    CHECK_FALSE(settings.get_simulator_loss_temperature_loop());
+    OperatingPoint operatingPoint = inputs.get_operating_points()[0];
+    CHECK(MagneticSimulator().calculate_core_losses(operatingPoint, magnetic).get_temperature() == ambientTemperature);
+}

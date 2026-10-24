@@ -196,6 +196,7 @@ namespace {
         add_to_fingerprint(text, _coreAdviserSaturationDeratingTemperature);
         add_to_fingerprint(text, _thermalNetworkStrictGeometry);
         add_to_fingerprint(text, _allowMaterialDataExtrapolation);
+        add_to_fingerprint(text, _simulatorLossTemperatureLoop);
         add_to_fingerprint(text, _gappingStrategy);
         add_to_fingerprint(text, _wireAdviserIncludePlanar);
         add_to_fingerprint(text, _wireAdviserIncludeFoil);
@@ -357,6 +358,7 @@ namespace {
 
         _thermalNetworkStrictGeometry = true;
         _allowMaterialDataExtrapolation = false;
+        _simulatorLossTemperatureLoop = true;
 
         _wireAdviserIncludePlanar = false;
         _wireAdviserIncludeFoil = false;
@@ -1215,6 +1217,16 @@ namespace {
     }
     void Settings::set_allow_material_data_extrapolation(bool value) {
         _allowMaterialDataExtrapolation = value;
+    }
+
+    // Advisers keep the loss <-> temperature loop, whatever the caller chose for simulate: every adviser
+    // class holds a MaterialDataExtrapolationBarrier for its whole life, and the same count tells this
+    // getter an adviser is alive.
+    bool Settings::get_simulator_loss_temperature_loop() const {
+        return _simulatorLossTemperatureLoop || materialDataExtrapolationBarriers.load() > 0;
+    }
+    void Settings::set_simulator_loss_temperature_loop(bool value) {
+        _simulatorLossTemperatureLoop = value;
     }
 
     GappingOptimizationStrategy Settings::get_gapping_strategy() const {

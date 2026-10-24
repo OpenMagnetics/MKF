@@ -164,6 +164,8 @@ class MagneticSimulator {
         // normally, and ResultsAnalyzer::analyze_results reports NO_THERMAL_OPERATING_POINT for it. Every
         // other error still throws for the whole design. fastMode publishes no temperature for ANY point
         // (and skips the leakage inductance); analyze_results tells the two apart by solving again.
+        // Settings::simulatorLossTemperatureLoop off: each point's losses at its operating temperature and
+        // its temperature output from one pass of the network on them (see calculate_core_losses).
         Mas simulate(Mas mas, bool fastMode=false);
         Mas simulate(const Inputs& inputs, const Magnetic& magnetic, bool fastMode=false);
 
@@ -212,6 +214,11 @@ class MagneticSimulator {
         // operating point returns its losses at ambient and leaves `temperatureOutput` EMPTY (the public
         // per-point entry point, as simulate does per point); THROW (the advisers, ResultsAnalyzer) lets the
         // NoThermalOperatingPointException propagate.
+        // With Settings::simulatorLossTemperatureLoop off (never under an adviser, see
+        // Settings::get_simulator_loss_temperature_loop) there is no loop: the losses are evaluated once at
+        // the operating point's temperature, and `temperatureOutput` receives the network's hottest point
+        // for exactly those losses (the loop's first iterate). There is then no NoThermalOperatingPoint-
+        // Exception: a network that does not converge on those losses throws ThermalNetworkNotConvergedException.
         // K, both temperatures. 2 K (was 0.5 K; approved by Alf 2026-10-11): on the 522 solves of the
         // web9 magnetic adviser run it moves the hot spot by <= 0.57 K, the winding temperature by
         // <= 2 K and the total loss by <= 0.96%, and saves ~300 of 1775 iterations.
