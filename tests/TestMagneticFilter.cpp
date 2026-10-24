@@ -634,6 +634,34 @@ TEST_CASE("MagneticFilter TEMPERATURE_RISE snapshot",
     evaluate_and_check("TEMPERATURE_RISE", MagneticFilters::TEMPERATURE_RISE);
 }
 
+// The temperature-rise filter uses the core temperature model selected in the settings; it used to
+// build Defaults::coreTemperatureModelDefault (Maniktala) whatever was selected.
+TEST_CASE("MagneticFilter TEMPERATURE_RISE uses the core temperature model of the settings",
+          "[magnetic-filter][temperature-rise][abt-1230]") {
+    settings.reset();
+    auto examplePath = std::filesystem::path{std::source_location::current().file_name()}
+        .parent_path().append("..").append("MAS").append("examples").append("01_simple_inductor_etd34_n87.json");
+    REQUIRE(std::filesystem::exists(examplePath));
+    auto exampleMas = OpenMagneticsTesting::mas_loader(examplePath.string());
+    auto magnetic = OpenMagnetics::magnetic_autocomplete(exampleMas.get_magnetic());
+    auto inputs = OpenMagnetics::inputs_autocomplete(exampleMas.get_inputs(), magnetic);
+    if (!magnetic.get_coil().get_turns_description()) {
+        magnetic.get_mutable_coil().wind();
+    }
+    auto evaluate = [&](CoreTemperatureModels model) {
+        settings.set_core_temperature_model(model);
+        auto magneticCopy = magnetic;
+        return MagneticFilterTemperatureRise().evaluate_magnetic(&magneticCopy, &inputs).second;
+    };
+    double maniktala = evaluate(CoreTemperatureModels::MANIKTALA);
+    double kazimierczuk = evaluate(CoreTemperatureModels::KAZIMIERCZUK);
+    settings.reset();
+    const double ambientTemperature = inputs.get_maximum_temperature();
+    INFO("ambient " << ambientTemperature << " C, Maniktala " << maniktala << " C, Kazimierczuk " << kazimierczuk << " C");
+    REQUIRE(maniktala > ambientTemperature + 1);
+    CHECK(std::fabs(kazimierczuk - maniktala) > 1e-3 * (maniktala - ambientTemperature));
+}
+
 TEST_CASE("MagneticFilter LOSSES_TIMES_VOLUME snapshot",
           "[magnetic-filter][characterisation][heavy][losses-times-volume]") {
     // Same precondition as VOLUME — wound + delimited coil required.

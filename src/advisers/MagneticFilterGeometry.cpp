@@ -1,6 +1,7 @@
 #include "advisers/MagneticFilter.h"
 #include "advisers/MagneticFilterInternal.h"
 #include "physical_models/CoreTemperature.h"
+#include "support/Settings.h"
 
 #include <algorithm>
 #include <cmath>
@@ -224,7 +225,8 @@ std::pair<bool, double> MagneticFilterHeight::evaluate_magnetic(Magnetic* magnet
 std::pair<bool, double> MagneticFilterTemperatureRise::evaluate_magnetic(Magnetic* magnetic, Inputs* inputs, std::vector<Outputs>* outputs) {
     double losses = cached_or_compute_scoring(magnetic, inputs, outputs, MagneticFilters::LOSSES_NO_PROXIMITY, _magneticFilterLossesNoProximity);
 
-    auto coreTemperatureModel = CoreTemperatureModel::factory(defaults.coreTemperatureModelDefault);
+    // The core temperature model is the one selected in the settings (its default is Defaults::coreTemperatureModelDefault).
+    auto coreTemperatureModel = CoreTemperatureModel::factory(Settings::GetInstance().get_core_temperature_model());
 
     // Base the temperature rise on the actual operating-point ambient, not a hardcoded 25 degC
     // default: a design specified at an 85 degC ambient runs hotter than one at 25 degC, and the
