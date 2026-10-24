@@ -766,9 +766,34 @@ void add_initial_turns_by_inductance(std::vector<std::pair<Magnetic, double>> *m
                     double peakCurrent = 0;
                     for (auto& op : inputs.get_operating_points()) {
                         auto exc = Inputs::get_primary_excitation(op);
-                        if (exc.get_current() && exc.get_current()->get_processed() && exc.get_current()->get_processed()->get_peak()) {
-                            peakCurrent = std::max(peakCurrent, std::abs(exc.get_current()->get_processed()->get_peak().value()));
+                        if (!exc.get_current()) {
+                            continue;
                         }
+                        // ABT #1883: a current given as peak-to-peak + offset (no 'peak') was read as a
+                        // peak of 0, so the re-gap never ran. Without a processed peak the peak is the
+                        // largest magnitude of the waveform: the given one, else the one the processed
+                        // description (label, peak-to-peak, offset, duty cycle) defines. A current with
+                        // none of these throws.
+                        const auto current = exc.get_current().value();
+                        auto largestMagnitude = [](const Waveform& waveform) {
+                            const auto& data = waveform.get_data();
+                            return std::max(std::abs(*std::max_element(data.begin(), data.end())), std::abs(*std::min_element(data.begin(), data.end())));
+                        };
+                        double operatingPointPeak;
+                        if (current.get_processed() && current.get_processed()->get_peak()) {
+                            operatingPointPeak = std::abs(current.get_processed()->get_peak().value());
+                        }
+                        else if (current.get_waveform() && !current.get_waveform()->get_data().empty()) {
+                            operatingPointPeak = largestMagnitude(current.get_waveform().value());
+                        }
+                        else if (current.get_processed() && current.get_processed()->get_peak_to_peak()) {
+                            operatingPointPeak = largestMagnitude(Inputs::create_waveform(current.get_processed().value(), exc.get_frequency()));
+                        }
+                        else {
+                            throw InvalidInputException(ErrorCode::MISSING_DATA,
+                                "Inductor seeding: the primary current has neither a peak, a waveform, nor a peak-to-peak to build one from");
+                        }
+                        peakCurrent = std::max(peakCurrent, operatingPointPeak);
                     }
                     // Derating (ABT #13): size against the gap-aware saturation
                     // current evaluated at the hot junction corner and with RAW

@@ -4313,6 +4313,39 @@ TEST_CASE("Test_CoreAdviser_Seeding_Regaps_A_Turns_Solve_Refusal", "[adviser][co
     settings.reset();
 }
 
+TEST_CASE("Test_CoreAdviser_Seeding_Regaps_A_Current_Given_Without_A_Processed_Peak", "[adviser][core-adviser][abt-1883]") {
+    // The ABT #1875 refusal above, with the current's processed 'peak' removed (as inputs that give a
+    // peak-to-peak and an offset arrive). The seeder read the missing peak as 0 A, so its
+    // saturation-aware re-gap never ran and the refused candidate was dropped.
+    settings.reset();
+    clear_databases();
+    auto inputs = pre_process_inputs(load_abt1875_inputs("Test_Magnetizing_Current_Dcm_Flyback_Balanced.json"));
+    for (auto& operatingPoint : inputs.get_mutable_operating_points()) {
+        auto& excitation = operatingPoint.get_mutable_excitations_per_winding()[0];
+        auto current = excitation.get_current().value();
+        REQUIRE(current.get_processed());
+        REQUIRE(current.get_waveform());
+        auto processed = current.get_processed().value();
+        processed.set_peak(std::nullopt);
+        current.set_processed(processed);
+        excitation.set_current(current);
+    }
+    std::vector<OpenMagnetics::Core> cores = {OpenMagneticsTesting::get_quick_core("E 10/5.5/5", OpenMagneticsTesting::get_ground_gap(8.72791e-05), 4, "95")};
+    CoreAdviser coreAdviser;
+    auto magnetics = coreAdviser.create_magnetic_dataset(inputs, &cores, false);
+    REQUIRE(magnetics.size() == 1);
+    add_initial_turns_by_inductance(&magnetics, inputs);
+    REQUIRE(magnetics.size() == 1);
+    auto magnetic = magnetics[0].first;
+    int64_t numberTurns = magnetic.get_coil().get_functional_description()[0].get_number_turns();
+    OpenMagnetics::Inputs checkInputs(inputs);
+    MagnetizingInductance magnetizingInductance;
+    auto [saturates, message] = magnetizingInductance.check_sizing_saturation(magnetic.get_core(), magnetic.get_coil(), numberTurns, &checkInputs);
+    INFO("kept with " << numberTurns << " turns: " << message);
+    CHECK_FALSE(saturates);
+    settings.reset();
+}
+
 TEST_CASE("Test_CoreAdviser_Temperature_Walk_Counts_Parts_Post_Processing_Keeps", "[adviser][core-adviser][abt-1875]") {
     // simple_inductor, standard cores: with the turns-solve refusals re-gapped, the rescued cores
     // shift the ABT #1412 walk to smaller cores, and its first batch passes the single-pass
