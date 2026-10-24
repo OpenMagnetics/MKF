@@ -23,7 +23,8 @@ endif()
 
 if (CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /bigobj")
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /Ox")
+    # /Ox only in Release: in the global flags it also reached Debug, where it conflicts with /RTC1.
+    set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} /Ox")
     # Use /W3 instead of /W0 to catch potential issues; suppress only specific warnings if needed
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /W3")
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /wd4996") # Suppress deprecation warnings
@@ -37,16 +38,36 @@ else ()
 
     # Maximum-speed optimized build. NOTE: deliberately NO -ffast-math — this is a numeric/physics
     # codebase whose results (and pinned characterization tests) depend on IEEE FP semantics, NaN/Inf
-    # handling and operation ordering, all of which -ffast-math breaks. -march=native tunes for the
-    # build machine's CPU (binaries are not portable to older CPUs); -funroll-loops + -O3 + NDEBUG.
-    # -march=native is x86/native-only; it is invalid for the wasm32 (Emscripten) target.
+    # handling and operation ordering, all of which -ffast-math breaks. -funroll-loops + -O3 + NDEBUG.
+    #
+    # Target CPU (ABT #1597): the default stays -march=native (tuned for the build machine; binaries
+    # are not portable to older CPUs), as before, and wasm32 (Emscripten) gets no -march.
+    # -DMKF_NATIVE_ARCH=OFF builds a portable baseline instead: -march=x86-64-v2 on x86-64
+    # (SSE4.2/POPCNT, no AVX/FMA), no -march on other architectures. The two can differ in the last
+    # bits of floating-point results (FMA contraction, vector widths). OFF is kept for when portable
+    # binaries are needed, but it has not been validated against the full test suite: on
+    # x86-64-v2 the stray-capacitance self-pair energy of an equipotential winding can come out as a
+    # rounding residue (5.6e-42 J) instead of exactly 0, which its exact-zero test rejects.
     if(EMSCRIPTEN)
-        set(CMAKE_CXX_FLAGS_RELEASE "-O3 -DNDEBUG -funroll-loops")
-        set(CMAKE_C_FLAGS_RELEASE "-O3 -DNDEBUG -funroll-loops")
+        set(_mkf_native_arch_default OFF)
     else()
-        set(CMAKE_CXX_FLAGS_RELEASE "-O3 -DNDEBUG -march=native -funroll-loops")
-        set(CMAKE_C_FLAGS_RELEASE "-O3 -DNDEBUG -march=native -funroll-loops")
+        set(_mkf_native_arch_default ON)
     endif()
+    option(MKF_NATIVE_ARCH "Optimise for the build machine's CPU (-march=native); binaries are not portable" ${_mkf_native_arch_default})
+    if(MKF_NATIVE_ARCH)
+        if(EMSCRIPTEN)
+            message(FATAL_ERROR "MKF_NATIVE_ARCH=ON is not valid for Emscripten/wasm32: -march=native has no wasm target.")
+        endif()
+        set(_mkf_arch_flags "-march=native")
+    elseif(NOT EMSCRIPTEN AND CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|AMD64|amd64|x64)$"
+           AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+        set(_mkf_arch_flags "-march=x86-64-v2")
+    else()
+        set(_mkf_arch_flags "")
+    endif()
+    message(STATUS "MKF target CPU flags (MKF_NATIVE_ARCH=${MKF_NATIVE_ARCH}): '${_mkf_arch_flags}'")
+    set(CMAKE_CXX_FLAGS_RELEASE "-O3 -DNDEBUG ${_mkf_arch_flags} -funroll-loops")
+    set(CMAKE_C_FLAGS_RELEASE "-O3 -DNDEBUG ${_mkf_arch_flags} -funroll-loops")
 endif()
 
 
@@ -261,8 +282,22 @@ set(EIGEN_BUILD_BLAS OFF CACHE BOOL "" FORCE)
 set(EIGEN_BUILD_LAPACK OFF CACHE BOOL "" FORCE)
 set(EIGEN_BUILD_TESTING OFF CACHE BOOL "" FORCE)
 set(EIGEN_BUILD_DOC OFF CACHE BOOL "" FORCE)
+# Eigen 3.4.0 ignores EIGEN_BUILD_TESTING (it arrived after 3.4.0): its test/ and failtest/ trees are
+# gated only by the generic `option(BUILD_TESTING ... ON)`. Turn BUILD_TESTING off for Eigen ONLY and
+# put the user's value back afterwards, so the project's own BUILD_TESTING is not forced (ABT #1595).
+# A cache entry (not a normal variable) because Eigen's cmake_minimum_required(3.5) leaves CMP0077
+# unset, and then option() would discard a normal variable.
+if(DEFINED CACHE{BUILD_TESTING})
+    set(_mkf_saved_build_testing "${BUILD_TESTING}")
+endif()
 set(BUILD_TESTING OFF CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(eigen)
+if(DEFINED _mkf_saved_build_testing)
+    set(BUILD_TESTING "${_mkf_saved_build_testing}" CACHE BOOL "Build the testing tree." FORCE)
+    unset(_mkf_saved_build_testing)
+else()
+    unset(BUILD_TESTING CACHE)
+endif()
 include_directories("${CMAKE_BINARY_DIR}/_deps/eigen-src")
 
 
