@@ -34,6 +34,11 @@ struct DcBiasPoint {
     double temperature;
     double frequency;
     std::optional<double> peakMagneticFieldStrength;
+    // The DC solve found no operating point: its bracket closed on a jump of the biased permeability (a DC-bias
+    // table that ends in the step to the saturated mu_r = 1), not on a root, and the model took the saturated
+    // mu_r = 1. The bias above is the one at mu_r = 1, which need not lie past the knee; check_saturation flags
+    // the point saturated on this mark (Alf, 2026-10-24).
+    bool noDcOperatingPoint = false;
 };
 
 class MagnetizingInductance {

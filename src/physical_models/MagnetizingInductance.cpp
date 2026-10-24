@@ -1158,6 +1158,14 @@ std::pair<MagnetizingInductanceOutput, SignalDescriptor> MagnetizingInductance::
     double permeability = currentInitialPermeability;
     std::optional<double> permeabilityAboveRoot;   // F(mu) < mu
     std::optional<double> permeabilityBelowRoot;   // F(mu) > mu
+    // F(mu) / mu - 1 at the two ends of the bracket, to tell a root from a jump of F when the bracket closes.
+    double relativeResidualAboveRoot = 0;
+    double relativeResidualBelowRoot = 0;
+    // A bracket around a continuous root, closed to the tolerance in log(mu), leaves residuals of the order of
+    // |dlog F / dlog mu - 1| times the tolerance at its ends; both ends this far from F = mu (100 times the
+    // tolerance) mean the bracket closed on a jump of F, not on a root.
+    const double jumpRelativeResidual = 100 * biasConvergenceTolerance;
+    bool closedOnJump = false;
     bool biasConverged = false;
     for (size_t evaluation = 0; evaluation < maximumBiasEvaluations; ++evaluation) {
         double nextPermeability = biasedPermeability(permeability);
@@ -1186,13 +1194,16 @@ std::pair<MagnetizingInductanceOutput, SignalDescriptor> MagnetizingInductance::
         }
         if (residual < 0) {
             permeabilityAboveRoot = permeability;
+            relativeResidualAboveRoot = residual / permeability;
         }
         else {
             permeabilityBelowRoot = permeability;
+            relativeResidualBelowRoot = residual / permeability;
         }
         if (permeabilityAboveRoot && permeabilityBelowRoot) {
             if (fabs(log(permeabilityAboveRoot.value() / permeabilityBelowRoot.value())) <= biasConvergenceTolerance) {
                 biasConverged = true;
+                closedOnJump = fabs(relativeResidualAboveRoot) > jumpRelativeResidual && fabs(relativeResidualBelowRoot) > jumpRelativeResidual;
                 break;
             }
             permeability = sqrt(permeabilityAboveRoot.value() * permeabilityBelowRoot.value());
@@ -1205,6 +1216,88 @@ std::pair<MagnetizingInductanceOutput, SignalDescriptor> MagnetizingInductance::
         throw CalculationException(ErrorCode::CALCULATION_INVALID_RESULT,
             "Magnetizing inductance did not converge under DC bias in " + std::to_string(maximumBiasEvaluations) +
             " evaluations (last permeability " + std::to_string(permeability) + ")");
+    }
+
+    // The saturated state (mu = 1) is a fixed point whenever the bias it implies stays past the knee, but it can
+    // coexist with an unsaturated one: the bias MMF grows as mu falls (the magnetizing current of a lower inductance
+    // swings wider), and a material whose DC-bias table ends in a step to the saturated mu = 1 has two fixed points
+    // on either side of that step. Plain iteration from the unbiased permeability can step past the knee in one
+    // move and land on mu = 1 although a root inside the material's data exists (a flyback on DMR96 at 12 -> 14 A,
+    // 100 kHz: 647 A/m after the first step, then mu = 1 at 5885 A/m, while mu = 51.7 at 449 A/m, inside the
+    // table, is a fixed point too). The physical operating point is the unsaturated root the bias reaches from the
+    // unbiased state, the highest one below it. It is searched for between mu = 1 and the lowest permeability
+    // known to lie above the root, downwards in factors of 2; a sign change there is bisected, and accepted only
+    // if it is a root (F(mu) = mu within the tolerance), not the step itself. Without one the saturated core is
+    // the answer.
+    if (permeability <= 1 && currentInitialPermeabilityUnbiased > 1 && permeabilityAboveRoot && permeabilityAboveRoot.value() > 1) {
+        size_t evaluations = 0;
+        auto residualAt = [&](double candidate) {
+            if (++evaluations > maximumBiasEvaluations) {
+                throw CalculationException(ErrorCode::CALCULATION_INVALID_RESULT,
+                    "Magnetizing inductance under DC bias: the search for an unsaturated operating point did not converge in " +
+                    std::to_string(maximumBiasEvaluations) + " evaluations");
+            }
+            double next = biasedPermeability(candidate);
+            if (!std::isfinite(next)) {
+                throw CalculationException(ErrorCode::CALCULATION_INVALID_RESULT,
+                    "Magnetizing inductance under DC bias: the material's biased permeability at mu = " +
+                    std::to_string(candidate) + " is not finite (" + std::to_string(next) + ")");
+            }
+            return std::max(next, 1.0) - candidate;
+        };
+        double upper = permeabilityAboveRoot.value();   // F(upper) < upper
+        std::optional<double> unsaturatedRoot;
+        for (double candidate = upper / 2; candidate > 1 && !unsaturatedRoot; candidate /= 2) {
+            double residual = residualAt(candidate);
+            if (fabs(residual) <= biasConvergenceTolerance * candidate) {
+                unsaturatedRoot = candidate;
+                break;
+            }
+            if (residual < 0) {
+                upper = candidate;
+                continue;
+            }
+            // F(candidate) > candidate, F(upper) < upper: bisect in log(mu).
+            double lower = candidate;
+            while (fabs(log(upper / lower)) > biasConvergenceTolerance) {
+                double middle = sqrt(upper * lower);
+                double middleResidual = residualAt(middle);
+                if (fabs(middleResidual) <= biasConvergenceTolerance * middle) {
+                    unsaturatedRoot = middle;
+                    break;
+                }
+                if (middleResidual < 0) {
+                    upper = middle;
+                }
+                else {
+                    lower = middle;
+                }
+            }
+            // The bracket closed on a jump of F, not on a root: no unsaturated fixed point lies here or below
+            // it in this bracket. The search ends; the saturated core stays the answer.
+            break;
+        }
+        // The output (inductance, flux density, DC point) is that of the last evaluation: make it the answer's.
+        permeability = unsaturatedRoot ? unsaturatedRoot.value() : 1.0;
+        biasedPermeability(permeability);
+    }
+
+    // The bracket closed on a jump of F, not on a root: F(mu) > mu just below it and F(mu) < mu just above it,
+    // with no fixed point between (the step of a DC-bias table that ends where the material is taken as saturated:
+    // DMR96 on a flyback at 12 -> 14 A and 200 kHz, F = 50 just below mu = 26.1 and F = 1 just above it, and
+    // F(1) = 59.9, so the saturated mu = 1 is no fixed point either). The bias holds the core at the edge of its
+    // data, where the next increment of bias leaves it: no unsaturated operating point exists, and the core is
+    // taken as saturated, mu_r = 1. The output is built at it. The bias at mu_r = 1 can lie inside the table (F(1)
+    // = 59.9 above), where no criterion on the DC point sees the saturation, so the DC point carries the mark that
+    // no operating point exists, and ResultsAnalyzer::check_saturation flags the point on it.
+    if (closedOnJump && currentInitialPermeabilityUnbiased > 1) {
+        permeability = 1.0;
+        biasedPermeability(permeability);
+        if (!_lastDcBiasPoint) {
+            throw CalculationException(ErrorCode::CALCULATION_INVALID_RESULT,
+                "Magnetizing inductance under DC bias: the DC solve found no operating point, but the evaluation at mu_r = 1 recorded no DC bias point");
+        }
+        _lastDcBiasPoint->noDcOperatingPoint = true;
     }
 
     // A line-cycle record under an imposed MMF (a DMC or PFC choke carrying its line current with the switching

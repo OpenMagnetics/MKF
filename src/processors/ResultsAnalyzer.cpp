@@ -154,7 +154,12 @@ SaturationVerdict ResultsAnalyzer::check_saturation(const CoreMaterial& coreMate
         verdict.saturationFieldStrength = Core::get_magnetic_field_strength_saturation(coreMaterial, temperature);
         verdict.fieldStrengthAboveSaturation = verdict.peakFieldStrength.value() * margin > verdict.saturationFieldStrength.value();
     }
-    verdict.saturates = verdict.fluxDensityAboveSaturation || verdict.permeabilityCollapsed || verdict.fieldStrengthAboveSaturation;
+    // Criterion 4 (Alf, 2026-10-24): the DC solve closed on a jump of the biased permeability, not on a root, and
+    // took the saturated mu_r = 1 (MagnetizingInductance). The bias at mu_r = 1 can sit inside the material's
+    // DC-bias table, where criterion 2 does not see it, so the solve's own mark says it.
+    verdict.noDcOperatingPoint = dcBiasPoint && dcBiasPoint->noDcOperatingPoint;
+    verdict.saturates = verdict.fluxDensityAboveSaturation || verdict.permeabilityCollapsed || verdict.fieldStrengthAboveSaturation ||
+                        verdict.noDcOperatingPoint;
 
     // ABT #2001: the first sentence says the problem with rounded numbers; the explanation follows.
     std::ostringstream message;
@@ -188,6 +193,13 @@ SaturationVerdict ResultsAnalyzer::check_saturation(const CoreMaterial& coreMate
                    << format_number(temperature) << " C, past its knee";
             clauses.push_back(clause.str());
         }
+        if (verdict.noDcOperatingPoint) {
+            std::ostringstream clause;
+            clause << "under its DC bias at " << format_number(dcBiasPoint->temperature) << " C and " << format_quantity(dcBiasPoint->frequency, "Hz")
+                   << " " << coreMaterial.get_name() << " has no operating point: the bias drives its permeability across the end of its"
+                   << " DC-bias data, where it is taken as saturated (mu_r = 1), and no permeability reproduces the bias it implies";
+            clauses.push_back(clause.str());
+        }
         message << "The core saturates: ";
         for (size_t index = 0; index < clauses.size(); ++index) {
             if (index > 0) {
@@ -202,8 +214,11 @@ SaturationVerdict ResultsAnalyzer::check_saturation(const CoreMaterial& coreMate
             if (verdict.fieldStrengthAboveSaturation) {
                 message << ": past the knee the curve's B rises only on the vacuum slope.";
             }
-            else {
+            else if (verdict.permeabilityCollapsed) {
                 message << ": the material's B_sat, magnetisation curve and permeability model disagree.";
+            }
+            else {
+                message << ": the DC bias, not the flux density, saturates it.";
             }
         }
         message << " The numbers for this operating point are those of the saturated core; it needs more turns, a larger gap or core,"

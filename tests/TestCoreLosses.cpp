@@ -5188,13 +5188,97 @@ TEST_CASE("Core-loss frequency sweep carries the flyback's magnetizing DC", "[sw
         operatingPointJson["excitationsPerWinding"] = {primary, secondary};
         return OperatingPoint(operatingPointJson);
     };
-    auto biased = Sweeper::sweep_core_losses_over_frequency(magnetic, flyback(15, 17), Topology::FLYBACK_CONVERTER, 100000, 200000, 2);
+    // 9 -> 11 A biases the core inside DMR96's DC-bias table (it ends at 483.4 A/m): the DC is priced there.
+    auto biased = Sweeper::sweep_core_losses_over_frequency(magnetic, flyback(9, 11), Topology::FLYBACK_CONVERTER, 100000, 200000, 2);
     auto lightlyBiased = Sweeper::sweep_core_losses_over_frequency(magnetic, flyback(1, 3), Topology::FLYBACK_CONVERTER, 100000, 200000, 2);
     double biasedLosses = biased.get_y_points().front();
     double lightlyBiasedLosses = lightlyBiased.get_y_points().front();
-    INFO("core losses at 100 kHz: 15 -> 17 A " << biasedLosses << " W, 1 -> 3 A " << lightlyBiasedLosses << " W");
+    INFO("core losses at 100 kHz: 9 -> 11 A " << biasedLosses << " W, 1 -> 3 A " << lightlyBiasedLosses << " W");
     REQUIRE(lightlyBiasedLosses > 0);
     CHECK(biasedLosses > 1.05 * lightlyBiasedLosses);
+
+    // 15 -> 17 A drives the DC point past the end of the table, where the material is taken as saturated
+    // (mu_r = 1): both points are flagged and carry no loss.
+    auto saturated = Sweeper::sweep_core_losses_over_frequency(magnetic, flyback(15, 17), Topology::FLYBACK_CONVERTER, 100000, 200000, 2);
+    INFO("15 -> 17 A sweep title: " << saturated.get_title());
+    REQUIRE(saturated.get_saturated_points());
+    REQUIRE(saturated.get_saturated_points().value().size() == 2);
+    CHECK(saturated.get_saturated_points().value()[0]);
+    CHECK(saturated.get_saturated_points().value()[1]);
+    REQUIRE(saturated.get_y_points().size() == 2);
+    CHECK(std::isnan(saturated.get_y_points()[0]));
+    CHECK(std::isnan(saturated.get_y_points()[1]));
+    CHECK_THAT(saturated.get_title(), Catch::Matchers::ContainsSubstring("(core saturated at 2 of 2 points, "));
+}
+
+// The DC operating point of a biased core is the unsaturated fixed point when one exists. DMR96 tabulates
+// mu(H_dc) up to 483.4 A/m and is taken as saturated (mu_r = 1) past it, so on this flyback at 12 -> 14 A and
+// 100 kHz the DC solve has two fixed points: mu = 51.7 at 449 A/m, inside the table, and the saturated mu = 1 at
+// 5885 A/m. Plain iteration from the unbiased permeability stepped past the table end (647 A/m) in its first
+// move and settled on mu = 1, so the sweep reported a saturated core and no loss.
+TEST_CASE("Flyback DC operating point stays on the material's DC-bias table when a root lies there", "[sweeper][core-losses][magnetizing-inductance][abt-1809]") {
+    settings.reset();
+    clear_databases();
+    std::vector<int64_t> numberTurns = {20, 20};
+    auto magnetic = OpenMagnetics::magnetic_autocomplete(OpenMagneticsTesting::get_quick_magnetic(
+        "E 42/21/15", OpenMagneticsTesting::get_ground_gap(0.001), numberTurns, 1, "DMR96"));
+    auto material = magnetic.get_core().resolve_material();
+    double tableEnd = 0;
+    for (const auto& point : InitialPermeability::get_only_magnetic_field_dc_bias_dependent_points(material)) {
+        tableEnd = std::max(tableEnd, point.get_magnetic_field_dc_bias().value());
+    }
+    REQUIRE_THAT(tableEnd, Catch::Matchers::WithinRel(483.4, 1e-3));
+
+    json operatingPointJson;
+    operatingPointJson["conditions"]["ambientTemperature"] = 25;
+    json primary;
+    primary["frequency"] = 100000;
+    primary["name"] = "Primary";
+    primary["current"]["waveform"]["time"] = {0, 5e-6, 5e-6, 1e-5};
+    primary["current"]["waveform"]["data"] = {12, 14, 0, 0};
+    primary["voltage"]["waveform"]["time"] = {0, 5e-6, 5e-6, 1e-5};
+    primary["voltage"]["waveform"]["data"] = {20, 20, -20, -20};
+    json secondary;
+    secondary["frequency"] = 100000;
+    secondary["name"] = "Secondary";
+    secondary["current"]["waveform"]["time"] = {0, 5e-6, 5e-6, 1e-5};
+    secondary["current"]["waveform"]["data"] = {0, 0, 14, 12};
+    secondary["voltage"]["waveform"]["time"] = {0, 5e-6, 5e-6, 1e-5};
+    secondary["voltage"]["waveform"]["data"] = {-20, -20, 20, 20};
+    operatingPointJson["excitationsPerWinding"] = {primary, secondary};
+    OperatingPoint operatingPoint(operatingPointJson);
+
+    MagnetizingInductance magnetizingInductanceModel;
+    magnetizingInductanceModel.set_topology(Topology::FLYBACK_CONVERTER);
+    auto swept = operatingPoint;
+    for (auto& excitation : swept.get_mutable_excitations_per_winding()) {
+        excitation.set_magnetizing_current(std::nullopt);
+        excitation.set_magnetic_flux_density(std::nullopt);
+    }
+    magnetizingInductanceModel.calculate_inductance_and_magnetic_flux_density(magnetic, &swept);
+    auto dcBiasPoint = magnetizingInductanceModel.get_last_dc_bias_point();
+    REQUIRE(dcBiasPoint);
+    double fieldStrength = dcBiasPoint->magneticFieldDcBias;
+    INFO("DC operating point: " << fieldStrength << " A/m");
+    CHECK(fieldStrength > 0);
+    CHECK(fieldStrength < tableEnd);
+    // An unsaturated point: the table gives a permeability above the vacuum's there.
+    double tablePermeability = InitialPermeability::get_initial_permeability_model_value(material, 25.0, fieldStrength, 100000.0);
+    INFO("table permeability there: " << tablePermeability);
+    CHECK(tablePermeability > 1);
+
+    auto sweep = Sweeper::sweep_core_losses_over_frequency(magnetic, operatingPoint, Topology::FLYBACK_CONVERTER, 100000, 200000, 2);
+    REQUIRE(sweep.get_saturated_points());
+    CHECK_FALSE(sweep.get_saturated_points().value()[0]);
+    CHECK(std::isfinite(sweep.get_y_points()[0]));
+    CHECK(sweep.get_y_points()[0] > 0);
+
+    // At 200 kHz the same currents have no fixed point: F(mu) jumps from ~50 to the saturated 1 across mu = 26.1
+    // (the table end, 483.4 A/m), and F(1) = 59.9, so mu = 1 is no root either. The solve closes on the step, not
+    // on a root, and the core is saturated: the point is flagged and carries no loss.
+    REQUIRE(sweep.get_saturated_points().value().size() == 2);
+    CHECK(sweep.get_saturated_points().value()[1]);
+    CHECK(std::isnan(sweep.get_y_points()[1]));
 }
 
 // ABT #1602: the core-loss series resistance builds an equivalent winding N = sqrt(L * R). It used to

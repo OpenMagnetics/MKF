@@ -91,6 +91,9 @@ struct SaturationVerdict {
     // Criterion 3 (ABT #1942): the B was read on the magnetisation curve (DcBiasPoint::peakMagneticFieldStrength)
     // and its peak field strength (times the margin) is above the material's H_sat at the temperature.
     bool fieldStrengthAboveSaturation;
+    // Criterion 4 (Alf, 2026-10-24): the magnetizing model's DC solve found no operating point
+    // (DcBiasPoint::noDcOperatingPoint) and took the saturated mu_r = 1.
+    bool noDcOperatingPoint;
     // The curve's peak field strength and the material's H_sat it was held against, when criterion 3 applied.
     std::optional<double> peakFieldStrength;
     std::optional<double> saturationFieldStrength;
