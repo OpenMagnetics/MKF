@@ -303,12 +303,18 @@ bool MagneticFilterAreaNoParallels::wire_fits(Wire& wire, int64_t numberParallel
         return false;
     }
 
+    // ABT #787: a wire exactly as wide as its section fits (a one-layer section is sized to exactly one
+    // wire width, so the strict < rejected it on a float equality). Compared at the nm rounding the
+    // coil uses for its geometry (roundFloat(..., 9)).
+    auto fitsIn = [](double wireDimension, double sectionDimension) {
+        return roundFloat(wireDimension, 9) <= roundFloat(sectionDimension, 9);
+    };
     if (!section.get_coordinate_system() || section.get_coordinate_system().value() == CoordinateSystem::CARTESIAN) {
-        return wire.get_maximum_outer_width() < section.get_dimensions()[0] && wire.get_maximum_outer_height() < section.get_dimensions()[1];
+        return fitsIn(wire.get_maximum_outer_width(), section.get_dimensions()[0]) && fitsIn(wire.get_maximum_outer_height(), section.get_dimensions()[1]);
     }
     else {
         double wireAngle = wound_distance_to_angle(wire.get_maximum_outer_height(), wire.get_maximum_outer_width());
-        return wire.get_maximum_outer_width() < section.get_dimensions()[0] && wireAngle < section.get_dimensions()[1];
+        return fitsIn(wire.get_maximum_outer_width(), section.get_dimensions()[0]) && fitsIn(wireAngle, section.get_dimensions()[1]);
     }
 }
 

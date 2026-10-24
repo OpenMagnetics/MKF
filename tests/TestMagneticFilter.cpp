@@ -255,15 +255,9 @@ const std::map<std::string, Snapshot> kSnapshots = {
     // model rejects → the double-call cannot be observed at this fixture.
     {"LOSSES_NO_PROXIMITY",                             {false, 0.0}},
     {"DIMENSIONS",                                      {true,  2.0178200000000003e-05}},
-    // LOCKS BUG (ABT #787): MagneticFilterAreaNoParallels compares
-    // `wire.get_maximum_outer_width() < section.get_dimensions()[0]` — STRICTLY.
-    // A section holding exactly one layer is compacted to exactly one wire width,
-    // so the comparison is an exact float equality and the winding is rejected.
-    // Here winding 1 (20 turns, one 1.062 mm layer) trips it, so the filter says
-    // false for a coil that fits with room to spare. Not fixture-dependent: any
-    // single-layer section hits it. Locked as {false, 0.0}; when #787 lands this
-    // flips back to {true, 0.0} and that is the signal, not a regression.
-    {"AREA_NO_PARALLELS",                               {false, 0.0}},
+    // ABT #787 (Alf 2026-10-24): winding 1 (20 turns, one 1.062 mm layer) sits in a section exactly one
+    // wire wide; the strict < rejected it on a float equality. Fixed to <= at nm rounding: {false, 0} -> {true, 0}.
+    {"AREA_NO_PARALLELS",                               {true,  0.0}},
     {"EFFECTIVE_RESISTANCE",                            {false, 0.0}},
     {"PROXIMITY_FACTOR",                                {false, 0.0}},
     {"TURNS_RATIOS",                                    {true,  0.0}},
@@ -515,7 +509,7 @@ TEST_CASE("MagneticFilter CORE_MINIMUM_IMPEDANCE snapshot",
 }
 
 TEST_CASE("MagneticFilter AREA_NO_PARALLELS snapshot",
-          "[magnetic-filter][characterisation][heavy][area-no-parallels]") {
+          "[magnetic-filter][characterisation][heavy][area-no-parallels][abt-787]") {
     evaluate_and_check("AREA_NO_PARALLELS", MagneticFilters::AREA_NO_PARALLELS);
 }
 
