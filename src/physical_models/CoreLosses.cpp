@@ -668,11 +668,10 @@ double CoreLosses::get_periodic_core_volumetric_losses(CoreMaterial coreMaterial
 
     double coreVolumetricLosses = coreLossesModelForMaterial->compute_core_volumetric_losses(coreMaterial, excitation, temperature);
 
-    // Apply DPLE correction for non-Roshen models
-    if (coreLossesModelForMaterial->get_model_name() != "Roshen") {
-        double dpleFactor = calculate_dple_factor(coreMaterial, excitation, temperature);
-        coreVolumetricLosses *= dpleFactor;
-    }
+    // The DPLE DC-bias correction applies to EVERY model, as in calculate_periodic_core_losses
+    // (ABT #118: the Roshen path never consumes the DC offset, so exempting it left biased Roshen
+    // results uncorrected here while the same material on an ordinary core was corrected).
+    coreVolumetricLosses *= calculate_dple_factor(coreMaterial, excitation, temperature);
 
     return coreVolumetricLosses;
 }

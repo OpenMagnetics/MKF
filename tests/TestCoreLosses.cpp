@@ -4585,6 +4585,51 @@ TEST_CASE("Test_Roshen_Small_Minor_Loop_Keeps_Hysteresis", "[physical-model][cor
     settings.reset();
 }
 
+// A Roshen material under DC bias gets the same DPLE correction through both core-loss entry points:
+// calculate_core_losses applied it to every model, get_core_volumetric_losses (the path of the
+// semi-shielded and multi-material moulded cores) still exempted Roshen.
+TEST_CASE("Test_Roshen_DC_Bias_Correction_Same_Through_Both_Entry_Points", "[physical-model][core-losses][roshen-core-losses-model][abt-1224]") {
+    settings.reset();
+    clear_databases();
+    double frequency = 100000;
+    double temperature = 25;
+    double offset = 0.15;
+    Core core = OpenMagneticsTesting::get_quick_core("E 42/21/15", json::array(), 1, "DMR96");
+    auto material = core.resolve_material();
+    REQUIRE(InitialPermeability::has_magnetic_field_dc_bias_dependency(material));
+    auto unbiased = build_sinusoidal_flux_excitation(frequency, 0.05);
+    auto excitation = unbiased;
+    auto flux = excitation.get_magnetic_flux_density().value();
+    auto waveform = flux.get_waveform().value();
+    auto data = waveform.get_data();
+    for (auto& value : data) {
+        value += offset;
+    }
+    waveform.set_data(data);
+    flux.set_waveform(waveform);
+    auto processed = flux.get_processed().value();
+    processed.set_offset(offset);
+    processed.set_peak(offset + 0.05);
+    flux.set_processed(processed);
+    excitation.set_magnetic_flux_density(flux);
+
+    CoreLosses coreLosses;
+    coreLosses.set_core_losses_requested_model_name(CoreLossesModels::ROSHEN);
+    auto output = coreLosses.calculate_core_losses(core, excitation, temperature);
+    REQUIRE(output.get_method_used() == "Roshen");
+    // The two entry points price different geometries (the volumetric one on a reference ring), so
+    // what must agree is the bias step: biased over unbiased, through each entry point.
+    double coreBiased = output.get_core_losses();
+    double coreUnbiased = coreLosses.calculate_core_losses(core, unbiased, temperature).get_core_losses();
+    double materialBiased = coreLosses.get_core_volumetric_losses(material, excitation, temperature);
+    double materialUnbiased = coreLosses.get_core_volumetric_losses(material, unbiased, temperature);
+    REQUIRE(coreUnbiased > 0);
+    REQUIRE(materialUnbiased > 0);
+    INFO("bias step: calculate_core_losses " << coreBiased / coreUnbiased << ", get_core_volumetric_losses " << materialBiased / materialUnbiased);
+    CHECK_THAT(materialBiased / materialUnbiased, Catch::Matchers::WithinRel(coreBiased / coreUnbiased, 1e-6));
+    settings.reset();
+}
+
 TEST_CASE("Test_Roshen_Eddy_Current_Ferrite_Uses_Bulk_Cross_Section", "[physical-model][core-losses][roshen-core-losses-model][abt-1344]") {
     settings.reset();
     clear_databases();
