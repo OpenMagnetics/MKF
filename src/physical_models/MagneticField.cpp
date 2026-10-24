@@ -3380,11 +3380,14 @@ void MagneticFieldStrengthImagedMmfSheetsModel::setup(Magnetic magnetic, const s
         }
         return gap.get_section_dimensions().value()[0] / 2;
     };
+    // ABT #1610: the gap model reports its storable energy at this core's Bsat (25 C reference: this
+    // setup has no operating temperature); only the reluctance is read here.
+    double magneticFluxDensitySaturation = core.get_magnetic_flux_density_saturation(true);
     std::map<long, double> lateralColumnReluctance;
     for (const auto& gap : gapping) {
         double x = gap.get_coordinates().value()[0];
         if (std::abs(x) >= halfSectionOf(gap)) {
-            lateralColumnReluctance[std::lround(x * 1e6)] += reluctanceModel->get_gap_reluctance(gap).get_reluctance();
+            lateralColumnReluctance[std::lround(x * 1e6)] += reluctanceModel->get_gap_reluctance(gap, magneticFluxDensitySaturation).get_reluctance();
         }
     }
     double lateralConductance = 0;
@@ -3409,7 +3412,7 @@ void MagneticFieldStrengthImagedMmfSheetsModel::setup(Magnetic magnetic, const s
             columnFluxPerAmpere = fluxPerAmpere * (1.0 / lateralColumnReluctance.at(std::lround(x * 1e6))) / lateralConductance;
             sheetX = x - halfSection;
         }
-        double mmfPerAmpere = columnFluxPerAmpere * reluctanceModel->get_gap_reluctance(gap).get_reluctance();
+        double mmfPerAmpere = columnFluxPerAmpere * reluctanceModel->get_gap_reluctance(gap, magneticFluxDensitySaturation).get_reluctance();
         double y = gap.get_coordinates().value()[1];
         Source sheet;
         sheet.x1 = sheet.x2 = sheetX;

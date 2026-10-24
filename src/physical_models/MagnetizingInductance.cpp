@@ -319,7 +319,7 @@ double MagnetizingInductance::calculate_drum_ring_magnetizing_inductance(Core co
     double ferriteReluctance = (drumC1 / drumPermeability + ringC1 / ringPermeability) / vacuumPermeability;
 
     auto reluctanceModelForGaps = ReluctanceModel::factory(Defaults().reluctanceModelDefault);
-    auto clearanceOutput = reluctanceModelForGaps->get_gapping_reluctance(core);
+    auto clearanceOutput = reluctanceModelForGaps->get_gapping_reluctance(core, temperature);
     if (!clearanceOutput.get_gapping_reluctance()) {
         throw InvalidInputException(ErrorCode::INVALID_CORE_DATA,
             "drumRing core has no clearance gaps between drum and ring; its gapping must hold them");
@@ -1889,7 +1889,7 @@ std::vector<CoreGap> MagnetizingInductance::calculate_gapping_from_number_turns_
             case GappingType::DISTRIBUTED:
                 while (numberDistributedGaps > 3) {
                     gappedCore = get_core_with_distributed_gapping(core, gapLength, numberDistributedGaps);
-                    fringingFactorOneGap = reluctanceModel->get_gap_reluctance(gappedCore.get_gapping()[0]).get_fringing_factor();
+                    fringingFactorOneGap = reluctanceModel->get_gap_reluctance(gappedCore.get_gapping()[0], gappedCore.get_magnetic_flux_density_saturation(temperature, true)).get_fringing_factor();
                     if (fringingFactorOneGap < constants.minimumDistributedFringingFactor &&
                         numberDistributedGaps > 1) {
                         gapLength *= numberDistributedGaps;
@@ -1902,7 +1902,7 @@ std::vector<CoreGap> MagnetizingInductance::calculate_gapping_from_number_turns_
                 }
                 while (true) {
                     gappedCore = get_core_with_distributed_gapping(core, gapLength, numberDistributedGaps);
-                    fringingFactorOneGap = reluctanceModel->get_gap_reluctance(gappedCore.get_gapping()[0]).get_fringing_factor();
+                    fringingFactorOneGap = reluctanceModel->get_gap_reluctance(gappedCore.get_gapping()[0], gappedCore.get_magnetic_flux_density_saturation(temperature, true)).get_fringing_factor();
                     if (fringingFactorOneGap > constants.maximumDistributedFringingFactor) {
                         gapLength *= numberDistributedGaps;
                         numberDistributedGaps += 2;

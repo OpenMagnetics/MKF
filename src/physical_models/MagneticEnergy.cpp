@@ -67,7 +67,7 @@ double MagneticEnergy::get_gap_maximum_magnetic_energy(CoreGap gapInfo, double m
         from_json(_models["gapReluctance"], reluctanceModelEnum);
         auto reluctanceModel = OpenMagnetics::ReluctanceModel::factory(reluctanceModelEnum);
 
-        fringingFactorValue = reluctanceModel->get_gap_reluctance(gapInfo).get_fringing_factor();
+        fringingFactorValue = reluctanceModel->get_gap_reluctance(gapInfo, magneticFluxDensitySaturation).get_fringing_factor();
     }
 
     // E = 0.5 * Phi^2 * R_gap with Phi = Bsat * A and R_gap = lg / (mu0 * A * F):
@@ -88,7 +88,7 @@ double MagneticEnergy::calculate_gap_length_by_magnetic_energy(CoreGap gapInfo, 
     from_json(_models["gapReluctance"], reluctanceModelEnum);
     auto reluctanceModel = OpenMagnetics::ReluctanceModel::factory(reluctanceModelEnum);
 
-    double fringingFactor = reluctanceModel->get_gap_reluctance(gapInfo).get_fringing_factor();
+    double fringingFactor = reluctanceModel->get_gap_reluctance(gapInfo, magneticFluxDensitySaturation).get_fringing_factor();
 
     // Inverse of calculate_gap_maximum_storable_magnetic_energy:
     // E = B^2 * A * lg / (2 * mu0 * F)  =>  lg = 2 * E * mu0 * F / (B^2 * A)
@@ -107,7 +107,7 @@ double MagneticEnergy::calculate_gap_length_by_saturation_constraint(CoreGap gap
     from_json(_models["gapReluctance"], reluctanceModelEnum);
     auto reluctanceModel = OpenMagnetics::ReluctanceModel::factory(reluctanceModelEnum);
 
-    double fringingFactor = reluctanceModel->get_gap_reluctance(gapInfo).get_fringing_factor();
+    double fringingFactor = reluctanceModel->get_gap_reluctance(gapInfo, magneticFluxDensitySaturationTarget).get_fringing_factor();
 
     // Get core effective area
     double effectiveArea = core.get_effective_area();

@@ -3656,7 +3656,7 @@ TEST_CASE("Test_CoreAdviser_RejectsWindingKillingGaps", "[adviser][core-adviser]
         if (gapping.empty()) {
             continue;  // ungapped / toroidal: no fringing concern
         }
-        double fringingFactor = reluctanceModel->get_gap_reluctance(gapping[0]).get_fringing_factor();
+        double fringingFactor = reluctanceModel->get_gap_reluctance(gapping[0], core.get_magnetic_flux_density_saturation(true)).get_fringing_factor();
         INFO("core=" << core.get_name().value_or("?")
              << " centralGap=" << gapping[0].get_length() * 1000.0 << "mm"
              << " fringingFactor=" << fringingFactor);

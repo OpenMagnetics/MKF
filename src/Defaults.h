@@ -34,6 +34,10 @@ struct Defaults {
     // tan(delta)/mu_i is defined at small signal, B <= 0.25 mT (IEC 60401-3), and MAS records no flux for a
     // loss-factor point: the definition bounds the flux amplitude the loss-factor model holds at (ABT #2006).
     const double lossFactorMaximumMagneticFluxDensity = 0.25e-3;
+    // ABT #1610 (Alf 2026-10-24): the flux density at which a gap's storable energy is reported when the caller
+    // has NO core material at all (a standalone gap calculator given only the gap). Never a substitute for a
+    // material that exists but lacks saturation data: that throws.
+    const double gapReluctanceEnergyFluxDensity = 0.4;
     const double maximumProportionMagneticFluxDensitySaturation = 0.7;
     const double coreAdviserFrequencyReference = 100000;
     const double coreAdviserMagneticFluxDensityReference = 0.5;

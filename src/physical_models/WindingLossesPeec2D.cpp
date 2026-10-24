@@ -321,6 +321,9 @@ WindingLossesOutput WindingLossesPeec2D::calculate_losses(Magnetic magnetic, Ope
                 MagnetizingInductance().calculate_inductance_from_number_turns_and_gapping(
                     core, coil).get_magnetizing_inductance());
             auto reluctanceModel = ReluctanceModel::factory();
+            // ABT #1610: the gap model reports its storable energy at this core's Bsat at the
+            // operating temperature; only the reluctance is read here.
+            double magneticFluxDensitySaturation = core.get_magnetic_flux_density_saturation(temperature, true);
             // The flux through a LATERAL column is only that column's share of the total:
             // lateral columns are parallel paths, each the series sum of its gaps (residual
             // mating surfaces included -- they carry MMF even though they do not fringe),
@@ -337,7 +340,7 @@ WindingLossesOutput WindingLossesPeec2D::calculate_losses(Magnetic magnetic, Ope
                 double x = gap.get_coordinates().value()[0];
                 double halfSection = gap.get_section_dimensions() ? gap.get_section_dimensions().value()[0] / 2 : 0.0;
                 if (std::abs(x) >= halfSection) {
-                    lateralColumnReluctance[std::lround(x * 1e6)] += reluctanceModel->get_gap_reluctance(gap).get_reluctance();
+                    lateralColumnReluctance[std::lround(x * 1e6)] += reluctanceModel->get_gap_reluctance(gap, magneticFluxDensitySaturation).get_reluctance();
                 }
             }
             double lateralConductanceSum = 0;
@@ -351,7 +354,7 @@ WindingLossesOutput WindingLossesPeec2D::calculate_losses(Magnetic magnetic, Ope
                 if (!gap.get_coordinates() || gap.get_coordinates().value()[0] < 0) {
                     continue;  // same x>=0 convention as the fringing path
                 }
-                double gapReluctance = reluctanceModel->get_gap_reluctance(gap).get_reluctance();
+                double gapReluctance = reluctanceModel->get_gap_reluctance(gap, magneticFluxDensitySaturation).get_reluctance();
                 // flux per ampere of primary current: L * 1 / N
                 double fluxPerAmp = magnetizingInductance / numberPrimaryTurns;
                 GapConductor gapConductor;

@@ -20,13 +20,15 @@ using namespace MAS;
 namespace OpenMagnetics {
 
 class ReluctanceModel {
-  private:
-    double _magneticFluxDensitySaturation = 0.4;
   protected:
     // Each derived model sets this in its constructor (ABT #956); get_gapping_reluctance reports it.
     std::string methodName = "Default";
   public:
-    virtual AirGapReluctanceOutput get_gap_reluctance(CoreGap gapInfo) = 0;
+    // ABT #1610: the storable energy of a gap is reported at the saturation flux density of the
+    // core material at the operating temperature, which the caller passes. A caller with no core
+    // material at all (a standalone gap calculator) passes Defaults::gapReluctanceEnergyFluxDensity
+    // explicitly; there is no hidden default here.
+    virtual AirGapReluctanceOutput get_gap_reluctance(CoreGap gapInfo, double magneticFluxDensitySaturation) = 0;
 
     // ABT #368: reluctance of a drumRing STRUCTURAL annular clearance ((K-A)/2 at a flange
     // rim). Not user-selectable and shared by every model: the generic gap models mis-apply
@@ -38,13 +40,13 @@ class ReluctanceModel {
     // Validated against 54 measured parts across the three drum families with
     // vendor-confirmed geometry: predicted fringing factor within 4% of measurement with no
     // fitted parameters (ABT #368 2026-07-30).
-    AirGapReluctanceOutput get_annular_clearance_gap_reluctance(Core& core, CoreGap gapInfo);
+    AirGapReluctanceOutput get_annular_clearance_gap_reluctance(Core& core, CoreGap gapInfo, double magneticFluxDensitySaturation);
 
     double get_ungapped_core_reluctance(const Core& core, double initialPermeability);
 
     double get_ungapped_core_reluctance(Core core, std::optional<OperatingPoint> = std::nullopt);
     double get_air_cored_reluctance(Bobbin bobbin);
-    double get_gap_maximum_storable_energy(CoreGap gapInfo, double fringingFactor) {
+    static double get_gap_maximum_storable_energy(CoreGap gapInfo, double fringingFactor, double magneticFluxDensitySaturation) {
         auto constants = Constants();
         auto gapLength = gapInfo.get_length();
         auto gapArea = *(gapInfo.get_area());
@@ -55,7 +57,7 @@ class ReluctanceModel {
         // this formula in MagneticEnergy::get_gap_maximum_magnetic_energy — this copy had
         // drifted and still multiplied by F, overestimating by F^2.
         double energyStoredInGap = 0.5 / constants.vacuumPermeability * gapLength * gapArea / fringingFactor *
-                                      pow(_magneticFluxDensitySaturation, 2);
+                                      pow(magneticFluxDensitySaturation, 2);
 
         return energyStoredInGap;
     }
@@ -122,7 +124,11 @@ class ReluctanceModel {
     }
     MagnetizingInductanceOutput get_core_reluctance(Core core, std::optional<OperatingPoint> = std::nullopt);
     MagnetizingInductanceOutput get_core_reluctance(Core core, double initialPermeability);
-    MagnetizingInductanceOutput get_gapping_reluctance(Core core);
+    // The gaps' storable energy is at the core material's saturation flux density at `temperature`
+    // (25 C, the catalogue reference, when the caller has no operating point -- the same
+    // reference Core::get_magnetic_flux_density_saturation(bool) uses). A material without
+    // saturation data throws when the core has gaps.
+    MagnetizingInductanceOutput get_gapping_reluctance(Core core, std::optional<double> temperature = std::nullopt);
     // ABT #1714: the gapping reluctance in series with the core material. A core with no gaps has
     // none (get_gapping_reluctance leaves the field unset), which adds nothing to the flux path;
     // a gapped core whose output lacks it is an error.
@@ -144,7 +150,7 @@ class ReluctanceZhangModel : public ReluctanceModel {
     // Sets the INHERITED methodName: a redeclared member shadowed the base one, which is what
     // results read through the base pointer, so every result reported "Default" (ABT #956).
     ReluctanceZhangModel() { methodName = "Zhang"; }
-    AirGapReluctanceOutput get_gap_reluctance(CoreGap gapInfo);
+    AirGapReluctanceOutput get_gap_reluctance(CoreGap gapInfo, double magneticFluxDensitySaturation) override;
 };
 
 // Based on A Novel Approach for 3D Air Gap Reluctance Calculations by Jonas Mühlethaler
@@ -154,7 +160,7 @@ class ReluctanceMuehlethalerModel : public ReluctanceModel {
     // Sets the INHERITED methodName: a redeclared member shadowed the base one, which is what
     // results read through the base pointer, so every result reported "Default" (ABT #956).
     ReluctanceMuehlethalerModel() { methodName = "Muehlethaler"; }
-    AirGapReluctanceOutput get_gap_reluctance(CoreGap gapInfo);
+    AirGapReluctanceOutput get_gap_reluctance(CoreGap gapInfo, double magneticFluxDensitySaturation) override;
 
     double get_basic_reluctance(double l, double w, double h);
     double get_reluctance_type_1(double l, double w, double h);
@@ -165,7 +171,7 @@ class ReluctanceEffectiveAreaModel : public ReluctanceModel {
     // Sets the INHERITED methodName: a redeclared member shadowed the base one, which is what
     // results read through the base pointer, so every result reported "Default" (ABT #956).
     ReluctanceEffectiveAreaModel() { methodName = "EffectiveArea"; }
-    AirGapReluctanceOutput get_gap_reluctance(CoreGap gapInfo);
+    AirGapReluctanceOutput get_gap_reluctance(CoreGap gapInfo, double magneticFluxDensitySaturation) override;
 };
 
 class ReluctanceEffectiveLengthModel : public ReluctanceModel {
@@ -173,7 +179,7 @@ class ReluctanceEffectiveLengthModel : public ReluctanceModel {
     // Sets the INHERITED methodName: a redeclared member shadowed the base one, which is what
     // results read through the base pointer, so every result reported "Default" (ABT #956).
     ReluctanceEffectiveLengthModel() { methodName = "EffectiveLength"; }
-    AirGapReluctanceOutput get_gap_reluctance(CoreGap gapInfo);
+    AirGapReluctanceOutput get_gap_reluctance(CoreGap gapInfo, double magneticFluxDensitySaturation) override;
 };
 
 class ReluctancePartridgeModel : public ReluctanceModel {
@@ -181,7 +187,7 @@ class ReluctancePartridgeModel : public ReluctanceModel {
     // Sets the INHERITED methodName: a redeclared member shadowed the base one, which is what
     // results read through the base pointer, so every result reported "Default" (ABT #956).
     ReluctancePartridgeModel() { methodName = "Partridge"; }
-    AirGapReluctanceOutput get_gap_reluctance(CoreGap gapInfo);
+    AirGapReluctanceOutput get_gap_reluctance(CoreGap gapInfo, double magneticFluxDensitySaturation) override;
 };
 
 class ReluctanceClassicModel : public ReluctanceModel {
@@ -189,7 +195,7 @@ class ReluctanceClassicModel : public ReluctanceModel {
     // Sets the INHERITED methodName: a redeclared member shadowed the base one, which is what
     // results read through the base pointer, so every result reported "Default" (ABT #956).
     ReluctanceClassicModel() { methodName = "Classic"; }
-    AirGapReluctanceOutput get_gap_reluctance(CoreGap gapInfo);
+    AirGapReluctanceOutput get_gap_reluctance(CoreGap gapInfo, double magneticFluxDensitySaturation) override;
 };
 
 // Based on Air-gap reluctance and inductance calculations for magnetic circuits using a Schwarz-Christoffel
@@ -199,7 +205,7 @@ class ReluctanceBalakrishnanModel : public ReluctanceModel {
     // Sets the INHERITED methodName: a redeclared member shadowed the base one, which is what
     // results read through the base pointer, so every result reported "Default" (ABT #956).
     ReluctanceBalakrishnanModel() { methodName = "Balakrishnan"; }
-    AirGapReluctanceOutput get_gap_reluctance(CoreGap gapInfo);
+    AirGapReluctanceOutput get_gap_reluctance(CoreGap gapInfo, double magneticFluxDensitySaturation) override;
 };
 
 // Based on The Reluctance of Large Air Gaps in Ferrite Cores by Erika Stenglein
@@ -209,7 +215,7 @@ class ReluctanceStengleinModel : public ReluctanceModel {
     // Sets the INHERITED methodName: a redeclared member shadowed the base one, which is what
     // results read through the base pointer, so every result reported "Default" (ABT #956).
     ReluctanceStengleinModel() { methodName = "Stenglein"; }
-    AirGapReluctanceOutput get_gap_reluctance(CoreGap gapInfo);
+    AirGapReluctanceOutput get_gap_reluctance(CoreGap gapInfo, double magneticFluxDensitySaturation) override;
 
     double u(double rx, double l1) { return 42.7 * rx / l1 - 50.2; }
 
@@ -222,4 +228,4 @@ class ReluctanceStengleinModel : public ReluctanceModel {
     }
 };
 
-} // namespace OpenMagnetics
+} // namespace OpenMagnetics

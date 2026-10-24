@@ -62,15 +62,12 @@ double ReluctanceModel::get_ungapped_core_reluctance(Core core, std::optional<Op
 
     double initialPermeabilityValue;
     if (operatingPoint) {
-        double temperature = operatingPoint->get_conditions().get_ambient_temperature(); // TODO: Use a future calculated temperature
-        _magneticFluxDensitySaturation = core.get_magnetic_flux_density_saturation(temperature, true);
         // ABT #358: the shape family selects the vendor's per-family DC-bias fit when the
         // material carries one (powder E/ER/U, EQ/LP, PQ, ... keys); without it every shape
         // silently used the default fit.
         initialPermeabilityValue = initialPermeability.get_initial_permeability(coreMaterial, operatingPoint.value(), core.get_shape_family());
     }
     else {
-        _magneticFluxDensitySaturation = core.get_magnetic_flux_density_saturation(true);
         initialPermeabilityValue = initialPermeability.get_initial_permeability(coreMaterial, std::nullopt, std::nullopt, std::nullopt, std::nullopt, core.get_shape_family());
     }
 
@@ -80,7 +77,11 @@ double ReluctanceModel::get_ungapped_core_reluctance(Core core, std::optional<Op
 
 MagnetizingInductanceOutput ReluctanceModel::get_core_reluctance(Core core, std::optional<OperatingPoint> operatingPoint) {
     auto ungappedCoreReluctance = get_ungapped_core_reluctance(core, operatingPoint);
-    auto magnetizingInductanceOutput = get_gapping_reluctance(core);
+    std::optional<double> temperature;
+    if (operatingPoint) {
+        temperature = operatingPoint->get_conditions().get_ambient_temperature(); // TODO: Use a future calculated temperature
+    }
+    auto magnetizingInductanceOutput = get_gapping_reluctance(core, temperature);
 
     if (std::isnan(ungappedCoreReluctance)) {
         throw NaNResultException("Core Reluctance must be a number, not NaN");
@@ -118,7 +119,7 @@ MagnetizingInductanceOutput ReluctanceModel::get_core_reluctance(Core core, doub
 // Only the two AXIAL edges fringe; their escape walls are the ring bore itself:
 //   groove side: the bore continues past the flange by (B+L)/2 - tf
 //   outer side:  any bore overhang plus the escape over the ring's radial thickness (J-K)/2
-AirGapReluctanceOutput ReluctanceModel::get_annular_clearance_gap_reluctance(Core& core, CoreGap gapInfo) {
+AirGapReluctanceOutput ReluctanceModel::get_annular_clearance_gap_reluctance(Core& core, CoreGap gapInfo, double magneticFluxDensitySaturation) {
     auto constants = Constants();
     auto shape = core.resolve_shape();
     auto dimensions = flatten_dimensions(shape.get_dimensions().value());
@@ -164,7 +165,7 @@ AirGapReluctanceOutput ReluctanceModel::get_annular_clearance_gap_reluctance(Cor
 
     AirGapReluctanceOutput airGapReluctanceOutput;
     airGapReluctanceOutput.set_maximum_storable_magnetic_energy(
-        get_gap_maximum_storable_energy(gapInfo, fringingFactor));
+        get_gap_maximum_storable_energy(gapInfo, fringingFactor, magneticFluxDensitySaturation));
     airGapReluctanceOutput.set_reluctance(reluctance);
     airGapReluctanceOutput.set_method_used("AnnularClearance");
     airGapReluctanceOutput.set_origin(ResultOrigin::SIMULATION);
@@ -184,7 +185,7 @@ double ReluctanceModel::gapping_reluctance_in_series(Core& core, const Magnetizi
     return output.get_gapping_reluctance().value();
 }
 
-MagnetizingInductanceOutput ReluctanceModel::get_gapping_reluctance(Core core) {
+MagnetizingInductanceOutput ReluctanceModel::get_gapping_reluctance(Core core, std::optional<double> temperature) {
     double calculatedReluctance = 0;
     double calculatedCentralReluctance = 0;
     double calculatedLateralReluctance = 0;
@@ -209,13 +210,18 @@ MagnetizingInductanceOutput ReluctanceModel::get_gapping_reluctance(Core core) {
         // columns lateral) previously landed every gap — including the wound leg's —
         // in the parallel term.
         auto mainColumnIndex = core.get_main_column_index();
+        // ABT #1610: the gaps store energy up to the saturation of THIS core's material at the
+        // operating temperature (was a 0.4 T member, or the Bsat of whichever core this model
+        // instance had seen last).
+        double magneticFluxDensitySaturation = temperature ? core.get_magnetic_flux_density_saturation(temperature.value(), true)
+                                                           : core.get_magnetic_flux_density_saturation(true);
         bool isDrumRing = core.get_shape_family() == CoreShapeFamily::DRUM_RING;
         for (const auto& gap : gapping) {
             // ABT #368: drumRing structural clearances get the dedicated annular model — the
             // generic ones assume winding-window escape walls and (rectangular branch) fringe
             // the circumferential ends of a section that is actually a closed loop.
-            auto gapReluctance = isDrumRing ? get_annular_clearance_gap_reluctance(core, gap)
-                                            : get_gap_reluctance(gap);
+            auto gapReluctance = isDrumRing ? get_annular_clearance_gap_reluctance(core, gap, magneticFluxDensitySaturation)
+                                            : get_gap_reluctance(gap, magneticFluxDensitySaturation);
             auto gapColumnIndex = core.find_closest_column_index_by_coordinates(gap.get_coordinates().value());
             reluctancePerGap.push_back(gapReluctance);
             if (static_cast<size_t>(gapColumnIndex) != mainColumnIndex) {
@@ -283,7 +289,7 @@ MagnetizingInductanceOutput ReluctanceModel::get_gapping_reluctance(Core core) {
  * @param gapInfo CoreGap object containing gap geometry parameters
  * @return AirGapReluctanceOutput with calculated reluctance and fringing factor
  */
-AirGapReluctanceOutput ReluctanceZhangModel::get_gap_reluctance(CoreGap gapInfo) {
+AirGapReluctanceOutput ReluctanceZhangModel::get_gap_reluctance(CoreGap gapInfo, double magneticFluxDensitySaturation) {
     double perimeter = 0;
     auto constants = Constants();
     auto gapLength = gapInfo.get_length();
@@ -357,7 +363,7 @@ AirGapReluctanceOutput ReluctanceZhangModel::get_gap_reluctance(CoreGap gapInfo)
         fringingFactor = gapLength / (constants.vacuumPermeability * gapArea * reluctance);
     }
     AirGapReluctanceOutput airGapReluctanceOutput;
-    airGapReluctanceOutput.set_maximum_storable_magnetic_energy(get_gap_maximum_storable_energy(gapInfo, fringingFactor));
+    airGapReluctanceOutput.set_maximum_storable_magnetic_energy(get_gap_maximum_storable_energy(gapInfo, fringingFactor, magneticFluxDensitySaturation));
     airGapReluctanceOutput.set_reluctance(reluctance);
     airGapReluctanceOutput.set_method_used("Zhang");
     airGapReluctanceOutput.set_origin(ResultOrigin::SIMULATION);
@@ -433,7 +439,7 @@ double ReluctanceMuehlethalerModel::get_reluctance_type_1(double l, double w, do
  * @param gapInfo CoreGap object containing gap geometry parameters
  * @return AirGapReluctanceOutput with calculated reluctance and fringing factor
  */
-AirGapReluctanceOutput ReluctanceMuehlethalerModel::get_gap_reluctance(CoreGap gapInfo) {
+AirGapReluctanceOutput ReluctanceMuehlethalerModel::get_gap_reluctance(CoreGap gapInfo, double magneticFluxDensitySaturation) {
     auto constants = Constants();
     auto gapLength = gapInfo.get_length();
     if (!gapInfo.get_shape()) {
@@ -479,7 +485,7 @@ AirGapReluctanceOutput ReluctanceMuehlethalerModel::get_gap_reluctance(CoreGap g
     }
 
     AirGapReluctanceOutput airGapReluctanceOutput;
-    airGapReluctanceOutput.set_maximum_storable_magnetic_energy(get_gap_maximum_storable_energy(gapInfo, fringingFactor));
+    airGapReluctanceOutput.set_maximum_storable_magnetic_energy(get_gap_maximum_storable_energy(gapInfo, fringingFactor, magneticFluxDensitySaturation));
     airGapReluctanceOutput.set_reluctance(reluctance);
     airGapReluctanceOutput.set_method_used("Muehlethaler");
     airGapReluctanceOutput.set_origin(ResultOrigin::SIMULATION);
@@ -508,7 +514,7 @@ AirGapReluctanceOutput ReluctanceMuehlethalerModel::get_gap_reluctance(CoreGap g
  * @param gapInfo CoreGap object containing gap geometry parameters
  * @return AirGapReluctanceOutput with calculated reluctance and fringing factor
  */
-AirGapReluctanceOutput ReluctanceEffectiveAreaModel::get_gap_reluctance(CoreGap gapInfo) {
+AirGapReluctanceOutput ReluctanceEffectiveAreaModel::get_gap_reluctance(CoreGap gapInfo, double magneticFluxDensitySaturation) {
     auto constants = Constants();
     auto gapLength = gapInfo.get_length();
     if (!gapInfo.get_area()) {
@@ -541,7 +547,7 @@ AirGapReluctanceOutput ReluctanceEffectiveAreaModel::get_gap_reluctance(CoreGap 
     reluctance = gapLength / (constants.vacuumPermeability * gapArea * fringingFactor);
 
     AirGapReluctanceOutput airGapReluctanceOutput;
-    airGapReluctanceOutput.set_maximum_storable_magnetic_energy(get_gap_maximum_storable_energy(gapInfo, fringingFactor));
+    airGapReluctanceOutput.set_maximum_storable_magnetic_energy(get_gap_maximum_storable_energy(gapInfo, fringingFactor, magneticFluxDensitySaturation));
     airGapReluctanceOutput.set_reluctance(reluctance);
     airGapReluctanceOutput.set_method_used("EffectiveArea");
     airGapReluctanceOutput.set_origin(ResultOrigin::SIMULATION);
@@ -571,7 +577,7 @@ AirGapReluctanceOutput ReluctanceEffectiveAreaModel::get_gap_reluctance(CoreGap 
  * @param gapInfo CoreGap object containing gap geometry parameters
  * @return AirGapReluctanceOutput with calculated reluctance and fringing factor
  */
-AirGapReluctanceOutput ReluctanceEffectiveLengthModel::get_gap_reluctance(CoreGap gapInfo) {
+AirGapReluctanceOutput ReluctanceEffectiveLengthModel::get_gap_reluctance(CoreGap gapInfo, double magneticFluxDensitySaturation) {
     auto constants = Constants();
     auto gapLength = gapInfo.get_length();
     if (!gapInfo.get_area()) {
@@ -603,7 +609,7 @@ AirGapReluctanceOutput ReluctanceEffectiveLengthModel::get_gap_reluctance(CoreGa
     reluctance = gapLength / (constants.vacuumPermeability * gapArea * fringingFactor);
 
     AirGapReluctanceOutput airGapReluctanceOutput;
-    airGapReluctanceOutput.set_maximum_storable_magnetic_energy(get_gap_maximum_storable_energy(gapInfo, fringingFactor));
+    airGapReluctanceOutput.set_maximum_storable_magnetic_energy(get_gap_maximum_storable_energy(gapInfo, fringingFactor, magneticFluxDensitySaturation));
     airGapReluctanceOutput.set_reluctance(reluctance);
     airGapReluctanceOutput.set_method_used("EffectiveLength");
     airGapReluctanceOutput.set_origin(ResultOrigin::SIMULATION);
@@ -635,7 +641,7 @@ AirGapReluctanceOutput ReluctanceEffectiveLengthModel::get_gap_reluctance(CoreGa
  * @param gapInfo CoreGap object containing gap geometry parameters
  * @return AirGapReluctanceOutput with calculated reluctance and fringing factor
  */
-AirGapReluctanceOutput ReluctancePartridgeModel::get_gap_reluctance(CoreGap gapInfo) {
+AirGapReluctanceOutput ReluctancePartridgeModel::get_gap_reluctance(CoreGap gapInfo, double magneticFluxDensitySaturation) {
     auto constants = Constants();
     auto gapLength = gapInfo.get_length();
     if (!gapInfo.get_area()) {
@@ -672,7 +678,7 @@ AirGapReluctanceOutput ReluctancePartridgeModel::get_gap_reluctance(CoreGap gapI
     reluctance = gapLength / (constants.vacuumPermeability * gapArea * fringingFactor);
 
     AirGapReluctanceOutput airGapReluctanceOutput;
-    airGapReluctanceOutput.set_maximum_storable_magnetic_energy(get_gap_maximum_storable_energy(gapInfo, fringingFactor));
+    airGapReluctanceOutput.set_maximum_storable_magnetic_energy(get_gap_maximum_storable_energy(gapInfo, fringingFactor, magneticFluxDensitySaturation));
     airGapReluctanceOutput.set_reluctance(reluctance);
     airGapReluctanceOutput.set_method_used("Partridge");
     airGapReluctanceOutput.set_origin(ResultOrigin::SIMULATION);
@@ -711,7 +717,7 @@ AirGapReluctanceOutput ReluctancePartridgeModel::get_gap_reluctance(CoreGap gapI
  * @param gapInfo CoreGap object containing gap geometry parameters
  * @return AirGapReluctanceOutput with calculated reluctance and fringing factor
  */
-AirGapReluctanceOutput ReluctanceStengleinModel::get_gap_reluctance(CoreGap gapInfo) {
+AirGapReluctanceOutput ReluctanceStengleinModel::get_gap_reluctance(CoreGap gapInfo, double magneticFluxDensitySaturation) {
     auto constants = Constants();
     auto gapLength = gapInfo.get_length();
     if (!gapInfo.get_area()) {
@@ -767,7 +773,7 @@ AirGapReluctanceOutput ReluctanceStengleinModel::get_gap_reluctance(CoreGap gapI
     reluctance = gapLength / (constants.vacuumPermeability * gapArea * fringingFactor);
 
     AirGapReluctanceOutput airGapReluctanceOutput;
-    airGapReluctanceOutput.set_maximum_storable_magnetic_energy(get_gap_maximum_storable_energy(gapInfo, fringingFactor));
+    airGapReluctanceOutput.set_maximum_storable_magnetic_energy(get_gap_maximum_storable_energy(gapInfo, fringingFactor, magneticFluxDensitySaturation));
     airGapReluctanceOutput.set_reluctance(reluctance);
     airGapReluctanceOutput.set_method_used("Stenglein");
     airGapReluctanceOutput.set_origin(ResultOrigin::SIMULATION);
@@ -799,7 +805,7 @@ AirGapReluctanceOutput ReluctanceStengleinModel::get_gap_reluctance(CoreGap gapI
  * @param gapInfo CoreGap object containing gap geometry parameters
  * @return AirGapReluctanceOutput with calculated reluctance and fringing factor = 1
  */
-AirGapReluctanceOutput ReluctanceClassicModel::get_gap_reluctance(CoreGap gapInfo) {
+AirGapReluctanceOutput ReluctanceClassicModel::get_gap_reluctance(CoreGap gapInfo, double magneticFluxDensitySaturation) {
     auto constants = Constants();
     auto gapLength = gapInfo.get_length();
     if (!gapInfo.get_area()) {
@@ -812,7 +818,7 @@ AirGapReluctanceOutput ReluctanceClassicModel::get_gap_reluctance(CoreGap gapInf
     reluctance = gapLength / (constants.vacuumPermeability * gapArea);
 
     AirGapReluctanceOutput airGapReluctanceOutput;
-    airGapReluctanceOutput.set_maximum_storable_magnetic_energy(get_gap_maximum_storable_energy(gapInfo, fringingFactor));
+    airGapReluctanceOutput.set_maximum_storable_magnetic_energy(get_gap_maximum_storable_energy(gapInfo, fringingFactor, magneticFluxDensitySaturation));
     airGapReluctanceOutput.set_reluctance(reluctance);
     airGapReluctanceOutput.set_method_used("Classic");
     airGapReluctanceOutput.set_origin(ResultOrigin::SIMULATION);
@@ -849,7 +855,7 @@ AirGapReluctanceOutput ReluctanceClassicModel::get_gap_reluctance(CoreGap gapInf
  * @param gapInfo CoreGap object containing gap geometry parameters
  * @return AirGapReluctanceOutput with calculated reluctance and fringing factor
  */
-AirGapReluctanceOutput ReluctanceBalakrishnanModel::get_gap_reluctance(CoreGap gapInfo) {
+AirGapReluctanceOutput ReluctanceBalakrishnanModel::get_gap_reluctance(CoreGap gapInfo, double magneticFluxDensitySaturation) {
     auto constants = Constants();
     auto gapLength = gapInfo.get_length();
     if (!gapInfo.get_area()) {
@@ -891,7 +897,7 @@ AirGapReluctanceOutput ReluctanceBalakrishnanModel::get_gap_reluctance(CoreGap g
     }
 
     AirGapReluctanceOutput airGapReluctanceOutput;
-    airGapReluctanceOutput.set_maximum_storable_magnetic_energy(get_gap_maximum_storable_energy(gapInfo, fringingFactor));
+    airGapReluctanceOutput.set_maximum_storable_magnetic_energy(get_gap_maximum_storable_energy(gapInfo, fringingFactor, magneticFluxDensitySaturation));
     airGapReluctanceOutput.set_reluctance(reluctance);
     airGapReluctanceOutput.set_method_used("Balakrishnan");
     airGapReluctanceOutput.set_origin(ResultOrigin::SIMULATION);

@@ -88,7 +88,10 @@ namespace {
         auto reluctanceModel = ReluctanceModel::factory(modelName);
 
         for (const auto& gap : gapping) {
-            auto result = reluctanceModel->get_gap_reluctance(gap);
+            // The pinned energies are the gap model's at the reference flux density (they were
+            // computed with the 0.4 T the model used to hold); this test checks the gap model's
+            // energy formula, not the material's saturation.
+            auto result = reluctanceModel->get_gap_reluctance(gap, OpenMagnetics::Defaults().gapReluctanceEnergyFluxDensity);
             calculatedEnergy += result.get_maximum_storable_magnetic_energy();
 
             REQUIRE(result.get_fringing_factor() >= 1);
@@ -519,7 +522,8 @@ namespace {
 
         CoreGap coreGap(json::parse(coreGapData));
 
-        auto coreGapResult = reluctanceModel->get_gap_reluctance(coreGap);
+        // A standalone gap (as the web's gap calculator sends it): no core material at all.
+        auto coreGapResult = reluctanceModel->get_gap_reluctance(coreGap, OpenMagnetics::Defaults().gapReluctanceEnergyFluxDensity);
         // Repro point: the gap reluctance for this web gap must be finite and positive,
         // with a physical fringing factor (>= 1).
         CHECK(std::isfinite(coreGapResult.get_reluctance()));
@@ -611,4 +615,41 @@ TEST_CASE("Test_Reluctance_Reports_The_Model_That_Ran", "[physical-model][reluct
         auto reluctanceModel = ReluctanceModel::factory(model);
         CHECK(reluctanceModel->get_core_reluctance(core).get_method_used() == expectedName);
     }
+}
+
+// ABT #1610: a gap's storable energy is at the saturation flux density of the core's own material
+// (25 C reference when the caller gives no operating point), not a 0.4 T member nor the Bsat of
+// whichever core the model instance saw before.
+TEST_CASE("Test_Reluctance_Gap_Storable_Energy_Uses_The_Core_Material_Bsat", "[physical-model][reluctance][abt-1610]") {
+    auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", OpenMagneticsTesting::get_ground_gap(0.001), 1, "N87");
+    auto otherCore = OpenMagneticsTesting::get_quick_core("PQ 28/20", OpenMagneticsTesting::get_ground_gap(0.001), 1, "3C97");
+    double bsat = core.get_magnetic_flux_density_saturation(true);
+    REQUIRE(std::abs(bsat - 0.4) > 0.02);  // the check below can tell the material from 0.4 T
+
+    auto expectedEnergy = [&](const MagnetizingInductanceOutput& output) {
+        double energy = 0;
+        auto gapping = core.get_functional_description().get_gapping();
+        auto perGap = output.get_reluctance_per_gap().value();
+        REQUIRE(perGap.size() == gapping.size());
+        for (size_t i = 0; i < gapping.size(); ++i) {
+            // E = 0.5 Phi^2 R_gap, Phi = Bsat A, R_gap = lg / (mu0 A F)
+            energy += 0.5 / OpenMagnetics::Constants().vacuumPermeability * gapping[i].get_length() * gapping[i].get_area().value() /
+                      perGap[i].get_fringing_factor() * bsat * bsat;
+        }
+        return energy;
+    };
+
+    auto freshModel = ReluctanceModel::factory();
+    auto freshOutput = freshModel->get_core_reluctance(core, 2000.0);
+    REQUIRE(freshOutput.get_maximum_storable_magnetic_energy_gapping());
+    CHECK_THAT(freshOutput.get_maximum_storable_magnetic_energy_gapping().value(),
+               Catch::Matchers::WithinRel(expectedEnergy(freshOutput), 1e-9));
+
+    // The same model after it has seen another core at another temperature answers the same.
+    auto usedModel = ReluctanceModel::factory();
+    auto inputs = OpenMagnetics::Inputs::create_quick_operating_point(100000, 100e-6, 120, WaveformLabel::TRIANGULAR, 1, 0.5, 0);
+    usedModel->get_core_reluctance(otherCore, inputs.get_mutable_operating_points()[0]);
+    auto usedOutput = usedModel->get_core_reluctance(core, 2000.0);
+    CHECK_THAT(usedOutput.get_maximum_storable_magnetic_energy_gapping().value(),
+               Catch::Matchers::WithinRel(freshOutput.get_maximum_storable_magnetic_energy_gapping().value(), 1e-12));
 }
