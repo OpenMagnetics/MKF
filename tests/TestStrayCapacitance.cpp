@@ -4449,3 +4449,36 @@ TEST_CASE("Insulation layers between two turns combine as one series stack", "[p
     REQUIRE_THAT(data[3], WithinRel(sumThickness, 1e-9));
     CHECK_THAT(data[6], WithinRel(sumThickness / sumThicknessOverPermittivity, 1e-9));
 }
+
+// Two planar turns side by side on one copper layer are side by side whatever the last bit of their
+// y coordinates says: the parallel-plate preprocessing compared the rows with exact float equality, so
+// rounding noise sent them into the stacked branch (distance from |dy| minus the copper heights).
+TEST_CASE("Planar turns side by side are recognised through rounding noise", "[physical-model][stray-capacitance][planar][abt-1606]") {
+    settings.reset();
+    OpenMagnetics::Wire wire;
+    wire.set_type(WireType::PLANAR);
+    wire.set_nominal_value_conducting_width(0.002);
+    wire.set_nominal_value_conducting_height(35e-6);
+    wire.set_nominal_value_outer_width(0.002);
+    wire.set_nominal_value_outer_height(35e-6);
+    wire.set_number_conductors(1);
+    wire.set_material("copper");
+    auto makeTurn = [](std::string name, double x, double y) {
+        json turnJson;
+        turnJson["name"] = name;
+        turnJson["coordinates"] = {x, y};
+        turnJson["dimensions"] = {0.002, 35e-6};
+        turnJson["length"] = 0.05;
+        turnJson["winding"] = "Primary";
+        turnJson["parallel"] = 0;
+        return Turn(turnJson);
+    };
+    StrayCapacitanceParallelPlateModel model;
+    auto exact = model.preprocess_data_for_planar_wires(makeTurn("a", 0.003, 0.0004), wire, makeTurn("b", 0.0056, 0.0004), wire);
+    auto noisy = model.preprocess_data_for_planar_wires(makeTurn("a", 0.003, 0.0004), wire, makeTurn("b", 0.0056, 0.0004 + 1e-15), wire);
+    REQUIRE(exact.size() == noisy.size());
+    for (size_t index = 0; index < exact.size(); ++index) {
+        INFO("entry " << index << ": exact rows " << exact[index] << ", rows 1e-15 m apart " << noisy[index]);
+        CHECK_THAT(noisy[index], WithinRel(exact[index], 1e-9));
+    }
+}

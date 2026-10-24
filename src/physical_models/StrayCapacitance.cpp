@@ -971,7 +971,11 @@ std::vector<double> StrayCapacitanceParallelPlateModel::preprocess_data_for_plan
 
     double distanceBetweenTurns = 0;
     double overlappingDimension = 0;
-    if (firstTurn.get_coordinates()[1] == secondTurn.get_coordinates()[1]) {
+    // Side by side when the turns share a row. Their y coordinates come out of different arithmetic, so
+    // "the same row" is equality up to rounding noise, far below any copper thickness: exact float
+    // equality sent side-by-side turns into the stacked branch on a last-bit difference.
+    double sameRowTolerance = 1e-3 * std::min(firstWire.get_maximum_conducting_height(), secondWire.get_maximum_conducting_height());
+    if (std::abs(firstTurn.get_coordinates()[1] - secondTurn.get_coordinates()[1]) <= sameRowTolerance) {
         distanceBetweenTurns = fabs(firstTurn.get_coordinates()[0] - secondTurn.get_coordinates()[0]);
         distanceBetweenTurns -= firstWire.get_maximum_conducting_width() / 2 + secondWire.get_maximum_conducting_width() / 2;
         conductingDimensionFirstWire = firstWire.get_maximum_conducting_height();
