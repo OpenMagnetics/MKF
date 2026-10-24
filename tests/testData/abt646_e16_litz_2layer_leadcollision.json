@@ -1923,7 +1923,7 @@
                     "remanence": [
                         {
                             "magneticField": 0,
-                            "magneticFluxDensity": 0.8,
+                            "magneticFluxDensity": 0.08,
                             "temperature": 100
                         },
                         {

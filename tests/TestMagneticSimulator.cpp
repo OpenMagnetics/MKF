@@ -1074,6 +1074,47 @@ namespace {
         CHECK(dataLimitFindings == 1);
     }
 
+    // A core held paramagnetic at its Curie point loses almost nothing, so the network the held losses drive comes
+    // back COLD: Henry's pick for a 600 W LLC resonant inductor (P 18/11 TM63, 5 turns, 14 uH, 4.17 A rms at 155 kHz,
+    // 2026-10-24) loses 23 W at 25 C at 0.37 T, has no fixed point below TM63's 290 C Curie point, and is held there:
+    // 0 W of core loss, 1.4 mT and a 33 C hottest point. analyze_results must still say the core left its data,
+    // or a design gate reading the hottest point accepts a core sitting at its Curie point.
+    TEST_CASE("A core held paramagnetic at Curie whose network comes back cold is still reported above its data limit", "[processor][magnetic-simulator][abt-1855][curie-cold]") {
+        std::ifstream file(OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "curie_held_tm63_p1811_resonant_inductor.json"));
+        REQUIRE(file.good());
+        auto masJson = nlohmann::json::parse(file);
+        OpenMagnetics::Inputs inputs(masJson["inputs"]);
+        OpenMagnetics::Magnetic magnetic(masJson["magnetic"]);
+        auto coreMaterial = magnetic.get_mutable_core().resolve_material();
+        REQUIRE(coreMaterial.get_name() == "TM63");
+        auto ceiling = InitialPermeability::get_maximum_ferromagnetic_data_temperature(coreMaterial);
+        REQUIRE(ceiling);
+        REQUIRE(ceiling.value() == coreMaterial.get_curie_temperature().value());
+
+        MagneticSimulator simulator;
+        OpenMagnetics::Mas simulated;
+        REQUIRE_NOTHROW(simulated = simulator.simulate(inputs, magnetic));
+        REQUIRE(simulated.get_outputs().size() == 1);
+        const auto& output = simulated.get_outputs()[0];
+        const double coreTemperature = output.get_core_losses()->get_temperature();
+        const double hottest = output.get_temperature()->get_maximum_temperature();
+        INFO("core losses " << output.get_core_losses()->get_core_losses() << " W at " << coreTemperature << " C, hottest point " << hottest << " C");
+        // The premise: held within the tolerance below Curie, with the network cold.
+        REQUIRE(coreTemperature > ceiling.value() - MagneticSimulator::kOperatingTemperatureTolerance);
+        REQUIRE(hottest < 100);
+        CHECK(MagneticSimulator::is_core_held_at_data_ceiling(coreMaterial, coreTemperature, hottest));
+
+        size_t dataLimitFindings = 0;
+        for (const auto& finding : ResultsAnalyzer::analyze_results(simulated)) {
+            INFO(to_string(finding.code) << ": " << finding.message);
+            if (finding.code == ResultFindingCode::CORE_ABOVE_MATERIAL_DATA_LIMIT) {
+                ++dataLimitFindings;
+                CHECK_THAT(finding.message, Catch::Matchers::ContainsSubstring("paramagnetic"));
+            }
+        }
+        CHECK(dataLimitFindings == 1);
+    }
+
     // ABT #1855 (Alf, 2026-10-14): the same ETD 29 in still air at 100 C. Its 3C95 mu_i(T) table ends at
     // 180 C, below the 244 C Curie point: the material is still magnetic there. Driven to the table's end,
     // the core is held exactly at its last tabulated temperature and keeps its last tabulated permeability

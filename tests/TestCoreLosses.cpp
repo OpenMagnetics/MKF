@@ -4878,6 +4878,24 @@ TEST_CASE("Test_Material_Validator_Saturation_Above_Iron_Is_Impossible", "[mater
     CHECK_FALSE(verdict.valid);
 }
 
+TEST_CASE("Test_Material_Validator_Remanence_Above_Saturation_Is_Impossible", "[material-validator][remanence-saturation]") {
+    // Fair-Rite 95 held 0.8 T of remanence at 100 C (its loop shows ~800 gauss, 0.08 T) against 0.39 T of saturation.
+    settings.reset();
+    auto record = material_record("N87");
+    auto clean = MaterialValidator().validate(record);
+    INFO(describe(clean));
+    REQUIRE(count_findings(clean, "MAT_REMANENCE_SATURATION", MaterialFindingSeverity::IMPOSSIBLE) == 0);
+    REQUIRE(record.contains("remanence"));
+    REQUIRE(record.contains("saturation"));
+    record["remanence"][0]["magneticFluxDensity"] = 2 * record["saturation"][0]["magneticFluxDensity"].get<double>();
+    record["remanence"][0]["temperature"] = record["saturation"][0]["temperature"];
+    record["name"] = "N87 Br above Bs";
+    auto verdict = MaterialValidator().validate(record);
+    INFO(describe(verdict));
+    CHECK(count_findings(verdict, "MAT_REMANENCE_SATURATION", MaterialFindingSeverity::IMPOSSIBLE) == 1);
+    CHECK_FALSE(verdict.valid);
+}
+
 TEST_CASE("Test_Material_Validator_Curie_And_Permeability", "[material-validator]") {
     settings.reset();
     auto record = material_record("N87");

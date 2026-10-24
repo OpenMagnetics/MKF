@@ -369,6 +369,19 @@ CoreLoopProperty resolve_loop_property(const CoreMaterial& coreMaterial, double 
     if (has_loop_property(coreMaterial, property)) {
         const double value = property == LoopProperty::REMANENCE ? Core::get_remanence(coreMaterial, temperature)
                                                                  : Core::get_coercive_force(coreMaterial, temperature);
+        // A loop keeps less flux at H = 0 than it carries saturated. A material's own remanence at or above its
+        // saturation flux density is a data error (MaterialValidator: MAT_REMANENCE_SATURATION), and the loop built
+        // from it is not the material's: Fair-Rite 95 with 0.8 T at 100 C (for 0.08 T) gave a magnetisation curve
+        // that topped out at 0.13 T at 60 C (Henry, 2026-10-24).
+        if (property == LoopProperty::REMANENCE) {
+            const double saturation = Core::get_magnetic_flux_density_saturation(coreMaterial, temperature, false);
+            if (value >= saturation) {
+                throw MaterialException(ErrorCode::MATERIAL_INVALID_PROPERTY,
+                    "Material " + coreMaterial.get_name() + ": its remanence at " + std::to_string(temperature) + " C, " +
+                    std::to_string(value) + " T, is not below its saturation flux density there, " + std::to_string(saturation) +
+                    " T: the hysteresis loop of that data is not a material's", coreMaterial.get_name());
+            }
+        }
         return CoreLoopProperty{value, CoreLoopPropertyTier::MATERIAL, std::nullopt};
     }
     auto estimate = estimate_loop_property(coreMaterial, property);

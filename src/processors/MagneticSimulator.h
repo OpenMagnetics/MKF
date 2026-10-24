@@ -230,7 +230,9 @@ class MagneticSimulator {
         // ABT #1855: whether a solve held the core at its material's data ceiling (the losses drove it
         // there, solve_losses_at_operating_temperature): its core losses were evaluated within
         // kOperatingTemperatureTolerance below InitialPermeability::get_maximum_ferromagnetic_data_temperature
-        // and the network's maximum temperature lies above that ceiling. This overload knows only that
+        // and the network's maximum temperature lies above that ceiling, or more than that tolerance below the
+        // core losses' temperature (a core held paramagnetic at Curie loses ~nothing and the network comes back
+        // cold; a solved point's hottest temperature is never below its core's). This overload knows only that
         // mu_i(T) / Curie part (get_ferromagnetic_data_ceiling); the full ceiling the solve uses also depends
         // on the excitation (get_core_data_ceiling) and is judged by the overload below.
         static bool is_core_held_at_data_ceiling(const CoreMaterial& coreMaterial, double coreLossesTemperature,

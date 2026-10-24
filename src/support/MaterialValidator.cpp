@@ -40,6 +40,7 @@ constexpr const char* MAT_BSAT_CEILING = "MAT_BSAT_CEILING";
 constexpr const char* MAT_BSAT_CLASS = "MAT_BSAT_CLASS";
 constexpr const char* MAT_CURIE = "MAT_CURIE";
 constexpr const char* MAT_CURIE_SATURATION = "MAT_CURIE_SATURATION";
+constexpr const char* MAT_REMANENCE_SATURATION = "MAT_REMANENCE_SATURATION";
 constexpr const char* MAT_PERM = "MAT_PERM";
 
 // ---------------------------------------------------------------- physical constants and rule thresholds
@@ -362,6 +363,31 @@ void check_saturation(const json& record, const CoreMaterial& material, const Ma
         emit(ctx, MAT_BSAT_CLASS, MaterialFindingSeverity::SUSPICIOUS, bs25, limit,
              "saturation flux density at 25 C " + fmt(bs25) + " T is above the " + cls->name + " maximum " +
                  fmt(*cls->maximumSaturationFluxDensity) + " T (+10 %); " + cls->saturationSource);
+    }
+}
+
+// The remanence is the flux density the loop keeps at H = 0, on the way down from saturation: never above the saturation
+// flux density at the same temperature. Fair-Rite 95 held 0.8 T at 100 C (800 gauss read as 0.8 T) against its 0.39 T
+// B_sat, and the magnetisation curve MKF builds from the loop collapsed to 0.13 T at 60 C (Henry, 2026-10-24).
+void check_remanence(const json& record, const CoreMaterial& material, const Ctx& ctx, std::vector<std::string>& skipped) {
+    if (!record.contains("remanence") || !record["remanence"].is_array() || record["remanence"].empty()) {
+        skipped.push_back(std::string(MAT_REMANENCE_SATURATION) + ": the record has no remanence data");
+        return;
+    }
+    if (!record.contains("saturation") || !record["saturation"].is_array() || record["saturation"].empty()) {
+        skipped.push_back(std::string(MAT_REMANENCE_SATURATION) + ": the record has no saturation data");
+        return;
+    }
+    const auto remanenceData = material.get_remanence().value();   // by value: the getter returns a temporary
+    for (const auto& datum : remanenceData) {
+        const double remanence = datum.get_magnetic_flux_density();
+        const double t = datum.get_temperature();
+        const double saturation = Core::get_magnetic_flux_density_saturation(material, t, false);
+        if (remanence >= saturation) {
+            emit(ctx, MAT_REMANENCE_SATURATION, MaterialFindingSeverity::IMPOSSIBLE, remanence, saturation,
+                 "remanence " + fmt(remanence) + " T at " + fmt(t) + " C is not below the saturation flux density " + fmt(saturation) +
+                     " T at that temperature: a loop keeps less flux at H = 0 than it carries saturated");
+        }
     }
 }
 
@@ -779,7 +805,7 @@ const char* to_string(MaterialFindingSeverity severity) {
 std::vector<std::string> MaterialValidator::check_codes() {
     return {MAT_PARSE, MAT_PROVENANCE, MAT_LOSS_EVAL, MAT_LOSS_OUT_OF_RANGE, MAT_LOSS_MONOTONIC, MAT_LOSS_ENVELOPE, MAT_LOSS_TEMPERATURE,
             MAT_LOSS_HYSTERESIS_BOUND, MAT_LOSS_POINTS_INCONSISTENT, MAT_LOSS_FACTOR, MAT_BSAT_CEILING, MAT_BSAT_CLASS, MAT_CURIE,
-            MAT_CURIE_SATURATION, MAT_PERM};
+            MAT_CURIE_SATURATION, MAT_REMANENCE_SATURATION, MAT_PERM};
 }
 
 std::vector<MaterialLossPoint> MaterialValidator::read_loss_points(const json& record) {
@@ -867,6 +893,7 @@ MaterialVerdict validate_record(const json& record, const std::vector<MaterialLo
 
     guarded(MAT_BSAT_CEILING, [&] { check_saturation(record, material, cls, ctx, verdict.skipped); });
     guarded(MAT_CURIE, [&] { check_curie(record, material, cls, ctx, verdict.skipped); });
+    guarded(MAT_REMANENCE_SATURATION, [&] { check_remanence(record, material, ctx, verdict.skipped); });
     guarded(MAT_PERM, [&] { check_permeability(material, cls, ctx, verdict.skipped); });
     check_loss_factor(record, ctx);
 
