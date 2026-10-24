@@ -403,6 +403,27 @@ TEST_CASE("Magnetic shunt: TDK C350 by name selects the Shunt method and reports
     CHECK(result.leakageInductance > result.windingLeakageInductance);
 }
 
+// ABT #1866: the shunt losses say which complex permeability they rest on, and where each part came
+// from: mu'' (the one the losses use) is gated to the measured span, so it is tabulated.
+TEST_CASE("Magnetic shunt: the losses carry the source of the complex permeability behind them", "[magnetic-shunt][physical-model][abt-1866]") {
+    settings.reset();
+    auto spec = li_2018_case();
+    spec.sheetMaterialName = "C350";
+    auto magnetic = make_planar_shunt_transformer(spec);
+    auto result = LeakageInductance().calculate_shunt_leakage(magnetic, 1e6, 0, 1);
+    REQUIRE(result.shunts[0].lossesPerAmpereSquared);
+    REQUIRE(result.shunts[0].lossesComplexPermeability);
+    const auto& complexPermeability = result.shunts[0].lossesComplexPermeability.value();
+    CHECK(complexPermeability.imaginarySource == ComplexPermeabilitySource::TABULATED);
+    auto expected = ComplexPermeability().get_complex_permeability_with_source(OpenMagnetics::find_core_material_by_name("C350"), 1e6);
+    CHECK(complexPermeability.realSource == expected.realSource);
+    CHECK_THAT(complexPermeability.imaginary, WithinRel(expected.imaginary, 1e-12));
+    CHECK_THAT(complexPermeability.real, WithinRel(expected.real, 1e-12));
+
+    auto lowFrequency = LeakageInductance().calculate_shunt_leakage(magnetic, 100e3, 0, 1);
+    CHECK(!lowFrequency.shunts[0].lossesComplexPermeability);
+}
+
 TEST_CASE("Magnetic shunt: a sheet material without initial permeability throws", "[magnetic-shunt][leakage-inductance]") {
     settings.reset();
     auto spec = li_2018_case();

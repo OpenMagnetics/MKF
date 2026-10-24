@@ -1,6 +1,7 @@
 #pragma once
 #include "Defaults.h"
 #include "constructive_models/Magnetic.h"
+#include "physical_models/ComplexPermeability.h"
 #include <MAS.hpp>
 #include <optional>
 #include <string>
@@ -106,6 +107,10 @@ struct MagneticShuntContribution {
     // (Li eq. (27)). Present only when the material publishes a complex permeability whose measured
     // span covers the frequency; the data are not extrapolated.
     std::optional<double> lossesPerAmpereSquared;
+    // The complex permeability those losses were computed from, with where each part came from
+    // (tabulated, or estimated outside the material's table). The losses use mu''; the gate above
+    // keeps mu'' tabulated, while mu' may be an estimate (ABT #1861, #1866). Set with the losses.
+    std::optional<ComplexPermeabilityValue> lossesComplexPermeability;
 };
 
 struct MagneticShuntLeakageResult {
