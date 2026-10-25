@@ -3351,7 +3351,8 @@ void Inputs::make_waveform_size_power_of_two(OperatingPoint* operatingPoint) {
     // through the single-winding path that uses the full line current as
     // magnetizing current — producing false saturation.
     for (size_t w = 0; w < operatingPoint->get_mutable_excitations_per_winding().size(); ++w) {
-        OperatingPointExcitation excitation = operatingPoint->get_excitations_per_winding()[w];
+        // The winding's excitation is edited in place, and each MAS getter (which returns a copy) is read once.
+        auto& excitation = operatingPoint->get_mutable_excitations_per_winding()[w];
 
         // Skip windings whose current/voltage carries only `processed`
         // (RMS/peak) without an explicit waveform — there is nothing to
@@ -3359,27 +3360,27 @@ void Inputs::make_waveform_size_power_of_two(OperatingPoint* operatingPoint) {
         // failing the caller in that case. Anything downstream that *does*
         // need a populated waveform will throw at its own call site with a
         // meaningful message rather than a bare `bad_optional_access` here.
-        if (excitation.get_current()) {
-            auto current = operatingPoint->get_mutable_excitations_per_winding()[w].get_current().value();
-            if (current.get_waveform()) {
-                auto currentWaveform = current.get_waveform().value();
+        if (auto currentOptional = excitation.get_current()) {
+            auto& current = currentOptional.value();
+            if (auto currentWaveformOptional = current.get_waveform()) {
+                const auto& currentWaveform = currentWaveformOptional.value();
                 if (!is_size_power_of_2(currentWaveform.get_data())) {
                     auto currentSampledWaveform = Inputs::calculate_sampled_waveform(currentWaveform, frequency);
                     current.set_waveform(currentSampledWaveform);
                     current.set_harmonics(calculate_harmonics_data(currentWaveform, currentSampledWaveform, frequency));
                     current.set_processed(calculate_processed_data(current, currentSampledWaveform, true, current.get_processed()));
-                    operatingPoint->get_mutable_excitations_per_winding()[w].set_current(current);
+                    excitation.set_current(std::move(currentOptional));
                 }
             }
         }
-        if (excitation.get_voltage()) {
-            auto voltage = operatingPoint->get_mutable_excitations_per_winding()[w].get_voltage().value();
-            if (voltage.get_waveform()) {
-                auto voltageWaveform = voltage.get_waveform().value();
+        if (auto voltageOptional = excitation.get_voltage()) {
+            auto& voltage = voltageOptional.value();
+            if (auto voltageWaveformOptional = voltage.get_waveform()) {
+                const auto& voltageWaveform = voltageWaveformOptional.value();
                 if (!is_size_power_of_2(voltageWaveform.get_data())) {
                     auto voltageSampledWaveform = Inputs::calculate_sampled_waveform(voltageWaveform, frequency);
                     voltage.set_waveform(voltageSampledWaveform);
-                    operatingPoint->get_mutable_excitations_per_winding()[w].set_voltage(voltage);
+                    excitation.set_voltage(std::move(voltageOptional));
                 }
             }
         }
