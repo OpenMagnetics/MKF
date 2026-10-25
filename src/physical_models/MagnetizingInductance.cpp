@@ -2165,7 +2165,7 @@ double MagnetizingInductance::calculate_flux_density_peak_from_volt_seconds(
     if (numberTurns <= 0 || effectiveArea <= 0 || maxVoltSeconds <= 0) {
         return 0.0;
     }
-    // Faraday's Law: V = N · A_e · dB/dt  →  B_peak = max|∫V dt| / (N · A_e).
+    // Faraday's Law: V = N · A_e · dB/dt  →  B_peak = λ_pk / (N · A_e), λ_pk = half the peak-to-peak of ∫V dt.
     // Works for arbitrary waveforms (DAB square, CLLLC trapezoid, ...);
     // does NOT assume sinusoidal.
     return maxVoltSeconds / (numberTurns * effectiveArea);

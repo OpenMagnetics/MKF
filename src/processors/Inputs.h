@@ -115,9 +115,11 @@ class Inputs : public MAS::Inputs {
     static SignalDescriptor calculate_induced_voltage(OperatingPointExcitation& excitation, double magnetizingInductance, bool compress=true);
 
     /**
-     * @brief Peak excursion of ∫V dt across the primary voltage waveform.
+     * @brief Peak flux linkage of one period of the voltage waveform.
      *
-     * Returns max|∫V dt| over the waveform's samples. This is the V·s
+     * Returns (max − min)/2 of the running ∫(V − ⟨V⟩) dt over one period:
+     * the peak of the flux linkage about its mean, NOT its peak-to-peak
+     * (a sine of amplitude V_pk gives V_pk/ω, as the fallback). This is the V·s
      * quantity that pairs with Faraday's law (`B_peak = V·s / (N · A_e)`)
      * for non-sinusoidal voltages — DAB squares, CLLLC trapezoids,
      * push-pull rectangulars, etc. — where the sinusoidal V_peak/ω

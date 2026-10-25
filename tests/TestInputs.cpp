@@ -3227,3 +3227,58 @@ TEST_CASE("Test_Magnetic_Role_From_The_Waveforms", "[processor][inputs][abt-1469
         CHECK(decision.role == OpenMagnetics::MagneticRole::TRANSFORMER);
     }
 }
+
+TEST_CASE("Test_Max_Volt_Seconds_Is_The_Peak_Flux_Linkage", "[processor][inputs][abt-2070]") {
+    // ABT #2070: calculate_max_volt_seconds feeds B_peak = lambda / (N * A_e) and the transformer
+    // turn seed N = lambda / (B_max * A_e), so it must be the PEAK flux linkage. It used to return
+    // max|int_0^t V dt|, which for a sine starting at 0 V is the whole excursion 2 Vpk / w: twice
+    // the peak, and twice what its own sinusoidal fallback (Vpk / w) returns.
+    const double frequency = 100000;
+    const double voltagePeakToPeak = 600;
+    const double omega = 2 * std::numbers::pi * frequency;
+    const double expectedPeakFluxLinkage = voltagePeakToPeak / 2 / omega;
+    auto inputs = OpenMagnetics::Inputs::create_quick_operating_point(
+        frequency, 100e-6, 25, WaveformLabel::SINUSOIDAL, voltagePeakToPeak, 0.5, 0, {10});
+    auto excitation = OpenMagnetics::Inputs::get_primary_excitation(inputs.get_operating_points()[0]);
+    REQUIRE(excitation.get_voltage());
+    REQUIRE(excitation.get_voltage()->get_waveform());
+
+    double fromWaveform = OpenMagnetics::Inputs::calculate_max_volt_seconds(excitation);
+    INFO("from waveform " << fromWaveform << " V s, Vpk / w " << expectedPeakFluxLinkage << " V s");
+    CHECK_THAT(fromWaveform, Catch::Matchers::WithinRel(expectedPeakFluxLinkage, 0.01));
+
+    SECTION("agrees with the sinusoidal fallback") {
+        auto voltage = excitation.get_voltage().value();
+        REQUIRE(voltage.get_processed());
+        REQUIRE(voltage.get_processed()->get_peak());
+        voltage.set_waveform(std::nullopt);
+        auto processedOnly = excitation;
+        processedOnly.set_voltage(voltage);
+        double fromFallback = OpenMagnetics::Inputs::calculate_max_volt_seconds(processedOnly);
+        INFO("fallback " << fromFallback << " V s");
+        CHECK_THAT(fromFallback, Catch::Matchers::WithinRel(expectedPeakFluxLinkage, 0.01));
+        CHECK_THAT(fromWaveform, Catch::Matchers::WithinRel(fromFallback, 0.01));
+    }
+
+    SECTION("does not depend on where the period starts, nor on a DC bias") {
+        // Same 300 V sine, sampled from a third of the way into its period, riding on 5 V of DC
+        // (a winding cannot hold a steady voltage; the bias is a ramp, not a flux excursion).
+        const size_t numberPoints = 1024;
+        std::vector<double> time(numberPoints + 1);
+        std::vector<double> data(numberPoints + 1);
+        for (size_t k = 0; k <= numberPoints; ++k) {
+            time[k] = static_cast<double>(k) / numberPoints / frequency;
+            data[k] = 5 + voltagePeakToPeak / 2 * std::sin(omega * time[k] + 2 * std::numbers::pi / 3);
+        }
+        Waveform waveform;
+        waveform.set_time(time);
+        waveform.set_data(data);
+        auto voltage = excitation.get_voltage().value();
+        voltage.set_waveform(waveform);
+        auto shifted = excitation;
+        shifted.set_voltage(voltage);
+        double fromShifted = OpenMagnetics::Inputs::calculate_max_volt_seconds(shifted);
+        INFO("shifted and biased " << fromShifted << " V s");
+        CHECK_THAT(fromShifted, Catch::Matchers::WithinRel(expectedPeakFluxLinkage, 0.01));
+    }
+}

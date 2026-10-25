@@ -278,7 +278,7 @@ class MagnetizingInductance {
      * @brief Calculate peak magnetic flux density from a volt-second
      *        excursion (non-sinusoidal-safe).
      *
-     * Faraday's law: B_peak = max|∫V dt| / (N · A_e). Use this when the
+     * Faraday's law: B_peak = λ_pk / (N · A_e), λ_pk = half the peak-to-peak of ∫V dt. Use this when the
      * voltage waveform is non-sinusoidal (DAB square wave, CLLLC trapezoid,
      * …) — the sinusoidal `calculate_flux_density_peak_from_voltage`
      * underestimates B_peak by ~36 % on those because it assumes
@@ -287,8 +287,8 @@ class MagnetizingInductance {
      *
      * @param core            Core with effective area
      * @param numberTurns     Number of primary turns
-     * @param maxVoltSeconds  Peak excursion of the running ∫V dt integral,
-     *                        in volt-seconds
+     * @param maxVoltSeconds  Peak flux linkage (half the peak-to-peak of the
+     *                        running ∫V dt over a period), in volt-seconds
      * @return double         Peak magnetic flux density in Tesla, or 0 if
      *                        N or A_e is zero/missing
      */
@@ -306,7 +306,7 @@ class MagnetizingInductance {
      * smallest integer N that keeps B_peak ≤ B_max for the given V·s.
      *
      * @param core            Core with effective area
-     * @param maxVoltSeconds  Peak excursion of ∫V dt, in volt-seconds
+     * @param maxVoltSeconds  Peak flux linkage (half the peak-to-peak of ∫V dt), in volt-seconds
      * @param maxFluxDensity  Maximum allowed B_peak in Tesla (typically
      *                        defaults.maximumProportionMagneticFluxDensitySaturation
      *                        × B_sat at operating temperature)

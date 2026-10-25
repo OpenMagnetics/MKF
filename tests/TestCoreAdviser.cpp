@@ -1258,7 +1258,13 @@ TEST_CASE("Test_CoreAdviserAvailableCores_No_Toroids_Two_Windings","[adviser][co
     // the 20 asked for, so the stacked search runs too and adds ETD 34 - 3C97 - Gapped 0.2 mm.
     // get_advised_core now MERGES both searches instead of returning only the stacked one,
     // which had culled the first search's 9 by its cost/size pre-loss cap and returned 1.
-    REQUIRE(masMagnetics.size() == 10);
+    // Re-pinned 2026-10-25, 10 -> 11 (Alf, ABT #1469 + ABT #2070): the design is now told a
+    // transformer from its waveforms (the secondary carries out the power the primary takes in),
+    // so the seeder sizes N = max(N_Phi, N_L), and N_Phi uses the PEAK flux linkage Vpk/w (the
+    // volt-seconds used to be its peak-to-peak, doubling N_Phi and ballooning the gap for 100 uH).
+    // Result: main's 10 plus ETD 34 - 3C97 - Gapped 0.5 mm, all at N = 20 (first search 9,
+    // stacked search 4, merged).
+    REQUIRE(masMagnetics.size() == 11);
 
     // Verify all results are non-toroidal (by name pattern) and have valid scores
     for (auto& [mas, scoring] : masMagnetics) {

@@ -1180,11 +1180,8 @@ double Inputs::calculate_max_volt_seconds(const OperatingPointExcitation& excita
         // Limit integration to at most ONE switching period. Multi-cycle
         // waveforms (typically ngspice transient output) with a small
         // numerical DC bias on V accumulate spurious drift in the running
-        // integral: max|∫V dt| grows linearly with the simulation duration
-        // instead of reflecting the per-cycle flux excursion. The relevant
-        // quantity for saturation sizing is the per-period peak flux
-        // ΔΨ = max|∫₀^T V dt| (Faraday), which is well-defined on one
-        // period regardless of how many periods the caller supplied.
+        // integral; one period is the relevant span regardless of how many
+        // periods the caller supplied.
         //
         // If frequency is unknown (legacy path), fall back to integrating
         // the whole waveform — the historical behaviour.
@@ -1193,14 +1190,33 @@ double Inputs::calculate_max_volt_seconds(const OperatingPointExcitation& excita
         const double tEnd = (frequency > 0.0)
                                 ? tStart + 1.0 / frequency
                                 : time.back() + 1.0;  // never reached
-        double integral = 0.0;
-        double maxVoltSeconds = 0.0;
+        size_t lastSample = 0;
+        double voltSecondsOverSpan = 0.0;
         for (size_t j = 0; j + 1 < n; ++j) {
             if (time[j] >= tEnd) break;
-            integral += data[j] * (time[j + 1] - time[j]);
-            maxVoltSeconds = std::max(maxVoltSeconds, std::abs(integral));
+            voltSecondsOverSpan += data[j] * (time[j + 1] - time[j]);
+            lastSample = j + 1;
         }
-        return maxVoltSeconds;
+        const double span = time[lastSample] - tStart;
+        if (span <= 0.0) return 0.0;
+        // The flux linkage lambda(t) = int (V - <V>) dt swings symmetrically about its
+        // mean; its PEAK (what B_peak = lambda_pk / (N * A_e) needs) is half its
+        // peak-to-peak. max|int_0^t V dt| is the whole excursion for a waveform that
+        // starts at its flux minimum (a sine starting at 0 V, a square starting at an
+        // edge) — 2x the peak — and depends on where the sampling starts. The DC part
+        // <V> is removed: a winding cannot hold a steady voltage, so a non-zero mean
+        // (numerical bias, rounding) is a ramp, not a flux excursion. This is the same
+        // quantity the sinusoidal fallback below returns (V_peak / omega).
+        const double meanVoltage = voltSecondsOverSpan / span;
+        double integral = 0.0;
+        double minimumIntegral = 0.0;
+        double maximumIntegral = 0.0;
+        for (size_t j = 0; j < lastSample; ++j) {
+            integral += (data[j] - meanVoltage) * (time[j + 1] - time[j]);
+            minimumIntegral = std::min(minimumIntegral, integral);
+            maximumIntegral = std::max(maximumIntegral, integral);
+        }
+        return (maximumIntegral - minimumIntegral) / 2.0;
     }
     // Sinusoidal fallback from processed peak: V·t_max = V_peak / ω.
     const auto processedOpt = voltage.get_processed();
