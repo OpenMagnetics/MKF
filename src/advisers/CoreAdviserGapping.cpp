@@ -147,32 +147,59 @@ double CoreAdviser::calculate_gap_for_fringing_factor(double targetFringingFacto
 double CoreAdviser::get_peak_current(Inputs inputs) {
     double peakCurrent = 0.0;
 
-    // For transformers (forward converters), core saturation is driven by
-    // magnetizing current only. The reflected secondary current is balanced and does
-    // not contribute to net flux. Using actual current would oversize the core.
-    bool isTransformerTopology = !is_inductor(inputs);
-
+    // The current that saturates the core is the magnetizing current, whatever the magnetic does:
+    // the one the inputs carry when there is one; else on a single winding its own current; else,
+    // when every winding carries a current waveform, the net ampere-turns referred to the primary
+    // (a transformer's load currents cancel in it, a coupled inductor's add). Without either there
+    // is no magnetizing current to read (a voltage-driven design whose magnetizing current is not
+    // derived yet), and the operating point adds nothing.
+    const bool singleWinding = is_single_winding_design(inputs);
     for (auto& op : inputs.get_operating_points()) {
         auto excitation = Inputs::get_primary_excitation(op);
 
-        // Check magnetizing current
         if (excitation.get_magnetizing_current() &&
             excitation.get_magnetizing_current()->get_processed() &&
             excitation.get_magnetizing_current()->get_processed()->get_peak()) {
             peakCurrent = std::max(peakCurrent,
                 excitation.get_magnetizing_current()->get_processed()->get_peak().value());
+            continue;
         }
 
-        // Check actual current only for energy-storing topologies (e.g. flyback, boost)
-        // and inductors (identified by having a nominal inductance).
-        // For pure transformer topologies the actual current includes reflected secondary
-        // load current which does not bias the core.
-        if (!isTransformerTopology &&
-            excitation.get_current() &&
-            excitation.get_current()->get_processed() &&
-            excitation.get_current()->get_processed()->get_peak()) {
-            peakCurrent = std::max(peakCurrent,
-                excitation.get_current()->get_processed()->get_peak().value());
+        if (singleWinding) {
+            if (excitation.get_current() &&
+                excitation.get_current()->get_processed() &&
+                excitation.get_current()->get_processed()->get_peak()) {
+                peakCurrent = std::max(peakCurrent,
+                    excitation.get_current()->get_processed()->get_peak().value());
+            }
+            continue;
+        }
+
+        const auto& excitations = op.get_excitations_per_winding();
+        bool everyWindingHasCurrentWaveform = std::all_of(excitations.begin(), excitations.end(), [](const OperatingPointExcitation& windingExcitation) {
+            return windingExcitation.get_current() && windingExcitation.get_current()->get_waveform() &&
+                   !windingExcitation.get_current()->get_waveform()->get_data().empty();
+        });
+        bool sameFrequency = std::all_of(excitations.begin(), excitations.end(), [&](const OperatingPointExcitation& windingExcitation) {
+            return windingExcitation.get_frequency() == excitations[0].get_frequency();
+        });
+        std::vector<double> turnsRatios;
+        for (const auto& turnsRatio : inputs.get_design_requirements().get_turns_ratios()) {
+            turnsRatios.push_back(resolve_dimensional_values(turnsRatio));
+        }
+        bool turnsRatiosCoverWindings = turnsRatios.size() + 1 == excitations.size() &&
+                                        std::all_of(turnsRatios.begin(), turnsRatios.end(), [](double turnsRatio) { return turnsRatio > 0; });
+        if (everyWindingHasCurrentWaveform && sameFrequency && turnsRatiosCoverWindings) {
+            std::vector<IsolationSide> isolationSides;
+            auto declaredSides = inputs.get_design_requirements().get_isolation_sides();
+            for (size_t windingIndex = 0; windingIndex < excitations.size(); ++windingIndex) {
+                isolationSides.push_back((declaredSides && windingIndex < declaredSides->size()) ? declaredSides->at(windingIndex)
+                                                                                                 : get_isolation_side_from_index(windingIndex));
+            }
+            auto ampereTurnCurrent = Inputs::calculate_ampere_turn_current(op, turnsRatios, isolationSides);
+            if (ampereTurnCurrent.get_processed() && ampereTurnCurrent.get_processed()->get_peak()) {
+                peakCurrent = std::max(peakCurrent, std::abs(ampereTurnCurrent.get_processed()->get_peak().value()));
+            }
         }
     }
 

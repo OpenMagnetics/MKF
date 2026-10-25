@@ -85,14 +85,18 @@ std::pair<bool, double> MagneticFilterCoreAndDcLosses::evaluate_magnetic(Magneti
 
     Coil coil = magnetic->get_coil();
 
-    // Energy-storing inductors saturate as turns rise: at a fixed gap isat ∝ 1/N
+    // A gapped core saturates as turns rise: at a fixed gap isat ∝ 1/N
     // (L ∝ N², isat = B_sat·N·A_e/L). The loss-minimising turn sweep below would
     // otherwise push N up (lower core loss) past the saturation-safe point — the
     // CoreAdviser's saturation-safe turn/gap sizing then gets silently undone and
     // the design saturates. Cap the sweep using the SAME
     // Magnetic::calculate_saturation_current the saturation filter and realism
-    // gate use, so the loss-optimal turn count we return still clears the margin.
-    bool isInductor = is_inductor(*inputs);
+    // gate use, against the same magnetizing current, so the loss-optimal turn
+    // count we return still clears the margin. A single winding's current is
+    // known before the model runs; with several windings the magnetizing current
+    // is the one the model stamps at each turn count (a Faraday-derived one moves
+    // with the inductance), so that cap runs after the model call.
+    const bool singleWinding = is_single_winding_design(*inputs);
     double saturationMargin = Settings::GetInstance().get_core_adviser_saturation_margin();
 
     for (size_t operatingPointIndex = 0; operatingPointIndex < inputs->get_operating_points().size(); ++operatingPointIndex) {
@@ -101,7 +105,7 @@ std::pair<bool, double> MagneticFilterCoreAndDcLosses::evaluate_magnetic(Magneti
         // filter's inductor gate (raw B_sat below).
         double temperature = saturation_derating_temperature(operatingPoint.get_conditions().get_ambient_temperature());
         OperatingPointExcitation excitation = operatingPoint.get_excitations_per_winding()[0];
-        double saturationPeakCurrent = (isInductor && excitation.get_current() && excitation.get_current()->get_processed()
+        double saturationPeakCurrent = (singleWinding && excitation.get_current() && excitation.get_current()->get_processed()
                                         && excitation.get_current()->get_processed()->get_peak())
                                        ? std::abs(excitation.get_current()->get_processed()->get_peak().value()) : 0.0;
         size_t numberTimeouts = 0;
@@ -167,6 +171,20 @@ std::pair<bool, double> MagneticFilterCoreAndDcLosses::evaluate_magnetic(Magneti
                     }
                     logEntry(std::string("Losses filter: turn sweep stops at ") + std::to_string(numberTurnsCombination[0]) +
                              " turns, which saturate: " + saturation.message, "CoreAdviser", 2);
+                    break;
+                }
+            }
+
+            // Saturation cap with several windings: the magnetizing current the model just stamped.
+            if (!singleWinding) {
+                double magnetizingCurrentPeak = stamped_magnetizing_current_peak(operatingPoint);
+                Magnetic saturationMagnetic = *magnetic;
+                saturationMagnetic.set_coil(coil);
+                double saturationCurrent = saturationMagnetic.calculate_saturation_current(temperature, /*proportion=*/false);
+                if (saturationCurrent < saturationMargin * magnetizingCurrentPeak) {
+                    coil.get_mutable_functional_description()[0].set_number_turns(previousNumberTurnsPrimary);
+                    settings.set_coil_delimit_and_compact(false);
+                    coil.fast_wind();
                     break;
                 }
             }
@@ -419,14 +437,18 @@ std::pair<bool, double> MagneticFilterCoreDcAndSkinLosses::evaluate_magnetic(Mag
 
     Coil coil = magnetic->get_coil();
 
-    // Energy-storing inductors saturate as turns rise: at a fixed gap isat ∝ 1/N
+    // A gapped core saturates as turns rise: at a fixed gap isat ∝ 1/N
     // (L ∝ N², isat = B_sat·N·A_e/L). The loss-minimising turn sweep below would
     // otherwise push N up (lower core loss) past the saturation-safe point — the
     // CoreAdviser's saturation-safe turn/gap sizing then gets silently undone and
     // the design saturates. Cap the sweep using the SAME
     // Magnetic::calculate_saturation_current the saturation filter and realism
-    // gate use, so the loss-optimal turn count we return still clears the margin.
-    bool isInductor = is_inductor(*inputs);
+    // gate use, against the same magnetizing current, so the loss-optimal turn
+    // count we return still clears the margin. A single winding's current is
+    // known before the model runs; with several windings the magnetizing current
+    // is the one the model stamps at each turn count (a Faraday-derived one moves
+    // with the inductance), so that cap runs after the model call.
+    const bool singleWinding = is_single_winding_design(*inputs);
     double saturationMargin = Settings::GetInstance().get_core_adviser_saturation_margin();
 
     for (size_t operatingPointIndex = 0; operatingPointIndex < inputs->get_operating_points().size(); ++operatingPointIndex) {
@@ -435,7 +457,7 @@ std::pair<bool, double> MagneticFilterCoreDcAndSkinLosses::evaluate_magnetic(Mag
         // filter's inductor gate (raw B_sat below).
         double temperature = saturation_derating_temperature(operatingPoint.get_conditions().get_ambient_temperature());
         OperatingPointExcitation excitation = operatingPoint.get_excitations_per_winding()[0];
-        double saturationPeakCurrent = (isInductor && excitation.get_current() && excitation.get_current()->get_processed()
+        double saturationPeakCurrent = (singleWinding && excitation.get_current() && excitation.get_current()->get_processed()
                                         && excitation.get_current()->get_processed()->get_peak())
                                        ? std::abs(excitation.get_current()->get_processed()->get_peak().value()) : 0.0;
         size_t numberTimeouts = 0;
@@ -498,6 +520,20 @@ std::pair<bool, double> MagneticFilterCoreDcAndSkinLosses::evaluate_magnetic(Mag
                     }
                     logEntry(std::string("Losses filter: turn sweep stops at ") + std::to_string(numberTurnsCombination[0]) +
                              " turns, which saturate: " + saturation.message, "CoreAdviser", 2);
+                    break;
+                }
+            }
+
+            // Saturation cap with several windings: the magnetizing current the model just stamped.
+            if (!singleWinding) {
+                double magnetizingCurrentPeak = stamped_magnetizing_current_peak(operatingPoint);
+                Magnetic saturationMagnetic = *magnetic;
+                saturationMagnetic.set_coil(coil);
+                double saturationCurrent = saturationMagnetic.calculate_saturation_current(temperature, /*proportion=*/false);
+                if (saturationCurrent < saturationMargin * magnetizingCurrentPeak) {
+                    coil.get_mutable_functional_description()[0].set_number_turns(previousNumberTurnsPrimary);
+                    settings.set_coil_delimit_and_compact(false);
+                    coil.fast_wind();
                     break;
                 }
             }

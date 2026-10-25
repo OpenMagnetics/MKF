@@ -14,34 +14,23 @@ namespace OpenMagnetics {
 
 // Phase 5: extracted from MagneticFilter.cpp.
 // This translation unit owns the saturation / current-density filters:
-//   - MagneticFilterSaturation (transformer-vs-inductor B detection)
+//   - MagneticFilterSaturation (flux density and saturation current from the magnetizing current)
 //   - MagneticFilterDcCurrentDensity
 //   - MagneticFilterEffectiveCurrentDensity
-// The is_energy_storing_topology() helper lives in MagneticFilterInternal.h
-// and is shared with the (still-monolithic) MagneticFilter.cpp.
+// The shared magnetizing-current helpers live in MagneticFilterInternal.h.
 
 std::pair<bool, double> MagneticFilterSaturation::evaluate_magnetic(Magnetic* magnetic, Inputs* inputs, std::vector<Outputs>* outputs) {
     bool valid = true;
     double scoring = 0;
 
-    // Transformer vs Inductor Detection
-    // ==================================
-    // Transformers: B is determined by applied VOLTAGE (Faraday's Law)
-    //   - B_peak = V_peak / (N × Ae × ω)
-    //   - No permeability iteration needed since magnetizing current is ideally small
-    //
-    // Inductors/Energy-storing: B is determined by CURRENT and permeability
-    //   - Uses iterative calculation accounting for permeability rolloff with DC bias
-    //
-    // Detection priority:
-    // 1. Use topology if specified (most reliable)
-    // 2. Fall back to inductance field heuristic (minimum-only = transformer)
-    //
-    // Single shared classification (MagneticFilterInternal.h) so this filter, the
-    // CoreAdviser turn seeder, the loss-sweep saturation cap, and the realism gate
-    // all agree on inductor-vs-transformer. Transformers: B from voltage (Faraday).
-    // Inductors / energy-storing: B from current with permeability rolloff.
-    bool isTransformer = !is_inductor(*inputs);
+    // One saturation check for every design, without classifying it: the flux density is the one
+    // the magnetizing-inductance model gives at the operating point, from the magnetizing current it
+    // stamps (on a single winding the winding current; with several windings the magnetizing current
+    // of the circuit: Faraday on the voltage, which is the volt-seconds' flux whatever the
+    // permeability, or the ampere-turns of the currents). The saturation-current gate compares the
+    // gap-aware saturation current with that same magnetizing current, so a transformer is never
+    // gated on its load current and a coupled inductor never escapes the gate.
+    const bool singleWinding = is_single_winding_design(*inputs);
 
     const std::string magneticRef = inductance_flux_cache_key(*magnetic);
     size_t opIndex = 0;
@@ -70,74 +59,13 @@ std::pair<bool, double> MagneticFilterSaturation::evaluate_magnetic(Magnetic* ma
             saturation_derating_temperature(operatingPoint.get_conditions().get_ambient_temperature()),
             /*proportion=*/false);
         
-        // The DC point of the magnetizing model, where it ran one: the saturation check's second criterion
+        // The DC point of the magnetizing model: the saturation check's second criterion
         // (the bias collapsed the permeability to mu_r = 1, Alf 2026-10-14).
         std::optional<DcBiasPoint> dcBiasPoint;
-        if (isTransformer) {
-            // For transformers, calculate B from voltage using MagnetizingInductance method
-            // This avoids the permeability iteration issue with current-based calculation
-            auto excitation = Inputs::get_primary_excitation(operatingPoint);
-            double frequency = excitation.get_frequency();
-            double voltagePeak = 0;
-            double actualInductance = 0;
-            
-            bool hasVoltage = excitation.get_voltage() && excitation.get_voltage()->get_processed() &&
-                excitation.get_voltage()->get_processed()->get_peak();
-            bool hasCurrentWaveform = excitation.get_current() && excitation.get_current()->get_waveform();
-
-            // ABT #121.3: with neither voltage nor a current waveform, voltagePeak
-            // stayed 0 -> B = 0 -> bRatio = 0 -> the candidate silently PASSED the
-            // saturation gate with the best possible score. Missing excitation data
-            // must reject, not perfect-pass (the evaluate->cull scaffold logs and
-            // culls candidates on this exception).
-            if (!hasVoltage && !hasCurrentWaveform) {
-                throw InvalidInputException(ErrorCode::MISSING_DATA,
-                    "Transformer saturation filter: primary excitation has neither processed voltage "
-                    "nor a current waveform, cannot compute peak flux density");
-            }
-
-            if (hasVoltage) {
-                voltagePeak = excitation.get_voltage()->get_processed()->get_peak().value();
-            } else if (hasCurrentWaveform) {
-                // Derive voltage from V = L·di/dt using the actual gapped-core inductance
-                OpenMagnetics::MagnetizingInductance magnetizingInductanceCalc;
-                // The model gives its numbers for a saturated core too (ABT #1855); the saturation verdict is the
-                // B check below, on the flux density these volt-seconds give.
-                MagnetizingInductanceOutput inductanceOutput = magnetizingInductanceCalc.calculate_inductance_from_number_turns_and_gapping(
-                    *magnetic, &operatingPoint);
-                dcBiasPoint = magnetizingInductanceCalc.get_last_dc_bias_point();
-
-                if (inductanceOutput.get_magnetizing_inductance().get_nominal()) {
-                    actualInductance = inductanceOutput.get_magnetizing_inductance().get_nominal().value();
-                    if (actualInductance > 0) {
-                        auto inducedVoltage = Inputs::calculate_induced_voltage(excitation, actualInductance);
-                        if (inducedVoltage.get_processed() && inducedVoltage.get_processed()->get_peak()) {
-                            voltagePeak = inducedVoltage.get_processed()->get_peak().value();
-                        }
-                    }
-                }
-            }
-            
-            double numberTurns = magnetic->get_coil().get_functional_description()[0].get_number_turns();
+        {
             OpenMagnetics::MagnetizingInductance magnetizingInductanceObj;
 
-            // For non-sinusoidal waveforms (DAB square, CLLLC trapezoid, ...)
-            // the sinusoidal V_peak/(N·A_e·ω) underestimates B_peak by ~36 %.
-            // Use the V·s excursion path (Faraday integrated).
-            double maxVoltSeconds = hasVoltage ? Inputs::calculate_max_volt_seconds(excitation) : 0.0;
-            if (maxVoltSeconds > 0 && numberTurns > 0) {
-                magneticFluxDensityPeak = magnetizingInductanceObj
-                    .calculate_flux_density_peak_from_volt_seconds(
-                        magnetic->get_mutable_core(), numberTurns, maxVoltSeconds);
-            } else {
-                magneticFluxDensityPeak = magnetizingInductanceObj.calculate_flux_density_peak_from_voltage(
-                    magnetic->get_mutable_core(), numberTurns, voltagePeak, frequency);
-            }
-        } else {
-            // For inductors/energy-storing converters, use the standard calculation
-            OpenMagnetics::MagnetizingInductance magnetizingInductanceObj;
-            
-            magnetizingInductanceObj.set_topology(inputs->get_design_requirements().get_topology());
+            magnetizingInductanceObj.set_topology(magnetizing_model_topology(*inputs));
             // The model gives its numbers for a saturated core too (ABT #1855): the verdict is the saturation
             // check below on the flux density it returns, as analyze_results makes it.
             std::pair<MagnetizingInductanceOutput, SignalDescriptor> result =
@@ -149,23 +77,20 @@ std::pair<bool, double> MagneticFilterSaturation::evaluate_magnetic(Magnetic* ma
             // Phase 8 (perf): seed the per-adviser-invocation cache so
             // downstream filters (TEMPERATURE) that need the same B for
             // the same (magnetic, OP) can skip the iterative recomputation.
-            // Inductor path only — transformer branch uses a different B
-            // derivation and shouldn't share the cache.
             if (magneticFluxDensity.get_processed() && magneticFluxDensity.get_processed()->get_peak()
                 && result.first.get_magnetizing_inductance().get_nominal()) {
                 cache_inductance_flux(magneticRef, opIndex,
                     result.first.get_magnetizing_inductance().get_nominal().value(),
                     magneticFluxDensity);
             }
-            
+
             if (!magneticFluxDensity.get_processed() || !magneticFluxDensity.get_processed()->get_peak()) {
                 return {false, 0.0};
             }
             magneticFluxDensityPeak = magneticFluxDensity.get_processed()->get_peak().value();
         }
 
-        // Common-mode chokes are classified as inductors (all windings on one
-        // isolation side) but their line current is DIFFERENTIAL: the flux of
+        // Common-mode chokes have every winding on one isolation side, but their line current is DIFFERENTIAL: the flux of
         // the line/neutral windings cancels in the core, so the raw line
         // current does NOT saturate it. The only flux driver is the CM noise
         // current, and that is NOT DERIVABLE from the design inputs: a
@@ -224,14 +149,20 @@ std::pair<bool, double> MagneticFilterSaturation::evaluate_magnetic(Magnetic* ma
             }
         }
 
-        if (!isTransformer && !isCommonModeChoke) {
-            // Authoritative saturation-current gate for energy-storing
-            // inductors: require the gap-aware saturation current to clear the
-            // peak current by the margin. The B-based check above evaluates B at
-            // the operating current with permeability rolloff, which is LOOSER for
-            // gapped inductors: candidates passing it could still saturate
-            // (canonical buck 36/48/60 V→12 V/5 A/200 kHz: EQ 13/6 passed on B but
-            // had isat 2.93 A < 1.2 × ipeak 3.19 A).
+        if (!isCommonModeChoke) {
+            // Authoritative saturation-current gate: require the gap-aware
+            // saturation current to clear the peak magnetizing current by the
+            // margin. The B-based check above evaluates B at the operating current
+            // with permeability rolloff, which is LOOSER for gapped inductors:
+            // candidates passing it could still saturate (canonical buck
+            // 36/48/60 V→12 V/5 A/200 kHz: EQ 13/6 passed on B but had isat
+            // 2.93 A < 1.2 × ipeak 3.19 A).
+            //
+            // The current is the magnetizing current: on a single winding its own
+            // current; with several windings the one the model stamped above (for a
+            // transformer the volt-seconds' magnetizing current, never the load
+            // current the windings exchange; for a coupled inductor or flyback the
+            // net ampere-turns or the Faraday current of the energy it stores).
             //
             // Derating (ABT #13): evaluate I_sat at the hot junction corner and
             // with RAW B_sat (proportion=false). The total derating on this gate
@@ -243,13 +174,19 @@ std::pair<bool, double> MagneticFilterSaturation::evaluate_magnetic(Magnetic* ma
             // Pool starvation (the failure mode of the reverted hard reject
             // 2181dd1c) is handled by the pipeline retry, which relaxes the
             // margin to 1.0 and tags the results.
-            auto excitation = Inputs::get_primary_excitation(operatingPoint);
-            if (!excitation.get_current() || !excitation.get_current()->get_processed() ||
-                !excitation.get_current()->get_processed()->get_peak()) {
-                throw InvalidInputException(ErrorCode::MISSING_DATA,
-                    "Saturation filter needs the processed peak of the primary current to gate by saturation current");
+            double currentPeak;
+            if (singleWinding) {
+                auto excitation = Inputs::get_primary_excitation(operatingPoint);
+                if (!excitation.get_current() || !excitation.get_current()->get_processed() ||
+                    !excitation.get_current()->get_processed()->get_peak()) {
+                    throw InvalidInputException(ErrorCode::MISSING_DATA,
+                        "Saturation filter needs the processed peak of the primary current to gate by saturation current");
+                }
+                currentPeak = excitation.get_current()->get_processed()->get_peak().value();
             }
-            double currentPeak = excitation.get_current()->get_processed()->get_peak().value();
+            else {
+                currentPeak = stamped_magnetizing_current_peak(operatingPoint);
+            }
             double saturationCurrent = magnetic->calculate_saturation_current(
                 saturation_derating_temperature(operatingPoint.get_conditions().get_ambient_temperature()),
                 /*proportion=*/false);

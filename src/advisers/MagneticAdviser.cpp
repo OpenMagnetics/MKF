@@ -6,7 +6,7 @@
 #include <limits>
 #include "advisers/MagneticAdviser.h"
 #include "advisers/CoreAdviser.h"
-#include "advisers/MagneticFilterInternal.h"  // is_energy_storing_topology()
+#include "advisers/MagneticFilterInternal.h"  // magnetizing-current helpers, is_tagged_common_mode_choke()
 #include "physical_models/Impedance.h"
 #include "processors/MagneticSimulator.h"
 #include "processors/ResultsAnalyzer.h"
@@ -166,45 +166,51 @@ WoundCandidateOutcome process_wound_candidate(
     // scores (it discards the validity flag), and the CoreAdviser saturation
     // gate ran on the SEED turns — but the coil adviser / loss optimisation can
     // finalise a higher turn count, lowering the gap-aware saturation current
-    // below the margin. Drop inductor designs whose FINAL isat no longer clears
-    // margin * ipeak (the same identity downstream realism checks use).
-    // Transformers are excluded: their flux is voltage-driven and more turns
-    // LOWERS B.
+    // below the margin. Drop designs whose FINAL isat no longer clears
+    // margin * the peak magnetizing current (the same identity the saturation
+    // filter uses): on a single winding its own current, with several windings
+    // the magnetizing current the model stamps for the assembled magnetic (a
+    // transformer's volt-seconds current, never its load current).
     {
-        bool isInductor = is_inductor(mas.get_mutable_inputs());
-        if (isInductor) {
-            double saturationMargin = settings.get_core_adviser_saturation_margin();
-            bool saturates = false;
-            for (auto& op : mas.get_mutable_inputs().get_operating_points()) {
-                // A tagged common-mode choke is exempt here exactly as it is in
-                // MagneticFilterSaturation: its line current cancels in the core
-                // and MAS has no CM-noise-current requirement, so I_sat against
-                // the line (or ripple) current is not a saturation criterion —
-                // the impedance filter is its gate. Without this the gate dropped
-                // every wound CMC the CoreAdviser had let through (ABT #1369).
-                if (is_tagged_common_mode_choke(mas.get_mutable_inputs(), op)) {
-                    continue;
-                }
+        auto& gateInputs = mas.get_mutable_inputs();
+        const bool singleWinding = is_single_winding_design(gateInputs);
+        double saturationMargin = settings.get_core_adviser_saturation_margin();
+        bool saturates = false;
+        for (auto& op : gateInputs.get_operating_points()) {
+            // A tagged common-mode choke is exempt here exactly as it is in
+            // MagneticFilterSaturation: its line current cancels in the core
+            // and MAS has no CM-noise-current requirement, so I_sat against
+            // the line (or ripple) current is not a saturation criterion —
+            // the impedance filter is its gate. Without this the gate dropped
+            // every wound CMC the CoreAdviser had let through (ABT #1369).
+            if (is_tagged_common_mode_choke(gateInputs, op)) {
+                continue;
+            }
+            double currentPeak;
+            if (singleWinding) {
                 auto excitation = op.get_excitations_per_winding()[0];
                 if (!excitation.get_current() || !excitation.get_current()->get_processed()
                     || !excitation.get_current()->get_processed()->get_peak()) {
                     continue;
                 }
-                double currentPeak = excitation.get_current()->get_processed()->get_peak().value();
-                // Derating (ABT #13): hot junction corner + RAW B_sat, matching
-                // the saturation filter's inductor gate.
-                double temperature = saturation_derating_temperature(op.get_conditions().get_ambient_temperature());
-                double saturationCurrent = mas.get_mutable_magnetic().calculate_saturation_current(temperature, /*proportion=*/false);
-                if (saturationCurrent < saturationMargin * currentPeak) {
-                    saturates = true;
-                    break;
-                }
+                currentPeak = excitation.get_current()->get_processed()->get_peak().value();
             }
-            if (saturates) {
-                logEntry("MagneticAdviser: dropping '" + mas.get_mutable_magnetic().get_reference()
-                         + "' — final saturation current below margin", "MagneticAdviser", 2);
-                return WoundCandidateOutcome::Skipped;
+            else {
+                currentPeak = model_magnetizing_current_peak(mas.get_magnetic().get_core(), mas.get_magnetic().get_coil(), gateInputs, op);
             }
+            // Derating (ABT #13): hot junction corner + RAW B_sat, matching
+            // the saturation filter's gate.
+            double temperature = saturation_derating_temperature(op.get_conditions().get_ambient_temperature());
+            double saturationCurrent = mas.get_mutable_magnetic().calculate_saturation_current(temperature, /*proportion=*/false);
+            if (saturationCurrent < saturationMargin * currentPeak) {
+                saturates = true;
+                break;
+            }
+        }
+        if (saturates) {
+            logEntry("MagneticAdviser: dropping '" + mas.get_mutable_magnetic().get_reference()
+                     + "' — final saturation current below margin", "MagneticAdviser", 2);
+            return WoundCandidateOutcome::Skipped;
         }
     }
 

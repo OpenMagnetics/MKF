@@ -632,6 +632,24 @@ void add_initial_turns_by_inductance(std::vector<std::pair<Magnetic, double>> *m
                 }
                 initialNumberTurns = nFromSaturation;
 
+                // The magnetizing inductance needs turns too: the fewest that reach it on the
+                // ungapped core (the unbiased reluctance, from an Inputs with the design
+                // requirements only). N = max(N_flux, N_inductance); a nominal or maximum Lm is then
+                // met by the gap solved below at that N.
+                {
+                    const auto& lmRequirement = inputs.get_design_requirements().get_magnetizing_inductance();
+                    bool hasLm = (lmRequirement.get_minimum() && lmRequirement.get_minimum().value() > 0) ||
+                                 (lmRequirement.get_nominal() && lmRequirement.get_nominal().value() > 0) ||
+                                 (lmRequirement.get_maximum() && lmRequirement.get_maximum().value() > 0);
+                    if (hasLm) {
+                        Inputs lmOnlyInputs;
+                        lmOnlyInputs.set_design_requirements(inputs.get_design_requirements());
+                        double nFromInductance = magnetizingInductance.calculate_number_turns_from_gapping_and_inductance(
+                            core, (*magneticsWithScoring)[i].first.get_coil(), &lmOnlyInputs, DimensionalValues::MINIMUM);
+                        initialNumberTurns = std::max(initialNumberTurns, nFromInductance);
+                    }
+                }
+
                 // For resonant transformers with a specific Lm target
                 // (e.g. CLLLC, CLLC) we must size BOTH N and the gap so
                 // that L_actual(N, gap) == target Lm at the saturation-
@@ -761,10 +779,34 @@ void add_initial_turns_by_inductance(std::vector<std::pair<Magnetic, double>> *m
                 // hold the target L, so at fixed L isat rises ∝ N — until it clears the
                 // margin, and persist that exact (N, gap). Powder toroids (shape T) take
                 // no discrete gap and keep the seed.
-                if (is_inductor(inputs) && core.get_shape_family() != CoreShapeFamily::T && !inputs.get_operating_points().empty()) {
+                if (core.get_shape_family() != CoreShapeFamily::T && !inputs.get_operating_points().empty()) {
                     auto operatingPoint = inputsCopy.get_operating_point(0);
                     double peakCurrent = 0;
+                    // With several windings the current that saturates the core is the magnetizing
+                    // current, never one winding's current. The re-gap holds the target inductance, so
+                    // it sizes against the magnetizing current at that inductance: the one the inputs
+                    // carry (Inputs::process derives it from the volt-seconds and the required
+                    // magnetizing inductance). Without it, the one the model stamps at the seeded turns
+                    // and gap. Not the model's at a seed the turns solve refused: there the core is
+                    // saturated, its inductance has collapsed and the Faraday current it gives is
+                    // several times the one at the target inductance. A single winding keeps reading
+                    // its own current below.
+                    const bool singleWinding = is_single_winding_design(inputs);
+                    if (!singleWinding) {
+                        Coil seededCoil = (*magneticsWithScoring)[i].first.get_coil();
+                        seededCoil.get_mutable_functional_description()[0].set_number_turns(static_cast<int64_t>(std::llround(initialNumberTurns)));
+                        for (const auto& op : inputs.get_operating_points()) {
+                            const auto& excitations = op.get_excitations_per_winding();
+                            bool carriesMagnetizingCurrent = !excitations.empty() && excitations[0].get_magnetizing_current();
+                            double operatingPointPeak = carriesMagnetizingCurrent ? stamped_magnetizing_current_peak(op)
+                                                                                  : model_magnetizing_current_peak(core, seededCoil, inputs, op);
+                            peakCurrent = std::max(peakCurrent, operatingPointPeak);
+                        }
+                    }
                     for (auto& op : inputs.get_operating_points()) {
+                        if (!singleWinding) {
+                            break;  // read from the model above
+                        }
                         auto exc = Inputs::get_primary_excitation(op);
                         if (!exc.get_current()) {
                             continue;

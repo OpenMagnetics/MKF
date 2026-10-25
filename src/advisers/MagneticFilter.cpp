@@ -813,34 +813,18 @@ std::pair<bool, double> MagneticFilterMagnetizingInductance::evaluate_magnetic(M
         return {valid, scoring};
     }
 
-    // Transformer vs Inductor Detection
-    // ==================================
-    // Transformers: Use initial permeability without DC bias iteration
-    //   - Skip operating point to avoid feedback loop where magnetizing current causes permeability collapse
-    //   - Ungapped high-permeability ferrite will naturally exceed minimum inductance requirement
-    //
-    // Inductors/Energy-storing: Use full iterative calculation with DC bias
-    //   - Account for permeability rolloff with magnetizing current DC offset
-    //
-    // Classified by is_inductor, the predicate the turn seeder and the saturation filter use:
-    // a local copy of its tiers here let the gate judge a design by a different rule than
-    // the seeder that sized it.
-    bool isTransformer = !is_inductor(*inputs);
-
+    // The inductance at each operating point, with the DC bias of the magnetizing current the model
+    // stamps there, for every design: the model derives a transformer's magnetizing current from its
+    // volt-seconds at the inductance it evaluates (the flux they impose, ABT #1902/#1942), so no
+    // classification picks between a biased and an unbiased inductance.
     for (size_t operatingPointIndex = 0; operatingPointIndex < inputs->get_operating_points().size(); ++operatingPointIndex) {
         auto operatingPoint = inputs->get_operating_points()[operatingPointIndex];
         OpenMagnetics::MagnetizingInductance magnetizingInductanceModel("ZHANG");
 
-        // For transformers, calculate inductance without operating point to use initial permeability
         MagnetizingInductanceOutput aux;
         try {
-            if (isTransformer) {
-                aux = magnetizingInductanceModel.calculate_inductance_from_number_turns_and_gapping(
-                    magnetic->get_mutable_core(), magnetic->get_mutable_coil(), nullptr);
-            } else {
-                aux = magnetizingInductanceModel.calculate_inductance_from_number_turns_and_gapping(
-                    magnetic->get_mutable_core(), magnetic->get_mutable_coil(), &operatingPoint);
-            }
+            aux = magnetizingInductanceModel.calculate_inductance_from_number_turns_and_gapping(
+                magnetic->get_mutable_core(), magnetic->get_mutable_coil(), &operatingPoint);
         } catch (const std::exception& e) {
             return {false, 0};
         }

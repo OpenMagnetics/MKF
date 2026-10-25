@@ -12,6 +12,8 @@
 #include "advisers/MagneticFilter.h"
 #include "constructive_models/Bobbin.h"
 #include "physical_models/CoreLosses.h"
+#include "physical_models/MagnetizingInductance.h"
+#include "processors/Inputs.h"
 #include "Defaults.h"
 #include "support/Exceptions.h"
 #include "support/Utils.h"
@@ -155,6 +157,46 @@ inline bool is_inductor(const Inputs& inputs) {
                        && !magnetizingInductance.get_nominal().has_value()
                        && !magnetizingInductance.get_maximum().has_value();
     return !minimumOnly;
+}
+
+// The role of the magnetic (Inputs.h, magnetic_role) decides only the categorical choices: gapping,
+// the inductor loss optimiser, the ferrite-toroid drop and the choke handling. The magnitudes
+// (saturation, the turn seed, the energy check, the loss-sweep cap) read the magnetizing current:
+// on a single-winding design the winding current, on any other the one the magnetizing-inductance
+// model stamps from the circuit (Faraday on the voltage, or the ampere-turns of the currents).
+inline bool is_transformer_role(const Inputs& inputs) {
+    return magnetic_role(inputs).role == MagneticRole::TRANSFORMER;
+}
+
+// The peak of the magnetizing current stamped on an operating point's first excitation (by the
+// magnetizing-inductance model or Inputs::process): the largest magnitude of its waveform, else the
+// magnitude of its processed peak. Throws when there is none.
+inline double stamped_magnetizing_current_peak(const OperatingPoint& operatingPoint) {
+    const auto& excitations = operatingPoint.get_excitations_per_winding();
+    if (excitations.empty() || !excitations[0].get_magnetizing_current()) {
+        throw InvalidInputException(ErrorCode::MISSING_DATA,
+            "The operating point carries no magnetizing current to read its peak from");
+    }
+    const auto magnetizingCurrent = excitations[0].get_magnetizing_current().value();
+    const auto waveform = magnetizingCurrent.get_waveform();
+    if (waveform && !waveform->get_data().empty()) {
+        const auto data = waveform->get_data();
+        return std::max(std::abs(*std::max_element(data.begin(), data.end())), std::abs(*std::min_element(data.begin(), data.end())));
+    }
+    if (magnetizingCurrent.get_processed() && magnetizingCurrent.get_processed()->get_peak()) {
+        return std::abs(magnetizingCurrent.get_processed()->get_peak().value());
+    }
+    throw InvalidInputException(ErrorCode::MISSING_DATA,
+        "The magnetizing current of the operating point has neither a waveform nor a processed peak");
+}
+
+// The peak magnetizing current this core and coil carry at an operating point: the one the
+// magnetizing-inductance model stamps on it (a copy; the caller's operating point is not changed).
+inline double model_magnetizing_current_peak(const Core& core, const Coil& coil, const Inputs& inputs, OperatingPoint operatingPoint) {
+    MagnetizingInductance magnetizingInductanceModel;
+    magnetizingInductanceModel.set_topology(magnetizing_model_topology(inputs));
+    magnetizingInductanceModel.calculate_inductance_and_magnetic_flux_density(core, coil, &operatingPoint);
+    return stamped_magnetizing_current_peak(operatingPoint);
 }
 
 // Single source of truth for "is this operating point a common-mode choke's",
