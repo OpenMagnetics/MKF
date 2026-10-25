@@ -4553,23 +4553,129 @@ void Coil::keep_parallel_order_in_every_layer(std::vector<Turn>& turns, const st
 // envelope. It surfaced with ABT #1295 (MVB++ drawing the rect corner at the radius MKF charges):
 // the drawn wrap got as short as the charged one, and its slope as steep.
 //
-// The distance is computed exactly, not from the closed form: the squared distance from a point to
-// a half-line is convex in the point, the point moves linearly along the step, so a golden-section
-// search over the step converges on the true minimum.
-static double radial_step_to_wrap_distance(double ra, double ya, double rb, double yb, double rn,
-                                           double station, double slope, bool leaving) {
-    const auto squared = [&](double w) {
-        const double y = ya + w * (yb - ya);
-        const double r = ra + w * (rb - ra);
-        const double e = y - station;
-        double x = slope * e / (1 + slope * slope);   // nearest point of the whole line
-        if (leaving ? x < 0 : x > 0) {
-            x = 0;   // the wrap starts (or ends) at the crossing
-        }
-        const double dy = e - slope * x;
-        return x * x + dy * dy + (r - rn) * (r - rn);
+//
+// ABT #969: the half-line above is only the wrap's TANGENT at the crossing. The drawn wrap curves
+// away from it, towards the axis, along the turn's own path; because the step is tilted, its point
+// nearest the wrap sits at r < r_n, so the curvature enters at FIRST order. Measured on
+// 14_dab_xfmr_pm8770 (round column, r = 19.7 mm, Primary 4 p): the final landing of layer 1 left
+// the stations 0.912581 mm apart -- the tangent law exactly -- while parallel 0's link 10_ending ->
+// 11 passed 306 nm inside parallel 1's true helix. The distance is therefore measured against the
+// TRUE wrap: the turn's own path in the plane perpendicular to the turn axis (a racetrack of half
+// sides a, c and corner radius b, travelled from the crossing at the -Z face's middle -- a circle
+// a = c = b = r round a round column, b = r round an oblong one, the charged bend radius round a
+// rectangular or irregular one), climbing at its slope in arc length. The step is the straight
+// segment between its two crossing points; the distance from a point to a segment is exact, and the
+// minimum over the wrap's arc length is bracketed by a scan finer than an eighth of the wire and
+// closed by a golden-section search.
+struct WrapPath {
+    double a = 0, c = 0, b = 0;   // half side across the crossing, half side along it, corner radius
+};
+
+// The point at arc length u on a racetrack of half sides a (x) and c (z), corner radius b, starting
+// at the crossing (0, -c) and travelling towards -X (TangentDeparture's frame, Coil.h).
+static std::array<double, 2> racetrack_point(const WrapPath& path, double u) {
+    const double a = path.a, c = path.c, b = path.b;
+    const double sx = a - b, sz = c - b;
+    const double pi = std::numbers::pi;
+    const double quarter = pi / 2 * b;
+    const std::array<double, 9> lengths = {sx, quarter, 2 * sz, quarter, 2 * sx, quarter, 2 * sz, quarter, sx};
+    size_t k = 0;
+    while (k + 1 < lengths.size() && u > lengths[k]) {
+        u -= lengths[k];
+        ++k;
+    }
+    const auto arc = [&](double cx, double cz, double from) {
+        const double angle = from - u / b;
+        return std::array<double, 2>{cx + b * std::cos(angle), cz + b * std::sin(angle)};
     };
-    double low = 0, high = 1;
+    switch (k) {
+        case 0: return {-u, -c};
+        case 1: return arc(-sx, -sz, -pi / 2);
+        case 2: return {-a, -sz + u};
+        case 3: return arc(-sx, sz, -pi);
+        case 4: return {-sx + u, c};
+        case 5: return arc(sx, sz, pi / 2);
+        case 6: return {a, sz - u};
+        case 7: return arc(sx, -sz, 0);
+        default: return {sx - u, -c};
+    }
+}
+
+static double racetrack_perimeter(const WrapPath& path) {
+    return 4 * path.a + 4 * path.c + (2 * std::numbers::pi - 8) * path.b;
+}
+
+// The turn's path at a radius from the column axis, for each column shape MKF charges a length for
+// (Coil::get_turn_length_in_frame): same half sides, same corner, so the same perimeter.
+static WrapPath wrap_path_in_frame(const WoundColumnFrame& frame, double radius, double bendRadius) {
+    WrapPath path;
+    if (frame.shape == ColumnShape::ROUND) {
+        path.a = radius;
+        path.c = radius;
+        path.b = radius;
+    }
+    else if (frame.shape == ColumnShape::OBLONG) {
+        path.a = radius;
+        path.c = frame.columnDepth - frame.columnWidth + radius;
+        path.b = radius;
+    }
+    else if (frame.shape == ColumnShape::RECTANGULAR || frame.shape == ColumnShape::IRREGULAR) {
+        path.a = radius;
+        path.c = frame.columnDepth - frame.columnWidth + radius;
+        path.b = bendRadius;
+    }
+    else {
+        throw InvalidInputException(ErrorCode::INVALID_BOBBIN_DATA,
+                                    "Real winding: a radial step cannot be measured against a wrap round a column "
+                                    "that is neither round, oblong, rectangular nor irregular");
+    }
+    if (!(path.b > 0) || path.b > path.a || path.b > path.c) {
+        std::ostringstream message;
+        message.precision(9);
+        message << "Real winding: a wrap of radius " << radius << " m has a corner radius " << path.b
+                << " m that its half sides " << path.a << " m and " << path.c << " m cannot carry";
+        throw CoilException(ErrorCode::COIL_WINDING_ERROR, message.str());
+    }
+    return path;
+}
+
+// The minimum centreline distance between a radial step, the segment from (0, ya, -ca) to
+// (0, yb, -cb) in the connection plane, and the sibling's wrap through its station: the revolution
+// LEAVING the crossing (arc length s in [0, S]) or the one ARRIVING at it (s in [-S, 0]), at
+// (racetrack(s), station + slope s).
+static double radial_step_to_wrap_distance(double ca, double ya, double cb, double yb, const WrapPath& wrap,
+                                           double station, double slope, bool leaving, double od) {
+    const double perimeter = racetrack_perimeter(wrap);
+    const auto squared = [&](double s) {
+        const auto xz = racetrack_point(wrap, s < 0 ? perimeter + s : s);
+        const std::array<double, 3> p = {xz[0], station + slope * s, xz[1]};
+        const std::array<double, 3> a = {0, ya, -ca};
+        const std::array<double, 3> d = {0, yb - ya, ca - cb};
+        const double dd = d[1] * d[1] + d[2] * d[2];
+        double w = ((p[1] - a[1]) * d[1] + (p[2] - a[2]) * d[2]) / dd;
+        w = std::clamp(w, 0.0, 1.0);   // the step is a segment: its ends are its stations
+        const double ex = p[0] - a[0], ey = p[1] - a[1] - w * d[1], ez = p[2] - a[2] - w * d[2];
+        return ex * ex + ey * ey + ez * ez;
+    };
+    // Beyond this arc length the wrap is further from the crossing than one wire plus the whole step,
+    // so no point of it can come closer than a wire to the step.
+    const double reach = od + std::hypot(yb - ya, cb - ca) + std::abs(ya - station) + std::abs(yb - station) +
+                         std::abs(ca - wrap.c) + std::abs(cb - wrap.c);
+    const double span = std::min(perimeter / 2, 4 * reach);
+    const size_t numberSamples = std::max<size_t>(64, size_t(std::ceil(span / (od / 8))) + 1);
+    const double sign = leaving ? 1.0 : -1.0;
+    double bestS = 0, best = squared(0);
+    for (size_t k = 1; k < numberSamples; ++k) {
+        const double s = sign * span * double(k) / double(numberSamples - 1);
+        const double value = squared(s);
+        if (value < best) {
+            best = value;
+            bestS = s;
+        }
+    }
+    const double h = span / double(numberSamples - 1);
+    double low = std::max(-span, bestS - h), high = std::min(span, bestS + h);
+    if (leaving) low = std::max(low, 0.0); else high = std::min(high, 0.0);
     const double golden = (std::sqrt(5.0) - 1) / 2;
     double c = high - golden * (high - low), d = low + golden * (high - low);
     double fc = squared(c), fd = squared(d);
@@ -4581,12 +4687,20 @@ static double radial_step_to_wrap_distance(double ra, double ya, double rb, doub
             low = c; c = d; fc = fd; d = low + golden * (high - low); fd = squared(d);
         }
     }
-    return std::sqrt(std::min({squared(0), squared(1), fc, fd}));
+    return std::sqrt(std::min({best, fc, fd}));
 }
 // ABT #1422: every radial step of the layout against the sibling wraps beside its two ends.
 std::vector<Coil::RadialStepClearance> Coil::measure_radial_step_clearances(const std::vector<Turn>& turns,
                                                                             const std::vector<Layer>& layers) {
     std::vector<RadialStepClearance> clearances;
+    std::map<std::string, WoundColumnFrame> frameBySection;
+    const auto frameOfSection = [&](const std::string& sectionName) -> const WoundColumnFrame& {
+        auto found = frameBySection.find(sectionName);
+        if (found == frameBySection.end()) {
+            found = frameBySection.emplace(sectionName, get_wound_column_frame_for_section(sectionName)).first;
+        }
+        return found->second;
+    };
     std::map<std::string, const Layer*> layerByName;
     std::vector<double> conductionLayerX;
     for (const auto& layer : layers) {
@@ -4669,8 +4783,39 @@ std::vector<Coil::RadialStepClearance> Coil::measure_radial_step_clearances(cons
                         turns[neighbour].get_parallel() == conductor.second) {
                         continue;   // not a sibling
                     }
-                    const double rn = turns[neighbour].get_coordinates()[0];
                     const double station = turns[neighbour].get_coordinates()[1];
+                    // ABT #969: the wrap as drawn, round the column of the step's section: the
+                    // step's two crossing points and the sibling's path at its own radius.
+                    const auto sectionOf = [&](size_t t) -> std::string {
+                        if (!turns[t].get_section()) {
+                            throw CoilException(ErrorCode::COIL_WINDING_ERROR,
+                                                "Real winding: turn " + turns[t].get_name() +
+                                                    " has no section, so the column its wrap goes round is unknown");
+                        }
+                        return turns[t].get_section().value();
+                    };
+                    const auto& frame = frameOfSection(sectionOf(neighbour));
+                    for (size_t t : {from, to}) {
+                        const auto& own = frameOfSection(sectionOf(t));
+                        if (own.axisX != frame.axisX || own.shape != frame.shape ||
+                            own.columnWidth != frame.columnWidth || own.columnDepth != frame.columnDepth) {
+                            throw CoilException(ErrorCode::COIL_WINDING_ERROR,
+                                                "Real winding: the radial step '" + turns[from].get_name() + "' -> '" +
+                                                    turns[to].get_name() + "' joins a section wound round a "
+                                                    "different column from the sibling wrap beside it");
+                        }
+                    }
+                    const auto radiusOf = [&](const Turn& turn) {
+                        const double x = std::abs(turn.get_coordinates()[0]);
+                        return frame.axisX == 0 ? x : std::abs(x - frame.axisX);
+                    };
+                    const auto pathOf = [&](const Turn& turn, const std::string& chargedTurn) {
+                        return wrap_path_in_frame(frame, radiusOf(turn),
+                                                  get_turn_bend_radius_in_frame(frame, std::abs(turn.get_coordinates()[0]),
+                                                                                get_turn_bend_radius(chargedTurn)));
+                    };
+                    const double ca = pathOf(turns[from], turns[from].get_name()).c;
+                    const double cb = pathOf(turns[to], turns[to].get_name()).c;
                     const auto sameLayer = [&](std::optional<size_t> other) {
                         return other && turns[*other].get_layer() &&
                                turns[*other].get_layer().value() == turns[neighbour].get_layer().value();
@@ -4678,7 +4823,7 @@ std::vector<Coil::RadialStepClearance> Coil::measure_radial_step_clearances(cons
                     // The sibling's wrap through its station, as it is drawn at the crossing: the
                     // revolution LEAVING it (to its next station in the layer) and the one ARRIVING
                     // at it (from its previous one), each at its own slope = advance / length.
-                    std::vector<std::pair<double, bool>> pieces;
+                    std::vector<std::tuple<double, bool, WrapPath>> pieces;
                     if (sameLayer(nextOf[neighbour])) {
                         const double length = turns[*nextOf[neighbour]].get_length();
                         if (!(length > 0)) {
@@ -4687,7 +4832,8 @@ std::vector<Coil::RadialStepClearance> Coil::measure_radial_step_clearances(cons
                                                     " carries no length, so the slope of the wrap beside the "
                                                     "radial step of " + turns[from].get_name() + " is unknown");
                         }
-                        pieces.push_back({(turns[*nextOf[neighbour]].get_coordinates()[1] - station) / length, true});
+                        pieces.push_back({(turns[*nextOf[neighbour]].get_coordinates()[1] - station) / length, true,
+                                          pathOf(turns[neighbour], turns[*nextOf[neighbour]].get_name())});
                     }
                     if (sameLayer(previousOf[neighbour])) {
                         const double length = turns[neighbour].get_length();
@@ -4697,9 +4843,10 @@ std::vector<Coil::RadialStepClearance> Coil::measure_radial_step_clearances(cons
                                                     " carries no length, so the slope of the wrap beside the "
                                                     "radial step of " + turns[from].get_name() + " is unknown");
                         }
-                        pieces.push_back({(station - turns[*previousOf[neighbour]].get_coordinates()[1]) / length, false});
+                        pieces.push_back({(station - turns[*previousOf[neighbour]].get_coordinates()[1]) / length, false,
+                                          pathOf(turns[neighbour], turns[neighbour].get_name())});
                     }
-                    for (const auto& [slope, leaving] : pieces) {
+                    for (const auto& [slope, leaving, wrap] : pieces) {
                         RadialStepClearance clearance;
                         clearance.stepFrom = from;
                         clearance.stepTo = to;
@@ -4707,7 +4854,7 @@ std::vector<Coil::RadialStepClearance> Coil::measure_radial_step_clearances(cons
                         clearance.neighbour = neighbour;
                         clearance.leaving = leaving;
                         clearance.od = od;
-                        clearance.distance = radial_step_to_wrap_distance(ra, ya, rb, yb, rn, station, slope, leaving);
+                        clearance.distance = radial_step_to_wrap_distance(ca, ya, cb, yb, wrap, station, slope, leaving, od);
                         clearance.sameBundle = (at / size_t(numberParallels)) ==
                                                ((side < 0 ? at - 1 : at + 1) / size_t(numberParallels)) &&
                                                stations.size() % size_t(numberParallels) == 0;

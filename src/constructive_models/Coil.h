@@ -1281,7 +1281,8 @@ class Coil : public MAS::Coil {
         // layer (a permutation of stations within each bundle). Run on every real-winding layout.
         void keep_parallel_order_in_every_layer(std::vector<Turn>& turns, const std::vector<Layer>& layers);
         // ABT #1422: a radial step (U layer link, or an inter-section return laid as one step) and a
-        // sibling's wrap beside one of its ends: the minimum centreline distance, as drawn.
+        // sibling's wrap beside one of its ends: the minimum centreline distance, as drawn -- against
+        // the wrap's true path round the column (ABT #969), not its tangent at the crossing.
         struct RadialStepClearance {
             size_t stepFrom = 0, stepTo = 0;   // the step's two stations (turn indices)
             size_t stepEnd = 0;                // the end whose layer holds the sibling
