@@ -36,7 +36,10 @@
 
 #include <algorithm>
 #include <cmath>
+#include <filesystem>
+#include <fstream>
 #include <set>
+#include <source_location>
 #include <limits>
 #include <numbers>
 #include <vector>
@@ -667,6 +670,63 @@ TEST_CASE("Real winding lays out a design whose ideal wind does not fit, and rep
     settings.reset();
 }
 
+// ABT #2071 (Alf, 2026-10-25): magnetic_autocomplete winds a stored design with the layers orientation its
+// sections state. The reported design (.mkf-p2004 abt2012_magnetic_n18: 18 turns of the strip on the
+// U 46/40/28 former, its one section CONTIGUOUS) came back OVERLAPPING, 20 stations. It must be wound
+// CONTIGUOUS as given, blocked under real winding, and report the turns it lays outside the window.
+TEST_CASE("Autocomplete winds a stored CONTIGUOUS section as given, and reports the turns it lays outside the window",
+          "[constructive-model][coil][real-geometry][autocomplete][abt-2071]") {
+    auto& settings = Settings::GetInstance();
+    settings.reset();
+    std::ifstream file(std::filesystem::path{std::source_location::current().file_name()}
+                           .parent_path()
+                           .append("testData")
+                           .append("abt2071_edgewise_strip_U46_n18_contiguous.json")
+                           .string());
+    REQUIRE(file.good());
+    const auto stored = json::parse(file);
+    REQUIRE(stored.at("coil").at("sectionsDescription").size() == 1);
+    REQUIRE(stored.at("coil").at("sectionsDescription")[0].at("layersOrientation") == "contiguous");
+    settings.set_coil_use_real_winding_geometry(true);
+    auto magnetic = OpenMagnetics::magnetic_autocomplete(OpenMagnetics::Magnetic(stored), json{});
+    auto& coil = magnetic.get_mutable_coil();
+    const auto sections = coil.get_sections_description().value();
+    size_t conduction = 0;
+    for (const auto& section : sections) {
+        if (section.get_type() == ElectricalType::CONDUCTION) {
+            ++conduction;
+            CHECK(section.get_layers_orientation() == WindingOrientation::CONTIGUOUS);
+        }
+    }
+    CHECK(conduction == 1);
+    const auto layers = coil.get_layers_description().value();
+    for (const auto& layer : layers) {
+        if (layer.get_type() == ElectricalType::CONDUCTION) {
+            CHECK(layer.get_orientation() == WindingOrientation::CONTIGUOUS);
+        }
+    }
+    CHECK(coil.get_turns_description().value().size() == 35);   // 18 turns over 17 layers, as stored
+    CHECK(coil.is_real_winding_blocking_applied());
+    CHECK_FALSE(coil.judge_turns_outside_window().empty());
+    OpenMagnetics::Mas mas;
+    mas.set_magnetic(magnetic);
+    size_t outsideReported = 0;
+    for (const auto& finding : ResultsAnalyzer::analyze_results(mas)) {
+        outsideReported += finding.code == ResultFindingCode::TURNS_OUTSIDE_WINDOW ? 1 : 0;
+    }
+    CHECK(outsideReported == 1);
+
+
+    // A caller that asks for an orientation itself is honoured over the stored one.
+    auto asked = OpenMagnetics::magnetic_autocomplete(OpenMagnetics::Magnetic(stored), json{{"layersOrientation", "overlapping"}});
+    const auto askedSections = asked.get_coil().get_sections_description().value();
+    for (const auto& section : askedSections) {
+        if (section.get_type() == ElectricalType::CONDUCTION) {
+            CHECK(section.get_layers_orientation() == WindingOrientation::OVERLAPPING);
+        }
+    }
+    settings.reset();
+}
 
 // ABT #2071: two turn stations whose outlines overlap are one TURNS_OVERLAP finding naming them and the
 // depth. New design (no wind lays turns over each other: an overflowing one runs out of the window):

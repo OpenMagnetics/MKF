@@ -9370,6 +9370,27 @@ void Coil::preload_winding_style_overrides_from_stored_sections() {
     _windingStyleOverridePerWinding = overrides;
 }
 
+std::map<std::string, WindingOrientation> Coil::preload_layers_orientation_from_stored_sections() {
+    const auto before = _layersOrientationPerSection;
+    if (!get_sections_description()) {
+        return before;
+    }
+    const auto sections = get_sections_description().value();   // bound: never range over a temporary
+    std::map<std::string, size_t> sectionsSoFarPerWinding;
+    for (const auto& section : sections) {
+        if (section.get_type() != ElectricalType::CONDUCTION || section.get_partial_windings().size() != 1) {
+            continue;
+        }
+        const std::string winding = section.get_partial_windings()[0].get_winding();
+        const std::string woundName = winding + " section " + std::to_string(sectionsSoFarPerWinding[winding]++);
+        if (_layersOrientationPerSection.contains(woundName)) {
+            continue;
+        }
+        _layersOrientationPerSection[woundName] = section.get_layers_orientation();
+    }
+    return before;
+}
+
 std::vector<WindingStyle> Coil::wind_by_consecutive_turns(std::vector<uint64_t> numberTurns, std::vector<uint64_t> numberParallels, std::vector<size_t> numberSlots) {
     std::vector<WindingStyle> windByConsecutiveTurns;
     for (size_t i = 0; i < numberTurns.size(); ++i) {

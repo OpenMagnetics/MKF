@@ -3060,9 +3060,27 @@ bool wind_magnetic_coil_as_described(Magnetic& magnetic, json configuration, std
         magnetic.get_mutable_coil().set_interleaving_level(interleavingLevel);
     }
     if (configuration.contains("layersOrientation")) {
-        WindingOrientation layersOrientation = WindingOrientation::CONTIGUOUS;
-        to_json(configuration["layersOrientation"], layersOrientation);
+        // Read FROM the configuration: this was to_json(configuration[...], value), which writes the
+        // CONTIGUOUS seed into the configuration, so every requested orientation wound CONTIGUOUS.
+        const auto layersOrientation = configuration.at("layersOrientation").get<WindingOrientation>();
         magnetic.get_mutable_coil().set_layers_orientation(layersOrientation);
+    }
+    // ABT #2071 (Alf, 2026-10-25): a stored design is wound with the layers orientation its sections
+    // state; the coil-wide default (OVERLAPPING) re-wound a stored CONTIGUOUS section OVERLAPPING. Only
+    // when the caller does not ask for an orientation itself, and only for THIS wind: the guard hands
+    // the coil back its own per-section orientations however the wind leaves. A coil without stored
+    // sections has nothing to preload and keeps the orientation the winder chooses.
+    struct LayersOrientationGuard {
+        Coil& coil;
+        std::optional<std::map<std::string, WindingOrientation>> before;
+        ~LayersOrientationGuard() {
+            if (before) {
+                coil.restore_layers_orientation_per_section(before.value());
+            }
+        }
+    } layersOrientationGuard{magnetic.get_mutable_coil(), std::nullopt};
+    if (!configuration.contains("layersOrientation")) {
+        layersOrientationGuard.before = magnetic.get_mutable_coil().preload_layers_orientation_from_stored_sections();
     }
     if (configuration.contains("turnsAlignment")) {
         CoilAlignment turnsAlignment = CoilAlignment::SPREAD;

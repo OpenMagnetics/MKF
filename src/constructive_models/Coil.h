@@ -1259,6 +1259,17 @@ class Coil : public MAS::Coil {
         // (disjoint sets) are one parallel after another (WIND_BY_CONSECUTIVE_TURNS). A mix of the
         // two is neither, and is left to the heuristic. Overrides already preloaded win.
         void preload_winding_style_overrides_from_stored_sections();
+        // ABT #2071 (Alf, 2026-10-25): a STORED design is re-wound with the layers orientation each of
+        // its conduction sections states (sections[].layersOrientation), not the coil-wide default: a
+        // stored CONTIGUOUS section came back OVERLAPPING. Keyed by the name the wind gives the section
+        // ("<winding> section <k>", k counting that winding's sections, as magnetic_autocomplete's
+        // stated rects are); a section of several windings has no such name and is not preloaded.
+        // Per-section orientations already set win. Returns the map as it was before, for the caller
+        // to restore once its wind is done (the orientations belong to THAT re-wind).
+        std::map<std::string, WindingOrientation> preload_layers_orientation_from_stored_sections();
+        void restore_layers_orientation_per_section(std::map<std::string, WindingOrientation> perSection) {
+            _layersOrientationPerSection = std::move(perSection);
+        }
         // ABT #1487 (R5, Alf 2026-09-29): MKF sizes sections by need when it CREATES a design, but a
         // STORED design's section heights (a customer may have corrected them) are kept when
         // magnetic_autocomplete re-winds it for real winding. Records, by section name, the stored
