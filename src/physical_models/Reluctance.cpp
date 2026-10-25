@@ -17,7 +17,7 @@ namespace OpenMagnetics {
 
 
 double ReluctanceModel::get_ungapped_core_reluctance(const Core& core, double initialPermeability) {
-    auto constants = Constants();
+    static const Constants constants;
     double absolutePermeability = constants.vacuumPermeability * initialPermeability;
     double effectiveArea = core.get_processed_description()->get_effective_parameters().get_effective_area();
     double effectiveLength = core.get_processed_description()->get_effective_parameters().get_effective_length();
@@ -48,7 +48,7 @@ double ReluctanceModel::get_air_cored_reluctance(Bobbin bobbin) {
         throw NotImplementedException("Column shape not implemented yet");
     }
 
-    auto constants = Constants();
+    static const Constants constants;
     double absolutePermeability = constants.vacuumPermeability;
 
     double reluctanceAirCore = airLength / (absolutePermeability * airArea);
@@ -120,7 +120,7 @@ MagnetizingInductanceOutput ReluctanceModel::get_core_reluctance(Core core, doub
 //   groove side: the bore continues past the flange by (B+L)/2 - tf
 //   outer side:  any bore overhang plus the escape over the ring's radial thickness (J-K)/2
 AirGapReluctanceOutput ReluctanceModel::get_annular_clearance_gap_reluctance(Core& core, CoreGap gapInfo, double magneticFluxDensitySaturation) {
-    auto constants = Constants();
+    static const Constants constants;
     auto shape = core.resolve_shape();
     auto dimensions = flatten_dimensions(shape.get_dimensions().value());
     double A = dimensions["A"];
@@ -291,7 +291,7 @@ MagnetizingInductanceOutput ReluctanceModel::get_gapping_reluctance(Core core, s
  */
 AirGapReluctanceOutput ReluctanceZhangModel::get_gap_reluctance(CoreGap gapInfo, double magneticFluxDensitySaturation) {
     double perimeter = 0;
-    auto constants = Constants();
+    static const Constants constants;
     auto gapLength = gapInfo.get_length();
     if (!gapInfo.get_area()) {
         throw GapException(ErrorCode::GAP_INVALID_DIMENSIONS, "Gap Area is not set");
@@ -392,7 +392,7 @@ AirGapReluctanceOutput ReluctanceZhangModel::get_gap_reluctance(CoreGap gapInfo,
  * @return Basic reluctance value in H⁻¹
  */
 double ReluctanceMuehlethalerModel::get_basic_reluctance(double l, double w, double h) {
-    auto constants = Constants();
+    static const Constants constants;
     return 1 / constants.vacuumPermeability /
            (w / 2 / l + 2 / std::numbers::pi * (1 + log(std::numbers::pi * h / 4 / l)));
 }
@@ -440,7 +440,7 @@ double ReluctanceMuehlethalerModel::get_reluctance_type_1(double l, double w, do
  * @return AirGapReluctanceOutput with calculated reluctance and fringing factor
  */
 AirGapReluctanceOutput ReluctanceMuehlethalerModel::get_gap_reluctance(CoreGap gapInfo, double magneticFluxDensitySaturation) {
-    auto constants = Constants();
+    static const Constants constants;
     auto gapLength = gapInfo.get_length();
     if (!gapInfo.get_shape()) {
         throw GapException(ErrorCode::GAP_SHAPE_NOT_SET, "Gap Shape is not set");
@@ -515,7 +515,7 @@ AirGapReluctanceOutput ReluctanceMuehlethalerModel::get_gap_reluctance(CoreGap g
  * @return AirGapReluctanceOutput with calculated reluctance and fringing factor
  */
 AirGapReluctanceOutput ReluctanceEffectiveAreaModel::get_gap_reluctance(CoreGap gapInfo, double magneticFluxDensitySaturation) {
-    auto constants = Constants();
+    static const Constants constants;
     auto gapLength = gapInfo.get_length();
     if (!gapInfo.get_area()) {
         throw GapException(ErrorCode::GAP_INVALID_DIMENSIONS, "Gap Area is not set");
@@ -578,7 +578,7 @@ AirGapReluctanceOutput ReluctanceEffectiveAreaModel::get_gap_reluctance(CoreGap 
  * @return AirGapReluctanceOutput with calculated reluctance and fringing factor
  */
 AirGapReluctanceOutput ReluctanceEffectiveLengthModel::get_gap_reluctance(CoreGap gapInfo, double magneticFluxDensitySaturation) {
-    auto constants = Constants();
+    static const Constants constants;
     auto gapLength = gapInfo.get_length();
     if (!gapInfo.get_area()) {
         throw GapException(ErrorCode::GAP_INVALID_DIMENSIONS, "Gap Area is not set");
@@ -642,7 +642,7 @@ AirGapReluctanceOutput ReluctanceEffectiveLengthModel::get_gap_reluctance(CoreGa
  * @return AirGapReluctanceOutput with calculated reluctance and fringing factor
  */
 AirGapReluctanceOutput ReluctancePartridgeModel::get_gap_reluctance(CoreGap gapInfo, double magneticFluxDensitySaturation) {
-    auto constants = Constants();
+    static const Constants constants;
     auto gapLength = gapInfo.get_length();
     if (!gapInfo.get_area()) {
         throw GapException(ErrorCode::GAP_INVALID_DIMENSIONS, "Gap Area is not set");
@@ -718,7 +718,7 @@ AirGapReluctanceOutput ReluctancePartridgeModel::get_gap_reluctance(CoreGap gapI
  * @return AirGapReluctanceOutput with calculated reluctance and fringing factor
  */
 AirGapReluctanceOutput ReluctanceStengleinModel::get_gap_reluctance(CoreGap gapInfo, double magneticFluxDensitySaturation) {
-    auto constants = Constants();
+    static const Constants constants;
     auto gapLength = gapInfo.get_length();
     if (!gapInfo.get_area()) {
         throw GapException(ErrorCode::GAP_INVALID_DIMENSIONS, "Gap Area is not set");
@@ -806,7 +806,7 @@ AirGapReluctanceOutput ReluctanceStengleinModel::get_gap_reluctance(CoreGap gapI
  * @return AirGapReluctanceOutput with calculated reluctance and fringing factor = 1
  */
 AirGapReluctanceOutput ReluctanceClassicModel::get_gap_reluctance(CoreGap gapInfo, double magneticFluxDensitySaturation) {
-    auto constants = Constants();
+    static const Constants constants;
     auto gapLength = gapInfo.get_length();
     if (!gapInfo.get_area()) {
         throw GapException(ErrorCode::GAP_INVALID_DIMENSIONS, "Gap Area is not set");
@@ -856,7 +856,7 @@ AirGapReluctanceOutput ReluctanceClassicModel::get_gap_reluctance(CoreGap gapInf
  * @return AirGapReluctanceOutput with calculated reluctance and fringing factor
  */
 AirGapReluctanceOutput ReluctanceBalakrishnanModel::get_gap_reluctance(CoreGap gapInfo, double magneticFluxDensitySaturation) {
-    auto constants = Constants();
+    static const Constants constants;
     auto gapLength = gapInfo.get_length();
     if (!gapInfo.get_area()) {
         throw GapException(ErrorCode::GAP_INVALID_DIMENSIONS, "Gap Area is not set");

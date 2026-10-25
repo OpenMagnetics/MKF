@@ -152,6 +152,10 @@ struct HarmonicsEntry {
     size_t bytes;
 };
 
+// Set while calculate_basic_processed_data compresses its own input: that input missed the basic memo,
+// so its compressed copy is not worth a second memo (storing it copied the record twice).
+thread_local bool compressMemoBypassed = false;
+
 // 16 MB per memo and thread: a few dozen 16k-sample line-cycle records, thousands of 128-sample periods.
 constexpr size_t kWaveformMemoBytes = size_t(16) << 20;
 
@@ -449,10 +453,13 @@ double WaveformProcessor::calculate_waveform_average(const Waveform& waveform) {
 
 Waveform WaveformProcessor::compress_waveform(const Waveform& waveform, std::optional<double> frequency) {
     thread_local WaveformMemo<CompressEntry> memo{32, kWaveformMemoBytes, {}};
-    if (auto hit = memo.find([&](const CompressEntry& entry) {
-            return same_bits(entry.frequency, frequency) && entry.waveform.matches(waveform);
-        })) {
-        return hit->value;
+    const bool memoized = !compressMemoBypassed;
+    if (memoized) {
+        if (auto hit = memo.find([&](const CompressEntry& entry) {
+                return same_bits(entry.frequency, frequency) && entry.waveform.matches(waveform);
+            })) {
+            return hit->value;
+        }
     }
     Waveform computed = [&]() -> Waveform {
         Waveform compressedWaveform;
@@ -527,6 +534,9 @@ Waveform WaveformProcessor::compress_waveform(const Waveform& waveform, std::opt
         }
         return compressedWaveform;
     }();
+    if (!memoized) {
+        return computed;
+    }
     WaveformKey key(waveform);
     size_t bytes = sizeof(CompressEntry) + key.bytes() + waveform_bytes(computed);
     memo.insert(CompressEntry{std::move(key), frequency, computed, bytes});
@@ -1789,7 +1799,14 @@ ProcessedWaveform WaveformProcessor::calculate_basic_processed_data(const Wavefo
         const bool waveformIsSampled = is_waveform_sampled(waveform, numberPointsSampledWaveforms);
         std::optional<Waveform> compressedCopy;
         if (waveformIsSampled) {
+            compressMemoBypassed = true;
+        try {
             compressedCopy = compress_waveform(waveform);
+        } catch (...) {
+            compressMemoBypassed = false;
+            throw;
+        }
+        compressMemoBypassed = false;
         }
         const Waveform& compressedWaveform = compressedCopy ? compressedCopy.value() : waveform;
 
