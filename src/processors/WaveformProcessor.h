@@ -151,14 +151,14 @@ class WaveformProcessor {
     // its producer gave it, before any sampling, when that differs. A label's vertex layout is
     // checked on, and its offset and duty are read off, the given waveform when it is not a
     // sample; a sampled or compressed copy is never held to the label's layout (ABT #1878).
-    static MAS::ProcessedWaveform calculate_basic_processed_data(MAS::Waveform waveform,
+    static MAS::ProcessedWaveform calculate_basic_processed_data(const MAS::Waveform& waveform,
                                                                  size_t numberPointsSampledWaveforms = 128,
-                                                                 std::optional<MAS::Waveform> givenWaveform = std::nullopt);
+                                                                 const std::optional<MAS::Waveform>& givenWaveform = std::nullopt);
 
     // Waveform-shape helpers (ported alongside the DSP entry points above).
-    static bool is_waveform_sampled(MAS::Waveform waveform, size_t numberPointsSampledWaveforms = 128);
-    static bool is_waveform_imported(MAS::Waveform waveform, size_t numberPointsSampledWaveforms = 128);
-    static double calculate_waveform_average(MAS::Waveform waveform);
+    static bool is_waveform_sampled(const MAS::Waveform& waveform, size_t numberPointsSampledWaveforms = 128);
+    static bool is_waveform_imported(const MAS::Waveform& waveform, size_t numberPointsSampledWaveforms = 128);
+    static double calculate_waveform_average(const MAS::Waveform& waveform);
     // Keeps only the corners of a waveform (points where the slope changes) and closes it
     // periodically. Without a frequency the axis is taken as sampled, open by one step
     // ([t0, t0 + T - dt]), and the first sample is appended at t_N-1 + dt. With the excitation
@@ -166,8 +166,8 @@ class WaveformProcessor {
     // already ends at t0 + T and gets no extra point; appending one stretched it to T + dt
     // (ABT #1467). Any other axis is closed as before; the span is not validated here.
     static MAS::Waveform compress_waveform(const MAS::Waveform& waveform, std::optional<double> frequency = std::nullopt);
-    static MAS::WaveformLabel try_guess_waveform_label(MAS::Waveform waveform, size_t numberPointsSampledWaveforms = 128);
-    static double try_guess_duty_cycle(MAS::Waveform waveform,
+    static MAS::WaveformLabel try_guess_waveform_label(const MAS::Waveform& waveform, size_t numberPointsSampledWaveforms = 128);
+    static double try_guess_duty_cycle(const MAS::Waveform& waveform,
                                        MAS::WaveformLabel label = MAS::WaveformLabel::CUSTOM,
                                        double frequency = 0,
                                        size_t numberPointsSampledWaveforms = 128);

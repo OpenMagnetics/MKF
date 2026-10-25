@@ -80,8 +80,14 @@ double roundFloat(double value, int64_t decimals = 9) {
     return round(value * pow(10, decimals)) / pow(10, decimals);
 }
 
+// The test on a size alone, for callers here that hold a waveform's data by reference (is_size_power_of_2 takes
+// the vector by value: a copy of every sample to read its size).
+static bool size_is_power_of_2(size_t size) {
+    return size > 0 && ((size & (size - 1)) == 0);
+}
+
 bool is_size_power_of_2(std::vector<double> data) {
-    return data.size() > 0 && ((data.size() & (data.size() - 1)) == 0);
+    return size_is_power_of_2(data.size());
 }
 
 size_t round_up_size_to_power_of_2(std::vector<double> data) {
@@ -215,7 +221,7 @@ void throw_if_label_reads_past_the_end(const Waveform& waveform, WaveformLabel l
                                 ": its label does not describe its data, so no offset or duty cycle can be read from it.");
 }
 
-double calculate_offset(Waveform waveform, WaveformLabel label) {
+double calculate_offset(const Waveform& waveform, WaveformLabel label) {
     throw_if_label_reads_past_the_end(waveform, label);
     switch (label) {
         case WaveformLabel::TRIANGULAR:
@@ -270,7 +276,7 @@ double calculate_offset(Waveform waveform, WaveformLabel label) {
 // Waveform-shape helpers (public; ported from Inputs).
 // ---------------------------------------------------------------------------
 
-bool WaveformProcessor::is_waveform_imported(Waveform waveform, size_t numberPointsSampledWaveforms) {
+bool WaveformProcessor::is_waveform_imported(const Waveform& waveform, size_t numberPointsSampledWaveforms) {
     if (!waveform.get_time()) {
         return false;
     }
@@ -279,19 +285,21 @@ bool WaveformProcessor::is_waveform_imported(Waveform waveform, size_t numberPoi
     }
 }
 
-bool WaveformProcessor::is_waveform_sampled(Waveform waveform, size_t numberPointsSampledWaveforms) {
+bool WaveformProcessor::is_waveform_sampled(const Waveform& waveform, size_t numberPointsSampledWaveforms) {
+    // get_time() returns the optional BY VALUE (a copy of the whole axis), so it is asked once: this is
+    // is_waveform_imported's test (a time axis, more samples than the sampler's) written out.
     if (!waveform.get_time()) {
         return false;
     }
-    else if (is_waveform_imported(waveform, numberPointsSampledWaveforms)) {
-        return is_size_power_of_2(waveform.get_data());
+    else if (waveform.get_data().size() > numberPointsSampledWaveforms) {
+        return size_is_power_of_2(waveform.get_data().size());
     }
     else {
         return waveform.get_data().size() == numberPointsSampledWaveforms;
     }
 }
 
-double WaveformProcessor::calculate_waveform_average(Waveform waveform) {
+double WaveformProcessor::calculate_waveform_average(const Waveform& waveform) {
     // get_time() returns the optional BY VALUE, so indexing it inside the loop copied the whole
     // time axis twice per sample: O(N^2), minutes for an imported waveform with a few hundred
     // thousand points. Take it once.
@@ -475,7 +483,7 @@ static double measure_duty_cycle_from_samples(const Waveform& waveform) {
     return static_cast<double>(pointsOn) / static_cast<double>(data.size());
 }
 
-double WaveformProcessor::try_guess_duty_cycle(Waveform waveform, WaveformLabel label, double frequency, size_t numberPointsSampledWaveforms) {
+double WaveformProcessor::try_guess_duty_cycle(const Waveform& waveform, WaveformLabel label, double frequency, size_t numberPointsSampledWaveforms) {
     // This reads vertex indices off whatever it is handed, which may be a compressed copy of a
     // labelled waveform: those indices must exist. Whether the shape as given is the label's
     // is checked where the given waveform is known (calculate_basic_processed_data).
@@ -765,14 +773,14 @@ static WaveformLabel guess_sinusoidal_or_custom(const Waveform& waveform) {
     return WaveformLabel::CUSTOM;
 }
 
-WaveformLabel WaveformProcessor::try_guess_waveform_label(Waveform waveform, size_t numberPointsSampledWaveforms) {
+// try_guess_waveform_label once the vertex-test copy is known: compressedWaveform is
+// compress_waveform(waveform) when the waveform is sampled, the waveform itself otherwise. Split out so
+// calculate_basic_processed_data, which compresses the same waveform for its own reads, does not compress it twice.
+static WaveformLabel guess_waveform_label(const Waveform& waveform, const Waveform& compressedWaveform, size_t numberPointsSampledWaveforms) {
     if (waveform.get_ancillary_label()) {
         return waveform.get_ancillary_label().value();
     }
 
-    auto compressedWaveform = waveform;
-    if (is_waveform_sampled(waveform, numberPointsSampledWaveforms))
-        compressedWaveform = compress_waveform(waveform);
     double period = 0;
     if (compressedWaveform.get_time()) {
         period = compressedWaveform.get_time()->back() - compressedWaveform.get_time()->front();
@@ -911,6 +919,16 @@ WaveformLabel WaveformProcessor::try_guess_waveform_label(Waveform waveform, siz
     else {
         return guess_sinusoidal_or_custom(waveform);
     }
+}
+
+WaveformLabel WaveformProcessor::try_guess_waveform_label(const Waveform& waveform, size_t numberPointsSampledWaveforms) {
+    if (waveform.get_ancillary_label()) {
+        return waveform.get_ancillary_label().value();
+    }
+    if (is_waveform_sampled(waveform, numberPointsSampledWaveforms)) {
+        return guess_waveform_label(waveform, compress_waveform(waveform), numberPointsSampledWaveforms);
+    }
+    return guess_waveform_label(waveform, waveform, numberPointsSampledWaveforms);
 }
 
 // ---------------------------------------------------------------------------
@@ -1591,11 +1609,8 @@ ProcessedWaveform WaveformProcessor::calculate_processed_data(SignalDescriptor e
                                     excitation.get_waveform());
 }
 
-ProcessedWaveform WaveformProcessor::calculate_basic_processed_data(Waveform waveform, size_t numberPointsSampledWaveforms, std::optional<Waveform> givenWaveform) {
+ProcessedWaveform WaveformProcessor::calculate_basic_processed_data(const Waveform& waveform, size_t numberPointsSampledWaveforms, const std::optional<Waveform>& givenWaveform) {
     ProcessedWaveform processed;
-    std::vector<double> dataToProcess;
-    auto sampledWaveform = waveform;
-    auto compressedWaveform = waveform;
 
     for (size_t i = 0; i < waveform.get_data().size(); ++i) {
         if (std::isnan(waveform.get_data()[i])) {
@@ -1603,9 +1618,13 @@ ProcessedWaveform WaveformProcessor::calculate_basic_processed_data(Waveform wav
         }
     }
 
-    if (is_waveform_sampled(waveform, numberPointsSampledWaveforms)) {
-        compressedWaveform = compress_waveform(waveform);
+    // The waveform as given or, when it is sampled, its corners; read by reference, not copied.
+    const bool waveformIsSampled = is_waveform_sampled(waveform, numberPointsSampledWaveforms);
+    std::optional<Waveform> compressedCopy;
+    if (waveformIsSampled) {
+        compressedCopy = compress_waveform(waveform);
     }
+    const Waveform& compressedWaveform = compressedCopy ? compressedCopy.value() : waveform;
 
     WaveformLabel label;
 
@@ -1620,12 +1639,12 @@ ProcessedWaveform WaveformProcessor::calculate_basic_processed_data(Waveform wav
     //
     // Analytical waveforms are unaffected either way: they are not sampled, so
     // compress_waveform returns them unchanged.
-    label = try_guess_waveform_label(waveform, numberPointsSampledWaveforms);
+    label = guess_waveform_label(waveform, compressedWaveform, numberPointsSampledWaveforms);
     processed.set_label(label);
 
-    if (is_waveform_sampled(waveform, numberPointsSampledWaveforms)) {
-        processed.set_average(std::accumulate(std::begin(sampledWaveform.get_data()), std::end(sampledWaveform.get_data()), 0.0) /
-                         sampledWaveform.get_data().size());
+    if (waveformIsSampled) {
+        processed.set_average(std::accumulate(std::begin(waveform.get_data()), std::end(waveform.get_data()), 0.0) /
+                         waveform.get_data().size());
     }
     else {
         // auto average = calculate_waveform_average(compressedWaveform);
@@ -1638,7 +1657,7 @@ ProcessedWaveform WaveformProcessor::calculate_basic_processed_data(Waveform wav
     // is never held to the layout: a 0.5-duty bipolar rectangle with no dead time compresses
     // from 10 vertices to 6 and is still one. When the given waveform is itself a sample, the
     // label's reads come off its compressed copy, which only has to have the vertices read.
-    const Waveform given = givenWaveform ? givenWaveform.value() : waveform;
+    const Waveform& given = givenWaveform ? givenWaveform.value() : waveform;
     const bool readGivenVertices = given.get_ancillary_label() && given.get_ancillary_label().value() == label &&
                                    !is_waveform_sampled(given, numberPointsSampledWaveforms);
     if (readGivenVertices) {
