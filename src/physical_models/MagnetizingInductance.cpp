@@ -464,7 +464,12 @@ static MagnetizingCurrentStamp stamp_magnetizing_current(OperatingPoint* operati
                                                          double magnetizingInductance, double frequency) {
     size_t numberWindings = coil.get_functional_description().size();
     MagnetizingCurrentStamp stamp;
-    OperatingPointExcitation excitation = Inputs::get_primary_excitation(*operatingPoint);
+    // The MAS getters return copies, so the primary excitation's presence tests are read once, and the
+    // excitation is copied only by the branches that edit it (nothing changes the operating point before them).
+    const OperatingPointExcitation& primaryExcitation = operatingPoint->get_excitations_per_winding()[0];
+    const bool hasMagnetizingCurrent = primaryExcitation.get_magnetizing_current().has_value();
+    const bool hasVoltage = primaryExcitation.get_voltage().has_value();
+    const bool hasCurrent = primaryExcitation.get_current().has_value();
 
     // Which excitation drives the core (Alf 2026-10-20, ABT #1814): a magnetic with more than one winding
     // in the circuit derives its magnetizing current from the voltage; a single-winding inductor uses the
@@ -477,7 +482,8 @@ static MagnetizingCurrentStamp stamp_magnetizing_current(OperatingPoint* operati
     // model's minimum Lm, an earlier pass of this model round-tripped through JSON) scales B by the ratio
     // of the two (ABT #1902).
     bool singleWindingInductor = numberWindings == 1 && operatingPoint->get_excitations_per_winding().size() == 1;
-    if (excitation.get_magnetizing_current() && (!excitation.get_voltage() || (singleWindingInductor && !excitation.get_current()))) {
+    if (hasMagnetizingCurrent && (!hasVoltage || (singleWindingInductor && !hasCurrent))) {
+        OperatingPointExcitation excitation = primaryExcitation;
         // Already set — skip derivation. But upstream callers
         // (MagneticField::get_magnetic_field_strength_gap and
         // siblings) persist a *compressed* magnetizing_current
@@ -521,7 +527,7 @@ static MagnetizingCurrentStamp stamp_magnetizing_current(OperatingPoint* operati
     // magnetizing current of every transformer at the core stage (a 228 W forward
     // transformer: 0.4-1.7 T and core temperatures of thousands of degrees instead
     // of 0.05-0.3 T from its volt-seconds), so the operating point decides.
-    else if (singleWindingInductor && excitation.get_current()) {
+    else if (singleWindingInductor && hasCurrent) {
         Inputs::set_current_as_magnetizing_current(operatingPoint);
     }
     // CMC check must come BEFORE is_multiport_inductor. CMCs
@@ -539,6 +545,7 @@ static MagnetizingCurrentStamp stamp_magnetizing_current(OperatingPoint* operati
     // so the topology must be checked before the CMC branch, which would replace the
     // line current with a triangle of its whole swing at the ripple frequency.
     else if (topology == Topology::DIFFERENTIAL_MODE_CHOKE && Inputs::can_be_differential_mode_choke(*operatingPoint, true)) {
+        OperatingPointExcitation excitation = primaryExcitation;
         auto magnetizingCurrent = Inputs::get_differential_mode_choke_magnetizing_current(*operatingPoint);
         excitation.set_magnetizing_current(magnetizingCurrent);
         operatingPoint->get_mutable_excitations_per_winding()[0] = excitation;
@@ -550,6 +557,7 @@ static MagnetizingCurrentStamp stamp_magnetizing_current(OperatingPoint* operati
                      ? std::optional<std::vector<IsolationSide>>()
                      : std::optional<std::vector<IsolationSide>>(coil.get_isolation_sides()))
              && core.get_type() == CoreType::TOROIDAL) {
+        OperatingPointExcitation excitation = primaryExcitation;
         auto magnetizingCurrent = Inputs::get_common_mode_choke_magnetizing_current(*operatingPoint);
         excitation.set_magnetizing_current(magnetizingCurrent);
         operatingPoint->get_mutable_excitations_per_winding()[0] = excitation;
@@ -564,6 +572,7 @@ static MagnetizingCurrentStamp stamp_magnetizing_current(OperatingPoint* operati
                  numberWindings < operatingPoint->get_excitations_per_winding().size()
                      ? std::optional<std::vector<IsolationSide>>()
                      : std::optional<std::vector<IsolationSide>>(coil.get_isolation_sides()))) {
+        OperatingPointExcitation excitation = primaryExcitation;
         auto magnetizingCurrent = Inputs::get_multiport_inductor_magnetizing_current(*operatingPoint, magnetizingInductance, coil.get_turns_ratios(),
             numberWindings < operatingPoint->get_excitations_per_winding().size()
                 ? std::optional<std::vector<IsolationSide>>()
@@ -572,7 +581,8 @@ static MagnetizingCurrentStamp stamp_magnetizing_current(OperatingPoint* operati
         excitation.set_magnetizing_current(magnetizingCurrent);
         operatingPoint->get_mutable_excitations_per_winding()[0] = excitation;
     }
-    else if (excitation.get_voltage()) {
+    else if (hasVoltage) {
+        OperatingPointExcitation excitation = primaryExcitation;
         auto voltage = operatingPoint->get_mutable_excitations_per_winding()[0].get_voltage().value();
         auto sampledVoltageWaveform = Inputs::calculate_sampled_waveform(voltage.get_waveform().value(), frequency);
 
@@ -823,15 +833,24 @@ std::pair<MagnetizingInductanceOutput, SignalDescriptor> MagnetizingInductance::
         temperature = operatingPoint->get_conditions().get_ambient_temperature();
         if (operatingPoint->get_mutable_excitations_per_winding().size() > 0) {
             frequency = operatingPoint->get_mutable_excitations_per_winding()[0].get_frequency();
-            OperatingPointExcitation excitation = Inputs::get_primary_excitation(*operatingPoint);
-
-            if (excitation.get_current()) {
-                excitation.set_current(OpenMagnetics::Inputs::standardize_waveform(excitation.get_current().value(), frequency));
+            // Standardized in place: both computed first, so a throw leaves the operating point as it was.
+            auto& primaryExcitation = operatingPoint->get_mutable_excitations_per_winding()[0];
+            auto current = primaryExcitation.get_current();
+            auto voltage = primaryExcitation.get_voltage();
+            std::optional<SignalDescriptor> standardizedCurrent;
+            std::optional<SignalDescriptor> standardizedVoltage;
+            if (current) {
+                standardizedCurrent = OpenMagnetics::Inputs::standardize_waveform(std::move(current.value()), frequency);
             }
-            if (excitation.get_voltage()) {
-                excitation.set_voltage(OpenMagnetics::Inputs::standardize_waveform(excitation.get_voltage().value(), frequency));
+            if (voltage) {
+                standardizedVoltage = OpenMagnetics::Inputs::standardize_waveform(std::move(voltage.value()), frequency);
             }
-            operatingPoint->get_mutable_excitations_per_winding()[0] = excitation;
+            if (standardizedCurrent) {
+                primaryExcitation.set_current(std::move(standardizedCurrent));
+            }
+            if (standardizedVoltage) {
+                primaryExcitation.set_voltage(std::move(standardizedVoltage));
+            }
 
             Inputs::make_waveform_size_power_of_two(operatingPoint);
         }
@@ -854,8 +873,11 @@ std::pair<MagnetizingInductanceOutput, SignalDescriptor> MagnetizingInductance::
 
     if (operatingPoint) {
         if (operatingPoint->get_mutable_excitations_per_winding().size() > 0) {
-            OperatingPointExcitation excitation = Inputs::get_primary_excitation(*operatingPoint);
-            if (!excitation.get_voltage()) {
+            // Presence read once (the MAS getters return copies); the edits below never change it.
+            const bool hasVoltage = operatingPoint->get_excitations_per_winding()[0].get_voltage().has_value();
+            const bool hasCurrent = operatingPoint->get_excitations_per_winding()[0].get_current().has_value();
+            const bool hasMagnetizingCurrent = operatingPoint->get_excitations_per_winding()[0].get_magnetizing_current().has_value();
+            if (!hasVoltage) {
                 auto current = operatingPoint->get_mutable_excitations_per_winding()[0].get_current().value();
                 auto currentWaveform = current.get_waveform().value();
                 if (!is_size_power_of_2(currentWaveform.get_data())) {
@@ -865,20 +887,20 @@ std::pair<MagnetizingInductanceOutput, SignalDescriptor> MagnetizingInductance::
                 }
             }
 
-            if (excitation.get_voltage()) {
+            if (hasVoltage) {
                 auto aux = operatingPoint->get_mutable_excitations_per_winding()[0].get_voltage().value().get_waveform().value();
                 if (aux.get_data().size() > 0 && ((aux.get_data().size() & (aux.get_data().size() - 1)) != 0)) {
                     throw std::invalid_argument("voltage_data vector size is not a power of 2");
                 }
             }
-            if (excitation.get_current()) {
+            if (hasCurrent) {
                 auto aux = operatingPoint->get_mutable_excitations_per_winding()[0].get_current().value().get_waveform().value();
                 if (aux.get_data().size() > 0 && ((aux.get_data().size() & (aux.get_data().size() - 1)) != 0)) {
                     throw std::invalid_argument("current_data vector size is not a power of 2");
                 }
             }
-            if (!excitation.get_voltage()) {
-                if (!excitation.get_magnetizing_current()) {
+            if (!hasVoltage) {
+                if (!hasMagnetizingCurrent) {
                     Inputs::set_current_as_magnetizing_current(operatingPoint);
                 }
                 auto aux = operatingPoint->get_mutable_excitations_per_winding()[0].get_magnetizing_current().value().get_waveform().value();
@@ -922,22 +944,27 @@ std::pair<MagnetizingInductanceOutput, SignalDescriptor> MagnetizingInductance::
 
         if (operatingPoint) {
             if (operatingPoint->get_mutable_excitations_per_winding().size() > 0) {
-                OperatingPointExcitation excitation = Inputs::get_primary_excitation(*operatingPoint);
+                // The primary excitation's frequency: the stamp below replaces the excitation with a copy that keeps it.
+                const double excitationFrequency = operatingPoint->get_excitations_per_winding()[0].get_frequency();
 
                 auto stamp = stamp_magnetizing_current(operatingPoint, core, coil, _topology, modifiedMagnetizingInductance, frequency);
                 biasFluxImposed = stamp.biasFluxImposed;
 
-                auto aux = operatingPoint->get_mutable_excitations_per_winding()[0].get_magnetizing_current().value().get_waveform().value();
+                // The stamped magnetizing current, read once (the MAS getters return copies).
+                SignalDescriptor stampedMagnetizingCurrent = operatingPoint->get_excitations_per_winding()[0].get_magnetizing_current().value();
+                const Waveform stampedMagnetizingCurrentWaveform = stampedMagnetizingCurrent.get_waveform().value();
+                const auto& aux = stampedMagnetizingCurrentWaveform;
                 if (aux.get_data().size() > 0 && ((aux.get_data().size() & (aux.get_data().size() - 1)) != 0)) {
                     throw std::invalid_argument("magnetizing_current_data vector size from voltage is not a power of 2 [size=" + std::to_string(aux.get_data().size()) + "]");
                 }
 
-                if (!operatingPoint->get_mutable_excitations_per_winding()[0].get_magnetizing_current()->get_waveform()->get_time()) {
-                    auto magnetizingCurrent = Inputs::standardize_waveform(operatingPoint->get_mutable_excitations_per_winding()[0].get_magnetizing_current().value(), excitation.get_frequency());
+                if (!stampedMagnetizingCurrentWaveform.get_time()) {
+                    auto magnetizingCurrent = Inputs::standardize_waveform(stampedMagnetizingCurrent, excitationFrequency);
                     operatingPoint->get_mutable_excitations_per_winding()[0].set_magnetizing_current(magnetizingCurrent);
+                    stampedMagnetizingCurrent = magnetizingCurrent;
                 }
 
-                auto magneticFlux = OpenMagnetics::MagneticField::calculate_magnetic_flux(operatingPoint->get_mutable_excitations_per_winding()[0].get_magnetizing_current().value(), currentTotalReluctance, numberTurnsPrimary, operatingPoint->get_mutable_excitations_per_winding()[0].get_frequency());
+                auto magneticFlux = OpenMagnetics::MagneticField::calculate_magnetic_flux(std::move(stampedMagnetizingCurrent), currentTotalReluctance, numberTurnsPrimary, operatingPoint->get_mutable_excitations_per_winding()[0].get_frequency());
                 auto magneticFluxDensity = OpenMagnetics::MagneticField::calculate_magnetic_flux_density(magneticFlux, effectiveArea);
                 result.second = magneticFluxDensity;
 

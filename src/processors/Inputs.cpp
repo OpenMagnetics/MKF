@@ -3946,9 +3946,9 @@ WiringTechnology Inputs::get_wiring_technology() const {
 }
 
 void Inputs::set_current_as_magnetizing_current(OperatingPoint* operatingPoint) {
-    OperatingPointExcitation excitation = Inputs::get_primary_excitation(*operatingPoint);
-    auto current = excitation.get_current().value();
-
+    // Edited in place: the primary excitation is not copied out and back, and its current (the MAS getter
+    // returns a copy) is read once. The operating point changes only after everything that can throw.
+    auto& excitation = operatingPoint->get_mutable_excitations_per_winding()[0];
     auto currentExcitation = excitation.get_current().value();
     auto currentExcitationWaveform = currentExcitation.get_waveform().value();
     if (!currentExcitation.get_processed() || !currentExcitation.get_harmonics()) {
@@ -3965,8 +3965,7 @@ void Inputs::set_current_as_magnetizing_current(OperatingPoint* operatingPoint) 
         currentExcitation.set_processed(Inputs::calculate_processed_data(currentExcitation, sampledCurrentWaveform, true));
         excitation.set_current(currentExcitation);
     }
-    excitation.set_magnetizing_current(excitation.get_current().value());
-    operatingPoint->get_mutable_excitations_per_winding()[0] = excitation;
+    excitation.set_magnetizing_current(std::move(currentExcitation));
 }
 
 // Valleys of a record, found with a hysteresis of `noise`: a reversal smaller than that is not a
@@ -4047,14 +4046,21 @@ double Inputs::get_switching_frequency(const OperatingPointExcitation& excitatio
     // no line bias, and an unprocessed 50 Hz copy returned 50 Hz for want of cached harmonics: mu 300
     // instead of ~104 on an MPP 300 toroid, B 1.02 T instead of 0.35 T, 16.3 W instead of 1.74 W).
     double frequency = excitation.get_frequency();
-    if (!excitation.get_current() || !excitation.get_current()->get_waveform()) {
+    // Each MAS getter returns a copy: the current, its waveform and its time axis are read once.
+    const auto current = excitation.get_current();
+    if (!current) {
         return frequency;
     }
-    auto waveform = excitation.get_current()->get_waveform().value();
-    if (!waveform.get_time()) {
+    const auto currentWaveform = current->get_waveform();
+    if (!currentWaveform) {
+        return frequency;
+    }
+    const auto& waveform = currentWaveform.value();
+    const auto timeOptional = waveform.get_time();
+    if (!timeOptional) {
         return frequency;  // an equidistant waveform is one period of its frequency, not a record
     }
-    auto time = waveform.get_time().value();
+    const auto& time = timeOptional.value();
     if (time.size() < 2) {
         return frequency;
     }

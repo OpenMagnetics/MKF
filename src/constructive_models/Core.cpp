@@ -196,17 +196,19 @@ double Core::get_mass() {
 }
 
 double Core::get_effective_length() const {
-    if (!get_processed_description()) {
+    const auto processedDescription = get_processed_description();  // one copy: the MAS getter returns it by value
+    if (!processedDescription) {
         throw CoreNotProcessedException("Core is not processed");
     }
-    return get_processed_description()->get_effective_parameters().get_effective_length();
+    return processedDescription->get_effective_parameters().get_effective_length();
 }
 
 double Core::get_effective_area() const {
-    if (!get_processed_description()) {
+    const auto processedDescription = get_processed_description();  // one copy: the MAS getter returns it by value
+    if (!processedDescription) {
         throw CoreNotProcessedException("Core is not processed");
     }
-    return get_processed_description()->get_effective_parameters().get_effective_area();
+    return processedDescription->get_effective_parameters().get_effective_area();
 }
 
 double Core::get_minimum_area() const {
@@ -1490,6 +1492,12 @@ void Core::process_gap_or_throw() {
 // adviser candidate pool as much again, and the browser engine ran out of memory
 // (std::bad_alloc) the moment a design fell back to the manufacturer catalogue.
 CoreMaterial Core::resolve_material() {
+    if (std::holds_alternative<CoreMaterial>(get_functional_description().get_material())) {
+        // Already resolved and written back: return it as the path below would (one copy, not the
+        // three of copying the union in, the record out and storing the same record again).
+        _cachedResolvedMaterial.reset();
+        return std::get<CoreMaterial>(get_functional_description().get_material());
+    }
     auto material = resolve_material(get_functional_description().get_material());
     if (!std::holds_alternative<std::vector<MaterialElement>>(get_functional_description().get_material())) {
         get_mutable_functional_description().set_material(material);

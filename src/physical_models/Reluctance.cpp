@@ -19,8 +19,11 @@ namespace OpenMagnetics {
 double ReluctanceModel::get_ungapped_core_reluctance(const Core& core, double initialPermeability) {
     static const Constants constants;
     double absolutePermeability = constants.vacuumPermeability * initialPermeability;
-    double effectiveArea = core.get_processed_description()->get_effective_parameters().get_effective_area();
-    double effectiveLength = core.get_processed_description()->get_effective_parameters().get_effective_length();
+    // One copy of the processed description (the MAS getter returns it by value), not one per field.
+    const auto processedDescription = core.get_processed_description();
+    const auto& effectiveParameters = processedDescription->get_effective_parameters();
+    double effectiveArea = effectiveParameters.get_effective_area();
+    double effectiveLength = effectiveParameters.get_effective_length();
 
     double reluctanceCore = effectiveLength / (absolutePermeability * effectiveArea);
     return reluctanceCore;
