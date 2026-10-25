@@ -53,6 +53,7 @@ namespace {
     // spline there. Above the Curie point the material is paramagnetic and mu_i = 1.
     TEST_CASE("Test_Initial_Permeability_Outside_Temperature_Table_Throws", "[physical-model][initial-permeability][initial-permeability-temperature-range]") {
         settings.reset();
+        settings.set_allow_material_data_extrapolation(false);  // the default is on since Alf, 2026-10-25
         auto material = find_core_material_by_name("3C99");
         REQUIRE(material.get_curie_temperature());
         REQUIRE(material.get_curie_temperature().value() == 300);
@@ -84,6 +85,7 @@ namespace {
         // only normalises frequency / DC-bias factors must not be evaluated for it, or the material
         // throws at every temperature.
         settings.reset();
+        settings.set_allow_material_data_extrapolation(false);  // the default is on since Alf, 2026-10-25
         auto material = find_core_material_by_name("DN100H");
         InitialPermeability initialPermeability;
         double tabulated = InitialPermeability::get_initial_permeability_temperature_dependent(material, 60);
@@ -101,6 +103,7 @@ namespace {
         // MAS stores 220 C; the measured mu_i(T) runs on to 240 C (225..240 C: 636, 91, 46, 34). mu_i = 1
         // starts only above both the Curie temperature and the last measured point.
         settings.reset();
+        settings.set_allow_material_data_extrapolation(false);  // the default is on since Alf, 2026-10-25
         auto material = find_core_material_by_name("3C90");
         REQUIRE(material.get_curie_temperature());
         REQUIRE(material.get_curie_temperature().value() == 220);

@@ -357,7 +357,8 @@ namespace {
         _coreAdviserSaturationDeratingTemperature = 100.0;
 
         _thermalNetworkStrictGeometry = true;
-        _allowMaterialDataExtrapolation = false;
+        // Alf, 2026-10-25: user/MAS data extrapolates with a WARNING; advisers never (barrier).
+        _allowMaterialDataExtrapolation = true;
         _simulatorLossTemperatureLoop = true;
 
         _wireAdviserIncludePlanar = false;

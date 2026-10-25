@@ -1346,6 +1346,7 @@ TEST_CASE("MagneticAdviser catalogue path drops parts whose material has no loss
           "[adviser][magnetic-adviser][abt-1456]") {
     settings.reset();
     clear_databases();
+    settings.set_allow_material_data_extrapolation(false);  // the default is on since Alf, 2026-10-25
 
     auto inputs = OpenMagnetics::Inputs::create_quick_operating_point_only_current(
         100000, 100e-6, 25, WaveformLabel::TRIANGULAR, 2, 0.5, 1);
@@ -1904,6 +1905,7 @@ OpenMagnetics::Inputs make_cmc_inputs_with_mains() {
 
 TEST_CASE("MagneticAdviser_Loss_Span_Gate_Keeps_A_Part_When_No_Losses_Are_Computed", "[magnetic-adviser][loss-span-gate][covered-band]") {
     settings.reset();
+    settings.set_allow_material_data_extrapolation(false);  // the default is on since Alf, 2026-10-25
     auto part = make_p47_cmc();
     auto inputs = make_cmc_inputs_with_mains();
     REQUIRE_FALSE(MagneticFilterLossModelFrequencySpan::is_material_evaluable(part.get_core().resolve_material(), inputs));

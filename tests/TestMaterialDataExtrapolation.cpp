@@ -1,9 +1,10 @@
 // Settings::allowMaterialDataExtrapolation and the Logger's structured collector.
 //
-// Off (the default) every use of a core material outside its data throws, as it always has. On, an
-// explicit opt-in for debugging and prospecting, MKF evaluates the same model there and logs a WARNING
-// naming the material, the quantity, the value and the range; the collector hands such records back to
-// a caller (the web app shows them in its log panel).
+// On (the default since Alf, 2026-10-25: "when the data comes from the MAS/user, we just extrapolate and
+// throw a warning, not an error"), MKF evaluates a core material outside its data with the same model and
+// logs a WARNING naming the material, the quantity, the value and the range; the collector hands such
+// records back to a caller (the web app shows them in its log panel). Off, or under any adviser (ABT #1652:
+// advisers never extrapolate), every such use throws.
 #include "physical_models/CoreLosses.h"
 #include "advisers/MagneticFilter.h"
 #include "advisers/CoreAdviser.h"
@@ -13,6 +14,7 @@
 #include "advisers/CoreCrossReferencer.h"
 #include "advisers/CoreMaterialCrossReferencer.h"
 #include "processors/Sweeper.h"
+#include "processors/MagneticSimulator.h"
 #include "support/Exceptions.h"
 #include "support/Logger.h"
 #include "support/Utils.h"
@@ -22,6 +24,8 @@
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
 #include <catch2/matchers/catch_matchers_string.hpp>
 #include <cmath>
+#include <filesystem>
+#include <source_location>
 #include <numbers>
 #include <thread>
 
@@ -70,13 +74,14 @@ OperatingPointExcitation sinusoidal_flux_excitation(double frequency, double pea
 
 }  // namespace
 
-TEST_CASE("Material data extrapolation is off by default and reset() turns it off", "[material-extrapolation][settings]") {
+// Alf, 2026-10-25: user and MAS data extrapolate with a warning by default; advisers never (barrier).
+TEST_CASE("Material data extrapolation is on by default and reset() turns it back on", "[material-extrapolation][settings]") {
     settings.reset();
-    CHECK_FALSE(settings.get_allow_material_data_extrapolation());
-    settings.set_allow_material_data_extrapolation(true);
     CHECK(settings.get_allow_material_data_extrapolation());
-    settings.reset();
+    settings.set_allow_material_data_extrapolation(false);
     CHECK_FALSE(settings.get_allow_material_data_extrapolation());
+    settings.reset();
+    CHECK(settings.get_allow_material_data_extrapolation());
 }
 
 TEST_CASE("Steinmetz outside the fitted span: off throws and logs nothing, on extrapolates and warns", "[material-extrapolation][core-losses]") {
@@ -91,6 +96,7 @@ TEST_CASE("Steinmetz outside the fitted span: off throws and logs nothing, on ex
     auto excitation = sinusoidal_flux_excitation(100000, 0.05);
 
     SECTION("off") {
+        settings.set_allow_material_data_extrapolation(false);  // the default is on since Alf, 2026-10-25
         CHECK_THROWS_AS(CoreLossesModel::get_steinmetz_coefficients("TP5H", 100000), MaterialFrequencyOutOfSpanException);
         CHECK_THROWS_AS(coreLossesModel->get_core_volumetric_losses(Core::resolve_material("TP5H"), excitation, 25),
                         MaterialFrequencyOutOfSpanException);
@@ -156,6 +162,7 @@ TEST_CASE("Steinmetz in a gap between ranges: off throws, on uses the nearest ra
     from_json(materialJson, gapped);
 
     SECTION("off") {
+        settings.set_allow_material_data_extrapolation(false);  // the default is on since Alf, 2026-10-25
         CHECK_THROWS_WITH(CoreLossesModel::get_steinmetz_coefficients(gapped, 160000),
                           Catch::Matchers::ContainsSubstring("gap between its Steinmetz ranges"));
         CHECK(extrapolation_records(Logger::getInstance().drainCollected()).empty());
@@ -182,6 +189,7 @@ TEST_CASE("Core losses above the Curie temperature: off throws, on evaluates and
     CoreLosses coreLosses;
 
     SECTION("off") {
+        settings.set_allow_material_data_extrapolation(false);  // the default is on since Alf, 2026-10-25
         CHECK_THROWS_AS(coreLosses.get_core_volumetric_losses(core.resolve_material(), excitation, curieTemperature + 10),
                         MaterialAboveCurieTemperatureException);
         CHECK(extrapolation_records(Logger::getInstance().drainCollected()).empty());
@@ -236,6 +244,7 @@ TEST_CASE("Frequency from core losses sweeps outside the span only with the flag
 TEST_CASE("The loss-model span gate lets an out-of-span material through only with the flag on", "[material-extrapolation][adviser]") {
     settings.reset();
     auto inputs = OpenMagneticsTesting::create_quick_test_inputs();  // 100 kHz
+    settings.set_allow_material_data_extrapolation(false);  // the default is on since Alf, 2026-10-25
     CHECK_FALSE(MagneticFilterLossModelFrequencySpan::is_material_evaluable(Core::resolve_material("TP5H"), inputs, CoreLossesModels::IGSE));
     settings.set_allow_material_data_extrapolation(true);
     CHECK(MagneticFilterLossModelFrequencySpan::is_material_evaluable(Core::resolve_material("TP5H"), inputs, CoreLossesModels::IGSE));
@@ -359,6 +368,7 @@ TEST_CASE("The core-resistance sweep keeps the requested window only with the fl
     clear_databases();
     auto magnetic = OpenMagneticsTesting::get_quick_magnetic("E 42/21/15", json::array(), {10}, 1, "3C95");
     auto [c95Minimum, c95Maximum] = CoreLossesModel::get_steinmetz_fitted_span("3C95");
+    settings.set_allow_material_data_extrapolation(false);  // the default is on since Alf, 2026-10-25
     auto clipped = Sweeper::core_resistance_frequency_window(magnetic, c95Minimum / 10, c95Maximum * 2);
     CHECK(clipped.first == c95Minimum);
     CHECK(clipped.second == c95Maximum);
@@ -426,4 +436,54 @@ TEST_CASE("Logger collector: own level, merged duplicates, drain empties, consol
         CHECK_THROWS_AS(log_level_from_string("warn"), std::invalid_argument);
     }
     CHECK(logger.getLevel() == consoleLevel);
+}
+
+// Alf, 2026-10-25: "01_1Hz: when the data comes from the MAS/user, we just extrapolate and throw a warning, not an
+// error." With DEFAULT settings (no flag touched), a user's MAS whose operating point lies below its material's
+// fitted Steinmetz span simulates to finite core losses and reports the extrapolation once, naming the material,
+// the frequency and the span. Under an adviser (ABT #1652) the same MAS still throws.
+TEST_CASE("A MAS below its material's fitted span extrapolates by default with one warning; advisers still throw", "[material-extrapolation][core-losses][default-extrapolation]") {
+    settings.reset();
+    clear_databases();
+    REQUIRE(MaterialDataExtrapolationBarrier::active_count() == 0);
+    auto examplePath = std::filesystem::path{std::source_location::current().file_name()}.parent_path()
+                           .append("..").append("MAS").append("examples").append("01_simple_inductor_etd34_n87_1Hz.json");
+    auto mas = OpenMagneticsTesting::mas_loader(examplePath.string());
+    REQUIRE(mas.get_inputs().get_operating_points().size() == 1);
+    const double frequency = mas.get_inputs().get_operating_points()[0].get_excitations_per_winding()[0].get_frequency();
+    REQUIRE(frequency == 1.0);
+
+    auto magnetic = OpenMagnetics::magnetic_autocomplete(mas.get_magnetic());
+    const std::string materialName = magnetic.get_core().get_material_name();
+    REQUIRE(materialName == "N87");
+    auto [spanMinimum, spanMaximum] = CoreLossesModel::get_steinmetz_fitted_span(magnetic.get_core().resolve_material());
+    REQUIRE(frequency < spanMinimum);
+
+    {
+        CollectorGuard collector;
+        OpenMagnetics::Mas simulated;
+        REQUIRE_NOTHROW(simulated = MagneticSimulator().simulate(mas.get_inputs(), magnetic, true));
+        REQUIRE(simulated.get_outputs().size() == 1);
+        REQUIRE(simulated.get_outputs()[0].get_core_losses());
+        double coreLosses = simulated.get_outputs()[0].get_core_losses()->get_core_losses();
+        CHECK(std::isfinite(coreLosses));
+        CHECK(coreLosses > 0);
+
+        auto records = extrapolation_records(Logger::getInstance().drainCollected());
+        REQUIRE(records.size() == 1);
+        CHECK(records[0].level == LogLevel::WARNING);
+        CHECK_THAT(records[0].message, Catch::Matchers::ContainsSubstring(materialName) &&
+                                       Catch::Matchers::ContainsSubstring(std::to_string(frequency) + " Hz is below") &&
+                                       Catch::Matchers::ContainsSubstring(std::to_string(spanMinimum)) &&
+                                       Catch::Matchers::ContainsSubstring(std::to_string(spanMaximum)));
+    }
+    {
+        CollectorGuard collector;
+        CoreAdviser adviser;
+        CHECK_FALSE(settings.get_allow_material_data_extrapolation());
+        CHECK_THROWS_AS(MagneticSimulator().simulate(mas.get_inputs(), magnetic, true), MaterialFrequencyOutOfSpanException);
+        CHECK(extrapolation_records(Logger::getInstance().drainCollected()).empty());
+    }
+    CHECK(settings.get_allow_material_data_extrapolation());
+    settings.reset();
 }

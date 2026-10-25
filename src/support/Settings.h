@@ -233,16 +233,18 @@ class Settings
         // FALSE: skip that turn's conduction path to the enclosure, log an ERROR naming the turn
         // and the overlap, and solve the rest of the network.
         bool   _thermalNetworkStrictGeometry = true;
-        // Opt-in for debugging and prospecting, never a default. FALSE (default): using a core
-        // material outside its data throws, as it always has: a core-loss frequency outside the
-        // material's fitted Steinmetz span (or in a gap between its ranges), or a core-loss
-        // temperature at or above its Curie point. TRUE: the same model is evaluated there anyway
-        // (the nearest fitted range's coefficients carried past its edge) and every such use logs a
-        // WARNING naming the material, the quantity, the value and the range the data covers
-        // (module "MaterialDataExtrapolation"; enable the Logger collector to read them back).
-        // ABT #1652: advisers never extrapolate. While any adviser object exists the getter reads
-        // false whatever this holds (see MaterialDataExtrapolationBarrier below). Keep in sync with reset().
-        bool   _allowMaterialDataExtrapolation = false;
+        // Using a core material outside its data: a core-loss frequency outside the material's
+        // fitted Steinmetz span (or in a gap between its ranges), or a core-loss temperature at or
+        // above its Curie point. TRUE (default since Alf, 2026-10-25: "when the data comes from the
+        // MAS/user, we just extrapolate and throw a warning, not an error"): a design the user or a
+        // MAS file supplies is evaluated there anyway (the nearest fitted range's coefficients carried
+        // past its edge) and every such use logs a WARNING naming the material, the quantity, the
+        // value and the range the data covers (module "MaterialDataExtrapolation"; enable the Logger
+        // collector to read them back). FALSE: the same use throws (MaterialFrequencyOutOfSpanException).
+        // ABT #1652 (Alf, 2026-10-03): advisers NEVER extrapolate. While any adviser object exists the
+        // getter reads false whatever this holds (see MaterialDataExtrapolationBarrier below), so every
+        // adviser path still throws. Keep in sync with reset().
+        bool   _allowMaterialDataExtrapolation = true;
         // What MagneticSimulator does with the loss <-> temperature coupling. TRUE (default): the losses
         // are evaluated at the temperatures their own dissipation produces, by the fixed-point loop of
         // MagneticSimulator::solve_losses_at_operating_temperature. FALSE (a user choice for simulate and
@@ -760,8 +762,8 @@ class Settings
 
 
 // ABT #1652 (Alf, 2026-10-03): ADVISERS NEVER EXTRAPOLATE material data, whatever
-// Settings::allowMaterialDataExtrapolation says; only work the user does by hand may (the web turns the
-// flag on for it). Every adviser class (CoreAdviser, WireAdviser and so CoilAdviser, MagneticAdviser,
+// Settings::allowMaterialDataExtrapolation says; only work the user does by hand, or a MAS the user
+// supplies, may (the flag defaults on since Alf, 2026-10-25, and the web keeps it on). Every adviser class (CoreAdviser, WireAdviser and so CoilAdviser, MagneticAdviser,
 // CoreCrossReferencer, CoreMaterialCrossReferencer) holds one of these as its FIRST member, and while at
 // least one exists anywhere in the process Settings::get_allow_material_data_extrapolation() reads false.
 //

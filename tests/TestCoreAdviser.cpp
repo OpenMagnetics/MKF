@@ -3801,6 +3801,7 @@ TEST_CASE("Test_CoreAdviser_Standard_Cores_Respect_Every_Axis_Of_Maximum_Dimensi
 // loss points only) is simply not evaluable.
 TEST_CASE("Test_Loss_Model_Frequency_Span_Judges_The_Model_That_Runs", "[adviser][core-adviser][abt-1456]") {
     settings.reset();
+    settings.set_allow_material_data_extrapolation(false);  // the default is on since Alf, 2026-10-25
     auto inputs = OpenMagneticsTesting::create_quick_test_inputs();  // 100 kHz
     for (std::string grade : {"2HM4", "75-Series 26"}) {
         INFO(grade);
@@ -3871,6 +3872,7 @@ TEST_CASE("Test_Loss_Model_Frequency_Span_Honours_An_Explicit_Model_Request", "[
 TEST_CASE("Test_CoreAdviser_Ferrite_Pool_Drops_MHz_Grades_Out_Of_Span_At_100kHz", "[adviser][core-adviser][abt-1456]") {
     settings.reset();
     clear_databases();
+    settings.set_allow_material_data_extrapolation(false);  // the default is on since Alf, 2026-10-25
     settings.set_preferred_core_material_ferrite_manufacturer("No such manufacturer (ABT #1456)");
 
     const std::vector<std::string> mhzGrades = {"TP5H", "KL9F", "DMR52W", "DMR51W", "KL7F", "KL11F", "DMR52", "P61", "P63"};

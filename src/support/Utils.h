@@ -152,7 +152,7 @@ std::optional<InductanceFluxCacheEntry> get_cached_inductance_flux(
 void logEntry(std::string entry, std::string module = "", uint8_t entryVerbosity = 1);
 std::string read_log();
 
-// Settings::allowMaterialDataExtrapolation (off by default). Every site that uses a core material outside the data
+// Settings::allowMaterialDataExtrapolation (on by default since Alf, 2026-10-25; always off under an adviser). Every site that uses a core material outside the data
 // it carries asks this before throwing: when the flag is off it returns false and logs nothing, and the caller
 // throws exactly as before; when it is on it logs `what` (which must name the material, the quantity, the value
 // and the range the data covers) as a WARNING from module kMaterialDataExtrapolationModule and returns true, and

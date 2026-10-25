@@ -120,7 +120,7 @@ TEST_CASE("Test_All_Examples_Real_Geometry_Physics", "[constructive-model][mas][
             // Steinmetz span, on purpose. Alf: "enable the flag to run cores out of their freq when the test
             // or users demand it". This example demands it: its core losses are an extrapolation, so it runs
             // with Settings::allowMaterialDataExtrapolation on and must report that through the Logger
-            // collector. Every other example keeps the flag off.
+            // collector. Every other example runs with the default (on since Alf, 2026-10-25).
             const bool runsOutOfMaterialSpan = name == "01_simple_inductor_etd34_n87_1Hz.json";
             struct ExtrapolationScope {
                 bool active;

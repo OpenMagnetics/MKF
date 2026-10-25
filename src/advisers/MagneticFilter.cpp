@@ -429,7 +429,7 @@ std::optional<std::string> MagneticFilterLossModelFrequencySpan::material_not_ev
         if (!CoreLossesModel::evaluates_steinmetz_ranges(coreLossesModel.get())) {
             return std::nullopt;
         }
-        // Settings::allowMaterialDataExtrapolation (explicit opt-in): a frequency outside the span is
+        // Settings::allowMaterialDataExtrapolation (on by default, Alf 2026-10-25): a frequency outside the span is
         // evaluated by extrapolating the nearest fitted range, and get_steinmetz_coefficients logs a
         // WARNING for it when the losses are computed, so the span no longer bars the material. Its
         // data must still be well formed: get_steinmetz_fitted_span throws for missing range bounds.

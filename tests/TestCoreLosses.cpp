@@ -2008,7 +2008,8 @@ TEST_CASE("Test_IGSE_composite_waveform_low_excitation_frequency", "[physical-mo
     REQUIRE(volumetricLosses < refVolumetricLosses * 10);
     REQUIRE(volumetricLosses > 0);
 
-    // A ferrite fitted only from 25 kHz refuses the 60 Hz envelope rather than extrapolating it.
+    // A ferrite fitted only from 25 kHz refuses the 60 Hz envelope rather than extrapolating it (flag off).
+    settings.set_allow_material_data_extrapolation(false);  // the default is on since Alf, 2026-10-25
     Core core3C95 = OpenMagneticsTesting::get_quick_core(shapeName, json::array(), 1, "3C95");
     CHECK_THROWS_AS(coreLossesModel->get_core_losses(core3C95, excitation, temperature), MaterialFrequencyOutOfSpanException);
 }
@@ -2878,6 +2879,8 @@ TEST_CASE("Test_CoreLosses_Model_Nanoperm_8000", "[physical-model][core-losses][
 TEST_CASE("Test_CoreLosses_Above_Curie_Temperature_Throws", "[physical-model][core-losses][smoke-test][abt-1485]") {
     // ABT #1485: a thermal loop that overshoots Curie (240 C on a badly wound first cut) read a
     // near-zero loss there. Above Curie the ferrite is paramagnetic; no loss model applies.
+    settings.reset();
+    settings.set_allow_material_data_extrapolation(false);  // the default is on since Alf, 2026-10-25
     Core core = OpenMagneticsTesting::get_quick_core("T 20/10/7", json::array(), 1, "PC95");
     double curieTemperature = core.resolve_material().get_curie_temperature().value();
     auto excitation = OperatingPointExcitation(json::parse(R"({"frequency": 200000, "magneticFluxDensity": {"processed": {"label": "Sinusoidal", "peak": 0.05, "peakToPeak": 0.1, "offset": 0}}})"));
@@ -2891,6 +2894,7 @@ TEST_CASE("Test_CoreLosses_Above_Curie_Temperature_Throws", "[physical-model][co
         CHECK(exception.code() == ErrorCode::MATERIAL_ABOVE_CURIE_TEMPERATURE);
         CHECK(exception.curie_temperature() == curieTemperature);
     }
+    settings.reset();
 }
 
 // ABT #1497 helpers: a 20-turn E 42/21/15 in `materialName` driven by the quick 100 kHz triangular
@@ -4427,6 +4431,7 @@ static OperatingPointExcitation abt2006_sinusoidal_excitation(double frequency, 
 TEST_CASE("Test_Loss_Factor_Model_Throws_Above_Small_Signal_Flux", "[physical-model][core-losses][loss-factor][abt-2006]") {
     settings.reset();
     clear_databases();
+    settings.set_allow_material_data_extrapolation(false);  // the default is on since Alf, 2026-10-25
     auto smallSignal = abt2006_sinusoidal_excitation(200000, 0.1e-3);
     auto powerFlux = abt2006_sinusoidal_excitation(200000, 0.1);
 
@@ -4446,11 +4451,12 @@ TEST_CASE("Test_Loss_Factor_Model_Throws_Above_Small_Signal_Flux", "[physical-mo
         CHECK_THAT(exception.magnetic_flux_density_amplitude(), Catch::Matchers::WithinAbs(0.1, 1e-12));
         CHECK_THAT(exception.maximum_magnetic_flux_density(), Catch::Matchers::WithinAbs(0.25e-3, 1e-12));
     }
-    // Settings::allowMaterialDataExtrapolation (explicit opt-in) evaluates it there anyway.
+    // Settings::allowMaterialDataExtrapolation evaluates it there anyway.
     settings.set_allow_material_data_extrapolation(true);
     double lossFactorAlone = CoreLossesLossFactorModel().get_core_losses(core, powerFlux, 25).get_core_losses();
     CHECK(lossFactorAlone > 0);
     settings.reset();
+    settings.set_allow_material_data_extrapolation(false);  // the default is on since Alf, 2026-10-25
 
     // There the cascade runs the loss factor plus the hysteresis of KM42B's own major loop, which is larger
     // than the loss factor alone.
@@ -5008,6 +5014,7 @@ TEST_CASE("Test_Material_Validator_Loss_Not_Positive_Inside_Span", "[material-va
 TEST_CASE("Steinmetz coefficients outside the fitted span throw, below and above", "[physical-model][core-losses][abt-1456]") {
     settings.reset();
     clear_databases();
+    settings.set_allow_material_data_extrapolation(false);  // the default is on since Alf, 2026-10-25
 
     // TP5H: MAS fits 1-5 MHz only.
     auto [tp5hMinimum, tp5hMaximum] = CoreLossesModel::get_steinmetz_fitted_span("TP5H");
@@ -5090,6 +5097,7 @@ TEST_CASE("P63 is fitted from 300 kHz and matches ACME's 1 MHz point", "[physica
 TEST_CASE("Subcircuit core-loss network is fitted over the material's span", "[circuit][core-losses][export][abt-1456]") {
     settings.reset();
     clear_databases();
+    settings.set_allow_material_data_extrapolation(false);  // the default is on since Alf, 2026-10-25
 
     std::vector<int64_t> numberTurns = {20};
     for (std::string materialName : {"N87", "TP5H", "P63"}) {
@@ -5128,6 +5136,7 @@ TEST_CASE("Subcircuit core-loss network is fitted over the material's span", "[c
 TEST_CASE("Core-loss frequency sweep is clipped to the material's fitted span", "[sweeper][core-losses][abt-1456]") {
     settings.reset();
     clear_databases();
+    settings.set_allow_material_data_extrapolation(false);  // the default is on since Alf, 2026-10-25
     std::vector<int64_t> numberTurns = {20};
     auto magnetic = OpenMagnetics::magnetic_autocomplete(OpenMagneticsTesting::get_quick_magnetic(
         "E 42/21/15", OpenMagneticsTesting::get_ground_gap(0.001), numberTurns, 1, "P63"));
@@ -5428,6 +5437,7 @@ TEST_CASE("Core losses of a boost PFC line-cycle excitation are priced per switc
     }
 
     SECTION("A ferrite whose fit starts above the line frequency cannot price the envelope's loop") {
+        settings.set_allow_material_data_extrapolation(false);  // the default is on since Alf, 2026-10-25
         // 3C95's Steinmetz ranges start at 25 kHz: the switching cycles are in span, the 60 Hz envelope
         // is not, and an extrapolation of the fit is refused as everywhere else (ABT #1456).
         Core core = OpenMagneticsTesting::get_quick_core("PQ 20/20", json::array(), 1, "3C95");
@@ -5632,6 +5642,7 @@ TEST_CASE("The line envelope's span check follows allowMaterialDataExtrapolation
     REQUIRE(record.has_value());
 
     SECTION("Off: the envelope throws") {
+        settings.set_allow_material_data_extrapolation(false);  // the default is on since Alf, 2026-10-25
         CHECK_THROWS_AS(model->get_core_losses(core, pfc.record, temperature), MaterialFrequencyOutOfSpanException);
     }
 

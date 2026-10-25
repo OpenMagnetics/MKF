@@ -434,7 +434,7 @@ std::pair<double, double> Sweeper::core_resistance_frequency_window(Magnetic mag
         return {start, stop};
     }
     auto [spanMinimum, spanMaximum] = CoreLossesModel::get_steinmetz_fitted_span(material);
-    // Settings::allowMaterialDataExtrapolation (explicit opt-in): sweep the whole requested window; the
+    // Settings::allowMaterialDataExtrapolation (on by default, Alf 2026-10-25; off under an adviser): sweep the whole requested window; the
     // points outside the span are extrapolated and warned about by get_steinmetz_coefficients.
     if (Settings::GetInstance().get_allow_material_data_extrapolation()) {
         return {start, stop};
