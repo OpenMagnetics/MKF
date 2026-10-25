@@ -34,7 +34,9 @@
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
 #include <catch2/matchers/catch_matchers_string.hpp>
 
+#include <algorithm>
 #include <cmath>
+#include <set>
 #include <limits>
 #include <numbers>
 #include <vector>
@@ -555,3 +557,164 @@ TEST_CASE("Real winding draws the tangent leads of a one-turn edgewise strip lev
     settings.reset();
 }
 
+// ABT #2071 (Alf, 2026-10-25): a real-winding design whose ideal wind does not fit is still blocked and
+// laid out as wound -- turns, connections and leads -- overflowing, and the copper it overlaps is
+// reported and painted red, never squished or clamped. The design is the reported one: 18 turns of the
+// strip on the U 46/40/28 former, layers CONTIGUOUS (.mkf-p2004 abt2012_magnetic_n18). Its 35 stations
+// run radially past the window, and its radial exit lead is drawn across the turns of the layers it
+// leaves through.
+TEST_CASE("Real winding lays out a design whose ideal wind does not fit, and reports and paints its copper overlaps",
+          "[constructive-model][coil][real-geometry][painter][abt-2071]") {
+    auto& settings = Settings::GetInstance();
+    settings.reset();
+    auto coil = OpenMagneticsTesting::get_quick_coil({18}, {1}, reportedCoreShape, 1, WindingOrientation::OVERLAPPING,
+                                                     WindingOrientation::CONTIGUOUS, CoilAlignment::CENTERED,
+                                                     CoilAlignment::CENTERED, {edgewise_strip_13_6_by_2_5()});
+    settings.set_coil_use_real_winding_geometry(true);
+    set_former_corner_radius(coil, reportedFormerCornerRadius);
+    bool fits = true;
+    REQUIRE_NOTHROW(fits = coil.wind());
+    CHECK_FALSE(fits);   // the verdict stays the ideal wind's: it does not fit
+    REQUIRE(coil.is_real_winding_blocking_applied());   // ... and it is laid out for real all the same
+    const auto turns = coil.get_turns_description().value();
+    CHECK(turns.size() == 35);   // 18 turns over 17 layers: one closing station per layer
+    CHECK_FALSE(coil.are_turns_inside_winding_window());   // overflowing, not squeezed in
+    size_t terminals = 0;
+    for (const auto& route : coil.get_connection_layout().routes) {
+        terminals += route.kind == ConnectionKind::TERMINAL_ENTRANCE || route.kind == ConnectionKind::TERMINAL_EXIT ? 1 : 0;
+    }
+    CHECK(terminals == 2);
+
+    const auto overlaps = coil.judge_copper_overlaps();
+    REQUIRE_FALSE(overlaps.empty());
+    std::set<std::string> crossedTurns;
+    std::string crossingLead;
+    for (const auto& overlap : overlaps) {
+        CHECK(overlap.kind == CopperOverlapKind::LEAD_TURN);
+        CHECK(overlap.overlap > 0);
+        CHECK(overlap.region.size() >= 3);
+        crossingLead = overlap.first;
+        crossedTurns.insert(overlap.second);
+    }
+    CHECK(crossedTurns.size() == overlaps.size());   // one overlap per turn the lead crosses
+
+    OpenMagnetics::Magnetic magnetic;
+    magnetic.set_core(OpenMagneticsTesting::get_quick_core(reportedCoreShape, OpenMagneticsTesting::get_ground_gap(0.001), 1, "N87"));
+    magnetic.set_coil(coil);
+    OpenMagnetics::Mas mas;
+    mas.set_magnetic(magnetic);
+    size_t reported = 0;
+    for (const auto& finding : ResultsAnalyzer::analyze_results(mas)) {
+        if (finding.code != ResultFindingCode::LEAD_COLLIDES_WITH_TURNS) {
+            continue;
+        }
+        ++reported;
+        using Catch::Matchers::ContainsSubstring;
+        CHECK_THAT(finding.message, ContainsSubstring(crossingLead) &&
+                                        ContainsSubstring("the worst of " + std::to_string(overlaps.size()) + " turns it crosses"));
+        CHECK(finding.message.find("ABT") == std::string::npos);
+    }
+    CHECK(reported == 1);
+
+
+    // The stations past the window's outer side: TURNS_OUTSIDE_WINDOW names each with its overrun, and
+    // their copper past the window is painted red too.
+    const auto outside = coil.judge_turns_outside_window();
+    REQUIRE_FALSE(outside.empty());
+    auto bobbin = coil.resolve_bobbin();
+    const auto window = bobbin.get_processed_description().value().get_winding_windows()[0];
+    const double windowOuterSide = window.get_coordinates().value()[0] + window.get_width().value() / 2;
+    double reach = 0;
+    std::string farthest;
+    for (const auto& turn : turns) {
+        const double outerEdge = turn.get_coordinates()[0] + turn.get_dimensions().value()[0] / 2;
+        if (outerEdge > reach) {
+            reach = outerEdge;
+            farthest = turn.get_name();
+        }
+    }
+    size_t outsidePieces = 0;
+    double worstOverrun = 0;
+    const double windowInnerSide = window.get_coordinates().value()[0] - window.get_width().value() / 2;
+    for (const auto& turn : outside) {
+        // Each station's overrun is its own outline against the window's sides: the stations run out
+        // past the outer side, and the first layer's closing station reaches in past the inner one.
+        const auto station = std::find_if(turns.begin(), turns.end(), [&](const Turn& candidate) { return candidate.get_name() == turn.turn; });
+        REQUIRE(station != turns.end());
+        const double halfWidth = station->get_dimensions().value()[0] / 2;
+        const double outward = station->get_coordinates()[0] + halfWidth - windowOuterSide;
+        const double inward = windowInnerSide - (station->get_coordinates()[0] - halfWidth);
+        CHECK(turn.side == (outward >= inward ? TurnOutsideWindow::Side::OUTER : TurnOutsideWindow::Side::INNER));
+        CHECK_THAT(turn.overrun, Catch::Matchers::WithinAbs(std::max(outward, inward), 1e-12));
+        CHECK(turn.overrun > 0);
+        worstOverrun = std::max(worstOverrun, turn.overrun);
+        outsidePieces += turn.regions.size();
+    }
+    CHECK_THAT(worstOverrun, Catch::Matchers::WithinAbs(reach - windowOuterSide, 1e-12));
+    size_t outsideReported = 0;
+    for (const auto& finding : ResultsAnalyzer::analyze_results(mas)) {
+        if (finding.code != ResultFindingCode::TURNS_OUTSIDE_WINDOW) {
+            continue;
+        }
+        ++outsideReported;
+        using Catch::Matchers::ContainsSubstring;
+        CHECK_THAT(finding.message, ContainsSubstring(std::to_string(outside.size()) + " turn stations outside its winding window") &&
+                                        ContainsSubstring("the worst, '" + farthest + "'") &&
+                                        ContainsSubstring("radially outward"));
+        CHECK(finding.message.find("ABT") == std::string::npos);
+    }
+    CHECK(outsideReported == 1);
+    settings.reset();
+}
+
+
+// ABT #2071: two turn stations whose outlines overlap are one TURNS_OVERLAP finding naming them and the
+// depth. New design (no wind lays turns over each other: an overflowing one runs out of the window):
+// two turns of Round 0.4 on an E 25/13/7, ideal winding, the second station moved down onto the first
+// by half its coated diameter -- a stated layout drawn as given.
+TEST_CASE("Turn stations laid over each other are reported as overlapping",
+          "[constructive-model][coil][abt-2071]") {
+    auto& settings = Settings::GetInstance();
+    settings.reset();
+    auto coil = OpenMagneticsTesting::get_quick_coil({2}, {1}, "E 25/13/7", 1, WindingOrientation::OVERLAPPING,
+                                                     WindingOrientation::OVERLAPPING, CoilAlignment::CENTERED,
+                                                     CoilAlignment::CENTERED, {find_wire_by_name("Round 0.4 - Grade 1")});
+    auto turns = coil.get_turns_description().value();
+    REQUIRE(turns.size() == 2);
+    const double diameter = turns[0].get_dimensions().value()[0];
+    turns[1].set_coordinates({turns[0].get_coordinates()[0], turns[0].get_coordinates()[1] + diameter / 2});
+    coil.set_turns_description(turns);
+
+    const auto overlaps = coil.judge_copper_overlaps();
+    REQUIRE(overlaps.size() == 1);
+    CHECK(overlaps[0].kind == CopperOverlapKind::TURN_TURN);
+    CHECK(overlaps[0].first == turns[0].get_name());
+    CHECK(overlaps[0].second == turns[1].get_name());
+    CHECK_THAT(overlaps[0].overlap, Catch::Matchers::WithinAbs(diameter / 2, 1e-12));
+    // The lens both circles cover, sampled on their arcs: inside both outlines.
+    for (const auto& point : overlaps[0].region) {
+        for (const auto& turn : turns) {
+            CHECK(std::hypot(point[0] - turn.get_coordinates()[0], point[1] - turn.get_coordinates()[1]) <= diameter / 2 + 1e-12);
+        }
+    }
+
+    OpenMagnetics::Magnetic magnetic;
+    magnetic.set_core(OpenMagneticsTesting::get_quick_core("E 25/13/7", OpenMagneticsTesting::get_ground_gap(0.001), 1, "N87"));
+    magnetic.set_coil(coil);
+    OpenMagnetics::Mas mas;
+    mas.set_magnetic(magnetic);
+    size_t reported = 0;
+    for (const auto& finding : ResultsAnalyzer::analyze_results(mas)) {
+        if (finding.code != ResultFindingCode::TURNS_OVERLAP) {
+            continue;
+        }
+        ++reported;
+        using Catch::Matchers::ContainsSubstring;
+        CHECK_THAT(finding.message, ContainsSubstring("2 turn stations of the coil overlap one another, in 1 place") &&
+                                        ContainsSubstring("'" + turns[0].get_name() + "'") &&
+                                        ContainsSubstring("'" + turns[1].get_name() + "'"));
+        CHECK(finding.message.find("ABT") == std::string::npos);
+    }
+    CHECK(reported == 1);
+    settings.reset();
+}

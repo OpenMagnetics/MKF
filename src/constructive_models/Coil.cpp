@@ -3,6 +3,7 @@
 #include <cmath>
 #include "constructive_models/MasMigration.h"
 #include <algorithm>
+#include <array>
 #include <map>
 #include <unordered_map>
 #include <set>
@@ -7916,6 +7917,10 @@ bool Coil::wind_at_current_footprints(std::vector<double> proportionPerWinding, 
         refuse_turns_bent_tighter_than_the_wire_allows();
         refuse_sibling_layer_links_closer_than_the_wire();
         refuse_radial_steps_closer_than_the_wire_to_sibling_wraps();
+    }
+    // ABT #2071: a wind that does not fit is still blocked and its leads still routed, so the turns
+    // its tangent leads shorten are charged the same as on a wind that fits.
+    if (ok || is_real_winding_blocking_applied()) {
         charge_tangent_departures();
     }
     return ok;
@@ -8338,11 +8343,20 @@ bool Coil::wind_inner(std::vector<double> proportionPerWinding, std::vector<size
         std::cerr << "[fit] FAILED: " << (_lastFitFailure.empty() ? "(unnamed)" : _lastFitFailure)
                   << " turns=" << bool(get_turns_description()) << "\n";
     }
-    _realWindingBlockingApplied = result && settings.get_coil_use_real_winding_geometry();
+    // ABT #2071 (Alf, 2026-10-25): connection blocking is applied whenever real winding is asked
+    // for and the wind produced turns -- also when the ideal wind does not fit. The real winding is
+    // laid out as wound (turns, connections, tangent leads) even though it overflows, so the
+    // customer sees it overflow, and ResultsAnalyzer reports the overlaps (TURNS_OVERLAP,
+    // LEADS_COLLIDE). The verdict stays the IDEAL one: blocking only takes room, and a wind whose
+    // ideal layout does not fit returns false whatever the blocked layout reads.
+    const bool idealWindFits = result;
+    _realWindingBlockingApplied = settings.get_coil_use_real_winding_geometry() && (result || bool(get_turns_description()));
     if (settings.get_coil_use_real_winding_geometry() && !result) {
-        logEntry("Real winding was requested but connection blocking was NOT applied: the ideal "
-                 "wind does not fit"
-                 + std::string(get_turns_description() ? "" : " (no turns were produced)")
+        logEntry(std::string(_realWindingBlockingApplied
+                                 ? "Real winding: the ideal wind does not fit; connection blocking is applied to "
+                                   "the overflowing layout all the same"
+                                 : "Real winding was requested but connection blocking was NOT applied: the ideal "
+                                   "wind produced no turns")
                  + (_lastFitFailure.empty() ? std::string() : " — " + _lastFitFailure),
                  "Coil", 1);
     }
@@ -8448,7 +8462,7 @@ bool Coil::wind_inner(std::vector<double> proportionPerWinding, std::vector<size
             }
         }
     }
-    if (result && settings.get_coil_use_real_winding_geometry()) {
+    if (_realWindingBlockingApplied) {
         // Turn blocking is GLOBAL to the winding window: a connection lead routes through the whole
         // window and removes a turn slot from every conduction layer it crosses, regardless of which
         // section/winding owns that layer. Derive that per-layer incidence from the wound geometry,
@@ -8948,6 +8962,10 @@ bool Coil::wind_inner(std::vector<double> proportionPerWinding, std::vector<size
             else if (_lastFitFailure.empty()) {
                 _lastFitFailure = "real winding: with the room its connection leads take, the layout does not fit its sections";
             }
+        }
+        // ABT #2071: blocking an ideal wind that did not fit never makes it fit.
+        if (!idealWindFits) {
+            result = false;
         }
     }
     if (result) {
@@ -13042,6 +13060,530 @@ std::vector<Coil::UnmodelledLeadJudgement> Coil::judge_unmodelled_tangent_leads(
         leads.push_back(lead);
     }
     return leads;
+}
+
+namespace {
+
+// A convex outline in the winding-window section: a circle, or a convex polygon (counter-clockwise).
+struct ConvexOutline {
+    bool round = false;
+    double cx = 0, cy = 0, r = 0;
+    std::vector<std::array<double, 2>> polygon;
+    double xMin = 0, xMax = 0, yMin = 0, yMax = 0;
+};
+
+// The arcs of a round outline are sampled only for the drawn region; every overlap depth is exact.
+constexpr size_t kArcSamples = 96;
+
+std::vector<std::array<double, 2>> sample_circle(double cx, double cy, double r) {
+    std::vector<std::array<double, 2>> points;
+    for (size_t k = 0; k < kArcSamples; ++k) {
+        const double angle = 2 * std::numbers::pi * double(k) / double(kArcSamples);
+        points.push_back({cx + r * std::cos(angle), cy + r * std::sin(angle)});
+    }
+    return points;
+}
+
+void set_bounds(ConvexOutline& outline) {
+    if (outline.round) {
+        outline.xMin = outline.cx - outline.r;
+        outline.xMax = outline.cx + outline.r;
+        outline.yMin = outline.cy - outline.r;
+        outline.yMax = outline.cy + outline.r;
+        return;
+    }
+    outline.xMin = outline.yMin = std::numeric_limits<double>::max();
+    outline.xMax = outline.yMax = std::numeric_limits<double>::lowest();
+    for (const auto& [x, y] : outline.polygon) {
+        outline.xMin = std::min(outline.xMin, x);
+        outline.xMax = std::max(outline.xMax, x);
+        outline.yMin = std::min(outline.yMin, y);
+        outline.yMax = std::max(outline.yMax, y);
+    }
+}
+
+// A width x height rectangle about (cx, cy), turned `rotationDegrees` counter-clockwise.
+ConvexOutline rectangle_outline(double cx, double cy, double width, double height, double rotationDegrees) {
+    ConvexOutline outline;
+    const double angle = rotationDegrees * std::numbers::pi / 180;
+    const double c = std::cos(angle), s = std::sin(angle);
+    for (const auto& [u, v] : std::vector<std::array<double, 2>>{{-0.5, -0.5}, {0.5, -0.5}, {0.5, 0.5}, {-0.5, 0.5}}) {
+        const double x = u * width, y = v * height;
+        outline.polygon.push_back({cx + c * x - s * y, cy + s * x + c * y});
+    }
+    set_bounds(outline);
+    return outline;
+}
+
+// A stadium (an OVAL turn): the rectangle with semicircles on its shorter sides, sampled along the arcs.
+ConvexOutline oval_outline(double cx, double cy, double width, double height, double rotationDegrees) {
+    ConvexOutline outline;
+    const bool alongX = width >= height;
+    const double r = 0.5 * std::min(width, height);
+    const double half = 0.5 * std::max(width, height) - r;
+    const double angle = rotationDegrees * std::numbers::pi / 180;
+    const double c = std::cos(angle), s = std::sin(angle);
+    std::vector<std::array<double, 2>> local;
+    for (int end = 0; end < 2; ++end) {
+        const double centre = end == 0 ? half : -half;
+        const double start = end == 0 ? -std::numbers::pi / 2 : std::numbers::pi / 2;
+        for (size_t k = 0; k <= kArcSamples / 2; ++k) {
+            const double a = start + std::numbers::pi * double(k) / double(kArcSamples / 2);
+            const double u = centre + r * std::cos(a), v = r * std::sin(a);
+            local.push_back(alongX ? std::array<double, 2>{u, v} : std::array<double, 2>{-v, u});
+        }
+    }
+    for (const auto& [x, y] : local) {
+        outline.polygon.push_back({cx + c * x - s * y, cy + s * x + c * y});
+    }
+    set_bounds(outline);
+    return outline;
+}
+
+ConvexOutline circle_outline(double cx, double cy, double r) {
+    ConvexOutline outline;
+    outline.round = true;
+    outline.cx = cx;
+    outline.cy = cy;
+    outline.r = r;
+    set_bounds(outline);
+    return outline;
+}
+
+// Overlap of the projections of a polygon and of an outline on the unit axis (ax, ay).
+double projected_overlap(const ConvexOutline& a, const ConvexOutline& b, double ax, double ay) {
+    auto project = [&](const ConvexOutline& outline) {
+        if (outline.round) {
+            const double centre = outline.cx * ax + outline.cy * ay;
+            return std::pair<double, double>{centre - outline.r, centre + outline.r};
+        }
+        double low = std::numeric_limits<double>::max(), high = std::numeric_limits<double>::lowest();
+        for (const auto& [x, y] : outline.polygon) {
+            const double p = x * ax + y * ay;
+            low = std::min(low, p);
+            high = std::max(high, p);
+        }
+        return std::pair<double, double>{low, high};
+    };
+    const auto [aLow, aHigh] = project(a);
+    const auto [bLow, bHigh] = project(b);
+    return std::min(aHigh, bHigh) - std::max(aLow, bLow);
+}
+
+// The depth two convex outlines interpenetrate (separating-axis theorem: the least overlap over the
+// polygons' edge normals and, against a circle, the axis to the polygon's nearest vertex); <= 0 when
+// they are apart or only touch.
+double penetration_depth(const ConvexOutline& a, const ConvexOutline& b) {
+    if (a.round && b.round) {
+        return a.r + b.r - std::hypot(a.cx - b.cx, a.cy - b.cy);
+    }
+    double depth = std::numeric_limits<double>::max();
+    for (const auto* outline : {&a, &b}) {
+        if (outline->round) {
+            continue;
+        }
+        const auto& polygon = outline->polygon;
+        for (size_t k = 0; k < polygon.size(); ++k) {
+            const auto& p = polygon[k];
+            const auto& q = polygon[(k + 1) % polygon.size()];
+            const double length = std::hypot(q[0] - p[0], q[1] - p[1]);
+            if (length == 0) {
+                continue;
+            }
+            depth = std::min(depth, projected_overlap(a, b, (q[1] - p[1]) / length, -(q[0] - p[0]) / length));
+        }
+    }
+    const ConvexOutline* circle = a.round ? &a : (b.round ? &b : nullptr);
+    const ConvexOutline* polygon = a.round ? &b : &a;
+    if (circle != nullptr) {
+        double nearest = std::numeric_limits<double>::max();
+        std::array<double, 2> vertex{0, 0};
+        for (const auto& point : polygon->polygon) {
+            const double distance = std::hypot(point[0] - circle->cx, point[1] - circle->cy);
+            if (distance < nearest) {
+                nearest = distance;
+                vertex = point;
+            }
+        }
+        if (nearest > 0) {
+            depth = std::min(depth, projected_overlap(a, b, (vertex[0] - circle->cx) / nearest, (vertex[1] - circle->cy) / nearest));
+        }
+    }
+    return depth;
+}
+
+// The overlapping region of two convex outlines (Sutherland-Hodgman, a round outline sampled), as {x, y} points.
+std::vector<std::vector<double>> overlap_region(const ConvexOutline& a, const ConvexOutline& b) {
+    auto points = [](const ConvexOutline& outline) {
+        return outline.round ? sample_circle(outline.cx, outline.cy, outline.r) : outline.polygon;
+    };
+    std::vector<std::array<double, 2>> subject = points(a);
+    const auto clip = points(b);
+    for (size_t k = 0; k < clip.size() && !subject.empty(); ++k) {
+        const auto& p = clip[k];
+        const auto& q = clip[(k + 1) % clip.size()];
+        auto inside = [&](const std::array<double, 2>& point) {
+            return (q[0] - p[0]) * (point[1] - p[1]) - (q[1] - p[1]) * (point[0] - p[0]) >= 0;
+        };
+        auto cut = [&](const std::array<double, 2>& s, const std::array<double, 2>& e) {
+            const double a1 = q[1] - p[1], b1 = p[0] - q[0], c1 = a1 * p[0] + b1 * p[1];
+            const double a2 = e[1] - s[1], b2 = s[0] - e[0], c2 = a2 * s[0] + b2 * s[1];
+            const double determinant = a1 * b2 - a2 * b1;
+            return std::array<double, 2>{(b2 * c1 - b1 * c2) / determinant, (a1 * c2 - a2 * c1) / determinant};
+        };
+        std::vector<std::array<double, 2>> output;
+        for (size_t m = 0; m < subject.size(); ++m) {
+            const auto& current = subject[m];
+            const auto& previous = subject[(m + subject.size() - 1) % subject.size()];
+            if (inside(current)) {
+                if (!inside(previous)) {
+                    output.push_back(cut(previous, current));
+                }
+                output.push_back(current);
+            }
+            else if (inside(previous)) {
+                output.push_back(cut(previous, current));
+            }
+        }
+        subject = output;
+    }
+    std::vector<std::vector<double>> region;
+    for (const auto& [x, y] : subject) {
+        region.push_back({x, y});
+    }
+    return region;
+}
+
+// The outline of every station of a turn where the winding-window section draws it: at its coordinates,
+// and at a toroid's additional ones. Throws when the turn lacks what it is drawn with.
+std::vector<ConvexOutline> turn_station_outlines(const Turn& turn) {
+    std::vector<ConvexOutline> outlines;
+    if (!turn.get_dimensions() || turn.get_dimensions()->size() < 2) {
+        throw InvalidInputException(ErrorCode::MISSING_DATA, "Turn '" + turn.get_name() + "' has no dimensions, so its outline is unknown");
+    }
+    if (!turn.get_cross_sectional_shape()) {
+        throw InvalidInputException(ErrorCode::MISSING_DATA, "Turn '" + turn.get_name() + "' has no cross-sectional shape, so its outline is unknown");
+    }
+    if (turn.get_coordinate_system() && turn.get_coordinate_system().value() != CoordinateSystem::CARTESIAN) {
+        throw InvalidInputException(ErrorCode::INVALID_COIL_CONFIGURATION, "Turn '" + turn.get_name() + "' has coordinates that are not cartesian");
+    }
+    const auto dimensions = turn.get_dimensions().value();
+    const double rotation = turn.get_rotation().value_or(0);
+    std::vector<std::vector<double>> centres{turn.get_coordinates()};
+    if (turn.get_additional_coordinates()) {
+        const auto additional = turn.get_additional_coordinates().value();   // bound: never range over a temporary
+        for (const auto& extra : additional) {
+            centres.push_back(extra);
+        }
+    }
+    for (const auto& centre : centres) {
+        ConvexOutline outline;
+        switch (turn.get_cross_sectional_shape().value()) {
+            case TurnCrossSectionalShape::ROUND:
+                outline = circle_outline(centre[0], centre[1], dimensions[0] / 2);
+                break;
+            case TurnCrossSectionalShape::RECTANGULAR:
+                outline = rectangle_outline(centre[0], centre[1], dimensions[0], dimensions[1], rotation);
+                break;
+            case TurnCrossSectionalShape::OVAL:
+                outline = oval_outline(centre[0], centre[1], dimensions[0], dimensions[1], rotation);
+                break;
+        }
+        outlines.push_back(outline);
+    }
+    return outlines;
+}
+
+// Overlaps below the resolution the layout stores its coordinates at (roundFloat to 1e-9 m, on each of
+// the two centres) are touching outlines, not overlapping ones.
+constexpr double kStoredCoordinateResolution = 2e-9;
+
+}  // namespace
+
+std::vector<CopperOverlap> Coil::judge_copper_overlaps() {
+    std::vector<CopperOverlap> overlaps;
+    if (!get_turns_description()) {
+        return overlaps;
+    }
+    const auto turns = get_turns_description().value();   // bound: never range over a temporary
+    // Every station's outline where the section draws it: its coordinates, and a toroid's additional ones.
+    struct Station {
+        size_t turn;
+        ConvexOutline outline;
+    };
+    std::vector<Station> stations;
+    for (size_t t = 0; t < turns.size(); ++t) {
+        for (const auto& outline : turn_station_outlines(turns[t])) {
+            stations.push_back({t, outline});
+        }
+    }
+    // Turn stations against each other: a sweep along x.
+    std::vector<size_t> order(stations.size());
+    for (size_t k = 0; k < order.size(); ++k) {
+        order[k] = k;
+    }
+    std::sort(order.begin(), order.end(), [&](size_t a, size_t b) { return stations[a].outline.xMin < stations[b].outline.xMin; });
+    for (size_t i = 0; i < order.size(); ++i) {
+        const auto& a = stations[order[i]];
+        for (size_t j = i + 1; j < order.size(); ++j) {
+            const auto& b = stations[order[j]];
+            if (b.outline.xMin >= a.outline.xMax) {
+                break;
+            }
+            if (a.turn == b.turn || b.outline.yMin >= a.outline.yMax || a.outline.yMin >= b.outline.yMax) {
+                continue;
+            }
+            const double depth = penetration_depth(a.outline, b.outline);
+            if (depth <= kStoredCoordinateResolution) {
+                continue;
+            }
+            CopperOverlap overlap;
+            overlap.kind = CopperOverlapKind::TURN_TURN;
+            const size_t first = std::min(a.turn, b.turn), second = std::max(a.turn, b.turn);
+            overlap.first = turns[first].get_name();
+            overlap.firstWinding = turns[first].get_winding();
+            overlap.second = turns[second].get_name();
+            overlap.secondWinding = turns[second].get_winding();
+            overlap.overlap = depth;
+            overlap.region = overlap_region(a.outline, b.outline);
+            overlaps.push_back(overlap);
+        }
+    }
+    // The terminal leads are judged only on a real-winding layout -- the coil's own record, not the
+    // ambient setting: a consumer reads the layout long after the wind that decided it. Since ABT
+    // #2071 a real wind that produced turns is always blocked, whether or not its ideal wind fits.
+    if (!is_real_winding_blocking_applied()) {
+        return overlaps;
+    }
+    std::vector<ConnectionRoute> routes;
+    const auto spaces = get_connection_reserved_spaces(&routes);
+    auto leadName = [](const ConnectionRoute& route) {
+        const bool entrance = route.kind == ConnectionKind::TERMINAL_ENTRANCE;
+        return std::string(entrance ? "entrance" : "exit") + " lead of '" + (entrance ? route.toTurn : route.fromTurn) + "'";
+    };
+    // A tangent lead's collisions, judged by its departure out along the lead (LeadTurnCollision):
+    // drawn in the section across the lead's own radial band, over the axial band the coppers share.
+    for (const auto& route : routes) {
+        if (!route.tangentDeparture || route.tangentDeparture->collisions.empty()) {
+            continue;
+        }
+        const bool entrance = route.kind == ConnectionKind::TERMINAL_ENTRANCE;
+        const std::string& attachedName = entrance ? route.toTurn : route.fromTurn;
+        const auto attached = std::find_if(turns.begin(), turns.end(), [&](const Turn& turn) { return turn.get_name() == attachedName; });
+        if (attached == turns.end()) {
+            throw std::logic_error("The terminal route of winding '" + route.winding + "' attaches to turn '" + attachedName +
+                                   "', which is not among the coil's turns");
+        }
+        const auto leadDimensions = attached->get_dimensions().value();
+        const double leadX = attached->get_coordinates()[0];
+        for (const auto& collision : route.tangentDeparture->collisions) {
+            const auto other = std::find_if(turns.begin(), turns.end(), [&](const Turn& turn) { return turn.get_name() == collision.turnName; });
+            if (other == turns.end()) {
+                throw std::logic_error("A tangent lead's collision names turn '" + collision.turnName + "', which is not among the coil's turns");
+            }
+            const double otherHeight = other->get_dimensions().value()[1];
+            const double low = std::max(collision.leadHeight - leadDimensions[1] / 2, collision.turnHeight - otherHeight / 2);
+            const double high = std::min(collision.leadHeight + leadDimensions[1] / 2, collision.turnHeight + otherHeight / 2);
+            CopperOverlap overlap;
+            overlap.kind = CopperOverlapKind::LEAD_TURN;
+            overlap.tangentLead = true;
+            overlap.first = leadName(route);
+            overlap.firstWinding = route.winding;
+            overlap.second = collision.turnName;
+            overlap.secondWinding = other->get_winding();
+            overlap.overlap = collision.overlap;
+            overlap.region = {{leadX - leadDimensions[0] / 2, low}, {leadX + leadDimensions[0] / 2, low},
+                              {leadX + leadDimensions[0] / 2, high}, {leadX - leadDimensions[0] / 2, high}};
+            overlaps.push_back(overlap);
+        }
+    }
+    // The drawn runs of the other terminal leads: their reserved rectangles in the section.
+    struct LeadRun {
+        size_t route;
+        ConvexOutline outline;
+    };
+    std::vector<LeadRun> runs;
+    for (const auto& space : spaces) {
+        if (!space.isTerminal || !space.layer.empty() || space.plane != RoutePlane::WINDOW_XY || space.dimensions.size() < 2) {
+            continue;
+        }
+        const bool entrance = space.kind == ConnectionKind::TERMINAL_ENTRANCE;
+        const auto route = std::find_if(routes.begin(), routes.end(), [&](const ConnectionRoute& candidate) {
+            return candidate.kind == space.kind && candidate.winding == space.winding && candidate.parallel == space.parallel &&
+                   (entrance ? candidate.toTurn == space.toTurn : candidate.fromTurn == space.fromTurn);
+        });
+        if (route == routes.end()) {
+            throw std::logic_error("A terminal reserved space of winding '" + space.winding + "' belongs to no route");
+        }
+        runs.push_back({size_t(route - routes.begin()),
+                        rectangle_outline(space.coordinates[0], space.coordinates[1], space.dimensions[0], space.dimensions[1], space.rotation)});
+    }
+    // A radial run across a turn other than the one it leaves (a tangent lead's footprint is its own
+    // turn's station and is judged out along the lead, above).
+    for (const auto& run : runs) {
+        const auto& route = routes[run.route];
+        if (route.tangentDeparture || route.axialLead) {
+            continue;
+        }
+        const bool entrance = route.kind == ConnectionKind::TERMINAL_ENTRANCE;
+        const std::string& attachedName = entrance ? route.toTurn : route.fromTurn;
+        for (const auto& station : stations) {
+            const auto& turn = turns[station.turn];
+            if (turn.get_name() == attachedName || station.outline.xMin >= run.outline.xMax || run.outline.xMin >= station.outline.xMax ||
+                station.outline.yMin >= run.outline.yMax || run.outline.yMin >= station.outline.yMax) {
+                continue;
+            }
+            const double depth = penetration_depth(run.outline, station.outline);
+            if (depth <= kStoredCoordinateResolution) {
+                continue;
+            }
+            CopperOverlap overlap;
+            overlap.kind = CopperOverlapKind::LEAD_TURN;
+            overlap.first = leadName(route);
+            overlap.firstWinding = route.winding;
+            overlap.second = turn.get_name();
+            overlap.secondWinding = turn.get_winding();
+            overlap.overlap = depth;
+            overlap.region = overlap_region(run.outline, station.outline);
+            overlaps.push_back(overlap);
+        }
+    }
+    // Two terminal leads through each other: their runs overlap in the section AND along the connection
+    // face, where each stands at its slot (a radial lead's exitSlot, a tangent one's lateral face, an
+    // axial one's place along the face) one outer width wide -- the pitch terminal_exit_slots spaces them by.
+    auto alongFace = [&](const ConnectionRoute& route) -> std::optional<double> {
+        if (route.tangentDeparture) {
+            return route.tangentDeparture->point[0];
+        }
+        if (route.axialLead) {
+            return route.axialLead->alongFace;
+        }
+        return route.exitSlot;
+    };
+    auto wires = get_wires();
+    for (size_t i = 0; i < runs.size(); ++i) {
+        for (size_t j = i + 1; j < runs.size(); ++j) {
+            const auto& a = routes[runs[i].route];
+            const auto& b = routes[runs[j].route];
+            if (runs[i].route == runs[j].route || a.side != b.side) {
+                continue;
+            }
+            const auto aAlong = alongFace(a), bAlong = alongFace(b);
+            if (!aAlong || !bAlong) {
+                throw std::logic_error("Terminal leads '" + leadName(a) + "' and '" + leadName(b) + "' carry no place along the connection face");
+            }
+            const double aWidth = wires[get_winding_index_by_name(a.winding)].get_maximum_outer_width();
+            const double bWidth = wires[get_winding_index_by_name(b.winding)].get_maximum_outer_width();
+            if (std::abs(aAlong.value() - bAlong.value()) >= (aWidth + bWidth) / 2 - kStoredCoordinateResolution) {
+                continue;
+            }
+            const double depth = penetration_depth(runs[i].outline, runs[j].outline);
+            if (depth <= kStoredCoordinateResolution) {
+                continue;
+            }
+            CopperOverlap overlap;
+            overlap.kind = CopperOverlapKind::LEAD_LEAD;
+            overlap.first = leadName(a);
+            overlap.firstWinding = a.winding;
+            overlap.second = leadName(b);
+            overlap.secondWinding = b.winding;
+            overlap.overlap = std::min(depth, (aWidth + bWidth) / 2 - std::abs(aAlong.value() - bAlong.value()));
+            overlap.region = overlap_region(runs[i].outline, runs[j].outline);
+            overlaps.push_back(overlap);
+        }
+    }
+    return overlaps;
+}
+
+std::vector<TurnOutsideWindow> Coil::judge_turns_outside_window() {
+    std::vector<TurnOutsideWindow> outside;
+    if (!get_turns_description()) {
+        return outside;
+    }
+    auto bobbin = resolve_bobbin();
+    if (bobbin.get_winding_window_shape() != WindingWindowShape::RECTANGULAR) {
+        return outside;   // round windows block angularly (ABT #187), judged by the toroidal fill
+    }
+    auto processedDescription = bobbin.get_processed_description();   // by value: bind before indexing
+    if (!processedDescription || processedDescription->get_winding_windows().empty()) {
+        throw InvalidInputException(ErrorCode::MISSING_DATA, "The bobbin has no winding windows to judge the turns against");
+    }
+    const auto windingWindows = processedDescription->get_winding_windows();
+    struct WindowBox { double x0, x1, y0, y1; };
+    std::vector<WindowBox> boxes;
+    for (size_t w = 0; w < windingWindows.size(); ++w) {
+        const auto& window = windingWindows[w];
+        if (!window.get_coordinates() || !window.get_width() || !window.get_height()) {
+            throw InvalidInputException(ErrorCode::MISSING_DATA, "Winding window " + std::to_string(w) +
+                                        " of the bobbin is rectangular but has no coordinates, width or height");
+        }
+        const auto centre = window.get_coordinates().value();
+        boxes.push_back({centre[0] - window.get_width().value() / 2, centre[0] + window.get_width().value() / 2,
+                         centre[1] - window.get_height().value() / 2, centre[1] + window.get_height().value() / 2});
+    }
+    const auto turns = get_turns_description().value();   // bound: never range over a temporary
+    for (const auto& turn : turns) {
+        for (const auto& outline : turn_station_outlines(turn)) {
+            // The window the station belongs to: the one it overruns least.
+            std::optional<TurnOutsideWindow> best;
+            for (size_t w = 0; w < boxes.size(); ++w) {
+                const auto& box = boxes[w];
+                const std::array<std::pair<double, TurnOutsideWindow::Side>, 4> overruns{{
+                    {outline.xMax - box.x1, TurnOutsideWindow::Side::OUTER},
+                    {box.x0 - outline.xMin, TurnOutsideWindow::Side::INNER},
+                    {outline.yMax - box.y1, TurnOutsideWindow::Side::TOP},
+                    {box.y0 - outline.yMin, TurnOutsideWindow::Side::BOTTOM}}};
+                const auto worst = *std::max_element(overruns.begin(), overruns.end(),
+                                                     [](const auto& a, const auto& b) { return a.first < b.first; });
+                if (!best || worst.first < best->overrun) {
+                    TurnOutsideWindow candidate;
+                    candidate.windowIndex = w;
+                    candidate.overrun = worst.first;
+                    candidate.side = worst.second;
+                    best = candidate;
+                }
+            }
+            if (best->overrun <= kStoredCoordinateResolution) {
+                continue;   // inside, or touching a side
+            }
+            TurnOutsideWindow judged = best.value();
+            judged.turn = turn.get_name();
+            judged.winding = turn.get_winding();
+            // The copper past each side, clipped by the strip beyond that side over the outline's own
+            // extent (the two axial strips between the window's inner and outer sides, so no piece is
+            // counted twice).
+            const auto& box = boxes[judged.windowIndex];
+            auto strip = [](double x0, double x1, double y0, double y1) {
+                return rectangle_outline((x0 + x1) / 2, (y0 + y1) / 2, x1 - x0, y1 - y0, 0);
+            };
+            const double xLow = std::max(outline.xMin, box.x0), xHigh = std::min(outline.xMax, box.x1);
+            std::vector<ConvexOutline> strips;
+            if (outline.xMax - box.x1 > kStoredCoordinateResolution) {
+                strips.push_back(strip(box.x1, outline.xMax, outline.yMin, outline.yMax));
+            }
+            if (box.x0 - outline.xMin > kStoredCoordinateResolution) {
+                strips.push_back(strip(outline.xMin, box.x0, outline.yMin, outline.yMax));
+            }
+            if (xHigh > xLow && outline.yMax - box.y1 > kStoredCoordinateResolution) {
+                strips.push_back(strip(xLow, xHigh, box.y1, outline.yMax));
+            }
+            if (xHigh > xLow && box.y0 - outline.yMin > kStoredCoordinateResolution) {
+                strips.push_back(strip(xLow, xHigh, outline.yMin, box.y0));
+            }
+            for (const auto& beyond : strips) {
+                auto region = overlap_region(outline, beyond);
+                if (region.size() >= 3) {
+                    judged.regions.push_back(region);
+                }
+            }
+            if (judged.regions.empty()) {
+                throw std::logic_error("Turn '" + turn.get_name() + "' overruns its winding window by " + std::to_string(judged.overrun) +
+                                       " m but no copper region past the window was found");
+            }
+            outside.push_back(judged);
+        }
+    }
+    return outside;
 }
 
 std::vector<WindingLeadsBelowFlexibility> Coil::judge_leads_against_wire_flexibility() {

@@ -326,6 +326,54 @@ struct TangentDeparture {
     std::vector<TangentLeadUnmodelled> unmodelled;
 };
 
+// Alf, 2026-10-25 (draw and report; ABT #2071): copper of the drawn design that overlaps other copper,
+// in the winding-window section (the frame turns and connection reserved spaces are in). Never a
+// refusal: the design is drawn as wound and routed, analyze_results reports each kind, and the Painter
+// draws `region` in red (a consumer that welds, like MVB++'s CAD, fuses it instead).
+enum class CopperOverlapKind {
+    TURN_TURN,   // two turn stations' outlines (coating included) overlap
+    LEAD_TURN,   // a terminal lead is drawn across a turn
+    LEAD_LEAD,   // two terminal leads are drawn through each other
+};
+
+struct CopperOverlap {
+    CopperOverlapKind kind = CopperOverlapKind::TURN_TURN;
+    std::string first;           // a turn's name, or a lead's ("entrance lead of '<turn>'")
+    std::string firstWinding;
+    std::string second;          // the turn or lead it overlaps
+    std::string secondWinding;
+    // The depth the two outlines interpenetrate: the least distance one would have to move for them
+    // only to touch [m], > 0. For a tangent lead across a turn: LeadTurnCollision::overlap.
+    double overlap = 0;
+    // LEAD_TURN only: the lead leaves tangentially, and the collision is its TangentDeparture's (the
+    // turn's corner meets the lead's straight out on the connection face, LeadTurnCollision).
+    bool tangentLead = false;
+    // The overlapping copper as a closed polygon {x, y} in the section, in order: exact for straight
+    // outlines, round ones sampled along their arcs. For a tangent lead, the lead's own radial band
+    // across the axial band in which the two coppers overlap.
+    std::vector<std::vector<double>> region;
+};
+
+// Alf, 2026-10-25 (draw and report; ABT #2071): a turn station whose copper lies outside the winding
+// window it is wound in -- in the ferrite or past the former. Never a refusal: the design is drawn as
+// wound, analyze_results reports it (TURNS_OUTSIDE_WINDOW), and the Painter draws `regions` in red.
+// Judged in the winding-window section against the bobbin's rectangular winding windows (the same
+// envelope are_turns_inside_winding_window tests), from the turn's own outline (its dimensions, shape
+// and rotation): exact, no padding. A turn that only touches a window side is inside.
+struct TurnOutsideWindow {
+    std::string turn;
+    std::string winding;
+    // The window the turn belongs to: the one it overruns least (a multi-column coil has several).
+    size_t windowIndex = 0;
+    // How far the turn's copper reaches past that window [m], > 0: the largest of its four overruns.
+    double overrun = 0;
+    // Which side that largest overrun is past.
+    enum class Side { OUTER, INNER, TOP, BOTTOM } side = Side::OUTER;
+    // The copper outside the window as closed polygons {x, y} in the section (one per side it crosses):
+    // exact for straight outlines, round ones sampled along their arcs.
+    std::vector<std::vector<std::vector<double>>> regions;
+};
+
 // ABT #1907 (Alf, 2026-10-18): a FOIL end that leaves through the END FACE (connections[].exit:
 // axial) on its stated lead conductor (connections[].leadConductor, a round wire). The lead lies
 // on the sheet's OUTER face, tangent to it -- copper on copper, no gap and no overlap ("the lead
@@ -974,6 +1022,20 @@ class Coil : public MAS::Coil {
             std::vector<TangentLeadUnmodelled> conditions;
         };
         std::vector<UnmodelledLeadJudgement> judge_unmodelled_tangent_leads();
+        // Alf, 2026-10-25 (ABT #2071): every place the drawn design's copper overlaps other copper in
+        // the winding-window section -- turn stations overlapping each other (a wind that does not fit
+        // its window still produces its turns), terminal leads drawn across turns (a tangent lead's
+        // collisions, and a radial lead's reserved run over a turn's outline), and terminal leads
+        // drawn through each other. ONE source for ResultsAnalyzer's findings and the Painter's red
+        // overlaps. Throws when a turn lacks the dimensions or cross-sectional shape it is drawn with.
+        std::vector<CopperOverlap> judge_copper_overlaps();
+        // Alf, 2026-10-25 (ABT #2071): every turn station of the drawn coil whose copper lies outside the
+        // rectangular winding window it belongs to, with how far and on which side (TurnOutsideWindow).
+        // ONE source for ResultsAnalyzer's TURNS_OUTSIDE_WINDOW finding and the Painter's red copper.
+        // Empty for a coil without turns, and for round (toroidal) windows, which block angularly and
+        // are judged by the toroidal fill, as in are_turns_inside_winding_window. Throws when a turn
+        // lacks the dimensions or cross-sectional shape it is drawn with, or the bobbin its windows.
+        std::vector<TurnOutsideWindow> judge_turns_outside_window();
         // ABT #1290 (Alf, 2026-09-20): under REAL WINDING, refuse a layout that draws a corner
         // tighter than the wire itself can be bent. ABT #2004 (Alf, 2026-10-22): an EDGEWISE bend
         // of rectangular wire is not refused -- IEC 60317-0-2 Table 6 qualifies the coating, it is

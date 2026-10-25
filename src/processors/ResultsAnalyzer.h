@@ -66,6 +66,18 @@ enum class ResultFindingCode {
     // that changes layer, a one-turn conductor: TangentLeadCondition). It is drawn on its best route; one
     // per lead, naming the winding, the lead and each condition with its numbers. No operating point.
     LEAD_ROUTE_NOT_MODELLED,
+    // Alf, 2026-10-25 (ABT #2071): turn stations of the drawn coil overlap one another (a wind that does
+    // not fit its window still produces its turns). One for the coil, naming the overlapping turns, how
+    // many places they overlap and the worst overlap. No operating point.
+    TURNS_OVERLAP,
+    // Alf, 2026-10-25: two terminal leads of the real-winding layout are drawn through each other. One
+    // per pair, naming both and their overlap. No operating point.
+    LEADS_COLLIDE,
+    // Alf, 2026-10-25 (ABT #2071): turn stations of the drawn coil lie outside the winding window they
+    // are wound in (a wind that does not fit its window is laid out as wound, overflowing). One per
+    // winding, naming each turn outside, how far past the window it reaches and past which side.
+    // No operating point.
+    TURNS_OUTSIDE_WINDOW,
 };
 
 std::string to_string(ResultFindingCode code);
@@ -188,9 +200,21 @@ class ResultsAnalyzer {
     // One LEAD_ROUTE_NOT_MODELLED finding per terminal lead drawn on a tangent route MKF does not model
     // in full (Coil::judge_unmodelled_tangent_leads). Nothing under ideal winding.
     static std::vector<ResultFinding> analyze_unmodelled_leads(const Magnetic& magnetic);
+
+    // The copper the drawn design overlaps (Coil::judge_copper_overlaps, the same overlaps the Painter
+    // draws in red): one TURNS_OVERLAP finding when turn stations overlap, one LEAD_COLLIDES_WITH_TURNS
+    // per radial terminal lead drawn across turns (a tangent lead's are analyze_lead_collisions'), and
+    // one LEADS_COLLIDE per pair of terminal leads drawn through each other.
+    static std::vector<ResultFinding> analyze_copper_overlaps(const Magnetic& magnetic);
+
+    // One TURNS_OUTSIDE_WINDOW finding per winding with turn stations outside their winding window
+    // (Coil::judge_turns_outside_window, the same copper the Painter draws in red).
+    static std::vector<ResultFinding> analyze_turns_outside_window(const Magnetic& magnetic);
+
     // Every finding of a simulated MAS (as MagneticSimulator::simulate returns it: one output per
     // operating point), ordered by operating point, then saturation, volt-second balance, temperature;
-    // then the findings about the magnetic itself (analyze_winding_bends, analyze_lead_collisions).
+    // then the findings about the magnetic itself (analyze_winding_bends, analyze_lead_collisions,
+    // analyze_unmodelled_leads, analyze_copper_overlaps, analyze_turns_outside_window).
     // An output without a temperature goes to analyze_missing_temperature instead of the temperature checks
     // (ABT #1876): NO_THERMAL_OPERATING_POINT, or a throw for a fast-mode output. An output without core losses
     // goes to analyze_flux_density_past_magnetisation_curve instead of the saturation and temperature checks

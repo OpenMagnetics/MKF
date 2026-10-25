@@ -13,6 +13,7 @@
 #include <magic_enum.hpp>
 
 #include <algorithm>
+#include <map>
 #include <cmath>
 #include <iomanip>
 #include <sstream>
@@ -31,6 +32,9 @@ std::string to_string(ResultFindingCode code) {
         case ResultFindingCode::NO_THERMAL_OPERATING_POINT: return "NO_THERMAL_OPERATING_POINT";
         case ResultFindingCode::LEAD_COLLIDES_WITH_TURNS: return "LEAD_COLLIDES_WITH_TURNS";
         case ResultFindingCode::LEAD_ROUTE_NOT_MODELLED: return "LEAD_ROUTE_NOT_MODELLED";
+        case ResultFindingCode::TURNS_OVERLAP: return "TURNS_OVERLAP";
+        case ResultFindingCode::LEADS_COLLIDE: return "LEADS_COLLIDE";
+        case ResultFindingCode::TURNS_OUTSIDE_WINDOW: return "TURNS_OUTSIDE_WINDOW";
         case ResultFindingCode::EDGEWISE_BEND_BELOW_COATING_MANDREL: return "EDGEWISE_BEND_BELOW_COATING_MANDREL";
     }
     throw InvalidInputException(ErrorCode::INVALID_INPUT, "Unknown result finding code " + std::to_string(static_cast<int>(code)));
@@ -609,6 +613,141 @@ std::vector<ResultFinding> ResultsAnalyzer::analyze_unmodelled_leads(const Magne
     return findings;
 }
 
+std::vector<ResultFinding> ResultsAnalyzer::analyze_copper_overlaps(const Magnetic& magnetic) {
+    // A copy: judging resolves the coil's bobbin and column frames, and the magnetic is const here.
+    OpenMagnetics::Coil coil = magnetic.get_coil();
+    auto millimetres = [](double metres) {
+        return format_significant(metres * 1000, 3);
+    };
+    const auto overlaps = coil.judge_copper_overlaps();
+    std::vector<ResultFinding> findings;
+
+    // The turn stations, all in one finding.
+    std::vector<const CopperOverlap*> turnOverlaps;
+    for (const auto& overlap : overlaps) {
+        if (overlap.kind == CopperOverlapKind::TURN_TURN) {
+            turnOverlaps.push_back(&overlap);
+        }
+    }
+    if (!turnOverlaps.empty()) {
+        const auto worst = *std::max_element(turnOverlaps.begin(), turnOverlaps.end(),
+                                             [](const CopperOverlap* a, const CopperOverlap* b) { return a->overlap < b->overlap; });
+        std::vector<std::string> names;
+        const auto turns = coil.get_turns_description().value();   // bound: never range over a temporary
+        for (const auto& turn : turns) {
+            const bool overlapping = std::any_of(turnOverlaps.begin(), turnOverlaps.end(), [&](const CopperOverlap* overlap) {
+                return overlap->first == turn.get_name() || overlap->second == turn.get_name();
+            });
+            if (overlapping) {
+                names.push_back("'" + turn.get_name() + "'");
+            }
+        }
+        std::string list;
+        for (size_t k = 0; k < names.size(); ++k) {
+            list += (k == 0 ? "" : ", ") + names[k];
+        }
+        auto describe = [](const std::string& turn, const std::string& winding) {
+            return "'" + turn + "' (winding '" + winding + "')";
+        };
+        ResultFinding finding;
+        finding.code = ResultFindingCode::TURNS_OVERLAP;
+        finding.message = "Warning: " + std::to_string(names.size()) + " turn stations of the coil overlap one another, in " +
+                          std::to_string(turnOverlaps.size()) + " place" + (turnOverlaps.size() == 1 ? "" : "s") +
+                          "; the worst, " + describe(worst->first, worst->firstWinding) + " and " +
+                          describe(worst->second, worst->secondWinding) + ", overlap by " + millimetres(worst->overlap) +
+                          " mm (their outlines, coating included). Overlapping: " + list +
+                          ". The coil is drawn as wound; its turns do not fit where they are laid.";
+        findings.push_back(finding);
+    }
+
+    // A radial lead across turns: one per lead, with the worst turn it crosses.
+    std::vector<std::string> leadOrder;
+    std::map<std::string, std::vector<const CopperOverlap*>> byLead;
+    for (const auto& overlap : overlaps) {
+        if (overlap.kind != CopperOverlapKind::LEAD_TURN || overlap.tangentLead) {
+            continue;
+        }
+        const std::string key = overlap.firstWinding + "\n" + overlap.first;
+        if (!byLead.count(key)) {
+            leadOrder.push_back(key);
+        }
+        byLead[key].push_back(&overlap);
+    }
+    for (const auto& key : leadOrder) {
+        const auto& crossings = byLead.at(key);
+        const auto worst = *std::max_element(crossings.begin(), crossings.end(),
+                                             [](const CopperOverlap* a, const CopperOverlap* b) { return a->overlap < b->overlap; });
+        std::string message = "Warning: winding '" + worst->firstWinding + "' has its " + worst->first + " drawn across turn '" +
+                              worst->second + "' in the winding window, where their copper overlaps by " + millimetres(worst->overlap) + " mm";
+        if (crossings.size() > 1) {
+            message += " (the worst of " + std::to_string(crossings.size()) + " turns it crosses)";
+        }
+        message += ". The coil is drawn as routed; the lead collides with the winding there.";
+        ResultFinding finding;
+        finding.code = ResultFindingCode::LEAD_COLLIDES_WITH_TURNS;
+        finding.message = message;
+        findings.push_back(finding);
+    }
+
+    for (const auto& overlap : overlaps) {
+        if (overlap.kind != CopperOverlapKind::LEAD_LEAD) {
+            continue;
+        }
+        ResultFinding finding;
+        finding.code = ResultFindingCode::LEADS_COLLIDE;
+        finding.message = "Warning: the " + overlap.first + " (winding '" + overlap.firstWinding + "') and the " + overlap.second +
+                          " (winding '" + overlap.secondWinding + "') are drawn through each other, overlapping by " +
+                          millimetres(overlap.overlap) + " mm. The coil is drawn as routed; the two leads collide there.";
+        findings.push_back(finding);
+    }
+    return findings;
+}
+
+std::vector<ResultFinding> ResultsAnalyzer::analyze_turns_outside_window(const Magnetic& magnetic) {
+    // A copy: judging resolves the coil's bobbin, and the magnetic is const here.
+    OpenMagnetics::Coil coil = magnetic.get_coil();
+    auto millimetres = [](double metres) {
+        return format_significant(metres * 1000, 3);
+    };
+    auto side = [](TurnOutsideWindow::Side which) {
+        switch (which) {
+            case TurnOutsideWindow::Side::OUTER: return std::string("radially outward, past the window's outer side");
+            case TurnOutsideWindow::Side::INNER: return std::string("radially inward, past the window's inner side");
+            case TurnOutsideWindow::Side::TOP: return std::string("axially, past the window's top");
+            case TurnOutsideWindow::Side::BOTTOM: return std::string("axially, past the window's bottom");
+        }
+        throw std::logic_error("Unknown winding window side");
+    };
+    const auto outside = coil.judge_turns_outside_window();
+    std::vector<std::string> windingOrder;
+    std::map<std::string, std::vector<const TurnOutsideWindow*>> byWinding;
+    for (const auto& turn : outside) {
+        if (!byWinding.count(turn.winding)) {
+            windingOrder.push_back(turn.winding);
+        }
+        byWinding[turn.winding].push_back(&turn);
+    }
+    std::vector<ResultFinding> findings;
+    for (const auto& winding : windingOrder) {
+        const auto& turns = byWinding.at(winding);
+        const auto worst = *std::max_element(turns.begin(), turns.end(),
+                                             [](const TurnOutsideWindow* a, const TurnOutsideWindow* b) { return a->overrun < b->overrun; });
+        std::string list;
+        for (size_t k = 0; k < turns.size(); ++k) {
+            list += (k == 0 ? "" : ", ") + ("'" + turns[k]->turn + "' " + millimetres(turns[k]->overrun) + " mm");
+        }
+        ResultFinding finding;
+        finding.code = ResultFindingCode::TURNS_OUTSIDE_WINDOW;
+        finding.message = "Warning: winding '" + winding + "' has " + std::to_string(turns.size()) + " turn station" +
+                          (turns.size() == 1 ? "" : "s") + " outside its winding window; the worst, '" + worst->turn +
+                          "', reaches " + millimetres(worst->overrun) + " mm " + side(worst->side) +
+                          ". Outside, by how far its copper reaches past the window: " + list +
+                          ". The coil is drawn as wound; these turns do not fit in the window.";
+        findings.push_back(finding);
+    }
+    return findings;
+}
+
 std::vector<ResultFinding> ResultsAnalyzer::analyze_winding_bends(const Magnetic& magnetic) {
     // A copy: judging resolves the coil's bobbin and column frames, and the magnetic is const here.
     OpenMagnetics::Coil coil = magnetic.get_coil();
@@ -761,6 +900,12 @@ std::vector<ResultFinding> ResultsAnalyzer::analyze_results(const Mas& mas) {
         findings.push_back(finding);
     }
     for (auto& finding : analyze_unmodelled_leads(mas.get_magnetic())) {
+        findings.push_back(finding);
+    }
+    for (auto& finding : analyze_copper_overlaps(mas.get_magnetic())) {
+        findings.push_back(finding);
+    }
+    for (auto& finding : analyze_turns_outside_window(mas.get_magnetic())) {
         findings.push_back(finding);
     }
     return findings;
