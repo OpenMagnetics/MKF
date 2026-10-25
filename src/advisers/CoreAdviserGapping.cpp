@@ -1,6 +1,6 @@
 #include "advisers/CoreAdviser.h"
 #include "advisers/MagneticFilter.h"
-#include "advisers/MagneticFilterInternal.h"  // is_energy_storing_topology
+#include "advisers/MagneticFilterInternal.h"  // is_transformer_role
 #include "constructive_models/Bobbin.h"
 #include "constructive_models/Insulation.h"
 #include "constructive_models/NumberTurns.h"
@@ -304,9 +304,9 @@ void CoreAdviser::add_gapping_standard_cores(std::vector<std::pair<Magnetic, dou
     // - The gap is computed directly: gap = (N² / Lm - R_core) × μ₀ × Ae,
     //   where N comes from the same volt-seconds estimate as add_initial_turns_by_inductance.
     // When only a minimum inductance is specified (want high Lm), no gap is needed.
-    // is_inductor, not the topology alone: the resonant inductor of an LLC carries the
+    // The role (magnetic_role), not the topology alone: the resonant inductor of an LLC carries the
     // converter's topology but is one winding, and must be gapped as an inductor (ABT #1411).
-    bool isTransformer = !is_inductor(inputs);
+    bool isTransformer = is_transformer_role(inputs);
 
     bool skipGapping = isTransformer && !hasNominalInductance && !hasMaxInductance;
 

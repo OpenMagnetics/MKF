@@ -193,7 +193,7 @@ std::pair<bool, double> MagneticFilterLeakageInductance::evaluate_minimize_leaka
     OpenMagnetics::MagnetizingInductance magnetizingInductanceModel("ZHANG");
     // ABT #1787: the topology tells a DMC from a CMC (their magnetizing currents differ); without it
     // a DMC took the CMC branch, as the Sweeper did before ABT #1754.
-    magnetizingInductanceModel.set_topology(inputs->get_design_requirements().get_topology());
+    magnetizingInductanceModel.set_topology(magnetizing_model_topology(*inputs));
     OperatingPoint* operatingPoint = nullptr;
     if (inputs->get_operating_points().size() > 0) {
         operatingPoint = &inputs->get_mutable_operating_points()[0];
@@ -451,7 +451,7 @@ std::pair<bool, double> MagneticFilterTemperature::evaluate_magnetic(
             magneticFluxDensity = cached->magneticFluxDensity;
         } else {
             auto opCopy = op;
-            _magnetizingInductance.set_topology(inputs->get_design_requirements().get_topology());
+            _magnetizingInductance.set_topology(magnetizing_model_topology(*inputs));
             auto [L, B] = _magnetizingInductance.calculate_inductance_and_magnetic_flux_density(core, coil, &opCopy);
             (void)L;
             magneticFluxDensity = B;

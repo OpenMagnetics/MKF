@@ -4434,3 +4434,109 @@ TEST_CASE("Test_CoreAdviser_AreaProduct_First_Cull_Copies_Only_Kept_Survivors", 
     CHECK(source.size() == cores.size());
     settings.reset();
 }
+
+// ABT #1469 guards: with no topology, the categorical choices read magnetic_role (here the storage
+// ratio from the voltages and currents), never the shape of the magnetizing-inductance tolerance.
+TEST_CASE("Test_CoreAdviser_Min_Only_Lm_Flyback_Without_Topology_Is_Gapped", "[adviser][core-adviser][abt-1469]") {
+    // The #1467 balanced DCM flyback (42:6, 100 kHz, no topology) asked for "at least 225 uH". A
+    // minimum-only magnetizing inductance used to read as a transformer's, so the gapping stage left
+    // the core ungapped; the flyback stores its energy in a gap.
+    settings.reset();
+    clear_databases();
+    auto inputs = load_abt1875_inputs("Test_Magnetizing_Current_Dcm_Flyback_Balanced.json");
+    REQUIRE_FALSE(inputs.get_design_requirements().get_topology());
+    MAS::DimensionWithTolerance minimumOnly;
+    minimumOnly.set_minimum(225e-6);
+    inputs.get_mutable_design_requirements().set_magnetizing_inductance(minimumOnly);
+    inputs = pre_process_inputs(inputs);
+    CHECK(magnetic_role(inputs).role == MagneticRole::STORING);
+
+    OpenMagnetics::Magnetic magnetic;
+    magnetic.set_core(OpenMagneticsTesting::get_quick_core("E 25/13/7", OpenMagneticsTesting::get_residual_gap(), 1, "3C95"));
+    magnetic.set_coil(OpenMagnetics::Coil());
+    std::vector<std::pair<OpenMagnetics::Magnetic, double>> magneticsWithScoring{{magnetic, 1.0}};
+    CoreAdviser coreAdviser;
+    coreAdviser.add_gapping_standard_cores(&magneticsWithScoring, inputs);
+    REQUIRE(magneticsWithScoring.size() == 1);
+    auto core = magneticsWithScoring[0].first.get_core();
+    INFO(core.get_name().value_or("?"));
+    double largestGap = 0;
+    for (const auto& gap : core.get_functional_description().get_gapping()) {
+        largestGap = std::max(largestGap, gap.get_length());
+    }
+    CHECK(largestGap > 2 * constants.residualGap);
+    settings.reset();
+}
+
+TEST_CASE("Test_CoreAdviser_Dab_Advises_The_Same_With_Or_Without_Topology", "[adviser][core-adviser][abt-1469]") {
+    // The 1.5 kW 400 V / 48 V DAB (7.5:1, 490 uH +/-10 %, 200 kHz). Every converter-model output
+    // carries a nominal magnetizing inductance; without the topology that nominal used to read as an
+    // inductor's, so the saturation gate compared I_sat against the full primary load current. The
+    // role (and so the advise) must not depend on whether the topology was declared.
+    settings.reset();
+    clear_databases();
+    auto withoutTopology = load_abt1875_inputs("abt1469_dab_1k5w_400v_48v_transformer.json");
+    REQUIRE_FALSE(withoutTopology.get_design_requirements().get_topology());
+    auto withTopology = withoutTopology;
+    withTopology.get_mutable_design_requirements().set_topology(MAS::Topology::DUAL_ACTIVE_BRIDGE_CONVERTER);
+    CHECK(magnetic_role(withTopology).role == MagneticRole::TRANSFORMER);
+    CHECK(magnetic_role(withoutTopology).role == magnetic_role(withTopology).role);
+
+    auto advise = [](OpenMagnetics::Inputs inputs) {
+        settings.reset();
+        clear_databases();
+        CoreAdviser coreAdviser;
+        auto results = coreAdviser.get_advised_core(inputs, abt1875_weights(), 5);
+        std::vector<std::pair<std::string, std::vector<int64_t>>> designs;
+        for (auto& [mas, scoring] : results) {
+            std::vector<int64_t> turns;
+            for (const auto& winding : mas.get_magnetic().get_coil().get_functional_description()) {
+                turns.push_back(winding.get_number_turns());
+            }
+            double largestGap = 0;
+            for (const auto& gap : mas.get_magnetic().get_core().get_functional_description().get_gapping()) {
+                largestGap = std::max(largestGap, gap.get_length());
+            }
+            designs.push_back({mas.get_magnetic().get_core().get_name().value_or("?") + " largest gap " + std::to_string(largestGap * 1e3) + " mm", turns});
+        }
+        return designs;
+    };
+    auto withDesigns = advise(withTopology);
+    auto withoutDesigns = advise(withoutTopology);
+    for (size_t i = 0; i < std::max(withDesigns.size(), withoutDesigns.size()); ++i) {
+        INFO("with topology: " << (i < withDesigns.size() ? withDesigns[i].first + " N1 " + std::to_string(withDesigns[i].second[0]) : "-")
+             << " | without: " << (i < withoutDesigns.size() ? withoutDesigns[i].first + " N1 " + std::to_string(withoutDesigns[i].second[0]) : "-"));
+        CHECK(true);
+    }
+    REQUIRE_FALSE(withDesigns.empty());
+    CHECK(withDesigns == withoutDesigns);
+    settings.reset();
+}
+
+TEST_CASE("Test_CoreAdviser_Csv_Design_Without_Topology_Or_SubApplication_Advises", "[adviser][core-adviser][abt-1469]") {
+    // A design uploaded as waveforms (an 8:1, 30 uH, 570 kHz CSV import) declares neither a topology
+    // nor a subApplication. That is descriptive metadata: the adviser decides the role from the
+    // waveforms and advises.
+    settings.reset();
+    clear_databases();
+    auto inputs = load_abt1875_inputs("Error_inductance_with_Csv.json");
+    REQUIRE_FALSE(inputs.get_design_requirements().get_topology());
+    REQUIRE_FALSE(inputs.get_design_requirements().get_sub_application());
+    MagneticRoleDecision decision;
+    REQUIRE_NOTHROW(decision = magnetic_role(inputs));
+    INFO("role " << magic_enum::enum_name(decision.role) << " from " << magic_enum::enum_name(decision.tier));
+    CoreAdviser coreAdviser;
+    std::vector<std::pair<OpenMagnetics::Mas, double>> results;
+    REQUIRE_NOTHROW(results = coreAdviser.get_advised_core(inputs, abt1875_weights(), 5));
+    for (auto& [mas, scoring] : results) {
+        double largestGap = 0;
+        for (const auto& gap : mas.get_magnetic().get_core().get_functional_description().get_gapping()) {
+            largestGap = std::max(largestGap, gap.get_length());
+        }
+        INFO(mas.get_magnetic().get_core().get_name().value_or("?") << " N1 "
+             << mas.get_magnetic().get_coil().get_functional_description()[0].get_number_turns() << " largest gap " << largestGap * 1e3 << " mm");
+        CHECK(true);
+    }
+    CHECK_FALSE(results.empty());
+    settings.reset();
+}

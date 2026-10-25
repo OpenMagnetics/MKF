@@ -21306,14 +21306,14 @@ std::vector<size_t> Coil::get_repetitions(Inputs& inputs, CoreType coreType) {
     // no bifilar interleave. Single-winding DMCs are plain inductors and
     // also take repetitions={1} (matches turnsRatios.size()==0 fallback
     // below, but make the intent explicit).
-    if (inputs.get_design_requirements().get_topology() &&
-        inputs.get_design_requirements().get_topology().value() == MAS::Topology::DIFFERENTIAL_MODE_CHOKE) {
+    // The declared role: the topology or the subApplication.
+    const auto declaredRole = declared_magnetic_role(inputs);
+    if (declaredRole && declaredRole->role == MagneticRole::DIFFERENTIAL_MODE_CHOKE) {
         return {1};
     }
     // CMCs on toroids need bifilar winding for common-mode rejection
     if (coreType == CoreType::TOROIDAL) {
-        if (inputs.get_design_requirements().get_sub_application() &&
-            inputs.get_design_requirements().get_sub_application().value() == SubApplication::COMMON_MODE_NOISE_FILTERING) {
+        if (declaredRole && declaredRole->role == MagneticRole::COMMON_MODE_CHOKE) {
             // Bifilar (interleaved) winding is preferred for CMCs to ensure matched impedance
             return {2, 1};
         }

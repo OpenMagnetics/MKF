@@ -3063,3 +3063,167 @@ TEST_CASE("Test_Volt_Second_Balance_Reads_The_Wound_Coil_Resistance_At_The_Solve
     REQUIRE(atAmbient.size() == 1);
     CHECK_THAT(atAmbient[0].message, Catch::Matchers::ContainsSubstring("at 25 C"));
 }
+
+// ABT #1469 guards: magnetic_role, the one categorical role (gapping, the inductor loss optimiser,
+// the ferrite-toroid drop, the choke handling), decided tier by tier and never throwing for missing
+// descriptive metadata. The flyback is the #1467 balanced DCM flyback (42:6, 250 uH, no topology);
+// the DAB is the 1.5 kW 400 V / 48 V corpus DAB (7.5:1, 490 uH, 200 kHz, no topology).
+namespace {
+    OpenMagnetics::Inputs abt1469_inputs(const std::string& fileName) {
+        auto path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), fileName);
+        std::ifstream in(path);
+        json masJson = json::parse(in);
+        return OpenMagnetics::Inputs(masJson.contains("inputs") ? masJson["inputs"] : masJson);
+    }
+    const std::string abt1469Flyback = "Test_Magnetizing_Current_Dcm_Flyback_Balanced.json";
+    const std::string abt1469Dab = "abt1469_dab_1k5w_400v_48v_transformer.json";
+
+    void abt1469_remove_signal(OpenMagnetics::Inputs& inputs, bool voltage, std::optional<size_t> onlyWinding = std::nullopt) {
+        for (auto& operatingPoint : inputs.get_mutable_operating_points()) {
+            auto& excitations = operatingPoint.get_mutable_excitations_per_winding();
+            for (size_t windingIndex = 0; windingIndex < excitations.size(); ++windingIndex) {
+                if (onlyWinding && windingIndex != onlyWinding.value()) {
+                    continue;
+                }
+                if (voltage) {
+                    excitations[windingIndex].set_voltage(std::nullopt);
+                }
+                else {
+                    excitations[windingIndex].set_current(std::nullopt);
+                }
+            }
+        }
+    }
+}
+
+TEST_CASE("Test_Magnetic_Role_Declared_Tiers", "[processor][inputs][abt-1469]") {
+    SECTION("One winding stores energy, whatever the topology") {
+        auto inputs = abt1469_inputs(abt1469Flyback);
+        inputs.get_mutable_design_requirements().set_turns_ratios({});
+        inputs.get_mutable_design_requirements().set_isolation_sides(std::nullopt);
+        inputs.get_mutable_design_requirements().set_topology(MAS::Topology::LLC_RESONANT_CONVERTER);
+        for (auto& operatingPoint : inputs.get_mutable_operating_points()) {
+            operatingPoint.get_mutable_excitations_per_winding().resize(1);
+        }
+        REQUIRE(OpenMagnetics::is_single_winding_design(inputs));
+        auto decision = OpenMagnetics::magnetic_role(inputs);
+        CHECK(decision.role == OpenMagnetics::MagneticRole::STORING);
+        CHECK(decision.tier == OpenMagnetics::MagneticRoleTier::SINGLE_WINDING);
+        // A choke topology names the component: a one-winding differential-mode choke stays one, for
+        // every site that reads the declared choke (the DMC core pre-filter, its repetitions).
+        inputs.get_mutable_design_requirements().set_topology(MAS::Topology::DIFFERENTIAL_MODE_CHOKE);
+        decision = OpenMagnetics::magnetic_role(inputs);
+        CHECK(decision.role == OpenMagnetics::MagneticRole::DIFFERENTIAL_MODE_CHOKE);
+        CHECK(decision.tier == OpenMagnetics::MagneticRoleTier::TOPOLOGY);
+        // Its subApplication alone does not: one winding stores energy, as before the role existed.
+        inputs.get_mutable_design_requirements().set_topology(std::nullopt);
+        inputs.get_mutable_design_requirements().set_sub_application("differentialModeNoiseFiltering");
+        CHECK(OpenMagnetics::magnetic_role(inputs).tier == OpenMagnetics::MagneticRoleTier::SINGLE_WINDING);
+    }
+    SECTION("The topology table decides a multi-winding design") {
+        auto inputs = abt1469_inputs(abt1469Flyback);
+        REQUIRE_FALSE(OpenMagnetics::is_single_winding_design(inputs));
+        std::vector<std::pair<MAS::Topology, OpenMagnetics::MagneticRole>> expected{
+            {MAS::Topology::DUAL_ACTIVE_BRIDGE_CONVERTER, OpenMagnetics::MagneticRole::TRANSFORMER},
+            {MAS::Topology::FLYBACK_CONVERTER, OpenMagnetics::MagneticRole::STORING},
+            {MAS::Topology::COMMON_MODE_CHOKE, OpenMagnetics::MagneticRole::COMMON_MODE_CHOKE},
+            {MAS::Topology::DIFFERENTIAL_MODE_CHOKE, OpenMagnetics::MagneticRole::DIFFERENTIAL_MODE_CHOKE}};
+        for (auto [topology, role] : expected) {
+            INFO(magic_enum::enum_name(topology));
+            inputs.get_mutable_design_requirements().set_topology(topology);
+            auto decision = OpenMagnetics::magnetic_role(inputs);
+            CHECK(decision.role == role);
+            CHECK(decision.tier == OpenMagnetics::MagneticRoleTier::TOPOLOGY);
+        }
+        // A topology whose model returns either of two magnetics (the Weinberg converter) does not
+        // decide: the next tier does.
+        inputs.get_mutable_design_requirements().set_topology(MAS::Topology::WEINBERG_CONVERTER);
+        CHECK_FALSE(OpenMagnetics::declared_magnetic_role(inputs));
+        CHECK(OpenMagnetics::magnetic_role(inputs).tier == OpenMagnetics::MagneticRoleTier::STORAGE_RATIO);
+    }
+    SECTION("The subApplication decides the chokes and power filtering, not transforming") {
+        auto inputs = abt1469_inputs(abt1469Dab);
+        REQUIRE_FALSE(inputs.get_design_requirements().get_topology());
+        std::vector<std::pair<std::string, OpenMagnetics::MagneticRole>> expected{
+            {"commonModeNoiseFiltering", OpenMagnetics::MagneticRole::COMMON_MODE_CHOKE},
+            {"differentialModeNoiseFiltering", OpenMagnetics::MagneticRole::DIFFERENTIAL_MODE_CHOKE},
+            {"powerFiltering", OpenMagnetics::MagneticRole::STORING}};
+        for (auto [subApplication, role] : expected) {
+            INFO(subApplication);
+            inputs.get_mutable_design_requirements().set_sub_application(subApplication);
+            auto decision = OpenMagnetics::magnetic_role(inputs);
+            CHECK(decision.role == role);
+            CHECK(decision.tier == OpenMagnetics::MagneticRoleTier::APPLICATION);
+        }
+        // The subApplication-declared differential-mode choke is what the magnetizing model is told.
+        inputs.get_mutable_design_requirements().set_sub_application("differentialModeNoiseFiltering");
+        CHECK(OpenMagnetics::magnetizing_model_topology(inputs) == MAS::Topology::DIFFERENTIAL_MODE_CHOKE);
+        // A flyback isolates and transforms too: neither says transformer.
+        for (std::string subApplication : {"transforming", "isolation"}) {
+            INFO(subApplication);
+            auto flyback = abt1469_inputs(abt1469Flyback);
+            flyback.get_mutable_design_requirements().set_sub_application(subApplication);
+            CHECK_FALSE(OpenMagnetics::declared_magnetic_role(flyback));
+            CHECK(OpenMagnetics::magnetic_role(flyback).role == OpenMagnetics::MagneticRole::STORING);
+            CHECK_FALSE(OpenMagnetics::magnetizing_model_topology(flyback));
+        }
+    }
+    SECTION("Every winding on one isolation side stores energy") {
+        auto inputs = abt1469_inputs(abt1469Dab);
+        inputs.get_mutable_design_requirements().set_isolation_sides(std::vector<IsolationSide>{IsolationSide::PRIMARY, IsolationSide::PRIMARY});
+        auto decision = OpenMagnetics::magnetic_role(inputs);
+        CHECK(decision.role == OpenMagnetics::MagneticRole::STORING);
+        CHECK(decision.tier == OpenMagnetics::MagneticRoleTier::ISOLATION_SIDES);
+    }
+}
+
+TEST_CASE("Test_Magnetic_Role_From_The_Waveforms", "[processor][inputs][abt-1469]") {
+    SECTION("Storage ratio: the DAB transfers, the flyback stores") {
+        auto dab = abt1469_inputs(abt1469Dab);
+        REQUIRE_FALSE(OpenMagnetics::declared_magnetic_role(dab));
+        auto dabDecision = OpenMagnetics::magnetic_role(dab);
+        INFO("DAB storage ratio " << dabDecision.storageRatio.value_or(-1));
+        CHECK(dabDecision.tier == OpenMagnetics::MagneticRoleTier::STORAGE_RATIO);
+        CHECK(dabDecision.role == OpenMagnetics::MagneticRole::TRANSFORMER);
+        REQUIRE(dabDecision.storageRatio);
+        CHECK(dabDecision.storageRatio.value() < OpenMagnetics::magneticRoleStoringThreshold);
+
+        auto flyback = abt1469_inputs(abt1469Flyback);
+        REQUIRE_FALSE(OpenMagnetics::declared_magnetic_role(flyback));
+        auto flybackDecision = OpenMagnetics::magnetic_role(flyback);
+        INFO("flyback storage ratio " << flybackDecision.storageRatio.value_or(-1));
+        CHECK(flybackDecision.tier == OpenMagnetics::MagneticRoleTier::STORAGE_RATIO);
+        CHECK(flybackDecision.role == OpenMagnetics::MagneticRole::STORING);
+        REQUIRE(flybackDecision.storageRatio);
+        CHECK(flybackDecision.storageRatio.value() >= OpenMagnetics::magneticRoleStoringThreshold);
+    }
+    SECTION("Net magnetomotive force, from the currents alone") {
+        auto dab = abt1469_inputs(abt1469Dab);
+        abt1469_remove_signal(dab, /*voltage=*/true);
+        auto dabDecision = OpenMagnetics::magnetic_role(dab);
+        INFO("DAB net MMF ratio " << dabDecision.netMagnetomotiveForceRatio.value_or(-1));
+        CHECK(dabDecision.tier == OpenMagnetics::MagneticRoleTier::NET_MAGNETOMOTIVE_FORCE);
+        CHECK(dabDecision.role == OpenMagnetics::MagneticRole::TRANSFORMER);
+
+        auto flyback = abt1469_inputs(abt1469Flyback);
+        abt1469_remove_signal(flyback, /*voltage=*/true);
+        auto flybackDecision = OpenMagnetics::magnetic_role(flyback);
+        INFO("flyback net MMF ratio " << flybackDecision.netMagnetomotiveForceRatio.value_or(-1));
+        CHECK(flybackDecision.tier == OpenMagnetics::MagneticRoleTier::NET_MAGNETOMOTIVE_FORCE);
+        CHECK(flybackDecision.role == OpenMagnetics::MagneticRole::STORING);
+    }
+    SECTION("Voltages only, or one winding's current missing: a transformer, without throwing") {
+        auto voltagesOnly = abt1469_inputs(abt1469Flyback);
+        abt1469_remove_signal(voltagesOnly, /*voltage=*/false);
+        OpenMagnetics::MagneticRoleDecision decision;
+        REQUIRE_NOTHROW(decision = OpenMagnetics::magnetic_role(voltagesOnly));
+        CHECK(decision.tier == OpenMagnetics::MagneticRoleTier::NO_CURRENTS);
+        CHECK(decision.role == OpenMagnetics::MagneticRole::TRANSFORMER);
+
+        auto partialCurrents = abt1469_inputs(abt1469Flyback);
+        abt1469_remove_signal(partialCurrents, /*voltage=*/false, 1);
+        REQUIRE_NOTHROW(decision = OpenMagnetics::magnetic_role(partialCurrents));
+        CHECK(decision.tier == OpenMagnetics::MagneticRoleTier::NO_CURRENTS);
+        CHECK(decision.role == OpenMagnetics::MagneticRole::TRANSFORMER);
+    }
+}

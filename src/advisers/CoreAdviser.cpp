@@ -2,7 +2,7 @@
 #include "support/StableSortByIndex.h"
 #include "advisers/CoreMaterialCrossReferencer.h"
 #include "advisers/MagneticFilter.h"
-#include "advisers/MagneticFilterInternal.h"  // for is_energy_storing_topology()
+#include "advisers/MagneticFilterInternal.h"
 #include "advisers/CoreAdviserInternal.h"      // log_stage/log_pruned, make_sinusoidal_excitation, CoreLossesModelPair
 #include "constructive_models/Bobbin.h"
 #include "physical_models/CoreTemperature.h"

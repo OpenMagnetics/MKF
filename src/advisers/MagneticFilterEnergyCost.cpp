@@ -32,12 +32,13 @@ std::pair<bool, double> MagneticFilterEnergyStored::evaluate_magnetic(Magnetic* 
     double totalStorableMagneticEnergy = 0;
     // Phase 6 (perf): cache operating-points by const-ref.
     const auto& operatingPoints = inputs->get_operating_points();
+    // A transformer's core stores only its magnetizing energy, so the voltage-driven pass lets it through.
+    const bool voltageDrivenPass = _passVoltageDriven && is_transformer_role(*inputs);
     for (size_t operatingPointIndex = 0; operatingPointIndex < operatingPoints.size(); ++operatingPointIndex) {
         const auto& operatingPoint = operatingPoints[operatingPointIndex];
         double storableEnergy = _magneticEnergy.calculate_core_maximum_magnetic_energy(magnetic->get_core(), operatingPoint);
         totalStorableMagneticEnergy = std::max(totalStorableMagneticEnergy, storableEnergy);
 
-        const bool voltageDrivenPass = _passVoltageDriven && !is_inductor(*inputs);
         if (voltageDrivenPass || totalStorableMagneticEnergy >= _requiredMagneticEnergy * defaults.coreAdviserThresholdValidity) {
             if (outputs != nullptr) {
                 while (outputs->size() < operatingPointIndex + 1) {

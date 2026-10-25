@@ -41,10 +41,6 @@ std::string inductance_flux_cache_key(const Magnetic& magnetic) {
 // advisers/MagneticFilterInternal.h so future split-out filter .cpp files
 // can share them without duplicating code or losing the documentation.
 
-// Phase 5: is_energy_storing_topology() now lives as an `inline` function
-// in advisers/MagneticFilterInternal.h so the extracted physical/saturation
-// filter TU can share it without duplicating the topology switch.
-
 std::shared_ptr<MagneticFilter> MagneticFilter::factory(MagneticFilters filterName, std::optional<Inputs> inputs) {
     switch(filterName) {
         case MagneticFilters::AREA_PRODUCT:
@@ -770,10 +766,11 @@ std::pair<bool, double> MagneticFilterMagnetizingInductance::evaluate_magnetic(M
     // so a topology-only check silently misses every web-generated CMC/DMC and the derived
     // Z/(2πf) inductance floor false-rejects the entire candidate set (ABT #236).
     {
-        auto topology = inputs->get_design_requirements().get_topology();
-        bool topologyIsSuppression = topology.has_value() &&
-            (topology.value() == MAS::Topology::COMMON_MODE_CHOKE ||
-             topology.value() == MAS::Topology::DIFFERENTIAL_MODE_CHOKE);
+        // The declared role: the topology, or the subApplication the wizards set.
+        auto declaredRole = declared_magnetic_role(*inputs);
+        bool topologyIsSuppression = declaredRole &&
+            (declaredRole->role == MagneticRole::COMMON_MODE_CHOKE ||
+             declaredRole->role == MagneticRole::DIFFERENTIAL_MODE_CHOKE);
         auto application = inputs->get_design_requirements().get_application();
         bool applicationIsSuppression = application.has_value() &&
             application.value() == "interferenceSuppression";

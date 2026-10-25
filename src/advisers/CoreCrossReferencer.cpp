@@ -386,7 +386,7 @@ std::pair<double, double> CoreCrossReferencer::MagneticCoreFilterCoreLosses::cal
             coil.set_functional_description({winding});
             magnetic.set_coil(coil);
             for (auto operatingPoint : inputs.get_operating_points()) {
-                magneticSimulator.set_topology(inputs.get_design_requirements().get_topology());
+                magneticSimulator.set_topology(magnetizing_model_topology(inputs));
                 auto coreLossesOutput = magneticSimulator.calculate_core_losses(operatingPoint, magnetic, nullptr, nullptr,
                                                                                 WindingLossesScope::FULL, NoThermalOperatingPointPolicy::THROW);
                 averageCoreLosses += coreLossesOutput.get_core_losses();

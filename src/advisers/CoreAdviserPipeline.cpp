@@ -13,7 +13,7 @@
 #include "advisers/CoilAdviser.h"             // ABT #4 proximity re-rank winds a representative coil
 #include "Constants.h"                         // Constants::residualGap for the DMC gap pre-filter
 #include "advisers/MagneticFilter.h"
-#include "advisers/MagneticFilterInternal.h"  // for is_energy_storing_topology() / is_inductor()
+#include "advisers/MagneticFilterInternal.h"
 #include "processors/MagneticSimulator.h"     // ABT #4 proximity re-rank full-simulates the wound candidate
 #include "constructive_models/Bobbin.h"
 #include "constructive_models/Insulation.h"
@@ -339,7 +339,7 @@ Mas CoreAdviser::post_process_core(Magnetic magnetic, Inputs inputs) {
         Outputs outputs;
         auto operatingPoint = inputs.get_operating_point(operatingPointIndex);
 
-        _magneticSimulator.set_topology(inputs.get_design_requirements().get_topology());
+        _magneticSimulator.set_topology(magnetizing_model_topology(inputs));
         MagnetizingInductanceOutput magnetizingInductanceOutput = _magneticSimulator.calculate_magnetizing_inductance(operatingPoint, magnetic);
         // calculate_magnetizing_inductance() re-evaluated the magnetizing current — the flux /
         // saturation driver, which scales with 1/Lm — at THIS core's achieved inductance (Np^2 /
@@ -795,8 +795,9 @@ std::vector<std::pair<Mas, double>> CoreAdviser::filter_available_cores_suppress
     // Magnetics CS app notes) is to use distributed-gap powder cores
     // (Sendust/KoolMu/MPP/High-Flux/iron-powder) or amorphous /
     // nanocrystalline. Gapped ferrite is acceptable too.
-    auto topology = inputs.get_design_requirements().get_topology();
-    if (topology == MAS::Topology::DIFFERENTIAL_MODE_CHOKE) {
+    // The declared role: the topology or the subApplication.
+    auto declaredRole = declared_magnetic_role(inputs);
+    if (declaredRole && declaredRole->role == MagneticRole::DIFFERENTIAL_MODE_CHOKE) {
         std::vector<std::pair<Magnetic, double>> dmcFiltered;
         dmcFiltered.reserve(magneticsWithScoring.size());
         for (auto& entry : magneticsWithScoring) {

@@ -18,7 +18,7 @@
 #include "advisers/CoreAdviserInternal.h"
 #include "advisers/CoreMaterialCrossReferencer.h"
 #include "advisers/MagneticFilter.h"
-#include "advisers/MagneticFilterInternal.h"  // for is_energy_storing_topology()
+#include "advisers/MagneticFilterInternal.h"
 #include "constructive_models/Bobbin.h"
 #include "constructive_models/Insulation.h"
 #include "constructive_models/NumberTurns.h"
@@ -239,8 +239,9 @@ std::vector<std::pair<Magnetic, double>> CoreAdviser::create_magnetic_dataset(In
             // toroidal-only restriction only to CMC; for DMC and other suppression
             // topologies, honour the user's includeToroidalCores / includeConcentricCores
             // settings.
-            auto topology = inputs.get_design_requirements().get_topology();
-            bool isCommonModeChoke = topology.has_value() && topology.value() == MAS::Topology::COMMON_MODE_CHOKE;
+            // The declared role: the topology or the subApplication.
+            auto declaredRole = declared_magnetic_role(inputs);
+            bool isCommonModeChoke = declaredRole && declaredRole->role == MagneticRole::COMMON_MODE_CHOKE;
             if (isCommonModeChoke) {
                 if (core.get_type() != CoreType::TOROIDAL) {
                     continue;
@@ -350,8 +351,9 @@ std::vector<std::pair<Magnetic, double>> CoreAdviser::create_magnetic_dataset(In
         if (get_application() == MAS::MagneticApplication::INTERFERENCE_SUPPRESSION) {
             // See comment in create_magnetic_dataset(): only CMC requires toroidal-only;
             // DMC and other suppression topologies should honour user settings.
-            auto topology = inputs.get_design_requirements().get_topology();
-            bool isCommonModeChoke = topology.has_value() && topology.value() == MAS::Topology::COMMON_MODE_CHOKE;
+            // The declared role: the topology or the subApplication.
+            auto declaredRole = declared_magnetic_role(inputs);
+            bool isCommonModeChoke = declaredRole && declaredRole->role == MagneticRole::COMMON_MODE_CHOKE;
             if (isCommonModeChoke) {
                 if (core.get_type() != CoreType::TOROIDAL) {
                     continue;
@@ -540,14 +542,11 @@ void add_initial_turns_by_inductance(std::vector<std::pair<Magnetic, double>> *m
     // 1. Use topology if specified (most reliable)
     // 2. Fall back to inductance field heuristic (minimum-only = transformer)
     //
-    // Inductor vs transformer drives both the turn/gap sizing below and the
-    // saturation co-design. Use the single shared predicate (is_inductor, in
-    // MagneticFilterInternal.h) so this seeder, the saturation filter, the
-    // loss-sweep saturation cap, and the realism gate all agree on the
-    // classification — a coupled inductor (single isolation side) or an
-    // energy-storing / specific-Lm design is sized with the B-from-current path;
-    // a transformer (high-Lm, minimum-only) with the B-from-voltage path.
-    bool isTransformer = !is_inductor(inputs);
+    // The role (magnetic_role) decides only which branch sizes the candidate — the gap decision:
+    // a transformer is seeded from its volt-seconds and gapped only to a specific Lm; an
+    // energy-storing magnetic from its inductance with a saturation-aware re-gap. Both branches
+    // size against the magnetizing current, as the saturation filter gates.
+    bool isTransformer = is_transformer_role(inputs);
     
     // Pre-compute shared transformer values once (not per-core).
     // maxVoltSeconds is the peak V·s excursion over all OPs' primary

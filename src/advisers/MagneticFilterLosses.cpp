@@ -152,7 +152,7 @@ std::pair<bool, double> MagneticFilterCoreAndDcLosses::evaluate_magnetic(Magneti
                 }
             }
 
-            _magnetizingInductance.set_topology(inputs->get_design_requirements().get_topology());
+            _magnetizingInductance.set_topology(magnetizing_model_topology(*inputs));
             // A turn count whose operating point saturates the core stops the sweep, which keeps the best
             // count it already evaluated, restored below; only when no count has worked yet is the candidate
             // rejected (ABT #1740). The verdict is the saturation check analyze_results makes, on the flux
@@ -354,7 +354,7 @@ std::pair<bool, double> MagneticFilterCoreDcAndSkinLosses::evaluate_stand_in_wit
         auto operatingPoint = inputs->get_operating_point(operatingPointIndex);
         // The same hot corner the one-winding path evaluates at.
         double temperature = saturation_derating_temperature(operatingPoint.get_conditions().get_ambient_temperature());
-        _magnetizingInductance.set_topology(inputs->get_design_requirements().get_topology());
+        _magnetizingInductance.set_topology(magnetizing_model_topology(*inputs));
         auto [magnetizingInductance, magneticFluxDensity] = _magnetizingInductance.calculate_inductance_and_magnetic_flux_density(core, coil, &operatingPoint);
         (void) magnetizingInductance;
         OperatingPointExcitation excitation = operatingPoint.get_excitations_per_winding()[0];
@@ -501,7 +501,7 @@ std::pair<bool, double> MagneticFilterCoreDcAndSkinLosses::evaluate_magnetic(Mag
                 }
             }
 
-            _magnetizingInductance.set_topology(inputs->get_design_requirements().get_topology());
+            _magnetizingInductance.set_topology(magnetizing_model_topology(*inputs));
             // A turn count whose operating point saturates the core stops the sweep, which keeps the best
             // count it already evaluated, restored below; only when no count has worked yet is the candidate
             // rejected (ABT #1740). The verdict is the saturation check analyze_results makes, on the flux
@@ -655,7 +655,7 @@ MagneticFilterLosses::MagneticFilterLosses(std::map<std::string, std::string> mo
 
 std::pair<bool, double> MagneticFilterLosses::evaluate_magnetic(Magnetic* magnetic, Inputs* inputs, std::vector<Outputs>* outputs) {
     double scoring = 0;
-    _magneticSimulator.set_topology(inputs->get_design_requirements().get_topology());
+    _magneticSimulator.set_topology(magnetizing_model_topology(*inputs));
 
     if (inputs->get_operating_points().size() > 0 && magnetic->get_mutable_coil().get_functional_description().size() != inputs->get_operating_points()[0].get_excitations_per_winding().size()) {
         return {false, 0.0};
@@ -713,7 +713,7 @@ MagneticFilterLossesNoProximity::MagneticFilterLossesNoProximity(std::map<std::s
 
 std::pair<bool, double> MagneticFilterLossesNoProximity::evaluate_magnetic(Magnetic* magnetic, Inputs* inputs, std::vector<Outputs>* outputs) {
     double scoring = 0;
-    _magneticSimulator.set_topology(inputs->get_design_requirements().get_topology());
+    _magneticSimulator.set_topology(magnetizing_model_topology(*inputs));
 
     if (inputs->get_operating_points().size() > 0 && magnetic->get_mutable_coil().get_functional_description().size() != inputs->get_operating_points()[0].get_excitations_per_winding().size()) {
         return {false, 0.0};
@@ -898,7 +898,8 @@ MagneticFilterInductorTurnsAndGapByLosses::MagneticFilterInductorTurnsAndGapByLo
 }
 
 bool MagneticFilterInductorTurnsAndGapByLosses::applies_to_design(const Inputs& inputs) {
-    if (!is_inductor(inputs) || inputs.get_operating_points().empty()) {
+    // An inductor-style (gapped, inductance-targeted) design: anything the role does not make a transformer.
+    if (inputs.get_operating_points().empty() || is_transformer_role(inputs)) {
         return false;
     }
     // Suppression chokes are sized by impedance, not by an inductance target and losses.
@@ -997,7 +998,7 @@ std::pair<bool, double> MagneticFilterInductorTurnsAndGapByLosses::evaluate_magn
             }
         }
         else {
-            _magnetizingInductance.set_topology(inputs->get_design_requirements().get_topology());
+            _magnetizingInductance.set_topology(magnetizing_model_topology(*inputs));
             _magnetizingInductance.calculate_inductance_and_magnetic_flux_density(core, coil, &operatingPoint);
         }
         preparedOperatingPoints.push_back(operatingPoint);

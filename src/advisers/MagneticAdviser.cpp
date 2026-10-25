@@ -412,8 +412,20 @@ std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic_fast(I
     // candidate whose B_peak exceeds B_sat. That's the existing
     // fast-path contract — this step only narrows it physically.
     {
-        auto topology = inputs.get_design_requirements().get_topology();
-        if (is_energy_storing_topology(topology)) {
+        // The role decides (magnetic_role): an energy-storing magnetic or a choke (common- or
+        // differential-mode, whether the topology or only the subApplication tags it). A single-winding
+        // design keeps the behaviour it had when this drop read the topology alone (a storing or choke
+        // topology).
+        bool dropFerriteToroids;
+        if (is_single_winding_design(inputs)) {
+            auto topology = inputs.get_design_requirements().get_topology();
+            std::optional<MagneticRole> topologyRole = topology ? topology_magnetic_role(topology.value()) : std::nullopt;
+            dropFerriteToroids = topologyRole && topologyRole.value() != MagneticRole::TRANSFORMER;
+        }
+        else {
+            dropFerriteToroids = magnetic_role(inputs).role != MagneticRole::TRANSFORMER;
+        }
+        if (dropFerriteToroids) {
             std::vector<std::pair<Magnetic, double>> filtered;
             filtered.reserve(magneticsWithScoring.size());
             for (auto& entry : magneticsWithScoring) {

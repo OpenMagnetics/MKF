@@ -30,135 +30,6 @@
 
 namespace OpenMagnetics {
 
-// Phase 5: promoted from a static function inside MagneticFilter.cpp so the
-// extracted filter translation units (MagneticFilterPhysical.cpp etc.) can
-// share the topology classification without duplicating the switch.
-// Returns true for energy-storing topologies (inductors, flyback-derived);
-// false for transformer-style topologies and for unknown / unspecified
-// values (treated as transformer, the safer no-gap default).
-inline bool is_energy_storing_topology(std::optional<MAS::Topology> topology) {
-    if (!topology.has_value()) {
-        return false; // Unknown topology, caller should use other heuristics
-    }
-
-    switch (topology.value()) {
-        // Energy-storing topologies (inductors, flyback-derived)
-        // These store energy in the magnetic field each switching cycle
-        case MAS::Topology::FLYBACK_CONVERTER:
-        case MAS::Topology::BUCK_CONVERTER:
-        case MAS::Topology::BOOST_CONVERTER:
-        case MAS::Topology::ISOLATED_BUCK_BOOST_CONVERTER:
-        // Isolated Buck (Fly-Buck) is a synchronous buck with a coupled-inductor
-        // secondary harvesting auxiliary outputs. The primary side stores energy
-        // in the gap each switching cycle (buck inductor behavior). Industry
-        // convention (TI AN-2292, Coilcraft) classifies the magnetic as a
-        // "Fly-Buck coupled inductor", not a transformer -> needs a gapped core.
-        case MAS::Topology::ISOLATED_BUCK_CONVERTER:
-        case MAS::Topology::POWER_FACTOR_CORRECTION:
-        // DMC is a single-winding (or balanced two-winding) inductor on the
-        // line carrying the full DC line current as bias. Routing it through
-        // the inductor B-from-current path lets MagnetizingInductance derate
-        // permeability via the material's DC-bias polynomial; the transformer
-        // path (B from voltage) misses the DC bias entirely.
-        case MAS::Topology::DIFFERENTIAL_MODE_CHOKE:
-        // CMC is a two-winding choke that stores energy in the common-mode
-        // inductance (Lcm) and carries the full DC line current as bias.
-        // Like DMC, it must use the B-from-current path so that DC bias
-        // derating is applied. The transformer path (B from voltage) is
-        // inappropriate because CMCs are not voltage-driven transformers.
-        case MAS::Topology::COMMON_MODE_CHOKE:
-        // SEPIC primary inductor L1 carries the full input DC current and stores
-        // energy in the gap each switching cycle (buck-like). Even in the coupled-
-        // inductor variant the magnetic returned by process_design_requirements is
-        // L1 (see MAS schema sepic.json) -- still energy-storing. Needs a gap.
-        case MAS::Topology::SEPIC_CONVERTER:
-        // Zeta is the dual of SEPIC: L1 is again a magnetizing/energy-storing
-        // inductor (TI SLYT411 / SLVA721). Same classification as SEPIC.
-        case MAS::Topology::ZETA_CONVERTER:
-        // Cuk: the input inductor L1 stores energy in the gap; the magnetic
-        // produced by the wizard is L1 (or the coupled L1-L2 inductor).
-        case MAS::Topology::CUK_CONVERTER:
-        case MAS::Topology::FOUR_SWITCH_BUCK_BOOST_CONVERTER:
-            return true;
-
-        // Transformer topologies (forward-derived)
-        // These transfer energy directly without storing it
-        case MAS::Topology::SINGLE_SWITCH_FORWARD_CONVERTER:
-        case MAS::Topology::TWO_SWITCH_FORWARD_CONVERTER:
-        case MAS::Topology::ACTIVE_CLAMP_FORWARD_CONVERTER:
-        case MAS::Topology::PUSH_PULL_CONVERTER:
-        case MAS::Topology::PHASE_SHIFTED_FULL_BRIDGE_CONVERTER:
-        case MAS::Topology::PHASE_SHIFTED_HALF_BRIDGE_CONVERTER:
-        case MAS::Topology::ASYMMETRIC_HALF_BRIDGE_CONVERTER:
-        case MAS::Topology::DUAL_ACTIVE_BRIDGE_CONVERTER:
-        case MAS::Topology::LLC_RESONANT_CONVERTER:
-        case MAS::Topology::CLLC_RESONANT_CONVERTER:
-        case MAS::Topology::CURRENT_TRANSFORMER:
-            return false;
-
-        default:
-            return false; // Unknown, treat as transformer (safer - no gap)
-    }
-}
-
-// A transformer must couple windings across at least two isolation sides. When every
-// winding sits on the SAME isolation side (e.g. a coupled inductor with all windings on
-// PRIMARY, like the Weinberg L1 input choke), the magnetic stores energy like an inductor
-// regardless of the converter topology, so it must NOT be classified as a transformer.
-// Misclassifying it as a transformer computes B from voltage (missing the DC bias), which
-// over-estimates B and makes the saturation filter reject every core. A single (or unknown)
-// winding returns false here so the topology / inductance heuristic decides as before.
-inline bool windings_on_single_isolation_side(const std::optional<std::vector<IsolationSide>>& isolationSides) {
-    if (!isolationSides.has_value() || isolationSides->size() < 2) {
-        return false;
-    }
-    for (size_t i = 1; i < isolationSides->size(); ++i) {
-        if ((*isolationSides)[i] != (*isolationSides)[0]) {
-            return false;
-        }
-    }
-    return true;
-}
-
-// Single source of truth for "is this design an energy-storing inductor"
-// (as opposed to a transformer). This is THE classification that decides
-// whether saturation scales with turns: for an inductor at a fixed gap more
-// turns LOWER the saturation current (isat = B_sat·N·A_e/L, L ∝ N²), so the
-// saturation-aware turn/gap co-design, the loss-sweep saturation cap, and the
-// final realism gate all apply; for a transformer B is voltage-driven and more
-// turns LOWER B, so they must not. Every one of those sites — plus the
-// saturation filter and the CoreAdviser turn seeder — must use THIS predicate,
-// or they disagree on which candidates to saturation-check. Detection tiers
-// (most reliable first): (0) a single winding ⇒ inductor; (1) all windings on
-// one isolation side ⇒ inductor; (2) topology, if specified; (3) legacy
-// heuristic — a minimum-only inductance spec ("at least L") is a transformer's
-// magnetizing inductance, anything with a nominal or maximum is a specific
-// energy-storage target ⇒ inductor.
-//
-// Tier 0 comes before the topology: designRequirements.topology names the
-// CONVERTER, not the component. The resonant inductor of an LLC/CLLC carries
-// the converter's topology but has one winding; classified as a transformer it
-// was seeded with volt-seconds turns at B_max and left ungapped, missing its
-// inductance band by 3-6x (ABT #1411).
-inline bool is_inductor(const Inputs& inputs) {
-    const auto& designRequirements = inputs.get_design_requirements();
-    if (is_single_winding_design(inputs)) {
-        return true;
-    }
-    if (windings_on_single_isolation_side(designRequirements.get_isolation_sides())) {
-        return true;
-    }
-    auto topology = designRequirements.get_topology();
-    if (topology.has_value()) {
-        return is_energy_storing_topology(topology);
-    }
-    const auto& magnetizingInductance = designRequirements.get_magnetizing_inductance();
-    bool minimumOnly = magnetizingInductance.get_minimum().has_value()
-                       && !magnetizingInductance.get_nominal().has_value()
-                       && !magnetizingInductance.get_maximum().has_value();
-    return !minimumOnly;
-}
-
 // The role of the magnetic (Inputs.h, magnetic_role) decides only the categorical choices: gapping,
 // the inductor loss optimiser, the ferrite-toroid drop and the choke handling. The magnitudes
 // (saturation, the turn seed, the energy check, the loss-sweep cap) read the magnetizing current:
@@ -204,7 +75,7 @@ inline double model_magnetizing_current_peak(const Core& core, const Coil& coil,
 // saturation GATE so the two cannot disagree (ABT #1369: the gate lacked the
 // exemption and dropped every wound CMC the filter had let through).
 //
-// A CMC is an inductor to is_inductor (every winding on the line side) but its
+// A CMC has every winding on the line side, but its
 // line current is DIFFERENTIAL: the flux of the line/neutral windings cancels
 // in the core, so neither the raw line current nor the ripple swing that
 // get_common_mode_choke_magnetizing_current models as "the CM current" is a
@@ -214,16 +85,13 @@ inline double model_magnetizing_current_peak(const Core& core, const Coil& coil,
 // deliberately: a differential-mode choke also has 2-4 matching-current
 // windings (can_be_common_mode_choke is true for it too) but carries the full
 // line current additively and genuinely saturates, so it keeps both gates.
-// Distinguish by the CMC tag (topology, or the web wizard's subApplication —
-// the wizards do not set designRequirements.topology), then confirm current
+// Distinguish by the declared role (declared_magnetic_role: the topology, or the
+// web wizard's subApplication — the wizards do not set designRequirements.topology), then confirm current
 // symmetry with can_be_common_mode_choke so a mis-tagged asymmetric design is
 // still checked.
 inline bool is_tagged_common_mode_choke(const Inputs& inputs, const OperatingPoint& operatingPoint) {
-    auto topology = inputs.get_design_requirements().get_topology();
-    auto subApplication = inputs.get_design_requirements().get_sub_application();
-    bool taggedCommonMode =
-        (topology.has_value() && topology.value() == MAS::Topology::COMMON_MODE_CHOKE) ||
-        (subApplication.has_value() && subApplication.value() == "commonModeNoiseFiltering");
+    auto declared = declared_magnetic_role(inputs);
+    bool taggedCommonMode = declared && declared->role == MagneticRole::COMMON_MODE_CHOKE;
     return taggedCommonMode && Inputs::can_be_common_mode_choke(operatingPoint);
 }
 
