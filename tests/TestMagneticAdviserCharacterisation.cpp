@@ -818,11 +818,17 @@ TEST_CASE("MagneticAdviser web DMC whose switching ripple is resolved returns wo
     // saturation margin, above its B_sat of 0.8 T, so the adviser now picks the ungapped T 48/23/19 MPP 200 with
     // 33 + 33 turns. 5.00 W is the simulator's core loss on that pick (solved core 65.0 C), not re-derived by the
     // first-principles script.
-    REQUIRE(magnetic.get_core().get_shape_name() == "T 48/23/19");
-    REQUIRE(magnetic.get_core().get_material_name() == "MPP 200");
+    // Re-pinned (Alf, 2026-10-25, ABT #1469): the saturation-current gate now compares I_sat with the
+    // choke's magnetizing current, which for a DMC is i_line + i_neutral: both windings magnetize the
+    // core (~10 A peak here). Main gated I_sat on one winding's current (~5 A), so the MPP 200 pick with
+    // 33 + 33 turns (I_sat 10.48 A at 100 C) no longer clears the margin. The adviser now picks the
+    // ungapped T 47/24/18.0 HF 160 (High Flux 160) with 38 + 38 turns: I_sat 22.18 A at 100 C, 9.04 W of core loss
+    // in the simulator, solved core 91.2 C. The design (inputs) is unchanged.
+    REQUIRE(magnetic.get_core().get_shape_name() == "T 47/24/18.0");
+    REQUIRE(magnetic.get_core().get_material_name() == "HF 160");
     REQUIRE(magnetic.get_core().get_functional_description().get_gapping().empty());
-    REQUIRE(magnetic.get_coil().get_functional_description()[0].get_number_turns() == 33);
-    CHECK_THAT(simulatedCoreLosses.get_core_losses(), Catch::Matchers::WithinRel(5.00, 0.05));
+    REQUIRE(magnetic.get_coil().get_functional_description()[0].get_number_turns() == 38);
+    CHECK_THAT(simulatedCoreLosses.get_core_losses(), Catch::Matchers::WithinRel(9.04, 0.05));
 
     // The operating point as stored (waveforms, no harmonics) is the same excitation as its processed
     // copy, so the sweep must price it the same (ABT #1764): it read 16.3 W against 1.74 W, because
