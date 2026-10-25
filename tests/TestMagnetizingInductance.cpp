@@ -1329,6 +1329,53 @@ namespace {
         REQUIRE_THAT(expectedValue, Catch::Matchers::WithinAbs(magnetizingInductance, max_error * expectedValue));
     }
 
+
+    // ABT #2074: a ground gap is one slab in the winding column, so the gap search may not step
+    // past the column. It used to (1 mm steps, unbounded) and every step past it came back as a
+    // core refusal, "gap of length 0.023005 m does not fit the winding column"; Henry saw ~5,000 of
+    // them per corpus run. A target that no gap reaches is now refused once, with the inductance a
+    // full-column gap still leaves. ETD 29 3C97, 666 turns: a full-column gap (22 mm) leaves 1.79 mH.
+    TEST_CASE("Test_Gapping_Search_Refuses_A_Target_No_Gap_In_The_Column_Reaches", "[physical-model][magnetizing-inductance][gapping][abt-2074]") {
+        settings.reset();
+        clear_databases();
+        Core core;
+        OpenMagnetics::Coil winding;
+        OpenMagnetics::Inputs inputs;
+        MagnetizingInductance magnetizing_inductance("ZHANG");
+        prepare_test_parameters(0, 25, 20000, 666, 1e-3, {}, "ETD 29", "3C97", core, winding, inputs);
+
+        try {
+            magnetizing_inductance.calculate_gapping_from_number_turns_and_inductance(core, winding, &inputs, GappingType::GROUND);
+            FAIL("a 1 mH target on 666 turns of an ETD 29 was given a gap");
+        } catch (const GapException& e) {
+            const std::string what = e.what();
+            INFO(what);
+            CHECK(what.find("No gap of core") != std::string::npos);
+            CHECK(what.find("full") != std::string::npos);
+            CHECK(what.find("does not fit the winding column") == std::string::npos);
+        }
+        settings.reset();
+    }
+
+    // ABT #2074: a target the column can just reach is solved inside the column, with the rounded gap
+    // no longer than the column.
+    TEST_CASE("Test_Gapping_Search_Near_The_Column_Limit_Stays_In_The_Column", "[physical-model][magnetizing-inductance][gapping][abt-2074]") {
+        settings.reset();
+        clear_databases();
+        Core core;
+        OpenMagnetics::Coil winding;
+        OpenMagnetics::Inputs inputs;
+        MagnetizingInductance magnetizing_inductance("ZHANG");
+        prepare_test_parameters(0, 25, 20000, 666, 1.9e-3, {}, "ETD 29", "3C97", core, winding, inputs);
+        const double columnHeight = core.get_processed_description()->get_columns()[0].get_height();
+
+        auto gapping = magnetizing_inductance.calculate_gapping_from_number_turns_and_inductance(core, winding, &inputs, GappingType::GROUND);
+        INFO("gap " << gapping[0].get_length() * 1e3 << " mm in a " << columnHeight * 1e3 << " mm column");
+        CHECK(gapping[0].get_length() > 15e-3);
+        CHECK(gapping[0].get_length() <= columnHeight);
+        settings.reset();
+    }
+
 }  // namespace
 
 // ABT #331: open-core (drum) magnetizing inductance, validated against PUBLISHED vendor data

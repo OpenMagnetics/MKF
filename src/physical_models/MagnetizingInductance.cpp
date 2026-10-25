@@ -1967,6 +1967,32 @@ std::vector<CoreGap> MagnetizingInductance::calculate_gapping_from_number_turns_
     timeout = 100;
     Core gappedCore;
 
+    // ABT #2074: a ground or spacer gap is one slab in the winding column, so it can be no longer
+    // than the column. The search steps up 1 mm at a time with nothing bounding it, and past the
+    // column it built cores that Core refused ("gap of length 0.013005 m does not fit the winding
+    // column (column height 0.0128 m)"), thousands of times per Henry corpus run. Bound it here:
+    // when even a gap the full length of the column leaves the reluctance short of the target's,
+    // no gap of this core reaches the inductance, and that is said once, with the numbers.
+    std::optional<double> maximumGapLength;
+    if (gappingType == GappingType::GROUND || gappingType == GappingType::SPACER) {
+        const auto& columns = core.get_processed_description()->get_columns();
+        if (columns.empty()) {
+            throw CoreNotProcessedException("core '" + core.get_name().value_or("unnamed") + "' has no columns to gap");
+        }
+        maximumGapLength = columns[0].get_height();
+        Core longestGapCore = gappingType == GappingType::GROUND ? get_core_with_ground_gapping(core, maximumGapLength.value())
+                                                                 : get_core_with_spacer_gapping(core, maximumGapLength.value());
+        const double longestGapReluctance = reluctanceModel->get_core_reluctance(longestGapCore, currentInitialPermeability).get_core_reluctance();
+        if (longestGapReluctance < neededTotalReluctance) {
+            std::ostringstream reason;
+            reason << "No gap of core '" << core.get_name().value_or("unnamed") << "' brings " << numberTurnsPrimary
+                   << " turns down to " << desiredMagnetizingInductance * 1e6 << " uH: a gap the full "
+                   << maximumGapLength.value() * 1e3 << " mm of its winding column still gives "
+                   << pow(numberTurnsPrimary, 2) / longestGapReluctance * 1e6 << " uH";
+            throw GapException(reason.str());
+        }
+    }
+
     while (true) {
         reluctance = 0;
         switch (gappingType) {
@@ -2027,6 +2053,10 @@ std::vector<CoreGap> MagnetizingInductance::calculate_gapping_from_number_turns_
             }
             if (increasingGap) {
                 gapLength += gapLengthModification;
+                if (maximumGapLength && gapLength > maximumGapLength.value()) {
+                    // The full column is known to reach the target (checked above): step back from it.
+                    gapLength = maximumGapLength.value();
+                }
             }
             else {
                 gapLength = std::max(constants.residualGap, gapLength - gapLengthModification);
@@ -2037,6 +2067,10 @@ std::vector<CoreGap> MagnetizingInductance::calculate_gapping_from_number_turns_
     }
 
     gapLength = std::max(constants.residualGap, roundFloat(gapLength, decimals));
+    if (maximumGapLength && gapLength > maximumGapLength.value()) {
+        // Rounding up past the column is rounding to a gap that does not exist: round down instead.
+        gapLength = std::floor(maximumGapLength.value() * pow(10, decimals)) / pow(10, decimals);
+    }
 
     switch (gappingType) {
         case GappingType::GROUND:
