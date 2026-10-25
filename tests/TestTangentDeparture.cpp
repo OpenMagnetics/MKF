@@ -17,6 +17,8 @@
 #include "constructive_models/Coil.h"
 #include "constructive_models/Core.h"
 #include "constructive_models/Magnetic.h"
+#include "constructive_models/Mas.h"
+#include "constructive_models/Bobbin.h"
 #include "constructive_models/Wire.h"
 #include "physical_models/WireBend.h"
 #include "support/Settings.h"
@@ -29,6 +31,7 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include <algorithm>
+#include <functional>
 #include <cmath>
 #include <filesystem>
 #include <fstream>
@@ -363,6 +366,178 @@ TEST_CASE("Real winding: a closely wound round-wire layer's tangent lead is not 
             entranceReported |= finding.message.find("entrance lead of '" + turns[0].get_name() + "'") != std::string::npos;
         }
         CHECK(entranceReported);
+    }
+    settings.reset();
+}
+// ABT #2061 (Alf, 2026-10-25: draw and report). A tangent terminal lead on a route MKF does not model
+// in full is drawn on its best route and reported, never refused: a dragback lane riding over the
+// connection face, a lateral column, a lead run to a pin (and, in TestWireBendLayout, a one-turn
+// conductor). Each case: the coil winds, the lead is drawn tangentially with its condition recorded,
+// and analyze_results says so in one LEAD_ROUTE_NOT_MODELLED finding per lead.
+namespace {
+
+// analyze_results over a magnetic with no operating point: only the findings about the magnetic itself.
+std::vector<OpenMagnetics::ResultFinding> magnetic_findings(const OpenMagnetics::Coil& coil, const std::string& coreShape) {
+    OpenMagnetics::Magnetic magnetic;
+    magnetic.set_core(OpenMagneticsTesting::get_quick_core(coreShape, OpenMagneticsTesting::get_ground_gap(0.001), 1, "N87"));
+    magnetic.set_coil(coil);
+    OpenMagnetics::Mas mas;
+    mas.set_magnetic(magnetic);
+    return OpenMagnetics::ResultsAnalyzer::analyze_results(mas);
+}
+
+// The terminal leads that leave tangentially with `condition`, and the findings that report them.
+struct UnmodelledLeads {
+    std::vector<OpenMagnetics::ConnectionRoute> routes;
+    std::vector<OpenMagnetics::ResultFinding> findings;
+};
+
+UnmodelledLeads unmodelled_leads(OpenMagnetics::Coil coil, OpenMagnetics::TangentLeadCondition condition,
+                                 const std::string& coreShape) {
+    UnmodelledLeads leads;
+    for (const auto& route : coil.get_connection_layout().routes) {
+        if (route.kind != OpenMagnetics::ConnectionKind::TERMINAL_ENTRANCE && route.kind != OpenMagnetics::ConnectionKind::TERMINAL_EXIT) {
+            continue;
+        }
+        if (!route.tangentDeparture) {
+            continue;
+        }
+        const auto& unmodelled = route.tangentDeparture->unmodelled;
+        if (std::any_of(unmodelled.begin(), unmodelled.end(), [&](const OpenMagnetics::TangentLeadUnmodelled& found) {
+                return found.condition == condition;
+            })) {
+            leads.routes.push_back(route);
+        }
+    }
+    for (const auto& finding : magnetic_findings(coil, coreShape)) {
+        if (finding.code == OpenMagnetics::ResultFindingCode::LEAD_ROUTE_NOT_MODELLED) {
+            leads.findings.push_back(finding);
+        }
+    }
+    return leads;
+}
+
+void check_reported(const UnmodelledLeads& leads, const std::string& conditionText) {
+    REQUIRE_FALSE(leads.routes.empty());
+    REQUIRE(leads.findings.size() == leads.routes.size());   // one per lead
+    for (const auto& route : leads.routes) {
+        const bool entrance = route.kind == OpenMagnetics::ConnectionKind::TERMINAL_ENTRANCE;
+        const std::string leadName = std::string(entrance ? "entrance" : "exit") + " lead of '" + (entrance ? route.toTurn : route.fromTurn) + "'";
+        INFO(leadName);
+        // Drawn: a tangent lead with its own line out of the window.
+        CHECK(route.tangentDeparture->length > 0);
+        CHECK(route.plannedBendRadius > route.tangentDeparture->connectionFaceHalfStraight);
+        const auto finding = std::find_if(leads.findings.begin(), leads.findings.end(), [&](const OpenMagnetics::ResultFinding& candidate) {
+            return candidate.message.find(leadName) != std::string::npos && candidate.message.find("winding '" + route.winding + "'") != std::string::npos;
+        });
+        REQUIRE(finding != leads.findings.end());
+        CHECK_FALSE(finding->operatingPointIndex);
+        CHECK(finding->message.find(conditionText) != std::string::npos);
+        CHECK(finding->message.find("The coil is drawn as routed.") != std::string::npos);
+        CHECK(finding->message.find("ABT") == std::string::npos);
+    }
+}
+
+}  // namespace
+
+TEST_CASE("Real winding draws a tangent lead on a route it does not model in full, and reports it",
+          "[constructive-model][coil][real-winding][tangent-departure][abt-2061]") {
+    auto& settings = OpenMagnetics::Settings::GetInstance();
+
+    SECTION("a dragback lane rides over the exit lead's connection face") {
+        // Two layers of round_wire_coil in Z order: the layer link is a dragback lane along the connection
+        // face, and the exit lead (planned wider than the face straight) leaves off the face it rides.
+        const int64_t numberTurns = fullest_single_layer() + 2;
+        const double faceHalfStraight = first_turn_face_half_straight(numberTurns);
+        settings.reset();
+        settings.set_coil_use_real_winding_geometry(true);
+        settings.set_coil_lead_minimum_bend_radius(1.5 * faceHalfStraight);
+        OpenMagnetics::Coil coil;
+        REQUIRE_NOTHROW(coil = round_wire_coil(numberTurns));
+        bool fits = false;
+        REQUIRE_NOTHROW(fits = coil.wind());
+        REQUIRE(fits);
+        REQUIRE(number_conduction_layers(coil) == 2);
+        REQUIRE(coil.get_winding_order(coil.get_turns_description()->front().get_section().value()) == MAS::WindingOrder::Z);
+        const auto leads = unmodelled_leads(coil, OpenMagnetics::TangentLeadCondition::DRAGBACK_RIDE, "E 25/13/7");
+        for (const auto& route : leads.routes) {
+            for (const auto& condition : route.tangentDeparture->unmodelled) {
+                if (condition.condition == OpenMagnetics::TangentLeadCondition::DRAGBACK_RIDE) {
+                    CHECK(condition.rideHeight > 0);
+                }
+            }
+        }
+        check_reported(leads, "a dragback lane rides ");
+    }
+
+    SECTION("a winding on a lateral column") {
+        // New design (no fixture reaches it): an E 42/21/20 with per-column winding windows, 20 turns on
+        // the central column and 10 on a lateral one, leads declared 4 mm, wider than either face straight.
+        settings.reset();
+        settings.set_core_per_column_winding_windows(true);
+        settings.set_coil_use_real_winding_geometry(true);
+        settings.set_coil_lead_minimum_bend_radius(0.004);
+        auto core = OpenMagneticsTesting::get_quick_core("E 42/21/20", json::parse("[]"), 1, "Dummy");
+        auto bobbin = OpenMagnetics::Bobbin::create_quick_bobbin(core, 0.001, 0.001);
+        json coilJson;
+        json bobbinJson;
+        to_json(bobbinJson, bobbin);
+        coilJson["bobbin"] = bobbinJson;
+        coilJson["functionalDescription"] = json::array();
+        coilJson["functionalDescription"].push_back(json{{"name", "Primary"}, {"numberTurns", 20}, {"numberParallels", 1},
+                                                         {"isolationSide", "primary"}, {"wire", "Round 0.475 - Grade 1"}});
+        coilJson["functionalDescription"].push_back(json{{"name", "Secondary"}, {"numberTurns", 10}, {"numberParallels", 1},
+                                                         {"isolationSide", "secondary"}, {"wire", "Round 0.475 - Grade 1"}});
+        OpenMagnetics::Coil coil(coilJson, false);
+        coil.get_mutable_functional_description()[1].set_winding_window(2);
+        coil.set_core_columns(core.get_processed_description()->get_columns());
+        REQUIRE_NOTHROW(coil.wind());
+        REQUIRE(coil.is_real_winding_blocking_applied());
+        const auto leads = unmodelled_leads(coil, OpenMagnetics::TangentLeadCondition::LATERAL_COLUMN, "E 42/21/20");
+        REQUIRE(leads.routes.size() == 2);   // the Secondary's entrance and exit
+        for (const auto& route : leads.routes) {
+            CHECK(route.winding == "Secondary");
+            for (const auto& condition : route.tangentDeparture->unmodelled) {
+                if (condition.condition == OpenMagnetics::TangentLeadCondition::LATERAL_COLUMN) {
+                    CHECK(condition.columnAxisX != 0);
+                }
+            }
+        }
+        check_reported(leads, "it is wound on a lateral column, ");
+    }
+
+    SECTION("a lead run to a pin") {
+        // New design (no fixture reaches it): an E 42/21/15 on the Basic quick bobbin with its pins
+        // generated and the leads connected to them, leads declared 8 mm, wider than the face straight.
+        settings.reset();
+        settings.set_coil_use_real_winding_geometry(true);
+        settings.set_coil_quick_bobbin_generate_pins(true);
+        settings.set_coil_connect_leads_to_pins(true);
+        settings.set_coil_lead_minimum_bend_radius(0.008);
+        json coilJson;
+        coilJson["bobbin"] = "Basic";
+        coilJson["functionalDescription"] = json::array();
+        coilJson["functionalDescription"].push_back(json{{"name", "Primary"}, {"numberTurns", 30}, {"numberParallels", 1},
+                                                         {"isolationSide", "primary"}, {"wire", "Round 0.5 - Grade 1"}});
+        coilJson["functionalDescription"].push_back(json{{"name", "Secondary"}, {"numberTurns", 5}, {"numberParallels", 1},
+                                                         {"isolationSide", "secondary"}, {"wire", "Round 0.5 - Grade 1"}});
+        OpenMagnetics::Magnetic magnetic;
+        magnetic.set_core(OpenMagneticsTesting::get_quick_core("E 42/21/15", json::parse("[]"), 1, "N87"));
+        magnetic.set_coil(OpenMagnetics::Coil(coilJson, false));
+        OpenMagnetics::Coil coil;
+        REQUIRE_NOTHROW(coil = OpenMagnetics::magnetic_autocomplete(magnetic).get_coil());
+        REQUIRE(coil.is_real_winding_blocking_applied());
+        const auto leads = unmodelled_leads(coil, OpenMagnetics::TangentLeadCondition::PIN_RUN, "E 42/21/15");
+        REQUIRE(leads.routes.size() == 4);
+        for (const auto& route : leads.routes) {
+            CHECK_FALSE(route.pinName.empty());
+            for (const auto& condition : route.tangentDeparture->unmodelled) {
+                if (condition.condition == OpenMagnetics::TangentLeadCondition::PIN_RUN) {
+                    CHECK(condition.pinName == route.pinName);
+                }
+            }
+        }
+        check_reported(leads, "it is run to pin '");
     }
     settings.reset();
 }

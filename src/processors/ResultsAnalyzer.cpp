@@ -30,6 +30,7 @@ std::string to_string(ResultFindingCode code) {
         case ResultFindingCode::WINDING_TEMPERATURE_LIMIT_NOT_STATED: return "WINDING_TEMPERATURE_LIMIT_NOT_STATED";
         case ResultFindingCode::NO_THERMAL_OPERATING_POINT: return "NO_THERMAL_OPERATING_POINT";
         case ResultFindingCode::LEAD_COLLIDES_WITH_TURNS: return "LEAD_COLLIDES_WITH_TURNS";
+        case ResultFindingCode::LEAD_ROUTE_NOT_MODELLED: return "LEAD_ROUTE_NOT_MODELLED";
         case ResultFindingCode::EDGEWISE_BEND_BELOW_COATING_MANDREL: return "EDGEWISE_BEND_BELOW_COATING_MANDREL";
     }
     throw InvalidInputException(ErrorCode::INVALID_INPUT, "Unknown result finding code " + std::to_string(static_cast<int>(code)));
@@ -554,6 +555,60 @@ std::vector<ResultFinding> ResultsAnalyzer::analyze_lead_collisions(const Magnet
     return findings;
 }
 
+std::vector<ResultFinding> ResultsAnalyzer::analyze_unmodelled_leads(const Magnetic& magnetic) {
+    // A copy: judging resolves the coil's bobbin and column frames, and the magnetic is const here.
+    OpenMagnetics::Coil coil = magnetic.get_coil();
+    auto millimetres = [](double metres) {
+        return format_significant(metres * 1000, 3);
+    };
+    std::vector<ResultFinding> findings;
+    for (const auto& lead : coil.judge_unmodelled_tangent_leads()) {
+        std::string message = "Warning: winding '" + lead.windingName + "' has its " + lead.leadName + " planned for a " +
+                              millimetres(lead.plannedBendRadius) + " mm bend, which does not fit on the " +
+                              millimetres(lead.connectionFaceHalfStraight) +
+                              " mm connection-face half straight, so it leaves tangentially off the lateral face, on a route "
+                              "MKF does not model in full: ";
+        std::vector<std::string> conditions;
+        for (const auto& condition : lead.conditions) {
+            switch (condition.condition) {
+                case TangentLeadCondition::DRAGBACK_RIDE:
+                    conditions.push_back("a dragback lane rides " + millimetres(condition.rideHeight) +
+                                         " mm over its connection face, which displaces that face and lengthens the lateral "
+                                         "face by as much; the lead is drawn leaving where the unridden lateral face straight ends");
+                    break;
+                case TangentLeadCondition::LATERAL_COLUMN:
+                    conditions.push_back("it is wound on a lateral column, " + millimetres(condition.columnAxisX) +
+                                         " mm from the main one; the lead is drawn in that column's own frame with the main "
+                                         "column's winding sense, which is not modelled for a lateral column");
+                    break;
+                case TangentLeadCondition::PIN_RUN:
+                    conditions.push_back("it is run to " + (condition.pinName ? "pin '" + condition.pinName.value() + "'" : std::string("its pin")) +
+                                         ", from the tangent lead's end on the window border as a level run; the lead's climb "
+                                         "is not carried into it");
+                    break;
+                case TangentLeadCondition::LAYER_CHANGING_REVOLUTION:
+                    conditions.push_back("the revolution it shortens, '" + condition.revolutionFrom + "' -> '" +
+                                         condition.revolutionTo + "', changes layer and carries no pitch; the lead is drawn level "
+                                         "at its station's height");
+                    break;
+                case TangentLeadCondition::SINGLE_REVOLUTION:
+                    conditions.push_back("its conductor has a single turn and no pitch; the lead is drawn level at that turn's "
+                                         "height, and both leads shorten that one turn");
+                    break;
+            }
+        }
+        for (size_t k = 0; k < conditions.size(); ++k) {
+            message += (k == 0 ? "" : "; and ") + conditions[k];
+        }
+        message += ". The coil is drawn as routed.";
+        ResultFinding finding;
+        finding.code = ResultFindingCode::LEAD_ROUTE_NOT_MODELLED;
+        finding.message = message;
+        findings.push_back(finding);
+    }
+    return findings;
+}
+
 std::vector<ResultFinding> ResultsAnalyzer::analyze_winding_bends(const Magnetic& magnetic) {
     // A copy: judging resolves the coil's bobbin and column frames, and the magnetic is const here.
     OpenMagnetics::Coil coil = magnetic.get_coil();
@@ -703,6 +758,9 @@ std::vector<ResultFinding> ResultsAnalyzer::analyze_results(const Mas& mas) {
         findings.push_back(finding);
     }
     for (auto& finding : analyze_lead_collisions(mas.get_magnetic())) {
+        findings.push_back(finding);
+    }
+    for (auto& finding : analyze_unmodelled_leads(mas.get_magnetic())) {
         findings.push_back(finding);
     }
     return findings;

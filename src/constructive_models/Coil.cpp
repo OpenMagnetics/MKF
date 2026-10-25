@@ -3602,6 +3602,19 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces(
             request.bendRadius = pending.bendRadius;
             request.lift = rides.ride_at(pending.windowExit[0], routes[pending.routeIndex].side);
             request.exitX = exitSlots[pending.routeIndex];
+            // Alf, 2026-10-25 (draw and report): a lead that leaves tangentially has no slot on the
+            // connection plane; its pin run starts where the tangent lead ends, on the window border
+            // (the plane the radial exit crosses, -(border + frontFaceOffset)) at the lead's own x and
+            // height. It rides no dragback lane there: the lead runs along the lateral face.
+            if (auto& departure = routes[pending.routeIndex].tangentDeparture) {
+                request.exitX = departure->end[0];
+                request.windowExit = {pending.windowExit[0], departure->end[1]};
+                request.lift = 0;
+                TangentLeadUnmodelled condition;
+                condition.condition = TangentLeadCondition::PIN_RUN;
+                condition.pinName = pending.pin.get_name();   // a pin need not be named
+                departure->unmodelled.push_back(condition);
+            }
             requests.push_back(request);
         }
         const auto processedBobbin = bobbin.get_processed_description().value();
@@ -5042,7 +5055,11 @@ std::optional<TangentDeparture> Coil::plan_tangent_departure(const ConnectionRou
         return std::nullopt;
     }
     const double turnX = std::abs(attached.get_coordinates()[0]);
-    const double radius = frame.axisX == 0 ? turnX : std::abs(turnX - frame.axisX);
+    // A station's distance from the wound column's axis (the frame of get_turn_bend_radius_in_frame).
+    auto radiusInFrame = [&](double x) {
+        return frame.axisX == 0 ? std::abs(x) : std::abs(std::abs(x) - frame.axisX);
+    };
+    const double radius = radiusInFrame(turnX);
     const double standoff = radius - frame.columnWidth;
     const double bendRadius = get_turn_bend_radius_in_frame(frame, turnX);
     // The connection face's half straight, from its midpoint to where its corner begins.
@@ -5056,62 +5073,77 @@ std::optional<TangentDeparture> Coil::plan_tangent_departure(const ConnectionRou
     if (route.plannedBendRadius <= faceHalfStraight) {
         return std::nullopt;   // the radial lead's bend fits on the face straight
     }
-    const std::string who = "Real winding: the " + std::string(entrance ? "entrance" : "exit") +
-                            " lead of '" + turnName + "' bends at " + std::to_string(route.plannedBendRadius) +
-                            " m, which does not fit on the " + std::to_string(faceHalfStraight) +
-                            " m connection-face half straight, so it must leave tangentially off the "
-                            "lateral face -- but ";
+    // Alf, 2026-10-25 (draw and report): what of this route MKF does not model is recorded with the
+    // departure, never refused; each condition below says which route the lead is drawn on instead.
+    std::vector<TangentLeadUnmodelled> unmodelled;
     if (frame.axisX != 0) {
-        throw CoilException(ErrorCode::COIL_WINDING_ERROR,
-                            who + "it is wound on a lateral column, whose face orientation is not modelled");
+        // Drawn in the lateral column's own frame (x from its axis), with the main column's sense.
+        TangentLeadUnmodelled condition;
+        condition.condition = TangentLeadCondition::LATERAL_COLUMN;
+        condition.columnAxisX = frame.axisX;
+        unmodelled.push_back(condition);
     }
-    if (!route.pinName.empty()) {
-        throw CoilException(ErrorCode::COIL_WINDING_ERROR,
-                            who + "it is assigned to pin '" + route.pinName +
-                                "', and a tangent lead run to a pin is not modelled");
-    }
+    // A lead assigned to a pin is known only once the pin runs are planned, after every departure
+    // (get_connection_reserved_spaces): its run then starts at this lead's end and the PIN_RUN
+    // condition is recorded there.
     // The revolution the tangent exit shortens, and its pitch-true slope over the FULL turn (the one
     // every station was laid for; the cut-off part simply is not drawn).
     const size_t position = size_t(attachedIt - sequence.begin());
     size_t from, to;
-    if (entrance) {
+    bool levelLead = false;   // no helix pitch to climb: the lead leaves level at its station's height
+    if (sequence.size() < 2) {
+        // A one-turn conductor: the entrance and the exit both shorten its one station.
+        TangentLeadUnmodelled condition;
+        condition.condition = TangentLeadCondition::SINGLE_REVOLUTION;
+        unmodelled.push_back(condition);
+        from = to = sequence[position];
+        levelLead = true;
+    }
+    else if (entrance) {
         if (position + 1 >= sequence.size()) {
-            throw CoilException(ErrorCode::COIL_WINDING_ERROR, who + "the conductor has no revolution after it");
+            throw std::logic_error("The entrance lead of '" + turnName + "' attaches to its conductor's last station");
         }
         from = sequence[position];
         to = sequence[position + 1];
     }
     else {
         if (position == 0) {
-            throw CoilException(ErrorCode::COIL_WINDING_ERROR, who + "the conductor has no revolution before it");
+            throw std::logic_error("The exit lead of '" + turnName + "' attaches to its conductor's first station");
         }
         from = sequence[position - 1];
         to = sequence[position];
     }
-    if (turns[from].get_layer() != turns[to].get_layer()) {
-        throw CoilException(ErrorCode::COIL_WINDING_ERROR,
-                            who + "its revolution '" + turns[from].get_name() + "' -> '" + turns[to].get_name() +
-                                "' changes layer, and a tangent exit off a layer link is not modelled");
+    if (!levelLead && turns[from].get_layer() != turns[to].get_layer()) {
+        TangentLeadUnmodelled condition;
+        condition.condition = TangentLeadCondition::LAYER_CHANGING_REVOLUTION;
+        condition.revolutionFrom = turns[from].get_name();
+        condition.revolutionTo = turns[to].get_name();
+        unmodelled.push_back(condition);
+        levelLead = true;
     }
     // The racetrack the real-winding turn is charged for (get_turn_length_in_frame's real-winding
     // branch, spelled out: that function follows the ambient setting, and a layout is read after it
     // has been restored): four straights between the corner arcs, plus one circle of the bend.
     const double fullLength = 4 * frame.columnDepth + 4 * frame.columnWidth + 8 * standoff +
                               (2 * std::numbers::pi - 8) * bendRadius;
-    const double slope = (turns[to].get_coordinates()[1] - turns[from].get_coordinates()[1]) / fullLength;
+    const double slope = levelLead ? 0.0 : (turns[to].get_coordinates()[1] - turns[from].get_coordinates()[1]) / fullLength;
     const double removed = faceHalfStraight + std::numbers::pi / 2 * bendRadius;
     const double faceStraightEnd = frame.columnDepth + standoff - bendRadius;
     // A dragback lane on the connection face displaces it and lengthens the lateral faces
-    // (ConnectionLayout::ride_at): the departure would move with it.
+    // (ConnectionLayout::ride_at) in a consumer that draws the ride; the departure is planned on the
+    // unridden face, where every turn length and the clash check below are charged.
     ConnectionLayout rides;
     rides.rideLevels = compute_ride_levels(routes);
     if (rides.ride_at(turnX, route.side) > 0) {
-        throw CoilException(ErrorCode::COIL_WINDING_ERROR,
-                            who + "a dragback lane rides " + std::to_string(rides.ride_at(turnX, route.side)) +
-                                " m over its face, which moves the lateral face's end and is not modelled");
+        TangentLeadUnmodelled condition;
+        condition.condition = TangentLeadCondition::DRAGBACK_RIDE;
+        condition.rideHeight = rides.ride_at(turnX, route.side);
+        unmodelled.push_back(condition);
     }
     TangentDeparture departure;
     departure.face = entrance ? -1 : 1;
+    departure.connectionFaceHalfStraight = faceHalfStraight;
+    departure.unmodelled = unmodelled;
     departure.distanceAlongFace = faceStraightEnd;
     const double y = attached.get_coordinates()[1] + (entrance ? slope : -slope) * removed;
     departure.point = {departure.face * (frame.columnWidth + standoff), y, -faceStraightEnd};
@@ -5124,7 +5156,11 @@ std::optional<TangentDeparture> Coil::plan_tangent_departure(const ConnectionRou
     const double border = route.waypoints.at(entrance ? 0 : route.waypoints.size() - 1).at(0);
     const double borderDepth = border + (frame.columnDepth - frame.columnWidth);
     if (!(borderDepth > faceStraightEnd)) {
-        throw CoilException(ErrorCode::COIL_WINDING_ERROR, who + "its face straight ends beyond the window border");
+        throw CoilException(ErrorCode::COIL_WINDING_ERROR,
+                            "Real winding: the " + std::string(entrance ? "entrance" : "exit") + " lead of '" + turnName +
+                                "' must leave tangentially off the lateral face, but that face's straight ends " +
+                                std::to_string(faceStraightEnd) + " m out, beyond the window border at " +
+                                std::to_string(borderDepth) + " m");
     }
     departure.length = (borderDepth - faceStraightEnd) * norm;
     departure.end = {departure.point[0], departure.point[1] + departure.direction[1] * departure.length,
@@ -5162,7 +5198,7 @@ std::optional<TangentDeparture> Coil::plan_tangent_departure(const ConnectionRou
         }
         const Turn& lower = turns[stations[a]];
         const Turn& upper = turns[stations[a + 1]];
-        const double otherStandoff = std::abs(turns[t].get_coordinates()[0]) - frame.columnWidth;   // axisX == 0 here
+        const double otherStandoff = radiusInFrame(turns[t].get_coordinates()[0]) - frame.columnWidth;
         const double otherBend = get_turn_bend_radius_in_frame(frame, std::abs(turns[t].get_coordinates()[0]));
         const double otherLength = 4 * frame.columnDepth + 4 * frame.columnWidth + 8 * otherStandoff +
                                    (2 * std::numbers::pi - 8) * otherBend;
@@ -5179,12 +5215,12 @@ std::optional<TangentDeparture> Coil::plan_tangent_departure(const ConnectionRou
         if (other.get_section() && get_wound_column_frame_for_section(other.get_section().value()).axisX != frame.axisX) {
             continue;   // another column
         }
-        if (otherX + otherDims[0] / 2 <= turnX - dims[0] / 2 + 1e-12) {
+        if (radiusInFrame(otherX) + otherDims[0] / 2 <= radius - dims[0] / 2 + 1e-12) {
             continue;   // radially inside the lead
         }
         // Where its corner meets the lead's line x = columnWidth + standoff (the frame of
         // get_turn_length_in_frame: corner centre inset by its bend radius from the face straights).
-        const double otherStandoff = otherX - frame.columnWidth;   // axisX == 0: a lateral column threw above
+        const double otherStandoff = radiusInFrame(otherX) - frame.columnWidth;
         const double otherBend = get_turn_bend_radius_in_frame(frame, otherX);
         const double inset = std::min(standoff - otherStandoff + otherBend, otherBend);
         double along;   // path distance from its crossing (the connection face's midpoint)
@@ -12980,6 +13016,29 @@ std::vector<Coil::LeadCollisionJudgement> Coil::judge_lead_collisions() {
         lead.leadName = std::string(entrance ? "entrance" : "exit") + " lead of '" +
                         (entrance ? route.toTurn : route.fromTurn) + "'";
         lead.collisions = route.tangentDeparture->collisions;
+        leads.push_back(lead);
+    }
+    return leads;
+}
+
+std::vector<Coil::UnmodelledLeadJudgement> Coil::judge_unmodelled_tangent_leads() {
+    std::vector<UnmodelledLeadJudgement> leads;
+    if (!is_real_winding_blocking_applied() || !get_turns_description()) {
+        return leads;
+    }
+    const auto routes = get_connection_layout().routes;
+    for (const auto& route : routes) {
+        if (!route.tangentDeparture || route.tangentDeparture->unmodelled.empty()) {
+            continue;
+        }
+        const bool entrance = route.kind == ConnectionKind::TERMINAL_ENTRANCE;
+        UnmodelledLeadJudgement lead;
+        lead.windingName = route.winding;
+        lead.leadName = std::string(entrance ? "entrance" : "exit") + " lead of '" +
+                        (entrance ? route.toTurn : route.fromTurn) + "'";
+        lead.plannedBendRadius = route.plannedBendRadius;
+        lead.connectionFaceHalfStraight = route.tangentDeparture->connectionFaceHalfStraight;
+        lead.conditions = route.tangentDeparture->unmodelled;
         leads.push_back(lead);
     }
     return leads;

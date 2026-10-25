@@ -15,6 +15,7 @@
 #include "constructive_models/Bobbin.h"
 #include "constructive_models/Coil.h"
 #include "constructive_models/Magnetic.h"
+#include "constructive_models/Mas.h"
 #include "constructive_models/Wire.h"
 #include "advisers/MagneticFilter.h"
 #include "processors/ResultsAnalyzer.h"
@@ -499,3 +500,58 @@ TEST_CASE("Real winding draws the edgewise terminal leads of the reported strip 
                                         ContainsSubstring("IEC 60317-0-2 Table 6"));
     bendSettings.reset();
 }
+// ABT #2061 (Alf, 2026-10-25: draw and report): a one-turn conductor has no next revolution and no
+// pitch, so its tangent leads are drawn level at the turn's height, both shortening that one turn, and
+// each is reported (LEAD_ROUTE_NOT_MODELLED). The design is the reported strip with a single turn,
+// wound OVERLAPPING, whose 6.84 mm lead bend does not fit on the 6.67 mm connection-face half straight.
+TEST_CASE("Real winding draws the tangent leads of a one-turn edgewise strip level and reports them",
+          "[constructive-model][coil][real-geometry][wire-bend][tangent-departure][abt-2061]") {
+    auto& settings = Settings::GetInstance();
+    settings.reset();
+    auto coil = OpenMagneticsTesting::get_quick_coil({1}, {1}, reportedCoreShape, 1, WindingOrientation::OVERLAPPING,
+                                                     WindingOrientation::OVERLAPPING, CoilAlignment::CENTERED,
+                                                     CoilAlignment::CENTERED, {edgewise_strip_13_6_by_2_5()});
+    settings.set_coil_use_real_winding_geometry(true);
+    set_former_corner_radius(coil, reportedFormerCornerRadius);
+    bool fits = false;
+    REQUIRE_NOTHROW(fits = coil.wind());
+    REQUIRE(fits);
+    const auto turns = coil.get_turns_description().value();
+    REQUIRE(turns.size() == 1);
+    size_t level = 0;
+    for (const auto& route : coil.get_connection_layout().routes) {
+        if (route.kind != ConnectionKind::TERMINAL_ENTRANCE && route.kind != ConnectionKind::TERMINAL_EXIT) {
+            continue;
+        }
+        REQUIRE(route.tangentDeparture.has_value());
+        const auto& departure = route.tangentDeparture.value();
+        REQUIRE(departure.unmodelled.size() == 1);
+        CHECK(departure.unmodelled[0].condition == TangentLeadCondition::SINGLE_REVOLUTION);
+        // Level: it leaves at the station's own height and runs out without climbing.
+        CHECK(departure.point[1] == turns[0].get_coordinates()[1]);
+        CHECK(departure.direction[1] == 0.0);
+        CHECK(departure.shortenedTurn == turns[0].get_name());
+        ++level;
+    }
+    REQUIRE(level == 2);
+
+    OpenMagnetics::Magnetic magnetic;
+    magnetic.set_core(OpenMagneticsTesting::get_quick_core(reportedCoreShape, OpenMagneticsTesting::get_ground_gap(0.001), 1, "N87"));
+    magnetic.set_coil(coil);
+    OpenMagnetics::Mas mas;
+    mas.set_magnetic(magnetic);
+    size_t reported = 0;
+    for (const auto& finding : ResultsAnalyzer::analyze_results(mas)) {
+        if (finding.code != ResultFindingCode::LEAD_ROUTE_NOT_MODELLED) {
+            continue;
+        }
+        ++reported;
+        using Catch::Matchers::ContainsSubstring;
+        CHECK_THAT(finding.message, ContainsSubstring("lead of '" + turns[0].get_name() + "'") &&
+                                        ContainsSubstring("its conductor has a single turn and no pitch"));
+        CHECK(finding.message.find("ABT") == std::string::npos);
+    }
+    CHECK(reported == 2);
+    settings.reset();
+}
+

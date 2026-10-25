@@ -61,6 +61,11 @@ enum class ResultFindingCode {
     // as routed; the copper collides there. One per lead, naming the winding, the lead, the turn it hits
     // (the worst of them) and the overlap. A property of the magnetic: no operating point.
     LEAD_COLLIDES_WITH_TURNS,
+    // Alf, 2026-10-25: a terminal lead of the real-winding layout leaves tangentially on a route MKF does
+    // not model in full (a dragback lane riding over its face, a lateral column, a pin run, a revolution
+    // that changes layer, a one-turn conductor: TangentLeadCondition). It is drawn on its best route; one
+    // per lead, naming the winding, the lead and each condition with its numbers. No operating point.
+    LEAD_ROUTE_NOT_MODELLED,
 };
 
 std::string to_string(ResultFindingCode code);
@@ -180,6 +185,9 @@ class ResultsAnalyzer {
     // another turn (Coil::judge_lead_collisions). Nothing under ideal winding.
     static std::vector<ResultFinding> analyze_lead_collisions(const Magnetic& magnetic);
 
+    // One LEAD_ROUTE_NOT_MODELLED finding per terminal lead drawn on a tangent route MKF does not model
+    // in full (Coil::judge_unmodelled_tangent_leads). Nothing under ideal winding.
+    static std::vector<ResultFinding> analyze_unmodelled_leads(const Magnetic& magnetic);
     // Every finding of a simulated MAS (as MagneticSimulator::simulate returns it: one output per
     // operating point), ordered by operating point, then saturation, volt-second balance, temperature;
     // then the findings about the magnetic itself (analyze_winding_bends, analyze_lead_collisions).

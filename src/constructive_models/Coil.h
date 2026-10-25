@@ -255,9 +255,47 @@ struct LeadTurnCollision {
     double overlap = 0;       // (lead height + turn height) / 2 - |leadHeight - turnHeight| [m], > 0
 };
 
+// Alf, 2026-10-25 (draw and report): a condition of a tangent terminal lead that MKF does not model.
+// The lead is still drawn, on the best route the geometry MKF has gives it (each condition says which),
+// and analyze_results reports the condition with its numbers (LEAD_ROUTE_NOT_MODELLED). Real winding
+// does not refuse the coil for it.
+enum class TangentLeadCondition {
+    // A dragback lane rides `rideHeight` over the connection face at the lead's radius: it displaces
+    // that face and lengthens the lateral face by as much in a consumer that draws the ride. The lead
+    // leaves where the UNRIDDEN lateral face straight ends -- the frame every turn length and the clash
+    // check are charged in -- along the lateral face's own line.
+    DRAGBACK_RIDE,
+    // The turn is wound on a lateral column whose axis lies `columnAxisX` from the main one. The lead is
+    // drawn in that column's own frame (x from its axis) with the main column's winding sense,
+    // clockwise seen from +Y; the sense of a lateral column's turns is not modelled.
+    LATERAL_COLUMN,
+    // The lead is assigned to pin `pinName`. Its pin run starts where the tangent lead ends, on the
+    // window border at the lead's own x, and is planned as a level run from there: the lead's climb
+    // (its pitch slope) is not carried into the run.
+    PIN_RUN,
+    // The revolution the departure shortens, `revolutionFrom` -> `revolutionTo`, changes layer, so its
+    // stations carry no pitch of a helix: the lead is drawn level at its station's height.
+    LAYER_CHANGING_REVOLUTION,
+    // The conductor has no other station (a one-turn winding): there is no pitch to climb, the lead is
+    // drawn level at the station's height, and the entrance and exit both shorten that one turn.
+    SINGLE_REVOLUTION,
+};
+
+struct TangentLeadUnmodelled {
+    TangentLeadCondition condition = TangentLeadCondition::DRAGBACK_RIDE;
+    double rideHeight = 0;     // DRAGBACK_RIDE [m]
+    double columnAxisX = 0;    // LATERAL_COLUMN [m]
+    std::optional<std::string> pinName;   // PIN_RUN: the pin's name, when it has one
+    std::string revolutionFrom;   // LAYER_CHANGING_REVOLUTION
+    std::string revolutionTo;     // LAYER_CHANGING_REVOLUTION
+};
+
 struct TangentDeparture {
     // The lateral face the lead continues: -1 = the -X face (entrance), +1 = the +X face (exit).
     int face = 0;
+    // The connection face's half straight at this turn's standoff, from its midpoint to where its
+    // corner begins: the room the radial lead's bend did not fit in (route.plannedBendRadius > it).
+    double connectionFaceHalfStraight = 0;
     // Distance along that face, from the face's midpoint (z = 0) towards the connection face, to the
     // end of its straight -- where the corner would begin, and where the lead leaves: the face's
     // half straight at this turn's standoff, columnDepth + standoff - the turn's bend radius.
@@ -283,6 +321,9 @@ struct TangentDeparture {
     // heights (Alf, 2026-10-24: a lead that cannot be routed without a collision is still drawn along
     // this route, and analyze_results reports the collision; real winding does not refuse it).
     std::vector<LeadTurnCollision> collisions;
+    // What of this lead's route MKF does not model (see TangentLeadCondition), in the order found.
+    // Empty for a lead drawn on a route MKF models in full.
+    std::vector<TangentLeadUnmodelled> unmodelled;
 };
 
 // ABT #1907 (Alf, 2026-10-18): a FOIL end that leaves through the END FACE (connections[].exit:
@@ -922,6 +963,17 @@ class Coil : public MAS::Coil {
             std::vector<LeadTurnCollision> collisions;
         };
         std::vector<LeadCollisionJudgement> judge_lead_collisions();
+        // Alf, 2026-10-25: the terminal leads of the REAL-WINDING layout drawn on a tangent route MKF
+        // does not model in full (TangentLeadCondition), each with its conditions. Never a refusal:
+        // ResultsAnalyzer reports them. Empty for an ideal layout.
+        struct UnmodelledLeadJudgement {
+            std::string windingName;
+            std::string leadName;   // "entrance lead of '<turn>'" / "exit lead of '<turn>'"
+            double plannedBendRadius = 0;
+            double connectionFaceHalfStraight = 0;
+            std::vector<TangentLeadUnmodelled> conditions;
+        };
+        std::vector<UnmodelledLeadJudgement> judge_unmodelled_tangent_leads();
         // ABT #1290 (Alf, 2026-09-20): under REAL WINDING, refuse a layout that draws a corner
         // tighter than the wire itself can be bent. ABT #2004 (Alf, 2026-10-22): an EDGEWISE bend
         // of rectangular wire is not refused -- IEC 60317-0-2 Table 6 qualifies the coating, it is
