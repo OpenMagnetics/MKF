@@ -1078,7 +1078,8 @@ namespace {
     // back COLD: Henry's pick for a 600 W LLC resonant inductor (P 18/11 TM63, 5 turns, 14 uH, 4.17 A rms at 155 kHz,
     // 2026-10-24) loses 23 W at 25 C at 0.37 T, has no fixed point below TM63's 290 C Curie point, and is held there:
     // 0 W of core loss, 1.4 mT and a 33 C hottest point. analyze_results must still say the core left its data,
-    // or a design gate reading the hottest point accepts a core sitting at its Curie point.
+    // or a design gate reading the hottest point accepts a core sitting at its Curie point; and since ABT #2078 the
+    // hottest point itself is published at no less than the Curie point.
     TEST_CASE("A core held paramagnetic at Curie whose network comes back cold is still reported above its data limit", "[processor][magnetic-simulator][abt-1855][curie-cold]") {
         std::ifstream file(OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "curie_held_tm63_p1811_resonant_inductor.json"));
         REQUIRE(file.good());
@@ -1099,10 +1100,14 @@ namespace {
         const double coreTemperature = output.get_core_losses()->get_temperature();
         const double hottest = output.get_temperature()->get_maximum_temperature();
         INFO("core losses " << output.get_core_losses()->get_core_losses() << " W at " << coreTemperature << " C, hottest point " << hottest << " C");
-        // The premise: held within the tolerance below Curie, with the network cold.
+        // The premise: held within the tolerance below Curie.
         REQUIRE(coreTemperature > ceiling.value() - MagneticSimulator::kOperatingTemperatureTolerance);
-        REQUIRE(hottest < 100);
         CHECK(MagneticSimulator::is_core_held_at_data_ceiling(coreMaterial, coreTemperature, hottest));
+        // ABT #2078 (Alf, 2026-10-25): the paramagnetic core loses almost nothing and the network comes back cold
+        // for it (a 33 C hottest point before), but the published hottest point is never below the material's own
+        // limit the core is held at, and the method says it is a floor.
+        CHECK(hottest >= ceiling.value());
+        CHECK_THAT(output.get_temperature()->get_method_used(), Catch::Matchers::ContainsSubstring("held at its material's data limit"));
 
         size_t dataLimitFindings = 0;
         for (const auto& finding : ResultsAnalyzer::analyze_results(simulated)) {

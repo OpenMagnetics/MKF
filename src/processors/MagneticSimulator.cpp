@@ -352,15 +352,16 @@ bool MagneticSimulator::is_core_held_at_data_ceiling(const CoreMaterial& coreMat
 
 bool MagneticSimulator::is_core_held_at_data_ceiling(const std::optional<CoreDataCeiling>& ceiling, double coreLossesTemperature,
                                                      double maximumTemperature) {
-    // Held (the losses drove the core to its ceiling, and the solve evaluated them there): the network puts the
-    // design's hottest point above the ceiling, or BELOW the core's own temperature. The core is a node of the
-    // network, so a solved point's hottest temperature is never more than the loop's tolerance under the
-    // temperature its core losses were evaluated at; one that is ran a core held at Curie as the paramagnetic
-    // core it is there, which loses almost nothing and leaves the network cold (a P 18/11 TM63 resonant inductor
-    // at 0.37 T: 23 W at 25 C, held at 289 C, then 0 W and a 33 C hottest point; Henry, 2026-10-24).
+    // Held: the losses drove the core to its ceiling and the solve evaluated them there, within the loop's
+    // tolerance below it. Until ABT #2078 this also read the hottest point, because a core held at Curie as the
+    // paramagnetic core it is there loses almost nothing and the network came back cold (a P 18/11 TM63 resonant
+    // inductor at 0.37 T: 23 W at 25 C, held at 289 C, then 0 W and a 33 C hottest point; Henry, 2026-10-24).
+    // The solve now publishes at least the held temperature as the hottest point, so it carries no sign of the
+    // hold. A point whose core losses were evaluated within the tolerance of the data limit is at that limit
+    // whatever the network gives, and is reported as such.
+    (void) maximumTemperature;
     return ceiling && coreLossesTemperature > ceiling->temperature - kOperatingTemperatureTolerance &&
-           coreLossesTemperature <= ceiling->temperature &&
-           (maximumTemperature > ceiling->temperature || maximumTemperature < coreLossesTemperature - kOperatingTemperatureTolerance);
+           coreLossesTemperature <= ceiling->temperature;
 }
 
 std::optional<CoreDataCeiling> MagneticSimulator::get_ferromagnetic_data_ceiling(const CoreMaterial& coreMaterial) {
@@ -711,13 +712,28 @@ SolvedLosses MagneticSimulator::solve_losses_at_operating_temperature(const Oper
             solved.dcBiasPoint = dcBiasPoint;
             solved.lowestFixedPointSearchEvaluations = lowestFixedPointSearchEvaluations;
             solved.temperature.set_initial_temperature(config.ambientTemperature);
-            solved.temperature.set_maximum_temperature(thermalResult.maximumTemperature);
+            // ABT #2078 (Alf, 2026-10-25): a core held at its data limit is at least as hot as the temperature it is
+            // held at, whatever the network gives for the losses evaluated there. Held paramagnetic at Curie it loses
+            // almost nothing and the network came back cold (a P 18/11 TM63 resonant inductor held at 289 C published
+            // a 33 C hottest point), so a consumer reading only the temperature saw a cold, fine core. The published
+            // hottest point is therefore never below the material's data limit the core is held at, and the method says
+            // it is a floor.
+            // The floor is the material's own limit (its Curie point, or where its data ends), never a number of ours.
+            if (coreHeldAtCeiling && !dataCeiling) {
+                throw CalculationException(ErrorCode::CALCULATION_INVALID_RESULT,
+                                           "Loss-temperature solve: the core is held but its material has no data limit");
+            }
+            const double maximumTemperature = coreHeldAtCeiling ? std::max(thermalResult.maximumTemperature, dataCeiling->temperature)
+                                                                : thermalResult.maximumTemperature;
+            solved.temperature.set_maximum_temperature(maximumTemperature);
             double totalLosses = config.coreLosses + config.windingLosses;
             if (totalLosses > 0) {
                 solved.temperature.set_bulk_thermal_resistance(
                     (thermalResult.maximumTemperature - config.ambientTemperature) / totalLosses);
             }
-            solved.temperature.set_method_used("ThermalNetwork");
+            solved.temperature.set_method_used(coreHeldAtCeiling ? "ThermalNetwork, core held at its material's data limit: "
+                                                                   "the real temperature is at least this, and higher"
+                                                                 : "ThermalNetwork");
             solved.temperature.set_origin(ResultOrigin::SIMULATION);
             return solved;
         }
