@@ -5681,3 +5681,21 @@ TEST_CASE("The line envelope's span check follows allowMaterialDataExtrapolation
     }
     settings.reset();
 }
+
+TEST_CASE("Test_Loss_Factor_Interpolation_Stays_Between_Neighbouring_Points_Near_Resonance", "[physical-model][core-losses][loss-factor][loss-factor-interpolation]") {
+    // N4's loss factor climbs from 2.51 at 2.1135 MHz to 357 at 2.1441 MHz (its resonance), N10's from 8.14 at
+    // 3.0726 MHz to 426 at 3.1623 MHz. The cubic spline through those points swung below zero just before the
+    // jump (N4 -22.0 at 2.1 MHz, N10 -1.69 at 3.0 MHz), so a flyback's harmonics refused every N4/N10 core.
+    // Interpolated linearly in log-log, each value lies between its neighbouring points.
+    struct Probe { const char* material; double frequency; double below; double above; };
+    for (const auto& p : {Probe{"N4", 2.1e6, 0.6493, 2.5096}, Probe{"N10", 3.0e6, 2.2054, 8.1365}}) {
+        INFO(p.material);
+        auto material = find_core_material_by_name(p.material);
+        double lossFactor = CoreLossesLossFactorModel::get_loss_factor(material, p.frequency);
+        CHECK(lossFactor >= p.below * 0.999);
+        CHECK(lossFactor <= p.above * 1.001);
+    }
+    // At a data point it is the datum.
+    auto n4 = find_core_material_by_name("N4");
+    CHECK_THAT(CoreLossesLossFactorModel::get_loss_factor(n4, 2113489.0), Catch::Matchers::WithinRel(2.5096, 1e-3));
+}

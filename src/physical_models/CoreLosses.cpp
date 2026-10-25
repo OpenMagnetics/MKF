@@ -3846,20 +3846,29 @@ double CoreLossesLossFactorModel::get_loss_factor(const CoreMaterial& coreMateri
         // (and the 2-point linear form) extrapolated freely and could go NEGATIVE,
         // yielding a negative series resistance / negative core losses. Outside the
         // band the endpoint value applies (standard loss-factor practice).
-        else if (x.size() >= 3) {
-            tk::spline interp(x, y, tk::spline::cspline_hermite);
-            double fMin = x.front(), fMax = x.back();
-            lossFactorInterps[coreMaterial.get_name()] =
-                [interp, fMin, fMax](double f) { return interp(std::clamp(f, fMin, fMax)); };
-        }
-        else if (x.size() == 2) {
-            // tk::spline requires >= 3 points. Do manual linear interpolation.
-            double x0 = x[0], x1 = x[1], y0 = y[0], y1 = y[1];
-            lossFactorInterps[coreMaterial.get_name()] =
-                [x0, x1, y0, y1](double f) {
-                    double fClamped = std::clamp(f, x0, x1);
-                    return y0 + (y1 - y0) * (fClamped - x0) / (x1 - x0);
-                };
+        // Inside it, piecewise linear in log(f)-log(tan delta / mu): the loss factor is positive and spans
+        // decades, and near the material's resonance it climbs steeply (N4: 2.5 at 2.11 MHz, 357 at 2.14 MHz),
+        // where a cubic spline through the points swung below zero just before the jump (N4 -22 at 2.1 MHz,
+        // N10 -1.7 at 3.0 MHz). Linear in log-log stays between neighbouring points and never goes negative.
+        else if (x.size() >= 2) {
+            std::vector<double> logF, logY;
+            for (size_t i = 0; i < x.size(); ++i) {
+                if (y[i] <= 0) {
+                    throw InvalidInputException(ErrorCode::INVALID_INPUT,
+                        "Material " + coreMaterial.get_name() + ": loss factor " + std::to_string(y[i]) + " at " +
+                        std::to_string(x[i]) + " Hz is not positive");
+                }
+                logF.push_back(std::log(x[i]));
+                logY.push_back(std::log(y[i]));
+            }
+            lossFactorInterps[coreMaterial.get_name()] = [logF, logY](double f) {
+                double lf = std::clamp(std::log(f), logF.front(), logF.back());
+                size_t i = std::upper_bound(logF.begin(), logF.end(), lf) - logF.begin();
+                if (i == 0) return std::exp(logY.front());
+                if (i >= logF.size()) return std::exp(logY.back());
+                double t = (lf - logF[i - 1]) / (logF[i] - logF[i - 1]);
+                return std::exp(logY[i - 1] + t * (logY[i] - logY[i - 1]));
+            };
         }
         else {
             double c = y[0];
