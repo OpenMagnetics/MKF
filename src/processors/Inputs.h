@@ -461,6 +461,54 @@ inline void to_file(std::filesystem::path filepath, const Inputs & x) {
 }
 
 
+// What a magnetic does in its circuit, for the choices that are categorical rather than a magnitude:
+// whether the core is gapped, whether the inductor loss optimiser applies, whether an ungappable
+// ferrite toroid is dropped, and the common-mode / differential-mode choke handling. The
+// magnitudes (saturation, the turn seed, the energy check, the loss-sweep cap) never read it:
+// they use the magnetizing current and the volt-seconds of every design.
+enum class MagneticRole { STORING, TRANSFORMER, COMMON_MODE_CHOKE, DIFFERENTIAL_MODE_CHOKE };
+
+// Which evidence decided the role, most reliable first. SINGLE_WINDING: one winding stores energy.
+// TOPOLOGY: designRequirements.topology, when the topology table knows it (a common- or
+// differential-mode choke topology names the component, so it decides even before SINGLE_WINDING). APPLICATION:
+// designRequirements.subApplication (common-/differential-mode noise filtering, power filtering).
+// ISOLATION_SIDES: every declared winding on one isolation side. STORAGE_RATIO: the energy the
+// windings exchange with the core within a period against the energy that passes through it,
+// from the voltage and current of every winding. NET_MAGNETOMOTIVE_FORCE: the net ampere-turns
+// against the largest winding's, from the currents and turns ratios alone. NO_CURRENTS: voltages
+// only, or not every winding's current: a transformer.
+enum class MagneticRoleTier { SINGLE_WINDING, TOPOLOGY, APPLICATION, ISOLATION_SIDES, STORAGE_RATIO, NET_MAGNETOMOTIVE_FORCE, NO_CURRENTS };
+
+struct MagneticRoleDecision {
+    MagneticRole role;
+    MagneticRoleTier tier;
+    // The storage ratio (kappa), the largest over the operating points, when the STORAGE_RATIO tier ran.
+    std::optional<double> storageRatio;
+    // The net magnetomotive force ratio (rho), the largest over the operating points, when the
+    // NET_MAGNETOMOTIVE_FORCE tier ran.
+    std::optional<double> netMagnetomotiveForceRatio;
+    // What the decision rests on and anything the caller should know (e.g. the winding signs read
+    // in the passive convention because the declared sides did not balance the power).
+    std::vector<std::string> findings;
+};
+
+// A storage ratio or net magnetomotive force ratio at or above this is an energy-storing magnetic.
+inline constexpr double magneticRoleStoringThreshold = 0.5;
+
+// One winding and no turns ratios.
+bool is_single_winding_design(const Inputs& inputs);
+// The role a converter topology gives its magnetic; nullopt for a topology the table does not know.
+std::optional<MagneticRole> topology_magnetic_role(MAS::Topology topology);
+// The role from the declarations alone (tiers SINGLE_WINDING to ISOLATION_SIDES); nullopt when
+// none decides. The only tiers that can yield a common-mode or differential-mode choke.
+std::optional<MagneticRoleDecision> declared_magnetic_role(const Inputs& inputs);
+// The role, through every tier. Never throws for missing descriptive metadata.
+MagneticRoleDecision magnetic_role(const Inputs& inputs);
+// The topology the magnetizing-inductance model is given: the declared one, else a
+// differential-mode choke when the declarations make the magnetic one (its magnetizing current is
+// the sum of its windings' line currents).
+std::optional<MAS::Topology> magnetizing_model_topology(const Inputs& inputs);
+
 bool operator==(Inputs lhs, Inputs rhs);
 
 inline bool operator==(Inputs lhs, Inputs rhs) {

@@ -138,18 +138,6 @@ inline bool windings_on_single_isolation_side(const std::optional<std::vector<Is
 // the converter's topology but has one winding; classified as a transformer it
 // was seeded with volt-seconds turns at B_max and left ungapped, missing its
 // inductance band by 3-6x (ABT #1411).
-inline bool is_single_winding_design(const Inputs& inputs) {
-    if (!inputs.get_design_requirements().get_turns_ratios().empty()) {
-        return false;
-    }
-    for (const auto& operatingPoint : inputs.get_operating_points()) {
-        if (operatingPoint.get_excitations_per_winding().size() > 1) {
-            return false;
-        }
-    }
-    return true;
-}
-
 inline bool is_inductor(const Inputs& inputs) {
     const auto& designRequirements = inputs.get_design_requirements();
     if (is_single_winding_design(inputs)) {

@@ -2924,14 +2924,14 @@ void Inputs::process(std::optional<std::variant<double, std::vector<double>>> ma
     // Detect DMC topology from design requirements so process_operating_point
     // can synthesize the effective core magnetizing current for multi-winding
     // DMCs (configuration is implied by the operating point's winding count).
-    bool isDmcTopology = get_design_requirements().get_topology().has_value()
-        && get_design_requirements().get_topology().value() == MAS::Topology::DIFFERENTIAL_MODE_CHOKE;
+    // Declared by the topology or the subApplication (the web wizards set only the latter).
+    auto declaredRole = declared_magnetic_role(*this);
+    bool isDmcTopology = declaredRole && declaredRole->role == MagneticRole::DIFFERENTIAL_MODE_CHOKE;
 
     // The windings' isolation sides (ABT #1467): declared, or every winding on the line side for a
     // declared common-mode choke; otherwise process_operating_point applies MKF's index convention.
     std::optional<std::vector<IsolationSide>> isolationSides = get_design_requirements().get_isolation_sides();
-    bool isCmcTopology = get_design_requirements().get_topology().has_value()
-        && get_design_requirements().get_topology().value() == MAS::Topology::COMMON_MODE_CHOKE;
+    bool isCmcTopology = declaredRole && declaredRole->role == MagneticRole::COMMON_MODE_CHOKE;
     if (!isolationSides && isCmcTopology) {
         size_t numberWindings = get_design_requirements().get_turns_ratios().size() + 1;
         for (auto& operatingPoint : operatingPoints) {
@@ -4189,6 +4189,335 @@ std::vector<IsolationSide> Inputs::get_isolation_sides_used() {
     }
 
     return isolationSidesUsed;
+}
+
+bool is_single_winding_design(const Inputs& inputs) {
+    if (!inputs.get_design_requirements().get_turns_ratios().empty()) {
+        return false;
+    }
+    for (const auto& operatingPoint : inputs.get_operating_points()) {
+        if (operatingPoint.get_excitations_per_winding().size() > 1) {
+            return false;
+        }
+    }
+    return true;
+}
+
+std::optional<MagneticRole> topology_magnetic_role(MAS::Topology topology) {
+    switch (topology) {
+        // Energy-storing topologies: the magnetic stores the energy it passes in its gap every cycle.
+        case MAS::Topology::FLYBACK_CONVERTER:
+        case MAS::Topology::BUCK_CONVERTER:
+        case MAS::Topology::BOOST_CONVERTER:
+        case MAS::Topology::ISOLATED_BUCK_BOOST_CONVERTER:
+        // Isolated buck (Fly-Buck): a synchronous buck with a coupled-inductor secondary; the primary
+        // stores energy in the gap like a buck inductor (TI AN-2292, Coilcraft: a coupled inductor).
+        case MAS::Topology::ISOLATED_BUCK_CONVERTER:
+        case MAS::Topology::POWER_FACTOR_CORRECTION:
+        // SEPIC, Zeta and Cuk: the magnetic the converter model returns is L1 (or the coupled L1-L2),
+        // which stores energy each cycle.
+        case MAS::Topology::SEPIC_CONVERTER:
+        case MAS::Topology::ZETA_CONVERTER:
+        case MAS::Topology::CUK_CONVERTER:
+        case MAS::Topology::FOUR_SWITCH_BUCK_BOOST_CONVERTER:
+            return MagneticRole::STORING;
+        case MAS::Topology::COMMON_MODE_CHOKE:
+            return MagneticRole::COMMON_MODE_CHOKE;
+        case MAS::Topology::DIFFERENTIAL_MODE_CHOKE:
+            return MagneticRole::DIFFERENTIAL_MODE_CHOKE;
+        // Forward-derived and resonant topologies: the magnetic transfers energy without storing it.
+        case MAS::Topology::SINGLE_SWITCH_FORWARD_CONVERTER:
+        case MAS::Topology::TWO_SWITCH_FORWARD_CONVERTER:
+        case MAS::Topology::ACTIVE_CLAMP_FORWARD_CONVERTER:
+        case MAS::Topology::PUSH_PULL_CONVERTER:
+        case MAS::Topology::PHASE_SHIFTED_FULL_BRIDGE_CONVERTER:
+        case MAS::Topology::PHASE_SHIFTED_HALF_BRIDGE_CONVERTER:
+        case MAS::Topology::ASYMMETRIC_HALF_BRIDGE_CONVERTER:
+        case MAS::Topology::DUAL_ACTIVE_BRIDGE_CONVERTER:
+        case MAS::Topology::LLC_RESONANT_CONVERTER:
+        case MAS::Topology::CLLC_RESONANT_CONVERTER:
+        case MAS::Topology::CURRENT_TRANSFORMER:
+            return MagneticRole::TRANSFORMER;
+        // The others (e.g. the Weinberg converter, whose model returns either its coupled input
+        // inductor or its transformer) do not name the magnetic's role: the next tiers decide.
+        default:
+            return std::nullopt;
+    }
+}
+
+std::optional<MagneticRoleDecision> declared_magnetic_role(const Inputs& inputs) {
+    const auto& designRequirements = inputs.get_design_requirements();
+    // A choke topology names the component itself, so it decides before the single-winding tier: a
+    // one-winding differential-mode choke is still the choke its topology says.
+    if (auto topology = designRequirements.get_topology();
+        topology && (topology.value() == MAS::Topology::COMMON_MODE_CHOKE || topology.value() == MAS::Topology::DIFFERENTIAL_MODE_CHOKE)) {
+        return MagneticRoleDecision{topology_magnetic_role(topology.value()).value(), MagneticRoleTier::TOPOLOGY, std::nullopt, std::nullopt,
+                                    {"topology " + std::string(magic_enum::enum_name(topology.value()))}};
+    }
+    if (is_single_winding_design(inputs)) {
+        return MagneticRoleDecision{MagneticRole::STORING, MagneticRoleTier::SINGLE_WINDING, std::nullopt, std::nullopt,
+                                    {"one winding: it stores the energy it carries"}};
+    }
+    // A converter topology names the CONVERTER, so it comes after the single-winding tier: the
+    // resonant inductor of an LLC carries the converter's topology but is one winding.
+    if (auto topology = designRequirements.get_topology()) {
+        if (auto role = topology_magnetic_role(topology.value())) {
+            return MagneticRoleDecision{role.value(), MagneticRoleTier::TOPOLOGY, std::nullopt, std::nullopt,
+                                        {"topology " + std::string(magic_enum::enum_name(topology.value()))}};
+        }
+    }
+    // The application alone does not say which choke an interference-suppression magnetic is, and
+    // an isolating or transforming application does not make a transformer (a flyback isolates too).
+    if (auto subApplication = designRequirements.get_sub_application()) {
+        if (subApplication.value() == "commonModeNoiseFiltering") {
+            return MagneticRoleDecision{MagneticRole::COMMON_MODE_CHOKE, MagneticRoleTier::APPLICATION, std::nullopt, std::nullopt,
+                                        {"subApplication commonModeNoiseFiltering"}};
+        }
+        if (subApplication.value() == "differentialModeNoiseFiltering") {
+            return MagneticRoleDecision{MagneticRole::DIFFERENTIAL_MODE_CHOKE, MagneticRoleTier::APPLICATION, std::nullopt, std::nullopt,
+                                        {"subApplication differentialModeNoiseFiltering"}};
+        }
+        if (subApplication.value() == "powerFiltering") {
+            return MagneticRoleDecision{MagneticRole::STORING, MagneticRoleTier::APPLICATION, std::nullopt, std::nullopt,
+                                        {"subApplication powerFiltering"}};
+        }
+    }
+    // A transformer couples windings on at least two isolation sides; every winding on one side
+    // (e.g. a coupled input inductor) stores energy.
+    if (auto isolationSides = designRequirements.get_isolation_sides(); isolationSides && isolationSides->size() >= 2) {
+        bool oneSide = std::all_of(isolationSides->begin(), isolationSides->end(),
+                                   [&](IsolationSide side) { return side == isolationSides->front(); });
+        if (oneSide) {
+            return MagneticRoleDecision{MagneticRole::STORING, MagneticRoleTier::ISOLATION_SIDES, std::nullopt, std::nullopt,
+                                        {"every winding on one isolation side"}};
+        }
+    }
+    return std::nullopt;
+}
+
+namespace {
+
+// Every winding's waveform of one signal, sampled on one common grid of a period, or nullopt when a
+// winding lacks it or the windings' frequencies differ.
+std::optional<std::vector<std::vector<double>>> role_sampled_signals(const OperatingPoint& operatingPoint, bool voltage, double& period) {
+    const auto& excitations = operatingPoint.get_excitations_per_winding();
+    if (excitations.empty()) {
+        return std::nullopt;
+    }
+    const double frequency = excitations[0].get_frequency();
+    constexpr size_t numberPoints = 1024;
+    std::vector<std::vector<double>> sampled;
+    for (const auto& excitation : excitations) {
+        if (std::abs(excitation.get_frequency() - frequency) > 1e-9 * std::abs(frequency)) {
+            return std::nullopt;
+        }
+        auto signal = voltage ? excitation.get_voltage() : excitation.get_current();
+        if (!signal || !signal->get_waveform() || signal->get_waveform()->get_data().size() < 2) {
+            return std::nullopt;
+        }
+        auto waveform = Inputs::calculate_sampled_waveform(signal->get_waveform().value(), frequency, numberPoints);
+        if (waveform.get_data().size() != numberPoints) {
+            return std::nullopt;
+        }
+        if (sampled.empty()) {
+            const auto time = waveform.get_time();
+            period = (time && time->size() >= 2) ? (time->at(1) - time->at(0)) * numberPoints : 1.0 / frequency;
+        }
+        sampled.push_back(waveform.get_data());
+    }
+    return sampled;
+}
+
+// +1 for a winding on the primary side, -1 otherwise: the declared side, else MKF's index convention.
+std::vector<double> role_winding_signs(const Inputs& inputs, size_t numberWindings) {
+    auto declared = inputs.get_design_requirements().get_isolation_sides();
+    std::vector<double> signs;
+    for (size_t windingIndex = 0; windingIndex < numberWindings; ++windingIndex) {
+        IsolationSide side = (declared && windingIndex < declared->size()) ? declared->at(windingIndex) : get_isolation_side_from_index(windingIndex);
+        signs.push_back(side == IsolationSide::PRIMARY ? 1.0 : -1.0);
+    }
+    return signs;
+}
+
+double role_mean(const std::vector<double>& x) {
+    double sum = 0;
+    for (double value : x) {
+        sum += value;
+    }
+    return sum / x.size();
+}
+
+double role_rms(const std::vector<double>& x) {
+    double sum = 0;
+    for (double value : x) {
+        sum += value * value;
+    }
+    return std::sqrt(sum / x.size());
+}
+
+// The storage ratio of one operating point: the swing of the energy the windings put into the core
+// within a period against the energy that passes through the magnetic in that period. nullopt when
+// the windings carry no apparent power.
+std::optional<double> storage_ratio(const std::vector<std::vector<double>>& voltages, const std::vector<std::vector<double>>& currents,
+                                    std::vector<double> signs, double period, std::vector<std::string>& findings) {
+    const size_t numberWindings = voltages.size();
+    const size_t numberPoints = voltages[0].size();
+    std::vector<double> power(numberWindings);
+    double maximumApparentPower = 0;
+    for (size_t windingIndex = 0; windingIndex < numberWindings; ++windingIndex) {
+        std::vector<double> instantaneous(numberPoints);
+        for (size_t pointIndex = 0; pointIndex < numberPoints; ++pointIndex) {
+            instantaneous[pointIndex] = voltages[windingIndex][pointIndex] * currents[windingIndex][pointIndex];
+        }
+        power[windingIndex] = role_mean(instantaneous);
+        maximumApparentPower = std::max(maximumApparentPower, role_rms(voltages[windingIndex]) * role_rms(currents[windingIndex]));
+    }
+    if (!(maximumApparentPower > 0)) {
+        return std::nullopt;
+    }
+    double totalAbsolutePower = 0;
+    double signedSum = 0;
+    double passiveSum = 0;
+    for (size_t windingIndex = 0; windingIndex < numberWindings; ++windingIndex) {
+        totalAbsolutePower += std::abs(power[windingIndex]);
+        signedSum += signs[windingIndex] * power[windingIndex];
+        passiveSum += power[windingIndex];
+    }
+    // The windings' powers must balance (a magnetic dissipates a small fraction of what it passes).
+    // When the sides' signs do not balance them but reading every current into its dot does, the
+    // currents were given in the passive convention.
+    if (totalAbsolutePower > 0 && std::abs(signedSum) / totalAbsolutePower > 0.2 && std::abs(passiveSum) / totalAbsolutePower < 0.2) {
+        std::fill(signs.begin(), signs.end(), 1.0);
+        findings.push_back("the winding powers balance only with every current read into its dot, so the storage ratio uses that convention");
+    }
+    const double timeStep = period / numberPoints;
+    std::vector<double> netPower(numberPoints, 0.0);
+    for (size_t windingIndex = 0; windingIndex < numberWindings; ++windingIndex) {
+        for (size_t pointIndex = 0; pointIndex < numberPoints; ++pointIndex) {
+            netPower[pointIndex] += signs[windingIndex] * voltages[windingIndex][pointIndex] * currents[windingIndex][pointIndex];
+        }
+    }
+    const double meanNetPower = role_mean(netPower);
+    double energy = 0;
+    double maximumEnergy = 0;
+    double minimumEnergy = 0;
+    for (size_t pointIndex = 0; pointIndex < numberPoints; ++pointIndex) {
+        energy += (netPower[pointIndex] - meanNetPower) * timeStep;
+        maximumEnergy = std::max(maximumEnergy, energy);
+        minimumEnergy = std::min(minimumEnergy, energy);
+    }
+    double inputEnergy = 0;
+    for (size_t windingIndex = 0; windingIndex < numberWindings; ++windingIndex) {
+        inputEnergy += std::max(signs[windingIndex] * power[windingIndex], 0.0);
+    }
+    inputEnergy *= period;
+    return (maximumEnergy - minimumEnergy) / std::max(inputEnergy, 1e-6 * maximumApparentPower * period);
+}
+
+}  // namespace
+
+MagneticRoleDecision magnetic_role(const Inputs& inputs) {
+    if (auto declared = declared_magnetic_role(inputs)) {
+        return declared.value();
+    }
+    const auto& operatingPoints = inputs.get_operating_points();
+
+    // Storage ratio, from the voltage and the current of every winding of every operating point.
+    {
+        std::vector<std::string> findings;
+        std::optional<double> largestStorageRatio;
+        bool everyOperatingPoint = !operatingPoints.empty();
+        for (const auto& operatingPoint : operatingPoints) {
+            double period = 0;
+            auto voltages = role_sampled_signals(operatingPoint, true, period);
+            auto currents = role_sampled_signals(operatingPoint, false, period);
+            if (!voltages || !currents) {
+                everyOperatingPoint = false;
+                break;
+            }
+            auto ratio = storage_ratio(voltages.value(), currents.value(), role_winding_signs(inputs, voltages->size()), period, findings);
+            if (!ratio) {
+                everyOperatingPoint = false;
+                break;
+            }
+            largestStorageRatio = std::max(largestStorageRatio.value_or(ratio.value()), ratio.value());
+        }
+        if (everyOperatingPoint && largestStorageRatio) {
+            bool storing = largestStorageRatio.value() >= magneticRoleStoringThreshold;
+            findings.insert(findings.begin(), "storage ratio " + std::to_string(largestStorageRatio.value()) +
+                                                  (storing ? " stores energy" : " transfers energy"));
+            return MagneticRoleDecision{storing ? MagneticRole::STORING : MagneticRole::TRANSFORMER, MagneticRoleTier::STORAGE_RATIO,
+                                        largestStorageRatio, std::nullopt, findings};
+        }
+    }
+
+    // Net magnetomotive force, from the current of every winding and the turns ratios.
+    {
+        const auto& turnsRatios = inputs.get_design_requirements().get_turns_ratios();
+        std::optional<double> largestRatio;
+        bool everyOperatingPoint = !operatingPoints.empty();
+        for (const auto& operatingPoint : operatingPoints) {
+            double period = 0;
+            auto currents = role_sampled_signals(operatingPoint, false, period);
+            if (!currents || turnsRatios.size() + 1 < currents->size()) {
+                everyOperatingPoint = false;
+                break;
+            }
+            const size_t numberWindings = currents->size();
+            std::vector<double> turns{1.0};
+            bool validTurns = true;
+            for (size_t windingIndex = 1; windingIndex < numberWindings; ++windingIndex) {
+                double turnsRatio = resolve_dimensional_values(turnsRatios[windingIndex - 1]);
+                if (!(turnsRatio > 0)) {
+                    validTurns = false;
+                    break;
+                }
+                turns.push_back(1.0 / turnsRatio);
+            }
+            if (!validTurns) {
+                everyOperatingPoint = false;
+                break;
+            }
+            auto signs = role_winding_signs(inputs, numberWindings);
+            double largestNet = 0;
+            double largestWinding = 0;
+            for (size_t pointIndex = 0; pointIndex < currents->at(0).size(); ++pointIndex) {
+                double net = 0;
+                for (size_t windingIndex = 0; windingIndex < numberWindings; ++windingIndex) {
+                    double ampereTurns = turns[windingIndex] * currents->at(windingIndex)[pointIndex];
+                    net += signs[windingIndex] * ampereTurns;
+                    largestWinding = std::max(largestWinding, std::abs(ampereTurns));
+                }
+                largestNet = std::max(largestNet, std::abs(net));
+            }
+            if (!(largestWinding > 0)) {
+                everyOperatingPoint = false;
+                break;
+            }
+            largestRatio = std::max(largestRatio.value_or(largestNet / largestWinding), largestNet / largestWinding);
+        }
+        if (everyOperatingPoint && largestRatio) {
+            bool storing = largestRatio.value() >= magneticRoleStoringThreshold;
+            return MagneticRoleDecision{storing ? MagneticRole::STORING : MagneticRole::TRANSFORMER, MagneticRoleTier::NET_MAGNETOMOTIVE_FORCE,
+                                        std::nullopt, largestRatio,
+                                        {"net magnetomotive force ratio " + std::to_string(largestRatio.value()) +
+                                         (storing ? " stores energy" : " transfers energy")}};
+        }
+    }
+
+    return MagneticRoleDecision{MagneticRole::TRANSFORMER, MagneticRoleTier::NO_CURRENTS, std::nullopt, std::nullopt,
+                                {"neither the voltage and current of every winding nor every winding's current with the turns ratios: a transformer"}};
+}
+
+std::optional<MAS::Topology> magnetizing_model_topology(const Inputs& inputs) {
+    if (auto topology = inputs.get_design_requirements().get_topology()) {
+        return topology;
+    }
+    auto declared = declared_magnetic_role(inputs);
+    if (declared && declared->role == MagneticRole::DIFFERENTIAL_MODE_CHOKE) {
+        return MAS::Topology::DIFFERENTIAL_MODE_CHOKE;
+    }
+    return std::nullopt;
 }
 
 } // namespace OpenMagnetics
