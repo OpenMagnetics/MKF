@@ -1706,6 +1706,11 @@ namespace OpenMagnetics {
             // losses in its outputs, and the verdict is the saturation check analyze_results makes
             // on them (ABT #1855: the loss solve no longer throws for a saturated core).
             MagneticFilterLosses lossesFilter;
+            auto reject_saturating_coil = [](Mas& woundMas, const std::string& why) {
+                logEntry("Wound coil '" + woundMas.get_mutable_magnetic().get_reference() + "' (material " +
+                         woundMas.get_mutable_magnetic().get_mutable_core().resolve_material().get_name() + ", " +
+                         describe_operating_frequencies(woundMas.get_inputs()) + ") rejected: " + why, "CoilAdviser");
+            };
             std::vector<std::pair<Mas, double>> masesWithLosses;
             std::vector<Mas> masesUnranked;
             for (auto& woundMas : masesWithCoil) {
@@ -1730,11 +1735,8 @@ namespace OpenMagnetics {
                         }
                     }
                     if (!saturationFindings.empty()) {
-                        logEntry("Wound coil '" + woundMas.get_mutable_magnetic().get_reference() + "' (material " +
-                                 woundMas.get_mutable_magnetic().get_mutable_core().resolve_material().get_name() + ", " +
-                                 describe_operating_frequencies(woundMas.get_inputs()) +
-                                 ") rejected: its core saturates at the temperature its losses heat it to: " +
-                                 saturationFindings.front().message, "CoilAdviser");
+                        reject_saturating_coil(woundMas, "its core saturates at the temperature its losses heat it to: " +
+                                                             saturationFindings.front().message);
                         continue;
                     }
                     reason = "MagneticFilterLosses refused the coil (its windings do not match the operating point's excitations)";
@@ -1749,6 +1751,14 @@ namespace OpenMagnetics {
                     reason = exception.what();
                 }
                 catch (const CalculationException& exception) {
+                    if (exception.code() == ErrorCode::CALCULATION_CORE_SATURATES) {
+                        // ABT #2052: the flux density of one of its points lies past the end of the material's
+                        // magnetisation curve and above B_sat (a SaturationException from the magnetizing model, e.g. more
+                        // volt-seconds than the core carries): a verdict on this coil, which is rejected, not on the
+                        // advise.
+                        reject_saturating_coil(woundMas, std::string("its core saturates: ") + exception.what());
+                        continue;
+                    }
                     if (exception.code() != ErrorCode::CALCULATION_INVALID_RESULT &&
                         exception.code() != ErrorCode::MATERIAL_FREQUENCY_OUT_OF_SPAN) {
                         throw;
@@ -1769,7 +1779,7 @@ namespace OpenMagnetics {
                          "' could be ranked by losses; returning them in winding order, unranked" +
                          (masesUnranked.size() < masesWithCoil.size()
                               ? ", without the " + std::to_string(masesWithCoil.size() - masesUnranked.size()) +
-                                    " whose core saturates at its operating temperature"
+                                    " whose core saturates"
                               : std::string()),
                          "CoilAdviser");
                 masesWithCoil = std::move(masesUnranked);

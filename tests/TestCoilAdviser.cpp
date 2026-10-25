@@ -9,6 +9,8 @@
 #include "processors/Inputs.h"
 #include "processors/MagneticSimulator.h"
 #include "processors/ResultsAnalyzer.h"
+#include "physical_models/MagnetizingInductance.h"
+#include "support/Exceptions.h"
 #include "physical_models/StrayCapacitance.h"
 #include <magic_enum.hpp>
 #include "TestingUtils.h"
@@ -3889,5 +3891,76 @@ TEST_CASE("Test_CoilAdviser_Web_Flyback_97_Advise_All_Coil_Stays_In_Its_Window",
     to_json(stored, magnetic);
     OpenMagnetics::Magnetic reloaded(stored);
     CHECK_NOTHROW(simulate_like_the_web_builder(masMagneticsWithCoil[0].get_inputs(), reloaded));
+    settings.reset();
+}
+
+TEST_CASE("Test_CoilAdviser_Rejects_A_Coil_Whose_Core_Saturates_Past_Its_Curve_Instead_Of_Failing_The_Advise",
+          "[adviser][coil-adviser][bug][abt-2052]") {
+    // ABT #2052: the web's flyback on material 97 (EQ 26/19/7, 0.2 mm gap, 42:5), wire "Advise all", with its primary
+    // carrying 20 times its volt-seconds: the same waveforms, voltages and currents, at a twentieth of the frequency.
+    // (Scaling the voltage instead is refused by IEC 60664-1 above 1 kV rms, before anything is wound.) Faraday's flux
+    // density for those volt-seconds lies past the end of 97's magnetisation curve and above B_sat, so the
+    // magnetizing model's inverse refuses it (SaturationException, CALCULATION_CORE_SATURATES; the web saw "6.28 T
+    // asked of material 97"). The loss ranking rethrew it and the whole advise failed. It is a verdict on the coil, as
+    // the ranking's saturation check is: each such coil is rejected with its reason, and the advise returns.
+    auto mas = load_web_advise_all("flyback_97_calculate_advised_coil.json");
+    {
+        // A new design built here from the fixture: the same magnetic and waveforms, at 100 kHz / 20.
+        const double slowdown = 20;
+        auto stretched = [slowdown](SignalDescriptor signal, double frequency) {
+            auto waveform = signal.get_waveform().value();
+            REQUIRE(waveform.get_time());
+            auto time = waveform.get_time().value();
+            for (auto& instant : time) {
+                instant *= slowdown;
+            }
+            waveform.set_time(time);
+            auto sampledWaveform = OpenMagnetics::Inputs::calculate_sampled_waveform(waveform, frequency);
+            signal.set_waveform(waveform);
+            signal.set_harmonics(OpenMagnetics::Inputs::calculate_harmonics_data(waveform, sampledWaveform, frequency));
+            auto processed = OpenMagnetics::Inputs::calculate_processed_data(signal, sampledWaveform, true);
+            processed.set_label(signal.get_processed()->get_label());
+            signal.set_processed(processed);
+            return signal;
+        };
+        auto operatingPoints = mas.get_inputs().get_operating_points();
+        REQUIRE(operatingPoints.size() == 1);
+        for (auto& excitation : operatingPoints[0].get_mutable_excitations_per_winding()) {
+            REQUIRE(excitation.get_frequency() == 100000);
+            REQUIRE(excitation.get_voltage());
+            REQUIRE(excitation.get_current());
+            REQUIRE(!excitation.get_magnetizing_current());
+            const double frequency = excitation.get_frequency() / slowdown;
+            excitation.set_frequency(frequency);
+            excitation.set_voltage(stretched(excitation.get_voltage().value(), frequency));
+            excitation.set_current(stretched(excitation.get_current().value(), frequency));
+        }
+        mas.get_mutable_inputs().set_operating_points(operatingPoints);
+    }
+    {
+        // The premise: the magnetizing model refuses the flux density of that voltage as past the curve, above B_sat.
+        auto operatingPoint = mas.get_inputs().get_operating_points()[0];
+        auto magnetic = mas.get_magnetic();
+        MagnetizingInductance magnetizingInductanceModel;
+        magnetizingInductanceModel.set_topology(mas.get_inputs().get_design_requirements().get_topology());
+        CHECK_THROWS_MATCHES(magnetizingInductanceModel.calculate_inductance_and_magnetic_flux_density(magnetic, &operatingPoint),
+                             SaturationException,
+                             Catch::Matchers::MessageMatches(Catch::Matchers::ContainsSubstring("lies past the end of its magnetisation curve") &&
+                                                             Catch::Matchers::ContainsSubstring("asked of material 97")));
+    }
+
+    OpenMagnetics::read_log();  // drain, so the assertions below see only this run
+    CoilAdviser coilAdviser;
+    std::vector<OpenMagnetics::Mas> masMagneticsWithCoil;
+    REQUIRE_NOTHROW(masMagneticsWithCoil = coilAdviser.get_advised_coil(mas, 1));
+    auto log = OpenMagnetics::read_log();
+    INFO(log);
+    INFO(coilAdviser.get_last_no_results_reason().value_or("returned results"));
+    CHECK(log.find("(material 97, ") != std::string::npos);
+    CHECK(log.find(") rejected: its core saturates: ") != std::string::npos);
+    CHECK(log.find("lies past the end of its magnetisation curve") != std::string::npos);
+    CHECK(log.find("ABT #") == std::string::npos);
+    // Not asserted: with every ranked coil rejected, the advise searches again beyond the wire limits; that search
+    // winds too few coils to rank, so they are not loss-evaluated and are returned as wound, saturating or not.
     settings.reset();
 }
