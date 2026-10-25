@@ -4659,12 +4659,72 @@ void Painter::paint_magnetic(Magnetic magnetic, PainterProjection projection) {
         paint_coil_turns(magnetic);
         paint_toroidal_turn_connections(magnetic, /*below=*/false);
         paint_coil_connections(magnetic);
+        paint_copper_overlaps(magnetic);
+        paint_copper_outside_window(magnetic);
         return;
     }
     if (projection == PainterProjection::XZ) {
         return paint_xz_projection(magnetic);
     }
     paint_yz_projection(magnetic);
+}
+
+void Painter::paint_copper_overlaps(Magnetic magnetic) {
+    // A copy: judging resolves the coil's bobbin and column frames.
+    auto coil = magnetic.get_coil();
+    const auto overlaps = coil.judge_copper_overlaps();
+    if (overlaps.empty()) {
+        return;
+    }
+    auto shapes = _root.add_child<SVG::Group>();
+    for (const auto& overlap : overlaps) {
+        if (overlap.region.size() < 3) {
+            throw std::logic_error("The copper overlap of " + overlap.first + " and " + overlap.second +
+                                   " has a region of " + std::to_string(overlap.region.size()) + " points");
+        }
+        std::vector<SVG::Point> points;
+        for (const auto& point : overlap.region) {
+            points.push_back(SVG::Point(point[0], point[1]));
+        }
+        *shapes << SVG::Polygon(scale_points(points, 0, _scale));
+        auto polygon = _root.get_children<SVG::Polygon>().back();
+        polygon->set_attr("class", "copper_overlap");
+        std::ostringstream label;
+        // A turn is named in quotes; a lead's name already quotes its turn ("exit lead of '<turn>'").
+        const bool firstIsTurn = overlap.kind == CopperOverlapKind::TURN_TURN;
+        const bool secondIsTurn = overlap.kind != CopperOverlapKind::LEAD_LEAD;
+        label << (firstIsTurn ? "'" + overlap.first + "'" : overlap.first) << " overlaps "
+              << (secondIsTurn ? "'" + overlap.second + "'" : overlap.second) << " by "<< std::setprecision(3) << overlap.overlap * 1000 << " mm";
+        polygon->add_child<SVG::Title>(escape_xml(label.str()));
+    }
+}
+
+void Painter::paint_copper_outside_window(Magnetic magnetic) {
+    // A copy: judging resolves the coil's bobbin.
+    auto coil = magnetic.get_coil();
+    const auto outside = coil.judge_turns_outside_window();
+    if (outside.empty()) {
+        return;
+    }
+    auto shapes = _root.add_child<SVG::Group>();
+    for (const auto& turn : outside) {
+        for (const auto& region : turn.regions) {
+            if (region.size() < 3) {
+                throw std::logic_error("The copper of '" + turn.turn + "' outside its winding window has a region of " +
+                                       std::to_string(region.size()) + " points");
+            }
+            std::vector<SVG::Point> points;
+            for (const auto& point : region) {
+                points.push_back(SVG::Point(point[0], point[1]));
+            }
+            *shapes << SVG::Polygon(scale_points(points, 0, _scale));
+            auto polygon = _root.get_children<SVG::Polygon>().back();
+            polygon->set_attr("class", "copper_outside_window");
+            std::ostringstream label;
+            label << "'" << turn.turn << "' lies outside the winding window by " << std::setprecision(3) << turn.overrun * 1000 << " mm";
+            polygon->add_child<SVG::Title>(escape_xml(label.str()));
+        }
+    }
 }
 
 void Painter::paint_winding_fit_problems(Magnetic magnetic) {

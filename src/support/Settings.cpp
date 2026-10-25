@@ -166,6 +166,7 @@ namespace {
         add_to_fingerprint(text, _painterColorMargin);
         add_to_fingerprint(text, _painterColorSpacer);
         add_to_fingerprint(text, _painterColorShunt);
+        add_to_fingerprint(text, _painterColorCopperOverlap);
         add_to_fingerprint(text, _painterColorLines);
         add_to_fingerprint(text, _painterColorText);
         add_to_fingerprint(text, _painterColorCurrentDensity);
@@ -314,6 +315,7 @@ namespace {
         _painterColorSilk = "0xe7e7e8";
         _painterColorSpacer = "0x3b3b3b";
         _painterColorShunt = "0x6a5acd";
+        _painterColorCopperOverlap = "0xff0000";
         _painterColorLines = "0x010000";
         _painterColorText = "0x000000";
         _painterColorCurrentDensity = "0x0892D0";
@@ -796,6 +798,13 @@ namespace {
     }
     void Settings::set_painter_color_shunt(std::string value) {
         _painterColorShunt = value;
+    }
+
+    std::string Settings::get_painter_color_copper_overlap() const {
+        return _painterColorCopperOverlap;
+    }
+    void Settings::set_painter_color_copper_overlap(std::string value) {
+        _painterColorCopperOverlap = value;
     }
 
     std::string Settings::get_painter_color_lines() const {

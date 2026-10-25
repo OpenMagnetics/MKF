@@ -5833,4 +5833,39 @@ namespace {
         CHECK(svg.find("<img") == std::string::npos);
         settings.reset();
     }
+
+    // ABT #2071 (Alf, 2026-10-25: a painter does not weld): copper of the drawn design that overlaps
+    // other copper is filled red, one polygon per overlap, from Coil::judge_copper_overlaps. Design:
+    // two turns of Round 0.4 on an E 25/13/7, the second station stated half its coated diameter down
+    // onto the first (the TestWireBendLayout TURNS_OVERLAP design).
+    TEST_CASE("Test_Painter_Paints_Overlapping_Copper_Red", "[support][painter][abt-2071]") {
+        settings.reset();
+        auto coil = OpenMagneticsTesting::get_quick_coil({2}, {1}, "E 25/13/7", 1, WindingOrientation::OVERLAPPING,
+                                                         WindingOrientation::OVERLAPPING, CoilAlignment::CENTERED,
+                                                         CoilAlignment::CENTERED, {find_wire_by_name("Round 0.4 - Grade 1")});
+        auto turns = coil.get_turns_description().value();
+        REQUIRE(turns.size() == 2);
+        const double diameter = turns[0].get_dimensions().value()[0];
+        turns[1].set_coordinates({turns[0].get_coordinates()[0], turns[0].get_coordinates()[1] + diameter / 2});
+        coil.set_turns_description(turns);
+        OpenMagnetics::Magnetic magnetic;
+        magnetic.set_core(OpenMagneticsTesting::get_quick_core("E 25/13/7", OpenMagneticsTesting::get_ground_gap(0.001), 1, "N87"));
+        magnetic.set_coil(coil);
+
+        auto outFile = outputFilePath;
+        outFile.append("Test_Painter_Paints_Overlapping_Copper_Red.svg");
+        std::filesystem::remove(outFile);
+        Painter painter(outFile);
+        painter.paint_magnetic(magnetic);
+        const auto svg = painter.export_svg();
+        REQUIRE(std::filesystem::exists(outFile));
+        size_t red = 0;
+        for (size_t at = svg.find("class=\"copper_overlap\""); at != std::string::npos; at = svg.find("class=\"copper_overlap\"", at + 1)) {
+            ++red;
+        }
+        CHECK(red == 1);
+        CHECK(svg.find("&apos;" + turns[0].get_name() + "&apos; overlaps &apos;" + turns[1].get_name() + "&apos;") != std::string::npos);
+        CHECK(svg.find("#ff0000") != std::string::npos);
+        settings.reset();
+    }
 }  // namespace

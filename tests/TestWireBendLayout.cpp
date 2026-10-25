@@ -25,6 +25,7 @@
 #include "physical_models/StrayCapacitance.h"
 #include "physical_models/WindingOhmicLosses.h"
 #include "support/CoilMesher.h"
+#include "support/Painter.h"
 #include "support/Exceptions.h"
 #include "support/Settings.h"
 #include "support/Utils.h"
@@ -619,6 +620,21 @@ TEST_CASE("Real winding lays out a design whose ideal wind does not fit, and rep
     }
     CHECK(reported == 1);
 
+    // Painted: every overlap a red polygon, with real winding geometry on (turns, connections, leads).
+    auto outFile = std::filesystem::path{std::source_location::current().file_name()}.parent_path().append("..").append("output");
+    outFile.append("Test_Real_Winding_Overflowing_Strip_Copper_Overlaps.svg");
+    std::filesystem::remove(outFile);
+    Painter painter(outFile);
+    painter.paint_magnetic(magnetic);
+    const std::string svg = painter.export_svg();
+    REQUIRE(std::filesystem::exists(outFile));
+    size_t red = 0;
+    for (size_t at = svg.find("class=\"copper_overlap\""); at != std::string::npos; at = svg.find("class=\"copper_overlap\"", at + 1)) {
+        ++red;
+    }
+    CHECK(red == overlaps.size());
+    CHECK(svg.find(".copper_overlap") != std::string::npos);
+    CHECK(svg.find("#ff0000") != std::string::npos);
 
     // The stations past the window's outer side: TURNS_OUTSIDE_WINDOW names each with its overrun, and
     // their copper past the window is painted red too.
@@ -667,6 +683,12 @@ TEST_CASE("Real winding lays out a design whose ideal wind does not fit, and rep
         CHECK(finding.message.find("ABT") == std::string::npos);
     }
     CHECK(outsideReported == 1);
+    size_t redOutside = 0;
+    for (size_t at = svg.find("class=\"copper_outside_window\""); at != std::string::npos;
+         at = svg.find("class=\"copper_outside_window\"", at + 1)) {
+        ++redOutside;
+    }
+    CHECK(redOutside == outsidePieces);
     settings.reset();
 }
 
@@ -716,6 +738,16 @@ TEST_CASE("Autocomplete winds a stored CONTIGUOUS section as given, and reports 
     }
     CHECK(outsideReported == 1);
 
+    // Painted as wound (real winding geometry on: turns, connections, leads), the copper outside the
+    // window in red.
+    auto outFile = std::filesystem::path{std::source_location::current().file_name()}.parent_path().append("..").append("output");
+    outFile.append("Test_Real_Winding_Stored_Contiguous_Strip_Outside_Window.svg");
+    std::filesystem::remove(outFile);
+    Painter painter(outFile);
+    painter.paint_magnetic(magnetic);
+    const std::string svg = painter.export_svg();
+    REQUIRE(std::filesystem::exists(outFile));
+    CHECK(svg.find("class=\"copper_outside_window\"") != std::string::npos);
 
     // A caller that asks for an orientation itself is honoured over the stored one.
     auto asked = OpenMagnetics::magnetic_autocomplete(OpenMagnetics::Magnetic(stored), json{{"layersOrientation", "overlapping"}});

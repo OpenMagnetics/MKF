@@ -474,6 +474,8 @@ class Painter : public PainterInterface {
         _root.style(".margin_translucent").set_attr("fill", std::regex_replace(std::string(settings.get_painter_color_margin()), std::regex("0x"), "#")).set_attr("opacity", 0.5);
         _root.style(".spacer").set_attr("fill", std::regex_replace(std::string(settings.get_painter_color_spacer()), std::regex("0x"), "#"));
         _root.style(".shunt").set_attr("fill", std::regex_replace(std::string(settings.get_painter_color_shunt()), std::regex("0x"), "#"));
+        _root.style(".copper_overlap").set_attr("fill", std::regex_replace(std::string(settings.get_painter_color_copper_overlap()), std::regex("0x"), "#"));
+        _root.style(".copper_outside_window").set_attr("fill", std::regex_replace(std::string(settings.get_painter_color_copper_overlap()), std::regex("0x"), "#"));
         _root.style(".copper").set_attr("fill", std::regex_replace(std::string(settings.get_painter_color_copper()), std::regex("0x"), "#"));
         _root.style(".copper_translucent").set_attr("fill", std::regex_replace(std::string(settings.get_painter_color_copper()), std::regex("0x"), "#")).set_attr("opacity", 0.5);
         _root.style(".insulation").set_attr("fill", std::regex_replace(std::string(settings.get_painter_color_insulation()), std::regex("0x"), "#"));
@@ -516,6 +518,18 @@ class Painter : public PainterInterface {
     // Coil::get_connection_reserved_spaces) as rectangles. Empty unless there are multi-layer
     // sections; useful to visualise real winding geometry.
     void paint_coil_connections(Magnetic magnetic);
+    // Alf, 2026-10-25 (draw and report; ABT #2061/#2071): the copper of the drawn design that overlaps
+    // other copper -- turn stations overlapping each other, terminal leads across turns, terminal
+    // leads through each other -- filled in the copper-overlap colour (red), one polygon per overlap
+    // with a <title> naming the two coppers. The regions are Coil::judge_copper_overlaps' own, never
+    // recomputed here, so the picture and analyze_results' findings are the same overlaps. A painter
+    // does not weld; a consumer that does (MVB++'s CAD) fuses the overlaps instead. XY projection.
+    void paint_copper_overlaps(Magnetic magnetic);
+    // Alf, 2026-10-25 (ABT #2071): the copper of turns outside their winding window (in the ferrite or
+    // past the former), filled in the copper-overlap colour (red), class copper_outside_window, one
+    // polygon per piece with a <title> naming the turn and its overrun. The regions are
+    // Coil::judge_turns_outside_window's own, the same turns analyze_results reports. XY projection.
+    void paint_copper_outside_window(Magnetic magnetic);
     // Overlay for a coil whose wind did not fit (XY projection): every rectangular winding window
     // as a red dashed outline, and every turn whose copper leaves all of them ringed in red. The
     // coil is still drawn as wound, so the user SEES where it overflows instead of getting a bare

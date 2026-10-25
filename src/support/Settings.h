@@ -147,6 +147,8 @@ class Settings
         std::string _painterColorMargin = "0xfff05b";
         std::string _painterColorSpacer = "0x3b3b3b";
         std::string _painterColorShunt = "0x6a5acd";
+        // Alf, 2026-10-25: copper of the drawn design that overlaps other copper (Coil::judge_copper_overlaps).
+        std::string _painterColorCopperOverlap = "0xff0000";
         std::string _painterColorLines = "0x010000";
         std::string _painterColorText = "0x000000";
         std::string _painterColorCurrentDensity = "0x0892D0";
@@ -514,6 +516,9 @@ class Settings
 
         std::string get_painter_color_shunt() const;
         void set_painter_color_shunt(std::string value);
+
+        std::string get_painter_color_copper_overlap() const;
+        void set_painter_color_copper_overlap(std::string value);
 
         std::string get_painter_color_lines() const;
         void set_painter_color_lines(std::string value);
