@@ -944,6 +944,72 @@ TEST_CASE("magnetic_autocomplete throws COIL_WINDING_ERROR for a winding that do
 
 namespace {
 
+// ABT #2073: a winding refused because its copper does not fit must say so, with the numbers, before the
+// position of the first turn that escapes. Returns the COIL_WINDING_ERROR text of autocompleting the design.
+std::string autocomplete_refusal(const json& core, const json& functionalDescription) {
+    json coil = {{"bobbin", "Basic"}, {"functionalDescription", functionalDescription}};
+    try {
+        OpenMagnetics::magnetic_autocomplete(OpenMagnetics::Magnetic(json{{"core", core}, {"coil", coil}}));
+    }
+    catch (const OpenMagnetics::OpenMagneticsException& e) {
+        CHECK(e.code() == OpenMagnetics::ErrorCode::COIL_WINDING_ERROR);
+        return e.what();
+    }
+    return "";
+}
+
+json ungapped_core(const std::string& shape, const std::string& material) {
+    return {{"name", shape + " " + material},
+            {"functionalDescription", {{"type", "two-piece set"}, {"shape", shape}, {"material", material},
+                                       {"gapping", json::array()}, {"numberStacks", 1}}}};
+}
+
+}  // namespace
+
+// Bartecka, Klos, Paska (Energies 2024, 17, 55): RM 14, 10 turns of Litz 180x0.1 and 4 of Litz 400x0.1, round
+// bundles. The primary needs two 1.932 mm layers and the secondary one 2.880 mm layer, 6.744 mm side by side, and the
+// RM 14 former is 6.0 mm across: no split of the window holds them, and the refusal used to name only a turn
+// 635 um past the window, which read like a winder that never tried a second layer.
+TEST_CASE("Autocomplete refusal names the whole layers that do not fit side by side (ABT #2073)",
+          "[constructive-model][coil][magnetic-autocomplete][abt2073]") {
+    auto& settings = OpenMagnetics::Settings::GetInstance();
+    settings.reset();
+    json functionalDescription = json::array();
+    functionalDescription.push_back({{"name", "Primary"}, {"numberTurns", 10}, {"numberParallels", 1}, {"isolationSide", "primary"},
+                                     {"wire", "Litz 180x0.1 - Grade 1 - Unserved"}});
+    functionalDescription.push_back({{"name", "Secondary"}, {"numberTurns", 4}, {"numberParallels", 1}, {"isolationSide", "secondary"},
+                                     {"wire", {{"name", "Litz 400x0.1 bare"}, {"type", "litz"}, {"strand", "Round 0.1 - Grade 1"},
+                                               {"numberConductors", 400}, {"coating", {{"type", "bare"}}}}}});
+    const std::string what = autocomplete_refusal(ungapped_core("RM 14", "N97"), functionalDescription);
+    INFO(what);
+    CHECK(what.find("the whole layers of the windings need") != std::string::npos);
+    CHECK(what.find("it gives 6.000 mm") != std::string::npos);
+    CHECK(what.find("Primary section 0: 2 layers of up to 9 turns, 3.864 mm") != std::string::npos);
+    CHECK(what.find("as laid out, Primary parallel 0 turn 0") != std::string::npos);
+    settings.reset();
+}
+
+// Power Integrations DER-984: PQ 32/20 with 26 turns of served Litz 200x#42, one winding. Its turns need more layers
+// than the section is across, so wind_by_rectangular_layers crams the rest along the column; the refusal says how many
+// layers the turns need and how many fit.
+TEST_CASE("Autocomplete refusal of a single winding names the layers its turns need (ABT #2073)",
+          "[constructive-model][coil][magnetic-autocomplete][abt2073]") {
+    auto& settings = OpenMagnetics::Settings::GetInstance();
+    settings.reset();
+    json functionalDescription = json::array();
+    functionalDescription.push_back({{"name", "Boost inductor"}, {"numberTurns", 26}, {"numberParallels", 1}, {"isolationSide", "primary"},
+                                     {"wire", {{"name", "Litz 200x#42 served"}, {"type", "litz"}, {"strand", "Round 42.0 - Single Build"},
+                                               {"numberConductors", 200}, {"coating", {{"type", "served"}, {"numberLayers", 1}}}}}});
+    const std::string what = autocomplete_refusal(ungapped_core("PQ 32/20", "PC95"), functionalDescription);
+    INFO(what);
+    CHECK(what.find("section 'Boost inductor section 0' needs") != std::string::npos);
+    CHECK(what.find("room for") != std::string::npos);
+    CHECK(what.find("as laid out, Boost inductor parallel 0 turn 0") != std::string::npos);
+    settings.reset();
+}
+
+namespace {
+
 // Autocompletes `name` with the log collector on and returns the magnetic and every WARNING the
 // Utils module logged on the way.
 std::pair<OpenMagnetics::Magnetic, std::vector<std::string>> autocomplete_collecting_warnings(const std::string& name,

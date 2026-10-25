@@ -7828,6 +7828,7 @@ bool Coil::wind_at_current_footprints(std::vector<double> proportionPerWinding, 
     _outsideLinkOverflows.clear();       // ABT #1487: this wind's overflows only
     _storedHeightOverflows.clear();
     const std::string fitFailureBefore = _lastFitFailure;
+    _wholeLayerShortfall.clear();
     bool ok = wind_inner(proportionPerWinding, pattern, repetitions);
     // ABT #1487 (owner decision, Alf 2026-09-29): a real-winding layout that does not fit is laid
     // out in full -- sections past the window along the column, outside links beyond the room the
@@ -7848,6 +7849,9 @@ bool Coil::wind_at_current_footprints(std::vector<double> proportionPerWinding, 
             ownCheck += "; " + _lastFitFailure;
         }
         _lastFitFailure = "real winding does not fit: " + reasons + ownCheck;
+    }
+    if (!ok && !_wholeLayerShortfall.empty() && _lastFitFailure.find(_wholeLayerShortfall) == std::string::npos) {
+        _lastFitFailure = _wholeLayerShortfall + (_lastFitFailure.empty() ? "" : "; as laid out, " + _lastFitFailure);
     }
     // ABT #1174: record the lead-sleeve decision on the connections, where MAS carries it, once
     // the wind has placed the margins the decision depends on.
@@ -11296,6 +11300,7 @@ std::optional<Coil::WholeLayerSplit> Coil::get_proportion_per_winding_for_whole_
     std::vector<std::vector<double>> currentSpacePerSection(numberWindings);
     std::vector<std::vector<double>> neededSpacePerSection(numberWindings);
     bool anySectionShort = false;
+    std::string needPerSection;
     for (size_t sectionIndex = 0; sectionIndex < sections.size(); ++sectionIndex) {
         const auto& section = sections[sectionIndex];
         if (section.get_type() != ElectricalType::CONDUCTION) {
@@ -11342,7 +11347,15 @@ std::optional<Coil::WholeLayerSplit> Coil::get_proportion_per_winding_for_whole_
             // Not one conductor fits across the section: no split of the window helps.
             return std::nullopt;
         }
-        const double neededRestrictive = std::ceil(double(physicalTurnsInSection) / conductorsAlongFreeAxis) * conductorAlongRestrictive;
+        const double layersNeeded = std::ceil(double(physicalTurnsInSection) / conductorsAlongFreeAxis);
+        const double neededRestrictive = layersNeeded * conductorAlongRestrictive;
+        {
+            std::ostringstream need;
+            need << std::fixed << std::setprecision(3) << section.get_name() << ": " << std::llround(layersNeeded) << " layer"
+                 << (layersNeeded == 1 ? "" : "s") << " of up to " << std::llround(conductorsAlongFreeAxis) << " turns, "
+                 << neededRestrictive * 1000 << " mm";
+            needPerSection += (needPerSection.empty() ? "" : "; ") + need.str();
+        }
         const double currentRestrictive = section.get_dimensions()[restrictiveAxis];
         if (neededRestrictive > currentRestrictive * (1 + 1e-9)) {
             anySectionShort = true;
@@ -11411,6 +11424,12 @@ std::optional<Coil::WholeLayerSplit> Coil::get_proportion_per_winding_for_whole_
     const double summedSpareSpace = summedCurrentSpace - summedNeededSpace;
     if (summedSpareSpace < 0) {
         // Not even each section's own whole layers fit side by side: the copper does not fit this window.
+        std::ostringstream shortfall;
+        shortfall << std::fixed << std::setprecision(3) << "the whole layers of the windings need "
+                  << summedNeededSpace * 1000 << " mm across the window and it gives "
+                  << summedCurrentSpace * 1000 << " mm (" << needPerSection
+                  << "), so no split of the window between the windings fits";
+        _wholeLayerShortfall = shortfall.str();
         return std::nullopt;
     }
     WholeLayerSplit split;
@@ -15782,6 +15801,19 @@ bool Coil::wind_by_rectangular_layers() {
                     numberLayers = settings.get_coil_allow_horizontal_overflow()
                         ? minimumNumberLayerNeeded
                         : std::min(minimumNumberLayerNeeded, maximumNumberLayersFittingInSection);
+                    if (numberLayers < minimumNumberLayerNeeded && _wholeLayerShortfall.empty()) {
+                        // The layers this section's turns need do not fit across it, so the turns are
+                        // crammed along the layers and the wind fails: say so with the numbers.
+                        const double layerThickness = sections[sectionIndex].get_layers_orientation() == WindingOrientation::OVERLAPPING ? layerWidth : layerHeight;
+                        const size_t acrossAxis = sections[sectionIndex].get_layers_orientation() == WindingOrientation::OVERLAPPING ? 0 : 1;
+                        std::ostringstream shortfall;
+                        shortfall << std::fixed << std::setprecision(3) << "section '" << sections[sectionIndex].get_name() << "' needs "
+                                  << minimumNumberLayerNeeded << " layers of up to " << maximumNumberPhysicalTurnsPerLayer << " turns ("
+                                  << minimumNumberLayerNeeded * layerThickness * 1000 << " mm) for its " << physicalTurnsInSection
+                                  << " turns, and it is " << sections[sectionIndex].get_dimensions()[acrossAxis] * 1000
+                                  << " mm across, room for " << maximumNumberLayersFittingInSection;
+                        _wholeLayerShortfall = shortfall.str();
+                    }
                 }
             }
 

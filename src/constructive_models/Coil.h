@@ -1775,6 +1775,10 @@ class Coil : public MAS::Coil {
         // loses real-winding blocking can say WHY instead of just not doing it. Diagnostic text
         // only — never a control input.
         std::string _lastFitFailure;
+        // Set by get_proportion_per_winding_for_whole_layers when the whole layers every section
+        // needs do not fit side by side in the window, with the numbers; cleared at the start of
+        // each wind. A wind that fails says this first, because no split of the window helps then.
+        std::string _wholeLayerShortfall;
         // ABT #1487 (owner decision, Alf 2026-09-29): what a real-winding layout of axially stacked
         // sections overflowed, instead of refusing it -- outside series links laid beyond the room
         // the core leaves them (keyed by link), stored section heights grown past what their
