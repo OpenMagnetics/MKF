@@ -133,6 +133,47 @@ FetchContent_Declare(simdjson
     SOURCE_SUBDIR singleheader-not-a-cmake-project)
 FetchContent_MakeAvailable(simdjson)
 
+# mimalloc (Microsoft's allocator) as the process allocator of EXECUTABLES: a link-time swap, no MKF code calls it.
+# mkf_use_mimalloc(<executable>) links libmimalloc.so into that executable, which then lists it before libc, so the
+# dynamic linker binds the whole process's malloc/free/new/delete to it (libMKF.so included). It is never linked
+# into libMKF itself: a host that dlopen()s libMKF.so (a Python extension, ctypes, .NET P/Invoke) would then bind
+# libMKF's operator new/delete to mimalloc but malloc/free to the host's libc (measured with LD_DEBUG=bindings
+# under python3 ctypes), and memory allocated on one side and freed on the other crosses allocators. MKF's own
+# executables (MKF_tests, the tools) use it; a downstream executable built with MKF as a subproject (Henry,
+# MVB++) calls mkf_use_mimalloc(<its target>). PyOpenMagnetics and the WASM build compile MKF's sources with their
+# own CMake and do not see this option. Default ON for native Linux only: OFF for Emscripten (wasm has its own
+# allocator), Windows (an override needs mimalloc-redirect.dll loaded first) and macOS (its override is
+# malloc-zone/interpose based and is not validated here).
+if(NOT EMSCRIPTEN AND CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    set(_mkf_mimalloc_default ON)
+else()
+    set(_mkf_mimalloc_default OFF)
+endif()
+option(MKF_USE_MIMALLOC "Link mimalloc as the process allocator of the executables that call mkf_use_mimalloc()" ${_mkf_mimalloc_default})
+if(MKF_USE_MIMALLOC)
+    if(EMSCRIPTEN)
+        message(FATAL_ERROR "MKF_USE_MIMALLOC=ON is not valid for Emscripten/wasm32.")
+    endif()
+    set(MI_BUILD_SHARED ON CACHE BOOL "" FORCE)
+    set(MI_BUILD_STATIC OFF CACHE BOOL "" FORCE)
+    set(MI_BUILD_OBJECT OFF CACHE BOOL "" FORCE)
+    set(MI_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+    set(MI_OVERRIDE ON CACHE BOOL "" FORCE)
+    FetchContent_Declare(mimalloc
+        GIT_REPOSITORY https://github.com/microsoft/mimalloc.git
+        GIT_TAG  tags/v3.6.0
+        GIT_SHALLOW TRUE)
+    FetchContent_MakeAvailable(mimalloc)
+endif()
+# The library file only, not the mimalloc target: its include directories would change the executable's compile
+# commands, and nothing includes mimalloc.h. A no-op when MKF_USE_MIMALLOC is OFF.
+function(mkf_use_mimalloc target)
+    if(MKF_USE_MIMALLOC)
+        add_dependencies(${target} mimalloc)
+        target_link_libraries(${target} PRIVATE $<TARGET_FILE:mimalloc>)
+    endif()
+endfunction()
+
 FetchContent_Declare(magic-enum
     GIT_REPOSITORY https://github.com/Neargye/magic_enum
     GIT_TAG  tags/v0.9.6)
@@ -814,6 +855,7 @@ target_include_directories(MKF PUBLIC
 if(NOT EMSCRIPTEN)
     add_executable(mkf_material_validator EXCLUDE_FROM_ALL "tools/MaterialValidatorCli.cpp")
     target_link_libraries(mkf_material_validator PUBLIC MKF)
+    mkf_use_mimalloc(mkf_material_validator)
     target_include_directories(mkf_material_validator PUBLIC "${PROJECT_SOURCE_DIR}/src/")
 endif()
 
@@ -826,6 +868,7 @@ if(INCLUDE_MKF_TESTS)
     add_executable(MKF_tests ${ALL_TEST_SOURCES} "tests/TestingUtils.cpp")
     target_link_libraries(MKF_tests PRIVATE Catch2::Catch2WithMain)
     target_link_libraries(MKF_tests PUBLIC MKF)
+    mkf_use_mimalloc(MKF_tests)
     target_include_directories(MKF_tests PUBLIC "${PROJECT_SOURCE_DIR}/src/")
     # ABT #327: the same (partial, see the MKF target above) dangling-reference guard on the
     # test TUs (where three of the four originally-found sites lived). GNU-only.
