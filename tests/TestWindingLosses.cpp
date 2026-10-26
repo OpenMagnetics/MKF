@@ -5033,3 +5033,81 @@ TEST_CASE("Winding loss breakdown per winding sums to the total with connection 
     CHECK_THAT(sumPerWinding, Catch::Matchers::WithinRel(losses.get_winding_losses(), 1e-9));
     settings.reset();
 }
+
+// PEEC-2D's imaged matrix takes each cell's own coefficient from the self GMD, as the open and the
+// isolated matrices do. Its identity image (the weight-1 original) went through the mutual-GMD
+// quadrature instead, which puts 16 of its 256 point pairs at r = 0 (clamped to 1e-12 m). With no
+// image ring (mirroring dimension 0) and no functional gap, one turn's full solve IS its isolated
+// solve, so the two must agree.
+TEST_CASE("PEEC-2D self term of the imaged matrix is the self GMD", "[physical-model][winding-losses][peec][abt-1608]") {
+    settings.reset();
+    clear_databases();
+    settings.set_magnetic_field_mirroring_dimension(0);
+    OpenMagnetics::Wire wire;
+    wire.set_nominal_value_conducting_width(0.002);
+    wire.set_nominal_value_conducting_height(0.0005);
+    wire.set_nominal_value_outer_width(0.00205);
+    wire.set_nominal_value_outer_height(0.00055);
+    wire.set_number_conductors(1);
+    wire.set_material("copper");
+    wire.set_type(WireType::RECTANGULAR);
+    auto coil = OpenMagneticsTesting::get_quick_coil({1}, {1}, "PQ 28/20", 1,
+        WindingOrientation::OVERLAPPING, WindingOrientation::OVERLAPPING,
+        CoilAlignment::CENTERED, CoilAlignment::CENTERED, {wire});
+    auto core = OpenMagneticsTesting::get_quick_core("PQ 28/20", OpenMagneticsTesting::get_residual_gap(), 1, "3C97");
+    OpenMagnetics::Magnetic magnetic;
+    magnetic.set_core(core);
+    magnetic.set_coil(coil);
+    auto inputs = OpenMagnetics::Inputs::create_quick_operating_point_only_current(
+        200000, 10e-6, 25, WaveformLabel::SINUSOIDAL, 2, 0.5, 0, {});
+    WindingLossesPeec2D peec;
+    peec.calculate_losses(magnetic, inputs.get_operating_point(0), 25);
+    const auto perTurn = peec.get_diagnostics().perTurnPerHarmonic;
+    REQUIRE(perTurn.size() == 1);
+    REQUIRE(!perTurn[0].empty());
+    for (const auto& harmonic : perTurn[0]) {
+        INFO(harmonic.frequency << " Hz: full " << harmonic.fullLoss << " W, isolated " << harmonic.isolatedLoss << " W");
+        CHECK_THAT(harmonic.fullLoss, Catch::Matchers::WithinRel(harmonic.isolatedLoss, 1e-6));
+    }
+    settings.reset();
+}
+
+// ABT #1608: with each cell's own coefficient taken from the self GMD, R_ac/R_dc of the 22-turn
+// flat stack beside three 3.9 mm spacer gaps (the ABT #1409 fixture) is nearly mesh-converged:
+// 258.1 at 5760 cells and 264.7 at 11520 (+2.5 %). The 1e-12 m-clamped quadrature it replaced
+// read the diagonal off 16 point pairs at r = 0, an error that grows with the cell size, so
+// the same refinement moved it from 222.7 to 245.9 (+10.4 %).
+TEST_CASE("PEEC-2D R_ac/R_dc is mesh-converged with the self-GMD self term", "[physical-model][winding-losses][peec][abt-1608]") {
+    settings.reset();
+    auto path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "abt1409_rect_stack_spacer_gaps_3.9mm.json");
+    auto mas = OpenMagneticsTesting::mas_loader(path);
+    auto magnetic = mas.get_magnetic();
+    auto inputs = mas.get_inputs();
+    auto operatingPoint = inputs.get_operating_point(0);
+    auto racOverRdc = [&](double cellsPerSkinDepth, size_t cellsWide, size_t cellsThin, size_t& cells) {
+        WindingLossesPeec2D peec;
+        peec.cellsPerSkinDepth = cellsPerSkinDepth;
+        peec.maximumCellsWide = cellsWide;
+        peec.maximumCellsThin = cellsThin;
+        peec.maximumCells = 12000;
+        peec.calculate_losses(magnetic, operatingPoint, 25);
+        double fullLoss = 0;
+        double dcEquivalentLoss = 0;
+        for (const auto& turn : peec.get_diagnostics().perTurnPerHarmonic) {
+            for (const auto& harmonic : turn) {
+                fullLoss += harmonic.fullLoss;
+                dcEquivalentLoss += harmonic.dcEquivalentLoss;
+            }
+        }
+        cells = peec.get_diagnostics().totalCells;
+        return fullLoss / dcEquivalentLoss;
+    };
+    size_t coarseCells = 0;
+    size_t fineCells = 0;
+    double coarse = racOverRdc(2.0, 24, 8, coarseCells);
+    double fine = racOverRdc(3.0, 32, 12, fineCells);
+    INFO("R_ac/R_dc " << coarse << " at " << coarseCells << " cells, " << fine << " at " << fineCells << " cells");
+    REQUIRE(fineCells > 1.9 * coarseCells);
+    CHECK_THAT(coarse, Catch::Matchers::WithinRel(fine, 0.04));
+    settings.reset();
+}
