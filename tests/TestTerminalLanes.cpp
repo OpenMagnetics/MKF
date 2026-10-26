@@ -1220,3 +1220,58 @@ TEST_CASE("Sibling Z dragbacks whose lane cannot hold them side by side are refu
 }
 
 }  // namespace lead_exit_suite
+
+// ABT #1397: the seated drum-ring's coil ends are joined to their terminal legs by a BOND solid (the
+// wire's own conductor, thermocompression-bonded): from the leg's top face (a shared face) up to the
+// wire's centreline, so the bare conductor -- one coating thickness above the leg -- reaches the metal.
+TEST_CASE("A seated drum-ring's coil ends are bonded to their terminal legs through the wire's coating gap",
+          "[lead-exit][constructive-model][coil][abt-1397]") {
+    using namespace lead_exit_suite;
+    auto& settings = Settings::GetInstance();
+    settings.reset();
+    const bool realWinding = GENERATE(false, true);
+    settings.set_coil_use_real_winding_geometry(realWinding);
+    auto fixture = lead_exit_suite::load_fixture("lead_exit_drumring_7332.json");
+    auto magnetic = lead_exit_suite::autocomplete(fixture["magnetic"]);
+    auto& coil = magnetic.get_mutable_coil();
+    const auto layout = coil.get_connection_layout();
+    const double coated = coil.get_wires()[0].get_maximum_outer_width();
+    const double bare = coil.get_wires()[0].get_maximum_conducting_width();
+    REQUIRE(bare < coated);
+    size_t bonds = 0;
+    for (const auto& route : layout.routes) {
+        if (!lead_exit_suite::is_terminal(route)) {
+            continue;
+        }
+        const bool entrance = route.kind == ConnectionKind::TERMINAL_ENTRANCE;
+        const LeadExitSolid* bond = nullptr;
+        const LeadExitSolid* leg = nullptr;
+        for (const auto& solid : layout.leadExitSolids) {
+            if (solid.entrance != entrance) continue;
+            if (solid.kind == LeadExitSolid::Kind::BOND && solid.parallel == route.parallel) bond = &solid;
+            if (solid.kind == LeadExitSolid::Kind::ELECTRODE && solid.name.find("terminal leg") != std::string::npos) leg = &solid;
+        }
+        REQUIRE(bond != nullptr);
+        REQUIRE(leg != nullptr);
+        ++bonds;
+        // Shared face: the bond stands on the leg's top face.
+        CHECK(std::abs(bond->body.y0 - leg->body.y1) < 1e-12);
+        // It reaches the wire's centreline (the run's last point) and so overlaps the bare conductor,
+        // whose bottom is one coating thickness above the leg.
+        const auto& end = route.exitRun.back();
+        CHECK(std::abs(bond->body.y1 - end[1]) < 1e-12);
+        CHECK(bond->body.y1 > leg->body.y1 + (coated - bare) / 2);
+        // Volume > 0 (shoelace area x height), and the wire's own conductor.
+        double area = 0;
+        const auto& xz = bond->body.xz;
+        for (size_t k = 0; k < xz.size(); ++k) {
+            const auto& p = xz[k];
+            const auto& q = xz[(k + 1) % xz.size()];
+            area += p[0] * q[1] - q[0] * p[1];
+        }
+        CHECK(std::abs(area) / 2 * (bond->body.y1 - bond->body.y0) > 0);
+        CHECK(bond->material == coil.resolve_wire(0).resolve_material().get_name());
+    }
+    CHECK(bonds == 2);
+    settings.reset();
+}

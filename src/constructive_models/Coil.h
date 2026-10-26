@@ -590,10 +590,17 @@ struct ExtrudedPolygon {
 //   LEAD_FRAME  a molded part's lead-frame strip, embedded in the base pressing: WINDING CONDUCTOR
 //               of `material` (decision 4, Alf 2026-09-24), not copper.
 //   WELD        the resistance-weld nugget joining the coil end to the lead frame.
+//   BOND        the thermocompression bond joining a drum + seated-ring part's coil end to
+//               its terminal leg. The bond strips the wire's coating where it is pressed onto the
+//               terminal and presses the bare conductor onto it (see CoilLeadExit.cpp), so this solid
+//               is the WIRE's own conductor (`material` = the wire's) from the terminal's top face up to
+//               the wire's centreline, the bare conductor's width, over the length the wire lies on the
+//               terminal: with the bare wire it closes the coating gap, sharing its bottom face with the
+//               terminal's top face.
 // `parallel` is the conductor it serves; empty when it serves every parallel of that winding end
 // (a notch or electrode shared by an N-filar bundle). `entrance`: the winding's start end.
 struct LeadExitSolid {
-    enum class Kind { CORE_CUT, ELECTRODE, LEAD_FRAME, WELD };
+    enum class Kind { CORE_CUT, ELECTRODE, LEAD_FRAME, WELD, BOND };
     Kind kind;
     std::string name;
     std::string winding;

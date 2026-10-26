@@ -702,6 +702,52 @@ std::vector<LeadExitSolid> Coil::plan_closed_core_lead_exits(std::vector<Connect
                 run.push_back(target);
                 add_exit_run(lead, run, ConnectionRoute::ExitRunArc{lane, startAzimuth, endAzimuth, lead.axial},
                              ConnectionRoute::ExitRunEnd::ELECTRODE);
+                // The joint between the wire and its terminal. A wound part's coil end is
+                // joined to its terminal electrode by THERMOCOMPRESSION bonding: the insulating film of
+                // the end portion is removed, and the end is pressed while heated, plastically deformed
+                // and bonded to the electrode. The wire was
+                // laid on the leg's top face at its COATED radius, so its bare conductor stops one
+                // coating thickness short of the metal; the bond closes that gap with the wire's own
+                // conductor: from the leg's top face up to the wire's centreline (where the bare
+                // conductor is its full width), the bare conductor's width across the run, over the
+                // length of the run that lies on the leg (from the plate's side edge x = side*M/2 to
+                // the run's end). Every number is the wire's or the terminal's; none is chosen here.
+                {
+                    const auto& wire = wires[get_winding_index_by_name(lead.winding)];
+                    if (wire.get_type() != WireType::ROUND && wire.get_type() != WireType::LITZ) {
+                        throw NotImplementedException("The bond of " + lead.label + " to its terminal is modelled for a round "
+                                                      "conductor (round or litz wire), whose bare width across the run is its "
+                                                      "conducting diameter; this wire is not round");
+                    }
+                    const double bareDiameter = wire.get_maximum_conducting_width();
+                    if (!(bareDiameter > 0) || bareDiameter > lead.diameter + clearanceTolerance) {
+                        throw InvalidInputException(ErrorCode::INVALID_INPUT,
+                            "The wire of " + lead.label + " states a conducting diameter of " + mm(bareDiameter) +
+                            ", which cannot lie inside its " + mm(lead.diameter) + " coated diameter");
+                    }
+                    const double dx = target[0] - lastCorner[0];
+                    const double dz = target[2] - lastCorner[2];
+                    if (!(side * dx > 0)) {
+                        throw std::logic_error("The run of " + lead.label + " onto its terminal does not travel towards it");
+                    }
+                    const double t = (side * half - lastCorner[0]) / dx;
+                    const std::array<double, 2> onLeg = {side * half, lastCorner[2] + t * dz};
+                    const double length = std::hypot(dx, dz);
+                    const std::array<double, 2> normal = {-dz / length * bareDiameter / 2, dx / length * bareDiameter / 2};
+                    ExtrudedPolygon bond;
+                    bond.xz = {{onLeg[0] - normal[0], onLeg[1] - normal[1]},
+                               {target[0] - normal[0], target[2] - normal[1]},
+                               {target[0] + normal[0], target[2] + normal[1]},
+                               {onLeg[0] + normal[0], onLeg[1] + normal[1]}};
+                    bond.y0 = ring.plateTop;
+                    bond.y1 = target[1];
+                    const std::string end = entrance ? "entrance" : "exit";
+                    solids.push_back(LeadExitSolid{LeadExitSolid::Kind::BOND,
+                                                   lead.winding + " " + end + " parallel " + std::to_string(lead.parallel) + " bond",
+                                                   lead.winding, lead.parallel, entrance, bond,
+                                                   resolve_wire(get_winding_index_by_name(lead.winding)).resolve_material().get_name(),
+                                                   std::nullopt});
+                }
             }
             const auto& first = leads[members[0]];
             const std::optional<int64_t> servesParallel = members.size() == 1 ? std::optional<int64_t>(first.parallel) : std::nullopt;
