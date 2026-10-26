@@ -141,14 +141,22 @@ std::shared_ptr<WindingSkinEffectLossesModel> WindingSkinEffectLosses::get_model
 }
 
 double WindingSkinEffectLosses::calculate_skin_depth(WireMaterialDataOrNameUnion material, double frequency, double temperature) {
-    WireMaterial wireMaterial;
-    auto constants = Constants();
+    // Read in place (a material record) or found by name; the constants once per process (they are constants).
+    static const Constants constants;
+    std::optional<WireMaterial> resolvedWireMaterial;
+    const WireMaterial* wireMaterialPointer;
     if (std::holds_alternative<WireMaterial>(material)) {
-        wireMaterial = std::get<WireMaterial>(material);
+        wireMaterialPointer = &std::get<WireMaterial>(material);
     }
     else if (std::holds_alternative<std::string>(material)) {
-        wireMaterial = OpenMagnetics::find_wire_material_by_name(std::get<std::string>(material));
+        resolvedWireMaterial = OpenMagnetics::find_wire_material_by_name(std::get<std::string>(material));
+        wireMaterialPointer = &resolvedWireMaterial.value();
     }
+    else {
+        resolvedWireMaterial.emplace();
+        wireMaterialPointer = &resolvedWireMaterial.value();
+    }
+    const WireMaterial& wireMaterial = *wireMaterialPointer;
     auto& resistivityModel = get_cached_resistivity_model(); // PERF-003: cached
     auto resistivity = (*resistivityModel).get_resistivity(wireMaterial, temperature);
 
