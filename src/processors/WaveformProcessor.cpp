@@ -914,19 +914,71 @@ static WaveformLabel guess_sinusoidal_or_custom(const Waveform& waveform) {
     //
     // A signal with no fundamental has no phase to find and keeps zero; it is not
     // a sine either way, and the error test below is what says so.
+    // The angles, their sines and cosines, and the weights depend on the time axis alone (or, without one, on the
+    // number of points): a solve hands this the same axis under scaled data again and again. Exact-input memo of
+    // the last axis per thread, bit for bit; the sines of the phase-shifted angles are kept for the last phase too.
+    struct ReferenceSine {
+        bool useTime = false;
+        size_t numberPoints = 0;
+        size_t distinctPoints = 0;
+        double period = 0;
+        std::vector<double> time;
+        std::vector<double> angle, sine, cosine, weight;
+        bool hasShifted = false;
+        double phase = 0;
+        std::vector<double> shiftedSine;
+    };
+    thread_local ReferenceSine reference;
+    auto sameBits = [](double a, double b) { return std::memcmp(&a, &b, sizeof(double)) == 0; };
+    const bool sameAxis = reference.numberPoints == numberPoints && reference.useTime == useTime &&
+                          reference.distinctPoints == distinctPoints && sameBits(reference.period, period) &&
+                          (!useTime || (reference.time.size() == timeOptional->size() &&
+                                        std::memcmp(reference.time.data(), timeOptional->data(), numberPoints * sizeof(double)) == 0));
+    if (!sameAxis) {
+        reference = ReferenceSine{};
+        reference.useTime = useTime;
+        reference.numberPoints = numberPoints;
+        reference.distinctPoints = distinctPoints;
+        reference.period = period;
+        if (useTime) {
+            reference.time = *timeOptional;
+        }
+        reference.angle.resize(numberPoints);
+        reference.sine.resize(distinctPoints);
+        reference.cosine.resize(distinctPoints);
+        reference.weight.resize(distinctPoints);
+        for (size_t i = 0; i < numberPoints; ++i) {
+            reference.angle[i] = angleAt(i);
+        }
+        for (size_t i = 0; i < distinctPoints; ++i) {
+            reference.weight[i] = weightAt(i);
+            reference.sine[i] = sin(reference.angle[i]);
+            reference.cosine[i] = cos(reference.angle[i]);
+        }
+    }
+
     double sinProjection = 0;
     double cosProjection = 0;
     for (size_t i = 0; i < distinctPoints; ++i) {
         double centered = data[i] - offset;
-        sinProjection += weightAt(i) * centered * sin(angleAt(i));
-        cosProjection += weightAt(i) * centered * cos(angleAt(i));
+        sinProjection += reference.weight[i] * centered * reference.sine[i];
+        cosProjection += reference.weight[i] * centered * reference.cosine[i];
     }
     double phase = (sinProjection == 0 && cosProjection == 0) ? 0 : atan2(cosProjection, sinProjection);
+
+    if (!reference.hasShifted || !sameBits(reference.phase, phase)) {
+        reference.shiftedSine.resize(numberPoints);
+        for (size_t i = 0; i < numberPoints; ++i) {
+            reference.shiftedSine[i] = sin(reference.angle[i] + phase);
+        }
+        reference.phase = phase;
+        reference.hasShifted = true;
+    }
 
     double error = 0;
     double area = 0;
     for (size_t i = 0; i < numberPoints; ++i) {
-        double calculatedData = (sin(angleAt(i) + phase) * peakToPeak / 2) + offset;
+        double calculatedData = (reference.shiftedSine[i] * peakToPeak / 2) + offset;
         area += fabs(data[i]);
         error += fabs(calculatedData - data[i]);
     }
