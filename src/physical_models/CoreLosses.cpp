@@ -1399,12 +1399,18 @@ SignalDescriptor make_loop_signal(std::vector<double> time, std::vector<double> 
     processed.set_duty_cycle((summary.maximumTime - time.front()) / duration);
 
     Waveform waveform;
-    waveform.set_data(data);
-    waveform.set_time(time);
+    waveform.set_data(std::move(data));
+    waveform.set_time(std::move(time));
     SignalDescriptor signal;
-    signal.set_waveform(waveform);
-    signal.set_processed(processed);
+    signal.set_waveform(std::move(waveform));
+    signal.set_processed(std::move(processed));
     return signal;
+}
+
+// make_loop_signal(time, data).get_processed()->get_offset(), without building the signal.
+double loop_signal_offset(const std::vector<double>& time, const std::vector<double>& data) {
+    auto summary = summarize_piecewise_linear(time, data);
+    return (summary.maximum + summary.minimum) / 2;
 }
 
 // The envelope at each switching cycle: the record's time average over the cycles centred on it,
@@ -1577,14 +1583,13 @@ std::optional<SwitchingCyclesRecord> CoreLossesModel::split_into_switching_cycle
         };
 
         auto cycleFluxDensityData = close_loop(fluxDensityData);
-        auto cycleFluxDensity = make_loop_signal(time, cycleFluxDensityData);
         envelopeTime.push_back(startTime + duration / 2);
         // A loop around a negative DC flux loses what its mirror image around the positive one does
         // (B -> -B leaves an isotropic material's loop unchanged). The loops of a bipolar record (a
         // Vienna inductor's negative half line cycle) are priced as their mirror images, because the
         // models read the AC amplitude as processed peak - offset with the peak taken as the larger
         // magnitude, which is the amplitude only for a non-negative offset.
-        bool mirror = cycleFluxDensity.get_processed()->get_offset() < 0;
+        bool mirror = loop_signal_offset(time, cycleFluxDensityData) < 0;
         auto mirrored = [&](std::vector<double> data) {
             if (mirror) {
                 for (auto& value : data) {
