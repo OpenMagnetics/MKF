@@ -165,15 +165,14 @@ class ResultsAnalyzer {
                                                                   const Outputs& output, size_t operatingPointIndex);
     static std::vector<ResultFinding> analyze_temperature(const Magnetic& magnetic, const OperatingPoint& operatingPoint,
                                                           const Outputs& output, size_t operatingPointIndex);
-    // ABT #1876: for an output WITHOUT a temperature. The MAS cannot say why a point has none (simulate gives
-    // none to a point with no thermal operating point, and none to any point in fast mode), so this solves the
-    // point's losses at its operating temperature again (MagneticSimulator::calculate_core_losses, the solve
-    // simulate ran) and returns the NO_THERMAL_OPERATING_POINT finding with the solve's message when it finds
-    // none. When the solve DOES find a thermal operating point, the missing temperature is not this case (fast
-    // mode, or an output edited after simulate) and this THROWS: such an output cannot be analyzed.
-    static std::vector<ResultFinding> analyze_missing_temperature(const Magnetic& magnetic, const OperatingPoint& operatingPoint,
-                                                                  size_t operatingPointIndex,
-                                                                  std::optional<Topology> topology = std::nullopt);
+    // ABT #1876: for an output WITHOUT a temperature. simulate gives none to a point with no thermal operating
+    // point, and none to any point in fast mode. ABT #2075: simulate records the reason of the first case on the
+    // point's core losses (MagneticSimulator::get_no_thermal_operating_point_reason), and this returns the
+    // NO_THERMAL_OPERATING_POINT finding with that message, without solving the point again. An output with no
+    // reason recorded is not this case (fast mode, or an output edited after simulate) and this THROWS: such an
+    // output cannot be analyzed.
+    static std::vector<ResultFinding> analyze_missing_temperature(const OperatingPoint& operatingPoint, const Outputs& output,
+                                                                  size_t operatingPointIndex);
 
     // ABT #2052: for an output WITHOUT core losses. simulate leaves them (and the point's inductance and
     // temperature) unset when the magnetizing model, at the point's ambient temperature, cannot read its flux

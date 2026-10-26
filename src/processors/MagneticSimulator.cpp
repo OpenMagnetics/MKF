@@ -304,7 +304,11 @@ CoreLossesOutput MagneticSimulator::calculate_core_losses(OperatingPoint& operat
         if (temperatureOutput != nullptr) {
             *temperatureOutput = std::nullopt;
         }
-        return lossesAtAmbient.coreLosses;
+        // ABT #2075: the core losses carry why (get_no_thermal_operating_point_reason).
+        CoreLossesOutput coreLossesAtAmbient = lossesAtAmbient.coreLosses;
+        coreLossesAtAmbient.set_method_used(coreLossesAtAmbient.get_method_used() + kLossesAtAmbientMethodNote +
+                                            noThermalOperatingPoint.message());
+        return coreLossesAtAmbient;
     }
 
     // Publish exactly the set that was solved.
@@ -344,6 +348,15 @@ Magnetic MagneticSimulator::make_paramagnetic_magnetic(const Magnetic& magnetic)
     coreMaterial.set_name(coreMaterial.get_name() + " (paramagnetic, mu_r = 1)");
     paramagnetic.get_mutable_core().get_mutable_functional_description().set_material(coreMaterial);
     return paramagnetic;
+}
+
+std::optional<std::string> MagneticSimulator::get_no_thermal_operating_point_reason(const CoreLossesOutput& coreLosses) {
+    const std::string& methodUsed = coreLosses.get_method_used();
+    size_t note = methodUsed.find(kLossesAtAmbientMethodNote);
+    if (note == std::string::npos) {
+        return std::nullopt;
+    }
+    return methodUsed.substr(note + std::char_traits<char>::length(kLossesAtAmbientMethodNote));
 }
 
 bool MagneticSimulator::is_core_held_at_data_ceiling(const CoreMaterial& coreMaterial, double coreLossesTemperature, double maximumTemperature) {

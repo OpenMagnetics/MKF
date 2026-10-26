@@ -2598,6 +2598,49 @@ TEST_CASE("The web's default design simulates with its losses at ambient and a N
     settings.reset();
 }
 
+TEST_CASE("analyze_results reads why a point has no thermal operating point from simulate's output, without solving it again",
+          "[processor][magnetic-simulator][abt-2075]") {
+    // ABT #2075 (Alf, 2026-10-26): simulate records the reason on the point's core losses (methodUsed: the loss model's,
+    // then MagneticSimulator::kLossesAtAmbientMethodNote, then MKF's message), and analyze_results quotes it. A second
+    // solve doubled the cost of every such point and could disagree with simulate (ABT #2060).
+    settings.reset();
+    auto [magnetic, inputs] = load_web_default_design();
+    OpenMagnetics::Mas simulated;
+    REQUIRE_NOTHROW(simulated = MagneticSimulator().simulate(inputs, magnetic));
+    REQUIRE(simulated.get_outputs().size() == 1);
+    REQUIRE_FALSE(simulated.get_outputs()[0].get_temperature());
+    REQUIRE(simulated.get_outputs()[0].get_core_losses());
+    auto coreLosses = simulated.get_outputs()[0].get_core_losses().value();
+    INFO("methodUsed: " << coreLosses.get_method_used());
+    auto reason = MagneticSimulator::get_no_thermal_operating_point_reason(coreLosses);
+    REQUIRE(reason);
+    CHECK_THAT(reason.value(), Catch::Matchers::StartsWith("No thermal operating point") &&
+                               Catch::Matchers::ContainsSubstring("Thermal network did not converge"));
+    // The loss model's own name comes first.
+    const size_t note = coreLosses.get_method_used().find(MagneticSimulator::kLossesAtAmbientMethodNote);
+    REQUIRE(note != std::string::npos);
+    CHECK(note > 0);
+
+    // The finding quotes what the output records: a solve of its own would carry the solver's message instead.
+    const std::string recorded = "No thermal operating point: the reason this output records.";
+    coreLosses.set_method_used(coreLosses.get_method_used().substr(0, note) + MagneticSimulator::kLossesAtAmbientMethodNote + recorded);
+    auto outputs = simulated.get_outputs();
+    outputs[0].set_core_losses(coreLosses);
+    simulated.set_outputs(outputs);
+    auto findings = ResultsAnalyzer::analyze_results(simulated);
+    INFO("findings:" << describe_findings(findings));
+    size_t noThermal = 0;
+    for (const auto& finding : findings) {
+        if (finding.code == ResultFindingCode::NO_THERMAL_OPERATING_POINT) {
+            ++noThermal;
+            CHECK_THAT(finding.message, Catch::Matchers::ContainsSubstring(recorded) &&
+                                        !Catch::Matchers::ContainsSubstring("Thermal network did not converge"));
+        }
+    }
+    CHECK(noThermal == 1);
+    settings.reset();
+}
+
 TEST_CASE("A point with no thermal operating point leaves the other points as they simulate alone",
           "[processor][magnetic-simulator][abt-1876]") {
     // Alf decision 2026-10-14, ABT #1876: point 0 is the web default with a hundredth of its currents (0.23 W of copper, it has a

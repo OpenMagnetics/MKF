@@ -228,8 +228,8 @@ WoundCandidateOutcome process_wound_candidate(
                 // ABT #1942 / #1876: simulate gives no temperature to an operating point with no thermal operating
                 // point (e.g. a core heated past its Curie point that cannot carry the voltage's flux). Such a
                 // candidate cannot pass the temperature filter: it is rejected and recorded, the search goes on.
-                // analyze_missing_temperature re-solves the point and THROWS when the missing temperature is not
-                // that case, so any other cause still fails loudly.
+                // analyze_missing_temperature reads the reason simulate recorded (ABT #2075) and THROWS when the
+                // missing temperature is not that case, so any other cause still fails loudly.
                 const auto& operatingPoints = mas.get_inputs().get_operating_points();
                 if (operatingPointIndex >= operatingPoints.size()) {
                     throw InvalidInputException(ErrorCode::MISSING_DATA,
@@ -237,9 +237,8 @@ WoundCandidateOutcome process_wound_candidate(
                         + mas.get_mutable_magnetic().get_reference() + "', which has only " + std::to_string(operatingPoints.size())
                         + " operating points");
                 }
-                auto findings = ResultsAnalyzer::analyze_missing_temperature(
-                    mas.get_magnetic(), operatingPoints[operatingPointIndex], operatingPointIndex,
-                    mas.get_inputs().get_design_requirements().get_topology());
+                auto findings = ResultsAnalyzer::analyze_missing_temperature(operatingPoints[operatingPointIndex], output,
+                                                                             operatingPointIndex);
                 std::string reason = "temperature filter: no thermal operating point";
                 for (const auto& finding : findings) {
                     reason += ": " + finding.message;

@@ -471,33 +471,25 @@ std::vector<ResultFinding> ResultsAnalyzer::analyze_temperature(const Magnetic& 
     return findings;
 }
 
-std::vector<ResultFinding> ResultsAnalyzer::analyze_missing_temperature(const Magnetic& magnetic, const OperatingPoint& operatingPoint,
-                                                                        size_t operatingPointIndex, std::optional<Topology> topology) {
+std::vector<ResultFinding> ResultsAnalyzer::analyze_missing_temperature(const OperatingPoint& operatingPoint, const Outputs& output,
+                                                                        size_t operatingPointIndex) {
     std::string where = describe_operating_point(operatingPoint, operatingPointIndex);
-    // The same solve simulate ran for this point: wound as simulate winds it, the full winding-loss model.
-    Magnetic woundMagnetic = magnetic;
-    if (!woundMagnetic.get_coil().get_turns_description()) {
-        woundMagnetic.get_mutable_coil().wind();
+    if (!output.get_core_losses()) {
+        throw InvalidInputException(ErrorCode::MISSING_DATA, "analyze_results: the output of " + where + " has neither a "
+            "temperature nor core losses, which record why a point has no thermal operating point");
     }
-    OperatingPoint solvedOperatingPoint = operatingPoint;
-    MagneticSimulator simulator;
-    simulator.set_topology(topology);
-    std::optional<WindingLossesOutput> windingLossesOutput;
-    std::optional<TemperatureOutput> temperatureOutput;
-    try {
-        simulator.calculate_core_losses(solvedOperatingPoint, woundMagnetic, &windingLossesOutput, &temperatureOutput,
-                                        WindingLossesScope::FULL, NoThermalOperatingPointPolicy::THROW);
+    // ABT #2075: the reason simulate recorded, not a second solve.
+    auto reason = MagneticSimulator::get_no_thermal_operating_point_reason(output.get_core_losses().value());
+    if (!reason) {
+        throw InvalidInputException(ErrorCode::MISSING_DATA,
+            "analyze_results: the output of " + where + " has no temperature, and its core losses record no reason for "
+            "having no thermal operating point: it was simulated in fast mode (or edited after simulate), which publishes "
+            "no temperature; analyze_results needs simulate's full output");
     }
-    catch (const NoThermalOperatingPointException& noThermalOperatingPoint) {
-        return {make_finding(operatingPoint, operatingPointIndex, ResultFindingCode::NO_THERMAL_OPERATING_POINT,
-            "At " + where + ": " + noThermalOperatingPoint.message() + " Its core and winding losses are those evaluated at the "
-            "ambient temperature (" + format_number(operatingPoint.get_conditions().get_ambient_temperature()) +
-            " C), and it has no temperature output, so its temperatures are not checked")};
-    }
-    throw InvalidInputException(ErrorCode::MISSING_DATA,
-        "analyze_results: the output of " + where + " has no temperature, yet its losses have a thermal operating point "
-        "(hottest point " + format_number(temperatureOutput.value().get_maximum_temperature()) + " C): it was simulated in "
-        "fast mode (or edited after simulate), which publishes no temperature; analyze_results needs simulate's full output");
+    return {make_finding(operatingPoint, operatingPointIndex, ResultFindingCode::NO_THERMAL_OPERATING_POINT,
+        "At " + where + ": " + reason.value() + " Its core and winding losses are those evaluated at the "
+        "ambient temperature (" + format_number(operatingPoint.get_conditions().get_ambient_temperature()) +
+        " C), and it has no temperature output, so its temperatures are not checked")};
 }
 
 std::vector<ResultFinding> ResultsAnalyzer::analyze_flux_density_past_magnetisation_curve(const Magnetic& magnetic,
@@ -883,8 +875,7 @@ std::vector<ResultFinding> ResultsAnalyzer::analyze_results(const Mas& mas) {
             findings.push_back(finding);
         }
         if (!outputs[index].get_temperature()) {
-            for (auto& finding : analyze_missing_temperature(mas.get_magnetic(), operatingPoints[index], index,
-                                                             mas.get_inputs().get_design_requirements().get_topology())) {
+            for (auto& finding : analyze_missing_temperature(operatingPoints[index], outputs[index], index)) {
                 findings.push_back(finding);
             }
             continue;

@@ -252,6 +252,12 @@ class MagneticSimulator {
         // CoreDataCeilingSource names it. Every part is derived from the material's data.
         static std::optional<CoreDataCeiling> get_core_data_ceiling(const Core& core, const OperatingPointExcitation& excitation,
                                                                     double ambientTemperature, CoreLosses& coreLossesModel);
+        // ABT #2075 (Alf, 2026-10-26): simulate records on the core losses of a point with no thermal operating point
+        // why it has none. Their methodUsed is the loss model's, then kLossesAtAmbientMethodNote, then the
+        // NoThermalOperatingPointException's message. ResultsAnalyzer reads the reason here instead of solving again.
+        static constexpr const char* kLossesAtAmbientMethodNote = ", evaluated at the ambient temperature: ";
+        // The reason recorded on these core losses; none when they were solved at their thermal operating point.
+        static std::optional<std::string> get_no_thermal_operating_point_reason(const CoreLossesOutput& coreLosses);
         // The DC point of the last calculate_core_losses' solve (SolvedLosses::dcBiasPoint).
         std::optional<DcBiasPoint> get_last_dc_bias_point() const { return _lastDcBiasPoint; }
         // SolvedLosses::lowestFixedPointSearchEvaluations of the last calculate_core_losses' solve (ABT #1840).
