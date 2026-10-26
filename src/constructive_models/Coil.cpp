@@ -5404,7 +5404,22 @@ void Coil::align_blocked_layer_turns() {
             effectiveDepths.first = std::max(effectiveDepths.first, foundLanding->second.first);
             effectiveDepths.second = std::max(effectiveDepths.second, foundLanding->second.second);
         }
-        if (effectiveDepths.first <= 1e-12 && effectiveDepths.second <= 1e-12) {
+        // ABT #2071: a section with a layer grown past the window (turn-axis overflow, below) is
+        // taller than the window, and the compaction slides the whole section to centre that taller
+        // envelope -- which carried its untouched layers off the window with it (bug_capacitance_error:
+        // layer 0, 2 stations in a 2.8 mm window, 0.234 mm out of the bottom, its entrance lead off
+        // the corridor reserved for it). Its untouched layers are laid in the window frame too, as
+        // the layers crossed by corridors are.
+        bool inTurnAxisOverflowSection = false;
+        if (!_turnAxisOverflowSlotsPerLayer.empty() && layer.get_section()) {
+            for (const auto& [overflowLayerName, extraSlots] : _turnAxisOverflowSlotsPerLayer) {
+                if (overflowLayerName.rfind(layer.get_section().value() + " layer ", 0) == 0) {
+                    inTurnAxisOverflowSection = true;
+                    break;
+                }
+            }
+        }
+        if (effectiveDepths.first <= 1e-12 && effectiveDepths.second <= 1e-12 && !inTurnAxisOverflowSection) {
             continue;  // untouched layer: leave delimit's centring (fills the full height)
         }
         size_t windingIndex = get_winding_index_by_name(layer.get_partial_windings()[0].get_winding());
@@ -5462,6 +5477,44 @@ void Coil::align_blocked_layer_turns() {
         double spanHigh = roundFloat(windowHighSide - blockedDepths.first, 9);
         size_t numberTurnsInLayer = layerTurns.size();
         int64_t bundleSize = get_layer_bundle_size(layer);
+        // ABT #2071 (Alf, 2026-10-26): a layer the blocked fill of an unfit wind grew along its turn
+        // axis (see wind_by_rectangular_layers) holds more stations than its span inside the window.
+        // Its span runs on past the window, on the edge no corridor crosses, by exactly what its
+        // stations need at the layer's pitch: packed, never squeezed, the corridor edge untouched.
+        const bool turnAxisOverflow = _turnAxisOverflowSlotsPerLayer.count(layer.get_name()) > 0;
+        const double spanLowInWindow = spanLow;
+        const double spanHighInWindow = spanHigh;
+        auto extendSpanPastWindow = [&](double pitch) {
+            spanLow = spanLowInWindow;
+            spanHigh = spanHighInWindow;
+            const double needed = double(numberTurnsInLayer) * pitch;
+            if (!turnAxisOverflow || needed <= spanHighInWindow - spanLowInWindow) {
+                return;
+            }
+            const bool highEdgeCrossed = blockedDepths.first > 1e-12;
+            const bool lowEdgeCrossed = blockedDepths.second > 1e-12;
+            if (lowEdgeCrossed && !highEdgeCrossed) {
+                spanHigh = spanLowInWindow + needed;
+            }
+            else if (highEdgeCrossed && !lowEdgeCrossed) {
+                spanLow = spanHighInWindow - needed;
+            }
+            else if (!highEdgeCrossed && !lowEdgeCrossed) {
+                // No corridor on either edge (a layer starved by its parallels' closing stations
+                // alone): it grows past both edges alike.
+                const double middle = (spanLowInWindow + spanHighInWindow) / 2;
+                spanLow = middle - needed / 2;
+                spanHigh = middle + needed / 2;
+            }
+            else {
+                throw CoilException(ErrorCode::COIL_WINDING_ERROR,
+                    "Real winding: layer " + layer.get_name() + " holds " + std::to_string(numberTurnsInLayer) +
+                    " stations, more than its " + std::to_string((spanHighInWindow - spanLowInWindow) * 1e3) +
+                    " mm inside the window, and connection corridors cross both of its edges, so it has no free "
+                    "edge to grow past the window from");
+            }
+        };
+        extendSpanPastWindow(wirePitch);
         int64_t numberBundles = (int64_t(numberTurnsInLayer) + bundleSize - 1) / bundleSize;
         // ABT #683 (Alf): a U layer that is NOT full must be packed CONTIGUOUSLY from the end
         // the wire arrives at — never fence-post spread across the band. Spreading a partial
@@ -5684,6 +5737,7 @@ void Coil::align_blocked_layer_turns() {
             // pitch computed from any other layout's advance leaves these very stations short.
             double previousPitch = -1.0;
             for (int pass = 0; pass < 64; ++pass) {
+                extendSpanPastWindow(wirePitch);
                 stations = compute_spread_turn_stations((spanLow + spanHigh) / 2,
                                                         spanHigh - spanLow,
                                                         wirePitch,
@@ -5720,7 +5774,9 @@ void Coil::align_blocked_layer_turns() {
         // wind rather than let it ship. Single-window coils only: this frame is window 0's.
         const bool singleWindingWindow =
             bobbin.get_processed_description()->get_winding_windows().size() == 1;
-        if (!stations.empty() && singleWindingWindow) {
+        // A layer grown past the window (ABT #2071, above) is not slid back: its copper is meant to
+        // be out there, and sliding it in would only put it on the corridor it was laid clear of.
+        if (!stations.empty() && singleWindingWindow && !turnAxisOverflow) {
             const double lowEdge = stations.front() - wirePitch / 2;
             const double highEdge = stations.back() + wirePitch / 2;
             double shift = 0.0;
@@ -7928,6 +7984,7 @@ bool Coil::wind_at_current_footprints(std::vector<double> proportionPerWinding, 
 
 bool Coil::wind_inner(std::vector<double> proportionPerWinding, std::vector<size_t> pattern, size_t repetitions) {
     InternalWindScope internalWindScope(*this);
+    _blockingAnUnfitWind = false;   // set once the ideal verdict is known, below
     // REAL WINDING: a wire that makes N turns crosses the winding-window plane N+1
     // times — the beginning of the first turn occupies its own physical slot in the
     // cross-section (for 3 turns, 4 wire crossings per parallel appear in the 2D
@@ -8156,6 +8213,9 @@ bool Coil::wind_inner(std::vector<double> proportionPerWinding, std::vector<size
             }
         }
     } realWindingCrossingBump(*this);
+    // ABT #2071: the stations the bump armed with, one per charged winding -- what the turn-axis
+    // overflow of an unfit wind restarts the crossing raise from (see the blocking loop).
+    std::vector<size_t> armedCrossingExtra;
 
     bool windEvenIfNotFit = settings.get_coil_wind_even_if_not_fit();
     bool delimitAndCompact = settings.get_coil_delimit_and_compact();
@@ -8272,6 +8332,7 @@ bool Coil::wind_inner(std::vector<double> proportionPerWinding, std::vector<size
             _connectionBlockedRoomPerLayer.clear();
             _uLandingDepthPerLayer.clear();
             _terminalEntranceAtTop.clear();
+            _turnAxisOverflowSlotsPerLayer.clear();
 
             // Special case: toroid with one physical turn whose wire OD
             // exceeds the inner-hole radius. The wire cannot be wound on
@@ -8286,6 +8347,7 @@ bool Coil::wind_inner(std::vector<double> proportionPerWinding, std::vector<size
             // also covers the global turn-blocking re-wind below) only after the
             // centered-single-turn special case has had its chance.
             realWindingCrossingBump.arm();
+            armedCrossingExtra = realWindingCrossingBump.extraPerWinding;
 
             calculate_insulation_for_wind();
             logEntry("Winding by sections", "Coil", 2);
@@ -8351,6 +8413,7 @@ bool Coil::wind_inner(std::vector<double> proportionPerWinding, std::vector<size
     // ideal layout does not fit returns false whatever the blocked layout reads.
     const bool idealWindFits = result;
     _realWindingBlockingApplied = settings.get_coil_use_real_winding_geometry() && (result || bool(get_turns_description()));
+    _blockingAnUnfitWind = _realWindingBlockingApplied && !idealWindFits;
     if (settings.get_coil_use_real_winding_geometry() && !result) {
         logEntry(std::string(_realWindingBlockingApplied
                                  ? "Real winding: the ideal wind does not fit; connection blocking is applied to "
@@ -8478,8 +8541,34 @@ bool Coil::wind_inner(std::vector<double> proportionPerWinding, std::vector<size
         // a deep multi-layer winding can need several before the layer count settles.
         const size_t maximumBlockingIterations = 24;
         size_t directionRegimeResets = 0;
+        bool turnAxisCrossingRestarted = false;
         bool blockingConverged = false;
         for (size_t blockingIteration = 0; blockingIteration < maximumBlockingIterations; ++blockingIteration) {
+            // ABT #2071 (Alf, 2026-10-26): the first time the blocked fill of an unfit wind grows a
+            // starved layer along its turn axis, the crossing raise restarts from the stations it
+            // armed with. Before that the raise had climbed to the layer count of the RADIAL spill
+            // (bug_capacitance_error: 11 layers of one turn each), and the raise only ever goes up:
+            // kept there, the taller layers would be charged 11 closing stations for the ~6 layers
+            // they span, and every surplus station would come out as a turn of copper that was
+            // never stated. Restarted once, the raise climbs again, monotonically, from below, to
+            // the smallest layer count the grown fill closes in -- deterministic, and it cannot
+            // cycle because it happens once per wind.
+            if (_blockingAnUnfitWind && !turnAxisCrossingRestarted && !_turnAxisOverflowSlotsPerLayer.empty() &&
+                realWindingCrossingBump.active && armedCrossingExtra.size() == realWindingCrossingBump.extraPerWinding.size()) {
+                turnAxisCrossingRestarted = true;
+                if (realWindingCrossingBump.extraPerWinding != armedCrossingExtra) {
+                    realWindingCrossingBump.lowerTo(armedCrossingExtra);
+                    wind_by_sections(proportionPerWinding, pattern, repetitions);
+                    redistribute_section_turns_for_blocking();
+                    wind_by_layers();
+                    if (!get_layers_description()) { break; }
+                    wind_by_turns();
+                    if (!get_turns_description()) { break; }
+                    if (delimitAndCompact) delimit_and_compact();
+                    align_blocked_layer_turns();
+                    continue;
+                }
+            }
             // ABT #685: blocking can spill a layer, and a new layer needs its own opening
             // crossing — so the raise has to be re-checked here too, not only before the loop.
             // It is monotone and bounded by the layer count, so it cannot cycle; the iteration
@@ -16316,6 +16405,7 @@ bool Coil::wind_by_layers() {
 
 bool Coil::wind_by_rectangular_layers() {
     set_layers_description(std::nullopt);
+    _turnAxisOverflowSlotsPerLayer.clear();
     if (!get_sections_description()) {
         return false;
     }
@@ -16603,6 +16693,55 @@ bool Coil::wind_by_rectangular_layers() {
                     // layer capacity is a whole number of parallel rows (a multiple of the parallel
                     // count). K=1 leaves it unchanged.
                     capacity = (capacity / uint64_t(numberParallels)) * uint64_t(numberParallels);
+                    // ABT #2071 (Alf, 2026-10-26): TURN-AXIS OVERFLOW of an unfit wind. A layer is
+                    // STARVED when it cannot close: it holds no row at all, or -- spilled into, so it
+                    // pays its own closing station, one per parallel -- it holds nothing beside that
+                    // station while turns are still left (bug_capacitance_error: 2 slots per 2.8 mm
+                    // layer of 0.935 mm litz, the entrance lead's radial corridor takes 1 of them in
+                    // every layer it crosses, the other is the closing station). Adding layers
+                    // radially never closes such a fill: each new layer is crossed by the same lead
+                    // and holds nothing either (it ran to layer 41). For a wind whose ideal layout
+                    // already does not fit, the starved layer instead grows TALLER than the window,
+                    // along its turn axis, at the same pitch and under the same corridors:
+                    //   slots S0 = what the window gives a layer (maximumNumberPhysicalTurnsPerLayer)
+                    //   b        = the corridors that cross it (top + bottom, in turn slots)
+                    //   k        = its closing stations (one per parallel; none in the first layer)
+                    //   share    = the turns a layer of this window holds, S0 in whole rows of
+                    //              every parallel, or the turns left when fewer
+                    // It gets the MINIMUM number of extra slots E with S0 + E - b - k >= share, so
+                    // it holds k + share stations: E = k + share + b - S0. The extra slots lie past
+                    // the window on the edge no corridor crosses (align_blocked_layer_turns), and
+                    // the copper there is reported as TURNS_OUTSIDE_WINDOW. A layer that is not
+                    // starved keeps its slots, and a wind that still needs more layers than the
+                    // window holds keeps spilling radially as before. A wind that fits never gets
+                    // here: its starved layer is refused below (ABT #1890).
+                    const uint64_t closingStations = builtLayers > 0 ? uint64_t(numberParallels) : 0;
+                    const bool starved = capacity == 0 ||
+                                         (builtLayers > 0 && capacity <= closingStations && remainingTurns > capacity);
+                    if (_blockingAnUnfitWind && starved) {
+                        const uint64_t blockedRaw = blocked.first + blocked.second;
+                        const uint64_t rowShare = (maximumNumberPhysicalTurnsPerLayer / uint64_t(numberParallels)) *
+                                                  uint64_t(numberParallels);
+                        const uint64_t turnsLeftBesideClosing = remainingTurns > closingStations ? remainingTurns - closingStations : 0;
+                        const uint64_t share = std::min(rowShare, turnsLeftBesideClosing);
+                        // With no turn left beside the closing stations, the layer takes what is left.
+                        const uint64_t grownCapacity = share > 0 ? closingStations + share : remainingTurns;
+                        if (grownCapacity + blockedRaw <= maximumNumberPhysicalTurnsPerLayer) {
+                            // Starved by something other than its corridors and its closing station
+                            // (a landing band, the row rounding): growing past the window is not what
+                            // it lacks, so say so with the numbers instead of guessing.
+                            throw CoilException(ErrorCode::COIL_WINDING_ERROR,
+                                "Real winding: layer " + std::to_string(builtLayers) + " of section '" +
+                                sections[sectionIndex].get_name() + "' cannot close (" + std::to_string(capacity) +
+                                " stations beside " + std::to_string(blockedRaw) + " corridor slots of " +
+                                std::to_string(maximumNumberPhysicalTurnsPerLayer) +
+                                "), and growing it along its turn axis gives it no room either");
+                        }
+                        _turnAxisOverflowSlotsPerLayer[sections[sectionIndex].get_name() + " layer " +
+                                                       std::to_string(builtLayers)] =
+                            grownCapacity + blockedRaw - maximumNumberPhysicalTurnsPerLayer;
+                        capacity = grownCapacity;
+                    }
                     if (capacity == 0) {
                         break;  // layer too thin to hold one row of every parallel
                     }
@@ -16611,7 +16750,8 @@ bool Coil::wind_by_rectangular_layers() {
                     // turns still to place after it, the crossing fixpoint L = N / (c - 1) has no
                     // finite answer (c = 1) and the station raise would only march layers out of
                     // the window until it threw. That is a section that cannot hold its turns:
-                    // refuse it here, as the fill does when a layer holds no row at all.
+                    // refuse it here, as the fill does when a layer holds no row at all. (An unfit
+                    // wind's starved layer was grown above and does not reach this.)
                     if (builtLayers > 0 && capacity <= uint64_t(numberParallels) && remainingTurns > capacity) {
                         _lastFitFailure = "real winding: section '" + sections[sectionIndex].get_name() + "' cannot hold its " +
                                           std::to_string(physicalTurnsInSection) + " turns: layer " + std::to_string(builtLayers) +

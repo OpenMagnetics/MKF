@@ -6,6 +6,7 @@
 #include "constructive_models/Core.h"
 #include "constructive_models/Magnetic.h"
 #include "constructive_models/Mas.h"
+#include "processors/ResultsAnalyzer.h"
 #include "support/Logger.h"
 #include "support/Painter.h"
 #include "support/Utils.h"
@@ -17,6 +18,7 @@
 #include <filesystem>
 #include <functional>
 #include <limits>
+#include <map>
 #include <fstream>
 #include <set>
 #include <optional>
@@ -1073,6 +1075,80 @@ TEST_CASE("magnetic_autocomplete lays an unfit stated layout out in full and war
         CHECK(turnsLaidOut == turnsStated);
         CHECK_FALSE((coil.are_turns_inside_winding_window() && coil.are_sections_and_layers_fitting()));
     }
+    settings.reset();
+}
+
+// ABT #2071 (Alf, 2026-10-26): an unfit wind whose blocked fill cannot close OVERFLOWS ALONG THE TURN
+// AXIS. bug_capacitance_error (EL 18, 11 turns of 0.935 mm litz, stated sections, real winding): a
+// 2.8 mm layer holds 2 stations, the entrance lead's radial corridor takes 1 of them in every layer it
+// crosses and the other is that layer's closing station, so no layer the winding spills into holds a
+// turn. Those layers grow taller than the window instead, at the wire's pitch and clear of the
+// corridor, to 3 stations each (corridor + closing station + the 2 turns a layer of this window
+// holds): the fill closes in the 6 layers the ideal wind needs, blocking applied, every stated turn
+// laid out, and the copper past the window's top reported as TURNS_OUTSIDE_WINDOW.
+TEST_CASE("Real winding: an unfit wind whose layers cannot close beside the lead corridor grows them past the window",
+          "[constructive-model][coil][real-winding][magnetic-autocomplete][abt-2071]") {
+    auto& settings = OpenMagnetics::Settings::GetInstance();
+    settings.reset();
+    settings.set_coil_use_real_winding_geometry(true);
+    auto [magnetic, warnings] = autocomplete_collecting_warnings("bug_capacitance_error.json", /*freshWind=*/true);
+    for (const auto& warning : warnings) {
+        UNSCOPED_INFO(warning);
+    }
+    auto& coil = magnetic.get_mutable_coil();
+    REQUIRE(coil.get_turns_description());
+    CHECK(coil.is_real_winding_blocking_applied());
+    CHECK_FALSE(coil.get_connection_reserved_spaces().empty());
+
+    const auto laidOut = coil.get_turns_description().value();
+    size_t turnsLaidOut = std::count_if(laidOut.begin(), laidOut.end(),
+                                        [](const auto& turn) { return turn.get_length() > 0; });
+    size_t turnsStated = 0;
+    for (const auto& winding : coil.get_functional_description()) {
+        turnsStated += winding.get_number_turns() * winding.get_number_parallels();
+    }
+    CHECK(turnsStated == 11);
+    CHECK(turnsLaidOut == turnsStated);
+
+    // 6 layers, as the ideal wind needs: one station per layer plus the 11 turns = 17 stations, layer
+    // 0 (no corridor, no closing station) with 2 and every other layer with 3, one more than the
+    // window holds.
+    size_t conductionLayers = 0;
+    std::map<std::string, size_t> stationsPerLayer;
+    const auto layersLaidOut = coil.get_layers_description().value();
+    for (const auto& layer : layersLaidOut) {
+        if (layer.get_type() == MAS::ElectricalType::CONDUCTION) {
+            ++conductionLayers;
+        }
+    }
+    for (const auto& turn : laidOut) {
+        REQUIRE(turn.get_layer());
+        stationsPerLayer[turn.get_layer().value()]++;
+    }
+    CHECK(conductionLayers == 6);
+    CHECK(laidOut.size() == 17);
+    size_t grownLayers = 0;
+    for (const auto& [layerName, stations] : stationsPerLayer) {
+        INFO(layerName << ": " << stations << " stations");
+        CHECK(stations <= 3);
+        grownLayers += stations == 3 ? 1 : 0;
+    }
+    CHECK(grownLayers == 5);
+
+    // Exact geometry: no two stations overlap, and the copper past the window is reported, on its
+    // top (the layers grew past the edge the corridor does not cross).
+    CHECK(coil.judge_copper_overlaps().empty());
+    const auto outside = coil.judge_turns_outside_window();
+    CHECK(std::any_of(outside.begin(), outside.end(), [](const OpenMagnetics::TurnOutsideWindow& turn) {
+        return turn.side == OpenMagnetics::TurnOutsideWindow::Side::TOP;
+    }));
+    OpenMagnetics::Mas mas;
+    mas.set_magnetic(magnetic);
+    size_t outsideReported = 0;
+    for (const auto& finding : OpenMagnetics::ResultsAnalyzer::analyze_results(mas)) {
+        outsideReported += finding.code == OpenMagnetics::ResultFindingCode::TURNS_OUTSIDE_WINDOW ? 1 : 0;
+    }
+    CHECK(outsideReported == 1);
     settings.reset();
 }
 

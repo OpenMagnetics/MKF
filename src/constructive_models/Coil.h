@@ -790,6 +790,15 @@ class Coil : public MAS::Coil {
         // (the ABT #650 gate declined). Consumers that require blocked geometry — the 3D
         // ConductorBuilder above all — must ASK instead of discovering it as a collision.
         bool _realWindingBlockingApplied = false;
+        // ABT #2071 (Alf, 2026-10-26): the blocking now running lays out a wind whose IDEAL layout does
+        // not fit. Its blocked layout overflows the window rather than being refused (see
+        // wind_by_rectangular_layers for the rule).
+        bool _blockingAnUnfitWind = false;
+        // ABT #2071: the layers of an unfit wind that the blocked fill grew ALONG THE TURN AXIS, past
+        // the window, keyed by layer name: how many turn slots each was given beyond the ones the
+        // window holds. Written by wind_by_rectangular_layers (cleared at each fill), read by
+        // align_blocked_layer_turns, which extends the layer's span past the window by that much.
+        std::map<std::string, uint64_t> _turnAxisOverflowSlotsPerLayer;
         // ABT #1290 follow-up: the bend radius each turn's LENGTH was charged for, keyed by the
         // turn's final name. Written where the length is written, re-keyed when
         // name_turns_by_beginning renames the stations, cleared at the start of every wind.
