@@ -243,7 +243,7 @@ WindingLossesOutput WindingSkinEffectLosses::calculate_skin_effect_losses(Coil c
     if (!coil.get_turns_description()) {
         throw CoilNotProcessedException("Winding does not have turns description");
     }
-    auto turns = coil.get_turns_description().value();
+    const auto& turns = coil.get_turns_description_ref().value();
     auto currentDividerPerTurn = windingLossesOutput.get_current_divider_per_turn().value();
     auto operatingPoint = windingLossesOutput.get_current_per_winding().value();
     if (operatingPoint.get_excitations_per_winding().empty()) {
@@ -258,6 +258,19 @@ WindingLossesOutput WindingSkinEffectLosses::calculate_skin_effect_losses(Coil c
         throw InvalidInputException(ErrorCode::MISSING_DATA, "Input has no waveform. TODO: get waveform from processed data");
     }
     operatingPoint = Inputs::prune_harmonics(operatingPoint, windingLossesHarmonicAmplitudeThreshold);
+
+    // calculate_skin_effect_losses_per_meter and split_current_divider_per_harmonic read only the current's
+    // harmonics: each winding's current is handed to them as its harmonics alone, built once, instead of a copy of the
+    // whole (line-cycle: 16k-sample) signal per turn.
+    std::vector<SignalDescriptor> harmonicsOfCurrentPerWinding(operatingPoint.get_excitations_per_winding().size());
+    for (size_t windingIndex = 0; windingIndex < harmonicsOfCurrentPerWinding.size(); ++windingIndex) {
+        const auto& windingCurrent = operatingPoint.get_excitations_per_winding()[windingIndex].get_current_ref();
+        if (windingCurrent) {
+            harmonicsOfCurrentPerWinding[windingIndex].set_harmonics(windingCurrent->get_harmonics_ref());
+        }
+    }
+    // The wire of each winding, resolved at its first turn.
+    std::vector<std::optional<Wire>> wirePerWinding;
 
     auto windingLossesPerTurn = windingLossesOutput.get_winding_losses_per_turn().value();
 
@@ -281,9 +294,15 @@ WindingLossesOutput WindingSkinEffectLosses::calculate_skin_effect_losses(Coil c
 
     for (size_t turnIndex = 0; turnIndex < turns.size(); ++turnIndex)
     {
-        auto turn = turns[turnIndex];
+        const auto& turn = turns[turnIndex];
         int windingIndex = coil.get_winding_index_by_name(turn.get_winding());
-        auto wire = coil.resolve_wire(windingIndex);
+        if (static_cast<size_t>(windingIndex) >= wirePerWinding.size()) {
+            wirePerWinding.resize(windingIndex + 1);
+        }
+        if (!wirePerWinding[windingIndex]) {
+            wirePerWinding[windingIndex] = coil.resolve_wire(windingIndex);
+        }
+        const auto& wire = wirePerWinding[windingIndex].value();
         std::optional<WindingSkinEffectLossesModels> turnModelOverride = modelOverrideForWinding(windingIndex);
         double wireLength = turn.get_length();
 
@@ -292,7 +311,7 @@ WindingLossesOutput WindingSkinEffectLosses::calculate_skin_effect_losses(Coil c
             // Matches the ohmic-loss path's handling of windings without excitation
             throw InvalidInputException(ErrorCode::MISSING_DATA, "Missing current excitation for winding " + std::to_string(windingIndex) + " in skin effect losses");
         }
-        SignalDescriptor current = operatingPoint.get_excitations_per_winding()[windingIndex].get_current().value();
+        const SignalDescriptor& current = harmonicsOfCurrentPerWinding[windingIndex];
 
         std::optional<std::vector<double>> splitDivider;
         if (parallelCurrentSplit && coil.get_number_parallels(windingIndex) > 1) {
@@ -355,7 +374,7 @@ WindingLossesOutput WindingSkinEffectLosses::calculate_skin_effect_losses(Coil c
             if (dividerFound == dividerPerParallel.end()) {
                 throw InvalidInputException(ErrorCode::MISSING_DATA, "Winding " + std::to_string(windingIndex) + " parallel " + std::to_string(parallelIndex) + " has connection copper but no turns to take its current divider from");
             }
-            SignalDescriptor current = operatingPoint.get_excitations_per_winding()[windingIndex].get_current().value();
+            const SignalDescriptor& current = harmonicsOfCurrentPerWinding[windingIndex];
             std::optional<std::vector<double>> splitDivider;
             if (parallelCurrentSplit && coil.get_number_parallels(windingIndex) > 1) {
                 splitDivider = split_current_divider_per_harmonic(*parallelCurrentSplit, turnPerParallel.at({windingIndex, int64_t(parallelIndex)}), windingIndex,
