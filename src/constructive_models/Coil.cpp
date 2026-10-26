@@ -8,6 +8,9 @@
 #include <unordered_map>
 #include <set>
 #include <filesystem>
+#include <functional>
+#include <numeric>
+#include <array>
 #include <fstream>
 #include <iostream>
 #include <limits>
@@ -6416,6 +6419,12 @@ void Coil::align_blocked_layer_turns() {
             size_t depTurn, arrTurn;   // indices into `turns`
         };
         const bool linkDiag = std::getenv("MKF_PITCH_DIAG") != nullptr;
+        // ABT #1424: which layer changes ARE links is MKF's own connection layout's decision (see
+        // refuse_sibling_layer_links_closer_than_the_wire), not a slope window: the window read a
+        // short Z dragback as a link and widened a bundle for a run nobody draws in the plane. The
+        // kind depends on the winding order, the layers' membership and the final-landing rule,
+        // none of which this pass moves, so it is read once, from the layout as wound.
+        const auto kinds = connection_kind_by_transition();
         for (int pass = 0; pass < 16; ++pass) {
             // The links, freshly measured from the CURRENT turn coordinates each pass.
             std::map<std::pair<std::string, std::string>, std::vector<LinkRef>> linksByLayerPair;
@@ -6425,8 +6434,6 @@ void Coil::align_blocked_layer_turns() {
                     wires[windingIndex].get_type() != WireType::LITZ) {
                     continue;
                 }
-                const double od = wires[windingIndex].get_maximum_outer_height();
-                const int64_t nParallels = get_number_parallels(windingIndex);
                 for (size_t s2 = 0; s2 + 1 < sequence.size(); ++s2) {
                     const Turn& a = turns[sequence[s2]];
                     const Turn& b = turns[sequence[s2 + 1]];
@@ -6441,10 +6448,14 @@ void Coil::align_blocked_layer_turns() {
                     if (a.get_section() != b.get_section()) {
                         continue;   // inter-section connections are band-routed, not links
                     }
-                    const double dx = std::abs(b.get_coordinates()[0] - a.get_coordinates()[0]);
-                    const double dy = std::abs(b.get_coordinates()[1] - a.get_coordinates()[1]);
-                    if (dx <= 1e-12 || dy > dx + 2.0 * od * double(std::max<int64_t>(1, nParallels))) {
-                        continue;   // a Z dragback, not a link
+                    const auto kind = kinds.find({a.get_name(), b.get_name()});
+                    if (kind == kinds.end()) {
+                        throw std::logic_error("Coil::align_blocked_layer_turns: the layer change '" +
+                                               a.get_name() + "' -> '" + b.get_name() +
+                                               "' has no connection in MKF's own connection layout");
+                    }
+                    if (!is_connection_plane_link(kind->second)) {
+                        continue;   // a Z dragback or an edge continuation: not drawn in the plane
                     }
                     linksByLayerPair[{a.get_layer().value(), b.get_layer().value()}]
                         .push_back({sequence[s2], sequence[s2 + 1]});
@@ -13824,21 +13835,73 @@ std::optional<double> Coil::get_turn_length_in_frame(const WoundColumnFrame& fra
     return length;
 }
 
-// ABT #1424. A U layer link is drawn as ONE radial step in the connection plane, from the
-// departure station (layer axis, turn axis) to the conductor's own station in the next layer
-// (MVB++ appendRoundWrap: "the link ENDS ON ITS OWN TURN"). Sibling parallels' links sit in that
-// same plane, so their centrelines are two segments of one half-plane and the true distance
-// between them is the 2D segment-to-segment distance -- zero when they cross. Wires wound side by
-// side cannot pass closer than one coated OD, the same invariant ABT #1401 enforces for the
-// wraps. The layout is final here (wind() calls this after the blocking re-winds have settled),
-// so a pair inside the envelope is a layout nobody can wind, and it is refused with the pair,
-// the distance and the envelope rather than handed to a consumer to discover.
+bool Coil::is_connection_plane_link(ConnectionKind kind) {
+    return kind == ConnectionKind::U_ADJACENT || kind == ConnectionKind::U_TANGENTIAL ||
+           kind == ConnectionKind::FINAL_LANDING;
+}
+
+std::map<std::pair<std::string, std::string>, ConnectionKind> Coil::connection_kind_by_transition() {
+    // The lead exit is not planned: it decides nothing about a layer transition's kind, and it
+    // throws on its own infeasibilities, which are reported where the layout is really asked for.
+    std::vector<ConnectionRoute> routes;
+    get_connection_reserved_spaces(&routes, nullptr, false);
+    std::map<std::pair<std::string, std::string>, ConnectionKind> kinds;
+    for (const auto& route : routes) {
+        if (route.kind == ConnectionKind::TERMINAL_ENTRANCE || route.kind == ConnectionKind::TERMINAL_EXIT) {
+            continue;   // a terminal route connects a turn to a terminal, not two turns
+        }
+        const auto [found, inserted] = kinds.insert({{route.fromTurn, route.toTurn}, route.kind});
+        if (!inserted && found->second != route.kind) {
+            throw std::logic_error("Coil::connection_kind_by_transition: the connection '" + route.fromTurn +
+                                   "' -> '" + route.toTurn + "' was laid out as two different kinds");
+        }
+    }
+    return kinds;
+}
+
+// ABT #1424. What a connection between two layers IS comes from MKF's own connection layout
+// (get_connection_reserved_spaces, which decides it from the winding order, the single-turn-layer
+// rule, the final-landing rule and whether intervening layers are crossed) -- never from the slope
+// between the two stations. The slope window this check used to share with the LINK-PITCH pass
+// (dy <= dx + 2 OD K) admitted a short Z dragback as a link: on a bifilar drum-ring (4 t x 2 p,
+// round 0.25) layer 0 ends at y 0.64 / 0.91 mm and layer 1 restarts at -0.64 / -0.36 mm, a
+// 1.28 mm return over a 0.27 mm radial step, inside the window, and the two parallels' "links"
+// were refused 0.0577 mm apart although nobody draws them in the connection plane.
 //
-// What counts as a link is the classification the layout itself publishes for the U connection
-// (the LINK-PITCH pass in align_blocked_layer_turns): consecutive stations of one conductor in
-// two different layers of the same section, stepping along the layer axis, whose turn-axis
-// difference is within one layer step plus the bundle's lanes -- anything steeper is a dragback,
-// routed elsewhere.
+// LAYER LINKS (U_ADJACENT, U_TANGENTIAL, FINAL_LANDING). Drawn as ONE step in the connection plane,
+// from the departure station to the conductor's own station in the next layer (MVB++
+// appendRoundWrap: "the link ENDS ON ITS OWN TURN"), and pinned there: MVB++'s fan registers a link
+// as a pinned vertical and moves everything else around it, so sibling parallels' links share the
+// plane. Their centrelines are two segments of one half-plane, and the true distance between them is
+// the 2D segment-to-segment distance -- zero when they cross. Wires wound side by side cannot pass
+// closer than one coated OD, the same invariant ABT #1401 enforces for the wraps. A steep exit
+// landing is not a plane step (its single revolution spirals the whole band) and keeps its own
+// spacing law, as in the LINK-PITCH pass.
+//
+// Z DRAGBACKS (Z_DRAGBACK). A dragback is NOT drawn in the connection plane. The winder steps out
+// radially at the height the layer finished, runs axially back along the lane at the next layer's
+// radius, and lands on that layer's first station (MVB++ appendZDragback on a round column; the
+// rect twin in appendRectWrap). Sibling parallels' dragbacks would coincide on that lane -- their
+// descents share its radius and their axial spans overlap -- so they are laid SIDE BY SIDE ALONG
+// THE LANE, each at its own position around the column: MVB++ gives every return of a different
+// conductor its own fan azimuth (round) or its own x slot along the connection face (rectangular),
+// and MKF's own ride model says the same thing, merging returns at one radius into ONE ride level
+// one OD tall (compute_ride_levels) -- side by side, not stacked. Where two siblings' chains run
+// parallel they are therefore separated TANGENTIALLY, and the bound is:
+//   * round column: two radial run-outs dAz apart are r sin(dAz) apart at radius r, so each pair
+//     needs dAz >= asin(OD / r_in), r_in the innermost radius the two chains occupy (the source
+//     layer, where the run-out starts). K siblings laid around the lane need K asin(OD / r_in)
+//     <= 2 pi -- the last one must still clear the first -- and OD > r_in leaves no azimuth at all;
+//   * any other column: side by side one coated OD apart along the source turn's own path, so K
+//     siblings need K OD <= the length of that turn (the lane's perimeter at r_in).
+// Which siblings need a lane of their own is measured, not assumed: two dragbacks whose drawn
+// chains -- run-out {(r_a, y_a), (r_b, y_a)}, descent {(r_b, y_a), (r_b, y_b)} -- pass closer than
+// one coated OD in the (radius, axis) half-plane cannot share an azimuth. The in-plane distance of
+// the straight station-to-station diagonals is not a clearance of anything drawn and is not judged.
+//
+// The layout is final here (wind() calls this after the blocking re-winds have settled), so a pair
+// outside these bounds is a layout nobody can wind, and it is refused with the pair, the distance
+// and the envelope rather than handed to a consumer to discover.
 void Coil::refuse_sibling_layer_links_closer_than_the_wire() {
     if (!settings.get_coil_use_real_winding_geometry() || !get_turns_description() ||
         !get_layers_description()) {
@@ -13853,6 +13916,7 @@ void Coil::refuse_sibling_layer_links_closer_than_the_wire() {
     for (const auto& layer : layers) {
         orientationOfLayer[layer.get_name()] = layer.get_orientation();
     }
+    const auto kinds = connection_kind_by_transition();
     auto wires = get_wires();
     std::map<std::pair<std::string, int64_t>, std::vector<size_t>> turnsByConductor;
     for (size_t t = 0; t < turns.size(); ++t) {
@@ -13863,14 +13927,13 @@ void Coil::refuse_sibling_layer_links_closer_than_the_wire() {
         int64_t parallel;
     };
     std::map<std::tuple<std::string, std::string, std::string>, std::vector<Link>> linksByLayerPair;
+    std::map<std::tuple<std::string, std::string, std::string>, std::vector<Link>> dragbacksByLayerPair;
     for (const auto& [conductor, sequence] : turnsByConductor) {
         const size_t windingIndex = get_winding_index_by_name(conductor.first);
         if (wires[windingIndex].get_type() != WireType::ROUND &&
             wires[windingIndex].get_type() != WireType::LITZ) {
             continue;
         }
-        const double od = wires[windingIndex].get_maximum_outer_height();
-        const int64_t numberParallels = get_number_parallels(windingIndex);
         for (size_t k = 0; k + 1 < sequence.size(); ++k) {
             const Turn& a = turns[sequence[k]];
             const Turn& b = turns[sequence[k + 1]];
@@ -13882,13 +13945,25 @@ void Coil::refuse_sibling_layer_links_closer_than_the_wire() {
                 orientationOfLayer.at(b.get_layer().value()) != WindingOrientation::OVERLAPPING) {
                 continue;
             }
-            const double dx = std::abs(b.get_coordinates()[0] - a.get_coordinates()[0]);
-            const double dy = std::abs(b.get_coordinates()[1] - a.get_coordinates()[1]);
-            if (dx <= 1e-12 || dy > dx + 2.0 * od * double(std::max<int64_t>(1, numberParallels))) {
-                continue;   // not a radial layer step: a dragback
+            const auto kind = kinds.find({a.get_name(), b.get_name()});
+            if (kind == kinds.end()) {
+                throw std::logic_error("Coil::refuse_sibling_layer_links_closer_than_the_wire: the layer change '" +
+                                       a.get_name() + "' -> '" + b.get_name() +
+                                       "' has no connection in MKF's own connection layout");
             }
-            linksByLayerPair[{conductor.first, a.get_layer().value(), b.get_layer().value()}].push_back(
-                {sequence[k], sequence[k + 1], conductor.second});
+            const std::tuple<std::string, std::string, std::string> key{conductor.first, a.get_layer().value(),
+                                                                         b.get_layer().value()};
+            if (is_connection_plane_link(kind->second)) {
+                if (k + 2 == sequence.size() && _steepExitLandingByConductor.count(conductor)) {
+                    continue;   // the steep final landing has its own spacing law
+                }
+                linksByLayerPair[key].push_back({sequence[k], sequence[k + 1], conductor.second});
+            }
+            else if (kind->second == ConnectionKind::Z_DRAGBACK) {
+                dragbacksByLayerPair[key].push_back({sequence[k], sequence[k + 1], conductor.second});
+            }
+            // EDGE_CONTINUATION runs on its own allocated edge row (allocateEdgeRow), one per
+            // side-by-side sibling; LAYER_SQUEEZE carries no copper.
         }
     }
     const auto pointToSegment = [](double px, double py, double ax, double ay, double bx, double by) {
@@ -13899,6 +13974,23 @@ void Coil::refuse_sibling_layer_links_closer_than_the_wire() {
     };
     const auto cross = [](double ox, double oy, double ax, double ay, double bx, double by) {
         return (ax - ox) * (by - oy) - (ay - oy) * (bx - ox);
+    };
+    // Segment-to-segment distance in one half-plane, zero when they cross.
+    const auto segmentDistance = [&](const std::array<double, 4>& p, const std::array<double, 4>& q, bool* crosses) {
+        const double d1 = cross(p[0], p[1], p[2], p[3], q[0], q[1]);
+        const double d2 = cross(p[0], p[1], p[2], p[3], q[2], q[3]);
+        const double d3 = cross(q[0], q[1], q[2], q[3], p[0], p[1]);
+        const double d4 = cross(q[0], q[1], q[2], q[3], p[2], p[3]);
+        const bool cross_ = ((d1 > 0) != (d2 > 0)) && ((d3 > 0) != (d4 > 0)) && d1 != 0 && d2 != 0 &&
+                            d3 != 0 && d4 != 0;
+        if (crosses != nullptr) {
+            *crosses = cross_;
+        }
+        return cross_ ? 0.0
+                      : std::min({pointToSegment(p[0], p[1], q[0], q[1], q[2], q[3]),
+                                  pointToSegment(p[2], p[3], q[0], q[1], q[2], q[3]),
+                                  pointToSegment(q[0], q[1], p[0], p[1], p[2], p[3]),
+                                  pointToSegment(q[2], q[3], p[0], p[1], p[2], p[3])});
     };
     for (const auto& [key, links] : linksByLayerPair) {
         const double od = wires[get_winding_index_by_name(std::get<0>(key))].get_maximum_outer_height();
@@ -13911,18 +14003,9 @@ void Coil::refuse_sibling_layer_links_closer_than_the_wire() {
                 const auto& p1 = turns[links[i].to].get_coordinates();
                 const auto& q0 = turns[links[j].from].get_coordinates();
                 const auto& q1 = turns[links[j].to].get_coordinates();
-                const double d1 = cross(p0[0], p0[1], p1[0], p1[1], q0[0], q0[1]);
-                const double d2 = cross(p0[0], p0[1], p1[0], p1[1], q1[0], q1[1]);
-                const double d3 = cross(q0[0], q0[1], q1[0], q1[1], p0[0], p0[1]);
-                const double d4 = cross(q0[0], q0[1], q1[0], q1[1], p1[0], p1[1]);
-                const bool cross_ = ((d1 > 0) != (d2 > 0)) && ((d3 > 0) != (d4 > 0)) && d1 != 0 &&
-                                    d2 != 0 && d3 != 0 && d4 != 0;
+                bool cross_ = false;
                 const double distance =
-                    cross_ ? 0.0
-                           : std::min({pointToSegment(p0[0], p0[1], q0[0], q0[1], q1[0], q1[1]),
-                                       pointToSegment(p1[0], p1[1], q0[0], q0[1], q1[0], q1[1]),
-                                       pointToSegment(q0[0], q0[1], p0[0], p0[1], p1[0], p1[1]),
-                                       pointToSegment(q1[0], q1[1], p0[0], p0[1], p1[0], p1[1])});
+                    segmentDistance({p0[0], p0[1], p1[0], p1[1]}, {q0[0], q0[1], q1[0], q1[1]}, &cross_);
                 // Half a nanometre: the grid every station is emitted on (roundFloat(..., 9)).
                 if (distance < od - 0.5e-9) {
                     std::ostringstream message;
@@ -13936,6 +14019,103 @@ void Coil::refuse_sibling_layer_links_closer_than_the_wire() {
                             << " m against the " << od
                             << " m coated diameter. Sibling parallels wound side by side cannot pass "
                                "closer than one wire, so this layout cannot be wound.";
+                    throw CoilException(ErrorCode::COIL_WINDING_ERROR, message.str());
+                }
+            }
+        }
+    }
+    if (dragbacksByLayerPair.empty()) {
+        return;
+    }
+    auto bobbin = resolve_bobbin();
+    const auto columnShape = bobbin.get_processed_description().value().get_column_shape();
+    for (const auto& [key, dragbacks] : dragbacksByLayerPair) {
+        const double od = wires[get_winding_index_by_name(std::get<0>(key))].get_maximum_outer_height();
+        // The drawn chain of each dragback in the (radius, axis) half-plane: the run-out at the
+        // height the source layer finished, then the descent along the destination radius.
+        std::vector<std::array<std::array<double, 4>, 2>> chains;
+        for (const auto& dragback : dragbacks) {
+            const auto& a = turns[dragback.from].get_coordinates();
+            const auto& b = turns[dragback.to].get_coordinates();
+            chains.push_back({std::array<double, 4>{a[0], a[1], b[0], a[1]}, std::array<double, 4>{b[0], a[1], b[0], b[1]}});
+        }
+        // Siblings whose chains would meet in one plane need lanes of their own: group them.
+        std::vector<size_t> group(dragbacks.size());
+        std::iota(group.begin(), group.end(), 0);
+        const std::function<size_t(size_t)> root = [&](size_t g) { return group[g] == g ? g : group[g] = root(group[g]); };
+        for (size_t i = 0; i < dragbacks.size(); ++i) {
+            for (size_t j = i + 1; j < dragbacks.size(); ++j) {
+                if (dragbacks[i].parallel == dragbacks[j].parallel) {
+                    continue;
+                }
+                double closest = std::numeric_limits<double>::max();
+                for (const auto& p : chains[i]) {
+                    for (const auto& q : chains[j]) {
+                        closest = std::min(closest, segmentDistance(p, q, nullptr));
+                    }
+                }
+                if (closest < od - 0.5e-9) {
+                    group[root(i)] = root(j);
+                }
+            }
+        }
+        std::map<size_t, std::vector<size_t>> members;
+        for (size_t i = 0; i < dragbacks.size(); ++i) {
+            members[root(i)].push_back(i);
+        }
+        for (const auto& [groupRoot, laned] : members) {
+            if (laned.size() < 2) {
+                continue;
+            }
+            double innermostRadius = std::numeric_limits<double>::max();
+            size_t innermost = laned.front();
+            for (size_t m : laned) {
+                const double r = std::min(chains[m][0][0], chains[m][0][2]);
+                if (r < innermostRadius) {
+                    innermostRadius = r;
+                    innermost = m;
+                }
+            }
+            const double lanes = double(laned.size());
+            std::ostringstream names;
+            for (size_t m : laned) {
+                names << (m == laned.front() ? "" : ", ") << "'" << turns[dragbacks[m].from].get_name() << "' -> '"
+                      << turns[dragbacks[m].to].get_name() << "'";
+            }
+            std::ostringstream message;
+            message.precision(9);
+            message << "Real winding: the Z dragbacks " << names.str() << " (" << std::get<1>(key) << " -> "
+                    << std::get<2>(key) << ") would meet in one plane, so they are laid side by side along the "
+                    << "lane, one " << od << " m coated diameter apart; ";
+            if (columnShape == ColumnShape::ROUND) {
+                if (!(od <= innermostRadius)) {
+                    message << "at the innermost radius they occupy, " << innermostRadius
+                            << " m, no azimuth separates two radial run-outs by one diameter, so this layout "
+                               "cannot be wound.";
+                    throw CoilException(ErrorCode::COIL_WINDING_ERROR, message.str());
+                }
+                const double needed = lanes * std::asin(od / innermostRadius);
+                if (needed > 2 * std::numbers::pi) {
+                    message << laned.size() << " of them need " << needed
+                            << " rad of azimuth around the column at the innermost radius they occupy, "
+                            << innermostRadius << " m, and a revolution has " << 2 * std::numbers::pi
+                            << " rad, so this layout cannot be wound.";
+                    throw CoilException(ErrorCode::COIL_WINDING_ERROR, message.str());
+                }
+            }
+            else {
+                // Any other column (rectangular, irregular): the lane is the source turn's own path,
+                // whose length the turn carries whatever the column's outline.
+                const Turn& source = turns[dragbacks[innermost].from];
+                if (!(source.get_length() > 0)) {
+                    message << "turn '" << source.get_name() << "' carries no length, so the lane they share "
+                            << "cannot be measured.";
+                    throw CoilException(ErrorCode::COIL_WINDING_ERROR, message.str());
+                }
+                if (lanes * od > source.get_length()) {
+                    message << laned.size() << " of them need " << lanes * od << " m of lane and turn '"
+                            << source.get_name() << "', the innermost they leave from, is "
+                            << source.get_length() << " m long, so this layout cannot be wound.";
                     throw CoilException(ErrorCode::COIL_WINDING_ERROR, message.str());
                 }
             }

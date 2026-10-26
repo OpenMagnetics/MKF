@@ -1073,4 +1073,150 @@ TEST_CASE("A molded body whose turns share one layer has no ride for its lead la
     CHECK(terminals == 2);
     settings.reset();
 }
+
+// ABT #1424 / #1383: a bifilar Z winding's layer changes are DRAGBACKS -- each parallel finishes
+// layer 0 at the top of the window and restarts layer 1 at the bottom -- and they are judged as
+// what they are. The #1424 plane-link rule used to classify them by the slope between the two
+// stations (dy <= dx + 2 OD K), which admitted this 1.3 mm return over a 0.27 mm radial step as a
+// "link" and refused the two parallels 0.0577 mm apart in the connection plane, where nothing is
+// drawn: a dragback steps out radially at the height its layer finished and runs back along the
+// lane at the next layer's radius, and sibling dragbacks lie side by side along that lane.
+//
+// Everything checked here is re-derived from the stations, not read from the rule it guards:
+//   - the return is a dragback because the conductor climbed through layer 0 and goes BACK the
+//     other way to start layer 1 -- the definition, from the turn order alone;
+//   - the straight station-to-station diagonals of the two parallels pass closer than one OD (the
+//     number the slope-classified rule refused), while the drawn chains share the lane radius and
+//     overlap along it, so the two need lanes of their own around the column;
+//   - two lanes around a round column need 2 asin(OD / r) of azimuth at the innermost radius r
+//     the chains occupy, and a revolution has 2 pi;
+//   - MKF's ride model agrees they lie side by side: ONE ride level, one OD tall, at the lane.
+TEST_CASE("A bifilar drum-ring's Z dragbacks are laid side by side along their lane, not judged as plane links",
+          "[lead-exit][constructive-model][coil][abt1424-dragback][abt-1424]") {
+    auto& settings = Settings::GetInstance();
+    settings.reset();
+    settings.set_coil_use_real_winding_geometry(true);
+    auto fixture = load_fixture("lead_exit_drumring_7332.json");
+    fixture["magnetic"]["coil"]["functionalDescription"][0]["numberTurns"] = 4;
+    fixture["magnetic"]["coil"]["functionalDescription"][0]["numberParallels"] = 2;
+    auto magnetic = autocomplete(fixture["magnetic"]);
+    auto& coil = magnetic.get_mutable_coil();
+    REQUIRE(coil.resolve_bobbin().get_processed_description().value().get_column_shape() == ColumnShape::ROUND);
+    const auto turns = coil.get_turns_description().value();
+    const double od = coil.get_wires()[0].get_maximum_outer_height();
+    const double width = coil.get_wires()[0].get_maximum_outer_width();
+
+    struct Return {
+        std::string from, to;
+        double xa, ya, xb, yb;
+    };
+    std::vector<Return> returns;
+    for (int64_t parallel = 0; parallel < 2; ++parallel) {
+        std::vector<const Turn*> sequence;
+        for (const auto& turn : turns) {
+            if (turn.get_parallel() == parallel) {
+                sequence.push_back(&turn);
+            }
+        }
+        for (size_t k = 1; k + 1 < sequence.size(); ++k) {
+            const Turn& previous = *sequence[k - 1];
+            const Turn& a = *sequence[k];
+            const Turn& b = *sequence[k + 1];
+            if (previous.get_layer() != a.get_layer() || a.get_layer() == b.get_layer()) {
+                continue;
+            }
+            const double climb = a.get_coordinates()[1] - previous.get_coordinates()[1];
+            const double back = b.get_coordinates()[1] - a.get_coordinates()[1];
+            if (climb * back < 0) {
+                returns.push_back({a.get_name(), b.get_name(), a.get_coordinates()[0], a.get_coordinates()[1],
+                                   b.get_coordinates()[0], b.get_coordinates()[1]});
+            }
+        }
+    }
+    REQUIRE(returns.size() == 2);
+
+    const auto layout = coil.get_connection_layout();
+    for (const auto& r : returns) {
+        size_t found = 0;
+        for (const auto& route : layout.routes) {
+            if (route.fromTurn == r.from && route.toTurn == r.to) {
+                ++found;
+                CHECK(route.kind == ConnectionKind::Z_DRAGBACK);
+            }
+        }
+        CAPTURE(r.from, r.to);
+        CHECK(found == 1);
+    }
+
+    const auto& p = returns[0];
+    const auto& q = returns[1];
+    const auto pointToSegment = [](double px, double py, double ax, double ay, double bx, double by) {
+        const double vx = bx - ax, vy = by - ay;
+        const double u = std::clamp(((px - ax) * vx + (py - ay) * vy) / (vx * vx + vy * vy), 0.0, 1.0);
+        return std::hypot(px - (ax + u * vx), py - (ay + u * vy));
+    };
+    const double diagonals = std::min({pointToSegment(p.xa, p.ya, q.xa, q.ya, q.xb, q.yb),
+                                       pointToSegment(p.xb, p.yb, q.xa, q.ya, q.xb, q.yb),
+                                       pointToSegment(q.xa, q.ya, p.xa, p.ya, p.xb, p.yb),
+                                       pointToSegment(q.xb, q.yb, p.xa, p.ya, p.xb, p.yb)});
+    CAPTURE(diagonals, od);
+    CHECK(diagonals < od);
+    // The descents share the lane radius and overlap along it: one plane cannot hold both.
+    CHECK_THAT(p.xb, WithinAbs(q.xb, 1e-9));
+    CHECK(std::max(std::min(p.ya, p.yb), std::min(q.ya, q.yb)) < std::min(std::max(p.ya, p.yb), std::max(q.ya, q.yb)));
+    const double innermost = std::min({p.xa, p.xb, q.xa, q.xb});
+    CAPTURE(innermost);
+    REQUIRE(od <= innermost);
+    CHECK(2 * std::asin(od / innermost) <= 2 * std::numbers::pi);
+
+    size_t levelsAtLane = 0;
+    for (const auto& level : layout.rideLevels) {
+        if (std::abs(level.radius - p.xb) <= 0.5 * width) {
+            ++levelsAtLane;
+            CHECK_THAT(level.height, WithinAbs(width, 1e-12));
+        }
+    }
+    CHECK(levelsAtLane == 1);
+    settings.reset();
+}
+
+// The dragback rule refuses a lane that cannot hold its siblings. The same wound bifilar layout,
+// moved radially inward (every station by the same amount, so the layout's kinds -- decided by
+// the winding order and the layers -- are unchanged) until the source layer sits at 0.99 OD from
+// the axis: two radial run-outs there cannot be separated by one diameter at any azimuth. (Not
+// further in: the terminal lead leaving that layer must still ramp off its turn, which needs the
+// turn's radius above the lead's planned bend radius, ABT #1336 -- and that refusal would come
+// first.)
+TEST_CASE("Sibling Z dragbacks whose lane cannot hold them side by side are refused",
+          "[constructive-model][coil][abt1424-dragback][abt-1424]") {
+    auto& settings = Settings::GetInstance();
+    settings.reset();
+    settings.set_coil_use_real_winding_geometry(true);
+    auto fixture = load_fixture("lead_exit_drumring_7332.json");
+    fixture["magnetic"]["coil"]["functionalDescription"][0]["numberTurns"] = 4;
+    fixture["magnetic"]["coil"]["functionalDescription"][0]["numberParallels"] = 2;
+    auto magnetic = autocomplete(fixture["magnetic"]);
+    auto& coil = magnetic.get_mutable_coil();
+    const double od = coil.get_wires()[0].get_maximum_outer_height();
+    // As wound: accepted.
+    REQUIRE_NOTHROW(coil.refuse_sibling_layer_links_closer_than_the_wire());
+    auto turns = coil.get_turns_description().value();
+    double innermost = std::numeric_limits<double>::max();
+    for (const auto& turn : turns) {
+        innermost = std::min(innermost, turn.get_coordinates()[0]);
+    }
+    const double shift = innermost - 0.99 * od;
+    REQUIRE(shift > 0);
+    for (auto& turn : turns) {
+        auto coordinates = turn.get_coordinates();
+        coordinates[0] -= shift;
+        turn.set_coordinates(coordinates);
+    }
+    coil.set_turns_description(turns);
+    REQUIRE_THROWS_WITH(coil.refuse_sibling_layer_links_closer_than_the_wire(),
+                        ContainsSubstring("Z dragbacks") && ContainsSubstring("side by side along the lane") &&
+                            ContainsSubstring("no azimuth separates two radial run-outs by one diameter"));
+    settings.reset();
+}
+
 }  // namespace lead_exit_suite

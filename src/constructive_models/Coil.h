@@ -1139,10 +1139,6 @@ class Coil : public MAS::Coil {
         // each lateral winding the outer side of its own — halve and anchor each
         // wound group accordingly so they can never claim overlapping space.
         void split_shared_window_groups(std::vector<Group>& groups, const std::vector<WindingWindowElement>& windingWindows);
-        // ABT #1424: sibling parallels' radial layer links (drawn in the connection plane from each
-        // departure station to the arrival station) must keep their centrelines one coated OD apart,
-        // the invariant ABT #1401 enforces for wraps. Throws, naming the pair, when they do not.
-        void refuse_sibling_layer_links_closer_than_the_wire();
         // Multi-column winding support: every group is wound in a window-local
         // frame on the +x side of the main column, so the whole section/layer/
         // turn machinery keeps a single geometry. This final winding step
@@ -1154,6 +1150,22 @@ class Coil : public MAS::Coil {
         void apply_group_window_sides(bool inverse = false);
 
     public:
+        // ABT #1424: sibling parallels' radial layer links (drawn in the connection plane from each
+        // departure station to the arrival station) must keep their centrelines one coated OD apart,
+        // the invariant ABT #1401 enforces for wraps; sibling Z dragbacks, laid side by side along
+        // their lane, must fit around it one coated OD apart. What is a link and what a dragback is
+        // the connection layout's own kind. Throws, naming the pair, when they do not. Public so a
+        // caller holding an edited layout can re-judge it; wind() calls it on every real winding.
+        void refuse_sibling_layer_links_closer_than_the_wire();
+        // ABT #1424: the kind MKF's own connection layout (get_connection_reserved_spaces) gives every
+        // connection between two electrically consecutive turns in different layers, keyed by
+        // (fromTurn, toTurn). The single source both the #1424 refusal and the LINK-PITCH pass read,
+        // so neither re-derives a link from the slope between two stations.
+        std::map<std::pair<std::string, std::string>, ConnectionKind> connection_kind_by_transition();
+        // ABT #1424: the kinds drawn as ONE step in the connection plane, pinned there (MVB++
+        // registers them as pinned verticals): the U turnaround, the same-section tangential link
+        // and the final landing. Sibling parallels' copies of these share the plane.
+        static bool is_connection_plane_link(ConnectionKind kind);
         // Column frame turns of the given section wrap around, in the winding
         // frame. Window 0 resolves to the historical bobbin column scalars;
         // other windows resolve their column edge against the core columns
