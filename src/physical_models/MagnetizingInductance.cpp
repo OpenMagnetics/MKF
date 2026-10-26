@@ -1975,7 +1975,9 @@ std::vector<CoreGap> MagnetizingInductance::calculate_gapping_from_number_turns_
     // no gap of this core reaches the inductance, and that is said once, with the numbers.
     std::optional<double> maximumGapLength;
     if (gappingType == GappingType::GROUND || gappingType == GappingType::SPACER) {
-        const auto& columns = core.get_processed_description()->get_columns();
+        // By value: get_processed_description() returns the optional by value, so a reference into it dangled at the end
+        // of this statement (ABT #2097: the WASM build read the freed vector as empty and dropped every candidate).
+        const auto columns = core.get_processed_description()->get_columns();
         if (columns.empty()) {
             throw CoreNotProcessedException("core '" + core.get_name().value_or("unnamed") + "' has no columns to gap");
         }

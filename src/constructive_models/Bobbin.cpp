@@ -2582,7 +2582,8 @@ void Bobbin::set_column_corner_radius_from_core(const Core& core) {
     if (!core.get_processed_description()) {
         throw CoreNotProcessedException("Core has not been processed yet");
     }
-    const auto& columns = core.get_processed_description()->get_columns();
+    // By value: get_processed_description() returns the optional by value; a reference into it dangles (ABT #2097).
+    const auto columns = core.get_processed_description()->get_columns();
     if (columns.empty()) {
         throw InvalidInputException(ErrorCode::INVALID_CORE_DATA,
                                     "Bobbin: core " + core.get_shape_name() + " has no columns to follow");
