@@ -369,7 +369,8 @@ void load_interpolators() {
         bobbinFillingFactorInterpWidth.get_x().size() == 0 || 
         bobbinFillingFactorInterpHeight.get_x().size() == 0 || 
         bobbinWindingWindowProportionInterpWidth.get_x().size() == 0 || 
-        bobbinWindingWindowProportionInterpHeight.get_x().size() == 0) {
+        bobbinWindingWindowProportionInterpHeight.get_x().size() == 0 ||
+        !bobbinColumnCornerSamplesLoaded) {
         // ABT #113: only load when the catalog is actually missing. This used
         // to call load_bobbins() unconditionally whenever an interpolator was
         // cold, RELOADING the shared bobbin catalog — a mutation, which throws
@@ -404,6 +405,11 @@ void load_interpolators() {
 
         minBobbinWallThickness = std::numeric_limits<double>::infinity();
         minBobbinColumnThickness = std::numeric_limits<double>::infinity();
+
+        // Column-corner samples (see BobbinColumnCornerSamples): (columnWidth, inside corner) per
+        // shape of the core column the catalogue former's bore follows.
+        std::map<ColumnShape, std::vector<std::pair<double, double>>> columnCornerSamples;
+        std::map<ColumnShape, std::map<std::string, size_t>> columnCornerSamplesPerFamily;
 
         // ABT #631: rows this scan cannot use, reported once at the end instead of
         // vanishing into a bare `continue` — 34 of MAS's 504 bobbins point at core
@@ -506,6 +512,37 @@ void load_interpolators() {
                 AuxWindingWindowHeight coreAuxWindingWindowHeight = { coreWindingWindowHeight, bobbinWindingWindowHeightProportion };
                 auxWindingWindowWidth.push_back(coreAuxWindingWindowWidth);
                 auxWindingWindowHeight.push_back(coreAuxWindingWindowHeight);
+
+                // The corner this former's bore follows, derived from the core shape it names
+                // (Alf, 2026-10-26). Taken after the samples above, so a former whose corner
+                // cannot be derived still counts for the window interpolators, exactly as before.
+                // Checked rather than thrown: see the ABT #631 note at the top of this loop.
+                const auto coreColumns = corePiece->get_columns();
+                if (!coreColumns.empty() && bobbinPd->get_column_width()) {
+                    const auto& coreColumn = coreColumns[0];
+                    const auto coreColumnShape = coreColumn.get_shape();
+                    if (coreColumnShape == ColumnShape::RECTANGULAR || coreColumnShape == ColumnShape::IRREGULAR) {
+                        const bool isEfd = coreShape.get_family() == CoreShapeFamily::EFD;
+                        const auto& shapeDimensions = coreShape.get_dimensions();
+                        const bool efdHasChamfer = shapeDimensions && shapeDimensions->find("q") != shapeDimensions->end();
+                        if (!coreColumn.get_corner_radius() && isEfd && !efdHasChamfer) {
+                            unusableBobbins.push_back(datum.first + " -> EFD core shape '" + coreShapeName +
+                                                      "' has no 'q', so its column corner is unknown (corner interpolator)");
+                        }
+                        else if (!coreColumn.get_corner_radius() && !isEfd && coreColumnShape == ColumnShape::IRREGULAR) {
+                            unusableBobbins.push_back(datum.first + " -> core shape '" + coreShapeName +
+                                                      "' has an irregular central column with no corner (corner interpolator)");
+                        }
+                        else {
+                            const double insideCornerRadius = Bobbin::get_core_column_corner_radius(
+                                coreColumn, std::optional<CoreShape>(coreShape), true);
+                            columnCornerSamples[coreColumnShape].push_back({bobbinPd->get_column_width().value(), insideCornerRadius});
+                            json familyName;
+                            to_json(familyName, scannedFunctionalDescription.get_family());
+                            columnCornerSamplesPerFamily[coreColumnShape][familyName.get<std::string>()]++;
+                        }
+                    }
+                }
             }
             catch (const std::exception &e)
             {
@@ -604,7 +641,76 @@ void load_interpolators() {
 
             bobbinWindingWindowProportionInterpHeight = tk::spline(x, y, tk::spline::linear, false);
         }
+
+        bobbinColumnCornerSamples.clear();
+        for (auto& [columnShape, samples] : columnCornerSamples) {
+            std::sort(samples.begin(), samples.end());
+            BobbinColumnCornerSamples table;
+            size_t first = 0;
+            while (first < samples.size()) {
+                // Formers of the same column width (several makers' formers for one core) are one
+                // point: the mean of their corners.
+                size_t last = first;
+                double sum = 0;
+                while (last < samples.size() && fabs(samples[last].first - samples[first].first) <= 1e-9) {
+                    sum += samples[last].second;
+                    ++last;
+                }
+                table.columnWidths.push_back(samples[first].first);
+                table.insideCornerRadii.push_back(sum / static_cast<double>(last - first));
+                first = last;
+            }
+            table.samplesPerFamily = columnCornerSamplesPerFamily[columnShape];
+            bobbinColumnCornerSamples[columnShape] = table;
+        }
+        bobbinColumnCornerSamplesLoaded = true;
     }
+}
+
+const std::map<ColumnShape, BobbinColumnCornerSamples>& Bobbin::get_column_corner_samples() {
+    load_interpolators();
+    return bobbinColumnCornerSamples;
+}
+
+double Bobbin::get_interpolated_column_inside_corner_radius(ColumnShape columnShape, double columnWidth) {
+    load_interpolators();
+    json spelledShape;
+    to_json(spelledShape, columnShape);
+    const std::string shapeName = spelledShape.get<std::string>();
+    if (!std::isfinite(columnWidth) || columnWidth <= 0) {
+        throw InvalidInputException(ErrorCode::INVALID_BOBBIN_DATA,
+                                    "Bobbin: cannot interpolate the corner of a " + shapeName +
+                                    " column from a non-physical column width of " + std::to_string(columnWidth) + " m");
+    }
+    auto table = bobbinColumnCornerSamples.find(columnShape);
+    if (table == bobbinColumnCornerSamples.end() || table->second.columnWidths.empty()) {
+        throw InvalidInputException(ErrorCode::INVALID_BOBBIN_DATA,
+                                    "Bobbin: no catalogue bobbin is built around a " + shapeName +
+                                    " core column, so the corner of a former with a " + shapeName +
+                                    " column that states none and has no core cannot be interpolated");
+    }
+    const auto& widths = table->second.columnWidths;
+    const auto& radii = table->second.insideCornerRadii;
+    constexpr double tolerance = 1e-9;
+    if (columnWidth < widths.front() - tolerance || columnWidth > widths.back() + tolerance) {
+        throw InvalidInputException(ErrorCode::INVALID_BOBBIN_DATA,
+                                    "Bobbin: a column width of " + std::to_string(columnWidth * 1000) +
+                                    " mm is outside the " + std::to_string(widths.front() * 1000) + " to " +
+                                    std::to_string(widths.back() * 1000) + " mm that the catalogue bobbins around a " +
+                                    shapeName + " core column span, so the corner of a former that states none "
+                                    "and has no core cannot be interpolated");
+    }
+    if (columnWidth <= widths.front()) {
+        return radii.front();
+    }
+    if (columnWidth >= widths.back()) {
+        return radii.back();
+    }
+    auto upper = std::upper_bound(widths.begin(), widths.end(), columnWidth);
+    const size_t upperIndex = static_cast<size_t>(upper - widths.begin());
+    const size_t lowerIndex = upperIndex - 1;
+    const double fraction = (columnWidth - widths[lowerIndex]) / (widths[upperIndex] - widths[lowerIndex]);
+    return radii[lowerIndex] + fraction * (radii[upperIndex] - radii[lowerIndex]);
 }
 double Bobbin::get_filling_factor(double windingWindowWidth, double windingWindowHeight){
     load_interpolators();
@@ -914,9 +1020,8 @@ Bobbin Bobbin::create_quick_bobbin(Core core, double wallThickness, double colum
 
         // THE EDGE THE WIRE IS PULLED OVER. A turn on a toroid is a closed loop around the ring
         // cross-section, so it bends at that section's edges and nowhere else -- there is no
-        // moulded former corner here, and the injection-moulding fallback in
-        // get_column_corner_radius() (inside corner + wall thickness) is the wrong rule for a part that
-        // has no wall. MAS names this case directly: cornerRadius is "the radius of the core
+        // moulded former corner here, and the bore-follows-the-column rule of create_quick_bobbin
+        // (column corner + wall thickness) is the wrong rule for a part that has no wall. MAS names this case directly: cornerRadius is "the radius of the core
         // cross-section edges (or of its coating, when coated), which is what the wire is pulled
         // over".
         //
@@ -959,15 +1064,14 @@ Bobbin Bobbin::create_quick_bobbin(Core core, double wallThickness, double colum
     coreBobbinProcessedDescription.set_column_shape(coreCentralColumn.get_shape());
     if (bobbinWindingWindowShape == WindingWindowShape::RECTANGULAR &&
         (coreCentralColumn.get_shape() == ColumnShape::RECTANGULAR ||
-         coreCentralColumn.get_shape() == ColumnShape::IRREGULAR) &&
-        coreCentralColumn.get_corner_radius()) {
+         coreCentralColumn.get_shape() == ColumnShape::IRREGULAR)) {
         // The bore fits the column with no clearance (column_width below is the core half-width
-        // plus the wall, nothing more), so the bore's inside corner IS the column's corner, and
-        // the moulded wall carries it outwards by its thickness -- the same derivation the
-        // lateral-leg frame in Coil::get_wound_column_frame_for_section uses. A physical
-        // derivation from the part, preferred over the moulding rule whenever the core has it.
+        // plus the wall, nothing more), so the bore's inside corner IS the column's corner
+        // (get_core_column_corner_radius: a corner radius, EFD's chamfer, or 0 for a column MAS
+        // draws square), and the moulded wall carries it outwards by its thickness -- the same
+        // derivation the lateral-leg frame in Coil::get_wound_column_frame_for_section uses.
         coreBobbinProcessedDescription.set_column_corner_radius(get_moulded_outside_corner_radius(
-            coreCentralColumn.get_corner_radius().value(),
+            get_core_column_corner_radius(coreCentralColumn, core, true),
             coreBobbinProcessedDescription.get_column_thickness()));
     }
     coreBobbinProcessedDescription.set_column_depth(coreCentralColumn.get_depth() / 2 + columnThickness);
@@ -2381,15 +2485,6 @@ double Bobbin::get_column_depth() {
     return get_processed_description()->get_column_depth();
 }
 
-double Bobbin::get_moulded_inside_corner_radius(double wallThickness) {
-    if (!std::isfinite(wallThickness) || wallThickness < 0) {
-        throw InvalidInputException(ErrorCode::INVALID_BOBBIN_DATA,
-                                    "Bobbin: a moulded corner needs a finite, non-negative wall "
-                                    "thickness, got " + std::to_string(wallThickness) + " m");
-    }
-    return mouldedInsideCornerRadiusToWallThickness * wallThickness;
-}
-
 double Bobbin::get_moulded_outside_corner_radius(double insideCornerRadius, double wallThickness) {
     if (!std::isfinite(insideCornerRadius) || insideCornerRadius < 0 ||
         !std::isfinite(wallThickness) || wallThickness < 0) {
@@ -2403,6 +2498,98 @@ double Bobbin::get_moulded_outside_corner_radius(double insideCornerRadius, doub
     // should originate from the same point", R2 = R1 + t -- the outside radius is one wall
     // thickness larger than the inside one, which is what keeps the wall uniform round the bend.
     return insideCornerRadius + wallThickness;
+}
+
+double Bobbin::get_core_column_corner_radius(const ColumnElement& column, const Core& core, bool isMainColumn) {
+    return get_core_column_corner_radius(column, std::optional<CoreShape>(core.resolve_shape()), isMainColumn);
+}
+
+double Bobbin::get_core_column_corner_radius(const ColumnElement& column, const std::optional<CoreShape>& coreShape,
+                                             bool isMainColumn) {
+    const std::string shapeName = (coreShape && coreShape->get_name()) ? coreShape->get_name().value()
+                                                                        : std::string("<unnamed shape>");
+    const auto shape = column.get_shape();
+    if (shape != ColumnShape::RECTANGULAR && shape != ColumnShape::IRREGULAR) {
+        throw InvalidInputException(ErrorCode::INVALID_CORE_DATA,
+                                    "Bobbin: only a rectangular or irregular column has a corner to follow; the "
+                                    "column of " + shapeName + " is round or oblong");
+    }
+    if (column.get_corner_radius()) {
+        return column.get_corner_radius().value();
+    }
+    if (isMainColumn) {
+        // Only the central column of a family can carry a corner its CorePiece does not write
+        // (EFD's chamfer), so it needs the shape to be known.
+        if (!coreShape) {
+            throw InvalidInputException(ErrorCode::INVALID_CORE_DATA,
+                                        "Bobbin: the corner of a central column cannot be resolved without its "
+                                        "core shape");
+        }
+        if (coreShape->get_family() == CoreShapeFamily::EFD) {
+            // EFD: the central column is F x F2 with a 45-degree chamfer of leg q at each corner
+            // (CorePieceEfd's column area F * F2 - 2 q^2). The bore follows the chamfered column
+            // and the moulded wall carries it outwards; the turn wraps that outside profile. MKF's
+            // turn is a racetrack of quarter arcs, so the chamfer maps to the arc tangent to both
+            // faces at the chamfer's own ends: radius q, whose chord IS the chamfer. It is the
+            // largest radius whose arc stays outside the chamfered column (a larger arc dips into
+            // it beside its tangent points), at the cost of (2 pi - 4 sqrt 2) q = 0.626 q of extra
+            // length per turn against a turn pulled straight across the four chamfers.
+            // Two flags the user accepted with this mapping (Alf, 2026-10-26): every EFD turn
+            // carries that 0.626 q of extra length (and its R_dc with it), and the windability
+            // judgement is OPTIMISTIC here -- it judges a bend of radius q, while the real wire
+            // bends twice by 45 degrees round the chamfer's sharp ends.
+            const auto& dimensions = coreShape->get_dimensions();
+            if (!dimensions || dimensions->find("q") == dimensions->end()) {
+                throw InvalidInputException(ErrorCode::INVALID_CORE_DATA,
+                                            "Bobbin: EFD shape " + shapeName +
+                                            " has no 'q' (central-column chamfer) dimension, so the corner of the "
+                                            "bore that follows its column is unknown");
+            }
+            const double chamfer = resolve_dimensional_values(dimensions->at("q"));
+            if (!std::isfinite(chamfer) || chamfer < 0) {
+                throw InvalidInputException(ErrorCode::INVALID_CORE_DATA,
+                                            "Bobbin: EFD shape " + shapeName +
+                                            " has a non-physical 'q' (central-column chamfer) of " +
+                                            std::to_string(chamfer) + " m");
+            }
+            return chamfer;
+        }
+    }
+    if (shape == ColumnShape::RECTANGULAR) {
+        // The shape dimensions no corner for this column (E, planar E, EI, U, UI, UT, C and the
+        // rectangular legs): MAS describes it as a sharp rectangle.
+        return 0;
+    }
+    throw InvalidInputException(ErrorCode::INVALID_CORE_DATA,
+                                "Bobbin: the " + std::string(isMainColumn ? "central" : "lateral") +
+                                " column of " + shapeName +
+                                " is irregular and neither the column nor the shape dimensions its corner, so "
+                                "the corner of a bore that follows it is unknown");
+}
+
+void Bobbin::set_column_corner_radius_from_core(const Core& core) {
+    if (!get_processed_description()) {
+        throw CoilNotProcessedException("Bobbin not processed");
+    }
+    auto processedDescription = get_processed_description().value();
+    const auto shape = processedDescription.get_column_shape();
+    if (shape != ColumnShape::RECTANGULAR && shape != ColumnShape::IRREGULAR) {
+        return;
+    }
+    if (processedDescription.get_column_corner_radius()) {
+        return;
+    }
+    if (!core.get_processed_description()) {
+        throw CoreNotProcessedException("Core has not been processed yet");
+    }
+    const auto& columns = core.get_processed_description()->get_columns();
+    if (columns.empty()) {
+        throw InvalidInputException(ErrorCode::INVALID_CORE_DATA,
+                                    "Bobbin: core " + core.get_shape_name() + " has no columns to follow");
+    }
+    processedDescription.set_column_corner_radius(get_moulded_outside_corner_radius(
+        get_core_column_corner_radius(columns[0], core, true), processedDescription.get_column_thickness()));
+    set_processed_description(processedDescription);
 }
 
 double Bobbin::get_column_corner_radius() {
@@ -2431,17 +2618,38 @@ double Bobbin::get_column_corner_radius() {
             if (processedDescription.get_column_corner_radius()) {
                 return processedDescription.get_column_corner_radius().value();
             }
-            // No datum. The wire wraps the former's OUTSIDE (convex) corner, and the moulded wall
-            // around the bore still has one: outside = inside + wall (Bayer, Fig. 2-4). Nothing
-            // tells this bobbin what the core column's own corner is -- MKF's core model never
-            // carries one for a rectangular column and no MAS shape dimensions it -- so the
-            // inside corner comes from the moulding rule (see get_moulded_inside_corner_radius).
-            // A catalogue bobbin should carry the radius off its drawing instead.
-            {
-                const double wallThickness = processedDescription.get_column_thickness();
-                return get_moulded_outside_corner_radius(get_moulded_inside_corner_radius(wallThickness),
-                                                         wallThickness);
+            // No datum and no default (Alf, 2026-10-25: the 0.15 x wall moulding-guide corner is
+            // gone). The corner comes from the core column the bore follows: written when the
+            // bobbin is built or resolved against its core, or -- for a catalogue former, which
+            // names the core shape it is for -- read off that shape's own central column.
+            if (get_functional_description() && !get_functional_description()->get_shape().empty()) {
+                auto coreShape = find_core_shape_by_name(get_functional_description()->get_shape());
+                auto corePiece = CorePiece::factory(coreShape);
+                const auto columns = corePiece->get_columns();
+                if (columns.empty()) {
+                    throw InvalidInputException(ErrorCode::INVALID_BOBBIN_DATA,
+                                                "Bobbin: core shape " + get_functional_description()->get_shape() +
+                                                " has no columns for the former's bore to follow");
+                }
+                return get_moulded_outside_corner_radius(
+                    get_core_column_corner_radius(columns[0], std::optional<CoreShape>(coreShape), true),
+                    processedDescription.get_column_thickness());
             }
+            // Neither stated nor resolvable against a core (Alf, 2026-10-26): the bore's inside
+            // corner is interpolated from the catalogue formers around a core column of the same
+            // shape, and the wall carries it out as for every other former. Throws when the
+            // catalogue has nothing to interpolate from.
+            if (!processedDescription.get_column_width()) {
+                throw InvalidInputException(ErrorCode::INVALID_BOBBIN_DATA,
+                                            "Bobbin: the former has a " +
+                                            std::string(processedDescription.get_column_shape() == ColumnShape::RECTANGULAR ? "rectangular" : "irregular") +
+                                            " column with no columnCornerRadius, no core shape and no columnWidth, so "
+                                            "its corner can neither be resolved nor interpolated");
+            }
+            return get_moulded_outside_corner_radius(
+                get_interpolated_column_inside_corner_radius(processedDescription.get_column_shape(),
+                                                             processedDescription.get_column_width().value()),
+                processedDescription.get_column_thickness());
     }
     throw InvalidInputException(ErrorCode::INVALID_BOBBIN_DATA,
                                 "Bobbin: unknown column shape, cannot resolve its corner radius");

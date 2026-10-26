@@ -42,7 +42,8 @@ void from_file(std::filesystem::path filepath, Mas & x) {
     for (auto layerJson : magneticJson["coil"]["layersDescription"]) {
         auto layer = MAS::Layer(layerJson);
     }
-    auto coil = OpenMagnetics::Coil(magneticJson["coil"]);
+    // The coil is built (and wound) by the Magnetic, after it has its core. A coil wound here on
+    // its own did not know the core its bobbin's bore follows, and was thrown away anyway.
     auto magnetic = OpenMagnetics::Magnetic(magneticJson);
     std::vector<OpenMagnetics::Outputs> outputs;
     if (outputsJson != nullptr) {

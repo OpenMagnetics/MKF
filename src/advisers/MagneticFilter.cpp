@@ -516,6 +516,14 @@ std::pair<bool, double> MagneticFilterWindability::evaluate_magnetic(Magnetic* m
         return {true, 0.0};
     }
 
+    // A former that does not state its corner follows the column of the core it is wound on
+    // (the magnetic's own core, before any catalogue interpolation). For an EFD the corner is the
+    // chamfer leg q, which makes this judgement optimistic there (see
+    // Bobbin::get_core_column_corner_radius).
+    if (!bobbin.get_processed_description()->get_column_corner_radius() && magnetic->has_core() &&
+        magnetic->get_core().get_processed_description()) {
+        bobbin.set_column_corner_radius_from_core(magnetic->get_core());
+    }
     const double cornerRadius = bobbin.get_column_corner_radius();
     // Read the window off the processed description rather than through
     // Bobbin::get_winding_window_shape(), which throws when a bobbin carries no winding windows

@@ -8,6 +8,7 @@
 #include <MAS.hpp>
 #include <cmath>
 #include <filesystem>
+#include <map>
 #include <fstream>
 #include <iostream>
 #include <numbers>
@@ -43,6 +44,21 @@ inline thread_local double maxWindingWindowHeight;
 // training range, where the proportion clamp would otherwise yield ~µm walls.
 inline thread_local double minBobbinWallThickness;
 inline thread_local double minBobbinColumnThickness;
+
+// Column-corner interpolator (Alf, 2026-10-26: "a missing corner in a bobbin gets interpolated
+// from others", like the window and thickness interpolators above). No catalogue bobbin states
+// columnCornerRadius, so its samples are the catalogue bobbins' corners DERIVED from the core
+// shape each names: the INSIDE corner of a bore that follows that core's central column
+// (Bobbin::get_core_column_corner_radius), against the bobbin's own processed columnWidth, one
+// sample set per shape of that core column (RECTANGULAR: E, EI, U, EPC...; IRREGULAR: EFD).
+// Round and oblong columns have no corner to sample. Built by load_interpolators with the rest.
+struct BobbinColumnCornerSamples {
+    std::vector<double> columnWidths;            // ascending, unique
+    std::vector<double> insideCornerRadii;       // mean of the samples at each width
+    std::map<std::string, size_t> samplesPerFamily;  // bobbin family -> number of samples
+};
+inline thread_local std::map<ColumnShape, BobbinColumnCornerSamples> bobbinColumnCornerSamples;
+inline thread_local bool bobbinColumnCornerSamplesLoaded = false;
 
 class Bobbin : public MAS::Bobbin {
   private:
@@ -481,28 +497,59 @@ class Bobbin : public MAS::Bobbin {
      *        role of the mandrel in the IEC 60317 flexibility test).
      *
      * Derived where the shape already defines it -- a round column's corner radius is its own
-     * radius, an oblong one's is half its depth -- and read from the MAS datum for rectangular
-     * and irregular columns. A bobbin that carries no datum resolves the OUTSIDE corner the wire
-     * wraps as inside corner + wall thickness (get_moulded_outside_corner_radius), with the inside
-     * corner from the moulding rule (get_moulded_inside_corner_radius). create_quick_bobbin writes
-     * the datum itself when the core declares its column's corner, so that derivation wins.
+     * radius, an oblong one's is half its depth -- and read from the MAS datum
+     * (columnCornerRadius) for rectangular and irregular columns. That datum is written when the
+     * bobbin is built or resolved against its core (create_quick_bobbin, magnetic_autocomplete,
+     * set_column_corner_radius_from_core); a catalogue former without it is resolved against the
+     * core shape its functionalDescription names. One that has neither takes the inside corner
+     * interpolated from the catalogue formers (get_interpolated_column_inside_corner_radius) plus
+     * its own column thickness; that throws when the catalogue has nothing to interpolate from.
+     * Precedence: stated columnCornerRadius, then the core (the coil's, or the shape the former
+     * names), then interpolation.
      * @return Column corner radius in m
      */
     double get_column_corner_radius();
 
     /**
-     * @brief Inside (concave) corner radius of a moulded wall whose own corner is not known.
+     * @brief The corner of a core column's cross-section, which is the INSIDE corner of a bobbin
+     *        bore that follows that column (Alf, 2026-10-25: "the bobbin bore follows the core's
+     *        own column").
      *
-     * Bayer MaterialScience, "Part and Mold Design" (thermoplastics design guide), pp. 30-31,
-     * Fig. 2-22: "The stress concentration factor climbs sharply as the radius-to-thickness ratio
-     * drops below approximately 0.2. [...] A radius-to-thickness ratio of approximately 0.15
-     * provides a good compromise between performance and appearance for most applications
-     * subjected to light to moderate impact loads." The 0.15 is that stated recommendation; 0.2
-     * is where the curve turns, not a recommendation. (Secondary sources quote >= 0.5; they do
-     * not trace it to a primary figure, so it is not used.)
+     * Taken from the column, and from the core shape when the column does not carry it:
+     *  - the column's own cornerRadius when CorePiece sets one (EPC: F2 / 2);
+     *  - EFD main column: the shape's q, the leg of the 45-degree chamfer at each of its four
+     *    corners (CorePieceEfd's area is F * F2 - 2 q^2). A chamfer is mapped to the radius
+     *    whose quarter arc is tangent to both faces at the chamfer's own ends, i.e. radius q:
+     *    the chamfer is that arc's chord, so the arc never enters the chamfered column (any
+     *    larger radius does, next to its tangent points), and a turn modelled on it is
+     *    (2 pi - 4 sqrt 2) q = 0.626 q per turn longer than one pulled straight across the
+     *    chamfers (Alf, 2026-10-26: kept, with two known flags: (1) that extra length is in every
+     *    EFD turn's length and so in its R_dc; (2) the windability judgement
+     *    (MagneticFilterWindability) is optimistic there, since it judges a bend of radius q
+     *    where the real wire bends twice by 45 degrees at the chamfer's sharp ends).
+     *    Throws when an EFD shape gives no q;
+     *  - a RECTANGULAR column whose shape dimensions no corner: 0, the sharp rectangle MAS
+     *    describes (E, planar E, EI, U, UI, UT, C, and their rectangular lateral legs);
+     *  - anything else (an IRREGULAR column the shape gives no corner for, e.g. the curved
+     *    lateral legs of ETD/PQ/RM): throws, naming the shape.
+     * @param column The column whose corner is asked for.
+     * @param core The core it belongs to; only its shape is read (for EFD's chamfer).
+     * @param isMainColumn Whether the column is the core's central column.
      * @return Inside corner radius in m
      */
-    static double get_moulded_inside_corner_radius(double wallThickness);
+    static double get_core_column_corner_radius(const ColumnElement& column, const Core& core, bool isMainColumn);
+    /// Same rule from the core shape alone; the shape may be absent for a lateral leg (it is then
+    /// only missing from the error messages), never for the central column.
+    static double get_core_column_corner_radius(const ColumnElement& column, const std::optional<CoreShape>& coreShape,
+                                                bool isMainColumn);
+
+    /**
+     * @brief Write columnCornerRadius (outside corner of the former = core column corner + the
+     *        bobbin's column thickness, get_moulded_outside_corner_radius) when the bobbin has a
+     *        rectangular or irregular column and does not already declare one. A declared value
+     *        is kept as it is. Called by magnetic_autocomplete for catalogue bobbins.
+     */
+    void set_column_corner_radius_from_core(const Core& core);
 
     /**
      * @brief Outside (convex) corner radius of a moulded wall of uniform thickness:
@@ -512,8 +559,18 @@ class Bobbin : public MAS::Bobbin {
      */
     static double get_moulded_outside_corner_radius(double insideCornerRadius, double wallThickness);
 
-    /// Bayer "Part and Mold Design", pp. 30-31, Fig. 2-22: recommended inside R/t (see above).
-    static constexpr double mouldedInsideCornerRadiusToWallThickness = 0.15;
+    /**
+     * @brief Inside corner of the bore of a former whose core is unknown, interpolated (piecewise
+     *        linearly, in its columnWidth) from the catalogue bobbins whose core column has the
+     *        same shape (see BobbinColumnCornerSamples). Used by get_column_corner_radius only
+     *        when the bobbin neither states its corner nor can be resolved against a core.
+     *        Throws, naming the shape and width, when no catalogue bobbin has a column of that
+     *        shape or the width lies outside the span the catalogue samples cover.
+     * @return Inside corner radius in m
+     */
+    static double get_interpolated_column_inside_corner_radius(ColumnShape columnShape, double columnWidth);
+    /// The interpolator's samples, per core column shape (for tests and reports).
+    static const std::map<ColumnShape, BobbinColumnCornerSamples>& get_column_corner_samples();
 
     /**
      * @brief Half the interior angle between the two straight runs that a turn's corner joins:

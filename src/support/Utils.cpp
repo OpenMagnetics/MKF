@@ -3697,6 +3697,10 @@ Magnetic magnetic_autocomplete(Magnetic magnetic, json configuration, std::optio
 
         bobbin.set_processed_description(processedDescription);
     }
+    // A catalogue former that does not state its column corner gets the one its bore follows:
+    // the core column's corner carried out by the wall (Bobbin::set_column_corner_radius_from_core).
+    // A declared corner is kept.
+    bobbin.set_column_corner_radius_from_core(magnetic.get_mutable_core());
     magnetic.get_mutable_coil().set_bobbin(bobbin);
     // Multi-column winding support: give the coil the core columns so turn lengths
     // around non-main columns can be computed when placement uses non-main windows.

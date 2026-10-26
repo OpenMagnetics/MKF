@@ -426,11 +426,9 @@ Coil::Coil(json j, bool windInConstructor) {
     }
 }
 
-Coil::Coil(const MAS::Coil coil) {
-    bool hasSectionsData = false;
-    bool hasLayersData = false;
-    bool hasTurnsData = false;
+Coil::Coil(const MAS::Coil coil) : Coil(coil, true) {}
 
+Coil::Coil(const MAS::Coil coil, bool windInConstructor) {
     set_functional_description({});
     for (auto winding : coil.get_functional_description()) {
         get_mutable_functional_description().push_back(winding);
@@ -451,24 +449,30 @@ Coil::Coil(const MAS::Coil coil) {
         set_groups_description(coil.get_groups_description());
     }
     if (coil.get_sections_description()) {
-        hasSectionsData = true;
         set_sections_description(coil.get_sections_description());
     }
     if (coil.get_layers_description()) {
-        hasLayersData = true;
         set_layers_description(coil.get_layers_description());
     }
     if (coil.get_turns_description()) {
-        hasTurnsData = true;
         set_turns_description(coil.get_turns_description());
     }
-    if (hasSectionsData) {
+    if (get_sections_description()) {
         // Externally-provided descriptions always sit at their FINAL multi-window
         // positions (the +x winding frame is transient inside wind()); without
         // this a later delimit_and_compact would re-compact mirrored-window
         // sections as if they were frame-local.
         set_group_window_sides_applied(true);
     }
+    if (windInConstructor) {
+        wind_as_described();
+    }
+}
+
+void Coil::wind_as_described() {
+    const bool hasSectionsData = get_sections_description().has_value();
+    const bool hasLayersData = get_layers_description().has_value();
+    const bool hasTurnsData = get_turns_description().has_value();
     auto delimitAndCompact = settings.get_coil_delimit_and_compact();
 
     if (!hasSectionsData || !hasLayersData || (!hasTurnsData && are_sections_and_layers_fitting())) {
@@ -476,7 +480,6 @@ Coil::Coil(const MAS::Coil coil) {
             delimit_and_compact();
         }
     }
-
 }
 
 void Coil::log(std::string entry) {
@@ -12682,6 +12685,12 @@ WoundColumnFrame Coil::get_wound_column_frame_for_section(const std::string& sec
         // have no column width at all (the branch above), which is exactly the case where the
         // round column's "radius" does not exist to be asked for.
         if (frame.shape == ColumnShape::RECTANGULAR || frame.shape == ColumnShape::IRREGULAR) {
+            // A former that does not state its corner follows the core column it is wound on,
+            // when this coil knows that core (set_core_geometry); otherwise
+            // get_column_corner_radius throws.
+            if (!bobbinProcessedDescription.get_column_corner_radius() && _coreGeometry) {
+                bobbin.set_column_corner_radius_from_core(*_coreGeometry);
+            }
             frame.cornerRadius = bobbin.get_column_corner_radius();
         }
         return frame;
@@ -12743,15 +12752,19 @@ WoundColumnFrame Coil::get_wound_column_frame_for_section(const std::string& sec
     // one column-wall thickness sits between the leg and the winding space.
     frame.columnWidth = column.get_width() / 2 + bobbinProcessedDescription.get_column_thickness();
     frame.columnDepth = column.get_depth() / 2 + bobbinProcessedDescription.get_column_thickness();
-    // The wall wrapped around the leg carries the leg's own corner outwards (outside = inside +
-    // wall, Bayer Fig. 2-4); where the core gives no corner radius, the inside corner is the
-    // moulding rule's -- the same derivation as Bobbin::get_column_corner_radius for the main one.
-    {
-        const double wallThickness = bobbinProcessedDescription.get_column_thickness();
-        const double insideCornerRadius = column.get_corner_radius()
-            ? column.get_corner_radius().value()
-            : Bobbin::get_moulded_inside_corner_radius(wallThickness);
-        frame.cornerRadius = Bobbin::get_moulded_outside_corner_radius(insideCornerRadius, wallThickness);
+    // The wall wrapped around the leg follows the leg and carries its corner outwards (outside =
+    // inside + wall, Bayer Fig. 2-4), the inside corner being the leg's own
+    // (Bobbin::get_core_column_corner_radius) -- the same derivation create_quick_bobbin makes for
+    // the main column. Only cornered legs have one to ask for.
+    if (frame.shape == ColumnShape::RECTANGULAR || frame.shape == ColumnShape::IRREGULAR) {
+        // A lateral leg's corner is the column's own (the shape only names it in the errors).
+        std::optional<CoreShape> coreShape;
+        if (_coreGeometry) {
+            coreShape = _coreGeometry->resolve_shape();
+        }
+        frame.cornerRadius = Bobbin::get_moulded_outside_corner_radius(
+            Bobbin::get_core_column_corner_radius(column, coreShape, false),
+            bobbinProcessedDescription.get_column_thickness());
     }
     // The winding frame is the +x side; mirrored (negative-x) windows are wound
     // against the mirrored column and flipped into place afterwards.

@@ -972,7 +972,9 @@ OpenMagnetics::Mas mas_loader(const std::filesystem::path& path) {
         auto bobbinData = OpenMagnetics::Bobbin::create_quick_bobbin(magnetic.get_mutable_core(), false);
         to_json(magneticJson["coil"]["bobbin"], bobbinData);
     }
-    auto coil = OpenMagnetics::Coil(magneticJson["coil"]);
+    // No coil is built here on its own: the Magnetic above built (and, where needed, wound) its
+    // coil after giving it the core. A coil wound here without its core could not follow the core
+    // column, and was never used (same as Mas::from_file).
     std::vector<OpenMagnetics::Outputs> outputs;
     if (outputsJson != nullptr) {
         outputs = outputsJson.get<std::vector<OpenMagnetics::Outputs>>();

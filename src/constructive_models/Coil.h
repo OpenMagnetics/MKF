@@ -1172,6 +1172,14 @@ class Coil : public MAS::Coil {
                        CoilAlignment turnsAlignment = CoilAlignment::CENTERED,
                        CoilAlignment sectionAlignment = CoilAlignment::INNER_OR_TOP);
         Coil(const MAS::Coil coil);
+        // Builds the coil without winding it, so the caller can give it its core
+        // (set_core_columns / set_core_geometry) first and then call wind_as_described(): a coil
+        // wound before it knows its core cannot follow the core column with its bobbin's bore
+        // (Magnetic(const MAS::Magnetic) builds its coil this way).
+        Coil(const MAS::Coil coil, bool windInConstructor);
+        // The wind Coil(const MAS::Coil) makes in its constructor: only when the coil does not
+        // already carry its sections, layers and (fitting) turns.
+        void wind_as_described();
         Coil(json j, bool windInConstructor);
         Coil() = default;
         virtual ~Coil() = default;

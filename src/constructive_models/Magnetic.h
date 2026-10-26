@@ -110,7 +110,12 @@ class Magnetic : public MAS::Magnetic {
                 set_core(magnetic.get_core().value());
             }
             if (magnetic.get_coil()) {
-                set_coil(magnetic.get_coil().value());
+                // The coil is built unwound, given this core, and only then wound: wound before
+                // it knew its core, a former that does not state its column corner could not
+                // follow the core column (Bobbin::get_column_corner_radius) and fell to the
+                // catalogue interpolation although the core was right here.
+                set_coil(Coil(magnetic.get_coil().value(), false));
+                coil->wind_as_described();
             }
             if (magnetic.get_distributors_info()) {
                 set_distributors_info(magnetic.get_distributors_info());
