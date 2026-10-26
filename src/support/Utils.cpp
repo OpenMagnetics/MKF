@@ -1,4 +1,5 @@
 #include "constructive_models/MasMigration.h"
+#include "support/FastJsonParse.h"
 #include "physical_models/MagnetizingInductance.h"
 #include "processors/MagneticSimulator.h"
 #include "support/Utils.h"
@@ -87,8 +88,8 @@ static void parse_ndjson(const std::string& database, Callback&& callback) {
         }
 #endif
         if (lineEnd > start) {
-            // nlohmann::json::parse accepts iterator pairs without copying.
-            json jf = json::parse(database.begin() + start, database.begin() + lineEnd);
+            // simdjson parses the line into the nlohmann::json tree json::parse builds (support/FastJsonParse.h).
+            json jf = OpenMagnetics::parse_json_fast(database.data() + start, lineEnd - start);
             OpenMagnetics::compat::migrate_pre_1_0(jf);
             callback(jf);
         }

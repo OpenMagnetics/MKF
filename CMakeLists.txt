@@ -124,6 +124,15 @@ include_directories("${CMAKE_BINARY_DIR}/_deps/json-src/include/nlohmann/")
 include_directories("${CMAKE_BINARY_DIR}/_deps/json-src/include/")
 
 
+# simdjson (single-header amalgamation): parses the MAS databases into nlohmann::json (support/FastJsonParse.cpp).
+# Only its singleheader/simdjson.cpp is compiled, into MKF; its own CMake project is not configured.
+FetchContent_Declare(simdjson
+    GIT_REPOSITORY https://github.com/simdjson/simdjson.git
+    GIT_TAG  tags/v5.0.5
+    GIT_SHALLOW TRUE
+    SOURCE_SUBDIR singleheader-not-a-cmake-project)
+FetchContent_MakeAvailable(simdjson)
+
 FetchContent_Declare(magic-enum
     GIT_REPOSITORY https://github.com/Neargye/magic_enum
     GIT_TAG  tags/v0.9.6)
@@ -649,6 +658,10 @@ file(GLOB SOURCES CONFIGURE_DEPENDS
     "src/processors/*.cpp"
     "src/support/*.cpp")
 list(APPEND SOURCES "${CCI_GENERATED_CPP}")
+list(APPEND SOURCES "${simdjson_SOURCE_DIR}/singleheader/simdjson.cpp")
+# Only these two files see simdjson's header (no global include path, so no other file recompiles).
+set_source_files_properties("${simdjson_SOURCE_DIR}/singleheader/simdjson.cpp" "${CMAKE_CURRENT_SOURCE_DIR}/src/support/FastJsonParse.cpp"
+    PROPERTIES INCLUDE_DIRECTORIES "${simdjson_SOURCE_DIR}/singleheader")
 
 # The only surviving src/converter_models/*.cpp is KirchhoffBridge.cpp — it #includes KirchhoffApi.hpp and
 # links libKirchhoffApi.so, so it can only be compiled when Kirchhoff is linked. Drop it otherwise (e.g. the
