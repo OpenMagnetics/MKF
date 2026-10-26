@@ -1,5 +1,6 @@
 #include "physical_models/InitialPermeability.h"
 #include "physical_models/AmplitudePermeability.h"
+#include "physical_models/CurveBuildScope.h"
 
 #include "support/Utils.h"
 #include "support/NumberFormat.h"
@@ -205,6 +206,25 @@ MagnetisationCurveCache& magnetisation_curve_cache() {
 }
 }
 
+namespace {
+// Loop-invariant hoist for one magnetisation-curve build (see CurveBuildScope.h): the interpolator key, and the Roshen
+// loop inputs, of the material at the curve's temperature. Saved and restored, so nesting and exceptions leave the
+// outer state intact.
+class CurveBuildScopeGuard {
+  public:
+    CurveBuildScopeGuard(const CoreMaterial& coreMaterial, double temperature, std::string interpolatorKey)
+        : _saved(std::move(curve_build::scope)) {
+        curve_build::scope = curve_build::Scope{&coreMaterial, temperature, std::move(interpolatorKey), std::nullopt, std::nullopt};
+    }
+    ~CurveBuildScopeGuard() { curve_build::scope = std::move(_saved); }
+    CurveBuildScopeGuard(const CurveBuildScopeGuard&) = delete;
+    CurveBuildScopeGuard& operator=(const CurveBuildScopeGuard&) = delete;
+
+  private:
+    curve_build::Scope _saved;
+};
+} // namespace
+
 size_t InitialPermeability::get_magnetisation_curve_cache_size() {
     auto& cache = magnetisation_curve_cache();
     std::lock_guard<std::mutex> lock(cache.mutex);
@@ -237,6 +257,7 @@ std::shared_ptr<const InitialPermeability::MagnetisationCurve> InitialPermeabili
         throw InvalidInputException(ErrorCode::INVALID_INPUT, "Material " + coreMaterial.get_name() + " has no positive saturation field strength at " + std::to_string(temperature) + " C to build its magnetisation curve");
     }
     double vacuumPermeability = constants.vacuumPermeability;
+    CurveBuildScopeGuard scope(coreMaterial, temperature, interpolator_cache_key(coreMaterial));
     auto reversiblePermeabilityAt = [&](double fieldStrength) {
         return std::max(1.0, initialPermeability.get_initial_permeability_model_value(coreMaterial, temperature, fieldStrength, frequency));
     };
@@ -1160,6 +1181,9 @@ bool interpolator_key_input_matches(const InterpolatorKeyInput& input, const Cor
 } // namespace
 
 std::string InitialPermeability::interpolator_cache_key(const CoreMaterial& coreMaterial) {
+    if (curve_build::scope.material == &coreMaterial) {
+        return curve_build::scope.interpolatorKey;
+    }
     // A magnetisation curve asks for the key at each of its ~2600 points with the same material. Exact-input memo of
     // the last material per thread: bit-equal hashed fields give the same hash, so the stored key is the one computed.
     thread_local std::optional<InterpolatorKeyInput> lastInput;
@@ -1181,7 +1205,20 @@ double InitialPermeability::get_initial_permeability_temperature_dependent(const
     double initialPermeabilityValue = 1;
     // The points are read by index; they are copied only to build the interpolator, once per material.
     const auto& allPoints = std::get<std::vector<PermeabilityPoint>>(coreMaterial.get_permeability().get_initial());
-    const auto temperatureIndexes = get_only_temperature_dependent_indexes(allPoints);
+    // Inside a magnetisation-curve build the indexes of the build's material are found once (CurveBuildScope.h).
+    std::vector<size_t> unscopedIndexes;
+    const std::vector<size_t>* temperatureIndexesPointer;
+    if (curve_build::scope.material == &coreMaterial) {
+        if (!curve_build::scope.temperatureIndexes) {
+            curve_build::scope.temperatureIndexes = get_only_temperature_dependent_indexes(allPoints);
+        }
+        temperatureIndexesPointer = &curve_build::scope.temperatureIndexes.value();
+    }
+    else {
+        unscopedIndexes = get_only_temperature_dependent_indexes(allPoints);
+        temperatureIndexesPointer = &unscopedIndexes;
+    }
+    const auto& temperatureIndexes = *temperatureIndexesPointer;
     if (temperatureIndexes.size() == 0) {
         throw InvalidInputException(ErrorCode::MISSING_DATA, "No temperature dependent points for material: " + coreMaterial.get_name());
     }

@@ -1,5 +1,6 @@
 #include "physical_models/AmplitudePermeability.h"
 #include "physical_models/InitialPermeability.h"
+#include "physical_models/CurveBuildScope.h"
 #include "support/Exceptions.h"
 #include <magic_enum.hpp>
 #include <algorithm>
@@ -555,10 +556,26 @@ std::pair<Curve2D, Curve2D> BHLoopRoshenModel::get_hysteresis_loop(const CoreMat
     // get_amplitude_permeability as a value: every Nanoperm grade at any H, and 523 of the 1073 MAS
     // materials. Absent is missing data, not zero. The resolvers give the material's own value, or
     // the flagged class estimate Alf approved (2026-10-18), or throw when the class is unknown.
-    double saturationMagneticFieldStrength = Core::get_magnetic_field_strength_saturation(coreMaterial, temperature);
-    double saturationMagneticFluxDensity = Core::get_magnetic_flux_density_saturation(coreMaterial, temperature, false);
-    double coerciveForce = resolve_loop_property_value(coreMaterial, temperature, LoopProperty::COERCIVE_FORCE);
-    double remanence = resolve_loop_property_value(coreMaterial, temperature, LoopProperty::REMANENCE);
+    // Inside a magnetisation-curve build these four depend only on the build's material and temperature, and are
+    // computed once per build (CurveBuildScope.h); elsewhere, every call.
+    std::array<double, 4> loopInputs;
+    auto* scopedInputs = curve_build::loop_inputs_for(coreMaterial, temperature);
+    if (scopedInputs && scopedInputs->has_value()) {
+        loopInputs = scopedInputs->value();
+    }
+    else {
+        loopInputs[0] = Core::get_magnetic_field_strength_saturation(coreMaterial, temperature);
+        loopInputs[1] = Core::get_magnetic_flux_density_saturation(coreMaterial, temperature, false);
+        loopInputs[2] = resolve_loop_property_value(coreMaterial, temperature, LoopProperty::COERCIVE_FORCE);
+        loopInputs[3] = resolve_loop_property_value(coreMaterial, temperature, LoopProperty::REMANENCE);
+        if (scopedInputs) {
+            *scopedInputs = loopInputs;
+        }
+    }
+    double saturationMagneticFieldStrength = loopInputs[0];
+    double saturationMagneticFluxDensity = loopInputs[1];
+    double coerciveForce = loopInputs[2];
+    double remanence = loopInputs[3];
 
     auto majorLoopParameters = get_major_loop_parameters(saturationMagneticFieldStrength, saturationMagneticFluxDensity,
                                                          coerciveForce, remanence);
@@ -569,7 +586,8 @@ std::pair<Curve2D, Curve2D> BHLoopRoshenModel::get_hysteresis_loop(const CoreMat
 
     // OPTIMIZED: Use fewer points with adaptive spacing instead of fixed step
     std::vector<double> magneticFieldStrengthPoints;
-    
+    magneticFieldStrengthPoints.reserve(32);  // the critical, peak and bound points below
+
     // Critical points that must be included
     magneticFieldStrengthPoints.push_back(-saturationMagneticFieldStrength);
     magneticFieldStrengthPoints.push_back(-coerciveForce);
@@ -647,7 +665,7 @@ std::pair<Curve2D, Curve2D> BHLoopRoshenModel::get_hysteresis_loop(const CoreMat
         return magneticFluxDensity;
     };
 
-    auto calculate_magnetic_flux_density_waveform = [&](std::vector<double> magneticFieldStrengthWaveform,
+    auto calculate_magnetic_flux_density_waveform = [&](const std::vector<double>& magneticFieldStrengthWaveform,
                                                   bool loop_is_upper = true) {
         std::vector<double> magneticFluxDensityWaveform;
         magneticFluxDensityWaveform.reserve(magneticFieldStrengthWaveform.size());
@@ -666,6 +684,10 @@ std::pair<Curve2D, Curve2D> BHLoopRoshenModel::get_hysteresis_loop(const CoreMat
 
     Curve2D upperPath;
     Curve2D lowerPath;
+    upperPath.get_mutable_x_points().reserve(magneticFieldStrengthPoints.size());
+    upperPath.get_mutable_y_points().reserve(magneticFieldStrengthPoints.size());
+    lowerPath.get_mutable_x_points().reserve(magneticFieldStrengthPoints.size());
+    lowerPath.get_mutable_y_points().reserve(magneticFieldStrengthPoints.size());
 
     if (magneticFieldStrengthPeak) {
         // OPTIMIZED: Find index with binary search instead of min_element
