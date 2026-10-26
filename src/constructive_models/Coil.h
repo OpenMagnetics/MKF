@@ -11,6 +11,8 @@
 #include "json.hpp"
 
 #include <MAS.hpp>
+#include <array>
+#include <map>
 #include <vector>
 #include <set>
 #include <optional>
@@ -535,6 +537,100 @@ struct ConnectionRoute {
     // through the end face (see AxialLead): a consumer draws the lead from it, and reads neither
     // `exitSlot` (empty) nor a radial run.
     std::optional<AxialLead> axialLead;
+    // On a TERMINAL route of a CLOSED core (Coil::set_core_lead_exit), the lead's run
+    // from where its in-window run ends to where it is joined to the terminal metal, as 3D points
+    // in the SAME frame as `pinWaypoints` (column axis Y, the connection plane on the -Z front
+    // face, x along it). Always in LEAD order: exitRun[0] is where the in-window run ends -- the
+    // waypoint (radial, axial) at x = exitSlot, i.e. (exitSlot, axial, -radial) -- and the last
+    // point is the joint. The segment exitRun[0] -> exitRun[1] is the circular ARC `exitRunArc`
+    // about the column axis, not a chord; every later segment is straight. Empty unless the core's
+    // lead exit is set. `routedLength` includes it (the arc at its arc length).
+    std::vector<std::vector<double>> exitRun;
+    // The arc exitRun[0] -> exitRun[1]: radius about the column axis, the start and end
+    // azimuths (radians, measured from -Z towards +X, so a point is (R sin a, y, -R cos a)) and the
+    // axial level it is laid at. Empty when exitRun is.
+    struct ExitRunArc {
+        double radius;
+        double fromAzimuth;
+        double toAzimuth;
+        double axial;
+    };
+    std::optional<ExitRunArc> exitRunArc;
+    // What the exit run ends on. ELECTRODE: soldered onto a drum-ring part's electrode
+    // (LeadExitSolid::Kind::ELECTRODE); LEAD_FRAME_WELD: resistance-welded to a molded part's lead
+    // frame (LeadExitSolid::Kind::WELD). Empty when exitRun is.
+    enum class ExitRunEnd { ELECTRODE, LEAD_FRAME_WELD };
+    std::optional<ExitRunEnd> exitRunEnd;
+    // The ride-over the exit run's lane clears: MKF's own ride levels at the winding's
+    // outer face, on the face of this lead's route (ConnectionLayout::ride_at(windingOuterRadius,
+    // side)), the largest over the leads of this winding END (they share one set of lanes). The
+    // arc lies at exitRunArc->radius = windingOuterRadius + exitRunRide + pitch/2 (+ one pitch per
+    // lead ahead of it), so a consumer that lifts the attached turn's end by the ride finds the lead
+    // one coated diameter outside it. 0 when no return lays a lane under the outer face. Empty when
+    // exitRun is.
+    std::optional<double> exitRunRide;
+};
+
+// Smallest distance between two 3D polylines (CoilPins.cpp's segment distance).
+double lead_polyline_distance(const std::vector<std::vector<double>>& a, const std::vector<std::vector<double>>& b);
+
+// A prism -- the polygon `xz` (in the pinWaypoints frame's x and z, counter-clockwise
+// or clockwise, not self-intersecting) extruded along Y from y0 to y1 (y0 < y1).
+struct ExtrudedPolygon {
+    std::vector<std::array<double, 2>> xz;
+    double y0;
+    double y1;
+};
+
+// A solid MKF plans for the lead exit of a CLOSED core, in the pinWaypoints frame.
+//   CORE_CUT    a notch cut OUT of the core (the ring's foot); `material` is empty -- a cut is the
+//               absence of core, not a body.
+//   ELECTRODE   the terminal metal the lead is soldered to / that carries a lead frame to the board
+//               (side leg, bottom pad). Carries `boardFace` when one of its faces is the SMD pad.
+//   LEAD_FRAME  a molded part's lead-frame strip, embedded in the base pressing: WINDING CONDUCTOR
+//               of `material` (decision 4, Alf 2026-09-24), not copper.
+//   WELD        the resistance-weld nugget joining the coil end to the lead frame.
+// `parallel` is the conductor it serves; empty when it serves every parallel of that winding end
+// (a notch or electrode shared by an N-filar bundle). `entrance`: the winding's start end.
+struct LeadExitSolid {
+    enum class Kind { CORE_CUT, ELECTRODE, LEAD_FRAME, WELD };
+    Kind kind;
+    std::string name;
+    std::string winding;
+    std::optional<int64_t> parallel;
+    bool entrance;
+    ExtrudedPolygon body;
+    std::string material;
+    // The face soldered to the board, as a zero-height prism (y0 == y1) at the board plane.
+    std::optional<ExtrudedPolygon> boardFace;
+};
+
+// Copper a CLOSED core's lead-exit plan lays where it collides. The plan lays every run
+// exactly where its geometry puts it and records the collision instead of refusing the design
+// (draw and report): ResultsAnalyzer reports each one (Coil::judge_lead_exit_clashes).
+//   BELOW_FLOOR              a terminal lead's copper below the plate / cavity floor
+//   STUB_CROSSES_OWN_TURN    a lead's stub to its plate-side row crosses a turn of its own layer
+//   LANE_PAST_RING_BORE      a lead's lane round the winding (plus its bend) reaches into the ring
+//   CORNER_RUN_OVER_RING     a corner run from the notch to the terminal passes through the ring
+//   CORNER_RUN_OFF_PLATE     a corner run leaves the base plate's corner area
+//   CORNER_RUN_OFF_TERMINAL  a corner run crosses the plate's side edge beside its terminal
+//   LANE_PAST_BODY_SIDE      a molded lead's lane reaches past the body's side
+//   LEADS_SHARE_COPPER       two leads' runs pass closer than their coated radii
+// `description` states the lead and the numbers, in words fit for a finding.
+struct LeadExitClash {
+    enum class Kind {
+        BELOW_FLOOR,
+        STUB_CROSSES_OWN_TURN,
+        LANE_PAST_RING_BORE,
+        CORNER_RUN_OVER_RING,
+        CORNER_RUN_OFF_PLATE,
+        CORNER_RUN_OFF_TERMINAL,
+        LANE_PAST_BODY_SIDE,
+        LEADS_SHARE_COPPER
+    };
+    Kind kind;
+    std::string winding;
+    std::string description;
 };
 
 // ABT #1172 (WP3): the lead's run from the window exit to its assigned pin, see
@@ -611,6 +707,11 @@ struct PinAssignmentResult {
 struct ConnectionLayout {
     std::vector<ConnectionRoute> routes;
     std::vector<ConnectionRideLevel> rideLevels;
+    // The notches, electrodes, lead frames and welds of a CLOSED core's lead exit
+    // (Coil::set_core_lead_exit). Empty for every other core.
+    std::vector<LeadExitSolid> leadExitSolids;
+    // Where that plan lays copper that collides (LeadExitClash). Empty for every other core.
+    std::vector<LeadExitClash> leadExitClashes;
     // Total displacement a turn at `radius` on `side` rides over.
     double ride_at(double radius, int side) const {
         double ride = 0;
@@ -926,6 +1027,9 @@ class Coil : public MAS::Coil {
         std::shared_ptr<const Core> _coreGeometry;
         // ABT #1487 (R5): see preload_stored_section_heights_from_sections.
         std::map<std::string, double> _storedSectionHeights;
+        // See set_core_lead_exit.
+        std::optional<CoreLeadExitGeometry> _coreLeadExit;
+        std::optional<std::string> _coreLeadExitRefusal;
         // Hand-drawn section rectangles (winding studio): section name ->
         // {coordinates, dimensions}, re-imposed at the end of every wind.
         std::map<std::string, std::pair<std::vector<double>, std::vector<double>>> _customSectionRects;
@@ -1087,6 +1191,11 @@ class Coil : public MAS::Coil {
             std::vector<TangentLeadUnmodelled> conditions;
         };
         std::vector<UnmodelledLeadJudgement> judge_unmodelled_tangent_leads();
+        // Where a CLOSED core's lead-exit plan lays copper that collides (LeadExitClash),
+        // the same records get_connection_layout().leadExitClashes carries. Never a refusal: the
+        // runs are drawn as planned and ResultsAnalyzer reports them. Empty when the core has no
+        // lead exit (set_core_lead_exit).
+        std::vector<LeadExitClash> judge_lead_exit_clashes();
         // Alf, 2026-10-25 (ABT #2071): every place the drawn design's copper overlaps other copper in
         // the winding-window section -- turn stations overlapping each other (a wind that does not fit
         // its window still produces its turns), terminal leads drawn across turns (a tangent lead's
@@ -1200,6 +1309,15 @@ class Coil : public MAS::Coil {
         // coil used on its own has to be given one here.
         void set_core_geometry(Core core) { _coreGeometry = std::make_shared<const Core>(std::move(core)); }
         const std::shared_ptr<const Core>& get_core_geometry() const { return _coreGeometry; }
+        // The lead exit of a CLOSED core (Core::get_lead_exit_geometry), set by callers
+        // that hold the core (autocomplete) BEFORE wind(), so the terminal leads are laid on the
+        // plate-side edge and the reservations include their runs. nullopt: the core's window is
+        // open and the leads leave through it (the default). Transient, like the core columns.
+        void set_core_lead_exit(std::optional<CoreLeadExitGeometry> leadExit) { _coreLeadExit = leadExit; _coreLeadExitRefusal.reset(); }
+        const std::optional<CoreLeadExitGeometry>& get_core_lead_exit() const { return _coreLeadExit; }
+        // The core encloses the winding but has no lead exit (Core::get_lead_exit_refusal,
+        // a catalogue drumRing). get_connection_layout throws this message; nothing else changes.
+        void set_core_lead_exit_refusal(std::string refusal) { _coreLeadExit.reset(); _coreLeadExitRefusal = refusal; }
         // Serialized wound coils always carry their sections/layers/turns at the
         // FINAL multi-window positions (the +x winding frame exists only
         // transiently inside wind()). Entry points that install descriptions
@@ -1483,8 +1601,33 @@ class Coil : public MAS::Coil {
         // rather than reconstructing them from the rectangles is deliberate: a rectangle does not
         // say which of its axes is the run (a stub of a tall RECTANGULAR wire is shorter than the
         // wire's own width), which is the same trap routedLength exists to avoid.
+        // `leadExitSolidsOut`, when given, receives the lead-exit solids of a CLOSED core
+        // (set_core_lead_exit); the routes' exitRun is filled either way.
+        // `planLeadExit` false skips that plan: wind()'s own blocking fixpoint reads only the
+        // in-window rectangles, and its intermediate layouts are not the finished wind the exit is
+        // planned for (compute_connection_blocked_slots_per_layer, align_blocked_ring_turns and
+        // apply_connection_reserved_space pass false). Every other caller gets the exit's copper
+        // in routedLength.
         std::vector<ConnectionReservedSpace> get_connection_reserved_spaces(
-            std::vector<ConnectionRoute>* routesOut = nullptr);
+            std::vector<ConnectionRoute>* routesOut = nullptr,
+            std::vector<LeadExitSolid>* leadExitSolidsOut = nullptr,
+            bool planLeadExit = true,
+            std::vector<LeadExitClash>* leadExitClashesOut = nullptr);
+        // The closed-core lead exit (src/constructive_models/CoilLeadExit.cpp). Called at
+        // the end of get_connection_reserved_spaces, after the exit slots, when set_core_lead_exit
+        // holds a geometry: fills each terminal route's exitRun / exitRunArc / exitRunEnd, adds the
+        // run to the route's and its reservation's routedLength, and returns the solids. Throws on
+        // missing data and on a construction it cannot lay out at all; copper it lays where it
+        // collides is appended to `clashes` (draw and report). It never shrinks, moves or skips
+        // anything to make it fit.
+        // `terminalSpaceIndexByRoute` maps each terminal route to the reservation carrying its run.
+        // `rideLevels` are compute_ride_levels(routes): the lanes clear the ride-over those returns
+        // impose at the winding's outer face (ConnectionRoute::exitRunRide).
+        std::vector<LeadExitSolid> plan_closed_core_lead_exits(std::vector<ConnectionRoute>& routes,
+                                                               std::vector<ConnectionReservedSpace>& spaces,
+                                                               const std::map<size_t, size_t>& terminalSpaceIndexByRoute,
+                                                               const std::vector<ConnectionRideLevel>& rideLevels,
+                                                               std::vector<LeadExitClash>& clashes);
         // ABT #685: the same connections, GROUPED into one route per (conductor, transition) and
         // classified (see ConnectionKind), together with the ride levels — the bumps — those
         // routes impose on the turns outside them. This is the contract MVB++'s 3D builder and

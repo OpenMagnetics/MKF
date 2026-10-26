@@ -184,5 +184,14 @@
         "source": "Power Integrations AN-18, 'TOPSwitch Flyback Transformer Construction Guide' 7/96 p.3: 'This insulation should extend from the transformer pin to inside of the margin barrier, as shown in Figure 4.' Margins there are creepage-derived: 'one half the required creepage distance, or 1.25 to 1.5 mm for 115 VAC input supplies, and 2.5 to 3 mm for 230 VAC or universal input supplies.' Wall: IEC 62368-1 5.4.4.2 (0,4 mm for reinforced, none for basic) via the distance-through-insulation models.",
         "captureTurnsIntoWinding": 1,
         "_captureTurnsIntoWinding_comment": "How many full turns must lie over the sleeve's end for it to be held down; the overlap past the margin's inner face is this many turn pitches, and a terminal lead's pitch is its own outer diameter. One turn is the least that captures the end. It is a mechanical statement, so it scales with the wire instead of fixing a length: a 0,34 mm lead is held by 0,34 mm of winding, a litz bundle by its own diameter. Raise it only with a reason."
+    },
+    "leadExitStock": {
+        "_comment": "The metal a CLOSED core's terminal leads are joined to (Coil::plan_closed_core_lead_exits): a molded body's LEAD FRAME, and the L-shaped TERMINAL PLATE (mounting terminal + winding terminal) of a drum + seated-ring part. Its THICKNESS is read from here and nowhere else; a missing number throws -- no default. Lengths in metres. Citations removed by decision (Alf, 2026-09-24): these stock thicknesses carry no source in this file.",
+        "moldedLeadFrameThickness": 0.000127,
+        "_moldedLeadFrameThickness_comment": "0.127 mm lead-frame stock.",
+        "terminalPlateThickness": 0.0002,
+        "_terminalPlateThickness_comment": "0.2 mm terminal-plate stock (phosphor-bronze strip the L-shaped winding/mounting terminals are pressed from).",
+        "material": "phosphor bronze",
+        "_material_comment": "The name the lead-exit solids carry (LeadExitSolid::material). MAS data/wire_materials.ndjson has no record of this name yet (copper, aluminium only): the conductivity of the frame is not modelled by MKF, and OMFEM must refuse a conductor region whose material differs from the wire's (decision 4)."
     }
 }

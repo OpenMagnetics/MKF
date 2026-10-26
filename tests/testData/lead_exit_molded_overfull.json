@@ -1,0 +1,123 @@
+{
+ "inputs": {
+  "designRequirements": {
+   "name": "SMD molded inductor whose lead lane passes its side (draw-and-report test)",
+   "magnetizingInductance": {
+    "nominal": 3.3e-06,
+    "minimum": 2.64e-06,
+    "maximum": 3.96e-06
+   },
+   "turnsRatios": [],
+   "topology": "buckConverter"
+  },
+  "operatingPoints": [
+   {
+    "name": "Full load",
+    "conditions": {
+     "ambientTemperature": 40
+    },
+    "excitationsPerWinding": [
+     {
+      "name": "Primary",
+      "frequency": 1000000.0,
+      "current": {
+       "processed": {
+        "label": "triangular",
+        "peakToPeak": 0.725,
+        "offset": 3.66,
+        "dutyCycle": 0.275
+       }
+      },
+      "voltage": {
+       "processed": {
+        "label": "rectangular",
+        "peakToPeak": 12,
+        "offset": 0,
+        "dutyCycle": 0.275
+       }
+      }
+     }
+    ]
+   }
+  ]
+ },
+ "magnetic": {
+  "core": {
+   "functionalDescription": {
+    "type": "closedShape",
+    "material": "Kool Mµ 125",
+    "shape": {
+     "magneticCircuit": "closed",
+     "type": "custom",
+     "family": "molded",
+     "aliases": [],
+     "name": "Molded 4.1x4.1x3.1 over-full",
+     "dimensions": {
+      "A": {
+       "nominal": 0.0041
+      },
+      "B": {
+       "nominal": 0.0031
+      },
+      "C": {
+       "nominal": 0.0041
+      },
+      "D": {
+       "nominal": 0.0021
+      },
+      "E": {
+       "nominal": 0.0035
+      },
+      "F": {
+       "nominal": 0.0016
+      }
+     }
+    },
+    "gapping": [],
+    "numberStacks": 1
+   }
+  },
+  "coil": {
+   "bobbin": "Dummy",
+   "functionalDescription": [
+    {
+     "name": "Primary",
+     "numberTurns": 7,
+     "numberParallels": 1,
+     "isolationSide": "primary",
+     "wire": "Round 0.355 - Grade 1",
+     "connections": [
+      {
+       "type": "smt",
+       "end": "start",
+       "direction": "input",
+       "padWidth": 0.00325,
+       "padDepth": 0.00082
+      },
+      {
+       "type": "smt",
+       "end": "finish",
+       "direction": "output",
+       "padWidth": 0.00325,
+       "padDepth": 0.00082
+      }
+     ]
+    }
+   ]
+  },
+  "manufacturerInfo": {
+   "name": "OpenMagnetics",
+   "description": "Molded test case whose copper fits its coil cavity under real winding but whose lead lane passes the body side.",
+   "datasheetInfo": {
+    "provenance": [
+     {
+      "source": "manual",
+      "derivation": "Test geometry, not a part: 7 turns of Round 0.355 in a 2.1 mm x 3.5 mm cavity. Real winding lays them in two layers with an outer face at 1.567 mm, inside the 1.75 mm cavity, but the lead lane (outer face + 0.384 mm ride-over + half the 0.384 mm pitch = 2.142 mm) reaches 2.334 mm with its coated radius, past the body side at 2.050 mm; kept to exercise the draw-and-report path.",
+      "retrievedDate": "2026-09-24"
+     }
+    ]
+   }
+  }
+ },
+ "outputs": []
+}

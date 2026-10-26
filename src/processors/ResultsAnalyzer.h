@@ -85,6 +85,11 @@ enum class ResultFindingCode {
     // TURNS_OVERLAP, LEAD_COLLIDES_WITH_TURNS, LEADS_COLLIDE and TURNS_OUTSIDE_WINDOW; every other
     // finding is still returned. No operating point.
     TURN_OUTLINES_NOT_EVALUABLE,
+    // A CLOSED core's lead exit (drum + seated ring, molded body) lays copper where it collides: with
+    // the ring, its own winding, the plate's edge, the body's side or another lead (LeadExitClash). The
+    // runs are drawn as planned; one finding per clash, naming the lead and the numbers. No operating
+    // point.
+    LEAD_EXIT_CLASHES,
 };
 
 std::string to_string(ResultFindingCode code);
@@ -211,6 +216,9 @@ class ResultsAnalyzer {
 
     // One LEAD_ROUTE_NOT_MODELLED finding per terminal lead drawn on a tangent route MKF does not model
     // in full (Coil::judge_unmodelled_tangent_leads). Nothing under ideal winding.
+    // A core that encloses the winding and states no lead exit (a catalogue drumRing, no base plate M:
+    // Core::get_lead_exit_refusal) is checked before any lead is laid out: ONE LEAD_ROUTE_NOT_MODELLED
+    // finding carries its refusal, and analyze_lead_collisions and analyze_winding_bends judge no lead.
     static std::vector<ResultFinding> analyze_unmodelled_leads(const Magnetic& magnetic);
 
     // The copper the drawn design overlaps (Coil::judge_copper_overlaps, the same overlaps the Painter
@@ -222,6 +230,10 @@ class ResultsAnalyzer {
     // One TURNS_OUTSIDE_WINDOW finding per winding with turn stations outside their winding window
     // (Coil::judge_turns_outside_window, the same copper the Painter draws in red).
     static std::vector<ResultFinding> analyze_turns_outside_window(const Magnetic& magnetic);
+
+    // One LEAD_EXIT_CLASHES finding per collision a closed core's lead-exit plan records
+    // (Coil::judge_lead_exit_clashes). Nothing for a core without a lead exit.
+    static std::vector<ResultFinding> analyze_lead_exit_clashes(const Magnetic& magnetic);
 
     // Every finding of a simulated MAS (as MagneticSimulator::simulate returns it: one output per
     // operating point), ordered by operating point, then saturation, volt-second balance, temperature;

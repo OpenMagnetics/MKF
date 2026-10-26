@@ -1442,6 +1442,47 @@ bool Core::process_gap() {
         double meanRadius = (flangeOuterDiameter + ringInnerDiameter) / 4;
         double windingWindowWidth = processedDescription.get_winding_windows()[0].get_width().value();
         std::vector<CoreGap> annularGaps;
+        if (drum_ring_has_seat_plate(dimensions)) {
+            // Ring SEATED on the square base plate (M present). The top flange still
+            // faces the ring bore across the radial clearance (K - A)/2 over its thickness D; the
+            // bottom of the circuit is no longer a clearance around the F flange but the SEAT --
+            // the ring's foot standing on the plate's top face: an AXIAL joint across the ring
+            // annulus. Its length is the mating-surface residual MKF uses for every ground joint
+            // (Constants::residualGap), since nothing is ground into it.
+            drum_ring_seat_plate(dimensions);
+            {
+                CoreGap gap;
+                gap.set_type(GapType::RESIDUAL);
+                gap.set_length(roundFloat(gapLength));
+                gap.set_coordinates(std::vector<double>({roundFloat(meanRadius), roundFloat((dimensions["B"] - dimensions["D"]) / 2), 0}));
+                gap.set_shape(ColumnShape::RECTANGULAR);
+                gap.set_distance_closest_normal_surface(roundFloat(dimensions["D"] / 2));
+                gap.set_distance_closest_parallel_surface(windingWindowWidth);
+                gap.set_area(roundFloat(2 * std::numbers::pi * meanRadius * dimensions["D"]));
+                gap.set_section_dimensions(std::vector<double>({roundFloat(2 * std::numbers::pi * meanRadius), roundFloat(dimensions["D"])}));
+                annularGaps.push_back(gap);
+            }
+            {
+                double ringOuterRadius = dimensions["J"] / 2;
+                double ringInnerRadius = dimensions["K"] / 2;
+                double ringMeanRadius = (ringOuterRadius + ringInnerRadius) / 2;
+                double ringWall = ringOuterRadius - ringInnerRadius;
+                CoreGap seat;
+                seat.set_type(GapType::RESIDUAL);
+                seat.set_length(Constants().residualGap);
+                // At the plate's top face, F above the drum's bottom face (-B/2).
+                seat.set_coordinates(std::vector<double>({roundFloat(ringMeanRadius), roundFloat(-dimensions["B"] / 2 + dimensions["F"]), 0}));
+                seat.set_shape(ColumnShape::RECTANGULAR);
+                // The joint's own faces end at the ring's inner and outer walls, half a wall away.
+                seat.set_distance_closest_normal_surface(roundFloat(ringWall / 2));
+                seat.set_distance_closest_parallel_surface(windingWindowWidth);
+                seat.set_area(roundFloat(std::numbers::pi * (pow(ringOuterRadius, 2) - pow(ringInnerRadius, 2))));
+                seat.set_section_dimensions(std::vector<double>({roundFloat(2 * std::numbers::pi * ringMeanRadius), roundFloat(ringWall)}));
+                annularGaps.push_back(seat);
+            }
+            get_mutable_functional_description().set_gapping(annularGaps);
+            return true;
+        }
         // {flange thickness, gap centre height}: top flange (D) and bottom flange (F). The
         // flux crosses the clearance radially over each flange's axial extent, so the gap is
         // the annulus UNROLLED to a rectangular section {mean circumference, flange thickness}
@@ -1497,6 +1538,52 @@ bool Core::process_gap() {
 
     get_mutable_functional_description().set_gapping(newGapping);
     return true;
+}
+
+std::optional<std::string> Core::get_lead_exit_refusal() {
+    if (get_shape_family() != CoreShapeFamily::DRUM_RING) {
+        return std::nullopt;
+    }
+    auto dimensions = flatten_dimensions(resolve_shape().get_dimensions().value());
+    if (drum_ring_has_seat_plate(dimensions)) {
+        return std::nullopt;
+    }
+    return "drumRing '" + resolve_shape().get_name().value_or("?") + "' states no base plate (letter M): the catalogue "
+           "ring-around-both-flanges construction has no lead exit -- the ring closes every azimuth around the "
+           "winding. A drum + ring whose leads can leave is the ring-SEATED-on-plate construction: "
+           "state the square base plate side M (and its chamfer leg N).";
+}
+
+std::optional<CoreLeadExitGeometry> Core::get_lead_exit_geometry() {
+    auto family = get_shape_family();
+    if (family != CoreShapeFamily::DRUM_RING && family != CoreShapeFamily::MOLDED) {
+        return std::nullopt;
+    }
+    auto dimensions = flatten_dimensions(resolve_shape().get_dimensions().value());
+    auto windows = get_winding_windows();
+    if (windows.empty() || !windows[0].get_height() || !windows[0].get_coordinates()) {
+        throw CoreNotProcessedException("the lead exit of a closed core needs its processed winding window");
+    }
+    // The window floor in the coil's frame: Coil lays turns in this window, centred where it is.
+    const double windowFloor = windows[0].get_coordinates().value()[1] - windows[0].get_height().value() / 2;
+    CoreLeadExitGeometry geometry;
+    if (family == CoreShapeFamily::DRUM_RING) {
+        if (auto refusal = get_lead_exit_refusal()) {
+            throw InvalidInputException(ErrorCode::INVALID_CORE_DATA, refusal.value());
+        }
+        auto [plateSide, chamferLeg] = drum_ring_seat_plate(dimensions);
+        geometry.kind = CoreLeadExitGeometry::Kind::RING_NOTCH;
+        // The plate is the bottom flange, F thick; its top face is the window floor.
+        geometry.ringNotch = CoreLeadExitGeometry::RingNotch{plateSide, chamferLeg, dimensions["F"], windowFloor,
+                                                              dimensions["J"], dimensions["K"]};
+        return geometry;
+    }
+    // Molded: the base pressing is the body below the cavity, (B - D)/2 thick; the cavity floor is
+    // the window floor.
+    geometry.kind = CoreLeadExitGeometry::Kind::LEAD_FRAME;
+    geometry.leadFrame = CoreLeadExitGeometry::LeadFrame{dimensions["A"], dimensions["C"], dimensions["E"], windowFloor,
+                                                          (dimensions["B"] - dimensions["D"]) / 2};
+    return geometry;
 }
 
 void Core::process_gap_or_throw() {

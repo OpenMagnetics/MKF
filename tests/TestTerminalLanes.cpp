@@ -26,6 +26,19 @@
 #include <fstream>
 #include <limits>
 #include <source_location>
+#include "constructive_models/Wire.h"
+#include "physical_models/MagnetizingInductance.h"
+#include "physical_models/WindingOhmicLosses.h"
+#include "processors/ResultsAnalyzer.h"
+#include "support/Painter.h"
+#include "TestingUtils.h"
+#include "json.hpp"
+#include <catch2/matchers/catch_matchers_floating_point.hpp>
+#include <catch2/generators/catch_generators.hpp>
+#include <algorithm>
+#include <numbers>
+#include <iterator>
+#include <sstream>
 
 using json = nlohmann::json;
 using OpenMagnetics::Settings;
@@ -301,3 +314,763 @@ TEST_CASE("terminal_exit_slots: two bundles that touch in the section take disjo
                           Catch::Matchers::ContainsSubstring("planned bend radius"));
     }
 }
+
+// ============================================================================================
+// ABT #1383: the terminal-lead exit of CLOSED cores (drum + ring SEATED on a base plate; molded
+// body with a lead frame), planned by Coil::plan_closed_core_lead_exits and carried on
+// ConnectionLayout (routes' exitRun, leadExitSolids) for MVB++ (#1381) to draw.
+//
+// Fixtures (generic models; each carries its provenance in magnetic.manufacturerInfo.datasheetInfo,
+// saying which values are published and which are inferred or stand-ins):
+// - lead_exit_drumring_7332.json: a 7.3 x 7.3 x 3.2 mm drum + ring part, the ring SEATED on a square
+//   base plate M = 7.3 mm (the footprint), N = 0 (no chamfer value published), B = the published
+//   3.2 mm part height with E = B - D - F and L = B - F, pads 1.5 x 1.5 mm; NiZn ferrite (the
+//   published material class; the grade is a stand-in); wire inferred from the published DCR.
+// - lead_exit_molded_4030.json: a 4.0 x 4.0 x 3.1 mm molded part, pads 3.25 x 0.82 mm; wire inferred
+//   from the published DCR; the powder material is a stand-in.
+// - lead_exit_molded_overfull.json: test geometry, not a part: 7 turns of 0.355 mm wire in the same
+//   cavity; the copper fits but the lead lane passes the body side, which keeps draw-and-report tested.
+// Both bobbins 'Dummy': a drum is its own former and a molded coil has none.
+// (Moved here from the lead-exit branch's own test file: terminal-lead tests live together.)
+namespace lead_exit_suite {
+
+using namespace MAS;
+using namespace OpenMagnetics;
+using Catch::Matchers::ContainsSubstring;
+using Catch::Matchers::WithinAbs;
+
+namespace {
+
+json load_fixture(const std::string& name) {
+    std::ifstream file(OpenMagneticsTesting::get_test_data_path(std::source_location::current(), name));
+    REQUIRE(file.good());
+    return json::parse(file);
+}
+
+double dimension(const json& fixture, const std::string& letter) {
+    return fixture["magnetic"]["core"]["functionalDescription"]["shape"]["dimensions"][letter]["nominal"].get<double>();
+}
+
+OpenMagnetics::Magnetic autocomplete(json magneticJson) {
+    OpenMagnetics::Magnetic magnetic(magneticJson);
+    return magnetic_autocomplete(magnetic);
+}
+
+double polyline_length(const std::vector<std::vector<double>>& points, size_t from = 0) {
+    double length = 0;
+    for (size_t k = from; k + 1 < points.size(); ++k) {
+        double sum = 0;
+        for (size_t axis = 0; axis < points[k].size(); ++axis) {
+            sum += std::pow(points[k + 1][axis] - points[k][axis], 2);
+        }
+        length += std::sqrt(sum);
+    }
+    return length;
+}
+
+bool is_terminal(const ConnectionRoute& route) {
+    return route.kind == ConnectionKind::TERMINAL_ENTRANCE || route.kind == ConnectionKind::TERMINAL_EXIT;
+}
+
+size_t count_kind(const ConnectionLayout& layout, LeadExitSolid::Kind kind) {
+    size_t count = 0;
+    for (const auto& solid : layout.leadExitSolids) {
+        count += solid.kind == kind;
+    }
+    return count;
+}
+
+// Every terminal route's routedLength is its in-window run plus its exit run (arc at arc length).
+void check_routed_lengths(const ConnectionLayout& layout) {
+    for (const auto& route : layout.routes) {
+        if (!is_terminal(route)) {
+            continue;
+        }
+        REQUIRE(route.exitRunArc);
+        const auto& arc = route.exitRunArc.value();
+        const double expected = polyline_length(route.waypoints) + arc.radius * std::abs(arc.toAzimuth - arc.fromAzimuth) +
+                                polyline_length(route.exitRun, 1);
+        CHECK_THAT(route.routedLength, WithinAbs(expected, 1e-8));
+    }
+}
+
+}  // namespace
+
+TEST_CASE("A drum with its ring SEATED on a square base plate lays its leads out through ring notches to its electrodes",
+          "[lead-exit][constructive-model][coil][abt1383][abt-1383]") {
+    auto& settings = Settings::GetInstance();
+    settings.reset();
+    const bool realWinding = GENERATE(false, true);
+    settings.set_coil_use_real_winding_geometry(realWinding);
+    CAPTURE(realWinding);
+    auto fixture = load_fixture("lead_exit_drumring_7332.json");
+    auto magnetic = autocomplete(fixture["magnetic"]);
+    auto& coil = magnetic.get_mutable_coil();
+    REQUIRE(coil.get_core_lead_exit());
+    REQUIRE(coil.get_core_lead_exit()->kind == CoreLeadExitGeometry::Kind::RING_NOTCH);
+
+    const auto layout = coil.get_connection_layout();
+    const auto spaces = coil.get_connection_reserved_spaces();
+    const double diameter = coil.get_wires()[0].get_maximum_outer_width();
+    const double plateTop = -dimension(fixture, "E") / 2;   // the window floor: groove E, centred
+    const double ringOuterRadius = dimension(fixture, "J") / 2;
+
+    size_t terminals = 0;
+    for (const auto& route : layout.routes) {
+        if (!is_terminal(route)) {
+            continue;
+        }
+        ++terminals;
+        const bool entrance = route.kind == ConnectionKind::TERMINAL_ENTRANCE;
+        // An edge-routed lead is on the plate-side (bottom) row: its in-window run's outer end is
+        // below the window centre. (An outermost-layer end runs radially at its own turn's height.)
+        const auto& border = entrance ? route.waypoints.front() : route.waypoints.back();
+        for (const auto& space : spaces) {
+            if (space.isTerminal && space.kind == route.kind && space.edgeDepth > 0) {
+                CHECK(border[1] < 0);
+            }
+        }
+        REQUIRE(route.exitRun.size() >= 3);
+        // Every lead passes its notch on the plate-side rows: the exit run's point just outside the
+        // ring (the start of its corner run) is below the window centre and on or above the plate.
+        std::optional<std::vector<double>> found;
+        for (const auto& point : route.exitRun) {
+            if (std::abs(std::hypot(point[0], point[2]) - (ringOuterRadius + diameter / 2)) < 1e-9) {
+                found = point;
+            }
+        }
+        REQUIRE(found);
+        const auto& throughNotch = found.value();
+        CHECK(throughNotch[1] < 0);
+        CHECK(throughNotch[1] - diameter / 2 >= plateTop - 1e-9);
+        REQUIRE(route.exitRunEnd);
+        CHECK(route.exitRunEnd.value() == ConnectionRoute::ExitRunEnd::ELECTRODE);
+        // The run ends over its own side's terminal: entrance -X, exit +X, both on the -Z half.
+        const auto& joint = route.exitRun.back();
+        CHECK((entrance ? joint[0] < -ringOuterRadius : joint[0] > ringOuterRadius));
+        CHECK(joint[2] < 0);
+        // ... lying on the plate top.
+        CHECK_THAT(joint[1], WithinAbs(plateTop + diameter / 2, 1e-9));
+    }
+    CHECK(terminals == 2);
+    check_routed_lengths(layout);
+
+    // Two notches, on the diagonals to the two connection-plane corners.
+    REQUIRE(count_kind(layout, LeadExitSolid::Kind::CORE_CUT) == 2);
+    for (const auto& solid : layout.leadExitSolids) {
+        if (solid.kind != LeadExitSolid::Kind::CORE_CUT) {
+            continue;
+        }
+        REQUIRE(solid.body.xz.size() == 4);
+        double cx = 0, cz = 0;
+        for (const auto& point : solid.body.xz) {
+            cx += point[0] / 4;
+            cz += point[1] / 4;
+        }
+        CHECK(cz < 0);
+        CHECK(solid.entrance == (cx < 0));
+        CHECK_THAT(std::abs(cx), WithinAbs(std::abs(cz), 1e-9));   // on the 45 degree diagonal
+        // Width = parallels (1) x the largest coated OD: the inner edge xz[0] -> xz[3].
+        const double width = std::hypot(solid.body.xz[3][0] - solid.body.xz[0][0], solid.body.xz[3][1] - solid.body.xz[0][1]);
+        CHECK_THAT(width, WithinAbs(1 * diameter, 1e-9));
+        // Through the ring wall: the outer edge at the ring's outer radius J/2.
+        const double outerCentre = std::hypot((solid.body.xz[1][0] + solid.body.xz[2][0]) / 2, (solid.body.xz[1][1] + solid.body.xz[2][1]) / 2);
+        CHECK_THAT(outerCentre, WithinAbs(ringOuterRadius, 1e-9));
+        // Height = the lead's height above the plate: its edge row's edgeDepth, or one OD for an
+        // outermost-layer end, which descends to lie on the plate.
+        CHECK_THAT(solid.body.y0, WithinAbs(plateTop, 1e-12));
+        std::optional<double> expectedHeight;
+        for (const auto& space : spaces) {
+            if (!space.isTerminal || space.kind != (solid.entrance ? ConnectionKind::TERMINAL_ENTRANCE : ConnectionKind::TERMINAL_EXIT)) {
+                continue;
+            }
+            if (space.edgeDepth > 0) {
+                expectedHeight = std::max(expectedHeight.value_or(0.0), space.edgeDepth);
+            }
+        }
+        CAPTURE(solid.name, solid.body.y1 - solid.body.y0);
+        CHECK_THAT(solid.body.y1 - solid.body.y0, WithinAbs(expectedHeight.value_or(diameter), 1e-9));
+        CHECK(solid.material.empty());
+    }
+    // Each end's terminal: a side leg and a mounting pad (the board face), of the sourced stock.
+    CHECK(count_kind(layout, LeadExitSolid::Kind::ELECTRODE) == 4);
+    size_t boardFaces = 0;
+    for (const auto& solid : layout.leadExitSolids) {
+        if (solid.kind == LeadExitSolid::Kind::ELECTRODE) {
+            CHECK(solid.material == "phosphor bronze");
+            boardFaces += solid.boardFace.has_value();
+        }
+    }
+    CHECK(boardFaces == 2);
+    settings.reset();
+}
+
+TEST_CASE("A bifilar drum-ring end leaves through one notch, its parallels side by side, every row on the plate",
+          "[lead-exit][constructive-model][coil][abt1383][abt-1383]") {
+    auto& settings = Settings::GetInstance();
+    settings.reset();
+    const bool realWinding = GENERATE(false, true);
+    settings.set_coil_use_real_winding_geometry(realWinding);
+    CAPTURE(realWinding);
+    auto fixture = load_fixture("lead_exit_drumring_7332.json");
+    fixture["magnetic"]["coil"]["functionalDescription"][0]["numberTurns"] = 4;
+    fixture["magnetic"]["coil"]["functionalDescription"][0]["numberParallels"] = 2;
+    // Two leads per end side by side on the 1.5 mm terminal. With the fixture's wire both the ideal
+    // and the real winding leave room for the two lanes inside the ring bore (the refusal when they
+    // do not is covered in "A closed core's lead exit refuses what it cannot build").
+    auto magnetic = autocomplete(fixture["magnetic"]);
+    auto& coil = magnetic.get_mutable_coil();
+    const auto layout = coil.get_connection_layout();
+    const auto spaces = coil.get_connection_reserved_spaces();
+    const double diameter = coil.get_wires()[0].get_maximum_outer_width();
+    // Every edge-routed terminal row is on the plate-side (bottom) edge.
+    size_t edgeRows = 0;
+    for (const auto& space : spaces) {
+        if (space.isTerminal && space.edgeDepth > 0 &&
+            (space.kind == ConnectionKind::TERMINAL_ENTRANCE || space.kind == ConnectionKind::TERMINAL_EXIT)) {
+            ++edgeRows;
+            CAPTURE(space.coordinates[1]);
+            CHECK(space.coordinates[1] < 0);
+        }
+    }
+    CHECK(edgeRows > 0);
+    size_t terminals = 0;
+    for (const auto& route : layout.routes) {
+        terminals += is_terminal(route) && !route.exitRun.empty();
+    }
+    CHECK(terminals == 4);
+    // One notch per END, two parallels wide.
+    REQUIRE(count_kind(layout, LeadExitSolid::Kind::CORE_CUT) == 2);
+    for (const auto& solid : layout.leadExitSolids) {
+        if (solid.kind != LeadExitSolid::Kind::CORE_CUT) {
+            continue;
+        }
+        CHECK_FALSE(solid.parallel.has_value());
+        const double width = std::hypot(solid.body.xz[3][0] - solid.body.xz[0][0], solid.body.xz[3][1] - solid.body.xz[0][1]);
+        CHECK_THAT(width, WithinAbs(2 * diameter, 1e-9));
+    }
+    check_routed_lengths(layout);
+    settings.reset();
+}
+
+TEST_CASE("A closed core's terminal leads are laid on the plate-side edge even where the top edge is nearer",
+          "[lead-exit][constructive-model][coil][abt1383][abt-1383]") {
+    // Four parallels: the first layer holds the bundle's first turns in slots 1-4 of 6, so the
+    // fourth parallel's entrance turn sits ABOVE the window centre and its nearest edge is the top.
+    // A closed core's leads leave over its base, so that entrance must still be laid on the bottom.
+    // The ring is widened (K 8.0, J = M 9.6 mm) and the pad made 2.0 mm wide so the four lanes and
+    // the four leads side by side fit: test geometry, not a catalogue part.
+    auto& settings = Settings::GetInstance();
+    settings.reset();
+    auto fixture = load_fixture("lead_exit_drumring_7332.json");
+    auto& winding = fixture["magnetic"]["coil"]["functionalDescription"][0];
+    winding["numberTurns"] = 3;
+    winding["numberParallels"] = 4;
+    for (auto& connection : winding["connections"]) {
+        connection["padWidth"] = 0.002;
+    }
+    auto& dimensions = fixture["magnetic"]["core"]["functionalDescription"]["shape"]["dimensions"];
+    dimensions["K"]["nominal"] = 0.008;
+    dimensions["J"]["nominal"] = 0.0096;
+    dimensions["M"]["nominal"] = 0.0096;
+    auto magnetic = autocomplete(fixture["magnetic"]);
+    auto& coil = magnetic.get_mutable_coil();
+    // The premise: some entrance turn is above the window centre.
+    bool entranceAboveCentre = false;
+    const auto layout = coil.get_connection_layout();
+    const auto turns = coil.get_turns_description().value();
+    for (const auto& route : layout.routes) {
+        if (route.kind != ConnectionKind::TERMINAL_ENTRANCE) {
+            continue;
+        }
+        for (const auto& turn : turns) {
+            if (turn.get_name() == route.toTurn && turn.get_coordinates()[1] > 0) {
+                entranceAboveCentre = true;
+            }
+        }
+    }
+    REQUIRE(entranceAboveCentre);
+    size_t edgeRows = 0;
+    for (const auto& space : coil.get_connection_reserved_spaces()) {
+        if (space.isTerminal && space.edgeDepth > 0 &&
+            (space.kind == ConnectionKind::TERMINAL_ENTRANCE || space.kind == ConnectionKind::TERMINAL_EXIT)) {
+            ++edgeRows;
+            CAPTURE(space.coordinates[1]);
+            CHECK(space.coordinates[1] < 0);
+        }
+    }
+    CHECK(edgeRows >= 4);
+    size_t exitRuns = 0;
+    for (const auto& route : layout.routes) {
+        exitRuns += is_terminal(route) && !route.exitRun.empty();
+    }
+    CHECK(exitRuns == 8);
+    settings.reset();
+}
+
+TEST_CASE("A molded body's leads are welded to lead frames under the cavity floor",
+          "[lead-exit][constructive-model][coil][abt1383][abt-1383]") {
+    auto& settings = Settings::GetInstance();
+    settings.reset();
+    const bool realWinding = GENERATE(false, true);
+    settings.set_coil_use_real_winding_geometry(realWinding);
+    CAPTURE(realWinding);
+    auto fixture = load_fixture("lead_exit_molded_4030.json");
+    auto magnetic = autocomplete(fixture["magnetic"]);
+    auto& coil = magnetic.get_mutable_coil();
+    REQUIRE(coil.get_core_lead_exit());
+    REQUIRE(coil.get_core_lead_exit()->kind == CoreLeadExitGeometry::Kind::LEAD_FRAME);
+    // The winding fits its cavity (ideal and real winding alike), so the lead exit is laid out.
+    double outerRadius = 0;
+    const auto layers = coil.get_layers_description().value();
+    for (const auto& layer : layers) {
+        outerRadius = std::max(outerRadius, layer.get_coordinates()[0] + layer.get_dimensions()[0] / 2);
+    }
+    CAPTURE(outerRadius);
+    CHECK(outerRadius <= dimension(fixture, "E") / 2);
+    const auto layout = coil.get_connection_layout();
+    const auto spaces = coil.get_connection_reserved_spaces();
+    const double diameter = coil.get_wires()[0].get_maximum_outer_width();
+    const double frameThickness = 0.000127;   // src/data/dfm_rules.json leadExitStock
+    const double bodyWidth = dimension(fixture, "A"), bodyDepth = dimension(fixture, "C");
+    const double bodyHeight = dimension(fixture, "B"), cavityHeight = dimension(fixture, "D");
+
+    size_t terminals = 0;
+    for (const auto& route : layout.routes) {
+        if (!is_terminal(route)) {
+            continue;
+        }
+        ++terminals;
+        const bool entrance = route.kind == ConnectionKind::TERMINAL_ENTRANCE;
+        // An edge-routed lead is on the plate-side (bottom) row (an outermost-layer end runs
+        // radially at its own turn's height and descends at its tab).
+        const auto& border = entrance ? route.waypoints.front() : route.waypoints.back();
+        for (const auto& space : spaces) {
+            if (space.isTerminal && space.kind == route.kind && space.edgeDepth > 0) {
+                CHECK(border[1] < 0);
+            }
+        }
+        REQUIRE(route.exitRunEnd);
+        CHECK(route.exitRunEnd.value() == ConnectionRoute::ExitRunEnd::LEAD_FRAME_WELD);
+        // Ends lying on the cavity floor, over its weld.
+        CHECK_THAT(route.exitRun.back()[1], WithinAbs(-cavityHeight / 2 + diameter / 2, 1e-9));
+    }
+    CHECK(terminals == 2);
+    check_routed_lengths(layout);
+
+    REQUIRE(count_kind(layout, LeadExitSolid::Kind::LEAD_FRAME) == 2);
+    REQUIRE(count_kind(layout, LeadExitSolid::Kind::WELD) == 2);
+    double entranceInner = std::numeric_limits<double>::lowest();
+    double exitInner = std::numeric_limits<double>::max();
+    for (const auto& solid : layout.leadExitSolids) {
+        if (solid.kind == LeadExitSolid::Kind::LEAD_FRAME) {
+            CHECK(solid.material == "phosphor bronze");
+            // In the frame plane under the cavity floor, inside the base pressing and the footprint.
+            CHECK_THAT(solid.body.y1, WithinAbs(-cavityHeight / 2, 1e-12));
+            CHECK_THAT(solid.body.y1 - solid.body.y0, WithinAbs(frameThickness, 1e-12));
+            CHECK(solid.body.y0 >= -bodyHeight / 2 - 1e-12);
+            for (const auto& point : solid.body.xz) {
+                CHECK(std::abs(point[0]) <= bodyWidth / 2 + 1e-12);
+                CHECK(std::abs(point[1]) <= bodyDepth / 2 + 1e-12);
+                if (solid.entrance) {
+                    entranceInner = std::max(entranceInner, point[0]);
+                }
+                else {
+                    exitInner = std::min(exitInner, point[0]);
+                }
+            }
+        }
+        if (solid.kind == LeadExitSolid::Kind::WELD) {
+            // One coated OD long and wide, from the frame to the top of the wire lying on it.
+            CHECK_THAT(solid.body.y0, WithinAbs(-cavityHeight / 2, 1e-12));
+            CHECK_THAT(solid.body.y1 - solid.body.y0, WithinAbs(diameter, 1e-12));
+            CHECK_THAT(solid.body.xz[1][0] - solid.body.xz[0][0], WithinAbs(diameter, 1e-12));
+            CHECK_THAT(solid.body.xz[2][1] - solid.body.xz[1][1], WithinAbs(diameter, 1e-12));
+        }
+    }
+    // The two frames stand at least one stock thickness apart.
+    CAPTURE(entranceInner, exitInner);
+    CHECK(exitInner - entranceInner >= frameThickness - 1e-12);
+    settings.reset();
+}
+
+TEST_CASE("A molded body whose lead lane passes its side draws the lead and reports it",
+          "[lead-exit][constructive-model][coil][abt1383][abt-1383]") {
+    auto& settings = Settings::GetInstance();
+    settings.reset();
+    settings.set_coil_use_real_winding_geometry(true);
+    auto fixture = load_fixture("lead_exit_molded_overfull.json");
+    auto magnetic = autocomplete(fixture["magnetic"]);
+    auto& coil = magnetic.get_mutable_coil();
+    REQUIRE(coil.get_core_lead_exit());
+    REQUIRE(coil.get_core_lead_exit()->kind == CoreLeadExitGeometry::Kind::LEAD_FRAME);
+    // Real winding lays these 7 turns of 0.355 mm in TWO layers whose outer face (1.567 mm) is
+    // inside the 1.75 mm cavity: the copper fits the body...
+    double outerRadius = 0;
+    const auto layers = coil.get_layers_description().value();
+    REQUIRE(layers.size() == 2);
+    for (const auto& layer : layers) {
+        outerRadius = std::max(outerRadius, layer.get_coordinates()[0] + layer.get_dimensions()[0] / 2);
+        CHECK(std::abs(layer.get_coordinates()[1]) + layer.get_dimensions()[1] / 2 <= dimension(fixture, "D") / 2 + 1e-12);
+    }
+    CAPTURE(outerRadius);
+    CHECK(outerRadius < dimension(fixture, "E") / 2);
+    // ... but its lead lane does not: outer face + 0.384 mm ride-over + half the 0.384 mm pitch puts
+    // the lane at 2.142 mm, 2.334 mm with its coated radius, past the body's side at 2.050 mm.
+    // Drawn and reported, never refused: each lead is laid where the plan puts it, welded to its
+    // lead frame, and the layout records one collision per lead.
+    const auto layout = coil.get_connection_layout();
+    size_t pastSide = 0;
+    for (const auto& clash : layout.leadExitClashes) {
+        if (clash.kind == LeadExitClash::Kind::LANE_PAST_BODY_SIDE) {
+            ++pastSide;
+            CHECK_THAT(clash.description, ContainsSubstring("past the body's side"));
+        }
+    }
+    CHECK(pastSide == 2);
+    size_t terminals = 0;
+    for (const auto& route : layout.routes) {
+        if (is_terminal(route)) {
+            ++terminals;
+            CHECK(route.exitRunEnd == ConnectionRoute::ExitRunEnd::LEAD_FRAME_WELD);
+        }
+    }
+    CHECK(terminals == 2);
+    // ... and analyze_results says so, once per clash.
+    const auto findings = ResultsAnalyzer::analyze_lead_exit_clashes(magnetic);
+    CHECK(findings.size() == layout.leadExitClashes.size());
+    for (const auto& finding : findings) {
+        CHECK(finding.code == ResultFindingCode::LEAD_EXIT_CLASHES);
+        CHECK_THAT(finding.message, !ContainsSubstring("ABT"));
+    }
+    settings.reset();
+}
+
+TEST_CASE("The fixtures' inferred windings reproduce their published DC resistance",
+          "[lead-exit][constructive-model][coil][abt1383][abt-1383]") {
+    // The wire of each fixture is INFERRED from its published DC resistance (see its provenance);
+    // this pins that inference: under real winding (turns as laid plus the routed terminal leads)
+    // the MKF DC resistance at 25 C lies within the published typical-to-maximum spread of the
+    // typical value. The inductance is deliberately NOT checked against the published one.
+    auto& settings = Settings::GetInstance();
+    settings.reset();
+    settings.set_coil_use_real_winding_geometry(true);
+    const std::string name = GENERATE(std::string("lead_exit_molded_4030.json"), std::string("lead_exit_drumring_7332.json"));
+    CAPTURE(name);
+    auto fixture = load_fixture(name);
+    const auto& published = fixture["magnetic"]["manufacturerInfo"]["datasheetInfo"]["electrical"][0]["dcResistance"];
+    const double typical = published["nominal"].get<double>();
+    const double maximum = published["maximum"].get<double>();
+    auto magnetic = autocomplete(fixture["magnetic"]);
+    const double resistance = WindingOhmicLosses::calculate_dc_resistance_per_winding(magnetic.get_mutable_coil(), 25)[0];
+    CAPTURE(resistance, typical, maximum);
+    CHECK_THAT(resistance, WithinAbs(typical, maximum - typical));
+    settings.reset();
+}
+
+TEST_CASE("A catalogue drumRing (no base plate M) has no lead exit, and says so",
+          "[lead-exit][constructive-model][coil][abt1383][abt-1383]") {
+    auto& settings = Settings::GetInstance();
+    settings.reset();
+    auto fixture = load_fixture("lead_exit_drumring_7332.json");
+    fixture["magnetic"]["core"]["functionalDescription"]["shape"] = "DR 5.3x3.6 + RIS 7.3x3.5x5.7";
+    // Autocomplete and the magnetics stay as they were for a catalogue part...
+    auto magnetic = autocomplete(fixture["magnetic"]);
+    CHECK_FALSE(magnetic.get_mutable_coil().get_core_lead_exit());
+    // ... and laying its leads out is refused, naming why.
+    REQUIRE_THROWS_WITH(magnetic.get_mutable_coil().get_connection_layout(), ContainsSubstring("has no lead exit"));
+    REQUIRE_THROWS_WITH(magnetic.get_mutable_core().get_lead_exit_geometry(), ContainsSubstring("ring-around-both-flanges"));
+}
+
+// Alf, 2026-10-26: laying out a catalogue drumRing's leads stays refused (get_connection_layout throws),
+// but analyze_results checks the core for its base plate M BEFORE any lead judgement lays the leads out,
+// and reports the part's leads as not modelled instead of throwing.
+TEST_CASE("A catalogue drumRing under real winding: analyze_results reports its leads as not laid out, and does not throw",
+          "[lead-exit][constructive-model][coil][abt1383][abt-1383]") {
+    auto& settings = Settings::GetInstance();
+    settings.reset();
+    settings.set_coil_use_real_winding_geometry(true);
+    auto fixture = load_fixture("lead_exit_drumring_7332.json");
+    fixture["magnetic"]["core"]["functionalDescription"]["shape"] = "DR 5.3x3.6 + RIS 7.3x3.5x5.7";
+    auto magnetic = autocomplete(fixture["magnetic"]);
+    REQUIRE(magnetic.get_mutable_coil().is_real_winding_blocking_applied());
+    REQUIRE(magnetic.get_mutable_coil().get_turns_description());
+    // Laying the leads out is still refused...
+    REQUIRE_THROWS_WITH(magnetic.get_mutable_coil().get_connection_layout(), ContainsSubstring("has no lead exit"));
+    // ... and analyze_results says so in one finding instead of throwing it.
+    OpenMagnetics::Mas mas;
+    mas.set_magnetic(magnetic);
+    std::vector<ResultFinding> findings;
+    REQUIRE_NOTHROW(findings = ResultsAnalyzer::analyze_results(mas));
+    size_t notLaidOut = 0;
+    for (const auto& finding : findings) {
+        CAPTURE(finding.message);
+        CHECK(finding.code != ResultFindingCode::LEAD_EXIT_CLASHES);
+        if (finding.code == ResultFindingCode::LEAD_ROUTE_NOT_MODELLED) {
+            ++notLaidOut;
+            CHECK_THAT(finding.message, ContainsSubstring("states no base plate (letter M)"));
+            CHECK_THAT(finding.message, !ContainsSubstring("ABT"));
+        }
+    }
+    CHECK(notLaidOut == 1);
+    settings.reset();
+}
+
+// Alf, 2026-10-26: painting a catalogue drumRing (no base plate M) under real winding paints its core,
+// bobbin and turns, and no terminal leads: the part states no lead exit, so its leads have no route.
+TEST_CASE("A catalogue drumRing under real winding paints its core, bobbin and turns without leads, and does not throw",
+          "[lead-exit][constructive-model][coil][painter][abt1383][abt-1383]") {
+    auto& settings = Settings::GetInstance();
+    settings.reset();
+    settings.set_coil_use_real_winding_geometry(true);
+    auto fixture = load_fixture("lead_exit_drumring_7332.json");
+    fixture["magnetic"]["core"]["functionalDescription"]["shape"] = "DR 5.3x3.6 + RIS 7.3x3.5x5.7";
+    auto magnetic = autocomplete(fixture["magnetic"]);
+    REQUIRE(magnetic.get_mutable_coil().is_real_winding_blocking_applied());
+    REQUIRE(magnetic.get_mutable_coil().get_turns_description());
+    const size_t turns = magnetic.get_mutable_coil().get_turns_description()->size();
+    auto outFile = std::filesystem::path{std::source_location::current().file_name()}.parent_path().append("..").append("output");
+    std::filesystem::create_directories(outFile);
+    outFile.append("Test_Lead_Exit_Catalogue_DrumRing_Painted.svg");
+    std::filesystem::remove(outFile);
+    Painter painter(outFile);
+    REQUIRE_NOTHROW(painter.paint_magnetic(magnetic));
+    painter.export_svg();
+    REQUIRE(std::filesystem::exists(outFile));
+    std::ifstream svgFile(outFile);
+    const std::string svg((std::istreambuf_iterator<char>(svgFile)), std::istreambuf_iterator<char>());
+    CHECK_THAT(svg, ContainsSubstring("ferrite"));
+    CHECK_THAT(svg, ContainsSubstring("bobbin"));
+    CHECK_THAT(svg, ContainsSubstring("copper"));
+    for (size_t turn = 0; turn < turns; ++turn) {
+        CAPTURE(turn);
+        CHECK_THAT(svg, ContainsSubstring(magnetic.get_mutable_coil().get_turns_description().value()[turn].get_name()));
+    }
+    CHECK_THAT(svg, !ContainsSubstring("class=\"connection_terminal\""));
+    settings.reset();
+}
+
+TEST_CASE("A closed core's lead exit refuses what it cannot build",
+          "[lead-exit][constructive-model][coil][abt1383][abt-1383]") {
+    auto& settings = Settings::GetInstance();
+    settings.reset();
+    SECTION("no pad data on the winding's connections") {
+        auto fixture = load_fixture("lead_exit_drumring_7332.json");
+        fixture["magnetic"]["coil"]["functionalDescription"][0].erase("connections");
+        REQUIRE_THROWS_WITH(autocomplete(fixture["magnetic"]).get_mutable_coil().get_connection_layout(),
+                            ContainsSubstring("padWidth and padDepth"));
+    }
+    SECTION("the lead frame is thicker than the molded body's base") {
+        auto fixture = load_fixture("lead_exit_molded_4030.json");
+        // Base (B - D)/2 = 0.1 mm, under the 0.127 mm sourced frame stock.
+        fixture["magnetic"]["core"]["functionalDescription"]["shape"]["dimensions"]["B"]["nominal"] = 0.0023;
+        REQUIRE_THROWS_WITH(autocomplete(fixture["magnetic"]).get_mutable_coil().get_connection_layout(),
+                            ContainsSubstring("thicker than the molded body's base"));
+    }
+    settings.reset();
+}
+
+namespace {
+
+// The leads of a drum-ring part are drawn to their electrodes; returns how many terminal routes there are.
+size_t check_leads_drawn_to_electrodes(const ConnectionLayout& layout) {
+    size_t terminals = 0;
+    for (const auto& route : layout.routes) {
+        if (!is_terminal(route)) {
+            continue;
+        }
+        ++terminals;
+        CHECK(route.exitRunEnd == ConnectionRoute::ExitRunEnd::ELECTRODE);
+        CHECK(route.exitRun.size() >= 2);
+        CHECK(route.exitRunArc);
+    }
+    return terminals;
+}
+
+size_t count_ring_bore_clashes(const ConnectionLayout& layout) {
+    size_t pastBore = 0;
+    for (const auto& clash : layout.leadExitClashes) {
+        if (clash.kind == LeadExitClash::Kind::LANE_PAST_RING_BORE) {
+            ++pastBore;
+            CHECK_THAT(clash.description, ContainsSubstring("past the ring bore"));
+        }
+    }
+    return pastBore;
+}
+
+}  // namespace
+
+TEST_CASE("A drum-ring lead lane that passes the ring bore is drawn and reported",
+          "[lead-exit][constructive-model][coil][abt1383][abt-1383]") {
+    auto& settings = Settings::GetInstance();
+    settings.reset();
+    SECTION("the band between the winding and the ring bore is too narrow for the lane") {
+        settings.set_coil_use_real_winding_geometry(false);
+        auto fixture = load_fixture("lead_exit_drumring_7332.json");
+        // 10 turns of 0.355 mm wire (0.384 mm pitch), ideal winding: two layers whose outer face is at
+        // 2.017 mm. The lane sits at 2.592 mm (outer face + 0.384 mm ride-over + half its pitch) and
+        // with its 0.192 mm bend reaches 2.784 mm, past a ring bore brought in to K/2 = 2.675 mm.
+        auto& winding = fixture["magnetic"]["coil"]["functionalDescription"][0];
+        winding["wire"] = "Round 0.355 - Grade 1";
+        winding["numberTurns"] = 10;
+        winding["numberParallels"] = 1;
+        fixture["magnetic"]["core"]["functionalDescription"]["shape"]["dimensions"]["K"]["nominal"] = 0.00535;
+        auto magnetic = autocomplete(fixture["magnetic"]);
+        ConnectionLayout layout;
+        REQUIRE_NOTHROW(layout = magnetic.get_mutable_coil().get_connection_layout());
+        CHECK(check_leads_drawn_to_electrodes(layout) == 2);
+        CHECK(count_ring_bore_clashes(layout) == 2);
+    }
+    SECTION("a bifilar end's two lanes and bend do not fit inside the ring bore under real winding") {
+        settings.set_coil_use_real_winding_geometry(true);
+        auto fixture = load_fixture("lead_exit_drumring_7332.json");
+        // 4 bifilar turns of 0.315 mm wire (0.341 mm pitch): real winding lays the wires in three
+        // layers with an outer face at 2.274 mm. The outer lane of an end sits at 2.787 mm and with
+        // its 0.328 mm bend reaches 3.115 mm, past the 2.85 mm ring bore: one clash per lead.
+        auto& winding = fixture["magnetic"]["coil"]["functionalDescription"][0];
+        winding["wire"] = "Round 0.315 - Grade 1";
+        winding["numberTurns"] = 4;
+        winding["numberParallels"] = 2;
+        auto magnetic = autocomplete(fixture["magnetic"]);
+        REQUIRE(magnetic.get_mutable_coil().is_real_winding_blocking_applied());
+        ConnectionLayout layout;
+        REQUIRE_NOTHROW(layout = magnetic.get_mutable_coil().get_connection_layout());
+        CHECK(check_leads_drawn_to_electrodes(layout) == 4);
+        CHECK(count_ring_bore_clashes(layout) == 4);
+    }
+    settings.reset();
+}
+
+TEST_CASE("A seated drumRing closes its bottom through the seat joint, not a radial clearance",
+          "[lead-exit][constructive-model][core][abt1383][abt-1383]") {
+    auto& settings = Settings::GetInstance();
+    settings.reset();
+    auto fixture = load_fixture("lead_exit_drumring_7332.json");
+    OpenMagnetics::Core seated(fixture["magnetic"]["core"]);
+    auto gapping = seated.get_functional_description().get_gapping();
+    REQUIRE(gapping.size() == 2);
+    // Top: the radial clearance (K - A)/2 across the top flange; bottom: the residual seat joint.
+    const auto& top = gapping[0].get_coordinates().value()[1] > 0 ? gapping[0] : gapping[1];
+    const auto& seat = gapping[0].get_coordinates().value()[1] > 0 ? gapping[1] : gapping[0];
+    CHECK_THAT(top.get_length(), WithinAbs((dimension(fixture, "K") - dimension(fixture, "A")) / 2, 1e-12));
+    CHECK_THAT(seat.get_length(), WithinAbs(Constants().residualGap, 1e-15));
+    CHECK_THAT(seat.get_area().value(), WithinAbs(std::numbers::pi / 4 * (std::pow(dimension(fixture, "J"), 2) - std::pow(dimension(fixture, "K"), 2)), 1e-9));
+    // The envelope is the square plate.
+    CHECK_THAT(seat.get_coordinates().value()[1], WithinAbs(-dimension(fixture, "B") / 2 + dimension(fixture, "F"), 1e-12));
+    auto processed = seated.get_processed_description().value();
+    CHECK_THAT(processed.get_width(), WithinAbs(dimension(fixture, "M"), 1e-12));
+    CHECK_THAT(processed.get_depth(), WithinAbs(dimension(fixture, "M"), 1e-12));
+    // Magnetically: the seat joint (Constants::residualGap across the ring annulus) replaces the
+    // bottom flange's radial clearance, so the seated part's inductance is the higher one. Like for
+    // like: the same drum and ring letters in the catalogue construction (no plate; the ring spans
+    // both flanges, L = B).
+    auto seatedMagnetic = autocomplete(fixture["magnetic"]);
+    auto catalogueFixture = fixture;
+    auto& catalogueDimensions = catalogueFixture["magnetic"]["core"]["functionalDescription"]["shape"]["dimensions"];
+    catalogueDimensions.erase("M");
+    catalogueDimensions.erase("N");
+    catalogueDimensions["L"]["nominal"] = dimension(fixture, "B");
+    auto catalogueMagnetic = autocomplete(catalogueFixture["magnetic"]);
+    const double seatedInductance = MagnetizingInductance().calculate_inductance_from_number_turns_and_gapping(seatedMagnetic)
+                                        .get_magnetizing_inductance().get_nominal().value();
+    const double catalogueInductance = MagnetizingInductance().calculate_inductance_from_number_turns_and_gapping(catalogueMagnetic)
+                                           .get_magnetizing_inductance().get_nominal().value();
+    CHECK(std::isfinite(seatedInductance));
+    CHECK(seatedInductance > catalogueInductance);
+    // A plate that does not carry its ring is refused.
+    auto small = fixture["magnetic"]["core"];
+    small["functionalDescription"]["shape"]["dimensions"]["M"]["nominal"] = 0.0070;
+    REQUIRE_THROWS_WITH(OpenMagnetics::Core(small), ContainsSubstring("must carry the ring"));
+    // Chamfers that leave no corner outside the ring are refused.
+    auto chamfered = fixture["magnetic"]["core"];
+    chamfered["functionalDescription"]["shape"]["dimensions"]["N"]["nominal"] = 0.0022;
+    REQUIRE_THROWS_WITH(OpenMagnetics::Core(chamfered), ContainsSubstring("no corner area"));
+}
+
+// The lane round the winding clears MKF's OWN ride-over. On the seated drumRing 7332 fixture a return
+// is laid under the outer layer (a Z dragback: 7 + 2 turns), so the outer face as wound stands one
+// ride (one OD) further out than the layers' outer face; a consumer lifting the attached turn's end
+// by that ride must still find the lead one coated diameter outside it. Before the lane took the
+// ride, exitRun[0] sat ~3 um outside the lifted attach.
+TEST_CASE("A closed core's lead lane clears the ride-over MKF's own returns impose on the winding's outer face",
+          "[lead-exit][constructive-model][coil][abt1383][abt-1383]") {
+    auto& settings = Settings::GetInstance();
+    settings.reset();
+    const bool realWinding = GENERATE(false, true);
+    settings.set_coil_use_real_winding_geometry(realWinding);
+    CAPTURE(realWinding);
+    auto fixture = load_fixture("lead_exit_drumring_7332.json");
+    auto magnetic = autocomplete(fixture["magnetic"]);
+    auto& coil = magnetic.get_mutable_coil();
+    REQUIRE(coil.get_core_lead_exit());
+    REQUIRE(coil.get_core_lead_exit()->kind == CoreLeadExitGeometry::Kind::RING_NOTCH);
+    const auto layout = coil.get_connection_layout();
+    const double diameter = coil.get_wires()[0].get_maximum_outer_width();
+    double windingOuterRadius = std::numeric_limits<double>::lowest();
+    const auto layers = coil.get_layers_description().value();
+    for (const auto& layer : layers) {
+        windingOuterRadius = std::max(windingOuterRadius, layer.get_coordinates()[0] + layer.get_dimensions()[0] / 2);
+    }
+    const auto turns = coil.get_turns_description().value();
+    size_t terminals = 0;
+    for (const auto& route : layout.routes) {
+        if (!is_terminal(route)) {
+            continue;
+        }
+        ++terminals;
+        const bool entrance = route.kind == ConnectionKind::TERMINAL_ENTRANCE;
+        CAPTURE(entrance, route.side);
+        const double ride = layout.ride_at(windingOuterRadius, route.side);
+        CAPTURE(ride, windingOuterRadius, diameter);
+        REQUIRE(ride > 0);   // anti-vacuous: this fixture's lanes DO have a ride to clear
+        REQUIRE(route.exitRunRide);
+        CHECK_THAT(route.exitRunRide.value(), WithinAbs(ride, 1e-12));
+        REQUIRE(route.exitRunArc);
+        CHECK(route.exitRunArc->radius >= windingOuterRadius + ride + diameter / 2 - 1e-9);
+        const std::string turnName = entrance ? route.toTurn : route.fromTurn;
+        std::optional<double> attachedRadius;
+        for (const auto& turn : turns) {
+            if (turn.get_name() == turnName) {
+                attachedRadius = turn.get_coordinates()[0];
+            }
+        }
+        REQUIRE(attachedRadius);
+        REQUIRE(route.exitRun.size() >= 1);
+        const double startRadius = std::hypot(route.exitRun[0][0], route.exitRun[0][2]);
+        CAPTURE(attachedRadius.value(), startRadius);
+        CHECK(startRadius - (attachedRadius.value() + ride) >= diameter - 1e-9);
+    }
+    CHECK(terminals == 2);
+    settings.reset();
+}
+
+TEST_CASE("A molded body whose turns share one layer has no ride for its lead lane to clear",
+          "[lead-exit][constructive-model][coil][abt1383][abt-1383]") {
+    auto& settings = Settings::GetInstance();
+    settings.reset();
+    const bool realWinding = GENERATE(false, true);
+    settings.set_coil_use_real_winding_geometry(realWinding);
+    CAPTURE(realWinding);
+    auto fixture = load_fixture("lead_exit_molded_4030.json");
+    auto magnetic = autocomplete(fixture["magnetic"]);
+    auto& coil = magnetic.get_mutable_coil();
+    REQUIRE(coil.get_core_lead_exit());
+    REQUIRE(coil.get_core_lead_exit()->kind == CoreLeadExitGeometry::Kind::LEAD_FRAME);
+    const auto layout = coil.get_connection_layout();
+    // No return lays a lane (no Z dragback, no edge continuation), so nothing rides over anything.
+    CHECK(layout.rideLevels.empty());
+    size_t terminals = 0;
+    for (const auto& route : layout.routes) {
+        CHECK(route.kind != ConnectionKind::Z_DRAGBACK);
+        CHECK(route.kind != ConnectionKind::EDGE_CONTINUATION);
+        if (!is_terminal(route)) {
+            continue;
+        }
+        ++terminals;
+        REQUIRE(route.exitRunRide);
+        CHECK(route.exitRunRide.value() == 0);
+    }
+    CHECK(terminals == 2);
+    settings.reset();
+}
+}  // namespace lead_exit_suite

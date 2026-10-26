@@ -1239,7 +1239,8 @@ static std::vector<ConnectionReservedSpace> toroidal_connection_reserved_spaces(
 }
 
 std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces(
-    std::vector<ConnectionRoute>* routesOut) {
+    std::vector<ConnectionRoute>* routesOut, std::vector<LeadExitSolid>* leadExitSolidsOut, bool planLeadExit,
+    std::vector<LeadExitClash>* leadExitClashesOut) {
     // Model (first approximation, to be validated): each winding's wire routes through its
     // conduction layers in electrical (wound) order. The lead between two electrically-consecutive
     // layers of the same winding reserves one wire-thick rectangle on every conduction layer it
@@ -2048,8 +2049,14 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces(
         double bendRadius;                // the route's plannedBendRadius (ABT #1296)
     };
     std::vector<PendingPinLead> pendingPinLeads;
+    // Every terminal route's reservation (the rectangle whose routedLength carries the
+    // lead's copper), so the closed-core lead exit can add its run to it, pins or not.
+    std::map<size_t, size_t> terminalSpaceIndexByRoute;
     auto deferPinLeg = [&](size_t routesBefore, size_t spaceIndex, const std::string& windingName, int64_t parallel,
                            bool isEntrance, double borderLayerAxis, double borderTurnAxis, double diameter) {
+        if (routes.size() == routesBefore + 1) {
+            terminalSpaceIndexByRoute[routes.size() - 1] = spaceIndex;
+        }
         auto found = terminalPinByConductor.find({windingName, parallel, isEntrance});
         if (found == terminalPinByConductor.end()) {
             return;
@@ -2854,6 +2861,15 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces(
                             std::abs(exitCrossStepDyByWindingParallel.at(key)) <= crossWindow;
                         atTop = serpentine ? !lastStepAtTop : lastStepAtTop;
                     }
+                }
+                if (_coreLeadExit) {
+                    // A CLOSED core's leads leave over its base (the drum-ring's plate,
+                    // the molded body's lead frame under the cavity floor), so every terminal lead
+                    // is laid on the PLATE-SIDE (bottom) edge, whatever the nearest edge or the
+                    // travel direction would say. The entrance's edge feeds back below, so the next
+                    // wind starts the winding at the plate. Coil::plan_closed_core_lead_exits
+                    // refuses a lead whose stub to that edge would cut its own layer's turns.
+                    atTop = false;
                 }
                 if (!entrance && std::getenv("MKF_BLOCKING_DIAG")) {
                     const std::string exitLayerDiag =
@@ -3915,9 +3931,14 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces(
     // share copper. The exit's ride-over lift is MKF's own: the ride levels the routes just
     // recorded impose at the exit radius, on the lead's face (the same levels get_connection_layout
     // hands to MVB++).
-    if (!pendingPinLeads.empty()) {
-        ConnectionLayout rides;
+    // The closed core's lead exit clears the same ride levels, so they are computed once
+    // for both (only when either needs them: wind()'s fixpoint layouts plan neither).
+    const bool planClosedCoreLeadExit = _coreLeadExit && planLeadExit;
+    ConnectionLayout rides;
+    if (!pendingPinLeads.empty() || planClosedCoreLeadExit) {
         rides.rideLevels = compute_ride_levels(routes);
+    }
+    if (!pendingPinLeads.empty()) {
         std::vector<PinLeadRequest> requests;
         for (const auto& pending : pendingPinLeads) {
             PinLeadRequest request;
@@ -3965,6 +3986,20 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces(
             space.routedLength = roundFloat(space.routedLength.value() + pinLeg.length, 9);
         }
     }
+    // A CLOSED core's lead exit -- after the exit slots (each lead's x on the connection
+    // plane is where its exit run starts) and the pin runs (a closed core's leads end on its own
+    // electrodes / lead frame, never on bobbin pins; planning both is refused inside).
+    if (planClosedCoreLeadExit) {
+        std::vector<LeadExitClash> leadExitClashes;
+        auto leadExitSolids = plan_closed_core_lead_exits(routes, spaces, terminalSpaceIndexByRoute, rides.rideLevels,
+                                                          leadExitClashes);
+        if (leadExitSolidsOut != nullptr) {
+            *leadExitSolidsOut = std::move(leadExitSolids);
+        }
+        if (leadExitClashesOut != nullptr) {
+            *leadExitClashesOut = std::move(leadExitClashes);
+        }
+    }
     if (routesOut != nullptr) {
         *routesOut = std::move(routes);
     }
@@ -3972,8 +4007,13 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces(
 }
 
 ConnectionLayout Coil::get_connection_layout() {
+    if (_coreLeadExitRefusal) {
+        // The core closes every azimuth around the winding and has no lead exit.
+        throw InvalidInputException(ErrorCode::INVALID_CORE_DATA,
+            "The terminal leads cannot be laid out: " + _coreLeadExitRefusal.value());
+    }
     ConnectionLayout layout;
-    get_connection_reserved_spaces(&layout.routes);
+    get_connection_reserved_spaces(&layout.routes, &layout.leadExitSolids, true, &layout.leadExitClashes);
 
     // THE BUMPS (ABT #685). A route that lays a LANE — a return the wire must climb back along —
     // displaces every turn at or outside its destination radius on the same face, because the lane
@@ -4096,7 +4136,7 @@ std::map<std::string, std::pair<uint64_t, uint64_t>> Coil::compute_connection_bl
     // superseded), so their squeezes carry real corridor depths; only the adjacent-layer Z
     // diagonal (which names no layer) reserves nothing.
     std::map<std::string, std::pair<double, double>> maxRunDepth;  // layer -> {top, bottom}
-    for (const auto& space : get_connection_reserved_spaces()) {
+    for (const auto& space : get_connection_reserved_spaces(nullptr, nullptr, false)) {
         if (space.layer.empty()) {
             continue;
         }
@@ -5622,7 +5662,9 @@ void Coil::charge_tangent_departures() {
         return;
     }
     std::vector<ConnectionRoute> routes;
-    get_connection_reserved_spaces(&routes);
+    // A closed core's lead exit is not planned here: this runs inside wind() and reads
+    // only the tangent departures, which lie in the window; the exit is planned for consumers.
+    get_connection_reserved_spaces(&routes, nullptr, false);
     auto turns = get_turns_description().value();
     bool changed = false;
     for (const auto& route : routes) {
@@ -6919,7 +6961,7 @@ std::map<std::string, uint64_t> Coil::align_blocked_ring_turns(bool forceSpreadB
         // "spill" path) instead of being reported as solved.
         ringDeficitSlots.clear();
         auto turns = get_turns_description().value();
-        auto spaces = get_connection_reserved_spaces();
+        auto spaces = get_connection_reserved_spaces(nullptr, nullptr, false);
 
         // Ring membership (turns are cartesian at this point) and mean ring radius.
         std::map<std::string, std::vector<size_t>> ringTurnIndexes;
@@ -7693,7 +7735,7 @@ void Coil::apply_connection_reserved_space() {
     if (resolve_bobbin().get_winding_window_shape() == WindingWindowShape::ROUND) {
         return;
     }
-    auto spaces = get_connection_reserved_spaces();
+    auto spaces = get_connection_reserved_spaces(nullptr, nullptr, false);
     if (spaces.empty()) {
         return;
     }
@@ -14097,6 +14139,13 @@ std::vector<Coil::LeadCollisionJudgement> Coil::judge_lead_collisions() {
     return leads;
 }
 
+std::vector<LeadExitClash> Coil::judge_lead_exit_clashes() {
+    if (!_coreLeadExit || !get_turns_description()) {
+        return {};
+    }
+    return get_connection_layout().leadExitClashes;
+}
+
 std::vector<Coil::UnmodelledLeadJudgement> Coil::judge_unmodelled_tangent_leads() {
     std::vector<UnmodelledLeadJudgement> leads;
     if (!is_real_winding_blocking_applied() || !get_turns_description()) {
@@ -14532,7 +14581,9 @@ std::vector<CopperOverlap> Coil::judge_copper_overlaps() {
         return overlaps;
     }
     std::vector<ConnectionRoute> routes;
-    const auto spaces = get_connection_reserved_spaces(&routes);
+    // The in-window lead copper only: a closed core's exit run lies outside the window
+    // and its plan checks its own clearances.
+    const auto spaces = get_connection_reserved_spaces(&routes, nullptr, false);
     auto leadName = [](const ConnectionRoute& route) {
         const bool entrance = route.kind == ConnectionKind::TERMINAL_ENTRANCE;
         return std::string(entrance ? "entrance" : "exit") + " lead of '" + (entrance ? route.toTurn : route.fromTurn) + "'";
@@ -17645,11 +17696,27 @@ bool Coil::wind_by_rectangular_layers() {
                         // crammed along the layers and the wind fails: say so with the numbers.
                         const double layerThickness = sections[sectionIndex].get_layers_orientation() == WindingOrientation::OVERLAPPING ? layerWidth : layerHeight;
                         const size_t acrossAxis = sections[sectionIndex].get_layers_orientation() == WindingOrientation::OVERLAPPING ? 0 : 1;
+                        // Under real winding the count laid out includes the crossing stations each layer
+                        // adds (RealWindingCrossingBump): name them apart from the declared turns.
+                        uint64_t declaredTurnsInSection = 0;
+                        for (size_t parallelIndex = 0; parallelIndex < get_number_parallels(windingIndex); ++parallelIndex) {
+                            declaredTurnsInSection += round(totalParallelsProportionInSection[parallelIndex] *
+                                                            get_number_turns_for_winding_style(windingIndex));
+                        }
+                        const bool hasStations = physicalTurnsInSection > declaredTurnsInSection;
                         std::ostringstream shortfall;
                         shortfall << std::fixed << std::setprecision(3) << "section '" << sections[sectionIndex].get_name() << "' needs "
-                                  << minimumNumberLayerNeeded << " layers of up to " << turnsPerSizedLayer << " turns ("
-                                  << minimumNumberLayerNeeded * layerThickness * 1000 << " mm) for its " << physicalTurnsInSection
-                                  << " turns, and it is " << sections[sectionIndex].get_dimensions()[acrossAxis] * 1000
+                                  << minimumNumberLayerNeeded << " layers of up to " << turnsPerSizedLayer
+                                  << (hasStations ? " wire cross-sections (" : " turns (")
+                                  << minimumNumberLayerNeeded * layerThickness * 1000 << " mm) for its ";
+                        if (hasStations) {
+                            shortfall << physicalTurnsInSection << " wire cross-sections (" << declaredTurnsInSection << " turns and "
+                                      << physicalTurnsInSection - declaredTurnsInSection << " crossing stations)";
+                        }
+                        else {
+                            shortfall << physicalTurnsInSection << " turns";
+                        }
+                        shortfall << ", and it is " << sections[sectionIndex].get_dimensions()[acrossAxis] * 1000
                                   << " mm across, room for " << maximumNumberLayersFittingInSection;
                         _wholeLayerShortfall = shortfall.str();
                     }

@@ -247,12 +247,17 @@ MagnetizingInductanceOutput ReluctanceModel::get_gapping_reluctance(const Core& 
         if (isDrumRing) {
             drumRingCore = core;
         }
+        // A drumRing whose ring is SEATED on a square base plate (letter M) closes its
+        // bottom through an axial joint across the ring annulus, not a radial clearance: that one
+        // gap is a plain (residual) joint, and only the top flange keeps the annular model.
+        bool isSeatedDrumRing = isDrumRing && drum_ring_has_seat_plate(flatten_dimensions(drumRingCore->resolve_shape().get_dimensions().value()));
         for (const auto& gap : gapping) {
             // ABT #368: drumRing structural clearances get the dedicated annular model — the
             // generic ones assume winding-window escape walls and (rectangular branch) fringe
             // the circumferential ends of a section that is actually a closed loop.
-            auto gapReluctance = isDrumRing ? get_annular_clearance_gap_reluctance(drumRingCore.value(), gap, magneticFluxDensitySaturation)
-                                            : get_gap_reluctance(gap, magneticFluxDensitySaturation);
+            const bool seatJoint = isSeatedDrumRing && (*gap.get_coordinates())[1] < 0;
+            auto gapReluctance = (isDrumRing && !seatJoint) ? get_annular_clearance_gap_reluctance(drumRingCore.value(), gap, magneticFluxDensitySaturation)
+                                                             : get_gap_reluctance(gap, magneticFluxDensitySaturation);
             auto gapColumnIndex = core.find_closest_column_index_by_coordinates(gap.get_coordinates().value());
             reluctancePerGap.push_back(gapReluctance);
             if (static_cast<size_t>(gapColumnIndex) != mainColumnIndex) {

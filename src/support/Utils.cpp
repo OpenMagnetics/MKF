@@ -1013,6 +1013,11 @@ std::vector<std::string> get_shape_family_dimensions(CoreShapeFamily family, std
     std::vector<std::string> distinctDimensions;
     if (!familySubtype) {
         distinctDimensions = get_core_shape_family_required_dimensions(family);
+        // And the letters the geometry reads when present (drumRing's base plate M/N),
+        // so a custom shape can state them.
+        for (const auto& optional : get_core_shape_family_optional_dimensions(family)) {
+            distinctDimensions.push_back(optional);
+        }
     }
 
     // Plus whatever the published shapes additionally carry. These are real: some are optional
@@ -3722,6 +3727,22 @@ Magnetic magnetic_autocomplete(Magnetic magnetic, json configuration, std::optio
         magnetic.get_mutable_coil().set_core_columns(magnetic.get_mutable_core().get_processed_description()->get_columns());
         // ABT #1487 (R3): and the core itself, for the room its outline leaves around the build.
         magnetic.get_mutable_coil().set_core_geometry(magnetic.get_mutable_core());
+    }
+    // A CLOSED core (drum + seated ring, molded body) has no free azimuth for the
+    // terminal leads; its lead exit is part of its construction. Handed to the coil BEFORE wind(),
+    // so the leads are laid on the plate-side edge and the reservations carry their runs.
+    // A catalogue drumRing (no base plate M) has NO lead exit: the coil carries that refusal and
+    // Coil::get_connection_layout -- the 3D/route contract -- throws it. Autocomplete itself, the
+    // magnetics and the in-window reservations are untouched, as they were before, so a catalogue
+    // drumRing part keeps its inductance and losses; only drawing its leads is refused.
+    if (magnetic.get_mutable_core().get_processed_description()) {
+        auto& autocompletedCore = magnetic.get_mutable_core();
+        if (auto refusal = autocompletedCore.get_lead_exit_refusal()) {
+            magnetic.get_mutable_coil().set_core_lead_exit_refusal(refusal.value());
+        }
+        else {
+            magnetic.get_mutable_coil().set_core_lead_exit(autocompletedCore.get_lead_exit_geometry());
+        }
     }
 
     // ABT #646: real winding is a LAYOUT setting, not a drawing one — wind() reserves the

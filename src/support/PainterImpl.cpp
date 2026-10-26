@@ -460,6 +460,11 @@ void Painter::paint_coil_connections(Magnetic magnetic) {
     if (reservedSpaces.empty()) {
         return;
     }
+    // A core that encloses the winding but states no lead exit (a catalogue drumRing: no base plate M)
+    // gives its terminal leads no route (Coil::get_connection_layout refuses them): checked from the
+    // core's own dimensions, its terminal leads are not painted; the in-window transitions are.
+    OpenMagnetics::Core core = magnetic.get_core();
+    const bool terminalLeadsHaveNoRoute = core.get_lead_exit_refusal().has_value();
     auto shapes = _root.add_child<SVG::Group>();
     // Two translucent colours: inter-layer / inter-section transitions vs entrance/exit terminal
     // leads. Transparency lets overlapping leads and the turns beneath them stay visible.
@@ -492,6 +497,9 @@ void Painter::paint_coil_connections(Magnetic magnetic) {
         // out of this XY drawing plane — so it must not be painted here (a dedicated YZ view is a
         // separate future feature).
         if (space.plane == RoutePlane::FRONT_YZ) {
+            continue;
+        }
+        if (space.isTerminal && terminalLeadsHaveNoRoute) {
             continue;
         }
         std::string cssClassName = space.isTerminal ? "connection_terminal" : "connection_transition";

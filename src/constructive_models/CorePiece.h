@@ -296,6 +296,14 @@ std::vector<CoreShapeFamily> get_supported_core_shape_families();
  * @throws std::runtime_error if the family has no declaration.
  */
 std::vector<std::string> get_core_shape_family_required_dimensions(CoreShapeFamily family);
+// Letters a family READS when present but does not require (drumRing's base plate M
+// and its chamfer leg N). Empty for a family with none.
+std::vector<std::string> get_core_shape_family_optional_dimensions(CoreShapeFamily family);
+// The drumRing ring-SEATED-on-plate construction: true when the
+// shape states a base plate side M. drum_ring_seat_plate returns {M, N} checked (M >= J, the
+// chamfered corners reach beyond the ring) and throws otherwise, and when there is no M.
+bool drum_ring_has_seat_plate(std::map<std::string, double> dimensions);
+std::pair<double, double> drum_ring_seat_plate(std::map<std::string, double> dimensions);
 
 /**
  * The family the engine models a shape as. Differs from the declared family only for pure

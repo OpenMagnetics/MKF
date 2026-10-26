@@ -20,6 +20,19 @@
 
 namespace OpenMagnetics {
 
+namespace {
+
+// A core that encloses the winding but states no lead exit (a catalogue drumRing: no base plate M)
+// gives its terminal leads no route: Coil::get_connection_layout throws that refusal. Every judgement
+// that lays the leads out checks this FIRST, from the core's own dimensions, and does not lay them
+// out; analyze_unmodelled_leads reports it.
+std::optional<std::string> core_lead_exit_refusal(const Magnetic& magnetic) {
+    OpenMagnetics::Core core = magnetic.get_core();
+    return core.get_lead_exit_refusal();
+}
+
+}  // namespace
+
 std::string to_string(ResultFindingCode code) {
     switch (code) {
         case ResultFindingCode::CORE_SATURATES: return "CORE_SATURATES";
@@ -36,6 +49,7 @@ std::string to_string(ResultFindingCode code) {
         case ResultFindingCode::LEADS_COLLIDE: return "LEADS_COLLIDE";
         case ResultFindingCode::TURNS_OUTSIDE_WINDOW: return "TURNS_OUTSIDE_WINDOW";
         case ResultFindingCode::TURN_OUTLINES_NOT_EVALUABLE: return "TURN_OUTLINES_NOT_EVALUABLE";
+        case ResultFindingCode::LEAD_EXIT_CLASHES: return "LEAD_EXIT_CLASHES";
         case ResultFindingCode::EDGEWISE_BEND_BELOW_COATING_MANDREL: return "EDGEWISE_BEND_BELOW_COATING_MANDREL";
     }
     throw InvalidInputException(ErrorCode::INVALID_INPUT, "Unknown result finding code " + std::to_string(static_cast<int>(code)));
@@ -568,6 +582,10 @@ std::vector<ResultFinding> ResultsAnalyzer::analyze_lead_collisions(const Magnet
         return format_significant(metres * 1000, 3);
     };
     std::vector<ResultFinding> findings;
+    if (core_lead_exit_refusal(magnetic)) {
+        // No lead is laid out, so none crosses a turn; analyze_unmodelled_leads reports why.
+        return findings;
+    }
     for (const auto& lead : coil.judge_lead_collisions()) {
         const auto worst = std::max_element(lead.collisions.begin(), lead.collisions.end(),
                                             [](const LeadTurnCollision& a, const LeadTurnCollision& b) { return a.overlap < b.overlap; });
@@ -595,6 +613,17 @@ std::vector<ResultFinding> ResultsAnalyzer::analyze_unmodelled_leads(const Magne
         return format_significant(metres * 1000, 3);
     };
     std::vector<ResultFinding> findings;
+    if (auto refusal = core_lead_exit_refusal(magnetic)) {
+        // The leads are judged only where real winding lays them out, as every lead judgement below.
+        if (coil.is_real_winding_blocking_applied() && coil.get_turns_description()) {
+            ResultFinding finding;
+            finding.code = ResultFindingCode::LEAD_ROUTE_NOT_MODELLED;
+            finding.message = "Warning: the terminal leads of this coil are not laid out: " + refusal.value() +
+                              " Its magnetics are computed; no lead route, lead collision or lead bend is judged.";
+            findings.push_back(finding);
+        }
+        return findings;
+    }
     for (const auto& lead : coil.judge_unmodelled_tangent_leads()) {
         std::string message = "The " + describe_lead_for_people(coil, lead.leadName) + " is planned for a " +
                               millimetres(lead.plannedBendRadius) + " mm bend, which does not fit on the " +
@@ -727,6 +756,20 @@ std::vector<ResultFinding> ResultsAnalyzer::analyze_copper_overlaps(const Magnet
     return findings;
 }
 
+std::vector<ResultFinding> ResultsAnalyzer::analyze_lead_exit_clashes(const Magnetic& magnetic) {
+    // A copy: judging resolves the coil's bobbin and column frames, and the magnetic is const here.
+    OpenMagnetics::Coil coil = magnetic.get_coil();
+    std::vector<ResultFinding> findings;
+    for (const auto& clash : coil.judge_lead_exit_clashes()) {
+        ResultFinding finding;
+        finding.code = ResultFindingCode::LEAD_EXIT_CLASHES;
+        finding.message = "Warning: winding '" + clash.winding + "' has its closed-core lead exit drawn where its copper "
+                          "collides: " + clash.description + ". The coil is drawn as planned; the lead collides there.";
+        findings.push_back(finding);
+    }
+    return findings;
+}
+
 std::vector<ResultFinding> ResultsAnalyzer::analyze_turns_outside_window(const Magnetic& magnetic) {
     // A copy: judging resolves the coil's bobbin, and the magnetic is const here.
     OpenMagnetics::Coil coil = magnetic.get_coil();
@@ -776,7 +819,12 @@ std::vector<ResultFinding> ResultsAnalyzer::analyze_winding_bends(const Magnetic
     // the same way, never turned into a finding.
     coil.refuse_turns_bent_tighter_than_the_wire_allows();
     const auto judgement = coil.judge_corners_against_wire_flexibility();
-    const auto leadJudgement = coil.judge_leads_against_wire_flexibility();
+    // The leads are judged only when the core gives them a route (analyze_unmodelled_leads reports
+    // a core that does not); the turns always are.
+    std::vector<WindingLeadsBelowFlexibility> leadJudgement;
+    if (!core_lead_exit_refusal(magnetic)) {
+        leadJudgement = coil.judge_leads_against_wire_flexibility();
+    }
 
     // Three significant figures in mm, as every finding's numbers (ABT #2001).
     auto millimetres = [](double metres) {
@@ -938,6 +986,9 @@ std::vector<ResultFinding> ResultsAnalyzer::analyze_results(const Mas& mas) {
         findings.push_back(finding);
     }
     for (auto& finding : analyze_turns_outside_window(mas.get_magnetic())) {
+        findings.push_back(finding);
+    }
+    for (auto& finding : analyze_lead_exit_clashes(mas.get_magnetic())) {
         findings.push_back(finding);
     }
     return findings;

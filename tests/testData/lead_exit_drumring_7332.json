@@ -1,0 +1,220 @@
+{
+ "inputs": {
+  "designRequirements": {
+   "name": "SMD drum inductor with ferrite ring 7.3x7.3x3.2 mm, 4.7 uH, buck 12 V -> 3.3 V",
+   "magnetizingInductance": {
+    "nominal": 4.7e-06,
+    "minimum": 3.76e-06,
+    "maximum": 5.64e-06
+   },
+   "turnsRatios": [],
+   "topology": "buckConverter"
+  },
+  "operatingPoints": [
+   {
+    "name": "Full load",
+    "conditions": {
+     "ambientTemperature": 40
+    },
+    "excitationsPerWinding": [
+     {
+      "name": "Primary",
+      "frequency": 500000.0,
+      "current": {
+       "processed": {
+        "label": "triangular",
+        "peakToPeak": 1.018,
+        "offset": 1.74,
+        "dutyCycle": 0.275
+       }
+      },
+      "voltage": {
+       "processed": {
+        "label": "rectangular",
+        "peakToPeak": 12,
+        "offset": 0,
+        "dutyCycle": 0.275
+       }
+      }
+     }
+    ]
+   }
+  ]
+ },
+ "magnetic": {
+  "core": {
+   "functionalDescription": {
+    "type": "pieceAndPlate",
+    "material": "4F1",
+    "shape": {
+     "magneticCircuit": "closed",
+     "type": "custom",
+     "family": "drumRing",
+     "aliases": [],
+     "name": "DR 5.3x3.2 + ring 7.3x2.65x5.7 seated on a 7.3 mm base plate",
+     "dimensions": {
+      "A": {
+       "nominal": 0.0053
+      },
+      "B": {
+       "nominal": 0.0032
+      },
+      "C": {
+       "nominal": 0.0025
+      },
+      "D": {
+       "nominal": 0.00055
+      },
+      "E": {
+       "nominal": 0.0021
+      },
+      "F": {
+       "nominal": 0.00055
+      },
+      "J": {
+       "nominal": 0.0073
+      },
+      "K": {
+       "nominal": 0.0057
+      },
+      "L": {
+       "nominal": 0.00265
+      },
+      "M": {
+       "nominal": 0.0073
+      },
+      "N": {
+       "nominal": 0.0
+      }
+     }
+    },
+    "gapping": [],
+    "numberStacks": 1
+   }
+  },
+  "coil": {
+   "bobbin": "Dummy",
+   "functionalDescription": [
+    {
+     "name": "Primary",
+     "numberTurns": 9,
+     "numberParallels": 1,
+     "isolationSide": "primary",
+     "wire": "Round 0.25 - Grade 1",
+     "connections": [
+      {
+       "type": "smt",
+       "end": "start",
+       "direction": "input",
+       "padWidth": 0.0015,
+       "padDepth": 0.0015
+      },
+      {
+       "type": "smt",
+       "end": "finish",
+       "direction": "output",
+       "padWidth": 0.0015,
+       "padDepth": 0.0015
+      }
+     ]
+    }
+   ]
+  },
+  "manufacturerInfo": {
+   "name": "OpenMagnetics",
+   "description": "Generic model of a 7.3 x 7.3 x 3.2 mm shielded drum + ring power inductor, 4.7 uH. Footprint, height, inductance, DC resistance, core material class and pads are published values of such a part; the drum/ring proportions, the winding and the ferrite grade are not (see provenance).",
+   "datasheetInfo": {
+    "part": {
+     "description": "shielded drum + ring power inductor, 7.3 x 7.3 x 3.2 mm case, NiZn ferrite",
+     "shielded": true
+    },
+    "electrical": [
+     {
+      "subtype": "inductor",
+      "inductance": {
+       "nominal": 4.7e-06,
+       "minimum": 3.76e-06,
+       "maximum": 5.64e-06
+      },
+      "dcResistance": {
+       "nominal": 0.033,
+       "maximum": 0.035
+      }
+     }
+    ],
+    "mechanical": {
+     "length": {
+      "nominal": 0.0073,
+      "maximum": 0.0076
+     },
+     "width": {
+      "nominal": 0.0073,
+      "maximum": 0.0076
+     },
+     "height": {
+      "nominal": 0.0032,
+      "maximum": 0.0035
+     },
+     "mounting": "smt"
+    },
+    "provenance": [
+     {
+      "source": "manufacturerParametric",
+      "sourceName": "published parametric catalogue record of a 7.3 x 7.3 x 3.2 mm drum + ring power inductor, 4.7 uH",
+      "retrievedDate": "2026-09-24",
+      "fields": [
+       "electrical.inductance (4.7 uH +-20%)",
+       "electrical.dcResistance (33 mOhm typ, 35 max)",
+       "mechanical (7.3 x 7.3 mm, 7.6 max; height 3.2 mm, 3.5 max)",
+       "part.description (core material class NiZn)",
+       "core shape B = part height, J = M = footprint side"
+      ]
+     },
+     {
+      "source": "manufacturerDatasheet",
+      "sourceName": "published datasheet of the same family (bottom view)",
+      "retrievedDate": "2026-09-24",
+      "fields": [
+       "coil connections padWidth / padDepth 1.5 x 1.5 mm (terminal size)"
+      ]
+     },
+     {
+      "source": "derived",
+      "derivation": "E = B - D - F (drum convention D + E + F == B) and L = B - F (the seated ring reaches from the plate top to the top of the part), with B the published 3.2 mm part height.",
+      "retrievedDate": "2026-09-24",
+      "fields": [
+       "core shape E",
+       "core shape L"
+      ]
+     },
+     {
+      "source": "derived",
+      "derivation": "Wire INFERRED, not published: with the 9 turns held, the existing MAS round wire whose MKF-computed DC resistance at 25 C (WindingOhmicLosses::calculate_dc_resistance_per_winding, real winding geometry: turns as laid plus the routed terminal leads) is nearest the published 33 mOhm typical; 'Round 0.25 - Grade 1' gives 33.72 mOhm (29.75 mOhm with the idealised winding, no leads). The winding's inductance is NOT used in the inference.",
+      "retrievedDate": "2026-09-24",
+      "fields": [
+       "coil.functionalDescription[0].wire"
+      ]
+     },
+     {
+      "source": "manual",
+      "derivation": "NOT published: numberTurns 9, the drum flanges (A 5.3 mm, D = F = 0.55 mm), post C 2.5 mm, ring bore K 5.7 mm and plate chamfer N 0 are the earlier corpus fixture's assumptions, kept unchanged.",
+      "retrievedDate": "2026-09-24",
+      "fields": [
+       "coil.functionalDescription[0].numberTurns",
+       "core shape A, C, D, F, K, N"
+      ]
+     },
+     {
+      "source": "manual",
+      "derivation": "STAND-IN: the family's published data gives the core material class (NiZn) but no permeability or grade; the MAS power-application NiZn ferrite '4F1' stands in. Inductance computed with it is not a prediction of the real part and is not tuned to the published 4.7 uH.",
+      "retrievedDate": "2026-09-24",
+      "fields": [
+       "core.functionalDescription.material"
+      ]
+     }
+    ]
+   }
+  }
+ },
+ "outputs": []
+}

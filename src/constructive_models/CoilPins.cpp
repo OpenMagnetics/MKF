@@ -577,6 +577,12 @@ double Coil::lead_ramp_length(double stubHeight, double governingRadius) {
     return std::numbers::pi * std::sqrt(stubHeight * governingRadius / 2);
 }
 
+// The same segment-to-segment distance, for the closed-core lead exit
+// (CoilLeadExit.cpp), which checks its runs against each other exactly as the pin runs are.
+double lead_polyline_distance(const std::vector<std::vector<double>>& a, const std::vector<std::vector<double>>& b) {
+    return polyline_distance(a, b);
+}
+
 int64_t Coil::pin_wrap_turns() {
     static const int64_t wrapTurns = [] {
         auto fs = cmrc::dfmData::get_filesystem();

@@ -16,6 +16,39 @@ using json = nlohmann::json;
 
 namespace OpenMagnetics {
 
+// Where the terminal leads of a CLOSED core leave it, in the construction the
+// manufacturers use (Alf, 2026-09-24). A core whose ferrite closes all the way around the winding
+// has no free azimuth for a lead, so the lead exit is part of the core's construction:
+//   RING_NOTCH  drum + ring SEATED on a square base plate: the wire ends
+//               leave through notches at the ring's foot and run over the plate's corner areas
+//               to electrodes on the plate.
+//   LEAD_FRAME  molded body: the coil ends are welded to a metal
+//               lead frame pressed into the base of the body, which carries the current to the
+//               terminal pads on the side and bottom faces.
+// Every length is metres. Axial coordinates are in the COIL's frame (turn axis y, the winding
+// window centred on y = 0), the frame Coil lays its turns and routes in.
+struct CoreLeadExitGeometry {
+    enum class Kind { RING_NOTCH, LEAD_FRAME };
+    struct RingNotch {
+        double plateSide;          // M, the square base plate's side
+        double plateChamferLeg;    // N, each corner's chamfer leg (0: sharp corners)
+        double plateThickness;     // F, the bottom flange the plate is
+        double plateTop;           // axial coordinate of the plate's top face = the window floor
+        double ringOuterDiameter;  // J
+        double ringInnerDiameter;  // K
+    };
+    struct LeadFrame {
+        double bodyWidth;          // A, along x (the frame's side faces are x = +-A/2)
+        double bodyDepth;          // C, along z
+        double cavityDiameter;     // E
+        double cavityFloor;        // axial coordinate of the cavity floor, -D/2
+        double basePlateThickness; // (B - D) / 2, the base pressing below the cavity
+    };
+    Kind kind;
+    std::optional<RingNotch> ringNotch;   // set for RING_NOTCH only
+    std::optional<LeadFrame> leadFrame;   // set for LEAD_FRAME only
+};
+
 class Core : public MAS::MagneticCore {
   private:
     bool _includeMaterialData = false;
@@ -126,6 +159,15 @@ class Core : public MAS::MagneticCore {
     CoreShape resolve_shape() const;
     static CoreShape resolve_shape(CoreShapeDataOrNameUnion coreShape);
     std::vector<ColumnElement> get_columns() const;
+    // The lead exit of a CLOSED core (see CoreLeadExitGeometry). nullopt for a core
+    // whose winding is not enclosed (open drums, rods, E/U/pot cores whose windows open to the
+    // side): their leads leave through the free window. RING_NOTCH for a drumRing whose ring is
+    // seated on a base plate (letter M); LEAD_FRAME for a molded body. THROWS for a drumRing with
+    // no M: the catalogue ring-around-both-flanges construction has no lead exit.
+    std::optional<CoreLeadExitGeometry> get_lead_exit_geometry();
+    // Why this core has NO lead exit although its winding is enclosed -- the message
+    // get_lead_exit_geometry throws (a drumRing with no base plate M). nullopt otherwise.
+    std::optional<std::string> get_lead_exit_refusal();
     std::vector<WindingWindowElement> get_winding_windows() const;
     WindingWindowElement get_winding_window(size_t windingWindowIndex = 0) const;
     // Index of the main column: the first CENTRAL column, or the first column if there

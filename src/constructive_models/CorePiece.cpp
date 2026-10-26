@@ -2954,12 +2954,66 @@ class CorePieceRod : public CorePiece {
 // and Core::process_data doubles nothing.
 class CorePieceDrumRing : public CorePieceDrum {
   public:
+    // Alf, 2026-09-24, decision 1: the RING-SEATED-ON-PLATE construction.
+    // The drum's bottom flange is a SQUARE base plate of side M, its corners
+    // chamfered by a leg N (N = 0: sharp corners), and the ring stands ON that plate instead of
+    // wrapping both flanges. Only this construction has a lead exit: the wire ends leave through
+    // notches at the ring's foot and run over the plate's corner areas to the electrodes. A record
+    // with no M is the catalogue ring-around-both-flanges construction, magnetically unchanged.
+    // Both letters are OPTIONAL (kFamilyOptionalDimensions); M/N are a MAS convention
+    // (docs/magnetic/core.md), not a schema change -- shape dimensions accept any letter.
+    static bool has_seat_plate(std::map<std::string, double>& dimensions) {
+        auto plate = dimensions.find("M");
+        return plate != dimensions.end() && plate->second > 0;
+    }
+
+    // The plate side M and the chamfer leg N, checked: the plate must carry the whole ring
+    // (M >= J), and the chamfers must leave each corner some plate outside the ring disc, or
+    // there is nowhere for a lead to cross the plate.
+    static std::pair<double, double> seat_plate(std::map<std::string, double>& dimensions) {
+        if (!has_seat_plate(dimensions)) {
+            throw InvalidInputException(ErrorCode::INVALID_CORE_DATA,
+                "drumRing: no base plate side M; the catalogue ring-around-both-flanges construction has no seat plate");
+        }
+        double plateSide = dimensions["M"];
+        double chamferLeg = dimensions.count("N") ? dimensions["N"] : 0.0;
+        if (chamferLeg < 0) {
+            throw InvalidInputException(ErrorCode::INVALID_CORE_DATA,
+                "drumRing: base plate chamfer leg N (" + std::to_string(chamferLeg) + ") cannot be negative");
+        }
+        if (plateSide < dimensions["J"]) {
+            throw InvalidInputException(ErrorCode::INVALID_CORE_DATA,
+                "drumRing: base plate side M (" + std::to_string(plateSide) + ") is smaller than the ring OD J (" +
+                std::to_string(dimensions["J"]) + "); the plate must carry the ring it seats");
+        }
+        // A corner chamfered by leg N is cut along x + z = M - N, whose distance from the axis is
+        // (M - N) / sqrt(2). Beyond the ring disc (J / 2) there must be plate left at the corner.
+        double cornerReach = (plateSide - chamferLeg) / std::numbers::sqrt2;
+        if (!(cornerReach > dimensions["J"] / 2)) {
+            throw InvalidInputException(ErrorCode::INVALID_CORE_DATA,
+                "drumRing: the base plate's chamfered corners (M " + std::to_string(plateSide) + ", N " +
+                std::to_string(chamferLeg) + ") reach only " + std::to_string(cornerReach) +
+                " from the axis, not beyond the ring (J/2 = " + std::to_string(dimensions["J"] / 2) +
+                "); no corner area is left for a lead to cross");
+        }
+        return {plateSide, chamferLeg};
+    }
+
     void process_extra_data() {
         auto dimensions = flatten_dimensions(get_shape().get_dimensions().value());
         if (dimensions["K"] <= dimensions["A"]) {
             throw InvalidInputException(ErrorCode::INVALID_CORE_DATA,
                 "drumRing: ring inner diameter K (" + std::to_string(dimensions["K"]) +
                 ") must exceed the flange OD A (" + std::to_string(dimensions["A"]) + ")");
+        }
+        if (has_seat_plate(dimensions)) {
+            // Ring seated on the plate: the envelope is the square plate, and the height is the
+            // plate plus the ring standing on it (or the drum, when the ring is shorter).
+            auto [plateSide, chamferLeg] = seat_plate(dimensions);
+            set_width(plateSide);
+            set_depth(plateSide);
+            set_height(std::max(dimensions["B"], dimensions["F"] + dimensions["L"]));
+            return;
         }
         // The envelope includes the ring: J >= A always (the ring wraps the flanges).
         set_width(dimensions["J"]);
@@ -2973,6 +3027,9 @@ class CorePieceDrumRing : public CorePieceDrum {
     // get_shape_constants() just sums them, so every single-material caller is unaffected.
     std::tuple<double, double, double, double, double> get_split_constants() {
         auto dimensions = flatten_dimensions(get_shape().get_dimensions().value());
+        if (has_seat_plate(dimensions)) {
+            return get_seated_split_constants(dimensions);
+        }
         double pi = std::numbers::pi;
         double flangeRadius = dimensions["A"] / 2;
         double postRadius = dimensions["C"] / 2;
@@ -3023,6 +3080,80 @@ class CorePieceDrumRing : public CorePieceDrum {
         return {drumC1, drumC2, ringC1, ringC2, *min_element(areas.begin(), areas.end())};
     }
 
+    // The ring-SEATED-on-plate circuit (same IEC 60205 idiom as above, one path):
+    //   DRUM SIDE  post (E), the top flange spreading from the post to its rim (as before), the
+    //              base PLATE spreading from the post out to under the ring's mid-wall (the flux
+    //              no longer leaves the plate at the flange rim -- it rises into the ring seated on
+    //              it), both post corners, and the plate's radial->axial turn up into the seat.
+    //   RING SIDE  the axial annulus from the seat (the plate's top face) to the top flange's
+    //              mid-plane, and the ONE radial->axial corner at the top flange (the bottom one is
+    //              in the plate now, above). The seat itself is a gap (Core::process_gap).
+    std::tuple<double, double, double, double, double> get_seated_split_constants(std::map<std::string, double>& dimensions) {
+        seat_plate(dimensions);
+        double pi = std::numbers::pi;
+        double flangeRadius = dimensions["A"] / 2;
+        double postRadius = dimensions["C"] / 2;
+        double boreRadius = (dimensions.find("H") != dimensions.end()) ? dimensions["H"] / 2 : 0.0;
+        double grooveHeight = dimensions["E"];
+        double ringOuterRadius = dimensions["J"] / 2;
+        double ringInnerRadius = dimensions["K"] / 2;
+        double ringMeanRadius = (ringOuterRadius + ringInnerRadius) / 2;
+        double ringWall = ringOuterRadius - ringInnerRadius;
+        double topFlange = dimensions["D"];
+        double plate = dimensions["F"];
+
+        double postArea = pi * (pow(postRadius, 2) - pow(boreRadius, 2));
+        std::vector<double> areas;
+        areas.push_back(postArea);
+        double drumC1 = grooveHeight / postArea;
+        double drumC2 = grooveHeight / pow(postArea, 2);
+        // {thickness, outer radius the flux spreads to}: the top flange to its rim, the plate to
+        // under the ring's mid-wall.
+        for (auto [thickness, spreadRadius] : std::vector<std::pair<double, double>>{{topFlange, flangeRadius}, {plate, ringMeanRadius}}) {
+            drumC1 += 1.0 / (2 * pi * thickness) * log(spreadRadius / postRadius);
+            drumC2 += 1.0 / (2 * pow(pi * thickness, 2)) * (spreadRadius - postRadius) / (spreadRadius * postRadius);
+            areas.push_back(2 * pi * postRadius * thickness);
+            double s1 = postRadius - sqrt((pow(boreRadius, 2) + pow(postRadius, 2)) / 2);
+            double cornerLength = pi / 4 * (2 * s1 + thickness);
+            double cornerArea = 0.5 * (postArea + 2 * pi * postRadius * thickness);
+            areas.push_back(cornerArea);
+            drumC1 += cornerLength / cornerArea;
+            drumC2 += cornerLength / pow(cornerArea, 2);
+        }
+        double ringArea = pi * (pow(ringOuterRadius, 2) - pow(ringInnerRadius, 2));
+        {
+            // The plate's radial->axial turn up into the seat: mean of the plate's band under the
+            // ring (mid-wall circumference x plate thickness) and the seat annulus.
+            double entryArea = 2 * pi * ringMeanRadius * plate;
+            double cornerLength = pi / 4 * (ringWall / 2 + plate / 2);
+            double cornerArea = 0.5 * (entryArea + ringArea);
+            areas.push_back(cornerArea);
+            drumC1 += cornerLength / cornerArea;
+            drumC2 += cornerLength / pow(cornerArea, 2);
+        }
+
+        // Ring: from the seat (the plate's top face, F above the drum's bottom face) to the top
+        // flange's mid-plane (B - D/2), bounded by the ring's own top (F + L) when the ring is
+        // shorter than that. Heights measured from the drum's bottom face.
+        double ringLength = std::min(dimensions["F"] + dimensions["L"], dimensions["B"] - topFlange / 2) - dimensions["F"];
+        if (!(ringLength > 0)) {
+            throw InvalidInputException(ErrorCode::INVALID_CORE_DATA,
+                "drumRing: the seated ring (L " + std::to_string(dimensions["L"]) + ") does not reach the top flange");
+        }
+        double ringC1 = ringLength / ringArea;
+        double ringC2 = ringLength / pow(ringArea, 2);
+        areas.push_back(ringArea);
+        {
+            double entryArea = 2 * pi * ringInnerRadius * topFlange;
+            double cornerLength = pi / 4 * (ringWall / 2 + topFlange / 2);
+            double cornerArea = 0.5 * (entryArea + ringArea);
+            areas.push_back(cornerArea);
+            ringC1 += cornerLength / cornerArea;
+            ringC2 += cornerLength / pow(cornerArea, 2);
+        }
+        return {drumC1, drumC2, ringC1, ringC2, *min_element(areas.begin(), areas.end())};
+    }
+
     std::tuple<double, double, double> get_shape_constants() {
         auto [drumC1, drumC2, ringC1, ringC2, minimumArea] = get_split_constants();
         return {drumC1 + ringC1, drumC2 + ringC2, minimumArea};
@@ -3033,6 +3164,14 @@ class CorePieceDrumRing : public CorePieceDrum {
         return std::array<double, 4>{drumC1, drumC2, ringC1, ringC2};
     }
 };
+
+bool drum_ring_has_seat_plate(std::map<std::string, double> dimensions) {
+    return CorePieceDrumRing::has_seat_plate(dimensions);
+}
+
+std::pair<double, double> drum_ring_seat_plate(std::map<std::string, double> dimensions) {
+    return CorePieceDrumRing::seat_plate(dimensions);
+}
 
 // SEMI-SHIELDED DRUM (ABT #362): a wound drum whose winding is overcoated with MAGNETIC
 // EPOXY (polymer binder + magnetic powder, mu ~3-15) acting as a low-permeability return
@@ -3675,6 +3814,21 @@ static const std::map<CoreShapeFamily, std::vector<std::string>> kFamilyRequired
     {CoreShapeFamily::HS,                  {"A", "B", "C", "D", "E", "F"}},
     {CoreShapeFamily::RS,                  {"A", "B", "C", "D", "E", "F"}},
 };
+
+// Letters a family READS when present but does not require. drumRing's M (base plate
+// side) and N (its corner chamfer leg) select the ring-seated-on-plate construction; a catalogue
+// drumRing record carries neither and keeps the ring-around-both-flanges construction.
+static const std::map<CoreShapeFamily, std::vector<std::string>> kFamilyOptionalDimensions = {
+    {CoreShapeFamily::DRUM_RING,           {"M", "N"}},
+};
+
+std::vector<std::string> get_core_shape_family_optional_dimensions(CoreShapeFamily family) {
+    auto entry = kFamilyOptionalDimensions.find(family);
+    if (entry == kFamilyOptionalDimensions.end()) {
+        return {};
+    }
+    return entry->second;
+}
 
 std::vector<std::string> get_core_shape_family_required_dimensions(CoreShapeFamily family) {
     auto entry = kFamilyRequiredDimensions.find(family);
