@@ -36,7 +36,7 @@ static bool loss_model_covers_operating_frequencies(const CoreMaterial& coreMate
         return true;
     }
     logEntry(std::string("Dropping core material '") + coreMaterial.get_name() + "' from the " + pool +
-             " candidate ranking: an operating frequency lies outside its fitted Steinmetz span", "CoreAdviser");
+             " candidate ranking: an operating frequency lies outside its fitted Steinmetz span", "CoreAdviser", 1);
     return false;
 }
 
@@ -67,7 +67,7 @@ std::vector<std::pair<Magnetic, double>> CoreAdviser::add_powder_materials(std::
         // a LibraryContext the preferred powder brand is usually absent.
         logEntry(std::string("No '") + settings.get_preferred_core_material_powder_manufacturer()
                  + "' powder materials in the current catalog; evaluating all available materials instead.",
-                 "CoreAdviser");
+                 "CoreAdviser", 1);
         coreMaterials = get_core_material_names(std::nullopt);
     }
     for (auto coreMaterial : coreMaterials) {
@@ -115,7 +115,7 @@ std::vector<std::pair<Magnetic, double>> CoreAdviser::add_powder_materials(std::
             // skip it loudly instead of letting one catalog gap abort the
             // whole adviser run. Named, logged, bounded scope.
             logEntry(std::string("Skipping core material '") + coreMaterial.get_name()
-                     + "' in powder candidate ranking: " + e.what(), "CoreAdviser");
+                     + "' in powder candidate ranking: " + e.what(), "CoreAdviser", 1);
             continue;
         }
         averageVolumetricCoreLosses /= inputs.get_operating_points().size();
@@ -156,7 +156,7 @@ std::vector<CoreMaterial> CoreAdviser::gather_ferrite_materials_for_application(
         // a hard gate: degrade to every material in the catalog, loudly.
         logEntry(std::string("No '") + settings.get_preferred_core_material_ferrite_manufacturer()
                  + "' ferrite materials in the current catalog; evaluating all available materials instead.",
-                 "CoreAdviser");
+                 "CoreAdviser", 1);
         coreMaterials = get_core_material_names(std::nullopt);
     }
     for (auto coreMaterial : coreMaterials) {
@@ -246,7 +246,7 @@ std::vector<std::pair<Magnetic, double>> CoreAdviser::add_ferrite_materials_by_l
             // with no usable loss model cannot compete; one catalog gap must
             // not abort the whole adviser run. Named, logged, bounded scope.
             logEntry(std::string("Skipping core material '") + coreMaterial.get_name()
-                     + "' in ferrite candidate ranking: " + e.what(), "CoreAdviser");
+                     + "' in ferrite candidate ranking: " + e.what(), "CoreAdviser", 1);
             continue;
         }
         averageVolumetricCoreLosses /= inputs.get_operating_points().size();
@@ -290,7 +290,7 @@ std::vector<std::pair<Magnetic, double>> CoreAdviser::add_ferrite_materials_by_i
             // with no complex-permeability data cannot compete on impedance;
             // one catalog gap must not abort the whole adviser run.
             logEntry(std::string("Skipping core material '") + coreMaterial.get_name()
-                     + "' in impedance candidate ranking: " + e.what(), "CoreAdviser");
+                     + "' in impedance candidate ranking: " + e.what(), "CoreAdviser", 1);
             continue;
         }
         evaluations.push_back({coreMaterial, totalComplexPermeability});

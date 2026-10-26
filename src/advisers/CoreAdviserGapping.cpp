@@ -127,7 +127,7 @@ CoreAdviser::GappingConstraints CoreAdviser::calculate_gapping_constraints(Input
             // fallback is named, logged, and bounded — not a hidden default.
             logEntry(std::string("Golden-section gap optimization failed (")
                      + e.what() + "), falling back to SIMPLE strategy for core "
-                     + core.get_name().value_or("unnamed"), "CoreAdviser");
+                     + core.get_name().value_or("unnamed"), "CoreAdviser", 1);
             constraints.optimalGap = effectiveMinGap;
         }
     } else {
@@ -384,7 +384,7 @@ void CoreAdviser::add_gapping_standard_cores(std::vector<std::pair<Magnetic, dou
                  + " maxGap=" + std::to_string(constraints.maxGap)
                  + " optGap=" + std::to_string(constraints.optimalGap)
                  + " peakI=" + std::to_string(get_peak_current(inputs)),
-                 "CoreAdviser");
+                 "CoreAdviser", 3);
 
         // Apply the optimal gap
         core.set_ground_gapping(constraints.optimalGap);
@@ -493,7 +493,7 @@ void CoreAdviser::reject_winding_killing_gaps(std::vector<std::pair<Magnetic, do
                  + std::to_string(before - kept.size())
                  + " core(s) whose finalized gap exceeded the fringing-factor limit "
                    "(winding/proximity-loss risk).",
-                 "CoreAdviser");
+                 "CoreAdviser", 1);
     }
     *magneticsWithScoring = std::move(kept);
 }
@@ -533,7 +533,7 @@ void CoreAdviser::select_inductor_turns_and_gap_by_losses(std::vector<std::pair<
     }
     logEntry("Loss-optimal inductor turns: " + std::to_string(moved) + " of " +
              std::to_string(magneticsWithScoring->size()) + " candidates moved above their saturation-floor turns, " +
-             std::to_string(failedIndexes.size()) + " dropped", "CoreAdviser");
+             std::to_string(failedIndexes.size()) + " dropped", "CoreAdviser", 3);
     for (auto it = failedIndexes.rbegin(); it != failedIndexes.rend(); ++it) {
         magneticsWithScoring->erase(magneticsWithScoring->begin() + static_cast<std::ptrdiff_t>(*it));
     }

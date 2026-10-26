@@ -254,7 +254,7 @@ std::vector<std::pair<Mas, double>> CoreAdviser::get_advised_core(Inputs inputs,
         }
         logEntry("STANDARD_CORES synthesis returned no candidates for this power design; "
                  "falling through to the AVAILABLE_CORES manufacturer catalogue "
-                 "(results are tagged to make the mode substitution explicit).", "CoreAdviser");
+                 "(results are tagged to make the mode substitution explicit).", "CoreAdviser", 1);
         if (coreDatabase.empty() && !LibraryContext::Scope::anyActive()) {
             load_cores();
         }
@@ -405,7 +405,7 @@ std::vector<std::pair<Mas, double>> CoreAdviser::get_advised_core(Inputs inputs,
             expand_magnetic_dataset_with_stacks(inputs, cores, &magnetics);
         }
 
-        logEntry("First attempt produced not enough results, so now we are searching again with " + std::to_string(magnetics.size()) + " magnetics, including up to " + std::to_string(defaults.coreAdviserMaximumNumberStacks) + " cores stacked when possible.", "CoreAdviser");
+        logEntry("First attempt produced not enough results, so now we are searching again with " + std::to_string(magnetics.size()) + " magnetics, including up to " + std::to_string(defaults.coreAdviserMaximumNumberStacks) + " cores stacked when possible.", "CoreAdviser", 2);
         // The stacked pool is up to coreAdviserMaximumNumberStacks times the single-core
         // one, so scale the score-cull by the same factor. This used to be the WHOLE pool
         // (maximumMagneticsAfterFiltering = magnetics.size()), which disabled the cull

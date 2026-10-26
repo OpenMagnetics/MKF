@@ -630,7 +630,7 @@ std::vector<std::pair<Mas, double>> CoreAdviser::filter_available_cores_power_ap
     // behavior (skip the saturation filter entirely) returned cores that can
     // saturate in hardware with no marker.
     if (magneticsWithScoring.size() == 0) {
-        logEntry("No cores found with standard filters. Retrying without intermediate pruning (keeping larger cores), saturation still enforced...", "CoreAdviser");
+        logEntry("No cores found with standard filters. Retrying without intermediate pruning (keeping larger cores), saturation still enforced...", "CoreAdviser", 2);
 
         // Stage 1: full candidate set, saturation enforced
         magneticsWithScoring = filterAreaProduct.filter_magnetics_from(*magnetics, inputs, 1.0);  // ABT #1785: no whole-dataset copy
@@ -672,7 +672,7 @@ std::vector<std::pair<Mas, double>> CoreAdviser::filter_available_cores_power_ap
             sort_magnetics_by_scoring(&pool);
             logEntry("Retry pool culled from " + std::to_string(before) + " to " +
                      std::to_string(retryCap) + " candidates, largest cores kept (the retry is "
-                     "looking for a bigger core, so the smallest cannot answer it).", "CoreAdviser");
+                     "looking for a bigger core, so the smallest cannot answer it).", "CoreAdviser", 3);
         };
         keepLargestCores(magneticsWithScoring);
 
@@ -688,7 +688,7 @@ std::vector<std::pair<Mas, double>> CoreAdviser::filter_available_cores_power_ap
         bool reducedSaturationMargin = false;
         if (magneticsWithScoring.size() == 0 && settings.get_core_adviser_saturation_margin() > 1.0) {
             double originalSaturationMargin = settings.get_core_adviser_saturation_margin();
-            logEntry("Still no cores. Relaxing saturation margin from " + std::to_string(originalSaturationMargin) + " to 1.0 (results will be tagged)...", "CoreAdviser");
+            logEntry("Still no cores. Relaxing saturation margin from " + std::to_string(originalSaturationMargin) + " to 1.0 (results will be tagged)...", "CoreAdviser", 1);
             {
                 // RAII (ABT #113 sweep): the retry filters below can throw; a
                 // manual restore would leak the relaxed 1.0 margin.
@@ -908,7 +908,7 @@ std::vector<std::pair<Mas, double>> CoreAdviser::filter_available_cores_suppress
             logEntry("Losses filter could not score any suppression candidate (no power-loss "
                      "model for impedance-characterised materials); passing " +
                          std::to_string(beforeLosses.size()) + " candidates through unscored",
-                     "CoreAdviser");
+                     "CoreAdviser", 1);
             magneticsWithScoring = std::move(beforeLosses);
         }
     }
@@ -1001,7 +1001,7 @@ std::vector<std::pair<Mas, double>> CoreAdviser::filter_standard_cores_power_app
     if (settings.get_core_adviser_enable_intermediate_pruning() && ferriteCores.size() > ferriteLimit) {
         ferriteCores.resize(ferriteLimit);
     }
-    logEntry("Ferrite cores after pruning: " + std::to_string(ferriteCores.size()), "CoreAdviser");
+    logEntry("Ferrite cores after pruning: " + std::to_string(ferriteCores.size()), "CoreAdviser", 3);
 
     // ========================================================================
     // STEP 3: Process FERRITE cores (gapped)
@@ -1156,7 +1156,7 @@ std::vector<std::pair<Mas, double>> CoreAdviser::filter_standard_cores_power_app
                  std::to_string(ferriteCores.size()) + " ferrite cores pass the filters (" + std::to_string(ferriteFirstPass) +
                  " before the walk) and " + std::to_string(results.size()) + " pass post-processing" +
                  (results.size() < maximumNumberResults ? " - fewer than requested, budget or catalogue exhausted." : "."),
-                 "CoreAdviser");
+                 "CoreAdviser", 2);
     }
 
     // ========================================================================
@@ -1257,7 +1257,7 @@ std::vector<std::pair<Mas, double>> CoreAdviser::filter_standard_cores_power_app
     post_process_and_append(powderCores, inputs, maximumNumberResults, /*withAlternativeMaterials=*/true, solvedTemperatureLimit, results);
     logEntry("Combined results: " + std::to_string(results.size()) +
              " (ferrite: " + std::to_string(ferriteResults) + " of " + std::to_string(ferriteCores.size()) +
-             ", powder: " + std::to_string(results.size() - ferriteResults) + " of " + std::to_string(powderCores.size()) + ")", "CoreAdviser");
+             ", powder: " + std::to_string(results.size() - ferriteResults) + " of " + std::to_string(powderCores.size()) + ")", "CoreAdviser", 2);
     return results;
 }
 
@@ -1326,7 +1326,7 @@ std::vector<std::pair<Mas, double>> CoreAdviser::filter_standard_cores_interfere
             logEntry("Losses filter could not score any suppression candidate (no power-loss "
                      "model for impedance-characterised materials); passing " +
                          std::to_string(beforeLosses.size()) + " candidates through unscored",
-                     "CoreAdviser");
+                     "CoreAdviser", 1);
             magneticsWithScoring = std::move(beforeLosses);
         }
     }

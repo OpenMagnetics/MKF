@@ -445,7 +445,7 @@ std::vector<std::pair<Core, double>> CoreCrossReferencer::MagneticCoreFilterCore
         logEntry("CoreCrossReferencer: reference core '" + referenceCore.get_name().value_or("?")
                      + "' has uncomputable core losses at " + std::to_string(temperature)
                      + " degC; skipping the loss dimension and cross-referencing on the remaining filters",
-                 "CoreCrossReferencer");
+                 "CoreCrossReferencer", 1);
         return *unfilteredCores;
     }
     auto referenceMaterialMagneticFluxDensitySaturationPeak = referenceCore.get_magnetic_flux_density_saturation(temperature, true);

@@ -52,7 +52,7 @@ inline void profile_mark(const std::string& label, size_t count) {
 }
 
 inline void log_stage(const std::string& stage, size_t count) {
-    logEntry("After " + stage + ": " + std::to_string(count), "CoreAdviser");
+    logEntry("After " + stage + ": " + std::to_string(count), "CoreAdviser", 3);
     profile_mark(stage, count);
 }
 
@@ -67,7 +67,7 @@ inline void log_probe(const std::string& label, size_t count = 0) {
     profile_mark(label, count);
 }
 inline void log_pruned(const std::string& stage, size_t count) {
-    logEntry("Pruned to " + std::to_string(count) + " before " + stage, "CoreAdviser");
+    logEntry("Pruned to " + std::to_string(count) + " before " + stage, "CoreAdviser", 3);
 }
 
 // Sinusoidal-excitation builder used by both add_ferrite_materials_by_losses

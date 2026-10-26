@@ -743,7 +743,7 @@ void warn_once(const CoreMaterial& coreMaterial, const std::string& message) {
     static std::set<std::string> warned;
     std::lock_guard<std::mutex> lock(warnedMutex);
     if (warned.insert(coreMaterial.get_manufacturer_info().get_name() + "/" + coreMaterial.get_name()).second) {
-        OM_WARNING(message);
+        OM_WARNING_M("ThermalResistance", message);
     }
 }
 
@@ -948,7 +948,7 @@ void warn_once_bobbin(const InsulationMaterial& material, const std::string& mes
     static std::set<std::string> warned;
     std::lock_guard<std::mutex> lock(warnedMutex);
     if (warned.insert(material.get_name()).second) {
-        OM_WARNING(message);
+        OM_WARNING_M("ThermalResistance", message);
     }
 }
 

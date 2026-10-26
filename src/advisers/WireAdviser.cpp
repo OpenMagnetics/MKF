@@ -914,19 +914,19 @@ std::vector<std::pair<Winding, double>> WireAdviser::get_advised_planar_wire(Win
                                                                                                size_t maximumNumberResults) {
     auto coilsWithScoring = create_planar_dataset(winding, section, current, temperature, numberSections);
 
-    logEntry("We start the search with " + std::to_string(coilsWithScoring.size()) + " wires");
+    logEntry("We start the search with " + std::to_string(coilsWithScoring.size()) + " wires", "", 3);
 
     coilsWithScoring = filter_by_effective_resistance(&coilsWithScoring, current, temperature);
-    logEntry("There are " + std::to_string(coilsWithScoring.size()) + " planar wires after filtering by effective resistance.");
+    logEntry("There are " + std::to_string(coilsWithScoring.size()) + " planar wires after filtering by effective resistance.", "", 3);
 
     // WA-BUG-1 FIX: guard with harmonics check (matches get_advised_wire)
     if (current.get_harmonics()) {
         coilsWithScoring = filter_by_skin_losses_density(&coilsWithScoring, current, temperature);
-        logEntry("There are " + std::to_string(coilsWithScoring.size()) + " planar wires after filtering by skin losses density.");
+        logEntry("There are " + std::to_string(coilsWithScoring.size()) + " planar wires after filtering by skin losses density.", "", 3);
     }
 
     coilsWithScoring = filter_by_proximity_factor(&coilsWithScoring, current, temperature);
-    logEntry("There are " + std::to_string(coilsWithScoring.size()) + " planar wires after filtering by proximity factor.");
+    logEntry("There are " + std::to_string(coilsWithScoring.size()) + " planar wires after filtering by proximity factor.", "", 3);
 
     break_score_ties(&coilsWithScoring);
 
@@ -956,43 +956,43 @@ std::vector<std::pair<Winding, double>> WireAdviser::get_advised_wire(std::vecto
     auto coilsWithScoring = create_dataset(winding, wires, section, current, temperature);
 
 
-    logEntry("We start the search with " + std::to_string(coilsWithScoring.size()) + " wires");
+    logEntry("We start the search with " + std::to_string(coilsWithScoring.size()) + " wires", "", 3);
     coilsWithScoring = filter_by_area_no_parallels(&coilsWithScoring, section);
-    logEntry("There are " + std::to_string(coilsWithScoring.size()) + " after filtering by area no parallels.");
+    logEntry("There are " + std::to_string(coilsWithScoring.size()) + " after filtering by area no parallels.", "", 3);
 
     if (_wireSolidInsulationRequirements) {
         coilsWithScoring = filter_by_solid_insulation_requirements(&coilsWithScoring, _wireSolidInsulationRequirements.value());
-        logEntry("There are " + std::to_string(coilsWithScoring.size()) + " after filtering by solid insulation.");
+        logEntry("There are " + std::to_string(coilsWithScoring.size()) + " after filtering by solid insulation.", "", 3);
     }
 
     auto tempCoilsWithScoring = filter_by_area_with_parallels(&coilsWithScoring, section, numberSections, false);
-    logEntry("There are " + std::to_string(tempCoilsWithScoring.size()) + " after filtering by area with parallels.");
+    logEntry("There are " + std::to_string(tempCoilsWithScoring.size()) + " after filtering by area with parallels.", "", 3);
 
     if (tempCoilsWithScoring.size() == 0) {
         coilsWithScoring = filter_by_area_with_parallels(&coilsWithScoring, section, numberSections, true);
-        logEntry("There are " + std::to_string(coilsWithScoring.size()) + " after filtering by area with parallels, allowing not fitting.");
+        logEntry("There are " + std::to_string(coilsWithScoring.size()) + " after filtering by area with parallels, allowing not fitting.", "", 3);
     }
     else{
         coilsWithScoring = tempCoilsWithScoring;
     }
 
     coilsWithScoring = filter_by_effective_resistance(&coilsWithScoring, current, temperature);
-    logEntry("There are " + std::to_string(coilsWithScoring.size()) + " after filtering by effective resistance.");
+    logEntry("There are " + std::to_string(coilsWithScoring.size()) + " after filtering by effective resistance.", "", 3);
 
     // Skin losses density filter requires harmonics data
     if (current.get_harmonics()) {
         coilsWithScoring = filter_by_skin_losses_density(&coilsWithScoring, current, temperature);
-        logEntry("There are " + std::to_string(coilsWithScoring.size()) + " after filtering by skin losses density.");
+        logEntry("There are " + std::to_string(coilsWithScoring.size()) + " after filtering by skin losses density.", "", 3);
     }
 
     coilsWithScoring = filter_by_proximity_factor(&coilsWithScoring, current, temperature);
-    logEntry("There are " + std::to_string(coilsWithScoring.size()) + " after filtering by proximity factor.");
+    logEntry("There are " + std::to_string(coilsWithScoring.size()) + " after filtering by proximity factor.", "", 3);
 
     // ABT #1177 (WP8, DFM rule R1): opt-in, default off. Prefers a wire that fills the section
     // in an even number of layers, so the winding does not end on a drag-back.
     if (Settings::GetInstance().get_wire_adviser_penalize_odd_layer_count()) {
         coilsWithScoring = filter_by_layer_parity(&coilsWithScoring, section);
-        logEntry("Scored " + std::to_string(coilsWithScoring.size()) + " wires by layer parity (DFM rule R1).");
+        logEntry("Scored " + std::to_string(coilsWithScoring.size()) + " wires by layer parity (DFM rule R1).", "", 3);
     }
 
     break_score_ties(&coilsWithScoring);

@@ -461,7 +461,7 @@ namespace OpenMagnetics {
             bool enforceStandard = (standardPass == 0);
             if (!enforceStandard && _commonWireStandard) {
                 logEntry("No wires matching the preferred wire standard in the current catalog; "
-                         "accepting every standard instead.", "CoilAdviser");
+                         "accepting every standard instead.", "CoilAdviser", 1);
             }
             for (const auto& [key, wire] : wireDatabase) {
                 // ABT #164: honour a per-call wireType constraint locally instead of
@@ -499,13 +499,13 @@ namespace OpenMagnetics {
     }
 
     std::vector<Mas> CoilAdviser::get_advised_coil(Mas mas, size_t maximumNumberResults){
-        logEntry("Starting Coil Adviser without wires", "CoilAdviser");
+        logEntry("Starting Coil Adviser without wires", "CoilAdviser", 3);
         auto wires = get_catalogue_wires();
         return get_advised_coil(&wires, mas, maximumNumberResults);
     }
 
     std::vector<Mas> CoilAdviser::get_advised_coil(std::vector<Wire>* wires, Mas mas, size_t maximumNumberResults){
-        logEntry("Starting Coil Adviser", "CoilAdviser");
+        logEntry("Starting Coil Adviser", "CoilAdviser", 3);
         // ABT #415: fresh diagnosis per call; composed into _lastNoResultsReason on an empty return.
         _diagnosisWireCandidates = 0;
         _diagnosisWindAttempts = 0;
@@ -580,7 +580,7 @@ namespace OpenMagnetics {
                 .set_section_alignment(CoilAlignment::SPREAD);
             mas.get_mutable_magnetic().get_mutable_coil()
                 .set_turns_alignment(CoilAlignment::CENTERED);
-            logEntry("CMC detected: forcing {1} repetitions, sections CONTIGUOUS + SPREAD, turns CENTERED", "CoilAdviser");
+            logEntry("CMC detected: forcing {1} repetitions, sections CONTIGUOUS + SPREAD, turns CENTERED", "CoilAdviser", 3);
         }
         if (isDmcMultiWinding) {
             // Same EMI-filter winding policy as CMC: one section per phase,
@@ -600,12 +600,12 @@ namespace OpenMagnetics {
                 mas.get_mutable_magnetic().get_mutable_coil()
                     .set_turns_alignment(CoilAlignment::CENTERED);
             }
-            logEntry("Multi-winding DMC detected: forcing {1} repetitions (no bifilar)", "CoilAdviser");
+            logEntry("Multi-winding DMC detected: forcing {1} repetitions (no bifilar)", "CoilAdviser", 3);
         }
 
         
         size_t maximumNumberResultsPerPattern = std::max(2.0, ceil(static_cast<double>(maximumNumberResults) / (patterns.size() * repetitions.size())));
-        logEntry("Trying " + std::to_string(repetitions.size()) + " repetitions and " + std::to_string(patterns.size()) + " patterns", "CoilAdviser");
+        logEntry("Trying " + std::to_string(repetitions.size()) + " repetitions and " + std::to_string(patterns.size()) + " patterns", "CoilAdviser", 3);
 
         // Early-termination cap. For multi-winding coils (Flyback, LLC,
         // Push-Pull, IBB, Vienna, Weinberg…) the patterns × repetitions ×
@@ -667,7 +667,7 @@ namespace OpenMagnetics {
                         std::move(resultsPerPattern.begin(), resultsPerPattern.end(), std::back_inserter(masesWithCoil));
                         if (masesWithCoil.size() >= earlyTerminationCap) {
                             logEntry("CoilAdviser early-terminating: " + std::to_string(masesWithCoil.size()) +
-                                     " candidates (cap=" + std::to_string(earlyTerminationCap) + ")", "CoilAdviser");
+                                     " candidates (cap=" + std::to_string(earlyTerminationCap) + ")", "CoilAdviser", 3);
                             earlyTerminated = true;
                             break;
                         }
@@ -686,7 +686,7 @@ namespace OpenMagnetics {
                     std::move(resultsPerPattern.begin(), resultsPerPattern.end(), std::back_inserter(masesWithCoil));
                     if (masesWithCoil.size() >= earlyTerminationCap) {
                         logEntry("CoilAdviser early-terminating (planar): " + std::to_string(masesWithCoil.size()) +
-                                 " candidates (cap=" + std::to_string(earlyTerminationCap) + ")", "CoilAdviser");
+                                 " candidates (cap=" + std::to_string(earlyTerminationCap) + ")", "CoilAdviser", 3);
                         earlyTerminated = true;
                         break;
                     }
@@ -818,11 +818,11 @@ namespace OpenMagnetics {
                                                                        maximumNumberResultsPerPattern, reference);
                     std::move(lateralResults.begin(), lateralResults.end(), std::back_inserter(masesWithCoil));
                 }
-                logEntry("Lateral-placement pass produced " + std::to_string(masesWithCoil.size()) + " total candidates", "CoilAdviser");
+                logEntry("Lateral-placement pass produced " + std::to_string(masesWithCoil.size()) + " total candidates", "CoilAdviser", 3);
             }
         }
 
-        logEntry("Found " + std::to_string(masesWithCoil.size()) + " magnetics", "CoilAdviser");
+        logEntry("Found " + std::to_string(masesWithCoil.size()) + " magnetics", "CoilAdviser", 3);
 
         // ABT #1176: opt-in shunt sizing, so a leakage-target filter sees the shunted candidate.
         if (settings.get_coil_adviser_size_magnetic_shunts()) {
@@ -1414,7 +1414,7 @@ namespace OpenMagnetics {
             _diagnosisWireCandidates += wireCoilPerWinding[windingIndex].size();
         }
 
-        logEntry("Trying to wind " + std::to_string(wireCoilPerWinding[0].size()) + " coil possibilities", "CoilAdviser");
+        logEntry("Trying to wind " + std::to_string(wireCoilPerWinding[0].size()) + " coil possibilities", "CoilAdviser", 3);
                     mas.get_mutable_magnetic().set_coil(coil);
 
         auto currentWireIndexPerWinding = std::vector<size_t>(numberWindings, 0);
@@ -1707,7 +1707,7 @@ namespace OpenMagnetics {
             auto reject_saturating_coil = [](Mas& woundMas, const std::string& why) {
                 logEntry("Wound coil '" + woundMas.get_mutable_magnetic().get_reference() + "' (material " +
                          woundMas.get_mutable_magnetic().get_mutable_core().resolve_material().get_name() + ", " +
-                         describe_operating_frequencies(woundMas.get_inputs()) + ") rejected: " + why, "CoilAdviser");
+                         describe_operating_frequencies(woundMas.get_inputs()) + ") rejected: " + why, "CoilAdviser", 1);
             };
             std::vector<std::pair<Mas, double>> masesWithLosses;
             std::vector<Mas> masesUnranked;
@@ -1767,7 +1767,7 @@ namespace OpenMagnetics {
                 logEntry("Wound coil '" + woundMas.get_mutable_magnetic().get_reference() + "' (material " +
                          woundMas.get_mutable_magnetic().get_mutable_core().resolve_material().get_name() + ", " +
                          describe_operating_frequencies(woundMas.get_inputs()) +
-                         ") dropped from the loss ranking: its losses could not be evaluated: " + reason, "CoilAdviser");
+                         ") dropped from the loss ranking: its losses could not be evaluated: " + reason, "CoilAdviser", 1);
             }
             if (masesWithLosses.empty()) {
                 // Nothing to rank by: the core keeps its coils in the order they were wound
@@ -1779,7 +1779,7 @@ namespace OpenMagnetics {
                               ? ", without the " + std::to_string(masesWithCoil.size() - masesUnranked.size()) +
                                     " whose core saturates"
                               : std::string()),
-                         "CoilAdviser");
+                         "CoilAdviser", 1);
                 masesWithCoil = std::move(masesUnranked);
             }
             else {
@@ -1799,7 +1799,7 @@ namespace OpenMagnetics {
         // only when it would otherwise be returned. With the setting off the returned coils are the
         // first maximumNumberResults, as before.
         masesWithCoil = select_real_windable(std::move(masesWithCoil), maximumNumberResults);
-        logEntry("Managed to wind " + std::to_string(masesWithCoil.size()) + " coils", "CoilAdviser");
+        logEntry("Managed to wind " + std::to_string(masesWithCoil.size()) + " coils", "CoilAdviser", 3);
 
         return masesWithCoil;
     }
@@ -1976,7 +1976,7 @@ namespace OpenMagnetics {
             }
         }
 
-        logEntry("Trying to wind " + std::to_string(wireCoilPerWinding[0].size()) + " coil possibilities", "CoilAdviser");
+        logEntry("Trying to wind " + std::to_string(wireCoilPerWinding[0].size()) + " coil possibilities", "CoilAdviser", 3);
         mas.get_mutable_magnetic().set_coil(coil);
 
         auto currentWireIndexPerWinding = std::vector<size_t>(numberWindings, 0);
@@ -2124,7 +2124,7 @@ namespace OpenMagnetics {
             if (!anyAdvanceable) break; // COA-BUG-1 FIX: all windings exhausted
             currentWireIndexPerWinding[lowestIndex]++;
         }
-        logEntry("Managed to wind " + std::to_string(masesWithCoil.size()) + " coils", "CoilAdviser");
+        logEntry("Managed to wind " + std::to_string(masesWithCoil.size()) + " coils", "CoilAdviser", 3);
 
         return masesWithCoil;
 

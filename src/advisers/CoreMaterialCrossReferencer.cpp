@@ -216,7 +216,7 @@ std::vector<std::pair<CoreMaterial, double>> CoreMaterialCrossReferencer::Magnet
         logEntry("CoreMaterialCrossReferencer: reference material '" + referenceCoreMaterial.get_name() +
                      "' has no Curie temperature; skipping the Curie dimension and cross-referencing on "
                      "the remaining filters",
-                 "CoreMaterialCrossReferencer");
+                 "CoreMaterialCrossReferencer", 1);
         return *unfilteredCoreMaterials;
     }
     add_scored_value("Reference", CoreMaterialCrossReferencerFilters::CURIE_TEMPERATURE, referenceCurieTemperatureWithTemperature);
@@ -356,7 +356,7 @@ std::vector<std::pair<CoreMaterial, double>> CoreMaterialCrossReferencer::Magnet
                          + referenceCoreMaterial.get_name()
                          + "' has a Steinmetz span outside every comparison frequency; skipping the "
                          "loss dimension and cross-referencing on the remaining filters",
-                     "CoreMaterialCrossReferencer");
+                     "CoreMaterialCrossReferencer", 1);
             return *unfilteredCoreMaterials;
         }
         double referenceVolumetricLossesWithTemperature = calculate_average_volumetric_losses(referenceCoreMaterial, temperature, models, comparisonFrequencies);
@@ -371,7 +371,7 @@ std::vector<std::pair<CoreMaterial, double>> CoreMaterialCrossReferencer::Magnet
                          + "' has uncomputable volumetric losses at "
                          + std::to_string(temperature) + " degC; skipping the loss "
                          "dimension and cross-referencing on the remaining filters",
-                     "CoreMaterialCrossReferencer");
+                     "CoreMaterialCrossReferencer", 1);
             return *unfilteredCoreMaterials;
         }
         add_scored_value("Reference", CoreMaterialCrossReferencerFilters::VOLUMETRIC_LOSSES, referenceVolumetricLossesWithTemperature);
@@ -475,7 +475,7 @@ std::vector<std::pair<CoreMaterial, double>> CoreMaterialCrossReferencer::Magnet
         logEntry("CoreMaterialCrossReferencer: reference material '" + referenceCoreMaterial.get_name() +
                      "' has no resistivity; skipping the resistivity dimension and cross-referencing on "
                      "the remaining filters",
-                 "CoreMaterialCrossReferencer");
+                 "CoreMaterialCrossReferencer", 1);
         return *unfilteredCoreMaterials;
     }
     double referenceResistivityWithTemperature = Core::get_resistivity(referenceCoreMaterial, temperature);
