@@ -1507,9 +1507,9 @@ std::optional<SwitchingCyclesRecord> CoreLossesModel::split_into_switching_cycle
         return std::nullopt;  // too few samples to hold that many cycles
     }
     fluxDensity = Inputs::standardize_waveform(fluxDensity, excitation.get_frequency());
-    auto fluxDensityWaveform = fluxDensity.get_waveform().value();
-    auto fluxDensityData = fluxDensityWaveform.get_data();
-    auto fluxDensityTime = fluxDensityWaveform.get_time().value();
+    const auto& fluxDensityWaveform = fluxDensity.get_waveform_ref().value();
+    const auto& fluxDensityData = fluxDensityWaveform.get_data();
+    const auto& fluxDensityTime = fluxDensityWaveform.get_time_ref().value();
     // A record spans one period of its excitation's frequency, the line frequency for a line-cycle
     // record; a record labelled with another frequency is refused, not re-read (ABT #1467).
     WaveformProcessor::check_time_axis_spans_one_period(fluxDensityTime, excitation.get_frequency());
@@ -1547,6 +1547,8 @@ std::optional<SwitchingCyclesRecord> CoreLossesModel::split_into_switching_cycle
     }
 
     SwitchingCyclesRecord record;
+    record.cycles.reserve(valleys.size());
+    record.durations.reserve(valleys.size());
     std::vector<double> envelopeTime;
     std::vector<double> envelopeFluxDensity;
     std::vector<double> envelopeMagnetizingCurrent;
@@ -1598,7 +1600,7 @@ std::optional<SwitchingCyclesRecord> CoreLossesModel::split_into_switching_cycle
             auto cycleMagnetizingCurrentData = close_loop(magnetizingCurrentData.value());
             cycle.set_magnetizing_current(make_loop_signal(time, mirrored(cycleMagnetizingCurrentData)));
         }
-        record.cycles.push_back(cycle);
+        record.cycles.push_back(std::move(cycle));
         record.durations.push_back(duration);
     }
 

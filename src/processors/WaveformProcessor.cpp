@@ -10,11 +10,13 @@
 #include <cstring>
 #include <iomanip>
 #include <limits>
+#include <list>
 #include <numeric>
 #include <optional>
 #include <sstream>
 #include <stdexcept>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 using namespace MAS;
@@ -93,39 +95,73 @@ bool same_key(const std::optional<WaveformKey>& key, const std::optional<Wavefor
     return key.has_value() == waveform.has_value() && (!key || key->matches(*waveform));
 }
 
-// Most-recent-first list of (arguments, result). Entry needs: matches(args...), bytes, value.
+// Most-recent-first list of (arguments, result), indexed by a hash of the waveform's bits so that a memo of
+// thousands of entries (the switching cycles of a line-cycle record) finds an entry without scanning them all.
+// The hash only selects candidates: an entry is returned only when match() holds, the full bitwise comparison.
+// Entry needs: bytes, value; match() tells it is the call's.
 template <typename Entry>
 struct WaveformMemo {
     size_t maximumEntries;
     size_t maximumBytes;
-    std::vector<Entry> entries;
+    std::list<std::pair<size_t, Entry>> entries;  // (hash, entry), most recent first
+    std::unordered_multimap<size_t, typename std::list<std::pair<size_t, Entry>>::iterator> index;
     size_t bytes = 0;
 
+    WaveformMemo(size_t entriesBound, size_t bytesBound) : maximumEntries(entriesBound), maximumBytes(bytesBound) {}
+
     template <typename Match>
-    const Entry* find(Match&& match) {
-        for (size_t index = 0; index < entries.size(); ++index) {
-            if (match(entries[index])) {
-                if (index > 0) {
-                    std::rotate(entries.begin(), entries.begin() + index, entries.begin() + index + 1);
-                }
-                return &entries.front();
+    const Entry* find(size_t hash, Match&& match) {
+        auto [first, last] = index.equal_range(hash);
+        for (auto candidate = first; candidate != last; ++candidate) {
+            if (match(candidate->second->second)) {
+                entries.splice(entries.begin(), entries, candidate->second);
+                return &entries.front().second;
             }
         }
         return nullptr;
     }
 
-    void insert(Entry entry) {
+    void insert(size_t hash, Entry entry) {
         if (entry.bytes > maximumBytes) {
             return;
         }
         bytes += entry.bytes;
-        entries.insert(entries.begin(), std::move(entry));
+        entries.emplace_front(hash, std::move(entry));
+        index.emplace(hash, entries.begin());
         while (entries.size() > maximumEntries || bytes > maximumBytes) {
-            bytes -= entries.back().bytes;
-            entries.pop_back();
+            auto oldest = std::prev(entries.end());
+            auto [first, last] = index.equal_range(oldest->first);
+            for (auto candidate = first; candidate != last; ++candidate) {
+                if (candidate->second == oldest) {
+                    index.erase(candidate);
+                    break;
+                }
+            }
+            bytes -= oldest->second.bytes;
+            entries.erase(oldest);
         }
     }
 };
+
+// A hash of a Waveform's data bits, for WaveformMemo's index only. (This file is also compiled by Kirchhoff against
+// its own MAS.hpp, which has no get_*_ref accessors.)
+size_t waveform_bits_hash(const Waveform& waveform) {
+    std::uint64_t hash = 0x9e3779b97f4a7c15ULL;
+    auto mix = [&hash](const std::vector<double>& values) {
+        hash ^= values.size() + 0x632be59bd9b4e019ULL + (hash << 6) + (hash >> 2);
+        // At most 256 evenly strided samples: the hash only picks candidates, and a 16k-sample record must not
+        // cost a full pass per lookup.
+        const size_t stride = values.size() > 256 ? values.size() / 256 : 1;
+        for (size_t index = 0; index < values.size(); index += stride) {
+            std::uint64_t bits;
+            std::memcpy(&bits, &values[index], sizeof(bits));
+            hash = (hash ^ bits) * 0x100000001b3ULL;
+            hash ^= hash >> 29;
+        }
+    };
+    mix(waveform.get_data());  // the data alone: get_time() returns a copy, and match() compares the time anyway
+    return static_cast<size_t>(hash);
+}
 
 struct CompressEntry {
     WaveformKey waveform;
@@ -158,6 +194,8 @@ thread_local bool compressMemoBypassed = false;
 
 // 16 MB per memo and thread: a few dozen 16k-sample line-cycle records, thousands of 128-sample periods.
 constexpr size_t kWaveformMemoBytes = size_t(16) << 20;
+// Entry bound of the memos that see every switching cycle of a line-cycle record (1077 for a 650 W PFC).
+constexpr size_t kWaveformMemoCycleEntries = 8192;
 
 } // namespace
 
@@ -452,10 +490,11 @@ double WaveformProcessor::calculate_waveform_average(const Waveform& waveform) {
 }
 
 Waveform WaveformProcessor::compress_waveform(const Waveform& waveform, std::optional<double> frequency) {
-    thread_local WaveformMemo<CompressEntry> memo{32, kWaveformMemoBytes, {}};
+    thread_local WaveformMemo<CompressEntry> memo{32, kWaveformMemoBytes};
     const bool memoized = !compressMemoBypassed;
+    const size_t hash = memoized ? waveform_bits_hash(waveform) : 0;
     if (memoized) {
-        if (auto hit = memo.find([&](const CompressEntry& entry) {
+        if (auto hit = memo.find(hash, [&](const CompressEntry& entry) {
                 return same_bits(entry.frequency, frequency) && entry.waveform.matches(waveform);
             })) {
             return hit->value;
@@ -539,7 +578,7 @@ Waveform WaveformProcessor::compress_waveform(const Waveform& waveform, std::opt
     }
     WaveformKey key(waveform);
     size_t bytes = sizeof(CompressEntry) + key.bytes() + waveform_bytes(computed);
-    memo.insert(CompressEntry{std::move(key), frequency, computed, bytes});
+    memo.insert(hash, CompressEntry{std::move(key), frequency, computed, bytes});
     return computed;
 }
 
@@ -1705,8 +1744,10 @@ bool WaveformProcessor::is_zero_harmonic(const FourierSeries& series, double lis
 }
 
 Harmonics WaveformProcessor::calculate_harmonics_data(const Waveform& waveform, double frequency, bool trimHarmonics, double harmonicAmplitudeThreshold, size_t numberPointsSampledWaveforms) {
-    thread_local WaveformMemo<HarmonicsEntry> memo{32, kWaveformMemoBytes, {}};
-    if (auto hit = memo.find([&](const HarmonicsEntry& entry) {
+    // Thousands of entries: a line-cycle record's switching cycles are transformed once per loss evaluation.
+    thread_local WaveformMemo<HarmonicsEntry> memo{kWaveformMemoCycleEntries, kWaveformMemoBytes};
+    const size_t hash = waveform_bits_hash(waveform);
+    if (auto hit = memo.find(hash, [&](const HarmonicsEntry& entry) {
             return same_bits(entry.frequency, frequency) && entry.trimHarmonics == trimHarmonics &&
                    same_bits(entry.harmonicAmplitudeThreshold, harmonicAmplitudeThreshold) &&
                    entry.numberPointsSampledWaveforms == numberPointsSampledWaveforms && entry.waveform.matches(waveform);
@@ -1761,7 +1802,7 @@ Harmonics WaveformProcessor::calculate_harmonics_data(const Waveform& waveform, 
     WaveformKey key(waveform);
     size_t bytes = sizeof(HarmonicsEntry) + key.bytes() +
                    (computed.get_amplitudes().size() + computed.get_frequencies().size()) * sizeof(double);
-    memo.insert(HarmonicsEntry{std::move(key), frequency, trimHarmonics, harmonicAmplitudeThreshold, numberPointsSampledWaveforms, computed, bytes});
+    memo.insert(hash, HarmonicsEntry{std::move(key), frequency, trimHarmonics, harmonicAmplitudeThreshold, numberPointsSampledWaveforms, computed, bytes});
     return computed;
 }
 
@@ -1779,8 +1820,9 @@ ProcessedWaveform WaveformProcessor::calculate_processed_data(SignalDescriptor e
 }
 
 ProcessedWaveform WaveformProcessor::calculate_basic_processed_data(const Waveform& waveform, size_t numberPointsSampledWaveforms, const std::optional<Waveform>& givenWaveform) {
-    thread_local WaveformMemo<BasicProcessedEntry> memo{64, kWaveformMemoBytes, {}};
-    if (auto hit = memo.find([&](const BasicProcessedEntry& entry) {
+    thread_local WaveformMemo<BasicProcessedEntry> memo{kWaveformMemoCycleEntries, kWaveformMemoBytes};
+    const size_t hash = waveform_bits_hash(waveform);
+    if (auto hit = memo.find(hash, [&](const BasicProcessedEntry& entry) {
             return entry.numberPointsSampledWaveforms == numberPointsSampledWaveforms && entry.waveform.matches(waveform) &&
                    same_key(entry.givenWaveform, givenWaveform);
         })) {
@@ -1885,7 +1927,7 @@ ProcessedWaveform WaveformProcessor::calculate_basic_processed_data(const Wavefo
         givenKey.emplace(givenWaveform.value());
     }
     size_t bytes = sizeof(BasicProcessedEntry) + key.bytes() + (givenKey ? givenKey->bytes() : 0);
-    memo.insert(BasicProcessedEntry{std::move(key), numberPointsSampledWaveforms, std::move(givenKey), computed, bytes});
+    memo.insert(hash, BasicProcessedEntry{std::move(key), numberPointsSampledWaveforms, std::move(givenKey), computed, bytes});
     return computed;
 }
 
