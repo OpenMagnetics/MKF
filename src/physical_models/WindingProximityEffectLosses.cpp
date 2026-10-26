@@ -9,6 +9,7 @@
 #include <algorithm>
 #include <cmath>
 #include <complex>
+#include <array>
 #include <mutex>
 #include <limits>
 #include <map>
@@ -115,7 +116,11 @@ std::vector<std::pair<double, double>> stadium_contour(double aspect, size_t cap
     return out;
 }
 
-double solve_exclusion_factor(double aspect, bool fieldAlongWide, size_t capPanels = 200) {
+// The exclusion factor of a stadium for each requested field direction (field along the wide axis, field
+// across it). The collocation matrices and their LU factorisation depend only on the contour, not on the
+// field direction, so they are built and factorised once and solved for each direction's right-hand side
+// separately: each direction's arithmetic is exactly that of a solve of its own.
+std::vector<double> solve_exclusion_factors(double aspect, const std::vector<bool>& fieldsAlongWide, size_t capPanels = 200) {
     const auto verts = stadium_contour(aspect, capPanels, 1.12);
     const size_t n = verts.size();
     if (n < 8) {
@@ -135,14 +140,9 @@ double solve_exclusion_factor(double aspect, bool fieldAlongWide, size_t capPane
         midX(i) = 0.5 * (p1.first + p2.first); midY(i) = 0.5 * (p1.second + p2.second);
         startX(i) = p1.first; startY(i) = p1.second;
     }
-    const double ex = fieldAlongWide ? 1.0 : 0.0;
-    const double ey = fieldAlongWide ? 0.0 : 1.0;
-
     Eigen::MatrixXd influence(n, n);
     Eigen::MatrixXd tangentialInfluence(n, n);
-    Eigen::VectorXd rhs(n);
     for (size_t i = 0; i < n; ++i) {
-        rhs(i) = -(normalX(i) * ex + normalY(i) * ey);
         for (size_t j = 0; j < n; ++j) {
             double gx, gy;
             if (i == j) {
@@ -164,14 +164,29 @@ double solve_exclusion_factor(double aspect, bool fieldAlongWide, size_t capPane
             tangentialInfluence(i, j) = gx * tangentX(i) + gy * tangentY(i);
         }
     }
-    const Eigen::VectorXd sigma = influence.partialPivLu().solve(rhs);
-    const Eigen::VectorXd induced = tangentialInfluence * sigma;
-    double integral = 0;
-    for (size_t i = 0; i < n; ++i) {
-        const double tangential = (tangentX(i) * ex + tangentY(i) * ey) + induced(i);
-        integral += tangential * tangential * length(i);
+    const Eigen::PartialPivLU<Eigen::MatrixXd> lu = influence.partialPivLu();
+    std::vector<double> factors;
+    for (bool fieldAlongWide : fieldsAlongWide) {
+        const double ex = fieldAlongWide ? 1.0 : 0.0;
+        const double ey = fieldAlongWide ? 0.0 : 1.0;
+        Eigen::VectorXd rhs(n);
+        for (size_t i = 0; i < n; ++i) {
+            rhs(i) = -(normalX(i) * ex + normalY(i) * ey);
+        }
+        const Eigen::VectorXd sigma = lu.solve(rhs);
+        const Eigen::VectorXd induced = tangentialInfluence * sigma;
+        double integral = 0;
+        for (size_t i = 0; i < n; ++i) {
+            const double tangential = (tangentX(i) * ex + tangentY(i) * ey) + induced(i);
+            integral += tangential * tangential * length(i);
+        }
+        factors.push_back(integral / aspect);   // normalised by the wide dimension (thin == 1)
     }
-    return integral / aspect;               // normalised by the wide dimension (thin == 1)
+    return factors;
+}
+
+double solve_exclusion_factor(double aspect, bool fieldAlongWide, size_t capPanels = 200) {
+    return solve_exclusion_factors(aspect, {fieldAlongWide}, capPanels).front();
 }
 
 
@@ -230,26 +245,38 @@ double stadium_exclusion_factor(double wideDimension, double thinDimension, bool
     if (aspect > kMaxAspect) {
         return renormalise * cached_direct_exclusion_factor(aspect, fieldAlongLong);
     }
-    struct Table { std::vector<double> logAspect, perpendicular, parallel; };
-    static Table table;
-    static std::once_flag built;
-    std::call_once(built, [&]() {
-        for (size_t i = 0; i < kPoints; ++i) {
-            const double la = log(kMinAspect) + double(i) / double(kPoints - 1) * (log(kMaxAspect) - log(kMinAspect));
-            table.logAspect.push_back(la);
-            table.perpendicular.push_back(solve_exclusion_factor(exp(la), false));
-            table.parallel.push_back(solve_exclusion_factor(exp(la), true));
+    // Each table point is solved the first time an aspect needs it (both field directions together, they
+    // share the solve's matrices), so a run solves only the brackets its conductors fall in; a point's
+    // value is the same solve whenever it is made.
+    struct Table {
+        std::vector<double> logAspect;
+        std::array<std::once_flag, kPoints> built;
+        std::array<double, kPoints> perpendicular, parallel;
+        Table() {
+            for (size_t i = 0; i < kPoints; ++i) {
+                logAspect.push_back(log(kMinAspect) + double(i) / double(kPoints - 1) * (log(kMaxAspect) - log(kMinAspect)));
+            }
         }
-    });
-    const auto& values = fieldAlongLong ? table.parallel : table.perpendicular;
+    };
+    static Table table;
+    auto point = [&](size_t index) {
+        std::call_once(table.built[index], [&]() {
+            const auto factors = solve_exclusion_factors(exp(table.logAspect[index]), {false, true});
+            table.perpendicular[index] = factors[0];
+            table.parallel[index] = factors[1];
+        });
+        return fieldAlongLong ? table.parallel[index] : table.perpendicular[index];
+    };
     const double la = log(aspect);
     auto upper = std::upper_bound(table.logAspect.begin(), table.logAspect.end(), la);
-    if (upper == table.logAspect.begin()) { return renormalise * values.front(); }
-    if (upper == table.logAspect.end()) { return renormalise * values.back(); }
+    if (upper == table.logAspect.begin()) { return renormalise * point(0); }
+    if (upper == table.logAspect.end()) { return renormalise * point(kPoints - 1); }
     const size_t hi = size_t(upper - table.logAspect.begin());
     const size_t lo = hi - 1;
     const double t = (la - table.logAspect[lo]) / (table.logAspect[hi] - table.logAspect[lo]);
-    return renormalise * (values[lo] + t * (values[hi] - values[lo]));
+    const double valueLo = point(lo);
+    const double valueHi = point(hi);
+    return renormalise * (valueLo + t * (valueHi - valueLo));
 }
 
 }  // namespace
