@@ -928,14 +928,28 @@ static WaveformLabel guess_sinusoidal_or_custom(const Waveform& waveform) {
         double phase = 0;
         std::vector<double> shiftedSine;
     };
-    thread_local ReferenceSine reference;
+    // The last four axes (a solve alternates between a few: the current's, the flux density's, ...), most recent first.
+    thread_local std::vector<ReferenceSine> references;
     auto sameBits = [](double a, double b) { return std::memcmp(&a, &b, sizeof(double)) == 0; };
-    const bool sameAxis = reference.numberPoints == numberPoints && reference.useTime == useTime &&
-                          reference.distinctPoints == distinctPoints && sameBits(reference.period, period) &&
-                          (!useTime || (reference.time.size() == timeOptional->size() &&
-                                        std::memcmp(reference.time.data(), timeOptional->data(), numberPoints * sizeof(double)) == 0));
+    auto isThisAxis = [&](const ReferenceSine& candidate) {
+        return candidate.numberPoints == numberPoints && candidate.useTime == useTime &&
+               candidate.distinctPoints == distinctPoints && sameBits(candidate.period, period) &&
+               (!useTime || (candidate.time.size() == timeOptional->size() &&
+                             std::memcmp(candidate.time.data(), timeOptional->data(), numberPoints * sizeof(double)) == 0));
+    };
+    auto found = std::find_if(references.begin(), references.end(), isThisAxis);
+    const bool sameAxis = found != references.end();
+    if (sameAxis) {
+        std::rotate(references.begin(), found, found + 1);
+    }
+    else {
+        if (references.size() == 4) {
+            references.pop_back();
+        }
+        references.insert(references.begin(), ReferenceSine{});
+    }
+    ReferenceSine& reference = references.front();
     if (!sameAxis) {
-        reference = ReferenceSine{};
         reference.useTime = useTime;
         reference.numberPoints = numberPoints;
         reference.distinctPoints = distinctPoints;
