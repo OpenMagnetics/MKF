@@ -172,15 +172,15 @@ double WindingSkinEffectLosses::calculate_skin_depth(const Wire& wire, double fr
     return calculate_skin_depth(wire.resolve_material(), frequency, temperature);
 };
 
-std::pair<double, std::vector<std::pair<double, double>>> WindingSkinEffectLosses::calculate_skin_effect_losses_per_meter(const Wire& wire, SignalDescriptor current, double temperature, double currentDivider, std::optional<WindingSkinEffectLossesModels> modelOverride, const std::vector<double>* currentDividerPerHarmonic) {
+std::pair<double, std::vector<std::pair<double, double>>> WindingSkinEffectLosses::calculate_skin_effect_losses_per_meter(const Wire& wire, const SignalDescriptor& current, double temperature, double currentDivider, std::optional<WindingSkinEffectLossesModels> modelOverride, const std::vector<double>* currentDividerPerHarmonic) {
     double dcResistancePerMeter = WindingOhmicLosses::calculate_dc_resistance_per_meter(wire, temperature);
 
     auto model = get_model(wire.get_type(), modelOverride);
 
-    if (!current.get_harmonics()) {
+    if (!current.get_harmonics_ref()) {
         throw InvalidInputException(ErrorCode::MISSING_DATA, "Current is missing harmonics");
     }
-    auto harmonics = current.get_harmonics().value();
+    const auto& harmonics = current.get_harmonics_ref().value();
 
     double totalSkinEffectLossesPerMeter = 0;
 

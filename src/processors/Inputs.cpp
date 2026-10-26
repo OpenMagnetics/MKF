@@ -4096,19 +4096,22 @@ double Inputs::get_switching_frequency(const OperatingPointExcitation& excitatio
     return std::round(cycleRate / frequency) * frequency;
 }
 
-double Inputs::get_magnetic_flux_density_peak(OperatingPointExcitation excitation, double switchingFrequency) {
-    auto magneticFluxDensity = excitation.get_magnetic_flux_density().value();
+double Inputs::get_magnetic_flux_density_peak(const OperatingPointExcitation& excitation, double switchingFrequency) {
+    const auto& magneticFluxDensity = excitation.get_magnetic_flux_density_ref().value();
 
-    if (!excitation.get_magnetic_flux_density()->get_harmonics() && magneticFluxDensity.get_waveform()) {
-        auto magneticFluxDensityWaveform = magneticFluxDensity.get_waveform().value();
+    // A flux density without harmonics but with a waveform is read through the harmonics of its waveform.
+    std::optional<Harmonics> waveformHarmonics;
+    const auto& harmonicsField = magneticFluxDensity.get_harmonics_ref();
+    if (!harmonicsField && magneticFluxDensity.get_waveform_ref()) {
+        const auto& magneticFluxDensityWaveform = magneticFluxDensity.get_waveform_ref().value();
         auto sampledWaveform = Inputs::calculate_sampled_waveform(magneticFluxDensityWaveform, excitation.get_frequency());
         // Harmonic k at k times the excitation frequency, as every other MKF harmonics list (ABT #1880).
-        magneticFluxDensity.set_harmonics(calculate_harmonics_data(magneticFluxDensityWaveform, sampledWaveform, excitation.get_frequency()));
-        excitation.set_magnetic_flux_density(magneticFluxDensity);
+        waveformHarmonics = calculate_harmonics_data(magneticFluxDensityWaveform, sampledWaveform, excitation.get_frequency());
     }
+    const Harmonics* harmonicsRead = harmonicsField ? &harmonicsField.value() : (waveformHarmonics ? &waveformHarmonics.value() : nullptr);
 
-    if (excitation.get_magnetic_flux_density()->get_harmonics()) {
-        auto harmonics = excitation.get_magnetic_flux_density()->get_harmonics().value();
+    if (harmonicsRead) {
+        const auto& harmonics = *harmonicsRead;
         if (harmonics.get_amplitudes().size() > 1 && harmonics.get_frequencies()[1] != switchingFrequency) {
             for (size_t harmonicIndex = 1; harmonicIndex < harmonics.get_amplitudes().size(); ++harmonicIndex) {
                 if (harmonics.get_frequencies()[harmonicIndex] == switchingFrequency) {
@@ -4118,22 +4121,25 @@ double Inputs::get_magnetic_flux_density_peak(OperatingPointExcitation excitatio
         }
     }
 
-    return magneticFluxDensity.get_processed().value().get_peak().value();
+    return magneticFluxDensity.get_processed_ref().value().get_peak().value();
 }
 
-double Inputs::get_magnetic_flux_density_peak_to_peak(OperatingPointExcitation excitation, double switchingFrequency) {
-    auto magneticFluxDensity = excitation.get_magnetic_flux_density().value();
+double Inputs::get_magnetic_flux_density_peak_to_peak(const OperatingPointExcitation& excitation, double switchingFrequency) {
+    const auto& magneticFluxDensity = excitation.get_magnetic_flux_density_ref().value();
 
-    if (!excitation.get_magnetic_flux_density()->get_harmonics() && magneticFluxDensity.get_waveform()) {
-        auto magneticFluxDensityWaveform = magneticFluxDensity.get_waveform().value();
+    // A flux density without harmonics but with a waveform is read through the harmonics of its waveform.
+    std::optional<Harmonics> waveformHarmonics;
+    const auto& harmonicsField = magneticFluxDensity.get_harmonics_ref();
+    if (!harmonicsField && magneticFluxDensity.get_waveform_ref()) {
+        const auto& magneticFluxDensityWaveform = magneticFluxDensity.get_waveform_ref().value();
         auto sampledWaveform = Inputs::calculate_sampled_waveform(magneticFluxDensityWaveform, excitation.get_frequency());
         // Harmonic k at k times the excitation frequency, as every other MKF harmonics list (ABT #1880).
-        magneticFluxDensity.set_harmonics(calculate_harmonics_data(magneticFluxDensityWaveform, sampledWaveform, excitation.get_frequency()));
-        excitation.set_magnetic_flux_density(magneticFluxDensity);
+        waveformHarmonics = calculate_harmonics_data(magneticFluxDensityWaveform, sampledWaveform, excitation.get_frequency());
     }
+    const Harmonics* harmonicsRead = harmonicsField ? &harmonicsField.value() : (waveformHarmonics ? &waveformHarmonics.value() : nullptr);
 
-    if (excitation.get_magnetic_flux_density()->get_harmonics()) {
-        auto harmonics = excitation.get_magnetic_flux_density()->get_harmonics().value();
+    if (harmonicsRead) {
+        const auto& harmonics = *harmonicsRead;
         if (harmonics.get_amplitudes().size() > 1 && harmonics.get_frequencies()[1] != switchingFrequency) {
             for (size_t harmonicIndex = 1; harmonicIndex < harmonics.get_amplitudes().size(); ++harmonicIndex) {
                 if (harmonics.get_frequencies()[harmonicIndex] == switchingFrequency) {
@@ -4143,7 +4149,7 @@ double Inputs::get_magnetic_flux_density_peak_to_peak(OperatingPointExcitation e
         }
     }
 
-    return magneticFluxDensity.get_processed().value().get_peak_to_peak().value();
+    return magneticFluxDensity.get_processed_ref().value().get_peak_to_peak().value();
 }
 
 SignalDescriptor Inputs::get_current_with_effective_maximum(size_t windingIndex) {

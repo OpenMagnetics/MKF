@@ -513,8 +513,8 @@ CoreLossesOutput CoreLosses::calculate_molded_core_losses(Core core, OperatingPo
 CoreLossesOutput CoreLosses::calculate_core_losses(Core core, OperatingPointExcitation excitation, double temperature) {
     // A record of many switching cycles (a PFC/Vienna line cycle) is priced cycle by cycle, each
     // cycle through this whole path, so the DC-bias correction reads each cycle's own DC flux (ABT #1636).
-    if (auto record = CoreLossesModel::split_into_switching_cycles(excitation)) {
-        return CoreLossesModel::combine_switching_cycles(record.value(), excitation, [&](const OperatingPointExcitation& periodicExcitation) {
+    if (auto record = CoreLossesModel::split_into_switching_cycles_shared(excitation)) {
+        return CoreLossesModel::combine_switching_cycles(*record, excitation, [&](const OperatingPointExcitation& periodicExcitation) {
             return calculate_periodic_core_losses(core, periodicExcitation, temperature);
         });
     }
@@ -571,7 +571,7 @@ std::optional<double> CoreLosses::get_temperature_factor_data_end(Core core, con
     }
     // The loops it prices, each looked up at its own switching frequency.
     std::vector<double> frequencies;
-    if (auto record = CoreLossesModel::split_into_switching_cycles(excitation)) {
+    if (auto record = CoreLossesModel::split_into_switching_cycles_shared(excitation)) {
         for (const auto& cycle : record->cycles) {
             frequencies.push_back(Inputs::get_switching_frequency(cycle));
         }
@@ -605,26 +605,34 @@ std::optional<double> CoreLosses::get_temperature_factor_data_end(Core core, con
     return dataEnd;
 }
 
-CoreLossesOutput CoreLosses::calculate_periodic_core_losses(Core core, OperatingPointExcitation excitation, double temperature) {
+CoreLossesOutput CoreLosses::calculate_periodic_core_losses(const Core& core, const OperatingPointExcitation& excitation, double temperature) {
     // Mixed-material circuit: price each material over its own volume (ABT #362).
     if (core.get_shape_family() == CoreShapeFamily::DRUM_SEMISHIELDED) {
         return calculate_semishielded_core_losses(core, excitation, temperature);
     }
     // A moulded body pressed from more than one powder: each region over its own volume (ABT #1002).
-    if (core.get_shape_family() == CoreShapeFamily::MOLDED && core.resolve_region_materials().size() > 1) {
-        return calculate_molded_core_losses(core, excitation, temperature);
+    // resolve_region_materials writes its resolution into the core it is called on: a copy, as before.
+    std::optional<Core> moldedCore;
+    if (core.get_shape_family() == CoreShapeFamily::MOLDED) {
+        moldedCore = core;
+        if (moldedCore->resolve_region_materials().size() > 1) {
+            return calculate_molded_core_losses(*moldedCore, excitation, temperature);
+        }
     }
+    const Core& pricedCore = moldedCore ? *moldedCore : core;
 
-    throw_if_above_curie_temperature(core.resolve_material(), temperature);
-    auto coreLossesModelForMaterial = get_core_losses_model(core.resolve_material(), excitation);
+    std::optional<CoreMaterial> materialStorage;
+    const auto& material = pricedCore.resolve_material_unstored(materialStorage);
+    throw_if_above_curie_temperature(material, temperature);
+    auto coreLossesModelForMaterial = get_core_losses_model(material, excitation);
 
-    CoreLossesOutput coreLossesOutput = coreLossesModelForMaterial->compute_core_losses(core, excitation, temperature);
+    CoreLossesOutput coreLossesOutput = coreLossesModelForMaterial->compute_core_losses(pricedCore, excitation, temperature);
 
     // Apply the DPLE DC-bias correction to EVERY model (ABT #118: Roshen was exempted
     // as "handles DC bias natively", but its path never consumes the DC offset, so
     // biased Roshen results were inconsistent with every other model's).
     {
-        double dpleFactor = calculate_dple_factor(core.resolve_material(), excitation, temperature);
+        double dpleFactor = calculate_dple_factor(material, excitation, temperature);
         if (dpleFactor > 1.0) {
             coreLossesOutput.set_core_losses(coreLossesOutput.get_core_losses() * dpleFactor);
             if (coreLossesOutput.get_volumetric_losses()) {
@@ -646,23 +654,23 @@ CoreLossesOutput CoreLosses::calculate_periodic_core_losses(Core core, Operating
         throw InvalidInputException(ErrorCode::CALCULATION_NAN_RESULT,
             "Core losses model '" + coreLossesOutput.get_method_used() +
             "' produced non-finite result (" + std::to_string(cl) +
-            ") for material '" + core.get_material_name() +
+            ") for material '" + pricedCore.get_material_name() +
             "' at temperature " + std::to_string(temperature) + " C");
     }
 
     return coreLossesOutput;
 }
-double CoreLosses::get_core_volumetric_losses(CoreMaterial coreMaterial, OperatingPointExcitation excitation, double temperature){
+double CoreLosses::get_core_volumetric_losses(const CoreMaterial& coreMaterial, const OperatingPointExcitation& excitation, double temperature){
     // ABT #1636: a record of many switching cycles, priced cycle by cycle (see calculate_core_losses).
-    if (auto record = CoreLossesModel::split_into_switching_cycles(excitation)) {
-        return CoreLossesModel::combine_switching_cycles(record.value(), [&](const OperatingPointExcitation& periodicExcitation) {
+    if (auto record = CoreLossesModel::split_into_switching_cycles_shared(excitation)) {
+        return CoreLossesModel::combine_switching_cycles(*record, [&](const OperatingPointExcitation& periodicExcitation) {
             return get_periodic_core_volumetric_losses(coreMaterial, periodicExcitation, temperature);
         });
     }
     return get_periodic_core_volumetric_losses(coreMaterial, excitation, temperature);
 }
 
-double CoreLosses::get_periodic_core_volumetric_losses(CoreMaterial coreMaterial, OperatingPointExcitation excitation, double temperature) {
+double CoreLosses::get_periodic_core_volumetric_losses(const CoreMaterial& coreMaterial, const OperatingPointExcitation& excitation, double temperature) {
     throw_if_above_curie_temperature(coreMaterial, temperature);
     auto coreLossesModelForMaterial = get_core_losses_model(coreMaterial, excitation);
 
@@ -1553,17 +1561,29 @@ struct SplitMemoEntry {
     double frequency;
     std::optional<SplitWaveformKey> fluxDensity;
     std::optional<SplitWaveformKey> magnetizingCurrent;
-    std::optional<SwitchingCyclesRecord> record;
+    std::shared_ptr<const SwitchingCyclesRecord> record;
 };
 
 constexpr size_t splitMemoEntries = 4;
 
+std::shared_ptr<const SwitchingCyclesRecord> shared_record(std::optional<SwitchingCyclesRecord>&& record) {
+    return record ? std::make_shared<const SwitchingCyclesRecord>(std::move(*record)) : nullptr;
+}
+
 } // namespace
 
 std::optional<SwitchingCyclesRecord> CoreLossesModel::split_into_switching_cycles(const OperatingPointExcitation& excitation) {
+    auto record = split_into_switching_cycles_shared(excitation);
+    if (!record) {
+        return std::nullopt;
+    }
+    return *record;
+}
+
+std::shared_ptr<const SwitchingCyclesRecord> CoreLossesModel::split_into_switching_cycles_shared(const OperatingPointExcitation& excitation) {
     const auto* fluxDensityWaveform = split_waveform(excitation.get_magnetic_flux_density_ref());
     if (!fluxDensityWaveform || !fluxDensityWaveform->has_value()) {
-        return split_into_switching_cycles_uncached(excitation);
+        return shared_record(split_into_switching_cycles_uncached(excitation));
     }
     thread_local std::vector<SplitMemoEntry> memo;
     const double frequency = excitation.get_frequency();
@@ -1576,7 +1596,7 @@ std::optional<SwitchingCyclesRecord> CoreLossesModel::split_into_switching_cycle
             return memo.front().record;
         }
     }
-    auto record = split_into_switching_cycles_uncached(excitation);
+    auto record = shared_record(split_into_switching_cycles_uncached(excitation));
     SplitMemoEntry entry{frequency, SplitWaveformKey(fluxDensityWaveform->value()), std::nullopt, record};
     if (const auto* magnetizingCurrentWaveform = split_waveform(excitation.get_magnetizing_current_ref());
         magnetizingCurrentWaveform && magnetizingCurrentWaveform->has_value()) {
@@ -1806,27 +1826,27 @@ CoreLossesOutput CoreLossesModel::combine_switching_cycles(const SwitchingCycles
     return result;
 }
 
-CoreLossesOutput CoreLossesModel::get_core_losses(const Core& core, OperatingPointExcitation excitation, double temperature) {
-    if (auto record = split_into_switching_cycles(excitation)) {
-        return combine_switching_cycles(record.value(), excitation, [&](const OperatingPointExcitation& periodicExcitation) {
+CoreLossesOutput CoreLossesModel::get_core_losses(const Core& core, const OperatingPointExcitation& excitation, double temperature) {
+    if (auto record = split_into_switching_cycles_shared(excitation)) {
+        return combine_switching_cycles(*record, excitation, [&](const OperatingPointExcitation& periodicExcitation) {
             return compute_core_losses(core, periodicExcitation, temperature);
         });
     }
     return compute_core_losses(core, excitation, temperature);
 }
 
-double CoreLossesModel::get_core_volumetric_losses(CoreMaterial coreMaterial, OperatingPointExcitation excitation, double temperature) {
-    if (auto record = split_into_switching_cycles(excitation)) {
-        return combine_switching_cycles(record.value(), [&](const OperatingPointExcitation& periodicExcitation) {
+double CoreLossesModel::get_core_volumetric_losses(const CoreMaterial& coreMaterial, const OperatingPointExcitation& excitation, double temperature) {
+    if (auto record = split_into_switching_cycles_shared(excitation)) {
+        return combine_switching_cycles(*record, [&](const OperatingPointExcitation& periodicExcitation) {
             return compute_core_volumetric_losses(coreMaterial, periodicExcitation, temperature);
         });
     }
     return compute_core_volumetric_losses(coreMaterial, excitation, temperature);
 }
 
-double CoreLossesModel::get_core_mass_losses(CoreMaterial coreMaterial, OperatingPointExcitation excitation, double temperature) {
-    if (auto record = split_into_switching_cycles(excitation)) {
-        return combine_switching_cycles(record.value(), [&](const OperatingPointExcitation& periodicExcitation) {
+double CoreLossesModel::get_core_mass_losses(const CoreMaterial& coreMaterial, const OperatingPointExcitation& excitation, double temperature) {
+    if (auto record = split_into_switching_cycles_shared(excitation)) {
+        return combine_switching_cycles(*record, [&](const OperatingPointExcitation& periodicExcitation) {
             return compute_core_mass_losses(coreMaterial, periodicExcitation, temperature);
         });
     }
@@ -1834,11 +1854,12 @@ double CoreLossesModel::get_core_mass_losses(CoreMaterial coreMaterial, Operatin
 }
 
 CoreLossesOutput CoreLossesSteinmetzModel::compute_core_losses(const Core& core,
-                                                  OperatingPointExcitation excitation,
+                                                  const OperatingPointExcitation& excitation,
                                                   double temperature) {
-    auto magneticFluxDensity = excitation.get_magnetic_flux_density().value();
-    double effectiveVolume = core.get_processed_description().value().get_effective_parameters().get_effective_volume();
-    auto material = core.resolve_material();
+    const auto& magneticFluxDensity = excitation.get_magnetic_flux_density_ref().value();
+    double effectiveVolume = core.get_processed_description_ref().value().get_effective_parameters().get_effective_volume();
+    std::optional<CoreMaterial> materialStorage;
+    const auto& material = core.resolve_material_unstored(materialStorage);
 
     CoreLossesOutput result;
     result.set_magnetic_flux_density(magneticFluxDensity);
@@ -1896,8 +1917,8 @@ CoreLossesOutput CoreLossesSteinmetzModel::compute_core_losses(const Core& core,
  * @param temperature Core temperature [°C]
  * @return Volumetric core losses [W/m³]
  */
-double CoreLossesSteinmetzModel::compute_core_volumetric_losses(CoreMaterial coreMaterial,
-                                                            OperatingPointExcitation excitation,
+double CoreLossesSteinmetzModel::compute_core_volumetric_losses(const CoreMaterial& coreMaterial,
+                                                            const OperatingPointExcitation& excitation,
                                                             double temperature) {
     if (!excitation.get_magnetic_flux_density()) {
         throw InvalidInputException("Missing magnetizing flux density in excitation");
@@ -2046,8 +2067,8 @@ double CoreLossesIGSEModel::get_ki(SteinmetzCoreLossesMethodRangeDatum steinmetz
  * @param temperature Core temperature [°C]
  * @return Volumetric core losses [W/m³]
  */
-double CoreLossesIGSEModel::compute_core_volumetric_losses(CoreMaterial coreMaterial,
-                                                       OperatingPointExcitation excitation,
+double CoreLossesIGSEModel::compute_core_volumetric_losses(const CoreMaterial& coreMaterial,
+                                                       const OperatingPointExcitation& excitation,
                                                        double temperature) {
 
     auto magneticFluxDensity = excitation.get_magnetic_flux_density().value();
@@ -2310,8 +2331,8 @@ double CoreLossesciGSEModel::evaluate_expanded_loss_space(
  * @param temperature Core temperature [°C]
  * @return Volumetric core losses [W/m³]
  */
-double CoreLossesciGSEModel::compute_core_volumetric_losses(CoreMaterial coreMaterial,
-                                                        OperatingPointExcitation excitation,
+double CoreLossesciGSEModel::compute_core_volumetric_losses(const CoreMaterial& coreMaterial,
+                                                        const OperatingPointExcitation& excitation,
                                                         double temperature) {
     
     std::string materialName = coreMaterial.get_name();
@@ -2444,8 +2465,8 @@ double CoreLossesciGSEModel::compute_core_volumetric_losses(CoreMaterial coreMat
  * @param temperature Core temperature [K]
  * @return Volumetric core losses [W/m³]
  */
-double CoreLossesAlbachModel::compute_core_volumetric_losses(CoreMaterial coreMaterial,
-                                                         OperatingPointExcitation excitation,
+double CoreLossesAlbachModel::compute_core_volumetric_losses(const CoreMaterial& coreMaterial,
+                                                         const OperatingPointExcitation& excitation,
                                                          double temperature) {
     auto magneticFluxDensity = excitation.get_magnetic_flux_density().value();
     double frequency = Inputs::get_switching_frequency(excitation);
@@ -2560,8 +2581,8 @@ double CoreLossesAlbachModel::compute_core_volumetric_losses(CoreMaterial coreMa
  * @param temperature Core temperature [°C]
  * @return Volumetric core losses [W/m³]
  */
-double CoreLossesMSEModel::compute_core_volumetric_losses(CoreMaterial coreMaterial,
-                                                      OperatingPointExcitation excitation,
+double CoreLossesMSEModel::compute_core_volumetric_losses(const CoreMaterial& coreMaterial,
+                                                      const OperatingPointExcitation& excitation,
                                                       double temperature) {
     double frequency = Inputs::get_switching_frequency(excitation);
     auto magneticFluxDensity = excitation.get_magnetic_flux_density().value();
@@ -2697,8 +2718,8 @@ double CoreLossesNSEModel::get_kn(SteinmetzCoreLossesMethodRangeDatum steinmetzD
  * @param temperature Core temperature [°C]
  * @return Volumetric core losses [W/m³]
  */
-double CoreLossesNSEModel::compute_core_volumetric_losses(CoreMaterial coreMaterial,
-                                                      OperatingPointExcitation excitation,
+double CoreLossesNSEModel::compute_core_volumetric_losses(const CoreMaterial& coreMaterial,
+                                                      const OperatingPointExcitation& excitation,
                                                       double temperature) {
     auto magneticFluxDensity = excitation.get_magnetic_flux_density().value();
     double frequency = Inputs::get_switching_frequency(excitation);
@@ -2797,8 +2818,8 @@ double get_plateau_duty_cycle(std::vector<double> data) {
  * @param temperature Core temperature [°C]
  * @return Volumetric core losses [W/m³]
  */
-double CoreLossesBargModel::compute_core_volumetric_losses(CoreMaterial coreMaterial,
-                                                      OperatingPointExcitation excitation,
+double CoreLossesBargModel::compute_core_volumetric_losses(const CoreMaterial& coreMaterial,
+                                                      const OperatingPointExcitation& excitation,
                                                       double temperature) {
     auto magneticFluxDensity = excitation.get_magnetic_flux_density().value();
     double frequency = Inputs::get_switching_frequency(excitation);
@@ -2889,7 +2910,7 @@ double CoreLossesBargModel::compute_core_volumetric_losses(CoreMaterial coreMate
  * @return CoreLossesOutput with total, hysteresis, and eddy current losses
  */
 CoreLossesOutput CoreLossesRoshenModel::compute_core_losses(const Core& core,
-                                                        OperatingPointExcitation excitation,
+                                                        const OperatingPointExcitation& excitation,
                                                         double temperature) {
     auto magneticFluxDensity = excitation.get_magnetic_flux_density().value();
     double effectiveVolume = core.get_processed_description().value().get_effective_parameters().get_effective_volume();
@@ -2916,8 +2937,8 @@ CoreLossesOutput CoreLossesRoshenModel::compute_core_losses(const Core& core,
     return result;
 } 
  
-double CoreLossesRoshenModel::compute_core_volumetric_losses(CoreMaterial coreMaterial,
-                                                         OperatingPointExcitation excitation,
+double CoreLossesRoshenModel::compute_core_volumetric_losses(const CoreMaterial& coreMaterial,
+                                                         const OperatingPointExcitation& excitation,
                                                          double temperature) {
     Core ringCore;
     ringCore.set_name("Dummy Ring Core");
@@ -3538,8 +3559,8 @@ static bool has_magnetec_mass_method(const CoreMaterial& coreMaterial) {
     return false;
 }
 
-double CoreLossesProprietaryModel::compute_core_volumetric_losses(CoreMaterial coreMaterial,
-                                                             OperatingPointExcitation excitation,
+double CoreLossesProprietaryModel::compute_core_volumetric_losses(const CoreMaterial& coreMaterial,
+                                                             const OperatingPointExcitation& excitation,
                                                              double temperature) {
 
     auto magneticFluxDensity = excitation.get_magnetic_flux_density().value();
@@ -3648,8 +3669,8 @@ std::map<std::string, std::string> CoreLossesProprietaryModel::get_core_volumetr
     return equations;
 }
 
-double CoreLossesProprietaryModel::compute_core_mass_losses(CoreMaterial coreMaterial,
-                                                             OperatingPointExcitation excitation,
+double CoreLossesProprietaryModel::compute_core_mass_losses(const CoreMaterial& coreMaterial,
+                                                             const OperatingPointExcitation& excitation,
                                                              double temperature) {
 
     auto magneticFluxDensity = excitation.get_magnetic_flux_density().value();
@@ -3853,8 +3874,9 @@ static void throw_if_loss_factor_above_small_signal_flux(const CoreLossesLossFac
 }
 
 CoreLossesOutput CoreLossesLossFactorModel::compute_core_losses(const Core& core,
-                                                        OperatingPointExcitation excitation,
+                                                        const OperatingPointExcitation& excitationIn,
                                                         double temperature) {
+    OperatingPointExcitation excitation = excitationIn;  // completes the magnetizing current's processed data below
     if (!excitation.get_magnetizing_current()) {
         throw InvalidInputException("Missing magnetizing current in excitation");
     }
@@ -3889,10 +3911,11 @@ CoreLossesOutput CoreLossesLossFactorModel::compute_core_losses(const Core& core
     return result;
 }
 
-double CoreLossesLossFactorModel::compute_core_volumetric_losses(CoreMaterial coreMaterial,
-                                                             OperatingPointExcitation excitation,
+double CoreLossesLossFactorModel::compute_core_volumetric_losses(const CoreMaterial& coreMaterial,
+                                                             const OperatingPointExcitation& excitationIn,
                                                              double temperature,
                                                              double magnetizingInductance) {
+    OperatingPointExcitation excitation = excitationIn;  // completes the magnetizing current's processed data below
     
     if (!excitation.get_magnetizing_current()) {
         throw InvalidInputException("Missing magnetizing current in excitation");
@@ -4038,13 +4061,14 @@ double CoreLossesLossFactorHysteresisModel::get_hysteresis_losses_density(const 
     return CoreLossesRoshenModel().get_hysteresis_losses_density(parameters, excitation);
 }
 
-double CoreLossesLossFactorHysteresisModel::compute_core_volumetric_losses(CoreMaterial coreMaterial, OperatingPointExcitation excitation, double temperature) {
+double CoreLossesLossFactorHysteresisModel::compute_core_volumetric_losses(const CoreMaterial& coreMaterial, const OperatingPointExcitation& excitation, double temperature) {
     return get_linear_losses_density(coreMaterial, excitation) + get_hysteresis_losses_density(coreMaterial, excitation, temperature);
 }
 
-CoreLossesOutput CoreLossesLossFactorHysteresisModel::compute_core_losses(const Core& core, OperatingPointExcitation excitation, double temperature) {
+CoreLossesOutput CoreLossesLossFactorHysteresisModel::compute_core_losses(const Core& core, const OperatingPointExcitation& excitation, double temperature) {
     double effectiveVolume = core.get_processed_description().value().get_effective_parameters().get_effective_volume();
-    double volumetricLosses = compute_core_volumetric_losses(core.resolve_material(), excitation, temperature);
+    std::optional<CoreMaterial> materialStorage;
+    double volumetricLosses = compute_core_volumetric_losses(core.resolve_material_unstored(materialStorage), excitation, temperature);
 
     CoreLossesOutput result;
     result.set_core_losses(volumetricLosses * effectiveVolume);

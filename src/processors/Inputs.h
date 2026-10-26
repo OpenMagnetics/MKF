@@ -397,8 +397,8 @@ class Inputs : public MAS::Inputs {
     // of repeated switching cycles by the definition above.
     static std::optional<std::vector<size_t>> find_switching_cycle_valleys(const std::vector<double>& time, const std::vector<double>& data);
     static double get_switching_frequency(const OperatingPointExcitation& excitation);
-    static double get_magnetic_flux_density_peak(OperatingPointExcitation excitation, double switchingFrequency);
-    static double get_magnetic_flux_density_peak_to_peak(OperatingPointExcitation excitation, double switchingFrequency);
+    static double get_magnetic_flux_density_peak(const OperatingPointExcitation& excitation, double switchingFrequency);
+    static double get_magnetic_flux_density_peak_to_peak(const OperatingPointExcitation& excitation, double switchingFrequency);
     // A multiport inductor's magnetizing current (ABT #1467). Flyback-labelled (the windings conduct
     // alternately): Faraday on the primary voltage, DC anchored at the primary current's peak
     // (ABT #907). Without a primary voltage, or with every winding on one isolation side: the
