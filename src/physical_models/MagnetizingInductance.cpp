@@ -1346,13 +1346,14 @@ std::pair<MagnetizingInductanceOutput, SignalDescriptor> MagnetizingInductance::
     if (lineCycleRecordUnderImposedMagnetomotiveForce) {
         // The flux density is built on the magnetizing current's own samples: the core-loss split reads the two
         // records over the same span.
-        auto magnetizingCurrentWaveform = operatingPoint->get_mutable_excitations_per_winding()[0].get_magnetizing_current().value().get_waveform().value();
-        if (!magnetizingCurrentWaveform.get_time()) {
+        // Read in place: nothing below writes the operating point's magnetizing current.
+        const auto& magnetizingCurrentWaveform = operatingPoint->get_excitations_per_winding()[0].get_magnetizing_current_ref().value().get_waveform_ref().value();
+        if (!magnetizingCurrentWaveform.get_time_ref()) {
             throw CalculationException(ErrorCode::CALCULATION_INVALID_RESULT,
                 "Magnetizing inductance of a line-cycle record: the magnetizing current has no time axis");
         }
-        auto time = magnetizingCurrentWaveform.get_time().value();
-        auto current = magnetizingCurrentWaveform.get_data();
+        const auto& time = magnetizingCurrentWaveform.get_time_ref().value();
+        const auto& current = magnetizingCurrentWaveform.get_data();
         // The cycles are those of the magnetizing current. A model branch that drives the core with one switching
         // period instead of the record (the CMC branch's triangle of the line swing, for a caller that does not
         // name the topology) has no line cycle to bias its cycles with: its flux density stays as computed above.
@@ -1418,12 +1419,12 @@ std::pair<MagnetizingInductanceOutput, SignalDescriptor> MagnetizingInductance::
             }
             Waveform fluxDensityWaveform;
             fluxDensityWaveform.set_time(time);
-            fluxDensityWaveform.set_data(fluxDensityData);
+            fluxDensityWaveform.set_data(std::move(fluxDensityData));
             SignalDescriptor magneticFluxDensity;
-            magneticFluxDensity.set_waveform(fluxDensityWaveform);
             magneticFluxDensity.set_harmonics(Inputs::calculate_harmonics_data(fluxDensityWaveform, frequency));
             magneticFluxDensity.set_processed(Inputs::calculate_basic_processed_data(fluxDensityWaveform));
-            result.second = magneticFluxDensity;
+            magneticFluxDensity.set_waveform(std::move(fluxDensityWaveform));
+            result.second = std::move(magneticFluxDensity);
             if (!_lastDcBiasPoint) {
                 throw CalculationException(ErrorCode::CALCULATION_INVALID_RESULT,
                     "Magnetizing inductance of a line-cycle record: the DC-bias fixed point left no DC point to carry the peak field strength");
@@ -1465,8 +1466,9 @@ std::pair<MagnetizingInductanceOutput, SignalDescriptor> MagnetizingInductance::
 
     if (operatingPoint) {
         if (operatingPoint->get_mutable_excitations_per_winding().size() > 0) {
-            OperatingPointExcitation excitation = Inputs::get_primary_excitation(*operatingPoint);
-            if (!excitation.get_voltage()) {
+            // The primary excitation is copied only when its induced voltage has to be computed.
+            if (!operatingPoint->get_excitations_per_winding()[0].get_voltage_ref()) {
+                OperatingPointExcitation excitation = Inputs::get_primary_excitation(*operatingPoint);
                 operatingPoint->get_mutable_excitations_per_winding()[0].set_voltage(Inputs::calculate_induced_voltage(excitation, modifiedMagnetizingInductance));
             }
         }
