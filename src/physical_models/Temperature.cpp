@@ -59,6 +59,18 @@ public:
             for (size_t j = 0; j < n; ++j) aug[i][j] = A(i, j);
             aug[i][n] = b[i];
         }
+        // The thermal network is sparse: most rows below the pivot have a zero in the pivot column, and their
+        // elimination update subtracts (+-0) * pivot-row entries, which leaves every entry bit for bit as it is
+        // (x - (+-0) == x for any x that is not -0, and a finite pivot row keeps the products at +-0, never NaN).
+        // So such a row is skipped when the pivot row is finite and the system holds no -0 entry (none appears
+        // during the elimination either: in round-to-nearest a difference is -0 only when its minuend is -0).
+        // Any -0 in the input, or a non-finite pivot row, takes the full update, as before.
+        bool holdsNegativeZero = false;
+        for (size_t i = 0; i < n && !holdsNegativeZero; ++i) {
+            for (size_t j = 0; j <= n; ++j) {
+                if (aug[i][j] == 0 && std::signbit(aug[i][j])) { holdsNegativeZero = true; break; }
+            }
+        }
         for (size_t col = 0; col < n; ++col) {
             size_t maxRow = col;
             double maxVal = std::abs(aug[col][col]);
@@ -67,7 +79,12 @@ public:
             }
             if (maxRow != col) std::swap(aug[col], aug[maxRow]);
             if (std::abs(aug[col][col]) < 1e-15) { success = false; return std::vector<double>(n, 0.0); }
+            bool skipZeroRows = !holdsNegativeZero;
+            for (size_t j = col; j <= n && skipZeroRows; ++j) {
+                if (!std::isfinite(aug[col][j])) skipZeroRows = false;
+            }
             for (size_t row = col + 1; row < n; ++row) {
+                if (skipZeroRows && aug[row][col] == 0) continue;
                 double factor = aug[row][col] / aug[col][col];
                 for (size_t j = col; j <= n; ++j) aug[row][j] -= factor * aug[col][j];
             }
