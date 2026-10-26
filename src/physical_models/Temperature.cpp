@@ -1280,14 +1280,21 @@ void Temperature::createInsulationLayerNodes() {
             }
         }
         
-        // Get layer thermal conductivity from material
-        // Resolution failures propagate (the no-fallbacks rule; audited 2026-08-02: this path
-        // never fires on the suites). Only a material that resolves but genuinely lacks the
-        // property uses the documented polyimide-class default.
-        double layerK = kInsulation_DefaultConductivity;
+        // The layer's thermal conductivity is its material's MAS value. Resolution failures
+        // propagate, and a material without the property throws: the polyimide-class 0.2 W/(m K)
+        // that used to stand in for it was nobody's datasheet (ABT #1462).
         auto insulationMaterial = coil.resolve_insulation_layer_insulation_material(layer);
-        if (insulationMaterial.get_thermal_conductivity()) {
-            layerK = insulationMaterial.get_thermal_conductivity().value();
+        if (!insulationMaterial.get_thermal_conductivity()) {
+            throw MaterialException(ErrorCode::MATERIAL_DATA_MISSING,
+                "Temperature::createInsulationLayerNodes: insulation layer '" + layer.get_name() + "' is made of '" +
+                insulationMaterial.get_name() + "', which has no thermalConductivity in MAS; the layer's conduction "
+                "cannot be modelled. Add a sourced value to the material in MAS.");
+        }
+        double layerK = insulationMaterial.get_thermal_conductivity().value();
+        if (!std::isfinite(layerK) || layerK <= 0) {
+            throw MaterialException(ErrorCode::MATERIAL_INVALID_PROPERTY,
+                "Temperature::createInsulationLayerNodes: insulation material '" + insulationMaterial.get_name() +
+                "' has a non-positive or non-finite thermalConductivity (" + std::to_string(layerK) + " W/(m K)) in MAS.");
         }
         
         // Check coordinate system
@@ -1351,16 +1358,16 @@ void Temperature::createInsulationLayerNodes() {
             // the strict turn-to-IL proximity check, leaving outer turns disconnected.
             // Skip outer-side IL nodes for contiguous toroidals: outer turns will connect
             // directly to each other and to ambient where exposed.
+            // A bobbin whose sections orientation cannot be read throws: taking it as "not
+            // contiguous" built the outer ring nodes the comment above says must not exist (ABT #1462).
             bool skipOuterIlNodes = false;
-            try {
+            {
                 auto bobbinOpt = coil.get_bobbin();
                 if (std::holds_alternative<Bobbin>(bobbinOpt)) {
                     auto bobbin = std::get<Bobbin>(bobbinOpt);
                     auto secOrient = bobbin.get_winding_window_sections_orientation(0);
                     skipOuterIlNodes = (secOrient == WindingOrientation::CONTIGUOUS);
                 }
-            } catch (const std::exception& e) { // IMP-8
-                skipOuterIlNodes = false;
             }
             
             // Use same number of segments as toroidal core
@@ -2551,8 +2558,11 @@ void Temperature::createConcentricTurnToTurnConnections(const std::vector<size_t
                 const auto& turnsDescription = this->turnsDescription();
                 bool hasSolidInsulationBetween = false;
 
-                if (turnsDescription && turn1Idx >= 0 && turn1Idx < static_cast<int>(turnsDescription->size()) &&
-                    turn2Idx >= 0 && turn2Idx < static_cast<int>(turnsDescription->size())) {
+                // A turn node that points outside the turns description is a broken network: taking it
+                // as "no insulation between" connected the turns metal to metal (ABT #1462).
+                checkTurnNodeIndices(turnsDescription, turn1Idx, turn2Idx,
+                                     "Temperature::createConcentricTurnToTurnConnections: turn nodes " + _nodes[node1Idx].name + " / " + _nodes[node2Idx].name);
+                {
                     // A failed insulation-layer query propagates: taking it as "no insulation" made a
                     // direct turn-to-turn connection and underestimated R_th (ABT #1887).
                     auto& turn1 = (*turnsDescription)[turn1Idx];
@@ -2773,8 +2783,11 @@ void Temperature::createToroidalTurnToTurnConnections(const std::vector<size_t>&
                 const auto& turnsDescription = this->turnsDescription();
                 bool hasSolidInsulationBetween = false;
 
-                if (turnsDescription && turn1Idx >= 0 && turn1Idx < static_cast<int>(turnsDescription->size()) &&
-                    turn2Idx >= 0 && turn2Idx < static_cast<int>(turnsDescription->size())) {
+                // A turn node that points outside the turns description is a broken network: taking it
+                // as "no insulation between" connected the turns metal to metal (ABT #1462).
+                checkTurnNodeIndices(turnsDescription, turn1Idx, turn2Idx,
+                                     "Temperature::createToroidalTurnToTurnConnections: turn nodes " + _nodes[node1Idx].name + " / " + _nodes[node2Idx].name);
+                {
                     // A failed insulation-layer query propagates (ABT #1887), as in the concentric case.
                     auto& turn1 = (*turnsDescription)[turn1Idx];
                     auto& turn2 = (*turnsDescription)[turn2Idx];
@@ -2881,6 +2894,58 @@ void Temperature::createToroidalTurnToTurnConnections(const std::vector<size_t>&
     }
 }
 
+void Temperature::checkTurnNodeIndices(const std::optional<std::vector<Turn>>& turnsDescription, int firstTurnIndex,
+                                       int secondTurnIndex, const std::string& context) {
+    if (!turnsDescription) {
+        throw std::runtime_error(context + ": the coil has no turns description.");
+    }
+    const int turnCount = static_cast<int>(turnsDescription->size());
+    for (int index : {firstTurnIndex, secondTurnIndex}) {
+        if (index < 0 || index >= turnCount) {
+            throw std::runtime_error(context + ": turn index " + std::to_string(index) + " is outside the coil's " +
+                                     std::to_string(turnCount) + " turns.");
+        }
+    }
+}
+
+std::optional<double> Temperature::planarTurnToBobbinResistance(size_t turnIdx, ThermalNodeFace turnFace, size_t bobbinIdx,
+                                                               double gap, double plasticThickness) const {
+    const auto& turn = _nodes[turnIdx];
+    const auto& wall = _nodes[bobbinIdx];
+    if (gap < -kEnclosureGeometryTolerance) {
+        std::string message = "Temperature::planarTurnToBobbinResistance: " + turn.name + " overlaps " + wall.name +
+                              " by " + std::to_string(-gap * 1e3) + " mm (" + std::string(magic_enum::enum_name(turnFace)) + ").";
+        if (settings.get_thermal_network_strict_geometry()) {
+            throw std::runtime_error(message);
+        }
+        OM_ERROR(message + " thermalNetworkStrictGeometry is off: this face gets no conduction path to " + wall.name + ".");
+        return std::nullopt;
+    }
+    if (!(plasticThickness > 0)) {
+        throw std::runtime_error("Temperature::planarTurnToBobbinResistance: bobbin node " + wall.name +
+                                 " has no positive wall thickness between its surface and its node.");
+    }
+    const double plasticK = wall.quadrants[0].thermalConductivity;
+    if (!(plasticK > 0) || !std::isfinite(plasticK)) {
+        throw std::runtime_error("Temperature::planarTurnToBobbinResistance: bobbin node " + wall.name +
+                                 " has no positive thermal conductivity.");
+    }
+    const auto* q = turn.getQuadrant(turnFace);
+    if (!q || !(q->surfaceArea > 0)) {
+        throw std::runtime_error("Temperature::planarTurnToBobbinResistance: turn node " + turn.name + " has no " +
+                                 std::string(magic_enum::enum_name(turnFace)) + " face area.");
+    }
+    // The turn's own film (none on a bare PCB trace) and the air between it and the wall, as for a
+    // wound turn resting on its bobbin (ABT #1454), then the plastic in series.
+    double resistance = faceToSurfaceResistance(turnIdx, turnFace, std::max(gap, 0.0), 1.0) +
+                        ThermalResistance::calculateConductionResistance(plasticThickness, plasticK, q->surfaceArea);
+    if (!(resistance > 0) || !std::isfinite(resistance)) {
+        throw std::runtime_error("Temperature::planarTurnToBobbinResistance: non-positive or non-finite resistance from " +
+                                 turn.name + " to " + wall.name + ".");
+    }
+    return resistance;
+}
+
 void Temperature::createBobbinYokeToTurnConnections(size_t bobbinTopYokeIdx, size_t bobbinBottomYokeIdx, 
                                                      const std::vector<size_t>& turnNodeIndices) {
     auto findNearbyTurns = [&](size_t yokeIdx, ThermalNodeFace yokeFace) -> std::vector<std::pair<size_t, double>> {
@@ -2927,28 +2992,31 @@ void Temperature::createBobbinYokeToTurnConnections(size_t bobbinTopYokeIdx, siz
         return nearbyTurns;
     };
     
-    // Helper to create bobbin-to-turn connection
-    auto createBobbinToTurnConnection = [&](size_t bobbinIdx, ThermalNodeFace bobbinFace, 
-                                            size_t turnIdx, double dist) {
+    // Helper to create bobbin-to-turn connection. ABT #1462: across the real gap between the turn's
+    // face and the flange's surface, and half the flange's plastic (planarTurnToBobbinResistance),
+    // no longer the centre distance through an invented 0.1 W/(m K) "interface".
+    auto createBobbinToTurnConnection = [&](size_t bobbinIdx, ThermalNodeFace bobbinFace, size_t turnIdx) {
         ThermalResistanceElement r;
         r.nodeFromId = bobbinIdx;
         r.quadrantFrom = bobbinFace;
         r.nodeToId = turnIdx;
-        r.quadrantTo = (bobbinFace == ThermalNodeFace::TANGENTIAL_RIGHT) ? 
+        r.quadrantTo = (bobbinFace == ThermalNodeFace::TANGENTIAL_RIGHT) ?
                        ThermalNodeFace::TANGENTIAL_LEFT : ThermalNodeFace::TANGENTIAL_RIGHT;
         r.type = HeatTransferType::CONDUCTION;
-        
-        // Calculate resistance through air/bobbin gap - use quadrant surface area
-        auto* turnQuadrant = _nodes[turnIdx].getQuadrant(r.quadrantTo);
-        if (!turnQuadrant) {
-            throw std::runtime_error("Temperature: bobbin-yoke-to-turn connection: turn node is missing the "
-                                     "expected quadrant; cannot determine contact area.");
+
+        const auto& yoke = _nodes[bobbinIdx];
+        const auto& turn = _nodes[turnIdx];
+        // Top flange (its TANGENTIAL_RIGHT face looks down at the turn's top face) or bottom flange.
+        const double gap = (bobbinFace == ThermalNodeFace::TANGENTIAL_RIGHT)
+            ? (yoke.physicalCoordinates[1] - yoke.dimensions.height / 2.0) - (turn.physicalCoordinates[1] + turn.dimensions.height / 2.0)
+            : (turn.physicalCoordinates[1] - turn.dimensions.height / 2.0) - (yoke.physicalCoordinates[1] + yoke.dimensions.height / 2.0);
+        auto resistance = planarTurnToBobbinResistance(turnIdx, r.quadrantTo, bobbinIdx, gap, yoke.dimensions.height / 2.0);
+        if (!resistance) {
+            return;
         }
-        double contactArea = turnQuadrant->surfaceArea;
-        // Issue 15: Use configurable interface conductivity for turn-to-bobbin contact
-        double k_interface = _config.turnToBobbinInterfaceConductivity;
-        r.resistance = dist / (k_interface * contactArea);
-        
+        r.resistance = resistance.value();
+        r.length = std::max(gap, 0.0);
+        r.area = _nodes[turnIdx].getQuadrant(r.quadrantTo)->surfaceArea;
         _resistances.push_back(r);
     };
     
@@ -2956,22 +3024,9 @@ void Temperature::createBobbinYokeToTurnConnections(size_t bobbinTopYokeIdx, siz
     if (bobbinTopYokeIdx != std::numeric_limits<size_t>::max()) {
         auto nearbyTurns = findNearbyTurns(bobbinTopYokeIdx, ThermalNodeFace::TANGENTIAL_RIGHT);
         
-        if (!nearbyTurns.empty()) {
-            // Connect to all nearby turns (like toroidal core chunk approach)
-            double totalContactArea = 0;
-            for (const auto& [turnIdx, dist] : nearbyTurns) {
-                // Estimate contact area for this turn using its stored dimensions
-                const auto& turnNode = _nodes[turnIdx];
-                auto* tq = turnNode.getQuadrant(ThermalNodeFace::TANGENTIAL_LEFT);
-                double turnContactArea = tq ? tq->surfaceArea : (turnNode.dimensions.width * turnNode.dimensions.height * 0.25);
-                totalContactArea += turnContactArea;
-            }
-            
-            // Create connections with proportional area
-            for (const auto& [turnIdx, dist] : nearbyTurns) {
-                createBobbinToTurnConnection(bobbinTopYokeIdx, ThermalNodeFace::TANGENTIAL_RIGHT, 
-                                            turnIdx, dist);
-            }
+        // Connect to all nearby turns (like toroidal core chunk approach)
+        for (const auto& nearbyTurn : nearbyTurns) {
+            createBobbinToTurnConnection(bobbinTopYokeIdx, ThermalNodeFace::TANGENTIAL_RIGHT, nearbyTurn.first);
         }
         // If no nearby turns, convection to air will be handled by createConvectionConnections
     }
@@ -2980,19 +3035,8 @@ void Temperature::createBobbinYokeToTurnConnections(size_t bobbinTopYokeIdx, siz
     if (bobbinBottomYokeIdx != std::numeric_limits<size_t>::max()) {
         auto nearbyTurns = findNearbyTurns(bobbinBottomYokeIdx, ThermalNodeFace::TANGENTIAL_LEFT);
         
-        if (!nearbyTurns.empty()) {
-            double totalContactArea = 0;
-            for (const auto& [turnIdx, dist] : nearbyTurns) {
-                const auto& turnNode = _nodes[turnIdx];
-                auto* tq = turnNode.getQuadrant(ThermalNodeFace::TANGENTIAL_RIGHT);
-                double turnContactArea = tq ? tq->surfaceArea : (turnNode.dimensions.width * turnNode.dimensions.height * 0.25);
-                totalContactArea += turnContactArea;
-            }
-            
-            for (const auto& [turnIdx, dist] : nearbyTurns) {
-                createBobbinToTurnConnection(bobbinBottomYokeIdx, ThermalNodeFace::TANGENTIAL_LEFT, 
-                                            turnIdx, dist);
-            }
+        for (const auto& nearbyTurn : nearbyTurns) {
+            createBobbinToTurnConnection(bobbinBottomYokeIdx, ThermalNodeFace::TANGENTIAL_LEFT, nearbyTurn.first);
         }
     }
 }
@@ -3129,18 +3173,31 @@ void Temperature::createTurnToBobbinConnections() {
                     r.quadrantTo = ThermalNodeFace::NONE;
                     r.type = HeatTransferType::CONDUCTION;
                     
-                    auto* q = turnNode.getQuadrant(quadrant.face);
-                    if (!q) {
-                        throw std::runtime_error("Temperature: turn-to-bobbin connection: turn node is missing the "
-                                                 "expected quadrant; cannot determine contact area.");
+                    // ABT #1462: across the real gap from the turn's face to the wall's surface, and
+                    // the plastic from that surface to the wall's mid-plane node (half the column's
+                    // width, or half the flange's height), in the bobbin material's conductivity. The
+                    // signed gap is measured along the face normal, so an overlap is seen, not read as 0.
+                    double signedGap;
+                    double plasticThickness;
+                    if (isCentralColumn) {
+                        signedGap = limitX - bobbinRight;
+                        plasticThickness = bobbinWidth / 2.0;
+                    } else if (isTopYoke) {
+                        signedGap = bobbinBottom - limitY;
+                        plasticThickness = bobbinHeight / 2.0;
+                    } else {
+                        signedGap = limitY - bobbinTop;
+                        plasticThickness = bobbinHeight / 2.0;
                     }
-                    double contactArea = q->surfaceArea;
-                    double distance = std::max(dist, 1e-6);
-                    
-                    // IMP-NEW-05: Configurable interface conductivity (was k_air=0.025)
-                    double k_interface = _config.turnToBobbinInterfaceConductivity;
-                    r.resistance = distance / (k_interface * contactArea);
-                    
+                    auto resistance = planarTurnToBobbinResistance(turnIdx, quadrant.face, bobbinIdx, signedGap,
+                                                                   plasticThickness);
+                    if (!resistance) {
+                        continue;
+                    }
+                    r.resistance = resistance.value();
+                    r.length = std::max(signedGap, 0.0);
+                    r.area = turnNode.getQuadrant(quadrant.face)->surfaceArea;
+
                     _resistances.push_back(r);
                     connectedPairs.insert({quadrant.face, bobbinIdx});
                     
@@ -4000,7 +4057,7 @@ void Temperature::createTurnToInsulationConnections() {
             struct InsulationCandidate {
                 size_t insulationIdx = 0;
                 double distance = 0.0;  // Surface-to-surface distance
-                double insulationK = 0.2;
+                double insulationK = 0.0;  // always set from the layer node when the candidate is taken
                 double insulationWidth = 0.0;
                 double insulationHeight = 0.0;
             };
@@ -4022,10 +4079,12 @@ void Temperature::createTurnToInsulationConnections() {
                 double insulationW = insulationNode.dimensions.width;
                 double insulationH = insulationNode.dimensions.height;
 
-                // Get insulation thermal conductivity
-                double insulationK = kInsulation_DefaultConductivity;
-                if (insulationNode.quadrants[0].thermalConductivity > 0) {
-                    insulationK = insulationNode.quadrants[0].thermalConductivity;
+                // The layer node carries its material's MAS conductivity (createInsulationLayerNodes
+                // throws without one), so a non-positive value here is a broken node, not missing data.
+                double insulationK = insulationNode.quadrants[0].thermalConductivity;
+                if (!(insulationK > 0)) {
+                    throw std::runtime_error("Temperature::createTurnToInsulationConnections: insulation layer node " +
+                                             insulationNode.name + " has no positive thermal conductivity.");
                 }
 
                 // Calculate insulation layer edges (insulation is always rectangular)
@@ -4471,10 +4530,11 @@ void Temperature::createTurnToInsulationConnections() {
                                   (turnNode.dimensions.width * turnNode.dimensions.height * 0.5);
                 }
                 
-                // Get insulation thermal conductivity
-                double insulationK = kInsulation_DefaultConductivity;
-                if (insNode.quadrants[0].thermalConductivity > 0) {
-                    insulationK = insNode.quadrants[0].thermalConductivity;
+                // The layer node carries its material's MAS conductivity (see above).
+                double insulationK = insNode.quadrants[0].thermalConductivity;
+                if (!(insulationK > 0)) {
+                    throw std::runtime_error("Temperature::createTurnToInsulationConnections: insulation layer node " +
+                                             insNode.name + " has no positive thermal conductivity.");
                 }
 
                 // ABT #1735: heat crosses the RADIAL path from the turn's surface to the layer's

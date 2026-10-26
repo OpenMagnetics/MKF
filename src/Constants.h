@@ -119,7 +119,6 @@ namespace ThermalDefaults {
     constexpr double kWire_DefaultEnamelConductivity = 0.2;    // [W/(m·K)]
     
     // Insulation & Bobbin
-    constexpr double kInsulation_DefaultConductivity = 0.2;// [W/(m·K)] polyimide
     constexpr double kInsulation_DefaultThickness = 0.0001;// [m] 0.1mm
     
     // Core

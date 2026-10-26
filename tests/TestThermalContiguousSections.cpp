@@ -713,3 +713,133 @@ TEST_CASE("ThermalNetwork ABT 1856: planar turns stacked in one layer conduct th
     CHECK(primaryOnly.mean_turn_temperature(0) > primaryOnly.mean_turn_temperature(1));
     CHECK(secondaryOnly.mean_turn_temperature(1) > secondaryOnly.mean_turn_temperature(0));
 }
+
+TEST_CASE("ThermalNetwork ABT 1462: an insulation layer whose material has no thermal conductivity throws", "[temperature][abt-1462][smoke-test]") {
+    // The layer node's conductivity is its material's MAS value. A material without one used to
+    // conduct at a polyimide-class 0.2 W/(m K) that was nobody's datasheet; it now stops the
+    // network with MATERIAL_DATA_MISSING. The design is the 50 um tape stack of the ABT #1540
+    // tests above; only the tapes' material loses its conductivity.
+    settings.reset();
+    auto masJson = load_abt1540_fixture(kLitzAndStripEr35);
+    give_tapes_across_window_a_thickness(masJson, 50e-6, 10e-9);
+    auto magnetic = autocomplete_like_the_web(masJson).get_magnetic();
+    {
+        auto withData = build_network(magnetic, 40.0, 1.0, {1.0, 1.0});
+        INFO(withData.error);
+        REQUIRE(withData.error == "");
+        REQUIRE(tapes_across_window(withData).size() == 4);  // the tapes are nodes: their k is read
+    }
+    auto& coil = magnetic.get_mutable_coil();
+    auto layers = coil.get_layers_description().value();
+    size_t stripped = 0;
+    for (auto& layer : layers) {
+        if (layer.get_type() != ElectricalType::INSULATION) continue;
+        auto material = coil.resolve_insulation_layer_insulation_material(layer);
+        REQUIRE(material.get_thermal_conductivity());
+        material.set_thermal_conductivity(std::nullopt);
+        material.set_name(material.get_name() + " without thermal conductivity");
+        layer.set_insulation_material(material);
+        ++stripped;
+    }
+    REQUIRE(stripped > 0);
+    coil.set_layers_description(layers);
+
+    auto network = build_network(magnetic, 40.0, 1.0, {1.0, 1.0});
+    INFO(network.error);
+    CHECK_THAT(network.error, Catch::Matchers::ContainsSubstring("has no thermalConductivity in MAS"));
+}
+
+TEST_CASE("ThermalNetwork ABT 1462: a planar turn reaches its bobbin across the real gap and half the wall", "[temperature][abt-1462][planar][smoke-test]") {
+    // No stored planar design has a bobbin wall (every one has wallThickness 0), so this guard
+    // builds one: the planar layout of the ABT #1856 test, every turn moved 0.25 mm away from the
+    // column and 0.30 mm down, inside a bobbin of 0.2 mm column and flange walls. The column wall
+    // then lies 0.05 mm from the turns' inner faces and the top flange 0.10 mm above the top turn.
+    // Each turn-to-bobbin edge is the turn's film and the air across that gap plus half the wall's
+    // plastic, in the bobbin node's conductivity; it used to be the centre distance through an
+    // invented 0.1 W/(m K) "interface".
+    settings.reset();
+    auto masJson = load_abt1540_fixture("test_coiladviser_web_4_2064.json");
+    const double wall = 0.2e-3;
+    const double dx = 0.25e-3;
+    const double dy = -0.30e-3;
+    auto& coilJson = masJson["magnetic"]["coil"];
+    for (const char* group : {"sectionsDescription", "layersDescription", "turnsDescription"}) {
+        for (auto& element : coilJson[group]) {
+            element["coordinates"][0] = element["coordinates"][0].get<double>() + dx;
+            element["coordinates"][1] = element["coordinates"][1].get<double>() + dy;
+        }
+    }
+    auto& bobbin = coilJson["bobbin"]["processedDescription"];
+    bobbin["wallThickness"] = wall;
+    bobbin["columnThickness"] = wall;
+    bobbin["columnWidth"] = bobbin["columnWidth"].get<double>() + wall;
+    auto magnetic = OpenMagnetics::magnetic_autocomplete(OpenMagnetics::Magnetic(masJson["magnetic"]));
+    auto network = build_network(magnetic, 40.0, 1.0, {1.0, 1.0});
+    INFO(network.error);
+    REQUIRE(network.error == "");
+    REQUIRE(network.result.converged);
+
+    const double kAir = FluidProperties::getAirProperties(40.0 + ThermalDefaults::kConvection_InitialDeltaT / 2.0).thermalConductivity;
+    size_t columnEdges = 0, topFlangeEdges = 0;
+    for (const auto& r : network.resistances) {
+        if (r.type != HeatTransferType::CONDUCTION) continue;
+        size_t turn, wallNode;
+        ThermalNodeFace face;
+        if (network.nodes[r.nodeFromId].part == ThermalNodePartType::TURN) {
+            turn = r.nodeFromId; wallNode = r.nodeToId; face = r.quadrantFrom;
+        } else if (network.nodes[r.nodeToId].part == ThermalNodePartType::TURN) {
+            turn = r.nodeToId; wallNode = r.nodeFromId; face = r.quadrantTo;
+        } else {
+            continue;
+        }
+        const auto part = network.nodes[wallNode].part;
+        if (part != ThermalNodePartType::BOBBIN_CENTRAL_COLUMN && part != ThermalNodePartType::BOBBIN_TOP_YOKE &&
+            part != ThermalNodePartType::BOBBIN_BOTTOM_YOKE) continue;
+        INFO(network.nodes[turn].name << " to " << network.nodes[wallNode].name);
+        double gap, plastic;
+        if (part == ThermalNodePartType::BOBBIN_CENTRAL_COLUMN) {
+            REQUIRE(face == ThermalNodeFace::RADIAL_INNER);
+            gap = network.left(turn) - network.right(wallNode);
+            plastic = network.nodes[wallNode].dimensions.width / 2;
+            ++columnEdges;
+            CHECK(gap == Catch::Approx(0.05e-3).margin(1e-9));
+        } else if (part == ThermalNodePartType::BOBBIN_TOP_YOKE) {
+            REQUIRE(face == ThermalNodeFace::TANGENTIAL_LEFT);
+            gap = network.bottom(wallNode) - network.top(turn);
+            plastic = network.nodes[wallNode].dimensions.height / 2;
+            if (gap < 0.2e-3) {
+                ++topFlangeEdges;
+                CHECK(gap == Catch::Approx(0.10e-3).margin(1e-9));
+            }
+        } else {
+            REQUIRE(face == ThermalNodeFace::TANGENTIAL_RIGHT);
+            gap = network.bottom(turn) - network.top(wallNode);
+            plastic = network.nodes[wallNode].dimensions.height / 2;
+        }
+        const auto* turnFace = network.nodes[turn].getQuadrant(face);
+        REQUIRE(turnFace != nullptr);
+        const double area = turnFace->surfaceArea;
+        const double plasticK = network.nodes[wallNode].quadrants[0].thermalConductivity;
+        REQUIRE(plasticK > 0);
+        // The traces are bare copper (coating type BARE): no film between them and the air.
+        REQUIRE(turnFace->coating);
+        REQUIRE(turnFace->coating->get_type() == InsulationWireCoatingType::BARE);
+        CHECK(r.length == Catch::Approx(gap).margin(1e-12));
+        CHECK(r.resistance == Catch::Approx(gap / (kAir * area) + plastic / (plasticK * area)).epsilon(1e-6));
+    }
+    CHECK(columnEdges == 9);   // every turn's inner face rests on the column wall
+    // The top turn, 0.10 mm under the top flange. (The flange's centre-distance search also
+    // reaches the turns stacked under that one, across the copper of the turns between; that
+    // selection predates this change and is not what this guard checks.)
+    CHECK(topFlangeEdges == 1);
+}
+
+TEST_CASE("ThermalNetwork ABT 1462: a turn-to-turn edge whose turn index names no turn throws", "[temperature][abt-1462][smoke-test]") {
+    // The turn-to-turn builders read "no insulation between" for a turn node that indexed no turn
+    // and connected the two turns metal to metal; the check now throws.
+    std::optional<std::vector<Turn>> turns = std::vector<Turn>(3);
+    CHECK_NOTHROW(Temperature::checkTurnNodeIndices(turns, 0, 2, "test"));
+    CHECK_THROWS_WITH(Temperature::checkTurnNodeIndices(turns, 0, 3, "test"), Catch::Matchers::ContainsSubstring("turn index 3 is outside"));
+    CHECK_THROWS_WITH(Temperature::checkTurnNodeIndices(turns, -1, 1, "test"), Catch::Matchers::ContainsSubstring("turn index -1 is outside"));
+    CHECK_THROWS_WITH(Temperature::checkTurnNodeIndices(std::nullopt, 0, 1, "test"), Catch::Matchers::ContainsSubstring("no turns description"));
+}

@@ -276,12 +276,6 @@ struct TemperatureConfig {
     std::string schematicOutputPath = "output/thermal_schematic.svg";
     bool coreOnly = false;              // Skip turn/bobbin nodes; only core nodes solved
 
-    // =========================================================================
-    // IMP-NEW-05: Configurable turn-to-bobbin interface conductivity
-    // =========================================================================
-    // WHY: k_air=0.025 is too conservative when turn rests on bobbin.
-    double turnToBobbinInterfaceConductivity = 0.1;  // W/(m K)
-    
     // ===== NEW: MAS Cooling Configuration =====
     // Optional MAS cooling object (from OperatingConditions)
     std::optional<MAS::Cooling> masCooling;
@@ -437,6 +431,16 @@ public:
      * @brief Get the list of thermal resistances
      */
     const std::vector<ThermalResistanceElement>& getResistances() const { return _resistances; }
+
+    /**
+     * @brief Throws unless both turn indices of a turn-to-turn edge name a turn of @p turnsDescription.
+     *
+     * A turn node indexing no turn is a broken network; the builders used to read it as "no
+     * insulation between" and connect the two turns metal to metal. Static and public so the rule
+     * is testable without a network that breaks it. @p context prefixes the message.
+     */
+    static void checkTurnNodeIndices(const std::optional<std::vector<Turn>>& turnsDescription, int firstTurnIndex,
+                                     int secondTurnIndex, const std::string& context);
 
     /**
      * @brief Nodes with no path over the resistances to any of `roots` (ambient, cold plates).
@@ -689,6 +693,16 @@ private:
      * flat air + half the film. @p shareOfFace is the unshadowed share of the face.
      */
     double faceToSurfaceResistance(size_t nodeIdx, ThermalNodeFace face, double gap, double shareOfFace) const;
+
+    /**
+     * @brief ABT #1462: resistance (K/W) from a PCB-planar turn's face to a bobbin wall node: the
+     * turn's film and the air across the real surface-to-surface gap (faceToSurfaceResistance), plus
+     * @p plasticThickness of the wall's own plastic, in the bobbin node's conductivity. An overlap
+     * beyond tolerance throws (or, with thermalNetworkStrictGeometry off, logs and returns nullopt:
+     * no conduction path), as createWindingToEnclosureConnections does.
+     */
+    std::optional<double> planarTurnToBobbinResistance(size_t turnIdx, ThermalNodeFace turnFace, size_t bobbinIdx,
+                                                       double gap, double plasticThickness) const;
 
     /// Air thermal conductivity for enclosed gaps, at the convection model's initial film temperature.
     double gapAirThermalConductivity() const;

@@ -88,8 +88,7 @@ struct LossesFromSimulation {
     double coreLosses = 0.0;
     double windingLosses = 0.0;
     double ambientTemperature = 25.0;
-    std::optional<WindingLossesOutput> windingLossesOutput;
-    bool simulationSucceeded = false;
+    std::optional<WindingLossesOutput> windingLossesOutput;  // always engaged on return (missing output throws)
 };
 
 LossesFromSimulation getLossesFromSimulation(const OpenMagnetics::Magnetic& magnetic, 
@@ -111,18 +110,17 @@ LossesFromSimulation getLossesFromSimulation(const OpenMagnetics::Magnetic& magn
     }
     auto outputs = simulatedMas.get_outputs()[0];
 
-    // Get core losses
-    if (outputs.get_core_losses()) {
-        result.coreLosses = resolve_dimensional_values(outputs.get_core_losses()->get_core_losses());
+    // A simulation output without core or winding losses fails the test: a thermal result on
+    // zero losses would pass its checks while measuring nothing.
+    if (!outputs.get_core_losses()) {
+        throw std::runtime_error("getLossesFromSimulation: MagneticSimulator output has no core losses");
     }
-
-    // Get winding losses
-    if (outputs.get_winding_losses()) {
-        result.windingLosses = resolve_dimensional_values(outputs.get_winding_losses()->get_winding_losses());
-        result.windingLossesOutput = outputs.get_winding_losses();
+    if (!outputs.get_winding_losses()) {
+        throw std::runtime_error("getLossesFromSimulation: MagneticSimulator output has no winding losses");
     }
-
-    result.simulationSucceeded = true;
+    result.coreLosses = resolve_dimensional_values(outputs.get_core_losses()->get_core_losses());
+    result.windingLosses = resolve_dimensional_values(outputs.get_winding_losses()->get_winding_losses());
+    result.windingLossesOutput = outputs.get_winding_losses();
 
     // Get ambient temperature from operating point
     if (!inputs.get_operating_points().empty()) {
@@ -187,17 +185,7 @@ void applySimulatedLosses(TemperatureConfig& config,
     
     // Get real losses from simulation
     auto losses = getLossesFromSimulation(magnetic, inputs);
-    
-    if (!losses.simulationSucceeded) {
-        throw std::runtime_error("Magnetic simulation failed - cannot calculate temperatures without real losses. "
-                                 "Ensure the magnetic component has valid core, coil, and operating points.");
-    }
-    
-    if (!losses.windingLossesOutput.has_value()) {
-        throw std::runtime_error("WindingLossesOutput missing from simulation results. "
-                                 "Cannot calculate temperatures without per-turn loss distribution.");
-    }
-    
+
     config.coreLosses = losses.coreLosses;
     config.windingLosses = losses.windingLosses;
     config.windingLossesOutput = losses.windingLossesOutput.value();
@@ -238,7 +226,6 @@ TEST_CASE("Temperature: Toroidal Core T20 Ten Turns", "[temperature][round-windi
 
     TemperatureConfig config;
     config.ambientTemperature = 25.0;
-    config.coreLosses = 0.3;  // Fallback if simulation fails
     config.plotSchematic = true;
     config.schematicOutputPath = (getOutputDir() / "thermal_schematic_Toroid_T20_10_turns.svg").string();
     
@@ -246,15 +233,9 @@ TEST_CASE("Temperature: Toroidal Core T20 Ten Turns", "[temperature][round-windi
     // A tenth of the saturation current: a small rise in this small ungapped toroid
     auto inputs = createInputsForMagnetic(magnetic, 100000.0, config.ambientTemperature, 0.1);
     auto losses = getLossesFromSimulation(magnetic, inputs);
-    if (losses.simulationSucceeded) {
-        config.coreLosses = losses.coreLosses;
-        config.windingLosses = losses.windingLosses;
-        if (losses.windingLossesOutput.has_value()) {
-            config.windingLossesOutput = losses.windingLossesOutput.value();
-        } else {
-            applySimulatedLosses(config, magnetic);
-        }
-    }
+    config.coreLosses = losses.coreLosses;
+    config.windingLosses = losses.windingLosses;
+    config.windingLossesOutput = losses.windingLossesOutput.value();
     
     Temperature temp(magnetic, config);
     auto result = temp.calculateTemperatures();
@@ -508,22 +489,15 @@ TEST_CASE("Temperature: ETD Core", "[temperature][smoke-test]") {
 
     TemperatureConfig config;
     config.ambientTemperature = 25.0;
-    config.coreLosses = 0.5;  // Fallback
     config.plotSchematic = false;
     
     // Use real simulation for losses
     // Use lower current (0.1A) to avoid extreme core losses in ungapped E core
     auto inputs = createInputsForMagnetic(magnetic, 100000.0, config.ambientTemperature, 0.1);
     auto losses = getLossesFromSimulation(magnetic, inputs);
-    if (losses.simulationSucceeded) {
-        config.coreLosses = losses.coreLosses;
-        config.windingLosses = losses.windingLosses;
-        if (losses.windingLossesOutput.has_value()) {
-            config.windingLossesOutput = losses.windingLossesOutput.value();
-        }
-    } else {
-        applySimulatedLosses(config, magnetic);
-    }
+    config.coreLosses = losses.coreLosses;
+    config.windingLosses = losses.windingLosses;
+    config.windingLossesOutput = losses.windingLossesOutput.value();
     
     Temperature temp(magnetic, config);
     auto result = temp.calculateTemperatures();
@@ -561,7 +535,6 @@ TEST_CASE("Temperature: E Core", "[temperature][smoke-test]") {
 
     TemperatureConfig config;
     config.ambientTemperature = 25.0;
-    config.coreLosses = 0.8;  // Fallback
     config.plotSchematic = true;
     config.schematicOutputPath = (getOutputDir() / "thermal_schematic_E_Core_42_21_15.svg").string();
     
@@ -570,15 +543,9 @@ TEST_CASE("Temperature: E Core", "[temperature][smoke-test]") {
     auto losses = getLossesFromSimulation(magnetic, inputs);
     
     
-    if (losses.simulationSucceeded) {
-        config.coreLosses = losses.coreLosses;
-        config.windingLosses = losses.windingLosses;
-        if (losses.windingLossesOutput.has_value()) {
-            config.windingLossesOutput = losses.windingLossesOutput.value();
-        }
-    } else {
-        applySimulatedLosses(config, magnetic);
-    }
+    config.coreLosses = losses.coreLosses;
+    config.windingLosses = losses.windingLosses;
+    config.windingLossesOutput = losses.windingLossesOutput.value();
     
     Temperature temp(magnetic, config);
     auto result = temp.calculateTemperatures();
@@ -938,21 +905,14 @@ TEST_CASE("Temperature: Node Access", "[temperature][smoke-test]") {
 
     TemperatureConfig config;
     config.ambientTemperature = 25.0;
-    config.coreLosses = 0.3;
     // Use lower current (0.1A) to avoid extreme core losses in ungapped toroid
     auto inputs = createInputsForMagnetic(magnetic, 100000.0, config.ambientTemperature, 0.1);
     auto losses = getLossesFromSimulation(magnetic, inputs);
     
     
-    if (losses.simulationSucceeded) {
-        config.coreLosses = losses.coreLosses;
-        config.windingLosses = losses.windingLosses;
-        if (losses.windingLossesOutput.has_value()) {
-            config.windingLossesOutput = losses.windingLossesOutput.value();
-        }
-    } else {
-        applySimulatedLosses(config, magnetic);
-    }
+    config.coreLosses = losses.coreLosses;
+    config.windingLosses = losses.windingLosses;
+    config.windingLossesOutput = losses.windingLossesOutput.value();
     config.plotSchematic = false;
     
     Temperature temp(magnetic, config);
@@ -4020,7 +3980,6 @@ TEST_CASE("Temperature: BuckInductor T134_77_27 from MAS file", "[temperature][c
 
     // Run the electromagnetic simulation to get losses
     auto losses = getLossesFromSimulation(magnetic, inputs);
-    REQUIRE(losses.simulationSucceeded);
     REQUIRE(losses.windingLossesOutput.has_value());
 
     TemperatureConfig config;
