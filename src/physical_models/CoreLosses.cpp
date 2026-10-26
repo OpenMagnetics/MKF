@@ -1501,7 +1501,97 @@ std::vector<double> magnetizing_current_on_time_base(const Waveform& waveform, c
 
 } // namespace
 
+namespace {
+
+bool same_split_bits(const std::vector<double>& a, const std::vector<double>& b) {
+    return a.size() == b.size() && (a.empty() || std::memcmp(a.data(), b.data(), a.size() * sizeof(double)) == 0);
+}
+
+// What split_into_switching_cycles reads of a waveform, as a memo key: every field, compared bitwise.
+struct SplitWaveformKey {
+    std::vector<double> data;
+    std::optional<std::vector<double>> time;
+    std::optional<int64_t> numberPeriods;
+    std::optional<WaveformLabel> ancillaryLabel;
+
+    explicit SplitWaveformKey(const Waveform& waveform)
+        : data(waveform.get_data()), time(waveform.get_time_ref()), numberPeriods(waveform.get_number_periods()),
+          ancillaryLabel(waveform.get_ancillary_label()) {}
+
+    bool matches(const Waveform& waveform) const {
+        if (numberPeriods != waveform.get_number_periods() || ancillaryLabel != waveform.get_ancillary_label()) {
+            return false;
+        }
+        if (!same_split_bits(data, waveform.get_data())) {
+            return false;
+        }
+        const auto& otherTime = waveform.get_time_ref();
+        return time.has_value() == otherTime.has_value() && (!time || same_split_bits(*time, *otherTime));
+    }
+};
+
+// The waveform a split reads from a signal: the signal's waveform, if it has one.
+const std::optional<Waveform>* split_waveform(const std::optional<SignalDescriptor>& signal) {
+    return signal ? &signal->get_waveform_ref() : nullptr;
+}
+
+bool same_split_key(const std::optional<SplitWaveformKey>& key, const std::optional<SignalDescriptor>& signal) {
+    const auto* waveform = split_waveform(signal);
+    bool present = waveform && waveform->has_value();
+    return key.has_value() == present && (!key || key->matches(waveform->value()));
+}
+
+// A split of a sampled flux density reads nothing but the excitation's frequency, the flux density's
+// waveform and the magnetizing current's waveform (standardize_waveform only adds the time axis
+// from the frequency when the waveform has none), so those, bit for bit, are the whole key. The core
+// losses split the same excitation more than once per evaluation (the temperature-factor data end and
+// the losses, at every temperature of the loss-temperature solve). Per thread, the last few
+// excitations, most recent first; a throwing split stores nothing.
+std::optional<SwitchingCyclesRecord> split_into_switching_cycles_uncached(const OperatingPointExcitation& excitation);
+
+struct SplitMemoEntry {
+    double frequency;
+    std::optional<SplitWaveformKey> fluxDensity;
+    std::optional<SplitWaveformKey> magnetizingCurrent;
+    std::optional<SwitchingCyclesRecord> record;
+};
+
+constexpr size_t splitMemoEntries = 4;
+
+} // namespace
+
 std::optional<SwitchingCyclesRecord> CoreLossesModel::split_into_switching_cycles(const OperatingPointExcitation& excitation) {
+    const auto* fluxDensityWaveform = split_waveform(excitation.get_magnetic_flux_density_ref());
+    if (!fluxDensityWaveform || !fluxDensityWaveform->has_value()) {
+        return split_into_switching_cycles_uncached(excitation);
+    }
+    thread_local std::vector<SplitMemoEntry> memo;
+    const double frequency = excitation.get_frequency();
+    for (size_t i = 0; i < memo.size(); ++i) {
+        auto& entry = memo[i];
+        if (std::memcmp(&entry.frequency, &frequency, sizeof(double)) == 0 &&
+            same_split_key(entry.fluxDensity, excitation.get_magnetic_flux_density_ref()) &&
+            same_split_key(entry.magnetizingCurrent, excitation.get_magnetizing_current_ref())) {
+            std::rotate(memo.begin(), memo.begin() + static_cast<std::ptrdiff_t>(i), memo.begin() + static_cast<std::ptrdiff_t>(i) + 1);
+            return memo.front().record;
+        }
+    }
+    auto record = split_into_switching_cycles_uncached(excitation);
+    SplitMemoEntry entry{frequency, SplitWaveformKey(fluxDensityWaveform->value()), std::nullopt, record};
+    if (const auto* magnetizingCurrentWaveform = split_waveform(excitation.get_magnetizing_current_ref());
+        magnetizingCurrentWaveform && magnetizingCurrentWaveform->has_value()) {
+        entry.magnetizingCurrent.emplace(magnetizingCurrentWaveform->value());
+    }
+    if (memo.size() == splitMemoEntries) {
+        memo.pop_back();
+    }
+    memo.insert(memo.begin(), std::move(entry));
+    return record;
+}
+
+namespace {
+
+std::optional<SwitchingCyclesRecord> split_into_switching_cycles_uncached(const OperatingPointExcitation& excitation) {
     if (!excitation.get_magnetic_flux_density()) {
         return std::nullopt;  // nothing to split; the model reports the missing flux density itself
     }
@@ -1509,7 +1599,7 @@ std::optional<SwitchingCyclesRecord> CoreLossesModel::split_into_switching_cycle
     if (!fluxDensity.get_waveform() && !fluxDensity.get_harmonics()) {
         return std::nullopt;  // processed-only: an analytical shape, one period by construction
     }
-    if (fluxDensity.get_waveform() && fluxDensity.get_waveform()->get_data().size() < 2 * minimumSwitchingCyclesInRecord + 1) {
+    if (fluxDensity.get_waveform() && fluxDensity.get_waveform()->get_data().size() < 2 * CoreLossesModel::minimumSwitchingCyclesInRecord + 1) {
         return std::nullopt;  // too few samples to hold that many cycles
     }
     fluxDensity = Inputs::standardize_waveform(fluxDensity, excitation.get_frequency());
@@ -1524,7 +1614,7 @@ std::optional<SwitchingCyclesRecord> CoreLossesModel::split_into_switching_cycle
             "Core losses: the flux density waveform has " + std::to_string(fluxDensityData.size()) + " samples and " +
             std::to_string(fluxDensityTime.size()) + " time points");
     }
-    if (fluxDensityData.size() < 2 * minimumSwitchingCyclesInRecord + 1) {
+    if (fluxDensityData.size() < 2 * CoreLossesModel::minimumSwitchingCyclesInRecord + 1) {
         return std::nullopt;
     }
     auto switchingCycleValleys = Inputs::find_switching_cycle_valleys(fluxDensityTime, fluxDensityData);
@@ -1637,6 +1727,8 @@ std::optional<SwitchingCyclesRecord> CoreLossesModel::split_into_switching_cycle
     }
     return record;
 }
+
+} // namespace
 
 double CoreLossesModel::combine_switching_cycles(const SwitchingCyclesRecord& record,
                                                  const std::function<double(const OperatingPointExcitation&)>& evaluate) {
