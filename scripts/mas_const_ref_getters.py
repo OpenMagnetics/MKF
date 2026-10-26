@@ -11,8 +11,10 @@ const-reference accessor that returns the same member without the copy:
 
     const std::optional<std::vector<double>> & get_time_ref() const { return time; }
 
-Nothing is removed or changed: every existing getter, setter and the JSON (de)serialisers stay as generated, so
-code that does not use the new accessors compiles and behaves exactly as before. The schemas and the MAS repository
+Every existing getter and the JSON (de)serialisers stay as generated, so code that does not use the new accessors
+compiles and behaves exactly as before. The setters, `void set_x(T value) { this->x = value; }`, take their argument
+by value and copy-assigned it a second time; they are rewritten to `this->x = std::move(value);`, which stores the
+same value without the second copy (a caller passing an lvalue still copies once, into the argument). The schemas and the MAS repository
 are not touched; this only edits MKF's generated build/MAS/MAS.hpp.
 
 usage: mas_const_ref_getters.py <MAS.hpp>   (edits the file in place; idempotent)
@@ -20,6 +22,7 @@ usage: mas_const_ref_getters.py <MAS.hpp>   (edits the file in place; idempotent
 import re
 import sys
 
+SETTER_ASSIGNMENT = re.compile(r"this->(?P<member>\w+) = value; \}$")
 GETTER = re.compile(r"^(?P<indent>\s*)std::optional<(?P<type>.+)> get_(?P<name>\w+)\(\) const \{ return (?P<member>\w+); \}$")
 
 
@@ -37,10 +40,17 @@ def main(path):
         out.append(f"{m.group('indent')}const std::optional<{m.group('type')}> & get_{m.group('name')}_ref() const "
                    f"{{ return {m.group('member')}; }}")
         added += 1
+    # Setters take their argument by value and then copy-assigned it; they now move it (same value, one copy less).
+    moved = 0
+    for index, line in enumerate(out):
+        rewritten, count = SETTER_ASSIGNMENT.subn(r"this->\g<member> = std::move(value); }", line)
+        if count:
+            out[index] = rewritten
+            moved += count
     text = "\n".join(out)
     with open(path, "w", encoding="utf-8") as f:
         f.write(text)
-    print(f"mas_const_ref_getters: {added} const& accessors added to {path}")
+    print(f"mas_const_ref_getters: {added} const& accessors added, {moved} setters made to move, in {path}")
 
 
 if __name__ == "__main__":
