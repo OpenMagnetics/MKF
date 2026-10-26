@@ -225,6 +225,71 @@ class CurveBuildScopeGuard {
 };
 } // namespace
 
+namespace {
+void append_key_bits(std::string& key, double value) {
+    key.append(reinterpret_cast<const char*>(&value), sizeof(double));
+}
+
+void append_key_size(std::string& key, size_t value) {
+    key.append(reinterpret_cast<const char*>(&value), sizeof(size_t));
+}
+
+void append_key_optional(std::string& key, const std::optional<double>& value) {
+    key.push_back(value ? 1 : 0);
+    if (value) {
+        append_key_bits(key, value.value());
+    }
+}
+
+void append_key_point(std::string& key, const PermeabilityPoint& point) {
+    append_key_bits(key, point.get_value());
+    append_key_optional(key, point.get_frequency_ref());
+    append_key_optional(key, point.get_magnetic_field_dc_bias_ref());
+    append_key_optional(key, point.get_magnetic_field_peak_ref());
+    append_key_optional(key, point.get_magnetic_flux_density_peak_ref());
+    append_key_optional(key, point.get_temperature_ref());
+    append_key_optional(key, point.get_tolerance_ref());
+    key.push_back(point.get_modifiers_ref() ? 1 : 0);
+    if (point.get_modifiers_ref()) {
+        const std::string modifiers = json(point.get_modifiers_ref().value()).dump();
+        append_key_size(key, modifiers.size());
+        key += modifiers;
+    }
+}
+
+// Everything the magnetisation curve is built from (see get_magnetisation_curve), length-prefixed so that no two
+// different inputs give one key.
+std::string magnetisation_curve_key(const CoreMaterial& coreMaterial, double temperature, std::optional<double> frequency) {
+    std::string key;
+    const auto& name = coreMaterial.get_name();
+    append_key_size(key, name.size());
+    key += name;
+    const auto& initial = coreMaterial.get_permeability().get_initial();
+    if (std::holds_alternative<PermeabilityPoint>(initial)) {
+        key.push_back('P');
+        append_key_point(key, std::get<PermeabilityPoint>(initial));
+    }
+    else {
+        const auto& points = std::get<std::vector<PermeabilityPoint>>(initial);
+        key.push_back('V');
+        append_key_size(key, points.size());
+        for (const auto& point : points) {
+            append_key_point(key, point);
+        }
+    }
+    const auto& saturation = coreMaterial.get_saturation();
+    append_key_size(key, saturation.size());
+    for (const auto& element : saturation) {
+        append_key_bits(key, element.get_magnetic_field());
+        append_key_bits(key, element.get_magnetic_flux_density());
+        append_key_bits(key, element.get_temperature());
+    }
+    append_key_bits(key, temperature);
+    append_key_optional(key, frequency);
+    return key;
+}
+} // namespace
+
 size_t InitialPermeability::get_magnetisation_curve_cache_size() {
     auto& cache = magnetisation_curve_cache();
     std::lock_guard<std::mutex> lock(cache.mutex);
@@ -234,12 +299,9 @@ size_t InitialPermeability::get_magnetisation_curve_cache_size() {
 std::shared_ptr<const InitialPermeability::MagnetisationCurve> InitialPermeability::get_magnetisation_curve(const CoreMaterial& coreMaterial, double temperature, std::optional<double> frequency) {
     // Keyed on the data the curve is built from, not the name alone (a custom material may reuse a catalogue
     // name): the initial permeability with its modifiers, and the saturation points that set Hsat.
-    json initialPermeabilityJson = std::visit([](const auto& initial) { return json(initial); }, coreMaterial.get_permeability().get_initial());
-    json saturationJson = json(coreMaterial.get_saturation());
-    std::ostringstream keyStream;
-    keyStream.precision(17);
-    keyStream << coreMaterial.get_name() << '|' << initialPermeabilityJson.dump() << '|' << saturationJson.dump() << '|' << temperature << '|' << (frequency ? frequency.value() : -1.0);
-    std::string key = keyStream.str();
+    // The key holds that data bit for bit (stricter than the json dump it replaced, which printed a NaN and an
+    // absent value alike as null); only a point's modifiers, a formula, go in as their json dump.
+    std::string key = magnetisation_curve_key(coreMaterial, temperature, frequency);
 
     auto& cache = magnetisation_curve_cache();
     {
