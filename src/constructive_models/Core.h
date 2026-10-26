@@ -57,7 +57,7 @@ class Core : public MAS::MagneticCore {
     std::vector<CoreGeometricalDescriptionElement> get_spacers();
     std::vector<ColumnElement> find_columns_by_type(ColumnType columnType);
     ColumnElement find_closest_column_by_coordinates(std::vector<double> coordinates);
-    int find_closest_column_index_by_coordinates(std::vector<double> coordinates);
+    int find_closest_column_index_by_coordinates(const std::vector<double>& coordinates) const;
     // The same search over a column list the caller already holds, so a hot path that has read the
     // processed description once does not copy it again per query (ABT #1200). The member form
     // delegates here: one implementation.
@@ -86,6 +86,12 @@ class Core : public MAS::MagneticCore {
     void process_data();
     CoreMaterial resolve_material();
     CoreMaterial resolve_material() const;
+    // The same record resolve_material() returns, WITHOUT storing anything into this Core (no
+    // write-back into the functional description, no cache): a material already held is returned by
+    // reference; a name or a multi-grade list is resolved into `storage` and that is returned. For
+    // read-only code that takes a `const Core&` and must leave the caller's core (and every JSON
+    // written from it) exactly as it was.
+    const CoreMaterial& resolve_material_unstored(std::optional<CoreMaterial>& storage) const;
     static CoreMaterial resolve_material(CoreMaterialDataOrNameUnion coreMaterial);
 
     // ABT #576: multi-grade assemblies list their pieces in the order the magnetic circuit

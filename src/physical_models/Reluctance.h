@@ -44,7 +44,7 @@ class ReluctanceModel {
 
     double get_ungapped_core_reluctance(const Core& core, double initialPermeability);
 
-    double get_ungapped_core_reluctance(Core core, std::optional<OperatingPoint> = std::nullopt);
+    double get_ungapped_core_reluctance(const Core& core, std::optional<OperatingPoint> = std::nullopt);
     double get_air_cored_reluctance(Bobbin bobbin);
     static double get_gap_maximum_storable_energy(CoreGap gapInfo, double fringingFactor, double magneticFluxDensitySaturation) {
         auto constants = Constants();
@@ -122,17 +122,17 @@ class ReluctanceModel {
         internalLinks["Classic"] = "";
         return internalLinks;
     }
-    MagnetizingInductanceOutput get_core_reluctance(Core core, std::optional<OperatingPoint> = std::nullopt);
-    MagnetizingInductanceOutput get_core_reluctance(Core core, double initialPermeability);
+    MagnetizingInductanceOutput get_core_reluctance(const Core& core, std::optional<OperatingPoint> = std::nullopt);
+    MagnetizingInductanceOutput get_core_reluctance(const Core& core, double initialPermeability);
     // The gaps' storable energy is at the core material's saturation flux density at `temperature`
     // (25 C, the catalogue reference, when the caller has no operating point -- the same
     // reference Core::get_magnetic_flux_density_saturation(bool) uses). A material without
     // saturation data throws when the core has gaps.
-    MagnetizingInductanceOutput get_gapping_reluctance(Core core, std::optional<double> temperature = std::nullopt);
+    MagnetizingInductanceOutput get_gapping_reluctance(const Core& core, std::optional<double> temperature = std::nullopt);
     // ABT #1714: the gapping reluctance in series with the core material. A core with no gaps has
     // none (get_gapping_reluctance leaves the field unset), which adds nothing to the flux path;
     // a gapped core whose output lacks it is an error.
-    static double gapping_reluctance_in_series(Core& core, const MagnetizingInductanceOutput& output);
+    static double gapping_reluctance_in_series(const Core& core, const MagnetizingInductanceOutput& output);
     double get_gapping_by_fringing_factor(Core core, double fringingFactor);
     ReluctanceModel() = default;
     virtual ~ReluctanceModel() = default;
@@ -228,4 +228,4 @@ class ReluctanceStengleinModel : public ReluctanceModel {
     }
 };
 
-} // namespace OpenMagnetics
+} // namespace OpenMagnetics

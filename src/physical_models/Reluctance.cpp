@@ -20,8 +20,7 @@ double ReluctanceModel::get_ungapped_core_reluctance(const Core& core, double in
     static const Constants constants;
     double absolutePermeability = constants.vacuumPermeability * initialPermeability;
     // One copy of the processed description (the MAS getter returns it by value), not one per field.
-    const auto processedDescription = core.get_processed_description();
-    const auto& effectiveParameters = processedDescription->get_effective_parameters();
+    const auto& effectiveParameters = core.get_processed_description_ref()->get_effective_parameters();
     double effectiveArea = effectiveParameters.get_effective_area();
     double effectiveLength = effectiveParameters.get_effective_length();
 
@@ -58,10 +57,11 @@ double ReluctanceModel::get_air_cored_reluctance(Bobbin bobbin) {
     return reluctanceAirCore;
 }
 
-double ReluctanceModel::get_ungapped_core_reluctance(Core core, std::optional<OperatingPoint> operatingPoint) {
+double ReluctanceModel::get_ungapped_core_reluctance(const Core& core, std::optional<OperatingPoint> operatingPoint) {
     InitialPermeability initialPermeability;
 
-    auto coreMaterial = core.resolve_material();
+    std::optional<CoreMaterial> resolvedMaterial;
+    const auto& coreMaterial = core.resolve_material_unstored(resolvedMaterial);
 
     double initialPermeabilityValue;
     if (operatingPoint) {
@@ -78,7 +78,7 @@ double ReluctanceModel::get_ungapped_core_reluctance(Core core, std::optional<Op
 }
 
 
-MagnetizingInductanceOutput ReluctanceModel::get_core_reluctance(Core core, std::optional<OperatingPoint> operatingPoint) {
+MagnetizingInductanceOutput ReluctanceModel::get_core_reluctance(const Core& core, std::optional<OperatingPoint> operatingPoint) {
     auto ungappedCoreReluctance = get_ungapped_core_reluctance(core, operatingPoint);
     std::optional<double> temperature;
     if (operatingPoint) {
@@ -104,7 +104,7 @@ MagnetizingInductanceOutput ReluctanceModel::get_core_reluctance(Core core, std:
     return magnetizingInductanceOutput;
 }
 
-MagnetizingInductanceOutput ReluctanceModel::get_core_reluctance(Core core, double initialPermeability) {
+MagnetizingInductanceOutput ReluctanceModel::get_core_reluctance(const Core& core, double initialPermeability) {
     auto ungappedCoreReluctance = get_ungapped_core_reluctance(core, initialPermeability);
 
     auto magnetizingInductanceOutput = get_gapping_reluctance(core);
@@ -176,7 +176,7 @@ AirGapReluctanceOutput ReluctanceModel::get_annular_clearance_gap_reluctance(Cor
     return airGapReluctanceOutput;
 }
 
-double ReluctanceModel::gapping_reluctance_in_series(Core& core, const MagnetizingInductanceOutput& output) {
+double ReluctanceModel::gapping_reluctance_in_series(const Core& core, const MagnetizingInductanceOutput& output) {
     if (core.get_functional_description().get_gapping().empty()) {
         return 0;  // no gap: nothing in series with the core material
     }
@@ -188,23 +188,30 @@ double ReluctanceModel::gapping_reluctance_in_series(Core& core, const Magnetizi
     return output.get_gapping_reluctance().value();
 }
 
-MagnetizingInductanceOutput ReluctanceModel::get_gapping_reluctance(Core core, std::optional<double> temperature) {
+MagnetizingInductanceOutput ReluctanceModel::get_gapping_reluctance(const Core& callerCore, std::optional<double> temperature) {
+    // Read-only on the caller's core. A gap without coordinates needs process_gap_or_throw(), which
+    // edits the core: that case works on a local copy, as the by-value parameter used to.
+    std::optional<Core> processedCore;
+    const Core* corePointer = &callerCore;
     double calculatedReluctance = 0;
     double calculatedCentralReluctance = 0;
     double calculatedLateralReluctance = 0;
     double maximumFringingFactor = 1;
     double maximumStorableMagneticEnergyGapping = 0;
     std::vector<AirGapReluctanceOutput> reluctancePerGap;
-    auto gapping = core.get_functional_description().get_gapping();
+    auto gapping = callerCore.get_functional_description().get_gapping();
     if (gapping.size() != 0) {
         // We recompute all gaps in case some is missing coordinates
         for (const auto& gap : gapping) {
             if (!gap.get_coordinates()) {
-                core.process_gap_or_throw();
-                gapping = core.get_functional_description().get_gapping();
+                processedCore = callerCore;
+                processedCore->process_gap_or_throw();
+                corePointer = &processedCore.value();
+                gapping = processedCore->get_functional_description().get_gapping();
                 break;
             }
         }
+        const Core& core = *corePointer;
 
 
         // Gaps on the wound (main) column are in series with the flux; gaps on the
@@ -216,14 +223,22 @@ MagnetizingInductanceOutput ReluctanceModel::get_gapping_reluctance(Core core, s
         // ABT #1610: the gaps store energy up to the saturation of THIS core's material at the
         // operating temperature (was a 0.4 T member, or the Bsat of whichever core this model
         // instance had seen last).
-        double magneticFluxDensitySaturation = temperature ? core.get_magnetic_flux_density_saturation(temperature.value(), true)
-                                                           : core.get_magnetic_flux_density_saturation(true);
+        std::optional<CoreMaterial> resolvedMaterial;
+        const auto& coreMaterial = core.resolve_material_unstored(resolvedMaterial);
+        double magneticFluxDensitySaturation = temperature ? Core::get_magnetic_flux_density_saturation(coreMaterial, temperature.value(), true)
+                                                           : Core::get_magnetic_flux_density_saturation(coreMaterial, true);
         bool isDrumRing = core.get_shape_family() == CoreShapeFamily::DRUM_RING;
+        // The annular model resolves the shape through Core::resolve_shape(), which stores it: give it
+        // its own copy, as the by-value parameter did.
+        std::optional<Core> drumRingCore;
+        if (isDrumRing) {
+            drumRingCore = core;
+        }
         for (const auto& gap : gapping) {
             // ABT #368: drumRing structural clearances get the dedicated annular model — the
             // generic ones assume winding-window escape walls and (rectangular branch) fringe
             // the circumferential ends of a section that is actually a closed loop.
-            auto gapReluctance = isDrumRing ? get_annular_clearance_gap_reluctance(core, gap, magneticFluxDensitySaturation)
+            auto gapReluctance = isDrumRing ? get_annular_clearance_gap_reluctance(drumRingCore.value(), gap, magneticFluxDensitySaturation)
                                             : get_gap_reluctance(gap, magneticFluxDensitySaturation);
             auto gapColumnIndex = core.find_closest_column_index_by_coordinates(gap.get_coordinates().value());
             reluctancePerGap.push_back(gapReluctance);

@@ -716,9 +716,8 @@ std::vector<ColumnElement> Core::find_columns_by_type(ColumnType columnType) {
     return foundColumns;
 }
 
-int Core::find_closest_column_index_by_coordinates(std::vector<double> coordinates) {
-    auto processedDescription = get_processed_description().value();
-    return find_closest_column_index_by_coordinates(processedDescription.get_columns(), coordinates);
+int Core::find_closest_column_index_by_coordinates(const std::vector<double>& coordinates) const {
+    return find_closest_column_index_by_coordinates(get_processed_description_ref().value().get_columns(), coordinates);
 }
 
 int Core::find_closest_column_index_by_coordinates(const std::vector<ColumnElement>& columns,
@@ -1534,6 +1533,15 @@ CoreMaterial Core::resolve_material() const {
         _cachedResolvedMaterial = material;
     }
     return material;
+}
+
+const CoreMaterial& Core::resolve_material_unstored(std::optional<CoreMaterial>& storage) const {
+    const auto& material = get_functional_description().get_material();
+    if (std::holds_alternative<CoreMaterial>(material)) {
+        return std::get<CoreMaterial>(material);
+    }
+    storage = resolve_material(material);
+    return *storage;
 }
 
 CoreMaterial Core::resolve_material(CoreMaterialDataOrNameUnion coreMaterial) {
