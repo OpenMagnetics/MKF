@@ -12,6 +12,7 @@
 // retained number is anything other than the one the length was built from.
 #include "constructive_models/Bobbin.h"
 #include "constructive_models/Coil.h"
+#include "constructive_models/Magnetic.h"
 #include "constructive_models/Wire.h"
 #include "support/Settings.h"
 #include "support/Utils.h"
@@ -21,6 +22,8 @@
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
 
 #include <cmath>
+#include <fstream>
+#include <source_location>
 #include <numbers>
 #include <vector>
 
@@ -174,4 +177,38 @@ TEST_CASE("Ideal winding charges no corner radius, so none is retained",
     for (const auto& turn : turns) {
         REQUIRE_FALSE(coil.get_turn_bend_radius(turn.get_name()));
     }
+}
+
+// ABT #2091: a turn moved AFTER it was charged is charged again from where it ends up. The stored
+// n18 design (18 turns of a 13.6 x 2.5 mm edgewise strip on the U 46/40/28 former, one CONTIGUOUS
+// section, real winding) lays its blocked layers out past the window, and align_blocked_layer_turns
+// moved the stations of its last layer 2.884 mm after wind_by_turns charged them: the corner MKF
+// retained was the one of a station that was no longer there, and MVB++, which draws every corner
+// from the turn's own position, refused the STEP. Every turn's retained corner must be the one its
+// final position yields in its section's frame, to the bit MVB++ checks it to.
+TEST_CASE("A turn moved after it was charged retains the corner of where it ends up",
+          "[constructive-model][coil][real-geometry][turn-bend-radius][abt-2091]") {
+    auto& settings = Settings::GetInstance();
+    settings.reset();
+    settings.set_coil_use_real_winding_geometry(true);
+    std::ifstream file(OpenMagneticsTesting::get_test_data_path(std::source_location::current(),
+                                                                "abt2071_edgewise_strip_U46_n18_contiguous.json"));
+    REQUIRE(file.good());
+    auto magnetic = OpenMagnetics::magnetic_autocomplete(OpenMagnetics::Magnetic(nlohmann::json::parse(file)), nlohmann::json{});
+    auto& coil = magnetic.get_mutable_coil();
+    REQUIRE(coil.get_turns_description());
+    const auto turns = coil.get_turns_description().value();
+    REQUIRE(turns.size() == 35);
+    for (const auto& turn : turns) {
+        REQUIRE(turn.get_section());
+        const auto frame = coil.get_wound_column_frame_for_section(turn.get_section().value());
+        REQUIRE((frame.shape == ColumnShape::RECTANGULAR || frame.shape == ColumnShape::IRREGULAR));
+        const auto retained = coil.get_turn_bend_radius(turn.get_name());
+        REQUIRE(retained);
+        const double atItsPosition = coil.get_turn_bend_radius_in_frame(frame, std::abs(turn.get_coordinates()[0]));
+        INFO("turn '" << turn.get_name() << "' x=" << turn.get_coordinates()[0] * 1e3 << " mm, retained "
+             << retained.value() * 1e3 << " mm, at its position " << atItsPosition * 1e3 << " mm");
+        CHECK(std::abs(retained.value() - atItsPosition) <= 1e-12);
+    }
+    settings.reset();
 }

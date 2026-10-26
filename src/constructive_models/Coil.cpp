@@ -5309,6 +5309,46 @@ void Coil::charge_tangent_departures() {
     }
 }
 
+// ABT #2091: a turn's length and the corner radius it is charged for (record_turn_bend_radius) are
+// functions of its radial position in its wound column's frame. A pass that moves turns radially
+// AFTER they were charged (align_blocked_layer_turns: the packing against the unblocked edge, the
+// turn-axis overflow past the window, the radial steps against sibling wraps) left both stale: the
+// n18 edgewise strip's layer 16 kept the corner of a station 2.884 mm from where it was drawn, and
+// MVB++ draws every corner from the turn's final position. Charge each moved turn again, with the
+// same frame and the same expression wind_by_turns and delimit_and_compact use.
+void Coil::recharge_turns_moved_since(std::vector<Turn>& turns, const std::vector<Turn>& before) {
+    if (turns.size() != before.size()) {
+        throw CoilException(ErrorCode::COIL_WINDING_ERROR,
+                            "Real winding: a pass that only moves turns changed their number from " +
+                                std::to_string(before.size()) + " to " + std::to_string(turns.size()));
+    }
+    std::map<std::string, WoundColumnFrame> frameBySection;
+    for (size_t turnIndex = 0; turnIndex < turns.size(); ++turnIndex) {
+        auto& turn = turns[turnIndex];
+        if (turn.get_coordinates()[0] == before[turnIndex].get_coordinates()[0]) {
+            continue;
+        }
+        if (!turn.get_section()) {
+            throw CoilException(ErrorCode::COIL_WINDING_ERROR,
+                                "Real winding: turn " + turn.get_name() + " was moved but names no section to charge it in");
+        }
+        const auto sectionName = turn.get_section().value();
+        auto found = frameBySection.find(sectionName);
+        if (found == frameBySection.end()) {
+            found = frameBySection.emplace(sectionName, get_wound_column_frame_for_section(sectionName)).first;
+        }
+        double chargedBendRadius = std::numeric_limits<double>::quiet_NaN();
+        auto turnLength = get_turn_length_in_frame(found->second, turn.get_coordinates()[0], std::nullopt, &chargedBendRadius);
+        if (!turnLength) {
+            throw CalculationException(ErrorCode::CALCULATION_INVALID_RESULT,
+                                       "Negative turn length for turn " + turn.get_name() + " moved to x: " +
+                                           std::to_string(turn.get_coordinates()[0]));
+        }
+        turn.set_length(turnLength.value());
+        record_turn_bend_radius(turn.get_name(), chargedBendRadius);
+    }
+}
+
 void Coil::align_blocked_layer_turns() {
     if (!get_layers_description() || !get_turns_description()) {
         return;
@@ -5321,6 +5361,10 @@ void Coil::align_blocked_layer_turns() {
     if (bobbin.get_winding_window_shape() != WindingWindowShape::RECTANGULAR) {
         return;
     }
+    // ABT #2091: the turns as they were charged (length and corner radius, by wind_by_turns and
+    // delimit_and_compact). Every turn this pass moves radially is charged again from where it
+    // ends up, before the turns are handed back.
+    const auto turnsAsCharged = get_turns_description().value();
     // ABT #1401: every helical layer first gets the pitch its FINAL radius needs; the layers that
     // carry connection depths are then re-laid below from their own spans with that same law.
     if (realWinding) {
@@ -5340,6 +5384,7 @@ void Coil::align_blocked_layer_turns() {
             auto layers = get_layers_description().value();
             keep_parallel_order_in_every_layer(turns, layers);
             fund_radial_steps_against_sibling_wraps(turns, layers);
+            recharge_turns_moved_since(turns, turnsAsCharged);
             set_turns_description(turns);
         }
         return;
@@ -6099,6 +6144,7 @@ void Coil::align_blocked_layer_turns() {
     if (realWinding) {
         fund_radial_steps_against_sibling_wraps(turns, layers);
     }
+    recharge_turns_moved_since(turns, turnsAsCharged);
     set_layers_description(layers);
     set_turns_description(turns);
 

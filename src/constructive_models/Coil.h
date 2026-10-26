@@ -1455,6 +1455,7 @@ class Coil : public MAS::Coil {
         // leads run (top edge for top-crossing leads, bottom for bottom) and no window space is wasted
         // with an empty gap on the unblocked side. Real winding geometry only.
         void align_blocked_layer_turns();
+        void recharge_turns_moved_since(std::vector<Turn>& turns, const std::vector<Turn>& before);
         // ABT #1401: re-lay every real-winding overlapping round/litz layer at the pitch its wraps
         // need at the radius the layer FINALLY sits at. The winder derives the helical pitch from
         // the turn length at the radius it winds the layer at, and delimit_and_compact then moves
