@@ -4272,6 +4272,23 @@ void Coil::redistribute_section_turns_for_blocking() {
                 uint64_t maximumTurnsPerLayer = std::max<uint64_t>(numberParallels, uint64_t(whole_fits(section.get_dimensions()[turnAxis], wirePitch)));
                 size_t sectionsRemaining = sectionsOfGroup.size() - k;
 
+                // What each later section of the group must be left: at least one turn per parallel,
+                // and -- when real winding charges this winding a crossing station per layer
+                // (_realWindingStationsPerWinding) -- that layer's own station too. The counts here
+                // include the stations, so leaving a later section ONE left it only its station: a
+                // layer holding no turn, a zero-length phantom named one past the winding's last
+                // turn (ABT #2083: E 25/13/7 interleaved, a 3-turn primary's section 1 held only
+                // "turn 3", and a 4 mm lead radius then threw on its 0 m length).
+                const bool chargedStations = windingIndex < _realWindingStationsPerWinding.size() &&
+                                             _realWindingStationsPerWinding[windingIndex] > 0;
+                // While the crossing raise has not caught up yet (it starts at one station per
+                // winding and climbs to one per layer, re-winding each time), the stations counted
+                // here can be too few for every later section to get its pair; that intermediate
+                // split leaves one each, as it always did, and the raise re-splits it.
+                const uint64_t leftForLaterSections =
+                    chargedStations && remaining > uint64_t(sectionsRemaining - 1) * 2
+                        ? uint64_t(sectionsRemaining - 1) * 2
+                        : uint64_t(sectionsRemaining - 1);
                 uint64_t sectionTurns;  // per parallel
                 if (sectionsRemaining == 1) {
                     // Outermost section of the group absorbs whatever is left (a partial outer layer
@@ -4289,7 +4306,7 @@ void Coil::redistribute_section_turns_for_blocking() {
                         if (capacity == 0) {
                             break;  // layer too thin to hold one row of every parallel
                         }
-                        if (turns + capacity <= fairShare && (remaining - (turns + capacity)) >= (sectionsRemaining - 1)) {
+                        if (turns + capacity <= fairShare && turns + capacity <= remaining && (remaining - (turns + capacity)) >= leftForLaterSections) {
                             turns += capacity;
                             layer++;
                         }
@@ -4301,7 +4318,7 @@ void Coil::redistribute_section_turns_for_blocking() {
                         // Even a single full layer exceeds the fair share: take one layer anyway so this
                         // interior section is not left with a fractional layer.
                         uint64_t capacity0 = std::max<uint64_t>(rowsCapacity(section.get_name(), 0, maximumTurnsPerLayer), 1);
-                        turns = std::min<uint64_t>(capacity0, remaining - (sectionsRemaining - 1));
+                        turns = std::min<uint64_t>(capacity0, remaining - leftForLaterSections);
                         if (turns == 0) {
                             turns = 1;
                         }
@@ -4336,7 +4353,7 @@ void Coil::redistribute_section_turns_for_blocking() {
                             turns += capacity;
                             layer++;
                         }
-                        turns = std::min<uint64_t>(turns, remaining - (sectionsRemaining - 1));
+                        turns = std::min<uint64_t>(turns, remaining - leftForLaterSections);
                     }
                     sectionTurns = turns;
                 }

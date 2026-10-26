@@ -32,6 +32,7 @@
 
 #include <algorithm>
 #include <functional>
+#include <map>
 #include <cmath>
 #include <filesystem>
 #include <fstream>
@@ -538,6 +539,58 @@ TEST_CASE("Real winding draws a tangent lead on a route it does not model in ful
             }
         }
         check_reported(leads, "it is run to pin '");
+    }
+    settings.reset();
+}
+
+// ABT #2083: an interleaved winding's split leaves every later section a turn of copper, not only its
+// own opening station. E 25/13/7, two sections per winding, primary of 3 or 5 turns of Round 0.4,
+// secondary of 10: with the per-layer stations charged, section 0 took all but one of the primary's
+// counted stations and section 1 held a lone zero-length station named one past the winding's last turn
+// ("turn 3" of a 3-turn winding); with a 4 mm lead radius the exit departure then shortened that 0 m
+// station and the wind threw. Every section must hold copper and no station may be named past the
+// winding's turns.
+TEST_CASE("Real winding: an interleaved winding's later section is not left only its opening station",
+          "[constructive-model][coil][real-winding][tangent-departure][abt-2083]") {
+    auto& settings = OpenMagnetics::Settings::GetInstance();
+    for (const int64_t primaryTurns : {int64_t(3), int64_t(5)}) {
+        for (const double leadRadius : {0.001, 0.004}) {
+            INFO("primary " << primaryTurns << " turns, lead radius " << leadRadius * 1e3 << " mm");
+            settings.reset();
+            settings.set_coil_use_real_winding_geometry(true);
+            settings.set_coil_lead_minimum_bend_radius(leadRadius);
+            const auto wire = OpenMagnetics::find_wire_by_name("Round 0.4 - Grade 1");
+            OpenMagnetics::Coil coil;
+            REQUIRE_NOTHROW(coil = OpenMagneticsTesting::get_quick_coil({primaryTurns, 10}, {1, 1}, "E 25/13/7", 2,
+                                                                        MAS::WindingOrientation::OVERLAPPING,
+                                                                        MAS::WindingOrientation::OVERLAPPING,
+                                                                        MAS::CoilAlignment::CENTERED, MAS::CoilAlignment::CENTERED,
+                                                                        {wire, wire}));
+            REQUIRE(coil.get_turns_description());
+            const auto turns = coil.get_turns_description().value();
+            std::map<std::string, size_t> copperPerSection;
+            std::map<std::string, size_t> copperPerWinding;
+            for (const auto& turn : turns) {
+                REQUIRE(turn.get_section());
+                const auto windingIndex = coil.get_winding_index_by_name(turn.get_winding());
+                const int64_t windingTurns = coil.get_functional_description()[windingIndex].get_number_turns();
+                // "<winding> parallel <p> turn <k>[_ending]": k never reaches the winding's turn count.
+                const auto name = turn.get_name();
+                const auto at = name.rfind(" turn ");
+                REQUIRE(at != std::string::npos);
+                const int64_t index = std::stoll(name.substr(at + 6));
+                CHECK(index < windingTurns);
+                copperPerSection[turn.get_section().value()] += turn.get_length() > 0 ? 1 : 0;
+                copperPerWinding[turn.get_winding()] += turn.get_length() > 0 ? 1 : 0;
+            }
+            REQUIRE(copperPerSection.size() == 4);
+            for (const auto& [section, copper] : copperPerSection) {
+                INFO(section);
+                CHECK(copper > 0);
+            }
+            CHECK(copperPerWinding[coil.get_functional_description()[0].get_name()] == size_t(primaryTurns));
+            CHECK(copperPerWinding[coil.get_functional_description()[1].get_name()] == 10);
+        }
     }
     settings.reset();
 }
