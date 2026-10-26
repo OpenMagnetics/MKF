@@ -542,9 +542,10 @@ InducingCoilMesh CoilMesher::generate_mesh_inducing_coil_phasors(Magnetic magnet
     for (auto harmonicIndex : commonHarmonicIndexes) {
         amplitudePerWindingPerHarmonic[harmonicIndex].assign(coil.get_functional_description().size(), 0.0);
         Field field;
-        for (auto excitation : operatingPoint.get_excitations_per_winding()) {
-            if (harmonicIndex < excitation.get_current()->get_harmonics().value().get_frequencies().size()) {
-                field.set_frequency(excitation.get_current()->get_harmonics().value().get_frequencies()[harmonicIndex]);
+        for (const auto& excitation : operatingPoint.get_excitations_per_winding()) {
+            const auto& frequencies = excitation.get_current_ref()->get_harmonics_ref().value().get_frequencies();
+            if (harmonicIndex < frequencies.size()) {
+                field.set_frequency(frequencies[harmonicIndex]);
                 break;
             }
         }
@@ -566,10 +567,12 @@ InducingCoilMesh CoilMesher::generate_mesh_inducing_coil_phasors(Magnetic magnet
     // fetching it per turn dominated this loop's cost.
     auto meshCore = magnetic.get_core();
     for (size_t turnIndex = 0; turnIndex < turns.size(); ++turnIndex) {
-        auto turn = turns[turnIndex];
+        // Read in place: the turn and the winding's current were copied per turn; the mesher models only read
+        // the wire (its type), so they get the winding's wire itself.
+        const auto& turn = turns[turnIndex];
         int windingIndex = coil.get_winding_index_by_name(turn.get_winding());
-        auto wire = wirePerWinding[windingIndex];
-        auto excitationCurrent = operatingPoint.get_excitations_per_winding()[windingIndex].get_current();
+        auto& wire = wirePerWinding[windingIndex];
+        const auto& excitationCurrent = operatingPoint.get_excitations_per_winding()[windingIndex].get_current_ref();
         if (!excitationCurrent || !excitationCurrent->get_harmonics()) {
             throw InvalidInputException(ErrorCode::MISSING_DATA, "Current for winding " + std::to_string(windingIndex) + " is missing harmonics in Coil Mesher");
         }
@@ -602,7 +605,7 @@ InducingCoilMesh CoilMesher::generate_mesh_inducing_coil_phasors(Magnetic magnet
     std::vector<std::vector<double>> currentAmplitudePerHarmonicPerWinding;
     for (size_t harmonicIndex = 0; harmonicIndex < tempFieldPerHarmonic.size(); ++harmonicIndex){
         if (tempFieldPerHarmonic[harmonicIndex].get_data().size() > 0) {
-            fieldPerHarmonic.push_back(tempFieldPerHarmonic[harmonicIndex]);
+            fieldPerHarmonic.push_back(std::move(tempFieldPerHarmonic[harmonicIndex]));
             auto commonPosition = std::find(commonHarmonicIndexes.begin(), commonHarmonicIndexes.end(), harmonicIndex);
             if (commonPosition == commonHarmonicIndexes.end()) {
                 throw CalculationException(ErrorCode::CALCULATION_ERROR, "generate_mesh_inducing_coil: meshed harmonic " + std::to_string(harmonicIndex) +
