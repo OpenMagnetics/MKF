@@ -1704,7 +1704,7 @@ bool WaveformProcessor::is_zero_harmonic(const FourierSeries& series, double lis
     return std::fabs(listedAmplitude) < zeroScale && std::abs(phasor) < zeroScale;
 }
 
-Harmonics WaveformProcessor::calculate_harmonics_data(Waveform waveform, double frequency, bool trimHarmonics, double harmonicAmplitudeThreshold, size_t numberPointsSampledWaveforms) {
+Harmonics WaveformProcessor::calculate_harmonics_data(const Waveform& waveform, double frequency, bool trimHarmonics, double harmonicAmplitudeThreshold, size_t numberPointsSampledWaveforms) {
     thread_local WaveformMemo<HarmonicsEntry> memo{32, kWaveformMemoBytes, {}};
     if (auto hit = memo.find([&](const HarmonicsEntry& entry) {
             return same_bits(entry.frequency, frequency) && entry.trimHarmonics == trimHarmonics &&

@@ -37,7 +37,7 @@ class LeakageInductance{
     ComplexField calculate_leakage_magnetic_field(Magnetic magnetic, double frequency, size_t sourceIndex = 0, size_t destinationIndex = 1, size_t harmonicIndex = 1);
     LeakageInductanceOutput calculate_leakage_inductance_all_windings(Magnetic magnetic, double frequency, size_t sourceIndex = 0, size_t harmonicIndex = 1);
     // In-phase field only (see calculate_magnetic_field_phasor) and the grid cell area.
-    std::pair<ComplexField, double> calculate_magnetic_field(OperatingPoint operatingPoint, Magnetic magnetic, size_t sourceIndex = 0, size_t destinationIndex = 1, size_t harmonicIndex = 1, std::optional<std::vector<int8_t>> customCurrentDirectionPerWinding = std::nullopt);
+    std::pair<ComplexField, double> calculate_magnetic_field(const OperatingPoint& operatingPoint, Magnetic magnetic, size_t sourceIndex = 0, size_t destinationIndex = 1, size_t harmonicIndex = 1, std::optional<std::vector<int8_t>> customCurrentDirectionPerWinding = std::nullopt);
     // The window field as a phasor (MAS excitation convention, 2026-09-24): in-phase and
     // quadrature components on the same grid (WindingWindowMagneticStrengthFieldPhasorOutput).
     // Stored energy is the in-phase energy plus the quadrature energy.
@@ -46,7 +46,7 @@ class LeakageInductance{
         ComplexField quadrature;
         double dA;
     };
-    PhasorField calculate_magnetic_field_phasor(OperatingPoint operatingPoint, Magnetic magnetic, size_t sourceIndex = 0, size_t destinationIndex = 1, size_t harmonicIndex = 1, std::optional<std::vector<int8_t>> customCurrentDirectionPerWinding = std::nullopt);
+    PhasorField calculate_magnetic_field_phasor(const OperatingPoint& operatingPoint, Magnetic magnetic, size_t sourceIndex = 0, size_t destinationIndex = 1, size_t harmonicIndex = 1, std::optional<std::vector<int8_t>> customCurrentDirectionPerWinding = std::nullopt);
     std::pair<size_t, size_t> calculate_number_points_needed_for_leakage(Coil coil);
 
     // Leakage magnetic-field energy (Joules, peak stored energy) in the winding window for an

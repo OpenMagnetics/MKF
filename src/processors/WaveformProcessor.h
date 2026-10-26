@@ -123,7 +123,7 @@ class WaveformProcessor {
     //    0..N/2-1, as before.
     // The coefficients come from calculate_fourier_series, the same ones that give the phases
     // (calculate_harmonic_phasor): amplitude and phase of a harmonic are one complex number.
-    static MAS::Harmonics calculate_harmonics_data(MAS::Waveform waveform,
+    static MAS::Harmonics calculate_harmonics_data(const MAS::Waveform& waveform,
                                                    double frequency,
                                                    bool trimHarmonics = true,
                                                    double harmonicAmplitudeThreshold = 0.05,

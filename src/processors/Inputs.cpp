@@ -97,7 +97,7 @@ void ifft(std::vector<std::complex<double>>& x)
     }
 }
 
-double Inputs::calculate_waveform_average(Waveform waveform, std::optional<double> frequency) {
+double Inputs::calculate_waveform_average(const Waveform& waveform, std::optional<double> frequency) {
     // get_time() returns the optional BY VALUE, so indexing it inside the loop copied the whole
     // time axis twice per sample: O(N^2), minutes for an imported waveform with a few hundred
     // thousand points. Take it once.
@@ -383,7 +383,7 @@ bool windings_alternate(const Inputs::WindingConduction& conduction) {
     return numberPointsNotConductingAtTheSameTime > gridPoints * 0.1;
 }
 
-bool Inputs::include_dc_offset_into_magnetizing_current(OperatingPoint operatingPoint, std::vector<double> turnsRatios) {
+bool Inputs::include_dc_offset_into_magnetizing_current(const OperatingPoint& operatingPoint, const std::vector<double>& turnsRatios) {
     // Determine if this is truly a single-winding component (inductor) by checking both
     // the turns ratios and the actual number of excitations in the operating point
     bool onlyOneWinding = turnsRatios.size() == 0 && operatingPoint.get_excitations_per_winding().size() <= 1;
@@ -546,7 +546,7 @@ double Inputs::calculate_magnetizing_current_dc_anchor(OperatingPointExcitation 
 }
 
 
-double Inputs::try_guess_duty_cycle(Waveform waveform, WaveformLabel label, double frequency) {
+double Inputs::try_guess_duty_cycle(const Waveform& waveform, WaveformLabel label, double frequency) {
     // Delegates to WaveformProcessor, which fixed the same classifier bug
     // (ABT #602): three unconditional `return 0.5` defaults for genuinely
     // unrecognised shapes, and a second-difference heuristic that divided an
@@ -560,7 +560,7 @@ double Inputs::try_guess_duty_cycle(Waveform waveform, WaveformLabel label, doub
                                                    settings.get_inputs_number_points_sampled_waveforms());
 }
 
-bool Inputs::is_standardized(SignalDescriptor signal) {
+bool Inputs::is_standardized(const SignalDescriptor& signal) {
     if (!signal.get_waveform()) {
         return false;
     }
@@ -591,7 +591,7 @@ SignalDescriptor Inputs::standardize_waveform(SignalDescriptor signal, double fr
         }
     }
 
-    if (standardized_signal.get_waveform() && !standardized_signal.get_waveform()->get_time()) {
+    if (standardized_signal.get_waveform_ref() && !standardized_signal.get_waveform_ref()->get_time_ref()) {
         auto time = linear_spaced_array(0, 1. / roundFloat(frequency, 9), standardized_signal.get_waveform()->get_data().size());
         auto waveform = standardized_signal.get_waveform().value();
         waveform.set_time(time);
@@ -679,7 +679,7 @@ Waveform Inputs::create_waveform(WaveformLabel label, double peakToPeak, double 
                                               settings.get_inputs_number_points_sampled_waveforms());
 }
 
-bool Inputs::is_waveform_sampled(Waveform waveform) {
+bool Inputs::is_waveform_sampled(const Waveform& waveform) {
     if (!waveform.get_time()) {
         return false;
     }
@@ -692,7 +692,7 @@ bool Inputs::is_waveform_sampled(Waveform waveform) {
 
 }
 
-bool Inputs::is_waveform_imported(Waveform waveform) {
+bool Inputs::is_waveform_imported(const Waveform& waveform) {
     if (!waveform.get_time()) {
         return false;
     }
@@ -722,7 +722,7 @@ bool Inputs::has_flyback_label(const OperatingPointExcitation& excitation) {
     return false;
 }
 
-bool Inputs::is_multiport_inductor(OperatingPoint operatingPoint, std::optional<std::vector<IsolationSide>> isolationSides) {
+bool Inputs::is_multiport_inductor(const OperatingPoint& operatingPoint, std::optional<std::vector<IsolationSide>> isolationSides) {
     auto excitations = operatingPoint.get_excitations_per_winding();
     if (excitations.size() < 2) {
         return false;
@@ -763,7 +763,7 @@ bool Inputs::is_multiport_inductor(OperatingPoint operatingPoint, std::optional<
 }
 
 
-bool Inputs::can_be_common_mode_choke(OperatingPoint operatingPoint, std::optional<std::vector<IsolationSide>> isolationSides) {
+bool Inputs::can_be_common_mode_choke(const OperatingPoint& operatingPoint, std::optional<std::vector<IsolationSide>> isolationSides) {
     auto excitations = operatingPoint.get_excitations_per_winding();
     // CMC topologies: 2 (line + neutral), 3 (three-phase delta), or 4
     // (three-phase + neutral). Four-winding was previously excluded, which
@@ -850,7 +850,7 @@ bool Inputs::is_multiport_inductor_magnetizing_current_from_voltage(const Operat
     return has_flyback_label(primaryExcitation) && primaryExcitation.get_voltage().has_value();
 }
 
-SignalDescriptor Inputs::get_multiport_inductor_magnetizing_current(OperatingPoint operatingPoint,
+SignalDescriptor Inputs::get_multiport_inductor_magnetizing_current(const OperatingPoint& operatingPoint,
                                                                    double magnetizingInductance,
                                                                    const std::vector<double>& turnsRatios,
                                                                    std::optional<std::vector<IsolationSide>> isolationSides) {
@@ -909,7 +909,7 @@ SignalDescriptor Inputs::get_multiport_inductor_magnetizing_current(OperatingPoi
     return magnetizingCurrent;
 }
 
-SignalDescriptor Inputs::get_common_mode_choke_magnetizing_current(OperatingPoint operatingPoint) {
+SignalDescriptor Inputs::get_common_mode_choke_magnetizing_current(const OperatingPoint& operatingPoint) {
     OperatingPointExcitation excitation = Inputs::get_primary_excitation(operatingPoint);
 
     // ── Physics recap for CMCs ───────────────────────────────────────────
@@ -976,7 +976,7 @@ SignalDescriptor Inputs::get_common_mode_choke_magnetizing_current(OperatingPoin
     return magnetizingCurrent;
 }
 
-bool Inputs::can_be_differential_mode_choke(OperatingPoint operatingPoint, bool isDmcTopology) {
+bool Inputs::can_be_differential_mode_choke(const OperatingPoint& operatingPoint, bool isDmcTopology) {
     // DMC dispatch fires when:
     //   1) caller has identified the topology as DMC
     //      (designRequirements.topology == DIFFERENTIAL_MODE_CHOKE), AND
@@ -994,7 +994,7 @@ bool Inputs::can_be_differential_mode_choke(OperatingPoint operatingPoint, bool 
     return excitations.size() >= 2 && excitations.size() <= 4;
 }
 
-SignalDescriptor Inputs::get_differential_mode_choke_magnetizing_current(OperatingPoint operatingPoint) {
+SignalDescriptor Inputs::get_differential_mode_choke_magnetizing_current(const OperatingPoint& operatingPoint) {
     // ── DMC effective core current synthesis ─────────────────────────────
     // MKF convention: every winding's current is stored "into the dot",
     // matching DifferentialModeChoke::process_operating_points which uses
@@ -1834,7 +1834,7 @@ ProcessedWaveform Inputs::calculate_processed_data(SignalDescriptor excitation,
                                                        settings.get_inputs_number_points_sampled_waveforms());
 }
 
-ProcessedWaveform Inputs::calculate_basic_processed_data(Waveform waveform, std::optional<Waveform> givenWaveform) {
+ProcessedWaveform Inputs::calculate_basic_processed_data(const Waveform& waveform, const std::optional<Waveform>& givenWaveform) {
     // Delegates to WaveformProcessor, which additionally fixed part of ABT
     // #602 this copy never had: the duty-cycle measurement for a CUSTOM label
     // (i.e. real imported/simulated data) needs the UNCOMPRESSED waveform —
@@ -1862,7 +1862,7 @@ ProcessedWaveform Inputs::calculate_processed_data(Harmonics harmonics,
                                                        settings.get_inputs_number_points_sampled_waveforms());
 }
 
-Harmonics Inputs::calculate_harmonics_data(Waveform waveform, double frequency) {
+Harmonics Inputs::calculate_harmonics_data(const Waveform& waveform, double frequency) {
     return WaveformProcessor::calculate_harmonics_data(waveform, frequency,
                                                        settings.get_inputs_trim_harmonics(),
                                                        settings.get_harmonic_amplitude_threshold(),
@@ -3470,7 +3470,7 @@ double Inputs::calculate_instantaneous_power(OperatingPointExcitation excitation
     return instantaneousPower;
 }
 
-WaveformLabel Inputs::try_guess_waveform_label(Waveform waveform) {
+WaveformLabel Inputs::try_guess_waveform_label(const Waveform& waveform) {
     // Delegates to WaveformProcessor, which fixed this classifier (ABT #602):
     // the sine-vs-custom fallback divided its error metric by N twice
     // (error /= data.size() then error /= area, where area was already a sum
@@ -3951,8 +3951,9 @@ void Inputs::set_current_as_magnetizing_current(OperatingPoint* operatingPoint) 
     // returns a copy) is read once. The operating point changes only after everything that can throw.
     auto& excitation = operatingPoint->get_mutable_excitations_per_winding()[0];
     auto currentExcitation = excitation.get_current().value();
-    auto currentExcitationWaveform = currentExcitation.get_waveform().value();
-    if (!currentExcitation.get_processed() || !currentExcitation.get_harmonics()) {
+    // A reference into currentExcitation's waveform, which nothing below replaces.
+    const auto& currentExcitationWaveform = currentExcitation.get_waveform_ref().value();
+    if (!currentExcitation.get_processed_ref() || !currentExcitation.get_harmonics_ref()) {
         if (excitation.get_frequency() <= 0) {
             throw std::invalid_argument("Frequency has to be positive");
         }
@@ -4047,17 +4048,17 @@ double Inputs::get_switching_frequency(const OperatingPointExcitation& excitatio
     // no line bias, and an unprocessed 50 Hz copy returned 50 Hz for want of cached harmonics: mu 300
     // instead of ~104 on an MPP 300 toroid, B 1.02 T instead of 0.35 T, 16.3 W instead of 1.74 W).
     double frequency = excitation.get_frequency();
-    // Each MAS getter returns a copy: the current, its waveform and its time axis are read once.
-    const auto current = excitation.get_current();
+    // The current, its waveform and its time axis are read in place (the plain getters return copies).
+    const auto& current = excitation.get_current_ref();
     if (!current) {
         return frequency;
     }
-    const auto currentWaveform = current->get_waveform();
+    const auto& currentWaveform = current->get_waveform_ref();
     if (!currentWaveform) {
         return frequency;
     }
     const auto& waveform = currentWaveform.value();
-    const auto timeOptional = waveform.get_time();
+    const auto& timeOptional = waveform.get_time_ref();
     if (!timeOptional) {
         return frequency;  // an equidistant waveform is one period of its frequency, not a record
     }

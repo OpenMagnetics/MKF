@@ -305,26 +305,29 @@ SignalDescriptor MagneticField::calculate_magnetic_flux(SignalDescriptor magneti
     SignalDescriptor magneticFlux;
     Waveform magneticFluxWaveform;
     std::vector<double> magneticFluxData;
-    auto compressedMagnetizingCurrentWaveform = magnetizingCurrent.get_waveform().value();
-
-    if (Inputs::is_waveform_sampled(compressedMagnetizingCurrentWaveform)) {
+    // Read in place (the getters return copies); a sampled current is compressed into its own record.
+    const Waveform& magnetizingCurrentWaveform = magnetizingCurrent.get_waveform_ref().value();
+    std::optional<Waveform> compressedWaveform;
+    if (Inputs::is_waveform_sampled(magnetizingCurrentWaveform)) {
         // A 128-point axis may be closed ([t0, t0 + T], given that way) as well as sampled and open:
         // the frequency tells them apart, so the flux spans T, not T + dt (ABT #1467).
-        compressedMagnetizingCurrentWaveform = Inputs::compress_waveform(compressedMagnetizingCurrentWaveform, frequency);
+        compressedWaveform = Inputs::compress_waveform(magnetizingCurrentWaveform, frequency);
     }
+    const Waveform& compressedMagnetizingCurrentWaveform = compressedWaveform ? *compressedWaveform : magnetizingCurrentWaveform;
 
+    magneticFluxData.reserve(compressedMagnetizingCurrentWaveform.get_data().size());
     for (auto& datum : compressedMagnetizingCurrentWaveform.get_data()) {
         magneticFluxData.push_back(datum * numberTurns / reluctance);
     }
 
-    if (compressedMagnetizingCurrentWaveform.get_time()) {
-        magneticFluxWaveform.set_time(compressedMagnetizingCurrentWaveform.get_time());
+    if (compressedMagnetizingCurrentWaveform.get_time_ref()) {
+        magneticFluxWaveform.set_time(compressedMagnetizingCurrentWaveform.get_time_ref());
     }
 
-    magneticFluxWaveform.set_data(magneticFluxData);
-    magneticFlux.set_waveform(magneticFluxWaveform);
-    if (magnetizingCurrent.get_harmonics()) {
-        auto harmonics = magnetizingCurrent.get_harmonics().value();
+    magneticFluxWaveform.get_mutable_data() = std::move(magneticFluxData);
+    magneticFlux.set_waveform(std::move(magneticFluxWaveform));
+    if (magnetizingCurrent.get_harmonics_ref()) {
+        auto harmonics = magnetizingCurrent.get_harmonics_ref().value();
         for (size_t harmonicIndex = 0; harmonicIndex < harmonics.get_amplitudes().size(); ++harmonicIndex) {
             harmonics.get_mutable_amplitudes()[harmonicIndex] *= numberTurns / reluctance;
         }
@@ -333,7 +336,7 @@ SignalDescriptor MagneticField::calculate_magnetic_flux(SignalDescriptor magneti
     return magneticFlux;
 }
 
-SignalDescriptor MagneticField::calculate_magnetic_flux_density(SignalDescriptor magneticFlux,
+SignalDescriptor MagneticField::calculate_magnetic_flux_density(const SignalDescriptor& magneticFlux,
                                                                   double area) {
     if (!(area > 0)) {
         // B = flux / area: a zero or missing area turns every sample into inf/NaN,
@@ -344,20 +347,21 @@ SignalDescriptor MagneticField::calculate_magnetic_flux_density(SignalDescriptor
     SignalDescriptor magneticFluxDensity;
     Waveform magneticFluxDensityWaveform;
     std::vector<double> magneticFluxDensityData;
-    auto magneticFluxWaveform = magneticFlux.get_waveform().value();
+    const auto& magneticFluxWaveform = magneticFlux.get_waveform_ref().value();
 
-    if (magneticFluxWaveform.get_time()) {
-        magneticFluxDensityWaveform.set_time(magneticFluxWaveform.get_time());
+    if (magneticFluxWaveform.get_time_ref()) {
+        magneticFluxDensityWaveform.set_time(magneticFluxWaveform.get_time_ref());
     }
 
+    magneticFluxDensityData.reserve(magneticFluxWaveform.get_data().size());
     for (auto& datum : magneticFluxWaveform.get_data()) {
         magneticFluxDensityData.push_back(datum / area);
     }
 
-    magneticFluxDensityWaveform.set_data(magneticFluxDensityData);
+    magneticFluxDensityWaveform.get_mutable_data() = std::move(magneticFluxDensityData);
     magneticFluxDensity.set_waveform(magneticFluxDensityWaveform);
-    if (magneticFlux.get_harmonics()) {
-        auto harmonics = magneticFlux.get_harmonics().value();
+    if (magneticFlux.get_harmonics_ref()) {
+        auto harmonics = magneticFlux.get_harmonics_ref().value();
         for (size_t harmonicIndex = 0; harmonicIndex < harmonics.get_amplitudes().size(); ++harmonicIndex) {
             harmonics.get_mutable_amplitudes()[harmonicIndex] /= area;
         }
@@ -369,16 +373,16 @@ SignalDescriptor MagneticField::calculate_magnetic_flux_density(SignalDescriptor
     return magneticFluxDensity;
 }
 
-SignalDescriptor MagneticField::calculate_magnetic_field_strength(SignalDescriptor magneticFluxDensity,
+SignalDescriptor MagneticField::calculate_magnetic_field_strength(const SignalDescriptor& magneticFluxDensity,
                                                                     double initialPermeability) {
     SignalDescriptor magneticFieldStrength;
     Waveform magneticFieldStrengthWaveform;
     std::vector<double> magneticFieldStrengthData;
     auto constants = Constants();
-    auto magneticFluxDensityWaveform = magneticFluxDensity.get_waveform().value();
+    const auto& magneticFluxDensityWaveform = magneticFluxDensity.get_waveform_ref().value();
 
-    if (magneticFluxDensityWaveform.get_time()) {
-        magneticFieldStrengthWaveform.set_time(magneticFluxDensityWaveform.get_time());
+    if (magneticFluxDensityWaveform.get_time_ref()) {
+        magneticFieldStrengthWaveform.set_time(magneticFluxDensityWaveform.get_time_ref());
     }
 
     for (auto& datum : magneticFluxDensityWaveform.get_data()) {
@@ -387,8 +391,8 @@ SignalDescriptor MagneticField::calculate_magnetic_field_strength(SignalDescript
 
     magneticFieldStrengthWaveform.set_data(magneticFieldStrengthData);
     magneticFieldStrength.set_waveform(magneticFieldStrengthWaveform);
-    if (magneticFluxDensity.get_harmonics()) {
-        auto harmonics = magneticFluxDensity.get_harmonics().value();
+    if (magneticFluxDensity.get_harmonics_ref()) {
+        auto harmonics = magneticFluxDensity.get_harmonics_ref().value();
         for (size_t harmonicIndex = 0; harmonicIndex < harmonics.get_amplitudes().size(); ++harmonicIndex) {
             harmonics.get_mutable_amplitudes()[harmonicIndex] /= (initialPermeability * constants.vacuumPermeability);
         }
@@ -750,7 +754,7 @@ std::pair<double, double> MagneticFieldStrengthMmfBoundaryModel::get_window_boun
     return {fieldX, fieldY};
 }
 
-WindingWindowMagneticStrengthFieldPhasorOutput MagneticField::calculate_magnetic_field_strength_field(OperatingPoint operatingPoint, Magnetic magnetic, std::optional<Field> externalInducedField, std::optional<std::vector<int8_t>> customCurrentDirectionPerWinding, std::optional<CoilMesherModels> coilMesherModel, std::optional<ParallelCurrentSplit> parallelCurrentSplit) {
+WindingWindowMagneticStrengthFieldPhasorOutput MagneticField::calculate_magnetic_field_strength_field(OperatingPoint operatingPoint, Magnetic magnetic, const std::optional<Field>& externalInducedField, const std::optional<std::vector<int8_t>>& customCurrentDirectionPerWinding, std::optional<CoilMesherModels> coilMesherModel, std::optional<ParallelCurrentSplit> parallelCurrentSplit) {
     auto& settings = OpenMagnetics::Settings::GetInstance();
     auto includeFringing = settings.get_magnetic_field_include_fringing();
 

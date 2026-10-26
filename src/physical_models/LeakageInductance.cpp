@@ -86,12 +86,12 @@ std::pair<size_t, size_t> LeakageInductance::calculate_number_points_needed_for_
     return {numberPointsX, numberPointsY};
 }
 
-std::pair<ComplexField, double> LeakageInductance::calculate_magnetic_field(OperatingPoint operatingPoint, Magnetic magnetic, size_t sourceIndex, size_t destinationIndex, size_t harmonicIndex, std::optional<std::vector<int8_t>> customCurrentDirectionPerWinding) {
+std::pair<ComplexField, double> LeakageInductance::calculate_magnetic_field(const OperatingPoint& operatingPoint, Magnetic magnetic, size_t sourceIndex, size_t destinationIndex, size_t harmonicIndex, std::optional<std::vector<int8_t>> customCurrentDirectionPerWinding) {
     auto phasorField = calculate_magnetic_field_phasor(operatingPoint, magnetic, sourceIndex, destinationIndex, harmonicIndex, customCurrentDirectionPerWinding);
     return {phasorField.inPhase, phasorField.dA};
 }
 
-LeakageInductance::PhasorField LeakageInductance::calculate_magnetic_field_phasor(OperatingPoint operatingPoint, Magnetic magnetic, size_t sourceIndex, size_t destinationIndex, size_t harmonicIndex, std::optional<std::vector<int8_t>> customCurrentDirectionPerWinding) {
+LeakageInductance::PhasorField LeakageInductance::calculate_magnetic_field_phasor(const OperatingPoint& operatingPoint, Magnetic magnetic, size_t sourceIndex, size_t destinationIndex, size_t harmonicIndex, std::optional<std::vector<int8_t>> customCurrentDirectionPerWinding) {
 
     auto harmonics = operatingPoint.get_excitations_per_winding()[0].get_current()->get_harmonics().value();
     auto frequency = harmonics.get_frequencies()[harmonicIndex];

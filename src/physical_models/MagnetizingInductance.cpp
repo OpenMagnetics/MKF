@@ -582,9 +582,10 @@ static MagnetizingCurrentStamp stamp_magnetizing_current(OperatingPoint* operati
         operatingPoint->get_mutable_excitations_per_winding()[0] = excitation;
     }
     else if (hasVoltage) {
-        OperatingPointExcitation excitation = primaryExcitation;
-        auto voltage = operatingPoint->get_mutable_excitations_per_winding()[0].get_voltage().value();
-        auto sampledVoltageWaveform = Inputs::calculate_sampled_waveform(voltage.get_waveform().value(), frequency);
+        // Edited in place: only its magnetizing current changes, after everything that can throw (the copy of the
+        // whole excitation, written back over itself, was a copy of every waveform it carries).
+        auto& excitation = operatingPoint->get_mutable_excitations_per_winding()[0];
+        auto sampledVoltageWaveform = Inputs::calculate_sampled_waveform(excitation.get_voltage_ref().value().get_waveform_ref().value(), frequency);
 
         auto turnsRatios = coil.get_turns_ratios();
         bool addOffset = Inputs::include_dc_offset_into_magnetizing_current(*operatingPoint, turnsRatios);
@@ -604,8 +605,7 @@ static MagnetizingCurrentStamp stamp_magnetizing_current(OperatingPoint* operati
         // no longer carries.
         magnetizingCurrent.set_processed(Inputs::calculate_processed_data(magnetizingCurrent, sampledMagnetizingCurrentWaveform, false));
 
-        excitation.set_magnetizing_current(magnetizingCurrent);
-        operatingPoint->get_mutable_excitations_per_winding()[0] = excitation;
+        excitation.set_magnetizing_current(std::move(magnetizingCurrent));
     }
     return stamp;
 }
@@ -874,13 +874,14 @@ std::pair<MagnetizingInductanceOutput, SignalDescriptor> MagnetizingInductance::
     if (operatingPoint) {
         if (operatingPoint->get_mutable_excitations_per_winding().size() > 0) {
             // Presence read once (the MAS getters return copies); the edits below never change it.
-            const bool hasVoltage = operatingPoint->get_excitations_per_winding()[0].get_voltage().has_value();
-            const bool hasCurrent = operatingPoint->get_excitations_per_winding()[0].get_current().has_value();
-            const bool hasMagnetizingCurrent = operatingPoint->get_excitations_per_winding()[0].get_magnetizing_current().has_value();
+            const bool hasVoltage = operatingPoint->get_excitations_per_winding()[0].get_voltage_ref().has_value();
+            const bool hasCurrent = operatingPoint->get_excitations_per_winding()[0].get_current_ref().has_value();
+            const bool hasMagnetizingCurrent = operatingPoint->get_excitations_per_winding()[0].get_magnetizing_current_ref().has_value();
             if (!hasVoltage) {
-                auto current = operatingPoint->get_mutable_excitations_per_winding()[0].get_current().value();
-                auto currentWaveform = current.get_waveform().value();
-                if (!is_size_power_of_2(currentWaveform.get_data())) {
+                // Read in place; copied only when the current is resampled.
+                if (!is_size_power_of_2(operatingPoint->get_excitations_per_winding()[0].get_current_ref().value().get_waveform_ref().value().get_data())) {
+                    auto current = operatingPoint->get_mutable_excitations_per_winding()[0].get_current().value();
+                    auto currentWaveform = current.get_waveform().value();
                     auto currentSampledWaveform = Inputs::calculate_sampled_waveform(currentWaveform, frequency);
                     current.set_waveform(currentSampledWaveform);
                     operatingPoint->get_mutable_excitations_per_winding()[0].set_current(current);
@@ -888,13 +889,13 @@ std::pair<MagnetizingInductanceOutput, SignalDescriptor> MagnetizingInductance::
             }
 
             if (hasVoltage) {
-                auto aux = operatingPoint->get_mutable_excitations_per_winding()[0].get_voltage().value().get_waveform().value();
+                const auto& aux = operatingPoint->get_excitations_per_winding()[0].get_voltage_ref().value().get_waveform_ref().value();
                 if (aux.get_data().size() > 0 && ((aux.get_data().size() & (aux.get_data().size() - 1)) != 0)) {
                     throw std::invalid_argument("voltage_data vector size is not a power of 2");
                 }
             }
             if (hasCurrent) {
-                auto aux = operatingPoint->get_mutable_excitations_per_winding()[0].get_current().value().get_waveform().value();
+                const auto& aux = operatingPoint->get_excitations_per_winding()[0].get_current_ref().value().get_waveform_ref().value();
                 if (aux.get_data().size() > 0 && ((aux.get_data().size() & (aux.get_data().size() - 1)) != 0)) {
                     throw std::invalid_argument("current_data vector size is not a power of 2");
                 }
@@ -903,7 +904,7 @@ std::pair<MagnetizingInductanceOutput, SignalDescriptor> MagnetizingInductance::
                 if (!hasMagnetizingCurrent) {
                     Inputs::set_current_as_magnetizing_current(operatingPoint);
                 }
-                auto aux = operatingPoint->get_mutable_excitations_per_winding()[0].get_magnetizing_current().value().get_waveform().value();
+                const auto& aux = operatingPoint->get_excitations_per_winding()[0].get_magnetizing_current_ref().value().get_waveform_ref().value();
                 if (aux.get_data().size() > 0 && ((aux.get_data().size() & (aux.get_data().size() - 1)) != 0)) {
                     throw std::invalid_argument("magnetizing_current_data vector size from current is not a power of 2");
                 }
@@ -952,13 +953,13 @@ std::pair<MagnetizingInductanceOutput, SignalDescriptor> MagnetizingInductance::
 
                 // The stamped magnetizing current, read once (the MAS getters return copies).
                 SignalDescriptor stampedMagnetizingCurrent = operatingPoint->get_excitations_per_winding()[0].get_magnetizing_current().value();
-                const Waveform stampedMagnetizingCurrentWaveform = stampedMagnetizingCurrent.get_waveform().value();
+                const Waveform& stampedMagnetizingCurrentWaveform = stampedMagnetizingCurrent.get_waveform_ref().value();
                 const auto& aux = stampedMagnetizingCurrentWaveform;
                 if (aux.get_data().size() > 0 && ((aux.get_data().size() & (aux.get_data().size() - 1)) != 0)) {
                     throw std::invalid_argument("magnetizing_current_data vector size from voltage is not a power of 2 [size=" + std::to_string(aux.get_data().size()) + "]");
                 }
 
-                if (!stampedMagnetizingCurrentWaveform.get_time()) {
+                if (!stampedMagnetizingCurrentWaveform.get_time_ref()) {
                     auto magnetizingCurrent = Inputs::standardize_waveform(stampedMagnetizingCurrent, excitationFrequency);
                     operatingPoint->get_mutable_excitations_per_winding()[0].set_magnetizing_current(magnetizingCurrent);
                     stampedMagnetizingCurrent = magnetizingCurrent;
@@ -989,18 +990,18 @@ std::pair<MagnetizingInductanceOutput, SignalDescriptor> MagnetizingInductance::
                 // drove the solve into saturation. The harmonics come from the exact samples or knots (ABT #1460);
                 // the stored waveform may be compressed to its corners, whose trapezoid average is not exact, so it
                 // only gives the sign.
-                if (!magneticFluxDensity.get_harmonics()) {
+                if (!magneticFluxDensity.get_harmonics_ref()) {
                     throw std::runtime_error("magneticFluxDensity has no harmonics — upstream magnetizing_current must provide a populated harmonics block (preset waveform missing harmonics?)");
                 }
-                auto fluxDensityWaveform = magneticFluxDensity.get_waveform().value();
-                if (!fluxDensityWaveform.get_time() || fluxDensityWaveform.get_data().size() < 2) {
+                const auto& fluxDensityWaveform = magneticFluxDensity.get_waveform_ref().value();
+                if (!fluxDensityWaveform.get_time_ref() || fluxDensityWaveform.get_data().size() < 2) {
                     throw CalculationException(ErrorCode::CALCULATION_INVALID_RESULT,
                         "Magnetizing inductance under DC bias: the flux density waveform needs a time axis and two points");
                 }
-                double fluxDensityDcMagnitude = magneticFluxDensity.get_harmonics().value().get_amplitudes()[0];
+                double fluxDensityDcMagnitude = magneticFluxDensity.get_harmonics_ref().value().get_amplitudes()[0];
                 double fluxDensityAverage = std::copysign(fluxDensityDcMagnitude, Inputs::calculate_waveform_average(fluxDensityWaveform));
                 double bFieldDcBias = fluxDensityDcMagnitude;
-                auto fluxDensityHarmonics = magneticFluxDensity.get_harmonics().value();
+                const auto& fluxDensityHarmonics = magneticFluxDensity.get_harmonics_ref().value();
                 if (fluxDensityHarmonics.get_frequencies()[1] < switchingFrequency) {
                     for (size_t i = 0; i < fluxDensityHarmonics.get_frequencies().size() - 1; ++i) {
                         if (fluxDensityHarmonics.get_frequencies()[i] >= switchingFrequency) {

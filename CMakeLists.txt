@@ -503,6 +503,9 @@ file(MAKE_DIRECTORY "${CMAKE_BINARY_DIR}/MAS")
 file(GLOB_RECURSE MAS_SCHEMA_SOURCES CONFIGURE_DEPENDS "${MAS_DIR}/schemas/*.json")
 file(GLOB_RECURSE PEAS_SCHEMA_SOURCES CONFIGURE_DEPENDS "${PEAS_DIR}/schemas/*.json")
 
+# The generated getters return every std::optional by value (a full copy per call); a post-generation step adds a
+# const& accessor next to each (get_<name>_ref()), removing nothing. Only MKF's generated header changes, never a schema.
+find_package(Python3 REQUIRED COMPONENTS Interpreter)
 add_custom_command(
   OUTPUT "${MAS_DIRECTORY}/MAS.hpp"
   COMMAND ${QUICKTYPE_CMD} -l c++ -s schema ${MAS_DIR}/schemas/MAS.json
@@ -567,7 +570,8 @@ add_custom_command(
     -S ${PEAS_DIR}/schemas/outputs/insulationCoordination.json
     -S ${PEAS_DIR}/schemas/outputs/lossElementPerHarmonic.json
     -o ${MAS_DIRECTORY}/MAS.hpp --namespace MAS --source-style single-source --type-style pascal-case --member-style underscore-case --enumerator-style upper-underscore-case --no-boost
-  DEPENDS ${MAS_SCHEMA_SOURCES} ${PEAS_SCHEMA_SOURCES}
+  COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/scripts/mas_const_ref_getters.py" "${MAS_DIRECTORY}/MAS.hpp"
+  DEPENDS ${MAS_SCHEMA_SOURCES} ${PEAS_SCHEMA_SOURCES} "${CMAKE_CURRENT_SOURCE_DIR}/scripts/mas_const_ref_getters.py"
   USES_TERMINAL)
 
 add_custom_target(MAS ALL
