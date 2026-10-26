@@ -1989,6 +1989,15 @@ WindingWindowMagneticStrengthFieldPhasorOutput MagneticField::calculate_magnetic
 
         const auto& inducedDataThisHarmonic = inducedFields[harmonicIndex].get_data();
         const std::vector<std::complex<double>> transmissionPerStrip = strip_transmissions(inducingFields[harmonicIndex].get_frequency());
+        // The inducing points that are not turns (equivalent fringing sources), in their original order: the
+        // per-induced-point loop below sums only these, and scanning every turn point there to skip it was the
+        // dominant cost of a leakage solve.
+        std::vector<const FieldPoint*> nonTurnInducingPoints;
+        for (const auto& inducingFieldPoint : inducingData) {
+            if (!inducingFieldPoint.get_turn_index()) {
+                nonTurnInducingPoints.push_back(&inducingFieldPoint);
+            }
+        }
         for (size_t inducedIndex = 0; inducedIndex < inducedDataThisHarmonic.size(); ++inducedIndex) {
             const auto& inducedFieldPoint = inducedDataThisHarmonic[inducedIndex];
             double totalInducedFieldX = 0;
@@ -2170,10 +2179,8 @@ WindingWindowMagneticStrengthFieldPhasorOutput MagneticField::calculate_magnetic
             }
 
             // Sources that are not turns -- equivalent fringing sources -- are summed per harmonic.
-            for (const auto& inducingFieldPoint : inducingData) {
-                if (inducingFieldPoint.get_turn_index()) {
-                    continue;
-                }
+            for (const FieldPoint* inducingFieldPointPointer : nonTurnInducingPoints) {
+                const auto& inducingFieldPoint = *inducingFieldPointPointer;
                 // Multi-column winding: the main column magnetically screens the two
                 // window sides from each other (the mirror-image walls).
                 if (multiWindowCore &&
