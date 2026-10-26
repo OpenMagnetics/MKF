@@ -294,7 +294,11 @@ TEST_CASE("Unresolvable bobbin catalogue rows are skipped without throwing (ABT 
         poison.set_functional_description(functionalDescription);
         const std::string poisonName = "Bobbin ABT631 Poison";
         OpenMagnetics::bobbinDatabase[poisonName] = poison;
-        OpenMagnetics::read_log();  // drain, so the assertions below see only this fit
+        // The skip is an INFO entry (catalogue data, not the user's design), so it is collected at INFO;
+        // read_log() only hands back WARNING and above. Restarting the collector drains it, so the
+        // assertions below see only this fit.
+        OpenMagnetics::Logger::getInstance().disableCollector();
+        OpenMagnetics::Logger::getInstance().enableCollector(OpenMagnetics::LogLevel::INFO);
 
         double fillingFactor = 0;
         std::string threadError;
@@ -314,7 +318,11 @@ TEST_CASE("Unresolvable bobbin catalogue rows are skipped without throwing (ABT 
         CHECK(threadError.empty());
         CHECK(fillingFactor > 0);
 
-        auto log = OpenMagnetics::read_log();
+        std::string log;
+        for (const auto& record : OpenMagnetics::Logger::getInstance().drainCollected()) {
+            log += record.message + "\n";
+        }
+        OpenMagnetics::Logger::getInstance().disableCollector();
         // The skip is visible and names the row and the reason, so a dangling reference
         // can be found and fixed instead of silently shrinking the fit sample.
         CHECK(log.find(poisonName) != std::string::npos);

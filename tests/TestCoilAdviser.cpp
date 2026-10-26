@@ -1860,7 +1860,7 @@ TEST_CASE("Test_CoilAdviser_Random_11", "[adviser][coil-adviser][bug]") {
     }
 
     Logger::getInstance().disableCollector();
-    Logger::getInstance().enableCollector(LogLevel::WARNING);
+    Logger::getInstance().enableCollector(LogLevel::DEBUG);  // a coil rejected for saturation is a DEBUG trace
     Logger::getInstance().drainCollected();
     CoilAdviser coilAdviser;
     auto masMagneticsWithCoil = coilAdviser.get_advised_coil(masMagnetic, 2);
@@ -3949,11 +3949,18 @@ TEST_CASE("Test_CoilAdviser_Rejects_A_Coil_Whose_Core_Saturates_Past_Its_Curve_I
                                                              Catch::Matchers::ContainsSubstring("asked of material 97")));
     }
 
-    OpenMagnetics::read_log();  // drain, so the assertions below see only this run
+    // A coil rejected for saturation is a DEBUG trace, so the run is collected at DEBUG; read_log() only hands
+    // back WARNING and above. Restarting the collector drains it, so the assertions below see only this run.
+    Logger::getInstance().disableCollector();
+    Logger::getInstance().enableCollector(LogLevel::DEBUG);
     CoilAdviser coilAdviser;
     std::vector<OpenMagnetics::Mas> masMagneticsWithCoil;
     REQUIRE_NOTHROW(masMagneticsWithCoil = coilAdviser.get_advised_coil(mas, 1));
-    auto log = OpenMagnetics::read_log();
+    std::string log;
+    for (const auto& record : Logger::getInstance().drainCollected()) {
+        log += record.message + "\n";
+    }
+    Logger::getInstance().disableCollector();
     INFO(log);
     INFO(coilAdviser.get_last_no_results_reason().value_or("returned results"));
     CHECK(log.find("(material 97, ") != std::string::npos);

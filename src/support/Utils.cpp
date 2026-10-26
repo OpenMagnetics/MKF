@@ -216,8 +216,11 @@ std::once_flag _readLogOnce;
 std::string read_log() {
     std::call_once(_readLogOnce, [] {
         _readLogSink = std::make_shared<StringSink>();
-        // Stage/progress entries are logged at WARNING (logEntry verbosity 1), below the default
-        // ERROR level. The sink gets its own WARNING level: lowering the logger's level instead
+        // read_log() hands back WARNING and above (logEntry verbosity 1 and 0): statements that
+        // something about the design or its data was dropped, relaxed or substituted. Run summaries
+        // (INFO, verbosity 2) and step/per-candidate traces (DEBUG, verbosity 3) stay out of it.
+        // WARNING is below the logger's default ERROR level, so the sink gets its own WARNING
+        // level: lowering the logger's level instead
         // (as this did until ABT #1643) sent WARNING entries to the console and every other sink
         // for the rest of the process, the first time anyone read the log.
         Logger::getInstance().addSink(_readLogSink, LogLevel::WARNING);

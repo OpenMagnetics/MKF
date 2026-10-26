@@ -523,7 +523,7 @@ void load_interpolators() {
             for (const auto& unusableBobbin : unusableBobbins) {
                 entry += "\n  - " + unusableBobbin;
             }
-            logEntry(entry, "Bobbin", 1);
+            logEntry(entry, "Bobbin", 2);
         }
 
         {

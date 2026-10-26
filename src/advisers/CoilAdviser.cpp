@@ -1707,7 +1707,7 @@ namespace OpenMagnetics {
             auto reject_saturating_coil = [](Mas& woundMas, const std::string& why) {
                 logEntry("Wound coil '" + woundMas.get_mutable_magnetic().get_reference() + "' (material " +
                          woundMas.get_mutable_magnetic().get_mutable_core().resolve_material().get_name() + ", " +
-                         describe_operating_frequencies(woundMas.get_inputs()) + ") rejected: " + why, "CoilAdviser", 1);
+                         describe_operating_frequencies(woundMas.get_inputs()) + ") rejected: " + why, "CoilAdviser", 3);
             };
             std::vector<std::pair<Mas, double>> masesWithLosses;
             std::vector<Mas> masesUnranked;
