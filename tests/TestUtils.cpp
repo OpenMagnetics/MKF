@@ -1161,6 +1161,73 @@ namespace {
         painter.export_svg();
     }
 
+    // magnetic_autocomplete reads the turns alignment, the sections orientation and the sections
+    // alignment its configuration asks for. All three were read with to_json(configuration[...], value),
+    // which writes the seed INTO the configuration: every requested turns alignment wound SPREAD, every
+    // sections orientation CONTIGUOUS and every sections alignment SPREAD (the layersOrientation read
+    // had the same fault, fixed with ABT #2071).
+    TEST_CASE("Test_Mas_Autocomplete_Reads_Requested_Alignments_And_Orientation", "[support][utils][abt-2086]") {
+        settings.reset();
+        settings.set_use_only_cores_in_stock(false);
+        auto autocompleteWith = [](const json& configuration) {
+            OpenMagnetics::Magnetic magnetic;
+            magnetic.set_core(find_core_by_name("PQ 32/30 - 3C90 - Gapped 0.492 mm"));
+            OpenMagnetics::Coil coil;
+            for (const std::string name : {"Primary", "Secondary"}) {
+                OpenMagnetics::Winding winding;
+                winding.set_name(name);
+                winding.set_number_turns(5);
+                winding.set_number_parallels(1);
+                winding.set_isolation_side(IsolationSide::PRIMARY);
+                winding.set_wire(find_wire_by_name("Round 0.4 - Grade 1"));
+                coil.get_mutable_functional_description().push_back(winding);
+            }
+            magnetic.set_coil(coil);
+            return magnetic_autocomplete(magnetic, configuration);
+        };
+        // The mean height of a winding's turns: a part-filled layer of 5 turns of 0.4 mm in the
+        // PQ 32/30 window sits at the top or the bottom as its alignment says.
+        auto meanHeight = [](const OpenMagnetics::Magnetic& magnetic, const std::string& winding) {
+            const auto turns = magnetic.get_coil().get_turns_description().value();
+            double sum = 0;
+            size_t count = 0;
+            for (const auto& turn : turns) {
+                if (turn.get_winding() == winding) {
+                    sum += turn.get_coordinates()[1];
+                    ++count;
+                }
+            }
+            REQUIRE(count > 0);
+            return sum / double(count);
+        };
+
+        auto top = autocompleteWith(json{{"turnsAlignment", "innerOrTop"}});
+        auto bottom = autocompleteWith(json{{"turnsAlignment", "outerOrBottom"}});
+        CHECK(top.get_coil().get_turns_alignment() == CoilAlignment::INNER_OR_TOP);
+        CHECK(bottom.get_coil().get_turns_alignment() == CoilAlignment::OUTER_OR_BOTTOM);
+        CHECK(meanHeight(top, "Primary") > meanHeight(bottom, "Primary") + 1e-3);
+
+        auto contiguous = autocompleteWith(json{{"windingOrientation", "contiguous"}});
+        auto overlapping = autocompleteWith(json{{"windingOrientation", "overlapping"}});
+        auto sectionsOrientation = [](OpenMagnetics::Magnetic& magnetic) {
+            const auto bobbin = magnetic.get_mutable_coil().resolve_bobbin();
+            const auto processed = bobbin.get_processed_description().value();
+            const auto windows = processed.get_winding_windows();
+            REQUIRE(windows[0].get_sections_orientation());
+            return windows[0].get_sections_orientation().value();
+        };
+        CHECK(sectionsOrientation(contiguous) == WindingOrientation::CONTIGUOUS);
+        CHECK(sectionsOrientation(overlapping) == WindingOrientation::OVERLAPPING);
+
+        auto centered = autocompleteWith(json{{"sectionAlignment", "centered"}});
+        const auto centeredBobbin = centered.get_mutable_coil().resolve_bobbin();
+        const auto centeredProcessed = centeredBobbin.get_processed_description().value();
+        const auto centeredWindows = centeredProcessed.get_winding_windows();
+        REQUIRE(centeredWindows[0].get_sections_alignment());
+        CHECK(centeredWindows[0].get_sections_alignment().value() == CoilAlignment::CENTERED);
+        settings.reset();
+    }
+
     TEST_CASE("Test_Mas_Autocomplete_Web_0", "[support][utils][bug][smoke-test]") {
         auto path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "geometricalDescriptionDebug.mas");
         auto mas = OpenMagneticsTesting::mas_loader(path.string());

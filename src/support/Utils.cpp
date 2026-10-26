@@ -3086,8 +3086,10 @@ bool wind_magnetic_coil_as_described(Magnetic& magnetic, json configuration, std
         layersOrientationGuard.before = magnetic.get_mutable_coil().preload_layers_orientation_from_stored_sections();
     }
     if (configuration.contains("turnsAlignment")) {
-        CoilAlignment turnsAlignment = CoilAlignment::SPREAD;
-        to_json(configuration["turnsAlignment"], turnsAlignment);
+        // Read FROM the configuration, as layersOrientation above: this was to_json(configuration[...],
+        // value), which writes the SPREAD seed into the configuration, so every requested alignment
+        // wound SPREAD.
+        const auto turnsAlignment = configuration.at("turnsAlignment").get<CoilAlignment>();
         magnetic.get_mutable_coil().set_turns_alignment(turnsAlignment);
     }
     else {
@@ -3638,8 +3640,9 @@ Magnetic magnetic_autocomplete(Magnetic magnetic, json configuration, std::optio
     if (!bobbin.get_processed_description()->get_mutable_winding_windows()[0].get_sections_orientation()) {
         auto processedDescription = bobbin.get_processed_description().value();
         if (configuration.contains("windingOrientation")) {
-            WindingOrientation windingOrientation = WindingOrientation::CONTIGUOUS;
-            to_json(configuration["windingOrientation"], windingOrientation);
+            // Read FROM the configuration: to_json(configuration[...], value) wrote the CONTIGUOUS
+            // seed into it, so every requested sections orientation wound CONTIGUOUS.
+            const auto windingOrientation = configuration.at("windingOrientation").get<WindingOrientation>();
             processedDescription.get_mutable_winding_windows()[0].set_sections_orientation(windingOrientation);
         }
         else if (magnetic.get_mutable_coil().is_edge_wound_coil()) {
@@ -3677,8 +3680,9 @@ Magnetic magnetic_autocomplete(Magnetic magnetic, json configuration, std::optio
         }
 
         if (configuration.contains("sectionAlignment")) {
-            CoilAlignment coilAlignment = CoilAlignment::SPREAD;
-            to_json(configuration["sectionAlignment"], coilAlignment);
+            // Read FROM the configuration: to_json(configuration[...], value) wrote the SPREAD seed
+            // into it, so every requested sections alignment wound SPREAD.
+            const auto coilAlignment = configuration.at("sectionAlignment").get<CoilAlignment>();
             processedDescription.get_mutable_winding_windows()[0].set_sections_alignment(coilAlignment);
         }
         else {
