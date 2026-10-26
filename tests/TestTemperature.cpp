@@ -4794,17 +4794,17 @@ CoreMaterial core_material_without_heat_conductivity(MaterialType type, std::opt
     return material;
 }
 
-// Resolves a renamed copy (the WARNING is logged once per material) and returns the warnings.
+// Resolves a renamed copy (the provenance note is logged once per material, at INFO) and returns the notes.
 std::vector<std::string> estimate_warnings(CoreMaterial material, const std::string& probeName) {
     material.set_name(probeName);
     Logger::getInstance().disableCollector();
-    Logger::getInstance().enableCollector(LogLevel::WARNING);
+    Logger::getInstance().enableCollector(LogLevel::INFO);
     resolve_core_material_heat_conductivity(material);
     auto collected = Logger::getInstance().drainCollected();
     Logger::getInstance().disableCollector();
     std::vector<std::string> messages;
     for (const auto& record : collected) {
-        if (record.level == LogLevel::WARNING && record.message.find(probeName) != std::string::npos) {
+        if (record.level == LogLevel::INFO && record.message.find(probeName) != std::string::npos) {
             messages.push_back(record.message);
         }
     }
@@ -4973,6 +4973,62 @@ TEST_CASE("Core heat conductivity: a class with no sourced member gets its famil
     auto warnings = estimate_warnings(material, "FeSiCr powder (family warning probe)");
     REQUIRE(warnings.size() == 1);
     CHECK(warnings[0].find("tier FAMILY") != std::string::npos);
+}
+
+TEST_CASE("Core heat conductivity: a provenance note is logged once per kind and material, at INFO", "[temperature][thermal][smoke-test]") {
+    // Where a conductivity came from is a note about the data, not a warning about the design: it is
+    // logged at INFO, once per (kind of note, material) per session, and never at WARNING.
+    const std::string probeName = "MPP 14 (provenance note probe)";
+    auto unsourced = find_core_material_by_name("MPP 14");
+    REQUIRE(unsourced.get_heat_conductivity());
+    REQUIRE_FALSE(has_sourced_heat_conductivity(unsourced));
+    unsourced.set_name(probeName);
+    // The same material (manufacturer + name) without its MAS value: a different kind of note.
+    auto estimated = unsourced;
+    estimated.set_heat_conductivity(std::nullopt);
+    estimated.set_provenance(std::nullopt);
+
+    Logger::getInstance().disableCollector();
+    Logger::getInstance().enableCollector(LogLevel::INFO);
+    resolve_core_material_heat_conductivity(unsourced);
+    resolve_core_material_heat_conductivity(unsourced);
+    resolve_core_material_heat_conductivity(estimated);
+    resolve_core_material_heat_conductivity(estimated);
+    auto collected = Logger::getInstance().drainCollected();
+    Logger::getInstance().disableCollector();
+
+    size_t unsourcedNotes = 0;
+    size_t estimatedNotes = 0;
+    for (const auto& record : collected) {
+        if (record.message.find(probeName) == std::string::npos) {
+            continue;
+        }
+        INFO(record.message);
+        CHECK(record.level == LogLevel::INFO);
+        CHECK(record.moduleOfOrigin == "ThermalResistance");
+        CHECK(record.count == 1);
+        if (record.message.find("UNSOURCED") != std::string::npos) {
+            unsourcedNotes += record.count;
+        }
+        if (record.message.find("ESTIMATED") != std::string::npos) {
+            estimatedNotes += record.count;
+        }
+    }
+    CHECK(unsourcedNotes == 1);
+    CHECK(estimatedNotes == 1);
+
+    // Nothing about the probe reaches a WARNING collector (both notes were already given, and they
+    // are INFO anyway): a fresh probe name shows the level, not the deduplication.
+    const std::string warningProbe = "MPP 14 (provenance warning-level probe)";
+    auto fresh = find_core_material_by_name("MPP 14");
+    fresh.set_name(warningProbe);
+    Logger::getInstance().enableCollector(LogLevel::WARNING);
+    resolve_core_material_heat_conductivity(fresh);
+    auto warnings = Logger::getInstance().drainCollected();
+    Logger::getInstance().disableCollector();
+    for (const auto& record : warnings) {
+        CHECK(record.message.find(warningProbe) == std::string::npos);
+    }
 }
 
 TEST_CASE("Core heat conductivity: a proprietary or missing composition falls to its material type, then to all sourced materials", "[temperature][thermal][smoke-test]") {

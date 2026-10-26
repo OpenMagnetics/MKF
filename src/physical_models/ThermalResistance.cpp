@@ -737,14 +737,22 @@ CoreHeatConductivity estimate_core_material_heat_conductivity(const CoreMaterial
     return resolved.value();
 }
 
-// One WARNING per material (manufacturer + name) for every flagged result.
-void warn_once(const CoreMaterial& coreMaterial, const std::string& message) {
-    static std::mutex warnedMutex;
-    static std::set<std::string> warned;
-    std::lock_guard<std::mutex> lock(warnedMutex);
-    if (warned.insert(coreMaterial.get_manufacturer_info().get_name() + "/" + coreMaterial.get_name()).second) {
-        OM_WARNING_M("ThermalResistance", message);
+// Where a material's conductivity came from is a note about the data, not about the user's design:
+// it is logged at INFO, once per (kind of note, material) per session. Keying on the kind as well
+// keeps a different note about the same material from being swallowed. The value, the result's own
+// flags and estimate, and every exception are untouched.
+void note_provenance_once(const std::string& kind, const std::string& material, const std::string& message) {
+    static std::mutex notedMutex;
+    static std::set<std::pair<std::string, std::string>> noted;
+    std::lock_guard<std::mutex> lock(notedMutex);
+    if (noted.insert({kind, material}).second) {
+        OM_INFO_M("ThermalResistance", message);
     }
+}
+
+void note_once(const CoreMaterial& coreMaterial, const std::string& kind, const std::string& message) {
+    note_provenance_once("core " + kind, coreMaterial.get_manufacturer_info().get_name() + "/" + coreMaterial.get_name(),
+                         message);
 }
 
 } // namespace
@@ -758,7 +766,7 @@ CoreHeatConductivity resolve_core_material_heat_conductivity(const CoreMaterial&
             message << "Core material '" << coreMaterial.get_name() << "': its MAS heatConductivity " << resolved.value
                     << " W/(m K) is UNSOURCED (no provenance entry cites it); used for this material, never pooled "
                        "for others.";
-            warn_once(coreMaterial, message.str());
+            note_once(coreMaterial, "unsourced", message.str());
         }
         return resolved;
     }
@@ -770,7 +778,7 @@ CoreHeatConductivity resolve_core_material_heat_conductivity(const CoreMaterial&
             << estimate.pool << ": " << estimate.sourceMaterials.size() << " sourced materials, "
             << estimate.numberDocuments << " documents, " << estimate.numberDataPoints
             << " independent data points, using " << estimate.method << ".";
-    warn_once(coreMaterial, message.str());
+    note_once(coreMaterial, "estimated", message.str());
     return resolved;
 }
 
@@ -943,13 +951,8 @@ double checked_insulation_thermal_conductivity(const InsulationMaterial& materia
     return value;
 }
 
-void warn_once_bobbin(const InsulationMaterial& material, const std::string& message) {
-    static std::mutex warnedMutex;
-    static std::set<std::string> warned;
-    std::lock_guard<std::mutex> lock(warnedMutex);
-    if (warned.insert(material.get_name()).second) {
-        OM_WARNING_M("ThermalResistance", message);
-    }
+void note_once_bobbin(const InsulationMaterial& material, const std::string& kind, const std::string& message) {
+    note_provenance_once("bobbin " + kind, material.get_name(), message);
 }
 
 }  // namespace
@@ -966,7 +969,7 @@ BobbinThermalConductivity resolve_bobbin_material_thermal_conductivity(const Ins
             message << "Bobbin material '" << material.get_name() << "': its MAS thermalConductivity " << resolved.value
                     << " W/(m K) is UNSOURCED (no provenance entry cites it); used for this material, never pooled "
                        "for others.";
-            warn_once_bobbin(material, message.str());
+            note_once_bobbin(material, "unsourced", message.str());
         }
         return resolved;
     }
@@ -1036,7 +1039,7 @@ BobbinThermalConductivity resolve_bobbin_material_thermal_conductivity(const Ins
             << resolved.value << " W/(m K) from its polymer class (" << estimate.polymerClass << "): "
             << estimate.sourceMaterials.size() << " sourced MAS materials, " << estimate.datasheetGrades.size()
             << " cited datasheet grades, " << estimate.numberDocuments << " documents, using " << estimate.method << ".";
-    warn_once_bobbin(material, message.str());
+    note_once_bobbin(material, "estimated", message.str());
     return resolved;
 }
 
