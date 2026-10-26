@@ -3,9 +3,11 @@
 #include "support/Exceptions.h"
 #include <magic_enum.hpp>
 #include <algorithm>
+#include <map>
 #include <mutex>
 #include <set>
 #include <sstream>
+#include <tuple>
 
 
 namespace OpenMagnetics {
@@ -261,17 +263,21 @@ std::optional<LoopPool> pool_median(const std::vector<const LoopMember*>& member
 }
 
 // The sourced members of every material, per property; rebuilt when the material database changes size.
-const std::vector<LoopMember>& sourced_loop_members(LoopProperty property) {
+// generation: set to a number that changes every time a member list is rebuilt (the key of estimate_loop_property's memo).
+const std::vector<LoopMember>& sourced_loop_members(LoopProperty property, size_t& generation) {
     static std::mutex membersMutex;
     static std::map<LoopProperty, std::pair<size_t, std::vector<LoopMember>>> cache;
+    static size_t rebuilds = 0;
     std::lock_guard<std::mutex> lock(membersMutex);
     if (coreMaterialDatabase.empty()) {
         load_core_materials();
     }
     auto& entry = cache[property];
     if (entry.first == coreMaterialDatabase.size() && !entry.second.empty()) {
+        generation = rebuilds;
         return entry.second;
     }
+    ++rebuilds;
     std::vector<LoopMember> members;
     for (const auto& [materialName, material] : coreMaterialDatabase) {
         auto sources = loop_property_sources(material, property);
@@ -286,13 +292,26 @@ const std::vector<LoopMember>& sourced_loop_members(LoopProperty property) {
                            nanocrystalline_loop(material)});
     }
     entry = {coreMaterialDatabase.size(), std::move(members)};
+    generation = rebuilds;
     return entry.second;
 }
 
-CoreLoopPropertyEstimate estimate_loop_property(const CoreMaterial& coreMaterial, LoopProperty property) {
-    const auto& sourced = sourced_loop_members(property);
+// A reference into this thread's memo (map nodes do not move).
+const CoreLoopPropertyEstimate& estimate_loop_property(const CoreMaterial& coreMaterial, LoopProperty property) {
+    size_t generation;
+    const auto& sourced = sourced_loop_members(property, generation);
     const auto materialType = coreMaterial.get_material();
     const auto composition = coreMaterial.get_material_composition();
+    // The estimate is a function of the member list and of the material's (type, composition, loop family) alone;
+    // the Roshen loop asks for it at every point of a magnetisation curve. Exact-key memo, per thread, per member-list
+    // generation; only successful estimates are stored (the refusal below names the material, so it is rebuilt).
+    using EstimateKey = std::tuple<size_t, LoopProperty, MaterialType, std::optional<MaterialComposition>, std::optional<NanocrystallineLoop>>;
+    thread_local std::map<EstimateKey, CoreLoopPropertyEstimate> estimates;
+    const auto loopFamilyKey = nanocrystalline_loop(coreMaterial);
+    EstimateKey key{generation, property, materialType, composition, loopFamilyKey};
+    if (auto found = estimates.find(key); found != estimates.end()) {
+        return found->second;
+    }
     const bool physicalComposition = composition && composition.value() != MaterialComposition::PROPRIETARY;
     const std::string typeName(magic_enum::enum_name(materialType));
     // Nanocrystalline: only members of the material's own loop family (no borrowing across families).
@@ -352,20 +371,28 @@ CoreLoopPropertyEstimate estimate_loop_property(const CoreMaterial& coreMaterial
         method << " (" << skipped << ")";
     }
     estimate.method = method.str();
-    return estimate;
+    return estimates.emplace(std::move(key), std::move(estimate)).first->second;
 }
 
 // One WARNING per material (manufacturer + name) and property, as the heat-conductivity estimate.
-void warn_loop_estimate_once(const CoreMaterial& coreMaterial, LoopProperty property, const std::string& message) {
+// The message is composed only for the warning that is emitted (it is the same text either way).
+template <typename MessageBuilder>
+void warn_loop_estimate_once(const CoreMaterial& coreMaterial, LoopProperty property, const MessageBuilder& message) {
     static std::mutex warnedMutex;
     static std::set<std::string> warned;
     std::lock_guard<std::mutex> lock(warnedMutex);
     if (warned.insert(coreMaterial.get_manufacturer_info().get_name() + "/" + coreMaterial.get_name() + "/" + loop_property_field(property)).second) {
-        OM_WARNING(message);
+        OM_WARNING(message());
     }
 }
 
-CoreLoopProperty resolve_loop_property(const CoreMaterial& coreMaterial, double temperature, LoopProperty property) {
+// The value resolve_loop_property returns, with its warning and its exceptions; estimateOut (if given) is pointed at
+// the class estimate used, or nullptr for the material's own data. get_hysteresis_loop needs only the value.
+double resolve_loop_property_value(const CoreMaterial& coreMaterial, double temperature, LoopProperty property,
+                                   const CoreLoopPropertyEstimate** estimateOut = nullptr) {
+    if (estimateOut) {
+        *estimateOut = nullptr;
+    }
     if (has_loop_property(coreMaterial, property)) {
         const double value = property == LoopProperty::REMANENCE ? Core::get_remanence(coreMaterial, temperature)
                                                                  : Core::get_coercive_force(coreMaterial, temperature);
@@ -382,9 +409,9 @@ CoreLoopProperty resolve_loop_property(const CoreMaterial& coreMaterial, double 
                     " T: the hysteresis loop of that data is not a material's", coreMaterial.get_name());
             }
         }
-        return CoreLoopProperty{value, CoreLoopPropertyTier::MATERIAL, std::nullopt};
+        return value;
     }
-    auto estimate = estimate_loop_property(coreMaterial, property);
+    const auto& estimate = estimate_loop_property(coreMaterial, property);
     double value;
     if (property == LoopProperty::REMANENCE) {
         value = estimate.classValue * Core::get_magnetic_flux_density_saturation(coreMaterial, temperature, false);
@@ -393,14 +420,28 @@ CoreLoopProperty resolve_loop_property(const CoreMaterial& coreMaterial, double 
         value = Core::get_ferromagnetic_property_to_curie(coreMaterial, {{Defaults().ambientTemperature, estimate.classValue}},
                                                           temperature, "estimated coercive force");
     }
-    std::ostringstream message;
-    message << "Core material '" << coreMaterial.get_name() << "' has no " << loop_property_name(property)
-            << " in MAS: ESTIMATED " << value << (property == LoopProperty::REMANENCE ? " T" : " A/m") << " at "
-            << temperature << " C, tier " << magic_enum::enum_name(estimate.tier) << ", from the " << estimate.pool << ": "
-            << estimate.sourceMaterials.size() << " sourced materials, " << estimate.numberDocuments << " documents, "
-            << estimate.numberDataPoints << " independent data points, using " << estimate.method << ".";
-    warn_loop_estimate_once(coreMaterial, property, message.str());
-    return CoreLoopProperty{value, estimate.tier, estimate};
+    warn_loop_estimate_once(coreMaterial, property, [&]() {
+        std::ostringstream message;
+        message << "Core material '" << coreMaterial.get_name() << "' has no " << loop_property_name(property)
+                << " in MAS: ESTIMATED " << value << (property == LoopProperty::REMANENCE ? " T" : " A/m") << " at "
+                << temperature << " C, tier " << magic_enum::enum_name(estimate.tier) << ", from the " << estimate.pool << ": "
+                << estimate.sourceMaterials.size() << " sourced materials, " << estimate.numberDocuments << " documents, "
+                << estimate.numberDataPoints << " independent data points, using " << estimate.method << ".";
+        return message.str();
+    });
+    if (estimateOut) {
+        *estimateOut = &estimate;
+    }
+    return value;
+}
+
+CoreLoopProperty resolve_loop_property(const CoreMaterial& coreMaterial, double temperature, LoopProperty property) {
+    const CoreLoopPropertyEstimate* estimate = nullptr;
+    const double value = resolve_loop_property_value(coreMaterial, temperature, property, &estimate);
+    if (!estimate) {
+        return CoreLoopProperty{value, CoreLoopPropertyTier::MATERIAL, std::nullopt};
+    }
+    return CoreLoopProperty{value, estimate->tier, *estimate};
 }
 
 } // namespace
@@ -516,8 +557,8 @@ std::pair<Curve2D, Curve2D> BHLoopRoshenModel::get_hysteresis_loop(const CoreMat
     // the flagged class estimate Alf approved (2026-10-18), or throw when the class is unknown.
     double saturationMagneticFieldStrength = Core::get_magnetic_field_strength_saturation(coreMaterial, temperature);
     double saturationMagneticFluxDensity = Core::get_magnetic_flux_density_saturation(coreMaterial, temperature, false);
-    double coerciveForce = resolve_core_material_coercive_force(coreMaterial, temperature).value;
-    double remanence = resolve_core_material_remanence(coreMaterial, temperature).value;
+    double coerciveForce = resolve_loop_property_value(coreMaterial, temperature, LoopProperty::COERCIVE_FORCE);
+    double remanence = resolve_loop_property_value(coreMaterial, temperature, LoopProperty::REMANENCE);
 
     auto majorLoopParameters = get_major_loop_parameters(saturationMagneticFieldStrength, saturationMagneticFluxDensity,
                                                          coerciveForce, remanence);

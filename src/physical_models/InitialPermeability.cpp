@@ -20,6 +20,9 @@
 #include <algorithm>
 #include <vector>
 #include <cfloat>
+#include <array>
+#include <cstdint>
+#include <cstring>
 #include <magic_enum.hpp>
 #include "support/Exceptions.h"
 #include "support/Logger.h"
@@ -1067,8 +1070,110 @@ std::size_t InitialPermeability::hash_permeability(const Permeability& permeabil
     return seed;
 }
 
+namespace {
+// The hashed fields of one permeability point, bit for bit (a stricter equality than the hash's: +0 and -0 differ).
+struct HashedPermeabilityPoint {
+    std::array<std::uint64_t, 7> bits;
+    std::uint8_t engaged;
+    bool operator==(const HashedPermeabilityPoint&) const = default;
+};
+
+std::uint64_t double_bits(double value) {
+    std::uint64_t bits;
+    std::memcpy(&bits, &value, sizeof(bits));
+    return bits;
+}
+
+// Disengaged when a point carries modifiers (their hash goes through a json dump; those keep the full path).
+std::optional<HashedPermeabilityPoint> hashed_fields(const PermeabilityPoint& point) {
+    if (point.get_modifiers_ref()) {
+        return std::nullopt;
+    }
+    HashedPermeabilityPoint fields{};
+    fields.bits[0] = double_bits(point.get_value());
+    const std::optional<double>* optionals[] = {&point.get_frequency_ref(), &point.get_temperature_ref(),
+                                                &point.get_magnetic_field_dc_bias_ref(), &point.get_magnetic_field_peak_ref(),
+                                                &point.get_magnetic_flux_density_peak_ref(), &point.get_tolerance_ref()};
+    for (size_t index = 0; index < 6; ++index) {
+        if (*optionals[index]) {
+            fields.engaged |= std::uint8_t(1u << index);
+            fields.bits[index + 1] = double_bits(optionals[index]->value());
+        }
+    }
+    return fields;
+}
+
+// The material's name and hashed fields, or nullopt when a point has modifiers.
+struct InterpolatorKeyInput {
+    std::string name;
+    bool single;
+    std::vector<HashedPermeabilityPoint> points;
+    bool operator==(const InterpolatorKeyInput&) const = default;
+};
+
+std::optional<InterpolatorKeyInput> interpolator_key_input(const CoreMaterial& coreMaterial) {
+    const auto& initial = coreMaterial.get_permeability().get_initial();
+    InterpolatorKeyInput input{coreMaterial.get_name(), std::holds_alternative<PermeabilityPoint>(initial), {}};
+    if (input.single) {
+        auto fields = hashed_fields(std::get<PermeabilityPoint>(initial));
+        if (!fields) {
+            return std::nullopt;
+        }
+        input.points.push_back(fields.value());
+        return input;
+    }
+    const auto& points = std::get<std::vector<PermeabilityPoint>>(initial);
+    input.points.reserve(points.size());
+    for (const auto& point : points) {
+        auto fields = hashed_fields(point);
+        if (!fields) {
+            return std::nullopt;
+        }
+        input.points.push_back(fields.value());
+    }
+    return input;
+}
+// interpolator_key_input(coreMaterial) == input, without building it.
+bool interpolator_key_input_matches(const InterpolatorKeyInput& input, const CoreMaterial& coreMaterial) {
+    const auto& initial = coreMaterial.get_permeability().get_initial();
+    if (input.single != std::holds_alternative<PermeabilityPoint>(initial) || input.name != coreMaterial.get_name()) {
+        return false;
+    }
+    auto matches = [](const HashedPermeabilityPoint& stored, const PermeabilityPoint& point) {
+        auto fields = hashed_fields(point);
+        return fields && fields.value() == stored;
+    };
+    if (input.single) {
+        return matches(input.points.front(), std::get<PermeabilityPoint>(initial));
+    }
+    const auto& points = std::get<std::vector<PermeabilityPoint>>(initial);
+    if (points.size() != input.points.size()) {
+        return false;
+    }
+    for (size_t index = 0; index < points.size(); ++index) {
+        if (!matches(input.points[index], points[index])) {
+            return false;
+        }
+    }
+    return true;
+}
+} // namespace
+
 std::string InitialPermeability::interpolator_cache_key(const CoreMaterial& coreMaterial) {
-    return coreMaterial.get_name() + "#" + std::to_string(hash_permeability(coreMaterial.get_permeability().get_initial()));
+    // A magnetisation curve asks for the key at each of its ~2600 points with the same material. Exact-input memo of
+    // the last material per thread: bit-equal hashed fields give the same hash, so the stored key is the one computed.
+    thread_local std::optional<InterpolatorKeyInput> lastInput;
+    thread_local std::string lastKey;
+    if (lastInput && interpolator_key_input_matches(lastInput.value(), coreMaterial)) {
+        return lastKey;
+    }
+    auto input = interpolator_key_input(coreMaterial);
+    std::string key = coreMaterial.get_name() + "#" + std::to_string(hash_permeability(coreMaterial.get_permeability().get_initial()));
+    if (input) {
+        lastInput = std::move(input);
+        lastKey = key;
+    }
+    return key;
 }
 
 double InitialPermeability::get_initial_permeability_temperature_dependent(const CoreMaterial& coreMaterial, double temperature) {
