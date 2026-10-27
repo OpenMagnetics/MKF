@@ -1708,7 +1708,7 @@ WindingWindowMagneticStrengthFieldPhasorOutput MagneticField::calculate_magnetic
             double gapInPhaseCurrent = 0;
             double gapQuadratureCurrent = 0;
             if (includeFringing && !imagedModel->get_gap_sources().empty()) {
-                if (!operatingPoint.get_excitations_per_winding()[0].get_magnetizing_current()) {
+                if (!operatingPoint.get_excitations_per_winding()[0].get_magnetizing_current_ref()) {
                     auto magnetizingInductance = MagneticSimulator().calculate_magnetizing_inductance(operatingPoint, magnetic);
                     auto magnetizingCurrent = Inputs::calculate_magnetizing_current(operatingPoint, 0,
                                                                                    resolve_dimensional_values(magnetizingInductance.get_magnetizing_inductance()),
@@ -1716,7 +1716,7 @@ WindingWindowMagneticStrengthFieldPhasorOutput MagneticField::calculate_magnetic
                     operatingPoint.get_mutable_excitations_per_winding()[0].set_magnetizing_current(magnetizingCurrent);
                 }
                 auto magnetizingCurrentSignal = operatingPoint.get_excitations_per_winding()[0].get_magnetizing_current().value();
-                if (!magnetizingCurrentSignal.get_waveform()) {
+                if (!magnetizingCurrentSignal.get_waveform_ref()) {
                     throw InvalidInputException(ErrorCode::MISSING_DATA, "IMAGED_MMF_SHEETS: the magnetizing current has no waveform");
                 }
                 auto magnetizingWaveform = magnetizingCurrentSignal.get_waveform().value();

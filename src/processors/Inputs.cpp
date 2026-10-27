@@ -229,7 +229,7 @@ SignalDescriptor Inputs::subtract_signals(const SignalDescriptor& a, const Signa
 }
 
 SignalDescriptor Inputs::shift_signal(const SignalDescriptor& s, int samples, double frequency) {
-    if (!s.get_waveform()) {
+    if (!s.get_waveform_ref()) {
         throw std::invalid_argument("shift_signal: signal must have a waveform");
     }
     auto sampled = calculate_sampled_waveform(s.get_waveform().value(), frequency);
@@ -265,7 +265,7 @@ std::optional<Inputs::WindingConduction> Inputs::calculate_winding_conduction(co
     std::optional<size_t> windingWithCurrent;
     std::optional<size_t> windingWithoutCurrent;
     for (size_t windingIndex = 0; windingIndex < excitations.size(); ++windingIndex) {
-        if (excitations[windingIndex].get_current()) {
+        if (excitations[windingIndex].get_current_ref()) {
             if (!windingWithCurrent) {
                 windingWithCurrent = windingIndex;
             }
@@ -429,7 +429,7 @@ double Inputs::calculate_magnetizing_current_dc_anchor(const OperatingPoint& ope
         throw InvalidInputException(ErrorCode::INVALID_INPUT, "magnetizingInductance cannot be zero or negative");
     }
     auto excitation = excitations[windingIndex];
-    if (!excitation.get_current()) {
+    if (!excitation.get_current_ref()) {
         throw InvalidInputException(ErrorCode::MISSING_DATA, "calculate_magnetizing_current_dc_anchor: winding " + std::to_string(windingIndex) +
                                     " has no current to anchor the DC of its magnetizing current on");
     }
@@ -440,7 +440,7 @@ double Inputs::calculate_magnetizing_current_dc_anchor(const OperatingPoint& ope
 
 double Inputs::calculate_magnetizing_current_dc_anchor(OperatingPointExcitation excitation, const WindingConduction& conduction, size_t windingIndex,
                                                        Waveform voltageSampledWaveform, double magnetizingInductance) {
-    if (!excitation.get_current()) {
+    if (!excitation.get_current_ref()) {
         throw InvalidInputException(ErrorCode::MISSING_DATA, "calculate_magnetizing_current_dc_anchor: winding " + std::to_string(windingIndex) +
                                     " has no current to anchor the DC of its magnetizing current on");
     }
@@ -561,7 +561,7 @@ double Inputs::try_guess_duty_cycle(const Waveform& waveform, WaveformLabel labe
 }
 
 bool Inputs::is_standardized(const SignalDescriptor& signal) {
-    if (!signal.get_waveform()) {
+    if (!signal.get_waveform_ref()) {
         return false;
     }
 
@@ -575,27 +575,28 @@ bool Inputs::is_standardized(const SignalDescriptor& signal) {
 // In case the waveform comes defined with processed data only, we create a MAS format waveform from it, as the rest of
 // the code depends on it.
 SignalDescriptor Inputs::standardize_waveform(SignalDescriptor signal, double frequency) {
-    // SignalDescriptor standardized_signal = signal;
-    SignalDescriptor standardized_signal(signal);
-    if (!signal.get_waveform()) {
-        if (!signal.get_processed() && !signal.get_harmonics()) {
+    // The argument is this function's own copy: it is edited and returned, never copied again, and every presence
+    // test reads in place (the MAS getters return copies).
+    SignalDescriptor standardized_signal(std::move(signal));
+    if (!standardized_signal.get_waveform_ref()) {
+        if (!standardized_signal.get_processed_ref() && !standardized_signal.get_harmonics_ref()) {
             throw InvalidInputException(ErrorCode::MISSING_DATA, "Signal is not processed");
         }
-        if (signal.get_processed()) {
-            auto waveform = create_waveform(signal.get_processed().value(), frequency);
-            standardized_signal.set_waveform(waveform);
+        if (standardized_signal.get_processed_ref()) {
+            auto waveform = create_waveform(standardized_signal.get_processed_ref().value(), frequency);
+            standardized_signal.set_waveform(std::move(waveform));
         }
         else {
-            auto waveform = reconstruct_signal(signal.get_harmonics().value(), frequency);
-            standardized_signal.set_waveform(waveform);
+            auto waveform = reconstruct_signal(standardized_signal.get_harmonics_ref().value(), frequency);
+            standardized_signal.set_waveform(std::move(waveform));
         }
     }
 
     if (standardized_signal.get_waveform_ref() && !standardized_signal.get_waveform_ref()->get_time_ref()) {
-        auto time = linear_spaced_array(0, 1. / roundFloat(frequency, 9), standardized_signal.get_waveform()->get_data().size());
+        auto time = linear_spaced_array(0, 1. / roundFloat(frequency, 9), standardized_signal.get_waveform_ref()->get_data().size());
         auto waveform = standardized_signal.get_waveform().value();
-        waveform.set_time(time);
-        standardized_signal.set_waveform(waveform);
+        waveform.set_time(std::move(time));
+        standardized_signal.set_waveform(std::move(waveform));
     }
 
     return standardized_signal;
@@ -680,7 +681,7 @@ Waveform Inputs::create_waveform(WaveformLabel label, double peakToPeak, double 
 }
 
 bool Inputs::is_waveform_sampled(const Waveform& waveform) {
-    if (!waveform.get_time()) {
+    if (!waveform.get_time_ref()) {
         return false;
     }
     else if (is_waveform_imported(waveform)) {
@@ -693,7 +694,7 @@ bool Inputs::is_waveform_sampled(const Waveform& waveform) {
 }
 
 bool Inputs::is_waveform_imported(const Waveform& waveform) {
-    if (!waveform.get_time()) {
+    if (!waveform.get_time_ref()) {
         return false;
     }
     else {
@@ -788,12 +789,12 @@ bool Inputs::can_be_common_mode_choke(const OperatingPoint& operatingPoint, std:
         }
     }
 
-    if (!operatingPoint.get_excitations_per_winding()[0].get_current()) {
+    if (!operatingPoint.get_excitations_per_winding()[0].get_current_ref()) {
         throw std::invalid_argument("Current is missing");
     }
     auto primaryCurrent = operatingPoint.get_excitations_per_winding()[0].get_current().value();
 
-    if (primaryCurrent.get_harmonics()) {
+    if (primaryCurrent.get_harmonics_ref()) {
         // Harmonics path: all winding harmonics must match (same CM source seen by every winding).
         // Analytical CMC produces exact matches; simulated CMC may have tiny numerical discrepancies
         // from the ngspice circuit (parasitic-cap asymmetry). If all harmonics match exactly, return
@@ -859,7 +860,7 @@ SignalDescriptor Inputs::get_multiport_inductor_magnetizing_current(const Operat
     // dead time was lost (its flux, and so its core losses, read from the wrong shape), and for
     // windings on one side the other windings' ampere-turns were ignored.
     OperatingPointExcitation excitation = Inputs::get_primary_excitation(operatingPoint);
-    if (!excitation.get_current()) {
+    if (!excitation.get_current_ref()) {
         throw InvalidInputException(ErrorCode::MISSING_DATA, "Multiport inductor: the primary excitation has no current");
     }
     SignalDescriptor magnetizingCurrent;
@@ -935,13 +936,13 @@ SignalDescriptor Inputs::get_common_mode_choke_magnetizing_current(const Operati
     std::optional<Waveform> meanWaveform;
     const auto& excitations = operatingPoint.get_excitations_per_winding();
     for (const auto& windingExcitation : excitations) {
-        if (!windingExcitation.get_current()) {
+        if (!windingExcitation.get_current_ref()) {
             throw InvalidInputException(ErrorCode::MISSING_DATA, "Common-mode choke: a winding carries no current, so the windings' mean current cannot be formed");
         }
         // Each current is sampled over the period it is given over, its excitation's (a line-cycle record
         // spans the line period, not the switching period the triangle below is built at).
         auto current = windingExcitation.get_current().value();
-        if (!current.get_waveform()) {
+        if (!current.get_waveform_ref()) {
             current = Inputs::standardize_waveform(current, windingExcitation.get_frequency());
         }
         auto sampled = Inputs::calculate_sampled_waveform(current.get_waveform().value(), windingExcitation.get_frequency());
@@ -1027,11 +1028,11 @@ SignalDescriptor Inputs::get_differential_mode_choke_magnetizing_current(const O
     std::vector<Waveform> windingCurrents;
     windingCurrents.reserve(excitations.size());
     for (size_t i = 0; i < excitations.size(); ++i) {
-        if (!excitations[i].get_current()) {
+        if (!excitations[i].get_current_ref()) {
             throw std::invalid_argument("DMC: winding " + std::to_string(i) + " has no current");
         }
         auto current = excitations[i].get_current().value();
-        if (!current.get_waveform()) {
+        if (!current.get_waveform_ref()) {
             throw std::invalid_argument("DMC: winding " + std::to_string(i) + " current has no waveform");
         }
         auto wf = current.get_waveform().value();
@@ -1061,7 +1062,7 @@ SignalDescriptor Inputs::get_differential_mode_choke_magnetizing_current(const O
 
     Waveform combinedWaveform;
     combinedWaveform.set_data(combined);
-    if (windingCurrents[0].get_time()) {
+    if (windingCurrents[0].get_time_ref()) {
         combinedWaveform.set_time(windingCurrents[0].get_time().value());
     }
 
@@ -1149,7 +1150,7 @@ Waveform Inputs::calculate_sampled_waveform(Waveform waveform, double frequency,
 }
 
 double Inputs::calculate_max_volt_seconds(const OperatingPointExcitation& excitation) {
-    if (!excitation.get_voltage()) {
+    if (!excitation.get_voltage_ref()) {
         return 0.0;
     }
     // MAS::OperatingPointExcitation::get_voltage() (and every other MAS-
@@ -1471,7 +1472,7 @@ SignalDescriptor Inputs::add_offset_to_excitation(SignalDescriptor signalDescrip
 }
 
 OperatingPointExcitation Inputs::get_excitation_with_proportional_current(OperatingPointExcitation excitation, double proportion) {
-    if (!excitation.get_current()) {
+    if (!excitation.get_current_ref()) {
         throw InvalidInputException(ErrorCode::MISSING_DATA, "Excitation is missing current");
     }
     if (!excitation.get_current()->get_waveform()) {
@@ -1497,7 +1498,7 @@ OperatingPointExcitation Inputs::get_excitation_with_proportional_current(Operat
 }
 
 OperatingPointExcitation Inputs::get_excitation_with_proportional_voltage(OperatingPointExcitation excitation, double proportion) {
-    if (!excitation.get_voltage()) {
+    if (!excitation.get_voltage_ref()) {
         throw InvalidInputException(ErrorCode::MISSING_DATA, "Excitation is missing voltage");
     }
     if (!excitation.get_voltage()->get_waveform()) {
@@ -1523,11 +1524,11 @@ OperatingPointExcitation Inputs::get_excitation_with_proportional_voltage(Operat
 
 // OperatingPointExcitation Inputs::reflect_waveforms(OperatingPointExcitation excitation, double ratio) {
 //     OperatingPointExcitation reflectedExcitation;
-//     if (excitation.get_current()) {
+//     if (excitation.get_current_ref()) {
 //         auto reflectedCurrent = reflect_waveform(excitation.get_current().value(), ratio);
 //         reflectedExcitation.set_current(reflectedCurrent);
 //     }
-//     if (excitation.get_voltage()) {
+//     if (excitation.get_voltage_ref()) {
 //         auto reflectedVoltage = reflect_waveform(excitation.get_voltage().value(), ratio);
 //         reflectedExcitation.set_voltage(reflectedVoltage);
 //     }
@@ -1729,13 +1730,13 @@ std::pair<bool, std::string> Inputs::check_integrity() {
         std::vector<OperatingPointExcitation> processedExcitationsPerWinding;
         for (auto& excitation : operatingPoints[i].get_mutable_excitations_per_winding()) {
             // Here we processed this excitation voltage
-            if (excitation.get_voltage()) {
+            if (excitation.get_voltage_ref()) {
                 auto voltageExcitation = excitation.get_voltage().value();
                 voltageExcitation = standardize_waveform(voltageExcitation, excitation.get_frequency());
                 excitation.set_voltage(voltageExcitation);
             }
             // Here we processed this excitation current
-            if (excitation.get_current()) {
+            if (excitation.get_current_ref()) {
                 auto currentExcitation = excitation.get_current().value();
                 currentExcitation = standardize_waveform(currentExcitation, excitation.get_frequency());
                 excitation.set_current(currentExcitation);
@@ -1797,11 +1798,11 @@ std::pair<bool, std::string> Inputs::check_integrity() {
 
                         // Reflect only what the primary actually carries. Inventing the other half
                         // would be making up an operating point nobody asked for.
-                        if (excitationOfPrimaryWinding.get_voltage()) {
+                        if (excitationOfPrimaryWinding.get_voltage_ref()) {
                             excitationOfThisWinding.set_voltage(
                                 reflect_waveform(excitationOfPrimaryWinding.get_voltage().value(), 1 / turnsRatio));
                         }
-                        if (excitationOfPrimaryWinding.get_current()) {
+                        if (excitationOfPrimaryWinding.get_current_ref()) {
                             excitationOfThisWinding.set_current(
                                 reflect_waveform(excitationOfPrimaryWinding.get_current().value(), turnsRatio));
                         }
@@ -1874,13 +1875,13 @@ Harmonics Inputs::calculate_harmonics_data(const Waveform& waveform, const Wavef
 }
 
 OperatingPointExcitation Inputs::prune_harmonics(OperatingPointExcitation excitation, double windingLossesHarmonicAmplitudeThreshold, std::optional<size_t> mainHarmonicIndex) {
-    if (excitation.get_current()) {
+    if (excitation.get_current_ref()) {
         excitation.set_current(prune_harmonics(excitation.get_current().value(), windingLossesHarmonicAmplitudeThreshold, mainHarmonicIndex));
     }
-    if (excitation.get_voltage()) {
+    if (excitation.get_voltage_ref()) {
         excitation.set_voltage(prune_harmonics(excitation.get_voltage().value(), windingLossesHarmonicAmplitudeThreshold, mainHarmonicIndex));
     }
-    if (excitation.get_magnetizing_current()) {
+    if (excitation.get_magnetizing_current_ref()) {
         excitation.set_magnetizing_current(prune_harmonics(excitation.get_magnetizing_current().value(), windingLossesHarmonicAmplitudeThreshold, mainHarmonicIndex));
     }
 
@@ -1888,7 +1889,7 @@ OperatingPointExcitation Inputs::prune_harmonics(OperatingPointExcitation excita
 }
 
 SignalDescriptor Inputs::prune_harmonics(SignalDescriptor signalDescriptor, double windingLossesHarmonicAmplitudeThreshold, std::optional<size_t> mainHarmonicIndex) {
-    if (!signalDescriptor.get_harmonics()) {
+    if (!signalDescriptor.get_harmonics_ref()) {
         throw InvalidInputException(ErrorCode::MISSING_DATA, "Signal has no harmonics to prune");
     }
     auto unprunedHarmonics = signalDescriptor.get_harmonics().value();
@@ -2225,10 +2226,10 @@ OperatingPointExcitation Inputs::remove_resistive_drop(const OperatingPointExcit
         throw InvalidInputException(ErrorCode::INVALID_INPUT, name + ": a winding's DC resistance must be a finite value >= 0, not " +
                                     format_quantity(dcResistance, "Ohm"));
     }
-    if (!excitation.get_voltage()) {
+    if (!excitation.get_voltage_ref()) {
         throw InvalidInputException(ErrorCode::MISSING_DATA, name + ": no voltage to remove the resistive drop from");
     }
-    if (!excitation.get_current()) {
+    if (!excitation.get_current_ref()) {
         throw InvalidInputException(ErrorCode::MISSING_DATA, name + ": no current, so its resistive drop is not known");
     }
     double frequency = excitation.get_frequency();
@@ -2415,7 +2416,7 @@ void Inputs::check_adviser_inputs_volt_second_balance(const Inputs& inputs,
         }
         // The loss path integrates only the primary (winding 0) excitation.
         auto excitation = get_primary_excitation(operatingPoint);
-        if (!excitation.get_voltage()) {
+        if (!excitation.get_voltage_ref()) {
             continue;
         }
         bool hasCurrent = excitation.get_current().has_value();
@@ -2465,7 +2466,7 @@ void Inputs::check_adviser_inputs_volt_second_balance(const Inputs& inputs,
         // numbers in the message are the ones it would have reported.
         double frequency = excitation.get_frequency();
         OperatingPoint preparedOperatingPoint = operatingPoint;
-        if (excitation.get_current()) {
+        if (excitation.get_current_ref()) {
             excitation.set_current(standardize_waveform(excitation.get_current().value(), frequency));
         }
         excitation.set_voltage(standardize_waveform(excitation.get_voltage().value(), frequency));
@@ -2491,7 +2492,7 @@ std::optional<SignalDescriptor> Inputs::get_single_winding_magnetizing_current(c
         return std::nullopt;
     }
     auto magnetizingCurrent = excitation.get_current().value();
-    if (!magnetizingCurrent.get_waveform()) {
+    if (!magnetizingCurrent.get_waveform_ref()) {
         throw InvalidInputException(ErrorCode::MISSING_DATA, "Excitation '" + excitation.get_name().value_or("unnamed") +
                                     "': the current has no waveform, so it cannot be taken as the magnetizing current");
     }
@@ -2532,7 +2533,7 @@ SignalDescriptor Inputs::calculate_magnetizing_current(const OperatingPoint& ope
         }
     }
     if (!voltageSampledWaveform) {
-        if (!excitation.get_voltage()) {
+        if (!excitation.get_voltage_ref()) {
             throw InvalidInputException(ErrorCode::MISSING_DATA, "calculate_magnetizing_current: winding " + std::to_string(windingIndex) +
                                         " has no voltage to derive its magnetizing current from (Faraday)");
         }
@@ -2558,11 +2559,11 @@ SignalDescriptor Inputs::calculate_magnetizing_current(const OperatingPoint& ope
 }
 
 bool is_continuously_conducting_power(OperatingPointExcitation excitation) {
-    if (!excitation.get_current()) {
+    if (!excitation.get_current_ref()) {
         // If only voltage is defined, we are in transformer mode
         return true;
     }
-    if (!excitation.get_voltage()) {
+    if (!excitation.get_voltage_ref()) {
         // If only current is defined, we are in inductor mode
         return false;
     }
@@ -2689,7 +2690,7 @@ SignalDescriptor Inputs::calculate_magnetizing_current(OperatingPointExcitation&
                                                                 double magnetizingInductance,
                                                                 bool compress,
                                                                 double dcCurrent) {
-    if (!excitation.get_voltage()) {
+    if (!excitation.get_voltage_ref()) {
         throw std::invalid_argument("Missing voltage signal");
     }
     auto voltageExcitation = excitation.get_voltage().value();
@@ -2704,7 +2705,7 @@ SignalDescriptor Inputs::integrate_magnetizing_current(OperatingPointExcitation&
                                                        double magnetizingInductance,
                                                        bool compress,
                                                        double dcCurrent) {
-    if (!excitation.get_voltage()) {
+    if (!excitation.get_voltage_ref()) {
         throw std::invalid_argument("Missing voltage signal");
     }
     auto voltageExcitation = excitation.get_voltage().value();
@@ -2737,7 +2738,7 @@ OperatingPoint Inputs::process_operating_point(OperatingPoint operatingPoint, do
         auto excitation = operatingPoint.get_excitations_per_winding()[windingIndex];
         // Here we processed this excitation current
 
-        if (excitation.get_current()) {
+        if (excitation.get_current_ref()) {
             auto currentExcitation = excitation.get_current().value();
 
             if (!is_standardized(currentExcitation)) {
@@ -2774,7 +2775,7 @@ OperatingPoint Inputs::process_operating_point(OperatingPoint operatingPoint, do
 
         }
         // Here we processed this excitation voltage
-        if (excitation.get_voltage()) {
+        if (excitation.get_voltage_ref()) {
             auto voltageExcitation = excitation.get_voltage().value();
             if (!is_standardized(voltageExcitation)) {
                 voltageExcitation = standardize_waveform(voltageExcitation, excitation.get_frequency());
@@ -2797,7 +2798,7 @@ OperatingPoint Inputs::process_operating_point(OperatingPoint operatingPoint, do
             // wrong whenever the given voltage is not volt-second balanced: Kirchhoff's line-cycle
             // PFC voltages integrated to kA "magnetizing" peaks against ~12 A of real current, and
             // no core passed the energy-stored gate (ABT #1585).
-            if (!excitation.get_magnetizing_current()) {
+            if (!excitation.get_magnetizing_current_ref()) {
                 auto singleWindingMagnetizingCurrent = get_single_winding_magnetizing_current(excitation, operatingPoint.get_excitations_per_winding().size());
                 if (singleWindingMagnetizingCurrent) {
                     excitation.set_magnetizing_current(singleWindingMagnetizingCurrent.value());
@@ -3419,13 +3420,13 @@ double Inputs::calculate_waveform_coefficient(OperatingPoint* operatingPoint) {
 
 double Inputs::calculate_instantaneous_power(OperatingPointExcitation excitation) {
     double frequency = excitation.get_frequency();
-    if (!excitation.get_voltage()) {
+    if (!excitation.get_voltage_ref()) {
         throw InvalidInputException(ErrorCode::MISSING_DATA, "Voltage signal is missing");
     }
     if (!excitation.get_voltage()->get_waveform()) {
         throw InvalidInputException(ErrorCode::MISSING_DATA, "Voltage waveform is missing");
     }
-    if (!excitation.get_current()) {
+    if (!excitation.get_current_ref()) {
         throw InvalidInputException(ErrorCode::MISSING_DATA, "Current signal is missing");
     }
     if (!excitation.get_current()->get_waveform()) {
@@ -3561,8 +3562,8 @@ void process_voltage(OperatingPointExcitation& excitation) {
     // processed block that cannot define the waveform throws naming what is missing (create_waveform
     // itself would default a missing duty cycle to 0.5 and a dead time to 0).
     auto voltage = excitation.get_voltage().value();
-    if (!voltage.get_waveform()) {
-        if (!voltage.get_processed()) {
+    if (!voltage.get_waveform_ref()) {
+        if (!voltage.get_processed_ref()) {
             throw InvalidInputException(ErrorCode::MISSING_DATA,
                 "The voltage has neither a waveform nor processed data to build one from");
         }
@@ -3585,7 +3586,7 @@ double Inputs::get_maximum_voltage_peak() {
             throw std::invalid_argument("There are no winding excitation in operating point");
 
         for (auto excitation : operatingPoint.get_excitations_per_winding()) {
-            if (!excitation.get_voltage()) {
+            if (!excitation.get_voltage_ref()) {
                 throw std::invalid_argument("Missing voltage in excitation");
             }
             if (!excitation.get_voltage()->get_processed()) {
@@ -3612,7 +3613,7 @@ double Inputs::get_maximum_voltage_rms() {
             throw std::invalid_argument("There are no winding excitation in operating point");
 
         for (auto excitation : operatingPoint.get_mutable_excitations_per_winding()) {
-            if (!excitation.get_voltage()) 
+            if (!excitation.get_voltage_ref()) 
                 throw std::invalid_argument("Missing voltage in excitation");
             if (!excitation.get_voltage()->get_processed()) {
                 process_voltage(excitation);
@@ -3643,7 +3644,7 @@ double Inputs::get_maximum_current_rms() {
             throw std::invalid_argument("There are no winding excitation in operating point");
 
         for (auto& excitation : operatingPoint.get_excitations_per_winding()) {
-            if (!excitation.get_current()) 
+            if (!excitation.get_current_ref()) 
                 throw std::invalid_argument("Missing current in excitation");
             if (!excitation.get_current()->get_processed()) 
                 throw std::invalid_argument("Current has not been processed");
@@ -3663,7 +3664,7 @@ double Inputs::get_maximum_current_peak() {
             throw std::invalid_argument("There are no winding excitation in operating point");
 
         for (auto& excitation : operatingPoint.get_excitations_per_winding()) {
-            if (!excitation.get_current()) 
+            if (!excitation.get_current_ref()) 
                 throw std::invalid_argument("Missing current in excitation");
             if (!excitation.get_current()->get_processed()) 
                 throw std::invalid_argument("Current has not been processed");
@@ -3683,7 +3684,7 @@ double Inputs::get_maximum_voltage_peak(size_t windingIndex) {
             throw std::invalid_argument("There are no winding excitation in operating point");
 
         auto excitation = operatingPoint.get_excitations_per_winding()[windingIndex];
-        if (!excitation.get_voltage()) 
+        if (!excitation.get_voltage_ref()) 
             throw std::invalid_argument("Missing voltage in excitation");
         if (!excitation.get_voltage()->get_processed()) {
             process_voltage(excitation);
@@ -3708,7 +3709,7 @@ double Inputs::get_maximum_voltage_rms(size_t windingIndex) {
             throw std::invalid_argument("There are no winding excitation in operating point");
 
         auto excitation = operatingPoint.get_excitations_per_winding()[windingIndex];
-        if (!excitation.get_voltage()) 
+        if (!excitation.get_voltage_ref()) 
             throw std::invalid_argument("Missing voltage in excitation");
         if (!excitation.get_voltage()->get_processed()) {
             process_voltage(excitation);
@@ -3733,7 +3734,7 @@ double Inputs::get_maximum_current_rms(size_t windingIndex) {
             throw std::invalid_argument("There are no winding excitation in operating point");
 
         auto excitation = operatingPoint.get_excitations_per_winding()[windingIndex];
-        if (!excitation.get_current()) 
+        if (!excitation.get_current_ref()) 
             throw std::invalid_argument("Missing current in excitation");
         if (!excitation.get_current()->get_processed()) 
             throw std::invalid_argument("Current has not been processed");
@@ -3752,7 +3753,7 @@ double Inputs::get_maximum_current_peak(size_t windingIndex) {
             throw std::invalid_argument("There are no winding excitation in operating point");
 
         auto excitation = operatingPoint.get_excitations_per_winding()[windingIndex];
-        if (!excitation.get_current()) 
+        if (!excitation.get_current_ref()) 
             throw std::invalid_argument("Missing current in excitation");
         if (!excitation.get_current()->get_processed()) 
             throw std::invalid_argument("Current has not been processed");
@@ -3771,7 +3772,7 @@ double Inputs::get_maximum_current_effective_frequency() {
             throw std::invalid_argument("There are no winding excitation in operating point");
 
         for (auto& excitation : operatingPoint.get_excitations_per_winding()) {
-            if (!excitation.get_current()) 
+            if (!excitation.get_current_ref()) 
                 throw std::invalid_argument("Missing current in excitation");
             if (!excitation.get_current()->get_processed()) 
                 throw std::invalid_argument("Current has not been processed");
@@ -3791,7 +3792,7 @@ double Inputs::get_maximum_current_dc_bias(size_t windingIndex) {
             throw std::invalid_argument("There are no winding excitation in operating point");
 
         auto excitation = operatingPoint.get_excitations_per_winding()[windingIndex];
-        if (!excitation.get_current())
+        if (!excitation.get_current_ref())
             throw std::invalid_argument("Missing current in excitation");
         if (!excitation.get_current()->get_processed())
             throw std::invalid_argument("Current has not been processed");
@@ -3810,7 +3811,7 @@ double Inputs::get_maximum_current_effective_frequency(size_t windingIndex) {
             throw std::invalid_argument("There are no winding excitation in operating point");
 
         auto excitation = operatingPoint.get_excitations_per_winding()[windingIndex];
-        if (!excitation.get_current()) 
+        if (!excitation.get_current_ref()) 
             throw std::invalid_argument("Missing current in excitation");
         if (!excitation.get_current()->get_processed()) 
             throw std::invalid_argument("Current has not been processed");
@@ -4156,7 +4157,7 @@ SignalDescriptor Inputs::get_current_with_effective_maximum(size_t windingIndex)
     SignalDescriptor maximumCurrent;
     double maximumCurrentRmsTimesRootSquaredEffectiveFrequency = 0;
     for (size_t operatingPointIndex = 0; operatingPointIndex < get_operating_points().size(); ++operatingPointIndex) {
-        if (!get_operating_points()[operatingPointIndex].get_excitations_per_winding()[windingIndex].get_current()) {
+        if (!get_operating_points()[operatingPointIndex].get_excitations_per_winding()[windingIndex].get_current_ref()) {
             throw InvalidInputException(ErrorCode::INVALID_COIL_CONFIGURATION, "Current is missing");
         }
         if (!get_operating_points()[operatingPointIndex].get_excitations_per_winding()[windingIndex].get_current()->get_processed()) {
@@ -4164,7 +4165,7 @@ SignalDescriptor Inputs::get_current_with_effective_maximum(size_t windingIndex)
         }
         if (!get_operating_points()[operatingPointIndex].get_excitations_per_winding()[windingIndex].get_current()->get_processed()->get_effective_frequency()) {
             auto current = get_operating_points()[operatingPointIndex].get_excitations_per_winding()[windingIndex].get_current().value();
-            if (current.get_waveform()) {
+            if (current.get_waveform_ref()) {
                 auto processed = calculate_processed_data(current.get_waveform().value(), get_operating_points()[operatingPointIndex].get_excitations_per_winding()[windingIndex].get_frequency());
                 current.set_processed(processed);
                 get_mutable_operating_points()[operatingPointIndex].get_mutable_excitations_per_winding()[windingIndex].set_current(current);
