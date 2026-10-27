@@ -467,9 +467,9 @@ static MagnetizingCurrentStamp stamp_magnetizing_current(OperatingPoint* operati
     // The MAS getters return copies, so the primary excitation's presence tests are read once, and the
     // excitation is copied only by the branches that edit it (nothing changes the operating point before them).
     const OperatingPointExcitation& primaryExcitation = operatingPoint->get_excitations_per_winding()[0];
-    const bool hasMagnetizingCurrent = primaryExcitation.get_magnetizing_current().has_value();
-    const bool hasVoltage = primaryExcitation.get_voltage().has_value();
-    const bool hasCurrent = primaryExcitation.get_current().has_value();
+    const bool hasMagnetizingCurrent = primaryExcitation.get_magnetizing_current_ref().has_value();
+    const bool hasVoltage = primaryExcitation.get_voltage_ref().has_value();
+    const bool hasCurrent = primaryExcitation.get_current_ref().has_value();
 
     // Which excitation drives the core (Alf 2026-10-20, ABT #1814): a magnetic with more than one winding
     // in the circuit derives its magnetizing current from the voltage; a single-winding inductor uses the
@@ -1452,7 +1452,7 @@ std::pair<MagnetizingInductanceOutput, SignalDescriptor> MagnetizingInductance::
             // wrong reluctance for a lateral-driven leg and averages over the
             // effective area; saturation is checked in the actual column.
             if (operatingPoint && operatingPoint->get_mutable_excitations_per_winding().size() > 0 &&
-                operatingPoint->get_mutable_excitations_per_winding()[0].get_magnetizing_current()) {
+                operatingPoint->get_excitations_per_winding()[0].get_magnetizing_current_ref()) {
                 auto columnIndexPerWinding = ReluctanceNetwork::resolve_winding_column_indexes(magneticForPlacement);
                 double drivenColumnArea = core.get_columns()[columnIndexPerWinding[0]].get_area();
                 double drivingPointReluctance = pow(numberTurnsPrimary, 2) / modifiedMagnetizingInductance;
@@ -1895,15 +1895,31 @@ std::vector<CoreGap> MagnetizingInductance::calculate_gapping_from_number_turns_
                                                                                                size_t decimals) {
     double frequency = Defaults().coreAdviserFrequencyReference;
     double temperature = Defaults().ambientTemperature;
-    OperatingPointExcitation excitation;
     OperatingPoint operatingPoint;
+    // What this function reads of the primary excitation, as it stood when read: whether it has a voltage, a
+    // current and a magnetizing current. The excitation itself is copied only where it is passed on
+    // (calculate_induced_voltage below), from the state it had when it was read.
+    bool excitationHasVoltage = false;
+    bool excitationHasCurrent = false;
+    bool excitationHasMagnetizingCurrent = false;
+    std::optional<OperatingPointExcitation> excitationAsRead;
+    auto read_primary_excitation = [&]() {
+        const auto& primary = operatingPoint.get_excitations_per_winding()[0];
+        excitationHasVoltage = primary.get_voltage_ref().has_value();
+        excitationHasCurrent = primary.get_current_ref().has_value();
+        excitationHasMagnetizingCurrent = primary.get_magnetizing_current_ref().has_value();
+        excitationAsRead.reset();
+        if (!excitationHasVoltage && excitationHasCurrent) {
+            excitationAsRead = primary;  // calculate_induced_voltage reads it below
+        }
+    };
 
     auto constants = OpenMagnetics::Constants();
     if (inputs->get_operating_points().size() > 0) {
-        operatingPoint = inputs->get_operating_point(0);
-        excitation = Inputs::get_primary_excitation(operatingPoint);
+        operatingPoint = inputs->get_operating_points()[0];
+        read_primary_excitation();
         temperature = operatingPoint.get_conditions().get_ambient_temperature();
-        frequency = operatingPoint.get_mutable_excitations_per_winding()[0].get_frequency();
+        frequency = operatingPoint.get_excitations_per_winding()[0].get_frequency();
     }
 
     double numberTurnsPrimary = coil.get_functional_description()[0].get_number_turns();
@@ -1931,7 +1947,7 @@ std::vector<CoreGap> MagnetizingInductance::calculate_gapping_from_number_turns_
 
     currentInitialPermeability = initialPermeability.get_initial_permeability(core.resolve_material(), temperature, std::nullopt, frequency);
 
-    if (!excitation.get_voltage() && excitation.get_current()) {
+    if (!excitationHasVoltage && excitationHasCurrent) {
         Inputs::set_current_as_magnetizing_current(&operatingPoint);
         inputs->set_operating_point_by_index(operatingPoint, 0);
     }
@@ -1942,9 +1958,9 @@ std::vector<CoreGap> MagnetizingInductance::calculate_gapping_from_number_turns_
     // ABT #1814). A carried one was derived for another inductance (a
     // converter model's minimum Lm): read against the target's reluctance it scaled B by the ratio of the two
     // inductances (a forward transformer gapped to 364 uH, its current derived for 84.2 uH: 0.65 T for 0.15 T).
-    if (excitation.get_voltage()) {
+    if (excitationHasVoltage) {
         stamp_magnetizing_current(&operatingPoint, core, coil, _topology, desiredMagnetizingInductance, frequency);
-        excitation = Inputs::get_primary_excitation(operatingPoint);
+        read_primary_excitation();
     }
 
     // DC bias (ABT #1093). The flux density the target inductance imposes is known
@@ -1955,8 +1971,8 @@ std::vector<CoreGap> MagnetizingInductance::calculate_gapping_from_number_turns_
     // secant through the incremental curve; it diverges wherever |dµ/dH|·B/(µ0·µ²) > 1,
     // the knee of any ferrite, ran away to a saturated permeability, and the search then
     // clamped at the residual gap for any target above a few tens of µH.
-    if (excitation.get_magnetizing_current()) {
-        auto magneticFlux = OpenMagnetics::MagneticField::calculate_magnetic_flux(operatingPoint.get_mutable_excitations_per_winding()[0].get_magnetizing_current().value(), neededTotalReluctance, numberTurnsPrimary, operatingPoint.get_mutable_excitations_per_winding()[0].get_frequency());
+    if (excitationHasMagnetizingCurrent) {
+        auto magneticFlux = OpenMagnetics::MagneticField::calculate_magnetic_flux(operatingPoint.get_excitations_per_winding()[0].get_magnetizing_current_ref().value(), neededTotalReluctance, numberTurnsPrimary, operatingPoint.get_excitations_per_winding()[0].get_frequency());
         auto magneticFluxDensity = OpenMagnetics::MagneticField::calculate_magnetic_flux_density(magneticFlux, effectiveArea);
         double biasFluxDensity = fabs(magneticFluxDensity.get_processed().value().get_offset());
         auto material = core.resolve_material();
@@ -1982,8 +1998,8 @@ std::vector<CoreGap> MagnetizingInductance::calculate_gapping_from_number_turns_
         }
     }
 
-    if (!excitation.get_voltage() && excitation.get_current()) {
-        operatingPoint.get_mutable_excitations_per_winding()[0].set_voltage(Inputs::calculate_induced_voltage(excitation, desiredMagnetizingInductance));
+    if (!excitationHasVoltage && excitationHasCurrent) {
+        operatingPoint.get_mutable_excitations_per_winding()[0].set_voltage(Inputs::calculate_induced_voltage(excitationAsRead.value(), desiredMagnetizingInductance));
         inputs->set_operating_point_by_index(operatingPoint, 0);
     }
 
