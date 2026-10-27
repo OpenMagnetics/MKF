@@ -1,0 +1,36 @@
+{
+ "coil": {
+  "bobbin": "Basic",
+  "functionalDescription": [
+   {
+    "isolationSide": "primary",
+    "name": "Boost inductor",
+    "numberParallels": 1,
+    "numberTurns": 56,
+    "wire": {
+     "coating": {
+      "numberLayers": 1,
+      "type": "served"
+     },
+     "name": "Litz 40x#38 served (published build)",
+     "numberConductors": 40,
+     "outerDiameter": {
+      "nominal": 0.000979262263225846
+     },
+     "strand": "Round 38.0 - Single Build",
+     "type": "litz"
+    }
+   }
+  ]
+ },
+ "core": {
+  "functionalDescription": {
+   "gapping": [],
+   "material": "PC44",
+   "numberStacks": 1,
+   "shape": "PQ 32/20",
+   "type": "twoPieceSet"
+  },
+  "name": "PQ 32/20 PC44"
+ }
+}

@@ -1,0 +1,53 @@
+{
+ "coil": {
+  "bobbin": "Basic",
+  "functionalDescription": [
+   {
+    "isolationSide": "primary",
+    "name": "Primary",
+    "numberParallels": 1,
+    "numberTurns": 15,
+    "wire": {
+     "coating": {
+      "type": "bare"
+     },
+     "name": "Litz 260x0.071 (published build)",
+     "numberConductors": 260,
+     "outerDiameter": {
+      "nominal": 0.0016717897666871874
+     },
+     "strand": "Round 0.071 - Grade 1",
+     "type": "litz"
+    }
+   },
+   {
+    "isolationSide": "secondary",
+    "name": "Secondary 0",
+    "numberParallels": 2,
+    "numberTurns": 2,
+    "wire": {
+     "coating": {
+      "type": "bare"
+     },
+     "name": "Litz 975x0.071 (published build)",
+     "numberConductors": 975,
+     "outerDiameter": {
+      "nominal": 0.00323740696236973
+     },
+     "strand": "Round 0.071 - Grade 1",
+     "type": "litz"
+    }
+   }
+  ]
+ },
+ "core": {
+  "functionalDescription": {
+   "gapping": [],
+   "material": "3C95",
+   "numberStacks": 2,
+   "shape": "E 35/18/10",
+   "type": "twoPieceSet"
+  },
+  "name": "E 35/18/10 3C95"
+ }
+}

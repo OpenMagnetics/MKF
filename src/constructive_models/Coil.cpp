@@ -7869,7 +7869,7 @@ bool Coil::wind(std::vector<double> proportionPerWinding, std::vector<size_t> pa
     // ABT #1531: A LITZ BUNDLE FLATTENS IN A WOUND LAYER. Wound round first, as every wind always
     // has; only a wind that does not fit, with coilLitzDeformation on, tries the bundle as an oval
     // of its own area (Wire::flattened_litz_sides) with its short side k x OD, k stepped down from
-    // 1 to the bundle's floor (Wire::minimum_litz_flattening: 0.90 served, 0.85 bare). Each k is
+    // 1 to the bundle's floor (Wire::minimum_litz_flattening: 0.72, served or bare). Each k is
     // tried squeezed ALONG the layer (more turns per layer, thicker layers) and then ACROSS it
     // (thinner layers, fewer turns per layer): a measured served litz primary lays its turns at 0.878
     // x OD along the column and 1.0 x OD radially, the other way from the layered winding
@@ -11493,6 +11493,16 @@ std::vector<std::pair<ElectricalType, std::pair<size_t, double>>> Coil::add_insu
                 insulationSectionInfo = {SIZE_MAX, _insulationSections[windingsMapKey].get_dimensions()[1]};
             }
 
+            // ABT #2110: the wrap sits on the last section, so its whole thickness comes out of that
+            // section's space, as each insulation between two sections takes half from each side.
+            // Taken from nothing, the sections filled the window and a tight wind laid the wrap past it
+            // (DAB 1.5 kW human design: 4.5 um past the core window, which the thermal network refuses).
+            for (auto entry = orderedSectionsWithInsulation.rbegin(); entry != orderedSectionsWithInsulation.rend(); ++entry) {
+                if (entry->first == ElectricalType::CONDUCTION) {
+                    entry->second.second -= insulationSectionInfo.second;
+                    break;
+                }
+            }
             orderedSectionsWithInsulation.push_back({ElectricalType::INSULATION, insulationSectionInfo});
         }
     }
@@ -11597,6 +11607,10 @@ std::optional<Coil::WholeLayerSplit> Coil::get_proportion_per_winding_for_whole_
         }
         if (sectionIndex + 2 < sections.size() && sections[sectionIndex + 1].get_type() == ElectricalType::INSULATION) {
             carvedInsulation += sections[sectionIndex + 1].get_dimensions()[restrictiveAxis] / 2;
+        }
+        // ABT #2110: the wrap after the last section is carved whole out of it (add_insulation_to_sections).
+        if (sectionIndex + 2 == sections.size() && sections.back().get_type() == ElectricalType::INSULATION) {
+            carvedInsulation += sections.back().get_dimensions()[restrictiveAxis];
         }
         // The section is credited to the winding that leads it (wound-with windings share it).
         const size_t leaderIndex = get_winding_group_minimum_index(get_winding_index_by_name(section.get_partial_windings()[0].get_winding()));

@@ -1664,8 +1664,14 @@ namespace OpenMagnetics {
                                         "litz wire '" + wire.get_name().value_or("unnamed") + "' has no coating type: served or bare decides how far it may flatten");
         }
         switch (coating->get_type().value()) {
-            case InsulationWireCoatingType::SERVED: return 0.90;
-            case InsulationWireCoatingType::BARE: return 0.85;
+            // Alf, 2026-10-27: the floor is what built litz windings reach, not Elektrisola's free-air
+            // figures (-10 % served, -15-20 % bare). Power Integrations' published PFC chokes lay served
+            // litz at 0.72-0.78 x its round OD: DER-720 56 T of 40 x #38 in 7 layers of 8 on a PQ 32/20
+            // bobbin (0.78 radially), and 26 T of 200 x #42 and 30 T of 125 x #40 (published bundle OD
+            // 1.23 mm) in 3 layers on the same bobbin (0.72 and 0.74 along the layer). A bare bundle
+            // flattens at least as far as a served one, so it shares the floor.
+            case InsulationWireCoatingType::SERVED: return 0.72;
+            case InsulationWireCoatingType::BARE: return 0.72;
             default: return 1.0;   // taped or extruded insulation: no source says it flattens
         }
     }

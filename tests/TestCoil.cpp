@@ -17959,7 +17959,7 @@ TEST_CASE("Test_Wind_Flattens_Litz_Into_Ovals_Only_As_Far_As_The_Window_Needs", 
     settings.set_coil_try_rewind(false);
     auto litz = OpenMagnetics::Wire::create_quick_litz_wire(0.0001, 100);
     const double od = litz.get_maximum_outer_width();
-    REQUIRE(OpenMagnetics::Wire::minimum_litz_flattening(litz) == 0.90);
+    REQUIRE(OpenMagnetics::Wire::minimum_litz_flattening(litz) == 0.72);
     const double windowHeight = 10 * 0.95 * od * 1.0005;
     const double windowWidth = 1.2 * od;
     auto wind = [&](bool deformation) {
@@ -17992,5 +17992,64 @@ TEST_CASE("Test_Wind_Flattens_Litz_Into_Ovals_Only_As_Far_As_The_Window_Needs", 
         CHECK_THAT(turn.get_dimensions().value()[0], Catch::Matchers::WithinAbs(longSide, 1e-12));
         CHECK(std::abs(turn.get_coordinates()[1]) + shortSide / 2 <= windowHeight / 2 + 1e-9);
     }
+    settings.reset();
+}
+
+namespace {
+    // Wound as Henry winds a published design: the bobbin MKF builds from the core, then the arrangement's
+    // pattern from the wires' proportions, with litz deformation on.
+    std::pair<bool, OpenMagnetics::Coil> wind_published_design(const std::string& fixture, std::vector<size_t> pattern) {
+        settings.reset();
+        settings.set_coil_litz_deformation(true);
+        auto path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), fixture);
+        std::ifstream file(path);
+        json magneticJson = json::parse(file);
+        OpenMagnetics::Magnetic magnetic(magneticJson);
+        OpenMagnetics::Coil coil;
+        coil.set_bobbin(OpenMagnetics::Bobbin::create_quick_bobbin(magnetic.get_core()));
+        coil.set_functional_description(magnetic.get_coil().get_functional_description());
+        OpenMagnetics::Coil seed;
+        seed.set_bobbin(coil.get_bobbin());
+        seed.set_functional_description(coil.get_functional_description());
+        const bool fits = coil.wind(seed.get_proportion_per_winding_based_on_wires(), pattern, 1);
+        return {fits, coil};
+    }
+}
+
+// ABT #2110: the insulation wrap after the last section sits on that section. It took its thickness from
+// no section, so the sections filled the window and a tight wind laid the wrap past it: on the published
+// 1.5 kW DAB transformer (E 35/18/10 x 2, 15 T of litz 260 x 0.071 mm, 2 T of 2 x litz 975 x 0.071 mm,
+// primary then secondary) the bundles flattened to k = 0.92 left Primary 3.076 + 0.025 + Secondary 2.978 +
+// wrap 0.025 = 6.104 mm in the 6.100 mm window, 4.5 um past it, which the thermal network refused.
+TEST_CASE("The insulation wrap after the last section stays inside the window (ABT #2110)", "[constructive-model][coil][litz][abt2110]") {
+    auto [fits, coil] = wind_published_design("abt2110_dab_1k5w_published_transformer.json", {0, 1});
+    REQUIRE(fits);
+    auto bobbin = coil.resolve_bobbin();
+    const auto window = bobbin.get_processed_description()->get_winding_windows()[0];
+    const double left = window.get_coordinates().value()[0] - window.get_width().value() / 2;
+    const double right = window.get_coordinates().value()[0] + window.get_width().value() / 2;
+    const auto sections = coil.get_sections_description().value();
+    bool wrapChecked = false;
+    for (const auto& section : sections) {
+        INFO(section.get_name() << ": [" << (section.get_coordinates()[0] - section.get_dimensions()[0] / 2) * 1e3 << ", "
+             << (section.get_coordinates()[0] + section.get_dimensions()[0] / 2) * 1e3 << "] mm in [" << left * 1e3 << ", " << right * 1e3 << "] mm");
+        CHECK(section.get_coordinates()[0] - section.get_dimensions()[0] / 2 >= left - 1e-9);
+        CHECK(section.get_coordinates()[0] + section.get_dimensions()[0] / 2 <= right + 1e-9);
+        wrapChecked = wrapChecked || (section.get_type() == ElectricalType::INSULATION && &section == &sections.back());
+    }
+    CHECK(wrapChecked);
+    settings.reset();
+}
+
+// Alf, 2026-10-27: served litz flattens as far as built windings show, k >= 0.72. Power Integrations' DER-720
+// choke (PQ 32/20, 56 T of 40 x #38 served litz) is wound in 7 layers of 8 turns; at the old 0.90 floor MKF
+// needed 7 layers 6.855 mm deep in a 5.567 mm window and refused it.
+TEST_CASE("A published served-litz PFC choke winds with its bundles flattened below 0.90 (DER-720)", "[constructive-model][coil][litz][litz-floor]") {
+    auto [fits, coil] = wind_published_design("der720_pfc_275w_litz_choke.json", {0});
+    INFO(coil.get_last_fit_failure());
+    REQUIRE(fits);
+    REQUIRE(coil.get_litz_flattening(0));
+    CHECK(coil.get_litz_flattening(0).value() < 0.90);
+    CHECK(coil.get_litz_flattening(0).value() >= 0.72 - 1e-9);
     settings.reset();
 }

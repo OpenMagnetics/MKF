@@ -370,9 +370,9 @@ class Wire : public MAS::Wire {
 
         // WOUND LITZ (ABT #1531). A litz bundle in a wound layer is no rigid circle of its free-air OD:
         // it flattens into an OVAL (a stadium: a rectangle with semicircular ends) of the bundle's
-        // area, its short side k x OD. Elektrisola (Litz Wire Info, "IV Example") gives how far: the
-        // processed OD reduced 10 % for a served bundle and 15-20 % for an unserved one, so k >= 0.90
-        // served and >= 0.85 bare. The winder sets the footprint; the outer width/height getters then
+        // area, its short side k x OD. How far: k >= 0.72, served or bare, the flattening Power
+        // Integrations' published litz chokes reach (Alf, 2026-10-27; Elektrisola's free-air figures,
+        // -10 % served and -15-20 % bare, are less than built windings show). The winder sets the footprint; the outer width/height getters then
         // return it, so every layout read sees the flattened turn. Conducting dimensions (the
         // strands) are unchanged. Not part of MAS: the turns carry it, as crossSectionalShape oval.
         static double minimum_litz_flattening(const Wire& wire);
