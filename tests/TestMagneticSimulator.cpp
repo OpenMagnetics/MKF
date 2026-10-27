@@ -3698,3 +3698,32 @@ TEST_CASE("mas_autocomplete completes a design with a point past the end of the 
     }
     settings.reset();
 }
+
+// Alf, 2026-10-27: a powder has no knee at the field its saturation entry is tabulated at (MAS lists 294 powder
+// entries at 100 Oe), so the peak-field criterion of check_saturation does not apply to it; a ferrite keeps it.
+// CSC High Flux 60 is the material of the published Vienna 30 kW boost choke, which ran past 100 Oe.
+TEST_CASE("A powder driven past the field its saturation is tabulated at is not saturated by that field alone", "[powder-knee]") {
+    const double temperature = 25;
+    auto powder = find_core_material_by_name("CSC High Flux 60");
+    REQUIRE(powder.get_material() == MAS::MaterialType::POWDER);
+    const double powderSaturationField = Core::get_magnetic_field_strength_saturation(powder, temperature);
+    const double powderField = 2.5 * powderSaturationField;
+    const double powderPeak = InitialPermeability::get_flux_density_for_magnetic_field_dc_bias(powder, powderField, temperature, 100e3);
+    INFO("CSC High Flux 60: H " << powderField << " A/m (H_sat " << powderSaturationField << "), B " << powderPeak << " T");
+    REQUIRE(powderPeak < Core::get_magnetic_flux_density_saturation(powder, temperature, false));
+    DcBiasPoint powderPoint{powderField, temperature, 100e3, powderField};
+    auto powderVerdict = ResultsAnalyzer::check_saturation(powder, powderPeak, temperature, 1.0, powderPoint);
+    INFO(powderVerdict.message);
+    REQUIRE(powderVerdict.biasedPermeability);
+    CHECK(powderVerdict.biasedPermeability.value() > 1);
+    CHECK_FALSE(powderVerdict.fieldStrengthAboveSaturation);
+    CHECK_FALSE(powderVerdict.saturates);
+
+    auto ferrite = find_core_material_by_name("3C95");
+    const double ferriteSaturationField = Core::get_magnetic_field_strength_saturation(ferrite, temperature);
+    DcBiasPoint ferritePoint{0, temperature, 100e3, 2.5 * ferriteSaturationField};
+    auto ferriteVerdict = ResultsAnalyzer::check_saturation(ferrite, 0.3, temperature, 1.0, ferritePoint);
+    INFO(ferriteVerdict.message);
+    CHECK(ferriteVerdict.fieldStrengthAboveSaturation);
+    CHECK(ferriteVerdict.saturates);
+}

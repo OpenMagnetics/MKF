@@ -154,8 +154,11 @@ SaturationVerdict ResultsAnalyzer::check_saturation(const CoreMaterial& coreMate
     // sample by sample, the B peak is the curve's, which past the knee rises only on the vacuum slope and can stay
     // under B_sat while the core is driven deep into saturation. The field strength says it: its peak against the
     // material's H_sat at the check's temperature (the one B_sat is read at), times the same margin as B.
+    // A powder has no knee there (Alf, 2026-10-27): its permeability rolls off gradually and powder chokes run past
+    // the field its saturation entry is tabulated at (MAS lists 294 powder entries at 100 Oe, a convention, not a
+    // measured knee), so a powder is judged on criteria 1, 2 and 4 only.
     verdict.fieldStrengthAboveSaturation = false;
-    if (dcBiasPoint && dcBiasPoint->peakMagneticFieldStrength) {
+    if (dcBiasPoint && dcBiasPoint->peakMagneticFieldStrength && coreMaterial.get_material() != MAS::MaterialType::POWDER) {
         verdict.peakFieldStrength = dcBiasPoint->peakMagneticFieldStrength.value();
         verdict.saturationFieldStrength = Core::get_magnetic_field_strength_saturation(coreMaterial, temperature);
         verdict.fieldStrengthAboveSaturation = verdict.peakFieldStrength.value() * margin > verdict.saturationFieldStrength.value();
