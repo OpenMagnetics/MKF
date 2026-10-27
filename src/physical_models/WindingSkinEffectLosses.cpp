@@ -1,4 +1,5 @@
 #include "physical_models/WindingSkinEffectLosses.h"
+#include "support/MasAccess.h"
 #include "physical_models/WindingOhmicLosses.h"
 #include "physical_models/MagneticField.h"
 #include "constructive_models/Wire.h"
@@ -177,10 +178,10 @@ std::pair<double, std::vector<std::pair<double, double>>> WindingSkinEffectLosse
 
     auto model = get_model(wire.get_type(), modelOverride);
 
-    if (!current.get_harmonics_ref()) {
+    if (!mas_access::harmonics_ref(current)) {
         throw InvalidInputException(ErrorCode::MISSING_DATA, "Current is missing harmonics");
     }
-    const auto& harmonics = current.get_harmonics_ref().value();
+    const auto& harmonics = mas_access::harmonics_ref(current).value();
 
     double totalSkinEffectLossesPerMeter = 0;
 
@@ -251,7 +252,7 @@ WindingLossesOutput WindingSkinEffectLosses::calculate_skin_effect_losses(Coil c
     if (!coil.get_turns_description()) {
         throw CoilNotProcessedException("Winding does not have turns description");
     }
-    const auto& turns = coil.get_turns_description_ref().value();
+    const auto& turns = mas_access::turns_description_ref(coil).value();
     auto currentDividerPerTurn = windingLossesOutput.get_current_divider_per_turn().value();
     auto operatingPoint = windingLossesOutput.get_current_per_winding().value();
     if (operatingPoint.get_excitations_per_winding().empty()) {
@@ -272,9 +273,9 @@ WindingLossesOutput WindingSkinEffectLosses::calculate_skin_effect_losses(Coil c
     // whole (line-cycle: 16k-sample) signal per turn.
     std::vector<SignalDescriptor> harmonicsOfCurrentPerWinding(operatingPoint.get_excitations_per_winding().size());
     for (size_t windingIndex = 0; windingIndex < harmonicsOfCurrentPerWinding.size(); ++windingIndex) {
-        const auto& windingCurrent = operatingPoint.get_excitations_per_winding()[windingIndex].get_current_ref();
+        const auto& windingCurrent = mas_access::current_ref(operatingPoint.get_excitations_per_winding()[windingIndex]);
         if (windingCurrent) {
-            harmonicsOfCurrentPerWinding[windingIndex].set_harmonics(windingCurrent->get_harmonics_ref());
+            harmonicsOfCurrentPerWinding[windingIndex].set_harmonics(mas_access::harmonics_ref(*windingCurrent));
         }
     }
     // The wire of each winding, resolved at its first turn.

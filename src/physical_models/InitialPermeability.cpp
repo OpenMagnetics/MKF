@@ -1,4 +1,5 @@
 #include "physical_models/InitialPermeability.h"
+#include "support/MasAccess.h"
 #include "physical_models/AmplitudePermeability.h"
 #include "physical_models/CurveBuildScope.h"
 
@@ -243,15 +244,15 @@ void append_key_optional(std::string& key, const std::optional<double>& value) {
 
 void append_key_point(std::string& key, const PermeabilityPoint& point) {
     append_key_bits(key, point.get_value());
-    append_key_optional(key, point.get_frequency_ref());
-    append_key_optional(key, point.get_magnetic_field_dc_bias_ref());
-    append_key_optional(key, point.get_magnetic_field_peak_ref());
-    append_key_optional(key, point.get_magnetic_flux_density_peak_ref());
-    append_key_optional(key, point.get_temperature_ref());
-    append_key_optional(key, point.get_tolerance_ref());
-    key.push_back(point.get_modifiers_ref() ? 1 : 0);
-    if (point.get_modifiers_ref()) {
-        const std::string modifiers = json(point.get_modifiers_ref().value()).dump();
+    append_key_optional(key, mas_access::frequency_ref(point));
+    append_key_optional(key, mas_access::magnetic_field_dc_bias_ref(point));
+    append_key_optional(key, mas_access::magnetic_field_peak_ref(point));
+    append_key_optional(key, mas_access::magnetic_flux_density_peak_ref(point));
+    append_key_optional(key, mas_access::temperature_ref(point));
+    append_key_optional(key, mas_access::tolerance_ref(point));
+    key.push_back(mas_access::modifiers_ref(point) ? 1 : 0);
+    if (mas_access::modifiers_ref(point)) {
+        const std::string modifiers = json(mas_access::modifiers_ref(point).value()).dump();
         append_key_size(key, modifiers.size());
         key += modifiers;
     }
@@ -1169,14 +1170,14 @@ std::uint64_t double_bits(double value) {
 
 // Disengaged when a point carries modifiers (their hash goes through a json dump; those keep the full path).
 std::optional<HashedPermeabilityPoint> hashed_fields(const PermeabilityPoint& point) {
-    if (point.get_modifiers_ref()) {
+    if (mas_access::modifiers_ref(point)) {
         return std::nullopt;
     }
     HashedPermeabilityPoint fields{};
     fields.bits[0] = double_bits(point.get_value());
-    const std::optional<double>* optionals[] = {&point.get_frequency_ref(), &point.get_temperature_ref(),
-                                                &point.get_magnetic_field_dc_bias_ref(), &point.get_magnetic_field_peak_ref(),
-                                                &point.get_magnetic_flux_density_peak_ref(), &point.get_tolerance_ref()};
+    const std::optional<double>* optionals[] = {&mas_access::frequency_ref(point), &mas_access::temperature_ref(point),
+                                                &mas_access::magnetic_field_dc_bias_ref(point), &mas_access::magnetic_field_peak_ref(point),
+                                                &mas_access::magnetic_flux_density_peak_ref(point), &mas_access::tolerance_ref(point)};
     for (size_t index = 0; index < 6; ++index) {
         if (*optionals[index]) {
             fields.engaged |= std::uint8_t(1u << index);

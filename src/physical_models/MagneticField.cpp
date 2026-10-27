@@ -1,4 +1,5 @@
 #include "physical_models/MagneticField.h"
+#include "support/MasAccess.h"
 #include "physical_models/WindingSkinEffectLosses.h"
 #include "constructive_models/Wire.h"
 #include "constructive_models/Magnetic.h"
@@ -306,7 +307,7 @@ SignalDescriptor MagneticField::calculate_magnetic_flux(SignalDescriptor magneti
     Waveform magneticFluxWaveform;
     std::vector<double> magneticFluxData;
     // Read in place (the getters return copies); a sampled current is compressed into its own record.
-    const Waveform& magnetizingCurrentWaveform = magnetizingCurrent.get_waveform_ref().value();
+    const Waveform& magnetizingCurrentWaveform = mas_access::waveform_ref(magnetizingCurrent).value();
     std::optional<Waveform> compressedWaveform;
     if (Inputs::is_waveform_sampled(magnetizingCurrentWaveform)) {
         // A 128-point axis may be closed ([t0, t0 + T], given that way) as well as sampled and open:
@@ -320,14 +321,14 @@ SignalDescriptor MagneticField::calculate_magnetic_flux(SignalDescriptor magneti
         magneticFluxData.push_back(datum * numberTurns / reluctance);
     }
 
-    if (compressedMagnetizingCurrentWaveform.get_time_ref()) {
-        magneticFluxWaveform.set_time(compressedMagnetizingCurrentWaveform.get_time_ref());
+    if (mas_access::time_ref(compressedMagnetizingCurrentWaveform)) {
+        magneticFluxWaveform.set_time(mas_access::time_ref(compressedMagnetizingCurrentWaveform));
     }
 
     magneticFluxWaveform.get_mutable_data() = std::move(magneticFluxData);
     magneticFlux.set_waveform(std::move(magneticFluxWaveform));
-    if (magnetizingCurrent.get_harmonics_ref()) {
-        auto harmonics = magnetizingCurrent.get_harmonics_ref().value();
+    if (mas_access::harmonics_ref(magnetizingCurrent)) {
+        auto harmonics = mas_access::harmonics_ref(magnetizingCurrent).value();
         for (size_t harmonicIndex = 0; harmonicIndex < harmonics.get_amplitudes().size(); ++harmonicIndex) {
             harmonics.get_mutable_amplitudes()[harmonicIndex] *= numberTurns / reluctance;
         }
@@ -347,10 +348,10 @@ SignalDescriptor MagneticField::calculate_magnetic_flux_density(const SignalDesc
     SignalDescriptor magneticFluxDensity;
     Waveform magneticFluxDensityWaveform;
     std::vector<double> magneticFluxDensityData;
-    const auto& magneticFluxWaveform = magneticFlux.get_waveform_ref().value();
+    const auto& magneticFluxWaveform = mas_access::waveform_ref(magneticFlux).value();
 
-    if (magneticFluxWaveform.get_time_ref()) {
-        magneticFluxDensityWaveform.set_time(magneticFluxWaveform.get_time_ref());
+    if (mas_access::time_ref(magneticFluxWaveform)) {
+        magneticFluxDensityWaveform.set_time(mas_access::time_ref(magneticFluxWaveform));
     }
 
     magneticFluxDensityData.reserve(magneticFluxWaveform.get_data().size());
@@ -360,8 +361,8 @@ SignalDescriptor MagneticField::calculate_magnetic_flux_density(const SignalDesc
 
     magneticFluxDensityWaveform.get_mutable_data() = std::move(magneticFluxDensityData);
     magneticFluxDensity.set_waveform(magneticFluxDensityWaveform);
-    if (magneticFlux.get_harmonics_ref()) {
-        auto harmonics = magneticFlux.get_harmonics_ref().value();
+    if (mas_access::harmonics_ref(magneticFlux)) {
+        auto harmonics = mas_access::harmonics_ref(magneticFlux).value();
         for (size_t harmonicIndex = 0; harmonicIndex < harmonics.get_amplitudes().size(); ++harmonicIndex) {
             harmonics.get_mutable_amplitudes()[harmonicIndex] /= area;
         }
@@ -379,10 +380,10 @@ SignalDescriptor MagneticField::calculate_magnetic_field_strength(const SignalDe
     Waveform magneticFieldStrengthWaveform;
     std::vector<double> magneticFieldStrengthData;
     auto constants = Constants();
-    const auto& magneticFluxDensityWaveform = magneticFluxDensity.get_waveform_ref().value();
+    const auto& magneticFluxDensityWaveform = mas_access::waveform_ref(magneticFluxDensity).value();
 
-    if (magneticFluxDensityWaveform.get_time_ref()) {
-        magneticFieldStrengthWaveform.set_time(magneticFluxDensityWaveform.get_time_ref());
+    if (mas_access::time_ref(magneticFluxDensityWaveform)) {
+        magneticFieldStrengthWaveform.set_time(mas_access::time_ref(magneticFluxDensityWaveform));
     }
 
     for (auto& datum : magneticFluxDensityWaveform.get_data()) {
@@ -391,8 +392,8 @@ SignalDescriptor MagneticField::calculate_magnetic_field_strength(const SignalDe
 
     magneticFieldStrengthWaveform.set_data(magneticFieldStrengthData);
     magneticFieldStrength.set_waveform(magneticFieldStrengthWaveform);
-    if (magneticFluxDensity.get_harmonics_ref()) {
-        auto harmonics = magneticFluxDensity.get_harmonics_ref().value();
+    if (mas_access::harmonics_ref(magneticFluxDensity)) {
+        auto harmonics = mas_access::harmonics_ref(magneticFluxDensity).value();
         for (size_t harmonicIndex = 0; harmonicIndex < harmonics.get_amplitudes().size(); ++harmonicIndex) {
             harmonics.get_mutable_amplitudes()[harmonicIndex] /= (initialPermeability * constants.vacuumPermeability);
         }
@@ -1708,7 +1709,7 @@ WindingWindowMagneticStrengthFieldPhasorOutput MagneticField::calculate_magnetic
             double gapInPhaseCurrent = 0;
             double gapQuadratureCurrent = 0;
             if (includeFringing && !imagedModel->get_gap_sources().empty()) {
-                if (!operatingPoint.get_excitations_per_winding()[0].get_magnetizing_current_ref()) {
+                if (!mas_access::magnetizing_current_ref(operatingPoint.get_excitations_per_winding()[0])) {
                     auto magnetizingInductance = MagneticSimulator().calculate_magnetizing_inductance(operatingPoint, magnetic);
                     auto magnetizingCurrent = Inputs::calculate_magnetizing_current(operatingPoint, 0,
                                                                                    resolve_dimensional_values(magnetizingInductance.get_magnetizing_inductance()),
@@ -1716,7 +1717,7 @@ WindingWindowMagneticStrengthFieldPhasorOutput MagneticField::calculate_magnetic
                     operatingPoint.get_mutable_excitations_per_winding()[0].set_magnetizing_current(magnetizingCurrent);
                 }
                 auto magnetizingCurrentSignal = operatingPoint.get_excitations_per_winding()[0].get_magnetizing_current().value();
-                if (!magnetizingCurrentSignal.get_waveform_ref()) {
+                if (!mas_access::waveform_ref(magnetizingCurrentSignal)) {
                     throw InvalidInputException(ErrorCode::MISSING_DATA, "IMAGED_MMF_SHEETS: the magnetizing current has no waveform");
                 }
                 auto magnetizingWaveform = magnetizingCurrentSignal.get_waveform().value();

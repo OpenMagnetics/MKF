@@ -1,4 +1,5 @@
 #include "constructive_models/MasMigration.h"
+#include "support/MasAccess.h"
 #include "constructive_models/CorePiece.h"
 #include "physical_models/CoreLosses.h"
 #include <algorithm>
@@ -1523,7 +1524,7 @@ struct SplitWaveformKey {
     std::optional<WaveformLabel> ancillaryLabel;
 
     explicit SplitWaveformKey(const Waveform& waveform)
-        : data(waveform.get_data()), time(waveform.get_time_ref()), numberPeriods(waveform.get_number_periods()),
+        : data(waveform.get_data()), time(mas_access::time_ref(waveform)), numberPeriods(waveform.get_number_periods()),
           ancillaryLabel(waveform.get_ancillary_label()) {}
 
     bool matches(const Waveform& waveform) const {
@@ -1533,14 +1534,14 @@ struct SplitWaveformKey {
         if (!same_split_bits(data, waveform.get_data())) {
             return false;
         }
-        const auto& otherTime = waveform.get_time_ref();
+        const auto& otherTime = mas_access::time_ref(waveform);
         return time.has_value() == otherTime.has_value() && (!time || same_split_bits(*time, *otherTime));
     }
 };
 
 // The waveform a split reads from a signal: the signal's waveform, if it has one.
 const std::optional<Waveform>* split_waveform(const std::optional<SignalDescriptor>& signal) {
-    return signal ? &signal->get_waveform_ref() : nullptr;
+    return signal ? &mas_access::waveform_ref(*signal) : nullptr;
 }
 
 bool same_split_key(const std::optional<SplitWaveformKey>& key, const std::optional<SignalDescriptor>& signal) {
@@ -1581,7 +1582,7 @@ std::optional<SwitchingCyclesRecord> CoreLossesModel::split_into_switching_cycle
 }
 
 std::shared_ptr<const SwitchingCyclesRecord> CoreLossesModel::split_into_switching_cycles_shared(const OperatingPointExcitation& excitation) {
-    const auto* fluxDensityWaveform = split_waveform(excitation.get_magnetic_flux_density_ref());
+    const auto* fluxDensityWaveform = split_waveform(mas_access::magnetic_flux_density_ref(excitation));
     if (!fluxDensityWaveform || !fluxDensityWaveform->has_value()) {
         return shared_record(split_into_switching_cycles_uncached(excitation));
     }
@@ -1590,15 +1591,15 @@ std::shared_ptr<const SwitchingCyclesRecord> CoreLossesModel::split_into_switchi
     for (size_t i = 0; i < memo.size(); ++i) {
         auto& entry = memo[i];
         if (std::memcmp(&entry.frequency, &frequency, sizeof(double)) == 0 &&
-            same_split_key(entry.fluxDensity, excitation.get_magnetic_flux_density_ref()) &&
-            same_split_key(entry.magnetizingCurrent, excitation.get_magnetizing_current_ref())) {
+            same_split_key(entry.fluxDensity, mas_access::magnetic_flux_density_ref(excitation)) &&
+            same_split_key(entry.magnetizingCurrent, mas_access::magnetizing_current_ref(excitation))) {
             std::rotate(memo.begin(), memo.begin() + static_cast<std::ptrdiff_t>(i), memo.begin() + static_cast<std::ptrdiff_t>(i) + 1);
             return memo.front().record;
         }
     }
     auto record = shared_record(split_into_switching_cycles_uncached(excitation));
     SplitMemoEntry entry{frequency, SplitWaveformKey(fluxDensityWaveform->value()), std::nullopt, record};
-    if (const auto* magnetizingCurrentWaveform = split_waveform(excitation.get_magnetizing_current_ref());
+    if (const auto* magnetizingCurrentWaveform = split_waveform(mas_access::magnetizing_current_ref(excitation));
         magnetizingCurrentWaveform && magnetizingCurrentWaveform->has_value()) {
         entry.magnetizingCurrent.emplace(magnetizingCurrentWaveform->value());
     }
@@ -1623,9 +1624,9 @@ std::optional<SwitchingCyclesRecord> split_into_switching_cycles_uncached(const 
         return std::nullopt;  // too few samples to hold that many cycles
     }
     fluxDensity = Inputs::standardize_waveform(fluxDensity, excitation.get_frequency());
-    const auto& fluxDensityWaveform = fluxDensity.get_waveform_ref().value();
+    const auto& fluxDensityWaveform = mas_access::waveform_ref(fluxDensity).value();
     const auto& fluxDensityData = fluxDensityWaveform.get_data();
-    const auto& fluxDensityTime = fluxDensityWaveform.get_time_ref().value();
+    const auto& fluxDensityTime = mas_access::time_ref(fluxDensityWaveform).value();
     // A record spans one period of its excitation's frequency, the line frequency for a line-cycle
     // record; a record labelled with another frequency is refused, not re-read (ABT #1467).
     WaveformProcessor::check_time_axis_spans_one_period(fluxDensityTime, excitation.get_frequency());
@@ -1856,8 +1857,8 @@ double CoreLossesModel::get_core_mass_losses(const CoreMaterial& coreMaterial, c
 CoreLossesOutput CoreLossesSteinmetzModel::compute_core_losses(const Core& core,
                                                   const OperatingPointExcitation& excitation,
                                                   double temperature) {
-    const auto& magneticFluxDensity = excitation.get_magnetic_flux_density_ref().value();
-    double effectiveVolume = core.get_processed_description_ref().value().get_effective_parameters().get_effective_volume();
+    const auto& magneticFluxDensity = mas_access::magnetic_flux_density_ref(excitation).value();
+    double effectiveVolume = mas_access::processed_description_ref(core).value().get_effective_parameters().get_effective_volume();
     std::optional<CoreMaterial> materialStorage;
     const auto& material = core.resolve_material_unstored(materialStorage);
 

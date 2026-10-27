@@ -1,4 +1,5 @@
 #include "support/CoilMesher.h"
+#include "support/MasAccess.h"
 #include "physical_models/Reluctance.h"
 #include "physical_models/WindingOhmicLosses.h"
 #include "processors/Inputs.h"
@@ -543,7 +544,7 @@ InducingCoilMesh CoilMesher::generate_mesh_inducing_coil_phasors(Magnetic magnet
         amplitudePerWindingPerHarmonic[harmonicIndex].assign(coil.get_functional_description().size(), 0.0);
         Field field;
         for (const auto& excitation : operatingPoint.get_excitations_per_winding()) {
-            const auto& frequencies = excitation.get_current_ref()->get_harmonics_ref().value().get_frequencies();
+            const auto& frequencies = mas_access::harmonics_ref(*(mas_access::current_ref(excitation))).value().get_frequencies();
             if (harmonicIndex < frequencies.size()) {
                 field.set_frequency(frequencies[harmonicIndex]);
                 break;
@@ -572,7 +573,7 @@ InducingCoilMesh CoilMesher::generate_mesh_inducing_coil_phasors(Magnetic magnet
         const auto& turn = turns[turnIndex];
         int windingIndex = coil.get_winding_index_by_name(turn.get_winding());
         auto& wire = wirePerWinding[windingIndex];
-        const auto& excitationCurrent = operatingPoint.get_excitations_per_winding()[windingIndex].get_current_ref();
+        const auto& excitationCurrent = mas_access::current_ref(operatingPoint.get_excitations_per_winding()[windingIndex]);
         if (!excitationCurrent || !excitationCurrent->get_harmonics()) {
             throw InvalidInputException(ErrorCode::MISSING_DATA, "Current for winding " + std::to_string(windingIndex) + " is missing harmonics in Coil Mesher");
         }

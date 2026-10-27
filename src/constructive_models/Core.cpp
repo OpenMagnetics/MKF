@@ -1,4 +1,5 @@
 #include "constructive_models/Core.h"
+#include "support/MasAccess.h"
 #include "constructive_models/MasMigration.h"
 #include "constructive_models/Wire.h"
 #include "physical_models/Resistivity.h"
@@ -717,7 +718,7 @@ std::vector<ColumnElement> Core::find_columns_by_type(ColumnType columnType) {
 }
 
 int Core::find_closest_column_index_by_coordinates(const std::vector<double>& coordinates) const {
-    return find_closest_column_index_by_coordinates(get_processed_description_ref().value().get_columns(), coordinates);
+    return find_closest_column_index_by_coordinates(mas_access::processed_description_ref(*this).value().get_columns(), coordinates);
 }
 
 int Core::find_closest_column_index_by_coordinates(const std::vector<ColumnElement>& columns,

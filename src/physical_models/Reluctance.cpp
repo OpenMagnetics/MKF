@@ -1,4 +1,5 @@
 #include "physical_models/Reluctance.h"
+#include "support/MasAccess.h"
 #include "physical_models/MagneticEnergy.h"
 #include "support/Utils.h"
 
@@ -20,7 +21,7 @@ double ReluctanceModel::get_ungapped_core_reluctance(const Core& core, double in
     static const Constants constants;
     double absolutePermeability = constants.vacuumPermeability * initialPermeability;
     // One copy of the processed description (the MAS getter returns it by value), not one per field.
-    const auto& effectiveParameters = core.get_processed_description_ref()->get_effective_parameters();
+    const auto& effectiveParameters = mas_access::processed_description_ref(core)->get_effective_parameters();
     double effectiveArea = effectiveParameters.get_effective_area();
     double effectiveLength = effectiveParameters.get_effective_length();
 
