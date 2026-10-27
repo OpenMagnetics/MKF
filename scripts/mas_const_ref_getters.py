@@ -47,10 +47,32 @@ def main(path):
         if count:
             out[index] = rewritten
             moved += count
+    # quicktype declares `virtual ~X() = default;` in every class, which suppresses the implicit move constructor and
+    # move assignment: std::move of a generated object, and every setter that moves its argument, then COPIES it (a
+    # 16k-sample waveform per call). The four special members are declared defaulted next to that destructor: copies
+    # stay exactly what they are (member-wise), and a move now moves (member-wise), which is what the code that calls
+    # std::move asked for. Nothing else changes; a class whose members cannot all be moved keeps copying (a defaulted
+    # move that is deleted is ignored by overload resolution).
+    DESTRUCTOR = re.compile(r"^(?P<indent>\s*)virtual ~(?P<name>\w+)\(\) = default;$")
+    declared = {m.group(1) for line in out for m in [re.search(r"^\s*(\w+)\(\1 &&\) = default;", line)] if m}
+    special = 0
+    with_special = []
+    for line in out:
+        with_special.append(line)
+        m = DESTRUCTOR.match(line)
+        if not m or m.group("name") in declared:
+            continue
+        name, indent = m.group("name"), m.group("indent")
+        with_special += [f"{indent}{name}(const {name} &) = default;", f"{indent}{name}({name} &&) = default;",
+                         f"{indent}{name} & operator=(const {name} &) = default;",
+                         f"{indent}{name} & operator=({name} &&) = default;"]
+        special += 1
+    out = with_special
     text = "\n".join(out)
     with open(path, "w", encoding="utf-8") as f:
         f.write(text)
-    print(f"mas_const_ref_getters: {added} const& accessors added, {moved} setters made to move, in {path}")
+    print(f"mas_const_ref_getters: {added} const& accessors added, {moved} setters made to move, "
+          f"{special} classes given defaulted copy and move members, in {path}")
 
 
 if __name__ == "__main__":

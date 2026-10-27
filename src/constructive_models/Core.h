@@ -48,6 +48,11 @@ class Core : public MAS::MagneticCore {
     Core(const CoreShape shape, std::optional<CoreMaterial> material = std::nullopt);
     Core() = default;
     virtual ~Core() = default;
+    // Declared because the virtual destructor suppresses the implicit move: a std::move of a Core copied it.
+    Core(const Core&) = default;
+    Core(Core&&) = default;
+    Core& operator=(const Core&) = default;
+    Core& operator=(Core&&) = default;
 
     std::optional<std::vector<CoreGeometricalDescriptionElement>> create_geometrical_description();
     // ABT #1170: the spacer elements of the geometrical description, already filtered and

@@ -197,6 +197,11 @@ class Wire : public MAS::Wire {
 
         Wire() = default;
         virtual ~Wire() = default;
+        // Declared because the virtual destructor suppresses the implicit move: a std::move of a Wire copied it.
+        Wire(const Wire&) = default;
+        Wire(Wire&&) = default;
+        Wire& operator=(const Wire&) = default;
+        Wire& operator=(Wire&&) = default;
 
         static WireRound convert_from_wire_to_strand(Wire wire);
         static std::optional<InsulationWireCoating> resolve_coating(const Wire& wire);

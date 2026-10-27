@@ -1183,6 +1183,11 @@ class Coil : public MAS::Coil {
         Coil(json j, bool windInConstructor);
         Coil() = default;
         virtual ~Coil() = default;
+        // Declared because the virtual destructor suppresses the implicit move: a std::move of a Coil copied it.
+        Coil(const Coil&) = default;
+        Coil(Coil&&) = default;
+        Coil& operator=(const Coil&) = default;
+        Coil& operator=(Coil&&) = default;
         bool fast_wind();
         bool unwind();
         bool wind();

@@ -98,6 +98,11 @@ class Bobbin : public MAS::Bobbin {
 
     Bobbin() = default;
     virtual ~Bobbin() = default;
+    // Declared because the virtual destructor suppresses the implicit move: a std::move of a Bobbin copied it.
+    Bobbin(const Bobbin&) = default;
+    Bobbin(Bobbin&&) = default;
+    Bobbin& operator=(const Bobbin&) = default;
+    Bobbin& operator=(Bobbin&&) = default;
     void process_data();
     
     static double get_filling_factor(double windingWindowWidth, double windingWindowHeight);

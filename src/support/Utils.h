@@ -253,8 +253,8 @@ std::vector<InsulationMaterial> get_insulation_materials();
 std::vector<WireMaterial> get_wire_materials();
 
 
-bool is_size_power_of_2(std::vector<double> data);
-size_t round_up_size_to_power_of_2(std::vector<double> data);
+bool is_size_power_of_2(const std::vector<double>& data);
+size_t round_up_size_to_power_of_2(const std::vector<double>& data);
 size_t round_up_size_to_power_of_2(size_t size);
 
 std::vector<size_t> get_main_harmonic_indexes(OperatingPointExcitation excitation, double windingLossesHarmonicAmplitudeThreshold, std::string signal="current", std::optional<size_t> mainHarmonicIndex=std::nullopt);

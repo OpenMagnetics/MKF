@@ -2480,11 +2480,11 @@ double angle_to_wound_distance(double angle, double radius) {
     return 2 * sin(angle / 2 / 180 * std::numbers::pi) * radius;
 }
 
-bool is_size_power_of_2(std::vector<double> data) {
+bool is_size_power_of_2(const std::vector<double>& data) {
     return data.size() > 0 && ((data.size() & (data.size() - 1)) == 0);
 }
 
-size_t round_up_size_to_power_of_2(std::vector<double> data) {
+size_t round_up_size_to_power_of_2(const std::vector<double>& data) {
     return pow(2, ceil(log(data.size()) / log(2)));
 }
 

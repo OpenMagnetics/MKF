@@ -28,6 +28,11 @@ public:
     }
     InsulationMaterial() = default;
     virtual ~InsulationMaterial() = default;
+    // Declared because the virtual destructor suppresses the implicit move: a std::move of a InsulationMaterial copied it.
+    InsulationMaterial(const InsulationMaterial&) = default;
+    InsulationMaterial(InsulationMaterial&&) = default;
+    InsulationMaterial& operator=(const InsulationMaterial&) = default;
+    InsulationMaterial& operator=(InsulationMaterial&&) = default;
 
     InsulationMaterial(MAS::InsulationMaterial insulationMaterial) {
         // The WHOLE record, never a field-by-field copy: that copy silently dropped every field it

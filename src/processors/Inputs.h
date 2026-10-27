@@ -48,6 +48,11 @@ class Inputs : public MAS::Inputs {
     }
     Inputs() = default;
     virtual ~Inputs() = default;
+    // Declared because the virtual destructor suppresses the implicit move: a std::move of a Inputs copied it.
+    Inputs(const Inputs&) = default;
+    Inputs(Inputs&&) = default;
+    Inputs& operator=(const Inputs&) = default;
+    Inputs& operator=(Inputs&&) = default;
 
     // ABT #1329: MAS requires inputs.designRequirements and inputs.operatingPoints. Without this
     // check a missing one surfaced as a raw "[json.exception.out_of_range.403] key

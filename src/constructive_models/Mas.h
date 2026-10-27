@@ -19,6 +19,11 @@ class Mas : public MAS::Mas {
     public:
         Mas() = default;
         virtual ~Mas() = default;
+        // Declared because the virtual destructor suppresses the implicit move: a std::move of a Mas copied it.
+        Mas(const Mas&) = default;
+        Mas(Mas&&) = default;
+        Mas& operator=(const Mas&) = default;
+        Mas& operator=(Mas&&) = default;
 
         public:
         /**

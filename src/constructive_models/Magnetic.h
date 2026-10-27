@@ -69,6 +69,11 @@ class Magnetic : public MAS::Magnetic {
     public:
         Magnetic() = default;
         virtual ~Magnetic() = default;
+        // Declared because the virtual destructor suppresses the implicit move: a std::move of a Magnetic copied it.
+        Magnetic(const Magnetic&) = default;
+        Magnetic(Magnetic&&) = default;
+        Magnetic& operator=(const Magnetic&) = default;
+        Magnetic& operator=(Magnetic&&) = default;
 
         bool has_coil() const { return coil.has_value(); }
         bool has_core() const { return core.has_value(); }
