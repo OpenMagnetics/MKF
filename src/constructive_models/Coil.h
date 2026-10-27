@@ -201,6 +201,12 @@ struct ConnectionReservedSpace {
     // (compute_connection_blocked_slots_per_layer) derives each crossed layer's freed slots from the
     // DEEPEST run crossing it. 0 = not an edge-routed run (radial exits, stubs, Z diagonals).
     double edgeDepth = 0;
+    // The depth, from the stack's base, at which the edge-row allocator stacked the row this run
+    // lies in: 0 for a row flush at the edge (it meets no other row radially), else the bottom of
+    // the deepest row it meets. Taken before the ABT #844 snap moves a flush row onto its turn, so
+    // it says where the ALLOCATOR put the row, not where the snap drew it. Set on the edge run of a
+    // terminal lead and of an edge continuation; empty on every other rectangle.
+    std::optional<double> edgeRowStackDepth;
     // ABT #685: the CLASSIFICATION this rectangle belongs to (see ConnectionKind), and the two
     // turns it connects. Several rectangles make up one route (a stub, an edge run, a second
     // stub), and they are grouped back into that route by (winding, parallel, fromTurn, toTurn).
@@ -822,9 +828,21 @@ class Coil : public MAS::Coil {
         // window holds. Written by wind_by_rectangular_layers (cleared at each fill), read by
         // align_blocked_layer_turns, which extends the layer's span past the window by that much.
         std::map<std::string, uint64_t> _turnAxisOverflowSlotsPerLayer;
+        // Alf (2026-10-27, "Layer 0 like the others"): the first layers of a section that the fill
+        // grew to the share of its grown later layers. Such a layer is crossed by no corridor; it
+        // keeps the edge its first wound turn starts at inside the window and grows past the other
+        // one, so its closing station is the copper pushed out (align_blocked_layer_turns).
+        std::set<std::string> _turnAxisOverflowFromStartLayers;
         // ABT #2096: why the first of those layers could not close inside the window, with the
         // numbers; cleared with the map at each fill, merged into _lastFitFailure by wind().
         std::string _turnAxisOverflowReason;
+        // ABT #2107 (refill until it settles): per section, the fewest layers the refill in wind() found
+        // the section to need (a fill with fewer did not fit under the corridors it drew itself). Only
+        // ever raised during one wind, cleared at its start; wind_by_rectangular_layers keeps that many.
+        // Each minimum is stored with the section's physical turn count it was measured at (first =
+        // layers, second = turns): it holds only for that many turns, so the refill drops it when a
+        // re-split hands the section fewer.
+        std::map<std::string, std::pair<size_t, size_t>> _refillMinimumLayersPerSection;
         // ABT #1290 follow-up: the bend radius each turn's LENGTH was charged for, keyed by the
         // turn's final name. Written where the length is written, re-keyed when
         // name_turns_by_beginning renames the stations, cleared at the start of every wind.
@@ -849,7 +867,12 @@ class Coil : public MAS::Coil {
         // row was allocated on in the previous blocking iteration. The winding's first
         // section/layer starts winding FROM that edge, so the entrance connects to the turn
         // adjacent to its own row (stage-2's arrival-edge rule extended to terminals).
-        std::map<std::string, bool> _terminalEntranceAtTop;
+        // Keyed per (winding, parallel): each CONDUCTOR CHAIN keeps its own edge. A chain is led by
+        // the lowest parallel present in a layer, so an N-filar winding (every layer holds parallel
+        // 0) has the one chain it always had, while a parallel wound alone in its own section (the
+        // web flyback's Secondary parallel 1) starts its first layer at ITS entrance edge, not at
+        // parallel 0's.
+        std::map<std::pair<std::string, int64_t>, bool> _terminalEntranceAtTop;
         // ABT #430: the room each layer ACTUALLY surrendered to those leads, in metres along its turn
         // axis, as applied by wind_by_rectangular_layers (blocked slots * the layer's own wire, after
         // the one-slot-minimum cap). The layer's extent — and so its filling factor — already excludes
@@ -927,6 +950,13 @@ class Coil : public MAS::Coil {
         // a real-winding wind). A station is a cross-section, not a turn, so the winding-style
         // choice must not see it -- see get_number_turns_for_winding_style.
         std::vector<size_t> _realWindingStationsPerWinding;
+        // The stations each PARALLEL needs: one per layer that parallel itself spans. Parallels of one
+        // winding may live in different sections with different layer counts (an interleaved
+        // P-S-P-S flyback lays Secondary parallel 0 in one section and parallel 1 in another), so the
+        // stations are counted per parallel. The winding's numberTurns carries the largest of them
+        // (_realWindingStationsPerWinding); get_number_turns(windingIndex, parallelIndex) gives each
+        // parallel its own count. Empty outside a real-winding wind.
+        std::vector<std::vector<size_t>> _realWindingStationsPerParallel;
         Bobbin _bobbin;
         BobbinDataOrNameUnion bobbin;
         // MAS coil.bobbin ARRAY form (Convention A: element i is mounted on
@@ -1568,6 +1598,11 @@ class Coil : public MAS::Coil {
 
         std::vector<uint64_t> get_number_turns() const;
         uint64_t get_number_turns(size_t windingIndex) const;
+        // Physical cross-sections of ONE parallel of the winding: its declared turns plus the crossing
+        // stations of that parallel's own layers while a real-winding wind is in progress; equal to
+        // get_number_turns(windingIndex) otherwise.
+        uint64_t get_number_turns(size_t windingIndex, size_t parallelIndex) const;
+        std::vector<uint64_t> get_number_turns_per_parallel(size_t windingIndex) const;
         // The declared (electrical) turn count, without the real-winding crossing stations a wind
         // in progress has added: what the winding-style choice is made on (ABT #1487).
         uint64_t get_number_turns_for_winding_style(size_t windingIndex) const;

@@ -17768,7 +17768,11 @@ TEST_CASE("Test_Coil_Real_Winding_Section_That_Cannot_Hold_Its_Turns_Is_Wound_Pa
     REQUIRE_NOTHROW(refusal = OpenMagnetics::real_winding_refusal(magnetic));
     REQUIRE(refusal);
     INFO(refusal.value());
-    CHECK(refusal->find("cannot hold its") != std::string::npos);
+    // Alf, 2026-10-27 (assertion rewritten with his approval): with the crossing stations counted per
+    // parallel, the section that really does not fit is 'Primary section 1' (it needs 3 layers); the
+    // Secondary sections no longer read as unable to hold their turns.
+    CHECK((refusal->find("section 'Primary section 1' needs 3 layers") != std::string::npos &&
+           refusal->find("cannot hold its") == std::string::npos));
 
     // The web's rebuild of the same stored design: no throw, wound, and the turns outside the window
     // reported.
@@ -17781,7 +17785,12 @@ TEST_CASE("Test_Coil_Real_Winding_Section_That_Cannot_Hold_Its_Turns_Is_Wound_Pa
     CHECK_FALSE(rebuiltCoil.judge_turns_outside_window().empty());
     CHECK_THAT(rebuiltCoil.get_last_fit_failure(), Catch::Matchers::ContainsSubstring("outside window"));
     const auto& grownOverOwnLeads = rebuiltCoil.get_layers_grown_over_own_leads();
-    CHECK(std::find(grownOverOwnLeads.begin(), grownOverOwnLeads.end(), "Secondary 0 section 1 layer 1") != grownOverOwnLeads.end());
+    // Alf, 2026-10-27 (assertion rewritten with his approval): what lies outside the window is reported
+    // by name, and no layer is grown over its own winding's leads.
+    const auto outsideTurns = rebuiltCoil.judge_turns_outside_window();
+    CHECK((!outsideTurns.empty() &&
+           rebuiltCoil.get_last_fit_failure().find(outsideTurns.front().turn) != std::string::npos &&
+           grownOverOwnLeads.empty()));
     // The moved own leads run clear of the turns: no lead is drawn across a turn of its own winding.
     for (const auto& overlap : rebuiltCoil.judge_copper_overlaps()) {
         if (overlap.kind != OpenMagnetics::CopperOverlapKind::LEAD_TURN) {
