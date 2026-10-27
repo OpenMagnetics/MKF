@@ -1036,14 +1036,23 @@ class Coil : public MAS::Coil {
         // its window still produces its turns), terminal leads drawn across turns (a tangent lead's
         // collisions, and a radial lead's reserved run over a turn's outline), and terminal leads
         // drawn through each other. ONE source for ResultsAnalyzer's findings and the Painter's red
-        // overlaps. Throws when a turn lacks the dimensions or cross-sectional shape it is drawn with.
+        // overlaps. A turn is drawn with the cross-section it stores, or, storing no shape or no
+        // dimensions, with its winding's wire's (ABT #2109: a round or litz wire's outer diameter, a
+        // rectangular, planar or foil wire's outer width and height). Throws when neither gives it;
+        // turn_outlines_unknown_reason says so first.
         std::vector<CopperOverlap> judge_copper_overlaps();
+        // Alf, 2026-10-27 (ABT #2109): why the turns' outlines judge_copper_overlaps and
+        // judge_turns_outside_window draw with are unknown -- a turn that stores no cross-section and
+        // whose wire does not give it either (the turn, its winding, the wire and what it lacks) --
+        // or nullopt when every turn's outline is known. analyze_results reports it as ONE finding
+        // (TURN_OUTLINES_NOT_EVALUABLE) instead of judging the overlaps.
+        std::optional<std::string> turn_outlines_unknown_reason();
         // Alf, 2026-10-25 (ABT #2071): every turn station of the drawn coil whose copper lies outside the
         // rectangular winding window it belongs to, with how far and on which side (TurnOutsideWindow).
         // ONE source for ResultsAnalyzer's TURNS_OUTSIDE_WINDOW finding and the Painter's red copper.
         // Empty for a coil without turns, and for round (toroidal) windows, which block angularly and
-        // are judged by the toroidal fill, as in are_turns_inside_winding_window. Throws when a turn
-        // lacks the dimensions or cross-sectional shape it is drawn with, or the bobbin its windows.
+        // are judged by the toroidal fill, as in are_turns_inside_winding_window. Turns are drawn as in
+        // judge_copper_overlaps; throws when a turn's outline is unknown, or the bobbin lacks its windows.
         std::vector<TurnOutsideWindow> judge_turns_outside_window();
         // ABT #1290 (Alf, 2026-09-20): under REAL WINDING, refuse a layout that draws a corner
         // tighter than the wire itself can be bent. ABT #2004 (Alf, 2026-10-22): an EDGEWISE bend

@@ -78,6 +78,12 @@ enum class ResultFindingCode {
     // winding, naming each turn outside, how far past the window it reaches and past which side.
     // No operating point.
     TURNS_OUTSIDE_WINDOW,
+    // Alf, 2026-10-27 (ABT #2109): whether the turns overlap one another or lie outside the winding
+    // window cannot be judged, because a turn stores no cross-section and its wire does not give one
+    // either (Coil::turn_outlines_unknown_reason). One for the coil, with the reason, in place of
+    // TURNS_OVERLAP, LEAD_COLLIDES_WITH_TURNS, LEADS_COLLIDE and TURNS_OUTSIDE_WINDOW; every other
+    // finding is still returned. No operating point.
+    TURN_OUTLINES_NOT_EVALUABLE,
 };
 
 std::string to_string(ResultFindingCode code);

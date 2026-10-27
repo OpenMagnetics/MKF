@@ -16,6 +16,7 @@
 #include <map>
 #include <numbers>
 #include <streambuf>
+#include <variant>
 #include <vector>
 #include "support/Utils.h"
 #include "constructive_models/Coil.h"
@@ -13440,20 +13441,114 @@ std::vector<std::vector<double>> overlap_region(const ConvexOutline& a, const Co
     return region;
 }
 
-// The outline of every station of a turn where the winding-window section draws it: at its coordinates,
-// and at a toroid's additional ones. Throws when the turn lacks what it is drawn with.
-std::vector<ConvexOutline> turn_station_outlines(const Turn& turn) {
+// The cross-section a turn is drawn with: its shape and its width and height [m].
+struct TurnSection {
+    TurnCrossSectionalShape shape = TurnCrossSectionalShape::ROUND;
+    double width = 0;
+    double height = 0;
+};
+
+// Alf, 2026-10-27 (ABT #2109): a turn's cross-section is the one it stores (shape and dimensions); a
+// turn that stores no shape or no dimensions takes it from its winding's wire -- a round or litz wire a
+// circle of its outer diameter, a rectangular, planar or foil wire a rectangle of its outer width and
+// height (the turn's rotation applies to it). Real data, not a default. When neither the turn nor its
+// wire gives it, the reason, naming the turn, its winding, the wire and what it lacks.
+std::variant<TurnSection, std::string> resolve_turn_section(const Turn& turn, const std::vector<Winding>& windings,
+                                                            const std::vector<Wire>& wires) {
+    if (turn.get_cross_sectional_shape() && turn.get_dimensions() && turn.get_dimensions()->size() >= 2) {
+        const auto dimensions = turn.get_dimensions().value();
+        return TurnSection{turn.get_cross_sectional_shape().value(), dimensions[0], dimensions[1]};
+    }
+    const size_t windingIndex = Coil::get_winding_index_by_name(windings, turn.get_winding());
+    const auto& wire = wires.at(windingIndex);
+    const std::string stored = turn.get_cross_sectional_shape() ? "no dimensions" : "no cross-sectional shape";
+    const std::string wireName = wire.get_name() ? "'" + wire.get_name().value() + "'" : "(unnamed)";
+    auto unknown = [&](const std::string& lacks) {
+        return "turn '" + turn.get_name() + "' (winding '" + turn.get_winding() + "') stores " + stored + ", and its " +
+               std::string(magic_enum::enum_name(wire.get_type())) + " wire " + wireName + " " + lacks + ", so its outline is unknown";
+    };
+    auto positive = [](double value) { return std::isfinite(value) && value > 0; };
+    switch (wire.get_type()) {
+        case WireType::ROUND: {
+            if (!wire.get_outer_diameter()) {
+                return unknown("states no outer diameter");
+            }
+            const double diameter = resolve_dimensional_values(wire.get_outer_diameter().value());
+            if (!positive(diameter)) {
+                return unknown("states an outer diameter of " + std::to_string(diameter) + " m");
+            }
+            return TurnSection{TurnCrossSectionalShape::ROUND, diameter, diameter};
+        }
+        case WireType::LITZ: {
+            // A litz bundle that states no outer diameter has the envelope its strands make
+            // (Wire::calculate_outer_diameter), the one MKF winds it with.
+            double diameter;
+            if (wire.get_outer_diameter()) {
+                diameter = resolve_dimensional_values(wire.get_outer_diameter().value());
+            }
+            else if (!wire.get_strand() || !wire.get_number_conductors()) {
+                return unknown("states no outer diameter, nor the strand and number of conductors its bundle is made of");
+            }
+            else {
+                diameter = Wire::calculate_outer_diameter(wire);
+            }
+            if (!positive(diameter)) {
+                return unknown("has an outer diameter of " + std::to_string(diameter) + " m");
+            }
+            return TurnSection{TurnCrossSectionalShape::ROUND, diameter, diameter};
+        }
+        case WireType::RECTANGULAR:
+        case WireType::PLANAR:
+        case WireType::FOIL: {
+            if (!wire.get_outer_width() || !wire.get_outer_height()) {
+                return unknown(std::string("states no outer ") + (!wire.get_outer_width() && !wire.get_outer_height() ? "width or height"
+                                                                   : !wire.get_outer_width() ? "width" : "height"));
+            }
+            const double width = resolve_dimensional_values(wire.get_outer_width().value());
+            const double height = resolve_dimensional_values(wire.get_outer_height().value());
+            if (!positive(width) || !positive(height)) {
+                return unknown("states an outer width and height of " + std::to_string(width) + " x " + std::to_string(height) + " m");
+            }
+            return TurnSection{TurnCrossSectionalShape::RECTANGULAR, width, height};
+        }
+    }
+    throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA, "Unknown type of wire for turn '" + turn.get_name() + "'");
+}
+
+// Every turn's cross-section, or the reason the first one without is unknown (with how many are).
+std::variant<std::vector<TurnSection>, std::string> resolve_turn_sections(const std::vector<Turn>& turns, const std::vector<Winding>& windings,
+                                                                          const std::vector<Wire>& wires) {
+    std::vector<TurnSection> sections;
+    std::optional<std::string> firstReason;
+    size_t unknownCount = 0;
+    for (const auto& turn : turns) {
+        auto section = resolve_turn_section(turn, windings, wires);
+        if (std::holds_alternative<std::string>(section)) {
+            if (!firstReason) {
+                firstReason = std::get<std::string>(section);
+            }
+            ++unknownCount;
+            continue;
+        }
+        sections.push_back(std::get<TurnSection>(section));
+    }
+    if (firstReason) {
+        if (unknownCount == 1) {
+            return firstReason.value();
+        }
+        return firstReason.value() + " (and so are the outlines of " + std::to_string(unknownCount - 1) + " other turn" +
+               (unknownCount == 2 ? "" : "s") + ")";
+    }
+    return sections;
+}
+
+// The outline of every station of a turn where the winding-window section draws it, with its
+// cross-section (resolve_turn_section): at its coordinates, and at a toroid's additional ones.
+std::vector<ConvexOutline> turn_station_outlines(const Turn& turn, const TurnSection& section) {
     std::vector<ConvexOutline> outlines;
-    if (!turn.get_dimensions() || turn.get_dimensions()->size() < 2) {
-        throw InvalidInputException(ErrorCode::MISSING_DATA, "Turn '" + turn.get_name() + "' has no dimensions, so its outline is unknown");
-    }
-    if (!turn.get_cross_sectional_shape()) {
-        throw InvalidInputException(ErrorCode::MISSING_DATA, "Turn '" + turn.get_name() + "' has no cross-sectional shape, so its outline is unknown");
-    }
     if (turn.get_coordinate_system() && turn.get_coordinate_system().value() != CoordinateSystem::CARTESIAN) {
         throw InvalidInputException(ErrorCode::INVALID_COIL_CONFIGURATION, "Turn '" + turn.get_name() + "' has coordinates that are not cartesian");
     }
-    const auto dimensions = turn.get_dimensions().value();
     const double rotation = turn.get_rotation().value_or(0);
     std::vector<std::vector<double>> centres{turn.get_coordinates()};
     if (turn.get_additional_coordinates()) {
@@ -13464,15 +13559,15 @@ std::vector<ConvexOutline> turn_station_outlines(const Turn& turn) {
     }
     for (const auto& centre : centres) {
         ConvexOutline outline;
-        switch (turn.get_cross_sectional_shape().value()) {
+        switch (section.shape) {
             case TurnCrossSectionalShape::ROUND:
-                outline = circle_outline(centre[0], centre[1], dimensions[0] / 2);
+                outline = circle_outline(centre[0], centre[1], section.width / 2);
                 break;
             case TurnCrossSectionalShape::RECTANGULAR:
-                outline = rectangle_outline(centre[0], centre[1], dimensions[0], dimensions[1], rotation);
+                outline = rectangle_outline(centre[0], centre[1], section.width, section.height, rotation);
                 break;
             case TurnCrossSectionalShape::OVAL:
-                outline = oval_outline(centre[0], centre[1], dimensions[0], dimensions[1], rotation);
+                outline = oval_outline(centre[0], centre[1], section.width, section.height, rotation);
                 break;
         }
         outlines.push_back(outline);
@@ -13480,11 +13575,34 @@ std::vector<ConvexOutline> turn_station_outlines(const Turn& turn) {
     return outlines;
 }
 
+// The cross-section of every turn, throwing when one is unknown (the judges' contract; analyze_results
+// asks turn_outlines_unknown_reason first and reports it instead).
+std::vector<TurnSection> require_turn_sections(const std::vector<Turn>& turns, const std::vector<Winding>& windings,
+                                               const std::vector<Wire>& wires) {
+    auto sections = resolve_turn_sections(turns, windings, wires);
+    if (std::holds_alternative<std::string>(sections)) {
+        throw InvalidInputException(ErrorCode::MISSING_DATA, "The outline of " + std::get<std::string>(sections));
+    }
+    return std::get<std::vector<TurnSection>>(sections);
+}
+
 // Overlaps below the resolution the layout stores its coordinates at (roundFloat to 1e-9 m, on each of
 // the two centres) are touching outlines, not overlapping ones.
 constexpr double kStoredCoordinateResolution = 2e-9;
 
 }  // namespace
+
+std::optional<std::string> Coil::turn_outlines_unknown_reason() {
+    if (!get_turns_description()) {
+        return std::nullopt;
+    }
+    const auto turns = get_turns_description().value();   // bound: never range over a temporary
+    auto sections = resolve_turn_sections(turns, get_functional_description(), get_wires());
+    if (std::holds_alternative<std::string>(sections)) {
+        return std::get<std::string>(sections);
+    }
+    return std::nullopt;
+}
 
 std::vector<CopperOverlap> Coil::judge_copper_overlaps() {
     std::vector<CopperOverlap> overlaps;
@@ -13498,8 +13616,9 @@ std::vector<CopperOverlap> Coil::judge_copper_overlaps() {
         ConvexOutline outline;
     };
     std::vector<Station> stations;
+    const auto sections = require_turn_sections(turns, get_functional_description(), get_wires());
     for (size_t t = 0; t < turns.size(); ++t) {
-        for (const auto& outline : turn_station_outlines(turns[t])) {
+        for (const auto& outline : turn_station_outlines(turns[t], sections[t])) {
             stations.push_back({t, outline});
         }
     }
@@ -13708,8 +13827,10 @@ std::vector<TurnOutsideWindow> Coil::judge_turns_outside_window() {
                          centre[1] - window.get_height().value() / 2, centre[1] + window.get_height().value() / 2});
     }
     const auto turns = get_turns_description().value();   // bound: never range over a temporary
-    for (const auto& turn : turns) {
-        for (const auto& outline : turn_station_outlines(turn)) {
+    const auto sections = require_turn_sections(turns, get_functional_description(), get_wires());
+    for (size_t t = 0; t < turns.size(); ++t) {
+        const auto& turn = turns[t];
+        for (const auto& outline : turn_station_outlines(turn, sections[t])) {
             // The window the station belongs to: the one it overruns least.
             std::optional<TurnOutsideWindow> best;
             for (size_t w = 0; w < boxes.size(); ++w) {

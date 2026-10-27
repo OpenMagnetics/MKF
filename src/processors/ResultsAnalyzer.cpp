@@ -35,6 +35,7 @@ std::string to_string(ResultFindingCode code) {
         case ResultFindingCode::TURNS_OVERLAP: return "TURNS_OVERLAP";
         case ResultFindingCode::LEADS_COLLIDE: return "LEADS_COLLIDE";
         case ResultFindingCode::TURNS_OUTSIDE_WINDOW: return "TURNS_OUTSIDE_WINDOW";
+        case ResultFindingCode::TURN_OUTLINES_NOT_EVALUABLE: return "TURN_OUTLINES_NOT_EVALUABLE";
         case ResultFindingCode::EDGEWISE_BEND_BELOW_COATING_MANDREL: return "EDGEWISE_BEND_BELOW_COATING_MANDREL";
     }
     throw InvalidInputException(ErrorCode::INVALID_INPUT, "Unknown result finding code " + std::to_string(static_cast<int>(code)));
@@ -892,6 +893,20 @@ std::vector<ResultFinding> ResultsAnalyzer::analyze_results(const Mas& mas) {
     }
     for (auto& finding : analyze_unmodelled_leads(mas.get_magnetic())) {
         findings.push_back(finding);
+    }
+    // The overlap and outside-window judges draw every turn with its outline. When a turn's is unknown
+    // (it stores no cross-section and its wire gives none either), neither is judged: ONE finding says
+    // so, with the reason, and every other finding stands (ABT #2109).
+    OpenMagnetics::Coil coil = mas.get_magnetic().get_coil();
+    const auto outlinesUnknown = coil.turn_outlines_unknown_reason();
+    if (outlinesUnknown) {
+        ResultFinding finding;
+        finding.code = ResultFindingCode::TURN_OUTLINES_NOT_EVALUABLE;
+        finding.message = "Warning: whether the turns of the coil overlap one another, or lie outside the winding window, is not "
+                          "evaluable for this design: the outline of " + outlinesUnknown.value() +
+                          ". Overlapping copper and copper outside the window are not reported.";
+        findings.push_back(finding);
+        return findings;
     }
     for (auto& finding : analyze_copper_overlaps(mas.get_magnetic())) {
         findings.push_back(finding);

@@ -21,6 +21,7 @@
 #include <catch2/matchers/catch_matchers_predicate.hpp>
 #include <catch2/matchers/catch_matchers_exception.hpp>
 #include <cmath>
+#include <set>
 #include <vector>
 
 using namespace MAS;
@@ -2384,6 +2385,114 @@ TEST_CASE("Simulate gives every operating point its numbers and analyze_results 
         CHECK(entry.contains("code"));
         CHECK(entry.contains("message"));
     }
+    settings.reset();
+}
+
+// ABT #2109 (Alf, 2026-10-27): since the overlap reporting of ABT #2071, analyze_results threw for a
+// stored design whose turns store no cross-sectional shape ("Turn 'Primary parallel 0 turn 0' has no
+// cross-sectional shape"), and every finding was lost. A turn without a stored cross-section takes its
+// outline from its winding's wire; the stored simple_inductor (round wire, outer diameter 0.676 mm,
+// turns without crossSectionalShape) returns its findings again.
+TEST_CASE("analyze_results judges a stored design whose turns store no cross-section by its wire's outline",
+          "[processor][results-analyzer][abt-2109]") {
+    settings.reset();
+    auto path = std::filesystem::path{std::source_location::current().file_name()}
+                    .parent_path().append("testData").append("simple_inductor.json");
+    REQUIRE(std::filesystem::exists(path));
+    auto mas = OpenMagneticsTesting::mas_loader(path.string());
+    const auto storedTurns = mas.get_magnetic().get_coil().get_turns_description().value();
+    REQUIRE(storedTurns.size() == 31);
+    for (const auto& turn : storedTurns) {
+        REQUIRE_FALSE(turn.get_cross_sectional_shape());   // the premise: the stored turns carry no shape
+    }
+    auto coil = mas.get_magnetic().get_coil();
+    CHECK_FALSE(coil.turn_outlines_unknown_reason());
+    // As the web does: simulate the stored design, then analyze it.
+    MagneticSimulator magneticSimulator;
+    OpenMagnetics::Mas simulated;
+    REQUIRE_NOTHROW(simulated = magneticSimulator.simulate(mas.get_inputs(), mas.get_magnetic()));
+    const auto simulatedTurns = simulated.get_magnetic().get_coil().get_turns_description().value();   // bound
+    REQUIRE(simulatedTurns.size() == 31);
+    for (const auto& turn : simulatedTurns) {
+        REQUIRE_FALSE(turn.get_cross_sectional_shape());   // simulate keeps the stored turns
+    }
+    std::vector<ResultFinding> findings;
+    REQUIRE_NOTHROW(findings = ResultsAnalyzer::analyze_results(simulated));
+    std::string allFindings;
+    std::set<ResultFindingCode> codes;
+    for (const auto& finding : findings) {
+        allFindings += "\n" + to_string(finding.code) + ": " + finding.message;
+        codes.insert(finding.code);
+    }
+    INFO("findings:" << allFindings);
+    CHECK(codes.count(ResultFindingCode::CORE_SATURATES) == 1);
+    CHECK(codes.count(ResultFindingCode::CORE_ABOVE_MATERIAL_DATA_LIMIT) == 1);
+    // Its wire states no temperature limit (no coating rating, no rated material), so the 543 C winding
+    // is reported as unchecked rather than above a limit.
+    CHECK(codes.count(ResultFindingCode::WINDING_TEMPERATURE_LIMIT_NOT_STATED) == 1);
+    CHECK(codes.count(ResultFindingCode::TURN_OUTLINES_NOT_EVALUABLE) == 0);
+    settings.reset();
+}
+
+// ABT #2109 (Alf, 2026-10-27): when the wire does not give the outline either, the overlap and
+// outside-window checks are not evaluable for the design: ONE finding says so, with the reason, and
+// every other finding is still returned. simple_inductor with its round wire's outer diameter removed.
+TEST_CASE("analyze_results reports the turn overlaps not evaluable when neither the turns nor their wire give an outline, and keeps every other finding",
+          "[processor][results-analyzer][abt-2109]") {
+    settings.reset();
+    auto path = std::filesystem::path{std::source_location::current().file_name()}
+                    .parent_path().append("testData").append("simple_inductor.json");
+    REQUIRE(std::filesystem::exists(path));
+    auto mas = OpenMagneticsTesting::mas_loader(path.string());
+    auto magnetic = mas.get_magnetic();
+    auto coil = magnetic.get_coil();
+    auto wire = coil.resolve_wire(size_t(0));
+    REQUIRE(wire.get_type() == WireType::ROUND);
+    REQUIRE(wire.get_outer_diameter());
+    wire.set_outer_diameter(std::nullopt);
+    coil.get_mutable_functional_description()[0].set_wire(wire);
+    magnetic.set_coil(coil);
+    mas.set_magnetic(magnetic);
+    REQUIRE_FALSE(mas.get_magnetic().get_coil().get_turns_description().value()[0].get_cross_sectional_shape());
+
+    auto judged = mas.get_magnetic().get_coil();
+    const auto reason = judged.turn_outlines_unknown_reason();
+    REQUIRE(reason);
+    CHECK_THAT(reason.value(), Catch::Matchers::ContainsSubstring("Primary parallel 0 turn 0") &&
+                               Catch::Matchers::ContainsSubstring("no outer diameter"));
+    // The judges themselves still throw: only analyze_results turns it into a finding.
+    CHECK_THROWS_AS(judged.judge_copper_overlaps(), InvalidInputException);
+
+    MagneticSimulator magneticSimulator;
+    OpenMagnetics::Mas simulated;
+    REQUIRE_NOTHROW(simulated = magneticSimulator.simulate(mas.get_inputs(), mas.get_magnetic()));
+    REQUIRE_FALSE(simulated.get_magnetic().get_coil().get_turns_description().value()[0].get_cross_sectional_shape());
+    std::vector<ResultFinding> findings;
+    REQUIRE_NOTHROW(findings = ResultsAnalyzer::analyze_results(simulated));
+    std::string allFindings;
+    std::vector<ResultFinding> notEvaluable;
+    std::set<ResultFindingCode> codes;
+    for (const auto& finding : findings) {
+        allFindings += "\n" + to_string(finding.code) + ": " + finding.message;
+        codes.insert(finding.code);
+        if (finding.code == ResultFindingCode::TURN_OUTLINES_NOT_EVALUABLE) {
+            notEvaluable.push_back(finding);
+        }
+    }
+    INFO("findings:" << allFindings);
+    REQUIRE(notEvaluable.size() == 1);
+    CHECK_FALSE(notEvaluable[0].operatingPointIndex);
+    CHECK_THAT(notEvaluable[0].message, Catch::Matchers::ContainsSubstring("not evaluable") &&
+                                        Catch::Matchers::ContainsSubstring("Primary parallel 0 turn 0") &&
+                                        Catch::Matchers::ContainsSubstring("no outer diameter") &&
+                                        !Catch::Matchers::ContainsSubstring("ABT"));
+    CHECK(codes.count(ResultFindingCode::CORE_SATURATES) == 1);
+    CHECK(codes.count(ResultFindingCode::CORE_ABOVE_MATERIAL_DATA_LIMIT) == 1);
+    // Its wire states no temperature limit (no coating rating, no rated material), so the 543 C winding
+    // is reported as unchecked rather than above a limit.
+    CHECK(codes.count(ResultFindingCode::WINDING_TEMPERATURE_LIMIT_NOT_STATED) == 1);
+    CHECK(codes.count(ResultFindingCode::TURNS_OVERLAP) == 0);
+    CHECK(codes.count(ResultFindingCode::TURNS_OUTSIDE_WINDOW) == 0);
     settings.reset();
 }
 
