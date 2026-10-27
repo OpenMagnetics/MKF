@@ -2112,7 +2112,8 @@ Waveform Inputs::compress_waveform(const Waveform& waveform, std::optional<doubl
     return WaveformProcessor::compress_waveform(waveform, frequency);
 }
 
-Inputs::VoltSecondBalance Inputs::calculate_volt_second_balance(const Waveform& voltageSampledWaveform, const std::string& context) {
+Inputs::VoltSecondBalance Inputs::calculate_volt_second_balance(const Waveform& voltageSampledWaveform, const std::string& context,
+                                                                std::optional<double> voltageScale) {
     // ABT #1585: the magnetizing current is the integral of the voltage over the inductance. Only
     // the integration constant is removed (calculate_integral_waveform), so a voltage whose
     // volt-seconds do not balance over the period ramps the "current" by its imbalance instead of
@@ -2122,6 +2123,16 @@ Inputs::VoltSecondBalance Inputs::calculate_volt_second_balance(const Waveform& 
         throw InvalidInputException(ErrorCode::MISSING_DATA,
             context + ": the voltage needs a sampled waveform with a time axis to check its volt-second balance");
     }
+    if (voltageScale && (!std::isfinite(voltageScale.value()) || voltageScale.value() < 0)) {
+        throw InvalidInputException(ErrorCode::INVALID_INPUT, context + ": the scale a voltage's volt-second balance is judged against must be "
+                                    "a finite value >= 0, not " + format_quantity(voltageScale.value(), "V"));
+    }
+    const auto& data = voltageSampledWaveform.get_data();
+    double peakMagnitude = 0;
+    for (double value : data) {
+        peakMagnitude = std::max(peakMagnitude, std::fabs(value));
+    }
+    const double scale = voltageScale ? voltageScale.value() : peakMagnitude;
     VoltSecondBalance balance;
     balance.meanVoltage = calculate_waveform_average(voltageSampledWaveform);
     const auto time = voltageSampledWaveform.get_time().value();
@@ -2130,22 +2141,31 @@ Inputs::VoltSecondBalance Inputs::calculate_volt_second_balance(const Waveform& 
     auto acFluxLinkage = calculate_integral_waveform(sum_waveform(voltageSampledWaveform, -balance.meanVoltage), true);
     const auto& acData = acFluxLinkage.get_data();
     balance.acSwing = *std::max_element(acData.begin(), acData.end()) - *std::min_element(acData.begin(), acData.end());
+    // ABT #2112: a swing within rounding of the voltage's scale is no swing (negligibleVoltSecondFraction).
+    if (balance.acSwing <= negligibleVoltSecondFraction * scale * balance.period) {
+        balance.acSwing = 0;
+    }
     if (balance.acSwing > 0) {
         balance.imbalance = std::fabs(balance.netVoltSeconds) / balance.acSwing;
     }
     else {
-        // A constant voltage: any non-zero value is pure imbalance; zero is no voltage at all.
-        balance.imbalance = balance.meanVoltage != 0 ? std::numeric_limits<double>::infinity() : 0;
+        // A constant voltage: any non-negligible value is pure imbalance; a negligible one is no voltage at all.
+        balance.imbalance = std::fabs(balance.meanVoltage) > negligibleVoltSecondFraction * scale ? std::numeric_limits<double>::infinity() : 0;
     }
     return balance;
 }
 
 std::optional<std::string> Inputs::describe_volt_second_imbalance(const Waveform& voltageSampledWaveform, const std::string& context) {
-    auto balance = calculate_volt_second_balance(voltageSampledWaveform, context);
+    return describe_volt_second_imbalance(calculate_volt_second_balance(voltageSampledWaveform, context), context);
+}
+
+std::optional<std::string> Inputs::describe_volt_second_imbalance(const VoltSecondBalance& balance, const std::string& context) {
     if (balance.acSwing <= 0) {
-        if (balance.meanVoltage != 0) {
-            return context + ": the voltage is a constant " + format_quantity(balance.meanVoltage, "V") +
-                ". A constant voltage has no periodic steady state, so its integral is not a magnetizing current";
+        // ABT #2112: no swing, so no ratio: the imbalance is the constant itself.
+        if (balance.imbalance > 0) {
+            return context + ": the voltage is a constant " + format_quantity(balance.meanVoltage, "V") + ", which drifts the flux linkage by " +
+                format_quantity(balance.netVoltSeconds, "V*s") + " every " + format_quantity(balance.period, "s") +
+                " period. A constant voltage has no periodic steady state, so its integral is not a magnetizing current";
         }
         return std::nullopt;
     }
@@ -2376,7 +2396,19 @@ double Inputs::calculate_steady_state_mean_voltage(const OperatingPointExcitatio
     auto acFluxLinkage = calculate_integral_waveform(sum_waveform(voltageSampledWaveform, -meanSampledVoltage), true);
     const auto& acData = acFluxLinkage.get_data();
     double acSwing = *std::max_element(acData.begin(), acData.end()) - *std::min_element(acData.begin(), acData.end());
-    double imbalance = acSwing > 0 ? std::fabs(meanVoltage * period) / acSwing : 0;
+    double peakMagnitude = 0;
+    for (double value : voltageSampledWaveform.get_data()) {
+        peakMagnitude = std::max(peakMagnitude, std::fabs(value));
+    }
+    if (acSwing <= negligibleVoltSecondFraction * peakMagnitude * period) {
+        // ABT #2112: no swing to state the mean against; the mean is removed all the same.
+        if (std::fabs(meanVoltage) > negligibleVoltSecondFraction * peakMagnitude) {
+            Logger::getInstance().warning(context + ": the voltage is a constant " + format_quantity(meanVoltage, "V") + ". MKF removed it "
+                "before integrating the magnetizing current, since a winding in periodic steady state has no mean", "Inputs");
+        }
+        return meanVoltage;
+    }
+    double imbalance = std::fabs(meanVoltage * period) / acSwing;
     if (imbalance > voltSecondImbalanceWarningThreshold) {
         Logger::getInstance().warning(context + ": the voltage has a mean of " + format_quantity(meanVoltage, "V") +
             ", whose net volt-seconds are " + format_significant(imbalance * 100, 2) + " % of its AC swing. MKF removed it "

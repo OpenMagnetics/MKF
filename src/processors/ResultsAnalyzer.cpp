@@ -302,37 +302,66 @@ std::vector<ResultFinding> ResultsAnalyzer::analyze_volt_second_balance(const Op
     std::vector<ResultFinding> findings;
     const auto& excitations = operatingPoint.get_excitations_per_winding();
     for (size_t windingIndex = 0; windingIndex < excitations.size(); ++windingIndex) {
-        auto excitation = excitations[windingIndex];
+        const auto& excitation = excitations[windingIndex];
         if (!excitation.get_voltage() || !excitation.get_voltage()->get_waveform()) {
             continue;
-        }
-        // ABT #2002: the winding's own resistive drop i(t) R_dc is not flux drift; only what remains
-        // once it is taken out is judged. Without a resistance (no wound coil) or a current, the voltage
-        // is judged as given.
-        std::optional<double> dcResistance;
-        std::optional<double> meanResistiveDrop;
-        if (windingDcResistances && windingIndex < windingDcResistances->size() && excitation.get_current()) {
-            dcResistance = windingDcResistances->at(windingIndex);
-            auto currentWaveform = Inputs::standardize_waveform(excitation.get_current().value(), excitation.get_frequency()).get_waveform().value();
-            meanResistiveDrop = dcResistance.value() * Inputs::calculate_waveform_average(currentWaveform, excitation.get_frequency());
-            excitation = Inputs::remove_resistive_drop(excitation, dcResistance.value());
         }
         double frequency = excitation.get_frequency();
         auto voltage = Inputs::standardize_waveform(excitation.get_voltage().value(), frequency);
         auto sampledVoltage = Inputs::calculate_sampled_waveform(voltage.get_waveform().value(), frequency);
         std::string context = "At " + describe_operating_point(operatingPoint, operatingPointIndex) + ", winding " +
                               std::to_string(windingIndex) + " ('" + excitation.get_name().value_or("unnamed") + "')";
-        auto imbalance = Inputs::describe_volt_second_imbalance(sampledVoltage, context);
-        if (imbalance) {
-            std::string message = imbalance.value() + ". Where MKF derives a magnetizing current from this voltage, it integrates "
-                                  "only its balanced part (the mean removed), so the numbers given describe that part";
-            if (dcResistance) {
-                message += ". The winding's own resistive drop (" + format_quantity(dcResistance.value(), "Ohm") + " at " +
-                           format_number(resistanceTemperature.value()) + " C, " + format_quantity(meanResistiveDrop.value(), "V") +
-                           " on average) was taken out of the voltage before this check";
-            }
-            findings.push_back(make_finding(operatingPoint, operatingPointIndex, ResultFindingCode::VOLT_SECOND_IMBALANCE, message));
+        // ABT #2112: a voltage that is volt-second balanced as given stays balanced. The I*R drop is not
+        // taken out of it: an ideal V = 0 at a DC current, or a common-mode choke's balanced common-mode
+        // voltage with the line current through each winding, would get a mean of -R*mean(i) it does not have.
+        auto asGiven = Inputs::calculate_volt_second_balance(sampledVoltage, context);
+        auto asGivenImbalance = Inputs::describe_volt_second_imbalance(asGiven, context);
+        if (!asGivenImbalance) {
+            continue;
         }
+        const std::string integrationNote = ". Where MKF derives a magnetizing current from this voltage, it integrates "
+                                            "only its balanced part (the mean removed), so the numbers given describe that part";
+        // ABT #2002: a winding's terminal voltage is R_dc i(t) + N dPhi/dt, so the winding's own resistive drop
+        // can explain a mean that is not flux drift. Without a resistance (no wound coil) or a current, the
+        // voltage is judged as given.
+        if (!windingDcResistances || windingIndex >= windingDcResistances->size() || !excitation.get_current()) {
+            findings.push_back(make_finding(operatingPoint, operatingPointIndex, ResultFindingCode::VOLT_SECOND_IMBALANCE,
+                                            asGivenImbalance.value() + integrationNote));
+            continue;
+        }
+        double dcResistance = windingDcResistances->at(windingIndex);
+        auto currentWaveform = Inputs::standardize_waveform(excitation.get_current().value(), frequency).get_waveform().value();
+        double meanResistiveDrop = dcResistance * Inputs::calculate_waveform_average(currentWaveform, frequency);
+        std::string drop = "own resistive drop (" + format_quantity(dcResistance, "Ohm") + " at " +
+                           format_number(resistanceTemperature.value()) + " C, " + format_quantity(meanResistiveDrop, "V") + " on average)";
+        auto corrected = Inputs::remove_resistive_drop(excitation, dcResistance);
+        auto correctedVoltage = Inputs::standardize_waveform(corrected.get_voltage().value(), frequency);
+        auto correctedSampledVoltage = Inputs::calculate_sampled_waveform(correctedVoltage.get_waveform().value(), frequency);
+        // v - R i is a difference: it is judged negligible against the larger of the voltage and the drop it took out.
+        double peakVoltage = 0;
+        for (double value : sampledVoltage.get_data()) {
+            peakVoltage = std::max(peakVoltage, std::fabs(value));
+        }
+        double peakDrop = 0;
+        for (double value : currentWaveform.get_data()) {
+            peakDrop = std::max(peakDrop, dcResistance * std::fabs(value));
+        }
+        auto withoutDrop = Inputs::calculate_volt_second_balance(correctedSampledVoltage, context, std::max(peakVoltage, peakDrop));
+        if (std::fabs(withoutDrop.meanVoltage) >= std::fabs(asGiven.meanVoltage)) {
+            // The drop does not explain the imbalance (taking it out leaves the mean no smaller): judged as given.
+            findings.push_back(make_finding(operatingPoint, operatingPointIndex, ResultFindingCode::VOLT_SECOND_IMBALANCE,
+                asGivenImbalance.value() + integrationNote + ". It is judged as given: the winding's " + drop +
+                " does not explain it, since taking that drop out leaves a mean of " + format_quantity(withoutDrop.meanVoltage, "V")));
+            continue;
+        }
+        auto withoutDropImbalance = Inputs::describe_volt_second_imbalance(withoutDrop, context);
+        if (!withoutDropImbalance) {
+            // ABT #2002: the mean is the winding's own drop, not flux drift.
+            continue;
+        }
+        findings.push_back(make_finding(operatingPoint, operatingPointIndex, ResultFindingCode::VOLT_SECOND_IMBALANCE,
+            withoutDropImbalance.value() + integrationNote + ". The winding's " + drop +
+            " was taken out of the voltage before this check"));
     }
     return findings;
 }

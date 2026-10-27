@@ -183,10 +183,20 @@ class Inputs : public MAS::Inputs {
     // current describes the drift, not the magnetizing current: the line-cycle PFC inductor
     // voltages that motivated it carried 16-46 times their swing and gave kA peaks.
     static constexpr double maximumVoltSecondImbalance = 0.25;
+    // ABT #2112: an AC flux-linkage swing (or a mean) no larger than this fraction of the voltage's
+    // scale (its peak magnitude, times the period for a swing) is floating-point residue, not a swing:
+    // integrating a constant leaves ~1e-15 of |v| T (3.6e-15 for the 0 V - R * 170 A of the corpus'
+    // dl__EPC_6x3mm), and a net stated as a multiple of it ("275106406767454 times its AC swing of
+    // 1.5e-16 V*s") is no ratio at all. Such a voltage is a constant.
+    static constexpr double negligibleVoltSecondFraction = 1e-9;
     // The volt-second balance of a sampled voltage over its period (ABT #1855): its mean, the net
     // volt-seconds that mean leaves per period, the AC flux-linkage swing of the rest, and the net
-    // as a fraction of that swing. A constant voltage has no swing (acSwing 0, fraction not finite
-    // when its mean is not zero).
+    // as a fraction of that swing. A constant voltage has no swing: acSwing 0 (a swing within
+    // negligibleVoltSecondFraction of the scale counts as none) and the fraction is infinite when its
+    // mean is not negligible, 0 when it is. `voltageScale` (V) is the magnitude the swing and the mean
+    // are judged negligible against: the voltage's own peak magnitude when nullopt; a voltage computed
+    // as a difference of larger ones (v - R i) passes the larger peak, since its rounding comes from
+    // them. It throws when `voltageScale` is not a finite value >= 0.
     struct VoltSecondBalance {
         double meanVoltage;
         double period;
@@ -194,12 +204,15 @@ class Inputs : public MAS::Inputs {
         double acSwing;
         double imbalance;
     };
-    static VoltSecondBalance calculate_volt_second_balance(const Waveform& voltageSampledWaveform, const std::string& context);
+    static VoltSecondBalance calculate_volt_second_balance(const Waveform& voltageSampledWaveform, const std::string& context,
+                                                           std::optional<double> voltageScale = std::nullopt);
     // The per-topic imbalance check (ABT #1855), shared by check_volt_second_balance and by
     // ResultsAnalyzer: MKF's message when the voltage's net volt-seconds over its period exceed
-    // maximumVoltSecondImbalance of its AC flux-linkage swing (or it is a non-zero constant), nullopt
-    // when it is balanced. `context` names the operating point and winding for the message.
+    // maximumVoltSecondImbalance of its AC flux-linkage swing (or it is a non-zero constant, stated as
+    // that constant: never as a ratio against no swing), nullopt when it is balanced. `context` names
+    // the operating point and winding for the message.
     static std::optional<std::string> describe_volt_second_imbalance(const Waveform& voltageSampledWaveform, const std::string& context);
+    static std::optional<std::string> describe_volt_second_imbalance(const VoltSecondBalance& balance, const std::string& context);
     // Throws InvalidInputException with describe_volt_second_imbalance's message when the voltage is
     // not balanced. Since ABT #1855 only the calculation of an induced current asked for that voltage
     // (calculate_magnetizing_current of an excitation, the bindings' calculate_induced_current) and

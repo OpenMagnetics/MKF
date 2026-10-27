@@ -3282,3 +3282,189 @@ TEST_CASE("Test_Max_Volt_Seconds_Is_The_Peak_Flux_Linkage", "[processor][inputs]
         CHECK_THAT(fromShifted, Catch::Matchers::WithinRel(expectedPeakFluxLinkage, 0.01));
     }
 }
+
+// ABT #2112 guards: since #2002 the I*R drop was taken out of every wound winding with a current, so a stored
+// voltage that was already volt-second balanced (an ideal V = 0 with a DC current, a CMC's 50 Hz common-mode
+// voltage with 5 A through each winding) got a mean of -R*mean(i) and was flagged. A balanced voltage stays
+// balanced; the drop is taken out only where it explains an imbalance of the voltage as given; no ratio is
+// stated against a ~zero AC swing. The fixtures are corpus files, loaded as stored.
+namespace {
+struct Abt2112Design {
+    OpenMagnetics::Mas mas;
+    OpenMagnetics::Magnetic magnetic;
+};
+
+Abt2112Design abt2112_design(const std::string& fileName) {
+    auto path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), fileName);
+    auto mas = OpenMagneticsTesting::mas_loader(path);
+    auto magnetic = OpenMagnetics::magnetic_autocomplete(mas.get_magnetic());
+    REQUIRE(magnetic.get_coil().get_turns_description());
+    return {mas, magnetic};
+}
+
+std::vector<OpenMagnetics::ResultFinding> abt2112_findings(const Abt2112Design& design, size_t operatingPointIndex,
+                                                           const OpenMagnetics::Outputs& output) {
+    const auto& operatingPoint = design.mas.get_inputs().get_operating_points().at(operatingPointIndex);
+    return OpenMagnetics::ResultsAnalyzer::analyze_volt_second_balance(design.magnetic, operatingPoint, output, operatingPointIndex);
+}
+
+std::string abt2112_messages(const std::vector<OpenMagnetics::ResultFinding>& findings) {
+    std::string messages;
+    for (const auto& finding : findings) {
+        messages += finding.message + "\n";
+    }
+    return messages.empty() ? std::string("no finding") : messages;
+}
+}
+
+TEST_CASE("Test_Volt_Second_Balance_Zero_Voltage_With_A_Large_DC_Current_Is_Not_Flagged", "[processor][inputs][abt-2112]") {
+    // dl__EPC_6x3mm: points 1-3 carry 170 / 250 / 700 A DC with V = 0 (an ideal inductor at DC bias). With the
+    // drop taken out the voltage became a constant -R*I, flagged as "275106406767454 times its AC swing of 1.5e-16 V*s".
+    auto design = abt2112_design("abt2112_epc_6x3mm_dc_bias_zero_voltage.json");
+    const auto& outputs = design.mas.get_outputs();
+    REQUIRE(outputs.size() == design.mas.get_inputs().get_operating_points().size());
+    // The winding is wound and has a resistance: the premise of the regression.
+    auto resistances = OpenMagnetics::Inputs::get_winding_dc_resistances(design.magnetic.get_coil(), 100);
+    REQUIRE(resistances);
+    REQUIRE(resistances->at(0) > 0);
+    for (size_t index : {1, 2, 3}) {
+        const auto& excitation = design.mas.get_inputs().get_operating_points()[index].get_excitations_per_winding()[0];
+        REQUIRE(excitation.get_current());
+        REQUIRE(OpenMagnetics::Inputs::calculate_waveform_average(excitation.get_current()->get_waveform().value(), excitation.get_frequency()) > 169);
+        auto findings = abt2112_findings(design, index, outputs[index]);
+        INFO("operating point " << index << ": " << abt2112_messages(findings));
+        CHECK(findings.empty());
+    }
+}
+
+TEST_CASE("Test_Volt_Second_Balance_Balanced_AC_Voltage_With_A_DC_Current_Is_Not_Flagged", "[processor][inputs][abt-2112]") {
+    // ex__000_debug: a balanced 1 Hz sine of 0.31 mV across a winding carrying 10 A DC. Taking 10 A * R out of it
+    // made up an imbalance the voltage does not have.
+    auto design = abt2112_design("abt2112_balanced_ac_voltage_with_dc_current.json");
+    const auto& excitation = design.mas.get_inputs().get_operating_points()[0].get_excitations_per_winding()[0];
+    auto voltage = OpenMagnetics::Inputs::standardize_waveform(excitation.get_voltage().value(), excitation.get_frequency());
+    auto sampledVoltage = OpenMagnetics::Inputs::calculate_sampled_waveform(voltage.get_waveform().value(), excitation.get_frequency());
+    REQUIRE_FALSE(OpenMagnetics::Inputs::describe_volt_second_imbalance(sampledVoltage, "as given"));
+    REQUIRE(OpenMagnetics::Inputs::calculate_waveform_average(excitation.get_current()->get_waveform().value(), excitation.get_frequency()) > 9);
+    auto output = design.mas.get_outputs().empty() ? OpenMagnetics::Outputs() : design.mas.get_outputs()[0];
+    auto findings = abt2112_findings(design, 0, output);
+    INFO(abt2112_messages(findings));
+    CHECK(findings.empty());
+}
+
+TEST_CASE("Test_Volt_Second_Balance_Common_Mode_Choke_Is_Not_Flagged", "[processor][inputs][abt-2112]") {
+    // fx__toroidal_cmc_t2515: a common-mode choke whose two windings both see the 5 V 50 Hz common-mode voltage
+    // (mean 0) and carry 5 A (the line current) each. The voltage is the one that moves the common-mode flux and
+    // it balances; it was reported with "a mean of -760 mV", the drop of the line current.
+    auto design = abt2112_design("abt2112_toroidal_cmc_t2515.json");
+    const auto& operatingPoint = design.mas.get_inputs().get_operating_points()[0];
+    REQUIRE(operatingPoint.get_excitations_per_winding().size() == 2);
+    for (const auto& excitation : operatingPoint.get_excitations_per_winding()) {
+        REQUIRE_THAT(OpenMagnetics::Inputs::calculate_waveform_average(excitation.get_current()->get_waveform().value(), excitation.get_frequency()),
+                     Catch::Matchers::WithinAbs(5, 1e-6));
+    }
+    // The file stores no outputs: the resistance is taken at the operating point's temperature.
+    auto findings = abt2112_findings(design, 0, OpenMagnetics::Outputs());
+    INFO(abt2112_messages(findings));
+    CHECK(findings.empty());
+}
+
+TEST_CASE("Test_Volt_Second_Balance_Mean_Equal_To_The_Resistive_Drop_Is_Not_Flagged", "[processor][inputs][abt-2112]") {
+    // #2002's purpose kept: the voltage is unbalanced as given, and the winding's own drop explains it.
+    const double resistance = 0.027;
+    auto operatingPoint = abt2002_operating_point(abt2002_resistive_inductor_excitation(resistance, 0));
+    REQUIRE(OpenMagnetics::ResultsAnalyzer::analyze_volt_second_balance(operatingPoint, 0).size() == 1);
+    auto findings = OpenMagnetics::ResultsAnalyzer::analyze_volt_second_balance(operatingPoint, 0, std::vector<double>{resistance}, 25.0);
+    INFO(abt2112_messages(findings));
+    CHECK(findings.empty());
+
+    // A constant voltage equal to R*I (a pure DC point, no ripple) is its drop and nothing else.
+    const double current = 900;
+    Waveform currentWaveform;
+    currentWaveform.set_time(std::vector<double>{0, 1.0 / 45000});
+    currentWaveform.set_data({current, current});
+    Waveform voltageWaveform;
+    voltageWaveform.set_time(std::vector<double>{0, 1.0 / 45000});
+    voltageWaveform.set_data({resistance * current, resistance * current});
+    SignalDescriptor currentSignal;
+    currentSignal.set_waveform(currentWaveform);
+    SignalDescriptor voltageSignal;
+    voltageSignal.set_waveform(voltageWaveform);
+    OperatingPointExcitation excitation;
+    excitation.set_frequency(45000);
+    excitation.set_name("Primary");
+    excitation.set_current(currentSignal);
+    excitation.set_voltage(voltageSignal);
+    auto dcPoint = abt2002_operating_point(excitation);
+    REQUIRE(OpenMagnetics::ResultsAnalyzer::analyze_volt_second_balance(dcPoint, 0).size() == 1);
+    auto dcFindings = OpenMagnetics::ResultsAnalyzer::analyze_volt_second_balance(dcPoint, 0, std::vector<double>{resistance}, 25.0);
+    INFO(abt2112_messages(dcFindings));
+    CHECK(dcFindings.empty());
+}
+
+TEST_CASE("Test_Volt_Second_Balance_Genuine_Imbalance_Is_Still_Flagged_Without_A_Ratio_Against_No_Swing", "[processor][inputs][abt-2112]") {
+    const double resistance = 0.027;
+    const double current = 900;
+    auto dc_point = [&](double voltage) {
+        Waveform currentWaveform;
+        currentWaveform.set_time(std::vector<double>{0, 1.0 / 45000});
+        currentWaveform.set_data({current, current});
+        Waveform voltageWaveform;
+        voltageWaveform.set_time(std::vector<double>{0, 1.0 / 45000});
+        voltageWaveform.set_data({voltage, voltage});
+        SignalDescriptor currentSignal;
+        currentSignal.set_waveform(currentWaveform);
+        SignalDescriptor voltageSignal;
+        voltageSignal.set_waveform(voltageWaveform);
+        OperatingPointExcitation excitation;
+        excitation.set_frequency(45000);
+        excitation.set_name("Primary");
+        excitation.set_current(currentSignal);
+        excitation.set_voltage(voltageSignal);
+        return abt2002_operating_point(excitation);
+    };
+    // 2 V more than the drop: what remains once the drop is out is a constant 2 V. Its AC swing is rounding
+    // residue, so the finding states the constant, not a ratio against it.
+    {
+        auto findings = OpenMagnetics::ResultsAnalyzer::analyze_volt_second_balance(dc_point(resistance * current + 2), 0,
+                                                                                   std::vector<double>{resistance}, 25.0);
+        REQUIRE(findings.size() == 1);
+        INFO(findings[0].message);
+        CHECK(findings[0].code == OpenMagnetics::ResultFindingCode::VOLT_SECOND_IMBALANCE);
+        CHECK_THAT(findings[0].message, Catch::Matchers::ContainsSubstring("the voltage is a constant 2 V") &&
+                                        Catch::Matchers::ContainsSubstring("resistive drop (27 mOhm at 25 C, 24.3 V on average) was taken out"));
+        CHECK_THAT(findings[0].message, !Catch::Matchers::ContainsSubstring("times its AC swing"));
+    }
+    // A negative voltage against a positive current: the drop does not explain it (taking it out makes the mean
+    // larger), so the voltage is judged as given and the finding says so.
+    {
+        auto findings = OpenMagnetics::ResultsAnalyzer::analyze_volt_second_balance(dc_point(-3), 0, std::vector<double>{resistance}, 25.0);
+        REQUIRE(findings.size() == 1);
+        INFO(findings[0].message);
+        CHECK_THAT(findings[0].message, Catch::Matchers::ContainsSubstring("the voltage is a constant -3 V") &&
+                                        Catch::Matchers::ContainsSubstring("does not explain it"));
+        CHECK_THAT(findings[0].message, !Catch::Matchers::ContainsSubstring("times its AC swing"));
+    }
+    // #2002's own unbalanced case (5 V on top of the drop and an inductive rectangle) keeps its ratio, which is
+    // against a real swing.
+    {
+        auto unbalanced = abt2002_operating_point(abt2002_resistive_inductor_excitation(resistance, 5));
+        auto findings = OpenMagnetics::ResultsAnalyzer::analyze_volt_second_balance(unbalanced, 0, std::vector<double>{resistance}, 25.0);
+        REQUIRE(findings.size() == 1);
+        INFO(findings[0].message);
+        CHECK_THAT(findings[0].message, Catch::Matchers::ContainsSubstring("its mean of 5 V") &&
+                                        Catch::Matchers::ContainsSubstring("times its AC swing"));
+    }
+    // The same rule for a voltage judged without any resistance: a constant whose AC swing is only rounding
+    // residue is a constant, never "N times its AC swing".
+    {
+        Waveform almostConstant;
+        almostConstant.set_time(std::vector<double>{0, 1e-5 / 3, 2e-5 / 3, 1e-5});
+        almostConstant.set_data({0.1 + 0.2, 0.3, 0.3, 0.1 + 0.2});
+        auto sampled = OpenMagnetics::Inputs::calculate_sampled_waveform(almostConstant, 1e5);
+        auto message = OpenMagnetics::Inputs::describe_volt_second_imbalance(sampled, "rounding");
+        REQUIRE(message);
+        INFO(message.value());
+        CHECK_THAT(message.value(), Catch::Matchers::ContainsSubstring("constant") && !Catch::Matchers::ContainsSubstring("times its AC swing"));
+    }
+}

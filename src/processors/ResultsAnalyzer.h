@@ -28,7 +28,8 @@ enum class ResultFindingCode {
     // B peak above the material's B_sat at the core's temperature.
     CORE_SATURATES,
     // A winding voltage whose net volt-seconds over the period exceed Inputs::maximumVoltSecondImbalance
-    // of its AC flux-linkage swing (or a non-zero constant): MKF simulated its balanced part.
+    // of its AC flux-linkage swing (or a non-zero constant), and that the winding's own I*R drop does not
+    // explain (analyze_volt_second_balance): MKF simulated its balanced part.
     VOLT_SECOND_IMBALANCE,
     // The core's temperature above a limit the core material states (Curie temperature, maximum
     // recommended operating temperature).
@@ -158,9 +159,13 @@ class ResultsAnalyzer {
     static std::vector<ResultFinding> analyze_saturation(const Magnetic& magnetic, const OperatingPoint& operatingPoint,
                                                          const Outputs& output, size_t operatingPointIndex,
                                                          std::optional<Topology> topology = std::nullopt);
-    // Volt-second balance of each winding voltage. ABT #2002: with `windingDcResistances` (each winding's
-    // R_dc at `resistanceTemperature`) a winding with a current is judged on v(t) - R_dc i(t), its own
-    // resistive drop taken out (Inputs::remove_resistive_drop); without them the voltage is judged as given.
+    // Volt-second balance of each winding voltage. A voltage balanced as given is never flagged (ABT #2112:
+    // the drop is not taken out of it, which gave an ideal V = 0 at a DC current a mean of -R*I). ABT #2002:
+    // with `windingDcResistances` (each winding's R_dc at `resistanceTemperature`) an unbalanced voltage of a
+    // winding with a current is judged on v(t) - R_dc i(t), its own resistive drop taken out
+    // (Inputs::remove_resistive_drop), when that leaves a smaller mean: no finding when what remains is
+    // balanced, the remaining imbalance otherwise. A drop that does not shrink the mean does not explain
+    // it, and the voltage is judged as given; so is a voltage without resistances or a current.
     static std::vector<ResultFinding> analyze_volt_second_balance(const OperatingPoint& operatingPoint, size_t operatingPointIndex,
                                                                   std::optional<std::vector<double>> windingDcResistances = std::nullopt,
                                                                   std::optional<double> resistanceTemperature = std::nullopt);
