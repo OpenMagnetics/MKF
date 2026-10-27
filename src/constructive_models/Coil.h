@@ -794,11 +794,37 @@ class Coil : public MAS::Coil {
         // not fit. Its blocked layout overflows the window rather than being refused (see
         // wind_by_rectangular_layers for the rule).
         bool _blockingAnUnfitWind = false;
-        // ABT #2071: the layers of an unfit wind that the blocked fill grew ALONG THE TURN AXIS, past
+        // ABT #2096 (Alf, 2026-10-26): TURN-AXIS OVERFLOW OF A GIVEN LAYOUT, as a last resort. A layout
+        // is given when the design states it (magnetic_autocomplete preloads that, see
+        // preload_layout_is_given) or when the caller asks to wind even if it does not fit (Settings
+        // coilWindEvenIfNotFit, the web's manual wind). A layout MKF plans (advisers, searches) never
+        // overflows: the ABT #1890 refusal of a layer that holds only its own closing station stays
+        // the signal its search reads. wind() winds every layout as before; only when a given layout
+        // ends in that refusal does it wind again with _overflowGivenLayout on, which grows the
+        // starved layers past the window as an unfit wind's are.
+        bool _layoutGivenPreload = false;
+        bool _overflowGivenLayout = false;
+        // The last wind was allowed to overflow (is_turn_axis_overflow_allowed when it ran). Read by the
+        // lead router: only such a layout's exit leaves out over the copper (see get_connection_reserved_spaces).
+        bool _woundWithOverflowAllowed = false;
+        // The last blocked fill refused a layer that holds only its own closing station (ABT #1890).
+        bool _closingStationRefused = false;
+        // ABT #2096: the layers of an overflowing given layout that had connection corridors on both
+        // edges, crossed only by other windings' leads, and were grown past one of them over those
+        // leads (drawn as laid, the lead-turn overlaps reported by judge_copper_overlaps).
+        std::vector<std::string> _layersGrownOverOtherLeads;
+        // ABT #2096: the layers of an overflowing given layout that had this winding's own leads on
+        // both edges and were grown past the edge its own exit lead crosses; the own leads on that
+        // edge leave out over the grown copper (see get_connection_reserved_spaces).
+        std::vector<std::string> _layersGrownOverOwnLeads;
+        // ABT #2071/#2096: the layers that the blocked fill grew ALONG THE TURN AXIS, past
         // the window, keyed by layer name: how many turn slots each was given beyond the ones the
         // window holds. Written by wind_by_rectangular_layers (cleared at each fill), read by
         // align_blocked_layer_turns, which extends the layer's span past the window by that much.
         std::map<std::string, uint64_t> _turnAxisOverflowSlotsPerLayer;
+        // ABT #2096: why the first of those layers could not close inside the window, with the
+        // numbers; cleared with the map at each fill, merged into _lastFitFailure by wind().
+        std::string _turnAxisOverflowReason;
         // ABT #1290 follow-up: the bend radius each turn's LENGTH was charged for, keyed by the
         // turn's final name. Written where the length is written, re-keyed when
         // name_turns_by_beginning renames the stations, cleared at the start of every wind.
@@ -1312,6 +1338,19 @@ class Coil : public MAS::Coil {
         // Transient, like preload_margins; clear_stored_section_heights ends it.
         void preload_stored_section_heights_from_sections();
         void clear_stored_section_heights() { _storedSectionHeights.clear(); }
+        // ABT #2096: the layout about to be wound is GIVEN (stated in the design), so a wind that can
+        // only end in the closing-station refusal may overflow the window along the turn axis instead
+        // (see _overflowGivenLayout). Transient, like preload_stored_section_heights_from_sections:
+        // magnetic_autocomplete sets it around its wind and clears it however the wind leaves.
+        void preload_layout_is_given(bool given) { _layoutGivenPreload = given; }
+        void clear_layout_is_given() { _layoutGivenPreload = false; }
+        // Whether this wind may overflow along the turn axis: a given layout, or Settings
+        // coilWindEvenIfNotFit (the caller asks to see a layout that does not fit).
+        bool is_turn_axis_overflow_allowed() const;
+        // The layers grown over other windings' lead corridors by the last wind (ABT #2096).
+        const std::vector<std::string>& get_layers_grown_over_other_leads() const { return _layersGrownOverOtherLeads; }
+        // The layers grown past the edge their own exit lead crosses by the last wind (ABT #2096).
+        const std::vector<std::string>& get_layers_grown_over_own_leads() const { return _layersGrownOverOwnLeads; }
         const std::map<std::string, double>& get_stored_section_heights() const { return _storedSectionHeights; }
         std::optional<WindingStyle> get_winding_style_override(size_t windingIndex) const;
         std::vector<std::pair<size_t, double>> get_ordered_sections(double spaceForSections, std::vector<double> proportionPerWinding, std::vector<size_t> pattern, size_t repetitions=1);

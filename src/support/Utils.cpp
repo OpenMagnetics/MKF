@@ -3756,6 +3756,14 @@ Magnetic magnetic_autocomplete(Magnetic magnetic, json configuration, std::optio
     const bool layoutIsStated = coilToComplete.get_sections_description() || coilToComplete.get_layers_description() ||
                                 (coilToComplete.get_turns_description() && !coilToComplete.get_turns_description()->empty());
     if (magnetic_coil_needs_winding(magnetic)) {
+        // ABT #2096 (Alf, 2026-10-26): a stated layout is GIVEN, so its wind may, as a last resort,
+        // overflow the window along the turn axis where a planned one is refused (see
+        // Coil::preload_layout_is_given). Only for this wind: the guard ends it however it leaves.
+        coilToComplete.preload_layout_is_given(layoutIsStated);
+        struct LayoutGivenGuard {
+            Magnetic& magnetic;
+            ~LayoutGivenGuard() { magnetic.get_mutable_coil().clear_layout_is_given(); }
+        } layoutGivenGuard{magnetic};
         const bool wound = wind_magnetic_coil_as_described(magnetic, configuration, inputs);
         if (!wound) {
             auto& coil = magnetic.get_mutable_coil();

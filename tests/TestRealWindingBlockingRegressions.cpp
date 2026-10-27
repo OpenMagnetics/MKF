@@ -13,6 +13,7 @@
 #include "support/Settings.h"
 
 #include <catch2/catch_test_macros.hpp>
+#include <catch2/matchers/catch_matchers_string.hpp>
 
 #include <algorithm>
 #include <filesystem>
@@ -1149,6 +1150,67 @@ TEST_CASE("Real winding: an unfit wind whose layers cannot close beside the lead
         outsideReported += finding.code == OpenMagnetics::ResultFindingCode::TURNS_OUTSIDE_WINDOW ? 1 : 0;
     }
     CHECK(outsideReported == 1);
+    settings.reset();
+}
+
+// ABT #2096 (Alf, 2026-10-26): turn-axis overflow is a LAST RESORT for a GIVEN layout. Under coating squish
+// with horizontal overflow (MVB_ALLOW_SQUISH=1) the ideal wind of bug_capacitance_error counts as fitting,
+// so the blocked fill refused its section ("cannot hold its 11 turns ... only its own closing station")
+// and autocomplete warned and kept a layout without the stated turns. Its sections are STATED, so that
+// refusal now ends in a second wind whose starved layers grow past the window: every stated turn is laid
+// out, the copper past the window is reported, and no lead runs over a turn.
+TEST_CASE("Real winding under squish: a stated layout whose layers cannot close beside the lead corridor grows past the window",
+          "[constructive-model][coil][real-winding][magnetic-autocomplete][abt-2096]") {
+    auto& settings = OpenMagnetics::Settings::GetInstance();
+    settings.reset();
+    settings.set_coil_use_real_winding_geometry(true);
+    settings.set_coil_allow_coating_squish(true);
+    settings.set_coil_allow_horizontal_overflow(true);
+    OpenMagnetics::Magnetic magnetic;
+    REQUIRE_NOTHROW(magnetic = autocomplete_stored_design("bug_capacitance_error.json", /*freshWind=*/true));
+    auto& coil = magnetic.get_mutable_coil();
+    REQUIRE(coil.get_turns_description());
+    CHECK(coil.is_real_winding_blocking_applied());
+    INFO(coil.get_last_fit_failure());
+    CHECK_THAT(coil.get_last_fit_failure(), Catch::Matchers::ContainsSubstring("turn slots taller than the window"));
+    const auto laidOut = coil.get_turns_description().value();
+    size_t turnsLaidOut = std::count_if(laidOut.begin(), laidOut.end(),
+                                        [](const auto& turn) { return turn.get_length() > 0; });
+    CHECK(turnsLaidOut == 11);
+    CHECK(coil.judge_copper_overlaps().empty());
+    CHECK_FALSE(coil.judge_turns_outside_window().empty());
+    OpenMagnetics::Mas mas;
+    mas.set_magnetic(magnetic);
+    size_t outsideReported = 0;
+    for (const auto& finding : OpenMagnetics::ResultsAnalyzer::analyze_results(mas)) {
+        outsideReported += finding.code == OpenMagnetics::ResultFindingCode::TURNS_OUTSIDE_WINDOW ? 1 : 0;
+    }
+    CHECK(outsideReported == 1);
+    settings.reset();
+}
+
+// ABT #2096 (Alf, 2026-10-26): a layout MKF PLANS never overflows. The same design with its sections dropped,
+// under the same squish: the blocked fill refuses the section as one whose layer holds only its own closing
+// station, and autocomplete throws that reason, as a planned layout that does not fit always has.
+TEST_CASE("Real winding under squish: a planned layout whose layers cannot close is refused, not overflowed",
+          "[constructive-model][coil][real-winding][magnetic-autocomplete][abt-2096]") {
+    auto& settings = OpenMagnetics::Settings::GetInstance();
+    settings.reset();
+    settings.set_coil_use_real_winding_geometry(true);
+    settings.set_coil_allow_coating_squish(true);
+    settings.set_coil_allow_horizontal_overflow(true);
+    bool threw = false;
+    try {
+        autocomplete_stored_design("bug_capacitance_error.json", /*freshWind=*/true, /*dropSections=*/true);
+    }
+    catch (const OpenMagnetics::OpenMagneticsException& e) {
+        threw = true;
+        INFO(e.what());
+        CHECK(e.code() == OpenMagnetics::ErrorCode::COIL_WINDING_ERROR);
+        CHECK_THAT(std::string(e.what()), Catch::Matchers::ContainsSubstring("only its own closing station"));
+        CHECK_THAT(std::string(e.what()), !Catch::Matchers::ContainsSubstring("taller than the window"));
+    }
+    CHECK(threw);
     settings.reset();
 }
 

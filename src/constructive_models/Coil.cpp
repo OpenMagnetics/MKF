@@ -1995,6 +1995,67 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces(
         pending.bendRadius = routes[pending.routeIndex].plannedBendRadius;
         pendingPinLeads.push_back(pending);
     };
+    // ABT #2096 (Alf, 2026-10-26): "put the terminal where the last wire is, same for all overflows".
+    // On a layout wound with overflow allowed, a layer of this lead's OWN winding that the lead
+    // crosses, or the lead's own layer, may have been grown past the window edge this lead routes along (align_blocked_layer_turns
+    // grows past the edge its own lead crosses when corridors cross both). The edge row would then
+    // run through that copper; the lead instead runs out over it, past the last wire, to the border.
+    // Returns the face of the copper farthest past that edge, among the turns whose layer-axis extent
+    // the lead's stub and run pass over, or nothing when no own crossed layer lies past the edge.
+    auto ownCopperPastEdge = [&](const std::string& windingName, const Turn& connectingTurn, bool atTop,
+                                 double wireOuterWidth) -> std::optional<double> {
+        if (!_woundWithOverflowAllowed || _turnAxisOverflowSlotsPerLayer.empty()) {
+            return std::nullopt;
+        }
+        const double turnX = connectingTurn.get_coordinates()[0];
+        const double edge = windowEdgeY(windowIndexOf(connectingTurn.get_section().value_or("")), atTop);
+        const double outward = atTop ? 1.0 : -1.0;
+        std::set<std::string> ownCrossedLayers;
+        for (const auto& crossed : allLayers) {
+            const double crossedX = crossed.get_coordinates()[0];
+            // The lead's own layer counts too: grown past the edge, its last wire is the lead's turn.
+            // Only a layer the blocked fill grew along its turn axis (an overflow): copper past the
+            // edge for any other reason keeps the lead on its edge row.
+            if (crossedX > turnX - 1e-9 && crossedX < windowOuterX && !crossed.get_partial_windings().empty() &&
+                crossed.get_partial_windings()[0].get_winding() == windingName &&
+                _turnAxisOverflowSlotsPerLayer.count(crossed.get_name())) {
+                ownCrossedLayers.insert(crossed.get_name());
+            }
+        }
+        if (ownCrossedLayers.empty()) {
+            return std::nullopt;
+        }
+        bool ownCopperPast = false;
+        double farthestFace = edge;
+        for (const auto& turn : turns) {
+            if (!turn.get_dimensions()) {
+                throw CoilException(ErrorCode::COIL_WINDING_ERROR,
+                    "Turn '" + turn.get_name() + "' has no dimensions, so a lead cannot be routed clear of it");
+            }
+            const auto dimensions = turn.get_dimensions().value();
+            const double halfLayerAxis = (layersAreContiguous ? dimensions[1] : dimensions[0]) / 2;
+            const double halfTurnAxis = (layersAreContiguous ? dimensions[0] : dimensions[1]) / 2;
+            const double x = turn.get_coordinates()[0];
+            const double face = turn.get_coordinates()[1] + outward * halfTurnAxis;
+            if (outward * (face - edge) <= 1e-9) {
+                continue;
+            }
+            if (turn.get_layer() && ownCrossedLayers.count(turn.get_layer().value())) {
+                ownCopperPast = true;
+            }
+            if (x + halfLayerAxis > turnX - wireOuterWidth / 2 + 1e-12) {
+                farthestFace = atTop ? std::max(farthestFace, face) : std::min(farthestFace, face);
+            }
+        }
+        if (!ownCopperPast) {
+            return std::nullopt;
+        }
+        return farthestFace;
+    };
+    // The rows past that copper, per lead, stacked outward from the copper: the lead whose turn lies
+    // farthest out along the layer axis takes the row nearest the copper, so no lead's stub crosses
+    // another's run. Filled before the terminal leads are emitted.
+    std::map<std::tuple<std::string, int64_t, bool>, double> outOverCopperRowY;
     auto addTerminalLead = [&](const std::string& windingName, double wireOuterWidth,
                            double wireOuterHeight, const Turn& connectingTurn, int64_t parallel,
                            bool atTopEdge, bool isEntrance,
@@ -2309,6 +2370,117 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces(
             return;
         }
 
+        // ABT #2096 (Alf, 2026-10-26): OUT OVER THE COPPER. A contiguous GIVEN layout (wound with
+        // overflow allowed) laid past the window along its turn axis can end in its innermost layer, below every
+        // other: its exit along the window edge row then runs straight over the closing station of
+        // every layer it crosses, which no blocking can move off it (on the n18 edgewise strip, 17
+        // lead-turn overlaps). Its exit instead leaves its last wire along the layer axis, out past
+        // that outermost layer of the stack, runs along the turn axis to the far side of all the
+        // copper, away from the column, and from there out to the border: three legs, each clear of
+        // every turn by true geometry (the lead's face on the copper's face), crossing no layer, so
+        // it squeezes none.
+        if (!isEntrance && layersAreContiguous && _woundWithOverflowAllowed) {
+            double copperLayerLow = std::numeric_limits<double>::max();
+            double copperTurnHigh = std::numeric_limits<double>::lowest();
+            bool copperPastWindow = false;
+            bool connectingTurnOutermost = true;
+            for (const auto& turn : turns) {
+                if (!turn.get_dimensions()) {
+                    throw CoilException(ErrorCode::COIL_WINDING_ERROR,
+                        "Turn '" + turn.get_name() + "' has no dimensions, so its exit lead cannot be routed clear of it");
+                }
+                const auto dimensions = turn.get_dimensions().value();
+                // Virtual frame: the layer axis is x; the turn's dimensions are real, so transposed.
+                const double halfLayerAxis = dimensions[1] / 2;
+                const double halfTurnAxis = dimensions[0] / 2;
+                const double x = turn.get_coordinates()[0];
+                const double y = turn.get_coordinates()[1];
+                copperLayerLow = std::min(copperLayerLow, x - halfLayerAxis);
+                copperTurnHigh = std::max(copperTurnHigh, y + halfTurnAxis);
+                if (y + halfTurnAxis > windowTopY + 1e-9 ||
+                    y - halfTurnAxis < windowBottomY - 1e-9) {
+                    copperPastWindow = true;
+                }
+                if (x < turnX - 1e-9) {
+                    connectingTurnOutermost = false;
+                }
+            }
+            if (copperPastWindow && connectingTurnOutermost) {
+                const double legX = copperLayerLow - wireOuterWidth / 2;    // out past the outermost layer
+                const double rowY = copperTurnHigh + wireOuterHeight / 2;   // beyond the copper, away from the column
+                const double borderX = windowOuterX + wireOuterWidth / 2;
+                auto pushLeg = [&](double centreX, double centreY, double sizeX, double sizeY, double length) {
+                    ConnectionReservedSpace leg;
+                    leg.isTerminal = true;
+                    leg.winding = windingName;
+                    leg.parallel = parallel;
+                    leg.section = connectingTurn.get_section().value_or("");
+                    leg.layer = "";
+                    leg.coordinates = {roundFloat(centreX, 9), roundFloat(centreY, 9)};
+                    leg.dimensions = {roundFloat(sizeX, 9), roundFloat(sizeY, 9)};
+                    leg.routedLength = roundFloat(length, 9);
+                    leg.kind = terminalKind;
+                    leg.fromTurn = connectingTurn.get_name();
+                    leg.sleeveOuterDiameter = sleeveOuterDiameter;
+                    spaces.push_back(leg);
+                };
+                // Leg 1: off the last wire along the layer axis, at the turn's own height.
+                pushLeg((turnX + legX) / 2, turnY, turnX - legX, wireOuterHeight, turnX - legX);
+                // Leg 2: along the turn axis, outside the stack, to the far side of the copper.
+                pushLeg(legX, (turnY + rowY) / 2, wireOuterWidth, rowY - turnY + wireOuterHeight, rowY - turnY);
+                // Leg 3: along the layer axis, beside the copper, out to the border.
+                pushLeg((legX + borderX) / 2, rowY, borderX - legX + wireOuterWidth, wireOuterHeight, borderX - legX);
+                const size_t lastLegSpaceIndex = spaces.size() - 1;
+                size_t routesBefore = routes.size();
+                addTerminalRoute(windingName, parallel, connectingTurn, isEntrance, terminalKind,
+                                 {{turnX, turnY}, {legX, turnY}, {legX, rowY}, {borderX, rowY}});
+                tagSleevedRoute(routesBefore);
+                tagBendRadius(routesBefore, std::max({wireOuterWidth, wireOuterHeight, sleeveOuterDiameter.value_or(0.0)}));
+                deferPinLeg(routesBefore, lastLegSpaceIndex, windingName, parallel, isEntrance, borderX, rowY,
+                            std::max({wireOuterWidth, wireOuterHeight, sleeveOuterDiameter.value_or(0.0)}));
+                return;
+            }
+        }
+        // ABT #2096 (Alf, 2026-10-26): OUT OVER THE COPPER, past the last wire. An own layer this
+        // lead crosses lies past the window edge it routes along (see ownCopperPastEdge): the lead
+        // climbs its own column past that copper and runs out to the border there. Two legs, the
+        // row clear of every turn it passes over by true geometry, crossing no layer, squeezing none.
+        {
+            auto rowFound = outOverCopperRowY.find({windingName, parallel, isEntrance});
+            if (rowFound != outOverCopperRowY.end()) {
+                const double rowY = rowFound->second;
+                const double borderX = windowOuterX + wireOuterWidth / 2;
+                auto pushLeg = [&](double centreX, double centreY, double sizeX, double sizeY, double length) {
+                    ConnectionReservedSpace leg;
+                    leg.isTerminal = true;
+                    leg.winding = windingName;
+                    leg.parallel = parallel;
+                    leg.section = connectingTurn.get_section().value_or("");
+                    leg.layer = "";
+                    leg.coordinates = {roundFloat(centreX, 9), roundFloat(centreY, 9)};
+                    leg.dimensions = {roundFloat(sizeX, 9), roundFloat(sizeY, 9)};
+                    leg.routedLength = roundFloat(length, 9);
+                    leg.kind = terminalKind;
+                    (isEntrance ? leg.toTurn : leg.fromTurn) = connectingTurn.get_name();
+                    leg.sleeveOuterDiameter = sleeveOuterDiameter;
+                    spaces.push_back(leg);
+                };
+                // Leg 1: along the turn axis, in the turn's own column, past the copper.
+                pushLeg(turnX, (turnY + rowY) / 2, wireOuterWidth, std::abs(rowY - turnY) + wireOuterHeight, std::abs(rowY - turnY));
+                // Leg 2: along the layer axis, beyond the copper, out to the border.
+                pushLeg((turnX + borderX) / 2, rowY, borderX - turnX + wireOuterWidth, wireOuterHeight, borderX - turnX);
+                const size_t lastLegSpaceIndex = spaces.size() - 1;
+                size_t routesBefore = routes.size();
+                addTerminalRoute(windingName, parallel, connectingTurn, isEntrance, terminalKind,
+                                 {{turnX, turnY}, {turnX, rowY}, {borderX, rowY}});
+                tagSleevedRoute(routesBefore);
+                tagBendRadius(routesBefore, std::max({wireOuterWidth, wireOuterHeight, sleeveOuterDiameter.value_or(0.0)}));
+                planStubRamp(routesBefore, std::abs(rowY - turnY) > wireOuterHeight / 2, std::abs(rowY - turnY));
+                deferPinLeg(routesBefore, lastLegSpaceIndex, windingName, parallel, isEntrance, borderX, rowY,
+                            std::max({wireOuterWidth, wireOuterHeight, sleeveOuterDiameter.value_or(0.0)}));
+                return;
+            }
+        }
         // Crosses outer layers: route along the window edge NEAREST the end so the lead sits in the
         // extreme slots that turn-blocking frees on the crossed layers. A short stub bridges the end
         // turn up/down to that edge within its own column. ABT #229: the row on that edge comes from
@@ -2714,6 +2886,37 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces(
         // so with no sleeves the order is untouched.
         std::stable_partition(allEmissions.begin(), allEmissions.end(),
                               [](const LeadEmission& emission) { return emission.sleeveOuterDiameter.has_value(); });
+        // ABT #2096: the leads that leave out over their own overflowed copper, and their rows.
+        outOverCopperRowY.clear();
+        {
+            std::map<std::pair<size_t, bool>, std::vector<std::pair<const LeadEmission*, double>>> bySide;
+            for (const auto& emission : allEmissions) {
+                if (emission.axialExit || emission.crossedCount == 0 || terminalLeadSection(emission.turn) ||
+                    windowOuterX <= emission.turn.get_coordinates()[0]) {
+                    continue;
+                }
+                if (auto face = ownCopperPastEdge(emission.windingName, emission.turn, emission.atTop, emission.wireW)) {
+                    bySide[{windowIndexOf(emission.turn.get_section().value_or("")), emission.atTop}].push_back({&emission, face.value()});
+                }
+            }
+            for (auto& [side, leads] : bySide) {
+                // Outermost turn first: its row is nearest the copper.
+                std::stable_sort(leads.begin(), leads.end(), [](const auto& a, const auto& b) {
+                    return a.first->turn.get_coordinates()[0] > b.first->turn.get_coordinates()[0];
+                });
+                const double outward = side.second ? 1.0 : -1.0;
+                double face = side.second ? std::numeric_limits<double>::lowest() : std::numeric_limits<double>::max();
+                for (const auto& lead : leads) {
+                    face = side.second ? std::max(face, lead.second) : std::min(face, lead.second);
+                }
+                for (const auto& [emission, ownFace] : leads) {
+                    const double height = emission->sleeveOuterDiameter ? std::max(emission->wireH, emission->sleeveOuterDiameter.value())
+                                                                        : emission->wireH;
+                    outOverCopperRowY[{emission->windingName, emission->parallel, emission->isEntrance}] = face + outward * height / 2;
+                    face += outward * height;
+                }
+            }
+        }
         for (const auto& emission : allEmissions) {
             addTerminalLead(emission.windingName, emission.wireW, emission.wireH,
                             emission.turn, emission.parallel, emission.atTop,
@@ -5573,6 +5776,78 @@ void Coil::align_blocked_layer_turns() {
                 spanHigh = middle + needed / 2;
             }
             else {
+                // ABT #2096 (Alf, 2026-10-26): DRAW AND REPORT. On the last-resort wind of a GIVEN
+                // layout, an edge whose corridors carry only OTHER windings' leads is grown past:
+                // this layer's turns are laid over those leads and out of the window, and
+                // judge_copper_overlaps reports each lead-turn overlap. Of two such edges, the
+                // shallower corridor is the one grown over.
+                // When both edges carry this winding's OWN leads, the layer grows past the edge its
+                // own EXIT lead crosses ("put the terminal where the last wire is, same for all
+                // overflows"): every own lead on that edge then leaves out over the grown copper,
+                // past its last wire (get_connection_reserved_spaces, ownCopperPastEdge), instead of
+                // running through it. Own exits on both edges, or on neither, leave no edge: throw.
+                if (_overflowGivenLayout) {
+                    const std::string layerWinding = layer.get_partial_windings()[0].get_winding();
+                    // Which edge a corridor belongs to: the half of the window its row lies in.
+                    const double middle = (windowLowSide + windowHighSide) / 2;
+                    bool highOthersOnly = true;
+                    bool lowOthersOnly = true;
+                    bool highOwnExit = false;
+                    bool lowOwnExit = false;
+                    // The reservations are re-derived from the layout as it stands; the outside-link
+                    // record that derivation rewrites belongs to the final layout, so it is kept.
+                    const auto outsideLinkOverflowsBefore = _outsideLinkOverflows;
+                    const auto reservedSpaces = get_connection_reserved_spaces();
+                    _outsideLinkOverflows = outsideLinkOverflowsBefore;
+                    for (const auto& space : reservedSpaces) {
+                        if (space.layer != layer.get_name() || space.coordinates.size() <= turnAxis) {
+                            continue;
+                        }
+                        if (space.winding == layerWinding) {
+                            const bool onHigh = space.coordinates[turnAxis] > middle;
+                            (onHigh ? highOthersOnly : lowOthersOnly) = false;
+                            if (space.isTerminal && !space.fromTurn.empty() && space.toTurn.empty()) {
+                                (onHigh ? highOwnExit : lowOwnExit) = true;
+                            }
+                        }
+                    }
+                    if (!highOthersOnly && !lowOthersOnly && highOwnExit != lowOwnExit) {
+                        if (highOwnExit) {
+                            spanHigh = spanLowInWindow + needed;
+                        }
+                        else {
+                            spanLow = spanHighInWindow - needed;
+                        }
+                        if (std::find(_layersGrownOverOwnLeads.begin(), _layersGrownOverOwnLeads.end(), layer.get_name()) ==
+                            _layersGrownOverOwnLeads.end()) {
+                            _layersGrownOverOwnLeads.push_back(layer.get_name());
+                            logEntry("Real winding: layer " + layer.get_name() + " has connection corridors on both edges; it is " +
+                                         "grown past its " + (highOwnExit ? "high" : "low") + " edge, the one its own exit lead " +
+                                         "crosses, and its own leads there leave out over the grown copper",
+                                     "Coil", 1);
+                        }
+                        return;
+                    }
+                    if (highOthersOnly || lowOthersOnly) {
+                        const bool growPastHigh =
+                            highOthersOnly && (!lowOthersOnly || blockedDepths.first <= blockedDepths.second);
+                        if (growPastHigh) {
+                            spanHigh = spanLowInWindow + needed;
+                        }
+                        else {
+                            spanLow = spanHighInWindow - needed;
+                        }
+                        if (std::find(_layersGrownOverOtherLeads.begin(), _layersGrownOverOtherLeads.end(), layer.get_name()) ==
+                            _layersGrownOverOtherLeads.end()) {
+                            _layersGrownOverOtherLeads.push_back(layer.get_name());
+                            logEntry("Real winding: layer " + layer.get_name() + " has connection corridors on both edges; it is " +
+                                         "grown past its " + (growPastHigh ? "high" : "low") + " edge over other windings' leads, " +
+                                         "and the leads it covers are reported as lead-turn overlaps",
+                                     "Coil", 1);
+                        }
+                        return;
+                    }
+                }
                 throw CoilException(ErrorCode::COIL_WINDING_ERROR,
                     "Real winding: layer " + layer.get_name() + " holds " + std::to_string(numberTurnsInLayer) +
                     " stations, more than its " + std::to_string((spanHighInWindow - spanLowInWindow) * 1e3) +
@@ -7891,13 +8166,36 @@ bool Coil::wind(std::vector<double> proportionPerWinding, std::vector<size_t> pa
         set_layers_description(layersAsGiven);
         set_turns_description(turnsAsGiven);
     };
+    // ABT #2096 (Alf, 2026-10-26): TURN-AXIS OVERFLOW AS A LAST RESORT, for a GIVEN layout only (see
+    // _overflowGivenLayout). Every wind below runs as it always has, with the ABT #1890 refusal of a
+    // layer that holds only its own closing station. Only when the wind ENDS in that refusal, real
+    // winding on and overflow allowed, is the layout wound once more from the coil as handed in, with
+    // the starved layers grown past the window along their turn axis. That wind does not fit either
+    // (its copper is outside the window) and says why; the caller sees the layout overflow.
+    auto overflowAsLastResort = [&](bool wound) -> bool {
+        if (wound || _overflowGivenLayout || !_closingStationRefused || !settings.get_coil_use_real_winding_geometry() ||
+            !is_turn_axis_overflow_allowed()) {
+            return wound;
+        }
+        const std::string refusal = _lastFitFailure;
+        logEntry("Real winding: the given layout ends in a layer that holds only its own closing station (" + refusal +
+                     "); it is wound again with that layer grown past the window along its turn axis",
+                 "Coil", 1);
+        restoreAsGiven();
+        struct OverflowScope {
+            bool& flag;
+            explicit OverflowScope(bool& f) : flag(f) { flag = true; }
+            ~OverflowScope() { flag = false; }
+        } overflowScope(_overflowGivenLayout);
+        return wind_at_current_footprints(proportionPerWinding, pattern, repetitions);
+    };
     bool ok = wind_at_current_footprints(proportionPerWinding, pattern, repetitions);
     if (std::getenv("MKF_LITZ_DIAG")) {
         std::cerr << "[litz] round wind " << (ok ? "fits" : "does not fit") << ", deformation "
                   << (settings.get_coil_litz_deformation() ? "on" : "off") << "\n";
     }
     if (ok || !settings.get_coil_litz_deformation()) {
-        return ok;
+        return overflowAsLastResort(ok);
     }
     std::vector<std::pair<size_t, double>> litzFloors;
     for (size_t windingIndex = 0; windingIndex < get_functional_description().size(); ++windingIndex) {
@@ -7911,7 +8209,7 @@ bool Coil::wind(std::vector<double> proportionPerWinding, std::vector<size_t> pa
         }
     }
     if (litzFloors.empty()) {
-        return ok;
+        return overflowAsLastResort(ok);
     }
     const std::string roundFailure = _lastFitFailure;
     const bool turnsRunAlongHeight = get_layers_orientation() == WindingOrientation::OVERLAPPING;
@@ -7965,7 +8263,11 @@ bool Coil::wind(std::vector<double> proportionPerWinding, std::vector<size_t> pa
     ok = wind_at_current_footprints(proportionPerWinding, pattern, repetitions);
     _lastFitFailure = roundFailure + " (its litz flattened down to k = " + std::to_string(lowestTried) +
                       " along or across the layer does not fit either)";
-    return ok;
+    return overflowAsLastResort(ok);
+}
+
+bool Coil::is_turn_axis_overflow_allowed() const {
+    return _layoutGivenPreload || settings.get_coil_wind_even_if_not_fit();
 }
 
 bool Coil::wind_at_current_footprints(std::vector<double> proportionPerWinding, std::vector<size_t> pattern, size_t repetitions) {
@@ -8052,6 +8354,10 @@ bool Coil::wind_at_current_footprints(std::vector<double> proportionPerWinding, 
 bool Coil::wind_inner(std::vector<double> proportionPerWinding, std::vector<size_t> pattern, size_t repetitions) {
     InternalWindScope internalWindScope(*this);
     _blockingAnUnfitWind = false;   // set once the ideal verdict is known, below
+    _closingStationRefused = false;   // only this wind's last fill may claim it
+    _woundWithOverflowAllowed = is_turn_axis_overflow_allowed();
+    _layersGrownOverOtherLeads.clear();
+    _layersGrownOverOwnLeads.clear();
     // REAL WINDING: a wire that makes N turns crosses the winding-window plane N+1
     // times — the beginning of the first turn occupies its own physical slot in the
     // cross-section (for 3 turns, 4 wire crossings per parallel appear in the 2D
@@ -8400,6 +8706,7 @@ bool Coil::wind_inner(std::vector<double> proportionPerWinding, std::vector<size
             _uLandingDepthPerLayer.clear();
             _terminalEntranceAtTop.clear();
             _turnAxisOverflowSlotsPerLayer.clear();
+            _turnAxisOverflowReason.clear();
 
             // Special case: toroid with one physical turn whose wire OD
             // exceeds the inner-hole radius. The wire cannot be wound on
@@ -8620,7 +8927,7 @@ bool Coil::wind_inner(std::vector<double> proportionPerWinding, std::vector<size
             // never stated. Restarted once, the raise climbs again, monotonically, from below, to
             // the smallest layer count the grown fill closes in -- deterministic, and it cannot
             // cycle because it happens once per wind.
-            if (_blockingAnUnfitWind && !turnAxisCrossingRestarted && !_turnAxisOverflowSlotsPerLayer.empty() &&
+            if ((_blockingAnUnfitWind || _overflowGivenLayout) && !turnAxisCrossingRestarted && !_turnAxisOverflowSlotsPerLayer.empty() &&
                 realWindingCrossingBump.active && armedCrossingExtra.size() == realWindingCrossingBump.extraPerWinding.size()) {
                 turnAxisCrossingRestarted = true;
                 if (realWindingCrossingBump.extraPerWinding != armedCrossingExtra) {
@@ -9145,6 +9452,13 @@ bool Coil::wind_inner(std::vector<double> proportionPerWinding, std::vector<size
     // inside the bobbin flange).
     if (result && !are_turns_inside_winding_window()) {
         result = false;
+    }
+    // ABT #2096: a layer grown along its turn axis past the window (the blocked layout could not
+    // close) is WHY this layout does not fit; the checks above name only its symptom (copper
+    // outside the window, an over-full layer). Name the cause first.
+    if (!result && !_turnAxisOverflowSlotsPerLayer.empty() && !_turnAxisOverflowReason.empty() &&
+        _lastFitFailure.find(_turnAxisOverflowReason) == std::string::npos) {
+        _lastFitFailure = _turnAxisOverflowReason + (_lastFitFailure.empty() ? std::string() : "; " + _lastFitFailure);
     }
     // ABT #864: the mirror of the #650 "say it out loud" rule for the OTHER half of the contract.
     // Blocking can be APPLIED (the flag above latched from the IDEAL verdict) and the BLOCKED
@@ -16617,6 +16931,8 @@ bool Coil::wind_by_layers() {
 bool Coil::wind_by_rectangular_layers() {
     set_layers_description(std::nullopt);
     _turnAxisOverflowSlotsPerLayer.clear();
+    _turnAxisOverflowReason.clear();
+    _closingStationRefused = false;
     if (!get_sections_description()) {
         return false;
     }
@@ -16714,6 +17030,36 @@ bool Coil::wind_by_rectangular_layers() {
                 }
                 else {
                     minimumNumberLayerNeeded = ceil(double(physicalTurnsInSection) / maximumNumberPhysicalTurnsPerLayer);
+                    // ABT #2096 (Alf, 2026-10-26): TURN-AXIS OVERFLOW of a layer that cannot close,
+                    // for a GIVEN layout only (is_turn_axis_overflow_allowed; a planned one keeps
+                    // the window's slots and fails as before).
+                    // Real winding charges this winding a closing station per layer, one per
+                    // parallel. A layer whose window holds no more than one slot per parallel
+                    // (an edgewise strip wound CONTIGUOUS, one turn per layer) then holds nothing
+                    // beside its own station: sized at that, every layer is a station, the
+                    // crossing raise reads one more layer per re-wind and never settles (the
+                    // 13.685 mm strip on U 46/40/28 ran to 163 layers under squish). Such a layer
+                    // grows past the window along its turn axis instead, at the same pitch: it
+                    // holds its closing stations plus one row of every parallel, the same k + share
+                    // the blocked fill grows a starved layer to. The copper past the window is
+                    // reported as TURNS_OUTSIDE_WINDOW. The real-winding blocking gate below keeps
+                    // the window's own slot count.
+                    uint64_t turnsPerSizedLayer = maximumNumberPhysicalTurnsPerLayer;
+                    {
+                        uint64_t parallelsInSection = 0;
+                        for (auto proportion : remainingParallelsProportionInSection) {
+                            if (proportion > 0) {
+                                parallelsInSection++;
+                            }
+                        }
+                        const bool chargedStations = windingIndex < _realWindingStationsPerWinding.size() &&
+                                                     _realWindingStationsPerWinding[windingIndex] > 0;
+                        if (is_turn_axis_overflow_allowed() && chargedStations && parallelsInSection > 0 &&
+                            maximumNumberPhysicalTurnsPerLayer <= parallelsInSection && minimumNumberLayerNeeded > 1) {
+                            turnsPerSizedLayer = 2 * parallelsInSection;
+                            minimumNumberLayerNeeded = ceil(double(physicalTurnsInSection) / double(turnsPerSizedLayer));
+                        }
+                    }
                     // ABT #685 (Alf, 2026-08-16): HORIZONTAL OVERFLOW. Capping the layer count to
                     // what fits the section radially crams the excess turns along the TURN axis
                     // instead (the complete examples hit per-layer filling factors of 1.6-2.6 and
@@ -16731,7 +17077,7 @@ bool Coil::wind_by_rectangular_layers() {
                         const size_t acrossAxis = sections[sectionIndex].get_layers_orientation() == WindingOrientation::OVERLAPPING ? 0 : 1;
                         std::ostringstream shortfall;
                         shortfall << std::fixed << std::setprecision(3) << "section '" << sections[sectionIndex].get_name() << "' needs "
-                                  << minimumNumberLayerNeeded << " layers of up to " << maximumNumberPhysicalTurnsPerLayer << " turns ("
+                                  << minimumNumberLayerNeeded << " layers of up to " << turnsPerSizedLayer << " turns ("
                                   << minimumNumberLayerNeeded * layerThickness * 1000 << " mm) for its " << physicalTurnsInSection
                                   << " turns, and it is " << sections[sectionIndex].get_dimensions()[acrossAxis] * 1000
                                   << " mm across, room for " << maximumNumberLayersFittingInSection;
@@ -16926,10 +17272,15 @@ bool Coil::wind_by_rectangular_layers() {
                     // starved keeps its slots, and a wind that still needs more layers than the
                     // window holds keeps spilling radially as before. A wind that fits never gets
                     // here: its starved layer is refused below (ABT #1890).
+                    // ABT #2096 (Alf, 2026-10-26): except a GIVEN layout whose wind ended in that
+                    // refusal: wind() winds it again with _overflowGivenLayout on, as a last resort,
+                    // and its starved layers grow here too. The reason the layer cannot close is kept
+                    // (_turnAxisOverflowReason) and named in the fit failure, since the grown layer
+                    // leaves copper outside the window.
                     const uint64_t closingStations = builtLayers > 0 ? uint64_t(numberParallels) : 0;
                     const bool starved = capacity == 0 ||
                                          (builtLayers > 0 && capacity <= closingStations && remainingTurns > capacity);
-                    if (_blockingAnUnfitWind && starved) {
+                    if ((_blockingAnUnfitWind || _overflowGivenLayout) && starved) {
                         const uint64_t blockedRaw = blocked.first + blocked.second;
                         const uint64_t rowShare = (maximumNumberPhysicalTurnsPerLayer / uint64_t(numberParallels)) *
                                                   uint64_t(numberParallels);
@@ -16951,6 +17302,18 @@ bool Coil::wind_by_rectangular_layers() {
                         _turnAxisOverflowSlotsPerLayer[sections[sectionIndex].get_name() + " layer " +
                                                        std::to_string(builtLayers)] =
                             grownCapacity + blockedRaw - maximumNumberPhysicalTurnsPerLayer;
+                        if (_turnAxisOverflowReason.empty()) {
+                            _turnAxisOverflowReason =
+                                "real winding: section '" + sections[sectionIndex].get_name() + "' cannot hold its " +
+                                std::to_string(physicalTurnsInSection) + " turns inside the window: layer " +
+                                std::to_string(builtLayers) +
+                                (capacity == 0 ? std::string(" holds no row beside its blocked connection corridors")
+                                               : std::string(" holds one row beside its blocked connection corridors, which is only its own closing station")) +
+                                ", and " + std::to_string(remainingTurns - std::min(capacity, remainingTurns)) +
+                                " turns are still left; the layer is laid out " +
+                                std::to_string(grownCapacity + blockedRaw - maximumNumberPhysicalTurnsPerLayer) +
+                                " turn slots taller than the window";
+                        }
                         capacity = grownCapacity;
                     }
                     if (capacity == 0) {
@@ -16962,12 +17325,14 @@ bool Coil::wind_by_rectangular_layers() {
                     // finite answer (c = 1) and the station raise would only march layers out of
                     // the window until it threw. That is a section that cannot hold its turns:
                     // refuse it here, as the fill does when a layer holds no row at all. (An unfit
-                    // wind's starved layer was grown above and does not reach this.)
+                    // wind's starved layer, and a given layout's on its last-resort wind, were grown
+                    // above and do not reach this.)
                     if (builtLayers > 0 && capacity <= uint64_t(numberParallels) && remainingTurns > capacity) {
                         _lastFitFailure = "real winding: section '" + sections[sectionIndex].get_name() + "' cannot hold its " +
                                           std::to_string(physicalTurnsInSection) + " turns: layer " + std::to_string(builtLayers) +
                                           " holds one row beside its blocked connection corridors, which is only its own closing" +
                                           " station, and " + std::to_string(remainingTurns - capacity) + " turns are still left";
+                        _closingStationRefused = true;
                         return false;
                     }
                     uint64_t turnsThisLayer = std::min<uint64_t>(capacity, remainingTurns);

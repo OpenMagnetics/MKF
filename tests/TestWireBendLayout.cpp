@@ -760,6 +760,63 @@ TEST_CASE("Autocomplete winds a stored CONTIGUOUS section as given, and reports 
     settings.reset();
 }
 
+// ABT #2096 (Alf, 2026-10-26): a GIVEN layout that cannot close overflows along the turn axis, also under
+// coating squish with horizontal overflow (MVB_ALLOW_SQUISH=1), where the ideal wind counts as fitting. The
+// same stored n18 design, its layout stated: a CONTIGUOUS layer of the 13.685 mm strip holds one slot, which is
+// its own closing station, so every layer held only its station and the crossing raise ran to 163 layers and
+// threw. Each layer now holds its closing station and one turn, laid past the window along the turn axis, the
+// copper outside is reported, and the exit lead leaves out over the copper instead of across every layer's
+// closing station (it used to overlap 17 of them).
+TEST_CASE("Under squish, a CONTIGUOUS strip whose layers hold only their closing station overflows along the turn axis",
+          "[constructive-model][coil][real-geometry][autocomplete][abt-2096]") {
+    auto& settings = Settings::GetInstance();
+    settings.reset();
+    std::ifstream file(std::filesystem::path{std::source_location::current().file_name()}
+                           .parent_path()
+                           .append("testData")
+                           .append("abt2071_edgewise_strip_U46_n18_contiguous.json")
+                           .string());
+    REQUIRE(file.good());
+    const auto stored = json::parse(file);
+    settings.set_coil_use_real_winding_geometry(true);
+    settings.set_coil_allow_coating_squish(true);
+    settings.set_coil_allow_horizontal_overflow(true);
+    OpenMagnetics::Magnetic magnetic;
+    REQUIRE_NOTHROW(magnetic = OpenMagnetics::magnetic_autocomplete(OpenMagnetics::Magnetic(stored), json{}));
+    auto& coil = magnetic.get_mutable_coil();
+    REQUIRE(coil.get_turns_description());
+    CHECK(coil.is_real_winding_blocking_applied());
+    const auto turns = coil.get_turns_description().value();
+    std::map<std::string, size_t> stationsPerLayer;
+    size_t withLength = 0;
+    for (const auto& turn : turns) {
+        REQUIRE(turn.get_layer());
+        stationsPerLayer[turn.get_layer().value()]++;
+        withLength += turn.get_length() > 0 ? 1 : 0;
+    }
+    CHECK(withLength == 18);                  // every stated turn carries copper
+    CHECK(stationsPerLayer.size() == 18);     // one turn and one closing station per layer
+    for (const auto& [layerName, stations] : stationsPerLayer) {
+        INFO(layerName);
+        CHECK(stations == 2);
+    }
+    CHECK_FALSE(coil.judge_turns_outside_window().empty());
+    const auto overlaps = coil.judge_copper_overlaps();
+    for (const auto& overlap : overlaps) {
+        INFO(overlap.first << " x " << overlap.second << ": " << overlap.overlap * 1e3 << " mm");
+        CHECK(false);
+    }
+    CHECK(overlaps.empty());
+    OpenMagnetics::Mas mas;
+    mas.set_magnetic(magnetic);
+    size_t outsideReported = 0;
+    for (const auto& finding : ResultsAnalyzer::analyze_results(mas)) {
+        outsideReported += finding.code == ResultFindingCode::TURNS_OUTSIDE_WINDOW ? 1 : 0;
+    }
+    CHECK(outsideReported == 1);
+    settings.reset();
+}
+
 // ABT #2071: two turn stations whose outlines overlap are one TURNS_OVERLAP finding naming them and the
 // depth. New design (no wind lays turns over each other: an overflowing one runs out of the window):
 // two turns of Round 0.4 on an E 25/13/7, ideal winding, the second station moved down onto the first

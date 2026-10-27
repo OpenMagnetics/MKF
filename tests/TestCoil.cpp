@@ -17741,13 +17741,18 @@ TEST_CASE("Test_Coil_Consecutive_Turns_Refuses_Zero_Slots", "[constructive-model
     REQUIRE(coil.wind_by_consecutive_turns(uint64_t(4), uint64_t(1), size_t(2)) == WindingStyle::WIND_BY_CONSECUTIVE_PARALLELS);
 }
 
-TEST_CASE("Test_Coil_Real_Winding_Section_That_Cannot_Hold_Its_Turns_Does_Not_Fit", "[coil][real-winding][bug][abt-1699]") {
+TEST_CASE("Test_Coil_Real_Winding_Section_That_Cannot_Hold_Its_Turns_Is_Wound_Past_The_Window", "[coil][real-winding][bug][abt-1699]") {
     // ABT #1699: a coil-adviser candidate on the web flyback core, stored as the web stores it and
     // rebuilt with real winding geometry. Once the connection corridors are blocked, a secondary
     // layer has no row left for every parallel, and the layer fill stopped there: 'Secondary 0
     // section 0' was laid out with 2 of its 9 turns and 'Secondary 0 section 1' with no layer at
     // all, and delimit_and_compact then threw "No layers in section" (COIL_NOT_PROCESSED). Turns a
     // section cannot hold are a wind that does not fit, named as such.
+    // ABT #2096 (Alf, 2026-10-26, assertion rewritten with his approval): the web's rebuild winds the
+    // stored sections as GIVEN, so the section that cannot close is laid out past the window instead
+    // of coming back without turns. 'Secondary 0 section 1' layer 1 has corridors on both edges, with
+    // the Secondary's own leads on both: it grows past the edge its own exit lead crosses, and its own
+    // leads there leave out over the grown copper ("put the terminal where the last wire is").
     auto path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "web_adviser_flows/flyback_interleaved_candidate_stored.json");
     std::ifstream file(path);
     REQUIRE(file.good());
@@ -17765,10 +17770,26 @@ TEST_CASE("Test_Coil_Real_Winding_Section_That_Cannot_Hold_Its_Turns_Does_Not_Fi
     INFO(refusal.value());
     CHECK(refusal->find("cannot hold its") != std::string::npos);
 
-    // The web's rebuild of the same stored design: no throw, and no coil with turns missing.
+    // The web's rebuild of the same stored design: no throw, wound, and the turns outside the window
+    // reported.
     OpenMagnetics::Magnetic rebuilt;
     REQUIRE_NOTHROW(rebuilt = OpenMagneticsTesting::rebuild_with_real_winding_as_web(magnetic));
-    CHECK(!rebuilt.get_coil().get_turns_description());
+    auto& rebuiltCoil = rebuilt.get_mutable_coil();
+    REQUIRE(rebuiltCoil.get_turns_description());
+    REQUIRE_FALSE(rebuiltCoil.get_turns_description()->empty());
+    INFO(rebuiltCoil.get_last_fit_failure());
+    CHECK_FALSE(rebuiltCoil.judge_turns_outside_window().empty());
+    CHECK_THAT(rebuiltCoil.get_last_fit_failure(), Catch::Matchers::ContainsSubstring("outside window"));
+    const auto& grownOverOwnLeads = rebuiltCoil.get_layers_grown_over_own_leads();
+    CHECK(std::find(grownOverOwnLeads.begin(), grownOverOwnLeads.end(), "Secondary 0 section 1 layer 1") != grownOverOwnLeads.end());
+    // The moved own leads run clear of the turns: no lead is drawn across a turn of its own winding.
+    for (const auto& overlap : rebuiltCoil.judge_copper_overlaps()) {
+        if (overlap.kind != OpenMagnetics::CopperOverlapKind::LEAD_TURN) {
+            continue;
+        }
+        INFO(overlap.first << " x " << overlap.second << ": " << overlap.overlap * 1e3 << " mm");
+        CHECK(overlap.firstWinding != overlap.secondWinding);
+    }
     settings.reset();
 }
 
