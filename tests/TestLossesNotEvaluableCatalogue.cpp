@@ -23,6 +23,7 @@
 #include "constructive_models/Magnetic.h"
 #include "physical_models/CoreLosses.h"
 #include "processors/Inputs.h"
+#include "processors/MagneticSimulator.h"
 #include "support/Settings.h"
 #include "support/Utils.h"
 
@@ -138,5 +139,38 @@ TEST_CASE("The catalogue adviser ranks a part whose core losses are not evaluabl
     std::vector<OpenMagnetics::Magnetic> normalOnly{catalogue_part("NORMAL-A"), catalogue_part("NORMAL-B")};
     REQUIRE_NOTHROW(adviser.get_advised_magnetic(inductor_inputs(), normalOnly, flow, 10, false));
     REQUIRE(adviser.get_losses_not_evaluable().empty());
+    settings.reset();
+}
+
+TEST_CASE("The catalogue adviser's filters evaluate losses in one pass and its hits are simulated with the loop",
+          "[adviser][catalogue][loss-temperature-loop][cost]") {
+    // ABT #2124 (Alf, 2026-10-28): screening a catalogue ran the loss <-> temperature loop (ABT #838, with its
+    // lowest-stable-point search, ABT #1840) for every part, 20x slower than before it. The filters run one pass
+    // now; the final simulation of each returned hit still runs the loop, so what is shown is as before.
+    settings.reset();
+    std::vector<OpenMagnetics::Magnetic> catalogue{catalogue_part("PART-A"), catalogue_part("PART-B")};
+    std::vector<MagneticFilterOperation> flow{
+        MagneticFilterOperation(MagneticFilters::LOSSES_NO_PROXIMITY, true, false, false, 1.0),
+    };
+    MagneticAdviser adviser(true);
+    const size_t onePassBefore = MagneticSimulator::get_loss_solves(false);
+    const size_t loopBefore = MagneticSimulator::get_loss_solves(true);
+    std::vector<std::pair<OpenMagnetics::Mas, double>> results;
+    REQUIRE_NOTHROW(results = adviser.get_advised_magnetic(inductor_inputs(), catalogue, flow, 10, true));
+    const size_t onePass = MagneticSimulator::get_loss_solves(false) - onePassBefore;
+    const size_t loop = MagneticSimulator::get_loss_solves(true) - loopBefore;
+    INFO(onePass << " one-pass loss solves, " << loop << " looped loss solves, " << results.size() << " hits");
+    REQUIRE(results.size() == 2);
+    for (auto& [mas, score] : results) {
+        REQUIRE(mas.get_outputs().size() == 1);
+        CHECK(mas.get_outputs()[0].get_core_losses());
+    }
+    // The filter stage: one pass per part, never the loop.
+    CHECK(onePass == catalogue.size());
+    // The final simulation: the loop, once per hit and operating point.
+    CHECK(loop == results.size());
+    // Outside the filter stage the advisers' forced loop is back.
+    CHECK_FALSE(CatalogueFilterOnePassScope::active());
+    CHECK(settings.get_simulator_loss_temperature_loop());
     settings.reset();
 }

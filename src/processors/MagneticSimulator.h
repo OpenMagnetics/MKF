@@ -274,6 +274,9 @@ class MagneticSimulator {
         std::optional<DcBiasPoint> get_last_dc_bias_point() const { return _lastDcBiasPoint; }
         // SolvedLosses::lowestFixedPointSearchEvaluations of the last calculate_core_losses' solve (ABT #1840).
         size_t get_last_lowest_fixed_point_search_evaluations() const { return _lastLowestFixedPointSearchEvaluations; }
+        // How many loss solves ran on this thread with the loss <-> temperature loop (true) or in one pass (false):
+        // a count for the tests (ABT #2124, the catalogue filters run one pass, its final simulations the loop).
+        static size_t get_loss_solves(bool lossTemperatureLoop);
         CoreLossesOutput calculate_core_losses(OperatingPoint& operatingPoint, Magnetic magnetic,
                                                std::optional<WindingLossesOutput>* windingLossesOutput = nullptr,
                                                std::optional<TemperatureOutput>* temperatureOutput = nullptr,

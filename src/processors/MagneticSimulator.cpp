@@ -425,6 +425,15 @@ std::optional<CoreDataCeiling> MagneticSimulator::get_core_data_ceiling(const Co
     return ceiling;
 }
 
+namespace {
+thread_local size_t lossSolvesWithLoop = 0;
+thread_local size_t lossSolvesInOnePass = 0;
+}
+
+size_t MagneticSimulator::get_loss_solves(bool lossTemperatureLoop) {
+    return lossTemperatureLoop ? lossSolvesWithLoop : lossSolvesInOnePass;
+}
+
 SolvedLosses MagneticSimulator::solve_losses_at_operating_temperature(const OperatingPoint& operatingPoint,
                                                                                          Magnetic& magnetic,
                                                                                          WindingLossesScope windingLossesScope) {
@@ -439,6 +448,7 @@ SolvedLosses MagneticSimulator::solve_losses_at_operating_temperature(const Oper
     // core and winding losses at the operating temperature, the network run once on them for the hottest
     // point -- and it is returned as it is, its temperature fed back into nothing (Alf, 2026-10-22).
     const bool lossTemperatureLoop = Settings::GetInstance().get_simulator_loss_temperature_loop();
+    ++(lossTemperatureLoop ? lossSolvesWithLoop : lossSolvesInOnePass);
 
     const double ambientTemperature = operatingPoint.get_conditions().get_ambient_temperature();
     double coreTemperature = ambientTemperature;
