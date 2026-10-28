@@ -625,9 +625,11 @@ void Temperature::resolveLateralPlacement() {
     for (const auto& section : sections) {
         size_t windowIndex = coil.resolve_section_winding_window_index(section);
         if (windowIndex >= bobbinWindows.size()) {
-            throw std::runtime_error(who + "section " + section.get_name() + " references winding window " +
-                                     std::to_string(windowIndex) + " but the bobbin has " +
-                                     std::to_string(bobbinWindows.size()) + ".");
+            throw std::runtime_error("Section '" + section.get_name() + "' of the coil is placed in winding window " +
+                                     std::to_string(windowIndex + 1) + ", but the bobbin has " +
+                                     std::to_string(bobbinWindows.size()) + (bobbinWindows.size() == 1 ? " window" : " windows") +
+                                     ", so the temperature cannot be calculated. Choose a bobbin with that window, or wind the "
+                                     "coil again on this bobbin.");
         }
         auto columnEdge = bobbinWindows[windowIndex].get_column();
         // Schema default: a window without a column edge wraps the main column (Coil does the same).
@@ -1047,9 +1049,9 @@ void Temperature::createBobbinNodes() {
     // on PQ 26/25 left a 0.25 mm phantom gap between the wall and the turns resting on it.
     double columnThickness = processedDesc->get_column_thickness();
     if (columnThickness <= 0) {
-        throw std::runtime_error("Temperature::createBobbinNodes: bobbin has flanges (wallThickness=" +
-                                 std::to_string(wallThickness) + ") but no column thickness; the column "
-                                 "wall the winding rests on is undefined.");
+        throw std::runtime_error("The bobbin has " + format_significant(wallThickness * 1e3) + " mm thick flanges but no "
+                                 "column thickness, so the wall the winding rests on is unknown and the temperature cannot be "
+                                 "calculated. Give the bobbin a column thickness, or choose a bobbin from the catalogue.");
     }
     if (!processedDesc->get_column_width()) {
         throw std::runtime_error("Temperature::createBobbinNodes: bobbin processed description has no "
@@ -2930,8 +2932,7 @@ std::optional<double> Temperature::planarTurnToBobbinResistance(size_t turnIdx, 
     const auto& turn = _nodes[turnIdx];
     const auto& wall = _nodes[bobbinIdx];
     if (gap < -kEnclosureGeometryTolerance) {
-        std::string message = "Temperature::planarTurnToBobbinResistance: " + turn.name + " overlaps " + wall.name +
-                              " by " + std::to_string(-gap * 1e3) + " mm (" + std::string(magic_enum::enum_name(turnFace)) + ").";
+        std::string message = doesNotFitMessage(turnIdx, describeEnclosureSurface(turnFace, true), -gap);
         if (settings.get_thermal_network_strict_geometry()) {
             throw std::runtime_error(message);
         }
@@ -3443,8 +3444,12 @@ double Temperature::faceToSurfaceResistance(size_t nodeIdx, ThermalNodeFace face
         double r = node.dimensions.width / 2.0;
         double a = r + gap + enamelAsAir;
         if (a - r <= kEnclosureGeometryTolerance * 1e-3) {
-            throw std::runtime_error("Temperature::faceToSurfaceResistance: bare round wire " + node.name +
-                                     " is in line contact with its enclosure; the air-wedge conductance diverges.");
+            // A bare round wire touching a wall along a line: the air wedge between them conducts without limit.
+            std::string what = describeNodeForPeople(nodeIdx);
+            what[0] = static_cast<char>(std::toupper(static_cast<unsigned char>(what[0])));
+            throw std::runtime_error(what + " is bare wire touching " + describeEnclosureSurface(face, true) +
+                                     " with no coating or gap between them, so its temperature cannot be calculated. "
+                                     "Use an enamelled or insulated wire, or leave a margin to the bobbin.");
         }
         double I = -std::numbers::pi + 4.0 * a / std::sqrt(a * a - r * r) * std::atan(std::sqrt((a + r) / (a - r)));
         return 1.0 / (kAir * q->length * share * I);
@@ -3452,6 +3457,70 @@ double Temperature::faceToSurfaceResistance(size_t nodeIdx, ThermalNodeFace face
     // Rectangular / foil conductor: flat air gap plus enamel. Zero for bare metal in contact;
     // the caller adds the wall it rests on in series.
     return (gap + enamelAsAir) / (kAir * area);
+}
+
+std::string Temperature::describeNodeForPeople(size_t nodeIdx) const {
+    const auto& node = _nodes.at(nodeIdx);
+    const auto& coil = _magnetic.get_coil();
+    const auto& windings = coil.get_functional_description();
+    if (node.part == ThermalNodePartType::TURN && node.turnDescriptionIndex) {
+        return describe_turn_for_people(coil, node.turnDescriptionIndex.value());
+    }
+    if (node.part == ThermalNodePartType::TURN && node.windingIndex && node.windingIndex.value() < windings.size()) {
+        return "winding '" + windings[node.windingIndex.value()].get_name() + "'";
+    }
+    if (node.part == ThermalNodePartType::INSULATION_LAYER && node.insulationLayerIndex && coil.get_layers_description()) {
+        const auto layers = coil.get_layers_description_insulation();
+        if (node.insulationLayerIndex.value() < layers.size()) {
+            const auto& layer = layers[node.insulationLayerIndex.value()];
+            // An insulation layer inside a winding's section separates its layers; one in an insulation
+            // section separates the windings on either side of it.
+            if (!layer.get_partial_windings().empty()) {
+                return "the insulation between the layers of winding '" + layer.get_partial_windings().front().get_winding() + "'";
+            }
+            if (coil.get_sections_description()) {
+                const auto sections = coil.get_sections_description().value();   // bound: never range over a temporary
+                for (size_t index = 0; index < sections.size(); ++index) {
+                    if (sections[index].get_name() != layer.get_section()) continue;
+                    std::optional<std::string> before, after;
+                    for (size_t k = index; k-- > 0;) {
+                        if (!sections[k].get_partial_windings().empty()) { before = sections[k].get_partial_windings().front().get_winding(); break; }
+                    }
+                    for (size_t k = index + 1; k < sections.size(); ++k) {
+                        if (!sections[k].get_partial_windings().empty()) { after = sections[k].get_partial_windings().front().get_winding(); break; }
+                    }
+                    if (before && after) {
+                        return "the insulation between windings '" + before.value() + "' and '" + after.value() + "'";
+                    }
+                    if (before || after) {
+                        return "the insulation next to winding '" + (before ? before.value() : after.value()) + "'";
+                    }
+                }
+            }
+            return "an insulation layer of the coil";
+        }
+    }
+    return "a part of the coil";
+}
+
+std::string Temperature::describeEnclosureSurface(ThermalNodeFace face, bool hasBobbin) {
+    switch (face) {
+        case ThermalNodeFace::RADIAL_INNER: return hasBobbin ? "the bobbin column it is wound on" : "the core column it is wound on";
+        case ThermalNodeFace::RADIAL_OUTER: return "the outer side of the core window";
+        case ThermalNodeFace::TANGENTIAL_LEFT: return hasBobbin ? "the top flange of the bobbin" : "the top of the core window";
+        case ThermalNodeFace::TANGENTIAL_RIGHT: return hasBobbin ? "the bottom flange of the bobbin" : "the bottom of the core window";
+        case ThermalNodeFace::NONE: break;
+    }
+    return "the edge of the winding window";
+}
+
+std::string Temperature::doesNotFitMessage(size_t nodeIdx, const std::string& surface, double overlap) const {
+    // Said in the words of the coil the user sees (winding names, turn numbers), with what to do about it.
+    std::string what = describeNodeForPeople(nodeIdx);
+    what[0] = static_cast<char>(std::toupper(static_cast<unsigned char>(what[0])));
+    return what + " runs " + format_significant(overlap * 1e3, 2) + " mm into " + surface +
+           ": the coil does not fit in its window, so its temperature cannot be calculated. Use fewer turns, a thinner "
+           "wire or thinner insulation, wind it again, or choose a core with a larger winding window.";
 }
 
 void Temperature::createWindingToEnclosureConnections() {
@@ -3521,9 +3590,7 @@ void Temperature::createWindingToEnclosureConnections() {
         if (share <= 0) return;
         if (connectedQuadrants.count({item.nodeIdx, face})) return;  // already has its conduction path
         if (gap < -kEnclosureGeometryTolerance) {
-            std::string message = "Temperature::createWindingToEnclosureConnections: " + _nodes[item.nodeIdx].name +
-                                  " overlaps its enclosure by " + std::to_string(-gap * 1e3) + " mm (" +
-                                  std::string(magic_enum::enum_name(face)) + ").";
+            std::string message = doesNotFitMessage(item.nodeIdx, describeEnclosureSurface(face, hasBobbin), -gap);
             if (settings.get_thermal_network_strict_geometry()) {
                 throw std::runtime_error(message);
             }
@@ -3599,9 +3666,7 @@ void Temperature::createWindingToEnclosureConnections() {
                 if (connectedQuadrants.count({legItems[k].nodeIdx, legFace})) continue;
                 double gap = restingU - uItems[k].x1;
                 if (gap < -kEnclosureGeometryTolerance) {
-                    throw std::runtime_error("Temperature::createWindingToEnclosureConnections: " +
-                                             _nodes[legItems[k].nodeIdx].name + " overlaps the bobbin column of its leg by " +
-                                             std::to_string(-gap * 1e3) + " mm.");
+                    throw std::runtime_error(doesNotFitMessage(legItems[k].nodeIdx, "the bobbin column of the outer leg it is wound on", -gap));
                 }
                 gap = std::max(gap, 0.0);
                 const auto* q = _nodes[legItems[k].nodeIdx].getQuadrant(legFace);
@@ -3697,9 +3762,7 @@ void Temperature::createWindingToCoreAcrossWindowConnections(size_t ambientIdx) 
         }
         if (target == npos || sweepShare <= 0) continue;
         if (gap < -kEnclosureGeometryTolerance) {
-            std::string message = "Temperature::createWindingToCoreAcrossWindowConnections: " +
-                                  _nodes[item.nodeIdx].name + " overlaps the core window edge by " +
-                                  std::to_string(-gap * 1e3) + " mm.";
+            std::string message = doesNotFitMessage(item.nodeIdx, describeEnclosureSurface(convection.quadrantFrom, hasBobbin), -gap);
             if (settings.get_thermal_network_strict_geometry()) {
                 throw std::runtime_error(message);
             }
@@ -7288,10 +7351,10 @@ ThermalResult Temperature::solveThermalCircuit() {
     // from this value.
     if (!converged && _config.requireConvergence) {
         throw ThermalNetworkNotConvergedException(
-            "Thermal network did not converge in " + std::to_string(_config.maxIterations) +
-            " iterations (tolerance " + format_significant(_config.convergenceTolerance) + " K). The "
-            "last iterate is not a temperature estimate and must not be reported. Check the "
-            "operating point's losses and cooling conditions.");
+            "No steady temperature: the thermal model does not settle for these losses (it did not converge in " +
+            std::to_string(_config.maxIterations) + " iterations, tolerance " +
+            format_significant(_config.convergenceTolerance) + " K), so no temperature is given. Lower the "
+            "losses of this operating point or improve its cooling.");
     }
 
     ThermalResult result;

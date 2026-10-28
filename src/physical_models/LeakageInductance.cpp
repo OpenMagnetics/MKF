@@ -1049,7 +1049,8 @@ LeakageInductance::ToroidalRingPlaneConductors LeakageInductance::calculate_toro
             throw CoilNotProcessedException("Toroidal leakage: turn " + turn.get_name() + " coordinates are not cartesian");
         }
         if (!turn.get_additional_coordinates() || turn.get_additional_coordinates()->empty() || turn.get_additional_coordinates().value()[0].size() < 2) {
-            throw CoilNotProcessedException("Toroidal leakage: turn " + turn.get_name() + " has no outer crossing (additional coordinates)");
+            throw CoilNotProcessedException("the leakage inductance of a toroid needs the path of every turn around the outside of the "
+                                            "core, and " + describe_turn_for_people(coil, turn.get_name()) + " has none");
         }
         auto inner = turn.get_coordinates();
         auto outer = turn.get_additional_coordinates().value()[0];

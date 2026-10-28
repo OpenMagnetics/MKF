@@ -62,12 +62,20 @@ struct LossesAtAmbient {
 // The message is MKF's, with the loop's history. It carries the point's losses at ambient, which
 // MagneticSimulator::simulate publishes for that point (and no temperature); every other caller sees it
 // as the CalculationException it is. Any other error of the solve is not this exception.
+// The message says why in words a designer reads; the details carry the loop's numbers (its iterates'
+// losses and temperatures), for whoever has to look into it. what() gives both.
 class NoThermalOperatingPointException : public CalculationException {
   public:
-    NoThermalOperatingPointException(ErrorCode code, const std::string& message, LossesAtAmbient lossesAtAmbient)
-        : CalculationException(code, message), _lossesAtAmbient(std::move(lossesAtAmbient)) {}
+    NoThermalOperatingPointException(ErrorCode code, const std::string& summary, LossesAtAmbient lossesAtAmbient,
+                                     const std::string& details = "")
+        : CalculationException(code, details.empty() ? summary : summary + " Details: " + details),
+          _summary(summary), _details(details), _lossesAtAmbient(std::move(lossesAtAmbient)) {}
     const LossesAtAmbient& get_losses_at_ambient() const { return _lossesAtAmbient; }
+    const std::string& get_summary() const { return _summary; }
+    const std::string& get_details() const { return _details; }
   private:
+    std::string _summary;
+    std::string _details;
     LossesAtAmbient _lossesAtAmbient;
 };
 
@@ -256,8 +264,12 @@ class MagneticSimulator {
         // why it has none. Their methodUsed is the loss model's, then kLossesAtAmbientMethodNote, then the
         // NoThermalOperatingPointException's message. ResultsAnalyzer reads the reason here instead of solving again.
         static constexpr const char* kLossesAtAmbientMethodNote = ", evaluated at the ambient temperature: ";
+        // Between the reason and its details (the loss loop's iterates) on the same methodUsed.
+        static constexpr const char* kNoThermalOperatingPointDetailsNote = " Details: ";
         // The reason recorded on these core losses; none when they were solved at their thermal operating point.
         static std::optional<std::string> get_no_thermal_operating_point_reason(const CoreLossesOutput& coreLosses);
+        // The details recorded with that reason (the loss loop's iterates); none when there are none.
+        static std::optional<std::string> get_no_thermal_operating_point_details(const CoreLossesOutput& coreLosses);
         // The DC point of the last calculate_core_losses' solve (SolvedLosses::dcBiasPoint).
         std::optional<DcBiasPoint> get_last_dc_bias_point() const { return _lastDcBiasPoint; }
         // SolvedLosses::lowestFixedPointSearchEvaluations of the last calculate_core_losses' solve (ABT #1840).

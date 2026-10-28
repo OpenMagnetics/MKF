@@ -381,9 +381,9 @@ double InitialPermeability::get_magnetic_field_dc_bias_for_flux_density(const Co
     // one and go on, while a genuine INVALID_INPUT still stops them (ABT #1534).
     if (refuseAboveSaturation && biasFluxDensity > saturationFluxDensity) {
         throw SaturationException(
-            "The DC bias puts " + std::to_string(biasFluxDensity) + " T in material " + coreMaterial.get_name() +
-            ", above its saturation of " + std::to_string(saturationFluxDensity) + " T at " + std::to_string(temperature) +
-            " °C: no gap holds the target inductance at that bias, fewer turns or a larger core are needed");
+            "The DC bias puts " + format_significant(biasFluxDensity) + " T in " + coreMaterial.get_name() +
+            ", above its saturation flux density of " + format_significant(saturationFluxDensity) + " T at " + format_significant(temperature) +
+            " C: no gap holds the target inductance at that bias. Use fewer turns or a larger core");
     }
 
     auto curve = get_magnetisation_curve(coreMaterial, temperature, frequency);
@@ -495,15 +495,16 @@ std::pair<double, double> InitialPermeability::get_magnetomotive_force_for_flux_
         };
         if (fluxDensity > curve.saturationFluxDensity) {
             throw SaturationException(
-                "The flux density " + number(fluxDensity) + " T asked of material " + curve.materialName +
-                " lies past the end of its magnetisation curve, " + number(fluxDensities.back()) + " T at " +
-                number(fieldStrengths.back()) + " A/m (1000 times its saturation field strength), and above its B_sat of " +
-                number(curve.saturationFluxDensity) + " T: the core is driven far past saturation, and its curve has no field strength for that flux");
+                "It would need a flux density of " + number(fluxDensity) + " T, beyond the end of the magnetisation curve of " +
+                curve.materialName + " (" + number(fluxDensities.back()) + " T at " + format_quantity(fieldStrengths.back(), "A/m") +
+                ", 1000 times its saturation field strength) and above its B_sat of " + number(curve.saturationFluxDensity) +
+                " T: the core is driven far past saturation");
         }
-        throw MagnetisationCurveExhaustedException("The magnetisation curve of material " + curve.materialName + " integrates to only " +
-                                 number(fluxDensities.back()) + " T at " + number(fieldStrengths.back()) + " A/m, below the " +
-                                 number(fluxDensity) + " T asked, although that is under its saturation of " +
-                                 number(curve.saturationFluxDensity) + " T: the material's DC-bias factor is inconsistent with its saturation data");
+        throw MagnetisationCurveExhaustedException("The magnetisation curve of " + curve.materialName + " reaches only " +
+                                 number(fluxDensities.back()) + " T at " + format_quantity(fieldStrengths.back(), "A/m") + ", below the " +
+                                 number(fluxDensity) + " T needed, although that is under its B_sat of " +
+                                 number(curve.saturationFluxDensity) + " T: the DC-bias data of the material disagrees with its "
+                                 "saturation data. Choose another material, or report this material's data");
     }
     // B(H) is strictly increasing (mu_rev >= 1); the segment and its linear interpolation are the forward
     // crossing's, so the two are exact inverses on the table.

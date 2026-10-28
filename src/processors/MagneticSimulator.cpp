@@ -48,9 +48,12 @@ Mas MagneticSimulator::simulate(const Inputs& inputs, const Magnetic& magnetic, 
             if (numberExcitations != numberWindings) {
                 throw InvalidInputException(
                     ErrorCode::MISSING_DATA,
-                    "Operating point " + std::to_string(index) + " has " +
-                    std::to_string(numberExcitations) + " excitations for a magnetic with " +
-                    std::to_string(numberWindings) + " windings; every winding needs exactly one excitation");
+                    (operatingPoints[index].get_name() ? "Operating point '" + operatingPoints[index].get_name().value() + "'"
+                                                        : "Operating point " + std::to_string(index + 1)) +
+                    " has " + std::to_string(numberExcitations) + (numberExcitations == 1 ? " excitation" : " excitations") +
+                    ", but the magnetic has " + std::to_string(numberWindings) + (numberWindings == 1 ? " winding" : " windings") +
+                    ": every winding needs exactly one excitation. Give each winding its excitation in that operating point, "
+                    "and remove any extra ones");
             }
         }
     }
@@ -307,7 +310,10 @@ CoreLossesOutput MagneticSimulator::calculate_core_losses(OperatingPoint& operat
         // ABT #2075: the core losses carry why (get_no_thermal_operating_point_reason).
         CoreLossesOutput coreLossesAtAmbient = lossesAtAmbient.coreLosses;
         coreLossesAtAmbient.set_method_used(coreLossesAtAmbient.get_method_used() + kLossesAtAmbientMethodNote +
-                                            noThermalOperatingPoint.message());
+                                            noThermalOperatingPoint.get_summary() +
+                                            (noThermalOperatingPoint.get_details().empty()
+                                                 ? std::string()
+                                                 : kNoThermalOperatingPointDetailsNote + noThermalOperatingPoint.get_details()));
         return coreLossesAtAmbient;
     }
 
@@ -356,7 +362,22 @@ std::optional<std::string> MagneticSimulator::get_no_thermal_operating_point_rea
     if (note == std::string::npos) {
         return std::nullopt;
     }
-    return methodUsed.substr(note + std::char_traits<char>::length(kLossesAtAmbientMethodNote));
+    std::string recorded = methodUsed.substr(note + std::char_traits<char>::length(kLossesAtAmbientMethodNote));
+    size_t details = recorded.find(kNoThermalOperatingPointDetailsNote);
+    return details == std::string::npos ? recorded : recorded.substr(0, details);
+}
+
+std::optional<std::string> MagneticSimulator::get_no_thermal_operating_point_details(const CoreLossesOutput& coreLosses) {
+    const std::string& methodUsed = coreLosses.get_method_used();
+    size_t note = methodUsed.find(kLossesAtAmbientMethodNote);
+    if (note == std::string::npos) {
+        return std::nullopt;
+    }
+    size_t details = methodUsed.find(kNoThermalOperatingPointDetailsNote, note);
+    if (details == std::string::npos) {
+        return std::nullopt;
+    }
+    return methodUsed.substr(details + std::char_traits<char>::length(kNoThermalOperatingPointDetailsNote));
 }
 
 bool MagneticSimulator::is_core_held_at_data_ceiling(const CoreMaterial& coreMaterial, double coreLossesTemperature, double maximumTemperature) {
@@ -483,10 +504,17 @@ SolvedLosses MagneticSimulator::solve_losses_at_operating_temperature(const Oper
         if (!lossesAtAmbient) {
             throw;
         }
-        throw NoThermalOperatingPointException(ErrorCode::CALCULATION_INVALID_RESULT, "No thermal operating point: at a core "
-            "temperature of " + std::to_string(coreAt) + " C, where the loss loop's iterates drove it, the magnetizing model "
-            "cannot read this point's current on the material's curve: " + reason + " History:" + history,
-            lossesAtAmbient.value());
+        // The reason is a sentence of its own; here it continues this one.
+        std::string continued = reason;
+        if (!continued.empty()) {
+            continued[0] = static_cast<char>(std::tolower(static_cast<unsigned char>(continued[0])));
+            if (continued.back() == '.') {
+                continued.pop_back();
+            }
+        }
+        throw NoThermalOperatingPointException(ErrorCode::CALCULATION_INVALID_RESULT, "No steady temperature: heated by its "
+            "own losses to " + format_significant(coreAt) + " C, the core can no longer carry this flux: " + continued + ".",
+            lossesAtAmbient.value(), "History:" + history);
     };
     auto evaluateLosses = [&](double coreAt, double windingAt) {
         LoopEvaluation evaluation;
@@ -575,9 +603,9 @@ SolvedLosses MagneticSimulator::solve_losses_at_operating_temperature(const Oper
             thermalResult = Temperature(magnetic, evaluation.config).calculateTemperatures();
         }
         catch (const ThermalNetworkNotConvergedException& error) {
-            throw NoThermalOperatingPointException(error.code(), "No thermal operating point: " + error.message() +
-                " Loss loop at iterate " + std::to_string(iteration) + ", searching for its lowest stable fixed point (losses at " +
-                format_significant(temperature) + " C). History:" + history, lossesAtAmbient.value());
+            throw NoThermalOperatingPointException(error.code(), error.message(),
+                lossesAtAmbient.value(), "Loss loop at iterate " + std::to_string(iteration) + ", searching for its lowest "
+                "stable fixed point (losses at " + format_significant(temperature) + " C). History:" + history);
         }
         if (!thermalResult.maximumCoreTemperature || (withWinding && !thermalResult.averageTurnTemperature)) {
             throw CalculationException(ErrorCode::CALCULATION_INVALID_RESULT,
@@ -655,28 +683,27 @@ SolvedLosses MagneticSimulator::solve_losses_at_operating_temperature(const Oper
             if (!lossTemperatureLoop) {
                 // One pass: there is no loop whose operating point could be missing. The network gives no
                 // temperature for these losses, and the one-pass estimate cannot be made.
-                throw ThermalNetworkNotConvergedException(error.message() + " One-pass temperature estimate of '" +
-                    magnetic.get_reference() + "' (loss-temperature loop off): core and winding losses at the operating "
-                    "temperature, " + std::to_string(coreTemperature) + " C.");
+                throw ThermalNetworkNotConvergedException(error.message() + " Details: one-pass temperature estimate "
+                    "(loss-temperature loop off), with the core and winding losses at the operating temperature, " +
+                    format_significant(coreTemperature) + " C.");
             }
             // No steady temperature exists on the network for this iterate's losses: the operating point has
             // no thermal operating point (ABT #1876, Alf 2026-10-14).
-            throw NoThermalOperatingPointException(error.code(), "No thermal operating point: " + error.message() +
-                " Loss loop at iterate " + std::to_string(iteration) + " (core losses at " + format_significant(coreTemperature) +
-                " C, winding losses at " + format_significant(windingTemperature) + " C" +
-                (coreHeldAtCeiling ? ", core held at its data limit" : "") + "). History:" + history,
-                lossesAtAmbient.value());
+            throw NoThermalOperatingPointException(error.code(), error.message(),
+                lossesAtAmbient.value(), "Loss loop at iterate " + std::to_string(iteration) + " (core losses at " +
+                format_significant(coreTemperature) + " C, winding losses at " + format_significant(windingTemperature) + " C" +
+                (coreHeldAtCeiling ? ", core held at its data limit" : "") + "). History:" + history);
         }
         catch (const CalculationException& error) {
             // Not handled: the same error, with the loss loop's iterates up to it, so the losses and
             // temperatures that drove the network there can be read.
             if (!lossTemperatureLoop) {
-                throw CalculationException(error.code(), error.message() + " One-pass temperature estimate (loss-temperature "
-                    "loop off): core and winding losses at the operating temperature, " + std::to_string(coreTemperature) + " C.");
+                throw CalculationException(error.code(), error.message() + " Details: one-pass temperature estimate (loss-temperature "
+                    "loop off), with the core and winding losses at the operating temperature, " + format_significant(coreTemperature) + " C.");
             }
-            throw CalculationException(error.code(), error.message() + " Loss loop at iterate " +
-                std::to_string(iteration) + " (core losses at " + std::to_string(coreTemperature) + " C, winding losses at " +
-                std::to_string(windingTemperature) + " C" + (coreHeldAtCeiling ? ", core held at its data limit" : "") +
+            throw CalculationException(error.code(), error.message() + " Details: loss loop at iterate " +
+                std::to_string(iteration) + " (core losses at " + format_significant(coreTemperature) + " C, winding losses at " +
+                format_significant(windingTemperature) + " C" + (coreHeldAtCeiling ? ", core held at its data limit" : "") +
                 "). History:" + history);
         }
         if (!thermalResult.maximumCoreTemperature) {
@@ -769,16 +796,18 @@ SolvedLosses MagneticSimulator::solve_losses_at_operating_temperature(const Oper
                     const double slope = (nextWindingTemperature - heldWindingIterate->nextWindingTemperature) / step;
                     if (slope >= 1) {
                         std::ostringstream reason;
-                        reason << "No thermal operating point: the winding runs away. '" << magnetic.get_reference()
-                               << "' has its core held at " << format_significant(coreTemperature) << " C, the last temperature its material's data "
-                               << "covers, and its winding losses grow from " << format_quantity(heldWindingIterate->windingLosses, "W") << " at "
-                               << format_significant(heldWindingIterate->windingTemperature) << " C to " << format_quantity(windingLossesAtThisIterate, "W") << " at "
-                               << format_significant(windingTemperature) << " C while the average turn temperature they produce grows from "
-                               << format_significant(heldWindingIterate->nextWindingTemperature) << " C to " << format_significant(nextWindingTemperature)
-                               << " C: dT_turn/dT_w = " << format_significant(slope) << ", at or above 1, where a fixed point needs it below 1."
-                               << " History:" << history;
+                        reason << "No steady temperature: the winding runs away thermally. Its losses rise with its temperature "
+                               << "faster than the heat can leave it (" << format_quantity(heldWindingIterate->windingLosses, "W") << " at "
+                               << format_significant(heldWindingIterate->windingTemperature) << " C, " << format_quantity(windingLossesAtThisIterate, "W")
+                               << " at " << format_significant(windingTemperature) << " C), with the core already at "
+                               << format_significant(coreTemperature) << " C, the last temperature its material data covers.";
+                        std::ostringstream details;
+                        details << "The average turn temperature those losses produce grows from "
+                                << format_significant(heldWindingIterate->nextWindingTemperature) << " C to " << format_significant(nextWindingTemperature)
+                                << " C: dT_turn/dT_w = " << format_significant(slope) << ", at or above 1, where a fixed point needs it below 1."
+                                << " History:" << history;
                         throw NoThermalOperatingPointException(ErrorCode::CALCULATION_DIVERGED, reason.str(),
-                                                               lossesAtAmbient.value());
+                                                               lossesAtAmbient.value(), details.str());
                     }
                 }
             }
@@ -894,12 +923,12 @@ SolvedLosses MagneticSimulator::solve_losses_at_operating_temperature(const Oper
     // they produce 138.1 -> 131.1 C: the iterates close in on that step from both sides and never land within
     // the tolerance.
     throw NoThermalOperatingPointException(ErrorCode::CALCULATION_DIVERGED,
-        "No thermal operating point: the losses of '" + magnetic.get_reference() + "' and the temperatures they "
-        "produce did not settle within " + std::to_string(kOperatingTemperatureMaximumIterations) +
-        " iterations (tolerance " + format_significant(kOperatingTemperatureTolerance) + " K): no temperature was found "
-        "within the tolerance of the one its own losses produce (thermal runaway, or losses that jump with temperature "
-        "so the iterates close in on the jump from both sides). History:" + history,
-        lossesAtAmbient.value());
+        "No steady temperature: the losses and the temperatures they produce did not settle within " +
+        std::to_string(kOperatingTemperatureMaximumIterations) + " iterations (a thermal runaway, or losses that jump "
+        "with temperature).",
+        lossesAtAmbient.value(),
+        "Tolerance " + format_significant(kOperatingTemperatureTolerance) + " K: no temperature was found within it of the "
+        "one its own losses produce. History:" + history);
 }
 
 namespace {

@@ -3952,8 +3952,11 @@ std::optional<ParallelCurrentSplit> MagneticField::calculate_parallel_current_sp
     // harmonics of one period and throw. A winding with no entry at an order carries no current there (exactly zero).
     const auto& excitations = operatingPoint.get_excitations_per_winding();
     if (excitations.size() < numberWindings) {
-        throw InvalidInputException(ErrorCode::MISSING_DATA, "Parallel current split: the operating point has " + std::to_string(excitations.size()) +
-                                    " excitations for " + std::to_string(numberWindings) + " windings");
+        throw InvalidInputException(ErrorCode::MISSING_DATA,
+            (operatingPoint.get_name() ? "Operating point '" + operatingPoint.get_name().value() + "'" : std::string("The operating point")) +
+            " has " + std::to_string(excitations.size()) + (excitations.size() == 1 ? " excitation" : " excitations") + ", but the magnetic has " +
+            std::to_string(numberWindings) + " windings: the current of each winding is needed to split it between its parallels. "
+            "Give each winding its excitation in that operating point");
     }
     std::vector<Harmonics> harmonicsPerWinding;
     double fundamentalFrequency = 0;

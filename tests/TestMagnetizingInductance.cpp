@@ -2228,7 +2228,7 @@ TEST_CASE("Test_Gap_From_Inductance_Refuses_A_Bias_That_Collapses_The_Permeabili
     REQUIRE_THROWS_AS(magnetizingInductance.calculate_gapping_from_number_turns_and_inductance(core, coil, &collapsing, GappingType::GROUND),
                       SaturationException);
     REQUIRE_THROWS_WITH(magnetizingInductance.calculate_gapping_from_number_turns_and_inductance(core, coil, &collapsing, GappingType::GROUND),
-                        Catch::Matchers::ContainsSubstring("permeability model"));
+                        Catch::Matchers::ContainsSubstring("its permeability collapses"));
 
     // Control: half that bias keeps a real gap.
     auto moderate = inputsWithBiasFluxDensity(0.5 * collapseFluxDensity);

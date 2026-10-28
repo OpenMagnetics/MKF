@@ -23,6 +23,29 @@ using namespace MAS;
 
 namespace OpenMagnetics {
 
+namespace {
+// A quantity with an SI prefix and three significant figures, for messages ("20 us", "100 kHz"). Kept here
+// rather than taken from support/NumberFormat: Kirchhoff compiles this file without that one.
+std::string si_quantity(double value, const std::string& unit) {
+    static const std::pair<double, const char*> prefixes[] = {{1e9, "G"}, {1e6, "M"}, {1e3, "k"}, {1, ""}, {1e-3, "m"}, {1e-6, "u"}, {1e-9, "n"}, {1e-12, "p"}};
+    std::ostringstream text;
+    text << std::setprecision(3);
+    if (!std::isfinite(value) || value == 0) {
+        text << value << " " << unit;
+        return text.str();
+    }
+    for (const auto& [scale, prefix] : prefixes) {
+        if (std::fabs(value) >= scale * 0.9995) {
+            text << value / scale << " " << prefix << unit;
+            return text.str();
+        }
+    }
+    text << value / 1e-12 << " p" << unit;
+    return text.str();
+}
+} // namespace
+
+
 // Kept C++17-compatible (no <numbers>/std::lerp) so the Kirchhoff converter-model library, which builds
 // at C++17, can reuse this file; MKF (C++23) compiles it unchanged.
 namespace { constexpr double kWaveformPi = 3.14159265358979323846264338327950288; }
@@ -1396,9 +1419,10 @@ bool WaveformProcessor::check_time_axis_spans_one_period(const std::vector<doubl
     const double openError = uniformAxis? std::fabs(period + lastStep - expectedPeriod) : std::numeric_limits<double>::infinity();
     if (closedError > tolerance && openError > tolerance) {
         std::ostringstream message;
-        message << std::setprecision(10) << "Waveform time axis spans " << period << " s (" << time.size() << " points from " << time.front()
-                << " s to " << time.back() << " s, last step " << lastStep << " s" << (uniformAxis? ", uniform" : "") << ") but the excitation period is "
-                << expectedPeriod << " s (" << frequency << " Hz): a waveform must be given over exactly one period, including the intervals where it is zero";
+        message << "A waveform covers " << si_quantity(period, "s") << " (" << time.size() << " points from "
+                << si_quantity(time.front(), "s") << " to " << si_quantity(time.back(), "s") << "), but the period of its excitation is "
+                << si_quantity(expectedPeriod, "s") << " (" << si_quantity(frequency, "Hz") << "): a waveform must cover exactly one "
+                << "period, including the intervals where it is zero. Give one period of the waveform, or correct the frequency";
         throw std::invalid_argument(message.str());
     }
     return openError < closedError;

@@ -3834,7 +3834,7 @@ TEST_CASE("Test_CoilAdviser_Web_Flyback_97_Advise_All_Coil_Stays_In_Its_Window",
         auto outside = OpenMagneticsTesting::turns_outside_winding_window(magnetic.get_mutable_coil());
         REQUIRE(!outside.empty());
         CHECK(outside.back().find("Secondary 0 parallel 1 turn 4") == 0);
-        CHECK_THROWS_WITH(simulate_like_the_web_builder(inputs, magnetic), Catch::Matchers::ContainsSubstring("overlaps its enclosure"));
+        CHECK_THROWS_WITH(simulate_like_the_web_builder(inputs, magnetic), Catch::Matchers::ContainsSubstring("the coil does not fit in its window"));
     }
 
     // The adviser's own coil fits (2 Secondary layers, 4.237 mm of the 4.25 mm window).
@@ -3945,8 +3945,8 @@ TEST_CASE("Test_CoilAdviser_Rejects_A_Coil_Whose_Core_Saturates_Past_Its_Curve_I
         magnetizingInductanceModel.set_topology(mas.get_inputs().get_design_requirements().get_topology());
         CHECK_THROWS_MATCHES(magnetizingInductanceModel.calculate_inductance_and_magnetic_flux_density(magnetic, &operatingPoint),
                              SaturationException,
-                             Catch::Matchers::MessageMatches(Catch::Matchers::ContainsSubstring("lies past the end of its magnetisation curve") &&
-                                                             Catch::Matchers::ContainsSubstring("asked of material 97")));
+                             Catch::Matchers::MessageMatches(Catch::Matchers::ContainsSubstring("beyond the end of the magnetisation curve") &&
+                                                             Catch::Matchers::ContainsSubstring("magnetisation curve of 97")));
     }
 
     // A coil rejected for saturation is a DEBUG trace, so the run is collected at DEBUG; read_log() only hands
@@ -3965,7 +3965,7 @@ TEST_CASE("Test_CoilAdviser_Rejects_A_Coil_Whose_Core_Saturates_Past_Its_Curve_I
     INFO(coilAdviser.get_last_no_results_reason().value_or("returned results"));
     CHECK(log.find("(material 97, ") != std::string::npos);
     CHECK(log.find(") rejected: its core saturates: ") != std::string::npos);
-    CHECK(log.find("lies past the end of its magnetisation curve") != std::string::npos);
+    CHECK(log.find("beyond the end of the magnetisation curve") != std::string::npos);
     CHECK(log.find("ABT #") == std::string::npos);
     // Not asserted: with every ranked coil rejected, the advise searches again beyond the wire limits; that search
     // winds too few coils to rank, so they are not loss-evaluated and are returned as wound, saturating or not.

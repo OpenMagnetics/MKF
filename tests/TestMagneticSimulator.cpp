@@ -1068,7 +1068,7 @@ namespace {
             CHECK(finding.operatingPointIndex == 0);
             if (finding.code == ResultFindingCode::CORE_ABOVE_MATERIAL_DATA_LIMIT) {
                 ++dataLimitFindings;
-                CHECK_THAT(finding.message, Catch::Matchers::ContainsSubstring("last tabulated permeability"));
+                CHECK_THAT(finding.message, Catch::Matchers::ContainsSubstring("last measured permeability"));
                 CHECK_THAT(finding.message, Catch::Matchers::ContainsSubstring("the core's real temperature is higher"));
             }
         }
@@ -1115,7 +1115,7 @@ namespace {
             INFO(to_string(finding.code) << ": " << finding.message);
             if (finding.code == ResultFindingCode::CORE_ABOVE_MATERIAL_DATA_LIMIT) {
                 ++dataLimitFindings;
-                CHECK_THAT(finding.message, Catch::Matchers::ContainsSubstring("paramagnetic"));
+                CHECK_THAT(finding.message, Catch::Matchers::ContainsSubstring("no longer magnetic"));
             }
         }
         CHECK(dataLimitFindings == 1);
@@ -1277,7 +1277,7 @@ namespace {
             if (finding.code == ResultFindingCode::CORE_ABOVE_MATERIAL_DATA_LIMIT) {
                 ++dataLimitFindings;
                 CHECK(finding.operatingPointIndex == 0);
-                CHECK_THAT(finding.message, Catch::Matchers::ContainsSubstring("Steinmetz temperature factor ct(T)"));
+                CHECK_THAT(finding.message, Catch::Matchers::ContainsSubstring("core-loss data at this frequency is valid for"));
             }
         }
         CHECK(dataLimitFindings == 1);
@@ -2482,7 +2482,7 @@ TEST_CASE("analyze_results reports the turn overlaps not evaluable when neither 
     INFO("findings:" << allFindings);
     REQUIRE(notEvaluable.size() == 1);
     CHECK_FALSE(notEvaluable[0].operatingPointIndex);
-    CHECK_THAT(notEvaluable[0].message, Catch::Matchers::ContainsSubstring("not evaluable") &&
+    CHECK_THAT(notEvaluable[0].message, Catch::Matchers::ContainsSubstring("cannot be checked") &&
                                         Catch::Matchers::ContainsSubstring("Primary parallel 0 turn 0") &&
                                         Catch::Matchers::ContainsSubstring("no outer diameter") &&
                                         !Catch::Matchers::ContainsSubstring("ABT"));
@@ -2539,7 +2539,7 @@ TEST_CASE("A DC bias that collapses the permeability to mu_r = 1 is a saturation
         CHECK_FALSE(verdict.fluxDensityAboveSaturation);
         REQUIRE(verdict.biasedPermeability);
         CHECK(verdict.biasedPermeability.value() <= 1);
-        CHECK_THAT(verdict.message, Catch::Matchers::ContainsSubstring("permeability model"));
+        CHECK_THAT(verdict.message, Catch::Matchers::ContainsSubstring("its permeability collapses"));
         // The model's own answer there is the air core.
         double airCoreInductance = 144 / ReluctanceModel::factory()->get_core_reluctance(core, 1.0).get_core_reluctance();
         auto output = model.calculate_inductance_from_number_turns_and_gapping(core, coil, &operatingPoint);
@@ -2563,7 +2563,7 @@ TEST_CASE("A DC bias that collapses the permeability to mu_r = 1 is a saturation
                 REQUIRE(findings.size() == 1);
                 CHECK(findings[0].code == ResultFindingCode::CORE_SATURATES);
                 CHECK(findings[0].operatingPointIndex == 3);
-                CHECK_THAT(findings[0].message, Catch::Matchers::ContainsSubstring("mu_r = 1"));
+                CHECK_THAT(findings[0].message, Catch::Matchers::ContainsSubstring("its permeability collapses"));
             }
             else {
                 CHECK(findings.empty());
@@ -2692,11 +2692,12 @@ TEST_CASE("The web's default design simulates with its losses at ambient and a N
     }
     REQUIRE(noThermal.size() == 1);
     CHECK(noThermal[0].operatingPointIndex == 0);
-    CHECK_THAT(noThermal[0].message, Catch::Matchers::ContainsSubstring("No thermal operating point") &&
-                                     Catch::Matchers::ContainsSubstring("Thermal network did not converge") &&
-                                     Catch::Matchers::ContainsSubstring("History:") &&
-                                     Catch::Matchers::ContainsSubstring("Pcu=") &&
-                                     Catch::Matchers::ContainsSubstring("evaluated at the ambient temperature"));
+    CHECK_THAT(noThermal[0].message, Catch::Matchers::ContainsSubstring("No steady temperature") &&
+                                     Catch::Matchers::ContainsSubstring("the thermal model does not settle") &&
+                                     Catch::Matchers::ContainsSubstring("at the ambient temperature"));
+    REQUIRE(noThermal[0].details);
+    CHECK_THAT(noThermal[0].details.value(), Catch::Matchers::ContainsSubstring("History:") &&
+                                             Catch::Matchers::ContainsSubstring("Pcu="));
     json findingsJson;
     to_json(findingsJson, findings);
     bool codeInJson = false;
@@ -2723,8 +2724,8 @@ TEST_CASE("analyze_results reads why a point has no thermal operating point from
     INFO("methodUsed: " << coreLosses.get_method_used());
     auto reason = MagneticSimulator::get_no_thermal_operating_point_reason(coreLosses);
     REQUIRE(reason);
-    CHECK_THAT(reason.value(), Catch::Matchers::StartsWith("No thermal operating point") &&
-                               Catch::Matchers::ContainsSubstring("Thermal network did not converge"));
+    CHECK_THAT(reason.value(), Catch::Matchers::StartsWith("No steady temperature") &&
+                               Catch::Matchers::ContainsSubstring("the thermal model does not settle"));
     // The loss model's own name comes first.
     const size_t note = coreLosses.get_method_used().find(MagneticSimulator::kLossesAtAmbientMethodNote);
     REQUIRE(note != std::string::npos);
@@ -2743,7 +2744,7 @@ TEST_CASE("analyze_results reads why a point has no thermal operating point from
         if (finding.code == ResultFindingCode::NO_THERMAL_OPERATING_POINT) {
             ++noThermal;
             CHECK_THAT(finding.message, Catch::Matchers::ContainsSubstring(recorded) &&
-                                        !Catch::Matchers::ContainsSubstring("Thermal network did not converge"));
+                                        !Catch::Matchers::ContainsSubstring("the thermal model does not settle"));
         }
     }
     CHECK(noThermal == 1);
@@ -2836,7 +2837,7 @@ TEST_CASE("A malformed operating point still refuses the whole design next to on
     }
     catch (const OpenMagnetics::OpenMagneticsException& error) {
         INFO(error.what());
-        CHECK_THAT(std::string(error.what()), !Catch::Matchers::ContainsSubstring("Thermal network did not converge"));
+        CHECK_THAT(std::string(error.what()), !Catch::Matchers::ContainsSubstring("the thermal model does not settle"));
         CHECK_THAT(std::string(error.what()), Catch::Matchers::ContainsSubstring("urrent"));
     }
     settings.reset();
@@ -3213,10 +3214,11 @@ TEST_CASE("A loss-temperature loop that does not settle is that point's NO_THERM
         }
         REQUIRE(noThermal.size() == 1);
         CHECK(noThermal[0].operatingPointIndex == 0);
-        CHECK_THAT(noThermal[0].message, Catch::Matchers::ContainsSubstring("No thermal operating point") &&
+        CHECK_THAT(noThermal[0].message, Catch::Matchers::ContainsSubstring("No steady temperature") &&
                                          Catch::Matchers::ContainsSubstring("did not settle within") &&
-                                         Catch::Matchers::ContainsSubstring("History:") &&
-                                         Catch::Matchers::ContainsSubstring("evaluated at the ambient temperature"));
+                                         Catch::Matchers::ContainsSubstring("at the ambient temperature"));
+        REQUIRE(noThermal[0].details);
+        CHECK_THAT(noThermal[0].details.value(), Catch::Matchers::ContainsSubstring("History:"));
     }
     settings.reset();
 }
@@ -3466,7 +3468,7 @@ TEST_CASE("Loss loop whose heated core cannot carry the voltage's flux on its cu
         DYNAMIC_SECTION("ambient " << ambientTemperature << " C") {
             OperatingPoint operatingPoint = allInputs.get_operating_points()[1];
             operatingPoint.get_mutable_conditions().set_ambient_temperature(ambientTemperature);
-            const std::string refusal = ambientTemperature < 100 ? "lies past the end of its magnetisation curve" : "integrates to only";
+            const std::string refusal = ambientTemperature < 100 ? "beyond the end of the magnetisation curve" : "reaches only";
             {
                 OperatingPoint thrown = operatingPoint;
                 std::optional<WindingLossesOutput> windingLossesOutput;
@@ -3474,7 +3476,7 @@ TEST_CASE("Loss loop whose heated core cannot carry the voltage's flux on its cu
                 CHECK_THROWS_MATCHES(MagneticSimulator().calculate_core_losses(thrown, magnetic, &windingLossesOutput, &temperatureOutput,
                                                                                WindingLossesScope::OHMIC, NoThermalOperatingPointPolicy::THROW),
                                      NoThermalOperatingPointException,
-                                     Catch::Matchers::MessageMatches(Catch::Matchers::ContainsSubstring("No thermal operating point: at a core temperature of") &&
+                                     Catch::Matchers::MessageMatches(Catch::Matchers::ContainsSubstring("No steady temperature: heated by its own losses to") &&
                                                                      Catch::Matchers::ContainsSubstring(refusal)));
             }
             OpenMagnetics::Inputs inputs = allInputs;
@@ -3544,7 +3546,8 @@ TEST_CASE("Analyze_results states a winding above its coating's thermal class in
     INFO("findings:" << all);
     REQUIRE(!windingFindings.empty());
     CHECK_THAT(windingFindings[0].message, Catch::Matchers::EndsWith(
-        ": the hottest point, 2474 C, is above the 155 C thermal class of the coating material (Polyurethane 155) of winding 0 ('Primary')."));
+        ": the hottest point, 2474 C, is above the 155 C thermal class of the coating material (Polyurethane 155) of winding 'Primary'. "
+        "Lower the losses, improve the cooling, or use a wire rated for a higher temperature."));
 }
 
 namespace {
@@ -3576,8 +3579,8 @@ namespace {
     }
     // The two ambients of the guards below and the refusal each meets at it.
     const std::vector<std::pair<double, std::string>> pastCurveAtAmbientCases = {
-        {160.0, "lies past the end of its magnetisation curve"},
-        {190.0, "integrates to only"}};
+        {160.0, "beyond the end of the magnetisation curve"},
+        {190.0, "reaches only"}};
 }
 
 TEST_CASE("A point whose flux density lies past the end of the magnetisation curve at ambient is that point's CORE_SATURATES",
@@ -3644,7 +3647,7 @@ TEST_CASE("A point whose flux density lies past the end of the magnetisation cur
                 if (finding.code == ResultFindingCode::CORE_SATURATES && finding.operatingPointIndex && finding.operatingPointIndex.value() == 1) {
                     ++coreSaturates;
                     CHECK_THAT(finding.message, Catch::Matchers::ContainsSubstring(refusal) &&
-                                                Catch::Matchers::ContainsSubstring("are not computed for this operating point"));
+                                                Catch::Matchers::ContainsSubstring("are not calculated for this operating point"));
                 }
             }
             CHECK(coreSaturates == 1);

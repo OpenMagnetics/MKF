@@ -920,7 +920,7 @@ TEST_CASE("MagneticAdviser rejects a wound candidate with no thermal operating p
         INFO(reference << ": " << reason);
         if (reason.find("no thermal operating point") != std::string::npos) {
             noThermalOperatingPointRecorded = true;
-            CHECK_THAT(reason, Catch::Matchers::ContainsSubstring("No thermal operating point"));
+            CHECK_THAT(reason, Catch::Matchers::ContainsSubstring("No steady temperature"));
         }
     }
     CHECK(noThermalOperatingPointRecorded);

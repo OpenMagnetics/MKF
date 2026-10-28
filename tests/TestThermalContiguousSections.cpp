@@ -537,7 +537,7 @@ TEST_CASE("ThermalNetwork ABT 1540: a core driven past its Curie temperature is 
             ++dataLimitFindings;
             CHECK(finding.operatingPointIndex == 0);
             CHECK_THAT(finding.message, Catch::Matchers::ContainsSubstring("Curie temperature") &&
-                                        Catch::Matchers::ContainsSubstring("mu_r = 1") &&
+                                        Catch::Matchers::ContainsSubstring("no longer magnetic") &&
                                         Catch::Matchers::ContainsSubstring("real temperature is higher"));
         }
     }

@@ -361,7 +361,7 @@ TEST_CASE("Real winding: a closely wound round-wire layer's tangent lead is not 
             CHECK(finding.code == OpenMagnetics::ResultFindingCode::LEAD_COLLIDES_WITH_TURNS);
             CHECK_FALSE(finding.operatingPointIndex);
             CHECK(finding.message.find("winding '" + windingName + "'") != std::string::npos);
-            CHECK(finding.message.find("drawn across turn '") != std::string::npos);
+            CHECK(finding.message.find("drawn across turn ") != std::string::npos);
             CHECK(finding.message.find("overlaps by") != std::string::npos);
             CHECK(finding.message.find("ABT") == std::string::npos);
             entranceReported |= finding.message.find("entrance lead of '" + turns[0].get_name() + "'") != std::string::npos;
@@ -429,12 +429,12 @@ void check_reported(const UnmodelledLeads& leads, const std::string& conditionTe
         CHECK(route.tangentDeparture->length > 0);
         CHECK(route.plannedBendRadius > route.tangentDeparture->connectionFaceHalfStraight);
         const auto finding = std::find_if(leads.findings.begin(), leads.findings.end(), [&](const OpenMagnetics::ResultFinding& candidate) {
-            return candidate.message.find(leadName) != std::string::npos && candidate.message.find("winding '" + route.winding + "'") != std::string::npos;
+            return candidate.message.find(leadName) != std::string::npos && candidate.message.find("Winding '" + route.winding + "'") != std::string::npos;
         });
         REQUIRE(finding != leads.findings.end());
         CHECK_FALSE(finding->operatingPointIndex);
         CHECK(finding->message.find(conditionText) != std::string::npos);
-        CHECK(finding->message.find("The coil is drawn as routed.") != std::string::npos);
+        CHECK(finding->message.find("The coil is drawn as routed; check that lead on the real part.") != std::string::npos);
         CHECK(finding->message.find("ABT") == std::string::npos);
     }
 }

@@ -379,5 +379,11 @@ std::vector<MAS::CoreGap> extract_core_gapping(OpenMagnetics::Core ungappedCore,
 Inputs get_defaults_inputs(OpenMagnetics::Magnetic magnetic);
 
 
+// A turn of the coil named as the web shows the coil, for messages a person reads: "turn 3 of winding
+// 'Primary'", or "turn 3 of parallel 2 of winding 'Primary'" when the winding has parallels (both counted
+// from 1, in the order of turnsDescription). Throws when the coil has no such turn.
+std::string describe_turn_for_people(const Coil& coil, size_t turnIndex);
+std::string describe_turn_for_people(const Coil& coil, const std::string& turnName);
+
 } // namespace OpenMagnetics
 

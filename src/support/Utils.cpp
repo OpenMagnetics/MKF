@@ -27,6 +27,7 @@
 #include <magic_enum.hpp>
 #include <rapidfuzz/fuzz.hpp>
 #include "support/Exceptions.h"
+#include "support/NumberFormat.h"
 
 CMRC_DECLARE(data);
 
@@ -1335,7 +1336,7 @@ Wire find_wire_by_name(std::string name) {
         return wireDatabase[name];
     }
     else {
-        throw WireNotFoundException("wire not found: " + name);
+        throw WireNotFoundException(name);
     }
 }
 
@@ -1422,8 +1423,9 @@ Wire find_wire_by_dimension(double dimension, std::optional<WireType> wireType, 
     }
 
     if (!found) {
-        throw WireNotFoundException("no catalogue wire matches dimension " + std::to_string(dimension) +
-                                    " under the requested type, standard and coating filters");
+        throw WireNotFoundException(WireNotFoundException::Reason{}, "No catalogue wire has a dimension of " +
+                                    format_quantity(dimension, "m") + " with the requested type, standard and coating. "
+                                    "Choose another size, or relax the type, standard or coating");
     }
 
     double minimumOuterDimension = DBL_MAX;
@@ -4206,6 +4208,49 @@ Inputs get_defaults_inputs(OpenMagnetics::Magnetic magnetic) {
     inputs.set_design_requirements(designRequirements);
     inputs.set_operating_points({operatingPoint});
     return inputs;
+}
+
+std::string describe_turn_for_people(const Coil& coil, size_t turnIndex) {
+    if (!coil.get_turns_description()) {
+        throw CoilNotProcessedException("the coil has no turns to name turn " + std::to_string(turnIndex + 1) + " by");
+    }
+    const auto turns = coil.get_turns_description().value();   // bound: never index a temporary
+    if (turnIndex >= turns.size()) {
+        throw InvalidInputException(ErrorCode::INVALID_INPUT, "The coil has " + std::to_string(turns.size()) +
+                                    " turns, so it has no turn " + std::to_string(turnIndex + 1));
+    }
+    const auto& turn = turns[turnIndex];
+    size_t position = 0;
+    for (size_t index = 0; index <= turnIndex; ++index) {
+        if (turns[index].get_winding() == turn.get_winding() && turns[index].get_parallel() == turn.get_parallel()) {
+            ++position;
+        }
+    }
+    std::string description = "turn " + std::to_string(position);
+    const auto& windings = coil.get_functional_description();
+    auto winding = std::find_if(windings.begin(), windings.end(),
+                                [&](const auto& candidate) { return candidate.get_name() == turn.get_winding(); });
+    if (winding == windings.end()) {
+        throw InvalidInputException(ErrorCode::INVALID_INPUT, "Turn " + std::to_string(turnIndex + 1) + " of the coil belongs to winding '" +
+                                    turn.get_winding() + "', which the coil does not have");
+    }
+    if (winding->get_number_parallels() > 1) {
+        description += " of parallel " + std::to_string(turn.get_parallel() + 1);
+    }
+    return description + " of winding '" + turn.get_winding() + "'";
+}
+
+std::string describe_turn_for_people(const Coil& coil, const std::string& turnName) {
+    if (!coil.get_turns_description()) {
+        throw CoilNotProcessedException("the coil has no turns to name turn '" + turnName + "' by");
+    }
+    const auto turns = coil.get_turns_description().value();
+    for (size_t index = 0; index < turns.size(); ++index) {
+        if (turns[index].get_name() == turnName) {
+            return describe_turn_for_people(coil, index);
+        }
+    }
+    throw InvalidInputException(ErrorCode::INVALID_INPUT, "The coil has no turn named '" + turnName + "'");
 }
 
 } // namespace OpenMagnetics

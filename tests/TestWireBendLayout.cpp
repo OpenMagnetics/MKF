@@ -677,8 +677,8 @@ TEST_CASE("Real winding lays out a design whose ideal wind does not fit, and rep
         }
         ++outsideReported;
         using Catch::Matchers::ContainsSubstring;
-        CHECK_THAT(finding.message, ContainsSubstring(std::to_string(outside.size()) + " turn stations outside its winding window") &&
-                                        ContainsSubstring("the worst, '" + farthest + "'") &&
+        CHECK_THAT(finding.message, ContainsSubstring(std::to_string(outside.size()) + " turns outside its winding window") &&
+                                        ContainsSubstring("the worst, " + OpenMagnetics::describe_turn_for_people(coil, farthest)) &&
                                         ContainsSubstring("radially outward"));
         CHECK(finding.message.find("ABT") == std::string::npos);
     }
@@ -859,9 +859,9 @@ TEST_CASE("Turn stations laid over each other are reported as overlapping",
         }
         ++reported;
         using Catch::Matchers::ContainsSubstring;
-        CHECK_THAT(finding.message, ContainsSubstring("2 turn stations of the coil overlap one another, in 1 place") &&
-                                        ContainsSubstring("'" + turns[0].get_name() + "'") &&
-                                        ContainsSubstring("'" + turns[1].get_name() + "'"));
+        CHECK_THAT(finding.message, ContainsSubstring("2 turns of the coil overlap one another, in 1 place") &&
+                                        ContainsSubstring(OpenMagnetics::describe_turn_for_people(coil, turns[0].get_name())) &&
+                                        ContainsSubstring(OpenMagnetics::describe_turn_for_people(coil, turns[1].get_name())));
         CHECK(finding.message.find("ABT") == std::string::npos);
     }
     CHECK(reported == 1);

@@ -694,6 +694,14 @@ private:
      */
     double faceToSurfaceResistance(size_t nodeIdx, ThermalNodeFace face, double gap, double shareOfFace) const;
 
+    // The part a node stands for, named as the user sees the coil: "turn 3 of winding 'Primary'",
+    // "the insulation between windings 'Primary' and 'Secondary'". For messages a person reads.
+    std::string describeNodeForPeople(size_t nodeIdx) const;
+    // The surface a winding face bears on, for the same messages.
+    static std::string describeEnclosureSurface(ThermalNodeFace face, bool hasBobbin);
+    // Why the network refuses a coil part that reaches `overlap` metres into `surface`, and what to do.
+    std::string doesNotFitMessage(size_t nodeIdx, const std::string& surface, double overlap) const;
+
     /**
      * @brief ABT #1462: resistance (K/W) from a PCB-planar turn's face to a bobbin wall node: the
      * turn's film and the air across the real surface-to-surface gap (faceToSurfaceResistance), plus

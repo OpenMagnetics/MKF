@@ -2175,8 +2175,8 @@ std::optional<std::string> Inputs::describe_volt_second_imbalance(const VoltSeco
             " drifts the flux linkage by " + format_quantity(balance.netVoltSeconds, "V*s") + " every " +
             format_quantity(balance.period, "s") + " period, " + format_significant(balance.imbalance, 2) +
             " times its AC swing of " + format_quantity(balance.acSwing, "V*s") + " (the limit is " +
-            format_significant(maximumVoltSecondImbalance, 2) + "). A magnetizing current integrated from it would "
-            "describe the drift: give a balanced steady-state voltage, or the magnetizing current itself";
+            format_significant(maximumVoltSecondImbalance, 2) + "). In steady state a winding's voltage averages to zero over "
+            "a period: give a balanced steady-state voltage, or the magnetizing current itself";
     }
     return std::nullopt;
 }

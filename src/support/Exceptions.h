@@ -205,15 +205,17 @@ public:
 class CoreMaterialNotFoundException : public CoreException {
 public:
     explicit CoreMaterialNotFoundException(const std::string& materialName)
-        : CoreException(ErrorCode::CORE_MATERIAL_NOT_FOUND, 
-                       "Core material not found: " + materialName, materialName) {}
+        : CoreException(ErrorCode::CORE_MATERIAL_NOT_FOUND,
+                       "Core material '" + materialName + "' is not in the library. Choose a material from the catalogue, "
+                       "or load the file that defines it") {}
 };
 
 class CoreShapeNotFoundException : public CoreException {
 public:
     explicit CoreShapeNotFoundException(const std::string& shapeName)
-        : CoreException(ErrorCode::CORE_SHAPE_NOT_FOUND, 
-                       "Core shape not found: " + shapeName, shapeName) {}
+        : CoreException(ErrorCode::CORE_SHAPE_NOT_FOUND,
+                       "Core shape '" + shapeName + "' is not in the library. Choose a shape from the catalogue, or "
+                       "load the file that defines it") {}
 };
 
 class InvalidGappingException : public CoreException {
@@ -234,16 +236,25 @@ public:
 
 class CoilNotProcessedException : public CoilException {
 public:
-    explicit CoilNotProcessedException(const std::string& context = "")
-        : CoilException(ErrorCode::COIL_NOT_PROCESSED, 
-                       "Coil has not been processed.", context) {}
+    // The reason (what is missing, and where) is part of the message: "The coil is not wound completely: <reason>.
+    // Wind the coil again." The tag [COIL_NOT_PROCESSED] stays.
+    explicit CoilNotProcessedException(const std::string& reason = "")
+        : CoilException(ErrorCode::COIL_NOT_PROCESSED,
+                       "The coil is not wound completely" + (reason.empty() ? std::string() : ": " + reason) +
+                       (!reason.empty() && reason.back() == '.' ? "" : ".") + " Wind the coil again.") {}
 };
 
 class WireNotFoundException : public CoilException {
 public:
+    // The message says which wire is missing and what to do: "Wire 'X' is not in the library. ..." for a
+    // name; callers with another reason pass it whole (fromReason).
     explicit WireNotFoundException(const std::string& wireName)
         : CoilException(ErrorCode::COIL_WIRE_NOT_FOUND,
-                       "Wire not found: " + wireName, wireName) {}
+                       "Wire '" + wireName + "' is not in the library. Choose a wire from the catalogue, or load the "
+                       "file that defines it") {}
+    struct Reason {};
+    WireNotFoundException(Reason, const std::string& message)
+        : CoilException(ErrorCode::COIL_WIRE_NOT_FOUND, message) {}
 };
 
 // ABT #406: two conductors whose COPPER surfaces touch are shorted turns — an electrical fault in

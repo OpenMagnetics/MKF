@@ -98,6 +98,8 @@ struct ResultFinding {
     std::optional<std::string> operatingPointName;
     ResultFindingCode code;
     std::string message;
+    // The numbers behind the message, for whoever has to look into it (a solver's iterates); none for most findings.
+    std::optional<std::string> details;
 };
 
 void to_json(nlohmann::json& j, const ResultFinding& finding);

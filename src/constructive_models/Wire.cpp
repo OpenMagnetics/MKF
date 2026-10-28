@@ -147,7 +147,7 @@ namespace OpenMagnetics {
             // ABT #114/A2: a silent copper default gives wrong resistivity (=> wrong
             // ohmic/skin losses) for any wire that is really aluminium/etc. but simply
             // omits its material tag. Fail loudly instead of substituting copper.
-            throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA, "Wire is missing material information");
+            throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA, "The wire" + (get_name() ? " '" + get_name().value() + "'" : std::string()) + " has no conductor material (such as copper or aluminium), so its resistance cannot be calculated. Choose its material, or pick the wire from the catalogue");
         }
 
         auto material = get_material().value();
@@ -194,7 +194,7 @@ namespace OpenMagnetics {
         }
         if (!wire.get_material()) {
             // ABT #114/A2: no silent copper default (see resolve_material()).
-            throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA, "Wire is missing material information");
+            throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA, "The wire" + (wire.get_name() ? " '" + wire.get_name().value() + "'" : std::string()) + " has no conductor material (such as copper or aluminium), so its resistance cannot be calculated. Choose its material, or pick the wire from the catalogue");
         }
 
         auto material = wire.get_material().value();
@@ -213,7 +213,7 @@ namespace OpenMagnetics {
     WireMaterial Wire::resolve_material(WireRound wire) {
         if (!wire.get_material()) {
             // ABT #114/A2: no silent copper default (see resolve_material()).
-            throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA, "Wire is missing material information");
+            throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA, "The wire" + (wire.get_name() ? " '" + wire.get_name().value() + "'" : std::string()) + " has no conductor material (such as copper or aluminium), so its resistance cannot be calculated. Choose its material, or pick the wire from the catalogue");
         }
 
         auto material = wire.get_material().value();

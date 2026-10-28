@@ -51,6 +51,9 @@ void to_json(nlohmann::json& j, const ResultFinding& finding) {
     }
     j["code"] = to_string(finding.code);
     j["message"] = finding.message;
+    if (finding.details) {
+        j["details"] = finding.details.value();
+    }
 }
 
 void to_json(nlohmann::json& j, const std::vector<ResultFinding>& findings) {
@@ -185,28 +188,28 @@ SaturationVerdict ResultsAnalyzer::check_saturation(const CoreMaterial& coreMate
         }
         if (verdict.permeabilityCollapsed) {
             std::ostringstream clause;
-            clause << "its DC bias of " << format_quantity(dcBiasPoint->magneticFieldDcBias, "A/m")
-                   << " drives the permeability model of " << coreMaterial.get_name() << " to mu_r = " << format_number(verdict.biasedPermeability.value())
-                   << " (unbiased " << format_number(unbiasedPermeability.value()) << ") at " << format_number(dcBiasPoint->temperature)
-                   << " C and " << format_quantity(dcBiasPoint->frequency, "Hz") << ", past its knee, where the model takes mu_r = 1";
+            clause << "its DC bias of " << format_quantity(dcBiasPoint->magneticFieldDcBias, "A/m") << " (at "
+                   << format_number(dcBiasPoint->temperature) << " C and " << format_quantity(dcBiasPoint->frequency, "Hz")
+                   << ") drives " << coreMaterial.get_name() << " past its knee, where its permeability collapses (from "
+                   << format_number(unbiasedPermeability.value()) << " without bias to " << format_number(verdict.biasedPermeability.value())
+                   << ") and the core is taken as fully saturated";
             clauses.push_back(clause.str());
         }
         if (verdict.fieldStrengthAboveSaturation) {
             std::ostringstream clause;
-            clause << "its peak field strength on the magnetisation curve of " << coreMaterial.get_name() << ", H = "
-                   << format_quantity(verdict.peakFieldStrength.value(), "A/m");
+            clause << "its peak field strength, H = " << format_quantity(verdict.peakFieldStrength.value(), "A/m");
             if (margin != 1) {
                 clause << " (" << format_quantity(verdict.peakFieldStrength.value() * margin, "A/m") << " with the " << format_number(margin) << " margin)";
             }
-            clause << ", is above its H_sat = " << format_quantity(verdict.saturationFieldStrength.value(), "A/m") << " at "
-                   << format_number(temperature) << " C, past its knee";
+            clause << ", is above H_sat = " << format_quantity(verdict.saturationFieldStrength.value(), "A/m") << " of "
+                   << coreMaterial.get_name() << " at " << format_number(temperature) << " C";
             clauses.push_back(clause.str());
         }
         if (verdict.noDcOperatingPoint) {
             std::ostringstream clause;
-            clause << "under its DC bias at " << format_number(dcBiasPoint->temperature) << " C and " << format_quantity(dcBiasPoint->frequency, "Hz")
-                   << " " << coreMaterial.get_name() << " has no operating point: the bias drives its permeability across the end of its"
-                   << " DC-bias data, where it is taken as saturated (mu_r = 1), and no permeability reproduces the bias it implies";
+            clause << "under its DC bias (at " << format_number(dcBiasPoint->temperature) << " C and " << format_quantity(dcBiasPoint->frequency, "Hz")
+                   << ") " << coreMaterial.get_name() << " has no stable operating point: the bias drives it past the end of its"
+                   << " DC-bias data, into full saturation";
             clauses.push_back(clause.str());
         }
         message << "The core saturates: ";
@@ -221,17 +224,17 @@ SaturationVerdict ResultsAnalyzer::check_saturation(const CoreMaterial& coreMate
             message << " B peak = " << format_number(peakFluxDensity) << " T is still below B_sat = " << format_number(verdict.saturationFluxDensity)
                     << " T at " << format_number(temperature) << " C";
             if (verdict.fieldStrengthAboveSaturation) {
-                message << ": past the knee the curve's B rises only on the vacuum slope.";
+                message << " because, past the knee, the flux density rises only as slowly as in air.";
             }
             else if (verdict.permeabilityCollapsed) {
-                message << ": the material's B_sat, magnetisation curve and permeability model disagree.";
+                message << ": the saturation data and the permeability data of the material disagree here.";
             }
             else {
-                message << ": the DC bias, not the flux density, saturates it.";
+                message << ": the DC bias, not the flux density, saturates the core.";
             }
         }
-        message << " The numbers for this operating point are those of the saturated core; it needs more turns, a larger gap or core,"
-                << " or fewer volt-seconds";
+        message << " The results of this operating point are those of a saturated core. Add turns, add or widen the gap, choose a"
+                << " larger core, or lower the volt-seconds";
     }
     else {
         message << "B peak = " << format_number(peakFluxDensity) << " T" << marginNote << " is within B_sat = "
@@ -312,8 +315,10 @@ std::vector<ResultFinding> ResultsAnalyzer::analyze_volt_second_balance(const Op
         double frequency = excitation.get_frequency();
         auto voltage = Inputs::standardize_waveform(excitation.get_voltage().value(), frequency);
         auto sampledVoltage = Inputs::calculate_sampled_waveform(voltage.get_waveform().value(), frequency);
-        std::string context = "At " + describe_operating_point(operatingPoint, operatingPointIndex) + ", winding " +
-                              std::to_string(windingIndex) + " ('" + excitation.get_name().value_or("unnamed") + "')";
+        // The winding as the web names it; an excitation without a name is the winding's place, counted from 1.
+        std::string context = "At " + describe_operating_point(operatingPoint, operatingPointIndex) + ", " +
+                              (excitation.get_name() ? "winding '" + excitation.get_name().value() + "'"
+                                                     : "winding " + std::to_string(windingIndex + 1));
         // ABT #2112: a voltage that is volt-second balanced as given stays balanced. The I*R drop is not
         // taken out of it: an ideal V = 0 at a DC current, or a common-mode choke's balanced common-mode
         // voltage with the line current through each winding, would get a mean of -R*mean(i) it does not have.
@@ -322,14 +327,12 @@ std::vector<ResultFinding> ResultsAnalyzer::analyze_volt_second_balance(const Op
         if (!asGivenImbalance) {
             continue;
         }
-        const std::string integrationNote = ". Where MKF derives a magnetizing current from this voltage, it integrates "
-                                            "only its balanced part (the mean removed), so the numbers given describe that part";
         // ABT #2002: a winding's terminal voltage is R_dc i(t) + N dPhi/dt, so the winding's own resistive drop
         // can explain a mean that is not flux drift. Without a resistance (no wound coil) or a current, the
         // voltage is judged as given.
         if (!windingDcResistances || windingIndex >= windingDcResistances->size() || !excitation.get_current()) {
             findings.push_back(make_finding(operatingPoint, operatingPointIndex, ResultFindingCode::VOLT_SECOND_IMBALANCE,
-                                            asGivenImbalance.value() + integrationNote));
+                                            asGivenImbalance.value()));
             continue;
         }
         double dcResistance = windingDcResistances->at(windingIndex);
@@ -353,8 +356,8 @@ std::vector<ResultFinding> ResultsAnalyzer::analyze_volt_second_balance(const Op
         if (std::fabs(withoutDrop.meanVoltage) >= std::fabs(asGiven.meanVoltage)) {
             // The drop does not explain the imbalance (taking it out leaves the mean no smaller): judged as given.
             findings.push_back(make_finding(operatingPoint, operatingPointIndex, ResultFindingCode::VOLT_SECOND_IMBALANCE,
-                asGivenImbalance.value() + integrationNote + ". It is judged as given: the winding's " + drop +
-                " does not explain it, since taking that drop out leaves a mean of " + format_quantity(withoutDrop.meanVoltage, "V")));
+                asGivenImbalance.value() + ". The winding's " + drop + " does not explain it: without that drop "
+                "the mean is still " + format_quantity(withoutDrop.meanVoltage, "V")));
             continue;
         }
         auto withoutDropImbalance = Inputs::describe_volt_second_imbalance(withoutDrop, context);
@@ -363,7 +366,7 @@ std::vector<ResultFinding> ResultsAnalyzer::analyze_volt_second_balance(const Op
             continue;
         }
         findings.push_back(make_finding(operatingPoint, operatingPointIndex, ResultFindingCode::VOLT_SECOND_IMBALANCE,
-            withoutDropImbalance.value() + integrationNote + ". The winding's " + drop +
+            withoutDropImbalance.value() + ". The winding's " + drop +
             " was taken out of the voltage before this check"));
     }
     return findings;
@@ -408,24 +411,23 @@ std::vector<ResultFinding> ResultsAnalyzer::analyze_temperature(const Magnetic& 
         switch (dataCeiling->source) {
             case CoreDataCeilingSource::CURIE_TEMPERATURE:
                 limit = "the Curie temperature of " + coreMaterial.get_name();
-                magnetized = "as a paramagnetic core (mu_r = 1)";
+                magnetized = ", with the core no longer magnetic";
                 break;
             case CoreDataCeilingSource::PERMEABILITY_TABLE_END:
                 limit = "the last temperature of " + coreMaterial.get_name() + "'s measured permeability data";
-                magnetized = "with its last tabulated permeability";
+                magnetized = ", with its last measured permeability";
                 break;
             case CoreDataCeilingSource::STEINMETZ_TEMPERATURE_FACTOR_END:
-                limit = "the temperature where the Steinmetz temperature factor ct(T) of " + coreMaterial.get_name() +
-                        "'s loss data at this frequency reaches zero";
-                magnetized = "with its own permeability at that temperature";
+                limit = "the highest temperature " + coreMaterial.get_name() + "'s core-loss data at this frequency is valid for";
+                magnetized = "";
                 break;
         }
         findings.push_back(make_finding(operatingPoint, operatingPointIndex, ResultFindingCode::CORE_ABOVE_MATERIAL_DATA_LIMIT,
-            "At " + where + ": the losses drive the core above " + limit + " (" + format_number(ceiling) +
-            " C), where its material data ends. MKF evaluated its core losses at " + format_number(coreTemperature) +
-            " C, the last temperature the data covers, with the core magnetized " + magnetized + "; the temperatures given "
-            "for this operating point (hottest point " + format_number(hottestTemperature) + " C) follow from those losses, "
-            "and the core's real temperature is higher"));
+            "At " + where + ": the losses heat the core above " + limit + " (" + format_number(ceiling) +
+            " C), where its material data ends. Its core losses were calculated at " + format_number(coreTemperature) +
+            " C, the last temperature the data covers" + magnetized + ", so the temperatures shown for this operating point "
+            "(hottest point " + format_number(hottestTemperature) + " C) are too low: the core's real temperature is higher. "
+            "Lower the losses or improve the cooling"));
     }
     std::vector<StatedTemperatureLimit> coreLimits;
     if (coreMaterial.get_curie_temperature()) {
@@ -452,7 +454,7 @@ std::vector<ResultFinding> ResultsAnalyzer::analyze_temperature(const Magnetic& 
             for (size_t index = 0; index < exceeded.size(); ++index) {
                 message += (index > 0 ? " and " : "") + exceeded[index];
             }
-            message += " of its material " + coreMaterial.get_name();
+            message += " of its material " + coreMaterial.get_name() + ". Lower the core losses or improve the cooling";
             findings.push_back(make_finding(operatingPoint, operatingPointIndex, ResultFindingCode::CORE_TEMPERATURE_ABOVE_LIMIT, message));
         }
     }
@@ -461,7 +463,7 @@ std::vector<ResultFinding> ResultsAnalyzer::analyze_temperature(const Magnetic& 
     const auto& windings = magnetic.get_coil().get_functional_description();
     for (size_t windingIndex = 0; windingIndex < windings.size(); ++windingIndex) {
         auto wire = Coil::resolve_wire(windings[windingIndex]);
-        std::string windingLabel = "winding " + std::to_string(windingIndex) + " ('" + windings[windingIndex].get_name() + "')";
+        std::string windingLabel = "winding '" + windings[windingIndex].get_name() + "'";
         std::vector<StatedTemperatureLimit> windingLimits;
         auto coating = Wire::resolve_coating(wire);
         if (coating) {
@@ -497,7 +499,7 @@ std::vector<ResultFinding> ResultsAnalyzer::analyze_temperature(const Magnetic& 
             for (size_t index = 0; index < exceeded.size(); ++index) {
                 message += (index > 0 ? " and " : "") + exceeded[index];
             }
-            message += " of " + windingLabel;
+            message += " of " + windingLabel + ". Lower the losses, improve the cooling, or use a wire rated for a higher temperature";
             findings.push_back(make_finding(operatingPoint, operatingPointIndex, ResultFindingCode::WINDING_TEMPERATURE_ABOVE_LIMIT, message));
         }
     }
@@ -519,10 +521,12 @@ std::vector<ResultFinding> ResultsAnalyzer::analyze_missing_temperature(const Op
             "having no thermal operating point: it was simulated in fast mode (or edited after simulate), which publishes "
             "no temperature; analyze_results needs simulate's full output");
     }
-    return {make_finding(operatingPoint, operatingPointIndex, ResultFindingCode::NO_THERMAL_OPERATING_POINT,
-        "At " + where + ": " + reason.value() + " Its core and winding losses are those evaluated at the "
-        "ambient temperature (" + format_number(operatingPoint.get_conditions().get_ambient_temperature()) +
-        " C), and it has no temperature output, so its temperatures are not checked")};
+    auto finding = make_finding(operatingPoint, operatingPointIndex, ResultFindingCode::NO_THERMAL_OPERATING_POINT,
+        "At " + where + ": " + reason.value() + " The losses shown for this operating point are those at the ambient "
+        "temperature (" + format_number(operatingPoint.get_conditions().get_ambient_temperature()) + " C), and it has no "
+        "temperatures to check. Lower its losses or improve its cooling");
+    finding.details = MagneticSimulator::get_no_thermal_operating_point_details(output.get_core_losses().value());
+    return {finding};
 }
 
 std::vector<ResultFinding> ResultsAnalyzer::analyze_flux_density_past_magnetisation_curve(const Magnetic& magnetic,
@@ -550,10 +554,10 @@ std::vector<ResultFinding> ResultsAnalyzer::analyze_flux_density_past_magnetisat
             "curve at its ambient temperature: it was edited after simulate, which gives every other point its core losses");
     }
     return {make_finding(operatingPoint, operatingPointIndex, ResultFindingCode::CORE_SATURATES,
-        "At " + where + ": the core saturates: " + reason + ". Its magnetizing inductance, flux density, core losses and "
-        "temperatures are not computed for this operating point (its winding losses are those of its currents at the ambient "
-        "temperature, " + format_number(operatingPoint.get_conditions().get_ambient_temperature()) + " C); more turns, a larger "
-        "gap or core, or less volt-seconds are needed")};
+        "At " + where + ": the core saturates. " + reason + ". Its magnetizing inductance, flux density, core losses and "
+        "temperatures are not calculated for this operating point (its winding losses are those of its currents at the ambient "
+        "temperature, " + format_number(operatingPoint.get_conditions().get_ambient_temperature()) + " C). Add turns, add or "
+        "widen the gap, choose a larger core, or lower the volt-seconds")};
 }
 
 std::vector<ResultFinding> ResultsAnalyzer::analyze_lead_collisions(const Magnetic& magnetic) {
@@ -567,15 +571,15 @@ std::vector<ResultFinding> ResultsAnalyzer::analyze_lead_collisions(const Magnet
     for (const auto& lead : coil.judge_lead_collisions()) {
         const auto worst = std::max_element(lead.collisions.begin(), lead.collisions.end(),
                                             [](const LeadTurnCollision& a, const LeadTurnCollision& b) { return a.overlap < b.overlap; });
-        std::string message = "Warning: winding '" + lead.windingName + "' has its " + lead.leadName +
-                              " drawn across turn '" + worst->turnName + "': " + millimetres(worst->distanceOut) +
-                              " mm out along the lead, that turn runs at height " + millimetres(worst->turnHeight) +
-                              " mm and the lead at " + millimetres(worst->leadHeight) + " mm, so their copper overlaps by " +
-                              millimetres(worst->overlap) + " mm";
+        std::string message = "Winding '" + lead.windingName + "' has its " + lead.leadName +
+                              " drawn across " + describe_turn_for_people(coil, worst->turnName) + ": " +
+                              millimetres(worst->distanceOut) + " mm out along the lead, that turn runs at a height of " +
+                              millimetres(worst->turnHeight) + " mm and the lead at " + millimetres(worst->leadHeight) +
+                              " mm, so their copper overlaps by " + millimetres(worst->overlap) + " mm";
         if (lead.collisions.size() > 1) {
             message += " (the worst of " + std::to_string(lead.collisions.size()) + " turns it crosses)";
         }
-        message += ". The coil is drawn as routed; the lead collides with the winding there.";
+        message += ". The lead collides with the winding there: route it another way, or wind the coil again.";
         ResultFinding finding;
         finding.code = ResultFindingCode::LEAD_COLLIDES_WITH_TURNS;
         finding.message = message;
@@ -592,11 +596,11 @@ std::vector<ResultFinding> ResultsAnalyzer::analyze_unmodelled_leads(const Magne
     };
     std::vector<ResultFinding> findings;
     for (const auto& lead : coil.judge_unmodelled_tangent_leads()) {
-        std::string message = "Warning: winding '" + lead.windingName + "' has its " + lead.leadName + " planned for a " +
+        std::string message = "Winding '" + lead.windingName + "' has its " + lead.leadName + " planned for a " +
                               millimetres(lead.plannedBendRadius) + " mm bend, which does not fit on the " +
                               millimetres(lead.connectionFaceHalfStraight) +
-                              " mm connection-face half straight, so it leaves tangentially off the lateral face, on a route "
-                              "MKF does not model in full: ";
+                              " mm straight half of its connection face, so it leaves tangentially off the side face, on a route "
+                              "that is not modelled in full: ";
         std::vector<std::string> conditions;
         for (const auto& condition : lead.conditions) {
             switch (condition.condition) {
@@ -616,9 +620,9 @@ std::vector<ResultFinding> ResultsAnalyzer::analyze_unmodelled_leads(const Magne
                                          "is not carried into it");
                     break;
                 case TangentLeadCondition::LAYER_CHANGING_REVOLUTION:
-                    conditions.push_back("the revolution it shortens, '" + condition.revolutionFrom + "' -> '" +
+                    conditions.push_back("the revolution it shortens, from '" + condition.revolutionFrom + "' to '" +
                                          condition.revolutionTo + "', changes layer and carries no pitch; the lead is drawn level "
-                                         "at its station's height");
+                                         "at that turn's height");
                     break;
                 case TangentLeadCondition::SINGLE_REVOLUTION:
                     conditions.push_back("its conductor has a single turn and no pitch; the lead is drawn level at that turn's "
@@ -629,7 +633,7 @@ std::vector<ResultFinding> ResultsAnalyzer::analyze_unmodelled_leads(const Magne
         for (size_t k = 0; k < conditions.size(); ++k) {
             message += (k == 0 ? "" : "; and ") + conditions[k];
         }
-        message += ". The coil is drawn as routed.";
+        message += ". The coil is drawn as routed; check that lead on the real part.";
         ResultFinding finding;
         finding.code = ResultFindingCode::LEAD_ROUTE_NOT_MODELLED;
         finding.message = message;
@@ -657,31 +661,24 @@ std::vector<ResultFinding> ResultsAnalyzer::analyze_copper_overlaps(const Magnet
     if (!turnOverlaps.empty()) {
         const auto worst = *std::max_element(turnOverlaps.begin(), turnOverlaps.end(),
                                              [](const CopperOverlap* a, const CopperOverlap* b) { return a->overlap < b->overlap; });
-        std::vector<std::string> names;
+        size_t numberOverlapping = 0;
         const auto turns = coil.get_turns_description().value();   // bound: never range over a temporary
         for (const auto& turn : turns) {
             const bool overlapping = std::any_of(turnOverlaps.begin(), turnOverlaps.end(), [&](const CopperOverlap* overlap) {
                 return overlap->first == turn.get_name() || overlap->second == turn.get_name();
             });
             if (overlapping) {
-                names.push_back("'" + turn.get_name() + "'");
+                ++numberOverlapping;
             }
         }
-        std::string list;
-        for (size_t k = 0; k < names.size(); ++k) {
-            list += (k == 0 ? "" : ", ") + names[k];
-        }
-        auto describe = [](const std::string& turn, const std::string& winding) {
-            return "'" + turn + "' (winding '" + winding + "')";
-        };
         ResultFinding finding;
         finding.code = ResultFindingCode::TURNS_OVERLAP;
-        finding.message = "Warning: " + std::to_string(names.size()) + " turn stations of the coil overlap one another, in " +
+        finding.message = std::to_string(numberOverlapping) + " turns of the coil overlap one another, in " +
                           std::to_string(turnOverlaps.size()) + " place" + (turnOverlaps.size() == 1 ? "" : "s") +
-                          "; the worst, " + describe(worst->first, worst->firstWinding) + " and " +
-                          describe(worst->second, worst->secondWinding) + ", overlap by " + millimetres(worst->overlap) +
-                          " mm (their outlines, coating included). Overlapping: " + list +
-                          ". The coil is drawn as wound; its turns do not fit where they are laid.";
+                          "; the worst, " + describe_turn_for_people(coil, worst->first) + " and " +
+                          describe_turn_for_people(coil, worst->second) + ", overlap by " + millimetres(worst->overlap) +
+                          " mm (coating included). The turns do not fit where they are laid: wind the coil again, or use "
+                          "fewer turns, a thinner wire or a core with a larger winding window.";
         findings.push_back(finding);
     }
 
@@ -702,12 +699,13 @@ std::vector<ResultFinding> ResultsAnalyzer::analyze_copper_overlaps(const Magnet
         const auto& crossings = byLead.at(key);
         const auto worst = *std::max_element(crossings.begin(), crossings.end(),
                                              [](const CopperOverlap* a, const CopperOverlap* b) { return a->overlap < b->overlap; });
-        std::string message = "Warning: winding '" + worst->firstWinding + "' has its " + worst->first + " drawn across turn '" +
-                              worst->second + "' in the winding window, where their copper overlaps by " + millimetres(worst->overlap) + " mm";
+        std::string message = "Winding '" + worst->firstWinding + "' has its " + worst->first +
+                              " drawn across " + describe_turn_for_people(coil, worst->second) +
+                              " in the winding window, where their copper overlaps by " + millimetres(worst->overlap) + " mm";
         if (crossings.size() > 1) {
             message += " (the worst of " + std::to_string(crossings.size()) + " turns it crosses)";
         }
-        message += ". The coil is drawn as routed; the lead collides with the winding there.";
+        message += ". The lead collides with the winding there: route it another way, or wind the coil again.";
         ResultFinding finding;
         finding.code = ResultFindingCode::LEAD_COLLIDES_WITH_TURNS;
         finding.message = message;
@@ -720,9 +718,10 @@ std::vector<ResultFinding> ResultsAnalyzer::analyze_copper_overlaps(const Magnet
         }
         ResultFinding finding;
         finding.code = ResultFindingCode::LEADS_COLLIDE;
-        finding.message = "Warning: the " + overlap.first + " (winding '" + overlap.firstWinding + "') and the " + overlap.second +
-                          " (winding '" + overlap.secondWinding + "') are drawn through each other, overlapping by " +
-                          millimetres(overlap.overlap) + " mm. The coil is drawn as routed; the two leads collide there.";
+        finding.message = "The " + overlap.first + " (winding '" + overlap.firstWinding + "') and the " +
+                          overlap.second + " (winding '" + overlap.secondWinding +
+                          "') run through each other, overlapping by " + millimetres(overlap.overlap) +
+                          " mm. The two leads collide there: route one of them another way.";
         findings.push_back(finding);
     }
     return findings;
@@ -736,10 +735,10 @@ std::vector<ResultFinding> ResultsAnalyzer::analyze_turns_outside_window(const M
     };
     auto side = [](TurnOutsideWindow::Side which) {
         switch (which) {
-            case TurnOutsideWindow::Side::OUTER: return std::string("radially outward, past the window's outer side");
-            case TurnOutsideWindow::Side::INNER: return std::string("radially inward, past the window's inner side");
-            case TurnOutsideWindow::Side::TOP: return std::string("axially, past the window's top");
-            case TurnOutsideWindow::Side::BOTTOM: return std::string("axially, past the window's bottom");
+            case TurnOutsideWindow::Side::OUTER: return std::string("radially outward, past the outer side of the window");
+            case TurnOutsideWindow::Side::INNER: return std::string("radially inward, past the inner side of the window");
+            case TurnOutsideWindow::Side::TOP: return std::string("axially, past the top of the window");
+            case TurnOutsideWindow::Side::BOTTOM: return std::string("axially, past the bottom of the window");
         }
         throw std::logic_error("Unknown winding window side");
     };
@@ -757,17 +756,13 @@ std::vector<ResultFinding> ResultsAnalyzer::analyze_turns_outside_window(const M
         const auto& turns = byWinding.at(winding);
         const auto worst = *std::max_element(turns.begin(), turns.end(),
                                              [](const TurnOutsideWindow* a, const TurnOutsideWindow* b) { return a->overrun < b->overrun; });
-        std::string list;
-        for (size_t k = 0; k < turns.size(); ++k) {
-            list += (k == 0 ? "" : ", ") + ("'" + turns[k]->turn + "' " + millimetres(turns[k]->overrun) + " mm");
-        }
         ResultFinding finding;
         finding.code = ResultFindingCode::TURNS_OUTSIDE_WINDOW;
-        finding.message = "Warning: winding '" + winding + "' has " + std::to_string(turns.size()) + " turn station" +
-                          (turns.size() == 1 ? "" : "s") + " outside its winding window; the worst, '" + worst->turn +
-                          "', reaches " + millimetres(worst->overrun) + " mm " + side(worst->side) +
-                          ". Outside, by how far its copper reaches past the window: " + list +
-                          ". The coil is drawn as wound; these turns do not fit in the window.";
+        finding.message = "Winding '" + winding + "' has " + std::to_string(turns.size()) + " turn" +
+                          (turns.size() == 1 ? "" : "s") + " outside its winding window; the worst, " +
+                          describe_turn_for_people(coil, worst->turn) + ", reaches " + millimetres(worst->overrun) + " mm " +
+                          side(worst->side) + ". These turns do not fit in the window: wind the coil again, or use fewer turns, "
+                          "a thinner wire or a core with a larger winding window.";
         findings.push_back(finding);
     }
     return findings;
@@ -813,8 +808,8 @@ std::vector<ResultFinding> ResultsAnalyzer::analyze_winding_bends(const Magnetic
                millimetres(asLaid.flexibilityRadius) + " mm";
     };
     const std::string trailer =
-        " The coil is drawn as laid: edgewise winding is a forming process of its own and the mandrel is a "
-        "coating test, not a forming limit, but the coating's integrity at this bend is outside the IEC qualification.";
+        " Edgewise winding is a forming process of its own and the mandrel is a coating test, not a forming limit, but the "
+        "coating's integrity at this bend is outside the IEC qualification: check it with the wire's maker, or use a wider bend.";
 
     // One finding per winding, in the order the windings are met: its turns first, then its leads.
     std::vector<std::string> windingOrder;
@@ -844,7 +839,7 @@ std::vector<ResultFinding> ResultsAnalyzer::analyze_winding_bends(const Magnetic
         if (!hasTurns && !hasLeads) {
             throw std::logic_error("analyze_winding_bends: winding '" + windingName + "' was listed with no turn and no lead below its mandrel");
         }
-        std::string message = "Warning: winding '" + windingName + "'";
+        std::string message = "Winding '" + windingName + "'";
         if (hasTurns) {
             message += " is bent edgewise to a " + millimetres(turns->bendRadius) + " mm centreline radius, tighter than the " +
                        limit(turns->asLaid) + ".";
@@ -865,8 +860,8 @@ std::vector<ResultFinding> ResultsAnalyzer::analyze_winding_bends(const Magnetic
         const WoundCorner& asLaid = hasTurns ? turns->asLaid : leads->leads.front().asLaid;
         message += " The wire is " + describe(wire);
         if (hasTurns) {
-            message += "; the tightest bend is turn '" + turns->turnName + "', of " + std::to_string(turns->numberTightCorners) +
-                       " such turns";
+            message += "; the tightest bend is on " + describe_turn_for_people(coil, turns->turnName) + ", of " +
+                       std::to_string(turns->numberTightCorners) + " such turns";
         }
         message += " (" + derivation(asLaid, wire) + ")." + trailer;
 
@@ -934,8 +929,8 @@ std::vector<ResultFinding> ResultsAnalyzer::analyze_results(const Mas& mas) {
     if (outlinesUnknown) {
         ResultFinding finding;
         finding.code = ResultFindingCode::TURN_OUTLINES_NOT_EVALUABLE;
-        finding.message = "Warning: whether the turns of the coil overlap one another, or lie outside the winding window, is not "
-                          "evaluable for this design: the outline of " + outlinesUnknown.value() +
+        finding.message = "Whether the turns of the coil overlap one another, or lie outside the winding window, cannot be "
+                          "checked for this design: the outline of " + outlinesUnknown.value() +
                           ". Overlapping copper and copper outside the window are not reported.";
         findings.push_back(finding);
         return findings;

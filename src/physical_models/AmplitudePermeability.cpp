@@ -1,3 +1,4 @@
+#include "support/NumberFormat.h"
 #include "physical_models/AmplitudePermeability.h"
 #include "physical_models/InitialPermeability.h"
 #include "physical_models/CurveBuildScope.h"
@@ -405,9 +406,10 @@ double resolve_loop_property_value(const CoreMaterial& coreMaterial, double temp
             const double saturation = Core::get_magnetic_flux_density_saturation(coreMaterial, temperature, false);
             if (value >= saturation) {
                 throw MaterialException(ErrorCode::MATERIAL_INVALID_PROPERTY,
-                    "Material " + coreMaterial.get_name() + ": its remanence at " + std::to_string(temperature) + " C, " +
-                    std::to_string(value) + " T, is not below its saturation flux density there, " + std::to_string(saturation) +
-                    " T: the hysteresis loop of that data is not a material's", coreMaterial.get_name());
+                    "The data of material " + coreMaterial.get_name() + " is not physical: its remanence at " +
+                    format_significant(temperature) + " C, " + format_significant(value) + " T, is not below its saturation flux "
+                    "density there, " + format_significant(saturation) + " T, so no hysteresis loop can be built from it. Choose "
+                    "another material, or correct this material's remanence");
             }
         }
         return value;

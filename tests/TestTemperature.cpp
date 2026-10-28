@@ -3328,10 +3328,11 @@ TEST_CASE("Temperature: 220kW Transformer", "[temperature][transformer][smoke-te
         INFO(OpenMagnetics::to_string(finding.code) << ": " << finding.message);
         if (finding.code == OpenMagnetics::ResultFindingCode::NO_THERMAL_OPERATING_POINT) {
             ++runawayFindings;
-            CHECK_THAT(finding.message, Catch::Matchers::ContainsSubstring("No thermal operating point: the winding runs away"));
-            CHECK_THAT(finding.message, Catch::Matchers::ContainsSubstring("dT_turn/dT_w"));
-            CHECK_THAT(finding.message, Catch::Matchers::ContainsSubstring("History:"));
-            CHECK_THAT(finding.message, Catch::Matchers::ContainsSubstring("Pcu="));
+            CHECK_THAT(finding.message, Catch::Matchers::ContainsSubstring("No steady temperature: the winding runs away"));
+            REQUIRE(finding.details);
+            CHECK_THAT(finding.details.value(), Catch::Matchers::ContainsSubstring("dT_turn/dT_w"));
+            CHECK_THAT(finding.details.value(), Catch::Matchers::ContainsSubstring("History:"));
+            CHECK_THAT(finding.details.value(), Catch::Matchers::ContainsSubstring("Pcu="));
         }
     }
     CHECK(runawayFindings == simulated.get_outputs().size());
@@ -5241,7 +5242,7 @@ TEST_CASE("Temperature: ABT 1454 a coil that does not fit its window throws unle
 
     REQUIRE(settings.get_thermal_network_strict_geometry());
     REQUIRE_THROWS_WITH(abt1454MaximumTemperatureAtFixedLoss(magnetic, 0.3, 0.3),
-                        Catch::Matchers::ContainsSubstring("overlaps its enclosure"));
+                        Catch::Matchers::ContainsSubstring("the coil does not fit in its window"));
 
     SettingsGuard<bool> lenient(Settings::GetInstance(), &Settings::get_thermal_network_strict_geometry,
                                 &Settings::set_thermal_network_strict_geometry, false);

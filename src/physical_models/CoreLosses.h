@@ -1,4 +1,5 @@
 #pragma once
+#include "support/NumberFormat.h"
 #include "Constants.h"
 #include "Models.h"
 
@@ -177,10 +178,12 @@ class CoreLossesModel {
         double scale = ct2 * pow(temperature, 2) - ct1 * temperature + ct0;
         if (!(scale > 0)) {
             throw CalculationException(ErrorCode::INVALID_LOSS_DATA,
-                "Steinmetz temperature factor ct(" + std::to_string(temperature) + " C) = " + std::to_string(scale) +
-                " <= 0 (ct0=" + std::to_string(ct0) + ", ct1=" + std::to_string(ct1) + ", ct2=" + std::to_string(ct2) +
-                ") for the range [" + std::to_string(steinmetzDatum.get_minimum_frequency().value_or(-1)) + ", " +
-                std::to_string(steinmetzDatum.get_maximum_frequency().value_or(-1)) + "] Hz");
+                "The core-loss data of the material is not valid at " + format_significant(temperature) + " C: its Steinmetz "
+                "temperature factor there is " + format_significant(scale) + ", and a loss factor must be positive (ct0 = " +
+                format_significant(ct0) + ", ct1 = " + format_significant(ct1) + ", ct2 = " + format_significant(ct2) + ", for " +
+                (steinmetzDatum.get_minimum_frequency() ? format_quantity(steinmetzDatum.get_minimum_frequency().value(), "Hz") : std::string("any frequency")) +
+                " to " + (steinmetzDatum.get_maximum_frequency() ? format_quantity(steinmetzDatum.get_maximum_frequency().value(), "Hz") : std::string("any frequency")) +
+                "). Lower the core temperature (fewer losses or better cooling), or choose another material");
         }
         return scale;
     }

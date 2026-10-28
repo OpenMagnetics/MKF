@@ -1,3 +1,4 @@
+#include "support/NumberFormat.h"
 #include "physical_models/WindingOhmicLosses.h"
 #include "physical_models/MagneticField.h"
 #include "physical_models/Resistivity.h"
@@ -253,12 +254,14 @@ void check_parallel_branch(Coil& coil,
     auto found = turnCounts.find({windingIndex, parallelIndex});
     size_t turnsThisParallel = found == turnCounts.end() ? 0 : found->second;
     throw CoilException(ErrorCode::COIL_WINDING_ERROR,
-        "Winding '" + coil.get_functional_description()[windingIndex].get_name() + "' parallel " +
-        std::to_string(parallelIndex) + " has a series resistance of " + std::to_string(seriesResistance) +
-        " Ohm: " + std::to_string(turnsThisParallel) + " of its turns are in turnsDescription, while " +
-        "functionalDescription declares " + std::to_string(coil.get_number_turns(windingIndex)) +
-        " turns over " + std::to_string(coil.get_number_parallels(windingIndex)) +
-        " parallels. The coil must be re-wound before its losses can be computed.");
+        (coil.get_number_parallels(windingIndex) > 1 ? "Parallel " + std::to_string(parallelIndex + 1) + " of winding '"
+                                                       : std::string("Winding '")) +
+        coil.get_functional_description()[windingIndex].get_name() + "' has " +
+        (turnsThisParallel == 0 ? std::string("no wound turns") : std::to_string(turnsThisParallel) + " wound turns") +
+        " and a series resistance of " + format_quantity(seriesResistance, "Ohm") + ", while the winding is declared with " +
+        std::to_string(coil.get_number_turns(windingIndex)) + " turns over " + std::to_string(coil.get_number_parallels(windingIndex)) +
+        (coil.get_number_parallels(windingIndex) == 1 ? " parallel" : " parallels") + ", so its losses cannot be calculated. "
+        "Wind the coil again.");
 }
 
 }  // namespace

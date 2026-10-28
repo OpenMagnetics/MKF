@@ -17243,7 +17243,7 @@ bool Coil::wind_by_planar_sections(std::vector<size_t> stackUpForThisGroup, std:
 
     auto wirePerWinding = get_wires();
     if (wirePerWinding.size() == 0) {
-        throw WireNotFoundException("Wires missing");
+        throw WireNotFoundException(WireNotFoundException::Reason{}, "The coil has no wires: give each winding its wire");
     }
 
     std::vector<size_t> numberSectionsPerWinding = std::vector<size_t>(wirePerWinding.size(), 0);
@@ -22265,7 +22265,7 @@ Wire Winding::resolve_wire() {
                 wire = find_wire_by_name("Round 0.01 - Grade 1");
             }
             else {
-                throw WireNotFoundException("wire not found: " + std::get<std::string>(wireOrString));
+                throw WireNotFoundException(std::get<std::string>(wireOrString));
             }
         }
     }
@@ -23742,9 +23742,10 @@ std::optional<Wire> Coil::resolve_lead_conductor(const std::string& windingName,
                     return find_wire_by_name(leadName);
                 }
                 catch (const WireNotFoundException&) {
-                    throw WireNotFoundException("the " + std::string(windingEnd == End::START ? "start" : "finish") +
-                                                " lead conductor of winding '" + windingName + "' names wire '" + leadName +
-                                                "', which is not in the wire database");
+                    throw WireNotFoundException(WireNotFoundException::Reason{},
+                                                "The " + std::string(windingEnd == End::START ? "start" : "finish") +
+                                                " lead of winding '" + windingName + "' uses wire '" + leadName +
+                                                "', which is not in the library. Choose a wire from the catalogue for that lead");
                 }
             }
             return Wire(std::get<MAS::Wire>(leadConductor));
