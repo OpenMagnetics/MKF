@@ -1492,13 +1492,17 @@ std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic(std::v
         sort(masMagneticsWithScoring.begin(), masMagneticsWithScoring.end(), [](std::pair<Mas, double>& b1, std::pair<Mas, double>& b2) {
             return b1.second > b2.second;
         });
-        if (masMagneticsWithScoring.size() > maximumNumberResults) {
-            masMagneticsWithScoring = std::vector<std::pair<Mas, double>>(masMagneticsWithScoring.begin(), masMagneticsWithScoring.end() - (masMagneticsWithScoring.size() - maximumNumberResults));
-        }
 
         if (_simulateResults) {
+            // ABT #2124 (Alf, 2026-10-28): the hits are taken in ranking order until there are
+            // maximumNumberResults of them. A candidate that fails its final simulation is reported in
+            // get_failed_candidates() with the reason, and the next-ranked candidate takes its place, so a
+            // failure no longer shortens the list while ranked candidates remain.
             std::vector<std::pair<Mas, double>> masMagneticsWithScoringSimulated;
             for (auto [mas, scoring] : masMagneticsWithScoring) {
+                if (masMagneticsWithScoringSimulated.size() >= maximumNumberResults) {
+                    break;
+                }
                 // A datasheet-only part has no construction to simulate. It is returned as
                 // ranked, without simulated outputs -- dropping it here would silently remove
                 // a part every filter just accepted.
@@ -1531,6 +1535,9 @@ std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic(std::v
             return masMagneticsWithScoringSimulated;
         }
         else {
+            if (masMagneticsWithScoring.size() > maximumNumberResults) {
+                masMagneticsWithScoring = std::vector<std::pair<Mas, double>>(masMagneticsWithScoring.begin(), masMagneticsWithScoring.end() - (masMagneticsWithScoring.size() - maximumNumberResults));
+            }
             return masMagneticsWithScoring;
         }
 

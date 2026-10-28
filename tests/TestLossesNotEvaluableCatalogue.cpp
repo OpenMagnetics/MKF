@@ -10,6 +10,7 @@
 //   - the adviser flags it, with the reason, in get_losses_not_evaluable().
 // =============================================================================
 
+#include <algorithm>
 #include <cmath>
 #include <set>
 #include <string>
@@ -49,6 +50,24 @@ OpenMagnetics::Magnetic catalogue_part(const std::string& reference, std::option
     if (material) {
         magnetic.get_mutable_core().get_mutable_functional_description().set_material(material.value());
     }
+    magnetic.get_mutable_coil().wind();
+    MagneticManufacturerInfo manufacturerInfo;
+    manufacturerInfo.set_name("Test Maker");
+    manufacturerInfo.set_reference(reference);
+    magnetic.set_manufacturer_info(manufacturerInfo);
+    return magnetic;
+}
+
+// A catalogue part on another core with another number of turns, wound the same way.
+OpenMagnetics::Magnetic catalogue_part_with(const std::string& reference, const std::string& shapeName, int64_t numberTurns) {
+    OpenMagneticsTesting::QuickMagneticConfig cfg;
+    cfg.numberTurns = {numberTurns};
+    cfg.numberParallels = {1};
+    cfg.coreShapeName = shapeName;
+    cfg.coreMaterialName = "3C97";
+    cfg.wireNames = {"Round 1.00 - Grade 1"};
+    cfg.numberStacks = 1;
+    auto magnetic = OpenMagneticsTesting::create_quick_test_magnetic(cfg);
     magnetic.get_mutable_coil().wind();
     MagneticManufacturerInfo manufacturerInfo;
     manufacturerInfo.set_name("Test Maker");
@@ -172,5 +191,42 @@ TEST_CASE("The catalogue adviser's filters evaluate losses in one pass and its h
     // Outside the filter stage the advisers' forced loop is back.
     CHECK_FALSE(CatalogueFilterOnePassScope::active());
     CHECK(settings.get_simulator_loss_temperature_loop());
+    settings.reset();
+}
+
+TEST_CASE("The catalogue adviser refills its hits when a candidate fails its final simulation",
+          "[adviser][catalogue][refill]") {
+    // ABT #2124 (Alf, 2026-10-28): the adviser cut its ranking to the requested number of hits BEFORE the final
+    // simulation, so every hit that failed there shortened the list (a real 400-part slice returned 2 of 5). The
+    // next-ranked candidate takes a failed hit's place now, and the failure is still reported with its reason.
+    settings.reset();
+    auto overflowing = catalogue_part_with("OVERFLOWING", "E 25/13/7", 120);
+    std::vector<OpenMagnetics::Magnetic> catalogue{overflowing, catalogue_part("FITS-A"), catalogue_part("FITS-B"),
+                                                   catalogue_part("FITS-C")};
+    // Smallest volume first: the overflowing part on the smaller core ranks first.
+    std::vector<MagneticFilterOperation> flow{
+        MagneticFilterOperation(MagneticFilters::VOLUME, true, false, false, 1.0),
+    };
+    MagneticAdviser adviser(true);
+    std::vector<std::pair<OpenMagnetics::Mas, double>> results;
+    REQUIRE_NOTHROW(results = adviser.get_advised_magnetic(inductor_inputs(), catalogue, flow, 2, true));
+    std::string failures;
+    for (const auto& [reference, reason] : adviser.get_failed_candidates()) {
+        failures += "\n  " + reference + ": " + reason;
+    }
+    INFO("failed candidates:" << failures);
+    std::vector<std::string> references;
+    for (auto& [mas, score] : results) {
+        references.push_back(mas.get_magnetic().get_reference());
+    }
+    INFO("hits: " << references.size());
+    // The premise: the overflowing part ranks first and fails its final simulation.
+    const auto& failed = adviser.get_failed_candidates();
+    auto overflowingFailure = std::find_if(failed.begin(), failed.end(), [](const auto& entry) { return entry.first == "OVERFLOWING"; });
+    REQUIRE(overflowingFailure != failed.end());
+    REQUIRE_THAT(overflowingFailure->second, ContainsSubstring("final simulation"));
+    // Two hits were asked for and two fitting parts remain: two hits, the overflowing one not among them.
+    REQUIRE(results.size() == 2);
+    CHECK(std::find(references.begin(), references.end(), "OVERFLOWING") == references.end());
     settings.reset();
 }
