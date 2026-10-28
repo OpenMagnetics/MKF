@@ -15669,9 +15669,24 @@ void Coil::devirtualize_turns_description() {
             throw CalculationException(ErrorCode::CALCULATION_INVALID_INPUT, "Something wrong happened devirtualizing turns 1");
         }
 
+        // Windings wound together are dealt their turns as a winding deals its parallels (Alf, 2026-10-28): by
+        // consecutive turns (the default, bifilar) turn 0 of each winding sits together, then turn 1 of each; by
+        // consecutive parallels (every member's winding-style override says so) each winding's turns sit
+        // together, one block after the other, which puts the windings farther apart and gives more leakage.
+        bool byConsecutiveParallels = true;
+        for (auto windingIndex : windingIndexes) {
+            auto it = _windingStyleOverridePerWinding.find(get_functional_description()[windingIndex].get_name());
+            if (it == _windingStyleOverridePerWinding.end() || it->second != WindingStyle::WIND_BY_CONSECUTIVE_PARALLELS) {
+                byConsecutiveParallels = false;
+            }
+        }
         std::vector<size_t> devirtualizingPattern = {};
         for (auto windingIndex : windingIndexes) {
             double numberTurns = get_functional_description()[windingIndex].get_number_turns() * get_functional_description()[windingIndex].get_number_parallels();
+            if (byConsecutiveParallels) {
+                devirtualizingPattern.insert(devirtualizingPattern.end(), static_cast<size_t>(numberTurns), windingIndex);
+                continue;
+            }
             size_t numberTurnsPerPattern = round(numberTurns / minimumNumberTurns);
             if (numberTurnsPerPattern == 0) {
                 throw CalculationException(ErrorCode::CALCULATION_INVALID_INPUT, "Something wrong happened devirtualizing turns 2");

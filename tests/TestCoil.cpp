@@ -18103,3 +18103,39 @@ TEST_CASE("A wound coil that fits its window is no larger than its bobbin in any
     INFO("bobbin " << bobbinBox[0] << " x " << bobbinBox[1] << " x " << bobbinBox[2] << " m, coil " << coilBox[0] << " x " << coilBox[1] << " x " << coilBox[2] << " m");
     for (size_t axis = 0; axis < 3; ++axis) CHECK(coilBox[axis] <= bobbinBox[axis] + 1e-9);
 }
+
+// Alf, 2026-10-28: windings wound together are dealt their turns as a winding deals its parallels. By consecutive
+// turns (the default, bifilar) turn 0 of each winding sits together; by consecutive parallels each winding's turns
+// sit together, one block after the other.
+TEST_CASE("Windings wound together alternate turn by turn, or sit in blocks by consecutive parallels", "[coil][wound-with-style]") {
+    auto wound_order = [](bool byConsecutiveParallels) {
+        auto coil = OpenMagneticsTesting::get_quick_coil({4, 4}, {1, 1}, "PQ 40/40", 1, WindingOrientation::OVERLAPPING,
+                                                         WindingOrientation::OVERLAPPING, CoilAlignment::CENTERED, CoilAlignment::CENTERED);
+        const std::string first = coil.get_functional_description()[0].get_name();
+        const std::string second = coil.get_functional_description()[1].get_name();
+        coil.get_mutable_functional_description()[0].set_wound_with(std::vector<std::string>{second});
+        coil.get_mutable_functional_description()[1].set_wound_with(std::vector<std::string>{first});
+        coil.get_mutable_functional_description()[0].set_isolation_side(MAS::IsolationSide::PRIMARY);
+        coil.get_mutable_functional_description()[1].set_isolation_side(MAS::IsolationSide::PRIMARY);
+        auto core = OpenMagneticsTesting::get_quick_core("PQ 40/40", json::parse("[]"), 1, "Dummy");
+        coil.set_bobbin(OpenMagnetics::Bobbin::create_quick_bobbin(core));
+        if (byConsecutiveParallels) {
+            coil.preload_winding_style_overrides({{first, WindingStyle::WIND_BY_CONSECUTIVE_PARALLELS},
+                                                  {second, WindingStyle::WIND_BY_CONSECUTIVE_PARALLELS}});
+        }
+        REQUIRE(coil.wind());
+        std::vector<std::string> order;
+        const auto turns = coil.get_turns_description().value();   // by value: the getter returns a temporary
+        for (const auto& turn : turns) order.push_back(turn.get_winding());
+        return order;
+    };
+    auto bifilar = wound_order(false);
+    INFO(json(bifilar).dump());
+    REQUIRE(bifilar.size() == 8);
+    for (size_t k = 1; k < bifilar.size(); ++k) CHECK(bifilar[k] != bifilar[k - 1]);
+    auto blocks = wound_order(true);
+    INFO(json(blocks).dump());
+    REQUIRE(blocks.size() == 8);
+    for (size_t k = 0; k < 4; ++k) CHECK(blocks[k] == "winding 0");
+    for (size_t k = 4; k < 8; ++k) CHECK(blocks[k] == "winding 1");
+}
