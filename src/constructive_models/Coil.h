@@ -217,8 +217,8 @@ struct ConnectionReservedSpace {
     std::string fromTurn;
     std::string toTurn;
     // ABT #1174 (WP5, MAS-RFC 0016): the outer diameter of the sleeve over this terminal lead
-    // (inner diameter + 2 x wall x layers), empty for an unsleeved lead. A sleeved lead's edge run
-    // is reserved at this diameter, and it is the one lead the ABT #684 margin keep-out lets into
+    // (inner diameter + 2 x wall x layers), empty for an unsleeved lead. A sleeved lead's edge row
+    // is laid at this diameter (spec section 15: its reserved run is the bare wire), and it is the one lead the ABT #684 margin keep-out lets into
     // the margin band (see Coil::check_lead_margin_keep_out). Stubs keep the wire's own size: the
     // part of the sleeve reaching under the first turn (overlapIntoWinding) is not reserved in 2D.
     std::optional<double> sleeveOuterDiameter;
@@ -332,6 +332,64 @@ struct TangentDeparture {
     // What of this lead's route MKF does not model (see TangentLeadCondition), in the order found.
     // Empty for a lead drawn on a route MKF models in full.
     std::vector<TangentLeadUnmodelled> unmodelled;
+
+    // ABT #1705: which construction this is. LATERAL_FACE is ABT #1423 above: exitSlot empty, the lead
+    // runs from `point` to the window border. OFF_THE_BACK is a lead whose lane lies at or beyond its
+    // turn's half extent along the connection face (TerminalTangentialLead): the route KEEPS its
+    // exitSlot (the lane its radial run lies at) and its waypoints (their projection), and a consumer
+    // draws, in this order, the turn up to `point` (its pitch-true height there, alongTurn from the
+    // crossing), the climb at `point` from point[1] to rowHeight (the route's stub, or its ramp when
+    // rampLength is set, exactly as at a lane on the face), the level straight from `point` along
+    // `direction` to `end` (length `length`), then one corner of cornerRadius about cornerCentre
+    // through cornerAngle onto the radial run, which begins at cornerEnd = {lane, rowHeight, 0}. Its
+    // frame is the route's own connection face: x along the face, y the turn axis, z = -1 towards the
+    // face (side 1 mirrors the bobbin's z). turnLengthRemoved is |alongTurn|: the turn's copper from
+    // the tangent point to the crossing, which the lead replaces; charge_tangent_departures takes it
+    // off shortenedTurn (the attach turn), as it does for a LATERAL_FACE departure.
+    // OFF_THE_FACE_END (Alf, 2026-10-25, spec S0: a lead on the OTHER half of the crossing -- an exit on
+    // x < 0 or an entrance on x > 0 -- is accepted, and MKF plans its tangential departure too) is such a
+    // lead on that other half: its turn runs on past the crossing along the face straight to its end, the
+    // lead leaves there level and straight along the face line, then one 90 degree corner of cornerRadius
+    // turns it onto the radial run, which begins at cornerEnd = {lane, rowHeight, face line - cornerRadius}
+    // (TerminalTangentialLead). The fields mean what they mean for OFF_THE_BACK; `face` is the lane's sign.
+    // turnLengthRemoved is then -|alongTurn|: the turn's copper past the crossing is ADDED to its length.
+    enum class Kind { LATERAL_FACE, OFF_THE_BACK, OFF_THE_FACE_END };
+    Kind kind = Kind::LATERAL_FACE;
+    double alongTurn = 0;
+    double rowHeight = 0;
+    double cornerRadius = 0;
+    double cornerAngle = 0;
+    std::vector<double> cornerCentre;
+    std::vector<double> cornerEnd;
+};
+
+// Alf, 2026-10-26 (spec section 17, supersedes spec C4): a terminal lead that collides or does not fit
+// is never refused while winding a design from the user's MAS or the web. MKF plans and draws it on its
+// best route and records each finding here, on the route (ConnectionRoute::findings, a pin run's on
+// PinLeadRoute::findings and then on its route). Advisers refuse any design that carries one
+// (real_winding_refusal). A tangent lead's TangentDeparture::collisions (ABT #2012) and ::unmodelled
+// (ABT #2061) stay where they are and FEED this list: get_connection_reserved_spaces copies each of them
+// into its route's findings, so the route's list is the one complete record.
+enum class LeadFindingKind {
+    TURN_COLLISION,       // TangentDeparture::collisions: a turn wound across the tangent lead (`collision`)
+    ROUTE_NOT_MODELLED,   // TangentDeparture::unmodelled: a condition of the route MKF does not model (`unmodelled`)
+    CROSSES_FAR_SIDE,     // a tangential lead's straight meets its turn past the turn's far side
+    NO_RADIAL_RUN,        // a tangential lead's corner ends past the border its radial run must reach
+    MEETS_CORE_LEG,       // a lead off the back of its turn meets the core's outer leg
+    LEADS_TOO_CLOSE,      // a tangential lead comes closer to another lead than their coated radii
+    TIED_LEADS_COLLIDE,   // no order of tied leads keeps every member's turn clear of its siblings' leads
+    LANES_COLLIDE,        // two leads that can meet in 3D stand closer along the face than their extents
+    PIN_RUN_COLLIDES,     // every candidate run to the pin shares copper; the most direct one is drawn
+    LIFT_TOO_SHORT,       // an off-face exit's lift (liftLength) and its bend onto the run need more axial room than the stub has
+    LANES_DO_NOT_FIT,     // spec section 22: a lead fits neither its group's half of the face nor the spare half's unused lanes
+};
+
+struct LeadFinding {
+    LeadFindingKind kind = LeadFindingKind::TURN_COLLISION;
+    // What was found, with its numbers (the text the refusal used to carry).
+    std::string witness;
+    std::optional<LeadTurnCollision> collision;       // TURN_COLLISION
+    std::optional<TangentLeadUnmodelled> unmodelled;  // ROUTE_NOT_MODELLED
 };
 
 // Alf, 2026-10-25 (draw and report; ABT #2071): copper of the drawn design that overlaps other copper,
@@ -443,6 +501,106 @@ struct AxialLead {
     } weld;
 };
 
+// ABT #1336: the path of a terminal route's attach turn along its connection face, from the crossing
+// (x = 0) outwards: a straight of faceHalfStraight on either side, then an arc of cornerRadius. The
+// turn climbs its advance uniformly over `length`, its whole path (MVB++ draws it so), which is how
+// Coil::terminal_turn_height_at stands it at a lane. laneBound is how far from the crossing a lead
+// and its ramp may leave the face: the straight on a rectangular column, the radius of the arc the
+// face is on a round or oblong one. Built by Coil::terminal_turn_path.
+//
+// ABT #1705: seen across the column, the turn is a rounded rectangle about the wound column's axis
+// (the connection face at -z): straights of half length faceHalfStraight along x (the connection
+// face) and lateralHalfStraight along z (the lateral faces), joined by arcs of cornerRadius. ROUND:
+// both straights 0, the arc is the turn. OBLONG: the connection face is the cap, so faceHalfStraight
+// is 0 and lateralHalfStraight the stadium's straight. laneBound is the turn's half extent along the
+// face (faceHalfStraight + cornerRadius): a lane at or beyond it leaves tangentially off the back of
+// the turn (Coil::plan_terminal_tangential_lead). rideLength is the part of `length` the dragback
+// rides add on the lateral faces: 2 (rideOwnFace + rideBackFace), the rides that push this route's
+// connection face and the opposite face out (ConnectionLayout::ride_at).
+struct TerminalTurnPath {
+    ColumnShape shape;
+    double length;
+    double faceHalfStraight;
+    double cornerRadius;
+    double laneBound;
+    double lateralHalfStraight = 0;
+    double rideLength = 0;
+    double rideOwnFace = 0;    // the ride pushing this route's connection face out
+    double rideBackFace = 0;   // the ride pushing the opposite face out
+    // The coated size of the attach turn's own wire, and of the lead conductor its stub is (the stated
+    // lead conductor, else the winding's wire). A sleeve covers only the lead beyond the stub
+    // (ConnectionRoute::sleeveOuterDiameter: "stubs keep the wire's own size"), so where a turn passes a
+    // sibling's stub inside the winding these two sizes, not the sleeve's, set the clearance.
+    double turnWireDiameter = 0;
+    double stubDiameter = 0;
+    // Alf, 2026-10-25 (spec RW-size; P7 "exact geometry everywhere"): the REAL coated sections of the
+    // attach turn and of the stub's conductor across their runs, in the winding window (radial, axial):
+    // a RECTANGULAR (rectangular or foil) conductor is its outer width along the layer axis (radial) by
+    // its outer height along the turn axis (axial), the frame MKF lays every wire in; a round one (round,
+    // litz, planar trace treated as its outer size) is a disc of the diameter above, and the two extents
+    // then equal it. Coil::terminal_turn_path sets them; a lead's extent ALONG THE LANE and its thickness
+    // in the section follow from them (CoilPins.cpp lead_lane_extent / lead_section_thickness).
+    bool turnRectangular = false;
+    double turnRadialExtent = 0;
+    double turnAxialExtent = 0;
+    bool stubRectangular = false;
+    double stubRadialExtent = 0;
+    double stubAxialExtent = 0;
+};
+
+// Alf, 2026-10-25 (spec S0/S1): Coil::terminal_lane_plan's answer, one entry per route. `slots` is
+// terminal_exit_slots' answer; `halves` the half of the connection face each terminal lead packs on
+// (-1: x <= 0, +1: x >= 0; 0 for any other route); `bundleRanks` the rank of the lead's bundle on its
+// half and face (0 = placed first, nearest the crossing), empty for any other route.
+struct TerminalLanePlan {
+    std::vector<std::optional<double>> slots;
+    std::vector<int> halves;
+    std::vector<std::optional<int64_t>> bundleRanks;
+    // Spec section 17: per route, TIED_LEADS_COLLIDE and LANES_COLLIDE found while laying the lanes.
+    std::vector<std::vector<LeadFinding>> findings;
+    // Spec section 22: per route, whether the terminal lead overflowed onto the OTHER half (its
+    // isolation group's leads did not fit `halves`); `halves` stays the group's own half.
+    std::vector<bool> overflowed;
+    // Spec P5, real winding, per route: the attach turn's span and the tangential flag the planner
+    // judged the lead's meetings with (ConnectionRoute::laneTurnSpan / laneTangential).
+    std::vector<std::optional<std::pair<double, double>>> turnSpans;
+    std::vector<std::optional<bool>> tangential;
+};
+
+// ABT #1705 (Alf, 2026-10-11 / 2026-10-24): a terminal lead whose lane lies at or beyond its turn's
+// half extent along the connection face (TerminalTurnPath::laneBound) leaves -- an entrance joins --
+// TANGENTIALLY off the back of the turn: a level straight tangent to the turn, then ONE corner of the
+// lead's plannedBendRadius onto its radial run at the lane. The corner's centre lies on the column's
+// mid plane (z = 0), one bend radius inside the lane, so a lane exactly at the turn's half extent
+// leaves straight down the side with no corner at all. Plan coordinates (x, z) are the frame of the
+// route's own connection face: x the lane axis, z = -1 towards that face; `along` is the signed path
+// length from the crossing along the attach turn to the tangent point (positive towards +x).
+//
+// Alf, 2026-10-25 (spec S0): a lead on the OTHER half of the crossing (`farHalf`: an exit at x < 0, an
+// entrance at x > 0) does not reach the back of the turn the way the turn runs. Its turn runs on past
+// the crossing along the connection face's straight; the lead leaves at the straight's end (the
+// crossing itself on a round column, whose face has no straight) level along the face line, and one
+// 90 degree corner of its plannedBendRadius turns it onto its radial run at the lane, the corner's
+// centre one bend radius outside the face line and one inside the lane. If the lane lies closer to the
+// crossing than the straight's end plus the bend radius, the lead leaves the straight that much earlier
+// (no straight). A lane closer to the crossing than one bend radius is refused.
+struct TerminalTangentialLead {
+    double lane = 0;
+    double along = 0;
+    std::vector<double> tangentPoint;   // {x, z} on the turn's centreline
+    std::vector<double> cornerStart;    // {x, z}: where the straight meets the corner
+    std::vector<double> cornerCentre;   // {x, z}
+    std::vector<double> cornerEnd;      // {x, z}: where the corner meets the radial run, x = lane
+    double cornerAngle = 0;             // radians, in [0, pi): past pi/2 the corner is larger than the turn's own
+    double straightLength = 0;
+    bool farHalf = false;               // spec S0: an exit at x < 0 or an entrance at x > 0 (OFF_THE_FACE_END)
+    // Spec section 17: the straight meets the turn past the far side of the turn (|along| > half its
+    // path); planned anyway, crossing its own turn, and reported (LeadFindingKind::CROSSES_FAR_SIDE with
+    // farSideWitness, the numbers) on the route.
+    bool crossesFarSide = false;
+    std::string farSideWitness;
+};
+
 // ABT #685: one connection of one conductor, as MKF drew it — the record MVB++ realises in 3D and
 // the painters draw. `waypoints` is the route in the winding-window half-plane, (layer axis, turn
 // axis), in path order from `fromTurn` to `toTurn`; a consumer follows it, it never invents one.
@@ -455,6 +613,11 @@ struct ConnectionRoute {
     int side = 0;                                  // which face the out-of-plane part routes on
     std::vector<std::vector<double>> waypoints;    // {layerAxis, turnAxis} centres, in path order
     double routedLength = 0;                       // summed copper of the route's segments
+    // A TOROIDAL terminal lead (Alf, 2026-10-30, "Build toroid routes"): its waypoints are cartesian
+    // {x, y} in the core's plane, centred on the core, from the lead's window-border end to its turn
+    // (an exit's reversed) -- the radial run toroidal_connection_reserved_spaces reserves. Such a lead has
+    // no connection face, so no lane, slot or wrap direction; its copper is its footprint in that plane.
+    bool toroidal = false;
     // ABT #1174: the sleeve's outer diameter on a sleeved TERMINAL route, empty otherwise.
     std::optional<double> sleeveOuterDiameter;
     // ABT #1269: where this SLEEVED lead crosses the margin's INNER face, on the turn axis and in
@@ -464,6 +627,20 @@ struct ConnectionRoute {
     // ConnectionSleeve::overlapIntoWinding, instead of guessing a length. Empty on an unsleeved
     // route, and on a sleeved one whose section states no margin (nothing to cross).
     std::optional<double> marginInnerFace;
+    // Spec section 15 (Alf, 2026-10-26: "The sleeve goes only until the winding layers start; it is
+    // designed to maintain insulation around the bobbin and the core, not between the wires, so the
+    // terminal space should be reserved for the normal wire, without sleeve"). The sleeve's planned
+    // in-window extent, as arc lengths along `waypoints` measured from the lead's WINDOW-BORDER end
+    // (an entrance's first waypoint, an exit's last). `sleeveWindingEntry`: where the lead first
+    // meets a wound layer, conduction or insulation ("where the layer stack starts", Alf 2026-10-26;
+    // this replaces ABT #1269's end at marginInnerFace, which stays published as the margin's face).
+    // Planning throws when the lead meets no layer. `sleeveSpan`: that entry plus the sleeve's
+    // stated ConnectionSleeve::overlapIntoWinding, the length the sleeve covers (a span past the
+    // polyline's end lies on the attach turn); empty when the sleeve states no overlap. Inside the
+    // winding area the lead is sized by its bare coated wire (thick_lead_envelope, CoilPins.cpp).
+    // Both empty on an unsleeved route.
+    std::optional<double> sleeveWindingEntry;
+    std::optional<double> sleeveSpan;
     // ABT #1172 (WP3, RFC 0013): a TERMINAL route whose winding end is assigned to a bobbin pin
     // continues past the window border to that pin. `pinName` names it (empty = no pin, the
     // route ends at the border as before); `pinWaypoints` is that continuation as 3D points in
@@ -504,6 +681,12 @@ struct ConnectionRoute {
     // stub itself, so waypoints, reservations and blocking are unchanged. Empty: a straight stub, no
     // stub, contiguous layers, or not a real winding.
     std::optional<double> rampLength;
+    // Spec section 18 (Alf, 2026-10-27): on a TERMINAL route whose lane moves out one for one with its
+    // own span and that no ramp is consistent with, the stretch of the face from its packed slot out to
+    // the FIRST slot where its stub holds both bends without a ramp. The lead runs unramped at that slot
+    // and the stretch is planned as its own (lane_footprint), so its lane stays there. Never set
+    // together with rampLength. Empty: no such stretch.
+    std::optional<double> laneStandoff;
     // ABT #1354: on a TERMINAL route, the SLOT along the flange this lead's in-window run leaves
     // the window at -- the x Coil::terminal_exit_slots decided for it, in the same frame and units
     // as `pinWaypoints`' x (metres, 0 = the crossing lane). It is MKF's own answer to "where, side
@@ -528,6 +711,44 @@ struct ConnectionRoute {
     // Empty on every other non-terminal route (links, dragbacks and squeezes sit at the crossing,
     // x = 0), and on every route when there are no routes at all.
     std::optional<double> exitSlot;
+    // Alf, 2026-10-25 (spec S0/S1), real winding, TERMINAL routes with a lane: the half of the
+    // connection face the lead's bundle packs on, -1 (x <= 0) or +1 (x >= 0) -- in an inductor (one
+    // winding) entrances on -1 and exits on +1; in a multi-winding magnetic the primary's isolation
+    // group on -1 and every other isolation group on +1 -- and the rank of its bundle on that half
+    // (0 = placed first, nearest the crossing), the order MKF chose because it gives the SHORTER lead
+    // (Coil::terminal_lane_plan). Empty under ideal winding and on every other route.
+    std::optional<int> laneHalf;
+    std::optional<int64_t> laneBundleRank;
+    // Spec section 22 (Alf, 2026-10-27, "Overflow to spare half"), real winding, multi-winding: true when
+    // the lead's isolation group does not fit laneHalf, so this lead continues on the OTHER half, past the
+    // last lane of the group that packs there. laneHalf stays its group's own half. Never set on a pinned
+    // winding (spec section 12: pins decide the half) nor in an inductor (S1). Empty while undecided:
+    // Coil's lane settle decides it once, on its first pass, and terminal_lane_plan keeps it after.
+    std::optional<bool> laneOverflow;
+    // Spec section 21 (Alf, 2026-10-27), real winding, TERMINAL routes: the direction, along the
+    // connection face in the frame of `exitSlot` (+1 towards larger x, -1 towards smaller), in which
+    // the lead's attach turn travels on that face -- an entrance's first turn away from its landing,
+    // an exit's last turn into its lane. Every clockwise turn leaves the crossing towards -x (MVB++
+    // appendRoundWrap / appendRectWrap, terminal_turn_height_at), a counter-clockwise one towards +x;
+    // Coil::terminal_wrap_direction. judge_copper_overlaps reads it to place a sibling's
+    // terminal-adjacent turn along the face. Empty under ideal winding and on every other route.
+    std::optional<int> wrapDirection;
+    // Spec P5 (Alf, 2026-10-24, "lanes only where leads can meet"), real winding, TERMINAL routes: how
+    // the lane planner judged this lead's meetings when it laid the published lanes -- the axial span
+    // its attach turn takes within the face's reach (laneTurnSpan) and whether the lead leaves
+    // tangentially at its lane (laneTangential). Coil::terminal_leads_meet_as_planned reads them, so a
+    // consumer judges two published leads exactly as the planner did. Empty under ideal winding.
+    std::optional<std::pair<double, double>> laneTurnSpan;
+    std::optional<bool> laneTangential;
+    // Spec section 21 / lead_segments section 3 (Alf, 2026-10-27), real winding: an OFF-FACE exit (the
+    // MVB++ ABT #849 stub, one coated width outward of its turn on a rectangular or oblong column)
+    // leaves its turn by a LIFT -- the radial step of `waypoints` 0 -> 1, from the turn to the stub's
+    // x -- planned as a cosine S in the section like rampLength: liftLength is its axial travel,
+    // lead_ramp_length(step, governing radius), so the S's curvature stays at plannedBendRadius. The
+    // stub then climbs at the stub's x to the edge row (waypoints 1 -> 2). 0: a plain radial step, long
+    // enough for both its bends. A LIFT_TOO_SHORT finding when the stub has less axial room than the lift
+    // and its bend onto the run need. Empty on every other route.
+    std::optional<double> liftLength;
     // ABT #1423: set when this TERMINAL lead leaves tangentially off a lateral face straight (see
     // TangentDeparture): a consumer draws the straight lead from tangentDeparture->point along
     // ->direction and ends the turn there, and follows neither `waypoints` (then only the lead's
@@ -569,6 +790,9 @@ struct ConnectionRoute {
     // one coated diameter outside it. 0 when no return lays a lane under the outer face. Empty when
     // exitRun is.
     std::optional<double> exitRunRide;
+    // Spec section 17: every collision or misfit found while planning this lead, drawn and reported
+    // (see LeadFinding). Empty for a lead that fits.
+    std::vector<LeadFinding> findings;
 };
 
 // Smallest distance between two 3D polylines (CoilPins.cpp's segment distance).
@@ -657,6 +881,8 @@ struct PinLeadRoute {
     // MKF planned SHARP corners — so a consumer drawing a rounded corner can see the mismatch
     // instead of silently producing copper inside the rail.
     double plannedBendRadius = 0;
+    // Spec section 17: PIN_RUN_COLLIDES when no candidate run clears; the most direct one is drawn.
+    std::vector<LeadFinding> findings;
 };
 
 // ABT #1237: one terminal lead to route to its pin, see Coil::route_leads_to_pins.
@@ -673,6 +899,10 @@ struct PinLeadRequest {
     // window: MKF's exit slot, Coil::terminal_exit_slots. Required; the run starts there, never
     // searched. A consumer drawing the in-window lead draws its run at this x.
     std::optional<double> exitX;
+    // Spec section 12: the connection face the lead leaves on, its route's ConnectionRoute::side. 0: the -Z
+    // face, the run starts at bobbin x = exitX, z = -(window exit); 1: the +Z face, whose frame is the
+    // bobbin frame turned 180 degrees about the column axis, so the run starts at x = -exitX, z = +(window exit).
+    int side = 0;
 };
 
 // ABT #1172 (WP3): one pin of a bobbin's processedDescription.pins[] placed for pin assignment.
@@ -1238,6 +1468,11 @@ class Coil : public MAS::Coil {
         // rectangular, planar or foil wire's outer width and height). Throws when neither gives it;
         // turn_outlines_unknown_reason says so first.
         std::vector<CopperOverlap> judge_copper_overlaps();
+        // The same judgement of a given connection layout (the routes and reserved spaces that
+        // get_connection_reserved_spaces returns): judge_copper_overlaps() passes the coil's own. Lets a
+        // test judge the coil's own layout with lanes it changed itself.
+        std::vector<CopperOverlap> judge_copper_overlaps(const std::vector<ConnectionRoute>& routes,
+                                                         const std::vector<ConnectionReservedSpace>& spaces);
         // Alf, 2026-10-27 (ABT #2109): why the turns' outlines judge_copper_overlaps and
         // judge_turns_outside_window draw with are unknown -- a turn that stores no cross-section and
         // whose wire does not give it either (the turn, its winding, the wire and what it lacks) --
@@ -1814,6 +2049,28 @@ class Coil : public MAS::Coil {
          * @param core   the processed core: its bounding box gives the through-core creepage path
          */
         PinAssignmentResult assign_pins(const Bobbin& bobbin, const Core& core);
+        /// assign_pins' plan. `core` null: the pins are assigned without the creepage check (which
+        /// decides no pin, it only refuses a plan), as terminal_pin_sides needs on a copy of the coil.
+        PinAssignmentResult assign_pins_impl(const Bobbin& bobbin, const Core* core);
+        /**
+         * @brief Spec section 12 (Alf, 2026-10-25, "pins decide the side"), real winding: the connection face
+         * and half each winding end leaves on, from its pin. Precedence: (i) a winding end on a named pin
+         * (connection pinName + end + parallel, RFC 0013) leaves on the face toward its pin's rail -- face 0
+         * (-Z) for a pin at z < 0, face 1 (+Z) for one at z > 0 -- on the half of that face its pin's x lies on,
+         * in the face's own frame (face 1 is the bobbin frame turned 180 degrees about the column axis, so
+         * its x is the bobbin's -x); (ii) a bobbin with pins but ends with none named: the pins
+         * Coil::assign_pins would give them (planned on a copy, without the creepage check, which decides no
+         * pin), then (i); (iii) no pins: nothing here, the S0/S1 default. It does not depend on
+         * Settings::coil_connect_leads_to_pins: with it off the leads end in free air on the same face and
+         * half, so turning it on moves no lane. A winding whose pinned ends lie on both faces throws; an end
+         * whose pin lies on the crossing (x = 0) gets no half (0: the S0/S1 half).
+         */
+        struct TerminalPinSides {
+            std::map<std::string, int> faceByWinding;
+            std::map<std::tuple<std::string, int64_t, bool>, int> halfByEnd;   // (winding, parallel, entrance)
+            std::map<std::tuple<std::string, int64_t, bool>, std::string> pinByEnd;
+        };
+        TerminalPinSides terminal_pin_sides();
         /// True when every winding already terminates on named pins at both ends (nothing to assign).
         bool has_complete_pin_connections() const;
         /// The pins of a bobbin placed into rows (row coordinate ascending, x ascending in a row).
@@ -1841,17 +2098,22 @@ class Coil : public MAS::Coil {
          *      anything already placed (rule 1 plus every bundle before) whose 2D route (radial,
          *      axial) comes within reach of the member's: the two coated radii, or under rule 4 the
          *      wider gap and reach given there.
-         *   4. ABT #1705, REAL WINDING ONLY: two terminal leads of DIFFERENT bundles whose sections
-         *      come within reach of each other's corners -- 2D routes closer than the two coated
-         *      radii plus BOTH planned bend radii (ConnectionRoute::plannedBendRadius) -- never share
-         *      the face: their footprints along it stand the two coated radii PLUS the larger bend
-         *      radius apart. A drawn lead is not its 2D polyline: it leaves its helix and turns onto
-         *      its radial run through bends of plannedBendRadius, so its copper reaches up to that
-         *      radius off the polyline and off its lane, and two bundles whose polylines merely
-         *      touch in 2D (14_dab: an inner-layer entrance row 0.855 mm below the outer-layer exit
-         *      row) collide in 3D wherever they share x. The extra bend radius is the clearance gap
-         *      between bundles: never an exact touch at a bundle boundary. Members of ONE bundle keep
-         *      their side-by-side pitch (rules 2 and 3, ABT #685/#1336).
+         *   4. ABT #1705, REAL WINDING ONLY: two terminal leads of DIFFERENT bundles that CAN MEET in
+         *      3D (terminal_leads_can_meet, rule 5's turn spans) never share the face: their footprints
+         *      along it stand their two half extents along the lane apart, and no more (Alf,
+         *      2026-10-25, spec C3: "no extra gap between bundles unless there is a stated reason, such
+         *      as a standard requiring the clearance"; the clearance comes from the real geometry, the
+         *      can-meet envelopes with their bend arcs, never a blanket bend radius -- the
+         *      "+ max(R_a, R_b)" this rule carried until then is gone). Two bundles whose drawn paths
+         *      merely touch (14_dab: an inner-layer entrance row 0.855 mm below the outer-layer exit
+         *      row) collide in 3D wherever they share x.
+         *   5. ABT #1705 (Alf, 2026-10-24, "lanes only where leads can meet"), REAL WINDING ONLY: inside
+         *      a bundle, a member stands one pitch (plus the ramp between) beyond every earlier member
+         *      it can meet (terminal_leads_can_meet, each turn span the heights its attach turn climbs
+         *      within one pitch plus the side's largest bend radius and ramp span of the crossing),
+         *      and shares the lane of the members it cannot meet: section-local leads
+         *      leaving at different heights stay on the crossing (x = 0), leave radially and need no
+         *      tangent. Members that all meet their predecessors keep rule 2's side-by-side pitch.
          * Then check_terminal_lanes proves the result and throws on a collision.
          * @param routes          the coil's connection routes (get_connection_reserved_spaces)
          * @param diameters       coated (or sleeve) outer diameter per route, same size as routes
@@ -1859,12 +2121,183 @@ class Coil : public MAS::Coil {
          *                        (ignored for other routes), same size as routes
          * @param realWinding     Coil::is_real_winding_blocking_applied(): rule 4 applies, and every
          *                        terminal route must carry its plannedBendRadius (else it throws)
+         * @param attachAdvance   per route, the axial advance per revolution of a terminal route's attach
+         *                        turn in the wire's direction (entrance: to the next turn; exit: from the
+         *                        previous one, a FINAL_LANDING's full-height pitch included), 0 for a
+         *                        one-turn conductor (ignored for other routes)
+         * @param turnPaths       per route, the path of a terminal route's attach turn along the connection
+         *                        face (terminal_turn_path; required for every terminal route under real
+         *                        winding, ignored otherwise): where a turn stands at a lane is
+         *                        terminal_turn_height_at's answer for it (terminal_lead_along: at the lane on
+         *                        the face, at the tangent point of a tangential lead off it)
+         * @param windings       the magnetic's windings, (name, isolation side) in functional-description
+         *                        order (used under real winding only): they decide the HALF of the face
+         *                        each bundle packs on (terminal_lane_halves).
+         * Under real winding (Alf, 2026-10-25, spec S0/S1) each bundle packs outwards from the crossing on
+         * its own half: in an INDUCTOR (one winding) entrance bundles at x <= 0 and exit bundles at x >= 0;
+         * in a MULTI-WINDING magnetic the halves isolate the windings -- the windings on the PRIMARY
+         * isolation side on x <= 0, every other isolation group on x >= 0 -- and on its half a winding's
+         * entrance and exit bundles are placed in the order that gives the SHORTER lead
+         * (terminal_lead_length summed over both bundles' leads; an exact tie keeps the entrance first),
+         * stated in the plan (terminal_lane_plan, ConnectionRoute::laneBundleRank). An order MKF cannot plan
+         * (a lead that cannot leave its turn there) is not taken while the other can be, nor one whose tie no
+         * order clears while the other's does; when neither can be planned the entrance-first order's
+         * refusal is thrown.
+         * Under real winding every distance ALONG THE FACE uses each lead's REAL extent along the lane (Alf,
+         * 2026-10-25, spec RW-size; lead_lane_extent in CoilPins.cpp): a round lead its coated (or sleeve)
+         * diameter; a rectangular one the extent of its section along the leg it leaves its turn by (its
+         * axial height for a stub, its radial width for a lead leaving radially at once or tangentially),
+         * never max(width, height). Two siblings stand their half extents apart (rule 2's pitch is the
+         * ideal winding's), and the envelopes of rule 5 carry each lead's real thickness in the section.
+         * Spec section 17: a tie that no order clears keeps its closest order, and it and every collision
+         * check_terminal_lanes finds are reported in TerminalLanePlan::findings, never thrown.
+         * Under real winding, members whose stubs TIE are ordered quantitatively (ABT #1336): an exit's
+         * last turn passes the leads that leave upstream of its own (further out on +x, or off the back),
+         * an entrance's first turn those that leave downstream of it (further out on -x), and at each
+         * such sibling lead the member's turn -- at its pitch-true height there -- must stand
+         * the two coated radii clear of the sibling's lead (its pitch-true stub and its run). The first
+         * order, from ascending by attach height, whose lanes clear every such pair is taken; when none
+         * does it throws, naming the order that came closest, the pair and the shortfall.
          * @return per route: its exit x for a TERMINAL_ENTRANCE / TERMINAL_EXIT route, empty otherwise
          */
         static std::vector<std::optional<double>> terminal_exit_slots(const std::vector<ConnectionRoute>& routes,
                                                                       const std::vector<double>& diameters,
                                                                       const std::vector<double>& attachAxial,
-                                                                      bool realWinding);
+                                                                      bool realWinding,
+                                                                      const std::vector<double>& attachAdvance,
+                                                                      const std::vector<std::optional<TerminalTurnPath>>& turnPaths,
+                                                                      const std::vector<std::pair<std::string, IsolationSide>>& windings);
+        /// Alf, 2026-10-25 (spec S0/S1): terminal_exit_slots' plan in full -- the slots, the half each
+        /// terminal lead packs on and its bundle's rank there (TerminalLanePlan). Same arguments.
+        static TerminalLanePlan terminal_lane_plan(const std::vector<ConnectionRoute>& routes, const std::vector<double>& diameters,
+                                                   const std::vector<double>& attachAxial, bool realWinding,
+                                                   const std::vector<double>& attachAdvance,
+                                                   const std::vector<std::optional<TerminalTurnPath>>& turnPaths,
+                                                   const std::vector<std::pair<std::string, IsolationSide>>& windings,
+                                                   const std::vector<int>& pinHalves = {});
+        /**
+         * @brief Alf, 2026-10-25 (spec S0/S1): the half of the connection face each terminal route packs on,
+         * -1 (x <= 0) or +1 (x >= 0); 0 for any other route. Ideal winding: +1 for every terminal. Real
+         * winding, ONE winding (an inductor): entrances -1, exits +1. Real winding, several windings: the
+         * windings on the PRIMARY isolation side (the primary's isolation group, MAS
+         * functionalDescription[].isolationSide) -1, every other winding +1. Throws when no winding is
+         * given, when a terminal route's winding is not among `windings` (its isolation side is not
+         * stated), or when a multi-winding magnetic has no winding on the PRIMARY side.
+         */
+        /// Spec section 12: `pinHalves`, when given, holds one entry per route; a non-zero entry is the half
+        /// that route's pin puts it on (Coil::terminal_pin_sides) and overrides the S0/S1 half, under real
+        /// winding only.
+        static std::vector<int> terminal_lane_halves(const std::vector<ConnectionRoute>& routes,
+                                                     const std::vector<std::pair<std::string, IsolationSide>>& windings,
+                                                     bool realWinding, const std::vector<int>& pinHalves = {});
+        /// Alf, 2026-10-25 (spec S0): the copper length of a terminal lead leaving at `lane`, as MKF plans it
+        /// drawn: its route in the section from where its own turn stands at the lane (pitch-true, the
+        /// polyline worst_tie_pair measures against), plus, at or beyond the turn's half extent, its
+        /// tangential straight and its corner (plan_terminal_tangential_lead), plus the turn copper the
+        /// lane adds or saves against a turn that ends at the crossing: an exit's last turn stops short of
+        /// the crossing at a lead on x > 0 and runs on past it to a lead on x < 0 (an entrance's first turn
+        /// the other way round), by the path length along the turn (terminal_lead_along). So it compares the
+        /// copper of two lane orders; it can be negative. A #1336 ramp is counted as the stub it replaces.
+        /// Real winding; throws as terminal_lead_along does.
+        static double terminal_lead_length(const ConnectionRoute& route, double advance, const TerminalTurnPath& path, double lane);
+        /**
+         * @brief ABT #1336 (Alf, 2026-10-19: "MKF plans pitch-true"): the axial height of a terminal
+         * route's own attach turn at lane x of the connection face. The connection plane is x = 0,
+         * where the turn stands at its 2-D station (the route's attach waypoint). The turn climbs its
+         * `advance` uniformly over its whole path (MVB++ appendRoundWrap / appendRectWrap: slope =
+         * advance / path length, measured from the crossing), so at lane x it stands at
+         * station - advance * s(x) / path.length, s(x) the signed path length from the crossing to x:
+         * x itself along the face straight, then path.cornerRadius * asin(...) round the arc beyond
+         * it. ROUND: no straight, the arc is the turn (station - advance asin(x / r) / 2 pi). OBLONG:
+         * the connection face is the cap, an arc of the turn's radius. RECTANGULAR / IRREGULAR: the
+         * face straight, then the corner. Throws when |x| lies beyond the straight plus the arc: the
+         * turn does not pass there.
+         */
+        static double terminal_turn_height_at(const ConnectionRoute& route, double advance, const TerminalTurnPath& path, double x);
+        /// ABT #1336/#1705: the signed path length along the attach turn from the crossing to lane x of its
+        /// connection face (positive towards +x, upstream of the crossing: every turn leaves the crossing
+        /// towards -x). Throws when |x| lies beyond the face straight plus its arc.
+        static double terminal_lane_along(const TerminalTurnPath& path, double x);
+        /// ABT #1705: the height of a terminal route's attach turn at signed path length `along` from the
+        /// crossing (station - advance * along / path.length), on the face or off it.
+        static double terminal_turn_height_along(const ConnectionRoute& route, double advance, const TerminalTurnPath& path,
+                                                 double along);
+        /**
+         * @brief ABT #1705 (Alf, 2026-10-24, "lanes only where leads can meet"): whether two terminal
+         * leads can meet in 3D, wherever along the connection face they leave. Each lead's ENVELOPE is
+         * its drawn path projected on the winding window's section (radial, axial):
+         *   - its route polyline from its attach turn's station to its window exit (the stub its #1336
+         *     ramp climbs included; the ramp's extent ALONG the face is its lane footprint);
+         *   - at every corner where it turns inside the section, the arc of its plannedBendRadius it is
+         *     drawn with (tangent to both legs, cutting the corner); the bend off its helix onto its
+         *     first leg lies in the plane of the face and that leg, so in the section it falls on it;
+         *   - its attach turn's own run past the other leads: the segment at the attach radius over
+         *     `turnSpan` = {lowest, highest} axial height that turn stands at where the other leads and
+         *     their bends lie (pitch-true: a steep landing climbs over a sibling's bend there).
+         * Two leads can meet when their envelopes come within their two coated radii (`diameterA`,
+         * `diameterB`: coated or sleeve outer diameters of round leads and turns), an exact touch included.
+         * terminal_exit_slots and check_terminal_lanes judge the same envelopes with each piece's real
+         * thickness in the section (a rectangular lead's and its turn's, spec RW-size). Every point of a
+         * lead's copper projects into its envelope, so two leads that cannot meet in the section cannot
+         * meet anywhere along the face and need no disjoint lanes. Throws on a route that is not a
+         * terminal route with legs.
+         */
+        static bool terminal_leads_can_meet(const ConnectionRoute& a, double diameterA, const std::pair<double, double>& turnSpanA,
+                                            const ConnectionRoute& b, double diameterB, const std::pair<double, double>& turnSpanB);
+        /// Spec P5: whether two published terminal leads can meet, judged exactly as the lane planner
+        /// judged them (their real sections, sleeves and bend arcs, and the turn spans and tangential flags
+        /// it recorded on the routes: laneTurnSpan, laneTangential). `pathA`/`pathB` are their turns'
+        /// paths (terminal_turn_path). Throws when a route carries no planner record.
+        static bool terminal_leads_meet_as_planned(const ConnectionRoute& a, const TerminalTurnPath& pathA,
+                                                   const ConnectionRoute& b, const TerminalTurnPath& pathB);
+        /// ABT #1705: the tangential lead of a terminal route at `lane` (see TerminalTangentialLead), for
+        /// |lane| >= path.laneBound. An entrance at x < 0 or an exit at x > 0 leaves off the back of its
+        /// turn (the plan mirrors for the entrance); since spec S0 (Alf, 2026-10-25) an exit at x < 0 or an
+        /// entrance at x > 0 is accepted too and leaves off the end of the face straight (farHalf, see
+        /// TerminalTangentialLead). Throws when the lane lies inside the turn's half extent, when no
+        /// straight tangent to the turn's back corner reaches a corner of plannedBendRadius onto the lane,
+        /// or, on the far half, when the lane lies closer to the crossing than one bend radius.
+        static TerminalTangentialLead plan_terminal_tangential_lead(const ConnectionRoute& route, const TerminalTurnPath& path,
+                                                                     double lane);
+        /// ABT #1705: where along its attach turn a terminal lead at `lane` leaves (signed path length from
+        /// the crossing): at the lane itself on the face, else at its tangential lead's tangent point.
+        static double terminal_lead_along(const ConnectionRoute& route, const TerminalTurnPath& path, double lane);
+        /// Spec section 21: ConnectionRoute::wrapDirection of a terminal lead attached to `turn` -- -1 for a
+        /// clockwise turn (it leaves the crossing towards -x), +1 for a counter-clockwise one. Throws when the
+        /// turn states no orientation.
+        static int terminal_wrap_direction(const Turn& turn);
+        /**
+         * @brief ABT #1336: the path along the connection face of the turn a terminal route attaches
+         * to (see TerminalTurnPath). Round: from the attach waypoint's radius. Rectangular /
+         * irregular: the face straight and corner the wind charged the turn for
+         * (get_turn_length_in_frame with get_turn_bend_radius), its length plus the dragback rides
+         * (ConnectionLayout::ride_at) that lengthen its lateral faces, as MVB++ draws it. Oblong: the
+         * cap of the turn's radius, its length plus the rides. Throws when the turn is unknown or was
+         * charged no corner on a rectangular column.
+         */
+        TerminalTurnPath terminal_turn_path(const ConnectionRoute& route, const Turn& attachTurn,
+                                            const std::vector<ConnectionRoute>& routes);
+        /**
+         * @brief ABT #1705 (Alf, 2026-10-11 / 2026-10-24; it replaces the face-bound refusal): every
+         * terminal lead whose lane lies at or beyond its turn's half extent along the connection face
+         * leaves tangentially off the back of its turn (plan_terminal_tangential_lead), recorded as an
+         * OFF_THE_BACK TangentDeparture. Its straight, its corner and its radial run must clear the
+         * core's outer legs (the G opening of the shape: Coil::set_core_geometry, the room of ABT #1487
+         * R3) and every other terminal lead of its face by their coated radii; otherwise it THROWS with
+         * the lead, what it needs and what it has. No clamping. Real winding only.
+         * The half extent is faceHalfStraight + cornerRadius on round AND rectangular columns (Alf,
+         * 2026-10-24, "Half extent: leave off the arc"): a lane within the face straight attaches on
+         * the flat, one within the straight plus the corner radius on the corner arc, and only a lane
+         * at or beyond the full half extent goes tangential. The copper the tangential lead cuts off
+         * its turn (|alongTurn|) is charged off that turn's length.
+         * A coil given NO core (Coil::set_core_geometry never called) still plans its tangential leads
+         * and proves them against each other, with the radial runs followed to the bobbin winding
+         * window's border; the core-leg check is skipped. This is the user's explicit decision
+         * (Alf, 2026-10-24: "add the core-leg check only when a core exists"), not a fallback.
+         */
+        void plan_terminal_tangential_departures(std::vector<ConnectionRoute>& routes, const std::vector<double>& diameters,
+                                                 const std::vector<double>& attachAdvance,
+                                                 const std::vector<std::optional<TerminalTurnPath>>& turnPaths);
         /**
          * @brief ABT #1705: proves a set of terminal lanes (terminal_exit_slots' answer, or any other)
          * and THROWS on the first pair that collides, naming both leads, their lanes and the shortfall.
@@ -1872,15 +2305,21 @@ class Coil : public MAS::Coil {
          *   - no two leads within their summed coated radii: when their footprints along the face
          *     (the lane, plus a ramp's span on its turn side) come closer than (d_i + d_j)/2, their 2D
          *     routes must not -- whether the two are siblings of one bundle or not;
-         *   - under real winding, two leads of DIFFERENT bundles (winding, entrance/exit) whose 2D
-         *     routes come within (d_i + d_j)/2 + R_i + R_j (R = plannedBendRadius) must stand
-         *     (d_i + d_j)/2 + max(R_i, R_j) apart along the face (terminal_exit_slots rule 4). This
-         *     is the check that catches an inner-layer lead crossing the outer layer where its own
-         *     winding's exits attach.
-         * Same arguments as terminal_exit_slots, plus the slots to prove (same size as routes).
+         *   - under real winding, two leads that can meet (terminal_leads_can_meet's envelopes, with each
+         *     piece's real section thickness, turn spans at their stations) -- siblings of one bundle or
+         *     leads of DIFFERENT bundles (terminal_exit_slots rule 4) -- must stand their half extents
+         *     along the lane (e_i + e_j)/2 apart along the face (spec C3: no bend-radius gap; spec
+         *     RW-size: e the lead's real extent along the lane). This is the check that catches an
+         *     inner-layer lead crossing the outer layer where its own winding's exits attach.
+         * Under real winding `diameters` are used where the ideal rule needs them (the first check's
+         * section distance against links) and `turnPaths` (required for every terminal route with a slot)
+         * give each lead's real sections. Spec section 17: under real winding a collision is returned, per
+         * route (LANES_COLLIDE on both leads), never thrown; under ideal winding it is a planner defect and
+         * throws std::logic_error.
          */
-        static void check_terminal_lanes(const std::vector<ConnectionRoute>& routes, const std::vector<double>& diameters,
-                                         const std::vector<std::optional<double>>& slots, bool realWinding);
+        static std::vector<std::vector<LeadFinding>> check_terminal_lanes(const std::vector<ConnectionRoute>& routes, const std::vector<double>& diameters,
+                                         const std::vector<std::optional<double>>& slots, bool realWinding,
+                                         const std::vector<std::optional<TerminalTurnPath>>& turnPaths);
         /**
          * @brief Every terminal lead's run from the window exit to its pin, planned together so no
          * two runs share copper (ABT #1172 WP3, ABT #1237).
@@ -1907,8 +2346,9 @@ class Coil : public MAS::Coil {
          * (b) pinRadius + r + d from the axis of every pin but its own (so it also clears any wrap
          * of the same wire), (c) coated clearance from every planned wrap (wrapTurns x d along the
          * pin axis at radius pinRadius + r), with its own wrap on the pin, and (d) its drop at an x
-         * at least r_i + r_j from every other lead's drop. When no candidate fits,
-         * it throws naming the lead and what the most direct candidate collides with. Pins are not
+         * at least r_i + r_j from every other lead's drop. When no candidate fits, the most direct
+         * candidate is drawn and PinLeadRoute::findings carries PIN_RUN_COLLIDES, naming the lead and what
+         * it collides with (spec section 17); it throws only when no candidate run exists at all. Pins are not
          * re-assigned: the candidates already cover every side, lane and level a lead to
          * that pin can take, and another pin would break the RFC 0013 row conventions.
          *
@@ -1939,6 +2379,19 @@ class Coil : public MAS::Coil {
         /// the declared buildability alone (Settings::resolve_lead_bend_radius), physics untouched.
         static double lead_bend_radius(const Wire& wire, const std::optional<ConnectionSleeve>& sleeve, double sweptRadius,
                                        bool realWinding);
+        /**
+         * @brief ABT #1336: THE radius one terminal lead -- (winding, end, parallel) -- bends at:
+         * lead_bend_radius of the wire the lead IS (its stated lead conductor, else the winding's own
+         * wire), its sleeve, and the radius it sweeps (the sleeve's outer radius when sleeved, else
+         * the coated wire's larger outer dimension), under is_real_winding_blocking_applied(). It is
+         * the ConnectionRoute::plannedBendRadius every concentric terminal route carries, and the
+         * plan for a lead that has no route: the TOROIDAL emitter records none (its frame is polar),
+         * yet a consumer bends those leads too and must bend them at MKF's radius, not its own.
+         * Throws when the winding is unknown or the lead has no outer dimension.
+         */
+        double terminal_lead_bend_radius(const std::string& windingName, End end, int64_t parallel);
+        /// A lead sleeve's outer diameter: its bore plus its wall on both sides, per layer.
+        static double lead_sleeve_outer_diameter(const ConnectionSleeve& sleeve);
         /// The part of lead_bend_radius that holds the same in every direction: the declared
         /// buildability and the sleeve's rating, without the wire's own IEC minimum. A round
         /// tube bends alike on every axis; a rectangular wire does not, so a caller that knows

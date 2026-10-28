@@ -507,6 +507,60 @@ void Painter::paint_coil_connections(Magnetic magnetic) {
         // the rotation pivot's y must be negated to match the drawn polygon's centre.
         paint_rectangle(space.coordinates[0], space.coordinates[1], space.dimensions[0], space.dimensions[1], cssClassName, shapes, space.rotation, {space.coordinates[0], -space.coordinates[1]});
     }
+    // Spec section 15 (Alf, 2026-10-26: "The sleeve goes only until the winding layers start"): a
+    // sleeved terminal lead's sleeve is drawn, as an outline of its outer diameter, only over the
+    // stretch MKF planned it on (ConnectionRoute::sleeveSpan, from the window border); the lead is its
+    // reserved bare wire elsewhere. A span past the route's end lies on the attach turn, which this
+    // section shows as the turn itself.
+    bool anySleeved = false;
+    for (const auto& space : reservedSpaces) {
+        anySleeved = anySleeved || space.sleeveOuterDiameter.has_value();
+    }
+    if (!anySleeved) {
+        return;
+    }
+    _root.style(".connection_sleeve")
+        .set_attr("fill", "none")
+        .set_attr("stroke", "#00897B")
+        .set_attr("stroke-width", "1.5")
+        .set_attr("stroke-dasharray", "4,2");
+    const auto layout = coil.get_connection_layout();
+    for (const auto& route : layout.routes) {
+        if (!route.sleeveOuterDiameter ||
+            (route.kind != ConnectionKind::TERMINAL_ENTRANCE && route.kind != ConnectionKind::TERMINAL_EXIT)) {
+            continue;
+        }
+        if (!route.sleeveSpan) {
+            throw InvalidInputException(ErrorCode::INVALID_INPUT,
+                "Painter: the " + std::string(route.kind == ConnectionKind::TERMINAL_ENTRANCE ? "entrance" : "exit") +
+                " lead of winding '" + route.winding + "' parallel " + std::to_string(route.parallel) +
+                " is sleeved, but its sleeve states no overlapIntoWinding, so where the sleeve ends is unknown");
+        }
+        auto fromBorder = route.waypoints;
+        if (route.kind == ConnectionKind::TERMINAL_EXIT) {
+            std::reverse(fromBorder.begin(), fromBorder.end());
+        }
+        const double diameter = route.sleeveOuterDiameter.value();
+        double left = route.sleeveSpan.value();
+        for (size_t k = 0; k + 1 < fromBorder.size() && left > 0; ++k) {
+            const auto& a = fromBorder[k];
+            const auto& b = fromBorder[k + 1];
+            const double length = std::hypot(b.at(0) - a.at(0), b.at(1) - a.at(1));
+            if (!(length > 0)) {
+                continue;
+            }
+            const double drawn = std::min(length, left);
+            const double t = drawn / length;
+            const double endX = a.at(0) + t * (b.at(0) - a.at(0));
+            const double endY = a.at(1) + t * (b.at(1) - a.at(1));
+            const double centreX = (a.at(0) + endX) / 2;
+            const double centreY = (a.at(1) + endY) / 2;
+            const double angle = std::atan2(b.at(1) - a.at(1), b.at(0) - a.at(0)) * 180.0 / std::numbers::pi;
+            paint_rectangle(centreX, centreY, drawn, diameter, "connection_sleeve", shapes, angle, {centreX, -centreY},
+                            "sleeve of " + route.winding + " parallel " + std::to_string(route.parallel));
+            left -= drawn;
+        }
+    }
 }
 
 void Painter::paint_toroidal_coil_sections(Magnetic magnetic) {

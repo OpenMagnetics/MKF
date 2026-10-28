@@ -151,6 +151,51 @@ size_t walk_of(OpenMagnetics::Coil& coil, const std::string& winding, End end, s
     return walk(coil, connection_of(coil, winding, end, parallel).get_pin_name().value());
 }
 
+
+// ABT #1336 (Alf, 2026-10-19): a terminal stub's height where its lead REALLY leaves its turn --
+// pitch-true, at the lead's exit slot -- not at the turn's 2-D station. On a round column the turn
+// passes slot x at the azimuth asin(x / r) off the connection plane and has advanced by its own
+// per-revolution advance (to the next turn for an entrance, from the previous for an exit) over
+// that angle. nullopt for a route with no axis-aligned axial stub.
+struct PitchTrueStub {
+    double station = 0;    // |row - station|: the 2-D height
+    double pitchTrue = 0;  // |row - where the turn is at the slot|
+};
+std::optional<PitchTrueStub> pitchTrueStubOf(const OpenMagnetics::Coil& coil, const ConnectionRoute& route) {
+    if (route.waypoints.size() < 3) return std::nullopt;
+    const bool entrance = route.kind == ConnectionKind::TERMINAL_ENTRANCE;
+    const auto& turnEnd = entrance ? route.waypoints.back() : route.waypoints.front();
+    const auto& next = entrance ? route.waypoints[route.waypoints.size() - 2] : route.waypoints[1];
+    if (std::abs(next[0] - turnEnd[0]) > 1e-12 || !(std::abs(next[1] - turnEnd[1]) > 1e-12)) return std::nullopt;
+    REQUIRE(route.exitSlot);
+    const auto turns = coil.get_turns_description().value();
+    const std::string& turnName = entrance ? route.toTurn : route.fromTurn;
+    size_t at = turns.size();
+    for (size_t k = 0; k < turns.size(); ++k)
+        if (turns[k].get_name() == turnName) at = k;
+    REQUIRE(at < turns.size());
+    double advance = 0;
+    const auto& turn = turns[at];
+    if (entrance) {
+        for (size_t k = at + 1; k < turns.size(); ++k)
+            if (turns[k].get_winding() == turn.get_winding() && turns[k].get_parallel() == turn.get_parallel()) {
+                advance = turns[k].get_coordinates()[1] - turn.get_coordinates()[1];
+                break;
+            }
+    }
+    else {
+        for (size_t k = at; k-- > 0;)
+            if (turns[k].get_winding() == turn.get_winding() && turns[k].get_parallel() == turn.get_parallel()) {
+                advance = turn.get_coordinates()[1] - turns[k].get_coordinates()[1];
+                break;
+            }
+    }
+    const double x = route.exitSlot.value();
+    REQUIRE(std::abs(x) <= turnEnd[0]);
+    const double turnY = turnEnd[1] - advance * std::asin(x / turnEnd[0]) / (2 * std::numbers::pi);
+    return PitchTrueStub{std::abs(next[1] - turnEnd[1]), std::abs(next[1] - turnY)};
+}
+
 }  // namespace
 
 TEST_CASE("The PQ 32/30 former places 12 vertical pins in two rows of 6, and overlapping pins are refused (ABT #1172)",
@@ -445,7 +490,17 @@ TEST_CASE("The terminal lead is routed to its pin: routedLength grows by the run
         // The border point (radial, axial) leaves on the front face at its own axial level, at
         // least as far out as the border (plus the ride-over lift and its lane).
         CHECK_THAT(windowEnd[1], Catch::Matchers::WithinAbs(borderEnd[1], 1e-12));
-        CHECK(windowEnd[2] <= -borderEnd[0] + 1e-12);
+        // Alf 2026-10-25: face-aware (§12 pins decide the side): the run leaves on the face its route
+        // published, -Z on face 0 and +Z on face 1, at least as far out as the border on that face.
+        REQUIRE((after.side == 0 || after.side == 1));
+        REQUIRE(std::abs(pin.centre[2]) > 1e-9);
+        CHECK(after.side == (pin.centre[2] < 0 ? 0 : 1));   // toward its pin's rail (spec section 12, real winding)
+        if (after.side == 0) {
+            CHECK(windowEnd[2] <= -borderEnd[0] + 1e-12);
+        }
+        else {
+            CHECK(windowEnd[2] >= borderEnd[0] - 1e-12);
+        }
         double leg = 0;
         for (size_t k = 0; k + 1 < after.pinWaypoints.size(); ++k) {
             const auto& a = after.pinWaypoints[k];
@@ -749,27 +804,76 @@ struct PinRun {
     std::vector<Point3> points;   // window exit -> the wrap's start, tangent to it
     double radius;
     double slotX;                 // Coil::terminal_exit_slots for this lead, recomputed from the routes
+    int side = 0;                 // the face the route published (spec section 12): 0 = -Z, 1 = +Z
 };
 
 // ABT #1237: the exit slots by the documented rule, recomputed from the coil's routes, turns and wires.
+// Alf 2026-10-25: face-aware (§12 pins decide the side). A pinned lead's half is its pin's, so the
+// recompute is given the half each route PUBLISHED (ConnectionRoute::laneHalf) as its pin half; the
+// slots themselves are still recomputed, never copied from the route.
 std::vector<std::optional<double>> recompute_exit_slots(OpenMagnetics::Coil& coil, const std::vector<ConnectionRoute>& routes) {
     const auto wires = coil.get_wires();
     const auto turns = coil.get_turns_description().value();
     std::vector<double> diameters;
     std::vector<double> attachAxial;
+    std::vector<double> attachAdvance;
+    std::vector<std::optional<TerminalTurnPath>> turnPaths;
     for (const auto& route : routes) {
+        std::optional<TerminalTurnPath> turnPath;
         auto wire = wires[coil.get_winding_index_by_name(route.winding)];
         diameters.push_back(std::max({wire.get_maximum_outer_width(), wire.get_maximum_outer_height(), route.sleeveOuterDiameter.value_or(0.0)}));
         double axial = std::numeric_limits<double>::quiet_NaN();
-        const std::string& turnName = route.kind == ConnectionKind::TERMINAL_ENTRANCE ? route.toTurn : route.fromTurn;
-        for (const auto& turn : turns) {
-            if (turn.get_name() == turnName) {
-                axial = turn.get_coordinates()[1];
+        // ABT #1336: the attach turn's advance in the wire's direction (entrance: to the next turn of
+        // its parallel; exit: from the previous one; 0 for a one-turn conductor).
+        double advance = std::numeric_limits<double>::quiet_NaN();
+        const bool entrance = route.kind == ConnectionKind::TERMINAL_ENTRANCE;
+        const std::string& turnName = entrance ? route.toTurn : route.fromTurn;
+        for (size_t t = 0; t < turns.size(); ++t) {
+            if (turns[t].get_name() != turnName) {
+                continue;
+            }
+            axial = turns[t].get_coordinates()[1];
+            if (coil.is_real_winding_blocking_applied()) {
+                turnPath = coil.terminal_turn_path(route, turns[t], routes);
+            }
+            advance = 0.0;
+            auto sameConductor = [&](size_t other) {
+                return turns[other].get_winding() == turns[t].get_winding() && turns[other].get_parallel() == turns[t].get_parallel();
+            };
+            if (entrance) {
+                for (size_t n = t + 1; n < turns.size(); ++n) {
+                    if (sameConductor(n)) {
+                        advance = turns[n].get_coordinates()[1] - axial;
+                        break;
+                    }
+                }
+            }
+            else {
+                for (size_t n = t; n-- > 0;) {
+                    if (sameConductor(n)) {
+                        advance = axial - turns[n].get_coordinates()[1];
+                        break;
+                    }
+                }
             }
         }
         attachAxial.push_back(axial);
+        attachAdvance.push_back(advance);
+        turnPaths.push_back(turnPath);
     }
-    return OpenMagnetics::Coil::terminal_exit_slots(routes, diameters, attachAxial, coil.is_real_winding_blocking_applied());
+    std::vector<std::pair<std::string, IsolationSide>> windings;
+    for (auto& w : coil.get_functional_description()) windings.emplace_back(w.get_name(), w.get_isolation_side());
+    std::vector<int> pinHalves(routes.size(), 0);
+    for (size_t r = 0; r < routes.size(); ++r) {
+        if (!routes[r].pinName.empty() && routes[r].laneHalf) {
+            pinHalves[r] = routes[r].laneHalf.value();
+        }
+    }
+    return OpenMagnetics::Coil::terminal_lane_plan(routes, diameters, attachAxial, coil.is_real_winding_blocking_applied(), attachAdvance,
+                                                   coil.is_real_winding_blocking_applied() ? turnPaths
+                                                                                           : std::vector<std::optional<TerminalTurnPath>>{},
+                                                   windings, pinHalves)
+        .slots;
 }
 
 struct PinRunReport {
@@ -806,6 +910,11 @@ PinRunReport check_pin_runs_share_no_copper(OpenMagnetics::Coil& coil, std::vect
         REQUIRE(run.points.size() >= 3);
         REQUIRE(slots[routeIndex].has_value());
         run.slotX = slots[routeIndex].value();
+        run.side = route.side;
+        REQUIRE((run.side == 0 || run.side == 1));
+        // The recompute agrees with the slot the route published.
+        REQUIRE(route.exitSlot.has_value());
+        CHECK_THAT(route.exitSlot.value(), Catch::Matchers::WithinAbs(run.slotX, 1e-12));
         runs.push_back(run);
     }
     auto pin_named = [&](const std::string& name) -> const PlacedPin& {
@@ -842,9 +951,20 @@ PinRunReport check_pin_runs_share_no_copper(OpenMagnetics::Coil& coil, std::vect
         INFO(run.label << " -> pin " << run.pinName);
         const auto& pin = pin_named(run.pinName);
         const size_t axis = pin.hangsAlongZ ? 2 : 1;
-        // The run starts at MKF's exit slot, the x the in-window lead is drawn at, and leaves along -Z.
-        CHECK_THAT(run.points[0][0], Catch::Matchers::WithinAbs(run.slotX, 1e-12));
-        CHECK_THAT(run.points[1][0], Catch::Matchers::WithinAbs(run.slotX, 1e-12));
+        // The run starts at MKF's exit slot, the x the in-window lead is drawn at, and leaves the
+        // window on its route's face. Alf 2026-10-25: face-aware (§12 pins decide the side): the face-1
+        // frame is the bobbin frame turned 180 degrees about the column axis, so a face-1 run starts at
+        // bobbin x = -slot and leaves along +Z; a face-0 run at x = +slot, along -Z.
+        // Under real winding the published face is the one toward the run's pin (spec section 12): the
+        // pin's own z says which, independently of the plan.
+        if (coil.is_real_winding_blocking_applied()) {
+            REQUIRE(std::abs(pin.centre[2]) > 1e-9);
+            CHECK(run.side == (pin.centre[2] < 0 ? 0 : 1));
+        }
+        const double runX = run.side == 0 ? run.slotX : -run.slotX;
+        CHECK_THAT(run.points[0][0], Catch::Matchers::WithinAbs(runX, 1e-12));
+        CHECK_THAT(run.points[1][0], Catch::Matchers::WithinAbs(runX, 1e-12));
+        CHECK((run.side == 0 ? run.points[0][2] < 0 : run.points[0][2] > 0));
         // Ends where its wrap starts, tangent to the wrap circle on a level last leg (ABT #1640),
         // resting outside the rail face.
         check_tangent_arrival(pin, run.points[run.points.size() - 2], run.points.back(), pin.diameter / 2 + run.radius);
@@ -971,7 +1091,9 @@ TEST_CASE("The boost inductor's four runs to PQ 26/25 pins share no copper (ABT 
     // plane side by side; the exit bundle cannot take the plane (each exit row is 4.7 um from its own
     // Z dragback's step-out row there), so it anchors one lane out. These are the attach slots MVB++'s
     // fan chose itself on MKF 10533d78 (entrances 0 / 0.943 mm, exits 0.943 / 1.886 mm).
-    std::map<std::string, double> expectedSlot = {{"Primary p0 start", 0.0}, {"Primary p1 start", 0.943e-3},
+    // ABT #1705 (approved by Alf 2026-10-24, sign only): under real winding the entrance bundle packs
+    // outwards on x <= 0, so Primary p1 start stands at -0.943 mm; its magnitude is unchanged.
+    std::map<std::string, double> expectedSlot = {{"Primary p0 start", 0.0}, {"Primary p1 start", -0.943e-3},
                                                   {"Primary p0 finish", 0.943e-3}, {"Primary p1 finish", 1.886e-3}};
     for (const auto& run : runs) {
         INFO(run.label);
@@ -1005,8 +1127,9 @@ TEST_CASE("The PQ 32/30 flyback's runs share no copper, on both rows and with st
         std::vector<PinRun> runs;
         auto report = check_pin_runs_share_no_copper(coil, &runs);
         CHECK(report.runs == 6);
-        check_exit_lanes(runs, {{"Primary p0 start", 0}, {"Primary p0 finish", 0}, {"Secondary p0 start", 0}, {"Secondary p1 start", 1},
-                                {"Secondary p0 finish", 0}, {"Secondary p1 finish", 1}});
+        // §12 face-aware lane plan (approved by Alf 2026-10-26): Secondary p0 start 0->1, p1 start 1->0, p1 finish 1->-1.
+        check_exit_lanes(runs, {{"Primary p0 start", 0}, {"Primary p0 finish", 0}, {"Secondary p0 start", 1}, {"Secondary p1 start", 0},
+                                {"Secondary p0 finish", 0}, {"Secondary p1 finish", -1}});
     }
     SECTION("three strands on adjacent pins") {
         auto coil = make_coil({{"Primary", 20, 1, "primary", "Round 0.5 - Grade 1"},
@@ -1015,9 +1138,149 @@ TEST_CASE("The PQ 32/30 flyback's runs share no copper, on both rows and with st
         std::vector<PinRun> runs;
         auto report = check_pin_runs_share_no_copper(coil, &runs);
         CHECK(report.runs == 8);
-        check_exit_lanes(runs, {{"Primary p0 start", 0}, {"Primary p0 finish", 0}, {"Secondary p0 start", 0}, {"Secondary p1 start", 1},
-                                {"Secondary p2 start", 2}, {"Secondary p0 finish", 0}, {"Secondary p1 finish", 1}, {"Secondary p2 finish", 2}});
+        // §12 face-aware lane plan (approved by Alf 2026-10-26): Secondary p0 start 0->2, p2 start 2->0, p2 finish 2->-2,
+        // p1 finish 1->-1.
+        check_exit_lanes(runs, {{"Primary p0 start", 0}, {"Primary p0 finish", 0}, {"Secondary p0 start", 2}, {"Secondary p1 start", 1},
+                                {"Secondary p2 start", 0}, {"Secondary p0 finish", 0}, {"Secondary p1 finish", -1}, {"Secondary p2 finish", -2}});
     }
+}
+
+namespace {
+// Closest distance between segments [p1, q1] and [p2, q2] (Ericson, Real-Time Collision Detection 5.1.9).
+double segment_segment_distance(const std::vector<double>& p1, const std::vector<double>& q1, const std::vector<double>& p2,
+                                const std::vector<double>& q2) {
+    double d1[3], d2[3], r[3];
+    for (int k = 0; k < 3; ++k) {
+        d1[k] = q1[k] - p1[k];
+        d2[k] = q2[k] - p2[k];
+        r[k] = p1[k] - p2[k];
+    }
+    auto dot = [](const double* a, const double* b) { return a[0] * b[0] + a[1] * b[1] + a[2] * b[2]; };
+    const double a = dot(d1, d1), e = dot(d2, d2), f = dot(d2, r);
+    double s = 0, t = 0;
+    if (a <= 1e-30 && e <= 1e-30) {
+        s = t = 0;
+    }
+    else if (a <= 1e-30) {
+        t = std::clamp(f / e, 0.0, 1.0);
+    }
+    else {
+        const double c = dot(d1, r);
+        if (e <= 1e-30) {
+            s = std::clamp(-c / a, 0.0, 1.0);
+        }
+        else {
+            const double b = dot(d1, d2), denominator = a * e - b * b;
+            s = denominator > 1e-30 ? std::clamp((b * f - c * e) / denominator, 0.0, 1.0) : 0.0;
+            t = (b * s + f) / e;
+            if (t < 0) {
+                t = 0;
+                s = std::clamp(-c / a, 0.0, 1.0);
+            }
+            else if (t > 1) {
+                t = 1;
+                s = std::clamp((b - c) / a, 0.0, 1.0);
+            }
+        }
+    }
+    double d2sum = 0;
+    for (int k = 0; k < 3; ++k) {
+        const double delta = (p1[k] + d1[k] * s) - (p2[k] + d2[k] * t);
+        d2sum += delta * delta;
+    }
+    return std::sqrt(d2sum);
+}
+}  // namespace
+
+TEST_CASE("Leads sharing a lane keep apart over their whole run, pin run included (ABT #1336)",
+          "[constructive-model][coil][pins][abt1336]") {
+    // The PQ 32/30 flyback's three-strand fixture, built exactly as "The PQ 32/30 flyback's runs share
+    // no copper ... / three strands on adjacent pins" builds it. terminal_exit_slots lets two leads
+    // share a lane only when they cannot meet (an exact touch counts as meeting). Each lead is measured
+    // whole, as MKF plans it: its in-window run (route waypoints at its exit slot on its face) and its
+    // planned pin run (pinWaypoints), joined. Every pair keeps its copper apart (no overlap), and every
+    // pair whose slots share a lane on one face stands strictly apart (not even touching).
+    SettingsGuard<bool> realWinding(Settings::GetInstance(), &Settings::get_coil_use_real_winding_geometry,
+                                    &Settings::set_coil_use_real_winding_geometry, true);
+    auto core = former_core();
+    auto coil = make_coil({{"Primary", 20, 1, "primary", "Round 0.5 - Grade 1"},
+                           {"Secondary", 4, 3, "secondary", "Round 0.5 - Grade 1"}});
+    coil.assign_pins(coil.resolve_bobbin(), core);
+    std::vector<ConnectionRoute> routes;
+    coil.get_connection_reserved_spaces(&routes);
+    const auto wires = coil.get_wires();
+    struct WholeLead {
+        std::string label;
+        int side;
+        double slot;
+        double diameter;
+        std::vector<std::vector<double>> points;   // bobbin frame, turn end first
+    };
+    std::vector<WholeLead> leads;
+    for (const auto& route : routes) {
+        if (route.kind != ConnectionKind::TERMINAL_ENTRANCE && route.kind != ConnectionKind::TERMINAL_EXIT) {
+            continue;
+        }
+        const bool entrance = route.kind == ConnectionKind::TERMINAL_ENTRANCE;
+        WholeLead lead;
+        lead.label = route.winding + " p" + std::to_string(route.parallel) + (entrance ? " start" : " finish");
+        INFO(lead.label);
+        REQUIRE(route.exitSlot.has_value());
+        REQUIRE_FALSE(route.pinName.empty());
+        REQUIRE(route.pinWaypoints.size() >= 2);
+        REQUIRE((route.side == 0 || route.side == 1));
+        lead.side = route.side;
+        lead.slot = route.exitSlot.value();
+        const auto& wire = wires[coil.get_winding_index_by_name(route.winding)];
+        lead.diameter = std::max(wire.get_maximum_outer_width(), wire.get_maximum_outer_height());
+        // The face frame of side s is the bobbin frame turned s * 180 degrees about the column axis:
+        // face 0 is the -Z face (x = slot), face 1 the +Z face (x = -slot).
+        const double faceSign = route.side == 0 ? -1.0 : 1.0;
+        const double x = route.side == 0 ? lead.slot : -lead.slot;
+        std::vector<std::vector<double>> window;   // waypoints in electrical order, mapped to 3D
+        for (const auto& waypoint : route.waypoints) {
+            window.push_back({x, waypoint.at(1), faceSign * waypoint.at(0)});
+        }
+        auto pin = route.pinWaypoints;
+        if (entrance) {   // turn end first: window run from the turn, then the pin run
+            std::reverse(window.begin(), window.end());
+            std::reverse(pin.begin(), pin.end());
+        }
+        // The pin run starts on the lead's own face, where its in-window run leaves the window.
+        CHECK(pin.front()[2] * faceSign > 0);
+        lead.points = window;
+        lead.points.insert(lead.points.end(), pin.begin(), pin.end());
+        leads.push_back(lead);
+    }
+    REQUIRE(leads.size() == 8);
+    double smallestShared = std::numeric_limits<double>::max();
+    size_t sharedPairs = 0;
+    for (size_t i = 0; i < leads.size(); ++i) {
+        for (size_t j = i + 1; j < leads.size(); ++j) {
+            double found = std::numeric_limits<double>::max();
+            for (size_t a = 0; a + 1 < leads[i].points.size(); ++a) {
+                for (size_t b = 0; b + 1 < leads[j].points.size(); ++b) {
+                    found = std::min(found, segment_segment_distance(leads[i].points[a], leads[i].points[a + 1], leads[j].points[b],
+                                                                     leads[j].points[b + 1]));
+                }
+            }
+            const double required = (leads[i].diameter + leads[j].diameter) / 2;
+            const double clearance = found - required;
+            const bool sharesLane = leads[i].side == leads[j].side &&
+                                    std::abs(leads[i].slot - leads[j].slot) < required - 1e-9;
+            INFO(leads[i].label << " (side " << leads[i].side << ", slot " << leads[i].slot * 1e3 << " mm) vs " << leads[j].label
+                                << " (side " << leads[j].side << ", slot " << leads[j].slot * 1e3 << " mm): clearance "
+                                << clearance * 1e3 << " mm");
+            CHECK(clearance >= -1e-9);
+            if (sharesLane) {
+                ++sharedPairs;
+                smallestShared = std::min(smallestShared, clearance);
+                CHECK(clearance > 1e-9);
+            }
+        }
+    }
+    INFO("smallest clearance of a lane-sharing pair " << smallestShared * 1e3 << " mm over " << sharedPairs << " pairs");
+    CHECK(sharedPairs > 0);   // the premise: the plan shares lanes, so the rule is exercised
 }
 
 TEST_CASE("A lead that cannot be routed clear throws naming what it collides with (ABT #1237)",
@@ -1045,16 +1308,24 @@ TEST_CASE("A lead that cannot be routed clear throws naming what it collides wit
     SECTION("two strands on one pin too short for both wraps") {
         // 1.5 mm of pin: one wrap needs 0.3 + 2 x 0.6 = 1.5 mm; the second strand's wrap cannot fit.
         auto pin = make_pin("7", 0.0, 0.0015);
-        CHECK_THROWS_WITH(OpenMagnetics::Coil::route_leads_to_pins({pin}, {make_lead("strand A", pin, -0.004), make_lead("strand B", pin, -0.005)}, 0.0, 2),
-                          Catch::Matchers::ContainsSubstring("Cannot route strand B to pin '7'") &&
-                          Catch::Matchers::ContainsSubstring("strand A"));
+        // §17 (Alf 2026-10-26): drawn and reported
+        auto routes = OpenMagnetics::Coil::route_leads_to_pins({pin}, {make_lead("strand A", pin, -0.004), make_lead("strand B", pin, -0.005)}, 0.0, 2);
+        REQUIRE(routes.size() == 2);
+        REQUIRE(routes[1].findings.size() == 1);
+        CHECK(routes[1].findings[0].kind == OpenMagnetics::LeadFindingKind::PIN_RUN_COLLIDES);
+        CHECK_THAT(routes[1].findings[0].witness, Catch::Matchers::ContainsSubstring("Cannot route strand B to pin '7'") &&
+                                                  Catch::Matchers::ContainsSubstring("strand A"));
     }
     SECTION("a pin pitch too narrow to pass between pins") {
         // Pins 1.5 mm apart: a 0.6 mm wire beside pin '2' needs 0.4 + 0.3 + 0.6 = 1.3 mm from both.
         std::vector<MAS::Pin> pins = {make_pin("1", -0.0015, 0.004), make_pin("2", 0.0, 0.004), make_pin("3", 0.0015, 0.004)};
-        CHECK_THROWS_WITH(OpenMagnetics::Coil::route_leads_to_pins(pins, {make_lead("the middle lead", pins[1], -0.004)}, 0.0, 2),
-                          Catch::Matchers::ContainsSubstring("Cannot route the middle lead to pin '2'") &&
-                          Catch::Matchers::ContainsSubstring("pin '1'"));
+        // §17 (Alf 2026-10-26): drawn and reported
+        auto routes = OpenMagnetics::Coil::route_leads_to_pins(pins, {make_lead("the middle lead", pins[1], -0.004)}, 0.0, 2);
+        REQUIRE(routes.size() == 1);
+        REQUIRE(routes[0].findings.size() == 1);
+        CHECK(routes[0].findings[0].kind == OpenMagnetics::LeadFindingKind::PIN_RUN_COLLIDES);
+        CHECK_THAT(routes[0].findings[0].witness, Catch::Matchers::ContainsSubstring("Cannot route the middle lead to pin '2'") &&
+                                                  Catch::Matchers::ContainsSubstring("pin '1'"));
     }
 }
 
@@ -1156,7 +1427,8 @@ TEST_CASE("terminal_exit_slots: bundles on consecutive lanes, anchored clear of 
         return std::make_pair(routes, attach);
     };
     auto slots_of = [&](const std::vector<ConnectionRoute>& routes, const std::vector<double>& attach) {
-        return OpenMagnetics::Coil::terminal_exit_slots(routes, std::vector<double>(routes.size(), od), attach, false);
+        return OpenMagnetics::Coil::terminal_exit_slots(routes, std::vector<double>(routes.size(), od), attach, false,
+                                                        std::vector<double>(routes.size(), 0.0), std::vector<std::optional<TerminalTurnPath>>{}, {});
     };
 
     SECTION("entrances at the plane side by side, exits one lane out of their dragback") {
@@ -1206,7 +1478,7 @@ TEST_CASE("terminal_exit_slots: bundles on consecutive lanes, anchored clear of 
     }
     SECTION("inputs that do not match the routes throw") {
         auto [routes, attach] = bundle("Primary", 0, true);
-        CHECK_THROWS_WITH(OpenMagnetics::Coil::terminal_exit_slots(routes, {od}, attach, false), Catch::Matchers::ContainsSubstring("one diameter"));
+        CHECK_THROWS_WITH(OpenMagnetics::Coil::terminal_exit_slots(routes, {od}, attach, false, std::vector<double>(routes.size(), 0.0), {}, {}), Catch::Matchers::ContainsSubstring("one diameter"));
         attach[1] = std::numeric_limits<double>::quiet_NaN();
         CHECK_THROWS_WITH(slots_of(routes, attach), Catch::Matchers::ContainsSubstring("no attach turn coordinate"));
     }
@@ -1540,6 +1812,279 @@ TEST_CASE("Every terminal route publishes the bend it was planned for, pin or no
     settings.reset();
 }
 
+namespace {
+// Spec section 12: the face a pin's lead leaves on (its rail's side of the column) and the half of that
+// face its pin's x lies on, in the face's own frame (face 1 is the bobbin frame turned 180 degrees).
+int pin_face(const MAS::Pin& pin) {
+    REQUIRE(pin.get_coordinates());
+    REQUIRE(std::abs(pin.get_coordinates().value()[2]) > 1e-9);
+    return pin.get_coordinates().value()[2] < 0 ? 0 : 1;
+}
+int pin_half(const MAS::Pin& pin) {
+    const double x = pin.get_coordinates().value()[0];
+    const double faceX = pin_face(pin) == 0 ? x : -x;
+    REQUIRE(std::abs(faceX) > 1e-9);
+    return faceX < 0 ? -1 : 1;
+}
+}  // namespace
+
+TEST_CASE("Pins decide the side: each pinned winding leaves on the face toward its own rail, on its pin's half (spec section 12, ABT #1336)",
+          "[constructive-model][coil][pins][abt1336][abt1172]") {
+    // The ABT #1172 pinned flyback, built exactly as "The bend radius a pin run was planned for reaches
+    // the struct a consumer can read": the Primary's pins on rail 0 (z < 0), the Secondary's on rail 1.
+    auto& settings = OpenMagnetics::Settings::GetInstance();
+    settings.reset();
+    settings.set_coil_use_real_winding_geometry(true);
+
+    auto inputs = reinforced_offline_inputs();
+    auto coil = make_coil({{"Primary", 40, 1, "primary", "Round 0.2 - Grade 1"},
+                           {"Secondary", 6, 1, "secondary", "Round 0.2 - Grade 1"}},
+                          inputs);
+    auto core = former_core();
+    REQUIRE_FALSE(coil.assign_pins(coil.resolve_bobbin(), core).skipped);
+
+    const double factor = 1.05;                       // MVB++'s kRoundCornerBendFactor
+    settings.set_coil_lead_bend_radius_factor(factor);
+    const auto layout = coil.get_connection_layout();
+    settings.reset();
+    auto bobbin = coil.resolve_bobbin();
+
+    std::map<std::string, int> faceOfWinding;
+    std::set<int> faces;
+    size_t pinnedTerminals = 0;
+    for (const auto& route : layout.routes) {
+        if (route.kind != ConnectionKind::TERMINAL_ENTRANCE && route.kind != ConnectionKind::TERMINAL_EXIT) {
+            continue;
+        }
+        INFO("route " << route.winding << " parallel " << route.parallel << " pin '" << route.pinName << "'");
+        REQUIRE_FALSE(route.pinName.empty());
+        REQUIRE(route.pinWaypoints.size() >= 2);
+        REQUIRE(route.exitSlot.has_value());
+        const auto pin = bobbin.get_pin(route.pinName);
+        const int face = pin_face(pin);
+        // (a) the lead leaves on the face toward its pin's rail, and its pin run starts on that face.
+        CHECK(route.side == face);
+        // The run's window end: an exit's pinWaypoints run window -> pin, an entrance's pin -> window.
+        const auto& start = route.kind == ConnectionKind::TERMINAL_EXIT ? route.pinWaypoints.front() : route.pinWaypoints.back();
+        INFO("run starts at (" << start[0] * 1e3 << ", " << start[1] * 1e3 << ", " << start[2] * 1e3 << ") mm, exit slot "
+                               << route.exitSlot.value() * 1e3 << " mm, half " << route.laneHalf.value_or(0));
+        CHECK((face == 0 ? start[2] < 0 : start[2] > 0));
+        // At its exit slot, which is in its face's frame.
+        CHECK_THAT(start[0], Catch::Matchers::WithinAbs(face == 0 ? route.exitSlot.value() : -route.exitSlot.value(), 1e-12));
+        // (b) the lead packs on the half of its face its pin's x lies on.
+        REQUIRE(route.laneHalf.has_value());
+        CHECK(route.laneHalf.value() == pin_half(pin));
+        CHECK(route.exitSlot.value() * route.laneHalf.value() >= -1e-12);
+        faceOfWinding[route.winding] = face;
+        faces.insert(face);
+        ++pinnedTerminals;
+    }
+    REQUIRE(pinnedTerminals == 4);
+    // Both faces are exercised, or the face check could pass on the one-face default.
+    REQUIRE(faces.size() == 2);
+    // Every route of a pinned winding, its dragbacks too, is on its winding's face.
+    for (const auto& route : layout.routes) {
+        INFO("route " << route.winding << " parallel " << route.parallel << " kind " << int(route.kind));
+        REQUIRE(faceOfWinding.count(route.winding));
+        CHECK(route.side == faceOfWinding.at(route.winding));
+    }
+}
+
+TEST_CASE("Pins decide the side with coil_connect_leads_to_pins off too: the same faces, halves and lanes (spec section 12, ABT #1336)",
+          "[constructive-model][coil][pins][abt1336][abt1237][masautocomplete]") {
+    // The fixture of "With coil_connect_leads_to_pins off (default) autocomplete assigns no pins ...", exactly.
+    SettingsGuard<bool> realWinding(Settings::GetInstance(), &Settings::get_coil_use_real_winding_geometry,
+                                    &Settings::set_coil_use_real_winding_geometry, true);
+    REQUIRE_FALSE(Settings::GetInstance().get_coil_connect_leads_to_pins());
+    auto build = []() {
+        OpenMagnetics::Magnetic magnetic;
+        magnetic.set_core(former_core());
+        json coilJson;
+        coilJson["bobbin"] = formerBobbinName;
+        coilJson["functionalDescription"] = json::parse(R"([
+            {"name": "Primary", "numberTurns": 40, "numberParallels": 1, "isolationSide": "primary", "wire": "Round 0.5 - Grade 1"},
+            {"name": "Secondary", "numberTurns": 6, "numberParallels": 1, "isolationSide": "secondary", "wire": "Round 0.5 - Grade 1"}
+        ])");
+        magnetic.set_coil(OpenMagnetics::Coil(coilJson, false));
+        return magnetic_autocomplete(magnetic);
+    };
+    auto offCoil = build().get_coil();
+    REQUIRE_FALSE(offCoil.has_complete_pin_connections());
+    std::vector<ConnectionRoute> offRoutes;
+    offCoil.get_connection_reserved_spaces(&offRoutes);
+
+    SettingsGuard<bool> connectLeads(Settings::GetInstance(), &Settings::get_coil_connect_leads_to_pins,
+                                     &Settings::set_coil_connect_leads_to_pins, true);
+    auto onCoil = build().get_coil();
+    REQUIRE(onCoil.has_complete_pin_connections());
+    std::vector<ConnectionRoute> onRoutes;
+    onCoil.get_connection_reserved_spaces(&onRoutes);
+
+    REQUIRE(offRoutes.size() == onRoutes.size());
+    std::set<int> faces;
+    size_t terminals = 0;
+    for (size_t index = 0; index < onRoutes.size(); ++index) {
+        const auto& on = onRoutes[index];
+        const auto& off = offRoutes[index];
+        INFO("route " << on.winding << " parallel " << on.parallel << " kind " << int(on.kind));
+        REQUIRE(off.winding == on.winding);
+        REQUIRE(off.parallel == on.parallel);
+        REQUIRE(off.kind == on.kind);
+        CHECK(off.side == on.side);
+        CHECK(off.laneHalf == on.laneHalf);
+        CHECK(off.laneBundleRank == on.laneBundleRank);
+        REQUIRE(off.exitSlot.has_value() == on.exitSlot.has_value());
+        if (on.exitSlot) {
+            CHECK_THAT(off.exitSlot.value(), Catch::Matchers::WithinAbs(on.exitSlot.value(), 1e-12));
+        }
+        if (on.kind == ConnectionKind::TERMINAL_ENTRANCE || on.kind == ConnectionKind::TERMINAL_EXIT) {
+            ++terminals;
+            CHECK(off.pinWaypoints.empty());            // off: the lead ends in free air
+            CHECK_FALSE(on.pinWaypoints.empty());       // on: it runs on to its pin
+            // The face is the pin's, flag or not.
+            CHECK(on.side == pin_face(onCoil.resolve_bobbin().get_pin(on.pinName)));
+            faces.insert(on.side);
+        }
+    }
+    CHECK(terminals == 4);
+    REQUIRE(faces.size() == 2);   // the pins put the windings on both faces: the comparison is not the one-face default
+}
+
+TEST_CASE("A lead sleeve ends where the layer stack starts, and the terminal space is the bare wire (spec section 15, ABT #1336)",
+          "[constructive-model][coil][pins][abt1336][abt1172]") {
+    // Alf, 2026-10-26: "The sleeve goes only until the winding layers start; it is designed to maintain
+    // insulation around the bobbin and the core, not between the wires, so the terminal space should be
+    // reserved for the normal wire, without sleeve." The ABT #1172 pinned flyback, built exactly as "The
+    // bend radius a pin run was planned for reaches the struct a consumer can read" (reinforced offline
+    // inputs: every lead is sleeved, 0.32 mm bore + 0.41 mm wall = 1.14 mm, 0.22 mm into the winding).
+    auto& settings = OpenMagnetics::Settings::GetInstance();
+    settings.reset();
+    settings.set_coil_use_real_winding_geometry(true);
+
+    auto inputs = reinforced_offline_inputs();
+    auto coil = make_coil({{"Primary", 40, 1, "primary", "Round 0.2 - Grade 1"},
+                           {"Secondary", 6, 1, "secondary", "Round 0.2 - Grade 1"}},
+                          inputs);
+    auto core = former_core();
+    REQUIRE_FALSE(coil.assign_pins(coil.resolve_bobbin(), core).skipped);
+
+    const double factor = 1.05;                       // MVB++'s kRoundCornerBendFactor
+    settings.set_coil_lead_bend_radius_factor(factor);
+    const auto layout = coil.get_connection_layout();
+    settings.reset();
+
+    const auto wire = find_wire_by_name("Round 0.2 - Grade 1");
+    const double bare = std::max(wire.get_maximum_outer_width(), wire.get_maximum_outer_height());
+
+    // (a) The sleeve's planned span (Alf, 2026-10-26, "where the layer stack starts"): from the window
+    // border along the lead to where it first meets a wound layer, conduction or insulation, plus the
+    // sleeve's own overlapIntoWinding -- walked here independently of the plan, on the coil's layers.
+    std::vector<std::array<double, 4>> stack;
+    const auto layers = coil.get_layers_description().value();   // by value (the ABT #650 class)
+    for (const auto& layer : layers) {
+        const auto c = layer.get_coordinates();
+        const auto d = layer.get_dimensions();
+        REQUIRE(c.size() >= 2);
+        REQUIRE(d.size() >= 2);
+        stack.push_back({c[0] - d[0] / 2, c[0] + d[0] / 2, c[1] - d[1] / 2, c[1] + d[1] / 2});
+    }
+    auto inStack = [&](const std::vector<double>& p) {
+        for (const auto& r : stack) {
+            if (p[0] > r[0] + 1e-12 && p[0] < r[1] - 1e-12 && p[1] > r[2] + 1e-12 && p[1] < r[3] - 1e-12) {
+                return true;
+            }
+        }
+        return false;
+    };
+    std::optional<double> lowFace, highFace;
+    std::optional<double> sleeveDiameter;
+    std::map<std::string, size_t> entered;            // winding -> leads that run in the margin band first
+    size_t terminals = 0;
+    for (const auto& route : layout.routes) {
+        if (route.kind != ConnectionKind::TERMINAL_ENTRANCE && route.kind != ConnectionKind::TERMINAL_EXIT) {
+            continue;
+        }
+        const bool entrance = route.kind == ConnectionKind::TERMINAL_ENTRANCE;
+        INFO("route " << route.winding << (entrance ? " entrance" : " exit"));
+        REQUIRE(route.sleeveOuterDiameter.has_value());
+        REQUIRE(route.marginInnerFace.has_value());
+        REQUIRE(route.sleeveWindingEntry.has_value());
+        REQUIRE(route.sleeveSpan.has_value());
+        sleeveDiameter = route.sleeveOuterDiameter.value();
+        const double face = route.marginInnerFace.value();
+        (face > 0 ? highFace : lowFace) = face;
+        std::optional<double> overlap;
+        // By value: get_functional_description() and get_connections() return by value (the ABT #650 class).
+        const auto winding = coil.get_functional_description()[coil.get_winding_index_by_name(route.winding)];
+        const auto connections = winding.get_connections().value();
+        for (const auto& connection : connections) {
+            if (connection.get_end() && connection.get_end().value() == (entrance ? End::START : End::FINISH) && connection.get_sleeve()) {
+                overlap = connection.get_sleeve()->get_overlap_into_winding();
+            }
+        }
+        REQUIRE(overlap.has_value());
+        auto path = route.waypoints;
+        if (!entrance) {
+            std::reverse(path.begin(), path.end());
+        }
+        // March along the lead in 0.1 um steps until a point lies inside a layer.
+        double entry = 0;
+        bool met = false;
+        for (size_t k = 0; k + 1 < path.size() && !met; ++k) {
+            const double length = std::hypot(path[k + 1][0] - path[k][0], path[k + 1][1] - path[k][1]);
+            const size_t steps = size_t(std::ceil(length / 1e-7));
+            for (size_t m = 1; m <= steps && !met; ++m) {
+                const double t = double(m) / double(steps);
+                if (inStack({path[k][0] + t * (path[k + 1][0] - path[k][0]), path[k][1] + t * (path[k + 1][1] - path[k][1])})) {
+                    entry += t * length;
+                    met = true;
+                }
+            }
+            if (!met) {
+                entry += length;
+            }
+        }
+        REQUIRE(met);
+        if (entry > 0) {
+            ++entered[route.winding];
+        }
+        INFO("entry " << entry * 1e3 << " mm, overlap " << overlap.value() * 1e3 << " mm, planned entry "
+                      << route.sleeveWindingEntry.value() * 1e3 << " mm, span " << route.sleeveSpan.value() * 1e3 << " mm");
+        // The march lands within one 0.1 um step past the exact face (it takes the first point strictly inside).
+        CHECK(entry - route.sleeveWindingEntry.value() >= -1e-12);
+        CHECK(entry - route.sleeveWindingEntry.value() <= 1e-7 + 1e-12);
+        CHECK_THAT(route.sleeveSpan.value(), Catch::Matchers::WithinAbs(route.sleeveWindingEntry.value() + overlap.value(), 1e-12));
+        ++terminals;
+    }
+    REQUIRE(terminals == 4);
+    REQUIRE(lowFace.has_value());
+    REQUIRE(highFace.has_value());
+    REQUIRE(sleeveDiameter.has_value());
+    REQUIRE(sleeveDiameter.value() > bare);           // or the sizes could not be told apart
+    // Both windings' leads run in from the border through empty window before they meet the stack (the
+    // Primary along its margin-band row, the Secondary at its own height), for every winding alike.
+    CHECK(entered["Primary"] == 2);
+    CHECK(entered["Secondary"] == 2);
+
+    // (b) Every terminal reservation is the bare wire across its run: the margin-band edge run lies beside
+    // the tape layers, where there is no sleeve.
+    size_t inside = 0, inBandOnly = 0;
+    for (const auto& space : coil.get_connection_reserved_spaces()) {
+        if (!space.isTerminal || !space.layer.empty()) {
+            continue;
+        }
+        const double low = space.coordinates[1] - space.dimensions[1] / 2;
+        const double high = space.coordinates[1] + space.dimensions[1] / 2;
+        const double across = std::min(space.dimensions[0], space.dimensions[1]);
+        INFO("space " << space.winding << " kind " << int(space.kind) << " y [" << low * 1e3 << ", " << high * 1e3 << "] mm, across "
+                      << across * 1e3 << " mm");
+        CHECK_THAT(across, Catch::Matchers::WithinAbs(bare, 1e-12));
+        ++(high > lowFace.value() + 1e-9 && low < highFace.value() - 1e-9 ? inside : inBandOnly);
+    }
+    CHECK(inside == 4);       // the Primary's two stubs, the Secondary's two radial runs
+    CHECK(inBandOnly == 2);   // the Primary's two margin-band edge runs, bare too
+}
+
 TEST_CASE("An ideal winding's terminal routes keep the corners they always had (ABT #1296)",
           "[constructive-model][coil][pins][abt1296]") {
     // The wire and sleeve bend physics apply ONLY under real winding (Alf, 2026-09-21). An ideal
@@ -1591,7 +2136,8 @@ TEST_CASE("A stub too short for its two bends is published as a ramp, only under
             if (route.kind != ConnectionKind::TERMINAL_ENTRANCE && route.kind != ConnectionKind::TERMINAL_EXIT) continue;
             INFO("route " << route.winding << " parallel " << route.parallel
                           << (route.kind == ConnectionKind::TERMINAL_ENTRANCE ? " entrance" : " exit"));
-            const auto h = stubHeightOf(route);
+            const auto stub = pitchTrueStubOf(coil, route);
+            const auto h = stub ? std::optional<double>(stub->pitchTrue) : std::optional<double>{};
             const double R = route.plannedBendRadius;
             if (route.rampLength) {
                 REQUIRE(h);
@@ -1787,9 +2333,14 @@ TEST_CASE("Pinned sibling leads stand far enough apart for the ramps between the
     for (const auto& [key, leads] : groups) {
         for (size_t k = 1; k < leads.size(); ++k) {
             INFO(key.first << (key.second ? " entrance" : " exit") << " parallels " << k - 1 << " and " << k);
-            // The ramp between two siblings: an entrance's own (back towards its predecessor), an
-            // exit's predecessor's (forward towards it).
-            const double between = key.second ? leads[k].span : leads[k - 1].span;
+            // The ramp between two siblings (lane_footprint): an entrance's ramp runs from its lane
+            // towards lower x, an exit's towards higher x, so the one between them is the higher
+            // sibling's for an entrance and the lower sibling's for an exit. ABT #1705 (re-derived
+            // with Alf's approval of 2026-10-24): entrances now pack outwards on x <= 0, so the
+            // pair is ordered by x, not by parallel index.
+            const auto& lower = leads[k].x < leads[k - 1].x ? leads[k] : leads[k - 1];
+            const auto& higher = leads[k].x < leads[k - 1].x ? leads[k - 1] : leads[k];
+            const double between = key.second ? higher.span : lower.span;
             const double gap = std::abs(leads[k].x - leads[k - 1].x);
             CHECK(gap > between);   // the ramp fits between them ...
             CHECK(gap - between >= coatedDiameter - 1e-12);   // ... with a coated wire's centreline pitch to spare
@@ -1798,4 +2349,129 @@ TEST_CASE("Pinned sibling leads stand far enough apart for the ramps between the
     }
     REQUIRE(pairs > 0);
     settings.reset();
+}
+
+// ABT #1336 (Alf, 2026-10-19: "MKF plans pitch-true"). 14_dab's Primary parallel 1 EXIT leaves a final
+// landing that descends a whole window per revolution: at its 2-D station the stub to the edge row is
+// 0.934 mm, below the 2R its two bends need, so the station rule planned a ramp -- but at its exit slot
+// (8.66 mm) the turn is 3.77 mm from the row, which holds both bends, and the drawn lead attaches there.
+// Every stub is planned from where its own turn is at its own slot: short ones ramp at the cosine S of
+// that height, long ones stay straight.
+TEST_CASE("A terminal stub ramps or not by its height at its exit slot, not at its station (ABT #1336)",
+          "[constructive-model][coil][pins][abt1336]") {
+    auto& settings = OpenMagnetics::Settings::GetInstance();
+    settings.reset();
+    clear_databases();
+    settings.set_coil_use_real_winding_geometry(true);
+    settings.set_coil_lead_bend_radius_factor(1.05);   // what MVB++ builds 14_dab with
+    auto mas = OpenMagneticsTesting::mas_loader(std::string(__FILE__).substr(0, std::string(__FILE__).rfind('/'))
+                                                + "/../MAS/examples/14_dab_xfmr_pm8770_n97.json");
+    auto magnetic = OpenMagnetics::magnetic_autocomplete(mas.get_magnetic());
+    auto& coil = magnetic.get_mutable_coil();
+    REQUIRE(coil.is_real_winding_blocking_applied());
+    const auto layout = coil.get_connection_layout();
+    size_t ramps = 0, straight = 0, stationWouldRamp = 0;
+    for (const auto& route : layout.routes) {
+        if (route.kind != ConnectionKind::TERMINAL_ENTRANCE && route.kind != ConnectionKind::TERMINAL_EXIT) continue;
+        const auto stub = pitchTrueStubOf(coil, route);
+        INFO(route.winding << " parallel " << route.parallel
+                           << (route.kind == ConnectionKind::TERMINAL_ENTRANCE ? " entrance" : " exit")
+                           << (stub ? " station h " + std::to_string(stub->station * 1e3) + " mm, at the slot " +
+                                          std::to_string(stub->pitchTrue * 1e3) + " mm" : std::string(" (no stub)")));
+        const double R = route.plannedBendRadius;
+        if (!stub) {
+            CHECK_FALSE(route.rampLength);
+            continue;
+        }
+        // The two rules disagree on a lead whose stub is shorter than 2R at one of its station and its
+        // slot and not at the other.
+        if ((stub->station < 2 * R) != (stub->pitchTrue < 2 * R)) ++stationWouldRamp;
+        if (route.rampLength) {
+            CHECK(stub->pitchTrue < 2 * R);
+            const double rho = (route.kind == ConnectionKind::TERMINAL_ENTRANCE ? route.waypoints.back() : route.waypoints.front())[0];
+            const double Rg = 1.0 / std::sqrt(1.0 / (R * R) - 1.0 / (rho * rho));   // PM: a round column
+            CHECK_THAT(*route.rampLength, Catch::Matchers::WithinRel(std::numbers::pi * std::sqrt(stub->pitchTrue * Rg / 2), 1e-12));
+            ++ramps;
+        }
+        else {
+            CHECK(stub->pitchTrue >= 2 * R);
+            ++straight;
+        }
+        // Spec S0/S1 (Alf, 2026-10-25): the Primary, the primary isolation group, packs on the x <= 0
+        // half, so its p1 exit leaves at -7.635 mm, where its last turn stands 1.550 mm off its row
+        // (b95d64cf: on the x >= 0 half, 3.77 mm). That is under the 2R = 1.655 mm its two bends need,
+        // so it ramps: the stub ramps when it is shorter than 2R at its slot.
+        if (route.winding == "Primary" && route.parallel == 1 && route.kind == ConnectionKind::TERMINAL_EXIT) {
+            CHECK(stub->pitchTrue < 2 * R);
+            CHECK(route.rampLength);
+        }
+        // And the other way round: the Primary's p2 exit stands 1.846 mm off its row at its station, 2R
+        // clear, but 0.752 mm at its slot (-3.436 mm), so it ramps although the station rule would not.
+        if (route.winding == "Primary" && route.parallel == 2 && route.kind == ConnectionKind::TERMINAL_EXIT) {
+            CHECK(stub->station >= 2 * R);
+            CHECK(stub->pitchTrue < 2 * R);
+            CHECK(route.rampLength);
+        }
+    }
+    UNSCOPED_INFO(ramps << " ramps, " << straight << " straight stubs, " << stationWouldRamp << " on which the station rule decides otherwise");
+    REQUIRE(stationWouldRamp > 0);   // the premise: the two rules disagree on this design
+    REQUIRE(ramps > 0);
+    settings.reset();
+}
+
+// ABT #1336 (Alf, 2026-10-19: "MKF decides, MVB++ draws"): a consumer bends EVERY terminal lead at the
+// radius MKF planned for it. A concentric terminal route carries it (plannedBendRadius); the toroidal
+// emitter records no routes (its frame is polar), so MVB++ had nothing to read and refused every toroid.
+// Coil::terminal_lead_bend_radius is the one rule both answer from.
+TEST_CASE("Every terminal lead has MKF's planned bend radius, routed or not (ABT #1336)",
+          "[constructive-model][coil][pins][abt1336]") {
+    auto& settings = OpenMagnetics::Settings::GetInstance();
+    const std::string here = std::string(__FILE__).substr(0, std::string(__FILE__).rfind('/'));
+    SECTION("a concentric coil: every terminal route carries exactly the rule's radius") {
+        settings.reset();
+        clear_databases();
+        settings.set_coil_use_real_winding_geometry(true);
+        auto mas = OpenMagneticsTesting::mas_loader(here + "/../MAS/examples/14_dab_xfmr_pm8770_n97.json");
+        auto magnetic = OpenMagnetics::magnetic_autocomplete(mas.get_magnetic());
+        auto& coil = magnetic.get_mutable_coil();
+        REQUIRE(coil.is_real_winding_blocking_applied());
+        size_t terminals = 0;
+        for (const auto& route : coil.get_connection_layout().routes) {
+            if (route.kind != ConnectionKind::TERMINAL_ENTRANCE && route.kind != ConnectionKind::TERMINAL_EXIT) continue;
+            INFO(route.winding << " parallel " << route.parallel);
+            const auto end = route.kind == ConnectionKind::TERMINAL_ENTRANCE ? End::START : End::FINISH;
+            CHECK(route.plannedBendRadius > 0);
+            CHECK(route.plannedBendRadius == coil.terminal_lead_bend_radius(route.winding, end, route.parallel));
+            ++terminals;
+        }
+        REQUIRE(terminals == 16);
+        settings.reset();
+    }
+    SECTION("a toroid, whose terminal routes carry no planned bend: the rule still plans each lead's bend") {
+        settings.reset();
+        clear_databases();
+        settings.set_coil_use_real_winding_geometry(true);
+        auto mas = OpenMagneticsTesting::mas_loader(here + "/testData/toroidal_inductor_round_wire_multilayer.json");
+        auto magnetic = OpenMagnetics::magnetic_autocomplete(mas.get_magnetic());
+        auto& coil = magnetic.get_mutable_coil();
+        // The premise (Alf, 2026-10-30, since toroid routes exist): the toroid's terminal routes carry no
+        // plannedBendRadius, so the bend comes from the rule alone.
+        size_t terminalRoutes = 0;
+        for (const auto& route : coil.get_connection_layout().routes) {
+            if (route.kind != ConnectionKind::TERMINAL_ENTRANCE && route.kind != ConnectionKind::TERMINAL_EXIT) continue;
+            CHECK(route.toroidal);
+            CHECK(route.plannedBendRadius == 0);
+            ++terminalRoutes;
+        }
+        CHECK(terminalRoutes == 2);
+        const auto wire = coil.resolve_wire(0);
+        const double coatedRadius = std::max(wire.get_maximum_outer_width(), wire.get_maximum_outer_height()) / 2;
+        for (auto end : {End::START, End::FINISH}) {
+            const double radius = coil.terminal_lead_bend_radius("Primary", end, 0);
+            CHECK(radius >= coatedRadius);
+            CHECK(radius == OpenMagnetics::Coil::lead_bend_radius(wire, std::nullopt, coatedRadius, coil.is_real_winding_blocking_applied()));
+        }
+        CHECK_THROWS(coil.terminal_lead_bend_radius("No such winding", End::START, 0));
+        settings.reset();
+    }
 }

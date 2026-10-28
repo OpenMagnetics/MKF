@@ -22,8 +22,10 @@
 #include "support/Utils.h"
 
 #include <catch2/catch_test_macros.hpp>
+#include <catch2/matchers/catch_matchers_floating_point.hpp>
 
 #include <array>
+#include <optional>
 #include <functional>
 #include <iomanip>
 #include <sstream>
@@ -452,6 +454,106 @@ TEST_CASE("Real winding: a tilted radial step clears the sibling's wrap (PSPS E1
     require_steps_clear(coil);
     // ABT #1401's wrap law must still hold where the step law widened the stations.
     require_siblings_clear(coil, std::nullopt);
+}
+
+// Spec section 21 (Alf via the winder session, 2026-10-27): judge_copper_overlaps counts a sibling
+// lead/turn overlap only where the sibling's wire really is at that lead's position along the face.
+// Counter-checks on the PSPS E16 design (the fixture of the test above, unchanged): the Secondary's
+// sibling lead-turn hits the position-blind judge reported are gone. Spec section 25 (Alf, 2026-10-28)
+// then ordered the Primary's entrances so that p0's first turn no longer crosses p1's stub; the judge
+// still flags that crossing when the lanes are put back the old way (the second test below).
+TEST_CASE("Real winding: the overlap judge clears the Secondary's sibling lead-turn hits on PSPS E16 (spec 21)",
+          "[constructive-model][coil][real-winding][abt1336]") {
+    auto coil = wind_real("abt1422_psps_e16_flyback_2p4p.json");
+    const auto overlaps = coil.judge_copper_overlaps();
+    size_t siblingHits = 0;
+    for (const auto& overlap : overlaps) {
+        if (overlap.kind != OpenMagnetics::CopperOverlapKind::LEAD_TURN || overlap.firstWinding != "Secondary" ||
+            overlap.secondWinding != "Secondary") {
+            continue;
+        }
+        const auto quote = overlap.first.find('\'');
+        REQUIRE(quote != std::string::npos);
+        const std::string leadTurn = overlap.first.substr(quote + 1);
+        const std::string leadParallel = leadTurn.substr(0, leadTurn.find(" turn "));
+        const std::string turnParallel = overlap.second.substr(0, overlap.second.find(" turn "));
+        if (leadParallel != turnParallel) {
+            INFO(overlap.first << " x " << overlap.second << ": " << overlap.overlap * 1e3 << " mm");
+            CHECK(false);
+            ++siblingHits;
+        }
+    }
+    CHECK(siblingHits == 0);
+}
+
+TEST_CASE("Real winding: no Primary entrance of PSPS E16 is crossed by its sibling's first turn (spec 25)",
+          "[constructive-model][coil][real-winding][abt1336]") {
+    // Was "the overlap judge still flags the Primary p1 entrance crossed by p0's first turn" (spec 21): MKF
+    // laid p0 at lane 0 and p1 at -0.534 mm, on the side p0's first turn leaves towards, and the judge
+    // flagged that one crossing. Spec section 25 (Alf, 2026-10-28, "No first turn crosses") orders the
+    // lanes from the wrap directions: p1, whose stub climbs past p0's first turn, now stands at the
+    // crossing and p0 one lane plus p1's ramp out, so nothing is left to flag. Alf approved asserting the
+    // new order here (2026-10-28); the judge's own catch is kept by the swapped-lane test below.
+    auto coil = wind_real("abt1422_psps_e16_flyback_2p4p.json");
+    std::optional<double> p0Lane;
+    std::optional<double> p1Lane;
+    for (const auto& route : coil.get_connection_layout().routes) {
+        if (route.winding == "Primary" && route.kind == OpenMagnetics::ConnectionKind::TERMINAL_ENTRANCE) {
+            (route.parallel == 0 ? p0Lane : p1Lane) = route.exitSlot;
+        }
+    }
+    REQUIRE(p0Lane.has_value());
+    REQUIRE(p1Lane.has_value());
+    CHECK_THAT(p0Lane.value(), Catch::Matchers::WithinAbs(-2.219e-3, 0.5e-6));
+    CHECK_THAT(p1Lane.value(), Catch::Matchers::WithinAbs(0.0, 1e-9));
+    size_t flagged = 0;
+    for (const auto& overlap : coil.judge_copper_overlaps()) {
+        if (overlap.kind == OpenMagnetics::CopperOverlapKind::LEAD_TURN && overlap.firstWinding == "Primary" &&
+            overlap.secondWinding == "Primary" && overlap.first.find("entrance lead of 'Primary parallel ") == 0) {
+            const std::string leadTurn = overlap.first.substr(overlap.first.find('\'') + 1);
+            if (leadTurn.substr(0, leadTurn.find(" turn ")) != overlap.second.substr(0, overlap.second.find(" turn "))) {
+                INFO(overlap.first << " x " << overlap.second << ": " << overlap.overlap * 1e3 << " mm");
+                ++flagged;
+            }
+        }
+    }
+    CHECK(flagged == 0);
+}
+
+TEST_CASE("Real winding: the overlap judge flags PSPS E16's Primary p1 entrance when p0's first turn crosses it (spec 21)",
+          "[constructive-model][coil][real-winding][abt1336]") {
+    // Spec section 21's judge on E16's own layout with the two Primary entrance lanes swapped (Alf,
+    // 2026-10-28): p0 back at the crossing, p1 at p0's lane, on the side p0's first turn leaves towards.
+    // That is the crossing the judge must see; the sections and stubs are the design's own.
+    auto coil = wind_real("abt1422_psps_e16_flyback_2p4p.json");
+    std::vector<OpenMagnetics::ConnectionRoute> routes;
+    const auto spaces = coil.get_connection_reserved_spaces(&routes);
+    std::optional<size_t> p0;
+    std::optional<size_t> p1;
+    for (size_t index = 0; index < routes.size(); ++index) {
+        if (routes[index].winding == "Primary" && routes[index].kind == OpenMagnetics::ConnectionKind::TERMINAL_ENTRANCE) {
+            (routes[index].parallel == 0 ? p0 : p1) = index;
+        }
+    }
+    REQUIRE(p0.has_value());
+    REQUIRE(p1.has_value());
+    REQUIRE(routes[p0.value()].exitSlot.has_value());
+    REQUIRE(routes[p1.value()].exitSlot.has_value());
+    // Unchanged, the layout carries no such crossing (the test above).
+    auto crossings = [&](const std::vector<OpenMagnetics::ConnectionRoute>& judged) {
+        size_t found = 0;
+        for (const auto& overlap : coil.judge_copper_overlaps(judged, spaces)) {
+            if (overlap.kind == OpenMagnetics::CopperOverlapKind::LEAD_TURN && overlap.first == "entrance lead of 'Primary parallel 1 turn 0'" &&
+                overlap.second == "Primary parallel 0 turn 0") {
+                ++found;
+                CHECK(overlap.overlap > 0);
+            }
+        }
+        return found;
+    };
+    CHECK(crossings(routes) == 0);
+    std::swap(routes[p0.value()].exitSlot, routes[p1.value()].exitSlot);
+    CHECK(crossings(routes) == 1);
 }
 
 TEST_CASE("Real winding: a tilted radial step clears the sibling's wrap (interleaved flyback, ETD39)",

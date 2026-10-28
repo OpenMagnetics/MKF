@@ -259,32 +259,38 @@ TEST_CASE("Test_Lead_Sleeve_Margin_Wound_Flyback_Sleeves_Its_Enamelled_Leads", "
         CHECK(lead.requiredCreepageDistance == result.get_creepage_distance());
     }
 
-    // The sleeved edge runs are reserved at the sleeve's diameter and may lie in the margin band.
-    auto bobbin = coil.resolve_bobbin();
-    auto window = bobbin.get_processed_description().value().get_winding_windows()[0];
-    double top = window.get_coordinates().value()[1] + window.get_height().value() / 2;
-    double bottom = window.get_coordinates().value()[1] - window.get_height().value() / 2;
-    size_t sleevedRuns = 0;
-    size_t sleevedRunsInBand = 0;
-    for (auto& space : coil.get_connection_reserved_spaces()) {
+    // Spec section 15 (Alf, 2026-10-26: "the sleeve goes only until the winding layers start"; this assertion
+    // rewritten with his approval 2026-10-30, the design unchanged). On this design no window edge states a margin,
+    // so every sleeved lead's edge run lies in the winding and is reserved as the bare wire, while the route still
+    // carries its sleeve and plans the sleeve's extent from the border to where the layer stack starts.
+    std::vector<ConnectionRoute> routes;
+    size_t sleevedEdgeRuns = 0;
+    for (auto& space : coil.get_connection_reserved_spaces(&routes)) {
         if (!space.isTerminal || !space.layer.empty() || !space.sleeveOuterDiameter) {
             continue;
         }
         if (space.kind != ConnectionKind::TERMINAL_ENTRANCE && space.kind != ConnectionKind::TERMINAL_EXIT) {
             continue;
         }
-        if (std::abs(space.dimensions[1] - space.sleeveOuterDiameter.value()) > 1e-12) {
-            continue;   // a stub or a radial exit, not an edge run
+        if (space.dimensions[0] <= space.dimensions[1]) {
+            continue;   // a stub (the vertical to the edge), not an edge run
         }
-        ++sleevedRuns;
-        double faceDepth = std::min(top - (space.coordinates[1] + space.dimensions[1] / 2),
-                                    (space.coordinates[1] - space.dimensions[1] / 2) - bottom);
-        if (faceDepth < margin - 1e-9) {
-            ++sleevedRunsInBand;
-        }
+        ++sleevedEdgeRuns;
+        INFO(space.winding << " parallel " << space.parallel << " edge run " << space.dimensions[1] << " m, sleeve "
+                           << space.sleeveOuterDiameter.value() << " m");
+        CHECK(space.dimensions[1] < space.sleeveOuterDiameter.value());
     }
-    CHECK(sleevedRuns > 0);
-    CHECK(sleevedRunsInBand > 0);
+    CHECK(sleevedEdgeRuns > 0);
+    size_t sleevedRoutes = 0;
+    for (const auto& route : routes) {
+        if (!route.sleeveOuterDiameter) {
+            continue;
+        }
+        ++sleevedRoutes;
+        INFO(route.winding << " parallel " << route.parallel);
+        CHECK(route.sleeveWindingEntry.has_value());
+    }
+    CHECK(sleevedRoutes > 0);
     settings.reset();
 }
 

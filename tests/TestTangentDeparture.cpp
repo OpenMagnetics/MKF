@@ -370,6 +370,64 @@ TEST_CASE("Real winding: a closely wound round-wire layer's tangent lead is not 
     }
     settings.reset();
 }
+TEST_CASE("An adviser refuses a design whose terminal lead collides, which the winder draws and reports (spec section 17, ABT #1336)",
+          "[constructive-model][coil][real-winding][tangent-departure][abt-1336][adviser]") {
+    // Spec section 17 (Alf, 2026-10-26): "the adviser never accepts designs that don't fit". The design is
+    // the U-wound two layers of the test above (its second layer lies across the entrance lead), unchanged.
+    auto& settings = OpenMagnetics::Settings::GetInstance();
+    const int64_t singleLayer = fullest_single_layer();
+    REQUIRE(singleLayer >= 20);
+    int64_t numberTurns = 0;
+    for (int64_t n = 2 * singleLayer; n > singleLayer; --n) {
+        settings.reset();
+        settings.set_coil_use_real_winding_geometry(true);
+        if (number_conduction_layers(round_wire_coil(n)) == 2) {
+            numberTurns = n;
+            break;
+        }
+    }
+    REQUIRE(numberTurns > 0);
+    const double faceHalfStraight = first_turn_face_half_straight(numberTurns);
+    settings.reset();
+    settings.set_coil_use_real_winding_geometry(true);
+    OpenMagnetics::Coil coil = round_wire_coil(numberTurns);
+    auto bobbin = std::get<OpenMagnetics::Bobbin>(coil.get_bobbin());
+    auto processed = bobbin.get_processed_description().value();
+    auto windingWindows = processed.get_winding_windows();
+    windingWindows[0].set_winding_order(MAS::WindingOrder::U);
+    processed.set_winding_windows(windingWindows);
+    bobbin.set_processed_description(processed);
+    coil.set_bobbin(bobbin);
+    settings.set_coil_lead_minimum_bend_radius(1.5 * faceHalfStraight);
+    bool fits = false;
+    REQUIRE_NOTHROW(fits = coil.wind());
+    REQUIRE(fits);
+    REQUIRE(number_conduction_layers(coil) == 2);
+
+    // The winder (a non-adviser path) draws the lead and reports the collision on its route.
+    size_t collisionFindings = 0;
+    for (const auto& route : coil.get_connection_layout().routes) {
+        for (const auto& finding : route.findings) {
+            if (finding.kind == OpenMagnetics::LeadFindingKind::TURN_COLLISION) {
+                REQUIRE(finding.collision.has_value());
+                ++collisionFindings;
+            }
+        }
+    }
+    REQUIRE(collisionFindings > 0);
+
+    // The adviser's real-winding check refuses it, naming the lead.
+    OpenMagnetics::Magnetic magnetic;
+    magnetic.set_core(OpenMagneticsTesting::get_quick_core("E 25/13/7", OpenMagneticsTesting::get_ground_gap(0.001), 1, "N87"));
+    magnetic.set_coil(coil);
+    std::optional<std::string> refusal;
+    REQUIRE_NOTHROW(refusal = OpenMagnetics::real_winding_refusal(magnetic));
+    REQUIRE(refusal.has_value());
+    CHECK(refusal->find("does not fit") != std::string::npos);
+    CHECK(refusal->find("winding '" + coil.get_functional_description()[0].get_name() + "'") != std::string::npos);
+    settings.reset();
+}
+
 // ABT #2061 (Alf, 2026-10-25: draw and report). A tangent terminal lead on a route MKF does not model
 // in full is drawn on its best route and reported, never refused: a dragback lane riding over the
 // connection face, a lateral column, a lead run to a pin (and, in TestWireBendLayout, a one-turn

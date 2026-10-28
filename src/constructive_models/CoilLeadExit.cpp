@@ -267,9 +267,12 @@ std::vector<LeadExitSolid> Coil::plan_closed_core_lead_exits(std::vector<Connect
         if (!(lead.bendRadius >= lead.diameter / 2 - clearanceTolerance)) {
             throw std::logic_error("The terminal route of " + lead.label + " carries no planned bend radius");
         }
-        if (route.tangentDeparture) {
+        if (route.tangentDeparture && route.tangentDeparture->kind == TangentDeparture::Kind::LATERAL_FACE) {
             // The tangential departure laid this lead off the lateral face (no slot on the connection plane, no
-            // in-window run to end), and the exit run starts where that run ends.
+            // in-window run to end), and the exit run starts where that run ends. A lead that leaves its turn
+            // tangentially OFF THE BACK or OFF THE FACE END (ABT #1705) keeps its slot and its radial run from
+            // the corner's end (TangentDeparture::cornerEnd), and its exit run starts from that run as any other
+            // (Alf, 2026-10-31).
             throw NotImplementedException("The terminal lead of " + lead.label + " leaves tangentially off the lateral face "
                                           "(ConnectionRoute::tangentDeparture); a closed core's lead exit is planned from a "
                                           "connection-plane exit slot only");
@@ -329,8 +332,10 @@ std::vector<LeadExitSolid> Coil::plan_closed_core_lead_exits(std::vector<Connect
                 throw std::logic_error("The terminal route of " + lead.label + " attaches to turn '" + turnName + "', which has no layer");
             }
             const std::string layerName = attached->get_layer().value();
-            const double stubLow = std::min(lead.axial, attached->get_coordinates()[1]);
-            const double stubHigh = std::max(lead.axial, attached->get_coordinates()[1]);
+            // A tangential lead climbs where it leaves its turn, at its tangent point's pitch-true height.
+            const double stubFrom = route.tangentDeparture ? route.tangentDeparture->point[1] : attached->get_coordinates()[1];
+            const double stubLow = std::min(lead.axial, stubFrom);
+            const double stubHigh = std::max(lead.axial, stubFrom);
             for (const auto& turn : turns.value()) {
                 if (turn.get_name() == turnName || !turn.get_layer() || turn.get_layer().value() != layerName ||
                     turn.get_winding() != lead.winding || turn.get_parallel() != attached->get_parallel()) {
@@ -404,7 +409,13 @@ std::vector<LeadExitSolid> Coil::plan_closed_core_lead_exits(std::vector<Connect
         auto& border = route.waypoints[lead.borderIndex];
         const double newRadial = start_radial(lead, lane);
         const size_t neighbour = lead.entrance ? 1 : route.waypoints.size() - 2;
-        if (!(newRadial > route.waypoints[neighbour][0])) {
+        // A tangential lead's radial run starts at its corner's end (z = -radial), not at its turn.
+        if (route.tangentDeparture && !(newRadial > -route.tangentDeparture->cornerEnd[2])) {
+            throw InvalidInputException(ErrorCode::INVALID_INPUT,
+                "The in-window run of " + lead.label + " would end at radius " + mm(newRadial) + ", inside its tangential lead's corner, "
+                "which ends at radius " + mm(-route.tangentDeparture->cornerEnd[2]));
+        }
+        if (!route.tangentDeparture && !(newRadial > route.waypoints[neighbour][0])) {
             throw InvalidInputException(ErrorCode::INVALID_INPUT,
                 "The in-window run of " + lead.label + " would end at radius " + mm(newRadial) + ", inside its own last corner at " +
                 mm(route.waypoints[neighbour][0]));
@@ -472,14 +483,34 @@ std::vector<LeadExitSolid> Coil::plan_closed_core_lead_exits(std::vector<Connect
         const auto& lead = leads[which];
         const auto& route = routes[lead.route];
         std::vector<std::vector<double>> inWindow;
-        for (const auto& waypoint : route.waypoints) {
-            inWindow.push_back({lead.slot, waypoint[1], -waypoint[0]});
-        }
-        if (!lead.entrance) {
-            // exit: turn -> border; keep that order, the exit run continues from the border.
+        if (const auto& departure = route.tangentDeparture) {
+            // A tangential lead, turn -> border: its climb at the tangent point, the level straight, the corner
+            // (the short way round its centre), then the radial run from the corner's end to the border.
+            const double row = departure->rowHeight;
+            inWindow.push_back(departure->point);
+            inWindow.push_back({departure->point[0], row, departure->point[2]});
+            const double startAngle = std::atan2(departure->end[2] - departure->cornerCentre[2], departure->end[0] - departure->cornerCentre[0]);
+            const double sweep = std::remainder(std::atan2(departure->cornerEnd[2] - departure->cornerCentre[2],
+                                                           departure->cornerEnd[0] - departure->cornerCentre[0]) - startAngle,
+                                                2 * std::numbers::pi);
+            const double step = 2 * std::acos(1 - clearanceTolerance / departure->cornerRadius);
+            const size_t segments = std::max<size_t>(1, size_t(std::ceil(std::abs(sweep) / step)));
+            for (size_t k = 0; k <= segments; ++k) {
+                const double angle = startAngle + sweep * double(k) / double(segments);
+                inWindow.push_back({departure->cornerCentre[0] + departure->cornerRadius * std::cos(angle), row,
+                                    departure->cornerCentre[2] + departure->cornerRadius * std::sin(angle)});
+            }
+            const auto& border = route.waypoints[lead.borderIndex];
+            inWindow.push_back({lead.slot, border[1], -border[0]});
         }
         else {
-            std::reverse(inWindow.begin(), inWindow.end());   // entrance waypoints run terminal -> turn
+            for (const auto& waypoint : route.waypoints) {
+                inWindow.push_back({lead.slot, waypoint[1], -waypoint[0]});
+            }
+            if (lead.entrance) {
+                std::reverse(inWindow.begin(), inWindow.end());   // entrance waypoints run terminal -> turn
+            }
+            // exit: turn -> border; keep that order, the exit run continues from the border.
         }
         auto path = inWindow;
         const auto& arc = route.exitRunArc.value();

@@ -18,10 +18,18 @@
 #include "support/Settings.h"
 #include "support/Utils.h"
 
+#include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
+#include <catch2/matchers/catch_matchers_floating_point.hpp>
 #include <catch2/matchers/catch_matchers_string.hpp>
 
 #include <cmath>
+#include <functional>
+#include <iostream>
+#include <sstream>
+#include <map>
+#include <numbers>
+#include <optional>
 #include <filesystem>
 #include <fstream>
 #include <limits>
@@ -77,6 +85,11 @@ namespace {
 
 using OpenMagnetics::ConnectionKind;
 using OpenMagnetics::ConnectionRoute;
+using OpenMagnetics::TerminalTurnPath;
+using OpenMagnetics::LeadFinding;
+using OpenMagnetics::LeadFindingKind;
+using OpenMagnetics::TerminalLanePlan;
+using WindingSides = std::vector<std::pair<std::string, IsolationSide>>;
 
 bool is_terminal(const ConnectionRoute& route) {
     return route.kind == ConnectionKind::TERMINAL_ENTRANCE || route.kind == ConnectionKind::TERMINAL_EXIT;
@@ -133,6 +146,23 @@ double section_distance(const ConnectionRoute& a, const ConnectionRoute& b) {
     return best;
 }
 
+// ABT #1336: a round column's turn paths, from each terminal route's attach waypoint radius
+// (Coil::terminal_turn_path's round branch, for hand-built routes that have no coil).
+// Hand-built routes are unsleeved: each turn and stub is the route's own diameter.
+std::vector<std::optional<TerminalTurnPath>> round_paths(const std::vector<ConnectionRoute>& routes, const std::vector<double>& diameters) {
+    REQUIRE(diameters.size() == routes.size());
+    std::vector<std::optional<TerminalTurnPath>> paths;
+    for (size_t index = 0; index < routes.size(); ++index) {
+        const auto& route = routes[index];
+        const auto& attach = route.kind == ConnectionKind::TERMINAL_ENTRANCE ? route.waypoints.back() : route.waypoints.front();
+        TerminalTurnPath path{ColumnShape::ROUND, 2 * std::numbers::pi * attach.at(0), 0.0, attach.at(0), attach.at(0)};
+        path.turnWireDiameter = diameters[index];
+        path.stubDiameter = diameters[index];
+        paths.push_back(path);
+    }
+    return paths;
+}
+
 }  // namespace
 
 TEST_CASE("14_dab: every terminal lead has its own lane, clear of every other bundle, with room for its bends (ABT #1705)",
@@ -159,6 +189,13 @@ TEST_CASE("14_dab: every terminal lead has its own lane, clear of every other bu
         REQUIRE(lead.plannedBendRadius >= diameter_of(lead) / 2);
     }
 
+    const auto coilTurns = coil.get_turns_description().value();
+    auto path_of = [&](const ConnectionRoute& route) {
+        const std::string& name = route.kind == ConnectionKind::TERMINAL_ENTRANCE ? route.toTurn : route.fromTurn;
+        const auto turn = std::find_if(coilTurns.begin(), coilTurns.end(), [&](const auto& candidate) { return candidate.get_name() == name; });
+        REQUIRE(turn != coilTurns.end());
+        return coil.terminal_turn_path(route, *turn, layout.routes);
+    };
     size_t crossBundlePairs = 0;
     size_t primaryEntranceVsExit = 0;
     double minimumCrossBundleSurplus = std::numeric_limits<double>::max();
@@ -180,17 +217,21 @@ TEST_CASE("14_dab: every terminal lead has its own lane, clear of every other bu
             if (sameBundle) {
                 continue;
             }
-            // Two bundles whose routes come within reach of each other's corners (the coated radii plus
-            // both bends) stand the coated radii plus the larger bend apart along the face: disjoint,
-            // with a clearance gap, never an exact touch.
-            if (section < radii + a.plannedBendRadius + b.plannedBendRadius) {
+            // Two bundles whose leads can meet in 3D stand apart along the face: disjoint, with a clearance
+            // gap, never an exact touch. Alf, 2026-10-28: "can meet" is the lane planner's own 3D judgement
+            // (spec P5: real sections, bend arcs and the attach turns' spans), not the section-distance
+            // proxy this test used before (routes within the coated radii plus both bends in the section),
+            // which demanded face room between Secondary p1's entrance ramp and p2's exit, about 1.1 mm
+            // apart at their coated surfaces in 3D.
+            if (OpenMagnetics::Coil::terminal_leads_meet_as_planned(a, path_of(a), b, path_of(b))) {
                 ++crossBundlePairs;
                 if (a.winding == "Primary" && b.winding == "Primary") {
                     ++primaryEntranceVsExit;
                 }
-                const double required = radii + std::max(a.plannedBendRadius, b.plannedBendRadius);
+                // Alf 2026-10-25 (C3): no blanket bend-radius gap between bundles; S1 puts the entrance on -x.
+                // Two bundles stand their coated radii apart along the face (14_dab: the coated OD, 0.855 mm).
+                const double required = radii;
                 CHECK(gap >= required - 1e-9);
-                CHECK(gap > radii);
                 minimumCrossBundleSurplus = std::min(minimumCrossBundleSurplus, gap - radii);
                 minimumCrossBundleSlack = std::min(minimumCrossBundleSlack, gap - required);
             }
@@ -200,7 +241,8 @@ TEST_CASE("14_dab: every terminal lead has its own lane, clear of every other bu
     REQUIRE(primaryEntranceVsExit == 16);
     REQUIRE(crossBundlePairs >= primaryEntranceVsExit);
     INFO("smallest cross-bundle clearance beyond the coated radii: " << minimumCrossBundleSurplus * 1e3 << " mm");
-    CHECK(minimumCrossBundleSurplus > 0);
+    // Alf 2026-10-25 (C3): no blanket bend-radius gap between bundles; the surplus beyond the coated radii is 0.
+    CHECK(minimumCrossBundleSurplus > -1e-9);
     // The tightest bundle boundary stands EXACTLY the required gap apart: the anchor is solved, not
     // stepped along a pitch grid that would waste up to a pitch at every boundary (Alf, ABT #1705).
     INFO("smallest cross-bundle slack beyond the required gap: " << minimumCrossBundleSlack * 1e3 << " mm");
@@ -209,7 +251,34 @@ TEST_CASE("14_dab: every terminal lead has its own lane, clear of every other bu
     // Each lead leaves its helix with room for its bends: a straight stub from its turn to its row
     // holds two bends of plannedBendRadius (one in the turn surface, one onto the radial run), so it is
     // at least 2R long, or it is published as a ramp on the turn surface (ABT #1336) whose span the
-    // lanes above already keep clear.
+    // lanes above already keep clear. The stub is measured PITCH-TRUE (ABT #1336, Alf, 2026-10-19):
+    // from where its own turn really stands at its lane (Coil::terminal_turn_height_at), not from the
+    // turn's 2-D station at the connection plane.
+    const auto turns = coil.get_turns_description().value();
+    auto attach_advance = [&](const ConnectionRoute& lead, const MAS::Turn*& attachTurn) {
+        const bool entrance = lead.kind == ConnectionKind::TERMINAL_ENTRANCE;
+        const std::string& turnName = entrance ? lead.toTurn : lead.fromTurn;
+        size_t at = turns.size();
+        for (size_t k = 0; k < turns.size(); ++k) {
+            if (turns[k].get_name() == turnName) at = k;
+        }
+        REQUIRE(at < turns.size());
+        attachTurn = &turns[at];
+        auto same = [&](size_t k) {
+            return turns[k].get_winding() == turns[at].get_winding() && turns[k].get_parallel() == turns[at].get_parallel();
+        };
+        if (entrance) {
+            for (size_t k = at + 1; k < turns.size(); ++k) {
+                if (same(k)) return turns[k].get_coordinates()[1] - turns[at].get_coordinates()[1];
+            }
+        }
+        else {
+            for (size_t k = at; k-- > 0;) {
+                if (same(k)) return turns[at].get_coordinates()[1] - turns[k].get_coordinates()[1];
+            }
+        }
+        return 0.0;
+    };
     size_t stubs = 0;
     for (const auto& lead : leads) {
         // The route runs from the turn (entrance: last waypoint; exit: first) to the border.
@@ -220,11 +289,41 @@ TEST_CASE("14_dab: every terminal lead has its own lane, clear of every other bu
             continue;
         }
         ++stubs;
-        const double height = std::abs(turnEnd[1] - next[1]);
+        const MAS::Turn* attachTurn = nullptr;
+        const double advance = attach_advance(lead, attachTurn);
+        const auto path = coil.terminal_turn_path(lead, *attachTurn, layout.routes);
+        const double turnY = OpenMagnetics::Coil::terminal_turn_height_at(lead, advance, path, lead.exitSlot.value());
+        const double height = std::abs(turnY - next[1]);
         INFO(label(lead) << ": stub " << height * 1e3 << " mm, bend radius " << lead.plannedBendRadius * 1e3 << " mm");
         CHECK((height >= 2 * lead.plannedBendRadius - 1e-12 || lead.rampLength.has_value()));
     }
     REQUIRE(stubs > 0);
+}
+
+TEST_CASE("Pins decide the side: with no pins the S0/S1 default stands, one face, halves by isolation side (spec section 12, ABT #1336)",
+          "[constructive-model][coil][real-winding][abt-1705][abt1336]") {
+    auto coil = wind_dab_fixture();
+    // (iii) no pins: the premise of this case.
+    const auto bobbin = coil.resolve_bobbin();
+    REQUIRE(bobbin.get_processed_description());
+    REQUIRE((!bobbin.get_processed_description()->get_pins() || bobbin.get_processed_description()->get_pins()->empty()));
+    const auto layout = coil.get_connection_layout();
+    std::set<int> halves;
+    size_t terminals = 0;
+    for (const auto& route : layout.routes) {
+        INFO(label(route));
+        CHECK(route.side == 0);   // S0: ONE FACE
+        if (!is_terminal(route)) {
+            continue;
+        }
+        const auto& winding = coil.get_functional_description()[coil.get_winding_index_by_name(route.winding)];
+        REQUIRE(route.laneHalf.has_value());
+        CHECK(route.laneHalf.value() == (winding.get_isolation_side() == MAS::IsolationSide::PRIMARY ? -1 : 1));   // S0 halves
+        halves.insert(route.laneHalf.value());
+        ++terminals;
+    }
+    REQUIRE(terminals == 16);
+    REQUIRE(halves.size() == 2);   // both isolation groups present
 }
 
 TEST_CASE("check_terminal_lanes refuses lanes that put two bundles' bent leads together (ABT #1705)",
@@ -249,19 +348,46 @@ TEST_CASE("check_terminal_lanes refuses lanes that put two bundles' bent leads t
     }
     REQUIRE(entrance.has_value());
     REQUIRE(exit.has_value());
-    // MKF's own lanes pass.
-    CHECK_NOTHROW(OpenMagnetics::Coil::check_terminal_lanes(routes, diameters, slots, true));
+    // Each terminal route's attach turn path (entrance: its toTurn, exit: its fromTurn); none for the others.
+    const auto turns = coil.get_turns_description().value();
+    std::vector<std::optional<TerminalTurnPath>> turnPaths;
+    for (const auto& route : routes) {
+        if (!is_terminal(route)) {
+            turnPaths.push_back(std::nullopt);
+            continue;
+        }
+        const std::string& turnName = route.kind == ConnectionKind::TERMINAL_ENTRANCE ? route.toTurn : route.fromTurn;
+        const MAS::Turn* attachTurn = nullptr;
+        for (const auto& turn : turns) {
+            if (turn.get_name() == turnName) attachTurn = &turn;
+        }
+        REQUIRE(attachTurn != nullptr);
+        turnPaths.push_back(coil.terminal_turn_path(route, *attachTurn, routes));
+    }
+    // MKF's own lanes pass: no lead carries a finding.
+    std::vector<std::vector<LeadFinding>> findings;
+    REQUIRE_NOTHROW(findings = OpenMagnetics::Coil::check_terminal_lanes(routes, diameters, slots, true, turnPaths));
+    REQUIRE(findings.size() == routes.size());
+    for (const auto& routeFindings : findings) {
+        CHECK(routeFindings.empty());
+    }
     // The lanes the old rule handed out put the Primary's parallel 3 exit on its parallel 0 entrance's lane:
     // their rows touch in the window section (0.855 mm), so the old test saw no clash.
+    // Spec section 17 (Alf 2026-10-26): under real winding the collision is reported on both leads, not
+    // thrown (was CHECK_THROWS_WITH the same message).
     slots[exit.value()] = slots[entrance.value()];
-    CHECK_THROWS_WITH(OpenMagnetics::Coil::check_terminal_lanes(routes, diameters, slots, true),
-                      Catch::Matchers::ContainsSubstring("Terminal lanes collide") &&
-                          Catch::Matchers::ContainsSubstring("Primary' parallel 3 exit") &&
-                          Catch::Matchers::ContainsSubstring("different bundles"));
+    REQUIRE_NOTHROW(findings = OpenMagnetics::Coil::check_terminal_lanes(routes, diameters, slots, true, turnPaths));
+    for (size_t lead : {exit.value(), entrance.value()}) {
+        REQUIRE_FALSE(findings[lead].empty());
+        CHECK(findings[lead].front().kind == LeadFindingKind::LANES_COLLIDE);
+        CHECK_THAT(findings[lead].front().witness, Catch::Matchers::ContainsSubstring("Terminal lanes collide") &&
+                                                      Catch::Matchers::ContainsSubstring("Primary' parallel 3 exit") &&
+                                                      Catch::Matchers::ContainsSubstring("different bundles"));
+    }
     // Two leads on one point collide even without the bend rule.
     auto coincident = routes;
     coincident[exit.value()].waypoints = coincident[entrance.value()].waypoints;
-    CHECK_THROWS_WITH(OpenMagnetics::Coil::check_terminal_lanes(coincident, diameters, slots, false),
+    CHECK_THROWS_WITH(OpenMagnetics::Coil::check_terminal_lanes(coincident, diameters, slots, false, {}),
                       Catch::Matchers::ContainsSubstring("their coated radii need"));
 }
 
@@ -280,6 +406,9 @@ TEST_CASE("terminal_exit_slots: two bundles that touch in the section take disjo
         r.waypoints = waypoints;
         r.plannedBendRadius = bend;
         (kind == ConnectionKind::TERMINAL_ENTRANCE ? r.toTurn : r.fromTurn) = "t";
+        // Spec section 21: 14_dab's turns are wound clockwise (a window right of the column), so each
+        // attach turn leaves the crossing towards -x (Coil::terminal_wrap_direction).
+        r.wrapDirection = -1;
         return r;
     };
     std::vector<ConnectionRoute> routes = {
@@ -290,27 +419,33 @@ TEST_CASE("terminal_exit_slots: two bundles that touch in the section take disjo
     };
     const std::vector<double> attach = {-21.4223e-3, -19.6957e-3, -18.7212e-3, -17.8086e-3};
     const std::vector<double> diameters(routes.size(), od);
+    // The stubs differ in every bundle here, so the attach advance never decides an order.
+    const std::vector<double> advance(routes.size(), 3.6618e-3);
+    const WindingSides primaryOnly = {{"Primary", IsolationSide::PRIMARY}};
 
     SECTION("ideal winding: the rows touch, so the old rule lets both bundles start at the plane") {
-        auto slots = OpenMagnetics::Coil::terminal_exit_slots(routes, diameters, attach, false);
+        auto slots = OpenMagnetics::Coil::terminal_exit_slots(routes, diameters, attach, false, advance, {}, primaryOnly);
         CHECK(slots[0].value() == 0.0);
         CHECK(slots[1].value() == od);
         CHECK(slots[3].value() == 0.0);   // exit order by span descending: parallel 1 first
         CHECK(slots[2].value() == od);
     }
     SECTION("real winding: the exit bundle starts exactly d + R past the entrance bundle") {
-        auto slots = OpenMagnetics::Coil::terminal_exit_slots(routes, diameters, attach, true);
-        CHECK(slots[0].value() == 0.0);
-        CHECK(slots[1].value() == od);
-        // The second entrance stands at od, so the first exit stands at od + (od + bend) = 2.159 mm -- not
-        // rounded up to the next pitch (3 od = 2.565 mm).
-        const double firstExit = od + od + bend;
+        auto slots = OpenMagnetics::Coil::terminal_exit_slots(routes, diameters, attach, true, advance, round_paths(routes, diameters), primaryOnly);
+        // Spec section 25 (Alf, approved 2026-10-28): the entrance order comes from the wrap directions.
+        // Parallel 1's stub climbs past parallel 0's first turn, which leaves its lane towards -x, so
+        // parallel 1 stands at the crossing and parallel 0 one OD out (was p0 0, p1 -od by stub span).
+        CHECK(slots[1].value() == 0.0);
+        // Alf 2026-10-25 (C3): no blanket bend-radius gap between bundles; S1 puts the entrance on -x.
+        CHECK(slots[0].value() == -od);
+        // The exits start one coated OD past the crossing (0.855 mm), then one OD apart (1.710 mm).
+        const double firstExit = od;
         CHECK(std::abs(slots[3].value() - firstExit) < 1e-12);
         CHECK(std::abs(slots[2].value() - (firstExit + od)) < 1e-12);
     }
     SECTION("real winding without a planned bend throws") {
         routes[2].plannedBendRadius = 0;
-        CHECK_THROWS_WITH(OpenMagnetics::Coil::terminal_exit_slots(routes, diameters, attach, true),
+        CHECK_THROWS_WITH(OpenMagnetics::Coil::terminal_exit_slots(routes, diameters, attach, true, advance, round_paths(routes, diameters), primaryOnly),
                           Catch::Matchers::ContainsSubstring("planned bend radius"));
     }
 }
@@ -1297,6 +1432,60 @@ TEST_CASE("Asking what a layer change is while winding plans no terminal lead",
     settings.reset();
 }
 
+
+// Alf, 2026-10-31: a closed core's lead whose lane lies beyond its turn's half extent leaves the turn
+// tangentially (ABT #1705) and keeps its radial run from the corner's end, so its exit run starts from
+// that run at its slot, as any other lead's does.
+TEST_CASE("A closed core's tangential terminal lead starts its exit run from its radial run",
+          "[lead-exit][constructive-model][coil][abt-1336][abt-1383]") {
+    auto& settings = Settings::GetInstance();
+    settings.reset();
+    settings.set_coil_use_real_winding_geometry(true);
+    auto fixture = load_fixture("lead_exit_drumring_7332.json");
+    fixture["magnetic"]["coil"]["functionalDescription"][0]["numberTurns"] = 4;
+    fixture["magnetic"]["coil"]["functionalDescription"][0]["numberParallels"] = 2;
+    auto magnetic = autocomplete(fixture["magnetic"]);
+    const auto layout = magnetic.get_mutable_coil().get_connection_layout();
+    size_t tangential = 0;
+    for (const auto& route : layout.routes) {
+        if (!is_terminal(route) || !route.tangentDeparture) {
+            continue;
+        }
+        ++tangential;
+        CHECK(route.tangentDeparture->kind != TangentDeparture::Kind::LATERAL_FACE);
+        REQUIRE(route.exitSlot);
+        REQUIRE_FALSE(route.exitRun.empty());
+        // The exit run starts on the radial run, at the slot, beyond the corner's end.
+        CHECK_THAT(route.exitRun.front()[0], WithinAbs(route.exitSlot.value(), 1e-12));
+        CHECK(-route.exitRun.front()[2] > -route.tangentDeparture->cornerEnd[2]);
+    }
+    CHECK(tangential > 0);
+    settings.reset();
+}
+
+// Alf, 2026-10-31: an IRREGULAR column states no surface curvature, but MKF winds it as a rounded
+// rectangle (Coil::terminal_turn_path), so a terminal ramp off it is planned on that turn's own curvature
+// where the lead leaves it, and the lanes of a coil wound on one are laid out.
+TEST_CASE("A terminal ramp off an IRREGULAR column is planned on the turn MKF wound there",
+          "[constructive-model][coil][abt-1336]") {
+    auto& settings = Settings::GetInstance();
+    settings.reset();
+    settings.set_coil_use_real_winding_geometry(true);
+    auto magnetic = autocomplete(load_fixture("test_circuitsimulatorexporter_simba_json_87.json"));
+    auto coil = magnetic.get_coil();
+    REQUIRE(coil.resolve_bobbin().get_processed_description()->get_column_shape() == ColumnShape::IRREGULAR);
+    std::vector<ConnectionRoute> routes;
+    REQUIRE_NOTHROW(coil.get_connection_reserved_spaces(&routes));
+    // The lane search plans ramps at its candidate slots (none is left at the slots it takes); before
+    // this rule every such plan threw for the column's shape.
+    size_t terminals = 0;
+    for (const auto& route : routes) {
+        terminals += is_terminal(route);
+    }
+    CHECK(terminals == 6);
+    settings.reset();
+}
+
 }  // namespace lead_exit_suite
 
 // ABT #1397: the seated drum-ring's coil ends are joined to their terminal legs by a BOND solid (the
@@ -1352,4 +1541,418 @@ TEST_CASE("A seated drum-ring's coil ends are bonded to their terminal legs thro
     }
     CHECK(bonds == 2);
     settings.reset();
+}
+
+TEST_CASE("terminal_exit_slots: tied members take the order whose turns clear each other's leads at the lanes they pass (ABT #1336)",
+          "[constructive-model][coil][abt-1336]") {
+    // 14_dab's Secondary exits (mm -> m): four parallels leave from their own rows (no stubs) on the outer
+    // layer, r = 21.4375 mm, whose one turn per parallel is a FINAL_LANDING descending 37.557 mm per
+    // revolution. Each last turn arrives at its lane from +x, passing the lanes beyond its own, and at a
+    // lane x it stands 37.557 asin(x / r) / 2 pi above its row; the drawn lead leaves its turn there and
+    // drops along the turn axis to its row. With the lowest row first, parallel 0's landing passes
+    // parallel 1's lane 0.658 mm under that drop's foot, against the 0.855 mm coated envelope.
+    const double od = 0.855e-3;
+    const double bend = 0.8275e-3;
+    const double radius = 21.4375e-3;
+    const std::vector<double> rows = {-18.8410e-3, -17.9443e-3, -17.0477e-3, -16.1510e-3};
+    std::vector<ConnectionRoute> routes;
+    for (int64_t parallel = 0; parallel < 4; ++parallel) {
+        ConnectionRoute r;
+        r.winding = "Secondary";
+        r.parallel = parallel;
+        r.kind = ConnectionKind::TERMINAL_EXIT;
+        r.side = 1;
+        r.waypoints = {{radius, rows[parallel]}, {34.5025e-3, rows[parallel]}};
+        r.plannedBendRadius = bend;
+        r.fromTurn = "t" + std::to_string(parallel);
+        // Spec section 21: each last turn arrives at its lane from +x, i.e. travels towards -x: the
+        // clockwise turn of a window right of the column (Coil::terminal_wrap_direction).
+        r.wrapDirection = -1;
+        routes.push_back(r);
+    }
+    const std::vector<double> diameters(routes.size(), od);
+    const WindingSides secondaryOnly = {{"Secondary", IsolationSide::PRIMARY}};
+    auto slots_for = [&](const std::vector<double>& advance, bool realWinding) {
+        return OpenMagnetics::Coil::terminal_exit_slots(routes, diameters, rows, realWinding, advance,
+                                                        realWinding ? round_paths(routes, diameters) : std::vector<std::optional<TerminalTurnPath>>{},
+                                                        secondaryOnly);
+    };
+    const std::vector<double> descending(routes.size(), -37.557e-3);
+    const std::vector<double> ascending(routes.size(), 3.6618e-3);
+    SECTION("descending landings: the highest row stands first -- 14_dab's p3 / p2 / p1 / p0") {
+        const auto slots = slots_for(descending, true);
+        for (int64_t parallel = 0; parallel < 4; ++parallel) {
+            CHECK(std::abs(slots[parallel].value() - (3 - parallel) * od) < 1e-12);
+        }
+    }
+    SECTION("the clearance is measured, not signed: the ascending order fails by the landing's own height") {
+        // What the order guards, computed here from the plan: parallel 0 at lane 0 passes parallel 1's lane od.
+        const double dip = 37.557e-3 * std::asin(od / radius) / (2 * std::numbers::pi);
+        const double found = (rows[1] - rows[0]) - dip;
+        CHECK(found < od);   // 0.658 mm < 0.855 mm: the ascending order collides
+        CHECK(OpenMagnetics::Coil::terminal_turn_height_at(routes[0], -37.557e-3, round_paths(routes, std::vector<double>(routes.size(), od))[0].value(), od) ==
+              Catch::Approx(rows[0] + dip).margin(1e-15));
+    }
+    SECTION("ascending turns: the lowest row stands first, as under ideal winding") {
+        const auto slots = slots_for(ascending, true);
+        for (int64_t parallel = 0; parallel < 4; ++parallel) {
+            CHECK(std::abs(slots[parallel].value() - parallel * od) < 1e-12);
+        }
+    }
+    SECTION("ideal winding draws no turn past the crossing: ascending, whatever the advance") {
+        const auto slots = slots_for(descending, false);
+        for (int64_t parallel = 0; parallel < 4; ++parallel) {
+            CHECK(std::abs(slots[parallel].value() - parallel * od) < 1e-12);
+        }
+    }
+    SECTION("on a rectangular column the turn climbs over its whole path, so the highest row stands first too") {
+        // A square column: 15 mm face straights either side of the crossing, 2 mm corners. MVB++ spreads
+        // a rect turn's advance uniformly over its whole path from the crossing (appendRectWrap), so at
+        // lane x an exit's last turn stands advance * x / length off its station -- not at the station.
+        TerminalTurnPath rect{ColumnShape::RECTANGULAR, 8 * 15e-3 + 2 * std::numbers::pi * 2e-3, 15e-3, 2e-3, 17e-3, 13e-3};
+        rect.turnWireDiameter = od;   // hand-built routes are unsleeved: turn and stub are the route's own wire
+        rect.stubDiameter = od;
+        const std::vector<std::optional<TerminalTurnPath>> paths(routes.size(), rect);
+        CHECK(OpenMagnetics::Coil::terminal_turn_height_at(routes[0], -37.557e-3, rect, od) ==
+              Catch::Approx(rows[0] + 37.557e-3 * od / rect.length).margin(1e-15));
+        // Round the corner: the straight, then the arc's own length.
+        const double cornerX = 15e-3 + 1e-3;
+        CHECK(OpenMagnetics::Coil::terminal_turn_height_at(routes[0], -37.557e-3, rect, cornerX) ==
+              Catch::Approx(rows[0] + 37.557e-3 * (15e-3 + 2e-3 * std::asin(0.5)) / rect.length).margin(1e-15));
+        // An entrance wrap BEGINS at its slot past the crossing, on the -x half (ABT #1705): it stands
+        // above its station there; upstream of the crossing it would stand below it, as an exit does.
+        ConnectionRoute entrance = routes[0];
+        entrance.kind = ConnectionKind::TERMINAL_ENTRANCE;
+        entrance.toTurn = "t0";
+        entrance.waypoints = {{34.5025e-3, rows[0]}, {radius, rows[0]}};
+        CHECK(OpenMagnetics::Coil::terminal_turn_height_at(entrance, 3.6618e-3, rect, -od) ==
+              Catch::Approx(rows[0] + 3.6618e-3 * od / rect.length).margin(1e-15));
+        CHECK(OpenMagnetics::Coil::terminal_turn_height_at(entrance, 3.6618e-3, rect, od) ==
+              Catch::Approx(rows[0] - 3.6618e-3 * od / rect.length).margin(1e-15));
+        CHECK_THROWS_WITH(OpenMagnetics::Coil::terminal_turn_height_at(routes[0], -37.557e-3, rect, 17.5e-3),
+                          Catch::Matchers::ContainsSubstring("beyond its turn's face"));
+        const auto slots = OpenMagnetics::Coil::terminal_exit_slots(routes, diameters, rows, true, descending, paths, secondaryOnly);
+        for (int64_t parallel = 0; parallel < 4; ++parallel) {
+            CHECK(std::abs(slots[parallel].value() - (3 - parallel) * od) < 1e-12);
+        }
+    }
+    SECTION("a lane beyond its turn leaves tangentially off the back of the turn, one corner onto its run (ABT #1705)") {
+        // Round turn of radius r: the corner's centre lies on the mid plane one bend radius inside the
+        // lane, so the straight is the direct common tangent of the turn and that corner circle.
+        const auto path = round_paths(routes, std::vector<double>(routes.size(), od))[0].value();
+        const double lane = radius + 2e-3;
+        const auto plan = OpenMagnetics::Coil::plan_terminal_tangential_lead(routes[0], path, lane);
+        const double centre = lane - bend;
+        const double theta = std::acos((radius - bend) / centre);
+        CHECK(plan.cornerAngle == Catch::Approx(theta).margin(1e-12));
+        CHECK(plan.cornerAngle < std::numbers::pi / 2);
+        CHECK(plan.straightLength == Catch::Approx(std::sqrt(centre * centre - (radius - bend) * (radius - bend))).margin(1e-12));
+        CHECK(plan.along == Catch::Approx(radius * (std::numbers::pi / 2 + theta)).margin(1e-12));
+        CHECK(plan.tangentPoint[1] > 0);   // off the BACK of the turn
+        CHECK(std::hypot(plan.tangentPoint[0], plan.tangentPoint[1]) == Catch::Approx(radius).margin(1e-12));
+        CHECK(plan.cornerCentre[0] == Catch::Approx(centre).margin(1e-15));
+        // At exactly the turn's radius it leaves straight down the side: no straight, no corner, and
+        // the same place on the turn as a lane on the face there.
+        const auto side = OpenMagnetics::Coil::plan_terminal_tangential_lead(routes[0], path, radius);
+        CHECK(side.cornerAngle == Catch::Approx(0.0).margin(1e-7));
+        CHECK(side.straightLength == Catch::Approx(0.0).margin(1e-6));
+        CHECK(side.along == Catch::Approx(OpenMagnetics::Coil::terminal_lane_along(path, radius)).margin(1e-9));
+        // An entrance mirrors onto the -x half.
+        ConnectionRoute entrance = routes[0];
+        entrance.kind = ConnectionKind::TERMINAL_ENTRANCE;
+        entrance.waypoints = {{34.5025e-3, rows[0]}, {radius, rows[0]}};
+        const auto mirrored = OpenMagnetics::Coil::plan_terminal_tangential_lead(entrance, path, -lane);
+        CHECK(mirrored.along == Catch::Approx(-plan.along).margin(1e-12));
+        CHECK(mirrored.tangentPoint[0] == Catch::Approx(-plan.tangentPoint[0]).margin(1e-15));
+        // Spec S0 (Alf, 2026-10-25, one face): an exit lane on the -x half is the FAR half for an exit,
+        // and MKF plans its tangential lead too (it was refused as the "wrong half" before S0). On a
+        // round turn, whose face has no straight, the turn runs on to the crossing and the lead leaves
+        // it there, on the turn's centreline, level along the face line; one 90 degree corner of its
+        // planned bend radius puts it on its radial run at the lane.
+        OpenMagnetics::TerminalTangentialLead far;
+        REQUIRE_NOTHROW(far = OpenMagnetics::Coil::plan_terminal_tangential_lead(routes[0], path, -lane));
+        CHECK(far.farHalf);
+        CHECK_FALSE(plan.farHalf);
+        CHECK(far.lane == -lane);
+        CHECK(far.tangentPoint[0] == Catch::Approx(0.0).margin(1e-15));
+        CHECK(std::hypot(far.tangentPoint[0], far.tangentPoint[1]) == Catch::Approx(radius).margin(1e-12));
+        CHECK(far.cornerAngle == Catch::Approx(std::numbers::pi / 2).margin(1e-15));
+        CHECK(far.cornerEnd[0] == Catch::Approx(-lane).margin(1e-15));
+        CHECK(std::hypot(far.cornerStart[0] - far.cornerCentre[0], far.cornerStart[1] - far.cornerCentre[1]) == Catch::Approx(bend).margin(1e-15));
+        CHECK(std::hypot(far.cornerEnd[0] - far.cornerCentre[0], far.cornerEnd[1] - far.cornerCentre[1]) == Catch::Approx(bend).margin(1e-15));
+        CHECK_THROWS_WITH(OpenMagnetics::Coil::plan_terminal_tangential_lead(routes[0], path, radius / 2),
+                          Catch::Matchers::ContainsSubstring("on its turn's face"));
+    }
+    SECTION("tied members whose turns advance towards each other but stand apart cannot meet, so both take the crossing lane") {
+        // Stacked sections: the rows stand 5 mm apart, and the lower turn rises while the upper falls. A
+        // direction rule refuses this; the distance at the lanes passed is far beyond the envelope.
+        // ABT #1705 (Alf, 2026-10-24, "lanes only where leads can meet", spec P5): leads that cannot meet
+        // in 3D need no disjoint lanes, so both share the crossing lane. (Written for ascending lanes
+        // 0 / od before that rule; the tie ORDER is guarded by the sections above, whose rows touch.)
+        std::vector<double> farRows = {-20e-3, -15e-3};
+        std::vector<ConnectionRoute> two = {routes[0], routes[1]};
+        two[0].waypoints = {{radius, farRows[0]}, {34.5025e-3, farRows[0]}};
+        two[1].waypoints = {{radius, farRows[1]}, {34.5025e-3, farRows[1]}};
+        const auto slots = OpenMagnetics::Coil::terminal_exit_slots(two, {od, od}, farRows, true, {3.6618e-3, -3.6618e-3}, round_paths(two, {od, od}), secondaryOnly);
+        CHECK(slots[0].value() == 0.0);
+        CHECK(slots[1].value() == 0.0);
+    }
+    SECTION("members whose stubs do not tie are ordered by their stubs; only the tie is permuted") {
+        // Parallel 3 climbs 1 mm before its run, so it ties with nobody and keeps its place by its span.
+        routes[3].waypoints = {{radius, rows[3]}, {radius, rows[3] + 1e-3}, {34.5025e-3, rows[3] + 1e-3}};
+        std::vector<std::optional<double>> slots;
+        REQUIRE_NOTHROW(slots = slots_for(descending, true));
+        CHECK(slots[3].value() == 0.0);   // exits by span descending: the climbing one first
+        CHECK(slots[2].value() < slots[1].value());
+        CHECK(slots[1].value() < slots[0].value());
+    }
+    SECTION("when no order clears, the closest order is drawn and reported naming it, the pair and the shortfall") {
+        // A level ring (advance 0) between descending landings: some landing always crosses its row.
+        // Spec section 17 (Alf 2026-10-26): reported on every tied member (was CHECK_THROWS_WITH the same message).
+        std::vector<double> advance = descending;
+        advance[1] = 0.0;
+        TerminalLanePlan plan;
+        REQUIRE_NOTHROW(plan = OpenMagnetics::Coil::terminal_lane_plan(routes, diameters, rows, true, advance,
+                                                                       round_paths(routes, diameters), secondaryOnly));
+        REQUIRE(plan.findings.size() == routes.size());
+        for (size_t index = 0; index < routes.size(); ++index) {
+            CHECK(plan.slots[index].has_value());
+            REQUIRE_FALSE(plan.findings[index].empty());
+            CHECK(plan.findings[index].front().kind == LeadFindingKind::TIED_LEADS_COLLIDE);
+            CHECK_THAT(plan.findings[index].front().witness,
+                       Catch::Matchers::ContainsSubstring("No order of the tied exit leads of winding 'Secondary'") &&
+                           Catch::Matchers::ContainsSubstring("mm short"));
+        }
+    }
+}
+
+TEST_CASE("a tie no order clears is drawn and reported and the plan returned (spec section 17, ABT #1336)",
+          "[constructive-model][coil][abt-1705]") {
+    // The "when no order clears" fixture above: 14_dab's Secondary exits, descending landings with a
+    // level ring (advance 0) on parallel 1, which no order clears.
+    const double od = 0.855e-3;
+    const double bend = 0.8275e-3;
+    const double radius = 21.4375e-3;
+    const std::vector<double> rows = {-18.8410e-3, -17.9443e-3, -17.0477e-3, -16.1510e-3};
+    std::vector<ConnectionRoute> routes;
+    for (int64_t parallel = 0; parallel < 4; ++parallel) {
+        ConnectionRoute r;
+        r.winding = "Secondary";
+        r.parallel = parallel;
+        r.kind = ConnectionKind::TERMINAL_EXIT;
+        r.side = 1;
+        r.waypoints = {{radius, rows[parallel]}, {34.5025e-3, rows[parallel]}};
+        r.plannedBendRadius = bend;
+        r.fromTurn = "t" + std::to_string(parallel);
+        routes.push_back(r);
+    }
+    const std::vector<double> diameters(routes.size(), od);
+    const WindingSides secondaryOnly = {{"Secondary", IsolationSide::PRIMARY}};
+    std::vector<double> advance(routes.size(), -37.557e-3);
+    advance[1] = 0.0;
+    // Spec section 17 (Alf 2026-10-26; was: setting off throws, setting on returns the slots and warns on
+    // stderr): the plan is returned and every tied member carries the tie.
+    TerminalLanePlan plan;
+    REQUIRE_NOTHROW(plan = OpenMagnetics::Coil::terminal_lane_plan(routes, diameters, rows, true, advance,
+                                                                   round_paths(routes, diameters), secondaryOnly));
+    REQUIRE(plan.slots.size() == 4);
+    for (int64_t parallel = 0; parallel < 4; ++parallel) {
+        CHECK(plan.slots[parallel].has_value());
+        REQUIRE_FALSE(plan.findings[parallel].empty());
+        CHECK(plan.findings[parallel].front().kind == LeadFindingKind::TIED_LEADS_COLLIDE);
+        CHECK_THAT(plan.findings[parallel].front().witness, Catch::Matchers::ContainsSubstring("No order of the tied exit leads"));
+    }
+
+    // Spec section 17 covers EVERY collision refusal (Alf 2026-10-26): each is drawn and reported on its lead.
+    SECTION("route_leads_to_pins: a run that cannot clear a pin rail is kept and the collision reported") {
+        // A vertical pin below a lead whose window exit lies inside a pin rail block: every candidate run's
+        // first leg starts in the rail, so all of them collide with it.
+        MAS::Pin pin;
+        pin.set_name("7");
+        pin.set_shape(MAS::PinShape::ROUND);
+        pin.set_type(MAS::PinDescriptionType::THT);
+        pin.set_dimensions({0.0008, 0.0008, 0.004});
+        pin.set_coordinates(std::vector<double>({0.003, -0.014, -0.013}));
+        OpenMagnetics::PinLeadRequest lead;
+        lead.label = "the boxed lead";
+        lead.pin = pin;
+        lead.windowExit = {0.011, -0.004};
+        lead.diameter = 0.0006;
+        lead.bendRadius = lead.diameter / 2;
+        lead.exitX = 0.0;
+        OpenMagnetics::Bobbin::PinRailBlock rail{"rail 0 block 0", 0, {0.0, -0.004, -0.011}, {0.02, 0.002, 0.0005}};
+        // Was: setting off throws this refusal, setting on draws the run and warns on stderr.
+        std::vector<OpenMagnetics::PinLeadRoute> runs;
+        REQUIRE_NOTHROW(runs = OpenMagnetics::Coil::route_leads_to_pins({pin}, {lead}, 0.0, 2, {rail}));
+        REQUIRE(runs.size() == 1);
+        REQUIRE(runs[0].findings.size() == 1);
+        CHECK(runs[0].findings[0].kind == LeadFindingKind::PIN_RUN_COLLIDES);
+        CHECK_THAT(runs[0].findings[0].witness,
+                   Catch::Matchers::ContainsSubstring("Cannot route the boxed lead to pin '7'") &&
+                       Catch::Matchers::ContainsSubstring("pin rail 'rail 0 block 0': leg 0 comes 0.000 mm from it"));
+        CHECK(runs[0].pinName == "7");
+        REQUIRE(runs[0].waypoints.size() >= 3);
+        CHECK_THAT(runs[0].waypoints.front()[0], Catch::Matchers::WithinAbs(0.0, 1e-12));        // from its exit slot
+        CHECK_THAT(runs[0].waypoints.front()[2], Catch::Matchers::WithinAbs(-0.011, 1e-12));     // at the window exit
+    }
+    SECTION("plan_terminal_tangential_lead: a lane whose tangent meets the turn past its far side is planned anyway") {
+        // A round turn of radius 2 mm and a lead bent at 3 mm: from lane x = 5 mm the straight tangent to the
+        // back of the turn meets it at 120 deg past the side, 7.33 mm from the crossing, more than half the
+        // turn's 12.57 mm.
+        const double turnRadius = 2e-3;
+        ConnectionRoute exit;
+        exit.winding = "Secondary";
+        exit.parallel = 0;
+        exit.kind = ConnectionKind::TERMINAL_EXIT;
+        exit.fromTurn = "t0";
+        exit.waypoints = {{turnRadius, 0.0}, {turnRadius + 5e-3, 0.0}};
+        exit.plannedBendRadius = 3e-3;
+        TerminalTurnPath path{ColumnShape::ROUND, 2 * std::numbers::pi * turnRadius, 0.0, turnRadius, turnRadius};
+        path.turnWireDiameter = 0.5e-3;
+        path.stubDiameter = 0.5e-3;
+        const double lane = 5e-3;
+        // Was: setting off throws (and terminal_turn_height_along throws past half a turn), setting on plans
+        // it and warns on stderr. Now planned, and the plan carries the witness the route reports.
+        OpenMagnetics::TerminalTangentialLead plan;
+        REQUIRE_NOTHROW(plan = OpenMagnetics::Coil::plan_terminal_tangential_lead(exit, path, lane));
+        double height = 0;
+        REQUIRE_NOTHROW(height = OpenMagnetics::Coil::terminal_turn_height_along(exit, 1e-3, path, plan.along));
+        CHECK_THAT(plan.farSideWitness, Catch::Matchers::ContainsSubstring("past the far side of the turn"));
+        CHECK(plan.crossesFarSide);
+        CHECK(plan.along > path.length / 2);
+        CHECK_THAT(plan.along, Catch::Matchers::WithinAbs(turnRadius * (std::numbers::pi / 2 + std::acos(-0.5)), 1e-12));
+        CHECK_THAT(plan.cornerEnd[0], Catch::Matchers::WithinAbs(lane, 1e-15));
+        CHECK(std::isfinite(height));
+    }
+}
+
+TEST_CASE("14_dab: the Secondary's descending landings take their exit lanes highest row first (ABT #1336)",
+          "[constructive-model][coil][real-winding][abt-1336]") {
+    // Each Secondary parallel ends on a FINAL_LANDING that descends a whole window per revolution, so at
+    // the lanes beyond its own a last turn stands well above its row. Ascending order put parallel 0's
+    // landing 28 um inside parallel 1's coated envelope under MVB++'s certified gate; the order that
+    // clears stands parallel 3 first. The order is the one MVB++ built and certified the part with;
+    // the lanes stand 3.225 mm further out than that build's (6.977 mm for parallel 3): planned
+    // pitch-true, the Secondary's parallel 2 ENTRANCE stands 1.624 mm off its row at that build's slot
+    // (4.439 mm), short of the 1.655 mm its two bends need, so it ramps, and its ramp's span moves the
+    // entrance bundle and the exit bundle after it out along the face.
+    auto coil = wind_dab_fixture();
+    const auto layout = coil.get_connection_layout();
+    std::map<int64_t, double> exitSlot;
+    for (const auto& route : layout.routes) {
+        if (route.winding == "Secondary" && route.kind == ConnectionKind::TERMINAL_EXIT) {
+            REQUIRE(route.exitSlot.has_value());
+            exitSlot[route.parallel] = route.exitSlot.value();
+        }
+    }
+    REQUIRE(exitSlot.size() == 4);
+    // Spec S0 (Alf, 2026-10-25, ONE FACE; this bobbin has no pins, so section 12 does not apply): the
+    // Secondary no longer has a face of its own. It shares face 0 with the Primary on the x >= 0 half,
+    // so its entrance bundle starts one od (0.855 mm, C3: the coated radii) past the Primary's p3 exit
+    // at the crossing instead of at 0.
+    // Spec P5 (lanes only where leads can meet; Alf, 2026-10-28, "they look fine"): the planner's 3D envelopes
+    // judge Secondary exit p3 unable to meet entrance p0 (its turns stand 2.3 mm higher on the face), so it
+    // shares p0's lane at 0.855 mm and p2 stands one od beyond it; p1 and p0 stay past the entrance bundle
+    // (entrances at 0.855 / 4.30861 / 8.47408 / 9.32908 mm). The order (p3 first) is unchanged.
+    // ABT #2117 (32e9130b) anchors the helical end bundles at their outer turn's edge, a few um off
+    // the centre they were laid at, so p1 and p0 stand 5.53 um further out than the 10.18408 /
+    // 11.03908 mm planned before it (Alf, 2026-10-31).
+    CHECK_THAT(exitSlot[3], Catch::Matchers::WithinAbs(0.855e-3, 0.5e-6));
+    CHECK_THAT(exitSlot[2], Catch::Matchers::WithinAbs(1.71e-3, 0.5e-6));
+    CHECK_THAT(exitSlot[1], Catch::Matchers::WithinAbs(10.18961e-3, 0.5e-6));
+    CHECK_THAT(exitSlot[0], Catch::Matchers::WithinAbs(11.04461e-3, 0.5e-6));
+    Settings::GetInstance().reset();
+}
+
+// ABT #1705 (Alf, 2026-10-24, "lanes only where leads can meet"): Coil::terminal_leads_can_meet judges two
+// leads by the envelopes of their drawn paths -- polyline, in-section bend arcs, the attach turn's run.
+TEST_CASE("terminal_leads_can_meet: envelopes of the drawn paths, bends and turn runs included (ABT #1705)",
+          "[constructive-model][coil][abt-1705]") {
+    const double od = 1e-3;
+    auto radial = [&](double row, int64_t parallel) {
+        ConnectionRoute r;
+        r.winding = "W";
+        r.parallel = parallel;
+        r.kind = ConnectionKind::TERMINAL_EXIT;
+        r.side = 0;
+        r.waypoints = {{10e-3, row}, {20e-3, row}};
+        r.plannedBendRadius = 2e-3;
+        return r;
+    };
+    auto at = [](const ConnectionRoute& r) { return std::pair<double, double>{r.waypoints.front().at(1), r.waypoints.front().at(1)}; };
+    SECTION("radial leads one coated diameter apart touch, a hair more apart do not") {
+        const auto a = radial(0.0, 0);
+        const auto touching = radial(od, 1);
+        const auto apart = radial(od + 1e-6, 1);
+        CHECK(OpenMagnetics::Coil::terminal_leads_can_meet(a, od, at(a), touching, od, at(touching)));
+        CHECK_FALSE(OpenMagnetics::Coil::terminal_leads_can_meet(a, od, at(a), apart, od, at(apart)));
+    }
+    SECTION("a bend cuts its corner: a lead inside the corner meets the arc, not the polyline") {
+        // A climbs 10 mm from (10, 0) then runs out radially at 10 mm: a 90 degree corner at (10, 10) with
+        // a 4 mm bend, whose arc passes 4 (sqrt(2) - 1) = 1.657 mm inside the corner along its diagonal. B is
+        // a point-like lead 2 mm inside the corner on that diagonal: 1.414 mm from both legs (more than one
+        // OD) yet 0.343 mm from the arc.
+        ConnectionRoute a = radial(0.0, 0);
+        a.waypoints = {{10e-3, 0.0}, {10e-3, 10e-3}, {20e-3, 10e-3}};
+        a.plannedBendRadius = 4e-3;
+        const double inside = 2e-3 / std::sqrt(2.0);
+        ConnectionRoute b = radial(0.0, 1);
+        b.waypoints = {{10e-3 + inside, 10e-3 - inside}, {10e-3 + inside + 1e-6, 10e-3 - inside}};
+        b.plannedBendRadius = 0.5e-3;
+        // Without the arc the two stand more than one OD apart.
+        ConnectionRoute sharp = a;
+        sharp.plannedBendRadius = 0;
+        CHECK_FALSE(OpenMagnetics::Coil::terminal_leads_can_meet(sharp, od, at(sharp), b, od, at(b)));
+        CHECK(OpenMagnetics::Coil::terminal_leads_can_meet(a, od, at(a), b, od, at(b)));
+    }
+    SECTION("a steep attach turn climbs over a sibling's lead near the crossing") {
+        const auto low = radial(0.0, 0);
+        const auto high = radial(1.5e-3, 1);
+        CHECK_FALSE(OpenMagnetics::Coil::terminal_leads_can_meet(low, od, at(low), high, od, at(high)));
+        // Low's turn climbs to 0.6 mm within the reach: 0.9 mm from high's lead.
+        CHECK(OpenMagnetics::Coil::terminal_leads_can_meet(low, od, {0.0, 0.6e-3}, high, od, at(high)));
+    }
+}
+
+TEST_CASE("terminal_exit_slots: siblings that cannot meet share the crossing, siblings that can stand a pitch apart (ABT #1705)",
+          "[constructive-model][coil][abt-1705]") {
+    // Alf, 2026-10-24: "lanes only where leads can meet". Section-local leads leaving at heights far
+    // apart share x = 0 and leave radially; leads that touch take the side-by-side pitch.
+    const double od = 0.855e-3;
+    const double radius = 21.4375e-3;
+    auto bundle = [&](const std::vector<double>& rows) {
+        std::vector<ConnectionRoute> routes;
+        for (size_t parallel = 0; parallel < rows.size(); ++parallel) {
+            ConnectionRoute r;
+            r.winding = "Secondary";
+            r.parallel = int64_t(parallel);
+            r.kind = ConnectionKind::TERMINAL_EXIT;
+            r.side = 0;
+            r.waypoints = {{radius, rows[parallel]}, {34.5025e-3, rows[parallel]}};
+            r.plannedBendRadius = 0.8275e-3;
+            r.fromTurn = "t" + std::to_string(parallel);
+            routes.push_back(r);
+        }
+        return routes;
+    };
+    const WindingSides secondaryOnly = {{"Secondary", IsolationSide::PRIMARY}};
+    SECTION("stacked sections: rows 5 mm apart, gentle advance -> both on the crossing") {
+        const std::vector<double> rows = {-20e-3, -15e-3};
+        const auto routes = bundle(rows);
+        const auto slots = OpenMagnetics::Coil::terminal_exit_slots(routes, {od, od}, rows, true, {0.9e-3, 0.9e-3}, round_paths(routes, {od, od}), secondaryOnly);
+        CHECK(slots[0].value() == 0.0);
+        CHECK(slots[1].value() == 0.0);
+    }
+    SECTION("touching rows: one pitch apart") {
+        const std::vector<double> rows = {-20e-3, -20e-3 + od};
+        const auto routes = bundle(rows);
+        const auto slots = OpenMagnetics::Coil::terminal_exit_slots(routes, {od, od}, rows, true, {0.9e-3, 0.9e-3}, round_paths(routes, {od, od}), secondaryOnly);
+        CHECK(std::abs(std::abs(slots[0].value() - slots[1].value()) - od) < 1e-12);
+    }
+    SECTION("ideal winding keeps the pitch whatever the rows") {
+        const std::vector<double> rows = {-20e-3, -15e-3};
+        const auto routes = bundle(rows);
+        const auto slots = OpenMagnetics::Coil::terminal_exit_slots(routes, {od, od}, rows, false, {0.9e-3, 0.9e-3}, {}, secondaryOnly);
+        CHECK(std::abs(std::abs(slots[0].value() - slots[1].value()) - od) < 1e-12);
+    }
 }
