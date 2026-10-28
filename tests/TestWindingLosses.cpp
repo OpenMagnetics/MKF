@@ -4436,6 +4436,88 @@ TEST_CASE("Test_Winding_Losses_Parallel_Split_Turns_Of_A_Winding_List_The_Same_H
     settings.reset();
 }
 
+TEST_CASE("Test_Winding_Losses_Parallel_Split_Searches_Each_Frequency_Once", "[winding-losses][parallel-split][physical-model][cost]") {
+    // ABT #2124: charging the split to the skin losses searched the split's frequencies for every (turn, solved
+    // frequency, listed harmonic), so its cost grew as turns x harmonics^2 (10% of a catalogue search's final
+    // simulations). Each distinct frequency is searched once per call now, whatever the number of turns.
+    auto& settings = OpenMagnetics::Settings::GetInstance();
+    settings.reset();
+    auto [magnetic, operatingPoint] = sixteen_parallel_planar_fixture("Test_Winding_Losses_Sixteen_Turns_Planar_Sinusoidal_No_Fringing.json", 100000);
+    auto solved = MagneticField::calculate_parallel_current_split(magnetic, operatingPoint, 22);
+    REQUIRE(solved);
+    auto losses = WindingOhmicLosses::calculate_ohmic_losses(magnetic.get_coil(), operatingPoint, 22);
+    losses = WindingSkinEffectLosses::calculate_skin_effect_losses(magnetic.get_coil(), 22, losses);
+    const size_t searchesBefore = ParallelCurrentSplit::get_frequency_searches();
+    losses = WindingOhmicLosses::apply_parallel_current_split(magnetic.get_coil(), losses, solved.value(), 22);
+    const size_t searches = ParallelCurrentSplit::get_frequency_searches() - searchesBefore;
+
+    std::set<double> listedFrequencies;
+    const auto lossesPerTurn = losses.get_winding_losses_per_turn().value();
+    REQUIRE(lossesPerTurn.size() == 16);
+    for (const auto& turnLosses : lossesPerTurn) {
+        const auto skin = turnLosses.get_skin_effect_losses();
+        REQUIRE(skin);
+        for (double frequency : skin->get_harmonic_frequencies()) {
+            if (frequency > 0) {
+                listedFrequencies.insert(frequency);
+            }
+        }
+    }
+    const auto lossesPerWinding = losses.get_winding_losses_per_winding().value();
+    for (const auto& windingLosses : lossesPerWinding) {
+        const auto skin = windingLosses.get_skin_effect_losses();
+        if (skin) {
+            for (double frequency : skin->get_harmonic_frequencies()) {
+                if (frequency > 0) {
+                    listedFrequencies.insert(frequency);
+                }
+            }
+        }
+    }
+    INFO(searches << " frequency searches for " << listedFrequencies.size() << " distinct listed frequencies and 16 turns");
+    REQUIRE(listedFrequencies.size() > 0);
+    CHECK(searches <= listedFrequencies.size());
+    settings.reset();
+}
+
+TEST_CASE("Test_Winding_Losses_Proximity_Factor_Once_Per_Winding_And_Frequency", "[winding-losses][physical-model][cost]") {
+    // ABT #2124: the proximity loop asked get_model for every turn, which builds a fresh model, so the model's
+    // proximity-factor memo (keyed by wire, frequency and temperature) started empty for every turn and the Kelvin
+    // functions of Ferreira's factor were evaluated turns x harmonics times (a third of a catalogue search's final
+    // simulations). The turns of a winding share one model now: one factor per winding and harmonic.
+    auto& settings = OpenMagnetics::Settings::GetInstance();
+    settings.reset();
+    clear_databases();
+    auto path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "Test_Winding_Losses_Twelve_Turns_Round_Sinusoidal.json");
+    auto mas = OpenMagneticsTesting::mas_loader(path);
+    auto magnetic = mas.get_magnetic();
+    auto inputs = mas.get_inputs();
+    OperatingPoint operatingPoint = inputs.get_operating_point(0);
+    OpenMagnetics::Inputs::scale_time_to_frequency(operatingPoint, 100000, true);
+    MagnetizingInductance magnetizingInductanceModel("ZHANG");
+    double magnetizingInductance = OpenMagnetics::resolve_dimensional_values(
+        magnetizingInductanceModel.calculate_inductance_from_number_turns_and_gapping(magnetic.get_core(), magnetic.get_coil()).get_magnetizing_inductance());
+    operatingPoint = OpenMagnetics::Inputs::process_operating_point(operatingPoint, magnetizingInductance);
+    const auto& coil = magnetic.get_coil();
+    REQUIRE(coil.get_functional_description().size() == 1);
+    REQUIRE(magnetic.get_mutable_coil().get_wire_type(0) == WireType::ROUND);
+    const size_t numberTurns = coil.get_turns_description().value().size();
+    REQUIRE(numberTurns == 12);
+
+    MagneticField magneticField(MagneticFieldStrengthModels::ALBACH);
+    auto field = magneticField.calculate_magnetic_field_strength_field(operatingPoint, magnetic);
+    const size_t numberHarmonics = field.get_field_per_frequency().size();
+    REQUIRE(numberHarmonics > 0);
+    auto ohmic = WindingOhmicLosses::calculate_ohmic_losses(coil, operatingPoint, 22);
+    const size_t evaluationsBefore = WindingProximityEffectLossesModel::get_proximity_factor_evaluations();
+    auto losses = WindingProximityEffectLosses::calculate_proximity_effect_losses(coil, 22, ohmic, field);
+    const size_t evaluations = WindingProximityEffectLossesModel::get_proximity_factor_evaluations() - evaluationsBefore;
+    INFO(evaluations << " proximity factors for 1 winding, " << numberTurns << " turns and " << numberHarmonics << " harmonics");
+    CHECK(losses.get_winding_losses() > 0);
+    CHECK(evaluations == numberHarmonics);
+    settings.reset();
+}
+
 TEST_CASE("Test_Winding_Losses_Parallel_Split_Fringing_Close_Vs_OMFEM", "[winding-losses][parallel-split][physical-model]") {
     // ABT #1314: the same stack beside the gap at 20 kHz: the split is one-sided, falling monotonically away from the gap
     // side. OMFEM 2D (.mkf-1645-fem/ref3_parallels/summary.txt, Fringing_Close_20000, f1 = 19843.8 Hz):

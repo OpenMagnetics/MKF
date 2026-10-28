@@ -152,6 +152,8 @@ struct ParallelCurrentSplit {
     size_t frequency_index(double frequency) const;
     // The same, empty when the harmonic was not solved.
     std::optional<size_t> find_frequency_index(double frequency) const;
+    // How many times find_frequency_index searched on this thread: a cost count for the tests (ABT #2124).
+    static size_t get_frequency_searches();
 };
 
 class MagneticField {

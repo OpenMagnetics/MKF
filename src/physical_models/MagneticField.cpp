@@ -3725,7 +3725,16 @@ double split_mean_log(const SplitSection& target, const SplitSection& source) {
 
 } // namespace
 
+namespace {
+thread_local size_t parallelCurrentSplitFrequencySearches = 0;
+}
+
+size_t ParallelCurrentSplit::get_frequency_searches() {
+    return parallelCurrentSplitFrequencySearches;
+}
+
 std::optional<size_t> ParallelCurrentSplit::find_frequency_index(double frequency) const {
+    ++parallelCurrentSplitFrequencySearches;
     for (size_t index = 0; index < frequencies.size(); ++index) {
         if (std::abs(frequencies[index] - frequency) <= 1e-9 * frequency) {
             return index;

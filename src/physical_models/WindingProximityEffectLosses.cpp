@@ -410,7 +410,16 @@ std::optional<double> WindingProximityEffectLossesModel::try_get_proximity_facto
     return std::nullopt;
 }
 
+namespace {
+thread_local size_t proximityFactorEvaluations = 0;
+}
+
+size_t WindingProximityEffectLossesModel::get_proximity_factor_evaluations() {
+    return proximityFactorEvaluations;
+}
+
 void WindingProximityEffectLossesModel::set_proximity_factor(const Wire& wire,  double frequency, double temperature, double proximityFactor) {
+    ++proximityFactorEvaluations;
     const std::size_t hash = Wire::calculate_loss_factor_cache_key(wire);
 
     _proximityFactorPerWirePerFrequencyPerTemperature[hash][frequency][temperature] = proximityFactor;
@@ -434,7 +443,11 @@ double WindingProximityEffectLossesModel::calculate_turn_losses_from_phasors(con
 }
 
 std::pair<double, std::vector<std::pair<double, double>>> WindingProximityEffectLosses::calculate_proximity_effect_losses_per_meter(const Wire& inputWire, double temperature, std::vector<ComplexField> fields, std::optional<WindingProximityEffectLossesModels> modelOverride, std::optional<std::vector<ComplexField>> quadratureFields, std::optional<double> perpendicularOutlineFactor, std::optional<double> stackSharingNumber) {
-    auto model = get_model(inputWire.get_type(), modelOverride);
+    return calculate_proximity_effect_losses_per_meter(get_model(inputWire.get_type(), modelOverride), inputWire, temperature, std::move(fields),
+                                                       std::move(quadratureFields), perpendicularOutlineFactor, stackSharingNumber);
+}
+
+std::pair<double, std::vector<std::pair<double, double>>> WindingProximityEffectLosses::calculate_proximity_effect_losses_per_meter(const std::shared_ptr<WindingProximityEffectLossesModel>& model, const Wire& inputWire, double temperature, std::vector<ComplexField> fields, std::optional<std::vector<ComplexField>> quadratureFields, std::optional<double> perpendicularOutlineFactor, std::optional<double> stackSharingNumber) {
     if (auto martinezModel = std::dynamic_pointer_cast<WindingProximityEffectLossesMartinezModel>(model)) {
         martinezModel->set_stack_sharing_number(stackSharingNumber);
     }
@@ -550,6 +563,9 @@ WindingLossesOutput WindingProximityEffectLosses::calculate_proximity_effect_los
     auto windingLossesPerTurn = windingLossesOutput.get_winding_losses_per_turn().value();
 
     double totalProximityEffectLosses = 0;
+    // One model per winding (its override is the winding's wire type's), shared by the winding's turns.
+    std::map<size_t, std::shared_ptr<WindingProximityEffectLossesModel>> modelPerWinding;
+    std::vector<std::optional<std::vector<std::vector<size_t>>>> pointIndicesPerTurnPerHarmonic(fieldPerFrequency.size());
 
     for (size_t turnIndex = 0; turnIndex < turns.size(); ++turnIndex)
     {
@@ -614,14 +630,25 @@ WindingLossesOutput WindingProximityEffectLosses::calculate_proximity_effect_los
             std::vector<ComplexFieldPoint> secondaryData;
             std::vector<ComplexFieldPoint> primaryQuadratureData;
             std::vector<ComplexFieldPoint> secondaryQuadratureData;
-            for (size_t pointIndex = 0; pointIndex < fieldPerHarmonic.get_data().size(); ++pointIndex) {
+            // The harmonic's points grouped by the turn they belong to, in their order, built the first time the
+            // harmonic is read (by the first turn, which then also refuses a point without a turn index) instead of
+            // every turn scanning every point.
+            auto& pointsPerTurn = pointIndicesPerTurnPerHarmonic[fieldIndex];
+            if (!pointsPerTurn) {
+                pointsPerTurn.emplace(turns.size());
+                for (size_t pointIndex = 0; pointIndex < fieldPerHarmonic.get_data().size(); ++pointIndex) {
+                    const auto turnIndexOfPoint = fieldPerHarmonic.get_data()[pointIndex].get_turn_index();
+                    if (!turnIndexOfPoint) {
+                        throw InvalidInputException(ErrorCode::INVALID_COIL_CONFIGURATION, "Missing turn index in field point");
+                    }
+                    // A point of no turn of this coil belongs to none (each turn took the points whose index equals it).
+                    if (turnIndexOfPoint.value() >= 0 && static_cast<uint64_t>(turnIndexOfPoint.value()) < turns.size()) {
+                        (*pointsPerTurn)[static_cast<size_t>(turnIndexOfPoint.value())].push_back(pointIndex);
+                    }
+                }
+            }
+            for (size_t pointIndex : (*pointsPerTurn)[turnIndex]) {
                 auto& fieldPoint = fieldPerHarmonic.get_data()[pointIndex];
-                if (!fieldPoint.get_turn_index()) {
-                    throw InvalidInputException(ErrorCode::INVALID_COIL_CONFIGURATION, "Missing turn index in field point");
-                }
-                if (fieldPoint.get_turn_index().value() != int(turnIndex)) {
-                    continue;
-                }
                 // Nearest-crossing classification. The CenterModel emits the secondary
                 // sample exactly AT the secondary coordinate, but the WangModel (ABT
                 // #227.2 parity) emits a whole surface cluster OFFSET around each
@@ -694,10 +721,15 @@ WindingLossesOutput WindingProximityEffectLosses::calculate_proximity_effect_los
         if (stackSharingNumberPerTurn) {
             stackSharingNumber = stackSharingNumberPerTurn.value()[turnIndex];
         }
-        auto primaryLossesPerHarmonic = calculate_proximity_effect_losses_per_meter(wire, temperature, primaryFields, turnModelOverride, primaryQuadrature, perpendicularOutlineFactor, stackSharingNumber).second;
+        auto foundModel = modelPerWinding.find(static_cast<size_t>(windingIndex));
+        if (foundModel == modelPerWinding.end()) {
+            foundModel = modelPerWinding.emplace(static_cast<size_t>(windingIndex), get_model(wire.get_type(), turnModelOverride)).first;
+        }
+        const auto& model = foundModel->second;
+        auto primaryLossesPerHarmonic = calculate_proximity_effect_losses_per_meter(model, wire, temperature, primaryFields, primaryQuadrature, perpendicularOutlineFactor, stackSharingNumber).second;
         std::vector<std::pair<double, double>> secondaryLossesPerHarmonic;
         if (hasSecondaryCrossing) {
-            secondaryLossesPerHarmonic = calculate_proximity_effect_losses_per_meter(wire, temperature, secondaryFields, turnModelOverride, secondaryQuadrature, perpendicularOutlineFactor, stackSharingNumber).second;
+            secondaryLossesPerHarmonic = calculate_proximity_effect_losses_per_meter(model, wire, temperature, secondaryFields, secondaryQuadrature, perpendicularOutlineFactor, stackSharingNumber).second;
             if (secondaryLossesPerHarmonic.size() != primaryLossesPerHarmonic.size()) {
                 throw InvalidInputException(ErrorCode::INVALID_COIL_CONFIGURATION,
                     "Primary and secondary crossing harmonics do not match for turn " + std::to_string(turnIndex));
@@ -705,7 +737,6 @@ WindingLossesOutput WindingProximityEffectLosses::calculate_proximity_effect_los
         }
 
         LossElementPerHarmonic proximityEffectLossesThisTurn;
-        auto model = get_model(coil.get_wire_type(windingIndex), turnModelOverride);
         proximityEffectLossesThisTurn.set_method_used(model->methodName);
         proximityEffectLossesThisTurn.set_origin(ResultOrigin::SIMULATION);
         proximityEffectLossesThisTurn.get_mutable_harmonic_frequencies().push_back(0);

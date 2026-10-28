@@ -50,6 +50,8 @@ class WindingProximityEffectLossesModel {
     virtual ~WindingProximityEffectLossesModel() = default;
     std::optional<double> try_get_proximity_factor(const Wire& wire, double frequency, double temperature);
     void set_proximity_factor(const Wire& wire, double frequency, double temperature, double proximityFactor);
+    // How many proximity factors were computed and stored (memo misses) on this thread: a cost count for the tests (ABT #2124).
+    static size_t get_proximity_factor_evaluations();
     static std::shared_ptr<WindingProximityEffectLossesModel> factory(WindingProximityEffectLossesModels modelName);
 };
 
@@ -66,6 +68,10 @@ class WindingProximityEffectLosses {
     // quadratureFields, when given, must match fields harmonic by harmonic and point by point.
     static std::pair<double, std::vector<std::pair<double, double>>> calculate_proximity_effect_losses_per_meter(const Wire& wire, double temperature, std::vector<ComplexField> fields, std::optional<WindingProximityEffectLossesModels> modelOverride = std::nullopt, std::optional<std::vector<ComplexField>> quadratureFields = std::nullopt, std::optional<double> perpendicularOutlineFactor = std::nullopt, std::optional<double> stackSharingNumber = std::nullopt);
   private:
+    // The per-meter losses with the model already chosen: the coil's loop hands every turn of a winding the same
+    // model instance, so its proximity-factor memo serves that winding's turns (one wire, so one key per frequency
+    // and temperature) instead of starting empty for each turn.
+    static std::pair<double, std::vector<std::pair<double, double>>> calculate_proximity_effect_losses_per_meter(const std::shared_ptr<WindingProximityEffectLossesModel>& model, const Wire& wire, double temperature, std::vector<ComplexField> fields, std::optional<std::vector<ComplexField>> quadratureFields, std::optional<double> perpendicularOutlineFactor, std::optional<double> stackSharingNumber);
     static WindingLossesOutput calculate_proximity_effect_losses_impl(Coil coil, double temperature, WindingLossesOutput windingLossesOutput, const std::vector<ComplexField>& fieldPerFrequency, const std::optional<std::vector<ComplexField>>& quadratureFieldPerFrequency, std::optional<WindingProximityEffectLossesModels> modelOverride, std::optional<std::map<WireType, WindingProximityEffectLossesModels>> modelPerWireType);
 
 };

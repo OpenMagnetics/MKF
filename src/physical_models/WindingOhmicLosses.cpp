@@ -508,6 +508,16 @@ WindingLossesOutput WindingOhmicLosses::apply_parallel_current_split(Coil coil, 
     // Adds `lossPerFrequency` (indexed as the split's frequencies) to the AC element's entry for that harmonic: the entry at
     // any frequency the windings' lists give it. An element's list follows its winding's harmonics, which the operating
     // point's pruning can leave out of frequency order, so the entry is searched, not bisected.
+    // ParallelCurrentSplit::find_frequency_index of a harmonic frequency, searched once per distinct frequency value:
+    // every turn of a winding lists the same harmonics.
+    std::map<double, std::optional<size_t>> splitIndexPerFrequency;
+    auto split_index_of = [&](double frequency) {
+        auto found = splitIndexPerFrequency.find(frequency);
+        if (found == splitIndexPerFrequency.end()) {
+            found = splitIndexPerFrequency.emplace(frequency, parallelCurrentSplit.find_frequency_index(frequency)).first;
+        }
+        return found->second;
+    };
     auto add_to_harmonics = [&](LossElementPerHarmonic& element, const std::vector<double>& lossPerFrequency, const std::string& owner) {
         auto& harmonicFrequencies = element.get_mutable_harmonic_frequencies();
         auto& lossesPerHarmonic = element.get_mutable_losses_per_harmonic();
@@ -519,10 +529,19 @@ WindingLossesOutput WindingOhmicLosses::apply_parallel_current_split(Coil coil, 
         // into layers, sections and windings entry by entry, so they must all list the same harmonics. Entering only the
         // harmonics a strand had a non-zero excess at left the turns of one winding with lists of different lengths
         // (34 and 41 on a flyback candidate of the coil adviser), which the combination wrote past the end of (ABT #1759).
+        // The split index of each listed harmonic (none for a frequency that is not positive), looked up once per
+        // element and kept in step with the insertions below: the search for each split index then compares
+        // indices instead of searching the split's frequencies again for every harmonic.
+        std::vector<std::optional<size_t>> splitIndexPerHarmonic(harmonicFrequencies.size());
+        for (size_t harmonicIndex = 0; harmonicIndex < harmonicFrequencies.size(); ++harmonicIndex) {
+            if (harmonicFrequencies[harmonicIndex] > 0) {
+                splitIndexPerHarmonic[harmonicIndex] = split_index_of(harmonicFrequencies[harmonicIndex]);
+            }
+        }
         for (size_t splitIndex = 0; splitIndex < numberFrequencies; ++splitIndex) {
             std::optional<size_t> position;
             for (size_t harmonicIndex = 0; harmonicIndex < harmonicFrequencies.size() && !position; ++harmonicIndex) {
-                if (harmonicFrequencies[harmonicIndex] > 0 && parallelCurrentSplit.find_frequency_index(harmonicFrequencies[harmonicIndex]) == splitIndex) {
+                if (splitIndexPerHarmonic[harmonicIndex] == splitIndex) {
                     position = harmonicIndex;
                 }
             }
@@ -533,6 +552,8 @@ WindingLossesOutput WindingOhmicLosses::apply_parallel_current_split(Coil coil, 
                 position = static_cast<size_t>(after - harmonicFrequencies.begin());
                 harmonicFrequencies.insert(after, frequency);
                 lossesPerHarmonic.insert(lossesPerHarmonic.begin() + static_cast<std::ptrdiff_t>(position.value()), 0.0);
+                splitIndexPerHarmonic.insert(splitIndexPerHarmonic.begin() + static_cast<std::ptrdiff_t>(position.value()),
+                                             frequency > 0 ? split_index_of(frequency) : std::optional<size_t>());
             }
             lossesPerHarmonic.at(position.value()) += lossPerFrequency[splitIndex];
         }
