@@ -817,7 +817,7 @@ namespace {
         SECTION("a winding with no turns, no parallels and no wire is not simulated") {
             auto mas = buildMas("", 0, 0, "");
             REQUIRE_THROWS_MATCHES(mas_autocomplete(mas), OpenMagnetics::InvalidInputException,
-                Catch::Matchers::MessageMatches(Catch::Matchers::ContainsSubstring("winding 0 (''")
+                Catch::Matchers::MessageMatches(Catch::Matchers::ContainsSubstring("winding 1: ")
                     && Catch::Matchers::ContainsSubstring("numberTurns is 0")
                     && Catch::Matchers::ContainsSubstring("numberParallels is 0")
                     && Catch::Matchers::ContainsSubstring("it names no wire")));
@@ -825,7 +825,7 @@ namespace {
         SECTION("a real turn count on the placeholder wire is not simulated either") {
             auto mas = buildMas("Primary", 10, 1, "Dummy");
             REQUIRE_THROWS_MATCHES(mas_autocomplete(mas), OpenMagnetics::InvalidInputException,
-                Catch::Matchers::MessageMatches(Catch::Matchers::ContainsSubstring("winding 0 ('Primary')")
+                Catch::Matchers::MessageMatches(Catch::Matchers::ContainsSubstring("winding 'Primary': ")
                     && Catch::Matchers::ContainsSubstring("placeholder 'Dummy'")));
         }
         SECTION("the geometry is still completed when no simulation is asked for") {
@@ -1300,7 +1300,7 @@ namespace {
         // Names the winding, the part, and what could not be determined. The underlying
         // cause may still appear in parentheses — that is detail, not the whole message;
         // what must never happen again is the bare optional access on its own.
-        REQUIRE(message.find("winding 0 ('primary')") != std::string::npos);
+        REQUIRE(message.find("winding 'primary' of magnetic") != std::string::npos);
         REQUIRE(message.find("ABT823_UNDERIVABLE") != std::string::npos);
         REQUIRE(message.find("outer dimensions") != std::string::npos);
         REQUIRE(message != "bad optional access");

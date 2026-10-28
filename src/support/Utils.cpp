@@ -2801,7 +2801,7 @@ static void throw_if_a_winding_would_be_invented(const Magnetic& magnetic) {
         if (!invented.empty()) {
             invented += "; ";
         }
-        invented += "winding " + std::to_string(windingIndex) + " ('" + winding.get_name() + "'): ";
+        invented += describe_winding_for_people(winding.get_name(), windingIndex) + ": ";
         for (size_t lackIndex = 0; lackIndex < lacks.size(); ++lackIndex) {
             invented += (lackIndex == 0 ? "" : ", ") + lacks[lackIndex];
         }
@@ -3556,7 +3556,7 @@ Magnetic magnetic_autocomplete(Magnetic magnetic, json configuration, std::optio
             if (magnetic.get_manufacturer_info() && magnetic.get_manufacturer_info()->get_reference()) {
                 reference = " of magnetic '" + magnetic.get_manufacturer_info()->get_reference().value() + "'";
             }
-            return "winding " + std::to_string(windingIndex) + " ('" + windingName + "')" + reference;
+            return describe_winding_for_people(windingName, windingIndex) + reference;
         };
 
         auto as_dimension = [](double value) {
@@ -4274,6 +4274,13 @@ std::string describe_operating_point_for_people(const OperatingPoint& operatingP
         return "operating point '" + operatingPoint.get_name().value() + "'";
     }
     return "operating point " + std::to_string(operatingPointIndex + 1);
+}
+
+std::string describe_winding_for_people(const std::string& windingName, size_t windingIndex) {
+    if (!windingName.empty()) {
+        return "winding '" + windingName + "'";
+    }
+    return "winding " + std::to_string(windingIndex + 1);
 }
 
 } // namespace OpenMagnetics

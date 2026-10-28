@@ -394,6 +394,9 @@ std::string describe_lead_for_people(const Coil& coil, const std::string& leadNa
 // when it has a name, otherwise "operating point 2" (counted from 1). Not for findings: their "At operating point
 // N ('name'): " prefix is a contract with the web (ResultsAnalyzer::describe_operating_point).
 std::string describe_operating_point_for_people(const OperatingPoint& operatingPoint, size_t operatingPointIndex);
+// A winding named as the web shows it, for messages a person reads: "winding 'Primary'", or "winding 2"
+// (counted from 1) when it has no name.
+std::string describe_winding_for_people(const std::string& windingName, size_t windingIndex);
 
 } // namespace OpenMagnetics
 
