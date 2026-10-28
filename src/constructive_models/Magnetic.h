@@ -110,6 +110,12 @@ class Magnetic : public MAS::Magnetic {
             give_coil_its_core();
         }
 
+        // Explicit construction from json. Without it Magnetic(json) has three viable candidates (the declared copy and
+        // move constructors and Magnetic(MAS::Magnetic)), each through a different implicit conversion of the json:
+        // MSVC reports C2440 "ambiguous call", GCC silently picks the copy/move route, i.e. from_json(json, Magnetic&).
+        // This constructor is that same route, spelled out, so every Magnetic(json) builds the same on every compiler.
+        Magnetic(const json & j);
+
         Magnetic(const MAS::Magnetic magnetic) {
             if (magnetic.get_core()) {
                 set_core(magnetic.get_core().value());
@@ -306,6 +312,10 @@ inline void from_json(const json & j, Magnetic& x) {
     x.set_manufacturer_info(get_stack_optional<MagneticManufacturerInfo>(migrated, "manufacturerInfo"));
     x.set_rotation(get_stack_optional<std::vector<double>>(migrated, "rotation"));
     x.set_shunts(get_stack_optional<std::vector<MagneticShunt>>(migrated, "shunts"));
+}
+
+inline Magnetic::Magnetic(const json & j) {
+    from_json(j, *this);
 }
 
 inline void to_json(json & j, const Magnetic & x) {
