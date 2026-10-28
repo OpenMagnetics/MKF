@@ -144,10 +144,9 @@ namespace OpenMagnetics {
         }
 
         if (!get_material()) {
-            // ABT #114/A2: a silent copper default gives wrong resistivity (=> wrong
-            // ohmic/skin losses) for any wire that is really aluminium/etc. but simply
-            // omits its material tag. Fail loudly instead of substituting copper.
-            throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA, "The wire" + (get_name() ? " '" + get_name().value() + "'" : std::string()) + " has no conductor material (such as copper or aluminium), so its resistance cannot be calculated. Choose its material, or pick the wire from the catalogue");
+            // A wire that states no conductor material is copper: an accepted default (Alf,
+            // 2026-10-28), replacing the ABT #114/A2 refusal.
+            return find_wire_material_by_name("copper");
         }
 
         auto material = get_material().value();
@@ -193,8 +192,8 @@ namespace OpenMagnetics {
             return resolve_material(strand);
         }
         if (!wire.get_material()) {
-            // ABT #114/A2: no silent copper default (see resolve_material()).
-            throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA, "The wire" + (wire.get_name() ? " '" + wire.get_name().value() + "'" : std::string()) + " has no conductor material (such as copper or aluminium), so its resistance cannot be calculated. Choose its material, or pick the wire from the catalogue");
+            // No stated conductor material: copper (accepted default, see resolve_material()).
+            return find_wire_material_by_name("copper");
         }
 
         auto material = wire.get_material().value();
@@ -212,8 +211,8 @@ namespace OpenMagnetics {
 
     WireMaterial Wire::resolve_material(WireRound wire) {
         if (!wire.get_material()) {
-            // ABT #114/A2: no silent copper default (see resolve_material()).
-            throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA, "The wire" + (wire.get_name() ? " '" + wire.get_name().value() + "'" : std::string()) + " has no conductor material (such as copper or aluminium), so its resistance cannot be calculated. Choose its material, or pick the wire from the catalogue");
+            // No stated conductor material: copper (accepted default, see resolve_material()).
+            return find_wire_material_by_name("copper");
         }
 
         auto material = wire.get_material().value();

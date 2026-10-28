@@ -1120,3 +1120,25 @@ TEST_CASE("Wire material thermal conductivity is MAS's table, interpolated, neve
     bare.set_thermal_conductivity(std::vector<MAS::ThermalConductivityElement>{a, b});
     REQUIRE_THROWS(OpenMagnetics::Wire::get_thermal_conductivity(bare, 20.0));
 }
+
+// A wire that states no conductor material is copper: an accepted default (Alf, 2026-10-28),
+// replacing the ABT #114/A2 refusal. Round, rectangular and a litz bundle whose strand states none.
+TEST_CASE("A wire that states no conductor material resolves to copper", "[constructive-model][wire][wire-material-default]") {
+    auto copper = OpenMagnetics::find_wire_material_by_name("copper");
+    for (const std::string name : {"Round 0.5 - Grade 1", "Litz 12x0.03 - Grade 1 - Double Served"}) {
+        INFO(name);
+        OpenMagnetics::Wire wire(OpenMagnetics::find_wire_by_name(name));
+        wire.set_material(std::nullopt);
+        if (wire.get_type() == MAS::WireType::LITZ) {
+            auto strand = wire.resolve_strand();
+            strand.set_material(std::nullopt);
+            wire.set_strand(strand);
+        }
+        REQUIRE_FALSE(wire.get_material());
+        auto resolved = wire.resolve_material();
+        CHECK(resolved.get_name() == copper.get_name());
+        CHECK(resolved.get_resistivity().get_reference_value() == copper.get_resistivity().get_reference_value());
+        auto staticResolved = OpenMagnetics::Wire::resolve_material(wire);
+        CHECK(staticResolved.get_name() == copper.get_name());
+    }
+}
