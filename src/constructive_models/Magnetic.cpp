@@ -299,13 +299,13 @@ bool Magnetic::fits(MaximumDimensions maximumDimensions, bool allowRotation) {
 }
 
 double Magnetic::calculate_saturation_current(OperatingPoint& operatingPoint,
-                                              double temperature) {
+                                              double temperature, bool proportion) {
     // Operating-point variant: same B_sat·N·A_e/L identity, but L is
     // taken at the supplied operating point (DC-bias-rolled-off μ).
     // Use this when comparing against I_peak from the same OP — keeps
     // both numbers on a consistent footing.
     auto magneticFluxDensitySaturation =
-        get_mutable_core().get_magnetic_flux_density_saturation(temperature);
+        get_mutable_core().get_magnetic_flux_density_saturation(temperature, proportion);
     auto numberTurns = get_mutable_coil().get_number_turns(0);
     auto effectiveArea = get_mutable_core().get_effective_area();
 

@@ -2414,3 +2414,48 @@ TEST_CASE("MagneticFilter LEAKAGE_INDUCTANCE normalises a DMC by the magnetizing
     CHECK_THAT(scoring, Catch::Matchers::WithinRel(leakageInductance / dmcMagnetizingInductance, 1e-9));
     settings.reset();
 }
+
+// Alf, 2026-10-28: a powder's inductance rolls off with its bias, so the saturation filter's current gate takes its
+// saturation current from the inductance at the operating point, not at zero bias. The design: Infineon DN 2013-01's
+// 1200 W PFC choke, two stacked Kool Mu 60 toroids (MAS T 40/24/14.5), 64 turns, 22.5 A at the line peak; the source
+// runs it at 0.85 T and measures 680 uH falling to 165 uH at full load.
+TEST_CASE("The saturation filter judges a powder's saturation current on its rolled-off inductance", "[powder-isat]") {
+    const double frequency = 100e3;
+    const double dcCurrent = 21.5;
+    const int samples = 64;
+    json time = json::array(), data = json::array();
+    for (int k = 0; k <= samples; ++k) {
+        time.push_back(k / (samples * frequency));
+        data.push_back(dcCurrent + (k < samples / 2 ? -1.0 + 2.0 * k / (samples / 2) : 1.0 - 2.0 * (k - samples / 2) / (samples / 2)));
+    }
+    OpenMagnetics::Inputs inputs(json{
+        {"designRequirements", {{"magnetizingInductance", {{"minimum", 165e-6}}},
+                                {"turnsRatios", json::array()}, {"isolationSides", {"primary"}}, {"topology", "buckConverter"}}},
+        {"operatingPoints", {{{"name", "line peak"}, {"conditions", {{"ambientTemperature", 25}}},
+                              {"excitationsPerWinding", {{{"name", "Primary"}, {"frequency", frequency},
+                                                          {"current", {{"waveform", {{"time", time}, {"data", data}}}}}}}}}}}});
+    OpenMagneticsTesting::QuickMagneticConfig cfg;
+    cfg.numberTurns = {64};
+    cfg.numberParallels = {1};
+    cfg.coreShapeName = "T 40/24/14.5";
+    cfg.coreMaterialName = "Kool Mµ 60";
+    cfg.wireNames = {"Round 1.00 - Grade 1"};
+    cfg.numberStacks = 2;
+    auto magnetic = OpenMagneticsTesting::create_quick_test_magnetic(cfg);
+    REQUIRE(magnetic.get_mutable_core().resolve_material().get_material() == MAS::MaterialType::POWDER);
+
+    const double margin = Settings::GetInstance().get_core_adviser_saturation_margin();
+    auto operatingPoint = inputs.get_operating_points()[0];
+    const double currentPeak = operatingPoint.get_excitations_per_winding()[0].get_current()->get_processed()->get_peak().value();
+    const double temperature = 25;
+    const double zeroBias = magnetic.calculate_saturation_current(temperature, false);
+    const double rolledOff = magnetic.calculate_saturation_current(operatingPoint, temperature, false);
+    INFO("I peak " << currentPeak << " A, margin " << margin << ", I_sat at zero bias " << zeroBias << " A, at the operating point " << rolledOff << " A");
+    // The premise: the zero-bias inductance calls it saturated, the rolled-off one does not.
+    REQUIRE(zeroBias < margin * currentPeak);
+    REQUIRE(rolledOff > margin * currentPeak);
+
+    MagneticFilterSaturation filter;
+    auto [valid, scoring] = filter.evaluate_magnetic(&magnetic, &inputs, nullptr);
+    CHECK(valid);
+}

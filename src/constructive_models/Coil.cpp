@@ -23144,6 +23144,19 @@ std::vector<double> Coil::get_maximum_dimensions() {
         height = std::max(height, turnMaxHeightPosition);
     }
 
+    if (resolve_bobbin().get_winding_window_shape(0) == WindingWindowShape::RECTANGULAR) {
+        // The turn coordinates are taken from the centre of the column, so width and height above are
+        // half-extents. Around the column the winding builds out as far in depth as in width: its depth is
+        // its full width less the column's width-to-depth difference, which is the bobbin's (both add the
+        // same window twice). Until 2026-10-28 the half-width was ADDED to that difference: DER-282's EFD
+        // 30/15/9 came out 19.66 mm deep for a part built into an 11 mm-high product.
+        const double bobbinWidthOverDepth = bobbinMaximumDimensions[0] - bobbinMaximumDimensions[2];
+        depth = std::max(2 * width - bobbinWidthOverDepth, bobbinMaximumDimensions[2]);
+        width = std::max(2 * width, bobbinMaximumDimensions[0]);
+        height = std::max(2 * height, bobbinMaximumDimensions[1]);
+        return std::vector<double>{width, height, depth};
+    }
+
     double bobbinExtraDepthDimension = bobbinMaximumDimensions[0] - bobbinMaximumDimensions[2];
     depth = width + bobbinExtraDepthDimension;
 

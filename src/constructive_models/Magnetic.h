@@ -210,7 +210,8 @@ class Magnetic : public MAS::Magnetic {
          * so both numbers are evaluated at the same operating conditions.
          */
         double calculate_saturation_current(OperatingPoint& operatingPoint,
-                                            double temperature = Defaults().ambientTemperature);
+                                            double temperature = Defaults().ambientTemperature,
+                                            bool proportion = true);
 
         /**
          * @brief Rated (heat-limited) current: the steady DC current that raises the

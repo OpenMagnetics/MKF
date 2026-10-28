@@ -187,9 +187,19 @@ std::pair<bool, double> MagneticFilterSaturation::evaluate_magnetic(Magnetic* ma
             else {
                 currentPeak = stamped_magnetizing_current_peak(operatingPoint);
             }
-            double saturationCurrent = magnetic->calculate_saturation_current(
-                saturation_derating_temperature(operatingPoint.get_conditions().get_ambient_temperature()),
-                /*proportion=*/false);
+            // A powder's permeability rolls off with the bias (Alf, 2026-10-28): its saturation current is the one
+            // its inductance AT the operating point gives, so B is judged on the rolled-off L. The zero-bias L
+            // holds for a gapped core, whose gap sets it, and called the published PFC 650 W and PFC 1200 W
+            // powder chokes (Kool Mu 60, 0.85 T on a 1.0 T material) saturated.
+            const double hotTemperature = saturation_derating_temperature(operatingPoint.get_conditions().get_ambient_temperature());
+            double saturationCurrent;
+            if (magnetic->get_mutable_core().resolve_material().get_material() == MAS::MaterialType::POWDER) {
+                OperatingPoint atOperatingPoint = operatingPoint;
+                saturationCurrent = magnetic->calculate_saturation_current(atOperatingPoint, hotTemperature, /*proportion=*/false);
+            }
+            else {
+                saturationCurrent = magnetic->calculate_saturation_current(hotTemperature, /*proportion=*/false);
+            }
 
             // Headroom utilization (margin·ipeak/isat): < 1 clears the gate,
             // smaller = more headroom — same direction as bRatio above.

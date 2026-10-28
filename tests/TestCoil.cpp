@@ -18083,3 +18083,23 @@ TEST_CASE("A published served-litz PFC choke winds with its bundles flattened be
     CHECK(coil.get_litz_flattening(0).value() >= 0.72 - 1e-9);
     settings.reset();
 }
+
+// Alf, 2026-10-28: a coil's depth was its half-width PLUS the bobbin's width-to-depth difference (the turn coordinates
+// are taken from the centre of the column); DER-282's EFD 30/15/9 came out 19.66 mm deep for a part built into an
+// 11 mm-high product. A winding that fits its window reaches no further than the bobbin in any direction.
+TEST_CASE("A wound coil that fits its window is no larger than its bobbin in any direction", "[coil-box]") {
+    OpenMagneticsTesting::QuickMagneticConfig cfg;
+    cfg.numberTurns = {36};
+    cfg.numberParallels = {1};
+    cfg.coreShapeName = "EFD 30/15/9";
+    cfg.coreMaterialName = "3F3";
+    cfg.wireNames = {"Round 0.25 - Grade 1"};
+    auto magnetic = OpenMagneticsTesting::create_quick_test_magnetic(cfg);
+    auto& coil = magnetic.get_mutable_coil();
+    REQUIRE(coil.wind());
+    REQUIRE(coil.are_sections_and_layers_fitting());
+    auto bobbinBox = coil.resolve_bobbin().get_maximum_dimensions();
+    auto coilBox = coil.get_maximum_dimensions();
+    INFO("bobbin " << bobbinBox[0] << " x " << bobbinBox[1] << " x " << bobbinBox[2] << " m, coil " << coilBox[0] << " x " << coilBox[1] << " x " << coilBox[2] << " m");
+    for (size_t axis = 0; axis < 3; ++axis) CHECK(coilBox[axis] <= bobbinBox[axis] + 1e-9);
+}
