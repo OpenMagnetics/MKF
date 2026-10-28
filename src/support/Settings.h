@@ -255,10 +255,10 @@ class Settings
         // once from those losses on the same thermal network and published as the temperature output,
         // with no feedback into the losses (Alf, 2026-10-22). Advisers run the loop: while any adviser
         // object exists the getter reads true whatever this holds (the adviser barrier below). The one
-        // exception (Alf, 2026-10-28, ABT #2124): the FILTERS of the catalogue search (MagneticAdviser on a
-        // catalogue, calculate_advised_magnetics_from_cache) run ONE pass, inside a
-        // CatalogueFilterOnePassScope on the searching thread; the final simulation of the hits it returns
-        // runs the loop. Keep in sync with reset().
+        // exception (Alf, 2026-10-28, ABT #2124): the catalogue search (MagneticAdviser on a catalogue,
+        // calculate_advised_magnetics_from_cache) runs ONE pass, its filters and the final simulation of the
+        // hits it returns alike, inside a CatalogueSearchOnePassScope on the searching thread. Keep in sync
+        // with reset().
         bool   _simulatorLossTemperatureLoop = true;
         GappingOptimizationStrategy _gappingStrategy = GappingOptimizationStrategy::SIMPLE;
 
@@ -653,8 +653,8 @@ class Settings
         bool   get_allow_material_data_extrapolation() const;
         void   set_allow_material_data_extrapolation(bool value);
 
-        // The EFFECTIVE value: false on a thread inside a CatalogueFilterOnePassScope (the catalogue
-        // search's filters, Alf 2026-10-28); otherwise what the caller set, OR an adviser alive anywhere in
+        // The EFFECTIVE value: false on a thread inside a CatalogueSearchOnePassScope (the catalogue
+        // search, Alf 2026-10-28); otherwise what the caller set, OR an adviser alive anywhere in
         // the process (MaterialDataExtrapolationBarrier: advisers keep the loop). The setter stores the
         // caller's choice untouched; it reads back once the advisers and scopes are gone.
         bool   get_simulator_loss_temperature_loop() const;
@@ -798,23 +798,23 @@ public:
     static int active_count();
 };
 
-// ABT #2124 (Alf, 2026-10-28): the catalogue search's FILTERS evaluate their losses in ONE pass (the
-// simulatorLossTemperatureLoop = false semantics: losses at the operating point's ambient temperature, the
-// hottest point estimated once, no feedback), so screening a catalogue does not run the loss <-> temperature
-// loop for every part; the final simulation of the returned hits runs it, so what is shown is as before. Every
-// other adviser path (CoreAdviser, CoilAdviser, MagneticAdviser designing from scratch) keeps the forced loop,
-// and material data stays non-extrapolated in all of them (MaterialDataExtrapolationBarrier is untouched).
+// ABT #2124 (Alf, 2026-10-28): the catalogue search evaluates its losses in ONE pass (the
+// simulatorLossTemperatureLoop = false semantics: losses at the operating point's ambient temperature, the hottest
+// point estimated once, no feedback), its filters and the final simulation of the hits it returns alike (Alf first
+// kept the loop for the hits, then decided one pass for them too, the same day). Every other adviser
+// path (CoreAdviser, CoilAdviser, MagneticAdviser designing from scratch) keeps the forced loop, and material data
+// stays non-extrapolated in all of them (MaterialDataExtrapolationBarrier is untouched).
 // While one of these exists on a thread, Settings::get_simulator_loss_temperature_loop() reads false ON THAT
 // THREAD only. Why a thread-local depth and not the barrier's process-wide count or a SettingsGuard: the scope
 // must not reach a hand simulation or another adviser running on another thread (the barrier's count is
-// process-wide on purpose), and nested scopes and exceptions unwind it exactly; the catalogue filters run on
+// process-wide on purpose), and nested scopes and exceptions unwind it exactly; the catalogue search runs on
 // the searching thread.
-class CatalogueFilterOnePassScope {
+class CatalogueSearchOnePassScope {
 public:
-    CatalogueFilterOnePassScope();
-    ~CatalogueFilterOnePassScope();
-    CatalogueFilterOnePassScope(const CatalogueFilterOnePassScope&) = delete;
-    CatalogueFilterOnePassScope& operator=(const CatalogueFilterOnePassScope&) = delete;
+    CatalogueSearchOnePassScope();
+    ~CatalogueSearchOnePassScope();
+    CatalogueSearchOnePassScope(const CatalogueSearchOnePassScope&) = delete;
+    CatalogueSearchOnePassScope& operator=(const CatalogueSearchOnePassScope&) = delete;
     // Whether the calling thread is inside one (diagnostics and tests).
     static bool active();
 };

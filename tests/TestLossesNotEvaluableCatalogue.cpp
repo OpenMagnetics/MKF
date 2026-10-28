@@ -161,11 +161,12 @@ TEST_CASE("The catalogue adviser ranks a part whose core losses are not evaluabl
     settings.reset();
 }
 
-TEST_CASE("The catalogue adviser's filters evaluate losses in one pass and its hits are simulated with the loop",
+TEST_CASE("The catalogue adviser evaluates losses in one pass, its filters and its hits alike",
           "[adviser][catalogue][loss-temperature-loop][cost]") {
     // ABT #2124 (Alf, 2026-10-28): screening a catalogue ran the loss <-> temperature loop (ABT #838, with its
-    // lowest-stable-point search, ABT #1840) for every part, 20x slower than before it. The filters run one pass
-    // now; the final simulation of each returned hit still runs the loop, so what is shown is as before.
+    // lowest-stable-point search, ABT #1840) for every part, 20x slower than before it. The catalogue search runs one
+    // pass now, its filters and the final simulation of the hits alike (this test first asserted that the hits kept
+    // the loop; Alf then decided one pass for them too).
     settings.reset();
     std::vector<OpenMagnetics::Magnetic> catalogue{catalogue_part("PART-A"), catalogue_part("PART-B")};
     std::vector<MagneticFilterOperation> flow{
@@ -184,12 +185,12 @@ TEST_CASE("The catalogue adviser's filters evaluate losses in one pass and its h
         REQUIRE(mas.get_outputs().size() == 1);
         CHECK(mas.get_outputs()[0].get_core_losses());
     }
-    // The filter stage: one pass per part, never the loop.
-    CHECK(onePass == catalogue.size());
-    // The final simulation: the loop, once per hit and operating point.
-    CHECK(loop == results.size());
-    // Outside the filter stage the advisers' forced loop is back.
-    CHECK_FALSE(CatalogueFilterOnePassScope::active());
+    // The filter stage: one pass per part; the final simulation: one pass per hit.
+    CHECK(onePass == catalogue.size() + results.size());
+    // Never the loop.
+    CHECK(loop == 0);
+    // Outside the catalogue search the advisers' forced loop is back.
+    CHECK_FALSE(CatalogueSearchOnePassScope::active());
     CHECK(settings.get_simulator_loss_temperature_loop());
     settings.reset();
 }

@@ -1287,12 +1287,10 @@ std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic(std::v
     static constexpr size_t kIdenticalThrowBailThreshold = 8;
     std::string previousThrowMessage;
     size_t identicalThrowStreak = 0;
-    // ABT #2124 (Alf, 2026-10-28): the filters screening the catalogue evaluate their losses in one pass
-    // (losses at the operating point's ambient temperature, the hottest point estimated once); the final
-    // simulation of the hits returned below runs the loss <-> temperature loop. Held until both filter loops
-    // are done (see CatalogueFilterOnePassScope in Settings.h).
-    std::optional<CatalogueFilterOnePassScope> filterStageOnePass;
-    filterStageOnePass.emplace();
+    // ABT #2124 (Alf, 2026-10-28): the catalogue search evaluates its losses in one pass (losses at the operating
+    // point's ambient temperature, the hottest point estimated once), the filters and the final simulation of the
+    // hits returned below alike (see CatalogueSearchOnePassScope in Settings.h).
+    CatalogueSearchOnePassScope catalogueSearchOnePass;
     for (size_t index = 0; index < catalogueMagneticsWithInputs.size(); ++index) {
         auto mas = catalogueMagneticsWithInputs[index];
         std::vector<Outputs> outputs;
@@ -1451,8 +1449,6 @@ std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic(std::v
             validMas.push_back(resultMas);
         }
     }
-
-    filterStageOnePass.reset();
 
     auto scoringsPerReferencePerFilter = get_scorings();
 

@@ -1229,23 +1229,23 @@ namespace {
         _allowMaterialDataExtrapolation = value;
     }
 
-    // Depth of CatalogueFilterOnePassScope on this thread (ABT #2124, Alf 2026-10-28).
+    // Depth of CatalogueSearchOnePassScope on this thread (ABT #2124, Alf 2026-10-28).
     static thread_local int catalogueFilterOnePassScopes = 0;
 
-    CatalogueFilterOnePassScope::CatalogueFilterOnePassScope() {
+    CatalogueSearchOnePassScope::CatalogueSearchOnePassScope() {
         ++catalogueFilterOnePassScopes;
     }
-    CatalogueFilterOnePassScope::~CatalogueFilterOnePassScope() {
+    CatalogueSearchOnePassScope::~CatalogueSearchOnePassScope() {
         --catalogueFilterOnePassScopes;
     }
-    bool CatalogueFilterOnePassScope::active() {
+    bool CatalogueSearchOnePassScope::active() {
         return catalogueFilterOnePassScopes > 0;
     }
 
     // Advisers keep the loss <-> temperature loop, whatever the caller chose for simulate: every adviser
     // class holds a MaterialDataExtrapolationBarrier for its whole life, and the same count tells this
-    // getter an adviser is alive. The exception is the catalogue search's filter stage, on its own thread
-    // (CatalogueFilterOnePassScope): one pass there (Alf, 2026-10-28).
+    // getter an adviser is alive. The exception is the catalogue search, on its own thread
+    // (CatalogueSearchOnePassScope): one pass there (Alf, 2026-10-28).
     bool Settings::get_simulator_loss_temperature_loop() const {
         if (catalogueFilterOnePassScopes > 0) {
             return false;
