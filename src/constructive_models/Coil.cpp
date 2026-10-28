@@ -21273,14 +21273,19 @@ std::vector<double> Coil::get_aligned_section_dimensions_rectangular_window(size
                 return windingWindows[0].get_coordinates().value()[1] + windingWindowHeight / 2 - resolve_margin(sections[sectionIndex])[0] - sections[sectionIndex].get_dimensions()[1] / 2;
             case CoilAlignment::OUTER_OR_BOTTOM:
                 return windingWindows[0].get_coordinates().value()[1] - windingWindowHeight / 2 + resolve_margin(sections[sectionIndex])[1] + sections[sectionIndex].get_dimensions()[1] / 2;
+            // Centred on the section's OWN window, which a chamber of a multi-chamber former is not at
+            // y = 0: both cases measured from 0 laid a chamber's section across the divider into the
+            // next chamber (Norwe 90599 two-chamber ETD 34: the primary from -4.7 to +4.7 mm for a
+            // chamber from 0.5 to 10.5 mm), so magnetic_autocomplete, which aligns turns SPREAD on two-
+            // piece cores, refused every chambered former. On a window centred at 0 nothing changes.
             case CoilAlignment::CENTERED: {
                 double currentCoilHeightTop = windingWindows[0].get_coordinates().value()[1] + windingWindowHeight / 2 - resolve_margin(sections[sectionIndex])[0] - sections[sectionIndex].get_dimensions()[1] / 2;
                 double currentCoilHeightBottom = windingWindows[0].get_coordinates().value()[1] - windingWindowHeight / 2 + resolve_margin(sections[sectionIndex])[1] + sections[sectionIndex].get_dimensions()[1] / 2;
-                double currentCoilHeight = std::min(0.0, currentCoilHeightTop);
+                double currentCoilHeight = std::min(windingWindows[0].get_coordinates().value()[1], currentCoilHeightTop);
                 return std::max(currentCoilHeight, currentCoilHeightBottom);
             }
             case CoilAlignment::SPREAD:
-                return -resolve_margin(sections[sectionIndex])[0] / 2 + resolve_margin(sections[sectionIndex])[1] / 2;
+                return windingWindows[0].get_coordinates().value()[1] - resolve_margin(sections[sectionIndex])[0] / 2 + resolve_margin(sections[sectionIndex])[1] / 2;
             default:
                 throw InvalidInputException(ErrorCode::INVALID_COIL_CONFIGURATION, "No such section alignment");
         }

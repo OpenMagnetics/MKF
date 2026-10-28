@@ -1142,3 +1142,19 @@ TEST_CASE("A wire that states no conductor material resolves to copper", "[const
         CHECK(staticResolved.get_name() == copper.get_name());
     }
 }
+
+TEST_CASE("A litz bundle that states no standard is sized by its strand's standard", "[constructive-model][wire][litz-strand-standard]") {
+    // RDR-648's PFC choke: 30 x #38 AWG served litz. #38 AWG is a NEMA strand; read as IEC 60317 the
+    // bundle came out 0.855 mm and 73 T needed five layers on a PQ 26/25 former the real build fills in four.
+    json litzJson = json::parse(R"({"name": "Litz 30x#38 served, no standard", "type": "litz",
+                                    "strand": "Round 38.0 - Single Build", "numberConductors": 30,
+                                    "coating": {"type": "served", "numberLayers": 1}})");
+    OpenMagnetics::Wire unstated(litzJson);
+    litzJson["standard"] = "NEMA MW 1000 C";
+    OpenMagnetics::Wire nema(litzJson);
+    litzJson["standard"] = "IEC 60317";
+    OpenMagnetics::Wire iec(litzJson);
+    REQUIRE(unstated.resolve_strand().get_standard().value() == WireStandard::NEMA_MW_1000_C);
+    CHECK(OpenMagnetics::Wire::calculate_outer_diameter(unstated) == Catch::Approx(OpenMagnetics::Wire::calculate_outer_diameter(nema)));
+    CHECK(OpenMagnetics::Wire::calculate_outer_diameter(unstated) < OpenMagnetics::Wire::calculate_outer_diameter(iec));
+}

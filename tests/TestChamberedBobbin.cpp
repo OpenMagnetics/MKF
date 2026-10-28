@@ -13,6 +13,8 @@
 #include "constructive_models/Core.h"
 #include "constructive_models/Magnetic.h"
 #include "physical_models/LeakageInductance.h"
+#include "physical_models/MagnetizingInductance.h"
+#include "processors/MagneticSimulator.h"
 #include "processors/Inputs.h"
 #include "support/Settings.h"
 #include "support/Utils.h"
@@ -571,5 +573,77 @@ TEST_CASE("Leakage of a flyback rises when its windings go side by side into two
     double omfemSingleLeakage = 149.7e-6;
     CHECK_THAT(singleLeakage, WithinRel(omfemSingleLeakage, 0.15));
     CHECK_THAT(chamberedLeakage, WithinRel(omfemChamberedLeakage, 0.15));
+    settings.reset();
+}
+
+namespace {
+const std::string twoChamberEtd34 = "Bobbin ETD 34 horizontal lr 2-chamber 14-pin (Norwe 90599-186)";
+
+json etd34_magnetic_json(const json& functionalDescription) {
+    json coil;
+    coil["bobbin"] = twoChamberEtd34;
+    coil["functionalDescription"] = functionalDescription;
+    return {{"core", {{"name", "ETD 34 3C97"}, {"functionalDescription", {{"type", "two-piece set"}, {"material", "3C97"}, {"shape", "ETD 34/17/11"},
+                                                                          {"gapping", json::array()}, {"numberStacks", 1}}}}},
+            {"coil", coil}};
+}
+
+// Every turn inside the chamber MKF put its winding in, chamber by chamber.
+void check_turns_inside_their_chambers(OpenMagnetics::Magnetic& magnetic) {
+    auto& coil = magnetic.get_mutable_coil();
+    const auto windows = coil.resolve_bobbin().get_processed_description().value().get_winding_windows();
+    const auto chamberPerWinding = coil.get_default_chamber_per_winding(coil.resolve_bobbin());
+    const auto turns = coil.get_turns_description().value();
+    for (const auto& turn : turns) {
+        const auto& chamber = windows[chamberPerWinding[coil.get_winding_index_by_name(turn.get_winding())]];
+        const double half = turn.get_dimensions().value()[1] / 2;
+        const double top = chamber.get_coordinates().value()[1] + chamber.get_height().value() / 2;
+        const double bottom = chamber.get_coordinates().value()[1] - chamber.get_height().value() / 2;
+        INFO(turn.get_name() << " at y " << turn.get_coordinates()[1] << " in a chamber from " << bottom << " to " << top);
+        CHECK(turn.get_coordinates()[1] + half <= top + 1e-9);
+        CHECK(turn.get_coordinates()[1] - half >= bottom - 1e-9);
+    }
+}
+}  // namespace
+
+TEST_CASE("magnetic_autocomplete winds each winding inside its chamber, whatever the turns alignment", "[constructive-model][coil][chambers][chamber-centre]") {
+    // magnetic_autocomplete aligns turns SPREAD on two-piece cores, and the SPREAD and CENTERED
+    // section placement measured from y = 0 instead of the chamber's own centre: on the Norwe
+    // 90599 two-chamber ETD 34 (chambers 0.5..10.5 mm and -10.5..-0.5 mm) the primary was laid
+    // from -4.7 to +4.7 mm across the divider and autocomplete refused every chambered former.
+    auto& settings = Settings::GetInstance();
+    settings.reset();
+    SECTION("primary and secondary") {
+        auto magnetic = magnetic_autocomplete(OpenMagnetics::Magnetic(etd34_magnetic_json(json::array({
+            {{"name", "Primary"}, {"numberTurns", 10}, {"numberParallels", 1}, {"isolationSide", "primary"}, {"wire", "Round 0.5 - Grade 1"}},
+            {{"name", "Secondary"}, {"numberTurns", 4}, {"numberParallels", 1}, {"isolationSide", "secondary"}, {"wire", "Round 0.5 - Grade 1"}}}))));
+        check_turns_inside_their_chambers(magnetic);
+    }
+    SECTION("one winding alone") {
+        auto magnetic = magnetic_autocomplete(OpenMagnetics::Magnetic(etd34_magnetic_json(json::array({
+            {{"name", "Primary"}, {"numberTurns", 1}, {"numberParallels", 1}, {"isolationSide", "primary"}, {"wire", "Round 0.5 - Grade 1"}}}))));
+        check_turns_inside_their_chambers(magnetic);
+    }
+    settings.reset();
+}
+
+TEST_CASE("The thermal model closes a multi-chamber former at its end flanges, not at its first chamber", "[physical-model][temperature][chambers][chamber-flanges]") {
+    // createWindingToEnclosureConnections took the flanges from winding window 0, which on a
+    // two-chamber former is the first chamber: every turn of the second chamber "ran 9.9 mm into
+    // the bottom flange" and no temperature could be calculated.
+    auto& settings = Settings::GetInstance();
+    settings.reset();
+    auto magnetic = magnetic_autocomplete(OpenMagnetics::Magnetic(etd34_magnetic_json(json::array({
+        {{"name", "Primary"}, {"numberTurns", 10}, {"numberParallels", 1}, {"isolationSide", "primary"}, {"wire", "Round 0.5 - Grade 1"}},
+        {{"name", "Secondary"}, {"numberTurns", 4}, {"numberParallels", 1}, {"isolationSide", "secondary"}, {"wire", "Round 0.5 - Grade 1"}}}))));
+    const double magnetizingInductance = resolve_dimensional_values(
+        MagnetizingInductance().calculate_inductance_from_number_turns_and_gapping(magnetic.get_mutable_core(), magnetic.get_mutable_coil())
+            .get_magnetizing_inductance());
+    auto inputs = OpenMagnetics::Inputs::create_quick_operating_point_only_current(100000, magnetizingInductance, 25, WaveformLabel::SINUSOIDAL,
+                                                                                   0.2, 0.5, 0, {4.0 / 10.0});
+    // MagneticSimulator runs the thermal network, which threw for the second chamber's turns.
+    auto simulated = MagneticSimulator().simulate(inputs, magnetic);
+    REQUIRE(simulated.get_outputs()[0].get_temperature());
+    CHECK(simulated.get_outputs()[0].get_temperature()->get_maximum_temperature() > 25);
     settings.reset();
 }

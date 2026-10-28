@@ -3564,8 +3564,24 @@ void Temperature::createWindingToEnclosureConnections() {
     }
     const auto& window = bobbinWindows[0];
     const double innerSurfaceX = window.get_coordinates().value()[0] - window.get_width().value() / 2.0;
-    const double topSurfaceY = window.get_coordinates().value()[1] + window.get_height().value() / 2.0;
-    const double bottomSurfaceY = window.get_coordinates().value()[1] - window.get_height().value() / 2.0;
+    double topSurfaceY = window.get_coordinates().value()[1] + window.get_height().value() / 2.0;
+    double bottomSurfaceY = window.get_coordinates().value()[1] - window.get_height().value() / 2.0;
+    // The flanges close the former's whole length: on a multi-chamber former window 0 is only its first
+    // chamber, and the turns of the others were measured against that chamber's ends (a two-chamber ETD 34
+    // secondary "ran 9.9 mm into the bottom flange"). The dividers between chambers are not a path here.
+    auto chamberBobbin = std::get<Bobbin>(bobbinVariant);
+    if (chamberBobbin.get_number_chambers() > 1) {
+        for (size_t windowIndex = 1; windowIndex < bobbinWindows.size(); ++windowIndex) {
+            if (!chamberBobbin.are_windows_chambers_of_same_column(0, windowIndex)) continue;
+            const auto& chamber = bobbinWindows[windowIndex];
+            if (!chamber.get_coordinates() || !chamber.get_height()) {
+                throw std::runtime_error("Temperature::createWindingToEnclosureConnections: chamber " + std::to_string(windowIndex) +
+                                         " of the bobbin has no coordinates or height.");
+            }
+            topSurfaceY = std::max(topSurfaceY, chamber.get_coordinates().value()[1] + chamber.get_height().value() / 2.0);
+            bottomSurfaceY = std::min(bottomSurfaceY, chamber.get_coordinates().value()[1] - chamber.get_height().value() / 2.0);
+        }
+    }
 
     size_t columnTarget;
     double columnPlastic;

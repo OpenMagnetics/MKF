@@ -1160,9 +1160,16 @@ namespace OpenMagnetics {
                 auto coating = wire.resolve_coating();
                 auto strand = wire.resolve_strand();
                 auto strandCoating = resolve_coating(strand);
+                // A bundle that states no standard is built to its strand's: a litz of #38 AWG (NEMA)
+                // strands defaulted to IEC 60317 and its 1.28 bundle factor, 0.855 mm for 30 x #38 served
+                // where New England Wire's 38-gauge served bundles give 1.19-1.24 (RDR-648's PFC choke,
+                // 73 T in four layers on a PQ 26/25 former, did not wind).
                 auto standard = WireStandard::IEC_60317;
                 if (wire.get_standard()) {
                     standard = wire.get_standard().value();
+                }
+                else if (strand.get_standard()) {
+                    standard = strand.get_standard().value();
                 }
                 int64_t numberConductors = wire.get_number_conductors().value();
                 if (coating) {

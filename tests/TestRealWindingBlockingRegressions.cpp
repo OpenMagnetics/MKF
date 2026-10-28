@@ -999,8 +999,11 @@ TEST_CASE("Autocomplete refusal of a single winding names the layers its turns n
           "[constructive-model][coil][magnetic-autocomplete][abt2073]") {
     auto& settings = OpenMagnetics::Settings::GetInstance();
     settings.reset();
+    // 30 T, the first count of this wire that does not fit this core. The 26 T of DER-720 (its published build,
+    // three layers on this bobbin) was refused here only while the bundle of NEMA #42 strands was sized with
+    // IEC 60317's factor; sized by its strand's standard it winds (Alf, 2026-10-28: fixture to 30 T).
     json functionalDescription = json::array();
-    functionalDescription.push_back({{"name", "Boost inductor"}, {"numberTurns", 26}, {"numberParallels", 1}, {"isolationSide", "primary"},
+    functionalDescription.push_back({{"name", "Boost inductor"}, {"numberTurns", 30}, {"numberParallels", 1}, {"isolationSide", "primary"},
                                      {"wire", {{"name", "Litz 200x#42 served"}, {"type", "litz"}, {"strand", "Round 42.0 - Single Build"},
                                                {"numberConductors", 200}, {"coating", {{"type", "served"}, {"numberLayers", 1}}}}}});
     const std::string what = autocomplete_refusal(ungapped_core("PQ 32/20", "PC95"), functionalDescription);
