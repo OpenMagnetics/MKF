@@ -3894,6 +3894,99 @@ TEST_CASE("Test_CoilAdviser_Web_Flyback_97_Advise_All_Coil_Stays_In_Its_Window",
     settings.reset();
 }
 
+TEST_CASE("Test_CoilAdviser_Web_Flyback_97_Advise_All_Builder_Rewind_Stays_In_Its_Window", "[adviser][coil-adviser][coil][bug][abt-2116]") {
+    // ABT #2116: the web's flyback on material 97 (EQ 26/19/7, 0.18 mm gap), wire "Advise all", then the
+    // builder's re-wind of the advised coil. The adviser lays the Secondary's 5 turns x 2 parallels of
+    // 1.02 mm litz in 2 layers of 5 (2.04 mm), the Primary's 42 turns of 0.483 mm in 4 layers
+    // (1.932 mm): with the 0.1 mm insulation between them and the 0.1 mm wrap, 4.172 mm of the
+    // 4.25 mm window. The builder re-derives the split from the section widths (49/51) and re-winds.
+    // That split leaves the Secondary 2.0175 mm, short of its two layers, and try_rewind re-planned
+    // the window without the wrap that ABT #2110 carves out of the last section: the new split was
+    // 0.1 mm short, the whole-layer re-split read 4.150 mm for 4.172 mm, and the wind-even-if-not-fit
+    // re-wind laid the Secondary in 3 layers of 4 turns, filling 2.0, 0.84 mm past the window. The
+    // thermal network then refused it ('overlaps the core window edge by 0.942000 mm').
+    auto mas = load_web_advise_all("flyback_97_calculate_advised_coil.json");
+    CoilAdviser coilAdviser;
+    auto masMagneticsWithCoil = coilAdviser.get_advised_coil(mas, 1);
+    INFO(coilAdviser.get_last_no_results_reason().value_or("returned results"));
+    REQUIRE(masMagneticsWithCoil.size() == 1);
+    auto advisedCoil = masMagneticsWithCoil[0].get_magnetic().get_coil();
+
+    auto checkFits = [](OpenMagnetics::Coil& coil) {
+        REQUIRE(coil.get_sections_description());
+        const auto sections = coil.get_sections_description().value();
+        for (const auto& section : sections) {
+            if (section.get_type() != ElectricalType::CONDUCTION) {
+                continue;
+            }
+            INFO(section.get_name());
+            REQUIRE(section.get_filling_factor());
+            CHECK(section.get_filling_factor().value() <= 1);
+        }
+        for (const auto& turn : OpenMagneticsTesting::turns_outside_winding_window(coil)) {
+            INFO(turn);
+            CHECK(false);
+        }
+    };
+
+    // The adviser's own coil fits and simulates.
+    checkFits(advisedCoil);
+    CHECK_NOTHROW(simulate_like_the_web_builder(masMagneticsWithCoil[0].get_inputs(), masMagneticsWithCoil[0].get_magnetic()));
+
+    // The builder's split: whole percents of the advised sections' widths, largest remainder first
+    // (BasicCoilSelector). The case needs the 49/51 that leaves the Secondary short of its layers.
+    std::vector<double> widths(advisedCoil.get_functional_description().size(), 0);
+    const auto advisedSections = advisedCoil.get_sections_description().value();
+    for (const auto& section : advisedSections) {
+        if (section.get_type() == ElectricalType::CONDUCTION) {
+            widths[advisedCoil.get_winding_index_by_name(section.get_partial_windings()[0].get_winding())] += section.get_dimensions()[0];
+        }
+    }
+    const double totalWidth = widths[0] + widths[1];
+    std::vector<double> percents;
+    std::vector<std::pair<double, size_t>> remainders;
+    for (size_t windingIndex = 0; windingIndex < widths.size(); ++windingIndex) {
+        const double exact = widths[windingIndex] / totalWidth * 100;
+        percents.push_back(std::floor(exact));
+        remainders.push_back({exact - std::floor(exact), windingIndex});
+    }
+    std::sort(remainders.begin(), remainders.end(), std::greater<>());
+    for (size_t missing = 100 - size_t(percents[0] + percents[1]), k = 0; k < missing; ++k) {
+        percents[remainders[k].second] += 1;
+    }
+    REQUIRE(percents[0] == 49);
+    REQUIRE(percents[1] == 51);
+
+    // The re-wind as WebLibMKF wind_impl does it (see [abt-1896]).
+    settings.set_coil_wind_even_if_not_fit(true);
+    settings.set_coil_delimit_and_compact(true);
+    settings.set_coil_include_additional_coordinates(true);
+    OpenMagnetics::Coil coil;
+    coil.set_bobbin(advisedCoil.get_bobbin());
+    coil.set_functional_description(advisedCoil.get_functional_description());
+    coil.preload_margins({{0, 0}, {0, 0}});
+    coil.set_turns_alignment(CoilAlignment::CENTERED, "Primary section 0");
+    coil.set_turns_alignment(CoilAlignment::CENTERED, "Secondary 0 section 0");
+    coil.set_layers_orientation(WindingOrientation::OVERLAPPING, "Primary section 0");
+    coil.set_layers_orientation(WindingOrientation::OVERLAPPING, "Secondary 0 section 0");
+    coil.set_interlayer_insulation(0, std::nullopt, std::nullopt, false);
+    coil.set_intersection_insulation(0.0001, 1, std::nullopt, std::nullopt, false);
+    CHECK(coil.wind({percents[0] / 100, percents[1] / 100}, {0, 1}, 1));
+    REQUIRE(coil.get_turns_description());
+    coil.delimit_and_compact();
+    checkFits(coil);
+    CHECK(coil.get_layers_by_winding_index(1).size() == 2);
+
+    // The builder simulates the re-wound coil from its stored form; the thermal network takes it.
+    auto magnetic = masMagneticsWithCoil[0].get_magnetic();
+    magnetic.set_coil(coil);
+    json stored;
+    to_json(stored, magnetic);
+    OpenMagnetics::Magnetic reloaded(stored);
+    CHECK_NOTHROW(simulate_like_the_web_builder(masMagneticsWithCoil[0].get_inputs(), reloaded));
+    settings.reset();
+}
+
 TEST_CASE("Test_CoilAdviser_Rejects_A_Coil_Whose_Core_Saturates_Past_Its_Curve_Instead_Of_Failing_The_Advise",
           "[adviser][coil-adviser][bug][abt-2052]") {
     // ABT #2052: the web's flyback on material 97 (EQ 26/19/7, 0.2 mm gap, 42:5), wire "Advise all", with its primary

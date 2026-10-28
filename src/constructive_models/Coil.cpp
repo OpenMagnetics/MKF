@@ -22650,17 +22650,17 @@ void Coil::try_rewind() {
                 if (winding.get_winding() == get_functional_description()[windingIndex].get_name()) {
                     // ABT #1322: the space this section had in the plan is its own extent plus
                     // exactly what add_insulation_to_sections carved out of it -- half of each
-                    // insulation between it and a neighbouring conduction section. The insulation
-                    // that closes the pattern (last section back to the first, the entry trailing
-                    // the list) is appended AFTER the proportioned space, carved from no section,
-                    // so no section may claim it: it is already out of the budget through
-                    // windingWindowRemainingRestrictiveDimensionAccordingToSections. The previous
-                    // rule gave every section the whole insulation after it, the first half of it
-                    // and the second-to-last entry 3/2 of the closing one; that equals the carving
-                    // only when every interface carries the same insulation, and otherwise
-                    // over-claims the window by half the difference -- 12.5 um on 750370900_00
-                    // (PRI, PRI, SEC, SEC: no insulation between same-winding sections, 25 um tape
-                    // at PRI-SEC and SEC-PRI), proportions summing to 1.004825.
+                    // insulation between it and a neighbouring conduction section, and, for the
+                    // last conduction section, the whole insulation that closes the pattern (last
+                    // section back to the first, the entry trailing the list): since ABT #2110 that
+                    // wrap is carved out of the last section, not appended past the proportioned
+                    // space. The previous rule gave every section the whole insulation after it,
+                    // the first half of it and the second-to-last entry 3/2 of the closing one;
+                    // that equals the carving only when every interface carries the same
+                    // insulation, and otherwise over-claims the window by half the difference --
+                    // 12.5 um on 750370900_00 (PRI, PRI, SEC, SEC: no insulation between
+                    // same-winding sections, 25 um tape at PRI-SEC and SEC-PRI), proportions
+                    // summing to 1.004825.
                     const size_t restrictiveAxis = sectionOrientation == WindingOrientation::OVERLAPPING ? 0 : 1;
                     double sectionSpace = sections[sectionIndex].get_dimensions()[restrictiveAxis];
                     if (sectionIndex >= 2 && sections[sectionIndex - 1].get_type() == ElectricalType::INSULATION) {
@@ -22668,6 +22668,15 @@ void Coil::try_rewind() {
                     }
                     if (sectionIndex + 2 < sections.size() && sections[sectionIndex + 1].get_type() == ElectricalType::INSULATION) {
                         sectionSpace += sections[sectionIndex + 1].get_dimensions()[restrictiveAxis] / 2;
+                    }
+                    // ABT #2116: the wrap is carved whole out of the last section (ABT #2110), as
+                    // get_proportion_per_winding_for_whole_layers counts it. Left unclaimed, the new
+                    // proportions summed to the window less the wrap: every re-proportioned layout
+                    // lost the wrap's thickness again, and a split that fits (EQ 26/19/7, 42 turns of
+                    // 0.483 mm and 5 x 2 of 1.02 mm litz, 4.172 of 4.25 mm) was re-planned 0.1 mm short
+                    // and wound past the window.
+                    if (sectionIndex + 2 == sections.size() && sections.back().get_type() == ElectricalType::INSULATION) {
+                        sectionSpace += sections.back().get_dimensions()[restrictiveAxis];
                     }
                     spacePerSectionThisWinding.push_back(sectionSpace);
 
