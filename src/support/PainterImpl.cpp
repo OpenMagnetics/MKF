@@ -432,6 +432,60 @@ void Painter::paint_rectangular_wire(double xCoordinate, double yCoordinate, Wir
     }
 }
 
+// Alf, 2026-10-27 ("when we are working with real windings ... ALWAYS paint in Painter the full
+// magnetic, not just +x"): the sections whose copper and insulation are rings round the MAIN
+// column, whose axis is x = 0, so each crosses the XY plane at its station and again at -x. Empty
+// unless real winding is on, so the ideal-winding drawing is unchanged. Empty for a planar coil
+// too: a printed trace is a spiral on its board, and its -x crossing is not its +x one reflected;
+// MKF's turn data gives only the +x one. A section in a window of a LATERAL column wraps that
+// column, not the main one, and is left out (its turns state their second crossing themselves).
+std::set<std::string> Painter::sections_wound_round_the_main_column(Magnetic& magnetic) {
+    std::set<std::string> names;
+    if (!settings.get_coil_use_real_winding_geometry()) {
+        return names;
+    }
+    auto& coil = magnetic.get_mutable_coil();
+    if (coil.is_planar()) {
+        return names;
+    }
+    if (!coil.get_sections_description()) {
+        throw CoilNotProcessedException("Painter: the whole-magnetic view needs the winding sections");
+    }
+    auto mainColumn = magnetic.get_mutable_core().find_closest_column_by_coordinates({0, 0, 0});
+    if (mainColumn.get_coordinates()[0] != 0) {
+        throw InvalidInputException(ErrorCode::INVALID_CORE_DATA,
+            "Painter: the whole-magnetic view reflects the main column's rings about its axis, but the main column sits at x = " +
+                std::to_string(mainColumn.get_coordinates()[0]) + " m, not at x = 0");
+    }
+    auto bobbin = coil.resolve_bobbin();
+    if (!bobbin.get_processed_description()) {
+        throw CoilNotProcessedException("Painter: the whole-magnetic view needs the bobbin's processed description");
+    }
+    const auto windows = bobbin.get_processed_description().value().get_winding_windows();
+    const auto mainColumnEdge = windows.at(0).get_column();
+    const auto sections = coil.get_sections_description().value();
+    for (const auto& section : sections) {
+        const size_t windowIndex = coil.resolve_section_winding_window_index(section);
+        const auto columnEdge = windows.at(windowIndex).get_column();
+        const bool lateral = columnEdge && mainColumnEdge && columnEdge.value() != mainColumnEdge.value();
+        if (!lateral) {
+            names.insert(section.get_name());
+        }
+    }
+    return names;
+}
+
+bool Painter::wraps_the_main_column(const std::set<std::string>& mainColumnSections, const std::optional<std::string>& section,
+                                    const std::string& what) {
+    if (mainColumnSections.empty()) {
+        return false;
+    }
+    if (!section) {
+        throw CoilNotProcessedException("Painter: " + what + " names no section, so the whole-magnetic view cannot tell which column it wraps");
+    }
+    return mainColumnSections.contains(section.value());
+}
+
 void Painter::paint_two_piece_set_coil_sections(Magnetic magnetic) {
     auto constants = Constants();
 
@@ -442,13 +496,21 @@ void Painter::paint_two_piece_set_coil_sections(Magnetic magnetic) {
     auto sections = magnetic.get_coil().get_sections_description().value();
 
     auto shapes = _root.add_child<SVG::Group>();
+    const auto mainColumnSections = sections_wound_round_the_main_column(magnetic);
     for (size_t i = 0; i < sections.size(); ++i){
-        if (sections[i].get_type() == ElectricalType::CONDUCTION) {
-            _root.style(".section_" + std::to_string(i)).set_attr("opacity", _opacity).set_attr("fill", constants.coilPainterColorsScaleSections[i % constants.coilPainterColorsScaleSections.size()]);
-            paint_rectangle(sections[i].get_coordinates()[0], sections[i].get_coordinates()[1], sections[i].get_dimensions()[0], sections[i].get_dimensions()[1], "section_" + std::to_string(i), shapes);
+        // Alf, 2026-10-27, real winding: a section round the main column is drawn at -x as well.
+        std::vector<double> sides = {1.0};
+        if (mainColumnSections.contains(sections[i].get_name())) {
+            sides.push_back(-1.0);
         }
-        else {
-            paint_rectangle(sections[i].get_coordinates()[0], sections[i].get_coordinates()[1], sections[i].get_dimensions()[0], sections[i].get_dimensions()[1], "insulation", shapes);
+        for (double side : sides) {
+            if (sections[i].get_type() == ElectricalType::CONDUCTION) {
+                _root.style(".section_" + std::to_string(i)).set_attr("opacity", _opacity).set_attr("fill", constants.coilPainterColorsScaleSections[i % constants.coilPainterColorsScaleSections.size()]);
+                paint_rectangle(side * sections[i].get_coordinates()[0], sections[i].get_coordinates()[1], sections[i].get_dimensions()[0], sections[i].get_dimensions()[1], "section_" + std::to_string(i), shapes);
+            }
+            else {
+                paint_rectangle(side * sections[i].get_coordinates()[0], sections[i].get_coordinates()[1], sections[i].get_dimensions()[0], sections[i].get_dimensions()[1], "insulation", shapes);
+            }
         }
     }
     paint_two_piece_set_margin(magnetic);
@@ -650,13 +712,21 @@ void Painter::paint_two_piece_set_coil_layers(Magnetic magnetic) {
     }
 
     auto shapes = _root.add_child<SVG::Group>();
+    const auto mainColumnSections = sections_wound_round_the_main_column(magnetic);
     for (size_t i = 0; i < layers.size(); ++i){
-        if (layers[i].get_type() == ElectricalType::CONDUCTION) {
-            _root.style(".layer_" + std::to_string(i)).set_attr("opacity", _opacity).set_attr("fill", constants.coilPainterColorsScaleLayers[i % constants.coilPainterColorsScaleLayers.size()]);
-            paint_rectangle(layers[i].get_coordinates()[0], layers[i].get_coordinates()[1], layers[i].get_dimensions()[0], layers[i].get_dimensions()[1], "layer_" + std::to_string(i), shapes);
+        // Alf, 2026-10-27, real winding: a layer round the main column is drawn at -x as well.
+        std::vector<double> sides = {1.0};
+        if (wraps_the_main_column(mainColumnSections, layers[i].get_section(), "layer '" + layers[i].get_name() + "'")) {
+            sides.push_back(-1.0);
         }
-        else {
-            paint_rectangle(layers[i].get_coordinates()[0], layers[i].get_coordinates()[1], layers[i].get_dimensions()[0], layers[i].get_dimensions()[1], "insulation", shapes);
+        for (double side : sides) {
+            if (layers[i].get_type() == ElectricalType::CONDUCTION) {
+                _root.style(".layer_" + std::to_string(i)).set_attr("opacity", _opacity).set_attr("fill", constants.coilPainterColorsScaleLayers[i % constants.coilPainterColorsScaleLayers.size()]);
+                paint_rectangle(side * layers[i].get_coordinates()[0], layers[i].get_coordinates()[1], layers[i].get_dimensions()[0], layers[i].get_dimensions()[1], "layer_" + std::to_string(i), shapes);
+            }
+            else {
+                paint_rectangle(side * layers[i].get_coordinates()[0], layers[i].get_coordinates()[1], layers[i].get_dimensions()[0], layers[i].get_dimensions()[1], "insulation", shapes);
+            }
         }
     }
     paint_two_piece_set_margin(magnetic);
@@ -731,6 +801,7 @@ void Painter::paint_two_piece_set_coil_turns(Magnetic magnetic, bool skipMarginA
     }
 
     auto turns = coil.get_turns_description().value();
+    const auto mainColumnSections = sections_wound_round_the_main_column(magnetic);
 
     auto shapes = _root.add_child<SVG::Group>();
 
@@ -748,6 +819,9 @@ void Painter::paint_two_piece_set_coil_turns(Magnetic magnetic, bool skipMarginA
             for (size_t i = 0; i < layers.size(); ++i){
                 if (layers[i].get_type() == ElectricalType::INSULATION) {
                     paint_rectangle(layers[i].get_coordinates()[0], layers[i].get_coordinates()[1], layers[i].get_dimensions()[0], layers[i].get_dimensions()[1], "insulation", shapes);
+                    if (wraps_the_main_column(mainColumnSections, layers[i].get_section(), "layer '" + layers[i].get_name() + "'")) {
+                        paint_rectangle(-layers[i].get_coordinates()[0], layers[i].get_coordinates()[1], layers[i].get_dimensions()[0], layers[i].get_dimensions()[1], "insulation", shapes);
+                    }
                 }
             }
             paint_two_piece_set_margin(magnetic);
@@ -767,46 +841,62 @@ void Painter::paint_two_piece_set_coil_turns(Magnetic magnetic, bool skipMarginA
 
         auto windingIndex = coil.get_winding_index_by_name(turns[i].get_winding());
         auto wire = wirePerWinding[windingIndex];
-        if (wirePerWinding[windingIndex].get_type() == WireType::ROUND) {
-            paint_round_wire(turns[i].get_coordinates()[0], turns[i].get_coordinates()[1], wirePerWinding[windingIndex], turns[i].get_name());
-        }
-        else if (wirePerWinding[windingIndex].get_type() == WireType::LITZ) {
-            paint_litz_wire(turns[i].get_coordinates()[0], turns[i].get_coordinates()[1], wirePerWinding[windingIndex], turns[i].get_name());
-        }
-        else {
-            {
-                _root.style(".turn_" + std::to_string(i)).set_attr("opacity", _opacity).set_attr("fill", constants.coilPainterColorsScaleTurns[turns[i].get_parallel() % constants.coilPainterColorsScaleTurns.size()]);
-                double xCoordinate = turns[i].get_coordinates()[0];
-                double yCoordinate = turns[i].get_coordinates()[1];
-                double outerWidth = 0;
-                double outerHeight = 0;
-                if (wire.get_outer_width()) {
-                    outerWidth = resolve_dimensional_values(wire.get_outer_width().value());
-                }
-                else {
-                    if (!wire.get_conducting_width()) {
-                        throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA, "Wire is missing both outerWidth and conductingWidth");
-                    }
-                    outerWidth = resolve_dimensional_values(wire.get_conducting_width().value());
-                }
-                if (wire.get_outer_height()) {
-                    outerHeight = resolve_dimensional_values(wire.get_outer_height().value());
-                }
-                else {
-                    if (!wire.get_conducting_height()) {
-                        throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA, "Wire is missing both outerHeight and conductingHeight");
-                    }
-                    outerHeight = resolve_dimensional_values(wire.get_conducting_height().value());
-                }
-                paint_rectangle(xCoordinate, yCoordinate, outerWidth, outerHeight, "turn_" + std::to_string(i), shapes, 0, {0, 0}, turns[i].get_name());
+        auto paintTurnAt = [&](double turnX, double turnY) {
+            if (wirePerWinding[windingIndex].get_type() == WireType::ROUND) {
+                paint_round_wire(turnX, turnY, wirePerWinding[windingIndex], turns[i].get_name());
             }
+            else if (wirePerWinding[windingIndex].get_type() == WireType::LITZ) {
+                paint_litz_wire(turnX, turnY, wirePerWinding[windingIndex], turns[i].get_name());
+            }
+            else {
+                {
+                    _root.style(".turn_" + std::to_string(i)).set_attr("opacity", _opacity).set_attr("fill", constants.coilPainterColorsScaleTurns[turns[i].get_parallel() % constants.coilPainterColorsScaleTurns.size()]);
+                    double xCoordinate = turnX;
+                    double yCoordinate = turnY;
+                    double outerWidth = 0;
+                    double outerHeight = 0;
+                    if (wire.get_outer_width()) {
+                        outerWidth = resolve_dimensional_values(wire.get_outer_width().value());
+                    }
+                    else {
+                        if (!wire.get_conducting_width()) {
+                            throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA, "Wire is missing both outerWidth and conductingWidth");
+                        }
+                        outerWidth = resolve_dimensional_values(wire.get_conducting_width().value());
+                    }
+                    if (wire.get_outer_height()) {
+                        outerHeight = resolve_dimensional_values(wire.get_outer_height().value());
+                    }
+                    else {
+                        if (!wire.get_conducting_height()) {
+                            throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA, "Wire is missing both outerHeight and conductingHeight");
+                        }
+                        outerHeight = resolve_dimensional_values(wire.get_conducting_height().value());
+                    }
+                    paint_rectangle(xCoordinate, yCoordinate, outerWidth, outerHeight, "turn_" + std::to_string(i), shapes, 0, {0, 0}, turns[i].get_name());
+                }
 
-            if (wire.get_conducting_width() && wire.get_conducting_height()) {
-                double xCoordinate = turns[i].get_coordinates()[0];
-                double yCoordinate = turns[i].get_coordinates()[1];
-                double conductingWidth = resolve_dimensional_values(wire.get_conducting_width().value());
-                double conductingHeight = resolve_dimensional_values(wire.get_conducting_height().value());
-                paint_rectangle(xCoordinate, yCoordinate, conductingWidth, conductingHeight, "copper", shapes, 0, {0, 0}, turns[i].get_name());
+                if (wire.get_conducting_width() && wire.get_conducting_height()) {
+                    double xCoordinate = turnX;
+                    double yCoordinate = turnY;
+                    double conductingWidth = resolve_dimensional_values(wire.get_conducting_width().value());
+                    double conductingHeight = resolve_dimensional_values(wire.get_conducting_height().value());
+                    paint_rectangle(xCoordinate, yCoordinate, conductingWidth, conductingHeight, "copper", shapes, 0, {0, 0}, turns[i].get_name());
+                }
+            }
+        };
+        paintTurnAt(turns[i].get_coordinates()[0], turns[i].get_coordinates()[1]);
+        // Alf, 2026-10-27: under real winding the whole magnetic is drawn. A turn wound round the
+        // main column is a whole loop at radial distance x from its axis (x = 0): it crosses this
+        // plane at its station AND at -x, at the station's height -- the one height its 2-D data
+        // gives. A turn that already states its second crossing (additionalCoordinates) is drawn
+        // from that below instead.
+        if (!turns[i].get_additional_coordinates() && !mainColumnSections.empty()) {
+            if (!turns[i].get_section()) {
+                throw CoilNotProcessedException("Painter: turn '" + turns[i].get_name() + "' names no section, so the whole-magnetic view cannot tell which column it wraps");
+            }
+            if (mainColumnSections.contains(turns[i].get_section().value())) {
+                paintTurnAt(-turns[i].get_coordinates()[0], turns[i].get_coordinates()[1]);
             }
         }
 
@@ -1197,6 +1287,12 @@ void Painter::paint_two_piece_set_bobbin(Magnetic magnetic) {
         if (fullMainLegDrawn) {
             addBobbinPolygon(mirrorSideOf(bobbinPoints));
         }
+        else if (settings.get_coil_use_real_winding_geometry()) {
+            // Alf, 2026-10-27: under real winding the whole magnetic is drawn. The bobbin wraps its
+            // column all round (one column width, wall and column thickness and winding window for
+            // the whole former), so its -x half is the same section across the bobbin's own axis.
+            addBobbinPolygon(reflectAcross(bobbinPoints, bobbinCoordinates[0]));
+        }
     }
 
     if (perColumnWindows) {
@@ -1258,99 +1354,116 @@ void Painter::paint_two_piece_set_core(Core core) {
             showingMainColumnWidth = mainColumn.get_width() / 2;
     }
 
-    double rightColumnWidth;
-    if (rightColumn.get_minimum_width()) {
-        rightColumnWidth = rightColumn.get_minimum_width().value();
-    }
-    else {
-        rightColumnWidth = rightColumn.get_width();
-    }
-
-    auto gapsInMainColumn = core.find_gaps_by_column(mainColumn);
-    std::sort(gapsInMainColumn.begin(), gapsInMainColumn.end(), [](const CoreGap& lhs, const CoreGap& rhs) { return lhs.get_coordinates().value()[1] > rhs.get_coordinates().value()[1];});
-
-    auto gapsInRightColumn = core.find_gaps_by_column(rightColumn);
-    std::sort(gapsInRightColumn.begin(), gapsInRightColumn.end(), [](const CoreGap& lhs, const CoreGap& rhs) { return lhs.get_coordinates().value()[1] > rhs.get_coordinates().value()[1];});
-
-    double lowestHeightTopCoreMainColumn = 0;
-    double lowestHeightTopCoreRightColumn = 0;
-    double highestHeightBottomCoreMainColumn = 0;
-    double highestHeightBottomCoreRightColumn = 0;
-    double topCoreOffset = 0;
-    double bottomCoreOffset = 0;
-    if (gapsInMainColumn.size() == 0) {
-        lowestHeightTopCoreMainColumn = 0;
-        highestHeightBottomCoreMainColumn = 0;
-    }
-    else {
-        if (gapsInMainColumn.front().get_type() != GapType::ADDITIVE) {
-            lowestHeightTopCoreMainColumn = gapsInMainColumn.front().get_coordinates().value()[1] + gapsInMainColumn.front().get_length() / 2;
-            highestHeightBottomCoreMainColumn = gapsInMainColumn.back().get_coordinates().value()[1] - gapsInMainColumn.back().get_length() / 2;
+    // One half of the core's cross-section: the main leg's half plus the lateral leg `lateralColumn`
+    // with its own width and gaps. The +x half is built from the column nearest +x.
+    struct CoreHalf {
+        std::vector<SVG::Point> top;
+        std::vector<SVG::Point> bottom;
+        std::vector<std::vector<SVG::Point>> gapChunks;
+    };
+    auto buildCoreHalf = [&](ColumnElement lateralColumn) {
+        std::vector<SVG::Point> topPiecePoints = {};
+        std::vector<SVG::Point> bottomPiecePoints = {};
+        std::vector<std::vector<SVG::Point>> gapChunks = {};
+        double lateralColumnWidth;
+        if (lateralColumn.get_minimum_width()) {
+            lateralColumnWidth = lateralColumn.get_minimum_width().value();
         }
         else {
-            topCoreOffset = gapsInMainColumn.front().get_length() / 2;
-            bottomCoreOffset = -gapsInMainColumn.front().get_length() / 2;
+            lateralColumnWidth = lateralColumn.get_width();
         }
-    }
-    if (gapsInRightColumn.size() == 0) {
-        lowestHeightTopCoreRightColumn = 0;
-        highestHeightBottomCoreRightColumn = 0;
-    }
-    else {
-        if (gapsInRightColumn.front().get_type() != GapType::ADDITIVE) {
-            lowestHeightTopCoreRightColumn = gapsInRightColumn.front().get_coordinates().value()[1] + gapsInRightColumn.front().get_length() / 2;
-            highestHeightBottomCoreRightColumn = gapsInRightColumn.back().get_coordinates().value()[1] - gapsInRightColumn.back().get_length() / 2;
+
+        auto gapsInMainColumn = core.find_gaps_by_column(mainColumn);
+        std::sort(gapsInMainColumn.begin(), gapsInMainColumn.end(), [](const CoreGap& lhs, const CoreGap& rhs) { return lhs.get_coordinates().value()[1] > rhs.get_coordinates().value()[1];});
+
+        auto gapsInLateralColumn = core.find_gaps_by_column(lateralColumn);
+        std::sort(gapsInLateralColumn.begin(), gapsInLateralColumn.end(), [](const CoreGap& lhs, const CoreGap& rhs) { return lhs.get_coordinates().value()[1] > rhs.get_coordinates().value()[1];});
+
+        double lowestHeightTopCoreMainColumn = 0;
+        double lowestHeightTopCoreLateralColumn = 0;
+        double highestHeightBottomCoreMainColumn = 0;
+        double highestHeightBottomCoreLateralColumn = 0;
+        double topCoreOffset = 0;
+        double bottomCoreOffset = 0;
+        if (gapsInMainColumn.size() == 0) {
+            lowestHeightTopCoreMainColumn = 0;
+            highestHeightBottomCoreMainColumn = 0;
         }
         else {
+            if (gapsInMainColumn.front().get_type() != GapType::ADDITIVE) {
+                lowestHeightTopCoreMainColumn = gapsInMainColumn.front().get_coordinates().value()[1] + gapsInMainColumn.front().get_length() / 2;
+                highestHeightBottomCoreMainColumn = gapsInMainColumn.back().get_coordinates().value()[1] - gapsInMainColumn.back().get_length() / 2;
+            }
+            else {
+                topCoreOffset = gapsInMainColumn.front().get_length() / 2;
+                bottomCoreOffset = -gapsInMainColumn.front().get_length() / 2;
+            }
         }
-    }
+        if (gapsInLateralColumn.size() == 0) {
+            lowestHeightTopCoreLateralColumn = 0;
+            highestHeightBottomCoreLateralColumn = 0;
+        }
+        else {
+            if (gapsInLateralColumn.front().get_type() != GapType::ADDITIVE) {
+                lowestHeightTopCoreLateralColumn = gapsInLateralColumn.front().get_coordinates().value()[1] + gapsInLateralColumn.front().get_length() / 2;
+                highestHeightBottomCoreLateralColumn = gapsInLateralColumn.back().get_coordinates().value()[1] - gapsInLateralColumn.back().get_length() / 2;
+            }
+            else {
+            }
+        }
 
-    // C/U/UR draw the whole (asymmetric) core, so the main leg must be shown in
-    // full: its left face sits at -width/2 of the main column, not at the leg's
-    // axis. Symmetric families keep x=0 (the left half is drawn as a mirror).
-    double mainLegLeftEdge = 0;
-    // UT is the same asymmetric U piece (closed by a plate), with unequal legs.
-    if (family == MAS::CoreShapeFamily::C || family == MAS::CoreShapeFamily::U || family == MAS::CoreShapeFamily::UR ||
-        family == MAS::CoreShapeFamily::UT) {
-        mainLegLeftEdge = -showingMainColumnWidth;
-    }
+        // C/U/UR draw the whole (asymmetric) core, so the main leg must be shown in
+        // full: its left face sits at -width/2 of the main column, not at the leg's
+        // axis. Symmetric families keep x=0 (the left half is drawn as a mirror).
+        double mainLegLeftEdge = 0;
+        // UT is the same asymmetric U piece (closed by a plate), with unequal legs.
+        if (family == MAS::CoreShapeFamily::C || family == MAS::CoreShapeFamily::U || family == MAS::CoreShapeFamily::UR ||
+            family == MAS::CoreShapeFamily::UT) {
+            mainLegLeftEdge = -showingMainColumnWidth;
+        }
 
-    topPiecePoints.push_back(SVG::Point(mainLegLeftEdge, topCoreOffset + processedDescription.get_height() / 2));
-    topPiecePoints.push_back(SVG::Point(showingCoreWidth, topCoreOffset + processedDescription.get_height() / 2));
-    topPiecePoints.push_back(SVG::Point(showingCoreWidth, topCoreOffset + lowestHeightTopCoreRightColumn));
-    topPiecePoints.push_back(SVG::Point(showingCoreWidth - rightColumnWidth, topCoreOffset + lowestHeightTopCoreRightColumn));
-    topPiecePoints.push_back(SVG::Point(showingCoreWidth - rightColumnWidth, topCoreOffset + rightColumn.get_height() / 2));
-    topPiecePoints.push_back(SVG::Point(showingMainColumnWidth, topCoreOffset + mainColumn.get_height() / 2));
-    topPiecePoints.push_back(SVG::Point(showingMainColumnWidth, topCoreOffset + lowestHeightTopCoreMainColumn));
-    topPiecePoints.push_back(SVG::Point(mainLegLeftEdge, topCoreOffset + lowestHeightTopCoreMainColumn));
+        topPiecePoints.push_back(SVG::Point(mainLegLeftEdge, topCoreOffset + processedDescription.get_height() / 2));
+        topPiecePoints.push_back(SVG::Point(showingCoreWidth, topCoreOffset + processedDescription.get_height() / 2));
+        topPiecePoints.push_back(SVG::Point(showingCoreWidth, topCoreOffset + lowestHeightTopCoreLateralColumn));
+        topPiecePoints.push_back(SVG::Point(showingCoreWidth - lateralColumnWidth, topCoreOffset + lowestHeightTopCoreLateralColumn));
+        topPiecePoints.push_back(SVG::Point(showingCoreWidth - lateralColumnWidth, topCoreOffset + lateralColumn.get_height() / 2));
+        topPiecePoints.push_back(SVG::Point(showingMainColumnWidth, topCoreOffset + mainColumn.get_height() / 2));
+        topPiecePoints.push_back(SVG::Point(showingMainColumnWidth, topCoreOffset + lowestHeightTopCoreMainColumn));
+        topPiecePoints.push_back(SVG::Point(mainLegLeftEdge, topCoreOffset + lowestHeightTopCoreMainColumn));
 
-    for (size_t i = 1; i < gapsInMainColumn.size(); ++i)
-    {
-        std::vector<SVG::Point> chunk;
-        chunk.push_back(SVG::Point(mainLegLeftEdge, gapsInMainColumn[i - 1].get_coordinates().value()[1] - gapsInMainColumn[i - 1].get_length() / 2));
-        chunk.push_back(SVG::Point(showingMainColumnWidth, gapsInMainColumn[i - 1].get_coordinates().value()[1] - gapsInMainColumn[i - 1].get_length() / 2));
-        chunk.push_back(SVG::Point(showingMainColumnWidth, gapsInMainColumn[i].get_coordinates().value()[1] + gapsInMainColumn[i].get_length() / 2));
-        chunk.push_back(SVG::Point(mainLegLeftEdge, gapsInMainColumn[i].get_coordinates().value()[1] + gapsInMainColumn[i].get_length() / 2));
-        gapChunks.push_back(chunk);
-    }
-    for (size_t i = 1; i < gapsInRightColumn.size(); ++i)
-    {
-        std::vector<SVG::Point> chunk;
-        chunk.push_back(SVG::Point(showingCoreWidth - rightColumnWidth, gapsInRightColumn[i - 1].get_coordinates().value()[1] - gapsInRightColumn[i - 1].get_length() / 2));
-        chunk.push_back(SVG::Point(showingCoreWidth, gapsInRightColumn[i - 1].get_coordinates().value()[1] - gapsInRightColumn[i - 1].get_length() / 2));
-        chunk.push_back(SVG::Point(showingCoreWidth, gapsInRightColumn[i].get_coordinates().value()[1] + gapsInRightColumn[i].get_length() / 2));
-        chunk.push_back(SVG::Point(showingCoreWidth - rightColumnWidth, gapsInRightColumn[i].get_coordinates().value()[1] + gapsInRightColumn[i].get_length() / 2));
-        gapChunks.push_back(chunk);
-    }
+        for (size_t i = 1; i < gapsInMainColumn.size(); ++i)
+        {
+            std::vector<SVG::Point> chunk;
+            chunk.push_back(SVG::Point(mainLegLeftEdge, gapsInMainColumn[i - 1].get_coordinates().value()[1] - gapsInMainColumn[i - 1].get_length() / 2));
+            chunk.push_back(SVG::Point(showingMainColumnWidth, gapsInMainColumn[i - 1].get_coordinates().value()[1] - gapsInMainColumn[i - 1].get_length() / 2));
+            chunk.push_back(SVG::Point(showingMainColumnWidth, gapsInMainColumn[i].get_coordinates().value()[1] + gapsInMainColumn[i].get_length() / 2));
+            chunk.push_back(SVG::Point(mainLegLeftEdge, gapsInMainColumn[i].get_coordinates().value()[1] + gapsInMainColumn[i].get_length() / 2));
+            gapChunks.push_back(chunk);
+        }
+        for (size_t i = 1; i < gapsInLateralColumn.size(); ++i)
+        {
+            std::vector<SVG::Point> chunk;
+            chunk.push_back(SVG::Point(showingCoreWidth - lateralColumnWidth, gapsInLateralColumn[i - 1].get_coordinates().value()[1] - gapsInLateralColumn[i - 1].get_length() / 2));
+            chunk.push_back(SVG::Point(showingCoreWidth, gapsInLateralColumn[i - 1].get_coordinates().value()[1] - gapsInLateralColumn[i - 1].get_length() / 2));
+            chunk.push_back(SVG::Point(showingCoreWidth, gapsInLateralColumn[i].get_coordinates().value()[1] + gapsInLateralColumn[i].get_length() / 2));
+            chunk.push_back(SVG::Point(showingCoreWidth - lateralColumnWidth, gapsInLateralColumn[i].get_coordinates().value()[1] + gapsInLateralColumn[i].get_length() / 2));
+            gapChunks.push_back(chunk);
+        }
 
-    bottomPiecePoints.push_back(SVG::Point(mainLegLeftEdge, bottomCoreOffset - processedDescription.get_height() / 2));
-    bottomPiecePoints.push_back(SVG::Point(showingCoreWidth, bottomCoreOffset - processedDescription.get_height() / 2));
-    bottomPiecePoints.push_back(SVG::Point(showingCoreWidth, bottomCoreOffset + highestHeightBottomCoreRightColumn));
-    bottomPiecePoints.push_back(SVG::Point(showingCoreWidth - rightColumnWidth, bottomCoreOffset + highestHeightBottomCoreRightColumn));
-    bottomPiecePoints.push_back(SVG::Point(showingCoreWidth - rightColumnWidth, bottomCoreOffset - rightColumn.get_height() / 2));
-    bottomPiecePoints.push_back(SVG::Point(showingMainColumnWidth, bottomCoreOffset - mainColumn.get_height() / 2));
-    bottomPiecePoints.push_back(SVG::Point(showingMainColumnWidth, bottomCoreOffset + highestHeightBottomCoreMainColumn));
-    bottomPiecePoints.push_back(SVG::Point(mainLegLeftEdge, bottomCoreOffset + highestHeightBottomCoreMainColumn));
+        bottomPiecePoints.push_back(SVG::Point(mainLegLeftEdge, bottomCoreOffset - processedDescription.get_height() / 2));
+        bottomPiecePoints.push_back(SVG::Point(showingCoreWidth, bottomCoreOffset - processedDescription.get_height() / 2));
+        bottomPiecePoints.push_back(SVG::Point(showingCoreWidth, bottomCoreOffset + highestHeightBottomCoreLateralColumn));
+        bottomPiecePoints.push_back(SVG::Point(showingCoreWidth - lateralColumnWidth, bottomCoreOffset + highestHeightBottomCoreLateralColumn));
+        bottomPiecePoints.push_back(SVG::Point(showingCoreWidth - lateralColumnWidth, bottomCoreOffset - lateralColumn.get_height() / 2));
+        bottomPiecePoints.push_back(SVG::Point(showingMainColumnWidth, bottomCoreOffset - mainColumn.get_height() / 2));
+        bottomPiecePoints.push_back(SVG::Point(showingMainColumnWidth, bottomCoreOffset + highestHeightBottomCoreMainColumn));
+        bottomPiecePoints.push_back(SVG::Point(mainLegLeftEdge, bottomCoreOffset + highestHeightBottomCoreMainColumn));
+        return CoreHalf{topPiecePoints, bottomPiecePoints, gapChunks};
+    };
+    auto rightHalf = buildCoreHalf(rightColumn);
+    topPiecePoints = rightHalf.top;
+    bottomPiecePoints = rightHalf.bottom;
+    gapChunks = rightHalf.gapChunks;
 
     // Multi-column winding: with per-column winding windows the coil can occupy the
     // left window, so draw the full mirror-symmetric silhouette instead of the
@@ -1385,6 +1498,26 @@ void Painter::paint_two_piece_set_core(Core core) {
             addFerritePolygon(mirrorPoints(chunk));
         }
     }
+    // Alf, 2026-10-27: under real winding every view shows the WHOLE magnetic, not its +x half.
+    // The -x half is built from the core's OWN data there: the main leg (centred on x = 0, so its
+    // half is the same leg and the same gaps) and the lateral column nearest -x, with that
+    // column's width, height and gaps. C/U/UR/UT already draw their whole core.
+    const bool wholeCoreDrawn = mirrorLeftHalf || family == MAS::CoreShapeFamily::C || family == MAS::CoreShapeFamily::U ||
+                                family == MAS::CoreShapeFamily::UR || family == MAS::CoreShapeFamily::UT;
+    if (settings.get_coil_use_real_winding_geometry() && !wholeCoreDrawn) {
+        if (mainColumn.get_coordinates()[0] != 0) {
+            throw InvalidInputException(ErrorCode::INVALID_CORE_DATA,
+                "Painter: the whole-magnetic view draws the -x half about the main column's axis, but the main column sits at x = " +
+                    std::to_string(mainColumn.get_coordinates()[0]) + " m, not at x = 0");
+        }
+        auto leftColumn = core.find_closest_column_by_coordinates(std::vector<double>({-processedDescription.get_width() / 2, 0, -processedDescription.get_depth() / 2}));
+        auto leftHalf = buildCoreHalf(leftColumn);
+        addFerritePolygon(mirrorPoints(leftHalf.top));
+        addFerritePolygon(mirrorPoints(leftHalf.bottom));
+        for (auto& chunk : leftHalf.gapChunks) {
+            addFerritePolygon(mirrorPoints(chunk));
+        }
+    }
 
     _root.autoscale();
 }
@@ -1415,7 +1548,11 @@ void Painter::paint_toroidal_core(Core core) {
 
 void Painter::paint_two_piece_set_margin(Magnetic magnetic) {
     auto sections = magnetic.get_coil().get_sections_description().value();
+    // Alf, 2026-10-27, real winding: a margin of a section round the main column is a ring too,
+    // so it is drawn at -x as well.
+    const auto mainColumnSections = sections_wound_round_the_main_column(magnetic);
     for (size_t i = 0; i < sections.size(); ++i){
+        const bool farSide = mainColumnSections.contains(sections[i].get_name());
         if (sections[i].get_margin()) {
             // ABT #227.7: a lateral-window section's margin must be framed against ITS
             // OWN window, not window 0's -- otherwise the margin rectangle for a
@@ -1450,6 +1587,9 @@ void Painter::paint_two_piece_set_margin(Magnetic magnetic) {
                     marginHeight = sections[i].get_dimensions()[1];
                 }
                 paint_rectangle(xCoordinate, yCoordinate, marginWidth, marginHeight, "margin");
+                if (farSide) {
+                    paint_rectangle(-xCoordinate, yCoordinate, marginWidth, marginHeight, "margin");
+                }
             }
             if (margins[1] > 0) {
                 auto bobbin = magnetic.get_mutable_coil().resolve_bobbin();
@@ -1480,6 +1620,9 @@ void Painter::paint_two_piece_set_margin(Magnetic magnetic) {
                     marginHeight = sections[i].get_dimensions()[1];
                 }
                 paint_rectangle(xCoordinate, yCoordinate, marginWidth, marginHeight, "margin");
+                if (farSide) {
+                    paint_rectangle(-xCoordinate, yCoordinate, marginWidth, marginHeight, "margin");
+                }
             }
         }
     }
@@ -1652,12 +1795,21 @@ void Painter::paint_drum_family_core(Core core) {
     auto family = shape.get_family();
 
     auto shapes = _root.add_child<SVG::Group>();
+    // Alf, 2026-10-27: under real winding the whole magnetic is drawn. These bodies are solids of
+    // revolution given by radii (the shape letters), so the -x half is the same radii at -x.
+    const bool wholeBodyDrawn = settings.get_coil_use_real_winding_geometry();
     auto addRectangle = [&](double innerRadius, double outerRadius, double bottom, double top) {
         std::vector<SVG::Point> points = {
             {innerRadius, bottom}, {outerRadius, bottom}, {outerRadius, top}, {innerRadius, top}};
         *shapes << SVG::Polygon(scale_points(points, 0, _scale));
         auto polygon = _root.get_children<SVG::Polygon>().back();
         polygon->set_attr("class", "ferrite");
+        if (wholeBodyDrawn) {
+            std::vector<SVG::Point> farSide = {
+                {-innerRadius, bottom}, {-outerRadius, bottom}, {-outerRadius, top}, {-innerRadius, top}};
+            *shapes << SVG::Polygon(scale_points(farSide, 0, _scale));
+            _root.get_children<SVG::Polygon>().back()->set_attr("class", "ferrite");
+        }
     };
 
     if (family == CoreShapeFamily::MOLDED) {

@@ -5933,4 +5933,81 @@ namespace {
         CHECK(svg.find("#ff0000") != std::string::npos);
         settings.reset();
     }
+
+    // Alf, 2026-10-27: "when we are working with real windings, can you actually ALWAYS paint in
+    // Painter the full magnetic, not just +x?" With real winding ON the XY view must show copper,
+    // bobbin and ferrite on the -x side too; with it OFF the view keeps its historical +x half.
+    TEST_CASE("Test_Painter_Real_Winding_Paints_The_Whole_Magnetic", "[support][painter][real-winding][whole-view]") {
+        std::ifstream json_file(std::filesystem::path{std::source_location::current().file_name()}
+                                    .parent_path()
+                                    .append("testData")
+                                    .append("abt646_e16_litz_2layer_leadcollision.json")
+                                    .string());
+        REQUIRE(json_file.good());
+        auto masJson = json::parse(json_file);
+
+        // The most negative x among the points of every element of class `cssClass` (circle cx,
+        // rect x, polygon points), in SVG user units; +infinity when there is no such element.
+        auto mostNegativeX = [](const std::string& svg, const std::string& cssClass) {
+            double minimum = std::numeric_limits<double>::infinity();
+            const std::regex element("<(circle|rect|polygon)\\b[^>]*>");
+            const std::regex number("-?[0-9]+(\\.[0-9]+)?([eE]-?[0-9]+)?");
+            for (auto it = std::sregex_iterator(svg.begin(), svg.end(), element); it != std::sregex_iterator(); ++it) {
+                const std::string tag = it->str();
+                if (tag.find("class=\"" + cssClass + "\"") == std::string::npos) {
+                    continue;
+                }
+                std::smatch m;
+                if (it->str(1) == "circle" && std::regex_search(tag, m, std::regex("cx=\"([^\"]+)\""))) {
+                    minimum = std::min(minimum, std::stod(m.str(1)));
+                }
+                else if (it->str(1) == "rect" && std::regex_search(tag, m, std::regex(" x=\"([^\"]+)\""))) {
+                    minimum = std::min(minimum, std::stod(m.str(1)));
+                }
+                else if (it->str(1) == "polygon" && std::regex_search(tag, m, std::regex("points=\"([^\"]+)\""))) {
+                    const std::string points = m.str(1);
+                    bool isX = true;
+                    for (auto n = std::sregex_iterator(points.begin(), points.end(), number); n != std::sregex_iterator(); ++n) {
+                        if (isX) {
+                            minimum = std::min(minimum, std::stod(n->str()));
+                        }
+                        isX = !isX;
+                    }
+                }
+            }
+            return minimum;
+        };
+
+        for (bool realWinding : {true, false}) {
+            settings.reset();
+            settings.set_coil_use_real_winding_geometry(realWinding);
+            auto magnetic = OpenMagnetics::magnetic_autocomplete(OpenMagnetics::Magnetic(masJson["magnetic"]), json{});
+            auto outFile = outputFilePath;
+            outFile.append(std::string("Test_Painter_Real_Winding_Whole_Magnetic_") + (realWinding ? "real" : "ideal") + ".svg");
+            std::filesystem::remove(outFile);
+            Painter painter(outFile);
+            painter.paint_magnetic(magnetic, PainterProjection::XY);
+            const auto svg = painter.export_svg();
+
+            const double copperMinX = mostNegativeX(svg, "copper");
+            const double bobbinMinX = mostNegativeX(svg, "bobbin");
+            const double ferriteMinX = mostNegativeX(svg, "ferrite");
+            INFO("realWinding " << realWinding << " copper " << copperMinX << " bobbin " << bobbinMinX << " ferrite " << ferriteMinX);
+            REQUIRE(std::isfinite(copperMinX));
+            REQUIRE(std::isfinite(bobbinMinX));
+            REQUIRE(std::isfinite(ferriteMinX));
+            if (realWinding) {
+                // Copper and bobbin wrap the column, so they cross the plane on -x as well.
+                CHECK(copperMinX < 0);
+                CHECK(bobbinMinX < 0);
+                CHECK(ferriteMinX < 0);
+            }
+            else {
+                CHECK(copperMinX >= 0);
+                CHECK(bobbinMinX >= 0);
+                CHECK(ferriteMinX >= 0);
+            }
+        }
+        settings.reset();
+    }
 }  // namespace

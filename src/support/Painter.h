@@ -6,6 +6,7 @@
 #include "physical_models/StrayCapacitance.h"
 #include "support/Utils.h"
 #include <MAS.hpp>
+#include <set>
 #include "svg.hpp"
 #include "support/Exceptions.h"
 
@@ -435,6 +436,11 @@ class Painter : public PainterInterface {
     // between the below-core returns and the over-core runs.
     void paint_toroidal_turn_connections(Magnetic magnetic, bool below);
     void paint_two_piece_set_margin(Magnetic magnetic);
+    // Alf, 2026-10-27: real winding draws the whole magnetic. The sections round the main column
+    // (drawn at -x as well); empty unless real winding is on.
+    std::set<std::string> sections_wound_round_the_main_column(Magnetic& magnetic);
+    static bool wraps_the_main_column(const std::set<std::string>& mainColumnSections, const std::optional<std::string>& section,
+                                      const std::string& what);
     void paint_toroidal_margin(Magnetic magnetic);
 
     // Coil painting must work whether or not the magnetic has a core (a chip
