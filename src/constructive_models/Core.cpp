@@ -1376,12 +1376,12 @@ bool Core::process_gap() {
         }
         const std::string coreName = get_name() ? "'" + get_name().value() + "'" : "with shape " + resolve_shape().get_name().value_or("(unnamed)");
         if (get_functional_description().get_type() != CoreType::TWO_PIECE_SET) {
-            throw GapException(ErrorCode::GAP_INVALID_DIMENSIONS, "Core " + coreName + ": gap " + std::to_string(gapIndex) +
+            throw GapException(ErrorCode::GAP_INVALID_DIMENSIONS, "Core " + coreName + ": gap " + std::to_string(gapIndex + 1) +
                                " is a subtractive gap of length zero, which only a two-piece set can carry (as its ungapped "
                                "halves mating); give the gap its ground length, or remove it");
         }
         const double residualGap = Constants().residualGap;
-        Logger::getInstance().warning("Core " + coreName + ": gap " + std::to_string(gapIndex) + " is a subtractive gap of length zero; "
+        Logger::getInstance().warning("Core " + coreName + ": gap " + std::to_string(gapIndex + 1) + " is a subtractive gap of length zero; "
                                       "the two-piece set is taken as ungapped, with the residual gap of its mating halves (" +
                                       format_quantity(residualGap, "m") + ") there", "Core");
         gap.set_type(GapType::RESIDUAL);

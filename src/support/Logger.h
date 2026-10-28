@@ -238,6 +238,7 @@ inline const std::string& user_facing_log_module(const std::string& moduleOfOrig
             {"WindingLayout", "Winding layout"},
             {"Bobbin", "Bobbins"},
             {"CoreCatalogue", "Core catalogue"},
+            {"Core", "Core"},
             {"Inputs", "Operating points"},
             {"MaterialDataExtrapolation", "Material data extrapolation"},
             {"AmplitudePermeability", "Material data"},
