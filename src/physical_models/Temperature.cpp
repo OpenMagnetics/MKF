@@ -2936,7 +2936,7 @@ std::optional<double> Temperature::planarTurnToBobbinResistance(size_t turnIdx, 
         if (settings.get_thermal_network_strict_geometry()) {
             throw std::runtime_error(message);
         }
-        OM_ERROR(message + " thermalNetworkStrictGeometry is off: this face gets no conduction path to " + wall.name + ".");
+        OM_ERROR_M("Temperature", message + " thermalNetworkStrictGeometry is off: this face gets no conduction path to " + wall.name + ".");
         return std::nullopt;
     }
     if (!(plasticThickness > 0)) {
@@ -3610,7 +3610,7 @@ void Temperature::createWindingToEnclosureConnections() {
             if (settings.get_thermal_network_strict_geometry()) {
                 throw std::runtime_error(message);
             }
-            OM_ERROR(message + " thermalNetworkStrictGeometry is off: this face gets no conduction path to " +
+            OM_ERROR_M("Temperature", message + " thermalNetworkStrictGeometry is off: this face gets no conduction path to " +
                      _nodes[target].name + ".");
             return;
         }
@@ -3782,7 +3782,7 @@ void Temperature::createWindingToCoreAcrossWindowConnections(size_t ambientIdx) 
             if (settings.get_thermal_network_strict_geometry()) {
                 throw std::runtime_error(message);
             }
-            OM_ERROR(message + " thermalNetworkStrictGeometry is off: this face gets no conduction path to " +
+            OM_ERROR_M("Temperature", message + " thermalNetworkStrictGeometry is off: this face gets no conduction path to " +
                      _nodes[target].name + ".");
             continue;
         }

@@ -813,7 +813,7 @@ std::vector<std::pair<Core, double>> CoreCrossReferencer::apply_filters(std::vec
          [&](auto* r){ return filterEffectiveArea.filter_core(r, referenceCore, weights[F::EFFECTIVE_AREA], limit); }},
     };
 
-    auto rankedCores = run_cross_referencer_pipeline(*cores, steps, "Core Cross Referencer");
+    auto rankedCores = run_cross_referencer_pipeline(*cores, steps, "CoreCrossReferencer");
 
     // CORE_LOSSES is the most computationally costly filter, so it's
     // gated behind a 1.1× maximumNumberResults pre-prune and run as a
@@ -833,10 +833,10 @@ std::vector<std::pair<Core, double>> CoreCrossReferencer::apply_filters(std::vec
         &rankedCores, referenceCore, referenceNumberTurns, weights[F::IMPEDANCE], limit);
     logEntry("There are " + std::to_string(rankedCores.size())
                  + " after filtering by " + to_string(F::IMPEDANCE) + ".",
-             "Core Cross Referencer", 2);
+             "CoreCrossReferencer", 2);
     logEntry("There are " + std::to_string(rankedCores.size())
                  + " after filtering by " + to_string(F::CORE_LOSSES) + ".",
-             "Core Cross Referencer", 2);
+             "CoreCrossReferencer", 2);
 
     if (rankedCores.size() > maximumNumberResults) {
         rankedCores.resize(maximumNumberResults);

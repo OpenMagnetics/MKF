@@ -13158,7 +13158,7 @@ bool Coil::create_default_groups(Bobbin bobbin, WiringTechnology coilType, doubl
     set_groups_description(groups);
 
     if (!anyExplicitPlacement && !chamberedBobbin) {
-        OM_WARNING("Multi-column bobbin detected (" + std::to_string(windingWindows.size()) +
+        OM_WARNING_M("Coil", "Multi-column bobbin detected (" + std::to_string(windingWindows.size()) +
                    " winding windows) and no winding carries a windingWindow placement. All windings "
                    "placed in window 0 by default. Set windingWindow on the windings or call "
                    "assign_windings_to_columns() to distribute.");

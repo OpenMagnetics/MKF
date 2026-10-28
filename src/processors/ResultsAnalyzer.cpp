@@ -571,8 +571,8 @@ std::vector<ResultFinding> ResultsAnalyzer::analyze_lead_collisions(const Magnet
     for (const auto& lead : coil.judge_lead_collisions()) {
         const auto worst = std::max_element(lead.collisions.begin(), lead.collisions.end(),
                                             [](const LeadTurnCollision& a, const LeadTurnCollision& b) { return a.overlap < b.overlap; });
-        std::string message = "Winding '" + lead.windingName + "' has its " + lead.leadName +
-                              " drawn across " + describe_turn_for_people(coil, worst->turnName) + ": " +
+        std::string message = "The " + describe_lead_for_people(coil, lead.leadName) +
+                              " is drawn across " + describe_turn_for_people(coil, worst->turnName) + ": " +
                               millimetres(worst->distanceOut) + " mm out along the lead, that turn runs at a height of " +
                               millimetres(worst->turnHeight) + " mm and the lead at " + millimetres(worst->leadHeight) +
                               " mm, so their copper overlaps by " + millimetres(worst->overlap) + " mm";
@@ -596,7 +596,7 @@ std::vector<ResultFinding> ResultsAnalyzer::analyze_unmodelled_leads(const Magne
     };
     std::vector<ResultFinding> findings;
     for (const auto& lead : coil.judge_unmodelled_tangent_leads()) {
-        std::string message = "Winding '" + lead.windingName + "' has its " + lead.leadName + " planned for a " +
+        std::string message = "The " + describe_lead_for_people(coil, lead.leadName) + " is planned for a " +
                               millimetres(lead.plannedBendRadius) + " mm bend, which does not fit on the " +
                               millimetres(lead.connectionFaceHalfStraight) +
                               " mm straight half of its connection face, so it leaves tangentially off the side face, on a route "
@@ -620,9 +620,9 @@ std::vector<ResultFinding> ResultsAnalyzer::analyze_unmodelled_leads(const Magne
                                          "is not carried into it");
                     break;
                 case TangentLeadCondition::LAYER_CHANGING_REVOLUTION:
-                    conditions.push_back("the revolution it shortens, from '" + condition.revolutionFrom + "' to '" +
-                                         condition.revolutionTo + "', changes layer and carries no pitch; the lead is drawn level "
-                                         "at that turn's height");
+                    conditions.push_back("the turn it shortens, from " + describe_turn_for_people(coil, condition.revolutionFrom) +
+                                         " to " + describe_turn_for_people(coil, condition.revolutionTo) +
+                                         ", changes layer and carries no pitch; the lead is drawn level at that turn's height");
                     break;
                 case TangentLeadCondition::SINGLE_REVOLUTION:
                     conditions.push_back("its conductor has a single turn and no pitch; the lead is drawn level at that turn's "
@@ -699,8 +699,8 @@ std::vector<ResultFinding> ResultsAnalyzer::analyze_copper_overlaps(const Magnet
         const auto& crossings = byLead.at(key);
         const auto worst = *std::max_element(crossings.begin(), crossings.end(),
                                              [](const CopperOverlap* a, const CopperOverlap* b) { return a->overlap < b->overlap; });
-        std::string message = "Winding '" + worst->firstWinding + "' has its " + worst->first +
-                              " drawn across " + describe_turn_for_people(coil, worst->second) +
+        std::string message = "The " + describe_lead_for_people(coil, worst->first) +
+                              " is drawn across " + describe_turn_for_people(coil, worst->second) +
                               " in the winding window, where their copper overlaps by " + millimetres(worst->overlap) + " mm";
         if (crossings.size() > 1) {
             message += " (the worst of " + std::to_string(crossings.size()) + " turns it crosses)";
@@ -718,9 +718,9 @@ std::vector<ResultFinding> ResultsAnalyzer::analyze_copper_overlaps(const Magnet
         }
         ResultFinding finding;
         finding.code = ResultFindingCode::LEADS_COLLIDE;
-        finding.message = "The " + overlap.first + " (winding '" + overlap.firstWinding + "') and the " +
-                          overlap.second + " (winding '" + overlap.secondWinding +
-                          "') run through each other, overlapping by " + millimetres(overlap.overlap) +
+        finding.message = "The " + describe_lead_for_people(coil, overlap.first) + " and the " +
+                          describe_lead_for_people(coil, overlap.second) +
+                          " run through each other, overlapping by " + millimetres(overlap.overlap) +
                           " mm. The two leads collide there: route one of them another way.";
         findings.push_back(finding);
     }
@@ -839,20 +839,19 @@ std::vector<ResultFinding> ResultsAnalyzer::analyze_winding_bends(const Magnetic
         if (!hasTurns && !hasLeads) {
             throw std::logic_error("analyze_winding_bends: winding '" + windingName + "' was listed with no turn and no lead below its mandrel");
         }
-        std::string message = "Winding '" + windingName + "'";
+        std::string message;
         if (hasTurns) {
-            message += " is bent edgewise to a " + millimetres(turns->bendRadius) + " mm centreline radius, tighter than the " +
-                       limit(turns->asLaid) + ".";
+            message += "Winding '" + windingName + "' is bent edgewise to a " + millimetres(turns->bendRadius) +
+                       " mm centreline radius, tighter than the " + limit(turns->asLaid) + ".";
         }
         if (hasLeads) {
             const auto describedWireName = hasTurns ? turns->wire.get_name() : leads->leads.front().wire.get_name();
             for (const auto& lead : leads->leads) {
-                message += (hasTurns || &lead != &leads->leads.front()) ? " Its " : " has its ";
-                message += lead.leadName;
+                message += (message.empty() ? "The " : " The ") + describe_lead_for_people(coil, lead.leadName);
                 if (lead.wire.get_name() != describedWireName) {
                     message += " (" + describe(lead.wire) + ")";   // a lead conductor of its own
                 }
-                message += " planned for edgewise bends of " + millimetres(lead.plannedBendRadius) +
+                message += " is planned for edgewise bends of " + millimetres(lead.plannedBendRadius) +
                            " mm centreline radius, tighter than the " + limit(lead.asLaid) + ".";
             }
         }

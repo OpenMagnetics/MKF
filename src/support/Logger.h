@@ -213,6 +213,62 @@ inline LogLevel log_level_from_string(const std::string& name) {
 }
 
 /**
+ * @brief The name a log entry's module carries in every sink and in the collector.
+ *
+ * The collected records reach the web's Engine log, where the module is the "source" column a
+ * design engineer reads, so each entry names the part of the design (or the tool) it is about,
+ * not the MKF class that wrote it. Code passes either an MKF identifier listed here, which is
+ * translated, or one of the names it translates to, which is kept. An empty module or one that
+ * is not listed throws std::invalid_argument, whatever the entry's level: there is no blank or
+ * generic source. A new module is added here, with a name chosen by what its entries are about.
+ */
+inline const std::string& user_facing_log_module(const std::string& moduleOfOrigin, const std::string& message) {
+    static const std::unordered_map<std::string, std::string> userFacingNames = [] {
+        std::unordered_map<std::string, std::string> names = {
+            {"CoreAdviser", "Core adviser"},
+            {"MagneticAdviser", "Magnetic adviser"},
+            {"CoilAdviser", "Coil adviser"},
+            {"WireAdviser", "Wire adviser"},
+            {"MagneticFilter", "Adviser filters"},
+            {"MagneticFilterTemperature", "Adviser filters"},
+            {"AdviserScoring", "Adviser scoring"},
+            {"CoreCrossReferencer", "Core cross-reference"},
+            {"CoreMaterialCrossReferencer", "Core material cross-reference"},
+            {"Coil", "Winding"},
+            {"WindingLayout", "Winding layout"},
+            {"Bobbin", "Bobbins"},
+            {"CoreCatalogue", "Core catalogue"},
+            {"Inputs", "Operating points"},
+            {"MaterialDataExtrapolation", "Material data extrapolation"},
+            {"AmplitudePermeability", "Material data"},
+            {"ComplexPermeability", "Material data"},
+            {"ThermalResistance", "Material data"},
+            {"Temperature", "Thermal model"},
+            {"InsulationIEC60664Model", "Insulation"},
+            {"InsulationIEC61558Model", "Insulation"},
+            {"Painter", "Drawing"},
+            {"Logger", "Engine log"},
+        };
+        std::vector<std::pair<std::string, std::string>> kept;
+        for (const auto& [identifier, name] : names) {
+            kept.emplace_back(name, name);
+        }
+        names.insert(kept.begin(), kept.end());
+        return names;
+    }();
+    if (moduleOfOrigin.empty()) {
+        throw std::invalid_argument("A log entry has no module; every entry must name what it is about "
+                                    "(e.g. \"Winding\", \"Operating points\"). Entry: " + message);
+    }
+    auto found = userFacingNames.find(moduleOfOrigin);
+    if (found == userFacingNames.end()) {
+        throw std::invalid_argument("Log module '" + moduleOfOrigin + "' has no user-facing name; add it to "
+                                    "user_facing_log_module in src/support/Logger.h. Entry: " + message);
+    }
+    return found->second;
+}
+
+/**
  * @brief One structured record kept by the Logger's collector (see Logger::enableCollector).
  * Records with the same level, module and message are merged; `count` says how many times it was logged.
  */
@@ -292,10 +348,13 @@ public:
     /**
      * @brief Log a message
      * @param level Log level
-     * @param module Module name (optional)
+     * @param moduleIdentifier What the entry is about (see user_facing_log_module); required
      * @param message The message to log
      */
-    void log(LogLevel level, const std::string& moduleOfOrigin, const std::string& message) {
+    void log(LogLevel level, const std::string& moduleIdentifier, const std::string& message) {
+        // Checked before the level filter, so a missing or unlisted module is refused even for an
+        // entry nobody would have seen.
+        const std::string& moduleOfOrigin = user_facing_log_module(moduleIdentifier, message);
         // The sinks see what passes the logger level, exactly as before the collector existed, except
         // a sink added with its own level, which sees what passes that one; the collector, when
         // enabled, sees what passes its own level. None changes the others.
@@ -372,7 +431,7 @@ public:
         drained.swap(_collected);
         _collectedIndex.clear();
         if (_collectedDropped > 0) {
-            drained.push_back({LogLevel::WARNING, "Logger",
+            drained.push_back({LogLevel::WARNING, user_facing_log_module("Logger", ""),
                                std::to_string(_collectedDropped) + " further log records were dropped after the first " +
                                std::to_string(kMaximumCollectedRecords) + " distinct ones", 1});
             _collectedDropped = 0;
@@ -393,27 +452,27 @@ public:
     }
     
     // Convenience methods
-    void trace(const std::string& message, const std::string& moduleOfOrigin = "") {
+    void trace(const std::string& message, const std::string& moduleOfOrigin) {
         log(LogLevel::TRACE, moduleOfOrigin, message);
     }
     
-    void debug(const std::string& message, const std::string& moduleOfOrigin = "") {
+    void debug(const std::string& message, const std::string& moduleOfOrigin) {
         log(LogLevel::DEBUG, moduleOfOrigin, message);
     }
     
-    void info(const std::string& message, const std::string& moduleOfOrigin = "") {
+    void info(const std::string& message, const std::string& moduleOfOrigin) {
         log(LogLevel::INFO, moduleOfOrigin, message);
     }
     
-    void warning(const std::string& message, const std::string& moduleOfOrigin = "") {
+    void warning(const std::string& message, const std::string& moduleOfOrigin) {
         log(LogLevel::WARNING, moduleOfOrigin, message);
     }
     
-    void error(const std::string& message, const std::string& moduleOfOrigin = "") {
+    void error(const std::string& message, const std::string& moduleOfOrigin) {
         log(LogLevel::ERROR, moduleOfOrigin, message);
     }
     
-    void critical(const std::string& message, const std::string& moduleOfOrigin = "") {
+    void critical(const std::string& message, const std::string& moduleOfOrigin) {
         log(LogLevel::CRITICAL, moduleOfOrigin, message);
     }
     
@@ -483,29 +542,8 @@ private:
 // Logging Macros
 // ============================================================================
 
-#define OM_LOG(level, message) \
-    OpenMagnetics::Logger::getInstance().log(level, "", message)
-
 #define OM_LOG_MODULE(level, moduleName, message) \
     OpenMagnetics::Logger::getInstance().log(level, moduleName, message)
-
-#define OM_TRACE(message) \
-    OpenMagnetics::Logger::getInstance().trace(message)
-
-#define OM_DEBUG(message) \
-    OpenMagnetics::Logger::getInstance().debug(message)
-
-#define OM_INFO(message) \
-    OpenMagnetics::Logger::getInstance().info(message)
-
-#define OM_WARNING(message) \
-    OpenMagnetics::Logger::getInstance().warning(message)
-
-#define OM_ERROR(message) \
-    OpenMagnetics::Logger::getInstance().error(message)
-
-#define OM_CRITICAL(message) \
-    OpenMagnetics::Logger::getInstance().critical(message)
 
 // Module-specific logging
 #define OM_TRACE_M(moduleName, message) \

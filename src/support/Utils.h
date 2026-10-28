@@ -149,7 +149,8 @@ std::optional<InductanceFluxCacheEntry> get_cached_inductance_flux(
 
 // Legacy logging interface - prefer using Logger directly
 // Verbosity levels: 0=ERROR, 1=WARNING, 2=INFO, 3+=DEBUG
-void logEntry(std::string entry, std::string module = "", uint8_t entryVerbosity = 1);
+// `module` is required and must be listed in user_facing_log_module (Logger.h); an empty or unlisted one throws.
+void logEntry(std::string entry, std::string module, uint8_t entryVerbosity = 1);
 std::string read_log();
 
 // Settings::allowMaterialDataExtrapolation (on by default since Alf, 2026-10-25; always off under an adviser). Every site that uses a core material outside the data
@@ -157,7 +158,7 @@ std::string read_log();
 // throws exactly as before; when it is on it logs `what` (which must name the material, the quantity, the value
 // and the range the data covers) as a WARNING from module kMaterialDataExtrapolationModule and returns true, and
 // the caller evaluates the same model outside its range.
-inline constexpr const char* kMaterialDataExtrapolationModule = "MaterialDataExtrapolation";
+inline constexpr const char* kMaterialDataExtrapolationModule = "Material data extrapolation";
 bool material_data_extrapolation_allowed(const std::string& what);
 
 bool check_requirement(DimensionWithTolerance requirement, double value);
@@ -384,6 +385,9 @@ Inputs get_defaults_inputs(OpenMagnetics::Magnetic magnetic);
 // from 1, in the order of turnsDescription). Throws when the coil has no such turn.
 std::string describe_turn_for_people(const Coil& coil, size_t turnIndex);
 std::string describe_turn_for_people(const Coil& coil, const std::string& turnName);
+// A lead as people read it, from the name the real-winding judgements give it ("entrance lead of '<turn>'"
+// or "exit lead of '<turn>'"): "entrance lead of turn 1 of winding 'Primary'", no article. Any other name throws.
+std::string describe_lead_for_people(const Coil& coil, const std::string& leadName);
 
 } // namespace OpenMagnetics
 

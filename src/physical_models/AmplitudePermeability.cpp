@@ -384,7 +384,7 @@ void warn_loop_estimate_once(const CoreMaterial& coreMaterial, LoopProperty prop
     static std::set<std::string> warned;
     std::lock_guard<std::mutex> lock(warnedMutex);
     if (warned.insert(coreMaterial.get_manufacturer_info().get_name() + "/" + coreMaterial.get_name() + "/" + loop_property_field(property)).second) {
-        OM_WARNING(message());
+        OM_WARNING_M("AmplitudePermeability", message());
     }
 }
 

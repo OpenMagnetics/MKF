@@ -501,7 +501,7 @@ TEST_CASE("Real winding draws the edgewise terminal leads of the reported strip 
     REQUIRE(findings.size() == 1);   // one per winding: its turns and its leads together
     CHECK(findings[0].code == ResultFindingCode::EDGEWISE_BEND_BELOW_COATING_MANDREL);
     using Catch::Matchers::ContainsSubstring;
-    CHECK_THAT(findings[0].message, ContainsSubstring("entrance lead of '") && ContainsSubstring("exit lead of '") &&
+    CHECK_THAT(findings[0].message, ContainsSubstring("entrance lead of turn ") && ContainsSubstring("exit lead of turn ") &&
                                         ContainsSubstring("planned for edgewise bends of") &&
                                         ContainsSubstring("IEC 60317-0-2 Table 6"));
     bendSettings.reset();
@@ -553,7 +553,7 @@ TEST_CASE("Real winding draws the tangent leads of a one-turn edgewise strip lev
         }
         ++reported;
         using Catch::Matchers::ContainsSubstring;
-        CHECK_THAT(finding.message, ContainsSubstring("lead of '" + turns[0].get_name() + "'") &&
+        CHECK_THAT(finding.message, ContainsSubstring("lead of " + describe_turn_for_people(coil, turns[0].get_name())) &&
                                         ContainsSubstring("its conductor has a single turn and no pitch"));
         CHECK(finding.message.find("ABT") == std::string::npos);
     }
@@ -614,7 +614,7 @@ TEST_CASE("Real winding lays out a design whose ideal wind does not fit, and rep
         }
         ++reported;
         using Catch::Matchers::ContainsSubstring;
-        CHECK_THAT(finding.message, ContainsSubstring(crossingLead) &&
+        CHECK_THAT(finding.message, ContainsSubstring(describe_lead_for_people(coil, crossingLead)) &&
                                         ContainsSubstring("the worst of " + std::to_string(overlaps.size()) + " turns it crosses"));
         CHECK(finding.message.find("ABT") == std::string::npos);
     }

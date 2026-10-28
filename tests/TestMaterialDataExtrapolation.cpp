@@ -385,7 +385,7 @@ TEST_CASE("Logger collector: own level, merged duplicates, drain empties, consol
     logger.disableCollector();
 
     SECTION("disabled collects nothing") {
-        logger.warning("not collected", "TestModule");
+        logger.warning("not collected", "Coil");
         logger.enableCollector(LogLevel::WARNING);
         CHECK(logger.drainCollected().empty());
         logger.disableCollector();
@@ -394,19 +394,19 @@ TEST_CASE("Logger collector: own level, merged duplicates, drain empties, consol
         CollectorGuard collector(LogLevel::INFO);
         CHECK(logger.isCollectorEnabled());
         CHECK(logger.getCollectorLevel() == LogLevel::INFO);
-        logger.debug("below the collector level", "TestModule");
-        logger.info("first", "TestModule");
-        logger.warning("second", "OtherModule");
-        logger.info("first", "TestModule");
-        logger.error("third", "TestModule");
+        logger.debug("below the collector level", "Coil");
+        logger.info("first", "Coil");
+        logger.warning("second", "Inputs");
+        logger.info("first", "Coil");
+        logger.error("third", "Coil");
         auto records = logger.drainCollected();
         REQUIRE(records.size() == 3);
         CHECK(records[0].level == LogLevel::INFO);
-        CHECK(records[0].moduleOfOrigin == "TestModule");
+        CHECK(records[0].moduleOfOrigin == "Winding");
         CHECK(records[0].message == "first");
         CHECK(records[0].count == 2);
         CHECK(records[1].level == LogLevel::WARNING);
-        CHECK(records[1].moduleOfOrigin == "OtherModule");
+        CHECK(records[1].moduleOfOrigin == "Operating points");
         CHECK(records[2].level == LogLevel::ERROR);
         CHECK(logger.drainCollected().empty());
         // The collector does not move the console sink's level.
@@ -415,16 +415,16 @@ TEST_CASE("Logger collector: own level, merged duplicates, drain empties, consol
     SECTION("cap") {
         CollectorGuard collector(LogLevel::WARNING);
         for (size_t index = 0; index < Logger::kMaximumCollectedRecords + 5; ++index) {
-            logger.warning("record " + std::to_string(index), "TestModule");
+            logger.warning("record " + std::to_string(index), "Coil");
         }
         auto records = logger.drainCollected();
         REQUIRE(records.size() == Logger::kMaximumCollectedRecords + 1);
-        CHECK(records.back().moduleOfOrigin == "Logger");
+        CHECK(records.back().moduleOfOrigin == "Engine log");
         CHECK_THAT(records.back().message, Catch::Matchers::StartsWith("5 further log records were dropped"));
     }
     SECTION("disable discards") {
         logger.enableCollector(LogLevel::WARNING);
-        logger.warning("discarded", "TestModule");
+        logger.warning("discarded", "Coil");
         logger.disableCollector();
         logger.enableCollector(LogLevel::WARNING);
         CHECK(logger.drainCollected().empty());

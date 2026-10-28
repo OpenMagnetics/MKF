@@ -5006,7 +5006,7 @@ TEST_CASE("Core heat conductivity: a provenance note is logged once per kind and
         }
         INFO(record.message);
         CHECK(record.level == LogLevel::INFO);
-        CHECK(record.moduleOfOrigin == "ThermalResistance");
+        CHECK(record.moduleOfOrigin == "Material data");
         CHECK(record.count == 1);
         if (record.message.find("UNSOURCED") != std::string::npos) {
             unsourcedNotes += record.count;

@@ -454,7 +454,7 @@ std::shared_ptr<const ComplexPermeabilityEstimate> ComplexPermeability::find_or_
         return nullptr;
     }
     // One WARNING per material, as the heat-conductivity estimate (ABT #1753).
-    OM_WARNING(estimate->summary());
+    OM_WARNING_M("ComplexPermeability", estimate->summary());
     complexPermeabilityEstimates[cacheKey] = estimate;
     return estimate;
 }

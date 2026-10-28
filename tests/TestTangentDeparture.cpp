@@ -364,7 +364,7 @@ TEST_CASE("Real winding: a closely wound round-wire layer's tangent lead is not 
             CHECK(finding.message.find("drawn across turn ") != std::string::npos);
             CHECK(finding.message.find("overlaps by") != std::string::npos);
             CHECK(finding.message.find("ABT") == std::string::npos);
-            entranceReported |= finding.message.find("entrance lead of '" + turns[0].get_name() + "'") != std::string::npos;
+            entranceReported |= finding.message.find("entrance lead of " + OpenMagnetics::describe_turn_for_people(coil, turns[0].get_name())) != std::string::npos;
         }
         CHECK(entranceReported);
     }
@@ -390,6 +390,7 @@ std::vector<OpenMagnetics::ResultFinding> magnetic_findings(const OpenMagnetics:
 // The terminal leads that leave tangentially with `condition`, and the findings that report them.
 struct UnmodelledLeads {
     std::vector<OpenMagnetics::ConnectionRoute> routes;
+    std::vector<std::string> leadDescriptions;   // each route's lead, as the findings name it
     std::vector<OpenMagnetics::ResultFinding> findings;
 };
 
@@ -408,6 +409,9 @@ UnmodelledLeads unmodelled_leads(OpenMagnetics::Coil coil, OpenMagnetics::Tangen
                 return found.condition == condition;
             })) {
             leads.routes.push_back(route);
+            const bool entrance = route.kind == OpenMagnetics::ConnectionKind::TERMINAL_ENTRANCE;
+            leads.leadDescriptions.push_back(std::string(entrance ? "entrance" : "exit") + " lead of " +
+                                             OpenMagnetics::describe_turn_for_people(coil, entrance ? route.toTurn : route.fromTurn));
         }
     }
     for (const auto& finding : magnetic_findings(coil, coreShape)) {
@@ -421,15 +425,15 @@ UnmodelledLeads unmodelled_leads(OpenMagnetics::Coil coil, OpenMagnetics::Tangen
 void check_reported(const UnmodelledLeads& leads, const std::string& conditionText) {
     REQUIRE_FALSE(leads.routes.empty());
     REQUIRE(leads.findings.size() == leads.routes.size());   // one per lead
-    for (const auto& route : leads.routes) {
-        const bool entrance = route.kind == OpenMagnetics::ConnectionKind::TERMINAL_ENTRANCE;
-        const std::string leadName = std::string(entrance ? "entrance" : "exit") + " lead of '" + (entrance ? route.toTurn : route.fromTurn) + "'";
+    for (size_t routeIndex = 0; routeIndex < leads.routes.size(); ++routeIndex) {
+        const auto& route = leads.routes[routeIndex];
+        const std::string& leadName = leads.leadDescriptions[routeIndex];
         INFO(leadName);
         // Drawn: a tangent lead with its own line out of the window.
         CHECK(route.tangentDeparture->length > 0);
         CHECK(route.plannedBendRadius > route.tangentDeparture->connectionFaceHalfStraight);
         const auto finding = std::find_if(leads.findings.begin(), leads.findings.end(), [&](const OpenMagnetics::ResultFinding& candidate) {
-            return candidate.message.find(leadName) != std::string::npos && candidate.message.find("Winding '" + route.winding + "'") != std::string::npos;
+            return candidate.message.find(leadName) != std::string::npos && candidate.message.find("of winding '" + route.winding + "'") != std::string::npos;
         });
         REQUIRE(finding != leads.findings.end());
         CHECK_FALSE(finding->operatingPointIndex);

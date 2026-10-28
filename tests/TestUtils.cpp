@@ -1579,7 +1579,38 @@ TEST_CASE("Test_Read_Log_Captures_Warnings_Without_Changing_The_Logger_Level", "
     const LogLevel levelBefore = logger.getLevel();
     read_log();  // starts the capture on first use, and drains it
     CHECK(logger.getLevel() == levelBefore);
-    logEntry("abt-1643 read_log probe", "Test", 1);  // verbosity 1 = WARNING
+    logEntry("abt-1643 read_log probe", "Coil", 1);  // verbosity 1 = WARNING
     CHECK_THAT(read_log(), Catch::Matchers::ContainsSubstring("abt-1643 read_log probe"));
     CHECK(logger.getLevel() == levelBefore);
+}
+
+// Log records reach the web's Engine log with their module as the source a design engineer reads:
+// MKF identifiers are translated, the translated names are kept, and an entry without a module, or
+// with one nobody named, is refused loudly at any level, never shown with a blank or generic source.
+TEST_CASE("Test_Log_Module_Is_Named_For_People_And_Required", "[support][utils][logger]") {
+    auto& logger = Logger::getInstance();
+    logger.disableCollector();
+    logger.enableCollector(LogLevel::TRACE);
+
+    logEntry("translated", "Coil", 1);
+    logEntry("kept", "Operating points", 1);
+    logger.warning("extrapolated", kMaterialDataExtrapolationModule);
+    auto records = logger.drainCollected();
+    REQUIRE(records.size() == 3);
+    CHECK(records[0].moduleOfOrigin == "Winding");
+    CHECK(records[1].moduleOfOrigin == "Operating points");
+    CHECK(records[2].moduleOfOrigin == "Material data extrapolation");
+
+    CHECK(user_facing_log_module("Inputs", "") == "Operating points");
+    CHECK(user_facing_log_module("CoreAdviser", "") == "Core adviser");
+    CHECK(user_facing_log_module("Temperature", "") == "Thermal model");
+
+    // Refused whatever the level, including one no sink or collector would keep.
+    CHECK_THROWS_WITH(logEntry("no module", "", 1), Catch::Matchers::ContainsSubstring("has no module"));
+    CHECK_THROWS_WITH(logEntry("no module", "", 3), Catch::Matchers::ContainsSubstring("has no module"));
+    CHECK_THROWS_WITH(logger.log(LogLevel::TRACE, "", "no module"), Catch::Matchers::ContainsSubstring("has no module"));
+    CHECK_THROWS_WITH(logger.error("unnamed", "Utils"),
+                      Catch::Matchers::ContainsSubstring("Log module 'Utils' has no user-facing name"));
+    CHECK(logger.drainCollected().empty());
+    logger.disableCollector();
 }

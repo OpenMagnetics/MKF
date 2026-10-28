@@ -188,7 +188,7 @@ void add_scoring(std::string name, MagneticFilters filter, double scoring) {
     // filter-level memo caches mask it afterwards, making the adviser's
     // verdict depend on call history.
     if (std::isnan(scoring)) {
-        logEntry("add_scoring: skipping NaN score for '" + name + "'", "Utils", 2);
+        logEntry("add_scoring: skipping NaN score for '" + name + "'", "AdviserScoring", 2);
         return;
     }
     if (scoring != -1) {
@@ -247,7 +247,7 @@ void logEntry(std::string entry, std::string module, uint8_t entryVerbosity) {
                    : (entryVerbosity == 1) ? LogLevel::WARNING
                    : (entryVerbosity == 2) ? LogLevel::INFO
                    : LogLevel::DEBUG;
-    logger.log(level, module.empty() ? "OpenMagnetics" : module, entry);
+    logger.log(level, module, entry);
 }
 
 // ABT #1328: with useOnlyCoresInStock set, the stock catalogue is the only acceptable answer. The
@@ -514,7 +514,7 @@ static void register_core_shape_aliases(const std::vector<std::pair<std::string,
             }
             summary += "'" + alias + "'";
         }
-        OM_WARNING_M("Utils", "Ignored " + std::to_string(shadowed.size()) + " core shape alias(es) that collide "
+        OM_WARNING_M("CoreCatalogue", "Ignored " + std::to_string(shadowed.size()) + " core shape alias(es) that collide "
                               "with the name of a different shape (" + summary + "). The name resolves to the shape "
                               "that owns it; the aliased shape is still reachable by its own name.");
     }
@@ -590,7 +590,7 @@ void load_core_shapes(bool withAliases, std::optional<std::string> fileToLoad) {
             summary += std::string(magic_enum::enum_name(family)) + " x" + std::to_string(count);
             total += count;
         }
-        OM_WARNING_M("Utils", "Left " + std::to_string(total) + " catalog shape(s) out of the database: no CorePiece "
+        OM_WARNING_M("CoreCatalogue", "Left " + std::to_string(total) + " catalog shape(s) out of the database: no CorePiece "
                               "geometry for their family (" + summary + "). Cores using them cannot be advised or "
                               "built until the family is implemented.");
     }
@@ -3778,7 +3778,7 @@ Magnetic magnetic_autocomplete(Magnetic magnetic, json configuration, std::optio
             if (!layoutIsStated) {
                 throw CoilException(ErrorCode::COIL_WINDING_ERROR, "Autocomplete could not wind this magnetic: " + what);
             }
-            OM_WARNING_M("Utils", "The stated winding layout is laid out as stated, but " + what);
+            OM_WARNING_M("WindingLayout", "The stated winding layout is laid out as stated, but " + what);
         }
     }
     else if (layoutIsStated) {
@@ -3790,7 +3790,7 @@ Magnetic magnetic_autocomplete(Magnetic magnetic, json configuration, std::optio
                              coil.are_sections_and_layers_fitting();
         if (!inside || !fitting) {
             const std::string reason = !inside ? outsideReason : coil.get_last_fit_failure();
-            OM_WARNING_M("Utils", std::string("The stated winding layout is kept as stated, but it does not fit its window") +
+            OM_WARNING_M("WindingLayout", std::string("The stated winding layout is kept as stated, but it does not fit its window") +
                                   (reason.empty() ? std::string(" (its sections or layers overflow)") : ": " + reason));
         }
     }
@@ -4251,6 +4251,18 @@ std::string describe_turn_for_people(const Coil& coil, const std::string& turnNa
         }
     }
     throw InvalidInputException(ErrorCode::INVALID_INPUT, "The coil has no turn named '" + turnName + "'");
+}
+
+std::string describe_lead_for_people(const Coil& coil, const std::string& leadName) {
+    for (const std::string kind : {"entrance", "exit"}) {
+        const std::string prefix = kind + " lead of '";
+        if (leadName.size() > prefix.size() + 1 && leadName.compare(0, prefix.size(), prefix) == 0 && leadName.back() == '\'') {
+            const std::string turnName = leadName.substr(prefix.size(), leadName.size() - prefix.size() - 1);
+            return kind + " lead of " + describe_turn_for_people(coil, turnName);
+        }
+    }
+    throw InvalidInputException(ErrorCode::INVALID_INPUT, "'" + leadName + "' is not a lead's name: a lead is named "
+                                "\"entrance lead of '<turn>'\" or \"exit lead of '<turn>'\"");
 }
 
 } // namespace OpenMagnetics

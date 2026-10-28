@@ -1017,7 +1017,7 @@ TEST_CASE("Autocomplete refusal of a single winding names the layers its turns n
 namespace {
 
 // Autocompletes `name` with the log collector on and returns the magnetic and every WARNING the
-// Utils module logged on the way.
+// stated-layout check (module "Winding layout") logged on the way.
 std::pair<OpenMagnetics::Magnetic, std::vector<std::string>> autocomplete_collecting_warnings(const std::string& name,
                                                                                             bool freshWind) {
     auto& logger = OpenMagnetics::Logger::getInstance();
@@ -1033,7 +1033,7 @@ std::pair<OpenMagnetics::Magnetic, std::vector<std::string>> autocomplete_collec
         throw;
     }
     for (const auto& record : logger.drainCollected()) {
-        if (record.level == OpenMagnetics::LogLevel::WARNING && record.moduleOfOrigin == "Utils") {
+        if (record.level == OpenMagnetics::LogLevel::WARNING && record.moduleOfOrigin == "Winding layout") {
             warnings.push_back(record.message);
         }
     }
@@ -1483,7 +1483,7 @@ TEST_CASE("Real winding: a foil end's lead conductor named outside the wire data
         message = e.what();
     }
     INFO(message);
-    CHECK(message.find("lead conductor of winding") != std::string::npos);
+    CHECK(message.find("lead of winding") != std::string::npos);
     CHECK(message.find("No such lead wire") != std::string::npos);
     OpenMagnetics::Settings::GetInstance().reset();
 }
