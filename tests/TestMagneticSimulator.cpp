@@ -3730,3 +3730,84 @@ TEST_CASE("A powder driven past the field its saturation is tabulated at is not 
     CHECK(ferriteVerdict.fieldStrengthAboveSaturation);
     CHECK(ferriteVerdict.saturates);
 }
+
+namespace {
+// A two-piece set whose data states its gapping as catalogue exports write an ungapped part: a subtractive gap of
+// length 0 on the centre column and the residual gaps of the outer columns (five Wurth catalogue parts carry it).
+OpenMagnetics::Magnetic zero_length_subtractive_gap_magnetic(const std::string& coreType) {
+    json gapping = json::array();
+    gapping.push_back({{"type", "subtractive"}, {"length", 0.0}});
+    gapping.push_back({{"type", "residual"}, {"length", 5e-6}});
+    gapping.push_back({{"type", "residual"}, {"length", 5e-6}});
+    json coreJson;
+    coreJson["functionalDescription"]["name"] = "Zero length gap";
+    coreJson["functionalDescription"]["type"] = coreType;
+    coreJson["functionalDescription"]["material"] = "3C95";
+    coreJson["functionalDescription"]["shape"] = "EFD 20/10/7";
+    coreJson["functionalDescription"]["gapping"] = gapping;
+    coreJson["functionalDescription"]["numberStacks"] = 1;
+    OpenMagnetics::Core core(coreJson);
+    auto bobbin = OpenMagnetics::Bobbin::create_quick_bobbin(core, false);
+    json bobbinJson;
+    to_json(bobbinJson, bobbin);
+    json coilJson;
+    coilJson["bobbin"] = bobbinJson;
+    coilJson["functionalDescription"] = json::array();
+    json windingJson;
+    windingJson["name"] = "Primary";
+    windingJson["numberTurns"] = 12;
+    windingJson["numberParallels"] = 1;
+    windingJson["isolationSide"] = "primary";
+    windingJson["wire"] = "Round 0.475 - Grade 1";
+    coilJson["functionalDescription"].push_back(windingJson);
+    OpenMagnetics::Coil coil(coilJson, 1, WindingOrientation::OVERLAPPING, WindingOrientation::OVERLAPPING,
+                             CoilAlignment::CENTERED, CoilAlignment::CENTERED);
+    coil.delimit_and_compact();
+    OpenMagnetics::Magnetic magnetic;
+    magnetic.set_core(core);
+    magnetic.set_coil(coil);
+    return magnetic;
+}
+}  // namespace
+
+TEST_CASE("Test_Simulate_Two_Piece_Set_With_Zero_Length_Subtractive_Gap_Is_Ungapped_With_A_Warning",
+          "[simulator][gapping][zero-length-gap]") {
+    // ABT #2124 (Alf, 2026-10-28): "a 0 gap length in a two piece set should be equivalent to ungapped/residual,
+    // with just a warning, not an error". The neutral-window field (the default winding-loss field of a single
+    // rectangular window) refused that gap in the final simulation ("a gap at y = 0 opens nowhere onto the winding
+    // window"), so those parts dropped out of every catalogue search at its last step.
+    settings.reset();
+    Logger::getInstance().enableCollector(LogLevel::WARNING);
+    auto magnetic = zero_length_subtractive_gap_magnetic("twoPieceSet");
+    auto records = Logger::getInstance().drainCollected();
+    Logger::getInstance().disableCollector();
+    bool warned = false;
+    for (const auto& record : records) {
+        if (record.moduleOfOrigin == "Core" && record.message.find("subtractive gap of length zero") != std::string::npos) {
+            warned = true;
+        }
+    }
+    CHECK(warned);
+    // Every gap is the residual gap of mating halves now.
+    for (const auto& gap : magnetic.get_core().get_functional_description().get_gapping()) {
+        CHECK(gap.get_type() == GapType::RESIDUAL);
+        CHECK(gap.get_length() == Constants().residualGap);
+    }
+    auto inputs = OpenMagnetics::Inputs::create_quick_operating_point_only_current(100e3, 100e-6, 25, WaveformLabel::TRIANGULAR, 0.4, 0.5, 1.0);
+    OpenMagnetics::Mas mas;
+    mas.set_inputs(inputs);
+    mas.set_magnetic(magnetic);
+    MagneticSimulator magneticSimulator;
+    OpenMagnetics::Mas simulated;
+    REQUIRE_NOTHROW(simulated = magneticSimulator.simulate(mas, true));
+    REQUIRE(simulated.get_outputs().size() == 1);
+    CHECK(simulated.get_outputs()[0].get_winding_losses());
+    settings.reset();
+}
+
+TEST_CASE("Test_Zero_Length_Subtractive_Gap_Outside_A_Two_Piece_Set_Is_Refused",
+          "[simulator][gapping][zero-length-gap]") {
+    settings.reset();
+    REQUIRE_THROWS_WITH(zero_length_subtractive_gap_magnetic("pieceAndPlate"), Catch::Matchers::ContainsSubstring("subtractive gap of length zero"));
+    settings.reset();
+}
