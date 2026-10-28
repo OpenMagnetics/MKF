@@ -5529,8 +5529,8 @@ TEST_CASE("Core losses of a boost PFC line-cycle excitation are priced per switc
         CHECK_THROWS_AS(model->get_core_losses(core, pfc.record, temperature), MaterialFrequencyOutOfSpanException);
         // The refusal is the envelope's, and names the material, its fitted span and the frequency asked.
         CHECK_THROWS_WITH(model->get_core_losses(core, pfc.record, temperature),
-                          Catch::Matchers::ContainsSubstring("3C95") && Catch::Matchers::ContainsSubstring("25000") &&
-                          Catch::Matchers::ContainsSubstring("3000000") && Catch::Matchers::ContainsSubstring("60.000000 Hz is below"));
+                          Catch::Matchers::ContainsSubstring("3C95") && Catch::Matchers::ContainsSubstring("25 kHz") &&
+                          Catch::Matchers::ContainsSubstring("3 MHz") && Catch::Matchers::ContainsSubstring("60 Hz is below"));
         auto record = CoreLossesModel::split_into_switching_cycles(pfc.record);
         REQUIRE(record.has_value());
         CHECK_THROWS_AS(model->compute_core_losses(core, record->envelope, temperature), MaterialFrequencyOutOfSpanException);
@@ -5751,7 +5751,7 @@ TEST_CASE("The line envelope's span check follows allowMaterialDataExtrapolation
         bool warned = false;
         for (const auto& logRecord : collected) {
             if (logRecord.moduleOfOrigin == kMaterialDataExtrapolationModule && logRecord.level == LogLevel::WARNING &&
-                logRecord.message.find("3C95") != std::string::npos && logRecord.message.find("60.000000 Hz") != std::string::npos) {
+                logRecord.message.find("3C95") != std::string::npos && logRecord.detail.find("60 Hz") != std::string::npos) {
                 warned = true;
             }
         }

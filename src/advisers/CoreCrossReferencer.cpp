@@ -212,7 +212,7 @@ std::vector<std::pair<Core, double>> CoreCrossReferencer::MagneticCoreFilterEffe
     std::vector<double> newScoring;
     std::vector<std::pair<Core, double>> filteredCoresWithScoring;
     if (!referenceCore.get_processed_description()) {
-        throw CoreNotProcessedException("Core is not processed");
+        throw CoreNotProcessedException();
     }
     double referenceEffectiveArea = referenceCore.get_processed_description()->get_effective_parameters().get_effective_area();
     add_scored_value("Reference", CoreCrossReferencerFilters::EFFECTIVE_AREA, referenceEffectiveArea);
@@ -233,7 +233,7 @@ std::vector<std::pair<Core, double>> CoreCrossReferencer::MagneticCoreFilterEffe
             }
         }
         if (!core.get_processed_description()) {
-            throw CoreNotProcessedException("Core is not processed");
+            throw CoreNotProcessedException();
         }
         double effectiveArea = core.get_processed_description()->get_effective_parameters().get_effective_area();
 

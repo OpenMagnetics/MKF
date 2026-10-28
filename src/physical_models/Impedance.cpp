@@ -155,8 +155,7 @@ ImpedanceTank Impedance::build_magnetizing_tank(Core& core, Coil& coil) {
     // choke point all four sweep entry points share.
     if (!core.get_processed_description()) {
         throw CoreNotProcessedException(
-            "Impedance needs the core's processed description (effective area and length) to "
-            "build the magnetizing tank; the core carries only its functional description");
+            "needed for the effective area and length of the impedance model's magnetizing branch");
     }
     // The core and its gaps are in series on the flux path: L(f) = N^2 / (R_core(mu=1)/mu(f) + R_gap).
     // R_core(mu=1) = l_e/(mu0 A_e) scales with the complex permeability; the gapping reluctance

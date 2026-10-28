@@ -271,12 +271,16 @@ inline const std::string& user_facing_log_module(const std::string& moduleOfOrig
 /**
  * @brief One structured record kept by the Logger's collector (see Logger::enableCollector).
  * Records with the same level, module and message are merged; `count` says how many times it was logged.
+ * `detail` is the part of an entry that varies between repeats of the same message (the value asked, e.g.
+ * "asked at 1.2 MHz"): it is not part of the merge key, so repeats stay one record, and it holds the
+ * detail of the latest repeat. Empty when the entry has none.
  */
 struct LogRecord {
     LogLevel level;
     std::string moduleOfOrigin;
     std::string message;
     size_t count = 1;
+    std::string detail;
 };
 
 /**
@@ -352,6 +356,16 @@ public:
      * @param message The message to log
      */
     void log(LogLevel level, const std::string& moduleIdentifier, const std::string& message) {
+        log(level, moduleIdentifier, message, std::string());
+    }
+
+    /**
+     * @brief Log a message with a detail that varies between its repeats (see LogRecord::detail)
+     *
+     * The sinks write "message (detail)"; the collector keeps message and detail apart and merges
+     * repeats of the message whatever their detail.
+     */
+    void log(LogLevel level, const std::string& moduleIdentifier, const std::string& message, const std::string& detail) {
         // Checked before the level filter, so a missing or unlisted module is refused even for an
         // entry nobody would have seen.
         const std::string& moduleOfOrigin = user_facing_log_module(moduleIdentifier, message);
@@ -377,11 +391,11 @@ public:
                 if (timestamp.empty()) {
                     timestamp = getTimestamp();
                 }
-                entry.sink->write(level, moduleOfOrigin, message, timestamp);
+                entry.sink->write(level, moduleOfOrigin, detail.empty() ? message : message + " (" + detail + ")", timestamp);
             }
         }
         if (toCollector) {
-            collect(level, moduleOfOrigin, message);
+            collect(level, moduleOfOrigin, message, detail);
         }
     }
 
@@ -433,7 +447,7 @@ public:
         if (_collectedDropped > 0) {
             drained.push_back({LogLevel::WARNING, user_facing_log_module("Logger", ""),
                                std::to_string(_collectedDropped) + " further log records were dropped after the first " +
-                               std::to_string(kMaximumCollectedRecords) + " distinct ones", 1});
+                               std::to_string(kMaximumCollectedRecords) + " distinct ones", 1, ""});
             _collectedDropped = 0;
         }
         return drained;
@@ -466,6 +480,10 @@ public:
     
     void warning(const std::string& message, const std::string& moduleOfOrigin) {
         log(LogLevel::WARNING, moduleOfOrigin, message);
+    }
+
+    void warning(const std::string& message, const std::string& moduleOfOrigin, const std::string& detail) {
+        log(LogLevel::WARNING, moduleOfOrigin, message, detail);
     }
     
     void error(const std::string& message, const std::string& moduleOfOrigin) {
@@ -502,7 +520,7 @@ private:
     }
     
     // Caller holds _mutex.
-    void collect(LogLevel level, const std::string& moduleOfOrigin, const std::string& message) {
+    void collect(LogLevel level, const std::string& moduleOfOrigin, const std::string& message, const std::string& detail) {
         std::string key;
         key.reserve(moduleOfOrigin.size() + message.size() + 3);
         key += static_cast<char>('0' + static_cast<int>(level));
@@ -513,6 +531,7 @@ private:
         auto found = _collectedIndex.find(key);
         if (found != _collectedIndex.end()) {
             _collected[found->second].count++;
+            _collected[found->second].detail = detail;
             return;
         }
         if (_collected.size() >= kMaximumCollectedRecords) {
@@ -520,7 +539,7 @@ private:
             return;
         }
         _collectedIndex.emplace(std::move(key), _collected.size());
-        _collected.push_back({level, moduleOfOrigin, message, 1});
+        _collected.push_back({level, moduleOfOrigin, message, 1, detail});
     }
 
     std::mutex _mutex;

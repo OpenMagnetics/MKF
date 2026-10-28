@@ -874,7 +874,7 @@ Bobbin Bobbin::create_quick_bobbin(Core core, double thickness, std::optional<MA
 
 Bobbin Bobbin::create_quick_bobbin(Core core, double wallThickness, double columnThickness, std::optional<MAS::OrientationEnum> pinsOrientation) {
     if (!core.get_processed_description()) {
-        throw CoreNotProcessedException("Core has not been processed yet");
+        throw CoreNotProcessedException();
     }
 
     auto coreWindingWindows = core.get_processed_description()->get_winding_windows();
@@ -1130,7 +1130,7 @@ std::string format_mm(double metres) {
 
 Bobbin::SynthesisedPinout Bobbin::synthesise_quick_bobbin_pinout(const Core& core, MAS::OrientationEnum orientation) {
     if (!core.get_processed_description()) {
-        throw CoreNotProcessedException("Quick-bobbin pins are sized from the processed core, and this core is not processed");
+        throw CoreNotProcessedException("needed to size the quick bobbin's pins");
     }
     const auto& rules = quick_bobbin_pin_rules();
     const std::string family = to_string(core.get_shape_family());
@@ -2580,7 +2580,7 @@ void Bobbin::set_column_corner_radius_from_core(const Core& core) {
         return;
     }
     if (!core.get_processed_description()) {
-        throw CoreNotProcessedException("Core has not been processed yet");
+        throw CoreNotProcessedException();
     }
     // By value: get_processed_description() returns the optional by value; a reference into it dangles (ABT #2097).
     const auto columns = core.get_processed_description()->get_columns();

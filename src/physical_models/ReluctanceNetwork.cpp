@@ -8,7 +8,7 @@ namespace OpenMagnetics {
 
 ReluctanceNetwork::ReluctanceNetwork(Core core, double ungappedCoreReluctance, std::vector<AirGapReluctanceOutput> reluctancePerGap) {
     if (!core.get_processed_description()) {
-        throw CoreNotProcessedException("Core is not processed, cannot build its magnetic circuit");
+        throw CoreNotProcessedException("needed to build its magnetic circuit");
     }
     if (std::isnan(ungappedCoreReluctance) || ungappedCoreReluctance <= 0) {
         throw InvalidInputException(ErrorCode::INVALID_CORE_DATA,
@@ -155,7 +155,7 @@ static std::set<int64_t> resolve_distinct_windows_from_sections(const OpenMagnet
 std::vector<size_t> ReluctanceNetwork::resolve_winding_column_indexes(Magnetic magnetic) {
     auto core = magnetic.get_core();
     if (!core.get_processed_description()) {
-        throw CoreNotProcessedException("Core is not processed, cannot resolve winding columns");
+        throw CoreNotProcessedException("needed to resolve winding columns");
     }
     auto windingWindows = core.get_winding_windows();
     size_t mainColumnIndex = core.get_main_column_index();
@@ -389,7 +389,7 @@ std::vector<double> ReluctanceNetwork::resolve_winding_polarities(Magnetic magne
     // the core's).
     auto core = magnetic.get_core();
     if (!core.get_processed_description()) {
-        throw CoreNotProcessedException("Core is not processed, cannot resolve winding orientations");
+        throw CoreNotProcessedException("needed to resolve winding orientations");
     }
     std::vector<WindingWindowElement> windingWindows = core.get_winding_windows();
     {

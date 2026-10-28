@@ -151,21 +151,21 @@ Core::Core(const CoreShape declaredShape, std::optional<CoreMaterial> material) 
 
 double Core::get_depth() const {
     if (!get_processed_description()) {
-        throw CoreNotProcessedException("Core is not processed");
+        throw CoreNotProcessedException();
     }
     return get_processed_description()->get_depth();
 }
 
 double Core::get_height() const {
     if (!get_processed_description()) {
-        throw CoreNotProcessedException("Core is not processed");
+        throw CoreNotProcessedException();
     }
     return get_processed_description()->get_height();
 }
 
 double Core::get_width() const {
     if (!get_processed_description()) {
-        throw CoreNotProcessedException("Core is not processed");
+        throw CoreNotProcessedException();
     }
     return get_processed_description()->get_width();
 }
@@ -200,7 +200,7 @@ double Core::get_mass() {
 double Core::get_effective_length() const {
     const auto processedDescription = get_processed_description();  // one copy: the MAS getter returns it by value
     if (!processedDescription) {
-        throw CoreNotProcessedException("Core is not processed");
+        throw CoreNotProcessedException();
     }
     return processedDescription->get_effective_parameters().get_effective_length();
 }
@@ -208,21 +208,21 @@ double Core::get_effective_length() const {
 double Core::get_effective_area() const {
     const auto processedDescription = get_processed_description();  // one copy: the MAS getter returns it by value
     if (!processedDescription) {
-        throw CoreNotProcessedException("Core is not processed");
+        throw CoreNotProcessedException();
     }
     return processedDescription->get_effective_parameters().get_effective_area();
 }
 
 double Core::get_minimum_area() const {
     if (!get_processed_description()) {
-        throw CoreNotProcessedException("Core is not processed");
+        throw CoreNotProcessedException();
     }
     return get_processed_description()->get_effective_parameters().get_minimum_area();
 }
 
 double Core::get_effective_volume() const {
     if (!get_processed_description()) {
-        throw CoreNotProcessedException("Core is not processed");
+        throw CoreNotProcessedException();
     }
     return get_processed_description()->get_effective_parameters().get_effective_volume();
 }
@@ -1817,7 +1817,7 @@ double Core::get_toroid_edge_radius() const {
             "bobbin-wound core's turns bend around the bobbin's column corner instead");
     }
     if (!get_processed_description()) {
-        throw CoreNotProcessedException("Core has not been processed yet");
+        throw CoreNotProcessedException();
     }
     // get_processed_description() hands the optional back BY VALUE and get_columns() returns a
     // reference INTO it, so the description has to be a named local: binding the column vector
@@ -2500,7 +2500,7 @@ double Core::get_density() {
 
 std::vector<ColumnElement> Core::get_columns() const {
     if (!get_processed_description()) {
-        throw CoreNotProcessedException("Core is not processed");
+        throw CoreNotProcessedException();
     }
     return get_processed_description().value().get_columns();
 }
@@ -2525,7 +2525,7 @@ std::vector<WindingWindowElement> Core::get_winding_windows() const {
 
 size_t Core::get_main_column_index() const {
     if (!get_processed_description()) {
-        throw CoreNotProcessedException("Core is not processed");
+        throw CoreNotProcessedException();
     }
     auto columns = get_processed_description().value().get_columns();
     if (columns.empty()) {
@@ -2541,7 +2541,7 @@ size_t Core::get_main_column_index() const {
 
 size_t Core::get_winding_window_column_index(size_t windingWindowIndex) const {
     if (!get_processed_description()) {
-        throw CoreNotProcessedException("Core is not processed");
+        throw CoreNotProcessedException();
     }
     auto windingWindows = get_processed_description().value().get_winding_windows();
     if (windingWindowIndex >= windingWindows.size()) {

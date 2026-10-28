@@ -1,3 +1,4 @@
+#include "support/NumberFormat.h"
 #include "physical_models/ComplexPermeability.h"
 #include <source_location>
 #include "constructive_models/Mas.h"
@@ -234,9 +235,9 @@ TEST_CASE("Test_All_Examples_Real_Geometry_Physics", "[constructive-model][mas][
                     for (auto& record : Logger::getInstance().drainCollected()) {
                         if (record.moduleOfOrigin == kMaterialDataExtrapolationModule && record.level == LogLevel::WARNING &&
                             record.message.find("N87") != std::string::npos &&
-                            record.message.find(std::to_string(1.0) + " Hz is below") != std::string::npos &&
-                            record.message.find(std::to_string(spanMinimum)) != std::string::npos &&
-                            record.message.find(std::to_string(spanMaximum)) != std::string::npos) {
+                            record.detail.find("asked at " + format_quantity(1.0, "Hz") + ", below") != std::string::npos &&
+                            record.message.find(format_quantity(spanMinimum, "Hz")) != std::string::npos &&
+                            record.message.find(format_quantity(spanMaximum, "Hz")) != std::string::npos) {
                             reported = true;
                         }
                     }

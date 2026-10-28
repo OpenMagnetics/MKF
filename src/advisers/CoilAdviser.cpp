@@ -12,6 +12,8 @@
 #include <set>
 #include <limits> // B18 FIX: for numeric_limits
 #include "support/Exceptions.h"
+#include "support/Utils.h"
+#include "support/NumberFormat.h"
 #include "support/Logger.h"
 
 
@@ -59,10 +61,11 @@ std::string describe_operating_frequencies(const OpenMagnetics::Inputs& inputs) 
         const auto& operatingPoint = inputs.get_operating_points()[operatingPointIndex];
         if (operatingPoint.get_excitations_per_winding().empty()) {
             throw OpenMagnetics::InvalidInputException(OpenMagnetics::ErrorCode::MISSING_DATA,
-                "Operating point " + std::to_string(operatingPointIndex) + " has no excitations");
+                "The " + OpenMagnetics::describe_operating_point_for_people(operatingPoint, operatingPointIndex) +
+                " has no excitations: give each winding a voltage or a current");
         }
         description += (operatingPointIndex == 0 ? " " : ", ") +
-                       std::to_string(operatingPoint.get_excitations_per_winding()[0].get_frequency()) + " Hz";
+                       OpenMagnetics::format_quantity(operatingPoint.get_excitations_per_winding()[0].get_frequency(), "Hz");
     }
     return description;
 }

@@ -207,8 +207,7 @@ LeakageInductanceOutput LeakageInductance::calculate_leakage_inductance(Magnetic
     // "std::get: wrong index for variant". Surface it clearly instead.
     if (!magnetic.get_core().get_processed_description()) {
         throw CoreNotProcessedException(
-            "Cannot calculate leakage inductance: the core has no processed description "
-            "(effective parameters/shape unresolved). Run magnetic autocomplete / process the core first.");
+            "needed to calculate the leakage inductance");
     }
 
     // Magnetic shunts (MAS-RFC 0015, ABT #1176). A sheet across the window carries the leakage flux
@@ -450,8 +449,7 @@ double LeakageInductance::calculate_leakage_field_energy(Magnetic magnetic, cons
     }
     if (!magnetic.get_core().get_processed_description()) {
         throw CoreNotProcessedException(
-            "Cannot calculate leakage field energy: the core has no processed description "
-            "(effective parameters/shape unresolved). Run magnetic autocomplete / process the core first.");
+            "needed to calculate the leakage field energy");
     }
     size_t numberWindings = magnetic.get_coil().get_functional_description().size();
     if (currentsRmsSigned.size() != numberWindings) {
@@ -974,7 +972,7 @@ LeakageInductance::ToroidalRingPlaneConductors LeakageInductance::calculate_toro
         throw InvalidInputException(ErrorCode::INVALID_CORE_DATA, "Toroidal leakage model called on a core that is not toroidal");
     }
     if (!core.get_processed_description()) {
-        throw CoreNotProcessedException("Toroidal leakage: the core has no processed description");
+        throw CoreNotProcessedException("needed by the toroidal leakage model");
     }
     auto& coil = magnetic.get_mutable_coil();
     auto windings = coil.get_functional_description();

@@ -267,8 +267,7 @@ std::vector<std::vector<double>> Inductance::calculate_inductance_matrix_values(
     // a cryptic "std::get: wrong index for variant". Surface it clearly instead.
     if (!magnetic.get_core().get_processed_description()) {
         throw CoreNotProcessedException(
-            "Cannot calculate inductance matrix: the core has no processed description "
-            "(effective parameters/shape unresolved). Run magnetic autocomplete / process the core first.");
+            "needed to calculate the inductance matrix");
     }
 
     // Calculate magnetizing inductance (referred to primary)

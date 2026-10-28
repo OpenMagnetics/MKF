@@ -3225,8 +3225,8 @@ TEST_CASE("Test_CoilAdviser_Unbalanced_Voltage_Rejected_Before_Winding", "[advis
     }
     settings.reset();
     INFO(message);
-    REQUIRE(message.find("Adviser inputs are invalid: operating point 0") != std::string::npos);
-    CHECK(message.find("winding 0 ('Primary')") != std::string::npos);
+    REQUIRE(message.find("Adviser inputs are invalid: operating point 'Op. Point No. 1'") != std::string::npos);
+    CHECK(message.find("primary winding 'Primary'") != std::string::npos);
     // The captured primary is -20.5 / +70.5 V at 50 % duty: a mean of +25 V.
     auto meanPosition = message.find("not volt-second balanced: its mean of ");
     REQUIRE(meanPosition != std::string::npos);
@@ -3523,8 +3523,8 @@ TEST_CASE("Test_CoilAdviser_Coils_Whose_Losses_Cannot_Be_Evaluated_Are_Dropped_F
     INFO(log);
     REQUIRE(masMagneticsWithCoil.size() == 1);
     CHECK(log.find("dropped from the loss ranking") != std::string::npos);
-    CHECK(log.find("(material 67, frequency 100000.000000 Hz)") != std::string::npos);
-    CHECK(log.find("Steinmetz loss coefficients are fitted over 2000000.000000 Hz to 20000000.000000 Hz") != std::string::npos);
+    CHECK(log.find("(material 67, frequency 100 kHz)") != std::string::npos);
+    CHECK(log.find("Steinmetz loss coefficients are fitted from 2 MHz to 20 MHz") != std::string::npos);
     CHECK(log.find("could be ranked by losses; returning them in winding order, unranked") != std::string::npos);
 }
 

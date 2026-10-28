@@ -3267,7 +3267,7 @@ void MagneticFieldStrengthImagedMmfSheetsModel::setup(Magnetic magnetic, const s
         throw NotImplementedException("IMAGED_MMF_SHEETS: toroidal cores have no rectangular image frame");
     }
     if (!core.get_processed_description()) {
-        throw CoreNotProcessedException("IMAGED_MMF_SHEETS: core is not processed");
+        throw CoreNotProcessedException("needed by the IMAGED_MMF_SHEETS field model");
     }
     auto windingWindows = core.get_processed_description()->get_winding_windows();
     if (windingWindows.size() != 1) {

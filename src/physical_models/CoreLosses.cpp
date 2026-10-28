@@ -2,6 +2,7 @@
 #include "support/MasAccess.h"
 #include "constructive_models/CorePiece.h"
 #include "physical_models/CoreLosses.h"
+#include "support/NumberFormat.h"
 #include <algorithm>
 #include "physical_models/Resistivity.h"
 #include "physical_models/InitialPermeability.h"
@@ -275,8 +276,12 @@ static void throw_if_above_curie_temperature(const CoreMaterial& coreMaterial, d
     if (curieTemperature && temperature >= curieTemperature.value()) {
         MaterialAboveCurieTemperatureException aboveCurie(coreMaterial.get_name(), temperature, curieTemperature.value());
         // Settings::allowMaterialDataExtrapolation (explicit opt-in): evaluate the ferromagnetic loss
-        // model there anyway, with a WARNING naming the material, the temperature and the Curie point.
-        if (material_data_extrapolation_allowed(aboveCurie.what())) {
+        // model there anyway, with a WARNING naming the material and the Curie point, and the temperature as detail.
+        if (material_data_extrapolation_allowed(
+                "Material " + coreMaterial.get_name() + ": core losses at or above its Curie temperature of " +
+                    format_significant(curieTemperature.value()) + " C are computed with its ferromagnetic loss model, "
+                    "which no longer describes the material there",
+                "asked at " + format_significant(temperature) + " C")) {
             return;
         }
         throw aboveCurie;
@@ -891,20 +896,31 @@ SteinmetzCoreLossesMethodRangeDatum CoreLossesModel::get_steinmetz_coefficients(
     if (frequency < minimumMaterialFrequency || frequency > maximumMaterialFrequency) {
         MaterialFrequencyOutOfSpanException outOfSpan(materialData.get_name(), "Steinmetz", frequency,
                                                       minimumMaterialFrequency, maximumMaterialFrequency);
-        if (material_data_extrapolation_allowed(outOfSpan.what())) {
+        if (material_data_extrapolation_allowed(
+                "Material " + materialData.get_name() + ": its Steinmetz loss coefficients are fitted from " +
+                    format_quantity(minimumMaterialFrequency, "Hz") + " to " + format_quantity(maximumMaterialFrequency, "Hz") +
+                    "; core losses outside that span are extrapolated from the nearest fitted range",
+                "asked at " + format_quantity(frequency, "Hz") + ", " +
+                    (frequency < minimumMaterialFrequency ? "below" : "above") + " that span")) {
             return nearestRange();
         }
         throw outOfSpan;
     }
 
-    std::string gapMessage = "Material " + materialData.get_name() + ": " + std::to_string(frequency) +
-                             " Hz falls in a gap between its Steinmetz ranges (fitted over " +
-                             std::to_string(minimumMaterialFrequency) + " Hz to " +
-                             std::to_string(maximumMaterialFrequency) + " Hz)";
-    if (material_data_extrapolation_allowed(gapMessage)) {
+    if (material_data_extrapolation_allowed(
+            "Material " + materialData.get_name() + ": its Steinmetz loss coefficients, fitted from " +
+                format_quantity(minimumMaterialFrequency, "Hz") + " to " + format_quantity(maximumMaterialFrequency, "Hz") +
+                ", leave gaps between their ranges; core losses in a gap are extrapolated from the nearest fitted range",
+            "asked at " + format_quantity(frequency, "Hz") + ", in a gap")) {
         return nearestRange();
     }
-    throw CalculationException(ErrorCode::CALCULATION_INVALID_INPUT, gapMessage);
+    throw CalculationException(ErrorCode::CALCULATION_INVALID_INPUT,
+                               "Material " + materialData.get_name() + ": " + format_quantity(frequency, "Hz") +
+                               " falls in a gap between its Steinmetz ranges (fitted from " +
+                               format_quantity(minimumMaterialFrequency, "Hz") + " to " +
+                               format_quantity(maximumMaterialFrequency, "Hz") +
+                               "), where its data gives no core losses. Choose a material whose loss data covers this "
+                               "frequency, or allow material data extrapolation");
 }
 
 
@@ -3399,7 +3415,7 @@ double CoreLossesRoshenModel::get_eddy_current_losses_density(Core core,
         magneticFluxDensityTime = magneticFluxDensity.get_waveform().value().get_time().value();
     }
     if (!core.get_processed_description()) {
-        throw CoreNotProcessedException("Core is not processed");
+        throw CoreNotProcessedException();
     }
 
     auto coreMaterial = core.resolve_material();
@@ -3881,8 +3897,12 @@ static void throw_if_loss_factor_above_small_signal_flux(const CoreLossesLossFac
     }
     catch (const LossFactorAboveSmallSignalFluxException& aboveSmallSignal) {
         // Settings::allowMaterialDataExtrapolation (explicit opt-in): evaluate the loss factor there anyway, with a
-        // WARNING naming the material, the flux and the bound.
-        if (material_data_extrapolation_allowed(aboveSmallSignal.what())) {
+        // WARNING naming the material and the bound, and the flux as detail.
+        if (material_data_extrapolation_allowed(
+                "Material " + aboveSmallSignal.material_name() + ": its loss factor (tan(delta)/mu_i) is small-signal data, "
+                    "defined up to " + format_quantity(aboveSmallSignal.maximum_magnetic_flux_density(), "T") +
+                    "; core losses at a larger flux are computed from it anyway and leave out the hysteresis loss",
+                "asked at a flux amplitude of " + format_quantity(aboveSmallSignal.magnetic_flux_density_amplitude(), "T"))) {
             return;
         }
         throw;

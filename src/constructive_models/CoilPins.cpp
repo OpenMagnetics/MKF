@@ -1836,7 +1836,7 @@ PinAssignmentResult Coil::assign_pins(const Bobbin& bobbin, const Core& core) {
         result.requiredCreepage = InsulationCoordinator().calculate_creepage_distance(inputs, false);
     }
     if (!core.get_processed_description()) {
-        throw CoreNotProcessedException("assign_pins needs the processed core for the through-core creepage path");
+        throw CoreNotProcessedException("needed for the creepage path through the core when placing pins");
     }
     const double halfWidth = core.get_width() / 2;
     // A toroid's pins are in the MVB++ toroid frame (ring axis Y, ring in XZ), while the processed core

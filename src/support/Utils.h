@@ -155,11 +155,13 @@ std::string read_log();
 
 // Settings::allowMaterialDataExtrapolation (on by default since Alf, 2026-10-25; always off under an adviser). Every site that uses a core material outside the data
 // it carries asks this before throwing: when the flag is off it returns false and logs nothing, and the caller
-// throws exactly as before; when it is on it logs `what` (which must name the material, the quantity, the value
-// and the range the data covers) as a WARNING from module kMaterialDataExtrapolationModule and returns true, and
-// the caller evaluates the same model outside its range.
+// throws exactly as before; when it is on it logs a WARNING from module kMaterialDataExtrapolationModule and
+// returns true, and the caller evaluates the same model outside its range.
+// The warning is `summary`, which names the material, the quantity and the range its data covers and is the same
+// for every value asked of that material (so repeats merge into one Engine log row), with `detail` naming the
+// value asked this time (LogRecord::detail). Both are written for the person reading the log: no setting names.
 inline constexpr const char* kMaterialDataExtrapolationModule = "Material data extrapolation";
-bool material_data_extrapolation_allowed(const std::string& what);
+bool material_data_extrapolation_allowed(const std::string& summary, const std::string& detail);
 
 bool check_requirement(DimensionWithTolerance requirement, double value);
 Core find_core_by_name(std::string name);
@@ -388,6 +390,10 @@ std::string describe_turn_for_people(const Coil& coil, const std::string& turnNa
 // A lead as people read it, from the name the real-winding judgements give it ("entrance lead of '<turn>'"
 // or "exit lead of '<turn>'"): "entrance lead of turn 1 of winding 'Primary'", no article. Any other name throws.
 std::string describe_lead_for_people(const Coil& coil, const std::string& leadName);
+// An operating point named as the web shows it, for error messages a person reads: "operating point 'Full load'"
+// when it has a name, otherwise "operating point 2" (counted from 1). Not for findings: their "At operating point
+// N ('name'): " prefix is a contract with the web (ResultsAnalyzer::describe_operating_point).
+std::string describe_operating_point_for_people(const OperatingPoint& operatingPoint, size_t operatingPointIndex);
 
 } // namespace OpenMagnetics
 

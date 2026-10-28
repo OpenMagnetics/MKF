@@ -1748,10 +1748,9 @@ std::pair<bool, std::string> Inputs::check_integrity() {
                 // with no waveform) therefore died on an empty optional, and "bad optional access"
                 // named neither the operating point, the winding, nor what was actually needed.
                 if (!excitation.get_voltage() || !excitation.get_voltage()->get_waveform()) {
-                    std::string operatingPointLabel = "operating point " + std::to_string(i) +
-                        (operatingPoints[i].get_name() ? " ('" + operatingPoints[i].get_name().value() + "')" : "");
                     throw std::invalid_argument(
-                        operatingPointLabel + ", winding " + std::to_string(processedExcitationsPerWinding.size()) +
+                        "At the " + describe_operating_point_for_people(operatingPoints[i], i) + ", winding " +
+                        std::to_string(processedExcitationsPerWinding.size() + 1) +
                         ": the excitation has no current, so one has to be derived from the voltage — and it has no"
                         " voltage waveform either. Give the winding a current, or a voltage to derive it from.");
                 }
@@ -1774,8 +1773,7 @@ std::pair<bool, std::string> Inputs::check_integrity() {
         // neither the operating point, nor the winding, nor the field. Reflect whatever the
         // primary actually has, and when it has nothing to reflect, say so.
         if (turnsRatios.size() > operatingPoints[i].get_excitations_per_winding().size() - 1) {
-            std::string operatingPointLabel = "operating point " + std::to_string(i) +
-                (operatingPoints[i].get_name() ? " ('" + operatingPoints[i].get_name().value() + "')" : "");
+            std::string operatingPointLabel = "At the " + describe_operating_point_for_people(operatingPoints[i], i);
 
             if (turnsRatios.size() == 1 && operatingPoints[i].get_excitations_per_winding().size() == 1) {
                 // We are missing excitation only for secondary
@@ -1788,8 +1786,8 @@ std::pair<bool, std::string> Inputs::check_integrity() {
                             throw std::invalid_argument(
                                 operatingPointLabel + ": the design requirements declare " +
                                 std::to_string(turnsRatios.size() + 1) + " windings but only one excitation was"
-                                " given, so the secondary has to be reflected from the primary — and winding 0"
-                                " has neither a voltage nor a current to reflect. Give winding 0 a voltage or a"
+                                " given, so the secondary has to be reflected from the primary — and the primary winding"
+                                " has neither a voltage nor a current to reflect. Give the primary winding a voltage or a"
                                 " current, or supply the secondary excitation directly.");
                         }
 
@@ -2508,14 +2506,11 @@ void Inputs::check_adviser_inputs_volt_second_balance(const Inputs& inputs,
         auto preparedVoltage = preparedOperatingPoint.get_excitations_per_winding()[0].get_voltage().value();
         auto sampledVoltageWaveform = calculate_sampled_waveform(preparedVoltage.get_waveform().value(), frequency);
 
-        std::string operatingPointLabel = "operating point " + std::to_string(operatingPointIndex);
-        if (operatingPoint.get_name()) {
-            operatingPointLabel += " ('" + operatingPoint.get_name().value() + "')";
-        }
+        std::string operatingPointLabel = describe_operating_point_for_people(operatingPoint, operatingPointIndex);
         std::string windingName = primaryWindingName ? primaryWindingName.value()
                                                      : excitation.get_name().value_or("unnamed");
         check_volt_second_balance(sampledVoltageWaveform,
-            "Adviser inputs are invalid: " + operatingPointLabel + ", winding 0 ('" + windingName + "')");
+            "Adviser inputs are invalid: " + operatingPointLabel + ", primary winding '" + windingName + "'");
     }
 }
 

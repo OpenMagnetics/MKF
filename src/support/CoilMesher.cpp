@@ -309,7 +309,7 @@ std::pair<Field, double> CoilMesher::generate_mesh_core_winding_window_grid(Magn
     }
     auto core = magnetic.get_core();
     if (!core.get_processed_description()) {
-        throw CoreNotProcessedException("Core winding window grid: the core has no processed description");
+        throw CoreNotProcessedException("needed to grid the winding window");
     }
     if (core.get_shape_family() == CoreShapeFamily::T) {
         throw InvalidInputException(ErrorCode::INVALID_CORE_DATA, "Core winding window grid: toroidal windows are not rectangular");
@@ -737,7 +737,7 @@ std::vector<FieldPoint> CoilMesherCenterModel::generate_mesh_inducing_turn(const
 
     double corePermeability = core.get_initial_permeability(defaults.ambientTemperature);
     if (!core.get_processed_description()) {
-        throw CoreNotProcessedException("Core is not processed");
+        throw CoreNotProcessedException();
     }
 
     auto processedDescription = core.get_processed_description().value();
@@ -1211,7 +1211,7 @@ std::vector<FieldPoint> CoilMesherWangModel::generate_mesh_inducing_turn(const T
 std::vector<WindowWallSheet> CoilMesher::generate_window_wall_sheets(Magnetic magnetic, std::optional<OperatingPoint> operatingPoint) {
     auto core = magnetic.get_core();
     if (!core.get_processed_description()) {
-        throw CoreNotProcessedException("Core is not processed");
+        throw CoreNotProcessedException();
     }
     if (core.get_shape_family() == CoreShapeFamily::T) {
         throw NotImplementedException("Neutral window field: toroids have no rectangular window boundary");

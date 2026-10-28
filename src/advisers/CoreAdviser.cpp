@@ -1,4 +1,5 @@
 #include "advisers/CoreAdviser.h"
+#include "support/Utils.h"
 #include "support/StableSortByIndex.h"
 #include "advisers/CoreMaterialCrossReferencer.h"
 #include "advisers/MagneticFilter.h"
@@ -316,9 +317,9 @@ static void throw_if_inputs_are_not_processed(Inputs& inputs) {
             if (!excitation.get_current()) {
                 continue;  // a voltage-only excitation is completed later, from the inductance
             }
-            std::string where = "operating point " + std::to_string(operatingPointIndex) +
-                                ", winding " + std::to_string(windingIndex) +
-                                " ('" + excitation.get_name().value_or("<unnamed>") + "')";
+            std::string where = describe_operating_point_for_people(operatingPoints[operatingPointIndex], operatingPointIndex) +
+                                ", winding " + std::to_string(windingIndex + 1) +
+                                (excitation.get_name() ? " ('" + excitation.get_name().value() + "')" : std::string());
             auto missing = [&](const std::string& field) {
                 return InvalidInputException(ErrorCode::MISSING_DATA,
                     "CoreAdviser needs the processed current data for " + where + ", but " + field +

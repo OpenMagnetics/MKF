@@ -18,6 +18,7 @@
 #include "support/Exceptions.h"
 #include "support/Logger.h"
 #include "support/Utils.h"
+#include "support/NumberFormat.h"
 #include "TestingUtils.h"
 
 #include <catch2/catch_test_macros.hpp>
@@ -114,13 +115,14 @@ TEST_CASE("Steinmetz outside the fitted span: off throws and logs nothing, on ex
         auto records = extrapolation_records(Logger::getInstance().drainCollected());
         REQUIRE_FALSE(records.empty());
         CHECK(records[0].level == LogLevel::WARNING);
+        // The message names the material and the span its data covers; the frequency asked is the record's detail.
         CHECK_THAT(records[0].message, Catch::Matchers::ContainsSubstring("TP5H") &&
                                        Catch::Matchers::ContainsSubstring("Steinmetz") &&
-                                       Catch::Matchers::ContainsSubstring(std::to_string(100000.0)) &&
-                                       Catch::Matchers::ContainsSubstring(std::to_string(tp5hMinimum)) &&
-                                       Catch::Matchers::ContainsSubstring(std::to_string(tp5hMaximum)) &&
-                                       Catch::Matchers::ContainsSubstring("below") &&
-                                       Catch::Matchers::ContainsSubstring("allowMaterialDataExtrapolation"));
+                                       Catch::Matchers::ContainsSubstring(format_quantity(tp5hMinimum, "Hz")) &&
+                                       Catch::Matchers::ContainsSubstring(format_quantity(tp5hMaximum, "Hz")) &&
+                                       !Catch::Matchers::ContainsSubstring("allowMaterialDataExtrapolation"));
+        CHECK_THAT(records[0].detail, Catch::Matchers::ContainsSubstring(format_quantity(100000.0, "Hz")) &&
+                                      Catch::Matchers::ContainsSubstring("below"));
 
         // Above the highest range: 3C95's highest range is the one carried up.
         auto [c95Minimum, c95Maximum] = CoreLossesModel::get_steinmetz_fitted_span("3C95");
@@ -128,12 +130,32 @@ TEST_CASE("Steinmetz outside the fitted span: off throws and logs nothing, on ex
         CHECK(above.get_maximum_frequency().value() == c95Maximum);
         auto aboveRecords = extrapolation_records(Logger::getInstance().drainCollected());
         REQUIRE(aboveRecords.size() == 1);
-        CHECK_THAT(aboveRecords[0].message, Catch::Matchers::ContainsSubstring("3C95") && Catch::Matchers::ContainsSubstring("above"));
+        CHECK_THAT(aboveRecords[0].message, Catch::Matchers::ContainsSubstring("3C95"));
+        CHECK_THAT(aboveRecords[0].detail, Catch::Matchers::ContainsSubstring("above"));
 
         // Inside the span nothing changes and nothing is logged.
         CHECK_NOTHROW(CoreLossesModel::get_steinmetz_coefficients("3C95", 100000));
         CHECK(extrapolation_records(Logger::getInstance().drainCollected()).empty());
     }
+    settings.reset();
+}
+
+// Repeats of one material's extrapolation at different values are one record: the message is the same for
+// every value asked (material and the span its data covers), the value asked is the detail, so the web's
+// Engine log shows one row with a count instead of one row per frequency.
+TEST_CASE("Extrapolation warnings for one material merge into one record whatever value is asked", "[material-extrapolation][core-losses][logger]") {
+    settings.reset();
+    clear_databases();
+    CollectorGuard collector;
+    settings.set_allow_material_data_extrapolation(true);
+    auto [tp5hMinimum, tp5hMaximum] = CoreLossesModel::get_steinmetz_fitted_span("TP5H");
+    REQUIRE(tp5hMinimum > 200000);
+    CoreLossesModel::get_steinmetz_coefficients("TP5H", 100000);
+    CoreLossesModel::get_steinmetz_coefficients("TP5H", 200000);
+    auto records = extrapolation_records(Logger::getInstance().drainCollected());
+    REQUIRE(records.size() == 1);
+    CHECK(records[0].count == 2);
+    CHECK_THAT(records[0].detail, Catch::Matchers::ContainsSubstring(format_quantity(200000.0, "Hz")));
     settings.reset();
 }
 
@@ -204,8 +226,8 @@ TEST_CASE("Core losses above the Curie temperature: off throws, on evaluates and
         CHECK(records[0].level == LogLevel::WARNING);
         CHECK_THAT(records[0].message, Catch::Matchers::ContainsSubstring("PC95") &&
                                        Catch::Matchers::ContainsSubstring("Curie") &&
-                                       Catch::Matchers::ContainsSubstring(std::to_string(curieTemperature)) &&
-                                       Catch::Matchers::ContainsSubstring(std::to_string(curieTemperature + 10)));
+                                       Catch::Matchers::ContainsSubstring(format_significant(curieTemperature) + " C"));
+        CHECK_THAT(records[0].detail, Catch::Matchers::ContainsSubstring(format_significant(curieTemperature + 10) + " C"));
     }
     settings.reset();
 }
@@ -473,9 +495,9 @@ TEST_CASE("A MAS below its material's fitted span extrapolates by default with o
         REQUIRE(records.size() == 1);
         CHECK(records[0].level == LogLevel::WARNING);
         CHECK_THAT(records[0].message, Catch::Matchers::ContainsSubstring(materialName) &&
-                                       Catch::Matchers::ContainsSubstring(std::to_string(frequency) + " Hz is below") &&
-                                       Catch::Matchers::ContainsSubstring(std::to_string(spanMinimum)) &&
-                                       Catch::Matchers::ContainsSubstring(std::to_string(spanMaximum)));
+                                       Catch::Matchers::ContainsSubstring(format_quantity(spanMinimum, "Hz")) &&
+                                       Catch::Matchers::ContainsSubstring(format_quantity(spanMaximum, "Hz")));
+        CHECK_THAT(records[0].detail, Catch::Matchers::ContainsSubstring("asked at " + format_quantity(frequency, "Hz") + ", below"));
     }
     {
         CollectorGuard collector;

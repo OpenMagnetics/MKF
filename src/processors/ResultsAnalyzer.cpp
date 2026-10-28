@@ -266,11 +266,11 @@ std::vector<ResultFinding> ResultsAnalyzer::analyze_saturation(const Magnetic& m
                                                                std::optional<Topology> topology) {
     std::string where = describe_operating_point(operatingPoint, operatingPointIndex);
     if (!output.get_core_losses()) {
-        throw InvalidInputException(ErrorCode::MISSING_DATA, "analyze_results: the output of " + where + " has no core losses, which carry its flux density");
+        throw InvalidInputException(ErrorCode::MISSING_DATA, "analyze_results: the output of the " + describe_operating_point_for_people(operatingPoint, operatingPointIndex) + " has no core losses, which carry its flux density");
     }
     auto coreLosses = output.get_core_losses().value();
     if (!coreLosses.get_magnetic_flux_density()) {
-        throw InvalidInputException(ErrorCode::MISSING_DATA, "analyze_results: the core losses of " + where + " carry no magnetic flux density");
+        throw InvalidInputException(ErrorCode::MISSING_DATA, "analyze_results: the core losses of the " + describe_operating_point_for_people(operatingPoint, operatingPointIndex) + " carry no magnetic flux density");
     }
     double peakFluxDensity = get_peak_flux_density(coreLosses.get_magnetic_flux_density().value());
     const auto coreMaterial = magnetic.get_core().resolve_material();
@@ -392,12 +392,12 @@ std::vector<ResultFinding> ResultsAnalyzer::analyze_temperature(const Magnetic& 
 
     // The core: its temperature (the one its losses were evaluated at) against the limits its material states.
     if (!output.get_core_losses()) {
-        throw InvalidInputException(ErrorCode::MISSING_DATA, "analyze_results: the output of " + where + " has no core losses, which carry the core's temperature");
+        throw InvalidInputException(ErrorCode::MISSING_DATA, "analyze_results: the output of the " + describe_operating_point_for_people(operatingPoint, operatingPointIndex) + " has no core losses, which carry the core's temperature");
     }
     double coreTemperature = output.get_core_losses()->get_temperature();
     auto coreMaterial = magnetic.get_core().resolve_material();
     if (!output.get_temperature()) {
-        throw InvalidInputException(ErrorCode::MISSING_DATA, "analyze_results: the output of " + where + " has no temperature (simulated in fast mode?)");
+        throw InvalidInputException(ErrorCode::MISSING_DATA, "analyze_results: the output of the " + describe_operating_point_for_people(operatingPoint, operatingPointIndex) + " has no temperature (simulated in fast mode?)");
     }
     double hottestTemperature = output.get_temperature()->get_maximum_temperature();
 
@@ -510,14 +510,14 @@ std::vector<ResultFinding> ResultsAnalyzer::analyze_missing_temperature(const Op
                                                                         size_t operatingPointIndex) {
     std::string where = describe_operating_point(operatingPoint, operatingPointIndex);
     if (!output.get_core_losses()) {
-        throw InvalidInputException(ErrorCode::MISSING_DATA, "analyze_results: the output of " + where + " has neither a "
+        throw InvalidInputException(ErrorCode::MISSING_DATA, "analyze_results: the output of the " + describe_operating_point_for_people(operatingPoint, operatingPointIndex) + " has neither a "
             "temperature nor core losses, which record why a point has no thermal operating point");
     }
     // ABT #2075: the reason simulate recorded, not a second solve.
     auto reason = MagneticSimulator::get_no_thermal_operating_point_reason(output.get_core_losses().value());
     if (!reason) {
         throw InvalidInputException(ErrorCode::MISSING_DATA,
-            "analyze_results: the output of " + where + " has no temperature, and its core losses record no reason for "
+            "analyze_results: the output of the " + describe_operating_point_for_people(operatingPoint, operatingPointIndex) + " has no temperature, and its core losses record no reason for "
             "having no thermal operating point: it was simulated in fast mode (or edited after simulate), which publishes "
             "no temperature; analyze_results needs simulate's full output");
     }
@@ -550,7 +550,7 @@ std::vector<ResultFinding> ResultsAnalyzer::analyze_flux_density_past_magnetisat
     }
     if (reason.empty()) {
         throw InvalidInputException(ErrorCode::MISSING_DATA,
-            "analyze_results: the output of " + where + " has no core losses, yet its flux density reads on the magnetisation "
+            "analyze_results: the output of the " + describe_operating_point_for_people(operatingPoint, operatingPointIndex) + " has no core losses, yet its flux density reads on the magnetisation "
             "curve at its ambient temperature: it was edited after simulate, which gives every other point its core losses");
     }
     return {make_finding(operatingPoint, operatingPointIndex, ResultFindingCode::CORE_SATURATES,

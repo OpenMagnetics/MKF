@@ -2811,7 +2811,7 @@ TEST_CASE("A point with no thermal operating point leaves the other points as th
         }
         catch (const OpenMagnetics::InvalidInputException& error) {
             CHECK_THAT(std::string(error.what()), Catch::Matchers::ContainsSubstring("fast mode") &&
-                                                  Catch::Matchers::ContainsSubstring("operating point 0"));
+                                                  Catch::Matchers::ContainsSubstring("operating point 'A hundredth of the current'"));
         }
     }
     settings.reset();

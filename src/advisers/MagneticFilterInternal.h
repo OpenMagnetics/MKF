@@ -17,6 +17,7 @@
 #include "Defaults.h"
 #include "support/Exceptions.h"
 #include "support/Utils.h"
+#include "support/Utils.h"
 
 #include <algorithm>
 #include <cmath>
@@ -159,8 +160,7 @@ inline void require_voltage_and_current_for_power(const OperatingPointExcitation
                                                   size_t operatingPointIndex,
                                                   const OperatingPoint& operatingPoint,
                                                   const std::string& consumer) {
-    std::string label = "operating point " + std::to_string(operatingPointIndex) +
-        (operatingPoint.get_name() ? " ('" + operatingPoint.get_name().value() + "')" : "");
+    std::string label = "At the " + describe_operating_point_for_people(operatingPoint, operatingPointIndex);
 
     std::string missing;
     if (!excitation.get_voltage() || !excitation.get_voltage()->get_waveform()) {

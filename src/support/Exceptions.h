@@ -14,8 +14,55 @@
 #include <sstream>
 #include <optional>
 #include <utility>
+#include <cmath>
+#include <iomanip>
+#include <algorithm>
 
 namespace OpenMagnetics {
+
+// Numbers in exception messages: three significant figures (all integer digits kept), not std::to_string's six
+// fixed decimals. Kept here rather than taken from support/NumberFormat (format_significant / format_quantity, same
+// rules): Kirchhoff compiles WaveformProcessor.cpp, which includes this header, without NumberFormat.cpp.
+namespace exception_text {
+inline std::string significant(double value) {
+    std::ostringstream stream;
+    if (!std::isfinite(value) || value == 0 || std::fabs(value) < 1e-4) {
+        stream << std::setprecision(3) << value;
+        return stream.str();
+    }
+    int exponent = static_cast<int>(std::floor(std::log10(std::fabs(value))));
+    int figures = std::max(3, exponent + 1);
+    double scale = std::pow(10.0, exponent + 1 - figures);
+    double rounded = std::round(value / scale) * scale;
+    int roundedExponent = static_cast<int>(std::floor(std::log10(std::fabs(rounded))));
+    stream << std::fixed << std::setprecision(std::max(0, figures - roundedExponent - 1)) << rounded;
+    std::string text = stream.str();
+    if (text.find('.') != std::string::npos) {
+        while (text.back() == '0') {
+            text.pop_back();
+        }
+        if (text.back() == '.') {
+            text.pop_back();
+        }
+    }
+    return text == "-0" ? "0" : text;
+}
+
+// A value in an SI unit with the prefix that puts it in [1, 1000): (150000, "Hz") -> "150 kHz".
+inline std::string quantity(double value, const std::string& unit) {
+    static const std::pair<double, const char*> prefixes[] = {{1e12, "T"}, {1e9, "G"}, {1e6, "M"}, {1e3, "k"}, {1, ""},
+                                                              {1e-3, "m"}, {1e-6, "u"}, {1e-9, "n"}, {1e-12, "p"}};
+    if (!std::isfinite(value) || value == 0) {
+        return significant(value) + " " + unit;
+    }
+    for (const auto& [scale, prefix] : prefixes) {
+        if (std::fabs(value) >= scale * 0.9995) {
+            return significant(value / scale) + " " + prefix + unit;
+        }
+    }
+    return significant(value / 1e-12) + " p" + unit;
+}
+} // namespace exception_text
 
 /**
  * @brief Error codes for OpenMagnetics exceptions
@@ -197,9 +244,14 @@ public:
 
 class CoreNotProcessedException : public CoreException {
 public:
-    explicit CoreNotProcessedException(const std::string& context = "")
-        : CoreException(ErrorCode::CORE_NOT_PROCESSED, 
-                       "Core has not been processed. Call process_data() first.", context) {}
+    // `where` names the calculation that needed the core (optional). The cause: the core carries only its
+    // functional description (shape, material, gapping) and its geometry was never computed from it.
+    explicit CoreNotProcessedException(const std::string& where = "")
+        : CoreException(ErrorCode::CORE_NOT_PROCESSED,
+                       "The core's geometry (dimensions, columns, winding window and effective parameters: its "
+                       "processedDescription) has not been computed from its shape" + (where.empty() ? std::string() : " (" + where + ")") +
+                       ". Select the core shape again so it is computed; a core built in code must be processed "
+                       "(Core::process_data) before it is used") {}
 };
 
 class CoreMaterialNotFoundException : public CoreException {
@@ -296,9 +348,8 @@ class MaterialDataMissingException : public MaterialException {
 public:
     explicit MaterialDataMissingException(const std::string& materialName, const std::string& missingData = "")
         : MaterialException(ErrorCode::MATERIAL_DATA_MISSING, 
-                           "Material data missing for: " + materialName + 
-                           (missingData.empty() ? "" : " (missing: " + missingData + ")"), 
-                           materialName) {}
+                           "Material data missing for: " + materialName +
+                           (missingData.empty() ? "" : " (missing: " + missingData + ")")) {}
 };
 
 /**
@@ -319,12 +370,11 @@ public:
     MaterialFrequencyOutOfSpanException(const std::string& materialName, const std::string& model,
                                         double frequency, double spanMinimum, double spanMaximum)
         : MaterialException(ErrorCode::MATERIAL_FREQUENCY_OUT_OF_SPAN,
-                            "Material " + materialName + ": " + model + " loss coefficients are fitted over " +
-                            std::to_string(spanMinimum) + " Hz to " + std::to_string(spanMaximum) +
-                            " Hz; " + std::to_string(frequency) + " Hz is " +
+                            "Material " + materialName + ": " + model + " loss coefficients are fitted from " +
+                            exception_text::quantity(spanMinimum, "Hz") + " to " + exception_text::quantity(spanMaximum, "Hz") +
+                            "; " + exception_text::quantity(frequency, "Hz") + " is " +
                             (frequency < spanMinimum ? "below" : "above") +
-                            " that span and would be an extrapolation of the fit",
-                            materialName),
+                            " that span and would be an extrapolation of the fit"),
           _materialName(materialName), _frequency(frequency), _spanMinimum(spanMinimum), _spanMaximum(spanMaximum) {}
 
     const std::string& material_name() const noexcept { return _materialName; }
@@ -358,11 +408,10 @@ public:
                                                     const std::string& reason = "")
         : MaterialException(ErrorCode::MATERIAL_FREQUENCY_OUT_OF_SPAN,
                             "Material " + materialName + ": complex permeability is tabulated from " +
-                            std::to_string(rangeMinimum) + " Hz to " + std::to_string(rangeMaximum) +
-                            " Hz; " + std::to_string(frequency) + " Hz is " +
+                            exception_text::quantity(rangeMinimum, "Hz") + " to " + exception_text::quantity(rangeMaximum, "Hz") +
+                            "; " + exception_text::quantity(frequency, "Hz") + " is " +
                             (frequency < rangeMinimum ? "below" : "above") +
-                            " that range and there is no data there" + (reason.empty() ? "" : "; " + reason),
-                            materialName),
+                            " that range and there is no data there" + (reason.empty() ? "" : "; " + reason)),
           _materialName(materialName), _frequency(frequency), _rangeMinimum(rangeMinimum), _rangeMaximum(rangeMaximum) {}
 
     const std::string& material_name() const noexcept { return _materialName; }
@@ -409,16 +458,14 @@ public:
                                             std::optional<std::pair<double, double>> measuredRange = std::nullopt)
         : MaterialException(ErrorCode::MATERIAL_FREQUENCY_OUT_OF_SPAN,
                             "Material " + materialName + ": complex permeability is tabulated from " +
-                            std::to_string(rangeMinimum) + " Hz to " + std::to_string(rangeMaximum) +
-                            " Hz" +
-                            (measuredRange ? "; the part's measured impedance spans " + std::to_string(measuredRange->first) +
-                                             " Hz to " + std::to_string(measuredRange->second) + " Hz"
+                            exception_text::quantity(rangeMinimum, "Hz") + " to " + exception_text::quantity(rangeMaximum, "Hz") +
+                            (measuredRange ? "; the part's measured impedance spans " + exception_text::quantity(measuredRange->first, "Hz") +
+                                             " to " + exception_text::quantity(measuredRange->second, "Hz")
                                            : std::string()) +
-                            "; no " + requirement + " frequency (" + std::to_string(requirementMinimum) +
-                            " Hz to " + std::to_string(requirementMaximum) +
-                            " Hz) lies inside " + (measuredRange ? "either range" : "that range") +
-                            ", so the requirement cannot be judged on this part",
-                            materialName) {}
+                            "; no " + requirement + " frequency (" + exception_text::quantity(requirementMinimum, "Hz") +
+                            " to " + exception_text::quantity(requirementMaximum, "Hz") +
+                            ") lies inside " + (measuredRange ? "either range" : "that range") +
+                            ", so the requirement cannot be judged on this part") {}
 };
 
 // A ferrite above its Curie point is paramagnetic: no loss model describes it, and the magnetic
@@ -430,10 +477,9 @@ class MaterialAboveCurieTemperatureException : public MaterialException {
 public:
     MaterialAboveCurieTemperatureException(const std::string& materialName, double temperature, double curieTemperature)
         : MaterialException(ErrorCode::MATERIAL_ABOVE_CURIE_TEMPERATURE,
-                            "Material " + materialName + ": core losses asked at " + std::to_string(temperature) +
-                            " C, at or above its Curie temperature of " + std::to_string(curieTemperature) +
-                            " C, where the material is no longer ferromagnetic",
-                            materialName),
+                            "Material " + materialName + ": core losses asked at " + exception_text::significant(temperature) +
+                            " C, at or above its Curie temperature of " + exception_text::significant(curieTemperature) +
+                            " C, where the material is no longer ferromagnetic"),
           _materialName(materialName), _temperature(temperature), _curieTemperature(curieTemperature) {}
 
     const std::string& material_name() const noexcept { return _materialName; }
@@ -458,13 +504,12 @@ public:
                                            std::optional<double> curieTemperature)
         : MaterialException(ErrorCode::MATERIAL_TEMPERATURE_OUT_OF_RANGE,
                             "Material " + materialName + ": initial permeability is tabulated from " +
-                            std::to_string(tableMinimum) + " C to " + std::to_string(tableMaximum) + " C" +
-                            (curieTemperature ? ", Curie temperature " + std::to_string(curieTemperature.value()) + " C"
+                            exception_text::significant(tableMinimum) + " C to " + exception_text::significant(tableMaximum) + " C" +
+                            (curieTemperature ? ", Curie temperature " + exception_text::significant(curieTemperature.value()) + " C"
                                               : std::string(", no Curie temperature")) +
-                            "; " + std::to_string(temperature) + " C is " +
+                            "; " + exception_text::significant(temperature) + " C is " +
                             (temperature < tableMinimum ? "below" : "above") +
-                            " that table and there is no data there",
-                            materialName),
+                            " that table and there is no data there"),
           _materialName(materialName), _temperature(temperature), _tableMinimum(tableMinimum), _tableMaximum(tableMaximum) {}
 
     const std::string& material_name() const noexcept { return _materialName; }
@@ -487,9 +532,8 @@ public:
                                             double maximumMagneticFluxDensity)
         : MaterialException(ErrorCode::MATERIAL_LOSS_FACTOR_ABOVE_SMALL_SIGNAL_FLUX,
                             "Material " + materialName + ": its loss factor (tan(delta)/mu_i) is small-signal data, defined up to " +
-                            std::to_string(maximumMagneticFluxDensity) + " T, and the core losses were asked at a flux amplitude of " +
-                            std::to_string(magneticFluxDensityAmplitude) + " T, where it does not give the material's loss",
-                            materialName),
+                            exception_text::quantity(maximumMagneticFluxDensity, "T") + ", and the core losses were asked at a flux amplitude of " +
+                            exception_text::quantity(magneticFluxDensityAmplitude, "T") + ", where it does not give the material's loss"),
           _materialName(materialName), _magneticFluxDensityAmplitude(magneticFluxDensityAmplitude),
           _maximumMagneticFluxDensity(maximumMagneticFluxDensity) {}
 
@@ -507,8 +551,7 @@ public:
                                                   const std::string& reason)
         : MaterialException(ErrorCode::MATERIAL_REQUESTED_LOSS_MODEL_NOT_AVAILABLE,
                             "Material " + materialName + ": core-loss model " + modelName +
-                            " was explicitly requested but cannot be used: " + reason,
-                            materialName),
+                            " was explicitly requested but cannot be used: " + reason),
           _materialName(materialName), _modelName(modelName), _reason(reason) {}
 
     const std::string& material_name() const noexcept { return _materialName; }

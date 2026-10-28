@@ -1,3 +1,4 @@
+#include "support/NumberFormat.h"
 #include "RandomUtils.h"
 #include <source_location>
 #include "physical_models/InitialPermeability.h"
@@ -135,8 +136,8 @@ namespace {
         size_t warnings = 0;
         for (const auto& record : collected) {
             if (record.moduleOfOrigin == kMaterialDataExtrapolationModule && record.level == LogLevel::WARNING &&
-                record.message.find("3C99") != std::string::npos && record.message.find("200.000000 C") != std::string::npos &&
-                record.message.find("180.000000 C") != std::string::npos) {
+                record.message.find("3C99") != std::string::npos && record.message.find("180 C") != std::string::npos &&
+                record.detail.find("200 C") != std::string::npos) {
                 ++warnings;
             }
         }

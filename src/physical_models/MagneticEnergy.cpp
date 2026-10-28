@@ -1,4 +1,5 @@
 #include "physical_models/MagneticEnergy.h"
+#include "support/Utils.h"
 #include "Defaults.h"
 
 #include <cmath>
@@ -202,7 +203,7 @@ DimensionWithTolerance MagneticEnergy::calculate_required_magnetic_energy(Inputs
         }
         else {
             throw InvalidInputException(ErrorCode::MISSING_DATA,
-                "operating point " + std::to_string(operatingPointIndex) +
+                "At the " + describe_operating_point_for_people(inputs.get_operating_point(operatingPointIndex), operatingPointIndex) +
                 ": the required magnetic energy needs the peak magnetizing current, and this"
                 " operating point's magnetizing current has neither a processed peak nor a"
                 " waveform to derive one from.");

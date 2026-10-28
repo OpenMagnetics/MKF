@@ -662,8 +662,8 @@ std::pair<MagnetizingInductanceOutput, SignalDescriptor> MagnetizingInductance::
     // away as "Waveform data contains NaN" (web builder, 2026-09-24). Say what is
     // missing instead.
     if (!core.get_processed_description()) {
-        throw CoreNotProcessedException("MagnetizingInductance: core '" + core.get_name().value_or("unnamed") +
-                                        "' has no processedDescription (effective parameters)");
+        throw CoreNotProcessedException("core '" + core.get_name().value_or("unnamed") +
+                                        "', needed for the magnetizing inductance");
     }
 
     // ABT #417: a drumRing core's two structural annular-clearance gaps are DERIVED

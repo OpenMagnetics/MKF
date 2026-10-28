@@ -76,7 +76,7 @@ struct EColumns {
 
 EColumns resolve_e_columns(Core& core) {
     if (!core.get_processed_description()) {
-        throw CoreNotProcessedException("Magnetic shunt model needs a processed core");
+        throw CoreNotProcessedException("needed by the magnetic shunt model");
     }
     auto columns = core.get_columns();
     if (columns.size() != 3) {

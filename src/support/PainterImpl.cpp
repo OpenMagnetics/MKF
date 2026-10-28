@@ -603,7 +603,7 @@ void Painter::paint_two_piece_set_coil_layers(Magnetic magnetic) {
 void Painter::paint_toroidal_coil_layers(Magnetic magnetic) {
     Coil winding = magnetic.get_coil();
     if (magnetic.has_core() && !magnetic.get_core().get_processed_description()) {
-        throw CoreNotProcessedException("Core has not been processed");
+        throw CoreNotProcessedException();
     }
 
     if (!winding.get_layers_description()) {
@@ -991,7 +991,10 @@ void Painter::paint_toroidal_coil_turns(Magnetic magnetic, bool skipMarginAndLay
 void Painter::paint_two_piece_set_bobbin(Magnetic magnetic) {
     auto bobbin = magnetic.get_mutable_coil().resolve_bobbin();
     if (!bobbin.get_processed_description()) {
-        throw CoilNotProcessedException("Bobbin has not been processed");
+        throw CoilException(ErrorCode::COIL_NOT_PROCESSED,
+                            "The bobbin's dimensions and winding window have not been computed (it carries only its "
+                            "functional description), so it cannot be drawn. Select the bobbin again, or let the "
+                            "engine build one from the core");
     }
     auto bobbinProcessedDescription = bobbin.get_processed_description().value();
 
@@ -1733,7 +1736,7 @@ void Painter::paint_coil_sections(Magnetic magnetic) {
 
 void Painter::paint_coil_layers(Magnetic magnetic) {
     if (magnetic.has_core() && !magnetic.get_core().get_processed_description()) {
-        throw CoreNotProcessedException("Core has not been processed");
+        throw CoreNotProcessedException();
     }
     if (prepare_coil_canvas(magnetic)) {
         return paint_toroidal_coil_layers(magnetic);

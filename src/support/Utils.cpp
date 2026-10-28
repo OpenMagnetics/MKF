@@ -232,12 +232,16 @@ std::string read_log() {
     return contents;
 }
 
-bool material_data_extrapolation_allowed(const std::string& what) {
+bool material_data_extrapolation_allowed(const std::string& summary, const std::string& detail) {
     if (!settings.get_allow_material_data_extrapolation()) {
         return false;
     }
-    Logger::getInstance().warning(what + " (extrapolated: allowMaterialDataExtrapolation is on)",
-                                  kMaterialDataExtrapolationModule);
+    if (summary.empty() || detail.empty()) {
+        throw std::invalid_argument("material_data_extrapolation_allowed needs a summary (material and the range its data "
+                                    "covers) and a detail (the value asked); got summary '" + summary + "', detail '" +
+                                    detail + "'");
+    }
+    Logger::getInstance().warning(summary, kMaterialDataExtrapolationModule, detail);
     return true;
 }
 
@@ -4263,6 +4267,13 @@ std::string describe_lead_for_people(const Coil& coil, const std::string& leadNa
     }
     throw InvalidInputException(ErrorCode::INVALID_INPUT, "'" + leadName + "' is not a lead's name: a lead is named "
                                 "\"entrance lead of '<turn>'\" or \"exit lead of '<turn>'\"");
+}
+
+std::string describe_operating_point_for_people(const OperatingPoint& operatingPoint, size_t operatingPointIndex) {
+    if (operatingPoint.get_name() && !operatingPoint.get_name()->empty()) {
+        return "operating point '" + operatingPoint.get_name().value() + "'";
+    }
+    return "operating point " + std::to_string(operatingPointIndex + 1);
 }
 
 } // namespace OpenMagnetics
