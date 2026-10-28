@@ -2231,7 +2231,7 @@ TEST_CASE("Test_SectionsAdviser_Web_2", "[adviser][coil-adviser][bug][smoke-test
 }
 
 TEST_CASE("Test_CoilAdviser_Web_3", "[adviser][coil-adviser][bug][smoke-test]") {
-    auto json_path_2049 = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "test_coiladviser_web_3_2049.json");
+    auto json_path_2049 = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "test_coiladviser_web_3_2049_migrated_voltage.json");
     std::ifstream json_file_2049(json_path_2049);
     OpenMagnetics::Mas mas(json::parse(json_file_2049));
 
@@ -2250,7 +2250,7 @@ TEST_CASE("Test_CoilAdviser_Web_3", "[adviser][coil-adviser][bug][smoke-test]") 
 }
 
 TEST_CASE("Test_CoilAdviser_Web_4", "[adviser][coil-adviser][bug][smoke-test]") {
-    auto json_path_2064 = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "test_coiladviser_web_4_2064.json");
+    auto json_path_2064 = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "test_coiladviser_web_4_2064_migrated_voltage.json");
     std::ifstream json_file_2064(json_path_2064);
     OpenMagnetics::Mas mas(json::parse(json_file_2064));
 
@@ -2282,7 +2282,7 @@ TEST_CASE("Test_CoilAdviser_Web_4", "[adviser][coil-adviser][bug][smoke-test]") 
 
 TEST_CASE("Test_CoilAdviser_Web_5", "[adviser][coil-adviser][bug][smoke-test]") {
     settings.reset();
-    auto json_path_2093 = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "test_coiladviser_web_5_2093.json");
+    auto json_path_2093 = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "test_coiladviser_web_5_2093_migrated_voltage.json");
     std::ifstream json_file_2093(json_path_2093);
     OpenMagnetics::Mas mas(json::parse(json_file_2093));
 
@@ -3137,7 +3137,10 @@ TEST_CASE("Test_CoilAdviser_Web_Default_Two_Winding_PQ2715", "[adviser][coil-adv
     // windings. The core adviser picks PQ 27/15 Fair-Rite 95, 13 + 13 turns, and "Advise all"
     // (calculate_advised_coil) answered "No coil found". 26 turns of a 2.9 A rms winding fit a
     // 4.55 x 4.59 mm window many times over. Same preparation as the web entry point.
-    auto path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "default_two_winding_pq2715_no_coil_found.json");
+    // The voltages are the captured ones as the web migrates them on load today (the legacy
+    // -20.5 / +70.5 V default and the 0 / -100 V reflection become +-50 V, ABT #1719); the
+    // captured file keeps them for the up-front rejection test below.
+    auto path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "default_two_winding_pq2715_no_coil_found_migrated_voltage.json");
     std::ifstream file(path);
     REQUIRE(file.good());
     OpenMagnetics::Mas mas(json::parse(file));
