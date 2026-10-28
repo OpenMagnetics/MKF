@@ -451,9 +451,12 @@ CoreMaterialLossComparison compare_core_material_volumetric_losses(const CoreMat
                 }
             }
         }
+        // Steinmetz coefficients state a frequency span but no flux-density span, so the flux densities are a
+        // chosen spread (1/2, 1/4, 1/8 of the saturation flux density), not points of the data; pointsSource says so.
         comparison.pointsSource = "the temperatures " + reference.get_name() + " tabulates its saturation flux density at (below its Curie "
-                                  "point), 1/2, 1/4 and 1/8 of that saturation flux density, at the geometric centre of each of its " +
-                                  std::to_string(ranges.size()) + " Steinmetz ranges";
+                                  "point), at the geometric centre of each of its " + std::to_string(ranges.size()) +
+                                  " Steinmetz ranges, and at 1/2, 1/4 and 1/8 of that saturation flux density: a chosen spread, because "
+                                  "Steinmetz coefficients state no flux-density span";
     }
 
     CoreLosses coreLosses;

@@ -213,10 +213,12 @@ void CoreLosses::throw_if_requested_model_not_available(CoreLossesModels model, 
 }
 
 std::shared_ptr<CoreLossesModel> CoreLosses::get_core_losses_model(const CoreMaterial& material, const OperatingPointExcitation& excitation) {
+    // The models are chosen from the loss methods of the material passed, not from a library entry of
+    // the same name: a user's material, or a renamed copy, is priced by its own data (ABT #1911).
+    auto availableMethodsForMaterial = CoreLossesModel::get_methods(material);
     if (_requestedCoreLossesModel) {
-        return get_core_losses_model(material.get_name());
+        return select_core_losses_model(material.get_name(), availableMethodsForMaterial);
     }
-    auto availableMethodsForMaterial = CoreLossesModel::get_methods(material.get_name());
     std::shared_ptr<CoreLossesModel> firstSupported = nullptr;
     for (auto& [modelName, coreLossesModel] : _coreLossesModels) {
         if (std::find(availableMethodsForMaterial.begin(), availableMethodsForMaterial.end(), modelName) == availableMethodsForMaterial.end()) {
@@ -232,13 +234,20 @@ std::shared_ptr<CoreLossesModel> CoreLosses::get_core_losses_model(const CoreMat
     if (firstSupported) {
         return firstSupported;
     }
-    return get_core_losses_model(material.get_name());
+    return select_core_losses_model(material.get_name(), availableMethodsForMaterial);
 }
 
 std::shared_ptr<CoreLossesModel> CoreLosses::get_core_losses_model(std::string materialName) {
+    return select_core_losses_model(materialName, CoreLossesModel::get_methods(materialName));
+}
+
+std::shared_ptr<CoreLossesModel> CoreLosses::get_core_losses_model(const CoreMaterial& material) {
+    return select_core_losses_model(material.get_name(), CoreLossesModel::get_methods(material));
+}
+
+std::shared_ptr<CoreLossesModel> CoreLosses::select_core_losses_model(const std::string& materialName, const std::vector<CoreLossesModels>& availableMethodsForMaterial) {
     std::shared_ptr<CoreLossesModel> coreLossesModelForMaterial = nullptr;
 
-    auto availableMethodsForMaterial = CoreLossesModel::get_methods(materialName);
     // An explicit request is not a preference: run exactly that model or say why not (ABT #1497).
     if (_requestedCoreLossesModel) {
         OpenMagnetics::throw_if_requested_model_not_available(_requestedCoreLossesModel->first, materialName, availableMethodsForMaterial);
@@ -691,7 +700,8 @@ double CoreLosses::get_periodic_core_volumetric_losses(const CoreMaterial& coreM
 }
 
 double CoreLosses::get_core_losses_series_resistance(Core core, double frequency, double temperature, double magnetizingInductance){
-    auto coreLossesModelForMaterial = get_core_losses_model(core.get_material_name());
+    std::optional<CoreMaterial> materialStorage;
+    auto coreLossesModelForMaterial = get_core_losses_model(core.resolve_material_unstored(materialStorage));
 
     double coreLossesSeriesResistance = coreLossesModelForMaterial->get_core_losses_series_resistance(core, frequency, temperature, magnetizingInductance);
     return coreLossesSeriesResistance;

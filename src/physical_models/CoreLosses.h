@@ -767,7 +767,11 @@ class CoreLosses {
     // name rather than silently priced at zero. Routed automatically from calculate_core_losses
     // for MOLDED cores whose material list resolves to more than one region.
     CoreLossesOutput calculate_molded_core_losses(Core core, OperatingPointExcitation excitation, double temperature);
+    // The model for a library material, looked up by name.
     std::shared_ptr<CoreLossesModel> get_core_losses_model(std::string materialName);
+    // The model for `material`'s own loss data (its methods, CoreLossesModel::get_methods), whatever its
+    // name: a user's material or a renamed copy is not looked up in the library (ABT #1911).
+    std::shared_ptr<CoreLossesModel> get_core_losses_model(const CoreMaterial& material);
     // The model run at `excitation`: as above, but the default cascade passes over a supported model that
     // is not valid there (CoreLossesModel::not_valid_at) to the next one. When none is valid, the first
     // supported model is returned, and its evaluation throws why (or, with allowMaterialDataExtrapolation,
@@ -777,6 +781,9 @@ class CoreLosses {
     double get_core_losses_series_resistance(Core core, double frequency, double temperature, double magnetizingInductance);
 
   private:
+    // The first model of the cascade (or the requested one) among `availableMethodsForMaterial`;
+    // throws when none can run.
+    std::shared_ptr<CoreLossesModel> select_core_losses_model(const std::string& materialName, const std::vector<CoreLossesModels>& availableMethodsForMaterial);
     // ABT #1636: calculate_core_losses / get_core_volumetric_losses split a record of switching
     // cycles once; each cycle and the envelope are then one periodic loop, priced by these without
     // being split again (the models' compute_* evaluations, then the DC-bias correction).

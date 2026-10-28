@@ -5783,3 +5783,39 @@ TEST_CASE("Test_Loss_Factor_Interpolation_Stays_Between_Neighbouring_Points_Near
     auto n4 = find_core_material_by_name("N4");
     CHECK_THAT(CoreLossesLossFactorModel::get_loss_factor(n4, 2113489.0), Catch::Matchers::WithinRel(2.5096, 1e-3));
 }
+
+TEST_CASE("Test_Core_Losses_Renamed_Library_Material_Priced_By_Its_Own_Data", "[physical-model][core-losses][abt-1911]") {
+    // CoreLosses picks the loss model from the methods of the material it is handed, not from the
+    // library entry of the same name: a copy of a library material under a name the library does not
+    // know (a user's material, a renamed copy) is priced exactly like the library material. Before
+    // ABT #1911 it threw CORE_MATERIAL_NOT_FOUND. One material per loss-method family.
+    settings.reset();
+    clear_databases();
+    struct Case { std::string name; double frequency; double peak; double temperature; };
+    for (const auto& testCase : std::vector<Case>{{"3C94", 100000, 0.1, 100},
+                                                  {"DMR73", 100000, 0.1, 25},
+                                                  {"Kool Mµ 60", 50000, 0.05, 25},
+                                                  {"Mix 2", 50000, 0.05, 25}}) {
+        INFO(testCase.name);
+        auto library = find_core_material_by_name(testCase.name);
+        auto renamed = library;
+        renamed.set_name("Renamed copy of " + testCase.name);
+        REQUIRE_THROWS(find_core_material_by_name(renamed.get_name()));
+
+        auto excitation = build_sinusoidal_flux_excitation(testCase.frequency, testCase.peak);
+        CoreLosses coreLosses;
+        CHECK(coreLosses.get_core_losses_model(renamed, excitation) == coreLosses.get_core_losses_model(library, excitation));
+        double libraryLosses = coreLosses.get_core_volumetric_losses(library, excitation, testCase.temperature);
+        REQUIRE(libraryLosses > 0);
+        CHECK(coreLosses.get_core_volumetric_losses(renamed, excitation, testCase.temperature) == libraryLosses);
+
+        // The same on a core carrying the copy inline.
+        Core libraryCore = OpenMagneticsTesting::get_quick_core("T 40/24/16", json::array(), 1, testCase.name);
+        Core renamedCore = libraryCore;
+        renamedCore.get_mutable_functional_description().set_material(renamed);
+        double libraryCoreLosses = coreLosses.calculate_core_losses(libraryCore, excitation, testCase.temperature).get_core_losses();
+        REQUIRE(libraryCoreLosses > 0);
+        CHECK(coreLosses.calculate_core_losses(renamedCore, excitation, testCase.temperature).get_core_losses() == libraryCoreLosses);
+    }
+    settings.reset();
+}

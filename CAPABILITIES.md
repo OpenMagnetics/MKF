@@ -128,11 +128,21 @@ interval where it holds, plus what the data covers and what could not be judged.
 `MATERIAL_DATA_MISSING` for a material that tabulates nothing at any temperature.
 `compare_core_material_volumetric_losses(reference, other)` prices both copies with
 `CoreLosses::get_core_volumetric_losses` at points taken from the reference's own data: its
-volumetric-loss points, or else (Steinmetz only) its saturation temperatures x 1/2, 1/4, 1/8 of its
-saturation flux density there x the geometric centre of each Steinmetz range; a point either copy
-refuses carries that refusal. It throws `MATERIAL_DATA_MISSING` when the reference states no such
-points. WebLibMKF exposes both as `check_core_material(material)` and
-`compare_core_material_volumetric_losses(reference, other)` (name or MAS JSON, JSON out).
+volumetric-loss points, or else (Steinmetz only) its saturation temperatures x the geometric centre
+of each Steinmetz range x 1/2, 1/4 and 1/8 of its saturation flux density there. Those three flux
+densities are a CHOICE, not data: Steinmetz coefficients state a frequency span but no flux-density
+span, so a spread below saturation is taken; the result's `pointsSource` says which rule was used.
+A point either copy refuses carries that refusal. It throws `MATERIAL_DATA_MISSING` when the
+reference states no such points. WebLibMKF exposes both as `check_core_material(material)` and
+`compare_core_material_volumetric_losses(reference, other)` (name or MAS JSON, JSON out); like every
+other libMKF call, an error comes back as the string `"Exception: [CODE] message"` (the MKF
+exception's `what()`), not as a JS exception.
+
+**Core-loss model selection reads the material passed (ABT #1911):**
+`CoreLosses::get_core_losses_model(material[, excitation])` chooses the model from that
+`CoreMaterial`'s own loss methods (`CoreLossesModel::get_methods(material)`), so a user's material or
+a renamed copy of a library material is priced by its own data, exactly like the library material
+it copies. Only `get_core_losses_model(std::string name)` looks the material up in the library.
 
 **Two thermal surfaces by design:** `CoreTemperature` (quick analytical) vs
 `Temperature` (full network solver). Pick deliberately.
