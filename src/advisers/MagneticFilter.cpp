@@ -19,6 +19,7 @@
 #include <algorithm>
 #include "support/Exceptions.h"
 #include "support/Logger.h"
+#include "processors/ResultsAnalyzer.h"
 
 namespace OpenMagnetics {
 
@@ -743,6 +744,7 @@ bool MagneticFilterMagnetizingInductance::applies_to(Magnetic* magnetic) const {
 std::pair<bool, double> MagneticFilterMagnetizingInductance::evaluate_magnetic(Magnetic* magnetic, Inputs* inputs, std::vector<Outputs>* outputs) {
     bool valid = true;
     double scoring = 0;
+    _lastRejectionReason.reset();
 
     // If no inductance requirement is set (e.g. CMC/DMC with only impedance requirements),
     // this filter has nothing to check — pass with neutral score.
@@ -826,11 +828,18 @@ std::pair<bool, double> MagneticFilterMagnetizingInductance::evaluate_magnetic(M
         auto operatingPoint = inputs->get_operating_points()[operatingPointIndex];
         OpenMagnetics::MagnetizingInductance magnetizingInductanceModel("ZHANG");
 
-        MagnetizingInductanceOutput aux;
-        try {
-            aux = magnetizingInductanceModel.calculate_inductance_from_number_turns_and_gapping(
-                magnetic->get_mutable_core(), magnetic->get_mutable_coil(), &operatingPoint);
-        } catch (const std::exception& e) {
+        // ABT #2124 (Alf, 2026-10-28): a saturated part fails this filter on the verdict the other filters give
+        // (ResultsAnalyzer::check_saturation, ABT #1855), at the point's temperature with the model's DC point. It
+        // used to be failed by a caught SaturationException, which the model no longer throws since ABT #1855
+        // (mu_r = 1 past the knee), so fully saturated parts were scored on their air-core inductance.
+        auto [aux, magneticFluxDensity] = magnetizingInductanceModel.calculate_inductance_and_magnetic_flux_density(
+            magnetic->get_mutable_core(), magnetic->get_mutable_coil(), &operatingPoint);
+        auto saturation = ResultsAnalyzer::check_saturation(magnetic->get_mutable_core().resolve_material(),
+            ResultsAnalyzer::get_peak_flux_density(magneticFluxDensity), operatingPoint.get_conditions().get_ambient_temperature(),
+            1.0, magnetizingInductanceModel.get_last_dc_bias_point());
+        if (saturation.saturates) {
+            _lastRejectionReason = saturation.message;
+            logEntry(std::string("Magnetizing inductance filter: rejecting candidate: ") + saturation.message, "MagneticFilter", 2);
             return {false, 0};
         }
         double magnetizingInductance = resolve_dimensional_values(aux.get_magnetizing_inductance());

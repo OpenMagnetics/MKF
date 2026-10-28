@@ -1258,6 +1258,16 @@ std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic(std::v
             _measuredFrequencies[magnetic.get_reference()][filterEnum] = measuredFrequencies.value();
         }
     };
+    // A filter that failed a part on a stated verdict (e.g. MAGNETIZING_INDUCTANCE on saturation, ABT #2124) says why,
+    // and the part is listed in get_failed_candidates() with it.
+    auto recordRejectionReason = [this](MagneticFilters filterEnum, Magnetic& magnetic, bool valid) {
+        if (valid) {
+            return;
+        }
+        if (auto reason = _filters[filterEnum]->get_last_rejection_reason()) {
+            _failedCandidates.push_back({magnetic.get_reference(), std::string(magic_enum::enum_name(filterEnum)) + ": " + reason.value()});
+        }
+    };
     std::vector<MagneticFilterOperation> strictlyRequiredFilterFlow;
     std::vector<MagneticFilterOperation> nonStrictlyRequiredFilterFlow;
     std::vector<Mas> validMas;
@@ -1334,6 +1344,7 @@ std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic(std::v
                 auto [valid, scoring] = _filters[filterEnum]->evaluate_magnetic(&magnetic, &inputs, &outputs);
                 add_scoring(magnetic.get_reference(), filterEnum, scoring);
                 recordJudgedFrequencies(filterEnum, magnetic, inputs);
+                recordRejectionReason(filterEnum, magnetic, valid);
                 if (strict) {
                     validMagnetic &= valid;
                     if (!valid) {
@@ -1423,6 +1434,7 @@ std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic(std::v
                 auto [filterValid, scoring] = _filters[filterEnum]->evaluate_magnetic(&magnetic, &inputs, &outputs);
                 add_scoring(magnetic.get_reference(), filterEnum, scoring);
                 recordJudgedFrequencies(filterEnum, magnetic, inputs);
+                recordRejectionReason(filterEnum, magnetic, filterValid);
                 // A candidate this filter rejected must rank WORST for it, never
                 // best. evaluate_magnetic returns 0.0 on rejection (a sentinel, not
                 // a distance), and with invert=true 0.0 is the top score — so

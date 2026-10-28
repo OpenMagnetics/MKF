@@ -25,6 +25,7 @@
 #include "physical_models/CoreLosses.h"
 #include "processors/Inputs.h"
 #include "processors/MagneticSimulator.h"
+#include "physical_models/MagnetizingInductance.h"
 #include "support/Settings.h"
 #include "support/Utils.h"
 
@@ -234,5 +235,51 @@ TEST_CASE("The catalogue adviser refills its hits when a candidate fails its fin
     // Two hits were asked for and two fitting parts remain: two hits, the overflowing one not among them.
     REQUIRE(results.size() == 2);
     CHECK(std::find(references.begin(), references.end(), "OVERFLOWING") == references.end());
+    settings.reset();
+}
+
+TEST_CASE("The magnetizing inductance filter fails a saturated part on the saturation verdict, and the catalogue adviser says why",
+          "[adviser][catalogue][magnetizing-inductance][saturation]") {
+    // ABT #2124 (Alf, 2026-10-28): since ABT #1855 the magnetizing model gives a saturated core mu_r = 1 instead of
+    // throwing, and this filter, which failed a part only through that caught exception, scored fully saturated parts
+    // on their air-core inductance: 214-turn catalogue parts driven to H ~ 7500 A/m ranked first. It judges saturation
+    // through ResultsAnalyzer::check_saturation now, as the other filters do since ABT #1855.
+    settings.reset();
+    auto saturated = catalogue_part_with("SATURATED", "E 35", 60);
+    // 10 A of DC through 60 turns of an ungapped 3C97 E 35: far past the knee.
+    auto inputs = OpenMagnetics::Inputs::create_quick_operating_point_only_current(100e3, 100e-6, 25, WaveformLabel::TRIANGULAR, 0.4, 0.5, 10.0);
+    // The model itself gives numbers (simulate never judges) ...
+    auto operatingPoint = inputs.get_operating_points()[0];
+    MagnetizingInductance magnetizingInductanceModel("ZHANG");
+    MagnetizingInductanceOutput inductance;
+    REQUIRE_NOTHROW(inductance = magnetizingInductanceModel.calculate_inductance_and_magnetic_flux_density(
+                        saturated.get_mutable_core(), saturated.get_mutable_coil(), &operatingPoint).first);
+    CHECK(resolve_dimensional_values(inductance.get_magnetizing_inductance()) > 0);
+    // ... and the part saturates there (the premise of this test).
+    auto check = magnetizingInductanceModel.check_sizing_saturation(saturated.get_core(), saturated.get_coil(), 60, &inputs);
+    INFO("sizing saturation check: " << check.second);
+    REQUIRE(check.first);
+
+    MagneticFilterMagnetizingInductance filter;
+    auto [valid, scoring] = filter.evaluate_magnetic(&saturated, &inputs);
+    CHECK_FALSE(valid);
+    REQUIRE(filter.get_last_rejection_reason());
+    INFO(filter.get_last_rejection_reason().value());
+
+    std::vector<OpenMagnetics::Magnetic> catalogue{saturated, catalogue_part("FITS")};
+    std::vector<MagneticFilterOperation> flow{
+        MagneticFilterOperation(MagneticFilters::MAGNETIZING_INDUCTANCE, true, false, true, 1.0),
+    };
+    MagneticAdviser adviser(false);
+    std::vector<std::pair<OpenMagnetics::Mas, double>> results;
+    REQUIRE_NOTHROW(results = adviser.get_advised_magnetic(inputs, catalogue, flow, 10, true));
+    const auto& failed = adviser.get_failed_candidates();
+    auto saturatedFailure = std::find_if(failed.begin(), failed.end(), [](const auto& entry) { return entry.first == "SATURATED"; });
+    REQUIRE(saturatedFailure != failed.end());
+    CHECK_THAT(saturatedFailure->second, ContainsSubstring("MAGNETIZING_INDUCTANCE"));
+    CHECK_THAT(saturatedFailure->second, ContainsSubstring(filter.get_last_rejection_reason().value()));
+    for (auto& [mas, score] : results) {
+        CHECK(mas.get_magnetic().get_reference() != "SATURATED");
+    }
     settings.reset();
 }
