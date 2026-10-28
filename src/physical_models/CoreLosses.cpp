@@ -522,15 +522,9 @@ CoreLossesOutput CoreLosses::calculate_core_losses(Core core, OperatingPointExci
     return calculate_periodic_core_losses(core, excitation, temperature);
 }
 
-std::optional<double> CoreLossesModel::get_temperature_factor_data_end(const SteinmetzCoreLossesMethodRangeDatum& steinmetzDatum, double fromTemperature) {
+std::vector<double> CoreLossesModel::get_temperature_factor_roots(const SteinmetzCoreLossesMethodRangeDatum& steinmetzDatum) {
     // The same coefficients, with the same schema defaults, as get_temperature_factor.
-    double ct0 = steinmetzDatum.get_ct0() ? steinmetzDatum.get_ct0().value() : 1.0;
-    double ct1 = steinmetzDatum.get_ct1() ? steinmetzDatum.get_ct1().value() : 0.0;
-    double ct2 = steinmetzDatum.get_ct2() ? steinmetzDatum.get_ct2().value() : 0.0;
-    auto factorAt = [&](double temperature) { return ct2 * pow(temperature, 2) - ct1 * temperature + ct0; };
-    if (!(factorAt(fromTemperature) > 0)) {
-        return fromTemperature;
-    }
+    auto [ct0, ct1, ct2] = get_temperature_factor_coefficients(steinmetzDatum);
     // Roots of ct2 T^2 - ct1 T + ct0 = 0.
     std::vector<double> roots;
     if (ct2 == 0) {
@@ -546,8 +540,19 @@ std::optional<double> CoreLossesModel::get_temperature_factor_data_end(const Ste
             roots.push_back((ct1 + squareRoot) / (2 * ct2));
         }
     }
+    std::sort(roots.begin(), roots.end());
+    return roots;
+}
+
+std::optional<double> CoreLossesModel::get_temperature_factor_data_end(const SteinmetzCoreLossesMethodRangeDatum& steinmetzDatum, double fromTemperature) {
+    // The same coefficients, with the same schema defaults, as get_temperature_factor.
+    auto [ct0, ct1, ct2] = get_temperature_factor_coefficients(steinmetzDatum);
+    auto factorAt = [&](double temperature) { return ct2 * pow(temperature, 2) - ct1 * temperature + ct0; };
+    if (!(factorAt(fromTemperature) > 0)) {
+        return fromTemperature;
+    }
     std::optional<double> firstRoot;
-    for (double root : roots) {
+    for (double root : get_temperature_factor_roots(steinmetzDatum)) {
         if (root > fromTemperature && (!firstRoot || root < firstRoot.value())) {
             firstRoot = root;
         }

@@ -15,6 +15,7 @@
 #include <numbers>
 #include <streambuf>
 #include <functional>
+#include <array>
 #include <optional>
 #include <vector>
 #include "support/Exceptions.h"
@@ -168,13 +169,22 @@ class CoreLossesModel {
         }
     }
 
+    // The coefficients {ct0, ct1, ct2} of a range's temperature factor, each missing one at its schema default
+    // (ct0 = 1, ct1 = 0, ct2 = 0). Every reader of ct(T) takes them from here.
+    static std::array<double, 3> get_temperature_factor_coefficients(const SteinmetzCoreLossesMethodRangeDatum& steinmetzDatum) {
+        return {steinmetzDatum.get_ct0() ? steinmetzDatum.get_ct0().value() : 1.0,
+                steinmetzDatum.get_ct1() ? steinmetzDatum.get_ct1().value() : 0.0,
+                steinmetzDatum.get_ct2() ? steinmetzDatum.get_ct2().value() : 0.0};
+    }
+    // The temperatures (C) where the range's ct(T) is zero, ascending: none, one or two. Between and beyond
+    // them ct(T) keeps one sign, so they are where get_temperature_factor starts or stops refusing (ABT #1911).
+    static std::vector<double> get_temperature_factor_roots(const SteinmetzCoreLossesMethodRangeDatum& steinmetzDatum);
+
     // Steinmetz temperature factor ct(T) = ct2*T^2 - ct1*T + ct0 (ABT #1456). Each missing coefficient takes
     // its schema default (ct0 = 1, ct1 = 0, ct2 = 0; MAS schemas/magnetic/core/material.json), so a range
     // carrying only ct0/ct1 keeps its temperature dependence. A factor <= 0 is not a loss scale: throw.
     static double get_temperature_factor(const SteinmetzCoreLossesMethodRangeDatum& steinmetzDatum, double temperature) {
-        double ct0 = steinmetzDatum.get_ct0() ? steinmetzDatum.get_ct0().value() : 1.0;
-        double ct1 = steinmetzDatum.get_ct1() ? steinmetzDatum.get_ct1().value() : 0.0;
-        double ct2 = steinmetzDatum.get_ct2() ? steinmetzDatum.get_ct2().value() : 0.0;
+        auto [ct0, ct1, ct2] = get_temperature_factor_coefficients(steinmetzDatum);
         double scale = ct2 * pow(temperature, 2) - ct1 * temperature + ct0;
         if (!(scale > 0)) {
             throw CalculationException(ErrorCode::INVALID_LOSS_DATA,

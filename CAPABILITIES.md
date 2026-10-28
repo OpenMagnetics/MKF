@@ -109,6 +109,7 @@ reimplement these formulas downstream.
 | Initial permeability | `InitialPermeability` | `get_initial_permeability()`, plus `_temperature_dependent` / `_frequency_dependent` variants |
 | Amplitude / complex permeability | `AmplitudePermeability`, `ComplexPermeability` | `get_amplitude_permeability()`, `get_complex_permeability()`, `get_hysteresis_loop()` (Roshen) |
 | Core losses (Steinmetz / iGSE / Roshen / loss maps) | `CoreLosses` | model factory + loss-per-unit-volume |
+| Core material judged alone (no design) | `CoreMaterialCheck.h` (free functions) | `check_core_material()`, `compare_core_material_volumetric_losses()` |
 | Winding losses (total) | `WindingLosses` | `calculate_losses()`, `calculate_effective_resistance_of_winding()`, `calculate_resistance_matrix()` |
 | DC ohmic losses | `WindingOhmicLosses` | `calculate_dc_resistance_per_meter()`, `calculate_effective_resistance_per_meter()`, `calculate_ohmic_losses()` |
 | Skin-effect losses | `WindingSkinEffectLosses` | `calculate_skin_depth()`, `calculate_skin_effect_losses()` (Dowell / Wojda) |
@@ -116,6 +117,22 @@ reimplement these formulas downstream.
 | Core temperature (analytical) | `CoreTemperature` | `get_core_temperature()` (Maniktala / Kazimierczuk / TDK / Dixon / Amidon) |
 | Full thermal network solver | `Temperature`, `ThermalNode`, `ThermalResistance` | network factory; `calculateConductionResistance()` |
 | Resistivity (T-dependent) | `Resistivity` | `get_resistivity()` |
+
+**A core material without a design (ABT #1911):** `check_core_material(material)` runs the
+checks that refuse a material inside a design calculation (Steinmetz ct(T) via
+`CoreLossesModel::get_temperature_factor`, the fitted frequency span, initial permeability,
+saturation, remanence and coercive force through the hysteresis-loop resolvers, heat conductivity)
+over the temperatures the material's own data covers, and returns every refusal with the design's
+error code (`INVALID_LOSS_DATA`, `MATERIAL_INVALID_PROPERTY`, ...), its message, and the temperature
+interval where it holds, plus what the data covers and what could not be judged. It throws
+`MATERIAL_DATA_MISSING` for a material that tabulates nothing at any temperature.
+`compare_core_material_volumetric_losses(reference, other)` prices both copies with
+`CoreLosses::get_core_volumetric_losses` at points taken from the reference's own data: its
+volumetric-loss points, or else (Steinmetz only) its saturation temperatures x 1/2, 1/4, 1/8 of its
+saturation flux density there x the geometric centre of each Steinmetz range; a point either copy
+refuses carries that refusal. It throws `MATERIAL_DATA_MISSING` when the reference states no such
+points. WebLibMKF exposes both as `check_core_material(material)` and
+`compare_core_material_volumetric_losses(reference, other)` (name or MAS JSON, JSON out).
 
 **Two thermal surfaces by design:** `CoreTemperature` (quick analytical) vs
 `Temperature` (full network solver). Pick deliberately.
