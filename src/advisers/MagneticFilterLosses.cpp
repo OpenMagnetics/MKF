@@ -723,9 +723,16 @@ std::pair<bool, double> MagneticFilterLossesNoProximity::evaluate_magnetic(Magne
         auto operatingPoint = inputs->get_operating_points()[operatingPointIndex];
         // ABT #838: DC + skin-effect winding losses (no proximity) and core losses from ONE
         // loss <-> temperature solve, each at the temperature their combined heat produces.
+        // ABT #2124 (Alf, 2026-10-28): in the catalogue search (one pass) the losses are taken at ambient with no
+        // thermal network, as before ABT #838; a part the network would refuse fails at the final simulation.
+        std::optional<LossSolveWithoutThermalNetworkScope> withoutThermalNetwork;
+        if (CatalogueSearchOnePassScope::active()) {
+            withoutThermalNetwork.emplace();
+        }
         std::optional<WindingLossesOutput> solvedWindingLosses;
         auto coreLosses = _magneticSimulator.calculate_core_losses(operatingPoint, *magnetic, &solvedWindingLosses, nullptr,
                                                                    WindingLossesScope::OHMIC_AND_SKIN_EFFECT, NoThermalOperatingPointPolicy::THROW);
+        withoutThermalNetwork.reset();
         // A core that saturates at the temperature its losses heat it to is not a candidate: the loss solve
         // gives its numbers (ABT #1855) and the verdict is the saturation check analyze_results makes, on the
         // solved flux density at the solved core temperature. The outputs keep this operating point's losses so

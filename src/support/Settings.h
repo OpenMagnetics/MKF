@@ -801,7 +801,8 @@ public:
 // ABT #2124 (Alf, 2026-10-28): the catalogue search evaluates its losses in ONE pass (the
 // simulatorLossTemperatureLoop = false semantics: losses at the operating point's ambient temperature, the hottest
 // point estimated once, no feedback), its filters and the final simulation of the hits it returns alike (Alf first
-// kept the loop for the hits, then decided one pass for them too, the same day). Every other adviser
+// kept the loop for the hits, then decided one pass for them too, the same day). Its LOSSES_NO_PROXIMITY filter
+// builds no thermal network at all (MagneticSimulator's LossSolveWithoutThermalNetworkScope). Every other adviser
 // path (CoreAdviser, CoilAdviser, MagneticAdviser designing from scratch) keeps the forced loop, and material data
 // stays non-extrapolated in all of them (MaterialDataExtrapolationBarrier is untouched).
 // While one of these exists on a thread, Settings::get_simulator_loss_temperature_loop() reads false ON THAT

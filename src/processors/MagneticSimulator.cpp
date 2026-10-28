@@ -254,6 +254,7 @@ std::string MagneticSimulator::loss_solve_key(const OperatingPoint& operatingPoi
     modelsJson["coreLossesRequested"] = requestedModel ? static_cast<int>(requestedModel.value()) : -1;
     // The effective value: the fingerprint holds what the caller set, which an adviser overrides.
     modelsJson["lossTemperatureLoop"] = Settings::GetInstance().get_simulator_loss_temperature_loop();
+    modelsJson["withoutThermalNetwork"] = LossSolveWithoutThermalNetworkScope::active();
     return magneticJson.dump() + "\n" + operatingPointJson.dump() + "\n" + modelsJson.dump() + "\n" +
            Settings::GetInstance().fingerprint();
 }
@@ -428,10 +429,26 @@ std::optional<CoreDataCeiling> MagneticSimulator::get_core_data_ceiling(const Co
 namespace {
 thread_local size_t lossSolvesWithLoop = 0;
 thread_local size_t lossSolvesInOnePass = 0;
+thread_local size_t lossSolvesWithoutThermalNetwork = 0;
+thread_local int lossSolveWithoutThermalNetworkScopes = 0;
 }
 
 size_t MagneticSimulator::get_loss_solves(bool lossTemperatureLoop) {
     return lossTemperatureLoop ? lossSolvesWithLoop : lossSolvesInOnePass;
+}
+
+size_t MagneticSimulator::get_loss_solves_without_thermal_network() {
+    return lossSolvesWithoutThermalNetwork;
+}
+
+LossSolveWithoutThermalNetworkScope::LossSolveWithoutThermalNetworkScope() {
+    ++lossSolveWithoutThermalNetworkScopes;
+}
+LossSolveWithoutThermalNetworkScope::~LossSolveWithoutThermalNetworkScope() {
+    --lossSolveWithoutThermalNetworkScopes;
+}
+bool LossSolveWithoutThermalNetworkScope::active() {
+    return lossSolveWithoutThermalNetworkScopes > 0;
 }
 
 SolvedLosses MagneticSimulator::solve_losses_at_operating_temperature(const OperatingPoint& operatingPoint,
@@ -685,6 +702,16 @@ SolvedLosses MagneticSimulator::solve_losses_at_operating_temperature(const Oper
         if (!lossesAtAmbient) {
             lossesAtAmbient = LossesAtAmbient{coreLossesOutput, excitation, windingLosses};
         }
+        if (!lossTemperatureLoop && LossSolveWithoutThermalNetworkScope::active()) {
+            // ABT #2124 (Alf, 2026-10-28): the losses at the operating temperature and no network: no temperature.
+            ++lossSolvesWithoutThermalNetwork;
+            SolvedLosses solved;
+            solved.coreLosses = coreLossesOutput;
+            solved.excitation = excitation;
+            solved.windingLosses = windingLosses;
+            solved.dcBiasPoint = dcBiasPoint;
+            return solved;
+        }
         ThermalResult thermalResult;
         try {
             thermalResult = Temperature(magnetic, config).calculateTemperatures();
@@ -761,7 +788,8 @@ SolvedLosses MagneticSimulator::solve_losses_at_operating_temperature(const Oper
             solved.windingLosses = windingLosses;
             solved.dcBiasPoint = dcBiasPoint;
             solved.lowestFixedPointSearchEvaluations = lowestFixedPointSearchEvaluations;
-            solved.temperature.set_initial_temperature(config.ambientTemperature);
+            TemperatureOutput temperatureOutput;
+            temperatureOutput.set_initial_temperature(config.ambientTemperature);
             // ABT #2078 (Alf, 2026-10-25): a core held at its data limit is at least as hot as the temperature it is
             // held at, whatever the network gives for the losses evaluated there. Held paramagnetic at Curie it loses
             // almost nothing and the network came back cold (a P 18/11 TM63 resonant inductor held at 289 C published
@@ -775,16 +803,17 @@ SolvedLosses MagneticSimulator::solve_losses_at_operating_temperature(const Oper
             }
             const double maximumTemperature = coreHeldAtCeiling ? std::max(thermalResult.maximumTemperature, dataCeiling->temperature)
                                                                 : thermalResult.maximumTemperature;
-            solved.temperature.set_maximum_temperature(maximumTemperature);
+            temperatureOutput.set_maximum_temperature(maximumTemperature);
             double totalLosses = config.coreLosses + config.windingLosses;
             if (totalLosses > 0) {
-                solved.temperature.set_bulk_thermal_resistance(
+                temperatureOutput.set_bulk_thermal_resistance(
                     (thermalResult.maximumTemperature - config.ambientTemperature) / totalLosses);
             }
-            solved.temperature.set_method_used(coreHeldAtCeiling ? "ThermalNetwork, core held at its material's data limit: "
+            temperatureOutput.set_method_used(coreHeldAtCeiling ? "ThermalNetwork, core held at its material's data limit: "
                                                                    "the real temperature is at least this, and higher"
                                                                  : "ThermalNetwork");
-            solved.temperature.set_origin(ResultOrigin::SIMULATION);
+            temperatureOutput.set_origin(ResultOrigin::SIMULATION);
+            solved.temperature = temperatureOutput;
             return solved;
         }
         // Winding runaway (Alf, 2026-10-14, ABT #1855). Held at the ceiling, the core's losses and

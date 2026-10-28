@@ -35,7 +35,8 @@ struct SolvedLosses {
     CoreLossesOutput coreLosses;
     OperatingPointExcitation excitation;
     std::optional<WindingLossesOutput> windingLosses;
-    TemperatureOutput temperature;
+    // Empty when the solve built no thermal network (LossSolveWithoutThermalNetworkScope).
+    std::optional<TemperatureOutput> temperature;
     // The DC point of the magnetizing model at the solved core temperature (MagnetizingInductance::
     // get_last_dc_bias_point), for the saturation check's second criterion (ABT #1855). Empty when the
     // model ran no DC-bias fixed point, or magnetized a core held at its Curie temperature as paramagnetic.
@@ -43,6 +44,19 @@ struct SolvedLosses {
     // How many points the search for the loss loop's lowest stable fixed point evaluated (ABT #1840), each one
     // the losses and the thermal network at one temperature; 0 when the loop never reached the data ceiling.
     size_t lowestFixedPointSearchEvaluations = 0;
+};
+
+// ABT #2124 (Alf, 2026-10-28): in the catalogue search the LOSSES_NO_PROXIMITY filter computes the losses at
+// ambient with NO thermal network, as before ABT #838: while one of these exists on a thread, a one-pass loss solve
+// (Settings::get_simulator_loss_temperature_loop() false) returns its first iterate's losses and no temperature.
+// A loop solve ignores it. Thread-local depth, as CatalogueSearchOnePassScope.
+class LossSolveWithoutThermalNetworkScope {
+public:
+    LossSolveWithoutThermalNetworkScope();
+    ~LossSolveWithoutThermalNetworkScope();
+    LossSolveWithoutThermalNetworkScope(const LossSolveWithoutThermalNetworkScope&) = delete;
+    LossSolveWithoutThermalNetworkScope& operator=(const LossSolveWithoutThermalNetworkScope&) = delete;
+    static bool active();
 };
 
 // ABT #1876 (Alf, 2026-10-14): the losses of an operating point evaluated at its ambient temperature,
@@ -277,6 +291,8 @@ class MagneticSimulator {
         // How many loss solves ran on this thread with the loss <-> temperature loop (true) or in one pass (false):
         // a count for the tests (ABT #2124, the catalogue filters run one pass, its final simulations the loop).
         static size_t get_loss_solves(bool lossTemperatureLoop);
+        // How many of the one-pass solves built no thermal network (LossSolveWithoutThermalNetworkScope), on this thread.
+        static size_t get_loss_solves_without_thermal_network();
         CoreLossesOutput calculate_core_losses(OperatingPoint& operatingPoint, Magnetic magnetic,
                                                std::optional<WindingLossesOutput>* windingLossesOutput = nullptr,
                                                std::optional<TemperatureOutput>* temperatureOutput = nullptr,

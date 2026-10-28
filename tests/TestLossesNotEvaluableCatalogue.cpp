@@ -161,12 +161,13 @@ TEST_CASE("The catalogue adviser ranks a part whose core losses are not evaluabl
     settings.reset();
 }
 
-TEST_CASE("The catalogue adviser evaluates losses in one pass, its filters and its hits alike",
+TEST_CASE("The catalogue adviser evaluates losses in one pass, its loss filter without a thermal network",
           "[adviser][catalogue][loss-temperature-loop][cost]") {
     // ABT #2124 (Alf, 2026-10-28): screening a catalogue ran the loss <-> temperature loop (ABT #838, with its
     // lowest-stable-point search, ABT #1840) for every part, 20x slower than before it. The catalogue search runs one
     // pass now, its filters and the final simulation of the hits alike (this test first asserted that the hits kept
-    // the loop; Alf then decided one pass for them too).
+    // the loop; Alf then decided one pass for them too), and its LOSSES_NO_PROXIMITY filter builds no thermal network
+    // (losses at ambient, as before ABT #838).
     settings.reset();
     std::vector<OpenMagnetics::Magnetic> catalogue{catalogue_part("PART-A"), catalogue_part("PART-B")};
     std::vector<MagneticFilterOperation> flow{
@@ -175,17 +176,21 @@ TEST_CASE("The catalogue adviser evaluates losses in one pass, its filters and i
     MagneticAdviser adviser(true);
     const size_t onePassBefore = MagneticSimulator::get_loss_solves(false);
     const size_t loopBefore = MagneticSimulator::get_loss_solves(true);
+    const size_t withoutNetworkBefore = MagneticSimulator::get_loss_solves_without_thermal_network();
     std::vector<std::pair<OpenMagnetics::Mas, double>> results;
     REQUIRE_NOTHROW(results = adviser.get_advised_magnetic(inductor_inputs(), catalogue, flow, 10, true));
     const size_t onePass = MagneticSimulator::get_loss_solves(false) - onePassBefore;
     const size_t loop = MagneticSimulator::get_loss_solves(true) - loopBefore;
-    INFO(onePass << " one-pass loss solves, " << loop << " looped loss solves, " << results.size() << " hits");
+    const size_t withoutNetwork = MagneticSimulator::get_loss_solves_without_thermal_network() - withoutNetworkBefore;
+    INFO(onePass << " one-pass loss solves (" << withoutNetwork << " without a network), " << loop << " looped loss solves, "
+                 << results.size() << " hits");
     REQUIRE(results.size() == 2);
     for (auto& [mas, score] : results) {
         REQUIRE(mas.get_outputs().size() == 1);
         CHECK(mas.get_outputs()[0].get_core_losses());
     }
-    // The filter stage: one pass per part; the final simulation: one pass per hit.
+    // The filter stage: one pass per part, without a network; the final simulation: one pass per hit, with one.
+    CHECK(withoutNetwork == catalogue.size());
     CHECK(onePass == catalogue.size() + results.size());
     // Never the loop.
     CHECK(loop == 0);
