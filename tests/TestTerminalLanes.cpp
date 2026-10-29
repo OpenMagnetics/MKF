@@ -338,6 +338,7 @@ using namespace MAS;
 using namespace OpenMagnetics;
 using Catch::Matchers::ContainsSubstring;
 using Catch::Matchers::WithinAbs;
+using Catch::Matchers::StartsWith;
 
 namespace {
 
@@ -743,6 +744,53 @@ TEST_CASE("A molded body whose lead lane passes its side draws the lead and repo
         CHECK(finding.code == ResultFindingCode::LEAD_EXIT_CLASHES);
         CHECK_THAT(finding.message, !ContainsSubstring("ABT"));
     }
+    settings.reset();
+}
+
+// Alf, 2026-10-29: a closed core's lead-exit clashes are reported even when the turns' outlines cannot
+// be judged (TURN_OUTLINES_NOT_EVALUABLE): the lead-exit plan records them without any turn outline.
+// The molded body above, wound as it is, then its turns' stored shapes and its wire's outer diameter
+// taken away, so that no turn has an outline.
+TEST_CASE("A molded body's lead-exit clashes are reported when the turns' outlines are unknown",
+          "[lead-exit][constructive-model][coil][abt1383][abt-1383]") {
+    auto& settings = Settings::GetInstance();
+    settings.reset();
+    settings.set_coil_use_real_winding_geometry(true);
+    auto fixture = load_fixture("lead_exit_molded_overfull.json");
+    auto magnetic = autocomplete(fixture["magnetic"]);
+    auto coil = magnetic.get_coil();
+    auto turns = coil.get_turns_description().value();
+    for (auto& turn : turns) {
+        turn.set_cross_sectional_shape(std::nullopt);
+    }
+    coil.set_turns_description(turns);
+    auto wire = coil.resolve_wire(size_t(0));
+    REQUIRE(wire.get_type() == WireType::ROUND);
+    REQUIRE(wire.get_outer_diameter());
+    wire.set_outer_diameter(std::nullopt);
+    coil.get_mutable_functional_description()[0].set_wire(wire);
+    magnetic.set_coil(coil);
+    REQUIRE(magnetic.get_mutable_coil().turn_outlines_unknown_reason());
+    const auto clashes = magnetic.get_mutable_coil().judge_lead_exit_clashes();
+    REQUIRE_FALSE(clashes.empty());
+
+    OpenMagnetics::Mas mas;
+    mas.set_magnetic(magnetic);
+    std::vector<ResultFinding> findings;
+    REQUIRE_NOTHROW(findings = ResultsAnalyzer::analyze_results(mas));
+    size_t notEvaluable = 0;
+    size_t reported = 0;
+    for (const auto& finding : findings) {
+        CAPTURE(finding.message);
+        notEvaluable += finding.code == ResultFindingCode::TURN_OUTLINES_NOT_EVALUABLE;
+        if (finding.code == ResultFindingCode::LEAD_EXIT_CLASHES) {
+            ++reported;
+            CHECK_THAT(finding.message, StartsWith("The ") && ContainsSubstring(" lead of turn ") &&
+                                        !ContainsSubstring("Warning") && !ContainsSubstring("ABT"));
+        }
+    }
+    CHECK(notEvaluable == 1);
+    CHECK(reported == clashes.size());
     settings.reset();
 }
 

@@ -623,7 +623,9 @@ struct LeadExitSolid {
 //   CORNER_RUN_OFF_TERMINAL  a corner run crosses the plate's side edge beside its terminal
 //   LANE_PAST_BODY_SIDE      a molded lead's lane reaches past the body's side
 //   LEADS_SHARE_COPPER       two leads' runs pass closer than their coated radii
-// `description` states the lead and the numbers, in words fit for a finding.
+// `leads` names the leads involved by MKF's lead names ("entrance lead of '<turn>'", "exit lead of
+// '<turn>'", the names describe_lead_for_people reads); `description` says what they do, with the
+// numbers, in words fit for a finding that starts by naming them.
 struct LeadExitClash {
     enum class Kind {
         BELOW_FLOOR,
@@ -637,6 +639,7 @@ struct LeadExitClash {
     };
     Kind kind;
     std::string winding;
+    std::vector<std::string> leads;
     std::string description;
 };
 

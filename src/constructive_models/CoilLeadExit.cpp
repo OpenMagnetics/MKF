@@ -175,6 +175,7 @@ struct ExitLead {
     size_t route;
     size_t space;
     std::string label;
+    std::string name;       // MKF's lead name: "entrance lead of '<turn>'" / "exit lead of '<turn>'"
     std::string winding;
     int64_t parallel;
     bool entrance;
@@ -197,8 +198,9 @@ std::vector<LeadExitSolid> Coil::plan_closed_core_lead_exits(std::vector<Connect
     // Copper the plan lays where it collides (with the core, the winding, the plate's edge or
     // another lead) is still laid exactly where the plan puts it, and recorded: the design is drawn
     // as built and the clash reported (analyze_results), never refused.
-    auto clash = [&](LeadExitClash::Kind kind, const std::string& winding, const std::string& message) {
-        clashes.push_back(LeadExitClash{kind, winding, message});
+    auto clash = [&](LeadExitClash::Kind kind, const std::string& winding, const std::vector<std::string>& leadNames,
+                     const std::string& message) {
+        clashes.push_back(LeadExitClash{kind, winding, leadNames, message});
     };
     if (!_coreLeadExit) {
         return solids;
@@ -248,6 +250,7 @@ std::vector<LeadExitSolid> Coil::plan_closed_core_lead_exits(std::vector<Connect
         lead.winding = route.winding;
         lead.parallel = route.parallel;
         lead.label = "winding '" + route.winding + "' parallel " + std::to_string(route.parallel) + (lead.entrance ? " entrance" : " exit");
+        lead.name = std::string(lead.entrance ? "entrance" : "exit") + " lead of '" + (lead.entrance ? route.toTurn : route.fromTurn) + "'";
         if (!route.pinName.empty()) {
             throw InvalidInputException(ErrorCode::INVALID_INPUT,
                 "The terminal lead of " + lead.label + " is assigned to bobbin pin '" + route.pinName + "', but the core is closed: "
@@ -294,8 +297,9 @@ std::vector<LeadExitSolid> Coil::plan_closed_core_lead_exits(std::vector<Connect
     for (const auto& lead : leads) {
         const double radius = lead.diameter / 2;
         if (lead.axial - radius < floor - clearanceTolerance) {
-            clash(LeadExitClash::Kind::BELOW_FLOOR, lead.winding,
-                "the terminal lead of " + lead.label + " runs at " + mm(lead.axial) + ", its copper below the plate / cavity floor at " + mm(floor));
+            clash(LeadExitClash::Kind::BELOW_FLOOR, lead.winding, {lead.name},
+                "runs at a height of " + mm(lead.axial) + ", with its copper below the floor of the " +
+                std::string(exit.kind == CoreLeadExitGeometry::Kind::RING_NOTCH ? "base plate" : "body's cavity") + " at " + mm(floor));
         }
         if (lead.edgeRow) {
             // Coil.cpp forces a closed core's terminal rows onto the plate-side edge. A row that is
@@ -335,11 +339,10 @@ std::vector<LeadExitSolid> Coil::plan_closed_core_lead_exits(std::vector<Connect
                 const double axial = turn.get_coordinates()[1];
                 const double gap = std::abs(axial - std::clamp(axial, stubLow, stubHigh));
                 if (gap < lead.diameter - clearanceTolerance && stubHigh - stubLow > clearanceTolerance) {
-                    clash(LeadExitClash::Kind::STUB_CROSSES_OWN_TURN, lead.winding,
-                        "the terminal lead of " + lead.label + " attaches to turn '" + turnName + "' at " +
-                        mm(attached->get_coordinates()[1]) + " and drops to its plate-side row at " + mm(lead.axial) +
-                        " through turn '" + turn.get_name() + "' of its own layer '" + layerName + "' (at " + mm(axial) +
-                        "): the stub crosses it (a closed core's leads leave over its base)");
+                    clash(LeadExitClash::Kind::STUB_CROSSES_OWN_TURN, lead.winding, {lead.name},
+                        "drops from a height of " + mm(attached->get_coordinates()[1]) + " to its row at the base, at " +
+                        mm(lead.axial) + ", through " + describe_turn_for_people(*this, turn.get_name()) +
+                        ", a turn of its own layer at " + mm(axial) + " (a closed core's leads leave over its base)");
                 }
             }
         }
@@ -504,8 +507,8 @@ std::vector<LeadExitSolid> Coil::plan_closed_core_lead_exits(std::vector<Connect
             const double outermostLane = lane_radius_of(lead.entrance) + double(endCount - 1) * pitch;
             const double needed = outermostLane + std::max(lead.diameter / 2, lead.bendRadius);
             if (needed > ringInnerRadius + clearanceTolerance) {
-                clash(LeadExitClash::Kind::LANE_PAST_RING_BORE, lead.winding,
-                    "the lead of " + lead.label + " does not fit round the winding inside the ring: its outermost lane at " + mm(outermostLane) +
+                clash(LeadExitClash::Kind::LANE_PAST_RING_BORE, lead.winding, {lead.name},
+                    "does not fit round the winding inside the ring: its outermost lane at " + mm(outermostLane) +
                     " (" + lane_terms(lead.entrance) + ", one pitch per lead of an end) plus its " +
                     mm(std::max(lead.diameter / 2, lead.bendRadius)) + " bend reaches " + mm(needed) +
                     ", past the ring bore K/2 = " + mm(ringInnerRadius));
@@ -662,8 +665,8 @@ std::vector<LeadExitSolid> Coil::plan_closed_core_lead_exits(std::vector<Connect
                 const double ringClearance = std::min(axis_distance_xz(outside, turnOntoLeg[position].value_or(outside)),
                                                       axis_distance_xz(turnOntoLeg[position].value_or(outside), target));
                 if (ringClearance < ringOuterRadius + radius - clearanceTolerance) {
-                    clash(LeadExitClash::Kind::CORNER_RUN_OVER_RING, lead.winding,
-                        "the corner run of " + lead.label + " from its notch to its terminal passes " + mm(ringClearance) +
+                    clash(LeadExitClash::Kind::CORNER_RUN_OVER_RING, lead.winding, {lead.name},
+                        "runs from its notch to its terminal " + mm(ringClearance) +
                         " from the axis, through the ring (J/2 + its radius = " + mm(ringOuterRadius + radius) + ")");
                 }
                 // Where it leaves the plate: over the plate top inside the square by its radius and
@@ -673,9 +676,9 @@ std::vector<LeadExitSolid> Coil::plan_closed_core_lead_exits(std::vector<Connect
                 for (const auto& point : {outside, turnOntoLeg[position].value_or(outside)}) {
                     if (std::abs(point[0]) > half - radius + clearanceTolerance || std::abs(point[2]) > half - radius + clearanceTolerance ||
                         side * point[0] - point[2] > ring.plateSide - ring.plateChamferLeg - radius * std::numbers::sqrt2 + clearanceTolerance) {
-                        clash(LeadExitClash::Kind::CORNER_RUN_OFF_PLATE, lead.winding,
-                            "the corner run of " + lead.label + " at (" + mm(point[0]) + ", " + mm(point[2]) +
-                            ") is not on the plate's corner area (plate side M = " + mm(ring.plateSide) + ", chamfer leg N = " +
+                        clash(LeadExitClash::Kind::CORNER_RUN_OFF_PLATE, lead.winding, {lead.name},
+                            "runs from its notch to its terminal through (" + mm(point[0]) + ", " + mm(point[2]) +
+                            "), which is off the corner area of the base plate (plate side M = " + mm(ring.plateSide) + ", chamfer leg N = " +
                             mm(ring.plateChamferLeg) + ")");
                     }
                 }
@@ -684,8 +687,8 @@ std::vector<LeadExitSolid> Coil::plan_closed_core_lead_exits(std::vector<Connect
                     const double t = (side * half - lastCorner[0]) / (target[0] - lastCorner[0]);
                     const double crossingZ = lastCorner[2] + t * (target[2] - lastCorner[2]);
                     if (t < 0 || t > 1 || crossingZ < sideStart + radius - clearanceTolerance || crossingZ > sideEnd - radius + clearanceTolerance) {
-                        clash(LeadExitClash::Kind::CORNER_RUN_OFF_TERMINAL, lead.winding,
-                            "the corner run of " + lead.label + " crosses the plate's side edge at z = " + mm(crossingZ) +
+                        clash(LeadExitClash::Kind::CORNER_RUN_OFF_TERMINAL, lead.winding, {lead.name},
+                            "runs from its notch across the plate's side edge at z = " + mm(crossingZ) +
                             ", not over its terminal (z " + mm(sideStart) + " .. " + mm(sideEnd) + ")");
                     }
                 }
@@ -803,8 +806,8 @@ std::vector<LeadExitSolid> Coil::plan_closed_core_lead_exits(std::vector<Connect
             const double laneRadius = lane_radius_of(lead.entrance);
             const double needed = laneRadius + lead.diameter / 2;
             if (needed > footprintHalf + clearanceTolerance) {
-                clash(LeadExitClash::Kind::LANE_PAST_BODY_SIDE, lead.winding,
-                    "the lead of " + lead.label + " runs to its lead-frame tab outside the molded body: its lane at " + mm(laneRadius) +
+                clash(LeadExitClash::Kind::LANE_PAST_BODY_SIDE, lead.winding, {lead.name},
+                    "runs to its lead-frame tab outside the molded body: its lane at " + mm(laneRadius) +
                     " (" + lane_terms(lead.entrance) + ") reaches " + mm(needed) + " with its coated radius, past the body's side at " +
                     mm(footprintHalf));
             }
@@ -919,9 +922,9 @@ std::vector<LeadExitSolid> Coil::plan_closed_core_lead_exits(std::vector<Connect
             const double found = lead_polyline_distance(paths[i], paths[j]);
             const double required = (leads[i].diameter + leads[j].diameter) / 2;
             if (found < required - clearanceTolerance) {
-                clash(LeadExitClash::Kind::LEADS_SHARE_COPPER, leads[i].winding,
-                    "the exit runs of " + leads[i].label + " and " + leads[j].label + " share copper: centreline distance " + mm(found) +
-                    " < " + mm(required));
+                clash(LeadExitClash::Kind::LEADS_SHARE_COPPER, leads[i].winding, {leads[i].name, leads[j].name},
+                    "run through each other on their way out of the core: their centrelines are " + mm(found) +
+                    " apart, less than the " + mm(required) + " their coated radii need");
             }
         }
     }

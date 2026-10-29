@@ -618,8 +618,8 @@ std::vector<ResultFinding> ResultsAnalyzer::analyze_unmodelled_leads(const Magne
         if (coil.is_real_winding_blocking_applied() && coil.get_turns_description()) {
             ResultFinding finding;
             finding.code = ResultFindingCode::LEAD_ROUTE_NOT_MODELLED;
-            finding.message = "Warning: the terminal leads of this coil are not laid out: " + refusal.value() +
-                              " Its magnetics are computed; no lead route, lead collision or lead bend is judged.";
+            finding.message = "The terminal leads of this coil are not laid out: " + refusal.value() +
+                              " Its magnetics are computed, but no lead route, lead collision or lead bend is checked.";
             findings.push_back(finding);
         }
         return findings;
@@ -763,8 +763,18 @@ std::vector<ResultFinding> ResultsAnalyzer::analyze_lead_exit_clashes(const Magn
     for (const auto& clash : coil.judge_lead_exit_clashes()) {
         ResultFinding finding;
         finding.code = ResultFindingCode::LEAD_EXIT_CLASHES;
-        finding.message = "Warning: winding '" + clash.winding + "' has its closed-core lead exit drawn where its copper "
-                          "collides: " + clash.description + ". The coil is drawn as planned; the lead collides there.";
+        if (clash.leads.empty()) {
+            throw std::logic_error("A lead-exit clash of winding '" + clash.winding + "' names no lead");
+        }
+        std::string subject;
+        for (size_t index = 0; index < clash.leads.size(); ++index) {
+            subject += (index == 0 ? "The " : " and the ") + describe_lead_for_people(coil, clash.leads[index]);
+        }
+        const bool several = clash.leads.size() > 1;
+        finding.message = subject + " " + clash.description + ". " + (several ? "The leads are" : "The lead is") +
+                          " drawn where the core's lead exit lays " + (several ? "them" : "it") + ", and " +
+                          (several ? "collide" : "collides") + " there: wind the coil another way, or choose a core whose "
+                          "lead exit has room for " + (several ? "them." : "it.");
         findings.push_back(finding);
     }
     return findings;
@@ -968,6 +978,11 @@ std::vector<ResultFinding> ResultsAnalyzer::analyze_results(const Mas& mas) {
     for (auto& finding : analyze_unmodelled_leads(mas.get_magnetic())) {
         findings.push_back(finding);
     }
+    // A closed core's lead-exit clashes are recorded by the lead-exit plan, which needs no turn outline:
+    // they are reported whether or not the outlines below can be judged.
+    for (auto& finding : analyze_lead_exit_clashes(mas.get_magnetic())) {
+        findings.push_back(finding);
+    }
     // The overlap and outside-window judges draw every turn with its outline. When a turn's is unknown
     // (it stores no cross-section and its wire gives none either), neither is judged: ONE finding says
     // so, with the reason, and every other finding stands (ABT #2109).
@@ -986,9 +1001,6 @@ std::vector<ResultFinding> ResultsAnalyzer::analyze_results(const Mas& mas) {
         findings.push_back(finding);
     }
     for (auto& finding : analyze_turns_outside_window(mas.get_magnetic())) {
-        findings.push_back(finding);
-    }
-    for (auto& finding : analyze_lead_exit_clashes(mas.get_magnetic())) {
         findings.push_back(finding);
     }
     return findings;
