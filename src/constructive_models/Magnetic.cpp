@@ -219,9 +219,14 @@ bool fits_three_dimensions(std::vector<double> magneticDimensions, double firstD
 }
 
 bool Magnetic::fits(MaximumDimensions maximumDimensions, bool allowRotation) {
+    return fits_maximum_dimensions(get_maximum_dimensions(), maximumDimensions, allowRotation);
+}
 
-    auto magneticDimensions = get_maximum_dimensions();
-
+bool fits_maximum_dimensions(const std::vector<double>& magneticDimensions, MaximumDimensions maximumDimensions, bool allowRotation) {
+    if (magneticDimensions.size() != 3) {
+        throw InvalidInputException(ErrorCode::INVALID_INPUT, "fits_maximum_dimensions needs {width, height, depth}, got " +
+                                    std::to_string(magneticDimensions.size()) + " values");
+    }
     if (!maximumDimensions.get_depth() && !maximumDimensions.get_height() && !maximumDimensions.get_width()) {
         return true;
     }

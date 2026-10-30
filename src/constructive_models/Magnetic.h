@@ -376,4 +376,9 @@ inline void to_json(json& j, const std::vector<Magnetic>& v) {
         j.push_back(e);
     }
 }
+// Whether an outline {width, height, depth} (m) fits the maximum dimensions, in any orientation when
+// allowRotation: the test Magnetic::fits applies to a magnetic's own outline, for a caller holding an
+// outline it built from parts (e.g. a core and its bobbin before any winding).
+bool fits_maximum_dimensions(const std::vector<double>& dimensions, MaximumDimensions maximumDimensions, bool allowRotation);
+
 } // namespace OpenMagnetics

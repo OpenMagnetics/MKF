@@ -298,4 +298,23 @@ namespace {
         REQUIRE(virtualMagnetics[0].get_manufacturer_info()->get_name() == "Some Manufacturer");
     }
 
+    TEST_CASE("An outline built from parts is judged against the maximum dimensions as a magnetic's own is", "[magnetic][maximum-dimensions]") {
+        // About an ETD 34 wound: 34 x 35 x 26 mm (width, height, depth).
+        const std::vector<double> outline{0.034, 0.035, 0.026};
+        MaximumDimensions height27;
+        height27.set_height(0.027);
+        CHECK(fits_maximum_dimensions(outline, height27, true));     // lying on its 26 mm side
+        CHECK_FALSE(fits_maximum_dimensions(outline, height27, false));   // upright it is 35 mm tall
+        MaximumDimensions height20;
+        height20.set_height(0.020);
+        CHECK_FALSE(fits_maximum_dimensions(outline, height20, true));
+        MaximumDimensions box;
+        box.set_width(0.036);
+        box.set_height(0.027);
+        box.set_depth(0.035);
+        CHECK(fits_maximum_dimensions(outline, box, true));
+        CHECK_FALSE(fits_maximum_dimensions(outline, box, false));
+        CHECK_THROWS_AS(fits_maximum_dimensions(std::vector<double>{0.034, 0.035}, height27, true), InvalidInputException);
+    }
+
 }  // namespace
