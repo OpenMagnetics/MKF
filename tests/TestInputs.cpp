@@ -7,6 +7,8 @@
 #include "processors/ResultsAnalyzer.h"
 #include "physical_models/WindingOhmicLosses.h"
 #include "support/NumberFormat.h"
+#include "support/LogOnceScope.h"
+#include "support/Utils.h"
 #include <regex>
 #include "support/Utils.h"
 #include "json.hpp"
@@ -3466,5 +3468,61 @@ TEST_CASE("Test_Volt_Second_Balance_Genuine_Imbalance_Is_Still_Flagged_Without_A
         REQUIRE(message);
         INFO(message.value());
         CHECK_THAT(message.value(), Catch::Matchers::ContainsSubstring("constant") && !Catch::Matchers::ContainsSubstring("times its AC swing"));
+    }
+}
+
+TEST_CASE("Test_Steady_State_Mean_Voltage_Warning_Is_Logged_Once_Per_Excitation_Inside_A_Call", "[processor][inputs][abt-2160]") {
+    // ABT #2160: the core adviser's turns solve evaluated one operating point's magnetizing current ~370,000 times and
+    // logged its volt-second imbalance warning on every evaluation. Inside one top-level call (LogOnceScope) the warning
+    // is logged once per excitation; outside any call, and in the next call, it is logged as before.
+    const double frequency = 100000;
+    auto unbalanced_excitation = [&](double highVoltage) {
+        Waveform voltageWaveform;
+        voltageWaveform.set_time(std::vector<double>{0, 0.5 / frequency, 0.5 / frequency, 1 / frequency});
+        voltageWaveform.set_data({highVoltage, highVoltage, -9, -9});
+        SignalDescriptor voltageSignal;
+        voltageSignal.set_waveform(voltageWaveform);
+        OperatingPointExcitation excitation;
+        excitation.set_frequency(frequency);
+        excitation.set_name("Primary");
+        excitation.set_voltage(voltageSignal);
+        return excitation;
+    };
+    auto count_warnings = [](const std::string& log) {
+        size_t count = 0;
+        for (size_t position = log.find("of its AC swing"); position != std::string::npos; position = log.find("of its AC swing", position + 1)) {
+            ++count;
+        }
+        return count;
+    };
+    auto evaluate = [&](const OperatingPointExcitation& excitation) {
+        auto sampled = OpenMagnetics::Inputs::calculate_sampled_waveform(excitation.get_voltage()->get_waveform().value(), frequency);
+        return OpenMagnetics::Inputs::calculate_steady_state_mean_voltage(excitation, sampled, "Excitation 'Primary'");
+    };
+    auto first = unbalanced_excitation(10);   // mean 0.5 V against an AC swing of 4.75 V/f: well above the 1 % warning
+    auto second = unbalanced_excitation(11);  // another operating point of the same winding
+
+    OpenMagnetics::read_log();
+    double mean = evaluate(first);
+    CHECK(evaluate(first) == mean);
+    CHECK(count_warnings(OpenMagnetics::read_log()) == 2);  // no call open: every evaluation logs
+
+    {
+        OpenMagnetics::LogOnceScope call;
+        CHECK(evaluate(first) == mean);
+        CHECK(evaluate(first) == mean);
+        {
+            OpenMagnetics::LogOnceScope nested;  // a nested entry point shares the outer call's record
+            CHECK(evaluate(first) == mean);
+            evaluate(second);
+        }
+        evaluate(second);
+        CHECK(count_warnings(OpenMagnetics::read_log()) == 2);  // once for each operating point
+    }
+    {
+        OpenMagnetics::LogOnceScope nextCall;  // nothing carries over from the call before
+        evaluate(first);
+        evaluate(first);
+        CHECK(count_warnings(OpenMagnetics::read_log()) == 1);
     }
 }

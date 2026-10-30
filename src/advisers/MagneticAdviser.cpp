@@ -1,3 +1,4 @@
+#include "support/LogOnceScope.h"
 #include "processors/Inputs.h"
 #include <algorithm>
 #include <source_location>
@@ -304,11 +305,13 @@ void MagneticAdviser::load_filter_flow(std::vector<MagneticFilterOperation> flow
 
 std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic_fast(Inputs inputs, size_t maximumNumberResults) {
     LossSolveMemoScope lossSolveMemoScope;  // exact repeats of a loss solve are answered from this run's memo
+    LogOnceScope logOnceScope;  // a warning about an excitation is logged once per advise (ABT #2160)
     return get_advised_magnetic_fast(inputs, {}, maximumNumberResults);
 }
 
 std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic_fast(Inputs inputs, std::vector<MagneticFilterOperation> filterFlow, size_t maximumNumberResults) {
     LossSolveMemoScope lossSolveMemoScope;  // exact repeats of a loss solve are answered from this run's memo
+    LogOnceScope logOnceScope;  // a warning about an excitation is logged once per advise (ABT #2160)
     // ABT #1718: the loss ranking integrates the primary voltage of every wound candidate; an
     // unbalanced voltage is rejected once, here, before any core is searched or coil wound.
     Inputs::check_adviser_inputs_volt_second_balance(inputs);
@@ -642,6 +645,7 @@ std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic_fast(I
 
 std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic(Inputs inputs, size_t maximumNumberResults) {
     LossSolveMemoScope lossSolveMemoScope;  // exact repeats of a loss solve are answered from this run's memo
+    LogOnceScope logOnceScope;  // a warning about an excitation is logged once per advise (ABT #2160)
     return get_advised_magnetic(inputs, _defaultCustomMagneticFilterFlow, maximumNumberResults);
 }
 
@@ -651,6 +655,7 @@ std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic(
         const LibraryContext* ctx,
         const AdviserConstraints& constraints) {
     LossSolveMemoScope lossSolveMemoScope;  // exact repeats of a loss solve are answered from this run's memo
+    LogOnceScope logOnceScope;  // a warning about an excitation is logged once per advise (ABT #2160)
     auto scope = ctx ? ctx->applyScoped() : LibraryContext::Scope{};
     ConstraintsScope constraintsScope(_constraints, constraints);
     return get_advised_magnetic(inputs, _defaultCustomMagneticFilterFlow, maximumNumberResults);
@@ -663,6 +668,7 @@ std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic(
         const LibraryContext* ctx,
         const AdviserConstraints& constraints) {
     LossSolveMemoScope lossSolveMemoScope;  // exact repeats of a loss solve are answered from this run's memo
+    LogOnceScope logOnceScope;  // a warning about an excitation is logged once per advise (ABT #2160)
     auto scope = ctx ? ctx->applyScoped() : LibraryContext::Scope{};
     ConstraintsScope constraintsScope(_constraints, constraints);
     return get_advised_magnetic(inputs, weights, maximumNumberResults);
@@ -675,6 +681,7 @@ std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic(
         const LibraryContext* ctx,
         const AdviserConstraints& constraints) {
     LossSolveMemoScope lossSolveMemoScope;  // exact repeats of a loss solve are answered from this run's memo
+    LogOnceScope logOnceScope;  // a warning about an excitation is logged once per advise (ABT #2160)
     auto scope = ctx ? ctx->applyScoped() : LibraryContext::Scope{};
     ConstraintsScope constraintsScope(_constraints, constraints);
     return get_advised_magnetic(inputs, filterFlow, maximumNumberResults);
@@ -686,6 +693,7 @@ std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic_fast(
         const LibraryContext* ctx,
         const AdviserConstraints& constraints) {
     LossSolveMemoScope lossSolveMemoScope;  // exact repeats of a loss solve are answered from this run's memo
+    LogOnceScope logOnceScope;  // a warning about an excitation is logged once per advise (ABT #2160)
     auto scope = ctx ? ctx->applyScoped() : LibraryContext::Scope{};
     ConstraintsScope constraintsScope(_constraints, constraints);
     return get_advised_magnetic_fast(inputs, maximumNumberResults);
@@ -693,6 +701,7 @@ std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic_fast(
 
 std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic(Inputs inputs, std::map<MagneticFilters, double> weights, size_t maximumNumberResults) {
     LossSolveMemoScope lossSolveMemoScope;  // exact repeats of a loss solve are answered from this run's memo
+    LogOnceScope logOnceScope;  // a warning about an excitation is logged once per advise (ABT #2160)
     std::vector<MagneticFilterOperation> customMagneticFilterFlow{
         MagneticFilterOperation(MagneticFilters::COST, true, true, false, weights[MagneticFilters::COST]),
         MagneticFilterOperation(MagneticFilters::LOSSES, true, true, false, weights[MagneticFilters::LOSSES]),
@@ -703,6 +712,7 @@ std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic(Inputs
 
 std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic(Inputs inputs, std::vector<MagneticFilterOperation> filterFlow, size_t maximumNumberResults) {
     LossSolveMemoScope lossSolveMemoScope;  // exact repeats of a loss solve are answered from this run's memo
+    LogOnceScope logOnceScope;  // a warning about an excitation is logged once per advise (ABT #2160)
     // ABT #1718: see get_advised_magnetic_fast.
     Inputs::check_adviser_inputs_volt_second_balance(inputs);
     clear_scoring();
@@ -1177,11 +1187,13 @@ size_t catalogue_number_windings(const Magnetic& magnetic) {
 
 std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic(Inputs inputs, std::vector<Magnetic> catalogueMagnetics, size_t maximumNumberResults, bool strict) {
     LossSolveMemoScope lossSolveMemoScope;  // exact repeats of a loss solve are answered from this run's memo
+    LogOnceScope logOnceScope;  // a warning about an excitation is logged once per advise (ABT #2160)
     return get_advised_magnetic(inputs, catalogueMagnetics, _defaultCatalogueMagneticFilterFlow, maximumNumberResults, strict);
 }
 
 std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic(Inputs inputs, std::vector<Magnetic> catalogueMagnetics, std::vector<MagneticFilterOperation> filterFlow, size_t maximumNumberResults, bool strict) {
     LossSolveMemoScope lossSolveMemoScope;  // exact repeats of a loss solve are answered from this run's memo
+    LogOnceScope logOnceScope;  // a warning about an excitation is logged once per advise (ABT #2160)
     std::vector<Mas> catalogueMagneticsWithInputs;
     for (auto magnetic : catalogueMagnetics) {
         if (inputs.get_operating_points().size() > 0 && catalogue_number_windings(magnetic) != inputs.get_operating_points()[0].get_excitations_per_winding().size()) {
@@ -1198,6 +1210,7 @@ std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic(Inputs
 
 std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic(Inputs inputs, const std::map<std::string, Magnetic>& catalogueMagnetics, std::vector<MagneticFilterOperation> filterFlow, size_t maximumNumberResults, bool strict) {
     LossSolveMemoScope lossSolveMemoScope;  // exact repeats of a loss solve are answered from this run's memo
+    LogOnceScope logOnceScope;  // a warning about an excitation is logged once per advise (ABT #2160)
     std::vector<Mas> catalogueMagneticsWithInputs;
     catalogueMagneticsWithInputs.reserve(catalogueMagnetics.size());
     for (const auto& [reference, magnetic] : catalogueMagnetics) {
@@ -1215,6 +1228,7 @@ std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic(Inputs
 
 std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic(std::vector<Mas> catalogueMagneticsWithInputs, std::vector<MagneticFilterOperation> filterFlow, size_t maximumNumberResults, bool strict) {
     LossSolveMemoScope lossSolveMemoScope;  // exact repeats of a loss solve are answered from this run's memo
+    LogOnceScope logOnceScope;  // a warning about an excitation is logged once per advise (ABT #2160)
 
     // No candidate magnetics survived upstream filtering — e.g. the requested
     // winding count has no matching parts in the catalogue (the callers above
@@ -1581,6 +1595,7 @@ std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic(std::v
 
 std::vector<std::pair<Mas, double>> MagneticAdviser::score_magnetics(std::vector<Mas> masMagnetics, std::vector<MagneticFilterOperation> filterFlow) {
     LossSolveMemoScope lossSolveMemoScope;  // exact repeats of a loss solve are answered from this run's memo
+    LogOnceScope logOnceScope;  // a warning about an excitation is logged once per advise (ABT #2160)
     std::vector<std::pair<Mas, double>> masMagneticsWithScoring;
 
     // Return early if no magnetics to score

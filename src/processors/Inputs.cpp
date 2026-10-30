@@ -1,5 +1,6 @@
 #include "processors/Inputs.h"
 #include "support/MasAccess.h"
+#include "support/LogOnceScope.h"
 #include "processors/WaveformProcessor.h"
 #include "constructive_models/Magnetic.h"
 #include "physical_models/MagnetizingInductance.h"
@@ -28,6 +29,8 @@
 #include <valarray>
 #include <vector>
 #include <list>
+#include <unordered_set>
+#include <memory>
 #include "support/Exceptions.h"
 
 
@@ -174,7 +177,54 @@ bool winding_conduction_entry_matches(const WindingConductionEntry& entry, const
     return true;
 }
 
+// What a steady-state mean-voltage warning is about: the excitation (its name in the context, its frequency and its
+// voltage waveform, bit for bit), and what it says. Two operating points with the same winding name differ in their
+// voltage, so each (operating point, winding) is logged once per LogOnceScope.
+std::string mean_voltage_warning_key(const std::string& context, double frequency, const std::optional<Waveform>& givenVoltage,
+                                     const Waveform& voltageSampledWaveform, const std::string& warning) {
+    std::string key = context;
+    key.push_back('\x1f');
+    key.append(reinterpret_cast<const char*>(&frequency), sizeof(double));
+    auto appendWaveform = [&key](const Waveform& waveform) {
+        const auto& data = waveform.get_data();
+        key.push_back('\x1f');
+        key.append(reinterpret_cast<const char*>(data.data()), data.size() * sizeof(double));
+        const auto& time = mas_access::time_ref(waveform);
+        if (time) {
+            key.push_back('\x1e');
+            key.append(reinterpret_cast<const char*>(time->data()), time->size() * sizeof(double));
+        }
+    };
+    // The voltage as given identifies the excitation; without one, the sampled voltage the mean was taken from.
+    appendWaveform(givenVoltage ? givenVoltage.value() : voltageSampledWaveform);
+    key.push_back('\x1f');
+    key.append(warning);
+    return key;
+}
+
+thread_local std::unique_ptr<std::unordered_set<std::string>> activeLogOnceKeys;
+
 } // namespace
+
+LogOnceScope::LogOnceScope() {
+    if (!activeLogOnceKeys) {
+        activeLogOnceKeys = std::make_unique<std::unordered_set<std::string>>();
+        _owner = true;
+    }
+}
+
+LogOnceScope::~LogOnceScope() {
+    if (_owner) {
+        activeLogOnceKeys.reset();
+    }
+}
+
+bool LogOnceScope::first_time(const std::string& key) {
+    if (!activeLogOnceKeys) {
+        return true;
+    }
+    return activeLogOnceKeys->insert(key).second;
+}
 
 // Cooley-Tukey FFT (in-place, breadth-first, decimation-in-frequency)
 // Better optimized but less intuitive
@@ -2545,7 +2595,9 @@ double Inputs::calculate_steady_state_mean_voltage(const OperatingPointExcitatio
                    same_key(entry.givenVoltage, givenVoltage);
         })) {
         for (const auto& warning : hit->warnings) {
-            Logger::getInstance().warning(warning, "Inputs");
+            if (LogOnceScope::first_time(mean_voltage_warning_key(context, frequency, givenVoltage, voltageSampledWaveform, warning))) {
+                Logger::getInstance().warning(warning, "Inputs");
+            }
         }
         return hit->meanVoltage;
     }
@@ -2595,7 +2647,9 @@ double Inputs::calculate_steady_state_mean_voltage(const OperatingPointExcitatio
         return meanVoltage;
     }();
     for (const auto& warning : warnings) {
-        Logger::getInstance().warning(warning, "Inputs");
+        if (LogOnceScope::first_time(mean_voltage_warning_key(context, frequency, givenVoltage, voltageSampledWaveform, warning))) {
+            Logger::getInstance().warning(warning, "Inputs");
+        }
     }
     memo.insert(SteadyStateMeanVoltageEntry{givenVoltage ? std::optional<ExactWaveformKey>(ExactWaveformKey(givenVoltage.value())) : std::nullopt,
                                             frequency, ExactWaveformKey(voltageSampledWaveform), context, meanVoltage, std::move(warnings)});
@@ -3148,6 +3202,7 @@ OperatingPoint Inputs::process_operating_point(OperatingPoint operatingPoint, do
 }
 
 void Inputs::process(std::optional<std::variant<double, std::vector<double>>> magnetizingInductance) {
+    LogOnceScope logOnceScope;  // a warning about an excitation is logged once per processing (ABT #2160)
     auto operatingPoints = get_mutable_operating_points();
     std::vector<OperatingPoint> processed_operating_points;
 

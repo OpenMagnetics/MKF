@@ -1,3 +1,4 @@
+#include "support/LogOnceScope.h"
 #include "constructive_models/MasMigration.h"
 #include "support/FastJsonParse.h"
 #include "physical_models/MagnetizingInductance.h"
@@ -2834,6 +2835,7 @@ std::optional<double> magnetizing_inductance_unless_past_magnetisation_curve(Mag
 } // namespace
 
 Mas mas_autocomplete(Mas mas, bool simulate, json configuration) {
+    LogOnceScope logOnceScope;  // a warning about an excitation is logged once per autocomplete (ABT #2160)
 
     if (simulate) {
         throw_if_a_winding_would_be_invented(mas.get_magnetic());
@@ -3313,6 +3315,7 @@ std::optional<std::string> real_winding_refusal(const Magnetic& woundMagnetic, s
 }
 
 Magnetic magnetic_autocomplete(Magnetic magnetic, json configuration, std::optional<Inputs> inputs) {
+    LogOnceScope logOnceScope;  // a warning about an excitation is logged once per autocomplete (ABT #2160)
     // A datasheet-only catalogue part (neither core nor coil, see Magnetic.h) has no construction
     // to complete: it is returned as it is, so a catalogue mixing such parts with constructed ones
     // can be loaded with expansion on. A part with only one of the two is still refused below.
