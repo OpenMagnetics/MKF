@@ -573,14 +573,14 @@ static MagnetizingCurrentStamp stamp_magnetizing_current(OperatingPoint* operati
                  numberWindings < operatingPoint->get_excitations_per_winding().size()
                      ? std::optional<std::vector<IsolationSide>>()
                      : std::optional<std::vector<IsolationSide>>(coil.get_isolation_sides()))) {
-        OperatingPointExcitation excitation = primaryExcitation;
         auto magnetizingCurrent = Inputs::get_multiport_inductor_magnetizing_current(*operatingPoint, magnetizingInductance, coil.get_turns_ratios(),
             numberWindings < operatingPoint->get_excitations_per_winding().size()
                 ? std::optional<std::vector<IsolationSide>>()
                 : std::optional<std::vector<IsolationSide>>(coil.get_isolation_sides()));
-        stamp.fromVoltage = Inputs::is_multiport_inductor_magnetizing_current_from_voltage(excitation);
-        excitation.set_magnetizing_current(magnetizingCurrent);
-        operatingPoint->get_mutable_excitations_per_winding()[0] = excitation;
+        // Edited in place, after everything that can throw: only its magnetizing current changes (the copy of the
+        // whole excitation, written back over itself, copied every waveform it carries).
+        stamp.fromVoltage = Inputs::is_multiport_inductor_magnetizing_current_from_voltage(primaryExcitation);
+        operatingPoint->get_mutable_excitations_per_winding()[0].set_magnetizing_current(std::move(magnetizingCurrent));
     }
     else if (hasVoltage) {
         // Edited in place: only its magnetizing current changes, after everything that can throw (the copy of the
@@ -920,6 +920,9 @@ std::pair<MagnetizingInductanceOutput, SignalDescriptor> MagnetizingInductance::
     MagnetizingInductanceOutput magnetizingInductanceOutput;
     currentInitialPermeability = initialPermeability.get_initial_permeability(core.resolve_material(), temperature, std::nullopt, frequency);
     magnetizingInductanceOutput = reluctanceModel->get_core_reluctance(core, currentInitialPermeability);
+    // The gaps' reluctance does not depend on the permeability: every evaluation below reuses this one (its core and
+    // ungapped reluctances are set again by each).
+    const MagnetizingInductanceOutput gappingReluctanceOutput = magnetizingInductanceOutput;
     modifiedTotalReluctance = magnetizingInductanceOutput.get_core_reluctance();
     modifiedMagnetizingInductance = pow(numberTurnsPrimary, 2) / modifiedTotalReluctance;
 
@@ -931,10 +934,12 @@ std::pair<MagnetizingInductanceOutput, SignalDescriptor> MagnetizingInductance::
     // Set by the last evaluation below: the excitation is a line-cycle record (switching cycles riding on a line
     // swing) whose MMF the current imposes, so each switching cycle sees its own instantaneous line bias.
     bool lineCycleRecordUnderImposedMagnetomotiveForce = false;
+    // The material resolved above, read in place by every evaluation (resolve_material() returned a copy per call).
+    std::optional<CoreMaterial> resolvedMaterialStorage;
     auto biasedPermeability = [&](double permeability) -> double {
         lineCycleRecordUnderImposedMagnetomotiveForce = false;
         currentInitialPermeability = permeability;
-        magnetizingInductanceOutput = reluctanceModel->get_core_reluctance(core, permeability);
+        magnetizingInductanceOutput = reluctanceModel->get_core_reluctance(core, permeability, gappingReluctanceOutput);
         currentTotalReluctance = magnetizingInductanceOutput.get_core_reluctance();
         modifiedTotalReluctance = currentTotalReluctance;
         modifiedMagnetizingInductance = pow(numberTurnsPrimary, 2) / currentTotalReluctance;
@@ -1016,7 +1021,7 @@ std::pair<MagnetizingInductanceOutput, SignalDescriptor> MagnetizingInductance::
                 }
                 double hFieldDcBias;
                 if (biasFluxImposed) {
-                    hFieldDcBias = InitialPermeability::get_magnetic_field_dc_bias_for_flux_density(core.resolve_material(), bFieldDcBias, temperature, frequency, false);
+                    hFieldDcBias = InitialPermeability::get_magnetic_field_dc_bias_for_flux_density(core.resolve_material_unstored(resolvedMaterialStorage), bFieldDcBias, temperature, frequency, false);
                 }
                 else {
                     // The flux above was computed linearly from the magnetizing current through this
@@ -1099,7 +1104,7 @@ std::pair<MagnetizingInductanceOutput, SignalDescriptor> MagnetizingInductance::
                     }
 
                     if (magnetizingCurrentReachesZero) {
-                        auto coreMaterial = core.resolve_material();
+                        const auto& coreMaterial = core.resolve_material_unstored(resolvedMaterialStorage);
                         // The caller's share keeps the cached curve alive for every sample (ABT #838).
                         const auto magnetisationCurve = InitialPermeability::get_magnetisation_curve(coreMaterial, temperature, frequency);
                         if (stamp.fromVoltage) {
@@ -1150,7 +1155,7 @@ std::pair<MagnetizingInductanceOutput, SignalDescriptor> MagnetizingInductance::
                     }
 
                     auto [loadLineFieldStrength, loadLineFluxDensity] = InitialPermeability::get_dc_operating_point_for_magnetomotive_force(
-                        core.resolve_material(), biasMagnetomotiveForce, effectiveLength, effectiveArea, gapReluctance, temperature, frequency);
+                        core.resolve_material_unstored(resolvedMaterialStorage), biasMagnetomotiveForce, effectiveLength, effectiveArea, gapReluctance, temperature, frequency);
                     hFieldDcBias = loadLineFieldStrength;
 
                     // The flux above is linear in mu_rev, the small-signal slope: right for the
@@ -1178,7 +1183,7 @@ std::pair<MagnetizingInductanceOutput, SignalDescriptor> MagnetizingInductance::
 
                 // The model's value, not the checked one: a value at or below the vacuum's means the DC point
                 // has left the material's curve, and the loop below takes the saturated material's 1.
-                nextPermeability = initialPermeability.get_initial_permeability_model_value(core.resolve_material(), temperature, hFieldDcBias, frequency);
+                nextPermeability = initialPermeability.get_initial_permeability_model_value(core.resolve_material_unstored(resolvedMaterialStorage), temperature, hFieldDcBias, frequency);
                 // The last evaluation is the converged one: the output above is built at its permeability.
                 _lastDcBiasPoint = DcBiasPoint{hFieldDcBias, temperature, frequency, curvePeakFieldStrength};
             }

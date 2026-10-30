@@ -124,6 +124,9 @@ class ReluctanceModel {
     }
     MagnetizingInductanceOutput get_core_reluctance(const Core& core, std::optional<OperatingPoint> = std::nullopt);
     MagnetizingInductanceOutput get_core_reluctance(const Core& core, double initialPermeability);
+    // The same, on the gapping reluctance get_gapping_reluctance(core) returned for this core: it does not depend on the
+    // permeability, so a solve that evaluates one core at many permeabilities computes it once (ABT #2160).
+    MagnetizingInductanceOutput get_core_reluctance(const Core& core, double initialPermeability, MagnetizingInductanceOutput gappingReluctance);
     // The gaps' storable energy is at the core material's saturation flux density at `temperature`
     // (25 C, the catalogue reference, when the caller has no operating point -- the same
     // reference Core::get_magnetic_flux_density_saturation(bool) uses). A material without

@@ -117,6 +117,18 @@ MagnetizingInductanceOutput ReluctanceModel::get_core_reluctance(const Core& cor
     return magnetizingInductanceOutput;
 }
 
+MagnetizingInductanceOutput ReluctanceModel::get_core_reluctance(const Core& core, double initialPermeability, MagnetizingInductanceOutput gappingReluctance) {
+    auto ungappedCoreReluctance = get_ungapped_core_reluctance(core, initialPermeability);
+
+    auto magnetizingInductanceOutput = std::move(gappingReluctance);
+    double calculatedReluctance = ungappedCoreReluctance + gapping_reluctance_in_series(core, magnetizingInductanceOutput);
+
+    magnetizingInductanceOutput.set_core_reluctance(calculatedReluctance);
+    magnetizingInductanceOutput.set_ungapped_core_reluctance(ungappedCoreReluctance);
+
+    return magnetizingInductanceOutput;
+}
+
 
 // ABT #368: see the header comment. The clearance is unrolled to a strip of width tf (the
 // flange thickness on this gap's side), length = mean circumference, gap length a = (K-A)/2.
