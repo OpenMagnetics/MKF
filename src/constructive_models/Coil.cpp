@@ -1243,7 +1243,12 @@ static std::vector<ConnectionReservedSpace> toroidal_connection_reserved_spaces(
 
 std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces(
     std::vector<ConnectionRoute>* routesOut, std::vector<LeadExitSolid>* leadExitSolidsOut, bool planLeadExit,
-    std::vector<LeadExitClash>* leadExitClashesOut) {
+    std::vector<LeadExitClash>* leadExitClashesOut, ConnectionLayoutRecords* recordsOut) {
+    // What this layout derives about the winding is handed out (recordsOut), never stored: the
+    // winding's own passes record it (record_connection_layout).
+    ConnectionLayoutRecords localRecords;
+    ConnectionLayoutRecords& records = recordsOut != nullptr ? *recordsOut : localRecords;
+    records = ConnectionLayoutRecords{};
     // Model (first approximation, to be validated): each winding's wire routes through its
     // conduction layers in electrical (wound) order. The lead between two electrically-consecutive
     // layers of the same winding reserves one wire-thick rectangle on every conduction layer it
@@ -1251,8 +1256,8 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces(
     // that continuation lead crosses, and squeezes, the intervening layer; for adjacent layers it
     // reserves at the single boundary it steps over. Rectangular (concentric), overlapping layers
     // only; contiguous and toroidal windows are a TODO.
-    // ABT #1487: every call re-derives the outside links, so only the last layout's overflows stand.
-    _outsideLinkOverflows.clear();
+    // ABT #1487: every call re-derives the outside links, so only the last layout's overflows stand
+    // (records starts empty).
     std::vector<ConnectionReservedSpace> spaces;
     if (!get_layers_description() || !get_sections_description() || !get_turns_description()) {
         return spaces;
@@ -2902,7 +2907,7 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces(
                             entranceLayerFound = true;
                             if (l.get_orientation() == WindingOrientation::OVERLAPPING &&
                                 chain_parallel_of_layer(l) == parallel) {
-                                _terminalEntranceAtTop[{windingName, parallel}] = atTop;
+                                records.entranceAtTop[{windingName, parallel}] = atTop;
                                 if (std::getenv("MKF_BLOCKING_DIAG")) {
                                     std::cerr << "[entrance-edge] " << windingName << " p" << parallel
                                               << " turnY=" << turnY * 1e3 << " layer='" << entranceLayerName
@@ -3816,7 +3821,7 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces(
                                << (buildThickness + linkWidth - roomGeometry.windowThickness) * 1e3 << " mm";
                     }
                     reason << "; it is laid at " << chosen.value() * 1e3 << " mm, outside that room";
-                    _outsideLinkOverflows[routes[index].winding + " parallel " + std::to_string(routes[index].parallel) + " " +
+                    records.outsideLinkOverflows[routes[index].winding + " parallel " + std::to_string(routes[index].parallel) + " " +
                                           routes[index].fromTurn + " -> " + routes[index].toTurn] = reason.str();
                 }
                 placedLanes.push_back({chosen.value(), {low, high}});
@@ -4009,6 +4014,15 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces(
     return spaces;
 }
 
+void Coil::record_connection_layout(const ConnectionLayoutRecords& records, bool overflows) {
+    if (overflows) {
+        _outsideLinkOverflows = records.outsideLinkOverflows;
+    }
+    for (const auto& [chain, atTop] : records.entranceAtTop) {
+        _terminalEntranceAtTop[chain] = atTop;
+    }
+}
+
 ConnectionLayout Coil::get_connection_layout() {
     if (_coreLeadExitRefusal) {
         // The core closes every azimuth around the winding and has no lead exit.
@@ -4139,7 +4153,10 @@ std::map<std::string, std::pair<uint64_t, uint64_t>> Coil::compute_connection_bl
     // superseded), so their squeezes carry real corridor depths; only the adjacent-layer Z
     // diagonal (which names no layer) reserves nothing.
     std::map<std::string, std::pair<double, double>> maxRunDepth;  // layer -> {top, bottom}
-    for (const auto& space : get_connection_reserved_spaces(nullptr, nullptr, false)) {
+    ConnectionLayoutRecords layoutRecords;
+    const auto blockingSpaces = get_connection_reserved_spaces(nullptr, nullptr, false, nullptr, &layoutRecords);
+    record_connection_layout(layoutRecords);
+    for (const auto& space : blockingSpaces) {
         if (space.layer.empty()) {
             continue;
         }
@@ -5667,7 +5684,9 @@ void Coil::charge_tangent_departures() {
     std::vector<ConnectionRoute> routes;
     // A closed core's lead exit is not planned here: this runs inside wind() and reads
     // only the tangent departures, which lie in the window; the exit is planned for consumers.
-    get_connection_reserved_spaces(&routes, nullptr, false);
+    ConnectionLayoutRecords layoutRecords;
+    get_connection_reserved_spaces(&routes, nullptr, false, nullptr, &layoutRecords);
+    record_connection_layout(layoutRecords);
     auto turns = get_turns_description().value();
     bool changed = false;
     for (const auto& route : routes) {
@@ -5997,10 +6016,11 @@ void Coil::align_blocked_layer_turns() {
                     bool highOwnExit = false;
                     bool lowOwnExit = false;
                     // The reservations are re-derived from the layout as it stands; the outside-link
-                    // record that derivation rewrites belongs to the final layout, so it is kept.
-                    const auto outsideLinkOverflowsBefore = _outsideLinkOverflows;
-                    const auto reservedSpaces = get_connection_reserved_spaces();
-                    _outsideLinkOverflows = outsideLinkOverflowsBefore;
+                    // record that derivation derives belongs to the final layout, so only its entrance
+                    // edges are recorded.
+                    ConnectionLayoutRecords layoutRecords;
+                    const auto reservedSpaces = get_connection_reserved_spaces(nullptr, nullptr, true, nullptr, &layoutRecords);
+                    record_connection_layout(layoutRecords, false);
                     for (const auto& space : reservedSpaces) {
                         if (space.layer != layer.get_name() || space.coordinates.size() <= turnAxis) {
                             continue;
@@ -6972,7 +6992,9 @@ std::map<std::string, uint64_t> Coil::align_blocked_ring_turns(bool forceSpreadB
         // "spill" path) instead of being reported as solved.
         ringDeficitSlots.clear();
         auto turns = get_turns_description().value();
-        auto spaces = get_connection_reserved_spaces(nullptr, nullptr, false);
+        ConnectionLayoutRecords layoutRecords;
+        auto spaces = get_connection_reserved_spaces(nullptr, nullptr, false, nullptr, &layoutRecords);
+        record_connection_layout(layoutRecords);
 
         // Ring membership (turns are cartesian at this point) and mean ring radius.
         std::map<std::string, std::vector<size_t>> ringTurnIndexes;
@@ -7746,7 +7768,9 @@ void Coil::apply_connection_reserved_space() {
     if (resolve_bobbin().get_winding_window_shape() == WindingWindowShape::ROUND) {
         return;
     }
-    auto spaces = get_connection_reserved_spaces(nullptr, nullptr, false);
+    ConnectionLayoutRecords layoutRecords;
+    auto spaces = get_connection_reserved_spaces(nullptr, nullptr, false, nullptr, &layoutRecords);
+    record_connection_layout(layoutRecords);
     if (spaces.empty()) {
         return;
     }

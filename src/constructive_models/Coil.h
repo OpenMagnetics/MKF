@@ -711,6 +711,16 @@ struct PinAssignmentResult {
     std::vector<std::string> notes;           // design notes, e.g. "shorted on PCB", "buried shield end"
 };
 
+// What laying the connections out derives about the winding itself, beside the reserved spaces:
+// the edge each conductor chain's terminal row enters at (fed back into the next wind's direction
+// choice) and the outside series links laid beyond the room the core leaves them. Computing the
+// layout never stores these on the coil; the winding's own passes record them
+// (Coil::record_connection_layout).
+struct ConnectionLayoutRecords {
+    std::map<std::pair<std::string, int64_t>, bool> entranceAtTop;
+    std::map<std::string, std::string> outsideLinkOverflows;
+};
+
 // ABT #685: the whole connection layout of a wound coil — every conductor's routes, plus the ride
 // levels those routes impose. ONE computation, shared by the painters and by MVB++'s 3D builder,
 // so the three can no longer disagree about what the winder does.
@@ -1634,7 +1644,12 @@ class Coil : public MAS::Coil {
             std::vector<ConnectionRoute>* routesOut = nullptr,
             std::vector<LeadExitSolid>* leadExitSolidsOut = nullptr,
             bool planLeadExit = true,
-            std::vector<LeadExitClash>* leadExitClashesOut = nullptr);
+            std::vector<LeadExitClash>* leadExitClashesOut = nullptr,
+            ConnectionLayoutRecords* recordsOut = nullptr);
+        // Stores what a layout derived about the winding (ConnectionLayoutRecords) on the coil: the
+        // outside-link overflows (when `overflows`) and the entrance edges. Called by the winding's
+        // own passes only; get_connection_reserved_spaces changes no coil state.
+        void record_connection_layout(const ConnectionLayoutRecords& records, bool overflows = true);
         // The closed-core lead exit (src/constructive_models/CoilLeadExit.cpp). Called at
         // the end of get_connection_reserved_spaces, after the exit slots, when set_core_lead_exit
         // holds a geometry: fills each terminal route's exitRun / exitRunArc / exitRunEnd, adds the
