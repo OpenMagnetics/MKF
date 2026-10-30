@@ -1267,6 +1267,36 @@ TEST_CASE("Sibling Z dragbacks whose lane cannot hold them side by side are refu
     settings.reset();
 }
 
+// ABT #1424 follow-up: the LINK-PITCH pass asks MKF's connection layout what each layer change is
+// while the coil is still being wound. That question must not plan the terminal leads: on this EFD
+// 20/10/7 (IRREGULAR column) the half-wound layout has a Secondary terminal stub too short for its
+// bends, and the ramp it would need has no surface curvature to be planned on -- an error that
+// belongs to the finished coil, whose own leads lay out fine here.
+TEST_CASE("Asking what a layer change is while winding plans no terminal lead",
+          "[constructive-model][coil][abt-1424]") {
+    auto& settings = Settings::GetInstance();
+    settings.reset();
+    settings.set_coil_use_real_winding_geometry(true);
+    auto fixture = load_fixture("test_circuitsimulatorexporter_simba_json_87.json");
+    std::optional<OpenMagnetics::Magnetic> magnetic;
+    // The fixture IS a magnetic (core + coil), not a MAS document.
+    REQUIRE(fixture.contains("coil"));
+    REQUIRE_NOTHROW(magnetic.emplace(autocomplete(fixture)));
+    auto coil = magnetic->get_coil();
+    REQUIRE(coil.is_real_winding_blocking_applied());
+    std::vector<ConnectionRoute> routes;
+    REQUIRE_NOTHROW(coil.get_connection_reserved_spaces(&routes));
+    size_t terminalRoutes = 0;
+    for (const auto& route : routes) {
+        if (route.kind == ConnectionKind::TERMINAL_ENTRANCE || route.kind == ConnectionKind::TERMINAL_EXIT) {
+            ++terminalRoutes;
+        }
+    }
+    // Every conductor's two ends are laid out on the finished coil: Primary 2 parallels, Secondary 1.
+    CHECK(terminalRoutes == 6);
+    settings.reset();
+}
+
 }  // namespace lead_exit_suite
 
 // ABT #1397: the seated drum-ring's coil ends are joined to their terminal legs by a BOND solid (the

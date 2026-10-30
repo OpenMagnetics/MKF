@@ -1243,7 +1243,7 @@ static std::vector<ConnectionReservedSpace> toroidal_connection_reserved_spaces(
 
 std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces(
     std::vector<ConnectionRoute>* routesOut, std::vector<LeadExitSolid>* leadExitSolidsOut, bool planLeadExit,
-    std::vector<LeadExitClash>* leadExitClashesOut, ConnectionLayoutRecords* recordsOut) {
+    std::vector<LeadExitClash>* leadExitClashesOut, ConnectionLayoutRecords* recordsOut, bool planTerminalLeads) {
     // What this layout derives about the winding is handed out (recordsOut), never stored: the
     // winding's own passes record it (record_connection_layout).
     ConnectionLayoutRecords localRecords;
@@ -2784,7 +2784,11 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces(
                     std::max({wireOuterWidth, wireOuterHeight, sleeveOuterDiameter.value_or(0.0)}));
     };
 
-    for (size_t windingIndex = 0; windingIndex < get_functional_description().size(); ++windingIndex) {
+    // FIRST PASS: the terminal leads. Skipped when the caller asks only what the layer changes are
+    // (planTerminalLeads false, connection_kind_by_transition): no lead is emitted, so none of the
+    // lead's own planning runs -- its stub ramp, its rows, its pin leg -- and nothing it would
+    // refuse is refused on a layout the winder has not finished. The finished coil plans them.
+    for (size_t windingIndex = 0; planTerminalLeads && windingIndex < get_functional_description().size(); ++windingIndex) {
         auto windingName = get_functional_description()[windingIndex].get_name();
         // Wire footprint in the virtual frame: width is along the layer axis, height along the turn
         // axis, so swap them for contiguous layers (where the wire runs along x within a layer).
@@ -13865,10 +13869,12 @@ bool Coil::is_connection_plane_link(ConnectionKind kind) {
 }
 
 std::map<std::pair<std::string, std::string>, ConnectionKind> Coil::connection_kind_by_transition() {
-    // The lead exit is not planned: it decides nothing about a layer transition's kind, and it
-    // throws on its own infeasibilities, which are reported where the layout is really asked for.
+    // Only the layer changes are laid out: neither the terminal leads nor the lead exit decide a
+    // layer transition's kind, and both throw on their own infeasibilities (a terminal stub that
+    // needs a ramp on a column with no stated curvature), which belong to the finished coil, where
+    // the layout is really asked for -- this runs inside the winder, on a layout still being wound.
     std::vector<ConnectionRoute> routes;
-    get_connection_reserved_spaces(&routes, nullptr, false);
+    get_connection_reserved_spaces(&routes, nullptr, false, nullptr, nullptr, false);
     std::map<std::pair<std::string, std::string>, ConnectionKind> kinds;
     for (const auto& route : routes) {
         if (route.kind == ConnectionKind::TERMINAL_ENTRANCE || route.kind == ConnectionKind::TERMINAL_EXIT) {

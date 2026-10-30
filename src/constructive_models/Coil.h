@@ -1640,12 +1640,16 @@ class Coil : public MAS::Coil {
         // planned for (compute_connection_blocked_slots_per_layer, align_blocked_ring_turns and
         // apply_connection_reserved_space pass false). Every other caller gets the exit's copper
         // in routedLength.
+        // `planTerminalLeads` false lays out only the connections between turns (no terminal lead,
+        // so none of its planning or refusals): connection_kind_by_transition, which asks what each
+        // layer change is while the coil is still being wound.
         std::vector<ConnectionReservedSpace> get_connection_reserved_spaces(
             std::vector<ConnectionRoute>* routesOut = nullptr,
             std::vector<LeadExitSolid>* leadExitSolidsOut = nullptr,
             bool planLeadExit = true,
             std::vector<LeadExitClash>* leadExitClashesOut = nullptr,
-            ConnectionLayoutRecords* recordsOut = nullptr);
+            ConnectionLayoutRecords* recordsOut = nullptr,
+            bool planTerminalLeads = true);
         // Stores what a layout derived about the winding (ConnectionLayoutRecords) on the coil: the
         // outside-link overflows (when `overflows`) and the entrance edges. Called by the winding's
         // own passes only; get_connection_reserved_spaces changes no coil state.
