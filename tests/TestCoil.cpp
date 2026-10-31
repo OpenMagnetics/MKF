@@ -18198,3 +18198,33 @@ TEST_CASE("Windings wound together alternate turn by turn, or sit in blocks by c
     for (size_t k = 0; k < 4; ++k) CHECK(blocks[k] == "winding 0");
     for (size_t k = 4; k < 8; ++k) CHECK(blocks[k] == "winding 1");
 }
+
+TEST_CASE("Test_Real_Winding_Helical_Turns_Stay_Inside_The_Window_With_The_Pitch_They_Were_Laid_At", "[constructive-model][coil][real-geometry][regression]") {
+    // ABT #2117: 14_dab_xfmr_pm8770_n97 (PM 87/70, Primary 12 x 4 and Secondary 12 x 4 Round 0.80, real winding).
+    // The first Primary turn was placed for a pitch of 0.855404 mm (its centre half that pitch above the window
+    // bottom) but carried the refined helical pitch 0.863417 mm as its axial size, so it reached 3.9 um below the
+    // window and the thermal model refused it at the bobbin flange. Every helical turn's axial extent, at the pitch
+    // its stations were laid for, lies inside the winding window.
+    settings.reset();
+    clear_databases();
+    settings.set_coil_use_real_winding_geometry(true);
+    auto mas = OpenMagneticsTesting::mas_loader(std::string(__FILE__).substr(0, std::string(__FILE__).rfind('/'))
+                                                + "/../MAS/examples/14_dab_xfmr_pm8770_n97.json");
+    auto magnetic = OpenMagnetics::magnetic_autocomplete(mas.get_magnetic());
+    auto& coil = magnetic.get_mutable_coil();
+    auto bobbin = coil.resolve_bobbin();
+    const auto windows = bobbin.get_processed_description()->get_winding_windows();
+    REQUIRE(windows.size() == 1);
+    const double windowBottom = windows[0].get_coordinates().value()[1] - windows[0].get_height().value() / 2;
+    const double windowTop = windows[0].get_coordinates().value()[1] + windows[0].get_height().value() / 2;
+    const auto turns = coil.get_turns_description().value();
+    REQUIRE(!turns.empty());
+    for (const auto& turn : turns) {
+        INFO(turn.get_name());
+        REQUIRE(turn.get_dimensions());
+        const double halfHeight = turn.get_dimensions().value()[1] / 2;
+        CHECK(turn.get_coordinates()[1] - halfHeight >= windowBottom - 1e-12);
+        CHECK(turn.get_coordinates()[1] + halfHeight <= windowTop + 1e-12);
+    }
+    settings.reset();
+}

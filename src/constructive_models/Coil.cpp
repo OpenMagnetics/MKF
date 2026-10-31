@@ -5368,15 +5368,31 @@ void Coil::fund_radial_steps_against_sibling_wraps(std::vector<Turn>& turns, std
                 const double high = turns[stations[bundle * bundleSize + bundleSize - 1]].get_coordinates()[1];
                 const double pitch = std::max(needed, (high - low) / double(bundleSize - 1));
                 const double span = pitch * double(bundleSize - 1);
+                // ABT #2117: an end bundle is anchored at the outer EDGE of its outer turn, not at that turn's
+                // centre. The widened turns also take the wider axial size (below), so a centre kept in place
+                // moved the edge out by half the growth: on 14_dab_xfmr_pm8770_n97 the first Primary turn kept
+                // its centre laid for a 0.855409 mm pitch, took 0.863417 mm, and reached 3.9 um into the bobbin's
+                // bottom flange. Stations are emitted on the nm grid, so the anchored one is rounded INWARD.
+                const auto halfAxialSize = [&](size_t station) {
+                    const auto dimensions = turns[station].get_dimensions();
+                    if (!dimensions || dimensions->size() < 2) {
+                        throw CoilException(ErrorCode::COIL_WINDING_ERROR,
+                                            "Real winding: turn " + turns[station].get_name() +
+                                                " carries no axial dimension, so the edge its bundle is anchored at is unknown");
+                    }
+                    return dimensions.value()[1] / 2;
+                };
                 double first;
                 if (numberBundles == 1 || (bundle > 0 && bundle + 1 < numberBundles)) {
                     first = (low + high) / 2 - span / 2;
                 }
                 else if (bundle == 0) {
-                    first = low;
+                    const double lowHalf = halfAxialSize(stations[bundle * bundleSize]);
+                    first = std::ceil((low - lowHalf + std::max(lowHalf, needed / 2)) * 1e9 - 1e-6) / 1e9;
                 }
                 else {
-                    first = high - span;
+                    const double highHalf = halfAxialSize(stations[bundle * bundleSize + bundleSize - 1]);
+                    first = std::floor((high + highHalf - std::max(highHalf, needed / 2)) * 1e9 + 1e-6) / 1e9 - span;
                 }
                 for (size_t j = 0; j < bundleSize; ++j) {
                     laid[bundle * bundleSize + j] = roundFloat(first + double(j) * pitch, 9);
@@ -6376,6 +6392,21 @@ void Coil::align_blocked_layer_turns() {
             auto coords = turns[layerTurns[k]].get_coordinates();
             coords[turnAxis] = stations[k];
             turns[layerTurns[k]].set_coordinates(coords);
+            // ABT #2117: a helical turn's axial size IS the pitch its stations are laid at, and the stations
+            // above were laid at this layer's own wirePitch. Kept at the pitch respace_helical_layers_at_final_
+            // radius had laid them at, the turns of 14_dab_xfmr_pm8770_n97's Primary landing layer were 10 nm
+            // larger than their spacing, and the one at the window's top edge reached 5 nm past it.
+            if (helicalHere) {
+                auto dimensions = turns[layerTurns[k]].get_dimensions();
+                if (!dimensions || dimensions->size() <= turnAxis) {
+                    throw CoilException(ErrorCode::COIL_WINDING_ERROR,
+                                        "Real winding: turn " + turns[layerTurns[k]].get_name() +
+                                            " carries no axial dimension to take the pitch its layer was laid at");
+                }
+                auto laidDimensions = dimensions.value();
+                laidDimensions[turnAxis] = wirePitch;
+                turns[layerTurns[k]].set_dimensions(laidDimensions);
+            }
         }
         auto layerCoordinates = layer.get_coordinates();
         layerCoordinates[turnAxis] = roundFloat((stations.front() + stations.back()) / 2, 9);
