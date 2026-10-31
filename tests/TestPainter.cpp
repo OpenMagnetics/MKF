@@ -2010,6 +2010,15 @@ namespace {
             auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel,
                                                              MAS::WindingOrientation::OVERLAPPING, MAS::WindingOrientation::OVERLAPPING,
                                                              MAS::CoilAlignment::CENTERED, MAS::CoilAlignment::CENTERED, wires);
+            // A window that cannot take the two windings interleaved (no sections created at interleaving 2)
+            // is wound without interleaving, and still painted (Alf, 2026-10-31).
+            if (!coil.get_sections_description()) {
+                std::cout << "Test_Painter_All_Cores: " << coreShape << " cannot be wound at interleaving "
+                          << int(interleavingLevel) << ": wound without interleaving" << std::endl;
+                coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, 1,
+                                                            MAS::WindingOrientation::OVERLAPPING, MAS::WindingOrientation::OVERLAPPING,
+                                                            MAS::CoilAlignment::CENTERED, MAS::CoilAlignment::CENTERED, wires);
+            }
 
             std::replace( shapeName.begin(), shapeName.end(), '.', '_');
             std::replace( shapeName.begin(), shapeName.end(), '/', '_');
