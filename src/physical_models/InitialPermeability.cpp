@@ -317,7 +317,7 @@ std::shared_ptr<const InitialPermeability::MagnetisationCurve> InitialPermeabili
     InitialPermeability initialPermeability;
     double saturationFieldStrength = Core::get_magnetic_field_strength_saturation(coreMaterial, temperature);
     if (!(saturationFieldStrength > 0)) {
-        throw InvalidInputException(ErrorCode::INVALID_INPUT, "Material " + coreMaterial.get_name() + " has no positive saturation field strength at " + std::to_string(temperature) + " C to build its magnetisation curve");
+        throw MaterialDataMissingException(coreMaterial.get_name(), "a positive saturation field strength at " + std::to_string(temperature) + " C to build its magnetisation curve");
     }
     double vacuumPermeability = constants.vacuumPermeability;
     CurveBuildScopeGuard scope(coreMaterial, temperature, interpolator_cache_key(coreMaterial));

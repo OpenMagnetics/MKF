@@ -1576,6 +1576,18 @@ namespace {
         CHECK_NOTHROW(OpenMagnetics::Core::get_remanence(withoutCurie, 60.0));
     }
 
+    // A saturation point with no field strength is the material's data missing, and a caller that passes over
+    // materials it cannot use (Henry's ranking) can tell it from a bad request.
+    TEST_CASE("A material whose saturation data gives no field strength refuses its magnetisation curve as missing data", "[physical-model][permeability]") {
+        auto material = OpenMagnetics::Core::resolve_material("DMR71");
+        auto saturation = material.get_saturation();
+        saturation.resize(1);
+        saturation[0].set_magnetic_field(0);
+        saturation[0].set_temperature(25);
+        material.set_saturation(saturation);
+        CHECK_THROWS_AS(OpenMagnetics::InitialPermeability::get_magnetisation_curve(material, 25, 100e3), OpenMagnetics::MaterialDataMissingException);
+    }
+
     // ABT #1908: DMR71's saturation field strength is tabulated to 120 C and DMR24's to 140 C. Extrapolating
     // the table's monotonic Hermite spline crossed zero far below Curie (DMR71 211.2 C, Curie 255 C; DMR24
     // 241.1 C, Curie 280 C), where the loss-temperature solve of a hot design asked for the magnetisation curve and got
