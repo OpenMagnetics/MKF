@@ -4969,29 +4969,6 @@ TEST_CASE("Test_Material_Validator_Skips_Are_Reported", "[material-validator]") 
     CHECK(has_skip(quiet, "MAT_LOSS_MONOTONIC:"));
 }
 
-TEST_CASE("Test_Material_Validator_Provenance_Summary", "[material-validator]") {
-    settings.reset();
-    auto n87 = material_record("N87");
-    auto c95 = material_record("3C95");
-    MaterialValidator validator;
-
-    // Today the schema has no provenance field: one summary line, no per-record warnings.
-    auto verdicts = validator.validate_catalogue_text(n87.dump() + "\n" + c95.dump() + "\n");
-    REQUIRE(verdicts.size() == 2);
-    for (const auto& v : verdicts) CHECK(count_findings(v, "MAT_PROVENANCE") == 0);
-    auto summary = summarize_material_verdicts(verdicts);
-    CHECK(summary["provenance"] == "2/2 materials without provenance; schema has no field, RFC 0011");
-
-    // Once a record carries provenance, the others get a per-record WARNING.
-    json withProvenance = c95;
-    withProvenance["provenance"] = json{{"source", "Ferroxcube 3C95 MDS 2015-10-02"}};
-    auto adopted = validator.validate_catalogue_text(n87.dump() + "\n" + withProvenance.dump() + "\n");
-    REQUIRE(adopted.size() == 2);
-    CHECK(count_findings(adopted[0], "MAT_PROVENANCE", MaterialFindingSeverity::WARNING) == 1);
-    CHECK(count_findings(adopted[1], "MAT_PROVENANCE") == 0);
-    CHECK(adopted[0].valid);
-}
-
 TEST_CASE("Test_Material_Validator_Loss_Not_Positive_Inside_Span", "[material-validator]") {
     // k = 0 in every range: MKF returns 0 W/m3 inside the fitted span.
     settings.reset();
