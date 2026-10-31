@@ -2319,8 +2319,20 @@ static double rectangular_turn_share_under_yoke(Coil& coil, const Core& core, co
     else {
         throw InvalidInputException(ErrorCode::INVALID_BOBBIN_DATA, "Turn-to-yoke share: unsupported column shape");
     }
-    const double depthStraight = frame.columnDepth + standoff - bendRadius;
-    const double crossStraight = frame.columnWidth + standoff - bendRadius;
+    double depthStraight;
+    double crossStraight;
+    if (frame.shape == ColumnShape::ROUND || frame.shape == ColumnShape::OBLONG) {
+        // b = radius, so columnWidth + s - b is columnWidth - columnWidth: exactly 0, and the depth straight is the
+        // column's own oblong straight, columnDepth - columnWidth (0 on a round column). Written out rather than
+        // evaluated as columnWidth + (radius - columnWidth) - radius, which rounds to a few 1e-19 m below zero and
+        // made a turn on an oblong column look like it does not wrap its frame.
+        depthStraight = frame.columnDepth - frame.columnWidth;
+        crossStraight = 0;
+    }
+    else {
+        depthStraight = frame.columnDepth + standoff - bendRadius;
+        crossStraight = frame.columnWidth + standoff - bendRadius;
+    }
     if (!(bendRadius > 0) || depthStraight < 0 || crossStraight < 0) {
         throw InvalidInputException(ErrorCode::INVALID_COIL_CONFIGURATION,
             "Turn " + turn.get_name() + " does not wrap its column frame (bend radius " + std::to_string(bendRadius) +
