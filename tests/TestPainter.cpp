@@ -270,7 +270,7 @@ namespace {
         dimensionWithToleranceHeight.set_nominal(0.010);
         wire.set_conducting_height(dimensionWithToleranceHeight);
         DimensionWithTolerance dimensionWithToleranceWidth;
-        dimensionWithToleranceWidth.set_nominal(0.2e-3);
+        dimensionWithToleranceWidth.set_nominal(0.15e-3);
         wire.set_outer_width(dimensionWithToleranceWidth);
         wire.set_outer_height(dimensionWithToleranceHeight);
         auto wires = std::vector<OpenMagnetics::Wire>({wire});
@@ -324,7 +324,7 @@ namespace {
         dimensionWithToleranceHeight.set_nominal(0.010);
         wire.set_conducting_height(dimensionWithToleranceHeight);
         DimensionWithTolerance dimensionWithToleranceWidth;
-        dimensionWithToleranceWidth.set_nominal(0.2e-3);
+        dimensionWithToleranceWidth.set_nominal(0.15e-3);
         wire.set_outer_width(dimensionWithToleranceWidth);
         wire.set_outer_height(dimensionWithToleranceHeight);
         auto wires = std::vector<OpenMagnetics::Wire>({wire});

@@ -217,7 +217,7 @@ namespace {
             OpenMagnetics::Wire wire;
             wire.set_nominal_value_conducting_width(0.0005);
             wire.set_nominal_value_conducting_height(0.020);
-            wire.set_nominal_value_outer_width(0.00053);
+            wire.set_nominal_value_outer_width(0.0005);
             wire.set_nominal_value_outer_height(0.020);
             wire.set_number_conductors(1);
             wire.set_material("copper");

@@ -4112,11 +4112,11 @@ static OpenMagnetics::Magnetic build_e42_flat_fixture(bool foil, bool gapped) {
     OpenMagnetics::Wire wire;
     std::vector<int64_t> numberTurns;
     if (foil) {
-        // 8 foil turns 0.2 x 20 mm, 0.05 mm insulation each side.
+        // 8 foil turns 0.2 x 20 mm. A foil carries no coating: its outer width is its conducting width.
         numberTurns = {8};
         wire.set_nominal_value_conducting_width(0.0002);
         wire.set_nominal_value_conducting_height(0.02);
-        wire.set_nominal_value_outer_width(0.0003);
+        wire.set_nominal_value_outer_width(0.0002);
         wire.set_nominal_value_outer_height(0.02);
         wire.set_type(WireType::FOIL);
     }

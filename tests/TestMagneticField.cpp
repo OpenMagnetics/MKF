@@ -451,7 +451,7 @@ namespace {
         wire.set_nominal_value_conducting_width(0.00001);
         wire.set_nominal_value_conducting_height(0.0076);
         wire.set_nominal_value_outer_height(0.007676);
-        wire.set_nominal_value_outer_width(0.000011);
+        wire.set_nominal_value_outer_width(0.00001);
         wire.set_number_conductors(1);
         wire.set_material("copper");
         wire.set_type(WireType::FOIL);
