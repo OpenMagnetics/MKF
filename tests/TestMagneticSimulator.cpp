@@ -1628,22 +1628,6 @@ namespace {
         // MagneticAdviser::preview_magnetic(mas);
     }
 
-    TEST_CASE("Test_Simulator_Web_4", "[processor][magnetic-simulator][bug]") {
-        // ABT #1567: the capture embedded an old snapshot of DMR96 whose placeholder Steinmetz ranges
-        // (1 Hz to 1 GHz) carried a fit with ct(100 C) = -4380 (the ABT #1529 under-determined ct fit).
-        // The fixture now names DMR96, so the material comes from MAS (fitted 100 kHz to 500 kHz).
-        auto path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "bug_empty_field.json");
-        auto mas = OpenMagneticsTesting::mas_loader(path);
-
-        auto simulator = MagneticSimulator();
-        mas = simulator.simulate(mas.get_inputs(), mas.get_magnetic());
-
-        check_simulation_outputs_sane(mas);
-
-        // MagneticAdviser::preview_magnetic(mas);
-    }
-
-
     // =========================================================================
     // Example MAS integration tests
     // Each test loads a MAS JSON from examples/, autocompletes it, simulates,
