@@ -502,6 +502,13 @@ void CoreAdviser::post_process_and_append(std::vector<std::pair<Magnetic, double
                     continue;
                 }
             }
+            // ABT #1817: the stand-in is wound by fast_wind, which leaves out the toroidal outer
+            // crossings on purpose (the per-candidate hot path every filter uses). A toroid the
+            // adviser RETURNS gets them here, after every gate and the ranking have spoken, so the
+            // part handed on is complete and nothing it was judged on changes.
+            if (mas.get_magnetic().get_core().get_functional_description().get_type() == CoreType::TOROIDAL) {
+                mas.get_mutable_magnetic().get_mutable_coil().generate_toroidal_additional_coordinates();
+            }
             masWithScoring.push_back({mas, candidate[0].second});
             if (uniqueShapes) {
                 usedShapes.push_back(shapeName);
