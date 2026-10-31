@@ -24,6 +24,8 @@
 #include <iostream>
 #include <chrono>
 #include <thread>
+#include <algorithm>
+#include <cmath>
 
 using namespace MAS;
 using namespace OpenMagnetics;
@@ -1944,16 +1946,45 @@ namespace {
             int64_t numberStacks = 1;
             std::string coreShape = shapeName;
             std::string coreMaterial = "3C97";
-            // drumRing (shielded drum, ABT #366) rejects user gapping: its two annular clearance
-            // gaps are structural, derived from the geometry. Paint it with no user gaps and let
-            // process_gap derive them; every other family keeps the ground gap.
+            // drumRing (shielded drum, ABT #366) and drumSemishielded (ABT #362, #1442) reject user
+            // gapping: their clearance gaps are structural, derived from the geometry. Paint them with
+            // no user gaps and let process_gap derive them; every other family keeps the ground gap.
             std::vector<CoreGap> gapping;
-            if (OpenMagnetics::find_core_shape_by_name(coreShape).get_family() != CoreShapeFamily::DRUM_RING) {
+            auto family = OpenMagnetics::find_core_shape_by_name(coreShape).get_family();
+            if (family != CoreShapeFamily::DRUM_RING && family != CoreShapeFamily::DRUM_SEMISHIELDED) {
                 gapping = OpenMagneticsTesting::get_ground_gap(0.0001);
             }
 
-            auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel);
             auto core = OpenMagneticsTesting::get_quick_core(coreShape, gapping, numberStacks, coreMaterial);
+
+            // The winding is sized to the shape (Alf, 2026-10-31): 42 turns x 3 parallels per winding is the design
+            // wherever it fits, and a shape whose winding window cannot hold it gets the turns and parallels its
+            // window area holds, at half fill of the quick coil's Round 0.475 - Grade 1 square-packed, so that every
+            // shape is painted. Each winding keeps at least one turn per section of the interleaving.
+            {
+                auto bobbin = OpenMagnetics::Bobbin::create_quick_bobbin(core);
+                auto windingWindow = bobbin.get_processed_description()->get_winding_windows()[0];
+                double windowArea;
+                if (windingWindow.get_width() && windingWindow.get_height()) {
+                    windowArea = windingWindow.get_width().value() * windingWindow.get_height().value();
+                }
+                else {
+                    REQUIRE(windingWindow.get_area());
+                    windowArea = windingWindow.get_area().value();
+                }
+                double wireOuterDiameter = OpenMagnetics::find_wire_by_name("Round 0.475 - Grade 1").get_maximum_outer_width();
+                auto wiresPerWinding = int64_t(std::floor(0.5 * windowArea / (wireOuterDiameter * wireOuterDiameter) / numberTurns.size()));
+                if (wiresPerWinding < numberTurns[0] * numberParallels[0]) {
+                    int64_t parallels = std::clamp<int64_t>(wiresPerWinding / interleavingLevel, 1, numberParallels[0]);
+                    int64_t turns = std::max<int64_t>(wiresPerWinding / parallels, interleavingLevel);
+                    std::cout << "Test_Painter_All_Cores: " << coreShape << " winding window " << windowArea * 1e6
+                              << " mm2 holds " << wiresPerWinding << " wires per winding: painted with " << turns << " x "
+                              << parallels << std::endl;
+                    numberTurns = {turns, turns};
+                    numberParallels = {parallels, parallels};
+                }
+            }
+            auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel);
 
             std::replace( shapeName.begin(), shapeName.end(), '.', '_');
             std::replace( shapeName.begin(), shapeName.end(), '/', '_');
