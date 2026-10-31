@@ -13444,6 +13444,26 @@ TEST_CASE("Test_Abt1151_Autocompleted_Foil_Outer_Width_Is_Its_Conductor", "[cons
     settings.reset();
 }
 
+TEST_CASE("Test_Foil_Outer_Width_Refusal_Says_Outer_Equals_Conducting_And_Insulation_Is_Layers", "[constructive-model][coil][foil][regression]") {
+    // Alf, 2026-10-31: "in foil there is no coating, it is done with insulation layers... conducting and
+    // outer width in foil should be the same". The refusal of a foil whose outerWidth states extra
+    // insulation tells the user exactly that, instead of asking for the insulation as a coating.
+    settings.reset();
+    clear_databases();
+    OpenMagnetics::Wire wire = OpenMagnetics::find_wire_by_name("Foil 0.2");
+    REQUIRE(wire.get_type() == WireType::FOIL);
+    wire.set_coating(std::nullopt);
+    const double foil = resolve_dimensional_values(wire.get_conducting_width().value());
+    DimensionWithTolerance tooWide;
+    tooWide.set_nominal(foil + 30e-6);
+    wire.set_outer_width(tooWide);
+    REQUIRE_THROWS_WITH(wire.get_maximum_outer_width(),
+                        Catch::Matchers::ContainsSubstring("a foil's outer width must equal its conducting width") &&
+                        Catch::Matchers::ContainsSubstring("insulation is given by insulation layers") &&
+                        !Catch::Matchers::ContainsSubstring("coating."));
+    settings.reset();
+}
+
 TEST_CASE("Test_Abt881_Foil_Has_No_Crossing_Station", "[constructive-model][coil][real-geometry][foil][regression]") {
     // ABT #881: the real-winding crossing bump (ABT #685) charges every winding one extra station
     // per layer -- the slot a wire needs where it closes a layer and climbs to the next. A FOIL

@@ -1619,8 +1619,8 @@ namespace OpenMagnetics {
                         throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA,
                             "Foil wire '" + get_name().value_or("<unnamed>") + "' states outerWidth " +
                             std::to_string(outer) + " m for a conductor of " + std::to_string(conducting) +
-                            " m: a foil's outer width is its conductor, and the film it is wound with (" +
-                            std::to_string(film) + " m) is its interleaf. Declare the insulation as the wire's coating.");
+                            " m: a foil's outer width must equal its conducting width; a foil carries no coating, its "
+                            "insulation is given by insulation layers.");
                     }
                 }
                 return conducting + film;
