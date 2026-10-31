@@ -356,6 +356,9 @@ class Wire : public MAS::Wire {
         // reservedPerEdge: the depth a connection lead crossing this section reserves at EACH
         // edge of the turn axis. A foil sheet may not span a corridor a lead crosses (ABT #1001).
         void cut_foil_wire_to_section(Section section, double reservedPerEdge = 0.0);
+        // The height a foil sheet may take in `section` with `reservedPerEdge` kept clear at each edge
+        // for crossing leads; throws when nothing is left.
+        double foil_cut_height(const Section& section, double reservedPerEdge = 0.0) const;
         void cut_planar_wire_to_section(Section section);
         double get_relative_cost();
         std::string get_reference();

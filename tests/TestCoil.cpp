@@ -13731,6 +13731,45 @@ TEST_CASE("Test_Foil_Cut_Reserves_A_Crossing_Leads_Corridor", "[constructive-mod
     settings.reset();
 }
 
+TEST_CASE("Test_Foil_Keeps_A_Declared_Height_Shorter_Than_Its_Section", "[constructive-model][coil][foil][regression]") {
+    // ABT #1001 / #836 (Alf, 2026-10-31): the winder cuts a foil sheet to its section only when the
+    // sheet's conducting height is unset or taller than the room the section leaves it. A sheet the
+    // user declares shorter keeps its height; 6a3f89c7 had cut every sheet to the section, which
+    // made the 7 mm foil of Ten_Short_Turns_Foil give exactly the losses of the full-height one.
+    settings.reset();
+    clear_databases();
+    auto make_foil = [](double conductingHeight) {
+        OpenMagnetics::Wire wire;
+        wire.set_nominal_value_conducting_width(0.0001);
+        wire.set_nominal_value_conducting_height(conductingHeight);
+        wire.set_nominal_value_outer_width(0.0001);   // a foil's outer width is its conductor
+        wire.set_nominal_value_outer_height(conductingHeight);
+        wire.set_number_conductors(1);
+        wire.set_material("copper");
+        wire.set_type(WireType::FOIL);
+        return wire;
+    };
+    auto wound_height = [&](double conductingHeight) {
+        std::vector<OpenMagnetics::Wire> wires{make_foil(conductingHeight)};
+        auto coil = OpenMagneticsTesting::get_quick_coil({10}, {1}, "ETD 34/17/11", 1,
+            WindingOrientation::OVERLAPPING, WindingOrientation::OVERLAPPING,
+            CoilAlignment::CENTERED, CoilAlignment::CENTERED, wires, false);
+        REQUIRE(coil.get_turns_description());
+        auto wire = coil.resolve_wire(0);
+        REQUIRE(wire.get_conducting_height());
+        return resolve_dimensional_values(wire.get_conducting_height().value());
+    };
+
+    // ETD 34/17/11's window is ~24 mm tall: a 7 mm sheet fits and keeps its declared height.
+    CHECK_THAT(wound_height(0.007), Catch::Matchers::WithinAbs(0.007, 1e-12));
+
+    // A sheet declared taller than its section is still cut to the section.
+    const double cut = wound_height(0.05);
+    CHECK(cut < 0.03);
+    CHECK(cut > 0.007);
+    settings.reset();
+}
+
 TEST_CASE("Test_Real_Geometry_Planar_Winds_As_Pcb", "[constructive-model][coil][real-geometry][planar]") {
     // ABT #978 (supersedes the ABT #492 gate): a planar coil under real winding geometry is a PCB and wind()
     // routes it to wind_planar with the placement defined by the printed group's pcb (MAS-RFC 0012). The

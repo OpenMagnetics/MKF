@@ -1879,6 +1879,18 @@ namespace OpenMagnetics {
         // it would put the sheet off-centre, and nothing in the foil path moves a sheet off its
         // layer's centre (ABT #1004). The caller passes the deepest corridor of either edge.
         DimensionWithTolerance dimensionWithTolerance;
+        dimensionWithTolerance.set_maximum(foil_cut_height(section, reservedPerEdge));
+        set_conducting_height(dimensionWithTolerance);
+        // The wire's outer width is its conductor (+ a declared coating, ABT #1151); the width the
+        // layer occupies, foil PLUS its interleaved film, is the wound width
+        // (get_maximum_outer_width). The height is the foil's own.
+        DimensionWithTolerance outerWidth;
+        outerWidth.set_nominal(Wire::calculate_outer_width(*this));
+        set_outer_width(outerWidth);
+        set_outer_height(get_conducting_height());
+    }
+
+    double Wire::foil_cut_height(const Section& section, double reservedPerEdge) const {
         const double cutHeight = section.get_dimensions()[1] * (1 - constants.foilToSectionMargin) -
                                  2.0 * std::max(0.0, reservedPerEdge);
         if (cutHeight <= 0) {
@@ -1889,15 +1901,7 @@ namespace OpenMagnetics {
                 " m at each edge, which leaves no height for the sheet in a section of " +
                 std::to_string(section.get_dimensions()[1]) + " m");
         }
-        dimensionWithTolerance.set_maximum(cutHeight);
-        set_conducting_height(dimensionWithTolerance);
-        // The wire's outer width is its conductor (+ a declared coating, ABT #1151); the width the
-        // layer occupies, foil PLUS its interleaved film, is the wound width
-        // (get_maximum_outer_width). The height is the foil's own.
-        DimensionWithTolerance outerWidth;
-        outerWidth.set_nominal(Wire::calculate_outer_width(*this));
-        set_outer_width(outerWidth);
-        set_outer_height(get_conducting_height());
+        return cutHeight;
     }
 
     void Wire::cut_planar_wire_to_section(Section section) {

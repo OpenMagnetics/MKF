@@ -16665,8 +16665,18 @@ bool Coil::wind_by_rectangular_sections(std::vector<double> proportionPerWinding
                         }
                         reservedPerEdge = std::max({reservedPerEdge, depths.first, depths.second});
                     }
-                    wirePerWinding[windingIndex].cut_foil_wire_to_section(section, reservedPerEdge);
-                    get_mutable_functional_description()[windingIndex].set_wire(wirePerWinding[windingIndex]);
+                    // A DECLARED HEIGHT IS KEPT (Alf, 2026-10-31). The sheet is cut only when its
+                    // conducting height is unset or taller than the room the section leaves it; a
+                    // sheet the user declared shorter keeps its height. A sheet MKF cut on an
+                    // earlier pass is re-cut only if the corridors have since grown past it, so
+                    // the monotonic fixpoint above still holds.
+                    auto& foil = wirePerWinding[windingIndex];
+                    const auto declaredHeight = foil.get_conducting_height();
+                    if (!declaredHeight ||
+                        resolve_dimensional_values(declaredHeight.value()) > foil.foil_cut_height(section, reservedPerEdge)) {
+                        foil.cut_foil_wire_to_section(section, reservedPerEdge);
+                        get_mutable_functional_description()[windingIndex].set_wire(foil);
+                    }
                 }
 
                 if (wirePerWinding[windingIndex].get_type() == WireType::PLANAR && !wirePerWinding[windingIndex].get_conducting_width()) {
