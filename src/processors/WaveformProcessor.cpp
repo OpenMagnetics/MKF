@@ -1849,8 +1849,10 @@ bool WaveformProcessor::harmonics_are_labelled_by_order(const Harmonics& harmoni
         throw InvalidInputException(ErrorCode::INVALID_INPUT, "Harmonics labels: the excitation frequency must be positive and finite, got " + std::to_string(frequency));
     }
     const auto& frequencies = harmonics.get_frequencies();
-    for (size_t index = 0; index < frequencies.size(); ++index) {
-        if (std::fabs(frequencies[index] / frequency - static_cast<double>(index)) > 1e-6) {
+    // By order, not by position: a trimmed list (calculate_harmonics_data with trimHarmonics) skips orders.
+    for (const double harmonicFrequency : frequencies) {
+        const double order = harmonicFrequency / frequency;
+        if (std::fabs(order - std::round(order)) > 1e-6) {
             return false;
         }
     }

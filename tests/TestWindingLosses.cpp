@@ -3899,6 +3899,21 @@ TEST_CASE("Test_Winding_Losses_Harmonics_Saved_With_Old_Frequency_Labels_Are_Der
     settings.reset();
 }
 
+TEST_CASE("Test_Winding_Losses_Trimmed_Harmonics_Are_Labelled_By_Order", "[physical-model][winding-losses][abt-1880]") {
+    // An imported waveform's harmonics are trimmed (calculate_harmonics_data with trimHarmonics): the list keeps
+    // the DC, the fundamental and the main harmonics, each at k * frequency, so it skips orders. That is MKF's own
+    // labelling and must not be taken for the pre-#1880 labels, which re-processed the operating point and needed
+    // a processed core (Test_Winding_Losses_Foil_Micro_Gap_Invariance threw CORE_NOT_PROCESSED).
+    Harmonics trimmed;
+    trimmed.set_frequencies({0, 40000, 120000, 560000});
+    trimmed.set_amplitudes({0, 1, 0.3, 0.1});
+    CHECK(WaveformProcessor::harmonics_are_labelled_by_order(trimmed, 40000));
+    Harmonics oldLabels;
+    oldLabels.set_frequencies({0, 100787.4, 201574.8});
+    oldLabels.set_amplitudes({0, 1, 0.3});
+    CHECK_FALSE(WaveformProcessor::harmonics_are_labelled_by_order(oldLabels, 100000));
+}
+
 // ABT #1759 re-score driver (hidden): the two default-fringing pins (Abt1463 flyback per harmonic, Wang_Stacked R_ac/R_dc)
 // under each fringing model as the DEFAULT (set in Settings, field model left automatic, exactly what a changed
 // Defaults value does in WindingLosses). Prints one line per model.
