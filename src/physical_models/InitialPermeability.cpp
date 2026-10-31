@@ -1593,7 +1593,7 @@ double InitialPermeability::get_initial_permeability(const CoreMaterial& coreMat
         else {
             message << ": the material's frequency or temperature dependence is outside its valid range here";
         }
-        throw CalculationException(ErrorCode::CALCULATION_INVALID_RESULT, message.str());
+        throw PermeabilityBelowVacuumException(message.str(), permeability);
     }
     return permeability;
 }

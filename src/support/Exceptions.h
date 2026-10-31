@@ -582,6 +582,21 @@ public:
         : CalculationException(ErrorCode::CALCULATION_INVALID_RESULT, message) {}
 };
 
+/**
+ * @brief A material's permeability model gives a relative permeability below the vacuum's 1 at conditions where
+ * that is not the saturated state (InitialPermeability::get_initial_permeability): the model, or its frequency or
+ * temperature dependence, is outside its valid range there. permeability() is the value the model gave, so a
+ * caller judging the material data (MaterialValidator) can report it as the impossible value it is.
+ */
+class PermeabilityBelowVacuumException : public CalculationException {
+    double _permeability;
+public:
+    PermeabilityBelowVacuumException(const std::string& message, double permeability)
+        : CalculationException(ErrorCode::CALCULATION_INVALID_RESULT, message), _permeability(permeability) {}
+
+    double permeability() const noexcept { return _permeability; }
+};
+
 class NaNResultException : public CalculationException {
 public:
     explicit NaNResultException(const std::string& calculationName)

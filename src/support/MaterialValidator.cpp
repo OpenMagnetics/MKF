@@ -441,6 +441,13 @@ void check_permeability(const CoreMaterial& material, const MaterialClassBounds*
     try {
         mu = InitialPermeability::get_initial_permeability(material, 25.0);
     }
+    catch (const PermeabilityBelowVacuumException& e) {
+        // get_initial_permeability refuses a model value below 1 (ABT #1740), so the data's impossible value
+        // arrives as this exception, not as a return value: it is the IMPOSSIBLE finding, not "cannot evaluate".
+        emit(ctx, MAT_PERM, MaterialFindingSeverity::IMPOSSIBLE, e.permeability(), 1,
+             "initial permeability at 25 C is " + fmt(e.permeability()) + ", below 1: no magnetic core material is diamagnetic");
+        return;
+    }
     catch (const std::exception& e) {
         emit(ctx, MAT_PERM, MaterialFindingSeverity::SUSPICIOUS, 0, 0,
              std::string("MKF cannot evaluate the initial permeability at 25 C: ") + e.what());
