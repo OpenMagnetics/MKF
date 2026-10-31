@@ -1150,6 +1150,9 @@ namespace {
     // are new geometries with no published impedance data to validate against.
     TEST_CASE("Test_Sweeper_Impedance_New_Core_Families",
               "[processor][sweeper][drum][drum-ring][drum-semishielded][molded]") {
+        // Material: Fair-Rite 44 NiZn, whose complex permeability is tabulated 10 kHz-1 GHz (Alf, 2026-10-31),
+        // so the ~110 MHz self-resonance lies inside the data; 3C90 is tabulated only to 30 MHz and the sweep is
+        // clipped to the tabulated range. Real drum cores are NiZn. Geometry and turns unchanged.
         settings.reset();
         clear_databases();
 
@@ -1167,7 +1170,7 @@ namespace {
         auto buildCustomCore = [](json shapeJson, const std::string& coreType, json coating = json()) {
             json coreJson;
             coreJson["functionalDescription"] = {
-                {"type", coreType}, {"material", "3C90"}, {"shape", shapeJson},
+                {"type", coreType}, {"material", "44"}, {"shape", shapeJson},
                 {"gapping", json::array()}, {"numberStacks", 1}};
             if (!coating.is_null()) {
                 coreJson["functionalDescription"]["coating"] = coating;
@@ -1188,9 +1191,9 @@ namespace {
 
         std::vector<std::pair<std::string, OpenMagnetics::Magnetic>> magnetics;
         magnetics.emplace_back("drum", buildMagnetic(
-            OpenMagneticsTesting::get_quick_core("DRH-14X20-4C", json::array(), 1, "3C90"), 20));
+            OpenMagneticsTesting::get_quick_core("DRH-14X20-4C", json::array(), 1, "44"), 20));
         magnetics.emplace_back("drumRing", buildMagnetic(
-            OpenMagneticsTesting::get_quick_core("DR 2.3 + SRI 3.0", json::array(), 1, "3C90"), 8));
+            OpenMagneticsTesting::get_quick_core("DR 2.3 + SRI 3.0", json::array(), 1, "44"), 8));
         magnetics.emplace_back("drumSemishielded", buildMagnetic(buildCustomCore(
             {{"magneticCircuit", "closed"}, {"type", "custom"}, {"family", "drumSemishielded"},
              {"aliases", json::array()}, {"name", "LQS-like 4018"}, {"dimensions", semishieldedDimensions}},
