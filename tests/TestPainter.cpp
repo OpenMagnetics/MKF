@@ -1960,7 +1960,10 @@ namespace {
             // The winding is sized to the shape (Alf, 2026-10-31): 42 turns x 3 parallels per winding is the design
             // wherever it fits, and a shape whose winding window cannot hold it gets the turns and parallels its
             // window area holds, at half fill of the quick coil's Round 0.475 - Grade 1 square-packed, so that every
-            // shape is painted. Each winding keeps at least one turn per section of the interleaving.
+            // shape is painted. Each winding keeps at least one turn per section of the interleaving. A window that
+            // cannot hold one turn of Round 0.475 per winding (EI 3.02/1.95/1.35/4.87/1/2.5/2.3: 0.2 mm2) is wound
+            // with the thinnest round wire of the catalogue that holds one, so that every shape is painted wound.
+            std::vector<OpenMagnetics::Wire> wires;
             {
                 auto bobbin = OpenMagnetics::Bobbin::create_quick_bobbin(core);
                 auto windingWindow = bobbin.get_processed_description()->get_winding_windows()[0];
@@ -1972,8 +1975,28 @@ namespace {
                     REQUIRE(windingWindow.get_area());
                     windowArea = windingWindow.get_area().value();
                 }
-                double wireOuterDiameter = OpenMagnetics::find_wire_by_name("Round 0.475 - Grade 1").get_maximum_outer_width();
-                auto wiresPerWinding = int64_t(std::floor(0.5 * windowArea / (wireOuterDiameter * wireOuterDiameter) / numberTurns.size()));
+                auto wiresHeld = [&](double wireOuterDiameter) {
+                    return int64_t(std::floor(0.5 * windowArea / (wireOuterDiameter * wireOuterDiameter) / numberTurns.size()));
+                };
+                auto wire = OpenMagnetics::find_wire_by_name("Round 0.475 - Grade 1");
+                auto wiresPerWinding = wiresHeld(wire.get_maximum_outer_width());
+                if (wiresPerWinding < 1) {
+                    std::optional<OpenMagnetics::Wire> thinnest;
+                    for (auto& candidate : OpenMagnetics::get_wires(WireType::ROUND)) {
+                        double outerDiameter = candidate.get_maximum_outer_width();
+                        if (wiresHeld(outerDiameter) >= 1 &&
+                            (!thinnest || outerDiameter < thinnest->get_maximum_outer_width())) {
+                            thinnest = candidate;
+                        }
+                    }
+                    REQUIRE(thinnest);
+                    wire = thinnest.value();
+                    wiresPerWinding = wiresHeld(wire.get_maximum_outer_width());
+                    std::cout << "Test_Painter_All_Cores: " << coreShape << " winding window " << windowArea * 1e6
+                              << " mm2 holds no turn of Round 0.475 per winding: wound with "
+                              << wire.get_name().value() << std::endl;
+                    wires = {wire, wire};
+                }
                 if (wiresPerWinding < numberTurns[0] * numberParallels[0]) {
                     int64_t parallels = std::clamp<int64_t>(wiresPerWinding / interleavingLevel, 1, numberParallels[0]);
                     int64_t turns = std::max<int64_t>(wiresPerWinding / parallels, interleavingLevel);
@@ -1984,7 +2007,9 @@ namespace {
                     numberParallels = {parallels, parallels};
                 }
             }
-            auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel);
+            auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel,
+                                                             MAS::WindingOrientation::OVERLAPPING, MAS::WindingOrientation::OVERLAPPING,
+                                                             MAS::CoilAlignment::CENTERED, MAS::CoilAlignment::CENTERED, wires);
 
             std::replace( shapeName.begin(), shapeName.end(), '.', '_');
             std::replace( shapeName.begin(), shapeName.end(), '/', '_');
