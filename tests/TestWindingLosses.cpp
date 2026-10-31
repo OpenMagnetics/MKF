@@ -8,6 +8,7 @@
 #include "support/Utils.h"
 #include "constructive_models/Core.h"
 #include "processors/Inputs.h"
+#include "processors/WaveformProcessor.h"
 #include "processors/MagneticSimulator.h"
 #include "TestingUtils.h"
 #include "TestWindingLosses.h"
@@ -3863,6 +3864,38 @@ TEST_CASE("Test_Winding_Losses_Abt1463_Flyback_Per_Harmonic_Vs_OMFEM", "[physica
         CHECK_THAT(ratios[0][harmonic], Catch::Matchers::WithinRel(primary, 0.15));
         CHECK_THAT(ratios[1][harmonic], Catch::Matchers::WithinRel(secondary, 0.15));
     }
+    settings.reset();
+}
+
+TEST_CASE("Test_Winding_Losses_Harmonics_Saved_With_Old_Frequency_Labels_Are_Derived_Again_From_The_Waveform", "[physical-model][winding-losses][abt-1880]") {
+    // The Abt1463 flyback fixture was saved by MKF before ABT #1880: its current and voltage harmonics are labelled
+    // k / (127 dt) on 128 open samples of step dt (100787.4 Hz for harmonic 1 of 100 kHz). Read by order since
+    // ABT #1880, such a list threw "100787.4 Hz is not a harmonic of 100000 Hz" in the field step, as any saved MAS
+    // file with those labels did. The losses must be those of the same operating point with its harmonics derived
+    // again from its waveforms.
+    settings.reset();
+    clear_databases();
+    auto path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "Test_Winding_Losses_Abt1463_Flyback.json");
+    std::ifstream in(path);
+    json masJson = json::parse(in);
+    OpenMagnetics::Magnetic magnetic(masJson["magnetic"]);
+    OperatingPoint operatingPoint(masJson["inputs"]["operatingPoints"][0]);
+    const auto& primary = operatingPoint.get_excitations_per_winding()[0];
+    REQUIRE_FALSE(WaveformProcessor::harmonics_are_labelled_by_order(primary.get_current()->get_harmonics().value(), primary.get_frequency()));
+
+    WindingLossesOutput stored;
+    REQUIRE_NOTHROW(stored = WindingLosses().calculate_losses(magnetic, operatingPoint, 40));
+
+    double magnetizingInductance = OpenMagnetics::resolve_dimensional_values(MagnetizingInductance().calculate_inductance_from_number_turns_and_gapping(
+        magnetic.get_core(), magnetic.get_coil()).get_magnetizing_inductance());
+    auto derived = OpenMagnetics::Inputs::process_operating_point(operatingPoint, magnetizingInductance, magnetic.get_mutable_coil().get_turns_ratios(),
+                                                                  false, magnetic.get_mutable_coil().get_isolation_sides());
+    for (const auto& excitation : derived.get_excitations_per_winding()) {
+        CHECK(WaveformProcessor::harmonics_are_labelled_by_order(excitation.get_current()->get_harmonics().value(), excitation.get_frequency()));
+    }
+    auto expected = WindingLosses().calculate_losses(magnetic, derived, 40);
+    CHECK(stored.get_winding_losses() > 0);
+    CHECK(stored.get_winding_losses() == expected.get_winding_losses());
     settings.reset();
 }
 

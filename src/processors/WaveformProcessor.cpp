@@ -1844,6 +1844,19 @@ bool WaveformProcessor::is_zero_harmonic(const FourierSeries& series, double lis
     return std::fabs(listedAmplitude) < zeroScale && std::abs(phasor) < zeroScale;
 }
 
+bool WaveformProcessor::harmonics_are_labelled_by_order(const Harmonics& harmonics, double frequency) {
+    if (!std::isfinite(frequency) || frequency <= 0) {
+        throw InvalidInputException(ErrorCode::INVALID_INPUT, "Harmonics labels: the excitation frequency must be positive and finite, got " + std::to_string(frequency));
+    }
+    const auto& frequencies = harmonics.get_frequencies();
+    for (size_t index = 0; index < frequencies.size(); ++index) {
+        if (std::fabs(frequencies[index] / frequency - static_cast<double>(index)) > 1e-6) {
+            return false;
+        }
+    }
+    return true;
+}
+
 Harmonics WaveformProcessor::calculate_harmonics_data(const Waveform& waveform, double frequency, bool trimHarmonics, double harmonicAmplitudeThreshold, size_t numberPointsSampledWaveforms) {
     // Thousands of entries: a line-cycle record's switching cycles are transformed once per loss evaluation.
     thread_local WaveformMemo<HarmonicsEntry> memo{kWaveformMemoCycleEntries, kWaveformMemoBytes};

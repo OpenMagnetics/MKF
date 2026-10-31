@@ -7,6 +7,7 @@
 #include "MAS.hpp"
 #include "physical_models/MagnetizingInductance.h"
 #include "support/Exceptions.h"
+#include "processors/WaveformProcessor.h"
 
 namespace OpenMagnetics {
 
@@ -276,6 +277,25 @@ WindingLosses::WindingLossesField WindingLosses::calculate_magnetic_field(Magnet
              !excitation.get_current()->get_processed() ||
              !excitation.get_current()->get_processed()->get_rms())) {
             needsProcessing = true;
+            break;
+        }
+        // Harmonics are derived from the waveform. A list not labelled k * frequency (written by MKF before ABT #1880,
+        // so found in saved MAS files) cannot be read by order: it is derived again from the waveform it came from, as
+        // an under-specified excitation is. Without a waveform there is nothing to derive it from.
+        const std::vector<std::optional<SignalDescriptor>> signals = {excitation.get_current(), excitation.get_voltage(),
+                                                                      excitation.get_magnetizing_current()};
+        for (const auto& signal : signals) {
+            if (signal && signal->get_harmonics() &&
+                !WaveformProcessor::harmonics_are_labelled_by_order(signal->get_harmonics().value(), excitation.get_frequency())) {
+                if (!signal->get_waveform()) {
+                    throw InvalidInputException(ErrorCode::INVALID_INPUT,
+                        "An excitation of " + std::to_string(excitation.get_frequency()) + " Hz lists harmonics that are not at multiples of "
+                        "that frequency and has no waveform to derive them from");
+                }
+                needsProcessing = true;
+            }
+        }
+        if (needsProcessing) {
             break;
         }
     }
