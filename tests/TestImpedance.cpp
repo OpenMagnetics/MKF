@@ -1020,7 +1020,7 @@ TEST_CASE("Test_Impedance_Refuses_Unprocessed_Core", "[physical-model][impedance
         message = exception.what();
     }
     UNSCOPED_INFO("unprocessed core -> " << message);
-    CHECK(message.find("processed description") != std::string::npos);
+    CHECK(message.find("processedDescription) has not been computed from its shape") != std::string::npos);
     settings.reset();
 }
 
