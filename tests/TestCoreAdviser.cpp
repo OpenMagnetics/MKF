@@ -2210,6 +2210,42 @@ TEST_CASE("Test_CoreAdviserStandardCores_Only_Toroidal_Shapes", "[adviser][core-
     }
 }
 
+TEST_CASE("Test_CoreAdviserStandardCores_Toroids_Walk_To_Larger_Powder_Cores_Under_The_Temperature_Gate", "[adviser][core-adviser][standard-cores][temperature]") {
+    // The powder toroids' pre-inductance prune keeps the small, best-scored toroids, and at this point (100 uH,
+    // 600 Vpp sine at 100 kHz, no DC) every one of them is far over the 130 C gate (270-620 C), while larger
+    // mu 60 toroids pass it. Without the ABT #1412 walk to larger cores on the powder path the adviser returned
+    // nothing (and Only_Toroidal_Shapes, whose REQUIREs sit inside the result loop, passed with no assertion).
+    settings.reset();
+    clear_databases();
+    load_core_shapes();
+    double voltagePeakToPeak = 600;
+    double dcCurrent = 0;
+    double ambientTemperature = 25;
+    double frequency = 100000;
+    double desiredMagnetizingInductance = 10e-5;
+    std::vector<double> turnsRatios = {};
+    OpenMagnetics::Inputs inputs;
+
+    settings.set_use_toroidal_cores(true);
+    settings.set_use_concentric_cores(false);
+    REQUIRE(settings.get_core_adviser_enable_temperature_filter());
+
+    prepare_test_parameters(dcCurrent, ambientTemperature, frequency, turnsRatios, desiredMagnetizingInductance, inputs, voltagePeakToPeak);
+
+    CoreAdviser coreAdviser;
+    std::vector<MAS::CoreShape> shapes;
+    for (auto [name, shape] : coreShapeDatabase) {
+        shapes.push_back(shape);
+    }
+    coreAdviser.set_unique_core_shapes(true);
+    auto masMagnetics = coreAdviser.get_advised_core(inputs, &shapes, 20);
+
+    REQUIRE(!masMagnetics.empty());
+    for (auto [mas, scoring] : masMagnetics) {
+        CHECK(mas.get_mutable_magnetic().get_mutable_core().get_type() == CoreType::TOROIDAL);
+    }
+}
+
 TEST_CASE("Test_CoreAdviserStandardCores_Only_Concentric_Shapes", "[adviser][core-adviser][standard-cores]") {
     settings.reset();
     clear_databases();

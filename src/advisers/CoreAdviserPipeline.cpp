@@ -1169,6 +1169,84 @@ std::vector<std::pair<Mas, double>> CoreAdviser::filter_standard_cores_power_app
     // ========================================================================
     // STEP 4: Process POWDER cores (ungapped toroidal) - if appropriate or if toroidal cores explicitly requested
     // ========================================================================
+    // Largest powder core volume that reached the temperature gate (the powder counterpart of
+    // largestVolumeAtTemperatureGate).
+    double largestPowderVolumeAtTemperatureGate = 0;
+
+    auto processPowderCores = [&](std::vector<std::pair<Magnetic, double>> cores, const std::string& stage) {
+        if (cores.empty()) {
+            return cores;
+        }
+        // Add powder materials
+        cores = add_powder_materials(&cores, inputs);
+        log_stage("powder materials" + stage, cores.size());
+
+        // Filter by energy stored
+        cores = filterEnergyStored.filter_magnetics(&cores, inputs, 1, true);
+        log_stage("EnergyStored (powder)" + stage, cores.size());
+
+        // Filter by dimensions
+        cores = filterDimensions.filter_magnetics(&cores, inputs, 1 * userWeight(CoreAdviserFilters::DIMENSIONS), true);
+        log_stage("Dimensions (powder)" + stage, cores.size());
+
+        // Prune to top candidates by accumulated score before the
+        // expensive `add_initial_turns_by_inductance` +
+        // `filterMagneticInductance` pair. `add_powder_materials` blows
+        // the candidate set up by an order of magnitude (one entry per
+        // core × powder material — e.g. 400 cores × 10 materials = 4000)
+        // and the inductance step takes ~70 ms per candidate. Without
+        // this cap the powder path dominates PFC's 5-minute runtime
+        // (≈4 min on Inductance alone, profiled). Use the same
+        // top-K-by-score policy that the ferrite path already applies
+        // before its Losses filter.
+        {
+            const size_t preInductanceCap = std::max<size_t>(maximumNumberResults * 5, 50);
+            if (settings.get_core_adviser_enable_intermediate_pruning() && cores.size() > preInductanceCap) {
+                cores.resize(preInductanceCap);
+                log_pruned("Inductance (powder)" + stage, cores.size());
+            }
+        }
+
+        // Calculate turns
+        add_initial_turns_by_inductance(&cores, inputs);
+        filter_by_window_copper_capacity(&cores, inputs, " (powder)" + stage);
+
+        // Filter by inductance
+        cores = filterMagneticInductance.filter_magnetics(&cores, inputs, 0.1 * userWeight(CoreAdviserFilters::EFFICIENCY), true);
+        log_stage("Inductance (powder)" + stage, cores.size());
+
+        // Filter by saturation
+        cores = filterSaturation.filter_magnetics(&cores, inputs, 1, true);
+        log_stage("Saturation (powder)" + stage, cores.size());
+
+        // Prune to top candidates by accumulated score before the expensive Loss filter.
+        {
+            const size_t preLossCap = std::max<size_t>(maximumNumberResults * 5, 50);
+            if (settings.get_core_adviser_enable_intermediate_pruning() && cores.size() > preLossCap) {
+                cores.resize(preLossCap);
+                log_pruned("Losses (powder)" + stage, cores.size());
+            }
+        }
+
+        // Filter by losses
+        cores = filterLosses.filter_magnetics(&cores, inputs, 1 * userWeight(CoreAdviserFilters::EFFICIENCY), true);
+        log_stage("Losses (powder)" + stage, cores.size());
+
+        if (settings.get_core_adviser_enable_temperature_filter()) {
+            for (const auto& [magnetic, scoring] : cores) {
+                largestPowderVolumeAtTemperatureGate = std::max(largestPowderVolumeAtTemperatureGate, magnetic.get_core().get_effective_volume());
+            }
+            MagneticCoreFilterTemperature filterTemperature(
+                inputs, _models, resolve_maximum_design_temperature(inputs), get_application());
+            filterTemperature.set_scorings(&_scorings);
+            filterTemperature.set_filter_configuration(&_filterConfiguration);
+            filterTemperature.set_cache_usage(false);
+            cores = filterTemperature.filter_magnetics(&cores, inputs, 1 * userWeight(CoreAdviserFilters::EFFICIENCY), true);
+            log_stage("Temperature (powder)" + stage, cores.size());
+        }
+        return cores;
+    };
+
     if (usingPowderCores || settings.get_use_toroidal_cores()) {
         // Get toroidal cores from original set
         for (const auto& [mag, score] : magneticsWithScoring) {
@@ -1182,73 +1260,8 @@ std::vector<std::pair<Mas, double>> CoreAdviser::filter_standard_cores_power_app
         if (settings.get_core_adviser_enable_intermediate_pruning() && powderCores.size() > powderLimit) {
             powderCores.resize(powderLimit);
         }
-        
-        if (!powderCores.empty()) {
-            // Add powder materials
-            powderCores = add_powder_materials(&powderCores, inputs);
-            log_stage("powder materials", powderCores.size());
-            
-            // Filter by energy stored
-            powderCores = filterEnergyStored.filter_magnetics(&powderCores, inputs, 1, true);
-            log_stage("EnergyStored (powder)", powderCores.size());
-            
-            // Filter by dimensions
-            powderCores = filterDimensions.filter_magnetics(&powderCores, inputs, 1 * userWeight(CoreAdviserFilters::DIMENSIONS), true);
-            log_stage("Dimensions (powder)", powderCores.size());
 
-            // Prune to top candidates by accumulated score before the
-            // expensive `add_initial_turns_by_inductance` +
-            // `filterMagneticInductance` pair. `add_powder_materials` blows
-            // the candidate set up by an order of magnitude (one entry per
-            // core × powder material — e.g. 400 cores × 10 materials = 4000)
-            // and the inductance step takes ~70 ms per candidate. Without
-            // this cap the powder path dominates PFC's 5-minute runtime
-            // (≈4 min on Inductance alone, profiled). Use the same
-            // top-K-by-score policy that the ferrite path already applies
-            // before its Losses filter (see line 608 in this file).
-            {
-                const size_t preInductanceCap = std::max<size_t>(maximumNumberResults * 5, 50);
-                if (settings.get_core_adviser_enable_intermediate_pruning() && powderCores.size() > preInductanceCap) {
-                    powderCores.resize(preInductanceCap);
-                    log_pruned("Inductance (powder)", powderCores.size());
-                }
-            }
-
-            // Calculate turns
-            add_initial_turns_by_inductance(&powderCores, inputs);
-            filter_by_window_copper_capacity(&powderCores, inputs, " (powder)");
-
-            // Filter by inductance
-            powderCores = filterMagneticInductance.filter_magnetics(&powderCores, inputs, 0.1 * userWeight(CoreAdviserFilters::EFFICIENCY), true);
-            log_stage("Inductance (powder)", powderCores.size());
-            
-            // Filter by saturation
-            powderCores = filterSaturation.filter_magnetics(&powderCores, inputs, 1, true);
-            log_stage("Saturation (powder)", powderCores.size());
-
-            // Prune to top candidates by accumulated score before the expensive Loss filter.
-            {
-                const size_t preLossCap = std::max<size_t>(maximumNumberResults * 5, 50);
-                if (settings.get_core_adviser_enable_intermediate_pruning() && powderCores.size() > preLossCap) {
-                    powderCores.resize(preLossCap);
-                    log_pruned("Losses (powder)", powderCores.size());
-                }
-            }
-
-            // Filter by losses
-            powderCores = filterLosses.filter_magnetics(&powderCores, inputs, 1 * userWeight(CoreAdviserFilters::EFFICIENCY), true);
-            log_stage("Losses (powder)", powderCores.size());
-
-            if (settings.get_core_adviser_enable_temperature_filter()) {
-                MagneticCoreFilterTemperature filterTemperature(
-                    inputs, _models, resolve_maximum_design_temperature(inputs), get_application());
-                filterTemperature.set_scorings(&_scorings);
-                filterTemperature.set_filter_configuration(&_filterConfiguration);
-                filterTemperature.set_cache_usage(false);
-                powderCores = filterTemperature.filter_magnetics(&powderCores, inputs, 1 * userWeight(CoreAdviserFilters::EFFICIENCY), true);
-                log_stage("Temperature (powder)", powderCores.size());
-            }
-        }
+        powderCores = processPowderCores(powderCores, "");
     }
 
     // ========================================================================
@@ -1262,6 +1275,79 @@ std::vector<std::pair<Mas, double>> CoreAdviser::filter_standard_cores_power_app
     // matching note in the standard-cores pipeline above.
     const size_t ferriteResults = results.size();
     post_process_and_append(powderCores, inputs, maximumNumberResults, /*withAlternativeMaterials=*/true, solvedTemperatureLimit, results);
+
+    // The ABT #1412 walk to larger cores, for the powder toroids. Their pre-inductance prune keeps the best-scored
+    // candidates, which are the small toroids, and the temperature gate can reject all of them (a 100 uH, 600 Vpp,
+    // 100 kHz point: the 100 kept, all T 25 mm or smaller, reached 270-620 C against 130 C, while T 60..100 mm
+    // mu 60 toroids pass). Walk up the area-product toroids by volume, above the largest one the gate has seen, a
+    // batch at a time, through the same filters and gate, until enough pass; bounded by the same budget.
+    // The catalogue holds thousands of toroids above the first pass and most of them differ by a few per cent
+    // in volume, so a budget spent one core after the next stays within a few millimetres of the cores that
+    // already failed (400 of 3381 reached only T 32 mm). When the budget cannot cover them all, each batch
+    // starts one fixed volume ratio above the previous one instead (Alf, 2026-10-31: sample the sizes up the
+    // range), the ratio chosen so the budget's last batch is the largest cores: the walk spans the whole range
+    // with the same number of cores examined.
+    if (temperatureGateActive && largestPowderVolumeAtTemperatureGate > 0 && results.size() < maximumNumberResults) {
+        std::vector<std::pair<Magnetic, double>> largerCores;
+        for (const auto& [magnetic, scoring] : magneticsWithScoring) {
+            if (magnetic.get_core().get_functional_description().get_type() == CoreType::TOROIDAL &&
+                magnetic.get_core().get_effective_volume() > largestPowderVolumeAtTemperatureGate) {
+                largerCores.push_back({magnetic, scoring});
+            }
+        }
+        std::stable_sort(largerCores.begin(), largerCores.end(),
+                         [](const std::pair<Magnetic, double>& left, const std::pair<Magnetic, double>& right) {
+                             return left.first.get_core().get_effective_volume() < right.first.get_core().get_effective_volume();
+                         });
+        const size_t budget = std::min(largerCores.size(), maximumMagneticsAfterFiltering);
+        const size_t batchSize = std::max<size_t>(maximumNumberResults * 5, 50);
+        const size_t powderFirstPass = powderCores.size();
+        const auto volumeOf = [&](size_t index) { return largerCores[index].first.get_core().get_effective_volume(); };
+        const size_t numberBatches = (budget + batchSize - 1) / batchSize;
+        // Consecutive batches when the budget covers every larger core; otherwise batch k starts at the first
+        // core whose volume reaches smallest x ratio^k, where the last batch's start is the core that leaves
+        // exactly one batch of the largest cores.
+        const bool sampleTheRange = budget < largerCores.size() && numberBatches > 1;
+        double volumeRatio = 1;
+        if (sampleTheRange) {
+            const double smallestVolume = volumeOf(0);
+            const double lastBatchVolume = volumeOf(largerCores.size() - batchSize);
+            if (!(smallestVolume > 0)) {
+                throw CalculationException(ErrorCode::CALCULATION_ERROR,
+                    "Toroid walk to larger powder cores: a candidate has no positive effective volume");
+            }
+            volumeRatio = std::pow(lastBatchVolume / smallestVolume, 1.0 / static_cast<double>(numberBatches - 1));
+        }
+        size_t examined = 0;
+        size_t nextStart = 0;
+        size_t batchIndex = 0;
+        while (examined < budget && nextStart < largerCores.size() && results.size() < maximumNumberResults) {
+            size_t begin = nextStart;
+            if (sampleTheRange) {
+                const double floorVolume = volumeOf(0) * std::pow(volumeRatio, static_cast<double>(batchIndex));
+                while (begin < largerCores.size() && volumeOf(begin) < floorVolume) {
+                    ++begin;
+                }
+                if (begin >= largerCores.size()) {
+                    break;
+                }
+            }
+            const size_t end = std::min({begin + batchSize, begin + (budget - examined), largerCores.size()});
+            std::vector<std::pair<Magnetic, double>> batch(largerCores.begin() + begin, largerCores.begin() + end);
+            examined += end - begin;
+            nextStart = end;
+            ++batchIndex;
+            auto passed = processPowderCores(batch, " (larger cores)");
+            powderCores.insert(powderCores.end(), passed.begin(), passed.end());
+            post_process_and_append(passed, inputs, maximumNumberResults, /*withAlternativeMaterials=*/true, solvedTemperatureLimit, results);
+        }
+        logEntry("Temperature walk to larger powder cores examined " + std::to_string(examined) + " of " +
+                 std::to_string(largerCores.size()) + " larger cores (budget " + std::to_string(budget) + "); " +
+                 std::to_string(powderCores.size()) + " powder cores pass the filters (" + std::to_string(powderFirstPass) +
+                 " before the walk) and " + std::to_string(results.size()) + " results pass post-processing" +
+                 (results.size() < maximumNumberResults ? " - fewer than requested, budget or catalogue exhausted." : "."),
+                 "CoreAdviser", 2);
+    }
     logEntry("Combined results: " + std::to_string(results.size()) +
              " (ferrite: " + std::to_string(ferriteResults) + " of " + std::to_string(ferriteCores.size()) +
              ", powder: " + std::to_string(results.size() - ferriteResults) + " of " + std::to_string(powderCores.size()) + ")", "CoreAdviser", 2);
