@@ -1,6 +1,8 @@
 #include <source_location>
 #include <iomanip>
 #include <map>
+#include <filesystem>
+#include <iostream>
 #include "physical_models/LeakageInductance.h"
 #include "physical_models/MagnetizingInductance.h"
 #include "support/Painter.h"
@@ -1293,4 +1295,40 @@ TEST_CASE("Energy leakage matches OMFEM 2D on the ABT #1211 benchmark designs", 
             settings.reset();
         }
     }
+}
+
+TEST_CASE("Test_Leakage_Toroid_Real_Winding_Last_Station_Returns_Through_Its_Exit_Lead", "[physical-model][leakage-inductance][toroidal][real-winding]") {
+    // ABT #1353: under real winding the last station of each toroid conductor has no outer crossing
+    // (ABT #685, Alf 2026-08-18: its exit lead rises there). The ring-plane leakage model used to refuse
+    // the whole coil for it ("turn 30 of winding 'Winding 1' has none" on 07_cmc_t2515_w800). Alf,
+    // 2026-10-31: that station's return path is its exit lead.
+    settings.reset();
+    clear_databases();
+    auto path = std::filesystem::path{std::source_location::current().file_name()}.parent_path()
+                    .append("..").append("MAS").append("examples").append("07_cmc_t2515_w800.json");
+    auto mas = OpenMagneticsTesting::mas_loader(path.string());
+    settings.set_coil_use_real_winding_geometry(true);
+    auto magnetic = OpenMagnetics::magnetic_autocomplete(mas.get_magnetic());
+    const auto turns = magnetic.get_coil().get_turns_description().value();
+    // The premise: the last station of each conductor carries no outer crossing, every other one does.
+    std::map<std::pair<std::string, int64_t>, size_t> lastStation;
+    for (size_t index = 0; index < turns.size(); ++index) {
+        lastStation[{turns[index].get_winding(), turns[index].get_parallel()}] = index;
+    }
+    REQUIRE(lastStation.size() == 2);
+    for (size_t index = 0; index < turns.size(); ++index) {
+        bool isLast = lastStation.at({turns[index].get_winding(), turns[index].get_parallel()}) == index;
+        bool hasCrossing = turns[index].get_additional_coordinates() && !turns[index].get_additional_coordinates()->empty();
+        INFO(turns[index].get_name());
+        CHECK(hasCrossing != isLast);
+    }
+    double leakage = 0;
+    REQUIRE_NOTHROW(leakage = LeakageInductance().calculate_leakage_inductance(magnetic, 100000)
+                                  .get_leakage_inductance_per_winding()[0].get_nominal().value());
+    CHECK(std::isfinite(leakage));
+    CHECK(leakage > 0);
+    // OMFEM's magnetostatic ring-plane reference for this design (ideal winding, 60 crossings per winding):
+    // 13.43 uH (omfem_examples/omfem_toroid_leakage_references.json). Reported, not pinned.
+    std::cout << "07_cmc real-winding leakage " << leakage * 1e6 << " uH (OMFEM ideal-winding reference 13.43 uH)" << std::endl;
+    settings.reset();
 }

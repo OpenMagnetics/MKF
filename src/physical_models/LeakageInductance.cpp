@@ -1033,6 +1033,16 @@ LeakageInductance::ToroidalRingPlaneConductors LeakageInductance::calculate_toro
     conductors.coreHeight = coreHeight;
     conductors.imageFactor = imageFactor;
     const auto turns = coil.get_turns_description().value();
+    // ABT #1353 (Alf, 2026-10-31): under real winding the LAST station of each conductor has no outer
+    // crossing (ABT #685): the conductor leaves there through its exit lead, which runs radially in the
+    // ring plane to the bore wall and rises there to its terminal. That lead is the station's return path:
+    // its rising run is the line current opposite to the station's bore crossing. Nothing is invented: the
+    // position is the far end of the TERMINAL_EXIT run the winder itself emitted, on the lead wire's centre.
+    std::map<std::pair<std::string, int64_t>, std::string> lastStationOfConductor;
+    for (const auto& turn : turns) {
+        lastStationOfConductor[{turn.get_winding(), turn.get_parallel()}] = turn.get_name();
+    }
+    std::optional<std::vector<ConnectionReservedSpace>> connectionSpaces;
     for (auto& turn : turns) {
         auto found = windingIndexByName.find(turn.get_winding());
         if (found == windingIndexByName.end()) {
@@ -1046,7 +1056,53 @@ LeakageInductance::ToroidalRingPlaneConductors LeakageInductance::calculate_toro
         if (!turn.get_coordinate_system() || turn.get_coordinate_system().value() != CoordinateSystem::CARTESIAN) {
             throw CoilNotProcessedException("Toroidal leakage: turn " + turn.get_name() + " coordinates are not cartesian");
         }
-        if (!turn.get_additional_coordinates() || turn.get_additional_coordinates()->empty() || turn.get_additional_coordinates().value()[0].size() < 2) {
+        const bool hasOuterCrossing = turn.get_additional_coordinates() && !turn.get_additional_coordinates()->empty() &&
+                                      turn.get_additional_coordinates().value()[0].size() >= 2;
+        if (!hasOuterCrossing && settings.get_coil_use_real_winding_geometry() &&
+            lastStationOfConductor.at({turn.get_winding(), turn.get_parallel()}) == turn.get_name()) {
+            if (!connectionSpaces) {
+                connectionSpaces = coil.get_connection_reserved_spaces();
+            }
+            const ConnectionReservedSpace* exitLead = nullptr;
+            for (const auto& space : connectionSpaces.value()) {
+                if (space.kind == ConnectionKind::TERMINAL_EXIT && space.fromTurn == turn.get_name()) {
+                    if (exitLead) {
+                        throw CoilNotProcessedException("the leakage inductance of a toroid found two exit leads for " +
+                                                        describe_turn_for_people(coil, turn.get_name()));
+                    }
+                    exitLead = &space;
+                }
+            }
+            auto inner = turn.get_coordinates();
+            double stationRadius = std::hypot(inner[0], inner[1]);
+            double angle = std::atan2(inner[1], inner[0]);
+            double riseRadius = stationRadius;
+            if (exitLead) {
+                if (exitLead->coordinateSystem != CoordinateSystem::POLAR || exitLead->dimensions.size() < 2) {
+                    throw CoilNotProcessedException("the exit lead of " + describe_turn_for_people(coil, turn.get_name()) +
+                                                    " is not a radial run of a toroid");
+                }
+                // The run spans [station envelope, wall-side end]; the rising wire's centre sits half its
+                // thickness inside that end.
+                double farEnd = std::hypot(exitLead->coordinates[0], exitLead->coordinates[1]) + exitLead->dimensions[0] / 2;
+                riseRadius = farEnd - exitLead->dimensions[1] / 2;
+                angle = exitLead->rotation / 180.0 * std::numbers::pi;
+            }
+            // No radial run (the station already sits at the wall) or a run one wire long: the lead rises
+            // on the station itself, and the two opposite currents on one line carry nothing.
+            if (std::abs(riseRadius - stationRadius) < 1e-12) {
+                continue;
+            }
+            double geometricMeanRadius = geometricMeanRadiusPerWinding[windingIndex];
+            conductors.bore.push_back({inner[0], inner[1], current, geometricMeanRadius});
+            conductors.bore.push_back({riseRadius * std::cos(angle), riseRadius * std::sin(angle), -current, geometricMeanRadius});
+            conductors.turnAngles.push_back(std::atan2(inner[1], inner[0]));
+            conductors.turnCurrents.push_back(current);
+            conductors.turnAngles.push_back(angle);
+            conductors.turnCurrents.push_back(-current);
+            continue;
+        }
+        if (!hasOuterCrossing) {
             throw CoilNotProcessedException("the leakage inductance of a toroid needs the path of every turn around the outside of the "
                                             "core, and " + describe_turn_for_people(coil, turn.get_name()) + " has none");
         }
@@ -1108,11 +1164,21 @@ LeakageInductance::ToroidalLeakageEnergy LeakageInductance::calculate_toroidal_l
     double boreRadiusSum = 0;
     double outerRadiusSum = 0;
     double currentWeightSum = 0;
+    // Each region's conductors are averaged on their own: a conductor's last station returns through its exit
+    // lead inside the bore (ABT #1353), so the bore can hold more crossings than the outside.
+    double outerCurrentWeightSum = 0;
     for (size_t index = 0; index < boreConductors.size(); ++index) {
         double weight = std::abs(boreConductors[index].current);
         boreRadiusSum += weight * std::hypot(boreConductors[index].x, boreConductors[index].y);
-        outerRadiusSum += weight * std::hypot(outerConductors[index].x, outerConductors[index].y);
         currentWeightSum += weight;
+    }
+    for (size_t index = 0; index < outerConductors.size(); ++index) {
+        double weight = std::abs(outerConductors[index].current);
+        outerRadiusSum += weight * std::hypot(outerConductors[index].x, outerConductors[index].y);
+        outerCurrentWeightSum += weight;
+    }
+    if (outerConductors.empty()) {
+        throw InvalidInputException(ErrorCode::INVALID_INPUT, "Toroidal leakage: no turn crosses the outside of the core");
     }
 
     ToroidalLeakageEnergy result;
@@ -1122,7 +1188,7 @@ LeakageInductance::ToroidalLeakageEnergy LeakageInductance::calculate_toroidal_l
     // Envelope through the conductor centres (current-weighted mean crossing radii). Its axial offset from the core
     // faces is the mean of the radial offsets from the bore and outer walls.
     result.envelopeInnerRadius = boreRadiusSum / currentWeightSum;
-    result.envelopeOuterRadius = outerRadiusSum / currentWeightSum;
+    result.envelopeOuterRadius = outerRadiusSum / outerCurrentWeightSum;
     double axialOffset = ((innerWallRadius - result.envelopeInnerRadius) + (result.envelopeOuterRadius - outerWallRadius)) / 2;
     result.envelopeHeight = coreHeight + 2 * axialOffset;
     result.extrusionLength = result.envelopeHeight + (result.envelopeOuterRadius - result.envelopeInnerRadius);
