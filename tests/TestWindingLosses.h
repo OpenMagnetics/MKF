@@ -733,7 +733,9 @@ namespace WindingLossesTestData {
             OpenMagnetics::Wire wire;
             wire.set_nominal_value_conducting_width(0.0001);
             wire.set_nominal_value_conducting_height(0.02);
-            wire.set_nominal_value_outer_width(0.00011);
+            // A foil carries no coating; its insulation is given by insulation layers, so its outer width is its
+            // conducting width (Alf, 2026-10-31). Was 0.00011 m, which states insulation nothing accounts for.
+            wire.set_nominal_value_outer_width(0.0001);
             wire.set_nominal_value_outer_height(0.02);
             wire.set_number_conductors(1);
             wire.set_material("copper");
@@ -783,7 +785,9 @@ namespace WindingLossesTestData {
             OpenMagnetics::Wire wire;
             wire.set_nominal_value_conducting_width(0.0001);
             wire.set_nominal_value_conducting_height(0.02);
-            wire.set_nominal_value_outer_width(0.00018);
+            // A foil carries no coating; its insulation is given by insulation layers, so its outer width is its
+            // conducting width (Alf, 2026-10-31). Was 0.00018 m, which states insulation nothing accounts for.
+            wire.set_nominal_value_outer_width(0.0001);
             wire.set_nominal_value_outer_height(0.02);
             wire.set_number_conductors(1);
             wire.set_material("copper");
@@ -833,7 +837,9 @@ namespace WindingLossesTestData {
             OpenMagnetics::Wire wire;
             wire.set_nominal_value_conducting_width(0.0001);
             wire.set_nominal_value_conducting_height(0.007);
-            wire.set_nominal_value_outer_width(0.00015);
+            // A foil carries no coating; its insulation is given by insulation layers, so its outer width is its
+            // conducting width (Alf, 2026-10-31). Was 0.00015 m, which states insulation nothing accounts for.
+            wire.set_nominal_value_outer_width(0.0001);
             wire.set_nominal_value_outer_height(0.007);
             wire.set_number_conductors(1);
             wire.set_material("copper");
