@@ -40,6 +40,7 @@ OpenMagnetics::Inputs make_inputs(std::optional<std::vector<ConnectionType>> ter
     if (withInsulationRequirements) {
         InsulationRequirements insulationRequirements;
         insulationRequirements.set_insulation_type(IsolationClass::REINFORCED);
+        insulationRequirements.set_standards(std::vector<InsulationStandards>{InsulationStandards::IEC_623681});
         designRequirements.set_insulation(insulationRequirements);
     }
     inputs.set_design_requirements(designRequirements);
