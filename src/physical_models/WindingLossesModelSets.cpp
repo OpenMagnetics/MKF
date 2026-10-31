@@ -277,6 +277,11 @@ WindingLossesModelSets resolve_winding_losses_model_set_from_settings(Magnetic m
     if (settings.get_winding_losses_model_set() != WindingLossesModelSets::CUSTOM) {
         return settings.get_winding_losses_model_set();
     }
+    // ABT #2169: skin and proximity models chosen in Settings are a choice like a field model is; a default set would
+    // fix every model and ignore them.
+    if (settings.get_coil_enable_user_winding_losses_models()) {
+        return WindingLossesModelSets::CUSTOM;
+    }
     const Defaults defaults;
     const bool defaultFieldConfiguration = includeFringing &&
         settings.get_magnetic_field_strength_model() == defaults.magneticFieldStrengthModelDefault &&

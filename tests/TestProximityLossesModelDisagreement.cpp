@@ -28,11 +28,13 @@
 #include "MAS.hpp"
 #include "constructive_models/Magnetic.h"
 #include "physical_models/WindingLosses.h"
+#include "physical_models/WindingLossesModelSets.h"
 #include "processors/Inputs.h"
 #include "support/Settings.h"
 
 #include "TestingUtils.h"
 
+#include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
 #include <cmath>
@@ -138,4 +140,35 @@ TEST_CASE("Test_Proximity_Effect_Models_Report_Their_Own_Name", "[physical-model
         std::shared_ptr<WindingProximityEffectLossesModel> base = WindingProximityEffectLossesModel::factory(model);
         CHECK(base->methodName == expectedName);
     }
+}
+
+TEST_CASE("Skin and proximity models chosen in Settings reach the winding losses, past the core's default model set (ABT #2169)", "[physical-model][winding-losses][proximity][settings]") {
+    double temperature = 40;
+    double frequency = 100000;
+    std::vector<int64_t> numberTurns({24});
+    std::vector<int64_t> numberParallels({1});
+    std::string shapeName = "ETD 34/17/11";
+    auto inputs = OpenMagnetics::Inputs::create_quick_operating_point_only_current(
+        frequency, 1e-3, temperature, WaveformLabel::SINUSOIDAL, 4.0, 0.5, 0);
+    auto coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, shapeName, 1,
+                                                     WindingOrientation::OVERLAPPING,
+                                                     WindingOrientation::OVERLAPPING,
+                                                     CoilAlignment::CENTERED,
+                                                     CoilAlignment::CENTERED);
+    auto core = OpenMagneticsTesting::get_quick_core(shapeName, OpenMagneticsTesting::get_ground_gap(1e-4), 1, "3C97");
+    OpenMagnetics::Magnetic magnetic;
+    magnetic.set_core(core);
+    magnetic.set_coil(coil);
+    auto operatingPoint = inputs.get_operating_point(0);
+
+    auto& settings = Settings::GetInstance();
+    settings.reset();
+    REQUIRE(resolve_winding_losses_model_set_from_settings(magnetic, true) != WindingLossesModelSets::CUSTOM);
+    settings.set_coil_enable_user_winding_losses_models(true);
+    CHECK(resolve_winding_losses_model_set_from_settings(magnetic, true) == WindingLossesModelSets::CUSTOM);
+    settings.reset();
+
+    double dowell = total_losses_with_proximity_model(magnetic, operatingPoint, temperature, WindingProximityEffectLossesModels::DOWELL);
+    double ferreira = total_losses_with_proximity_model(magnetic, operatingPoint, temperature, WindingProximityEffectLossesModels::FERREIRA);
+    CHECK(dowell != Catch::Approx(ferreira).epsilon(1e-6));
 }
