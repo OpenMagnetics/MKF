@@ -826,7 +826,9 @@ namespace {
             OpenMagnetics::Wire wire;
             wire.set_nominal_value_conducting_width(0.0005);
             wire.set_nominal_value_conducting_height(0.018);
-            wire.set_nominal_value_outer_width(0.00053);
+            // A foil carries no coating; its insulation is given by insulation layers, so its outer width is its
+            // conducting width (Alf, 2026-10-31). Was 0.00053 m on the 0.0005 m sheet.
+            wire.set_nominal_value_outer_width(0.0005);
             wire.set_nominal_value_outer_height(0.018);
             wire.set_number_conductors(1);
             wire.set_material("copper");
@@ -1032,7 +1034,13 @@ namespace {
         // and just above it mu_i(T) refuses.
         CHECK(ceiling.value() < coreMaterial.get_curie_temperature().value());
         CHECK_NOTHROW(InitialPermeability::get_initial_permeability(coreMaterial, ceiling.value()));
-        CHECK_THROWS_AS(InitialPermeability::get_initial_permeability(coreMaterial, ceiling.value() + 1), MaterialTemperatureOutOfRangeException);
+        {
+            // The refusal needs the flag off: the default is on since Alf, 2026-10-25.
+            const bool allowMaterialDataExtrapolation = settings.get_allow_material_data_extrapolation();
+            settings.set_allow_material_data_extrapolation(false);
+            CHECK_THROWS_AS(InitialPermeability::get_initial_permeability(coreMaterial, ceiling.value() + 1), MaterialTemperatureOutOfRangeException);
+            settings.set_allow_material_data_extrapolation(allowMaterialDataExtrapolation);
+        }
 
         // The loss solve holds the core exactly at the table's end, with the last tabulated permeability
         // (the solved magnetizing current is the real material's there).
