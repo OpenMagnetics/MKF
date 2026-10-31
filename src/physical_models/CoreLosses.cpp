@@ -1486,14 +1486,14 @@ std::vector<double> average_over_neighbouring_cycles(const std::vector<double>& 
 // one period later. Both records must lie inside one period. The period is the line record's duration,
 // not 1 / the excitation's frequency: a line-cycle excitation may carry the switching frequency.
 std::vector<double> magnetizing_current_on_time_base(const Waveform& waveform, const std::vector<double>& time, double period) {
-    const auto& data = waveform.get_data();
+    const auto& dataAll = waveform.get_data();
     if (!waveform.get_time()) {
         throw InvalidInputException(ErrorCode::INVALID_INPUT, "Core losses: the line-cycle magnetizing current has no time axis");
     }
-    const std::vector<double> sourceTime = waveform.get_time().value();
-    if (data.size() < 2 || sourceTime.size() != data.size()) {
+    std::vector<double> sourceTime = waveform.get_time().value();
+    if (dataAll.size() < 2 || sourceTime.size() != dataAll.size()) {
         throw InvalidInputException(ErrorCode::INVALID_INPUT,
-            "Core losses: the line-cycle magnetizing current has " + std::to_string(data.size()) + " samples and " +
+            "Core losses: the line-cycle magnetizing current has " + std::to_string(dataAll.size()) + " samples and " +
             std::to_string(sourceTime.size()) + " time points");
     }
     if (!(period > 0)) {
@@ -1503,6 +1503,24 @@ std::vector<double> magnetizing_current_on_time_base(const Waveform& waveform, c
     if (!std::is_sorted(sourceTime.begin(), sourceTime.end())) {
         throw InvalidInputException(ErrorCode::INVALID_INPUT, "Core losses: the line-cycle magnetizing current's time axis is not ascending");
     }
+    // A stored record may run past its period by samples that repeat the ones a period earlier (PFC_Inputs.mas.json:
+    // 4087 samples on 0..T+dt, the sample at T+dt bit-identical to the one at dt): a closed periodic record with its
+    // wrap samples written out. Such a sample carries nothing new, so it is dropped; a sample past the period that is
+    // not an exact repeat of a stored sample one period earlier is a record longer than the period, and is refused below.
+    size_t sourceSize = sourceTime.size();
+    while (sourceSize > 2 && sourceTime[sourceSize - 1] - sourceTime.front() > period + tolerance) {
+        const double wrappedTime = sourceTime[sourceSize - 1] - period;
+        auto match = std::lower_bound(sourceTime.begin(), sourceTime.begin() + static_cast<std::ptrdiff_t>(sourceSize) - 1, wrappedTime - tolerance);
+        const bool repeats = match != sourceTime.begin() + static_cast<std::ptrdiff_t>(sourceSize) - 1 &&
+                             std::abs(*match - wrappedTime) <= tolerance &&
+                             dataAll[static_cast<size_t>(match - sourceTime.begin())] == dataAll[sourceSize - 1];
+        if (!repeats) {
+            break;
+        }
+        --sourceSize;
+    }
+    sourceTime.resize(sourceSize);
+    const std::vector<double> data(dataAll.begin(), dataAll.begin() + static_cast<std::ptrdiff_t>(sourceSize));
     if (sourceTime.back() - sourceTime.front() > period + tolerance || time.back() - time.front() > period + tolerance) {
         throw InvalidInputException(ErrorCode::INVALID_INPUT,
             "Core losses: the line-cycle magnetizing current (" + std::to_string(sourceTime.back() - sourceTime.front()) +
