@@ -4,6 +4,7 @@
 #include "support/Utils.h"
 #include "physical_models/MagnetizingInductance.h"
 #include "support/Settings.h"
+#include "constructive_models/CorePiece.h"
 #include "TestingUtils.h"
 #include "json.hpp"
 
@@ -1390,7 +1391,14 @@ TEST_CASE("Autocomplete keeps a piece-and-plate ET/UT core and its catalogue eff
         auto core = autocompletedCore(reference.shape);
         CHECK(core.get_functional_description().get_type() == CoreType::PIECE_AND_PLATE);
         double le = core.get_processed_description()->get_effective_parameters().get_effective_length();
-        CHECK_THAT(le, Catch::Matchers::WithinAbs(reference.le, reference.halfDigit));
+        // The catalogue le is the vendor's IEC 60205 le (C1^2 / C2, corners booked as quarter circles); since ABT #1766
+        // the processed le carries the field-exact corners. Compare like with like, as Test_Core_Effective_Permeability
+        // does: the processed le scaled by the piece's IEC-to-exact ratio (a mirrored, doubled le stays doubled).
+        auto corePiece = CorePiece::factory(std::get<CoreShape>(core.get_functional_description().get_shape()));
+        auto [c1, c2, minimumArea] = corePiece->get_shape_constants();
+        double pieceIecToExactLengthRatio = (c1 * c1 / c2) / corePiece->get_partial_effective_parameters().get_effective_length();
+        double iecLe = le * pieceIecToExactLengthRatio;
+        CHECK_THAT(iecLe, Catch::Matchers::WithinAbs(reference.le, reference.halfDigit));
     }
 }
 
