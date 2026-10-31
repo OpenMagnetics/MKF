@@ -502,7 +502,15 @@ TEST_CASE("The buck_inductor_complete ring seats on the smallest Lodestone HTM b
 TEST_CASE("A common-mode choke on a real HTM base: the fixture ring fits none, a T 16/9.6/6.3 takes HTM600-6 and each winding its facing side (ABT #1173)",
           "[constructive-model][bobbin][coil][pins][abt1173]") {
     // common_mode_choke_complete's T 25.3/14.8/10: coated, it exceeds HTM850-6's 25.4 mm, so no HTM base holds it.
+    // The ring declares the coating its catalogue part states: MAS cores.ndjson "T 25.3/14.8/10 - epoxy coated - N30 -
+    // Ungapped" (TDK B64290L0618X830) is epoxy coated. Since f2662e03 an undeclared coating is bare, and the bare
+    // ring (25.3 mm) fits under HTM850-6's limit, which is not the part this test is about.
     auto fixtureCore = cmc_core();
+    {
+        auto functionalDescription = fixtureCore.get_functional_description();
+        functionalDescription.set_coating(std::string("epoxy"));
+        fixtureCore.set_functional_description(functionalDescription);
+    }
     INFO("coated T 25.3/14.8/10 outer diameter " << coated_outer_diameter(fixtureCore) * 1e3 << " mm");
     CHECK(coated_outer_diameter(fixtureCore) > 0.0254);
     for (const auto& base : find_toroid_bases_for_core(fixtureCore)) {
