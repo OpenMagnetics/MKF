@@ -505,7 +505,7 @@ TEST_CASE("process_data on a bobbin with no functionalDescription throws, determ
         // depends on operand evaluation order, so the assertion does not name it).
         CHECK_THROWS_WITH(eBobbin.process_data(),
                           Catch::Matchers::ContainsSubstring("(family 'etd') has no dimension 'd") &&
-                          Catch::Matchers::ContainsSubstring("the record declares {c, e, f, k, l2, s1, s2}"));
+                          Catch::Matchers::ContainsSubstring("the record declares {c, e, f, l2, s1, s2}"));
     }
 }
 
