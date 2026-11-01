@@ -591,6 +591,7 @@ namespace OpenMagnetics {
         _diagnosisInsulationOutsideWindowReason.clear();
         _diagnosisTemperatureRejections = 0;
         _diagnosisTemperatureRejection.clear();
+        _temperatureRejections.clear();
         _wireAdviser.reset_real_winding_packing_diagnosis();
         _lastNoResultsReason = std::nullopt;
         auto core = mas.get_magnetic().get_core();
@@ -2033,6 +2034,7 @@ namespace OpenMagnetics {
                 rejection = evaluation.reason;
             }
             logEntry(coilDescription + " rejected: " + rejection, "CoilAdviser", 2);
+            _temperatureRejections.push_back({scoredMas.get_mutable_magnetic().get_reference(), "rejected by the temperature limit: " + rejection});
             if (_diagnosisTemperatureRejections++ == 0) {
                 _diagnosisTemperatureRejection = coilDescription + ": " + rejection;
             }

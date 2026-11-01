@@ -969,6 +969,11 @@ std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic(Inputs
             logEntry("Getting coil", "MagneticAdviser", 2);
             std::vector<std::pair<size_t, double>> usedNumberSectionsAndMargin;
             auto masMagneticsWithCoreAndCoil = coilAdviser.get_advised_coil(mas, std::max(2.0, ceil(double(maximumNumberResults) / masMagneticsWithCore.size())));
+            // The coil adviser's temperature gate judges every wound coil before returning it (ABT #1394), so the
+            // coils it rejects never reach process_wound_candidate: each is recorded here with its reason.
+            for (const auto& rejection : coilAdviser.get_last_temperature_rejections()) {
+                _failedCandidates.push_back(rejection);
+            }
 
             // A core counts as wound only once one of its valid coils survives
             // process_wound_candidate's gates (saturation, temperature). Neither the coil
@@ -1094,6 +1099,11 @@ std::vector<std::pair<Mas, double>> MagneticAdviser::get_advised_magnetic(Inputs
                 logEntry("Getting coil", "MagneticAdviser", 2);
                 std::vector<std::pair<size_t, double>> usedNumberSectionsAndMargin;
                 auto masMagneticsWithCoreAndCoil = coilAdviser.get_advised_coil(mas, std::max(2.0, ceil(double(maximumNumberResults) / masMagneticsWithCore.size())));
+                // The coil adviser's temperature gate judges every wound coil before returning it (ABT #1394), so the
+                // coils it rejects never reach process_wound_candidate: each is recorded here with its reason.
+                for (const auto& rejection : coilAdviser.get_last_temperature_rejections()) {
+                    _failedCandidates.push_back(rejection);
+                }
                 bool coreAccepted = false;  // see the main loop: counted once a coil survives the gates
                 size_t processedCoils = 0;
 

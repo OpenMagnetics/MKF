@@ -145,6 +145,9 @@ class CoilAdviser : public WireAdviser {
         std::string _diagnosisInsulationOutsideWindowReason;  // the first such escape
         size_t _diagnosisTemperatureRejections = 0;  // wound coils the temperature gate rejected (ABT #1394)
         std::string _diagnosisTemperatureRejection;  // the first such rejection
+        // Every wound coil the temperature gate rejected in the last get_advised_coil call: its reference and the
+        // reason (ABT #1394), so a caller (MagneticAdviser) can report each one as a failed candidate.
+        std::vector<std::pair<std::string, std::string>> _temperatureRejections;
         std::optional<std::string> _lastNoResultsReason;
 
     public:
@@ -157,6 +160,12 @@ class CoilAdviser : public WireAdviser {
         // never a silent one: the same text is logged at WARNING level.
         std::optional<std::string> get_last_no_results_reason() const {
             return _lastNoResultsReason;
+        }
+
+        // The wound coils the temperature gate rejected in the last get_advised_coil call, as (coil reference,
+        // reason) pairs, whether or not the call returned other coils.
+        const std::vector<std::pair<std::string, std::string>>& get_last_temperature_rejections() const {
+            return _temperatureRejections;
         }
 
         // ABT #1699: the first maximumNumberResults of `rankedMases` (in their order). With real
