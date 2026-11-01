@@ -2247,19 +2247,16 @@ TEST_CASE("Test_CoilAdviser_Web_4", "[adviser][coil-adviser][bug][smoke-test]") 
 
     CoilAdviser coilAdviser;
     auto mases = coilAdviser.get_advised_coil(mas, 1);
-    REQUIRE(mases.size() > 0);
-
-    auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
-    auto outFile = outputFilePath;
-    std::string filename = "Test_CoilAdviser_Web_4.svg";
-    outFile.append(filename);
-    Painter painter(outFile);
-
-    painter.paint_core(mases[0].get_mutable_magnetic());
-    painter.paint_bobbin(mases[0].get_mutable_magnetic());
-    painter.paint_coil_turns(mases[0].get_mutable_magnetic());
-    // painter.paint_coil_sections(mases[0].get_mutable_magnetic());
-    painter.export_svg();
+    // Rewritten (ABT #1394, kind (a), Alf approved 2026-11-01). The fixture is unchanged: E 38/8/25 in 98 at 100 C
+    // ambient, where the core already loses 1.83 W (163 mT) and reaches 154 C on the first iterate, then climbs to the
+    // material's 215 C Curie point with no fixed point below it. Every wound coil is held there, at least 220 C against
+    // the 130 C limit, having lost 5.6-5.8 W before the hold. So the adviser returns no coil, and it must say why.
+    REQUIRE(mases.empty());
+    auto noResultsReason = coilAdviser.get_last_no_results_reason();
+    REQUIRE(noResultsReason.has_value());
+    CHECK_THAT(*noResultsReason, Catch::Matchers::ContainsSubstring("rejected by the temperature limit"));
+    CHECK_THAT(*noResultsReason, Catch::Matchers::ContainsSubstring("hot spot reaches"));
+    CHECK_THAT(*noResultsReason, Catch::Matchers::ContainsSubstring("held at its material's data limit"));
 }
 
 TEST_CASE("Test_CoilAdviser_Web_5", "[adviser][coil-adviser][bug][smoke-test]") {
