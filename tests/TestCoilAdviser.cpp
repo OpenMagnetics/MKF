@@ -1,5 +1,6 @@
 #include "RandomUtils.h"
 #include <source_location>
+#include "converter_models/KirchhoffBridge.h"
 #include "constructive_models/Insulation.h"
 #include "constructive_models/CorePiece.h"
 #include "support/Painter.h"
@@ -521,14 +522,16 @@ TEST_CASE("Test_CoilAdviser_Insulation_No_Margin", "[adviser][coil-adviser][smok
     double peakToPeak = 20;
 
     auto magnetic = OpenMagneticsTesting::get_quick_magnetic("ETD 59", gapping, numberTurns, numberStacks, "3C91");
-    auto inputs = OpenMagnetics::Inputs::create_quick_operating_point_only_current(frequency,
-                                                                                          magnetizingInductance,
-                                                                                          temperature,
-                                                                                          waveShape,
-                                                                                          peakToPeak,
-                                                                                          dutyCycle,
-                                                                                          dcCurrent,
-                                                                                          turnsRatios);
+    json spec;
+    spec["designRequirements"]["efficiency"] = 0.9;
+    spec["designRequirements"]["inputVoltage"] = {{"minimum", 360}, {"nominal", 400}, {"maximum", 440}};
+    spec["designRequirements"]["switchingFrequency"]["nominal"] = 175590;
+    spec["designRequirements"]["outputs"] = json::array({{{"name", "out"}, {"voltage", {{"nominal", 20}}}}});
+    spec["designRequirements"]["turnsRatios"] = json::array({{{"nominal", double(numberTurns[0]) / numberTurns[1]}}});
+    spec["designRequirements"]["magnetizingInductance"] = {{"nominal", 1.4927e-3}};
+    spec["operatingPoints"] = json::array({{{"inputVoltage", 400}, {"outputs", json::array({{{"power", 150}}})}}});
+    spec["config"]["mode"] = "ccm";
+    auto inputs = OpenMagnetics::design_requirements_from_tas(OpenMagnetics::design_converter_tas("flyback", spec));
 
     DimensionWithTolerance altitude;
     DimensionWithTolerance mainSupplyVoltage;
@@ -3305,7 +3308,16 @@ TEST_CASE("Coil adviser returns only coils whose insulation fits the winding win
         std::vector<int64_t> numberTurns = {82, 5};
         std::vector<double> turnsRatios = {double(numberTurns[0]) / numberTurns[1]};
         auto magnetic = OpenMagneticsTesting::get_quick_magnetic("ETD 59", OpenMagneticsTesting::get_ground_gap(0.003), numberTurns, 1, "3C91");
-        auto inputs = OpenMagnetics::Inputs::create_quick_operating_point_only_current(175590, 10e-6, 25, WaveformLabel::SINUSOIDAL, 20, 0.5, 0, turnsRatios);
+        json spec;
+        spec["designRequirements"]["efficiency"] = 0.9;
+        spec["designRequirements"]["inputVoltage"] = {{"minimum", 360}, {"nominal", 400}, {"maximum", 440}};
+        spec["designRequirements"]["switchingFrequency"]["nominal"] = 175590;
+        spec["designRequirements"]["outputs"] = json::array({{{"name", "out"}, {"voltage", {{"nominal", 20}}}}});
+        spec["designRequirements"]["turnsRatios"] = json::array({{{"nominal", double(numberTurns[0]) / numberTurns[1]}}});
+        spec["designRequirements"]["magnetizingInductance"] = {{"nominal", 1.4927e-3}};
+        spec["operatingPoints"] = json::array({{{"inputVoltage", 400}, {"outputs", json::array({{{"power", 150}}})}}});
+        spec["config"]["mode"] = "ccm";
+        auto inputs = OpenMagnetics::design_requirements_from_tas(OpenMagnetics::design_converter_tas("flyback", spec));
         DimensionWithTolerance altitude;
         DimensionWithTolerance mainSupplyVoltage;
         altitude.set_maximum(2000);
