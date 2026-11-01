@@ -68,9 +68,10 @@ OpenMagnetics::Mas make_flyback_fixture() {
     // temperature limit. This is a real flyback operating point, designed by MKF's converter model (Kirchhoff's
     // Flyback through KirchhoffBridge, not hand-made waveforms): Vin 360/400/440 V (operating at 400 V),
     // Vout 20 V, 150 W, 175.59 kHz, CCM, turns ratio 82:5 and Lm 1.4927 mH pinned (the inductance of this
-    // ETD 59 / 3C91 / 3 mm gap at 82 turns), which gives D = 0.45 at 400 V.
+    // ETD 59 / 3C91 / 3 mm gap at 82 turns). Efficiency 0.9 (Alf, 2026-11-01), so the primary carries the
+    // 167 W input of a 150 W output; D = 0.48 at 400 V.
     json spec;
-    spec["designRequirements"]["efficiency"] = 1.0;
+    spec["designRequirements"]["efficiency"] = 0.9;
     spec["designRequirements"]["inputVoltage"] = {{"minimum", 360}, {"nominal", 400}, {"maximum", 440}};
     spec["designRequirements"]["switchingFrequency"]["nominal"] = 175590;
     spec["designRequirements"]["outputs"] = json::array({{{"name", "out"}, {"voltage", {{"nominal", 20}}}}});
@@ -189,14 +190,15 @@ void check_structural_topN(const std::string& label,
 // ----------------------------------------------------------------------------
 // Re-pinned 2026-11-01 with Alf's approval, when the fixture's sinusoidal operating point (115 A rms on the
 // secondary, ~420 W; no coil survived the coil adviser's temperature gate, ABT #1394) was replaced by the real
-// 150 W CCM flyback point of make_flyback_fixture. Before pinning, every pick was checked against the gates:
-// B peak 0.0578 T on 3C91 (L 1.4927 mH), hot spots 37.9 / 36.5 / 36.4 C against the 130 C limit, losses
-// 2.13 / 3.46 / 3.32 W.
+// 150 W CCM flyback point of make_flyback_fixture. Re-pinned again the same day when the fixture's efficiency went
+// from 1.0 to 0.9 (Alf's decision). Before pinning, every pick was checked against the gates: B peak 0.0612 T on
+// 3C91 (L 1.4927 mH), saturation filter passes, hot spots 38.6 / 37.0 / 37.0 C against the 130 C limit, losses
+// 2.39 / 2.40 / 2.40 W.
 const std::vector<CoilStructural> kTopFlyback = {
     // core shape, material, turns x parallels per winding, wires, sections, layers, total turns
-    {"ETD 59", "3C91", "82x1 || 5x2", "Litz TXXL19/40TXXX-2(MWXX) || Round T10A01PXXX-3",      4, 35, 87},
-    {"ETD 59", "3C91", "82x2 || 5x1", "Round T29A01PXXX-3 || Synthesized Litz 648x0.041mm",   8, 70, 87},
-    {"ETD 59", "3C91", "82x2 || 5x1", "Round T29A01PXXX-3 || Synthesized Litz 1458x0.028mm",  8, 70, 87},
+    {"ETD 59", "3C91", "82x1 || 5x2", "Litz TXXL40/40FXXX-2(MWXX) || Round T10A01PXXX-3",      4, 35, 87},
+    {"ETD 59", "3C91", "82x1 || 5x3", "Litz TXXL19/40TXXX-1.5(MWXX) || Round T14A01PXXX-3",    8, 68, 87},
+    {"ETD 59", "3C91", "82x1 || 5x3", "Litz TCA3 19/40 LITZ (MWXX) || Round T14A01PXXX-3",     8, 68, 87},
 };
 
 } // namespace
