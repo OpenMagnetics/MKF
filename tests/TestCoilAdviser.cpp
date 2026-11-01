@@ -1643,23 +1643,17 @@ TEST_CASE("Test_CoilAdviser_Random_8", "[adviser][coil-adviser][bug]") {
     CoilAdviser coilAdviser;
     auto masMagneticsWithCoil = coilAdviser.get_advised_coil(masMagnetic, 2);
 
-    // The adviser silently returning 0 candidates used to pass this test (the JsonLV failure mode).
-    REQUIRE(masMagneticsWithCoil.size() > 0);
-    if (masMagneticsWithCoil.size() > 0) {
-        auto masMagneticWithCoil = masMagneticsWithCoil[0];
-        OpenMagneticsTesting::check_wire_standards(masMagneticWithCoil.get_mutable_magnetic().get_mutable_coil());
-        OpenMagneticsTesting::check_turns_description(masMagneticWithCoil.get_magnetic().get_coil());
-        auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
-        auto outFile = outputFilePath;
-        std::string filename = "Test_CoilAdviser" + std::to_string(OpenMagnetics::TestUtils::randomInt(0, RAND_MAX)) + ".svg";
-        outFile.append(filename);
-        Painter painter(outFile);
-
-        painter.paint_core(masMagneticWithCoil.get_mutable_magnetic());
-        painter.paint_bobbin(masMagneticWithCoil.get_mutable_magnetic());
-        painter.paint_coil_turns(masMagneticWithCoil.get_mutable_magnetic());
-        painter.export_svg();
-    }
+    // Rewritten (ABT #1394, kind (a): the design was never thermally sane). The fixture is unchanged. Its operating
+    // point is current-driven, so the voltage it implies is L dI/dt of the required inductance, 1.529 mH carrying 3 A
+    // peak to peak at 632 kHz (on 7 A DC): about 9.1 kV peak, in 3C91 on an E 80/38/20. The coil adviser's temperature
+    // gate finds every wound coil at 2365-3511 C with 2.63-2.69 kW of losses against the 130 C limit, so it returns no
+    // coil, and it must say why. (The adviser used to return these coils; before that, returning 0 silently passed
+    // this test: the JsonLV failure mode.)
+    REQUIRE(masMagneticsWithCoil.empty());
+    auto noResultsReason = coilAdviser.get_last_no_results_reason();
+    REQUIRE(noResultsReason.has_value());
+    CHECK_THAT(*noResultsReason, Catch::Matchers::ContainsSubstring("rejected by the temperature limit"));
+    CHECK_THAT(*noResultsReason, Catch::Matchers::ContainsSubstring("hot spot reaches"));
 }
 
 TEST_CASE("Test_CoilAdviser_Random_9", "[adviser][coil-adviser][bug]") {
@@ -1713,23 +1707,17 @@ TEST_CASE("Test_CoilAdviser_Random_9", "[adviser][coil-adviser][bug]") {
     CoilAdviser coilAdviser;
     auto masMagneticsWithCoil = coilAdviser.get_advised_coil(masMagnetic, 2);
 
-    // The adviser silently returning 0 candidates used to pass this test (the JsonLV failure mode).
-    REQUIRE(masMagneticsWithCoil.size() > 0);
-    if (masMagneticsWithCoil.size() > 0) {
-        auto masMagneticWithCoil = masMagneticsWithCoil[0];
-        OpenMagneticsTesting::check_wire_standards(masMagneticWithCoil.get_mutable_magnetic().get_mutable_coil());
-        OpenMagneticsTesting::check_turns_description(masMagneticWithCoil.get_magnetic().get_coil());
-        auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
-        auto outFile = outputFilePath;
-        std::string filename = "Test_CoilAdviser" + std::to_string(OpenMagnetics::TestUtils::randomInt(0, RAND_MAX)) + ".svg";
-        outFile.append(filename);
-        Painter painter(outFile);
-
-        painter.paint_core(masMagneticWithCoil.get_mutable_magnetic());
-        painter.paint_bobbin(masMagneticWithCoil.get_mutable_magnetic());
-        painter.paint_coil_turns(masMagneticWithCoil.get_mutable_magnetic());
-        painter.export_svg();
-    }
+    // Rewritten (ABT #1394, kind (a): the design was never thermally sane). The fixture is unchanged. Its operating
+    // point is current-driven, so the voltage it implies is L dI/dt of the required inductance, 1.529 mH carrying 3 A
+    // peak to peak at 632 kHz (on 7 A DC): about 9.1 kV peak, in 3C91 on an U 79/129/31. The coil adviser's
+    // temperature gate finds every wound coil at 1266-1300 C with 1.88-1.97 kW of losses against the 130 C limit, so
+    // it returns no coil, and it must say why. (The adviser used to return these coils; before that, returning 0
+    // silently passed this test: the JsonLV failure mode.)
+    REQUIRE(masMagneticsWithCoil.empty());
+    auto noResultsReason = coilAdviser.get_last_no_results_reason();
+    REQUIRE(noResultsReason.has_value());
+    CHECK_THAT(*noResultsReason, Catch::Matchers::ContainsSubstring("rejected by the temperature limit"));
+    CHECK_THAT(*noResultsReason, Catch::Matchers::ContainsSubstring("hot spot reaches"));
 }
 
 TEST_CASE("Test_CoilAdviser_Random_10", "[adviser][coil-adviser][bug]") {
@@ -2018,22 +2006,17 @@ TEST_CASE("Test_CoilAdviser_Random_13", "[adviser][coil-adviser][bug]") {
     CoilAdviser coilAdviser;
     auto masMagneticsWithCoil = coilAdviser.get_advised_coil(masMagnetic, 2);
 
-    // The adviser silently returning 0 candidates used to pass this test (the JsonLV failure mode).
-    REQUIRE(masMagneticsWithCoil.size() > 0);
-    if (masMagneticsWithCoil.size() > 0) {
-        auto masMagneticWithCoil = masMagneticsWithCoil[0];
-        OpenMagneticsTesting::check_turns_description(masMagneticWithCoil.get_magnetic().get_coil());
-        auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
-        auto outFile = outputFilePath;
-        std::string filename = "Test_CoilAdviser_Random_13.svg";
-        outFile.append(filename);
-        Painter painter(outFile);
-
-        painter.paint_core(masMagneticWithCoil.get_mutable_magnetic());
-        painter.paint_bobbin(masMagneticWithCoil.get_mutable_magnetic());
-        painter.paint_coil_turns(masMagneticWithCoil.get_mutable_magnetic());
-        painter.export_svg();
-    }
+    // Rewritten (ABT #1394, kind (a): the design was never thermally sane). The fixture is unchanged. Its operating
+    // point is current-driven, so the voltage it implies is L dI/dt of the required inductance, 8.387 mH carrying 13 A
+    // peak to peak at 334 kHz: about 114 kV peak, in 3C91 on an EQ 32/22/18. The coil adviser's temperature gate finds
+    // every wound coil at 2146-2322 C with 1.21-1.54 kW of losses against the 130 C limit, so it returns no coil, and
+    // it must say why. (The adviser used to return these coils; before that, returning 0 silently passed this test:
+    // the JsonLV failure mode.)
+    REQUIRE(masMagneticsWithCoil.empty());
+    auto noResultsReason = coilAdviser.get_last_no_results_reason();
+    REQUIRE(noResultsReason.has_value());
+    CHECK_THAT(*noResultsReason, Catch::Matchers::ContainsSubstring("rejected by the temperature limit"));
+    CHECK_THAT(*noResultsReason, Catch::Matchers::ContainsSubstring("hot spot reaches"));
 }
 
 TEST_CASE("Test_CoilAdviser_Random_14", "[adviser][coil-adviser][bug]") {
