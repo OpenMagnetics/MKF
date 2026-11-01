@@ -734,6 +734,91 @@ TEST_CASE("Test_CoilAdviser_Insulation_Margin", "[adviser][coil-adviser][margin]
     settings.reset();
 }
 
+TEST_CASE("CoilAdviser no coil means none exists whatever the number asked for", "[adviser][coil-adviser][margin]") {
+    // Alf, 2026-11-02. The design is the Insulation_Margin fixture as it was before its point became a real flyback: on it,
+    // every non-interleaved coil is far above the temperature limit and an interleaved one passes. The enumeration stops
+    // early at 3N wound coils, which for few coils asked for are all non-interleaved; the gate then emptied the pool and
+    // the adviser said "no coil". It must go on from where it stopped.
+    // ABT #721: this test pins the historical 50/50 tape split (margin == creepage/2 per
+    // section); margin equalization (default-on) re-splits it by section space — disable
+    // to keep the pinned contract.
+    settings.set_coil_equalize_margins(false);
+    auto gapping = OpenMagneticsTesting::get_ground_gap(0.003);
+    std::vector<double> turnsRatios;
+    int64_t numberStacks = 1;
+
+
+    double magnetizingInductance = 10e-6;
+    double temperature = 25;
+    WaveformLabel waveShape = WaveformLabel::SINUSOIDAL;
+    double dutyCycle = 0.5;
+    double dcCurrent = 0;
+
+    std::vector<int64_t> numberTurns = {82, 55};
+    std::vector<int64_t> numberParallels = {1, 1};
+    for (size_t windingIndex = 1; windingIndex < numberTurns.size(); ++windingIndex) {
+        turnsRatios.push_back(double(numberTurns[0]) / numberTurns[windingIndex]);
+    }
+    double frequency = 75590;
+    double peakToPeak = 13;
+
+    auto magnetic = OpenMagneticsTesting::get_quick_magnetic("ETD 54", gapping, numberTurns, numberStacks, "3C91");
+    auto inputs = OpenMagnetics::Inputs::create_quick_operating_point_only_current(frequency,
+                                                                                          magnetizingInductance,
+                                                                                          temperature,
+                                                                                          waveShape,
+                                                                                          peakToPeak,
+                                                                                          dutyCycle,
+                                                                                          dcCurrent,
+                                                                                          turnsRatios);
+
+    DimensionWithTolerance altitude;
+    DimensionWithTolerance mainSupplyVoltage;
+    auto standards = std::vector<InsulationStandards>{InsulationStandards::IEC_606641, InsulationStandards::IEC_623681};
+    altitude.set_maximum(2000);
+    mainSupplyVoltage.set_nominal(400);
+    auto cti = Cti::GROUP_I;
+    auto overvoltageCategory = OvervoltageCategory::IV;
+    auto insulationType = IsolationClass::BASIC;
+    auto pollutionDegree = PollutionDegree::PD1;
+    auto insulationRequirements = OpenMagneticsTesting::get_quick_insulation_requirements(altitude, cti, insulationType, mainSupplyVoltage, overvoltageCategory, pollutionDegree, standards);
+    inputs.get_mutable_design_requirements().set_insulation(insulationRequirements);
+
+    OpenMagnetics::Mas masMagnetic;
+    inputs.process();
+    masMagnetic.set_inputs(inputs);
+    masMagnetic.set_magnetic(magnetic);
+
+    settings.set_coil_allow_margin_tape(true);
+    settings.set_coil_allow_insulated_wire(false);
+    settings.set_coil_try_rewind(false);
+
+        for (size_t numberCoils : {size_t(1), size_t(2), size_t(3), size_t(4), size_t(6), size_t(12)}) {
+        CAPTURE(numberCoils);
+        CoilAdviser coilAdviser;
+        auto masMagneticsWithCoil = coilAdviser.get_advised_coil(masMagnetic, numberCoils);
+        REQUIRE(masMagneticsWithCoil.size() >= 1);
+        for (auto& masMagneticWithCoil : masMagneticsWithCoil) {
+            const std::string reference = masMagneticWithCoil.get_mutable_magnetic().get_reference();
+            CAPTURE(reference);
+            CHECK_THAT(reference, Catch::Matchers::ContainsSubstring(", Interleaved"));
+            CHECK_FALSE(coil_failed_validity_filters(masMagneticWithCoil));
+            MagneticFilterLosses lossesFilter;
+            std::vector<OpenMagnetics::Outputs> lossesOutputs;
+            auto wound = masMagneticWithCoil.get_magnetic();
+            auto woundInputs = masMagneticWithCoil.get_inputs();
+            lossesFilter.evaluate_magnetic(&wound, &woundInputs, &lossesOutputs);
+            const double maximumTemperature = resolve_maximum_design_temperature(woundInputs);
+            MagneticFilterTemperature temperatureFilter(woundInputs, maximumTemperature);
+            auto [withinLimit, hotSpot] = temperatureFilter.evaluate_solved_outputs(lossesOutputs);
+            CAPTURE(hotSpot);
+            CHECK(withinLimit);
+            CHECK_THAT(hotSpot, Catch::Matchers::WithinAbs(105.6, 1.0));
+        }
+    }
+    settings.reset();
+}
+
 TEST_CASE("Test_CoilAdviser_Planar", "[adviser][coil-adviser][planar]") {
     // OpenMagnetics::set_log_verbosity(2);
     settings.set_coil_maximum_layers_planar(17);

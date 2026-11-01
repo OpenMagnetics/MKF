@@ -702,17 +702,27 @@ namespace OpenMagnetics {
 
         std::vector<Mas> masesWithCoil;
         bool earlyTerminated = false;
+        // Where an early-terminated enumeration stopped, so that it can go on from there: an early stop only says that the
+        // pool is comfortable, and the temperature gate can still empty that pool.
+        size_t nextRepetitionIndex = 0;
+        size_t nextPatternIndex = 0;
+        size_t nextInsulationIndex = 0;
+        std::optional<size_t> repetitionInProgress;
         auto advise_all_patterns = [&]() {
-        for (auto repetition : repetitions) {
-            if (earlyTerminated) break;
-            for (auto pattern : patterns) {
-                if (earlyTerminated) break;
+        earlyTerminated = false;
+        for (size_t repetitionIndex = nextRepetitionIndex; repetitionIndex < repetitions.size(); ++repetitionIndex) {
+            const bool resumingRepetition = repetitionIndex == nextRepetitionIndex && repetitionInProgress.has_value();
+            // A pattern's integrity check can change the repetition, and that change carries to the next patterns.
+            auto repetition = resumingRepetition ? repetitionInProgress.value() : repetitions[repetitionIndex];
+            for (size_t patternIndex = resumingRepetition ? nextPatternIndex : 0; patternIndex < patterns.size(); ++patternIndex) {
+                const size_t firstInsulationIndex = (resumingRepetition && patternIndex == nextPatternIndex) ? nextInsulationIndex : 0;
+                auto pattern = patterns[patternIndex];
                 auto aux = mas.get_mutable_magnetic().get_mutable_coil().check_pattern_and_repetitions_integrity(pattern, repetition);
                 pattern = aux.first;
                 repetition = aux.second;
                 if (mas.get_mutable_inputs().get_wiring_technology() == WiringTechnology::WOUND) {
                     auto combinationsSolidInsulationRequirementsForWires = InsulationCoordinator::get_solid_insulation_requirements_for_wires(mas.get_mutable_inputs(), pattern, repetition);
-                    for(size_t insulationIndex = 0; insulationIndex < combinationsSolidInsulationRequirementsForWires.size(); ++insulationIndex) {
+                    for(size_t insulationIndex = firstInsulationIndex; insulationIndex < combinationsSolidInsulationRequirementsForWires.size(); ++insulationIndex) {
                         auto solidInsulationRequirementsForWires = combinationsSolidInsulationRequirementsForWires[insulationIndex];
                         std::string reference = "Custom";
                         if (mas.get_magnetic().get_manufacturer_info() && mas.get_magnetic().get_manufacturer_info()->get_reference()) {
@@ -748,7 +758,11 @@ namespace OpenMagnetics {
                             logEntry("CoilAdviser early-terminating: " + std::to_string(masesWithCoil.size()) +
                                      " candidates (cap=" + std::to_string(earlyTerminationCap) + ")", "CoilAdviser", 3);
                             earlyTerminated = true;
-                            break;
+                            nextRepetitionIndex = repetitionIndex;
+                            nextPatternIndex = patternIndex;
+                            nextInsulationIndex = insulationIndex + 1;
+                            repetitionInProgress = repetition;
+                            return;
                         }
                     }
 
@@ -767,7 +781,11 @@ namespace OpenMagnetics {
                         logEntry("CoilAdviser early-terminating (planar): " + std::to_string(masesWithCoil.size()) +
                                  " candidates (cap=" + std::to_string(earlyTerminationCap) + ")", "CoilAdviser", 3);
                         earlyTerminated = true;
-                        break;
+                        nextRepetitionIndex = repetitionIndex;
+                        nextPatternIndex = patternIndex + 1;
+                        nextInsulationIndex = 0;
+                        repetitionInProgress = repetition;
+                        return;
                     }
                 }
             }
@@ -818,18 +836,24 @@ namespace OpenMagnetics {
         // the same state the first search did.
         const Mas masBeforeSearch = mas;
         advise_all_patterns();
+        struct RelaxedWireLimitsGuard {
+            bool& flag;
+            explicit RelaxedWireLimitsGuard(bool& f) : flag(f) { flag = true; }
+            ~RelaxedWireLimitsGuard() { flag = false; }
+        };
+        bool searchedBeyondWireLimits = false;
         if (masesWithCoil.empty()) {
             // No coil fits this core within the wire limits. Search again beyond them, so the caller
             // still learns what the core would need, and mark every such coil INVALID with the limit
             // it breaks: they rank below any valid design and MagneticAdviser only falls back to
             // them when no core winds validly.
             logEntry("No coil fits within the wire limits; retrying beyond them, results marked INVALID", "CoilAdviser", 2);
-            struct RelaxedWireLimitsGuard {
-                bool& flag;
-                explicit RelaxedWireLimitsGuard(bool& f) : flag(f) { flag = true; }
-                ~RelaxedWireLimitsGuard() { flag = false; }
-            } relaxedWireLimitsGuard(_relaxedWireLimits);
-            earlyTerminated = false;
+            RelaxedWireLimitsGuard relaxedWireLimitsGuard(_relaxedWireLimits);
+            searchedBeyondWireLimits = true;
+            nextRepetitionIndex = 0;
+            nextPatternIndex = 0;
+            nextInsulationIndex = 0;
+            repetitionInProgress = std::nullopt;
             mas = masBeforeSearch;
             advise_all_patterns();
             for (auto& candidate : masesWithCoil) {
@@ -901,6 +925,14 @@ namespace OpenMagnetics {
             }
         }
 
+        // Alf, 2026-11-02: "no coil" means that none exists. A pool stopped early can be emptied by the temperature gate
+        // while the patterns not yet tried hold a coil that passes (non-interleaved all too hot, interleaved fine), so
+        // the enumeration then goes on from where it stopped and the gate judges what it finds, until a coil passes or
+        // the patterns run out.
+        std::vector<std::pair<Mas, double>> invalidMagneticsWithScoring;
+        std::vector<std::pair<Mas, double>> masMagneticsWithScoring;
+        std::vector<Mas> masesWithoutScoring;
+        while (true) {
         logEntry("Found " + std::to_string(masesWithCoil.size()) + " magnetics", "CoilAdviser", 3);
 
         // ABT #1176: opt-in shunt sizing, so a leakage-target filter sees the shunted candidate.
@@ -908,8 +940,8 @@ namespace OpenMagnetics {
             add_magnetic_shunts_for_leakage_target(masesWithCoil);
         }
 
-        std::vector<std::pair<Mas, double>> invalidMagneticsWithScoring;
-        auto masMagneticsWithScoring = score_magnetics(masesWithCoil, _loadedFilterFlow, &invalidMagneticsWithScoring);
+        invalidMagneticsWithScoring.clear();
+        masMagneticsWithScoring = score_magnetics(masesWithCoil, _loadedFilterFlow, &invalidMagneticsWithScoring);
 
         stable_sort_by_index(masMagneticsWithScoring, [](const std::pair<Mas, double>& b1, const std::pair<Mas, double>& b2) {
             return b1.second > b2.second;
@@ -921,7 +953,7 @@ namespace OpenMagnetics {
             masMagneticsWithScoring = reject_coils_above_temperature_limit(std::move(masMagneticsWithScoring));
         }
 
-        std::vector<Mas> masesWithoutScoring;
+        masesWithoutScoring.clear();
         for (auto [mas, scoring] : masMagneticsWithScoring) {
             masesWithoutScoring.push_back(mas);
         }
@@ -946,6 +978,24 @@ namespace OpenMagnetics {
                 stamp_invalid(mas);
                 masesWithoutScoring.push_back(mas);
             }
+        }
+
+        if (!masesWithoutScoring.empty() || !earlyTerminated || !settings.get_core_adviser_enable_temperature_filter()) {
+            break;
+        }
+        logEntry("The temperature limit rejected all " + std::to_string(masesWithCoil.size()) +
+                 " coils of an early-terminated search; going on with the patterns not yet tried", "CoilAdviser", 3);
+        masesWithCoil.clear();
+        if (searchedBeyondWireLimits) {
+            RelaxedWireLimitsGuard relaxedWireLimitsGuard(_relaxedWireLimits);
+            advise_all_patterns();
+            for (auto& candidate : masesWithCoil) {
+                stamp_invalid(candidate);
+            }
+        }
+        else {
+            advise_all_patterns();
+        }
         }
 
         if (masesWithoutScoring.size() > maximumNumberResults) {
