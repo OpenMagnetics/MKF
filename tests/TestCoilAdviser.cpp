@@ -643,14 +643,20 @@ TEST_CASE("Test_CoilAdviser_Insulation_Margin", "[adviser][coil-adviser][margin]
     double peakToPeak = 13;
 
     auto magnetic = OpenMagneticsTesting::get_quick_magnetic("ETD 54", gapping, numberTurns, numberStacks, "3C91");
-    auto inputs = OpenMagnetics::Inputs::create_quick_operating_point_only_current(frequency,
-                                                                                          magnetizingInductance,
-                                                                                          temperature,
-                                                                                          waveShape,
-                                                                                          peakToPeak,
-                                                                                          dutyCycle,
-                                                                                          dcCurrent,
-                                                                                          turnsRatios);
+    MagnetizingInductance magnetizingInductanceModel;
+    double fixtureInductance = resolve_dimensional_values(
+        magnetizingInductanceModel.calculate_inductance_from_number_turns_and_gapping(magnetic.get_mutable_core(), magnetic.get_mutable_coil())
+            .get_magnetizing_inductance());
+    json spec;
+    spec["designRequirements"]["efficiency"] = 0.9;
+    spec["designRequirements"]["inputVoltage"] = {{"minimum", 360}, {"nominal", 400}, {"maximum", 440}};
+    spec["designRequirements"]["switchingFrequency"]["nominal"] = 75590;
+    spec["designRequirements"]["outputs"] = json::array({{{"name", "out"}, {"voltage", {{"nominal", 220}}}}});
+    spec["designRequirements"]["turnsRatios"] = json::array({{{"nominal", 82. / 55}}});
+    spec["designRequirements"]["magnetizingInductance"] = {{"nominal", fixtureInductance}};
+    spec["operatingPoints"] = json::array({{{"inputVoltage", 400}, {"outputs", json::array({{{"power", 150}}})}}});
+    spec["config"]["mode"] = "ccm";
+    auto inputs = OpenMagnetics::design_requirements_from_tas(OpenMagnetics::design_converter_tas("flyback", spec));
 
     DimensionWithTolerance altitude;
     DimensionWithTolerance mainSupplyVoltage;
@@ -751,14 +757,20 @@ TEST_CASE("Test_CoilAdviser_Planar", "[adviser][coil-adviser][planar]") {
     double peakToPeak = 13;
 
     auto magnetic = OpenMagneticsTesting::get_quick_magnetic("ELP 43/10/28", gapping, numberTurns, numberStacks, "3C91");
-    auto inputs = OpenMagnetics::Inputs::create_quick_operating_point_only_current(frequency,
-                                                                                          magnetizingInductance,
-                                                                                          temperature,
-                                                                                          waveShape,
-                                                                                          peakToPeak,
-                                                                                          dutyCycle,
-                                                                                          dcCurrent,
-                                                                                          turnsRatios);
+    MagnetizingInductance magnetizingInductanceModel;
+    double fixtureInductance = resolve_dimensional_values(
+        magnetizingInductanceModel.calculate_inductance_from_number_turns_and_gapping(magnetic.get_mutable_core(), magnetic.get_mutable_coil())
+            .get_magnetizing_inductance());
+    json spec;
+    spec["designRequirements"]["efficiency"] = 0.9;
+    spec["designRequirements"]["inputVoltage"] = {{"minimum", 360}, {"nominal", 400}, {"maximum", 440}};
+    spec["designRequirements"]["switchingFrequency"]["nominal"] = 75590;
+    spec["designRequirements"]["outputs"] = json::array({{{"name", "out"}, {"voltage", {{"nominal", 44}}}}});
+    spec["designRequirements"]["turnsRatios"] = json::array({{{"nominal", 112. / 15}}});
+    spec["designRequirements"]["magnetizingInductance"] = {{"nominal", fixtureInductance}};
+    spec["operatingPoints"] = json::array({{{"inputVoltage", 400}, {"outputs", json::array({{{"power", 100}}})}}});
+    spec["config"]["mode"] = "ccm";
+    auto inputs = OpenMagnetics::design_requirements_from_tas(OpenMagnetics::design_converter_tas("flyback", spec));
 
     auto bobbin = OpenMagnetics::Bobbin::create_quick_bobbin(magnetic.get_mutable_core(), true);
     magnetic.get_mutable_coil().set_bobbin(bobbin);
