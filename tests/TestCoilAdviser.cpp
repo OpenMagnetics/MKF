@@ -808,6 +808,10 @@ TEST_CASE("Test_CoilAdviser_Planar", "[adviser][coil-adviser][planar]") {
 
 TEST_CASE("Test_CoilAdviser_Random_Base", "[adviser][coil-adviser][random]") {
     settings.reset();
+    // Seeded here (Alf, 2026-11-01): the generator is shared across tests, so without this the draws depend on the order
+    // the suite runs in, and the per-core assertions after the loop could not hold.
+    OpenMagnetics::TestUtils::RandomGenerator::getInstance().seed(42);
+    std::vector<std::pair<std::string, std::string>> handledDraws;
 
     int count = 2;
     int attempts = 0;
@@ -952,6 +956,7 @@ TEST_CASE("Test_CoilAdviser_Random_Base", "[adviser][coil-adviser][random]") {
                 if (!result) {
                     throw std::invalid_argument("Just to trigger prints and return");
                 }
+                handledDraws.push_back({magnetic.get_core().get_shape_name(), ""});
                 count--;
             }
             else {
@@ -961,6 +966,7 @@ TEST_CASE("Test_CoilAdviser_Random_Base", "[adviser][coil-adviser][random]") {
                 auto noResultsReason = coilAdviser.get_last_no_results_reason();
                 REQUIRE(noResultsReason.has_value());
                 REQUIRE(!noResultsReason->empty());
+                handledDraws.push_back({magnetic.get_core().get_shape_name(), *noResultsReason});
                 count--;
             }
         }
@@ -991,6 +997,14 @@ TEST_CASE("Test_CoilAdviser_Random_Base", "[adviser][coil-adviser][random]") {
             return;
         }
     }
+    // The two cores of seed 42, each with its own outcome. EP 9: no wire passes the electrical filter, so nothing is wound.
+    // EER 28/17/11: coils are wound and the temperature gate refuses them.
+    REQUIRE(handledDraws.size() == 2);
+    CHECK(handledDraws[0].first == "EP 9");
+    CHECK_THAT(handledDraws[0].second, Catch::Matchers::ContainsSubstring("no wire survived electrical filtering"));
+    CHECK(handledDraws[1].first == "EER 28/17/11");
+    CHECK_THAT(handledDraws[1].second, Catch::Matchers::ContainsSubstring("rejected by the temperature limit"));
+    CHECK_THAT(handledDraws[1].second, Catch::Matchers::ContainsSubstring("no thermal operating point"));
     settings.reset();
 }
 
