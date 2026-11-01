@@ -24530,7 +24530,16 @@ double Coil::get_insulation_section_thickness(Coil coil, std::string sectionName
         throw CoilNotProcessedException("Coil is missing layers description");
     }
 
+    // A name that is not an insulation section of this coil, or one with no layers, has no
+    // thickness: summing nothing read as a 0 m wall to the web, which then wound without it.
+    const auto section = coil.get_section_by_name(sectionName);
+    if (section.get_type() != ElectricalType::INSULATION) {
+        throw CoilException(ErrorCode::INVALID_COIL_CONFIGURATION, "Section '" + sectionName + "' is not an insulation section, so it has no insulation thickness");
+    }
     auto layers = coil.get_layers_by_section(sectionName);
+    if (layers.empty()) {
+        throw CoilNotProcessedException("Insulation section '" + sectionName + "' has no layers in the coil's layers description, so its thickness is unknown");
+    }
 
     double thickness = 0;
 
