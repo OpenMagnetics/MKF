@@ -2281,19 +2281,12 @@ TEST_CASE("Test_CoilAdviser_Web_5", "[adviser][coil-adviser][bug][smoke-test]") 
 
     CoilAdviser coilAdviser;
     auto mases = coilAdviser.get_advised_coil(mas, 1);
-    REQUIRE(mases.size() > 0);
-
-    auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
-    auto outFile = outputFilePath;
-    std::string filename = "Test_CoilAdviser_Web_5.svg";
-    outFile.append(filename);
-    Painter painter(outFile);
-
-    painter.paint_core(mases[0].get_mutable_magnetic());
-    painter.paint_bobbin(mases[0].get_mutable_magnetic());
-    painter.paint_coil_turns(mases[0].get_mutable_magnetic());
-    // painter.paint_coil_sections(mases[0].get_mutable_magnetic());
-    painter.export_svg();
+    // Rewritten (ABT #1394, kind (a), Alf approved 2026-11-01). The data is unchanged: at 100 C ambient every coil the
+    // adviser winds is above the temperature limit, so it returns none and says why.
+    REQUIRE(mases.empty());
+    auto noResultsReason = coilAdviser.get_last_no_results_reason();
+    REQUIRE(noResultsReason.has_value());
+    CHECK_THAT(*noResultsReason, Catch::Matchers::ContainsSubstring("rejected by the temperature limit"));
 }
 
 TEST_CASE("Test_CoilAdviser_Web_6", "[adviser][coil-adviser][bug][smoke-test]") {
