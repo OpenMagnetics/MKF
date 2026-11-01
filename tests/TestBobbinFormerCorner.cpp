@@ -49,7 +49,7 @@ TEST_CASE("A former on a square-cornered column (E) wraps its wire round the wal
           "[constructive-model][bobbin][former-corner]") {
     // The E family dimensions only A-F: MAS describes its central column as a sharp rectangle.
     auto core = processed_core("E 25/13/7");
-    const auto& centralColumn = core.get_processed_description()->get_columns()[0];
+    const auto centralColumn = core.get_processed_description()->get_columns()[0];
     REQUIRE(centralColumn.get_shape() == ColumnShape::RECTANGULAR);
     REQUIRE_FALSE(centralColumn.get_corner_radius());
     CHECK(OpenMagnetics::Bobbin::get_core_column_corner_radius(centralColumn, core, true) == 0);
@@ -67,7 +67,7 @@ TEST_CASE("A former on a square-cornered column (E) wraps its wire round the wal
 TEST_CASE("A former on a chamfered column (EFD) follows the chamfer: inside corner q, outside q + wall",
           "[constructive-model][bobbin][former-corner]") {
     auto core = processed_core("EFD 25/13/9");
-    const auto& centralColumn = core.get_processed_description()->get_columns()[0];
+    const auto centralColumn = core.get_processed_description()->get_columns()[0];
     REQUIRE(centralColumn.get_shape() == ColumnShape::IRREGULAR);
     REQUIRE_FALSE(centralColumn.get_corner_radius());
     const double chamfer = shape_dimension(core, "q");
@@ -83,7 +83,7 @@ TEST_CASE("A former on a chamfered column (EFD) follows the chamfer: inside corn
 TEST_CASE("A former on a column that carries its own corner (EPC, F2 / 2) carries it out by the wall",
           "[constructive-model][bobbin][former-corner]") {
     auto core = processed_core("EPC 17");
-    const auto& centralColumn = core.get_processed_description()->get_columns()[0];
+    const auto centralColumn = core.get_processed_description()->get_columns()[0];
     REQUIRE(centralColumn.get_corner_radius());
     CHECK_THAT(centralColumn.get_corner_radius().value(),
                Catch::Matchers::WithinAbs(shape_dimension(core, "F2") / 2, 1e-9));
@@ -110,7 +110,7 @@ TEST_CASE("An EFD shape without its chamfer dimension throws, naming the shape a
     withoutChamfer.set_processed_description(core.get_processed_description());
     OpenMagnetics::Core coreWithoutChamfer(withoutChamfer);
     REQUIRE(coreWithoutChamfer.resolve_shape().get_dimensions()->count("q") == 0);
-    const auto& centralColumn = core.get_processed_description()->get_columns()[0];
+    const auto centralColumn = core.get_processed_description()->get_columns()[0];
     CHECK_THROWS_WITH(OpenMagnetics::Bobbin::get_core_column_corner_radius(centralColumn, coreWithoutChamfer, true),
                       Catch::Matchers::ContainsSubstring("EFD 25/13/9") &&
                       Catch::Matchers::ContainsSubstring("'q'"));
@@ -120,7 +120,7 @@ TEST_CASE("An irregular column the shape gives no corner for throws instead of d
           "[constructive-model][bobbin][former-corner]") {
     // ETD's lateral legs have a curved inner face: no corner radius describes them.
     auto core = processed_core("ETD 34/17/11");
-    const auto& lateralColumn = core.get_processed_description()->get_columns()[1];
+    const auto lateralColumn = core.get_processed_description()->get_columns()[1];
     REQUIRE(lateralColumn.get_shape() == ColumnShape::IRREGULAR);
     REQUIRE_FALSE(lateralColumn.get_corner_radius());
     CHECK_THROWS_WITH(OpenMagnetics::Bobbin::get_core_column_corner_radius(lateralColumn, core, false),
@@ -430,3 +430,4 @@ TEST_CASE("A magnetic built from MAS winds its coil after giving it the core, so
     REQUIRE(judged > 0);
     settings.reset();
 }
+
