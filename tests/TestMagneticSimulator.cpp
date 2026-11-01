@@ -3436,28 +3436,39 @@ TEST_CASE("Loss loop whose heated core cannot carry the voltage's flux on its cu
           "[processor][magnetic-simulator][abt-1942]") {
     // ABT #1942 (Alf, 2026-10-19): a voltage-driven DCM point has its flux from Faraday and its magnetizing current read
     // back from the material's magnetisation curve at the core's temperature. slow_simulation's second operating point
-    // (flyback, material 95, Curie 220 C) is fine at 25 C ambient (core ~110 C), but from a hotter ambient its losses
+    // (flyback, material 95, Curie 220 C) has a thermal operating point at 25 C ambient (its loop settles, hot spot ~148 C,
+    // though its core saturates there), but from a hotter ambient its losses
     // drive the core to where 95's curve cannot carry that flux: past its end above B_sat(T) (the readback's
     // SaturationException) or, closer to Curie where H_sat(T) goes to zero and the curve ends at 1000 H_sat(T), past
     // its end while still under B_sat(T) (MagnetisationCurveExhaustedException). Either refusal escaped the loss solve
     // and took the MagneticAdviser's whole call with it (error_paint_field, catalogue_missing_turns,
     // slow_simulation). At a heated iterate it is that point's NoThermalOperatingPointException (ABT #1876, #1960):
     // losses at ambient, no temperature, and analyze_results' NO_THERMAL_OPERATING_POINT.
+    // ABT #2060 (Alf approved, 2026-10-31): with 95's corrected remanence (MAS b21f3cc, 0.08 T at 100 C, was 0.8 T) the
+    // design as stored no longer reaches either refusal (at 85 C its loop converges, ~216.5 C). Each refusal now has its
+    // own primary turn count, the coil rewound from it: 36 turns (more flux per volt) at 85 C ambient reaches past the
+    // curve's end above B_sat; 140 turns at 185 C ambient, near Curie, reaches past its end under B_sat.
     settings.reset();
     std::ifstream file(OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "slow_simulation.json"));
     REQUIRE(file.good());
     json masJson = json::parse(file);
     strip_nulls_abt1942_simulator(masJson);
-    OpenMagnetics::Magnetic magnetic(masJson["magnetic"]);
-    if (!magnetic.get_coil().get_turns_description()) {
-        magnetic.get_mutable_coil().wind();
-    }
     OpenMagnetics::Inputs allInputs(masJson["inputs"]);
     REQUIRE(allInputs.get_operating_points().size() > 1);
 
-    // 85 C: past the curve's end above B_sat; 115 C: past its end under B_sat (near Curie).
-    for (double ambientTemperature : {85.0, 115.0}) {
-        DYNAMIC_SECTION("ambient " << ambientTemperature << " C") {
+    // 85 C, 36 primary turns: past the curve's end above B_sat; 185 C, 140 primary turns: past its end under B_sat
+    // (near Curie).
+    for (const auto& [ambientTemperature, primaryTurns] : std::vector<std::pair<double, int64_t>>{{85.0, 36}, {185.0, 140}}) {
+        DYNAMIC_SECTION("ambient " << ambientTemperature << " C, " << primaryTurns << " primary turns") {
+            json magneticJson = masJson["magnetic"];
+            magneticJson["coil"]["functionalDescription"][0]["numberTurns"] = primaryTurns;
+            for (auto key : {"sectionsDescription", "layersDescription", "turnsDescription"}) {
+                magneticJson["coil"].erase(key);
+            }
+            OpenMagnetics::Magnetic magnetic(magneticJson);
+            magnetic.get_mutable_coil().wind();
+            REQUIRE(magnetic.get_coil().get_turns_description());
+            REQUIRE(magnetic.get_mutable_coil().are_sections_and_layers_fitting());
             OperatingPoint operatingPoint = allInputs.get_operating_points()[1];
             operatingPoint.get_mutable_conditions().set_ambient_temperature(ambientTemperature);
             const std::string refusal = ambientTemperature < 100 ? "beyond the end of the magnetisation curve" : "reaches only";
@@ -3543,11 +3554,13 @@ TEST_CASE("Analyze_results states a winding above its coating's thermal class in
 }
 
 namespace {
-    // ABT #2052: slow_simulation (flyback, material 95, Curie 220 C) whose second operating point ('Max. input volt.')
-    // is simulated twice: at its own 25 C, where it is fine, and at an ambient so hot that its voltage's flux density,
-    // read on 95's magnetisation curve at that ambient, lies past the curve's end: at 160 C above B_sat
-    // (SaturationException: 0.404 T asked, the curve ends at 0.393 T), at 190 C under it, where the curve ends below
-    // B_sat (MagnetisationCurveExhaustedException: 0.225 T asked, the curve ends at 0.219 T).
+    // ABT #2052: slow_simulation (flyback) whose second operating point ('Max. input volt.') is simulated twice: at its
+    // own 25 C, where it is fine, and at an ambient so hot that its voltage's flux density, read on the core material's
+    // magnetisation curve at that ambient, lies past the curve's end: at 160 C above B_sat (SaturationException), at
+    // 185 C under it, where the curve ends below B_sat (MagnetisationCurveExhaustedException).
+    // ABT #2060 (Alf approved, 2026-10-31): the core material is L5D, in the functional description and in every
+    // geometrical piece. The stored material 95 no longer goes past its curve at any ambient since its remanence was
+    // corrected (MAS b21f3cc, 0.08 T at 100 C, was 0.8 T, above its own B_sat).
     struct PastCurveAtAmbientDesign {
         OpenMagnetics::Magnetic magnetic;
         OpenMagnetics::Inputs inputs;
@@ -3557,6 +3570,12 @@ namespace {
         REQUIRE(file.good());
         json masJson = json::parse(file);
         strip_nulls_abt1942_simulator(masJson);
+        masJson["magnetic"]["core"]["functionalDescription"]["material"] = "L5D";
+        for (auto& piece : masJson["magnetic"]["core"]["geometricalDescription"]) {
+            if (piece.contains("material")) {
+                piece["material"] = "L5D";
+            }
+        }
         PastCurveAtAmbientDesign design{OpenMagnetics::Magnetic(masJson["magnetic"]), OpenMagnetics::Inputs(masJson["inputs"])};
         if (!design.magnetic.get_coil().get_turns_description()) {
             design.magnetic.get_mutable_coil().wind();
@@ -3572,7 +3591,7 @@ namespace {
     // The two ambients of the guards below and the refusal each meets at it.
     const std::vector<std::pair<double, std::string>> pastCurveAtAmbientCases = {
         {160.0, "beyond the end of the magnetisation curve"},
-        {190.0, "reaches only"}};
+        {185.0, "reaches only"}};
 }
 
 TEST_CASE("A point whose flux density lies past the end of the magnetisation curve at ambient is that point's CORE_SATURATES",
@@ -3635,7 +3654,8 @@ TEST_CASE("A point whose flux density lies past the end of the magnetisation cur
                 if (finding.operatingPointIndex && finding.operatingPointIndex.value() == 1) {
                     CHECK(finding.code != ResultFindingCode::NO_THERMAL_OPERATING_POINT);
                 }
-                // Point 0 has its own CORE_SATURATES (its heated core, ~141 C, is past its knee); only point 1's is counted.
+                // Point 0 (the point as given, at 25 C) has its own CORE_SATURATES (its DC bias drives L5D past its knee;
+                // hot spot ~247 C); only point 1's is counted.
                 if (finding.code == ResultFindingCode::CORE_SATURATES && finding.operatingPointIndex && finding.operatingPointIndex.value() == 1) {
                     ++coreSaturates;
                     CHECK_THAT(finding.message, Catch::Matchers::ContainsSubstring(refusal) &&
