@@ -96,9 +96,14 @@ CoreMaterialCheck check_core_material(const CoreMaterial& material);
 
 // Price both copies at the reference copy's own points: its volumetric-loss points when it carries
 // them; otherwise, at each temperature its saturation flux density is tabulated at (below its Curie
-// point), sinusoidal flux densities of 1/2, 1/4 and 1/8 of that saturation flux density, at the
-// geometric centre of each of its Steinmetz ranges. Throws MaterialException(MATERIAL_DATA_MISSING)
-// when the reference has neither loss points nor Steinmetz ranges, or no saturation data.
+// point), sinusoidal flux densities of 1/2, 1/4 and 1/8 of that saturation flux density, at frequencies
+// from the first of these its data carries: the geometric centre of each Steinmetz range, its Roshen
+// reference points (taken as they are), the frequencies its loss factors are stated at, or, for a loss
+// model whose coefficients
+// state no frequency ('magnetics', 'micrometals', 'poco', 'tdg', Roshen coefficients, 'magnetec' mass
+// losses), the chosen 10 kHz, 100 kHz and 1 MHz. pointsSource says which. Throws
+// MaterialException(MATERIAL_DATA_MISSING) when the reference has no loss data any core-loss model can
+// price, or no saturation data.
 CoreMaterialLossComparison compare_core_material_volumetric_losses(const CoreMaterial& reference, const CoreMaterial& other);
 
 void to_json(json& j, const CoreMaterialSpan& span);

@@ -164,9 +164,10 @@ struct VolumetricLossesPointReading {
     double temperature;
 };
 
-std::vector<VolumetricLossesPointReading> read_volumetric_losses_points(const CoreMaterial& material) {
+std::vector<VolumetricLossesPointReading> read_volumetric_losses_points(const CoreMaterial& material,
+                                                                       const std::vector<VolumetricLossesPoint>& points) {
     std::vector<VolumetricLossesPointReading> readings;
-    for (const auto& point : CoreLossesModel::get_volumetric_losses_data(material)) {
+    for (const auto& point : points) {
         const auto& excitation = point.get_magnetic_flux_density();
         if (!excitation.get_magnetic_flux_density() || !excitation.get_magnetic_flux_density()->get_processed() ||
             !excitation.get_magnetic_flux_density()->get_processed()->get_peak()) {
@@ -179,6 +180,22 @@ std::vector<VolumetricLossesPointReading> read_volumetric_losses_points(const Co
     }
     return readings;
 }
+
+std::vector<VolumetricLossesPointReading> read_volumetric_losses_points(const CoreMaterial& material) {
+    return read_volumetric_losses_points(material, CoreLossesModel::get_volumetric_losses_data(material));
+}
+
+bool carries_model(const std::vector<CoreLossesModels>& models, CoreLossesModels model) {
+    return std::find(models.begin(), models.end(), model) != models.end();
+}
+
+// Frequencies a reference is compared at when its loss data states none: the coefficients of a
+// manufacturer formula ('magnetics', 'micrometals', 'poco', 'tdg' volumetricLosses, 'magnetec'
+// massLosses), Roshen coefficients without reference points, loss factors without a frequency. A
+// chosen spread, one per decade of the 10 kHz - 2 MHz span MKF's frequency search covers these
+// models over (CoreLossesModel::_get_frequency_from_core_losses); pointsSource says so.
+const std::vector<double> frequenciesChosenForCoefficientModels{1e4, 1e5, 1e6};
+const std::vector<double> fractionsChosenForFluxDensity{0.5, 0.25, 0.125};
 
 std::string temperature_range_text(const RefusedInterval& interval) {
     if (interval.from == interval.to) {
@@ -398,7 +415,21 @@ CoreMaterialLossValue price_volumetric_losses(CoreLosses& coreLosses, const Core
     excitation.set_magnetic_flux_density(magneticFluxDensity);
 
     CoreMaterialLossValue value;
-    if (auto refusal = refusal_of([&] { value.volumetricLosses = coreLosses.get_core_volumetric_losses(material, excitation, temperature); })) {
+    auto price = [&]() -> double {
+        if (!material.get_volumetric_losses().empty() || !material.get_mass_losses()) {
+            return coreLosses.get_core_volumetric_losses(material, excitation, temperature);
+        }
+        // A material whose losses are stated per mass only ('magnetec' massLosses): the design prices it by its
+        // mass losses times the core's mass (CoreLossesSteinmetzModel::compute_core_losses, which the proprietary model inherits), its density times
+        // its volume, so per volume it is its mass losses times its density.
+        if (!material.get_density()) {
+            throw MaterialException(ErrorCode::MATERIAL_DATA_MISSING,
+                "Material " + material.get_name() + " states its losses per mass (massLosses) but no density, so its losses per volume are unknown");
+        }
+        auto model = coreLosses.get_core_losses_model(material, excitation);
+        return model->get_core_mass_losses(material, excitation, temperature) * material.get_density().value();
+    };
+    if (auto refusal = refusal_of([&] { value.volumetricLosses = price(); })) {
         value.volumetricLosses = std::nullopt;
         value.code = refusal->code;
         value.message = refusal->what;
@@ -419,18 +450,16 @@ CoreMaterialLossComparison compare_core_material_volumetric_losses(const CoreMat
     }
     else {
         const auto methods = CoreLossesModel::get_methods(reference);
-        if (std::find(methods.begin(), methods.end(), CoreLossesModels::STEINMETZ) == methods.end()) {
+        if (methods.empty()) {
             throw MaterialException(ErrorCode::MATERIAL_DATA_MISSING,
-                "Material " + reference.get_name() + " carries neither volumetric-loss points nor Steinmetz ranges, so its data states no "
-                "frequency to compare its losses at");
+                "Material " + reference.get_name() + " has no loss data: it carries no volumetric-loss points, no volumetricLosses "
+                "method (steinmetz, roshen, magnetics, micrometals, poco, tdg, lossFactor) and no massLosses method (magnetec), so no "
+                "core-loss model can price it. Add its datasheet loss data");
         }
         if (reference.get_saturation().empty()) {
             throw MaterialException(ErrorCode::MATERIAL_DATA_MISSING,
                 "Material " + reference.get_name() + " carries no saturation data, so its data states no flux density to compare its losses at");
         }
-        // Validates every range's frequencies (missing ones throw).
-        CoreLossesModel::get_steinmetz_fitted_span(reference);
-        const auto ranges = CoreLossesModel::get_method_data(reference, "Steinmetz").get_ranges().value();
         std::set<double> temperatures;
         for (const auto& saturation : reference.get_saturation()) {
             if (!reference.get_curie_temperature() || saturation.get_temperature() < reference.get_curie_temperature().value()) {
@@ -442,21 +471,78 @@ CoreMaterialLossComparison compare_core_material_volumetric_losses(const CoreMat
                 "Material " + reference.get_name() + " tabulates its saturation flux density only at or above its Curie temperature, so its "
                 "data states no temperature to compare its losses at");
         }
-        for (double temperature : temperatures) {
-            const double saturation = Core::get_magnetic_flux_density_saturation(reference, temperature, false);
-            for (const auto& range : ranges) {
-                const double frequency = std::sqrt(range.get_minimum_frequency().value() * range.get_maximum_frequency().value());
-                for (double fraction : {0.5, 0.25, 0.125}) {
-                    points.push_back({frequency, saturation * fraction, temperature});
+        // Points at each temperature (below the Curie point) the reference tabulates its saturation flux density
+        // at, from the first of these the reference's data carries: its Steinmetz ranges, its Roshen reference
+        // points, its loss-factor frequencies, or else (a formula's coefficients state no frequency) the chosen
+        // frequencies. No loss method states a flux-density span, so the flux densities are a chosen spread:
+        // 1/2, 1/4, 1/8 of the saturation flux density.
+        auto add_points = [&](const std::vector<double>& frequencies) {
+            for (double temperature : temperatures) {
+                const double saturation = Core::get_magnetic_flux_density_saturation(reference, temperature, false);
+                for (double frequency : frequencies) {
+                    for (double fraction : fractionsChosenForFluxDensity) {
+                        points.push_back({frequency, saturation * fraction, temperature});
+                    }
                 }
             }
+        };
+        const std::string temperaturesText = "at the temperatures " + reference.get_name() + " tabulates its saturation flux density at "
+                                             "(below its Curie point)";
+        const std::string saturationSpreadText = "at 1/2, 1/4 and 1/8 of that saturation flux density: a chosen spread, because its loss "
+                                                 "data states no flux-density span";
+        std::optional<std::vector<double>> lossFactorFrequencies;
+        if (carries_model(methods, CoreLossesModels::LOSS_FACTOR)) {
+            std::set<double> frequencies;
+            const auto factors = CoreLossesModel::get_method_data(reference, "lossFactor").get_factors().value();
+            for (const auto& factor : factors) {
+                if (factor.get_frequency()) {
+                    frequencies.insert(factor.get_frequency().value());
+                }
+            }
+            if (!frequencies.empty()) {
+                lossFactorFrequencies = std::vector<double>(frequencies.begin(), frequencies.end());
+            }
         }
-        // Steinmetz coefficients state a frequency span but no flux-density span, so the flux densities are a
-        // chosen spread (1/2, 1/4, 1/8 of the saturation flux density), not points of the data; pointsSource says so.
-        comparison.pointsSource = "the temperatures " + reference.get_name() + " tabulates its saturation flux density at (below its Curie "
-                                  "point), at the geometric centre of each of its " + std::to_string(ranges.size()) +
-                                  " Steinmetz ranges, and at 1/2, 1/4 and 1/8 of that saturation flux density: a chosen spread, because "
-                                  "Steinmetz coefficients state no flux-density span";
+        std::vector<VolumetricLossesPoint> roshenPoints;
+        if (carries_model(methods, CoreLossesModels::ROSHEN)) {
+            auto roshenData = CoreLossesModel::get_method_data(reference, "roshen");
+            if (roshenData.get_reference_volumetric_losses()) {
+                roshenPoints = roshenData.get_reference_volumetric_losses().value();
+            }
+        }
+
+        if (carries_model(methods, CoreLossesModels::STEINMETZ)) {
+            // Validates every range's frequencies (missing ones throw).
+            CoreLossesModel::get_steinmetz_fitted_span(reference);
+            const auto ranges = CoreLossesModel::get_method_data(reference, "Steinmetz").get_ranges().value();
+            std::vector<double> frequencies;
+            for (const auto& range : ranges) {
+                frequencies.push_back(std::sqrt(range.get_minimum_frequency().value() * range.get_maximum_frequency().value()));
+            }
+            add_points(frequencies);
+            comparison.pointsSource = "the temperatures " + reference.get_name() + " tabulates its saturation flux density at (below its Curie "
+                                      "point), at the geometric centre of each of its " + std::to_string(ranges.size()) +
+                                      " Steinmetz ranges, and at 1/2, 1/4 and 1/8 of that saturation flux density: a chosen spread, because "
+                                      "Steinmetz coefficients state no flux-density span";
+        }
+        else if (!roshenPoints.empty()) {
+            points = read_volumetric_losses_points(reference, roshenPoints);
+            comparison.pointsSource = "the " + std::to_string(points.size()) + " reference volumetric-loss points of the Roshen data of " +
+                                      reference.get_name();
+        }
+        else if (lossFactorFrequencies) {
+            // Above the loss factor's small-signal bound the design prices the loss factor plus the hysteresis of
+            // the major loop (LOSS_FACTOR_HYSTERESIS, per volume); below it the loss factor alone needs a
+            // magnetizing current and inductance, which a material without a design does not have.
+            add_points(lossFactorFrequencies.value());
+            comparison.pointsSource = temperaturesText + ", at the " + std::to_string(lossFactorFrequencies->size()) + " frequencies its loss "
+                                      "factors are stated at, and " + saturationSpreadText;
+        }
+        else {
+            add_points(frequenciesChosenForCoefficientModels);
+            comparison.pointsSource = temperaturesText + ", at 10 kHz, 100 kHz and 1 MHz: chosen frequencies, because the coefficients of its "
+                                      "loss model state no frequency span, and " + saturationSpreadText;
+        }
     }
 
     CoreLosses coreLosses;

@@ -180,22 +180,101 @@ TEST_CASE("Test_Core_Material_Compare_Library_With_Old_Copies", "[material-check
     }
 }
 
-TEST_CASE("Test_Core_Material_Compare_Reference_Without_Loss_Span_Throws", "[material-check]") {
-    json materialJson;
-    to_json(materialJson, find_core_material_by_name("3C94"));
-    json methods = json::array();
-    for (const auto& method : materialJson["volumetricLosses"]["default"]) {
-        if (!(method.is_object() && method.contains("method") && method["method"] == "steinmetz")) {
-            methods.push_back(method);
-        }
+namespace {
+
+// A library material compared with itself: the comparison must price it (no MATERIAL_DATA_MISSING) at
+// points its own loss model accepts, and find no difference.
+CoreMaterialLossComparison compare_library_material_with_itself(const std::string& name) {
+    auto material = find_core_material_by_name(name);
+    auto comparison = compare_core_material_volumetric_losses(material, material);
+    INFO(name << ": " << json(comparison).dump(2));
+    REQUIRE(!comparison.points.empty());
+    CHECK(comparison.pointsRefusedByReference == 0);
+    CHECK(comparison.pointsRefusedByOther == 0);
+    REQUIRE(comparison.maximumAbsoluteRelativeDifference);
+    CHECK(comparison.maximumAbsoluteRelativeDifference.value() == 0);
+    for (const auto& point : comparison.points) {
+        REQUIRE(point.reference.volumetricLosses);
+        CHECK(point.reference.volumetricLosses.value() > 0);
     }
-    materialJson["volumetricLosses"]["default"] = methods;
+    return comparison;
+}
+
+} // namespace
+
+TEST_CASE("Test_Core_Material_Compare_Loss_Factor_Material", "[material-check]") {
+    // TDK K10, Ferroxcube 3E6, Fair-Rite 96 and ACME A07 carry only a 'lossFactor' volumetricLosses method.
+    // Stored web designs embedding them were refused with "carries neither volumetric-loss points nor
+    // Steinmetz ranges".
+    for (const std::string name : {"K10", "3E6", "96", "A07"}) {
+        auto material = find_core_material_by_name(name);
+        auto methods = CoreLossesModel::get_methods(material);
+        REQUIRE(std::find(methods.begin(), methods.end(), CoreLossesModels::LOSS_FACTOR) != methods.end());
+        REQUIRE(std::find(methods.begin(), methods.end(), CoreLossesModels::STEINMETZ) == methods.end());
+        auto comparison = compare_library_material_with_itself(name);
+        std::set<double> factorFrequencies;
+        const auto factors = CoreLossesModel::get_method_data(material, "lossFactor").get_factors().value();
+        for (const auto& factor : factors) {
+            factorFrequencies.insert(factor.get_frequency().value());
+        }
+        INFO(name << ": " << comparison.pointsSource);
+        CHECK_THAT(comparison.pointsSource, Catch::Matchers::ContainsSubstring("loss factor"));
+        for (const auto& point : comparison.points) {
+            // At the frequencies its loss factors are stated at.
+            CHECK(factorFrequencies.count(point.frequency) == 1);
+        }
+        CHECK(check_core_material(material).valid);
+    }
+}
+
+TEST_CASE("Test_Core_Material_Compare_Poco_Material", "[material-check]") {
+    // Poco NPF 26/40/60 and GPC 26 carry only a 'poco' volumetricLosses method (coefficients, no frequency span).
+    for (const std::string name : {"NPF 26", "NPF 40", "NPF 60", "GPC 26"}) {
+        auto material = find_core_material_by_name(name);
+        REQUIRE(to_string(CoreLossesModel::get_method_data(material, "poco").get_method()) == "poco");
+        auto comparison = compare_library_material_with_itself(name);
+        CHECK_THAT(comparison.pointsSource, Catch::Matchers::ContainsSubstring("chosen frequencies"));
+        CHECK(check_core_material(material).valid);
+    }
+}
+
+TEST_CASE("Test_Core_Material_Compare_Magnetics_And_Micrometals_Materials", "[material-check]") {
+    // Micrometals GX 60, GX 125, HF 60, HF 125, OP 26 ('micrometals') and Magnetics MPP 40, High Flux 160,
+    // Edge 26 ('magnetics'): powder-core formulas whose coefficients state no frequency span.
+    for (const std::string name : {"GX 60", "GX 125", "HF 60", "HF 125", "OP 26", "MPP 40", "High Flux 160", "Edge 26"}) {
+        auto material = find_core_material_by_name(name);
+        auto methods = CoreLossesModel::get_methods(material);
+        REQUIRE(methods == std::vector<CoreLossesModels>{CoreLossesModels::PROPRIETARY});
+        auto comparison = compare_library_material_with_itself(name);
+        for (const auto& point : comparison.points) {
+            CHECK(point.magneticFluxDensityPeak < Core::get_magnetic_flux_density_saturation(material, point.temperature, false));
+        }
+        CHECK(check_core_material(material).valid);
+    }
+}
+
+TEST_CASE("Test_Core_Material_Compare_Mass_Losses_Material", "[material-check]") {
+    // Magnetec Nanoperm 2000: an empty volumetricLosses and a 'magnetec' massLosses method.
+    auto material = find_core_material_by_name("Nanoperm 2000");
+    REQUIRE(material.get_volumetric_losses().empty());
+    REQUIRE(material.get_mass_losses());
+    compare_library_material_with_itself("Nanoperm 2000");
+}
+
+TEST_CASE("Test_Core_Material_Compare_Material_Without_Loss_Data_Throws", "[material-check]") {
+    json materialJson;
+    to_json(materialJson, find_core_material_by_name("NPF 26"));
+    materialJson["name"] = "NPF 26 without losses";
+    materialJson["volumetricLosses"] = json::object();
+    materialJson.erase("massLosses");
     CoreMaterial reference(materialJson);
+    REQUIRE(CoreLossesModel::get_methods(reference).empty());
     try {
-        compare_core_material_volumetric_losses(reference, find_core_material_by_name("3C94"));
-        FAIL("compare_core_material_volumetric_losses compared at points the reference's data does not state");
+        compare_core_material_volumetric_losses(reference, find_core_material_by_name("NPF 26"));
+        FAIL("compare_core_material_volumetric_losses compared a material with no loss data");
     }
     catch (const MaterialException& exception) {
         CHECK(exception.code() == ErrorCode::MATERIAL_DATA_MISSING);
+        CHECK_THAT(std::string(exception.what()), Catch::Matchers::ContainsSubstring("Material NPF 26 without losses has no loss data"));
     }
 }
