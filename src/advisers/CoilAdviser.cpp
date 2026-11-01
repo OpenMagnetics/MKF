@@ -980,7 +980,13 @@ namespace OpenMagnetics {
         // the reason is reachable via get_last_no_results_reason() and logged at WARNING.
         if (masesWithoutScoring.empty()) {
             std::string reason;
-            if (_diagnosisWindAttempts == 0 && _diagnosisGuardSkips == 0) {
+            if (_diagnosisWindAttempts == 0 && _diagnosisGuardSkips == 0 && _diagnosisTemperatureRejections > 0) {
+                // Coils were wound (by a path that does not count wind attempts, e.g. a planar winding) and the
+                // temperature gate rejected every one: wires did survive, so the reason is the gate's.
+                reason = "CoilAdviser found no candidates: " + std::to_string(_diagnosisTemperatureRejections)
+                    + " wound candidates were rejected by the temperature limit, e.g. " + _diagnosisTemperatureRejection;
+            }
+            else if (_diagnosisWindAttempts == 0 && _diagnosisGuardSkips == 0) {
                 reason = "CoilAdviser found no candidates: no wire survived electrical filtering";
                 if (_diagnosisNoWiresSurvived && !_diagnosisNoWiresDetail.empty()) {
                     reason += " — " + _diagnosisNoWiresDetail;

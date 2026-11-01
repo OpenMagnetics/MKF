@@ -801,7 +801,7 @@ TEST_CASE("Test_CoilAdviser_Random_Base", "[adviser][coil-adviser][random]") {
         // configuration used to spin this loop forever without failing.
         ++attempts;
         if (attempts > 25) {
-            FAIL("CoilAdviser produced fewer than 2 successful designs in " << (attempts - 1)
+            FAIL("CoilAdviser handled fewer than 2 random configurations (coils, or a refusal with its reason) in " << (attempts - 1)
                                                                             << " random configurations");
         }
         std::vector<double> turnsRatios;
@@ -937,6 +937,15 @@ TEST_CASE("Test_CoilAdviser_Random_Base", "[adviser][coil-adviser][random]") {
                 if (!result) {
                     throw std::invalid_argument("Just to trigger prints and return");
                 }
+                count--;
+            }
+            else {
+                // Rewritten (ABT #1394, Alf approved 2026-11-01): most random draws (3C91, 10 kHz-1 MHz, up to 10 mH,
+                // up to 30 A peak to peak) are not thermally sane, and the coil adviser's temperature gate refuses
+                // them. A refusal is a handled draw when the adviser says why; an empty answer without a reason is not.
+                auto noResultsReason = coilAdviser.get_last_no_results_reason();
+                REQUIRE(noResultsReason.has_value());
+                REQUIRE(!noResultsReason->empty());
                 count--;
             }
         }
@@ -1131,23 +1140,17 @@ TEST_CASE("Test_CoilAdviser_Random_2", "[adviser][coil-adviser][bug]") {
     CoilAdviser coilAdviser;
     auto masMagneticsWithCoil = coilAdviser.get_advised_coil(masMagnetic, 2);
 
-    // The adviser silently returning 0 candidates used to pass this test (the JsonLV failure mode).
-    REQUIRE(masMagneticsWithCoil.size() > 0);
-    if (masMagneticsWithCoil.size() > 0) {
-        auto masMagneticWithCoil = masMagneticsWithCoil[0];
-        OpenMagneticsTesting::check_wire_standards(masMagneticWithCoil.get_mutable_magnetic().get_mutable_coil());
-        OpenMagneticsTesting::check_turns_description(masMagneticWithCoil.get_magnetic().get_coil());
-        auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
-        auto outFile = outputFilePath;
-        std::string filename = "Test_CoilAdviser" + std::to_string(OpenMagnetics::TestUtils::randomInt(0, RAND_MAX)) + ".svg";
-        outFile.append(filename);
-        // Painter painter(outFile);
-
-        // painter.paint_core(masMagneticWithCoil.get_mutable_magnetic());
-        // painter.paint_bobbin(masMagneticWithCoil.get_mutable_magnetic());
-        // painter.paint_coil_turns(masMagneticWithCoil.get_mutable_magnetic());
-        // painter.export_svg();
-    }
+    // Rewritten (ABT #1394, kind (a), Alf approved 2026-11-01: the design was never thermally sane). The fixture is
+    // unchanged: 10 App sine at 507 kHz through 24:78:76 turns on an ETD 19 / 3C91 with a residual gap (10 uH). Every
+    // coil the adviser winds is beyond the wire limits (INVALID) and its hot spot reaches 386-573 C with 14-28 W against
+    // the 130 C limit, so the temperature gate returns no coil, and it must say why. (Before the gate this test was
+    // really guarding the INVALID fallback, which the gate now empties; returning 0 silently used to pass it: the
+    // JsonLV failure mode.)
+    REQUIRE(masMagneticsWithCoil.empty());
+    auto noResultsReason = coilAdviser.get_last_no_results_reason();
+    REQUIRE(noResultsReason.has_value());
+    CHECK_THAT(*noResultsReason, Catch::Matchers::ContainsSubstring("rejected by the temperature limit"));
+    CHECK_THAT(*noResultsReason, Catch::Matchers::ContainsSubstring("hot spot reaches"));
 }
 
 TEST_CASE("Test_CoilAdviser_Random_3", "[adviser][coil-adviser][bug]") {
@@ -1395,11 +1398,20 @@ TEST_CASE("Coil adviser rejects a coil whose core saturates at its operating tem
     masMagnetic.set_inputs(inputs);
     masMagnetic.set_magnetic(magnetic);
 
-    // What the loss-temperature solve says about one of this core's wound coils. Asked for more
-    // coils than it can wind, the adviser returns them without ranking them, so this is a coil
-    // the ranking below meets.
-    auto unrankedCoils = CoilAdviser().get_advised_coil(masMagnetic, 100000);
-    REQUIRE(unrankedCoils.size() > 2);
+    // Rewritten (ABT #1394, kind (a), Alf approved 2026-11-01). The fixture is unchanged. This test used to inspect
+    // the unranked pool the adviser returned when asked for more coils than it can wind; the coil adviser's
+    // temperature gate now judges every wound coil before returning it. Every coil of this core saturates at the
+    // temperature its losses heat it to (measured 2026-10-14: B peak 0.3133 T at 220 C against B_sat 0.21 T of 3C91
+    // there, the losses driving the core to the end of 3C91's data), so the gate returns none, and it says so.
+    {
+        CoilAdviser coilAdviser;
+        auto masMagneticsWithCoil = coilAdviser.get_advised_coil(masMagnetic, 100000);
+        REQUIRE(masMagneticsWithCoil.empty());
+        auto noResultsReason = coilAdviser.get_last_no_results_reason();
+        REQUIRE(noResultsReason.has_value());
+        CHECK_THAT(*noResultsReason, Catch::Matchers::ContainsSubstring("rejected by the temperature limit"));
+        CHECK_THAT(*noResultsReason, Catch::Matchers::ContainsSubstring("saturates at the temperature its losses heat it to"));
+    }
     // Since ABT #1855 (Alf approved this rewrite 2026-10-14) the loss-temperature solve no longer throws
     // for a saturated core: the losses filter gives the solved outputs and refuses the coil, and the
     // verdict is the saturation check analyze_results makes on them (the one the coil adviser uses).
@@ -1424,23 +1436,6 @@ TEST_CASE("Coil adviser rejects a coil whose core saturates at its operating tem
         }
         return saturates;
     };
-    REQUIRE(core_saturates(unrankedCoils[0]));
-    {
-        // Its numbers: the core is solved at the temperature its losses heat it to, where its B peak is
-        // above the material's B_sat.
-        std::vector<OpenMagnetics::Outputs> outputs;
-        MagneticFilterLosses().evaluate_magnetic(&unrankedCoils[0].get_mutable_magnetic(), &unrankedCoils[0].get_mutable_inputs(), &outputs);
-        double coreTemperature = outputs[0].get_core_losses()->get_temperature();
-        double peak = ResultsAnalyzer::get_peak_flux_density(outputs[0].get_core_losses()->get_magnetic_flux_density().value());
-        auto verdict = ResultsAnalyzer::check_saturation(unrankedCoils[0].get_mutable_magnetic().get_mutable_core().resolve_material(), peak, coreTemperature);
-        INFO("core at " << coreTemperature << " C, B peak " << peak << " T, B_sat " << verdict.saturationFluxDensity << " T");
-        // Measured on this branch (2026-10-14): 0.3133 T at 220 C against B_sat 0.21 T there; the losses drive
-        // the core to the end of 3C91's data, where the loss solve holds it.
-        CHECK(verdict.saturates);
-        CHECK_THAT(peak, Catch::Matchers::WithinRel(0.3133, 0.02));
-        CHECK(coreTemperature > 200);
-        CHECK(std::isfinite(outputs[0].get_core_losses()->get_core_losses()));
-    }
 
     // Ranking by losses: the adviser carries on past the saturating coils and returns none of them.
     std::vector<OpenMagnetics::Mas> rankedCoils;
@@ -1503,23 +1498,16 @@ TEST_CASE("Test_CoilAdviser_Random_6", "[adviser][coil-adviser][bug]") {
     CoilAdviser coilAdviser;
     auto masMagneticsWithCoil = coilAdviser.get_advised_coil(masMagnetic, 2);
 
-    // The adviser silently returning 0 candidates used to pass this test (the JsonLV failure mode).
-    REQUIRE(masMagneticsWithCoil.size() > 0);
-    if (masMagneticsWithCoil.size() > 0) {
-        auto masMagneticWithCoil = masMagneticsWithCoil[0];
-        OpenMagneticsTesting::check_wire_standards(masMagneticWithCoil.get_mutable_magnetic().get_mutable_coil());
-        OpenMagneticsTesting::check_turns_description(masMagneticWithCoil.get_magnetic().get_coil());
-        auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
-        auto outFile = outputFilePath;
-        std::string filename = "Test_CoilAdviser" + std::to_string(OpenMagnetics::TestUtils::randomInt(0, RAND_MAX)) + ".svg";
-        outFile.append(filename);
-        Painter painter(outFile);
-
-        painter.paint_core(masMagneticWithCoil.get_mutable_magnetic());
-        painter.paint_bobbin(masMagneticWithCoil.get_mutable_magnetic());
-        painter.paint_coil_turns(masMagneticWithCoil.get_mutable_magnetic());
-        painter.export_svg();
-    }
+    // Rewritten (ABT #1394, kind (a), Alf approved 2026-11-01: the design was never thermally sane). The fixture is
+    // unchanged. Its operating point is current-driven, so the voltage it implies is L dI/dt of the required inductance:
+    // 9.088 mH carrying 26 A peak to peak at 618 kHz (on 16 A DC), about 460 kV peak, on an E 72/28/19 / 3C91. No wound
+    // coil has a steady temperature (the loss-temperature loop does not settle), so the temperature gate returns no coil,
+    // and it must say why. (Returning 0 silently used to pass this test: the JsonLV failure mode.)
+    REQUIRE(masMagneticsWithCoil.empty());
+    auto noResultsReason = coilAdviser.get_last_no_results_reason();
+    REQUIRE(noResultsReason.has_value());
+    CHECK_THAT(*noResultsReason, Catch::Matchers::ContainsSubstring("rejected by the temperature limit"));
+    CHECK_THAT(*noResultsReason, Catch::Matchers::ContainsSubstring("no thermal operating point"));
 }
 
 TEST_CASE("Test_CoilAdviser_Random_7", "[adviser][coil-adviser][bug]") {
@@ -1573,23 +1561,16 @@ TEST_CASE("Test_CoilAdviser_Random_7", "[adviser][coil-adviser][bug]") {
     CoilAdviser coilAdviser;
     auto masMagneticsWithCoil = coilAdviser.get_advised_coil(masMagnetic, 2);
 
-    // The adviser silently returning 0 candidates used to pass this test (the JsonLV failure mode).
-    REQUIRE(masMagneticsWithCoil.size() > 0);
-    if (masMagneticsWithCoil.size() > 0) {
-        auto masMagneticWithCoil = masMagneticsWithCoil[0];
-        OpenMagneticsTesting::check_wire_standards(masMagneticWithCoil.get_mutable_magnetic().get_mutable_coil());
-        OpenMagneticsTesting::check_turns_description(masMagneticWithCoil.get_magnetic().get_coil());
-        auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
-        auto outFile = outputFilePath;
-        std::string filename = "Test_CoilAdviser" + std::to_string(OpenMagnetics::TestUtils::randomInt(0, RAND_MAX)) + ".svg";
-        outFile.append(filename);
-        Painter painter(outFile);
-
-        painter.paint_core(masMagneticWithCoil.get_mutable_magnetic());
-        painter.paint_bobbin(masMagneticWithCoil.get_mutable_magnetic());
-        painter.paint_coil_turns(masMagneticWithCoil.get_mutable_magnetic());
-        painter.export_svg();
-    }
+    // Rewritten (ABT #1394, kind (a), Alf approved 2026-11-01: the design was never thermally sane). The fixture is
+    // unchanged. Its operating point is current-driven, so the voltage it implies is L dI/dt of the required inductance:
+    // 9.266 mH carrying 9 A peak to peak at 96 kHz (on 1 A DC), about 25 kV peak, on an E 35 / 3C91. No wound coil has a
+    // steady temperature (the loss-temperature loop does not settle), so the temperature gate returns no coil, and it
+    // must say why. (Returning 0 silently used to pass this test: the JsonLV failure mode.)
+    REQUIRE(masMagneticsWithCoil.empty());
+    auto noResultsReason = coilAdviser.get_last_no_results_reason();
+    REQUIRE(noResultsReason.has_value());
+    CHECK_THAT(*noResultsReason, Catch::Matchers::ContainsSubstring("rejected by the temperature limit"));
+    CHECK_THAT(*noResultsReason, Catch::Matchers::ContainsSubstring("no thermal operating point"));
 }
 
 TEST_CASE("Test_CoilAdviser_Random_8", "[adviser][coil-adviser][bug]") {
@@ -2157,24 +2138,15 @@ TEST_CASE("Test_CoilAdviser_Random_17", "[adviser][coil-adviser][bug]") {
 
     CoilAdviser coilAdviser;
     auto masMagneticsWithCoil = coilAdviser.get_advised_coil(mas, 1);
-    // Repro point: the adviser must return at least one design (indexing [0] below was UB on empty).
-    REQUIRE(masMagneticsWithCoil.size() > 0);
-
-    json result = json();
-    to_json(result, masMagneticsWithCoil[0]);
-
-    auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
-    auto outFile = outputFilePath;
-    std::string filename = "Test_CoilAdviser_Random_17.svg";
-    outFile.append(filename);
-    std::filesystem::remove(outFile);
-    Painter painter(outFile);
-
-    painter.paint_core(masMagneticsWithCoil[0].get_mutable_magnetic());
-    painter.paint_bobbin(masMagneticsWithCoil[0].get_mutable_magnetic());
-    painter.paint_coil_turns(masMagneticsWithCoil[0].get_mutable_magnetic());
-    painter.export_svg();
-    OpenMagneticsTesting::check_svg(outFile);
+    // Rewritten (ABT #1394, kind (a), Alf approved 2026-11-01). The fixture is unchanged: a T 75/44/36 / 3C94 with 2
+    // turns at 50 Hz. 3C94's loss data does not reach 50 Hz, so no wound coil's losses can be evaluated and none has a
+    // temperature the 130 C limit could accept: the temperature gate returns no coil, and it must say why. (Its B peak
+    // is about 1.29 T, so it would saturate too; the gate reports the first reason it meets.)
+    REQUIRE(masMagneticsWithCoil.empty());
+    auto noResultsReason = coilAdviser.get_last_no_results_reason();
+    REQUIRE(noResultsReason.has_value());
+    CHECK_THAT(*noResultsReason, Catch::Matchers::ContainsSubstring("rejected by the temperature limit"));
+    CHECK_THAT(*noResultsReason, Catch::Matchers::ContainsSubstring("its losses cannot be evaluated"));
 }
 
 TEST_CASE("Test_SectionsAdviser_Web_0", "[adviser][coil-adviser][bug][smoke-test]") {
@@ -2358,65 +2330,16 @@ TEST_CASE("Test_CoilAdviser_Web_0", "[adviser][coil-adviser][bug]") {
 
     OpenMagnetics::CoilAdviser coilAdviser;
     auto masMagneticsWithCoil = coilAdviser.get_advised_coil(mas, 1);
-    // Repro point: the adviser must return at least one design (indexing [0] below was UB on empty).
-    REQUIRE(masMagneticsWithCoil.size() > 0);
-
-    // Verify the design meets current density requirements
-    auto& coil = masMagneticsWithCoil[0].get_mutable_magnetic().get_mutable_coil();
-    for (size_t i = 0; i < coil.get_functional_description().size(); ++i) {
-        auto wire = coil.resolve_wire(coil.get_functional_description()[i]);
-        auto currentDensity = wire.calculate_effective_current_density(mas.get_inputs().get_operating_points()[0].get_excitations_per_winding()[i].get_current().value(), 
-                                                                        mas.get_inputs().get_operating_points()[0].get_conditions().get_ambient_temperature()) 
-                             / coil.get_functional_description()[i].get_number_parallels();
-        // Current density should be within limits (< 12 A/mm^2)
-        REQUIRE(currentDensity < 12e6);
-    }
-
-    // Calculate voltage for each winding (needed for electric field calculation)
-    // Get the actual magnetizing inductance from the designed magnetic
-    auto magnetic = masMagneticsWithCoil[0].get_mutable_magnetic();
-    OpenMagnetics::MagnetizingInductance magnetizingInductanceModel("ZHANG");
-    
-    // Add voltage to each winding's excitation
-    for (size_t opIndex = 0; opIndex < masMagneticsWithCoil[0].get_inputs().get_operating_points().size(); ++opIndex) {
-        auto& operatingPoint = masMagneticsWithCoil[0].get_mutable_inputs().get_mutable_operating_points()[opIndex];
-        auto inductanceOutput = magnetizingInductanceModel.calculate_inductance_from_number_turns_and_gapping(
-            magnetic.get_mutable_core(), coil, &operatingPoint);
-        double magnetizingInductance = resolve_dimensional_values(inductanceOutput.get_magnetizing_inductance());
-        
-        for (size_t windingIndex = 0; windingIndex < magnetic.get_coil().get_functional_description().size(); ++windingIndex) {
-            auto& excitation = operatingPoint.get_mutable_excitations_per_winding()[windingIndex];
-            // Calculate induced voltage based on turns ratio
-            double turnsRatio = static_cast<double>(coil.get_functional_description()[windingIndex].get_number_turns()) / static_cast<double>(coil.get_functional_description()[0].get_number_turns());
-            double windingInductance = magnetizingInductance * pow(turnsRatio, 2);
-            auto voltage = OpenMagnetics::Inputs::calculate_induced_voltage(excitation, windingInductance);
-            excitation.set_voltage(voltage);
-        }
-    }
-
-    auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
-    auto outFile = outputFilePath;
-    std::string filename = "Test_CoilAdviser_WASM_Replication.svg";
-    outFile.append(filename);
-    Painter painter(outFile);
-
-    // Configure painter settings for electric field visualization
-    OpenMagnetics::Settings::GetInstance().set_painter_number_points_x(100);
-    OpenMagnetics::Settings::GetInstance().set_painter_number_points_y(100);
-    OpenMagnetics::Settings::GetInstance().set_painter_include_fringing(false);
-
-    // Paint electric field using the first operating point with SDF_PHYSICS model
-    painter.paint_electric_field(masMagneticsWithCoil[0].get_inputs().get_operating_points()[0], 
-                                  masMagneticsWithCoil[0].get_magnetic(), 
-                                  1, std::nullopt, 
-                                  ElectricFieldVisualizationModel::SDF_PHYSICS, 
-                                  ColorPalette::VIRIDIS);
-
-    painter.paint_core(masMagneticsWithCoil[0].get_mutable_magnetic());
-    painter.paint_bobbin(masMagneticsWithCoil[0].get_mutable_magnetic());
-    painter.paint_coil_turns(masMagneticsWithCoil[0].get_mutable_magnetic());
-    painter.export_svg();
-
+    // Rewritten (ABT #1394, kind (a), Alf approved 2026-11-01). The fixture is unchanged: a planar web design in
+    // material 98, 5 turns, 89 V peak sine at 100 kHz. Every wound coil's core saturates at the temperature its losses
+    // heat it to (B peak 0.332 T against B_sat 0.259 T of 98 at 214 C), so the temperature gate returns no coil, and it
+    // must say why.
+    REQUIRE(masMagneticsWithCoil.empty());
+    auto noResultsReason = coilAdviser.get_last_no_results_reason();
+    REQUIRE(noResultsReason.has_value());
+    CHECK_THAT(*noResultsReason, Catch::Matchers::ContainsSubstring("rejected by the temperature limit"));
+    CHECK_THAT(*noResultsReason, Catch::Matchers::ContainsSubstring("saturates at the temperature its losses heat it to"));
+    OpenMagnetics::Settings::GetInstance().reset();
 }
 
 TEST_CASE("Test_CoilAdviser_Web_2_Bug_NoCoilFound", "[adviser][coil-adviser][bug][smoke-test]") {
@@ -3432,34 +3355,28 @@ TEST_CASE("Test_CoilAdviser_Beyond_Wire_Limits_Only_As_Invalid", "[adviser][coil
 
     CoilAdviser coilAdviser;
     auto masMagneticsWithCoil = coilAdviser.get_advised_coil(masMagnetic, 2);
-    REQUIRE(masMagneticsWithCoil.size() > 0);
-    for (auto& masMagneticWithCoil : masMagneticsWithCoil) {
-        auto reference = masMagneticWithCoil.get_magnetic().get_manufacturer_info()->get_reference().value();
-        INFO(reference);
-        if (coil_failed_validity_filters(masMagneticWithCoil)) {
-            CHECK(reference.find(" [violates: ") != std::string::npos);
-        }
-        else {
-            for (const auto& winding : masMagneticWithCoil.get_magnetic().get_coil().get_functional_description()) {
-                CHECK(winding.get_number_parallels() <= Defaults().maximumNumberParallels);
-            }
-        }
-    }
+    // Rewritten (ABT #1394, kind (a), Alf approved 2026-11-01). The fixture is unchanged. The coils it winds were all
+    // beyond the wire limits, and the adviser returned them marked INVALID. Every one of them is also far over the
+    // temperature limit (751-1256 C with 280-1140 W against 130 C), so the temperature gate now refuses them, INVALID or
+    // not, and the answer must say why. The INVALID marking itself is no longer reached by this design.
+    REQUIRE(masMagneticsWithCoil.empty());
+    auto noResultsReason = coilAdviser.get_last_no_results_reason();
+    REQUIRE(noResultsReason.has_value());
+    CHECK_THAT(*noResultsReason, Catch::Matchers::ContainsSubstring("rejected by the temperature limit"));
+    CHECK_THAT(*noResultsReason, Catch::Matchers::ContainsSubstring("hot spot reaches"));
 
-    // 32 A peak to peak: nothing within the limits fits, and the answer says which limit each
-    // returned coil breaks.
+    // 32 A peak to peak: nothing within the limits fits either.
     auto overloadedInputs = OpenMagnetics::Inputs::create_quick_operating_point_only_current(175590, 10e-6, 25, WaveformLabel::SINUSOIDAL,
                                                                                              32, 0.5, 0, turnsRatios);
     overloadedInputs.process();
     masMagnetic.set_inputs(overloadedInputs);
     auto overloadedResults = coilAdviser.get_advised_coil(masMagnetic, 2);
-    REQUIRE(overloadedResults.size() > 0);
-    for (auto& masMagneticWithCoil : overloadedResults) {
-        auto reference = masMagneticWithCoil.get_magnetic().get_manufacturer_info()->get_reference().value();
-        INFO(reference);
-        REQUIRE(coil_failed_validity_filters(masMagneticWithCoil));
-        CHECK(reference.find(" [violates: EFFECTIVE_CURRENT_DENSITY above 12") != std::string::npos);
-    }
+    // 32 A peak to peak is hotter still: refused by the temperature gate, with the reason.
+    REQUIRE(overloadedResults.empty());
+    auto overloadedReason = coilAdviser.get_last_no_results_reason();
+    REQUIRE(overloadedReason.has_value());
+    CHECK_THAT(*overloadedReason, Catch::Matchers::ContainsSubstring("rejected by the temperature limit"));
+    CHECK_THAT(*overloadedReason, Catch::Matchers::ContainsSubstring("hot spot reaches"));
     settings.reset();
 }
 
@@ -3511,12 +3428,13 @@ TEST_CASE("Test_CoilAdviser_Ranks_The_Wound_Coils_By_Losses", "[adviser][coil-ad
     settings.reset();
 }
 
-TEST_CASE("Test_CoilAdviser_Coils_Whose_Losses_Cannot_Be_Evaluated_Are_Dropped_From_The_Ranking_With_A_Reason", "[adviser][coil-adviser]") {
+TEST_CASE("Test_CoilAdviser_Coils_Whose_Losses_Cannot_Be_Evaluated_Are_Rejected_With_A_Reason", "[adviser][coil-adviser]") {
     // Material 67's Steinmetz fit spans 2-20 MHz and this operating point runs at 100 kHz, so
-    // MagneticFilterLosses cannot evaluate any wound coil. The loss ranking must not throw for
-    // that and must not invent a loss: each coil is dropped from the ranking with a logged
-    // reason naming the coil, the material, the frequency and the exception, and a core with
-    // no rankable coil keeps its coils in winding order.
+    // MagneticFilterLosses cannot evaluate any wound coil. The adviser must not throw for that and
+    // must not invent a loss. Rewritten (ABT #1394, Alf approved 2026-11-01; fixture unchanged): a coil
+    // whose losses cannot be evaluated has no temperature the limit could accept, so the coil
+    // adviser's temperature gate rejects it (it used to return such coils unranked, in winding
+    // order), and the answer names the reason, the material and the frequency.
     OpenMagnetics::Mas mas(json::parse(R"({"inputs":{"designRequirements":{"magnetizingInductance":{"nominal":0.0001},"minimumImpedance":[{"frequency":100000,"impedance":{"magnitude":1000}}],"name":"My Design Requirements","turnsRatios":[{"nominal":1}]},"operatingPoints":[{"name":"Operating Point No. 1","conditions":{"ambientTemperature":42},"excitationsPerWinding":[{"name":"Primary winding excitation","frequency":100000,"current":{"waveform":{"data":[-5,5,-5],"time":[0,0.000005,0.00001]},"processed":{"dutyCycle":0.5,"peakToPeak":10,"offset":0,"label":"triangular","acEffectiveFrequency":110746.40291779551,"effectiveFrequency":110746.40291779551,"peak":5,"rms":2.8874560332150576,"thd":0.12151487440704967},"harmonics":{"amplitudes":[1.1608769501236793e-14,4.05366124583194,1.787369544444173e-15,0.4511310569983995,9.749053004706756e-16,0.16293015292554872,4.036157626725542e-16,0.08352979924600704,3.4998295008010614e-16,0.0508569581336163,3.1489164048780735e-16,0.034320410449418075,3.142469873118059e-16,0.024811988673843106,2.3653352035940994e-16,0.018849001010678823,2.9306524147249266e-16,0.014866633059596499,1.796485796132569e-16,0.012077180559557785,1.6247782523152451e-16,0.010049063750920609,1.5324769149805092e-16,0.008529750975091871,1.0558579733068502e-16,0.007363501410705499,7.513269775674661e-17,0.006450045785294609,5.871414177162291e-17,0.005722473794997712,9.294731722001391e-17,0.005134763398167541,1.194820309200107e-16,0.004654430423785411,8.2422739080512e-17,0.004258029771397032,9.5067306351894e-17,0.0039283108282380024,1.7540347128474968e-16,0.0036523670873925395,9.623794010508822e-17,0.0034204021424253787,1.4083470894369491e-16,0.0032248884817922927,1.4749333016985644e-16,0.0030599828465501895,1.0448590642474364e-16,0.002921112944200383,7.575487373767413e-18,0.002804680975178716,7.419510610361002e-17,0.0027078483284668376,3.924741709073613e-17,0.0026283777262804953,2.2684279102637236e-17,0.0025645167846443107,8.997077625295079e-17,0.0025149120164513483,7.131074184849219e-17,0.0024785457043284276,9.354417496250849e-17,0.0024546904085875065,1.2488589642405877e-16,0.0024428775264784264],"frequencies":[0,100000,200000,300000,400000,500000,600000,700000,800000,900000,1000000,1100000,1200000,1300000,1400000,1500000,1600000,1700000,1800000,1900000,2000000,2100000,2200000,2300000,2400000,2500000,2600000,2700000,2800000,2900000,3000000,3100000,3200000,3300000,3400000,3500000,3600000,3700000,3800000,3900000,4000000,4100000,4200000,4300000,4400000,4500000,4600000,4700000,4800000,4900000,5000000,5100000,5200000,5300000,5400000,5500000,5600000,5700000,5800000,5900000,6000000,6100000,6200000,6300000]}},"voltage":{"waveform":{"data":[-50, 50, 50, -50, -50],"time":[0,0,0.000005,0.000005,0.00001]},"processed":{"dutyCycle":0.5,"peakToPeak":100,"offset":0,"label":"rectangular","acEffectiveFrequency":591485.5360118389,"peak":50,"rms":50,"thd":0.4833151484524849}}},{"name":"Primary winding excitation","frequency":100000,"current":{"waveform":{"ancillaryLabel":null,"data":[-5,5,-5],"numberPeriods":null,"time":[0,0.000005,0.00001]},"processed":{"dutyCycle":0.5,"peakToPeak":10,"offset":0,"label":"triangular","acEffectiveFrequency":110746.40291779551,"effectiveFrequency":110746.40291779551,"peak":5,"rms":2.8874560332150576,"thd":0.12151487440704967},"harmonics":{"amplitudes":[1.1608769501236793e-14,4.05366124583194,1.787369544444173e-15,0.4511310569983995,9.749053004706756e-16,0.16293015292554872,4.036157626725542e-16,0.08352979924600704,3.4998295008010614e-16,0.0508569581336163,3.1489164048780735e-16,0.034320410449418075,3.142469873118059e-16,0.024811988673843106,2.3653352035940994e-16,0.018849001010678823,2.9306524147249266e-16,0.014866633059596499,1.796485796132569e-16,0.012077180559557785,1.6247782523152451e-16,0.010049063750920609,1.5324769149805092e-16,0.008529750975091871,1.0558579733068502e-16,0.007363501410705499,7.513269775674661e-17,0.006450045785294609,5.871414177162291e-17,0.005722473794997712,9.294731722001391e-17,0.005134763398167541,1.194820309200107e-16,0.004654430423785411,8.2422739080512e-17,0.004258029771397032,9.5067306351894e-17,0.0039283108282380024,1.7540347128474968e-16,0.0036523670873925395,9.623794010508822e-17,0.0034204021424253787,1.4083470894369491e-16,0.0032248884817922927,1.4749333016985644e-16,0.0030599828465501895,1.0448590642474364e-16,0.002921112944200383,7.575487373767413e-18,0.002804680975178716,7.419510610361002e-17,0.0027078483284668376,3.924741709073613e-17,0.0026283777262804953,2.2684279102637236e-17,0.0025645167846443107,8.997077625295079e-17,0.0025149120164513483,7.131074184849219e-17,0.0024785457043284276,9.354417496250849e-17,0.0024546904085875065,1.2488589642405877e-16,0.0024428775264784264],"frequencies":[0,100000,200000,300000,400000,500000,600000,700000,800000,900000,1000000,1100000,1200000,1300000,1400000,1500000,1600000,1700000,1800000,1900000,2000000,2100000,2200000,2300000,2400000,2500000,2600000,2700000,2800000,2900000,3000000,3100000,3200000,3300000,3400000,3500000,3600000,3700000,3800000,3900000,4000000,4100000,4200000,4300000,4400000,4500000,4600000,4700000,4800000,4900000,5000000,5100000,5200000,5300000,5400000,5500000,5600000,5700000,5800000,5900000,6000000,6100000,6200000,6300000]}},"voltage":{"waveform":{"ancillaryLabel":null,"data":[-50,50,50,-50,-50],"numberPeriods":null,"time":[0,0,0.000005,0.000005,0.00001]},"processed":{"dutyCycle":0.5,"peakToPeak":100,"offset":0,"label":"rectangular","acEffectiveFrequency":591485.536011839,"effectiveFrequency":591449.4202715514,"peak":50,"rms":50,"thd":0.48331514845248497},"harmonics":{"amplitudes":[0.78125,63.64919355013018,1.5625,21.18229569117569,1.5625,12.668415318245188,1.5625,9.004909382998164,1.5625,6.958128475647527,1.5625,5.646149502042871,1.5625,4.729755006746538,1.5625,4.050628933965765,1.5625,3.524943518639316,1.5625,3.104154363036517,1.5625,2.7581982345221827,1.5625,2.467457137437843,1.5625,2.2185795367095267,1.5625,2.0021587188071255,1.5625,1.8113717302085082,1.5625,1.6411450722498175,1.5625,1.487623666720196,1.5625,1.3478217691511587,1.5625,1.2193869682092893,1.5625,1.100436657601639,1.5625,0.9894422127774558,1.5625,0.8851453167661671,1.5625,0.7864964059364037,1.5625,0.6926086154544899,1.5625,0.60272275979863,1.5625,0.5161802771005264,1.5625,0.43240198459440116,1.5625,0.3508711083080249,1.5625,0.27111946896540395,1.5625,0.192715993963664,1.5625,0.11525692425384548,1.5625,0.03835722204524927],"frequencies":[0,100000,200000,300000,400000,500000,600000,700000,800000,900000,1000000,1100000,1200000,1300000,1400000,1500000,1600000,1700000,1800000,1900000,2000000,2100000,2200000,2300000,2400000,2500000,2600000,2700000,2800000,2900000,3000000,3100000,3200000,3300000,3400000,3500000,3600000,3700000,3800000,3900000,4000000,4100000,4200000,4300000,4400000,4500000,4600000,4700000,4800000,4900000,5000000,5100000,5200000,5300000,5400000,5500000,5600000,5700000,5800000,5900000,6000000,6100000,6200000,6300000]}}}]}]},"magnetic":{"coil":{"bobbin":{"distributorsInfo":null,"functionalDescription":null,"manufacturerInfo":null,"name":null,"processedDescription":{"columnDepth":0.00635,"columnShape":"rectangular","columnThickness":0,"columnWidth":0.0011999999999999997,"coordinates":[0,0,0],"pins":null,"wallThickness":0,"windingWindows":[{"angle":360,"area":0.00004901669937763475,"coordinates":[0.00395,0,0],"height":null,"radialHeight":0.00395,"sectionsAlignment":null,"sectionsOrientation":null,"shape":"round","width":null}]}},"functionalDescription":[{"isolationSide":"primary","name":"Primary","numberParallels":1,"numberTurns":45,"wire":"Dummy"},{"name":"Secondary","numberTurns":45,"numberParallels":1,"isolationSide":"secondary","wire":"Dummy"}],"layersDescription":null,"sectionsDescription":null,"turnsDescription":null},"core":{"distributorsInfo":[],"functionalDescription":{"coating":null,"gapping":[],"material":"67","numberStacks":1,"shape":{"aliases":[],"dimensions":{"A":{"excludeMaximum":null,"excludeMinimum":null,"maximum":null,"minimum":null,"nominal":0.0127},"B":{"excludeMaximum":null,"excludeMinimum":null,"maximum":null,"minimum":null,"nominal":0.0079},"C":{"excludeMaximum":null,"excludeMinimum":null,"maximum":null,"minimum":null,"nominal":0.0127}},"family":"t","familySubtype":null,"magneticCircuit":"closed","name":"T 12.7/7.9/12.7","type":"standard"},"type":"toroidal","magneticCircuit":"closed"},"geometricalDescription":[{"coordinates":[0,0,0],"dimensions":null,"insulationMaterial":null,"machining":null,"material":"67","rotation":[1.5707963267948966,1.5707963267948966,0],"shape":{"aliases":[],"dimensions":{"A":{"excludeMaximum":null,"excludeMinimum":null,"maximum":null,"minimum":null,"nominal":0.0127},"B":{"excludeMaximum":null,"excludeMinimum":null,"maximum":null,"minimum":null,"nominal":0.0079},"C":{"excludeMaximum":null,"excludeMinimum":null,"maximum":null,"minimum":null,"nominal":0.0127}},"family":"t","familySubtype":null,"magneticCircuit":"closed","name":"T 12.7/7.9/12.7","type":"standard"},"type":"toroidal"}],"manufacturerInfo":{"cost":null,"datasheetUrl":"https://fair-rite.com/product/toroids-5967001901/","family":null,"name":"Fair-Rite","orderCode":null,"reference":"5967001901","status":"production"},"name":"T 12.7/7.9/12.7 - 67 - Ungapped","processedDescription":{"columns":[{"area":0.000031,"coordinates":[0,0,0],"depth":0.0127,"height":0.03235840433197487,"minimumDepth":null,"minimumWidth":null,"shape":"rectangular","type":"central","width":0.0023999999999999994}],"depth":0.0127,"effectiveParameters":{"effectiveArea":0.000030479999999999996,"effectiveLength":0.03235840433197488,"effectiveVolume":9.862841640385941e-7,"minimumArea":0.00003047999999999999},"height":0.0127,"width":0.0127,"windingWindows":[{"angle":360,"area":0.00004901669937763475,"coordinates":[0.0023999999999999994,0],"height":null,"radialHeight":0.00395,"sectionsAlignment":null,"sectionsOrientation":null,"shape":null,"width":null}]}},"manufacturerInfo":{"name":"OpenMagnetics","reference":"My custom magnetic"}},"outputs":[]})"));
 
     for (size_t windingIndex = 0; windingIndex < mas.get_magnetic().get_coil().get_functional_description().size(); ++windingIndex) {
@@ -3531,11 +3449,13 @@ TEST_CASE("Test_CoilAdviser_Coils_Whose_Losses_Cannot_Be_Evaluated_Are_Dropped_F
     auto masMagneticsWithCoil = coilAdviser.get_advised_coil(mas, 1);
     auto log = OpenMagnetics::read_log();
     INFO(log);
-    REQUIRE(masMagneticsWithCoil.size() == 1);
-    CHECK(log.find("dropped from the loss ranking") != std::string::npos);
-    CHECK(log.find("(material 67, frequency 100 kHz)") != std::string::npos);
-    CHECK(log.find("Steinmetz loss coefficients are fitted from 2 MHz to 20 MHz") != std::string::npos);
-    CHECK(log.find("could be ranked by losses; returning them in winding order, unranked") != std::string::npos);
+    REQUIRE(masMagneticsWithCoil.empty());
+    auto noResultsReason = coilAdviser.get_last_no_results_reason();
+    REQUIRE(noResultsReason.has_value());
+    CHECK_THAT(*noResultsReason, Catch::Matchers::ContainsSubstring("rejected by the temperature limit"));
+    CHECK_THAT(*noResultsReason, Catch::Matchers::ContainsSubstring("its losses cannot be evaluated"));
+    CHECK_THAT(*noResultsReason, Catch::Matchers::ContainsSubstring("MATERIAL_FREQUENCY_OUT_OF_SPAN"));
+    CHECK_THAT(*noResultsReason, Catch::Matchers::ContainsSubstring("(material 67, frequency 100 kHz)"));
 }
 
 // ABT #1699: a coil advised with real winding geometry on is one the real winder builds from its
