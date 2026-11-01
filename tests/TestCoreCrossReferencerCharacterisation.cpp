@@ -147,12 +147,15 @@ const std::vector<TopEntry> kTopDefault = {
 
 // Refreshed 2026-06-16 (ABT #10): identical ordering, scores nudged < 0.3 %
 // by the 2026-06 loss/saturation recompute.
+// Re-pinned 2026-10-31 (Alf approved): pool drift of the min-max normalised scores (#398). The same
+// five cores, EP 20 top-1 (2.3856 -> 2.3646, -0.88 %); only the near-tied RM 8/I and EP 17 0.414 mm
+// (1.640 vs 1.657) swap slots 2 and 3.
 const std::vector<TopEntry> kTopSameMaterial = {
-    {"EP 20 - 3C91 - Gapped 0.605 mm",         2.3856092961519693},
-    {"EC 41/19/12 - 3C91 - Gapped 1.000 mm",   2.2930935641240380},
-    {"RM 8/I - 3C91 - Gapped 0.480 mm",        1.6724348396178819},
-    {"EP 17 - 3C91 - Gapped 0.414 mm",         1.6570874186846314},
-    {"EP 17 - 3C91 - Gapped 0.255 mm",         1.4299034804888624},
+    {"EP 20 - 3C91 - Gapped 0.605 mm",         2.364573591123257},
+    {"EC 41/19/12 - 3C91 - Gapped 1.000 mm",   2.2429106060342221},
+    {"EP 17 - 3C91 - Gapped 0.414 mm",         1.6570886597615659},
+    {"RM 8/I - 3C91 - Gapped 0.480 mm",        1.6397777808006964},
+    {"EP 17 - 3C91 - Gapped 0.255 mm",         1.4313624007456922},
 };
 
 // Refreshed 2026-05-24: 3c851744 reshuffled slots 1 and 4 — the
@@ -160,12 +163,15 @@ const std::vector<TopEntry> kTopSameMaterial = {
 // E 32/16/9 N87, which dropped to slot 4. ETD 29/16/10 stays on top.
 // Refreshed 2026-06-16 (ABT #10): identical ordering, scores nudged < 0.1 %
 // by the 2026-06 loss/saturation recompute.
+// Re-pinned 2026-10-31 (Alf approved): pool drift of the min-max normalised scores (#398). The same
+// five cores, ETD 29 N87 top-1 (2.8460 -> 2.8477, +0.06 %); only the near-tied EC 35 N27 distributed
+// and ETD 29 N27 gapped (2.560 vs 2.568) swap slots 1 and 2.
 const std::vector<TopEntry> kTopOnlyTdk = {
-    {"ETD 29/16/10 - N87 - Gapped 1.000 mm",              2.8460100632299312},
-    {"EC 35/17/10 - N27 - Distributed gapped 0.500 mm",   2.6356468492859273},
-    {"ETD 29/16/10 - N27 - Gapped 1.000 mm",              2.6082621123825347},
-    {"ETD 29/16/10 - N27 - Distributed gapped 0.500 mm",  2.5215976667423776},
-    {"E 32/16/9 - N27 - Gapped 1.000 mm",                 1.9191686859894208},
+    {"ETD 29/16/10 - N87 - Gapped 1.000 mm",              2.8476771864923007},
+    {"ETD 29/16/10 - N27 - Gapped 1.000 mm",              2.5682675365229759},
+    {"EC 35/17/10 - N27 - Distributed gapped 0.500 mm",   2.5595460929649891},
+    {"ETD 29/16/10 - N27 - Distributed gapped 0.500 mm",  2.5264140805586299},
+    {"E 32/16/9 - N27 - Gapped 1.000 mm",                 1.9153230627127971},
 };
 
 // Phase 1 fix landed: with SATURATION now active, the powder ordering
@@ -176,12 +182,14 @@ const std::vector<TopEntry> kTopOnlyTdk = {
 // Refreshed 2026-05-24: 3c851744 moved Edge 60 into slot 2 (was absent
 // from top-5) and pushed Kool Mµ MAX 60 out of top-5. MS / FS / Kool Mµ
 // keep their identities; Kool Mµ Hƒ drops two slots.
+// Re-pinned 2026-10-31 (Alf approved): pool drift of the min-max normalised scores (#398). The same
+// five cores in the same order; MS 60 top-1 2.9339 -> 2.8271 (-3.6 %).
 const std::vector<TopEntry> kTopPowder = {
-    {"E 25/9.5/6.3 - MS 60 - Ungapped",                            2.9338806063397938},
-    {"E 25/9.5/6.3 - FS 60 - Ungapped",                            2.7454801535568123},
-    {"E 25/9.5/6.3 - Edge 60 - Ungapped",                          2.5837166775568221},
-    {"E 25/9.5/6.3 - Kool Mµ 60 - Ungapped",                       2.4001098422524034},
-    {"E 25/9.5/6.3 - Kool Mµ Hƒ 60 - Ungapped",                    2.1310286918124186},
+    {"E 25/9.5/6.3 - MS 60 - Ungapped",                            2.8271330477810186},
+    {"E 25/9.5/6.3 - FS 60 - Ungapped",                            2.7200169936914769},
+    {"E 25/9.5/6.3 - Edge 60 - Ungapped",                          2.539263790197857},
+    {"E 25/9.5/6.3 - Kool Mµ 60 - Ungapped",                       2.3363571559499281},
+    {"E 25/9.5/6.3 - Kool Mµ Hƒ 60 - Ungapped",                    2.1136064509299559},
 };
 
 } // namespace
