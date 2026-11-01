@@ -14,11 +14,12 @@
 //   reproduce these structural facts exactly.
 //
 // FIXTURE
-//   ETD 59 / 3C91, 0.003 m ground gap, 82:5 turns, 175.59 kHz sinusoidal,
-//   20 Vpp, IEC 60664-1 / 61558 BASIC insulation, 400 V mains, 25 °C.
-//   This is the same fixture as TestCoilAdviser.cpp:
-//   Test_CoilAdviser_Insulation_No_Margin (the canonical 2-winding flyback
-//   test in the existing suite).
+//   ETD 59 / 3C91, 0.003 m ground gap, 82:5 turns, IEC 60664-1 / 61558 BASIC
+//   insulation, 400 V mains, 25 °C. Its core, turns and insulation are those
+//   of TestCoilAdviser.cpp: Test_CoilAdviser_Insulation_No_Margin; since
+//   2026-11-01 its operating point is a real 150 W CCM flyback (360-440 V in,
+//   20 V out, 175.59 kHz) designed by MKF's converter model, see
+//   make_flyback_fixture.
 //
 // REGENERATING SNAPSHOTS
 //   Flip kRegenerateBaselines = true (or leave a snapshot empty), run, copy
@@ -38,12 +39,14 @@
 #include <catch2/benchmark/catch_benchmark.hpp>
 
 #include "advisers/CoilAdviser.h"
+#include "converter_models/KirchhoffBridge.h"
 #include "constructive_models/Mas.h"
 #include "processors/Inputs.h"
 #include "support/Settings.h"
 
 #include "TestingUtils.h"
 
+using json = nlohmann::json;
 using namespace MAS;
 using namespace OpenMagnetics;
 
@@ -56,23 +59,26 @@ constexpr bool kRegenerateBaselines = false;
 OpenMagnetics::Mas make_flyback_fixture() {
     auto gapping = OpenMagneticsTesting::get_ground_gap(0.003);
     std::vector<int64_t> numberTurns = {82, 5};
-    std::vector<double> turnsRatios;
-    for (size_t i = 1; i < numberTurns.size(); ++i) {
-        turnsRatios.push_back(double(numberTurns[0]) / numberTurns[i]);
-    }
 
     auto magnetic = OpenMagneticsTesting::get_quick_magnetic(
         "ETD 59", gapping, numberTurns, /*stacks*/ 1, "3C91");
 
-    auto inputs = OpenMagnetics::Inputs::create_quick_operating_point_only_current(
-        /*frequency*/         175590,
-        /*magInductance*/     10e-6,
-        /*temperature*/       25,
-        /*waveShape*/         WaveformLabel::SINUSOIDAL,
-        /*peakToPeak*/        20,
-        /*dutyCycle*/         0.5,
-        /*dcCurrent*/         0,
-        /*turnsRatios*/       turnsRatios);
+    // Operating point replaced with Alf's approval (2026-11-01, ABT #1394): the sinusoidal 20 App point drove
+    // 115 A rms through the 5-turn secondary (~420 W), which no coil on this core can carry under the
+    // temperature limit. This is a real flyback operating point, designed by MKF's converter model (Kirchhoff's
+    // Flyback through KirchhoffBridge, not hand-made waveforms): Vin 360/400/440 V (operating at 400 V),
+    // Vout 20 V, 150 W, 175.59 kHz, CCM, turns ratio 82:5 and Lm 1.4927 mH pinned (the inductance of this
+    // ETD 59 / 3C91 / 3 mm gap at 82 turns), which gives D = 0.45 at 400 V.
+    json spec;
+    spec["designRequirements"]["efficiency"] = 1.0;
+    spec["designRequirements"]["inputVoltage"] = {{"minimum", 360}, {"nominal", 400}, {"maximum", 440}};
+    spec["designRequirements"]["switchingFrequency"]["nominal"] = 175590;
+    spec["designRequirements"]["outputs"] = json::array({{{"name", "out"}, {"voltage", {{"nominal", 20}}}}});
+    spec["designRequirements"]["turnsRatios"] = json::array({{{"nominal", double(numberTurns[0]) / numberTurns[1]}}});
+    spec["designRequirements"]["magnetizingInductance"] = {{"nominal", 1.4927e-3}};
+    spec["operatingPoints"] = json::array({{{"inputVoltage", 400}, {"outputs", json::array({{{"power", 150}}})}}});
+    spec["config"]["mode"] = "ccm";
+    auto inputs = OpenMagnetics::design_requirements_from_tas(OpenMagnetics::design_converter_tas("flyback", spec));
 
     DimensionWithTolerance altitude;
     altitude.set_maximum(2000);
@@ -95,6 +101,9 @@ OpenMagnetics::Mas make_flyback_fixture() {
 // --- Snapshot type ----------------------------------------------------------
 
 struct CoilStructural {
+    std::string coreShape;
+    std::string coreMaterial;
+    std::string turnsPerWinding;  // "turns0xparallels0 || turns1xparallels1 || ..."
     std::string wirePerWinding;  // "wire0 || wire1 || ..."
     size_t numberSections;
     size_t numberLayers;
@@ -113,8 +122,19 @@ std::string join_wire_names(OpenMagnetics::Mas& mas) {
 
 CoilStructural extract_structural(OpenMagnetics::Mas& mas) {
     CoilStructural out;
+    out.coreShape = mas.get_magnetic().get_core().get_shape_name();
+    out.coreMaterial = mas.get_mutable_magnetic().get_mutable_core().resolve_material().get_name();
     out.wirePerWinding = join_wire_names(mas);
     auto& coil = mas.get_mutable_magnetic().get_mutable_coil();
+    {
+        std::ostringstream oss;
+        const auto& windings = coil.get_functional_description();
+        for (size_t i = 0; i < windings.size(); ++i) {
+            if (i) oss << " || ";
+            oss << windings[i].get_number_turns() << "x" << windings[i].get_number_parallels();
+        }
+        out.turnsPerWinding = oss.str();
+    }
     out.numberSections = coil.get_sections_description().has_value()
                        ? coil.get_sections_description().value().size() : 0;
     out.numberLayers = coil.get_layers_description().has_value()
@@ -134,7 +154,8 @@ void check_structural_topN(const std::string& label,
         std::cerr << "\nBASELINE COIL_TOPN " << label << " count=" << got.size() << "\n";
         for (size_t i = 0; i < got.size(); ++i) {
             auto s = extract_structural(got[i]);
-            std::cerr << "  [" << i << "] wires=\"" << s.wirePerWinding
+            std::cerr << "  [" << i << "] core=\"" << s.coreShape << " / " << s.coreMaterial
+                      << "\" turns=\"" << s.turnsPerWinding << "\" wires=\"" << s.wirePerWinding
                       << "\" sections=" << s.numberSections
                       << " layers=" << s.numberLayers
                       << " totalTurns=" << s.totalTurns << "\n";
@@ -146,11 +167,16 @@ void check_structural_topN(const std::string& label,
     REQUIRE(got.size() >= expectedTop.size());
     for (size_t i = 0; i < expectedTop.size(); ++i) {
         auto s = extract_structural(got[i]);
-        INFO("top[" << i << "] want wires=\"" << expectedTop[i].wirePerWinding
-                    << "\" got wires=\"" << s.wirePerWinding
+        INFO("top[" << i << "] want core=\"" << expectedTop[i].coreShape << " / " << expectedTop[i].coreMaterial
+                    << "\" turns=\"" << expectedTop[i].turnsPerWinding << "\" wires=\"" << expectedTop[i].wirePerWinding
+                    << "\" got core=\"" << s.coreShape << " / " << s.coreMaterial << "\" turns=\"" << s.turnsPerWinding
+                    << "\" wires=\"" << s.wirePerWinding
                     << "\" sections=" << s.numberSections
                     << " layers=" << s.numberLayers
                     << " totalTurns=" << s.totalTurns);
+        REQUIRE(s.coreShape == expectedTop[i].coreShape);
+        REQUIRE(s.coreMaterial == expectedTop[i].coreMaterial);
+        REQUIRE(s.turnsPerWinding == expectedTop[i].turnsPerWinding);
         REQUIRE(s.wirePerWinding == expectedTop[i].wirePerWinding);
         REQUIRE(s.numberSections == expectedTop[i].numberSections);
         REQUIRE(s.numberLayers == expectedTop[i].numberLayers);
@@ -159,21 +185,18 @@ void check_structural_topN(const std::string& label,
 }
 
 // ----------------------------------------------------------------------------
-// SNAPSHOTS — captured 2026-05-19. Leave empty to auto-harvest.
+// SNAPSHOTS. Leave empty to auto-harvest.
 // ----------------------------------------------------------------------------
-// Note: requested top-3 but pipeline only produces 2 candidates for this
-// fixture — locked as the current behaviour. If a future refactor unlocks
-// more candidates this snapshot will fail loudly and need regeneration.
-// Refreshed 2026-06-16 (ABT #10 / ABT #3): top[1] primary re-ranked from
-// Round T20A01TXXX-1 to Round T25A01TXXX-1.5 (12 layers, was 10). Both are
-// insulated 3-layer reinforced wires (bdv 4500 → 6000) — the expected wire
-// class for this BASIC isolated flyback — so this is a benign within-class
-// re-rank from the wire-scoring shift, verified pre-existing in ABT #3, not a
-// regression. top[0] unchanged.
+// Re-pinned 2026-11-01 with Alf's approval, when the fixture's sinusoidal operating point (115 A rms on the
+// secondary, ~420 W; no coil survived the coil adviser's temperature gate, ABT #1394) was replaced by the real
+// 150 W CCM flyback point of make_flyback_fixture. Before pinning, every pick was checked against the gates:
+// B peak 0.0578 T on 3C91 (L 1.4927 mH), hot spots 37.9 / 36.5 / 36.4 C against the 130 C limit, losses
+// 2.13 / 3.46 / 3.32 W.
 const std::vector<CoilStructural> kTopFlyback = {
-    // wires                                                              sections layers totalTurns
-    {"Round T25A01PXXX-1.5 || Litz SXXL825/44FX-3(MWXX)",                  8,       12,    87},
-    {"Round T25A01TXXX-1.5 || Litz SXXL825/44FX-3(MWXX)",                  8,       12,    87},
+    // core shape, material, turns x parallels per winding, wires, sections, layers, total turns
+    {"ETD 59", "3C91", "82x1 || 5x2", "Litz TXXL19/40TXXX-2(MWXX) || Round T10A01PXXX-3",      4, 35, 87},
+    {"ETD 59", "3C91", "82x2 || 5x1", "Round T29A01PXXX-3 || Synthesized Litz 648x0.041mm",   8, 70, 87},
+    {"ETD 59", "3C91", "82x2 || 5x1", "Round T29A01PXXX-3 || Synthesized Litz 1458x0.028mm",  8, 70, 87},
 };
 
 } // namespace
@@ -195,15 +218,8 @@ TEST_CASE("CoilAdviser flyback 2-winding top-3 structural snapshot",
     CoilAdviser adviser;
     auto results = adviser.get_advised_coil(mas, 3);
     check_structural_topN("FLYBACK_82_5_ETD59_3C91", results, kTopFlyback);
-    // Returns 2 (not 3) by design: wire-advancement yields 6 candidate coils, but
-    // EFFECTIVE_CURRENT_DENSITY is a strict filter (CoilAdviser.h:_defaultCustomMagneticFilterFlow),
-    // and only 2 of the 6 candidates pass it for this fixture (ETD 59 / 82:5 turns,
-    // ~175 kHz flyback). The 4 rejected candidates are under-paralleled wires whose
-    // per-strand effective current density exceeds defaults.maximumEffectiveCurrentDensity.
-    // See MagneticFilter.cpp:1922 (MagneticFilterEffectiveCurrentDensity). This is correct
-    // physical filtering, not a bug — locking the count to detect regressions in either
-    // direction.
-    REQUIRE(results.size() == 2);
+    // Three asked, three returned at the 150 W operating point.
+    REQUIRE(results.size() == 3);
 
     settings.reset();
 }
