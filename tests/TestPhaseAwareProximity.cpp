@@ -35,11 +35,19 @@ using namespace OpenMagnetics;
 // ABT #1460: re-pinned to the exact Fourier series of the 256-segment polyline these tests
 // sample the sine onto (previously the 128-point DFT, which read the pure sine; the polyline's
 // fundamental is sinc^2(pi/256) = 5.0e-5 lower, so the losses move -2.5e-5 relative).
-#define GOLDEN_SINGLE_ALBACH 0.071059513874992264
-#define GOLDEN_SINGLE_BINNS 0.092679199493837766
-#define GOLDEN_ANTIPHASE_ALBACH 0.18784873417059961
-#define GOLDEN_ANTIPHASE_BINNS 0.20012607278960068
-#define GOLDEN_ANTIPHASE_PIPELINE 0.37276289103107252
+// Re-pinned 2026-10-31 (Alf approved): the 3C97 record of MAS 8e03cd0 carries Ferroxcube's unrounded
+// initial-permeability table (3312.81 / 3372.73 at 20 / 30 C, was 3313 / 3373), so mu_i(25 C) moved
+// 3341.5 -> 3341.241875 (-7.7e-5 relative). It enters through the image weights (mu - k)/(mu + k), so the
+// goldens move 9.2e-8, 1.9e-8, 9.2e-8, 2.8e-9 and 1.5e-9 relative. Today's code with the OLD 3C97 record
+// reproduces the previous goldens bit for bit, and with the new record these values: no code change
+// contributes (same reason Test_Initial_Permeability_3C97 was re-pinned on 2026-10-11).
+// Previous: 0.071059513874992264, 0.092679199493837766, 0.18784873417059961, 0.20012607278960068,
+// 0.37276289103107252.
+#define GOLDEN_SINGLE_ALBACH 0.07105950730351622
+#define GOLDEN_SINGLE_BINNS 0.092679197697816934
+#define GOLDEN_ANTIPHASE_ALBACH 0.1878487167986336
+#define GOLDEN_ANTIPHASE_BINNS 0.20012607223424467
+#define GOLDEN_ANTIPHASE_PIPELINE 0.37276289045512961
 
 namespace {
 
