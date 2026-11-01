@@ -883,6 +883,12 @@ TEST_CASE("Test_CoilAdviser_Random_Base", "[adviser][coil-adviser][random]") {
                     gapping = OpenMagneticsTesting::get_distributed_gap(gapLength, numberGaps);
                     break;
             }
+            // Alf approved 2026-10-31: drum-ring and semi-shielded drum cores take no user gapping (MKF
+            // derives their structural gaps from the shape and throws GAP_INVALID_DIMENSIONS for a given
+            // one), so the generator gives them none; every other family keeps its random gap.
+            if (shape.get_family() == CoreShapeFamily::DRUM_RING || shape.get_family() == CoreShapeFamily::DRUM_SEMISHIELDED) {
+                gapping.clear();
+            }
             
             magnetic = OpenMagneticsTesting::get_quick_magnetic(coreShapeName, gapping, numberTurns, numberStacks, "3C91");
             break;
