@@ -1075,7 +1075,7 @@ std::pair<bool, double> MagneticFilterInductorTurnsAndGapByLosses::evaluate_magn
     double windingBreadth = bobbinWindow.get_height().value();
     auto coreWindow = core.get_winding_windows()[0];
     double coreWindowArea = coreWindow.get_area().value();
-    double bobbinFillingFactor = Bobbin::get_filling_factor(coreWindow.get_width().value(), coreWindow.get_height().value());
+    double bobbinFillingFactor = Bobbin::get_filling_factor(core);
     auto wire = coil.get_wires()[0];
 
     double hottestTemperature = *std::max_element(_temperatures.begin(), _temperatures.end());

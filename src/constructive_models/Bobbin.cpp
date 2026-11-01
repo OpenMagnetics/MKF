@@ -410,6 +410,7 @@ void load_interpolators() {
 
         minBobbinWallThickness = std::numeric_limits<double>::infinity();
         minBobbinColumnThickness = std::numeric_limits<double>::infinity();
+        bobbinFormersPerCoreShape.clear();
 
         // Column-corner samples (see BobbinColumnCornerSamples): (columnWidth, inside corner) per
         // shape of the core column the catalogue former's bore follows.
@@ -517,6 +518,16 @@ void load_interpolators() {
                 AuxWindingWindowHeight coreAuxWindingWindowHeight = { coreWindingWindowHeight, bobbinWindingWindowHeightProportion, datum.first };
                 auxWindingWindowWidth.push_back(coreAuxWindingWindowWidth);
                 auxWindingWindowHeight.push_back(coreAuxWindingWindowHeight);
+                // ABT #1582: the former's own window, for the core shape it names (keyed by the shape's database
+                // name, which is what Core::get_shape_name returns for a core of that shape).
+                if (!coreShape.get_name()) {
+                    unusableBobbins.push_back(datum.first + " -> core shape '" + coreShapeName + "' has no name (own-former table)");
+                }
+                else {
+                    bobbinFormersPerCoreShape[coreShape.get_name().value()].push_back(
+                        {datum.first, bobbinWindingWindowWidth, bobbinWindingWindowHeight,
+                         coreWindingWindowWidth, coreWindingWindowHeight, bobbinFillingFactor});
+                }
 
                 // The corner this former's bore follows, derived from the core shape it names
                 // (Alf, 2026-10-26). Taken after the samples above, so a former whose corner
@@ -724,6 +735,64 @@ double Bobbin::get_filling_factor(double windingWindowWidth, double windingWindo
     return (fillingFactorWidth + fillingFactorHeight) / 2;
 }
 
+std::optional<CatalogueFormerWindow> Bobbin::get_own_catalogue_former(const std::string& coreShapeName) {
+    load_interpolators();
+    auto it = bobbinFormersPerCoreShape.find(coreShapeName);
+    if (it == bobbinFormersPerCoreShape.end() || it->second.empty()) {
+        return std::nullopt;
+    }
+    // Rule (Alf, 2026-11-01): when the catalogue formers of a shape disagree on the window, the core's own former is
+    // the one with the smallest winding area; a tie on the area goes to the smallest catalogue name. It never throws
+    // and never goes to the fit: 23 of the 120 shapes with formers have such a disagreement (ETD 29/16/10: 4.8 or
+    // 4.9 mm wide). The fits serve only cores whose shape has no former at all.
+    return *std::min_element(it->second.begin(), it->second.end(), [](const CatalogueFormerWindow& a, const CatalogueFormerWindow& b) {
+        const double areaA = a.bobbinWindowWidth * a.bobbinWindowHeight;
+        const double areaB = b.bobbinWindowWidth * b.bobbinWindowHeight;
+        return std::tie(areaA, a.formerName) < std::tie(areaB, b.formerName);
+    });
+}
+
+// The own former was measured against the two-piece set of its shape; a core of that shape whose first winding
+// window is a different one (another set-up of the shape) is not the core that former fits.
+static const CatalogueFormerWindow& check_own_former_fits_core(const CatalogueFormerWindow& former, const Core& core,
+                                                               double coreWindowWidth, double coreWindowHeight) {
+    auto agrees = [](double a, double b) { return fabs(a - b) <= 1e-6 * std::max(fabs(a), fabs(b)); };
+    if (!agrees(former.coreWindowWidth, coreWindowWidth) || !agrees(former.coreWindowHeight, coreWindowHeight)) {
+        throw InvalidInputException(ErrorCode::INVALID_BOBBIN_DATA,
+            "Core '" + core.get_name().value_or("<unnamed>") + "' has a winding window of " +
+            std::to_string(coreWindowWidth * 1000) + " mm x " + std::to_string(coreWindowHeight * 1000) +
+            " mm, but its shape's catalogue former " + former.formerName + " was made for a window of " +
+            std::to_string(former.coreWindowWidth * 1000) + " mm x " + std::to_string(former.coreWindowHeight * 1000) + " mm");
+    }
+    return former;
+}
+
+static std::pair<double, double> first_core_winding_window(const Core& core) {
+    auto windingWindows = core.get_winding_windows();
+    if (windingWindows.empty() || !windingWindows[0].get_width() || !windingWindows[0].get_height()) {
+        throw CoreNotProcessedException("Bobbin: core " + core.get_name().value_or("<unnamed>") +
+                                        " has no rectangular first winding window (width and height)");
+    }
+    return {windingWindows[0].get_width().value(), windingWindows[0].get_height().value()};
+}
+
+double Bobbin::get_filling_factor(const Core& core) {
+    auto [coreWindowWidth, coreWindowHeight] = first_core_winding_window(core);
+    if (auto former = get_own_catalogue_former(core.get_shape_name())) {
+        return check_own_former_fits_core(former.value(), core, coreWindowWidth, coreWindowHeight).fillingFactor;
+    }
+    return get_filling_factor(coreWindowWidth, coreWindowHeight);
+}
+
+std::vector<double> Bobbin::get_winding_window_dimensions(const Core& core) {
+    auto [coreWindowWidth, coreWindowHeight] = first_core_winding_window(core);
+    if (auto former = get_own_catalogue_former(core.get_shape_name())) {
+        const auto& fitted = check_own_former_fits_core(former.value(), core, coreWindowWidth, coreWindowHeight);
+        return {fitted.bobbinWindowWidth, fitted.bobbinWindowHeight};
+    }
+    return get_winding_window_dimensions(coreWindowWidth, coreWindowHeight);
+}
+
 std::vector<double> Bobbin::get_winding_window_dimensions(double coreWindingWindowWidth, double coreWindingWindowHeight){
 
     load_interpolators();
@@ -843,7 +912,10 @@ Bobbin Bobbin::create_quick_bobbin(Core core, bool nullDimensions, std::optional
 
     if (!nullDimensions && bobbinWindingWindowShape == WindingWindowShape::RECTANGULAR) {
 
-        std::vector<double> bobbinWindingWindowDimensions = get_winding_window_dimensions(coreWindingWindow.get_width().value(), coreWindingWindow.get_height().value());
+        // ABT #1582: a core whose shape has a catalogue former takes that former's real window; the fit (and the
+        // thickness floor below, which only guards the fit's extrapolation) serves the cores with none.
+        const bool hasOwnFormer = get_own_catalogue_former(core.get_shape_name()).has_value();
+        std::vector<double> bobbinWindingWindowDimensions = get_winding_window_dimensions(core);
         bobbinColumnThickness = coreWindingWindow.get_width().value() - bobbinWindingWindowDimensions[0];
         bobbinWallThickness = (coreWindingWindow.get_height().value() - bobbinWindingWindowDimensions[1]) / 2;
         // Floor the thicknesses at the smallest real bobbin in the database. The
@@ -851,10 +923,10 @@ Bobbin Bobbin::create_quick_bobbin(Core core, bool nullDimensions, std::optional
         // its training range, which produces ~µm walls that are physically impossible
         // (real injection-molded bobbins are at least ~0.3 mm). Use the database min
         // instead, then re-derive the bobbin window dimensions to stay consistent.
-        if (std::isfinite(minBobbinWallThickness) && bobbinWallThickness < minBobbinWallThickness) {
+        if (!hasOwnFormer && std::isfinite(minBobbinWallThickness) && bobbinWallThickness < minBobbinWallThickness) {
             bobbinWallThickness = minBobbinWallThickness;
         }
-        if (std::isfinite(minBobbinColumnThickness) && bobbinColumnThickness < minBobbinColumnThickness) {
+        if (!hasOwnFormer && std::isfinite(minBobbinColumnThickness) && bobbinColumnThickness < minBobbinColumnThickness) {
             bobbinColumnThickness = minBobbinColumnThickness;
         }
         if (bobbinWallThickness <= 0) {

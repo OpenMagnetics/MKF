@@ -60,6 +60,21 @@ struct BobbinColumnCornerSamples {
 inline thread_local std::map<ColumnShape, BobbinColumnCornerSamples> bobbinColumnCornerSamples;
 inline thread_local bool bobbinColumnCornerSamplesLoaded = false;
 
+// A core's own catalogue former (ABT #1582, Alf 2026-11-01: "own former first"). Every catalogue former's
+// processed winding window (the chamber envelope for a chambered former, as the fits use it), keyed by the
+// core shape the former names, together with the window of that core shape's two-piece set it was measured
+// against. Built by load_interpolators with the fits. A core whose shape has formers here takes its former's
+// real window and filling factor; the fits only serve cores with no catalogue former.
+struct CatalogueFormerWindow {
+    std::string formerName;
+    double bobbinWindowWidth;
+    double bobbinWindowHeight;
+    double coreWindowWidth;
+    double coreWindowHeight;
+    double fillingFactor;
+};
+inline thread_local std::map<std::string, std::vector<CatalogueFormerWindow>> bobbinFormersPerCoreShape;
+
 class Bobbin : public MAS::Bobbin {
   private:
   public:
@@ -107,6 +122,22 @@ class Bobbin : public MAS::Bobbin {
     
     static double get_filling_factor(double windingWindowWidth, double windingWindowHeight);
     static std::vector<double> get_winding_window_dimensions(double coreWindingWindowWidth, double coreWindingWindowHeight);
+    /**
+     * @brief The catalogue former of a core shape (ABT #1582): the one its catalogue formers name for it. When they
+     *        disagree on the window, the former with the smallest winding area, then the smallest name.
+     * @return the former's window, or nullopt when no catalogue former names this shape
+     */
+    static std::optional<CatalogueFormerWindow> get_own_catalogue_former(const std::string& coreShapeName);
+    /**
+     * @brief Filling factor of the former of this core: its own catalogue former's when it has one
+     *        (get_own_catalogue_former), else the catalogue fit at the core's first winding window.
+     */
+    static double get_filling_factor(const Core& core);
+    /**
+     * @brief Winding-window {width, height} of the former of this core: its own catalogue former's window
+     *        when it has one (get_own_catalogue_former), else the catalogue fit at the core's first window.
+     */
+    static std::vector<double> get_winding_window_dimensions(const Core& core);
     std::vector<double> get_winding_window_dimensions(size_t windingWindowIndex = 0);
     double get_winding_window_area(size_t windingWindowIndex = 0);
     WindingWindowShape get_winding_window_shape(size_t windingWindowIndex = 0);

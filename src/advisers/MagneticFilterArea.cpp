@@ -114,7 +114,7 @@ double MagneticFilterAreaProduct::get_bobbin_filling_factor(const Core& core, st
         return 1;
     }
     if (core.get_functional_description().get_type() != CoreType::TOROIDAL) {
-        return Bobbin::get_filling_factor(windingWindow.get_width().value(), windingWindow.get_height().value());
+        return Bobbin::get_filling_factor(core);
     }
     // For toroids: calculate realistic filling factor based on geometry
     // The inner circumference is smaller than outer, limiting wire packing
