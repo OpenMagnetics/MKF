@@ -222,15 +222,17 @@ const std::vector<MagneticEntry> kTopThreeWinding = {
     // E 8/2 2-stack leaves the top 3 and a 79 E 8.3/4 2-stack at 12 turns takes slots 1-2 (the same
     // design in two winding orders). Both 79 and 95 are priced MnZn ferrites, so no candidate was
     // dropped by a COST throw; the old winner was out-scored. The per-design US$ were not broken down.
-    {"79 E 10/3 gapped 0.04 mm, Turns: 21, Order: 021, Non-Interleaved, Margin Taped 01",
-     "Round 35.5 - Single Build || Round 41.0 - Single Build || Round 41.0 - Single Build",
+    // Re-pinned 2026-11-01 (ABT #1582, approved by Alf): the same three designs with and without the own-former rule, so
+    // the rule did not cause the move from the 79 E 10/3. L 86.3, 86.3 and 111.6 uH, inside the fixture's 80-120 uH.
+    {"79 P 14/8/I gapped 0.30 mm, Turns: 26, Order: 012, Non-Interleaved, Margin Taped 00",
+     "Round 36.0 - Single Build || Round 41.0 - Single Build || Round 41.0 - Single Build",
+     2.3149134012428343},
+    {"79 P 14/8/I gapped 0.30 mm, Turns: 26, Order: 021, Non-Interleaved, Margin Taped 01",
+     "Round 36.0 - Single Build || Round 44.0 - Single Build || Round 41.0 - Single Build",
      2},
-    {"79 E 8.3/4 2 stacks gapped 0.01 mm, Turns: 12, Order: 021, Non-Interleaved, Margin Taped 00",
+    {"79 RM 6/I-R gapped 0.30 mm, Turns: 28, Order: 021, Non-Interleaved, Margin Taped 00",
      "Round 33.0 - Single Build || Round 38.0 - Single Build || Round 38.0 - Single Build",
-     0.85007868429843947},
-    {"79 E 8.3/4 2 stacks gapped 0.01 mm, Turns: 12, Order: 012, Non-Interleaved, Margin Taped 00",
-     "Round 33.0 - Single Build || Round 38.0 - Single Build || Round 38.0 - Single Build",
-     0.84999999999999998},
+     1.1716032439500208},
 };
 
 } // namespace

@@ -251,8 +251,14 @@ void check_top_n(const std::string& label,
 // Re-pinned 2026-10-12 (ABT #1467, approved by Alf): the magnetizing current is Faraday on the winding
 // voltage and the sampler closes the period. Same single core; score 4.7223288293487959 ->
 // 4.7177218949119135 (-0.098 %). Compared with kRelTolAvailablePower (0.5 %), names exactly.
+// Re-pinned 2026-11-01 (ABT #1582, approved by Alf): a core uses its own catalogue former. Top-1 was PQ 20/20 3C97
+// (4.7177); now 4 cores, EP 20 3C91 first (4.9435), PQ 20/20 3C97 fourth (3.6317). The 4 cores and the EP 20 3C91 head
+// are there without the former rule too (4.7405, PQ 20/20 3C97 second at 4.7358); the rule gives this order and scores.
 const std::vector<TopEntry> kTopAvailablePower = {
-    {"PQ 20/20 - 3C97 - Gapped 0.477 mm",          4.7177218949119135},
+    {"EP 20 - 3C91 - Gapped 0.605 mm",             4.943470355219393},
+    {"EP 20 - 3C96 - Gapped 0.598 mm",             4.2926866290278287},
+    {"EP 20 - 3F3 - Gapped 0.587 mm",              3.9045732982307388},
+    {"PQ 20/20 - 3C97 - Gapped 0.477 mm",          3.6316751164323198},
 };
 
 // STANDARD_CORES x POWER: top-5 unique standard-shape ferrite candidates.

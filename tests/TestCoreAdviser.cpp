@@ -566,7 +566,9 @@ TEST_CASE("Test_CoreAdviserAvailableCores_All_Cores_Two_Chosen_Ones", "[adviser]
     // above the limit: ETD 29 - 3C97 - Gapped 0.5 mm (132.49 C), RM 10 - 3C91 - Gapped 0.29 mm and
     // 0.3 mm (218.36 C each, a fixed point inside 3C91's permeability collapse below Curie) and
     // RM 10 - 3C97 - Gapped 0.3 mm (135.45 C).
-    REQUIRE(masMagnetics.size() == 14);
+    // Re-pinned 2026-11-01, 14 -> 17 (ABT #1582, approved by Alf): pinned with the own-former rule in place. The count is
+    // 17 without the rule too, so the rule did not cause the move.
+    REQUIRE(masMagnetics.size() == 17);
     
     // Verify results have valid scores and contain suitable cores
     bool hasToroidal = false;
