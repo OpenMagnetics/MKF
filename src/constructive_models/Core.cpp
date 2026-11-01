@@ -1665,6 +1665,12 @@ CoreMaterial Core::resolve_material(CoreMaterialDataOrNameUnion coreMaterial) {
             CoreMaterial coreMaterial;
             coreMaterial.set_name("Dummy");
             coreMaterial.set_material(MAS::MaterialType::FERRITE);
+            // `type` is a required enum that quicktype leaves uninitialised, and this record is
+            // written back into the core and serialised: left unset it held whatever was on the
+            // stack, and to_json threw "Unexpected value in enumeration" for every core built on
+            // the placeholder (the web's shapes table came back empty). The placeholder is not a
+            // catalogue material, so it is CUSTOM.
+            coreMaterial.set_type(MAS::CoreMaterialType::CUSTOM);
             // The Dummy placeholder must survive saturation checks during
             // adviser exploration before a real material is assigned, so give
             // it the documented default-ferrite saturation (it is synthetic by
