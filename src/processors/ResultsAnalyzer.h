@@ -135,6 +135,8 @@ struct SaturationVerdict {
     double temperature;
     double margin;
     std::string message;
+    // When it saturates: the message up to the remedy, for a caller that knows a different remedy applies.
+    std::string messageWithoutRemedy;
 };
 
 class ResultsAnalyzer {

@@ -689,6 +689,7 @@ std::pair<bool, double> MagneticFilterLosses::evaluate_magnetic(Magnetic* magnet
         // The solve's numbers (simulate's) are not touched; this is the filter's verdict.
         auto lossesBeforeHold = _magneticSimulator.get_last_losses_before_hold();
         _lossesBeforeHold.push_back(lossesBeforeHold);
+        std::string saturationContext;
         if (!saturation.saturates && lossesBeforeHold) {
             const auto& beforeHold = lossesBeforeHold.value();
             if (!beforeHold.coreLosses.get_magnetic_flux_density()) {
@@ -700,11 +701,27 @@ std::pair<bool, double> MagneticFilterLosses::evaluate_magnetic(Magnetic* magnet
                 beforeHold.coreLosses.get_temperature(), 1.0, beforeHold.dcBiasPoint);
             if (saturationBeforeHold.saturates) {
                 saturation = saturationBeforeHold;
-                saturation.message = "before its core was held at its material's data limit (" +
-                                     format_significant(beforeHold.heldAt.temperature) + " C): " + saturationBeforeHold.message;
+                saturationContext = "before its core was held at its material's data limit (" +
+                                    format_significant(beforeHold.heldAt.temperature) + " C): ";
             }
         }
         if (saturation.saturates) {
+            // Alf, 2026-11-01: a core that saturates only because its B_sat fell with the heat says so: more turns or
+            // gap are not the remedy for it. It is told by its B peak against B_sat at ambient, and only when B against
+            // B_sat is the criterion that fired: the others do not read B_sat.
+            const double ambientTemperature = operatingPoint.get_conditions().get_ambient_temperature();
+            const double ambientSaturationFluxDensity = Core::get_magnetic_flux_density_saturation(
+                magnetic->get_mutable_core().resolve_material(), ambientTemperature, false);
+            const bool saturatesOnlyFromHeat =
+                saturation.fluxDensityAboveSaturation && !saturation.permeabilityCollapsed && !saturation.fieldStrengthAboveSaturation &&
+                !saturation.noDcOperatingPoint && saturation.peakFluxDensity <= ambientSaturationFluxDensity;
+            if (saturatesOnlyFromHeat) {
+                saturation.message = saturation.messageWithoutRemedy + " It saturates at that temperature only: its B peak is within the " +
+                    format_quantity(ambientSaturationFluxDensity, "T") + " B_sat of its material at the " +
+                    format_significant(ambientTemperature) + " C ambient. The remedy is reducing its losses or improving its " +
+                    "cooling, not more turns or gap.";
+            }
+            saturation.message = saturationContext + saturation.message;
             _saturationRejection = saturation.message;
             if (outputs != nullptr) {
                 while (outputs->size() < operatingPointIndex + 1) {

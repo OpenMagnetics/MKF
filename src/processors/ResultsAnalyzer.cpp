@@ -247,6 +247,7 @@ SaturationVerdict ResultsAnalyzer::check_saturation(const CoreMaterial& coreMate
                 message << ": the DC bias, not the flux density, saturates the core.";
             }
         }
+        verdict.messageWithoutRemedy = message.str();
         message << " The results of this operating point are those of a saturated core. Add turns, add or widen the gap, choose a"
                 << " larger core, or lower the volt-seconds";
     }
