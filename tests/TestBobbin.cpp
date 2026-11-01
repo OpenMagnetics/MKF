@@ -174,8 +174,11 @@ TEST_CASE("Get_Winding_Window_Dimensions_Medium", "[constructive-model][bobbin][
 TEST_CASE("Get_Winding_Window_Dimensions_Too_Small", "[constructive-model][bobbin][smoke-test]") {
     auto windingWindowDimensions = OpenMagnetics::Bobbin::get_winding_window_dimensions(0.001, 0.002);
 
-    double expectedWidthValue = 0.0005;
-    double expectedHeightValue = 0.0011;
+    // ABT #1582, re-pinned with Alf's approval (2026-10-31) to what the fits give since MAS c201a3b's 18 bobbins:
+    // 0.669 mm x 1.448 mm inside a 1 mm x 2 mm core window (0.5 mm x 1.1 mm dated from the 2023-24 catalogue).
+    // Averaging tied formers (Bobbin::merge_tied_samples) does not move these.
+    double expectedWidthValue = 0.000669;
+    double expectedHeightValue = 0.001448;
     double width = windingWindowDimensions[0];
     double height = windingWindowDimensions[1];
 
