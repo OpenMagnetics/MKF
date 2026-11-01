@@ -143,6 +143,8 @@ class CoilAdviser : public WireAdviser {
         std::string _diagnosisRealWindingRefusal;  // the first such refusal, as the real winder named it
         size_t _diagnosisInsulationOutsideWindow = 0;  // wound coils whose insulation escapes the window (ABT #838)
         std::string _diagnosisInsulationOutsideWindowReason;  // the first such escape
+        size_t _diagnosisTemperatureRejections = 0;  // wound coils the temperature gate rejected (ABT #1394)
+        std::string _diagnosisTemperatureRejection;  // the first such rejection
         std::optional<std::string> _lastNoResultsReason;
 
     public:
@@ -164,6 +166,15 @@ class CoilAdviser : public WireAdviser {
         // them); the text it returns is that coil's refusal, counted with the others.
         std::vector<Mas> select_real_windable(std::vector<Mas> rankedMases, size_t maximumNumberResults,
                                               const std::function<std::optional<std::string>(Mas&)>& finalWind = {});
+
+        // ABT #1394: the temperature gate the core and magnetic advisers apply, on the wound coils. Each coil of
+        // `scoredMases` is solved by MagneticFilterLosses (losses and hot spot from one loss <-> temperature solve
+        // per operating point) and held by MagneticFilterTemperature to resolve_maximum_design_temperature: a coil
+        // hotter than the limit, one with no thermal operating point, one whose core saturates, and one whose losses
+        // cannot be evaluated at all (e.g. the material's loss fit does not cover the frequency: it has no temperature
+        // the limit could accept) are rejected, each logged with its reason and counted in the no-results diagnosis.
+        // The order of the kept coils is unchanged. Applied to the valid coils and to the INVALID fallback alike.
+        std::vector<std::pair<Mas, double>> reject_coils_above_temperature_limit(std::vector<std::pair<Mas, double>> scoredMases);
 
         /**
          * @brief The wires get_advised_coil(mas) advises from: the catalogue (or the active

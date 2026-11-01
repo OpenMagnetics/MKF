@@ -667,8 +667,11 @@ std::pair<bool, double> MagneticFilterLosses::evaluate_magnetic(Magnetic* magnet
         // temperature their combined heat produces (previously the winding losses were computed
         // here at ambient, beside core losses solved at the hot core: an inconsistent pair, and
         // the winding losses computed twice).
+        // The hot spot that solve found is published with the losses, as the core adviser's loss step does (ABT
+        // #1802), so a caller holds the part to a temperature limit without solving it again (CoilAdviser, ABT #1394).
         std::optional<WindingLossesOutput> solvedWindingLosses;
-        auto coreLosses = _magneticSimulator.calculate_core_losses(operatingPoint, *magnetic, &solvedWindingLosses, nullptr,
+        std::optional<TemperatureOutput> solvedTemperature;
+        auto coreLosses = _magneticSimulator.calculate_core_losses(operatingPoint, *magnetic, &solvedWindingLosses, &solvedTemperature,
                                                                    WindingLossesScope::FULL, NoThermalOperatingPointPolicy::THROW);
         // A core that saturates at the temperature its losses heat it to is not a candidate: the loss solve
         // gives its numbers (ABT #1855) and the verdict is the saturation check analyze_results makes, on the
@@ -684,6 +687,7 @@ std::pair<bool, double> MagneticFilterLosses::evaluate_magnetic(Magnetic* magnet
                 }
                 (*outputs)[operatingPointIndex].set_core_losses(coreLosses);
                 (*outputs)[operatingPointIndex].set_winding_losses(solvedWindingLosses.value());
+                (*outputs)[operatingPointIndex].set_temperature(solvedTemperature);
             }
             logEntry(std::string("Losses filter: rejecting candidate: ") + saturation.message, "MagneticFilter", 2);
             return {false, 0.0};
@@ -699,6 +703,7 @@ std::pair<bool, double> MagneticFilterLosses::evaluate_magnetic(Magnetic* magnet
             }
             (*outputs)[operatingPointIndex].set_core_losses(coreLosses);
             (*outputs)[operatingPointIndex].set_winding_losses(windingLosses);
+            (*outputs)[operatingPointIndex].set_temperature(solvedTemperature);
         }
     }
 

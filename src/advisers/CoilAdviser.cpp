@@ -2,6 +2,7 @@
 #include "support/StableSortByIndex.h"
 #include "processors/Inputs.h"
 #include "advisers/CoilAdviser.h"
+#include "advisers/CoreAdviser.h"
 #include "advisers/MagneticFilter.h"
 #include "processors/ResultsAnalyzer.h"
 #include "support/LibraryContext.h"
@@ -68,6 +69,70 @@ std::string describe_operating_frequencies(const OpenMagnetics::Inputs& inputs) 
                        OpenMagnetics::format_quantity(operatingPoint.get_excitations_per_winding()[0].get_frequency(), "Hz");
     }
     return description;
+}
+
+// What MKF's MagneticFilterLosses says of one wound coil, from ONE loss <-> temperature solve per operating point:
+// - EVALUATED: its losses (the ranking key) and, in `outputs`, each point's solved losses and hot spot.
+// - SATURATES: its core saturates at the temperature its losses heat it to, or one of its points lies past the end
+//   of the material's magnetisation curve and above B_sat (ABT #838, #1740, #2052): a verdict on the coil.
+// - NO_THERMAL_OPERATING_POINT: a point has no thermal operating point (ABT #1876, #1942): its losses cannot be
+//   ranked, and it has no temperature a temperature limit could accept.
+// - NOT_EVALUABLE: its losses cannot be evaluated at all (the material's loss fit does not cover the frequency, an
+//   invalid result, windings that do not match the excitations). Nothing is invented for it.
+// `reason` says why for every kind but EVALUATED. Any other error propagates.
+struct WoundCoilLosses {
+    enum class Kind { EVALUATED, SATURATES, NO_THERMAL_OPERATING_POINT, NOT_EVALUABLE };
+    Kind kind;
+    double losses = 0;
+    std::string reason;
+};
+
+WoundCoilLosses evaluate_wound_coil_losses(OpenMagnetics::MagneticFilterLosses& lossesFilter, OpenMagnetics::Mas& woundMas,
+                                           std::vector<OpenMagnetics::Outputs>& outputs) {
+    using Kind = WoundCoilLosses::Kind;
+    try {
+        auto [valid, losses] = lossesFilter.evaluate_magnetic(&woundMas.get_mutable_magnetic(), &woundMas.get_mutable_inputs(), &outputs);
+        if (valid) {
+            return {Kind::EVALUATED, losses, ""};
+        }
+        std::vector<OpenMagnetics::ResultFinding> saturationFindings;
+        const auto& operatingPoints = woundMas.get_inputs().get_operating_points();
+        for (size_t operatingPointIndex = 0; operatingPointIndex < outputs.size() && operatingPointIndex < operatingPoints.size(); ++operatingPointIndex) {
+            if (!outputs[operatingPointIndex].get_core_losses()) {
+                continue;
+            }
+            for (auto& finding : OpenMagnetics::ResultsAnalyzer::analyze_saturation(woundMas.get_magnetic(), operatingPoints[operatingPointIndex],
+                                                                                     outputs[operatingPointIndex], operatingPointIndex,
+                                                                                     woundMas.get_inputs().get_design_requirements().get_topology())) {
+                saturationFindings.push_back(finding);
+            }
+        }
+        if (!saturationFindings.empty()) {
+            return {Kind::SATURATES, 0, "its core saturates at the temperature its losses heat it to: " + saturationFindings.front().message};
+        }
+        return {Kind::NOT_EVALUABLE, 0, "MagneticFilterLosses refused the coil (its windings do not match the operating point's excitations)"};
+    }
+    catch (const OpenMagnetics::MaterialFrequencyOutOfSpanException& exception) {
+        return {Kind::NOT_EVALUABLE, 0, exception.what()};
+    }
+    catch (const OpenMagnetics::NoThermalOperatingPointException& exception) {
+        // Whatever its code (a network that does not converge, a winding that runs away, a curve that cannot carry
+        // the flux at the temperature its losses reach), this coil's losses cannot be ranked; the other coils still can.
+        return {Kind::NO_THERMAL_OPERATING_POINT, 0, exception.what()};
+    }
+    catch (const OpenMagnetics::CalculationException& exception) {
+        if (exception.code() == OpenMagnetics::ErrorCode::CALCULATION_CORE_SATURATES) {
+            // ABT #2052: the flux density of one of its points lies past the end of the material's magnetisation
+            // curve and above B_sat (a SaturationException from the magnetizing model, e.g. more volt-seconds than
+            // the core carries): a verdict on this coil, which is rejected, not on the advise.
+            return {Kind::SATURATES, 0, std::string("its core saturates: ") + exception.what()};
+        }
+        if (exception.code() != OpenMagnetics::ErrorCode::CALCULATION_INVALID_RESULT &&
+            exception.code() != OpenMagnetics::ErrorCode::MATERIAL_FREQUENCY_OUT_OF_SPAN) {
+            throw;
+        }
+        return {Kind::NOT_EVALUABLE, 0, exception.what()};
+    }
 }
 }  // namespace
 
@@ -509,6 +574,9 @@ namespace OpenMagnetics {
 
     std::vector<Mas> CoilAdviser::get_advised_coil(std::vector<Wire>* wires, Mas mas, size_t maximumNumberResults){
         logEntry("Starting Coil Adviser", "CoilAdviser", 3);
+        // Exact repeats of a loss solve (the per-pattern loss ranking, then the temperature gate, ABT #1394, on the
+        // same wound coil) are answered from this call's memo.
+        LossSolveMemoScope lossSolveMemoScope;
         // ABT #415: fresh diagnosis per call; composed into _lastNoResultsReason on an empty return.
         _diagnosisWireCandidates = 0;
         _diagnosisWindAttempts = 0;
@@ -521,6 +589,8 @@ namespace OpenMagnetics {
         _diagnosisRealWindingRefusal.clear();
         _diagnosisInsulationOutsideWindow = 0;
         _diagnosisInsulationOutsideWindowReason.clear();
+        _diagnosisTemperatureRejections = 0;
+        _diagnosisTemperatureRejection.clear();
         _wireAdviser.reset_real_winding_packing_diagnosis();
         _lastNoResultsReason = std::nullopt;
         auto core = mas.get_magnetic().get_core();
@@ -839,6 +909,12 @@ namespace OpenMagnetics {
             return b1.second > b2.second;
         });
 
+        // ABT #1394: a valid coil is one that also stays under the temperature limit, as in the core and magnetic
+        // advisers. Without this gate a coil running at 640 C (437 W in its litz primary) was a top pick.
+        if (settings.get_core_adviser_enable_temperature_filter()) {
+            masMagneticsWithScoring = reject_coils_above_temperature_limit(std::move(masMagneticsWithScoring));
+        }
+
         std::vector<Mas> masesWithoutScoring;
         for (auto [mas, scoring] : masMagneticsWithScoring) {
             masesWithoutScoring.push_back(mas);
@@ -853,6 +929,11 @@ namespace OpenMagnetics {
             stable_sort_by_index(invalidMagneticsWithScoring, [](const std::pair<Mas, double>& b1, const std::pair<Mas, double>& b2) {
                 return b1.second > b2.second;
             });
+            // ABT #1394: a design marked INVALID still has to stay under the temperature limit to be returned; one
+            // hotter than it is not a design to fall back to.
+            if (settings.get_core_adviser_enable_temperature_filter()) {
+                invalidMagneticsWithScoring = reject_coils_above_temperature_limit(std::move(invalidMagneticsWithScoring));
+            }
             size_t numToReturn = std::min(invalidMagneticsWithScoring.size(), maximumNumberResults);
             for (size_t i = 0; i < numToReturn; ++i) {
                 auto mas = invalidMagneticsWithScoring[i].first;
@@ -924,6 +1005,10 @@ namespace OpenMagnetics {
                     reason += "; " + std::to_string(_diagnosisRealWindingRefusals)
                         + " candidates were refused by the real winder, e.g. "
                         + _diagnosisRealWindingRefusal;
+                }
+                if (_diagnosisTemperatureRejections > 0) {
+                    reason += "; " + std::to_string(_diagnosisTemperatureRejections)
+                        + " wound candidates were rejected by the temperature limit, e.g. " + _diagnosisTemperatureRejection;
                 }
                 if (_diagnosisInsulationOutsideWindow > 0) {
                     reason += "; " + std::to_string(_diagnosisInsulationOutsideWindow)
@@ -1525,55 +1610,16 @@ namespace OpenMagnetics {
             std::string reason;
         };
         auto evaluate_ranking_losses = [&](Mas& woundMas) -> RankingLosses {
-            std::string reason;
-            try {
-                std::vector<Outputs> lossesOutputs;
-                auto [valid, losses] = lossesFilter.evaluate_magnetic(&woundMas.get_mutable_magnetic(), &woundMas.get_mutable_inputs(), &lossesOutputs);
-                if (valid) {
-                    return {RankingLosses::Kind::RANKED, losses, ""};
-                }
-                std::vector<ResultFinding> saturationFindings;
-                const auto& operatingPoints = woundMas.get_inputs().get_operating_points();
-                for (size_t operatingPointIndex = 0; operatingPointIndex < lossesOutputs.size() && operatingPointIndex < operatingPoints.size(); ++operatingPointIndex) {
-                    if (!lossesOutputs[operatingPointIndex].get_core_losses()) {
-                        continue;
-                    }
-                    for (auto& finding : ResultsAnalyzer::analyze_saturation(woundMas.get_magnetic(), operatingPoints[operatingPointIndex],
-                                                                             lossesOutputs[operatingPointIndex], operatingPointIndex,
-                                                                             woundMas.get_inputs().get_design_requirements().get_topology())) {
-                        saturationFindings.push_back(finding);
-                    }
-                }
-                if (!saturationFindings.empty()) {
-                    return {RankingLosses::Kind::REJECTED, 0, "its core saturates at the temperature its losses heat it to: " +
-                                                                  saturationFindings.front().message};
-                }
-                reason = "MagneticFilterLosses refused the coil (its windings do not match the operating point's excitations)";
+            // The same evaluation the temperature gate (ABT #1394) makes, from one shared helper.
+            std::vector<Outputs> lossesOutputs;
+            auto evaluation = evaluate_wound_coil_losses(lossesFilter, woundMas, lossesOutputs);
+            if (evaluation.kind == WoundCoilLosses::Kind::EVALUATED) {
+                return {RankingLosses::Kind::RANKED, evaluation.losses, ""};
             }
-            catch (const MaterialFrequencyOutOfSpanException& exception) {
-                reason = exception.what();
+            if (evaluation.kind == WoundCoilLosses::Kind::SATURATES) {
+                return {RankingLosses::Kind::REJECTED, 0, evaluation.reason};
             }
-            catch (const NoThermalOperatingPointException& exception) {
-                // The point has no thermal operating point (ABT #1876, #1942): whatever its code (a network that does
-                // not converge, a winding that runs away, a curve that cannot carry the flux at the temperature its
-                // losses reach), this coil's losses cannot be ranked; the other coils still can.
-                reason = exception.what();
-            }
-            catch (const CalculationException& exception) {
-                if (exception.code() == ErrorCode::CALCULATION_CORE_SATURATES) {
-                    // ABT #2052: the flux density of one of its points lies past the end of the material's
-                    // magnetisation curve and above B_sat (a SaturationException from the magnetizing model, e.g. more
-                    // volt-seconds than the core carries): a verdict on this coil, which is rejected, not on the
-                    // advise.
-                    return {RankingLosses::Kind::REJECTED, 0, std::string("its core saturates: ") + exception.what()};
-                }
-                if (exception.code() != ErrorCode::CALCULATION_INVALID_RESULT &&
-                    exception.code() != ErrorCode::MATERIAL_FREQUENCY_OUT_OF_SPAN) {
-                    throw;
-                }
-                reason = exception.what();
-            }
-            return {RankingLosses::Kind::UNRANKED, 0, reason};
+            return {RankingLosses::Kind::UNRANKED, 0, evaluation.reason};
         };
         auto describe_wound_coil = [](Mas& woundMas) {
             return "Wound coil '" + woundMas.get_mutable_magnetic().get_reference() + "' (material " +
@@ -1945,6 +1991,47 @@ namespace OpenMagnetics {
         logEntry("Managed to wind " + std::to_string(acceptedCoils.size()) + " coils", "CoilAdviser", 3);
 
         return acceptedCoils;
+    }
+
+    std::vector<std::pair<Mas, double>> CoilAdviser::reject_coils_above_temperature_limit(std::vector<std::pair<Mas, double>> scoredMases) {
+        MagneticFilterLosses lossesFilter;
+        std::vector<std::pair<Mas, double>> kept;
+        for (auto& [scoredMas, scoring] : scoredMases) {
+            const std::string coilDescription = "Wound coil '" + scoredMas.get_mutable_magnetic().get_reference() + "' (material " +
+                scoredMas.get_mutable_magnetic().get_mutable_core().resolve_material().get_name() + ", " +
+                describe_operating_frequencies(scoredMas.get_inputs()) + ")";
+            std::vector<Outputs> lossesOutputs;
+            auto evaluation = evaluate_wound_coil_losses(lossesFilter, scoredMas, lossesOutputs);
+            std::string rejection;
+            if (evaluation.kind == WoundCoilLosses::Kind::EVALUATED) {
+                const double maximumTemperature = resolve_maximum_design_temperature(scoredMas.get_mutable_inputs());
+                MagneticFilterTemperature temperatureFilter(scoredMas.get_inputs(), maximumTemperature);
+                auto [withinLimit, hotSpot] = temperatureFilter.evaluate_solved_outputs(lossesOutputs);
+                if (withinLimit) {
+                    kept.push_back({std::move(scoredMas), scoring});
+                    continue;
+                }
+                rejection = "its hot spot reaches " + format_significant(hotSpot) + " C" + " with " +
+                            format_quantity(evaluation.losses, "W") + " of losses, above the " +
+                            format_significant(maximumTemperature) + " C limit";
+            }
+            else if (evaluation.kind == WoundCoilLosses::Kind::NOT_EVALUABLE) {
+                // Alf, 2026-10-31: a coil whose losses cannot be evaluated has no temperature the limit could accept,
+                // so the gate rejects it, with the reason, rather than passing it unjudged.
+                rejection = "its losses cannot be evaluated, so its temperature cannot be held to the limit: " + evaluation.reason;
+            }
+            else if (evaluation.kind == WoundCoilLosses::Kind::NO_THERMAL_OPERATING_POINT) {
+                rejection = "it has no thermal operating point under the temperature limit: " + evaluation.reason;
+            }
+            else {
+                rejection = evaluation.reason;
+            }
+            logEntry(coilDescription + " rejected: " + rejection, "CoilAdviser", 2);
+            if (_diagnosisTemperatureRejections++ == 0) {
+                _diagnosisTemperatureRejection = coilDescription + ": " + rejection;
+            }
+        }
+        return kept;
     }
 
     std::vector<Mas> CoilAdviser::select_real_windable(std::vector<Mas> rankedMases, size_t maximumNumberResults,

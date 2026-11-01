@@ -10,6 +10,7 @@
 #include "processors/MagneticSimulator.h"
 #include "processors/ResultsAnalyzer.h"
 #include "physical_models/MagnetizingInductance.h"
+#include "physical_models/CoreLosses.h"
 #include "support/Exceptions.h"
 #include "physical_models/StrayCapacitance.h"
 #include <magic_enum.hpp>
@@ -4028,5 +4029,47 @@ TEST_CASE("Test_CoilAdviser_Rejects_A_Coil_Whose_Core_Saturates_Past_Its_Curve_I
     CHECK(log.find("ABT #") == std::string::npos);
     // Not asserted: with every ranked coil rejected, the advise searches again beyond the wire limits; that search
     // winds too few coils to rank, so they are not loss-evaluated and are returned as wound, saturating or not.
+    settings.reset();
+}
+
+TEST_CASE("Test_CoilAdviser_Temperature_Gate_Rejects_A_Coil_Whose_Losses_Cannot_Be_Evaluated",
+          "[adviser][coil-adviser][bug][abt-1394]") {
+    // ABT #1394 (Alf, 2026-10-31): the temperature gate holds every wound coil to the temperature limit. A coil whose
+    // losses cannot be evaluated has no temperature the limit could accept, so the gate rejects it and says why; it
+    // is not passed on unjudged. Here: TP5H, whose Steinmetz fit covers 1-5 MHz only, at 100 kHz with material-data
+    // extrapolation off, so its core losses are refused (MaterialFrequencyOutOfSpanException).
+    settings.reset();
+    clear_databases();
+    settings.set_allow_material_data_extrapolation(false);
+    settings.set_core_adviser_enable_temperature_filter(true);
+    auto [tp5hMinimum, tp5hMaximum] = CoreLossesModel::get_steinmetz_fitted_span("TP5H");
+    REQUIRE(tp5hMinimum > 100000);
+
+    auto gapping = OpenMagneticsTesting::get_ground_gap(0.001);
+    auto magnetic = OpenMagneticsTesting::get_quick_magnetic("ETD 49", gapping, {20}, 1, "TP5H");
+    magnetic.get_mutable_coil().wind();
+    REQUIRE(magnetic.get_coil().get_turns_description());
+    auto inputs = OpenMagnetics::Inputs::create_quick_operating_point_only_current(100000, 100e-6, 25, WaveformLabel::SINUSOIDAL, 1, 0.5, 0);
+    inputs.process();
+    OpenMagnetics::Mas mas;
+    mas.set_inputs(inputs);
+    mas.set_magnetic(magnetic);
+
+    Logger::getInstance().disableCollector();
+    Logger::getInstance().enableCollector(LogLevel::DEBUG);
+    CoilAdviser coilAdviser;
+    auto kept = coilAdviser.reject_coils_above_temperature_limit({{mas, 1.0}});
+    std::string log;
+    for (const auto& record : Logger::getInstance().drainCollected()) {
+        log += record.message + "\n";
+    }
+    Logger::getInstance().disableCollector();
+    INFO(log);
+    CHECK(kept.empty());
+    CHECK(log.find("(material TP5H, ") != std::string::npos);
+    CHECK(log.find(") rejected: its losses cannot be evaluated") != std::string::npos);
+    CHECK(log.find("TP5H") != std::string::npos);
+    CHECK(log.find("kept without a temperature verdict") == std::string::npos);
+    CHECK(log.find("ABT #") == std::string::npos);
     settings.reset();
 }
