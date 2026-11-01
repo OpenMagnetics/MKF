@@ -16,6 +16,7 @@
 #include "physical_models/WindingProximityEffectLosses.h"
 #include "physical_models/WindingSkinEffectLosses.h"
 #include "support/Exceptions.h"
+#include "support/NumberFormat.h"
 #include "support/Utils.h"
 
 #include <algorithm>
@@ -655,6 +656,8 @@ MagneticFilterLosses::MagneticFilterLosses(std::map<std::string, std::string> mo
 
 std::pair<bool, double> MagneticFilterLosses::evaluate_magnetic(Magnetic* magnetic, Inputs* inputs, std::vector<Outputs>* outputs) {
     double scoring = 0;
+    _lossesBeforeHold.clear();
+    _saturationRejection.reset();
     _magneticSimulator.set_topology(magnetizing_model_topology(*inputs));
 
     if (inputs->get_operating_points().size() > 0 && magnetic->get_mutable_coil().get_functional_description().size() != inputs->get_operating_points()[0].get_excitations_per_winding().size()) {
@@ -680,7 +683,29 @@ std::pair<bool, double> MagneticFilterLosses::evaluate_magnetic(Magnetic* magnet
         auto saturation = ResultsAnalyzer::check_saturation(magnetic->get_mutable_core().resolve_material(),
             ResultsAnalyzer::get_peak_flux_density(coreLosses.get_magnetic_flux_density().value()), coreLosses.get_temperature(),
             1.0, _magneticSimulator.get_last_dc_bias_point());
+        // Alf, 2026-11-01: a core the solve held at its material's data limit is judged for saturation on the last
+        // iterate before the hold, its flux density at that temperature, as its material describes it: held at its
+        // Curie point it is magnetized as paramagnetic, which has no knee to saturate, and says nothing of the core.
+        // The solve's numbers (simulate's) are not touched; this is the filter's verdict.
+        auto lossesBeforeHold = _magneticSimulator.get_last_losses_before_hold();
+        _lossesBeforeHold.push_back(lossesBeforeHold);
+        if (!saturation.saturates && lossesBeforeHold) {
+            const auto& beforeHold = lossesBeforeHold.value();
+            if (!beforeHold.coreLosses.get_magnetic_flux_density()) {
+                throw CalculationException(ErrorCode::CALCULATION_INVALID_RESULT,
+                    "Losses filter: the loss solve's iterate before the core was held at its data limit has no flux density");
+            }
+            auto saturationBeforeHold = ResultsAnalyzer::check_saturation(magnetic->get_mutable_core().resolve_material(),
+                ResultsAnalyzer::get_peak_flux_density(beforeHold.coreLosses.get_magnetic_flux_density().value()),
+                beforeHold.coreLosses.get_temperature(), 1.0, beforeHold.dcBiasPoint);
+            if (saturationBeforeHold.saturates) {
+                saturation = saturationBeforeHold;
+                saturation.message = "before its core was held at its material's data limit (" +
+                                     format_significant(beforeHold.heldAt.temperature) + " C): " + saturationBeforeHold.message;
+            }
+        }
         if (saturation.saturates) {
+            _saturationRejection = saturation.message;
             if (outputs != nullptr) {
                 while (outputs->size() < operatingPointIndex + 1) {
                     outputs->push_back(Outputs());

@@ -376,6 +376,14 @@ class MagneticFilterLosses : public MagneticFilterCoreLossesBased {
         MagneticFilterLosses() {};
         MagneticFilterLosses(std::map<std::string, std::string> models);
         std::pair<bool, double> evaluate_magnetic(Magnetic* magnetic, Inputs* inputs, std::vector<Outputs>* outputs = nullptr);
+        // Per operating point of the last evaluate_magnetic (up to the one it stopped at): the iterate before its core
+        // was held at its material's data limit, empty for a point whose core was not held (Alf, 2026-11-01).
+        const std::vector<std::optional<LossesBeforeHold>>& get_last_losses_before_hold() const { return _lossesBeforeHold; }
+        // Why the last evaluate_magnetic rejected the magnetic for saturation, if it did.
+        const std::optional<std::string>& get_last_saturation_rejection() const { return _saturationRejection; }
+    private:
+        std::vector<std::optional<LossesBeforeHold>> _lossesBeforeHold;
+        std::optional<std::string> _saturationRejection;
 };
 
 class MagneticFilterLossesNoProximity : public MagneticFilterCoreLossesBased {

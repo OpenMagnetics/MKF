@@ -31,6 +31,31 @@ enum class WindingLossesScope {
 // throws is not stored. Scopes nest: an inner scope uses the outer scope's memo. The advisers open
 // one per run; the memo is freed when the outermost scope ends.
 // One converged loss <-> temperature solve: what calculate_core_losses returns and writes.
+// ABT #838 / #1855 / #1908: the highest temperature up to which every temperature-dependent material
+// datum the loss <-> temperature solve evaluates the core with still answers, and which datum ends there.
+// The solve keeps the core below it, and holds it there when the losses drive it to it.
+enum class CoreDataCeilingSource {
+    CURIE_TEMPERATURE,                  // the material's Curie temperature: above it the core is paramagnetic
+    PERMEABILITY_TABLE_END,             // the last point of a mu_i(T) table that ends below Curie (ABT #1739)
+    STEINMETZ_TEMPERATURE_FACTOR_END    // where an evaluated Steinmetz range's ct(T) stops being positive
+};
+struct CoreDataCeiling {
+    double temperature;
+    CoreDataCeilingSource source;
+};
+
+// The loss <-> temperature solve's last iterate with the core still as its own material describes it, just before the
+// core was held at its material's data limit (Alf, 2026-11-01): the losses that drove it there, its flux density and
+// DC point at that temperature. Held at its Curie point the core is magnetized as paramagnetic and loses almost
+// nothing, so the held state says neither why it got so hot nor whether it saturates; this iterate does.
+struct LossesBeforeHold {
+    CoreLossesOutput coreLosses;                       // with its flux density and the core temperature they were evaluated at
+    std::optional<WindingLossesOutput> windingLosses;
+    double windingTemperature;
+    std::optional<DcBiasPoint> dcBiasPoint;
+    CoreDataCeiling heldAt;                            // the limit the core was then held at
+};
+
 struct SolvedLosses {
     CoreLossesOutput coreLosses;
     OperatingPointExcitation excitation;
@@ -44,6 +69,8 @@ struct SolvedLosses {
     // How many points the search for the loss loop's lowest stable fixed point evaluated (ABT #1840), each one
     // the losses and the thermal network at one temperature; 0 when the loop never reached the data ceiling.
     size_t lowestFixedPointSearchEvaluations = 0;
+    // Set when the core was held at its material's data limit: the iterate before the hold (LossesBeforeHold).
+    std::optional<LossesBeforeHold> lossesBeforeHold;
 };
 
 // ABT #2124 (Alf, 2026-10-28): in the catalogue search the LOSSES_NO_PROXIMITY filter computes the losses at
@@ -104,18 +131,6 @@ enum class NoThermalOperatingPointPolicy {
     THROW
 };
 
-// ABT #838 / #1855 / #1908: the highest temperature up to which every temperature-dependent material
-// datum the loss <-> temperature solve evaluates the core with still answers, and which datum ends there.
-// The solve keeps the core below it, and holds it there when the losses drive it to it.
-enum class CoreDataCeilingSource {
-    CURIE_TEMPERATURE,                  // the material's Curie temperature: above it the core is paramagnetic
-    PERMEABILITY_TABLE_END,             // the last point of a mu_i(T) table that ends below Curie (ABT #1739)
-    STEINMETZ_TEMPERATURE_FACTOR_END    // where an evaluated Steinmetz range's ct(T) stops being positive
-};
-struct CoreDataCeiling {
-    double temperature;
-    CoreDataCeilingSource source;
-};
 
 class LossSolveMemoScope {
     public:
@@ -138,6 +153,7 @@ class MagneticSimulator {
     private:
         std::optional<DcBiasPoint> _lastDcBiasPoint;
         size_t _lastLowestFixedPointSearchEvaluations = 0;
+        std::optional<LossesBeforeHold> _lastLossesBeforeHold;
         ReluctanceModels _reluctanceModelName;
 
         MagnetizingInductance _magnetizingInductanceModel;
@@ -288,6 +304,9 @@ class MagneticSimulator {
         std::optional<DcBiasPoint> get_last_dc_bias_point() const { return _lastDcBiasPoint; }
         // SolvedLosses::lowestFixedPointSearchEvaluations of the last calculate_core_losses' solve (ABT #1840).
         size_t get_last_lowest_fixed_point_search_evaluations() const { return _lastLowestFixedPointSearchEvaluations; }
+        // The last calculate_core_losses' iterate before its core was held at its material's data limit; empty when
+        // it was not held (or the point had no thermal operating point).
+        std::optional<LossesBeforeHold> get_last_losses_before_hold() const { return _lastLossesBeforeHold; }
         // How many loss solves ran on this thread with the loss <-> temperature loop (true) or in one pass (false):
         // a count for the tests (ABT #2124, the catalogue filters run one pass, its final simulations the loop).
         static size_t get_loss_solves(bool lossTemperatureLoop);

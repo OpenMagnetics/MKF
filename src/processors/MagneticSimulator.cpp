@@ -275,6 +275,7 @@ CoreLossesOutput MagneticSimulator::calculate_core_losses(OperatingPoint& operat
 
     _lastDcBiasPoint.reset();
     _lastLowestFixedPointSearchEvaluations = 0;
+    _lastLossesBeforeHold.reset();
     SolvedLosses solved;
     try {
         if (activeLossSolveMemo) {
@@ -321,6 +322,7 @@ CoreLossesOutput MagneticSimulator::calculate_core_losses(OperatingPoint& operat
     // Publish exactly the set that was solved.
     _lastDcBiasPoint = solved.dcBiasPoint;
     _lastLowestFixedPointSearchEvaluations = solved.lowestFixedPointSearchEvaluations;
+    _lastLossesBeforeHold = solved.lossesBeforeHold;
     operatingPoint.get_mutable_excitations_per_winding()[0] = solved.excitation;
     if (windingLossesOutput != nullptr) {
         *windingLossesOutput = solved.windingLosses;
@@ -497,6 +499,7 @@ SolvedLosses MagneticSimulator::solve_losses_at_operating_temperature(const Oper
     // is above it (mu_r = 1, paramagneticMagnetic); when it is the end of a mu_i(T) table that stops
     // below Curie, the core is still ferromagnetic there and keeps its last tabulated permeability.
     bool coreHeldAtCeiling = false;
+    std::optional<LossesBeforeHold> lossesBeforeHold;
     std::optional<Magnetic> paramagneticMagnetic;
     // The previous iterate of the winding-only loop (core held), for the runaway check below.
     struct HeldWindingIterate {
@@ -788,6 +791,7 @@ SolvedLosses MagneticSimulator::solve_losses_at_operating_temperature(const Oper
             solved.windingLosses = windingLosses;
             solved.dcBiasPoint = dcBiasPoint;
             solved.lowestFixedPointSearchEvaluations = lowestFixedPointSearchEvaluations;
+            solved.lossesBeforeHold = lossesBeforeHold;
             TemperatureOutput temperatureOutput;
             temperatureOutput.set_initial_temperature(config.ambientTemperature);
             // ABT #2078 (Alf, 2026-10-25): a core held at its data limit is at least as hot as the temperature it is
@@ -932,6 +936,8 @@ SolvedLosses MagneticSimulator::solve_losses_at_operating_temperature(const Oper
                                std::to_string(lowestFixedPointSearchEvaluations) + " evaluations;";
                 }
                 coreHeldAtCeiling = true;
+                // This iterate's losses were evaluated with the core still as its material describes it.
+                lossesBeforeHold = LossesBeforeHold{coreLossesOutput, windingLosses, windingTemperature, dcBiasPoint, dataCeiling.value()};
                 switch (dataCeiling->source) {
                     case CoreDataCeilingSource::CURIE_TEMPERATURE:
                         paramagneticMagnetic = make_paramagnetic_magnetic(magnetic);

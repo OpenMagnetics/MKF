@@ -110,6 +110,11 @@ WoundCoilLosses evaluate_wound_coil_losses(OpenMagnetics::MagneticFilterLosses& 
         if (!saturationFindings.empty()) {
             return {Kind::SATURATES, 0, "its core saturates at the temperature its losses heat it to: " + saturationFindings.front().message};
         }
+        if (lossesFilter.get_last_saturation_rejection()) {
+            // Alf, 2026-11-01: judged on the iterate before the core was held at its material's data limit, which the
+            // held outputs above do not show (MagneticFilterLosses::evaluate_magnetic).
+            return {Kind::SATURATES, 0, "its core saturates " + lossesFilter.get_last_saturation_rejection().value()};
+        }
         return {Kind::NOT_EVALUABLE, 0, "MagneticFilterLosses refused the coil (its windings do not match the operating point's excitations)"};
     }
     catch (const OpenMagnetics::MaterialFrequencyOutOfSpanException& exception) {
@@ -2018,9 +2023,45 @@ namespace OpenMagnetics {
                     kept.push_back({std::move(scoredMas), scoring});
                     continue;
                 }
-                rejection = "its hot spot reaches " + format_significant(hotSpot) + " C" + " with " +
-                            format_quantity(evaluation.losses, "W") + " of losses, above the " +
-                            format_significant(maximumTemperature) + " C limit";
+                // Alf, 2026-11-01: a core held at its material's data limit is reported as held, with the losses that
+                // drove it there (the iterate before the hold), not those of the held state (at its Curie point,
+                // paramagnetic, it loses almost nothing).
+                std::string heldDescription;
+                const auto& lossesBeforeHold = lossesFilter.get_last_losses_before_hold();
+                for (size_t operatingPointIndex = 0; operatingPointIndex < lossesBeforeHold.size(); ++operatingPointIndex) {
+                    if (!lossesBeforeHold[operatingPointIndex]) {
+                        continue;
+                    }
+                    const auto& beforeHold = lossesBeforeHold[operatingPointIndex].value();
+                    std::string limit;
+                    switch (beforeHold.heldAt.source) {
+                        case CoreDataCeilingSource::CURIE_TEMPERATURE: limit = "its Curie point"; break;
+                        case CoreDataCeilingSource::PERMEABILITY_TABLE_END: limit = "the end of its permeability data"; break;
+                        case CoreDataCeilingSource::STEINMETZ_TEMPERATURE_FACTOR_END: limit = "the end of its loss data"; break;
+                    }
+                    if (!beforeHold.windingLosses) {
+                        throw CalculationException(ErrorCode::CALCULATION_INVALID_RESULT,
+                            "Temperature gate: the iterate before the core was held at its data limit has no winding losses");
+                    }
+                    const double coreLossesBeforeHold = beforeHold.coreLosses.get_core_losses();
+                    const double windingLossesBeforeHold = beforeHold.windingLosses->get_winding_losses();
+                    heldDescription += std::string(heldDescription.empty() ? "" : "; ") + "in the " +
+                        describe_operating_point_for_people(scoredMas.get_inputs().get_operating_points()[operatingPointIndex], operatingPointIndex) +
+                        " its core is held at its material's data limit, " + limit + " (" +
+                        format_significant(beforeHold.heldAt.temperature) + " C); before the hold, with the core at " +
+                        format_significant(beforeHold.coreLosses.get_temperature()) + " C, its losses were " +
+                        format_quantity(coreLossesBeforeHold + windingLossesBeforeHold, "W") + " (core " +
+                        format_quantity(coreLossesBeforeHold, "W") + ", winding " + format_quantity(windingLossesBeforeHold, "W") + ")";
+                }
+                if (heldDescription.empty()) {
+                    rejection = "its hot spot reaches " + format_significant(hotSpot) + " C" + " with " +
+                                format_quantity(evaluation.losses, "W") + " of losses, above the " +
+                                format_significant(maximumTemperature) + " C limit";
+                }
+                else {
+                    rejection = "its hot spot reaches at least " + format_significant(hotSpot) + " C, above the " +
+                                format_significant(maximumTemperature) + " C limit: " + heldDescription;
+                }
             }
             else if (evaluation.kind == WoundCoilLosses::Kind::NOT_EVALUABLE) {
                 // Alf, 2026-10-31: a coil whose losses cannot be evaluated has no temperature the limit could accept,
