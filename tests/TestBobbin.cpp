@@ -1,4 +1,5 @@
 #include <source_location>
+#include <algorithm>
 #include "constructive_models/Bobbin.h"
 #include "constructive_models/BobbinFamilyGeometry.h"
 #include "constructive_models/Coil.h"
@@ -122,9 +123,44 @@ TEST_CASE("Sample_Bobbin", "[constructive-model][bobbin][smoke-test]") {
 TEST_CASE("Get_Filling_Factors_Bobbin_Medium", "[constructive-model][bobbin][smoke-test]") {
     auto fillingFactor = OpenMagnetics::Bobbin::get_filling_factor(0.009, 0.0275);
 
-    double expectedValue = 0.715;
+    // ABT #1582, re-pinned with Alf's approval (2026-11-01): 0.715 dated from the 2023-24 bobbin catalogue. Since
+    // MAS c201a3b (18 TDK/Ferroxcube bobbins) the fits run through more formers, and a knot where formers tie on
+    // window width or height now takes the former with the smallest catalogue name (Bobbin::select_tied_samples)
+    // instead of whichever came first in an unstable sort: 0.722 here (the keep-first fit read 0.600).
+    double expectedValue = 0.722;
 
     REQUIRE_THAT(expectedValue, Catch::Matchers::WithinAbs(fillingFactor, max_error * expectedValue));
+}
+
+// ABT #1582: when catalogue formers tie on a fit's x, the knot takes the former with the lexicographically smallest
+// catalogue name (then the smallest y), never an average, and the knots do not depend on the order the catalogue
+// lists the formers in. The fits used to keep the FIRST former of each tie after an unstable sort, so adding
+// unrelated rows to the catalogue changed which tied former a knot took.
+TEST_CASE("Bobbin interpolator knots take the tied former with the smallest name, whatever their order", "[constructive-model][bobbin][smoke-test]") {
+    std::vector<OpenMagnetics::Bobbin::FitSample> samples = {
+        {0.003, "C", 0.70}, {0.0275, "EER 42L vertical", 0.489}, {0.009, "M", 0.1}, {0.0275, "EER 42L horizontal", 0.734},
+        {0.009, "Z", 0.2}, {0.009 + 5e-10, "B", 0.7}, {0.001, "A", 0.5}};
+    auto [x, y] = OpenMagnetics::Bobbin::select_tied_samples(samples);
+    REQUIRE(x.size() == 4);
+    CHECK(x[0] == 0.001);
+    CHECK(x[1] == 0.003);
+    CHECK(x[2] == 0.009 + 5e-10);
+    CHECK(x[3] == 0.0275);
+    CHECK(y[0] == 0.5);
+    CHECK(y[1] == 0.70);
+    CHECK(y[2] == 0.7);
+    CHECK(y[3] == 0.734);
+
+    // The same samples in every other order give the same knots, bit for bit.
+    auto byAll = [](const OpenMagnetics::Bobbin::FitSample& a, const OpenMagnetics::Bobbin::FitSample& b) {
+        return std::tie(a.x, a.formerName, a.y) < std::tie(b.x, b.formerName, b.y);
+    };
+    std::sort(samples.begin(), samples.end(), byAll);
+    do {
+        auto [permutedX, permutedY] = OpenMagnetics::Bobbin::select_tied_samples(samples);
+        REQUIRE(permutedX == x);
+        REQUIRE(permutedY == y);
+    } while (std::next_permutation(samples.begin(), samples.end(), byAll));
 }
 
 TEST_CASE("Get_Filling_Factors_Bobbin_Small", "[constructive-model][bobbin][smoke-test]") {
@@ -176,7 +212,7 @@ TEST_CASE("Get_Winding_Window_Dimensions_Too_Small", "[constructive-model][bobbi
 
     // ABT #1582, re-pinned with Alf's approval (2026-10-31) to what the fits give since MAS c201a3b's 18 bobbins:
     // 0.669 mm x 1.448 mm inside a 1 mm x 2 mm core window (0.5 mm x 1.1 mm dated from the 2023-24 catalogue).
-    // Averaging tied formers (Bobbin::merge_tied_samples) does not move these.
+    // The tied-former tiebreak (Bobbin::select_tied_samples, smallest catalogue name) does not move these.
     double expectedWidthValue = 0.000669;
     double expectedHeightValue = 0.001448;
     double width = windingWindowDimensions[0];

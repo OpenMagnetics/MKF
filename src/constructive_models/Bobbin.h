@@ -577,6 +577,21 @@ class Bobbin : public MAS::Bobbin {
     /// The interpolator's samples, per core column shape (for tests and reports).
     static const std::map<ColumnShape, BobbinColumnCornerSamples>& get_column_corner_samples();
 
+    /// One catalogue former's sample for a bobbin fit: the fit's x, the former's catalogue name, and its y.
+    struct FitSample {
+        double x;
+        std::string formerName;
+        double y;
+    };
+    /**
+     * @brief The knots of a fit through catalogue samples: sorted by x, and every run of samples within 1e-9 of
+     *        the same x reduced to ONE knot, the sample of the former with the lexicographically smallest
+     *        catalogue name (then the smallest y). No averaging. The knots do not depend on the order the
+     *        catalogue lists the formers in (ABT #1582). Used by the filling-factor and window-proportion fits.
+     * @return {x, y} of the knots, x strictly increasing
+     */
+    static std::pair<std::vector<double>, std::vector<double>> select_tied_samples(std::vector<FitSample> samples);
+
     /**
      * @brief Half the interior angle between the two straight runs that a turn's corner joins:
      *        pi/4 on a rectangular column, pi/2 where there is no corner at all.

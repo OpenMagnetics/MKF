@@ -12,6 +12,7 @@
 #include <numbers>
 #include <streambuf>
 #include <vector>
+#include <tuple>
 #include "spline.h"
 #include "support/Exceptions.h"
 #include <cmrc/cmrc.hpp>
@@ -383,10 +384,12 @@ void load_interpolators() {
         struct AuxFillingFactorWidth
         {
             double windingWindowWidth, fillingFactor;
+            std::string formerName;
         };
         struct AuxFillingFactorHeight
         {
             double windingWindowHeight, fillingFactor;
+            std::string formerName;
         };
         std::vector<AuxFillingFactorWidth> auxFillingFactorWidth;
         std::vector<AuxFillingFactorHeight> auxFillingFactorHeight;
@@ -394,10 +397,12 @@ void load_interpolators() {
         struct AuxWindingWindowWidth
         {
             double windingWindowWidth, windingWindowProportion;
+            std::string formerName;
         };
         struct AuxWindingWindowHeight
         {
             double windingWindowHeight, windingWindowProportion;
+            std::string formerName;
         };
         std::vector<AuxWindingWindowWidth> auxWindingWindowWidth;
         std::vector<AuxWindingWindowHeight> auxWindingWindowHeight;
@@ -504,12 +509,12 @@ void load_interpolators() {
                 if (sampleColumnThickness > 0) {
                     minBobbinColumnThickness = std::min(minBobbinColumnThickness, sampleColumnThickness);
                 }
-                AuxFillingFactorWidth bobbinAuxFillingFactorWidth = { bobbinWindingWindowWidth, bobbinFillingFactor };
-                AuxFillingFactorHeight bobbinAuxFillingFactorHeight = { bobbinWindingWindowHeight, bobbinFillingFactor };
+                AuxFillingFactorWidth bobbinAuxFillingFactorWidth = { bobbinWindingWindowWidth, bobbinFillingFactor, datum.first };
+                AuxFillingFactorHeight bobbinAuxFillingFactorHeight = { bobbinWindingWindowHeight, bobbinFillingFactor, datum.first };
                 auxFillingFactorWidth.push_back(bobbinAuxFillingFactorWidth);
                 auxFillingFactorHeight.push_back(bobbinAuxFillingFactorHeight);
-                AuxWindingWindowWidth coreAuxWindingWindowWidth = { coreWindingWindowWidth, bobbinWindingWindowWidthProportion };
-                AuxWindingWindowHeight coreAuxWindingWindowHeight = { coreWindingWindowHeight, bobbinWindingWindowHeightProportion };
+                AuxWindingWindowWidth coreAuxWindingWindowWidth = { coreWindingWindowWidth, bobbinWindingWindowWidthProportion, datum.first };
+                AuxWindingWindowHeight coreAuxWindingWindowHeight = { coreWindingWindowHeight, bobbinWindingWindowHeightProportion, datum.first };
                 auxWindingWindowWidth.push_back(coreAuxWindingWindowWidth);
                 auxWindingWindowHeight.push_back(coreAuxWindingWindowHeight);
 
@@ -563,82 +568,44 @@ void load_interpolators() {
             logEntry(entry, "Bobbin", 2);
         }
 
-        {
-            size_t n = auxFillingFactorWidth.size();
-            std::vector<double> x, y;
-
-            std::sort(auxFillingFactorWidth.begin(), auxFillingFactorWidth.end(), [](const AuxFillingFactorWidth& b1, const AuxFillingFactorWidth& b2) {
-                return b1.windingWindowWidth < b2.windingWindowWidth;
-            });
-            minBobbinWidth = auxFillingFactorWidth[0].windingWindowWidth;
-            maxBobbinWidth = auxFillingFactorWidth[n - 1].windingWindowWidth;
-
-            for (size_t i = 0; i < n; i++) {
-                if (x.size() == 0 || fabs(auxFillingFactorWidth[i].windingWindowWidth - x.back()) > 1e-9) {
-                    x.push_back(auxFillingFactorWidth[i].windingWindowWidth);
-                    y.push_back(auxFillingFactorWidth[i].fillingFactor);
-                }
+        // ABT #1582: each fit's knots come from Bobbin::select_tied_samples. When several catalogue formers tie on
+        // the fit's x, the knot takes the ONE former with the lexicographically smallest catalogue name (no
+        // averaging). These fits used to std::sort (not stable) and keep the FIRST of each run of equal x, so the
+        // knot at a tie (e.g. the EER 42L horizontal and vertical formers, 27.5 mm high, filling factor 0.734 vs
+        // 0.489) depended on where unrelated catalogue rows fell in the sort.
+        auto fitKnots = [](const auto& auxSamples, auto getX, auto getY) {
+            std::vector<Bobbin::FitSample> samples;
+            for (const auto& sample : auxSamples) {
+                samples.push_back({getX(sample), sample.formerName, getY(sample)});
             }
-
+            return Bobbin::select_tied_samples(std::move(samples));
+        };
+        {
+            auto [x, y] = fitKnots(auxFillingFactorWidth, [](const auto& s) { return s.windingWindowWidth; },
+                                   [](const auto& s) { return s.fillingFactor; });
+            minBobbinWidth = x.front();
+            maxBobbinWidth = x.back();
             bobbinFillingFactorInterpWidth = tk::spline(x, y, tk::spline::cspline_hermite, true);
-
         }
         {
-            size_t n = auxFillingFactorHeight.size();
-            std::vector<double> x, y;
-
-            std::sort(auxFillingFactorHeight.begin(), auxFillingFactorHeight.end(), [](const AuxFillingFactorHeight& b1, const AuxFillingFactorHeight& b2) {
-                return b1.windingWindowHeight < b2.windingWindowHeight;
-            });
-            minBobbinHeight = auxFillingFactorHeight[0].windingWindowHeight;
-            maxBobbinHeight = auxFillingFactorHeight[n - 1].windingWindowHeight;
-
-            for (size_t i = 0; i < n; i++) {
-                if (x.size() == 0 || fabs(auxFillingFactorHeight[i].windingWindowHeight - x.back()) > 1e-9) {
-                    x.push_back(auxFillingFactorHeight[i].windingWindowHeight);
-                    y.push_back(auxFillingFactorHeight[i].fillingFactor);
-                }
-            }
-
+            auto [x, y] = fitKnots(auxFillingFactorHeight, [](const auto& s) { return s.windingWindowHeight; },
+                                   [](const auto& s) { return s.fillingFactor; });
+            minBobbinHeight = x.front();
+            maxBobbinHeight = x.back();
             bobbinFillingFactorInterpHeight = tk::spline(x, y, tk::spline::cspline_hermite, true);
         }
-
         {
-            size_t n = auxWindingWindowWidth.size();
-            std::vector<double> x, y;
-
-            std::sort(auxWindingWindowWidth.begin(), auxWindingWindowWidth.end(), [](const AuxWindingWindowWidth& b1, const AuxWindingWindowWidth& b2) {
-                return b1.windingWindowWidth < b2.windingWindowWidth;
-            });
-            minWindingWindowWidth = auxWindingWindowWidth[0].windingWindowWidth;
-            maxWindingWindowWidth = auxWindingWindowWidth[n - 1].windingWindowWidth;
-
-            for (size_t i = 0; i < n; i++) {
-                if (x.size() == 0 || fabs(auxWindingWindowWidth[i].windingWindowWidth - x.back()) > 1e-9) {
-                    x.push_back(auxWindingWindowWidth[i].windingWindowWidth);
-                    y.push_back(auxWindingWindowWidth[i].windingWindowProportion);
-                }
-            }
-
+            auto [x, y] = fitKnots(auxWindingWindowWidth, [](const auto& s) { return s.windingWindowWidth; },
+                                   [](const auto& s) { return s.windingWindowProportion; });
+            minWindingWindowWidth = x.front();
+            maxWindingWindowWidth = x.back();
             bobbinWindingWindowProportionInterpWidth = tk::spline(x, y, tk::spline::linear, false);
         }
         {
-            size_t n = auxWindingWindowHeight.size();
-            std::vector<double> x, y;
-
-            std::sort(auxWindingWindowHeight.begin(), auxWindingWindowHeight.end(), [](const AuxWindingWindowHeight& b1, const AuxWindingWindowHeight& b2) {
-                return b1.windingWindowHeight < b2.windingWindowHeight;
-            });
-            minWindingWindowHeight = auxWindingWindowHeight[0].windingWindowHeight;
-            maxWindingWindowHeight = auxWindingWindowHeight[n - 1].windingWindowHeight;
-
-            for (size_t i = 0; i < n; i++) {
-                if (x.size() == 0 || fabs(auxWindingWindowHeight[i].windingWindowHeight - x.back()) > 1e-9) {
-                    x.push_back(auxWindingWindowHeight[i].windingWindowHeight);
-                    y.push_back(auxWindingWindowHeight[i].windingWindowProportion);
-                }
-            }
-
+            auto [x, y] = fitKnots(auxWindingWindowHeight, [](const auto& s) { return s.windingWindowHeight; },
+                                   [](const auto& s) { return s.windingWindowProportion; });
+            minWindingWindowHeight = x.front();
+            maxWindingWindowHeight = x.back();
             bobbinWindingWindowProportionInterpHeight = tk::spline(x, y, tk::spline::linear, false);
         }
 
@@ -665,6 +632,35 @@ void load_interpolators() {
         }
         bobbinColumnCornerSamplesLoaded = true;
     }
+}
+
+std::pair<std::vector<double>, std::vector<double>> Bobbin::select_tied_samples(std::vector<FitSample> samples) {
+    if (samples.empty()) {
+        throw InvalidInputException(ErrorCode::INVALID_BOBBIN_DATA, "Bobbin: no catalogue samples to fit the bobbin interpolators through");
+    }
+    // Tiebreak rule (ABT #1582, Alf 2026-11-01: fixed tiebreak, no averaging): of the formers whose x lies within
+    // 1e-9 of the run's first x, the knot is the one with the lexicographically smallest catalogue name (then the
+    // smallest y, should two samples share a name). The full (x, name, y) sort makes the result independent of
+    // the order the samples came in.
+    std::sort(samples.begin(), samples.end(), [](const FitSample& a, const FitSample& b) {
+        return std::tie(a.x, a.formerName, a.y) < std::tie(b.x, b.formerName, b.y);
+    });
+    std::vector<double> x, y;
+    size_t first = 0;
+    while (first < samples.size()) {
+        size_t chosen = first;
+        size_t last = first + 1;
+        while (last < samples.size() && fabs(samples[last].x - samples[first].x) <= 1e-9) {
+            if (std::tie(samples[last].formerName, samples[last].y) < std::tie(samples[chosen].formerName, samples[chosen].y)) {
+                chosen = last;
+            }
+            ++last;
+        }
+        x.push_back(samples[chosen].x);
+        y.push_back(samples[chosen].y);
+        first = last;
+    }
+    return {x, y};
 }
 
 const std::map<ColumnShape, BobbinColumnCornerSamples>& Bobbin::get_column_corner_samples() {
