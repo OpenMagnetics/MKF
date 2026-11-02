@@ -1537,6 +1537,39 @@ TEST_CASE("MagneticFilter COST flags a core with no price law instead of estimat
     CHECK_THAT(unpriced.coreUnpricedReason, Catch::Matchers::ContainsSubstring("no price law for ferrite/MnZn"));
 }
 
+TEST_CASE("MagneticFilter COST logs which candidate it rejects for having no unit cost, and why",
+          "[magnetic-filter][cost]") {
+    // The same unpriced Fair-Rite 46 (MgZn) part as above: the rejection must say which part and why,
+    // so an adviser run that drops it can be read back from the log.
+    OpenMagneticsTesting::QuickMagneticConfig cfg;
+    cfg.numberTurns = {40, 20};
+    cfg.numberParallels = {1, 1};
+    cfg.coreShapeName = "E 35";
+    cfg.coreMaterialName = "46";
+    cfg.wireNames = {"Round 1.00 - Grade 1", "Round 1.00 - Grade 1"};
+    auto magnetic = OpenMagneticsTesting::create_quick_test_magnetic(cfg);
+    magnetic.get_mutable_coil().wind();
+    auto inputs = make_reference_inputs();
+
+    auto& logger = OpenMagnetics::Logger::getInstance();
+    logger.enableCollector(OpenMagnetics::LogLevel::INFO);
+    logger.drainCollected();
+    auto verdict = MagneticFilterCost().evaluate_magnetic(&magnetic, &inputs);
+    auto records = logger.drainCollected();
+    logger.disableCollector();
+
+    CHECK(verdict == std::pair<bool, double>{false, 0.0});
+    size_t rejections = 0;
+    for (const auto& record : records) {
+        if (record.message.find("Cost filter: rejecting candidate") != std::string::npos) {
+            ++rejections;
+            CHECK_THAT(record.message, Catch::Matchers::ContainsSubstring("it has no unit cost"));
+            CHECK_THAT(record.message, Catch::Matchers::ContainsSubstring("no price law for ferrite/MgZn"));
+        }
+    }
+    CHECK(rejections == 1);
+}
+
 TEST_CASE("MagneticAdviser keeps a core COST cannot price and ranks it last for cost",
           "[magnetic-filter][cost][magnetic-adviser]") {
     settings.reset();

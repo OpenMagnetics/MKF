@@ -3252,3 +3252,147 @@ TEST_CASE("Test_Magnetizing_Current_Is_Derived_From_The_Voltage_As_Given", "[phy
     INFO("R0 = " << primaryResistance << " Ohm, magnetizing current pk-pk " << peakToPeak << " A, largest difference " << largestDifference << " A");
     CHECK(largestDifference < 1e-9 * peakToPeak);
 }
+
+
+// Vienna/PFC inputs carry one operating point per input voltage. The turns solve sized from operating point 0
+// alone while the inductance filter checks every point, so a powder core sized at a lightly biased point had too
+// few turns at a heavily biased one, where its permeability has rolled off. For a MINIMUM target the turns are
+// solved at every point and the largest is taken (Alf: "Max N over points").
+namespace {
+OpenMagnetics::Inputs buck_like_inputs(const std::vector<double>& dcCurrents, json magnetizingInductance) {
+    const double frequency = 100e3;
+    const int samples = 256;
+    json operatingPoints = json::array();
+    for (size_t index = 0; index < dcCurrents.size(); ++index) {
+        json time = json::array(), data = json::array();
+        for (int k = 0; k <= samples; ++k) {   // triangle, 4 A peak to peak around the DC current
+            time.push_back(k / (samples * frequency));
+            data.push_back(dcCurrents[index] + (k < samples / 2 ? -2.0 + 4.0 * k / (samples / 2) : 2.0 - 4.0 * (k - samples / 2) / (samples / 2)));
+        }
+        operatingPoints.push_back({{"name", "op " + std::to_string(index)}, {"conditions", {{"ambientTemperature", 25}}},
+                                   {"excitationsPerWinding", {{{"name", "Primary"}, {"frequency", frequency},
+                                                               {"current", {{"waveform", {{"time", time}, {"data", data}}}}}}}}});
+    }
+    OpenMagnetics::Inputs inputs(json{
+        {"designRequirements", {{"magnetizingInductance", magnetizingInductance},
+                                {"turnsRatios", json::array()}, {"isolationSides", {"primary"}}, {"topology", "buckConverter"}}},
+        {"operatingPoints", operatingPoints}});
+    for (auto& operatingPoint : inputs.get_mutable_operating_points()) {
+        for (auto& excitation : operatingPoint.get_mutable_excitations_per_winding()) {
+            auto current = excitation.get_current().value();
+            current.set_processed(OpenMagnetics::Inputs::calculate_basic_processed_data(current.get_waveform().value()));
+            excitation.set_current(current);
+        }
+    }
+    return inputs;
+}
+
+OpenMagnetics::Magnetic powder_toroid(const std::string& shape) {
+    return magnetic_autocomplete(OpenMagnetics::Magnetic(json{
+        {"core", {{"name", shape}, {"functionalDescription", {{"type", "toroidal"}, {"shape", shape}, {"material", "75-Series 26"},
+                                                              {"gapping", json::array()}, {"numberStacks", 1}}}}},
+        {"coil", {{"bobbin", "Basic"}, {"functionalDescription", {{{"name", "Primary"}, {"numberTurns", 1}, {"numberParallels", 1},
+                                                                    {"isolationSide", "primary"}, {"wire", "Round 1.25 - Grade 1"}}}}}}}));
+}
+
+double inductance_at(MagnetizingInductance& model, OpenMagnetics::Magnetic magnetic, int numberTurns, const OpenMagnetics::Inputs& inputs, size_t operatingPointIndex) {
+    auto coil = magnetic.get_coil();
+    coil.get_mutable_functional_description()[0].set_number_turns(numberTurns);
+    auto operatingPoint = inputs.get_operating_points()[operatingPointIndex];
+    return resolve_dimensional_values(model.calculate_inductance_from_number_turns_and_gapping(magnetic.get_core(), coil, &operatingPoint).get_magnetizing_inductance());
+}
+}  // namespace
+
+TEST_CASE("Test_Number_Turns_From_Inductance_Minimum_Holds_At_Every_Operating_Point", "[physical-model][magnetizing-inductance][multi-operating-point]") {
+    // Sendust T 21/12/14 (75-Series 26), 17.6 uH minimum: a light point at 1 A dc first, a heavy one at 10 A dc second.
+    const json requirement = {{"nominal", 22e-6}, {"minimum", 17.6e-6}, {"maximum", 26.4e-6}};
+    auto magnetic = powder_toroid("T 21/12/14");
+    MagnetizingInductance model(ReluctanceModels::ZHANG);
+
+    auto light = buck_like_inputs({1.0}, requirement);
+    auto heavy = buck_like_inputs({10.0}, requirement);
+    int lightTurns = model.calculate_number_turns_from_gapping_and_inductance(magnetic.get_core(), magnetic.get_coil(), &light, DimensionalValues::MINIMUM);
+    int heavyTurns = model.calculate_number_turns_from_gapping_and_inductance(magnetic.get_core(), magnetic.get_coil(), &heavy, DimensionalValues::MINIMUM);
+    INFO("light point alone " << lightTurns << " turns, heavy point alone " << heavyTurns << " turns");
+    // The premise: the DC bias rolls the permeability off, so the heavy point needs more turns.
+    REQUIRE(heavyTurns > lightTurns);
+    REQUIRE(inductance_at(model, magnetic, lightTurns, heavy, 0) < 17.6e-6);
+
+    for (const auto& order : std::vector<std::vector<double>>{{1.0, 10.0}, {10.0, 1.0}}) {
+        auto inputs = buck_like_inputs(order, requirement);
+        int numberTurns = model.calculate_number_turns_from_gapping_and_inductance(magnetic.get_core(), magnetic.get_coil(), &inputs, DimensionalValues::MINIMUM);
+        INFO("first point " << order[0] << " A dc: " << numberTurns << " turns");
+        CHECK(numberTurns == heavyTurns);
+        for (size_t operatingPointIndex = 0; operatingPointIndex < order.size(); ++operatingPointIndex) {
+            CHECK(inductance_at(model, magnetic, numberTurns, inputs, operatingPointIndex) >= 17.6e-6);
+        }
+    }
+}
+
+TEST_CASE("Test_Number_Turns_From_Inductance_Nominal_Minimises_Worst_Point", "[physical-model][magnetizing-inductance][multi-operating-point]") {
+    // A nominal target is not a floor: of the per-point answers, the one whose worst deviation over the points is smallest.
+    const json requirement = {{"nominal", 22e-6}, {"minimum", 17.6e-6}, {"maximum", 26.4e-6}};
+    auto magnetic = powder_toroid("T 21/12/14");
+    MagnetizingInductance model(ReluctanceModels::ZHANG);
+    auto inputs = buck_like_inputs({1.0, 10.0}, requirement);
+    auto light = buck_like_inputs({1.0}, requirement);
+    auto heavy = buck_like_inputs({10.0}, requirement);
+    int lightTurns = model.calculate_number_turns_from_gapping_and_inductance(magnetic.get_core(), magnetic.get_coil(), &light);
+    int heavyTurns = model.calculate_number_turns_from_gapping_and_inductance(magnetic.get_core(), magnetic.get_coil(), &heavy);
+    REQUIRE(lightTurns != heavyTurns);
+    auto worstError = [&](int numberTurns) {
+        return std::max(std::fabs(inductance_at(model, magnetic, numberTurns, inputs, 0) - 22e-6),
+                        std::fabs(inductance_at(model, magnetic, numberTurns, inputs, 1) - 22e-6));
+    };
+    int numberTurns = model.calculate_number_turns_from_gapping_and_inductance(magnetic.get_core(), magnetic.get_coil(), &inputs);
+    INFO("light " << lightTurns << ", heavy " << heavyTurns << ", combined " << numberTurns);
+    CHECK(numberTurns >= std::min(lightTurns, heavyTurns));
+    CHECK(numberTurns <= std::max(lightTurns, heavyTurns));
+    for (int candidate = std::min(lightTurns, heavyTurns); candidate <= std::max(lightTurns, heavyTurns); ++candidate) {
+        CHECK(worstError(numberTurns) <= worstError(candidate));
+    }
+}
+
+TEST_CASE("Test_Number_Turns_From_Inductance_Maximum_Holds_At_Every_Operating_Point", "[physical-model][magnetizing-inductance][multi-operating-point]") {
+    // A maximum is a ceiling: the fewest turns any point asks for, at or below the maximum at every point.
+    const json requirement = {{"nominal", 22e-6}, {"minimum", 17.6e-6}, {"maximum", 26.4e-6}};
+    auto magnetic = powder_toroid("T 21/12/14");
+    MagnetizingInductance model(ReluctanceModels::ZHANG);
+    auto light = buck_like_inputs({1.0}, requirement);
+    auto heavy = buck_like_inputs({10.0}, requirement);
+    int lightTurns = model.calculate_number_turns_from_gapping_and_inductance(magnetic.get_core(), magnetic.get_coil(), &light, DimensionalValues::MAXIMUM);
+    int heavyTurns = model.calculate_number_turns_from_gapping_and_inductance(magnetic.get_core(), magnetic.get_coil(), &heavy, DimensionalValues::MAXIMUM);
+    INFO("light point alone " << lightTurns << " turns, heavy point alone " << heavyTurns << " turns");
+    // The premise: the heavy point needs more turns, so the light point is the binding one.
+    REQUIRE(heavyTurns > lightTurns);
+    for (const auto& order : std::vector<std::vector<double>>{{1.0, 10.0}, {10.0, 1.0}}) {
+        auto inputs = buck_like_inputs(order, requirement);
+        int numberTurns = model.calculate_number_turns_from_gapping_and_inductance(magnetic.get_core(), magnetic.get_coil(), &inputs, DimensionalValues::MAXIMUM);
+        INFO("first point " << order[0] << " A dc: " << numberTurns << " turns");
+        CHECK(numberTurns <= lightTurns);
+        CHECK(numberTurns >= lightTurns - 1);
+        for (size_t operatingPointIndex = 0; operatingPointIndex < order.size(); ++operatingPointIndex) {
+            CHECK(inductance_at(model, magnetic, numberTurns, inputs, operatingPointIndex) <= 26.4e-6);
+        }
+        // and one turn more breaks the ceiling somewhere: it is the largest such count.
+        bool exceeds = false;
+        for (size_t operatingPointIndex = 0; operatingPointIndex < order.size(); ++operatingPointIndex) {
+            exceeds = exceeds || inductance_at(model, magnetic, numberTurns + 1, inputs, operatingPointIndex) > 26.4e-6;
+        }
+        CHECK(exceeds);
+    }
+}
+
+TEST_CASE("Test_Sizing_Saturation_Checks_Every_Operating_Point", "[physical-model][magnetizing-inductance][multi-operating-point]") {
+    // A turn count that is safe at a light point and saturates at a heavy one saturates the design, whichever point comes first.
+    const json requirement = {{"minimum", 17.6e-6}};
+    auto magnetic = powder_toroid("T 21/12/14");
+    MagnetizingInductance model(ReluctanceModels::ZHANG);
+    auto heavyAlone = buck_like_inputs({60.0}, requirement);
+    auto lightAlone = buck_like_inputs({1.0}, requirement);
+    const int64_t numberTurns = 60;
+    REQUIRE(model.check_sizing_saturation(magnetic.get_core(), magnetic.get_coil(), numberTurns, &heavyAlone).first);
+    REQUIRE_FALSE(model.check_sizing_saturation(magnetic.get_core(), magnetic.get_coil(), numberTurns, &lightAlone).first);
+    auto lightFirst = buck_like_inputs({1.0, 60.0}, requirement);
+    CHECK(model.check_sizing_saturation(magnetic.get_core(), magnetic.get_coil(), numberTurns, &lightFirst).first);
+}

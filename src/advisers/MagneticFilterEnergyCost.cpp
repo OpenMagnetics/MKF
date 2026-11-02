@@ -261,6 +261,16 @@ double CostBreakdown::total() const {
 std::pair<bool, double> MagneticFilterCost::evaluate_magnetic(Magnetic* magnetic, Inputs* inputs, std::vector<Outputs>* outputs) {
     auto cost = calculate_cost(*magnetic);
     if (!cost.priced()) {
+        // A candidate the COST filter cannot price is rejected (never estimated); say which and why.
+        std::string reference = "(unnamed)";
+        if (magnetic->get_manufacturer_info() && magnetic->get_manufacturer_info()->get_reference()) {
+            reference = magnetic->get_manufacturer_info()->get_reference().value();
+        }
+        else if (magnetic->get_core().get_name()) {
+            reference = magnetic->get_core().get_name().value();
+        }
+        logEntry("Cost filter: rejecting candidate " + reference + ": it has no unit cost, " + cost.coreUnpricedReason,
+                 "MagneticFilter", 2);
         return {false, 0.0};
     }
     return {true, cost.total()};

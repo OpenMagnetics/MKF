@@ -449,7 +449,37 @@ std::vector<std::pair<Magnetic, double>> CoreAdviser::create_magnetic_dataset(In
     return magnetics;
 }
 
+// The stacked pool holds tens of thousands of variants of a few thousand cores (60,823 on a 1 kW PFC
+// choke), and process_data() leaves each core's material resolved INLINE: every variant then carried a
+// deep copy of its catalogue material, complex-permeability and loss tables included, which peaked
+// the native adviser at 9 GB and ran the browser engine out of memory (std::bad_alloc). A variant whose
+// inline material IS the catalogue record of that name refers to it by name instead: every evaluation
+// resolves the name to that same record (Core::resolve_material), so no number changes, and only the
+// candidates a filter keeps inline it again. A material that differs from the catalogue record of its
+// name (a user's own data) stays inline. The verdict is cached per name for one expansion.
+static bool material_is_catalogue_record(const CoreMaterial& material, std::map<std::string, bool>& verdicts) {
+    const std::string& name = material.get_name();
+    auto known = verdicts.find(name);
+    if (known != verdicts.end()) {
+        return known->second;
+    }
+    if (coreMaterialDatabase.empty()) {
+        load_core_materials();
+    }
+    bool isCatalogueRecord = false;
+    if (coreMaterialDatabase.count(name)) {
+        // The record the name resolves to, by the same lookup Core::resolve_material makes.
+        json inlineJson, catalogueJson;
+        to_json(inlineJson, material);
+        to_json(catalogueJson, find_core_material_by_name(name));
+        isCatalogueRecord = inlineJson == catalogueJson;
+    }
+    verdicts[name] = isCatalogueRecord;
+    return isCatalogueRecord;
+}
+
 void CoreAdviser::expand_magnetic_dataset_with_stacks(Inputs inputs, std::vector<Core>* cores, std::vector<std::pair<Magnetic, double>>* magnetics) {
+    std::map<std::string, bool> catalogueMaterialVerdicts;
     Coil coil = get_dummy_coil(inputs, get_application() != MAS::MagneticApplication::INTERFERENCE_SUPPRESSION);
     auto includeToroidalCores = settings.get_use_toroidal_cores();
 
@@ -511,6 +541,11 @@ void CoreAdviser::expand_magnetic_dataset_with_stacks(Inputs inputs, std::vector
                     continue;
                 }
                 magnetic.set_core(core);
+                const auto& material = core.get_functional_description().get_material();
+                if (std::holds_alternative<CoreMaterial>(material) &&
+                    material_is_catalogue_record(std::get<CoreMaterial>(material), catalogueMaterialVerdicts)) {
+                    magnetic.get_mutable_core().get_mutable_functional_description().set_material(std::get<CoreMaterial>(material).get_name());
+                }
                 (*magnetics).push_back(std::pair<Magnetic, double>{magnetic, 0});
             }
         }

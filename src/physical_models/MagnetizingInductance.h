@@ -54,6 +54,12 @@ class MagnetizingInductance {
     // current drives the core.
     std::optional<Topology> _topology;
 
+    // The turns solve of calculate_number_turns_from_gapping_and_inductance at ONE operating point of
+    // inputs (its frequency, temperature and DC bias), verified there (finite, not saturated, meets the
+    // target). The public solve combines it over every operating point.
+    int calculate_number_turns_at_operating_point(Core core, Coil coil, Inputs* inputs, size_t operatingPointIndex,
+                                                  DimensionalValues preferredValue);
+
   protected:
   public:
     // Callers that hold the design's Inputs set the topology before calculating, for every
@@ -87,12 +93,25 @@ class MagnetizingInductance {
                                                                       GappingType gappingType,
                                                                       size_t decimals = 4);
 
+    // Turns of coil's first winding that give core the required magnetizing inductance, the exact
+    // inverse of the inductance model the inductance filter checks. With several operating points the
+    // turns are solved at each point (its own DC bias, frequency and temperature), and combined so the
+    // answer holds at every point, as the filter checks every point:
+    //  - MINIMUM (a floor): the largest of the per-point turns, so the inductance clears the minimum at
+    //    every point (the most biased point needs the most turns);
+    //  - NOMINAL: the count, between the fewest and the most turns any point asks for, whose largest
+    //    deviation from the target over all points is smallest;
+    //  - MAXIMUM (a ceiling): the LARGEST turn count whose inductance is at or below the maximum at
+    //    every point (with one point, the largest at or below it there); throws when not even one
+    //    turn keeps it there.
+    // The combined count is then checked for saturation at every point (SaturationException carrying it,
+    // as the single-point solve does) and, for MINIMUM, for meeting the floor at every point.
     int calculate_number_turns_from_gapping_and_inductance(Core core, Coil coil, Inputs* inputs, DimensionalValues preferredValue = DimensionalValues::NOMINAL);
 
     // The saturation check calculate_number_turns_from_gapping_and_inductance refuses its answer on
-    // (ABT #1855), for numberTurns of coil's first winding on core: the first operating point of
-    // inputs at its ambient temperature, margin 1, with the DC point of the converged magnetizing
-    // model. Returns {saturates, the check's message}. Throws when inputs has no operating point:
+    // (ABT #1855), for numberTurns of coil's first winding on core: every operating point of inputs,
+    // each at its ambient temperature, margin 1, with the DC point of the converged magnetizing
+    // model. Returns {saturates at any point, the check's message for the first point that does}. Throws when inputs has no operating point:
     // without one there is no flux to check. A caller that changes the gap after a refusal (the
     // core adviser's re-gap, ABT #1875) asks this whether the changed design still saturates.
     std::pair<bool, std::string> check_sizing_saturation(Core core, Coil coil, int64_t numberTurns, Inputs* inputs);

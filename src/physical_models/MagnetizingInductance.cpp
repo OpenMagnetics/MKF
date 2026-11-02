@@ -1558,15 +1558,149 @@ std::pair<bool, std::string> MagnetizingInductance::check_sizing_saturation(Core
                                     "check_sizing_saturation: the coil has no winding to put " + std::to_string(numberTurns) +
                                     " turns on, core '" + core.get_name().value_or("unnamed") + "'");
     }
-    OperatingPoint operatingPoint = inputs->get_operating_point(0);
-    double temperature = prepare_sizing_operating_point(operatingPoint);
     coil.get_mutable_functional_description()[0].set_number_turns(numberTurns);
-    auto [inductanceOutput, fluxDensity] = calculate_inductance_and_magnetic_flux_density(core, coil, &operatingPoint);
-    const auto verdict = sizing_saturation_verdict(core, fluxDensity, temperature, get_last_dc_bias_point());
-    return {verdict.saturates, verdict.message};
+    // Every operating point, as the inductance and saturation filters check every point.
+    const size_t numberOperatingPoints = inputs->get_operating_points().size();
+    for (size_t operatingPointIndex = 0; operatingPointIndex < numberOperatingPoints; ++operatingPointIndex) {
+        OperatingPoint operatingPoint = inputs->get_operating_point(operatingPointIndex);
+        double temperature = prepare_sizing_operating_point(operatingPoint);
+        auto [inductanceOutput, fluxDensity] = calculate_inductance_and_magnetic_flux_density(core, coil, &operatingPoint);
+        const auto verdict = sizing_saturation_verdict(core, fluxDensity, temperature, get_last_dc_bias_point());
+        if (verdict.saturates) {
+            std::string where = numberOperatingPoints > 1 ? "at operating point " + std::to_string(operatingPointIndex) + ": " : "";
+            return {true, where + verdict.message};
+        }
+    }
+    return {false, ""};
 }
 
 int MagnetizingInductance::calculate_number_turns_from_gapping_and_inductance(Core core, Coil coil, Inputs* inputs, DimensionalValues preferredValue) {
+    const size_t numberOperatingPoints = inputs->get_operating_points().size();
+    double desiredMagnetizingInductance = resolve_dimensional_values(
+        inputs->get_design_requirements().get_magnetizing_inductance(), preferredValue);
+    if (numberOperatingPoints <= 1 || desiredMagnetizingInductance <= 0 || coil.get_functional_description().empty()) {
+        return calculate_number_turns_at_operating_point(core, coil, inputs, 0, preferredValue);
+    }
+
+    // The inductance filter checks the requirement at EVERY operating point, each with its own DC bias
+    // (MagneticFilterMagnetizingInductance::evaluate_magnetic), so solving at the first point alone
+    // sized a design that fails at a more biased one: a powder core sized at a light-load point has
+    // too few turns at full load, where its permeability has rolled off (Alf, "Max N over points").
+    std::vector<int> perPointTurns;
+    std::optional<SaturationException> refusal;
+    int64_t refusedTurns = 0;
+    for (size_t operatingPointIndex = 0; operatingPointIndex < numberOperatingPoints; ++operatingPointIndex) {
+        try {
+            perPointTurns.push_back(calculate_number_turns_at_operating_point(core, coil, inputs, operatingPointIndex, preferredValue));
+        }
+        catch (const SaturationException& e) {
+            if (!e.number_turns()) {
+                throw;
+            }
+            // The refused count is still the turns this point needs; the combined refusal carries the
+            // largest of them so a caller that re-gaps (ABT #1875) starts from enough turns for every point.
+            refusedTurns = std::max(refusedTurns, e.number_turns().value());
+            if (!refusal) {
+                refusal.emplace(std::string("at operating point ") + std::to_string(operatingPointIndex) + ": " + e.what(),
+                                e.number_turns().value());
+            }
+        }
+    }
+    if (refusal) {
+        for (auto turns : perPointTurns) {
+            refusedTurns = std::max<int64_t>(refusedTurns, turns);
+        }
+        throw SaturationException(refusal->what(), refusedTurns);
+    }
+
+    auto inductanceAtPoint = [&](int numberTurns, size_t operatingPointIndex) -> double {
+        OperatingPoint operatingPoint = inputs->get_operating_point(operatingPointIndex);
+        prepare_sizing_operating_point(operatingPoint);
+        coil.get_mutable_functional_description()[0].set_number_turns(static_cast<int64_t>(numberTurns));
+        auto out = calculate_inductance_from_number_turns_and_gapping(core, coil, &operatingPoint);
+        return resolve_dimensional_values(out.get_magnetizing_inductance());
+    };
+
+    const int fewestTurns = *std::min_element(perPointTurns.begin(), perPointTurns.end());
+    const int mostTurns = *std::max_element(perPointTurns.begin(), perPointTurns.end());
+    int numberTurns;
+    if (preferredValue == DimensionalValues::MINIMUM) {
+        // A floor: the most any point needs (Alf: "solve per operating point and take the largest N").
+        numberTurns = mostTurns;
+    }
+    else if (preferredValue == DimensionalValues::MAXIMUM) {
+        // A ceiling: the LARGEST N that keeps L <= max at every point, throwing if not even one turn
+        // does (Alf, 2026-11-02: "Step down + largest N"). Each per-point answer is the largest count
+        // at or below the ceiling at its own point, so the fewest of them is the answer; the step-down
+        // below re-verifies it at every point.
+        auto exceedsCeilingAt = [&](int candidate) -> std::optional<size_t> {
+            for (size_t operatingPointIndex = 0; operatingPointIndex < numberOperatingPoints; ++operatingPointIndex) {
+                if (inductanceAtPoint(candidate, operatingPointIndex) > desiredMagnetizingInductance) {
+                    return operatingPointIndex;
+                }
+            }
+            return std::nullopt;
+        };
+        numberTurns = fewestTurns;
+        std::optional<size_t> violatingPoint = exceedsCeilingAt(numberTurns);
+        while (violatingPoint && numberTurns > 1) {
+            --numberTurns;
+            violatingPoint = exceedsCeilingAt(numberTurns);
+        }
+        if (violatingPoint) {
+            std::ostringstream reason;
+            reason << "core '" << core.get_name().value_or("unnamed") << "' cannot keep the magnetizing inductance at or below "
+                   << desiredMagnetizingInductance * 1e6 << " uH at every operating point: even " << numberTurns
+                   << " turn exceeds it at operating point " << violatingPoint.value() << " ("
+                   << inductanceAtPoint(numberTurns, violatingPoint.value()) * 1e6 << " uH)";
+            throw CalculationException(ErrorCode::CALCULATION_DIVERGED, reason.str());
+        }
+    }
+    else {
+        // A nominal target is not a floor: no integer turn count hits it at every point, so take the
+        // count whose worst deviation over the points is smallest (Alf: "the N whose worst-point
+        // inductance error is smallest"). Every point's error grows away from its own answer, so the
+        // best count lies between the fewest and the most turns any point asks for: scan that range.
+        double bestWorstError = std::numeric_limits<double>::infinity();
+        numberTurns = fewestTurns;
+        for (int candidate = fewestTurns; candidate <= mostTurns; ++candidate) {
+            double worstError = 0;
+            for (size_t operatingPointIndex = 0; operatingPointIndex < numberOperatingPoints; ++operatingPointIndex) {
+                worstError = std::max(worstError, std::abs(inductanceAtPoint(candidate, operatingPointIndex) - desiredMagnetizingInductance));
+            }
+            if (worstError < bestWorstError) {
+                bestWorstError = worstError;
+                numberTurns = candidate;
+            }
+        }
+    }
+
+    // The combined count was verified only at the point that chose it: check it at every point.
+    auto [saturates, saturationMessage] = check_sizing_saturation(core, coil, numberTurns, inputs);
+    if (saturates) {
+        throw SaturationException("core '" + core.get_name().value_or("unnamed") + "' cannot reach the magnetizing inductance of " +
+                                  std::to_string(desiredMagnetizingInductance * 1e6) + " uH at every operating point with a core that is not saturated: at " +
+                                  std::to_string(numberTurns) + " turns " + saturationMessage,
+                                  numberTurns);
+    }
+    if (preferredValue == DimensionalValues::MINIMUM) {
+        for (size_t operatingPointIndex = 0; operatingPointIndex < numberOperatingPoints; ++operatingPointIndex) {
+            double inductance = inductanceAtPoint(numberTurns, operatingPointIndex);
+            if (!(inductance >= desiredMagnetizingInductance)) {
+                std::ostringstream reason;
+                reason << "core '" << core.get_name().value_or("unnamed") << "' cannot reach the magnetizing inductance of "
+                       << desiredMagnetizingInductance * 1e6 << " uH at every operating point: at " << numberTurns
+                       << " turns, the most any point needs, operating point " << operatingPointIndex << " has "
+                       << inductance * 1e6 << " uH";
+                throw CalculationException(ErrorCode::CALCULATION_DIVERGED, reason.str());
+            }
+        }
+    }
+    return numberTurns;
+}
+
+int MagnetizingInductance::calculate_number_turns_at_operating_point(Core core, Coil coil, Inputs* inputs, size_t operatingPointIndex,
+                                                                     DimensionalValues preferredValue) {
     // Single source of truth for "turns for a target inductance": the EXACT
     // inverse of calculate_inductance_from_number_turns_and_gapping (the model
     // the inductance filter uses), so the two can never disagree. The previous
@@ -1590,7 +1724,7 @@ int MagnetizingInductance::calculate_number_turns_from_gapping_and_inductance(Co
     OperatingPoint operatingPoint;
     OperatingPoint* operatingPointPtr = nullptr;
     if (inputs->get_operating_points().size() > 0) {
-        operatingPoint = inputs->get_operating_point(0);
+        operatingPoint = inputs->get_operating_point(operatingPointIndex);
         frequency = operatingPoint.get_mutable_excitations_per_winding()[0].get_frequency();
         temperature = prepare_sizing_operating_point(operatingPoint);
         operatingPointPtr = &operatingPoint;
@@ -1633,6 +1767,28 @@ int MagnetizingInductance::calculate_number_turns_from_gapping_and_inductance(Co
         for (int bump = 0; bump < 100; ++bump) {
             double inductance = inductanceAtTurns(numberTurnsPrimary);
             if (inductance <= 0 || inductance >= desiredMagnetizingInductance) break;
+            numberTurnsPrimary += 1;
+        }
+    }
+    else if (preferredValue == DimensionalValues::MAXIMUM) {
+        // The caller asked for an upper bound: the target is a hard ceiling, so the answer is the
+        // LARGEST turn count whose inductance stays at or below it (Alf, 2026-11-02: "Step down +
+        // largest N"). Rounding to the nearest count returned 26 turns, 27.4 uH, against a 26.4 uH
+        // maximum (T 21/12/14, 75-Series 26, 1 A dc). Step down until at or below the ceiling, then
+        // up while the next count still is.
+        while (numberTurnsPrimary > 1 && inductanceAtTurns(numberTurnsPrimary) > desiredMagnetizingInductance) {
+            numberTurnsPrimary -= 1;
+        }
+        double inductanceAtOne = inductanceAtTurns(numberTurnsPrimary);
+        if (numberTurnsPrimary == 1 && inductanceAtOne > desiredMagnetizingInductance) {
+            std::ostringstream reason;
+            reason << "core '" << core.get_name().value_or("unnamed") << "' cannot keep the magnetizing inductance at or below "
+                   << desiredMagnetizingInductance * 1e6 << " uH: even 1 turn gives " << inductanceAtOne * 1e6 << " uH";
+            throw CalculationException(ErrorCode::CALCULATION_DIVERGED, reason.str());
+        }
+        for (int bump = 0; bump < 100; ++bump) {
+            double next = inductanceAtTurns(numberTurnsPrimary + 1);
+            if (next <= 0 || next > desiredMagnetizingInductance) break;
             numberTurnsPrimary += 1;
         }
     }
@@ -1712,6 +1868,9 @@ int MagnetizingInductance::calculate_number_turns_from_gapping_and_inductance(Co
     bool meetsRequirement;
     if (preferredValue == DimensionalValues::MINIMUM) {
         meetsRequirement = finalInductance >= desiredMagnetizingInductance;
+    }
+    else if (preferredValue == DimensionalValues::MAXIMUM) {
+        meetsRequirement = finalInductance <= desiredMagnetizingInductance;
     }
     else {
         // Integer turns bracket the target: the neighbours' inductances straddle it. At one
