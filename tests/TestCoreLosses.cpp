@@ -5796,3 +5796,222 @@ TEST_CASE("Test_Core_Losses_Renamed_Library_Material_Priced_By_Its_Own_Data", "[
     }
     settings.reset();
 }
+
+// ABT #2202: the DYNAMIC Roshen B-H loop. Its field is the static Roshen loop plus the fields that dissipate the
+// model's own eddy-current and excess terms, so f * oint H dB over one period must be the Roshen total loss.
+namespace {
+// The flux density a rectangular voltage drives: the exact integral of +V for D*T and -V for (1-D)*T, a triangle
+// from offset - peak to offset + peak.
+OperatingPointExcitation abt2202_rectangular_voltage_flux_excitation(double frequency, double peak, double dutyCycle, double offset) {
+    double period = 1.0 / frequency;
+    json excitationJson;
+    excitationJson["frequency"] = frequency;
+    excitationJson["magneticFluxDensity"]["waveform"]["data"] = {offset - peak, offset + peak, offset - peak};
+    excitationJson["magneticFluxDensity"]["waveform"]["time"] = {0, dutyCycle * period, period};
+    excitationJson["magneticFluxDensity"]["processed"]["label"] = WaveformLabel::TRIANGULAR;
+    excitationJson["magneticFluxDensity"]["processed"]["offset"] = offset;
+    excitationJson["magneticFluxDensity"]["processed"]["peak"] = offset + peak;
+    excitationJson["magneticFluxDensity"]["processed"]["peakToPeak"] = 2 * peak;
+    excitationJson["magneticFluxDensity"]["processed"]["dutyCycle"] = dutyCycle;
+    return OperatingPointExcitation(excitationJson);
+}
+
+// f * oint H dB over the samples, by the trapezoidal rule a scope-trace consumer applies.
+double abt2202_loop_volumetric_losses(const RoshenDynamicBhLoop& loop) {
+    double area = 0;
+    for (size_t i = 0; i + 1 < loop.time.size(); ++i) {
+        area += (loop.magneticFieldStrength[i] + loop.magneticFieldStrength[i + 1]) / 2 *
+                (loop.magneticFluxDensity[i + 1] - loop.magneticFluxDensity[i]);
+    }
+    return area * loop.frequency;
+}
+}  // namespace
+
+TEST_CASE("Test_Roshen_Dynamic_BH_Loop_Area_Is_The_Roshen_Total_Loss", "[physical-model][core-losses][roshen-core-losses-model][abt-2202]") {
+    settings.reset();
+    clear_databases();
+    double temperature = 25;
+    for (std::string materialName : {"3C90", "N87"}) {
+        Core core = OpenMagneticsTesting::get_quick_core("E 42/21/15", json::array(), 1, materialName);
+        for (double frequency : {25000.0, 100000.0, 200000.0}) {
+            for (double peak : {0.05, 0.1, 0.2}) {
+                INFO(materialName << " " << frequency << " Hz " << peak << " T");
+                auto excitation = abt2202_rectangular_voltage_flux_excitation(frequency, peak, 0.5, 0);
+                CoreLossesRoshenModel roshen;
+                auto loop = roshen.get_dynamic_bh_loop(core, excitation, temperature);
+                double modelTotal = roshen.get_core_losses(core, excitation, temperature).get_volumetric_losses().value();
+
+                REQUIRE(loop.time.size() == loop.magneticFluxDensity.size());
+                REQUIRE(loop.time.size() == loop.magneticFieldStrength.size());
+                REQUIRE(loop.time.size() > 1000);
+                CHECK(loop.frequency == frequency);
+                // One period, closed.
+                CHECK_THAT(loop.time.back() - loop.time.front(), Catch::Matchers::WithinRel(1.0 / frequency, 1e-12));
+                CHECK(loop.magneticFluxDensity.back() == loop.magneticFluxDensity.front());
+                for (size_t i = 0; i + 1 < loop.time.size(); ++i) {
+                    REQUIRE(loop.time[i + 1] >= loop.time[i]);
+                }
+                // The components reported are the model's.
+                CHECK_THAT(loop.totalVolumetricLosses, Catch::Matchers::WithinRel(modelTotal, 1e-12));
+                CHECK(loop.eddyCurrentVolumetricLosses > 0);
+                CHECK(loop.hysteresisVolumetricLosses > 0);
+                // The area identity.
+                CHECK_THAT(abt2202_loop_volumetric_losses(loop), Catch::Matchers::WithinRel(modelTotal, 0.01));
+            }
+        }
+    }
+    settings.reset();
+}
+
+TEST_CASE("Test_Roshen_Dynamic_BH_Loop_At_Low_Frequency_Is_The_Static_Loop", "[physical-model][core-losses][roshen-core-losses-model][abt-2202]") {
+    settings.reset();
+    clear_databases();
+    double temperature = 25;
+    double frequency = 1;
+    Core core = OpenMagneticsTesting::get_quick_core("E 42/21/15", json::array(), 1, "3C90");
+    auto excitation = abt2202_rectangular_voltage_flux_excitation(frequency, 0.1, 0.5, 0);
+    CoreLossesRoshenModel roshen;
+    auto loop = roshen.get_dynamic_bh_loop(core, excitation, temperature);
+    auto parameters = roshen.get_roshen_parameters(core, excitation, temperature);
+
+    // The area is the static loop's: the hysteresis loss alone.
+    double staticLosses = roshen.get_hysteresis_losses_density(parameters, excitation);
+    CHECK_THAT(abt2202_loop_volumetric_losses(loop), Catch::Matchers::WithinRel(staticLosses, 0.01));
+
+    // The width at B = 0 is the static loop's. get_bh_loop's branches share one H grid from the common tip at -B_peak,
+    // so their zero crossings differ by a whole number of grid steps (interpolated here).
+    auto [upper, lower] = roshen.get_bh_loop(parameters, excitation);
+    auto zeroCrossingIndex = [](const std::vector<double>& branch) {
+        for (size_t i = 0; i + 1 < branch.size(); ++i) {
+            if (branch[i] < 0 && branch[i + 1] >= 0) {
+                return static_cast<double>(i) + (0 - branch[i]) / (branch[i + 1] - branch[i]);
+            }
+        }
+        throw std::runtime_error("branch does not cross B = 0");
+    };
+    double staticWidth = (zeroCrossingIndex(lower) - zeroCrossingIndex(upper)) * Constants().roshenMagneticFieldStrengthStep;
+    std::optional<double> risingCrossing;
+    std::optional<double> fallingCrossing;
+    for (size_t i = 0; i + 1 < loop.time.size(); ++i) {
+        double b0 = loop.magneticFluxDensity[i];
+        double b1 = loop.magneticFluxDensity[i + 1];
+        double h0 = loop.magneticFieldStrength[i];
+        double h1 = loop.magneticFieldStrength[i + 1];
+        if (b0 < 0 && b1 >= 0) {
+            risingCrossing = h0 + (h1 - h0) * (0 - b0) / (b1 - b0);
+        }
+        if (b0 > 0 && b1 <= 0) {
+            fallingCrossing = h0 + (h1 - h0) * (0 - b0) / (b1 - b0);
+        }
+    }
+    REQUIRE(risingCrossing);
+    REQUIRE(fallingCrossing);
+    REQUIRE(staticWidth > 0);
+    CHECK_THAT(risingCrossing.value() - fallingCrossing.value(), Catch::Matchers::WithinAbs(staticWidth, 2 * Constants().roshenMagneticFieldStrengthStep));
+    // Centred: the crossings are symmetric about H = 0.
+    CHECK_THAT(risingCrossing.value() + fallingCrossing.value(), Catch::Matchers::WithinAbs(0, 1e-6));
+
+    // And the dynamic widening grows with frequency.
+    auto fastLoop = roshen.get_dynamic_bh_loop(core, abt2202_rectangular_voltage_flux_excitation(200000, 0.1, 0.5, 0), temperature);
+    CHECK(abt2202_loop_volumetric_losses(fastLoop) / 200000 > abt2202_loop_volumetric_losses(loop) / frequency * 1.05);
+    settings.reset();
+}
+
+// The Roshen model prices the symmetric loop of the AC amplitude and does not consume a DC bias (ABT #1737), so a
+// biased loop cannot be built whose area is its loss: the dynamic loop refuses one instead of centring it on zero.
+TEST_CASE("Test_Roshen_Dynamic_BH_Loop_Refuses_A_DC_Bias", "[physical-model][core-losses][roshen-core-losses-model][abt-2202]") {
+    settings.reset();
+    clear_databases();
+    Core core = OpenMagneticsTesting::get_quick_core("E 42/21/15", json::array(), 1, "3C90");
+    CoreLossesRoshenModel roshen;
+    REQUIRE_NOTHROW(roshen.get_dynamic_bh_loop(core, abt2202_rectangular_voltage_flux_excitation(100000, 0.1, 0.5, 0), 25));
+    CHECK_THROWS_WITH(roshen.get_dynamic_bh_loop(core, abt2202_rectangular_voltage_flux_excitation(100000, 0.1, 0.5, 0.1), 25),
+                      Catch::Matchers::ContainsSubstring("DC flux density bias"));
+    settings.reset();
+}
+
+TEST_CASE("Test_Roshen_Dynamic_BH_Loop_Throws_Without_Its_Inputs", "[physical-model][core-losses][roshen-core-losses-model][abt-2202]") {
+    settings.reset();
+    clear_databases();
+    auto excitation = abt2202_rectangular_voltage_flux_excitation(100000, 0.1, 0.5, 0);
+    CoreLossesRoshenModel roshen;
+    Core core = OpenMagneticsTesting::get_quick_core("E 42/21/15", json::array(), 1, "3C90");
+    auto material = core.resolve_material();
+
+    SECTION("a material without the Roshen method") {
+        auto withoutRoshen = material;
+        auto volumetricLosses = withoutRoshen.get_volumetric_losses();
+        for (auto& [variant, methods] : volumetricLosses) {
+            std::erase_if(methods, [](const auto& method) {
+                return std::holds_alternative<CoreLossesMethodData>(method) &&
+                       std::get<CoreLossesMethodData>(method).get_method() == VolumetricCoreLossesMethodType::ROSHEN;
+            });
+        }
+        withoutRoshen.set_volumetric_losses(volumetricLosses);
+        withoutRoshen.set_name("3C90 without Roshen data");
+        Core withoutRoshenCore = core;
+        withoutRoshenCore.get_mutable_functional_description().set_material(withoutRoshen);
+        CHECK_THROWS_WITH(roshen.get_dynamic_bh_loop(withoutRoshenCore, excitation, 25), Catch::Matchers::ContainsSubstring("ROSHEN"));
+    }
+    SECTION("a material without saturation data") {
+        auto withoutSaturation = material;
+        withoutSaturation.set_saturation({});
+        withoutSaturation.set_name("3C90 without saturation data");
+        Core withoutSaturationCore = core;
+        withoutSaturationCore.get_mutable_functional_description().set_material(withoutSaturation);
+        CHECK_THROWS(roshen.get_dynamic_bh_loop(withoutSaturationCore, excitation, 25));
+    }
+    SECTION("an excitation without flux density") {
+        auto withoutFlux = excitation;
+        withoutFlux.set_magnetic_flux_density(std::nullopt);
+        CHECK_THROWS_WITH(roshen.get_dynamic_bh_loop(core, withoutFlux, 25), Catch::Matchers::ContainsSubstring("no magnetic flux density"));
+    }
+    SECTION("a flux density with minor loops") {
+        json excitationJson;
+        excitationJson["frequency"] = 100000;
+        excitationJson["magneticFluxDensity"]["waveform"]["data"] = {-0.1, 0.1, 0.05, 0.08, -0.1};
+        excitationJson["magneticFluxDensity"]["waveform"]["time"] = {0, 4e-6, 5e-6, 6e-6, 1e-5};
+        excitationJson["magneticFluxDensity"]["processed"]["label"] = WaveformLabel::CUSTOM;
+        excitationJson["magneticFluxDensity"]["processed"]["offset"] = 0;
+        excitationJson["magneticFluxDensity"]["processed"]["peak"] = 0.1;
+        excitationJson["magneticFluxDensity"]["processed"]["peakToPeak"] = 0.2;
+        CHECK_THROWS_WITH(roshen.get_dynamic_bh_loop(core, OperatingPointExcitation(excitationJson), 25),
+                          Catch::Matchers::ContainsSubstring("minor loops are not modelled"));
+    }
+    settings.reset();
+}
+
+// The path of the WebLibMKF export: a magnetic driven by a rectangular voltage, its flux density derived by MKF.
+TEST_CASE("Test_Roshen_Dynamic_BH_Loop_Of_A_Magnetic_Driven_By_A_Rectangular_Voltage", "[physical-model][core-losses][roshen-core-losses-model][abt-2202]") {
+    settings.reset();
+    clear_databases();
+    double temperature = 25;
+    double frequency = 100000;
+    auto magnetic = OpenMagneticsTesting::get_quick_magnetic("E 42/21/15", OpenMagneticsTesting::get_ground_gap(0.0005), {20}, 1, "3C90");
+    json operatingPointJson;
+    operatingPointJson["conditions"]["ambientTemperature"] = temperature;
+    json excitationJson;
+    excitationJson["frequency"] = frequency;
+    excitationJson["voltage"]["processed"]["label"] = WaveformLabel::RECTANGULAR;
+    excitationJson["voltage"]["processed"]["offset"] = 0;
+    excitationJson["voltage"]["processed"]["peakToPeak"] = 100;
+    excitationJson["voltage"]["processed"]["dutyCycle"] = 0.5;
+    operatingPointJson["excitationsPerWinding"] = json::array({excitationJson});
+    OperatingPoint operatingPoint(operatingPointJson);
+
+    auto magneticFluxDensity = MagnetizingInductance().calculate_inductance_and_magnetic_flux_density(magnetic, &operatingPoint).second;
+    auto excitation = operatingPoint.get_excitations_per_winding()[0];
+    excitation.set_magnetic_flux_density(magneticFluxDensity);
+
+    CoreLossesRoshenModel roshen;
+    auto loop = roshen.get_dynamic_bh_loop(magnetic.get_core(), excitation, temperature);
+    double modelTotal = roshen.get_core_losses(magnetic.get_core(), excitation, temperature).get_volumetric_losses().value();
+    // 50 V for 5 us over 20 turns of 178 mm2: about 70 mT peak.
+    double peak = magneticFluxDensity.get_processed()->get_peak().value();
+    INFO("peak " << peak << " T, samples " << magneticFluxDensity.get_waveform()->get_data().size());
+    CHECK(peak > 0.03);
+    CHECK_THAT(loop.totalVolumetricLosses, Catch::Matchers::WithinRel(modelTotal, 1e-12));
+    CHECK_THAT(abt2202_loop_volumetric_losses(loop), Catch::Matchers::WithinRel(modelTotal, 0.01));
+    CHECK_THAT(loop.time.back() - loop.time.front(), Catch::Matchers::WithinRel(1.0 / frequency, 1e-6));
+    settings.reset();
+}

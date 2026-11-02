@@ -447,6 +447,19 @@ class CoreLossesBargModel : public CoreLossesSteinmetzModel {
 // A Practical, Accurate and Very General Core Loss Model for Nonsinusoidal Waveforms by Waseem Roshen
 // https://sci-hub.st/10.1109/20.278656
 // https://sci-hub.st/10.1109/TPEL.2006.886608
+// One period of the DYNAMIC Roshen B-H loop (CoreLossesRoshenModel::get_dynamic_bh_loop, ABT #2202), as time
+// waveforms. Its area f * oint H dB is the Roshen total volumetric loss: hysteresis + eddy current + excess.
+struct RoshenDynamicBhLoop {
+    double frequency;                           // [Hz]
+    std::vector<double> time;                   // [s], non-decreasing, from the excitation's t0 to t0 + 1/f
+    std::vector<double> magneticFluxDensity;    // [T]
+    std::vector<double> magneticFieldStrength;  // [A/m]
+    double hysteresisVolumetricLosses;          // [W/m3]
+    double eddyCurrentVolumetricLosses;         // [W/m3]
+    double excessVolumetricLosses;              // [W/m3]
+    double totalVolumetricLosses;               // [W/m3]
+};
+
 class CoreLossesRoshenModel : public CoreLossesModel {
   public:
     CoreLossesRoshenModel() { _modelName = "Roshen"; }
@@ -475,6 +488,17 @@ class CoreLossesRoshenModel : public CoreLossesModel {
         return _get_magnetic_flux_density_from_core_losses(core, frequency, temperature, coreLosses);
     }
     std::pair<std::vector<double>, std::vector<double>> get_bh_loop(std::map<std::string, double> parameters, OperatingPointExcitation excitation);
+    // The DYNAMIC B-H loop over one period of the excitation (ABT #2202). The field is the static Roshen loop
+    // (get_bh_loop's branches: rising B on the lower branch, falling B on the upper one) plus the fields that
+    // dissipate Roshen's own eddy-current and excess terms, from the same parameters:
+    //     H = H_static(B, branch) + (k_eddy / rho) * dB/dt + sqrt(alpha*N0 / rho) * sign(dB/dt) * |dB/dt|^(1/2)
+    // so that f * oint H dB = hysteresis + get_eddy_current_losses_density + get_excess_eddy_current_losses_density by
+    // construction (both integrate over the same flux density segments). At a sample where dB/dt jumps, the sample
+    // is repeated at the same time with the field on either side (a step in H at constant B, no area).
+    // Throws when the excitation has no flux density, carries a DC bias (the Roshen model does not price one:
+    // ABT #1737, #2202), spans more than one period, or has more than one maximum and one minimum per period (the
+    // Roshen hysteresis term prices one loop, no minor loops), and whenever the material lacks the loop's inputs.
+    RoshenDynamicBhLoop get_dynamic_bh_loop(const Core& core, const OperatingPointExcitation& excitation, double temperature);
     double get_hysteresis_losses_density(std::map<std::string, double> parameters, OperatingPointExcitation excitation);
     double get_eddy_current_losses_density(Core core, OperatingPointExcitation excitation, double resistivity);
     double get_excess_eddy_current_losses_density(OperatingPointExcitation excitation,

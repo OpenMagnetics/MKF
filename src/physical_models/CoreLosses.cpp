@@ -3246,6 +3246,34 @@ static double roshen_compute_minor_loop_delta(double Hc, double a1, double b1, d
     return (upper(tip) - lower(tip)) / 2.0;
 }
 
+// The geometry factor of Roshen's classical eddy-current term, Pe = (k / rho) * f * integral (dB/dt)^2 dt:
+// A / (8 pi) of the central column for a sintered/solid material, D^2 / 12 of the ribbon for a tape-wound one
+// (ABT #1344). Shared by the loss and by the field of the dynamic loop (ABT #2202), so both use one k.
+static double roshen_eddy_current_geometry_coefficient(const Core& core) {
+    if (!core.get_processed_description()) {
+        throw CoreNotProcessedException();
+    }
+
+    auto coreMaterial = core.resolve_material();
+    bool isLaminatedMaterial = coreMaterial.get_material() == MAS::MaterialType::NANOCRYSTALLINE ||
+                                coreMaterial.get_material() == MAS::MaterialType::AMORPHOUS ||
+                                coreMaterial.get_material() == MAS::MaterialType::ELECTRICAL_STEEL;
+
+    if (isLaminatedMaterial) {
+        if (!coreMaterial.get_lamination_thickness()) {
+            throw std::runtime_error(
+                "Material " + coreMaterial.get_name() +
+                " is a tape-wound material (nanocrystalline, amorphous or electrical steel) but "
+                "carries no laminationThickness: classical eddy current losses need the ribbon "
+                "thickness, not the core's bulk cross-section, and cannot be computed without it.");
+        }
+        double laminationThickness = resolve_dimensional_values(coreMaterial.get_lamination_thickness().value());
+        return pow(laminationThickness, 2) / 12;
+    }
+    double centralColumnArea = core.get_processed_description().value().get_columns()[0].get_area();
+    return centralColumnArea / 8 / std::numbers::pi;
+}
+
 std::pair<std::vector<double>, std::vector<double>> CoreLossesRoshenModel::get_bh_loop(std::map<std::string, double> parameters,
                                                             OperatingPointExcitation excitation) {
     double saturationMagneticFieldStrength = parameters["saturationMagneticFieldStrength"];
@@ -3337,6 +3365,195 @@ std::pair<std::vector<double>, std::vector<double>> CoreLossesRoshenModel::get_b
     }
 
     return std::pair<std::vector<double>, std::vector<double>>(cutUpperMagneticFluxDensityWaveform, cutLowerMagneticFluxDensityWaveform);
+}
+
+// Field strength on one branch of the static Roshen minor loop at flux density B, measured from the loop's centre
+// (ABT #2202). The falling branch is get_bh_loop's upper branch shifted down by delta,
+//     B = (H + Hc) / (a1 + b * |H + Hc|) - delta,   b = b1 for H >= -Hc, b2 below,
+// solved for H. The rising branch is get_bh_loop's lower branch shifted up by delta, which is the point reflection of
+// the falling one: H_rising(B) = -H_falling(-B).
+// Samples per period of get_dynamic_bh_loop: each flux density segment of the excitation is subdivided so that the
+// static branch H(B) is resolved finely enough for a trapezoidal f * oint H dB over the returned samples to reproduce
+// the Roshen hysteresis loss (whose own grid step is roshenMagneticFieldStrengthStep). The eddy-current and excess
+// terms are exact at any subdivision: their field is constant along a segment.
+static constexpr size_t roshenDynamicBhLoopMinimumNumberPoints = 4096;
+
+static double roshen_static_branch_field_strength(double magneticFluxDensity, bool rising, double Hc, double a1,
+                                                  double b1, double b2, double delta) {
+    double branchMagneticFluxDensity = rising ? -magneticFluxDensity : magneticFluxDensity;
+    double unshifted = branchMagneticFluxDensity + delta;
+    double denominator = unshifted >= 0 ? 1.0 - b1 * unshifted : 1.0 + b2 * unshifted;
+    double x = a1 * unshifted / denominator;
+    if (!(denominator > 0) || (unshifted >= 0) != (x >= 0)) {
+        throw CalculationException(ErrorCode::CALCULATION_ERROR,
+            "Roshen dynamic B-H loop: no field strength on the " + std::string(rising ? "rising" : "falling") +
+            " branch of the static loop at " + std::to_string(magneticFluxDensity) + " T (Hc = " + std::to_string(Hc) +
+            " A/m, a1 = " + std::to_string(a1) + ", b1 = " + std::to_string(b1) + ", b2 = " + std::to_string(b2) +
+            ", delta = " + std::to_string(delta) + " T): the flux density is past the branch's saturation asymptote");
+    }
+    double fieldStrength = x - Hc;
+    return rising ? -fieldStrength : fieldStrength;
+}
+
+RoshenDynamicBhLoop CoreLossesRoshenModel::get_dynamic_bh_loop(const Core& core,
+                                                               const OperatingPointExcitation& excitation,
+                                                               double temperature) {
+    if (!excitation.get_magnetic_flux_density()) {
+        throw InvalidInputException(ErrorCode::MISSING_DATA,
+            "Roshen dynamic B-H loop: the excitation has no magnetic flux density");
+    }
+    double frequency = excitation.get_frequency();
+    if (!(frequency > 0) || !std::isfinite(frequency)) {
+        throw InvalidInputException(ErrorCode::INVALID_INPUT,
+            "Roshen dynamic B-H loop: the excitation's frequency is " + std::to_string(frequency) + " Hz");
+    }
+    auto magneticFluxDensity = Inputs::standardize_waveform(excitation.get_magnetic_flux_density().value(), frequency);
+    if (!magneticFluxDensity.get_processed() || !magneticFluxDensity.get_processed()->get_peak()) {
+        throw InvalidInputException(ErrorCode::MISSING_DATA,
+            "Roshen dynamic B-H loop: the excitation's magnetic flux density has no processed peak and offset, which the "
+            "Roshen hysteresis loop is built from");
+    }
+    // Copies: the MAS getters return by value, so a reference into them would dangle.
+    const auto waveform = magneticFluxDensity.get_waveform().value();
+    const auto data = waveform.get_data();
+    const auto time = waveform.get_time().value();
+    if (data.size() < 2 || data.size() != time.size()) {
+        throw InvalidInputException(ErrorCode::INVALID_INPUT,
+            "Roshen dynamic B-H loop: the flux density waveform has " + std::to_string(data.size()) + " samples and " +
+            std::to_string(time.size()) + " time points");
+    }
+    double period = 1.0 / frequency;
+    double duration = time.back() - time.front();
+    // The same one-period threshold as the Roshen eddy-current and excess integrations (ABT #118).
+    if (duration > 1.5 * period) {
+        throw InvalidInputException(ErrorCode::INVALID_INPUT,
+            "Roshen dynamic B-H loop: the flux density waveform spans " + std::to_string(duration * frequency) +
+            " periods; the loop is built over one period, pass one");
+    }
+
+    double minimumMagneticFluxDensity = std::numeric_limits<double>::max();
+    double maximumMagneticFluxDensity = std::numeric_limits<double>::lowest();
+    for (double value : data) {
+        minimumMagneticFluxDensity = std::min(minimumMagneticFluxDensity, value);
+        maximumMagneticFluxDensity = std::max(maximumMagneticFluxDensity, value);
+    }
+    // A DC bias: the Roshen model prices the symmetric loop of the AC amplitude and nothing in it consumes the DC
+    // offset (ABT #1737, #118), so a biased loop cannot be built whose area is the model's loss. The threshold is the
+    // one below which MKF treats a flux density as unbiased (calculate_dple_factor).
+    const double unbiasedMagneticFluxDensityLimit = 1e-6;
+    double processedOffset = magneticFluxDensity.get_processed()->get_offset();
+    double waveformCentre = (maximumMagneticFluxDensity + minimumMagneticFluxDensity) / 2;
+    if (std::abs(processedOffset) > unbiasedMagneticFluxDensityLimit || std::abs(waveformCentre) > unbiasedMagneticFluxDensityLimit) {
+        throw InvalidInputException(ErrorCode::INVALID_INPUT,
+            "Roshen dynamic B-H loop: the excitation carries a DC flux density bias (processed offset " +
+            std::to_string(processedOffset) + " T, waveform centre " + std::to_string(waveformCentre) +
+            " T). The Roshen model prices the symmetric loop of the AC amplitude and does not consume a DC bias "
+            "(ABT #1737), so no biased loop can be built whose area is its loss");
+    }
+
+    // The losses, exactly as compute_core_losses prices them.
+    auto parameters = get_roshen_parameters(core, excitation, temperature);
+    double hysteresisVolumetricLosses = get_hysteresis_losses_density(parameters, excitation);
+    double resistivity = parameters.at("resistivity");
+    double eddyCurrentVolumetricLosses = get_eddy_current_losses_density(core, excitation, resistivity);
+    double excessVolumetricLosses = 0;
+    double excessFieldCoefficient = 0;
+    if (parameters.count("excessLossesCoefficient")) {
+        double alphaTimesN0 = parameters.at("excessLossesCoefficient");
+        excessVolumetricLosses = get_excess_eddy_current_losses_density(excitation, resistivity, alphaTimesN0);
+        excessFieldCoefficient = sqrt(alphaTimesN0 / resistivity);
+    }
+    // Pe = (k / rho) f integral (dB/dt)^2 dt  <=  H_eddy = (k / rho) dB/dt
+    // Pex = sqrt(alpha N0 / rho) f integral |dB/dt|^(3/2) dt  <=  H_excess = sqrt(alpha N0 / rho) sign(dB/dt) |dB/dt|^(1/2)
+    double eddyFieldCoefficient = roshen_eddy_current_geometry_coefficient(core) / resistivity;
+
+    // The static loop of get_bh_loop: the same major-loop parameters and minor-loop shift.
+    double coerciveForce = parameters.at("coerciveForce");
+    double magneticFluxDensityAcPeak = magneticFluxDensity.get_processed()->get_peak().value() - processedOffset;
+    auto majorLoopParameters = get_major_loop_parameters(parameters.at("saturationMagneticFieldStrength"),
+                                                         parameters.at("saturationMagneticFluxDensity"),
+                                                         coerciveForce, parameters.at("remanence"));
+    double a1 = majorLoopParameters.at("a1");
+    double b1 = majorLoopParameters.at("b1");
+    double b2 = majorLoopParameters.at("b2");
+    double delta = roshen_compute_minor_loop_delta(coerciveForce, a1, b1, b2, magneticFluxDensityAcPeak,
+                                                   parameters.at("saturationMagneticFluxDensity"));
+
+    // The flux density segments the eddy-current and excess integrations run over (a repeated sample is no segment).
+    struct Segment {
+        size_t index;
+        double duration;
+        double magneticFluxDensityChange;
+    };
+    std::vector<Segment> segments;
+    for (size_t i = 0; i + 1 < data.size(); ++i) {
+        double segmentDuration = flux_density_segment_duration(data, time, i, "Roshen dynamic B-H loop");
+        if (segmentDuration == 0) {
+            continue;
+        }
+        segments.push_back({i, segmentDuration, data[i + 1] - data[i]});
+    }
+
+    // One loop per period: B rises once and falls once (flat stretches allowed). The Roshen hysteresis term prices the
+    // single loop of the AC peak, so a waveform with minor reversals has no loop whose area is that loss.
+    std::vector<int> directions;
+    for (const auto& segment : segments) {
+        if (segment.magneticFluxDensityChange != 0) {
+            directions.push_back(segment.magneticFluxDensityChange > 0 ? 1 : -1);
+        }
+    }
+    size_t numberReversals = 0;
+    for (size_t i = 0; i < directions.size(); ++i) {
+        if (directions[i] != directions[(i + 1) % directions.size()]) {
+            ++numberReversals;
+        }
+    }
+    if (directions.empty() || numberReversals != 2) {
+        throw InvalidInputException(ErrorCode::INVALID_INPUT,
+            "Roshen dynamic B-H loop: the flux density reverses " + std::to_string(numberReversals) +
+            " times per period; the Roshen hysteresis term prices one loop (one maximum and one minimum per period), "
+            "minor loops are not modelled");
+    }
+
+    // A flat segment keeps the branch B last moved on (cyclically: the period wraps).
+    int lastDirection = directions.back();
+    size_t numberSubdivisions = static_cast<size_t>(
+        std::ceil(static_cast<double>(roshenDynamicBhLoopMinimumNumberPoints) / static_cast<double>(segments.size())));
+
+    RoshenDynamicBhLoop loop;
+    loop.frequency = frequency;
+    for (const auto& segment : segments) {
+        if (segment.magneticFluxDensityChange != 0) {
+            lastDirection = segment.magneticFluxDensityChange > 0 ? 1 : -1;
+        }
+        bool rising = lastDirection > 0;
+        double magneticFluxDensityDerivative = segment.magneticFluxDensityChange / segment.duration;
+        double dynamicFieldStrength = eddyFieldCoefficient * magneticFluxDensityDerivative +
+                                      excessFieldCoefficient * std::copysign(sqrt(fabs(magneticFluxDensityDerivative)), magneticFluxDensityDerivative);
+        for (size_t j = 0; j <= numberSubdivisions; ++j) {
+            double fraction = static_cast<double>(j) / static_cast<double>(numberSubdivisions);
+            double sampleTime = j == numberSubdivisions ? time[segment.index + 1] : time[segment.index] + fraction * segment.duration;
+            double sampleMagneticFluxDensity = j == numberSubdivisions ? data[segment.index + 1]
+                                                                       : data[segment.index] + fraction * segment.magneticFluxDensityChange;
+            double sampleFieldStrength = roshen_static_branch_field_strength(sampleMagneticFluxDensity - processedOffset, rising,
+                                                                             coerciveForce, a1, b1, b2, delta) +
+                                         dynamicFieldStrength;
+            // The first sample of a segment repeats the last of the previous one unless the field steps there.
+            if (j == 0 && !loop.time.empty() && loop.time.back() == sampleTime &&
+                loop.magneticFluxDensity.back() == sampleMagneticFluxDensity && loop.magneticFieldStrength.back() == sampleFieldStrength) {
+                continue;
+            }
+            loop.time.push_back(sampleTime);
+            loop.magneticFluxDensity.push_back(sampleMagneticFluxDensity);
+            loop.magneticFieldStrength.push_back(sampleFieldStrength);
+        }
+    }
+
+    loop.hysteresisVolumetricLosses = hysteresisVolumetricLosses;
+    loop.eddyCurrentVolumetricLosses = eddyCurrentVolumetricLosses;
+    loop.excessVolumetricLosses = excessVolumetricLosses;
+    loop.totalVolumetricLosses = hysteresisVolumetricLosses + eddyCurrentVolumetricLosses + excessVolumetricLosses;
+    return loop;
 }
 
 /**
@@ -3432,31 +3649,7 @@ double CoreLossesRoshenModel::get_eddy_current_losses_density(Core core,
     if (magneticFluxDensity.get_waveform().value().get_time()) {
         magneticFluxDensityTime = magneticFluxDensity.get_waveform().value().get_time().value();
     }
-    if (!core.get_processed_description()) {
-        throw CoreNotProcessedException();
-    }
-
-    auto coreMaterial = core.resolve_material();
-    bool isLaminatedMaterial = coreMaterial.get_material() == MAS::MaterialType::NANOCRYSTALLINE ||
-                                coreMaterial.get_material() == MAS::MaterialType::AMORPHOUS ||
-                                coreMaterial.get_material() == MAS::MaterialType::ELECTRICAL_STEEL;
-
-    double eddyCurrentGeometryCoefficient;
-    if (isLaminatedMaterial) {
-        if (!coreMaterial.get_lamination_thickness()) {
-            throw std::runtime_error(
-                "Material " + coreMaterial.get_name() +
-                " is a tape-wound material (nanocrystalline, amorphous or electrical steel) but "
-                "carries no laminationThickness: classical eddy current losses need the ribbon "
-                "thickness, not the core's bulk cross-section, and cannot be computed without it.");
-        }
-        double laminationThickness = resolve_dimensional_values(coreMaterial.get_lamination_thickness().value());
-        eddyCurrentGeometryCoefficient = pow(laminationThickness, 2) / 12;
-    }
-    else {
-        double centralColumnArea = core.get_processed_description().value().get_columns()[0].get_area();
-        eddyCurrentGeometryCoefficient = centralColumnArea / 8 / std::numbers::pi;
-    }
+    double eddyCurrentGeometryCoefficient = roshen_eddy_current_geometry_coefficient(core);
 
     double volumetricLossesIntegration = 0;
     double timeDifference;
