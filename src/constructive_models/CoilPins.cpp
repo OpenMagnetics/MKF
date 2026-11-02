@@ -58,6 +58,9 @@
 #include <iomanip>
 #include <limits>
 #include <map>
+#include <array>
+#include <unordered_map>
+#include <bit>
 #include <tuple>
 #include <optional>
 #include <set>
@@ -1465,8 +1468,17 @@ TerminalLanePlan Coil::terminal_lane_plan(const std::vector<ConnectionRoute>& ro
         // Spec RW-size (Alf, 2026-10-25): under real winding a lead occupies its REAL extent along the
         // lane, which depends on whether it leaves on the face or tangentially (lead_lane_extent); the
         // ideal winding keeps the coated (or sleeve) diameter.
+        // Found once per lead and tangential flag (the placement asks it for every order and anchor).
+        std::vector<std::optional<double>> laneExtents(2 * routes.size());
         auto extent_of = [&](size_t index, bool tangential) {
-            return realWinding ? lead_lane_extent(routes[index], turnPaths[index].value(), tangential) : diameters[index];
+            if (!realWinding) {
+                return diameters[index];
+            }
+            auto& extent = laneExtents[2 * index + (tangential ? 1 : 0)];
+            if (!extent) {
+                extent = lead_lane_extent(routes[index], turnPaths[index].value(), tangential);
+            }
+            return extent.value();
         };
         auto beyond_half_extent = [&](size_t index, double lane) {
             return realWinding && std::abs(lane) >= turnPaths[index]->laneBound - 1e-12;
@@ -1513,14 +1525,18 @@ TerminalLanePlan Coil::terminal_lane_plan(const std::vector<ConnectionRoute>& ro
         };
         // Whether two leads meet depends only on their two envelopes, so it is decided once per pair
         // (the placement asks it again for every candidate anchor and every round).
-        std::map<std::tuple<size_t, bool, size_t, bool>, bool> meetings;
+        // Indexed by (a, tangentialA, b, tangentialB) in the order asked: -1 not decided yet, else 0 / 1
+        // (allocated at the first question: most faces never ask).
+        std::vector<signed char> meetings;
         auto leads_can_meet = [&](size_t a, bool tangentialA, size_t b, bool tangentialB) {
-            const auto key = std::make_tuple(a, tangentialA, b, tangentialB);   // in the order asked
-            auto found = meetings.find(key);
-            if (found == meetings.end()) {
-                found = meetings.emplace(key, envelopes_meet(envelope_of(a, tangentialA), envelope_of(b, tangentialB))).first;
+            if (meetings.empty()) {
+                meetings.assign(4 * routes.size() * routes.size(), -1);
             }
-            return found->second;
+            auto& meet = meetings[(2 * a + (tangentialA ? 1 : 0)) * 2 * routes.size() + 2 * b + (tangentialB ? 1 : 0)];
+            if (meet < 0) {
+                meet = envelopes_meet(envelope_of(a, tangentialA), envelope_of(b, tangentialB)) ? 1 : 0;
+            }
+            return meet == 1;
         };
         struct Occupant {
             size_t route;
@@ -1808,6 +1824,18 @@ TerminalLanePlan Coil::terminal_lane_plan(const std::vector<ConnectionRoute>& ro
             // tangential when that lane lies beyond its turn's half extent (then its extent and envelope
             // change, so its own lane is found again; a lead once found tangential stays so, so this ends
             // within two rounds). Its lane and flag are therefore final as soon as it is placed.
+            // The lowest clear shift past an anchor depends only on the lead, its tangential flag, the
+            // anchor `offset` and the occupants placed before this bundle (fixed for this call), so it is
+            // found once per (lead, flag, exact offset) -- the tie-order search asks it again for every
+            // order that shares those three.
+            struct ShiftKeyHash {
+                size_t operator()(const std::tuple<size_t, bool, uint64_t>& key) const {
+                    uint64_t h = std::get<2>(key) * 0x9E3779B97F4A7C15ULL;
+                    h ^= (static_cast<uint64_t>(std::get<0>(key)) << 1 | (std::get<1>(key) ? 1 : 0)) + 0x632BE59BD9B4E019ULL + (h << 6) + (h >> 2);
+                    return static_cast<size_t>(h);
+                }
+            };
+            std::unordered_map<std::tuple<size_t, bool, uint64_t>, double, ShiftKeyHash> clearShifts;
             auto place_member = [&](const std::vector<size_t>& order, std::vector<double>& lanes, std::vector<bool>& flags,
                                     size_t position) {
                 const size_t lead = order[position];
@@ -1836,40 +1864,45 @@ TerminalLanePlan Coil::terminal_lane_plan(const std::vector<ConnectionRoute>& ro
                         const double between = rampOutwards ? ramp_span(order[earlier]) : ramp_span(lead);
                         offset = std::max(offset, mirror * lanes[earlier] + spacing + between);
                     }
-                    // The free u at and beyond `offset` are a finite union of intervals whose lowest point is
-                    // `offset` or one of the occupants' clearing edges: try them in order (ABT #1705, exact).
-                    const auto footprintAtOffset = to_u(footprint_at(lead, mirror * offset));
-                    std::vector<double> candidates{0.0};
-                    for (const auto& occupant : placed) {
-                        if (const auto requiredGap = required_gap(occupant, lead, flag)) {
-                            const double edge = to_u(occupant.footprint).second + requiredGap.value() - footprintAtOffset.first;
-                            if (edge > 0.0) {
-                                candidates.push_back(edge);
+                    const auto shiftKey = std::make_tuple(lead, flag, std::bit_cast<uint64_t>(offset));
+                    auto knownShift = clearShifts.find(shiftKey);
+                    if (knownShift == clearShifts.end()) {
+                        // The free u at and beyond `offset` are a finite union of intervals whose lowest point is
+                        // `offset` or one of the occupants' clearing edges: try them in order (ABT #1705, exact).
+                        const auto footprintAtOffset = to_u(footprint_at(lead, mirror * offset));
+                        std::vector<double> candidates{0.0};
+                        for (const auto& occupant : placed) {
+                            if (const auto requiredGap = required_gap(occupant, lead, flag)) {
+                                const double edge = to_u(occupant.footprint).second + requiredGap.value() - footprintAtOffset.first;
+                                if (edge > 0.0) {
+                                    candidates.push_back(edge);
+                                }
                             }
                         }
-                    }
-                    std::sort(candidates.begin(), candidates.end());
-                    std::optional<double> shift;
-                    for (double candidate : candidates) {
-                        const auto footprint = footprint_at(lead, mirror * (offset + candidate));
-                        bool free = true;
-                        for (const auto& occupant : placed) {
-                            if (blocks_lead(occupant, lead, flag, footprint)) {
-                                free = false;
+                        std::sort(candidates.begin(), candidates.end());
+                        std::optional<double> shift;
+                        for (double candidate : candidates) {
+                            const auto footprint = footprint_at(lead, mirror * (offset + candidate));
+                            bool free = true;
+                            for (const auto& occupant : placed) {
+                                if (blocks_lead(occupant, lead, flag, footprint)) {
+                                    free = false;
+                                    break;
+                                }
+                            }
+                            if (free) {
+                                shift = candidate;
                                 break;
                             }
                         }
-                        if (free) {
-                            shift = candidate;
-                            break;
+                        if (!shift) {
+                            // The highest edge clears every occupant by construction, so this is a defect here.
+                            throw std::logic_error("terminal_exit_slots: no lane clears " + terminal_route_label(routes[lead]) +
+                                                   " of its bundle, although the highest blocking edge should.");
                         }
+                        knownShift = clearShifts.emplace(shiftKey, shift.value()).first;
                     }
-                    if (!shift) {
-                        // The highest edge clears every occupant by construction, so this is a defect here.
-                        throw std::logic_error("terminal_exit_slots: no lane clears " + terminal_route_label(routes[lead]) +
-                                               " of its bundle, although the highest blocking edge should.");
-                    }
-                    lanes[position] = mirror * (offset + shift.value());
+                    lanes[position] = mirror * (offset + knownShift->second);
                     if (!flag && beyond_half_extent(lead, lanes[position])) {
                         if (overflowAllowed && !overflowDecided) {
                             const auto [spare, onFace] = spare_half_lane(order, lanes, flags, position);
@@ -1924,7 +1957,7 @@ TerminalLanePlan Coil::terminal_lane_plan(const std::vector<ConnectionRoute>& ro
                 double ua;
                 bool atStart;
             };
-            auto point_to_polyline = [](const std::vector<double>& point, const std::vector<std::vector<double>>& polyline) {
+            auto point_to_polyline = [](const std::array<double, 2>& point, const std::vector<std::array<double, 2>>& polyline) {
                 Closest best{std::numeric_limits<double>::max(), 1.0, 0.0, false};
                 for (size_t k = 0; k + 1 < polyline.size(); ++k) {
                     const double ux = polyline[k + 1][0] - polyline[k][0];
@@ -1944,80 +1977,90 @@ TerminalLanePlan Coil::terminal_lane_plan(const std::vector<ConnectionRoute>& ro
                 }
                 return best;
             };
+            // One tie pair's score: the member's turn where it passes the sibling's lead against that lead,
+            // from the two routes and where each leaves its turn (nothing when the member's turn does not
+            // pass where the sibling leaves).
+            std::vector<std::array<double, 2>> siblingLeadPoints;   // score_tie_pair's buffer, reused
+            auto score_tie_pair = [&](size_t member, size_t sibling, double memberAlong, double siblingAlong) -> std::optional<TiePair> {
+                const double memberRadius = routes[member].waypoints.at(attach_waypoint_index(member)).at(0);
+                const auto& memberPath = turnPaths[member].value();
+                const auto& siblingPath = turnPaths[sibling].value();
+                // An exit's last turn arrives from upstream (+along), so it passes the leads
+                // that leave further upstream; an entrance's first turn runs on downstream
+                // (-along), past the leads that leave further downstream.
+                if (!(entrance ? siblingAlong < memberAlong : siblingAlong > memberAlong)) {
+                    return std::nullopt;   // the member's turn does not pass where this sibling leaves
+                }
+                const double turnHeight = terminal_turn_height_along(routes[member], attachAdvance[member], memberPath, siblingAlong);
+                // The sibling's lead as drawn at its lane: it leaves ITS turn where that
+                // turn really is there and runs along the turn axis to its route -- a
+                // stub of its route then starts from that height, a route that leaves
+                // radially at once is joined by that axial step.
+                const auto& siblingWaypoints = routes[sibling].waypoints;
+                if (siblingWaypoints.size() < 2) {
+                    throw InvalidInputException(ErrorCode::INVALID_INPUT,
+                        "The terminal route of " + label_of(routes[sibling]) + " has fewer than two waypoints.");
+                }
+                auto& siblingLead = siblingLeadPoints;   // from its turn outwards
+                siblingLead.clear();
+                for (size_t k = 0; k < siblingWaypoints.size(); ++k) {
+                    const auto& waypoint = siblingWaypoints[entrance ? siblingWaypoints.size() - 1 - k : k];
+                    siblingLead.push_back({waypoint.at(0), waypoint.at(1)});
+                }
+                const double siblingTurnHeight =
+                    terminal_turn_height_along(routes[sibling], attachAdvance[sibling], siblingPath, siblingAlong);
+                // Spec section 21: an off-face exit's lift (liftLength) leaves its turn
+                // there too, so it starts where its turn is.
+                if (std::abs(siblingLead[1][0] - siblingLead[0][0]) <= 1e-12 || routes[sibling].liftLength) {
+                    siblingLead[0][1] = siblingTurnHeight;   // its stub starts where its turn is
+                }
+                else {
+                    const std::array<double, 2> stubStart{siblingLead[0][0], siblingTurnHeight};
+                    siblingLead.insert(siblingLead.begin(), stubStart);
+                }
+                const auto closest = point_to_polyline({memberRadius, turnHeight}, siblingLead);
+                if (!(memberPath.turnWireDiameter > 0) || !(siblingPath.stubDiameter > 0) || !(siblingPath.turnWireDiameter > 0)) {
+                    throw InvalidInputException(ErrorCode::INVALID_INPUT,
+                        "The turn path of " + label_of(routes[member]) + " or " + label_of(routes[sibling]) +
+                        " carries no wire size (TerminalTurnPath::turnWireDiameter / stubDiameter).");
+                }
+                // The member's TURN against the sibling's copper there (spec RW-size): each
+                // section's reach along the line between them.
+                const double memberReach = section_support(memberPath.turnRectangular, memberPath.turnRadialExtent,
+                                                           memberPath.turnAxialExtent, memberPath.turnWireDiameter, closest.ur, closest.ua);
+                double siblingReach = 0;
+                if (closest.atStart) {
+                    siblingReach = section_support(siblingPath.turnRectangular, siblingPath.turnRadialExtent, siblingPath.turnAxialExtent,
+                                                   siblingPath.turnWireDiameter, closest.ur, closest.ua);
+                }
+                else if (siblingPath.stubRectangular) {
+                    const auto [dr, da] = first_leg_direction(routes[sibling]);
+                    siblingReach = (std::abs(da) * siblingPath.stubRadialExtent + std::abs(dr) * siblingPath.stubAxialExtent) / 2;
+                }
+                else {
+                    siblingReach = siblingPath.stubDiameter / 2;
+                }
+                const double required = memberReach + siblingReach;
+                return TiePair{closest.distance - required, member, sibling, closest.distance, required, turnHeight};
+            };
             // Only the pairs whose two members are both among the first `placedCount` positions count.
             auto worst_tie_pair = [&](const std::vector<size_t>& order, const std::vector<double>& lanes, size_t placedCount) {
                 std::optional<TiePair> worst;
                 for (const auto& [begin, end] : ties) {
                     for (size_t p = begin; p < std::min(end, placedCount); ++p) {
                         const size_t member = order[p];
-                        const double memberRadius = routes[member].waypoints.at(attach_waypoint_index(member)).at(0);
-                        const auto& memberPath = turnPaths[member].value();
                         // ABT #1705: where along its turn each lead leaves -- at its lane on the face,
                         // or at its tangential lead's tangent point off it.
-                        const double memberAlong = terminal_lead_along(routes[member], memberPath, lanes[p]);
+                        const double memberAlong = terminal_lead_along(routes[member], turnPaths[member].value(), lanes[p]);
                         for (size_t q = begin; q < std::min(end, placedCount); ++q) {
                             if (q == p) {
                                 continue;
                             }
                             const size_t sibling = order[q];
-                            const auto& siblingPath = turnPaths[sibling].value();
-                            const double siblingAlong = terminal_lead_along(routes[sibling], siblingPath, lanes[q]);
-                            // An exit's last turn arrives from upstream (+along), so it passes the leads
-                            // that leave further upstream; an entrance's first turn runs on downstream
-                            // (-along), past the leads that leave further downstream.
-                            if (!(entrance ? siblingAlong < memberAlong : siblingAlong > memberAlong)) {
-                                continue;   // the member's turn does not pass where this sibling leaves
-                            }
-                            const double turnHeight = terminal_turn_height_along(routes[member], attachAdvance[member], memberPath, siblingAlong);
-                            // The sibling's lead as drawn at its lane: it leaves ITS turn where that
-                            // turn really is there and runs along the turn axis to its route -- a
-                            // stub of its route then starts from that height, a route that leaves
-                            // radially at once is joined by that axial step.
-                            const auto& siblingWaypoints = routes[sibling].waypoints;
-                            if (siblingWaypoints.size() < 2) {
-                                throw InvalidInputException(ErrorCode::INVALID_INPUT,
-                                    "The terminal route of " + label_of(routes[sibling]) + " has fewer than two waypoints.");
-                            }
-                            std::vector<std::vector<double>> siblingLead;   // from its turn outwards
-                            for (size_t k = 0; k < siblingWaypoints.size(); ++k) {
-                                const auto& waypoint = siblingWaypoints[entrance ? siblingWaypoints.size() - 1 - k : k];
-                                siblingLead.push_back({waypoint.at(0), waypoint.at(1)});
-                            }
-                            const double siblingTurnHeight =
-                                terminal_turn_height_along(routes[sibling], attachAdvance[sibling], siblingPath, siblingAlong);
-                            // Spec section 21: an off-face exit's lift (liftLength) leaves its turn
-                            // there too, so it starts where its turn is.
-                            if (std::abs(siblingLead[1][0] - siblingLead[0][0]) <= 1e-12 || routes[sibling].liftLength) {
-                                siblingLead[0][1] = siblingTurnHeight;   // its stub starts where its turn is
-                            }
-                            else {
-                                siblingLead.insert(siblingLead.begin(), {siblingLead[0][0], siblingTurnHeight});
-                            }
-                            const auto closest = point_to_polyline({memberRadius, turnHeight}, siblingLead);
-                            if (!(memberPath.turnWireDiameter > 0) || !(siblingPath.stubDiameter > 0) || !(siblingPath.turnWireDiameter > 0)) {
-                                throw InvalidInputException(ErrorCode::INVALID_INPUT,
-                                    "The turn path of " + label_of(routes[member]) + " or " + label_of(routes[sibling]) +
-                                    " carries no wire size (TerminalTurnPath::turnWireDiameter / stubDiameter).");
-                            }
-                            // The member's TURN against the sibling's copper there (spec RW-size): each
-                            // section's reach along the line between them.
-                            const double memberReach = section_support(memberPath.turnRectangular, memberPath.turnRadialExtent,
-                                                                       memberPath.turnAxialExtent, memberPath.turnWireDiameter, closest.ur, closest.ua);
-                            double siblingReach = 0;
-                            if (closest.atStart) {
-                                siblingReach = section_support(siblingPath.turnRectangular, siblingPath.turnRadialExtent, siblingPath.turnAxialExtent,
-                                                               siblingPath.turnWireDiameter, closest.ur, closest.ua);
-                            }
-                            else if (siblingPath.stubRectangular) {
-                                const auto [dr, da] = first_leg_direction(routes[sibling]);
-                                siblingReach = (std::abs(da) * siblingPath.stubRadialExtent + std::abs(dr) * siblingPath.stubAxialExtent) / 2;
-                            }
-                            else {
-                                siblingReach = siblingPath.stubDiameter / 2;
-                            }
-                            const double required = memberReach + siblingReach;
-                            if (!worst || closest.distance - required < worst->margin) {
-                                worst = TiePair{closest.distance - required, member, sibling, closest.distance, required, turnHeight};
+                            const double siblingAlong = terminal_lead_along(routes[sibling], turnPaths[sibling].value(), lanes[q]);
+                            const auto pair = score_tie_pair(member, sibling, memberAlong, siblingAlong);
+                            if (pair && (!worst || pair->margin < worst->margin)) {
+                                worst = pair;
                             }
                         }
                     }
@@ -2069,7 +2112,30 @@ TerminalLanePlan Coil::terminal_lane_plan(const std::vector<ConnectionRoute>& ro
                 std::vector<bool> flags(members.size(), false);
                 std::optional<Found> best;
                 bool clearing = true;   // the first pass looks for an order that clears, the second for the closest
-                std::function<void(size_t)> extend = [&](size_t position) {
+                // `prefixWorst` is the worst margin of the pairs among the positions before `position` (none
+                // when no pair has been found yet): a placed pair's margin never changes (see above), so each
+                // position adds only the pairs it forms with the earlier members of its tie, from where each
+                // placed member leaves its turn (kept per position: its lane is final while it stays placed).
+                std::vector<double> placedAlongs(members.size(), 0.0);
+                auto new_pairs_worst = [&](size_t position) {
+                    const size_t begin = ties[tieOf[position]].first;
+                    const size_t lead = candidate[position];
+                    placedAlongs[position] = terminal_lead_along(routes[lead], turnPaths[lead].value(), lanes[position]);
+                    std::optional<double> worst;
+                    auto count = [&](const std::optional<TiePair>& pair) {
+                        if (pair && (!worst || pair->margin < worst.value())) {
+                            worst = pair->margin;
+                        }
+                    };
+                    for (size_t earlier = begin; earlier < position; ++earlier) {
+                        count(score_tie_pair(candidate[earlier], lead, placedAlongs[earlier], placedAlongs[position]));
+                    }
+                    for (size_t earlier = begin; earlier < position; ++earlier) {
+                        count(score_tie_pair(lead, candidate[earlier], placedAlongs[position], placedAlongs[earlier]));
+                    }
+                    return worst;
+                };
+                std::function<void(size_t, std::optional<double>)> extend = [&](size_t position, std::optional<double> prefixWorst) {
                     if (position == members.size()) {
                         const auto worst = worst_tie_pair(candidate, lanes, members.size());
                         auto key = rank_key(chosen);
@@ -2088,7 +2154,7 @@ TerminalLanePlan Coil::terminal_lane_plan(const std::vector<ConnectionRoute>& ro
                     if (t == ties.size()) {
                         candidate[position] = members[position];
                         place_member(candidate, lanes, flags, position);
-                        extend(position + 1);
+                        extend(position + 1, prefixWorst);
                         return;
                     }
                     for (size_t k = 0; k < ties[t].second - ties[t].first; ++k) {
@@ -2099,20 +2165,25 @@ TerminalLanePlan Coil::terminal_lane_plan(const std::vector<ConnectionRoute>& ro
                         candidate[position] = members[source];
                         chosen[position] = k;
                         place_member(candidate, lanes, flags, position);
-                        const auto worst = worst_tie_pair(candidate, lanes, position + 1);
-                        const bool pruned = clearing ? (worst && worst->margin < -tolerance)
-                                                     : (worst && best && worst->margin < best->worst->margin);
+                        std::optional<double> worst = prefixWorst;
+                        if (const auto added = new_pairs_worst(position)) {
+                            if (!worst || added.value() < worst.value()) {
+                                worst = added;
+                            }
+                        }
+                        const bool pruned = clearing ? (worst && worst.value() < -tolerance)
+                                                     : (worst && best && worst.value() < best->worst->margin);
                         if (!pruned) {
                             taken[source] = true;
-                            extend(position + 1);
+                            extend(position + 1, worst);
                             taken[source] = false;
                         }
                     }
                 };
-                extend(0);
+                extend(0, std::nullopt);
                 if (!best) {
                     clearing = false;
-                    extend(0);
+                    extend(0, std::nullopt);
                 }
                 result.order = best->order;
                 result.lanes = best->lanes;
