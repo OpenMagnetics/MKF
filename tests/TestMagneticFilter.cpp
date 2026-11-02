@@ -1570,6 +1570,42 @@ TEST_CASE("MagneticFilter COST logs which candidate it rejects for having no uni
     CHECK(rejections == 1);
 }
 
+TEST_CASE("MagneticFilter ESTIMATED_COST sizes a 50 Hz wire by current density, not by the skin depth",
+          "[magnetic-filter][estimated-cost]") {
+    // A PFC choke at its 50 Hz line envelope, 3.6 A rms: the skin depth is ~9 mm, so a strand one skin
+    // depth in radius is ~270 mm2 of copper per turn, against ~0.5 mm2 the current needs at the house
+    // current density. Sized by the skin depth, no toroid's window fits a handful of turns and every
+    // PFC candidate was rejected; the current-density wire must fit easily.
+    settings.reset();
+    OpenMagneticsTesting::QuickInputsConfig inputsConfig;
+    inputsConfig.frequency = 50;
+    inputsConfig.magnetizingInductance = 1e-3;
+    inputsConfig.temperature = 25;
+    inputsConfig.label = WaveformLabel::SINUSOIDAL;
+    inputsConfig.peakToPeak = 2 * std::numbers::sqrt2 * 3.6;
+    inputsConfig.offset = 0;
+    auto inputs = OpenMagneticsTesting::create_quick_test_inputs(inputsConfig);
+
+    OpenMagneticsTesting::QuickMagneticConfig cfg;
+    cfg.numberTurns = {30};
+    cfg.numberParallels = {1};
+    cfg.coreShapeName = "T 40/24/14.5";
+    cfg.coreMaterialName = "Kool Mµ 60";
+    cfg.wireNames = {"Round 1.00 - Grade 1"};
+    auto magnetic = OpenMagneticsTesting::create_quick_test_magnetic(cfg);
+
+    // The premise: thirty skin-depth strands do not fit this toroid's window.
+    const double skinDepth = WindingSkinEffectLosses().calculate_skin_depth("copper", 50, inputs.get_maximum_temperature());
+    const double windowArea = magnetic.get_core().get_winding_windows()[0].get_area().value();
+    INFO("skin depth " << skinDepth * 1e3 << " mm, window " << windowArea * 1e6 << " mm2");
+    REQUIRE(30 * std::numbers::pi * skinDepth * skinDepth > windowArea);
+
+    auto [valid, scoring] = MagneticFilterEstimatedCost(inputs).evaluate_magnetic(&magnetic, &inputs);
+    CHECK(valid);
+    CHECK(std::isfinite(scoring));
+    CHECK(scoring > 0);
+}
+
 TEST_CASE("MagneticAdviser keeps a core COST cannot price and ranks it last for cost",
           "[magnetic-filter][cost][magnetic-adviser]") {
     settings.reset();

@@ -320,6 +320,8 @@ class MagneticFilterEstimatedCost : public MagneticFilter {
         double _estimatedWireTotalArea = 0;
         double _wireAirFillingFactor = 0;
         double _skinDepth = 0;
+        // Radius of the estimated strand: the skin depth, or the smaller wire the rms current needs.
+        double _estimatedWireConductingRadius = 0;
         double _averageMarginInWindingWindow = 0;
 
     public:

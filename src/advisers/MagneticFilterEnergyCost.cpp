@@ -74,17 +74,33 @@ MagneticFilterEstimatedCost::MagneticFilterEstimatedCost(Inputs inputs) {
     for (size_t operatingPointIndex = 0; operatingPointIndex < operatingPoints.size(); ++operatingPointIndex) {
         const auto& operatingPoint = operatingPoints[operatingPointIndex];
         auto excitation = Inputs::get_primary_excitation(operatingPoint);
-        primaryCurrentRms = std::max(primaryCurrentRms, excitation.get_current().value().get_processed().value().get_rms().value());
+        if (!excitation.get_current() || !excitation.get_current()->get_processed() || !excitation.get_current()->get_processed()->get_rms()) {
+            throw InvalidInputException(ErrorCode::MISSING_DATA,
+                "Estimated cost filter: the primary excitation of operating point " + std::to_string(operatingPointIndex) +
+                " has no processed rms current, needed to size the estimated wire");
+        }
+        primaryCurrentRms = std::max(primaryCurrentRms, excitation.get_current()->get_processed()->get_rms().value());
         frequency = std::max(frequency, Inputs::get_switching_frequency(excitation));
     }
 
     auto windingSkinEffectLossesModel = WindingSkinEffectLosses();
     _skinDepth = windingSkinEffectLossesModel.calculate_skin_depth("copper", frequency, temperature);  // TODO material hardcoded
-    _wireAirFillingFactor = Wire::get_filling_factor_round(2 * _skinDepth);
-    double estimatedWireConductingArea = std::numbers::pi * pow(_skinDepth, 2);
-    _estimatedWireTotalArea = estimatedWireConductingArea / _wireAirFillingFactor;
     double necessaryWireCopperArea = primaryCurrentRms / defaults.maximumCurrentDensity;
-    _estimatedParallels = ceil(necessaryWireCopperArea / estimatedWireConductingArea);
+    // The estimated strand is one skin depth in radius, unless the rms current needs less copper than
+    // that: at low frequency (a 50 Hz PFC line envelope) the skin depth is ~10 mm, and a 10 mm radius
+    // strand (314 mm2) per turn rejected every candidate's window for a current that needs < 1 mm2.
+    // Then the strand is the wire the current density asks for (one strand, its conducting area).
+    const bool sizedByCurrentDensity = necessaryWireCopperArea > 0 && necessaryWireCopperArea < std::numbers::pi * pow(_skinDepth, 2);
+    _estimatedWireConductingRadius = _skinDepth;
+    if (sizedByCurrentDensity) {
+        auto wire = Wire::get_wire_for_conducting_area(necessaryWireCopperArea, temperature, true);
+        _estimatedWireConductingRadius = resolve_dimensional_values(wire.get_conducting_diameter().value()) / 2;
+    }
+    _wireAirFillingFactor = Wire::get_filling_factor_round(2 * _estimatedWireConductingRadius);
+    double estimatedWireConductingArea = std::numbers::pi * pow(_estimatedWireConductingRadius, 2);
+    _estimatedWireTotalArea = estimatedWireConductingArea / _wireAirFillingFactor;
+    // A strand sized to the needed area is one strand (ceil of the ratio could round 1 + eps up to 2).
+    _estimatedParallels = sizedByCurrentDensity ? 1 : ceil(necessaryWireCopperArea / estimatedWireConductingArea);
 
     if (settings.get_core_adviser_include_margin() && inputs.has_insulation_coordination_requirements()) {
         auto clearanceAndCreepageDistance = InsulationCoordinator().calculate_creepage_distance(inputs, true);
@@ -138,15 +154,15 @@ std::pair<bool, double> MagneticFilterEstimatedCost::evaluate_magnetic(Magnetic*
 
     double manufacturabilityRelativeCost;
     if (core.get_functional_description().get_type() != CoreType::TOROIDAL) {
-        double estimatedNeededLayers = (primaryNumberTurns * _estimatedParallels * (2 * _skinDepth / _wireAirFillingFactor)) / windingWindow.get_height().value();
+        double estimatedNeededLayers = (primaryNumberTurns * _estimatedParallels * (2 * _estimatedWireConductingRadius / _wireAirFillingFactor)) / windingWindow.get_height().value();
         manufacturabilityRelativeCost = estimatedNeededLayers;
     }
     else {
-        if (_skinDepth >= windingWindow.get_radial_height().value()) {
+        if (_estimatedWireConductingRadius >= windingWindow.get_radial_height().value()) {
             return {false, 0.0};
         }
-        double layerLength = 2 * std::numbers::pi * (windingWindow.get_radial_height().value() - _skinDepth);
-        double estimatedNeededLayers = (primaryNumberTurns * _estimatedParallels * (2 * _skinDepth / _wireAirFillingFactor)) / layerLength;
+        double layerLength = 2 * std::numbers::pi * (windingWindow.get_radial_height().value() - _estimatedWireConductingRadius);
+        double estimatedNeededLayers = (primaryNumberTurns * _estimatedParallels * (2 * _estimatedWireConductingRadius / _wireAirFillingFactor)) / layerLength;
         if (estimatedNeededLayers < 0) {
             throw CalculationException(ErrorCode::CALCULATION_INVALID_INPUT, "estimatedNeededLayers cannot be negative");
         }
