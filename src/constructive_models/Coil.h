@@ -1147,6 +1147,16 @@ class Coil : public MAS::Coil {
         // (the ABT #650 gate declined). Consumers that require blocked geometry — the 3D
         // ConductorBuilder above all — must ASK instead of discovering it as a collision.
         bool _realWindingBlockingApplied = false;
+        // Alf, 2026-11-02: "lead planning should only be for the final survivor candidates, the ones
+        // that are accepted and will be returned to the user". With real winding geometry on and this
+        // false, wind() lays the real geometry (one crossing station per layer and parallel, the
+        // closing stations) but plans no connection lead into it: no lead blocking fixpoint, no
+        // tangent-departure charge, so is_real_winding_blocking_applied() stays false (and a lead
+        // layout asked of it, e.g. for lead lengths, is the untied one of an unblocked wind).
+        // The coil adviser ranks its candidates wound this way and winds the ones it returns again
+        // with it true. An explicit mode, not a setting: it belongs to the coil being wound, and a
+        // coil built any other way (constructor, JSON) plans its leads.
+        bool _connectionLeadPlanning = true;
         // ABT #2071 (Alf, 2026-10-26): the blocking now running lays out a wind whose IDEAL layout does
         // not fit. Its blocked layout overflows the window rather than being refused (see
         // wind_by_rectangular_layers for the rule).
@@ -1665,6 +1675,9 @@ class Coil : public MAS::Coil {
         bool are_sections_and_layers_fitting();
         // ABT #685: did the last wind apply real-winding connection blocking? (see the member)
         bool is_real_winding_blocking_applied() const { return _realWindingBlockingApplied; }
+        // Whether the next wind plans the connection leads under real winding geometry (see the member).
+        void set_connection_lead_planning(bool value) { _connectionLeadPlanning = value; }
+        bool get_connection_lead_planning() const { return _connectionLeadPlanning; }
         // ABT #624: every turn's copper inside the winding window (final wind verdict only).
         bool are_turns_inside_winding_window();
         // ABT #838: every INSULATION section and insulation layer inside a winding window too (the

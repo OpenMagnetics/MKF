@@ -1440,6 +1440,70 @@ namespace OpenMagnetics {
         size_t consecutiveFailures = 0;
         const size_t windPoolSize = maximumNumberResults * kWoundCoilPoolMultiplier;
 
+        // Alf, 2026-11-02: "lead planning should only be for the final survivor candidates, the ones
+        // that are accepted and will be returned to the user". With real winding geometry on, the
+        // candidates are wound and ranked with the real geometry's crossing stations but without
+        // connection lead planning (Coil::set_connection_lead_planning); the coils about to be
+        // returned are wound again with their leads planned (select_real_windable, windWithPlannedLeads
+        // below), and a coil whose planned wind fails is refused with its reason.
+        const bool planLeadsOnlyForReturnedCoils = settings.get_coil_use_real_winding_geometry();
+        mas.get_mutable_magnetic().get_mutable_coil().set_connection_lead_planning(!planLeadsOnlyForReturnedCoils);
+        // How each pooled coil was wound (its section proportions), keyed by its reference, so that a
+        // returned coil is wound again exactly as it was ranked, now with its leads planned.
+        std::map<std::string, std::vector<double>> woundProportionsByReference;
+
+        // ABT #1699: with real winding geometry on, the real winder refuses a layout it cannot close
+        // layer by layer by throwing COIL_WINDING_ERROR (the crossing stations, or the connection-lead
+        // blocking when the leads are planned, do not converge). That is the candidate's verdict, the
+        // same one real_winding_refusal returns for it, not the adviser's: it comes back in
+        // `realWinderRefusal` and the walk goes on. Any other exception, and this one with the
+        // setting off, propagates.
+        auto windCandidate = [&](Coil& candidateCoil, const std::vector<double>& proportions, std::string* realWinderRefusal) -> bool {
+            try {
+                return candidateCoil.wind(proportions, pattern, repetitions);
+            }
+            catch (const CoilException& e) {
+                if (e.code() != ErrorCode::COIL_WINDING_ERROR || !settings.get_coil_use_real_winding_geometry()) {
+                    throw;
+                }
+                *realWinderRefusal = e.what();
+                return false;
+            }
+        };
+        // The checks a wound coil passes before it is pooled, and again when it is wound with its
+        // leads planned. Returns why the coil is refused, or nothing.
+        auto woundCoilRefusal = [&](Mas& woundMas) -> std::optional<std::string> {
+            woundMas.get_mutable_magnetic().get_mutable_coil().delimit_and_compact();
+            woundMas.get_mutable_magnetic().set_coil(woundMas.get_mutable_magnetic().get_mutable_coil());
+            // For toroids the angular fill is the binding constraint: all section
+            // angular extents (dimensions[1], in degrees) must sum to ≤ 360°.
+            if (core.get_functional_description().get_type() == CoreType::TOROIDAL) {
+                double totalAngle = 0.0;
+                auto sectionsDesc = woundMas.get_magnetic().get_coil().get_sections_description();
+                if (sectionsDesc) {
+                    for (const auto& sec : sectionsDesc.value()) {
+                        totalAngle += sec.get_dimensions()[1];
+                    }
+                }
+                if (totalAngle > 360.0) {
+                    return "its sections span " + std::to_string(totalAngle) + " degrees of the toroid's 360";
+                }
+            }
+            // ABT #838: the copper fitting is not the whole coil -- the insulation sections and
+            // layers the description carries must fit the window too (the wind's own verdict
+            // tests turns only). A coil whose outer insulation wrap ends past the window edge
+            // is not buildable and is not returned; the walk goes on to the next combination.
+            else if (!woundMas.get_mutable_magnetic().get_mutable_coil().are_insulation_layers_inside_winding_window()) {
+                const auto& insulationEscape = woundMas.get_mutable_magnetic().get_mutable_coil().get_last_fit_failure();
+                if (_diagnosisInsulationOutsideWindow++ == 0) {
+                    _diagnosisInsulationOutsideWindowReason = insulationEscape;
+                }
+                logEntry("Wound candidate refused: " + insulationEscape, "CoilAdviser", 2);
+                return insulationEscape;
+            }
+            return std::nullopt;
+        };
+
         while (true) {
 
             std::vector<Winding> windings;
@@ -1489,28 +1553,20 @@ namespace OpenMagnetics {
             // We have new wires combination, we need to restart insulation each time and let it compute it again
             mas.get_mutable_magnetic().get_mutable_coil().reset_insulation();
             _diagnosisWindAttempts++;
-            // ABT #1699: with real winding geometry on, this wind IS the real one, and the real
-            // winder refuses a layout it cannot close layer by layer by throwing COIL_WINDING_ERROR
-            // (the crossing stations and the connection-lead blocking do not converge). That is this
-            // candidate's verdict -- the same one real_winding_refusal returns for it -- not the
-            // adviser's: it is counted, logged and the walk goes on. Any other exception, and this
-            // one with the setting off, propagates.
-            auto windCandidate = [&](const std::vector<double>& proportions) -> bool {
-                try {
-                    return mas.get_mutable_magnetic().get_mutable_coil().wind(proportions, pattern, repetitions);
-                }
-                catch (const CoilException& e) {
-                    if (e.code() != ErrorCode::COIL_WINDING_ERROR || !settings.get_coil_use_real_winding_geometry()) {
-                        throw;
-                    }
+            // The real winder's refusal is counted and logged; the walk goes on (see windCandidate).
+            auto windPoolCandidate = [&](const std::vector<double>& proportions) -> bool {
+                std::string realWinderRefusal;
+                const bool woundNow = windCandidate(mas.get_mutable_magnetic().get_mutable_coil(), proportions, &realWinderRefusal);
+                if (!realWinderRefusal.empty()) {
                     if (_diagnosisRealWindingRefusals++ == 0) {
-                        _diagnosisRealWindingRefusal = e.what();
+                        _diagnosisRealWindingRefusal = realWinderRefusal;
                     }
-                    logEntry(std::string("Candidate refused by the real winder: ") + e.what(), "CoilAdviser", 2);
-                    return false;
+                    logEntry("Candidate refused by the real winder: " + realWinderRefusal, "CoilAdviser", 2);
                 }
+                return woundNow;
             };
-            bool wound = windCandidate(sectionProportions);
+            std::vector<double> woundProportions = sectionProportions;
+            bool wound = windPoolCandidate(sectionProportions);
             bool packable = true;
             if (!wound) {
                 // ABT #415 RECOVERY: the fixed equal shares above are decided before any wire is
@@ -1528,7 +1584,8 @@ namespace OpenMagnetics {
                                                    mas.get_mutable_magnetic().get_mutable_coil(), pattern, repetitions);
                 if (packable && combinationProportions != sectionProportions) {
                     mas.get_mutable_magnetic().get_mutable_coil().reset_insulation();
-                    wound = windCandidate(combinationProportions);
+                    woundProportions = combinationProportions;
+                    wound = windPoolCandidate(combinationProportions);
                 }
                 else if (!packable) {
                     _diagnosisGuardSkips++;
@@ -1610,34 +1667,7 @@ namespace OpenMagnetics {
             }
 
             if (wound) {
-                mas.get_mutable_magnetic().get_mutable_coil().delimit_and_compact();
-                mas.get_mutable_magnetic().set_coil(mas.get_mutable_magnetic().get_mutable_coil());
-                // For toroids the angular fill is the binding constraint: all section
-                // angular extents (dimensions[1], in degrees) must sum to ≤ 360°.
-                if (core.get_functional_description().get_type() == CoreType::TOROIDAL) {
-                    double totalAngle = 0.0;
-                    auto sectionsDesc = mas.get_magnetic().get_coil().get_sections_description();
-                    if (sectionsDesc) {
-                        for (const auto& sec : sectionsDesc.value()) {
-                            totalAngle += sec.get_dimensions()[1];
-                        }
-                    }
-                    if (totalAngle > 360.0) {
-                        wound = false;
-                    }
-                }
-                // ABT #838: the copper fitting is not the whole coil -- the insulation sections and
-                // layers the description carries must fit the window too (the wind's own verdict
-                // tests turns only). A coil whose outer insulation wrap ends past the window edge
-                // is not buildable and is not returned; the walk goes on to the next combination.
-                else if (!mas.get_mutable_magnetic().get_mutable_coil().are_insulation_layers_inside_winding_window()) {
-                    wound = false;
-                    const auto& insulationEscape = mas.get_mutable_magnetic().get_mutable_coil().get_last_fit_failure();
-                    if (_diagnosisInsulationOutsideWindow++ == 0) {
-                        _diagnosisInsulationOutsideWindowReason = insulationEscape;
-                    }
-                    logEntry("Wound candidate refused: " + insulationEscape, "CoilAdviser", 2);
-                }
+                wound = !woundCoilRefusal(mas);
 
                 if (wound) {
                     if (!mas.get_mutable_magnetic().get_manufacturer_info()) {
@@ -1650,6 +1680,7 @@ namespace OpenMagnetics {
                     info.set_reference(auxReference);
                     mas.get_mutable_magnetic().set_manufacturer_info(info);
 
+                    woundProportionsByReference[auxReference] = woundProportions;
                     masesWithCoil.push_back(mas);
                     wiresIndex++;
                     if (masesWithCoil.size() == windPoolSize) {
@@ -1692,85 +1723,98 @@ namespace OpenMagnetics {
             if (!anyAdvanceable) break; // COA-BUG-1 FIX: all windings exhausted
             currentWireIndexPerWinding[lowestIndex]++;
         }
-        if (masesWithCoil.size() > maximumNumberResults) {
-            // Keep the coils with the lowest losses (core + ohmic, skin and proximity winding
-            // losses), as MKF's MagneticFilterLosses computes them on the wound coil: the wire
-            // ranking before winding cannot see the proximity field of the real layer stack.
-            // A coil whose losses MKF cannot evaluate (the material's loss fit does not cover the
-            // frequency, the thermal network does not converge, the filter refuses the coil) has
-            // no loss to rank by: it is dropped from the ranking with its reason logged, and no
-            // loss is invented for it.
-            // A coil whose core saturates at the temperature its own losses heat it to is a
-            // different case: that is a verdict on the design, as in the saturation filter (ABT
-            // #1740), so the coil is REJECTED, here and in the unranked return below (ABT #838, Alf
-            // 2026-10-12). The loss filter refuses it with the saturating operating point's solved
-            // losses in its outputs, and the verdict is the saturation check analyze_results makes
-            // on them (ABT #1855: the loss solve no longer throws for a saturated core).
-            MagneticFilterLosses lossesFilter;
-            auto reject_saturating_coil = [](Mas& woundMas, const std::string& why) {
-                logEntry("Wound coil '" + woundMas.get_mutable_magnetic().get_reference() + "' (material " +
-                         woundMas.get_mutable_magnetic().get_mutable_core().resolve_material().get_name() + ", " +
-                         describe_operating_frequencies(woundMas.get_inputs()) + ") rejected: " + why, "CoilAdviser", 3);
-            };
+        // Keep the coils with the lowest losses (core + ohmic, skin and proximity winding
+        // losses), as MKF's MagneticFilterLosses computes them on the wound coil: the wire
+        // ranking before winding cannot see the proximity field of the real layer stack.
+        // A coil whose losses MKF cannot evaluate (the material's loss fit does not cover the
+        // frequency, the thermal network does not converge, the filter refuses the coil) has
+        // no loss to rank by: it is dropped from the ranking with its reason logged, and no
+        // loss is invented for it.
+        // A coil whose core saturates at the temperature its own losses heat it to is a
+        // different case: that is a verdict on the design, as in the saturation filter (ABT
+        // #1740), so the coil is REJECTED, here and in the unranked return below (ABT #838, Alf
+        // 2026-10-12). The loss filter refuses it with the saturating operating point's solved
+        // losses in its outputs, and the verdict is the saturation check analyze_results makes
+        // on them (ABT #1855: the loss solve no longer throws for a saturated core).
+        MagneticFilterLosses lossesFilter;
+        struct RankingLosses {
+            enum class Kind { RANKED, UNRANKED, REJECTED } kind;
+            double losses = 0;
+            std::string reason;
+        };
+        auto evaluate_ranking_losses = [&](Mas& woundMas) -> RankingLosses {
+            std::string reason;
+            try {
+                std::vector<Outputs> lossesOutputs;
+                auto [valid, losses] = lossesFilter.evaluate_magnetic(&woundMas.get_mutable_magnetic(), &woundMas.get_mutable_inputs(), &lossesOutputs);
+                if (valid) {
+                    return {RankingLosses::Kind::RANKED, losses, ""};
+                }
+                std::vector<ResultFinding> saturationFindings;
+                const auto& operatingPoints = woundMas.get_inputs().get_operating_points();
+                for (size_t operatingPointIndex = 0; operatingPointIndex < lossesOutputs.size() && operatingPointIndex < operatingPoints.size(); ++operatingPointIndex) {
+                    if (!lossesOutputs[operatingPointIndex].get_core_losses()) {
+                        continue;
+                    }
+                    for (auto& finding : ResultsAnalyzer::analyze_saturation(woundMas.get_magnetic(), operatingPoints[operatingPointIndex],
+                                                                             lossesOutputs[operatingPointIndex], operatingPointIndex,
+                                                                             woundMas.get_inputs().get_design_requirements().get_topology())) {
+                        saturationFindings.push_back(finding);
+                    }
+                }
+                if (!saturationFindings.empty()) {
+                    return {RankingLosses::Kind::REJECTED, 0, "its core saturates at the temperature its losses heat it to: " +
+                                                                  saturationFindings.front().message};
+                }
+                reason = "MagneticFilterLosses refused the coil (its windings do not match the operating point's excitations)";
+            }
+            catch (const MaterialFrequencyOutOfSpanException& exception) {
+                reason = exception.what();
+            }
+            catch (const NoThermalOperatingPointException& exception) {
+                // The point has no thermal operating point (ABT #1876, #1942): whatever its code (a network that does
+                // not converge, a winding that runs away, a curve that cannot carry the flux at the temperature its
+                // losses reach), this coil's losses cannot be ranked; the other coils still can.
+                reason = exception.what();
+            }
+            catch (const CalculationException& exception) {
+                if (exception.code() == ErrorCode::CALCULATION_CORE_SATURATES) {
+                    // ABT #2052: the flux density of one of its points lies past the end of the material's
+                    // magnetisation curve and above B_sat (a SaturationException from the magnetizing model, e.g. more
+                    // volt-seconds than the core carries): a verdict on this coil, which is rejected, not on the
+                    // advise.
+                    return {RankingLosses::Kind::REJECTED, 0, std::string("its core saturates: ") + exception.what()};
+                }
+                if (exception.code() != ErrorCode::CALCULATION_INVALID_RESULT &&
+                    exception.code() != ErrorCode::MATERIAL_FREQUENCY_OUT_OF_SPAN) {
+                    throw;
+                }
+                reason = exception.what();
+            }
+            return {RankingLosses::Kind::UNRANKED, 0, reason};
+        };
+        auto describe_wound_coil = [](Mas& woundMas) {
+            return "Wound coil '" + woundMas.get_mutable_magnetic().get_reference() + "' (material " +
+                   woundMas.get_mutable_magnetic().get_mutable_core().resolve_material().get_name() + ", " +
+                   describe_operating_frequencies(woundMas.get_inputs()) + ")";
+        };
+        const bool rankedByLosses = masesWithCoil.size() > maximumNumberResults;
+        if (rankedByLosses) {
             std::vector<std::pair<Mas, double>> masesWithLosses;
             std::vector<Mas> masesUnranked;
             for (auto& woundMas : masesWithCoil) {
-                std::string reason;
-                try {
-                    std::vector<Outputs> lossesOutputs;
-                    auto [valid, losses] = lossesFilter.evaluate_magnetic(&woundMas.get_mutable_magnetic(), &woundMas.get_mutable_inputs(), &lossesOutputs);
-                    if (valid) {
-                        masesWithLosses.push_back({woundMas, losses});
-                        continue;
-                    }
-                    std::vector<ResultFinding> saturationFindings;
-                    const auto& operatingPoints = woundMas.get_inputs().get_operating_points();
-                    for (size_t operatingPointIndex = 0; operatingPointIndex < lossesOutputs.size() && operatingPointIndex < operatingPoints.size(); ++operatingPointIndex) {
-                        if (!lossesOutputs[operatingPointIndex].get_core_losses()) {
-                            continue;
-                        }
-                        for (auto& finding : ResultsAnalyzer::analyze_saturation(woundMas.get_magnetic(), operatingPoints[operatingPointIndex],
-                                                                                 lossesOutputs[operatingPointIndex], operatingPointIndex,
-                                                                                 woundMas.get_inputs().get_design_requirements().get_topology())) {
-                            saturationFindings.push_back(finding);
-                        }
-                    }
-                    if (!saturationFindings.empty()) {
-                        reject_saturating_coil(woundMas, "its core saturates at the temperature its losses heat it to: " +
-                                                             saturationFindings.front().message);
-                        continue;
-                    }
-                    reason = "MagneticFilterLosses refused the coil (its windings do not match the operating point's excitations)";
+                auto evaluated = evaluate_ranking_losses(woundMas);
+                if (evaluated.kind == RankingLosses::Kind::RANKED) {
+                    masesWithLosses.push_back({woundMas, evaluated.losses});
+                    continue;
                 }
-                catch (const MaterialFrequencyOutOfSpanException& exception) {
-                    reason = exception.what();
-                }
-                catch (const NoThermalOperatingPointException& exception) {
-                    // The point has no thermal operating point (ABT #1876, #1942): whatever its code (a network that does
-                    // not converge, a winding that runs away, a curve that cannot carry the flux at the temperature its
-                    // losses reach), this coil's losses cannot be ranked; the other coils still can.
-                    reason = exception.what();
-                }
-                catch (const CalculationException& exception) {
-                    if (exception.code() == ErrorCode::CALCULATION_CORE_SATURATES) {
-                        // ABT #2052: the flux density of one of its points lies past the end of the material's
-                        // magnetisation curve and above B_sat (a SaturationException from the magnetizing model, e.g. more
-                        // volt-seconds than the core carries): a verdict on this coil, which is rejected, not on the
-                        // advise.
-                        reject_saturating_coil(woundMas, std::string("its core saturates: ") + exception.what());
-                        continue;
-                    }
-                    if (exception.code() != ErrorCode::CALCULATION_INVALID_RESULT &&
-                        exception.code() != ErrorCode::MATERIAL_FREQUENCY_OUT_OF_SPAN) {
-                        throw;
-                    }
-                    reason = exception.what();
+                if (evaluated.kind == RankingLosses::Kind::REJECTED) {
+                    logEntry(describe_wound_coil(woundMas) + " rejected: " + evaluated.reason, "CoilAdviser", 3);
+                    continue;
                 }
                 masesUnranked.push_back(woundMas);
-                logEntry("Wound coil '" + woundMas.get_mutable_magnetic().get_reference() + "' (material " +
-                         woundMas.get_mutable_magnetic().get_mutable_core().resolve_material().get_name() + ", " +
-                         describe_operating_frequencies(woundMas.get_inputs()) +
-                         ") dropped from the loss ranking: its losses could not be evaluated: " + reason, "CoilAdviser", 1);
+                logEntry(describe_wound_coil(woundMas) + " dropped from the loss ranking: its losses could not be evaluated: " +
+                         evaluated.reason, "CoilAdviser", 1);
             }
             if (masesWithLosses.empty()) {
                 // Nothing to rank by: the core keeps its coils in the order they were wound
@@ -1801,13 +1845,74 @@ namespace OpenMagnetics {
         // returned, walking the ranking until enough pass, so each candidate costs one real wind
         // only when it would otherwise be returned. With the setting off the returned coils are the
         // first maximumNumberResults, as before.
-        masesWithCoil = select_real_windable(std::move(masesWithCoil), maximumNumberResults);
+        if (!planLeadsOnlyForReturnedCoils) {
+            masesWithCoil = select_real_windable(std::move(masesWithCoil), maximumNumberResults);
+            logEntry("Managed to wind " + std::to_string(masesWithCoil.size()) + " coils", "CoilAdviser", 3);
+            return masesWithCoil;
+        }
+        // Alf, 2026-11-02: the coils about to be returned are wound again, exactly as they were ranked
+        // (same wires, section proportions, pattern and repetitions) but now with their connection
+        // leads planned, and pass the same checks as when they were pooled. When the pool was ranked
+        // by losses, the losses are evaluated again on the planned wind: a coil whose core then
+        // saturates is refused, and the returned coils are ordered by their planned losses, so no
+        // number from the unplanned wind reaches the caller.
+        std::map<std::string, RankingLosses> plannedLossesByReference;
+        auto windWithPlannedLeads = [&](Mas& candidate) -> std::optional<std::string> {
+            auto& candidateCoil = candidate.get_mutable_magnetic().get_mutable_coil();
+            candidateCoil.set_connection_lead_planning(true);
+            const auto reference = candidate.get_mutable_magnetic().get_reference();
+            auto woundProportions = woundProportionsByReference.find(reference);
+            if (woundProportions == woundProportionsByReference.end()) {
+                throw std::logic_error("CoilAdviser: pooled coil '" + reference + "' has no record of the proportions it was wound with");
+            }
+            candidateCoil.reset_insulation();
+            std::string realWinderRefusal;
+            if (!windCandidate(candidateCoil, woundProportions->second, &realWinderRefusal)) {
+                if (!realWinderRefusal.empty()) {
+                    return realWinderRefusal;
+                }
+                return "with its connection leads planned it does not fit: " +
+                       (candidateCoil.get_last_fit_failure().empty() ? std::string("the winder returned no fitting layout")
+                                                                    : candidateCoil.get_last_fit_failure());
+            }
+            if (auto refusal = woundCoilRefusal(candidate)) {
+                return "with its connection leads planned, " + refusal.value();
+            }
+            if (rankedByLosses) {
+                auto evaluated = evaluate_ranking_losses(candidate);
+                if (evaluated.kind == RankingLosses::Kind::REJECTED) {
+                    return "with its connection leads planned, " + evaluated.reason;
+                }
+                if (evaluated.kind == RankingLosses::Kind::UNRANKED) {
+                    logEntry(describe_wound_coil(candidate) + " with its connection leads planned: its losses could not be evaluated: " +
+                             evaluated.reason, "CoilAdviser", 1);
+                }
+                plannedLossesByReference[reference] = evaluated;
+            }
+            return std::nullopt;
+        };
+        masesWithCoil = select_real_windable(std::move(masesWithCoil), maximumNumberResults, windWithPlannedLeads);
+        if (rankedByLosses) {
+            // Ranked coils first, by their planned losses; those whose planned losses could not be
+            // evaluated after them, in the order they were walked.
+            stable_sort_by_index(masesWithCoil, [&](Mas& left, Mas& right) {
+                const auto& leftLosses = plannedLossesByReference.at(left.get_mutable_magnetic().get_reference());
+                const auto& rightLosses = plannedLossesByReference.at(right.get_mutable_magnetic().get_reference());
+                const bool leftRanked = leftLosses.kind == RankingLosses::Kind::RANKED;
+                const bool rightRanked = rightLosses.kind == RankingLosses::Kind::RANKED;
+                if (leftRanked != rightRanked) {
+                    return leftRanked;
+                }
+                return leftRanked && leftLosses.losses < rightLosses.losses;
+            });
+        }
         logEntry("Managed to wind " + std::to_string(masesWithCoil.size()) + " coils", "CoilAdviser", 3);
 
         return masesWithCoil;
     }
 
-    std::vector<Mas> CoilAdviser::select_real_windable(std::vector<Mas> rankedMases, size_t maximumNumberResults) {
+    std::vector<Mas> CoilAdviser::select_real_windable(std::vector<Mas> rankedMases, size_t maximumNumberResults,
+                                                       const std::function<std::optional<std::string>(Mas&)>& finalWind) {
         if (!settings.get_coil_use_real_winding_geometry()) {
             if (rankedMases.size() > maximumNumberResults) {
                 rankedMases.erase(rankedMases.begin() + maximumNumberResults, rankedMases.end());
@@ -1819,6 +1924,16 @@ namespace OpenMagnetics {
         for (auto& rankedMas : rankedMases) {
             if (selected.size() == maximumNumberResults) {
                 break;
+            }
+            if (finalWind) {
+                if (auto refusal = finalWind(rankedMas)) {
+                    if (_diagnosisRealWindingRefusals++ == 0) {
+                        _diagnosisRealWindingRefusal = refusal.value();
+                    }
+                    logEntry("Wound coil '" + rankedMas.get_mutable_magnetic().get_reference() +
+                             "' refused when wound with its connection leads planned: " + refusal.value(), "CoilAdviser", 2);
+                    continue;
+                }
             }
             if (realWindingFilter.evaluate_magnetic(&rankedMas.get_mutable_magnetic(), &rankedMas.get_mutable_inputs()).first) {
                 selected.push_back(std::move(rankedMas));

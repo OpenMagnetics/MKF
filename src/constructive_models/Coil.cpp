@@ -6817,7 +6817,8 @@ void Coil::plan_terminal_tangential_departures(std::vector<ConnectionRoute>& rou
 }
 
 void Coil::charge_tangent_departures() {
-    if (!settings.get_coil_use_real_winding_geometry() || !get_turns_description()) {
+    // A tangent departure is a connection lead: a coil wound without lead planning charges none.
+    if (!settings.get_coil_use_real_winding_geometry() || !_connectionLeadPlanning || !get_turns_description()) {
         return;
     }
     std::vector<ConnectionRoute> routes;
@@ -10241,9 +10242,13 @@ bool Coil::wind_inner(std::vector<double> proportionPerWinding, std::vector<size
     // LEADS_COLLIDE). The verdict stays the IDEAL one: blocking only takes room, and a wind whose
     // ideal layout does not fit returns false whatever the blocked layout reads.
     const bool idealWindFits = result;
-    _realWindingBlockingApplied = settings.get_coil_use_real_winding_geometry() && (result || bool(get_turns_description()));
+    // Alf, 2026-11-02: a coil wound without connection lead planning (_connectionLeadPlanning, set
+    // by the coil adviser while it ranks) keeps the real geometry's crossing stations below and
+    // takes no lead blocking.
+    _realWindingBlockingApplied = settings.get_coil_use_real_winding_geometry() && _connectionLeadPlanning &&
+                                  (result || bool(get_turns_description()));
     _blockingAnUnfitWind = _realWindingBlockingApplied && !idealWindFits;
-    if (settings.get_coil_use_real_winding_geometry() && !result) {
+    if (settings.get_coil_use_real_winding_geometry() && _connectionLeadPlanning && !result) {
         logEntry(std::string(_realWindingBlockingApplied
                                  ? "Real winding: the ideal wind does not fit; connection blocking is applied to "
                                    "the overflowing layout all the same"
@@ -10355,6 +10360,21 @@ bool Coil::wind_inner(std::vector<double> proportionPerWinding, std::vector<size
                 }
             }
         }
+    }
+    if (settings.get_coil_use_real_winding_geometry() && !_connectionLeadPlanning && get_turns_description()) {
+        // The real geometry's layout laws that do not depend on any lead (ABT #1424 bundle order at
+        // every layer turnaround, ABT #1401 helical pitch at the final radius, the radial steps
+        // against sibling wraps, ABT #2091 recharge of moved turns) all live in
+        // align_blocked_layer_turns, which a planned wind reaches only through the blocking loop
+        // below. Unplanned, no slot is blocked (the state was cleared at the start of this wind),
+        // so this one call takes exactly its no-blocked-slot branch and applies no lead blocking.
+        if (!_connectionBlockedSlotsPerLayer.empty() || !_connectionBlockedDepthPerLayer.empty() ||
+            !_uLandingDepthPerLayer.empty()) {
+            throw CoilException(ErrorCode::COIL_WINDING_ERROR,
+                                "Real winding: a coil wound without connection lead planning carries blocked "
+                                "connection slots");
+        }
+        align_blocked_layer_turns();
     }
     if (_realWindingBlockingApplied) {
         // Turn blocking is GLOBAL to the winding window: a connection lead routes through the whole

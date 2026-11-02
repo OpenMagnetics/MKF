@@ -5,6 +5,7 @@
 #include "constructive_models/Mas.h"
 #include "support/Utils.h"
 #include <MAS.hpp>
+#include <functional>
 #include <limits>
 #include <optional>
 
@@ -158,8 +159,11 @@ class CoilAdviser : public WireAdviser {
 
         // ABT #1699: the first maximumNumberResults of `rankedMases` (in their order). With real
         // winding geometry on, only those MagneticFilterRealWinding accepts; refusals are counted
-        // in the no-results diagnosis.
-        std::vector<Mas> select_real_windable(std::vector<Mas> rankedMases, size_t maximumNumberResults);
+        // in the no-results diagnosis. Alf, 2026-11-02: with `finalWind`, each coil walked is first
+        // wound again by it with its connection leads planned (the adviser ranked it wound without
+        // them); the text it returns is that coil's refusal, counted with the others.
+        std::vector<Mas> select_real_windable(std::vector<Mas> rankedMases, size_t maximumNumberResults,
+                                              const std::function<std::optional<std::string>(Mas&)>& finalWind = {});
 
         /**
          * @brief The wires get_advised_coil(mas) advises from: the catalogue (or the active
