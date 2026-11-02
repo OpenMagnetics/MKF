@@ -5917,19 +5917,6 @@ TEST_CASE("Test_Roshen_Dynamic_BH_Loop_At_Low_Frequency_Is_The_Static_Loop", "[p
     settings.reset();
 }
 
-// The Roshen model prices the symmetric loop of the AC amplitude and does not consume a DC bias (ABT #1737), so a
-// biased loop cannot be built whose area is its loss: the dynamic loop refuses one instead of centring it on zero.
-TEST_CASE("Test_Roshen_Dynamic_BH_Loop_Refuses_A_DC_Bias", "[physical-model][core-losses][roshen-core-losses-model][abt-2202]") {
-    settings.reset();
-    clear_databases();
-    Core core = OpenMagneticsTesting::get_quick_core("E 42/21/15", json::array(), 1, "3C90");
-    CoreLossesRoshenModel roshen;
-    REQUIRE_NOTHROW(roshen.get_dynamic_bh_loop(core, abt2202_rectangular_voltage_flux_excitation(100000, 0.1, 0.5, 0), 25));
-    CHECK_THROWS_WITH(roshen.get_dynamic_bh_loop(core, abt2202_rectangular_voltage_flux_excitation(100000, 0.1, 0.5, 0.1), 25),
-                      Catch::Matchers::ContainsSubstring("DC flux density bias"));
-    settings.reset();
-}
-
 TEST_CASE("Test_Roshen_Dynamic_BH_Loop_Throws_Without_Its_Inputs", "[physical-model][core-losses][roshen-core-losses-model][abt-2202]") {
     settings.reset();
     clear_databases();
@@ -6013,5 +6000,276 @@ TEST_CASE("Test_Roshen_Dynamic_BH_Loop_Of_A_Magnetic_Driven_By_A_Rectangular_Vol
     CHECK_THAT(loop.totalVolumetricLosses, Catch::Matchers::WithinRel(modelTotal, 1e-12));
     CHECK_THAT(abt2202_loop_volumetric_losses(loop), Catch::Matchers::WithinRel(modelTotal, 0.01));
     CHECK_THAT(loop.time.back() - loop.time.front(), Catch::Matchers::WithinRel(1.0 / frequency, 1e-6));
+    settings.reset();
+}
+
+// ABT #1737: the DC-biased dynamic Roshen loop (Roshen-Esguerra law, CoreLossesRoshenModel::get_dc_bias_point). A
+// PLOTTING model: the loop is centred at (B_dc, H_dc) and its static field widened by F, and it reports its own
+// hysteresis F * P_h, so its area is its own total; compute_core_losses does not apply F (yet).
+TEST_CASE("Test_Roshen_Dc_Bias_Point_Matches_The_Prototype", "[physical-model][core-losses][roshen-core-losses-model][abt-1737-bias]") {
+    settings.reset();
+    clear_databases();
+    // The prototype of the law (Python, N87 at 25 C from MAS: a1 = 81.828 A/m/T, b1 = 1.9533 1/T), evaluated with
+    // MKF's mu_i(25 C) = 2303.5. (The prototype's own linear interpolation of the MAS table gives 2308.5, which moves
+    // F by 2e-4 relative at most: 1.15948, 1.53929, 2.54631.)
+    auto material = Core::resolve_material(std::string("N87"));
+    CHECK_THAT(InitialPermeability::get_initial_permeability(material, 25.0), Catch::Matchers::WithinRel(2303.5, 1e-6));
+    std::vector<std::tuple<double, double, double>> prototype = {
+        {0.1, 1.1592226099823337, 10.169129320392958},
+        {0.2, 1.5385097034210131, 26.857803837446152},
+        {0.3, 2.5440908964356197, 59.293612590433874},
+    };
+    for (auto [magneticFluxDensityDcBias, factor, fieldStrength] : prototype) {
+        INFO("B_dc " << magneticFluxDensityDcBias);
+        auto point = CoreLossesRoshenModel::get_dc_bias_point(material, 25, magneticFluxDensityDcBias);
+        CHECK_THAT(point.hysteresisFactor, Catch::Matchers::WithinRel(factor, 1e-6));
+        CHECK_THAT(point.magneticFieldStrength, Catch::Matchers::WithinRel(fieldStrength, 1e-6));
+        // Odd in B_dc: H_dc changes sign, F does not.
+        auto negative = CoreLossesRoshenModel::get_dc_bias_point(material, 25, -magneticFluxDensityDcBias);
+        CHECK(negative.hysteresisFactor == point.hysteresisFactor);
+        CHECK(negative.magneticFieldStrength == -point.magneticFieldStrength);
+    }
+    CHECK_THAT(CoreLossesRoshenModel::get_dc_bias_point(material, 25, 0).hysteresisFactor, Catch::Matchers::WithinAbs(1, 1e-15));
+    CHECK(CoreLossesRoshenModel::get_dc_bias_point(material, 25, 0).magneticFieldStrength == 0);
+    settings.reset();
+}
+
+// Stenglein, Kuebrich, Albach, Duerbaum, "Novel fit formula for the calculation of hysteresis losses including
+// DC-premagnetization", PCIM Europe 2019: quasi-static N87 at 25 C, their fit E(dB, B_dc) (Eq. 4-8, Tab. 1, within
+// 10 % of their measurements for dB > 100 mT), as the ratio E(dB, B_dc) / E(dB, 0) (set A of the ABT #1737
+// validation table). The law's F must be within 40 % of each.
+TEST_CASE("Test_Roshen_Dc_Bias_Factor_Against_Stenglein_2019", "[physical-model][core-losses][roshen-core-losses-model][abt-1737-bias]") {
+    settings.reset();
+    clear_databases();
+    auto material = Core::resolve_material(std::string("N87"));
+    // {dB, B_dc, measured ratio}
+    std::vector<std::tuple<double, double, double>> stenglein = {
+        {0.1, 0.05, 1.02}, {0.1, 0.10, 1.07}, {0.1, 0.15, 1.23}, {0.1, 0.20, 1.54}, {0.1, 0.25, 2.08}, {0.1, 0.30, 2.91},
+        {0.2, 0.05, 1.01}, {0.2, 0.10, 1.08}, {0.2, 0.15, 1.24}, {0.2, 0.20, 1.51}, {0.2, 0.25, 1.89}, {0.2, 0.30, 2.42},
+        {0.3, 0.05, 1.00}, {0.3, 0.10, 1.07}, {0.3, 0.15, 1.20}, {0.3, 0.20, 1.41}, {0.3, 0.25, 1.70},
+        {0.4, 0.05, 1.00}, {0.4, 0.10, 1.05}, {0.4, 0.15, 1.15}, {0.4, 0.20, 1.30},
+    };
+    double previousFactor = 1;
+    double previousBias = 0;
+    for (auto [swing, magneticFluxDensityDcBias, measuredRatio] : stenglein) {
+        INFO("dB " << swing << " T, B_dc " << magneticFluxDensityDcBias << " T");
+        double factor = CoreLossesRoshenModel::get_dc_bias_point(material, 25, magneticFluxDensityDcBias).hysteresisFactor;
+        CHECK_THAT(factor / measuredRatio, Catch::Matchers::WithinAbs(1, 0.4));
+        // The loss rises with the bias.
+        if (magneticFluxDensityDcBias > previousBias) {
+            CHECK(factor > previousFactor);
+        }
+        previousFactor = factor;
+        previousBias = magneticFluxDensityDcBias;
+    }
+    settings.reset();
+}
+
+TEST_CASE("Test_Roshen_Dynamic_BH_Loop_Under_DC_Bias_Area_Is_Its_Own_Total", "[physical-model][core-losses][roshen-core-losses-model][abt-1737-bias]") {
+    settings.reset();
+    clear_databases();
+    double temperature = 25;
+    for (std::string materialName : {"3C90", "N87"}) {
+        Core core = OpenMagneticsTesting::get_quick_core("E 42/21/15", json::array(), 1, materialName);
+        auto material = core.resolve_material();
+        for (double frequency : {25000.0, 100000.0, 200000.0}) {
+            for (double magneticFluxDensityDcBias : {0.05, 0.1, 0.2, 0.3, -0.2}) {
+                double peak = 0.05;
+                INFO(materialName << " " << frequency << " Hz, B_dc " << magneticFluxDensityDcBias << " T, AC peak " << peak << " T");
+                CoreLossesRoshenModel roshen;
+                auto loop = roshen.get_dynamic_bh_loop(core, abt2202_rectangular_voltage_flux_excitation(frequency, peak, 0.5, magneticFluxDensityDcBias), temperature);
+                auto unbiasedLoop = roshen.get_dynamic_bh_loop(core, abt2202_rectangular_voltage_flux_excitation(frequency, peak, 0.5, 0), temperature);
+                auto point = CoreLossesRoshenModel::get_dc_bias_point(material, temperature, magneticFluxDensityDcBias);
+
+                CHECK(loop.magneticFluxDensityDcBias == magneticFluxDensityDcBias);
+                CHECK(loop.magneticFieldStrengthDcBias == point.magneticFieldStrength);
+                CHECK(loop.hysteresisDcBiasFactor == point.hysteresisFactor);
+                CHECK(point.hysteresisFactor > 1);
+                // B carries the bias.
+                double minimum = *std::min_element(loop.magneticFluxDensity.begin(), loop.magneticFluxDensity.end());
+                double maximum = *std::max_element(loop.magneticFluxDensity.begin(), loop.magneticFluxDensity.end());
+                CHECK_THAT((maximum + minimum) / 2, Catch::Matchers::WithinAbs(magneticFluxDensityDcBias, 1e-12));
+                CHECK_THAT(maximum - minimum, Catch::Matchers::WithinAbs(2 * peak, 1e-12));
+                // The loop's own losses: F times the unbiased hysteresis, the same eddy-current and excess terms.
+                CHECK_THAT(loop.hysteresisVolumetricLosses, Catch::Matchers::WithinRel(point.hysteresisFactor * unbiasedLoop.hysteresisVolumetricLosses, 1e-9));
+                CHECK_THAT(loop.eddyCurrentVolumetricLosses, Catch::Matchers::WithinRel(unbiasedLoop.eddyCurrentVolumetricLosses, 1e-9));
+                CHECK_THAT(loop.excessVolumetricLosses, Catch::Matchers::WithinRel(unbiasedLoop.excessVolumetricLosses, 1e-9));
+                CHECK(loop.totalVolumetricLosses == loop.hysteresisVolumetricLosses + loop.eddyCurrentVolumetricLosses + loop.excessVolumetricLosses);
+                // The area identity.
+                CHECK_THAT(abt2202_loop_volumetric_losses(loop), Catch::Matchers::WithinRel(loop.totalVolumetricLosses, 0.01));
+                // Centred at H_dc: the mean field over the period (B moves linearly in time on both halves).
+                double meanField = 0;
+                for (size_t i = 0; i + 1 < loop.time.size(); ++i) {
+                    meanField += (loop.magneticFieldStrength[i] + loop.magneticFieldStrength[i + 1]) / 2 * (loop.time[i + 1] - loop.time[i]);
+                }
+                meanField *= frequency;
+                double unbiasedMeanField = 0;
+                for (size_t i = 0; i + 1 < unbiasedLoop.time.size(); ++i) {
+                    unbiasedMeanField += (unbiasedLoop.magneticFieldStrength[i] + unbiasedLoop.magneticFieldStrength[i + 1]) / 2 * (unbiasedLoop.time[i + 1] - unbiasedLoop.time[i]);
+                }
+                unbiasedMeanField *= frequency;
+                CHECK_THAT(meanField, Catch::Matchers::WithinAbs(point.magneticFieldStrength + point.hysteresisFactor * unbiasedMeanField, 1e-3));
+            }
+        }
+    }
+    settings.reset();
+}
+
+TEST_CASE("Test_Roshen_Dynamic_BH_Loop_Unbiased_Is_Unchanged_By_The_Bias_Law", "[physical-model][core-losses][roshen-core-losses-model][abt-1737-bias]") {
+    settings.reset();
+    clear_databases();
+    Core core = OpenMagneticsTesting::get_quick_core("E 42/21/15", json::array(), 1, "N87");
+    CoreLossesRoshenModel roshen;
+    for (double frequency : {25000.0, 100000.0}) {
+        auto excitation = abt2202_rectangular_voltage_flux_excitation(frequency, 0.1, 0.5, 0);
+        auto loop = roshen.get_dynamic_bh_loop(core, excitation, 25);
+        auto parameters = roshen.get_roshen_parameters(core, excitation, 25);
+        CHECK(loop.magneticFluxDensityDcBias == 0);
+        CHECK(loop.magneticFieldStrengthDcBias == 0);
+        CHECK(loop.hysteresisDcBiasFactor == 1);
+        // The model's own terms, bit for bit.
+        CHECK(loop.hysteresisVolumetricLosses == roshen.get_hysteresis_losses_density(parameters, excitation));
+        CHECK(loop.totalVolumetricLosses == roshen.get_core_losses(core, excitation, 25).get_volumetric_losses().value());
+    }
+    settings.reset();
+}
+
+TEST_CASE("Test_Roshen_Dynamic_BH_Loop_Throws_At_The_Saturation_Asymptote", "[physical-model][core-losses][roshen-core-losses-model][abt-1737-bias]") {
+    settings.reset();
+    clear_databases();
+    Core core = OpenMagneticsTesting::get_quick_core("E 42/21/15", json::array(), 1, "N87");
+    auto material = core.resolve_material();
+    // N87 at 25 C: b1 = 1.9533 1/T, the asymptote 1 / b1 = 0.512 T.
+    CHECK_NOTHROW(CoreLossesRoshenModel::get_dc_bias_point(material, 25, 0.5));
+    CHECK_THROWS_WITH(CoreLossesRoshenModel::get_dc_bias_point(material, 25, 0.52), Catch::Matchers::ContainsSubstring("saturation asymptote"));
+    CHECK_THROWS_WITH(CoreLossesRoshenModel::get_dc_bias_point(material, 25, -0.6), Catch::Matchers::ContainsSubstring("saturation asymptote"));
+    CoreLossesRoshenModel roshen;
+    CHECK_THROWS_WITH(roshen.get_dynamic_bh_loop(core, abt2202_rectangular_voltage_flux_excitation(100000, 0.02, 0.5, 0.6), 25),
+                      Catch::Matchers::ContainsSubstring("saturation asymptote"));
+    // Missing saturation data throws, as it does for the unbiased loop (no fallback).
+    auto withoutSaturation = material;
+    withoutSaturation.set_saturation({});
+    withoutSaturation.set_name("N87 without saturation data");
+    CHECK_THROWS(CoreLossesRoshenModel::get_dc_bias_point(withoutSaturation, 25, 0.1));
+    settings.reset();
+}
+
+// The DEEPPULSE virtual TPT studio's call (WebLibMKF calculate_dynamic_bh_loop) on its exact JSON: a T 26/15/10 3C90
+// ungapped toroid, 10 turns (and 10:10), 50 kHz +-5 V rectangular with 500 ns dead time, ONE excitation carrying the
+// voltage and a processed current of 0.3 A DC and 0.19 A peak to peak labelled "Triangular". On 53fb6c9e the loop
+// came back unbiased (B +-0.044 T) without an error, for two reasons: "Triangular" is the pre-1.0 spelling, which
+// MAS.hpp's from_json does not know and leaves as bipolarRectangular, a label that draws no offset; and with 2
+// windings and 1 excitation the magnetizing current comes from the voltage with the DC read as load current.
+namespace {
+OpenMagnetics::Magnetic abt1737_studio_magnetic(size_t numberWindings) {
+    json coreInput = json::parse(R"({"functionalDescription":{"name":"DUT","type":"toroidal","material":"3C90","shape":"T 26/15/10","gapping":[],"numberStacks":1}})");
+    OpenMagnetics::Core core(coreInput, false, true);
+    json coreJson;
+    to_json(coreJson, core);
+    json wire = json::parse(R"({"type":"round","conductingDiameter":{"nominal":0.0005},"outerDiameter":{"nominal":0.00055},"material":"copper","coating":{"type":"enamelled","grade":1}})");
+    json windings = json::array();
+    for (std::string name : {"Primary", "Secondary"}) {
+        if (windings.size() == numberWindings) {
+            break;
+        }
+        windings.push_back({{"name", name}, {"numberTurns", 10}, {"numberParallels", 1},
+                            {"isolationSide", name == "Primary" ? "primary" : "secondary"}, {"wire", wire}});
+    }
+    json magneticJson;
+    magneticJson["core"] = coreJson;
+    magneticJson["coil"]["bobbin"] = "Dummy";
+    magneticJson["coil"]["functionalDescription"] = windings;
+    return OpenMagnetics::Magnetic(magneticJson);
+}
+
+// The studio's operating point, as JSON (the export parses a string).
+json abt1737_studio_operating_point_json() {
+    double frequency = 50e3;
+    double period = 1 / frequency;
+    double on = period / 2 - 500e-9;
+    double voltage = 5;
+    json excitation;
+    excitation["name"] = "Primary";
+    excitation["frequency"] = frequency;
+    excitation["voltage"]["waveform"]["data"] = {voltage, voltage, 0, 0, -voltage, -voltage, 0, 0};
+    excitation["voltage"]["waveform"]["time"] = {0, on, on, period / 2, period / 2, period / 2 + on, period / 2 + on, period};
+    excitation["current"]["processed"] = {{"label", "Triangular"}, {"offset", 0.3}, {"peakToPeak", 0.19}, {"dutyCycle", 0.5}};
+    json operatingPoint;
+    operatingPoint["conditions"]["ambientTemperature"] = 25;
+    operatingPoint["excitationsPerWinding"] = json::array({excitation});
+    return operatingPoint;
+}
+
+// The checks on a loop MKF drew for the studio's 0.3 A of DC through 10 turns.
+void abt1737_check_studio_loop(const OpenMagnetics::Magnetic& magnetic, const RoshenDynamicBhLoop& loop, double temperature) {
+    double minimum = *std::min_element(loop.magneticFluxDensity.begin(), loop.magneticFluxDensity.end());
+    double maximum = *std::max_element(loop.magneticFluxDensity.begin(), loop.magneticFluxDensity.end());
+    double centre = (maximum + minimum) / 2;
+    INFO("B from " << minimum << " to " << maximum << " T");
+    // The DC flux density of MKF's own inductance path: the load line of 10 turns x 0.3 A on the material's curve.
+    auto core = magnetic.get_core();
+    double effectiveLength = core.get_processed_description()->get_effective_parameters().get_effective_length();
+    double effectiveArea = core.get_processed_description()->get_effective_parameters().get_effective_area();
+    auto loadLine = InitialPermeability::get_dc_operating_point_for_magnetomotive_force(
+        core.resolve_material(), 10 * 0.3, effectiveLength, effectiveArea, 0, temperature, 50e3);
+    INFO("load line: H " << loadLine.first << " A/m, B " << loadLine.second << " T");
+    CHECK(centre > 0.1);
+    CHECK_THAT(centre, Catch::Matchers::WithinRel(loadLine.second, 0.05));
+    auto point = CoreLossesRoshenModel::get_dc_bias_point(core.resolve_material(), temperature, centre);
+    CHECK_THAT(loop.magneticFluxDensityDcBias, Catch::Matchers::WithinRel(centre, 1e-12));
+    CHECK(loop.magneticFieldStrengthDcBias == point.magneticFieldStrength);
+    CHECK(loop.hysteresisDcBiasFactor > 1);
+    CHECK_THAT(abt2202_loop_volumetric_losses(loop), Catch::Matchers::WithinRel(loop.totalVolumetricLosses, 0.01));
+    // Centred at H_dc: the field swings around it and stays positive.
+    double minimumField = *std::min_element(loop.magneticFieldStrength.begin(), loop.magneticFieldStrength.end());
+    double maximumField = *std::max_element(loop.magneticFieldStrength.begin(), loop.magneticFieldStrength.end());
+    INFO("H from " << minimumField << " to " << maximumField << " A/m, H_dc " << point.magneticFieldStrength << " A/m");
+    CHECK(minimumField < point.magneticFieldStrength);
+    CHECK(maximumField > point.magneticFieldStrength);
+    CHECK(minimumField > 0);
+}
+}  // namespace
+
+TEST_CASE("Test_Roshen_Dynamic_BH_Loop_Of_The_Studio_Biased_Excitation", "[physical-model][core-losses][roshen-core-losses-model][abt-1737-bias]") {
+    settings.reset();
+    clear_databases();
+    double temperature = 25;
+    CoreLossesRoshenModel roshen;
+
+    SECTION("the exact JSON, parsed as it comes: the DC cannot reach B, so the loop is refused, not drawn unbiased") {
+        for (size_t numberWindings : {1, 2}) {
+            INFO(numberWindings << " windings");
+            OperatingPoint operatingPoint(abt1737_studio_operating_point_json());
+            CHECK_THROWS_WITH(roshen.get_dynamic_bh_loop(abt1737_studio_magnetic(numberWindings), operatingPoint, temperature),
+                              Catch::Matchers::ContainsSubstring("cannot carry the DC"));
+        }
+    }
+    SECTION("the exact JSON migrated as the export migrates it: 1 winding is biased") {
+        auto operatingPointJson = abt1737_studio_operating_point_json();
+        OpenMagnetics::compat::migrate_pre_1_0(operatingPointJson);
+        REQUIRE(operatingPointJson["excitationsPerWinding"][0]["current"]["processed"]["label"] == "triangular");
+        auto magnetic = abt1737_studio_magnetic(1);
+        auto loop = roshen.get_dynamic_bh_loop(magnetic, OperatingPoint(operatingPointJson), temperature);
+        abt1737_check_studio_loop(magnetic, loop, temperature);
+    }
+    SECTION("the exact JSON migrated, 2 windings and 1 excitation: whether the DC is magnetizing cannot be told, so it throws") {
+        auto operatingPointJson = abt1737_studio_operating_point_json();
+        OpenMagnetics::compat::migrate_pre_1_0(operatingPointJson);
+        CHECK_THROWS_WITH(roshen.get_dynamic_bh_loop(abt1737_studio_magnetic(2), OperatingPoint(operatingPointJson), temperature),
+                          Catch::Matchers::ContainsSubstring("excites 1 of the coil's 2 windings"));
+    }
+    SECTION("2 windings with the secondary given as open (zero current): biased") {
+        auto operatingPointJson = abt1737_studio_operating_point_json();
+        OpenMagnetics::compat::migrate_pre_1_0(operatingPointJson);
+        json secondary = operatingPointJson["excitationsPerWinding"][0];
+        secondary["name"] = "Secondary";
+        secondary["current"] = json::object();
+        secondary["current"]["waveform"]["data"] = {0, 0};
+        secondary["current"]["waveform"]["time"] = {0, 1 / 50e3};
+        operatingPointJson["excitationsPerWinding"].push_back(secondary);
+        auto magnetic = abt1737_studio_magnetic(2);
+        auto loop = roshen.get_dynamic_bh_loop(magnetic, OperatingPoint(operatingPointJson), temperature);
+        abt1737_check_studio_loop(magnetic, loop, temperature);
+    }
     settings.reset();
 }

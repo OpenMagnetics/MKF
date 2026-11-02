@@ -13,6 +13,7 @@
 #include "processors/CircuitSimulatorInterface.h"
 #include "physical_models/Reluctance.h"
 #include "physical_models/MagneticField.h"
+#include "physical_models/MagnetizingInductance.h"
 #include "support/Exceptions.h"
 #include "support/Logger.h"
 
@@ -3395,6 +3396,40 @@ static double roshen_static_branch_field_strength(double magneticFluxDensity, bo
     return rising ? -fieldStrength : fieldStrength;
 }
 
+RoshenDcBiasPoint CoreLossesRoshenModel::get_dc_bias_point(const CoreMaterial& coreMaterial, double temperature,
+                                                           double magneticFluxDensityDcBias) {
+    if (!std::isfinite(magneticFluxDensityDcBias)) {
+        throw InvalidInputException(ErrorCode::INVALID_INPUT,
+            "Roshen-Esguerra DC bias: the flux density bias is " + std::to_string(magneticFluxDensityDcBias) + " T");
+    }
+    auto parameters = get_hysteresis_parameters(coreMaterial, temperature);
+    auto majorLoopParameters = get_major_loop_parameters(parameters.at("saturationMagneticFieldStrength"),
+                                                         parameters.at("saturationMagneticFluxDensity"),
+                                                         parameters.at("coerciveForce"), parameters.at("remanence"));
+    double a1 = majorLoopParameters.at("a1");
+    double b1 = majorLoopParameters.at("b1");
+    if (!(a1 > 0) || !(b1 > 0)) {
+        throw CalculationException(ErrorCode::CALCULATION_ERROR,
+            "Roshen-Esguerra DC bias: material " + coreMaterial.get_name() + " at " + std::to_string(temperature) +
+            " C gives a Roshen major loop with a1 = " + std::to_string(a1) + " A/m/T and b1 = " + std::to_string(b1) +
+            " 1/T; the law needs both positive (a hyperbolic branch with a saturation asymptote)");
+    }
+    double x = b1 * fabs(magneticFluxDensityDcBias);
+    if (!(x < 1)) {
+        throw CalculationException(ErrorCode::CALCULATION_ERROR,
+            "Roshen-Esguerra DC bias: B_dc = " + std::to_string(magneticFluxDensityDcBias) + " T reaches the Roshen "
+            "saturation asymptote 1 / b1 = " + std::to_string(1 / b1) + " T of material " + coreMaterial.get_name() +
+            " at " + std::to_string(temperature) + " C (b1 |B_dc| = " + std::to_string(x) + " >= 1): the core is "
+            "saturated and the law has no reversible permeability there");
+    }
+    double initialPermeability = InitialPermeability::get_initial_permeability(coreMaterial, temperature);
+    double r = Constants().vacuumPermeability * initialPermeability * a1;
+    RoshenDcBiasPoint point;
+    point.magneticFieldStrength = std::copysign(a1 * fabs(magneticFluxDensityDcBias) / (1 - x), magneticFluxDensityDcBias);
+    point.hysteresisFactor = r / ((1 - x) * (1 - x)) + (1 - r) / (1 - x * x);
+    return point;
+}
+
 RoshenDynamicBhLoop CoreLossesRoshenModel::get_dynamic_bh_loop(const Core& core,
                                                                const OperatingPointExcitation& excitation,
                                                                double temperature) {
@@ -3437,30 +3472,55 @@ RoshenDynamicBhLoop CoreLossesRoshenModel::get_dynamic_bh_loop(const Core& core,
         minimumMagneticFluxDensity = std::min(minimumMagneticFluxDensity, value);
         maximumMagneticFluxDensity = std::max(maximumMagneticFluxDensity, value);
     }
-    // A DC bias: the Roshen model prices the symmetric loop of the AC amplitude and nothing in it consumes the DC
-    // offset (ABT #1737, #118), so a biased loop cannot be built whose area is the model's loss. The threshold is the
-    // one below which MKF treats a flux density as unbiased (calculate_dple_factor).
+    // A DC bias (ABT #1737): the threshold is the one below which MKF treats a flux density as unbiased
+    // (calculate_dple_factor). An unbiased excitation takes exactly the path it always took.
     const double unbiasedMagneticFluxDensityLimit = 1e-6;
     double processedOffset = magneticFluxDensity.get_processed()->get_offset();
     double waveformCentre = (maximumMagneticFluxDensity + minimumMagneticFluxDensity) / 2;
-    if (std::abs(processedOffset) > unbiasedMagneticFluxDensityLimit || std::abs(waveformCentre) > unbiasedMagneticFluxDensityLimit) {
-        throw InvalidInputException(ErrorCode::INVALID_INPUT,
-            "Roshen dynamic B-H loop: the excitation carries a DC flux density bias (processed offset " +
-            std::to_string(processedOffset) + " T, waveform centre " + std::to_string(waveformCentre) +
-            " T). The Roshen model prices the symmetric loop of the AC amplitude and does not consume a DC bias "
-            "(ABT #1737), so no biased loop can be built whose area is its loss");
+    const bool biased = std::abs(processedOffset) > unbiasedMagneticFluxDensityLimit || std::abs(waveformCentre) > unbiasedMagneticFluxDensityLimit;
+
+    // Biased, the loop is the unbiased Roshen loop of the AC part, B - B_dc with B_dc the waveform's centre, moved to
+    // (B_dc, H_dc) and widened by F (the Roshen-Esguerra law, get_dc_bias_point). The Roshen terms are priced on that
+    // AC excitation: its peak is half the swing (the processed peak is the largest |B|, so peak - offset is not the
+    // AC amplitude of a negative bias). PLOTTING MODEL: compute_core_losses does not apply F (ABT #1737).
+    OperatingPointExcitation acExcitation = excitation;
+    double loopCentre = processedOffset;
+    RoshenDcBiasPoint dcBiasPoint{0, 1};
+    if (biased) {
+        loopCentre = waveformCentre;
+        dcBiasPoint = get_dc_bias_point(core.resolve_material(), temperature, loopCentre);
+        auto acWaveform = waveform;
+        for (auto& datum : acWaveform.get_mutable_data()) {
+            datum -= loopCentre;
+        }
+        double acPeak = (maximumMagneticFluxDensity - minimumMagneticFluxDensity) / 2;
+        auto acProcessed = magneticFluxDensity.get_processed().value();
+        acProcessed.set_offset(0);
+        acProcessed.set_average(std::nullopt);
+        acProcessed.set_peak(acPeak);
+        acProcessed.set_peak_to_peak(2 * acPeak);
+        acProcessed.set_positive_peak(maximumMagneticFluxDensity - loopCentre);
+        acProcessed.set_negative_peak(minimumMagneticFluxDensity - loopCentre);
+        acProcessed.set_rms(std::nullopt);
+        acProcessed.set_effective_frequency(std::nullopt);
+        acProcessed.set_ac_effective_frequency(std::nullopt);
+        acProcessed.set_thd(std::nullopt);
+        SignalDescriptor acMagneticFluxDensity;
+        acMagneticFluxDensity.set_waveform(acWaveform);
+        acMagneticFluxDensity.set_processed(acProcessed);
+        acExcitation.set_magnetic_flux_density(acMagneticFluxDensity);
     }
 
-    // The losses, exactly as compute_core_losses prices them.
-    auto parameters = get_roshen_parameters(core, excitation, temperature);
-    double hysteresisVolumetricLosses = get_hysteresis_losses_density(parameters, excitation);
+    // The losses, exactly as compute_core_losses prices them (of the AC part, under a bias).
+    auto parameters = get_roshen_parameters(core, acExcitation, temperature);
+    double hysteresisVolumetricLosses = get_hysteresis_losses_density(parameters, acExcitation);
     double resistivity = parameters.at("resistivity");
-    double eddyCurrentVolumetricLosses = get_eddy_current_losses_density(core, excitation, resistivity);
+    double eddyCurrentVolumetricLosses = get_eddy_current_losses_density(core, acExcitation, resistivity);
     double excessVolumetricLosses = 0;
     double excessFieldCoefficient = 0;
     if (parameters.count("excessLossesCoefficient")) {
         double alphaTimesN0 = parameters.at("excessLossesCoefficient");
-        excessVolumetricLosses = get_excess_eddy_current_losses_density(excitation, resistivity, alphaTimesN0);
+        excessVolumetricLosses = get_excess_eddy_current_losses_density(acExcitation, resistivity, alphaTimesN0);
         excessFieldCoefficient = sqrt(alphaTimesN0 / resistivity);
     }
     // Pe = (k / rho) f integral (dB/dt)^2 dt  <=  H_eddy = (k / rho) dB/dt
@@ -3469,7 +3529,8 @@ RoshenDynamicBhLoop CoreLossesRoshenModel::get_dynamic_bh_loop(const Core& core,
 
     // The static loop of get_bh_loop: the same major-loop parameters and minor-loop shift.
     double coerciveForce = parameters.at("coerciveForce");
-    double magneticFluxDensityAcPeak = magneticFluxDensity.get_processed()->get_peak().value() - processedOffset;
+    double magneticFluxDensityAcPeak = biased ? (maximumMagneticFluxDensity - minimumMagneticFluxDensity) / 2
+                                              : magneticFluxDensity.get_processed()->get_peak().value() - processedOffset;
     auto majorLoopParameters = get_major_loop_parameters(parameters.at("saturationMagneticFieldStrength"),
                                                          parameters.at("saturationMagneticFluxDensity"),
                                                          coerciveForce, parameters.at("remanence"));
@@ -3535,9 +3596,10 @@ RoshenDynamicBhLoop CoreLossesRoshenModel::get_dynamic_bh_loop(const Core& core,
             double sampleTime = j == numberSubdivisions ? time[segment.index + 1] : time[segment.index] + fraction * segment.duration;
             double sampleMagneticFluxDensity = j == numberSubdivisions ? data[segment.index + 1]
                                                                        : data[segment.index] + fraction * segment.magneticFluxDensityChange;
-            double sampleFieldStrength = roshen_static_branch_field_strength(sampleMagneticFluxDensity - processedOffset, rising,
-                                                                             coerciveForce, a1, b1, b2, delta) +
-                                         dynamicFieldStrength;
+            double staticFieldStrength = roshen_static_branch_field_strength(sampleMagneticFluxDensity - loopCentre, rising,
+                                                                             coerciveForce, a1, b1, b2, delta);
+            double sampleFieldStrength = biased ? dcBiasPoint.magneticFieldStrength + dcBiasPoint.hysteresisFactor * staticFieldStrength + dynamicFieldStrength
+                                                : staticFieldStrength + dynamicFieldStrength;
             // The first sample of a segment repeats the last of the previous one unless the field steps there.
             if (j == 0 && !loop.time.empty() && loop.time.back() == sampleTime &&
                 loop.magneticFluxDensity.back() == sampleMagneticFluxDensity && loop.magneticFieldStrength.back() == sampleFieldStrength) {
@@ -3549,11 +3611,76 @@ RoshenDynamicBhLoop CoreLossesRoshenModel::get_dynamic_bh_loop(const Core& core,
         }
     }
 
+    // Biased, the loop's own hysteresis: F times the static loop's area (a plotting model, see the header).
+    if (biased) {
+        hysteresisVolumetricLosses *= dcBiasPoint.hysteresisFactor;
+    }
     loop.hysteresisVolumetricLosses = hysteresisVolumetricLosses;
     loop.eddyCurrentVolumetricLosses = eddyCurrentVolumetricLosses;
     loop.excessVolumetricLosses = excessVolumetricLosses;
     loop.totalVolumetricLosses = hysteresisVolumetricLosses + eddyCurrentVolumetricLosses + excessVolumetricLosses;
+    loop.magneticFluxDensityDcBias = biased ? loopCentre : 0;
+    loop.magneticFieldStrengthDcBias = dcBiasPoint.magneticFieldStrength;
+    loop.hysteresisDcBiasFactor = dcBiasPoint.hysteresisFactor;
     return loop;
+}
+
+RoshenDynamicBhLoop CoreLossesRoshenModel::get_dynamic_bh_loop(const Magnetic& magnetic, OperatingPoint operatingPoint, double temperature) {
+    if (operatingPoint.get_excitations_per_winding().empty()) {
+        throw InvalidInputException(ErrorCode::MISSING_DATA, "Roshen dynamic B-H loop: the operating point has no excitations");
+    }
+    OperatingPointExcitation excitation = operatingPoint.get_excitations_per_winding()[0];
+    if (!excitation.get_magnetic_flux_density()) {
+        // A winding current whose DC would not reach the flux density: the loop would be drawn unbiased for a biased
+        // excitation (the DEEPPULSE studio's call on 53fb6c9e, ABT #1737).
+        size_t numberWindings = magnetic.get_coil().get_functional_description().size();
+        const auto excitations = operatingPoint.get_excitations_per_winding();
+        for (size_t excitationIndex = 0; excitationIndex < excitations.size(); ++excitationIndex) {
+            const auto& windingExcitation = excitations[excitationIndex];
+            if (!windingExcitation.get_current()) {
+                continue;
+            }
+            auto current = windingExcitation.get_current().value();
+            std::string where = "Roshen dynamic B-H loop: the current of excitation " + std::to_string(excitationIndex) +
+                                (windingExcitation.get_name() ? " (" + windingExcitation.get_name().value() + ")" : std::string());
+            if (!current.get_waveform() && current.get_processed()) {
+                auto processed = current.get_processed().value();
+                auto drawn = Inputs::create_waveform(processed, windingExcitation.get_frequency());
+                double drawnOffset = Inputs::calculate_basic_processed_data(drawn).get_offset();
+                double scale = std::max({fabs(processed.get_offset()), processed.get_peak_to_peak().value_or(0.0), std::numeric_limits<double>::min()});
+                if (fabs(drawnOffset - processed.get_offset()) > 1e-9 * scale) {
+                    json labelJson;
+                    to_json(labelJson, processed.get_label());
+                    throw InvalidInputException(ErrorCode::INVALID_INPUT,
+                        where + " has a processed offset of " + std::to_string(processed.get_offset()) + " A, but the waveform its label " +
+                        labelJson.get<std::string>() + " draws has an offset of " + std::to_string(drawnOffset) + " A: that label cannot carry "
+                        "the DC, which would be lost from the flux density. A label MKF does not know (such as the pre-1.0 spelling "
+                        "\"Triangular\", MAS 1.0 \"triangular\") parses as bipolarRectangular");
+                }
+            }
+            if (excitations.size() < numberWindings) {
+                auto standardized = Inputs::standardize_waveform(current, windingExcitation.get_frequency());
+                const auto data = standardized.get_waveform()->get_data();
+                double peak = 0;
+                for (double value : data) {
+                    peak = std::max(peak, fabs(value));
+                }
+                double average = Inputs::calculate_waveform_average(standardized.get_waveform().value());
+                if (fabs(average) > 1e-6 * peak) {
+                    throw InvalidInputException(ErrorCode::INVALID_INPUT,
+                        where + " carries " + std::to_string(average) + " A of DC, but the operating point excites " +
+                        std::to_string(excitations.size()) + " of the coil's " + std::to_string(numberWindings) + " windings: MKF reads "
+                        "the windings as a transformer whose DC is load current, so the DC would not reach the flux density. Give "
+                        "every winding's excitation (an open winding with zero current)");
+                }
+            }
+        }
+        MagnetizingInductance magnetizingInductance;
+        auto magneticFluxDensity = magnetizingInductance.calculate_inductance_and_magnetic_flux_density(magnetic, &operatingPoint).second;
+        excitation = operatingPoint.get_excitations_per_winding()[0];
+        excitation.set_magnetic_flux_density(magneticFluxDensity);
+    }
+    return get_dynamic_bh_loop(magnetic.get_core(), excitation, temperature);
 }
 
 /**

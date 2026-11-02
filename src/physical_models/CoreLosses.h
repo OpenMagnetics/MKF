@@ -458,7 +458,25 @@ struct RoshenDynamicBhLoop {
     double eddyCurrentVolumetricLosses;         // [W/m3]
     double excessVolumetricLosses;              // [W/m3]
     double totalVolumetricLosses;               // [W/m3]
+    double magneticFluxDensityDcBias;           // [T], the loop's centre B_dc (0 for an unbiased excitation)
+    double magneticFieldStrengthDcBias;         // [A/m], the loop's centre H_dc on the Roshen mean curve
+    double hysteresisDcBiasFactor;              // F = mu_i / mu_rev(B_dc) that widens the static loop (1 unbiased)
 };
+
+// The DC operating point of the Roshen-Esguerra bias law (ABT #1737), for the PLOTTING of a biased dynamic loop.
+// Roshen's major loop H = a1 B / (1 - b1 B) -+ Hc is Esguerra's loop (M. Esguerra, "DC-bias specifications of gapped
+// ferrites", Power Electronics Technology, Oct. 2003, Eq. 3) with squareness a = 1, mu_c = 1 / (mu0 a1) and
+// Bs = 1 / b1. With x = b1 |B_dc| and r = mu0 mu_i(T) a1:
+//     H_dc = sign(B_dc) a1 |B_dc| / (1 - x)                           (mean curve, Esguerra Eq. 5)
+//     F = mu_i / mu_rev(B_dc) = r / (1 - x)^2 + (1 - r) / (1 - x^2)    (Esguerra Eq. 4 with a0 Bs = 1)
+// and the hysteresis energy at a fixed swing scales as 1 / mu_rev (Snelling, Soft Ferrites, 1969), so the biased loop
+// is F times wider.
+struct RoshenDcBiasPoint {
+    double magneticFieldStrength;  // H_dc [A/m]
+    double hysteresisFactor;       // F, 1 at B_dc = 0
+};
+
+class Magnetic;
 
 class CoreLossesRoshenModel : public CoreLossesModel {
   public:
@@ -495,10 +513,28 @@ class CoreLossesRoshenModel : public CoreLossesModel {
     // so that f * oint H dB = hysteresis + get_eddy_current_losses_density + get_excess_eddy_current_losses_density by
     // construction (both integrate over the same flux density segments). At a sample where dB/dt jumps, the sample
     // is repeated at the same time with the field on either side (a step in H at constant B, no area).
-    // Throws when the excitation has no flux density, carries a DC bias (the Roshen model does not price one:
-    // ABT #1737, #2202), spans more than one period, or has more than one maximum and one minimum per period (the
-    // Roshen hysteresis term prices one loop, no minor loops), and whenever the material lacks the loop's inputs.
+    // A DC-biased flux density (B_dc = the waveform's centre) gives a loop centred at (B_dc, H_dc) whose static field
+    // is F times the unbiased one (get_dc_bias_point): H = H_dc + F * H_static(B - B_dc) + H_eddy + H_excess, and the
+    // loop reports its own hysteresis F * P_h(AC peak), so f * oint H dB is its totalVolumetricLosses.
+    // PLOTTING MODEL: under a bias that area is NOT what compute_core_losses returns (Roshen there ignores the bias
+    // and the DPLE factor scales it instead); ABT #1737 tracks bringing the law into the loss and inductance paths.
+    // Unbiased, the loop and its losses are exactly the Roshen model's.
+    // Throws when the excitation has no flux density, spans more than one period, or has more than one maximum and
+    // one minimum per period (the Roshen hysteresis term prices one loop, no minor loops), when a bias reaches
+    // Roshen's saturation asymptote (b1 |B_dc| >= 1), and whenever the material lacks the loop's inputs.
     RoshenDynamicBhLoop get_dynamic_bh_loop(const Core& core, const OperatingPointExcitation& excitation, double temperature);
+    // The same loop for a magnetic under the operating point's first excitation: its flux density is the excitation's
+    // own, else MagnetizingInductance derives it from the voltage or current on the magnetic. Throws, instead of
+    // drawing an unbiased loop for a biased excitation, when a winding current's DC cannot reach the flux density:
+    // its processed offset is not in the waveform its label draws (an unknown label, such as the pre-1.0 spelling
+    // "Triangular", parses as bipolarRectangular, which carries no offset), or the operating point excites fewer
+    // windings than the coil has while a current carries DC (MKF then reads the coil as a transformer whose DC is
+    // load current; give every winding's excitation, an open one with zero current).
+    RoshenDynamicBhLoop get_dynamic_bh_loop(const Magnetic& magnetic, OperatingPoint operatingPoint, double temperature);
+    // The Roshen-Esguerra DC operating point at flux density bias B_dc [T] and `temperature` [C] (see
+    // RoshenDcBiasPoint). Hc, Br, Bsat, Hsat as get_hysteresis_parameters resolves them; mu_i(T) unbiased from
+    // InitialPermeability. Throws when b1 |B_dc| >= 1.
+    static RoshenDcBiasPoint get_dc_bias_point(const CoreMaterial& coreMaterial, double temperature, double magneticFluxDensityDcBias);
     double get_hysteresis_losses_density(std::map<std::string, double> parameters, OperatingPointExcitation excitation);
     double get_eddy_current_losses_density(Core core, OperatingPointExcitation excitation, double resistivity);
     double get_excess_eddy_current_losses_density(OperatingPointExcitation excitation,
