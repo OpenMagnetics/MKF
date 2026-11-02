@@ -4132,13 +4132,23 @@ TEST_CASE("Test_CoreAdviser_Window_Copper_Capacity_Rejects_A_Core_That_Cannot_Ho
         mas.set_magnetic(magnetic);
         CoilAdviser coilAdviser;
         auto coils = coilAdviser.get_advised_coil(mas, 1);
-        REQUIRE(coils.size() > 0);
-        CHECK(withinLimits == !coil_failed_validity_filters(coils[0]));
         if (shapeName == "ETD 49/25/16") {
+            REQUIRE(coils.size() > 0);
+            CHECK(withinLimits == !coil_failed_validity_filters(coils[0]));
             CHECK(withinLimits);
         }
         else {
             CHECK_FALSE(withinLimits);
+            // Rewritten 2026-11-02 (Alf approved; fixture unchanged): the coil stage's temperature gate now refuses
+            // every E 26/9.5/14.1 coil it winds, so it returns none instead of an INVALID one. The coolest wound coil
+            // dissipates 8.78 W (core 0.47 W) and its hot spot reaches about 246 C against the 130 C limit. The
+            // diagnosis found the refusal physically right: with the winding losses corrected by 2D OMFEM (F_R
+            // primary 1.79x, secondary 1.26x lower than MKF's) the hot spot is still 144 C, and OMFEM's own thermal
+            // FEA on its own 2.26 W gives 144.5 C.
+            REQUIRE(coils.empty());
+            auto noResultsReason = coilAdviser.get_last_no_results_reason();
+            REQUIRE(noResultsReason.has_value());
+            CHECK_THAT(*noResultsReason, Catch::Matchers::ContainsSubstring("rejected by the temperature limit"));
         }
     }
     settings.reset();
