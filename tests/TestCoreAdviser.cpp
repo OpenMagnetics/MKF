@@ -1270,7 +1270,14 @@ TEST_CASE("Test_CoreAdviserAvailableCores_No_Toroids_Two_Windings","[adviser][co
     // volt-seconds used to be its peak-to-peak, doubling N_Phi and ballooning the gap for 100 uH).
     // Result: main's 10 plus ETD 34 - 3C97 - Gapped 0.5 mm, all at N = 20 (first search 9,
     // stacked search 4, merged).
-    REQUIRE(masMagnetics.size() == 11);
+    // Re-pinned 2026-11-02, 11 -> 12 (Alf approved, ABT #1582 own former; fixture unchanged): the new one is
+    // P 30/19 - 3C90 - Gapped 1.06 mm. Alone it passes every gate both before and after the own-former rule; what
+    // changed is the first search's area-product score-cull (the best 400 kept). The area-product filter weighs the
+    // core window by the bobbin filling factor: the catalogue-wide fit gave P 30/19 0.680594, its own catalogue former
+    // (4.85 x 11.3 mm in the 6.05 x 13.2 mm = 79.86 mm2 window) gives 54.805 / 79.86 = 0.686263 (+0.83 %). Before, it
+    // missed the cull (cut-off score 0.530519); now it is kept 399th of 400 (score 0.505612, the cut-off score), stays
+    // under the temperature limit (9th of the first search's 10) and is merged in.
+    REQUIRE(masMagnetics.size() == 12);
 
     // Verify all results are non-toroidal (by name pattern) and have valid scores
     for (auto& [mas, scoring] : masMagnetics) {

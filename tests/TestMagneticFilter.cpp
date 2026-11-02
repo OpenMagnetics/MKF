@@ -235,7 +235,14 @@ const std::map<std::string, Snapshot> kSnapshots = {
     // 1.8031756024430384e-4, COST 4.45732988417687 -> 4.3620705094657808 (smaller Ve, lighter core),
     // MAGNETIZING_INDUCTANCE 5.7629428244944511e-3 -> 6.006604362371216e-3.
     {"ENERGY_STORED",                                   {true,  0.00018031756024430384}},
-    {"ESTIMATED_COST",                                  {true,  1.7774692926005085}},
+    // Re-pinned 2026-11-02 (Alf approved, ABT #1582 tiebreak bb6e08d3; fixture unchanged): 1.7774692926005085 ->
+    // 1.7644236464162844. The score is the estimated layers, N x parallels x (2 skin depths / ff) / h, with h the E 35
+    // quick bobbin's window height. E 35's window is 7.5 x 25.0 mm and has no own former; the height fit's knot at
+    // 25.0 mm is a tie of 11 catalogue formers (proportions 0.500 to 0.892). The old keep-first merge read 15.664 mm
+    // there, which the 1.2 wall/column disproportion cap lifted to 25 - 2 x 1.2 x 1.4 = 21.640 mm (column 7.5 - 6.1 =
+    // 1.4 mm). The smallest-name tiebreak takes "Bobbin EER 28L horizontal 12-pin" (0.872): h = 21.800 mm, under the
+    // cap. 1.7774692926005085 x 21.640 / 21.800 = 1.7644236464162844.
+    {"ESTIMATED_COST",                                  {true,  1.7644236464162844}},
     // COST re-derived 2026-09-30: the filter now scores the unit cost in US$ at 1000 pieces (CostBasis) instead
     // of numberLayers + wire relative cost (7.0). By hand, for this fixture:
     //   core      E 35 Ve 8.07 cm3 x 3C97 4800 kg/m3 = 38.74 g; MnZn law 21.03 x 0.03874^0.6407 = US$2.620
