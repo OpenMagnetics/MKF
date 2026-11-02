@@ -14217,13 +14217,18 @@ TEST_CASE("Test_Ideal_Winding_Unchanged_Multifilar", "[constructive-model][coil]
     // Captured on the Phase-1 baseline (real geometry off). Covers single-parallel, N-filar bifilar/
     // trifilar/5-filar, and interleaved + mixed-parallel layouts. perLayerTurns is the turn count of
     // each conduction layer in radial order — exactly the split get_parallels_proportions produces.
+    // Re-pinned 2026-11-02 (Alf, ABT #1582 own former): the PQ 40/40 rows' x moved +135 um. The quick
+    // bobbin of PQ 40/40 is now its own catalogue former (the four PQ 40/40 formers agree: window
+    // 9.295 x 26.8 mm in the core's 11.05 x 29.5 mm window), not the fit (9.430 x 26.8 mm). Column
+    // thickness 11.05 - 9.295 = 1.755 mm (fit: 1.620 mm); first turn centre = 14.9/2 + 1.755 + 0.509/2
+    // = 9.4595 mm (fit: 9.3245 mm). Nothing else in these digests changed.
     std::vector<Golden> golden = {
         {{{10},     {1},    "PQ 28/20", 1}, 10, 1, 1,  7354,  7354,  -2290,  2290, 10180, "10"},
         {{{12},     {2},    "PQ 28/20", 1}, 24, 2, 1,  7354,  7863,  -2799,  2799, 24432, "12,12"},
         {{{12},     {3},    "PQ 28/20", 1}, 36, 2, 1,  7354,  7863,  -4326,  4326, 36648, "18,18"},
-        {{{10},     {5},    "PQ 40/40", 1}, 50, 1, 1,  9324,  9324, -12470, 12470, 50900, "50"},
+        {{{10},     {5},    "PQ 40/40", 1}, 50, 1, 1,  9459,  9459, -12470, 12470, 50900, "50"},
         {{{20, 20}, {1, 1}, "PQ 28/20", 2}, 40, 4, 4,  7354,  8956,  -2290,  2290, 40720, "10,10,10,10"},
-        {{{20, 20}, {2, 1}, "PQ 40/40", 2}, 60, 4, 4,  9324, 10926,  -4835,  4835, 61080, "20,10,20,10"},
+        {{{20, 20}, {2, 1}, "PQ 40/40", 2}, 60, 4, 4,  9459, 11061,  -4835,  4835, 61080, "20,10,20,10"},
     };
     for (size_t i = 0; i < golden.size(); ++i) {
         const auto& g = golden[i];
