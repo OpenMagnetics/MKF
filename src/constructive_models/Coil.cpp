@@ -6816,6 +6816,28 @@ void Coil::plan_terminal_tangential_departures(std::vector<ConnectionRoute>& rou
     }
 }
 
+void Coil::refuse_foil_ends_without_lead_conductor() {
+    // ABT #1496 under Alf's 2026-11-02 rule: a coil wound without lead planning plans no lead, but a
+    // foil end that has to cross the layers wound over it with no conductor joined to it cannot be
+    // laid out at all, planned or not -- there is no lead size anybody could reserve. That refusal
+    // lives in the terminal-lead pass of get_connection_reserved_spaces, which counts the layers the
+    // end crosses; it is asked here once, on the wound geometry, and nothing it derives is applied
+    // (no blocking, no rewind, no tangent departure). Only coils with a foil winding are asked: the
+    // refusal concerns foil ends alone.
+    bool anyFoil = false;
+    for (size_t windingIndex = 0; windingIndex < get_functional_description().size(); ++windingIndex) {
+        if (resolve_wire(windingIndex).get_type() == WireType::FOIL) {
+            anyFoil = true;
+            break;
+        }
+    }
+    if (!anyFoil) {
+        return;
+    }
+    ConnectionLayoutRecords discardedRecords;
+    get_connection_reserved_spaces(nullptr, nullptr, false, nullptr, &discardedRecords);
+}
+
 void Coil::charge_tangent_departures() {
     // A tangent departure is a connection lead: a coil wound without lead planning charges none.
     if (!settings.get_coil_use_real_winding_geometry() || !_connectionLeadPlanning || !get_turns_description()) {
@@ -10375,6 +10397,7 @@ bool Coil::wind_inner(std::vector<double> proportionPerWinding, std::vector<size
                                 "connection slots");
         }
         align_blocked_layer_turns();
+        refuse_foil_ends_without_lead_conductor();
     }
     if (_realWindingBlockingApplied) {
         // Turn blocking is GLOBAL to the winding window: a connection lead routes through the whole

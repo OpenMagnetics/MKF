@@ -933,10 +933,11 @@ namespace OpenMagnetics {
             }
             // ABT #1699: with real winding geometry on, say how many wires the strict packing
             // pass refused because the real winder could not close their section once its
-            // crossing stations and connection-lead slots are reserved.
+            // crossing stations are reserved (the probe plans no connection lead, see
+            // real_winder_packs_section_alone).
             if (_wireAdviser.get_real_winding_packing_refusals() > 0) {
                 reason += "; not real-windable in this window: " + std::to_string(_wireAdviser.get_real_winding_packing_refusals())
-                    + " wires do not pack once the real winder's crossing stations and connection-lead blocking are reserved, e.g. "
+                    + " wires do not pack once the real winder's crossing stations are reserved, e.g. "
                     + _wireAdviser.get_first_real_winding_packing_refusal();
             }
             _lastNoResultsReason = reason;

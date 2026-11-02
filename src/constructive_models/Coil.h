@@ -2008,6 +2008,10 @@ class Coil : public MAS::Coil {
                                                                const std::vector<Turn>& turns);
         // ABT #1423: take the tangent departures' cut-off copper off the revolutions that lost it.
         void charge_tangent_departures();
+        // ABT #1496: for a coil wound without connection lead planning, the one lead refusal that does
+        // not depend on planning: throws (COIL_WINDING_ERROR, from get_connection_reserved_spaces) when a
+        // foil end crosses outer layers with no lead conductor stated. Applies nothing to the coil.
+        void refuse_foil_ends_without_lead_conductor();
         // ABT #187: toroidal analog of align_blocked_layer_turns. Radial terminal leads emit angular
         // crossing markers on every ring they pass over (toroidal_connection_reserved_spaces); this
         // re-spreads each crossed ring's turns over the angular space OUTSIDE those corridors —
