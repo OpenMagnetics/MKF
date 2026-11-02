@@ -929,7 +929,11 @@ TEST_CASE("Test_CoreAdviserAvailableCores_No_Toroids_Low_Power", "[adviser][core
         // successor EFD 12/6/3.5 sits in the current top-5 (full top-5: E 13/6.5/3.7,
         // EP 7 x2, EFD 12/6/3.5, EPX 8 — all sane low-power cores). Shape-level match:
         // the material/gap choice may legitimately drift with loss-model improvements.
-        if (name.find("EFD 12/6/3.5") != std::string::npos) {
+        // Re-pinned 2026-11-02 (approved by Alf): the estimated-cost filter now sizes its wire by
+        // current density when that needs less copper than a skin-depth strand (~0.43 A rms here),
+        // which moved EFD 12/6/3.5 out of the top 5 (now EP 7 x4 and E 13/6.5/3.7). E 13/6.5/3.7
+        // (78, ungapped, 1 stack) is in the top 5 both before and after that change.
+        if (name.find("E 13/6.5/3.7") != std::string::npos) {
             if (stacks == 1) {
                 found = true;
             }
