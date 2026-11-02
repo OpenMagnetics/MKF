@@ -4985,6 +4985,36 @@ TEST_CASE("Test_Material_Validator_Loss_Not_Positive_Inside_Span", "[material-va
     CHECK_FALSE(verdict.valid);
 }
 
+TEST_CASE("Test_Material_Validator_FeSi_Envelope_Covers_Micrometals_200C_Grades", "[material-validator][abt-2229]") {
+    // ABT #2229: Micrometals Mix 60/61/63/65/66 are silicon-iron (Micrometals 2023 Iron Powder catalogue,
+    // High Temperature table, printed p14). Their curve-fit workbook gives 3433 / 5247 / 3033 / 3982 / 2860
+    // kW/m3 at 100 kHz / 100 mT, so the FeSi powder envelope's worst published grade is Mix 61, not
+    // FluxSan 60u (1615), and none of the five is above twice it.
+    settings.reset();
+    const auto* fesi = classify_material(json{{"material", "powder"}, {"materialComposition", "FeSi"}});
+    REQUIRE(fesi != nullptr);
+    REQUIRE(fesi->name == "FeSi powder");
+    const MaterialLossReferencePoint* primary = nullptr;
+    for (const auto& ref : fesi->lossReferencePoints) {
+        if (ref.primary) primary = &ref;
+    }
+    REQUIRE(primary != nullptr);
+    CHECK(primary->worst.manufacturer == "Micrometals");
+    CHECK(primary->worst.grade == "Mix 61");
+    CHECK_THAT(primary->worst.volumetricLosses, Catch::Matchers::WithinRel(5247e3, 1e-3));
+
+    MaterialValidator validator;
+    for (std::string name : {"Mix 60", "Mix 61", "Mix 63", "Mix 65", "Mix 66"}) {
+        auto record = material_record(name);
+        // MAS main (c7a7cbc) states FeSi for these grades; an older MAS pin may still say "iron".
+        record["materialComposition"] = "FeSi";
+        auto verdict = validator.validate(record);
+        INFO(name << "\n" << describe(verdict));
+        CHECK(verdict.materialClass == "FeSi powder");
+        CHECK(count_findings(verdict, "MAT_LOSS_ENVELOPE") == 0);
+    }
+}
+
 // ABT #1456: nine 0.5-5 MHz MnZn grades evaluated at 100 kHz read 2-18 % of 3C95's loss, because
 // get_steinmetz_coefficients silently returned the nearest range for a frequency outside every range,
 // i.e. extrapolated a MHz power law a decade down. Outside the fitted span it now throws, on both sides.

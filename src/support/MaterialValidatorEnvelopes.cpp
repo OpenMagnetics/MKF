@@ -180,8 +180,12 @@ std::vector<MaterialClassBounds> build_class_table() {
         c.lossReferencePoints.push_back(MaterialLossReferencePoint{
             100e3, 0.100, 25, true,
             anchor("Magnetics", "XFlux Ultra 60u", 1000, "Magnetics Powder Core Catalog pdf p111 loss fit, FIT (p12 table 1035)"),
-            anchor("Micrometals", "FluxSan 60u", 1615,
-                   "Micrometals FluxSan 60u datasheet (2020) loss formula at 100 kHz/100 mT, FIT")});
+            anchor("Micrometals", "Mix 61", 5247,
+                   "Micrometals curve-fit coefficients workbook mmcurvefitcoefficientsall.xlsx (sheet 'CurveFit', Version "
+                   "2026-03-30, linked from micrometals.com/design-and-applications/design-tools/) loss formula at 100 "
+                   "kHz/100 mT, FIT (the workbook has no table value to check it against); same workbook: Mix 65 3982, "
+                   "Mix 60 3433, Mix 63 3033, Mix 66 2860. Mix 60/61/63/65/66 are silicon-iron: Micrometals 2023 Iron "
+                   "Powder catalogue, High Temperature table, printed p14")});
         c.maximumSaturationFluxDensity = 1.76;
         c.saturationSource = "Micrometals FluxSan datasheet Bsat 17.6 kG; Magnetics XFlux 1.6 T. TAB";
         table.push_back(c);
