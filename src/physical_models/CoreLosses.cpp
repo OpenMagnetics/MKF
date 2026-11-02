@@ -3432,7 +3432,8 @@ RoshenDcBiasPoint CoreLossesRoshenModel::get_dc_bias_point(const CoreMaterial& c
 
 RoshenDynamicBhLoop CoreLossesRoshenModel::get_dynamic_bh_loop(const Core& core,
                                                                const OperatingPointExcitation& excitation,
-                                                               double temperature) {
+                                                               double temperature,
+                                                               std::optional<double> magneticFieldStrengthDcBias) {
     if (!excitation.get_magnetic_flux_density()) {
         throw InvalidInputException(ErrorCode::MISSING_DATA,
             "Roshen dynamic B-H loop: the excitation has no magnetic flux density");
@@ -3489,6 +3490,21 @@ RoshenDynamicBhLoop CoreLossesRoshenModel::get_dynamic_bh_loop(const Core& core,
     if (biased) {
         loopCentre = waveformCentre;
         dcBiasPoint = get_dc_bias_point(core.resolve_material(), temperature, loopCentre);
+        // H_dc is the core's load-line H at the DC point, fixed by the excitation's DC ampere-turns (ABT #2227;
+        // N I_dc / l_e without a gap), not the major-loop fit's a1 B_dc / (1 - b1 B_dc): a1 is the steep slope of
+        // the descending branch, which put H_dc at about a third of N I_dc / l_e for 3C90. A flux density alone
+        // does not fix it.
+        if (!magneticFieldStrengthDcBias) {
+            throw InvalidInputException(ErrorCode::MISSING_DATA,
+                "Roshen dynamic B-H loop: the flux density carries a DC bias of " + std::to_string(loopCentre) +
+                " T but no DC field strength was given; H_dc is the load line of the DC ampere-turns sum N I_dc, so it needs the "
+                "winding currents (use the Magnetic overload, or pass H_dc)");
+        }
+        if (!std::isfinite(magneticFieldStrengthDcBias.value())) {
+            throw InvalidInputException(ErrorCode::INVALID_INPUT,
+                "Roshen dynamic B-H loop: the DC field strength is " + std::to_string(magneticFieldStrengthDcBias.value()) + " A/m");
+        }
+        dcBiasPoint.magneticFieldStrength = magneticFieldStrengthDcBias.value();
         auto acWaveform = waveform;
         for (auto& datum : acWaveform.get_mutable_data()) {
             datum -= loopCentre;
@@ -3630,6 +3646,8 @@ RoshenDynamicBhLoop CoreLossesRoshenModel::get_dynamic_bh_loop(const Magnetic& m
         throw InvalidInputException(ErrorCode::MISSING_DATA, "Roshen dynamic B-H loop: the operating point has no excitations");
     }
     OperatingPointExcitation excitation = operatingPoint.get_excitations_per_winding()[0];
+    // The reluctances of MagnetizingInductance's solve, when it derives the flux density below.
+    std::optional<MagnetizingInductanceOutput> magnetizingInductanceOutput;
     if (!excitation.get_magnetic_flux_density()) {
         // A winding current whose DC would not reach the flux density: the loop would be drawn unbiased for a biased
         // excitation (the DEEPPULSE studio's call on 53fb6c9e, ABT #1737).
@@ -3676,11 +3694,65 @@ RoshenDynamicBhLoop CoreLossesRoshenModel::get_dynamic_bh_loop(const Magnetic& m
             }
         }
         MagnetizingInductance magnetizingInductance;
-        auto magneticFluxDensity = magnetizingInductance.calculate_inductance_and_magnetic_flux_density(magnetic, &operatingPoint).second;
+        auto inductanceAndFluxDensity = magnetizingInductance.calculate_inductance_and_magnetic_flux_density(magnetic, &operatingPoint);
+        magnetizingInductanceOutput = inductanceAndFluxDensity.first;
         excitation = operatingPoint.get_excitations_per_winding()[0];
-        excitation.set_magnetic_flux_density(magneticFluxDensity);
+        excitation.set_magnetic_flux_density(inductanceAndFluxDensity.second);
     }
-    return get_dynamic_bh_loop(magnetic.get_core(), excitation, temperature);
+    // The DC field strength (ABT #2227): the core's own load-line H at the DC operating point, the crossing of
+    // sum_k N_k I_dc,k = H l_e + B(H) A_e R_gap with the material's magnetisation curve, I_dc,k the time average of
+    // winding k's current. It is MagnetizingInductance's own solve for B_dc (the same call and the same gap
+    // reluctance, R_gap = R_total - R_ungapped), so H_dc and B_dc sit on one point; without a gap it is Ampere's
+    // N I_dc / l_e. Left empty when a winding has no excitation or no current; get_dynamic_bh_loop(Core, ...) then
+    // throws if the flux density is biased (an unbiased loop does not use it).
+    std::optional<double> magneticFieldStrengthDcBias;
+    {
+        const auto windings = magnetic.get_coil().get_functional_description();
+        const auto excitations = operatingPoint.get_excitations_per_winding();
+        bool everyWindingHasCurrent = excitations.size() == windings.size();
+        for (const auto& windingExcitation : excitations) {
+            everyWindingHasCurrent = everyWindingHasCurrent && windingExcitation.get_current().has_value();
+        }
+        if (everyWindingHasCurrent) {
+            double magnetomotiveForceDcBias = 0;
+            for (size_t windingIndex = 0; windingIndex < windings.size(); ++windingIndex) {
+                const auto& windingExcitation = excitations[windingIndex];
+                auto standardized = Inputs::standardize_waveform(windingExcitation.get_current().value(), windingExcitation.get_frequency());
+                magnetomotiveForceDcBias += static_cast<double>(windings[windingIndex].get_number_turns()) *
+                                            Inputs::calculate_waveform_average(standardized.get_waveform().value(), windingExcitation.get_frequency());
+            }
+            const auto& core = magnetic.get_core();
+            const auto effectiveParameters = core.get_processed_description()->get_effective_parameters();
+            if (!magnetizingInductanceOutput) {
+                // The flux density came with the excitation: the gaps' reluctance from MagnetizingInductance's own
+                // reluctance model, evaluated as its solve starts (the gaps' reluctance does not depend on the
+                // permeability).
+                ReluctanceModels reluctanceModelEnum;
+                from_json(MagnetizingInductance().get_models()["gapReluctance"], reluctanceModelEnum);
+                auto reluctanceModel = ReluctanceModel::factory(reluctanceModelEnum);
+                double initialPermeability = InitialPermeability::get_initial_permeability(core.resolve_material(), temperature, std::nullopt, excitation.get_frequency());
+                magnetizingInductanceOutput = reluctanceModel->get_core_reluctance(core, initialPermeability);
+            }
+            if (!magnetizingInductanceOutput->get_ungapped_core_reluctance()) {
+                throw CalculationException(ErrorCode::CALCULATION_INVALID_RESULT,
+                    "Roshen dynamic B-H loop: the magnetizing inductance's reluctance has no ungapped core reluctance, so the gaps' "
+                    "reluctance for the DC load line is unknown");
+            }
+            double totalReluctance = magnetizingInductanceOutput->get_core_reluctance();
+            double ungappedCoreReluctance = magnetizingInductanceOutput->get_ungapped_core_reluctance().value();
+            double gapReluctance = totalReluctance - ungappedCoreReluctance;
+            if (gapReluctance < 0) {
+                throw CalculationException(ErrorCode::CALCULATION_INVALID_RESULT,
+                    "Roshen dynamic B-H loop: the total reluctance " + std::to_string(totalReluctance) +
+                    " 1/H is below the ungapped core's " + std::to_string(ungappedCoreReluctance) + " 1/H");
+            }
+            auto loadLine = InitialPermeability::get_dc_operating_point_for_magnetomotive_force(
+                core.resolve_material(), fabs(magnetomotiveForceDcBias), effectiveParameters.get_effective_length(),
+                effectiveParameters.get_effective_area(), gapReluctance, temperature, excitation.get_frequency());
+            magneticFieldStrengthDcBias = std::copysign(loadLine.first, magnetomotiveForceDcBias);
+        }
+    }
+    return get_dynamic_bh_loop(magnetic.get_core(), excitation, temperature, magneticFieldStrengthDcBias);
 }
 
 /**

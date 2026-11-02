@@ -472,7 +472,8 @@ struct RoshenDynamicBhLoop {
 // and the hysteresis energy at a fixed swing scales as 1 / mu_rev (Snelling, Soft Ferrites, 1969), so the biased loop
 // is F times wider.
 struct RoshenDcBiasPoint {
-    double magneticFieldStrength;  // H_dc [A/m]
+    double magneticFieldStrength;  // H_dc of the major-loop fit's mean curve [A/m]; NOT the loop's H_dc, which is
+                                   // the core's load-line H at the DC point (ABT #2227: this one is ~1/3 of it for 3C90)
     double hysteresisFactor;       // F, 1 at B_dc = 0
 };
 
@@ -522,9 +523,15 @@ class CoreLossesRoshenModel : public CoreLossesModel {
     // Throws when the excitation has no flux density, spans more than one period, or has more than one maximum and
     // one minimum per period (the Roshen hysteresis term prices one loop, no minor loops), when a bias reaches
     // Roshen's saturation asymptote (b1 |B_dc| >= 1), and whenever the material lacks the loop's inputs.
-    RoshenDynamicBhLoop get_dynamic_bh_loop(const Core& core, const OperatingPointExcitation& excitation, double temperature);
+    // Under a bias the loop's H_dc is the given magneticFieldStrengthDcBias [A/m], the core's load-line H at the DC
+    // point (Ampere's sum N I_dc / l_e without a gap, ABT #2227); a biased flux density without it throws. Unbiased,
+    // it is not used.
+    RoshenDynamicBhLoop get_dynamic_bh_loop(const Core& core, const OperatingPointExcitation& excitation, double temperature,
+                                            std::optional<double> magneticFieldStrengthDcBias = std::nullopt);
     // The same loop for a magnetic under the operating point's first excitation: its flux density is the excitation's
-    // own, else MagnetizingInductance derives it from the voltage or current on the magnetic. Throws, instead of
+    // own, else MagnetizingInductance derives it from the voltage or current on the magnetic. H_dc is the core's own
+    // load-line H at the DC point, sum_k N_k I_dc,k = H l_e + B(H) A_e R_gap over every winding's current, the same
+    // solve MagnetizingInductance makes for B_dc; Ampere's N I_dc / l_e without a gap (ABT #2227). Throws, instead of
     // drawing an unbiased loop for a biased excitation, when a winding current's DC cannot reach the flux density:
     // its processed offset is not in the waveform its label draws (an unknown label, such as the pre-1.0 spelling
     // "Triangular", parses as bipolarRectangular, which carries no offset), or the operating point excites fewer
