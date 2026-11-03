@@ -120,7 +120,6 @@ class Settings
         // a product decision, not this work package's.
         bool _wireAdviserPenalizeOddLayerCount = false;
         EffectiveParameterStandard _effectiveParameterStandard = EffectiveParameterStandard::IEC_60205;
-        double _nanocrystallineStackingFactor = 0.80;  // Stacking factor for tape-wound nanocrystalline cores (0.75-0.85 typical)
 
         size_t _painterNumberPointsX = 25;
         size_t _painterNumberPointsY = 50;
@@ -462,9 +461,6 @@ class Settings
 
     EffectiveParameterStandard get_effective_parameter_standard() const;
     void set_effective_parameter_standard(EffectiveParameterStandard value);
-
-        double get_nanocrystalline_stacking_factor() const;
-        void set_nanocrystalline_stacking_factor(double value);
 
         size_t get_painter_number_points_x() const;
         void set_painter_number_points_x(size_t value);

@@ -140,7 +140,6 @@ namespace {
         add_to_fingerprint(text, _coilAdviserMagneticShuntGapToOuterColumn);
         add_to_fingerprint(text, _wireAdviserPenalizeOddLayerCount);
         add_to_fingerprint(text, _effectiveParameterStandard);
-        add_to_fingerprint(text, _nanocrystallineStackingFactor);
         add_to_fingerprint(text, _painterNumberPointsX);
         add_to_fingerprint(text, _painterNumberPointsY);
         add_to_fingerprint(text, _painterMirroringDimension);
@@ -287,7 +286,6 @@ namespace {
         _coilAdviserMagneticShuntGapToOuterColumn = std::nullopt;
         _wireAdviserPenalizeOddLayerCount = false;
         _gappingStrategy = GappingOptimizationStrategy::SIMPLE;
-        _nanocrystallineStackingFactor = 0.80;
     _effectiveParameterStandard = EffectiveParameterStandard::IEC_60205;
 
         _painterNumberPointsX = 25;
@@ -665,13 +663,6 @@ namespace {
     }
     void Settings::set_effective_parameter_standard(EffectiveParameterStandard value) {
         _effectiveParameterStandard = value;
-    }
-
-    double Settings::get_nanocrystalline_stacking_factor() const {
-        return _nanocrystallineStackingFactor;
-    }
-    void Settings::set_nanocrystalline_stacking_factor(double value) {
-        _nanocrystallineStackingFactor = value;
     }
 
     size_t Settings::get_painter_number_points_x() const {

@@ -22,6 +22,10 @@
 #include <streambuf>
 #include <vector>
 #include "support/Exceptions.h"
+#include "support/Logger.h"
+#include "support/LogOnceScope.h"
+#include <map>
+#include <numeric>
 
 using json = nlohmann::json;
 
@@ -2108,6 +2112,257 @@ static void appendPerColumnWindingWindows(CoreProcessedDescription& processedDes
     }
 }
 
+// ---------------------------------------------------------------------------------------------------------------------
+// Fill factor of tape-wound cores (ABT #2234)
+//
+// A tape-wound core is a spiral of ribbon with insulation, oxide and air between the layers, so its iron cross-section
+// is a fraction (the fill, stacking or lamination factor) of the gross cross-section the shape dimensions give. The
+// factor is looked up from the material's MAS laminationThickness, which for a nanocrystalline or amorphous material is
+// the ribbon thickness (MAS core/material.json description). Priority:
+//   (a) the maker's own published value for that material or alloy. A ">x" or ">=x" bound is used as x, a range uses
+//       its midpoint;
+//   (b) otherwise VAC's guide table by ribbon thickness: Table 10.4 for toroidal cores, Table 10.17 for cut cores;
+//   (c) a nanocrystalline or amorphous material with no laminationThickness: estimated from the other manufacturers'
+//       published values for the same alloy class, with a warning naming the material and the estimate.
+// Sources (retrieved 2026-11-02):
+//   [Metglas-SA1]  Metglas Inc., "2605SA1 / 2605HB1M Magnetic Alloy" datasheet, PDF page 1, section 3 "Ribbon
+//                  Dimensions and Lamination Factor": "2605SA1 / 2605HB1M 25 +/- 4 [um] ... Lamination Factor (%) >=84".
+//                  https://metglas.com/wp-content/uploads/2021/06/2605SA1-Magnetic-Alloy-Updated.pdf
+//   [Metglas-S3A]  Metglas Inc., "2605S3A Magnetic Alloy" datasheet, PDF page 1, "Physical Properties":
+//                  "Lamination Factor (%) ... >75". https://metglas.com/wp-content/uploads/2016/12/2605S3A-Magnetic-Alloy.pdf
+//   [Metglas-2714A] Metglas Inc., "2714A Magnetic Alloy" datasheet, PDF page 1, "Physical Properties":
+//                  "Lamination Factor (%) ... >75". https://metglas.com/wp-content/uploads/2016/12/2714A-Magnetic-Alloy.pdf
+//   [Metglas-web]  Metglas Inc., magnetic materials page, 2705M and 2826MB blocks: "Lamination Factor (%) >75".
+//                  https://metglas.com/magnetic-materials/
+//   [ATM]          AT&M (Antai), nanocrystalline ribbon page, "Technical Specifications" table: 1K107B "14-17 | 75-82",
+//                  "17-20 | 75-82", "20-23 | 78-84", "23-26 | 78-84"; 1K107W "14-26 | 75-84" (thickness um | stacking
+//                  factor %). https://www.antai-emarketing.com/nanocrystalline-ribbon/
+//   [King]         King Magnetics catalogue, PDF page 9, table "Nanocrystalline cores vs Ferrite cores":
+//                  "Stacking factor > 0.75". http://www.kingmagnetics.com/wp-content/uploads/kingmagnetics-catalog.pdf
+//   [Pourleroi-N]  Pourleroi, "Nanocrystalline data and relative curves.xlsx", sheet "material data", rows 1 and 15:
+//                  "Ribbon thickness | um | 20 ... Stacking Factor (k) | - | >0.76" (maker workbook, no public URL).
+//   [Pourleroi-A]  Pourleroi, "Amorphous data and relative curves.xlsx", sheet "material data", rows 1 and 11:
+//                  "Ribbon thickness | um | 25 ... Stacking Factor (k) | - | >0.80" (maker workbook, no public URL).
+//   [Magnetics-TWC] Magnetics, 2016 Tape Wound Cores Catalog, PDF pages 16-20, "Tape Wound Core Sizes": Effective Core
+//                  Area per tape thickness column (0.0005", 0.001", 0.002", 0.004"). The catalogue prints no stacking
+//                  factor; the factors are the ratios its tabulated Ae embody, Ae / ((OD - ID) / 2 x HT) over the 44
+//                  cores of those pages, median (min-max): 1/2 mil 0.496 (0.494-0.512), 1 mil 0.751 (0.748-0.754),
+//                  2 mil 0.851 (0.848-0.866), 4 mil 0.900 (0.893-0.905). Alf (2026-11-02): use 0.50 / 0.75 / 0.85 / 0.90.
+//                  https://www.mag-inc.com/Media/Magnetics/File-Library/Product%20Literature/Strip%20Wound%20Core%20Literature/2016-Magnetics-Tape-Wound-Cores-Catalog.pdf
+//   [VAC]          Vacuumschmelze GmbH reference textbook on soft magnetic materials, Tabelle 10.4 "Fuellfaktoren fuer
+//                  Bandkerne (Richtwerte)" and Tabelle 10.17 "Werkstoffe, Banddicken und Fuellfaktoren fuer
+//                  Schnittbandkerne", as photographed and supplied to Alf by email on 2026-11-02 (edition and page not
+//                  stated in the photographs). Guide values ("Richtwerte").
+// ---------------------------------------------------------------------------------------------------------------------
+namespace {
+
+enum class TapeWoundAlloyClass { NANOCRYSTALLINE, AMORPHOUS, CRYSTALLINE };
+
+std::string to_string(TapeWoundAlloyClass alloyClass) {
+    switch (alloyClass) {
+        case TapeWoundAlloyClass::NANOCRYSTALLINE: return "nanocrystalline";
+        case TapeWoundAlloyClass::AMORPHOUS: return "amorphous";
+        case TapeWoundAlloyClass::CRYSTALLINE: return "crystalline";
+    }
+    throw std::invalid_argument("Unknown tape-wound alloy class");
+}
+
+struct PublishedFillFactor {
+    std::string materialName;  // MAS material name this value is for; empty when MAS has no record of the grade
+    std::string maker;         // as MAS's manufacturerInfo.name spells it
+    TapeWoundAlloyClass alloyClass;
+    double value;
+    std::string source;
+};
+
+// Priority (a): values the makers print for a material or alloy (bounds used as their value, ranges as their midpoint).
+const std::vector<PublishedFillFactor>& published_fill_factors() {
+    static const std::vector<PublishedFillFactor> table = {
+        {"Metglas 2605SA1", "Metglas", TapeWoundAlloyClass::AMORPHOUS, 0.84, "Metglas 2605SA1 datasheet p.1: lamination factor >=84 %"},
+        {"Metglas 2605HB1M", "Metglas", TapeWoundAlloyClass::AMORPHOUS, 0.84, "Metglas 2605SA1/2605HB1M datasheet p.1: lamination factor >=84 %"},
+        {"Metglas 2605S3A", "Metglas", TapeWoundAlloyClass::AMORPHOUS, 0.75, "Metglas 2605S3A datasheet p.1: lamination factor >75 %"},
+        {"Metglas 2714A", "Metglas", TapeWoundAlloyClass::AMORPHOUS, 0.75, "Metglas 2714A datasheet p.1: lamination factor >75 %"},
+        {"", "Metglas", TapeWoundAlloyClass::AMORPHOUS, 0.75, "Metglas magnetic materials page, 2705M and 2826MB: lamination factor >75 %"},
+        {"1K101", "Pourleroi", TapeWoundAlloyClass::AMORPHOUS, 0.80, "Pourleroi amorphous workbook, material data row 11: stacking factor >0.80"},
+        // The MAS record "1K107" spans 14-26 um and picks no thickness variant. AT&M's 1K107B rows over that span print
+        // 75-82 % and 78-84 %, i.e. 75-84 % overall, the same as its 1K107W row (14-26 um, 75-84 %): midpoint 0.795.
+        {"1K107", "AT&M", TapeWoundAlloyClass::NANOCRYSTALLINE, 0.795, "AT&M nanocrystalline ribbon specifications: 1K107 14-26 um, stacking factor 75-84 %"},
+        {"KM Nanocrystalline 20000", "King Magnetics", TapeWoundAlloyClass::NANOCRYSTALLINE, 0.75, "King Magnetics catalogue p.9: stacking factor > 0.75"},
+        {"Pourleroi Nanocrystalline 85000", "Pourleroi", TapeWoundAlloyClass::NANOCRYSTALLINE, 0.76, "Pourleroi nanocrystalline workbook, material data row 15: stacking factor >0.76"},
+    };
+    return table;
+}
+
+// Priority (a) for Magnetics' crystalline tape alloys (Permalloy 80, Supermalloy, ...), toroids: [Magnetics-TWC] by
+// tape gauge, {thickness in m, factor}.
+const std::vector<std::pair<double, double>> magneticsTapeWoundFillFactors = {
+    {0.5 * 25.4e-6, 0.50},
+    {1.0 * 25.4e-6, 0.75},
+    {2.0 * 25.4e-6, 0.85},
+    {4.0 * 25.4e-6, 0.90},
+};
+
+// [VAC] Tabelle 10.4, toroidal tape-wound cores, {ribbon thickness in mm, fill factor} per column (blank cells left out).
+const std::vector<std::pair<double, double>> vacToroidTrafopermN2 = {
+    {0.025, 0.82}, {0.05, 0.88}, {0.1, 0.92}, {0.30, 0.95}};
+const std::vector<std::pair<double, double>> vacToroidOtherCrystalline = {
+    {0.003, 0.35}, {0.006, 0.50}, {0.01, 0.62}, {0.015, 0.70}, {0.025, 0.80}, {0.03, 0.80},
+    {0.05, 0.85}, {0.1, 0.90}, {0.15, 0.92}, {0.20, 0.93}, {0.30, 0.95}};
+// VITROVAC (amorphous) column. 0.015 mm is printed in parentheses, "(0.70)", taken as printed. The 0.80 at 0.025 mm
+// carries footnote 1, "Spezialausfuehrung mit Folienisolierung fuer Lagenspannungen bis 100 V mit geringem
+// Fuellfaktor" (special foil-insulated version for layer voltages up to 100 V, with a low fill factor). Which value the
+// footnote marks is an open question put to Alf (2026-11-02); until he answers, 0.80 is used as the plain value.
+const std::vector<std::pair<double, double>> vacToroidAmorphous = {
+    {0.015, 0.70}, {0.025, 0.80}};
+
+// [VAC] Tabelle 10.17, cut cores, rows per VAC alloy, {ribbon thickness in mm, fill factor}. Footnote 1: 0.3 mm only
+// for round (toroidal) cores, so it is left out of these cut-core rows. Footnote 2 (VACOPERM 100): cores in a metal
+// trough, the fill factor of the tape core without the trough. VITROVAC: "data on request" (no value printed).
+const std::vector<std::pair<std::string, std::vector<std::pair<double, double>>>> vacCutCoreRows = {
+    {"MUMETALL", {{0.05, 0.85}, {0.1, 0.90}, {0.2, 0.93}}},
+    {"VACOPERM 100", {{0.025, 0.87}, {0.05, 0.90}}},
+    {"PERMENORM 5000 H2", {{0.1, 0.90}, {0.2, 0.93}}},
+    {"PERMENORM 3601 K2", {{0.025, 0.80}, {0.05, 0.85}, {0.1, 0.90}, {0.2, 0.93}}},
+    {"TRAFOPERM N2", {{0.025, 0.82}, {0.05, 0.88}, {0.1, 0.92}, {0.3, 0.95}}},
+    {"VACOFLUX 48", {{0.1, 0.90}, {0.2, 0.93}}},
+};
+
+std::string uppercase(std::string text) {
+    std::transform(text.begin(), text.end(), text.begin(), [](unsigned char c) { return std::toupper(c); });
+    return text;
+}
+
+// The VAC tables are given at discrete ribbon thicknesses; between two printed rows the factor is interpolated
+// linearly in ribbon thickness. Outside the printed rows there is no guide value: that throws, it is not extrapolated.
+double interpolate_vac_column(const std::vector<std::pair<double, double>>& column, double thicknessInMm,
+                              const std::string& materialName, const std::string& tableName) {
+    if (thicknessInMm < column.front().first || thicknessInMm > column.back().first) {
+        throw CoreException(ErrorCode::INVALID_CORE_MATERIAL_DATA,
+                            "Tape-wound fill factor of " + materialName + ": ribbon thickness " +
+                                std::to_string(thicknessInMm) + " mm is outside " + tableName + " (" +
+                                std::to_string(column.front().first) + " - " + std::to_string(column.back().first) +
+                                " mm), which gives no guide value there");
+    }
+    for (size_t index = 1; index < column.size(); ++index) {
+        if (thicknessInMm <= column[index].first) {
+            auto [thickness0, factor0] = column[index - 1];
+            auto [thickness1, factor1] = column[index];
+            return factor0 + (factor1 - factor0) * (thicknessInMm - thickness0) / (thickness1 - thickness0);
+        }
+    }
+    return column.back().second;  // thicknessInMm == the last printed row
+}
+
+}  // namespace
+
+std::optional<double> Core::get_tape_wound_fill_factor(const CoreMaterial& coreMaterial, CoreShapeFamily shapeFamily) {
+    TapeWoundAlloyClass alloyClass;
+    switch (coreMaterial.get_material()) {
+        case MAS::MaterialType::NANOCRYSTALLINE: alloyClass = TapeWoundAlloyClass::NANOCRYSTALLINE; break;
+        case MAS::MaterialType::AMORPHOUS: alloyClass = TapeWoundAlloyClass::AMORPHOUS; break;
+        case MAS::MaterialType::ELECTRICAL_STEEL:
+            // Electrical steel is tape-wound only as a toroid or a C cut core; E, U, I and other shapes of it are
+            // stacks of punched laminations, which this factor does not describe and which keep their gross section.
+            if (shapeFamily != CoreShapeFamily::T && shapeFamily != CoreShapeFamily::C) {
+                return std::nullopt;
+            }
+            alloyClass = TapeWoundAlloyClass::CRYSTALLINE;
+            break;
+        default:
+            return std::nullopt;
+    }
+    // Nanocrystalline and amorphous alloys exist only as ribbon, so every core of them is tape-wound: a toroid is wound,
+    // any other shape is a cut core.
+    bool isToroid = shapeFamily == CoreShapeFamily::T;
+    const std::string& materialName = coreMaterial.get_name();
+    std::string maker = coreMaterial.get_manufacturer_info().get_name();
+
+    // (a) The maker's own value for this material.
+    for (const auto& entry : published_fill_factors()) {
+        if (!entry.materialName.empty() && entry.materialName == materialName) {
+            return entry.value;
+        }
+    }
+
+    if (!coreMaterial.get_lamination_thickness()) {
+        if (alloyClass == TapeWoundAlloyClass::CRYSTALLINE) {
+            // A crystalline tape's fill factor runs from 0.35 to 0.95 with its gauge ([VAC] Tabelle 10.4), so no
+            // gauge-free estimate exists.
+            throw CoreException(ErrorCode::MATERIAL_DATA_MISSING,
+                                "Tape-wound fill factor of " + materialName +
+                                    ": electrical steel wound as a toroid or C core needs its tape thickness "
+                                    "(laminationThickness) in MAS, and the material has none");
+        }
+        // (c) Estimate: each other manufacturer's published values for this alloy class are averaged per
+        // manufacturer, and those per-manufacturer means are averaged, so that a maker printing several grades
+        // counts once. The material's own manufacturer is left out ("other manufacturers").
+        std::map<std::string, std::vector<double>> valuesPerMaker;
+        for (const auto& entry : published_fill_factors()) {
+            if (entry.alloyClass == alloyClass && entry.maker != maker) {
+                valuesPerMaker[entry.maker].push_back(entry.value);
+            }
+        }
+        if (valuesPerMaker.empty()) {
+            throw CoreException(ErrorCode::MATERIAL_DATA_MISSING,
+                                "Tape-wound fill factor of " + materialName + ": no laminationThickness in MAS and no "
+                                "other manufacturer publishes a " + to_string(alloyClass) + " fill factor");
+        }
+        double sumOfMakerMeans = 0;
+        std::string makerList;
+        for (const auto& [otherMaker, values] : valuesPerMaker) {
+            double makerMean = std::accumulate(values.begin(), values.end(), 0.0) / static_cast<double>(values.size());
+            sumOfMakerMeans += makerMean;
+            makerList += (makerList.empty() ? "" : ", ") + otherMaker + " " + format_significant(makerMean, 4);
+        }
+        double estimate = sumOfMakerMeans / static_cast<double>(valuesPerMaker.size());
+        std::string message = "Tape-wound fill factor of " + materialName + " (" + maker +
+                              "): MAS has no laminationThickness (ribbon thickness) and the maker publishes no fill "
+                              "factor; estimated " + format_significant(estimate, 4) + " as the mean of other "
+                              "manufacturers' published " + to_string(alloyClass) + " fill factors (" + makerList + ")";
+        if (LogOnceScope::first_time("tape-wound fill factor: " + message)) {
+            OM_WARNING_M("Core", message);
+        }
+        return estimate;
+    }
+
+    double thickness = resolve_dimensional_values(coreMaterial.get_lamination_thickness().value());
+
+    // (a) Magnetics' crystalline tape-wound toroids, by gauge.
+    if (alloyClass == TapeWoundAlloyClass::CRYSTALLINE && isToroid && maker == "Magnetics") {
+        for (const auto& [gauge, factor] : magneticsTapeWoundFillFactors) {
+            if (std::abs(thickness - gauge) <= 0.01 * gauge) {
+                return factor;
+            }
+        }
+    }
+
+    // (b) VAC guide table by ribbon thickness.
+    double thicknessInMm = thickness * 1000;
+    std::string upperName = uppercase(materialName);
+    bool isTrafopermN2 = upperName.find("TRAFOPERM N2") != std::string::npos;
+    if (!isToroid && alloyClass == TapeWoundAlloyClass::CRYSTALLINE) {
+        for (const auto& [alloy, row] : vacCutCoreRows) {
+            if (upperName.find(alloy) != std::string::npos) {
+                return interpolate_vac_column(row, thicknessInMm, materialName, "VAC Tabelle 10.17 row " + alloy);
+            }
+        }
+    }
+    // Toroids, and cut cores of alloys Tabelle 10.17 has no row for (any non-VAC alloy, and VITROVAC: "data on request"):
+    // Tabelle 10.4. Every row of Tabelle 10.17 equals Tabelle 10.4 at the thicknesses both print (MUMETALL, PERMENORM
+    // and VACOFLUX 48 the "other crystalline" column, TRAFOPERM N2 its own column), VACOPERM 100 in its trough being the
+    // only exception, so Tabelle 10.4 is VAC's guide value for those cut cores too.
+    // Nanocrystalline ribbons read the "all other crystalline alloys" column (the alloy is crystalline once annealed);
+    // over 0.015-0.025 mm, where nanocrystalline ribbons lie, it equals the VITROVAC column (0.70, 0.80).
+    if (alloyClass == TapeWoundAlloyClass::AMORPHOUS) {
+        return interpolate_vac_column(vacToroidAmorphous, thicknessInMm, materialName, "VAC Tabelle 10.4 VITROVAC column");
+    }
+    if (isTrafopermN2) {
+        return interpolate_vac_column(vacToroidTrafopermN2, thicknessInMm, materialName, "VAC Tabelle 10.4 TRAFOPERM N2 column");
+    }
+    return interpolate_vac_column(vacToroidOtherCrystalline, thicknessInMm, materialName,
+                                  "VAC Tabelle 10.4 other crystalline alloys column");
+}
+
 void Core::process_data() {
     // If the shape is a string, we have to load its data from the database
     if (std::holds_alternative<std::string>(get_functional_description().get_shape())) {
@@ -2181,12 +2436,13 @@ void Core::process_data() {
         }
     }
 
-    // Apply stacking factor for tape-wound cores (nanocrystalline and amorphous)
-    // Stacking factor accounts for the space between ribbon layers in tape-wound cores
-    if (coreMaterial.get_material() == MAS::MaterialType::NANOCRYSTALLINE ||
-        coreMaterial.get_material() == MAS::MaterialType::AMORPHOUS) {
-        double kf = settings.get_nanocrystalline_stacking_factor();
-        // Apply stacking factor to effective area and volume
+    // Fill factor of tape-wound cores (nanocrystalline, amorphous, and electrical steel wound as a toroid or C core):
+    // the iron is a fraction of the gross section between the ribbon layers. Looked up from the material's ribbon
+    // thickness and the makers' published values, see get_tape_wound_fill_factor (ABT #2234).
+    auto tapeWoundFillFactor = get_tape_wound_fill_factor(
+        coreMaterial, std::get<CoreShape>(get_functional_description().get_shape()).get_family());
+    if (tapeWoundFillFactor) {
+        double kf = tapeWoundFillFactor.value();
         coreEffectiveParameters.set_effective_area(coreEffectiveParameters.get_effective_area() * kf);
         coreEffectiveParameters.set_effective_volume(coreEffectiveParameters.get_effective_volume() * kf);
         coreEffectiveParameters.set_minimum_area(coreEffectiveParameters.get_minimum_area() * kf);

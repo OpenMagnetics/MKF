@@ -223,6 +223,13 @@ class Core : public MAS::MagneticCore {
     double get_reluctance(double temperature);
     double get_density();
     static double get_density(const CoreMaterial& coreMaterial);
+    // Fill factor (iron cross-section / gross cross-section) of a tape-wound core of this material and shape family,
+    // from the material's laminationThickness (ribbon thickness) and the makers' published values (ABT #2234):
+    // the maker's value first, VAC's guide tables by ribbon thickness otherwise, and for a nanocrystalline or amorphous
+    // material without laminationThickness an estimate from other manufacturers' values, with a warning. Empty when
+    // the core is not tape-wound (ferrite, powder, laminated electrical steel stacks). Throws when a tape-wound core
+    // cannot be placed in any of those sources.
+    static std::optional<double> get_tape_wound_fill_factor(const CoreMaterial& coreMaterial, CoreShapeFamily shapeFamily);
     double get_resistivity(double temperature);
     static double get_resistivity(CoreMaterial coreMaterial, double temperature);
     double get_curie_temperature();
