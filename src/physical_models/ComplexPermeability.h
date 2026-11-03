@@ -72,8 +72,10 @@ class ComplexPermeability {
         // Alf 2026-10-14): inside each part's table, the table; outside it, the approved estimate
         // (ComplexPermeabilityEstimator: class neighbours, their tail, mu' held flat below its data),
         // regardless of Settings::allowMaterialDataExtrapolation, which governs the other material
-        // data only. Throws ComplexPermeabilityEstimateUnavailableException outside the tabulated
-        // range for the materials the estimator refuses (powders, MgZn, unclassified, derived tables).
+        // data only. Outside the tabulated range of a material the estimator refuses (powders, MgZn,
+        // unclassified, derived tables) it throws ComplexPermeabilityEstimateUnavailableException, unless
+        // Settings::allowMaterialDataExtrapolation is on: then each part is held at its nearest tabulated
+        // value (source HELD_FLAT) with a WARNING (ABT #2235).
         // For graphs and analysis of a chosen design: get_complex_permeability_with_source says
         // which parts are estimated. Advisers and filters use get_tabulated_complex_permeability.
         std::pair<double, double> get_complex_permeability(std::string coreMaterialName, double frequency);

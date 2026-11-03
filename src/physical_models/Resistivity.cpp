@@ -1,7 +1,9 @@
 #include "physical_models/Resistivity.h"
 #include "spline.h"
 
+#include <algorithm>
 #include <cmath>
+#include <limits>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -9,6 +11,7 @@
 #include <streambuf>
 #include <vector>
 #include "support/Exceptions.h"
+#include "support/Utils.h"
 
 namespace OpenMagnetics {
 
@@ -19,7 +22,8 @@ double ResistivityCoreMaterialModel::get_resistivity(ResistivityMaterial materia
     // absent data THROWS, it does not fall back -- so a caller that needs a resistivity still
     // finds out loudly. Callers that can do without it (the cross-referencer's resistivity
     // dimension) test `get_resistivity()` for a value first, as the Curie filter already does.
-    auto resistivityDataOptional = std::get<CoreMaterial>(materialData).get_resistivity();
+    const auto& coreMaterial = std::get<CoreMaterial>(materialData);
+    auto resistivityDataOptional = coreMaterial.get_resistivity();
     double resistivity = -1;
 
     if (!resistivityDataOptional) {
@@ -29,6 +33,25 @@ double ResistivityCoreMaterialModel::get_resistivity(ResistivityMaterial materia
 
     if (resistivityData.empty()) {
         throw InvalidInputException(ErrorCode::MISSING_DATA, "No resistivity data available for core material");
+    }
+    // ABT #2235: outside its tabulated temperatures the resistivity is the table extrapolated (held, for a
+    // single point; the spline's end slope, for several) as before, with a WARNING whatever the flag. A point
+    // without a temperature is a measurement at no stated temperature and is taken as it stands, as before.
+    {
+        double tableMinimum = std::numeric_limits<double>::max();
+        double tableMaximum = std::numeric_limits<double>::lowest();
+        bool allPointsHaveTemperature = true;
+        for (const auto& datum : resistivityData) {
+            if (!datum.get_temperature()) {
+                allPointsHaveTemperature = false;
+                break;
+            }
+            tableMinimum = std::min(tableMinimum, datum.get_temperature().value());
+            tableMaximum = std::max(tableMaximum, datum.get_temperature().value());
+        }
+        if (allPointsHaveTemperature) {
+            warn_if_material_temperature_outside_data(coreMaterial.get_name(), "resistivity", tableMinimum, tableMaximum, temperature);
+        }
     }
     if (resistivityData.size() < 2) {
         resistivity = resistivityData[0].get_value();

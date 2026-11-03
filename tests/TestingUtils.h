@@ -23,6 +23,23 @@ using namespace OpenMagnetics;
 
 namespace OpenMagneticsTesting {
 
+// Sets Settings::allowMaterialDataExtrapolation for one scope and restores the value it read on every way
+// out (a failed REQUIRE included). For tests whose premise is the flag-off behaviour (a material used
+// outside its data throws), written before the flag defaulted to on (Alf, 2026-10-25).
+class MaterialDataExtrapolationScope {
+  public:
+    explicit MaterialDataExtrapolationScope(bool allow)
+        : _previous(OpenMagnetics::Settings::GetInstance().get_allow_material_data_extrapolation()) {
+        OpenMagnetics::Settings::GetInstance().set_allow_material_data_extrapolation(allow);
+    }
+    ~MaterialDataExtrapolationScope() { OpenMagnetics::Settings::GetInstance().set_allow_material_data_extrapolation(_previous); }
+    MaterialDataExtrapolationScope(const MaterialDataExtrapolationScope&) = delete;
+    MaterialDataExtrapolationScope& operator=(const MaterialDataExtrapolationScope&) = delete;
+
+  private:
+    bool _previous;
+};
+
 // Cross-platform helper to get test data path from source file location
 // Usage: get_test_data_path(std::source_location::current(), "myfile.json")
 inline std::filesystem::path get_test_data_path(const std::source_location& loc, const std::string& filename) {

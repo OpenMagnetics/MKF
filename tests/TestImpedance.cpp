@@ -824,6 +824,8 @@ TEST_CASE("Test_Impedance_Sweep_Stops_Where_Complex_Permeability_Cannot_Be_Estim
     REQUIRE(maximumMaterialFrequency <= 1e8);
     // The refused gap: past the top of the table, A103's complex permeability cannot be estimated.
     double refusedFrequency = 3e8;
+    // This premise (the refusal and the sweep cut below) is the flag-off behaviour.
+    OpenMagneticsTesting::MaterialDataExtrapolationScope extrapolationOff(false);
     try {
         ComplexPermeability().get_complex_permeability(material, refusedFrequency);
         FAIL("A103's mu' above its table is a refused gap and must throw");

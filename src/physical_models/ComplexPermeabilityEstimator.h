@@ -75,7 +75,7 @@ enum class ComplexPermeabilitySource {
     TABULATED,             // the material's own MAS table
     ESTIMATED_NEIGHBOURS,  // median of the shape-matched class donors
     ESTIMATED_TAIL,        // beyond the donors' reach: the class tail slope
-    HELD_FLAT,             // mu' below its data: its lowest tabulated value
+    HELD_FLAT,             // mu' below its data: its lowest tabulated value; or, for a material without an estimate, either part at its nearest tabulated value under allowMaterialDataExtrapolation (ABT #2235)
     ESTIMATED_KRAMERS_KRONIG  // NiZn mu' above its data, from its own tabulated mu'' (ABT #1870)
 };
 

@@ -2,6 +2,7 @@
 #include "physical_models/InitialPermeability.h"
 
 #include "support/Utils.h"
+#include "support/NumberFormat.h"
 #include <algorithm>
 #include <limits>
 #include <math.h>
@@ -484,28 +485,64 @@ ComplexPermeabilityValue ComplexPermeability::get_complex_permeability_with_sour
     // Outside the range where both parts are tabulated: each part from its own table where it has
     // one, the approved estimate where it has not (ABT #1861).
     const std::string& materialName = coreMaterial.get_name();
-    const auto& estimate = estimate_for(coreMaterial, cacheKey, frequency);
+    // ABT #2235 (Alf, 2026-11-02: "all material admit extrapolation when the proper flag is set"): where the
+    // estimator has no estimate for this material or this stretch (powders, MgZn, unclassified, derived
+    // tables), Settings::allowMaterialDataExtrapolation holds each part at its nearest tabulated value, with
+    // a WARNING; off (and under any adviser) it throws ComplexPermeabilityEstimateUnavailableException as before.
+    auto extrapolationAllowed = [&](const std::string& reason) {
+        return material_data_extrapolation_allowed(
+            "Material " + materialName + ": its complex permeability is tabulated from " + format_quantity(minimumFrequency, "Hz") +
+                " to " + format_quantity(maximumFrequency, "Hz") + " and has no estimate outside it (" + reason +
+                "); outside that range each part is held at its nearest tabulated value",
+            "asked at " + format_quantity(frequency, "Hz") + ", " + (frequency < minimumFrequency ? "below" : "above") + " that range");
+    };
+    auto estimatePointer = find_or_build_estimate(coreMaterial, cacheKey);
+    bool holdNearest = false;
+    if (!estimatePointer) {
+        if (!extrapolationAllowed(complexPermeabilityEstimateRefusals.at(cacheKey))) {
+            throw ComplexPermeabilityEstimateUnavailableException(materialName, frequency, minimumFrequency, maximumFrequency,
+                                                                  complexPermeabilityEstimateRefusals.at(cacheKey));
+        }
+        holdNearest = true;
+    }
     ComplexPermeabilityValue value;
     auto evaluatePart = [&](ComplexPermeabilityPart part, std::map<std::string, tk::spline>& interps,
                             std::map<std::string, std::pair<double, double>>& spans,
                             double& result, ComplexPermeabilitySource& source, std::string& method) {
         const auto& span = spans.at(cacheKey);
+        std::string partName = part == ComplexPermeabilityPart::REAL ? "real" : "imaginary";
         if (frequency >= span.first && frequency <= span.second) {
             result = interps.at(cacheKey)(frequency);
             if (std::isnan(result)) {
-                throw NaNResultException("complex permeability " + std::string(part == ComplexPermeabilityPart::REAL ? "real" : "imaginary") +
-                                         " part must be a number, not NaN");
+                throw NaNResultException("complex permeability " + partName + " part must be a number, not NaN");
             }
             source = ComplexPermeabilitySource::TABULATED;
             return;
         }
+        auto holdAtNearestTabulated = [&]() {
+            double nearest = frequency < span.first ? span.first : span.second;
+            result = interps.at(cacheKey)(nearest);
+            if (std::isnan(result)) {
+                throw NaNResultException("complex permeability " + partName + " part must be a number, not NaN");
+            }
+            source = ComplexPermeabilitySource::HELD_FLAT;
+            method = "held at its tabulated value at " + format_quantity(nearest, "Hz") + " (material data extrapolation)";
+        };
+        if (holdNearest) {
+            holdAtNearestTabulated();
+            return;
+        }
         auto side = frequency < span.first ? ComplexPermeabilityGapSide::BELOW : ComplexPermeabilityGapSide::ABOVE;
-        const auto& gap = estimate.gap(part, side);
+        const auto& gap = estimatePointer->gap(part, side);
         try {
             std::tie(result, source) = gap.evaluate(frequency);
         }
         catch (const ComplexPermeabilityEstimatorRefusal& exception) {
-            throw ComplexPermeabilityEstimateUnavailableException(materialName, frequency, minimumFrequency, maximumFrequency, exception.reason());
+            if (!extrapolationAllowed(exception.reason())) {
+                throw ComplexPermeabilityEstimateUnavailableException(materialName, frequency, minimumFrequency, maximumFrequency, exception.reason());
+            }
+            holdAtNearestTabulated();
+            return;
         }
         method = gap.method(source);
     };

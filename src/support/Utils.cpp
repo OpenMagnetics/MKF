@@ -247,6 +247,34 @@ bool material_data_extrapolation_allowed(const std::string& summary, const std::
     return true;
 }
 
+void warn_if_material_temperature_outside_data(const std::string& materialName, const std::string& propertyName,
+                                               double tableMinimum, double tableMaximum, double temperature) {
+    if (temperature >= tableMinimum && temperature <= tableMaximum) {
+        return;
+    }
+    const std::string range = tableMinimum == tableMaximum
+                                  ? "at " + format_significant(tableMinimum) + " C only"
+                                  : "from " + format_significant(tableMinimum) + " C to " + format_significant(tableMaximum) + " C";
+    const std::string side = temperature < tableMinimum ? "below" : "above";
+    Logger::getInstance().warning("Material " + materialName + ": its " + propertyName + " is tabulated " + range +
+                                      "; outside that the table is extrapolated",
+                                  kMaterialDataExtrapolationModule,
+                                  "asked at " + format_significant(temperature) + " C, " + side + " its data");
+}
+
+void warn_if_material_frequency_outside_data(const std::string& materialName, const std::string& propertyName,
+                                             double tableMinimum, double tableMaximum, double frequency) {
+    if (frequency >= tableMinimum && frequency <= tableMaximum) {
+        return;
+    }
+    const std::string range = "from " + format_quantity(tableMinimum, "Hz") + " to " + format_quantity(tableMaximum, "Hz");
+    const std::string side = frequency < tableMinimum ? "below" : "above";
+    Logger::getInstance().warning("Material " + materialName + ": its " + propertyName + " is tabulated " + range +
+                                      "; outside that range the table is extrapolated",
+                                  kMaterialDataExtrapolationModule,
+                                  "asked at " + format_quantity(frequency, "Hz") + ", " + side + " that range");
+}
+
 void logEntry(std::string entry, std::string module, uint8_t entryVerbosity) {
     auto& logger = Logger::getInstance();
     LogLevel level = (entryVerbosity == 0) ? LogLevel::ERROR 

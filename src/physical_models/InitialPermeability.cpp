@@ -1419,8 +1419,14 @@ double InitialPermeability::get_initial_permeability_frequency_dependent(const C
         initialPermeabilityValue = std::get<double>(initialPermeabilityFrequencyInterps[cacheKey]);
     }
     else {
-        auto value = std::get<tk::spline>(initialPermeabilityFrequencyInterps[cacheKey])(frequency);
-        initialPermeabilityValue = std::max(1., value);
+        const auto& spline = std::get<tk::spline>(initialPermeabilityFrequencyInterps[cacheKey]);
+        // ABT #2235: outside its tabulated frequencies mu_i(f) is the spline extrapolated as before, with a
+        // WARNING whatever the flag (Utils.h).
+        warn_if_material_frequency_outside_data(coreMaterial.get_name(), "initial permeability", spline.get_x_min(),
+                                               spline.get_x_max(), frequency);
+        // Floored at 1 as before (ABT #2238): a mu_i(f) table sampled from a formula
+        // (XFlux 60's Magnetics quartic) carries values below 1 that the derived complex permeability reads.
+        initialPermeabilityValue = std::max(1., spline(frequency));
     }
 
 
@@ -1577,7 +1583,7 @@ double InitialPermeability::get_initial_permeability(const CoreMaterial& coreMat
         }
         std::ostringstream message;
         message << "Material " << coreMaterial.get_name() << ": its permeability model gives mu_r = " << permeability
-                << " (below the vacuum's 1)";
+                << ", which is unphysical (below the vacuum's 1)";
         if (magneticFieldDcBias) {
             message << ", DC bias " << magneticFieldDcBias.value() << " A/m";
         }

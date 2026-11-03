@@ -162,6 +162,18 @@ std::string read_log();
 // value asked this time (LogRecord::detail). Both are written for the person reading the log: no setting names.
 inline constexpr const char* kMaterialDataExtrapolationModule = "Material data extrapolation";
 bool material_data_extrapolation_allowed(const std::string& summary, const std::string& detail);
+// ABT #2235: material properties tabulated in temperature (saturation flux density; remanence, coercive
+// force and saturation field below their data; resistivity) and the initial permeability tabulated in
+// frequency are extrapolated outside their data exactly as they always were, whatever
+// Settings::allowMaterialDataExtrapolation says (and under every adviser): these never throw for being outside
+// their data. Outside [tableMinimum, tableMaximum] the helpers below only log a WARNING from module
+// kMaterialDataExtrapolationModule naming the material, the property, the range its data covers and (as detail)
+// the value asked; inside it they log nothing. A table of one temperature covers that temperature only.
+// Unphysical results are refused by the callers, not here. Alf, 2026-11-03: warn only, never throw.
+void warn_if_material_temperature_outside_data(const std::string& materialName, const std::string& propertyName,
+                                               double tableMinimum, double tableMaximum, double temperature);
+void warn_if_material_frequency_outside_data(const std::string& materialName, const std::string& propertyName,
+                                             double tableMinimum, double tableMaximum, double frequency);
 
 bool check_requirement(DimensionWithTolerance requirement, double value);
 Core find_core_by_name(std::string name);

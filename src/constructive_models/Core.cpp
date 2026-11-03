@@ -2612,9 +2612,25 @@ static double interpolate_ferromagnetic_property_to_curie(const CoreMaterial& co
         return a.first < b.first;
     });
     if (temperature <= lastPoint.first) {
+        // ABT #2235: below its first data point the table is extrapolated as before (interp() runs its end
+        // slope), with a WARNING whatever the flag.
+        auto firstPoint = *std::min_element(data.begin(), data.end(), [](const std::pair<double, double>& a, const std::pair<double, double>& b) {
+            return a.first < b.first;
+        });
+        warn_if_material_temperature_outside_data(coreMaterial.get_name(), propertyName, firstPoint.first, lastPoint.first, temperature);
         return interp(data, temperature);
     }
     if (!coreMaterial.get_curie_temperature()) {
+        // ABT #2235: without a Curie temperature the property has no end point to run down to.
+        // Settings::allowMaterialDataExtrapolation holds it at its last tabulated value, with a WARNING; off (and
+        // under any adviser) this throws as before.
+        if (material_data_extrapolation_allowed(
+                "Material " + coreMaterial.get_name() + ": its " + propertyName + " is tabulated up to " +
+                    format_significant(lastPoint.first) + " C and it has no Curie temperature; above that the " + propertyName +
+                    " is held at its last tabulated value",
+                "asked at " + format_significant(temperature) + " C")) {
+            return lastPoint.second;
+        }
         throw MaterialException(ErrorCode::MATERIAL_DATA_MISSING,
             "Core material " + coreMaterial.get_name() + " has no Curie temperature: its " + propertyName + " cannot be evaluated at " +
             std::to_string(temperature) + " C, above its last data point at " + std::to_string(lastPoint.first) + " C");
@@ -2670,7 +2686,21 @@ double Core::get_magnetic_flux_density_saturation(const CoreMaterial& coreMateri
     }
     data = saturation_points_at_highest_field(coreMaterial, true);
 
+    // ABT #2235: outside its tabulated temperatures the saturation flux density is the table extrapolated
+    // as before (interp() runs its end slope), with a WARNING whatever the flag. data is sorted by temperature (one point per temperature).
+    warn_if_material_temperature_outside_data(coreMaterial.get_name(), "saturation flux density", data.front().first,
+                                             data.back().first, temperature);
     double saturationMagneticFluxDensity = interp(data, temperature);
+    // A material's saturation flux density is positive. Where the extrapolated table reaches zero or below
+    // (A10, DN100H above 200 C) it says nothing physical: that is refused whatever the flag, not clamped.
+    if (!(saturationMagneticFluxDensity > 0)) {
+        throw MaterialException(ErrorCode::MATERIAL_INVALID_PROPERTY,
+                                "Material " + coreMaterial.get_name() + ": its extrapolated saturation flux density at " +
+                                    format_significant(temperature) + " C is unphysical (" +
+                                    format_significant(saturationMagneticFluxDensity) + " T); its data runs from " +
+                                    format_significant(data.front().first) + " C to " + format_significant(data.back().first) + " C",
+                                coreMaterial.get_name());
+    }
 
     if (proportion)
         return defaults.maximumProportionMagneticFluxDensitySaturation * saturationMagneticFluxDensity;

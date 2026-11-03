@@ -7,6 +7,7 @@
 #include "physical_models/AmplitudePermeability.h"
 #include "support/Painter.h"
 #include "support/Utils.h"
+#include "TestingUtils.h"
 #include "json.hpp"
 
 #include <catch2/catch_test_macros.hpp>
@@ -773,6 +774,7 @@ namespace {
         // no MAS table to estimate from: it still throws outside the derived table's range, as
         // ComplexPermeabilityEstimateUnavailableException (a ComplexPermeabilityFrequencyOutOfRangeException).
         auto [derivedMinimum, derivedMaximum] = complexPermeability.get_frequency_range("XFlux 60");
+        OpenMagneticsTesting::MaterialDataExtrapolationScope extrapolationOff(false);  // this premise is the flag-off behaviour
         CHECK_THROWS_AS(complexPermeability.get_complex_permeability("XFlux 60", derivedMinimum / 2), ComplexPermeabilityEstimateUnavailableException);
         CHECK_THROWS_AS(complexPermeability.get_complex_permeability("XFlux 60", derivedMaximum * 2), ComplexPermeabilityEstimateUnavailableException);
     }
@@ -942,6 +944,7 @@ namespace {
             auto [minimumFrequency, maximumFrequency] = complexPermeability.get_frequency_range(material);
             double outside = minimumFrequency > 1000 ? 1000 : maximumFrequency * 2;
             CHECK_NOTHROW(complexPermeability.get_complex_permeability(material, minimumFrequency));
+            OpenMagneticsTesting::MaterialDataExtrapolationScope extrapolationOff(false);  // this premise is the flag-off behaviour
             try {
                 complexPermeability.get_complex_permeability(material, outside);
                 FAIL(name + " outside its tabulated range must throw: the estimator does not cover its class");
@@ -1349,6 +1352,7 @@ namespace {
 
         // Above the table: throws, at its edge and where the model is below 1.
         CHECK_NOTHROW(complexPermeability.get_complex_permeability(coreMaterial, maximumFrequency));
+        OpenMagneticsTesting::MaterialDataExtrapolationScope extrapolationOff(false);  // this premise is the flag-off behaviour
         CHECK_THROWS_AS(complexPermeability.get_complex_permeability(coreMaterial, maximumFrequency * 1.001), ComplexPermeabilityFrequencyOutOfRangeException);
         CHECK_THROWS_AS(complexPermeability.get_complex_permeability(coreMaterial, 3e7), ComplexPermeabilityFrequencyOutOfRangeException);
     }
@@ -1571,6 +1575,7 @@ namespace {
         // A material without a Curie temperature cannot be evaluated past its data: no guess.
         auto withoutCurie = n87;
         withoutCurie.set_curie_temperature(std::nullopt);
+        OpenMagneticsTesting::MaterialDataExtrapolationScope extrapolationOff(false);  // this premise is the flag-off behaviour
         CHECK_THROWS_WITH(OpenMagnetics::Core::get_remanence(withoutCurie, 150.0), Catch::Matchers::ContainsSubstring("has no Curie temperature"));
         CHECK_THROWS_WITH(OpenMagnetics::Core::get_coercive_force(withoutCurie, 150.0), Catch::Matchers::ContainsSubstring("has no Curie temperature"));
         CHECK_NOTHROW(OpenMagnetics::Core::get_remanence(withoutCurie, 60.0));
