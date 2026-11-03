@@ -3287,9 +3287,9 @@ OpenMagnetics::Inputs buck_like_inputs(const std::vector<double>& dcCurrents, js
     return inputs;
 }
 
-OpenMagnetics::Magnetic powder_toroid(const std::string& shape) {
+OpenMagnetics::Magnetic powder_toroid(const std::string& shape, const std::string& material = "75-Series 26") {
     return magnetic_autocomplete(OpenMagnetics::Magnetic(json{
-        {"core", {{"name", shape}, {"functionalDescription", {{"type", "toroidal"}, {"shape", shape}, {"material", "75-Series 26"},
+        {"core", {{"name", shape}, {"functionalDescription", {{"type", "toroidal"}, {"shape", shape}, {"material", material},
                                                               {"gapping", json::array()}, {"numberStacks", 1}}}}},
         {"coil", {{"bobbin", "Basic"}, {"functionalDescription", {{{"name", "Primary"}, {"numberTurns", 1}, {"numberParallels", 1},
                                                                     {"isolationSide", "primary"}, {"wire", "Round 1.25 - Grade 1"}}}}}}}));
@@ -3386,7 +3386,9 @@ TEST_CASE("Test_Number_Turns_From_Inductance_Maximum_Holds_At_Every_Operating_Po
 TEST_CASE("Test_Sizing_Saturation_Checks_Every_Operating_Point", "[physical-model][magnetizing-inductance][multi-operating-point]") {
     // A turn count that is safe at a light point and saturates at a heavy one saturates the design, whichever point comes first.
     const json requirement = {{"minimum", 17.6e-6}};
-    auto magnetic = powder_toroid("T 21/12/14");
+    // MPP 26, not 75-Series 26: the 75-Series 26 Bsat is 1.5 T since MAS c7a7cbc, so 60 A no longer saturates it.
+    // MPP 26 saturates through the DC-bias knee at 60 A.
+    auto magnetic = powder_toroid("T 21/12/14", "MPP 26");
     MagnetizingInductance model(ReluctanceModels::ZHANG);
     auto heavyAlone = buck_like_inputs({60.0}, requirement);
     auto lightAlone = buck_like_inputs({1.0}, requirement);
