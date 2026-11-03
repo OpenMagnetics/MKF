@@ -2470,7 +2470,9 @@ TEST_CASE("Test_Manufacturer_Magnetec", "[physical-model][core-losses][smoke-tes
         double amplitude = magneticFluxDensity.get_processed()->get_peak().value() - magneticFluxDensity.get_processed()->get_offset();
         CHECK_THAT(coreLosses.get_core_losses(), Catch::Matchers::WithinRel(80 * pow(amplitude / 0.3, 2) * core.get_mass(), 1e-9));
     }
-    REQUIRE_THAT(coreLosses.get_core_losses(), Catch::Matchers::WithinAbs(69.440, 69.440 * maxError));
+    // ABT #2234: 69.440 W -> 79.01 W. Nanoperm 80000's fill factor went from the flat 0.80 to
+    // VAC Table 10.4's 0.75 (Ae x 0.75/0.80, so the loss scales by (0.80/0.75)^2).
+    REQUIRE_THAT(coreLosses.get_core_losses(), Catch::Matchers::WithinAbs(79.01, 79.01 * maxError));
 }
 
 TEST_CASE("Test_Manufacturer_Magnetec_Obfuscated_Manufacturer", "[physical-model][core-losses][smoke-test]") {
@@ -2508,7 +2510,9 @@ TEST_CASE("Test_Manufacturer_Magnetec_Obfuscated_Manufacturer", "[physical-model
     // Identical to Test_Manufacturer_Magnetec: obfuscating the manufacturer must not change the physics.
     // ABT #1790: 10 turns instead of 1, 7421.39 W -> 77.497 W; the derivation is in that test.
     // ABT #1467 (Alf, 2026-10-13): 77.497 W -> 69.440 W, the hand value; see that test.
-    REQUIRE_THAT(coreLosses.get_core_losses(), Catch::Matchers::WithinAbs(69.440, 69.440 * maxError));
+    // ABT #2234: 69.440 W -> 79.01 W. Nanoperm 80000's fill factor went from the flat 0.80 to
+    // VAC Table 10.4's 0.75 (Ae x 0.75/0.80, so the loss scales by (0.80/0.75)^2).
+    REQUIRE_THAT(coreLosses.get_core_losses(), Catch::Matchers::WithinAbs(79.01, 79.01 * maxError));
 }
 
 TEST_CASE("Test_XFlux_19", "[physical-model][core-losses][smoke-test]") {
@@ -3085,7 +3089,9 @@ TEST_CASE("Test_Core_Losses_Nanoperm_8000", "[physical-model][core-losses][smoke
 
     REQUIRE_THAT(magneticFluxDensity.get_processed().value().get_offset(), Catch::Matchers::WithinAbs(0, 0.0001));
     // ABT #1491: 869 -> 217.29 W/kg (exactly 1/4): 0.3 T anchor read against the PEAK flux density.
-    REQUIRE_THAT(calculatedMassCoreLosses, Catch::Matchers::WithinAbs(217.29, 217.29 * 0.05));
+    // ABT #2234: 217.29 -> 246.54 W/kg. Nanoperm 8000's fill factor went from the flat 0.80 to
+    // VAC Table 10.4's 0.75 (20 um ribbon, the same as Nanoperm 80000).
+    REQUIRE_THAT(calculatedMassCoreLosses, Catch::Matchers::WithinAbs(246.54, 246.54 * 0.05));
 }
 
 TEST_CASE("Test_Core_Losses_Web_1", "[physical-model][core-losses][bug][smoke-test]") {
@@ -4694,8 +4700,10 @@ TEST_CASE("Test_Roshen_Eddy_Current_Laminated_Without_Thickness_Throws", "[physi
     settings.reset();
     clear_databases();
 
-    Core core = OpenMagneticsTesting::get_quick_core("T 63/50/30", json::array(), 1, "Nanoperm 80000");
-    auto material = find_core_material_by_name("Nanoperm 80000");
+    // Nanoperm 80000 now carries a laminationThickness (MAS c7a7cbc/340d15a), so it no longer
+    // exercises the missing-thickness path; Pourleroi Nanocrystalline 80000 publishes none.
+    Core core = OpenMagneticsTesting::get_quick_core("T 63/50/30", json::array(), 1, "Pourleroi Nanocrystalline 80000");
+    auto material = find_core_material_by_name("Pourleroi Nanocrystalline 80000");
     REQUIRE(material.get_material() == MAS::MaterialType::NANOCRYSTALLINE);
     REQUIRE_FALSE(material.get_lamination_thickness());
     core.get_mutable_functional_description().set_material(material);
