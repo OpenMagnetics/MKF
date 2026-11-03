@@ -493,15 +493,9 @@ void CoreAdviser::post_process_and_append(std::vector<std::pair<Magnetic, double
         }
         try {
             auto mas = post_process_core(candidate[0].first, inputs, temperatureGate ? &temperatureGate.value() : nullptr);
-            if (wireWithinLimits) {
-                auto magnetic = mas.get_magnetic();
-                if (!wireWithinLimits->evaluate_magnetic(&magnetic, &inputs).first) {
-                    ++candidatesDropped;
-                    logEntry("CoreAdviser: dropping core without a wire within the coil stage's limits (backfilling): " +
-                                 wireWithinLimits->get_last_reason(), "CoreAdviser", 2);
-                    continue;
-                }
-            }
+            // ABT #2244: a part is kept only if it passes both gates, which read different things (the solved
+            // outputs, the wound magnetic): the temperature gate, which only reads what post_process_core
+            // solved, goes first, and the wire gate (a wire search per winding) runs only on the parts it keeps.
             if (temperatureGate) {
                 auto [withinLimit, solvedMaximumTemperature] = temperatureGate->evaluate_solved_outputs(mas.get_outputs());
                 if (!withinLimit) {
@@ -509,6 +503,15 @@ void CoreAdviser::post_process_and_append(std::vector<std::pair<Magnetic, double
                     logEntry("CoreAdviser: dropping core whose loss-temperature solve reaches " + std::to_string(solvedMaximumTemperature) +
                                  " C, above " + std::to_string(maximumTemperature.value()) + " C (backfilling): " +
                                  mas.get_magnetic().get_core().get_name().value_or("unnamed"), "CoreAdviser", 2);
+                    continue;
+                }
+            }
+            if (wireWithinLimits) {
+                auto magnetic = mas.get_magnetic();
+                if (!wireWithinLimits->evaluate_magnetic(&magnetic, &inputs).first) {
+                    ++candidatesDropped;
+                    logEntry("CoreAdviser: dropping core without a wire within the coil stage's limits (backfilling): " +
+                                 wireWithinLimits->get_last_reason(), "CoreAdviser", 2);
                     continue;
                 }
             }
