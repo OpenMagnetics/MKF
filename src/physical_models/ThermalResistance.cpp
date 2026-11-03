@@ -59,7 +59,7 @@ double ThermalResistance::calculateNaturalConvectionCoefficient(
     }
     
     // Grashof number: Gr = g * β * ΔT * L³ / ν²
-    Constants constants;
+    static const Constants constants;
     double Gr = constants.gravityAcceleration * air.thermalExpansionCoefficient * deltaT * 
                 std::pow(characteristicLength, 3) / std::pow(air.kinematicViscosity, 2);
     
@@ -144,7 +144,7 @@ double ThermalResistance::calculateRadiationCoefficient(
     double emissivity) {
     
     // Convert to Kelvin
-    Constants constants;
+    static const Constants constants;
     double Ts = surfaceTemperature + constants.kelvinOffset;
     double Ta = ambientTemperature + constants.kelvinOffset;
     
