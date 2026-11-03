@@ -49,16 +49,13 @@ public:
     void setRowZero(size_t row) { std::fill(data[row].begin(), data[row].end(), 0.0); }
     void setColZero(size_t col) { for (size_t i = 0; i < rows_; ++i) data[i][col] = 0.0; }
 
-    // Non-throwing solve with success flag
-    static std::vector<double> solve(SimpleMatrix A, std::vector<double> b, bool& success) {
+    // Non-throwing solve with success flag. `system` is the augmented matrix [A | b]: n rows of n + 1
+    // columns, eliminated in place (its rows are left permuted and reduced).
+    static std::vector<double> solve_augmented_in_place(SimpleMatrix& system, bool& success) {
         success = true;
-        size_t n = A.rows();
-        if (n == 0 || b.size() != n) { success = false; return std::vector<double>(n, 0.0); }
-        std::vector<std::vector<double>> aug(n, std::vector<double>(n + 1));
-        for (size_t i = 0; i < n; ++i) {
-            for (size_t j = 0; j < n; ++j) aug[i][j] = A(i, j);
-            aug[i][n] = b[i];
-        }
+        size_t n = system.rows();
+        if (n == 0 || system.cols() != n + 1) { success = false; return std::vector<double>(n, 0.0); }
+        auto& aug = system.data;
         // The thermal network is sparse: most rows below the pivot have a zero in the pivot column, and their
         // elimination update subtracts (+-0) * pivot-row entries, which leaves every entry bit for bit as it is
         // (x - (+-0) == x for any x that is not -0, and a finite pivot row keeps the products at +-0, never NaN).
@@ -7153,11 +7150,14 @@ ThermalResult Temperature::solveThermalCircuit() {
     bool converged = false;
     std::vector<double> oldTemperatures = temperatures;
     
+    // The conductance matrix is built straight into the augmented system [G | P] the solver
+    // eliminates in place: column n holds the power inputs (and the fixed temperatures).
+    SimpleMatrix G(n, n + 1, 0.0);
     while (iteration < _config.maxIterations && !converged) {
         // IMP-5
         if (iteration > 0) { recalculateConvectionResistances(temperatures); }
 
-        SimpleMatrix G(n, n, 0.0);
+        G.setZero();
 
         for (const auto& res : _resistances) {
             size_t i = res.nodeFromId;
@@ -7201,7 +7201,10 @@ ThermalResult Temperature::solveThermalCircuit() {
         // turns outside the core kept their convection to ambient, so only the one turn left
         // inside the window was stranded -- but an island whose members only touch each other
         // passed the old G(i,i) test and went to a singular solve.
-        {
+        // The network's topology (its nodes and which of them each resistor joins) is the same at
+        // every iteration -- only the convection and radiation values are recalculated -- so its
+        // connectivity is checked once, at the first iteration.
+        if (iteration == 0) {
             std::vector<size_t> roots;
             for (size_t i = 0; i < n; ++i) {
                 if (i == ambientIdx || _nodes[i].isFixedTemperature) {
@@ -7253,7 +7256,10 @@ ThermalResult Temperature::solveThermalCircuit() {
         try {
             // IMP-10: Non-throwing solve
             bool solveSuccess = true;
-            temperatures = SimpleMatrix::solve(G, powerInputs, solveSuccess);
+            for (size_t i = 0; i < n; ++i) {
+                G(i, n) = powerInputs[i];
+            }
+            temperatures = SimpleMatrix::solve_augmented_in_place(G, solveSuccess);
             if (!solveSuccess) {
                 throw std::runtime_error("Temperature::solveThermalCircuit: Thermal matrix is singular (not solvable). "
                                          "This indicates disconnected thermal nodes or missing boundary conditions.");
