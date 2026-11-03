@@ -1,3 +1,5 @@
+#include <bit>
+#include <map>
 #include "physical_models/WindingSkinEffectLosses.h"
 #include "support/MasAccess.h"
 #include "physical_models/WindingOhmicLosses.h"
@@ -301,6 +303,7 @@ WindingLossesOutput WindingSkinEffectLosses::calculate_skin_effect_losses(Coil c
         return windingModelOverride;
     };
 
+    std::map<std::pair<size_t, uint64_t>, std::vector<std::pair<double, double>>> lossesPerMeterPerWindingAndDivider;
     for (size_t turnIndex = 0; turnIndex < turns.size(); ++turnIndex)
     {
         const auto& turn = turns[turnIndex];
@@ -326,8 +329,22 @@ WindingLossesOutput WindingSkinEffectLosses::calculate_skin_effect_losses(Coil c
         if (parallelCurrentSplit && coil.get_number_parallels(windingIndex) > 1) {
             splitDivider = split_current_divider_per_harmonic(*parallelCurrentSplit, turnIndex, windingIndex, current, currentDividerPerTurn[turnIndex]);
         }
-        auto lossesPerMeterPerHarmonic = calculate_skin_effect_losses_per_meter(wire, current, temperature, currentDividerPerTurn[turnIndex], turnModelOverride,
-                                                                                splitDivider ? &splitDivider.value() : nullptr).second;
+        // The losses per meter of a turn depend only on its winding (wire, current, model) and its current divider:
+        // the turns of a winding that share a divider (every turn of a single-strand winding) are evaluated once.
+        std::vector<std::pair<double, double>> lossesPerMeterPerHarmonic;
+        if (splitDivider) {
+            lossesPerMeterPerHarmonic = calculate_skin_effect_losses_per_meter(wire, current, temperature, currentDividerPerTurn[turnIndex], turnModelOverride,
+                                                                               &splitDivider.value()).second;
+        }
+        else {
+            const std::pair<size_t, uint64_t> perMeterKey{static_cast<size_t>(windingIndex), std::bit_cast<uint64_t>(currentDividerPerTurn[turnIndex])};
+            auto found = lossesPerMeterPerWindingAndDivider.find(perMeterKey);
+            if (found == lossesPerMeterPerWindingAndDivider.end()) {
+                found = lossesPerMeterPerWindingAndDivider.emplace(perMeterKey,
+                    calculate_skin_effect_losses_per_meter(wire, current, temperature, currentDividerPerTurn[turnIndex], turnModelOverride, nullptr).second).first;
+            }
+            lossesPerMeterPerHarmonic = found->second;
+        }
 
         LossElementPerHarmonic skinEffectLosses;
         auto model = get_model(coil.get_wire_type(windingIndex), turnModelOverride);
