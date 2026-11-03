@@ -365,12 +365,23 @@ WindingLossesOutput WindingOhmicLosses::calculate_ohmic_losses(Coil coil, Operat
     }
 
     std::vector<double> dcResistancePerTurn;
+    dcResistancePerTurn.reserve(turns.size());
     std::vector<double> dcResistancePerWinding;
+    // calculate_dc_resistance per turn: the resistance per meter of a winding's wire at this temperature is the same
+    // for all its turns, so it is computed at the winding's first turn (after that turn's length check, as before).
+    std::vector<std::optional<double>> dcResistancePerMeterPerWinding(wirePerWinding.size());
     for (auto& turn : turns) {
         auto windingIndex = coil.get_winding_index_by_name(turn.get_winding());
         auto parallelIndex = checked_parallel_index(coil, turn, windingIndex);
 
-        double turnResistance = calculate_dc_resistance(turn, wirePerWinding[windingIndex], temperature);
+        double wireLength = turn.get_length();
+        if (std::isnan(wireLength)) {
+            throw NaNResultException("NaN found in wireLength value");
+        }
+        if (!dcResistancePerMeterPerWinding[windingIndex]) {
+            dcResistancePerMeterPerWinding[windingIndex] = calculate_dc_resistance_per_meter(wirePerWinding[windingIndex], temperature);
+        }
+        double turnResistance = dcResistancePerMeterPerWinding[windingIndex].value() * wireLength;
         dcResistancePerTurn.push_back(turnResistance);
         seriesResistancePerWindingPerParallel[windingIndex][parallelIndex] += turnResistance;
     }
@@ -399,9 +410,11 @@ WindingLossesOutput WindingOhmicLosses::calculate_ohmic_losses(Coil coil, Operat
         dcResistancePerWinding.push_back(parallelResistance);
     }
     std::vector<WindingLossesPerElement> windingLossesPerTurn;
+    windingLossesPerTurn.reserve(turns.size());
     std::vector<double> currentDividerPerTurn;
+    currentDividerPerTurn.reserve(turns.size());
     for (size_t turnIndex = 0; turnIndex < turns.size(); ++turnIndex) {
-        Turn turn = turns[turnIndex];
+        const Turn& turn = turns[turnIndex];
         auto windingIndex = coil.get_winding_index_by_name(turn.get_winding());
         auto parallelIndex = checked_parallel_index(coil, turn, windingIndex);
 
