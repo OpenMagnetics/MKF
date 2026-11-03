@@ -233,6 +233,9 @@ std::vector<std::pair<Winding, double>>  WireAdviser::filter_by_area_no_parallel
         }
     }
 
+    // The survivors are copied once each: Winding has no move operations (see apply_order), so a
+    // growing vector deep-copied every survivor already placed at each reallocation.
+    filteredCoilsWithScoring.reserve((*unfilteredCoils).size() - listOfIndexesToErase.size());
     for (size_t i = 0; i < (*unfilteredCoils).size(); ++i) {
         if (listOfIndexesToErase.size() > 0 && i == listOfIndexesToErase.front()) {
             listOfIndexesToErase.pop_front();
@@ -288,6 +291,9 @@ std::vector<std::pair<Winding, double>>  WireAdviser::filter_by_area_with_parall
         _realWindingPackingRefusals += filter.get_real_winding_refusals();
     }
 
+    // The survivors are copied once each: Winding has no move operations (see apply_order), so a
+    // growing vector deep-copied every survivor already placed at each reallocation.
+    filteredCoilsWithScoring.reserve((*unfilteredCoils).size() - listOfIndexesToErase.size());
     for (size_t i = 0; i < (*unfilteredCoils).size(); ++i) {
         if (listOfIndexesToErase.size() > 0 && i == listOfIndexesToErase.front()) {
             listOfIndexesToErase.pop_front();
@@ -333,6 +339,9 @@ std::vector<std::pair<Winding, double>> WireAdviser::filter_by_effective_resista
         }
     }
 
+    // The survivors are copied once each: Winding has no move operations (see apply_order), so a
+    // growing vector deep-copied every survivor already placed at each reallocation.
+    filteredCoilsWithScoring.reserve((*unfilteredCoils).size() - listOfIndexesToErase.size());
     for (size_t i = 0; i < (*unfilteredCoils).size(); ++i) {
         if (listOfIndexesToErase.size() > 0 && i == listOfIndexesToErase.front()) {
             listOfIndexesToErase.pop_front();
@@ -373,6 +382,9 @@ std::vector<std::pair<Winding, double>> WireAdviser::filter_by_skin_losses_densi
         }
     }
 
+    // The survivors are copied once each: Winding has no move operations (see apply_order), so a
+    // growing vector deep-copied every survivor already placed at each reallocation.
+    filteredCoilsWithScoring.reserve((*unfilteredCoils).size() - listOfIndexesToErase.size());
     for (size_t i = 0; i < (*unfilteredCoils).size(); ++i) {
         if (listOfIndexesToErase.size() > 0 && i == listOfIndexesToErase.front()) {
             listOfIndexesToErase.pop_front();
@@ -418,6 +430,9 @@ std::vector<std::pair<Winding, double>> WireAdviser::filter_by_proximity_factor(
         }
     }
 
+    // The survivors are copied once each: Winding has no move operations (see apply_order), so a
+    // growing vector deep-copied every survivor already placed at each reallocation.
+    filteredCoilsWithScoring.reserve((*unfilteredCoils).size() - listOfIndexesToErase.size());
     for (size_t i = 0; i < (*unfilteredCoils).size(); ++i) {
         if (listOfIndexesToErase.size() > 0 && i == listOfIndexesToErase.front()) {
             listOfIndexesToErase.pop_front();
@@ -480,6 +495,9 @@ std::vector<std::pair<Winding, double>> WireAdviser::filter_by_solid_insulation_
         }
     }
 
+    // The survivors are copied once each: Winding has no move operations (see apply_order), so a
+    // growing vector deep-copied every survivor already placed at each reallocation.
+    filteredCoilsWithScoring.reserve((*unfilteredCoils).size() - listOfIndexesToErase.size());
     for (size_t i = 0; i < (*unfilteredCoils).size(); ++i) {
         if (listOfIndexesToErase.size() > 0 && i == listOfIndexesToErase.front()) {
             listOfIndexesToErase.pop_front();
