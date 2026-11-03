@@ -299,6 +299,10 @@ static void fit_stand_in_strand_to_window(Coil& coil) {
 }
 
 Mas CoreAdviser::post_process_core(Magnetic magnetic, Inputs inputs) {
+    return post_process_core(std::move(magnetic), std::move(inputs), nullptr);
+}
+
+Mas CoreAdviser::post_process_core(Magnetic magnetic, Inputs inputs, const MagneticFilterTemperature* temperatureGate) {
     MagneticEnergy magneticEnergy;
     Mas mas;
 
@@ -378,6 +382,12 @@ Mas CoreAdviser::post_process_core(Magnetic magnetic, Inputs inputs) {
         outputs.set_temperature(solvedTemperature.value());
 
         mas.get_mutable_outputs().push_back(outputs);
+        // ABT #2244: the points solved so far already fail the caller's temperature gate, so the
+        // part is rejected whatever the remaining points give: they are not solved.
+        if (temperatureGate != nullptr && operatingPointIndex + 1 < inputs.get_operating_points().size() &&
+            temperatureGate->solved_outputs_exceed_limit(mas.get_outputs())) {
+            break;
+        }
     }
     mas.set_inputs(inputs);
 
@@ -482,7 +492,7 @@ void CoreAdviser::post_process_and_append(std::vector<std::pair<Magnetic, double
             add_alternative_materials(&candidate, inputs, &alternativeMaterialsCache);
         }
         try {
-            auto mas = post_process_core(candidate[0].first, inputs);
+            auto mas = post_process_core(candidate[0].first, inputs, temperatureGate ? &temperatureGate.value() : nullptr);
             if (wireWithinLimits) {
                 auto magnetic = mas.get_magnetic();
                 if (!wireWithinLimits->evaluate_magnetic(&magnetic, &inputs).first) {

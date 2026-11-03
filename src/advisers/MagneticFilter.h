@@ -984,6 +984,12 @@ public:
     // operating points, as that solve published it in each Outputs' temperature, against the
     // limit. Throws when an operating point carries no solved temperature.
     std::pair<bool, double> evaluate_solved_outputs(const std::vector<Outputs>& outputs) const;
+    // ABT #2244: whether the operating points solved so far already fail the gate, so that
+    // evaluate_solved_outputs fails on these outputs and on any longer list they begin: every one
+    // carries its solved temperature and the hottest of them is above the limit (the hottest point
+    // over more points is never cooler). False otherwise, including when one carries no
+    // temperature: evaluate_solved_outputs decides that case once every point is solved.
+    bool solved_outputs_exceed_limit(const std::vector<Outputs>& outputs) const;
 };
 
 // // Nice to have in the future

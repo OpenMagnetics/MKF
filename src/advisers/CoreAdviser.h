@@ -248,6 +248,12 @@ class CoreAdviser {
         std::vector<CoreShape> create_custom_core_shapes(Inputs inputs);
 
         Mas post_process_core(Magnetic magnetic, Inputs inputs);
+        // ABT #2244: with the temperature gate the caller will judge the part on
+        // (post_process_and_cut), the operating points are solved in order only until the solved
+        // ones fail it (MagneticFilterTemperature::solved_outputs_exceed_limit): the part is then
+        // rejected whatever the remaining points give, and the Mas comes back with the outputs of
+        // the points solved so far. Without a gate (nullptr) every point is solved.
+        Mas post_process_core(Magnetic magnetic, Inputs inputs, const MagneticFilterTemperature* temperatureGate);
 
         // ABT #126: post-process candidates in score order and keep the first
         // maximumNumberResults that SURVIVE post-processing (backfilling from the

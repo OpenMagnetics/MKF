@@ -518,4 +518,19 @@ std::pair<bool, double> MagneticFilterTemperature::evaluate_solved_outputs(const
     return {maximumTemperature <= _maximumTemperature, maximumTemperature};
 }
 
+bool MagneticFilterTemperature::solved_outputs_exceed_limit(const std::vector<Outputs>& outputs) const {
+    if (outputs.empty()) {
+        return false;
+    }
+    double maximumTemperature = std::numeric_limits<double>::lowest();
+    for (const auto& output : outputs) {
+        const auto& solvedTemperature = output.get_temperature();
+        if (!solvedTemperature) {
+            return false;
+        }
+        maximumTemperature = std::max(maximumTemperature, solvedTemperature->get_maximum_temperature());
+    }
+    return !(maximumTemperature <= _maximumTemperature);
+}
+
 } // namespace OpenMagnetics
