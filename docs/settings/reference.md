@@ -35,7 +35,6 @@ settings.set_reluctance_model(OpenMagnetics::ReluctanceModels::ZHANG);
 | `effective_parameter_standard` | `EffectiveParameterStandard` | N/A |  |
 | `electric_field_output_unit` | `ElectricFieldOutputUnit` | N/A |  |
 | `magnetizing_inductance_include_air_inductance` | `bool` | N/A | Include air-core inductance in calculations |
-| `nanocrystalline_stacking_factor` | `double` | N/A |  |
 | `verbose` | `bool` | `false` | Enable verbose logging output |
 
 ## Physical Models
