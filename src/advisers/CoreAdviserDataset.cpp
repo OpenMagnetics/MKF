@@ -622,7 +622,28 @@ void add_initial_turns_by_inductance(std::vector<std::pair<Magnetic, double>> *m
     // INFEASIBLE, not fatal: collect them and erase after the loop so the advise still returns the
     // sizable cores instead of aborting the whole call.
     std::vector<size_t> indexesToEraseForSizing;
+    // ABT #2244: a candidate already seeded under the same inputs and settings gets the same turns
+    // and gap (or is dropped again) from CandidateMemoScope.
+    std::unordered_map<std::string, std::optional<Magnetic>>* memo = nullptr;
+    if (auto* candidateMemo = active_candidate_memo()) {
+        json inputsJson;
+        to_json(inputsJson, inputs);
+        memo = &candidateMemo->initialTurns[inputsJson.dump() + "\n" + candidate_memo_settings_key()];
+    }
     for (size_t i = 0; i < (*magneticsWithScoring).size(); ++i){
+      std::string candidateKey;
+      if (memo != nullptr) {
+          candidateKey = candidate_memo_key((*magneticsWithScoring)[i].first);
+          if (auto found = memo->find(candidateKey); found != memo->end()) {
+              if (found->second) {
+                  (*magneticsWithScoring)[i].first = found->second.value();
+              }
+              else {
+                  indexesToEraseForSizing.push_back(i);
+              }
+              continue;
+          }
+      }
       try {
         // ABT #1875: set when the inductor turns solve refused its answer as saturating; the
         // candidate then lives only if the saturation-aware re-gap clears it (see below).
@@ -1040,9 +1061,15 @@ void add_initial_turns_by_inductance(std::vector<std::pair<Magnetic, double>> *m
         }
 
         (*magneticsWithScoring)[i].first.get_mutable_coil().get_mutable_functional_description()[0].set_number_turns(initialNumberTurns);
+        if (memo != nullptr) {
+            memo->emplace(std::move(candidateKey), (*magneticsWithScoring)[i].first);
+        }
       }
       catch (const OpenMagneticsException&) {
         indexesToEraseForSizing.push_back(i);  // abt #53: drop a candidate whose sizing throws
+        if (memo != nullptr) {
+            memo->emplace(std::move(candidateKey), std::nullopt);
+        }
       }
     }
     for (auto it = indexesToEraseForSizing.rbegin(); it != indexesToEraseForSizing.rend(); ++it) {

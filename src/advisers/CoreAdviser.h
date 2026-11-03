@@ -104,6 +104,24 @@ double resolve_maximum_design_temperature(Inputs& inputs);
  * - Industry practice: LI² (energy storage), Area Product method
  * - Colonel Wm. T. McLyman, "Transformer and Inductor Design Handbook"
  */
+// ABT #2244: what the core adviser already worked out for a candidate, kept on this thread for the
+// life of the outermost scope: the turns and gap add_initial_turns_by_inductance seeds it with, and
+// the loss filter's verdict (its turn sweep). The same candidates reach those stages several times
+// in one advise: the core adviser searches the single cores and then the stacked ones, and the
+// magnetic adviser calls the core adviser again with a larger request when too few cores wind. A
+// result depends on the candidate (its whole json), the inputs, the stage's construction and the
+// settings, and is kept under a key holding all of them. A candidate a stage drops, or whose
+// evaluation throws, is kept as such, and the same exception is thrown again.
+class CandidateMemoScope {
+    public:
+        CandidateMemoScope();
+        ~CandidateMemoScope();
+        CandidateMemoScope(const CandidateMemoScope&) = delete;
+        CandidateMemoScope& operator=(const CandidateMemoScope&) = delete;
+    private:
+        bool _owner = false;
+};
+
 class CoreAdviser {
     private:
         // ABT #1652: first member, so no adviser code runs without it: while this adviser exists,
@@ -508,6 +526,9 @@ class CoreAdviser {
     class MagneticCoreFilterLosses : public MagneticCoreFilter {
         private:
             MagneticFilterCoreDcAndSkinLosses _filter; // F23 FIX: use DC+skin losses instead of DC-only
+            // What _filter was built from (inputs, models, application, settings): part of the
+            // CandidateMemoScope key.
+            std::string _memoConstruction;
 
         public:
             MagneticCoreFilterLosses(Inputs inputs, std::map<std::string, std::string> models, MAS::MagneticApplication application);

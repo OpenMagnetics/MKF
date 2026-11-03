@@ -143,6 +143,7 @@ void sort_magnetics_by_scoring(std::vector<std::pair<Magnetic, double>>* magneti
 
 std::vector<std::pair<Mas, double>> CoreAdviser::get_advised_core(Inputs inputs, size_t maximumNumberResults) {
     LossSolveMemoScope lossSolveMemoScope;  // exact repeats of a loss solve are answered from this run's memo
+    CandidateMemoScope candidateMemoScope;  // and a candidate's turns seeding and loss-filter verdict (ABT #2244)
     LogOnceScope logOnceScope;  // a warning about an excitation is logged once per advise (ABT #2160)
     AdviseScoringScope adviseScoringScope(*this);
     std::map<CoreAdviserFilters, double> weights;
@@ -160,6 +161,7 @@ std::vector<std::pair<Mas, double>> CoreAdviser::get_advised_core(
         const LibraryContext* ctx,
         const AdviserConstraints& constraints) {
     LossSolveMemoScope lossSolveMemoScope;  // exact repeats of a loss solve are answered from this run's memo
+    CandidateMemoScope candidateMemoScope;  // and a candidate's turns seeding and loss-filter verdict (ABT #2244)
     LogOnceScope logOnceScope;  // a warning about an excitation is logged once per advise (ABT #2160)
     AdviseScoringScope adviseScoringScope(*this);
     // Apply per-call library override (RAII swap on the global *Database maps).
@@ -213,6 +215,7 @@ std::vector<std::pair<Mas, double>> CoreAdviser::get_advised_core(
 
 std::vector<std::pair<Mas, double>> CoreAdviser::get_advised_core(Inputs inputs, std::map<CoreAdviserFilters, double> weights, size_t maximumNumberResults){
     LossSolveMemoScope lossSolveMemoScope;  // exact repeats of a loss solve are answered from this run's memo
+    CandidateMemoScope candidateMemoScope;  // and a candidate's turns seeding and loss-filter verdict (ABT #2244)
     LogOnceScope logOnceScope;  // a warning about an excitation is logged once per advise (ABT #2160)
     AdviseScoringScope adviseScoringScope(*this);
     if (get_mode() == CoreAdviserModes::AVAILABLE_CORES) {
@@ -285,6 +288,7 @@ std::vector<std::pair<Mas, double>> CoreAdviser::get_advised_core(Inputs inputs,
 
 std::vector<std::pair<Mas, double>> CoreAdviser::get_advised_core(Inputs inputs, std::vector<Core>* cores, size_t maximumNumberResults) {
     LossSolveMemoScope lossSolveMemoScope;  // exact repeats of a loss solve are answered from this run's memo
+    CandidateMemoScope candidateMemoScope;  // and a candidate's turns seeding and loss-filter verdict (ABT #2244)
     LogOnceScope logOnceScope;  // a warning about an excitation is logged once per advise (ABT #2160)
     AdviseScoringScope adviseScoringScope(*this);
     std::map<CoreAdviserFilters, double> weights;
@@ -297,6 +301,7 @@ std::vector<std::pair<Mas, double>> CoreAdviser::get_advised_core(Inputs inputs,
 
 std::vector<std::pair<Mas, double>> CoreAdviser::get_advised_core(Inputs inputs, std::vector<Core>* cores, size_t maximumNumberResults, size_t maximumNumberCores) {
     LossSolveMemoScope lossSolveMemoScope;  // exact repeats of a loss solve are answered from this run's memo
+    CandidateMemoScope candidateMemoScope;  // and a candidate's turns seeding and loss-filter verdict (ABT #2244)
     LogOnceScope logOnceScope;  // a warning about an excitation is logged once per advise (ABT #2160)
     AdviseScoringScope adviseScoringScope(*this);
     std::map<CoreAdviserFilters, double> weights;
@@ -347,6 +352,7 @@ static void throw_if_inputs_are_not_processed(Inputs& inputs) {
 
 std::vector<std::pair<Mas, double>> CoreAdviser::get_advised_core(Inputs inputs, std::map<CoreAdviserFilters, double> weights, std::vector<Core>* cores, size_t maximumNumberResults, size_t maximumNumberCores) {
     LossSolveMemoScope lossSolveMemoScope;  // exact repeats of a loss solve are answered from this run's memo
+    CandidateMemoScope candidateMemoScope;  // and a candidate's turns seeding and loss-filter verdict (ABT #2244)
     LogOnceScope logOnceScope;  // a warning about an excitation is logged once per advise (ABT #2160)
     AdviseScoringScope adviseScoringScope(*this);
 
@@ -385,6 +391,7 @@ std::vector<std::pair<Mas, double>> CoreAdviser::get_advised_core(Inputs inputs,
 
 std::vector<std::pair<Mas, double>> CoreAdviser::get_advised_core(Inputs inputs, std::map<CoreAdviserFilters, double> weights, std::vector<Core>* cores, size_t maximumNumberResults){
     LossSolveMemoScope lossSolveMemoScope;  // exact repeats of a loss solve are answered from this run's memo
+    CandidateMemoScope candidateMemoScope;  // and a candidate's turns seeding and loss-filter verdict (ABT #2244)
     LogOnceScope logOnceScope;  // a warning about an excitation is logged once per advise (ABT #2160)
     AdviseScoringScope adviseScoringScope(*this);
     // ABT #1718: the loss filters integrate the primary voltage of every candidate; an unbalanced
@@ -467,6 +474,7 @@ std::vector<std::pair<Mas, double>> CoreAdviser::get_advised_core(Inputs inputs,
 
 std::vector<std::pair<Mas, double>> CoreAdviser::get_advised_core(Inputs inputs, std::vector<CoreShape>* shapes, size_t maximumNumberResults) {
     LossSolveMemoScope lossSolveMemoScope;  // exact repeats of a loss solve are answered from this run's memo
+    CandidateMemoScope candidateMemoScope;  // and a candidate's turns seeding and loss-filter verdict (ABT #2244)
     LogOnceScope logOnceScope;  // a warning about an excitation is logged once per advise (ABT #2160)
     AdviseScoringScope adviseScoringScope(*this);
     throw_if_inputs_are_not_processed(inputs);

@@ -17,8 +17,12 @@
 #include <chrono>
 #include <cstdlib>
 #include <iostream>
+#include <exception>
 #include <memory>
+#include <optional>
 #include <string>
+#include <unordered_map>
+#include <utility>
 
 namespace OpenMagnetics {
 
@@ -36,6 +40,30 @@ namespace OpenMagnetics {
 // log_probe below report deltas against the same previous mark rather than two
 // independent ones (otherwise a probe between two stages would leave the stage
 // delta double-counting the probe's own span).
+// ABT #2244: the store behind CandidateMemoScope (CoreAdviser.h). Each map is keyed first by what
+// the stage depends on besides the candidate (inputs, construction, settings: built once per call
+// of the stage), then by the candidate's json.
+struct LossesFilterVerdict {
+    std::pair<bool, double> result;
+    // The candidate as the evaluation left it (the filter writes back), kept for a valid verdict
+    // only: a rejected candidate is dropped from the pool.
+    std::optional<Magnetic> evaluated;
+    std::exception_ptr error;
+};
+struct CandidateMemo {
+    std::unordered_map<std::string, std::unordered_map<std::string, LossesFilterVerdict>> lossesFilterVerdicts;
+    // The candidate add_initial_turns_by_inductance made of it, or nullopt when its sizing threw
+    // (the candidate is dropped).
+    std::unordered_map<std::string, std::unordered_map<std::string, std::optional<Magnetic>>> initialTurns;
+};
+// The memo of the CandidateMemoScope open on this thread, nullptr when none is.
+CandidateMemo* active_candidate_memo();
+// The settings part of a CandidateMemo key: every setting, and the effective values the
+// fingerprint does not hold (it holds what the caller set, which an adviser overrides).
+std::string candidate_memo_settings_key();
+// A candidate's part of a CandidateMemo key.
+std::string candidate_memo_key(const Magnetic& magnetic);
+
 inline std::chrono::steady_clock::time_point& profile_cursor() {
     thread_local auto prev = std::chrono::steady_clock::now();
     return prev;

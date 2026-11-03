@@ -30,6 +30,7 @@
 #include <algorithm>
 #include <cmath>
 #include <functional>
+#include <memory>
 #include <optional>
 #include <map>
 #include <numeric>
@@ -278,9 +279,48 @@ std::vector<std::pair<Magnetic, double>> CoreAdviser::MagneticCoreFilterCost::fi
     return filteredMagneticsWithScoring;
 }
 
+namespace {
+thread_local std::unique_ptr<CandidateMemo> activeCandidateMemo;
+} // anonymous namespace
+
+CandidateMemoScope::CandidateMemoScope() {
+    if (!activeCandidateMemo) {
+        activeCandidateMemo = std::make_unique<CandidateMemo>();
+        _owner = true;
+    }
+}
+
+CandidateMemoScope::~CandidateMemoScope() {
+    if (_owner) {
+        activeCandidateMemo.reset();
+    }
+}
+
+CandidateMemo* active_candidate_memo() {
+    return activeCandidateMemo.get();
+}
+
+std::string candidate_memo_settings_key() {
+    const auto& settings = Settings::GetInstance();
+    return settings.fingerprint() + "\n" + std::to_string(settings.get_simulator_loss_temperature_loop()) +
+           std::to_string(settings.get_allow_material_data_extrapolation());
+}
+
+std::string candidate_memo_key(const Magnetic& magnetic) {
+    json magneticJson;
+    to_json(magneticJson, magnetic);
+    return magneticJson.dump();
+}
+
 CoreAdviser::MagneticCoreFilterLosses::MagneticCoreFilterLosses(Inputs inputs, std::map<std::string, std::string> models, MAS::MagneticApplication application) {
     _filter = MagneticFilterCoreDcAndSkinLosses(inputs, models); // F23 FIX: DC+skin effect losses
     _filter.set_application(application);
+    if (active_candidate_memo()) {
+        json inputsJson;
+        to_json(inputsJson, inputs);
+        _memoConstruction = inputsJson.dump() + "\n" + json(models).dump() + "\n" +
+                            std::to_string(static_cast<int>(application)) + "\n" + candidate_memo_settings_key();
+    }
 }
 
 std::vector<std::pair<Magnetic, double>> CoreAdviser::MagneticCoreFilterLosses::filter_magnetics(std::vector<std::pair<Magnetic, double>>* unfilteredMagnetics, Inputs inputs, double weight, bool firstFilter) {
@@ -312,10 +352,46 @@ std::vector<std::pair<Magnetic, double>> CoreAdviser::MagneticCoreFilterLosses::
     // silently returned the whole set unscored. That routed cores with
     // uncomputable losses into the ranking; now it returns empty like every
     // other filter (the pipeline's retry handles genuine zero-result cases).
+    // ABT #2244: a candidate already judged under the same filter, inputs and settings gets the
+    // same verdict (and, when valid, the same written-back magnetic) from CandidateMemoScope.
+    std::unordered_map<std::string, LossesFilterVerdict>* memo = nullptr;
+    if (active_candidate_memo() && !_memoConstruction.empty()) {
+        json inputsJson;
+        to_json(inputsJson, inputs);
+        memo = &active_candidate_memo()->lossesFilterVerdicts[_memoConstruction + "\n" + inputsJson.dump() + "\n" + candidate_memo_settings_key()];
+    }
+    auto evaluate = [this, memo](Magnetic* m, Inputs* i) -> std::pair<bool, double> {
+        if (memo == nullptr) {
+            return _filter.evaluate_magnetic(m, i);
+        }
+        std::string candidateKey = candidate_memo_key(*m);
+        if (auto found = memo->find(candidateKey); found != memo->end()) {
+            if (found->second.error) {
+                std::rethrow_exception(found->second.error);
+            }
+            if (found->second.evaluated) {
+                *m = found->second.evaluated.value();
+            }
+            return found->second.result;
+        }
+        LossesFilterVerdict verdict;
+        try {
+            verdict.result = _filter.evaluate_magnetic(m, i);
+        }
+        catch (...) {
+            verdict.error = std::current_exception();
+            memo->emplace(std::move(candidateKey), std::move(verdict));
+            throw;
+        }
+        const auto result = verdict.result;
+        if (result.first) {
+            verdict.evaluated = *m;
+        }
+        memo->emplace(std::move(candidateKey), std::move(verdict));
+        return result;
+    };
     auto [filteredMagneticsWithScoring, newScoring] = evaluate_and_cull(
-        unfilteredMagnetics, inputs,
-        [this](Magnetic* m, Inputs* i) { return _filter.evaluate_magnetic(m, i); },
-        /*writeBack=*/true, "Losses");
+        unfilteredMagnetics, inputs, evaluate, /*writeBack=*/true, "Losses");
     apply_normalized_scoring(&filteredMagneticsWithScoring, newScoring, weight, CoreAdviser::CoreAdviserFilters::EFFICIENCY);
     return filteredMagneticsWithScoring;
 }
