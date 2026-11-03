@@ -152,12 +152,15 @@ void check_top_n(const std::string& label,
 // Re-pinned 2026-10-11 (ABT #1739, Alf-approved): the reference 3C97 now carries Ferroxcube's unrounded
 // measured mu_i(T) (workbook, -40..180 C, extended from the data-sheet figure) and Curie 221 C read off
 // the figure's collapse instead of 215 C. Same five names, same order; scores move by <= 1.1e-4 relative.
+// Re-pinned 2026-11-03 (ABT #2234, Alf-approved): MAS 340d15a refit KL97W (Huoh Yow, from its own loss charts)
+// and P45 (ACME, from its raw workbook). KL97W drops to slot 1, P45 leaves the five and 3C95 enters at slot 4.
+// DMR95 and TPW30 keep their scores to the last digit.
 const std::vector<TopEntry> kTopFerriteDefault = {
-    {"KL97W", 2.7251897974217534},
     {"DMR95", 2.7060437087952227},
-    {"P45",   2.7027534052650459},
+    {"KL97W", 2.6947271284425089},
     {"TPW30", 2.6901378204055253},
-    {"MBT2",  2.6888450398768433},
+    {"MBT2",  2.6869794150408151},
+    {"3C95",  2.6864608599648547},
 };
 
 // Refreshed 2026-08-20 (ABT #834): identical five names and order; scores +0.27%

@@ -5077,16 +5077,17 @@ TEST_CASE("Steinmetz ct terms take their schema defaults; a non-positive factor 
 }
 
 // ABT #1456: P63's loss points at 1/3/5 MHz were stored as 1/3/5 kHz (ACME's workbook columns are in kHz),
-// which is why its Steinmetz fit claimed to start at 1 kHz. Corrected in MAS, the fit starts at ACME's
-// lowest measured frequency, 300 kHz ("40 P63.xlsx", sheet 4data). At 1 MHz/50 mT/100 C the workbook gives
-// 80 kW/m3 (sheet 5data; sheet 4data says 67); the refit range 300 kHz-1 MHz has a mean |error| of 34.7 %
-// over its 46 points (scripts/refit-steinmetz.py), so that is the tolerance.
-TEST_CASE("P63 is fitted from 300 kHz and matches ACME's 1 MHz point", "[physical-model][core-losses][abt-1456]") {
+// which is why its Steinmetz fit claimed to start at 1 kHz. Corrected in MAS. Since MAS 340d15a (ACME P-grade
+// refit, ABT #2230) the fit leaves out sheet 4data's self-contradicting 300 kHz column and starts at 500 kHz
+// ("40 P63.xlsx", sheet 4data). At 1 MHz/50 mT/100 C the workbook gives
+// 80 kW/m3 (sheet 5data; sheet 4data says 67); the earlier refit range 300 kHz-1 MHz had a mean |error| of
+// 34.7 % over its 46 points (scripts/refit-steinmetz.py), so that is the tolerance.
+TEST_CASE("P63 is fitted from 500 kHz and matches ACME's 1 MHz point", "[physical-model][core-losses][abt-1456]") {
     settings.reset();
     clear_databases();
 
     auto [p63Minimum, p63Maximum] = CoreLossesModel::get_steinmetz_fitted_span("P63");
-    CHECK(p63Minimum == 300000);
+    CHECK(p63Minimum == 500000);  // was 300000; MAS 340d15a refit P63 without 4data's 300 kHz column
     CHECK(p63Maximum == 5000000);
     CHECK(CoreLossesModel::is_frequency_in_steinmetz_span("P63", 1e6));
     CHECK_FALSE(CoreLossesModel::is_frequency_in_steinmetz_span("P63", 1e5));
@@ -5155,7 +5156,7 @@ TEST_CASE("Core-loss frequency sweep is clipped to the material's fitted span", 
     CHECK_THAT(sweep.get_x_points().back(), Catch::Matchers::WithinRel(1200000.0, 1e-9));
     CHECK_THAT(sweep.get_title(), Catch::Matchers::ContainsSubstring("fitted Steinmetz span"));
     auto [inSpanStart, inSpanStop] = Sweeper::core_resistance_frequency_window(magnetic, 400000, 1000000);
-    CHECK(inSpanStart == 400000);
+    CHECK(inSpanStart == 500000);  // was 400000; MAS 340d15a refit P63 without 4data's 300 kHz column, its span now starts at 500 kHz
     CHECK(inSpanStop == 1000000);
     CHECK_THROWS_AS(Sweeper::sweep_core_losses_over_frequency(magnetic, inputs.get_operating_points()[0], inputs.get_design_requirements().get_topology(), 10000, 100000, 10),
                     MaterialFrequencyOutOfSpanException);

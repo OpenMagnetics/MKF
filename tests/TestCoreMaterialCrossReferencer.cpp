@@ -90,7 +90,9 @@ namespace {
         // with the reference instead of being culled for missing one grid point, so KL97W (Huoh Yow
         // 97-class, data to 200 kHz) is compared at 50/100 kHz and enters at the top; ML33D drops to
         // just outside the five. DMR95, P45, TPW30 and MBT2 stay.
-        require_shortlisted(crossReferencedCoreMaterials, {"KL97W", "DMR95", "P45", "TPW30", "MBT2"});
+        // Re-pinned 2026-11-03 (ABT #2234, Alf-approved): MAS 340d15a refit P45 (ACME, raw workbook) and it
+        // leaves the five; 3C95 enters.
+        require_shortlisted(crossReferencedCoreMaterials, {"KL97W", "DMR95", "3C95", "TPW30", "MBT2"});
 
         auto scorings = coreMaterialCrossReferencer.get_scorings();
         auto scoredValues = coreMaterialCrossReferencer.get_scored_values();
@@ -219,7 +221,9 @@ namespace {
 
         REQUIRE(crossReferencedCoreMaterials.size() > 0);
 
-        REQUIRE(crossReferencedCoreMaterials[0].first.get_name() == "MP 160");
+        // Re-pinned 2026-11-03 (ABT #2234, Alf-approved): MAS c7a7cbc set MS 160's loss coefficients from its
+        // Micrometals datasheet, and MS 160 now beats MP 160.
+        REQUIRE(crossReferencedCoreMaterials[0].first.get_name() == "MS 160");
     }
 
     TEST_CASE("Test_CoreMaterialCrossReferencer_All_Core_Materials_Only_Volumetric_Losses", "[adviser][core-material-cross-referencer][smoke-test]") {
@@ -250,7 +254,9 @@ namespace {
         // flips on data churn. Assert the shortlist membership instead.
         // ABT #1456 (2026-09-29): re-pinned. JNP96A was refitted after dropping an unsourced 25 C
         // point (ABT #1490) and left the five; KL97W enters on the shared-frequency comparison.
-        require_shortlisted(crossReferencedCoreMaterials, {"KL97W", "3C95A", "ML33D"});
+        // Re-pinned 2026-11-03 (ABT #2234, Alf-approved): MAS 340d15a refit KL97W (Huoh Yow, from its own loss
+        // charts) and it leaves the five; MBT1 enters at the top.
+        require_shortlisted(crossReferencedCoreMaterials, {"MBT1", "3C95A", "ML33D"});
     }
 
     TEST_CASE("Test_CoreMaterialCrossReferencer_All_Core_Materials_Only_Volumetric_Losses_Powder", "[adviser][core-material-cross-referencer][smoke-test]") {

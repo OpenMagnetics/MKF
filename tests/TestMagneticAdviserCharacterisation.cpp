@@ -824,11 +824,16 @@ TEST_CASE("MagneticAdviser web DMC whose switching ripple is resolved returns wo
     // 33 + 33 turns (I_sat 10.48 A at 100 C) no longer clears the margin. The adviser now picks the
     // ungapped T 47/24/18.0 HF 160 (High Flux 160) with 38 + 38 turns: I_sat 22.18 A at 100 C, 9.04 W of core loss
     // in the simulator, solved core 91.2 C. The design (inputs) is unchanged.
-    REQUIRE(magnetic.get_core().get_shape_name() == "T 47/24/18.0");
-    REQUIRE(magnetic.get_core().get_material_name() == "HF 160");
+    // Re-pinned 2026-11-03 (ABT #2234, Alf-approved): MAS c7a7cbc replaced XFlux 125's DC-bias coefficients
+    // (Magnetics catalogue/web set: b 5.44e-10 -> 5.26e-12, c 1.956 -> 2.477). Bisected on the materials
+    // file: that record alone moves the pick (it changes the candidate pool the scores are normalised
+    // over). The adviser now picks the ungapped T 28/14/19 High Flux 125 with 41 + 41 turns: 3.76 W of
+    // core loss in the simulator, solved core 98.3 C. The design (inputs) is unchanged.
+    REQUIRE(magnetic.get_core().get_shape_name() == "T 28/14/19");  // was T 47/24/18.0
+    REQUIRE(magnetic.get_core().get_material_name() == "High Flux 125");  // was HF 160
     REQUIRE(magnetic.get_core().get_functional_description().get_gapping().empty());
-    REQUIRE(magnetic.get_coil().get_functional_description()[0].get_number_turns() == 38);
-    CHECK_THAT(simulatedCoreLosses.get_core_losses(), Catch::Matchers::WithinRel(9.04, 0.05));
+    REQUIRE(magnetic.get_coil().get_functional_description()[0].get_number_turns() == 41);  // was 38
+    CHECK_THAT(simulatedCoreLosses.get_core_losses(), Catch::Matchers::WithinRel(3.76, 0.05));  // was 9.04 W
 
     // The operating point as stored (waveforms, no harmonics) is the same excitation as its processed
     // copy, so the sweep must price it the same (ABT #1764): it read 16.3 W against 1.74 W, because

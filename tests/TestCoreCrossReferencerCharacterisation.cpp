@@ -184,12 +184,15 @@ const std::vector<TopEntry> kTopOnlyTdk = {
 // keep their identities; Kool Mµ Hƒ drops two slots.
 // Re-pinned 2026-10-31 (Alf approved): pool drift of the min-max normalised scores (#398). The same
 // five cores in the same order; MS 60 top-1 2.9339 -> 2.8271 (-3.6 %).
+// Re-pinned 2026-11-03 (ABT #2234, Alf-approved): MAS c7a7cbc (Magnetics provenance pass) replaced the
+// Kool Mµ Hƒ 60 loss coefficient set and the XFlux 60 / Kool Mµ 60 densities. Kool Mµ Hƒ 60 climbs to slot 2,
+// Edge 60 drops to slot 4; the same five cores, MS 60 top-1 2.82713 -> 2.82817.
 const std::vector<TopEntry> kTopPowder = {
-    {"E 25/9.5/6.3 - MS 60 - Ungapped",                            2.8271330477810186},
-    {"E 25/9.5/6.3 - FS 60 - Ungapped",                            2.7200169936914769},
-    {"E 25/9.5/6.3 - Edge 60 - Ungapped",                          2.539263790197857},
-    {"E 25/9.5/6.3 - Kool Mµ 60 - Ungapped",                       2.3363571559499281},
-    {"E 25/9.5/6.3 - Kool Mµ Hƒ 60 - Ungapped",                    2.1136064509299559},
+    {"E 25/9.5/6.3 - MS 60 - Ungapped",                            2.8281707080848451},
+    {"E 25/9.5/6.3 - FS 60 - Ungapped",                            2.7197819506350833},
+    {"E 25/9.5/6.3 - Kool Mµ Hƒ 60 - Ungapped",                    2.539263790197857},
+    {"E 25/9.5/6.3 - Kool Mµ 60 - Ungapped",                       2.3378351612339765},
+    {"E 25/9.5/6.3 - Edge 60 - Ungapped",                          2.1019014034044576},
 };
 
 } // namespace
