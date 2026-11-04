@@ -5232,12 +5232,15 @@ TEST_CASE("Temperature: ABT 1454 sandwich and plain interleave agree at fixed lo
 }
 
 TEST_CASE("Temperature: ABT 1454 a coil that does not fit its window throws unless strict geometry is off", "[temperature][abt-1454][smoke-test]") {
-    // EI 6.8/3 with a 10 + 5 turn Round 0.2 coil: the winder reports it does not fit
-    // (are_sections_and_layers_fitting() is false) and a turn overlaps its enclosure by ~0.58 mm.
+    // EI 6.8/3 with a 10 + 5 turn Round 0.3 coil (OD 0.3265 mm) in its 0.851 x 2.145 mm bobbin window: 6 turns
+    // per layer, so the Primary needs 2 layers and the coil 3 layers = 0.98 mm radially (> 0.851 mm, before any
+    // insulation), or one 3.27 mm Primary layer (> 2.145 mm). It cannot fit; the winder reports it does not
+    // (are_sections_and_layers_fitting() is false) and turn 10 runs ~1.1 mm into the bobbin's top flange.
+    // (Approved by Alf 2026-11-04: the original Round 0.2 coil fits since the winder re-splits whole layers, ABT #1782.)
     // Strict (default): the contact path has no real geometry, so the network throws. Non-strict:
     // that face gets no conduction path, an ERROR is logged, and the rest of the network solves.
     const std::string shape = "EI 6.8/3/0.8/6.8/1.48/6/3.32";
-    auto magnetic = abt1454Transformer(shape, {0, 1}, 1, 10, 5, 1, "Round 0.2 - Grade 1", "Round 0.2 - Grade 1");
+    auto magnetic = abt1454Transformer(shape, {0, 1}, 1, 10, 5, 1, "Round 0.3 - Grade 1", "Round 0.3 - Grade 1");
     REQUIRE_FALSE(magnetic.get_mutable_coil().are_sections_and_layers_fitting());
 
     REQUIRE(settings.get_thermal_network_strict_geometry());
