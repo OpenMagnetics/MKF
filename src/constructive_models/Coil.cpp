@@ -6938,25 +6938,17 @@ void Coil::align_blocked_layer_turns() {
     if (realWinding) {
         respace_helical_layers_at_final_radius();
     }
-    if (_connectionBlockedSlotsPerLayer.empty()) {
-        // ABT #1424: the bundle keeps its stacking whether or not any lead blocked a slot. The
-        // order law used to live only in the blocked-slot path below, so a real-winding layout
-        // whose leads blocked nothing kept the winder's flipped bundle at every U turnaround.
-        // Measured on 21_interleaved_flyback_etd39 (Secondary, 7 t x 3 p, U): layer 0 closes
-        // p0/p1/p2 at y = 5.551/6.231/6.910 mm and layer 1 opened them at 6.904/6.213/5.521, so
-        // the three radial layer links crossed in the connection plane (p0 climbing 1.353 mm over
-        // the 0.679 mm step, p2 falling 1.389 mm); MVB++'s gate refused p0/p1 at 0.578 mm against
-        // the 0.63 mm copper.
-        if (realWinding) {
-            auto turns = get_turns_description().value();
-            auto layers = get_layers_description().value();
-            keep_parallel_order_in_every_layer(turns, layers);
-            fund_radial_steps_against_sibling_wraps(turns, layers);
-            recharge_turns_moved_since(turns, turnsAsCharged);
-            set_turns_description(turns);
-        }
-        return;
-    }
+    // ABT #2232 (Alf, 2026-11-04: "SPREAD is for real winding in general, blocked or not
+    // blocked"). Real winding lays EVERY conduction layer through the re-lay below, whether or
+    // not any connection lead blocks a slot: a layer no lead crosses is re-laid with zero depths
+    // over its whole band, by the same fence-post law, N-filar bundles, helical pitch fixpoint,
+    // parallel order (ABT #1424), link pitch and radial steps against the sibling wraps (ABT
+    // #1422) as a crossed one. Only that re-lay used to run on crossed layers; the others kept
+    // the winder's alignment (CENTERED by default, packed), so an unplanned wind's centred
+    // partial outer layer put its layer links 0.308 mm apart against a 0.556 mm wire
+    // (refuse_sibling_layer_links_closer_than_the_wire) on layouts that wind once their leads are
+    // planned and the crossed layers spread. This overrides the user-set alignment in real
+    // winding only; ideal winding returned above.
     auto windingWindow = bobbin.get_processed_description().value().get_winding_windows()[0];
     // ABT #427: the band the turns are spread along is the layer's TURN axis — the window's HEIGHT for
     // an OVERLAPPING layer (turns stack axially) and its WIDTH for a CONTIGUOUS one (turns run
@@ -7052,8 +7044,11 @@ void Coil::align_blocked_layer_turns() {
                 }
             }
         }
-        if (effectiveDepths.first <= 1e-12 && effectiveDepths.second <= 1e-12 && !inTurnAxisOverflowSection) {
-            continue;  // untouched layer: leave delimit's centring (fills the full height)
+        // Outside real winding a layer no lead crosses keeps delimit's centring (ABT #2232: in real
+        // winding every layer is re-laid, see above).
+        if (!realWinding && effectiveDepths.first <= 1e-12 && effectiveDepths.second <= 1e-12 &&
+            !inTurnAxisOverflowSection) {
+            continue;
         }
         size_t windingIndex = get_winding_index_by_name(layer.get_partial_windings()[0].get_winding());
         double wirePitch = (turnAxis == 1) ? wires[windingIndex].get_maximum_outer_height()

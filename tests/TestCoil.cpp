@@ -15673,6 +15673,108 @@ TEST_CASE("Test_Spread_Is_Fence_Post_And_Keeps_Bundles_Together", "[constructive
     settings.reset();
 }
 
+// ABT #2232 (Alf, 2026-11-04: "SPREAD is for real winding in general, blocked or not blocked").
+// The CoilAdviser's screening probe (real_winder_packs_section_alone) winds a section alone,
+// without connection lead planning, so no lead blocks any slot. The real-winding re-lay used to
+// run only on layers a lead crossed; every other layer kept the coil's CENTERED alignment,
+// packed. This one (5 t x 3 p of 26 AWG triple-insulated in a 2.0875 x 5.65 mm section, the first
+// of the 60 refusals dumped from the flyback screening) was then refused: layer 1's closing
+// bundle ended at 1.123/1.685/2.247 mm and the centred layer 2 opened at 0.280/0.839/1.398 mm,
+// so the sibling layer links passed 0.308 mm apart against the 0.556 mm wire. With leads planned
+// it wound, because the planned re-lay spread the layers. Every conduction layer must now be
+// laid SPREAD (fence-post: the outermost stations' copper on the band edges) whatever the
+// alignment asked for, and the wind must succeed. Ideal winding keeps the alignment it was
+// given.
+TEST_CASE("Test_Real_Winding_Spreads_Every_Layer_Without_Blocked_Slots",
+          "[constructive-model][coil][real-winding][spread][abt2232]") {
+    settings.reset();
+    auto buildProbe = []() {
+        OpenMagnetics::Winding winding;
+        winding.set_name("Secondary 0");
+        winding.set_number_turns(5);
+        winding.set_number_parallels(3);
+        winding.set_isolation_side(IsolationSide::SECONDARY);
+        winding.set_wire(find_wire_by_name("Round D26A01PXX-1.5"));
+        OpenMagnetics::Coil probe;
+        probe.set_connection_lead_planning(false);
+        probe.set_functional_description({winding});
+        probe.set_bobbin(OpenMagnetics::Bobbin::create_quick_bobbin(0.0056500000000000005, 0.0020875000000000004));
+        probe.set_layers_orientation(WindingOrientation::OVERLAPPING);
+        probe.set_turns_alignment(CoilAlignment::CENTERED);
+        return probe;
+    };
+
+    auto bobbin = OpenMagnetics::Bobbin::create_quick_bobbin(0.0056500000000000005, 0.0020875000000000004);
+    auto windingWindow = bobbin.get_processed_description().value().get_winding_windows()[0];
+    const double windowLow = windingWindow.get_coordinates().value()[1] - windingWindow.get_height().value() / 2;
+    const double windowHigh = windingWindow.get_coordinates().value()[1] + windingWindow.get_height().value() / 2;
+
+    // The extent along the column axis of the copper of each conduction layer, and the number of
+    // stations in it. A helical turn's axial dimension is the pitch its layer was laid at.
+    auto layerExtents = [](OpenMagnetics::Coil& coil) {
+        std::map<std::string, std::tuple<double, double, size_t>> extents;
+        const auto turns = coil.get_turns_description().value();
+        for (const auto& turn : turns) {
+            REQUIRE(turn.get_layer());
+            REQUIRE(turn.get_dimensions());
+            const double half = turn.get_dimensions().value()[1] / 2;
+            const double y = turn.get_coordinates()[1];
+            auto found = extents.find(turn.get_layer().value());
+            if (found == extents.end()) {
+                extents[turn.get_layer().value()] = {y - half, y + half, 1};
+            }
+            else {
+                std::get<0>(found->second) = std::min(std::get<0>(found->second), y - half);
+                std::get<1>(found->second) = std::max(std::get<1>(found->second), y + half);
+                std::get<2>(found->second)++;
+            }
+        }
+        return extents;
+    };
+
+    SECTION("real winding: every layer of several bundles is fence-post spread and the wind succeeds") {
+        settings.set_coil_use_real_winding_geometry(true);
+        settings.set_coil_delimit_and_compact(true);
+        settings.set_coil_try_rewind(true);
+        settings.set_coil_wind_even_if_not_fit(false);
+        auto probe = buildProbe();
+        bool wound = false;
+        REQUIRE_NOTHROW(wound = probe.wind());
+        REQUIRE(wound);
+        REQUIRE(probe.are_turns_inside_winding_window());
+        REQUIRE_FALSE(probe.is_real_winding_blocking_applied());
+        size_t layersChecked = 0;
+        for (const auto& [layerName, extent] : layerExtents(probe)) {
+            INFO(layerName << " copper " << std::get<0>(extent) * 1e3 << " .. " << std::get<1>(extent) * 1e3
+                           << " mm, window " << windowLow * 1e3 << " .. " << windowHigh * 1e3 << " mm");
+            if (std::get<2>(extent) <= 3) {
+                continue;   // a lone 3-filar bundle has no fence-post gap to place
+            }
+            CHECK_THAT(std::get<0>(extent), Catch::Matchers::WithinAbs(windowLow, 2e-9));
+            CHECK_THAT(std::get<1>(extent), Catch::Matchers::WithinAbs(windowHigh, 2e-9));
+            layersChecked++;
+        }
+        CHECK(layersChecked >= 2);
+    }
+
+    SECTION("ideal winding keeps the CENTERED alignment it was given") {
+        settings.set_coil_use_real_winding_geometry(false);
+        auto probe = buildProbe();
+        REQUIRE(probe.wind());
+        size_t centredLayers = 0;
+        for (const auto& [layerName, extent] : layerExtents(probe)) {
+            INFO(layerName);
+            const double middle = (std::get<0>(extent) + std::get<1>(extent)) / 2;
+            CHECK_THAT(middle, Catch::Matchers::WithinAbs((windowLow + windowHigh) / 2, 2e-9));
+            if (std::get<0>(extent) > windowLow + 1e-6) {
+                centredLayers++;   // packed and centred, short of the window edges
+            }
+        }
+        CHECK(centredLayers > 0);
+    }
+    settings.reset();
+}
+
 // The five ABT #577 examples whose drawn connection routes used to interpenetrate winding copper
 // must keep POSITIVE bare-copper clearance under the SPREAD layout (ABT #578/#579 + continuous
 // blocked depths). Replicates the MVB++ gate's 2D test: distance from every drawn TERMINAL
