@@ -564,16 +564,6 @@ TEST_CASE("Test_CoilAdviser_Insulation_No_Margin", "[adviser][coil-adviser][smok
     int currentIndex = 0;
     for (auto& masMagneticWithCoil : masMagneticsWithCoil) {
         OpenMagneticsTesting::check_turns_description(masMagneticWithCoil.get_magnetic().get_coil());
-        auto bobbin = masMagneticWithCoil.get_mutable_magnetic().get_bobbin();
-        auto aux = bobbin.get_winding_window_dimensions();
-        auto bobbinWindingWindowHeight = aux[1];
-
-        auto standardCoordinator = InsulationCoordinator();
-
-        auto creepageDistance = standardCoordinator.calculate_creepage_distance(inputs);
-        auto clearance = standardCoordinator.calculate_clearance(inputs);
-
-        auto primarySectionHeight = masMagneticWithCoil.get_mutable_magnetic().get_mutable_coil().get_sections_description().value()[0].get_dimensions()[1];
 
         int64_t numberMaximumLayers = 0;
         int64_t maximumGrade = 0;
@@ -599,7 +589,49 @@ TEST_CASE("Test_CoilAdviser_Insulation_No_Margin", "[adviser][coil-adviser][smok
         }
 
         REQUIRE((numberMaximumLayers >= 3 || maximumGrade >= 3));
-        REQUIRE((bobbinWindingWindowHeight - primarySectionHeight) < std::max(creepageDistance, clearance));
+
+        // What "no margin" guards (ABT #2226, Alf 2026-11-04). Margin tape is not allowed here, so the
+        // returned coil must (1) carry no margin tape on any section, and (2) hold the insulation in its
+        // wires: for the coil's own winding order MKF's insulation coordination must offer a combination
+        // of wire requirements that needs no margin (InsulationCoordinator::needs_margin) and that every
+        // winding's wire meets (MagneticFilterSolidInsulationRequirements, the filter the adviser uses).
+        // This replaces the proxy (windowHeight - primarySectionHeight) < max(creepage, clearance),
+        // which assumed the primary section fills the window: a coil with a shorter primary section and
+        // no margin failed it, and it never looked at the margins or the wires' insulation.
+        auto& advisedCoil = masMagneticWithCoil.get_mutable_magnetic().get_mutable_coil();
+        auto sections = advisedCoil.get_sections_description().value();
+        std::vector<size_t> windingOrder;
+        for (const auto& section : sections) {
+            if (section.get_type() != ElectricalType::CONDUCTION) {
+                continue;
+            }
+            auto margin = OpenMagnetics::Coil::resolve_margin(section);
+            INFO("section " << section.get_name() << " margin " << margin[0] << " / " << margin[1] << " m");
+            CHECK(margin[0] == 0);
+            CHECK(margin[1] == 0);
+            windingOrder.push_back(advisedCoil.get_winding_index_by_name(section.get_partial_windings()[0].get_winding()));
+        }
+        REQUIRE(windingOrder.size() >= 2);
+
+        auto insulationClass = InsulationCoordinator::insulation_class_for_margin(inputs);
+        auto combinations = InsulationCoordinator::get_solid_insulation_requirements_for_wires(inputs, windingOrder, 1);
+        MagneticFilterSolidInsulationRequirements solidInsulationFilter;
+        bool wiresCarryTheInsulation = false;
+        for (auto& combination : combinations) {
+            if (InsulationCoordinator::needs_margin(combination, windingOrder, 1, insulationClass)) {
+                continue;
+            }
+            bool allWindingsMeetIt = true;
+            const auto& windings = advisedCoil.get_functional_description();
+            for (size_t windingIndex = 0; windingIndex < windings.size(); ++windingIndex) {
+                allWindingsMeetIt &= solidInsulationFilter.evaluate_magnetic(windings[windingIndex], combination[windingIndex]).first;
+            }
+            if (allWindingsMeetIt) {
+                wiresCarryTheInsulation = true;
+                break;
+            }
+        }
+        CHECK(wiresCarryTheInsulation);
 
         auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
         auto outFile = outputFilePath;
