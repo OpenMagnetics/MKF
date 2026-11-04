@@ -4605,3 +4605,44 @@ TEST_CASE("Test_CoreAdviser_Csv_Design_Without_Topology_Or_SubApplication_Advise
     CHECK_FALSE(results.empty());
     settings.reset();
 }
+
+// ABT #1984: the stacked search builds its 2..N-stack variants from the cores it is given. It used
+// to stack the cores themselves (a loop by reference over the core database), so after one advise
+// the database held N-stack cores named "... N stacks", and every later search took those for
+// single cores and lost the real single ones. The cores must come out exactly as they went in.
+TEST_CASE("Test_CoreAdviser_Stack_Expansion_Leaves_The_Cores_As_Given", "[adviser][core-adviser][available-cores][abt-1984]") {
+    clear_databases();
+    OpenMagnetics::Inputs inputs;
+    prepare_test_parameters(0, 25, 100000, {}, 10e-5, inputs, 600);
+
+    CoreAdviser coreAdviser;
+    coreAdviser.set_mode(CoreAdviser::CoreAdviserModes::AVAILABLE_CORES);
+    auto cores = load_test_data();
+    REQUIRE(!cores.empty());
+    std::vector<std::pair<std::string, int64_t>> before;
+    for (const auto& core : cores) {
+        REQUIRE(core.get_name());
+        before.emplace_back(core.get_name().value(), core.get_number_stacks());
+    }
+
+    auto magnetics = coreAdviser.create_magnetic_dataset(inputs, &cores, false);
+    const size_t singleCoreCandidates = magnetics.size();
+    coreAdviser.expand_magnetic_dataset_with_stacks(inputs, &cores, &magnetics);
+
+    // The premise: the expansion did build stacked variants.
+    REQUIRE(magnetics.size() > singleCoreCandidates);
+    size_t twoStackVariants = 0;
+    for (size_t index = singleCoreCandidates; index < magnetics.size(); ++index) {
+        if (magnetics[index].first.get_core().get_number_stacks() == 2) {
+            ++twoStackVariants;
+        }
+    }
+    REQUIRE(twoStackVariants > 0);
+
+    REQUIRE(cores.size() == before.size());
+    for (size_t index = 0; index < cores.size(); ++index) {
+        CHECK(cores[index].get_name().value() == before[index].first);
+        CHECK(cores[index].get_number_stacks() == before[index].second);
+    }
+    settings.reset();
+}
