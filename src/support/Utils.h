@@ -170,6 +170,8 @@ bool material_data_extrapolation_allowed(const std::string& summary, const std::
 // kMaterialDataExtrapolationModule naming the material, the property, the range its data covers and (as detail)
 // the value asked; inside it they log nothing. A table of one temperature covers that temperature only.
 // Unphysical results are refused by the callers, not here. Alf, 2026-11-03: warn only, never throw.
+// While an adviser runs (a MaterialDataExtrapolationBarrier exists) these records are DEBUG, not WARNING: they are
+// about candidates the adviser tried, not the user's design (Alf, 2026-11-03).
 void warn_if_material_temperature_outside_data(const std::string& materialName, const std::string& propertyName,
                                                double tableMinimum, double tableMaximum, double temperature);
 void warn_if_material_frequency_outside_data(const std::string& materialName, const std::string& propertyName,

@@ -247,6 +247,14 @@ bool material_data_extrapolation_allowed(const std::string& summary, const std::
     return true;
 }
 
+// Alf, 2026-11-03: an adviser tries hundreds of materials the user never chose, so what it reads outside a material's
+// tables is a trace of the search, not a warning about the user's design: while an adviser runs (a
+// MaterialDataExtrapolationBarrier exists) these records are DEBUG. The design the user then adopts is evaluated
+// outside the adviser, where its own material still warns.
+static LogLevel material_data_outside_table_log_level() {
+    return MaterialDataExtrapolationBarrier::active_count() > 0 ? LogLevel::DEBUG : LogLevel::WARNING;
+}
+
 void warn_if_material_temperature_outside_data(const std::string& materialName, const std::string& propertyName,
                                                double tableMinimum, double tableMaximum, double temperature) {
     if (temperature >= tableMinimum && temperature <= tableMaximum) {
@@ -256,10 +264,10 @@ void warn_if_material_temperature_outside_data(const std::string& materialName, 
                                   ? "at " + format_significant(tableMinimum) + " C only"
                                   : "from " + format_significant(tableMinimum) + " C to " + format_significant(tableMaximum) + " C";
     const std::string side = temperature < tableMinimum ? "below" : "above";
-    Logger::getInstance().warning("Material " + materialName + ": its " + propertyName + " is tabulated " + range +
-                                      "; outside that the table is extrapolated",
-                                  kMaterialDataExtrapolationModule,
-                                  "asked at " + format_significant(temperature) + " C, " + side + " its data");
+    Logger::getInstance().log(material_data_outside_table_log_level(), kMaterialDataExtrapolationModule,
+                              "Material " + materialName + ": its " + propertyName + " is tabulated " + range +
+                                  "; outside that the table is extrapolated",
+                              "asked at " + format_significant(temperature) + " C, " + side + " its data");
 }
 
 void warn_if_material_frequency_outside_data(const std::string& materialName, const std::string& propertyName,
@@ -269,10 +277,10 @@ void warn_if_material_frequency_outside_data(const std::string& materialName, co
     }
     const std::string range = "from " + format_quantity(tableMinimum, "Hz") + " to " + format_quantity(tableMaximum, "Hz");
     const std::string side = frequency < tableMinimum ? "below" : "above";
-    Logger::getInstance().warning("Material " + materialName + ": its " + propertyName + " is tabulated " + range +
-                                      "; outside that range the table is extrapolated",
-                                  kMaterialDataExtrapolationModule,
-                                  "asked at " + format_quantity(frequency, "Hz") + ", " + side + " that range");
+    Logger::getInstance().log(material_data_outside_table_log_level(), kMaterialDataExtrapolationModule,
+                              "Material " + materialName + ": its " + propertyName + " is tabulated " + range +
+                                  "; outside that range the table is extrapolated",
+                              "asked at " + format_quantity(frequency, "Hz") + ", " + side + " that range");
 }
 
 void logEntry(std::string entry, std::string module, uint8_t entryVerbosity) {

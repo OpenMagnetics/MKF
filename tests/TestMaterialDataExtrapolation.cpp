@@ -29,6 +29,7 @@
 #include <catch2/matchers/catch_matchers_string.hpp>
 #include <cmath>
 #include <map>
+#include <set>
 #include <filesystem>
 #include <functional>
 #include <optional>
@@ -859,5 +860,38 @@ TEST_CASE("Magnetics initial permeability formula below 1: refused as unphysical
         CHECK_THAT(thrown_message([&] { InitialPermeability::get_initial_permeability(material, 25, std::nullopt, 10e6); }),
                    Catch::Matchers::ContainsSubstring("is unphysical"));
     }
+    settings.reset();
+}
+
+// Alf, 2026-11-03: an adviser reads tables of materials the user never chose (a Vienna run logged 50,514 such
+// WARNINGs, mostly Kool Mu saturation tabulated at 100 C only), and the web showed them all as warnings. While an
+// adviser runs (a MaterialDataExtrapolationBarrier exists) a material read outside its tables is a DEBUG record;
+// outside any adviser the same read is a WARNING, as ABT #2235 decided.
+TEST_CASE("Material tables read outside their data under an adviser log DEBUG, outside it WARNING", "[material-extrapolation][adviser]") {
+    settings.reset();
+    clear_databases();
+    CollectorGuard collector(LogLevel::DEBUG);
+    auto material = material_with("3C95 with a saturation table at 100 C only", [](json& j) {
+        j["saturation"] = json::array({{{"magneticFluxDensity", 0.45}, {"magneticField", 1200}, {"temperature", 100}}});
+    });
+    auto pc95 = find_core_material_by_name("PC95");  // mu_i tabulated from 2 kHz to 1.5 MHz
+    auto levels = [&]() {
+        CHECK(Core::get_magnetic_flux_density_saturation(material, 25, false) == 0.45);
+        CHECK_NOTHROW(InitialPermeability::get_initial_permeability_frequency_dependent(pc95, 5e6));
+        auto records = extrapolation_records(Logger::getInstance().drainCollected());
+        REQUIRE(records.size() == 2);
+        std::set<LogLevel> found;
+        for (const auto& record : records) {
+            found.insert(record.level);
+        }
+        return found;
+    };
+    Logger::getInstance().drainCollected();
+    CHECK(levels() == std::set<LogLevel>{LogLevel::WARNING});
+    {
+        MaterialDataExtrapolationBarrier adviser;
+        CHECK(levels() == std::set<LogLevel>{LogLevel::DEBUG});
+    }
+    CHECK(levels() == std::set<LogLevel>{LogLevel::WARNING});
     settings.reset();
 }
