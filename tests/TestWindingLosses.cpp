@@ -48,13 +48,17 @@ namespace WindingLossesTestHelpers {
     auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
     constexpr double maximumError = 0.25;
 
-    // Run standard winding losses test using config from WindingLossesTestData
-    inline void runWindingLossesTest(const WindingLossesTestData::TestConfig& config, 
-                                     std::optional<MagneticFieldStrengthModels> fieldModel = MagneticFieldStrengthModels::ALBACH,
-                                     std::optional<MagneticFieldStrengthFringingEffectModels> fringingModel = MagneticFieldStrengthFringingEffectModels::ALBACH) {
+    // The losses of a WindingLossesTestData config at each frequency, under the given models (nullopt: MKF's default
+    // model set for the core) and fringing switch.
+    inline void forEachConfigLosses(const WindingLossesTestData::TestConfig& config,
+                                    const std::vector<double>& frequencies,
+                                    bool includeFringing,
+                                    std::optional<MagneticFieldStrengthModels> fieldModel,
+                                    std::optional<MagneticFieldStrengthFringingEffectModels> fringingModel,
+                                    const std::function<void(double, const WindingLossesOutput&)>& check) {
         auto magnetic = config.createMagnetic();
-        
-        for (auto& [frequency, expectedValue] : config.expectedValues) {
+
+        for (auto frequency : frequencies) {
             settings.reset();
             clear_databases();
             if (fieldModel.has_value()) {
@@ -64,28 +68,39 @@ namespace WindingLossesTestHelpers {
                 settings.set_magnetic_field_strength_fringing_effect_model(fringingModel.value());
             }
             settings.set_magnetic_field_mirroring_dimension(config.mirroringDimension);
-            settings.set_magnetic_field_include_fringing(config.includeFringing);
+            settings.set_magnetic_field_include_fringing(includeFringing);
 
             auto inputs = OpenMagnetics::Inputs::create_quick_operating_point_only_current(
                 frequency, config.magnetizingInductance, config.temperature,
                 config.waveform, config.peakToPeak, config.dutyCycle, config.offset);
 
-            auto ohmicLosses = WindingLosses().calculate_losses(magnetic, inputs.get_operating_point(0), config.temperature);
-            REQUIRE_THAT(expectedValue, Catch::Matchers::WithinAbs(ohmicLosses.get_winding_losses(), expectedValue * maximumError));
+            check(frequency, WindingLosses().calculate_losses(magnetic, inputs.get_operating_point(0), config.temperature));
         }
         settings.reset();
     }
 
-    // Run winding losses test for JSON-loaded tests that use MagnetizingInductance model
-    inline void runJsonBasedWindingLossesTest(
-            const std::string& jsonFileName,
-            double temperature,
-            const std::vector<std::pair<double, double>>& expectedValues,
-            double maxError = maximumError,
-            bool includeFringing = true,
-            std::optional<MagneticFieldStrengthModels> fieldModel = MagneticFieldStrengthModels::ALBACH,
-            std::optional<MagneticFieldStrengthFringingEffectModels> fringingModel = MagneticFieldStrengthFringingEffectModels::ALBACH) {
-        
+    // Run standard winding losses test using config from WindingLossesTestData
+    inline void runWindingLossesTest(const WindingLossesTestData::TestConfig& config, 
+                                     std::optional<MagneticFieldStrengthModels> fieldModel = MagneticFieldStrengthModels::ALBACH,
+                                     std::optional<MagneticFieldStrengthFringingEffectModels> fringingModel = MagneticFieldStrengthFringingEffectModels::ALBACH) {
+        for (auto& [frequency, expectedValue] : config.expectedValues) {
+            forEachConfigLosses(config, {frequency}, config.includeFringing, fieldModel, fringingModel,
+                                [&, expected = expectedValue](double, const WindingLossesOutput& ohmicLosses) {
+                REQUIRE_THAT(expected, Catch::Matchers::WithinAbs(ohmicLosses.get_winding_losses(), expected * maximumError));
+            });
+        }
+    }
+
+    // The losses of a JSON (MAS) fixture at each frequency: its first operating point scaled to the frequency, with the
+    // unbiased ZHANG inductance completing the excitation, under the given models (nullopt: MKF's default model set for
+    // the core) and fringing switch.
+    inline void forEachJsonFixtureLosses(const std::string& jsonFileName,
+                                         double temperature,
+                                         const std::vector<double>& frequencies,
+                                         bool includeFringing,
+                                         std::optional<MagneticFieldStrengthModels> fieldModel,
+                                         std::optional<MagneticFieldStrengthFringingEffectModels> fringingModel,
+                                         const std::function<void(double, const WindingLossesOutput&)>& check) {
         auto path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), jsonFileName);
         auto mas = OpenMagneticsTesting::mas_loader(path);
         auto magnetic = mas.get_magnetic();
@@ -102,7 +117,7 @@ namespace WindingLossesTestHelpers {
             settings.set_magnetic_field_strength_fringing_effect_model(fringingModel.value());
         }
 
-        for (auto& [frequency, expectedValue] : expectedValues) {
+        for (auto frequency : frequencies) {
             OperatingPoint operatingPoint = inputs.get_operating_point(0);
             OpenMagnetics::Inputs::scale_time_to_frequency(operatingPoint, frequency, true);
             // The inductance is the unbiased one (no operating point): these fixtures are
@@ -117,10 +132,94 @@ namespace WindingLossesTestHelpers {
 
             settings.set_magnetic_field_mirroring_dimension(1);
             settings.set_magnetic_field_include_fringing(includeFringing);
-            auto ohmicLosses = WindingLosses().calculate_losses(magnetic, operatingPoint, temperature);
-            REQUIRE_THAT(expectedValue, Catch::Matchers::WithinAbs(ohmicLosses.get_winding_losses(), expectedValue * maxError));
+            check(frequency, WindingLosses().calculate_losses(magnetic, operatingPoint, temperature));
         }
         settings.reset();
+    }
+
+    // Run winding losses test for JSON-loaded tests that use MagnetizingInductance model
+    inline void runJsonBasedWindingLossesTest(
+            const std::string& jsonFileName,
+            double temperature,
+            const std::vector<std::pair<double, double>>& expectedValues,
+            double maxError = maximumError,
+            bool includeFringing = true,
+            std::optional<MagneticFieldStrengthModels> fieldModel = MagneticFieldStrengthModels::ALBACH,
+            std::optional<MagneticFieldStrengthFringingEffectModels> fringingModel = MagneticFieldStrengthFringingEffectModels::ALBACH) {
+        std::vector<double> frequencies;
+        std::map<double, double> expectedPerFrequency;
+        for (auto& [frequency, expectedValue] : expectedValues) {
+            frequencies.push_back(frequency);
+            expectedPerFrequency[frequency] = expectedValue;
+        }
+        forEachJsonFixtureLosses(jsonFileName, temperature, frequencies, includeFringing, fieldModel, fringingModel,
+                                 [&](double frequency, const WindingLossesOutput& ohmicLosses) {
+            double expectedValue = expectedPerFrequency.at(frequency);
+            REQUIRE_THAT(expectedValue, Catch::Matchers::WithinAbs(ohmicLosses.get_winding_losses(), expectedValue * maxError));
+        });
+    }
+
+    // R_ac/R_dc of the whole winding: its losses over its turns' ohmic losses (the DC losses of the same current, split
+    // between parallels as DC splits it). It is the ratio OMFEM reports (P_cu / P_cu_dc of the imposed current), and it
+    // does not depend on the turn length: OMFEM's planar 2-D solve books 2 x core depth per turn, MKF the real mean turn
+    // length, so their watts differ by that length ratio on every fixture while their R_ac/R_dc compare like for like.
+    inline double ac_to_dc_resistance_ratio(const WindingLossesOutput& output) {
+        const auto perTurn = output.get_winding_losses_per_turn().value();
+        double ohmic = 0;
+        for (const auto& turn : perTurn) {
+            ohmic += turn.get_ohmic_losses()->get_losses();
+        }
+        if (!(ohmic > 0)) {
+            throw std::runtime_error("R_ac/R_dc: the turns carry no ohmic losses");
+        }
+        return output.get_winding_losses() / ohmic;
+    }
+
+    inline void checkAcToDcRatio(double frequency, const WindingLossesOutput& output, double omfemRatio, double maxError) {
+        double ratio = ac_to_dc_resistance_ratio(output);
+        INFO("f = " << frequency << " Hz: MKF R_ac/R_dc " << ratio << ", OMFEM " << omfemRatio << " (MKF/OMFEM " << ratio / omfemRatio << ")");
+        CHECK_THAT(ratio, Catch::Matchers::WithinRel(omfemRatio, maxError));
+    }
+
+    // R_ac/R_dc of a JSON fixture against 2D OMFEM R_ac/R_dc of the same design, frequency by frequency.
+    inline void runJsonBasedAcToDcVsOmfemTest(
+            const std::string& jsonFileName,
+            double temperature,
+            const std::vector<std::pair<double, double>>& omfemRatios,
+            double maxError,
+            bool includeFringing,
+            std::optional<MagneticFieldStrengthModels> fieldModel,
+            std::optional<MagneticFieldStrengthFringingEffectModels> fringingModel) {
+        std::vector<double> frequencies;
+        std::map<double, double> omfemPerFrequency;
+        for (auto& [frequency, omfemRatio] : omfemRatios) {
+            frequencies.push_back(frequency);
+            omfemPerFrequency[frequency] = omfemRatio;
+        }
+        forEachJsonFixtureLosses(jsonFileName, temperature, frequencies, includeFringing, fieldModel, fringingModel,
+                                 [&](double frequency, const WindingLossesOutput& output) {
+            checkAcToDcRatio(frequency, output, omfemPerFrequency.at(frequency), maxError);
+        });
+    }
+
+    // R_ac/R_dc of a WindingLossesTestData config against 2D OMFEM R_ac/R_dc of the same design, frequency by frequency.
+    inline void runAcToDcVsOmfemTest(
+            const WindingLossesTestData::TestConfig& config,
+            const std::vector<std::pair<double, double>>& omfemRatios,
+            double maxError,
+            bool includeFringing,
+            std::optional<MagneticFieldStrengthModels> fieldModel,
+            std::optional<MagneticFieldStrengthFringingEffectModels> fringingModel) {
+        std::vector<double> frequencies;
+        std::map<double, double> omfemPerFrequency;
+        for (auto& [frequency, omfemRatio] : omfemRatios) {
+            frequencies.push_back(frequency);
+            omfemPerFrequency[frequency] = omfemRatio;
+        }
+        forEachConfigLosses(config, frequencies, includeFringing, fieldModel, fringingModel,
+                            [&](double frequency, const WindingLossesOutput& output) {
+            checkAcToDcRatio(frequency, output, omfemPerFrequency.at(frequency), maxError);
+        });
     }
 }
 
@@ -301,18 +400,22 @@ namespace TestWindingLossesRound {
              {3000000, 0.43591}});
     }
 
-    TEST_CASE("Test_Winding_Losses_One_Turn_Round_Sinusoidal_Fringing", "[physical-model][winding-losses][round][rectangular-winding-window][!mayfail]") {
-        // [!mayfail] ABT #832 (2026-08-20): OMFEM on this fixture gives R_ac/R_dc
-        // 1.443/3.137/4.400 at 100k/500k/1M; MKF (Roshen conformal fringing) is 1.4-1.9x
-        // over on the AC part for this close-to-the-gap turn (point-sampled 1/r near-field
-        // bathes the whole conductor) — ABT #837. The historical pins are themselves ~10%
-        // below FEM. Not re-pinned until the close-gap sampling is fixed.
-        WindingLossesTestHelpers::runJsonBasedWindingLossesTest(
+    TEST_CASE("Test_Winding_Losses_One_Turn_Round_Sinusoidal_Fringing", "[physical-model][winding-losses][round][rectangular-winding-window]") {
+        // Alf 2026-11-04: MKF's DEFAULT winding-loss models (no field/fringing override; the pins it replaces held the
+        // legacy ALBACH/ALBACH pair, which reads 1.0-1.54x OMFEM here) and R_ac/R_dc against 2D OMFEM of the same design
+        // at the test's 22 C, not watts. OMFEM: OMFEM-1588 build-efa5113 omfem_mas, 2D, on the MAS exported by
+        // Debug_Martinez_Flat_Scorecard with its ambient temperature set to 22 C; inputs and logs in
+        // /home/alf/OpenMagnetics/.mkf-triage-runs/green/wl2/fem (One_Turn_Round_Sinusoidal_Fringing_<f>).
+        // Measured MKF/OMFEM 0.946-0.998 over 10 kHz-1 MHz (worst -5.4 % at 900 kHz-1 MHz), so 10 %. The [!mayfail]
+        // tag (ABT #832: the ALBACH pair 1.4-1.9x over FEM) is dropped with the ALBACH override.
+        constexpr double roundMaximumError = 0.10;
+        WindingLossesTestHelpers::runJsonBasedAcToDcVsOmfemTest(
             "Test_Winding_Losses_One_Turn_Round_Sinusoidal_Fringing.json", 22,
-            {{1, 167.89}, {10000, 169.24}, {20000, 174.77}, {30000, 183.33}, {40000, 194.12},
-             {50000, 206.33}, {60000, 219.3}, {70000, 232.5}, {80000, 245.61}, {90000, 258.43},
-             {100000, 270.86}, {200000, 376.14}, {300000, 460.7}, {400000, 532.27}, {500000, 594.6},
-             {600000, 649.64}, {700000, 699.9}, {800000, 746.3}, {900000, 789.66}, {1000000, 830.49}});
+            {{10000, 1.012}, {20000, 1.046}, {30000, 1.098}, {40000, 1.164}, {50000, 1.238}, {60000, 1.317},
+             {70000, 1.397}, {80000, 1.477}, {90000, 1.555}, {100000, 1.631}, {200000, 2.279}, {300000, 2.796},
+             {400000, 3.224}, {500000, 3.599}, {600000, 3.937}, {700000, 4.225}, {800000, 4.512}, {900000, 4.805},
+             {1000000, 5.061}},
+            roundMaximumError, true, std::nullopt, std::nullopt);
     }
 
     TEST_CASE("Test_Winding_Losses_One_Turn_Round_Sinusoidal_Fringing_Far", "[physical-model][winding-losses][round][rectangular-winding-window]") {
@@ -539,9 +642,17 @@ namespace TestWindingLossesFoil {
     auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
     double maximumError = 0.3;
     TEST_CASE("Test_Winding_Losses_One_Turn_Foil_Sinusoidal", "[physical-model][winding-losses][foil][rectangular-winding-window][!mayfail]") {
-        // TEST-001: Was SKIP - now runs with [!mayfail] to track regression
+        // Alf 2026-11-04: pinned to 2D OMFEM R_ac/R_dc of the same design WITH the gap fringing present (the 1 mm ground
+        // gap beside the foil; the config's fringing-off setting is overridden here), not to the Feb-2026 watt snapshot
+        // (F_R 1.17 at 500 kHz, fringing off). OMFEM: OMFEM-1588 build-efa5113 omfem_mas, 2D, on the MAS exported by
+        // Debug_Martinez_Flat_Scorecard (foil exported as a rectangular conductor of the same section: OMFEM cannot
+        // sweep FOIL), at the config's 20 C; inputs and logs in /home/alf/OpenMagnetics/.mkf-triage-runs/green/wl2/fem
+        // (One_Turn_Foil_Sinusoidal_<f>). The current crowding of a foil beside a gap is ABT #836.
         auto config = WindingLossesTestData::createOneTurnFoilSinusoidalConfig();
-        WindingLossesTestHelpers::runWindingLossesTest(config);
+        WindingLossesTestHelpers::runAcToDcVsOmfemTest(
+            config, {{50000, 11.363}, {100000, 14.884}, {200000, 17.576}, {500000, 20.786}},
+            WindingLossesTestHelpers::maximumError, true,
+            MagneticFieldStrengthModels::ALBACH, MagneticFieldStrengthFringingEffectModels::ALBACH);
     }
 
     TEST_CASE("Test_Winding_Losses_Ten_Turns_Foil_Sinusoidal", "[physical-model][winding-losses][foil][rectangular-winding-window][!mayfail]") {
@@ -819,13 +930,19 @@ namespace TestWindingLossesToroidalCores {
     }
 
     TEST_CASE("Test_Winding_Losses_Ten_Turn_Round_Sinusoidal_Toroidal_Core_Rectangular_Wire", "[physical-model][winding-losses][rectangular][round-winding-window][!mayfail]") {
-        // [!mayfail] ABT #832 (2026-08-20): OMFEM gives R_ac/R_dc 6.81/14.8/36.3 at
-        // 25k/100k/500k — the historical pins (2.18 @25k) sat 3x BELOW FEM (they were
-        // green only against the c*h prefactor bug that zeroed rectangular proximity).
-        // The slab-form model now reads 1.35-1.6x ABOVE FEM here (edge-point sampling on
-        // tightly packed toroidal turns — ABT #837). Not re-pinned until that lands.
+        // [!mayfail] ABT #832 (2026-08-20): the historical watt pins (2.18 @25k) sat 3x BELOW FEM (they were
+        // green only against the c*h prefactor bug that zeroed rectangular proximity). The slab-form model reads
+        // 1.35-1.65x ABOVE FEM here (edge-point sampling on tightly packed toroidal turns — ABT #837).
+        // Alf 2026-11-04: R_ac/R_dc against 2D OMFEM of the same design, not watts. OMFEM: OMFEM-1588 build-efa5113
+        // omfem_mas, 2D (ring in the XY plane), on the MAS exported by Debug_Martinez_Flat_Scorecard at the config's
+        // 20 C; inputs and logs in /home/alf/OpenMagnetics/.mkf-triage-runs/green/wl2/fem
+        // (Ten_Turns_Rectangular_Toroidal_<f>; the wire was given an enamel coating in the OMFEM input only, which
+        // OMFEM's wire check requires and which does not enter the eddy solve, see TOROID_COATING_NOTE.txt there).
         auto config = WindingLossesTestData::createTenTurnsRectangularToroidalConfig();
-        WindingLossesTestHelpers::runWindingLossesTest(config);
+        WindingLossesTestHelpers::runAcToDcVsOmfemTest(
+            config, {{25000, 6.839}, {50000, 10.044}, {100000, 14.824}, {200000, 21.866}, {250000, 24.782}, {500000, 36.422}},
+            WindingLossesTestHelpers::maximumError, config.includeFringing,
+            MagneticFieldStrengthModels::ALBACH, MagneticFieldStrengthFringingEffectModels::ALBACH);
     }
 }
 
@@ -852,31 +969,22 @@ namespace TestWindingLossesPlanar {
     }
 
     TEST_CASE("Test_Winding_Losses_One_Turn_Planar_Sinusoidal_Fringing", "[physical-model][winding-losses][planar]") {
-        // ABT #1274 / #139: these expectations are 2D OMFEM (omfem_mas, full-geometry P_cu),
-        // NOT an MKF snapshot. Alf's ruling 2026-09-20: trust OMFEM for these pins.
+        // ABT #1274 / #139: the reference is 2D OMFEM, NOT an MKF snapshot (Alf's ruling 2026-09-20). A point MKF misses
+        // stays red: do NOT re-pin these to whatever MKF computes.
         //
-        // THIS TEST IS EXPECTED TO FAIL until ABT #1274 is fixed, and that is the point. The
-        // values it replaced were an MKF snapshot running 1.15x (10 kHz) to 1.82x (400 kHz) above
-        // FEM, so the test was holding MKF to its own output rather than to the physics. Against
-        // FEM, MKF is now measurably wrong here and says so.
-        //
-        // Do NOT re-pin these back to whatever MKF computes. The gap is the finding: MKF reports
-        // a field component normal to a planar trace's wide face that two independent models
-        // (MARTINEZ, DOWELL) turn into 679x the FEM loss on the sibling 16-parallel fixture. The
-        // WANG default lands closer only because its c*h prefactor divides by h ~ 1e-4.
-        //
-        // References: /home/alf/OpenMagnetics/.mkf-fem/fem_repin.json (20 points, one_turn_fringing).
-        // (The July 2026 note that stood here described the MKF snapshot these values replace,
-        // and its R_ac/R_dc cross-check was against a CIRCULAR-turn OMFEM approximation, so it
-        // could not compare absolute watts. omfem_mas meshes the real geometry, so these are
-        // directly comparable in watts.)
-        WindingLossesTestHelpers::runJsonBasedWindingLossesTest(
+        // Alf 2026-11-04: asserted as R_ac/R_dc, not watts. The watt pins (OMFEM P_cu, 214.34 W at 10 kHz ...
+        // 1742.7 W at 1.5 MHz) compared OMFEM's planar 2-D copper loss, which books 2 x core depth per turn, with MKF's
+        // real mean turn length: OMFEM's DC is 52 W against MKF's 94.6 W on this fixture, so the watts held MKF to a
+        // turn-length convention, not to the physics. OMFEM: OMFEM-1588 build-efa5113 omfem_mas, 2D, on the MAS
+        // exported by Debug_Martinez_Flat_Scorecard with its ambient temperature set to the test's 22 C; inputs and logs
+        // in /home/alf/OpenMagnetics/.mkf-triage-runs/green/wl2/fem (One_Turn_Planar_Sinusoidal_Fringing_<f>).
+        // Tolerance unchanged (30 %).
+        WindingLossesTestHelpers::runJsonBasedAcToDcVsOmfemTest(
             "Test_Winding_Losses_One_Turn_Planar_Sinusoidal_Fringing.json", 22,
-            {{10000, 214.34}, {20000, 285.87}, {30000, 333.2}, {40000, 369.27},
-             {50000, 398.92}, {60000, 424.44}, {70000, 447.1}, {80000, 467.71},
-             {90000, 486.85}, {100000, 504.61}, {200000, 651.06}, {300000, 774.08},
-             {400000, 885.5}, {500000, 987.94}, {600000, 1082.4}, {700000, 1171},
-             {800000, 1254.7}, {900000, 1334.9}, {1000000, 1405.7}, {1500000, 1742.7}},
+            {{10000, 4.140}, {20000, 5.518}, {30000, 6.430}, {40000, 7.125}, {50000, 7.696}, {60000, 8.189},
+             {70000, 8.626}, {80000, 9.024}, {90000, 9.391}, {100000, 9.736}, {200000, 12.567}, {300000, 14.951},
+             {400000, 17.124}, {500000, 19.114}, {600000, 20.918}, {700000, 22.630}, {800000, 24.238}, {900000, 25.759},
+             {1000000, 27.172}, {1500000, 33.778}},
             maximumError, true,  // includeFringing = true
             std::nullopt, std::nullopt);  // ABT #1759 (Alf 2026-10-11): MKF's default model for the core
     }
@@ -896,10 +1004,17 @@ namespace TestWindingLossesPlanar {
         // outside +-30 %), 2 MHz 312.83 W (+27.4 %) -> 315.31 W (+28.4 %, OMFEM 245.59). The model gap
         // itself (over-read at 500 kHz / 2 MHz, under-read at 20 / 100 kHz) is ABT #1884; the band is not a
         // re-baseline of it.
+        // Alf 2026-11-04: asserted as R_ac/R_dc against 2D OMFEM of the same design, not watts: OMFEM's planar 2-D
+        // copper loss books 2 x core depth per turn and MKF the real mean turn length (OMFEM's DC is 1/1.82 of MKF's on
+        // these 16-parallel fixtures), so the watt pins compared a turn-length convention. OMFEM: OMFEM-1588
+        // build-efa5113 omfem_mas, 2D, each parallel its own body, on the MAS exported by Debug_Martinez_Flat_Scorecard
+        // at the fixture's own ambient temperature (the test's); inputs and logs in
+        // /home/alf/OpenMagnetics/.mkf-triage-runs/green/wl2/fem (Sixteen_Turns_Planar_Sinusoidal_No_Fringing_<f>).
+        // The watt pins it replaces were OMFEM P_cu 21.232 / 51.039 / 118.54 / 245.59 W. Band unchanged (35 %).
         constexpr double sixteenTurnsMaximumError = 0.35;
-        WindingLossesTestHelpers::runJsonBasedWindingLossesTest(
+        WindingLossesTestHelpers::runJsonBasedAcToDcVsOmfemTest(
             "Test_Winding_Losses_Sixteen_Turns_Planar_Sinusoidal_No_Fringing.json", 22,
-            {{20000, 21.232}, {100000, 51.039}, {500000, 118.54}, {2000000, 245.59}},
+            {{20000, 6.688}, {100000, 16.075}, {500000, 37.335}, {2000000, 77.345}},
             sixteenTurnsMaximumError, true, std::nullopt, std::nullopt);
     }
 
@@ -909,9 +1024,16 @@ namespace TestWindingLossesPlanar {
         // explicitly pinned ALBACH field/fringing model, 10-40x above FEM (the 16 paralleled traces screen each other,
         // which per-trace superposition could not see; ABT #139). References: OMFEM P_cu (omfem_mas, full geometry),
         // /home/alf/OpenMagnetics/.mkf-1645-fem/ref3_parallels. Tolerance unchanged (30 %); a point MKF misses stays red.
-        WindingLossesTestHelpers::runJsonBasedWindingLossesTest(
+        // Alf 2026-11-04: asserted as R_ac/R_dc against 2D OMFEM of the same design, not watts: OMFEM's planar 2-D
+        // copper loss books 2 x core depth per turn and MKF the real mean turn length (OMFEM's DC is 1/1.82 of MKF's on
+        // these 16-parallel fixtures), so the watt pins compared a turn-length convention. OMFEM: OMFEM-1588
+        // build-efa5113 omfem_mas, 2D, each parallel its own body, on the MAS exported by Debug_Martinez_Flat_Scorecard
+        // at the fixture's own ambient temperature (the test's); inputs and logs in
+        // /home/alf/OpenMagnetics/.mkf-triage-runs/green/wl2/fem (Sixteen_Turns_Planar_Sinusoidal_Fringing_Close_<f>).
+        // The watt pins it replaces were OMFEM P_cu 175.84 / 419.10 / 943.37 / 1892.32 W. Tolerance unchanged (30 %).
+        WindingLossesTestHelpers::runJsonBasedAcToDcVsOmfemTest(
             "Test_Winding_Losses_Sixteen_Turns_Planar_Sinusoidal_Fringing_Close.json", 100,
-            {{20000, 175.84}, {100000, 419.10}, {500000, 943.37}, {2000000, 1892.32}},
+            {{20000, 42.203}, {100000, 100.547}, {500000, 226.289}, {2000000, 453.949}},
             maximumError, true, std::nullopt, std::nullopt);
     }
 
@@ -921,9 +1043,16 @@ namespace TestWindingLossesPlanar {
         // explicitly pinned ALBACH field/fringing model, 10-40x above FEM (the 16 paralleled traces screen each other,
         // which per-trace superposition could not see; ABT #139). References: OMFEM P_cu (omfem_mas, full geometry),
         // /home/alf/OpenMagnetics/.mkf-1645-fem/ref3_far. Tolerance unchanged (30 %); a point MKF misses stays red.
-        WindingLossesTestHelpers::runJsonBasedWindingLossesTest(
+        // Alf 2026-11-04: asserted as R_ac/R_dc against 2D OMFEM of the same design, not watts: OMFEM's planar 2-D
+        // copper loss books 2 x core depth per turn and MKF the real mean turn length (OMFEM's DC is 1/1.82 of MKF's on
+        // these 16-parallel fixtures), so the watt pins compared a turn-length convention. OMFEM: OMFEM-1588
+        // build-efa5113 omfem_mas, 2D, each parallel its own body, on the MAS exported by Debug_Martinez_Flat_Scorecard
+        // at the fixture's own ambient temperature (the test's); inputs and logs in
+        // /home/alf/OpenMagnetics/.mkf-triage-runs/green/wl2/fem (Sixteen_Turns_Planar_Sinusoidal_Fringing_Far_<f>).
+        // The watt pins it replaces were OMFEM P_cu 114.53 / 263.44 / 582.40 / 1164.54 W. Tolerance unchanged (30 %).
+        WindingLossesTestHelpers::runJsonBasedAcToDcVsOmfemTest(
             "Test_Winding_Losses_Sixteen_Turns_Planar_Sinusoidal_Fringing_Far.json", 100,
-            {{20000, 114.53}, {100000, 263.44}, {500000, 582.40}, {2000000, 1164.54}},
+            {{20000, 27.480}, {100000, 63.194}, {500000, 139.698}, {2000000, 279.362}},
             maximumError, true, std::nullopt, std::nullopt);
     }
 
