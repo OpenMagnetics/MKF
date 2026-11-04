@@ -139,6 +139,50 @@ WoundCoilLosses evaluate_wound_coil_losses(OpenMagnetics::MagneticFilterLosses& 
         return {Kind::NOT_EVALUABLE, 0, exception.what()};
     }
 }
+
+// Alf, 2026-11-04 (ABT #2226): losses decide the order of the coils the adviser returns. The coils are put in the
+// order of their losses as MKF's MagneticFilterLosses evaluates them on the wound coil (evaluate_wound_coil_losses,
+// the evaluation the per-pattern loss ranking and the temperature gate make; inside the adviser's loss-solve memo a
+// coil already ranked on its planned wind is answered from it). The cross-pattern score (effective resistance,
+// current density, MMF) only breaks a tie in losses. Coils whose losses cannot be evaluated (NOT_EVALUABLE,
+// NO_THERMAL_OPERATING_POINT, SATURATES) follow the ranked ones, in score order, and the log says why. Before this
+// the score alone ordered them, and ranked a 2.66 W coil (133 C hot spot) above a 1.60 W one (75 C).
+void order_coils_by_losses(std::vector<std::pair<OpenMagnetics::Mas, double>>& scoredMases) {
+    OpenMagnetics::MagneticFilterLosses lossesFilter;
+    std::vector<WoundCoilLosses> lossesPerCoil;
+    lossesPerCoil.reserve(scoredMases.size());
+    for (auto& [scoredMas, scoring] : scoredMases) {
+        // Evaluated on a copy: the coil returned is the coil as it was wound and scored.
+        auto evaluatedMas = scoredMas;
+        std::vector<OpenMagnetics::Outputs> lossesOutputs;
+        auto evaluation = evaluate_wound_coil_losses(lossesFilter, evaluatedMas, lossesOutputs);
+        if (evaluation.kind != WoundCoilLosses::Kind::EVALUATED) {
+            OpenMagnetics::logEntry("Wound coil '" + scoredMas.get_mutable_magnetic().get_reference() +
+                                    "' is placed after the coils ranked by losses: its losses could not be evaluated: " +
+                                    evaluation.reason, "CoilAdviser", 2);
+        }
+        lossesPerCoil.push_back(evaluation);
+    }
+    std::vector<size_t> order(scoredMases.size());
+    std::iota(order.begin(), order.end(), size_t(0));
+    std::stable_sort(order.begin(), order.end(), [&](size_t left, size_t right) {
+        const bool leftRanked = lossesPerCoil[left].kind == WoundCoilLosses::Kind::EVALUATED;
+        const bool rightRanked = lossesPerCoil[right].kind == WoundCoilLosses::Kind::EVALUATED;
+        if (leftRanked != rightRanked) {
+            return leftRanked;
+        }
+        if (leftRanked && lossesPerCoil[left].losses != lossesPerCoil[right].losses) {
+            return lossesPerCoil[left].losses < lossesPerCoil[right].losses;
+        }
+        return scoredMases[left].second > scoredMases[right].second;
+    });
+    std::vector<std::pair<OpenMagnetics::Mas, double>> ordered;
+    ordered.reserve(scoredMases.size());
+    for (auto index : order) {
+        ordered.push_back(std::move(scoredMases[index]));
+    }
+    scoredMases = std::move(ordered);
+}
 }  // namespace
 
 namespace OpenMagnetics {
@@ -943,9 +987,8 @@ namespace OpenMagnetics {
         invalidMagneticsWithScoring.clear();
         masMagneticsWithScoring = score_magnetics(masesWithCoil, _loadedFilterFlow, &invalidMagneticsWithScoring);
 
-        stable_sort_by_index(masMagneticsWithScoring, [](const std::pair<Mas, double>& b1, const std::pair<Mas, double>& b2) {
-            return b1.second > b2.second;
-        });
+        // ABT #2226: losses decide the order, the score breaks ties (order_coils_by_losses).
+        order_coils_by_losses(masMagneticsWithScoring);
 
         // ABT #1394: a valid coil is one that also stays under the temperature limit, as in the core and magnetic
         // advisers. Without this gate a coil running at 640 C (437 W in its litz primary) was a top pick.
@@ -959,14 +1002,12 @@ namespace OpenMagnetics {
         }
 
         // Fallback: If all designs were filtered out but we had valid windings,
-        // return the best-scored of the FAILED designs, clearly marked as such.
+        // return the lowest-loss of the FAILED designs, clearly marked as such.
         if (masesWithoutScoring.empty() && !invalidMagneticsWithScoring.empty()) {
             logEntry("WARNING: All " + std::to_string(masesWithCoil.size()) + " designs were filtered out by criteria. " +
-                     "Returning best-scored designs marked INVALID as fallback.", "CoilAdviser", 1);
+                     "Returning the lowest-loss designs marked INVALID as fallback.", "CoilAdviser", 1);
 
-            stable_sort_by_index(invalidMagneticsWithScoring, [](const std::pair<Mas, double>& b1, const std::pair<Mas, double>& b2) {
-                return b1.second > b2.second;
-            });
+            order_coils_by_losses(invalidMagneticsWithScoring);
             // ABT #1394: a design marked INVALID still has to stay under the temperature limit to be returned; one
             // hotter than it is not a design to fall back to.
             if (settings.get_core_adviser_enable_temperature_filter()) {
@@ -1004,7 +1045,7 @@ namespace OpenMagnetics {
             // default criteria, so once the main pass produces >= maximumNumberResults wound
             // candidates — which the per-combination proportioning made much more likely — the
             // score cut would silently remove every lateral proposal and the opt-in feature would
-            // never be visible. Keep the cut score-ordered, but when lateral candidates exist and
+            // never be visible. Keep the cut in loss order, but when lateral candidates exist and
             // none survives it, give the BEST lateral one the last slot. Nothing is fabricated:
             // the candidate is fully wound and scored, only its representation is guaranteed.
             auto isLateral = [](Mas& candidate) {
@@ -1018,7 +1059,7 @@ namespace OpenMagnetics {
             std::optional<size_t> bestLateralIndex;
             for (size_t index = 0; index < masesWithoutScoring.size(); ++index) {
                 if (isLateral(masesWithoutScoring[index])) {
-                    bestLateralIndex = index;  // list is score-sorted: first lateral = best lateral
+                    bestLateralIndex = index;  // list is in loss order: first lateral = best lateral
                     break;
                 }
             }

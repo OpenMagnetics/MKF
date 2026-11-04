@@ -3759,6 +3759,35 @@ TEST_CASE("Test_CoilAdviser_Web_Flyback_97_Advise_All_Coil_Stays_In_Its_Window",
     settings.reset();
 }
 
+TEST_CASE("Test_CoilAdviser_Web_Flyback_97_Advise_All_Returns_Coils_In_Loss_Order", "[adviser][coil-adviser][bug][abt-2226]") {
+    // ABT #2226 part 2 (Alf, 2026-11-04): losses decide the order of the coils the adviser returns.
+    // The web's flyback after Core Advise (97 EQ 26/19/7), wire "Advise all", 6 coils asked. The
+    // cross-pattern score (effective resistance, current density, MMF) ordered them, and put an
+    // interleaved coil with a Litz 90x0.071 secondary (0.786 W) above two with a Litz 180x0.05
+    // secondary (0.778 W). Each returned coil's losses, as MagneticFilterLosses evaluates them, must
+    // not decrease down the list.
+    auto mas = load_web_advise_all("flyback_97_calculate_advised_coil.json");
+    CoilAdviser coilAdviser;
+    auto masMagneticsWithCoil = coilAdviser.get_advised_coil(mas, 6);
+    INFO(coilAdviser.get_last_no_results_reason().value_or("returned results"));
+    REQUIRE(masMagneticsWithCoil.size() == 6);
+    MagneticFilterLosses lossesFilter;
+    std::vector<double> lossesPerCoil;
+    for (auto& advisedMas : masMagneticsWithCoil) {
+        auto magnetic = advisedMas.get_magnetic();
+        auto inputs = advisedMas.get_inputs();
+        auto [valid, losses] = lossesFilter.evaluate_magnetic(&magnetic, &inputs);
+        INFO(magnetic.get_reference());
+        REQUIRE(valid);
+        lossesPerCoil.push_back(losses);
+    }
+    for (size_t index = 1; index < lossesPerCoil.size(); ++index) {
+        INFO("coil " << index - 1 << ": " << lossesPerCoil[index - 1] << " W, coil " << index << ": " << lossesPerCoil[index] << " W");
+        CHECK(lossesPerCoil[index - 1] <= lossesPerCoil[index]);
+    }
+    settings.reset();
+}
+
 TEST_CASE("Test_CoilAdviser_Web_Flyback_97_Advise_All_Builder_Rewind_Stays_In_Its_Window", "[adviser][coil-adviser][coil][bug][abt-2116]") {
     // ABT #2116: the web's flyback on material 97 (EQ 26/19/7, 0.18 mm gap), wire "Advise all", then the
     // builder's re-wind of the advised coil. The adviser lays the Secondary's 5 turns x 2 parallels of
