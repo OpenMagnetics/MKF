@@ -27,6 +27,8 @@ namespace OpenMagnetics {
 // ABT #113: per-thread memo cache (lazily built from the frozen material
 // catalog; per-thread copies are lock-free and semantically transparent).
 inline thread_local std::map<std::string, std::function<double(double)>> lossFactorInterps;
+// Frequency span of each material's loss-factor data, keyed like lossFactorInterps.
+inline thread_local std::map<std::string, std::pair<double, double>> lossFactorSpans;
 
 // ============================================================================
 // Core Losses Models

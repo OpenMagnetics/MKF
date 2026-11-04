@@ -4407,13 +4407,17 @@ double CoreLossesLossFactorModel::get_loss_factor(const CoreMaterial& coreMateri
             }
         }
 
+        if (!x.empty()) {
+            lossFactorSpans[coreMaterial.get_name()] = {x.front(), x.back()};
+        }
         if (x.size() == 0) {
             throw InvalidInputException(ErrorCode::MISSING_DATA, "No loss factor points for material: " + coreMaterial.get_name());
         }
         // ABT #118: never extrapolate beyond the measured frequency band — the spline
         // (and the 2-point linear form) extrapolated freely and could go NEGATIVE,
         // yielding a negative series resistance / negative core losses. Outside the
-        // band the endpoint value applies (standard loss-factor practice).
+        // band the interpolant returns the endpoint value; whether that may be used at all is decided below
+        // (Alf, 2026-11-04), like every other material data used outside its range (ABT #2235).
         // Inside it, piecewise linear in log(f)-log(tan delta / mu): the loss factor is positive and spans
         // decades, and near the material's resonance it climbs steeply (N4: 2.5 at 2.11 MHz, 357 at 2.14 MHz),
         // where a cubic spline through the points swung below zero just before the jump (N4 -22 at 2.1 MHz,
@@ -4442,6 +4446,34 @@ double CoreLossesLossFactorModel::get_loss_factor(const CoreMaterial& coreMateri
             double c = y[0];
             lossFactorInterps[coreMaterial.get_name()] =
                 [c](double) { return c; };
+        }
+    }
+    // Alf, 2026-11-04: outside its tabulated frequencies a loss factor is unknown (ACME's curves stop where its
+    // catalogue chart stops, A10 at 576 kHz just below its resonance, ABT #2251), and holding the endpoint there
+    // silently gave plausible but unfounded losses. As for all material data (Settings::allowMaterialDataExtrapolation,
+    // ABT #2235): the endpoint is held with a WARNING when extrapolation is allowed, and it throws when it is off or
+    // under an adviser (MaterialDataExtrapolationBarrier).
+    // A loss factor given at ONE frequency (363 materials: a datasheet's tan(delta)/mu_i, mostly at 100 kHz) is used at
+    // every frequency, as before, with a WARNING naming the frequency it was given at (DEBUG under an adviser, which
+    // keeps considering these materials); Alf, 2026-11-04.
+    const auto& [minimumFrequency, maximumFrequency] = lossFactorSpans.at(coreMaterial.get_name());
+    if (minimumFrequency == maximumFrequency) {
+        warn_if_material_frequency_outside_data(coreMaterial.get_name(), "loss factor", minimumFrequency, maximumFrequency,
+                                                frequency);
+    }
+    else if (frequency < minimumFrequency || frequency > maximumFrequency) {
+        const std::string range = "from " + format_quantity(minimumFrequency, "Hz") + " to " +
+                                  format_quantity(maximumFrequency, "Hz");
+        if (!material_data_extrapolation_allowed(
+                "Material " + coreMaterial.get_name() + ": its loss factor is tabulated " + range +
+                    "; outside that range it is held at its nearest tabulated value",
+                "asked at " + format_quantity(frequency, "Hz") + ", " + (frequency < minimumFrequency ? "below" : "above") +
+                    " that range")) {
+            throw MaterialException(ErrorCode::MATERIAL_FREQUENCY_OUT_OF_SPAN,
+                "Material " + coreMaterial.get_name() + ": its loss factor is tabulated " + range + "; " +
+                format_quantity(frequency, "Hz") + " is " + (frequency < minimumFrequency ? "below" : "above") +
+                " that range, where its core losses are unknown. Choose a material whose loss data covers this "
+                "frequency, or allow material data extrapolation");
         }
     }
     double lossFactorValue = lossFactorInterps[coreMaterial.get_name()](frequency);

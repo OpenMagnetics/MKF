@@ -275,7 +275,9 @@ void warn_if_material_frequency_outside_data(const std::string& materialName, co
     if (frequency >= tableMinimum && frequency <= tableMaximum) {
         return;
     }
-    const std::string range = "from " + format_quantity(tableMinimum, "Hz") + " to " + format_quantity(tableMaximum, "Hz");
+    const std::string range = tableMinimum == tableMaximum
+                                  ? "at " + format_quantity(tableMinimum, "Hz") + " only"
+                                  : "from " + format_quantity(tableMinimum, "Hz") + " to " + format_quantity(tableMaximum, "Hz");
     const std::string side = frequency < tableMinimum ? "below" : "above";
     Logger::getInstance().log(material_data_outside_table_log_level(), kMaterialDataExtrapolationModule,
                               "Material " + materialName + ": its " + propertyName + " is tabulated " + range +

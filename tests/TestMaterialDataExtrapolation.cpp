@@ -895,3 +895,72 @@ TEST_CASE("Material tables read outside their data under an adviser log DEBUG, o
     CHECK(levels() == std::set<LogLevel>{LogLevel::WARNING});
     settings.reset();
 }
+
+// Alf, 2026-11-04: outside its tabulated frequencies a material's loss factor is unknown. ACME's A10 is tabulated
+// from 1 kHz to 576 kHz (ABT #2251: where ACME's catalogue chart stops, just below its resonance); above that the
+// endpoint used to be held silently (ABT #118). Now, as for all material data (ABT #2235), the endpoint is held with
+// a WARNING when extrapolation is allowed, and it throws when it is off or under an adviser.
+TEST_CASE("Loss factor outside its frequencies: warns with the flag, throws without it and under an adviser", "[material-extrapolation][loss-factor]") {
+    settings.reset();
+    clear_databases();
+    CollectorGuard collector;
+    auto a10 = find_core_material_by_name("A10");
+    double endpoint = CoreLossesLossFactorModel::get_loss_factor(a10, 575655.284);
+
+    settings.set_allow_material_data_extrapolation(true);
+    Logger::getInstance().drainCollected();
+    CHECK_NOTHROW(CoreLossesLossFactorModel::get_loss_factor(a10, 300e3));
+    CHECK(extrapolation_records(Logger::getInstance().drainCollected()).empty());
+    double above = 0;
+    CHECK_NOTHROW(above = CoreLossesLossFactorModel::get_loss_factor(a10, 1e6));
+    CHECK(above == endpoint);
+    auto records = extrapolation_records(Logger::getInstance().drainCollected());
+    REQUIRE(records.size() == 1);
+    CHECK(records[0].level == LogLevel::WARNING);
+    CHECK_THAT(records[0].message, Catch::Matchers::ContainsSubstring("A10") && Catch::Matchers::ContainsSubstring("loss factor"));
+    CHECK_THAT(records[0].detail, Catch::Matchers::ContainsSubstring("above"));
+
+    {
+        MaterialDataExtrapolationBarrier adviser;
+        CHECK(thrown_code([&] { CoreLossesLossFactorModel::get_loss_factor(a10, 1e6); }) == ErrorCode::MATERIAL_FREQUENCY_OUT_OF_SPAN);
+        CHECK_NOTHROW(CoreLossesLossFactorModel::get_loss_factor(a10, 300e3));
+    }
+
+    settings.set_allow_material_data_extrapolation(false);
+    CHECK(thrown_code([&] { CoreLossesLossFactorModel::get_loss_factor(a10, 1e6); }) == ErrorCode::MATERIAL_FREQUENCY_OUT_OF_SPAN);
+    CHECK(thrown_code([&] { CoreLossesLossFactorModel::get_loss_factor(a10, 500.0); }) == ErrorCode::MATERIAL_FREQUENCY_OUT_OF_SPAN);
+    CHECK_THAT(thrown_message([&] { CoreLossesLossFactorModel::get_loss_factor(a10, 1e6); }),
+               Catch::Matchers::ContainsSubstring("tabulated from"));
+    CHECK(extrapolation_records(Logger::getInstance().drainCollected()).empty());
+    settings.reset();
+}
+
+// Alf, 2026-11-04: a loss factor given at one frequency only (KM42B: 100 kHz) keeps being used at every frequency,
+// whatever the flag and under an adviser, with a WARNING naming where it was given (DEBUG under an adviser).
+TEST_CASE("One-point loss factor: used at every frequency, warns outside its point, DEBUG under an adviser", "[material-extrapolation][loss-factor]") {
+    settings.reset();
+    clear_databases();
+    CollectorGuard collector(LogLevel::DEBUG);
+    auto km42b = find_core_material_by_name("KM42B");
+    double atPoint = CoreLossesLossFactorModel::get_loss_factor(km42b, 100e3);
+    for (bool allow : {true, false}) {
+        INFO("flag " << allow);
+        settings.set_allow_material_data_extrapolation(allow);
+        Logger::getInstance().drainCollected();
+        CHECK(CoreLossesLossFactorModel::get_loss_factor(km42b, 100e3) == atPoint);
+        CHECK(extrapolation_records(Logger::getInstance().drainCollected()).empty());
+        CHECK(CoreLossesLossFactorModel::get_loss_factor(km42b, 200e3) == atPoint);
+        auto records = extrapolation_records(Logger::getInstance().drainCollected());
+        REQUIRE(records.size() == 1);
+        CHECK(records[0].level == LogLevel::WARNING);
+        CHECK_THAT(records[0].message, Catch::Matchers::ContainsSubstring("KM42B") && Catch::Matchers::ContainsSubstring("at 100 kHz only"));
+    }
+    {
+        MaterialDataExtrapolationBarrier adviser;
+        CHECK(CoreLossesLossFactorModel::get_loss_factor(km42b, 200e3) == atPoint);
+        auto records = extrapolation_records(Logger::getInstance().drainCollected());
+        REQUIRE(records.size() == 1);
+        CHECK(records[0].level == LogLevel::DEBUG);
+    }
+    settings.reset();
+}
