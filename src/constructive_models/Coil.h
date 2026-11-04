@@ -638,7 +638,8 @@ struct ConnectionRoute {
     // ABT #1174: the sleeve's outer diameter on a sleeved TERMINAL route, empty otherwise.
     std::optional<double> sleeveOuterDiameter;
     // ABT #1269: where this SLEEVED lead crosses the margin's INNER face, on the turn axis and in
-    // the coil's own frame -- the window edge inset by that window's margin. It is the END CONDITION
+    // the coil's own frame -- the window edge inset by the margin of the section the lead's turn is in
+    // (not the widest margin in the window, which may lie inside this section's copper). It is the END CONDITION
     // the sleeve realises: AN-18 has the tubing run "from the transformer pin to inside of the
     // margin barrier", so a consumer draws the sleeve from the terminal to this crossing and on by
     // ConnectionSleeve::overlapIntoWinding, instead of guessing a length. Empty on an unsleeved

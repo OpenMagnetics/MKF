@@ -1716,6 +1716,10 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces(
     // inset on the tape-free side, stacked through the tape on the other.
     std::map<size_t, double> topMarginPerWindow;
     std::map<size_t, double> bottomMarginPerWindow;
+    // Each conduction section's OWN margin, {virtual top, virtual bottom}: where a lead into that
+    // section leaves its margin band (ConnectionRoute::marginInnerFace). The window maximum above is
+    // for runs ALONG an edge, which cross every section's band.
+    std::map<std::string, std::pair<double, double>> marginPerSection;
     if (sectionsDescription) {
         for (const auto& marginSection : sectionsDescription.value()) {
             if (marginSection.get_type() != ElectricalType::CONDUCTION) {
@@ -1727,6 +1731,7 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces(
             double virtualBottomMargin = layersAreContiguous ? sectionMargin[0] : sectionMargin[1];
             topMarginPerWindow[windowIndex] = std::max(topMarginPerWindow[windowIndex], virtualTopMargin);
             bottomMarginPerWindow[windowIndex] = std::max(bottomMarginPerWindow[windowIndex], virtualBottomMargin);
+            marginPerSection[marginSection.get_name()] = {virtualTopMargin, virtualBottomMargin};
         }
     }
     // ABT #726 (remainder): every window's edge rows measure from that window's OWN turn-axis
@@ -2236,8 +2241,19 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces(
                 routes.back().sleeveOuterDiameter = sleeveOuterDiameter;
                 // ABT #1269: the sleeve's end condition -- where this lead leaves the margin band and
                 // enters the winding area. The overlap past it is ConnectionSleeve::overlapIntoWinding.
-                const size_t sleeveWindowIndex = windowIndexOf(connectingTurn.get_section().value_or(""));
-                const double sleeveMargin = edgeMargin(sleeveWindowIndex, atTopEdge);
+                // The band this lead crosses is its own section's margin, not the widest margin in the window:
+                // with a Primary margin of 2.272 mm and a Secondary one of 1.904 mm in one window, the window's
+                // face lay 0.37 mm inside the Secondary's own winding area (its end turns at 7.386 mm, its
+                // section from 7.496 mm), so its sleeve's end condition named a face inside its copper.
+                const std::string sleeveSectionName = connectingTurn.get_section().value_or("");
+                auto ownMargin = marginPerSection.find(sleeveSectionName);
+                if (ownMargin == marginPerSection.end()) {
+                    throw CoilException(ErrorCode::COIL_WINDING_ERROR,
+                        "Sleeved lead of turn '" + connectingTurn.get_name() + "': its section '" + sleeveSectionName +
+                        "' is not a conduction section of this coil, so the margin band it crosses is unknown");
+                }
+                const size_t sleeveWindowIndex = windowIndexOf(sleeveSectionName);
+                const double sleeveMargin = atTopEdge ? ownMargin->second.first : ownMargin->second.second;
                 if (sleeveMargin > 0) {
                     const double edge = windowEdgeY(sleeveWindowIndex, atTopEdge);
                     routes.back().marginInnerFace = atTopEdge ? edge - sleeveMargin : edge + sleeveMargin;
