@@ -874,7 +874,9 @@ TEST_CASE("Test_CoilAdviser_Planar", "[adviser][coil-adviser][planar]") {
     auto noResultsReason = coilAdviser.get_last_no_results_reason();
     REQUIRE(noResultsReason.has_value());
     CHECK_THAT(*noResultsReason, Catch::Matchers::ContainsSubstring("rejected by the temperature limit"));
-    CHECK_THAT(*noResultsReason, Catch::Matchers::ContainsSubstring("hot spot reaches 272 C with 23.4 W of losses"));
+    // Re-pinned 2026-11-04 (ABT #2226, approved by Alf): the example is the first rejected coil in loss order now (the
+    // adviser orders its coils by losses, the score only breaking ties); it was "hot spot reaches 272 C with 23.4 W of losses".
+    CHECK_THAT(*noResultsReason, Catch::Matchers::ContainsSubstring("hot spot reaches 136 C with 9.17 W of losses"));
     settings.reset();
 }
 
@@ -2328,8 +2330,11 @@ TEST_CASE("Test_CoilAdviser_Web_3", "[adviser][coil-adviser][bug][smoke-test]") 
     // core_materials.ndjson the old text (564 C with 55.9 W) comes back, while Mix 70's own record restored alone
     // (composition iron, no provenance) does not, so the move comes from other material records. The coil is
     // still rejected by the temperature limit; its core now reaches Mix 70's Curie point and is held there.
-    CHECK_THAT(*noResultsReason, Catch::Matchers::ContainsSubstring("hot spot reaches at least 566 C, above the 130 C limit"));
-    CHECK_THAT(*noResultsReason, Catch::Matchers::ContainsSubstring("its losses were 55.4 W"));
+    // Re-pinned 2026-11-04 (ABT #2226, approved by Alf): the example is the first rejected coil in loss order now (the
+    // adviser orders its coils by losses, the score only breaking ties). It was a coil whose core reached Mix 70's Curie
+    // point: "hot spot reaches at least 566 C, above the 130 C limit" and "its losses were 55.4 W".
+    CHECK_THAT(*noResultsReason, Catch::Matchers::ContainsSubstring("hot spot reaches 407 C"));
+    CHECK_THAT(*noResultsReason, Catch::Matchers::ContainsSubstring("with 27.9 W of losses, above the 130 C limit"));
 
 }
 

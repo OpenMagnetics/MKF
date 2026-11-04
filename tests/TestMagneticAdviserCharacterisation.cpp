@@ -224,15 +224,22 @@ const std::vector<MagneticEntry> kTopThreeWinding = {
     // dropped by a COST throw; the old winner was out-scored. The per-design US$ were not broken down.
     // Re-pinned 2026-11-01 (ABT #1582, approved by Alf): the same three designs with and without the own-former rule, so
     // the rule did not cause the move from the 79 E 10/3. L 86.3, 86.3 and 111.6 uH, inside the fixture's 80-120 uH.
-    {"79 P 14/8/I gapped 0.30 mm, Turns: 26, Order: 012, Non-Interleaved, Margin Taped 00",
+    // Re-pinned 2026-11-04 (ABT #2226, approved by Alf): the CoilAdviser now orders the coils it returns by their losses
+    // (MagneticFilterLosses on the planned wind), the score only breaking ties, so the coil each core brings to the
+    // MagneticAdviser changed. Old top 3 (coil-adviser losses 0.596 / 0.586 / 0.716 W):
+    //   "79 P 14/8/I gapped 0.30 mm, Turns: 26, Order: 012, Non-Interleaved, Margin Taped 00", 36.0 || 41.0 || 41.0 Single Build, 2.3149134012428343
+    //   "79 P 14/8/I gapped 0.30 mm, Turns: 26, Order: 021, Non-Interleaved, Margin Taped 01", 36.0 || 44.0 || 41.0 Single Build, 2
+    //   "79 RM 6/I-R gapped 0.30 mm, Turns: 28, Order: 021, Non-Interleaved, Margin Taped 00", 33.0 || 38.0 || 38.0 Single Build, 1.1716032439500208
+    // New top 3: coil-adviser losses 0.331 / 0.322 / 0.369 W, the same two cores in winding order 102.
+    {"79 P 14/8/I gapped 0.30 mm, Turns: 26, Order: 102, Non-Interleaved, Margin Taped 00",
      "Round 36.0 - Single Build || Round 41.0 - Single Build || Round 41.0 - Single Build",
-     2.3149134012428343},
-    {"79 P 14/8/I gapped 0.30 mm, Turns: 26, Order: 021, Non-Interleaved, Margin Taped 01",
-     "Round 36.0 - Single Build || Round 44.0 - Single Build || Round 41.0 - Single Build",
-     2},
-    {"79 RM 6/I-R gapped 0.30 mm, Turns: 28, Order: 021, Non-Interleaved, Margin Taped 00",
+     2.4165906971317161},
+    {"79 RM 6/I-R gapped 0.30 mm, Turns: 28, Order: 102, Non-Interleaved, Margin Taped 00",
      "Round 33.0 - Single Build || Round 38.0 - Single Build || Round 38.0 - Single Build",
-     1.1716032439500208},
+     2},
+    {"79 RM 6/I-R gapped 0.30 mm, Turns: 28, Order: 102, Non-Interleaved, Margin Taped 01",
+     "Round 33.0 - Heavy Build || Round 38.0 - Single Build || Round 38.0 - Single Build",
+     1.641471883537829},
 };
 
 } // namespace

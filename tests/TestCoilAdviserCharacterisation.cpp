@@ -196,9 +196,15 @@ void check_structural_topN(const std::string& label,
 // 2.39 / 2.40 / 2.40 W.
 const std::vector<CoilStructural> kTopFlyback = {
     // core shape, material, turns x parallels per winding, wires, sections, layers, total turns
+    // Re-pinned 2026-11-04 (ABT #2226, approved by Alf): the adviser now orders the coils it returns by their losses
+    // (MagneticFilterLosses on the planned wind), the score only breaking ties. Old top 3:
+    //   {"ETD 59", "3C91", "82x1 || 5x2", "Litz TXXL40/40FXXX-2(MWXX) || Round T10A01PXXX-3",   4, 35, 87},  2.387 W
+    //   {"ETD 59", "3C91", "82x1 || 5x3", "Litz TXXL19/40TXXX-1.5(MWXX) || Round T14A01PXXX-3", 8, 68, 87},
+    //   {"ETD 59", "3C91", "82x1 || 5x3", "Litz TCA3 19/40 LITZ (MWXX) || Round T14A01PXXX-3",  8, 68, 87},
+    // New top 3 by losses: 2.373 W, 2.387 W (the old #1), 2.397 W.
+    {"ETD 59", "3C91", "82x1 || 5x2", "Litz TXXL19/40TXXX-2(MWXX) || Round T10A01PXXX-3",      4, 35, 87},
     {"ETD 59", "3C91", "82x1 || 5x2", "Litz TXXL40/40FXXX-2(MWXX) || Round T10A01PXXX-3",      4, 35, 87},
     {"ETD 59", "3C91", "82x1 || 5x3", "Litz TXXL19/40TXXX-1.5(MWXX) || Round T14A01PXXX-3",    8, 68, 87},
-    {"ETD 59", "3C91", "82x1 || 5x3", "Litz TCA3 19/40 LITZ (MWXX) || Round T14A01PXXX-3",     8, 68, 87},
 };
 
 } // namespace
