@@ -3599,6 +3599,9 @@ TEST_CASE("Test_CoilAdviser_Real_Winding_Web_Default_Two_Winding_PQ2715_Is_Not_R
     // and the slots the connection leads block, every wire within the current-density limit needs
     // more layers than a P|S section has. The adviser must return nothing, and say so: the reason
     // names the stations and the lead blocking.
+    // Premise note (Alf, 2026-11-04, reported, fixture unchanged): the refusal is now partly thermal.
+    // Four coils are re-wound with their connection leads planned (so they ARE real-windable) and then
+    // rejected by the temperature limit (hot spot 179 C), which the reason also names.
     settings.reset();
     settings.set_coil_delimit_and_compact(true);
     settings.set_preferred_wire_standard(MAS::WireStandard::IEC_60317);
@@ -3613,7 +3616,10 @@ TEST_CASE("Test_CoilAdviser_Real_Winding_Web_Default_Two_Winding_PQ2715_Is_Not_R
     INFO(reason);
     CHECK(reason.find("not real-windable in this window") != std::string::npos);
     CHECK(reason.find("crossing stations") != std::string::npos);
-    CHECK(reason.find("connection-lead blocking") != std::string::npos);
+    // The lead blocking is named as the final wind's refusal (a3c80755/04b16f00 plan the leads only for the coils
+    // about to be returned): "with its connection leads planned it does not fit" (Alf, 2026-11-04: update to the
+    // current wording).
+    CHECK(reason.find("connection leads planned") != std::string::npos);
 }
 
 TEST_CASE("Test_MagneticFilterAreaWithParallels_Reserves_Crossing_Stations_Only_With_Real_Winding", "[adviser][coil-adviser][magnetic-filter][bug][abt-1699]") {
