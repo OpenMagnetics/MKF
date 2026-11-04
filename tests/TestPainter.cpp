@@ -6010,4 +6010,132 @@ namespace {
         }
         settings.reset();
     }
+
+    // ABT #2257 (Alf, 2026-11-04): "when real winding is drawn, on the painter both halves, +x and -x,
+    // are drawn, and the side opposite of the entry has the slope of the turns taken into account. E.g.
+    // if a winding starts on +x and has 10 turns, there are 11 crossings on the +x side of the 2D
+    // painter, and 10 on the -x, and the 10 ones are at the in-between height of the 11 ones, coming
+    // from the slope." Each layer of N turns lays N+1 stations on +x and is crossed N times on -x, each
+    // far crossing half way between the two stations its revolution joins.
+    // Designs: 10 turns (one layer) and 40 turns (two layers) of Round 0.5 on an E 25/13/7.
+    TEST_CASE("Test_Painter_Real_Winding_Far_Side_At_The_Turns_Slope", "[support][painter][real-winding][whole-view][abt-2257]") {
+        // Every copper circle of the drawing: its centre (SVG user units) and its title.
+        struct CopperCircle {
+            double cx;
+            double cy;
+            std::string title;
+        };
+        auto copperCircles = [](const std::string& svg) {
+            std::vector<CopperCircle> circles;
+            const std::regex element("<circle\\b([^>]*)>\\s*<title>([^<]*)</title>");
+            for (auto it = std::sregex_iterator(svg.begin(), svg.end(), element); it != std::sregex_iterator(); ++it) {
+                const std::string attributes = it->str(1);
+                if (attributes.find("class=\"copper\"") == std::string::npos) {
+                    continue;
+                }
+                std::smatch cx, cy;
+                REQUIRE(std::regex_search(attributes, cx, std::regex("cx=\"([^\"]+)\"")));
+                REQUIRE(std::regex_search(attributes, cy, std::regex("cy=\"([^\"]+)\"")));
+                circles.push_back({std::stod(cx.str(1)), std::stod(cy.str(1)), it->str(2)});
+            }
+            return circles;
+        };
+
+        // The SVG writes coordinates to 0.1 user units, so a midpoint of two printed heights and the
+        // printed far height differ by up to two half-units of rounding.
+        const double svgResolution = 0.1 + 1e-9;
+        for (auto [numberTurns, expectedLayers] : {std::pair<int64_t, size_t>{10, 1}, std::pair<int64_t, size_t>{40, 2}}) {
+            settings.reset();
+            settings.set_coil_use_real_winding_geometry(true);
+            OpenMagnetics::Magnetic magnetic;
+            magnetic.set_core(OpenMagneticsTesting::get_quick_core("E 25/13/7", OpenMagneticsTesting::get_ground_gap(0.001), 1, "N87"));
+            magnetic.set_coil(OpenMagneticsTesting::get_quick_coil({numberTurns}, {1}, "E 25/13/7", 1, WindingOrientation::OVERLAPPING,
+                                                                   WindingOrientation::OVERLAPPING, CoilAlignment::CENTERED,
+                                                                   CoilAlignment::CENTERED, {find_wire_by_name("Round 0.5 - Grade 1")}));
+            auto& coil = magnetic.get_mutable_coil();
+            const auto turns = coil.get_turns_description().value();
+            std::map<std::string, std::vector<size_t>> stationsPerLayer;
+            for (size_t index = 0; index < turns.size(); ++index) {
+                REQUIRE(turns[index].get_layer());
+                stationsPerLayer[turns[index].get_layer().value()].push_back(index);
+            }
+            INFO(numberTurns << " turns: " << turns.size() << " stations in " << stationsPerLayer.size() << " layers");
+            // The premise: N turns in the expected layers, one more station than turns per layer.
+            REQUIRE(stationsPerLayer.size() == expectedLayers);
+            REQUIRE(turns.size() == size_t(numberTurns) + expectedLayers);
+
+            auto outFile = outputFilePath;
+            outFile.append("Test_Painter_Real_Winding_Far_Side_At_The_Turns_Slope_" + std::to_string(numberTurns) + ".svg");
+            std::filesystem::remove(outFile);
+            Painter painter(outFile);
+            painter.paint_magnetic(magnetic, PainterProjection::XY);
+            const auto svg = painter.export_svg();
+            REQUIRE(std::filesystem::exists(outFile));
+
+            // A round turn is drawn as several concentric circles (insulation, copper); the copper one
+            // carries the turn's name. +x: one per station; -x: one per revolution.
+            std::map<std::string, CopperCircle> nearSide;
+            std::vector<CopperCircle> farSide;
+            for (const auto& circle : copperCircles(svg)) {
+                if (circle.cx > 0) {
+                    nearSide[circle.title] = circle;
+                }
+                else {
+                    farSide.push_back(circle);
+                }
+            }
+            CHECK(nearSide.size() == turns.size());
+            CHECK(farSide.size() == size_t(numberTurns));
+
+            // Per layer: its stations sorted by height; every far crossing of the layer lies strictly
+            // between two consecutive stations, at their midpoint, one per gap.
+            for (const auto& [layer, stations] : stationsPerLayer) {
+                std::vector<double> stationHeights;
+                double stationX = 0;
+                for (size_t index : stations) {
+                    REQUIRE(nearSide.contains(turns[index].get_name()));
+                    stationHeights.push_back(nearSide[turns[index].get_name()].cy);
+                    stationX = nearSide[turns[index].get_name()].cx;
+                }
+                std::sort(stationHeights.begin(), stationHeights.end());
+                std::vector<double> farHeights;
+                for (const auto& circle : farSide) {
+                    if (std::abs(circle.cx + stationX) < svgResolution) {
+                        farHeights.push_back(circle.cy);
+                    }
+                }
+                std::sort(farHeights.begin(), farHeights.end());
+                INFO("layer " << layer);
+                REQUIRE(farHeights.size() + 1 == stationHeights.size());
+                for (size_t gap = 0; gap < farHeights.size(); ++gap) {
+                    const double midpoint = (stationHeights[gap] + stationHeights[gap + 1]) / 2;
+                    CHECK_THAT(farHeights[gap], Catch::Matchers::WithinAbs(midpoint, svgResolution));
+                    CHECK(farHeights[gap] > stationHeights[gap]);
+                    CHECK(farHeights[gap] < stationHeights[gap + 1]);
+                }
+            }
+
+            // The drawing is MKF's own turn geometry: every revolution Coil reports is drawn at -x at
+            // its half-path point, named after the station it leaves.
+            const auto revolutions = coil.get_revolutions_at_half_path();
+            CHECK(revolutions.size() == size_t(numberTurns));
+            for (const auto& revolution : revolutions) {
+                const auto& from = nearSide[turns[revolution.fromTurn].get_name()];
+                const auto& to = nearSide[turns[revolution.toTurn].get_name()];
+                const auto far = std::find_if(farSide.begin(), farSide.end(), [&](const CopperCircle& circle) {
+                    return circle.title == turns[revolution.fromTurn].get_name() + " (far side)";
+                });
+                REQUIRE(far != farSide.end());
+                CHECK_THAT(far->cy, Catch::Matchers::WithinAbs((from.cy + to.cy) / 2, svgResolution));
+                CHECK_THAT(far->cx, Catch::Matchers::WithinAbs(-(from.cx + to.cx) / 2, svgResolution));
+                // In metres, from the turns description itself: the midpoint of the two stations.
+                const auto& fromStation = turns[revolution.fromTurn].get_coordinates();
+                const auto& toStation = turns[revolution.toTurn].get_coordinates();
+                CHECK(turns[revolution.fromTurn].get_layer().value() == turns[revolution.toTurn].get_layer().value());
+                CHECK_THAT(revolution.coordinates[1], Catch::Matchers::WithinAbs((fromStation[1] + toStation[1]) / 2, 1e-12));
+                CHECK_THAT(revolution.coordinates[0], Catch::Matchers::WithinAbs((fromStation[0] + toStation[0]) / 2, 1e-12));
+            }
+        }
+        settings.reset();
+    }
 }  // namespace

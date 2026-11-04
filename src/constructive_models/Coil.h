@@ -508,6 +508,23 @@ struct AxialLead {
 // and its ramp may leave the face: the straight on a rectangular column, the radius of the arc the
 // face is on a round or oblong one. Built by Coil::terminal_turn_path.
 //
+// ABT #2257 (Alf, 2026-11-04): one REVOLUTION of a real-winding conductor and the point of the
+// winding-window section it passes through half way round. Under real winding a turns-description
+// entry is a STATION, the conductor's crossing of the connection plane (the 2-D section), and a layer
+// of N turns lays N+1 of them (fence post): each revolution runs from one station to the conductor's
+// next station IN THE SAME LAYER. A conductor changing layer does it by a connection (a link in the
+// connection plane, or a dragback), not by a revolution, so a layer change starts no revolution.
+// The revolution climbs its advance (the step from its first station to its last) uniformly along its
+// whole path (MVB++ appendRoundWrap / appendRectWrap, the model Coil::terminal_turn_height_along
+// reads), and the column it wraps is mirror-symmetric about the plane of the crossing, so half its
+// path is the far crossing, opposite the connection plane: there it stands at the MIDPOINT of its two
+// stations, axially (the helix of an overlapping layer) and radially (the spiral of a contiguous one).
+struct RevolutionHalfPath {
+    size_t fromTurn = 0;               // index in the turns description of the station it leaves
+    size_t toTurn = 0;                 // index of the station it reaches (the conductor's next one)
+    std::vector<double> coordinates;   // {x, y} half way round, in the section frame of the stations
+};
+
 // ABT #1705: seen across the column, the turn is a rounded rectangle about the wound column's axis
 // (the connection face at -z): straights of half length faceHalfStraight along x (the connection
 // face) and lateralHalfStraight along z (the lateral faces), joined by arcs of cornerRadius. ROUND:
@@ -1422,6 +1439,12 @@ class Coil : public MAS::Coil {
         // (fromTurn, toTurn). The single source both the #1424 refusal and the LINK-PITCH pass read,
         // so neither re-derives a link from the slope between two stations.
         std::map<std::pair<std::string, std::string>, ConnectionKind> connection_kind_by_transition();
+        // ABT #2257: every revolution of every conductor, in turns-description order of its first
+        // station, with the point half way round (RevolutionHalfPath). Real winding only, where the turns
+        // description holds stations; throws under ideal winding, on a planar coil (a printed trace is a
+        // spiral on its board, not a revolution round a column), when the turns are not wound, and on a
+        // station that names no layer.
+        std::vector<RevolutionHalfPath> get_revolutions_at_half_path();
         // ABT #1424: the kinds drawn as ONE step in the connection plane, pinned there (MVB++
         // registers them as pinned verticals): the U turnaround, the same-section tangential link
         // and the final landing. Sibling parallels' copies of these share the plane.

@@ -802,6 +802,15 @@ void Painter::paint_two_piece_set_coil_turns(Magnetic magnetic, bool skipMarginA
 
     auto turns = coil.get_turns_description().value();
     const auto mainColumnSections = sections_wound_round_the_main_column(magnetic);
+    // ABT #2257 (Alf, 2026-11-04): the far crossings, drawn at -x, are the conductor's REVOLUTIONS
+    // half way round, from MKF's own turn geometry (Coil::get_revolutions_at_half_path), keyed by the
+    // station each revolution leaves.
+    std::map<size_t, std::vector<double>> farCrossingByStation;
+    if (!mainColumnSections.empty()) {
+        for (const auto& revolution : coil.get_revolutions_at_half_path()) {
+            farCrossingByStation[revolution.fromTurn] = revolution.coordinates;
+        }
+    }
 
     auto shapes = _root.add_child<SVG::Group>();
 
@@ -841,12 +850,12 @@ void Painter::paint_two_piece_set_coil_turns(Magnetic magnetic, bool skipMarginA
 
         auto windingIndex = coil.get_winding_index_by_name(turns[i].get_winding());
         auto wire = wirePerWinding[windingIndex];
-        auto paintTurnAt = [&](double turnX, double turnY) {
+        auto paintTurnAt = [&](double turnX, double turnY, const std::string& label) {
             if (wirePerWinding[windingIndex].get_type() == WireType::ROUND) {
-                paint_round_wire(turnX, turnY, wirePerWinding[windingIndex], turns[i].get_name());
+                paint_round_wire(turnX, turnY, wirePerWinding[windingIndex], label);
             }
             else if (wirePerWinding[windingIndex].get_type() == WireType::LITZ) {
-                paint_litz_wire(turnX, turnY, wirePerWinding[windingIndex], turns[i].get_name());
+                paint_litz_wire(turnX, turnY, wirePerWinding[windingIndex], label);
             }
             else {
                 {
@@ -873,7 +882,7 @@ void Painter::paint_two_piece_set_coil_turns(Magnetic magnetic, bool skipMarginA
                         }
                         outerHeight = resolve_dimensional_values(wire.get_conducting_height().value());
                     }
-                    paint_rectangle(xCoordinate, yCoordinate, outerWidth, outerHeight, "turn_" + std::to_string(i), shapes, 0, {0, 0}, turns[i].get_name());
+                    paint_rectangle(xCoordinate, yCoordinate, outerWidth, outerHeight, "turn_" + std::to_string(i), shapes, 0, {0, 0}, label);
                 }
 
                 if (wire.get_conducting_width() && wire.get_conducting_height()) {
@@ -881,22 +890,25 @@ void Painter::paint_two_piece_set_coil_turns(Magnetic magnetic, bool skipMarginA
                     double yCoordinate = turnY;
                     double conductingWidth = resolve_dimensional_values(wire.get_conducting_width().value());
                     double conductingHeight = resolve_dimensional_values(wire.get_conducting_height().value());
-                    paint_rectangle(xCoordinate, yCoordinate, conductingWidth, conductingHeight, "copper", shapes, 0, {0, 0}, turns[i].get_name());
+                    paint_rectangle(xCoordinate, yCoordinate, conductingWidth, conductingHeight, "copper", shapes, 0, {0, 0}, label);
                 }
             }
         };
-        paintTurnAt(turns[i].get_coordinates()[0], turns[i].get_coordinates()[1]);
-        // Alf, 2026-10-27: under real winding the whole magnetic is drawn. A turn wound round the
-        // main column is a whole loop at radial distance x from its axis (x = 0): it crosses this
-        // plane at its station AND at -x, at the station's height -- the one height its 2-D data
-        // gives. A turn that already states its second crossing (additionalCoordinates) is drawn
-        // from that below instead.
+        paintTurnAt(turns[i].get_coordinates()[0], turns[i].get_coordinates()[1], turns[i].get_name());
+        // Alf, 2026-10-27: under real winding the whole magnetic is drawn. ABT #2257 (Alf, 2026-11-04):
+        // each entry is a STATION, the conductor's crossing of this plane on +x, and a layer of N turns
+        // lays N+1 of them; the -x side is crossed once per REVOLUTION, N times, half way between the
+        // two stations the revolution joins, because the turn climbs along its slope while it goes round
+        // the column (Coil::get_revolutions_at_half_path). The far crossing of a revolution round the
+        // main column (axis x = 0) is that point reflected to -x. A turn that already states its second
+        // crossing (additionalCoordinates) is drawn from that below instead.
         if (!turns[i].get_additional_coordinates() && !mainColumnSections.empty()) {
             if (!turns[i].get_section()) {
                 throw CoilNotProcessedException("Painter: turn '" + turns[i].get_name() + "' names no section, so the whole-magnetic view cannot tell which column it wraps");
             }
-            if (mainColumnSections.contains(turns[i].get_section().value())) {
-                paintTurnAt(-turns[i].get_coordinates()[0], turns[i].get_coordinates()[1]);
+            const auto farCrossing = farCrossingByStation.find(i);
+            if (mainColumnSections.contains(turns[i].get_section().value()) && farCrossing != farCrossingByStation.end()) {
+                paintTurnAt(-farCrossing->second[0], farCrossing->second[1], turns[i].get_name() + " (far side)");
             }
         }
 

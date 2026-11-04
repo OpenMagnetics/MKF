@@ -15077,6 +15077,49 @@ std::map<std::pair<std::string, std::string>, ConnectionKind> Coil::connection_k
     return kinds;
 }
 
+std::vector<RevolutionHalfPath> Coil::get_revolutions_at_half_path() {
+    if (!settings.get_coil_use_real_winding_geometry()) {
+        throw InvalidInputException(ErrorCode::INVALID_COIL_CONFIGURATION,
+            "Coil: the revolutions of a coil are known only under real winding geometry, where each turn of the turns description is a station");
+    }
+    if (is_planar()) {
+        throw InvalidInputException(ErrorCode::INVALID_COIL_CONFIGURATION,
+            "Coil: a planar coil's turns are spirals on their boards, not revolutions round a column");
+    }
+    if (!get_turns_description()) {
+        throw CoilNotProcessedException("Coil: the revolutions need the turns description");
+    }
+    const auto turns = get_turns_description().value();
+    // The previous station of each conductor (winding, parallel): the turns description lists each
+    // parallel's stations in electrical order.
+    std::map<std::pair<std::string, int64_t>, size_t> previousOfConductor;
+    std::vector<RevolutionHalfPath> revolutions;
+    for (size_t index = 0; index < turns.size(); ++index) {
+        const auto& turn = turns[index];
+        if (!turn.get_layer()) {
+            throw CoilNotProcessedException("Coil: station '" + turn.get_name() + "' names no layer, so its revolutions cannot be told from its layer changes");
+        }
+        if (turn.get_coordinates().size() < 2) {
+            throw CoilNotProcessedException("Coil: station '" + turn.get_name() + "' has no section coordinates");
+        }
+        const auto key = std::make_pair(turn.get_winding(), turn.get_parallel());
+        const auto found = previousOfConductor.find(key);
+        if (found != previousOfConductor.end()) {
+            const auto& from = turns[found->second];
+            if (from.get_layer().value() == turn.get_layer().value()) {
+                RevolutionHalfPath revolution;
+                revolution.fromTurn = found->second;
+                revolution.toTurn = index;
+                revolution.coordinates = {(from.get_coordinates()[0] + turn.get_coordinates()[0]) / 2,
+                                          (from.get_coordinates()[1] + turn.get_coordinates()[1]) / 2};
+                revolutions.push_back(revolution);
+            }
+        }
+        previousOfConductor[key] = index;
+    }
+    return revolutions;
+}
+
 // ABT #1424. What a connection between two layers IS comes from MKF's own connection layout
 // (get_connection_reserved_spaces, which decides it from the winding order, the single-turn-layer
 // rule, the final-landing rule and whether intervening layers are crossed) -- never from the slope
