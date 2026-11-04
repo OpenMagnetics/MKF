@@ -8596,14 +8596,14 @@ std::map<std::string, uint64_t> Coil::align_blocked_ring_turns(bool forceSpreadB
                     double turnRadius = std::hypot(turns[t].get_coordinates()[0], turns[t].get_coordinates()[1]);
                     double newAngleRadians = newAngleDegrees / 180.0 * std::numbers::pi;
                     turns[t].set_coordinates(std::vector<double>{
-                        roundFloat(turnRadius * std::cos(newAngleRadians), 9),
-                        roundFloat(turnRadius * std::sin(newAngleRadians), 9), 0});
+                        turnRadius * std::cos(newAngleRadians),
+                        turnRadius * std::sin(newAngleRadians), 0});
                     if (turns[t].get_additional_coordinates()) {
                         auto additionalCoordinates = turns[t].get_additional_coordinates().value();
                         for (auto& additional : additionalCoordinates) {
                             double additionalRadius = std::hypot(additional[0], additional[1]);
-                            additional = {roundFloat(additionalRadius * std::cos(newAngleRadians), 9),
-                                          roundFloat(additionalRadius * std::sin(newAngleRadians), 9)};
+                            additional = {additionalRadius * std::cos(newAngleRadians),
+                                          additionalRadius * std::sin(newAngleRadians)};
                         }
                         turns[t].set_additional_coordinates(additionalCoordinates);
                     }
@@ -8880,16 +8880,16 @@ std::map<std::string, uint64_t> Coil::align_blocked_ring_turns(bool forceSpreadB
                 double turnRadius = std::hypot(turns[t].get_coordinates()[0], turns[t].get_coordinates()[1]);
                 double positionRadians = position / 180.0 * std::numbers::pi;
                 turns[t].set_coordinates(std::vector<double>{
-                    roundFloat(turnRadius * std::cos(positionRadians), 9),
-                    roundFloat(turnRadius * std::sin(positionRadians), 9)});
+                    turnRadius * std::cos(positionRadians),
+                    turnRadius * std::sin(positionRadians)});
                 // Same invariant as ABT #186: a toroidal turn's rotation is its azimuth.
                 turns[t].set_rotation(roundFloat(position, 6));
                 if (turns[t].get_additional_coordinates()) {
                     auto additionalCoordinates = turns[t].get_additional_coordinates().value();
                     for (auto& additional : additionalCoordinates) {
                         double additionalRadius = std::hypot(additional[0], additional[1]);
-                        additional = {roundFloat(additionalRadius * std::cos(positionRadians), 9),
-                                      roundFloat(additionalRadius * std::sin(positionRadians), 9)};
+                        additional = {additionalRadius * std::cos(positionRadians),
+                                      additionalRadius * std::sin(positionRadians)};
                     }
                     turns[t].set_additional_coordinates(additionalCoordinates);
                 }
