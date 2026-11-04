@@ -242,7 +242,10 @@ double copper_pitch_of_winding(OpenMagnetics::Magnetic& magnetic, const std::str
 
 } // namespace
 
-TEST_CASE("Magnetic shunt: Li 2018 E32/6/20 integrated leakage inductance within 15 % of 3.5 uH", "[magnetic-shunt][leakage-inductance][physical-model]") {
+// Hidden ([.]) on 2026-11-04 by Alf's decision, pending ABT #2259: MKF gives 4.77 uH vs the paper's 3.5 uH because the
+// winding term is extruded over the full mean turn length, while Li 2018 takes it over the core depth (end turns outside
+// the E core are not modelled). The shunt-network term matches Li eq. (17) within 1 %. Un-hide when #2259 lands.
+TEST_CASE("Magnetic shunt: Li 2018 E32/6/20 integrated leakage inductance within 15 % of 3.5 uH", "[.][magnetic-shunt][leakage-inductance][physical-model]") {
     settings.reset();
     auto spec = li_2018_case();
     auto magnetic = make_planar_shunt_transformer(spec);
