@@ -365,8 +365,17 @@ std::shared_ptr<BobbinDataProcessor> BobbinDataProcessor::factory(Bobbin bobbin)
     }
 }
 
+// The catalogue generation the interpolators and the own-former table above were built from (per thread, like
+// them). A LibraryContext scope swaps the bobbin and core-shape catalogues these are fitted over, and a Replace scope
+// empties the bobbins, so the fits are rebuilt inside it from that scope's shapes only; without this stamp that
+// narrow fit outlived the scope and served every later call on the full catalogue (a 5-shape PQ context left the
+// filling factor of an E 19/8/10 window at -0.04 and dropped ETD 29/16/10's own former).
+static thread_local std::optional<uint64_t> bobbinInterpolatorsCatalogueGeneration;
+
 void load_interpolators() {
     if (bobbinDatabase.empty() ||
+        !bobbinInterpolatorsCatalogueGeneration ||
+        bobbinInterpolatorsCatalogueGeneration.value() != catalogueGeneration.load(std::memory_order_relaxed) ||
         bobbinFillingFactorInterpWidth.get_x().size() == 0 || 
         bobbinFillingFactorInterpHeight.get_x().size() == 0 || 
         bobbinWindingWindowProportionInterpWidth.get_x().size() == 0 || 
@@ -642,6 +651,8 @@ void load_interpolators() {
             bobbinColumnCornerSamples[columnShape] = table;
         }
         bobbinColumnCornerSamplesLoaded = true;
+        // Stamped last: load_bobbins and the shape lookups above may load a catalogue (and bump the generation).
+        bobbinInterpolatorsCatalogueGeneration = catalogueGeneration.load(std::memory_order_relaxed);
     }
 }
 

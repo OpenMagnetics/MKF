@@ -126,6 +126,41 @@ TEST_CASE("LibraryContext: filterWiresByConstraints respects wire type", "[libra
     }
 }
 
+TEST_CASE("LibraryContext: the bobbin fits a Replace scope builds from its own shapes end with the scope", "[library-context][smoke-test]") {
+    // A Replace scope empties the bobbin catalogue, so a bobbin query inside it re-fits the bobbin interpolators and
+    // the own-former table over the formers of the scope's shapes only. Those fits must not outlive the scope: they
+    // used to, and the next full-catalogue advise read an E 19/8/10 window's filling factor as -0.04 ("no usable
+    // winding window") and lost ETD 29/16/10's own former.
+    if (coreShapeDatabase.empty()) load_core_shapes();
+    const double windowWidth = 0.004;
+    const double windowHeight = 0.0114;
+    const double fillingFactorBefore = OpenMagnetics::Bobbin::get_filling_factor(windowWidth, windowHeight);
+    REQUIRE(OpenMagnetics::Bobbin::get_own_catalogue_former("ETD 29/16/10"));
+    const std::string ownFormerBefore = OpenMagnetics::Bobbin::get_own_catalogue_former("ETD 29/16/10")->formerName;
+
+    json ctxJson;
+    ctxJson["coreShapes"] = json::object();
+    for (const std::string name : {"PQ 26/20", "PQ 26/25", "PQ 32/20", "PQ 32/30", "PQ 40/40"}) {
+        REQUIRE(coreShapeDatabase.count(name) == 1);
+        json shapeJson;
+        to_json(shapeJson, coreShapeDatabase.at(name));
+        ctxJson["coreShapes"][name] = shapeJson;
+    }
+    LibraryContext ctx;
+    ctx.loadFromString(ctxJson.dump(), LibraryContext::LoadMode::Replace);
+    {
+        auto scope = ctx.applyScoped();
+        REQUIRE(coreShapeDatabase.size() == 5);
+        // Inside the scope the fits see the PQ formers only: ETD 29/16/10 has no former here.
+        REQUIRE_FALSE(OpenMagnetics::Bobbin::get_own_catalogue_former("ETD 29/16/10"));
+        REQUIRE(OpenMagnetics::Bobbin::get_filling_factor(windowWidth, windowHeight) != fillingFactorBefore);
+    }
+
+    REQUIRE(OpenMagnetics::Bobbin::get_filling_factor(windowWidth, windowHeight) == fillingFactorBefore);
+    REQUIRE(OpenMagnetics::Bobbin::get_own_catalogue_former("ETD 29/16/10"));
+    REQUIRE(OpenMagnetics::Bobbin::get_own_catalogue_former("ETD 29/16/10")->formerName == ownFormerBefore);
+}
+
 } // namespace
 
 TEST_CASE("LibraryContext: Replace ctx adviser returns results from the context only", "[library-context][adviser]") {
