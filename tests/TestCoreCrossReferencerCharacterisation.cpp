@@ -51,6 +51,10 @@ namespace {
 
 constexpr bool kRegenerateBaselines = false;
 constexpr double kRelTol = 1e-6;
+// DEFAULT_FERRITE only: 1e-4, approved by Alf on 2026-11-04 ("Re-pin all 5, kRelTol 1e-4"). Its slot-0 score
+// had moved by 1.3e-6 relative with the same core, which failed the 1e-6 pin on its own. The core NAMES are
+// still compared exactly, so an identity flip fails as before.
+constexpr double kRelTolDefault = 1e-4;
 
 struct TopEntry {
     std::string name;
@@ -59,7 +63,8 @@ struct TopEntry {
 
 void check_top_n(const std::string& label,
                  const std::vector<std::pair<Core, double>>& got,
-                 const std::vector<TopEntry>& expectedTop) {
+                 const std::vector<TopEntry>& expectedTop,
+                 double relTol = kRelTol) {
     if (kRegenerateBaselines || expectedTop.empty()) {
         std::cerr << "\nBASELINE TOPN " << label << " count=" << got.size() << "\n";
         for (size_t i = 0; i < got.size(); ++i) {
@@ -85,7 +90,7 @@ void check_top_n(const std::string& label,
                     << name << "\" score=" << std::setprecision(17)
                     << got[i].second);
         REQUIRE(name == expectedTop[i].name);
-        REQUIRE_THAT(got[i].second, WithinRel(expectedTop[i].score, kRelTol));
+        REQUIRE_THAT(got[i].second, WithinRel(expectedTop[i].score, relTol));
     }
 }
 
@@ -137,12 +142,22 @@ void check_top_n(const std::string& label,
 // 2.5615519709070664 with AND without the #832 loss fixes). Slots 0-1 keep their
 // identities with scores +0.35%; the Sinomag E 35 - MS 75 (6a97c76) enters at
 // slot 3, displacing the Edge 75 toroid from the five.
+// Re-pinned 2026-11-04 (Alf approved: "Re-pin all 5, kRelTol 1e-4"; see kRelTolDefault).
+// Moved by c0a840c0 (2026-10-11, ABT #1739: mu_i(T) read from the measured tables, no floor at 1; MAS -> 8e03cd0
+// with Ferroxcube's measured mu_i(T) and new Curie temperatures). Bisected on clean builds over 15ce7e25..8e935f20:
+// fac0d777 passes the old pin, c0a840c0 gives these values exactly. The slot-0 core is unchanged (score -1.3e-6);
+// Kool Mu MAX 75 and OE 75 drop out because only the top int(1.1 x 5) = 5 geometric candidates reach the loss and
+// saturation scoring (they are 6th and later now; the order depends on the requested count, see apply_filters).
+// Old: EC 35/17/10 3C94 3.0915514 | T 28/14/12 Kool Mµ MAX 75 2.5615520 | T 27/14.7/14.0 OE 75 2.4040048 |
+//      E 35 MS 75 2.3430703 | T 27/14.5/14.6 Mix 66 2.1095916.
+// New: EC 35/17/10 3C94 3.0915474 | T 27/14.5/14.6 Mix 66 2.5660300 | E 35 MS 75 2.5342217 |
+//      E 35 Mix 52 2.3019516 | E 35 Mix 26 2.0388255.
 const std::vector<TopEntry> kTopDefault = {
-    {"EC 35/17/10 - 3C94 - Gapped 1.000 mm",                     3.0915514269885755},
-    {"T 28/14/12 - epoxy coated - Kool Mµ MAX 75 - Ungapped",     2.5615519709070664},
-    {"T 27/14.7/14.0 - parylene coated - OE 75 - Ungapped",      2.4040047968636729},
-    {"E 35 - MS 75 - Ungapped",                                  2.3430702691969802},
-    {"T 27/14.5/14.6 - parylene coated - Mix 66 - Ungapped",     2.1095915649474666},
+    {"EC 35/17/10 - 3C94 - Gapped 1.000 mm",                     3.0915474073038323},
+    {"T 27/14.5/14.6 - parylene coated - Mix 66 - Ungapped",     2.5660300148730584},
+    {"E 35 - MS 75 - Ungapped",                                  2.5342217224600243},
+    {"E 35 - Mix 52 - Ungapped",                                 2.3019515870195209},
+    {"E 35 - Mix 26 - Ungapped",                                 2.038825529217986},
 };
 
 // Refreshed 2026-06-16 (ABT #10): identical ordering, scores nudged < 0.3 %
@@ -211,7 +226,7 @@ TEST_CASE("CoreCrossReferencer default ferrite top-5 snapshot",
     Core ref = find_core_by_name("EC 35/17/10 - 3C91 - Gapped 1.000 mm");
     auto inputs = OpenMagneticsTesting::create_quick_test_inputs();
     auto results = xref.get_cross_referenced_core(ref, 28, inputs, 5);
-    check_top_n("DEFAULT_FERRITE", results, kTopDefault);
+    check_top_n("DEFAULT_FERRITE", results, kTopDefault, kRelTolDefault);
 }
 
 TEST_CASE("CoreCrossReferencer same-material top-5 snapshot",

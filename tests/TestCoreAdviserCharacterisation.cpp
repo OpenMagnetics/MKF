@@ -308,12 +308,27 @@ const std::vector<TopEntry> kTopAvailablePower = {
 // Re-baselined 2026-09-29 (ABT #1456 with the MAS refits of ABT #1490, Alf: "finish the material part
 // without asking"): Fair-Rite 95/97/98 were refitted from Fair-Rite's own curves, and the picks move
 // from 98 to 97 on the same shapes (PQ 27/15 and RM 10/ILP keep slots 0-1); scores within 0.7 %.
+// Re-pinned 2026-11-04 (Alf approved: "Resolve the 350 C oddity, then re-pin"). Red on main since early
+// October, moved by several commits since the 2026-09-29 pin (already failing at c3f2ee6d on 10-06, top-1
+// 95 RM 10/ILP 4.7275; 95 EQ 26/19/7 4.6212 on 10-10/11); the values below are main 77730579's.
+// Old: 97 PQ 27/15 0.80 mm 3.7333 | 97 RM 10/ILP 0.80 mm 3.7203 | 97 E 19/8.1/4.8 3 stacks 5 x 0.20 mm 3.6996 |
+//      97 EQ 25/6 0.90 mm 3.6871 | 97 HS 26/16 3 x 0.40 mm 3.6860.
+// New: 95 PQ 27/15 0.80 mm 4.4914 | 97 PQ 27/15 0.80 mm 4.4568 | 95 EQ 26/19/7 1.00 mm 4.2896 |
+//      97 EQ 26/19/7 1.00 mm 4.2684 | 95 HS 26/16 3 x 0.40 mm 4.2165.
+// The 350 C: MagneticSimulator::simulate run on the top pick as returned (its stand-in coil: 22 turns x 4
+// parallels of 0.42 mm round wire, 10 layers) gives 17.4 W of winding loss at 25 C against 0.44 W DC
+// (R_ac/R_dc about 40: ten layers at d/delta about 2 at 100 kHz, next to a 0.8 mm gap). That heats the part
+// past 95's Curie point (220 C); the loss loop holds the core there as a paramagnetic core (ABT #1855), and
+// this single-winding inductor keeps the current it is given (ABT #1814), so B_peak falls to the mu_r = 1
+// value, 0.0038 T, and the winding hot spot settles at 350 C. Not a bug: the core stage scores core + DC
+// copper only (ABT #1891) and reports 0.93 W core, 0.51 W copper, B_peak 0.16 T, 65 C for this pick; the
+// stand-in coil is not a winding design, the coil stage chooses the wire.
 const std::vector<TopEntry> kTopStandardPower = {
-    {"97 PQ 27/15 gapped 0.80 mm",                 3.733259878439477},
-    {"97 RM 10/ILP gapped 0.80 mm",                3.7202571345411686},
-    {"97 E 19/8.1/4.8 3 stacks gapped 5 x 0.20 mm", 3.6996451303855462},
-    {"97 EQ 25/6 gapped 0.90 mm",                  3.6871051530308634},
-    {"97 HS 26/16 gapped 3 x 0.40 mm",             3.6859769971171357},
+    {"95 PQ 27/15 gapped 0.80 mm",                 4.4913804397265293},
+    {"97 PQ 27/15 gapped 0.80 mm",                 4.4567991311202562},
+    {"95 EQ 26/19/7 gapped 1.00 mm",               4.2895670911736117},
+    {"97 EQ 26/19/7 gapped 1.00 mm",               4.2684387660094609},
+    {"95 HS 26/16 gapped 3 x 0.40 mm",             4.2165161259258195},
 };
 
 // Refreshed 2026-06-16 (ABT #10) after landing the suppression returns-0 fix
