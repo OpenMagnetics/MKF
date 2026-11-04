@@ -5787,17 +5787,49 @@ TEST_CASE("Test_Loss_Factor_Interpolation_Stays_Between_Neighbouring_Points_Near
     // 3.0726 MHz to 426 at 3.1623 MHz. The cubic spline through those points swung below zero just before the
     // jump (N4 -22.0 at 2.1 MHz, N10 -1.69 at 3.0 MHz), so a flyback's harmonics refused every N4/N10 core.
     // Interpolated linearly in log-log, each value lies between its neighbouring points.
-    struct Probe { const char* material; double frequency; double below; double above; };
-    for (const auto& p : {Probe{"N4", 2.1e6, 0.6493, 2.5096}, Probe{"N10", 3.0e6, 2.2054, 8.1365}}) {
-        INFO(p.material);
-        auto material = find_core_material_by_name(p.material);
-        double lossFactor = CoreLossesLossFactorModel::get_loss_factor(material, p.frequency);
+    // ABT #2251 cut these jumps from MAS: ACME's catalogue prints N4 only up to 1.39 MHz and N10 up to 531 kHz.
+    // The fixture therefore carries the top ten rows N4 and N10 held before that cut (MAS 6e288e9), on copies
+    // under their own names (the interpolant cache is keyed by name), so the steep jump is still exercised.
+    struct Row { double frequency; double value; };
+    auto material_with_loss_factor_rows = [](const std::string& libraryName, const std::vector<Row>& rows) {
+        json materialJson;
+        to_json(materialJson, find_core_material_by_name(libraryName));
+        json factors = json::array();
+        for (const auto& row : rows) {
+            factors.push_back({{"frequency", row.frequency}, {"value", row.value}});
+        }
+        bool replaced = false;
+        for (auto& method : materialJson["volumetricLosses"]["default"]) {
+            if (method.is_object() && method.value("method", "") == "lossFactor") {
+                method["factors"] = factors;
+                replaced = true;
+            }
+        }
+        REQUIRE(replaced);
+        materialJson["name"] = libraryName + " with its pre-ABT-2251 resonance rows";
+        CoreMaterial material;
+        from_json(materialJson, material);
+        return material;
+    };
+    auto n4 = material_with_loss_factor_rows("N4", {
+        {1883649.089, 0.025142734070276476}, {1910952.975, 0.03332474375657928}, {1938652.636, 0.04517827556127248},
+        {1966753.809, 0.06496599200494446}, {1995262.315, 0.09648799800653764}, {2024184.057, 0.15593898184105018},
+        {2053525.026, 0.28733550203194713}, {2083291.299, 0.6492584118357331}, {2113489.04, 2.5096036848452936},
+        {2144124.503, 357.14807208759873}});
+    auto n10 = material_with_loss_factor_rows("N10", {
+        {2440619.068, 0.10272451832295507}, {2511886.432, 0.13288480170470712}, {2585234.84, 0.1779706951580056},
+        {2660725.06, 0.2488844573293423}, {2738419.634, 0.36369284115665923}, {2818382.931, 0.5819390355585514},
+        {2900681.199, 1.0412317918830565}, {2985382.619, 2.2053926521859974}, {3072557.365, 8.136487754684945},
+        {3162277.66, 425.5459514995429}});
+    struct Probe { const CoreMaterial* material; double frequency; double below; double above; };
+    for (const auto& p : {Probe{&n4, 2.1e6, 0.6493, 2.5096}, Probe{&n10, 3.0e6, 2.2054, 8.1365}}) {
+        INFO(p.material->get_name());
+        double lossFactor = CoreLossesLossFactorModel::get_loss_factor(*p.material, p.frequency);
         CHECK(lossFactor >= p.below * 0.999);
         CHECK(lossFactor <= p.above * 1.001);
     }
     // At a data point it is the datum.
-    auto n4 = find_core_material_by_name("N4");
-    CHECK_THAT(CoreLossesLossFactorModel::get_loss_factor(n4, 2113489.0), Catch::Matchers::WithinRel(2.5096, 1e-3));
+    CHECK_THAT(CoreLossesLossFactorModel::get_loss_factor(n4, 2113489.04), Catch::Matchers::WithinRel(2.5096, 1e-3));
 }
 
 TEST_CASE("Test_Core_Losses_Renamed_Library_Material_Priced_By_Its_Own_Data", "[physical-model][core-losses][abt-1911]") {
