@@ -145,6 +145,8 @@ class CoilAdviser : public WireAdviser {
         std::string _diagnosisInsulationOutsideWindowReason;  // the first such escape
         size_t _diagnosisTemperatureRejections = 0;  // wound coils the temperature gate rejected (ABT #1394)
         std::string _diagnosisTemperatureRejection;  // the first such rejection
+        size_t _diagnosisSaturationRejections = 0;  // wound coils rejected because their core saturates (ABT #838)
+        std::string _diagnosisSaturationRejection;  // the first such rejection
         // Every wound coil the temperature gate rejected in the last get_advised_coil call: its reference and the
         // reason (ABT #1394), so a caller (MagneticAdviser) can report each one as a failed candidate.
         std::vector<std::pair<std::string, std::string>> _temperatureRejections;

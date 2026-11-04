@@ -640,6 +640,8 @@ namespace OpenMagnetics {
         _diagnosisInsulationOutsideWindowReason.clear();
         _diagnosisTemperatureRejections = 0;
         _diagnosisTemperatureRejection.clear();
+        _diagnosisSaturationRejections = 0;
+        _diagnosisSaturationRejection.clear();
         _temperatureRejections.clear();
         _wireAdviser.reset_real_winding_packing_diagnosis();
         _lastNoResultsReason = std::nullopt;
@@ -1077,11 +1079,20 @@ namespace OpenMagnetics {
         // the reason is reachable via get_last_no_results_reason() and logged at WARNING.
         if (masesWithoutScoring.empty()) {
             std::string reason;
-            if (_diagnosisWindAttempts == 0 && _diagnosisGuardSkips == 0 && _diagnosisTemperatureRejections > 0) {
+            if (_diagnosisWindAttempts == 0 && _diagnosisGuardSkips == 0 &&
+                (_diagnosisTemperatureRejections > 0 || _diagnosisSaturationRejections > 0)) {
                 // Coils were wound (by a path that does not count wind attempts, e.g. a planar winding) and the
-                // temperature gate rejected every one: wires did survive, so the reason is the gate's.
-                reason = "CoilAdviser found no candidates: " + std::to_string(_diagnosisTemperatureRejections)
-                    + " wound candidates were rejected by the temperature limit, e.g. " + _diagnosisTemperatureRejection;
+                // temperature gate or the saturation verdict rejected every one: wires did survive, so the reason
+                // is theirs.
+                reason = "CoilAdviser found no candidates: ";
+                if (_diagnosisTemperatureRejections > 0) {
+                    reason += std::to_string(_diagnosisTemperatureRejections)
+                        + " wound candidates were rejected by the temperature limit, e.g. " + _diagnosisTemperatureRejection;
+                }
+                if (_diagnosisSaturationRejections > 0) {
+                    reason += std::string(_diagnosisTemperatureRejections > 0 ? "; " : "") + std::to_string(_diagnosisSaturationRejections)
+                        + " wound candidates were rejected because their core saturates, e.g. " + _diagnosisSaturationRejection;
+                }
             }
             else if (_diagnosisWindAttempts == 0 && _diagnosisGuardSkips == 0) {
                 reason = "CoilAdviser found no candidates: no wire survived electrical filtering";
@@ -1112,6 +1123,12 @@ namespace OpenMagnetics {
                 if (_diagnosisTemperatureRejections > 0) {
                     reason += "; " + std::to_string(_diagnosisTemperatureRejections)
                         + " wound candidates were rejected by the temperature limit, e.g. " + _diagnosisTemperatureRejection;
+                }
+                // ABT #838: a wound coil whose core saturates is rejected by the loss ranking; when that is what
+                // emptied the result, the reason must say so rather than read as "nothing could be wound".
+                if (_diagnosisSaturationRejections > 0) {
+                    reason += "; " + std::to_string(_diagnosisSaturationRejections)
+                        + " wound candidates were rejected because their core saturates, e.g. " + _diagnosisSaturationRejection;
                 }
                 if (_diagnosisInsulationOutsideWindow > 0) {
                     reason += "; " + std::to_string(_diagnosisInsulationOutsideWindow)
@@ -1744,6 +1761,9 @@ namespace OpenMagnetics {
                     }
                     if (evaluated.kind == RankingLosses::Kind::REJECTED) {
                         logEntry(describe_wound_coil(woundMas) + " rejected: " + evaluated.reason, "CoilAdviser", 3);
+                        if (_diagnosisSaturationRejections++ == 0) {
+                            _diagnosisSaturationRejection = describe_wound_coil(woundMas) + ": " + evaluated.reason;
+                        }
                         continue;
                     }
                     masesUnranked.push_back(woundMas);
