@@ -509,13 +509,18 @@ void CoreAdviser::expand_magnetic_dataset_with_stacks(Inputs inputs, std::vector
     }
     magnetics->reserve(magnetics->size() + stackedVariantsBound);
 
-    for (auto& core : *cores){
-        if (!includeToroidalCores && core.get_type() == CoreType::TOROIDAL) {
+    for (const auto& catalogueCore : *cores){
+        if (!includeToroidalCores && catalogueCore.get_type() == CoreType::TOROIDAL) {
             continue;
         }
 
 
-        if (isStackable(core)) {
+        if (isStackable(catalogueCore)) {
+            // ABT #1984: the stacked variants are built on a copy. *cores is the shared core
+            // database; stacking it in place left its cores at the last stack count, named
+            // "... 4 stacks", for every later search in the process (the magnetic adviser's
+            // second core-adviser pass searched them as single cores).
+            Core core = catalogueCore;
 
             core.process_data();
             if (!core.process_gap()) {
