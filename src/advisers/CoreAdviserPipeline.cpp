@@ -200,6 +200,13 @@ void correct_windings(std::vector<std::pair<Magnetic, double>> *magneticsWithSco
     }
 }
 
+std::string unique_core_shape_key(const Core& core, bool stacksAreDistinctShapes) {
+    if (!stacksAreDistinctShapes) {
+        return core.get_shape_name();
+    }
+    return core.get_shape_name() + " x" + std::to_string(core.get_number_stacks());
+}
+
 std::vector<std::pair<Magnetic, double>> cull_to_unique_core_shapes(std::vector<std::pair<Magnetic, double>> magneticsWithScoring, size_t maximumNumberResults) {
     if (magneticsWithScoring.size() > maximumNumberResults) {
         std::vector<std::pair<Magnetic, double>> magneticsWithScoringAndUniqueShapes;
@@ -428,16 +435,18 @@ Inputs pre_process_inputs(Inputs inputs) {
 std::vector<std::pair<Mas, double>> CoreAdviser::post_process_and_cut(std::vector<std::pair<Magnetic, double>>& magneticsWithScoring,
                                                                       Inputs& inputs,
                                                                       size_t maximumNumberResults,
+                                                                      bool stacksAreDistinctShapes,
                                                                       bool withAlternativeMaterials,
                                                                       std::optional<double> maximumTemperature) {
     std::vector<std::pair<Mas, double>> masWithScoring;
-    post_process_and_append(magneticsWithScoring, inputs, maximumNumberResults, withAlternativeMaterials, maximumTemperature, masWithScoring);
+    post_process_and_append(magneticsWithScoring, inputs, maximumNumberResults, stacksAreDistinctShapes, withAlternativeMaterials, maximumTemperature, masWithScoring);
     return masWithScoring;
 }
 
 void CoreAdviser::post_process_and_append(std::vector<std::pair<Magnetic, double>>& magneticsWithScoring,
                                           Inputs& inputs,
                                           size_t maximumNumberResults,
+                                          bool stacksAreDistinctShapes,
                                           bool withAlternativeMaterials,
                                           std::optional<double> maximumTemperature,
                                           std::vector<std::pair<Mas, double>>& masWithScoring) {
@@ -449,7 +458,7 @@ void CoreAdviser::post_process_and_append(std::vector<std::pair<Magnetic, double
     const bool uniqueShapes = get_unique_core_shapes();
     if (uniqueShapes) {
         for (const auto& [keptMas, keptScoring] : masWithScoring) {
-            usedShapes.push_back(keptMas.get_magnetic().get_core().get_shape_name());
+            usedShapes.push_back(unique_core_shape_key(keptMas.get_magnetic().get_core(), stacksAreDistinctShapes));
         }
     }
     log_probe("entering post_process_and_cut", magneticsWithScoring.size());
@@ -481,7 +490,7 @@ void CoreAdviser::post_process_and_append(std::vector<std::pair<Magnetic, double
         ++candidatesExamined;
         std::string shapeName;
         if (uniqueShapes) {
-            shapeName = magneticWithScoring.first.get_core().get_shape_name();
+            shapeName = unique_core_shape_key(magneticWithScoring.first.get_core(), stacksAreDistinctShapes);
             if (std::find(usedShapes.begin(), usedShapes.end(), shapeName) != usedShapes.end()) {
                 continue;
             }
@@ -775,7 +784,7 @@ std::vector<std::pair<Mas, double>> CoreAdviser::filter_available_cores_power_ap
     if (settings.get_core_adviser_enable_temperature_filter() && weights[CoreAdviserFilters::EFFICIENCY] > 0) {
         solvedTemperatureLimit = resolve_maximum_design_temperature(inputs);
     }
-    return post_process_and_cut(magneticsWithScoring, inputs, maximumNumberResults, /*withAlternativeMaterials=*/false, solvedTemperatureLimit);
+    return post_process_and_cut(magneticsWithScoring, inputs, maximumNumberResults, /*stacksAreDistinctShapes=*/true, /*withAlternativeMaterials=*/false, solvedTemperatureLimit);
 }
 
 std::vector<std::pair<Mas, double>> CoreAdviser::filter_available_cores_suppression_application(std::vector<std::pair<Magnetic, double>>* magnetics, Inputs inputs, std::map<CoreAdviserFilters, double> weights, size_t maximumMagneticsAfterFiltering, size_t maximumNumberResults){
@@ -938,7 +947,7 @@ std::vector<std::pair<Mas, double>> CoreAdviser::filter_available_cores_suppress
     }
 
     // ABT #126: post-process before cutting (backfill; see post_process_and_cut)
-    return post_process_and_cut(magneticsWithScoring, inputs, maximumNumberResults);
+    return post_process_and_cut(magneticsWithScoring, inputs, maximumNumberResults, /*stacksAreDistinctShapes=*/true);
 }
 
 std::vector<std::pair<Mas, double>> CoreAdviser::filter_standard_cores_power_application(std::vector<std::pair<Magnetic, double>>* magnetics, Inputs inputs, std::map<CoreAdviserFilters, double> weights, size_t maximumMagneticsAfterFiltering, size_t maximumNumberResults){
@@ -1138,7 +1147,7 @@ std::vector<std::pair<Mas, double>> CoreAdviser::filter_standard_cores_power_app
     // kept first and powder parts appended after them, the order the single post-processing of the
     // ferrite-then-powder list had.
     std::vector<std::pair<Mas, double>> results;
-    post_process_and_append(ferriteCores, inputs, maximumNumberResults, /*withAlternativeMaterials=*/true, solvedTemperatureLimit, results);
+    post_process_and_append(ferriteCores, inputs, maximumNumberResults, /*stacksAreDistinctShapes=*/false, /*withAlternativeMaterials=*/true, solvedTemperatureLimit, results);
     const size_t ferriteFirstPass = ferriteCores.size();
 
     // ABT #1412: when losses, not saturation, size the core (a resonant inductor with no
@@ -1169,7 +1178,7 @@ std::vector<std::pair<Mas, double>> CoreAdviser::filter_standard_cores_power_app
             examined = end;
             auto passed = processFerriteCores(batch, false, " (larger cores)");
             ferriteCores.insert(ferriteCores.end(), passed.begin(), passed.end());
-            post_process_and_append(passed, inputs, maximumNumberResults, /*withAlternativeMaterials=*/true, solvedTemperatureLimit, results);
+            post_process_and_append(passed, inputs, maximumNumberResults, /*stacksAreDistinctShapes=*/false, /*withAlternativeMaterials=*/true, solvedTemperatureLimit, results);
         }
         logEntry("Temperature walk to larger ferrite cores examined " + std::to_string(examined) + " of " +
                  std::to_string(largerCores.size()) + " larger cores (budget " + std::to_string(budget) + "); " +
@@ -1287,7 +1296,7 @@ std::vector<std::pair<Mas, double>> CoreAdviser::filter_standard_cores_power_app
     // front, making the per-advise re-rank winding cost redundant. See the
     // matching note in the standard-cores pipeline above.
     const size_t ferriteResults = results.size();
-    post_process_and_append(powderCores, inputs, maximumNumberResults, /*withAlternativeMaterials=*/true, solvedTemperatureLimit, results);
+    post_process_and_append(powderCores, inputs, maximumNumberResults, /*stacksAreDistinctShapes=*/false, /*withAlternativeMaterials=*/true, solvedTemperatureLimit, results);
 
     // The ABT #1412 walk to larger cores, for the powder toroids. Their pre-inductance prune keeps the best-scored
     // candidates, which are the small toroids, and the temperature gate can reject all of them (a 100 uH, 600 Vpp,
@@ -1352,7 +1361,7 @@ std::vector<std::pair<Mas, double>> CoreAdviser::filter_standard_cores_power_app
             ++batchIndex;
             auto passed = processPowderCores(batch, " (larger cores)");
             powderCores.insert(powderCores.end(), passed.begin(), passed.end());
-            post_process_and_append(passed, inputs, maximumNumberResults, /*withAlternativeMaterials=*/true, solvedTemperatureLimit, results);
+            post_process_and_append(passed, inputs, maximumNumberResults, /*stacksAreDistinctShapes=*/false, /*withAlternativeMaterials=*/true, solvedTemperatureLimit, results);
         }
         logEntry("Temperature walk to larger powder cores examined " + std::to_string(examined) + " of " +
                  std::to_string(largerCores.size()) + " larger cores (budget " + std::to_string(budget) + "); " +
@@ -1445,7 +1454,7 @@ std::vector<std::pair<Mas, double>> CoreAdviser::filter_standard_cores_interfere
     }
 
     // ABT #126: post-process before cutting (backfill; see post_process_and_cut)
-    return post_process_and_cut(magneticsWithScoring, inputs, maximumNumberResults, /*withAlternativeMaterials=*/true);
+    return post_process_and_cut(magneticsWithScoring, inputs, maximumNumberResults, /*stacksAreDistinctShapes=*/false, /*withAlternativeMaterials=*/true);
 }
 
 } // namespace OpenMagnetics

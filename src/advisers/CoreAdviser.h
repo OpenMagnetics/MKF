@@ -283,9 +283,12 @@ class CoreAdviser {
         // alternative-materials lookup per kept candidate (STANDARD_CORES path).
         // maximumTemperature (ABT #1802): the temperature gate's limit when that gate ran; a
         // candidate whose published loss-temperature solve is hotter is dropped and backfilled.
+        // stacksAreDistinctShapes (ABT #1984): with unique core shapes, whether a stack count of a
+        // shape is a shape of its own (the available-cores, stock, search) or not (standard cores).
         std::vector<std::pair<Mas, double>> post_process_and_cut(std::vector<std::pair<Magnetic, double>>& magneticsWithScoring,
                                                                  Inputs& inputs,
                                                                  size_t maximumNumberResults,
+                                                                 bool stacksAreDistinctShapes,
                                                                  bool withAlternativeMaterials = false,
                                                                  std::optional<double> maximumTemperature = std::nullopt);
         // The same walk, appending to parts already kept (ABT #1875): it stops when `kept` holds
@@ -296,6 +299,7 @@ class CoreAdviser {
         void post_process_and_append(std::vector<std::pair<Magnetic, double>>& magneticsWithScoring,
                                      Inputs& inputs,
                                      size_t maximumNumberResults,
+                                     bool stacksAreDistinctShapes,
                                      bool withAlternativeMaterials,
                                      std::optional<double> maximumTemperature,
                                      std::vector<std::pair<Mas, double>>& kept);

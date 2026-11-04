@@ -443,7 +443,7 @@ std::vector<std::pair<Mas, double>> CoreAdviser::get_advised_core(Inputs inputs,
         auto mergeKey = [&](const std::pair<Mas, double>& result) {
             const auto& magnetic = result.first.get_magnetic();
             if (uniqueShapes) {
-                return magnetic.get_core().get_shape_name();
+                return unique_core_shape_key(magnetic.get_core(), /*stacksAreDistinctShapes=*/true);  // the available-cores (stock) search
             }
             if (!magnetic.get_manufacturer_info() || !magnetic.get_manufacturer_info()->get_reference()) {
                 throw std::runtime_error("CoreAdviser: cannot merge the stacked search with the first one: an advised magnetic has no reference to identify it by");

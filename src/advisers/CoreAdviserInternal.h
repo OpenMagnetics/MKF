@@ -63,6 +63,12 @@ CandidateMemo* active_candidate_memo();
 std::string candidate_memo_settings_key();
 // A candidate's part of a CandidateMemo key.
 std::string candidate_memo_key(const Magnetic& magnetic);
+// ABT #1984: what "unique core shapes" keeps one result of. Alf's decision (2026-11-04), "stacks
+// distinct only in stock": in the available-cores (stock) search a stack count of a shape is a core
+// of its own (twice the area and volume), so the key is the shape AND the number of stacks and a
+// stacked variant no longer loses its slot to the single core of the same shape; in the
+// standard-cores search it stays the shape alone. The two paths differ on purpose.
+std::string unique_core_shape_key(const Core& core, bool stacksAreDistinctShapes);
 
 inline std::chrono::steady_clock::time_point& profile_cursor() {
     thread_local auto prev = std::chrono::steady_clock::now();
