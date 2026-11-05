@@ -260,11 +260,17 @@ void warn_if_material_temperature_outside_data(const std::string& materialName, 
     if (temperature >= tableMinimum && temperature <= tableMaximum) {
         return;
     }
+    // The text is built only when the logger keeps it: formatting it on every out-of-range lookup cost Henry
+    // seconds per run for lines the logger then dropped.
+    const LogLevel level = material_data_outside_table_log_level();
+    if (!Logger::getInstance().keeps(level)) {
+        return;
+    }
     const std::string range = tableMinimum == tableMaximum
                                   ? "at " + format_significant(tableMinimum) + " C only"
                                   : "from " + format_significant(tableMinimum) + " C to " + format_significant(tableMaximum) + " C";
     const std::string side = temperature < tableMinimum ? "below" : "above";
-    Logger::getInstance().log(material_data_outside_table_log_level(), kMaterialDataExtrapolationModule,
+    Logger::getInstance().log(level, kMaterialDataExtrapolationModule,
                               "Material " + materialName + ": its " + propertyName + " is tabulated " + range +
                                   "; outside that the table is extrapolated",
                               "asked at " + format_significant(temperature) + " C, " + side + " its data");
@@ -275,11 +281,16 @@ void warn_if_material_frequency_outside_data(const std::string& materialName, co
     if (frequency >= tableMinimum && frequency <= tableMaximum) {
         return;
     }
+    // Built only when the logger keeps it (see warn_if_material_temperature_outside_data).
+    const LogLevel level = material_data_outside_table_log_level();
+    if (!Logger::getInstance().keeps(level)) {
+        return;
+    }
     const std::string range = tableMinimum == tableMaximum
                                   ? "at " + format_quantity(tableMinimum, "Hz") + " only"
                                   : "from " + format_quantity(tableMinimum, "Hz") + " to " + format_quantity(tableMaximum, "Hz");
     const std::string side = frequency < tableMinimum ? "below" : "above";
-    Logger::getInstance().log(material_data_outside_table_log_level(), kMaterialDataExtrapolationModule,
+    Logger::getInstance().log(level, kMaterialDataExtrapolationModule,
                               "Material " + materialName + ": its " + propertyName + " is tabulated " + range +
                                   "; outside that range the table is extrapolated",
                               "asked at " + format_quantity(frequency, "Hz") + ", " + side + " that range");

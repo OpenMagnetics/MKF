@@ -370,12 +370,9 @@ public:
         // Checked before the level filter, so a missing or unlisted module is refused even for an
         // entry nobody would have seen.
         const std::string& moduleOfOrigin = user_facing_log_module(moduleIdentifier, message);
-        // The sinks see what passes the logger level, exactly as before the collector existed, except
-        // a sink added with its own level, which sees what passes that one; the collector, when
-        // enabled, sees what passes its own level. None changes the others.
         const LogLevel loggerLevel = _level;
-        const bool toSinks = !(level < loggerLevel) || (level < LogLevel::OFF && !(level < _lowestOwnSinkLevel));
-        const bool toCollector = _collectorEnabled && level < LogLevel::OFF && !(level < _collectorLevel);
+        const bool toSinks = reaches_sinks(level, loggerLevel);
+        const bool toCollector = reaches_collector(level);
         if (!toSinks && !toCollector) {
             return;
         }
@@ -398,6 +395,18 @@ public:
         if (toCollector) {
             collect(level, moduleOfOrigin, message, detail);
         }
+    }
+
+    /**
+     * @brief True when an entry at `level` would reach a sink or the collector, i.e. when log() would keep it.
+     *
+     * For a caller whose message is costly to build (numbers formatted, strings joined): build it only when
+     * this is true. log() decides with the same two tests, so an entry built this way is kept exactly as
+     * before. Unlike log(), it does not check the entry's module; a caller that skips log() on false must log
+     * from a module user_facing_log_module accepts (a constant listed there).
+     */
+    bool keeps(LogLevel level) const {
+        return reaches_sinks(level, _level) || reaches_collector(level);
     }
 
     /**
@@ -520,6 +529,16 @@ private:
         return oss.str();
     }
     
+    // The sinks see what passes the logger level, exactly as before the collector existed, except
+    // a sink added with its own level, which sees what passes that one; the collector, when
+    // enabled, sees what passes its own level. None changes the others.
+    bool reaches_sinks(LogLevel level, LogLevel loggerLevel) const {
+        return !(level < loggerLevel) || (level < LogLevel::OFF && !(level < _lowestOwnSinkLevel));
+    }
+    bool reaches_collector(LogLevel level) const {
+        return _collectorEnabled && level < LogLevel::OFF && !(level < _collectorLevel);
+    }
+
     // Caller holds _mutex.
     void collect(LogLevel level, const std::string& moduleOfOrigin, const std::string& message, const std::string& detail) {
         std::string key;
