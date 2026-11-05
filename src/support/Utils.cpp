@@ -3899,6 +3899,7 @@ Magnetic magnetic_autocomplete(Magnetic magnetic, json configuration, std::optio
     // a pinName the design gave, and throws on a plan that breaks the rows or the creepage.
     // `bobbin` is the one set on the coil above; winding does not move its pins.
     // ABT #1237: only when Settings coil_connect_leads_to_pins asks for it (off by default).
+    // ABT #2268: this writes the assignment into MAS only; the leads' 3D runs to the pins are parked.
     if (settings.get_coil_connect_leads_to_pins() &&
         magnetic.get_mutable_coil().get_turns_description() && bobbin.get_processed_description() &&
         bobbin.get_processed_description()->get_pins() && !bobbin.get_processed_description()->get_pins()->empty() &&

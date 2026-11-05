@@ -569,39 +569,6 @@ TEST_CASE("Real winding draws a tangent lead on a route it does not model in ful
         check_reported(leads, "it is wound on a lateral column, ");
     }
 
-    SECTION("a lead run to a pin") {
-        // New design (no fixture reaches it): an E 42/21/15 on the Basic quick bobbin with its pins
-        // generated and the leads connected to them, leads declared 8 mm, wider than the face straight.
-        settings.reset();
-        settings.set_coil_use_real_winding_geometry(true);
-        settings.set_coil_quick_bobbin_generate_pins(true);
-        settings.set_coil_connect_leads_to_pins(true);
-        settings.set_coil_lead_minimum_bend_radius(0.008);
-        json coilJson;
-        coilJson["bobbin"] = "Basic";
-        coilJson["functionalDescription"] = json::array();
-        coilJson["functionalDescription"].push_back(json{{"name", "Primary"}, {"numberTurns", 30}, {"numberParallels", 1},
-                                                         {"isolationSide", "primary"}, {"wire", "Round 0.5 - Grade 1"}});
-        coilJson["functionalDescription"].push_back(json{{"name", "Secondary"}, {"numberTurns", 5}, {"numberParallels", 1},
-                                                         {"isolationSide", "secondary"}, {"wire", "Round 0.5 - Grade 1"}});
-        OpenMagnetics::Magnetic magnetic;
-        magnetic.set_core(OpenMagneticsTesting::get_quick_core("E 42/21/15", json::parse("[]"), 1, "N87"));
-        magnetic.set_coil(OpenMagnetics::Coil(coilJson, false));
-        OpenMagnetics::Coil coil;
-        REQUIRE_NOTHROW(coil = OpenMagnetics::magnetic_autocomplete(magnetic).get_coil());
-        REQUIRE(coil.is_real_winding_blocking_applied());
-        const auto leads = unmodelled_leads(coil, OpenMagnetics::TangentLeadCondition::PIN_RUN, "E 42/21/15");
-        REQUIRE(leads.routes.size() == 4);
-        for (const auto& route : leads.routes) {
-            CHECK_FALSE(route.pinName.empty());
-            for (const auto& condition : route.tangentDeparture->unmodelled) {
-                if (condition.condition == OpenMagnetics::TangentLeadCondition::PIN_RUN) {
-                    CHECK(condition.pinName == route.pinName);
-                }
-            }
-        }
-        check_reported(leads, "it is run to pin '");
-    }
     settings.reset();
 }
 

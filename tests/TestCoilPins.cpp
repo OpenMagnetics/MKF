@@ -120,20 +120,6 @@ PlacedPin placed_pin(OpenMagnetics::Coil& coil, const std::string& name) {
     return PlacedPin();
 }
 
-// ABT #1640: a run to a pin ends where the wrap starts, on a level leg tangent to the wrap circle:
-// `wrapRadius` (pin radius + coated wire radius) off the pin axis, the leg square to that radius.
-void check_tangent_arrival(const PlacedPin& pin, const std::vector<double>& before, const std::vector<double>& end, double wrapRadius) {
-    const size_t axis = pin.hangsAlongZ ? 2 : 1;
-    std::vector<double> radial(3), leg(3);
-    for (size_t c = 0; c < 3; ++c) {
-        radial[c] = c == axis ? 0.0 : end[c] - pin.centre[c];
-        leg[c] = end[c] - before[c];
-    }
-    CHECK_THAT(std::hypot(radial[0], radial[1], radial[2]), Catch::Matchers::WithinAbs(wrapRadius, 1e-12));
-    CHECK_THAT(leg[axis], Catch::Matchers::WithinAbs(0.0, 1e-12));
-    CHECK_THAT(radial[0] * leg[0] + radial[1] * leg[1] + radial[2] * leg[2], Catch::Matchers::WithinAbs(0.0, 1e-15));
-}
-
 // Position along the row counted from the row's START end: -X on row 0, +X on row 1 (vertical).
 size_t walk(OpenMagnetics::Coil& coil, const std::string& name) {
     auto pin = placed_pin(coil, name);
@@ -436,139 +422,6 @@ TEST_CASE("Series sections of one winding share a tap pin between start and fini
     CHECK(coil.get_functional_description()[0].get_connections()->size() == 3);
 }
 
-TEST_CASE("The terminal lead is routed to its pin: routedLength grows by the run past the window (ABT #1172)",
-          "[constructive-model][coil][pins][abt1172][winding-losses]") {
-    Settings::GetInstance().set_coil_use_real_winding_geometry(true);
-    auto coil = make_coil({{"Primary", 40, 1, "primary", "Round 0.5 - Grade 1"},
-                                 {"Secondary", 6, 1, "secondary", "Round 0.5 - Grade 1"}});
-    auto core = former_core();
-    const double coatedRadius = find_wire_by_name("Round 0.5 - Grade 1").get_maximum_outer_width() / 2;
-
-    std::vector<ConnectionRoute> routesBefore;
-    auto spacesBefore = coil.get_connection_reserved_spaces(&routesBefore);
-    auto lengthsBefore = WindingOhmicLosses::calculate_connection_length_per_winding_per_parallel(coil);
-
-    coil.assign_pins(coil.resolve_bobbin(), core);
-    std::vector<ConnectionRoute> routesAfter;
-    auto spacesAfter = coil.get_connection_reserved_spaces(&routesAfter);
-    auto lengthsAfter = WindingOhmicLosses::calculate_connection_length_per_winding_per_parallel(coil);
-
-    // Blocking is unchanged: the same rectangles, in the same place.
-    REQUIRE(spacesBefore.size() == spacesAfter.size());
-    for (size_t index = 0; index < spacesBefore.size(); ++index) {
-        CHECK(spacesBefore[index].coordinates == spacesAfter[index].coordinates);
-        CHECK(spacesBefore[index].dimensions == spacesAfter[index].dimensions);
-    }
-    REQUIRE(routesBefore.size() == routesAfter.size());
-    size_t terminals = 0;
-    for (size_t index = 0; index < routesAfter.size(); ++index) {
-        const auto& before = routesBefore[index];
-        const auto& after = routesAfter[index];
-        bool terminal = after.kind == ConnectionKind::TERMINAL_ENTRANCE || after.kind == ConnectionKind::TERMINAL_EXIT;
-        if (!terminal) {
-            CHECK(after.pinName.empty());
-            CHECK(after.routedLength == before.routedLength);
-            continue;
-        }
-        ++terminals;
-        INFO(after.winding << " " << (after.kind == ConnectionKind::TERMINAL_ENTRANCE ? "entrance" : "exit"));
-        REQUIRE_FALSE(after.pinName.empty());
-        CHECK(before.pinName.empty());
-        CHECK(after.routedLength > before.routedLength);
-        REQUIRE(after.pinWaypoints.size() >= 2);
-        // The run ends where the wrap round the assigned pin starts, tangent to it (ABT #1640), at
-        // least a wire radius beyond the plane the pin leaves (ABT #1237: the wire rests on the rail
-        // face), and starts at the window exit.
-        auto pin = placed_pin(coil, after.pinName);
-        const bool entrance = after.kind == ConnectionKind::TERMINAL_ENTRANCE;
-        const auto& pinEnd = entrance ? after.pinWaypoints.front() : after.pinWaypoints.back();
-        const auto& beforeEnd = entrance ? after.pinWaypoints[1] : after.pinWaypoints[after.pinWaypoints.size() - 2];
-        check_tangent_arrival(pin, beforeEnd, pinEnd, pin.diameter / 2 + coatedRadius);
-        CHECK(pinEnd[1] <= pin.base[1] - 0.00025);
-        const auto& windowEnd = after.kind == ConnectionKind::TERMINAL_ENTRANCE ? after.pinWaypoints.back() : after.pinWaypoints.front();
-        const auto& borderEnd = after.kind == ConnectionKind::TERMINAL_ENTRANCE ? after.waypoints.front() : after.waypoints.back();
-        // The border point (radial, axial) leaves on the front face at its own axial level, at
-        // least as far out as the border (plus the ride-over lift and its lane).
-        CHECK_THAT(windowEnd[1], Catch::Matchers::WithinAbs(borderEnd[1], 1e-12));
-        // Alf 2026-10-25: face-aware (§12 pins decide the side): the run leaves on the face its route
-        // published, -Z on face 0 and +Z on face 1, at least as far out as the border on that face.
-        REQUIRE((after.side == 0 || after.side == 1));
-        REQUIRE(std::abs(pin.centre[2]) > 1e-9);
-        CHECK(after.side == (pin.centre[2] < 0 ? 0 : 1));   // toward its pin's rail (spec section 12, real winding)
-        if (after.side == 0) {
-            CHECK(windowEnd[2] <= -borderEnd[0] + 1e-12);
-        }
-        else {
-            CHECK(windowEnd[2] >= borderEnd[0] - 1e-12);
-        }
-        double leg = 0;
-        for (size_t k = 0; k + 1 < after.pinWaypoints.size(); ++k) {
-            const auto& a = after.pinWaypoints[k];
-            const auto& b = after.pinWaypoints[k + 1];
-            leg += std::sqrt((a[0] - b[0]) * (a[0] - b[0]) + (a[1] - b[1]) * (a[1] - b[1]) + (a[2] - b[2]) * (a[2] - b[2]));
-        }
-        CHECK_THAT(after.routedLength - before.routedLength, Catch::Matchers::WithinAbs(leg, 2e-9));
-    }
-    CHECK(terminals == 4);
-    // The loss model reads the longer leads.
-    for (size_t winding = 0; winding < 2; ++winding) {
-        CHECK(lengthsAfter[winding][0] > lengthsBefore[winding][0]);
-    }
-}
-
-TEST_CASE("route_leads_to_pins walks beside the pin, down to the rail face and into the pin (ABT #1172, #1237)",
-          "[constructive-model][coil][pins][abt1172][abt1237]") {
-    MAS::Pin vertical;
-    vertical.set_name("1");
-    vertical.set_shape(PinShape::ROUND);
-    vertical.set_type(PinDescriptionType::THT);
-    vertical.set_dimensions({0.001, 0.001, 0.004});
-    vertical.set_coordinates(std::vector<double>({-0.005, -0.012, 0.006}));
-    PinLeadRequest lead;
-    lead.label = "lead";
-    lead.pin = vertical;
-    lead.windowExit = {0.010, 0.003};
-    lead.diameter = 0.0005;
-    // Sharp corners: this test is about the run's placement, not its bends (ABT #1296).
-    lead.bendRadius = lead.diameter / 2;
-    lead.exitX = 0.0;
-    auto routes = OpenMagnetics::Coil::route_leads_to_pins({vertical}, {lead}, 0.0, 2);
-    REQUIRE(routes.size() == 1);
-    auto route = routes[0];
-    // A one-pin row has no outside, so the lead comes from -X: beside the pin at
-    // x = -0.005 - (0.0005 pin radius + 0.00025 wire radius + 0.0005 wire diameter) = -0.00625.
-    // Exit (0, 0.003, -0.010) -> along x to -0.00625 (0.00625) -> down to one wire radius under the
-    // pin base y = -0.010 (0.01325) -> across towards the row z = 0.006, stopping a wrap radius
-    // (0.0005 + 0.00025) short of it at z = 0.00525 (0.01525) -> along x to the pin, tangent to the
-    // wrap circle (0.00125; ABT #1640).
-    REQUIRE(route.waypoints.size() == 5);
-    CHECK_THAT(route.length, Catch::Matchers::WithinAbs(0.00625 + 0.01325 + 0.01525 + 0.00125, 1e-12));
-    CHECK_THAT(route.waypoints.front()[0], Catch::Matchers::WithinAbs(0.0, 1e-12));
-    CHECK_THAT(route.waypoints.front()[2], Catch::Matchers::WithinAbs(-0.010, 1e-12));
-    CHECK_THAT(route.waypoints[1][0], Catch::Matchers::WithinAbs(-0.00625, 1e-12));
-    CHECK_THAT(route.waypoints.back()[0], Catch::Matchers::WithinAbs(-0.005, 1e-12));
-    CHECK_THAT(route.waypoints.back()[1], Catch::Matchers::WithinAbs(-0.01025, 1e-12));
-    CHECK_THAT(route.waypoints.back()[2], Catch::Matchers::WithinAbs(0.00525, 1e-12));
-
-    // The ride-over lift moves the exit out along -Z.
-    lead.lift = 0.001;
-    route = OpenMagnetics::Coil::route_leads_to_pins({vertical}, {lead}, 0.0, 2)[0];
-    CHECK_THAT(route.waypoints.front()[2], Catch::Matchers::WithinAbs(-0.011, 1e-12));
-    lead.lift = 0;
-
-    MAS::Pin horizontal = vertical;
-    horizontal.set_coordinates(std::vector<double>({0.004, 0.010, -0.020}));
-    horizontal.set_rotation(std::vector<double>({90, 0, 0}));
-    lead.pin = horizontal;
-    route = OpenMagnetics::Coil::route_leads_to_pins({horizontal}, {lead}, 0.0, 2)[0];
-    // Along x to 0.004 - 0.00125 (0.00275), out along -Z to a wire radius beyond the base plane
-    // z = -0.018 (0.00825), up towards the row y = 0.010 to a wrap radius short of it, y = 0.00925
-    // (0.00625), along x to the pin, tangent to the wrap circle (0.00125).
-    CHECK_THAT(route.length, Catch::Matchers::WithinAbs(0.00275 + 0.00825 + 0.00625 + 0.00125, 1e-12));
-    CHECK_THAT(route.waypoints.back()[1], Catch::Matchers::WithinAbs(0.00925, 1e-12));
-    CHECK_THAT(route.waypoints.back()[2], Catch::Matchers::WithinAbs(-0.01825, 1e-12));
-}
-
 TEST_CASE("Autocomplete assigns pins when the bobbin has them (ABT #1172)", "[constructive-model][coil][pins][abt1172][masautocomplete]") {
     // ABT #1237: only with coil_connect_leads_to_pins on (off by default).
     SettingsGuard<bool> connectLeads(Settings::GetInstance(), &Settings::get_coil_connect_leads_to_pins,
@@ -751,301 +604,10 @@ TEST_CASE("R14: shield ends on pins pass, a buried end warns, no shield is not a
 
 
 // -----------------------------------------------------------------------------------------
-// ABT #1237: the runs to the pins share no copper
+// ABT #1237: the boost inductor on PQ 26/25 pins (ABT #2268: its pin runs are parked; the assignment stays)
 // -----------------------------------------------------------------------------------------
 
 namespace {
-
-using Point3 = std::vector<double>;
-
-double point_segment_distance(const Point3& p, const Point3& a, const Point3& b) {
-    double ab[3], ap[3];
-    double abab = 0, apab = 0;
-    for (int k = 0; k < 3; ++k) {
-        ab[k] = b[k] - a[k];
-        ap[k] = p[k] - a[k];
-        abab += ab[k] * ab[k];
-        apab += ap[k] * ab[k];
-    }
-    double t = abab > 0 ? std::clamp(apab / abab, 0.0, 1.0) : 0.0;
-    double d2 = 0;
-    for (int k = 0; k < 3; ++k) {
-        const double c = ap[k] - t * ab[k];
-        d2 += c * c;
-    }
-    return std::sqrt(d2);
-}
-
-// Every point of `a`, sampled every 20 um along each segment, against every segment of `b`.
-double sampled_distance(const std::vector<Point3>& a, const std::vector<Point3>& b, size_t skipLastOfA = 0) {
-    double best = std::numeric_limits<double>::max();
-    const size_t segments = a.size() < 2 + skipLastOfA ? 0 : a.size() - 1 - skipLastOfA;
-    for (size_t i = 0; i < segments; ++i) {
-        double length = 0;
-        for (int k = 0; k < 3; ++k) {
-            length += (a[i + 1][k] - a[i][k]) * (a[i + 1][k] - a[i][k]);
-        }
-        length = std::sqrt(length);
-        const size_t samples = std::max<size_t>(2, size_t(std::ceil(length / 20e-6)) + 1);
-        for (size_t s = 0; s < samples; ++s) {
-            const double t = double(s) / double(samples - 1);
-            Point3 p = {a[i][0] + t * (a[i + 1][0] - a[i][0]), a[i][1] + t * (a[i + 1][1] - a[i][1]), a[i][2] + t * (a[i + 1][2] - a[i][2])};
-            for (size_t j = 0; j + 1 < b.size(); ++j) {
-                best = std::min(best, point_segment_distance(p, b[j], b[j + 1]));
-            }
-        }
-    }
-    return best;
-}
-
-struct PinRun {
-    std::string label;
-    std::string pinName;
-    std::vector<Point3> points;   // window exit -> the wrap's start, tangent to it
-    double radius;
-    double slotX;                 // Coil::terminal_exit_slots for this lead, recomputed from the routes
-    int side = 0;                 // the face the route published (spec section 12): 0 = -Z, 1 = +Z
-};
-
-// ABT #1237: the exit slots by the documented rule, recomputed from the coil's routes, turns and wires.
-// Alf 2026-10-25: face-aware (§12 pins decide the side). A pinned lead's half is its pin's, so the
-// recompute is given the half each route PUBLISHED (ConnectionRoute::laneHalf) as its pin half; the
-// slots themselves are still recomputed, never copied from the route.
-std::vector<std::optional<double>> recompute_exit_slots(OpenMagnetics::Coil& coil, const std::vector<ConnectionRoute>& routes) {
-    const auto wires = coil.get_wires();
-    const auto turns = coil.get_turns_description().value();
-    std::vector<double> diameters;
-    std::vector<double> attachAxial;
-    std::vector<double> attachAdvance;
-    std::vector<std::optional<TerminalTurnPath>> turnPaths;
-    for (const auto& route : routes) {
-        std::optional<TerminalTurnPath> turnPath;
-        auto wire = wires[coil.get_winding_index_by_name(route.winding)];
-        diameters.push_back(std::max({wire.get_maximum_outer_width(), wire.get_maximum_outer_height(), route.sleeveOuterDiameter.value_or(0.0)}));
-        double axial = std::numeric_limits<double>::quiet_NaN();
-        // ABT #1336: the attach turn's advance in the wire's direction (entrance: to the next turn of
-        // its parallel; exit: from the previous one; 0 for a one-turn conductor).
-        double advance = std::numeric_limits<double>::quiet_NaN();
-        const bool entrance = route.kind == ConnectionKind::TERMINAL_ENTRANCE;
-        const std::string& turnName = entrance ? route.toTurn : route.fromTurn;
-        for (size_t t = 0; t < turns.size(); ++t) {
-            if (turns[t].get_name() != turnName) {
-                continue;
-            }
-            axial = turns[t].get_coordinates()[1];
-            if (coil.is_real_winding_blocking_applied()) {
-                turnPath = coil.terminal_turn_path(route, turns[t], routes);
-            }
-            advance = 0.0;
-            auto sameConductor = [&](size_t other) {
-                return turns[other].get_winding() == turns[t].get_winding() && turns[other].get_parallel() == turns[t].get_parallel();
-            };
-            if (entrance) {
-                for (size_t n = t + 1; n < turns.size(); ++n) {
-                    if (sameConductor(n)) {
-                        advance = turns[n].get_coordinates()[1] - axial;
-                        break;
-                    }
-                }
-            }
-            else {
-                for (size_t n = t; n-- > 0;) {
-                    if (sameConductor(n)) {
-                        advance = axial - turns[n].get_coordinates()[1];
-                        break;
-                    }
-                }
-            }
-        }
-        attachAxial.push_back(axial);
-        attachAdvance.push_back(advance);
-        turnPaths.push_back(turnPath);
-    }
-    std::vector<std::pair<std::string, IsolationSide>> windings;
-    for (auto& w : coil.get_functional_description()) windings.emplace_back(w.get_name(), w.get_isolation_side());
-    std::vector<int> pinHalves(routes.size(), 0);
-    for (size_t r = 0; r < routes.size(); ++r) {
-        if (!routes[r].pinName.empty() && routes[r].laneHalf) {
-            pinHalves[r] = routes[r].laneHalf.value();
-        }
-    }
-    return OpenMagnetics::Coil::terminal_lane_plan(routes, diameters, attachAxial, coil.is_real_winding_blocking_applied(), attachAdvance,
-                                                   coil.is_real_winding_blocking_applied() ? turnPaths
-                                                                                           : std::vector<std::optional<TerminalTurnPath>>{},
-                                                   windings, pinHalves)
-        .slots;
-}
-
-struct PinRunReport {
-    double smallestRunSeparationOverRequired = std::numeric_limits<double>::max();
-    double smallestRunSeparation = std::numeric_limits<double>::max();
-    size_t runs = 0;
-};
-
-// Checks the ABT #1237 goals on a wound coil whose ends are assigned to pins, and returns the runs.
-PinRunReport check_pin_runs_share_no_copper(OpenMagnetics::Coil& coil, std::vector<PinRun>* runsOut = nullptr) {
-    std::vector<ConnectionRoute> routes;
-    coil.get_connection_reserved_spaces(&routes);
-    auto bobbin = coil.resolve_bobbin();
-    const auto placedPins = OpenMagnetics::Coil::place_pins(bobbin.get_processed_description()->get_pins().value());
-    const auto wires = coil.get_wires();
-    const int64_t wrapTurns = OpenMagnetics::Coil::pin_wrap_turns();
-
-    const auto slots = recompute_exit_slots(coil, routes);
-    std::vector<PinRun> runs;
-    for (size_t routeIndex = 0; routeIndex < routes.size(); ++routeIndex) {
-        const auto& route = routes[routeIndex];
-        if (route.pinName.empty()) {
-            continue;
-        }
-        PinRun run;
-        run.label = route.winding + " p" + std::to_string(route.parallel) + (route.kind == ConnectionKind::TERMINAL_ENTRANCE ? " start" : " finish");
-        run.pinName = route.pinName;
-        run.points = route.pinWaypoints;
-        if (route.kind == ConnectionKind::TERMINAL_ENTRANCE) {
-            std::reverse(run.points.begin(), run.points.end());
-        }
-        auto wire = wires[coil.get_winding_index_by_name(route.winding)];
-        run.radius = std::max(wire.get_maximum_outer_width(), wire.get_maximum_outer_height()) / 2;
-        REQUIRE(run.points.size() >= 3);
-        REQUIRE(slots[routeIndex].has_value());
-        run.slotX = slots[routeIndex].value();
-        run.side = route.side;
-        REQUIRE((run.side == 0 || run.side == 1));
-        // The recompute agrees with the slot the route published.
-        REQUIRE(route.exitSlot.has_value());
-        CHECK_THAT(route.exitSlot.value(), Catch::Matchers::WithinAbs(run.slotX, 1e-12));
-        runs.push_back(run);
-    }
-    auto pin_named = [&](const std::string& name) -> const PlacedPin& {
-        for (const auto& pin : placedPins) {
-            if (pin.name == name) {
-                return pin;
-            }
-        }
-        FAIL("no pin " << name);
-        return placedPins.front();
-    };
-    auto pin_axis = [](const PlacedPin& pin) {
-        const size_t axis = pin.hangsAlongZ ? 2 : 1;
-        auto tip = pin.centre;
-        tip[axis] = 2 * pin.centre[axis] - pin.base[axis];
-        return std::vector<Point3>{pin.base, tip};
-    };
-    // A wrap as the stretch of its pin's axis it covers, wrapTurns wire diameters from the level the
-    // run arrives at (ABT #1640: the run ends beside the axis, on the wrap circle).
-    auto wrap_axis = [&](const PinRun& run) {
-        const auto& pin = pin_named(run.pinName);
-        const size_t axis = pin.hangsAlongZ ? 2 : 1;
-        auto top = pin.centre;
-        top[axis] = run.points.back()[axis];
-        auto bottom = top;
-        bottom[axis] -= double(wrapTurns) * 2 * run.radius;
-        return std::vector<Point3>{top, bottom};
-    };
-
-    PinRunReport report;
-    report.runs = runs.size();
-    for (size_t i = 0; i < runs.size(); ++i) {
-        const auto& run = runs[i];
-        INFO(run.label << " -> pin " << run.pinName);
-        const auto& pin = pin_named(run.pinName);
-        const size_t axis = pin.hangsAlongZ ? 2 : 1;
-        // The run starts at MKF's exit slot, the x the in-window lead is drawn at, and leaves the
-        // window on its route's face. Alf 2026-10-25: face-aware (§12 pins decide the side): the face-1
-        // frame is the bobbin frame turned 180 degrees about the column axis, so a face-1 run starts at
-        // bobbin x = -slot and leaves along +Z; a face-0 run at x = +slot, along -Z.
-        // Under real winding the published face is the one toward the run's pin (spec section 12): the
-        // pin's own z says which, independently of the plan.
-        if (coil.is_real_winding_blocking_applied()) {
-            REQUIRE(std::abs(pin.centre[2]) > 1e-9);
-            CHECK(run.side == (pin.centre[2] < 0 ? 0 : 1));
-        }
-        const double runX = run.side == 0 ? run.slotX : -run.slotX;
-        CHECK_THAT(run.points[0][0], Catch::Matchers::WithinAbs(runX, 1e-12));
-        CHECK_THAT(run.points[1][0], Catch::Matchers::WithinAbs(runX, 1e-12));
-        CHECK((run.side == 0 ? run.points[0][2] < 0 : run.points[0][2] > 0));
-        // Ends where its wrap starts, tangent to the wrap circle on a level last leg (ABT #1640),
-        // resting outside the rail face.
-        check_tangent_arrival(pin, run.points[run.points.size() - 2], run.points.back(), pin.diameter / 2 + run.radius);
-        CHECK(run.points.back()[axis] <= pin.base[axis] - run.radius + 1e-12);
-        // The wrap stays on the pin.
-        CHECK(wrap_axis(run)[1][axis] >= pin_axis(pin)[1][axis] - 1e-12);
-        // Never inside a pin rail (ABT #1249): sampled every 20 um.
-        for (const auto& rail : bobbin.get_pin_rails()) {
-            double closest = std::numeric_limits<double>::max();
-            for (size_t k = 0; k + 1 < run.points.size(); ++k) {
-                const double length = std::hypot(std::hypot(run.points[k + 1][0] - run.points[k][0], run.points[k + 1][1] - run.points[k][1]),
-                                                 run.points[k + 1][2] - run.points[k][2]);
-                const size_t samples = std::max<size_t>(2, size_t(std::ceil(length / 20e-6)) + 1);
-                for (size_t sample = 0; sample < samples; ++sample) {
-                    const double t = double(sample) / double(samples - 1);
-                    double d2 = 0;
-                    for (int c = 0; c < 3; ++c) {
-                        const double p = run.points[k][c] + t * (run.points[k + 1][c] - run.points[k][c]);
-                        const double excess = std::max(std::abs(p - rail.centre[c]) - rail.halfExtents[c], 0.0);
-                        d2 += excess * excess;
-                    }
-                    closest = std::min(closest, std::sqrt(d2));
-                }
-            }
-            INFO("rail " << rail.name);
-            CHECK(closest >= run.radius - 1e-9);
-        }
-        // Clear of every foreign pin by its wrap radius plus a wire diameter; of its own pin up to the last leg.
-        for (const auto& other : placedPins) {
-            const bool own = other.name == run.pinName;
-            const double found = sampled_distance(run.points, pin_axis(other), own ? 1 : 0);
-            INFO("pin " << other.name);
-            CHECK(found >= other.diameter / 2 + 3 * run.radius - 1e-9);
-        }
-        for (size_t j = i + 1; j < runs.size(); ++j) {
-            const auto& otherRun = runs[j];
-            INFO("against " << otherRun.label << " -> pin " << otherRun.pinName);
-            const double required = run.radius + otherRun.radius;
-            const double separation = std::min(sampled_distance(run.points, otherRun.points),
-                                               sampled_distance(otherRun.points, run.points));
-            CHECK(separation >= required - 1e-9);
-            report.smallestRunSeparation = std::min(report.smallestRunSeparation, separation);
-            report.smallestRunSeparationOverRequired = std::min(report.smallestRunSeparationOverRequired, separation / required);
-            // Distinct exits, and drops (the leg along the pin axis) at distinct x.
-            const double exitGap = std::hypot(std::hypot(run.points[0][0] - otherRun.points[0][0], run.points[0][1] - otherRun.points[0][1]),
-                                              run.points[0][2] - otherRun.points[0][2]);
-            CHECK(exitGap >= required - 1e-9);
-            auto drop_x = [&](const PinRun& r) {
-                for (size_t k = 0; k + 1 < r.points.size(); ++k) {
-                    if (std::abs(r.points[k][0] - r.points[k + 1][0]) < 1e-12 &&
-                        std::abs(r.points[k][axis == 1 ? 2 : 1] - r.points[k + 1][axis == 1 ? 2 : 1]) < 1e-12 &&
-                        std::abs(r.points[k][axis] - r.points[k + 1][axis]) > 1e-12 && r.points[k + 1][axis] < r.points[k][axis]) {
-                        return r.points[k][0];
-                    }
-                }
-                FAIL("no drop along the pin axis in the run of " << r.label);
-                return 0.0;
-            };
-            CHECK(std::abs(drop_x(run) - drop_x(otherRun)) >= required - 1e-9);
-            // Runs against the other's wrap (a wrap is a band of radius pinRadius + wire radius).
-            const auto& otherPin = pin_named(otherRun.pinName);
-            const bool samePin = otherRun.pinName == run.pinName;
-            CHECK(sampled_distance(run.points, wrap_axis(otherRun), samePin ? 1 : 0) - (otherPin.diameter / 2 + otherRun.radius) >= required - 1e-9);
-            CHECK(sampled_distance(otherRun.points, wrap_axis(run), samePin ? 1 : 0) - (pin.diameter / 2 + run.radius) >= required - 1e-9);
-        }
-    }
-    if (runsOut) {
-        *runsOut = runs;
-    }
-    return report;
-}
-
-// ABT #1237: every run's exit x is its expected lane times its coated OD (one wire per side in these fixtures).
-void check_exit_lanes(const std::vector<PinRun>& runs, const std::map<std::string, int>& expectedLanes) {
-    CHECK(runs.size() == expectedLanes.size());
-    for (const auto& run : runs) {
-        INFO(run.label << " -> pin " << run.pinName);
-        REQUIRE(expectedLanes.count(run.label));
-        CHECK_THAT(run.points[0][0], Catch::Matchers::WithinAbs(double(expectedLanes.at(run.label)) * 2 * run.radius, 1e-12));
-    }
-}
 
 json boost_inductor_magnetic_json() {
     // MVB++ tests/mas_complete_fixtures/boost_inductor_complete.json, the magnetic (ABT #1237's reporter).
@@ -1064,7 +626,7 @@ json boost_inductor_magnetic_json() {
 
 }  // namespace
 
-TEST_CASE("The boost inductor's four runs to PQ 26/25 pins share no copper (ABT #1237)",
+TEST_CASE("The boost inductor's four ends on PQ 26/25 pins: strands on adjacent inner pins, starts towards -X (ABT #1237)",
           "[constructive-model][coil][pins][abt1237]") {
     SettingsGuard<bool> realWinding(Settings::GetInstance(), &Settings::get_coil_use_real_winding_geometry,
                                     &Settings::set_coil_use_real_winding_geometry, true);
@@ -1077,256 +639,12 @@ TEST_CASE("The boost inductor's four runs to PQ 26/25 pins share no copper (ABT 
     auto completed = magnetic_autocomplete(magnetic);
     auto coil = completed.get_coil();
     REQUIRE(coil.has_complete_pin_connections());
-    // The assignment is unchanged by the routing: strands on adjacent inner pins, starts towards -X.
+    // Strands on adjacent inner pins, starts towards -X. ABT #2268: the runs of these leads to their
+    // pins are parked; only the assignment written into the connections is checked.
     CHECK(connection_of(coil, "Primary", End::START, 0).get_pin_name().value() == "2");
     CHECK(connection_of(coil, "Primary", End::START, 1).get_pin_name().value() == "3");
     CHECK(connection_of(coil, "Primary", End::FINISH, 0).get_pin_name().value() == "4");
     CHECK(connection_of(coil, "Primary", End::FINISH, 1).get_pin_name().value() == "5");
-
-    std::vector<PinRun> runs;
-    auto report = check_pin_runs_share_no_copper(coil, &runs);
-    CHECK(report.runs == 4);
-    CHECK(report.smallestRunSeparationOverRequired >= 1 - 1e-9);
-    // The exit slots (Coil::terminal_exit_slots), coated OD 0.943 mm. The entrance bundle sits at the
-    // plane side by side; the exit bundle cannot take the plane (each exit row is 4.7 um from its own
-    // Z dragback's step-out row there), so it anchors one lane out. These are the attach slots MVB++'s
-    // fan chose itself on MKF 10533d78 (entrances 0 / 0.943 mm, exits 0.943 / 1.886 mm).
-    // ABT #1705 (approved by Alf 2026-10-24, sign only): under real winding the entrance bundle packs
-    // outwards on x <= 0, so Primary p1 start stands at -0.943 mm; its magnitude is unchanged.
-    std::map<std::string, double> expectedSlot = {{"Primary p0 start", 0.0}, {"Primary p1 start", -0.943e-3},
-                                                  {"Primary p0 finish", 0.943e-3}, {"Primary p1 finish", 1.886e-3}};
-    for (const auto& run : runs) {
-        INFO(run.label);
-        REQUIRE(expectedSlot.count(run.label));
-        // 0.943 mm is the served litz's coated OD to the micrometre; the lane arithmetic is exact.
-        CHECK_THAT(run.points[0][0], Catch::Matchers::WithinAbs(expectedSlot.at(run.label), 1e-7));
-        CHECK_THAT(run.points[0][0] / (2 * run.radius), Catch::Matchers::WithinAbs(std::round(expectedSlot.at(run.label) / 0.943e-3), 1e-9));
-    }
-}
-
-TEST_CASE("The PQ 32/30 flyback's runs share no copper, on both rows and with strands sharing a pin (ABT #1237)",
-          "[constructive-model][coil][pins][abt1237]") {
-    SettingsGuard<bool> realWinding(Settings::GetInstance(), &Settings::get_coil_use_real_winding_geometry,
-                                    &Settings::set_coil_use_real_winding_geometry, true);
-    auto core = former_core();
-    SECTION("primary and secondary on opposite rows") {
-        auto coil = make_coil({{"Primary", 40, 1, "primary", "Round 0.5 - Grade 1"},
-                               {"Secondary", 6, 1, "secondary", "Round 0.5 - Grade 1"}});
-        coil.assign_pins(coil.resolve_bobbin(), core);
-        std::vector<PinRun> runs;
-        auto report = check_pin_runs_share_no_copper(coil, &runs);
-        CHECK(report.runs == 4);
-        // Exit lanes (x / coated OD): the Primary's finish leaves its own dragback's plane one lane out.
-        check_exit_lanes(runs, {{"Primary p0 start", 0}, {"Primary p0 finish", 1}, {"Secondary p0 start", 0}, {"Secondary p0 finish", 0}});
-    }
-    SECTION("two strands share each pin") {
-        auto coil = make_coil({{"Primary", 20, 1, "primary", "Round 0.5 - Grade 1"},
-                               {"Secondary", 4, 2, "secondary", "Round 0.3 - Grade 1"}});
-        coil.assign_pins(coil.resolve_bobbin(), core);
-        CHECK_FALSE(connection_of(coil, "Secondary", End::START).get_parallel().has_value());
-        std::vector<PinRun> runs;
-        auto report = check_pin_runs_share_no_copper(coil, &runs);
-        CHECK(report.runs == 6);
-        // §12 face-aware lane plan (approved by Alf 2026-10-26): Secondary p0 start 0->1, p1 start 1->0, p1 finish 1->-1.
-        check_exit_lanes(runs, {{"Primary p0 start", 0}, {"Primary p0 finish", 0}, {"Secondary p0 start", 1}, {"Secondary p1 start", 0},
-                                {"Secondary p0 finish", 0}, {"Secondary p1 finish", -1}});
-    }
-    SECTION("three strands on adjacent pins") {
-        auto coil = make_coil({{"Primary", 20, 1, "primary", "Round 0.5 - Grade 1"},
-                               {"Secondary", 4, 3, "secondary", "Round 0.5 - Grade 1"}});
-        coil.assign_pins(coil.resolve_bobbin(), core);
-        std::vector<PinRun> runs;
-        auto report = check_pin_runs_share_no_copper(coil, &runs);
-        CHECK(report.runs == 8);
-        // §12 face-aware lane plan (approved by Alf 2026-10-26): Secondary p0 start 0->2, p2 start 2->0, p2 finish 2->-2,
-        // p1 finish 1->-1.
-        check_exit_lanes(runs, {{"Primary p0 start", 0}, {"Primary p0 finish", 0}, {"Secondary p0 start", 2}, {"Secondary p1 start", 1},
-                                {"Secondary p2 start", 0}, {"Secondary p0 finish", 0}, {"Secondary p1 finish", -1}, {"Secondary p2 finish", -2}});
-    }
-}
-
-namespace {
-// Closest distance between segments [p1, q1] and [p2, q2] (Ericson, Real-Time Collision Detection 5.1.9).
-double segment_segment_distance(const std::vector<double>& p1, const std::vector<double>& q1, const std::vector<double>& p2,
-                                const std::vector<double>& q2) {
-    double d1[3], d2[3], r[3];
-    for (int k = 0; k < 3; ++k) {
-        d1[k] = q1[k] - p1[k];
-        d2[k] = q2[k] - p2[k];
-        r[k] = p1[k] - p2[k];
-    }
-    auto dot = [](const double* a, const double* b) { return a[0] * b[0] + a[1] * b[1] + a[2] * b[2]; };
-    const double a = dot(d1, d1), e = dot(d2, d2), f = dot(d2, r);
-    double s = 0, t = 0;
-    if (a <= 1e-30 && e <= 1e-30) {
-        s = t = 0;
-    }
-    else if (a <= 1e-30) {
-        t = std::clamp(f / e, 0.0, 1.0);
-    }
-    else {
-        const double c = dot(d1, r);
-        if (e <= 1e-30) {
-            s = std::clamp(-c / a, 0.0, 1.0);
-        }
-        else {
-            const double b = dot(d1, d2), denominator = a * e - b * b;
-            s = denominator > 1e-30 ? std::clamp((b * f - c * e) / denominator, 0.0, 1.0) : 0.0;
-            t = (b * s + f) / e;
-            if (t < 0) {
-                t = 0;
-                s = std::clamp(-c / a, 0.0, 1.0);
-            }
-            else if (t > 1) {
-                t = 1;
-                s = std::clamp((b - c) / a, 0.0, 1.0);
-            }
-        }
-    }
-    double d2sum = 0;
-    for (int k = 0; k < 3; ++k) {
-        const double delta = (p1[k] + d1[k] * s) - (p2[k] + d2[k] * t);
-        d2sum += delta * delta;
-    }
-    return std::sqrt(d2sum);
-}
-}  // namespace
-
-TEST_CASE("Leads sharing a lane keep apart over their whole run, pin run included (ABT #1336)",
-          "[constructive-model][coil][pins][abt1336]") {
-    // The PQ 32/30 flyback's three-strand fixture, built exactly as "The PQ 32/30 flyback's runs share
-    // no copper ... / three strands on adjacent pins" builds it. terminal_exit_slots lets two leads
-    // share a lane only when they cannot meet (an exact touch counts as meeting). Each lead is measured
-    // whole, as MKF plans it: its in-window run (route waypoints at its exit slot on its face) and its
-    // planned pin run (pinWaypoints), joined. Every pair keeps its copper apart (no overlap), and every
-    // pair whose slots share a lane on one face stands strictly apart (not even touching).
-    SettingsGuard<bool> realWinding(Settings::GetInstance(), &Settings::get_coil_use_real_winding_geometry,
-                                    &Settings::set_coil_use_real_winding_geometry, true);
-    auto core = former_core();
-    auto coil = make_coil({{"Primary", 20, 1, "primary", "Round 0.5 - Grade 1"},
-                           {"Secondary", 4, 3, "secondary", "Round 0.5 - Grade 1"}});
-    coil.assign_pins(coil.resolve_bobbin(), core);
-    std::vector<ConnectionRoute> routes;
-    coil.get_connection_reserved_spaces(&routes);
-    const auto wires = coil.get_wires();
-    struct WholeLead {
-        std::string label;
-        int side;
-        double slot;
-        double diameter;
-        std::vector<std::vector<double>> points;   // bobbin frame, turn end first
-    };
-    std::vector<WholeLead> leads;
-    for (const auto& route : routes) {
-        if (route.kind != ConnectionKind::TERMINAL_ENTRANCE && route.kind != ConnectionKind::TERMINAL_EXIT) {
-            continue;
-        }
-        const bool entrance = route.kind == ConnectionKind::TERMINAL_ENTRANCE;
-        WholeLead lead;
-        lead.label = route.winding + " p" + std::to_string(route.parallel) + (entrance ? " start" : " finish");
-        INFO(lead.label);
-        REQUIRE(route.exitSlot.has_value());
-        REQUIRE_FALSE(route.pinName.empty());
-        REQUIRE(route.pinWaypoints.size() >= 2);
-        REQUIRE((route.side == 0 || route.side == 1));
-        lead.side = route.side;
-        lead.slot = route.exitSlot.value();
-        const auto& wire = wires[coil.get_winding_index_by_name(route.winding)];
-        lead.diameter = std::max(wire.get_maximum_outer_width(), wire.get_maximum_outer_height());
-        // The face frame of side s is the bobbin frame turned s * 180 degrees about the column axis:
-        // face 0 is the -Z face (x = slot), face 1 the +Z face (x = -slot).
-        const double faceSign = route.side == 0 ? -1.0 : 1.0;
-        const double x = route.side == 0 ? lead.slot : -lead.slot;
-        std::vector<std::vector<double>> window;   // waypoints in electrical order, mapped to 3D
-        for (const auto& waypoint : route.waypoints) {
-            window.push_back({x, waypoint.at(1), faceSign * waypoint.at(0)});
-        }
-        auto pin = route.pinWaypoints;
-        if (entrance) {   // turn end first: window run from the turn, then the pin run
-            std::reverse(window.begin(), window.end());
-            std::reverse(pin.begin(), pin.end());
-        }
-        // The pin run starts on the lead's own face, where its in-window run leaves the window.
-        CHECK(pin.front()[2] * faceSign > 0);
-        lead.points = window;
-        lead.points.insert(lead.points.end(), pin.begin(), pin.end());
-        leads.push_back(lead);
-    }
-    REQUIRE(leads.size() == 8);
-    double smallestShared = std::numeric_limits<double>::max();
-    size_t sharedPairs = 0;
-    for (size_t i = 0; i < leads.size(); ++i) {
-        for (size_t j = i + 1; j < leads.size(); ++j) {
-            double found = std::numeric_limits<double>::max();
-            for (size_t a = 0; a + 1 < leads[i].points.size(); ++a) {
-                for (size_t b = 0; b + 1 < leads[j].points.size(); ++b) {
-                    found = std::min(found, segment_segment_distance(leads[i].points[a], leads[i].points[a + 1], leads[j].points[b],
-                                                                     leads[j].points[b + 1]));
-                }
-            }
-            const double required = (leads[i].diameter + leads[j].diameter) / 2;
-            const double clearance = found - required;
-            const bool sharesLane = leads[i].side == leads[j].side &&
-                                    std::abs(leads[i].slot - leads[j].slot) < required - 1e-9;
-            INFO(leads[i].label << " (side " << leads[i].side << ", slot " << leads[i].slot * 1e3 << " mm) vs " << leads[j].label
-                                << " (side " << leads[j].side << ", slot " << leads[j].slot * 1e3 << " mm): clearance "
-                                << clearance * 1e3 << " mm");
-            CHECK(clearance >= -1e-9);
-            if (sharesLane) {
-                ++sharedPairs;
-                smallestShared = std::min(smallestShared, clearance);
-                CHECK(clearance > 1e-9);
-            }
-        }
-    }
-    INFO("smallest clearance of a lane-sharing pair " << smallestShared * 1e3 << " mm over " << sharedPairs << " pairs");
-    CHECK(sharedPairs > 0);   // the premise: the plan shares lanes, so the rule is exercised
-}
-
-TEST_CASE("A lead that cannot be routed clear throws naming what it collides with (ABT #1237)",
-          "[constructive-model][coil][pins][abt1237]") {
-    auto make_pin = [](const std::string& name, double x, double length) {
-        MAS::Pin pin;
-        pin.set_name(name);
-        pin.set_shape(PinShape::ROUND);
-        pin.set_type(PinDescriptionType::THT);
-        pin.set_dimensions({0.0008, 0.0008, length});
-        pin.set_coordinates(std::vector<double>({x, -0.012 - length / 2, -0.013}));
-        return pin;
-    };
-    auto make_lead = [](const std::string& label, const MAS::Pin& pin, double axial) {
-        PinLeadRequest lead;
-        lead.label = label;
-        lead.pin = pin;
-        lead.windowExit = {0.011, axial};
-        lead.diameter = 0.0006;
-        // Sharp corners: this test is about the run's placement, not its bends (ABT #1296).
-        lead.bendRadius = lead.diameter / 2;
-        lead.exitX = 0.0;
-        return lead;
-    };
-    SECTION("two strands on one pin too short for both wraps") {
-        // 1.5 mm of pin: one wrap needs 0.3 + 2 x 0.6 = 1.5 mm; the second strand's wrap cannot fit.
-        auto pin = make_pin("7", 0.0, 0.0015);
-        // §17 (Alf 2026-10-26): drawn and reported
-        auto routes = OpenMagnetics::Coil::route_leads_to_pins({pin}, {make_lead("strand A", pin, -0.004), make_lead("strand B", pin, -0.005)}, 0.0, 2);
-        REQUIRE(routes.size() == 2);
-        REQUIRE(routes[1].findings.size() == 1);
-        CHECK(routes[1].findings[0].kind == OpenMagnetics::LeadFindingKind::PIN_RUN_COLLIDES);
-        CHECK_THAT(routes[1].findings[0].witness, Catch::Matchers::ContainsSubstring("Cannot route strand B to pin '7'") &&
-                                                  Catch::Matchers::ContainsSubstring("strand A"));
-    }
-    SECTION("a pin pitch too narrow to pass between pins") {
-        // Pins 1.5 mm apart: a 0.6 mm wire beside pin '2' needs 0.4 + 0.3 + 0.6 = 1.3 mm from both.
-        std::vector<MAS::Pin> pins = {make_pin("1", -0.0015, 0.004), make_pin("2", 0.0, 0.004), make_pin("3", 0.0015, 0.004)};
-        // §17 (Alf 2026-10-26): drawn and reported
-        auto routes = OpenMagnetics::Coil::route_leads_to_pins(pins, {make_lead("the middle lead", pins[1], -0.004)}, 0.0, 2);
-        REQUIRE(routes.size() == 1);
-        REQUIRE(routes[0].findings.size() == 1);
-        CHECK(routes[0].findings[0].kind == OpenMagnetics::LeadFindingKind::PIN_RUN_COLLIDES);
-        CHECK_THAT(routes[0].findings[0].witness, Catch::Matchers::ContainsSubstring("Cannot route the middle lead to pin '2'") &&
-                                                  Catch::Matchers::ContainsSubstring("pin '1'"));
-    }
 }
 
 TEST_CASE("With coil_connect_leads_to_pins off (default) autocomplete assigns no pins and keeps the window-exit lead lengths (ABT #1237)",
@@ -1374,21 +692,14 @@ TEST_CASE("With coil_connect_leads_to_pins off (default) autocomplete assigns no
         }
     }
     CHECK(terminals == 4);
-    const auto offLengths = WindingOhmicLosses::calculate_connection_length_per_winding_per_parallel(offCoil);
 
     SettingsGuard<bool> connectLeads(Settings::GetInstance(), &Settings::get_coil_connect_leads_to_pins,
                                      &Settings::set_coil_connect_leads_to_pins, true);
     auto on = build();
     auto onCoil = on.get_coil();
     REQUIRE(onCoil.has_complete_pin_connections());
-    const auto onLengths = WindingOhmicLosses::calculate_connection_length_per_winding_per_parallel(onCoil);
-    // The same winding, longer leads: exactly the runs to the pins.
-    REQUIRE(offLengths.size() == onLengths.size());
-    for (size_t winding = 0; winding < onLengths.size(); ++winding) {
-        CHECK(onLengths[winding][0] > offLengths[winding][0]);
-    }
-    auto report = check_pin_runs_share_no_copper(onCoil);
-    CHECK(report.runs == 4);
+    // ABT #2268: the runs of the leads to their pins are parked; with the flag on only the assignment
+    // reaches the design.
 }
 
 
@@ -1482,215 +793,6 @@ TEST_CASE("terminal_exit_slots: bundles on consecutive lanes, anchored clear of 
         attach[1] = std::numeric_limits<double>::quiet_NaN();
         CHECK_THROWS_WITH(slots_of(routes, attach), Catch::Matchers::ContainsSubstring("no attach turn coordinate"));
     }
-}
-
-TEST_CASE("route_leads_to_pins starts each run at its exit slot and keeps every run off the other leads' in-window runs (ABT #1237)",
-          "[constructive-model][coil][pins][abt1237]") {
-    auto make_pin = [](const std::string& name, double x) {
-        MAS::Pin pin;
-        pin.set_name(name);
-        pin.set_shape(PinShape::ROUND);
-        pin.set_type(PinDescriptionType::THT);
-        pin.set_dimensions({0.0008, 0.0008, 0.004});
-        pin.set_coordinates(std::vector<double>({x, -0.014, -0.013}));
-        return pin;
-    };
-    const std::vector<MAS::Pin> pins = {make_pin("A", -0.004), make_pin("B", -0.008)};
-    // Lead A leaves at x = 0 lifted 2 mm by the ride-over: its in-window run covers z -11 .. -13 mm.
-    // Lead B leaves the same row one OD along, unlifted, at z = -11 mm, and heads -x past x = 0.
-    PinLeadRequest a;
-    a.label = "lead A";
-    a.pin = pins[0];
-    a.windowExit = {0.011, -0.004};
-    a.diameter = 0.0006;
-    // Sharp corners: this test is about the run's placement, not its bends (ABT #1296).
-    a.bendRadius = a.diameter / 2;
-    a.lift = 0.002;
-    a.exitX = 0.0;
-    PinLeadRequest b = a;
-    b.label = "lead B";
-    b.pin = pins[1];
-    b.lift = 0.0;
-    b.exitX = 0.0006;
-    const auto routes = OpenMagnetics::Coil::route_leads_to_pins(pins, {a, b}, 0.0, 2);
-    REQUIRE(routes.size() == 2);
-    CHECK_THAT(routes[0].waypoints.front()[0], Catch::Matchers::WithinAbs(0.0, 1e-15));
-    CHECK_THAT(routes[0].waypoints.front()[2], Catch::Matchers::WithinAbs(-0.013, 1e-15));
-    CHECK_THAT(routes[1].waypoints.front()[0], Catch::Matchers::WithinAbs(0.0006, 1e-15));
-    CHECK_THAT(routes[1].waypoints.front()[2], Catch::Matchers::WithinAbs(-0.011, 1e-15));
-    const std::vector<Point3> inWindowA = {{0.0, -0.004, -0.011}, {0.0, -0.004, -0.013}};
-    const std::vector<Point3> inWindowB = {{0.0006, -0.004, -0.011}, {0.0006, -0.004, -0.011}};
-    CHECK(sampled_distance(routes[1].waypoints, inWindowA) >= 0.0006 - 1e-9);
-    CHECK(sampled_distance(routes[0].waypoints, inWindowB) >= 0.0006 - 1e-9);
-    CHECK(std::min(sampled_distance(routes[0].waypoints, routes[1].waypoints), sampled_distance(routes[1].waypoints, routes[0].waypoints)) >= 0.0006 - 1e-9);
-
-    SECTION("a lead without an exit slot, or two slots sharing copper, throw") {
-        PinLeadRequest noSlot = a;
-        noSlot.exitX.reset();
-        CHECK_THROWS_WITH(OpenMagnetics::Coil::route_leads_to_pins(pins, {noSlot}, 0.0, 2), Catch::Matchers::ContainsSubstring("has no exit slot x"));
-        PinLeadRequest same = b;
-        same.exitX = 0.0003;
-        CHECK_THROWS_WITH(OpenMagnetics::Coil::route_leads_to_pins(pins, {a, same}, 0.0, 2),
-                          Catch::Matchers::ContainsSubstring("The exit slots of lead A and lead B share copper"));
-    }
-}
-
-// ABT #1172: a pin run's corners are planned for the bend a CONSUMER will draw. MKF plans straight
-// legs meeting at right angles around an obstacle edge (the pin rail, here), but MVB++ sweeps each
-// corner with a centreline radius R > r, and a rounded corner cuts the INSIDE of the bend — which
-// is the edge. With the legs one wire radius off both faces the copper ends up inside the rail:
-// measured on the boost PQ 26/25 as 0.001526 mm^3 of overlap. The legs now stand off by
-// d >= R - (R - r) sin(theta/2) instead.
-TEST_CASE("route_leads_to_pins clears the rail edge for the bend a consumer will draw (ABT #1172)",
-          "[constructive-model][coil][pins][abt1172]") {
-    auto make_pin = [](const std::string& name, double x) {
-        MAS::Pin pin;
-        pin.set_name(name);
-        pin.set_shape(PinShape::ROUND);
-        pin.set_type(PinDescriptionType::THT);
-        pin.set_dimensions({0.0008, 0.0008, 0.004});
-        pin.set_coordinates(std::vector<double>({x, -0.014, -0.013}));
-        return pin;
-    };
-    const std::vector<MAS::Pin> pins = {make_pin("A", -0.004)};
-    PinLeadRequest lead;
-    lead.label = "lead A";
-    lead.pin = pins[0];
-    lead.windowExit = {0.011, -0.004};
-    lead.diameter = 0.000943;       // the boost PQ 26/25 lead: r = 0.4715 mm
-    lead.bendRadius = lead.diameter / 2;
-    lead.lift = 0.0;
-    lead.exitX = 0.0;
-    const double coatedRadius = lead.diameter / 2;
-
-    // A rail the run has to pass under, in the plane of the drop.
-    OpenMagnetics::Bobbin::PinRailBlock rail;
-    rail.name = "rail 0 block 0";
-    rail.centre = {-0.004, -0.0145, -0.0115};
-    rail.halfExtents = {0.006, 0.0005, 0.0015};
-
-    SECTION("geometry: the required stand-off is exactly R - (R - r) sin(theta/2)") {
-        // Checked against the closed form, independently of the routing code.
-        for (double factor : {1.0, 1.05, 1.5}) {
-            settings.reset();
-            if (factor > 1.0) {
-                settings.set_coil_lead_bend_radius_factor(factor);
-            }
-            const double bendRadius = OpenMagnetics::Settings::resolve_lead_bend_radius(coatedRadius);
-            const double clearance = OpenMagnetics::Settings::lead_leg_clearance(coatedRadius, bendRadius, std::numbers::pi / 2);
-            CHECK_THAT(bendRadius, Catch::Matchers::WithinRel(factor * coatedRadius, 1e-12));
-            CHECK_THAT(clearance,
-                       Catch::Matchers::WithinRel(bendRadius - (bendRadius - coatedRadius) / std::sqrt(2.0), 1e-12));
-            // The arc of a bend of THIS radius, with legs at THIS stand-off, clears the edge by at
-            // least the wire's own radius — which is the whole point.
-            const double closestApproach = bendRadius - (bendRadius - clearance) * std::sqrt(2.0);
-            CHECK(closestApproach >= coatedRadius - 1e-12);
-        }
-        settings.reset();
-    }
-
-    SECTION("unset: sharp corners, the historical geometry, and the route says so") {
-        settings.reset();
-        const auto routes = OpenMagnetics::Coil::route_leads_to_pins(pins, {lead}, 0.0, 2, {rail});
-        REQUIRE(routes.size() == 1);
-        REQUIRE(routes[0].waypoints.size() >= 2);
-        // No bend declared -> planned for sharp corners -> the recorded radius is the wire's own,
-        // so a consumer that rounds its corners can see MKF did not plan for one.
-        CHECK_THAT(routes[0].plannedBendRadius, Catch::Matchers::WithinRel(coatedRadius, 1e-12));
-    }
-
-    SECTION("with a bend declared the run moves OUT, and records the radius it was planned for") {
-        settings.reset();
-        const auto sharpRoutes = OpenMagnetics::Coil::route_leads_to_pins(pins, {lead}, 0.0, 2, {rail});
-        REQUIRE(sharpRoutes.size() == 1);
-        const double railUnderside = rail.centre[1] - rail.halfExtents[1];
-
-        settings.set_coil_lead_bend_radius_factor(1.05);      // MVB++'s kRoundCornerBendFactor
-        PinLeadRequest roundedLead = lead;                    // the radius travels ON the request
-        roundedLead.bendRadius = OpenMagnetics::Settings::resolve_lead_bend_radius(coatedRadius);
-        const auto roundedRoutes = OpenMagnetics::Coil::route_leads_to_pins(pins, {roundedLead}, 0.0, 2, {rail});
-        REQUIRE(roundedRoutes.size() == 1);
-        CHECK_THAT(roundedRoutes[0].plannedBendRadius,
-                   Catch::Matchers::WithinRel(1.05 * coatedRadius, 1e-12));
-
-        // The planned run MOVES when a bend is declared, and moves by exactly the extra
-        // stand-off the arc needs: d(R) - d(r) = (R - r)(1 - 1/sqrt(2)), which is 6.9 um for this
-        // lead at R = 1.05 r. Asserted on the waypoints themselves rather than on a distance to a
-        // synthetic rail, so the check does not depend on where this test happens to put the rail.
-        const double expectedShift = (1.05 * coatedRadius - coatedRadius) * (1 - 1 / std::sqrt(2.0));
-        REQUIRE(sharpRoutes[0].waypoints.size() == roundedRoutes[0].waypoints.size());
-        double largestShift = 0;
-        for (size_t index = 0; index < sharpRoutes[0].waypoints.size(); ++index) {
-            for (size_t axis = 0; axis < 3; ++axis) {
-                largestShift = std::max(largestShift, std::fabs(roundedRoutes[0].waypoints[index][axis] -
-                                                                sharpRoutes[0].waypoints[index][axis]));
-            }
-        }
-        UNSCOPED_INFO("largest waypoint shift " << largestShift * 1e6 << " um, expected "
-                      << expectedShift * 1e6 << " um");
-        // Reverting the clearance makes this zero: the two runs would be identical.
-        CHECK(largestShift > 0);
-        CHECK_THAT(largestShift, Catch::Matchers::WithinRel(expectedShift, 1e-9));
-        settings.reset();
-    }
-
-    SECTION("a bend tighter than the wire is refused, not silently accepted") {
-        settings.reset();
-        CHECK_THROWS_WITH(settings.set_coil_lead_bend_radius_factor(0.9),
-                          Catch::Matchers::ContainsSubstring("cannot be below 1"));
-        settings.reset();
-    }
-
-    SECTION("a lead planned for a bend tighter than it sweeps is refused (ABT #1296)") {
-        settings.reset();
-        PinLeadRequest tooTight = lead;
-        tooTight.bendRadius = 0.9 * coatedRadius;
-        CHECK_THROWS_WITH(OpenMagnetics::Coil::route_leads_to_pins(pins, {tooTight}, 0.0, 2, {rail}),
-                          Catch::Matchers::ContainsSubstring("below the radius it sweeps"));
-        PinLeadRequest unset = lead;
-        unset.bendRadius = 0;                                 // never set: refused, not planned sharp
-        CHECK_THROWS_WITH(OpenMagnetics::Coil::route_leads_to_pins(pins, {unset}, 0.0, 2, {rail}),
-                          Catch::Matchers::ContainsSubstring("below the radius it sweeps"));
-    }
-}
-
-TEST_CASE("The bend radius a pin run was planned for reaches the struct a consumer can read (ABT #1172)",
-          "[constructive-model][coil][pins][abt1172]") {
-    // MVB++ consumes ConnectionRoute from get_connection_layout().routes; PinLeadRoute is
-    // route_leads_to_pins' return value and never reaches the enriched magnetic. Settings do not
-    // substitute for the field: a consumer that restores its settings after enrichment (or never
-    // set them -- the WASM/web path, an older saved design) reads the AMBIENT value at draw time,
-    // not what this design was planned with, and would round a corner into a rail whose legs were
-    // never offset for it.
-    auto& settings = OpenMagnetics::Settings::GetInstance();
-    settings.reset();
-    settings.set_coil_use_real_winding_geometry(true);
-
-    auto inputs = reinforced_offline_inputs();
-    auto coil = make_coil({{"Primary", 40, 1, "primary", "Round 0.2 - Grade 1"},
-                           {"Secondary", 6, 1, "secondary", "Round 0.2 - Grade 1"}},
-                          inputs);
-    auto core = former_core();
-    REQUIRE_FALSE(coil.assign_pins(coil.resolve_bobbin(), core).skipped);
-
-    const double factor = 1.05;                       // MVB++'s kRoundCornerBendFactor
-    settings.set_coil_lead_bend_radius_factor(factor);
-    const auto layout = coil.get_connection_layout();
-    settings.reset();                                 // as a consumer's SettingsGuard would
-
-    size_t checked = 0;
-    for (const auto& route : layout.routes) {
-        if (route.pinWaypoints.empty()) {
-            continue;                                 // not a run to a pin
-        }
-        INFO("route " << route.winding << " parallel " << route.parallel << " pin " << route.pinName);
-        CHECK(route.plannedBendRadius > 0);
-        // The recorded radius is the one the legs were offset for, NOT the wire's own: it must
-        // survive the settings being restored, which is the whole reason it lives on the route.
-        CHECK(route.plannedBendRadius > 0.5 * factor * 0.0002);
-        ++checked;
-    }
-    REQUIRE(checked > 0);                             // a vacuous pass here would look identical
 }
 
 TEST_CASE("A lead is planned for the largest of its wire's, its sleeve's and the drawer's bend radius (ABT #1296)",
@@ -1789,7 +891,6 @@ TEST_CASE("Every terminal route publishes the bend it was planned for, pin or no
     const auto layout = coil.get_connection_layout();
 
     size_t terminals = 0;
-    size_t pinned = 0;
     size_t sleeved = 0;
     for (const auto& route : layout.routes) {
         if (route.kind != ConnectionKind::TERMINAL_ENTRANCE && route.kind != ConnectionKind::TERMINAL_EXIT) {
@@ -1802,11 +903,9 @@ TEST_CASE("Every terminal route publishes the bend it was planned for, pin or no
         const double swept = route.sleeveOuterDiameter ? route.sleeveOuterDiameter.value() / 2 : 0.0;
         CHECK_THAT(route.plannedBendRadius, Catch::Matchers::WithinRel(std::max(flexibility, swept), 1e-9));
         ++terminals;
-        pinned += route.pinWaypoints.empty() ? 0 : 1;
         sleeved += route.sleeveOuterDiameter ? 1 : 0;
     }
     REQUIRE(terminals == 4);
-    REQUIRE(pinned > 0);
     // Both branches are really exercised, or the check above could pass on the wrong one.
     CHECK(sleeved == (sleevedCase ? terminals : 0));
     settings.reset();
@@ -1826,12 +925,19 @@ int pin_half(const MAS::Pin& pin) {
     REQUIRE(std::abs(faceX) > 1e-9);
     return faceX < 0 ? -1 : 1;
 }
+// ABT #2268: the pin a terminal route's end is assigned to, read from the coil's connections (the
+// assignment in MAS). The route itself names no pin while the runs to the pins are parked.
+std::string assigned_pin_of(const OpenMagnetics::Coil& coil, const ConnectionRoute& route) {
+    const End end = route.kind == ConnectionKind::TERMINAL_ENTRANCE ? End::START : End::FINISH;
+    return connection_of(coil, route.winding, end).get_pin_name().value();
+}
 }  // namespace
 
 TEST_CASE("Pins decide the side: each pinned winding leaves on the face toward its own rail, on its pin's half (spec section 12, ABT #1336)",
           "[constructive-model][coil][pins][abt1336][abt1172]") {
     // The ABT #1172 pinned flyback, built exactly as "The bend radius a pin run was planned for reaches
-    // the struct a consumer can read": the Primary's pins on rail 0 (z < 0), the Secondary's on rail 1.
+    // the struct a consumer can read" built it (that test was removed with the parked pin runs, ABT #2268):
+    // the Primary's pins on rail 0 (z < 0), the Secondary's on rail 1.
     auto& settings = OpenMagnetics::Settings::GetInstance();
     settings.reset();
     settings.set_coil_use_real_winding_geometry(true);
@@ -1856,21 +962,14 @@ TEST_CASE("Pins decide the side: each pinned winding leaves on the face toward i
         if (route.kind != ConnectionKind::TERMINAL_ENTRANCE && route.kind != ConnectionKind::TERMINAL_EXIT) {
             continue;
         }
-        INFO("route " << route.winding << " parallel " << route.parallel << " pin '" << route.pinName << "'");
-        REQUIRE_FALSE(route.pinName.empty());
-        REQUIRE(route.pinWaypoints.size() >= 2);
+        const auto pinName = assigned_pin_of(coil, route);
+        INFO("route " << route.winding << " parallel " << route.parallel << " pin '" << pinName << "'");
         REQUIRE(route.exitSlot.has_value());
-        const auto pin = bobbin.get_pin(route.pinName);
+        const auto pin = bobbin.get_pin(pinName);
         const int face = pin_face(pin);
-        // (a) the lead leaves on the face toward its pin's rail, and its pin run starts on that face.
+        // (a) the lead leaves on the face toward its pin's rail.
         CHECK(route.side == face);
-        // The run's window end: an exit's pinWaypoints run window -> pin, an entrance's pin -> window.
-        const auto& start = route.kind == ConnectionKind::TERMINAL_EXIT ? route.pinWaypoints.front() : route.pinWaypoints.back();
-        INFO("run starts at (" << start[0] * 1e3 << ", " << start[1] * 1e3 << ", " << start[2] * 1e3 << ") mm, exit slot "
-                               << route.exitSlot.value() * 1e3 << " mm, half " << route.laneHalf.value_or(0));
-        CHECK((face == 0 ? start[2] < 0 : start[2] > 0));
-        // At its exit slot, which is in its face's frame.
-        CHECK_THAT(start[0], Catch::Matchers::WithinAbs(face == 0 ? route.exitSlot.value() : -route.exitSlot.value(), 1e-12));
+        INFO("exit slot " << route.exitSlot.value() * 1e3 << " mm, half " << route.laneHalf.value_or(0));
         // (b) the lead packs on the half of its face its pin's x lies on.
         REQUIRE(route.laneHalf.has_value());
         CHECK(route.laneHalf.value() == pin_half(pin));
@@ -1940,9 +1039,10 @@ TEST_CASE("Pins decide the side with coil_connect_leads_to_pins off too: the sam
         if (on.kind == ConnectionKind::TERMINAL_ENTRANCE || on.kind == ConnectionKind::TERMINAL_EXIT) {
             ++terminals;
             CHECK(off.pinWaypoints.empty());            // off: the lead ends in free air
-            CHECK_FALSE(on.pinWaypoints.empty());       // on: it runs on to its pin
+            // ABT #2268: on, too: the runs to the pins are parked, so the assigned lead ends in free air.
+            CHECK(on.pinWaypoints.empty());
             // The face is the pin's, flag or not.
-            CHECK(on.side == pin_face(onCoil.resolve_bobbin().get_pin(on.pinName)));
+            CHECK(on.side == pin_face(onCoil.resolve_bobbin().get_pin(assigned_pin_of(onCoil, on))));
             faces.insert(on.side);
         }
     }
@@ -2312,21 +1412,25 @@ TEST_CASE("Pinned sibling leads stand far enough apart for the ramps between the
     REQUIRE_FALSE(coil.assign_pins(coil.resolve_bobbin(), core).skipped);
     const auto layout = coil.get_connection_layout();
 
-    // The window exit of each pinned terminal (pinWaypoints is stored pin-first for an entrance).
+    // The window exit of each pinned terminal, at its exit slot in the bobbin frame (face 1 is the bobbin
+    // frame turned 180 degrees about the column axis). ABT #2268: read from the route's exit slot, where
+    // the parked pin run used to start (its first point's x was exactly this, spec section 12).
     struct Lead { double x; double span; };
     auto wire = find_wire_by_name("Round 0.2 - Grade 1");
     const double coatedDiameter = std::max(wire.get_maximum_outer_width(), wire.get_maximum_outer_height());
     std::map<std::pair<std::string, bool>, std::vector<Lead>> groups;   // (winding, entrance) -> by parallel
     size_t ramped = 0;
     for (const auto& route : layout.routes) {
-        if (route.pinWaypoints.empty()) continue;
+        if (route.kind != ConnectionKind::TERMINAL_ENTRANCE && route.kind != ConnectionKind::TERMINAL_EXIT) continue;
         const bool entrance = route.kind == ConnectionKind::TERMINAL_ENTRANCE;
-        const auto& exit = entrance ? route.pinWaypoints.back() : route.pinWaypoints.front();
+        REQUIRE(route.exitSlot.has_value());
+        REQUIRE((route.side == 0 || route.side == 1));
+        const double exitX = route.side == 0 ? route.exitSlot.value() : -route.exitSlot.value();
         const double span = route.rampLength ? *route.rampLength + route.plannedBendRadius : 0.0;
         ramped += route.rampLength ? 1 : 0;
         auto& group = groups[{route.winding, entrance}];
         if (group.size() <= size_t(route.parallel)) group.resize(route.parallel + 1);
-        group[route.parallel] = {exit[0], span};
+        group[route.parallel] = {exitX, span};
     }
     REQUIRE(ramped > 0);   // otherwise this checks the plain lane grid only
     size_t pairs = 0;

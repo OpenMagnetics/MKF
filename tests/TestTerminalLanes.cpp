@@ -1764,37 +1764,6 @@ TEST_CASE("a tie no order clears is drawn and reported and the plan returned (sp
     }
 
     // Spec section 17 covers EVERY collision refusal (Alf 2026-10-26): each is drawn and reported on its lead.
-    SECTION("route_leads_to_pins: a run that cannot clear a pin rail is kept and the collision reported") {
-        // A vertical pin below a lead whose window exit lies inside a pin rail block: every candidate run's
-        // first leg starts in the rail, so all of them collide with it.
-        MAS::Pin pin;
-        pin.set_name("7");
-        pin.set_shape(MAS::PinShape::ROUND);
-        pin.set_type(MAS::PinDescriptionType::THT);
-        pin.set_dimensions({0.0008, 0.0008, 0.004});
-        pin.set_coordinates(std::vector<double>({0.003, -0.014, -0.013}));
-        OpenMagnetics::PinLeadRequest lead;
-        lead.label = "the boxed lead";
-        lead.pin = pin;
-        lead.windowExit = {0.011, -0.004};
-        lead.diameter = 0.0006;
-        lead.bendRadius = lead.diameter / 2;
-        lead.exitX = 0.0;
-        OpenMagnetics::Bobbin::PinRailBlock rail{"rail 0 block 0", 0, {0.0, -0.004, -0.011}, {0.02, 0.002, 0.0005}};
-        // Was: setting off throws this refusal, setting on draws the run and warns on stderr.
-        std::vector<OpenMagnetics::PinLeadRoute> runs;
-        REQUIRE_NOTHROW(runs = OpenMagnetics::Coil::route_leads_to_pins({pin}, {lead}, 0.0, 2, {rail}));
-        REQUIRE(runs.size() == 1);
-        REQUIRE(runs[0].findings.size() == 1);
-        CHECK(runs[0].findings[0].kind == LeadFindingKind::PIN_RUN_COLLIDES);
-        CHECK_THAT(runs[0].findings[0].witness,
-                   Catch::Matchers::ContainsSubstring("Cannot route the boxed lead to pin '7'") &&
-                       Catch::Matchers::ContainsSubstring("pin rail 'rail 0 block 0': leg 0 comes 0.000 mm from it"));
-        CHECK(runs[0].pinName == "7");
-        REQUIRE(runs[0].waypoints.size() >= 3);
-        CHECK_THAT(runs[0].waypoints.front()[0], Catch::Matchers::WithinAbs(0.0, 1e-12));        // from its exit slot
-        CHECK_THAT(runs[0].waypoints.front()[2], Catch::Matchers::WithinAbs(-0.011, 1e-12));     // at the window exit
-    }
     SECTION("plan_terminal_tangential_lead: a lane whose tangent meets the turn past its far side is planned anyway") {
         // A round turn of radius 2 mm and a lead bent at 3 mm: from lane x = 5 mm the straight tangent to the
         // back of the turn meets it at 120 deg past the side, 7.33 mm from the crossing, more than half the

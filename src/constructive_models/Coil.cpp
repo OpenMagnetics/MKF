@@ -2094,6 +2094,9 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces(
     // entrance). Only connections that say which END they terminate count: a legacy pinName without
     // `end` cannot be told apart as start or finish, and keeps the lead at the window border as
     // before. Taps are junctions between series sections, routed inside the coil (see CoilPins.cpp).
+    // ABT #2268: false parks the pin runs (see deferPinLeg). The pins named here are still checked
+    // against the bobbin.
+    constexpr bool kRouteTerminalLeadsToPins = false;
     std::map<std::tuple<std::string, int64_t, bool>, MAS::Pin> terminalPinByConductor;
     for (size_t windingIndex = 0; windingIndex < get_functional_description().size(); ++windingIndex) {
         const auto& pinWinding = get_functional_description()[windingIndex];
@@ -2139,6 +2142,14 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces(
                            bool isEntrance, double borderLayerAxis, double borderTurnAxis, double diameter) {
         if (routes.size() == routesBefore + 1) {
             terminalSpaceIndexByRoute[routes.size() - 1] = spaceIndex;
+        }
+        // ABT #2268 (Alf, 2026-11-04): the 3D run from the window border to the pin is PARKED. A
+        // terminal lead on a pin ends at the window border, in free air, like one with no pin; the
+        // pin assignment itself (connections' pinName/end, and the face/half it decides, spec
+        // section 12) is unchanged. The pin-run planning below and Coil::route_leads_to_pins are
+        // kept, unused and untested, until the lead-to-pin connection is designed properly.
+        if (!kRouteTerminalLeadsToPins) {
+            return;
         }
         auto found = terminalPinByConductor.find({windingName, parallel, isEntrance});
         if (found == terminalPinByConductor.end()) {

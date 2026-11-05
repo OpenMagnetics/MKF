@@ -2484,6 +2484,7 @@ std::vector<std::vector<LeadFinding>> Coil::check_terminal_lanes(const std::vect
     return findings;
 }
 
+// ABT #2268 (Alf, 2026-11-04): parked -- unused and untested until the lead-to-pin connection is designed.
 std::vector<PinLeadRoute> Coil::route_leads_to_pins(const std::vector<MAS::Pin>& bobbinPins,
                                                     const std::vector<PinLeadRequest>& leads,
                                                     double frontFaceOffset, int64_t wrapTurns,

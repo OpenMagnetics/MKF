@@ -2396,6 +2396,9 @@ class Coil : public MAS::Coil {
          * Every segment also keeps r clear of the pin rails (Bobbin::get_pin_rails, ABT #1249): the drop
          * passes outside them (lanes include the rail faces) and the run to the pin passes under them,
          * resting on the standoff. The flange outline above the rails is not checked.
+         *
+         * ABT #2268 (Alf, 2026-11-04): PARKED. Nothing calls this (Coil.cpp, kRouteTerminalLeadsToPins)
+         * and no test covers it; kept until the lead-to-pin connection is designed properly.
          */
         static std::vector<PinLeadRoute> route_leads_to_pins(const std::vector<MAS::Pin>& bobbinPins,
                                                              const std::vector<PinLeadRequest>& leads,
