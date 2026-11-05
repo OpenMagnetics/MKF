@@ -23,7 +23,9 @@ class CoreCrossReferencer {
         std::string _log;
         std::optional<std::string> _onlyManufacturer;
         bool _onlyReferenceMaterial = false;
-        double _limit = 1;
+        // Relative deviation allowed by each geometric filter in the single ranking pass. 2 is the
+        // reach the old widening loop (0.25, 0.5, 1, 2) ended at.
+        double _limit = 2;
         std::map<CoreCrossReferencerFilters, double> _weights;
 
     public:

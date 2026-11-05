@@ -152,12 +152,18 @@ void check_top_n(const std::string& label,
 //      E 35 MS 75 2.3430703 | T 27/14.5/14.6 Mix 66 2.1095916.
 // New: EC 35/17/10 3C94 3.0915474 | T 27/14.5/14.6 Mix 66 2.5660300 | E 35 MS 75 2.5342217 |
 //      E 35 Mix 52 2.3019516 | E 35 Mix 26 2.0388255.
+// Re-pinned 2026-11-05 (Alf approved: "Set _limit = 2" and "Land and re-pin all 4"). The ranking no longer
+// depends on the requested count: the geometric filters run once at the fixed _limit (now 2, the reach the
+// old widening loop had), and CORE_LOSSES/SATURATION are min-max normalised over that whole pool instead of
+// over the top int(1.1 x N) geometric candidates. Asking for 5 or for 20 now gives the same first five.
+// Old: EC 35/17/10 3C94 G1.000 mm 3.0915474 | T 27/14.5/14.6 Mix 66 2.5660300 | E 35 MS 75 2.5342217 | E 35 Mix 52 2.3019516 | E 35 Mix 26 2.0388255.
+// New: EC 35/17/10 3C94 G1.000 mm 3.0941150 | ETD 29/16/10 3C97 G1.000 mm 3.0241062 | E 34/14/9 R G1.524 mm 3.0145115 | ETD 29/16/10 N27 G1.000 mm 3.0127871 | T 27/14.7/14.0 MS 75 3.0045666.
 const std::vector<TopEntry> kTopDefault = {
-    {"EC 35/17/10 - 3C94 - Gapped 1.000 mm",                     3.0915474073038323},
-    {"T 27/14.5/14.6 - parylene coated - Mix 66 - Ungapped",     2.5660300148730584},
-    {"E 35 - MS 75 - Ungapped",                                  2.5342217224600243},
-    {"E 35 - Mix 52 - Ungapped",                                 2.3019515870195209},
-    {"E 35 - Mix 26 - Ungapped",                                 2.038825529217986},
+    {"EC 35/17/10 - 3C94 - Gapped 1.000 mm",                 3.0941149556312268},
+    {"ETD 29/16/10 - 3C97 - Gapped 1.000 mm",                3.0241061877446955},
+    {"E 34/14/9 - R - Gapped 1.524 mm",                      3.0145115093534831},
+    {"ETD 29/16/10 - N27 - Gapped 1.000 mm",                 3.0127870683595446},
+    {"T 27/14.7/14.0 - parylene coated - MS 75 - Ungapped",  3.0045666179617481},
 };
 
 // Refreshed 2026-06-16 (ABT #10): identical ordering, scores nudged < 0.3 %
@@ -165,12 +171,18 @@ const std::vector<TopEntry> kTopDefault = {
 // Re-pinned 2026-10-31 (Alf approved): pool drift of the min-max normalised scores (#398). The same
 // five cores, EP 20 top-1 (2.3856 -> 2.3646, -0.88 %); only the near-tied RM 8/I and EP 17 0.414 mm
 // (1.640 vs 1.657) swap slots 2 and 3.
+// Re-pinned 2026-11-05 (Alf approved: "Set _limit = 2" and "Land and re-pin all 4"). The ranking no longer
+// depends on the requested count: the geometric filters run once at the fixed _limit (now 2, the reach the
+// old widening loop had), and CORE_LOSSES/SATURATION are min-max normalised over that whole pool instead of
+// over the top int(1.1 x N) geometric candidates. Asking for 5 or for 20 now gives the same first five.
+// Old: EP 20 3C91 G0.605 mm 2.3645736 | EC 41/19/12 3C91 G1.000 mm 2.2429106 | EP 17 3C91 G0.414 mm 1.6570887 | RM 8/I 3C91 G0.480 mm 1.6397778 | EP 17 3C91 G0.255 mm 1.4313624.
+// New: EP 20 3C91 G0.605 mm 2.7033669 | EC 41/19/12 3C91 G1.000 mm 2.6387671 | RM 8/I 3C91 G0.480 mm 2.3752249 | EP 17 3C91 G0.255 mm 2.3286820 | P 26/16 3C91 G0.725 mm 2.2960410.
 const std::vector<TopEntry> kTopSameMaterial = {
-    {"EP 20 - 3C91 - Gapped 0.605 mm",         2.364573591123257},
-    {"EC 41/19/12 - 3C91 - Gapped 1.000 mm",   2.2429106060342221},
-    {"EP 17 - 3C91 - Gapped 0.414 mm",         1.6570886597615659},
-    {"RM 8/I - 3C91 - Gapped 0.480 mm",        1.6397777808006964},
-    {"EP 17 - 3C91 - Gapped 0.255 mm",         1.4313624007456922},
+    {"EP 20 - 3C91 - Gapped 0.605 mm",        2.7033668590468976},
+    {"EC 41/19/12 - 3C91 - Gapped 1.000 mm",  2.6387670778514583},
+    {"RM 8/I - 3C91 - Gapped 0.480 mm",       2.3752249227418218},
+    {"EP 17 - 3C91 - Gapped 0.255 mm",        2.3286820062777451},
+    {"P 26/16 - 3C91 - Gapped 0.725 mm",      2.2960410197711285},
 };
 
 // Refreshed 2026-05-24: 3c851744 reshuffled slots 1 and 4 — the
@@ -181,12 +193,18 @@ const std::vector<TopEntry> kTopSameMaterial = {
 // Re-pinned 2026-10-31 (Alf approved): pool drift of the min-max normalised scores (#398). The same
 // five cores, ETD 29 N87 top-1 (2.8460 -> 2.8477, +0.06 %); only the near-tied EC 35 N27 distributed
 // and ETD 29 N27 gapped (2.560 vs 2.568) swap slots 1 and 2.
+// Re-pinned 2026-11-05 (Alf approved: "Set _limit = 2" and "Land and re-pin all 4"). The ranking no longer
+// depends on the requested count: the geometric filters run once at the fixed _limit (now 2, the reach the
+// old widening loop had), and CORE_LOSSES/SATURATION are min-max normalised over that whole pool instead of
+// over the top int(1.1 x N) geometric candidates. Asking for 5 or for 20 now gives the same first five.
+// Old: ETD 29/16/10 N87 G1.000 mm 2.8476772 | ETD 29/16/10 N27 G1.000 mm 2.5682675 | EC 35/17/10 N27 DG0.500 mm 2.5595461 | ETD 29/16/10 N27 DG0.500 mm 2.5264141 | E 32/16/9 N27 G1.000 mm 1.9153231.
+// New: ETD 29/16/10 N87 G1.000 mm 2.9921973 | EC 35/17/10 N27 DG0.500 mm 2.9782102 | E 32/16/11 N87 DG0.480 mm 2.9650351 | ETD 29/16/10 N27 G1.000 mm 2.9645810 | ETD 29/16/10 N27 DG0.500 mm 2.9364318.
 const std::vector<TopEntry> kTopOnlyTdk = {
-    {"ETD 29/16/10 - N87 - Gapped 1.000 mm",              2.8476771864923007},
-    {"ETD 29/16/10 - N27 - Gapped 1.000 mm",              2.5682675365229759},
-    {"EC 35/17/10 - N27 - Distributed gapped 0.500 mm",   2.5595460929649891},
-    {"ETD 29/16/10 - N27 - Distributed gapped 0.500 mm",  2.5264140805586299},
-    {"E 32/16/9 - N27 - Gapped 1.000 mm",                 1.9153230627127971},
+    {"ETD 29/16/10 - N87 - Gapped 1.000 mm",              2.9921972841960214},
+    {"EC 35/17/10 - N27 - Distributed gapped 0.500 mm",   2.9782101690050751},
+    {"E 32/16/11 - N87 - Distributed gapped 0.480 mm",    2.9650350859382324},
+    {"ETD 29/16/10 - N27 - Gapped 1.000 mm",              2.9645810092861913},
+    {"ETD 29/16/10 - N27 - Distributed gapped 0.500 mm",  2.9364318304310584},
 };
 
 // Phase 1 fix landed: with SATURATION now active, the powder ordering
@@ -202,12 +220,18 @@ const std::vector<TopEntry> kTopOnlyTdk = {
 // Re-pinned 2026-11-03 (ABT #2234, Alf-approved): MAS c7a7cbc (Magnetics provenance pass) replaced the
 // Kool Mµ Hƒ 60 loss coefficient set and the XFlux 60 / Kool Mµ 60 densities. Kool Mµ Hƒ 60 climbs to slot 2,
 // Edge 60 drops to slot 4; the same five cores, MS 60 top-1 2.82713 -> 2.82817.
+// Re-pinned 2026-11-05 (Alf approved: "Set _limit = 2" and "Land and re-pin all 4"). The ranking no longer
+// depends on the requested count: the geometric filters run once at the fixed _limit (now 2, the reach the
+// old widening loop had), and CORE_LOSSES/SATURATION are min-max normalised over that whole pool instead of
+// over the top int(1.1 x N) geometric candidates. Asking for 5 or for 20 now gives the same first five.
+// Old: E 25/9.5/6.3 MS 60 2.8281707 | E 25/9.5/6.3 FS 60 2.7197820 | E 25/9.5/6.3 Kool Mµ Hƒ 60 2.5392638 | E 25/9.5/6.3 Kool Mµ 60 2.3378352 | E 25/9.5/6.3 Edge 60 2.1019014.
+// New: E 25/9.5/6.3 MS 60 3.0876834 | E 25/9.5/6.3 Edge 60 3.0778405 | E 25/9.5/6.3 FS 60 3.0749390 | E 25/9.5/6.3 Kool Mµ 60 3.0640146 | E 25/9.5/6.3 Kool Mµ Hƒ 60 3.0605850.
 const std::vector<TopEntry> kTopPowder = {
-    {"E 25/9.5/6.3 - MS 60 - Ungapped",                            2.8281707080848451},
-    {"E 25/9.5/6.3 - FS 60 - Ungapped",                            2.7197819506350833},
-    {"E 25/9.5/6.3 - Kool Mµ Hƒ 60 - Ungapped",                    2.539263790197857},
-    {"E 25/9.5/6.3 - Kool Mµ 60 - Ungapped",                       2.3378351612339765},
-    {"E 25/9.5/6.3 - Edge 60 - Ungapped",                          2.1019014034044576},
+    {"E 25/9.5/6.3 - MS 60 - Ungapped",          3.0876833928347502},
+    {"E 25/9.5/6.3 - Edge 60 - Ungapped",        3.0778405230042449},
+    {"E 25/9.5/6.3 - FS 60 - Ungapped",          3.074938977391227},
+    {"E 25/9.5/6.3 - Kool Mµ 60 - Ungapped",     3.0640146383191498},
+    {"E 25/9.5/6.3 - Kool Mµ Hƒ 60 - Ungapped",  3.060584972044615},
 };
 
 } // namespace
