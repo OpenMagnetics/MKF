@@ -714,10 +714,9 @@ std::vector<std::pair<Core, double>> CoreCrossReferencer::get_cross_referenced_c
 
 std::vector<std::pair<Core, double>> CoreCrossReferencer::get_cross_referenced_core(Core referenceCore, int64_t referenceNumberTurns, Inputs inputs, std::map<CoreCrossReferencerFilters, double> weights, size_t maximumNumberResults) {
     _weights = weights;
-    // ABT #1620: the scores are distances to THIS reference core. The filters reuse a candidate's
-    // valid score across the widening-limit passes below (the distance does not depend on the
-    // limit), but the maps used to survive across calls, so a second reference core was ranked by
-    // the first one's distances.
+    // ABT #1620: the scores are distances to THIS reference core. The filters cache a candidate's
+    // valid score in these maps, which used to survive across calls, so a second reference core
+    // was ranked by the first one's distances.
     _scorings.clear();
     _validScorings.clear();
     _scoredValues.clear();
@@ -767,18 +766,11 @@ std::vector<std::pair<Core, double>> CoreCrossReferencer::get_cross_referenced_c
         referenceCore.process_gap_or_throw();
     }
 
-    double limit = 0;
-    std::vector<std::pair<Core, double>> filteredCores;
-
-    while (limit <= _limit && filteredCores.size() < maximumNumberResults) {
-        // CCR-LOGIC-1 FIX: geometric progression for more efficient search
-        if (limit < 0.01) {
-            limit = 0.25;
-        } else {
-            limit *= 2.0; // 0.25 → 0.5 → 1.0 → 2.0 → 4.0 → 8.0 ...
-        }
-        filteredCores = apply_filters(&cores, referenceCore, referenceNumberTurns, inputs, weights, maximumNumberResults, limit);
-    }
+    // One pass at the fixed _limit, over the whole pool. The ranking must not depend on how many
+    // results the caller asked for: asking for N and for M > N gives the same first N entries with
+    // the same scores. A widening loop that stops as soon as N candidates survive would make the
+    // pool (and so the pool-relative min-max scores) depend on N.
+    auto filteredCores = apply_filters(&cores, referenceCore, referenceNumberTurns, inputs, weights, maximumNumberResults, _limit);
 
     return filteredCores;
 }
@@ -800,7 +792,7 @@ std::vector<std::pair<Core, double>> CoreCrossReferencer::apply_filters(std::vec
     // CoreCrossReferencerFilters (PERMEANCE → WINDING_WINDOW_AREA →
     // ENVELOPING_VOLUME → EFFECTIVE_AREA). CORE_LOSSES and SATURATION
     // are intentionally absent from this list — CORE_LOSSES runs as a
-    // separate trailing step after the 1.1× pre-prune, and SATURATION
+    // separate trailing step on the whole geometric pool, and SATURATION
     // is consumed by CORE_LOSSES as a saturationWeight argument.
     std::vector<CrossReferencerStep<Core, F>> steps = {
         {F::PERMEANCE,
@@ -815,18 +807,15 @@ std::vector<std::pair<Core, double>> CoreCrossReferencer::apply_filters(std::vec
 
     auto rankedCores = run_cross_referencer_pipeline(*cores, steps, "CoreCrossReferencer");
 
-    // CORE_LOSSES is the most computationally costly filter, so it's
-    // gated behind a 1.1× maximumNumberResults pre-prune and run as a
-    // trailing single step rather than inside the iteration above.
-    if (rankedCores.size() > (1.1 * maximumNumberResults)) {
-        rankedCores.resize(static_cast<size_t>(1.1 * maximumNumberResults));
-    }
+    // CORE_LOSSES (and SATURATION, which it scores) run on the whole geometric pool, not on a
+    // pre-pruned top slice: their scores are min-max normalised over the set they see, so pruning
+    // that set by the requested result count would make every score depend on that count.
     rankedCores = filterVolumetricLosses.filter_core(
         &rankedCores, referenceCore, referenceNumberTurns, inputs, _models,
         weights[F::CORE_LOSSES], limit, weights[F::SATURATION]);
 
     // IMPEDANCE is costlier still -- a curve per candidate rather than a scalar -- so it
-    // runs last, on the already-pruned set, and only when a caller asked for it. Its own
+    // runs last, and only when a caller asked for it. Its own
     // filter_core returns early when the weight is 0, so the cost is not paid by the
     // cross-references that do not want it.
     rankedCores = filterImpedance.filter_core(

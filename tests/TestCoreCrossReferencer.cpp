@@ -96,6 +96,32 @@ TEST_CASE("Test_Core_Cross_Referencer_Second_Reference_Is_Not_Ranked_By_The_Firs
     settings.reset();
 }
 
+TEST_CASE("Test_Core_Cross_Referencer_Ranking_Does_Not_Depend_On_The_Number_Of_Results", "[adviser][core-cross-referencer]") {
+    // The ranking used to be built on a pool pruned to 1.1 x the requested count before the loss
+    // and saturation scores were min-max normalised over it, and the widening-limit loop stopped
+    // as soon as that many candidates existed. Asking for 5 and for 20 then gave different top 5s
+    // with different scores. Asking for more results must only append to the list.
+    settings.reset();
+    settings.set_use_only_cores_in_stock(false);
+    clear_databases();
+    auto inputs = OpenMagneticsTesting::create_quick_test_inputs();
+    int64_t numberTurns = 28;
+    Core reference = find_core_by_name("EC 35/17/10 - 3C91 - Gapped 1.000 mm");
+
+    CoreCrossReferencer fewCrossReferencer;
+    auto few = fewCrossReferencer.get_cross_referenced_core(reference, numberTurns, inputs, 5);
+    CoreCrossReferencer manyCrossReferencer;
+    auto many = manyCrossReferencer.get_cross_referenced_core(reference, numberTurns, inputs, 20);
+
+    REQUIRE(few.size() == 5);
+    REQUIRE(many.size() == 20);
+    for (size_t index = 0; index < few.size(); ++index) {
+        CHECK(few[index].first.get_name().value() == many[index].first.get_name().value());
+        CHECK(few[index].second == many[index].second);
+    }
+    settings.reset();
+}
+
 TEST_CASE("Test_All_Core_Materials_Same_Material_Maximum_Height", "[adviser][core-cross-referencer][smoke-test]") {
     settings.reset();
     settings.set_use_only_cores_in_stock(false);
