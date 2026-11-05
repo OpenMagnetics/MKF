@@ -92,7 +92,9 @@ namespace {
         // just outside the five. DMR95, P45, TPW30 and MBT2 stay.
         // Re-pinned 2026-11-03 (ABT #2234, Alf-approved): MAS 340d15a refit P45 (ACME, raw workbook) and it
         // leaves the five; 3C95 enters.
-        require_shortlisted(crossReferencedCoreMaterials, {"KL97W", "DMR95", "3C95", "TPW30", "MBT2"});
+        // Re-pinned 2026-11-05 (ABT #2270, Alf-approved): MAS 38dac2d/65b8b82 fit TDG, Cosmo and JFE grades to their
+        // own data-sheet loss curves; TPG30 and TP4C (TDG) enter, 3C95 and MBT2 leave the five.
+        require_shortlisted(crossReferencedCoreMaterials, {"DMR95", "KL97W", "TPG30", "TP4C", "TPW30"});
 
         auto scorings = coreMaterialCrossReferencer.get_scorings();
         auto scoredValues = coreMaterialCrossReferencer.get_scored_values();
@@ -147,7 +149,9 @@ namespace {
         // so N95 wins on both dominant filters. The TDK pool is unaffected by the TDG import;
         // this was a pre-existing mis-pin, surfaced while triaging #224.
         // PC95 overtakes N95 since MAS 0ceffb3 (ABT #1512) gave PC95 a Steinmetz fit (losses now compared).
-        REQUIRE(crossReferencedCoreMaterials[0].first.get_name() == "PC95");
+        // Re-pinned 2026-11-05 (ABT #2270, Alf-approved): MAS 38dac2d refit PC95 to TDK's 2026 catalogue curves,
+        // and N95 is again the closest TDK match.
+        REQUIRE(crossReferencedCoreMaterials[0].first.get_name() == "N95");
     }
 
     TEST_CASE("Test_CoreMaterialCrossReferencer_All_Core_Materials_Powder", "[adviser][core-material-cross-referencer][smoke-test]") {
@@ -256,7 +260,9 @@ namespace {
         // point (ABT #1490) and left the five; KL97W enters on the shared-frequency comparison.
         // Re-pinned 2026-11-03 (ABT #2234, Alf-approved): MAS 340d15a refit KL97W (Huoh Yow, from its own loss
         // charts) and it leaves the five; MBT1 enters at the top.
-        require_shortlisted(crossReferencedCoreMaterials, {"MBT1", "3C95A", "ML33D"});
+        // Re-pinned 2026-11-05 (ABT #2270, Alf-approved): MAS 6700c07/d528268/65b8b82 fit ML33D, Cosmo and JFE
+        // grades to their own loss points; MBT1 and ML33D leave the five, CF296A and MBT2 enter.
+        require_shortlisted(crossReferencedCoreMaterials, {"CF296A", "3C95A", "MBT2"});
     }
 
     TEST_CASE("Test_CoreMaterialCrossReferencer_All_Core_Materials_Only_Volumetric_Losses_Powder", "[adviser][core-material-cross-referencer][smoke-test]") {

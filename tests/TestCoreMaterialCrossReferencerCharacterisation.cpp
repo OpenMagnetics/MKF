@@ -155,12 +155,15 @@ void check_top_n(const std::string& label,
 // Re-pinned 2026-11-03 (ABT #2234, Alf-approved): MAS 340d15a refit KL97W (Huoh Yow, from its own loss charts)
 // and P45 (ACME, from its raw workbook). KL97W drops to slot 1, P45 leaves the five and 3C95 enters at slot 4.
 // DMR95 and TPW30 keep their scores to the last digit.
+// Re-pinned 2026-11-05 (ABT #2270, Alf-approved): MAS 38dac2d/65b8b82 give TDG, Cosmo, JFE and TDK grades
+// fits to their own data-sheet loss curves. TPG30 and TP4C (TDG) enter at slots 2-3, TPW30 drops to slot 4,
+// and MBT2 and 3C95 leave the five. DMR95 and KL97W keep their scores to the last digit.
 const std::vector<TopEntry> kTopFerriteDefault = {
     {"DMR95", 2.7060437087952227},
     {"KL97W", 2.6947271284425089},
-    {"TPW30", 2.6901378204055253},
-    {"MBT2",  2.6869794150408151},
-    {"3C95",  2.6864608599648547},
+    {"TPG30", 2.6881498521549756},
+    {"TP4C",  2.6874785553804186},
+    {"TPW30", 2.6871098284794162},
 };
 
 // Refreshed 2026-08-20 (ABT #834): identical five names and order; scores +0.27%
@@ -171,12 +174,14 @@ const std::vector<TopEntry> kTopFerriteDefault = {
 // and Curie 221 C instead of 215 C). Same five names, same order; scores move by <= 3.6e-4 relative.
 // Re-pinned 2026-10-18 (Alf-approved): PC95 enters at slot 0 since MAS 0ceffb3 (PC95 Steinmetz, ABT #1512); the
 // other four keep their scores to the last digit one slot down, and PEL95 leaves the five.
+// Re-pinned 2026-11-05 (ABT #2270, Alf-approved): MAS 6700c07/38dac2d refit PC95 to TDK's 2026 catalogue curves
+// and PEL95/PEM95 to TDK's points, so N95 retakes slot 0 over PC95, PEL95 enters at slot 2 and PEM95 leaves.
 const std::vector<TopEntry> kTopFerriteOnlyTdk = {
-    {"PC95",  2.5537264041224832},
-    {"N95",   2.4844834154655544},
-    {"PEM95", 2.4712909529748712},
-    {"N97",   2.4134601008148024},
-    {"N51",   2.3877902091228509},
+    {"N95",   2.5002969100146171},
+    {"PC95",  2.4668054736243183},
+    {"PEL95", 2.4288407551635407},
+    {"N97",   2.4073320941562169},
+    {"N51",   2.3275466811846761},
 };
 
 // Refreshed 2026-08-20 (ABT #834, user-approved): same normalization shift. Kool Mµ
