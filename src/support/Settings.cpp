@@ -179,6 +179,8 @@ namespace {
         add_to_fingerprint(text, _magneticFieldNumberPointsY);
         add_to_fingerprint(text, _magneticFieldMirroringDimension);
         add_to_fingerprint(text, _magneticFieldMirroringCompleteCells);
+        add_to_fingerprint(text, _magneticFieldMirroringNeutralCells);
+        add_to_fingerprint(text, _windingLossesModelSet);
         add_to_fingerprint(text, _magneticFieldIncludeFringing);
         add_to_fingerprint(text, _coilMesherInsideTurnsFactor);
         add_to_fingerprint(text, _leakageInductanceGridAutoScaling);
@@ -197,6 +199,7 @@ namespace {
         add_to_fingerprint(text, _thermalNetworkStrictGeometry);
         add_to_fingerprint(text, _allowMaterialDataExtrapolation);
         add_to_fingerprint(text, _simulatorLossTemperatureLoop);
+        add_to_fingerprint(text, _simulatorSkipLeakageInductance);
         add_to_fingerprint(text, _gappingStrategy);
         add_to_fingerprint(text, _wireAdviserIncludePlanar);
         add_to_fingerprint(text, _wireAdviserIncludeFoil);
@@ -360,6 +363,7 @@ namespace {
         // Alf, 2026-10-25: user/MAS data extrapolates with a WARNING; advisers never (barrier).
         _allowMaterialDataExtrapolation = true;
         _simulatorLossTemperatureLoop = true;
+        _simulatorSkipLeakageInductance = false;
 
         _wireAdviserIncludePlanar = false;
         _wireAdviserIncludeFoil = false;
@@ -1245,6 +1249,13 @@ namespace {
     }
     void Settings::set_simulator_loss_temperature_loop(bool value) {
         _simulatorLossTemperatureLoop = value;
+    }
+
+    bool Settings::get_simulator_skip_leakage_inductance() const {
+        return _simulatorSkipLeakageInductance;
+    }
+    void Settings::set_simulator_skip_leakage_inductance(bool value) {
+        _simulatorSkipLeakageInductance = value;
     }
 
     GappingOptimizationStrategy Settings::get_gapping_strategy() const {

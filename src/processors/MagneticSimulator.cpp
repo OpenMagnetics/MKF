@@ -99,7 +99,9 @@ Mas MagneticSimulator::simulate(const Inputs& inputs, const Magnetic& magnetic, 
             simulateSaturatedPoint();
             continue;
         }
-        if (!fastMode) {
+        // Settings::simulatorSkipLeakageInductance (Alf, 2026-11-05): a caller that reads no leakage asks for none;
+        // the output then has no leakage inductance at all, and nothing else in it changes.
+        if (!fastMode && !Settings::GetInstance().get_simulator_skip_leakage_inductance()) {
             if (magnetic.get_coil().get_functional_description().size() > 1) {
                 inductanceOutput.set_leakage_inductance(calculate_leakage_inductance(operatingPoint, magnetic));
             }

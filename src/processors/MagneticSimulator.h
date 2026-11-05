@@ -205,6 +205,7 @@ class MagneticSimulator {
         // its winding losses at ambient: no inductance, core losses or temperature output, and analyze_results reports
         // CORE_SATURATES for it. Every other error still throws for the whole design. fastMode publishes no temperature for ANY point
         // (and skips the leakage inductance); analyze_results tells the two apart by solving again.
+        // Settings::simulatorSkipLeakageInductance on: no leakage inductance in any point's output; nothing else changes.
         // Settings::simulatorLossTemperatureLoop off: each point's losses at its operating temperature and
         // its temperature output from one pass of the network on them (see calculate_core_losses).
         Mas simulate(Mas mas, bool fastMode=false);

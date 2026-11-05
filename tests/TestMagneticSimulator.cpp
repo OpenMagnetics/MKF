@@ -3823,3 +3823,93 @@ TEST_CASE("Test_Zero_Length_Subtractive_Gap_Outside_A_Two_Piece_Set_Is_Refused",
     REQUIRE_THROWS_WITH(zero_length_subtractive_gap_magnetic("pieceAndPlate"), Catch::Matchers::ContainsSubstring("subtractive gap of length zero"));
     settings.reset();
 }
+
+// Settings::simulatorSkipLeakageInductance (Alf, 2026-11-05): off by default, and off simulate computes the leakage
+// inductance as it always did; on, the output has no leakage inductance at all (absent, not zero) and every other
+// value in it is bit for bit the one simulate gives with the setting off.
+TEST_CASE("Test_Simulator_Skip_Leakage_Inductance_Leaves_Every_Other_Output_As_It_Is",
+          "[processor][magnetic-simulator][simulator-skip-leakage]") {
+    settings.reset();
+    REQUIRE_FALSE(settings.get_simulator_skip_leakage_inductance());
+
+    auto mas = OpenMagneticsTesting::mas_loader((get_examples_dir() / "02_flyback_efd25_3c95.json").string());
+    auto magnetic = OpenMagnetics::magnetic_autocomplete(mas.get_magnetic());
+    auto inputs = OpenMagnetics::inputs_autocomplete(mas.get_inputs(), magnetic);
+    REQUIRE(magnetic.get_coil().get_functional_description().size() == 2);
+
+    auto simulate = [&]() {
+        MagneticSimulator simulator;
+        return simulator.simulate(inputs, magnetic);
+    };
+
+    const std::string fingerprintOff = settings.fingerprint();
+    auto simulatedOff = simulate();
+    REQUIRE_FALSE(simulatedOff.get_outputs().empty());
+    for (auto& output : simulatedOff.get_outputs()) {
+        REQUIRE(output.get_inductance());
+        REQUIRE(output.get_inductance()->get_leakage_inductance());
+        CHECK(output.get_inductance()->get_leakage_inductance()->get_leakage_inductance_per_winding().size() == 2);
+    }
+    // Off, the leakage is MKF's leakage function's own answer at the point's frequency.
+    {
+        double frequency = inputs.get_operating_points()[0].get_excitations_per_winding()[0].get_frequency();
+        json expected;
+        to_json(expected, MagneticSimulator().calculate_leakage_inductance(magnetic, frequency));
+        json simulatedLeakage;
+        to_json(simulatedLeakage, simulatedOff.get_outputs()[0].get_inductance()->get_leakage_inductance().value());
+        CHECK(simulatedLeakage == expected);
+    }
+
+    settings.set_simulator_skip_leakage_inductance(true);
+    CHECK(settings.get_simulator_skip_leakage_inductance());
+    CHECK(settings.fingerprint() != fingerprintOff);
+    auto simulatedOn = simulate();
+    REQUIRE(simulatedOn.get_outputs().size() == simulatedOff.get_outputs().size());
+    for (auto& output : simulatedOn.get_outputs()) {
+        REQUIRE(output.get_inductance());
+        CHECK_FALSE(output.get_inductance()->get_leakage_inductance());
+    }
+
+    // Every other output, and the operating points simulate hands back, are identical (json equality is exact on
+    // doubles).
+    json outputsOff, outputsOn, inputsOff, inputsOn;
+    to_json(outputsOff, simulatedOff.get_outputs());
+    to_json(outputsOn, simulatedOn.get_outputs());
+    to_json(inputsOff, simulatedOff.get_inputs());
+    to_json(inputsOn, simulatedOn.get_inputs());
+    // An absent optional is written as null.
+    for (auto& output : outputsOff) {
+        REQUIRE(output.at("inductance").contains("leakageInductance"));
+        REQUIRE_FALSE(output.at("inductance").at("leakageInductance").is_null());
+        output.at("inductance").erase("leakageInductance");
+    }
+    for (auto& output : outputsOn) {
+        REQUIRE(output.at("inductance").contains("leakageInductance"));
+        CHECK(output.at("inductance").at("leakageInductance").is_null());
+        output.at("inductance").erase("leakageInductance");
+    }
+    CHECK(outputsOn == outputsOff);
+    CHECK(inputsOn == inputsOff);
+
+    settings.reset();
+    CHECK_FALSE(settings.get_simulator_skip_leakage_inductance());
+}
+
+// Settings::fingerprint says every setting's value (ABT #838); the loss-solve memo and the core adviser's candidate
+// memo key on it. The mirroring lattice of the MMF-boundary model and the winding-loss model set used to be left out.
+TEST_CASE("Test_Settings_Fingerprint_Covers_Neutral_Cells_And_Winding_Losses_Model_Set",
+          "[processor][magnetic-simulator][settings-fingerprint]") {
+    settings.reset();
+    const std::string defaults = settings.fingerprint();
+
+    settings.set_magnetic_field_mirroring_neutral_cells(!settings.get_magnetic_field_mirroring_neutral_cells());
+    CHECK(settings.fingerprint() != defaults);
+    settings.reset();
+    REQUIRE(settings.fingerprint() == defaults);
+
+    REQUIRE(settings.get_winding_losses_model_set() == WindingLossesModelSets::CUSTOM);
+    settings.set_winding_losses_model_set(WindingLossesModelSets::NEUTRAL_WINDOW);
+    CHECK(settings.fingerprint() != defaults);
+    settings.reset();
+    CHECK(settings.fingerprint() == defaults);
+}

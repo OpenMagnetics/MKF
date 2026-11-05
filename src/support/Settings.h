@@ -261,6 +261,12 @@ class Settings
         // hits it returns alike, inside a CatalogueSearchOnePassScope on the searching thread. Keep in sync
         // with reset().
         bool   _simulatorLossTemperatureLoop = true;
+        // MagneticSimulator::simulate leaves out the leakage inductance of a magnetic with more than one winding
+        // (Alf, 2026-11-05: a caller that reads no leakage pays for none). FALSE (default): simulate computes it as
+        // always. TRUE: the inductance output of every point has NO leakage inductance (absent, never zero), and
+        // every other output is the one simulate gives with it FALSE. Only simulate reads it: the leakage
+        // functions, filters and Painter compute leakage whatever it holds. Keep in sync with reset().
+        bool   _simulatorSkipLeakageInductance = false;
         GappingOptimizationStrategy _gappingStrategy = GappingOptimizationStrategy::SIMPLE;
 
 
@@ -657,6 +663,10 @@ class Settings
         // caller's choice untouched; it reads back once the advisers and scopes are gone.
         bool   get_simulator_loss_temperature_loop() const;
         void   set_simulator_loss_temperature_loop(bool value);
+
+        // See _simulatorSkipLeakageInductance.
+        bool   get_simulator_skip_leakage_inductance() const;
+        void   set_simulator_skip_leakage_inductance(bool value);
 
         GappingOptimizationStrategy get_gapping_strategy() const;
         void set_gapping_strategy(GappingOptimizationStrategy value);
