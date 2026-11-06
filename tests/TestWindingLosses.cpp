@@ -4767,7 +4767,9 @@ TEST_CASE("Test_Winding_Losses_Flat_Cells_Field_Step_Reads_The_Split_Field", "[w
                                                                          std::complex<double>(points[pointIndex].get_imaginary(), quadraturePoint.get_imaginary());
                 const std::complex<double> splitField = split.cellFieldPerFrequency[frequencyIndex.value()][flatIndex].at(cellIndex);
                 INFO("f " << frequency << " turn " << flat.turnIndex << " cell " << cellIndex << ": field step |H| " << std::abs(stepField) << " A/m, split |H| " << std::abs(splitField) << " A/m");
-                CHECK(std::abs(std::abs(stepField) - std::abs(splitField)) < 1e-6 * largestField);
+                // To the split operators' accuracy (Alf 2026-11-06: the bound follows FlatTurnCells::operatorTolerance; it
+                // was 1e-6 while the operators were built to 1e-10). A missing source is percent-level, far above it.
+                CHECK(std::abs(std::abs(stepField) - std::abs(splitField)) < 10 * FlatTurnCells::operatorTolerance * largestField);
                 ++checkedCells;
             }
             size_t numberCells = 0;

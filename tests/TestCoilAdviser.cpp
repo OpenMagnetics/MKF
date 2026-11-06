@@ -909,8 +909,9 @@ TEST_CASE("Test_CoilAdviser_Planar", "[adviser][coil-adviser][planar]") {
     // Re-pinned 2026-11-04 (ABT #2226, approved by Alf): the example is the first rejected coil in loss order now (the
     // adviser orders its coils by losses, the score only breaking ties); it was "hot spot reaches 272 C with 23.4 W of losses".
     // Re-pinned 2026-11-06 (approved by Alf): the screened width-cell model books the flat turns' losses, which moves the
-    // loss order; it was "hot spot reaches 136 C with 9.17 W of losses".
-    CHECK_THAT(*noResultsReason, Catch::Matchers::ContainsSubstring("hot spot reaches 156 C with 9.29 W of losses"));
+    // loss order; it was "hot spot reaches 136 C with 9.17 W of losses". Re-pinned again the same day (approved by Alf) from
+    // 9.29 W to 9.28 W, same candidate: the cell solve's tolerance 1e-10 -> 1e-4 and cell growth x1.4 -> x2 (speed, 0.1 %).
+    CHECK_THAT(*noResultsReason, Catch::Matchers::ContainsSubstring("hot spot reaches 156 C with 9.28 W of losses"));
     settings.reset();
 }
 

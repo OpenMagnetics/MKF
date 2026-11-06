@@ -4467,8 +4467,8 @@ std::optional<ParallelCurrentSplit> MagneticField::calculate_parallel_current_sp
             return values;
         }
     };
-    constexpr double splitOperatorTolerance = 1e-10;
-    constexpr double splitSolveTolerance = 1e-10;  // the operators' own accuracy: a tighter solve buys nothing
+    constexpr double splitOperatorTolerance = FlatTurnCells::operatorTolerance;
+    constexpr double splitSolveTolerance = FlatTurnCells::operatorTolerance;  // the operators' own accuracy: a tighter solve buys nothing
     constexpr size_t splitSolveRestart = 300;
     constexpr size_t splitSolveMaximumIterations = 3000;
     // Harmonics solved together (at most): their GMRES runs share every product with the operators, which are read once for

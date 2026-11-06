@@ -151,8 +151,15 @@ struct FlatTurnCells {
     // each grows by cellGrowth up to maximumCellWidthInThicknesses thicknesses. The innermost remainder joins the last cell
     // when it is under half of it. Fixed geometry, the same at every harmonic.
     static constexpr size_t endCellCount = 3;
-    static constexpr double cellGrowth = 1.4;
+    // x2 (Alf 2026-11-06, within 3 % of the full model): against x1.4 the planar OMFEM fixtures move at most 0.63 % and the
+    // planar adviser candidates 0.08 %. The end cells are the physics (one end cell, or end cells 2t wide, move Sixteen by
+    // 11-43 %) and stay as they are.
+    static constexpr double cellGrowth = 2.0;
     static constexpr double maximumCellWidthInThicknesses = 10;
+    // Relative accuracy of the split's compressed operators and of its iterative solve. 1e-4 (Alf 2026-11-06, up to 3 %
+    // allowed against the full model): on the planar adviser candidates and the planar OMFEM fixtures the total loss moves
+    // under 0.03 % from 1e-10 and the solve is ~1.4x faster (sweep in .mkf-triage-runs/wlfem/speed).
+    static constexpr double operatorTolerance = 1e-4;
     // A flat turn is resolved when its wide side is at least this many thicknesses.
     static constexpr double minimumAspectRatio = 4;
     // The face sheets' own thickness, in conductor thicknesses (a sheet is a thin uniform rectangle inside the face).
