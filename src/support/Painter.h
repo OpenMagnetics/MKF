@@ -460,6 +460,10 @@ class Painter : public PainterInterface {
     void paint_rectangle(double xCoordinate, double yCoordinate, double xDimension, double yDimension, std::string cssClassName, SVG::Group* group = nullptr, double angle = 0, std::vector<double> center = {0, 0}, std::optional<std::string> label = std::nullopt);
     void paint_circle(double xCoordinate, double yCoordinate, double radius, std::string cssClassName, SVG::Group* group = nullptr, double fillAngle=360, double angle = 0, std::vector<double> center = {0, 0}, std::optional<std::string> label = std::nullopt);
     void paint_field_point(double xCoordinate, double yCoordinate, double xDimension, double yDimension, std::string color, std::string label);
+    // The group the current field's points go into (a new one per painted field, so a field keeps its place in the
+    // drawing order) and the CSS class of each colour used by field points.
+    SVG::Group* _fieldPointGroup = nullptr;
+    std::map<std::string, std::string> _fieldPointClasses;
 
  public:
     // Colour of value on the linear scale [minimumValue, maximumValue] between the two end colours

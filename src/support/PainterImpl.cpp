@@ -306,10 +306,13 @@ void Painter::paint_rectangle(double xCoordinate, double yCoordinate, double xDi
     if (group == nullptr) {
         group = _root.add_child<SVG::Group>();
     }
-    *group << SVG::Polygon(scale_points(turnPoints, 0, _scale));
-    auto turnSvg = _root.get_children<SVG::Polygon>().back();
+    // The polygon is taken from add_child directly: looking it up again through _root.get_children walks the whole
+    // drawing, which made painting n field points cost n^2.
+    auto turnSvg = group->add_child<SVG::Polygon>(scale_points(turnPoints, 0, _scale));
     turnSvg->set_attr("class", cssClassName);
-    turnSvg->set_attr("transform", "rotate( " + std::to_string(-(angle)) + " " + std::to_string(center[0] * _scale) + " " + std::to_string(center[1] * _scale) + ") ");
+    if (angle != 0) {
+        turnSvg->set_attr("transform", "rotate( " + std::to_string(-(angle)) + " " + std::to_string(center[0] * _scale) + " " + std::to_string(center[1] * _scale) + ") ");
+    }
     if (label) {
         turnSvg->add_child<SVG::Title>(escape_xml(label.value()));
     }
@@ -2025,19 +2028,25 @@ std::string Painter::get_color(double minimumValue, double maximumValue, std::st
 
 void Painter::paint_field_point(double xCoordinate, double yCoordinate, double xDimension, double yDimension, std::string color, std::string label) {
 
-    SVG::Group* shapes = _root.add_child<SVG::Group>();
-
-    std::string cssClassName = generate_random_string();
-
-    // _root.style("." + cssClassName).set_attr("opacity", 0.5).set_attr("fill", color).set_attr("stroke", color);
-    _root.style("." + cssClassName).set_attr("opacity", _opacity).set_attr("fill", color).set_attr("stroke", color);
-    paint_rectangle(xCoordinate, yCoordinate, xDimension, yDimension, cssClassName, shapes, 0, {0, 0}, label);
+    // One group for the points of a field and one CSS class per colour: a class and a group per point made a 200 x 200
+    // plot 11 MB of 40000 style rules.
+    if (_fieldPointGroup == nullptr) {
+        _fieldPointGroup = _root.add_child<SVG::Group>();
+    }
+    auto cssClass = _fieldPointClasses.find(color);
+    if (cssClass == _fieldPointClasses.end()) {
+        std::string cssClassName = generate_random_string();
+        _root.style("." + cssClassName).set_attr("opacity", _opacity).set_attr("fill", color).set_attr("stroke", color);
+        cssClass = _fieldPointClasses.emplace(color, cssClassName).first;
+    }
+    paint_rectangle(xCoordinate, yCoordinate, xDimension, yDimension, cssClass->second, _fieldPointGroup, 0, {0, 0}, label);
 }
 
 
 void Painter::paint_magnetic_field(OperatingPoint operatingPoint, Magnetic magnetic, size_t harmonicIndex, std::optional<ComplexField> inputField) {
     set_image_size(magnetic);
     _fieldPainted = true;
+    _fieldPointGroup = nullptr;
     bool logarithmicScale = settings.get_painter_logarithmic_scale();
 
     // One field, painted the same way for every core. A toroid's field comes from
@@ -2092,6 +2101,7 @@ void Painter::paint_magnetic_field(OperatingPoint operatingPoint, Magnetic magne
 
 void Painter::paint_electric_field(OperatingPoint operatingPoint, Magnetic magnetic, size_t harmonicIndex, std::optional<Field> inputField, ElectricFieldVisualizationModel model, ColorPalette colorPalette) {
     set_image_size(magnetic);
+    _fieldPointGroup = nullptr;
     double minimumModule = DBL_MAX;
     double maximumModule = 0;
     _fieldPainted = true;
