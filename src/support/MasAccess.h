@@ -69,6 +69,8 @@ MKF_MAS_OPTIONAL_REF(MagneticCore, processed_description, std::optional<MAS::Cor
 
 MKF_MAS_OPTIONAL_REF(Coil, turns_description, std::optional<std::vector<MAS::Turn>>)
 
+MKF_MAS_OPTIONAL_REF(FieldPoint, label, std::optional<std::string>)
+
 } // namespace OpenMagnetics::mas_access
 
 #undef MKF_MAS_OPTIONAL_REF

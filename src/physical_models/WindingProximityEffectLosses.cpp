@@ -399,15 +399,20 @@ std::shared_ptr<WindingProximityEffectLossesModel> WindingProximityEffectLosses:
 std::optional<double> WindingProximityEffectLossesModel::try_get_proximity_factor(const Wire& wire, double frequency, double temperature) {
     const std::size_t hash = Wire::calculate_loss_factor_cache_key(wire);
 
-    if (_proximityFactorPerWirePerFrequencyPerTemperature.contains(hash)) {
-        if (_proximityFactorPerWirePerFrequencyPerTemperature[hash].contains(frequency)) {
-            if (_proximityFactorPerWirePerFrequencyPerTemperature[hash][frequency].contains(temperature)) {
-                return _proximityFactorPerWirePerFrequencyPerTemperature[hash][frequency][temperature];
-            }
-        }
+    // One lookup per level (each contains() used to be followed by an operator[] search of the same key).
+    auto foundWire = _proximityFactorPerWirePerFrequencyPerTemperature.find(hash);
+    if (foundWire == _proximityFactorPerWirePerFrequencyPerTemperature.end()) {
+        return std::nullopt;
     }
-
-    return std::nullopt;
+    auto foundFrequency = foundWire->second.find(frequency);
+    if (foundFrequency == foundWire->second.end()) {
+        return std::nullopt;
+    }
+    auto foundTemperature = foundFrequency->second.find(temperature);
+    if (foundTemperature == foundFrequency->second.end()) {
+        return std::nullopt;
+    }
+    return foundTemperature->second;
 }
 
 namespace {
@@ -433,11 +438,11 @@ double WindingProximityEffectLossesModel::calculate_turn_losses_from_phasors(con
     }
     // Quadratic form of the field: the time-averaged loss of Re[(Hi + j Hq) e^{jwt}] is
     // loss(Hi) + loss(Hq). An identically zero quadrature field adds exactly nothing.
-    double turnLosses = calculate_turn_losses(wire, frequency, inPhaseData, temperature);
+    double turnLosses = calculate_turn_losses(wire, frequency, std::move(inPhaseData), temperature);
     bool quadratureIsZero = std::all_of(quadratureData.begin(), quadratureData.end(),
         [](const ComplexFieldPoint& point) { return point.get_real() == 0 && point.get_imaginary() == 0; });
     if (!quadratureIsZero) {
-        turnLosses += calculate_turn_losses(wire, frequency, quadratureData, temperature);
+        turnLosses += calculate_turn_losses(wire, frequency, std::move(quadratureData), temperature);
     }
     return turnLosses;
 }
@@ -477,7 +482,8 @@ std::pair<double, std::vector<std::pair<double, double>>> WindingProximityEffect
     for (size_t fieldIndex = 0; fieldIndex < fields.size(); ++fieldIndex) {
         auto& complexField = fields[fieldIndex];
         auto frequency = complexField.get_frequency();
-        auto dataForThisTurn = complexField.get_data();
+        // `fields` is this call's own copy: its points are filtered in place.
+        auto& dataForThisTurn = complexField.get_mutable_data();
 
         if (!model->consumes_width_samples()) {
             // Width-resolved samples are only consumed by the Wang flat-conductor
@@ -494,15 +500,15 @@ std::pair<double, std::vector<std::pair<double, double>>> WindingProximityEffect
                 throw InvalidInputException(ErrorCode::INVALID_INPUT, "Proximity losses: quadrature field at " + std::to_string(quadratureField.get_frequency()) +
                                             " Hz paired with an in-phase field at " + std::to_string(frequency) + " Hz");
             }
-            auto quadratureDataForThisTurn = quadratureField.get_data();
+            auto& quadratureDataForThisTurn = quadratureField.get_mutable_data();
             if (!model->consumes_width_samples()) {
                 quadratureDataForThisTurn.erase(std::remove_if(quadratureDataForThisTurn.begin(), quadratureDataForThisTurn.end(), isWidthSample),
                     quadratureDataForThisTurn.end());
             }
-            turnLosses = model->calculate_turn_losses_from_phasors(wire, frequency, dataForThisTurn, quadratureDataForThisTurn, temperature);
+            turnLosses = model->calculate_turn_losses_from_phasors(wire, frequency, std::move(dataForThisTurn), std::move(quadratureDataForThisTurn), temperature);
         }
         else {
-            turnLosses = model->calculate_turn_losses(wire, frequency, dataForThisTurn, temperature);
+            turnLosses = model->calculate_turn_losses(wire, frequency, std::move(dataForThisTurn), temperature);
         }
 
         if (std::isnan(turnLosses)) {
@@ -566,12 +572,18 @@ WindingLossesOutput WindingProximityEffectLosses::calculate_proximity_effect_los
     // One model per winding (its override is the winding's wire type's), shared by the winding's turns.
     std::map<size_t, std::shared_ptr<WindingProximityEffectLossesModel>> modelPerWinding;
     std::vector<std::optional<std::vector<std::vector<size_t>>>> pointIndicesPerTurnPerHarmonic(fieldPerFrequency.size());
+    // The winding's wire, resolved once for all its turns (the coil does not change in here).
+    std::map<int, Wire> wirePerWinding;
 
     for (size_t turnIndex = 0; turnIndex < turns.size(); ++turnIndex)
     {
-        auto turn = turns[turnIndex];
+        const auto& turn = turns[turnIndex];
         int windingIndex = coil.get_winding_index_by_name(turn.get_winding());
-        auto wire = coil.resolve_wire(windingIndex);
+        auto foundWire = wirePerWinding.find(windingIndex);
+        if (foundWire == wirePerWinding.end()) {
+            foundWire = wirePerWinding.emplace(windingIndex, coil.resolve_wire(windingIndex)).first;
+        }
+        const auto& wire = foundWire->second;
         // ABT #1304: a model set chooses per wire type; a single override applies to every winding.
         std::optional<WindingProximityEffectLossesModels> turnModelOverride = modelOverride;
         if (modelPerWireType) {
@@ -615,6 +627,16 @@ WindingLossesOutput WindingProximityEffectLosses::calculate_proximity_effect_los
         std::vector<ComplexField> primaryQuadratureFields;
         std::vector<ComplexField> secondaryQuadratureFields;
         bool hasSecondaryCrossing = false;
+        primaryFields.reserve(fieldPerFrequency.size());
+        if (quadratureFieldPerFrequency) {
+            primaryQuadratureFields.reserve(fieldPerFrequency.size());
+        }
+        if (turnHasSecondCrossing) {
+            secondaryFields.reserve(fieldPerFrequency.size());
+            if (quadratureFieldPerFrequency) {
+                secondaryQuadratureFields.reserve(fieldPerFrequency.size());
+            }
+        }
 
         for (size_t fieldIndex = 0; fieldIndex < fieldPerFrequency.size(); ++fieldIndex) {
             auto& fieldPerHarmonic = fieldPerFrequency[fieldIndex];
@@ -676,38 +698,35 @@ WindingLossesOutput WindingProximityEffectLosses::calculate_proximity_effect_los
                 }
             }
 
-            ComplexField primaryComplexField;
-            primaryComplexField.set_data(primaryData);
+            // Built in place: the MAS field classes have no move constructor, so a push_back copies every point.
+            auto& primaryComplexField = primaryFields.emplace_back();
+            primaryComplexField.get_mutable_data().swap(primaryData);
             primaryComplexField.set_frequency(fieldPerHarmonic.get_frequency());
-            primaryFields.push_back(primaryComplexField);
             if (quadratureHarmonicData) {
-                ComplexField primaryQuadratureComplexField;
-                primaryQuadratureComplexField.set_data(primaryQuadratureData);
+                auto& primaryQuadratureComplexField = primaryQuadratureFields.emplace_back();
+                primaryQuadratureComplexField.get_mutable_data().swap(primaryQuadratureData);
                 primaryQuadratureComplexField.set_frequency(fieldPerHarmonic.get_frequency());
-                primaryQuadratureFields.push_back(primaryQuadratureComplexField);
             }
 
             // Only assembled when this turn can actually have secondary points — the
             // common single-crossing case used to build an empty ComplexField per
             // harmonic for nothing.
             if (turnHasSecondCrossing) {
-                ComplexField secondaryComplexField;
-                secondaryComplexField.set_data(secondaryData);
+                auto& secondaryComplexField = secondaryFields.emplace_back();
+                secondaryComplexField.get_mutable_data().swap(secondaryData);
                 secondaryComplexField.set_frequency(fieldPerHarmonic.get_frequency());
-                secondaryFields.push_back(secondaryComplexField);
                 if (quadratureHarmonicData) {
-                    ComplexField secondaryQuadratureComplexField;
-                    secondaryQuadratureComplexField.set_data(secondaryQuadratureData);
+                    auto& secondaryQuadratureComplexField = secondaryQuadratureFields.emplace_back();
+                    secondaryQuadratureComplexField.get_mutable_data().swap(secondaryQuadratureData);
                     secondaryQuadratureComplexField.set_frequency(fieldPerHarmonic.get_frequency());
-                    secondaryQuadratureFields.push_back(secondaryQuadratureComplexField);
                 }
             }
         }
         std::optional<std::vector<ComplexField>> primaryQuadrature;
         std::optional<std::vector<ComplexField>> secondaryQuadrature;
         if (quadratureFieldPerFrequency) {
-            primaryQuadrature = primaryQuadratureFields;
-            secondaryQuadrature = secondaryQuadratureFields;
+            primaryQuadrature = std::move(primaryQuadratureFields);
+            secondaryQuadrature = std::move(secondaryQuadratureFields);
         }
 
         double primaryLength = hasSecondaryCrossing ? wireLength / 2 : wireLength;
@@ -726,10 +745,10 @@ WindingLossesOutput WindingProximityEffectLosses::calculate_proximity_effect_los
             foundModel = modelPerWinding.emplace(static_cast<size_t>(windingIndex), get_model(wire.get_type(), turnModelOverride)).first;
         }
         const auto& model = foundModel->second;
-        auto primaryLossesPerHarmonic = calculate_proximity_effect_losses_per_meter(model, wire, temperature, primaryFields, primaryQuadrature, perpendicularOutlineFactor, stackSharingNumber).second;
+        auto primaryLossesPerHarmonic = calculate_proximity_effect_losses_per_meter(model, wire, temperature, std::move(primaryFields), std::move(primaryQuadrature), perpendicularOutlineFactor, stackSharingNumber).second;
         std::vector<std::pair<double, double>> secondaryLossesPerHarmonic;
         if (hasSecondaryCrossing) {
-            secondaryLossesPerHarmonic = calculate_proximity_effect_losses_per_meter(model, wire, temperature, secondaryFields, secondaryQuadrature, perpendicularOutlineFactor, stackSharingNumber).second;
+            secondaryLossesPerHarmonic = calculate_proximity_effect_losses_per_meter(model, wire, temperature, std::move(secondaryFields), std::move(secondaryQuadrature), perpendicularOutlineFactor, stackSharingNumber).second;
             if (secondaryLossesPerHarmonic.size() != primaryLossesPerHarmonic.size()) {
                 throw InvalidInputException(ErrorCode::INVALID_COIL_CONFIGURATION,
                     "Primary and secondary crossing harmonics do not match for turn " + std::to_string(turnIndex));

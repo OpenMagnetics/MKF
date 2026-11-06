@@ -1840,7 +1840,11 @@ double WaveformProcessor::calculate_largest_harmonic_amplitude(const FourierSeri
 }
 
 bool WaveformProcessor::is_zero_harmonic(const FourierSeries& series, double listedAmplitude, std::complex<double> phasor) {
-    const double zeroScale = harmonicConsistencyTolerance * calculate_largest_harmonic_amplitude(series);
+    return is_zero_harmonic(calculate_largest_harmonic_amplitude(series), listedAmplitude, phasor);
+}
+
+bool WaveformProcessor::is_zero_harmonic(double largestHarmonicAmplitude, double listedAmplitude, std::complex<double> phasor) {
+    const double zeroScale = harmonicConsistencyTolerance * largestHarmonicAmplitude;
     return std::fabs(listedAmplitude) < zeroScale && std::abs(phasor) < zeroScale;
 }
 

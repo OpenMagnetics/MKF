@@ -378,7 +378,7 @@ std::complex<double> CoilMesher::calculate_harmonic_phasor(const Waveform& wavef
 
 std::vector<std::vector<double>> CoilMesher::calculate_current_phase_per_winding(Coil coil, OperatingPoint operatingPoint, const std::vector<size_t>& harmonicIndexes, std::vector<std::optional<double>>* gaugePhasePerHarmonic, std::vector<std::vector<double>>* currentAmplitudePerHarmonic) {
     size_t numberWindings = coil.get_functional_description().size();
-    auto excitations = operatingPoint.get_excitations_per_winding();
+    const auto& excitations = operatingPoint.get_excitations_per_winding();
     if (excitations.size() < numberWindings) {
         throw InvalidInputException(ErrorCode::MISSING_DATA, "The operating point has " + std::to_string(excitations.size()) +
                                     " excitations for a coil with " + std::to_string(numberWindings) + " windings");
@@ -386,6 +386,8 @@ std::vector<std::vector<double>> CoilMesher::calculate_current_phase_per_winding
     size_t referenceWindingIndex = get_reference_winding_index(coil);
     // Each winding's Fourier series, computed once, on first use (ABT #1880).
     std::vector<std::optional<WaveformProcessor::FourierSeries>> seriesPerWinding(numberWindings);
+    // And its largest harmonic, the scale is_zero_harmonic reads, taken with it.
+    std::vector<double> largestHarmonicAmplitudePerWinding(numberWindings, 0.0);
 
     std::vector<std::vector<double>> phasePerHarmonicPerWinding;
     for (auto harmonicIndex : harmonicIndexes) {
@@ -393,17 +395,18 @@ std::vector<std::vector<double>> CoilMesher::calculate_current_phase_per_winding
         std::vector<double> amplitudePerWinding(numberWindings, 0.0);
         std::vector<bool> excitedPerWinding(numberWindings, false);
         for (size_t windingIndex = 0; windingIndex < numberWindings; ++windingIndex) {
-            auto current = excitations[windingIndex].get_current();
-            if (!current || !current->get_harmonics()) {
+            // Read in place: the current (its waveform included) and its harmonics were copied per harmonic.
+            const auto& current = mas_access::current_ref(excitations[windingIndex]);
+            if (!current || !mas_access::harmonics_ref(*current)) {
                 throw InvalidInputException(ErrorCode::MISSING_DATA, "Current for winding " + std::to_string(windingIndex) + " is missing harmonics in Coil Mesher");
             }
-            auto harmonics = current->get_harmonics().value();
+            const auto& harmonics = mas_access::harmonics_ref(*current).value();
             if (harmonicIndex >= harmonics.get_amplitudes().size() || harmonics.get_amplitudes()[harmonicIndex] == 0) {
                 continue;  // no current at this harmonic: its phase is irrelevant
             }
             double amplitude = harmonics.get_amplitudes()[harmonicIndex];
             double harmonicFrequency = harmonics.get_frequencies()[harmonicIndex];
-            if (!current->get_waveform()) {
+            if (!mas_access::waveform_ref(*current)) {
                 throw InvalidInputException(ErrorCode::MISSING_DATA, "Current for winding " + std::to_string(windingIndex) +
                                             " has a harmonic at " + std::to_string(harmonicFrequency) +
                                             " Hz but no waveform to take its phase from");
@@ -416,10 +419,11 @@ std::vector<std::vector<double>> CoilMesher::calculate_current_phase_per_winding
                 }
                 seriesPerWinding[windingIndex] = WaveformProcessor::calculate_fourier_series(waveform, excitations[windingIndex].get_frequency(),
                                                                                              settings.get_inputs_number_points_sampled_waveforms());
+                largestHarmonicAmplitudePerWinding[windingIndex] = WaveformProcessor::calculate_largest_harmonic_amplitude(seriesPerWinding[windingIndex].value());
             }
             auto phasor = WaveformProcessor::calculate_harmonic_phasor(seriesPerWinding[windingIndex].value(), excitations[windingIndex].get_frequency(), harmonicFrequency);
             double phasorAmplitude = std::abs(phasor);
-            if (WaveformProcessor::is_zero_harmonic(seriesPerWinding[windingIndex].value(), amplitude, phasor)) {
+            if (WaveformProcessor::is_zero_harmonic(largestHarmonicAmplitudePerWinding[windingIndex], amplitude, phasor)) {
                 continue;  // zero in the list and in the waveform (a symmetric wave's even harmonics): no current, no phase (ABT #1880)
             }
             if (!(phasorAmplitude >= WaveformProcessor::harmonicConsistencyTolerance * amplitude)) {
@@ -579,6 +583,13 @@ InducingCoilMesh CoilMesher::generate_mesh_inducing_coil_phasors(Magnetic magnet
         }
 
         auto fieldPoints = breakdownModelPerWinding[windingIndex]->generate_mesh_inducing_turn(turn, wire, turnIndex, turn.get_length(), meshCore);
+        // MAS classes declare a destructor, so they have no move constructor: every reallocation of a harmonic's
+        // point list copies each point. Room for every turn meshed like the first one is made once.
+        if (turnIndex == 0) {
+            for (auto& [harmonicIndex, field] : tempFieldPerHarmonic) {
+                field.get_mutable_data().reserve(turns.size() * fieldPoints.size());
+            }
+        }
 
         for (size_t commonPosition = 0; commonPosition < commonHarmonicIndexes.size(); ++commonPosition) {
             auto harmonicIndex = commonHarmonicIndexes[commonPosition];
@@ -592,10 +603,11 @@ InducingCoilMesh CoilMesher::generate_mesh_inducing_coil_phasors(Magnetic magnet
                 throw NaNResultException("NaN found in harmonicCurrentPeakInTurn value");
             }
             harmonicCurrentPeakInTurn *= currentDirectionPerWinding[windingIndex];
+            auto& harmonicData = tempFieldPerHarmonic[harmonicIndex].get_mutable_data();
             for (auto& fieldPoint : fieldPoints) {
                 FieldPoint fieldPointThisHarmonic(fieldPoint);
                 fieldPointThisHarmonic.set_value(fieldPoint.get_value() * harmonicCurrentPeakInTurn);
-                tempFieldPerHarmonic[harmonicIndex].get_mutable_data().push_back(fieldPointThisHarmonic);
+                harmonicData.push_back(std::move(fieldPointThisHarmonic));
             }
         }
     }
@@ -604,9 +616,14 @@ InducingCoilMesh CoilMesher::generate_mesh_inducing_coil_phasors(Magnetic magnet
     std::vector<std::optional<double>> gaugePhasePerHarmonic;
     std::vector<std::vector<double>> amplitudePerHarmonicPerWinding;
     std::vector<std::vector<double>> currentAmplitudePerHarmonicPerWinding;
-    for (size_t harmonicIndex = 0; harmonicIndex < tempFieldPerHarmonic.size(); ++harmonicIndex){
-        if (tempFieldPerHarmonic[harmonicIndex].get_data().size() > 0) {
-            fieldPerHarmonic.push_back(std::move(tempFieldPerHarmonic[harmonicIndex]));
+    // In ascending harmonic order. A Field has no move constructor (see above): its points are handed over by swapping
+    // the point lists, into a list with room for every harmonic.
+    fieldPerHarmonic.reserve(tempFieldPerHarmonic.size());
+    for (auto& [harmonicIndex, meshedField] : tempFieldPerHarmonic) {
+        if (meshedField.get_data().size() > 0) {
+            fieldPerHarmonic.emplace_back();
+            fieldPerHarmonic.back().set_frequency(meshedField.get_frequency());
+            fieldPerHarmonic.back().get_mutable_data().swap(meshedField.get_mutable_data());
             auto commonPosition = std::find(commonHarmonicIndexes.begin(), commonHarmonicIndexes.end(), harmonicIndex);
             if (commonPosition == commonHarmonicIndexes.end()) {
                 throw CalculationException(ErrorCode::CALCULATION_ERROR, "generate_mesh_inducing_coil: meshed harmonic " + std::to_string(harmonicIndex) +
@@ -637,7 +654,8 @@ InducingCoilMesh CoilMesher::generate_mesh_inducing_coil_phasors(Magnetic magnet
         }
     }
 
-    return {fieldPerHarmonic, phasePerHarmonicPerWinding, gaugePhasePerHarmonic, amplitudePerHarmonicPerWinding, currentAmplitudePerHarmonicPerWinding};
+    return {std::move(fieldPerHarmonic), std::move(phasePerHarmonicPerWinding), std::move(gaugePhasePerHarmonic), std::move(amplitudePerHarmonicPerWinding),
+            std::move(currentAmplitudePerHarmonicPerWinding)};
 }
 
 std::vector<Field> CoilMesher::generate_mesh_induced_coil(Magnetic magnetic, OperatingPoint operatingPoint, double windingLossesHarmonicAmplitudeThreshold) {
@@ -688,9 +706,11 @@ std::vector<Field> CoilMesher::generate_mesh_induced_coil(Magnetic magnetic, Ope
     std::map<size_t, Field> tempFieldPerHarmonic;
     for (auto harmonicIndex : commonHarmonicIndexes) {
         Field field;
-        for (auto excitation : operatingPoint.get_excitations_per_winding()) {
-            if (harmonicIndex < excitation.get_current()->get_harmonics().value().get_frequencies().size()) {
-                field.set_frequency(excitation.get_current()->get_harmonics().value().get_frequencies()[harmonicIndex]);
+        // Read in place: each excitation (its waveforms included) was copied per harmonic.
+        for (const auto& excitation : operatingPoint.get_excitations_per_winding()) {
+            const auto& frequencies = mas_access::harmonics_ref(*mas_access::current_ref(excitation)).value().get_frequencies();
+            if (harmonicIndex < frequencies.size()) {
+                field.set_frequency(frequencies[harmonicIndex]);
                 break;
             }
         }
@@ -700,28 +720,40 @@ std::vector<Field> CoilMesher::generate_mesh_induced_coil(Magnetic magnetic, Ope
     // Hoisted like the inducing loop: one Core copy for the whole mesh, not one per turn.
     auto meshCore = magnetic.get_core();
     for (size_t turnIndex = 0; turnIndex < turns.size(); ++turnIndex) {
-        auto turn = turns[turnIndex];
+        // Read in place, as in the inducing loop: the turn, its wire and its winding's current were copied per turn.
+        const auto& turn = turns[turnIndex];
         int windingIndex = coil.get_winding_index_by_name(turn.get_winding());
-        auto wire = wirePerWinding[windingIndex];
-        auto excitationCurrent = operatingPoint.get_excitations_per_winding()[windingIndex].get_current();
+        auto& wire = wirePerWinding[windingIndex];
+        const auto& excitationCurrent = mas_access::current_ref(operatingPoint.get_excitations_per_winding()[windingIndex]);
         if (!excitationCurrent || !excitationCurrent->get_harmonics()) {
             throw InvalidInputException(ErrorCode::MISSING_DATA, "Current for winding " + std::to_string(windingIndex) + " is missing harmonics in Coil Mesher");
         }
-        auto harmonics = excitationCurrent->get_harmonics().value();
 
         auto fieldPoints = breakdownModelPerWinding[windingIndex]->generate_mesh_induced_turn(turn, wire, turnIndex, &meshCore);
+        // A FieldPoint has no move constructor (MAS classes declare a destructor): room for every turn meshed like the
+        // first one is made once, so the lists are not copied as they grow.
+        if (turnIndex == 0) {
+            for (auto& [harmonicIndex, field] : tempFieldPerHarmonic) {
+                field.get_mutable_data().reserve(turns.size() * fieldPoints.size());
+            }
+        }
 
         for (auto harmonicIndex : commonHarmonicIndexes) {
+            auto& harmonicData = tempFieldPerHarmonic[harmonicIndex].get_mutable_data();
             for (auto& fieldPoint : fieldPoints) {
-                tempFieldPerHarmonic[harmonicIndex].get_mutable_data().push_back(fieldPoint);
+                harmonicData.push_back(fieldPoint);
             }
         }
     }
 
+    // In ascending harmonic order; the point lists are handed over by swapping them (a Field has no move constructor).
     std::vector<Field> fieldPerHarmonic;
-    for (size_t harmonicIndex = 0; harmonicIndex < tempFieldPerHarmonic.size(); ++harmonicIndex){
-        if (tempFieldPerHarmonic[harmonicIndex].get_data().size() > 0) {
-            fieldPerHarmonic.push_back(tempFieldPerHarmonic[harmonicIndex]);
+    fieldPerHarmonic.reserve(tempFieldPerHarmonic.size());
+    for (auto& [harmonicIndex, meshedField] : tempFieldPerHarmonic) {
+        if (meshedField.get_data().size() > 0) {
+            fieldPerHarmonic.emplace_back();
+            fieldPerHarmonic.back().set_frequency(meshedField.get_frequency());
+            fieldPerHarmonic.back().get_mutable_data().swap(meshedField.get_mutable_data());
         }
     }
     return fieldPerHarmonic;

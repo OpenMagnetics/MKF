@@ -910,11 +910,11 @@ WindingWindowMagneticStrengthFieldPhasorOutput MagneticField::calculate_magnetic
     else {
         auto aux = coilMesher.generate_mesh_inducing_coil_phasors(magnetic, operatingPoint, settings.get_harmonic_amplitude_threshold(), currentDirectionPerWinding, mesherToUse,
                                                                        parallelCurrentSplit.has_value());
-        inducingFields = aux.fieldPerHarmonic;
-        currentPhasePerHarmonicPerWinding = aux.currentPhasePerHarmonicPerWinding;
-        gaugePhasePerHarmonic = aux.gaugePhasePerHarmonic;
-        meshAmplitudePerHarmonicPerWinding = aux.amplitudePerHarmonicPerWinding;
-        currentAmplitudePerHarmonicPerWinding = aux.currentAmplitudePerHarmonicPerWinding;
+        inducingFields = std::move(aux.fieldPerHarmonic);
+        currentPhasePerHarmonicPerWinding = std::move(aux.currentPhasePerHarmonicPerWinding);
+        gaugePhasePerHarmonic = std::move(aux.gaugePhasePerHarmonic);
+        meshAmplitudePerHarmonicPerWinding = std::move(aux.amplitudePerHarmonicPerWinding);
+        currentAmplitudePerHarmonicPerWinding = std::move(aux.currentAmplitudePerHarmonicPerWinding);
     }
     if (currentPhasePerHarmonicPerWinding.size() != inducingFields.size() || gaugePhasePerHarmonic.size() != inducingFields.size()) {
         throw CalculationException(ErrorCode::CALCULATION_ERROR, "Magnetic field: " + std::to_string(inducingFields.size()) + " inducing harmonics but " +
@@ -1167,6 +1167,11 @@ WindingWindowMagneticStrengthFieldPhasorOutput MagneticField::calculate_magnetic
         std::vector<std::vector<ScreenedFieldSum>> screenedPerInducedPoint;
     };
     std::optional<TurnFieldSums> turnFieldSums;
+    // Per harmonic, from the one scan of the inducing mesh that build_turn_field_sums makes: the indices of the turn
+    // points that are conductors, not images (the window's net ampere-turns sum them), and of the points that are not
+    // turns (the per-induced-point loop sums them). The per-harmonic loop read every point of the mesh twice more for these.
+    std::vector<std::vector<size_t>> conductorPointsPerHarmonic;
+    std::vector<std::vector<size_t>> nonTurnPointsPerHarmonic;
     auto build_turn_field_sums = [&]() -> TurnFieldSums {
         size_t numberHarmonics = inducingFields.size();
         size_t numberWindings = magnetic.get_coil().get_functional_description().size();
@@ -1175,11 +1180,21 @@ WindingWindowMagneticStrengthFieldPhasorOutput MagneticField::calculate_magnetic
 
         // The turn filaments of each harmonic, which must be the same filaments in the same order.
         std::vector<std::vector<size_t>> turnPointsPerHarmonic(numberHarmonics);
+        conductorPointsPerHarmonic.assign(numberHarmonics, {});
+        nonTurnPointsPerHarmonic.assign(numberHarmonics, {});
         for (size_t harmonicIndex = 0; harmonicIndex < numberHarmonics; ++harmonicIndex) {
             const auto& data = inducingFields[harmonicIndex].get_data();
             for (size_t pointIndex = 0; pointIndex < data.size(); ++pointIndex) {
                 if (data[pointIndex].get_turn_index()) {
                     turnPointsPerHarmonic[harmonicIndex].push_back(pointIndex);
+                    // Read in place: get_label() copies the string.
+                    const auto& label = mas_access::label_ref(data[pointIndex]);
+                    if (!(label && label.value() == "image")) {
+                        conductorPointsPerHarmonic[harmonicIndex].push_back(pointIndex);
+                    }
+                }
+                else {
+                    nonTurnPointsPerHarmonic[harmonicIndex].push_back(pointIndex);
                 }
             }
         }
@@ -1500,6 +1515,9 @@ WindingWindowMagneticStrengthFieldPhasorOutput MagneticField::calculate_magnetic
     }
     // ABT #1645: per induced point, the wall field split by the foil strips it crosses (filled on first use).
     std::vector<std::optional<std::pair<std::pair<double, double>, std::vector<ScreenedFieldSum>>>> wallScreeningPerInducedPoint;
+    // The unscreened wall field per unit net ampere-turns at each induced point: geometry only, and the induced points
+    // are the same at every harmonic (build_turn_field_sums checks it), so it is evaluated once per point, on first use.
+    std::vector<std::optional<std::pair<double, double>>> wallFieldPerInducedPoint;
 
     for (size_t harmonicIndex = 0; harmonicIndex < inducingFields.size(); ++harmonicIndex){
         std::vector<ComplexFieldPoint> fieldPoints;
@@ -1976,19 +1994,18 @@ WindingWindowMagneticStrengthFieldPhasorOutput MagneticField::calculate_magnetic
         double netAmpereTurns = 0;
         double netQuadratureAmpereTurns = 0;
         if (windowBoundaryModel) {
-            for (const auto& inducingFieldPoint : inducingData) {
-                bool isImage = inducingFieldPoint.get_label() && inducingFieldPoint.get_label().value() == "image";
-                if (inducingFieldPoint.get_turn_index() && !isImage) {
-                    size_t inducingTurnIndex = static_cast<size_t>(inducingFieldPoint.get_turn_index().value());
-                    size_t windingIndex = windingIndexPerTurn[inducingTurnIndex];
-                    if (!factorPerTurn.empty()) {
-                        netAmpereTurns += inducingFieldPoint.get_value() * factorPerTurn[inducingTurnIndex].real();
-                        netQuadratureAmpereTurns += inducingFieldPoint.get_value() * factorPerTurn[inducingTurnIndex].imag();
-                        continue;
-                    }
-                    netAmpereTurns += inducingFieldPoint.get_value() * inPhaseFactorPerWinding[windingIndex];
-                    netQuadratureAmpereTurns += inducingFieldPoint.get_value() * quadratureFactorPerWinding[windingIndex];
+            // The turn points that are not images, in mesh order (build_turn_field_sums listed them).
+            for (size_t pointIndex : conductorPointsPerHarmonic.at(harmonicIndex)) {
+                const auto& inducingFieldPoint = inducingData[pointIndex];
+                size_t inducingTurnIndex = static_cast<size_t>(inducingFieldPoint.get_turn_index().value());
+                size_t windingIndex = windingIndexPerTurn[inducingTurnIndex];
+                if (!factorPerTurn.empty()) {
+                    netAmpereTurns += inducingFieldPoint.get_value() * factorPerTurn[inducingTurnIndex].real();
+                    netQuadratureAmpereTurns += inducingFieldPoint.get_value() * factorPerTurn[inducingTurnIndex].imag();
+                    continue;
                 }
+                netAmpereTurns += inducingFieldPoint.get_value() * inPhaseFactorPerWinding[windingIndex];
+                netQuadratureAmpereTurns += inducingFieldPoint.get_value() * quadratureFactorPerWinding[windingIndex];
             }
         }
 
@@ -1998,11 +2015,11 @@ WindingWindowMagneticStrengthFieldPhasorOutput MagneticField::calculate_magnetic
         // per-induced-point loop below sums only these, and scanning every turn point there to skip it was the
         // dominant cost of a leakage solve.
         std::vector<const FieldPoint*> nonTurnInducingPoints;
-        for (const auto& inducingFieldPoint : inducingData) {
-            if (!inducingFieldPoint.get_turn_index()) {
-                nonTurnInducingPoints.push_back(&inducingFieldPoint);
-            }
+        for (size_t pointIndex : nonTurnPointsPerHarmonic.at(harmonicIndex)) {
+            nonTurnInducingPoints.push_back(&inducingData[pointIndex]);
         }
+        fieldPoints.reserve(inducedDataThisHarmonic.size());
+        quadratureFieldPoints.reserve(inducedDataThisHarmonic.size());
         for (size_t inducedIndex = 0; inducedIndex < inducedDataThisHarmonic.size(); ++inducedIndex) {
             const auto& inducedFieldPoint = inducedDataThisHarmonic[inducedIndex];
             double totalInducedFieldX = 0;
@@ -2217,8 +2234,15 @@ WindingWindowMagneticStrengthFieldPhasorOutput MagneticField::calculate_magnetic
                 double boundaryFieldY;
                 const std::vector<ScreenedFieldSum>* screenedWallSums = nullptr;
                 if (screeningStrips.empty()) {
-                    std::tie(boundaryFieldX, boundaryFieldY) = _fringingEffectModel->get_window_boundary_field(
-                        inducedFieldPoint.get_point()[0], inducedFieldPoint.get_point()[1], 1.0);
+                    if (wallFieldPerInducedPoint.empty()) {
+                        wallFieldPerInducedPoint.resize(inducedDataThisHarmonic.size());
+                    }
+                    auto& wallField = wallFieldPerInducedPoint[inducedIndex];
+                    if (!wallField) {
+                        wallField = _fringingEffectModel->get_window_boundary_field(
+                            inducedFieldPoint.get_point()[0], inducedFieldPoint.get_point()[1], 1.0);
+                    }
+                    std::tie(boundaryFieldX, boundaryFieldY) = wallField.value();
                 }
                 else {
                     // ABT #1645: the wall pieces whose field crosses foil strips, split once (the geometry does not
@@ -2264,15 +2288,15 @@ WindingWindowMagneticStrengthFieldPhasorOutput MagneticField::calculate_magnetic
             if (inducedFieldPoint.get_label()) {
                 complexFieldPoint.set_label(inducedFieldPoint.get_label().value());
             }
-            fieldPoints.push_back(complexFieldPoint);
-
             ComplexFieldPoint quadratureFieldPoint(complexFieldPoint);
             quadratureFieldPoint.set_real(totalQuadratureInducedFieldX);
             quadratureFieldPoint.set_imaginary(totalQuadratureInducedFieldY);
+            fieldPoints.push_back(complexFieldPoint);
             quadratureFieldPoints.push_back(quadratureFieldPoint);
         }
-        complexFieldPerHarmonic[harmonicIndex].set_data(fieldPoints);
-        quadratureComplexFieldPerHarmonic[harmonicIndex].set_data(quadratureFieldPoints);
+        // Handed over by swapping the lists (both fields hold no points yet): a ComplexField has no move constructor.
+        complexFieldPerHarmonic[harmonicIndex].get_mutable_data().swap(fieldPoints);
+        quadratureComplexFieldPerHarmonic[harmonicIndex].get_mutable_data().swap(quadratureFieldPoints);
     }
 
     // ABT #1304: with exact flat inducing turns the width samples took the complete field (see exactFlatInducing);

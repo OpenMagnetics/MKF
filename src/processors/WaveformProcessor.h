@@ -108,6 +108,9 @@ class WaveformProcessor {
     // both below harmonicConsistencyTolerance times the waveform's largest harmonic. It carries
     // no current, so it contributes nothing whatever its phase, and it has no phase to take.
     static bool is_zero_harmonic(const FourierSeries& series, double listedAmplitude, std::complex<double> phasor);
+    // The same test on the series' calculate_largest_harmonic_amplitude, taken once by a caller that tests many harmonics
+    // of one series.
+    static bool is_zero_harmonic(double largestHarmonicAmplitude, double listedAmplitude, std::complex<double> phasor);
     // Whether a MAS harmonics list carries MKF's labels: every entry at an integer multiple k * frequency (to 1e-6
     // of the order, the tolerance calculate_harmonic_phasor reads an order with). The list need not hold every
     // order: an imported waveform's trimmed list keeps the DC, the fundamental and its main harmonics only, each
