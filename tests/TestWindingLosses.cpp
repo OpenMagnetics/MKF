@@ -4719,6 +4719,68 @@ TEST_CASE("Test_Winding_Losses_Parallel_Split_Fringing_Close_Vs_OMFEM", "[windin
     settings.reset();
 }
 
+// The split WindingLosses solves for this magnetic (with its flat turns resolved into width cells where its model asks).
+static std::optional<ParallelCurrentSplit> winding_losses_parallel_current_split(OpenMagnetics::Magnetic& magnetic, OperatingPoint& operatingPoint, double temperature) {
+    return WindingLosses().calculate_magnetic_field(magnetic, operatingPoint, temperature).parallelCurrentSplit;
+}
+
+TEST_CASE("Test_Winding_Losses_Flat_Cells_Field_Step_Reads_The_Split_Field", "[winding-losses][parallel-split][physical-model]") {
+    // The screened width-cell model solves each cell's field along its faces inside the split (the H rows), and the field
+    // step computes it again at the cell's "cellsample" point from the solved cell currents and face-sheet reactions; the
+    // loss kernel books the second. They are the same field from the same sources, so they must agree: a source left out
+    // of either (a wall, an image, a face sheet) shows here before it shows as a loss.
+    auto& settings = OpenMagnetics::Settings::GetInstance();
+    settings.reset();
+    for (double frequency : {20000.0, 2000000.0}) {
+        auto [magnetic, operatingPoint] = sixteen_parallel_planar_fixture("Test_Winding_Losses_Sixteen_Turns_Planar_Sinusoidal_No_Fringing.json", frequency);
+        auto field = WindingLosses().calculate_magnetic_field(magnetic, operatingPoint, 22);
+        REQUIRE(field.parallelCurrentSplit);
+        const auto& split = field.parallelCurrentSplit.value();
+        REQUIRE(split.flatTurns.size() == 16);
+        const auto& inPhase = field.field.get_field_per_frequency();
+        const auto& quadrature = field.field.get_quadrature_field_per_frequency();
+        size_t checkedHarmonics = 0;
+        for (size_t harmonicIndex = 0; harmonicIndex < inPhase.size(); ++harmonicIndex) {
+            const auto frequencyIndex = split.find_frequency_index(inPhase[harmonicIndex].get_frequency());
+            if (!frequencyIndex) {
+                continue;
+            }
+            ++checkedHarmonics;
+            std::vector<size_t> cellPerFlat(split.flatTurns.size(), 0);
+            double largestField = 0;
+            for (const auto& fieldsOfTurn : split.cellFieldPerFrequency[frequencyIndex.value()]) {
+                for (const auto& cellField : fieldsOfTurn) {
+                    largestField = std::max(largestField, std::abs(cellField));
+                }
+            }
+            size_t checkedCells = 0;
+            const auto& points = inPhase[harmonicIndex].get_data();
+            for (size_t pointIndex = 0; pointIndex < points.size(); ++pointIndex) {
+                if (!points[pointIndex].get_label() || points[pointIndex].get_label().value() != "cellsample") {
+                    continue;
+                }
+                const size_t flatIndex = split.flatTurnPerTurn.at(static_cast<size_t>(points[pointIndex].get_turn_index().value())).value();
+                const auto& flat = split.flatTurns[flatIndex];
+                const size_t cellIndex = cellPerFlat[flatIndex]++;
+                const auto& quadraturePoint = quadrature[harmonicIndex].get_data()[pointIndex];
+                const std::complex<double> stepField = flat.wideAlongX ? std::complex<double>(points[pointIndex].get_real(), quadraturePoint.get_real()) :
+                                                                         std::complex<double>(points[pointIndex].get_imaginary(), quadraturePoint.get_imaginary());
+                const std::complex<double> splitField = split.cellFieldPerFrequency[frequencyIndex.value()][flatIndex].at(cellIndex);
+                INFO("f " << frequency << " turn " << flat.turnIndex << " cell " << cellIndex << ": field step |H| " << std::abs(stepField) << " A/m, split |H| " << std::abs(splitField) << " A/m");
+                CHECK(std::abs(std::abs(stepField) - std::abs(splitField)) < 1e-6 * largestField);
+                ++checkedCells;
+            }
+            size_t numberCells = 0;
+            for (const auto& flat : split.flatTurns) {
+                numberCells += flat.cellWidths.size();
+            }
+            CHECK(checkedCells == numberCells);
+        }
+        CHECK(checkedHarmonics > 0);
+    }
+    settings.reset();
+}
+
 TEST_CASE("Test_Winding_Losses_Parallel_Split_Ohmic_Is_DC_Split_Redistribution_In_Skin", "[winding-losses][parallel-split][physical-model]") {
     // ABT #1314 (Alf, 2026-10-04): the ohmic losses of every parallel are TRUE DC-split losses, R_dc,t div_t^2 I_rms^2,
     // whatever the split; the extra copper loss of the AC redistribution between parallels, R_dc,t (|I_t|^2 - (div_t
@@ -4730,7 +4792,7 @@ TEST_CASE("Test_Winding_Losses_Parallel_Split_Ohmic_Is_DC_Split_Redistribution_I
     auto& settings = OpenMagnetics::Settings::GetInstance();
     settings.reset();
     auto [magnetic, operatingPoint] = sixteen_parallel_planar_fixture("Test_Winding_Losses_Sixteen_Turns_Planar_Sinusoidal_No_Fringing.json", 2000000);
-    auto split = MagneticField::calculate_parallel_current_split(magnetic, operatingPoint, 22);
+    auto split = winding_losses_parallel_current_split(magnetic, operatingPoint, 22);
     REQUIRE(split);
     REQUIRE(split->frequencies.size() == 1);
     auto output = WindingLosses().calculate_losses(magnetic, operatingPoint, 22);

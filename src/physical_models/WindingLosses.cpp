@@ -312,7 +312,6 @@ WindingLosses::WindingLossesField WindingLosses::calculate_magnetic_field(Magnet
     // parallels). Solved once, at the conductors' temperature, and charged consistently to the skin (AC) and field
     // (proximity) losses; the ohmic losses keep the DC (resistive) split. The split feeds the field, so with parallels
     // the field step belongs to that temperature (WindingLossesField::temperature).
-    const auto parallelCurrentSplit = MagneticField::calculate_parallel_current_split(magnetic, operatingPoint, temperature);
     const WindingLossesModelSet* modelSet = resolve_model_set(magnetic);
 
     auto isPlanar = true;
@@ -373,6 +372,12 @@ WindingLosses::WindingLossesField WindingLosses::calculate_magnetic_field(Magnet
         fringingModelToUse = settings.get_magnetic_field_strength_fringing_effect_model();
     }
     MagneticField magneticField(modelToUse, fringingModelToUse);
+
+    // The screened width-cell model (FlatTurnCells): the flat turns MARTINEZ charges are resolved across their width in
+    // the neutral window frame (MMF_BOUNDARY with the pure 2-D kernel), the only frame that images cells and walls alike.
+    const auto resolveFlatTurnsPerWinding = resolve_flat_cell_windings(magnetic, modelToUse, fringingModelToUse, modelSet, modelSet ? std::nullopt : _models.proximityEffectModel);
+    // Solved before the quick-mode harmonic threshold below: the skin model reads the split at the full threshold.
+    const auto parallelCurrentSplit = MagneticField::calculate_parallel_current_split(magnetic, operatingPoint, temperature, std::nullopt, resolveFlatTurnsPerWinding);
 
     // ARCH-002: RAII guard for harmonic threshold quick mode
     bool useQuickMode = use_quick_harmonic_threshold(magnetic);
@@ -440,8 +445,8 @@ WindingLossesOutput WindingLosses::calculate_losses(Magnetic magnetic, const Win
         &Settings::get_harmonic_amplitude_threshold,
         &Settings::set_harmonic_amplitude_threshold, thresholdToUse);
     windingLossesOutput = modelSet ?
-        WindingProximityEffectLosses::calculate_proximity_effect_losses(magnetic.get_coil(), temperature, windingLossesOutput, field.field, std::nullopt, modelSet->proximityModelPerWireType) :
-        WindingProximityEffectLosses::calculate_proximity_effect_losses(magnetic.get_coil(), temperature, windingLossesOutput, field.field, _models.proximityEffectModel);
+        WindingProximityEffectLosses::calculate_proximity_effect_losses(magnetic.get_coil(), temperature, windingLossesOutput, field.field, std::nullopt, modelSet->proximityModelPerWireType, parallelCurrentSplitPointer) :
+        WindingProximityEffectLosses::calculate_proximity_effect_losses(magnetic.get_coil(), temperature, windingLossesOutput, field.field, _models.proximityEffectModel, std::nullopt, parallelCurrentSplitPointer);
     windingLossesOutput = combine_turn_losses(windingLossesOutput, magnetic.get_coil());
 
     return windingLossesOutput;

@@ -244,6 +244,31 @@ MagneticFieldStrengthModels resolve_winding_losses_field_model(const WindingLoss
     return automatic_winding_losses_field_model(magnetic);
 }
 
+std::optional<std::vector<bool>> resolve_flat_cell_windings(Magnetic& magnetic, MagneticFieldStrengthModels fieldModel, MagneticFieldStrengthFringingEffectModels fringingModel,
+                                                            const WindingLossesModelSet* set, std::optional<WindingProximityEffectLossesModels> customProximityModel) {
+    if (fringingModel != MagneticFieldStrengthFringingEffectModels::MMF_BOUNDARY || fieldModel != MagneticFieldStrengthModels::BINNS_LAWRENSON) {
+        return std::nullopt;
+    }
+    auto& coil = magnetic.get_mutable_coil();
+    std::vector<bool> flags(coil.get_functional_description().size(), false);
+    for (size_t windingIndex = 0; windingIndex < flags.size(); ++windingIndex) {
+        const auto wireType = coil.get_wire_type(windingIndex);
+        if (wireType != WireType::RECTANGULAR && wireType != WireType::PLANAR) {
+            continue;
+        }
+        std::optional<WindingProximityEffectLossesModels> proximityModel = customProximityModel;
+        if (set) {
+            proximityModel = std::nullopt;
+            const auto found = set->proximityModelPerWireType.find(wireType);
+            if (found != set->proximityModelPerWireType.end()) {
+                proximityModel = found->second;
+            }
+        }
+        flags[windingIndex] = proximityModel && proximityModel.value() == WindingProximityEffectLossesModels::MARTINEZ;
+    }
+    return flags;
+}
+
 WindingLossesModelSets get_default_winding_losses_model_set(Magnetic magnetic) {
     const Defaults defaults;
     switch (scope_of(magnetic)) {

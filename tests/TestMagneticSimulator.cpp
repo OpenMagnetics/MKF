@@ -1992,7 +1992,9 @@ namespace {
             CHECK(hasParallels == (filename == "03_buck_inductor_pq3230_n95.json"));
             if (hasParallels) {
                 CHECK(std::fabs(lossesFieldAtSolved - lossesFieldAtAmbient) > 1e-7 * lossesFieldAtAmbient);
-                CHECK(std::fabs(lossesFieldAtSolved - lossesFieldAtAmbient) < 1e-4 * lossesFieldAtAmbient);
+                // 1e-2 (Alf, 2026-11-06): the flat wire's width cells react through the slab, which follows the skin depth
+                // at the iterate, so the ambient field is 0.23 % off the solved one; it was under 1e-4 before the cells.
+                CHECK(std::fabs(lossesFieldAtSolved - lossesFieldAtAmbient) < 1e-2 * lossesFieldAtAmbient);
             }
         }
     }

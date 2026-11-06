@@ -110,8 +110,12 @@ ComplexField PainterInterface::calculate_magnetic_field(OperatingPoint operating
     // image lattice (the magnetic-field mirroring, exactly as WindingLosses solves them) BEFORE the painter's display
     // settings are applied below. The painter mirroring only decides which images of those currents the plot draws: it
     // used to reach the split too, which a display mirroring of 0 made throw (no lattice to solve the strands on).
+    // The flat turns the losses resolve into width cells are resolved here too, so the plot draws their cells' field.
+    const WindingLossesModelSet* modelSetForCells = modelSetId != WindingLossesModelSets::CUSTOM ? &get_winding_losses_model_set(modelSetId) : nullptr;
+    const auto resolveFlatTurnsPerWinding = resolve_flat_cell_windings(magnetic, magneticFieldModel, fringingEffectModel, modelSetForCells, std::nullopt);
     const auto parallelCurrentSplit = MagneticField::calculate_parallel_current_split(magnetic, operatingPoint,
-                                                                                      operatingPoint.get_conditions().get_ambient_temperature());
+                                                                                      operatingPoint.get_conditions().get_ambient_temperature(),
+                                                                                      std::nullopt, resolveFlatTurnsPerWinding);
     // RAII: restore the global magnetic-field settings on scope exit. They used to be
     // overwritten permanently, leaking the painter's fringing/mirroring choice into
     // every later physics computation in the process.

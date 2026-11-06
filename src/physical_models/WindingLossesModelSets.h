@@ -63,5 +63,12 @@ WindingLossesModelSets get_default_winding_losses_model_set(Magnetic magnetic);
 // configuration is the default one -- field and fringing models at their Defaults and fringing included -- and CUSTOM
 // (the individually configured models) once any of them is configured.
 WindingLossesModelSets resolve_winding_losses_model_set_from_settings(Magnetic magnetic, bool includeFringing);
+// The windings whose flat turns are resolved into width cells (FlatTurnCells, the screened width-cell model), for
+// MagneticField::calculate_parallel_current_split: RECTANGULAR and PLANAR windings booked by MARTINEZ (the set's model for
+// the wire type, or customProximityModel when there is no set), on the neutral-window field (BINNS_LAWRENSON with
+// MMF_BOUNDARY), the only frame that images cells and walls alike. Empty when the field is not that one. WindingLosses
+// and the Painter's field plot both ask here, so the plot draws the field the losses are booked from.
+std::optional<std::vector<bool>> resolve_flat_cell_windings(Magnetic& magnetic, MagneticFieldStrengthModels fieldModel, MagneticFieldStrengthFringingEffectModels fringingModel,
+                                                            const WindingLossesModelSet* set, std::optional<WindingProximityEffectLossesModels> customProximityModel);
 
 } // namespace OpenMagnetics

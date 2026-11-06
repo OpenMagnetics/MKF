@@ -130,9 +130,51 @@ enum class ParallelCurrentSplitModel {
     RESISTIVE
 };
 
+// A flat turn resolved across its width (the screened width-cell model): the conductor is cut into full-thickness cells
+// along its wide axis, each carrying its own current, and each cell's slab reaction to the field along its faces is a
+// pair of face sheets (see calculate_parallel_current_split). The end cells are exactly one thickness wide: the end
+// faces carry a current that does not shrink with the cell, and its loss is booked over the cell's width.
+struct FlatTurnCells {
+    size_t turnIndex = 0;
+    // The wide axis of the section in the window frame (the turn's rotation applied): x, or y.
+    bool wideAlongX = true;
+    // Conducting thickness (thin axis) and width (wide axis).
+    double thickness = 0;
+    double width = 0;
+    // The turn's centre.
+    double centreX = 0;
+    double centreY = 0;
+    // Per cell, in order along the wide axis: its centre's coordinate on that axis and its width.
+    std::vector<double> cellCentres;
+    std::vector<double> cellWidths;
+    // The cuts: the end cells and every cell from the ends inwards are one thickness wide for endCellCount cells, then
+    // each grows by cellGrowth up to maximumCellWidthInThicknesses thicknesses. The innermost remainder joins the last cell
+    // when it is under half of it. Fixed geometry, the same at every harmonic.
+    static constexpr size_t endCellCount = 3;
+    static constexpr double cellGrowth = 1.4;
+    static constexpr double maximumCellWidthInThicknesses = 10;
+    // A flat turn is resolved when its wide side is at least this many thicknesses.
+    static constexpr double minimumAspectRatio = 4;
+    // The face sheets' own thickness, in conductor thicknesses (a sheet is a thin uniform rectangle inside the face).
+    static constexpr double faceSheetThicknessInThicknesses = 1.0 / 20;
+    // The cell cuts of a conductor of this width and thickness: cell widths in order along the wide axis.
+    static std::vector<double> calculate_cell_widths(double width, double thickness);
+};
+
 struct ParallelCurrentSplit {
     // The model that produced this split (see ParallelCurrentSplitModel).
     ParallelCurrentSplitModel model = ParallelCurrentSplitModel::NEUTRAL_WINDOW_IMPEDANCE;
+    // The flat turns resolved across their width (empty when none is), and per turn its index there.
+    std::vector<FlatTurnCells> flatTurns;
+    std::vector<std::optional<size_t>> flatTurnPerTurn;
+    // Per solved frequency, per flat turn, per cell: the cell's current in the field frame (the winding's current
+    // direction applied: the current that sources the field, along +z), the field along its faces at its centre from
+    // everything but its own turn's face sheets (the external field of its slab), and the slab's reaction D = g H w, which
+    // its face sheets carry: -D on the face at the +normal side and +D on the other for a section wide along x, +D and
+    // -D for one wide along y (normal = the thin axis). g = (s - tanh s) / s, s = (1 + j) t / (2 delta).
+    std::vector<std::vector<std::vector<std::complex<double>>>> cellCurrentPerFrequency;
+    std::vector<std::vector<std::vector<std::complex<double>>>> cellFieldPerFrequency;
+    std::vector<std::vector<std::vector<std::complex<double>>>> cellReactionPerFrequency;
     // The harmonics solved, as frequencies k f_excitation (k >= 1, ascending), and per harmonic every frequency the
     // windings' harmonics lists give it (a list built from a waveform's own time span can differ from k f_excitation).
     std::vector<double> frequencies;
@@ -209,8 +251,12 @@ class MagneticField {
         // ABT #1314: the split of every winding's harmonic currents between its parallels (see ParallelCurrentSplit), at the
         // conductors' temperature, by the model parallel_current_split_model chooses for the magnetic. Empty when no
         // winding has more than one parallel.
+        // resolveFlatTurnsPerWinding: per winding, whether its flat turns (rectangular or planar, axis-aligned, wide side at
+        // least FlatTurnCells::minimumAspectRatio thicknesses) are resolved across their width (FlatTurnCells). Only the
+        // neutral window frame can (NEUTRAL_WINDOW_IMPEDANCE); the split then exists even without parallels.
         static std::optional<ParallelCurrentSplit> calculate_parallel_current_split(Magnetic magnetic, OperatingPoint operatingPoint, double temperature,
-                                                                                    std::optional<std::vector<int8_t>> customCurrentDirectionPerWinding = std::nullopt);
+                                                                                    std::optional<std::vector<int8_t>> customCurrentDirectionPerWinding = std::nullopt,
+                                                                                    std::optional<std::vector<bool>> resolveFlatTurnsPerWinding = std::nullopt);
         // ABT #1759: the parallel current split model for this magnetic's geometry: RESISTIVE for toroids, multi-window
         // cores and turns with additionalCoordinates (no neutral window frame), NEUTRAL_WINDOW_IMPEDANCE otherwise.
         static ParallelCurrentSplitModel parallel_current_split_model(const Magnetic& magnetic);

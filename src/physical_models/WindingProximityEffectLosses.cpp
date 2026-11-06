@@ -3,6 +3,7 @@
 #include <magic_enum.hpp>
 #include "physical_models/WindingOhmicLosses.h"
 #include "physical_models/Resistivity.h"
+#include "physical_models/MagneticField.h"
 #include "Defaults.h"
 
 #include "support/EigenPrivate.h"
@@ -485,6 +486,14 @@ std::pair<double, std::vector<std::pair<double, double>>> WindingProximityEffect
         // `fields` is this call's own copy: its points are filtered in place.
         auto& dataForThisTurn = complexField.get_mutable_data();
 
+        if (!std::dynamic_pointer_cast<WindingProximityEffectLossesMartinezModel>(model)) {
+            for (const auto& point : dataForThisTurn) {
+                if (point.get_label() && point.get_label().value() == "cellsample") {
+                    throw InvalidInputException(ErrorCode::INVALID_INPUT, "Proximity losses: width-cell samples reached the " + model->methodName +
+                                                " model; only the Martinez model books a turn resolved into width cells");
+                }
+            }
+        }
         if (!model->consumes_width_samples()) {
             // Width-resolved samples are only consumed by the Wang flat-conductor
             // model; models that average over the lumped surface points must not
@@ -521,17 +530,17 @@ std::pair<double, std::vector<std::pair<double, double>>> WindingProximityEffect
     return {totalProximityEffectLossesPerMeter, lossesPerHarmonic};
 }
 
-WindingLossesOutput WindingProximityEffectLosses::calculate_proximity_effect_losses(Coil coil, double temperature, WindingLossesOutput windingLossesOutput, WindingWindowMagneticStrengthFieldPhasorOutput windingWindowMagneticStrengthFieldOutput, std::optional<WindingProximityEffectLossesModels> modelOverride, std::optional<std::map<WireType, WindingProximityEffectLossesModels>> modelPerWireType) {
+WindingLossesOutput WindingProximityEffectLosses::calculate_proximity_effect_losses(Coil coil, double temperature, WindingLossesOutput windingLossesOutput, WindingWindowMagneticStrengthFieldPhasorOutput windingWindowMagneticStrengthFieldOutput, std::optional<WindingProximityEffectLossesModels> modelOverride, std::optional<std::map<WireType, WindingProximityEffectLossesModels>> modelPerWireType, const ParallelCurrentSplit* parallelCurrentSplit) {
     return calculate_proximity_effect_losses_impl(coil, temperature, windingLossesOutput, windingWindowMagneticStrengthFieldOutput.get_field_per_frequency(),
-                                                  windingWindowMagneticStrengthFieldOutput.get_quadrature_field_per_frequency(), modelOverride, modelPerWireType);
+                                                  windingWindowMagneticStrengthFieldOutput.get_quadrature_field_per_frequency(), modelOverride, modelPerWireType, parallelCurrentSplit);
 }
 
-WindingLossesOutput WindingProximityEffectLosses::calculate_proximity_effect_losses(Coil coil, double temperature, WindingLossesOutput windingLossesOutput, WindingWindowMagneticStrengthFieldOutput windingWindowMagneticStrengthFieldOutput, std::optional<WindingProximityEffectLossesModels> modelOverride, std::optional<std::map<WireType, WindingProximityEffectLossesModels>> modelPerWireType) {
+WindingLossesOutput WindingProximityEffectLosses::calculate_proximity_effect_losses(Coil coil, double temperature, WindingLossesOutput windingLossesOutput, WindingWindowMagneticStrengthFieldOutput windingWindowMagneticStrengthFieldOutput, std::optional<WindingProximityEffectLossesModels> modelOverride, std::optional<std::map<WireType, WindingProximityEffectLossesModels>> modelPerWireType, const ParallelCurrentSplit* parallelCurrentSplit) {
     return calculate_proximity_effect_losses_impl(coil, temperature, windingLossesOutput, windingWindowMagneticStrengthFieldOutput.get_field_per_frequency(),
-                                                  std::nullopt, modelOverride, modelPerWireType);
+                                                  std::nullopt, modelOverride, modelPerWireType, parallelCurrentSplit);
 }
 
-WindingLossesOutput WindingProximityEffectLosses::calculate_proximity_effect_losses_impl(Coil coil, double temperature, WindingLossesOutput windingLossesOutput, const std::vector<ComplexField>& fieldPerFrequency, const std::optional<std::vector<ComplexField>>& quadratureFieldPerFrequency, std::optional<WindingProximityEffectLossesModels> modelOverride, std::optional<std::map<WireType, WindingProximityEffectLossesModels>> modelPerWireType) {
+WindingLossesOutput WindingProximityEffectLosses::calculate_proximity_effect_losses_impl(Coil coil, double temperature, WindingLossesOutput windingLossesOutput, const std::vector<ComplexField>& fieldPerFrequency, const std::optional<std::vector<ComplexField>>& quadratureFieldPerFrequency, std::optional<WindingProximityEffectLossesModels> modelOverride, std::optional<std::map<WireType, WindingProximityEffectLossesModels>> modelPerWireType, const ParallelCurrentSplit* parallelCurrentSplit) {
     if (quadratureFieldPerFrequency && quadratureFieldPerFrequency->size() != fieldPerFrequency.size()) {
         throw InvalidInputException(ErrorCode::INVALID_INPUT, "Proximity losses: " + std::to_string(fieldPerFrequency.size()) + " in-phase harmonic fields but " +
                                     std::to_string(quadratureFieldPerFrequency->size()) + " quadrature harmonic fields");
@@ -745,6 +754,17 @@ WindingLossesOutput WindingProximityEffectLosses::calculate_proximity_effect_los
             foundModel = modelPerWinding.emplace(static_cast<size_t>(windingIndex), get_model(wire.get_type(), turnModelOverride)).first;
         }
         const auto& model = foundModel->second;
+        std::optional<size_t> flatTurnIndex;
+        if (parallelCurrentSplit && !parallelCurrentSplit->flatTurnPerTurn.empty()) {
+            flatTurnIndex = parallelCurrentSplit->flatTurnPerTurn.at(turnIndex);
+        }
+        if (auto martinezModel = std::dynamic_pointer_cast<WindingProximityEffectLossesMartinezModel>(model)) {
+            martinezModel->set_flat_turn(parallelCurrentSplit, flatTurnIndex);
+        }
+        else if (flatTurnIndex) {
+            throw InvalidInputException(ErrorCode::INVALID_INPUT, "Turn " + turn.get_name() + " was resolved into width cells, which only the " +
+                                        "Martinez proximity model books, but its winding uses " + model->methodName);
+        }
         auto primaryLossesPerHarmonic = calculate_proximity_effect_losses_per_meter(model, wire, temperature, std::move(primaryFields), std::move(primaryQuadrature), perpendicularOutlineFactor, stackSharingNumber).second;
         std::vector<std::pair<double, double>> secondaryLossesPerHarmonic;
         if (hasSecondaryCrossing) {
@@ -1634,6 +1654,128 @@ double WindingProximityEffectLossesMartinezModel::calculate_edge_crowding_factor
 
 
 
+double WindingProximityEffectLossesMartinezModel::calculate_flat_cell_end_term(double thicknessInSkinDepths) {
+    if (!(thicknessInSkinDepths >= 0) || !std::isfinite(thicknessInSkinDepths)) {
+        throw InvalidInputException(ErrorCode::INVALID_INPUT, "Width cells: the end term needs a finite, non-negative thickness in skin depths, got " +
+                                    std::to_string(thicknessInSkinDepths));
+    }
+    // E(nu), nu = t / delta: the finite-difference solve of scripts/flat_cell_end_term.py (two strip widths agree within
+    // 1 % at nu = 8, the mesh refinement within 3 %). Below nu = 0.5 the end adds nothing the flat faces do not already carry.
+    static const std::array<std::pair<double, double>, 15> table{{
+        {0.5, 0.0}, {1.0, 0.004}, {1.5, 0.056}, {1.75, 0.132}, {2.0, 0.261}, {2.25, 0.409}, {2.5, 0.577}, {2.75, 0.734},
+        {3.0, 0.869}, {3.5, 1.057}, {4.0, 1.168}, {5.0, 1.283}, {6.0, 1.351}, {8.0, 1.444}, {10.0, 1.500}}};
+    if (thicknessInSkinDepths <= table.front().first) {
+        return 0;
+    }
+    if (thicknessInSkinDepths > table.back().first) {
+        // The perfect-conductor limit 2.728 and the delta^(1/3) series of the right-angle corner (fitted to the table's
+        // tail; it reproduces nu = 5 within 1 %).
+        const double inverseCubeRoot = std::cbrt(1.0 / thicknessInSkinDepths);
+        return 2.728 - 3.413 * inverseCubeRoot + 1.655 * inverseCubeRoot * inverseCubeRoot;
+    }
+    for (size_t i = 1; i < table.size(); ++i) {
+        if (thicknessInSkinDepths <= table[i].first) {
+            const double fraction = (thicknessInSkinDepths - table[i - 1].first) / (table[i].first - table[i - 1].first);
+            return table[i - 1].second + fraction * (table[i].second - table[i - 1].second);
+        }
+    }
+    throw CalculationException(ErrorCode::CALCULATION_INVALID_RESULT, "Width cells: the end-term table lookup fell through");
+}
+
+// A flat turn resolved into width cells (FlatTurnCells). Each cell is a slab of the conductor's thickness with the field
+// H along its faces from everything outside its own slab (the "cellsample" point at its centre) and the sheet current
+// K = J / w its own cell current gives it. The faces then carry H + K/2 and H - K/2, and the exact slab solution books
+//     w [2 |H|^2 (F - 2G) + |K|^2 (F/2 + G)] / (2 sigma delta)
+//     F = (sinh 2nu + sin 2nu) / (cosh 2nu - cos 2nu),  G = (sinh nu cos nu + cosh nu sin nu) / (cosh 2nu - cos 2nu)
+// with no cross term, so the phase convention of K against H does not enter. Each end cell adds the end face and its
+// corners, E(nu) t 2|H|^2 / (2 sigma delta). The skin model books the turn's current spread uniformly over its width,
+// W |I / W|^2 (F/2 + G) / (2 sigma delta), so that is taken off: what remains is the proximity loss -- the field terms
+// and the redistribution of the current across the width. A uniform sheet minimises the K term at a given current, so
+// the remainder cannot be negative.
+double WindingProximityEffectLossesMartinezModel::calculate_flat_cell_losses(double frequency, double resistivity, const std::vector<ComplexFieldPoint>& data, const std::vector<ComplexFieldPoint>* quadratureData) const {
+    if (!_parallelCurrentSplit || !_flatTurnIndex) {
+        throw InvalidInputException(ErrorCode::INVALID_INPUT, "Width cells: the turn has no resolved cells");
+    }
+    if (frequency == 0) {
+        // No eddy currents at DC: the field induces nothing and the current is uniform.
+        return 0;
+    }
+    const auto& flat = _parallelCurrentSplit->flatTurns.at(_flatTurnIndex.value());
+    const size_t frequencyIndex = _parallelCurrentSplit->frequency_index(frequency);
+    const auto& cellCurrents = _parallelCurrentSplit->cellCurrentPerFrequency.at(frequencyIndex).at(_flatTurnIndex.value());
+    const size_t numberCells = flat.cellWidths.size();
+    if (cellCurrents.size() != numberCells) {
+        throw InvalidInputException(ErrorCode::INVALID_INPUT, "Width cells: " + std::to_string(cellCurrents.size()) + " cell currents for " +
+                                    std::to_string(numberCells) + " cells");
+    }
+    if (quadratureData && quadratureData->size() != data.size()) {
+        throw InvalidInputException(ErrorCode::INVALID_INPUT, "Width cells: the quadrature field has " + std::to_string(quadratureData->size()) +
+                                    " points where the in-phase field has " + std::to_string(data.size()));
+    }
+
+    // The field along the faces at each cell centre, in cell order.
+    std::vector<double> parallelFieldSquared;
+    parallelFieldSquared.reserve(numberCells);
+    for (size_t pointIndex = 0; pointIndex < data.size(); ++pointIndex) {
+        const auto& point = data[pointIndex];
+        if (!point.get_label() || point.get_label().value() != "cellsample") {
+            continue;
+        }
+        const size_t cellIndex = parallelFieldSquared.size();
+        if (cellIndex >= numberCells) {
+            throw InvalidInputException(ErrorCode::INVALID_INPUT, "Width cells: more cell samples than the turn's " + std::to_string(numberCells) + " cells");
+        }
+        const double along = flat.wideAlongX ? point.get_point()[0] : point.get_point()[1];
+        if (std::abs(along - flat.cellCentres[cellIndex]) > 1e-9 * flat.width) {
+            throw InvalidInputException(ErrorCode::INVALID_INPUT, "Width cells: cell sample " + std::to_string(cellIndex) + " is not at its cell's centre");
+        }
+        // get_real() is Hx, get_imaginary() is Hy.
+        double fieldSquared = std::pow(flat.wideAlongX ? point.get_real() : point.get_imaginary(), 2);
+        if (quadratureData) {
+            const auto& quadraturePoint = (*quadratureData)[pointIndex];
+            fieldSquared += std::pow(flat.wideAlongX ? quadraturePoint.get_real() : quadraturePoint.get_imaginary(), 2);
+        }
+        parallelFieldSquared.push_back(fieldSquared);
+    }
+    if (parallelFieldSquared.size() != numberCells) {
+        throw InvalidInputException(ErrorCode::INVALID_INPUT, "Width cells: " + std::to_string(parallelFieldSquared.size()) + " cell samples for " +
+                                    std::to_string(numberCells) + " cells");
+    }
+
+    const double skinDepth = std::sqrt(resistivity / (std::numbers::pi * frequency * Constants().vacuumPermeability));
+    const double nu = flat.thickness / skinDepth;
+    double functionF;
+    double functionG;
+    if (nu > 300) {
+        // cosh 2nu overflows beyond nu ~ 355; the ratios are 1 and 0 to double precision long before.
+        functionF = 1;
+        functionG = 0;
+    }
+    else {
+        const double denominator = std::cosh(2 * nu) - std::cos(2 * nu);
+        functionF = (std::sinh(2 * nu) + std::sin(2 * nu)) / denominator;
+        functionG = (std::sinh(nu) * std::cos(nu) + std::cosh(nu) * std::sin(nu)) / denominator;
+    }
+    const double surfaceResistanceOverTwo = resistivity / skinDepth / 2;  // 1 / (2 sigma delta)
+    const double endTerm = calculate_flat_cell_end_term(nu);
+
+    double losses = 0;
+    std::complex<double> turnCurrent = 0;
+    for (size_t cellIndex = 0; cellIndex < numberCells; ++cellIndex) {
+        const double cellWidth = flat.cellWidths[cellIndex];
+        const double sheetCurrentSquared = std::norm(cellCurrents[cellIndex] / cellWidth);
+        losses += cellWidth * (2 * parallelFieldSquared[cellIndex] * (functionF - 2 * functionG) + sheetCurrentSquared * (functionF / 2 + functionG));
+        turnCurrent += cellCurrents[cellIndex];
+    }
+    losses += endTerm * flat.thickness * 2 * (parallelFieldSquared.front() + parallelFieldSquared.back());
+    losses -= flat.width * std::norm(turnCurrent / flat.width) * (functionF / 2 + functionG);
+    losses *= surfaceResistanceOverTwo;
+    if (!(losses >= -1e-9 * std::abs(surfaceResistanceOverTwo * flat.width * std::norm(turnCurrent / flat.width)))) {
+        throw CalculationException(ErrorCode::CALCULATION_INVALID_RESULT, "Width cells: negative proximity loss " + std::to_string(losses) + " W/m");
+    }
+    return losses;
+}
+
 double WindingProximityEffectLossesMartinezModel::calculate_turn_losses(const Wire& wire, double frequency, std::vector<ComplexFieldPoint> data, double temperature) {
     return calculate_turn_losses_impl(wire, frequency, data, nullptr, temperature);
 }
@@ -1659,6 +1801,14 @@ double WindingProximityEffectLossesMartinezModel::calculate_turn_losses_impl(con
     if (!(skinDepth > 0)) {
         throw InvalidInputException(ErrorCode::INVALID_INPUT,
             "Martinez model: non-positive skin depth at " + std::to_string(frequency) + " Hz");
+    }
+    if (_flatTurnIndex) {
+        return calculate_flat_cell_losses(frequency, resistivity, data, quadratureData);
+    }
+    for (const auto& point : data) {
+        if (point.get_label() && point.get_label().value() == "cellsample") {
+            throw InvalidInputException(ErrorCode::INVALID_INPUT, "Martinez proximity losses: width-cell samples on a turn that was not resolved into width cells");
+        }
     }
 
     // RECTANGULAR-SECTION WIRES ONLY (Alf, 2026-09-19). A round conductor is not this model's
