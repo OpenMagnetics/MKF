@@ -3930,7 +3930,7 @@ std::vector<FlatCellSource> build_flat_cell_sources(const std::vector<FlatTurnCe
 std::shared_ptr<const FlatCellFieldOperator> build_flat_cell_field_operator(const ParallelCurrentSplit& split, const std::vector<Turn>& turns,
                                                                             std::vector<Wire>& wirePerWinding, const std::vector<size_t>& windingPerTurn, Core& core,
                                                                             const std::vector<FieldPoint>& inducedPoints, const std::vector<bool>& skipPoint) {
-    constexpr double tolerance = 1e-10;
+    constexpr double tolerance = FlatTurnCells::operatorTolerance;  // the split's own operator accuracy
     const auto sources = build_flat_cell_sources(split.flatTurns, turns, wirePerWinding, windingPerTurn, core);
     // The operators depend on the sources and the points alone, not on frequency or temperature: a repeated call on the
     // same design reuses them from a per-thread cache, keyed by every input they are computed from and compared exactly.
