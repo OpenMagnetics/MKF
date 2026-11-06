@@ -900,3 +900,35 @@ TEST_CASE("Real winding: no layer link or wrap of the MAS examples cuts into ano
         REQUIRE(inside.empty());
     }
 }
+
+// ABT #2289 (Alf, 2026-11-06: "Warn in MKF, keep going"): the web's auto-advised Flyback (EQ 26/19/7,
+// Primary 50 turns x 2 Litz, Secondary 0 6 turns x 7 round 1.5 mm, as the core and wire advisers left it
+// in 3DW-5). Funding the radial step's clearance in Secondary 0's layer 1 needs its stations 0.51377 mm
+// apart, which closes the gap between two of its bundles to 0.513742 mm, 28 nm short. That used to throw
+// COIL_WINDING_ERROR and the 3D view showed no real winding; the bundles are now laid that close and a
+// warning says so.
+TEST_CASE("Real winding: a widening that closes the gap between bundles is laid and logged as a warning (ABT #2289)",
+          "[constructive-model][coil][real-winding][abt2289]") {
+    auto& logger = OpenMagnetics::Logger::getInstance();
+    logger.disableCollector();
+    logger.enableCollector(OpenMagnetics::LogLevel::WARNING);
+    std::optional<OpenMagnetics::Coil> coil;
+    std::string refusal;
+    try {
+        coil = wind_real("abt2289_flyback_eq26_secondary_bundles.json");
+    }
+    catch (const std::exception& e) {
+        refusal = e.what();
+    }
+    std::string log;
+    for (const auto& record : logger.drainCollected()) {
+        log += record.message + "\n";
+    }
+    logger.disableCollector();
+    INFO("refused: " << refusal);
+    REQUIRE(refusal.empty());
+    REQUIRE(coil.has_value());
+    INFO("log:\n" << log);
+    CHECK(log.find("closes the gap between two of its bundles") != std::string::npos);
+    CHECK(log.find("the bundles are laid that close anyway") != std::string::npos);
+}

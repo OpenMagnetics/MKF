@@ -2022,8 +2022,9 @@ class Coil : public MAS::Coil {
                                                                         const std::vector<Layer>& layers);
         // ABT #1422: widen the bundles of each layer whose stations a radial step's clearance needs.
         void fund_radial_steps_against_sibling_wraps(std::vector<Turn>& turns, std::vector<Layer>& layers);
-        // ABT #1422: throws when a finished layout still has a radial step inside a sibling's envelope.
-        void refuse_radial_steps_closer_than_the_wire_to_sibling_wraps();
+        // ABT #1422: logs a warning when a finished layout still has a radial step inside a sibling's
+        // envelope (ABT #2289: it used to throw).
+        void warn_about_radial_steps_closer_than_the_wire_to_sibling_wraps();
         // ABT #1423: the tangent departure of a terminal route, or none when its radial bend fits on
         // the connection face straight. Throws when the bend does not fit and the tangent exit
         // cannot be laid either.

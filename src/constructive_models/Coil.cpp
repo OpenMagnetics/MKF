@@ -6214,8 +6214,9 @@ std::vector<Coil::RadialStepClearance> Coil::measure_radial_step_clearances(cons
 // and so its fit in the window, is unchanged -- and an inner one its centre. Every conductor's
 // advance between consecutive bundles then changes by the same amount, so the siblings' wraps stay
 // parallel (ABT #1401). A deficit between two DIFFERENT bundles, or a widening that would close the
-// gap between bundles, cannot be funded by the bundle pitch; it is left in place and
-// refuse_radial_steps_closer_than_the_wire_to_sibling_wraps refuses the finished layout.
+// gap between bundles, cannot be funded by the bundle pitch: the first is left in place and the
+// second laid anyway, and both are reported as warnings (ABT #2289), the first by
+// warn_about_radial_steps_closer_than_the_wire_to_sibling_wraps on the finished layout.
 void Coil::fund_radial_steps_against_sibling_wraps(std::vector<Turn>& turns, std::vector<Layer>& layers) {
     for (int pass = 0; pass < 64; ++pass) {
         std::map<std::string, double> spacingNeeded;   // per layer
@@ -6286,6 +6287,9 @@ void Coil::fund_radial_steps_against_sibling_wraps(std::vector<Turn>& turns, std
                     laid[bundle * bundleSize + j] = roundFloat(first + double(j) * pitch, 9);
                 }
             }
+            // ABT #2289: a widening that closes the gap between two bundles is laid anyway and
+            // reported as a warning, not refused (Alf, 2026-11-06: "Warn in MKF, keep going"): the
+            // bundles then sit closer than the radial step needs, by the amount the warning names.
             for (size_t k = bundleSize; k < laid.size(); k += bundleSize) {
                 if (laid[k] - laid[k - 1] < needed - 1e-12) {
                     std::ostringstream message;
@@ -6293,8 +6297,9 @@ void Coil::fund_radial_steps_against_sibling_wraps(std::vector<Turn>& turns, std
                     message << "Real winding: layer " << layerName << " needs its bundles' stations " << needed
                             << " m apart for a radial step to clear a sibling's wrap, which closes the gap "
                                "between two of its bundles to "
-                            << laid[k] - laid[k - 1] << " m";
-                    throw CoilException(ErrorCode::COIL_WINDING_ERROR, message.str());
+                            << laid[k] - laid[k - 1] << " m; the bundles are laid that close anyway";
+                    logEntry(message.str(), "Coil", 1);
+                    break;
                 }
             }
             for (size_t k = 0; k < stations.size(); ++k) {
@@ -6315,7 +6320,9 @@ void Coil::fund_radial_steps_against_sibling_wraps(std::vector<Turn>& turns, std
                         "fixpoint in 64 passes");
 }
 
-void Coil::refuse_radial_steps_closer_than_the_wire_to_sibling_wraps() {
+// ABT #2289: reported as a warning, not refused (Alf, 2026-11-06: "Warn in MKF, keep going"); the
+// layout is kept as it is.
+void Coil::warn_about_radial_steps_closer_than_the_wire_to_sibling_wraps() {
     if (!settings.get_coil_use_real_winding_geometry() || !get_turns_description() || !get_layers_description()) {
         return;
     }
@@ -6334,8 +6341,8 @@ void Coil::refuse_radial_steps_closer_than_the_wire_to_sibling_wraps() {
                     << turns[clearance.neighbour].get_name() << "', against the " << clearance.od
                     << " m coated diameter" << (clearance.sameBundle ? "" : " (the two stations are in different bundles, "
                                                                           "so the bundle pitch cannot fund it)")
-                    << ". Sibling parallels cannot pass closer than one wire, so this layout cannot be wound.";
-            throw CoilException(ErrorCode::COIL_WINDING_ERROR, message.str());
+                    << ". Sibling parallels cannot pass closer than one wire; the layout is kept as it is.";
+            logEntry(message.str(), "Coil", 1);
         }
     }
 }
@@ -9774,7 +9781,7 @@ bool Coil::wind_at_current_footprints(std::vector<double> proportionPerWinding, 
     if (ok) {
         refuse_turns_bent_tighter_than_the_wire_allows();
         refuse_sibling_layer_links_closer_than_the_wire();
-        refuse_radial_steps_closer_than_the_wire_to_sibling_wraps();
+        warn_about_radial_steps_closer_than_the_wire_to_sibling_wraps();
     }
     // ABT #2071: a wind that does not fit is still blocked and its leads still routed, so the turns
     // its tangent leads shorten are charged the same as on a wind that fits.
