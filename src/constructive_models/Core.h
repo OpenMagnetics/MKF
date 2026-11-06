@@ -49,6 +49,12 @@ struct CoreLeadExitGeometry {
     std::optional<LeadFrame> leadFrame;   // set for LEAD_FRAME only
 };
 
+// Fill factor of a tape-wound core with the source it was taken from (see Core::get_tape_wound_fill_factor).
+struct TapeWoundFillFactor {
+    double value;
+    std::string source;
+};
+
 class Core : public MAS::MagneticCore {
   private:
     bool _includeMaterialData = false;
@@ -230,6 +236,10 @@ class Core : public MAS::MagneticCore {
     // the core is not tape-wound (ferrite, powder, laminated electrical steel stacks). Throws when a tape-wound core
     // cannot be placed in any of those sources.
     static std::optional<double> get_tape_wound_fill_factor(const CoreMaterial& coreMaterial, CoreShapeFamily shapeFamily);
+    // The same fill factor together with where it comes from (the maker's datasheet, the VAC table and ribbon
+    // thickness, or the estimate and the values it averages), so a UI can show the user the k_f behind the Ae.
+    static std::optional<TapeWoundFillFactor> get_tape_wound_fill_factor_with_source(const CoreMaterial& coreMaterial,
+                                                                                      CoreShapeFamily shapeFamily);
     double get_resistivity(double temperature);
     static double get_resistivity(CoreMaterial coreMaterial, double temperature);
     double get_curie_temperature();

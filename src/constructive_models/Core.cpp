@@ -2255,7 +2255,7 @@ double interpolate_vac_column(const std::vector<std::pair<double, double>>& colu
 
 }  // namespace
 
-std::optional<double> Core::get_tape_wound_fill_factor(const CoreMaterial& coreMaterial, CoreShapeFamily shapeFamily) {
+std::optional<TapeWoundFillFactor> Core::get_tape_wound_fill_factor_with_source(const CoreMaterial& coreMaterial, CoreShapeFamily shapeFamily) {
     TapeWoundAlloyClass alloyClass;
     switch (coreMaterial.get_material()) {
         case MAS::MaterialType::NANOCRYSTALLINE: alloyClass = TapeWoundAlloyClass::NANOCRYSTALLINE; break;
@@ -2280,7 +2280,7 @@ std::optional<double> Core::get_tape_wound_fill_factor(const CoreMaterial& coreM
     // (a) The maker's own value for this material.
     for (const auto& entry : published_fill_factors()) {
         if (!entry.materialName.empty() && entry.materialName == materialName) {
-            return entry.value;
+            return TapeWoundFillFactor{entry.value, entry.source};
         }
     }
 
@@ -2322,7 +2322,9 @@ std::optional<double> Core::get_tape_wound_fill_factor(const CoreMaterial& coreM
         if (LogOnceScope::first_time("tape-wound fill factor: " + message)) {
             OM_WARNING_M("Core", message);
         }
-        return estimate;
+        return TapeWoundFillFactor{estimate, "Estimated: no ribbon thickness in MAS and no value from " + maker +
+                                                 "; mean of other manufacturers' published " +
+                                                 to_string(alloyClass) + " fill factors (" + makerList + ")"};
     }
 
     double thickness = resolve_dimensional_values(coreMaterial.get_lamination_thickness().value());
@@ -2331,7 +2333,8 @@ std::optional<double> Core::get_tape_wound_fill_factor(const CoreMaterial& coreM
     if (alloyClass == TapeWoundAlloyClass::CRYSTALLINE && isToroid && maker == "Magnetics") {
         for (const auto& [gauge, factor] : magneticsTapeWoundFillFactors) {
             if (std::abs(thickness - gauge) <= 0.01 * gauge) {
-                return factor;
+                return TapeWoundFillFactor{factor, "Magnetics 2016 Tape Wound Cores Catalog, Ae per tape thickness, " +
+                                                       format_significant(gauge / 25.4e-6, 2) + " mil tape"};
             }
         }
     }
@@ -2343,7 +2346,8 @@ std::optional<double> Core::get_tape_wound_fill_factor(const CoreMaterial& coreM
     if (!isToroid && alloyClass == TapeWoundAlloyClass::CRYSTALLINE) {
         for (const auto& [alloy, row] : vacCutCoreRows) {
             if (upperName.find(alloy) != std::string::npos) {
-                return interpolate_vac_column(row, thicknessInMm, materialName, "VAC Tabelle 10.17 row " + alloy);
+                return TapeWoundFillFactor{interpolate_vac_column(row, thicknessInMm, materialName, "VAC Tabelle 10.17 row " + alloy),
+                                           "VAC Tabelle 10.17 row " + alloy + ", " + format_significant(thicknessInMm * 1000, 3) + " um ribbon"};
             }
         }
     }
@@ -2354,13 +2358,24 @@ std::optional<double> Core::get_tape_wound_fill_factor(const CoreMaterial& coreM
     // Nanocrystalline ribbons read the "all other crystalline alloys" column (the alloy is crystalline once annealed);
     // over 0.015-0.025 mm, where nanocrystalline ribbons lie, it equals the VITROVAC column (0.70, 0.80).
     if (alloyClass == TapeWoundAlloyClass::AMORPHOUS) {
-        return interpolate_vac_column(vacToroidAmorphous, thicknessInMm, materialName, "VAC Tabelle 10.4 VITROVAC column");
+        return TapeWoundFillFactor{interpolate_vac_column(vacToroidAmorphous, thicknessInMm, materialName, "VAC Tabelle 10.4 VITROVAC column"),
+                                   "VAC Tabelle 10.4 VITROVAC column, " + format_significant(thicknessInMm * 1000, 3) + " um ribbon"};
     }
     if (isTrafopermN2) {
-        return interpolate_vac_column(vacToroidTrafopermN2, thicknessInMm, materialName, "VAC Tabelle 10.4 TRAFOPERM N2 column");
+        return TapeWoundFillFactor{interpolate_vac_column(vacToroidTrafopermN2, thicknessInMm, materialName, "VAC Tabelle 10.4 TRAFOPERM N2 column"),
+                                   "VAC Tabelle 10.4 TRAFOPERM N2 column, " + format_significant(thicknessInMm * 1000, 3) + " um ribbon"};
     }
-    return interpolate_vac_column(vacToroidOtherCrystalline, thicknessInMm, materialName,
-                                  "VAC Tabelle 10.4 other crystalline alloys column");
+    return TapeWoundFillFactor{interpolate_vac_column(vacToroidOtherCrystalline, thicknessInMm, materialName,
+                                                      "VAC Tabelle 10.4 other crystalline alloys column"),
+                               "VAC Tabelle 10.4 other crystalline alloys column, " + format_significant(thicknessInMm * 1000, 3) + " um ribbon"};
+}
+
+std::optional<double> Core::get_tape_wound_fill_factor(const CoreMaterial& coreMaterial, CoreShapeFamily shapeFamily) {
+    auto fillFactor = get_tape_wound_fill_factor_with_source(coreMaterial, shapeFamily);
+    if (!fillFactor) {
+        return std::nullopt;
+    }
+    return fillFactor->value;
 }
 
 void Core::process_data() {

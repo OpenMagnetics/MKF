@@ -161,3 +161,36 @@ TEST_CASE("Test_Tape_Wound_Fill_Factor_No_Flat_Default", "[constructive-model][c
     // Ferrite gets nothing.
     CHECK_FALSE(Core::get_tape_wound_fill_factor(Core::resolve_material(std::string("N87")), CoreShapeFamily::T).has_value());
 }
+
+TEST_CASE("Test_Tape_Wound_Fill_Factor_Source", "[constructive-model][core][tape-wound-fill-factor][abt-2234]") {
+    // get_tape_wound_fill_factor_with_source gives the same value as get_tape_wound_fill_factor and names where it comes
+    // from, one source per priority path, so a UI can show the k_f behind the Ae.
+    SECTION("Maker's published value") {
+        auto material = Core::resolve_material(std::string("Metglas 2605SA1"));
+        auto fillFactor = Core::get_tape_wound_fill_factor_with_source(material, CoreShapeFamily::C);
+        REQUIRE(fillFactor);
+        CHECK(fillFactor->value == Core::get_tape_wound_fill_factor(material, CoreShapeFamily::C).value());
+        CHECK(fillFactor->source.find("Metglas 2605SA1 datasheet") != std::string::npos);
+    }
+    SECTION("VAC table by ribbon thickness") {
+        auto material = Core::resolve_material(std::string("VITROPERM 500F"));
+        REQUIRE(material.get_lamination_thickness());
+        auto fillFactor = Core::get_tape_wound_fill_factor_with_source(material, CoreShapeFamily::T);
+        REQUIRE(fillFactor);
+        CHECK(fillFactor->value == Core::get_tape_wound_fill_factor(material, CoreShapeFamily::T).value());
+        CHECK(fillFactor->source.find("VAC Tabelle 10.4") != std::string::npos);
+        CHECK(fillFactor->source.find("um ribbon") != std::string::npos);
+    }
+    SECTION("Estimate from other manufacturers") {
+        auto material = Core::resolve_material(std::string("Pourleroi Nanocrystalline 40000"));
+        REQUIRE(!material.get_lamination_thickness());
+        auto fillFactor = Core::get_tape_wound_fill_factor_with_source(material, CoreShapeFamily::T);
+        REQUIRE(fillFactor);
+        CHECK_THAT(fillFactor->value, Catch::Matchers::WithinRel((0.795 + 0.75) / 2, 1e-9));
+        CHECK(fillFactor->source.find("Estimated") != std::string::npos);
+    }
+    SECTION("Not tape-wound") {
+        CHECK_FALSE(Core::get_tape_wound_fill_factor_with_source(Core::resolve_material(std::string("N87")),
+                                                                 CoreShapeFamily::T).has_value());
+    }
+}
