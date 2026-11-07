@@ -3488,10 +3488,18 @@ TEST_CASE("Test_Steady_State_Mean_Voltage_Warning_Is_Logged_Once_Per_Excitation_
         excitation.set_voltage(voltageSignal);
         return excitation;
     };
-    auto count_warnings = [](const std::string& log) {
+    // ABT #2302: the note is INFO (MKF removed the mean; the user has nothing to do), which read_log() (WARNING and
+    // above) does not keep, so the records are read from the collector; repeats merge into one record's count.
+    auto& logger = OpenMagnetics::Logger::getInstance();
+    logger.disableCollector();
+    logger.enableCollector(OpenMagnetics::LogLevel::INFO);
+    auto count_notes = [&]() {
         size_t count = 0;
-        for (size_t position = log.find("of its AC swing"); position != std::string::npos; position = log.find("of its AC swing", position + 1)) {
-            ++count;
+        for (const auto& record : logger.drainCollected()) {
+            if (record.message.find("of its AC swing") != std::string::npos) {
+                CHECK(record.level == OpenMagnetics::LogLevel::INFO);
+                count += record.count;
+            }
         }
         return count;
     };
@@ -3502,10 +3510,10 @@ TEST_CASE("Test_Steady_State_Mean_Voltage_Warning_Is_Logged_Once_Per_Excitation_
     auto first = unbalanced_excitation(10);   // mean 0.5 V against an AC swing of 4.75 V/f: well above the 1 % warning
     auto second = unbalanced_excitation(11);  // another operating point of the same winding
 
-    OpenMagnetics::read_log();
+    logger.drainCollected();
     double mean = evaluate(first);
     CHECK(evaluate(first) == mean);
-    CHECK(count_warnings(OpenMagnetics::read_log()) == 2);  // no call open: every evaluation logs
+    CHECK(count_notes() == 2);  // no call open: every evaluation logs
 
     {
         OpenMagnetics::LogOnceScope call;
@@ -3517,12 +3525,13 @@ TEST_CASE("Test_Steady_State_Mean_Voltage_Warning_Is_Logged_Once_Per_Excitation_
             evaluate(second);
         }
         evaluate(second);
-        CHECK(count_warnings(OpenMagnetics::read_log()) == 2);  // once for each operating point
+        CHECK(count_notes() == 2);  // once for each operating point
     }
     {
         OpenMagnetics::LogOnceScope nextCall;  // nothing carries over from the call before
         evaluate(first);
         evaluate(first);
-        CHECK(count_warnings(OpenMagnetics::read_log()) == 1);
+        CHECK(count_notes() == 1);
     }
+    logger.disableCollector();
 }

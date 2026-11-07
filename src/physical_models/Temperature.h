@@ -319,6 +319,16 @@ private:
     
     std::vector<ThermalNetworkNode> _nodes;
     std::vector<ThermalResistanceElement> _resistances;
+
+    // Faces of the coil that reach into the surface they bear on, collected while the network is built with
+    // thermalNetworkStrictGeometry off (with it on, the first one throws). Logged once per winding when the
+    // network is done: a coil wound for another core has every turn in it, on every pass of the solver.
+    struct NonFittingFaces {
+        size_t faces = 0;
+        double worstOverlap = 0;
+        std::string worstMessage;
+    };
+    mutable std::map<std::string, NonFittingFaces> _nonFittingFaces;
     
     double _scaleFactor = 1.0;  // Scale factor for schematic coordinates
     
@@ -701,6 +711,10 @@ private:
     static std::string describeEnclosureSurface(ThermalNodeFace face, bool hasBobbin);
     // Why the network refuses a coil part that reaches `overlap` metres into `surface`, and what to do.
     std::string doesNotFitMessage(size_t nodeIdx, const std::string& surface, double overlap) const;
+    // A face of `nodeIdx` reaches `overlap` metres into `surface`: throws when the geometry is strict, else records
+    // it for logNonFittingFaces (the face gets no conduction path).
+    void reportNonFittingFace(size_t nodeIdx, const std::string& surface, double overlap) const;
+    void logNonFittingFaces();
 
     /**
      * @brief ABT #1462: resistance (K/W) from a PCB-planar turn's face to a bobbin wall node: the

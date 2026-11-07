@@ -475,6 +475,9 @@ std::vector<ResultFinding> ResultsAnalyzer::analyze_temperature(const Magnetic& 
     }
 
     // The windings: the design's hottest point against the limits each winding's wire coating states.
+    // ABT #2302: the hottest point is one number for the whole coil, so the windings it exceeds are named in ONE
+    // finding per operating point, not one finding per winding repeating the same temperature.
+    std::vector<std::string> windingsAboveLimit;
     const auto& windings = magnetic.get_coil().get_functional_description();
     for (size_t windingIndex = 0; windingIndex < windings.size(); ++windingIndex) {
         auto wire = Coil::resolve_wire(windings[windingIndex]);
@@ -510,13 +513,23 @@ std::vector<ResultFinding> ResultsAnalyzer::analyze_temperature(const Magnetic& 
             }
         }
         if (!exceeded.empty()) {
-            std::string message = "At " + where + ": the hottest point, " + format_number(hottestTemperature) + " C, is above ";
+            std::string limits;
             for (size_t index = 0; index < exceeded.size(); ++index) {
-                message += (index > 0 ? " and " : "") + exceeded[index];
+                limits += (index > 0 ? " and " : "") + exceeded[index];
             }
-            message += " of " + windingLabel + ". Lower the losses, improve the cooling, or use a wire rated for a higher temperature";
-            findings.push_back(make_finding(operatingPoint, operatingPointIndex, ResultFindingCode::WINDING_TEMPERATURE_ABOVE_LIMIT, message));
+            windingsAboveLimit.push_back(limits + " of " + windingLabel);
         }
+    }
+    if (!windingsAboveLimit.empty()) {
+        std::string message = "At " + where + ": the hottest point, " + format_number(hottestTemperature) + " C, is above ";
+        for (size_t index = 0; index < windingsAboveLimit.size(); ++index) {
+            if (index > 0) {
+                message += (index + 1 == windingsAboveLimit.size()) ? "; and " : "; ";
+            }
+            message += windingsAboveLimit[index];
+        }
+        message += ". Lower the losses, improve the cooling, or use a wire rated for a higher temperature";
+        findings.push_back(make_finding(operatingPoint, operatingPointIndex, ResultFindingCode::WINDING_TEMPERATURE_ABOVE_LIMIT, message));
     }
     return findings;
 }

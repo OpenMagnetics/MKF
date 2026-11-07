@@ -2596,7 +2596,7 @@ double Inputs::calculate_steady_state_mean_voltage(const OperatingPointExcitatio
         })) {
         for (const auto& warning : hit->warnings) {
             if (LogOnceScope::first_time(mean_voltage_warning_key(context, frequency, givenVoltage, voltageSampledWaveform, warning))) {
-                Logger::getInstance().warning(warning, "Inputs");
+                Logger::getInstance().info(warning, "Inputs");  // ABT #2302: MKF removed the mean; a note, not a warning
             }
         }
         return hit->meanVoltage;
@@ -2648,7 +2648,7 @@ double Inputs::calculate_steady_state_mean_voltage(const OperatingPointExcitatio
     }();
     for (const auto& warning : warnings) {
         if (LogOnceScope::first_time(mean_voltage_warning_key(context, frequency, givenVoltage, voltageSampledWaveform, warning))) {
-            Logger::getInstance().warning(warning, "Inputs");
+            Logger::getInstance().info(warning, "Inputs");  // ABT #2302: MKF removed the mean; a note, not a warning
         }
     }
     memo.insert(SteadyStateMeanVoltageEntry{givenVoltage ? std::optional<ExactWaveformKey>(ExactWaveformKey(givenVoltage.value())) : std::nullopt,

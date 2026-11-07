@@ -1891,6 +1891,7 @@ void Temperature::createTurnNodes() {
 
 void Temperature::createThermalResistances() {
     _resistances.clear();
+    _nonFittingFaces.clear();
     
     if (_isToroidal) {
         createToroidalCoreConnections();
@@ -1914,6 +1915,7 @@ void Temperature::createThermalResistances() {
         createTurnToSolidConnections();
     }
     createConvectionConnections();
+    logNonFittingFaces();
 
     if (_config.masCooling.has_value()) {
         applyMasCooling(_config.masCooling.value());
@@ -2929,11 +2931,7 @@ std::optional<double> Temperature::planarTurnToBobbinResistance(size_t turnIdx, 
     const auto& turn = _nodes[turnIdx];
     const auto& wall = _nodes[bobbinIdx];
     if (gap < -kEnclosureGeometryTolerance) {
-        std::string message = doesNotFitMessage(turnIdx, describeEnclosureSurface(turnFace, true), -gap);
-        if (settings.get_thermal_network_strict_geometry()) {
-            throw std::runtime_error(message);
-        }
-        OM_ERROR_M("Temperature", message + " thermalNetworkStrictGeometry is off: this face gets no conduction path to " + wall.name + ".");
+        reportNonFittingFace(turnIdx, describeEnclosureSurface(turnFace, true), -gap);
         return std::nullopt;
     }
     if (!(plasticThickness > 0)) {
@@ -3520,6 +3518,36 @@ std::string Temperature::doesNotFitMessage(size_t nodeIdx, const std::string& su
            "wire or thinner insulation, wind it again, or choose a core with a larger winding window.";
 }
 
+void Temperature::reportNonFittingFace(size_t nodeIdx, const std::string& surface, double overlap) const {
+    std::string message = doesNotFitMessage(nodeIdx, surface, overlap);
+    if (settings.get_thermal_network_strict_geometry()) {
+        throw std::runtime_error(message);
+    }
+    // Grouped by winding: the user reads "winding 'Primary'", not one line per turn and face.
+    const auto& node = _nodes.at(nodeIdx);
+    const auto& windings = _magnetic.get_coil().get_functional_description();
+    std::string key = (node.windingIndex && node.windingIndex.value() < windings.size())
+                          ? "winding '" + windings[node.windingIndex.value()].get_name() + "'"
+                          : describeNodeForPeople(nodeIdx);
+    auto& entry = _nonFittingFaces[key];
+    entry.faces++;
+    if (overlap > entry.worstOverlap) {
+        entry.worstOverlap = overlap;
+        entry.worstMessage = message;
+    }
+}
+
+void Temperature::logNonFittingFaces() {
+    // DEBUG: the geometry check of the results (ResultsAnalyzer, "turns outside the winding window") tells the user
+    // which turns do not fit; this says what the thermal network did about them.
+    for (const auto& [who, entry] : _nonFittingFaces) {
+        OM_DEBUG_M("Temperature", "Thermal network of " + who + ": " + std::to_string(entry.faces) +
+                   (entry.faces == 1 ? " face reaches" : " faces reach") +
+                   " into the surface it bears on and gets no conduction path (thermalNetworkStrictGeometry is off). Worst: " +
+                   entry.worstMessage);
+    }
+}
+
 void Temperature::createWindingToEnclosureConnections() {
     auto items = collectWindingItems(_nodes);
     if (items.empty()) return;
@@ -3603,12 +3631,7 @@ void Temperature::createWindingToEnclosureConnections() {
         if (share <= 0) return;
         if (connectedQuadrants.count({item.nodeIdx, face})) return;  // already has its conduction path
         if (gap < -kEnclosureGeometryTolerance) {
-            std::string message = doesNotFitMessage(item.nodeIdx, describeEnclosureSurface(face, hasBobbin), -gap);
-            if (settings.get_thermal_network_strict_geometry()) {
-                throw std::runtime_error(message);
-            }
-            OM_ERROR_M("Temperature", message + " thermalNetworkStrictGeometry is off: this face gets no conduction path to " +
-                     _nodes[target].name + ".");
+            reportNonFittingFace(item.nodeIdx, describeEnclosureSurface(face, hasBobbin), -gap);
             return;
         }
         gap = std::max(gap, 0.0);
@@ -3775,12 +3798,7 @@ void Temperature::createWindingToCoreAcrossWindowConnections(size_t ambientIdx) 
         }
         if (target == npos || sweepShare <= 0) continue;
         if (gap < -kEnclosureGeometryTolerance) {
-            std::string message = doesNotFitMessage(item.nodeIdx, describeEnclosureSurface(convection.quadrantFrom, hasBobbin), -gap);
-            if (settings.get_thermal_network_strict_geometry()) {
-                throw std::runtime_error(message);
-            }
-            OM_ERROR_M("Temperature", message + " thermalNetworkStrictGeometry is off: this face gets no conduction path to " +
-                     _nodes[target].name + ".");
+            reportNonFittingFace(item.nodeIdx, describeEnclosureSurface(convection.quadrantFrom, hasBobbin), -gap);
             continue;
         }
         gap = std::max(gap, 0.0);

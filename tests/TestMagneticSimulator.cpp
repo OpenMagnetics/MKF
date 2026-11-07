@@ -3550,9 +3550,62 @@ TEST_CASE("Analyze_results states a winding above its coating's thermal class in
     }
     INFO("findings:" << all);
     REQUIRE(!windingFindings.empty());
+    // ABT #2302: the windings over their limit share one finding; this design's Secondary is over its class too.
+    CHECK_THAT(windingFindings[0].message, Catch::Matchers::ContainsSubstring(
+        ": the hottest point, 2474 C, is above the 155 C thermal class of the coating material (Polyurethane 155) of winding 'Primary'"));
     CHECK_THAT(windingFindings[0].message, Catch::Matchers::EndsWith(
-        ": the hottest point, 2474 C, is above the 155 C thermal class of the coating material (Polyurethane 155) of winding 'Primary'. "
+        ". Lower the losses, improve the cooling, or use a wire rated for a higher temperature."));
+}
+
+// ABT #2302 (Alf, 2026-11-07): the hottest point is one number for the whole coil, so a coil whose windings all
+// exceed their coatings got the same temperature repeated in one finding per winding (three for a user's forward
+// transformer, at each operating point). It is one finding per operating point, naming every winding over its limit.
+TEST_CASE("Analyze_results names every winding above its coating's limit in one finding", "[processor][magnetic-simulator][abt-2302]") {
+    settings.reset();
+    auto path = std::filesystem::path{std::source_location::current().file_name()}
+                    .parent_path().append("..").append("MAS").append("examples").append("02_flyback_efd25_3c95.json");
+    REQUIRE(std::filesystem::exists(path));
+    auto mas = OpenMagneticsTesting::mas_loader(path.string());
+    auto magnetic = OpenMagnetics::magnetic_autocomplete(mas.get_magnetic());
+    auto& windings = magnetic.get_mutable_coil().get_mutable_functional_description();
+    REQUIRE(windings.size() >= 2);
+    for (auto& winding : windings) {
+        json wireJson;
+        to_json(wireJson, OpenMagnetics::Coil::resolve_wire(winding));
+        REQUIRE(wireJson.contains("coating"));
+        wireJson["coating"]["material"] = "Polyurethane 155";
+        wireJson["coating"].erase("temperatureRating");
+        winding.set_wire(OpenMagnetics::Wire(wireJson));
+    }
+
+    MagneticSimulator magneticSimulator;
+    OpenMagnetics::Mas simulated;
+    REQUIRE_NOTHROW(simulated = magneticSimulator.simulate(mas.get_inputs(), magnetic));
+    REQUIRE(simulated.get_outputs().size() == 1);
+    auto output = simulated.get_outputs()[0];
+    REQUIRE(output.get_temperature());
+    auto temperature = output.get_temperature().value();
+    temperature.set_maximum_temperature(2474.39);
+    output.set_temperature(temperature);
+
+    auto findings = ResultsAnalyzer::analyze_temperature(simulated.get_magnetic(), simulated.get_inputs().get_operating_points()[0], output, 0);
+    std::vector<ResultFinding> windingFindings;
+    std::string all;
+    for (const auto& finding : findings) {
+        all += "\n" + to_string(finding.code) + ": " + finding.message;
+        if (finding.code == ResultFindingCode::WINDING_TEMPERATURE_ABOVE_LIMIT) {
+            windingFindings.push_back(finding);
+        }
+    }
+    INFO("findings:" << all);
+    REQUIRE(windingFindings.size() == 1);
+    for (const auto& winding : simulated.get_magnetic().get_coil().get_functional_description()) {
+        CHECK_THAT(windingFindings[0].message, Catch::Matchers::ContainsSubstring("of winding '" + winding.get_name() + "'"));
+    }
+    CHECK_THAT(windingFindings[0].message, Catch::Matchers::ContainsSubstring("; and the 155 C thermal class"));
+    CHECK_THAT(windingFindings[0].message, Catch::Matchers::EndsWith(
         "Lower the losses, improve the cooling, or use a wire rated for a higher temperature."));
+    settings.reset();
 }
 
 namespace {

@@ -5255,6 +5255,43 @@ TEST_CASE("Temperature: ABT 1454 a coil that does not fit its window throws unle
     CHECK(maximumTemperature > 40.0);
 }
 
+// ABT #2302 (Alf, 2026-11-07): with strict geometry off, a coil that does not fit logged one ERROR per turn face on
+// every build of the network: a user's PQ 26/25 whose Primary sat in the core column filled the web's log with 11
+// records x93. The faces are now gathered per winding and logged once per winding, at DEBUG: the results check
+// ("N turns outside the winding window") is what tells the user.
+TEST_CASE("Temperature: a coil that does not fit logs one DEBUG record per winding, no ERROR, when strict geometry is off", "[temperature][abt-2302]") {
+    const std::string shape = "EI 6.8/3/0.8/6.8/1.48/6/3.32";  // the ABT 1454 coil that cannot fit (test above)
+    auto magnetic = abt1454Transformer(shape, {0, 1}, 1, 10, 5, 1, "Round 0.3 - Grade 1", "Round 0.3 - Grade 1");
+    REQUIRE_FALSE(magnetic.get_mutable_coil().are_sections_and_layers_fitting());
+
+    SettingsGuard<bool> lenient(Settings::GetInstance(), &Settings::get_thermal_network_strict_geometry,
+                                &Settings::set_thermal_network_strict_geometry, false);
+    auto& logger = OpenMagnetics::Logger::getInstance();
+    logger.disableCollector();
+    logger.enableCollector(OpenMagnetics::LogLevel::DEBUG);
+    double maximumTemperature = abt1454MaximumTemperatureAtFixedLoss(magnetic, 0.3, 0.3);
+    auto records = logger.drainCollected();
+    logger.disableCollector();
+    CHECK(std::isfinite(maximumTemperature));
+
+    std::set<std::string> windingsReported;
+    std::string all;
+    for (const auto& record : records) {
+        all += "\n" + std::to_string(static_cast<int>(record.level)) + " [" + record.moduleOfOrigin + "] " + record.message;
+        const bool aboutAFace = record.message.find("into the") != std::string::npos &&
+                                record.message.find("does not fit in its window") != std::string::npos;
+        if (!aboutAFace) continue;
+        CHECK(record.level == OpenMagnetics::LogLevel::DEBUG);
+        REQUIRE(record.message.rfind("Thermal network of ", 0) == 0);
+        auto name = record.message.substr(std::string("Thermal network of ").size());
+        name = name.substr(0, name.find(':'));
+        CHECK(windingsReported.insert(name).second);  // one record per winding (repeats of it merge into its count)
+    }
+    INFO("records:" << all);
+    CHECK_FALSE(windingsReported.empty());
+    CHECK(windingsReported.size() <= magnetic.get_coil().get_functional_description().size());
+}
+
 TEST_CASE("Temperature: ABT 1454 an unserved litz rests on its enclosure through its strands' enamel", "[temperature][abt-1454][smoke-test]") {
     // An unserved litz is {coating: bare} around individually enamelled strands. Its outer surface
     // is strand enamel, not copper, so its line contact with the bobbin goes through that film.
