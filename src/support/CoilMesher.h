@@ -13,11 +13,20 @@
 #include <map>
 #include <numbers>
 #include <streambuf>
+#include <string_view>
 #include <vector>
 
 using namespace MAS;
 
 namespace OpenMagnetics {
+
+// Labels of the toroid inducing points (CoilMesherCenterModel::generate_mesh_inducing_turn). The ring splits the plane
+// into the bore and the outside; each point acts only in its region (MagneticField). A "reply" is the core's answer to
+// a conductor (its Kelvin image, or the centre line current that carries a bore crossing's MMF outside the core).
+inline constexpr std::string_view toroidBoreConductorLabel = "toroid bore conductor";
+inline constexpr std::string_view toroidBoreReplyLabel = "toroid bore reply";
+inline constexpr std::string_view toroidExteriorConductorLabel = "toroid exterior conductor";
+inline constexpr std::string_view toroidExteriorReplyLabel = "toroid exterior reply";
 
 
 enum class CoilMesherModels : int {

@@ -984,54 +984,59 @@ std::vector<FieldPoint> CoilMesherCenterModel::generate_mesh_inducing_turn(const
             throw CoilNotProcessedException("CoilMesher: Turn coordinates are not in cartesian");
         }
 
+        // The ring is two separate regions for the field: the bore (r < R_inner) and the outside (r > R_outer). With
+        // the ferrite at mu -> inf, each region sees its own conductors plus the core's reply to them, and nothing of
+        // the other region's conductors:
+        //  - a bore crossing is seen in the bore with its Kelvin image in R_inner (same sign, attenuated). Outside the
+        //    core it appears as a line current of its full value at the centre (the ring carries its MMF around).
+        //  - an outside crossing is seen outside with its Kelvin image in R_outer (same sign, attenuated) plus a
+        //    centre line of -attenuation times its current, so the outside field has zero net image current.
+        // Hence outside the core the circulation is the enclosed bore current and the far field of a complete winding
+        // is zero, as for a real toroid. The label carries the region; MagneticField applies each source only in its
+        // region. Without mirroring the conductors are bare filaments in free space, seen everywhere.
+        auto emit = [&](double pointX, double pointY, double value, std::optional<std::string> label) {
+            FieldPoint point;
+            point.set_value(value);
+            point.set_rotation(turn.get_rotation().value());
+            if (turnLength) {
+                point.set_turn_length(turnLength.value());
+            }
+            if (turnIndex) {
+                point.set_turn_index(turnIndex.value());
+            }
+            point.set_point({pointX, pointY});
+            if (label) {
+                point.set_label(label.value());
+            }
+            fieldPoints.push_back(point);
+        };
         for (const auto& [coords, direction] : coordinatesToProcess) {
             double x = coords[0];
             double y = coords[1];
             double r_k_sq = x * x + y * y;
-
-            // Real conductor
-            FieldPoint realPoint;
-            realPoint.set_value(direction);
-            realPoint.set_rotation(turn.get_rotation().value());
-            if (turnLength) {
-                realPoint.set_turn_length(turnLength.value());
+            if (mirroringDimension < 1) {
+                emit(x, y, direction, std::nullopt);
+                continue;
             }
-            if (turnIndex) {
-                realPoint.set_turn_index(turnIndex.value());
+            if (r_k_sq < R_inner * R_inner) {
+                emit(x, y, direction, std::string(toroidBoreConductorLabel));
+                // A crossing at the very centre has its image at infinity, which adds nothing.
+                if (r_k_sq > 0) {
+                    double scale = (R_inner * R_inner) / r_k_sq;
+                    emit(x * scale, y * scale, direction * attenuation, std::string(toroidBoreReplyLabel));
+                }
+                emit(0, 0, direction, std::string(toroidExteriorReplyLabel));
             }
-            realPoint.set_point({x, y});
-            fieldPoints.push_back(realPoint);
-
-            // Kelvin images (only if mirroring is enabled and conductor is not at origin)
-            if (mirroringDimension >= 1 && r_k_sq > 1e-24) {
-                // Inner boundary image: z_img = R_inner² / conj(z_k)
-                // In Cartesian: scale = R_inner² / |z_k|²
-                double scale_inner = (R_inner * R_inner) / r_k_sq;
-                FieldPoint innerImage;
-                innerImage.set_value(direction * attenuation);
-                innerImage.set_rotation(turn.get_rotation().value());
-                if (turnLength) {
-                    innerImage.set_turn_length(turnLength.value());
-                }
-                if (turnIndex) {
-                    innerImage.set_turn_index(turnIndex.value());
-                }
-                innerImage.set_point({x * scale_inner, y * scale_inner});
-                fieldPoints.push_back(innerImage);
-
-                // Outer boundary image: z_img = R_outer² / conj(z_k)
-                double scale_outer = (R_outer * R_outer) / r_k_sq;
-                FieldPoint outerImage;
-                outerImage.set_value(direction * attenuation);
-                outerImage.set_rotation(turn.get_rotation().value());
-                if (turnLength) {
-                    outerImage.set_turn_length(turnLength.value());
-                }
-                if (turnIndex) {
-                    outerImage.set_turn_index(turnIndex.value());
-                }
-                outerImage.set_point({x * scale_outer, y * scale_outer});
-                fieldPoints.push_back(outerImage);
+            else if (r_k_sq > R_outer * R_outer) {
+                emit(x, y, direction, std::string(toroidExteriorConductorLabel));
+                double scale = (R_outer * R_outer) / r_k_sq;
+                emit(x * scale, y * scale, direction * attenuation, std::string(toroidExteriorReplyLabel));
+                emit(0, 0, -direction * attenuation, std::string(toroidExteriorReplyLabel));
+            }
+            else {
+                throw InvalidInputException(ErrorCode::INVALID_COIL_CONFIGURATION, "CoilMesher: a crossing of turn " + turn.get_name() +
+                                            " lies inside the toroid's ferrite (r = " + std::to_string(std::sqrt(r_k_sq)) + " m, between " +
+                                            std::to_string(R_inner) + " and " + std::to_string(R_outer) + " m)");
             }
         }
     }
@@ -1045,14 +1050,14 @@ std::vector<FieldPoint> CoilMesherCenterModel::generate_mesh_inducing_turn(const
 // crossing and billing the WHOLE turn length (both halves) at that single density
 // overestimates the out-of-core half's loss. The models sample both crossings and let
 // WindingProximityEffectLosses weight each by its own length share instead.
-// Toroidal turns are excluded: their outer-return crossing already gets dedicated
-// Kelvin-image handling on the inducing side (see generate_mesh_inducing_turn) and an
-// induced-side split would double-touch behavior that many toroidal characterisation
-// tests already pin. Shared by the Center AND Wang models (the Wang half of the ticket
-// was originally missed, leaving foil/rectangular/planar wires on single-crossing).
+// Toroidal turns too: the bore crossing and the outside crossing sit in different regions of
+// the ring's field (see generate_mesh_inducing_turn) and see very different fields (the bore
+// is crowded, the outside is open), so each books its own half of the turn. Shared by the
+// Center AND Wang models (the Wang half of the ticket was originally missed, leaving
+// foil/rectangular/planar wires on single-crossing).
 // Returns the secondary crossing's {x, y} when the split applies.
 static std::optional<std::vector<double>> lateral_multi_column_secondary_crossing(const Turn& turn, const Core* core) {
-    if (core == nullptr || core->get_shape_family() == CoreShapeFamily::T) {
+    if (core == nullptr) {
         return std::nullopt;
     }
     // Bind once: the MAS getter returns the nested vectors BY VALUE.
@@ -1098,27 +1103,44 @@ std::vector<FieldPoint> CoilMesherCenterModel::generate_mesh_induced_turn(const 
 std::vector<FieldPoint> CoilMesherWangModel::generate_mesh_induced_turn(const Turn& turn, Wire& wire, std::optional<size_t> turnIndex, const Core* core) {
     std::vector<FieldPoint> fieldPoints;
 
+    // A toroid's turns are laid radially: the turn's rotation is its polar angle, and its width and height are read in
+    // that rotated frame (WindingProximityEffectLosses reads the field in the same frame). Elsewhere the cluster is
+    // axis-aligned.
+    const bool toroidal = core != nullptr && core->get_shape_family() == CoreShapeFamily::T;
+    double frameAngle = 0;
+    if (toroidal) {
+        if (!turn.get_rotation()) {
+            throw InvalidInputException(ErrorCode::INVALID_CORE_DATA, "Toroidal cores should have rotation in the turn, even if it is 0");
+        }
+        frameAngle = turn.get_rotation().value() / 180 * std::numbers::pi;
+    }
+    const double frameCos = std::cos(frameAngle);
+    const double frameSin = std::sin(frameAngle);
+
     // One full surface cluster per crossing, centred on {centerX, centerY}.
     auto emitCluster = [&](double centerX, double centerY) {
+        auto place = [&](double offsetX, double offsetY) {
+            return std::vector<double>{centerX + offsetX * frameCos - offsetY * frameSin, centerY + offsetX * frameSin + offsetY * frameCos};
+        };
         FieldPoint fieldPoint;
         fieldPoint.set_value(0);
         if (turnIndex) {
             fieldPoint.set_turn_index(turnIndex.value());
         }
 
-        fieldPoint.set_point({centerX + wire.get_maximum_conducting_width() / 2, centerY});
+        fieldPoint.set_point(place(wire.get_maximum_conducting_width() / 2, 0));
         fieldPoint.set_label("right");
         fieldPoints.push_back(fieldPoint);
 
-        fieldPoint.set_point({centerX - wire.get_maximum_conducting_width() / 2, centerY});
+        fieldPoint.set_point(place(-wire.get_maximum_conducting_width() / 2, 0));
         fieldPoint.set_label("left");
         fieldPoints.push_back(fieldPoint);
 
-        fieldPoint.set_point({centerX, centerY + wire.get_maximum_conducting_height() / 2});
+        fieldPoint.set_point(place(0, wire.get_maximum_conducting_height() / 2));
         fieldPoint.set_label("top");
         fieldPoints.push_back(fieldPoint);
 
-        fieldPoint.set_point({centerX, centerY - wire.get_maximum_conducting_height() / 2});
+        fieldPoint.set_point(place(0, -wire.get_maximum_conducting_height() / 2));
         fieldPoint.set_label("bottom");
         fieldPoints.push_back(fieldPoint);
 
@@ -1128,9 +1150,11 @@ std::vector<FieldPoint> CoilMesherWangModel::generate_mesh_induced_turn(const Tu
         // a wide flat conductor, so the 4 lumped surface points cannot represent
         // integral(Hperp(x)^2 dx); these samples make the superposed total field
         // (proximity + fringing, including their cross term) available along the width.
-        // Only generated when fringing is enabled: without a gap field the lumped
-        // mesh is sufficient and much cheaper.
-        if (settings.get_magnetic_field_include_fringing()) {
+        // Generated when fringing is enabled, and always on toroids: there the bore walls
+        // and the neighbouring crossings make the field vary across a thick bar's width
+        // with no gap at all. Elsewhere, without a gap field, the lumped mesh is
+        // sufficient and much cheaper.
+        if (settings.get_magnetic_field_include_fringing() || toroidal) {
             bool wideAlongY = (wire.get_type() == WireType::FOIL);
             double wideDimension = wideAlongY ? wire.get_maximum_conducting_height() : wire.get_maximum_conducting_width();
             double thinDimension = wideAlongY ? wire.get_maximum_conducting_width() : wire.get_maximum_conducting_height();
@@ -1141,10 +1165,10 @@ std::vector<FieldPoint> CoilMesherWangModel::generate_mesh_induced_turn(const Tu
             for (size_t sampleIndex = 0; sampleIndex < numberSamples; ++sampleIndex) {
                 double offset = -wideDimension / 2 + (sampleIndex + 0.5) * sampleStep;
                 if (wideAlongY) {
-                    fieldPoint.set_point({centerX, centerY + offset});
+                    fieldPoint.set_point(place(0, offset));
                 }
                 else {
-                    fieldPoint.set_point({centerX + offset, centerY});
+                    fieldPoint.set_point(place(offset, 0));
                 }
                 fieldPoint.set_label("widthsample");
                 fieldPoints.push_back(fieldPoint);

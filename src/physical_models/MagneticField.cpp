@@ -47,6 +47,9 @@ namespace std {
 
 namespace OpenMagnetics {
 
+// Where a toroid inducing source acts (CoilMesherCenterModel::generate_mesh_inducing_turn).
+enum class ToroidRegion { EVERYWHERE, BORE, EXTERIOR, FERRITE };
+
 namespace {
 
 // Everything the turn-to-point kernel sum reads besides the currents: the mesh (every
@@ -882,6 +885,11 @@ WindingWindowMagneticStrengthFieldPhasorOutput MagneticField::calculate_magnetic
     // kernel. The Wang mesher's two full-current points are only correct for the Wang field model, whose own
     // formulas halve them; any other kernel counts the turn's current twice.
     std::optional<CoilMesherModels> mesherToUse = coilMesherModel;
+    // A toroid's crossings are seen per region of the ring, with the core's replies (CENTER mesher), whatever the wire.
+    // The Wang field model keeps its own mesher: its formulas are written for its paired edge points.
+    if (coreShapeFamily == CoreShapeFamily::T && !mesherToUse && _magneticFieldStrengthModel != MagneticFieldStrengthModels::WANG) {
+        mesherToUse = CoilMesherModels::CENTER;
+    }
     std::optional<SettingsGuard<bool>> completeCellsGuard;
     std::optional<SettingsGuard<bool>> neutralCellsGuard;
     if (windowBoundaryModel) {
@@ -1437,6 +1445,28 @@ WindingWindowMagneticStrengthFieldPhasorOutput MagneticField::calculate_magnetic
             size_t groupIndex;
             bool isImage;
             bool rotated;
+            // On a toroid (mirrored), where the source acts and whether it is a conductor or the core's reply to one.
+            ToroidRegion toroidRegion = ToroidRegion::EVERYWHERE;
+            bool toroidReply = false;
+        };
+        // A toroid's ring splits the plane into the bore and the outside, each seeing only its own sources (see
+        // CoilMesherCenterModel::generate_mesh_inducing_turn). Inside the ferrite (mu -> inf) no turn source acts.
+        double toroidInnerRadiusSquared = 0;
+        double toroidOuterRadiusSquared = 0;
+        if (coreShapeFamily == CoreShapeFamily::T) {
+            auto toroidDimensions = flatten_dimensions(core.resolve_shape().get_dimensions().value());
+            toroidInnerRadiusSquared = toroidDimensions["B"] * toroidDimensions["B"] / 4;
+            toroidOuterRadiusSquared = toroidDimensions["A"] * toroidDimensions["A"] / 4;
+        }
+        auto toroid_region_of = [&](double pointX, double pointY) {
+            double radiusSquared = pointX * pointX + pointY * pointY;
+            if (radiusSquared < toroidInnerRadiusSquared) {
+                return ToroidRegion::BORE;
+            }
+            if (radiusSquared > toroidOuterRadiusSquared) {
+                return ToroidRegion::EXTERIOR;
+            }
+            return ToroidRegion::FERRITE;
         };
         std::vector<InducingSource> sources;
         sources.reserve(numberPositions);
@@ -1456,6 +1486,16 @@ WindingWindowMagneticStrengthFieldPhasorOutput MagneticField::calculate_magnetic
                                inducingFieldPoint.get_turn_index().value(), windingIndexPerTurn[static_cast<size_t>(inducingFieldPoint.get_turn_index().value())], groupIndex,
                                label && label.value() == "image",
                                inducingFieldPoint.get_rotation().has_value()});
+            if (label) {
+                const std::string& text = label.value();
+                if (text == toroidBoreConductorLabel || text == toroidBoreReplyLabel) {
+                    sources.back().toroidRegion = ToroidRegion::BORE;
+                }
+                else if (text == toroidExteriorConductorLabel || text == toroidExteriorReplyLabel) {
+                    sources.back().toroidRegion = ToroidRegion::EXTERIOR;
+                }
+                sources.back().toroidReply = text == toroidBoreReplyLabel || text == toroidExteriorReplyLabel;
+            }
         }
         const bool binnsLawrensonKernel = _magneticFieldStrengthModel == MagneticFieldStrengthModels::BINNS_LAWRENSON;
         std::vector<std::optional<RectangleFieldKernel>> rectangleKernelPerWinding(numberWindings);
@@ -1497,7 +1537,11 @@ WindingWindowMagneticStrengthFieldPhasorOutput MagneticField::calculate_magnetic
                 }
                 // A turn's own field is the skin model's. On the neutral path its IMAGES are not: they are the core's
                 // reply to it, and next to a wall they are most of the field the turn sees (ABT #1304).
-                bool inducingIsOwnImage = windowBoundaryModel && source.isImage;
+                if (source.toroidRegion != ToroidRegion::EVERYWHERE && source.toroidRegion != toroid_region_of(inducedX, inducedY)) {
+                    continue;
+                }
+                // Likewise a toroid's reply to the turn itself (its Kelvin image in the nearer wall) is field the turn sees.
+                bool inducingIsOwnImage = (windowBoundaryModel && source.isImage) || source.toroidReply;
                 if (inducedTurnIndex && inducedTurnIndex.value() == source.turnIndex && !inducingIsOwnImage) {
                     continue;
                 }

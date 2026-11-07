@@ -577,6 +577,11 @@ WindingLossesOutput WindingProximityEffectLosses::calculate_proximity_effect_los
 
     auto windingLossesPerTurn = windingLossesOutput.get_winding_losses_per_turn().value();
 
+    // A toroid's turns are laid radially and their width and height are read in the turn's rotated frame (the rotation
+    // is its polar angle; CoilMesherWangModel::generate_mesh_induced_turn places the samples in the same frame), so the
+    // field is read in that frame too: Hx along the turn's width, Hy along its height.
+    const bool toroidalTurns = coil.resolve_bobbin().get_winding_window_shape() == WindingWindowShape::ROUND;
+
     double totalProximityEffectLosses = 0;
     // One model per winding (its override is the winding's wire type's), shared by the winding's turns.
     std::map<size_t, std::shared_ptr<WindingProximityEffectLossesModel>> modelPerWinding;
@@ -678,6 +683,22 @@ WindingLossesOutput WindingProximityEffectLosses::calculate_proximity_effect_los
                     }
                 }
             }
+            double frameAngle = 0;
+            if (toroidalTurns) {
+                if (!turn.get_rotation()) {
+                    throw InvalidInputException(ErrorCode::INVALID_CORE_DATA, "Toroidal cores should have rotation in the turn, even if it is 0");
+                }
+                frameAngle = turn.get_rotation().value() / 180 * std::numbers::pi;
+            }
+            const double frameCos = std::cos(frameAngle);
+            const double frameSin = std::sin(frameAngle);
+            auto inTurnFrame = [frameCos, frameSin](ComplexFieldPoint point) {
+                const double fieldX = point.get_real();
+                const double fieldY = point.get_imaginary();
+                point.set_real(fieldX * frameCos + fieldY * frameSin);
+                point.set_imaginary(-fieldX * frameSin + fieldY * frameCos);
+                return point;
+            };
             for (size_t pointIndex : (*pointsPerTurn)[turnIndex]) {
                 auto& fieldPoint = fieldPerHarmonic.get_data()[pointIndex];
                 // Nearest-crossing classification. The CenterModel emits the secondary
@@ -693,16 +714,16 @@ WindingLossesOutput WindingProximityEffectLosses::calculate_proximity_effect_los
                     std::hypot(fieldPoint.get_point()[0] - turn.get_coordinates()[0],
                                fieldPoint.get_point()[1] - turn.get_coordinates()[1]);
                 if (isSecondaryPoint) {
-                    secondaryData.push_back(fieldPoint);
+                    secondaryData.push_back(inTurnFrame(fieldPoint));
                     if (quadratureHarmonicData) {
-                        secondaryQuadratureData.push_back((*quadratureHarmonicData)[pointIndex]);
+                        secondaryQuadratureData.push_back(inTurnFrame((*quadratureHarmonicData)[pointIndex]));
                     }
                     hasSecondaryCrossing = true;
                 }
                 else {
-                    primaryData.push_back(fieldPoint);
+                    primaryData.push_back(inTurnFrame(fieldPoint));
                     if (quadratureHarmonicData) {
-                        primaryQuadratureData.push_back((*quadratureHarmonicData)[pointIndex]);
+                        primaryQuadratureData.push_back(inTurnFrame((*quadratureHarmonicData)[pointIndex]));
                     }
                 }
             }

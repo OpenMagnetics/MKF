@@ -886,7 +886,10 @@ namespace TestWindingLossesToroidalCores {
         auto ohmicLosses1MHz =    WindingLosses().calculate_losses(magnetic, scaledOperatingPoint, temperature);
         REQUIRE_THAT(ohmicLosses1MHz.get_winding_losses_per_winding().value()[0].get_ohmic_losses().value().get_losses(), Catch::Matchers::WithinAbs(ohmicLosses100kHz.get_winding_losses_per_winding().value()[0].get_ohmic_losses().value().get_losses(), ohmicLosses100kHz.get_winding_losses_per_winding().value()[0].get_ohmic_losses().value().get_losses() * maximumError));
         REQUIRE(ohmicLosses1MHz.get_winding_losses_per_winding().value()[0].get_skin_effect_losses().value().get_losses_per_harmonic()[1] > ohmicLosses100kHz.get_winding_losses_per_winding().value()[0].get_skin_effect_losses().value().get_losses_per_harmonic()[1]);
-        REQUIRE_THAT(ohmicLosses100kHz.get_winding_losses_per_winding().value()[0].get_proximity_effect_losses().value().get_losses_per_harmonic()[1], Catch::Matchers::WithinAbs(ohmicLosses1MHz.get_winding_losses_per_winding().value()[0].get_proximity_effect_losses().value().get_losses_per_harmonic()[1], ohmicLosses1MHz.get_winding_losses_per_winding().value()[0].get_proximity_effect_losses().value().get_losses_per_harmonic()[1] * maximumError));
+        // Alf 2026-11-07: a lone turn in the bore sees its image in the bore wall, so its proximity loss grows with
+        // frequency. This line used to ask for prox(100 kHz) within 25 % of prox(1 MHz), which held only while MKF gave
+        // a lone toroid turn no proximity at all (0 == 0).
+        REQUIRE(ohmicLosses1MHz.get_winding_losses_per_winding().value()[0].get_proximity_effect_losses().value().get_losses_per_harmonic()[1] > ohmicLosses100kHz.get_winding_losses_per_winding().value()[0].get_proximity_effect_losses().value().get_losses_per_harmonic()[1]);
         REQUIRE(ohmicLosses1MHz.get_winding_losses() > ohmicLosses100kHz.get_winding_losses());
         settings.reset();
 
@@ -916,8 +919,17 @@ namespace TestWindingLossesToroidalCores {
     }
 
     TEST_CASE("Test_Winding_Losses_One_Turn_Round_Sinusoidal_Toroidal_Core", "[physical-model][winding-losses][round][round-winding-window]") {
+        // Alf 2026-11-07: R_ac/R_dc against 2D OMFEM of the same design, not the watt pins (those were MKF's first
+        // output, with no proximity on a lone turn, and sat 0.79-0.98x OMFEM). OMFEM: OMFEM-1588 build-efa5113
+        // omfem_mas, 2D (ring in the XY plane), its own R_ac/R_dc, on the MAS exported by Debug_Martinez_Flat_Scorecard
+        // at the config's 20 C; inputs and logs in /home/alf/OpenMagnetics/.mkf-triage-runs/wlfem/fem/tor1
+        // (the wire was given an enamel coating in the OMFEM input only, which OMFEM's wire check requires and which
+        // does not enter the eddy solve, see COATING_NOTE.txt there).
         auto config = WindingLossesTestData::createOneTurnRoundToroidalConfig();
-        WindingLossesTestHelpers::runWindingLossesTest(config);
+        WindingLossesTestHelpers::runAcToDcVsOmfemTest(
+            config, {{25000, 1.036}, {100000, 1.357}, {200000, 1.798}, {500000, 2.727}},
+            WindingLossesTestHelpers::maximumError, config.includeFringing,
+            MagneticFieldStrengthModels::ALBACH, MagneticFieldStrengthFringingEffectModels::ALBACH);
     }
 
     TEST_CASE("Test_Winding_Losses_Ten_Turns_Round_Sinusoidal_Toroidal_Core", "[physical-model][winding-losses][round][round-winding-window]") {
@@ -926,8 +938,17 @@ namespace TestWindingLossesToroidalCores {
     }
 
     TEST_CASE("Test_Winding_Losses_One_Turn_Round_Sinusoidal_Toroidal_Core_Rectangular_Wire", "[physical-model][winding-losses][rectangular][round-winding-window]") {
+        // Alf 2026-11-07: R_ac/R_dc against 2D OMFEM of the same design, not the watt pins (those were MKF's first
+        // output, with no proximity on a lone turn, and sat 0.79-0.98x OMFEM). OMFEM: OMFEM-1588 build-efa5113
+        // omfem_mas, 2D (ring in the XY plane), its own R_ac/R_dc, on the MAS exported by Debug_Martinez_Flat_Scorecard
+        // at the config's 20 C; inputs and logs in /home/alf/OpenMagnetics/.mkf-triage-runs/wlfem/fem/tor1
+        // (the wire was given an enamel coating in the OMFEM input only, which OMFEM's wire check requires and which
+        // does not enter the eddy solve, see COATING_NOTE.txt there).
         auto config = WindingLossesTestData::createOneTurnRectangularToroidalConfig();
-        WindingLossesTestHelpers::runWindingLossesTest(config);
+        WindingLossesTestHelpers::runAcToDcVsOmfemTest(
+            config, {{25000, 2.762}, {100000, 5.390}, {200000, 7.568}, {500000, 11.901}},
+            WindingLossesTestHelpers::maximumError, config.includeFringing,
+            MagneticFieldStrengthModels::ALBACH, MagneticFieldStrengthFringingEffectModels::ALBACH);
     }
 
     TEST_CASE("Test_Winding_Losses_Ten_Turn_Round_Sinusoidal_Toroidal_Core_Rectangular_Wire", "[physical-model][winding-losses][rectangular][round-winding-window][!mayfail]") {
