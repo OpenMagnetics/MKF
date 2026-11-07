@@ -253,7 +253,7 @@ std::optional<std::vector<bool>> resolve_flat_cell_windings(Magnetic& magnetic, 
     std::vector<bool> flags(coil.get_functional_description().size(), false);
     for (size_t windingIndex = 0; windingIndex < flags.size(); ++windingIndex) {
         const auto wireType = coil.get_wire_type(windingIndex);
-        if (wireType != WireType::RECTANGULAR && wireType != WireType::PLANAR) {
+        if (wireType != WireType::RECTANGULAR && wireType != WireType::PLANAR && wireType != WireType::FOIL) {
             continue;
         }
         std::optional<WindingProximityEffectLossesModels> proximityModel = customProximityModel;

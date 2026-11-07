@@ -641,18 +641,19 @@ namespace TestWindingLossesRectangular {
 namespace TestWindingLossesFoil {
     auto outputFilePath = std::filesystem::path{ std::source_location::current().file_name() }.parent_path().append("..").append("output");
     double maximumError = 0.3;
-    TEST_CASE("Test_Winding_Losses_One_Turn_Foil_Sinusoidal", "[physical-model][winding-losses][foil][rectangular-winding-window][!mayfail]") {
+    TEST_CASE("Test_Winding_Losses_One_Turn_Foil_Sinusoidal", "[physical-model][winding-losses][foil][rectangular-winding-window]") {
         // Alf 2026-11-04: pinned to 2D OMFEM R_ac/R_dc of the same design WITH the gap fringing present (the 1 mm ground
         // gap beside the foil; the config's fringing-off setting is overridden here), not to the Feb-2026 watt snapshot
         // (F_R 1.17 at 500 kHz, fringing off). OMFEM: OMFEM-1588 build-efa5113 omfem_mas, 2D, on the MAS exported by
         // Debug_Martinez_Flat_Scorecard (foil exported as a rectangular conductor of the same section: OMFEM cannot
         // sweep FOIL), at the config's 20 C; inputs and logs in /home/alf/OpenMagnetics/.mkf-triage-runs/green/wl2/fem
         // (One_Turn_Foil_Sinusoidal_<f>). The current crowding of a foil beside a gap is ABT #836.
+        // Alf 2026-11-07: on the default models (it pinned ALBACH/ALBACH, which read 3.2-9.6x OMFEM and never reach the
+        // width cells). With the foil in the screened width-cell model it reads 1.006-1.032x OMFEM (2.6-5.5x before).
         auto config = WindingLossesTestData::createOneTurnFoilSinusoidalConfig();
         WindingLossesTestHelpers::runAcToDcVsOmfemTest(
             config, {{50000, 11.363}, {100000, 14.884}, {200000, 17.576}, {500000, 20.786}},
-            WindingLossesTestHelpers::maximumError, true,
-            MagneticFieldStrengthModels::ALBACH, MagneticFieldStrengthFringingEffectModels::ALBACH);
+            WindingLossesTestHelpers::maximumError, true, std::nullopt, std::nullopt);
     }
 
     TEST_CASE("Test_Winding_Losses_Ten_Turns_Foil_Sinusoidal", "[physical-model][winding-losses][foil][rectangular-winding-window][!mayfail]") {
@@ -4330,6 +4331,105 @@ TEST_CASE("Test_Winding_Losses_Martinez_E42_Foil_Stack_Screens_The_Gap_Field", "
     REQUIRE(factors.size() == 8);
     INFO("MKF F_R gap-side foil " << factors[0] << ", outermost foil " << factors[7]);
     CHECK(factors[0] / factors[7] >= 50);
+}
+
+// The E 42 foil stack on the DEFAULT models (no models set), the setup of Debug_Martinez_Flat_Scorecard's E42 fixtures:
+// 2 A peak-to-peak sinusoid, 20 C, mirroring 2, fringing on. Per turn (ohmic + skin + proximity) / ohmic, and the winding's
+// (sum of losses) / (sum of ohmic).
+static std::pair<std::vector<double>, double> e42_foil_stack_default_resistance_factors(bool gapped, double frequency) {
+    settings.reset();
+    clear_databases();
+    auto magnetic = build_e42_flat_fixture(true, gapped);
+    auto inputs = OpenMagnetics::Inputs::create_quick_operating_point_only_current(frequency, 1e-3, 20, WaveformLabel::SINUSOIDAL, 2, 0.5, 0);
+    settings.set_magnetic_field_mirroring_dimension(2);
+    settings.set_magnetic_field_include_fringing(true);
+    auto output = WindingLosses().calculate_losses(magnetic, inputs.get_operating_point(0), 20);
+    std::vector<double> factors;
+    double totalLoss = 0;
+    double totalOhmic = 0;
+    const auto perTurn = output.get_winding_losses_per_turn().value();
+    for (const auto& turn : perTurn) {
+        const double ohmic = turn.get_ohmic_losses()->get_losses();
+        double loss = ohmic;
+        for (auto harmonicLoss : turn.get_skin_effect_losses()->get_losses_per_harmonic()) loss += harmonicLoss;
+        for (auto harmonicLoss : turn.get_proximity_effect_losses()->get_losses_per_harmonic()) loss += harmonicLoss;
+        factors.push_back(loss / ohmic);
+        totalLoss += loss;
+        totalOhmic += ohmic;
+    }
+    settings.reset();
+    return {factors, totalLoss / totalOhmic};
+}
+
+TEST_CASE("Test_Winding_Losses_Foil_Width_Cells_E42_Foil_Stacks_Vs_OMFEM", "[winding-losses][martinez-flat][foil][physical-model]") {
+    // Foil turns in the screened width-cell model, cut finer beside the gap mouths (Alf 2026-11-07). Eight 0.2 x 20 mm foils
+    // in an E 42/21/20 3C97, beside a 1 mm ground gap or on the residual gaps only (the innermost foil touches the column
+    // face at the 5 um residual gap). OMFEM: OMFEM-1588 build-efa5113 omfem_mas, 2D, on the MAS Debug_Martinez_Flat_Scorecard
+    // exports (foil as a rectangular conductor of the same section); inputs and logs in
+    // /home/alf/OpenMagnetics/.mkf-triage-runs/wlfem/fem (E42_FOIL_<GAP1MM|UNGAPPED>_<f>). Before (foil screening strips):
+    // winding 5.3/5.8/6.7x OMFEM gapped and 3.3/2.6/2.0x ungapped; with cells 1.09/1.20/1.21x and 1.02/0.99/0.91x.
+    // The foil beside the gap-side one still reads up to 2.5x per turn at 500 kHz, so only the winding and the hottest foil
+    // are checked.
+    // {gapped, frequency, OMFEM winding R_ac/R_dc, OMFEM F_R of the innermost (column-side) foil}
+    const std::vector<std::tuple<bool, double, double, double>> omfem = {
+        {true, 50000, 79.991, 497.457}, {true, 200000, 193.431, 1371.298}, {true, 500000, 358.112, 2448.584},
+        {false, 50000, 6.058, 22.512}, {false, 200000, 19.916, 93.534}, {false, 500000, 48.505, 225.825}};
+    for (const auto& [gapped, frequency, windingRatio, innermostFactor] : omfem) {
+        const auto [factors, ratio] = e42_foil_stack_default_resistance_factors(gapped, frequency);
+        REQUIRE(factors.size() == 8);
+        INFO((gapped ? "1 mm gap" : "residual gaps") << " at " << frequency << " Hz: winding MKF " << ratio << " vs OMFEM " << windingRatio
+             << ", innermost foil MKF " << factors[0] << " vs OMFEM " << innermostFactor);
+        CHECK_THAT(ratio, Catch::Matchers::WithinRel(windingRatio, 0.25));
+        CHECK_THAT(factors[0], Catch::Matchers::WithinRel(innermostFactor, 0.25));
+    }
+}
+
+TEST_CASE("Test_Winding_Losses_Flat_Cells_Frequency_Interpolation_Matches_Direct_Solves", "[winding-losses][martinez-flat][parallel-split][physical-model]") {
+    // FlatTurnCells::frequencyInterpolationSamples (Alf 2026-11-07): with more harmonics than samples per winding, the split
+    // solves each winding's unit current at the samples and splines every harmonic's solution in log f. The E 42 foil stack
+    // beside a 1 mm gap carries a flyback primary current (many harmonics): every turn's loss must be the one of
+    // solving each harmonic directly (samples = 0), and the split must really have interpolated (more harmonics than samples,
+    // and not the direct numbers bit for bit).
+    settings.reset();
+    clear_databases();
+    auto magnetic = build_e42_flat_fixture(true, true);
+    auto inputs = OpenMagnetics::Inputs::create_quick_operating_point_only_current(100000, 1e-3, 20, WaveformLabel::FLYBACK_PRIMARY, 2, 0.4, 0);
+    auto operatingPoint = inputs.get_operating_point(0);
+    settings.set_magnetic_field_mirroring_dimension(2);
+    settings.set_magnetic_field_include_fringing(true);
+    size_t harmonicsBooked = 0;
+    auto per_turn_losses = [&](size_t samples) {
+        FlatTurnCells::frequencyInterpolationSamples = samples;
+        auto output = WindingLosses().calculate_losses(magnetic, operatingPoint, 20);
+        FlatTurnCells::frequencyInterpolationSamples = 8;
+        harmonicsBooked = output.get_winding_losses_per_turn().value().front().get_proximity_effect_losses()->get_harmonic_frequencies().size();
+        std::vector<double> losses;
+        const auto perTurn = output.get_winding_losses_per_turn().value();
+        for (const auto& turn : perTurn) {
+            double loss = turn.get_ohmic_losses()->get_losses();
+            for (auto harmonicLoss : turn.get_skin_effect_losses()->get_losses_per_harmonic()) loss += harmonicLoss;
+            for (auto harmonicLoss : turn.get_proximity_effect_losses()->get_losses_per_harmonic()) loss += harmonicLoss;
+            losses.push_back(loss);
+        }
+        return losses;
+    };
+    const auto interpolated = per_turn_losses(8);
+    const auto direct = per_turn_losses(0);
+    REQUIRE(interpolated.size() == direct.size());
+    INFO("harmonics booked: " << harmonicsBooked);
+    REQUIRE(harmonicsBooked > FlatTurnCells::frequencyInterpolationSamples + 1);
+    // The interpolation ran: its solutions are not the direct ones bit for bit.
+    CHECK(interpolated != direct);
+    for (size_t turnIndex = 0; turnIndex < direct.size(); ++turnIndex) {
+        INFO("turn " << turnIndex << ": interpolated " << interpolated[turnIndex] << " W, direct " << direct[turnIndex] << " W");
+        // Within 1 % per turn (the far, cold turns move most: 1.5e-3 here), inside the 3 % Alf allows against the full model.
+        CHECK_THAT(interpolated[turnIndex], Catch::Matchers::WithinRel(direct[turnIndex], 1e-2));
+    }
+    const double interpolatedTotal = std::accumulate(interpolated.begin(), interpolated.end(), 0.0);
+    const double directTotal = std::accumulate(direct.begin(), direct.end(), 0.0);
+    INFO("winding: interpolated " << interpolatedTotal << " W, direct " << directTotal << " W");
+    CHECK_THAT(interpolatedTotal, Catch::Matchers::WithinRel(directTotal, 1e-3));
+    settings.reset();
 }
 
 TEST_CASE("Test_Winding_Losses_Martinez_Foil_Exclusion_Factor_Solved_Once_Per_Aspect", "[winding-losses][martinez-flat][abt-1914]") {

@@ -166,6 +166,27 @@ struct FlatTurnCells {
     static constexpr double faceSheetThicknessInThicknesses = 1.0 / 20;
     // The cell cuts of a conductor of this width and thickness: cell widths in order along the wide axis.
     static std::vector<double> calculate_cell_widths(double width, double thickness);
+    // A gap mouth on its column face, in the window frame: the face's x and the gap's extent y0..y1.
+    struct GapMouth {
+        double x = 0;
+        double y0 = 0;
+        double y1 = 0;
+    };
+    // Cuts beside a gap: the field leaving a gap mouth varies over the distance from it, so every cell is halved until it
+    // is no wider than one thickness or gapRefinementInDistances times the distance from the nearest mouth to its nearest
+    // point, whichever is larger (so no cell is under half a thickness; floors of 0.5, 0.25 and 0.1 thickness move nothing). Edge grading alone left 2 mm cells opposite a 1 mm gap on 0.2 mm foil: the gap-side foil read
+    // 0.32x OMFEM, 1.12x with these cuts (E42 foil stacks, Alf 2026-11-07). Cells far from every mouth are not touched.
+    static constexpr double gapRefinementInDistances = 1.0;
+    // `cellWidths` of the conductor whose wide axis starts at `start` (x when wideAlongX, else y), with `across` its
+    // coordinate on the other axis, cut further beside the gap mouths.
+    static std::vector<double> refine_cell_widths_near_gaps(const std::vector<double>& cellWidths, double start, double across, bool wideAlongX,
+                                                            double thickness, const std::vector<GapMouth>& mouths);
+    // Harmonics of the split solved by frequency interpolation (Alf 2026-11-07): the split is linear in the winding
+    // currents and smooth in log f, so with more than this many harmonics per winding it solves each winding's unit current
+    // at this many log-spaced frequencies spanning the harmonics and takes every harmonic's solution from a not-a-knot cubic
+    // spline in log f, scaled by that harmonic's winding currents. Total loss moves ~1e-5 on the planar benchmark, the
+    // split's solves drop from 64 to 16. 0 solves every harmonic directly. Thread-local so a test can compare both.
+    static inline thread_local size_t frequencyInterpolationSamples = 8;
 };
 
 struct ParallelCurrentSplit {

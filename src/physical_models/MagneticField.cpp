@@ -1000,6 +1000,9 @@ WindingWindowMagneticStrengthFieldPhasorOutput MagneticField::calculate_magnetic
         if (wire.get_type() != WireType::FOIL) {
             continue;
         }
+        if (parallelCurrentSplit && turnIndex < parallelCurrentSplit->flatTurnPerTurn.size() && parallelCurrentSplit->flatTurnPerTurn[turnIndex]) {
+            continue;  // a foil resolved into width cells screens through its own cells and face sheets
+        }
         if (!wire.get_conducting_width() || !wire.get_conducting_height()) {
             throw InvalidInputException(ErrorCode::MISSING_DATA, "Foil screening: the foil of turn " + turns[turnIndex].get_name() + " has no conducting width or height");
         }
@@ -4111,6 +4114,41 @@ std::vector<double> FlatTurnCells::calculate_cell_widths(double width, double th
     return widths;
 }
 
+std::vector<double> FlatTurnCells::refine_cell_widths_near_gaps(const std::vector<double>& cellWidths, double start, double across, bool wideAlongX,
+                                                                double thickness, const std::vector<GapMouth>& mouths) {
+    if (mouths.empty()) {
+        return cellWidths;
+    }
+    // Distance from the nearest mouth to the nearest point of the piece [begin, begin + width] of the conductor's axis.
+    auto piece_distance = [&](double begin, double width) {
+        double distance = std::numeric_limits<double>::max();
+        for (const auto& mouth : mouths) {
+            const double x = wideAlongX ? std::clamp(mouth.x, begin, begin + width) : across;
+            const double y = wideAlongX ? across : std::clamp(0.5 * (mouth.y0 + mouth.y1), begin, begin + width);
+            const double dy = y < mouth.y0 ? mouth.y0 - y : (y > mouth.y1 ? y - mouth.y1 : 0.0);
+            distance = std::min(distance, std::hypot(x - mouth.x, dy));
+        }
+        return distance;
+    };
+    std::vector<double> refined;
+    std::function<void(double, double)> cut = [&](double begin, double width) {
+        // A piece stops at one thickness or at its distance from the mouth, whichever is larger, so no piece is under half
+        // a thickness.
+        if (width <= std::max(thickness, gapRefinementInDistances * piece_distance(begin, width)) * (1 + 1e-9)) {
+            refined.push_back(width);
+            return;
+        }
+        cut(begin, width / 2);
+        cut(begin + width / 2, width / 2);
+    };
+    double edge = start;
+    for (double cellWidth : cellWidths) {
+        cut(edge, cellWidth);
+        edge += cellWidth;
+    }
+    return refined;
+}
+
 namespace {
 thread_local size_t parallelCurrentSplitFrequencySearches = 0;
 }
@@ -4243,6 +4281,21 @@ std::optional<ParallelCurrentSplit> MagneticField::calculate_parallel_current_sp
     // The flat turns resolved across their width (FlatTurnCells): only in the neutral window frame, whose images and wall
     // sources the cells and their face sheets are imaged in.
     split.flatTurnPerTurn.assign(turns.size(), std::nullopt);
+    // The gap mouths the cells are cut finer beside (FlatTurnCells::refine_cell_widths_near_gaps): both faces of every gap.
+    std::vector<FlatTurnCells::GapMouth> gapMouths;
+    if (impedanceModel && resolveFlatTurnsPerWinding) {
+        for (const auto& gap : magnetic.get_core().get_functional_description().get_gapping()) {
+            if (!gap.get_coordinates() || !gap.get_section_dimensions()) {
+                throw CoreNotProcessedException("Width cells: a gap of the core has no coordinates or section dimensions");
+            }
+            const double gapX = gap.get_coordinates().value()[0];
+            const double gapY = gap.get_coordinates().value()[1];
+            const double halfWidth = gap.get_section_dimensions().value()[0] / 2;
+            for (double faceX : {gapX - halfWidth, gapX + halfWidth}) {
+                gapMouths.push_back({faceX, gapY - gap.get_length() / 2, gapY + gap.get_length() / 2});
+            }
+        }
+    }
     if (impedanceModel && resolveFlatTurnsPerWinding) {
         for (size_t turnIndex = 0; turnIndex < turns.size(); ++turnIndex) {
             const size_t windingIndex = windingPerTurn[turnIndex];
@@ -4250,7 +4303,7 @@ std::optional<ParallelCurrentSplit> MagneticField::calculate_parallel_current_sp
                 continue;
             }
             const auto& wire = wires[windingIndex];
-            if (wire.get_type() != WireType::RECTANGULAR && wire.get_type() != WireType::PLANAR) {
+            if (wire.get_type() != WireType::RECTANGULAR && wire.get_type() != WireType::PLANAR && wire.get_type() != WireType::FOIL) {
                 continue;
             }
             if (!wire.get_conducting_width() || !wire.get_conducting_height()) {
@@ -4280,6 +4333,8 @@ std::optional<ParallelCurrentSplit> MagneticField::calculate_parallel_current_sp
             flat.centreX = turns[turnIndex].get_coordinates()[0];
             flat.centreY = turns[turnIndex].get_coordinates()[1];
             flat.cellWidths = FlatTurnCells::calculate_cell_widths(wide, thin);
+            flat.cellWidths = FlatTurnCells::refine_cell_widths_near_gaps(flat.cellWidths, (flat.wideAlongX ? flat.centreX : flat.centreY) - wide / 2,
+                                                                         flat.wideAlongX ? flat.centreY : flat.centreX, flat.wideAlongX, thin, gapMouths);
             double edge = (flat.wideAlongX ? flat.centreX : flat.centreY) - wide / 2;
             for (double cellWidth : flat.cellWidths) {
                 flat.cellCentres.push_back(edge + cellWidth / 2);
@@ -5045,29 +5100,74 @@ std::optional<ParallelCurrentSplit> MagneticField::calculate_parallel_current_sp
             std::vector<Complex> potentials;
             std::vector<Complex> fields;
         };
-        for (size_t batchBegin = 0; batchBegin < pendingFlatHarmonics.size(); batchBegin += splitBatchHarmonics) {
-            const size_t batchEnd = std::min(batchBegin + splitBatchHarmonics, pendingFlatHarmonics.size());
+        auto reaction_per_field_at = [&](double frequency) {
+            std::vector<Complex> reactionPerField(numberCells);
+            for (size_t cell = 0; cell < numberCells; ++cell) {
+                const auto& flat = split.flatTurns[flatTurnPerCell[cell]];
+                const double skinDepth = WindingSkinEffectLosses::calculate_skin_depth(wires[windingPerTurn[flat.turnIndex]], frequency, temperature);
+                const std::complex<double> slab = std::complex<double>(1, 1) * flat.thickness / (2 * skinDepth);
+                const std::complex<double> reaction = (slab - std::tanh(slab)) / slab;
+                reactionPerField[cell] = reaction * cellWidth[cell];
+            }
+            return reactionPerField;
+        };
+        // The systems solved: every harmonic, or with frequency interpolation (FlatTurnCells::frequencyInterpolationSamples)
+        // the DC harmonic plus each winding's unit current at the log-spaced sample frequencies.
+        std::vector<PendingFlatHarmonic> solveList;
+        std::vector<std::optional<size_t>> solvedIndexPerHarmonic(pendingFlatHarmonics.size());
+        std::vector<double> sampleFrequencies;
+        {
+            const size_t samples = FlatTurnCells::frequencyInterpolationSamples;
+            double minimumFrequency = std::numeric_limits<double>::max();
+            double maximumFrequency = 0;
+            size_t alternatingHarmonics = 0;
+            for (const auto& harmonic : pendingFlatHarmonics) {
+                if (harmonic.frequency > 0) {
+                    ++alternatingHarmonics;
+                    minimumFrequency = std::min(minimumFrequency, harmonic.frequency);
+                    maximumFrequency = std::max(maximumFrequency, harmonic.frequency);
+                }
+            }
+            if (samples != 0 && samples < 4) {
+                throw InvalidInputException(ErrorCode::INVALID_INPUT, "Width cells: frequency interpolation needs at least 4 samples (a not-a-knot spline), got " + std::to_string(samples));
+            }
+            const bool interpolate = samples != 0 && alternatingHarmonics > samples * numberWindings && maximumFrequency > minimumFrequency;
+            for (size_t index = 0; index < pendingFlatHarmonics.size(); ++index) {
+                if (!interpolate || !(pendingFlatHarmonics[index].frequency > 0)) {
+                    solvedIndexPerHarmonic[index] = solveList.size();
+                    solveList.push_back(pendingFlatHarmonics[index]);
+                }
+            }
+            if (interpolate) {
+                for (size_t sample = 0; sample < samples; ++sample) {
+                    const double frequency = minimumFrequency * std::pow(maximumFrequency / minimumFrequency, static_cast<double>(sample) / static_cast<double>(samples - 1));
+                    sampleFrequencies.push_back(frequency);
+                    for (size_t windingIndex = 0; windingIndex < numberWindings; ++windingIndex) {
+                        std::vector<std::complex<double>> unitCurrent(numberWindings, 0.0);
+                        unitCurrent[windingIndex] = 1.0;
+                        solveList.push_back(PendingFlatHarmonic{frequency, {}, std::move(unitCurrent), std::vector<bool>(numberWindings, false)});
+                    }
+                }
+            }
+        }
+        const size_t firstSample = solveList.size() - sampleFrequencies.size() * numberWindings;
+        std::vector<std::vector<Complex>> solvedSolutions(solveList.size());
+        for (size_t batchBegin = 0; batchBegin < solveList.size(); batchBegin += splitBatchHarmonics) {
+            const size_t batchEnd = std::min(batchBegin + splitBatchHarmonics, solveList.size());
             const size_t batchSize = batchEnd - batchBegin;
             std::vector<FlatHarmonicSystem> systems(batchSize);
             std::vector<GmresPrecondition> preconditioners(batchSize);
             std::vector<std::vector<Complex>> rightHandSides(batchSize);
             for (size_t member = 0; member < batchSize; ++member) {
-                const auto& harmonic = pendingFlatHarmonics[batchBegin + member];
+                const auto& harmonic = solveList[batchBegin + member];
                 auto& system = systems[member];
                 const double frequency = harmonic.frequency;
                 const double angularFrequency = 2 * std::numbers::pi * frequency;
                 system.jOmega = Complex(0, angularFrequency);
                 const Complex jOmega = system.jOmega;
                 // Per cell, g w: D = g w H.
-                auto& reactionPerField = system.reactionPerField;
-                reactionPerField.resize(numberCells);
-                for (size_t cell = 0; cell < numberCells; ++cell) {
-                    const auto& flat = split.flatTurns[flatTurnPerCell[cell]];
-                    const double skinDepth = WindingSkinEffectLosses::calculate_skin_depth(wires[windingPerTurn[flat.turnIndex]], frequency, temperature);
-                    const std::complex<double> slab = std::complex<double>(1, 1) * flat.thickness / (2 * skinDepth);
-                    const std::complex<double> reaction = (slab - std::tanh(slab)) / slab;
-                    reactionPerField[cell] = reaction * cellWidth[cell];
-                }
+                system.reactionPerField = reaction_per_field_at(frequency);
+                const auto& reactionPerField = system.reactionPerField;
                 // The system is solved by GMRES: its product goes through the operators, and its preconditioner is the
                 // exact system with the coupling between groups of neighbouring turns left out (each group's own blocks,
                 // the walls on them, and every circuit equation), factored sparse. The rows are scaled by the largest entry
@@ -5247,10 +5347,85 @@ std::optional<ParallelCurrentSplit> MagneticField::calculate_parallel_current_sp
             };
             const auto solutions = solve_gmres_batch(apply, preconditioners, rightHandSides, splitSolveTolerance, splitSolveRestart, splitSolveMaximumIterations);
             for (size_t member = 0; member < batchSize; ++member) {
-                auto& harmonic = pendingFlatHarmonics[batchBegin + member];
-                const auto& system = systems[member];
-                const auto& solution = solutions[member];
-                const double frequency = harmonic.frequency;
+                solvedSolutions[batchBegin + member] = std::move(solutions[member]);
+            }
+        }
+        // Not-a-knot cubic spline in log f through the samples: each sample's weight at a frequency (the spline is linear
+        // in its data, so a harmonic's solution is the weighted sum of the samples' solutions).
+        Eigen::MatrixXd secondDerivativePerSample;
+        std::vector<double> logSampleFrequencies;
+        if (!sampleFrequencies.empty()) {
+            const size_t count = sampleFrequencies.size();
+            for (double frequency : sampleFrequencies) {
+                logSampleFrequencies.push_back(std::log(frequency));
+            }
+            std::vector<double> step(count - 1);
+            for (size_t k = 0; k + 1 < count; ++k) {
+                step[k] = logSampleFrequencies[k + 1] - logSampleFrequencies[k];
+            }
+            Eigen::MatrixXd conditions = Eigen::MatrixXd::Zero(static_cast<Eigen::Index>(count), static_cast<Eigen::Index>(count));
+            Eigen::MatrixXd data = Eigen::MatrixXd::Zero(static_cast<Eigen::Index>(count), static_cast<Eigen::Index>(count));
+            const auto at = [](size_t index) { return static_cast<Eigen::Index>(index); };
+            // Not-a-knot: the third derivative is continuous at the second and the second-to-last samples.
+            conditions(0, 0) = -1 / step[0];
+            conditions(0, 1) = 1 / step[0] + 1 / step[1];
+            conditions(0, 2) = -1 / step[1];
+            conditions(at(count - 1), at(count - 3)) = -1 / step[count - 3];
+            conditions(at(count - 1), at(count - 2)) = 1 / step[count - 3] + 1 / step[count - 2];
+            conditions(at(count - 1), at(count - 1)) = -1 / step[count - 2];
+            for (size_t k = 1; k + 1 < count; ++k) {
+                conditions(at(k), at(k - 1)) = step[k - 1];
+                conditions(at(k), at(k)) = 2 * (step[k - 1] + step[k]);
+                conditions(at(k), at(k + 1)) = step[k];
+                data(at(k), at(k + 1)) = 6 / step[k];
+                data(at(k), at(k)) = -6 / step[k] - 6 / step[k - 1];
+                data(at(k), at(k - 1)) = 6 / step[k - 1];
+            }
+            secondDerivativePerSample = conditions.partialPivLu().solve(data);
+        }
+        auto spline_weights = [&](double frequency) {
+            const size_t count = sampleFrequencies.size();
+            const auto& x = logSampleFrequencies;
+            const double t = std::clamp(std::log(frequency), x.front(), x.back());
+            size_t interval = 0;
+            while (interval + 2 < count && t > x[interval + 1]) {
+                ++interval;
+            }
+            const double h = x[interval + 1] - x[interval];
+            const double a = x[interval + 1] - t;
+            const double b = t - x[interval];
+            Eigen::RowVectorXd linear = Eigen::RowVectorXd::Zero(static_cast<Eigen::Index>(count));
+            Eigen::RowVectorXd curvature = Eigen::RowVectorXd::Zero(static_cast<Eigen::Index>(count));
+            linear(static_cast<Eigen::Index>(interval)) = a / h;
+            linear(static_cast<Eigen::Index>(interval + 1)) = b / h;
+            curvature(static_cast<Eigen::Index>(interval)) = a * a * a / (6 * h) - h * a / 6;
+            curvature(static_cast<Eigen::Index>(interval + 1)) = b * b * b / (6 * h) - h * b / 6;
+            Eigen::RowVectorXd weights = linear + curvature * secondDerivativePerSample;
+            return std::vector<double>(weights.data(), weights.data() + count);
+        };
+        for (size_t harmonicIndex = 0; harmonicIndex < pendingFlatHarmonics.size(); ++harmonicIndex) {
+            auto& harmonic = pendingFlatHarmonics[harmonicIndex];
+            const double frequency = harmonic.frequency;
+            const auto reactionPerField = reaction_per_field_at(frequency);
+            std::vector<Complex> interpolated;
+            if (!solvedIndexPerHarmonic[harmonicIndex]) {
+                interpolated.assign(fullSize, Complex(0));
+                const auto weights = spline_weights(frequency);
+                for (size_t sample = 0; sample < sampleFrequencies.size(); ++sample) {
+                    for (size_t windingIndex = 0; windingIndex < numberWindings; ++windingIndex) {
+                        const Complex factor = weights[sample] * harmonic.windingCurrent[windingIndex];
+                        if (factor == Complex(0)) {
+                            continue;
+                        }
+                        const auto& sampleSolution = solvedSolutions[firstSample + sample * numberWindings + windingIndex];
+                        for (size_t row = 0; row < fullSize; ++row) {
+                            interpolated[row] += factor * sampleSolution[row];
+                        }
+                    }
+                }
+            }
+            const auto& solution = solvedIndexPerHarmonic[harmonicIndex] ? solvedSolutions[solvedIndexPerHarmonic[harmonicIndex].value()] : interpolated;
+            {
                 std::vector<std::complex<double>> currentPerTurn(numberTurns);
                 for (size_t turnIndex = 0; turnIndex < numberTurns; ++turnIndex) {
                     size_t windingIndex = windingPerTurn[turnIndex];
@@ -5274,7 +5449,7 @@ std::optional<ParallelCurrentSplit> MagneticField::calculate_parallel_current_sp
                     }
                     cellCurrent[flatIndex].push_back(solution[element]);
                     cellField[flatIndex].push_back(field);
-                    cellReaction[flatIndex].push_back(system.reactionPerField[cell] * field);
+                    cellReaction[flatIndex].push_back(reactionPerField[cell] * field);
                 }
                 split.frequencies.push_back(frequency);
                 split.listedFrequenciesPerFrequency.push_back(std::move(harmonic.listedFrequencies));
