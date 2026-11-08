@@ -26,7 +26,7 @@ std::map<WindingLossesModelSets, WindingLossesModelSet> build_registry() {
 
     add({WindingLossesModelSets::LEGACY_DEFAULT, "Legacy default",
          "MKF's historical automatic choice: field model by wire type (LAMMERANER round/litz, BINNS_LAWRENSON "
-         "rectangular, WANG planar and foil), ROSHEN gap fringing, FERREIRA proximity for round/litz, WANG for flat wire.",
+         "rectangular and planar, WANG foil), ROSHEN gap fringing, FERREIRA proximity for round/litz, WANG for flat wire.",
          "Reference behaviour. Known limits: a flat turn's current is counted twice under BINNS_LAWRENSON "
          "with the Wang mesher, residual gaps carry no field, the image lattice holds net current.",
          std::nullopt, Fringing::ROSHEN, historicalSkin,
@@ -215,10 +215,11 @@ MagneticFieldStrengthModels automatic_winding_losses_field_model(Magnetic& magne
         isRectangular = isRectangular && wire.get_type() == WireType::RECTANGULAR;
         isFoil = isFoil && wire.get_type() == WireType::FOIL;
     }
-    if (isPlanar) {
-        return Field::WANG;
-    }
-    if (isRectangular) {
+    if (isPlanar || isRectangular) {
+        // All-planar windings take BINNS_LAWRENSON too. The WANG field mishandles neighbouring parallel traces: the
+        // 16-parallel planar stack of Test_Winding_Losses_Wang_Stacked_Planar_Parallel_Stack_Vs_OMFEM reads 137.7
+        // R_ac/R_dc under WANG against 100.1 in 2D OMFEM, 102.2 under BINNS_LAWRENSON (fringing off: WANG 37.7,
+        // ALBACH 2.3). Revisit when the WANG field shares the image boundary of the other models.
         return Field::BINNS_LAWRENSON;
     }
     if (isFoil) {
