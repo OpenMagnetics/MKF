@@ -925,9 +925,13 @@ namespace TestWindingLossesToroidalCores {
         // at the config's 20 C; inputs and logs in /home/alf/OpenMagnetics/.mkf-triage-runs/wlfem/fem/tor1
         // (the wire was given an enamel coating in the OMFEM input only, which OMFEM's wire check requires and which
         // does not enter the eddy solve, see COATING_NOTE.txt there).
+        // OMFEM numbers: OMFEM f7a4ff9 omfem_mas with OMFEM_AIR_MARGIN=8 (2D air box = bounding box x 8; the default
+        // 1.5 puts A = 0 close to the outside crossings and pulls their field down; at 100 kHz the ten-turn total moves
+        // 5 % from margin 1.5 to 8 and 0.5 % from 5 to 8), against MVB++ e29b841; logs in
+        // /home/alf/OpenMagnetics/.mkf-triage-runs/wlfem/fem/airmargin.
         auto config = WindingLossesTestData::createOneTurnRoundToroidalConfig();
         WindingLossesTestHelpers::runAcToDcVsOmfemTest(
-            config, {{25000, 1.036}, {100000, 1.357}, {200000, 1.798}, {500000, 2.727}},
+            config, {{25000, 1.036}, {100000, 1.357}, {200000, 1.796}, {500000, 2.728}},
             WindingLossesTestHelpers::maximumError, config.includeFringing,
             MagneticFieldStrengthModels::ALBACH, MagneticFieldStrengthFringingEffectModels::ALBACH);
     }
@@ -944,9 +948,13 @@ namespace TestWindingLossesToroidalCores {
         // at the config's 20 C; inputs and logs in /home/alf/OpenMagnetics/.mkf-triage-runs/wlfem/fem/tor1
         // (the wire was given an enamel coating in the OMFEM input only, which OMFEM's wire check requires and which
         // does not enter the eddy solve, see COATING_NOTE.txt there).
+        // OMFEM numbers: OMFEM f7a4ff9 omfem_mas with OMFEM_AIR_MARGIN=8 (2D air box = bounding box x 8; the default
+        // 1.5 puts A = 0 close to the outside crossings and pulls their field down; at 100 kHz the ten-turn total moves
+        // 5 % from margin 1.5 to 8 and 0.5 % from 5 to 8), against MVB++ e29b841; logs in
+        // /home/alf/OpenMagnetics/.mkf-triage-runs/wlfem/fem/airmargin.
         auto config = WindingLossesTestData::createOneTurnRectangularToroidalConfig();
         WindingLossesTestHelpers::runAcToDcVsOmfemTest(
-            config, {{25000, 2.762}, {100000, 5.390}, {200000, 7.568}, {500000, 11.901}},
+            config, {{25000, 2.719}, {100000, 5.302}, {200000, 7.444}, {500000, 11.708}},
             WindingLossesTestHelpers::maximumError, config.includeFringing,
             MagneticFieldStrengthModels::ALBACH, MagneticFieldStrengthFringingEffectModels::ALBACH);
     }
@@ -960,9 +968,13 @@ namespace TestWindingLossesToroidalCores {
         // 20 C; inputs and logs in /home/alf/OpenMagnetics/.mkf-triage-runs/green/wl2/fem
         // (Ten_Turns_Rectangular_Toroidal_<f>; the wire was given an enamel coating in the OMFEM input only, which
         // OMFEM's wire check requires and which does not enter the eddy solve, see TOROID_COATING_NOTE.txt there).
+        // OMFEM numbers: OMFEM f7a4ff9 omfem_mas with OMFEM_AIR_MARGIN=8 (2D air box = bounding box x 8; the default
+        // 1.5 puts A = 0 close to the outside crossings and pulls their field down; at 100 kHz the ten-turn total moves
+        // 5 % from margin 1.5 to 8 and 0.5 % from 5 to 8), against MVB++ e29b841; logs in
+        // /home/alf/OpenMagnetics/.mkf-triage-runs/wlfem/fem/airmargin.
         auto config = WindingLossesTestData::createTenTurnsRectangularToroidalConfig();
         WindingLossesTestHelpers::runAcToDcVsOmfemTest(
-            config, {{25000, 6.839}, {50000, 10.044}, {100000, 14.824}, {200000, 21.866}, {250000, 24.782}, {500000, 36.422}},
+            config, {{25000, 7.213}, {50000, 10.586}, {100000, 15.610}, {200000, 22.982}, {250000, 26.032}, {500000, 38.284}},
             WindingLossesTestHelpers::maximumError, config.includeFringing,
             MagneticFieldStrengthModels::ALBACH, MagneticFieldStrengthFringingEffectModels::ALBACH);
     }
