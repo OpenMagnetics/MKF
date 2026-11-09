@@ -157,12 +157,18 @@ LeakageInductance::PhasorField LeakageInductance::calculate_magnetic_field_phaso
         }
     }
 
+    // Parallels share each winding's current equally (ParallelCurrentSplitModel::EQUAL), as OMFEM's magnetostatic
+    // leakage solve drives them (Alf, 2026-11-09): leakage is the field of the turns' nominal currents. The split the
+    // field would otherwise solve at this frequency redistributes the current between parallels by their impedance,
+    // which moved the leakage of a PQ 32 with interleaved parallels by 4 % whenever that split's geometry changed.
+    const auto equalSplit = MagneticField::calculate_parallel_current_split(magnetic, operatingPoint, operatingPoint.get_conditions().get_ambient_temperature(),
+                                                                            customCurrentDirectionPerWinding, std::nullopt, ParallelCurrentSplitModel::EQUAL);
     ComplexField field;
     ComplexField quadratureField;
     {
         // Every conductor as its true cross-section with its images (CENTER); the Wang mesh splits a planar
         // track into two full-current filaments without images, a proximity-loss construction.
-        auto windingWindowMagneticStrengthFieldOutput = magneticField.calculate_magnetic_field_strength_field(operatingPoint, magnetic, inducedField, customCurrentDirectionPerWinding, CoilMesherModels::CENTER);
+        auto windingWindowMagneticStrengthFieldOutput = magneticField.calculate_magnetic_field_strength_field(operatingPoint, magnetic, inducedField, customCurrentDirectionPerWinding, CoilMesherModels::CENTER, equalSplit);
         field = windingWindowMagneticStrengthFieldOutput.get_field_per_frequency()[0];
         quadratureField = windingWindowMagneticStrengthFieldOutput.get_quadrature_field_per_frequency()[0];
     }
@@ -184,7 +190,7 @@ LeakageInductance::PhasorField LeakageInductance::calculate_magnetic_field_phaso
         double windingWindowRadialHeight = windingWindows[0].get_radial_height().value();
 
         magnetic.get_mutable_coil().set_turns_description(turns);
-        auto windingWindowMagneticStrengthFieldOutput = magneticField.calculate_magnetic_field_strength_field(operatingPoint, magnetic, inducedField, customCurrentDirectionPerWinding);
+        auto windingWindowMagneticStrengthFieldOutput = magneticField.calculate_magnetic_field_strength_field(operatingPoint, magnetic, inducedField, customCurrentDirectionPerWinding, std::nullopt, equalSplit);
         auto additionalField = windingWindowMagneticStrengthFieldOutput.get_field_per_frequency()[0];
         auto additionalQuadratureField = windingWindowMagneticStrengthFieldOutput.get_quadrature_field_per_frequency()[0];
         for (size_t pointIndex = 0; pointIndex < field.get_data().size(); ++pointIndex) {

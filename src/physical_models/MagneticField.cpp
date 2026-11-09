@@ -4498,7 +4498,14 @@ ParallelCurrentSplitModel MagneticField::parallel_current_split_model(const Magn
 
 std::optional<ParallelCurrentSplit> MagneticField::calculate_parallel_current_split(Magnetic magnetic, OperatingPoint operatingPoint, double temperature,
                                                                                    std::optional<std::vector<int8_t>> customCurrentDirectionPerWinding,
-                                                                                   std::optional<std::vector<bool>> resolveFlatTurnsPerWinding) {
+                                                                                   std::optional<std::vector<bool>> resolveFlatTurnsPerWinding,
+                                                                                   std::optional<ParallelCurrentSplitModel> requestedModel) {
+    if (requestedModel && requestedModel.value() != ParallelCurrentSplitModel::EQUAL) {
+        throw InvalidInputException(ErrorCode::INVALID_INPUT, "Parallel current split: only the EQUAL model can be requested; the others follow the geometry");
+    }
+    if (requestedModel && resolveFlatTurnsPerWinding) {
+        throw InvalidInputException(ErrorCode::INVALID_INPUT, "Parallel current split: the EQUAL model resolves no flat turns");
+    }
     auto& coil = magnetic.get_mutable_coil();
     const size_t numberWindings = coil.get_functional_description().size();
     bool anyParallels = false;
@@ -4532,7 +4539,7 @@ std::optional<ParallelCurrentSplit> MagneticField::calculate_parallel_current_sp
     // ABT #1759 (Alf 2026-10-11): the strand impedance needs the neutral window frame (image lattice + MMF_BOUNDARY wall
     // sources). Geometries without it split by the explicit RESISTIVE model (see ParallelCurrentSplitModel).
     ParallelCurrentSplit split;
-    split.model = parallel_current_split_model(magnetic);
+    split.model = requestedModel ? requestedModel.value() : parallel_current_split_model(magnetic);
     const bool impedanceModel = split.model == ParallelCurrentSplitModel::NEUTRAL_WINDOW_IMPEDANCE;
 
     auto& settings = Settings::GetInstance();
@@ -5553,6 +5560,19 @@ std::optional<ParallelCurrentSplit> MagneticField::calculate_parallel_current_sp
         const double angularFrequency = 2 * std::numbers::pi * frequency;
         if (flatCells) {
             pendingFlatHarmonics.push_back(PendingFlatHarmonic{frequency, std::move(listedFrequencies), std::move(windingCurrent), std::move(zeroHarmonicPerWinding)});
+            continue;
+        }
+        if (split.model == ParallelCurrentSplitModel::EQUAL) {
+            std::vector<std::complex<double>> currentPerTurn(turns.size());
+            for (size_t turnIndex = 0; turnIndex < turns.size(); ++turnIndex) {
+                const size_t windingIndex = windingPerTurn[turnIndex];
+                currentPerTurn[turnIndex] = windingCurrent[windingIndex] / static_cast<double>(coil.get_number_parallels(windingIndex));
+            }
+            split.frequencies.push_back(frequency);
+            split.listedFrequenciesPerFrequency.push_back(std::move(listedFrequencies));
+            split.currentPerTurnPerFrequency.push_back(std::move(currentPerTurn));
+            split.currentPerWindingPerFrequency.push_back(std::move(windingCurrent));
+            split.zeroHarmonicPerWindingPerFrequency.push_back(std::move(zeroHarmonicPerWinding));
             continue;
         }
         Eigen::MatrixXcd system = Eigen::MatrixXcd::Zero(size, size);

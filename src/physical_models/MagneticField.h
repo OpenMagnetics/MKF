@@ -129,9 +129,14 @@ class MagneticFieldStrengthFringingEffectModel {
 //    #1759) for the geometries that have no neutral window frame yet: toroids (#1767), multi-window cores (#1768) and
 //    turns with additionalCoordinates (#1769). It ignores the proximity-driven redistribution between parallels, so
 //    it understates the AC losses of parallels that see different fields; those tickets carry the real AC split.
+//  - EQUAL: every parallel carries I_w / N_parallels at every harmonic, whatever its resistance or position: the drive of
+//    OMFEM's magnetostatic leakage solve, which spreads each turn's current uniformly over its parallels. Never chosen
+//    by geometry; the leakage inductance asks for it (Alf, 2026-11-09), so that leakage is the field of the turns'
+//    nominal currents, not of a frequency-dependent redistribution between parallels.
 enum class ParallelCurrentSplitModel {
     NEUTRAL_WINDOW_IMPEDANCE,
-    RESISTIVE
+    RESISTIVE,
+    EQUAL
 };
 
 // A flat turn resolved across its width (the screened width-cell model): the conductor is cut into full-thickness cells
@@ -286,9 +291,11 @@ class MagneticField {
         // resolveFlatTurnsPerWinding: per winding, whether its flat turns (rectangular or planar, axis-aligned, wide side at
         // least FlatTurnCells::minimumAspectRatio thicknesses) are resolved across their width (FlatTurnCells). Only the
         // neutral window frame can (NEUTRAL_WINDOW_IMPEDANCE); the split then exists even without parallels.
+        // requestedModel: a model asked for instead of the geometry's (only EQUAL, which every geometry has).
         static std::optional<ParallelCurrentSplit> calculate_parallel_current_split(Magnetic magnetic, OperatingPoint operatingPoint, double temperature,
                                                                                     std::optional<std::vector<int8_t>> customCurrentDirectionPerWinding = std::nullopt,
-                                                                                    std::optional<std::vector<bool>> resolveFlatTurnsPerWinding = std::nullopt);
+                                                                                    std::optional<std::vector<bool>> resolveFlatTurnsPerWinding = std::nullopt,
+                                                                                    std::optional<ParallelCurrentSplitModel> requestedModel = std::nullopt);
         // ABT #1759: the parallel current split model for this magnetic's geometry: RESISTIVE for toroids, multi-window
         // cores and turns with additionalCoordinates (no neutral window frame), NEUTRAL_WINDOW_IMPEDANCE otherwise.
         static ParallelCurrentSplitModel parallel_current_split_model(const Magnetic& magnetic);
