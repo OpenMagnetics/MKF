@@ -9,7 +9,7 @@ enum class MagneticFieldStrengthModels : int {
     BINNS_LAWRENSON,
     LAMMERANER,
     DOWELL,
-    WANG,
+    WANG,  // retired 2026-11-09: MagneticField::factory throws (kept for the ordinals bindings pass)
     ALBACH,
     // ABT #1409: turns AND functional-gap MMF sheets imaged together in the core window, so the
     // window carries ~no net current. Gap fringing is part of this model: the fringing-effect
@@ -34,7 +34,7 @@ enum class WindingLossesModelSets : int {
     LEGACY_DEFAULT,
     NEUTRAL_WINDOW,
     NEUTRAL_WINDOW_WANG,
-    WANG_PLANAR,
+    WANG_PLANAR,  // retired 2026-11-09 with the WANG field: not registered, asking for it throws (kept for the ordinals)
     SULLIVAN_GAP,
     AXISYMMETRIC,
     TOROID,

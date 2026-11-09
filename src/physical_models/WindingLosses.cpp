@@ -386,12 +386,12 @@ WindingLosses::WindingLossesField WindingLosses::calculate_magnetic_field(Magnet
         &Settings::get_harmonic_amplitude_threshold,
         &Settings::set_harmonic_amplitude_threshold, thresholdToUse);
     // ABT #1304: the Wang mesher puts a flat turn's FULL current on each of its two inducing points; only the WANG field
-    // kernel halves them. Under any other kernel the turn's current is counted twice. When every flat winding is
-    // charged by MARTINEZ (which reads the field of complete turns), mesh the inducing turns with the CENTER mesher:
+    // kernel (retired 2026-11-09) halved them, so under every field model the turn's current is counted twice. When every
+    // flat winding is charged by MARTINEZ (which reads the field of complete turns), mesh the inducing turns with the CENTER mesher:
     // one exact Binns-Lawrenson rectangle per turn, with the same core images round wire gets. Other proximity models
     // keep the historical mesh (changing their pinned behaviour is a default change, ABT #1304).
     std::optional<CoilMesherModels> inducingMesher;
-    if (modelToUse != MagneticFieldStrengthModels::WANG) {
+    {
         bool anyFlatWinding = false;
         bool everyFlatWindingMartinez = true;
         auto& coilForMesher = magnetic.get_mutable_coil();

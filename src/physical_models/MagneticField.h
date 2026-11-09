@@ -351,15 +351,6 @@ class MagneticFieldStrengthDowellModel : public MagneticFieldStrengthModel {
 
 
 
-// Based on Improved Analytical Calculation of High Frequency Winding Losses in Planar Inductors by Xiaohui Wang
-// https://sci-hub.st/10.1109/ECCE.2018.8558397
-class MagneticFieldStrengthWangModel : public MagneticFieldStrengthModel {
-    public:
-        std::string methodName = "Wang";
-        ComplexFieldPoint get_magnetic_field_strength_between_two_points(const FieldPoint& inducingFieldPoint, const FieldPoint& inducedFieldPoint, std::optional<size_t> inducingWireIndex = std::nullopt);
-};
-
-
 // Based on Analysis and Computation of Electric and Magnetic Field Problems By Kenneth John Binns and P. J. Lawrenson
 // https://library.lol/main/78A1F466FA9F3EFBCB6165283FC346B6
 // Equation 3.34 and 5.4

@@ -26,7 +26,7 @@ std::map<WindingLossesModelSets, WindingLossesModelSet> build_registry() {
 
     add({WindingLossesModelSets::LEGACY_DEFAULT, "Legacy default",
          "MKF's historical automatic choice: field model by wire type (LAMMERANER round/litz, BINNS_LAWRENSON "
-         "rectangular and planar, WANG foil), ROSHEN gap fringing, FERREIRA proximity for round/litz, WANG for flat wire.",
+         "rectangular, planar and foil), ROSHEN gap fringing, FERREIRA proximity for round/litz, WANG for flat wire.",
          "Reference behaviour. Known limits: a flat turn's current is counted twice under BINNS_LAWRENSON "
          "with the Wang mesher, residual gaps carry no field, the image lattice holds net current.",
          std::nullopt, Fringing::ROSHEN, historicalSkin,
@@ -51,16 +51,6 @@ std::map<WindingLossesModelSets, WindingLossesModelSet> build_registry() {
          Field::BINNS_LAWRENSON, Fringing::MMF_BOUNDARY, historicalSkin,
          {{WireType::ROUND, Proximity::FERREIRA}, {WireType::LITZ, Proximity::FERREIRA}, {WireType::PLANAR, Proximity::WANG},
           {WireType::RECTANGULAR, Proximity::WANG}, {WireType::FOIL, Proximity::WANG}},
-         {Scope::SINGLE_RECTANGULAR_WINDOW}, true});
-
-    add({WindingLossesModelSets::WANG_PLANAR, "Wang planar",
-         "Wang's field model with its own two-point mesh and Wang proximity: the original calibrated pair for flat "
-         "conductors.",
-         "Field and loss are a calibrated pair: their product scales as width^2/thickness, right near the geometry it "
-         "was tuned on.",
-         Field::WANG, Fringing::ROSHEN,
-         {{WireType::PLANAR, Skin::ALBACH}, {WireType::RECTANGULAR, Skin::KUTKUT}, {WireType::FOIL, Skin::KUTKUT}},
-         {{WireType::PLANAR, Proximity::WANG}, {WireType::RECTANGULAR, Proximity::WANG}, {WireType::FOIL, Proximity::WANG}},
          {Scope::SINGLE_RECTANGULAR_WINDOW}, true});
 
     add({WindingLossesModelSets::SULLIVAN_GAP, "Sullivan gap",
@@ -168,6 +158,11 @@ const WindingLossesModelSet& get_winding_losses_model_set(WindingLossesModelSets
         throw InvalidInputException(ErrorCode::INVALID_INPUT,
             "CUSTOM is not a registered model set: it means the individually selected winding-loss models");
     }
+    if (id == WindingLossesModelSets::WANG_PLANAR) {
+        throw ModelNotAvailableException("The WANG_PLANAR model set was retired with the WANG field model: its edge formulas gave every other "
+                                         "conductor a field that does not fall off with distance. Use NEUTRAL_WINDOW_WANG for Wang proximity "
+                                         "on the neutral-window field");
+    }
     auto it = registry().find(id);
     if (it == registry().end()) {
         throw ModelNotAvailableException("Unknown winding-loss model set " + std::string(magic_enum::enum_name(id)));
@@ -178,7 +173,10 @@ const WindingLossesModelSet& get_winding_losses_model_set(WindingLossesModelSets
 std::vector<WindingLossesModelSets> get_all_winding_losses_model_sets() {
     std::vector<WindingLossesModelSets> all;
     for (auto id : magic_enum::enum_values<WindingLossesModelSets>()) {
-        all.push_back(id);
+        // WANG_PLANAR was retired with the WANG field (2026-11-09); its enum value stays for the ordinals UIs map.
+        if (id != WindingLossesModelSets::WANG_PLANAR) {
+            all.push_back(id);
+        }
     }
     return all;
 }
@@ -223,7 +221,8 @@ MagneticFieldStrengthModels automatic_winding_losses_field_model(Magnetic& magne
         return Field::BINNS_LAWRENSON;
     }
     if (isFoil) {
-        return Field::WANG;
+        // All-foil windings too, since the WANG field was retired (2026-11-09).
+        return Field::BINNS_LAWRENSON;
     }
     for (auto wire : magnetic.get_mutable_coil().get_wires()) {
         if (wire.get_type() == WireType::FOIL) {

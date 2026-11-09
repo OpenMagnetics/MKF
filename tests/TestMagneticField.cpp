@@ -1166,7 +1166,7 @@ namespace {
         magnetic.set_coil(coil);
         auto operatingPoint = inputs.get_operating_point(0);
         settings.reset();
-        for (auto fieldModel : {MagneticFieldStrengthModels::LAMMERANER, MagneticFieldStrengthModels::DOWELL, MagneticFieldStrengthModels::WANG, MagneticFieldStrengthModels::ALBACH}) {
+        for (auto fieldModel : {MagneticFieldStrengthModels::LAMMERANER, MagneticFieldStrengthModels::DOWELL, MagneticFieldStrengthModels::ALBACH}) {
             MagneticField magneticField(fieldModel, MagneticFieldStrengthFringingEffectModels::MMF_BOUNDARY);
             CHECK_THROWS_AS(magneticField.calculate_magnetic_field_strength_field(operatingPoint, magnetic), ModelNotAvailableException);
         }

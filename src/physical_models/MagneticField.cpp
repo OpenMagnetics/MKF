@@ -436,7 +436,11 @@ std::shared_ptr<MagneticFieldStrengthModel> MagneticField::factory(MagneticField
         return std::make_shared<MagneticFieldStrengthLammeranerModel>();
     }
     else if (modelName == MagneticFieldStrengthModels::WANG) {
-        return std::make_shared<MagneticFieldStrengthWangModel>();
+        // Retired 2026-11-09 (Alf): its edge formulas gave every other conductor a field term that does not fall off with
+        // distance, so neighbouring parallel traces read far too much (16 stacked traces, fringing off: 37.7 against
+        // ALBACH's 2.3).
+        throw ModelNotAvailableException("The WANG field model was retired: its edge formulas gave every other conductor a field that does not "
+                                         "fall off with distance. Use BINNS_LAWRENSON; the WANG proximity model runs on any field");
     }
     else if (modelName == MagneticFieldStrengthModels::ALBACH) {
         return std::make_shared<MagneticFieldStrengthAlbach2DModel>();
@@ -965,12 +969,11 @@ WindingWindowMagneticStrengthFieldPhasorOutput MagneticField::calculate_magnetic
         }
     }
     // One point per turn with its complete-cell lattice: a flat conductor is ONE exact rectangle in the Binns-Lawrenson
-    // kernel. The Wang mesher's two full-current points are only correct for the Wang field model, whose own
-    // formulas halve them; any other kernel counts the turn's current twice.
+    // kernel. The Wang mesher's two full-current points were only correct for the retired Wang field model, whose own
+    // formulas halved them; every field model counts the turn's current twice from them.
     std::optional<CoilMesherModels> mesherToUse = coilMesherModel;
     // A toroid's crossings are seen per region of the ring, with the core's replies (CENTER mesher), whatever the wire.
-    // The Wang field model keeps its own mesher: its formulas are written for its paired edge points.
-    if (coreShapeFamily == CoreShapeFamily::T && !mesherToUse && _magneticFieldStrengthModel != MagneticFieldStrengthModels::WANG) {
+    if (coreShapeFamily == CoreShapeFamily::T && !mesherToUse) {
         mesherToUse = CoilMesherModels::CENTER;
     }
     std::optional<SettingsGuard<bool>> completeCellsGuard;
@@ -2656,178 +2659,6 @@ WindingWindowMagneticStrengthFieldPhasorOutput MagneticField::calculate_magnetic
     windingWindowMagneticStrengthFieldOutput.set_method_used(to_string(_magneticFieldStrengthModel));
     windingWindowMagneticStrengthFieldOutput.set_origin(ResultOrigin::SIMULATION);
     return windingWindowMagneticStrengthFieldOutput;
-}
-
-ComplexFieldPoint MagneticFieldStrengthWangModel::get_magnetic_field_strength_between_two_points(const FieldPoint& inducingFieldPoint, const FieldPoint& inducedFieldPoint, std::optional<size_t> inducingWireIndex) {
-    double Hx = 0;
-    double Hy = 0;
-    if (!inducingWireIndex) {
-        return MagneticFieldStrengthLammeranerModel().get_magnetic_field_strength_between_two_points(inducingFieldPoint, inducedFieldPoint);
-    }
-    else {
-        double c = 0;
-        double h = 0;
-        if (_wirePerWinding[inducingWireIndex.value()].get_type() == WireType::FOIL) {
-            c = resolve_dimensional_values(_wirePerWinding[inducingWireIndex.value()].get_conducting_width().value());
-            h = resolve_dimensional_values(_wirePerWinding[inducingWireIndex.value()].get_conducting_height().value());
-        }
-        else {
-            h = resolve_dimensional_values(_wirePerWinding[inducingWireIndex.value()].get_conducting_width().value());
-            c = resolve_dimensional_values(_wirePerWinding[inducingWireIndex.value()].get_conducting_height().value());
-        }
-        double k = c / h;
-        double lambda = 0.01 * k + 0.66;
-
-        if (inducingFieldPoint.get_label() && inducingFieldPoint.get_label().value() == "image") {
-            throw InvalidInputException(ErrorCode::INVALID_INPUT, "Wang Magnetic Field model must be used with his CoilMesher model (got an image-lattice point)");
-        }
-        if (inducedFieldPoint.get_label() && inducingFieldPoint.get_label()) {
-            auto inducingLabel = inducingFieldPoint.get_label().value();
-            auto inducedLabel = inducedFieldPoint.get_label().value();
-            auto current = inducingFieldPoint.get_value();
-            double distanceX = inducingFieldPoint.get_point()[0] - inducedFieldPoint.get_point()[0];
-            double distanceY = inducingFieldPoint.get_point()[1] - inducedFieldPoint.get_point()[1];
-            double distance = hypot(distanceX, distanceY);
-            if (inducedLabel == "widthsample") {
-                // Width samples are generic spatial points, not Wang's paired edge
-                // points, so the label-pair formulas below do not apply. Treat each
-                // Wang inducing point as a filament via Lammeraner. Wang's inducing
-                // points carry the full turn current (its own formulas halve it), so
-                // halve the filament current here to keep the total at I per turn.
-                FieldPoint halfCurrentPoint = inducingFieldPoint;
-                halfCurrentPoint.set_value(current * 0.5);
-                return MagneticFieldStrengthLammeranerModel().get_magnetic_field_strength_between_two_points(halfCurrentPoint, inducedFieldPoint);
-            }
-            if (inducingLabel == "left") {
-                if (inducedLabel == "left") {
-                    double tetha1 = asin(fabs(distanceY) / distance);
-                    Hy = 0.5 * current / (2 * std::numbers::pi * lambda * h) + 0.5 * current * cos(tetha1) / (2 * std::numbers::pi * sqrt(pow(lambda * h, 2) + pow(distanceY, 2)));
-                }
-                else if (inducedLabel == "right") {
-                    double tetha2 = asin(fabs(distanceY) / distance);
-                    Hy = -0.5 * current / (2 * std::numbers::pi * (c - lambda * h)) - 0.5 * current * cos(tetha2) / (2 * std::numbers::pi * sqrt(pow(c - lambda * h, 2) + pow(distanceY, 2)));
-                }
-                else if (inducedLabel == "top") {
-                    if (distanceY > 0) {
-                        Hx = 0;
-                    }
-                    else {
-                        Hx = (current - Hy * 2 * h) / (2 * c);
-                    }
-                }
-                else if (inducedLabel == "bottom") {
-                    if (distanceY > 0) {
-                        Hx = (current - Hy * 2 * h) / (2 * c);
-                    }
-                    else {
-                        Hx = 0;
-                    }
-                }
-                else {
-                    throw InvalidInputException(ErrorCode::INVALID_INPUT, "Wrong inducedLabel: " + inducedLabel);
-                }
-            }
-            else if (inducingLabel == "right") {
-                if (inducedLabel == "right") {
-                    double tetha1 = asin(fabs(distanceY) / distance);
-                    Hy = 0.5 * current / (2 * std::numbers::pi * lambda * h) + 0.5 * current * cos(tetha1) / (2 * std::numbers::pi * sqrt(pow(lambda * h, 2) + pow(distanceY, 2)));
-                }
-                else if (inducedLabel == "left") {
-                    double tetha2 = asin(fabs(distanceY) / distance);
-                    Hy = -0.5 * current / (2 * std::numbers::pi * (c - lambda * h)) - 0.5 * current * cos(tetha2) / (2 * std::numbers::pi * sqrt(pow(c - lambda * h, 2) + pow(distanceY, 2)));
-                }
-                else if (inducedLabel == "bottom") {
-                    if (distanceY > 0) {
-                        Hx = 0;
-                    }
-                    else {
-                        Hx = (current - Hy * 2 * h) / (2 * c);
-                    }
-                }
-                else if (inducedLabel == "top") {
-                    if (distanceY > 0) {
-                        Hx = (current - Hy * 2 * h) / (2 * c);
-                    }
-                    else {
-                        Hx = 0;
-                    }
-                }
-            }
-            else if (inducingLabel == "bottom") {
-                if (inducedLabel == "bottom") {
-                    double tetha1 = asin(fabs(distanceY) / distance);
-                    Hy = 0.5 * current / (2 * std::numbers::pi * lambda * h) + 0.5 * current * cos(tetha1) / (2 * std::numbers::pi * sqrt(pow(lambda * h, 2) + pow(distanceY, 2)));
-                }
-                else if (inducedLabel == "top") {
-                    double tetha2 = asin(fabs(distanceY) / distance);
-                    Hy = -0.5 * current / (2 * std::numbers::pi * (c - lambda * h)) - 0.5 * current * cos(tetha2) / (2 * std::numbers::pi * sqrt(pow(c - lambda * h, 2) + pow(distanceY, 2)));
-                }
-                else if (inducedLabel == "right") {
-                    if (distanceY > 0) {
-                        Hx = 0;
-                    }
-                    else {
-                        Hx = (current - Hy * 2 * h) / (2 * c);
-                    }
-                }
-                else if (inducedLabel == "left") {
-                    if (distanceY > 0) {
-                        Hx = (current - Hy * 2 * h) / (2 * c);
-                    }
-                    else {
-                        Hx = 0;
-                    }
-                }
-                else {
-                    throw InvalidInputException(ErrorCode::INVALID_INPUT, "Wrong inducedLabel: " + inducedLabel);
-                }
-            }
-            else if (inducingLabel == "top") {
-                if (inducedLabel == "top") {
-                    double tetha1 = asin(fabs(distanceY) / distance);
-                    Hy = 0.5 * current / (2 * std::numbers::pi * lambda * h) + 0.5 * current * cos(tetha1) / (2 * std::numbers::pi * sqrt(pow(lambda * h, 2) + pow(distanceY, 2)));
-                }
-                else if (inducedLabel == "bottom") {
-                    double tetha2 = asin(fabs(distanceY) / distance);
-                    Hy = -0.5 * current / (2 * std::numbers::pi * (c - lambda * h)) - 0.5 * current * cos(tetha2) / (2 * std::numbers::pi * sqrt(pow(c - lambda * h, 2) + pow(distanceY, 2)));
-                }
-                else if (inducedLabel == "left") {
-                    if (distanceY > 0) {
-                        Hx = 0;
-                    }
-                    else {
-                        Hx = (current - Hy * 2 * h) / (2 * c);
-                    }
-                }
-                else if (inducedLabel == "right") {
-                    if (distanceY > 0) {
-                        Hx = (current - Hy * 2 * h) / (2 * c);
-                    }
-                    else {
-                        Hx = 0;
-                    }
-                }
-            }
-            else {
-                throw InvalidInputException(ErrorCode::INVALID_INPUT, "Wrong inducingLabel: " + inducingLabel);
-            }
-        }
-        else {
-            throw InvalidInputException(ErrorCode::INVALID_INPUT, "Wang Magnetic Field model must be used with his CoilMesher model");
-        }
-    }
-
-    ComplexFieldPoint complexFieldPoint;
-    complexFieldPoint.set_imaginary(Hy);
-    complexFieldPoint.set_point(inducedFieldPoint.get_point());
-    complexFieldPoint.set_real(Hx);
-    if (inducedFieldPoint.get_turn_index()) {
-        complexFieldPoint.set_turn_index(inducedFieldPoint.get_turn_index().value());
-    }
-    if (inducedFieldPoint.get_turn_length()) {
-        complexFieldPoint.set_turn_length(inducedFieldPoint.get_turn_length().value());
-    }
-    return complexFieldPoint;   
 }
 
 std::pair<double, double> MagneticFieldStrengthBinnsLawrensonModel::get_magnetic_field_strength_components_between_two_points(const FieldPoint& inducingFieldPoint, const FieldPoint& inducedFieldPoint, std::optional<size_t> inducingWireIndex) {

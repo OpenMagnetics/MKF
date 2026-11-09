@@ -502,7 +502,6 @@ namespace TestWindingLossesRound {
         std::vector<std::pair<MagneticFieldStrengthModels, std::string>> fieldModels = {
             {MagneticFieldStrengthModels::ALBACH, "ALBACH"},
             {MagneticFieldStrengthModels::BINNS_LAWRENSON, "BINNS_LAWRENSON"},
-            // {MagneticFieldStrengthModels::WANG, "WANG"},  // Crashes with bad optional access on round wire
             {MagneticFieldStrengthModels::LAMMERANER, "LAMMERANER"}
         };
 
@@ -1145,7 +1144,6 @@ namespace TestWindingLossesPlanar {
         std::vector<std::pair<MagneticFieldStrengthModels, std::string>> fieldModels = {
             {MagneticFieldStrengthModels::ALBACH, "ALBACH"},
             {MagneticFieldStrengthModels::BINNS_LAWRENSON, "BINNS_LAWRENSON"},
-            {MagneticFieldStrengthModels::WANG, "WANG"},
             {MagneticFieldStrengthModels::LAMMERANER, "LAMMERANER"}
         };
 
@@ -1766,7 +1764,6 @@ namespace TestWindingLossesModelComparison {
         std::vector<std::pair<MagneticFieldStrengthModels, std::string>> fieldModels = {
             {MagneticFieldStrengthModels::ALBACH, "ALBACH"},
             {MagneticFieldStrengthModels::BINNS_LAWRENSON, "BINNS_LAWRENSON"},
-            {MagneticFieldStrengthModels::WANG, "WANG"},
             {MagneticFieldStrengthModels::LAMMERANER, "LAMMERANER"}
         };
 
@@ -1831,14 +1828,6 @@ namespace TestWindingLossesModelComparison {
             // Print header
 
             for (const auto& [fieldModel, fieldModelName] : fieldModels) {
-                // WANG model should only be used for RECTANGULAR, FOIL, and PLANAR wire types
-                if (fieldModel == MagneticFieldStrengthModels::WANG &&
-                    config.wireType != WireTypeClass::RECTANGULAR &&
-                    config.wireType != WireTypeClass::FOIL &&
-                    config.wireType != WireTypeClass::PLANAR) {
-                    continue;  // Skip WANG for incompatible wire types
-                }
-
                 for (const auto& [fringingModel, fringingModelName] : fringingModels) {
                     std::string combinedName = fieldModelName + "+" + fringingModelName;
                     double totalError = 0;
@@ -2527,7 +2516,6 @@ TEST_CASE("Ultimate_Model_Combination_Comparison_All_4_Types", "[physical-model]
              {MagneticFieldStrengthModels::BINNS_LAWRENSON, "Binns_Lawrenson"},
              {MagneticFieldStrengthModels::LAMMERANER, "Lammeraner"},
              {MagneticFieldStrengthModels::DOWELL, "Dowell_HField"},
-             {MagneticFieldStrengthModels::WANG, "Wang_HField"},
              {MagneticFieldStrengthModels::ALBACH, "Albach_HField"}}) {
         try {
             MagneticField::factory(candidateModel);
@@ -3256,10 +3244,6 @@ TEST_CASE("Test_Winding_Losses_Model_Set_Refuses_What_It_Does_Not_Model", "[phys
     WindingLossesModels neutral;
     neutral.modelSet = WindingLossesModelSets::NEUTRAL_WINDOW;
     CHECK_THROWS_AS(model_set_turn_losses(WindingLossesTestData::createTenTurnsRoundToroidalConfig(), neutral), ModelNotAvailableException);
-
-    WindingLossesModels wangPlanar;
-    wangPlanar.modelSet = WindingLossesModelSets::WANG_PLANAR;
-    CHECK_THROWS_AS(model_set_turn_losses(WindingLossesTestData::createOneTurnRoundStackedConfig(), wangPlanar), ModelNotAvailableException);
 
     WindingLossesModels toroid;
     toroid.modelSet = WindingLossesModelSets::TOROID;
@@ -5639,10 +5623,7 @@ TEST_CASE("Debug_Abt1759_Foil_Field_Probe", "[debug][abt1759-foil][.]") {
         from_json(json(field), fieldModel);
         MagneticFieldStrengthFringingEffectModels fringingModel;
         from_json(json(fringing), fringingModel);
-        std::optional<CoilMesherModels> mesher;
-        if (fieldModel != MagneticFieldStrengthModels::WANG) {
-            mesher = CoilMesherModels::CENTER;  // as WindingLosses meshes inducing turns for an all-MARTINEZ coil
-        }
+        std::optional<CoilMesherModels> mesher = CoilMesherModels::CENTER;  // as WindingLosses meshes inducing turns for an all-MARTINEZ coil
         MagneticField magneticField(fieldModel, fringingModel);
         auto output = magneticField.calculate_magnetic_field_strength_field(operatingPoint, magnetic, std::nullopt, std::nullopt, mesher);
         const auto fields = output.get_field_per_frequency();
