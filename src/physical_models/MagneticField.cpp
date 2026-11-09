@@ -236,7 +236,8 @@ struct FlatCellFieldOperator {
 // Defined with the parallel current split, which solves the same sources. skipPoint: points that take no field.
 std::shared_ptr<const FlatCellFieldOperator> build_flat_cell_field_operator(const ParallelCurrentSplit& split, const std::vector<Turn>& turns,
                                                                             std::vector<Wire>& wirePerWinding, const std::vector<size_t>& windingPerTurn, Core& core,
-                                                                            const std::vector<FieldPoint>& inducedPoints, const std::vector<bool>& skipPoint);
+                                                                            const std::vector<FieldPoint>& inducedPoints, const std::vector<bool>& skipPoint,
+                                                                            const std::optional<AxisymmetricWindow>& axisymmetricWindow);
 
 } // namespace
 
@@ -541,6 +542,50 @@ double get_magnetic_field_strength_gap_per_ampere_turn(Magnetic& magnetic, doubl
     return 1.0 / (reluctance * effectiveArea * Constants().vacuumPermeability);
 }
 
+namespace {
+// A ring about the post's axis seen from a section point (x, y): x is the radius, so a point at x < 0 is the same ring
+// read from the other side of the axis (H_r changes sign with the direction of x). On the axis H_r = 0.
+std::pair<double, double> axisymmetric_ring_field(double current, double ringRadius, double ringHeight, double pointX, double pointY) {
+    if (pointX > 0) {
+        return AxisymmetricWindow::ring_field(current, ringRadius, ringHeight, pointX, pointY);
+    }
+    if (pointX < 0) {
+        auto [fieldR, fieldZ] = AxisymmetricWindow::ring_field(current, ringRadius, ringHeight, -pointX, pointY);
+        return {-fieldR, fieldZ};
+    }
+    const double dz = pointY - ringHeight;
+    const double distanceSquared = ringRadius * ringRadius + dz * dz;
+    return {0.0, current * ringRadius * ringRadius / (2 * distanceSquared * std::sqrt(distanceSquared))};
+}
+
+// A flat conductor in a round-post window: its planar rectangle's exact field plus this, the ring's curvature part at
+// its centre (the ring minus MKF's planar line current there), read no closer than minimumDistance.
+std::pair<double, double> axisymmetric_curvature_field(double current, double ringRadius, double ringHeight, double pointX, double pointY, double minimumDistance) {
+    if (pointX > 0) {
+        return AxisymmetricWindow::ring_minus_line_field(current, ringRadius, ringHeight, pointX, pointY, minimumDistance);
+    }
+    auto [ringX, ringY] = axisymmetric_ring_field(current, ringRadius, ringHeight, pointX, pointY);
+    const double distanceX = ringRadius - pointX;
+    const double distanceY = ringHeight - pointY;
+    const double divisor = 2 * std::numbers::pi * (distanceX * distanceX + distanceY * distanceY);
+    return {ringX + current * distanceY / divisor, ringY - current * distanceX / divisor};
+}
+
+// A rectangle's current as rings, for a round-post window's wall mismatch: four Gauss-Legendre points along its longer
+// side (its curvature part is smooth on the scale of the wall correction).
+void add_rectangle_to_wall_mismatch(const AxisymmetricWindow& window, AxisymmetricWindow::WallMismatch& mismatch, double current, double centreX, double centreY,
+                                    double halfWidth, double halfHeight) {
+    static constexpr double nodes[4] = {-0.8611363115940526, -0.3399810435848563, 0.3399810435848563, 0.8611363115940526};
+    static constexpr double weights[4] = {0.3478548451374538, 0.6521451548625461, 0.6521451548625461, 0.3478548451374538};
+    const bool alongX = halfWidth >= halfHeight;
+    for (size_t node = 0; node < 4; ++node) {
+        const double x = centreX + (alongX ? halfWidth * nodes[node] : 0.0);
+        const double y = centreY + (alongX ? 0.0 : halfHeight * nodes[node]);
+        window.add_ring(mismatch, current * 0.5 * weights[node], x, y);
+    }
+}
+}  // namespace
+
 // ABT #1304: field of a uniform current sheet on the segment start -> end, total current `current` per unit depth, in
 // the sign convention of the Binns-Lawrenson filament kernel (Hx = -I dy / (2 pi r^2), dy = source - point). With u, v
 // the point's coordinates along and normal to the segment (length L, tangent t, normal n = (-t_y, t_x)):
@@ -575,6 +620,23 @@ std::pair<double, double> MagneticFieldStrengthMmfBoundaryModel::calculate_sheet
 
 
 void MagneticFieldStrengthMmfBoundaryModel::setup_window_boundary(Magnetic magnetic, std::optional<OperatingPoint> operatingPoint) {
+    _axisymmetricWindow.reset();
+    {
+        auto core = magnetic.get_core();
+        if (!core.get_processed_description()) {
+            core.process_data();
+            magnetic.set_core(core);
+        }
+        if (AxisymmetricWindow::applies(core, magnetic.get_coil())) {
+            // The round-post window (AxisymmetricWindow::wall_sources): the walls' MMF is the correction's boundary data.
+            _axisymmetricWindow = AxisymmetricWindow::from_core(core);
+            _axisymmetricWallSources = _axisymmetricWindow->wall_sources(CoilMesher::generate_window_wall_sheet_sources(magnetic, operatingPoint));
+            _sheets.clear();
+            _sheetMultipoles.clear();
+            _isSetUp = true;
+            return;
+        }
+    }
     _sheets = CoilMesher::generate_window_wall_sheets(magnetic, operatingPoint);
     // ABT #1645: a uniform sheet of length L along the unit tangent t is the filament smeared over zeta = s t,
     // |s| < L / 2, so its normalised moments are m_k = t^k (L / 2)^k / (k + 1) for even k (odd ones vanish), and
@@ -619,6 +681,10 @@ void MagneticFieldStrengthMmfBoundaryModel::setup_window_boundary(Magnetic magne
 std::pair<double, double> MagneticFieldStrengthMmfBoundaryModel::get_window_boundary_field(double pointX, double pointY, double netAmpereTurns) const {
     if (!_isSetUp) {
         throw CalculationException(ErrorCode::CALCULATION_INVALID_RESULT, "MMF_BOUNDARY: get_window_boundary_field called before setup_window_boundary");
+    }
+    if (_axisymmetricWindow) {
+        auto [fieldX, fieldY] = _axisymmetricWindow->wall_field(_axisymmetricWallSources, pointX, pointY);
+        return {fieldX * netAmpereTurns, fieldY * netAmpereTurns};
     }
     double fieldX = 0;
     double fieldY = 0;
@@ -709,6 +775,23 @@ std::pair<double, double> MagneticFieldStrengthMmfBoundaryModel::get_window_boun
                                                                                                     std::optional<int64_t> inducedTurn, std::vector<ScreenedFieldSum>& screened) const {
     if (!_isSetUp) {
         throw CalculationException(ErrorCode::CALCULATION_INVALID_RESULT, "MMF_BOUNDARY: get_window_boundary_field_screened called before setup_window_boundary");
+    }
+    if (_axisymmetricWindow) {
+        // A round-post window: each plate ring is screened by the strips between it and the point, and the
+        // correction's post and outer parts by the strips between the point and that wall, at the point's height.
+        double fieldX = 0;
+        double fieldY = 0;
+        for (const auto& part : _axisymmetricWindow->wall_field_parts(_axisymmetricWallSources, pointX, pointY)) {
+            auto crossed = strips_between(strips, part.sourceX, part.sourceY, pointX, pointY, std::nullopt, inducedTurn);
+            if (crossed.empty()) {
+                fieldX += part.fieldX;
+                fieldY += part.fieldY;
+            }
+            else {
+                add_screened(screened, 0, std::move(crossed), part.fieldX, part.fieldY);
+            }
+        }
+        return {fieldX, fieldY};
     }
     // Every sheet whole and unscreened first (the fast path); a sheet with strips in the way is then taken out
     // whole and put back piece by piece.
@@ -904,6 +987,14 @@ WindingWindowMagneticStrengthFieldPhasorOutput MagneticField::calculate_magnetic
     // (the #182 exclusion guards only against filament stand-ins) and they are kept on ungapped cores too.
     const bool exactFlatInducing = windowBoundaryModel ||
         (mesherToUse && mesherToUse.value() == CoilMesherModels::CENTER && _magneticFieldStrengthModel == MagneticFieldStrengthModels::BINNS_LAWRENSON);
+    // A round-post window on the neutral path is a solid of revolution (AxisymmetricWindow): rings imaged in the plates,
+    // the post face and the outer wall met by the window's correction field. The mesher and the wall sources decide it
+    // by the same rule.
+    std::optional<AxisymmetricWindow> axisymmetricWindow;
+    if (windowBoundaryModel && AxisymmetricWindow::applies(core, magnetic.get_coil())) {
+        axisymmetricWindow = AxisymmetricWindow::from_core(core);
+    }
+    _model->_axisymmetricWindow = axisymmetricWindow;
 
     // MAS excitation convention (2026-09-24): direction by isolation side, not by index.
     std::vector<int8_t> currentDirectionPerWinding;
@@ -1315,7 +1406,9 @@ WindingWindowMagneticStrengthFieldPhasorOutput MagneticField::calculate_magnetic
             }
             key.strings.push_back(point.get_label() ? "1" + point.get_label().value() : "0");
         };
-        key.numbers = {static_cast<double>(_magneticFieldStrengthModel), multiWindowCore ? 1.0 : 0.0, windowBoundaryModel ? 1.0 : 0.0, exactFlatInducing ? 1.0 : 0.0, coreColumnWidth, coreWidth,
+        key.numbers = {static_cast<double>(_magneticFieldStrengthModel), multiWindowCore ? 1.0 : 0.0, windowBoundaryModel ? 1.0 : 0.0, exactFlatInducing ? 1.0 : 0.0,
+                       axisymmetricWindow ? 1.0 : 0.0, axisymmetricWindow ? axisymmetricWindow->post_radius() : 0.0, axisymmetricWindow ? axisymmetricWindow->outer_radius() : 0.0,
+                       axisymmetricWindow ? axisymmetricWindow->bottom() : 0.0, axisymmetricWindow ? axisymmetricWindow->top() : 0.0, coreColumnWidth, coreWidth,
                        static_cast<double>(coreShapeFamily), _model->_windingWindowBreadth, static_cast<double>(numberWindings), static_cast<double>(numberGroups)};
         for (size_t windingIndex = 0; windingIndex < numberWindings; ++windingIndex) {
             json wireJson;
@@ -1500,12 +1593,15 @@ WindingWindowMagneticStrengthFieldPhasorOutput MagneticField::calculate_magnetic
         const bool binnsLawrensonKernel = _magneticFieldStrengthModel == MagneticFieldStrengthModels::BINNS_LAWRENSON;
         std::vector<std::optional<RectangleFieldKernel>> rectangleKernelPerWinding(numberWindings);
         std::vector<double> roundRadiusSquaredPerWinding(numberWindings, 0.0);
+        std::vector<double> curvatureDistancePerWinding(numberWindings, 0.0);
         if (binnsLawrensonKernel) {
             for (size_t windingIndex = 0; windingIndex < numberWindings; ++windingIndex) {
                 const auto& wire = _wirePerWinding[windingIndex];
                 if (wire.get_type() != WireType::ROUND && wire.get_type() != WireType::LITZ) {
-                    rectangleKernelPerWinding[windingIndex] = RectangleFieldKernel(resolve_dimensional_values(wire.get_conducting_width().value()) / 2,
-                                                                                   resolve_dimensional_values(wire.get_conducting_height().value()) / 2);
+                    const double halfWidth = resolve_dimensional_values(wire.get_conducting_width().value()) / 2;
+                    const double halfHeight = resolve_dimensional_values(wire.get_conducting_height().value()) / 2;
+                    rectangleKernelPerWinding[windingIndex] = RectangleFieldKernel(halfWidth, halfHeight);
+                    curvatureDistancePerWinding[windingIndex] = std::hypot(halfWidth, halfHeight);
                 }
                 else {
                     double wireRadius = _wireMaxOuterWidth[windingIndex] / 2;
@@ -1550,14 +1646,26 @@ WindingWindowMagneticStrengthFieldPhasorOutput MagneticField::calculate_magnetic
                 if (binnsLawrensonKernel && !source.rotated) {
                     if (rectangleKernelPerWinding[source.windingIndex]) {
                         std::tie(inducedFieldX, inducedFieldY) = rectangleKernelPerWinding[source.windingIndex]->field(inducedX - source.x, inducedY - source.y, source.value);
+                        if (axisymmetricWindow) {
+                            auto [curvatureX, curvatureY] = axisymmetric_curvature_field(source.value, source.x, source.y, inducedX, inducedY,
+                                                                                         curvatureDistancePerWinding[source.windingIndex]);
+                            inducedFieldX += curvatureX;
+                            inducedFieldY += curvatureY;
+                        }
                     }
                     else {
                         // The filament with its uniform-density interior, as in the model.
                         double distanceX = source.x - inducedX;
                         double distanceY = source.y - inducedY;
-                        double divisor = 2 * std::numbers::pi * std::max(distanceY * distanceY + distanceX * distanceX, roundRadiusSquaredPerWinding[source.windingIndex]);
-                        inducedFieldX = -source.value * distanceY / divisor;
-                        inducedFieldY = source.value * distanceX / divisor;
+                        double squaredDistance = distanceY * distanceY + distanceX * distanceX;
+                        if (axisymmetricWindow && squaredDistance > roundRadiusSquaredPerWinding[source.windingIndex]) {
+                            std::tie(inducedFieldX, inducedFieldY) = axisymmetric_ring_field(source.value, source.x, source.y, inducedX, inducedY);
+                        }
+                        else {
+                            double divisor = 2 * std::numbers::pi * std::max(squaredDistance, roundRadiusSquaredPerWinding[source.windingIndex]);
+                            inducedFieldX = -source.value * distanceY / divisor;
+                            inducedFieldY = source.value * distanceX / divisor;
+                        }
                     }
                 }
                 else {
@@ -1581,6 +1689,79 @@ WindingWindowMagneticStrengthFieldPhasorOutput MagneticField::calculate_magnetic
                 }
                 fieldPerWinding[source.groupIndex].first += inducedFieldX;
                 fieldPerWinding[source.groupIndex].second += inducedFieldY;
+            }
+        }
+        if (axisymmetricWindow) {
+            // The post face and the outer wall of a round-post window: per current group, the correction field that
+            // cancels the tangential H its rings (with their plate images) leave on the two cylinders. It is the core's
+            // reply, so every turn sees it, its own group's included, as it sees its own images.
+            // With foil, each group's correction is split by wall: the post face's reply is screened by the strips
+            // between the point and the post at its height, the outer wall's by those between it and the outer wall.
+
+            std::vector<AxisymmetricWindow::Correction> correctionPerGroup(numberGroups);
+            std::vector<bool> groupHasSources(numberGroups, false);
+            {
+                std::vector<AxisymmetricWindow::WallMismatch> mismatchPerGroup(numberGroups, axisymmetricWindow->empty_mismatch());
+                for (const auto& source : sources) {
+                    if (source.isImage) {
+                        continue;
+                    }
+                    axisymmetricWindow->add_ring(mismatchPerGroup[source.groupIndex], source.value, source.x, source.y);
+                    groupHasSources[source.groupIndex] = true;
+                }
+                for (size_t groupIndex = 0; groupIndex < numberGroups; ++groupIndex) {
+                    if (groupHasSources[groupIndex]) {
+                        correctionPerGroup[groupIndex] = axisymmetricWindow->solve(mismatchPerGroup[groupIndex]);
+                    }
+                }
+            }
+            for (size_t inducedIndex = 0; inducedIndex < inducedData.size(); ++inducedIndex) {
+                const auto& inducedFieldPoint = inducedData[inducedIndex];
+                const auto inducedLabel = inducedFieldPoint.get_label();
+                if (!exactFlatInducing && inducedLabel && inducedLabel.value() == "widthsample") {
+                    continue;
+                }
+                if (!inducedFieldPoint.get_turn_index() && is_inside_core(inducedFieldPoint, coreColumnWidth, coreWidth, coreShapeFamily)) {
+                    continue;
+                }
+                const double inducedX = inducedFieldPoint.get_point()[0];
+                const double radius = std::abs(inducedX);
+                if (!axisymmetricWindow->contains(radius, inducedFieldPoint.get_point()[1])) {
+                    continue;
+                }
+                const double inducedY = inducedFieldPoint.get_point()[1];
+                const auto basis = axisymmetricWindow->basis_at(radius, inducedY);
+                auto& fieldPerWinding = entry.unitFieldPerInducedPointPerWinding[inducedIndex];
+                std::vector<uint32_t> crossedToPost;
+                std::vector<uint32_t> crossedToOuter;
+                if (!screeningStrips.empty()) {
+                    const double side = inducedX < 0 ? -1.0 : 1.0;
+                    const auto inducedTurnIndex = inducedFieldPoint.get_turn_index();
+                    crossedToPost = strips_between(screeningStrips, side * axisymmetricWindow->post_radius(), inducedY, inducedX, inducedY, std::nullopt, inducedTurnIndex);
+                    crossedToOuter = strips_between(screeningStrips, side * axisymmetricWindow->outer_radius(), inducedY, inducedX, inducedY, std::nullopt, inducedTurnIndex);
+                }
+                for (size_t groupIndex = 0; groupIndex < numberGroups; ++groupIndex) {
+                    if (!groupHasSources[groupIndex]) {
+                        continue;
+                    }
+                    if (!crossedToPost.empty() || !crossedToOuter.empty()) {
+                        const auto parts = AxisymmetricWindow::correction_field_by_wall(correctionPerGroup[groupIndex], basis);
+                        for (const auto& [part, crossed] : {std::pair{parts.post, &crossedToPost}, std::pair{parts.outer, &crossedToOuter}}) {
+                            const double partX = inducedX < 0 ? -part.first : part.first;
+                            if (crossed->empty()) {
+                                fieldPerWinding[groupIndex].first += partX;
+                                fieldPerWinding[groupIndex].second += part.second;
+                            }
+                            else {
+                                add_screened(entry.screenedPerInducedPoint[inducedIndex], groupIndex, std::vector<uint32_t>(*crossed), partX, part.second);
+                            }
+                        }
+                        continue;
+                    }
+                    auto [correctionR, correctionZ] = AxisymmetricWindow::correction_field(correctionPerGroup[groupIndex], basis);
+                    fieldPerWinding[groupIndex].first += inducedX < 0 ? -correctionR : correctionR;
+                    fieldPerWinding[groupIndex].second += correctionZ;
+                }
             }
         }
         for (size_t windingIndex = 0; windingIndex < numberGroups; ++windingIndex) {
@@ -1630,7 +1811,8 @@ WindingWindowMagneticStrengthFieldPhasorOutput MagneticField::calculate_magnetic
         for (size_t pointIndex = 0; pointIndex < inducedData.size(); ++pointIndex) {
             skipPoint[pointIndex] = !inducedData[pointIndex].get_turn_index() && is_inside_core(inducedData[pointIndex], coreColumnWidth, coreWidth, coreShapeFamily);
         }
-        flatCellOperator = build_flat_cell_field_operator(parallelCurrentSplit.value(), turns, _wirePerWinding, windingIndexPerTurn, core, inducedData, skipPoint);
+        flatCellOperator = build_flat_cell_field_operator(parallelCurrentSplit.value(), turns, _wirePerWinding, windingIndexPerTurn, core, inducedData, skipPoint,
+                                                          axisymmetricWindow);
     }
     // ABT #1645: per induced point, the wall field split by the foil strips it crosses (filled on first use).
     std::vector<std::optional<std::pair<std::pair<double, double>, std::vector<ScreenedFieldSum>>>> wallScreeningPerInducedPoint;
@@ -2660,6 +2842,12 @@ std::pair<double, double> MagneticFieldStrengthBinnsLawrensonModel::get_magnetic
             double divisor = 2 * std::numbers::pi * std::max(pow(distanceY, 2) + pow(distanceX, 2), wireRadius * wireRadius);
             Hx = -inducingFieldPoint.get_value() * (distanceY) / divisor;
             Hy = inducingFieldPoint.get_value() * (distanceX) / divisor;
+            // A round-post window: the turn is a ring. Inside the wire the planar interior field stands (a ring is a
+            // line on the scale of its own section).
+            if (_axisymmetricWindow && pow(distanceY, 2) + pow(distanceX, 2) > wireRadius * wireRadius) {
+                std::tie(Hx, Hy) = axisymmetric_ring_field(inducingFieldPoint.get_value(), inducingFieldPoint.get_point()[0], inducingFieldPoint.get_point()[1],
+                                                           inducedFieldPoint.get_point()[0], inducedFieldPoint.get_point()[1]);
+            }
             if (std::isnan(Hx) || std::isnan(Hy)) {
                 throw NaNResultException("NaN found in Binns Lawrenson's model for magnetic field");
             }
@@ -2669,6 +2857,10 @@ std::pair<double, double> MagneticFieldStrengthBinnsLawrensonModel::get_magnetic
         double divisor = 2 * std::numbers::pi * (pow(distanceY, 2) + pow(distanceX, 2));
         Hx = -inducingFieldPoint.get_value() * (distanceY) / divisor;
         Hy = inducingFieldPoint.get_value() * (distanceX) / divisor;
+        if (_axisymmetricWindow) {
+            std::tie(Hx, Hy) = axisymmetric_ring_field(inducingFieldPoint.get_value(), inducingFieldPoint.get_point()[0], inducingFieldPoint.get_point()[1],
+                                                       inducedFieldPoint.get_point()[0], inducedFieldPoint.get_point()[1]);
+        }
         if (std::isnan(Hx) || std::isnan(Hy)) {
             throw NaNResultException("NaN found in Binns Lawrenson's model for magnetic field");
         }
@@ -2708,6 +2900,14 @@ std::pair<double, double> MagneticFieldStrengthBinnsLawrensonModel::get_magnetic
             lastKernel = RectangleFieldKernel(a, b);
         }
         std::tie(Hx, Hy) = lastKernel.field(x, y, inducingFieldPoint.get_value());
+        if (_axisymmetricWindow && !inducingFieldPoint.get_rotation()) {
+            // A round-post window: the planar rectangle plus the ring's curvature part, read at the conductor's centre.
+            auto [curvatureX, curvatureY] = axisymmetric_curvature_field(inducingFieldPoint.get_value(), inducingFieldPoint.get_point()[0],
+                                                                                      inducingFieldPoint.get_point()[1], inducedFieldPoint.get_point()[0],
+                                                                                      inducedFieldPoint.get_point()[1], std::hypot(a, b));
+            Hx += curvatureX;
+            Hy += curvatureY;
+        }
         if (std::isnan(Hx) || std::isnan(Hy)) {
             throw NaNResultException("NaN found in Binns Lawrenson's model for magnetic field");
         }
@@ -3925,9 +4125,10 @@ double flat_face_sign(bool wideAlongX, int kind) {
 }
 
 std::vector<FlatCellSource> build_flat_cell_sources(const std::vector<FlatTurnCells>& flatTurns, const std::vector<Turn>& turns, std::vector<Wire>& wirePerWinding,
-                                                    const std::vector<size_t>& windingPerTurn, Core& core) {
+                                                    const std::vector<size_t>& windingPerTurn, Core& core, bool axisymmetricWindow) {
     std::vector<FlatCellSource> sources;
     CoilMesherCenterModel mesher;
+    mesher.axisymmetricWindow = axisymmetricWindow;
     size_t globalCell = 0;
     for (size_t flatIndex = 0; flatIndex < flatTurns.size(); ++flatIndex) {
         const auto& flat = flatTurns[flatIndex];
@@ -3976,16 +4177,19 @@ std::vector<FlatCellSource> build_flat_cell_sources(const std::vector<FlatTurnCe
 
 std::shared_ptr<const FlatCellFieldOperator> build_flat_cell_field_operator(const ParallelCurrentSplit& split, const std::vector<Turn>& turns,
                                                                             std::vector<Wire>& wirePerWinding, const std::vector<size_t>& windingPerTurn, Core& core,
-                                                                            const std::vector<FieldPoint>& inducedPoints, const std::vector<bool>& skipPoint) {
+                                                                            const std::vector<FieldPoint>& inducedPoints, const std::vector<bool>& skipPoint,
+                                                                            const std::optional<AxisymmetricWindow>& axisymmetricWindow) {
     constexpr double tolerance = FlatTurnCells::operatorTolerance;  // the split's own operator accuracy
-    const auto sources = build_flat_cell_sources(split.flatTurns, turns, wirePerWinding, windingPerTurn, core);
+    const auto sources = build_flat_cell_sources(split.flatTurns, turns, wirePerWinding, windingPerTurn, core, axisymmetricWindow.has_value());
     // The operators depend on the sources and the points alone, not on frequency or temperature: a repeated call on the
     // same design reuses them from a per-thread cache, keyed by every input they are computed from and compared exactly.
     // Only operators of moderate size are kept (64 MB), so a large design leaves no memory behind.
     constexpr size_t maximumCachedValues = 8 * 1024 * 1024;
     std::vector<double> key;
     key.reserve(16 * sources.size() + 4 * sources.size() * sources.front().images.size() + 5 * inducedPoints.size());
-    key.insert(key.end(), {static_cast<double>(sources.size()), static_cast<double>(inducedPoints.size()), tolerance});
+    key.insert(key.end(), {static_cast<double>(sources.size()), static_cast<double>(inducedPoints.size()), tolerance, axisymmetricWindow ? 1.0 : 0.0,
+                           axisymmetricWindow ? axisymmetricWindow->post_radius() : 0.0, axisymmetricWindow ? axisymmetricWindow->outer_radius() : 0.0,
+                           axisymmetricWindow ? axisymmetricWindow->bottom() : 0.0, axisymmetricWindow ? axisymmetricWindow->top() : 0.0});
     for (const auto& source : sources) {
         key.insert(key.end(), {static_cast<double>(source.flatIndex), static_cast<double>(source.cellIndex), static_cast<double>(source.kind),
                                static_cast<double>(source.turnIndex), source.sign, source.kernel.a, source.kernel.b, source.section.x, source.section.y,
@@ -4052,8 +4256,43 @@ std::shared_ptr<const FlatCellFieldOperator> build_flat_cell_field_operator(cons
         columnPoints[cell] = {section.x, section.y};
         columnPoints[numberCells + cell] = {section.x, section.y};
     }
-    // The field at a point of the sources of a column. `include` picks the images taken (all of them for the operator).
-    auto column_field = [&](size_t row, size_t column, const auto& include) {
+    // A round-post window: every source is a ring (its rectangle plus the ring's curvature part), and per column the
+    // correction meeting the post face and the outer wall for its conductors (the images are the plates').
+    std::vector<AxisymmetricWindow::Correction> correctionPerColumn;
+    std::vector<std::optional<AxisymmetricWindow::PointBasis>> basisPerRow;
+    if (axisymmetricWindow) {
+        correctionPerColumn.resize(2 * numberCells);
+        for (size_t column = 0; column < 2 * numberCells; ++column) {
+            auto mismatch = axisymmetricWindow->empty_mismatch();
+            std::vector<size_t> columnSources;
+            if (column < numberCells) {
+                columnSources.push_back(cellSourcePerCell[column]);
+            }
+            else {
+                columnSources.assign(faceSourcesPerCell[column - numberCells].begin(), faceSourcesPerCell[column - numberCells].end());
+            }
+            for (size_t sourceIndex : columnSources) {
+                const auto& source = sources[sourceIndex];
+                for (const auto& image : source.images) {
+                    if (!image.isImage) {
+                        add_rectangle_to_wall_mismatch(axisymmetricWindow.value(), mismatch, image.weight * source.sign, image.x, image.y,
+                                                       source.section.halfWidth, source.section.halfHeight);
+                    }
+                }
+            }
+            correctionPerColumn[column] = axisymmetricWindow->solve(mismatch);
+        }
+        basisPerRow.resize(pointPerRow.size());
+        for (size_t row = 0; row < pointPerRow.size(); ++row) {
+            const auto& point = inducedPoints[pointPerRow[row]].get_point();
+            if (axisymmetricWindow->contains(std::abs(point[0]), point[1])) {
+                basisPerRow[row] = axisymmetricWindow->basis_at(std::abs(point[0]), point[1]);
+            }
+        }
+    }
+    // The field at a point of the sources of a column. `include` picks the images taken (all of them for the operator,
+    // which alone takes the wall correction: it is the core's reply, never taken back out).
+    auto column_field = [&](size_t row, size_t column, const auto& include, bool withCorrection = false) {
         const auto& point = inducedPoints[pointPerRow[row]];
         const double x = point.get_point()[0];
         const double y = point.get_point()[1];
@@ -4070,6 +4309,12 @@ std::shared_ptr<const FlatCellFieldOperator> build_flat_cell_field_operator(cons
                 auto [hx, hy] = source.kernel.field(dx, dy, image.weight * source.sign);
                 fieldX += hx;
                 fieldY += hy;
+                if (axisymmetricWindow) {
+                    auto [curvatureX, curvatureY] = axisymmetric_curvature_field(image.weight * source.sign, image.x, image.y, x, y,
+                                                                                 std::hypot(source.kernel.a, source.kernel.b));
+                    fieldX += curvatureX;
+                    fieldY += curvatureY;
+                }
             }
         };
         if (column < numberCells) {
@@ -4080,6 +4325,11 @@ std::shared_ptr<const FlatCellFieldOperator> build_flat_cell_field_operator(cons
                 add_source(face);
             }
         }
+        if (withCorrection && axisymmetricWindow && basisPerRow[row]) {
+            auto [correctionR, correctionZ] = AxisymmetricWindow::correction_field(correctionPerColumn[column], basisPerRow[row].value());
+            fieldX += x < 0 ? -correctionR : correctionR;
+            fieldY += correctionZ;
+        }
         if (std::isnan(fieldX) || std::isnan(fieldY)) {
             throw NaNResultException("Width cells: NaN field of a cell source");
         }
@@ -4088,7 +4338,7 @@ std::shared_ptr<const FlatCellFieldOperator> build_flat_cell_field_operator(cons
     auto every_image = [](const FlatCellSource&, const FlatCellSource::Image&, double, double) { return true; };
     {
         auto components = HierarchicalMatrix::build_set(rowPoints, columnPoints, [&](size_t row, size_t column, double* values) {
-            const auto [fieldX, fieldY] = column_field(row, column, every_image);
+            const auto [fieldX, fieldY] = column_field(row, column, every_image, true);
             values[0] = fieldX;
             values[1] = fieldY;
         }, 2, tolerance);
@@ -4403,6 +4653,7 @@ std::optional<ParallelCurrentSplit> MagneticField::calculate_parallel_current_sp
     std::vector<WindowWallSheet> sheets;
     if (impedanceModel) {
         CoilMesherCenterModel mesher;
+        mesher.axisymmetricWindow = settings.get_magnetic_field_mirroring_neutral_cells() && AxisymmetricWindow::applies(core, magnetic.get_coil());
         for (size_t turnIndex = 0; turnIndex < turns.size(); ++turnIndex) {
             const auto& turn = turns[turnIndex];
             auto& wire = wires[windingPerTurn[turnIndex]];
@@ -4452,6 +4703,62 @@ std::optional<ParallelCurrentSplit> MagneticField::calculate_parallel_current_sp
             }
         }
 
+        // A round-post window (AxisymmetricWindow): the strands are rings. Turn t links, per unit current of turn t',
+        // the flux of t' (its ring and plate images, exact at the section centres, with the sections' own mean
+        // distance in place of the centres' for near pairs) plus that of the correction meeting the two cylinders, and
+        // per ampere-turn of net MMF that of the wall sources. Every flux is read from one point of the post face, so
+        // the flux the post carries -- linked by every turn alike, the magnetizing flux -- is left out.
+        if (AxisymmetricWindow::applies(core, magnetic.get_coil())) {
+            const auto window = AxisymmetricWindow::from_core(core);
+            const double referenceRadius = window.post_radius();
+            const double referenceHeight = window.bottom();
+            const double mu0 = Constants().vacuumPermeability;
+            auto flux_between = [&](const SplitSection& target, const SplitSection& source, bool self) {
+                if (self) {
+                    // A ring of section S about radius r: mu0 r (ln(8 r) - 2 - <ln|p - q|>_SS), the thin-ring limit.
+                    return mu0 * target.x * (std::log(8 * target.x) - 2 - split_mean_log(target, target));
+                }
+                double flux = AxisymmetricWindow::ring_flux(source.x, source.y, target.x, target.y);
+                const double centreDistance = std::hypot(target.x - source.x, target.y - source.y);
+                if (centreDistance > 0) {
+                    flux += mu0 * std::sqrt(target.x * source.x) * (std::log(centreDistance) - split_mean_log(target, source));
+                }
+                return flux;
+            };
+            std::vector<AxisymmetricWindow::Correction> correctionPerTurn(turns.size());
+            for (size_t sourceIndex = 0; sourceIndex < turns.size(); ++sourceIndex) {
+                auto mismatch = window.empty_mismatch();
+                window.add_ring(mismatch, 1.0, sectionPerTurn[sourceIndex].x, sectionPerTurn[sourceIndex].y);
+                correctionPerTurn[sourceIndex] = window.solve(mismatch);
+            }
+            const auto wallSources = window.wall_sources(CoilMesher::generate_window_wall_sheet_sources(magnetic, operatingPoint));
+            const double wallReference = window.wall_flux(wallSources, referenceRadius, referenceHeight);
+            std::vector<double> netDirectionPerStrand(numberStrands, 0.0);
+            for (size_t turnIndex = 0; turnIndex < turns.size(); ++turnIndex) {
+                netDirectionPerStrand[split.strandPerTurn[turnIndex]] += directionPerWinding[windingPerTurn[turnIndex]];
+            }
+            for (size_t targetIndex = 0; targetIndex < turns.size(); ++targetIndex) {
+                const auto& target = sectionPerTurn[targetIndex];
+                const double targetDirection = directionPerWinding[windingPerTurn[targetIndex]];
+                const size_t targetStrand = split.strandPerTurn[targetIndex];
+                const auto fluxBasis = window.flux_basis_between(target.x, target.y, referenceRadius, referenceHeight);
+                for (size_t sourceIndex = 0; sourceIndex < turns.size(); ++sourceIndex) {
+                    double linkage = 0;
+                    for (const auto& [image, weight] : sourcesPerTurn[sourceIndex]) {
+                        // The conductor itself (the mesher rebuilds its position through the frame: equal to rounding).
+                        const bool self = sourceIndex == targetIndex && std::hypot(image.x - target.x, image.y - target.y) < 1e-9 * target.x;
+                        linkage += weight * (flux_between(target, image, self) - AxisymmetricWindow::ring_flux(image.x, image.y, referenceRadius, referenceHeight));
+                    }
+                    linkage += AxisymmetricWindow::correction_flux(correctionPerTurn[sourceIndex], fluxBasis);
+                    strandInductance(targetStrand, split.strandPerTurn[sourceIndex]) += targetDirection * directionPerWinding[windingPerTurn[sourceIndex]] * linkage;
+                }
+                const double wallLinkage = window.wall_flux(wallSources, target.x, target.y) - wallReference;
+                for (size_t strand = 0; strand < numberStrands; ++strand) {
+                    strandInductance(targetStrand, strand) += targetDirection * wallLinkage * netDirectionPerStrand[strand];
+                }
+            }
+        }
+        else {
         // The wall sources per ampere-turn of net MMF (images included), and W_t.
         const double mu0Over2Pi = Constants().vacuumPermeability / (2 * std::numbers::pi);
         sheets = CoilMesher::generate_window_wall_sheets(magnetic, operatingPoint);
@@ -4488,6 +4795,7 @@ std::optional<ParallelCurrentSplit> MagneticField::calculate_parallel_current_sp
             for (size_t strand = 0; strand < numberStrands; ++strand) {
                 strandInductance(targetStrand, strand) += targetFactor * wallPotentialPerTurn[targetIndex] * netDirectionPerStrand[strand];
             }
+        }
         }
     }
     // Strand resistance.
@@ -4582,6 +4890,13 @@ std::optional<ParallelCurrentSplit> MagneticField::calculate_parallel_current_sp
     std::vector<double> wallPotentialPerElement;
     std::vector<double> wallFieldPerCell;
     std::vector<std::vector<size_t>> cellsPerTurn;
+    // A round-post window (AxisymmetricWindow): every element is a ring. Each element's equation is divided by its turn's
+    // circumference 2 pi r_t, so the cells of a turn still share one E_t = V_t / (2 pi r_t): R' r_e / r_t J_e + j omega
+    // Lambda_e / (2 pi r_t) = E_t, Lambda_e the flux linked (read from one point of the post face, see the strand system).
+    std::optional<AxisymmetricWindow> elementWindow;
+    if (flatCells && impedanceModel && AxisymmetricWindow::applies(core, magnetic.get_coil())) {
+        elementWindow = AxisymmetricWindow::from_core(core);
+    }
     if (flatCells) {
         for (const auto& flat : split.flatTurns) {
             for (double width : flat.cellWidths) {
@@ -4590,7 +4905,8 @@ std::optional<ParallelCurrentSplit> MagneticField::calculate_parallel_current_sp
             }
         }
         numberCells = cellWidth.size();
-        cellSources = build_flat_cell_sources(split.flatTurns, turns, wires, windingPerTurn, core);
+        cellSources = build_flat_cell_sources(split.flatTurns, turns, wires, windingPerTurn, core,
+                                              settings.get_magnetic_field_mirroring_neutral_cells() && AxisymmetricWindow::applies(core, magnetic.get_coil()));
         for (size_t turnIndex = 0; turnIndex < turns.size(); ++turnIndex) {
             firstElementPerTurn[turnIndex] = elements.size();
             // Per unit length from the wire itself: a turn's length does not enter (the real winding can leave a turn of zero length).
@@ -4640,8 +4956,60 @@ std::optional<ParallelCurrentSplit> MagneticField::calculate_parallel_current_sp
         }
         const size_t numberElements = elements.size();
         const double mu0Over2Pi = Constants().vacuumPermeability / (2 * std::numbers::pi);
+        // Round-post window: per element, its turn's radius, its own wall correction, and the flux reference.
+        std::vector<double> turnRadiusPerElement(numberElements, 0.0);
+        std::vector<AxisymmetricWindow::Correction> correctionPerElement;
+        std::vector<AxisymmetricWindow::Correction> correctionPerFacePair;
+        std::optional<AxisymmetricWindow::WallSources> elementWallSources;
+        const double referenceRadius = elementWindow ? elementWindow->post_radius() : 0.0;
+        const double referenceHeight = elementWindow ? elementWindow->bottom() : 0.0;
+        auto ring_flux_of_section = [&](const SplitSection& target, const SplitSection& source, bool self) {
+            const double mu0 = Constants().vacuumPermeability;
+            if (self) {
+                return mu0 * target.x * (std::log(8 * target.x) - 2 - split_mean_log(target, target));
+            }
+            double flux = AxisymmetricWindow::ring_flux(source.x, source.y, target.x, target.y);
+            const double centreDistance = std::hypot(target.x - source.x, target.y - source.y);
+            if (centreDistance > 0) {
+                flux += mu0 * std::sqrt(target.x * source.x) * (std::log(centreDistance) - split_mean_log(target, source));
+            }
+            return flux;
+        };
+        auto add_section_to_mismatch = [&](AxisymmetricWindow::WallMismatch& mismatch, double current, const SplitSection& section) {
+            if (section.round) {
+                elementWindow->add_ring(mismatch, current, section.x, section.y);
+            }
+            else {
+                add_rectangle_to_wall_mismatch(elementWindow.value(), mismatch, current, section.x, section.y, section.halfWidth, section.halfHeight);
+            }
+        };
+        if (elementWindow) {
+            correctionPerElement.resize(numberElements);
+            for (size_t elementIndex = 0; elementIndex < numberElements; ++elementIndex) {
+                auto& element = elements[elementIndex];
+                turnRadiusPerElement[elementIndex] = sectionPerTurn[element.turnIndex].x;
+                element.resistancePerLength *= element.section.x / turnRadiusPerElement[elementIndex];
+                auto mismatch = elementWindow->empty_mismatch();
+                for (size_t imageIndex = 0; imageIndex < element.images.size(); ++imageIndex) {
+                    const bool conductor = element.isImage.empty() ? imageIndex == static_cast<size_t>(AxisymmetricWindow::planeImages) : !element.isImage[imageIndex];
+                    if (conductor) {
+                        add_section_to_mismatch(mismatch, element.images[imageIndex].second, element.images[imageIndex].first);
+                    }
+                }
+                correctionPerElement[elementIndex] = elementWindow->solve(mismatch);
+            }
+            elementWallSources = elementWindow->wall_sources(CoilMesher::generate_window_wall_sheet_sources(magnetic, operatingPoint));
+        }
         // The wall sources per ampere-turn: their mean potential over each element and their field at each cell.
         wallPotentialPerElement.assign(numberElements, 0.0);
+        if (elementWindow) {
+            const double wallReference = elementWindow->wall_flux(elementWallSources.value(), referenceRadius, referenceHeight);
+            for (size_t elementIndex = 0; elementIndex < numberElements; ++elementIndex) {
+                const auto& section = elements[elementIndex].section;
+                wallPotentialPerElement[elementIndex] = (elementWindow->wall_flux(elementWallSources.value(), section.x, section.y) - wallReference) /
+                                                        (2 * std::numbers::pi * turnRadiusPerElement[elementIndex]);
+            }
+        }
         for (const auto& sheet : sheets) {
             SplitSection source;
             source.x = 0.5 * (sheet.start[0] + sheet.end[0]);
@@ -4684,7 +5052,67 @@ std::optional<ParallelCurrentSplit> MagneticField::calculate_parallel_current_sp
         }
         // The kernels, per pair. The walls are not in them: they are the same for every source (a potential and a field per
         // ampere-turn of the window), added with the product.
+        // Round-post window: the face-sheet pairs' wall corrections and the cells' correction bases (the walls' reply,
+        // per source; the sources' own images are the plates').
+        std::vector<std::optional<AxisymmetricWindow::PointBasis>> basisPerCell;
+        if (elementWindow) {
+            correctionPerFacePair.resize(numberCells);
+            for (size_t cell = 0; cell < numberCells; ++cell) {
+                auto mismatch = elementWindow->empty_mismatch();
+                for (size_t face : faceSourcesPerCell[cell]) {
+                    const auto& source = cellSources[face];
+                    for (const auto& image : source.images) {
+                        if (!image.isImage) {
+                            SplitSection imaged = source.section;
+                            imaged.x = image.x;
+                            imaged.y = image.y;
+                            add_section_to_mismatch(mismatch, image.weight * source.sign, imaged);
+                        }
+                    }
+                }
+                correctionPerFacePair[cell] = elementWindow->solve(mismatch);
+            }
+            basisPerCell.resize(numberCells);
+            for (size_t cell = 0; cell < numberCells; ++cell) {
+                if (elementWindow->contains(std::abs(cellX[cell]), cellY[cell])) {
+                    basisPerCell[cell] = elementWindow->basis_at(std::abs(cellX[cell]), cellY[cell]);
+                }
+            }
+        }
+        auto correction_along_faces = [&](size_t cell, const AxisymmetricWindow::Correction& correction) {
+            if (!basisPerCell[cell]) {
+                return 0.0;
+            }
+            auto [correctionR, correctionZ] = AxisymmetricWindow::correction_field(correction, basisPerCell[cell].value());
+            return along_faces(cell, {cellX[cell] < 0 ? -correctionR : correctionR, correctionZ});
+        };
+        // Flux linked per unit length of the target's turn: Lambda / (2 pi r_t).
+        auto ring_potential = [&](size_t target, const SplitSection& image, double weight, bool self) {
+            const auto& section = elements[target].section;
+            return weight * (ring_flux_of_section(section, image, self) - AxisymmetricWindow::ring_flux(image.x, image.y, referenceRadius, referenceHeight));
+        };
+        // Per target element, its correction flux basis (read against the reference circle), built once.
+        std::vector<std::optional<AxisymmetricWindow::FluxBasis>> fluxBasisPerElement(elementWindow ? elements.size() : 0);
+        auto correction_potential = [&](size_t target, const AxisymmetricWindow::Correction& correction) {
+            if (!fluxBasisPerElement[target]) {
+                const auto& section = elements[target].section;
+                fluxBasisPerElement[target] = elementWindow->flux_basis_between(section.x, section.y, referenceRadius, referenceHeight);
+            }
+            return AxisymmetricWindow::correction_flux(correction, fluxBasisPerElement[target].value());
+        };
         auto potential_entry = [&](size_t target, size_t source) {
+            if (elementWindow) {
+                double linkage = 0;
+                const auto& images = elements[source].images;
+                for (size_t imageIndex = 0; imageIndex < images.size(); ++imageIndex) {
+                    const auto& [image, weight] = images[imageIndex];
+                    const bool conductor = elements[source].isImage.empty() ? imageIndex == static_cast<size_t>(AxisymmetricWindow::planeImages)
+                                                                            : !elements[source].isImage[imageIndex];
+                    linkage += ring_potential(target, image, weight, target == source && conductor);
+                }
+                linkage += correction_potential(target, correctionPerElement[source]);
+                return linkage / (2 * std::numbers::pi * turnRadiusPerElement[target]);
+            }
             double potential = 0;
             for (const auto& [image, weight] : elements[source].images) {
                 potential -= weight * split_mean_log(elements[target].section, image);
@@ -4692,6 +5120,20 @@ std::optional<ParallelCurrentSplit> MagneticField::calculate_parallel_current_sp
             return mu0Over2Pi * potential;
         };
         auto reaction_potential_entry = [&](size_t target, size_t cell) {
+            if (elementWindow) {
+                double linkage = 0;
+                for (size_t face : faceSourcesPerCell[cell]) {
+                    const auto& source = cellSources[face];
+                    for (const auto& image : source.images) {
+                        SplitSection imaged = source.section;
+                        imaged.x = image.x;
+                        imaged.y = image.y;
+                        linkage += source.sign * ring_potential(target, imaged, image.weight, false);
+                    }
+                }
+                linkage += correction_potential(target, correctionPerFacePair[cell]);
+                return linkage / (2 * std::numbers::pi * turnRadiusPerElement[target]);
+            }
             double total = 0;
             for (size_t face : faceSourcesPerCell[cell]) {
                 const auto& source = cellSources[face];
@@ -4717,13 +5159,26 @@ std::optional<ParallelCurrentSplit> MagneticField::calculate_parallel_current_sp
                 }
                 if (element.rectangle) {
                     field += along_faces(cell, element.kernel.field(cellX[cell] - image.x, cellY[cell] - image.y, weight));
+                    if (elementWindow) {
+                        field += along_faces(cell, axisymmetric_curvature_field(weight, image.x, image.y, cellX[cell], cellY[cell],
+                                                                                std::hypot(element.kernel.a, element.kernel.b)));
+                    }
                 }
                 else {
                     const double distanceX = image.x - cellX[cell];
                     const double distanceY = image.y - cellY[cell];
-                    const double divisor = 2 * std::numbers::pi * std::max(distanceX * distanceX + distanceY * distanceY, element.filamentRadiusSquared);
-                    field += along_faces(cell, {-weight * distanceY / divisor, weight * distanceX / divisor});
+                    const double squaredDistance = distanceX * distanceX + distanceY * distanceY;
+                    if (elementWindow && squaredDistance > element.filamentRadiusSquared) {
+                        field += along_faces(cell, axisymmetric_ring_field(weight, image.x, image.y, cellX[cell], cellY[cell]));
+                    }
+                    else {
+                        const double divisor = 2 * std::numbers::pi * std::max(squaredDistance, element.filamentRadiusSquared);
+                        field += along_faces(cell, {-weight * distanceY / divisor, weight * distanceX / divisor});
+                    }
                 }
+            }
+            if (elementWindow) {
+                field += correction_along_faces(cell, correctionPerElement[source]);
             }
             return field;
         };
@@ -4741,8 +5196,16 @@ std::optional<ParallelCurrentSplit> MagneticField::calculate_parallel_current_sp
                         continue;
                     }
                     field += along_faces(cell, source.kernel.field(cellX[cell] - image.x, cellY[cell] - image.y, image.weight));
+                    if (elementWindow) {
+                        field += along_faces(cell, axisymmetric_curvature_field(image.weight, image.x, image.y, cellX[cell], cellY[cell],
+                                                                                std::hypot(source.kernel.a, source.kernel.b)));
+                    }
                 }
                 total += source.sign * field;
+            }
+            // The walls' reply to a cell's face sheets reaches every cell (never taken back out with the own sheets).
+            if (elementWindow && !ownOnly) {
+                total += correction_along_faces(cell, correctionPerFacePair[other]);
             }
             return total;
         };

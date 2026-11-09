@@ -1,4 +1,5 @@
 #pragma once
+#include "physical_models/AxisymmetricWindow.h"
 #include "Constants.h"
 #include "Defaults.h"
 #include "Models.h"
@@ -71,6 +72,9 @@ class MagneticFieldStrengthModel {
         // Dowell's one-dimensional field is assumed uniform (H = enclosed MMF / b). Only the
         // Dowell model reads it; the point-to-point models derive everything from the two points.
         double _windingWindowBreadth = 0;
+        // A round-post window on the neutral path (AxisymmetricWindow::applies): every conductor is a ring about the
+        // post's axis, x read as the radius and y as the height. Only BINNS_LAWRENSON reads it.
+        std::optional<AxisymmetricWindow> _axisymmetricWindow;
         virtual ComplexFieldPoint get_magnetic_field_strength_between_two_points(const FieldPoint& inducingFieldPoint, const FieldPoint& inducedFieldPoint, std::optional<size_t> inducingWireIndex = std::nullopt) = 0;
         // (Hx, Hy) only: the point-pair sum calls this for every inducing/induced pair, and building a
         // ComplexFieldPoint (a heap-allocated point copy) per pair dominated its cost.
@@ -474,6 +478,10 @@ class MagneticFieldStrengthMmfBoundaryModel : public MagneticFieldStrengthFringi
     };
     std::vector<SheetMultipole> _sheetMultipoles;
     bool _isSetUp = false;
+    // A round-post window (AxisymmetricWindow::applies): the MMF the gaps and the ferrite drop on the post face and
+    // the outer wall is the boundary data of the window's correction field; the plates' share is rings on the plates.
+    std::optional<AxisymmetricWindow> _axisymmetricWindow;
+    AxisymmetricWindow::WallSources _axisymmetricWallSources;
   public:
     std::string methodName = "MmfBoundary";
     ComplexFieldPoint get_magnetic_field_strength_between_gap_and_point([[maybe_unused]] CoreGap gap, [[maybe_unused]] double magneticFieldStrengthGap,

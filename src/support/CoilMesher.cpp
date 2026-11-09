@@ -1,4 +1,5 @@
 #include "support/CoilMesher.h"
+#include "physical_models/AxisymmetricWindow.h"
 #include "support/MasAccess.h"
 #include "physical_models/Reluctance.h"
 #include "physical_models/WindingOhmicLosses.h"
@@ -571,6 +572,14 @@ InducingCoilMesh CoilMesher::generate_mesh_inducing_coil_phasors(Magnetic magnet
     // Hoisted: the MAS getter copies the whole Core (cached material datasets included);
     // fetching it per turn dominated this loop's cost.
     auto meshCore = magnetic.get_core();
+    // One window frame for the whole coil (AxisymmetricWindow::applies), as the field step and the split decide it.
+    const bool axisymmetricWindow = OpenMagnetics::Settings::GetInstance().get_magnetic_field_mirroring_neutral_cells() &&
+                                    AxisymmetricWindow::applies(meshCore, coil);
+    for (auto& model : breakdownModelPerWinding) {
+        if (auto centerModel = std::dynamic_pointer_cast<CoilMesherCenterModel>(model)) {
+            centerModel->axisymmetricWindow = axisymmetricWindow;
+        }
+    }
     for (size_t turnIndex = 0; turnIndex < turns.size(); ++turnIndex) {
         // Read in place: the turn and the winding's current were copied per turn; the mesher models only read
         // the wire (its type), so they get the winding's wire itself.
@@ -796,6 +805,9 @@ std::vector<FieldPoint> CoilMesherCenterModel::generate_mesh_inducing_turn(const
         }
     }
 
+    if (!axisymmetricWindow) {
+        throw CalculationException(ErrorCode::CALCULATION_INVALID_RESULT, "Coil mesher: the window frame (planar or axisymmetric) was not decided for this coil");
+    }
     if (coreFamily != CoreShapeFamily::T) {
         double A = windingWindow.get_width().value();
         double B = windingWindow.get_height().value();
@@ -842,6 +854,15 @@ std::vector<FieldPoint> CoilMesherCenterModel::generate_mesh_inducing_turn(const
             int mMaximum = completeCells && cellsX > 0 ? 2 * cellsX : cellsX;
             int nMinimum = completeCells && cellsY > 0 ? -2 * cellsY - 1 : -cellsY;
             int nMaximum = completeCells && cellsY > 0 ? 2 * cellsY : cellsY;
+            // A round-post window on the neutral path is a solid of revolution (AxisymmetricWindow): a turn is a ring,
+            // imaged exactly in the two plates only. The cylinders (post face, outer wall) have no ring image; the
+            // field model meets their condition with its wall correction instead.
+            if (axisymmetricWindow.value()) {
+                mMinimum = 0;
+                mMaximum = 0;
+                nMinimum = -AxisymmetricWindow::planeImages;
+                nMaximum = AxisymmetricWindow::planeImages;
+            }
             for (int m = mMinimum; m <= mMaximum; ++m)
             {
                 for (int n = nMinimum; n <= nMaximum; ++n)
@@ -1264,7 +1285,7 @@ std::vector<FieldPoint> CoilMesherWangModel::generate_mesh_inducing_turn(const T
 }
 
 
-std::vector<WindowWallSheet> CoilMesher::generate_window_wall_sheets(Magnetic magnetic, std::optional<OperatingPoint> operatingPoint) {
+std::vector<WindowWallSheet> CoilMesher::generate_window_wall_sheet_sources(Magnetic magnetic, std::optional<OperatingPoint> operatingPoint) {
     auto core = magnetic.get_core();
     if (!core.get_processed_description()) {
         throw CoreNotProcessedException();
@@ -1437,6 +1458,17 @@ std::vector<WindowWallSheet> CoilMesher::generate_window_wall_sheets(Magnetic ma
         throw CalculationException(ErrorCode::CALCULATION_INVALID_RESULT, "Neutral window field: the wall sources return " +
                                    std::to_string(-sum) + " of the winding MMF instead of all of it");
     }
+    return originals;
+}
+
+std::vector<WindowWallSheet> CoilMesher::generate_window_wall_sheets(Magnetic magnetic, std::optional<OperatingPoint> operatingPoint) {
+    auto originals = generate_window_wall_sheet_sources(magnetic, operatingPoint);
+    auto core = magnetic.get_core();
+    auto windingWindow = core.get_processed_description().value().get_winding_windows()[0];
+    const double A = windingWindow.get_width().value();
+    const double B = windingWindow.get_height().value();
+    const double x0 = core.get_columns()[core.get_main_column_index()].get_width() / 2;
+    const double y0 = -B / 2;
 
     // The complete-cell lattice of #1240, the same index ranges and positions CoilMesherCenterModel uses for the
     // conductors, so conductors and wall sources are imaged identically.

@@ -1,6 +1,7 @@
 #include <source_location>
 #include "support/Painter.h"
 #include "physical_models/MagneticField.h"
+#include "physical_models/AxisymmetricWindow.h"
 #include "physical_models/Reluctance.h"
 #include "json.hpp"
 #include "TestingUtils.h"
@@ -14,6 +15,7 @@
 #include <map>
 #include <string>
 #include <cmath>
+#include <complex>
 
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
@@ -515,6 +517,89 @@ namespace {
             painter.export_svg();
             settings.reset();
         }
+    }
+
+    // ABT #1463: foil on a round post. The neutral window of a gapped PQ is a solid of revolution (AxisymmetricWindow),
+    // and each foil turn is a strip that screens the field crossing it -- the wall correction too, split by the wall it
+    // answers. At 10 Hz a foil barely screens (W t / (pi delta^2) ~ 1e-4), so it must read the field of the same turns
+    // as rectangles (no strips); at 1 MHz the field between two foils is the screened one, and differs.
+    TEST_CASE("Test_Magnetic_Field_Foil_Screening_On_A_Round_Post", "[physical-model][magnetic-field][axisymmetric]") {
+        auto fieldBetweenFoils = [&](WireType wireType, double testFrequency) {
+            numberTurns = {3};
+            numberParallels = {1};
+            turnsRatios = {};
+            interleavingLevel = 1;
+            numberStacks = 1;
+            voltagePeakToPeak = 2000;
+            frequency = testFrequency;
+            coreShape = "PQ 26/25";
+            coreMaterial = "3C97";
+            gapping = OpenMagneticsTesting::get_ground_gap(0.001);
+            sectionOrientation = WindingOrientation::OVERLAPPING;
+            layersOrientation = WindingOrientation::OVERLAPPING;
+            sectionsAlignment = CoilAlignment::INNER_OR_TOP;
+            turnsAlignment = CoilAlignment::CENTERED;
+            setup();
+            std::vector<OpenMagnetics::Wire> wires;
+            OpenMagnetics::Wire wire;
+            wire.set_nominal_value_conducting_width(0.0001);
+            wire.set_nominal_value_conducting_height(0.0076);
+            wire.set_nominal_value_outer_height(0.0076);
+            // The coil lays a foil turn out 0.125 mm wide (its interlayer insulation); the rectangles take that outer
+            // width so that both sets of turns sit at the same place with the same copper.
+            wire.set_nominal_value_outer_width(wireType == WireType::FOIL ? 0.0001 : 0.000125);
+            wire.set_number_conductors(1);
+            wire.set_material("copper");
+            wire.set_type(wireType);
+            wires.push_back(wire);
+            coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel, sectionOrientation, layersOrientation,
+                                                        turnsAlignment, sectionsAlignment, wires);
+            coil.delimit_and_compact();
+            const auto turns = coil.get_turns_description().value();
+            REQUIRE(turns.size() == 3);
+            OpenMagnetics::Magnetic magnetic;
+            magnetic.set_core(core);
+            magnetic.set_coil(coil);
+            REQUIRE(AxisymmetricWindow::applies(magnetic.get_core(), magnetic.get_coil()));
+
+            // Midway between the first two foils, and beyond the last one, at the foils' mid-height.
+            std::vector<FieldPoint> points;
+            FieldPoint point;
+            point.set_point(std::vector<double>{0.5 * (turns[0].get_coordinates()[0] + turns[1].get_coordinates()[0]), turns[0].get_coordinates()[1]});
+            points.push_back(point);
+            point.set_point(std::vector<double>{turns[2].get_coordinates()[0] + 0.3e-3, turns[2].get_coordinates()[1]});
+            points.push_back(point);
+            Field inducedField;
+            inducedField.set_data(points);
+            inducedField.set_frequency(frequency);
+            settings.reset();
+            MagneticField magneticField(MagneticFieldStrengthModels::BINNS_LAWRENSON, MagneticFieldStrengthFringingEffectModels::MMF_BOUNDARY);
+            auto field = magneticField.calculate_magnetic_field_strength_field(inputs.get_operating_point(0), magnetic, inducedField).get_field_per_frequency()[0];
+            REQUIRE(field.get_data().size() == 2);
+            std::vector<std::complex<double>> values;
+            for (const auto& datum : field.get_data()) {
+                values.push_back({datum.get_real(), datum.get_imaginary()});
+            }
+            return values;
+        };
+
+        for (double testFrequency : {10.0, 1e6}) {
+            std::vector<std::complex<double>> foil;
+            REQUIRE_NOTHROW(foil = fieldBetweenFoils(WireType::FOIL, testFrequency));
+            auto rectangular = fieldBetweenFoils(WireType::RECTANGULAR, testFrequency);
+            for (size_t index = 0; index < foil.size(); ++index) {
+                INFO("f = " << testFrequency << " Hz, point " << index << ": foil " << foil[index] << ", rectangles " << rectangular[index]);
+                REQUIRE(std::abs(rectangular[index]) > 0);
+                const double difference = std::abs(foil[index] - rectangular[index]) / std::abs(rectangular[index]);
+                if (testFrequency < 100) {
+                    CHECK(difference < 1e-3);
+                }
+                else if (index == 0) {
+                    CHECK(difference > 0.05);
+                }
+            }
+        }
+        settings.reset();
     }
 
 
@@ -1120,6 +1205,73 @@ TEST_CASE("Sullivan fringing field of a central-leg gap is not zero", "[physical
         CHECK(sullivan.get_real() * roshen.get_real() > 0);
         CHECK(sullivan.get_imaginary() * roshen.get_imaginary() > 0);
     }
+}
+
+// A round-post window is a solid of revolution (AxisymmetricWindow): the turns are rings, imaged in the plates, and a
+// correction field meets the post face and the outer wall. These pin the pieces against closed forms.
+TEST_CASE("Test_Axisymmetric_Window_Ring_Field_On_The_Axis_Is_The_Loop_Formula", "[physical-model][magnetic-field][axisymmetric]") {
+    // On the axis of a loop of radius R, H_z = I R^2 / (2 (R^2 + z^2)^(3/2)); approached from r = R/1e4.
+    const double radius = 5e-3;
+    for (double height : {0.0, 2e-3, 8e-3}) {
+        auto [fieldR, fieldZ] = AxisymmetricWindow::ring_field(1.0, radius, 0.0, radius * 1e-4, height);
+        const double expected = radius * radius / (2 * std::pow(radius * radius + height * height, 1.5));
+        CHECK_THAT(fieldZ, Catch::Matchers::WithinRel(expected, 1e-6));
+        CHECK(std::abs(fieldR) < 1e-3 * expected);
+    }
+}
+
+TEST_CASE("Test_Axisymmetric_Window_Large_Ring_Is_The_Planar_Line", "[physical-model][magnetic-field][axisymmetric]") {
+    // Close to a ring of large radius the field is MKF's planar line current: Hx = -I (ys - y) / (2 pi rho^2),
+    // Hy = I (xs - x) / (2 pi rho^2).
+    const double radius = 10.0;
+    for (auto [dr, dz] : std::vector<std::pair<double, double>>{{1e-3, 0}, {0, 1e-3}, {-7e-4, 7e-4}}) {
+        auto [fieldR, fieldZ] = AxisymmetricWindow::ring_field(1.0, radius, 0.0, radius + dr, dz);
+        const double rhoSquared = dr * dr + dz * dz;
+        const double lineX = dz / (2 * std::numbers::pi * rhoSquared);
+        const double lineY = -dr / (2 * std::numbers::pi * rhoSquared);
+        const double scale = 1 / (2 * std::numbers::pi * std::sqrt(rhoSquared));
+        CHECK(std::abs(fieldR - lineX) < 2e-3 * scale);
+        CHECK(std::abs(fieldZ - lineY) < 2e-3 * scale);
+    }
+}
+
+TEST_CASE("Test_Axisymmetric_Window_Correction_Clears_The_Cylinders", "[physical-model][magnetic-field][axisymmetric]") {
+    // A ring in the window with all its plate images and the correction: H_z on the post face and the outer wall is
+    // only what the uniform mode leaves. A lone ring's means (I / B inside it, 0 outside) cannot both be met by one
+    // uniform field, so it splits them: +I / 2B on the post face, -I / 2B on the outer wall. With the wall sources
+    // of a neutral window the means agree and this residue vanishes.
+    AxisymmetricWindow window(4.75e-3, 11.35e-3, -11e-3, 11e-3);
+    auto mismatch = window.empty_mismatch();
+    const double ringRadius = 7.1e-3;
+    const double ringHeight = 1.3e-3;
+    window.add_ring(mismatch, 1.0, ringRadius, ringHeight);
+    auto correction = window.solve(mismatch);
+    for (double wallRadius : {4.75e-3 + 1e-7, 11.35e-3 - 1e-7}) {
+        for (double height : {-9e-3, -3e-3, 0.0, 1.3e-3, 4e-3, 10e-3}) {
+            // Every plate image, far enough to converge (dipole decay).
+            double fieldZ = 0;
+            for (int n = -400; n <= 400; ++n) {
+                const double zImage = n * 22e-3 + ((n % 2 == 0) ? 1.0 : -1.0) * ringHeight;
+                fieldZ += AxisymmetricWindow::ring_field(1.0, ringRadius, zImage, wallRadius, height).second;
+            }
+            fieldZ += window.correction_field(correction, wallRadius, height).second;
+            const double expected = (wallRadius < 6e-3 ? 0.5 : -0.5) / 22e-3;
+            CHECK(std::abs(fieldZ - expected) < 0.02 / 22e-3);
+        }
+    }
+}
+
+TEST_CASE("Test_Axisymmetric_Window_Gap_Mouth_Is_Met_On_The_Post_Face", "[physical-model][magnetic-field][axisymmetric]") {
+    // A tangential H wanted on a band of the post face (a gap mouth): the correction gives it there and nothing elsewhere.
+    AxisymmetricWindow window(4.75e-3, 11.35e-3, -11e-3, 11e-3);
+    auto mismatch = window.empty_mismatch();
+    window.add_wall_field(mismatch, true, 0.0, 0.82e-3, 1000.0);
+    window.add_wall_field(mismatch, false, -11e-3, 11e-3, 1000.0 * 0.82e-3 / 22e-3);
+    auto correction = window.solve(mismatch);
+    const double nearPost = 4.75e-3 + 2e-6;
+    CHECK_THAT(window.correction_field(correction, nearPost, 0.41e-3).second, Catch::Matchers::WithinRel(1000.0, 0.03));
+    CHECK(std::abs(window.correction_field(correction, nearPost, 5e-3).second) < 0.01 * 1000.0);
+    CHECK_THAT(window.correction_field(correction, 11.35e-3 - 2e-6, 5e-3).second, Catch::Matchers::WithinRel(1000.0 * 0.82e-3 / 22e-3, 0.05));
 }
 
 }  // namespace

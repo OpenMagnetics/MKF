@@ -123,6 +123,9 @@ class CoilMesher {
     // the four walls in proportion to length x tangential H, H = B / mu with B from the flux through that wall's
     // limb. Throws for toroids and multi-window cores, whose boundary this frame does not describe.
     static std::vector<WindowWallSheet> generate_window_wall_sheets(Magnetic magnetic, std::optional<OperatingPoint> operatingPoint);
+    // The same sources before imaging: one sheet per gap mouth and per wall's ferrite share, currents per ampere-turn
+    // of net MMF summing to -1 (AxisymmetricWindow uses them as the window's boundary data).
+    static std::vector<WindowWallSheet> generate_window_wall_sheet_sources(Magnetic magnetic, std::optional<OperatingPoint> operatingPoint);
     // meshAllWindows: mesh every distinct winding-window region (multi-column cores)
     // instead of only window 0. Painting wants it; the leakage energy integrator must
     // NOT use it — its revolution bookkeeping already accounts for the full turn from
@@ -158,6 +161,9 @@ class CoilMesherModel {
 
 class CoilMesherCenterModel : public CoilMesherModel {
   public:
+    // A round-post window seen as a solid of revolution (AxisymmetricWindow::applies, decided once per coil by
+    // CoilMesher::generate_mesh_inducing_coil on the neutral path): turns imaged in the plates only.
+    std::optional<bool> axisymmetricWindow;
     std::vector<FieldPoint> generate_mesh_inducing_turn(const Turn& turn, [[maybe_unused]] Wire& wire, std::optional<size_t> turnIndex, std::optional<double> turnLength, Core& core);
     std::vector<FieldPoint> generate_mesh_induced_turn(const Turn& turn, [[maybe_unused]] Wire& wire, std::optional<size_t> turnIndex = std::nullopt, const Core* core = nullptr);
 };
