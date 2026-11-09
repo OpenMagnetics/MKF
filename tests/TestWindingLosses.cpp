@@ -221,6 +221,24 @@ namespace WindingLossesTestHelpers {
             checkAcToDcRatio(frequency, output, omfemPerFrequency.at(frequency), maxError);
         });
     }
+
+    // The same under a named winding-loss model set (it fixes every model), with the config's fringing switch.
+    inline void runAcToDcVsOmfemTestWithModelSet(const WindingLossesTestData::TestConfig& config, const std::vector<std::pair<double, double>>& omfemRatios,
+                                                 double maxError, WindingLossesModelSets modelSet) {
+        auto magnetic = config.createMagnetic();
+        for (auto& [frequency, omfemRatio] : omfemRatios) {
+            settings.reset();
+            clear_databases();
+            settings.set_magnetic_field_mirroring_dimension(config.mirroringDimension);
+            settings.set_magnetic_field_include_fringing(config.includeFringing);
+            auto inputs = OpenMagnetics::Inputs::create_quick_operating_point_only_current(
+                frequency, config.magnetizingInductance, config.temperature, config.waveform, config.peakToPeak, config.dutyCycle, config.offset);
+            WindingLossesModels models;
+            models.modelSet = modelSet;
+            checkAcToDcRatio(frequency, WindingLosses(models).calculate_losses(magnetic, inputs.get_operating_point(0), config.temperature), omfemRatio, maxError);
+        }
+        settings.reset();
+    }
 }
 
 namespace TestWindingLossesRound {
@@ -959,10 +977,14 @@ namespace TestWindingLossesToroidalCores {
             MagneticFieldStrengthModels::ALBACH, MagneticFieldStrengthFringingEffectModels::ALBACH);
     }
 
-    TEST_CASE("Test_Winding_Losses_Ten_Turn_Round_Sinusoidal_Toroidal_Core_Rectangular_Wire", "[physical-model][winding-losses][rectangular][round-winding-window][!mayfail]") {
-        // [!mayfail] ABT #832 (2026-08-20): the historical watt pins (2.18 @25k) sat 3x BELOW FEM (they were
-        // green only against the c*h prefactor bug that zeroed rectangular proximity). The slab-form model reads
-        // 1.35-1.65x ABOVE FEM here (edge-point sampling on tightly packed toroidal turns — ABT #837).
+    TEST_CASE("Test_Winding_Losses_Ten_Turn_Round_Sinusoidal_Toroidal_Core_Rectangular_Wire", "[physical-model][winding-losses][rectangular][round-winding-window]") {
+        // ABT #832 (2026-08-20): the historical watt pins (2.18 @25k) sat 3x BELOW FEM (they were green only against the
+        // c*h prefactor bug that zeroed rectangular proximity).
+        // Alf 2026-11-09: run under MKF's TOROID model set (BINNS_LAWRENSON field with the ring's Kelvin images, MARTINEZ
+        // for flat wire), the set meant for toroids, and no longer [!mayfail]. Before, the test asked for the ALBACH field
+        // with fringing off, which left the bars on the default WANG proximity: 0.77-0.65x OMFEM. MARTINEZ reads
+        // 0.90-0.83x (the 5.8 x 2 mm bars are under FlatTurnCells::minimumAspectRatio, so each is one MARTINEZ turn; as
+        // width cells in the ring frame they read 0.92-0.86x). Design and OMFEM numbers unchanged.
         // Alf 2026-11-04: R_ac/R_dc against 2D OMFEM of the same design, not watts. OMFEM: OMFEM-1588 build-efa5113
         // omfem_mas, 2D (ring in the XY plane), on the MAS exported by Debug_Martinez_Flat_Scorecard at the config's
         // 20 C; inputs and logs in /home/alf/OpenMagnetics/.mkf-triage-runs/green/wl2/fem
@@ -973,10 +995,9 @@ namespace TestWindingLossesToroidalCores {
         // 5 % from margin 1.5 to 8 and 0.5 % from 5 to 8), against MVB++ e29b841; logs in
         // /home/alf/OpenMagnetics/.mkf-triage-runs/wlfem/fem/airmargin.
         auto config = WindingLossesTestData::createTenTurnsRectangularToroidalConfig();
-        WindingLossesTestHelpers::runAcToDcVsOmfemTest(
+        WindingLossesTestHelpers::runAcToDcVsOmfemTestWithModelSet(
             config, {{25000, 7.213}, {50000, 10.586}, {100000, 15.610}, {200000, 22.982}, {250000, 26.032}, {500000, 38.284}},
-            WindingLossesTestHelpers::maximumError, config.includeFringing,
-            MagneticFieldStrengthModels::ALBACH, MagneticFieldStrengthFringingEffectModels::ALBACH);
+            WindingLossesTestHelpers::maximumError, WindingLossesModelSets::TOROID);
     }
 }
 
@@ -4417,6 +4438,25 @@ TEST_CASE("Test_Winding_Losses_Foil_Width_Cells_E42_Foil_Stacks_Vs_OMFEM", "[win
     }
 }
 
+TEST_CASE("Test_Winding_Losses_Foil_Width_Cells_E42_Second_Foil_Vs_OMFEM", "[winding-losses][martinez-flat][foil][physical-model]") {
+    // Alf 2026-11-09: the cells' face sheets screen (D = -g H w in the field kernels' sign convention, see flat_face_sign).
+    // With the reinforcing sign they had until then, the foil next to the column-side one of the E 42 foil stacks read
+    // 2.0-2.5x 2D OMFEM at 200-500 kHz (the field its neighbours' sheets added); screened it reads 0.99-1.18x. Same
+    // fixture and OMFEM runs as Test_Winding_Losses_Foil_Width_Cells_E42_Foil_Stacks_Vs_OMFEM (inputs and logs in
+    // /home/alf/OpenMagnetics/.mkf-triage-runs/wlfem/fem, E42_FOIL_<GAP1MM|UNGAPPED>_<f>): OMFEM's F_R of the second foil is
+    // its P_cu_per_body over an eighth of the winding's DC loss (the eight foils have the same 2-D section).
+    // {gapped, frequency, OMFEM F_R of the second foil from the column}
+    const std::vector<std::tuple<bool, double, double>> omfem = {
+        {true, 50000, 104.77}, {true, 200000, 105.25}, {true, 500000, 171.64},
+        {false, 50000, 5.29}, {false, 200000, 7.68}, {false, 500000, 11.54}};
+    for (const auto& [gapped, frequency, secondFactor] : omfem) {
+        const auto [factors, ratio] = e42_foil_stack_default_resistance_factors(gapped, frequency);
+        REQUIRE(factors.size() == 8);
+        INFO((gapped ? "1 mm gap" : "residual gaps") << " at " << frequency << " Hz: second foil MKF " << factors[1] << " vs OMFEM " << secondFactor);
+        CHECK_THAT(factors[1], Catch::Matchers::WithinRel(secondFactor, 0.25));
+    }
+}
+
 TEST_CASE("Test_Winding_Losses_Flat_Cells_Frequency_Interpolation_Matches_Direct_Solves", "[winding-losses][martinez-flat][parallel-split][physical-model]") {
     // FlatTurnCells::frequencyInterpolationSamples (Alf 2026-11-07): with more harmonics than samples per winding, the split
     // solves each winding's unit current at the samples and splines every harmonic's solution in log f. The E 42 foil stack
@@ -4916,6 +4956,140 @@ TEST_CASE("Test_Winding_Losses_Flat_Cells_Field_Step_Reads_The_Split_Field", "[w
     settings.reset();
 }
 
+TEST_CASE("Test_Winding_Losses_Flat_Cells_On_A_Toroid_In_The_Ring_Frame", "[winding-losses][parallel-split][physical-model]") {
+    // Alf 2026-11-09: flat turns on a toroid are resolved into width cells in the ring frame (RING_IMPEDANCE): every turn at
+    // both crossings, its bore crossing and its return outside the ring, each cut along its radial width in the frame
+    // turned by the turn's rotation, each carrying the turn's current (opposite signs in the field frame). The field step
+    // computes each cell's field along its faces again from the solved cells (its own operator: rotated rectangles, each
+    // source acting in its own region of the ring) and must read the split's field; a source left out of either, or a
+    // wrong frame, shows here. Ten 5.8 x 1 mm bars (5.8:1, over the cell threshold) on a T 40/24/16 under the TOROID set.
+    auto& settings = OpenMagnetics::Settings::GetInstance();
+    settings.reset();
+    clear_databases();
+    std::vector<OpenMagnetics::Wire> wires;
+    OpenMagnetics::Wire wire;
+    wire.set_nominal_value_conducting_width(0.0058);
+    wire.set_nominal_value_conducting_height(0.001);
+    wire.set_nominal_value_outer_width(0.0059);
+    wire.set_nominal_value_outer_height(0.00108);
+    wire.set_number_conductors(1);
+    wire.set_material("copper");
+    wire.set_type(WireType::RECTANGULAR);
+    wires.push_back(wire);
+    auto coil = OpenMagneticsTesting::get_quick_coil({10}, {1}, "T 40/24/16", 1, WindingOrientation::OVERLAPPING, WindingOrientation::OVERLAPPING,
+                                                     CoilAlignment::CENTERED, CoilAlignment::CENTERED, wires);
+    auto core = OpenMagneticsTesting::get_quick_core("T 40/24/16", json::array(), 1, "3C97");
+    OpenMagnetics::Magnetic magnetic;
+    magnetic.set_core(core);
+    magnetic.set_coil(coil);
+    auto inputs = OpenMagnetics::Inputs::create_quick_operating_point_only_current(200000, 1e-3, 20, WaveformLabel::SINUSOIDAL, 2, 0.5, 0);
+    auto operatingPoint = inputs.get_operating_point(0);
+    settings.set_magnetic_field_mirroring_dimension(1);
+    settings.set_magnetic_field_include_fringing(false);
+    WindingLossesModels models;
+    models.modelSet = WindingLossesModelSets::TOROID;
+    auto field = WindingLosses(models).calculate_magnetic_field(magnetic, operatingPoint, 20);
+    REQUIRE(field.parallelCurrentSplit);
+    const auto& split = field.parallelCurrentSplit.value();
+    CHECK(split.model == ParallelCurrentSplitModel::RING_IMPEDANCE);
+    const auto turns = magnetic.get_coil().get_turns_description().value();
+    REQUIRE(turns.size() == 10);
+    REQUIRE(split.flatTurns.size() == 20);
+    REQUIRE(split.flatTurnPerTurn.size() == turns.size());
+    REQUIRE(split.returnFlatTurnPerTurn.size() == turns.size());
+    for (size_t turnIndex = 0; turnIndex < turns.size(); ++turnIndex) {
+        REQUIRE(split.flatTurnPerTurn[turnIndex]);
+        REQUIRE(split.returnFlatTurnPerTurn[turnIndex]);
+        const auto& bore = split.flatTurns[split.flatTurnPerTurn[turnIndex].value()];
+        const auto& outside = split.flatTurns[split.returnFlatTurnPerTurn[turnIndex].value()];
+        const double angle = turns[turnIndex].get_rotation().value() / 180 * std::numbers::pi;
+        CHECK(bore.turnIndex == turnIndex);
+        CHECK(outside.turnIndex == turnIndex);
+        CHECK(bore.crossing == 0);
+        CHECK(outside.crossing == 1);
+        CHECK_THAT(bore.angle, Catch::Matchers::WithinAbs(angle, 1e-12));
+        CHECK_THAT(outside.angle, Catch::Matchers::WithinAbs(angle, 1e-12));
+        CHECK(bore.wideAlongX);
+        CHECK(bore.cellWidths.size() > 1);
+        CHECK_THAT(std::accumulate(bore.cellWidths.begin(), bore.cellWidths.end(), 0.0), Catch::Matchers::WithinRel(0.0058, 1e-12));
+        CHECK_THAT(bore.centreX, Catch::Matchers::WithinAbs(turns[turnIndex].get_coordinates()[0], 1e-15));
+        CHECK_THAT(outside.centreX, Catch::Matchers::WithinAbs(turns[turnIndex].get_additional_coordinates().value()[0][0], 1e-15));
+    }
+    const auto& inPhase = field.field.get_field_per_frequency();
+    const auto& quadrature = field.field.get_quadrature_field_per_frequency();
+    size_t checkedHarmonics = 0;
+    for (size_t harmonicIndex = 0; harmonicIndex < inPhase.size(); ++harmonicIndex) {
+        const auto frequencyIndex = split.find_frequency_index(inPhase[harmonicIndex].get_frequency());
+        if (!frequencyIndex) {
+            continue;
+        }
+        ++checkedHarmonics;
+        // Each crossing's cells carry the turn's current: + at the bore crossing, - at the return, in the field frame.
+        const auto& turnCurrents = split.currentPerTurnPerFrequency[frequencyIndex.value()];
+        for (size_t turnIndex = 0; turnIndex < turns.size(); ++turnIndex) {
+            for (size_t crossing = 0; crossing < 2; ++crossing) {
+                const size_t flatIndex = (crossing == 0 ? split.flatTurnPerTurn : split.returnFlatTurnPerTurn)[turnIndex].value();
+                const auto& cellCurrents = split.cellCurrentPerFrequency[frequencyIndex.value()][flatIndex];
+                const std::complex<double> total = std::accumulate(cellCurrents.begin(), cellCurrents.end(), std::complex<double>(0));
+                // To the split solve's accuracy (its circuit rows hold to ~1e-9 here).
+                CHECK(std::abs(std::abs(total) - std::abs(turnCurrents[turnIndex])) < 1e-6 * std::abs(turnCurrents[turnIndex]));
+            }
+            const auto& boreCells = split.cellCurrentPerFrequency[frequencyIndex.value()][split.flatTurnPerTurn[turnIndex].value()];
+            const auto& outsideCells = split.cellCurrentPerFrequency[frequencyIndex.value()][split.returnFlatTurnPerTurn[turnIndex].value()];
+            const std::complex<double> boreTotal = std::accumulate(boreCells.begin(), boreCells.end(), std::complex<double>(0));
+            const std::complex<double> outsideTotal = std::accumulate(outsideCells.begin(), outsideCells.end(), std::complex<double>(0));
+            CHECK(std::abs(boreTotal + outsideTotal) < 1e-6 * std::abs(boreTotal));
+        }
+        double largestField = 0;
+        for (const auto& fieldsOfCrossing : split.cellFieldPerFrequency[frequencyIndex.value()]) {
+            for (const auto& cellField : fieldsOfCrossing) {
+                largestField = std::max(largestField, std::abs(cellField));
+            }
+        }
+        std::vector<size_t> cellPerFlat(split.flatTurns.size(), 0);
+        size_t checkedCells = 0;
+        const auto& points = inPhase[harmonicIndex].get_data();
+        for (size_t pointIndex = 0; pointIndex < points.size(); ++pointIndex) {
+            if (!points[pointIndex].get_label() || points[pointIndex].get_label().value() != "cellsample") {
+                continue;
+            }
+            const size_t turnIndex = static_cast<size_t>(points[pointIndex].get_turn_index().value());
+            const size_t boreIndex = split.flatTurnPerTurn.at(turnIndex).value();
+            const size_t outsideIndex = split.returnFlatTurnPerTurn.at(turnIndex).value();
+            const double x = points[pointIndex].get_point()[0];
+            const double y = points[pointIndex].get_point()[1];
+            const bool atBore = std::hypot(x - split.flatTurns[boreIndex].centreX, y - split.flatTurns[boreIndex].centreY) <
+                                std::hypot(x - split.flatTurns[outsideIndex].centreX, y - split.flatTurns[outsideIndex].centreY);
+            const size_t flatIndex = atBore ? boreIndex : outsideIndex;
+            const auto& flat = split.flatTurns[flatIndex];
+            const size_t cellIndex = cellPerFlat[flatIndex]++;
+            REQUIRE(cellIndex < flat.cellCentres.size());
+            CHECK_THAT(flat.along(x, y), Catch::Matchers::WithinAbs(flat.cellCentres[cellIndex], 1e-12));
+            // Along the faces: the cell's wide axis, turned by its angle.
+            const double wideX = std::cos(flat.angle);
+            const double wideY = std::sin(flat.angle);
+            const auto& quadraturePoint = quadrature[harmonicIndex].get_data()[pointIndex];
+            const std::complex<double> stepField(points[pointIndex].get_real() * wideX + points[pointIndex].get_imaginary() * wideY,
+                                                 quadraturePoint.get_real() * wideX + quadraturePoint.get_imaginary() * wideY);
+            const std::complex<double> splitField = split.cellFieldPerFrequency[frequencyIndex.value()][flatIndex].at(cellIndex);
+            INFO("turn " << turnIndex << (atBore ? " bore" : " outside") << " cell " << cellIndex << ": field step |H| " << std::abs(stepField)
+                 << " A/m, split |H| " << std::abs(splitField) << " A/m");
+            CHECK(std::abs(std::abs(stepField) - std::abs(splitField)) < 10 * FlatTurnCells::operatorTolerance * largestField);
+            ++checkedCells;
+        }
+        size_t numberCells = 0;
+        for (const auto& flat : split.flatTurns) {
+            numberCells += flat.cellWidths.size();
+        }
+        CHECK(checkedCells == numberCells);
+    }
+    CHECK(checkedHarmonics > 0);
+    // The losses are booked from the cells at both crossings.
+    auto losses = WindingLosses(models).calculate_losses(magnetic, operatingPoint, 20);
+    CHECK(losses.get_winding_losses() > 0);
+    settings.reset();
+}
+
 TEST_CASE("Test_Winding_Losses_Parallel_Split_Ohmic_Is_DC_Split_Redistribution_In_Skin", "[winding-losses][parallel-split][physical-model]") {
     // ABT #1314 (Alf, 2026-10-04): the ohmic losses of every parallel are TRUE DC-split losses, R_dc,t div_t^2 I_rms^2,
     // whatever the split; the extra copper loss of the AC redistribution between parallels, R_dc,t (|I_t|^2 - (div_t
@@ -4971,11 +5145,12 @@ TEST_CASE("Test_Winding_Losses_Parallel_Split_Ohmic_Is_DC_Split_Redistribution_I
 }
 
 TEST_CASE("Test_Winding_Losses_Parallel_Split_Is_Resistive_Where_No_Frame_Exists", "[winding-losses][parallel-split][physical-model]") {
-    // ABT #1759 (Alf, 2026-10-11): the impedance split needs the neutral window frame, which exists only for
-    // single-window, non-toroidal cores whose turns cross the section once. Toroids, multi-window cores and turns with
-    // additionalCoordinates split by the explicit RESISTIVE model: every harmonic by DC conductance, the same share
-    // WindingOhmicLosses gives DC. (This test replaced Test_Winding_Losses_Parallel_Split_Throws_Where_No_Frame_Exists,
-    // which asserted a NotImplementedException there.) Counter-check: a single-window E core keeps the impedance model.
+    // ABT #1759 (Alf, 2026-10-11): the impedance split needs a frame for the core's reply: the neutral window frame
+    // (single-window, non-toroidal cores whose turns cross the section once) or, since Alf 2026-11-09, a toroid's ring
+    // frame (RING_IMPEDANCE). Multi-window cores and turns with additionalCoordinates off a toroid split by the explicit
+    // RESISTIVE model: every harmonic by DC conductance, the same share WindingOhmicLosses gives DC. (This test replaced
+    // Test_Winding_Losses_Parallel_Split_Throws_Where_No_Frame_Exists, which asserted a NotImplementedException there.)
+    // Counter-checks: a single-window E core keeps the neutral window split, a toroid takes the ring frame's.
     auto& settings = OpenMagnetics::Settings::GetInstance();
     auto inputs = OpenMagnetics::Inputs::create_quick_operating_point_only_current(100000, 100e-6, 25, WaveformLabel::TRIANGULAR, 10, 0.5, 0);
     auto operatingPoint = inputs.get_operating_point(0);
@@ -5001,7 +5176,11 @@ TEST_CASE("Test_Winding_Losses_Parallel_Split_Is_Resistive_Where_No_Frame_Exists
         CHECK(losses.get_winding_losses() > 0);
     };
 
-    SECTION("toroid") {
+    SECTION("toroid takes the ring frame's impedance split") {
+        // Alf 2026-11-09: this section asserted RESISTIVE for toroids until the ring frame existed; rewritten (same design)
+        // to check the ring frame instead: the strands' currents add up to the winding's and every turn carries its
+        // strand's. On this design the two parallels lie alternately around the ring, the same two conductors seen from
+        // either: their impedances are equal, so the impedance split is the DC share (it departs from it by ~1e-14).
         settings.reset();
         clear_databases();
         settings.set_use_toroidal_cores(true);
@@ -5010,7 +5189,36 @@ TEST_CASE("Test_Winding_Losses_Parallel_Split_Is_Resistive_Where_No_Frame_Exists
         OpenMagnetics::Magnetic magnetic;
         magnetic.set_core(core);
         magnetic.set_coil(coil);
-        requireResistiveSplit(magnetic);
+        REQUIRE(MagneticField::parallel_current_split_model(magnetic) == ParallelCurrentSplitModel::RING_IMPEDANCE);
+        auto split = MagneticField::calculate_parallel_current_split(magnetic, operatingPoint, 25);
+        REQUIRE(split);
+        CHECK(split->model == ParallelCurrentSplitModel::RING_IMPEDANCE);
+        const auto turns = magnetic.get_coil().get_turns_description().value();
+        REQUIRE(split->strandPerTurn.size() == turns.size());
+        REQUIRE(split->windingPerStrand.size() == 2);
+        auto divider = WindingOhmicLosses::calculate_ohmic_losses(magnetic.get_coil(), operatingPoint, 25).get_current_divider_per_turn().value();
+        REQUIRE(split->frequencies.size() > 0);
+        double largestDeparture = 0;
+        for (size_t frequencyIndex = 0; frequencyIndex < split->frequencies.size(); ++frequencyIndex) {
+            const auto& winding = split->currentPerWindingPerFrequency[frequencyIndex];
+            const auto& perTurn = split->currentPerTurnPerFrequency[frequencyIndex];
+            REQUIRE(perTurn.size() == turns.size());
+            // The strands' currents add up to the winding's, each turn carrying its strand's.
+            std::vector<std::complex<double>> currentPerStrand(2, 0.0);
+            for (size_t turnIndex = 0; turnIndex < turns.size(); ++turnIndex) {
+                currentPerStrand[split->strandPerTurn[turnIndex]] = perTurn[turnIndex];
+            }
+            CHECK(std::abs(currentPerStrand[0] + currentPerStrand[1] - winding.at(0)) < 1e-9 * std::abs(winding.at(0)));
+            for (size_t turnIndex = 0; turnIndex < turns.size(); ++turnIndex) {
+                CHECK(std::abs(perTurn[turnIndex] - currentPerStrand[split->strandPerTurn[turnIndex]]) == 0);
+                largestDeparture = std::max(largestDeparture, std::abs(perTurn[turnIndex] - divider[turnIndex] * winding.at(0)) / std::abs(winding.at(0)));
+            }
+        }
+        INFO("largest departure from the DC share: " << largestDeparture << " of the winding current");
+        CHECK(largestDeparture < 1e-9);
+        WindingLossesOutput losses;
+        REQUIRE_NOTHROW(losses = WindingLosses().calculate_losses(magnetic, operatingPoint, 25));
+        CHECK(losses.get_winding_losses() > 0);
         settings.reset();
     }
 

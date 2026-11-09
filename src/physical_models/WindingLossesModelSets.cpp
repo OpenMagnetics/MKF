@@ -247,7 +247,14 @@ MagneticFieldStrengthModels resolve_winding_losses_field_model(const WindingLoss
 
 std::optional<std::vector<bool>> resolve_flat_cell_windings(Magnetic& magnetic, MagneticFieldStrengthModels fieldModel, MagneticFieldStrengthFringingEffectModels fringingModel,
                                                             const WindingLossesModelSet* set, std::optional<WindingProximityEffectLossesModels> customProximityModel) {
-    if (fringingModel != MagneticFieldStrengthFringingEffectModels::MMF_BOUNDARY || fieldModel != MagneticFieldStrengthModels::BINNS_LAWRENSON) {
+    // The frames that image cells: the neutral window (MMF_BOUNDARY on the pure 2-D kernel), and a toroid's ring under its
+    // 2-D field (BINNS_LAWRENSON; MagneticField reads ALBACH as BINNS_LAWRENSON on a toroid, see there).
+    if (magnetic.get_core().get_shape_family() == CoreShapeFamily::T) {
+        if (fieldModel != MagneticFieldStrengthModels::BINNS_LAWRENSON && fieldModel != MagneticFieldStrengthModels::ALBACH) {
+            return std::nullopt;
+        }
+    }
+    else if (fringingModel != MagneticFieldStrengthFringingEffectModels::MMF_BOUNDARY || fieldModel != MagneticFieldStrengthModels::BINNS_LAWRENSON) {
         return std::nullopt;
     }
     auto& coil = magnetic.get_mutable_coil();

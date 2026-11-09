@@ -776,8 +776,15 @@ WindingLossesOutput WindingProximityEffectLosses::calculate_proximity_effect_los
         }
         const auto& model = foundModel->second;
         std::optional<size_t> flatTurnIndex;
+        std::optional<size_t> returnFlatTurnIndex;
         if (parallelCurrentSplit && !parallelCurrentSplit->flatTurnPerTurn.empty()) {
             flatTurnIndex = parallelCurrentSplit->flatTurnPerTurn.at(turnIndex);
+        }
+        if (parallelCurrentSplit && !parallelCurrentSplit->returnFlatTurnPerTurn.empty()) {
+            returnFlatTurnIndex = parallelCurrentSplit->returnFlatTurnPerTurn.at(turnIndex);
+        }
+        if (returnFlatTurnIndex && !hasSecondaryCrossing) {
+            throw InvalidInputException(ErrorCode::INVALID_INPUT, "Turn " + turn.get_name() + " has cells at a return crossing it has no field points at");
         }
         if (auto martinezModel = std::dynamic_pointer_cast<WindingProximityEffectLossesMartinezModel>(model)) {
             martinezModel->set_flat_turn(parallelCurrentSplit, flatTurnIndex);
@@ -789,6 +796,10 @@ WindingLossesOutput WindingProximityEffectLosses::calculate_proximity_effect_los
         auto primaryLossesPerHarmonic = calculate_proximity_effect_losses_per_meter(model, wire, temperature, std::move(primaryFields), std::move(primaryQuadrature), perpendicularOutlineFactor, stackSharingNumber).second;
         std::vector<std::pair<double, double>> secondaryLossesPerHarmonic;
         if (hasSecondaryCrossing) {
+            // The return crossing is booked from its own cells, when it has them.
+            if (auto martinezModel = std::dynamic_pointer_cast<WindingProximityEffectLossesMartinezModel>(model)) {
+                martinezModel->set_flat_turn(parallelCurrentSplit, returnFlatTurnIndex);
+            }
             secondaryLossesPerHarmonic = calculate_proximity_effect_losses_per_meter(model, wire, temperature, std::move(secondaryFields), std::move(secondaryQuadrature), perpendicularOutlineFactor, stackSharingNumber).second;
             if (secondaryLossesPerHarmonic.size() != primaryLossesPerHarmonic.size()) {
                 throw InvalidInputException(ErrorCode::INVALID_COIL_CONFIGURATION,
@@ -1746,7 +1757,7 @@ double WindingProximityEffectLossesMartinezModel::calculate_flat_cell_losses(dou
         if (cellIndex >= numberCells) {
             throw InvalidInputException(ErrorCode::INVALID_INPUT, "Width cells: more cell samples than the turn's " + std::to_string(numberCells) + " cells");
         }
-        const double along = flat.wideAlongX ? point.get_point()[0] : point.get_point()[1];
+        const double along = flat.along(point.get_point()[0], point.get_point()[1]);
         if (std::abs(along - flat.cellCentres[cellIndex]) > 1e-9 * flat.width) {
             throw InvalidInputException(ErrorCode::INVALID_INPUT, "Width cells: cell sample " + std::to_string(cellIndex) + " is not at its cell's centre");
         }

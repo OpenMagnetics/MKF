@@ -124,10 +124,16 @@ class MagneticFieldStrengthFringingEffectModel {
 //  - NEUTRAL_WINDOW_IMPEDANCE: the strand impedance system above. Its strand inductance needs the neutral window frame
 //    (core image lattice + MMF_BOUNDARY window-wall sources), which exists for single-window, non-toroidal cores whose
 //    turns cross the section once.
+//  - RING_IMPEDANCE: the same strand impedance system on a toroid, in the ring's own frame. Each turn crosses the section
+//    twice (the bore crossing and its return outside the ring, opposite currents), and each crossing is a conductor of
+//    its own: its own longitudinal field over its half of the turn length, the two in series in the strand. The ferrite
+//    (mu -> inf) splits the plane into the bore and the outside: a crossing acts in its own region with its Kelvin image
+//    in the near wall, and a bore crossing is seen outside as a line current at the centre (CoilMesherCenterModel's
+//    toroid construction, the field step's own). The flux in the ferrite, linked by every turn alike, is left out.
 //  - RESISTIVE: every harmonic splits between the parallels by their DC conductance (series turn resistance plus the
 //    connection resistance), exactly the DC split, with no inductive term. Chosen deliberately (Alf, 2026-10-11, ABT
-//    #1759) for the geometries that have no neutral window frame yet: toroids (#1767), multi-window cores (#1768) and
-//    turns with additionalCoordinates (#1769). It ignores the proximity-driven redistribution between parallels, so
+//    #1759) for the geometries that have no window frame yet: multi-window cores (#1768) and turns with
+//    additionalCoordinates off a toroid (#1769). It ignores the proximity-driven redistribution between parallels, so
 //    it understates the AC losses of parallels that see different fields; those tickets carry the real AC split.
 //  - EQUAL: every parallel carries I_w / N_parallels at every harmonic, whatever its resistance or position: the drive of
 //    OMFEM's magnetostatic leakage solve, which spreads each turn's current uniformly over its parallels. Never chosen
@@ -135,6 +141,7 @@ class MagneticFieldStrengthFringingEffectModel {
 //    nominal currents, not of a frequency-dependent redistribution between parallels.
 enum class ParallelCurrentSplitModel {
     NEUTRAL_WINDOW_IMPEDANCE,
+    RING_IMPEDANCE,
     RESISTIVE,
     EQUAL
 };
@@ -145,15 +152,21 @@ enum class ParallelCurrentSplitModel {
 // faces carry a current that does not shrink with the cell, and its loss is booked over the cell's width.
 struct FlatTurnCells {
     size_t turnIndex = 0;
-    // The wide axis of the section in the window frame (the turn's rotation applied): x, or y.
+    // Which crossing of the turn: 0 at its coordinates, 1 at its return crossing (a toroid's turn outside the ring).
+    size_t crossing = 0;
+    // The conductor's frame: its local axes are the window frame's turned by `angle` (radians). 0 in a window frame, where
+    // the turn's quarter-turn rotations are folded into wideAlongX; a toroid's turn lies radially at its rotation.
+    double angle = 0;
+    // The wide axis of the section in the conductor's frame: its local x, or its local y.
     bool wideAlongX = true;
     // Conducting thickness (thin axis) and width (wide axis).
     double thickness = 0;
     double width = 0;
-    // The turn's centre.
+    // The crossing's centre, in the window frame.
     double centreX = 0;
     double centreY = 0;
-    // Per cell, in order along the wide axis: its centre's coordinate on that axis and its width.
+    // Per cell, in order along the wide axis: its centre's coordinate on that axis of the conductor's frame (the window
+    // frame's point turned by -angle) and its width.
     std::vector<double> cellCentres;
     std::vector<double> cellWidths;
     // The cuts: the end cells and every cell from the ends inwards are one thickness wide for endCellCount cells, then
@@ -165,6 +178,10 @@ struct FlatTurnCells {
     // 11-43 %) and stay as they are.
     static constexpr double cellGrowth = 2.0;
     static constexpr double maximumCellWidthInThicknesses = 10;
+    // A point's coordinate along the wide axis of the conductor's frame.
+    double along(double x, double y) const;
+    // The window-frame position of the point at `along` on the wide axis, on the crossing's centre line.
+    std::pair<double, double> position(double alongCoordinate) const;
     // Relative accuracy of the split's compressed operators and of its iterative solve. 1e-4 (Alf 2026-11-06, up to 3 %
     // allowed against the full model): on the planar adviser candidates and the planar OMFEM fixtures the total loss moves
     // under 0.03 % from 1e-10 and the solve is ~1.4x faster (sweep in .mkf-triage-runs/wlfem/speed).
@@ -204,11 +221,14 @@ struct ParallelCurrentSplit {
     // The flat turns resolved across their width (empty when none is), and per turn its index there.
     std::vector<FlatTurnCells> flatTurns;
     std::vector<std::optional<size_t>> flatTurnPerTurn;
+    // Per turn, the index in flatTurns of its return crossing's cells (empty when no resolved turn has a return crossing).
+    std::vector<std::optional<size_t>> returnFlatTurnPerTurn;
     // Per solved frequency, per flat turn, per cell: the cell's current in the field frame (the winding's current
     // direction applied: the current that sources the field, along +z), the field along its faces at its centre from
-    // everything but its own turn's face sheets (the external field of its slab), and the slab's reaction D = g H w, which
+    // everything but its own turn's face sheets (the external field of its slab), and the slab's reaction D = -g H w, which
     // its face sheets carry: -D on the face at the +normal side and +D on the other for a section wide along x, +D and
-    // -D for one wide along y (normal = the thin axis). g = (s - tanh s) / s, s = (1 + j) t / (2 delta).
+    // -D for one wide along y (normal = the thin axis, in the conductor's frame). g = (s - tanh s) / s,
+    // s = (1 + j) t / (2 delta). The minus makes the sheets screen in the field kernels' sign convention.
     std::vector<std::vector<std::vector<std::complex<double>>>> cellCurrentPerFrequency;
     std::vector<std::vector<std::vector<std::complex<double>>>> cellFieldPerFrequency;
     std::vector<std::vector<std::vector<std::complex<double>>>> cellReactionPerFrequency;
@@ -288,16 +308,18 @@ class MagneticField {
         // ABT #1314: the split of every winding's harmonic currents between its parallels (see ParallelCurrentSplit), at the
         // conductors' temperature, by the model parallel_current_split_model chooses for the magnetic. Empty when no
         // winding has more than one parallel.
-        // resolveFlatTurnsPerWinding: per winding, whether its flat turns (rectangular or planar, axis-aligned, wide side at
-        // least FlatTurnCells::minimumAspectRatio thicknesses) are resolved across their width (FlatTurnCells). Only the
-        // neutral window frame can (NEUTRAL_WINDOW_IMPEDANCE); the split then exists even without parallels.
+        // resolveFlatTurnsPerWinding: per winding, whether its flat turns (rectangular or planar, wide side at least
+        // FlatTurnCells::minimumAspectRatio thicknesses; axis-aligned in a window) are resolved across their width
+        // (FlatTurnCells). Only the impedance frames can (NEUTRAL_WINDOW_IMPEDANCE, RING_IMPEDANCE); the split then exists
+        // even without parallels.
         // requestedModel: a model asked for instead of the geometry's (only EQUAL, which every geometry has).
         static std::optional<ParallelCurrentSplit> calculate_parallel_current_split(Magnetic magnetic, OperatingPoint operatingPoint, double temperature,
                                                                                     std::optional<std::vector<int8_t>> customCurrentDirectionPerWinding = std::nullopt,
                                                                                     std::optional<std::vector<bool>> resolveFlatTurnsPerWinding = std::nullopt,
                                                                                     std::optional<ParallelCurrentSplitModel> requestedModel = std::nullopt);
-        // ABT #1759: the parallel current split model for this magnetic's geometry: RESISTIVE for toroids, multi-window
-        // cores and turns with additionalCoordinates (no neutral window frame), NEUTRAL_WINDOW_IMPEDANCE otherwise.
+        // ABT #1759: the parallel current split model for this magnetic's geometry: RING_IMPEDANCE for toroids, RESISTIVE
+        // for multi-window cores and turns with additionalCoordinates off a toroid (no window frame),
+        // NEUTRAL_WINDOW_IMPEDANCE otherwise.
         static ParallelCurrentSplitModel parallel_current_split_model(const Magnetic& magnetic);
         static TurnSumsCacheStatistics get_turn_sums_cache_statistics();
         static void clear_turn_sums_cache();
