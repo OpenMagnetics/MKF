@@ -616,6 +616,9 @@ add_custom_command(
     -S ${PEAS_DIR}/schemas/inputs/operatingConditions.json
     -S ${PEAS_DIR}/schemas/outputs/insulationCoordination.json
     -S ${PEAS_DIR}/schemas/outputs/lossElementPerHarmonic.json
+    # lossElementPerHarmonic.json refers to ./outputBase.json. quicktype on Windows does not resolve a
+    # relative-file $ref it was not handed ("Could not fetch schema outputBase.json"), so feed it as a source.
+    -S ${PEAS_DIR}/schemas/outputs/outputBase.json
     -o ${MAS_DIRECTORY}/MAS.hpp --namespace MAS --source-style single-source --type-style pascal-case --member-style underscore-case --enumerator-style upper-underscore-case --no-boost
   DEPENDS ${MAS_SCHEMA_SOURCES} ${PEAS_SCHEMA_SOURCES}
   USES_TERMINAL)
