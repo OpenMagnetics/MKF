@@ -204,11 +204,12 @@ class WireAdviser {
                                                                   const LibraryContext* ctx,
                                                                   const AdviserConstraints& constraints);
 
+        static std::vector<std::pair<Winding, double>> first_of_each_track_width(std::vector<std::pair<Winding, double>> candidates, size_t* numberTrackWidths = nullptr);
         std::vector<std::pair<Winding, double>> get_advised_planar_wire(Winding winding,
                                                                                           Section section,
                                                                                           SignalDescriptor current,
                                                                                           double temperature,
-                                                                                          uint8_t numberSections,
+                                                                                          uint8_t numberLayers,  // the layers the winding's turns spread over
                                                                                           size_t maximumNumberResults);
 
         std::vector<std::pair<Winding, double>> filter_by_area_no_parallels(std::vector<std::pair<Winding, double>>* unfilteredCoils,
@@ -251,7 +252,7 @@ class WireAdviser {
                                                                                           Section section,
                                                                                           SignalDescriptor current,
                                                                                           double temperature,
-                                                                                          uint8_t numberSections);
+                                                                                          uint8_t numberLayers);
         void expand_wires_dataset_with_parallels(std::vector<Winding>* windings);
         // ABT #1496: gives `to` the lead conductors (and exits) of `from`'s ends, for windings that
         // take another winding's wire (wound-together groups, CMC phases).

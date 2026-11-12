@@ -911,7 +911,9 @@ TEST_CASE("Test_CoilAdviser_Planar", "[adviser][coil-adviser][planar]") {
     // Re-pinned 2026-11-06 (approved by Alf): the screened width-cell model books the flat turns' losses, which moves the
     // loss order; it was "hot spot reaches 136 C with 9.17 W of losses". Re-pinned again the same day (approved by Alf) from
     // 9.29 W to 9.28 W, same candidate: the cell solve's tolerance 1e-10 -> 1e-4 and cell growth x1.4 -> x2 (speed, 0.1 %).
-    CHECK_THAT(*noResultsReason, Catch::Matchers::ContainsSubstring("hot spot reaches 156 C with 9.28 W of losses"));
+    // Re-pinned 2026-11-12 (approved by Alf): the planar redo sizes the tracks from the winding's layers, offers every
+    // etchable width and winds each, so the first rejected coil is another; it was "hot spot reaches 156 C with 9.28 W".
+    CHECK_THAT(*noResultsReason, Catch::Matchers::ContainsSubstring("hot spot reaches 231 C with 17.4 W of losses"));
     settings.reset();
 }
 

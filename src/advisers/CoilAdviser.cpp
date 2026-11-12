@@ -1271,9 +1271,15 @@ namespace OpenMagnetics {
             auto wire = coil.resolve_wire(windingIndex);
             auto wireWidth = wire.get_maximum_outer_width();
             
-            // Minimum layers based on geometric fit
-            auto minimumWidth = numberParallels * numberTurns * wireWidth;
-            auto minimumNumberLayersNeeded = static_cast<size_t>(ceil(minimumWidth / bobbinWidth));
+            // Minimum layers based on geometric fit. Tracks are whole: a layer holds floor(width / track) of them and
+            // each parallel takes layers of its own, as the wire adviser sized them (the copper-width ratio gave 16
+            // layers for 17 full-width tracks, one per layer, so the winding never fit).
+            auto tracksPerLayer = static_cast<size_t>(floor((bobbinWidth - 2 * defaults.minimumBorderToWireDistance + defaults.minimumWireToWireDistance) /
+                                                            (wireWidth + defaults.minimumWireToWireDistance)));
+            if (tracksPerLayer == 0) {
+                throw CoilNotProcessedException("Planar stack-up: a " + std::to_string(wireWidth * 1e3) + " mm track does not fit the " + std::to_string(bobbinWidth * 1e3) + " mm winding window");
+            }
+            auto minimumNumberLayersNeeded = static_cast<size_t>(numberParallels) * static_cast<size_t>(ceil(double(numberTurns) / double(tracksPerLayer)));
             
             // Cap layers to minimum needed (don't over-allocate)
             layersPerWinding[windingIndex] = std::min(layersPerWinding[windingIndex], minimumNumberLayersNeeded);
@@ -2313,10 +2319,23 @@ namespace OpenMagnetics {
             bool found = false;
             auto sectionIndex = coil.convert_conduction_section_index_to_global(windingIndex);
 
-            size_t numberSectionsPerPattern = 0;
-            for (auto auxWindingIndex : pattern) {
-                if (auxWindingIndex == windingIndex) {
-                    numberSectionsPerPattern++;
+            // The layers this winding's turns spread over, counted as get_advised_planar_sections lays them out: per
+            // repetition and per place in the pattern, floor(maximum layers / repetitions / pattern size), never more
+            // layers than the winding has turns.
+            size_t numberLayersThisWinding = 0;
+            {
+                const size_t layersPerSection = static_cast<size_t>(floor(settings.get_coil_maximum_layers_planar() / repetitions / pattern.size()));
+                auto turnsLeft = coil.get_functional_description()[windingIndex].get_number_turns();
+                for (size_t repetitionIndex = 0; repetitionIndex < repetitions; ++repetitionIndex) {
+                    for (auto auxWindingIndex : pattern) {
+                        if (auxWindingIndex != windingIndex) {
+                            continue;
+                        }
+                        for (size_t layerIndex = 0; layerIndex < layersPerSection && turnsLeft > 0; ++layerIndex) {
+                            ++numberLayersThisWinding;
+                            --turnsLeft;
+                        }
+                    }
                 }
             }
 
@@ -2336,25 +2355,31 @@ namespace OpenMagnetics {
                                                                              sections[sectionIndex],
                                                                              maximumCurrent,
                                                                              maximumTemperature,
-                                                                             numberSectionsPerPattern * repetitions,
+                                                                             numberLayersThisWinding,
                                                                              maximumNumberWires);
 
                 if (wiresWithScoring.size() != 0) {
+                    size_t numberTrackWidths = 0;
+                    wiresWithScoring = WireAdviser::first_of_each_track_width(std::move(wiresWithScoring), &numberTrackWidths);
                     // COA-GAP2: cap top-K per wireConfiguration BEFORE concatenating.
-                    // See identical comment in the wound path above (~line 780).
-                    const size_t kMaxWiresPerConfig = 10;
-                    if (wiresWithScoring.size() > kMaxWiresPerConfig) {
-                        wiresWithScoring.resize(kMaxWiresPerConfig);
+                    // See identical comment in the wound path above (~line 780). Every track width stays.
+                    const size_t maximumWiresPerConfiguration = std::max<size_t>(10, numberTrackWidths);
+                    if (wiresWithScoring.size() > maximumWiresPerConfiguration) {
+                        wiresWithScoring.resize(maximumWiresPerConfiguration);
                     }
                     candidatesPerConfiguration.push_back(std::move(wiresWithScoring));
                     found = true;
                 }
             }
             {
-                // Merge the configurations, then keep up to four candidates per requested result.
+                // Merge the configurations, then keep up to four candidates per requested result, and at least
+                // one of each track width.
                 auto mergedCandidates = concatenate_wire_candidates(candidatesPerConfiguration);
-                if (mergedCandidates.size() > maximumNumberResults * 4) {
-                    mergedCandidates.resize(maximumNumberResults * 4);
+                size_t numberTrackWidths = 0;
+                mergedCandidates = WireAdviser::first_of_each_track_width(std::move(mergedCandidates), &numberTrackWidths);
+                const size_t maximumCandidates = std::max(maximumNumberResults * 4, numberTrackWidths);
+                if (mergedCandidates.size() > maximumCandidates) {
+                    mergedCandidates.resize(maximumCandidates);
                 }
                 timeout += mergedCandidates.size();
                 std::move(mergedCandidates.begin(), mergedCandidates.end(), std::back_inserter(wireCoilPerWinding.back()));
@@ -2384,6 +2409,12 @@ namespace OpenMagnetics {
         std::vector<Mas> masesWithCoil;
 
         size_t wiresIndex = 0;
+        // Every kept candidate is wound (one per track width, and up to four per requested result), and the wound coils are ranked by their
+        // losses below, so the track width is chosen by losses rather than by the wire adviser's score.
+        size_t planarPoolSize = maximumNumberResults * 4;
+        for (auto& candidatesThisWinding : wireCoilPerWinding) {
+            planarPoolSize = std::max(planarPoolSize, candidatesThisWinding.size());
+        }
 
         while (true) {
 
@@ -2492,7 +2523,7 @@ namespace OpenMagnetics {
 
                 masesWithCoil.push_back(mas);
                 wiresIndex++;
-                if (masesWithCoil.size() == maximumNumberResults) {
+                if (masesWithCoil.size() == planarPoolSize) {
                     break;
                 }
             }
@@ -2526,6 +2557,38 @@ namespace OpenMagnetics {
             currentWireIndexPerWinding[lowestIndex]++;
         }
         logEntry("Managed to wind " + std::to_string(masesWithCoil.size()) + " coils", "CoilAdviser", 3);
+
+        if (masesWithCoil.size() > maximumNumberResults) {
+            // Rank the pool by the same loss evaluation the temperature gate makes. A coil whose losses cannot be
+            // ranked (its core saturates, or they cannot be evaluated) goes after the ranked ones, and the temperature
+            // gate gives its verdict as before.
+            MagneticFilterLosses lossesFilter;
+            std::vector<std::pair<Mas, double>> masesWithLosses;
+            std::vector<Mas> masesUnranked;
+            for (auto& woundMas : masesWithCoil) {
+                std::vector<Outputs> lossesOutputs;
+                auto evaluation = evaluate_wound_coil_losses(lossesFilter, woundMas, lossesOutputs);
+                if (evaluation.kind == WoundCoilLosses::Kind::EVALUATED) {
+                    masesWithLosses.push_back({woundMas, evaluation.losses});
+                }
+                else {
+                    logEntry("Wound coil '" + woundMas.get_mutable_magnetic().get_reference() +
+                             "' is not ranked by losses: " + evaluation.reason, "CoilAdviser", 3);
+                    masesUnranked.push_back(woundMas);
+                }
+            }
+            stable_sort_by_index(masesWithLosses, [](const std::pair<Mas, double>& left, const std::pair<Mas, double>& right) {
+                return left.second < right.second;
+            });
+            masesWithCoil.clear();
+            for (auto& [rankedMas, losses] : masesWithLosses) {
+                masesWithCoil.push_back(std::move(rankedMas));
+            }
+            std::move(masesUnranked.begin(), masesUnranked.end(), std::back_inserter(masesWithCoil));
+            if (masesWithCoil.size() > maximumNumberResults) {
+                masesWithCoil.resize(maximumNumberResults);
+            }
+        }
 
         return masesWithCoil;
 

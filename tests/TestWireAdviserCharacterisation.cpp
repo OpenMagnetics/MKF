@@ -183,12 +183,15 @@ const std::vector<TopEntry> kTopLitzHighFreq = {
 // the coil adviser now ranks wound coils by their losses). Without it the thicker copper,
 // which carries 5 A at 200 kHz with lower losses, ranks first: was 243.59 µm x2 (1.3197),
 // 278.38 x2, 208.79 x2, 243.59 x3, 313.18 x2.
+// Re-pinned 2026-11-12 (approved by Alf) with the fixture's two layers: the planar redo sizes tracks from the layers
+// (parallels on layers of their own) and keeps every track width. It was x2 parallels side by side in one layer, from
+// "Planar 313.18 um x2 parallels" (1.93) down.
 const std::vector<TopEntry> kTopPlanar = {
-    {"Planar 313.18 µm x2 parallels", 1.9315554209384957},
-    {"Planar 347.98 µm x2 parallels", 1.9292044850553256},
-    {"Planar 278.38 µm x2 parallels", 1.9119274110402538},
-    {"Planar 243.59 µm x2 parallels", 1.8484465039961628},
-    {"Planar 208.79 µm x2 parallels", 1.7578835080212769},
+    {"Planar 313.18 µm 2.39 mm", 1.9044740726989597},
+    {"Planar 278.38 µm 2.39 mm", 1.9028699098798179},
+    {"Planar 347.98 µm 2.39 mm", 1.882354432733512},
+    {"Planar 243.59 µm 2.39 mm", 1.8547224816013186},
+    {"Planar 278.38 µm 1.15 mm x2 parallels", 0.61145340899721567},
 };
 
 } // namespace
@@ -239,9 +242,12 @@ TEST_CASE("WireAdviser PLANAR top-5 snapshot",
     auto section = make_section(0.010, 0.0015);
     auto current = make_current(/*rms*/ 5, /*effFreq*/ 200000);
 
+    // Two layers (approved by Alf 2026-11-12; it was one): the wire adviser now takes the winding's layers, and each
+    // parallel takes layers of its own, as planar parallels are stacked and joined by vias in practice. One layer held
+    // no parallels, and its single tracks need about 42 A/mm2 for 5 A.
     WireAdviser adviser;
     auto results = adviser.get_advised_planar_wire(
-        winding, section, current, /*temp*/ 22, /*numberSections*/ 1, /*maxN*/ 5);
+        winding, section, current, /*temp*/ 22, /*numberLayers*/ 2, /*maxN*/ 5);
     check_top_n("PLANAR_8T_5A_200k", results, kTopPlanar);
 }
 

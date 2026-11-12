@@ -165,6 +165,10 @@ struct Defaults {
     const double pcbInsulationThickness = 100e-6;
     const double minimumWireToWireDistance = 90e-6;
     const double minimumBorderToWireDistance = 90e-6;
+    // Narrowest PCB track a planar winding candidate may use; the adviser also requires at least the copper thickness.
+    // Fabricators' minimum trace: ~0.13-0.15 mm at 1 oz, ~0.2 mm at 2 oz, ~0.4 mm at 4 oz, 0.5 mm and up at 10 oz (heavy
+    // copper etches sideways about as much as it is thick). Alf, 2026-11-07.
+    const double minimumPlanarTrackWidth = 0.15e-3;
     const double coreToLayerDistance = 250e-6;
 
     // Phase 4 (Group A): adviser sweep/optimization iteration budgets and step

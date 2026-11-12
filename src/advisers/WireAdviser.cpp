@@ -7,6 +7,7 @@
 #include "support/Settings.h"
 #include "support/Utils.h"
 #include <list>
+#include <set>
 #include <numeric>
 #include <sstream>
 #include <iomanip>
@@ -587,81 +588,88 @@ std::vector<std::pair<Winding, double>> WireAdviser::create_planar_dataset(Windi
                                                                                        Section section,
                                                                                        SignalDescriptor current,
                                                                                        double temperature,
-                                                                                       uint8_t numberSections) {
+                                                                                       uint8_t numberLayers) {
     std::vector<std::pair<Winding, double>> windings;
     auto planarWires = get_wires(WireType::PLANAR);
-
-    // WA-LOGIC-1 NOTE: Parallels are tried first, biasing toward complex designs.
-    // Consider generating no-parallels first for simpler/cheaper solutions,
-    // or let scoring handle the preference between simple and parallel designs.
-    // Parallels (FIRST - tried first in CoilAdviser)
-    {
-        auto maximumNumberTurnsPerSection = winding.get_number_turns();
-        auto maximumAvailableWidthForCopper = section.get_dimensions()[0] - 2 * get_border_to_wire_distance() - (maximumNumberTurnsPerSection - 1) * get_wire_to_wire_distance();
-        if (maximumAvailableWidthForCopper < 0) {
-            return windings;
-        }
-        auto maximumAvailableWidthForTurn = maximumAvailableWidthForCopper / winding.get_number_turns();
-        size_t maximumNumberParallels = _maximumNumberParallels;
-
-        for (auto wire : planarWires) {
-            // Capture catalogue display name BEFORE any per-variant mutation,
-            // so each (parallels) variant gets a unique name suffix (see fix
-            // for "Planar X µm appears twice in top-N" bug).
-            std::string baseName = wire.get_name().value_or("Planar");
-            double conductingHeight = resolve_dimensional_values(wire.get_conducting_height().value());
-            if (conductingHeight < section.get_dimensions()[1]) {
-                wire.set_nominal_value_outer_height(conductingHeight);
-                // Set conducting_width FIRST before calculating parallels needed
-                wire.set_nominal_value_conducting_width(maximumAvailableWidthForTurn);
-                int minParallelsNeeded = Wire::calculate_number_parallels_needed(current, temperature, wire, _maximumEffectiveCurrentDensity);
-                size_t startParallels = std::max(size_t(2), static_cast<size_t>(minParallelsNeeded));
-                for (size_t numberParallels = startParallels; numberParallels <= maximumNumberParallels; ++numberParallels) {
-                    wire.set_nominal_value_conducting_width(maximumAvailableWidthForTurn);
-                    wire.set_nominal_value_outer_width(maximumAvailableWidthForTurn);
-                    wire.set_nominal_value_conducting_area(maximumAvailableWidthForTurn * conductingHeight);
-                    // Phase 1 fix: same planar catalogue entry was emitted at
-                    // multiple parallel counts with identical display names
-                    // and DIFFERENT downstream scores, so the top-N showed
-                    // e.g. "Planar 243.59 µm" twice with no way to tell them
-                    // apart. Encode parallels into the display name.
-                    wire.set_name(baseName + " x" + std::to_string(numberParallels) + " parallels");
-                    winding.set_wire(wire);
-                    winding.set_number_parallels(numberParallels);
-
-                    // No copper-thickness penalty: heavier copper is not ranked below its electrical merit.
-                    windings.push_back(std::pair<Winding, double>{winding, 0});
-                }
-            }
-        }
+    if (numberLayers == 0) {
+        throw InvalidInputException(ErrorCode::INVALID_INPUT, "Planar wire dataset: the winding has no layers to place its turns in");
     }
+    const auto numberTurns = winding.get_number_turns();
 
-    // No parallels (SECOND - only add if single parallel meets current density requirements)
-    {
-        auto maximumNumberTurnsPerSection = ceil(double(winding.get_number_turns()) / numberSections);
-        auto maximumAvailableWidthForCopper = section.get_dimensions()[0] - 2 * get_border_to_wire_distance() - (maximumNumberTurnsPerSection - 1) * get_wire_to_wire_distance();
-        if (maximumAvailableWidthForCopper < 0) {
-            return windings;
+    // The winding's turns spread over its layers in series, and each parallel takes layers of its own (Alf 2026-11-12):
+    // with P parallels every parallel has floor(layers / P) layers and each of them holds ceil(N / those layers) tracks
+    // side by side, which sets the track width (it was N per layer whatever the layers: 112 turns on ELP 43 gave 27 um
+    // tracks). More parallels than layers do not fit. A track narrower than max(minimumPlanarTrackWidth, its copper
+    // thickness) cannot be etched and is not a candidate (fabricators' minimum trace grows with copper weight, about one
+    // copper thickness).
+    auto tracks_per_layer = [&](int64_t numberParallels) {
+        const int64_t layersPerParallel = static_cast<int64_t>(numberLayers) / numberParallels;
+        if (layersPerParallel < 1) {
+            return 0.0;
         }
-        auto maximumAvailableWidthForTurn = maximumAvailableWidthForCopper / maximumNumberTurnsPerSection;
+        return std::ceil(double(numberTurns) / double(layersPerParallel));
+    };
+    // The widest track when `tracksPerLayer` of them sit side by side in the section, with the border and the
+    // wire-to-wire gaps.
+    auto width_for_tracks = [&](double tracksPerLayer) {
+        const double widthForCopper = section.get_dimensions()[0] - 2 * get_border_to_wire_distance() - (tracksPerLayer - 1) * get_wire_to_wire_distance();
+        return widthForCopper / tracksPerLayer;
+    };
+    auto etchable = [&](double trackWidth, double copperThickness) {
+        return trackWidth >= std::max(defaults.minimumPlanarTrackWidth, copperThickness);
+    };
+    auto set_track = [&](Wire& wire, double trackWidth, double copperThickness) {
+        wire.set_nominal_value_outer_height(copperThickness);
+        wire.set_nominal_value_conducting_width(trackWidth);
+        wire.set_nominal_value_outer_width(trackWidth);
+        wire.set_nominal_value_conducting_area(trackWidth * copperThickness);
+    };
 
+    // Track widths from the widest the layer allows down to the narrowest that can be etched, doubling the tracks per
+    // layer each time and fitting them exactly with their gaps (Alf 2026-11-12): a narrower track carries less of the field's eddy current (beside a gap a full-width track can run far
+    // hotter), a wider one less DC resistance; the losses and the temperature pick. Parallels first, as before.
+    auto add_candidates = [&](Wire wire, const std::string& baseName, double conductingHeight, int64_t numberParallels) {
+        const double fewestTracksPerLayer = tracks_per_layer(numberParallels);
+        const double fullWidth = width_for_tracks(fewestTracksPerLayer);
+        for (double tracksPerLayer = fewestTracksPerLayer, trackWidth = fullWidth;
+             tracksPerLayer <= std::max(fewestTracksPerLayer, double(numberTurns)) && trackWidth > 0 && etchable(trackWidth, conductingHeight);
+             tracksPerLayer *= 2, trackWidth = width_for_tracks(tracksPerLayer)) {
+            set_track(wire, trackWidth, conductingHeight);
+            // A track must carry the current with these parallels; narrowing only raises the density.
+            if (Wire::calculate_number_parallels_needed(current, temperature, wire, _maximumEffectiveCurrentDensity) > numberParallels) {
+                break;
+            }
+            // Parallels and width in the display name: the same catalogue entry appears at several of each, with
+            // different downstream scores ("Planar 243.59 um" twice in the top-N before).
+            std::ostringstream name;
+            name << baseName << " " << std::setprecision(3) << trackWidth * 1e3 << " mm";
+            if (numberParallels > 1) {
+                name << " x" << numberParallels << " parallels";
+            }
+            wire.set_name(name.str());
+            winding.set_wire(wire);
+            winding.set_number_parallels(numberParallels);
+            // No copper-thickness penalty: heavier copper is not ranked below its electrical merit.
+            windings.push_back(std::pair<Winding, double>{winding, 0});
+        }
+    };
+    // Parallels first (each in layers of its own), then one parallel.
+    for (bool withParallels : {true, false}) {
         for (auto wire : planarWires) {
-            double conductingHeight = resolve_dimensional_values(wire.get_conducting_height().value());
-            if (conductingHeight < section.get_dimensions()[1]) {
-                wire.set_nominal_value_outer_height(conductingHeight);
-                // Set conducting_width FIRST before calculating parallels needed
-                wire.set_nominal_value_conducting_width(maximumAvailableWidthForTurn);
-                int minParallelsNeeded = Wire::calculate_number_parallels_needed(current, temperature, wire, _maximumEffectiveCurrentDensity);
-                if (minParallelsNeeded <= 1) {
-                    wire.set_nominal_value_conducting_width(maximumAvailableWidthForTurn);
-                    wire.set_nominal_value_outer_width(maximumAvailableWidthForTurn);
-                    wire.set_nominal_value_conducting_area(maximumAvailableWidthForTurn * conductingHeight);
-                    winding.set_wire(wire);
-                    winding.set_number_parallels(1);
-                    
-                    // No copper-thickness penalty: heavier copper is not ranked below its electrical merit.
-                    windings.push_back(std::pair<Winding, double>{winding, 0});
+            const std::string baseName = wire.get_name().value_or("Planar");
+            const double conductingHeight = resolve_dimensional_values(wire.get_conducting_height().value());
+            if (conductingHeight >= section.get_dimensions()[1]) {
+                continue;
+            }
+            if (!withParallels) {
+                add_candidates(wire, baseName, conductingHeight, 1);
+                continue;
+            }
+            for (size_t parallels = 2; parallels <= _maximumNumberParallels; ++parallels) {
+                if (tracks_per_layer(static_cast<int64_t>(parallels)) <= 0) {
+                    break;  // more parallels than layers
                 }
+                add_candidates(wire, baseName, conductingHeight, static_cast<int64_t>(parallels));
             }
         }
     }
@@ -924,13 +932,37 @@ void WireAdviser::set_maximum_area_proportion(std::vector<std::pair<Winding, dou
     }
 }
 
+// Puts the best planar candidate of each track width and parallel count first (in score order), then the rest, so a
+// cut to the first few keeps every width the wire adviser offered and the wound coils' losses pick among them (Alf
+// 2026-11-12: its score cannot see the gap's fringing field, which can make a full-width track the hottest).
+std::vector<std::pair<Winding, double>> WireAdviser::first_of_each_track_width(std::vector<std::pair<Winding, double>> candidates, size_t* numberTrackWidths) {
+    std::vector<std::pair<Winding, double>> firstOfEachWidth, others;
+    std::set<std::pair<double, int64_t>> seenWidths;
+    for (auto& candidate : candidates) {
+        auto candidateWire = std::get<Wire>(candidate.first.get_wire());
+        const double trackWidth = resolve_dimensional_values(candidateWire.get_conducting_width().value());
+        const auto key = std::pair<double, int64_t>{std::round(trackWidth * 1e7), candidate.first.get_number_parallels()};
+        if (seenWidths.insert(key).second) {
+            firstOfEachWidth.push_back(std::move(candidate));
+        }
+        else {
+            others.push_back(std::move(candidate));
+        }
+    }
+    if (numberTrackWidths) {
+        *numberTrackWidths = firstOfEachWidth.size();
+    }
+    std::move(others.begin(), others.end(), std::back_inserter(firstOfEachWidth));
+    return firstOfEachWidth;
+}
+
 std::vector<std::pair<Winding, double>> WireAdviser::get_advised_planar_wire(Winding winding,
                                                                                                Section section,
                                                                                                SignalDescriptor current,
                                                                                                double temperature,
-                                                                                               uint8_t numberSections,
+                                                                                               uint8_t numberLayers,
                                                                                                size_t maximumNumberResults) {
-    auto coilsWithScoring = create_planar_dataset(winding, section, current, temperature, numberSections);
+    auto coilsWithScoring = create_planar_dataset(winding, section, current, temperature, numberLayers);
 
     logEntry("We start the search with " + std::to_string(coilsWithScoring.size()) + " wires", "WireAdviser", 3);
 
@@ -947,14 +979,27 @@ std::vector<std::pair<Winding, double>> WireAdviser::get_advised_planar_wire(Win
     logEntry("There are " + std::to_string(coilsWithScoring.size()) + " planar wires after filtering by proximity factor.", "WireAdviser", 3);
 
     break_score_ties(&coilsWithScoring);
+    // Every track width is kept, whatever maximumNumberResults: the wound coils' losses choose among them. The kept
+    // ones are returned in score order, as every wire adviser result is.
+    {
+        size_t numberTrackWidths = 0;
+        coilsWithScoring = first_of_each_track_width(std::move(coilsWithScoring), &numberTrackWidths);
+        maximumNumberResults = std::max(maximumNumberResults, numberTrackWidths);
+        if (coilsWithScoring.size() > maximumNumberResults) {
+            coilsWithScoring.resize(maximumNumberResults);
+        }
+        std::stable_sort(coilsWithScoring.begin(), coilsWithScoring.end(), [](const std::pair<Winding, double>& left, const std::pair<Winding, double>& right) {
+            return left.second > right.second;
+        });
+    }
 
     if (coilsWithScoring.size() > maximumNumberResults) {
         auto finalCoilsWithScoring = std::vector<std::pair<Winding, double>>(coilsWithScoring.begin(), coilsWithScoring.end() - (coilsWithScoring.size() - maximumNumberResults));
-        set_maximum_area_proportion(&finalCoilsWithScoring, section, numberSections);
+        set_maximum_area_proportion(&finalCoilsWithScoring, section, numberLayers);
         return finalCoilsWithScoring;
     }
     else {
-        set_maximum_area_proportion(&coilsWithScoring, section, numberSections);
+        set_maximum_area_proportion(&coilsWithScoring, section, numberLayers);
     }
 
 
