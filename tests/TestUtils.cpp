@@ -851,10 +851,12 @@ namespace {
         settings.reset();
     }
 
-    // ABT #1071: the web builder swaps the SHAPE of an existing core and keeps everything else,
-    // so a drum picked after a gapped PQ arrives with that PQ's subtractive gap. Autocomplete
-    // must drop it (as it does for toroids), not hand the inductance model a gapped open core.
-    TEST_CASE("Test_Magnetic_Autocomplete_Drum_Drops_Stale_Gap", "[support][utils][drum][open-core][smoke-test]") {
+    // ABT #1071 / #2372: the web builder swaps the SHAPE of an existing core and keeps everything
+    // else, so a drum picked after a gapped PQ arrives typed as the PQ's two-piece set. That type
+    // contradicts the drum family. Autocomplete used to re-type it silently (the retired
+    // Test_Magnetic_Autocomplete_Drum_Drops_Stale_Gap); by decision (Alf, 2026-11-13) it now throws
+    // and names the family and the type, so the caller fixes the input.
+    TEST_CASE("Test_Magnetic_Autocomplete_Drum_Typed_Two_Piece_Set_Throws", "[support][utils][drum][open-core][abt-2372][smoke-test]") {
         settings.reset();
         clear_databases();
 
@@ -875,20 +877,10 @@ namespace {
         magnetic.set_core(core);
         magnetic.set_coil(coil);
 
-        auto autocompleted = OpenMagnetics::magnetic_autocomplete(magnetic);
-        auto& functionalDescription = autocompleted.get_core().get_functional_description();
-        REQUIRE(functionalDescription.get_type() == CoreType::OPEN_SHAPE);
-        for (auto& gap : functionalDescription.get_gapping()) {
-            // Only residual bookkeeping entries may remain (process_gap adds them to every
-            // non-toroidal core); the stale 0.5 mm subtractive gap must be gone.
-            REQUIRE(gap.get_type() == GapType::RESIDUAL);
-        }
-
-        // And the inductance model accepts the result (this is the call the builder makes).
-        OpenMagnetics::MagnetizingInductance magnetizingInductance;
-        double inductance = magnetizingInductance.calculate_inductance_from_number_turns_and_gapping(
-            autocompleted.get_mutable_core(), autocompleted.get_mutable_coil()).get_magnetizing_inductance().get_nominal().value();
-        REQUIRE(inductance > 0);
+        REQUIRE_THROWS_MATCHES(OpenMagnetics::magnetic_autocomplete(magnetic), InvalidInputException,
+                               Catch::Matchers::MessageMatches(Catch::Matchers::ContainsSubstring("'twoPieceSet'") &&
+                                                               Catch::Matchers::ContainsSubstring("'drum'") &&
+                                                               Catch::Matchers::ContainsSubstring("'openShape'")));
         settings.reset();
     }
 
