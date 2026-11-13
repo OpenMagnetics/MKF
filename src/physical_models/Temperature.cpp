@@ -7766,7 +7766,8 @@ static double plate_contact_area(const ThermalNetworkNode& node, double plateDir
 // interface's area-specific resistance there is no number to use (was a silent 0.5 K/W).
 static double interface_area_specific_resistance(const MAS::Cooling& cooling, const std::string& coolingName) {
     if (!cooling.get_interface_thermal_resistance()) {
-        throw InvalidInputException(ErrorCode::MISSING_DATA,
+        // An error in the operating conditions, not in the magnetic: an adviser stops on it (ABT #2376).
+        throw InvalidOperatingConditionsException(ErrorCode::MISSING_DATA,
             "Temperature: the " + coolingName + " has no interfaceThermalResistance (area-specific, K*m^2/W) "
             "for the thermal interface between the core and the " + coolingName);
     }
@@ -7787,6 +7788,13 @@ void Temperature::applyHeatsinkCooling(const MAS::Cooling& cooling) {
         }
     }
     
+    if (topYokeIdx == static_cast<size_t>(-1) && _isToroidal) {
+        // ABT #2376: the heatsink model mounts on the top yoke, and a toroid's thermal network is a ring of
+        // segments with no top yoke. Mounting a heatsink on a toroid (on which face, through which segments)
+        // is a model that does not exist yet; the cold-plate model does attach to the toroid's segments.
+        throw NotImplementedException("Temperature: heatsink cooling of a toroidal core (the heatsink model mounts on a "
+                                      "top yoke, which a toroid does not have; a cold plate can be used instead)");
+    }
     if (topYokeIdx == static_cast<size_t>(-1)) {
         throw std::runtime_error("Temperature::applyHeatsinkCooling: No top yoke node found for heatsink mounting. "
                                  "Heatsink cooling cannot be applied without a top yoke or bobbin top yoke node.");

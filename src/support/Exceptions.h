@@ -613,6 +613,16 @@ public:
         : CalculationException(code, message) {}
 };
 
+// The operating conditions given with the inputs (their cooling, for instance a heatsink without its
+// interfaceThermalResistance) cannot be used as given. Unlike an InvalidInputException about one magnetic,
+// no candidate changes this: an adviser stops on it with this message instead of culling every candidate
+// as infeasible and returning nothing (ABT #2376).
+class InvalidOperatingConditionsException : public InvalidInputException {
+public:
+    InvalidOperatingConditionsException(ErrorCode code, const std::string& message)
+        : InvalidInputException(code, message) {}
+};
+
 // The core saturates at the given operating point: a physics verdict on the design (this material,
 // turn count, gap and core cannot carry that flux), not malformed input and not a failed calculation.
 // An adviser rejects the candidate on exactly this exception; every other one still stops the run

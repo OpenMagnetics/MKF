@@ -48,7 +48,8 @@ using EvalFn = std::function<std::pair<bool, double>(Magnetic*, Inputs*)>;
 // whose evaluation throws an OpenMagneticsException is culled (abt #53: per-candidate
 // infeasibility — e.g. a degenerate gap committed for an unreachable high-Lm transformer —
 // is not fatal), but the cull is now LOGGED (it used to be silent, hiding a whole pool being
-// emptied by a systematic input error). Returns {survivors, their scores}; on `writeBack` the
+// emptied by a systematic input error). An InvalidOperatingConditionsException is about the
+// inputs, which every candidate shares: it stops the advise with its own message (ABT #2376). Returns {survivors, their scores}; on `writeBack` the
 // survivors carry the possibly-mutated magnetic.
 //
 // ABT #1785: the pool is CONSUMED. Every caller replaces its pool with the result
@@ -81,6 +82,9 @@ evaluate_and_cull(std::vector<std::pair<Magnetic, double>>* unfilteredMagnetics,
             auto evalResult = evaluate(magnetic, &inputs);
             valid = evalResult.first;
             scoring = evalResult.second;
+        }
+        catch (const InvalidOperatingConditionsException&) {
+            throw;  // the inputs, not this candidate: culling would empty the pool without a reason (ABT #2376)
         }
         catch (const OpenMagneticsException& e) {
             logEntry(std::string("CoreAdviser ") + filterName + ": culling infeasible candidate — " + e.what(),
@@ -128,6 +132,9 @@ evaluate_and_cull_from(const std::vector<std::pair<Magnetic, double>>& source,
             auto evalResult = evaluate(&magnetic, &inputs);
             valid = evalResult.first;
             scoring = evalResult.second;
+        }
+        catch (const InvalidOperatingConditionsException&) {
+            throw;  // the inputs, not this candidate: culling would empty the pool without a reason (ABT #2376)
         }
         catch (const OpenMagneticsException& e) {
             logEntry(std::string("CoreAdviser ") + filterName + ": culling infeasible candidate — " + e.what(),
