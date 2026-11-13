@@ -1061,8 +1061,17 @@ TEST_CASE("Test_Import_Dense_Export_Keeps_At_Most_The_Imported_Maximum", "[proce
 TEST_CASE("Test_CircuitSimulationReader_Refuses_A_Partially_Numeric_Cell", "[processor][circuit-simulation-reader][smoke-test][abt-1624]") {
     // ABT #1624: std::stod returned the numeric prefix of a cell and ignored the rest, so a
     // decimal-comma "0,001" in a ';'-separated export was silently read as 0.
+    // ABT #2374 (Alf, 2026-11-13): only the columns the user maps are read, so the refusal comes when
+    // the mapped column "I(L1)" is extracted, not when the file loads. 1 MHz is the 1 us span below.
+    const std::vector<std::map<std::string, std::string>> mapping = {{{"time", "time"}, {"current", "I(L1)"}}};
+    auto extract = [&](const std::string& csv) {
+        CircuitSimulationReader reader(csv, true);
+        return reader.extract_operating_point(1, 1e6, mapping);
+    };
     std::string decimalComma = "time;I(L1)\n0;0,001\n1e-6;0,002\n";
-    REQUIRE_THROWS_AS(CircuitSimulationReader(decimalComma, true), InvalidInputException);
+    REQUIRE_NOTHROW(CircuitSimulationReader(decimalComma, true));
+    REQUIRE_THROWS_AS(extract(decimalComma), InvalidInputException);
+    REQUIRE_THROWS_WITH(extract(decimalComma), Catch::Matchers::ContainsSubstring("line 2, column 2 (\"I(L1)\"): \"0,001\""));
     std::string trailingJunk = "time,I(L1)\n0,1.5A\n";
     REQUIRE_THROWS_AS(CircuitSimulationReader(trailingJunk, true), InvalidInputException);
     // The refusal names the numeric prefix, whichever standard library parsed it.

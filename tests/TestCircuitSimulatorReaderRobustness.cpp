@@ -77,13 +77,17 @@ TEST_CASE("Reader: stod failure carries line + column + token context",
         "time,Iout\n"
         "0,0\n"
         "1e-6,not_a_number\n";
+    // ABT #2374 (Alf, 2026-11-13): only the columns the user maps are read, so the file loads and the
+    // error comes when the mapped column "Iout" is extracted. The file spans 1 us: 1 MHz is one period.
+    CircuitSimulationReader reader(csv, true);
+    const std::vector<std::map<std::string, std::string>> mapping = {{{"time", "time"}, {"current", "Iout"}}};
     try {
-        CircuitSimulationReader reader(csv, true);
+        reader.extract_operating_point(1, 1e6, mapping);
         FAIL("expected an exception");
     }
-    catch (const std::exception& e) {
+    catch (const InvalidInputException& e) {
         std::string msg = e.what();
-        REQUIRE_THAT(msg, ContainsSubstring("line"));
+        REQUIRE_THAT(msg, ContainsSubstring("line 3"));
         REQUIRE_THAT(msg, ContainsSubstring("Iout"));        // column name in message
         REQUIRE_THAT(msg, ContainsSubstring("not_a_number")); // offending token
     }
