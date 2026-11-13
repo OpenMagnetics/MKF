@@ -421,6 +421,7 @@ class Painter : public PainterInterface {
         _opacity = opacity;
     }
     void paint_two_piece_set_core(Core core);
+    void paint_piece_and_plate_core(Core core);
     void paint_toroidal_core(Core core);
     // Drum-family + molded single-solid cross-sections (ABT #366/#362/#357): these have no
     // mirrored halves, so the two-piece-set reconstruction draws them wrong.

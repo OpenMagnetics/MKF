@@ -1793,10 +1793,139 @@ void Painter::paint_core(Magnetic magnetic) {
             // Single-solid / piece-and-closer families: no mirrored halves to reconstruct.
             return paint_drum_family_core(core);
             break;
+        case CoreShapeFamily::EI:
+        case CoreShapeFamily::UI:
+        case CoreShapeFamily::PQI:
+            // A shaped piece closed by a flat bar (ABT #2372): drawn as the piece plus its plate, not
+            // as a mirrored half-set.
+            if (core.get_functional_description().get_type() == CoreType::PIECE_AND_PLATE) {
+                return paint_piece_and_plate_core(core);
+            }
+            return paint_two_piece_set_core(core);
+            break;
         default:
             return paint_two_piece_set_core(core);
             break;
     }
+}
+
+// ABT #2372: the 2D cross-section of a piece-and-plate core (EI, UI, PQI) in the processed frame. The
+// columns span -D/2..+D/2 (Core::create_geometrical_description), the leg tips meet the plate at +D/2
+// and the plate, B2 thick, lies above them; the piece's back is at D/2 - B. Gaps are drawn where MKF
+// placed them: a ground gap at the centre leg tip (between the leg and the plate), a residual gap at
+// each leg tip, distributed gaps as chunks down the leg; a spacer lifts the plate off the legs.
+void Painter::paint_piece_and_plate_core(Core core) {
+    CoreShape shape = core.resolve_shape();
+    auto dimensions = flatten_dimensions(shape.get_dimensions().value());
+    if (dimensions.find("B2") == dimensions.end() || !(dimensions["B2"] > 0)) {
+        throw InvalidInputException(ErrorCode::INVALID_CORE_DATA,
+            "Painter: piece-and-plate shape '" + shape.get_name().value_or("?") + "' has no positive plate thickness B2");
+    }
+    double plateThickness = dimensions["B2"];
+    auto processedDescription = core.get_processed_description().value();
+    auto rightColumn = core.find_closest_column_by_coordinates(std::vector<double>({processedDescription.get_width() / 2, 0, -processedDescription.get_depth() / 2}));
+    auto mainColumn = core.find_closest_column_by_coordinates({0, 0, 0});
+    auto family = core.get_shape_family();
+    const bool uShaped = family == MAS::CoreShapeFamily::UI;
+    double showingMainColumnWidth = mainColumn.get_width() / 2;
+    double showingCoreWidth = uShaped ? processedDescription.get_width() - mainColumn.get_width() / 2 : processedDescription.get_width() / 2;
+    double mainLegLeftEdge = uShaped ? -showingMainColumnWidth : 0;
+    double legTip = mainColumn.get_coordinates()[1] + mainColumn.get_height() / 2;
+    double pieceBack = legTip - (processedDescription.get_height() - plateThickness);
+
+    double spacer = 0;
+    for (auto& gap : core.get_functional_description().get_gapping()) {
+        if (gap.get_type() == GapType::ADDITIVE) {
+            spacer = std::max(spacer, gap.get_length());
+        }
+    }
+    double pieceOffset = -spacer / 2;
+    double plateOffset = spacer / 2;
+
+    struct PieceHalf {
+        std::vector<SVG::Point> piece;
+        std::vector<std::vector<SVG::Point>> chunks;
+    };
+    // The top of a leg's piece material and the chunks a column's gaps leave above it.
+    auto legTopAndChunks = [&](ColumnElement column, double left, double right, std::vector<std::vector<SVG::Point>>& chunks) {
+        auto gaps = core.find_gaps_by_column(column);
+        std::vector<CoreGap> cutGaps;
+        for (auto& gap : gaps) {
+            if (gap.get_type() != GapType::ADDITIVE) {
+                cutGaps.push_back(gap);
+            }
+        }
+        std::sort(cutGaps.begin(), cutGaps.end(), [](const CoreGap& lhs, const CoreGap& rhs) { return lhs.get_coordinates().value()[1] < rhs.get_coordinates().value()[1];});
+        double columnTip = column.get_coordinates()[1] + column.get_height() / 2;
+        if (cutGaps.empty()) {
+            return columnTip;
+        }
+        double top = cutGaps.front().get_coordinates().value()[1] - cutGaps.front().get_length() / 2;
+        for (size_t i = 0; i < cutGaps.size(); ++i) {
+            double chunkBottom = cutGaps[i].get_coordinates().value()[1] + cutGaps[i].get_length() / 2;
+            double chunkTop = i + 1 < cutGaps.size() ? cutGaps[i + 1].get_coordinates().value()[1] - cutGaps[i + 1].get_length() / 2 : columnTip;
+            if (chunkTop > chunkBottom) {
+                chunks.push_back({SVG::Point(left, pieceOffset + chunkBottom), SVG::Point(right, pieceOffset + chunkBottom),
+                                  SVG::Point(right, pieceOffset + chunkTop), SVG::Point(left, pieceOffset + chunkTop)});
+            }
+        }
+        return top;
+    };
+    auto buildHalf = [&](ColumnElement lateralColumn) {
+        PieceHalf half;
+        double lateralColumnWidth = lateralColumn.get_minimum_width() ? lateralColumn.get_minimum_width().value() : lateralColumn.get_width();
+        double mainTop = legTopAndChunks(mainColumn, mainLegLeftEdge, showingMainColumnWidth, half.chunks);
+        double lateralTop = legTopAndChunks(lateralColumn, showingCoreWidth - lateralColumnWidth, showingCoreWidth, half.chunks);
+        double lateralBottom = lateralColumn.get_coordinates()[1] - lateralColumn.get_height() / 2;
+        double mainBottom = mainColumn.get_coordinates()[1] - mainColumn.get_height() / 2;
+        half.piece = {SVG::Point(mainLegLeftEdge, pieceOffset + pieceBack), SVG::Point(showingCoreWidth, pieceOffset + pieceBack),
+                      SVG::Point(showingCoreWidth, pieceOffset + lateralTop), SVG::Point(showingCoreWidth - lateralColumnWidth, pieceOffset + lateralTop),
+                      SVG::Point(showingCoreWidth - lateralColumnWidth, pieceOffset + lateralBottom), SVG::Point(showingMainColumnWidth, pieceOffset + mainBottom),
+                      SVG::Point(showingMainColumnWidth, pieceOffset + mainTop), SVG::Point(mainLegLeftEdge, pieceOffset + mainTop)};
+        return half;
+    };
+    auto mirrorPoints = [](const std::vector<SVG::Point>& points) {
+        std::vector<SVG::Point> mirroredPoints;
+        for (auto& point : points) {
+            mirroredPoints.push_back(SVG::Point(-point.first, point.second));
+        }
+        return mirroredPoints;
+    };
+
+    auto shapes = _root.add_child<SVG::Group>();
+    auto addFerritePolygon = [&](const std::vector<SVG::Point>& points) {
+        *shapes << SVG::Polygon(scale_points(points, 0, _scale));
+        _root.get_children<SVG::Polygon>().back()->set_attr("class", "ferrite");
+    };
+    auto rightHalf = buildHalf(rightColumn);
+    addFerritePolygon(rightHalf.piece);
+    for (auto& chunk : rightHalf.chunks) {
+        addFerritePolygon(chunk);
+    }
+    // The +x half of the plate (the whole plate for a U piece, drawn whole like the U itself).
+    std::vector<SVG::Point> plate = {SVG::Point(mainLegLeftEdge, plateOffset + legTip), SVG::Point(showingCoreWidth, plateOffset + legTip),
+                                     SVG::Point(showingCoreWidth, plateOffset + legTip + plateThickness), SVG::Point(mainLegLeftEdge, plateOffset + legTip + plateThickness)};
+    addFerritePolygon(plate);
+
+    // The -x half, as paint_two_piece_set_core does: with per-column winding windows, or under real
+    // winding (the whole magnetic), from the lateral column nearest -x. A U piece is already whole.
+    bool drawLeftHalf = !uShaped && (processedDescription.get_winding_windows().size() > 1 || settings.get_coil_use_real_winding_geometry());
+    if (drawLeftHalf) {
+        if (mainColumn.get_coordinates()[0] != 0) {
+            throw InvalidInputException(ErrorCode::INVALID_CORE_DATA,
+                "Painter: the whole-magnetic view draws the -x half about the main column's axis, but the main column sits at x = " +
+                    std::to_string(mainColumn.get_coordinates()[0]) + " m, not at x = 0");
+        }
+        auto leftColumn = core.find_closest_column_by_coordinates(std::vector<double>({-processedDescription.get_width() / 2, 0, -processedDescription.get_depth() / 2}));
+        auto leftHalf = buildHalf(leftColumn);
+        addFerritePolygon(mirrorPoints(leftHalf.piece));
+        for (auto& chunk : leftHalf.chunks) {
+            addFerritePolygon(mirrorPoints(chunk));
+        }
+        addFerritePolygon(mirrorPoints(plate));
+    }
+
+    _root.autoscale();
 }
 
 // ABT #366/#362/#357: 2D cross-section for the drum family and molded bodies, drawn directly

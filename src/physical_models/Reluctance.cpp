@@ -16,6 +16,19 @@
 
 namespace OpenMagnetics {
 
+// A gap against a plate (the ground gap or a residual gap of a piece-and-plate core, ABT #2372) has
+// no core between it and the closest normal surface: distanceClosestNormalSurface is 0. Models built
+// on a core segment of height h on each side of the gap break there (Muehlethaler returns R = 0,
+// Stenglein NaN, Partridge and Balakrishnan take log(0)). No clamping: they refuse, by name. The
+// proper zero-distance treatment is ABT #2385.
+static void refuse_gap_against_plate(const std::string& model, double distanceClosestNormalSurface) {
+    if (distanceClosestNormalSurface == 0) {
+        throw InvalidInputException(ErrorCode::GAP_INVALID_DIMENSIONS,
+            model + " is not valid for a gap against a plate (zero distance to the closest normal surface)");
+    }
+}
+
+
 
 double ReluctanceModel::get_ungapped_core_reluctance(const Core& core, double initialPermeability) {
     static const Constants constants;
@@ -490,6 +503,7 @@ AirGapReluctanceOutput ReluctanceMuehlethalerModel::get_gap_reluctance(CoreGap g
     auto gapShape = *(gapInfo.get_shape());
     auto gapSectionDimensions = *(gapInfo.get_section_dimensions());
     auto distanceClosestNormalSurface = *(gapInfo.get_distance_closest_normal_surface());
+    refuse_gap_against_plate("Muehlethaler", distanceClosestNormalSurface);
     double reluctance;
     double fringingFactor = 1;
     auto gapSectionWidth = gapSectionDimensions[0];
@@ -692,6 +706,7 @@ AirGapReluctanceOutput ReluctancePartridgeModel::get_gap_reluctance(CoreGap gapI
     auto gapArea = *(gapInfo.get_area());
     auto gapSectionDimensions = *(gapInfo.get_section_dimensions());
     auto distanceClosestNormalSurface = *(gapInfo.get_distance_closest_normal_surface());
+    refuse_gap_against_plate("Partridge", distanceClosestNormalSurface);
     double reluctance;
     double fringingFactor = 1;
 
@@ -778,6 +793,7 @@ AirGapReluctanceOutput ReluctanceStengleinModel::get_gap_reluctance(CoreGap gapI
     auto gapCoordinates = *(gapInfo.get_coordinates());
     auto gapSectionDimensions = *(gapInfo.get_section_dimensions());
     auto distanceClosestNormalSurface = *(gapInfo.get_distance_closest_normal_surface());
+    refuse_gap_against_plate("Stenglein", distanceClosestNormalSurface);
     auto distanceClosestParallelSurface = *(gapInfo.get_distance_closest_parallel_surface());
     double reluctance;
     double fringingFactor = 1;
@@ -909,6 +925,7 @@ AirGapReluctanceOutput ReluctanceBalakrishnanModel::get_gap_reluctance(CoreGap g
         throw GapException(ErrorCode::GAP_INVALID_DIMENSIONS, "Gap section dimensions are not set");
     }
     auto distanceClosestNormalSurface = *(gapInfo.get_distance_closest_normal_surface());
+    refuse_gap_against_plate("Balakrishnan", distanceClosestNormalSurface);
     auto gapSectionDimensions = *(gapInfo.get_section_dimensions());
     auto gapSectionDepth = gapSectionDimensions[1];
 

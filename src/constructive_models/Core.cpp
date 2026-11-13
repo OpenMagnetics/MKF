@@ -619,15 +619,41 @@ std::optional<std::vector<CoreGeometricalDescriptionElement>> Core::create_geome
             auto platePiece = piece;
             bottomPiece.set_type(CoreGeometricalDescriptionElementType::HALF_SET);
             platePiece.set_type(CoreGeometricalDescriptionElementType::PLATE);
+            // THE FRAME (ABT #2372). The processed description centres the piece's columns and its
+            // winding window on y = 0 (column height D, from -D/2 to +D/2), and the coil is wound in
+            // that frame. The piece itself is drawn with its leg tips at its own y = 0 and its back at
+            // -B, and the plate from its face at its own y = 0 up to B2. So both are placed at the leg
+            // tip, +D/2, with the plate on the +y side, and the machining, which is cut into the
+            // piece before it is placed, is moved into the piece's own frame: a ground gap at the leg
+            // tip, centred at D/2 - L/2 in the processed frame, is cut from -L to 0 of the piece.
+            // This is the E/U/PQ piece + I bar construction (EI, UI, PQI); UT and the drum plate are
+            // built as other solids by their consumers and keep their placement at the origin.
+            double legTip = 0;
+            auto pieceFamily = resolve_shape().get_family();
+            if (pieceFamily == CoreShapeFamily::EI || pieceFamily == CoreShapeFamily::UI ||
+                pieceFamily == CoreShapeFamily::PQI) {
+                if (!get_processed_description()) {
+                    // The columns are derived from the core's own shape, as process_gap() does.
+                    process_data();
+                }
+                auto processedColumns = get_processed_description().value().get_columns();
+                auto centralColumns = find_columns_by_type(ColumnType::CENTRAL);
+                auto windingColumn = centralColumns.size() > 0 ? centralColumns[0] : processedColumns[0];
+                legTip = roundFloat(windingColumn.get_coordinates()[1] + windingColumn.get_height() / 2);
+            }
+            auto pieceMachining = machining;
+            for (auto& operation : pieceMachining) {
+                operation.get_mutable_coordinates()[1] = roundFloat(operation.get_coordinates()[1] - legTip);
+            }
             for (auto i = 0; i < numberStacks; ++i) {
-                bottomPiece.set_coordinates(std::vector<double>({0, roundFloat(-spacerThickness / 2), currentDepth}));
+                bottomPiece.set_coordinates(std::vector<double>({0, roundFloat(legTip - spacerThickness / 2), currentDepth}));
                 bottomPiece.set_rotation(std::vector<double>({0, 0, 0}));
-                if (machining.size() > 0) {
-                    bottomPiece.set_machining(machining);
+                if (pieceMachining.size() > 0) {
+                    bottomPiece.set_machining(pieceMachining);
                 }
                 geometricalDescription.push_back(bottomPiece);
 
-                platePiece.set_coordinates(std::vector<double>({0, roundFloat(spacerThickness / 2), currentDepth}));
+                platePiece.set_coordinates(std::vector<double>({0, roundFloat(legTip + spacerThickness / 2), currentDepth}));
                 platePiece.set_rotation(std::vector<double>({0, 0, 0}));
                 platePiece.set_machining(std::nullopt);
                 geometricalDescription.push_back(platePiece);
@@ -1171,6 +1197,27 @@ bool Core::distribute_and_process_gap() {
                 gap.set_area(returnColumns[i].get_area());
                 gap.set_section_dimensions(std::vector<double>({returnColumns[i].get_width(), returnColumns[i].get_depth()}));
                 newGapping.push_back(gap);
+            }
+        }
+    }
+
+    // A PIECE AND PLATE (EI, UI, PQI) has no mating plane between two halves: the shaped piece's legs
+    // end on a flat plate (ABT #2372). So a single ground gap is ground off the tip of the centre leg,
+    // against the plate, and a residual gap is the joint between a leg tip and the plate: both sit at
+    // the plate end of their column (the +y end, the plate's side, see create_geometrical_description)
+    // with no core between them and the plate, so their distance to the closest normal surface is 0.
+    // The layout above is the two-piece set's (y = 0 is the mating plane there), and the fit checks it
+    // made (length <= column height) are exactly the leg-tip ones, so only the position moves here.
+    // Distributed gaps stay spread down the leg, and a spacer (additive) is left as it is.
+    if (get_functional_description().get_type() == CoreType::PIECE_AND_PLATE) {
+        bool singleGroundGap = numberSubtractiveGaps == 1 && numberAdditiveGaps == 0;
+        for (auto& gap : newGapping) {
+            if (gap.get_type() == GapType::RESIDUAL || (gap.get_type() == GapType::SUBTRACTIVE && singleGroundGap)) {
+                auto coordinates = gap.get_coordinates().value();
+                auto column = columns[find_closest_column_index_by_coordinates(columns, coordinates)];
+                coordinates[1] = roundFloat(column.get_coordinates()[1] + column.get_height() / 2 - gap.get_length() / 2);
+                gap.set_coordinates(coordinates);
+                gap.set_distance_closest_normal_surface(0);
             }
         }
     }

@@ -12,6 +12,7 @@
 #include "processors/MagneticSimulator.h"
 #include "physical_models/ReluctanceNetwork.h"
 #include "physical_models/Inductance.h"
+#include "physical_models/Reluctance.h"
 #include "processors/Inputs.h"
 #include "json.hpp"
 
@@ -20,6 +21,7 @@
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
 #include <catch2/matchers/catch_matchers_string.hpp>
 #include <algorithm>
+#include <sstream>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -4320,3 +4322,156 @@ TEST_CASE("Test_Core_Json_Type_Contradicting_Family_Throws", "[constructive-mode
     settings.reset();
 }
 } // namespace TestCoreTypeFollowsFamily
+
+// ABT #2372 (Alf, 2026-11-13): a piece-and-plate core has no mating plane between two halves. Its
+// ground gap is ground off the E centre-leg tip, against the I bar, and its residual gaps are the
+// leg-tip joints with the bar: at the plate end of the column, with no core between gap and plate
+// (distance to the closest normal surface 0). Geometry, machining and the gap agree on it.
+namespace TestPieceAndPlateGapAtPlate {
+const std::string eiShape = "EI 12.7/3.4/1.25/12.7/2.77/7.11/3.56";
+const double D = 0.00277;
+const double gapLength = 50e-6;
+
+Core ei_gapped_core() {
+    json gapping = json::array();
+    gapping.push_back({{"type", "subtractive"}, {"length", gapLength}});
+    gapping.push_back({{"type", "residual"}, {"length", 5e-6}});
+    gapping.push_back({{"type", "residual"}, {"length", 5e-6}});
+    json coreJson;
+    coreJson["name"] = "EI gapped";
+    coreJson["functionalDescription"] = {{"type", "pieceAndPlate"}, {"material", "3C95"}, {"shape", eiShape},
+                                         {"gapping", gapping}, {"numberStacks", 1}};
+    return Core(coreJson);
+}
+
+TEST_CASE("Test_Piece_And_Plate_Ground_Gap_Sits_At_The_Leg_Tip", "[constructive-model][core][gapping][abt-2372]") {
+    settings.reset();
+    auto core = ei_gapped_core();
+    auto gapping = core.get_functional_description().get_gapping();
+    REQUIRE(gapping.size() == 3);
+    REQUIRE(gapping[0].get_type() == GapType::SUBTRACTIVE);
+    // Centre leg spans -D/2..+D/2 in the processed frame; the gap fills its top L, against the plate.
+    CHECK_THAT(gapping[0].get_coordinates().value()[1], Catch::Matchers::WithinAbs(D / 2 - gapLength / 2, 1e-9));
+    CHECK(gapping[0].get_distance_closest_normal_surface().value() == 0);
+    CHECK_THAT(gapping[0].get_section_dimensions().value()[0], Catch::Matchers::WithinAbs(0.00356, 1e-9));
+    for (size_t i = 1; i < 3; ++i) {
+        CHECK(gapping[i].get_type() == GapType::RESIDUAL);
+        CHECK_THAT(gapping[i].get_coordinates().value()[1], Catch::Matchers::WithinAbs(D / 2 - 5e-6 / 2, 1e-9));
+        CHECK(gapping[i].get_distance_closest_normal_surface().value() == 0);
+    }
+
+    // The E is placed with its leg tips (its own y = 0) at +D/2, the plate's face there too, and the
+    // ground gap is cut from -L to 0 of the E's own frame.
+    auto geometricalDescription = core.get_geometrical_description().value();
+    REQUIRE(geometricalDescription.size() == 2);
+    REQUIRE(geometricalDescription[0].get_type() == CoreGeometricalDescriptionElementType::HALF_SET);
+    REQUIRE(geometricalDescription[1].get_type() == CoreGeometricalDescriptionElementType::PLATE);
+    CHECK_THAT(geometricalDescription[0].get_coordinates()[1], Catch::Matchers::WithinAbs(D / 2, 1e-9));
+    CHECK_THAT(geometricalDescription[1].get_coordinates()[1], Catch::Matchers::WithinAbs(D / 2, 1e-9));
+    auto machining = geometricalDescription[0].get_machining().value();
+    REQUIRE(machining.size() == 1);
+    CHECK_THAT(machining[0].get_coordinates()[1], Catch::Matchers::WithinAbs(-gapLength / 2, 1e-9));
+    CHECK_THAT(machining[0].get_length(), Catch::Matchers::WithinAbs(gapLength, 1e-12));
+    CHECK_FALSE(geometricalDescription[1].get_machining());
+    settings.reset();
+}
+
+TEST_CASE("Test_Two_Piece_Set_Ground_Gap_Unchanged_By_The_Plate_Rule", "[constructive-model][core][gapping][abt-2372]") {
+    settings.reset();
+    // Pinned from MKF before ABT #2372: a two-piece set's ground gap opens off the mating plane.
+    auto core = OpenMagneticsTesting::get_quick_core("E 42/21/20", OpenMagneticsTesting::get_ground_gap(0.001), 1, "3C95");
+    auto gapping = core.get_functional_description().get_gapping();
+    REQUIRE(gapping.size() == 3);
+    CHECK_THAT(gapping[0].get_coordinates().value()[1], Catch::Matchers::WithinAbs(0.0005, 1e-9));
+    double columnHeight = core.get_processed_description()->get_columns()[0].get_height();
+    CHECK_THAT(gapping[0].get_distance_closest_normal_surface().value(), Catch::Matchers::WithinAbs(columnHeight / 2 - 0.0005, 1e-9));
+    CHECK_THAT(gapping[1].get_coordinates().value()[1], Catch::Matchers::WithinAbs(0, 1e-12));
+    auto geometricalDescription = core.get_geometrical_description().value();
+    CHECK(geometricalDescription[0].get_coordinates()[1] == 0);
+    settings.reset();
+}
+
+TEST_CASE("Test_Piece_And_Plate_Gap_Reluctance_Zhang_Finite", "[physical-model][reluctance][abt-2372]") {
+    settings.reset();
+    auto core = ei_gapped_core();
+    auto gap = core.get_functional_description().get_gapping()[0];
+    auto model = ReluctanceModel::factory(ReluctanceModels::ZHANG);
+    auto result = model->get_gap_reluctance(gap, OpenMagnetics::Defaults().gapReluctanceEnergyFluxDensity);
+    double internal = gapLength / (Constants().vacuumPermeability * gap.get_area().value());
+    CHECK(std::isfinite(result.get_reluctance()));
+    CHECK(result.get_reluctance() > 0);
+    // With no core between the gap and the plate Zhang's fringing path has no length: R = l/(mu0 A).
+    CHECK_THAT(result.get_reluctance(), Catch::Matchers::WithinRel(internal, 1e-9));
+    settings.reset();
+}
+
+TEST_CASE("Test_Piece_And_Plate_Gap_Reluctance_Models_Invalid_Against_A_Plate_Throw", "[physical-model][reluctance][abt-2372]") {
+    settings.reset();
+    auto core = ei_gapped_core();
+    auto gap = core.get_functional_description().get_gapping()[0];
+    for (auto [modelName, label] : std::vector<std::pair<ReluctanceModels, std::string>>{
+             {ReluctanceModels::MUEHLETHALER, "Muehlethaler"}, {ReluctanceModels::STENGLEIN, "Stenglein"},
+             {ReluctanceModels::PARTRIDGE, "Partridge"}, {ReluctanceModels::BALAKRISHNAN, "Balakrishnan"}}) {
+        CAPTURE(label);
+        auto model = ReluctanceModel::factory(modelName);
+        REQUIRE_THROWS_MATCHES(model->get_gap_reluctance(gap, OpenMagnetics::Defaults().gapReluctanceEnergyFluxDensity),
+                               InvalidInputException,
+                               Catch::Matchers::MessageMatches(Catch::Matchers::ContainsSubstring(
+                                   label + " is not valid for a gap against a plate (zero distance to the closest normal surface)")));
+    }
+    settings.reset();
+}
+
+TEST_CASE("Test_Painter_Piece_And_Plate_Draws_Piece_And_Plate", "[support][painter][abt-2372]") {
+    settings.reset();
+    auto magnetic = OpenMagneticsTesting::get_quick_magnetic(eiShape, OpenMagneticsTesting::get_ground_gap(gapLength), {10}, 1, "3C95");
+    REQUIRE(magnetic.get_core().get_functional_description().get_type() == CoreType::PIECE_AND_PLATE);
+    auto outFile = std::filesystem::path{std::source_location::current().file_name()}.parent_path().append("..").append("output").append("Test_Painter_Piece_And_Plate_EI.svg");
+    std::filesystem::remove(outFile);
+    Painter painter(outFile);
+    painter.paint_core(magnetic);
+    auto svg = painter.export_svg();
+    // Right-half view: the E piece and the plate, two ferrite polygons; a mirrored two-piece set
+    // would be a top and a bottom half with no bar.
+    size_t polygons = 0;
+    for (size_t position = svg.find("<polygon"); position != std::string::npos; position = svg.find("<polygon", position + 1)) {
+        ++polygons;
+    }
+    CHECK(polygons == 2);
+    // The plate spans D/2..D/2 + B2 and the E's back sits at D/2 - B: the drawing is B + B2 tall
+    // and A/2 wide (right half), not the 2 B of a mirrored E + E. Read from the polygons' points.
+    double minX = std::numeric_limits<double>::max(), maxX = std::numeric_limits<double>::lowest();
+    double minY = minX, maxY = maxX;
+    std::vector<std::vector<std::pair<double, double>>> polygonPoints;
+    for (size_t position = svg.find("points=\""); position != std::string::npos; position = svg.find("points=\"", position + 1)) {
+        std::string points = svg.substr(position + 8, svg.find('"', position + 8) - position - 8);
+        std::replace(points.begin(), points.end(), ',', ' ');
+        std::stringstream stream(points);
+        double px, py;
+        polygonPoints.push_back({});
+        while (stream >> px >> py) {
+            polygonPoints.back().push_back({px, py});
+            minX = std::min(minX, px); maxX = std::max(maxX, px);
+            minY = std::min(minY, py); maxY = std::max(maxY, py);
+        }
+    }
+    double scale = (maxX - minX) / (0.0127 / 2);
+    CHECK_THAT((maxY - minY) / scale, Catch::Matchers::WithinRel(0.0034 + 0.00125, 0.01));
+    // One of the two is the plate: a full-width rectangle B2 thick.
+    bool plateFound = false;
+    for (auto& polygon : polygonPoints) {
+        if (polygon.size() != 4) {
+            continue;
+        }
+        double low = std::numeric_limits<double>::max(), high = std::numeric_limits<double>::lowest();
+        for (auto& [px, py] : polygon) {
+            low = std::min(low, py); high = std::max(high, py);
+        }
+        if (std::abs((high - low) / scale - 0.00125) < 0.00125 * 0.01) {
+            plateFound = true;
+        }
+    }
+    CHECK(plateFound);
+    settings.reset();
+}
+} // namespace TestPieceAndPlateGapAtPlate
