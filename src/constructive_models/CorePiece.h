@@ -320,6 +320,22 @@ std::pair<double, double> drum_ring_seat_plate(std::map<std::string, double> dim
 CoreShapeFamily canonical_core_shape_family(CoreShapeFamily family);
 CoreShape canonicalize_core_shape_family(CoreShape shape);
 
+/**
+ * The core type a shape family is built as (ABT #2372). The ONE place this rule lives: the
+ * Core(shape) constructor, create_quick_core, magnetic_autocomplete and the type check a parsed
+ * or processed core goes through all call it, and the web asks it (through WebLibMKF) when the
+ * builder changes a shape's family.
+ *   T                                      -> TOROIDAL
+ *   UI, PQI, UT, EI, DRUM_RING,
+ *   DRUM_SEMISHIELDED, DRUM_PLATE          -> PIECE_AND_PLATE  (a shaped piece closed by a bar,
+ *                                             plate, ring or shell; nothing is mirrored)
+ *   DRUM (and its alias H), ROD            -> OPEN_SHAPE       (closes through the air)
+ *   MOLDED                                 -> CLOSED_SHAPE     (one pressed solid)
+ *   every other family                     -> TWO_PIECE_SET    (two mirrored halves)
+ * The family is canonicalised first, so H answers as DRUM.
+ */
+CoreType core_type_for_shape_family(CoreShapeFamily family);
+
 void from_json(const json& j, OpenMagnetics::CorePiece& x);
 void to_json(json& j, const OpenMagnetics::CorePiece& x);
 

@@ -316,6 +316,10 @@ class Core : public MAS::MagneticCore {
 // survives migration without matching the enum, rather than letting it become value 0.
 void from_json(const json& j, Core& x);
 
+// ABT #2372: throws InvalidInputException when `type` is not the type `shape`'s family is built as
+// (core_type_for_shape_family). Never corrects it: a contradictory type is a defect in the input.
+void check_core_type_follows_shape_family(CoreType type, const CoreShape& shape, const std::optional<std::string>& coreName);
+
 // ABT #1218: the generated MAS serialiser cannot write a schema-valid core. quicktype merges the
 // geometricalDescription oneOf(core/piece.json, core/spacer.json) into ONE struct,
 // CoreGeometricalDescriptionElement, and its to_json writes every member of the union, an unset

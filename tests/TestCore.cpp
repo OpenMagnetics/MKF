@@ -4254,3 +4254,68 @@ TEST_CASE("Test_Rm_Shape_Missing_Required_Dimension_Throws", "[constructive-mode
     typeTwoWithoutC.set_dimensions(dimensions);
     REQUIRE_THROWS_AS(CorePiece::factory(typeTwoWithoutC), InvalidInputException);
 }
+
+// ABT #2372 (web report #193): an EI saved as twoPieceSet was processed as a mirrored E+E — le
+// 21.74 mm instead of 10.87 mm, twice the volume and the window — because Core(json) kept whatever
+// type it was given. The family decides the type, through one rule, and a contradiction is refused.
+namespace TestCoreTypeFollowsFamily {
+json ei_core_json(const std::string& type) {
+    return json::parse(R"({"name":"Custom","functionalDescription":{"type":")" + type + R"(",
+        "material":"3C95","gapping":[],"numberStacks":1,
+        "shape":{"type":"custom","family":"ei","name":"EI 12.7/3.4/1.25/12.7/2.77/7.11/3.56","magneticCircuit":"open",
+            "dimensions":{"A":{"nominal":0.0127},"B":{"nominal":0.0034},"B2":{"nominal":0.00125},
+                          "C":{"nominal":0.0127},"D":{"nominal":0.00277},"E":{"nominal":0.00711},
+                          "F":{"nominal":0.00356}}}}})");
+}
+
+TEST_CASE("Test_Core_Type_For_Shape_Family_Rule", "[constructive-model][core][abt-2372]") {
+    CHECK(core_type_for_shape_family(CoreShapeFamily::T) == CoreType::TOROIDAL);
+    for (auto family : {CoreShapeFamily::EI, CoreShapeFamily::UI, CoreShapeFamily::PQI, CoreShapeFamily::UT,
+                        CoreShapeFamily::DRUM_RING, CoreShapeFamily::DRUM_SEMISHIELDED, CoreShapeFamily::DRUM_PLATE}) {
+        CAPTURE(magic_enum::enum_name(family));
+        CHECK(core_type_for_shape_family(family) == CoreType::PIECE_AND_PLATE);
+    }
+    CHECK(core_type_for_shape_family(CoreShapeFamily::DRUM) == CoreType::OPEN_SHAPE);
+    CHECK(core_type_for_shape_family(CoreShapeFamily::H) == CoreType::OPEN_SHAPE);
+    CHECK(core_type_for_shape_family(CoreShapeFamily::ROD) == CoreType::OPEN_SHAPE);
+    CHECK(core_type_for_shape_family(CoreShapeFamily::MOLDED) == CoreType::CLOSED_SHAPE);
+    for (auto family : {CoreShapeFamily::E, CoreShapeFamily::U, CoreShapeFamily::PQ, CoreShapeFamily::ETD,
+                        CoreShapeFamily::PLANAR_E, CoreShapeFamily::RM}) {
+        CAPTURE(magic_enum::enum_name(family));
+        CHECK(core_type_for_shape_family(family) == CoreType::TWO_PIECE_SET);
+    }
+    // The shape constructor and create_quick_core use the same rule.
+    CHECK(Core(find_core_shape_by_name("UT 20")).get_type() == CoreType::PIECE_AND_PLATE);
+    CHECK(Core::create_quick_core("E 25/13/7", "Dummy").get_type() == CoreType::TWO_PIECE_SET);
+}
+
+TEST_CASE("Test_Core_Json_Type_Contradicting_Family_Throws", "[constructive-model][core][abt-2372]") {
+    settings.reset();
+    clear_databases();
+
+    Core eiCore(ei_core_json("pieceAndPlate"));
+    CHECK_THAT(eiCore.get_effective_length(), Catch::Matchers::WithinRel(10.87e-3, 0.01));
+
+    // Report #193's core: refused by name of family and types, not mirrored into le 21.74 mm.
+    REQUIRE_THROWS_MATCHES(Core(ei_core_json("twoPieceSet")), InvalidInputException,
+                           Catch::Matchers::MessageMatches(Catch::Matchers::ContainsSubstring("'twoPieceSet'") &&
+                                                           Catch::Matchers::ContainsSubstring("'ei'") &&
+                                                           Catch::Matchers::ContainsSubstring("'pieceAndPlate'")));
+    // Also when it arrives unprocessed (a Magnetic's core, json -> Core conversion).
+    REQUIRE_THROWS_AS(Core(ei_core_json("twoPieceSet"), false, false, false), InvalidInputException);
+    REQUIRE_THROWS_AS(ei_core_json("toroidal").get<Core>(), InvalidInputException);
+
+    // A shape given by name is checked once process_data has looked it up.
+    json byName = json::parse(R"({"name":"by name","functionalDescription":{"type":"twoPieceSet",
+        "material":"3C95","gapping":[],"numberStacks":1,"shape":"UT 20"}})");
+    REQUIRE_THROWS_AS(Core(byName), InvalidInputException);
+    byName["functionalDescription"]["type"] = "pieceAndPlate";
+    REQUIRE_NOTHROW(Core(byName));
+
+    // A core whose type is changed after parsing is refused by process_data too.
+    Core retyped(ei_core_json("pieceAndPlate"), false, false, false);
+    retyped.set_type(CoreType::TWO_PIECE_SET);
+    REQUIRE_THROWS_AS(retyped.process_data(), InvalidInputException);
+    settings.reset();
+}
+} // namespace TestCoreTypeFollowsFamily

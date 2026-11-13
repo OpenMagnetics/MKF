@@ -3410,50 +3410,42 @@ Magnetic magnetic_autocomplete(Magnetic magnetic, json configuration, std::optio
 
     // Core
     auto shape = magnetic.get_mutable_core().resolve_shape();
+    // ABT #2372: the type is checked against the family, never rewritten. This used to re-type the
+    // core from its family in place, behind the back of a processed description already built from
+    // the stated type, and it was the third copy of the family -> type rule.
+    check_core_type_follows_shape_family(magnetic.get_core().get_functional_description().get_type(), shape,
+                                         magnetic.get_core().get_name());
 
-    if (magnetic.get_mutable_core().get_shape_family() == CoreShapeFamily::T) {
-        magnetic.get_mutable_core().get_mutable_functional_description().set_type(CoreType::TOROIDAL);
+    const auto coreType = core_type_for_shape_family(shape.get_family());
+    if (coreType == CoreType::TOROIDAL) {
         shape.set_magnetic_circuit(MagneticCircuit::CLOSED);
         magnetic.get_mutable_core().get_mutable_functional_description().get_mutable_gapping().clear();
     }
-    else if (magnetic.get_mutable_core().get_shape_family() == CoreShapeFamily::DRUM ||
-             magnetic.get_mutable_core().get_shape_family() == CoreShapeFamily::ROD) {
+    else if (coreType == CoreType::OPEN_SHAPE) {
         // Open-circuit single piece (drum ABT #331, rod ABT #933): honest type, and gapping is
         // meaningless — the return path is already air. Drop it like the toroid branch does:
         // a core carried over from a gapped two-piece set (the web builder swaps the shape and
         // keeps the rest) otherwise reaches the inductance model with that stale gap and is
         // refused as "an open-circuit core cannot be gapped" (ABT #1071).
-        magnetic.get_mutable_core().get_mutable_functional_description().set_type(CoreType::OPEN_SHAPE);
         shape.set_magnetic_circuit(MagneticCircuit::OPEN);
         magnetic.get_mutable_core().get_mutable_functional_description().get_mutable_gapping().clear();
     }
-    else if (magnetic.get_mutable_core().get_shape_family() == CoreShapeFamily::MOLDED) {
+    else if (coreType == CoreType::CLOSED_SHAPE) {
         // Molded composite body (ABT #357): single pressed solid, closed in-material —
         // the distributed gap lives in the material law, so discrete gapping is meaningless.
-        magnetic.get_mutable_core().get_mutable_functional_description().set_type(CoreType::CLOSED_SHAPE);
         shape.set_magnetic_circuit(MagneticCircuit::CLOSED);
     }
-    else if (magnetic.get_mutable_core().get_shape_family() == CoreShapeFamily::UI ||
-             magnetic.get_mutable_core().get_shape_family() == CoreShapeFamily::PQI ||
-             magnetic.get_mutable_core().get_shape_family() == CoreShapeFamily::UT ||
-             magnetic.get_mutable_core().get_shape_family() == CoreShapeFamily::EI ||
-             magnetic.get_mutable_core().get_shape_family() == CoreShapeFamily::DRUM_RING ||
-             magnetic.get_mutable_core().get_shape_family() == CoreShapeFamily::DRUM_SEMISHIELDED ||
-             magnetic.get_mutable_core().get_shape_family() == CoreShapeFamily::DRUM_PLATE) {
+    else if (coreType == CoreType::PIECE_AND_PLATE) {
         // Piece-and-plate: the record already describes the whole assembly, so it is "closed" in
         // the MAS sense of having to be used by itself (ABT #274/#275; drumRing per ABT #366 —
         // its two structural annular gaps are synthesized by Core::process_gap, not listed here).
         //
-        // The family list is the one the Core constructor and create_quick_core classify as
-        // piece-and-plate. UT, EI and DRUM_PLATE were missing here, so a core that arrived as an
-        // explicit pieceAndPlate fell to the else branch and was re-typed TWO_PIECE_SET: the
-        // E/U piece was mirrored, which doubles le, the column height and the window height.
-        // On an ET 20 choke that halves L = N^2 mu0 mu Ae / le exactly (le 50.6 -> 101.3 mm).
-        magnetic.get_mutable_core().get_mutable_functional_description().set_type(CoreType::PIECE_AND_PLATE);
+        // This branch used to carry its own family list, which lacked UT, EI and DRUM_PLATE: an
+        // explicit pieceAndPlate core of those families was re-typed TWO_PIECE_SET and mirrored
+        // (le 50.6 -> 101.3 mm on an ET 20). It now follows core_type_for_shape_family.
         shape.set_magnetic_circuit(MagneticCircuit::CLOSED);
     }
     else {
-        magnetic.get_mutable_core().get_mutable_functional_description().set_type(CoreType::TWO_PIECE_SET);
         shape.set_magnetic_circuit(MagneticCircuit::OPEN);
         for (size_t i = 0; i < magnetic.get_core().get_functional_description().get_gapping().size(); i++) {
             double gapLength = magnetic.get_core().get_functional_description().get_gapping()[i].get_length();

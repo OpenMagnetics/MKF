@@ -3865,6 +3865,44 @@ CoreShape canonicalize_core_shape_family(CoreShape shape) {
     return shape;
 }
 
+CoreType core_type_for_shape_family(CoreShapeFamily declaredFamily) {
+    // Core type follows the FAMILY, not the shape's open/closed flag. That flag says whether a
+    // shape "can be combined with others" or "has to be used by itself" (MAS shape schema), which
+    // is a different question: a UI or PQI record describes a whole piece-and-plate assembly, so
+    // it is closed by that definition, yet it is obviously not a toroid.
+    switch (canonical_core_shape_family(declaredFamily)) {
+        case CoreShapeFamily::T:
+            return CoreType::TOROIDAL;
+        case CoreShapeFamily::UI:
+        case CoreShapeFamily::PQI:
+        case CoreShapeFamily::UT:
+        case CoreShapeFamily::EI:
+        case CoreShapeFamily::DRUM_RING:
+        case CoreShapeFamily::DRUM_SEMISHIELDED:
+        case CoreShapeFamily::DRUM_PLATE:
+            // A shaped piece closed by a bar, plate, ring or shell: the record describes the whole
+            // assembly and nothing is doubled.
+            //   EI: an E piece closed by an I bar, the family the records themselves name "E+I".
+            //       Mirrored as a two-piece set, ET 20 reports le 99.51 mm against 49.76 mm.
+            //   UT (ABT #995): a U piece closed by a flat bar. Mirrored, MAS's own UT 20 reported
+            //       le 106.41 mm where the supplier catalogues quote 53 (US 11,749,439 describes it
+            //       as "a U-shaped core and I-shaped core ... forming a closed magnetic path").
+            //   DRUM_RING (ABT #366) / DRUM_SEMISHIELDED (ABT #362): a drum closed by its shield
+            //       ring / magnetic-epoxy shell.
+            return CoreType::PIECE_AND_PLATE;
+        case CoreShapeFamily::DRUM:
+        case CoreShapeFamily::ROD:
+            // Single piece whose magnetic circuit closes through the surrounding air (drum
+            // ABT #331, rod ABT #933). As a two-piece set its effective length would double.
+            return CoreType::OPEN_SHAPE;
+        case CoreShapeFamily::MOLDED:
+            // Single pressed solid, circuit closed in the material (distributed gap, ABT #357).
+            return CoreType::CLOSED_SHAPE;
+        default:
+            return CoreType::TWO_PIECE_SET;
+    }
+}
+
 static std::string supported_shape_family_list() {
     std::string list = "{";
     for (size_t index = 0; index < std::size(kSupportedShapeFamilies); ++index) {

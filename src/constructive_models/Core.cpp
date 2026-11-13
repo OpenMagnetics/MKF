@@ -95,55 +95,8 @@ Core::Core(const CoreShape declaredShape, std::optional<CoreMaterial> material) 
     else {
         get_mutable_functional_description().set_material("Dummy");
     }
-    // Core type follows the FAMILY, not the open/closed flag. That flag says whether a shape
-    // "can be combined with others" or "has to be used by itself" (MAS shape schema), which is a
-    // different question: a UI or PQI record describes a whole piece-and-plate assembly, so it is
-    // closed by that definition, yet it is obviously not a toroid. Keying the type off the flag
-    // made every closed shape TOROIDAL and would have turned UI/PQI into toroids.
-    auto shapeFamily = shape.get_family();
-    if (shapeFamily == CoreShapeFamily::T) {
-        get_mutable_functional_description().set_type(CoreType::TOROIDAL);
-    }
-    else if (shapeFamily == CoreShapeFamily::UI || shapeFamily == CoreShapeFamily::PQI ||
-             shapeFamily == CoreShapeFamily::UT || shapeFamily == CoreShapeFamily::EI ||
-             shapeFamily == CoreShapeFamily::DRUM_RING || shapeFamily == CoreShapeFamily::DRUM_SEMISHIELDED ||
-             shapeFamily == CoreShapeFamily::DRUM_PLATE) {
-        // DRUM_RING (ABT #366) / DRUM_SEMISHIELDED (ABT #362): a drum closed by its shield
-        // ring / magnetic-epoxy shell — same piece-plus-closer semantics as UI/PQI (nothing
-        // doubled, the piece class reports the whole assembly).
-        //
-        // EI: an E piece closed by an I bar — the same construction as UI, and the family the
-        // records themselves name "E+I". It had no entry either, so it was mirrored too:
-        // ET 20 reports le 99.51 mm as a twoPieceSet against 49.76 mm as a piece and plate,
-        // the same exact factor of two.
-        //
-        // UT (ABT #995): a U piece closed by a flat bar — the T — exactly the UI case. It had
-        // NO entry here at all and fell to the TWO_PIECE_SET default, which MIRRORED it and
-        // doubled the magnetic path: 106.41 mm against 53.20 mm on MAS's own UT 20, where the
-        // supplier catalogues quote 53.
-        //
-        // Do not be misled by "closed rectangular ferrite core" in UT choke datasheets, or by
-        // magneticCircuit: closed on the shape record — both describe the ASSEMBLED CIRCUIT,
-        // which is precisely the trap the comment above this cascade warns about. The pieces
-        // are two: US 11,749,439 describes the construction as "a U-shaped core and I-shaped
-        // core formed of ferrite, with the I-shaped core connecting both leg portions of the
-        // U-shaped core to form a closed magnetic path", and UT parts are wound on a bobbin,
-        // which a one-piece closed core could not accept.
-        get_mutable_functional_description().set_type(CoreType::PIECE_AND_PLATE);
-    }
-    else if (shapeFamily == CoreShapeFamily::DRUM || shapeFamily == CoreShapeFamily::ROD) {
-        // Single piece whose magnetic circuit closes through the surrounding air (drum ABT #331,
-        // rod ABT #933). Without this the default below would make a rod a TWO_PIECE_SET and
-        // silently double its effective length.
-        get_mutable_functional_description().set_type(CoreType::OPEN_SHAPE);
-    }
-    else if (shapeFamily == CoreShapeFamily::MOLDED) {
-        // Single pressed solid, circuit closed IN-MATERIAL (distributed gap, ABT #357).
-        get_mutable_functional_description().set_type(CoreType::CLOSED_SHAPE);
-    }
-    else {
-        get_mutable_functional_description().set_type(CoreType::TWO_PIECE_SET);
-    }
+    // The type follows the family through the one rule (ABT #2372).
+    get_mutable_functional_description().set_type(core_type_for_shape_family(shape.get_family()));
 
     if (material) {
         set_name(shape.get_name().value() + " " + material.value().get_name());
@@ -2429,6 +2382,11 @@ void Core::process_data() {
         settings.set_effective_parameter_standard(EffectiveParameterStandard::IEC_60205);
     }
 
+    // ABT #2372: the type decides how the pieces are assembled (a twoPieceSet mirrors the piece);
+    // one that contradicts the family is refused here, where a shape given by name is first known.
+    check_core_type_follows_shape_family(get_functional_description().get_type(),
+                                         std::get<CoreShape>(get_functional_description().get_shape()), get_name());
+
     auto corePiece =
         CorePiece::factory(std::get<CoreShape>(get_functional_description().get_shape()));
     CoreProcessedDescription processedDescription;
@@ -3266,30 +3224,7 @@ Core Core::create_quick_core(std::string coreShapeName, std::string coreMaterial
     core.set_number_stacks(numberStacks);
     core.set_gapping(gapping);
     core.set_name("Quick core with " + coreMaterialName + " " + coreShapeName);
-    if (coreShape.get_family() == CoreShapeFamily::T) {
-        core.set_type(CoreType::TOROIDAL);
-    }
-    else if (coreShape.get_family() == CoreShapeFamily::UI || coreShape.get_family() == CoreShapeFamily::PQI ||
-             coreShape.get_family() == CoreShapeFamily::UT || coreShape.get_family() == CoreShapeFamily::EI ||
-             coreShape.get_family() == CoreShapeFamily::DRUM_RING ||
-             coreShape.get_family() == CoreShapeFamily::DRUM_SEMISHIELDED ||
-             coreShape.get_family() == CoreShapeFamily::DRUM_PLATE) {
-        // UT joins UI here (ABT #995), replacing a TWO_PIECE_SET branch labelled "UT cores are
-        // U-type assembled, not toroidal" — which corrected a wrong TOROIDAL classification and
-        // then stopped one step short. U-type assembled is right; two-piece-SET is not, because
-        // the second piece is a flat bar, not a mirrored half.
-        // A shaped piece closed by a plate/ring/shell, not by a mirrored half (ABT #274/#275, #366, #362).
-        core.set_type(CoreType::PIECE_AND_PLATE);
-    }
-    else if (coreShape.get_family() == CoreShapeFamily::DRUM || coreShape.get_family() == CoreShapeFamily::ROD) {
-        core.set_type(CoreType::OPEN_SHAPE);
-    }
-    else if (coreShape.get_family() == CoreShapeFamily::MOLDED) {
-        core.set_type(CoreType::CLOSED_SHAPE);
-    }
-    else {
-        core.set_type(CoreType::TWO_PIECE_SET);
-    }
+    core.set_type(core_type_for_shape_family(coreShape.get_family()));
 
     core.process_data();
     core.process_gap();
@@ -3336,6 +3271,30 @@ void from_json(const json& j, Core& x) {
     }
 
     MAS::from_json(migrated, static_cast<MAS::MagneticCore&>(x));
+
+    // ABT #2372: a stated type that contradicts the family is refused, not processed as written
+    // (an EI read as twoPieceSet is mirrored: twice the path length and volume). A shape given by
+    // name is checked once process_data has looked it up.
+    if (std::holds_alternative<CoreShape>(x.get_functional_description().get_shape())) {
+        check_core_type_follows_shape_family(x.get_functional_description().get_type(),
+                                             std::get<CoreShape>(x.get_functional_description().get_shape()), x.get_name());
+    }
+}
+
+void check_core_type_follows_shape_family(CoreType type, const CoreShape& shape, const std::optional<std::string>& coreName) {
+    auto expected = core_type_for_shape_family(shape.get_family());
+    if (type == expected) {
+        return;
+    }
+    json typeJson, expectedJson, familyJson;
+    MAS::to_json(typeJson, type);
+    MAS::to_json(expectedJson, expected);
+    MAS::to_json(familyJson, shape.get_family());
+    throw InvalidInputException(ErrorCode::INVALID_CORE_DATA,
+        "Core " + (coreName ? "'" + coreName.value() + "'" : std::string("<unnamed>")) + " has type '" +
+        typeJson.get<std::string>() + "', which contradicts its shape family '" + familyJson.get<std::string>() +
+        "' (shape '" + shape.get_name().value_or("<unnamed>") + "'): a '" + familyJson.get<std::string>() +
+        "' core is a '" + expectedJson.get<std::string>() + "'");
 }
 
 namespace {
