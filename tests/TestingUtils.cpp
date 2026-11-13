@@ -268,13 +268,11 @@ OpenMagnetics::Magnetic get_quick_magnetic(std::string shapeName,
                                                   std::string materialName) {
     auto coreJson = json();
 
-    std::string coreType;
-    if (shapeName[0] == 'T') {
-        coreType = "toroidal";
-    }
-    else {
-        coreType = "twoPieceSet";
-    }
+    // Same family rule as get_quick_core (ABT #2372).
+    auto shape = find_core_shape_by_name(shapeName);
+    json coreTypeJson;
+    to_json(coreTypeJson, core_type_for_shape_family(shape.get_family()));
+    std::string coreType = coreTypeJson.get<std::string>();
 
     coreJson["functionalDescription"] = json();
     coreJson["functionalDescription"]["name"] = "GapReluctanceTest";

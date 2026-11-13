@@ -3801,7 +3801,7 @@ TEST_CASE("A powder driven past the field its saturation is tabulated at is not 
 namespace {
 // A two-piece set whose data states its gapping as catalogue exports write an ungapped part: a subtractive gap of
 // length 0 on the centre column and the residual gaps of the outer columns (five Wurth catalogue parts carry it).
-OpenMagnetics::Magnetic zero_length_subtractive_gap_magnetic(const std::string& coreType) {
+OpenMagnetics::Magnetic zero_length_subtractive_gap_magnetic(const std::string& coreType, const std::string& shapeName = "EFD 20/10/7") {
     json gapping = json::array();
     gapping.push_back({{"type", "subtractive"}, {"length", 0.0}});
     gapping.push_back({{"type", "residual"}, {"length", 5e-6}});
@@ -3810,7 +3810,7 @@ OpenMagnetics::Magnetic zero_length_subtractive_gap_magnetic(const std::string& 
     coreJson["functionalDescription"]["name"] = "Zero length gap";
     coreJson["functionalDescription"]["type"] = coreType;
     coreJson["functionalDescription"]["material"] = "3C95";
-    coreJson["functionalDescription"]["shape"] = "EFD 20/10/7";
+    coreJson["functionalDescription"]["shape"] = shapeName;
     coreJson["functionalDescription"]["gapping"] = gapping;
     coreJson["functionalDescription"]["numberStacks"] = 1;
     OpenMagnetics::Core core(coreJson);
@@ -3875,7 +3875,7 @@ TEST_CASE("Test_Simulate_Two_Piece_Set_With_Zero_Length_Subtractive_Gap_Is_Ungap
 TEST_CASE("Test_Zero_Length_Subtractive_Gap_Outside_A_Two_Piece_Set_Is_Refused",
           "[simulator][gapping][zero-length-gap]") {
     settings.reset();
-    REQUIRE_THROWS_WITH(zero_length_subtractive_gap_magnetic("pieceAndPlate"), Catch::Matchers::ContainsSubstring("subtractive gap of length zero"));
+    REQUIRE_THROWS_WITH(zero_length_subtractive_gap_magnetic("pieceAndPlate", "EI 12.7/3.4/1.25/12.7/2.77/7.11/3.56"), Catch::Matchers::ContainsSubstring("subtractive gap of length zero"));
     settings.reset();
 }
 

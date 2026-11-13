@@ -1226,7 +1226,7 @@ TEST_CASE("UT_20", "[constructive-model][core][processed-description][smoke-test
     json coreJson;
     coreJson["functionalDescription"] = json();
     coreJson["name"] = "core_UT_20_N97";
-    coreJson["functionalDescription"]["type"] = "closedShape";
+    coreJson["functionalDescription"]["type"] = "pieceAndPlate";
     coreJson["functionalDescription"]["material"] = "N97";
     coreJson["functionalDescription"]["shape"] = "UT 20";
     coreJson["functionalDescription"]["gapping"] = json::array();
@@ -1240,7 +1240,7 @@ TEST_CASE("UT_20", "[constructive-model][core][processed-description][smoke-test
     REQUIRE(std::get<CoreMaterial>(core.get_mutable_functional_description().get_mutable_material())
               .get_mutable_volumetric_losses()["default"]
               .size() > 0);
-    REQUIRE(geometrical_description[0].get_type() == CoreGeometricalDescriptionElementType::CLOSED);
+    REQUIRE(geometrical_description[0].get_type() == CoreGeometricalDescriptionElementType::HALF_SET);
     REQUIRE_THAT(core.get_processed_description()->get_effective_parameters().get_effective_area(), Catch::Matchers::WithinAbs(0.000013 * numberStacks, 0.000013 * numberStacks * 0.2));
     REQUIRE_THAT(core.get_processed_description()->get_effective_parameters().get_effective_length(), Catch::Matchers::WithinAbs(0.053, 0.053 * 0.2));
     REQUIRE_THAT(core.get_processed_description()->get_effective_parameters().get_effective_volume(), Catch::Matchers::WithinAbs(0.000000688 * numberStacks, 0.000000688 * numberStacks * 0.2));
@@ -1980,7 +1980,7 @@ TEST_CASE("Test_Core_Standard_Shape_Reference_By_Object", "[constructive-model][
             json coreJson;
             coreJson["name"] = "t";
             coreJson["functionalDescription"] = {
-                {"type", "pieceAndPlate"}, {"material", "3C95"}, {"shape", shapeJson},
+                {"type", "twoPieceSet"}, {"material", "3C95"}, {"shape", shapeJson},
                 {"gapping", json::array()}, {"numberStacks", 1}};
 
             Core core(coreJson, false, false, false);
@@ -2938,12 +2938,13 @@ TEST_CASE("Test_Catalogue_Core_With_Impossible_Gapping_Is_Refused_By_Name", "[co
 // candidate gap lengths and depends on that bool to silently skip the ones that don't fit
 // (see the comment on the Core(json) constructor). process_gap_or_throw() is the loud variant.
 TEST_CASE("ABT680_Gap_Longer_Than_Column_Opening_Throws_Instead_Of_Returning_Null_Fields", "[core][gapping]") {
-    // Same custom E+I geometry and threshold as the bug report: the column opening is exactly
-    // 2*D, confirmed there by bisection at several window heights.
+    // Same custom E+I geometry as the bug report, typed as the piece-and-plate set its EI family is
+    // (ABT #2372): the column opening is the E's own leg length D, so the threshold is D, not the
+    // 2*D the report measured on the mirrored E+E it was then processed as.
     auto coreJson = [](double gapLength) {
         json j;
         j["name"] = "t";
-        j["functionalDescription"]["type"] = "twoPieceSet";
+        j["functionalDescription"]["type"] = "pieceAndPlate";
         j["functionalDescription"]["material"] = "3C95";
         j["functionalDescription"]["shape"]["type"] = "custom";
         j["functionalDescription"]["shape"]["family"] = "ei";
@@ -2961,7 +2962,7 @@ TEST_CASE("ABT680_Gap_Longer_Than_Column_Opening_Throws_Instead_Of_Returning_Nul
     };
 
     SECTION("just inside the threshold: process_gap() succeeds and every field is populated") {
-        Core core(coreJson(0.00094), false, false, false);
+        Core core(coreJson(0.00047), false, false, false);
         core.process_data();
         REQUIRE(core.process_gap());
         auto gapping = core.get_functional_description().get_gapping();
@@ -2971,13 +2972,13 @@ TEST_CASE("ABT680_Gap_Longer_Than_Column_Opening_Throws_Instead_Of_Returning_Nul
     }
 
     SECTION("just past the threshold: process_gap() still just returns false") {
-        Core core(coreJson(0.00095), false, false, false);
+        Core core(coreJson(0.00048), false, false, false);
         core.process_data();
         CHECK_FALSE(core.process_gap());
     }
 
     SECTION("just past the threshold: process_gap_or_throw() throws, naming the gap and column") {
-        Core core(coreJson(0.00095), false, false, false);
+        Core core(coreJson(0.00048), false, false, false);
         core.process_data();
         std::string message = "no exception";
         try {
@@ -2988,7 +2989,7 @@ TEST_CASE("ABT680_Gap_Longer_Than_Column_Opening_Throws_Instead_Of_Returning_Nul
         }
         UNSCOPED_INFO(message);
         CHECK(message != "no exception");
-        CHECK(message.find("0.00095") != std::string::npos);
+        CHECK(message.find("0.00048") != std::string::npos);
         CHECK(message.find("does not fit") != std::string::npos);
         // And it must not have left a schema-invalid gap (every derived field null) behind for
         // an inattentive caller to trip over downstream.
