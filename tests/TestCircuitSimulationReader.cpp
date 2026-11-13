@@ -1072,20 +1072,36 @@ TEST_CASE("Test_CircuitSimulationReader_Refuses_A_Partially_Numeric_Cell", "[pro
     REQUIRE_NOTHROW(CircuitSimulationReader(decimalComma, true));
     REQUIRE_THROWS_AS(extract(decimalComma), InvalidInputException);
     REQUIRE_THROWS_WITH(extract(decimalComma), Catch::Matchers::ContainsSubstring("line 2, column 2 (\"I(L1)\"): \"0,001\""));
-    std::string trailingJunk = "time,I(L1)\n0,1.5A\n";
-    REQUIRE_THROWS_AS(CircuitSimulationReader(trailingJunk, true), InvalidInputException);
+    std::string trailingJunk = "time,I(L1)\n0,1.5A\n1e-6,0\n";
+    REQUIRE_NOTHROW(CircuitSimulationReader(trailingJunk, true));
+    REQUIRE_THROWS_AS(extract(trailingJunk), InvalidInputException);
     // The refusal names the numeric prefix, whichever standard library parsed it.
-    REQUIRE_THROWS_WITH(CircuitSimulationReader(trailingJunk, true),
-                        Catch::Matchers::ContainsSubstring("only \"1.5\" is a number"));
+    REQUIRE_THROWS_WITH(extract(trailingJunk),
+                        Catch::Matchers::ContainsSubstring("line 2, column 2 (\"I(L1)\"): \"1.5A\" (only \"1.5\" is a number"));
     // ABT #1695: the parse must not depend on the standard library's stream parser, so a hex
     // float or an infinity (which libc++ streams read) is refused as on every other toolchain.
-    std::string hexCell = "time,I(L1)\n0,0x10\n";
-    REQUIRE_THROWS_AS(CircuitSimulationReader(hexCell, true), InvalidInputException);
-    std::string infinityCell = "time,I(L1)\n0,inf\n";
-    REQUIRE_THROWS_AS(CircuitSimulationReader(infinityCell, true), InvalidInputException);
+    std::string hexCell = "time,I(L1)\n0,0x10\n1e-6,0\n";
+    REQUIRE_NOTHROW(CircuitSimulationReader(hexCell, true));
+    REQUIRE_THROWS_AS(extract(hexCell), InvalidInputException);
+    REQUIRE_THROWS_WITH(extract(hexCell), Catch::Matchers::ContainsSubstring("line 2, column 2 (\"I(L1)\"): \"0x10\""));
+    std::string infinityCell = "time,I(L1)\n0,inf\n1e-6,0\n";
+    REQUIRE_NOTHROW(CircuitSimulationReader(infinityCell, true));
+    REQUIRE_THROWS_AS(extract(infinityCell), InvalidInputException);
+    REQUIRE_THROWS_WITH(extract(infinityCell), Catch::Matchers::ContainsSubstring("line 2, column 2 (\"I(L1)\"): \"inf\""));
     // A plain, explicitly signed or exponent cell still parses whole.
     std::string clean = "time,I(L1)\n0,+1.5\n1e-6,-2.5E-1\n";
     REQUIRE_NOTHROW(CircuitSimulationReader(clean, true));
+}
+
+TEST_CASE("Test_CircuitSimulationReader_A_One_Row_File_Is_Refused_For_Its_Row_Count", "[processor][circuit-simulation-reader][smoke-test][abt-2374]") {
+    // ABT #2374: one data row cannot hold a time axis. The refusal says so and does not blame a cell,
+    // whether the row is clean or holds a cell that is not a number.
+    for (const std::string csv : {"time,I(L1)\n0,1.5\n", "time,I(L1)\n0,1.5A\n"}) {
+        REQUIRE_THROWS_AS(CircuitSimulationReader(csv, true), InvalidInputException);
+        REQUIRE_THROWS_WITH(CircuitSimulationReader(csv, true),
+                            Catch::Matchers::ContainsSubstring("the file has fewer than 2 data rows (1)") &&
+                            !Catch::Matchers::ContainsSubstring("Could not parse number"));
+    }
 }
 
 TEST_CASE("Test_CircuitSimulationReader_Reads_Numbers_In_The_C_Locale_Whatever_The_Global_One", "[processor][circuit-simulation-reader][smoke-test][abt-1624]") {

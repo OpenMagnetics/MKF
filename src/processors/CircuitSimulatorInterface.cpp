@@ -2378,6 +2378,15 @@ CircuitSimulationReader::CircuitSimulationSignal CircuitSimulationReader::find_t
         }
     }
     std::string message = "no time column found";
+    size_t dataRows = 0;
+    for (const auto& column : columns) {
+        dataRows = std::max(dataRows, column.data.size());
+    }
+    if (dataRows < 2) {
+        // A time axis needs at least two rows (ABT #2374): with fewer, no cell is to blame.
+        throw InvalidInputException(ErrorCode::MISSING_DATA,
+            message + ": the file has fewer than 2 data rows (" + std::to_string(dataRows) + ")");
+    }
     for (const auto& column : columns) {
         if (!column.unreadableCells.empty()) {
             // A time axis needs a number on every row (ABT #2374): name the first cell that is not one.
