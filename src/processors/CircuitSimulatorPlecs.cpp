@@ -313,12 +313,19 @@ std::string CircuitSimulatorExporterPlecsModel::emit_connection(
     ss << "      SrcComponent  \"" << srcComponent << "\"\n";
     ss << "      SrcTerminal   " << srcTerminal << "\n";
     if (!points.empty()) {
-        ss << "      Points        ";
+        // One matrix, a row per point: "Points [x0, y0; x1, y1]". A bracket per point,
+        // "[x0, y0]; [x1, y1]", is a syntax error in PLECS (ABT #2369, web bug report #195).
+        ss << "      Points        [";
         for (size_t i = 0; i < points.size(); ++i) {
-            ss << "[" << points[i][0] << ", " << points[i][1] << "]";
-            if (i < points.size() - 1) ss << "; ";
+            if (points[i].size() != 2) {
+                throw InvalidInputException(ErrorCode::INVALID_INPUT,
+                    "PLECS connection from " + srcComponent + " to " + dstComponent + ": point " + std::to_string(i) +
+                    " has " + std::to_string(points[i].size()) + " coordinates, not 2");
+            }
+            if (i > 0) ss << "; ";
+            ss << points[i][0] << ", " << points[i][1];
         }
-        ss << "\n";
+        ss << "]\n";
     }
     ss << "      DstComponent  \"" << dstComponent << "\"\n";
     ss << "      DstTerminal   " << dstTerminal << "\n";
