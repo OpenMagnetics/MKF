@@ -21,11 +21,14 @@ struct Defaults {
     const OpenMagnetics::MagneticFieldStrengthFringingEffectModels magneticFieldStrengthFringingEffectModelDefault = OpenMagnetics::MagneticFieldStrengthFringingEffectModels::ROSHEN;
     // ABT #1759 (Alf 2026-10-11, "keep the best model"): the winding-loss model set used when no model is chosen, per
     // core type the one most accurate against 2D OMFEM (get_default_winding_losses_model_set). The neutral window
-    // (MMF_BOUNDARY field + MARTINEZ / FERREIRA proximity) where its frame exists; MMF_BOUNDARY has no frame for
-    // toroids, several winding windows or turns crossing the section twice, which keep the historical automatic choice.
+    // (MMF_BOUNDARY field + MARTINEZ / FERREIRA proximity) where its frame exists, one frame per window on a multi-window
+    // core (ABT #2267); a single-window core with turns crossing the section twice keeps the historical automatic choice.
     const OpenMagnetics::WindingLossesModelSets windingLossesModelSetDefaultSingleWindow = OpenMagnetics::WindingLossesModelSets::NEUTRAL_WINDOW;
-    const OpenMagnetics::WindingLossesModelSets windingLossesModelSetDefaultToroid = OpenMagnetics::WindingLossesModelSets::LEGACY_DEFAULT;
-    const OpenMagnetics::WindingLossesModelSets windingLossesModelSetDefaultMultiWindow = OpenMagnetics::WindingLossesModelSets::LEGACY_DEFAULT;
+    // ABT #2267 (Alf 2026-11-13, "retire only from default if the other is better"): toroids take the TOROID set (ten
+    // rectangular bars 0.83-0.90x OMFEM against LEGACY_DEFAULT's 0.65-0.77x) and multi-window cores the neutral window
+    // built per window (0.89-1.37x against ROSHEN's 0.44x beside the gap); LEGACY_DEFAULT and MULTI_WINDOW stay selectable.
+    const OpenMagnetics::WindingLossesModelSets windingLossesModelSetDefaultToroid = OpenMagnetics::WindingLossesModelSets::TOROID;
+    const OpenMagnetics::WindingLossesModelSets windingLossesModelSetDefaultMultiWindow = OpenMagnetics::WindingLossesModelSets::NEUTRAL_WINDOW;
     const OpenMagnetics::WindingLossesModelSets windingLossesModelSetDefaultSecondCrossing = OpenMagnetics::WindingLossesModelSets::LEGACY_DEFAULT;
     // ABT #1783 (Alf 2026-10-12): drum, rod and molded families (DRUM, ROD, DRUM_RING, DRUM_SEMISHIELDED, DRUM_PLATE,
     // MOLDED) have no window frame for the neutral window; they keep the historical automatic choice, like toroids.

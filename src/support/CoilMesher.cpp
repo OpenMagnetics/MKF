@@ -2,6 +2,7 @@
 #include "physical_models/AxisymmetricWindow.h"
 #include "support/MasAccess.h"
 #include "physical_models/Reluctance.h"
+#include "physical_models/ReluctanceNetwork.h"
 #include "physical_models/WindingOhmicLosses.h"
 #include "processors/Inputs.h"
 #include "processors/WaveformProcessor.h"
@@ -812,9 +813,47 @@ std::vector<FieldPoint> CoilMesherCenterModel::generate_mesh_inducing_turn(const
         double A = windingWindow.get_width().value();
         double B = windingWindow.get_height().value();
 
+        // Multi-window cores (ABT #2267): the window regions between x-adjacent legs, the same frames the neutral window's
+        // wall sheets are imaged in. The core's per-column window entries carry no coordinates, and the regions they
+        // stand for are these: each crossing is imaged in the region that contains it.
+        std::vector<WindowRegion> regions;
+        if (windingWindows.size() > 1) {
+            regions = CoilMesher::window_regions(core);
+        }
+        auto region_index_containing = [&](const std::vector<double>& point) -> std::optional<size_t> {
+            for (size_t regionIndex = 0; regionIndex < regions.size(); ++regionIndex) {
+                const auto& region = regions[regionIndex];
+                if (point[0] >= region.x0 && point[0] <= region.x1 && point[1] >= region.y0 && point[1] <= region.y1) {
+                    return regionIndex;
+                }
+            }
+            return std::nullopt;
+        };
+        auto region_containing = [&](const std::vector<double>& point) -> std::optional<WindowRegion> {
+            auto index = region_index_containing(point);
+            if (!index) {
+                return std::nullopt;
+            }
+            return regions[index.value()];
+        };
+
         double windowLeftEdgeX;
         double windowBottomY;
-        if (windingWindows.size() > 1 && windingWindow.get_coordinates()) {
+        bool outsideTheCore = false;
+        if (!regions.empty()) {
+            auto region = region_containing(turn.get_coordinates());
+            if (!region) {
+                // A conductor of the parallel split that is a lateral turn's return crossing outside the core (ABT #2267):
+                // a lone filament in open air, as its additional crossing is when the whole turn is meshed.
+                outsideTheCore = true;
+                region = regions.front();
+            }
+            A = region->x1 - region->x0;
+            B = region->y1 - region->y0;
+            windowLeftEdgeX = region->x0;
+            windowBottomY = region->y0;
+        }
+        else if (windingWindows.size() > 1 && windingWindow.get_coordinates()) {
             windowLeftEdgeX = windingWindow.get_coordinates().value()[0] - A / 2;
             windowBottomY = windingWindow.get_coordinates().value()[1] - B / 2;
         }
@@ -827,8 +866,9 @@ std::vector<FieldPoint> CoilMesherCenterModel::generate_mesh_inducing_turn(const
             windowBottomY = -B / 2;
         }
 
+        // On a multi-window core every point is labelled with the window it belongs to (window_label): it acts only there.
         auto appendImageLattice = [&](const std::vector<double>& crossingPoint, double frameA, double frameB,
-                                      double frameLeftEdgeX, double frameBottomY, double signMultiplier) {
+                                      double frameLeftEdgeX, double frameBottomY, double signMultiplier, std::optional<size_t> window = std::nullopt) {
             double crossingA = crossingPoint[0] - frameLeftEdgeX;
             double crossingB = crossingPoint[1] - frameBottomY;
             // Image index m places the conductor at m*A + a (m even) or m*A + A - a (m odd), |m| reflections
@@ -884,7 +924,10 @@ std::vector<FieldPoint> CoilMesherCenterModel::generate_mesh_inducing_turn(const
                     // (MMF_BOUNDARY) keeps a turn's own images when it evaluates that turn, so it must tell them apart.
                     // Only the Wang field model reads inducing labels, and it refuses image points outright.
                     if (m != 0 || n != 0) {
-                        mirroredFieldPoint.set_label("image");
+                        mirroredFieldPoint.set_label(window_label(true, window));
+                    }
+                    else if (window) {
+                        mirroredFieldPoint.set_label(window_label(false, window));
                     }
                     if (turnLength) {
                         mirroredFieldPoint.set_turn_length(turnLength.value());
@@ -912,7 +955,22 @@ std::vector<FieldPoint> CoilMesherCenterModel::generate_mesh_inducing_turn(const
             }
         };
 
-        appendImageLattice(turn.get_coordinates(), A, B, windowLeftEdgeX, windowBottomY, 1.0);
+        if (outsideTheCore) {
+            FieldPoint conductorPoint;
+            conductorPoint.set_value(1.0);  // Will be multiplied later
+            if (turnLength) {
+                conductorPoint.set_turn_length(turnLength.value());
+            }
+            if (turnIndex) {
+                conductorPoint.set_turn_index(turnIndex.value());
+            }
+            conductorPoint.set_point(std::vector<double>{turn.get_coordinates()[0], turn.get_coordinates()[1]});
+            fieldPoints.push_back(conductorPoint);
+        }
+        else {
+            appendImageLattice(turn.get_coordinates(), A, B, windowLeftEdgeX, windowBottomY, 1.0,
+                               regions.empty() ? std::nullopt : region_index_containing(turn.get_coordinates()));
+        }
 
         // Multi-column winding: the turn's SECOND cross-section crossing carries the
         // same current with the opposite out-of-plane direction. A crossing inside
@@ -926,24 +984,10 @@ std::vector<FieldPoint> CoilMesherCenterModel::generate_mesh_inducing_turn(const
                 if (additionalCoordinates.size() < 2) {
                     continue;
                 }
-                std::optional<WindingWindowElement> containingWindow;
-                for (auto& candidate : windingWindows) {
-                    if (!candidate.get_coordinates() || !candidate.get_width() || !candidate.get_height()) {
-                        continue;
-                    }
-                    if (std::abs(additionalCoordinates[0] - candidate.get_coordinates().value()[0]) <= candidate.get_width().value() / 2 &&
-                        std::abs(additionalCoordinates[1] - candidate.get_coordinates().value()[1]) <= candidate.get_height().value() / 2) {
-                        containingWindow = candidate;
-                        break;
-                    }
-                }
-                if (containingWindow) {
-                    appendImageLattice(additionalCoordinates,
-                                       containingWindow->get_width().value(),
-                                       containingWindow->get_height().value(),
-                                       containingWindow->get_coordinates().value()[0] - containingWindow->get_width().value() / 2,
-                                       containingWindow->get_coordinates().value()[1] - containingWindow->get_height().value() / 2,
-                                       -1.0);
+                auto containingRegion = region_containing(additionalCoordinates);
+                if (containingRegion) {
+                    appendImageLattice(additionalCoordinates, containingRegion->x1 - containingRegion->x0, containingRegion->y1 - containingRegion->y0,
+                                       containingRegion->x0, containingRegion->y0, -1.0, region_index_containing(additionalCoordinates));
                 }
                 else {
                     FieldPoint returnConductorPoint;
@@ -1296,8 +1340,7 @@ std::vector<WindowWallSheet> CoilMesher::generate_window_wall_sheet_sources(Magn
     auto processedDescription = core.get_processed_description().value();
     auto windingWindows = processedDescription.get_winding_windows();
     if (windingWindows.size() != 1) {
-        throw NotImplementedException("Neutral window field: only single-window cores are described by this "
-                                      "frame; this core has " + std::to_string(windingWindows.size()) + " winding windows");
+        return generate_multi_window_wall_sheet_sources(magnetic, operatingPoint);
     }
     auto windingWindow = windingWindows[0];
     if (!windingWindow.get_width() || !windingWindow.get_height()) {
@@ -1461,9 +1504,172 @@ std::vector<WindowWallSheet> CoilMesher::generate_window_wall_sheet_sources(Magn
     return originals;
 }
 
+std::vector<WindowRegion> CoilMesher::window_regions(Core core) {
+    if (!core.get_processed_description()) {
+        throw CoreNotProcessedException();
+    }
+    auto windingWindows = core.get_processed_description()->get_winding_windows();
+    if (!windingWindows[0].get_height()) {
+        throw InvalidInputException(ErrorCode::MISSING_DATA, "Neutral window field: the winding window has no height");
+    }
+    const double B = windingWindows[0].get_height().value();
+    auto columns = core.get_columns();
+    std::vector<size_t> ordered(columns.size());
+    for (size_t columnIndex = 0; columnIndex < columns.size(); ++columnIndex) {
+        ordered[columnIndex] = columnIndex;
+        if (columnIndex != core.get_main_column_index() && columns[columnIndex].get_coordinates()[0] == 0) {
+            throw NotImplementedException("Neutral window field on a multi-window core with a leg displaced only in z");
+        }
+    }
+    std::sort(ordered.begin(), ordered.end(), [&](size_t left, size_t right) {
+        return columns[left].get_coordinates()[0] < columns[right].get_coordinates()[0];
+    });
+    std::vector<WindowRegion> regions;
+    for (size_t position = 0; position + 1 < ordered.size(); ++position) {
+        const auto& left = columns[ordered[position]];
+        const auto& right = columns[ordered[position + 1]];
+        WindowRegion region{left.get_coordinates()[0] + left.get_width() / 2, -B / 2, right.get_coordinates()[0] - right.get_width() / 2, B / 2};
+        if (!(region.x1 > region.x0)) {
+            throw InvalidInputException(ErrorCode::INVALID_CORE_DATA, "Neutral window field: two adjacent legs overlap");
+        }
+        regions.push_back(region);
+    }
+    return regions;
+}
+
+std::vector<WindowWallSheet> CoilMesher::generate_multi_window_wall_sheet_sources(Magnetic magnetic, std::optional<OperatingPoint> operatingPoint) {
+    auto core = magnetic.get_core();
+    if (!core.get_processed_description()) {
+        throw CoreNotProcessedException();
+    }
+    const auto regions = window_regions(core);
+    auto reluctanceModel = ReluctanceModel::factory();
+    auto reluctanceOutput = reluctanceModel->get_core_reluctance(core, operatingPoint);
+    if (!reluctanceOutput.get_ungapped_core_reluctance()) {
+        throw CalculationException(ErrorCode::CALCULATION_INVALID_RESULT, "Neutral window field: the reluctance model returned no ferrite reluctance");
+    }
+    auto gapping = core.get_functional_description().get_gapping();
+    std::vector<AirGapReluctanceOutput> reluctancePerGap;
+    if (!gapping.empty()) {
+        if (!reluctanceOutput.get_reluctance_per_gap() || reluctanceOutput.get_reluctance_per_gap()->size() != gapping.size()) {
+            throw CalculationException(ErrorCode::CALCULATION_INVALID_RESULT, "Neutral window field: the reluctance model did not return one reluctance per gap");
+        }
+        reluctancePerGap = reluctanceOutput.get_reluctance_per_gap().value();
+    }
+    ReluctanceNetwork network(core, reluctanceOutput.get_ungapped_core_reluctance().value(), reluctancePerGap);
+    const auto& ordered = network.get_ordered_column_indexes();
+    const auto& legReluctances = network.get_column_reluctances();
+    const auto& yokeReluctances = network.get_yoke_segment_reluctances();
+    if (regions.size() + 1 != ordered.size() || yokeReluctances.size() != regions.size()) {
+        throw CalculationException(ErrorCode::CALCULATION_INVALID_RESULT, "Neutral window field: the window regions do not match the reluctance network's loops");
+    }
+    // Each leg's gaps, and its ferrite share (the leg's branch reluctance without them).
+    std::vector<std::vector<size_t>> gapsPerColumn(core.get_columns().size());
+    std::vector<double> ferriteReluctancePerColumn = legReluctances;
+    for (size_t gapIndex = 0; gapIndex < gapping.size(); ++gapIndex) {
+        if (!gapping[gapIndex].get_coordinates()) {
+            throw GapException(ErrorCode::GAP_INVALID_DIMENSIONS, "Neutral window field: a gap has no coordinates");
+        }
+        size_t columnIndex = static_cast<size_t>(core.find_closest_column_index_by_coordinates(gapping[gapIndex].get_coordinates().value()));
+        gapsPerColumn[columnIndex].push_back(gapIndex);
+        ferriteReluctancePerColumn[columnIndex] -= reluctancePerGap[gapIndex].get_reluctance();
+    }
+
+    const size_t numberWindings = magnetic.get_coil().get_functional_description().size();
+    std::vector<WindowWallSheet> sources;
+    for (size_t windingIndex = 0; windingIndex < numberWindings; ++windingIndex) {
+        // The leg fluxes this winding drives with one ampere (its polarity and turns included, ReluctanceNetwork).
+        std::vector<double> currents(numberWindings, 0.0);
+        currents[windingIndex] = 1;
+        const auto legFlux = network.calculate_column_magnetic_fluxes(magnetic, currents);
+        // Mesh loop k circulates in the window between ordered legs k and k + 1 (ReluctanceNetwork's mesh solve): the
+        // drops round it are R_k phi_k on leg k, -R_{k+1} phi_{k+1} on leg k + 1 and Y_k sum_{j <= k} phi_j on the
+        // yoke segment, and they add up to the current the winding encloses in that window.
+        double cumulativeFlux = 0;
+        for (size_t windowIndex = 0; windowIndex < regions.size(); ++windowIndex) {
+            const auto& region = regions[windowIndex];
+            const size_t leftColumn = ordered[windowIndex];
+            const size_t rightColumn = ordered[windowIndex + 1];
+            cumulativeFlux += legFlux[leftColumn];
+            auto add = [&](std::vector<double> start, std::vector<double> end, double drop) {
+                if (drop != 0) {
+                    sources.push_back({start, end, -drop, windingIndex, windowIndex});
+                }
+            };
+            auto gapSheets = [&](size_t columnIndex, double wallX, double sign) {
+                for (size_t gapIndex : gapsPerColumn[columnIndex]) {
+                    if (gapping[gapIndex].get_type() == GapType::RESIDUAL) {
+                        // A residual gap's drop is spread along its leg's face with the ferrite (it opens onto no slot).
+                        continue;
+                    }
+                    const double gapY = gapping[gapIndex].get_coordinates().value()[1];
+                    const double gapLength = gapping[gapIndex].get_length();
+                    const double yStart = std::max(region.y0, gapY - gapLength / 2);
+                    const double yEnd = std::min(region.y1, gapY + gapLength / 2);
+                    if (!(yEnd > yStart)) {
+                        throw GapException(ErrorCode::GAP_INVALID_DIMENSIONS, "Neutral window field: a gap at y = " + std::to_string(gapY) +
+                                           " opens nowhere onto its winding window");
+                    }
+                    add({wallX, yStart}, {wallX, yEnd}, sign * reluctancePerGap[gapIndex].get_reluctance() * legFlux[columnIndex]);
+                }
+            };
+            auto ferriteReluctance = [&](size_t columnIndex) {
+                double reluctance = ferriteReluctancePerColumn[columnIndex];
+                for (size_t gapIndex : gapsPerColumn[columnIndex]) {
+                    if (gapping[gapIndex].get_type() == GapType::RESIDUAL) {
+                        reluctance += reluctancePerGap[gapIndex].get_reluctance();
+                    }
+                }
+                return reluctance;
+            };
+            gapSheets(leftColumn, region.x0, 1.0);
+            gapSheets(rightColumn, region.x1, -1.0);
+            add({region.x0, region.y0}, {region.x0, region.y1}, ferriteReluctance(leftColumn) * legFlux[leftColumn]);
+            add({region.x1, region.y0}, {region.x1, region.y1}, -ferriteReluctance(rightColumn) * legFlux[rightColumn]);
+            const double yokeDrop = yokeReluctances[windowIndex] * cumulativeFlux;
+            add({region.x0, region.y0}, {region.x1, region.y0}, yokeDrop / 2);
+            add({region.x0, region.y1}, {region.x1, region.y1}, yokeDrop / 2);
+        }
+    }
+    return sources;
+}
+
 std::vector<WindowWallSheet> CoilMesher::generate_window_wall_sheets(Magnetic magnetic, std::optional<OperatingPoint> operatingPoint) {
     auto originals = generate_window_wall_sheet_sources(magnetic, operatingPoint);
     auto core = magnetic.get_core();
+    if (core.get_processed_description()->get_winding_windows().size() != 1) {
+        // Each window's sheets in that window's complete-cell lattice, as CoilMesherCenterModel images the conductors
+        // of the window that contains them.
+        const auto regions = window_regions(core);
+        const int M = settings.get_magnetic_field_mirroring_dimension();
+        if (M < 1) {
+            throw InvalidInputException(ErrorCode::INVALID_INPUT, "Neutral window field: needs the image lattice (mirroring dimension >= 1)");
+        }
+        const double corePermeability = core.get_initial_permeability(defaults.ambientTemperature);
+        std::vector<WindowWallSheet> sheets;
+        for (const auto& source : originals) {
+            const auto& region = regions[source.window];
+            const double A = region.x1 - region.x0;
+            const double B = region.y1 - region.y0;
+            const bool neutralCells = settings.get_magnetic_field_mirroring_neutral_cells();
+            const int cellsX = neutralCells ? M : M * static_cast<int>(std::max(1.0, std::ceil(B / A)));
+            const int cellsY = neutralCells ? M : M * static_cast<int>(std::max(1.0, std::ceil(A / B)));
+            auto imagePosition = [&](const std::vector<double>& point, int m, int n) {
+                double a = point[0] - region.x0;
+                double b = point[1] - region.y0;
+                double imageA = (m % 2 == 0) ? m * A + a : m * A + A - a;
+                double imageB = (n % 2 == 0) ? n * B + b : n * B + B - b;
+                return std::vector<double>{imageA + region.x0, imageB + region.y0};
+            };
+            for (int m = -2 * cellsX - 1; m <= 2 * cellsX; ++m) {
+                for (int n = -2 * cellsY - 1; n <= 2 * cellsY; ++n) {
+                    double imageFactor = std::pow((corePermeability - 1.0) / (corePermeability + 1.0), std::abs(m) + std::abs(n));
+                    sheets.push_back({imagePosition(source.start, m, n), imagePosition(source.end, m, n), source.current * imageFactor, source.winding, source.window});
+                }
+            }
+        }
+        return sheets;
+    }
     auto windingWindow = core.get_processed_description().value().get_winding_windows()[0];
     const double A = windingWindow.get_width().value();
     const double B = windingWindow.get_height().value();

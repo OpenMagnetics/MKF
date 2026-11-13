@@ -3,6 +3,10 @@
 #include "physical_models/MagneticField.h"
 #include "physical_models/AxisymmetricWindow.h"
 #include "physical_models/Reluctance.h"
+#include "constructive_models/Bobbin.h"
+#include "support/CoilMesher.h"
+#include "physical_models/WindingLosses.h"
+#include "constructive_models/Mas.h"
 #include "json.hpp"
 #include "TestingUtils.h"
 #include "Models.h"
@@ -1131,8 +1135,101 @@ namespace {
         magnetic.set_coil(coil);
         auto operatingPoint = inputs.get_operating_point(0);
 
+        // ABT #2267: LAMMERANER too, now that its images keep the pure 2-D field (its finite-turn-length factor scaled
+        // them, and the far cells were not neutral).
+        for (auto fieldModel : {MagneticFieldStrengthModels::BINNS_LAWRENSON, MagneticFieldStrengthModels::LAMMERANER}) {
+            INFO("field model " << magic_enum::enum_name(fieldModel));
+            auto fieldWithCells = [&](int cells) {
+                settings.reset();
+                settings.set_magnetic_field_mirroring_dimension(cells);
+                MagneticField magneticField(fieldModel, MagneticFieldStrengthFringingEffectModels::MMF_BOUNDARY);
+                return magneticField.calculate_magnetic_field_strength_field(operatingPoint, magnetic).get_field_per_frequency()[0];
+            };
+            auto one = fieldWithCells(1);
+            auto two = fieldWithCells(2);
+            REQUIRE(one.get_data().size() == two.get_data().size());
+            double scale = 0;
+            for (auto& point : two.get_data()) {
+                scale = std::max(scale, hypot(point.get_real(), point.get_imaginary()));
+            }
+            for (size_t index = 0; index < one.get_data().size(); ++index) {
+                CHECK_THAT(one.get_data()[index].get_real(), Catch::Matchers::WithinAbs(two.get_data()[index].get_real(), 0.01 * scale));
+                CHECK_THAT(one.get_data()[index].get_imaginary(), Catch::Matchers::WithinAbs(two.get_data()[index].get_imaginary(), 0.01 * scale));
+            }
+        }
+        settings.reset();
+    }
+
+    // ABT #2267: the neutral window on a multi-window core (E 42/21/20 with per-column windows, 1 mm ground gap): a primary
+    // on the centre leg and a secondary on the left lateral leg. Each window's walls return, per winding, what that winding
+    // encloses there (its gaps' and ferrite drops from the column reluctance network), so every lattice cell is neutral
+    // (one and two mirror cells agree) and just inside a gapless wall the tangential H is that wall's ferrite sheet.
+    // ABT #2267: LAMMERANER's finite-turn-length factor L / hypot(L, d) is the conductor's own; an image (label "image",
+    // the core's reply) keeps the pure 2-D field I / (2 pi d), so the image lattice stays neutral with the wall sheets.
+    TEST_CASE("Test_Magnetic_Field_Lammeraner_Images_Are_Two_Dimensional", "[physical-model][magnetic-field][mmf-boundary]") {
+        MagneticFieldStrengthLammeranerModel model;
+        const double turnLength = 0.02;
+        const double distance = 0.01;
+        FieldPoint inducing;
+        inducing.set_point({0.0, 0.0});
+        inducing.set_value(1.0);
+        inducing.set_turn_length(turnLength);
+        FieldPoint induced;
+        induced.set_point({distance, 0.0});
+        auto [conductorX, conductorY] = model.get_magnetic_field_strength_components_between_two_points(inducing, induced);
+        CHECK_THAT(hypot(conductorX, conductorY), Catch::Matchers::WithinRel(1 / (2 * std::numbers::pi * distance) * turnLength / hypot(turnLength, distance), 1e-12));
+        inducing.set_label("image");
+        auto [imageX, imageY] = model.get_magnetic_field_strength_components_between_two_points(inducing, induced);
+        CHECK_THAT(hypot(imageX, imageY), Catch::Matchers::WithinRel(1 / (2 * std::numbers::pi * distance), 1e-12));
+        inducing.set_label("image@1");  // an image of a multi-window core's window 1
+        auto [windowImageX, windowImageY] = model.get_magnetic_field_strength_components_between_two_points(inducing, induced);
+        CHECK_THAT(hypot(windowImageX, windowImageY), Catch::Matchers::WithinRel(1 / (2 * std::numbers::pi * distance), 1e-12));
+    }
+
+    TEST_CASE("Test_Magnetic_Field_Mmf_Boundary_Multi_Window", "[physical-model][magnetic-field][mmf-boundary][multi-column]") {
+        settings.reset();
+        settings.set_core_per_column_winding_windows(true);
+        auto core = OpenMagneticsTesting::get_quick_core("E 42/21/20", OpenMagneticsTesting::get_ground_gap(1e-3), 1, "3C97");
+        auto bobbin = OpenMagnetics::Bobbin::create_quick_bobbin(core, 0.001, 0.001);
+        auto columns = core.get_processed_description()->get_columns();
+        REQUIRE(core.get_processed_description()->get_winding_windows().size() == 3);
+        json coilJson;
+        json bobbinJson;
+        to_json(bobbinJson, bobbin);
+        coilJson["bobbin"] = bobbinJson;
+        coilJson["functionalDescription"] = json::array();
+        coilJson["functionalDescription"].push_back(json{{"name", "Primary"}, {"numberTurns", 20}, {"numberParallels", 1},
+                                                         {"isolationSide", "primary"}, {"wire", "Round 0.475 - Grade 1"}});
+        coilJson["functionalDescription"].push_back(json{{"name", "Secondary"}, {"numberTurns", 10}, {"numberParallels", 1},
+                                                         {"isolationSide", "secondary"}, {"wire", "Round 0.475 - Grade 1"}});
+        OpenMagnetics::Coil coil(coilJson, false);
+        coil.get_mutable_functional_description()[1].set_winding_window(2);
+        coil.set_core_columns(columns);
+        REQUIRE(coil.wind());
+        OpenMagnetics::Magnetic magnetic;
+        magnetic.set_core(core);
+        magnetic.set_coil(coil);
+        auto inputs = OpenMagnetics::Inputs::create_quick_operating_point_only_current(100000, 100e-6, 25, WaveformLabel::TRIANGULAR, 10, 0.5, 0, {2});
+        auto operatingPoint = inputs.get_operating_point(0);
+
+        auto regions = CoilMesher::window_regions(magnetic.get_core());
+        REQUIRE(regions.size() == 2);
+        // The sources: per window and winding they return exactly what the network says the winding encloses there.
+        auto sources = CoilMesher::generate_window_wall_sheet_sources(magnetic, operatingPoint);
+        std::vector<std::vector<double>> returned(2, std::vector<double>(2, 0.0));
+        for (auto& source : sources) {
+            REQUIRE(source.winding);
+            returned[source.window][source.winding.value()] -= source.current;
+        }
+        // The primary (20 turns round the centre leg) crosses both windows, in opposite senses; the secondary (10 turns
+        // round the left leg) only the left window.
+        CHECK_THAT(std::abs(returned[0][0]), Catch::Matchers::WithinRel(20.0, 1e-9));
+        CHECK_THAT(std::abs(returned[1][0]), Catch::Matchers::WithinRel(20.0, 1e-9));
+        CHECK(returned[0][0] * returned[1][0] < 0);
+        CHECK_THAT(std::abs(returned[0][1]), Catch::Matchers::WithinRel(10.0, 1e-9));
+        CHECK_THAT(returned[1][1], Catch::Matchers::WithinAbs(0.0, 1e-9));
+
         auto fieldWithCells = [&](int cells) {
-            settings.reset();
             settings.set_magnetic_field_mirroring_dimension(cells);
             MagneticField magneticField(MagneticFieldStrengthModels::BINNS_LAWRENSON, MagneticFieldStrengthFringingEffectModels::MMF_BOUNDARY);
             return magneticField.calculate_magnetic_field_strength_field(operatingPoint, magnetic).get_field_per_frequency()[0];
@@ -1144,6 +1241,7 @@ namespace {
         for (auto& point : two.get_data()) {
             scale = std::max(scale, hypot(point.get_real(), point.get_imaginary()));
         }
+        REQUIRE(scale > 0);
         for (size_t index = 0; index < one.get_data().size(); ++index) {
             CHECK_THAT(one.get_data()[index].get_real(), Catch::Matchers::WithinAbs(two.get_data()[index].get_real(), 0.01 * scale));
             CHECK_THAT(one.get_data()[index].get_imaginary(), Catch::Matchers::WithinAbs(two.get_data()[index].get_imaginary(), 0.01 * scale));
@@ -1166,7 +1264,8 @@ namespace {
         magnetic.set_coil(coil);
         auto operatingPoint = inputs.get_operating_point(0);
         settings.reset();
-        for (auto fieldModel : {MagneticFieldStrengthModels::LAMMERANER, MagneticFieldStrengthModels::DOWELL, MagneticFieldStrengthModels::ALBACH}) {
+        // LAMMERANER left this list with ABT #2267 (its images are pure 2-D now; see the lattice test above).
+        for (auto fieldModel : {MagneticFieldStrengthModels::DOWELL, MagneticFieldStrengthModels::ALBACH}) {
             MagneticField magneticField(fieldModel, MagneticFieldStrengthFringingEffectModels::MMF_BOUNDARY);
             CHECK_THROWS_AS(magneticField.calculate_magnetic_field_strength_field(operatingPoint, magnetic), ModelNotAvailableException);
         }

@@ -103,6 +103,27 @@ class MagneticFieldStrengthFringingEffectModel {
                                                                     [[maybe_unused]] double netAmpereTurns) const {
             throw ModelNotAvailableException("This fringing effect model has no window-boundary sources");
         }
+        // Multi-window cores (ABT #2267): the boundary sources' field at (x, y) per ampere of each winding's current, from
+        // the walls of the window that contains the point (zero outside every window). Single-window cores use the net form.
+        virtual bool is_multi_window() const { return false; }
+        virtual std::vector<std::pair<double, double>> get_window_boundary_field_per_winding([[maybe_unused]] double pointX, [[maybe_unused]] double pointY) const {
+            throw ModelNotAvailableException("This fringing effect model has no multi-window boundary sources");
+        }
+        // The window containing (x, y), if any, and per window and winding the current the walls return per ampere of
+        // that winding (minus the sum of its unimaged sheets there): the field step scales each winding's sheets so that
+        // they return what its conductors really enclose in each window.
+        virtual std::optional<size_t> get_window_of_point([[maybe_unused]] double pointX, [[maybe_unused]] double pointY) const {
+            throw ModelNotAvailableException("This fringing effect model has no multi-window boundary sources");
+        }
+        virtual std::vector<std::pair<double, double>> get_window_boundary_field_screened_per_winding([[maybe_unused]] double pointX, [[maybe_unused]] double pointY,
+                                                                                                  [[maybe_unused]] const std::vector<ScreeningStrip>& strips,
+                                                                                                  [[maybe_unused]] std::optional<int64_t> inducedTurn,
+                                                                                                  [[maybe_unused]] std::vector<ScreenedFieldSum>& screened) const {
+            throw ModelNotAvailableException("This fringing effect model has no multi-window boundary sources");
+        }
+        virtual const std::vector<std::vector<double>>& get_returned_current_per_window_per_winding() const {
+            throw ModelNotAvailableException("This fringing effect model has no multi-window boundary sources");
+        }
         // The same field per unit net MMF, split by the foil strips it crosses on its way to (x, y) (ABT #1645): returns
         // the part that crosses none and appends the screened parts to `screened`, grouped by the strips they cross.
         virtual std::pair<double, double> get_window_boundary_field_screened([[maybe_unused]] double pointX, [[maybe_unused]] double pointY,
@@ -498,6 +519,15 @@ class MagneticFieldStrengthMmfBoundaryModel : public MagneticFieldStrengthFringi
     };
     std::vector<SheetMultipole> _sheetMultipoles;
     bool _isSetUp = false;
+    // Multi-window cores (ABT #2267): the sheets carry their window and winding; the regions say which window a point is in.
+    bool _multiWindow = false;
+    std::vector<WindowRegion> _regions;
+    size_t _numberWindings = 0;
+    std::vector<std::vector<double>> _returnedCurrentPerWindowPerWinding;
+    // One sheet's field at (x, y) for a current `scale` times its own (multipole form far from it).
+    std::pair<double, double> sheet_field(size_t sheetIndex, double scale, double pointX, double pointY) const;
+    void screen_sheet(const WindowWallSheet& sheet, double pointX, double pointY, const std::vector<ScreeningStrip>& strips, std::optional<int64_t> inducedTurn,
+                      size_t windingIndex, double& fieldX, double& fieldY, std::vector<ScreenedFieldSum>& screened) const;
     // A round-post window (AxisymmetricWindow::applies): the MMF the gaps and the ferrite drop on the post face and
     // the outer wall is the boundary data of the window's correction field; the plates' share is rings on the plates.
     std::optional<AxisymmetricWindow> _axisymmetricWindow;
@@ -514,6 +544,12 @@ class MagneticFieldStrengthMmfBoundaryModel : public MagneticFieldStrengthFringi
     bool is_window_boundary_model() const override { return true; }
     void setup_window_boundary(Magnetic magnetic, std::optional<OperatingPoint> operatingPoint) override;
     std::pair<double, double> get_window_boundary_field(double pointX, double pointY, double netAmpereTurns) const override;
+    bool is_multi_window() const override { return _multiWindow; }
+    std::vector<std::pair<double, double>> get_window_boundary_field_per_winding(double pointX, double pointY) const override;
+    std::optional<size_t> get_window_of_point(double pointX, double pointY) const override;
+    std::vector<std::pair<double, double>> get_window_boundary_field_screened_per_winding(double pointX, double pointY, const std::vector<ScreeningStrip>& strips,
+                                                                                          std::optional<int64_t> inducedTurn, std::vector<ScreenedFieldSum>& screened) const override;
+    const std::vector<std::vector<double>>& get_returned_current_per_window_per_winding() const override { return _returnedCurrentPerWindowPerWinding; }
     std::pair<double, double> get_window_boundary_field_screened(double pointX, double pointY, const std::vector<ScreeningStrip>& strips,
                                                                  std::optional<int64_t> inducedTurn, std::vector<ScreenedFieldSum>& screened) const override;
     // Closed-form field of one uniform sheet (see the definition), Binns-Lawrenson sign convention.

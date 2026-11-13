@@ -7,6 +7,7 @@
 #include <cmath>
 #include <complex>
 #include <optional>
+#include <string>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -43,7 +44,40 @@ struct WindowWallSheet {
     // Total current of the sheet per ampere-turn of NET winding MMF in the window, sign included. The sheets of one
     // window (images excluded) sum to exactly -1: they return the winding's MMF, which is what makes each lattice
     // cell neutral.
+    // Multi-window cores (ABT #2267): per ampere-turn of the MMF of winding `winding` (N_w I_w, its polarity included),
+    // and the sheets of window `window` sum to minus the current that winding encloses in that window.
     double current;
+    std::optional<size_t> winding = std::nullopt;
+    size_t window = 0;
+};
+
+// Labels of the CENTER mesher's points: "image" marks the core's reply to a conductor (an image), and on a multi-window
+// core (ABT #2267) "@k" the window k the point belongs to ("image@k" an image in it). A point acts only in its window.
+inline std::string window_label(bool image, std::optional<size_t> window) {
+    return std::string(image ? "image" : "") + (window ? "@" + std::to_string(window.value()) : std::string());
+}
+inline bool is_image_label(const std::optional<std::string>& label) {
+    return label && label->rfind("image", 0) == 0;
+}
+inline std::optional<size_t> window_of_label(const std::optional<std::string>& label) {
+    if (!label) {
+        return std::nullopt;
+    }
+    const auto at = label->find('@');
+    if (at == std::string::npos) {
+        return std::nullopt;
+    }
+    return static_cast<size_t>(std::stoul(label->substr(at + 1)));
+}
+
+// A winding-window region of a multi-window core (ABT #2267): the air between two x-adjacent legs, the frame its
+// conductors and wall sheets are imaged in.
+struct WindowRegion {
+    double x0;
+    double y0;
+    double x1;
+    double y1;
+    bool contains(double x, double y) const { return x > x0 && x < x1 && y > y0 && y < y1; }
 };
 
 
@@ -126,6 +160,12 @@ class CoilMesher {
     // The same sources before imaging: one sheet per gap mouth and per wall's ferrite share, currents per ampere-turn
     // of net MMF summing to -1 (AxisymmetricWindow uses them as the window's boundary data).
     static std::vector<WindowWallSheet> generate_window_wall_sheet_sources(Magnetic magnetic, std::optional<OperatingPoint> operatingPoint);
+    // Multi-window cores (ABT #2267): the window regions between x-adjacent legs, in leg order, and the wall sheet
+    // sources per winding and window from the column reluctance network (ReluctanceNetwork): each gap's drop is its
+    // reluctance times its column's flux, each leg face carries the leg's ferrite drop and the two plates the yoke
+    // segment's, so the sources of window k for winding w sum to minus the current w encloses there.
+    static std::vector<WindowRegion> window_regions(Core core);
+    static std::vector<WindowWallSheet> generate_multi_window_wall_sheet_sources(Magnetic magnetic, std::optional<OperatingPoint> operatingPoint);
     // meshAllWindows: mesh every distinct winding-window region (multi-column cores)
     // instead of only window 0. Painting wants it; the leakage energy integrator must
     // NOT use it — its revolution bookkeeping already accounts for the full turn from

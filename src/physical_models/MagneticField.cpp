@@ -52,6 +52,8 @@ enum class ToroidRegion { EVERYWHERE, BORE, EXTERIOR, FERRITE };
 
 namespace {
 
+std::pair<ToroidRegion, bool> region_of_inducing_label(const std::optional<std::string>& label);
+
 // Everything the turn-to-point kernel sum reads besides the currents: the mesh (every
 // field-point attribute but its value), the winding of each turn filament, the field model,
 // the wires and the core geometry the exclusions test. Compared exactly; the hash only
@@ -642,6 +644,17 @@ void MagneticFieldStrengthMmfBoundaryModel::setup_window_boundary(Magnetic magne
         }
     }
     _sheets = CoilMesher::generate_window_wall_sheets(magnetic, operatingPoint);
+    _multiWindow = false;
+    _regions.clear();
+    if (magnetic.get_core().get_processed_description() && magnetic.get_core().get_processed_description()->get_winding_windows().size() > 1) {
+        _multiWindow = true;
+        _regions = CoilMesher::window_regions(magnetic.get_core());
+        _numberWindings = magnetic.get_coil().get_functional_description().size();
+        _returnedCurrentPerWindowPerWinding.assign(_regions.size(), std::vector<double>(_numberWindings, 0.0));
+        for (const auto& source : CoilMesher::generate_window_wall_sheet_sources(magnetic, operatingPoint)) {
+            _returnedCurrentPerWindowPerWinding[source.window][source.winding.value()] -= source.current;
+        }
+    }
     // ABT #1645: a uniform sheet of length L along the unit tangent t is the filament smeared over zeta = s t,
     // |s| < L / 2, so its normalised moments are m_k = t^k (L / 2)^k / (k + 1) for even k (odd ones vanish), and
     // Hy + j Hx = I / (2 pi) sum_k m_k / D^(k+1), D = centre - point, in the filament convention calculate_sheet_field
@@ -690,40 +703,75 @@ std::pair<double, double> MagneticFieldStrengthMmfBoundaryModel::get_window_boun
         auto [fieldX, fieldY] = _axisymmetricWindow->wall_field(_axisymmetricWallSources, pointX, pointY);
         return {fieldX * netAmpereTurns, fieldY * netAmpereTurns};
     }
+    if (_multiWindow) {
+        throw CalculationException(ErrorCode::CALCULATION_INVALID_RESULT, "MMF_BOUNDARY on a multi-window core: the walls answer each winding's current (get_window_boundary_field_per_winding), not a net MMF");
+    }
     double fieldX = 0;
     double fieldY = 0;
     for (size_t sheetIndex = 0; sheetIndex < _sheets.size(); ++sheetIndex) {
-        const auto& sheet = _sheets[sheetIndex];
-        const auto& multipole = _sheetMultipoles[sheetIndex];
-        const double dRe = multipole.centreX - pointX;
-        const double dIm = multipole.centreY - pointY;
-        const double dNormSquared = dRe * dRe + dIm * dIm;
-        if (dNormSquared >= multipole.farRadiusSquared) {
-            const double inverseRe = dRe / dNormSquared;
-            const double inverseIm = -dIm / dNormSquared;
-            const double inverseSquaredRe = inverseRe * inverseRe - inverseIm * inverseIm;
-            const double inverseSquaredIm = 2 * inverseRe * inverseIm;
-            double termRe = inverseRe;
-            double termIm = inverseIm;
-            double sumRe = 0;
-            double sumIm = 0;
-            for (size_t index = 0; index < 7; ++index) {
-                sumRe += multipole.momentRe[index] * termRe - multipole.momentIm[index] * termIm;
-                sumIm += multipole.momentRe[index] * termIm + multipole.momentIm[index] * termRe;
-                const double nextRe = termRe * inverseSquaredRe - termIm * inverseSquaredIm;
-                termIm = termRe * inverseSquaredIm + termIm * inverseSquaredRe;
-                termRe = nextRe;
-            }
-            const double prefactor = sheet.current * netAmpereTurns / (2 * std::numbers::pi);
-            fieldX += prefactor * sumIm;
-            fieldY += prefactor * sumRe;
-            continue;
-        }
-        auto [sheetFieldX, sheetFieldY] = calculate_sheet_field(sheet, sheet.current * netAmpereTurns, pointX, pointY);
+        auto [sheetFieldX, sheetFieldY] = sheet_field(sheetIndex, netAmpereTurns, pointX, pointY);
         fieldX += sheetFieldX;
         fieldY += sheetFieldY;
     }
     return {fieldX, fieldY};
+}
+
+std::vector<std::pair<double, double>> MagneticFieldStrengthMmfBoundaryModel::get_window_boundary_field_per_winding(double pointX, double pointY) const {
+    if (!_isSetUp || !_multiWindow) {
+        throw CalculationException(ErrorCode::CALCULATION_INVALID_RESULT, "MMF_BOUNDARY: per-winding wall field asked of a window boundary that is not a multi-window one");
+    }
+    std::vector<std::pair<double, double>> fieldPerWinding(_numberWindings, {0.0, 0.0});
+    const auto window = get_window_of_point(pointX, pointY);
+    if (!window) {
+        return fieldPerWinding;  // outside every window: no wall answers there (the core's outside has no frame)
+    }
+    for (size_t sheetIndex = 0; sheetIndex < _sheets.size(); ++sheetIndex) {
+        const auto& sheet = _sheets[sheetIndex];
+        if (sheet.window != window.value()) {
+            continue;
+        }
+        auto [sheetFieldX, sheetFieldY] = sheet_field(sheetIndex, 1.0, pointX, pointY);
+        fieldPerWinding[sheet.winding.value()].first += sheetFieldX;
+        fieldPerWinding[sheet.winding.value()].second += sheetFieldY;
+    }
+    return fieldPerWinding;
+}
+
+std::optional<size_t> MagneticFieldStrengthMmfBoundaryModel::get_window_of_point(double pointX, double pointY) const {
+    for (size_t regionIndex = 0; regionIndex < _regions.size(); ++regionIndex) {
+        if (_regions[regionIndex].contains(pointX, pointY)) {
+            return regionIndex;
+        }
+    }
+    return std::nullopt;
+}
+
+std::pair<double, double> MagneticFieldStrengthMmfBoundaryModel::sheet_field(size_t sheetIndex, double scale, double pointX, double pointY) const {
+    const auto& sheet = _sheets[sheetIndex];
+    const auto& multipole = _sheetMultipoles[sheetIndex];
+    const double dRe = multipole.centreX - pointX;
+    const double dIm = multipole.centreY - pointY;
+    const double dNormSquared = dRe * dRe + dIm * dIm;
+    if (dNormSquared >= multipole.farRadiusSquared) {
+        const double inverseRe = dRe / dNormSquared;
+        const double inverseIm = -dIm / dNormSquared;
+        const double inverseSquaredRe = inverseRe * inverseRe - inverseIm * inverseIm;
+        const double inverseSquaredIm = 2 * inverseRe * inverseIm;
+        double termRe = inverseRe;
+        double termIm = inverseIm;
+        double sumRe = 0;
+        double sumIm = 0;
+        for (size_t index = 0; index < 7; ++index) {
+            sumRe += multipole.momentRe[index] * termRe - multipole.momentIm[index] * termIm;
+            sumIm += multipole.momentRe[index] * termIm + multipole.momentIm[index] * termRe;
+            const double nextRe = termRe * inverseSquaredRe - termIm * inverseSquaredIm;
+            termIm = termRe * inverseSquaredIm + termIm * inverseSquaredRe;
+            termRe = nextRe;
+        }
+        const double prefactor = sheet.current * scale / (2 * std::numbers::pi);
+        return {prefactor * sumIm, prefactor * sumRe};
+    }
+    return calculate_sheet_field(sheet, sheet.current * scale, pointX, pointY);
 }
 
 // ABT #1645: a wall sheet is an extended source, so which strips its field crosses depends on the point of the sheet
@@ -775,33 +823,12 @@ std::pair<double, double> sheet_piece_field(const WindowWallSheet& piece, double
 }
 } // namespace
 
-std::pair<double, double> MagneticFieldStrengthMmfBoundaryModel::get_window_boundary_field_screened(double pointX, double pointY, const std::vector<ScreeningStrip>& strips,
-                                                                                                    std::optional<int64_t> inducedTurn, std::vector<ScreenedFieldSum>& screened) const {
-    if (!_isSetUp) {
-        throw CalculationException(ErrorCode::CALCULATION_INVALID_RESULT, "MMF_BOUNDARY: get_window_boundary_field_screened called before setup_window_boundary");
-    }
-    if (_axisymmetricWindow) {
-        // A round-post window: each plate ring is screened by the strips between it and the point, and the
-        // correction's post and outer parts by the strips between the point and that wall, at the point's height.
-        double fieldX = 0;
-        double fieldY = 0;
-        for (const auto& part : _axisymmetricWindow->wall_field_parts(_axisymmetricWallSources, pointX, pointY)) {
-            auto crossed = strips_between(strips, part.sourceX, part.sourceY, pointX, pointY, std::nullopt, inducedTurn);
-            if (crossed.empty()) {
-                fieldX += part.fieldX;
-                fieldY += part.fieldY;
-            }
-            else {
-                add_screened(screened, 0, std::move(crossed), part.fieldX, part.fieldY);
-            }
-        }
-        return {fieldX, fieldY};
-    }
-    // Every sheet whole and unscreened first (the fast path); a sheet with strips in the way is then taken out
-    // whole and put back piece by piece.
-    auto [fieldX, fieldY] = get_window_boundary_field(pointX, pointY, 1.0);
+// One wall sheet with strips in the way of (x, y): taken out whole from `field` and put back piece by piece, each piece
+// unscreened into `field` or screened into `screened` under `windingIndex` (ABT #1645).
+void MagneticFieldStrengthMmfBoundaryModel::screen_sheet(const WindowWallSheet& sheet, double pointX, double pointY, const std::vector<ScreeningStrip>& strips,
+                                                         std::optional<int64_t> inducedTurn, size_t windingIndex, double& fieldX, double& fieldY,
+                                                         std::vector<ScreenedFieldSum>& screened) const {
     std::vector<double> breaks;
-    for (const auto& sheet : _sheets) {
         const double startX = sheet.start[0];
         const double startY = sheet.start[1];
         const double segmentX = sheet.end[0] - startX;
@@ -833,7 +860,7 @@ std::pair<double, double> MagneticFieldStrengthMmfBoundaryModel::get_window_boun
         }
         std::sort(breaks.begin(), breaks.end());
         if (breaks.size() == 2 && strips_between(strips, startX + 0.5 * segmentX, startY + 0.5 * segmentY, pointX, pointY, std::nullopt, inducedTurn).empty()) {
-            continue;
+            return;
         }
         auto [wholeFieldX, wholeFieldY] = sheet_piece_field(sheet, pointX, pointY);
         fieldX -= wholeFieldX;
@@ -857,9 +884,60 @@ std::pair<double, double> MagneticFieldStrengthMmfBoundaryModel::get_window_boun
                 fieldY += pieceFieldY;
             }
             else {
-                add_screened(screened, 0, std::move(crossed), pieceFieldX, pieceFieldY);
+                add_screened(screened, windingIndex, std::move(crossed), pieceFieldX, pieceFieldY);
             }
         }
+}
+
+std::vector<std::pair<double, double>> MagneticFieldStrengthMmfBoundaryModel::get_window_boundary_field_screened_per_winding(
+        double pointX, double pointY, const std::vector<ScreeningStrip>& strips, std::optional<int64_t> inducedTurn, std::vector<ScreenedFieldSum>& screened) const {
+    // Multi-window (ABT #2267): as the net form, per winding: the unscreened part per winding, the screened parts under
+    // the winding whose sheet they come from.
+    auto fieldPerWinding = get_window_boundary_field_per_winding(pointX, pointY);
+    const auto window = get_window_of_point(pointX, pointY);
+    if (!window) {
+        return fieldPerWinding;
+    }
+    for (const auto& sheet : _sheets) {
+        if (sheet.window != window.value()) {
+            continue;
+        }
+        const size_t windingIndex = sheet.winding.value();
+        screen_sheet(sheet, pointX, pointY, strips, inducedTurn, windingIndex, fieldPerWinding[windingIndex].first, fieldPerWinding[windingIndex].second, screened);
+    }
+    return fieldPerWinding;
+}
+
+std::pair<double, double> MagneticFieldStrengthMmfBoundaryModel::get_window_boundary_field_screened(double pointX, double pointY, const std::vector<ScreeningStrip>& strips,
+                                                                                                    std::optional<int64_t> inducedTurn, std::vector<ScreenedFieldSum>& screened) const {
+    if (!_isSetUp) {
+        throw CalculationException(ErrorCode::CALCULATION_INVALID_RESULT, "MMF_BOUNDARY: get_window_boundary_field_screened called before setup_window_boundary");
+    }
+    if (_multiWindow) {
+        throw NotImplementedException("MMF_BOUNDARY on a multi-window core: foil screening of the wall sheets is not implemented yet");
+    }
+    if (_axisymmetricWindow) {
+        // A round-post window: each plate ring is screened by the strips between it and the point, and the
+        // correction's post and outer parts by the strips between the point and that wall, at the point's height.
+        double fieldX = 0;
+        double fieldY = 0;
+        for (const auto& part : _axisymmetricWindow->wall_field_parts(_axisymmetricWallSources, pointX, pointY)) {
+            auto crossed = strips_between(strips, part.sourceX, part.sourceY, pointX, pointY, std::nullopt, inducedTurn);
+            if (crossed.empty()) {
+                fieldX += part.fieldX;
+                fieldY += part.fieldY;
+            }
+            else {
+                add_screened(screened, 0, std::move(crossed), part.fieldX, part.fieldY);
+            }
+        }
+        return {fieldX, fieldY};
+    }
+    // Every sheet whole and unscreened first (the fast path); a sheet with strips in the way is then taken out
+    // whole and put back piece by piece.
+    auto [fieldX, fieldY] = get_window_boundary_field(pointX, pointY, 1.0);
+    for (const auto& sheet : _sheets) {
+        screen_sheet(sheet, pointX, pointY, strips, inducedTurn, 0, fieldX, fieldY, screened);
     }
     return {fieldX, fieldY};
 }
@@ -940,6 +1018,18 @@ WindingWindowMagneticStrengthFieldPhasorOutput MagneticField::calculate_magnetic
     // Fall back to BINNS_LAWRENSON, whose 2D Cartesian filaments plus the per-window
     // mirror images handle any placement.
     bool multiWindowCore = coreShapeFamily != CoreShapeFamily::T && core.get_winding_windows().size() > 1;
+    std::vector<WindowRegion> windowRegions;
+    if (multiWindowCore) {
+        windowRegions = CoilMesher::window_regions(core);
+    }
+    auto window_of_point = [&](double pointX, double pointY) -> std::optional<size_t> {
+        for (size_t regionIndex = 0; regionIndex < windowRegions.size(); ++regionIndex) {
+            if (windowRegions[regionIndex].contains(pointX, pointY)) {
+                return regionIndex;
+            }
+        }
+        return std::nullopt;
+    };
     if (multiWindowCore && _magneticFieldStrengthModel == MagneticFieldStrengthModels::ALBACH) {
         _magneticFieldStrengthModel = MagneticFieldStrengthModels::BINNS_LAWRENSON;
         _model = factory(_magneticFieldStrengthModel);
@@ -953,15 +1043,13 @@ WindingWindowMagneticStrengthFieldPhasorOutput MagneticField::calculate_magnetic
         if (coreShapeFamily == CoreShapeFamily::T) {
             throw ModelNotAvailableException(name + " is not available for toroids: they have no rectangular window boundary");
         }
-        if (multiWindowCore) {
-            throw ModelNotAvailableException(name + " is not available for multi-window cores yet");
-        }
-        // Only the pure 2-D kernel. The mu -> inf image lattice is a 2-D construct; LAMMERANER scales every filament by a
-        // finite-turn-length factor, which fades the distant conductor images but not their wall-sheet partners, so the
-        // far cells stop being neutral and the sum diverges with lattice size (11.7 % at M = 1, 19 % at M = 2 on a
-        // 40-turn E 42 inductor, against 0.02 % with BINNS_LAWRENSON).
-        if (_magneticFieldStrengthModel != MagneticFieldStrengthModels::BINNS_LAWRENSON) {
-            throw ModelNotAvailableException(name + " needs the pure 2-D BINNS_LAWRENSON field model, not " +
+        // Field models whose images are pure 2-D. The mu -> inf image lattice is a 2-D construct, so the images must not
+        // fade with distance while their wall-sheet partners do not: LAMMERANER keeps its finite-turn-length factor on the
+        // conductor itself and gives its images the 2-D field (it scaled them too, and the far cells stopped being
+        // neutral: 11.7 % at M = 1, 19 % at M = 2 on a 40-turn E 42 inductor, against 0.02 % with BINNS_LAWRENSON).
+        if (_magneticFieldStrengthModel != MagneticFieldStrengthModels::BINNS_LAWRENSON &&
+            _magneticFieldStrengthModel != MagneticFieldStrengthModels::LAMMERANER) {
+            throw ModelNotAvailableException(name + " needs a field model with pure 2-D images (BINNS_LAWRENSON or LAMMERANER), not " +
                                              std::string(magic_enum::enum_name(_magneticFieldStrengthModel)));
         }
         if (!settings.get_magnetic_field_include_fringing()) {
@@ -1355,7 +1443,7 @@ WindingWindowMagneticStrengthFieldPhasorOutput MagneticField::calculate_magnetic
                     turnPointsPerHarmonic[harmonicIndex].push_back(pointIndex);
                     // Read in place: get_label() copies the string.
                     const auto& label = mas_access::label_ref(data[pointIndex]);
-                    if (!(label && label.value() == "image")) {
+                    if (!is_image_label(label)) {
                         conductorPointsPerHarmonic[harmonicIndex].push_back(pointIndex);
                     }
                 }
@@ -1553,6 +1641,8 @@ WindingWindowMagneticStrengthFieldPhasorOutput MagneticField::calculate_magnetic
             // On a toroid (mirrored), where the source acts and whether it is a conductor or the core's reply to one.
             ToroidRegion toroidRegion = ToroidRegion::EVERYWHERE;
             bool toroidReply = false;
+            // On a multi-window core, the window the source belongs to (none: a return conductor outside the core).
+            std::optional<size_t> window = std::nullopt;
         };
         // A toroid's ring splits the plane into the bore and the outside, each seeing only its own sources (see
         // CoilMesherCenterModel::generate_mesh_inducing_turn). Inside the ferrite (mu -> inf) no turn source acts.
@@ -1589,8 +1679,9 @@ WindingWindowMagneticStrengthFieldPhasorOutput MagneticField::calculate_magnetic
             const auto label = inducingFieldPoint.get_label();
             sources.push_back({&inducingFieldPoint, inducingFieldPoint.get_point()[0], inducingFieldPoint.get_point()[1], inducingFieldPoint.get_value(),
                                inducingFieldPoint.get_turn_index().value(), windingIndexPerTurn[static_cast<size_t>(inducingFieldPoint.get_turn_index().value())], groupIndex,
-                               label && label.value() == "image",
+                               is_image_label(label),
                                inducingFieldPoint.get_rotation().has_value()});
+            sources.back().window = window_of_label(label);
             if (label) {
                 const std::string& text = label.value();
                 if (text == toroidBoreConductorLabel || text == toroidBoreReplyLabel) {
@@ -1639,8 +1730,11 @@ WindingWindowMagneticStrengthFieldPhasorOutput MagneticField::calculate_magnetic
             const double inducedX = inducedFieldPoint.get_point()[0];
             const double inducedY = inducedFieldPoint.get_point()[1];
             auto& fieldPerWinding = entry.unitFieldPerInducedPointPerWinding[inducedIndex];
+            // Multi-window core (ABT #2267): the mu -> inf core screens the windows from each other and from the outside, so
+            // a source acts only in its own window (its images included, wherever they fall); one outside the core only there.
+            const std::optional<size_t> inducedWindow = multiWindowCore ? window_of_point(inducedX, inducedY) : std::nullopt;
             for (const auto& source : sources) {
-                if (multiWindowCore && source.x * inducedX < 0) {
+                if (multiWindowCore && source.window != inducedWindow) {
                     continue;
                 }
                 // A turn's own field is the skin model's. On the neutral path its IMAGES are not: they are the core's
@@ -1831,6 +1925,8 @@ WindingWindowMagneticStrengthFieldPhasorOutput MagneticField::calculate_magnetic
     // The unscreened wall field per unit net ampere-turns at each induced point: geometry only, and the induced points
     // are the same at every harmonic (build_turn_field_sums checks it), so it is evaluated once per point, on first use.
     std::vector<std::optional<std::pair<double, double>>> wallFieldPerInducedPoint;
+    std::vector<std::optional<std::vector<std::pair<double, double>>>> wallFieldPerWindingPerInducedPoint;
+    std::vector<std::vector<ScreenedFieldSum>> wallScreeningPerWindingPerInducedPoint;
 
     for (size_t harmonicIndex = 0; harmonicIndex < inducingFields.size(); ++harmonicIndex){
         std::vector<ComplexFieldPoint> fieldPoints;
@@ -2321,6 +2417,69 @@ WindingWindowMagneticStrengthFieldPhasorOutput MagneticField::calculate_magnetic
                 netQuadratureAmpereTurns += inducingFieldPoint.get_value() * quadratureFactorPerWinding[windingIndex];
             }
         }
+        // Multi-window cores (ABT #2267): each winding's wall sheets, scaled so that in every window they return what
+        // that winding's conductors (not their images) enclose there, in phase and in quadrature. The sheets per ampere
+        // come from the reluctance network; the scale is measured on the mesh, so the conventions of both (turn
+        // orientation, current direction) cannot disagree: every window must give the same scale, or this throws.
+        std::vector<std::complex<double>> wallCurrentPerWinding;
+        if (windowBoundaryModel && _fringingEffectModel->is_multi_window()) {
+            const auto& returnedPerWindowPerWinding = _fringingEffectModel->get_returned_current_per_window_per_winding();
+            const size_t numberWindows = returnedPerWindowPerWinding.size();
+            const size_t numberWindings = magnetic.get_coil().get_functional_description().size();
+            std::vector<std::vector<std::complex<double>>> enclosedPerWindowPerWinding(numberWindows, std::vector<std::complex<double>>(numberWindings, 0.0));
+            for (size_t pointIndex : conductorPointsPerHarmonic.at(harmonicIndex)) {
+                const auto& inducingFieldPoint = inducingData[pointIndex];
+                const auto window = _fringingEffectModel->get_window_of_point(inducingFieldPoint.get_point()[0], inducingFieldPoint.get_point()[1]);
+                if (!window) {
+                    continue;  // a return conductor outside the core
+                }
+                size_t inducingTurnIndex = static_cast<size_t>(inducingFieldPoint.get_turn_index().value());
+                size_t windingIndex = windingIndexPerTurn[inducingTurnIndex];
+                const std::complex<double> factor = factorPerTurn.empty() ?
+                    std::complex<double>(inPhaseFactorPerWinding[windingIndex], quadratureFactorPerWinding[windingIndex]) : factorPerTurn[inducingTurnIndex];
+                enclosedPerWindowPerWinding[window.value()][windingIndex] += inducingFieldPoint.get_value() * factor;
+            }
+            wallCurrentPerWinding.assign(numberWindings, 0.0);
+            for (size_t windingIndex = 0; windingIndex < numberWindings; ++windingIndex) {
+                size_t reference = 0;
+                double largestReturned = 0;
+                double largestEnclosed = 0;
+                for (size_t window = 0; window < numberWindows; ++window) {
+                    largestEnclosed = std::max(largestEnclosed, std::abs(enclosedPerWindowPerWinding[window][windingIndex]));
+                    if (std::abs(returnedPerWindowPerWinding[window][windingIndex]) > largestReturned) {
+                        largestReturned = std::abs(returnedPerWindowPerWinding[window][windingIndex]);
+                        reference = window;
+                    }
+                }
+                if (!(largestReturned > 0)) {
+                    if (largestEnclosed > 0) {
+                        throw CalculationException(ErrorCode::CALCULATION_INVALID_RESULT, "MMF_BOUNDARY on a multi-window core: winding " + std::to_string(windingIndex) +
+                                                   " encloses current in a window but the reluctance network gives it no MMF");
+                    }
+                    continue;
+                }
+                const std::complex<double> scale = enclosedPerWindowPerWinding[reference][windingIndex] / returnedPerWindowPerWinding[reference][windingIndex];
+                for (size_t window = 0; window < numberWindows; ++window) {
+                    const std::complex<double> mismatch = enclosedPerWindowPerWinding[window][windingIndex] - scale * returnedPerWindowPerWinding[window][windingIndex];
+                    // Against the winding's largest ampere-turns over every harmonic: a harmonic it carries no current at
+                    // (1e-18 A of rounding) compares rounding with rounding.
+                    double windingAmpereTurns = 0;
+                    for (const auto& amplitudePerWinding : currentAmplitudePerHarmonicPerWinding) {
+                        windingAmpereTurns = std::max(windingAmpereTurns, amplitudePerWinding.at(windingIndex));
+                    }
+                    windingAmpereTurns *= static_cast<double>(magnetic.get_coil().get_functional_description()[windingIndex].get_number_turns());
+                    if (std::abs(mismatch) > 1e-6 * std::max(largestEnclosed, windingAmpereTurns)) {
+                        std::ostringstream message;
+                        message << std::setprecision(6) << "MMF_BOUNDARY on a multi-window core: winding " << windingIndex << " encloses "
+                                << enclosedPerWindowPerWinding[window][windingIndex] << " A in window " << window << " where its wall sources return "
+                                << scale * returnedPerWindowPerWinding[window][windingIndex] << " A (" << enclosedPerWindowPerWinding[reference][windingIndex]
+                                << " A in window " << reference << ")";
+                        throw CalculationException(ErrorCode::CALCULATION_INVALID_RESULT, message.str());
+                    }
+                }
+                wallCurrentPerWinding[windingIndex] = scale;
+            }
+        }
 
         const auto& inducedDataThisHarmonic = inducedFields[harmonicIndex].get_data();
         const std::vector<std::complex<double>> transmissionPerStrip = strip_transmissions(inducingFields[harmonicIndex].get_frequency());
@@ -2568,7 +2727,49 @@ WindingWindowMagneticStrengthFieldPhasorOutput MagneticField::calculate_magnetic
                     throw NaNResultException("NaN found in magnetic field calculation");
                 }
             }
-            if (windowBoundaryModel && (netAmpereTurns != 0 || netQuadratureAmpereTurns != 0) &&
+            if (!wallCurrentPerWinding.empty() && !is_inside_core(inducedFieldPoint, coreColumnWidth, coreWidth, coreShapeFamily)) {
+                // Multi-window (ABT #2267): each winding's sheets in this point's window, at that winding's scale.
+                if (wallFieldPerWindingPerInducedPoint.empty()) {
+                    wallFieldPerWindingPerInducedPoint.resize(inducedDataThisHarmonic.size());
+                }
+                auto& wallFieldPerWinding = wallFieldPerWindingPerInducedPoint[inducedIndex];
+                if (!wallFieldPerWinding) {
+                    if (screeningStrips.empty()) {
+                        wallFieldPerWinding = _fringingEffectModel->get_window_boundary_field_per_winding(inducedFieldPoint.get_point()[0], inducedFieldPoint.get_point()[1]);
+                    }
+                    else {
+                        // ABT #1645 with each winding's sheets: the pieces whose field crosses foil strips, split once.
+                        if (wallScreeningPerWindingPerInducedPoint.empty()) {
+                            wallScreeningPerWindingPerInducedPoint.resize(inducedDataThisHarmonic.size());
+                        }
+                        std::vector<ScreenedFieldSum> screenedSums;
+                        wallFieldPerWinding = _fringingEffectModel->get_window_boundary_field_screened_per_winding(
+                            inducedFieldPoint.get_point()[0], inducedFieldPoint.get_point()[1], screeningStrips, inducedFieldPoint.get_turn_index(), screenedSums);
+                        wallScreeningPerWindingPerInducedPoint[inducedIndex] = std::move(screenedSums);
+                    }
+                }
+                if (!wallScreeningPerWindingPerInducedPoint.empty()) {
+                    for (const auto& screenedSum : wallScreeningPerWindingPerInducedPoint[inducedIndex]) {
+                        auto [transmittedX, transmittedY] = transmit_through_strips(screenedSum, screeningStrips, transmissionPerStrip);
+                        const std::complex<double> current = wallCurrentPerWinding[screenedSum.windingIndex];
+                        totalInducedFieldX += (current * transmittedX).real();
+                        totalInducedFieldY += (current * transmittedY).real();
+                        totalQuadratureInducedFieldX += (current * transmittedX).imag();
+                        totalQuadratureInducedFieldY += (current * transmittedY).imag();
+                    }
+                }
+                for (size_t windingIndex = 0; windingIndex < wallCurrentPerWinding.size(); ++windingIndex) {
+                    const auto [unitX, unitY] = wallFieldPerWinding.value()[windingIndex];
+                    if (std::isnan(unitX) || std::isnan(unitY)) {
+                        throw NaNResultException("NaN found in the MMF_BOUNDARY window field");
+                    }
+                    totalInducedFieldX += unitX * wallCurrentPerWinding[windingIndex].real();
+                    totalInducedFieldY += unitY * wallCurrentPerWinding[windingIndex].real();
+                    totalQuadratureInducedFieldX += unitX * wallCurrentPerWinding[windingIndex].imag();
+                    totalQuadratureInducedFieldY += unitY * wallCurrentPerWinding[windingIndex].imag();
+                }
+            }
+            else if (windowBoundaryModel && (netAmpereTurns != 0 || netQuadratureAmpereTurns != 0) &&
                 !is_inside_core(inducedFieldPoint, coreColumnWidth, coreWidth, coreShapeFamily)) {
                 // The wall field is linear in the net ampere-turns: one unit evaluation, scaled per component.
                 double boundaryFieldX;
@@ -2858,7 +3059,13 @@ std::pair<double, double> MagneticFieldStrengthLammeranerModel::get_magnetic_fie
     // sin(angle + pi/2)) with angle = atan2(dy, dx), which is (-dy, dx) / distance: the same
     // direction without an atan2, a cos and a sin per point pair. The leading minus in the
     // module gives the same clockwise field a line current has in the Binns-Lawrenson model.
-    double magneticFiledStrengthModule = -inducingFieldPoint.get_value() / 2 / std::numbers::pi / distance * turnLength / hypot(turnLength, distance);
+    // The finite-turn-length factor L / hypot(L, d) is the conductor's own: a turn is a segment of length L. An image
+    // (the core's reply to a turn, in a wall or a toroid's ring) is part of the 2-D mu -> inf construction and keeps the
+    // pure 2-D field, so the image lattice stays neutral with its wall sheets (it drifted 11.7-19 % off neutral on a
+    // 40-turn E 42 when the images faded with distance too).
+    const bool image = region_of_inducing_label(inducingFieldPoint.get_label()).second;
+    const double finiteLengthFactor = image ? 1.0 : turnLength / hypot(turnLength, distance);
+    double magneticFiledStrengthModule = -inducingFieldPoint.get_value() / 2 / std::numbers::pi / distance * finiteLengthFactor;
     double Hx;
     double Hy;
     if (distance > 0) {
@@ -3785,6 +3992,7 @@ struct SplitSection {
     bool round = false;
     double angle = 0;
     ToroidRegion region = ToroidRegion::EVERYWHERE;
+    std::optional<size_t> window = std::nullopt;  // on a multi-window core, the window it acts in (ABT #2267)
     double reach() const { return round ? radius : std::sqrt(halfWidth * halfWidth + halfHeight * halfHeight); }
     // Second and fourth complex moments of the uniform section about its centre, <(x + j y)^k>.
     double moment2() const { return round ? 0.0 : (halfWidth * halfWidth - halfHeight * halfHeight) / 3; }
@@ -4049,17 +4257,22 @@ std::pair<ToroidRegion, bool> region_of_inducing_label(const std::optional<std::
     if (text == toroidExteriorReplyLabel) {
         return {ToroidRegion::EXTERIOR, true};
     }
-    return {ToroidRegion::EVERYWHERE, text == "image"};
+    return {ToroidRegion::EVERYWHERE, is_image_label(label)};
 }
 
-// The region of a toroid's plane a point is in (bore, ferrite or outside); EVERYWHERE off a toroid.
+// The region of a toroid's plane a point is in (bore, ferrite or outside); EVERYWHERE off a toroid. On a multi-window core
+// (ABT #2267) also the window regions: a source acts only in its own window (one outside the core only outside them).
 struct ToroidRegions {
     bool toroid = false;
     double innerRadiusSquared = 0;
     double outerRadiusSquared = 0;
+    std::vector<WindowRegion> windows;
     static ToroidRegions of(Core& core) {
         ToroidRegions regions;
         if (core.get_shape_family() != CoreShapeFamily::T) {
+            if (core.get_processed_description() && core.get_processed_description()->get_winding_windows().size() > 1) {
+                regions.windows = CoilMesher::window_regions(core);
+            }
             return regions;
         }
         auto dimensions = flatten_dimensions(core.resolve_shape().get_dimensions().value());
@@ -4085,6 +4298,19 @@ struct ToroidRegions {
     bool reaches(ToroidRegion region, double x, double y) const {
         return region == ToroidRegion::EVERYWHERE || region == at(x, y);
     }
+    std::optional<size_t> window_at(double x, double y) const {
+        for (size_t windowIndex = 0; windowIndex < windows.size(); ++windowIndex) {
+            if (windows[windowIndex].contains(x, y)) {
+                return windowIndex;
+            }
+        }
+        return std::nullopt;
+    }
+    // Whether a source (anything with a region and a window) reaches the point.
+    template <typename Source>
+    bool reaches(const Source& source, double x, double y) const {
+        return reaches(source.region, x, y) && (windows.empty() || source.window == window_at(x, y));
+    }
 };
 
 // A source of the screened width-cell model (FlatTurnCells): a cell of a flat turn, or one of its two face sheets, with
@@ -4108,6 +4334,7 @@ struct FlatCellSource {
         double weight;
         bool isImage;
         ToroidRegion region;  // where it acts (a toroid's images act in one region of the ring)
+        std::optional<size_t> window = std::nullopt;  // on a multi-window core, the window it acts in (ABT #2267)
     };
     std::vector<Image> images;
 };
@@ -4176,7 +4403,7 @@ std::vector<FlatCellSource> build_flat_cell_sources(const std::vector<FlatTurnCe
                 located.set_additional_coordinates(std::nullopt);
                 for (const auto& point : mesher.generate_mesh_inducing_turn(located, wire, flat.turnIndex, turn.get_length(), core)) {
                     const auto [region, isImage] = region_of_inducing_label(point.get_label());
-                    source.images.push_back({point.get_point()[0], point.get_point()[1], point.get_value(), isImage, region});
+                    source.images.push_back({point.get_point()[0], point.get_point()[1], point.get_value(), isImage, region, window_of_label(point.get_label())});
                 }
                 sources.push_back(std::move(source));
             }
@@ -4206,7 +4433,7 @@ std::shared_ptr<const FlatCellFieldOperator> build_flat_cell_field_operator(cons
                                static_cast<double>(source.turnIndex), source.sign, source.kernel.a, source.kernel.b, source.section.x, source.section.y,
                                source.section.angle, static_cast<double>(source.images.size())});
         for (const auto& image : source.images) {
-            key.insert(key.end(), {image.x, image.y, image.weight, image.isImage ? 1.0 : 0.0, static_cast<double>(image.region)});
+            key.insert(key.end(), {image.x, image.y, image.weight, image.isImage ? 1.0 : 0.0, static_cast<double>(image.region), image.window ? static_cast<double>(image.window.value()) : -1.0});
         }
     }
     for (size_t pointIndex = 0; pointIndex < inducedPoints.size(); ++pointIndex) {
@@ -4314,7 +4541,7 @@ std::shared_ptr<const FlatCellFieldOperator> build_flat_cell_field_operator(cons
             for (const auto& image : source.images) {
                 const double dx = x - image.x;
                 const double dy = y - image.y;
-                if (!toroidRegions.reaches(image.region, x, y) || !include(source, image, dx, dy)) {
+                if (!toroidRegions.reaches(image, x, y) || !include(source, image, dx, dy)) {
                     continue;
                 }
                 auto [hx, hy] = turned_rectangle_field(source.kernel, source.section.angle, dx, dy, image.weight * source.sign);
@@ -4511,7 +4738,8 @@ ParallelCurrentSplitModel MagneticField::parallel_current_split_model(const Magn
         return ParallelCurrentSplitModel::RING_IMPEDANCE;  // the ring's own frame: its Kelvin images per region (ABT #1767)
     }
     if (core.get_processed_description()->get_winding_windows().size() != 1) {
-        return ParallelCurrentSplitModel::RESISTIVE;  // the neutral window frame exists for one window only (ABT #1768)
+        // ABT #2267: the neutral window frame per window of a multi-window core, each crossing a conductor of its own.
+        return ParallelCurrentSplitModel::NEUTRAL_WINDOW_IMPEDANCE;
     }
     const auto turnsDescription = magnetic.get_coil().get_turns_description();  // a copy: never bind into a temporary
     if (turnsDescription) {
@@ -4572,6 +4800,9 @@ std::optional<ParallelCurrentSplit> MagneticField::calculate_parallel_current_sp
     const bool ringModel = split.model == ParallelCurrentSplitModel::RING_IMPEDANCE;
     const bool impedanceModel = split.model == ParallelCurrentSplitModel::NEUTRAL_WINDOW_IMPEDANCE || ringModel;
     const auto toroidRegions = ToroidRegions::of(core);
+    // A multi-window core in the neutral window frame (ABT #2267): every crossing of a turn is a conductor of its own, as
+    // on a toroid's ring, and the walls of each window answer each winding's current.
+    const bool multiWindowFrame = impedanceModel && !ringModel && !toroidRegions.windows.empty();
 
     auto& settings = Settings::GetInstance();
     // The MMF_BOUNDARY construction: complete, neutral cells, conductors and wall sources imaged identically.
@@ -4587,9 +4818,10 @@ std::optional<ParallelCurrentSplit> MagneticField::calculate_parallel_current_sp
         neutralCellsGuard.emplace(settings, &Settings::get_magnetic_field_mirroring_neutral_cells, &Settings::set_magnetic_field_mirroring_neutral_cells, true);
     }
 
-    // RING_IMPEDANCE: each crossing of a toroid's turn is a conductor of its own, over its half of the turn length (see
-    // ParallelCurrentSplitModel). From here on a "turn" of the split is such a conductor; the per-turn outputs are mapped
-    // back to the coil's turns at the end. In every other model the conductors are the coil's turns.
+    // RING_IMPEDANCE (and a multi-window core's frame, ABT #2267): each crossing of a turn is a conductor of its own, over
+    // its half of the turn length (see ParallelCurrentSplitModel). From here on a "turn" of the split is such a conductor;
+    // the per-turn outputs are mapped back to the coil's turns at the end. In every other model the conductors are the
+    // coil's turns.
     std::vector<Turn> turns;
     std::vector<size_t> coilTurnPerTurn;
     std::vector<size_t> crossingPerTurn;
@@ -4597,7 +4829,7 @@ std::optional<ParallelCurrentSplit> MagneticField::calculate_parallel_current_sp
     for (size_t coilTurnIndex = 0; coilTurnIndex < coilTurns.size(); ++coilTurnIndex) {
         const auto& coilTurn = coilTurns[coilTurnIndex];
         const auto returnCrossings = coilTurn.get_additional_coordinates();  // a copy: never bind into a temporary
-        if (!ringModel || !returnCrossings) {
+        if (!(ringModel || multiWindowFrame) || !returnCrossings) {
             turns.push_back(coilTurn);
             coilTurnPerTurn.push_back(coilTurnIndex);
             crossingPerTurn.push_back(0);
@@ -4605,8 +4837,8 @@ std::optional<ParallelCurrentSplit> MagneticField::calculate_parallel_current_sp
             continue;
         }
         if (returnCrossings->size() != 1 || returnCrossings->front().size() < 2) {
-            throw InvalidInputException(ErrorCode::INVALID_COIL_CONFIGURATION, "Parallel current split: turn " + coilTurn.get_name() + " of the toroid has " +
-                                        std::to_string(returnCrossings->size()) + " return crossings; a toroid's turn has one");
+            throw InvalidInputException(ErrorCode::INVALID_COIL_CONFIGURATION, "Parallel current split: turn " + coilTurn.get_name() + " has " +
+                                        std::to_string(returnCrossings->size()) + " return crossings; a turn round one leg or a toroid's ring has one");
         }
         Turn boreCrossing = coilTurn;
         boreCrossing.set_additional_coordinates(std::nullopt);
@@ -4741,6 +4973,24 @@ std::optional<ParallelCurrentSplit> MagneticField::calculate_parallel_current_sp
     std::vector<SplitSection> sectionPerTurn(turns.size());
     std::vector<std::vector<std::pair<SplitSection, double>>> sourcesPerTurn(turns.size());
     std::vector<WindowWallSheet> sheets;
+    // Multi-window frame (ABT #2267): each window's walls answer each winding's current. A winding's current is read from
+    // its conductors in its reference window (where its walls return the most), so the walls stay linear in the strand
+    // and cell currents: per conductor, the winding whose walls its current sets (if it lies in that window), and per
+    // winding the walls' scale (one over what they return there per ampere).
+    std::vector<std::optional<size_t>> windowPerTurn;
+    std::vector<std::optional<size_t>> wallGroupPerTurn;
+    std::vector<double> wallScalePerWinding;
+    auto sheet_section = [](const WindowWallSheet& sheet) {
+        SplitSection source;
+        source.x = 0.5 * (sheet.start[0] + sheet.end[0]);
+        source.y = 0.5 * (sheet.start[1] + sheet.end[1]);
+        source.halfWidth = 0.5 * std::abs(sheet.end[0] - sheet.start[0]);
+        source.halfHeight = 0.5 * std::abs(sheet.end[1] - sheet.start[1]);
+        if (source.halfWidth != 0 && source.halfHeight != 0) {
+            throw CalculationException(ErrorCode::CALCULATION_INVALID_RESULT, "Parallel current split: a window-wall sheet is not axis-aligned");
+        }
+        return source;
+    };
     if (impedanceModel) {
         CoilMesherCenterModel mesher;
         mesher.axisymmetricWindow = settings.get_magnetic_field_mirroring_neutral_cells() && AxisymmetricWindow::applies(core, magnetic.get_coil());
@@ -4796,6 +5046,7 @@ std::optional<ParallelCurrentSplit> MagneticField::calculate_parallel_current_sp
                 image.x = point.get_point()[0];
                 image.y = point.get_point()[1];
                 image.region = region_of_inducing_label(point.get_label()).first;
+                image.window = window_of_label(point.get_label());
                 sourcesPerTurn[turnIndex].push_back({image, point.get_value()});
             }
         }
@@ -4861,8 +5112,64 @@ std::optional<ParallelCurrentSplit> MagneticField::calculate_parallel_current_sp
         if (!ringModel) {
             sheets = CoilMesher::generate_window_wall_sheets(magnetic, operatingPoint);  // a ring has no window walls
         }
+        if (multiWindowFrame) {
+            const size_t numberWindows = toroidRegions.windows.size();
+            std::vector<std::vector<double>> returned(numberWindows, std::vector<double>(numberWindings, 0.0));
+            for (const auto& source : CoilMesher::generate_window_wall_sheet_sources(magnetic, operatingPoint)) {
+                returned[source.window][source.winding.value()] -= source.current;
+            }
+            std::vector<std::optional<size_t>> referenceWindowPerWinding(numberWindings);
+            wallScalePerWinding.assign(numberWindings, 0.0);
+            for (size_t windingIndex = 0; windingIndex < numberWindings; ++windingIndex) {
+                double largest = 0;
+                for (size_t window = 0; window < numberWindows; ++window) {
+                    if (std::abs(returned[window][windingIndex]) > largest) {
+                        largest = std::abs(returned[window][windingIndex]);
+                        referenceWindowPerWinding[windingIndex] = window;
+                    }
+                }
+                if (referenceWindowPerWinding[windingIndex]) {
+                    wallScalePerWinding[windingIndex] = 1 / returned[referenceWindowPerWinding[windingIndex].value()][windingIndex];
+                }
+            }
+            windowPerTurn.assign(turns.size(), std::nullopt);
+            wallGroupPerTurn.assign(turns.size(), std::nullopt);
+            for (size_t turnIndex = 0; turnIndex < turns.size(); ++turnIndex) {
+                windowPerTurn[turnIndex] = toroidRegions.window_at(sectionPerTurn[turnIndex].x, sectionPerTurn[turnIndex].y);
+                const size_t windingIndex = windingPerTurn[turnIndex];
+                if (windowPerTurn[turnIndex] && referenceWindowPerWinding[windingIndex] == windowPerTurn[turnIndex]) {
+                    wallGroupPerTurn[turnIndex] = windingIndex;
+                }
+            }
+        }
         std::vector<double> wallPotentialPerTurn(turns.size(), 0.0);
-        for (const auto& sheet : sheets) {
+        if (multiWindowFrame) {
+            // W_t per ampere of each winding: the sheets of t's window (none outside the core), and per strand its coefficient.
+            std::vector<std::vector<double>> wallPotentialPerTurnPerWinding(turns.size(), std::vector<double>(numberWindings, 0.0));
+            for (const auto& sheet : sheets) {
+                const auto source = sheet_section(sheet);
+                for (size_t turnIndex = 0; turnIndex < turns.size(); ++turnIndex) {
+                    if (windowPerTurn[turnIndex] == sheet.window) {
+                        wallPotentialPerTurnPerWinding[turnIndex][sheet.winding.value()] -= mu0Over2Pi * sheet.current * split_mean_log(sectionPerTurn[turnIndex], source);
+                    }
+                }
+            }
+            std::vector<double> wallCoefficientPerStrand(numberStrands, 0.0);
+            for (size_t turnIndex = 0; turnIndex < turns.size(); ++turnIndex) {
+                if (wallGroupPerTurn[turnIndex]) {
+                    wallCoefficientPerStrand[split.strandPerTurn[turnIndex]] += directionPerTurn[turnIndex] * wallScalePerWinding[wallGroupPerTurn[turnIndex].value()];
+                }
+            }
+            for (size_t targetIndex = 0; targetIndex < turns.size(); ++targetIndex) {
+                const double targetFactor = turns[targetIndex].get_length() * directionPerTurn[targetIndex];
+                const size_t targetStrand = split.strandPerTurn[targetIndex];
+                for (size_t strand = 0; strand < numberStrands; ++strand) {
+                    strandInductance(targetStrand, strand) += targetFactor * wallPotentialPerTurnPerWinding[targetIndex][split.windingPerStrand[strand]] * wallCoefficientPerStrand[strand];
+                }
+            }
+        }
+        const std::vector<WindowWallSheet> noSheets;
+        for (const auto& sheet : multiWindowFrame ? noSheets : sheets) {
             SplitSection source;
             source.x = 0.5 * (sheet.start[0] + sheet.end[0]);
             source.y = 0.5 * (sheet.start[1] + sheet.end[1]);
@@ -4887,7 +5194,7 @@ std::optional<ParallelCurrentSplit> MagneticField::calculate_parallel_current_sp
             for (size_t sourceIndex = 0; sourceIndex < turns.size(); ++sourceIndex) {
                 double potential = 0;
                 for (const auto& [image, weight] : sourcesPerTurn[sourceIndex]) {
-                    if (toroidRegions.reaches(image.region, sectionPerTurn[targetIndex].x, sectionPerTurn[targetIndex].y)) {
+                    if (toroidRegions.reaches(image, sectionPerTurn[targetIndex].x, sectionPerTurn[targetIndex].y)) {
                         potential -= weight * split_mean_log(sectionPerTurn[targetIndex], image);
                     }
                 }
@@ -4990,6 +5297,12 @@ std::optional<ParallelCurrentSplit> MagneticField::calculate_parallel_current_sp
     const SplitOperators* operators = nullptr;
     std::vector<double> wallPotentialPerElement;
     std::vector<double> wallFieldPerCell;
+    // Multi-window frame (ABT #2267): per element and winding, the potential of that winding's walls (per ampere) in the
+    // element's window, and per cell their field along its faces; per element, the winding whose wall scale its current
+    // sets (wallGroupPerTurn), times that scale.
+    std::vector<std::vector<double>> wallPotentialPerElementPerWinding;
+    std::vector<std::vector<double>> wallFieldPerCellPerWinding;
+    std::vector<std::optional<size_t>> wallGroupPerElement;
     std::vector<std::vector<size_t>> cellsPerTurn;
     // A round-post window (AxisymmetricWindow): every element is a ring. Each element's equation is divided by its turn's
     // circumference 2 pi r_t, so the cells of a turn still share one E_t = V_t / (2 pi r_t): R' r_e / r_t J_e + j omega
@@ -5026,6 +5339,7 @@ std::optional<ParallelCurrentSplit> MagneticField::calculate_parallel_current_sp
                         imaged.x = image.x;
                         imaged.y = image.y;
                         imaged.region = image.region;
+                        imaged.window = image.window;
                         element.images.push_back({imaged, image.weight});
                         element.isImage.push_back(image.isImage);
                     }
@@ -5112,14 +5426,32 @@ std::optional<ParallelCurrentSplit> MagneticField::calculate_parallel_current_sp
                                                         (2 * std::numbers::pi * turnRadiusPerElement[elementIndex]);
             }
         }
-        for (const auto& sheet : sheets) {
-            SplitSection source;
-            source.x = 0.5 * (sheet.start[0] + sheet.end[0]);
-            source.y = 0.5 * (sheet.start[1] + sheet.end[1]);
-            source.halfWidth = 0.5 * std::abs(sheet.end[0] - sheet.start[0]);
-            source.halfHeight = 0.5 * std::abs(sheet.end[1] - sheet.start[1]);
+        if (multiWindowFrame) {
+            wallPotentialPerElementPerWinding.assign(numberElements, std::vector<double>(numberWindings, 0.0));
+            wallGroupPerElement.assign(numberElements, std::nullopt);
             for (size_t elementIndex = 0; elementIndex < numberElements; ++elementIndex) {
-                wallPotentialPerElement[elementIndex] -= mu0Over2Pi * sheet.current * split_mean_log(elements[elementIndex].section, source);
+                wallGroupPerElement[elementIndex] = wallGroupPerTurn[elements[elementIndex].turnIndex];
+            }
+            for (const auto& sheet : sheets) {
+                const auto source = sheet_section(sheet);
+                for (size_t elementIndex = 0; elementIndex < numberElements; ++elementIndex) {
+                    if (windowPerTurn[elements[elementIndex].turnIndex] == sheet.window) {
+                        wallPotentialPerElementPerWinding[elementIndex][sheet.winding.value()] -=
+                            mu0Over2Pi * sheet.current * split_mean_log(elements[elementIndex].section, source);
+                    }
+                }
+            }
+        }
+        else {
+            for (const auto& sheet : sheets) {
+                SplitSection source;
+                source.x = 0.5 * (sheet.start[0] + sheet.end[0]);
+                source.y = 0.5 * (sheet.start[1] + sheet.end[1]);
+                source.halfWidth = 0.5 * std::abs(sheet.end[0] - sheet.start[0]);
+                source.halfHeight = 0.5 * std::abs(sheet.end[1] - sheet.start[1]);
+                for (size_t elementIndex = 0; elementIndex < numberElements; ++elementIndex) {
+                    wallPotentialPerElement[elementIndex] -= mu0Over2Pi * sheet.current * split_mean_log(elements[elementIndex].section, source);
+                }
             }
         }
         // A ring has no window walls: the ferrite's reply is the sources' Kelvin images.
@@ -5165,7 +5497,16 @@ std::optional<ParallelCurrentSplit> MagneticField::calculate_parallel_current_sp
             return field.first * cellWideDirection[cell].first + field.second * cellWideDirection[cell].second;
         };
         wallFieldPerCell.assign(numberCells, 0.0);
-        if (!ringModel) {
+        if (multiWindowFrame) {
+            wallFieldPerCellPerWinding.assign(numberCells, std::vector<double>(numberWindings, 0.0));
+            for (size_t cell = 0; cell < numberCells; ++cell) {
+                const auto fieldPerWinding = wallModel.get_window_boundary_field_per_winding(cellX[cell], cellY[cell]);
+                for (size_t windingIndex = 0; windingIndex < numberWindings; ++windingIndex) {
+                    wallFieldPerCellPerWinding[cell][windingIndex] = along_faces(cell, fieldPerWinding[windingIndex]);
+                }
+            }
+        }
+        else if (!ringModel) {
             for (size_t cell = 0; cell < numberCells; ++cell) {
                 wallFieldPerCell[cell] = along_faces(cell, wallModel.get_window_boundary_field(cellX[cell], cellY[cell], 1.0));
             }
@@ -5236,7 +5577,7 @@ std::optional<ParallelCurrentSplit> MagneticField::calculate_parallel_current_sp
             double potential = 0;
             const auto& targetSection = elements[target].section;
             for (const auto& [image, weight] : elements[source].images) {
-                if (toroidRegions.reaches(image.region, targetSection.x, targetSection.y)) {
+                if (toroidRegions.reaches(image, targetSection.x, targetSection.y)) {
                     potential -= weight * split_mean_log(targetSection, image);
                 }
             }
@@ -5263,7 +5604,7 @@ std::optional<ParallelCurrentSplit> MagneticField::calculate_parallel_current_sp
                 double potential = 0;
                 const auto& targetSection = elements[target].section;
                 for (const auto& image : source.images) {
-                    if (!toroidRegions.reaches(image.region, targetSection.x, targetSection.y)) {
+                    if (!toroidRegions.reaches(image, targetSection.x, targetSection.y)) {
                         continue;
                     }
                     SplitSection imaged = source.section;
@@ -5284,7 +5625,7 @@ std::optional<ParallelCurrentSplit> MagneticField::calculate_parallel_current_sp
                 if (element.globalCell && element.globalCell.value() == cell && !element.isImage[imageIndex]) {
                     continue;
                 }
-                if (!toroidRegions.reaches(image.region, cellX[cell], cellY[cell])) {
+                if (!toroidRegions.reaches(image, cellX[cell], cellY[cell])) {
                     continue;
                 }
                 if (element.rectangle) {
@@ -5322,7 +5663,7 @@ std::optional<ParallelCurrentSplit> MagneticField::calculate_parallel_current_sp
                 const auto& source = cellSources[face];
                 double field = 0;
                 for (const auto& image : source.images) {
-                    if ((ownOnly && image.isImage) || !toroidRegions.reaches(image.region, cellX[cell], cellY[cell])) {
+                    if ((ownOnly && image.isImage) || !toroidRegions.reaches(image, cellX[cell], cellY[cell])) {
                         continue;
                     }
                     field += along_faces(cell, turned_rectangle_field(source.kernel, source.section.angle, cellX[cell] - image.x, cellY[cell] - image.y, image.weight));
@@ -5353,7 +5694,7 @@ std::optional<ParallelCurrentSplit> MagneticField::calculate_parallel_current_sp
             geometryKey.reserve(16 * numberElements + 8 * cellSources.size() * (1 + cellSources.front().images.size()));
             auto push_section = [&](const SplitSection& section) {
                 geometryKey.insert(geometryKey.end(), {section.x, section.y, section.halfWidth, section.halfHeight, section.radius, section.round ? 1.0 : 0.0,
-                                                       section.angle, static_cast<double>(section.region)});
+                                                       section.angle, static_cast<double>(section.region), section.window ? static_cast<double>(section.window.value()) : -1.0});
             };
             geometryKey.insert(geometryKey.end(), {static_cast<double>(numberElements), static_cast<double>(numberCells), static_cast<double>(cellSources.size()),
                                                    splitOperatorTolerance});
@@ -5372,7 +5713,7 @@ std::optional<ParallelCurrentSplit> MagneticField::calculate_parallel_current_sp
                 geometryKey.insert(geometryKey.end(), {static_cast<double>(source.kind), static_cast<double>(source.globalCell), static_cast<double>(source.turnIndex),
                                                        source.sign, source.kernel.a, source.kernel.b, static_cast<double>(source.images.size())});
                 for (const auto& image : source.images) {
-                    geometryKey.insert(geometryKey.end(), {image.x, image.y, image.weight, image.isImage ? 1.0 : 0.0, static_cast<double>(image.region)});
+                    geometryKey.insert(geometryKey.end(), {image.x, image.y, image.weight, image.isImage ? 1.0 : 0.0, static_cast<double>(image.region), image.window ? static_cast<double>(image.window.value()) : -1.0});
                 }
             }
             for (size_t cell = 0; cell < numberCells; ++cell) {
@@ -5848,6 +6189,10 @@ std::optional<ParallelCurrentSplit> MagneticField::calculate_parallel_current_sp
                         const size_t row = groupElements[i];
                         for (size_t j = 0; j < groupSize; ++j) {
                             Complex value = jOmega * (potential[i * groupSize + j] + wallPotentialPerElement[row]);
+                            if (multiWindowFrame && wallGroupPerElement[groupElements[j]]) {
+                                const size_t group = wallGroupPerElement[groupElements[j]].value();
+                                value += jOmega * wallPotentialPerElementPerWinding[row][group] * wallScalePerWinding[group];
+                            }
                             if (i == j) {
                                 value += elements[row].resistancePerLength;
                             }
@@ -5861,7 +6206,12 @@ std::optional<ParallelCurrentSplit> MagneticField::calculate_parallel_current_sp
                     for (size_t k = 0; k < cells.size(); ++k) {
                         const size_t row = offsetField + cells[k];
                         for (size_t j = 0; j < groupSize; ++j) {
-                            add(row, groupElements[j], Complex(-(fieldPerElement[k * groupSize + j] + wallFieldPerCell[cells[k]])));
+                            double wallField = wallFieldPerCell[cells[k]];
+                            if (multiWindowFrame && wallGroupPerElement[groupElements[j]]) {
+                                const size_t group = wallGroupPerElement[groupElements[j]].value();
+                                wallField += wallFieldPerCellPerWinding[cells[k]][group] * wallScalePerWinding[group];
+                            }
+                            add(row, groupElements[j], Complex(-(fieldPerElement[k * groupSize + j] + wallField)));
                         }
                         for (size_t l = 0; l < cells.size(); ++l) {
                             Complex value = -fieldPerReaction[k * cells.size() + l] * reactionPerField[cells[l]];
@@ -5943,12 +6293,20 @@ std::optional<ParallelCurrentSplit> MagneticField::calculate_parallel_current_sp
                 potentialsBatch.clear();
                 fieldsBatch.clear();
                 std::vector<Complex> totalCurrents(members.size(), 0.0);
+                // Multi-window: per winding, its current as its walls read it (its elements in its reference window).
+                std::vector<std::vector<Complex>> wallCurrentsPerWinding(members.size(), std::vector<Complex>(multiWindowFrame ? numberWindings : 0, 0.0));
                 for (size_t index = 0; index < members.size(); ++index) {
                     auto& system = systems[members[index]];
                     const auto& x = *inputs[index];
                     for (size_t element = 0; element < numberElements; ++element) {
                         system.currents[element] = x[element];
                         totalCurrents[index] += x[element];
+                        if (multiWindowFrame && wallGroupPerElement[element]) {
+                            wallCurrentsPerWinding[index][wallGroupPerElement[element].value()] += x[element];
+                        }
+                    }
+                    for (size_t windingIndex = 0; windingIndex < wallCurrentsPerWinding[index].size(); ++windingIndex) {
+                        wallCurrentsPerWinding[index][windingIndex] *= wallScalePerWinding[windingIndex];
                     }
                     for (size_t cell = 0; cell < numberCells; ++cell) {
                         system.reactions[cell] = system.reactionPerField[cell] * x[offsetField + cell];
@@ -5975,6 +6333,17 @@ std::optional<ParallelCurrentSplit> MagneticField::calculate_parallel_current_sp
                     }
                     for (size_t cell = 0; cell < numberCells; ++cell) {
                         y[offsetField + cell] = x[offsetField + cell] - system.fields[cell] - wallFieldPerCell[cell] * totalCurrent;
+                    }
+                    if (multiWindowFrame) {
+                        for (size_t windingIndex = 0; windingIndex < numberWindings; ++windingIndex) {
+                            const Complex wallCurrent = wallCurrentsPerWinding[index][windingIndex];
+                            for (size_t element = 0; element < numberElements; ++element) {
+                                y[element] += system.jOmega * wallPotentialPerElementPerWinding[element][windingIndex] * wallCurrent;
+                            }
+                            for (size_t cell = 0; cell < numberCells; ++cell) {
+                                y[offsetField + cell] -= wallFieldPerCellPerWinding[cell][windingIndex] * wallCurrent;
+                            }
+                        }
                     }
                     for (size_t row = offsetTurn; row < fullSize; ++row) {
                         y[row] = 0;
@@ -6114,9 +6483,9 @@ std::optional<ParallelCurrentSplit> MagneticField::calculate_parallel_current_sp
             }
         }
     }
-    if (ringModel) {
-        // Back to the coil's turns: a turn's strand and current are its bore crossing's (both crossings carry them), and its
-        // return crossing's cells are listed apart.
+    if (ringModel || multiWindowFrame) {
+        // Back to the coil's turns: a turn's strand and current are its first crossing's (both crossings carry them), and
+        // its return crossing's cells are listed apart.
         std::vector<size_t> strandPerCoilTurn(coilTurns.size(), 0);
         for (size_t turnIndex = 0; turnIndex < turns.size(); ++turnIndex) {
             if (crossingPerTurn[turnIndex] == 0) {

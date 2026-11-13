@@ -39,11 +39,13 @@ std::map<WindingLossesModelSets, WindingLossesModelSet> build_registry() {
          "window boundary, every conductor imaged with its own images. MARTINEZ field-exclusion proximity for flat wire, "
          "FERREIRA (exact Bessel) for round and litz.",
          "Flat wire, per-turn R_ac/R_dc vs 2D OMFEM: E 42/21/20 0.75-1.73 per turn, 0.92-0.98 in total; PQ 27/17 "
-         "0.67-1.29 / 0.79-0.82. Round and litz: not yet validated per turn.",
+         "0.67-1.29 / 0.79-0.82. Round and litz: not yet validated per turn. Multi-window E 42/21/20 (per-column windows, "
+         "1 mm gap, primary on the centre leg, secondary on a lateral leg), per winding: round 1.23-1.37 beside the gap, "
+         "0.90-1.03 on the lateral leg at 100-300 kHz; rectangular 0.89-0.92 / 1.0-1.12 at 1-100 kHz.",
          Field::BINNS_LAWRENSON, Fringing::MMF_BOUNDARY, historicalSkin,
          {{WireType::ROUND, Proximity::FERREIRA}, {WireType::LITZ, Proximity::FERREIRA}, {WireType::PLANAR, Proximity::MARTINEZ},
           {WireType::RECTANGULAR, Proximity::MARTINEZ}, {WireType::FOIL, Proximity::MARTINEZ}},
-         {Scope::SINGLE_RECTANGULAR_WINDOW}, true});
+         {Scope::SINGLE_RECTANGULAR_WINDOW, Scope::MULTI_WINDOW}, true});
 
     add({WindingLossesModelSets::NEUTRAL_WINDOW_WANG, "Neutral window with Wang proximity",
          "The neutral-window field with WANG slab proximity for flat wire, for comparison with NEUTRAL_WINDOW.",
@@ -72,7 +74,8 @@ std::map<WindingLossesModelSets, WindingLossesModelSet> build_registry() {
     add({WindingLossesModelSets::TOROID, "Toroid",
          "BINNS_LAWRENSON conductor field with Kelvin images for the ring, ROSHEN fringing; FERREIRA proximity for "
          "round and litz, MARTINEZ for flat wire.",
-         "Not validated per turn; flat wire on toroids never compared with FEM.",
+         "Per turn vs 2D OMFEM: one round turn 1.00-1.06, ten rectangular bars 0.83-0.90 (LEGACY_DEFAULT 0.65-0.77). A ring "
+         "has no gap, so no fringing source acts.",
          Field::BINNS_LAWRENSON, Fringing::ROSHEN, historicalSkin,
          {{WireType::ROUND, Proximity::FERREIRA}, {WireType::LITZ, Proximity::FERREIRA}, {WireType::PLANAR, Proximity::MARTINEZ},
           {WireType::RECTANGULAR, Proximity::MARTINEZ}, {WireType::FOIL, Proximity::MARTINEZ}},
@@ -81,7 +84,8 @@ std::map<WindingLossesModelSets, WindingLossesModelSet> build_registry() {
     add({WindingLossesModelSets::MULTI_WINDOW, "Multi-window",
          "BINNS_LAWRENSON conductor field with a mirror lattice per winding window, ROSHEN fringing; FERREIRA proximity "
          "for round and litz, MARTINEZ for flat wire.",
-         "Not validated per turn. MMF_BOUNDARY is not extended to multi-window cores yet.",
+         "Legacy: ROSHEN reads 0.44x 2D OMFEM beside a centre-leg gap on a multi-window E 42 (round), and 30-1800x with flat "
+         "wire; NEUTRAL_WINDOW (MMF_BOUNDARY per window) is the default there.",
          Field::BINNS_LAWRENSON, Fringing::ROSHEN, historicalSkin,
          {{WireType::ROUND, Proximity::FERREIRA}, {WireType::LITZ, Proximity::FERREIRA}, {WireType::PLANAR, Proximity::MARTINEZ},
           {WireType::RECTANGULAR, Proximity::MARTINEZ}, {WireType::FOIL, Proximity::MARTINEZ}},

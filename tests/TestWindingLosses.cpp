@@ -3067,8 +3067,8 @@ TEST_CASE("Test_Winding_Losses_Model_Set_Legacy_Default_Is_Todays_Behaviour", "[
 }
 
 // ABT #1759 (Alf 2026-10-11, "keep the best model"): with no model chosen anywhere, WindingLosses solves with the set
-// Defaults.h names for the core type -- NEUTRAL_WINDOW on single-window cores (every wire type), LEGACY_DEFAULT on
-// toroids and multi-window cores -- bit for bit, per turn. Fringing switched off (as calculate_resistance_matrix does)
+// Defaults.h names for the core type -- NEUTRAL_WINDOW on single-window and multi-window cores (every wire type), TOROID
+// on toroids (ABT #2267) -- bit for bit, per turn. Fringing switched off (as calculate_resistance_matrix does)
 // keeps the individually configured models (CUSTOM): MMF_BOUNDARY refuses fringing off.
 // Counter-check: set windingLossesModelSetDefaultSingleWindow to LEGACY_DEFAULT and the single-window rows fail.
 TEST_CASE("Test_Winding_Losses_Default_Is_The_Best_Set_Per_Core", "[physical-model][winding-losses][model-sets]") {
@@ -3083,7 +3083,8 @@ TEST_CASE("Test_Winding_Losses_Default_Is_The_Best_Set_Per_Core", "[physical-mod
         {"rectangular PQ", WindingLossesTestData::createFiveTurnsRectangularUngappedConfig(), WindingLossesModelSets::NEUTRAL_WINDOW},
         {"foil ETD", WindingLossesTestData::createTenTurnsFoilSinusoidalConfig(), WindingLossesModelSets::NEUTRAL_WINDOW},
         {"planar", WindingLossesTestData::createOneTurnPlanarFringingConfig(), WindingLossesModelSets::NEUTRAL_WINDOW},
-        {"round toroid", WindingLossesTestData::createTenTurnsRoundToroidalConfig(), WindingLossesModelSets::LEGACY_DEFAULT},
+        // ABT #2267 (Alf 2026-11-13): toroids default to the TOROID set (it was LEGACY_DEFAULT).
+        {"round toroid", WindingLossesTestData::createTenTurnsRoundToroidalConfig(), WindingLossesModelSets::TOROID},
     };
     for (auto& [name, config, expectedSet] : fixtures) {
         INFO(name);
@@ -3107,7 +3108,8 @@ TEST_CASE("Test_Winding_Losses_Default_Is_The_Best_Set_Per_Core", "[physical-mod
             CHECK(byDefault[index] == custom[index]);
         }
     }
-    SECTION("A multi-window core keeps the legacy set") {
+    // ABT #2267 (Alf 2026-11-13): a multi-window core takes the neutral window built per window (it kept LEGACY_DEFAULT).
+    SECTION("A multi-window core takes the neutral window") {
         settings.reset();
         settings.set_core_per_column_winding_windows(true);
         auto core = OpenMagneticsTesting::get_quick_core("E 42/21/20", json::parse("[]"), 1, "Dummy");
@@ -3116,7 +3118,7 @@ TEST_CASE("Test_Winding_Losses_Default_Is_The_Best_Set_Per_Core", "[physical-mod
         OpenMagnetics::Magnetic magnetic;
         magnetic.set_core(core);
         magnetic.set_coil(coil);
-        CHECK(get_default_winding_losses_model_set(magnetic) == WindingLossesModelSets::LEGACY_DEFAULT);
+        CHECK(get_default_winding_losses_model_set(magnetic) == WindingLossesModelSets::NEUTRAL_WINDOW);
         settings.reset();
     }
     // ABT #1783 (Alf 2026-10-12): drum and rod families have no window frame for the neutral window. They keep the
@@ -5131,8 +5133,9 @@ TEST_CASE("Test_Winding_Losses_Parallel_Split_Ohmic_Is_DC_Split_Redistribution_I
 TEST_CASE("Test_Winding_Losses_Parallel_Split_Is_Resistive_Where_No_Frame_Exists", "[winding-losses][parallel-split][physical-model]") {
     // ABT #1759 (Alf, 2026-10-11): the impedance split needs a frame for the core's reply: the neutral window frame
     // (single-window, non-toroidal cores whose turns cross the section once) or, since Alf 2026-11-09, a toroid's ring
-    // frame (RING_IMPEDANCE). Multi-window cores and turns with additionalCoordinates off a toroid split by the explicit
-    // RESISTIVE model: every harmonic by DC conductance, the same share WindingOhmicLosses gives DC. (This test replaced
+    // frame (RING_IMPEDANCE), and since Alf 2026-11-13 a multi-window core's frame per window (ABT #2267). Turns with
+    // additionalCoordinates on a single-window core split by the explicit RESISTIVE model: every harmonic by DC
+    // conductance, the same share WindingOhmicLosses gives DC. (This test replaced
     // Test_Winding_Losses_Parallel_Split_Throws_Where_No_Frame_Exists, which asserted a NotImplementedException there.)
     // Counter-checks: a single-window E core keeps the neutral window split, a toroid takes the ring frame's.
     auto& settings = OpenMagnetics::Settings::GetInstance();
@@ -5206,17 +5209,67 @@ TEST_CASE("Test_Winding_Losses_Parallel_Split_Is_Resistive_Where_No_Frame_Exists
         settings.reset();
     }
 
-    SECTION("multi-window core") {
+    SECTION("multi-window core takes the neutral window frame's impedance split") {
+        // ABT #2267 (Alf 2026-11-13): this section asserted RESISTIVE for multi-window cores until each window had its
+        // frame (its own wall sheets, every crossing a conductor of its own); rewritten to check that split instead, on a
+        // design wound in the multi-window layout (it was a single-window quick coil under a per-column core): E 42/21/20,
+        // a 2-parallel primary on the centre leg and a secondary on the left lateral leg. The strands' currents add up to
+        // the winding's and every turn carries its strand's.
         settings.reset();
         clear_databases();
-        auto coil = OpenMagneticsTesting::get_quick_coil({10}, {2}, "E 42/21/20", 1);
         settings.set_core_per_column_winding_windows(true);
         auto core = OpenMagneticsTesting::get_quick_core("E 42/21/20", OpenMagneticsTesting::get_residual_gap());
         REQUIRE(core.get_processed_description()->get_winding_windows().size() > 1);
+        auto bobbin = OpenMagnetics::Bobbin::create_quick_bobbin(core, 0.001, 0.001);
+        json coilJson;
+        json bobbinJson;
+        to_json(bobbinJson, bobbin);
+        coilJson["bobbin"] = bobbinJson;
+        coilJson["functionalDescription"] = json::array();
+        coilJson["functionalDescription"].push_back(json{{"name", "Primary"}, {"numberTurns", 10}, {"numberParallels", 2},
+                                                         {"isolationSide", "primary"}, {"wire", "Round 0.475 - Grade 1"}});
+        coilJson["functionalDescription"].push_back(json{{"name", "Secondary"}, {"numberTurns", 5}, {"numberParallels", 1},
+                                                         {"isolationSide", "secondary"}, {"wire", "Round 0.475 - Grade 1"}});
+        OpenMagnetics::Coil coil(coilJson, false);
+        coil.get_mutable_functional_description()[1].set_winding_window(2);
+        coil.set_core_columns(core.get_processed_description()->get_columns());
+        REQUIRE(coil.wind());
         OpenMagnetics::Magnetic magnetic;
         magnetic.set_core(core);
         magnetic.set_coil(coil);
-        requireResistiveSplit(magnetic);
+        auto transformerInputs = OpenMagnetics::Inputs::create_quick_operating_point_only_current(100000, 100e-6, 25, WaveformLabel::TRIANGULAR, 10, 0.5, 0, {2});
+        auto transformerOperatingPoint = transformerInputs.get_operating_point(0);
+        REQUIRE(MagneticField::parallel_current_split_model(magnetic) == ParallelCurrentSplitModel::NEUTRAL_WINDOW_IMPEDANCE);
+        auto split = MagneticField::calculate_parallel_current_split(magnetic, transformerOperatingPoint, 25);
+        REQUIRE(split);
+        CHECK(split->model == ParallelCurrentSplitModel::NEUTRAL_WINDOW_IMPEDANCE);
+        const auto turns = magnetic.get_coil().get_turns_description().value();
+        REQUIRE(split->strandPerTurn.size() == turns.size());
+        REQUIRE(split->frequencies.size() > 0);
+        for (size_t frequencyIndex = 0; frequencyIndex < split->frequencies.size(); ++frequencyIndex) {
+            const auto& winding = split->currentPerWindingPerFrequency[frequencyIndex];
+            const auto& perTurn = split->currentPerTurnPerFrequency[frequencyIndex];
+            REQUIRE(perTurn.size() == turns.size());
+            std::map<size_t, std::complex<double>> currentPerStrand;
+            for (size_t turnIndex = 0; turnIndex < turns.size(); ++turnIndex) {
+                currentPerStrand[split->strandPerTurn[turnIndex]] = perTurn[turnIndex];
+            }
+            for (size_t windingIndex = 0; windingIndex < 2; ++windingIndex) {
+                std::complex<double> total = 0;
+                for (const auto& [strand, current] : currentPerStrand) {
+                    if (split->windingPerStrand[strand] == windingIndex) {
+                        total += current;
+                    }
+                }
+                CHECK(std::abs(total - winding.at(windingIndex)) <= 1e-9 * std::abs(winding.at(windingIndex)) + 1e-15);
+            }
+            for (size_t turnIndex = 0; turnIndex < turns.size(); ++turnIndex) {
+                CHECK(std::abs(perTurn[turnIndex] - currentPerStrand[split->strandPerTurn[turnIndex]]) == 0);
+            }
+        }
+        WindingLossesOutput losses;
+        REQUIRE_NOTHROW(losses = WindingLosses().calculate_losses(magnetic, transformerOperatingPoint, 25));
+        CHECK(losses.get_winding_losses() > 0);
         settings.reset();
     }
 
@@ -5754,5 +5807,104 @@ TEST_CASE("PEEC-2D R_ac/R_dc is mesh-converged with the self-GMD self term", "[p
     INFO("R_ac/R_dc " << coarse << " at " << coarseCells << " cells, " << fine << " at " << fineCells << " cells");
     REQUIRE(fineCells > 1.9 * coarseCells);
     CHECK_THAT(coarse, Catch::Matchers::WithinRel(fine, 0.04));
+    settings.reset();
+}
+
+// ABT #2267: a multi-window core (E 42/21/20 with per-column winding windows, 1 mm centre gap, 3C97) on its default models,
+// the neutral window built per window: primary on the centre leg, secondary on the left lateral leg (its turns cross the
+// section twice: the far side of the centre leg, or outside the core). Per winding R_ac/R_dc against 2D OMFEM of the same
+// design, each against its own DC (OMFEM's at 100 Hz). OMFEM: f7a4ff9 omfem_mas, OMFEM_AIR_MARGIN=8, against MVB++ main
+// 947a4bd, on the MAS this design exports; inputs and logs in /home/alf/OpenMagnetics/.mkf-triage-runs/gap/fem (mwr_*).
+// Before (multi-window cores on ROSHEN fringing and a resistive split) the primary read 18x OMFEM at 1 kHz and 120x at
+// 100 kHz.
+namespace {
+    OpenMagnetics::Magnetic multi_window_e42(const std::string& wire, int64_t primaryTurns, int64_t secondaryTurns) {
+        settings.set_core_per_column_winding_windows(true);
+        auto core = OpenMagneticsTesting::get_quick_core("E 42/21/20", OpenMagneticsTesting::get_ground_gap(1e-3), 1, "3C97");
+        auto bobbin = OpenMagnetics::Bobbin::create_quick_bobbin(core, 0.001, 0.001);
+        json coilJson;
+        json bobbinJson;
+        to_json(bobbinJson, bobbin);
+        coilJson["bobbin"] = bobbinJson;
+        coilJson["functionalDescription"] = json::array();
+        coilJson["functionalDescription"].push_back(json{{"name", "Primary"}, {"numberTurns", primaryTurns}, {"numberParallels", 1},
+                                                         {"isolationSide", "primary"}, {"wire", wire}});
+        coilJson["functionalDescription"].push_back(json{{"name", "Secondary"}, {"numberTurns", secondaryTurns}, {"numberParallels", 1},
+                                                         {"isolationSide", "secondary"}, {"wire", wire}});
+        OpenMagnetics::Coil coil(coilJson, false);
+        coil.get_mutable_functional_description()[1].set_winding_window(2);
+        coil.set_core_columns(core.get_processed_description()->get_columns());
+        REQUIRE(coil.wind());
+        OpenMagnetics::Magnetic magnetic;
+        magnetic.set_core(core);
+        magnetic.set_coil(coil);
+        return magnetic;
+    }
+    std::vector<double> multi_window_ac_to_dc(OpenMagnetics::Magnetic magnetic, double frequency) {
+        auto inputs = OpenMagnetics::Inputs::create_quick_operating_point_only_current(frequency, 100e-6, 20, WaveformLabel::SINUSOIDAL, 2, 0.5, 0, {2});
+        auto output = WindingLosses().calculate_losses(magnetic, inputs.get_operating_point(0), 20);
+        std::vector<double> ratios;
+        const auto perWinding = output.get_winding_losses_per_winding().value();
+        for (const auto& winding : perWinding) {
+            double ohmic = winding.get_ohmic_losses()->get_losses();
+            ratios.push_back((ohmic + winding.get_skin_effect_losses()->get_losses_per_harmonic()[1] +
+                              winding.get_proximity_effect_losses()->get_losses_per_harmonic()[1]) / ohmic);
+        }
+        return ratios;
+    }
+}
+
+TEST_CASE("Test_Winding_Losses_Multi_Window_E42_Rectangular_Vs_OMFEM", "[winding-losses][multi-column][physical-model]") {
+    // 6 + 3 turns of Rectangular 3.35x0.80 (aspect 4.2: width cells, MARTINEZ). OMFEM DC 0.743 / 1.472 mW.
+    // Known red, landed so by Alf (2026-11-13): the primary beside the gap reads 0.74x OMFEM at 100 kHz (0.91x at 1 kHz;
+    // the secondary 1.00x / 0.93x). It is the width-cell model on 0.8 mm bars beside a gap (the multi-window frame matches
+    // the single-window one there, Test_Winding_Losses_Multi_Window_Cells_Match_Single_Window), the same family as the E 42
+    // residual-gap innermost foil (0.72x); MARTINEZ without cells reads 0.86x.
+    settings.reset();
+    clear_databases();
+    auto magnetic = multi_window_e42("Rectangular 3.35x0.80 - Grade 1", 6, 3);
+    std::vector<std::tuple<double, double, double>> omfem = {{1000, 1.3508 / 0.7428, 1.4907 / 1.4722}, {100000, 41.044 / 0.7428, 8.4769 / 1.4722}};
+    for (auto [frequency, primary, secondary] : omfem) {
+        auto ratios = multi_window_ac_to_dc(magnetic, frequency);
+        INFO(frequency << " Hz: primary MKF " << ratios[0] << " vs OMFEM " << primary << ", secondary MKF " << ratios[1] << " vs OMFEM " << secondary);
+        CHECK_THAT(ratios[0], Catch::Matchers::WithinRel(primary, WindingLossesTestHelpers::maximumError));
+        CHECK_THAT(ratios[1], Catch::Matchers::WithinRel(secondary, WindingLossesTestHelpers::maximumError));
+    }
+    settings.reset();
+}
+
+TEST_CASE("Test_Winding_Losses_Multi_Window_Cells_Match_Single_Window", "[winding-losses][multi-column][physical-model]") {
+    // ABT #2267: one rectangular winding on the centre leg of a gapped E 42/21/20 is the same 2-D problem whether the core
+    // is described with one window or with one per column: the multi-window frame (each window's walls, every crossing a
+    // conductor of its own, the walls coupled per winding) must give the width cells what the single-window frame gives.
+    std::vector<double> proximityPerColumnSetting;
+    for (bool perColumn : {false, true}) {
+        settings.reset();
+        clear_databases();
+        settings.set_core_per_column_winding_windows(perColumn);
+        auto core = OpenMagneticsTesting::get_quick_core("E 42/21/20", OpenMagneticsTesting::get_ground_gap(1e-3), 1, "3C97");
+        REQUIRE((core.get_processed_description()->get_winding_windows().size() > 1) == perColumn);
+        auto bobbin = OpenMagnetics::Bobbin::create_quick_bobbin(core, 0.001, 0.001);
+        json coilJson;
+        json bobbinJson;
+        to_json(bobbinJson, bobbin);
+        coilJson["bobbin"] = bobbinJson;
+        coilJson["functionalDescription"] = json::array();
+        coilJson["functionalDescription"].push_back(json{{"name", "Primary"}, {"numberTurns", 6}, {"numberParallels", 1},
+                                                         {"isolationSide", "primary"}, {"wire", "Rectangular 3.35x0.80 - Grade 1"}});
+        OpenMagnetics::Coil coil(coilJson, false);
+        coil.set_core_columns(core.get_processed_description()->get_columns());
+        REQUIRE(coil.wind());
+        OpenMagnetics::Magnetic magnetic;
+        magnetic.set_core(core);
+        magnetic.set_coil(coil);
+        auto inputs = OpenMagnetics::Inputs::create_quick_operating_point_only_current(100000, 100e-6, 20, WaveformLabel::SINUSOIDAL, 2, 0.5, 0);
+        auto output = WindingLosses().calculate_losses(magnetic, inputs.get_operating_point(0), 20);
+        const auto perWinding = output.get_winding_losses_per_winding().value();
+        proximityPerColumnSetting.push_back(perWinding[0].get_proximity_effect_losses()->get_losses_per_harmonic()[1] / perWinding[0].get_ohmic_losses()->get_losses());
+    }
+    INFO("proximity / DC: one window " << proximityPerColumnSetting[0] << ", one per column " << proximityPerColumnSetting[1]);
+    CHECK(proximityPerColumnSetting[0] > 1);
+    CHECK_THAT(proximityPerColumnSetting[1], Catch::Matchers::WithinRel(proximityPerColumnSetting[0], 0.01));
     settings.reset();
 }
