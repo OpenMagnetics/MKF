@@ -2019,6 +2019,29 @@ namespace {
                                                             MAS::WindingOrientation::OVERLAPPING, MAS::WindingOrientation::OVERLAPPING,
                                                             MAS::CoilAlignment::CENTERED, MAS::CoilAlignment::CENTERED, wires);
             }
+            // A piece-and-plate window (E + I) is half the height of the mirrored E + E. One that still cannot be
+            // wound is wound with the thickest round wire of the catalogue that fits across its narrower side, same
+            // turns and parallels (Alf, 2026-11-13).
+            if (!coil.get_sections_description() && core.get_functional_description().get_type() == MAS::CoreType::PIECE_AND_PLATE) {
+                auto windingWindow = OpenMagnetics::Bobbin::create_quick_bobbin(core).get_processed_description()->get_winding_windows()[0];
+                REQUIRE(windingWindow.get_width());
+                REQUIRE(windingWindow.get_height());
+                double side = std::min(windingWindow.get_width().value(), windingWindow.get_height().value());
+                std::optional<OpenMagnetics::Wire> thickest;
+                for (auto& candidate : OpenMagnetics::get_wires(WireType::ROUND)) {
+                    double outerDiameter = candidate.get_maximum_outer_width();
+                    if (outerDiameter <= side && (!thickest || outerDiameter > thickest->get_maximum_outer_width())) {
+                        thickest = candidate;
+                    }
+                }
+                REQUIRE(thickest);
+                wires = {thickest.value(), thickest.value()};
+                std::cout << "Test_Painter_All_Cores: " << coreShape << " piece-and-plate winding window is " << side * 1e3
+                          << " mm across: wound with " << thickest->get_name().value() << std::endl;
+                coil = OpenMagneticsTesting::get_quick_coil(numberTurns, numberParallels, coreShape, interleavingLevel,
+                                                            MAS::WindingOrientation::OVERLAPPING, MAS::WindingOrientation::OVERLAPPING,
+                                                            MAS::CoilAlignment::CENTERED, MAS::CoilAlignment::CENTERED, wires);
+            }
 
             std::replace( shapeName.begin(), shapeName.end(), '.', '_');
             std::replace( shapeName.begin(), shapeName.end(), '/', '_');
