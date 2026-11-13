@@ -1868,6 +1868,9 @@ std::vector<std::string> CircuitSimulationReader::split_fields(const std::string
     // when it sits inside a double-quoted field or inside balanced parentheses.
     // Parenthesis-awareness is what keeps LTspice differential probes like
     // V(N009,d) from being split into two columns on a comma-separated file.
+    // Separator ' ' (ABT #2374): runs of spaces, tabs and CRs; no empty field from leading, trailing or
+    // repeated whitespace.
+    const bool whitespaceRuns = separator == ' ';
     std::vector<std::string> fields;
     std::string current;
     bool inQuotes = false;
@@ -1886,15 +1889,32 @@ std::vector<std::string> CircuitSimulationReader::split_fields(const std::string
                 parenDepth--;
             }
         }
-        if (c == separator && !inQuotes && parenDepth == 0) {
-            fields.push_back(current);
+        const bool isSeparator = whitespaceRuns ? (c == ' ' || c == '\t' || c == '\r') : c == separator;
+        if (isSeparator && !inQuotes && parenDepth == 0) {
+            if (!whitespaceRuns || !current.empty()) {
+                fields.push_back(current);
+            }
             current.clear();
             continue;
         }
         current.push_back(c);
     }
-    fields.push_back(current);
+    if (!whitespaceRuns || !current.empty()) {
+        fields.push_back(current);
+    }
     return fields;
+}
+
+std::string CircuitSimulationReader::unreadable_cell_message(const UnreadableCell& cell, const std::string& columnName) {
+    return "Could not parse number on line " + std::to_string(cell.lineNumber) +
+           ", column " + std::to_string(cell.columnNumber) + " (\"" + columnName + "\"): \"" + cell.token + "\"" +
+           (cell.numericPrefixLength > 0 && cell.numericPrefixLength < cell.token.size()
+                ? " (only \"" + cell.token.substr(0, cell.numericPrefixLength) + "\" is a number; "
+                  "is the decimal separator a comma?)" : "");
+}
+
+bool CircuitSimulationReader::is_time_axis(const CircuitSimulationSignal& column) {
+    return column.unreadableCells.empty() && can_be_time(column.data);
 }
 
 void CircuitSimulationReader::process_line(std::string line, char separator) {
@@ -1988,13 +2008,15 @@ void CircuitSimulationReader::process_line_with_context(const std::string& line,
                 parsed = !numberStream.fail() && numberStream.peek() == std::char_traits<char>::eof();
             }
             if (!parsed || !std::isfinite(value)) {
-                throw InvalidInputException(ErrorCode::INVALID_INPUT,
-                    "Could not parse number on line " + std::to_string(lineNumber) +
-                    ", column " + std::to_string(currentColumnIndex + 1) + " (\"" +
-                    _columns[currentColumnIndex].name + "\"): \"" + token + "\"" +
-                    (numberLength > 0 && numberLength < token.size()
-                         ? " (only \"" + token.substr(0, numberLength) + "\" is a number; "
-                           "is the decimal separator a comma?)" : ""));
+                // ABT #2374 (Alf, 2026-11-13): only the columns the user maps are read, so a cell that is
+                // not a number does not refuse the file. It is recorded, and its slot holds a quiet NaN
+                // that nothing reads: an extraction whose period contains it throws with this cell.
+                auto& column = _columns[currentColumnIndex];
+                column.unreadableCells.push_back(
+                    UnreadableCell{column.data.size(), lineNumber, currentColumnIndex + 1, token, numberLength});
+                column.data.push_back(std::numeric_limits<double>::quiet_NaN());
+                currentColumnIndex++;
+                continue;
             }
             _columns[currentColumnIndex].data.push_back(value);
             currentColumnIndex++;
@@ -2203,8 +2225,15 @@ char CircuitSimulationReader::guess_separator(std::string line){
         return bestSeparator;
     }
 
+    // ABT #2374: PSIM and SIMetrix .txt exports separate their columns with runs of spaces. Only when
+    // none of the separators above is in the header, so a name with a space in it ("I(L1) A") under a
+    // comma or tab separator keeps that separator.
+    if (split_fields(line, ' ').size() >= 2) {
+        return ' ';
+    }
+
     throw InvalidInputException(ErrorCode::INVALID_INPUT,
-        "No column separator found (expected one of comma, semicolon, tab, or pipe)");
+        "No column separator found (expected one of comma, semicolon, tab, pipe, or whitespace)");
 }
 
 Waveform CircuitSimulationReader::get_one_period(Waveform waveform, double frequency, bool sample, bool alignToZeroCrossing, const std::string& timeAxisName) {
@@ -2343,12 +2372,21 @@ Waveform CircuitSimulationReader::get_one_period(Waveform waveform, double frequ
 
 CircuitSimulationReader::CircuitSimulationSignal CircuitSimulationReader::find_time(std::vector<CircuitSimulationReader::CircuitSimulationSignal> columns) {
     for (auto column : columns) {
-        if (can_be_time(column.data)) {
+        if (is_time_axis(column)) {
             column.type = DataType::TIME;
             return column;
         }
     }
-    throw InvalidInputException(ErrorCode::MISSING_DATA, "no time column found");
+    std::string message = "no time column found";
+    for (const auto& column : columns) {
+        if (!column.unreadableCells.empty()) {
+            // A time axis needs a number on every row (ABT #2374): name the first cell that is not one.
+            message += " (a time column needs a number on every row; " +
+                       unreadable_cell_message(column.unreadableCells.front(), column.name) + ")";
+            break;
+        }
+    }
+    throw InvalidInputException(ErrorCode::MISSING_DATA, message);
 }
 
 Waveform CircuitSimulationReader::extract_waveform(CircuitSimulationReader::CircuitSimulationSignal signal, double frequency, bool sample) {
@@ -2365,6 +2403,13 @@ Waveform CircuitSimulationReader::extract_waveform(CircuitSimulationReader::Circ
             "cells — pick the time column that was exported together with this signal.");
     }
 
+    // The time axis decides which rows form the period, so all of it is read (ABT #2374).
+    if (!timeSignal.unreadableCells.empty()) {
+        throw InvalidInputException(ErrorCode::INVALID_INPUT,
+            "Column \"" + timeSignal.name + "\" cannot be the time axis of \"" + signal.name + "\": " +
+            unreadable_cell_message(timeSignal.unreadableCells.front(), timeSignal.name));
+    }
+
     // Collapse repeated consecutive timestamps, keeping the LAST sample at each
     // timestamp. Exports that round the time column to a few significant
     // figures emit several rows sharing one timestamp; without this the axis
@@ -2375,16 +2420,47 @@ Waveform CircuitSimulationReader::extract_waveform(CircuitSimulationReader::Circ
     std::vector<double> data;
     time.reserve(timeSignal.data.size());
     data.reserve(signal.data.size());
+    // The signal's unreadable cells that survive the collapse, with their position in `data`.
+    std::vector<std::pair<size_t, const UnreadableCell*>> keptUnreadableCells;
+    size_t nextUnreadableCell = 0;
     for (size_t index = 0; index < timeSignal.data.size(); ++index) {
+        const bool isUnreadable = nextUnreadableCell < signal.unreadableCells.size() &&
+                                  signal.unreadableCells[nextUnreadableCell].index == index;
         if (index + 1 == timeSignal.data.size() || timeSignal.data[index] != timeSignal.data[index + 1]) {
+            if (isUnreadable) {
+                keptUnreadableCells.emplace_back(data.size(), &signal.unreadableCells[nextUnreadableCell]);
+            }
             time.push_back(timeSignal.data[index]);
             data.push_back(signal.data[index]);
+        }
+        if (isUnreadable) {
+            ++nextUnreadableCell;
         }
     }
 
     Waveform waveform;
     waveform.set_data(data);
     waveform.set_time(time);
+
+    if (!keptUnreadableCells.empty()) {
+        // ABT #2374: a cell that is not a number may sit outside the period read from this column (a NaN
+        // on a simulator's first sample), but never inside it. The period window is located first,
+        // without sampling, and checked; only then is the waveform extracted from that same window.
+        const bool windowWasCached = _periodWindowPerTimeAxis.count(timeSignal.name) > 0;
+        get_one_period(waveform, frequency, false, true, timeSignal.name);
+        const auto [periodStartIndex, periodStopIndex] = _periodWindowPerTimeAxis.at(timeSignal.name);
+        for (const auto& [position, cell] : keptUnreadableCells) {
+            if (position >= periodStartIndex && position < periodStopIndex) {
+                if (!windowWasCached) {
+                    // The window was located on a column whose period cannot be read: do not keep it.
+                    _periodWindowPerTimeAxis.erase(timeSignal.name);
+                }
+                throw InvalidInputException(ErrorCode::INVALID_INPUT,
+                    unreadable_cell_message(*cell, signal.name) + ", inside the period read from column \"" +
+                    signal.name + "\" (time column \"" + timeSignal.name + "\")");
+            }
+        }
+    }
     return get_one_period(waveform, frequency, sample, true, timeSignal.name);
 }
 
@@ -2424,7 +2500,7 @@ bool CircuitSimulationReader::extract_winding_indexes(size_t numberWindings) {
 
     for (auto column : _columns) {
         column.windingIndex = -1;
-        if (!can_be_time(column.data)) {
+        if (!is_time_axis(column)) {
             auto numbersInColumnName = get_numbers_in_string(column.name);
             if (numberWindings == 1) {
                 // One winding: every signal in the file is that winding's. The digits in a SPICE
@@ -2581,8 +2657,16 @@ bool CircuitSimulationReader::extract_column_types(double frequency) {
     std::vector<CircuitSimulationSignal> columnsWithTypes;
 
     for (auto column : _columns) {
-        if (can_be_time(column.data)) {
+        if (is_time_axis(column)) {
             column.type = DataType::TIME;
+        }
+        else if (!column.unreadableCells.empty()) {
+            // ABT #2374: a column with cells that are not numbers is not read to guess its type (that
+            // would refuse the file for a column the user may never map). Only its name can say what it
+            // is; mapped, its period is still checked when it is extracted.
+            auto guessedType = guess_type_by_name(column.name);
+            column.type = guessedType ? guessedType.value() : DataType::UNKNOWN;
+            columnsWithTypes.push_back(column);
         }
         else {
 

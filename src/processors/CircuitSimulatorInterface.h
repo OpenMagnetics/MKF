@@ -666,6 +666,18 @@ class CircuitSimulationReader {
         UNKNOWN
     };
 
+    // ABT #2374: a cell that is not a number (NaN, an infinity, text, a decimal comma). It is not read:
+    // the column's data keeps a quiet NaN in its slot only so that later rows keep their index, and every
+    // use of the column checks this list, never the value. A file is not refused for such a cell; an
+    // extraction whose period contains it is, with the line and column named here.
+    struct UnreadableCell {
+        size_t index;               // position in the column's data
+        size_t lineNumber;          // line of the file, 1-based
+        size_t columnNumber;        // column of the file, 1-based
+        std::string token;          // the cell as written
+        size_t numericPrefixLength; // length of the leading part that is a number (0 if none)
+    };
+
   private:
     class CircuitSimulationSignal {
         public:
@@ -673,6 +685,7 @@ class CircuitSimulationReader {
             virtual ~CircuitSimulationSignal() = default;
             std::string name;
             std::vector<double> data;
+            std::vector<UnreadableCell> unreadableCells;  // in increasing index order
             DataType type;
             size_t windingIndex;
             size_t operatingPointIndex;
@@ -723,13 +736,21 @@ class CircuitSimulationReader {
     Waveform extract_waveform(CircuitSimulationSignal signal, const CircuitSimulationSignal& timeSignal, double frequency, bool sample=true);
     static CircuitSimulationSignal find_time(std::vector<CircuitSimulationSignal> columns);
     Waveform get_one_period(Waveform waveform, double frequency, bool sample=true, bool alignToZeroCrossing=true, const std::string& timeAxisName="");
+    // The separator with the most columns among comma, semicolon, tab and pipe (outside quotes and
+    // parentheses); when none of them is present, ' ' for runs of whitespace (ABT #2374).
     static char guess_separator(std::string line);
     // Split a line on `separator`, ignoring any separator that falls inside a
     // double-quoted field OR inside balanced parentheses. The latter keeps
     // SPICE differential probes such as LTspice's V(node_p,node_n) intact when
     // the file is comma-separated. Quotes are preserved in the returned tokens
     // (callers strip surrounding quotes themselves).
+    // A separator of ' ' (returned by guess_separator for PSIM / SIMetrix .txt exports, ABT #2374) means
+    // runs of spaces and tabs: leading, trailing and repeated whitespace never makes an empty field.
     static std::vector<std::string> split_fields(const std::string& line, char separator);
+    // The message naming an unreadable cell: line, column, the column's name and the cell as written.
+    static std::string unreadable_cell_message(const UnreadableCell& cell, const std::string& columnName);
+    // A column can be a time axis only when every cell of it is a number and it increases.
+    static bool is_time_axis(const CircuitSimulationSignal& column);
     static bool can_be_voltage(std::vector<double> data, double limit=0.05);
     static bool can_be_time(std::vector<double> data);
     static bool can_be_current(std::vector<double> data, double limit=0.05);
