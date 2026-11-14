@@ -160,10 +160,13 @@ bool AxisymmetricWindow::applies(const Core& core, const Coil& coil) {
 }
 
 AxisymmetricWindow AxisymmetricWindow::from_core(const Core& core) {
-    if (!core.get_processed_description()) {
+    // get_processed_description() returns the optional BY VALUE: the windows are read from a local copy. A reference
+    // taken through the temporary dangled once the statement ended (freed vector; garbage in WASM).
+    const auto processedDescription = core.get_processed_description();
+    if (!processedDescription) {
         throw CoreNotProcessedException();
     }
-    const auto& windingWindows = core.get_processed_description()->get_winding_windows();
+    const auto& windingWindows = processedDescription->get_winding_windows();
     if (windingWindows.size() != 1 || !windingWindows[0].get_width() || !windingWindows[0].get_height()) {
         throw InvalidInputException(ErrorCode::MISSING_DATA, "Axisymmetric window: the core needs one winding window with width and height");
     }
