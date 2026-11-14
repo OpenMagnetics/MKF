@@ -4475,3 +4475,38 @@ TEST_CASE("Test_Painter_Piece_And_Plate_Draws_Piece_And_Plate", "[support][paint
     settings.reset();
 }
 } // namespace TestPieceAndPlateGapAtPlate
+
+// ABT #1527: a processed gapping read back from its own JSON must give the same core. A single ground gap is placed
+// in one half (y = +length/2) with the validated clearance columnHeight/2 - length/2; reading those coordinates back
+// measured the clearance from the gap's centre instead (length/2 less), so the inductance of a gap MKF had solved for
+// changed when the gapping went through JSON: 2x on a 45 mm gap in an E 100/60/21.
+TEST_CASE("Core_Ground_Gap_Processing_Is_Idempotent_Through_Json", "[constructive-model][core][gap]") {
+    for (double gapLength : {0.0005, 0.01551, 0.04526}) {
+        CAPTURE(gapLength);
+        json coreJson = {{"name", "ground gap round trip"},
+                         {"functionalDescription",
+                          {{"type", "two-piece set"}, {"shape", "E 100/60/21"}, {"material", "N87"}, {"numberStacks", 1},
+                           {"gapping", json::array({{{"type", "subtractive"}, {"length", gapLength}},
+                                                    {{"type", "residual"}, {"length", 5e-6}},
+                                                    {{"type", "residual"}, {"length", 5e-6}}})}}}};
+        Core placed(coreJson, true);
+        json writtenBack;
+        to_json(writtenBack, placed);
+        Core reread(json{{"name", "ground gap round trip"}, {"functionalDescription", writtenBack["functionalDescription"]}}, true);
+
+        const auto first = placed.get_functional_description().get_gapping();
+        const auto second = reread.get_functional_description().get_gapping();
+        REQUIRE(first.size() == second.size());
+        // The premise: the gap carries the one-half placement into the JSON.
+        REQUIRE_THAT((*first[0].get_coordinates())[1], Catch::Matchers::WithinAbs(gapLength / 2, 1e-9));
+        for (size_t i = 0; i < first.size(); ++i) {
+            CAPTURE(i);
+            CHECK_THAT(*second[i].get_distance_closest_normal_surface(),
+                       Catch::Matchers::WithinAbs(*first[i].get_distance_closest_normal_surface(), 1e-9));
+        }
+        auto model = ReluctanceModel::factory(ReluctanceModels::ZHANG);
+        const double placedReluctance = model->get_core_reluctance(placed, 2000.0).get_core_reluctance();
+        const double rereadReluctance = model->get_core_reluctance(reread, 2000.0).get_core_reluctance();
+        CHECK_THAT(rereadReluctance, Catch::Matchers::WithinRel(placedReluctance, 1e-9));
+    }
+}

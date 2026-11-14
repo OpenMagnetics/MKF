@@ -1532,7 +1532,16 @@ bool Core::process_gap() {
                 // throw std::runtime_error("distance_closest_normal_surface cannot be negative in shape: " + std::get<CoreShape>(get_functional_description().get_shape()).get_name().value() + ", gap of index: " + std::to_string(i));
 
             }
-            gap.set_distance_closest_normal_surface(roundFloat(columns[columnIndex].get_height() / 2 - fabs((*gapping[i].get_coordinates())[1]) - gapping[i].get_length() / 2));
+            // A gap that touches the mating plane (|y| <= length/2: ground into one half, as distribute_and_process_gap
+            // places a single ground gap at y = +length/2, or straddling the joint) keeps the clearance that placement
+            // gives it, columnHeight/2 - length/2, the form validated on measured ground cores (see the single-gap branch
+            // of distribute_and_process_gap). Measuring it from its centre instead made processing not idempotent: a
+            // processed gapping read back from its own JSON lost length/2 of clearance (a 45 mm gap in an E 100/60/21:
+            // 24.2 mm -> 1.6 mm), and the inductance of a gap MKF had just solved for came out 2x off (ABT #1527).
+            const double offset = fabs((*gapping[i].get_coordinates())[1]);
+            const bool touchesMatingPlane = roundFloat(offset - gapping[i].get_length() / 2) <= 0;
+            gap.set_distance_closest_normal_surface(roundFloat(columns[columnIndex].get_height() / 2 - (touchesMatingPlane ? 0 : offset) -
+                                                               gapping[i].get_length() / 2));
             gap.set_distance_closest_parallel_surface(processedDescription.get_winding_windows()[0].get_width());
             gap.set_area(columns[columnIndex].get_area());
             gap.set_section_dimensions(std::vector<double>({columns[columnIndex].get_width(), columns[columnIndex].get_depth()}));
