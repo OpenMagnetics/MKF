@@ -5954,15 +5954,19 @@ namespace {
 }
 
 TEST_CASE("Test_Winding_Losses_Multi_Window_E42_Rectangular_Vs_OMFEM", "[winding-losses][multi-column][physical-model]") {
-    // 6 + 3 turns of Rectangular 3.35x0.80 (aspect 4.2: width cells, MARTINEZ). OMFEM DC 0.743 / 1.472 mW.
-    // Known red, landed so by Alf (2026-11-13): the primary beside the gap reads 0.74x OMFEM at 100 kHz (0.91x at 1 kHz;
-    // the secondary 1.00x / 0.93x). It is the width-cell model on 0.8 mm bars beside a gap (the multi-window frame matches
+    // 6 + 3 turns of Rectangular 3.35x0.80 (aspect 4.2: width cells, MARTINEZ). Each winding's R_ac/R_dc is OMFEM's own
+    // (OMFEM d3d5885: the winding's copper loss over its analytic DC loss, summed over its turns' circuit groups; Alf
+    // 2026-11-13: ask OMFEM for per-winding DC). Before, the per-winding watts were divided by DC losses estimated outside
+    // OMFEM (0.743 / 1.472 mW): 1.8185 / 1.0126 at 1 kHz, 55.256 / 5.758 at 100 kHz. Inputs and logs:
+    // /home/alf/OpenMagnetics/.mkf-triage-runs/gap/fem/mwr_<f>.json, mwr_<f>.g.omfem.*.
+    // Known red, landed so by Alf (2026-11-13): the primary beside the gap reads 0.73x OMFEM at 100 kHz (0.91x at 1 kHz;
+    // the secondary 1.00x at 1 kHz, 0.93x at 100 kHz). It is the width-cell model on 0.8 mm bars beside a gap (the multi-window frame matches
     // the single-window one there, Test_Winding_Losses_Multi_Window_Cells_Match_Single_Window), the same family as the E 42
     // residual-gap innermost foil (0.72x); MARTINEZ without cells reads 0.86x.
     settings.reset();
     clear_databases();
     auto magnetic = multi_window_e42("Rectangular 3.35x0.80 - Grade 1", 6, 3);
-    std::vector<std::tuple<double, double, double>> omfem = {{1000, 1.3508 / 0.7428, 1.4907 / 1.4722}, {100000, 41.044 / 0.7428, 8.4769 / 1.4722}};
+    std::vector<std::tuple<double, double, double>> omfem = {{1000, 1.8353, 1.0127}, {100000, 55.7651, 5.7587}};
     for (auto [frequency, primary, secondary] : omfem) {
         auto ratios = multi_window_ac_to_dc(magnetic, frequency);
         INFO(frequency << " Hz: primary MKF " << ratios[0] << " vs OMFEM " << primary << ", secondary MKF " << ratios[1] << " vs OMFEM " << secondary);
