@@ -2597,6 +2597,62 @@ namespace TestDrumCore {
         settings.reset();
     }
 
+    // ABT #2410: a design edited from a two-piece set (PQ 27/15 here) to a semi-shielded drum carries the
+    // previous core's processed gapping: its RESIDUAL mating-plane gaps. They are not the user's, so the drum
+    // drops and re-derives them (a cast shell has none) instead of refusing the whole core, as drumRing does.
+    // A user gap next to them is still refused.
+    TEST_CASE("Test_Drum_Semishielded_Drops_Carried_Residual_Gaps", "[core][drum-semishielded]") {
+        settings.reset();
+        clear_databases();
+        auto previousCore = OpenMagneticsTesting::get_quick_core("PQ 27/15", OpenMagneticsTesting::get_residual_gap(), 1, "3C90");
+        json carriedGapping = json::array();
+        for (auto& gap : previousCore.get_functional_description().get_gapping()) {
+            json gapJson;
+            to_json(gapJson, gap);
+            carriedGapping.push_back(gapJson);
+        }
+        REQUIRE(carriedGapping.size() > 0);
+        for (auto& gapJson : carriedGapping) {
+            REQUIRE(gapJson["type"] == "residual");
+        }
+
+        json shapeJson = {
+            {"magneticCircuit", "closed"}, {"type", "custom"}, {"family", "drumSemishielded"},
+            {"aliases", json::array()}, {"name", "LQS-like 4018"},
+            {"dimensions", {
+                {"A", {{"nominal", 0.0038}}}, {"B", {{"nominal", 0.0018}}}, {"C", {{"nominal", 0.0015}}},
+                {"D", {{"nominal", 0.0004}}}, {"E", {{"nominal", 0.0010}}}, {"F", {{"nominal", 0.0004}}},
+                {"J", {{"nominal", 0.0040}}}, {"K", {{"nominal", 0.0040}}}, {"L", {{"nominal", 0.0018}}}}}
+        };
+        json coreJson;
+        coreJson["functionalDescription"] = {
+            {"type", "pieceAndPlate"}, {"material", "3C90"}, {"shape", shapeJson},
+            {"gapping", json::array()}, {"numberStacks", 1},
+            {"coating", {{"type", "magneticEpoxy"}, {"thickness", {{"nominal", 0.0001}}}, {"material", "Kool Mµ 26"}}}};
+        Core cleanCore(coreJson);
+        auto cleanEffectiveLength = cleanCore.get_processed_description()->get_effective_parameters().get_effective_length();
+
+        json carriedCoreJson = coreJson;
+        carriedCoreJson["functionalDescription"]["gapping"] = carriedGapping;
+        Core carriedCore(carriedCoreJson);
+        carriedCore.process_gap();
+        CHECK(carriedCore.get_functional_description().get_gapping().empty());
+        CHECK_THAT(carriedCore.get_processed_description()->get_effective_parameters().get_effective_length(),
+                   Catch::Matchers::WithinRel(cleanEffectiveLength, 1e-9));
+
+        // A user gap beside the carried residuals is still refused.
+        json userGappedCoreJson = carriedCoreJson;
+        userGappedCoreJson["functionalDescription"]["gapping"].push_back(
+            json{{"type", "subtractive"}, {"length", 0.0001}});
+        CHECK_THROWS_WITH(Core(userGappedCoreJson).process_gap(),
+                          Catch::Matchers::ContainsSubstring("Semi-shielded drums cannot be gapped"));
+        json additiveCoreJson = coreJson;
+        additiveCoreJson["functionalDescription"]["gapping"] = json::array({json{{"type", "additive"}, {"length", 0.0001}}});
+        CHECK_THROWS_WITH(Core(additiveCoreJson).process_gap(),
+                          Catch::Matchers::ContainsSubstring("Semi-shielded drums cannot be gapped"));
+        settings.reset();
+    }
+
     // ABT #366/#362/#357: the 2D painter used to reconstruct a mirrored half-set for EVERY
     // non-toroidal family, drawing drums/drumRings/semi-shielded/molded as nonsense; they now
     // route to paint_drum_family_core. Smoke: each family paints a valid, non-empty SVG.

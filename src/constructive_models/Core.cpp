@@ -1414,9 +1414,15 @@ bool Core::process_gap() {
         // Semi-shielded drum (ABT #362): the magnetic-epoxy shell is CAST in contact with the
         // flange rims — no mating surfaces, no clearance. The low-permeability return is a
         // MATERIAL section handled by the mixed-material reluctance path, not a gap.
-        if (gapping.size() > 0) {
-            throw GapException("Semi-shielded drums cannot be gapped: the glue shell is cast "
-                               "in contact; its low permeability is a material section, not a gap");
+        // User gapping is rejected. RESIDUAL entries are not the user's: they are the mating-plane
+        // residuals a processed core carries (a previous pass, or the previous core of an edited
+        // design), so they are dropped and re-derived, exactly as drumRing does; a cast shell has no
+        // mating plane, so the re-derived set is empty (ABT #2410).
+        for (auto& gap : gapping) {
+            if (gap.get_type() != GapType::RESIDUAL) {
+                throw GapException("Semi-shielded drums cannot be gapped: the glue shell is cast "
+                                   "in contact; its low permeability is a material section, not a gap");
+            }
         }
         get_mutable_functional_description().set_gapping(std::vector<CoreGap>{});
         return true;
