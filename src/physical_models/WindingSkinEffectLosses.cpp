@@ -317,7 +317,7 @@ WindingLossesOutput WindingSkinEffectLosses::calculate_skin_effect_losses(Coil c
         }
         const auto& wire = wirePerWinding[windingIndex].value();
         std::optional<WindingSkinEffectLossesModels> turnModelOverride = modelOverrideForWinding(windingIndex);
-        // ABT #2384: a rectangular or foil turn resolved into width cells (FlatTurnCells, the screened width-cell model)
+        // ABT #2384: a rectangular, foil or planar turn resolved into width cells (FlatTurnCells, the screened width-cell model)
         // is booked by two halves, both from the field step. The cell kernel
         // (WindingProximityEffectLossesMartinezModel::calculate_flat_cell_losses) charges each cell from the field along its
         // faces at its "cellsample" point and from the cell currents the split solved (the redistribution across the width,
@@ -326,9 +326,11 @@ WindingLossesOutput WindingSkinEffectLosses::calculate_skin_effect_losses(Coil c
         // the uniform sheet whose faces carry its own +-K/2. That uniform-sheet term is this turn's skin loss, and it is
         // exactly FERREIRA's flat-conductor skin factor. KUTKUT, an isolated-strip fit, already holds the edge crowding the
         // cells resolve, so with it the edge loss was booked twice (an isolated 5.5 x 0.4 mm strip at 200 kHz read
-        // R_ac/R_dc 2.56 against KUTKUT's own 1.80), and the interleave's cancelling face fields never lowered it.
+        // R_ac/R_dc 2.56 against KUTKUT's own 1.80), and the interleave's cancelling face fields never lowered it. PLANAR's
+        // default, ALBACH, books a trace as a round wire of diameter = thickness, below the uniform-sheet term, so there
+        // the difference was lost instead (interleaved E 64 planar, 2 MHz: -36 % against OMFEM, FERREIRA +0.2 %).
         if (parallelCurrentSplit && turnIndex < parallelCurrentSplit->flatTurnPerTurn.size() && parallelCurrentSplit->flatTurnPerTurn[turnIndex] &&
-            (wire.get_type() == WireType::RECTANGULAR || wire.get_type() == WireType::FOIL)) {
+            (wire.get_type() == WireType::RECTANGULAR || wire.get_type() == WireType::FOIL || wire.get_type() == WireType::PLANAR)) {
             turnModelOverride = WindingSkinEffectLossesModels::FERREIRA;
         }
         double wireLength = turn.get_length();
