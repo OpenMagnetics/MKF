@@ -136,6 +136,87 @@ bool currents_agree(double actual, double expected) {
     return std::abs(actual - expected) <= 1e-9 * std::max(std::abs(actual), std::abs(expected));
 }
 
+// The round-wire eddy reaction's solve (ABT #2267): relative residual it reaches.
+constexpr double dipoleSolveTolerance = 1e-12;
+
+// Restarted GMRES (Saad and Schultz) for a complex system given by its product, from the right-hand side as the first guess
+// (the systems it solves are the identity plus a reaction). Modified Gram-Schmidt run twice, complex Givens rotations, and
+// the true residual checked at every restart: it returns only a solution that reaches the tolerance, and throws otherwise.
+template <typename Apply>
+Eigen::VectorXcd solve_gmres(const Apply& apply, const Eigen::VectorXcd& rhs, double tolerance, const std::string& context) {
+    const Eigen::Index size = rhs.size();
+    const double rhsNorm = rhs.norm();
+    if (!(rhsNorm > 0)) {
+        return Eigen::VectorXcd::Zero(size);
+    }
+    const Eigen::Index restart = std::min<Eigen::Index>(size, 60);
+    constexpr int maximumCycles = 50;
+    Eigen::VectorXcd solution = rhs;
+    Eigen::MatrixXcd basis(size, restart + 1);
+    Eigen::MatrixXcd hessenberg(restart + 1, restart);
+    std::vector<double> cosines(static_cast<size_t>(restart));
+    std::vector<std::complex<double>> sines(static_cast<size_t>(restart));
+    Eigen::VectorXcd rotated(restart + 1);
+    double residualNorm = 0;
+    for (int cycle = 0; cycle <= maximumCycles; ++cycle) {
+        const Eigen::VectorXcd residual = rhs - apply(solution);
+        residualNorm = residual.norm();
+        if (residualNorm <= tolerance * rhsNorm) {
+            return solution;
+        }
+        if (cycle == maximumCycles) {
+            break;
+        }
+        hessenberg.setZero();
+        rotated.setZero();
+        rotated(0) = residualNorm;
+        basis.col(0) = residual / residualNorm;
+        Eigen::Index used = 0;
+        for (Eigen::Index column = 0; column < restart; ++column) {
+            Eigen::VectorXcd next = apply(basis.col(column));
+            for (int pass = 0; pass < 2; ++pass) {
+                for (Eigen::Index row = 0; row <= column; ++row) {
+                    const std::complex<double> projection = basis.col(row).dot(next);
+                    hessenberg(row, column) += projection;
+                    next -= projection * basis.col(row);
+                }
+            }
+            const double nextNorm = next.norm();
+            for (Eigen::Index row = 0; row < column; ++row) {
+                const std::complex<double> upper = hessenberg(row, column);
+                const std::complex<double> lower = hessenberg(row + 1, column);
+                const size_t index = static_cast<size_t>(row);
+                hessenberg(row, column) = cosines[index] * upper + sines[index] * lower;
+                hessenberg(row + 1, column) = -std::conj(sines[index]) * upper + cosines[index] * lower;
+            }
+            const std::complex<double> diagonal = hessenberg(column, column);
+            const double diagonalModulus = std::abs(diagonal);
+            const double hypotenuse = std::hypot(diagonalModulus, nextNorm);
+            const size_t index = static_cast<size_t>(column);
+            if (diagonalModulus == 0) {
+                cosines[index] = 0;
+                sines[index] = 1;
+            }
+            else {
+                cosines[index] = diagonalModulus / hypotenuse;
+                sines[index] = diagonal / diagonalModulus * nextNorm / hypotenuse;
+            }
+            hessenberg(column, column) = cosines[index] * diagonal + sines[index] * nextNorm;
+            rotated(column + 1) = -std::conj(sines[index]) * rotated(column);
+            rotated(column) = cosines[index] * rotated(column);
+            used = column + 1;
+            if (!(nextNorm > 0) || std::abs(rotated(column + 1)) <= tolerance * rhsNorm) {
+                break;
+            }
+            basis.col(column + 1) = next / nextNorm;
+        }
+        const Eigen::VectorXcd step = hessenberg.topLeftCorner(used, used).triangularView<Eigen::Upper>().solve(rotated.head(used));
+        solution += basis.leftCols(used) * step;
+    }
+    throw CalculationException(ErrorCode::CALCULATION_INVALID_RESULT, context + ": the iterative solve did not reach a relative residual of " +
+                               std::to_string(tolerance) + " (" + std::to_string(residualNorm / rhsNorm) + " after " + std::to_string(maximumCycles) + " restarts)");
+}
+
 // ABT #1645: the Binns-Lawrenson field of a uniform current over the rectangle |x'| < a, |y'| < b, evaluated fast and
 // to the same numbers (relative differences ~1e-9 and below). Two exact rewrites of the closed form, no new physics:
 //  - Near the rectangle, the corner primitives P(u, v) = u ln(u^2 + v^2) / 2 + v atan(u / v) of Hx and P(v, u) of Hy
@@ -3018,6 +3099,7 @@ WindingWindowMagneticStrengthFieldPhasorOutput MagneticField::calculate_magnetic
             const auto& m = image.moment;
             return std::array<double, 4>{u * m[0] + v * m[2], u * m[1] + v * m[3], v * m[0] - u * m[2], v * m[1] - u * m[3]};
         };
+        Eigen::MatrixXd siteCoupling;  // built on first use, see below
         // The sites' moments per harmonic (empty where the harmonic adds no reaction).
         std::vector<std::vector<std::complex<double>>> momentXPerHarmonic(complexFieldPerHarmonic.size());
         std::vector<std::vector<std::complex<double>>> momentYPerHarmonic(complexFieldPerHarmonic.size());
@@ -3084,39 +3166,40 @@ WindingWindowMagneticStrengthFieldPhasorOutput MagneticField::calculate_magnetic
                 }
                 polarisability[site] = perWinding.value();
             }
-            // The couplings are recomputed per harmonic rather than stored: storing them would cost several times the
-            // system's own memory, which the WebAssembly build cannot afford.
-            Eigen::MatrixXcd system = Eigen::MatrixXcd::Identity(2 * numberSites, 2 * numberSites);
-            for (size_t site = 0; site < numberSites; ++site) {
-                for (size_t other = 0; other < numberSites; ++other) {
-                    if (other == site || dipoleSites[other].region != dipoleSites[site].region) {
-                        continue;
+            // The couplings are geometry only: the real matrix K (H at site s per unit moment of site t, the image terms
+            // included) is built once, on the first harmonic that solves, and the system of every harmonic is
+            // (I - K diag(p)) H = H0. K holds half the memory of the complex system and is shared by all harmonics.
+            if (siteCoupling.size() == 0) {
+                siteCoupling = Eigen::MatrixXd::Zero(2 * numberSites, 2 * numberSites);
+                for (size_t site = 0; site < numberSites; ++site) {
+                    for (size_t other = 0; other < numberSites; ++other) {
+                        if (other == site || dipoleSites[other].region != dipoleSites[site].region) {
+                            continue;
+                        }
+                        const double siteDx = dipoleSites[site].x - dipoleSites[other].x;
+                        const double siteDy = dipoleSites[site].y - dipoleSites[other].y;
+                        if (siteDx * siteDx + siteDy * siteDy < dipoleSites[other].radius * dipoleSites[other].radius) {
+                            throw CalculationException(ErrorCode::CALCULATION_INVALID_RESULT, "Round-wire eddy reaction: crossings of turns " +
+                                                       std::to_string(dipoleSites[site].turnIndex) + " and " + std::to_string(dipoleSites[other].turnIndex) +
+                                                       " overlap at (" + std::to_string(dipoleSites[site].x) + ", " + std::to_string(dipoleSites[site].y) + ") and (" +
+                                                       std::to_string(dipoleSites[other].x) + ", " + std::to_string(dipoleSites[other].y) + ")");
+                        }
+                        const auto [u, v] = kernel(siteDx, siteDy);
+                        siteCoupling(2 * site, 2 * other) += u;
+                        siteCoupling(2 * site, 2 * other + 1) += v;
+                        siteCoupling(2 * site + 1, 2 * other) += v;
+                        siteCoupling(2 * site + 1, 2 * other + 1) -= u;
                     }
-                    const double siteDx = dipoleSites[site].x - dipoleSites[other].x;
-                    const double siteDy = dipoleSites[site].y - dipoleSites[other].y;
-                    if (siteDx * siteDx + siteDy * siteDy < dipoleSites[other].radius * dipoleSites[other].radius) {
-                        throw CalculationException(ErrorCode::CALCULATION_INVALID_RESULT, "Round-wire eddy reaction: crossings of turns " +
-                                                   std::to_string(dipoleSites[site].turnIndex) + " and " + std::to_string(dipoleSites[other].turnIndex) +
-                                                   " overlap at (" + std::to_string(dipoleSites[site].x) + ", " + std::to_string(dipoleSites[site].y) + ") and (" +
-                                                   std::to_string(dipoleSites[other].x) + ", " + std::to_string(dipoleSites[other].y) + ")");
+                    for (const auto& image : dipoleImages) {
+                        if (dipoleSites[image.site].region != dipoleSites[site].region) {
+                            continue;
+                        }
+                        const auto k = image_kernel(image, dipoleSites[site].x - image.x, dipoleSites[site].y - image.y);
+                        siteCoupling(2 * site, 2 * image.site) += k[0];
+                        siteCoupling(2 * site, 2 * image.site + 1) += k[1];
+                        siteCoupling(2 * site + 1, 2 * image.site) += k[2];
+                        siteCoupling(2 * site + 1, 2 * image.site + 1) += k[3];
                     }
-                    const auto [u, v] = kernel(siteDx, siteDy);
-                    const std::complex<double> weight = polarisability[other];
-                    system(2 * site, 2 * other) -= weight * u;
-                    system(2 * site, 2 * other + 1) -= weight * v;
-                    system(2 * site + 1, 2 * other) -= weight * v;
-                    system(2 * site + 1, 2 * other + 1) += weight * u;
-                }
-                for (const auto& image : dipoleImages) {
-                    if (dipoleSites[image.site].region != dipoleSites[site].region) {
-                        continue;
-                    }
-                    const auto k = image_kernel(image, dipoleSites[site].x - image.x, dipoleSites[site].y - image.y);
-                    const std::complex<double> weight = polarisability[image.site];
-                    system(2 * site, 2 * image.site) -= weight * k[0];
-                    system(2 * site, 2 * image.site + 1) -= weight * k[1];
-                    system(2 * site + 1, 2 * image.site) -= weight * k[2];
-                    system(2 * site + 1, 2 * image.site + 1) -= weight * k[3];
                 }
             }
             if (!external.allFinite()) {
@@ -3130,7 +3213,24 @@ WindingWindowMagneticStrengthFieldPhasorOutput MagneticField::calculate_magnetic
             if (external.isZero(0)) {
                 continue;  // no field at any site (a harmonic no winding carries): no moments, no reaction
             }
-            const Eigen::VectorXcd fieldAtSites = system.partialPivLu().solve(external);
+            // GMRES on (I - K diag(p)) H = H0 to a relative residual of dipoleSolveTolerance. The system is the identity
+            // plus the sites' mutual reaction, so it converges in few iterations; a dense LU cost (2N)^3 per harmonic.
+            Eigen::VectorXcd polarisabilityPerRow(2 * numberSites);
+            for (size_t site = 0; site < numberSites; ++site) {
+                polarisabilityPerRow(2 * site) = polarisability[site];
+                polarisabilityPerRow(2 * site + 1) = polarisability[site];
+            }
+            auto apply_system = [&](const Eigen::VectorXcd& field) -> Eigen::VectorXcd {
+                const Eigen::VectorXcd moments = polarisabilityPerRow.cwiseProduct(field);
+                const Eigen::VectorXd reactionReal = siteCoupling * moments.real();
+                const Eigen::VectorXd reactionImaginary = siteCoupling * moments.imag();
+                Eigen::VectorXcd result = field;
+                for (Eigen::Index row = 0; row < result.size(); ++row) {
+                    result(row) -= std::complex<double>(reactionReal(row), reactionImaginary(row));
+                }
+                return result;
+            };
+            const Eigen::VectorXcd fieldAtSites = solve_gmres(apply_system, external, dipoleSolveTolerance, "Round-wire eddy reaction");
             auto& momentX = momentXPerHarmonic[harmonicIndex];
             auto& momentY = momentYPerHarmonic[harmonicIndex];
             momentX.resize(numberSites);
