@@ -6011,3 +6011,105 @@ TEST_CASE("Test_Winding_Losses_Multi_Window_Cells_Match_Single_Window", "[windin
     CHECK_THAT(proximityPerColumnSetting[1], Catch::Matchers::WithinRel(proximityPerColumnSetting[0], 0.01));
     settings.reset();
 }
+
+// ABT #2384: a rectangular or foil turn resolved into width cells books its skin as the uniform sheet (FERREIRA's flat
+// factor) and everything the field adds (face fields, edge crowding of the cell currents) through the cell kernel.
+namespace {
+    struct Abt2384WindingLosses {
+        double ohmic = 0;
+        double skin = 0;
+        double proximity = 0;
+        double total() const { return ohmic + skin + proximity; }
+    };
+    double abt2384_sum(const LossElementPerHarmonic& element) {
+        double sum = 0;
+        for (auto loss : element.get_losses_per_harmonic()) sum += loss;
+        return sum;
+    }
+    std::vector<Abt2384WindingLosses> abt2384_losses_per_winding(OpenMagnetics::Magnetic magnetic, const OperatingPoint& operatingPoint, double temperature) {
+        auto output = WindingLosses().calculate_losses(magnetic, operatingPoint, temperature);
+        std::vector<Abt2384WindingLosses> result;
+        const auto windingLossesPerWinding = output.get_winding_losses_per_winding().value();
+        for (const auto& winding : windingLossesPerWinding) {
+            Abt2384WindingLosses losses;
+            losses.ohmic = winding.get_ohmic_losses()->get_losses();
+            losses.skin = abt2384_sum(winding.get_skin_effect_losses().value());
+            losses.proximity = abt2384_sum(winding.get_proximity_effect_losses().value());
+            result.push_back(losses);
+        }
+        return result;
+    }
+}
+
+TEST_CASE("Test_Winding_Losses_Abt2384_Isolated_Strip_Keeps_Its_Edge_Loss", "[winding-losses][martinez-flat][abt-2384][physical-model]") {
+    // One 5.5 x 0.4 mm strip alone in the window of an ungapped E 65/32/27 at 200 kHz, 100 C: nothing outside the strip
+    // but its own images in the walls. Its skin is now the uniform sheet (FERREIRA, 1.17 here) and its edge crowding comes
+    // from the width cells' currents; together they must still give the isolated strip's classical R_ac/R_dc, which
+    // KUTKUT's 2D fit (1.80 here) states. MKF reads 1.93 (the closed window's images add a little field a free strip
+    // does not see; 15 % allows for that and for the fit); before ABT #2384 it read 2.56, KUTKUT plus the cells' edge loss.
+    settings.reset();
+    clear_databases();
+    OpenMagnetics::Wire wire;
+    wire.set_nominal_value_conducting_width(0.0055);
+    wire.set_nominal_value_conducting_height(0.0004);
+    wire.set_nominal_value_outer_width(0.0055);
+    wire.set_nominal_value_outer_height(0.0004);
+    wire.set_type(WireType::RECTANGULAR);
+    wire.set_number_conductors(1);
+    wire.set_material("copper");
+    const std::string shapeName = "E 65/32/27";
+    auto coil = OpenMagneticsTesting::get_quick_coil({1}, {1}, shapeName, 1, WindingOrientation::OVERLAPPING, WindingOrientation::OVERLAPPING,
+                                                    CoilAlignment::CENTERED, CoilAlignment::CENTERED, {wire}, false);
+    auto core = OpenMagneticsTesting::get_quick_core(shapeName, OpenMagneticsTesting::get_residual_gap(), 1, "3C97");
+    OpenMagnetics::Magnetic magnetic;
+    magnetic.set_core(core);
+    magnetic.set_coil(coil);
+    const double frequency = 200000;
+    const double temperature = 100;
+    auto inputs = OpenMagnetics::Inputs::create_quick_operating_point_only_current(frequency, 1e-3, temperature, WaveformLabel::SINUSOIDAL, 2, 0.5, 0);
+    const auto losses = abt2384_losses_per_winding(magnetic, inputs.get_operating_point(0), temperature);
+    REQUIRE(losses.size() == 1);
+    const double factor = losses[0].total() / losses[0].ohmic;
+    const double kutkutFactor = 1 + WindingSkinEffectLossesKutkutModel().calculate_turn_losses(wire, 1, frequency, temperature);
+    const double sheetFactor = 1 + WindingSkinEffectLossesFerreiraModel().calculate_turn_losses(wire, 1, frequency, temperature);
+    INFO("isolated strip R_ac/R_dc: MKF " << factor << " (skin " << losses[0].skin / losses[0].ohmic << ", proximity " << losses[0].proximity / losses[0].ohmic
+         << " of DC), KUTKUT " << kutkutFactor << ", uniform sheet " << sheetFactor);
+    CHECK_THAT(factor, Catch::Matchers::WithinRel(kutkutFactor, 0.15));
+    settings.reset();
+}
+
+TEST_CASE("Test_Winding_Losses_Abt2384_Interleaved_Litz_And_Strips_Vs_OMFEM", "[winding-losses][martinez-flat][parallel-split][abt-2384][physical-model]") {
+    // ABT #2384 (user design 750372438, inputs and magnetic unchanged): PQ 35/40 DMR51W, 0.2 mm gap; primary 16 t x 4
+    // parallels of litz 80 x 0.1 mm, secondary 1 t x 3 parallels of 5.5 x 0.4 mm rectangular strip, interleaved
+    // P-S-P-S-P-S-P, 100 C. Reference: OMFEM 2D axisymmetric with homogenised litz (branch litz2d-2384, 960b022), 32
+    // harmonics for the DAB point, solved parallel split; strip AC excess = strip loss - strip DC loss at the solved split.
+    // Before this fix the strips read 0.378 / 2.987 W (KUTKUT skin 0.137 / 0.803 W, an isolated-strip fit that books the
+    // edge loss the width cells already resolve, and never sees that the two face fields cancel in the interleave).
+    // {operating point, OMFEM strip AC excess, OMFEM strip total, OMFEM total}
+    const std::vector<std::tuple<size_t, double, double, double>> omfem = {{0, 0.066, 0.2242, 0.291}, {1, 0.293, 1.832, 2.172}};
+    settings.reset();
+    clear_databases();
+    auto path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "abt2384_pq3540_dab_interleaved_foil.json");
+    std::ifstream in(path);
+    json masJson = json::parse(in);
+    OpenMagnetics::Magnetic magnetic(masJson["magnetic"]);
+    OpenMagnetics::Inputs inputs(masJson["inputs"]);
+    for (const auto& [operatingPointIndex, stripAcExcess, stripTotal, total] : omfem) {
+        const auto losses = abt2384_losses_per_winding(magnetic, inputs.get_operating_point(operatingPointIndex), 100);
+        REQUIRE(losses.size() == 2);
+        const auto& strips = losses[1];
+        const double mkfTotal = losses[0].total() + losses[1].total();
+        INFO("operating point " << operatingPointIndex << ": primary " << losses[0].ohmic << " + " << losses[0].skin << " + " << losses[0].proximity
+             << " W; strips " << strips.ohmic << " + " << strips.skin << " + " << strips.proximity << " W; strip AC excess MKF "
+             << strips.skin + strips.proximity << " vs OMFEM " << stripAcExcess << ", strips MKF " << strips.total() << " vs OMFEM " << stripTotal
+             << ", total MKF " << mkfTotal << " vs OMFEM " << total);
+        // Tolerances: the AC excess is a small difference of two large numbers on the FEM side (its DC part moves
+        // 0.158 -> 0.163 W between the equal and the solved split, 8 % of the DAB excess), so 25 %; the strip and winding
+        // totals 10 %. With the fix: excess -10 % / -14 %, strips -1.5 % / -1.3 %, total -2.3 % / +1.2 %. Before it
+        // (KUTKUT): excess +147 % / +216 %, strips +45 % / +36 %, total +33 % / +32 %.
+        CHECK_THAT(strips.skin + strips.proximity, Catch::Matchers::WithinRel(stripAcExcess, 0.25));
+        CHECK_THAT(strips.total(), Catch::Matchers::WithinRel(stripTotal, 0.1));
+        CHECK_THAT(mkfTotal, Catch::Matchers::WithinRel(total, 0.1));
+    }
+    settings.reset();
+}
