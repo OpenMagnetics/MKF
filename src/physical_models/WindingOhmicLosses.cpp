@@ -161,9 +161,77 @@ std::vector<std::vector<double>> WindingOhmicLosses::calculate_connection_resist
     return connectionResistance;
 }
 
-double WindingOhmicLosses::calculate_dc_resistance(Turn turn, const Wire& wire, double temperature) {
-    double wireLength = turn.get_length();
-    return calculate_dc_resistance(wireLength, wire, temperature);
+double WindingOhmicLosses::calculate_dc_resistance(Turn turn, const Wire& wire, double temperature, bool toroidal) {
+    return calculate_dc_resistance(calculate_turn_conductor_length(turn, wire, toroidal), wire, temperature);
+}
+
+double WindingOhmicLosses::calculate_band_length(double turnLength, double lowerOffset, double upperOffset) {
+    if (std::isnan(turnLength) || std::isnan(lowerOffset) || std::isnan(upperOffset)) {
+        throw NaNResultException("NaN found in a band of a turn's conductor");
+    }
+    if (upperOffset < lowerOffset) {
+        throw InvalidInputException(ErrorCode::INVALID_INPUT, "A band of a turn's conductor runs from offset " + std::to_string(lowerOffset) +
+                                    " m to " + std::to_string(upperOffset) + " m");
+    }
+    if (turnLength == 0) {
+        return 0;
+    }
+    const double innerLength = turnLength + 2 * std::numbers::pi * lowerOffset;
+    if (!(innerLength > 0)) {
+        throw InvalidInputException(ErrorCode::INVALID_INPUT, "A turn " + std::to_string(turnLength) + " m long cannot carry a conductor reaching " +
+                                    std::to_string(-lowerOffset) + " m inwards of its centre line: that loop would be " +
+                                    std::to_string(innerLength) + " m long");
+    }
+    const double growth = 2 * std::numbers::pi * (upperOffset - lowerOffset) / innerLength;
+    if (growth == 0) {
+        return innerLength;
+    }
+    return 2 * std::numbers::pi * (upperOffset - lowerOffset) / std::log1p(growth);
+}
+
+double WindingOhmicLosses::calculate_turn_conductor_length(const Turn& turn, const Wire& wire, bool toroidal) {
+    const double turnLength = turn.get_length();
+    if (std::isnan(turnLength)) {
+        throw NaNResultException("NaN found in wireLength value");
+    }
+    if (turnLength == 0) {
+        return 0;
+    }
+    switch (wire.get_type()) {
+        case WireType::ROUND: {
+            if (!wire.get_conducting_diameter()) {
+                throw InvalidInputException(ErrorCode::MISSING_DATA, "Round wire of turn " + turn.get_name() + " has no conducting diameter");
+            }
+            const double perimeterOfWire = std::numbers::pi * resolve_dimensional_values(wire.get_conducting_diameter().value());
+            if (!(turnLength > perimeterOfWire)) {
+                throw InvalidInputException(ErrorCode::INVALID_INPUT, "Turn " + turn.get_name() + " is " + std::to_string(turnLength) +
+                                            " m long, not longer than its wire's own circumference " + std::to_string(perimeterOfWire) + " m");
+            }
+            return (turnLength + std::sqrt(turnLength * turnLength - perimeterOfWire * perimeterOfWire)) / 2;
+        }
+        case WireType::RECTANGULAR:
+        case WireType::FOIL:
+        case WireType::PLANAR: {
+            if (toroidal) {
+                return turnLength;
+            }
+            if (!wire.get_conducting_width() || !wire.get_conducting_height()) {
+                throw InvalidInputException(ErrorCode::MISSING_DATA, "The wire of turn " + turn.get_name() + " has no conducting width or height");
+            }
+            double extentAlongX = resolve_dimensional_values(wire.get_conducting_width().value());
+            const double quarterTurns = turn.get_rotation().value_or(0.0) / 90.0;
+            if (std::abs(quarterTurns - std::round(quarterTurns)) > 1e-9) {
+                throw NotImplementedException("Turn " + turn.get_name() + " is rotated " + std::to_string(turn.get_rotation().value()) +
+                                              " degrees; the conductor length of a flat conductor is taken for axis-aligned ones only");
+            }
+            if (static_cast<int64_t>(std::llround(quarterTurns)) % 2 != 0) {
+                extentAlongX = resolve_dimensional_values(wire.get_conducting_height().value());
+            }
+            return calculate_band_length(turnLength, -extentAlongX / 2, extentAlongX / 2);
+        }
+        default:
+            return turnLength;
+    }
 }
 
 double WindingOhmicLosses::calculate_dc_resistance(double wireLength, const Wire& wire, double temperature) {
@@ -273,6 +341,7 @@ std::vector<double> WindingOhmicLosses::calculate_dc_resistance_per_winding(Coil
     auto turns = coil.get_turns_description().value();
     std::vector<std::vector<double>> seriesResistancePerWindingPerParallel;
     auto wirePerWinding = coil.get_wires();
+    const bool toroidal = coil.resolve_bobbin().get_winding_window_shape() == WindingWindowShape::ROUND;
     for (size_t windingIndex = 0; windingIndex < coil.get_functional_description().size(); ++windingIndex) {
         seriesResistancePerWindingPerParallel.push_back(std::vector<double>(coil.get_number_parallels(windingIndex), 0));
     }
@@ -282,7 +351,7 @@ std::vector<double> WindingOhmicLosses::calculate_dc_resistance_per_winding(Coil
         auto windingIndex = coil.get_winding_index_by_name(turn.get_winding());
         auto parallelIndex = checked_parallel_index(coil, turn, windingIndex);
 
-        double turnResistance = calculate_dc_resistance(turn, wirePerWinding[windingIndex], temperature);
+        double turnResistance = calculate_dc_resistance(turn, wirePerWinding[windingIndex], temperature, toroidal);
         seriesResistancePerWindingPerParallel[windingIndex][parallelIndex] += turnResistance;
     }
 
@@ -319,6 +388,7 @@ WindingLossesOutput WindingOhmicLosses::calculate_ohmic_losses(Coil coil, Operat
     std::vector<std::vector<double>> dcCurrentPerWindingPerParallel;
     std::vector<double> dcCurrentPerWinding;
     auto wirePerWinding = coil.get_wires();
+    const bool toroidal = coil.resolve_bobbin().get_winding_window_shape() == WindingWindowShape::ROUND;
     
     for (size_t windingIndex = 0; windingIndex < coil.get_functional_description().size(); ++windingIndex) {
         seriesResistancePerWindingPerParallel.push_back(std::vector<double>(coil.get_number_parallels(windingIndex), 0));
@@ -374,10 +444,7 @@ WindingLossesOutput WindingOhmicLosses::calculate_ohmic_losses(Coil coil, Operat
         auto windingIndex = coil.get_winding_index_by_name(turn.get_winding());
         auto parallelIndex = checked_parallel_index(coil, turn, windingIndex);
 
-        double wireLength = turn.get_length();
-        if (std::isnan(wireLength)) {
-            throw NaNResultException("NaN found in wireLength value");
-        }
+        double wireLength = calculate_turn_conductor_length(turn, wirePerWinding[windingIndex], toroidal);
         if (!dcResistancePerMeterPerWinding[windingIndex]) {
             dcResistancePerMeterPerWinding[windingIndex] = calculate_dc_resistance_per_meter(wirePerWinding[windingIndex], temperature);
         }

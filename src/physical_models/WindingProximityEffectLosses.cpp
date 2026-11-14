@@ -1791,18 +1791,29 @@ double WindingProximityEffectLossesMartinezModel::calculate_flat_cell_losses(dou
     const double surfaceResistanceOverTwo = resistivity / skinDepth / 2;  // 1 / (2 sigma delta)
     const double endTerm = calculate_flat_cell_end_term(nu);
 
+    // Per metre of the turn (the caller multiplies by its length): each cell over its own length, as a share of the turn's
+    // (FlatTurnCells::cellLengthRatios), and the uniform sheet the skin step books over the conductor's own length
+    // (conductorLengthRatio). That sheet is the least the cells can carry: sum_e w_e (L_e / L_t) |K_e|^2 is least for the
+    // DC split K_e ~ 1 / L_e, |I|^2 / sum_e (w_e L_t / L_e) = (L_c / L_t) |I|^2 / W, L_c the conductor's length, since the
+    // cells' lengths combine as their conductances do. So the remainder is never below 0.
+    if (flat.cellLengthRatios.size() != numberCells || !(flat.conductorLengthRatio > 0)) {
+        throw InvalidInputException(ErrorCode::INVALID_INPUT, "Width cells: " + std::to_string(flat.cellLengthRatios.size()) + " cell lengths for " +
+                                    std::to_string(numberCells) + " cells, conductor length ratio " + std::to_string(flat.conductorLengthRatio));
+    }
     double losses = 0;
     std::complex<double> turnCurrent = 0;
     for (size_t cellIndex = 0; cellIndex < numberCells; ++cellIndex) {
         const double cellWidth = flat.cellWidths[cellIndex];
         const double sheetCurrentSquared = std::norm(cellCurrents[cellIndex] / cellWidth);
-        losses += cellWidth * (2 * parallelFieldSquared[cellIndex] * (functionF - 2 * functionG) + sheetCurrentSquared * (functionF / 2 + functionG));
+        losses += flat.cellLengthRatios[cellIndex] * cellWidth *
+                  (2 * parallelFieldSquared[cellIndex] * (functionF - 2 * functionG) + sheetCurrentSquared * (functionF / 2 + functionG));
         turnCurrent += cellCurrents[cellIndex];
     }
-    losses += endTerm * flat.thickness * 2 * (parallelFieldSquared.front() + parallelFieldSquared.back());
-    losses -= flat.width * std::norm(turnCurrent / flat.width) * (functionF / 2 + functionG);
+    losses += endTerm * flat.thickness * 2 * (flat.cellLengthRatios.front() * parallelFieldSquared.front() + flat.cellLengthRatios.back() * parallelFieldSquared.back());
+    const double uniformSheet = flat.conductorLengthRatio * flat.width * std::norm(turnCurrent / flat.width);
+    losses -= uniformSheet * (functionF / 2 + functionG);
     losses *= surfaceResistanceOverTwo;
-    if (!(losses >= -1e-9 * std::abs(surfaceResistanceOverTwo * flat.width * std::norm(turnCurrent / flat.width)))) {
+    if (!(losses >= -1e-9 * std::abs(surfaceResistanceOverTwo * uniformSheet))) {
         throw CalculationException(ErrorCode::CALCULATION_INVALID_RESULT, "Width cells: negative proximity loss " + std::to_string(losses) + " W/m");
     }
     return losses;

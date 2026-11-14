@@ -190,6 +190,16 @@ struct FlatTurnCells {
     // frame's point turned by -angle) and its width.
     std::vector<double> cellCentres;
     std::vector<double> cellWidths;
+    // Per cell, its own length over the turn's: every loss of the cell (its DC share, its slab and end terms) is booked over
+    // its own length, not the turn's (WindingOhmicLosses::calculate_band_length: the cell between the offsets u0 and u1
+    // outwards of the turn's centre line, away from its column, is a ring as long as 2 pi (u1 - u0) / ln((L + 2 pi u1) /
+    // (L + 2 pi u0)), whatever the column's shape). Cells cut across the window's y all span the conductor's x, so each is as
+    // long as the conductor. 1 on a toroid (calculate_turn_conductor_length leaves its flat conductors at the turn's length)
+    // and for a turn of zero length (no loop: it books nothing).
+    std::vector<double> cellLengthRatios;
+    // The conductor's own length over the turn's (WindingOhmicLosses::calculate_turn_conductor_length): the length its DC
+    // and skin losses are booked over. The cells' lengths combine to it as their conductances do.
+    double conductorLengthRatio = 0;
     // The cuts: the end cells and every cell from the ends inwards are one thickness wide for endCellCount cells, then
     // each grows by cellGrowth up to maximumCellWidthInThicknesses thicknesses. The innermost remainder joins the last cell
     // when it is under half of it. Fixed geometry, the same at every harmonic.

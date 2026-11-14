@@ -305,6 +305,7 @@ WindingLossesOutput WindingSkinEffectLosses::calculate_skin_effect_losses(Coil c
     };
 
     std::map<std::tuple<size_t, uint64_t, int>, std::vector<std::pair<double, double>>> lossesPerMeterPerWindingAndDivider;
+    const bool toroidal = coil.resolve_bobbin().get_winding_window_shape() == WindingWindowShape::ROUND;
     for (size_t turnIndex = 0; turnIndex < turns.size(); ++turnIndex)
     {
         const auto& turn = turns[turnIndex];
@@ -333,7 +334,10 @@ WindingLossesOutput WindingSkinEffectLosses::calculate_skin_effect_losses(Coil c
             (wire.get_type() == WireType::RECTANGULAR || wire.get_type() == WireType::FOIL || wire.get_type() == WireType::PLANAR)) {
             turnModelOverride = WindingSkinEffectLossesModels::FERREIRA;
         }
-        double wireLength = turn.get_length();
+        // The skin loss is the loss above DC of the turn's current, so it is booked over the length the DC loss is
+        // (WindingOhmicLosses::calculate_turn_conductor_length, the conductor's own length): a flat turn's cell kernel takes
+        // off the uniform sheet over that same length, and at DC the cells (each over its own length) give exactly it.
+        double wireLength = WindingOhmicLosses::calculate_turn_conductor_length(turn, wire, toroidal);
 
         if (static_cast<size_t>(windingIndex) >= operatingPoint.get_excitations_per_winding().size() ||
             !operatingPoint.get_excitations_per_winding()[windingIndex].get_current()) {

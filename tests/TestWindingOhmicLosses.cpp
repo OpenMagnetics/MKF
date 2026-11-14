@@ -6,6 +6,8 @@
 
 #include "TestingUtils.h"
 #include <catch2/catch_test_macros.hpp>
+#include <cmath>
+#include <numbers>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
 
 using namespace MAS;
@@ -64,7 +66,7 @@ namespace {
         wire.set_type(WireType::ROUND);
 
         auto windingOhmicLosses = WindingOhmicLosses();
-        double dcResistance = windingOhmicLosses.calculate_dc_resistance(turn, wire, temperature);
+        double dcResistance = windingOhmicLosses.calculate_dc_resistance(turn, wire, temperature, false);
         double expectedDcResistance = 211.1e-3;
         REQUIRE_THAT(expectedDcResistance, Catch::Matchers::WithinAbs(dcResistance, expectedDcResistance * maximumError));
     }
@@ -80,7 +82,7 @@ namespace {
         wire.set_type(WireType::ROUND);
 
         auto windingOhmicLosses = WindingOhmicLosses();
-        double dcResistance = windingOhmicLosses.calculate_dc_resistance(turn, wire, temperature);
+        double dcResistance = windingOhmicLosses.calculate_dc_resistance(turn, wire, temperature, false);
         double expectedDcResistance = 357e-3;
         REQUIRE_THAT(expectedDcResistance, Catch::Matchers::WithinAbs(dcResistance, expectedDcResistance * maximumError));
     }
@@ -102,7 +104,7 @@ namespace {
         wire.set_type(WireType::LITZ);
 
         auto windingOhmicLosses = WindingOhmicLosses();
-        double dcResistance = windingOhmicLosses.calculate_dc_resistance(turn, wire, temperature);
+        double dcResistance = windingOhmicLosses.calculate_dc_resistance(turn, wire, temperature, false);
         double expectedDcResistance = 0.4625;
         REQUIRE_THAT(expectedDcResistance, Catch::Matchers::WithinAbs(dcResistance, expectedDcResistance * maximumError));
     }
@@ -124,7 +126,7 @@ namespace {
         wire.set_type(WireType::LITZ);
 
         auto windingOhmicLosses = WindingOhmicLosses();
-        double dcResistance = windingOhmicLosses.calculate_dc_resistance(turn, wire, temperature);
+        double dcResistance = windingOhmicLosses.calculate_dc_resistance(turn, wire, temperature, false);
         double expectedDcResistance = 0.0025;
         REQUIRE_THAT(expectedDcResistance, Catch::Matchers::WithinAbs(dcResistance, expectedDcResistance * maximumError));
     }
@@ -141,7 +143,7 @@ namespace {
         wire.set_type(WireType::FOIL);
 
         auto windingOhmicLosses = WindingOhmicLosses();
-        double dcResistance = windingOhmicLosses.calculate_dc_resistance(turn, wire, temperature);
+        double dcResistance = windingOhmicLosses.calculate_dc_resistance(turn, wire, temperature, false);
         double expectedDcResistance = 3.3e-3;
         REQUIRE_THAT(expectedDcResistance, Catch::Matchers::WithinAbs(dcResistance, expectedDcResistance * maximumError));
     }
@@ -158,9 +160,58 @@ namespace {
         wire.set_type(WireType::FOIL);
 
         auto windingOhmicLosses = WindingOhmicLosses();
-        double dcResistance = windingOhmicLosses.calculate_dc_resistance(turn, wire, temperature);
+        double dcResistance = windingOhmicLosses.calculate_dc_resistance(turn, wire, temperature, false);
         double expectedDcResistance = 3.3e-3;
         REQUIRE_THAT(expectedDcResistance, Catch::Matchers::WithinAbs(dcResistance, expectedDcResistance * maximumError));
+    }
+
+    TEST_CASE("Test_Dc_Resistance_Of_A_Wide_Turn_Is_Its_Ring", "[physical-model][ohmic-losses][abt-2384]") {
+        // A wide turn is booked over its conductor's own length, not its centre line's: each part of a 5 x 0.5 mm trace
+        // round a post (centre radius 8.6 mm, ER 28 plate trace of ABT #2384) is a ring of its own radius, and the exact
+        // DC resistance of the annulus is rho 2 pi / (t ln(r_out / r_in)), 2.9 % under rho 2 pi r_t / (w t). A solid round
+        // wire of radius a on a loop of radius R conducts sigma (R - sqrt(R^2 - a^2)), the integral of 1 / (2 pi r) over
+        // its disc. Litz is transposed (every strand runs at every offset), so its turn length is its own.
+        const double temperature = 20;
+        const double turnRadius = 0.0086;
+        Turn turn;
+        turn.set_name("trace");
+        turn.set_length(2 * std::numbers::pi * turnRadius);
+
+        OpenMagnetics::Wire trace;
+        trace.set_nominal_value_conducting_width(0.005);
+        trace.set_nominal_value_conducting_height(0.0005);
+        trace.set_material("copper");
+        trace.set_type(WireType::PLANAR);
+        const double resistivity = WindingOhmicLosses::calculate_dc_resistance_per_meter(trace, temperature) * trace.calculate_conducting_area();
+        const double ring = resistivity * 2 * std::numbers::pi / (0.0005 * std::log((turnRadius + 0.0025) / (turnRadius - 0.0025)));
+        CHECK_THAT(WindingOhmicLosses::calculate_dc_resistance(turn, trace, temperature, false), Catch::Matchers::WithinRel(ring, 1e-9));
+        // Rotated a quarter turn, the 5 mm side runs along the window's y: the ring is 0.5 mm wide radially.
+        turn.set_rotation(90);
+        const double tallRing = resistivity * 2 * std::numbers::pi / (0.005 * std::log((turnRadius + 0.00025) / (turnRadius - 0.00025)));
+        CHECK_THAT(WindingOhmicLosses::calculate_dc_resistance(turn, trace, temperature, false), Catch::Matchers::WithinRel(tallRing, 1e-9));
+        turn.set_rotation(0);
+        // On a toroid a flat conductor stays at the turn's length (its cells are not weighed by offset there either).
+        CHECK_THAT(WindingOhmicLosses::calculate_dc_resistance(turn, trace, temperature, true),
+                   Catch::Matchers::WithinRel(resistivity / trace.calculate_conducting_area() * turn.get_length(), 1e-12));
+
+        OpenMagnetics::Wire round;
+        round.set_nominal_value_conducting_diameter(0.004);
+        round.set_material("copper");
+        round.set_type(WireType::ROUND);
+        const double roundResistivity = WindingOhmicLosses::calculate_dc_resistance_per_meter(round, temperature) * round.calculate_conducting_area();
+        const double radius = 0.002;
+        const double roundRing = roundResistivity / (turnRadius - std::sqrt(turnRadius * turnRadius - radius * radius));
+        CHECK_THAT(WindingOhmicLosses::calculate_dc_resistance(turn, round, temperature, false), Catch::Matchers::WithinRel(roundRing, 1e-9));
+        CHECK(WindingOhmicLosses::calculate_dc_resistance(turn, round, temperature, false) < roundResistivity / round.calculate_conducting_area() * turn.get_length());
+
+        // The cells of a conductor combine to it: the lengths of adjacent bands add as conductances.
+        const double whole = WindingOhmicLosses::calculate_band_length(turn.get_length(), -0.0025, 0.0025);
+        const double inner = WindingOhmicLosses::calculate_band_length(turn.get_length(), -0.0025, -0.002);
+        const double outer = WindingOhmicLosses::calculate_band_length(turn.get_length(), -0.002, 0.0025);
+        CHECK_THAT(0.005 / whole, Catch::Matchers::WithinRel(0.0005 / inner + 0.0045 / outer, 1e-12));
+        // A turn of zero length is no loop.
+        turn.set_length(0);
+        CHECK(WindingOhmicLosses::calculate_dc_resistance(turn, trace, temperature, false) == 0);
     }
 
     TEST_CASE("Test_Winding_Ohmic_Losses_Unresolvable_Current", "[physical-model][ohmic-losses][bug]") {

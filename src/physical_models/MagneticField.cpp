@@ -5503,6 +5503,8 @@ std::optional<ParallelCurrentSplit> MagneticField::calculate_parallel_current_sp
         }
     }
     if (impedanceModel && resolveFlatTurnsPerWinding) {
+        const bool toroidalCoil = magnetic.get_mutable_coil().resolve_bobbin().get_winding_window_shape() == WindingWindowShape::ROUND;
+        std::map<std::string, double> columnAxisPerSection;
         for (size_t turnIndex = 0; turnIndex < turns.size(); ++turnIndex) {
             const size_t windingIndex = windingPerTurn[turnIndex];
             if (!resolveFlatTurnsPerWinding->at(windingIndex)) {
@@ -5554,6 +5556,39 @@ std::optional<ParallelCurrentSplit> MagneticField::calculate_parallel_current_sp
             for (double cellWidth : flat.cellWidths) {
                 flat.cellCentres.push_back(edge + cellWidth / 2);
                 edge += cellWidth;
+            }
+            // Every cell over its own length (FlatTurnCells::cellLengthRatios), from the coil's whole loop (a crossing of the
+            // split runs over its share of it).
+            const auto& coilTurn = coilTurns[coilTurnPerTurn[turnIndex]];
+            const double turnLength = coilTurn.get_length();
+            if (turnLength == 0 || toroidalCoil) {
+                flat.conductorLengthRatio = 1;
+                flat.cellLengthRatios.assign(flat.cellWidths.size(), 1.0);
+            }
+            else {
+                flat.conductorLengthRatio = WindingOhmicLosses::calculate_turn_conductor_length(coilTurn, wire, false) / turnLength;
+                if (flat.wideAlongX) {
+                    // Outwards = away from the axis of the column the turn is wound round, on this crossing's side of it.
+                    if (!turns[turnIndex].get_section()) {
+                        throw CoilNotProcessedException("Width cells: turn " + turns[turnIndex].get_name() + " names no section to find its column by");
+                    }
+                    const std::string sectionName = turns[turnIndex].get_section().value();
+                    auto frame = columnAxisPerSection.find(sectionName);
+                    if (frame == columnAxisPerSection.end()) {
+                        frame = columnAxisPerSection.emplace(sectionName, magnetic.get_mutable_coil().get_wound_column_frame_for_section(sectionName).axisX).first;
+                    }
+                    const double outwards = flat.centreX >= frame->second ? 1.0 : -1.0;
+                    double cellEdge = alongCentre - wide / 2;
+                    for (double cellWidth : flat.cellWidths) {
+                        const double first = outwards * (cellEdge - alongCentre);
+                        const double second = outwards * (cellEdge + cellWidth - alongCentre);
+                        flat.cellLengthRatios.push_back(WindingOhmicLosses::calculate_band_length(turnLength, std::min(first, second), std::max(first, second)) / turnLength);
+                        cellEdge += cellWidth;
+                    }
+                }
+                else {
+                    flat.cellLengthRatios.assign(flat.cellWidths.size(), flat.conductorLengthRatio);
+                }
             }
             split.flatTurnPerTurn[turnIndex] = split.flatTurns.size();
             split.flatTurns.push_back(std::move(flat));
@@ -5805,10 +5840,23 @@ std::optional<ParallelCurrentSplit> MagneticField::calculate_parallel_current_sp
         }
         }
     }
+    // Per conductor of the split, its conductor's own length over its length (WindingOhmicLosses::
+    // calculate_turn_conductor_length, taken on the coil's whole loop: a crossing runs over its share of it). 1 for a turn of
+    // zero length, which has no loop and books nothing.
+    const bool toroidalWindow = magnetic.get_mutable_coil().resolve_bobbin().get_winding_window_shape() == WindingWindowShape::ROUND;
+    std::vector<double> conductorLengthRatioPerTurn(turns.size(), 1.0);
+    for (size_t turnIndex = 0; turnIndex < turns.size(); ++turnIndex) {
+        const auto& coilTurn = coilTurns[coilTurnPerTurn[turnIndex]];
+        if (coilTurn.get_length() != 0) {
+            conductorLengthRatioPerTurn[turnIndex] =
+                WindingOhmicLosses::calculate_turn_conductor_length(coilTurn, wires[windingPerTurn[turnIndex]], toroidalWindow) / coilTurn.get_length();
+        }
+    }
     // Strand resistance.
     std::vector<double> strandResistance(numberStrands, 0.0);
     for (size_t turnIndex = 0; turnIndex < turns.size(); ++turnIndex) {
-        strandResistance[split.strandPerTurn[turnIndex]] += WindingOhmicLosses::calculate_dc_resistance(turns[turnIndex], wires[windingPerTurn[turnIndex]], temperature);
+        strandResistance[split.strandPerTurn[turnIndex]] += WindingOhmicLosses::calculate_dc_resistance(turns[turnIndex].get_length() * conductorLengthRatioPerTurn[turnIndex],
+                                                                                                        wires[windingPerTurn[turnIndex]], temperature);
     }
     auto connectionResistance = WindingOhmicLosses::calculate_connection_resistance_per_winding_per_parallel(coil, temperature);
     std::vector<double> strandConnectionResistance(numberStrands, 0.0);
@@ -5904,8 +5952,9 @@ std::optional<ParallelCurrentSplit> MagneticField::calculate_parallel_current_sp
     std::vector<std::optional<size_t>> wallGroupPerElement;
     std::vector<std::vector<size_t>> cellsPerTurn;
     // A round-post window (AxisymmetricWindow): every element is a ring. Each element's equation is divided by its turn's
-    // circumference 2 pi r_t, so the cells of a turn still share one E_t = V_t / (2 pi r_t): R' r_e / r_t J_e + j omega
-    // Lambda_e / (2 pi r_t) = E_t, Lambda_e the flux linked (read from one point of the post face, see the strand system).
+    // circumference 2 pi r_t, so the cells of a turn still share one E_t = V_t / (2 pi r_t): R' L_e / L_t J_e + j omega
+    // Lambda_e / (2 pi r_t) = E_t, Lambda_e the flux linked (read from one point of the post face, see the strand system),
+    // L_e / L_t the cell's own length over the turn's (FlatTurnCells::cellLengthRatios, in every window, not only here).
     std::optional<AxisymmetricWindow> elementWindow;
     if (flatCells && impedanceModel && AxisymmetricWindow::applies(core, magnetic.get_coil())) {
         elementWindow = AxisymmetricWindow::from_core(core);
@@ -5942,8 +5991,8 @@ std::optional<ParallelCurrentSplit> MagneticField::calculate_parallel_current_sp
                         element.images.push_back({imaged, image.weight});
                         element.isImage.push_back(image.isImage);
                     }
-                    // The turn's DC resistance over the cell's share of its section.
-                    element.resistancePerLength = resistancePerLength * flat.width / flat.cellWidths[source.cellIndex];
+                    // The turn's DC resistance over the cell's share of its section, over the cell's own length.
+                    element.resistancePerLength = resistancePerLength * flat.width / flat.cellWidths[source.cellIndex] * flat.cellLengthRatios.at(source.cellIndex);
                     element.globalCell = source.globalCell;
                     element.kernel = source.kernel;
                     element.rectangle = true;
@@ -5956,7 +6005,7 @@ std::optional<ParallelCurrentSplit> MagneticField::calculate_parallel_current_sp
             element.turnIndex = turnIndex;
             element.section = sectionPerTurn[turnIndex];
             element.images = sourcesPerTurn[turnIndex];
-            element.resistancePerLength = resistancePerLength;
+            element.resistancePerLength = resistancePerLength * conductorLengthRatioPerTurn[turnIndex];
             element.rectangle = !element.section.round;
             if (element.rectangle) {
                 element.kernel = RectangleFieldKernel(element.section.halfWidth, element.section.halfHeight);
@@ -6003,7 +6052,6 @@ std::optional<ParallelCurrentSplit> MagneticField::calculate_parallel_current_sp
             for (size_t elementIndex = 0; elementIndex < numberElements; ++elementIndex) {
                 auto& element = elements[elementIndex];
                 turnRadiusPerElement[elementIndex] = sectionPerTurn[element.turnIndex].x;
-                element.resistancePerLength *= element.section.x / turnRadiusPerElement[elementIndex];
                 auto mismatch = elementWindow->empty_mismatch();
                 for (size_t imageIndex = 0; imageIndex < element.images.size(); ++imageIndex) {
                     const bool conductor = element.isImage.empty() ? imageIndex == static_cast<size_t>(AxisymmetricWindow::planeImages) : !element.isImage[imageIndex];
