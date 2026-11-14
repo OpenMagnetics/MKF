@@ -1577,6 +1577,9 @@ const std::vector<double>& CoilMesher::slot_mouth_boundaries(bool atWindowCorner
             }
             for (int iteration = 0; iteration < 90; ++iteration) {
                 const double middle = (low + high) / 2;
+                if (middle == low || middle == high) {
+                    break;  // adjacent doubles: every further step would leave low and high as they are
+                }
                 if (z_of(std::polar(std::exp(middle), angle)).real() < 0) {
                     low = middle;
                 }

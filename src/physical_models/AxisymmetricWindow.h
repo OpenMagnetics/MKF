@@ -109,6 +109,12 @@ public:
         double zStart;
         double zEnd;
         double tangentialField;
+        // Geometry of its tail series, filled by wall_sources: the angles of its ends, pi (z - zBottom) / height, and
+        // sin(n angle) for the modes n = 1.. the correction keeps (element n - 1), so band_tail does not recompute them per point.
+        double angleStart = 0;
+        double angleEnd = 0;
+        std::vector<double> sineAtStart;
+        std::vector<double> sineAtEnd;
     };
     struct WallSources {
         std::vector<PlateRing> plateRings;

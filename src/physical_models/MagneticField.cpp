@@ -10,6 +10,8 @@
 #include "processors/MagneticSimulator.h"
 #include "physical_models/InitialPermeability.h"
 #include <map>
+#include <limits>
+#include <tuple>
 #include "physical_models/WindingOhmicLosses.h"
 #include "support/Settings.h"
 #include "support/Utils.h"
@@ -1339,6 +1341,8 @@ WindingWindowMagneticStrengthFieldPhasorOutput MagneticField::calculate_magnetic
         std::array<double, 4> moment;  // the image's moment per unit site moment, row-major
     };
     std::vector<DipoleImage> dipoleImages;
+    std::vector<bool> dipoleSiteReadsTurnPoint;  // per site: H0 is read at an evaluated point of its turn, not at a hidden one
+    std::map<std::tuple<int64_t, double, double>, size_t> siteByCrossing;  // (turn, x, y) of each site's crossing
     auto dipole_region_of = [&](double pointX, double pointY) -> std::optional<size_t> {
         if (coreShapeFamily == CoreShapeFamily::T) {
             if (!toroidRingRegions) {
@@ -1412,9 +1416,38 @@ WindingWindowMagneticStrengthFieldPhasorOutput MagneticField::calculate_magnetic
                 }
             }
         }
+        // A site whose crossing already has an evaluated point of its turn (same position, a label that takes the full
+        // field) reads that point's H0; only the others get a hidden "dipolesite" point. The induced points are the same
+        // at every harmonic, so the first harmonic's decides. Not with resolved flat turns: their cells' field operator is
+        // compressed over the evaluated points (FlatTurnCells::operatorTolerance), so it depends on the whole point set,
+        // hidden points included, and leaving those out would move the other points' fields within that tolerance.
+        dipoleSiteReadsTurnPoint.assign(dipoleSites.size(), false);
+        const bool flatCellOperatorOverPoints = parallelCurrentSplit && !parallelCurrentSplit->flatTurns.empty();
+        if (!inducedFields.empty() && !flatCellOperatorOverPoints) {
+            for (size_t site = 0; site < dipoleSites.size(); ++site) {
+                siteByCrossing.emplace(std::make_tuple(dipoleSites[site].turnIndex, dipoleSites[site].x, dipoleSites[site].y), site);
+            }
+            for (const auto& point : inducedFields[0].get_data()) {
+                if (!point.get_turn_index() || point.get_point().size() < 2) {
+                    continue;
+                }
+                const auto& label = point.get_label();
+                if (label && (label.value() == "widthsample" || label.value() == "cellsample")) {
+                    continue;
+                }
+                auto found = siteByCrossing.find(std::make_tuple(static_cast<int64_t>(point.get_turn_index().value()), point.get_point()[0], point.get_point()[1]));
+                if (found != siteByCrossing.end()) {
+                    dipoleSiteReadsTurnPoint[found->second] = true;
+                }
+            }
+        }
         for (auto& inducedField : inducedFields) {
             auto& inducedData = inducedField.get_mutable_data();
-            for (const auto& site : dipoleSites) {
+            for (size_t siteIndex = 0; siteIndex < dipoleSites.size(); ++siteIndex) {
+                if (dipoleSiteReadsTurnPoint[siteIndex]) {
+                    continue;
+                }
+                const auto& site = dipoleSites[siteIndex];
                 FieldPoint point;
                 point.set_point({site.x, site.y});
                 point.set_value(0);
@@ -2985,27 +3018,61 @@ WindingWindowMagneticStrengthFieldPhasorOutput MagneticField::calculate_magnetic
             const auto& m = image.moment;
             return std::array<double, 4>{u * m[0] + v * m[2], u * m[1] + v * m[3], v * m[0] - u * m[2], v * m[1] - u * m[3]};
         };
+        // The sites' moments per harmonic (empty where the harmonic adds no reaction).
+        std::vector<std::vector<std::complex<double>>> momentXPerHarmonic(complexFieldPerHarmonic.size());
+        std::vector<std::vector<std::complex<double>>> momentYPerHarmonic(complexFieldPerHarmonic.size());
         for (size_t harmonicIndex = 0; harmonicIndex < complexFieldPerHarmonic.size(); ++harmonicIndex) {
             auto& inPhaseData = complexFieldPerHarmonic[harmonicIndex].get_mutable_data();
             auto& quadratureData = quadratureComplexFieldPerHarmonic[harmonicIndex].get_mutable_data();
             const double frequency = complexFieldPerHarmonic[harmonicIndex].get_frequency();
-            // The sites' points are the last numberSites of this harmonic's list (appended in order above), unless a branch
-            // skipped points inside the core: find them by label.
-            std::vector<size_t> sitePointIndex;
-            sitePointIndex.reserve(numberSites);
+            // A site reading a point of its turn finds it by turn and position; the others take the hidden "dipolesite" points,
+            // appended in site order above.
+            constexpr size_t unassigned = std::numeric_limits<size_t>::max();
+            std::vector<size_t> sitePointIndex(numberSites, unassigned);
+            size_t nextHiddenSite = 0;
+            size_t assignedSites = 0;
             for (size_t pointIndex = 0; pointIndex < inPhaseData.size(); ++pointIndex) {
-                const auto& label = inPhaseData[pointIndex].get_label();
+                const auto& point = inPhaseData[pointIndex];
+                const auto& label = point.get_label();
                 if (label && label.value() == "dipolesite") {
-                    sitePointIndex.push_back(pointIndex);
+                    while (nextHiddenSite < numberSites && dipoleSiteReadsTurnPoint[nextHiddenSite]) {
+                        ++nextHiddenSite;
+                    }
+                    if (nextHiddenSite < numberSites) {
+                        sitePointIndex[nextHiddenSite++] = pointIndex;
+                        ++assignedSites;
+                    }
+                    continue;
+                }
+                if (!point.get_turn_index() || (label && (label.value() == "widthsample" || label.value() == "cellsample"))) {
+                    continue;
+                }
+                auto found = siteByCrossing.find(std::make_tuple(static_cast<int64_t>(point.get_turn_index().value()), point.get_point()[0], point.get_point()[1]));
+                if (found != siteByCrossing.end() && dipoleSiteReadsTurnPoint[found->second] && sitePointIndex[found->second] == unassigned) {
+                    sitePointIndex[found->second] = pointIndex;
+                    ++assignedSites;
                 }
             }
-            if (sitePointIndex.size() != numberSites) {
-                throw CalculationException(ErrorCode::CALCULATION_INVALID_RESULT, "Round-wire eddy reaction: " + std::to_string(sitePointIndex.size()) +
+            if (assignedSites != numberSites) {
+                throw CalculationException(ErrorCode::CALCULATION_INVALID_RESULT, "Round-wire eddy reaction: " + std::to_string(assignedSites) +
                                            " of the " + std::to_string(numberSites) + " round crossings were evaluated");
             }
-            if (frequency > 0) {
-                std::vector<std::complex<double>> polarisability(numberSites);
-                for (size_t site = 0; site < numberSites; ++site) {
+            if (!(frequency > 0)) {
+                continue;
+            }
+            Eigen::VectorXcd external(2 * numberSites);
+            for (size_t site = 0; site < numberSites; ++site) {
+                const auto& inPhase = inPhaseData[sitePointIndex[site]];
+                const auto& quadrature = quadratureData[sitePointIndex[site]];
+                external(2 * site) = std::complex<double>(inPhase.get_real(), quadrature.get_real());
+                external(2 * site + 1) = std::complex<double>(inPhase.get_imaginary(), quadrature.get_imaginary());
+            }
+            // The polarisability depends on the wire and the frequency only: once per winding.
+            std::vector<std::optional<std::complex<double>>> polarisabilityPerWinding(_wirePerWinding.size());
+            std::vector<std::complex<double>> polarisability(numberSites);
+            for (size_t site = 0; site < numberSites; ++site) {
+                auto& perWinding = polarisabilityPerWinding[dipoleSites[site].windingIndex];
+                if (!perWinding) {
                     const double skinDepth = WindingSkinEffectLosses::calculate_skin_depth(_wirePerWinding[dipoleSites[site].windingIndex], frequency, temperature);
                     const std::complex<double> x = std::complex<double>(1, -1) * dipoleSites[site].radius / skinDepth;
                     // J1(x) / J0(x) by backward recurrence of the ratios J_n / J_{n-1} = 1 / (2 n / x - J_{n+1} / J_n).
@@ -3013,97 +3080,150 @@ WindingWindowMagneticStrengthFieldPhasorOutput MagneticField::calculate_magnetic
                     for (int order = static_cast<int>(std::abs(x)) + 40; order >= 1; --order) {
                         ratio = 1.0 / (2.0 * order / x - ratio);
                     }
-                    polarisability[site] = (2.0 * ratio / x - 1.0) * dipoleSites[site].radius * dipoleSites[site].radius;
+                    perWinding = (2.0 * ratio / x - 1.0) * dipoleSites[site].radius * dipoleSites[site].radius;
                 }
-                Eigen::MatrixXcd system = Eigen::MatrixXcd::Identity(2 * numberSites, 2 * numberSites);
-                Eigen::VectorXcd external(2 * numberSites);
+                polarisability[site] = perWinding.value();
+            }
+            // The couplings are recomputed per harmonic rather than stored: storing them would cost several times the
+            // system's own memory, which the WebAssembly build cannot afford.
+            Eigen::MatrixXcd system = Eigen::MatrixXcd::Identity(2 * numberSites, 2 * numberSites);
+            for (size_t site = 0; site < numberSites; ++site) {
+                for (size_t other = 0; other < numberSites; ++other) {
+                    if (other == site || dipoleSites[other].region != dipoleSites[site].region) {
+                        continue;
+                    }
+                    const double siteDx = dipoleSites[site].x - dipoleSites[other].x;
+                    const double siteDy = dipoleSites[site].y - dipoleSites[other].y;
+                    if (siteDx * siteDx + siteDy * siteDy < dipoleSites[other].radius * dipoleSites[other].radius) {
+                        throw CalculationException(ErrorCode::CALCULATION_INVALID_RESULT, "Round-wire eddy reaction: crossings of turns " +
+                                                   std::to_string(dipoleSites[site].turnIndex) + " and " + std::to_string(dipoleSites[other].turnIndex) +
+                                                   " overlap at (" + std::to_string(dipoleSites[site].x) + ", " + std::to_string(dipoleSites[site].y) + ") and (" +
+                                                   std::to_string(dipoleSites[other].x) + ", " + std::to_string(dipoleSites[other].y) + ")");
+                    }
+                    const auto [u, v] = kernel(siteDx, siteDy);
+                    const std::complex<double> weight = polarisability[other];
+                    system(2 * site, 2 * other) -= weight * u;
+                    system(2 * site, 2 * other + 1) -= weight * v;
+                    system(2 * site + 1, 2 * other) -= weight * v;
+                    system(2 * site + 1, 2 * other + 1) += weight * u;
+                }
+                for (const auto& image : dipoleImages) {
+                    if (dipoleSites[image.site].region != dipoleSites[site].region) {
+                        continue;
+                    }
+                    const auto k = image_kernel(image, dipoleSites[site].x - image.x, dipoleSites[site].y - image.y);
+                    const std::complex<double> weight = polarisability[image.site];
+                    system(2 * site, 2 * image.site) -= weight * k[0];
+                    system(2 * site, 2 * image.site + 1) -= weight * k[1];
+                    system(2 * site + 1, 2 * image.site) -= weight * k[2];
+                    system(2 * site + 1, 2 * image.site + 1) -= weight * k[3];
+                }
+            }
+            if (!external.allFinite()) {
                 for (size_t site = 0; site < numberSites; ++site) {
-                    const auto& inPhase = inPhaseData[sitePointIndex[site]];
-                    const auto& quadrature = quadratureData[sitePointIndex[site]];
-                    external(2 * site) = std::complex<double>(inPhase.get_real(), quadrature.get_real());
-                    external(2 * site + 1) = std::complex<double>(inPhase.get_imaginary(), quadrature.get_imaginary());
-                    for (size_t other = 0; other < numberSites; ++other) {
-                        if (other == site || dipoleSites[other].region != dipoleSites[site].region) {
-                            continue;
-                        }
-                        const double siteDx = dipoleSites[site].x - dipoleSites[other].x;
-                        const double siteDy = dipoleSites[site].y - dipoleSites[other].y;
-                        if (siteDx * siteDx + siteDy * siteDy < dipoleSites[other].radius * dipoleSites[other].radius) {
-                            throw CalculationException(ErrorCode::CALCULATION_INVALID_RESULT, "Round-wire eddy reaction: crossings of turns " +
-                                                       std::to_string(dipoleSites[site].turnIndex) + " and " + std::to_string(dipoleSites[other].turnIndex) +
-                                                       " overlap at (" + std::to_string(dipoleSites[site].x) + ", " + std::to_string(dipoleSites[site].y) + ") and (" +
-                                                       std::to_string(dipoleSites[other].x) + ", " + std::to_string(dipoleSites[other].y) + ")");
-                        }
-                        const auto [u, v] = kernel(siteDx, siteDy);
-                        const std::complex<double> weight = polarisability[other];
-                        system(2 * site, 2 * other) -= weight * u;
-                        system(2 * site, 2 * other + 1) -= weight * v;
-                        system(2 * site + 1, 2 * other) -= weight * v;
-                        system(2 * site + 1, 2 * other + 1) += weight * u;
-                    }
-                    for (const auto& image : dipoleImages) {
-                        if (dipoleSites[image.site].region != dipoleSites[site].region) {
-                            continue;
-                        }
-                        const auto k = image_kernel(image, dipoleSites[site].x - image.x, dipoleSites[site].y - image.y);
-                        const std::complex<double> weight = polarisability[image.site];
-                        system(2 * site, 2 * image.site) -= weight * k[0];
-                        system(2 * site, 2 * image.site + 1) -= weight * k[1];
-                        system(2 * site + 1, 2 * image.site) -= weight * k[2];
-                        system(2 * site + 1, 2 * image.site + 1) -= weight * k[3];
+                    if (!std::isfinite(std::abs(external(2 * site))) || !std::isfinite(std::abs(external(2 * site + 1)))) {
+                        throw NaNResultException("Round-wire eddy reaction: the field at the crossing of turn " + std::to_string(dipoleSites[site].turnIndex) +
+                                                 " at (" + std::to_string(dipoleSites[site].x) + ", " + std::to_string(dipoleSites[site].y) + ") is not finite");
                     }
                 }
-                if (!external.allFinite()) {
-                    for (size_t site = 0; site < numberSites; ++site) {
-                        if (!std::isfinite(std::abs(external(2 * site))) || !std::isfinite(std::abs(external(2 * site + 1)))) {
-                            throw NaNResultException("Round-wire eddy reaction: the field at the crossing of turn " + std::to_string(dipoleSites[site].turnIndex) +
-                                                     " at (" + std::to_string(dipoleSites[site].x) + ", " + std::to_string(dipoleSites[site].y) + ") is not finite");
-                        }
+            }
+            if (external.isZero(0)) {
+                continue;  // no field at any site (a harmonic no winding carries): no moments, no reaction
+            }
+            const Eigen::VectorXcd fieldAtSites = system.partialPivLu().solve(external);
+            auto& momentX = momentXPerHarmonic[harmonicIndex];
+            auto& momentY = momentYPerHarmonic[harmonicIndex];
+            momentX.resize(numberSites);
+            momentY.resize(numberSites);
+            for (size_t site = 0; site < numberSites; ++site) {
+                momentX[site] = polarisability[site] * fieldAtSites(2 * site);
+                momentY[site] = polarisability[site] * fieldAtSites(2 * site + 1);
+            }
+        }
+        // The dipoles' field at every evaluated point. The points are the same at every harmonic, so each point's kernels
+        // are evaluated once and applied to every harmonic's moments, summed per harmonic in the same order as before.
+        std::vector<size_t> reactingHarmonics;
+        for (size_t harmonicIndex = 0; harmonicIndex < complexFieldPerHarmonic.size(); ++harmonicIndex) {
+            if (!momentXPerHarmonic[harmonicIndex].empty()) {
+                reactingHarmonics.push_back(harmonicIndex);
+            }
+        }
+        if (!reactingHarmonics.empty()) {
+            const auto& referenceData = complexFieldPerHarmonic[reactingHarmonics[0]].get_data();
+            for (size_t harmonicIndex : reactingHarmonics) {
+                const auto& data = complexFieldPerHarmonic[harmonicIndex].get_data();
+                if (data.size() != referenceData.size() || quadratureComplexFieldPerHarmonic[harmonicIndex].get_data().size() != referenceData.size()) {
+                    throw CalculationException(ErrorCode::CALCULATION_ERROR, "Round-wire eddy reaction: the evaluated points differ between harmonics");
+                }
+                for (size_t pointIndex = 0; pointIndex < data.size(); ++pointIndex) {
+                    if (data[pointIndex].get_point() != referenceData[pointIndex].get_point()) {
+                        throw CalculationException(ErrorCode::CALCULATION_ERROR, "Round-wire eddy reaction: evaluated point " + std::to_string(pointIndex) +
+                                                   " moves between harmonics");
                     }
                 }
-                const Eigen::VectorXcd fieldAtSites = system.partialPivLu().solve(external);
-                std::vector<std::complex<double>> momentX(numberSites);
-                std::vector<std::complex<double>> momentY(numberSites);
+            }
+            struct SiteTerm {
+                size_t site;
+                double u;
+                double v;
+            };
+            struct ImageTerm {
+                size_t site;
+                std::array<double, 4> kernel;
+            };
+            std::vector<SiteTerm> siteTerms;
+            std::vector<ImageTerm> imageTerms;
+            for (size_t pointIndex = 0; pointIndex < referenceData.size(); ++pointIndex) {
+                const double pointX = referenceData[pointIndex].get_point()[0];
+                const double pointY = referenceData[pointIndex].get_point()[1];
+                const auto pointRegion = dipole_region_of(pointX, pointY);
+                siteTerms.clear();
+                imageTerms.clear();
                 for (size_t site = 0; site < numberSites; ++site) {
-                    momentX[site] = polarisability[site] * fieldAtSites(2 * site);
-                    momentY[site] = polarisability[site] * fieldAtSites(2 * site + 1);
+                    if (dipoleSites[site].region != pointRegion) {
+                        continue;
+                    }
+                    const double dx = pointX - dipoleSites[site].x;
+                    const double dy = pointY - dipoleSites[site].y;
+                    if (dx * dx + dy * dy < dipoleSites[site].radius * dipoleSites[site].radius) {
+                        continue;  // inside the wire: its own field there is its skin model's
+                    }
+                    const auto [u, v] = kernel(dx, dy);
+                    siteTerms.push_back({site, u, v});
                 }
-                for (size_t pointIndex = 0; pointIndex < inPhaseData.size(); ++pointIndex) {
-                    auto& inPhase = inPhaseData[pointIndex];
-                    auto& quadrature = quadratureData[pointIndex];
-                    const double pointX = inPhase.get_point()[0];
-                    const double pointY = inPhase.get_point()[1];
-                    const auto pointRegion = dipole_region_of(pointX, pointY);
+                for (const auto& image : dipoleImages) {
+                    if (dipoleSites[image.site].region != pointRegion) {
+                        continue;
+                    }
+                    imageTerms.push_back({image.site, image_kernel(image, pointX - image.x, pointY - image.y)});
+                }
+                for (size_t harmonicIndex : reactingHarmonics) {
+                    const auto& momentX = momentXPerHarmonic[harmonicIndex];
+                    const auto& momentY = momentYPerHarmonic[harmonicIndex];
                     std::complex<double> reactionX = 0;
                     std::complex<double> reactionY = 0;
-                    for (size_t site = 0; site < numberSites; ++site) {
-                        if (dipoleSites[site].region != pointRegion) {
-                            continue;
-                        }
-                        const double dx = pointX - dipoleSites[site].x;
-                        const double dy = pointY - dipoleSites[site].y;
-                        if (dx * dx + dy * dy < dipoleSites[site].radius * dipoleSites[site].radius) {
-                            continue;  // inside the wire: its own field there is its skin model's
-                        }
-                        const auto [u, v] = kernel(dx, dy);
-                        reactionX += u * momentX[site] + v * momentY[site];
-                        reactionY += v * momentX[site] - u * momentY[site];
+                    for (const auto& term : siteTerms) {
+                        reactionX += term.u * momentX[term.site] + term.v * momentY[term.site];
+                        reactionY += term.v * momentX[term.site] - term.u * momentY[term.site];
                     }
-                    for (const auto& image : dipoleImages) {
-                        if (dipoleSites[image.site].region != pointRegion) {
-                            continue;
-                        }
-                        const auto k = image_kernel(image, pointX - image.x, pointY - image.y);
-                        reactionX += k[0] * momentX[image.site] + k[1] * momentY[image.site];
-                        reactionY += k[2] * momentX[image.site] + k[3] * momentY[image.site];
+                    for (const auto& term : imageTerms) {
+                        const auto& k = term.kernel;
+                        reactionX += k[0] * momentX[term.site] + k[1] * momentY[term.site];
+                        reactionY += k[2] * momentX[term.site] + k[3] * momentY[term.site];
                     }
+                    auto& inPhase = complexFieldPerHarmonic[harmonicIndex].get_mutable_data()[pointIndex];
+                    auto& quadrature = quadratureComplexFieldPerHarmonic[harmonicIndex].get_mutable_data()[pointIndex];
                     inPhase.set_real(inPhase.get_real() + reactionX.real());
                     inPhase.set_imaginary(inPhase.get_imaginary() + reactionY.real());
                     quadrature.set_real(quadrature.get_real() + reactionX.imag());
                     quadrature.set_imaginary(quadrature.get_imaginary() + reactionY.imag());
                 }
             }
-            auto is_site = [](const ComplexFieldPoint& point) { return point.get_label() && point.get_label().value() == "dipolesite"; };
+        }
+        auto is_site = [](const ComplexFieldPoint& point) { return point.get_label() && point.get_label().value() == "dipolesite"; };
+        for (size_t harmonicIndex = 0; harmonicIndex < complexFieldPerHarmonic.size(); ++harmonicIndex) {
+            auto& inPhaseData = complexFieldPerHarmonic[harmonicIndex].get_mutable_data();
+            auto& quadratureData = quadratureComplexFieldPerHarmonic[harmonicIndex].get_mutable_data();
             inPhaseData.erase(std::remove_if(inPhaseData.begin(), inPhaseData.end(), is_site), inPhaseData.end());
             quadratureData.erase(std::remove_if(quadratureData.begin(), quadratureData.end(), is_site), quadratureData.end());
         }

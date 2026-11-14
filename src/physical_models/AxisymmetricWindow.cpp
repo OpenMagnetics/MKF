@@ -469,6 +469,18 @@ AxisymmetricWindow::WallSources AxisymmetricWindow::wall_sources(const std::vect
         }
     }
     sources.correction = solve(mismatch);
+    const size_t kept = std::min(_modes, sources.correction.modes);
+    for (auto& band : sources.bands) {
+        band.angleStart = std::numbers::pi / _height * (std::clamp(band.zStart, _zBottom, _zTop) - _zBottom);
+        band.angleEnd = std::numbers::pi / _height * (std::clamp(band.zEnd, _zBottom, _zTop) - _zBottom);
+        band.sineAtStart.resize(kept);
+        band.sineAtEnd.resize(kept);
+        for (size_t n = 1; n <= kept; ++n) {
+            const double nd = static_cast<double>(n);
+            band.sineAtStart[n - 1] = std::sin(nd * band.angleStart);
+            band.sineAtEnd[n - 1] = std::sin(nd * band.angleEnd);
+        }
+    }
     return sources;
 }
 
@@ -486,6 +498,8 @@ AxisymmetricWindow::BandTail AxisymmetricWindow::band_tail(const WallSources& so
     const size_t kept = std::min(_modes, sources.correction.modes);
     const double resolved = decayCut * _height / (std::numbers::pi * static_cast<double>(_modes));
     const double zeta = std::numbers::pi / _height * (z - _zBottom);
+    std::vector<double> cosineAtPoint;
+    std::vector<double> sineAtPoint;
     for (bool postFace : {true, false}) {
         const double distance = postFace ? r - _a : _b - r;
         if (!(distance < resolved) || kept < _modes) {
@@ -495,24 +509,38 @@ AxisymmetricWindow::BandTail AxisymmetricWindow::band_tail(const WallSources& so
         const double amplitude = std::sqrt((postFace ? _a : _b) / r);
         auto sine_sum = [&](double theta) { return std::atan2(rho * std::sin(theta), 1 - rho * std::cos(theta)); };
         auto cosine_sum = [&](double theta) { return -0.5 * std::log(1 - 2 * rho * std::cos(theta) + rho * rho); };
+        // The point's own harmonics, cos(n zeta) and sin(n zeta), are the same for every band and both walls: once per point.
+        if (cosineAtPoint.empty()) {
+            cosineAtPoint.resize(kept);
+            sineAtPoint.resize(kept);
+            for (size_t n = 1; n <= kept; ++n) {
+                const double nd = static_cast<double>(n);
+                cosineAtPoint[n - 1] = std::cos(nd * zeta);
+                sineAtPoint[n - 1] = std::sin(nd * zeta);
+            }
+        }
         double axial = 0;
         double radial = 0;
         for (const auto& band : sources.bands) {
             if (band.postFace != postFace) {
                 continue;
             }
+            if (band.sineAtStart.size() != kept || band.sineAtEnd.size() != kept) {
+                throw CalculationException(ErrorCode::CALCULATION_INVALID_RESULT, "Axisymmetric window: a wall band's tail was prepared for " +
+                                           std::to_string(band.sineAtEnd.size()) + " modes, not the " + std::to_string(kept) + " this window keeps");
+            }
             // sum_n c_n rho^n cos(n zeta) and sum_n c_n rho^n sin(n zeta), over every n, then less n <= kept.
-            for (const auto& [end, sign] : {std::pair{band.zEnd, 1.0}, std::pair{band.zStart, -1.0}}) {
-                const double edge = std::numbers::pi / _height * (std::clamp(end, _zBottom, _zTop) - _zBottom);
+            for (const auto& [edge, edgeSines, sign] : {std::tuple<double, const std::vector<double>*, double>{band.angleEnd, &band.sineAtEnd, 1.0},
+                                                        std::tuple<double, const std::vector<double>*, double>{band.angleStart, &band.sineAtStart, -1.0}}) {
                 double cosineSeries = (sine_sum(edge + zeta) + sine_sum(edge - zeta)) / std::numbers::pi;
                 double sineSeries = (cosine_sum(edge - zeta) - cosine_sum(edge + zeta)) / std::numbers::pi;
                 double power = 1.0;
                 for (size_t n = 1; n <= kept; ++n) {
                     power *= rho;
                     const double nd = static_cast<double>(n);
-                    const double weight = 2 * power * std::sin(nd * edge) / (nd * std::numbers::pi);
-                    cosineSeries -= weight * std::cos(nd * zeta);
-                    sineSeries -= weight * std::sin(nd * zeta);
+                    const double weight = 2 * power * (*edgeSines)[n - 1] / (nd * std::numbers::pi);
+                    cosineSeries -= weight * cosineAtPoint[n - 1];
+                    sineSeries -= weight * sineAtPoint[n - 1];
                 }
                 axial += sign * band.tangentialField * cosineSeries;
                 radial += sign * band.tangentialField * sineSeries;
