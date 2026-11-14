@@ -103,11 +103,26 @@ public:
         double height;
         double current;
     };
+    // A band of tangential H the correction meets on a cylinder (a gap mouth piece, or the ferrite's share).
+    struct WallBand {
+        bool postFace;
+        double zStart;
+        double zEnd;
+        double tangentialField;
+    };
     struct WallSources {
         std::vector<PlateRing> plateRings;
         Correction correction;
+        std::vector<WallBand> bands;
     };
     WallSources wall_sources(const std::vector<WindowWallSheet>& sheetSources) const;
+    // The bands' modes past the ones the correction keeps, at a point nearer a cylinder than they resolve: (H_r, H_z) of
+    // the post's and of the outer wall's, in the planar limit the high modes reach (see the definition).
+    struct BandTail {
+        std::pair<double, double> post{0.0, 0.0};
+        std::pair<double, double> outer{0.0, 0.0};
+    };
+    BandTail band_tail(const WallSources& sources, double r, double z) const;
     // (Hx, Hy) of the wall sources per ampere-turn of net MMF at a section point (x the radius; x < 0 is the far side
     // of the axis). The correction acts inside the window only.
     std::pair<double, double> wall_field(const WallSources& sources, double pointX, double pointY) const;

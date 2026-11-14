@@ -978,22 +978,43 @@ namespace {
         // are filtered to the window's height (the lattice's y images fall outside it); along x the cell's own source
         // and its nearest x image coincide on each wall, with the same factor for both walls.
         const double halfHeight = core.get_processed_description()->get_winding_windows()[0].get_height().value() / 2;
+        // A gap's mouth is several sheets (CoilMesher::slotMouthPieces, the slot's own distribution, Alf 2026-11-14): its
+        // sheets are those lying within the gap's extent on a wall, shorter than the gap.
+        std::optional<CoreGap> residualGap;
+        std::optional<CoreGap> mainGap;
+        for (const auto& gap : core.get_functional_description().get_gapping()) {
+            if (static_cast<size_t>(core.find_closest_column_index_by_coordinates(gap.get_coordinates().value())) == mainColumnIndex) {
+                mainGap = gap;
+            }
+            else {
+                residualGap = gap;
+            }
+        }
+        REQUIRE(residualGap);
+        REQUIRE(mainGap);
+        REQUIRE(residualGap->get_type() == GapType::RESIDUAL);
+        auto inMouth = [](const WindowWallSheet& sheet, const CoreGap& gap) {
+            const double gapY = gap.get_coordinates().value()[1];
+            const double halfLength = gap.get_length() / 2;
+            const double length = std::hypot(sheet.end[0] - sheet.start[0], sheet.end[1] - sheet.start[1]);
+            return length <= gap.get_length() + 1e-12 && std::min(sheet.start[1], sheet.end[1]) >= gapY - halfLength - 1e-12 &&
+                   std::max(sheet.start[1], sheet.end[1]) <= gapY + halfLength + 1e-12;
+        };
         double backLegGapSheet = 0;
         double mainGapSheet = 0;
         double backLegGapOnColumnWall = 0;
         for (auto& sheet : sheets) {
-            const double length = std::hypot(sheet.end[0] - sheet.start[0], sheet.end[1] - sheet.start[1]);
             if (std::abs(sheet.start[1]) > halfHeight + 1e-12 || std::abs(sheet.end[1]) > halfHeight + 1e-12) {
                 continue;
             }
-            const bool residualMouth = std::abs(length - 5e-6) < 1e-9;
+            const bool residualMouth = inMouth(sheet, residualGap.value());
             if (sheet.start[0] == x1 && sheet.end[0] == x1 && residualMouth) {
                 backLegGapSheet += sheet.current;
             }
             if (sheet.start[0] == x0 && sheet.end[0] == x0 && residualMouth) {
                 backLegGapOnColumnWall += sheet.current;
             }
-            if (sheet.start[0] == x0 && sheet.end[0] == x0 && std::abs(length - 0.000414) < 1e-9) {
+            if (sheet.start[0] == x0 && sheet.end[0] == x0 && inMouth(sheet, mainGap.value())) {
                 mainGapSheet += sheet.current;
             }
         }

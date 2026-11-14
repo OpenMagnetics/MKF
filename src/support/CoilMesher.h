@@ -165,6 +165,16 @@ class CoilMesher {
     // reluctance times its column's flux, each leg face carries the leg's ferrite drop and the two plates the yoke
     // segment's, so the sources of window k for winding w sum to minus the current w encloses there.
     static std::vector<WindowRegion> window_regions(Core core);
+    // A gap's slot mouth on the window wall carries the gap's MMF drop as slotMouthPieces sheets of equal current, at the
+    // boundaries this returns: fractions of the mouth from its leg corner (0) to its far end (1). A mouth inside the wall
+    // (atWindowCorner false) is the slot between two leg corners, opening into the half-space; one at the window's end
+    // (atWindowCorner true) is the slot between a leg corner and a plate face flush with the window's end wall.
+    static constexpr size_t slotMouthPieces = 8;
+    static const std::vector<double>& slot_mouth_boundaries(bool atWindowCorner);
+    // Appends the mouth of a gap on the wall x = wallX, from yStart to yEnd, as those pieces. cornerAtStart says which end
+    // is the leg corner when the mouth is at a window corner.
+    static void append_slot_mouth(std::vector<WindowWallSheet>& sheets, double wallX, double yStart, double yEnd, double current, bool atWindowCorner,
+                                  bool cornerAtStart, std::optional<size_t> winding = std::nullopt, size_t window = 0);
     static std::vector<WindowWallSheet> generate_multi_window_wall_sheet_sources(Magnetic magnetic, std::optional<OperatingPoint> operatingPoint);
     // meshAllWindows: mesh every distinct winding-window region (multi-column cores)
     // instead of only window 0. Painting wants it; the leakage energy integrator must

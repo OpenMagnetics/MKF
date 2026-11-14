@@ -1329,6 +1329,11 @@ std::vector<FieldPoint> CoilMesherWangModel::generate_mesh_inducing_turn(const T
 }
 
 
+namespace {
+void append_gap_mouth(std::vector<WindowWallSheet>& sheets, double wallX, double yStart, double yEnd, double wallStart, double wallEnd, double current,
+                      std::optional<size_t> winding, size_t window);
+}  // namespace
+
 std::vector<WindowWallSheet> CoilMesher::generate_window_wall_sheet_sources(Magnetic magnetic, std::optional<OperatingPoint> operatingPoint) {
     auto core = magnetic.get_core();
     if (!core.get_processed_description()) {
@@ -1428,7 +1433,8 @@ std::vector<WindowWallSheet> CoilMesher::generate_window_wall_sheet_sources(Magn
         throw GapException(ErrorCode::GAP_INVALID_DIMENSIONS, "Neutral window field: the core has lateral gaps but none on the lateral limb this window faces");
     }
 
-    // A gap's slot mouth on the window boundary: its axial extent, clipped to the wall it opens onto.
+    // A gap's slot mouth on the window boundary: its axial extent, clipped to the wall it opens onto, carrying the gap's
+    // drop with the slot's own distribution (slot_mouth_boundaries).
     auto gapSheet = [&](double wallX, double gapY, double gapLength, double current) {
         double yStart = std::max(y0, gapY - gapLength / 2);
         double yEnd = std::min(y1, gapY + gapLength / 2);
@@ -1436,7 +1442,7 @@ std::vector<WindowWallSheet> CoilMesher::generate_window_wall_sheet_sources(Magn
             throw GapException(ErrorCode::GAP_INVALID_DIMENSIONS, "Neutral window field: a gap at y = " + std::to_string(gapY) +
                                " opens nowhere onto the winding window (y in [" + std::to_string(y0) + ", " + std::to_string(y1) + "])");
         }
-        originals.push_back({{wallX, yStart}, {wallX, yEnd}, current});
+        append_gap_mouth(originals, wallX, yStart, yEnd, y0, y1, current, std::nullopt, 0);
     };
 
     double gapMmfFractionThisWindow = 0;
@@ -1503,6 +1509,145 @@ std::vector<WindowWallSheet> CoilMesher::generate_window_wall_sheet_sources(Magn
     }
     return originals;
 }
+
+// The potential across a gap's slot mouth, from the Schwarz-Christoffel map of the slot onto the upper half t-plane
+// (unit slot width, the leg corner at z = 0 = z(1), the slot's far end at t = 0, the window at t -> infinity):
+//  - a slot between two leg corners, opening into the half-space: dz/dt = A sqrt(t - 1) sqrt(t + 1) / t;
+//  - a slot between a leg corner and a plate face flush with the window's end wall: dz/dt = A sqrt(t - 1) / t;
+// A = -j / pi. The irons are the real axis (the leg on t > 0, the other side on t < 0), so the magnetic scalar potential
+// is arg(t) / pi, 0 on the leg and 1 on the other side, and the mouth (the wall line x = 0 across the slot) is where the
+// equipotential ray arg t = pi psi crosses Re z = 0. Uniform pieces of equal current between those crossings reproduce
+// the exact window field to 0.9 % (two corners) and 0.6 % (one corner) at a quarter of the slot width from the mouth,
+// 0.2 % at one width; a uniform sheet over the whole mouth is 9 % and 14 % off there (checked against the exact field of
+// the same map).
+const std::vector<double>& CoilMesher::slot_mouth_boundaries(bool atWindowCorner) {
+    static const auto compute = [](bool corner) {
+        static_assert(slotMouthPieces % 2 == 0, "the two-corner mouth is computed on its half");
+        // Gauss-Legendre nodes and weights on [-1, 1].
+        constexpr size_t order = 64;
+        std::vector<double> nodes(order);
+        std::vector<double> weights(order);
+        for (size_t i = 0; i < order; ++i) {
+            double x = std::cos(std::numbers::pi * (static_cast<double>(i) + 0.75) / (static_cast<double>(order) + 0.5));
+            double derivative = 0;
+            for (int iteration = 0; iteration < 100; ++iteration) {
+                double p0 = 1;
+                double p1 = x;
+                for (size_t k = 2; k <= order; ++k) {
+                    const double p2 = ((2.0 * static_cast<double>(k) - 1) * x * p1 - (static_cast<double>(k) - 1) * p0) / static_cast<double>(k);
+                    p0 = p1;
+                    p1 = p2;
+                }
+                derivative = static_cast<double>(order) * (x * p1 - p0) / (x * x - 1);
+                const double step = p1 / derivative;
+                x -= step;
+                if (std::abs(step) < 1e-15) {
+                    break;
+                }
+            }
+            nodes[i] = x;
+            weights[i] = 2 / ((1 - x * x) * derivative * derivative);
+        }
+        const std::complex<double> j(0, 1);
+        const std::complex<double> scale = -j / std::numbers::pi;
+        auto slope = [&](std::complex<double> t) {
+            std::complex<double> value = scale * std::sqrt(t - 1.0) / t;
+            return corner ? value : value * std::sqrt(t + 1.0);
+        };
+        auto integrate = [&](std::complex<double> from, std::complex<double> to) {
+            std::complex<double> sum = 0;
+            for (size_t i = 0; i < order; ++i) {
+                sum += weights[i] * slope(from + (to - from) * (nodes[i] + 1.0) / 2.0);
+            }
+            return sum * (to - from) / 2.0;
+        };
+        // z(t) along a path inside the upper half plane: up from the corner, across, down to t.
+        auto z_of = [&](std::complex<double> t) {
+            const double height = t.imag() + 1;
+            const std::complex<double> up(1, height);
+            const std::complex<double> across(t.real(), height);
+            return integrate(1.0, up) + integrate(up, across) + integrate(across, t);
+        };
+        auto crossing = [&](double potential) {
+            const double angle = std::numbers::pi * potential;
+            double low = -25;
+            double high = 25;
+            if (!(z_of(std::polar(std::exp(low), angle)).real() < 0) || !(z_of(std::polar(std::exp(high), angle)).real() > 0)) {
+                throw CalculationException(ErrorCode::CALCULATION_INVALID_RESULT, "Slot mouth: the equipotential " + std::to_string(potential) + " does not cross the mouth");
+            }
+            for (int iteration = 0; iteration < 90; ++iteration) {
+                const double middle = (low + high) / 2;
+                if (z_of(std::polar(std::exp(middle), angle)).real() < 0) {
+                    low = middle;
+                }
+                else {
+                    high = middle;
+                }
+            }
+            return z_of(std::polar(std::exp((low + high) / 2), angle)).imag();
+        };
+        std::vector<double> boundaries(slotMouthPieces + 1);
+        boundaries.front() = 0;
+        boundaries.back() = 1;
+        if (corner) {
+            for (size_t k = 1; k < slotMouthPieces; ++k) {
+                boundaries[k] = crossing(static_cast<double>(k) / static_cast<double>(slotMouthPieces));
+            }
+        }
+        else {
+            // Symmetric about the middle of the mouth, where the potential is 1/2.
+            for (size_t k = 1; k < slotMouthPieces / 2; ++k) {
+                boundaries[k] = crossing(static_cast<double>(k) / static_cast<double>(slotMouthPieces));
+                boundaries[slotMouthPieces - k] = 1 - boundaries[k];
+            }
+            boundaries[slotMouthPieces / 2] = 0.5;
+        }
+        for (size_t k = 0; k < slotMouthPieces; ++k) {
+            if (!(boundaries[k + 1] > boundaries[k])) {
+                throw CalculationException(ErrorCode::CALCULATION_INVALID_RESULT, "Slot mouth: the pieces' boundaries are not increasing");
+            }
+        }
+        return boundaries;
+    };
+    static const std::vector<double> twoCorners = compute(false);
+    static const std::vector<double> oneCorner = compute(true);
+    return atWindowCorner ? oneCorner : twoCorners;
+}
+
+void CoilMesher::append_slot_mouth(std::vector<WindowWallSheet>& sheets, double wallX, double yStart, double yEnd, double current, bool atWindowCorner,
+                                   bool cornerAtStart, std::optional<size_t> winding, size_t window) {
+    const auto& boundaries = slot_mouth_boundaries(atWindowCorner);
+    const double length = yEnd - yStart;
+    auto position = [&](double fraction) {
+        return cornerAtStart ? yStart + fraction * length : yEnd - fraction * length;
+    };
+    for (size_t k = 0; k < slotMouthPieces; ++k) {
+        sheets.push_back({{wallX, position(boundaries[k])}, {wallX, position(boundaries[k + 1])}, current / static_cast<double>(slotMouthPieces), winding, window});
+    }
+}
+
+namespace {
+// A gap's mouth on a wall running from wallStart to wallEnd (y): the slot between two leg corners when it is inside the
+// wall, the slot between a leg corner and the window's end wall when it reaches one end (the gap sits at the window's
+// corner, as a piece-and-plate gap against its plate). A mouth reaching both ends has neither shape and is refused.
+void append_gap_mouth(std::vector<WindowWallSheet>& sheets, double wallX, double yStart, double yEnd, double wallStart, double wallEnd, double current,
+                      std::optional<size_t> winding, size_t window) {
+    const double tolerance = 1e-9 * (wallEnd - wallStart);
+    const bool reachesStart = yStart <= wallStart + tolerance;
+    const bool reachesEnd = yEnd >= wallEnd - tolerance;
+    if (reachesStart && reachesEnd) {
+        throw NotImplementedException("Neutral window field: a gap mouth spanning the whole window wall (y in [" + std::to_string(wallStart) + ", " +
+                                      std::to_string(wallEnd) + "]) has no slot shape");
+    }
+    if (!reachesStart && !reachesEnd) {
+        CoilMesher::append_slot_mouth(sheets, wallX, yStart, yEnd, current, false, true, winding, window);
+    }
+    else {
+        // The leg corner is the end away from the window's end wall.
+        CoilMesher::append_slot_mouth(sheets, wallX, yStart, yEnd, current, true, reachesEnd, winding, window);
+    }
+}
+}  // namespace
 
 std::vector<WindowRegion> CoilMesher::window_regions(Core core) {
     if (!core.get_processed_description()) {
@@ -1610,7 +1755,10 @@ std::vector<WindowWallSheet> CoilMesher::generate_multi_window_wall_sheet_source
                         throw GapException(ErrorCode::GAP_INVALID_DIMENSIONS, "Neutral window field: a gap at y = " + std::to_string(gapY) +
                                            " opens nowhere onto its winding window");
                     }
-                    add({wallX, yStart}, {wallX, yEnd}, sign * reluctancePerGap[gapIndex].get_reluctance() * legFlux[columnIndex]);
+                    const double drop = sign * reluctancePerGap[gapIndex].get_reluctance() * legFlux[columnIndex];
+                    if (drop != 0) {
+                        append_gap_mouth(sources, wallX, yStart, yEnd, region.y0, region.y1, -drop, windingIndex, windowIndex);
+                    }
                 }
             };
             auto ferriteReluctance = [&](size_t columnIndex) {

@@ -451,6 +451,8 @@ AxisymmetricWindow::WallSources AxisymmetricWindow::wall_sources(const std::vect
                                            " is on neither cylinder of the window");
             }
             add_wall_field(mismatch, postFace, sheet.start[1], sheet.end[1], (postFace ? -1.0 : 1.0) * sheet.current / length);
+            sources.bands.push_back({postFace, std::min(sheet.start[1], sheet.end[1]), std::max(sheet.start[1], sheet.end[1]),
+                                     (postFace ? -1.0 : 1.0) * sheet.current / length});
         }
         else if (std::abs(sheet.start[1] - sheet.end[1]) < tolerance) {
             const double from = std::min(sheet.start[0], sheet.end[0]);
@@ -470,6 +472,60 @@ AxisymmetricWindow::WallSources AxisymmetricWindow::wall_sources(const std::vect
     return sources;
 }
 
+// A band's coefficients fall only as 1/n (its H steps at its ends), so next to a cylinder the kept modes are not enough:
+// a point at distance d needs k d up to decayCut, n up to decayCut B / (pi d), past maximumModes within about a fiftieth of
+// the window height of a wall. Past mode N the cylinder's modes are planar to O(1 / (k r)): q_n -> the post's coefficient
+// c_n, p_n -> the outer wall's, K_0(kr)/K_0(ka) and K_1(kr)/K_0(ka) -> sqrt(a/r) e^(-k (r - a)), I_0(kr)/I_0(kb) and
+// I_1(kr)/I_0(kb) -> sqrt(b/r) e^(-k (b - r)). With c_n = 2 H / (n pi) (sin(n pi beta / B) - sin(n pi alpha / B)) for a
+// band from alpha to beta (heights from the bottom plate), the whole planar series has a closed form,
+//   sum_n rho^n sin(n theta) / n = atan2(rho sin theta, 1 - rho cos theta),
+//   sum_n rho^n cos(n theta) / n = -ln(1 - 2 rho cos theta + rho^2) / 2,       rho = e^(-pi d / B),
+// so its tail is that closed form less its first N terms.
+AxisymmetricWindow::BandTail AxisymmetricWindow::band_tail(const WallSources& sources, double r, double z) const {
+    BandTail tail;
+    const size_t kept = std::min(_modes, sources.correction.modes);
+    const double resolved = decayCut * _height / (std::numbers::pi * static_cast<double>(_modes));
+    const double zeta = std::numbers::pi / _height * (z - _zBottom);
+    for (bool postFace : {true, false}) {
+        const double distance = postFace ? r - _a : _b - r;
+        if (!(distance < resolved) || kept < _modes) {
+            continue;  // the kept modes resolve it, or the correction carries no more modes than it keeps
+        }
+        const double rho = std::exp(-std::numbers::pi * distance / _height);
+        const double amplitude = std::sqrt((postFace ? _a : _b) / r);
+        auto sine_sum = [&](double theta) { return std::atan2(rho * std::sin(theta), 1 - rho * std::cos(theta)); };
+        auto cosine_sum = [&](double theta) { return -0.5 * std::log(1 - 2 * rho * std::cos(theta) + rho * rho); };
+        double axial = 0;
+        double radial = 0;
+        for (const auto& band : sources.bands) {
+            if (band.postFace != postFace) {
+                continue;
+            }
+            // sum_n c_n rho^n cos(n zeta) and sum_n c_n rho^n sin(n zeta), over every n, then less n <= kept.
+            for (const auto& [end, sign] : {std::pair{band.zEnd, 1.0}, std::pair{band.zStart, -1.0}}) {
+                const double edge = std::numbers::pi / _height * (std::clamp(end, _zBottom, _zTop) - _zBottom);
+                double cosineSeries = (sine_sum(edge + zeta) + sine_sum(edge - zeta)) / std::numbers::pi;
+                double sineSeries = (cosine_sum(edge - zeta) - cosine_sum(edge + zeta)) / std::numbers::pi;
+                double power = 1.0;
+                for (size_t n = 1; n <= kept; ++n) {
+                    power *= rho;
+                    const double nd = static_cast<double>(n);
+                    const double weight = 2 * power * std::sin(nd * edge) / (nd * std::numbers::pi);
+                    cosineSeries -= weight * std::cos(nd * zeta);
+                    sineSeries -= weight * std::sin(nd * zeta);
+                }
+                axial += sign * band.tangentialField * cosineSeries;
+                radial += sign * band.tangentialField * sineSeries;
+            }
+        }
+        // H_z = c rho^n cos amplitude for both walls; H_r = -c ... sin on the post (K_1 term), +c ... sin on the outer wall.
+        auto& part = postFace ? tail.post : tail.outer;
+        part.first = (postFace ? -1.0 : 1.0) * amplitude * radial;
+        part.second = amplitude * axial;
+    }
+    return tail;
+}
+
 std::pair<double, double> AxisymmetricWindow::wall_field(const WallSources& sources, double pointX, double pointY) const {
     const double radius = std::abs(pointX);
     double fieldR = 0;
@@ -481,8 +537,9 @@ std::pair<double, double> AxisymmetricWindow::wall_field(const WallSources& sour
     }
     if (contains(radius, pointY)) {
         auto [correctionR, correctionZ] = correction_field(sources.correction, radius, pointY);
-        fieldR += correctionR;
-        fieldZ += correctionZ;
+        const auto tail = band_tail(sources, radius, pointY);
+        fieldR += correctionR + tail.post.first + tail.outer.first;
+        fieldZ += correctionZ + tail.post.second + tail.outer.second;
     }
     return {pointX < 0 ? -fieldR : fieldR, fieldZ};
 }
@@ -500,8 +557,9 @@ std::vector<AxisymmetricWindow::WallFieldPart> AxisymmetricWindow::wall_field_pa
     }
     if (contains(radius, pointY)) {
         auto wallParts = correction_field_by_wall(sources.correction, basis_at(radius, pointY));
-        parts.push_back({side * _a, pointY, side * wallParts.post.first, wallParts.post.second});
-        parts.push_back({side * _b, pointY, side * wallParts.outer.first, wallParts.outer.second});
+        const auto tail = band_tail(sources, radius, pointY);
+        parts.push_back({side * _a, pointY, side * (wallParts.post.first + tail.post.first), wallParts.post.second + tail.post.second});
+        parts.push_back({side * _b, pointY, side * (wallParts.outer.first + tail.outer.first), wallParts.outer.second + tail.outer.second});
     }
     return parts;
 }
