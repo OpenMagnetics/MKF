@@ -5169,9 +5169,9 @@ std::vector<double> FlatTurnCells::refine_cell_widths_near_gaps(const std::vecto
     };
     std::vector<double> refined;
     std::function<void(double, double)> cut = [&](double begin, double width) {
-        // A piece stops at one thickness or at its distance from the mouth, whichever is larger, so no piece is under half
-        // a thickness.
-        if (width <= std::max(thickness, gapRefinementInDistances * piece_distance(begin, width)) * (1 + 1e-9)) {
+        // A piece stops at gapRefinementMinimumInThicknesses or at its distance from the mouth, whichever is larger, so no
+        // piece is under a quarter of a thickness.
+        if (width <= std::max(gapRefinementMinimumInThicknesses * thickness, gapRefinementInDistances * piece_distance(begin, width)) * (1 + 1e-9)) {
             refined.push_back(width);
             return;
         }

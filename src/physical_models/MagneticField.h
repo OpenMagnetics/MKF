@@ -220,10 +220,16 @@ struct FlatTurnCells {
         double y1 = 0;
     };
     // Cuts beside a gap: the field leaving a gap mouth varies over the distance from it, so every cell is halved until it
-    // is no wider than one thickness or gapRefinementInDistances times the distance from the nearest mouth to its nearest
-    // point, whichever is larger (so no cell is under half a thickness; floors of 0.5, 0.25 and 0.1 thickness move nothing). Edge grading alone left 2 mm cells opposite a 1 mm gap on 0.2 mm foil: the gap-side foil read
-    // 0.32x OMFEM, 1.12x with these cuts (E42 foil stacks, Alf 2026-11-07). Cells far from every mouth are not touched.
+    // is no wider than gapRefinementMinimumInThicknesses thicknesses or gapRefinementInDistances times the distance from
+    // the nearest mouth to its nearest point, whichever is larger. Edge grading alone left 2 mm cells opposite a 1 mm gap
+    // on 0.2 mm foil: the gap-side foil read 0.32x OMFEM, 1.12x with these cuts (E42 foil stacks, Alf 2026-11-07). Cells
+    // far from every mouth are not touched.
     static constexpr double gapRefinementInDistances = 1.0;
+    // The floor of those cuts. Beside a 1 mm gap the cells stop at the distance before they reach any floor, but a foil
+    // 0.115 mm from a 5 um residual gap concentrates its current within that distance: on the ungapped E 42 foil stack the
+    // column-side foil reads 0.71x 2D OMFEM at 500 kHz with a floor of one thickness, 0.83x at half a thickness, and
+    // 0.84x at 0.25 and 0.1 (the distance limit takes over), at 1.0, 1.5 and up to 14x the cost (2026-11-14).
+    static constexpr double gapRefinementMinimumInThicknesses = 0.5;
     // `cellWidths` of the conductor whose wide axis starts at `start` (x when wideAlongX, else y), with `across` its
     // coordinate on the other axis, cut further beside the gap mouths.
     static std::vector<double> refine_cell_widths_near_gaps(const std::vector<double>& cellWidths, double start, double across, bool wideAlongX,
