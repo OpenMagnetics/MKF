@@ -3521,7 +3521,9 @@ std::string Temperature::doesNotFitMessage(size_t nodeIdx, const std::string& su
 void Temperature::reportNonFittingFace(size_t nodeIdx, const std::string& surface, double overlap) const {
     std::string message = doesNotFitMessage(nodeIdx, surface, overlap);
     if (settings.get_thermal_network_strict_geometry()) {
-        throw std::runtime_error(message);
+        // A coil that does not fit its window is a winding refusal, typed as such so callers can tell it from
+        // any other failure without reading the message.
+        throw CoilException(ErrorCode::COIL_WINDING_ERROR, message);
     }
     // Grouped by winding: the user reads "winding 'Primary'", not one line per turn and face.
     const auto& node = _nodes.at(nodeIdx);
@@ -3702,7 +3704,7 @@ void Temperature::createWindingToEnclosureConnections() {
                 if (connectedQuadrants.count({legItems[k].nodeIdx, legFace})) continue;
                 double gap = restingU - uItems[k].x1;
                 if (gap < -kEnclosureGeometryTolerance) {
-                    throw std::runtime_error(doesNotFitMessage(legItems[k].nodeIdx, "the bobbin column of the outer leg it is wound on", -gap));
+                    throw CoilException(ErrorCode::COIL_WINDING_ERROR, doesNotFitMessage(legItems[k].nodeIdx, "the bobbin column of the outer leg it is wound on", -gap));
                 }
                 gap = std::max(gap, 0.0);
                 const auto* q = _nodes[legItems[k].nodeIdx].getQuadrant(legFace);

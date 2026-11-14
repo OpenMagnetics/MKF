@@ -5246,6 +5246,8 @@ TEST_CASE("Temperature: ABT 1454 a coil that does not fit its window throws unle
     REQUIRE(settings.get_thermal_network_strict_geometry());
     REQUIRE_THROWS_WITH(abt1454MaximumTemperatureAtFixedLoss(magnetic, 0.3, 0.3),
                         Catch::Matchers::ContainsSubstring("the coil does not fit in its window"));
+    // A winding refusal, typed: callers (Henry's material ranking) catch it by type, not by its words.
+    REQUIRE_THROWS_AS(abt1454MaximumTemperatureAtFixedLoss(magnetic, 0.3, 0.3), CoilException);
 
     SettingsGuard<bool> lenient(Settings::GetInstance(), &Settings::get_thermal_network_strict_geometry,
                                 &Settings::set_thermal_network_strict_geometry, false);
