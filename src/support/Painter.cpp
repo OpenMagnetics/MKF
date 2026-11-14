@@ -127,23 +127,9 @@ ComplexField PainterInterface::calculate_magnetic_field(OperatingPoint operating
         field = windingWindowMagneticStrengthFieldOutput.get_field_per_frequency()[0];
 
     }
-    auto turns = magnetic.get_coil().get_turns_description().value();
-
-    if (turns[0].get_additional_coordinates()) {
-        for (size_t turnIndex = 0; turnIndex < turns.size(); ++turnIndex) {
-            if (turns[turnIndex].get_additional_coordinates()) {
-                turns[turnIndex].set_coordinates(turns[turnIndex].get_additional_coordinates().value()[0]);
-            }
-        }
-        magnetic.get_mutable_coil().set_turns_description(turns);
-        auto windingWindowMagneticStrengthFieldOutput = magneticField.calculate_magnetic_field_strength_field(operatingPoint, magnetic, inducedField, std::nullopt, std::nullopt, parallelCurrentSplit);
-        auto additionalField = windingWindowMagneticStrengthFieldOutput.get_field_per_frequency()[0];
-        for (size_t pointIndex = 0; pointIndex < field.get_data().size(); ++pointIndex) {
-            field.get_mutable_data()[pointIndex].set_real(field.get_mutable_data()[pointIndex].get_real() + additionalField.get_mutable_data()[pointIndex].get_real());
-            field.get_mutable_data()[pointIndex].set_imaginary(field.get_mutable_data()[pointIndex].get_imaginary() + additionalField.get_mutable_data()[pointIndex].get_imaginary());
-        }
-    }
-
+    // A turn's second crossing (additionalCoordinates) is meshed by the field step itself (each crossing imaged in its own
+    // window, ABT #2267), so the field above is the whole field. A second pass with every turn moved onto its second
+    // crossing used to be added here: there each turn's two crossings coincide with opposite currents.
 
     return field;
 }

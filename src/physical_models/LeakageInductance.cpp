@@ -143,6 +143,8 @@ LeakageInductance::PhasorField LeakageInductance::calculate_magnetic_field_phaso
     // the result (Test_Leakage_Inductance_Ignores_The_Global_Fringing_Model).
     SettingsGuard<bool> leakageFringingOffGuard(settings, &Settings::get_magnetic_field_include_fringing, &Settings::set_magnetic_field_include_fringing, false);
     MagneticField magneticField(settings.get_leakage_inductance_magnetic_field_strength_model(), MagneticFieldStrengthFringingEffectModels::ROSHEN);
+    // Leakage is the magnetostatic field of the turns' nominal currents (as OMFEM's leakage solve): no eddy reaction.
+    magneticField.set_include_round_turn_eddy_reaction(false);
 
     std::vector<int8_t> currentDirectionPerWinding;
     for (size_t windingIndex = 0; windingIndex < magnetic.get_coil().get_functional_description().size(); ++windingIndex) {

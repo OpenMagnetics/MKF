@@ -158,6 +158,9 @@ TEST_CASE("Test_Phase_Aware_Quadrature_Field", "[physical-model][magnetic-field]
     auto magnetic = make_magnetic({8, 8}, {"primary", "secondary"});
     for (auto model : {MagneticFieldStrengthModels::ALBACH, MagneticFieldStrengthModels::BINNS_LAWRENSON}) {
         MagneticField magneticField(model);
+        // The phase bookkeeping of the sources: without the round turns' eddy reaction, which lags them and puts a real
+        // quadrature field beside in-phase currents (Alf 2026-11-13: this test runs with the reaction off).
+        magneticField.set_include_round_turn_eddy_reaction(false);
         // In phase (source convention -> physical antiphase): no quadrature field at all.
         auto antiphase = magneticField.calculate_magnetic_field_strength_field(make_operating_point({sinusoid(2.0, 0.3), sinusoid(2.0, 0.3)}), magnetic);
         REQUIRE(antiphase.get_quadrature_field_per_frequency().size() == antiphase.get_field_per_frequency().size());
@@ -271,6 +274,9 @@ std::pair<double, double> check_fringing_phase(OpenMagnetics::Magnetic& magnetic
     settings.reset();
     settings.set_magnetic_field_strength_fringing_effect_model(MagneticFieldStrengthFringingEffectModels::ROSHEN);
     MagneticField magneticField(model, MagneticFieldStrengthFringingEffectModels::ROSHEN);
+    // The phase bookkeeping of the gap source: without the round turns' eddy reaction, which lags the gap field and puts
+    // a real quadrature field beside it (Alf 2026-11-13: these checks run with the reaction off).
+    magneticField.set_include_round_turn_eddy_reaction(false);
 
     settings.set_magnetic_field_include_fringing(true);
     auto full = magneticField.calculate_magnetic_field_strength_field(operatingPoint, magnetic);

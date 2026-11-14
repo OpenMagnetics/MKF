@@ -1301,6 +1301,130 @@ WindingWindowMagneticStrengthFieldPhasorOutput MagneticField::calculate_magnetic
         }
     }
 
+    // ABT #2267 (Alf 2026-11-13): the eddy reaction of the solid round turns. A round conductor of radius a in a transverse
+    // field H0 answers outside itself as a 2-D dipole, D a^2 H0, with D = 2 J1(ka) / (ka J0(ka)) - 1, k = (1 - j) / delta
+    // (the Bessel solution inside matched to the field outside; D -> -j (a/delta)^2 / 4 at low frequency, -> -1 when the
+    // wire excludes the field). Neighbours see each other's dipoles, so the field at every turn is solved together:
+    // H_s = H0_s + sum_t D_t a_t^2 K(r_s - r_t) H_t. Each crossing is a site of its own; a site acts only in its own region
+    // (window, or toroid bore / exterior). Its field at a turn's centre is what that turn's proximity kernel reads, and it
+    // is added at every evaluated point, so the Painter draws it too. Hidden evaluation points at the sites ("dipolesite")
+    // give H0 there, and are removed from the output.
+    struct DipoleSite {
+        double x;
+        double y;
+        double radius;
+        size_t windingIndex;
+        int64_t turnIndex;
+        std::optional<size_t> region;
+    };
+    std::vector<DipoleSite> dipoleSites;
+    double dipoleToroidInnerRadiusSquared = 0;
+    double dipoleToroidOuterRadiusSquared = 0;
+    if (coreShapeFamily == CoreShapeFamily::T) {
+        auto toroidDimensions = flatten_dimensions(core.resolve_shape().get_dimensions().value());
+        dipoleToroidInnerRadiusSquared = toroidDimensions["B"] * toroidDimensions["B"] / 4;
+        dipoleToroidOuterRadiusSquared = toroidDimensions["A"] * toroidDimensions["A"] / 4;
+    }
+    // The ferrite's reply to a dipole is the reply the mesh gives a current there: a dipole is the limit of a pair of
+    // opposite currents, so each image the CENTER mesher returns for a unit current at the site (position p'(p), current c)
+    // has the image dipole c R^-1 J R m, J = dp'/dp, R the quarter turn. A wall reflection gives (m_n, -m_t); the toroid's
+    // Kelvin image R^2/conj(z) gives attenuation (R^2/conj(z)^2) conj(m); a centre line does not move with p and gives nothing.
+    // Each image acts where its site acts. The lattice, its cells, its attenuation and the window frame are therefore the
+    // mesh's own, under the same settings, and without mirroring there are none.
+    const bool toroidRingRegions = coreShapeFamily == CoreShapeFamily::T && settings.get_magnetic_field_mirroring_dimension() >= 1;
+    struct DipoleImage {
+        double x;
+        double y;
+        size_t site;
+        std::array<double, 4> moment;  // the image's moment per unit site moment, row-major
+    };
+    std::vector<DipoleImage> dipoleImages;
+    auto dipole_region_of = [&](double pointX, double pointY) -> std::optional<size_t> {
+        if (coreShapeFamily == CoreShapeFamily::T) {
+            if (!toroidRingRegions) {
+                return static_cast<size_t>(0);
+            }
+            const double radiusSquared = pointX * pointX + pointY * pointY;
+            return static_cast<size_t>(radiusSquared < dipoleToroidInnerRadiusSquared ? 0 : (radiusSquared > dipoleToroidOuterRadiusSquared ? 1 : 2));
+        }
+        if (multiWindowCore) {
+            return window_of_point(pointX, pointY);
+        }
+        return static_cast<size_t>(0);
+    };
+    const bool roundReaction = _includeRoundTurnEddyReaction && _magneticFieldStrengthModel != MagneticFieldStrengthModels::DOWELL;
+    if (roundReaction && magnetic.get_coil().get_turns_description()) {
+        CoilMesherCenterModel dipoleMesher;
+        dipoleMesher.axisymmetricWindow = settings.get_magnetic_field_mirroring_neutral_cells() && AxisymmetricWindow::applies(core, magnetic.get_coil());
+        const auto turnsForDipoles = magnetic.get_coil().get_turns_description().value();
+        for (size_t turnIndex = 0; turnIndex < turnsForDipoles.size(); ++turnIndex) {
+            const auto& turn = turnsForDipoles[turnIndex];
+            const size_t windingIndex = magnetic.get_mutable_coil().get_winding_index_by_name(turn.get_winding());
+            const auto& wire = _wirePerWinding.at(windingIndex);
+            if (wire.get_type() != WireType::ROUND) {
+                continue;
+            }
+            if (!wire.get_conducting_diameter()) {
+                throw InvalidInputException(ErrorCode::MISSING_DATA, "Round-wire eddy reaction: the wire of turn " + turn.get_name() + " has no conducting diameter");
+            }
+            const double radius = resolve_dimensional_values(wire.get_conducting_diameter().value()) / 2;
+            std::vector<std::vector<double>> crossings = {turn.get_coordinates()};
+            const auto additional = turn.get_additional_coordinates();
+            if (additional) {
+                for (const auto& crossing : additional.value()) {
+                    crossings.push_back(crossing);
+                }
+            }
+            for (const auto& crossing : crossings) {
+                const size_t site = dipoleSites.size();
+                dipoleSites.push_back({crossing[0], crossing[1], radius, windingIndex, static_cast<int64_t>(turnIndex), dipole_region_of(crossing[0], crossing[1])});
+                if (mesherToUse && mesherToUse.value() != CoilMesherModels::CENTER) {
+                    throw NotImplementedException("Round-wire eddy reaction: the core's reply to a round turn's dipole is taken from the CENTER mesher, but the turns are meshed by " +
+                                                  std::string(magic_enum::enum_name(mesherToUse.value())));
+                }
+                Turn siteTurn = turn;
+                siteTurn.set_additional_coordinates(std::nullopt);
+                const double step = radius * 1e-4;
+                std::array<std::vector<FieldPoint>, 3> meshes;
+                for (size_t nudge = 0; nudge < 3; ++nudge) {
+                    siteTurn.set_coordinates({crossing[0] + (nudge == 1 ? step : 0.0), crossing[1] + (nudge == 2 ? step : 0.0)});
+                    meshes[nudge] = dipoleMesher.generate_mesh_inducing_turn(siteTurn, _wirePerWinding.at(windingIndex), std::nullopt, std::nullopt, core);
+                }
+                if (meshes[1].size() != meshes[0].size() || meshes[2].size() != meshes[0].size()) {
+                    throw CalculationException(ErrorCode::CALCULATION_INVALID_RESULT, "Round-wire eddy reaction: the mesh of the crossing of turn " + turn.get_name() +
+                                               " changes with a nudge of the crossing; its images cannot be differentiated");
+                }
+                for (size_t pointIndex = 0; pointIndex < meshes[0].size(); ++pointIndex) {
+                    const auto& point = meshes[0][pointIndex].get_point();
+                    if (std::hypot(point[0] - crossing[0], point[1] - crossing[1]) < step) {
+                        continue;  // the conductor itself
+                    }
+                    const double jacobian00 = (meshes[1][pointIndex].get_point()[0] - point[0]) / step;
+                    const double jacobian10 = (meshes[1][pointIndex].get_point()[1] - point[1]) / step;
+                    const double jacobian01 = (meshes[2][pointIndex].get_point()[0] - point[0]) / step;
+                    const double jacobian11 = (meshes[2][pointIndex].get_point()[1] - point[1]) / step;
+                    const double current = meshes[0][pointIndex].get_value();
+                    const std::array<double, 4> moment = {current * jacobian11, -current * jacobian10, -current * jacobian01, current * jacobian00};
+                    if (std::abs(moment[0]) + std::abs(moment[1]) + std::abs(moment[2]) + std::abs(moment[3]) < 1e-9 * std::abs(current)) {
+                        continue;  // a centre line: it does not follow the site
+                    }
+                    dipoleImages.push_back({point[0], point[1], site, moment});
+                }
+            }
+        }
+        for (auto& inducedField : inducedFields) {
+            auto& inducedData = inducedField.get_mutable_data();
+            for (const auto& site : dipoleSites) {
+                FieldPoint point;
+                point.set_point({site.x, site.y});
+                point.set_value(0);
+                point.set_turn_index(site.turnIndex);
+                point.set_label("dipolesite");
+                inducedData.push_back(point);
+            }
+        }
+    }
+
     // The screened width-cell model (FlatTurnCells): the resolved flat turns are their cells and face sheets, with the
     // currents the split solved, and each cell gets a "cellsample" point at its centre, where its slab's external field is read.
     const bool flatCellSources = parallelCurrentSplit && !parallelCurrentSplit->flatTurns.empty();
@@ -2839,6 +2963,150 @@ WindingWindowMagneticStrengthFieldPhasorOutput MagneticField::calculate_magnetic
         // Handed over by swapping the lists (both fields hold no points yet): a ComplexField has no move constructor.
         complexFieldPerHarmonic[harmonicIndex].get_mutable_data().swap(fieldPoints);
         quadratureComplexFieldPerHarmonic[harmonicIndex].get_mutable_data().swap(quadratureFieldPoints);
+    }
+
+    if (!dipoleSites.empty()) {
+        // The round turns' eddy reaction (see dipoleSites): per harmonic, solve the sites' fields together, add the dipoles'
+        // field at every evaluated point, and drop the hidden site points.
+        const size_t numberSites = dipoleSites.size();
+        if (numberSites > 4000) {
+            throw NotImplementedException("Round-wire eddy reaction: " + std::to_string(numberSites) + " round crossings exceed the dense solve (4000)");
+        }
+        const double temperature = operatingPoint.get_conditions().get_ambient_temperature();
+        // The dipole field at (dx, dy) from the site per unit (D a^2 H): [[u, v], [v, -u]] H, u = (dx^2 - dy^2) / r^4, v = 2 dx dy / r^4.
+        auto kernel = [](double dx, double dy) {
+            const double r2 = dx * dx + dy * dy;
+            const double r4 = r2 * r2;
+            return std::pair<double, double>{(dx * dx - dy * dy) / r4, 2 * dx * dy / r4};
+        };
+        // The field at (dx, dy) from an image per unit moment of the site it answers: K M.
+        auto image_kernel = [&](const DipoleImage& image, double dx, double dy) {
+            const auto [u, v] = kernel(dx, dy);
+            const auto& m = image.moment;
+            return std::array<double, 4>{u * m[0] + v * m[2], u * m[1] + v * m[3], v * m[0] - u * m[2], v * m[1] - u * m[3]};
+        };
+        for (size_t harmonicIndex = 0; harmonicIndex < complexFieldPerHarmonic.size(); ++harmonicIndex) {
+            auto& inPhaseData = complexFieldPerHarmonic[harmonicIndex].get_mutable_data();
+            auto& quadratureData = quadratureComplexFieldPerHarmonic[harmonicIndex].get_mutable_data();
+            const double frequency = complexFieldPerHarmonic[harmonicIndex].get_frequency();
+            // The sites' points are the last numberSites of this harmonic's list (appended in order above), unless a branch
+            // skipped points inside the core: find them by label.
+            std::vector<size_t> sitePointIndex;
+            sitePointIndex.reserve(numberSites);
+            for (size_t pointIndex = 0; pointIndex < inPhaseData.size(); ++pointIndex) {
+                const auto& label = inPhaseData[pointIndex].get_label();
+                if (label && label.value() == "dipolesite") {
+                    sitePointIndex.push_back(pointIndex);
+                }
+            }
+            if (sitePointIndex.size() != numberSites) {
+                throw CalculationException(ErrorCode::CALCULATION_INVALID_RESULT, "Round-wire eddy reaction: " + std::to_string(sitePointIndex.size()) +
+                                           " of the " + std::to_string(numberSites) + " round crossings were evaluated");
+            }
+            if (frequency > 0) {
+                std::vector<std::complex<double>> polarisability(numberSites);
+                for (size_t site = 0; site < numberSites; ++site) {
+                    const double skinDepth = WindingSkinEffectLosses::calculate_skin_depth(_wirePerWinding[dipoleSites[site].windingIndex], frequency, temperature);
+                    const std::complex<double> x = std::complex<double>(1, -1) * dipoleSites[site].radius / skinDepth;
+                    // J1(x) / J0(x) by backward recurrence of the ratios J_n / J_{n-1} = 1 / (2 n / x - J_{n+1} / J_n).
+                    std::complex<double> ratio = 0;
+                    for (int order = static_cast<int>(std::abs(x)) + 40; order >= 1; --order) {
+                        ratio = 1.0 / (2.0 * order / x - ratio);
+                    }
+                    polarisability[site] = (2.0 * ratio / x - 1.0) * dipoleSites[site].radius * dipoleSites[site].radius;
+                }
+                Eigen::MatrixXcd system = Eigen::MatrixXcd::Identity(2 * numberSites, 2 * numberSites);
+                Eigen::VectorXcd external(2 * numberSites);
+                for (size_t site = 0; site < numberSites; ++site) {
+                    const auto& inPhase = inPhaseData[sitePointIndex[site]];
+                    const auto& quadrature = quadratureData[sitePointIndex[site]];
+                    external(2 * site) = std::complex<double>(inPhase.get_real(), quadrature.get_real());
+                    external(2 * site + 1) = std::complex<double>(inPhase.get_imaginary(), quadrature.get_imaginary());
+                    for (size_t other = 0; other < numberSites; ++other) {
+                        if (other == site || dipoleSites[other].region != dipoleSites[site].region) {
+                            continue;
+                        }
+                        const double siteDx = dipoleSites[site].x - dipoleSites[other].x;
+                        const double siteDy = dipoleSites[site].y - dipoleSites[other].y;
+                        if (siteDx * siteDx + siteDy * siteDy < dipoleSites[other].radius * dipoleSites[other].radius) {
+                            throw CalculationException(ErrorCode::CALCULATION_INVALID_RESULT, "Round-wire eddy reaction: crossings of turns " +
+                                                       std::to_string(dipoleSites[site].turnIndex) + " and " + std::to_string(dipoleSites[other].turnIndex) +
+                                                       " overlap at (" + std::to_string(dipoleSites[site].x) + ", " + std::to_string(dipoleSites[site].y) + ") and (" +
+                                                       std::to_string(dipoleSites[other].x) + ", " + std::to_string(dipoleSites[other].y) + ")");
+                        }
+                        const auto [u, v] = kernel(siteDx, siteDy);
+                        const std::complex<double> weight = polarisability[other];
+                        system(2 * site, 2 * other) -= weight * u;
+                        system(2 * site, 2 * other + 1) -= weight * v;
+                        system(2 * site + 1, 2 * other) -= weight * v;
+                        system(2 * site + 1, 2 * other + 1) += weight * u;
+                    }
+                    for (const auto& image : dipoleImages) {
+                        if (dipoleSites[image.site].region != dipoleSites[site].region) {
+                            continue;
+                        }
+                        const auto k = image_kernel(image, dipoleSites[site].x - image.x, dipoleSites[site].y - image.y);
+                        const std::complex<double> weight = polarisability[image.site];
+                        system(2 * site, 2 * image.site) -= weight * k[0];
+                        system(2 * site, 2 * image.site + 1) -= weight * k[1];
+                        system(2 * site + 1, 2 * image.site) -= weight * k[2];
+                        system(2 * site + 1, 2 * image.site + 1) -= weight * k[3];
+                    }
+                }
+                if (!external.allFinite()) {
+                    for (size_t site = 0; site < numberSites; ++site) {
+                        if (!std::isfinite(std::abs(external(2 * site))) || !std::isfinite(std::abs(external(2 * site + 1)))) {
+                            throw NaNResultException("Round-wire eddy reaction: the field at the crossing of turn " + std::to_string(dipoleSites[site].turnIndex) +
+                                                     " at (" + std::to_string(dipoleSites[site].x) + ", " + std::to_string(dipoleSites[site].y) + ") is not finite");
+                        }
+                    }
+                }
+                const Eigen::VectorXcd fieldAtSites = system.partialPivLu().solve(external);
+                std::vector<std::complex<double>> momentX(numberSites);
+                std::vector<std::complex<double>> momentY(numberSites);
+                for (size_t site = 0; site < numberSites; ++site) {
+                    momentX[site] = polarisability[site] * fieldAtSites(2 * site);
+                    momentY[site] = polarisability[site] * fieldAtSites(2 * site + 1);
+                }
+                for (size_t pointIndex = 0; pointIndex < inPhaseData.size(); ++pointIndex) {
+                    auto& inPhase = inPhaseData[pointIndex];
+                    auto& quadrature = quadratureData[pointIndex];
+                    const double pointX = inPhase.get_point()[0];
+                    const double pointY = inPhase.get_point()[1];
+                    const auto pointRegion = dipole_region_of(pointX, pointY);
+                    std::complex<double> reactionX = 0;
+                    std::complex<double> reactionY = 0;
+                    for (size_t site = 0; site < numberSites; ++site) {
+                        if (dipoleSites[site].region != pointRegion) {
+                            continue;
+                        }
+                        const double dx = pointX - dipoleSites[site].x;
+                        const double dy = pointY - dipoleSites[site].y;
+                        if (dx * dx + dy * dy < dipoleSites[site].radius * dipoleSites[site].radius) {
+                            continue;  // inside the wire: its own field there is its skin model's
+                        }
+                        const auto [u, v] = kernel(dx, dy);
+                        reactionX += u * momentX[site] + v * momentY[site];
+                        reactionY += v * momentX[site] - u * momentY[site];
+                    }
+                    for (const auto& image : dipoleImages) {
+                        if (dipoleSites[image.site].region != pointRegion) {
+                            continue;
+                        }
+                        const auto k = image_kernel(image, pointX - image.x, pointY - image.y);
+                        reactionX += k[0] * momentX[image.site] + k[1] * momentY[image.site];
+                        reactionY += k[2] * momentX[image.site] + k[3] * momentY[image.site];
+                    }
+                    inPhase.set_real(inPhase.get_real() + reactionX.real());
+                    inPhase.set_imaginary(inPhase.get_imaginary() + reactionY.real());
+                    quadrature.set_real(quadrature.get_real() + reactionX.imag());
+                    quadrature.set_imaginary(quadrature.get_imaginary() + reactionY.imag());
+                }
+            }
+            auto is_site = [](const ComplexFieldPoint& point) { return point.get_label() && point.get_label().value() == "dipolesite"; };
+            inPhaseData.erase(std::remove_if(inPhaseData.begin(), inPhaseData.end(), is_site), inPhaseData.end());
+            quadratureData.erase(std::remove_if(quadratureData.begin(), quadratureData.end(), is_site), quadratureData.end());
+        }
     }
 
     // ABT #1304: with exact flat inducing turns the width samples took the complete field (see exactFlatInducing);
@@ -6109,13 +6377,19 @@ std::optional<ParallelCurrentSplit> MagneticField::calculate_parallel_current_sp
         std::vector<PendingFlatHarmonic> solveList;
         std::vector<std::optional<size_t>> solvedIndexPerHarmonic(pendingFlatHarmonics.size());
         std::vector<double> sampleFrequencies;
+        // A harmonic no winding carries current at (only zero harmonics, ABT #1880) has the zero split: it is neither solved
+        // nor counted, so it shapes neither the batches nor the interpolation's samples, and a listed zero harmonic gives
+        // the same split, bit for bit, as an unlisted one.
+        auto carries_current = [](const PendingFlatHarmonic& harmonic) {
+            return std::any_of(harmonic.windingCurrent.begin(), harmonic.windingCurrent.end(), [](const std::complex<double>& current) { return current != 0.0; });
+        };
         {
             const size_t samples = FlatTurnCells::frequencyInterpolationSamples;
             double minimumFrequency = std::numeric_limits<double>::max();
             double maximumFrequency = 0;
             size_t alternatingHarmonics = 0;
             for (const auto& harmonic : pendingFlatHarmonics) {
-                if (harmonic.frequency > 0) {
+                if (harmonic.frequency > 0 && carries_current(harmonic)) {
                     ++alternatingHarmonics;
                     minimumFrequency = std::min(minimumFrequency, harmonic.frequency);
                     maximumFrequency = std::max(maximumFrequency, harmonic.frequency);
@@ -6126,6 +6400,9 @@ std::optional<ParallelCurrentSplit> MagneticField::calculate_parallel_current_sp
             }
             const bool interpolate = samples != 0 && alternatingHarmonics > samples * numberWindings && maximumFrequency > minimumFrequency;
             for (size_t index = 0; index < pendingFlatHarmonics.size(); ++index) {
+                if (!carries_current(pendingFlatHarmonics[index])) {
+                    continue;
+                }
                 if (!interpolate || !(pendingFlatHarmonics[index].frequency > 0)) {
                     solvedIndexPerHarmonic[index] = solveList.size();
                     solveList.push_back(pendingFlatHarmonics[index]);
@@ -6429,7 +6706,10 @@ std::optional<ParallelCurrentSplit> MagneticField::calculate_parallel_current_sp
             const double frequency = harmonic.frequency;
             const auto reactionPerField = reaction_per_field_at(frequency);
             std::vector<Complex> interpolated;
-            if (!solvedIndexPerHarmonic[harmonicIndex]) {
+            if (!solvedIndexPerHarmonic[harmonicIndex] && !carries_current(harmonic)) {
+                interpolated.assign(fullSize, Complex(0));
+            }
+            else if (!solvedIndexPerHarmonic[harmonicIndex]) {
                 interpolated.assign(fullSize, Complex(0));
                 const auto weights = spline_weights(frequency);
                 for (size_t sample = 0; sample < sampleFrequencies.size(); ++sample) {

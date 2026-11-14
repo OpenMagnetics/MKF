@@ -222,6 +222,32 @@ namespace WindingLossesTestHelpers {
         });
     }
 
+    // R_ac/R_dc of each turn: its losses (all harmonics) over its own ohmic losses, against OMFEM's per-turn ratio (the copper
+    // loss of the turn's bodies over their analytic DC loss; a toroid turn's two crossings summed). The shape across the
+    // winding, which the whole winding's ratio averages away.
+    inline void checkAcToDcRatioPerTurn(double frequency, const WindingLossesOutput& output, const std::vector<double>& omfemPerTurn, double maxError) {
+        const auto perTurn = output.get_winding_losses_per_turn().value();
+        REQUIRE(perTurn.size() == omfemPerTurn.size());
+        for (size_t turnIndex = 0; turnIndex < perTurn.size(); ++turnIndex) {
+            const double ohmic = perTurn[turnIndex].get_ohmic_losses()->get_losses();
+            REQUIRE(ohmic > 0);
+            double losses = ohmic;
+            if (perTurn[turnIndex].get_skin_effect_losses()) {
+                for (double loss : perTurn[turnIndex].get_skin_effect_losses()->get_losses_per_harmonic()) {
+                    losses += loss;
+                }
+            }
+            if (perTurn[turnIndex].get_proximity_effect_losses()) {
+                for (double loss : perTurn[turnIndex].get_proximity_effect_losses()->get_losses_per_harmonic()) {
+                    losses += loss;
+                }
+            }
+            INFO("f = " << frequency << " Hz, turn " << turnIndex << ": MKF R_ac/R_dc " << losses / ohmic << ", OMFEM " << omfemPerTurn[turnIndex]
+                 << " (MKF/OMFEM " << losses / ohmic / omfemPerTurn[turnIndex] << ")");
+            CHECK_THAT(losses / ohmic, Catch::Matchers::WithinRel(omfemPerTurn[turnIndex], maxError));
+        }
+    }
+
     // The same under a named winding-loss model set (it fixes every model), with the config's fringing switch.
     inline void runAcToDcVsOmfemTestWithModelSet(const WindingLossesTestData::TestConfig& config, const std::vector<std::pair<double, double>>& omfemRatios,
                                                  double maxError, WindingLossesModelSets modelSet) {
@@ -954,8 +980,81 @@ namespace TestWindingLossesToroidalCores {
     }
 
     TEST_CASE("Test_Winding_Losses_Ten_Turns_Round_Sinusoidal_Toroidal_Core", "[physical-model][winding-losses][round][round-winding-window]") {
+        // Alf 2026-11-14: R_ac/R_dc against 2D OMFEM of the same design under the toroid's default set (TOROID), not the
+        // July watt pins (OMFEM ratio x MKF DC, from OMFEM of 2026-07-27 at the default air margin: 1.213 / 2.841 / 5.050 /
+        // 7.494 at 25 / 100 / 250 / 500 kHz). OMFEM: d3d5885 (per-group DC output), omfem_mas with OMFEM_AIR_MARGIN=8, ring in
+        // the XY plane, on the MAS exported by Debug_Martinez_Flat_Scorecard at the config's 20 C (the wire given a 26 um
+        // enamel coating in the OMFEM input only, which OMFEM's wire check requires and which does not enter the eddy solve);
+        // inputs and logs in /home/alf/OpenMagnetics/.mkf-triage-runs/gap/tor. MKF reads 1.216 / 2.805 / 4.882 / 7.088.
         auto config = WindingLossesTestData::createTenTurnsRoundToroidalConfig();
-        WindingLossesTestHelpers::runWindingLossesTest(config);
+        WindingLossesTestHelpers::runAcToDcVsOmfemTestWithModelSet(
+            config, {{25000, 1.225}, {100000, 2.935}, {250000, 5.224}, {500000, 7.772}},
+            WindingLossesTestHelpers::maximumError, WindingLossesModelSets::TOROID);
+    }
+
+    TEST_CASE("Test_Winding_Losses_Ten_Turns_Round_Toroidal_Core_Per_Turn_Vs_OMFEM", "[physical-model][winding-losses][round][round-winding-window]") {
+        // Alf 2026-11-14: per turn, the round turns' eddy reaction against 2D OMFEM (same runs as the test above). The ten
+        // turns are packed 0.76 mm apart (0.71 mm wire) on one arc of the bore, so each turn's field is shaped by its
+        // neighbours' eddy currents and by the ferrite's reply to them. Without the reaction the middle turns read 18-23 %
+        // high and turn 1 15 % low at 250-500 kHz; with it every turn reads 3-11 % low (the field gradient across a wire,
+        // which the centre-field kernel does not see), hence 15 %.
+        auto config = WindingLossesTestData::createTenTurnsRoundToroidalConfig();
+        const std::vector<std::pair<double, std::vector<double>>> omfem = {
+            {100000, {5.163, 3.426, 2.461, 1.932, 1.695, 1.695, 1.932, 2.461, 3.426, 5.162}},
+            {250000, {9.702, 6.483, 4.357, 3.083, 2.488, 2.488, 3.083, 4.356, 6.488, 9.707}},
+            {500000, {14.62, 9.939, 6.509, 4.4, 3.389, 3.389, 4.399, 6.519, 9.932, 14.63}},
+        };
+        auto magnetic = config.createMagnetic();
+        for (const auto& [frequency, perTurn] : omfem) {
+            settings.reset();
+            clear_databases();
+            settings.set_magnetic_field_mirroring_dimension(config.mirroringDimension);
+            settings.set_magnetic_field_include_fringing(config.includeFringing);
+            auto inputs = OpenMagnetics::Inputs::create_quick_operating_point_only_current(
+                frequency, config.magnetizingInductance, config.temperature, config.waveform, config.peakToPeak, config.dutyCycle, config.offset);
+            WindingLossesModels models;
+            models.modelSet = WindingLossesModelSets::TOROID;
+            WindingLossesTestHelpers::checkAcToDcRatioPerTurn(frequency, WindingLosses(models).calculate_losses(magnetic, inputs.get_operating_point(0), config.temperature),
+                                                              perTurn, 0.15);
+        }
+        settings.reset();
+    }
+
+    TEST_CASE("Test_Winding_Losses_Ten_Turns_Round_E42_Gapped_Per_Turn_Vs_OMFEM", "[physical-model][winding-losses][round][rectangular-winding-window]") {
+        // Alf 2026-11-14: per turn, the round turns' eddy reaction beside a gap against 2D OMFEM. E 42/21/20 3C97 with a 1 mm
+        // ground gap, a 1 mm bobbin and ten turns of Round 0.475 - Grade 1 in one layer along the gapped column, a 2 A
+        // peak-to-peak sinusoid, 20 C, the default model set. OMFEM: d3d5885 (per-group DC output), omfem_mas with
+        // OMFEM_AIR_MARGIN=8; inputs and logs in /home/alf/OpenMagnetics/.mkf-triage-runs/gap/fem2 (probe_<f>.json,
+        // probe_<f>.g.omfem.*). MKF reads within 1.5 % at 100 kHz and 3-8 % low at 300 kHz; without the reaction the turns
+        // facing the gap read up to 27 % high at 300 kHz, hence 15 %.
+        settings.reset();
+        clear_databases();
+        auto core = OpenMagneticsTesting::get_quick_core("E 42/21/20", OpenMagneticsTesting::get_ground_gap(1e-3), 1, "3C97");
+        auto bobbin = OpenMagnetics::Bobbin::create_quick_bobbin(core, 0.001, 0.001);
+        json coilJson;
+        json bobbinJson;
+        to_json(bobbinJson, bobbin);
+        coilJson["bobbin"] = bobbinJson;
+        coilJson["functionalDescription"] = json::array();
+        coilJson["functionalDescription"].push_back(json{{"name", "Primary"}, {"numberTurns", 10}, {"numberParallels", 1},
+                                                         {"isolationSide", "primary"}, {"wire", "Round 0.475 - Grade 1"}});
+        OpenMagnetics::Coil coil(coilJson, false);
+        coil.set_core_columns(core.get_processed_description()->get_columns());
+        REQUIRE(coil.wind());
+        OpenMagnetics::Magnetic magnetic;
+        magnetic.set_core(core);
+        magnetic.set_coil(coil);
+        const std::vector<std::pair<double, std::vector<double>>> omfem = {
+            {100000, {1.067, 1.147, 1.531, 2.167, 2.948, 3.463, 3.261, 2.469, 1.649, 1.181}},
+            {300000, {1.362, 1.836, 3.666, 6.251, 8.674, 9.691, 8.549, 5.93, 3.244, 1.657}},
+        };
+        for (const auto& [frequency, perTurn] : omfem) {
+            settings.reset();
+            clear_databases();
+            auto inputs = OpenMagnetics::Inputs::create_quick_operating_point_only_current(frequency, 100e-6, 20, WaveformLabel::SINUSOIDAL, 2, 0.5, 0);
+            WindingLossesTestHelpers::checkAcToDcRatioPerTurn(frequency, WindingLosses().calculate_losses(magnetic, inputs.get_operating_point(0), 20), perTurn, 0.15);
+        }
+        settings.reset();
     }
 
     TEST_CASE("Test_Winding_Losses_One_Turn_Round_Sinusoidal_Toroidal_Core_Rectangular_Wire", "[physical-model][winding-losses][rectangular][round-winding-window]") {

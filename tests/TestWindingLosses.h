@@ -925,6 +925,8 @@ namespace WindingLossesTestData {
         config.includeFringing = true;
         config.mirroringDimension = 1;
         
+        // Test_Winding_Losses_Ten_Turns_Round_Sinusoidal_Toroidal_Core no longer reads these (Alf 2026-11-14): it compares
+        // R_ac/R_dc with fresh OMFEM. They stay for the other users of this config.
         // FEM-referenced, 2026-07-27 (ABT #190a, user-approved re-pin). The previous values
         // carried "TODO: verify these against FEM simulation" and had never been checked; they
         // are replaced here by OMFEM 2D harmonic-eddy results for this exact magnetic.

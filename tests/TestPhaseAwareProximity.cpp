@@ -43,13 +43,19 @@ using namespace OpenMagnetics;
 // contributes (same reason Test_Initial_Permeability_3C97 was re-pinned on 2026-10-11).
 // Previous: 0.071059513874992264, 0.092679199493837766, 0.18784873417059961, 0.20012607278960068,
 // 0.37276289103107252.
-#define GOLDEN_SINGLE_ALBACH 0.07105950730351622
-#define GOLDEN_SINGLE_BINNS 0.092679197697816934
-#define GOLDEN_ANTIPHASE_ALBACH 0.1878487167986336
-#define GOLDEN_ANTIPHASE_BINNS 0.20012607223424467
 // ABT #2267 (Alf 2026-11-13): the pipeline runs LAMMERANER (fringing off), whose images keep the pure 2-D field now; it
 // was 0.37276289045512961.
-#define GOLDEN_ANTIPHASE_PIPELINE 0.37233151856882635
+// Re-pinned 2026-11-14 (Alf): the round turns' eddy reaction (each crossing an induced dipole, solved together with its
+// neighbours and the core's images of it) moved them from 0.07105950730351622, 0.092679197697816934, 0.1878487167986336,
+// 0.20012607223424467 and 0.37233151856882635. Against 2D OMFEM (d3d5885 (per-group DC output), OMFEM_AIR_MARGIN=8, the fixtures'
+// residual gaps left out, which OMFEM cannot mesh; inputs in /home/alf/OpenMagnetics/.mkf-triage-runs/gap/pa) the pipeline's
+// R_ac/R_dc moved from 1.962 to 2.124 on the single winding (OMFEM 2.192) and from 2.393 / 2.475 to 2.077 / 2.138 on the
+// antiphase transformer (OMFEM 2.171 / 2.162).
+#define GOLDEN_SINGLE_ALBACH 0.075735844584492701
+#define GOLDEN_SINGLE_BINNS 0.1107581464886337
+#define GOLDEN_ANTIPHASE_ALBACH 0.14090703426046911
+#define GOLDEN_ANTIPHASE_BINNS 0.15012483244099334
+#define GOLDEN_ANTIPHASE_PIPELINE 0.32234787544894128
 
 namespace {
 
@@ -179,6 +185,13 @@ std::vector<ComplexField> field_with_directions(OpenMagnetics::Magnetic& magneti
     return magneticField.calculate_magnetic_field_strength_field(operatingPoint, magnetic, std::nullopt, directions).get_field_per_frequency();
 }
 
+// The whole phasor field: in phase (real part) and in quadrature (imaginary part) with the gauge. The round turns' eddy
+// reaction puts part of every field in quadrature, even with all currents in phase.
+WindingWindowMagneticStrengthFieldPhasorOutput phasor_field_with_directions(OpenMagnetics::Magnetic& magnetic, const OperatingPoint& operatingPoint, MagneticFieldStrengthModels model, std::vector<int8_t> directions) {
+    MagneticField magneticField(model);
+    return magneticField.calculate_magnetic_field_strength_field(operatingPoint, magnetic, std::nullopt, directions);
+}
+
 std::vector<ComplexField> linear_combination(const std::vector<ComplexField>& a, double weightA, const std::vector<ComplexField>& b, double weightB) {
     REQUIRE(a.size() == b.size());
     auto result = a;
@@ -252,16 +265,28 @@ TEST_CASE("Test_Phase_Aware_Shifted_Secondary_Superposition", "[physical-model][
     // source sign) from single-winding fields, form H = H1 + H2 exp(j phi) by hand, and take the
     // loss of |H|^2 = |Re H|^2 + |Im H|^2 as the loss of the real field Re H plus that of Im H
     // (the proximity models here are quadratic forms of the field).
+    // Each H_k is the whole phasor a_k + j b_k (in phase and in quadrature): the round turns' eddy reaction puts part of
+    // every field in quadrature, so Re H = a1 + a2 cos phi - b2 sin phi and Im H = b1 + b2 cos phi + a2 sin phi
+    // (Alf 2026-11-13: the superposition carries the quadrature).
     prepare_settings();
     auto magnetic = make_magnetic({8, 8}, {"primary", "secondary"});
     auto unshifted = make_operating_point({sinusoidal_excitation(2.0, 0.3), sinusoidal_excitation(2.0, 0.3)});
 
     for (auto& [model, modelName] : fieldModels) {
-        auto primaryAlone = field_with_directions(magnetic, unshifted, model, {1, 0});
-        auto secondaryAlone = field_with_directions(magnetic, unshifted, model, {0, -1});
+        auto primaryAlone = phasor_field_with_directions(magnetic, unshifted, model, {1, 0});
+        auto secondaryAlone = phasor_field_with_directions(magnetic, unshifted, model, {0, -1});
+        const auto primaryInPhase = primaryAlone.get_field_per_frequency();
+        const auto primaryQuadrature = primaryAlone.get_quadrature_field_per_frequency();
+        const auto secondaryInPhase = secondaryAlone.get_field_per_frequency();
+        const auto secondaryQuadrature = secondaryAlone.get_quadrature_field_per_frequency();
+        auto superposed_loss = [&](const OperatingPoint& operatingPoint, double shift) {
+            auto realPart = linear_combination(linear_combination(primaryInPhase, 1, secondaryInPhase, std::cos(shift)), 1, secondaryQuadrature, -std::sin(shift));
+            auto imaginaryPart = linear_combination(linear_combination(primaryQuadrature, 1, secondaryQuadrature, std::cos(shift)), 1, secondaryInPhase, std::sin(shift));
+            return proximity_of_field(magnetic, operatingPoint, realPart) + proximity_of_field(magnetic, operatingPoint, imaginaryPart);
+        };
         double antiphaseLosses = proximity_default(magnetic, unshifted, model);
         // Sanity of the construction itself: at phi = 0 the hand-built field is the model's.
-        double superposedAtZero = proximity_of_field(magnetic, unshifted, linear_combination(primaryAlone, 1, secondaryAlone, 1));
+        double superposedAtZero = superposed_loss(unshifted, 0);
         INFO(modelName);
         CHECK_THAT(superposedAtZero, Catch::Matchers::WithinRel(antiphaseLosses, 1e-9));
 
@@ -269,10 +294,7 @@ TEST_CASE("Test_Phase_Aware_Shifted_Secondary_Superposition", "[physical-model][
             double shift = shiftDegrees * std::numbers::pi / 180;
             auto shifted = make_operating_point({sinusoidal_excitation(2.0, 0.3), sinusoidal_excitation(2.0, 0.3 + shift)});
             double losses = proximity_default(magnetic, shifted, model);
-
-            auto inPhase = linear_combination(primaryAlone, 1, secondaryAlone, std::cos(shift));
-            auto quadrature = linear_combination(primaryAlone, 0, secondaryAlone, std::sin(shift));
-            double expected = proximity_of_field(magnetic, shifted, inPhase) + proximity_of_field(magnetic, shifted, quadrature);
+            double expected = superposed_loss(shifted, shift);
             std::printf("[phase-aware] %s shift %.0f deg: model %.10g superposition %.10g antiphase %.10g\n",
                         modelName.c_str(), shiftDegrees, losses, expected, antiphaseLosses);
             INFO("shift " << shiftDegrees << " deg");
@@ -323,3 +345,4 @@ TEST_CASE("Test_Phase_Aware_Push_Pull_Primary_Halves_Add", "[physical-model][win
     }
     settings.reset();
 }
+

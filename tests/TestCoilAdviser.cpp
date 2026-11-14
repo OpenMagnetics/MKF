@@ -2374,15 +2374,9 @@ TEST_CASE("Test_CoilAdviser_Web_3", "[adviser][coil-adviser][bug][smoke-test]") 
     auto noResultsReason = coilAdviser.get_last_no_results_reason();
     REQUIRE(noResultsReason.has_value());
     CHECK_THAT(*noResultsReason, Catch::Matchers::ContainsSubstring("rejected by the temperature limit"));
-    // Re-pinned 2026-11-03 (Alf: confirm the cause, then re-pin). MAS e56be36 -> 6e288e9 moved it: with the old
-    // core_materials.ndjson the old text (564 C with 55.9 W) comes back, while Mix 70's own record restored alone
-    // (composition iron, no provenance) does not, so the move comes from other material records. The coil is
-    // still rejected by the temperature limit; its core now reaches Mix 70's Curie point and is held there.
-    // Re-pinned 2026-11-04 (ABT #2226, approved by Alf): the example is the first rejected coil in loss order now (the
-    // adviser orders its coils by losses, the score only breaking ties). It was a coil whose core reached Mix 70's Curie
-    // point: "hot spot reaches at least 566 C, above the 130 C limit" and "its losses were 55.4 W".
-    CHECK_THAT(*noResultsReason, Catch::Matchers::ContainsSubstring("hot spot reaches 407 C"));
-    CHECK_THAT(*noResultsReason, Catch::Matchers::ContainsSubstring("with 27.9 W of losses, above the 130 C limit"));
+    // The example coil's temperature and losses are no longer pinned (Alf 2026-11-14): they moved with every loss-model
+    // change (564 C / 55.9 W, 566 C / 55.4 W, 407 C / 27.9 W, then 387 C / 25.4 W with the round turns' eddy reaction),
+    // while what the test guards stayed the same: every coil the adviser winds is rejected by the temperature limit.
 
 }
 

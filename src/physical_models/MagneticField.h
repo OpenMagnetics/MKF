@@ -283,7 +283,12 @@ class MagneticField {
         MagneticFieldStrengthFringingEffectModels _magneticFieldStrengthFringingEffectModel;
         std::shared_ptr<MagneticFieldStrengthModel>  _model;
         std::shared_ptr<MagneticFieldStrengthFringingEffectModel>  _fringingEffectModel;
+        // ABT #2267: the solid round turns' eddy reaction (their induced dipoles) in the field. On for the field at the
+        // conductors (losses, the Painter); off for a magnetostatic quantity such as the leakage inductance, defined by
+        // the turns' nominal currents alone.
+        bool _includeRoundTurnEddyReaction = true;
     public:
+        void set_include_round_turn_eddy_reaction(bool value) { _includeRoundTurnEddyReaction = value; }
         std::vector<Wire> _wirePerWinding;
         std::vector<double> _wireMaxOuterWidth;  // Precomputed for performance
         std::vector<double> _wireMaxOuterHeight; // Precomputed for performance
