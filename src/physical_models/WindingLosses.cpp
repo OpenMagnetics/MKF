@@ -41,7 +41,13 @@ double WindingLosses::get_total_winding_losses(std::vector<WindingLossesPerEleme
     return totalLossses;
 }
 
-WindingLossesPerElement combine_turn_losses_per_element(std::vector<WindingLossesPerElement> windingLossesPerTurn, std::vector<size_t> turnIndexesToCombine) {
+WindingLossesPerElement combine_turn_losses_per_element(std::vector<WindingLossesPerElement> windingLossesPerTurn, std::vector<size_t> turnIndexesToCombine,
+                                                        const std::string& elementDescription) {
+    // Only conducting elements are combined (insulation layers and sections are not), and a conducting layer, section or
+    // winding always holds turns: one without any is a coil that was not wound consistently.
+    if (turnIndexesToCombine.empty()) {
+        throw CoilNotProcessedException("Winding losses: " + elementDescription + " has no turns");
+    }
     WindingLossesPerElement windingLossesThisElement;
     OhmicLosses ohmicLossesThisElement;
     LossElementPerHarmonic skinEffectLossesThisElement;
@@ -115,7 +121,7 @@ WindingLossesOutput WindingLosses::combine_turn_losses(WindingLossesOutput windi
 
         auto layer = layers[layerIndex];
         auto turnsIndexes = coil.get_turns_indexes_by_layer(layer.get_name());
-        WindingLossesPerElement windingLossesThisLayer = combine_turn_losses_per_element(windingLossesPerTurn, turnsIndexes);
+        WindingLossesPerElement windingLossesThisLayer = combine_turn_losses_per_element(windingLossesPerTurn, turnsIndexes, "conduction layer '" + layer.get_name() + "'");
         windingLossesThisLayer.set_name(layer.get_name());
         windingLossesPerLayer.push_back(windingLossesThisLayer);
     }
@@ -131,7 +137,7 @@ WindingLossesOutput WindingLosses::combine_turn_losses(WindingLossesOutput windi
 
         auto section = sections[sectionIndex];
         auto turnsIndexes = coil.get_turns_indexes_by_section(section.get_name());
-        WindingLossesPerElement windingLossesThisSection = combine_turn_losses_per_element(windingLossesPerTurn, turnsIndexes);
+        WindingLossesPerElement windingLossesThisSection = combine_turn_losses_per_element(windingLossesPerTurn, turnsIndexes, "conduction section '" + section.get_name() + "'");
         windingLossesThisSection.set_name(section.get_name());
         windingLossesPerSection.push_back(windingLossesThisSection);
     }
@@ -146,7 +152,7 @@ WindingLossesOutput WindingLosses::combine_turn_losses(WindingLossesOutput windi
     for (size_t windingIndex = 0; windingIndex < coil.get_functional_description().size(); ++windingIndex) {
         auto winding = coil.get_functional_description()[windingIndex];
         auto turnsIndexes = coil.get_turns_indexes_by_winding(winding.get_name());
-        WindingLossesPerElement windingLossesThisWinding = combine_turn_losses_per_element(windingLossesPerTurn, turnsIndexes);
+        WindingLossesPerElement windingLossesThisWinding = combine_turn_losses_per_element(windingLossesPerTurn, turnsIndexes, "winding '" + winding.get_name() + "'");
         windingLossesThisWinding.set_name(winding.get_name());
 
         bool hasConnectionCopper = false;
