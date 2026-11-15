@@ -2933,6 +2933,50 @@ TEST_CASE("Test_Core_Get_Columns_Throws_When_Unprocessed", "[physical-model][cor
     REQUIRE_THROWS_AS(core.get_columns(), CoreNotProcessedException);
 }
 
+// Alf 2026-11-15: a drum's winding against 2D OMFEM. The drum has no outer wall, so the field step images the winding in
+// the post face and the two flanges only (CoilMesherCenterModel). OMFEM: a9e87fc omfem_mas, axisymmetric, air box x8
+// (OMFEM_AIR_MARGIN=8: the default x1.5 moved F_R by 7 %, x4 -> x8 by under 1 %), on the MAS
+// Debug_Martinez_Flat_Scorecard exports for this design (MF_AUTOCOMPLETE); inputs and logs in
+// /home/alf/OpenMagnetics/.mkf-triage-runs/wl/open (drum_sin*, drum_*_air8*). With four-wall images MKF read 0.71x at
+// 1 MHz and 0.79x at 200 kHz (outer layer down to 0.38x).
+TEST_CASE("Test_Winding_Losses_Drum_Two_Layers_Vs_OMFEM", "[physical-model][winding-losses][drum]") {
+    settings.reset();
+    clear_databases();
+    auto core = OpenMagneticsTesting::get_quick_core("DR 7.8/9.5/3.6/2.05/5.4/2.05", json::array(), 1, "N87");
+    json coilJson;
+    coilJson["bobbin"] = "Dummy";
+    coilJson["functionalDescription"] = json::array({{
+        {"name", "Primary"}, {"numberTurns", 30}, {"numberParallels", 1},
+        {"isolationSide", "primary"}, {"wire", "Round 0.25 - Grade 1"}}});
+    OpenMagnetics::Magnetic magnetic;
+    magnetic.set_core(core);
+    magnetic.set_coil(OpenMagnetics::Coil(coilJson, false));
+    magnetic = OpenMagnetics::magnetic_autocomplete(magnetic);
+    // The layout OMFEM solved: two layers of 15, the first turn at (1.937, -1.918) mm.
+    const auto turns = magnetic.get_coil().get_turns_description().value();
+    REQUIRE(turns.size() == 30);
+    CHECK_THAT(turns[0].get_coordinates()[0], Catch::Matchers::WithinAbs(1.937e-3, 1e-6));
+    CHECK_THAT(turns[0].get_coordinates()[1], Catch::Matchers::WithinAbs(-1.918e-3, 1e-6));
+    CHECK_THAT(turns[15].get_coordinates()[0], Catch::Matchers::WithinAbs(2.211e-3, 1e-6));
+
+    for (auto [frequency, omfem] : std::vector<std::pair<double, double>>{{200000, 2.1785}, {1000000, 10.7323}}) {
+        auto inputs = OpenMagnetics::Inputs::create_quick_operating_point_only_current(frequency, 26e-6, 25, WaveformLabel::SINUSOIDAL, 2, 0.5, 0);
+        auto output = WindingLosses().calculate_losses(magnetic, inputs.get_operating_point(0), 25);
+        const auto winding = output.get_winding_losses_per_winding().value()[0];
+        double ohmic = winding.get_ohmic_losses()->get_losses();
+        double total = ohmic;
+        for (auto loss : winding.get_skin_effect_losses()->get_losses_per_harmonic()) {
+            total += loss;
+        }
+        for (auto loss : winding.get_proximity_effect_losses()->get_losses_per_harmonic()) {
+            total += loss;
+        }
+        INFO(frequency << " Hz: R_ac/R_dc MKF " << total / ohmic << " vs OMFEM " << omfem);
+        CHECK_THAT(total / ohmic, Catch::Matchers::WithinRel(omfem, WindingLossesTestHelpers::maximumError));
+    }
+    settings.reset();
+}
+
 // ABT #368: what does the drumRing's gap-fringing omission actually cost?
 //
 // MKF's width-resolved fringing kernel (the widthsamples path in MagneticField.cpp) is gated on

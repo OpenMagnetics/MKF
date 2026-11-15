@@ -903,6 +903,15 @@ std::vector<FieldPoint> CoilMesherCenterModel::generate_mesh_inducing_turn(const
                 nMinimum = -AxisymmetricWindow::planeImages;
                 nMaximum = AxisymmetricWindow::planeImages;
             }
+            // A drum's window has no outer wall: the post face and the two flanges are ferrite, the outside is air. The
+            // conductor is imaged once in the post face (m = -1) and in the flanges (every n), and never across the open
+            // side. Against 2D OMFEM (DR 7.8/9.5, 30 turns of 0.25 mm in two layers, N87) the four-wall lattice read the
+            // winding 0.71x at 1 MHz and 0.79x at 200 kHz, the outer layer down to 0.38x; post and flanges only, 0.93x and
+            // 0.97x, the outer layer 0.93-1.01x (Alf 2026-11-15).
+            if (coreFamily == CoreShapeFamily::DRUM) {
+                mMinimum = std::max(mMinimum, -1);
+                mMaximum = std::min(mMaximum, 0);
+            }
             for (int m = mMinimum; m <= mMaximum; ++m)
             {
                 for (int n = nMinimum; n <= nMaximum; ++n)
