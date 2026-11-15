@@ -720,7 +720,13 @@ namespace TestWindingLossesFoil {
     //  - lumped path carried an illegal cross-section prefactor -> 0.0002 W.
     // Operating point 0 = the user's measured burst waveform, 1 = clean sine at
     // the same RMS.
-    TEST_CASE("Test_Winding_Losses_Foil_IH_Transformer_Dowell_Band", "[physical-model][winding-losses][foil][smoke-test]") {
+    TEST_CASE("Test_Winding_Losses_Foil_IH_Transformer_Vs_OMFEM", "[physical-model][winding-losses][foil][smoke-test]") {
+        // Alf 2026-11-15 (ABT #1800): pinned to 2D OMFEM R_ac/R_dc of the clean sine (operating point 1, 40 kHz, 25 C)
+        // instead of the earlier Dowell band (1.2 < F_R < 3.0; Dowell is not ground truth). OMFEM a9e87fc omfem_mas, 2D
+        // planar, litz secondary through its 2D litz model, on the MAS exported by Debug_Martinez_Flat_Scorecard
+        // (MF_OP=1, foil exported as a rectangular conductor of the same section); inputs and logs in
+        // /home/alf/OpenMagnetics/.mkf-triage-runs/wl/ih. OMFEM: foil primary 1.881 (per turn 2.47 / 1.29 / 1.29 / 2.47),
+        // litz secondary 1.051; MKF d356a949 read 1.880 and 1.051.
         settings.reset();
         clear_databases();
         auto path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "bug_foil_proximity_ih_transformer.json");
@@ -731,31 +737,24 @@ namespace TestWindingLossesFoil {
 
         auto cleanSineLosses = WindingLosses().calculate_losses(magnetic, inputs.get_operating_point(1), temperature);
         auto perWinding = cleanSineLosses.get_winding_losses_per_winding().value();
-
-        double foilOhmic = perWinding[0].get_ohmic_losses()->get_losses();
-        double foilSkin = 0;
-        double foilProximity = 0;
-        auto skinLossesPerHarmonic = perWinding[0].get_skin_effect_losses()->get_losses_per_harmonic();
-        auto proximityLossesPerHarmonic = perWinding[0].get_proximity_effect_losses()->get_losses_per_harmonic();
-        for (auto loss : skinLossesPerHarmonic) {
-            foilSkin += loss;
-        }
-        for (auto loss : proximityLossesPerHarmonic) {
-            foilProximity += loss;
-        }
-
-        // Dowell for this foil: Delta = t/delta = 1.2 @ 40 kHz/25C, m = 2 layers
-        // per portion (S-P-S interleave) -> F_R = 1.81, proximity part ~ 0.79 W
-        // on R_dc*I^2 = 1.24 W. Band is generous (average-field method sits ~15%
-        // above Dowell; edge effects add 5-20%) but excludes both failure modes
-        // by orders of magnitude.
-        double foilFR = (foilOhmic + foilSkin + foilProximity) / foilOhmic;
+        auto acToDc = [&](size_t windingIndex) {
+            double ohmic = perWinding[windingIndex].get_ohmic_losses()->get_losses();
+            double total = ohmic;
+            for (auto loss : perWinding[windingIndex].get_skin_effect_losses()->get_losses_per_harmonic()) {
+                total += loss;
+            }
+            for (auto loss : perWinding[windingIndex].get_proximity_effect_losses()->get_losses_per_harmonic()) {
+                total += loss;
+            }
+            return std::pair<double, double>{ohmic, total / ohmic};
+        };
+        auto [foilOhmic, foilFR] = acToDc(0);
+        double litzFR = acToDc(1).second;
         CHECK(foilOhmic > 1.0);
         CHECK(foilOhmic < 1.6);
-        CHECK(foilFR > 1.2);
-        CHECK(foilFR < 3.0);
-        CHECK(foilProximity > 0.2);
-        CHECK(foilProximity < 3.0);
+        INFO("foil F_R " << foilFR << ", litz F_R " << litzFR);
+        CHECK_THAT(foilFR, Catch::Matchers::WithinRel(1.881, WindingLossesTestHelpers::maximumError));
+        CHECK_THAT(litzFR, Catch::Matchers::WithinRel(1.051, WindingLossesTestHelpers::maximumError));
 
         // The user's real (heavily distorted, tail to 4.7 MHz) waveform: litz
         // secondary proximity rises ~10x over the sine, foil stays Dowell-sane.
@@ -5573,8 +5572,16 @@ TEST_CASE("Debug_Martinez_Flat_Scorecard", "[debug][martinez-flat-scorecard][.]"
                 mas = OpenMagneticsTesting::mas_loader(path);
             }
             p.magnetic = mas.get_magnetic();
+            if (!p.magnetic.get_core().get_processed_description()) {
+                // A test MAS stored without its core geometry (e.g. bug_foil_proximity_ih_transformer.json).
+                auto core = p.magnetic.get_core();
+                core.process_data();
+                core.process_gap();
+                p.magnetic.set_core(core);
+            }
             p.inputs = mas.get_inputs();
-            p.operatingPoint = p.inputs.get_operating_point(0);
+            // MF_OP picks another operating point of the MAS (default 0).
+            p.operatingPoint = p.inputs.get_operating_point(std::getenv("MF_OP") ? std::stoul(std::getenv("MF_OP")) : 0);
             OpenMagnetics::Inputs::scale_time_to_frequency(p.operatingPoint, frequency, true);
             MagnetizingInductance magnetizingInductanceModel("ZHANG");
             // One winding: the unbiased inductance. These are current-driven winding-loss fixtures, some of which
