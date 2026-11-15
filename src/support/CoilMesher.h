@@ -171,6 +171,47 @@ class CoilMesher {
     // (atWindowCorner true) is the slot between a leg corner and a plate face flush with the window's end wall.
     static constexpr size_t slotMouthPieces = 8;
     static const std::vector<double>& slot_mouth_boundaries(bool atWindowCorner);
+
+    // ABT #2384: a gap's slot as a conductor near its mouth sees it. The lattice images a conductor in the column face as
+    // if the face were ferrite across the mouth too; the slot lets the conductor's own field into it. The map of the slot
+    // (gap length g) onto the upper half t-plane with the irons on the real axis and the leg corner at t = 1,
+    //     z = A [s + j ln((1 + j s) / t)],  s = sqrt(t - 1) sqrt(t + 1)   (two leg corners, dz/dt = A s / t),
+    //     z = A [2 r - 2 atan r],           r = sqrt(t - 1)               (a leg corner and the window's end wall),
+    // A = -j g / pi, z measured from the leg corner with the window at Re z > 0 and the slot along 0 < Im z < g, carries
+    // the exact field of a line current I at t0: the same current at conj(t0) is its image. That field differs from the
+    // lattice's by the field of a sheet on the mouth (with the coincident image the lattice gives it) whose current
+    // between two of its points is the change of I (arg(t - t0) + arg(t - conj t0)) / (2 pi) between them: within 0.2-0.7 %
+    // of the exact field on 32 pieces (scratch check against the map's own field, 2026-11-15). The legs stay at one
+    // potential, so a mouth's pieces carry no net current.
+    struct SlotMouth {
+        double wallX = 0;
+        // The leg corner the map puts at t = 1, and the gap's length along the wall.
+        double cornerY = 0;
+        double width = 0;
+        // +1 when the window is at x > wallX (a column face on the window's left), -1 when it is at x < wallX.
+        double towardsWindow = 1;
+        // +1 when the slot runs from cornerY to cornerY + width, -1 when it runs to cornerY - width.
+        double alongSlot = 1;
+        // The far side of the mouth is a plate face flush with the window's end wall, not a second leg corner.
+        bool atWindowCorner = false;
+        // The pieces' ends from the corner (0) to the far side (width), and their images in the t-plane.
+        std::vector<double> boundaryOffsets;
+        std::vector<std::complex<double>> boundaryT;
+    };
+    static constexpr size_t slotCorrectionPieces = 32;
+    // The mouths of a single-window core's gaps on its two walls, as generate_window_wall_sheet_sources opens them.
+    static std::vector<SlotMouth> slot_mouths(Magnetic magnetic);
+    // The map of a slot of unit width, and its inverse (Newton, kept in the upper half plane; throws if it does not converge).
+    // `start`, the preimage of a nearby point, is tried before the far-field starts.
+    static std::complex<double> slot_map(std::complex<double> t, bool atWindowCorner);
+    static std::complex<double> slot_map_inverse(std::complex<double> z, bool atWindowCorner, std::optional<std::complex<double>> start = std::nullopt);
+    // Per piece of the mouth, its sheet current per ampere of a line current at (x, y) in the window. `preimage` (in/out):
+    // a nearby point's preimage to start from, replaced by this point's.
+    static std::vector<double> slot_correction_currents(const SlotMouth& mouth, double x, double y, std::optional<std::complex<double>>* preimage = nullptr);
+    // The mouth's pieces as sheets of unit current, before imaging, in piece order.
+    static std::vector<WindowWallSheet> slot_correction_pieces(const SlotMouth& mouth);
+    // Sheets of a single-window core imaged in its complete-cell lattice, as generate_window_wall_sheets images the walls.
+    static std::vector<WindowWallSheet> image_window_wall_sheets(const std::vector<WindowWallSheet>& originals, Core core);
     // Appends the mouth of a gap on the wall x = wallX, from yStart to yEnd, as those pieces. cornerAtStart says which end
     // is the leg corner when the mouth is at a window corner.
     static void append_slot_mouth(std::vector<WindowWallSheet>& sheets, double wallX, double yStart, double yEnd, double current, bool atWindowCorner,

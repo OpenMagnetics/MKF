@@ -1755,6 +1755,171 @@ void append_gap_mouth(std::vector<WindowWallSheet>& sheets, double wallX, double
 }
 }  // namespace
 
+std::complex<double> CoilMesher::slot_map(std::complex<double> t, bool atWindowCorner) {
+    const std::complex<double> j(0, 1);
+    const std::complex<double> A = -j / std::numbers::pi;
+    if (atWindowCorner) {
+        const std::complex<double> r = std::sqrt(t - 1.0);
+        return A * (2.0 * r - 2.0 * std::atan(r));
+    }
+    const std::complex<double> s = std::sqrt(t - 1.0) * std::sqrt(t + 1.0);
+    return A * (s + j * std::log((1.0 + j * s) / t));
+}
+
+std::complex<double> CoilMesher::slot_map_inverse(std::complex<double> z, bool atWindowCorner, std::optional<std::complex<double>> start) {
+    const std::complex<double> j(0, 1);
+    const std::complex<double> A = -j / std::numbers::pi;
+    auto derivative = [&](std::complex<double> t) {
+        return atWindowCorner ? A * std::sqrt(t - 1.0) / t : A * std::sqrt(t - 1.0) * std::sqrt(t + 1.0) / t;
+    };
+    // Far from the mouth the two-corner map is z ~ (t / (j pi)) + j / 2 and the window-corner one grows like sqrt(t):
+    // start on the imaginary axis at the matching size and take damped Newton steps that stay in the upper half plane.
+    std::vector<std::complex<double>> starts = {
+        atWindowCorner ? j * (1.0 + std::numbers::pi * std::abs(z)) : j * std::numbers::pi * (z - 0.5 * j),
+        j * (1.0 + std::numbers::pi * std::abs(z)), j * 0.5, std::complex<double>(2, 1), std::complex<double>(-2, 1)};
+    if (start && start->imag() > 0) {
+        starts.insert(starts.begin(), start.value());
+    }
+    for (auto t : starts) {
+        if (!(t.imag() > 0)) {
+            t = std::complex<double>(t.real(), 0.5);
+        }
+        for (int iteration = 0; iteration < 300; ++iteration) {
+            const std::complex<double> step = (slot_map(t, atWindowCorner) - z) / derivative(t);
+            double damping = 1;
+            while ((t - damping * step).imag() <= 0 && damping > 1e-12) {
+                damping /= 2;
+            }
+            t -= damping * step;
+            if (std::abs(step) <= 1e-13 * std::max(1.0, std::abs(t))) {
+                if (std::abs(slot_map(t, atWindowCorner) - z) <= 1e-10 * std::max(1.0, std::abs(z))) {
+                    return t;
+                }
+                break;
+            }
+        }
+    }
+    throw CalculationException(ErrorCode::CALCULATION_ERROR, "Slot map: no t-plane point found for z = (" + std::to_string(z.real()) + ", " + std::to_string(z.imag()) + ")");
+}
+
+std::vector<CoilMesher::SlotMouth> CoilMesher::slot_mouths(Magnetic magnetic) {
+    std::vector<SlotMouth> mouths;
+    auto core = magnetic.get_core();
+    if (!core.get_processed_description()) {
+        throw CoreNotProcessedException();
+    }
+    auto windingWindows = core.get_processed_description()->get_winding_windows();
+    if (windingWindows.size() != 1) {
+        throw NotImplementedException("Slot mouths: only single-window cores have their gap slots resolved");
+    }
+    const double A = windingWindows[0].get_width().value();
+    const double B = windingWindows[0].get_height().value();
+    auto columns = core.get_columns();
+    const size_t mainColumnIndex = core.get_main_column_index();
+    const double x0 = columns[mainColumnIndex].get_width() / 2;
+    const double y0 = -B / 2;
+    const double x1 = x0 + A;
+    const double y1 = y0 + B;
+    bool anyLateralInZOnly = false;
+    for (size_t columnIndex = 0; columnIndex < columns.size(); ++columnIndex) {
+        if (columnIndex != mainColumnIndex && columns[columnIndex].get_coordinates()[0] == 0) {
+            anyLateralInZOnly = true;
+        }
+    }
+    for (const auto& gap : core.get_functional_description().get_gapping()) {
+        if (gap.get_type() != GapType::SUBTRACTIVE && gap.get_type() != GapType::ADDITIVE) {
+            continue;  // residual mating surfaces open no slot (they carry no mouth sheet either)
+        }
+        if (!gap.get_coordinates()) {
+            throw GapException(ErrorCode::GAP_INVALID_DIMENSIONS, "Slot mouths: a gap has no coordinates");
+        }
+        const auto coordinates = gap.get_coordinates().value();
+        double wallX;
+        double towardsWindow;
+        if (static_cast<size_t>(core.find_closest_column_index_by_coordinates(coordinates)) == mainColumnIndex) {
+            wallX = x0;
+            towardsWindow = 1;
+        }
+        else if (anyLateralInZOnly ? coordinates[0] == 0 : coordinates[0] > 0) {
+            wallX = x1;
+            towardsWindow = -1;
+        }
+        else {
+            continue;  // the other side's lateral limb
+        }
+        const double yStart = std::max(y0, coordinates[1] - gap.get_length() / 2);
+        const double yEnd = std::min(y1, coordinates[1] + gap.get_length() / 2);
+        if (!(yEnd > yStart)) {
+            throw GapException(ErrorCode::GAP_INVALID_DIMENSIONS, "Slot mouths: a gap at y = " + std::to_string(coordinates[1]) + " opens nowhere onto the winding window");
+        }
+        const double tolerance = 1e-9 * B;
+        const bool reachesStart = yStart <= y0 + tolerance;
+        const bool reachesEnd = yEnd >= y1 - tolerance;
+        if (reachesStart && reachesEnd) {
+            throw NotImplementedException("Slot mouths: a gap mouth spanning the whole window wall has no slot shape");
+        }
+        SlotMouth mouth;
+        mouth.wallX = wallX;
+        mouth.towardsWindow = towardsWindow;
+        mouth.width = yEnd - yStart;
+        mouth.atWindowCorner = reachesStart || reachesEnd;
+        // The leg corner is the end away from the window's end wall (append_gap_mouth).
+        if (reachesStart) {
+            mouth.cornerY = yEnd;
+            mouth.alongSlot = -1;
+        }
+        else {
+            mouth.cornerY = yStart;
+            mouth.alongSlot = 1;
+        }
+        // Pieces graded towards both ends of the mouth (cosine spacing), where a conductor beside it moves the field most.
+        mouth.boundaryOffsets.resize(slotCorrectionPieces + 1);
+        mouth.boundaryT.resize(slotCorrectionPieces + 1);
+        for (size_t k = 0; k <= slotCorrectionPieces; ++k) {
+            const double fraction = 0.5 - 0.5 * std::cos(std::numbers::pi * static_cast<double>(k) / static_cast<double>(slotCorrectionPieces));
+            mouth.boundaryOffsets[k] = fraction * mouth.width;
+            // On the mouth line itself (Re z = 0), a hair inside the window; its ends a hair off the corners.
+            const double imaginary = std::clamp(fraction, 1e-9, 1 - 1e-9);
+            mouth.boundaryT[k] = slot_map_inverse(std::complex<double>(1e-9, imaginary), mouth.atWindowCorner);
+        }
+        mouths.push_back(std::move(mouth));
+    }
+    return mouths;
+}
+
+std::vector<double> CoilMesher::slot_correction_currents(const SlotMouth& mouth, double x, double y, std::optional<std::complex<double>>* preimage) {
+    const double mapX = mouth.towardsWindow * (x - mouth.wallX) / mouth.width;
+    const double mapY = mouth.alongSlot * (y - mouth.cornerY) / mouth.width;
+    if (!(mapX > 0)) {
+        throw InvalidInputException(ErrorCode::INVALID_INPUT, "Slot correction: a conductor at (" + std::to_string(x) + ", " + std::to_string(y) +
+                                    ") is not on the window side of the column face x = " + std::to_string(mouth.wallX));
+    }
+    const std::complex<double> t0 = slot_map_inverse(std::complex<double>(mapX, mapY), mouth.atWindowCorner, preimage ? *preimage : std::nullopt);
+    if (preimage) {
+        *preimage = t0;
+    }
+    std::vector<double> currents(slotCorrectionPieces);
+    for (size_t k = 0; k < slotCorrectionPieces; ++k) {
+        // The increment of arg(t - t0) + arg(t - conj t0) along the piece, taken as the angle between its two ends (pieces
+        // are short, so it stays below pi and never crosses the branch cut).
+        const double change = std::arg((mouth.boundaryT[k + 1] - t0) / (mouth.boundaryT[k] - t0)) +
+                              std::arg((mouth.boundaryT[k + 1] - std::conj(t0)) / (mouth.boundaryT[k] - std::conj(t0)));
+        currents[k] = change / (2 * std::numbers::pi);
+    }
+    return currents;
+}
+
+std::vector<WindowWallSheet> CoilMesher::slot_correction_pieces(const SlotMouth& mouth) {
+    std::vector<WindowWallSheet> pieces;
+    pieces.reserve(slotCorrectionPieces);
+    for (size_t k = 0; k < slotCorrectionPieces; ++k) {
+        const double first = mouth.cornerY + mouth.alongSlot * mouth.boundaryOffsets[k];
+        const double second = mouth.cornerY + mouth.alongSlot * mouth.boundaryOffsets[k + 1];
+        pieces.push_back({{mouth.wallX, std::min(first, second)}, {mouth.wallX, std::max(first, second)}, 1.0});
+    }
+    return pieces;
+}
+
 std::vector<WindowRegion> CoilMesher::window_regions(Core core) {
     if (!core.get_processed_description()) {
         throw CoreNotProcessedException();
@@ -1923,6 +2088,13 @@ std::vector<WindowWallSheet> CoilMesher::generate_window_wall_sheets(Magnetic ma
             }
         }
         return sheets;
+    }
+    return image_window_wall_sheets(originals, core);
+}
+
+std::vector<WindowWallSheet> CoilMesher::image_window_wall_sheets(const std::vector<WindowWallSheet>& originals, Core core) {
+    if (!core.get_processed_description() || core.get_processed_description()->get_winding_windows().size() != 1) {
+        throw InvalidInputException(ErrorCode::INVALID_INPUT, "Neutral window field: the single-window lattice needs a processed core with one winding window");
     }
     auto windingWindow = core.get_processed_description().value().get_winding_windows()[0];
     const double A = windingWindow.get_width().value();

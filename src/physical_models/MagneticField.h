@@ -269,6 +269,9 @@ struct ParallelCurrentSplit {
     std::vector<std::vector<std::vector<std::complex<double>>>> cellCurrentPerFrequency;
     std::vector<std::vector<std::vector<std::complex<double>>>> cellFieldPerFrequency;
     std::vector<std::vector<std::vector<std::complex<double>>>> cellReactionPerFrequency;
+    // ABT #2384: per solved frequency, the currents the width cells and their face sheets drive on the gap slots' correction
+    // sheets (one per piece of every mouth, in the field step's SlotCorrection order). Empty when the frame resolves no slot.
+    std::vector<std::vector<std::complex<double>>> slotPieceCurrentFromCellsPerFrequency;
     // The harmonics solved, as frequencies k f_excitation (k >= 1, ascending), and per harmonic every frequency the
     // windings' harmonics lists give it (a list built from a waveform's own time span can differ from k f_excitation).
     std::vector<double> frequencies;
@@ -547,13 +550,16 @@ class MagneticFieldStrengthMmfBoundaryModel : public MagneticFieldStrengthFringi
     std::vector<std::vector<double>> _returnedCurrentPerWindowPerWinding;
     // One sheet's field at (x, y) for a current `scale` times its own (multipole form far from it).
     std::pair<double, double> sheet_field(size_t sheetIndex, double scale, double pointX, double pointY) const;
-    void screen_sheet(const WindowWallSheet& sheet, double pointX, double pointY, const std::vector<ScreeningStrip>& strips, std::optional<int64_t> inducedTurn,
-                      size_t windingIndex, double& fieldX, double& fieldY, std::vector<ScreenedFieldSum>& screened) const;
     // A round-post window (AxisymmetricWindow::applies): the MMF the gaps and the ferrite drop on the post face and
     // the outer wall is the boundary data of the window's correction field; the plates' share is rings on the plates.
     std::optional<AxisymmetricWindow> _axisymmetricWindow;
     AxisymmetricWindow::WallSources _axisymmetricWallSources;
   public:
+    // One sheet with foil strips in the way of (x, y): taken out whole from `field` and put back piece by piece, each piece
+    // unscreened into `field` or screened into `screened` under `windingIndex` (ABT #1645). Also used for the gap slots'
+    // correction sheets (ABT #2384).
+    static void screen_sheet(const WindowWallSheet& sheet, double pointX, double pointY, const std::vector<ScreeningStrip>& strips, std::optional<int64_t> inducedTurn,
+                             size_t windingIndex, double& fieldX, double& fieldY, std::vector<ScreenedFieldSum>& screened);
     std::string methodName = "MmfBoundary";
     ComplexFieldPoint get_magnetic_field_strength_between_gap_and_point([[maybe_unused]] CoreGap gap, [[maybe_unused]] double magneticFieldStrengthGap,
                                                                         [[maybe_unused]] FieldPoint inducedFieldPoint) {

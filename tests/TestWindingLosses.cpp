@@ -1131,17 +1131,89 @@ namespace TestWindingLossesPlanar {
         // exported by Debug_Martinez_Flat_Scorecard with its ambient temperature set to the test's 22 C; inputs and logs
         // in /home/alf/OpenMagnetics/.mkf-triage-runs/green/wl2/fem (One_Turn_Planar_Sinusoidal_Fringing_<f>).
         // Tolerance unchanged (30 %).
+        //
+        // ABT #2384 (Alf 2026-11-15, "re-derive refs"): MKF books every width cell over its own length L + 2 pi u (u outwards
+        // of the turn's centre line, Steiner's formula for the loop round the rectangular post), where planar 2-D OMFEM
+        // extrudes every element by the same depth. This 20 mm trace runs from 0.2 mm off the post outwards, so its inner
+        // edge, where the current crowds beside the gap, is 123 mm round against 186 mm on the centre line. The references
+        // are OMFEM's own element losses booked the same way: each element's |J|^2 dA times (L + 2 pi u) / L, over the DC of
+        // the band with its conductances combined (refs/ownlen.py on OMFEM .omfem-wl a9e87fc field dumps of the
+        // Debug_Martinez_Flat_Scorecard exports at 22 C; /home/alf/OpenMagnetics/.mkf-triage-runs/wl/e2384/refs/gp). Booked
+        // over equal lengths the same dumps give OMFEM's own R_ac/R_dc (4.113 ... 12.442 ... 34.958; the previous pins,
+        // from efa5113, were 4.140 ... 12.567 ... 33.778).
         WindingLossesTestHelpers::runJsonBasedAcToDcVsOmfemTest(
             "Test_Winding_Losses_One_Turn_Planar_Sinusoidal_Fringing.json", 22,
-            {{10000, 4.140}, {20000, 5.518}, {30000, 6.430}, {40000, 7.125}, {50000, 7.696}, {60000, 8.189},
-             {70000, 8.626}, {80000, 9.024}, {90000, 9.391}, {100000, 9.736}, {200000, 12.567}, {300000, 14.951},
-             {400000, 17.124}, {500000, 19.114}, {600000, 20.918}, {700000, 22.630}, {800000, 24.238}, {900000, 25.759},
-             {1000000, 27.172}, {1500000, 33.778}},
+            {{10000, 3.0706}, {20000, 3.9631}, {30000, 4.5549}, {40000, 5.0081}, {50000, 5.3827}, {60000, 5.7068},
+             {70000, 5.9979}, {80000, 6.2638}, {90000, 6.5118}, {100000, 6.7460}, {200000, 8.7298}, {300000, 10.4804},
+             {400000, 12.1092}, {500000, 13.6169}, {600000, 15.0137}, {700000, 16.2990}, {800000, 17.4972}, {900000, 18.6265},
+             {1000000, 19.6974}, {1500000, 24.4477}},
             maximumError, true,  // includeFringing = true
             std::nullopt, std::nullopt);  // ABT #1759 (Alf 2026-10-11): MKF's default model for the core
     }
 
-    TEST_CASE("Test_Winding_Losses_Sixteen_Turns_Planar_Sinusoidal_No_Fringing", "[physical-model][winding-losses][planar]") {
+    TEST_CASE("Test_Winding_Losses_One_Turn_Planar_Gap_Mouth_Field_Vs_OMFEM", "[physical-model][winding-losses][planar][magnetic-field][abt-2384]") {
+        // ABT #2384: the field across the 3 mm gap mouth of the gapped planar trace (E 64 planar, 20 x 0.209 mm trace at
+        // y = 0 below the mouth, 500 A peak, 200 kHz), on the post's face line x = 5.12 mm (face at 5.1 mm), the mouth
+        // spanning y = 0 ... 3 mm. The column face is solid mu-infinite ferrite to every source except the gap's own
+        // MMF sheet, so a conductor's field could not enter the slot; the slot correction adds, per conductor, the sheet
+        // pieces the slot's exact conformal map gives it on the mouth. Without the correction MKF reads this field 6 /
+        // 11 / 15 / 20 / 22 % high; with it 0.998 / 0.998 / 1.007 / 1.028 / 1.068 (Alf 2026-11-15: 8 %, the point 0.6 mm from
+        // the slot's far corner reads +6.8 %, a residual of the correction near that corner).
+        // OMFEM: .omfem-wl a9e87fc (2D, field dump), on the MAS Debug_Martinez_Flat_Scorecard exports for this fixture at
+        // 200 kHz with ambient 22 C; |H| = sqrt(|Hx|^2 + |Hy|^2) of the phasors, linearly interpolated, scaled to 500 A.
+        // Inputs and dump: /home/alf/OpenMagnetics/.mkf-triage-runs/wl/e2384/gp (gp_200000.json, dump_mouth.txt).
+        settings.reset();
+        clear_databases();
+        auto path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "Test_Winding_Losses_One_Turn_Planar_Sinusoidal_Fringing.json");
+        auto mas = OpenMagneticsTesting::mas_loader(path);
+        auto magnetic = mas.get_magnetic();
+        auto inputs = mas.get_inputs();
+        OperatingPoint operatingPoint = inputs.get_operating_point(0);
+        OpenMagnetics::Inputs::scale_time_to_frequency(operatingPoint, 200000, true);
+        double magnetizingInductance = OpenMagnetics::resolve_dimensional_values(
+            magnetizingInductanceModel.calculate_inductance_from_number_turns_and_gapping(magnetic.get_core(), magnetic.get_coil()).get_magnetizing_inductance());
+        operatingPoint = OpenMagnetics::Inputs::process_operating_point(operatingPoint, magnetizingInductance);
+        settings.set_magnetic_field_mirroring_dimension(1);
+        settings.set_magnetic_field_include_fringing(true);
+        const auto fieldModel = MagneticFieldStrengthModels::BINNS_LAWRENSON;
+        const auto fringingModel = MagneticFieldStrengthFringingEffectModels::MMF_BOUNDARY;
+        auto flatCells = resolve_flat_cell_windings(magnetic, fieldModel, fringingModel, &get_winding_losses_model_set(WindingLossesModelSets::NEUTRAL_WINDOW), std::nullopt);
+        auto split = MagneticField::calculate_parallel_current_split(magnetic, operatingPoint, 22, std::nullopt, flatCells);
+        REQUIRE(split);
+
+        const std::vector<std::pair<double, double>> omfem = {{0.8e-3, 174447}, {1.2e-3, 146100}, {1.6e-3, 130544}, {2.0e-3, 122575}, {2.4e-3, 122911}};
+        std::vector<FieldPoint> points;
+        for (const auto& [y, unused] : omfem) {
+            FieldPoint point;
+            point.set_point({5.12e-3, y});
+            points.push_back(point);
+        }
+        Field induced;
+        induced.set_data(points);
+        induced.set_frequency(operatingPoint.get_excitations_per_winding()[0].get_frequency());
+        MagneticField field(fieldModel, fringingModel);
+        auto output = field.calculate_magnetic_field_strength_field(operatingPoint, magnetic, induced, std::nullopt, CoilMesherModels::CENTER, split);
+        const auto& inPhase = output.get_field_per_frequency();
+        const auto& quadrature = output.get_quadrature_field_per_frequency();
+        size_t checkedHarmonics = 0;
+        for (size_t harmonicIndex = 0; harmonicIndex < inPhase.size(); ++harmonicIndex) {
+            if (inPhase[harmonicIndex].get_frequency() != 200000) {
+                continue;
+            }
+            ++checkedHarmonics;
+            for (size_t pointIndex = 0; pointIndex < omfem.size(); ++pointIndex) {
+                const auto& a = inPhase[harmonicIndex].get_data()[pointIndex];
+                const auto& b = quadrature[harmonicIndex].get_data()[pointIndex];
+                const double magnitude = std::sqrt(a.get_real() * a.get_real() + a.get_imaginary() * a.get_imaginary() + b.get_real() * b.get_real() + b.get_imaginary() * b.get_imaginary());
+                INFO("y = " << omfem[pointIndex].first * 1e3 << " mm: MKF |H| " << magnitude << " A/m, OMFEM " << omfem[pointIndex].second << " (MKF/OMFEM " << magnitude / omfem[pointIndex].second << ")");
+                CHECK_THAT(magnitude, Catch::Matchers::WithinRel(omfem[pointIndex].second, 0.08));
+            }
+        }
+        REQUIRE(checkedHarmonics == 1);
+        settings.reset();
+    }
+
+    TEST_CASE("Test_Winding_Losses_Sixteen_Turns_Planar_Sinusoidal_No_Fringing","[physical-model][winding-losses][planar]") {
         // ABT #1759 (Alf 2026-10-11): MKF's DEFAULT model for the core (field/fringing nullopt; NEUTRAL_WINDOW on this
         // single-window planar core) against 2D OMFEM, not an MKF snapshot. The previous pins were MKF snapshots under an
         // explicitly pinned ALBACH field/fringing model, 10-40x above FEM (the 16 paralleled traces screen each other,
@@ -5075,6 +5147,9 @@ TEST_CASE("Test_Winding_Losses_Parallel_Split_Fringing_Close_Vs_OMFEM", "[windin
     // side. OMFEM 2D (.mkf-1645-fem/ref3_parallels/summary.txt, Fringing_Close_20000, f1 = 19843.8 Hz):
     //   90.7 76.2 64.4 55.4 48.8 43.5 38 31.1 23.2 16.2 10.8 7.1 4.61 2.96 1.83 0.998 A.
     // MKF reads ~101 81.7 66.3 55 47.8 42.9 37.4 29.3 19.8 12.2 7.2 4.0 2.1 1.2 1.0 1.6.
+    // ABT #2384: MKF books each width cell over its own length L + 2 pi u where planar OMFEM extrudes all by one depth.
+    // The 16 strands are stacked over the same x extent (20 mm at x = 15.3 mm), so each carries the same length profile;
+    // strand currents are solved, not booked, so OMFEM's split is the reference as it stands.
     auto& settings = OpenMagnetics::Settings::GetInstance();
     settings.reset();
     auto [magnetic, operatingPoint] = sixteen_parallel_planar_fixture("Test_Winding_Losses_Sixteen_Turns_Planar_Sinusoidal_Fringing_Close.json", 20000);
@@ -6088,10 +6163,17 @@ TEST_CASE("Test_Winding_Losses_Multi_Window_E42_Rectangular_Vs_OMFEM", "[winding
     // the secondary 1.00x at 1 kHz, 0.93x at 100 kHz). It is the width-cell model on 0.8 mm bars beside a gap (the multi-window frame matches
     // the single-window one there, Test_Winding_Losses_Multi_Window_Cells_Match_Single_Window), the same family as the E 42
     // residual-gap innermost foil (0.72x); MARTINEZ without cells reads 0.86x.
+    // ABT #2384 (Alf 2026-11-15, "re-derive refs"): MKF books every width cell over its own length L + 2 pi u (u outwards
+    // of the turn's centre line, Steiner), where planar 2-D OMFEM extrudes every element by the same depth. The references
+    // are OMFEM's own element losses re-booked the same way: each element's |J|^2 dA times (L + 2 pi u) / L, u measured
+    // outwards from the column its crossing wraps, over the DC of the same bands with their conductances combined
+    // (refs/ownlen_mw.py, OMFEM .omfem-wl a9e87fc with a field dump; inputs and dumps in
+    // /home/alf/OpenMagnetics/.mkf-triage-runs/wl/e2384/refs/mw). Booked over equal lengths the same dumps give
+    // 1.8357 / 1.0132 and 55.793 / 5.783, the previous pins 1.8353 / 1.0127 and 55.7651 / 5.7587 to 0.4 %.
     settings.reset();
     clear_databases();
     auto magnetic = multi_window_e42("Rectangular 3.35x0.80 - Grade 1", 6, 3);
-    std::vector<std::tuple<double, double, double>> omfem = {{1000, 1.8353, 1.0127}, {100000, 55.7651, 5.7587}};
+    std::vector<std::tuple<double, double, double>> omfem = {{1000, 1.7833, 1.0240}, {100000, 51.412, 6.3236}};
     for (auto [frequency, primary, secondary] : omfem) {
         auto ratios = multi_window_ac_to_dc(magnetic, frequency);
         INFO(frequency << " Hz: primary MKF " << ratios[0] << " vs OMFEM " << primary << ", secondary MKF " << ratios[1] << " vs OMFEM " << secondary);
