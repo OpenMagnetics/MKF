@@ -51,11 +51,14 @@ using namespace OpenMagnetics;
 // residual gaps left out, which OMFEM cannot mesh; inputs in /home/alf/OpenMagnetics/.mkf-triage-runs/gap/pa) the pipeline's
 // R_ac/R_dc moved from 1.962 to 2.124 on the single winding (OMFEM 2.192) and from 2.393 / 2.475 to 2.077 / 2.138 on the
 // antiphase transformer (OMFEM 2.171 / 2.162).
+// Re-pinned 2026-11-15 (Alf, ABT #2384 stage 1): DC and skin are booked over each conductor's own length (round wire
+// (L + sqrt(L^2 - (pi d)^2)) / 2 instead of the centre line L), which moves the pipeline (ohmic + skin + proximity) from
+// 0.32234787544894128 (-1.2e-4). The proximity-only goldens do not move.
 #define GOLDEN_SINGLE_ALBACH 0.075735844584492701
 #define GOLDEN_SINGLE_BINNS 0.1107581464886337
 #define GOLDEN_ANTIPHASE_ALBACH 0.14090703426046911
 #define GOLDEN_ANTIPHASE_BINNS 0.15012483244099334
-#define GOLDEN_ANTIPHASE_PIPELINE 0.32234787544894128
+#define GOLDEN_ANTIPHASE_PIPELINE 0.32230861309157566
 
 namespace {
 
