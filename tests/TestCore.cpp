@@ -2597,6 +2597,46 @@ namespace TestDrumCore {
         settings.reset();
     }
 
+    // ABT #2414: Ae = c1/c2 is a length-weighted harmonic mean of the areas along the path, so with
+    // consistent integrals it can never fall below the smallest of them. The drum flange c2 term was
+    // copied from the pot core, which halves both c1 and c2 afterwards; the drum code halved only c1,
+    // so c2 was doubled and Ae/Le came out 1-48 % low, below minimumArea on 83 catalogue shapes.
+    TEST_CASE("Test_Drum_Family_Effective_Area_Is_Not_Below_Minimum_Area", "[core][drum][drum-ring][drum-semishielded]") {
+        settings.reset();
+        clear_databases();
+        size_t checked = 0;
+        std::vector<std::string> belowMinimum;
+        for (auto family : {CoreShapeFamily::DRUM, CoreShapeFamily::DRUM_RING, CoreShapeFamily::DRUM_SEMISHIELDED}) {
+            for (auto& name : get_core_shape_names(family)) {
+                auto shape = find_core_shape_by_name(name);
+                json shapeJson;
+                to_json(shapeJson, shape);
+                json coreJson;
+                coreJson["functionalDescription"] = {
+                    {"material", "3C95"}, {"shape", shapeJson},
+                    {"gapping", json::array()}, {"numberStacks", 1}};
+                coreJson["functionalDescription"]["type"] = json(core_type_for_shape_family(family));
+                Core core(coreJson);
+                auto effectiveParameters = core.get_processed_description()->get_effective_parameters();
+                checked++;
+                if (effectiveParameters.get_effective_area() < effectiveParameters.get_minimum_area() * (1 - 1e-9)) {
+                    belowMinimum.push_back(name + " (Ae " + std::to_string(effectiveParameters.get_effective_area() * 1e6) +
+                                           " mm2 < Amin " + std::to_string(effectiveParameters.get_minimum_area() * 1e6) + " mm2)");
+                }
+            }
+        }
+        REQUIRE(checked > 200);
+        INFO("drum-family shapes with Ae below minimumArea: " << [&] {
+            std::string joined;
+            for (auto& entry : belowMinimum) {
+                joined += "\n  " + entry;
+            }
+            return joined;
+        }());
+        CHECK(belowMinimum.empty());
+        settings.reset();
+    }
+
     // ABT #2410: a design edited from a two-piece set (PQ 27/15 here) to a semi-shielded drum carries the
     // previous core's processed gapping: its RESIDUAL mating-plane gaps. They are not the user's, so the drum
     // drops and re-derives them (a cast shell has none) instead of refusing the whole core, as drumRing does.

@@ -2811,10 +2811,16 @@ class CorePieceDrum : public CorePiece {
         double c1 = grooveHeight / postArea;
         double c2 = grooveHeight / pow(postArea, 2);
         // Two flanges: radial spreading discs from post edge to flange edge, plus the
-        // post-to-flange corners per IEC 60205 clause 4.6.
+        // post-to-flange corners per IEC 60205 clause 4.6. A disc of thickness t carrying radial
+        // flux from r to R has A(rho) = 2 pi rho t, so
+        //   c1 = integral drho / A   = ln(R/r) / (2 pi t)
+        //   c2 = integral drho / A^2 = (R - r) / (4 pi^2 t^2 R r).
+        // ABT #2414: c2 used to be 1/(2 (pi t)^2)..., copied from the pot core, whose IEC pair terms
+        // halve both c1 and c2 afterwards; here only c1 was halved, so c2 was doubled and Ae, Le came
+        // out 1-48 % low (Ae below minimumArea on 83 catalogue shapes). Same term in every drum class.
         for (auto flangeThickness : {dimensions["D"], dimensions["F"]}) {
             c1 += 1.0 / (2 * pi * flangeThickness) * log(flangeRadius / postRadius);
-            c2 += 1.0 / (2 * pow(pi * flangeThickness, 2)) * (flangeRadius - postRadius) / (flangeRadius * postRadius);
+            c2 += 1.0 / (4 * pow(pi * flangeThickness, 2)) * (flangeRadius - postRadius) / (flangeRadius * postRadius);
             areas.push_back(2 * pi * postRadius * flangeThickness);
             double s1 = postRadius - sqrt((pow(boreRadius, 2) + pow(postRadius, 2)) / 2);
             double cornerLength = pi / 4 * (2 * s1 + flangeThickness);
@@ -3046,7 +3052,7 @@ class CorePieceDrumRing : public CorePieceDrum {
         double drumC2 = grooveHeight / pow(postArea, 2);
         for (auto flangeThickness : {dimensions["D"], dimensions["F"]}) {
             drumC1 += 1.0 / (2 * pi * flangeThickness) * log(flangeRadius / postRadius);
-            drumC2 += 1.0 / (2 * pow(pi * flangeThickness, 2)) * (flangeRadius - postRadius) / (flangeRadius * postRadius);
+            drumC2 += 1.0 / (4 * pow(pi * flangeThickness, 2)) * (flangeRadius - postRadius) / (flangeRadius * postRadius);
             areas.push_back(2 * pi * postRadius * flangeThickness);
             double s1 = postRadius - sqrt((pow(boreRadius, 2) + pow(postRadius, 2)) / 2);
             double cornerLength = pi / 4 * (2 * s1 + flangeThickness);
@@ -3111,7 +3117,7 @@ class CorePieceDrumRing : public CorePieceDrum {
         // under the ring's mid-wall.
         for (auto [thickness, spreadRadius] : std::vector<std::pair<double, double>>{{topFlange, flangeRadius}, {plate, ringMeanRadius}}) {
             drumC1 += 1.0 / (2 * pi * thickness) * log(spreadRadius / postRadius);
-            drumC2 += 1.0 / (2 * pow(pi * thickness, 2)) * (spreadRadius - postRadius) / (spreadRadius * postRadius);
+            drumC2 += 1.0 / (4 * pow(pi * thickness, 2)) * (spreadRadius - postRadius) / (spreadRadius * postRadius);
             areas.push_back(2 * pi * postRadius * thickness);
             double s1 = postRadius - sqrt((pow(boreRadius, 2) + pow(postRadius, 2)) / 2);
             double cornerLength = pi / 4 * (2 * s1 + thickness);
@@ -3226,7 +3232,7 @@ class CorePieceDrumSemishielded : public CorePieceDrum {
         double ferriteC2 = grooveHeight / pow(postArea, 2);
         for (auto flangeThickness : {dimensions["D"], dimensions["F"]}) {
             ferriteC1 += 1.0 / (2 * pi * flangeThickness) * log(flangeRadius / postRadius);
-            ferriteC2 += 1.0 / (2 * pow(pi * flangeThickness, 2)) * (flangeRadius - postRadius) / (flangeRadius * postRadius);
+            ferriteC2 += 1.0 / (4 * pow(pi * flangeThickness, 2)) * (flangeRadius - postRadius) / (flangeRadius * postRadius);
             areas.push_back(2 * pi * postRadius * flangeThickness);
             double s1 = postRadius - sqrt((pow(boreRadius, 2) + pow(postRadius, 2)) / 2);
             double cornerLength = pi / 4 * (2 * s1 + flangeThickness);
@@ -3556,7 +3562,7 @@ class CorePieceMolded : public CorePiece {
         auto plate = [&](std::string name) {
             RegionShapeConstants region{name, 0, 0, std::numeric_limits<double>::max()};
             region.c1 += 1.0 / (2 * pi * plateThickness) * log(cavityRadius / postRadius);
-            region.c2 += 1.0 / (2 * pow(pi * plateThickness, 2)) * (cavityRadius - postRadius) / (cavityRadius * postRadius);
+            region.c2 += 1.0 / (4 * pow(pi * plateThickness, 2)) * (cavityRadius - postRadius) / (cavityRadius * postRadius);
             double plateEntryArea = 2 * pi * postRadius * plateThickness;
             region.minimumArea = std::min(region.minimumArea, plateEntryArea);
             double s1 = postRadius - sqrt(pow(postRadius, 2) / 2);
