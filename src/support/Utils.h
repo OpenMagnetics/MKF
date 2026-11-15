@@ -160,8 +160,21 @@ std::string read_log();
 // The warning is `summary`, which names the material, the quantity and the range its data covers and is the same
 // for every value asked of that material (so repeats merge into one Engine log row), with `detail` naming the
 // value asked this time (LogRecord::detail). Both are written for the person reading the log: no setting names.
+// ABT #2410: inside a LogOnceScope (every web call and every top-level MKF call opens one) a notice is logged ONCE per
+// summary when the scope closes, however many lookups asked for it, and its detail gives the extremes asked
+// ("asked from 1.2 MHz to 6.4 MHz, above that range"); one simulation used to log the same loss-factor notice once per
+// harmonic per thermal iteration (x4128). Distinct summaries stay distinct notices. With no scope open each lookup is
+// logged, as before.
 inline constexpr const char* kMaterialDataExtrapolationModule = "Material data extrapolation";
-bool material_data_extrapolation_allowed(const std::string& summary, const std::string& detail);
+enum class MaterialDataAskedQuantity { FREQUENCY, TEMPERATURE, MAGNETIC_FLUX_DENSITY_AMPLITUDE };
+// The value a lookup asked of a material's data. `where` says where it lies against the data the summary names
+// ("below that range", "in a gap"); empty when the summary already says it.
+struct MaterialDataAsked {
+    MaterialDataAskedQuantity quantity;
+    double value;
+    std::string where;
+};
+bool material_data_extrapolation_allowed(const std::string& summary, const MaterialDataAsked& asked);
 // ABT #2235: material properties tabulated in temperature (saturation flux density; remanence, coercive
 // force and saturation field below their data; resistivity) and the initial permeability tabulated in
 // frequency are extrapolated outside their data exactly as they always were, whatever

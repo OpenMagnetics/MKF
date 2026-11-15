@@ -20,6 +20,7 @@
 #include "support/Exceptions.h"
 #include "support/Logger.h"
 #include "support/Utils.h"
+#include "support/LogOnceScope.h"
 #include "support/NumberFormat.h"
 #include "TestingUtils.h"
 
@@ -962,5 +963,114 @@ TEST_CASE("One-point loss factor: used at every frequency, warns outside its poi
         REQUIRE(records.size() == 1);
         CHECK(records[0].level == LogLevel::DEBUG);
     }
+    settings.reset();
+}
+
+// ABT #2410 (Alf, 2026-11-15): one calculation reports a material used outside its data ONCE per material and
+// quantity, with the extremes asked. The web's Engine log showed "Material A043: its loss factor is tabulated from
+// 1 kHz to 1.66 MHz ... (x4128)": one record per harmonic per thermal iteration of one simulation.
+TEST_CASE("Inside one calculation a material-data notice is logged once per material and quantity, with the extremes asked", "[material-extrapolation][loss-factor][logger][log-once]") {
+    settings.reset();
+    clear_databases();
+    settings.set_allow_material_data_extrapolation(true);
+    auto a043 = find_core_material_by_name("A043");
+    const std::vector<double> frequencies = {2e6, 6.4e6, 3e6, 500, 6.4e6, 2e6};
+    const double lowest = 500;
+    const double highest = 6.4e6;
+
+    SECTION("Inside a scope: one record per quantity, logged when the scope closes, naming the lowest and highest value asked") {
+        CollectorGuard collector;
+        {
+            LogOnceScope calculation;
+            for (double frequency : frequencies) {
+                CoreLossesLossFactorModel::get_loss_factor(a043, frequency);
+            }
+            for (double temperature : {159.0, 130.0, 171.0}) {
+                warn_if_material_temperature_outside_data("A043", "saturation flux density", 25, 100, temperature);
+            }
+            // Gathered, not yet logged: the scope logs them when it closes.
+            CHECK(extrapolation_records(Logger::getInstance().drainCollected()).empty());
+        }
+        auto records = extrapolation_records(Logger::getInstance().drainCollected());
+        REQUIRE(records.size() == 2);
+        std::map<std::string, LogRecord> byQuantity;
+        for (const auto& record : records) {
+            CHECK(record.count == 1);
+            CHECK(record.level == LogLevel::WARNING);
+            byQuantity[record.message.find("loss factor") != std::string::npos ? "loss factor" : "saturation"] = record;
+        }
+        REQUIRE(byQuantity.count("loss factor") == 1);
+        REQUIRE(byQuantity.count("saturation") == 1);
+        CHECK_THAT(byQuantity["loss factor"].message, Catch::Matchers::ContainsSubstring("A043"));
+        CHECK(byQuantity["loss factor"].detail == "asked from " + format_quantity(lowest, "Hz") + " to " +
+                                                       format_quantity(highest, "Hz") + ", below that range and above that range");
+        CHECK(byQuantity["saturation"].detail == "asked from 130 C to 171 C, above its data");
+    }
+    SECTION("A scope that asks one value keeps the one-value wording") {
+        CollectorGuard collector;
+        {
+            LogOnceScope calculation;
+            CoreLossesLossFactorModel::get_loss_factor(a043, highest);
+            CoreLossesLossFactorModel::get_loss_factor(a043, highest);
+        }
+        auto records = extrapolation_records(Logger::getInstance().drainCollected());
+        REQUIRE(records.size() == 1);
+        CHECK(records[0].count == 1);
+        CHECK(records[0].detail == "asked at " + format_quantity(highest, "Hz") + ", above that range");
+    }
+    SECTION("Two calculations are two reports; nothing carries over") {
+        CollectorGuard collector;
+        for (int calculation = 0; calculation < 2; ++calculation) {
+            LogOnceScope scope;
+            for (double frequency : frequencies) {
+                CoreLossesLossFactorModel::get_loss_factor(a043, frequency);
+            }
+        }
+        auto records = extrapolation_records(Logger::getInstance().drainCollected());
+        REQUIRE(records.size() == 1);
+        CHECK(records[0].count == 2);
+    }
+    SECTION("With no scope open every lookup is logged, as before") {
+        CollectorGuard collector;
+        for (double frequency : frequencies) {
+            CoreLossesLossFactorModel::get_loss_factor(a043, frequency);
+        }
+        auto records = extrapolation_records(Logger::getInstance().drainCollected());
+        REQUIRE(records.size() == 1);
+        CHECK(records[0].count == frequencies.size());
+    }
+    settings.reset();
+}
+
+// ABT #2410: the user's drum (DR 2.8x1.0 (S), A043, 200 turns of Round 0.034, 200 V rectangular at 100 kHz), loaded as
+// they saved it. One simulation evaluates A043's loss factor at every harmonic of the rectangular voltage on every
+// thermal iteration; it reports each material-data notice once, the loss factor's with the range of harmonics asked.
+TEST_CASE("Simulating the user's drum reports each material-data notice once", "[material-extrapolation][loss-factor][logger][log-once]") {
+    settings.reset();
+    clear_databases();
+    REQUIRE(settings.get_allow_material_data_extrapolation());
+    auto path = std::filesystem::path{std::source_location::current().file_name()}.parent_path()
+                    .append("testData").append("drum_dr2p8_a043_rectangular_100khz.json");
+    auto mas = OpenMagneticsTesting::mas_loader(path.string());
+    REQUIRE(mas.get_magnetic().get_core().get_material_name() == "A043");
+    REQUIRE(mas.get_magnetic().get_coil().get_functional_description()[0].get_number_turns() == 200);
+
+    CollectorGuard collector;
+    OpenMagnetics::Mas simulated;
+    simulated = MagneticSimulator().simulate(mas.get_inputs(), mas.get_magnetic(), false);
+    REQUIRE(simulated.get_outputs().size() == 1);
+    auto records = extrapolation_records(Logger::getInstance().drainCollected());
+    REQUIRE_FALSE(records.empty());
+    bool lossFactorReported = false;
+    for (const auto& record : records) {
+        INFO(record.message << " (" << record.detail << ") x" << record.count);
+        CHECK(record.count == 1);
+        if (record.message.find("A043: its loss factor is tabulated from") != std::string::npos) {
+            lossFactorReported = true;
+            CHECK_THAT(record.detail, Catch::Matchers::StartsWith("asked from ") &&
+                                      Catch::Matchers::EndsWith("above that range"));
+        }
+    }
+    CHECK(lossFactorReported);
     settings.reset();
 }

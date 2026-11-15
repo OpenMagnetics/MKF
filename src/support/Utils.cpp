@@ -8,6 +8,7 @@
 #include "support/Logger.h"
 #include "json.hpp"
 
+#include <algorithm>
 #include <atomic>
 #include <math.h>
 #include <cmath>
@@ -234,16 +235,117 @@ std::string read_log() {
     return contents;
 }
 
-bool material_data_extrapolation_allowed(const std::string& summary, const std::string& detail) {
+namespace {
+
+std::string format_material_data_value(MaterialDataAskedQuantity quantity, double value) {
+    switch (quantity) {
+        case MaterialDataAskedQuantity::FREQUENCY:
+            return format_quantity(value, "Hz");
+        case MaterialDataAskedQuantity::TEMPERATURE:
+            return format_significant(value) + " C";
+        case MaterialDataAskedQuantity::MAGNETIC_FLUX_DENSITY_AMPLITUDE:
+            return format_quantity(value, "T");
+    }
+    throw std::logic_error("Unknown MaterialDataAskedQuantity " + std::to_string(static_cast<int>(quantity)));
+}
+
+// "asked at 6.4 MHz, above that range" for one value; "asked from 1.2 MHz to 6.4 MHz, above that range" for several.
+std::string describe_material_data_asked(MaterialDataAskedQuantity quantity, double minimum, double maximum,
+                                         const std::vector<std::string>& wheres) {
+    const bool flux = quantity == MaterialDataAskedQuantity::MAGNETIC_FLUX_DENSITY_AMPLITUDE;
+    std::string text;
+    if (minimum == maximum) {
+        text = std::string("asked at ") + (flux ? "a flux amplitude of " : "") + format_material_data_value(quantity, minimum);
+    }
+    else {
+        text = std::string("asked ") + (flux ? "at flux amplitudes " : "") + "from " + format_material_data_value(quantity, minimum) +
+               " to " + format_material_data_value(quantity, maximum);
+    }
+    for (size_t i = 0; i < wheres.size(); ++i) {
+        text += (i == 0 ? ", " : " and ") + wheres[i];
+    }
+    return text;
+}
+
+// The notices of the open LogOnceScope on this thread, one per level and summary, logged when it closes (ABT #2410).
+struct PendingMaterialDataNotice {
+    LogLevel level;
+    std::string summary;
+    MaterialDataAskedQuantity quantity;
+    double minimum;
+    double maximum;
+    // Where each value asked lies against the data ("below that range"), with the lowest value asked there; they are
+    // logged from the lowest value up, so the detail reads in the order of "from X to Y" whatever order they were asked.
+    std::vector<std::pair<double, std::string>> wheres;
+};
+thread_local std::vector<PendingMaterialDataNotice> pendingMaterialDataNotices;
+
+void log_pending_material_data_notices() {
+    auto notices = std::move(pendingMaterialDataNotices);
+    pendingMaterialDataNotices.clear();
+    for (auto& notice : notices) {
+        std::sort(notice.wheres.begin(), notice.wheres.end());
+        std::vector<std::string> wheres;
+        for (const auto& [lowest, where] : notice.wheres) {
+            wheres.push_back(where);
+        }
+        Logger::getInstance().log(notice.level, kMaterialDataExtrapolationModule, notice.summary,
+                                  describe_material_data_asked(notice.quantity, notice.minimum, notice.maximum, wheres));
+    }
+}
+
+void report_material_data_notice(LogLevel level, const std::string& summary, const MaterialDataAsked& asked) {
+    if (!LogOnceScope::is_open()) {
+        std::vector<std::string> wheres;
+        if (!asked.where.empty()) {
+            wheres.push_back(asked.where);
+        }
+        Logger::getInstance().log(level, kMaterialDataExtrapolationModule, summary,
+                                  describe_material_data_asked(asked.quantity, asked.value, asked.value, wheres));
+        return;
+    }
+    for (auto& notice : pendingMaterialDataNotices) {
+        if (notice.level != level || notice.summary != summary) {
+            continue;
+        }
+        if (notice.quantity != asked.quantity) {
+            throw std::logic_error("Material data notice '" + summary + "' was asked for two different quantities");
+        }
+        notice.minimum = std::min(notice.minimum, asked.value);
+        notice.maximum = std::max(notice.maximum, asked.value);
+        if (!asked.where.empty()) {
+            auto known = std::find_if(notice.wheres.begin(), notice.wheres.end(),
+                                      [&](const auto& entry) { return entry.second == asked.where; });
+            if (known == notice.wheres.end()) {
+                notice.wheres.emplace_back(asked.value, asked.where);
+            }
+            else {
+                known->first = std::min(known->first, asked.value);
+            }
+        }
+        return;
+    }
+    if (pendingMaterialDataNotices.empty()) {
+        LogOnceScope::at_close(log_pending_material_data_notices);
+    }
+    std::vector<std::pair<double, std::string>> wheres;
+    if (!asked.where.empty()) {
+        wheres.emplace_back(asked.value, asked.where);
+    }
+    pendingMaterialDataNotices.push_back({level, summary, asked.quantity, asked.value, asked.value, wheres});
+}
+
+} // namespace
+
+bool material_data_extrapolation_allowed(const std::string& summary, const MaterialDataAsked& asked) {
     if (!settings.get_allow_material_data_extrapolation()) {
         return false;
     }
-    if (summary.empty() || detail.empty()) {
+    if (summary.empty()) {
         throw std::invalid_argument("material_data_extrapolation_allowed needs a summary (material and the range its data "
-                                    "covers) and a detail (the value asked); got summary '" + summary + "', detail '" +
-                                    detail + "'");
+                                    "covers)");
     }
-    Logger::getInstance().warning(summary, kMaterialDataExtrapolationModule, detail);
+    report_material_data_notice(LogLevel::WARNING, summary, asked);
     return true;
 }
 
@@ -270,10 +372,10 @@ void warn_if_material_temperature_outside_data(const std::string& materialName, 
                                   ? "at " + format_significant(tableMinimum) + " C only"
                                   : "from " + format_significant(tableMinimum) + " C to " + format_significant(tableMaximum) + " C";
     const std::string side = temperature < tableMinimum ? "below" : "above";
-    Logger::getInstance().log(level, kMaterialDataExtrapolationModule,
-                              "Material " + materialName + ": its " + propertyName + " is tabulated " + range +
-                                  "; outside that the table is extrapolated",
-                              "asked at " + format_significant(temperature) + " C, " + side + " its data");
+    report_material_data_notice(level,
+                                "Material " + materialName + ": its " + propertyName + " is tabulated " + range +
+                                    "; outside that the table is extrapolated",
+                                {MaterialDataAskedQuantity::TEMPERATURE, temperature, side + " its data"});
 }
 
 void warn_if_material_frequency_outside_data(const std::string& materialName, const std::string& propertyName,
@@ -290,10 +392,10 @@ void warn_if_material_frequency_outside_data(const std::string& materialName, co
                                   ? "at " + format_quantity(tableMinimum, "Hz") + " only"
                                   : "from " + format_quantity(tableMinimum, "Hz") + " to " + format_quantity(tableMaximum, "Hz");
     const std::string side = frequency < tableMinimum ? "below" : "above";
-    Logger::getInstance().log(level, kMaterialDataExtrapolationModule,
-                              "Material " + materialName + ": its " + propertyName + " is tabulated " + range +
-                                  "; outside that range the table is extrapolated",
-                              "asked at " + format_quantity(frequency, "Hz") + ", " + side + " that range");
+    report_material_data_notice(level,
+                                "Material " + materialName + ": its " + propertyName + " is tabulated " + range +
+                                    "; outside that range the table is extrapolated",
+                                {MaterialDataAskedQuantity::FREQUENCY, frequency, side + " that range"});
 }
 
 void logEntry(std::string entry, std::string module, uint8_t entryVerbosity) {

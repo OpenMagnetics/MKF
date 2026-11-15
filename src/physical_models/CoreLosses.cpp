@@ -282,7 +282,7 @@ static void throw_if_above_curie_temperature(const CoreMaterial& coreMaterial, d
                 "Material " + coreMaterial.get_name() + ": core losses at or above its Curie temperature of " +
                     format_significant(curieTemperature.value()) + " C are computed with its ferromagnetic loss model, "
                     "which no longer describes the material there",
-                "asked at " + format_significant(temperature) + " C")) {
+                {MaterialDataAskedQuantity::TEMPERATURE, temperature, ""})) {
             return;
         }
         throw aboveCurie;
@@ -896,8 +896,8 @@ SteinmetzCoreLossesMethodRangeDatum CoreLossesModel::get_steinmetz_coefficients(
                 "Material " + materialData.get_name() + ": its Steinmetz loss coefficients are fitted from " +
                     format_quantity(minimumMaterialFrequency, "Hz") + " to " + format_quantity(maximumMaterialFrequency, "Hz") +
                     "; core losses outside that span are extrapolated from the nearest fitted range",
-                "asked at " + format_quantity(frequency, "Hz") + ", " +
-                    (frequency < minimumMaterialFrequency ? "below" : "above") + " that span")) {
+                {MaterialDataAskedQuantity::FREQUENCY, frequency,
+                 std::string(frequency < minimumMaterialFrequency ? "below" : "above") + " that span"})) {
             return nearestRange();
         }
         throw outOfSpan;
@@ -907,7 +907,7 @@ SteinmetzCoreLossesMethodRangeDatum CoreLossesModel::get_steinmetz_coefficients(
             "Material " + materialData.get_name() + ": its Steinmetz loss coefficients, fitted from " +
                 format_quantity(minimumMaterialFrequency, "Hz") + " to " + format_quantity(maximumMaterialFrequency, "Hz") +
                 ", leave gaps between their ranges; core losses in a gap are extrapolated from the nearest fitted range",
-            "asked at " + format_quantity(frequency, "Hz") + ", in a gap")) {
+            {MaterialDataAskedQuantity::FREQUENCY, frequency, "in a gap"})) {
         return nearestRange();
     }
     throw CalculationException(ErrorCode::CALCULATION_INVALID_INPUT,
@@ -4278,7 +4278,7 @@ static void throw_if_loss_factor_above_small_signal_flux(const CoreLossesLossFac
                 "Material " + aboveSmallSignal.material_name() + ": its loss factor (tan(delta)/mu_i) is small-signal data, "
                     "defined up to " + format_quantity(aboveSmallSignal.maximum_magnetic_flux_density(), "T") +
                     "; core losses at a larger flux are computed from it anyway and leave out the hysteresis loss",
-                "asked at a flux amplitude of " + format_quantity(aboveSmallSignal.magnetic_flux_density_amplitude(), "T"))) {
+                {MaterialDataAskedQuantity::MAGNETIC_FLUX_DENSITY_AMPLITUDE, aboveSmallSignal.magnetic_flux_density_amplitude(), ""})) {
             return;
         }
         throw;
@@ -4433,8 +4433,8 @@ double CoreLossesLossFactorModel::get_loss_factor(const CoreMaterial& coreMateri
         if (!material_data_extrapolation_allowed(
                 "Material " + coreMaterial.get_name() + ": its loss factor is tabulated " + range +
                     "; outside that range it is held at its nearest tabulated value",
-                "asked at " + format_quantity(frequency, "Hz") + ", " + (frequency < minimumFrequency ? "below" : "above") +
-                    " that range")) {
+                {MaterialDataAskedQuantity::FREQUENCY, frequency,
+                 std::string(frequency < minimumFrequency ? "below" : "above") + " that range"})) {
             throw MaterialException(ErrorCode::MATERIAL_FREQUENCY_OUT_OF_SPAN,
                 "Material " + coreMaterial.get_name() + ": its loss factor is tabulated " + range + "; " +
                 format_quantity(frequency, "Hz") + " is " + (frequency < minimumFrequency ? "below" : "above") +

@@ -24,6 +24,7 @@
 #include <limits>
 #include <magic_enum.hpp>
 #include <numbers>
+#include <stdexcept>
 #include <streambuf>
 #include <string>
 #include <valarray>
@@ -203,6 +204,7 @@ std::string mean_voltage_warning_key(const std::string& context, double frequenc
 }
 
 thread_local std::unique_ptr<std::unordered_set<std::string>> activeLogOnceKeys;
+thread_local std::vector<std::function<void()>> logOnceCloseActions;
 
 } // namespace
 
@@ -216,7 +218,23 @@ LogOnceScope::LogOnceScope() {
 LogOnceScope::~LogOnceScope() {
     if (_owner) {
         activeLogOnceKeys.reset();
+        auto actions = std::move(logOnceCloseActions);
+        logOnceCloseActions.clear();
+        for (auto& action : actions) {
+            action();
+        }
     }
+}
+
+bool LogOnceScope::is_open() {
+    return static_cast<bool>(activeLogOnceKeys);
+}
+
+void LogOnceScope::at_close(std::function<void()> action) {
+    if (!activeLogOnceKeys) {
+        throw std::logic_error("LogOnceScope::at_close called with no scope open");
+    }
+    logOnceCloseActions.push_back(std::move(action));
 }
 
 bool LogOnceScope::first_time(const std::string& key) {

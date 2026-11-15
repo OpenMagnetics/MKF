@@ -2762,7 +2762,7 @@ static double interpolate_ferromagnetic_property_to_curie(const CoreMaterial& co
                 "Material " + coreMaterial.get_name() + ": its " + propertyName + " is tabulated up to " +
                     format_significant(lastPoint.first) + " C and it has no Curie temperature; above that the " + propertyName +
                     " is held at its last tabulated value",
-                "asked at " + format_significant(temperature) + " C")) {
+                {MaterialDataAskedQuantity::TEMPERATURE, temperature, ""})) {
             return lastPoint.second;
         }
         throw MaterialException(ErrorCode::MATERIAL_DATA_MISSING,

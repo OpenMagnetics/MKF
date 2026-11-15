@@ -494,7 +494,8 @@ ComplexPermeabilityValue ComplexPermeability::get_complex_permeability_with_sour
             "Material " + materialName + ": its complex permeability is tabulated from " + format_quantity(minimumFrequency, "Hz") +
                 " to " + format_quantity(maximumFrequency, "Hz") + " and has no estimate outside it (" + reason +
                 "); outside that range each part is held at its nearest tabulated value",
-            "asked at " + format_quantity(frequency, "Hz") + ", " + (frequency < minimumFrequency ? "below" : "above") + " that range");
+            {MaterialDataAskedQuantity::FREQUENCY, frequency,
+             std::string(frequency < minimumFrequency ? "below" : "above") + " that range"});
     };
     auto estimatePointer = find_or_build_estimate(coreMaterial, cacheKey);
     bool holdNearest = false;

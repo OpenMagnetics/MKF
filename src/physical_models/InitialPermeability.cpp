@@ -1351,8 +1351,8 @@ double InitialPermeability::get_initial_permeability_temperature_dependent(const
                 "Material " + coreMaterial.get_name() + ": its initial permeability is tabulated from " +
                     format_significant(tabulatedMinimum) + " C to " + format_significant(tabulatedMaximum) +
                     " C; outside that range the table is extrapolated",
-                "asked at " + format_significant(temperature) + " C, " +
-                    (temperature < tabulatedMinimum ? "below" : "above") + " that range")) {
+                {MaterialDataAskedQuantity::TEMPERATURE, temperature,
+                 std::string(temperature < tabulatedMinimum ? "below" : "above") + " that range"})) {
             throw outOfRange;
         }
     }
