@@ -3,6 +3,7 @@
 #include "processors/ResultsAnalyzer.h"
 #include "processors/MagneticSimulator.h"
 #include "physical_models/MagnetizingInductance.h"
+#include "physical_models/CoreLosses.h"
 #include "physical_models/InitialPermeability.h"
 #include "constructive_models/CorePiece.h"
 #include "physical_models/Reluctance.h"
@@ -1888,6 +1889,115 @@ TEST_CASE("Test_Drum_Semishielded_Inductance", "[physical-model][magnetizing-ind
         buildCore(json{{"type", "epoxy"}, {"thickness", {{"nominal", 0.0001}}}}), numberTurns, 25));  // non-magnetic coating
     CHECK_THROWS(MagnetizingInductance::calculate_semishielded_drum_magnetizing_inductance(
         buildCore(glueCoating("No Such Glue")), numberTurns, 25));  // unknown shell material
+    settings.reset();
+}
+
+// ABT #2410/#2413 (Alf: "option B, but the second material is a magneticEpoxy"): the shell of a
+// semi-shielded drum is the SECOND entry of functionalDescription.material, a core material of
+// type magneticEpoxy. The older magneticEpoxy coating form is deprecated but still read. These
+// pin: (1) both forms give the same inductance and core losses for the same shell material;
+// (2) a core that states the shell both ways with different materials throws; (3) a
+// drumSemishielded core with neither form throws; (4) a second entry that is not a magneticEpoxy
+// grade throws; (5) the coating-as-insulation readers refuse a magneticEpoxy coating instead of
+// looking a core material up as an insulation.
+//
+// No public magneticEpoxy grade is in MAS, so the shell record is the catalogue's Kool Mu 26 with
+// its material type set to magneticEpoxy and its name kept: the coating form can only name a
+// catalogue record, and the two forms must point at the same permeability data to be compared.
+TEST_CASE("Test_Drum_Semishielded_Shell_Is_Second_Material", "[physical-model][magnetizing-inductance][drum-semishielded][core]") {
+    settings.reset();
+    clear_databases();
+    double numberTurns = 20;
+    const std::string shellName = "Kool Mµ 26";
+
+    json shellRecord = find_core_material_by_name(shellName);
+    shellRecord["material"] = "magneticEpoxy";
+
+    auto buildCore = [](json materialJson, json coatingJson) {
+        json shapeJson = {
+            {"magneticCircuit", "closed"}, {"type", "custom"}, {"family", "drumSemishielded"},
+            {"aliases", json::array()}, {"name", "LQS-like 4018"},
+            {"dimensions", {
+                {"A", {{"nominal", 0.0038}}}, {"B", {{"nominal", 0.0018}}}, {"C", {{"nominal", 0.0015}}},
+                {"D", {{"nominal", 0.0004}}}, {"E", {{"nominal", 0.0010}}}, {"F", {{"nominal", 0.0004}}},
+                {"J", {{"nominal", 0.0040}}}, {"K", {{"nominal", 0.0040}}}, {"L", {{"nominal", 0.0018}}}}}
+        };
+        json coreJson;
+        coreJson["functionalDescription"] = {
+            {"type", "pieceAndPlate"}, {"material", materialJson}, {"shape", shapeJson},
+            {"gapping", json::array()}, {"numberStacks", 1}};
+        if (!coatingJson.is_null()) {
+            coreJson["functionalDescription"]["coating"] = coatingJson;
+        }
+        Core core(coreJson);
+        core.process_data();
+        core.process_gap();
+        return core;
+    };
+    auto glueCoating = [](const std::string& materialName) {
+        return json{{"type", "magneticEpoxy"}, {"thickness", {{"nominal", 0.0001}}}, {"material", materialName}};
+    };
+
+    auto listCore = buildCore(json::array({"3C90", shellRecord}), json());
+    auto coatingCore = buildCore("3C90", glueCoating(shellName));
+    auto bothAgreeingCore = buildCore(json::array({"3C90", shellRecord}), glueCoating(shellName));
+
+    SECTION("material[1] gives the same inductance and losses as the deprecated coating") {
+        double listInductance = MagnetizingInductance::calculate_semishielded_drum_magnetizing_inductance(listCore, numberTurns, 25);
+        double coatingInductance = MagnetizingInductance::calculate_semishielded_drum_magnetizing_inductance(coatingCore, numberTurns, 25);
+        double bothInductance = MagnetizingInductance::calculate_semishielded_drum_magnetizing_inductance(bothAgreeingCore, numberTurns, 25);
+        UNSCOPED_INFO("material[1] " << listInductance * 1e6 << " uH, coating " << coatingInductance * 1e6 << " uH");
+        CHECK(std::isfinite(listInductance));
+        CHECK(listInductance > 0);
+        CHECK_THAT(listInductance, Catch::Matchers::WithinRel(coatingInductance, 1e-12));
+        CHECK_THAT(bothInductance, Catch::Matchers::WithinRel(coatingInductance, 1e-12));
+        // The drum keeps being the primary grade: material[0], not the shell.
+        CHECK(listCore.resolve_material().get_name() == "3C90");
+
+        json excitationJson = json();
+        excitationJson["frequency"] = 200000;
+        excitationJson["magneticFluxDensity"]["processed"]["dutyCycle"] = 0.5;
+        excitationJson["magneticFluxDensity"]["processed"]["label"] = WaveformLabel::SINUSOIDAL;
+        excitationJson["magneticFluxDensity"]["processed"]["offset"] = 0;
+        excitationJson["magneticFluxDensity"]["processed"]["peak"] = 0.05;
+        excitationJson["magneticFluxDensity"]["processed"]["peakToPeak"] = 0.1;
+        excitationJson["magneticFieldStrength"]["processed"]["offset"] = 0;
+        excitationJson["magneticFieldStrength"]["processed"]["label"] = WaveformLabel::SINUSOIDAL;
+        excitationJson["magneticFieldStrength"]["processed"]["peakToPeak"] = 0;
+        OperatingPointExcitation excitation(excitationJson);
+        auto listLosses = CoreLosses().calculate_core_losses(listCore, excitation, 25);
+        auto coatingLosses = CoreLosses().calculate_core_losses(coatingCore, excitation, 25);
+        CHECK(listLosses.get_method_used() == coatingLosses.get_method_used());
+        CHECK_THAT(listLosses.get_core_losses(), Catch::Matchers::WithinRel(coatingLosses.get_core_losses(), 1e-12));
+    }
+
+    SECTION("material[1] and the deprecated coating naming different shells throws") {
+        auto disagreeingCore = buildCore(json::array({"3C90", shellRecord}), glueCoating("Kool Mµ 60"));
+        CHECK_THROWS_WITH(MagnetizingInductance::calculate_semishielded_drum_magnetizing_inductance(disagreeingCore, numberTurns, 25),
+                          Catch::Matchers::ContainsSubstring("disagree"));
+    }
+
+    SECTION("a drumSemishielded core with neither form throws") {
+        auto bareCore = buildCore("3C90", json());
+        CHECK_THROWS_WITH(MagnetizingInductance::calculate_semishielded_drum_magnetizing_inductance(bareCore, numberTurns, 25),
+                          Catch::Matchers::ContainsSubstring("no shell material"));
+        auto oneEntryCore = buildCore(json::array({"3C90"}), json());
+        CHECK_THROWS_WITH(MagnetizingInductance::calculate_semishielded_drum_magnetizing_inductance(oneEntryCore, numberTurns, 25),
+                          Catch::Matchers::ContainsSubstring("no shell material"));
+    }
+
+    SECTION("a second entry that is not a magneticEpoxy grade throws") {
+        auto ferriteShellCore = buildCore(json::array({"3C90", "3C90"}), json());
+        CHECK_THROWS_WITH(MagnetizingInductance::calculate_semishielded_drum_magnetizing_inductance(ferriteShellCore, numberTurns, 25),
+                          Catch::Matchers::ContainsSubstring("not a magneticEpoxy"));
+    }
+
+    SECTION("the insulation readers refuse a magneticEpoxy coating") {
+        CHECK_THROWS_WITH(coatingCore.get_coating_relative_permittivity(),
+                          Catch::Matchers::ContainsSubstring("not an insulating coating"));
+        CHECK_THROWS_WITH(coatingCore.get_coating_thickness(),
+                          Catch::Matchers::ContainsSubstring("not an insulating coating"));
+    }
     settings.reset();
 }
 

@@ -1769,6 +1769,85 @@ std::vector<CoreMaterial> Core::resolve_materials() {
     return resolved;
 }
 
+// ABT #2410/#2413 (Alf: "option B, but the second material is a magneticEpoxy"). The shell of a
+// semi-shielded drum is a MAGNETIC material: it closes the drum's flux path. It is declared as the
+// second entry of the material list, exactly like the ring of a two-grade drumRing (#576), and the
+// coating slot goes back to meaning an insulating jacket. Designs written before that carry the
+// shell as a coating {type: magneticEpoxy, material: <core material name>}; they are still read,
+// but a core that states the shell both ways with different materials is contradictory, and
+// picking one would silently discard the other, so it is refused.
+CoreMaterial Core::resolve_semishielded_shell_material() const {
+    if (get_shape_family() != CoreShapeFamily::DRUM_SEMISHIELDED) {
+        throw InvalidInputException(ErrorCode::INVALID_CORE_DATA,
+            "only a drumSemishielded core has a magnetic-epoxy shell; core '" + get_shape_name() + "' is not one");
+    }
+
+    std::optional<CoreMaterial> shellFromList;
+    const auto& materialField = get_functional_description().get_material();
+    if (std::holds_alternative<std::vector<MaterialElement>>(materialField)) {
+        const auto& materials = std::get<std::vector<MaterialElement>>(materialField);
+        if (materials.size() > 2) {
+            throw InvalidInputException(ErrorCode::INVALID_CORE_DATA,
+                "drumSemishielded names " + std::to_string(materials.size()) + " materials; it has exactly "
+                "two pieces (drum, then its magnetic-epoxy shell), so the list must hold one or two entries");
+        }
+        if (materials.size() == 2) {
+            if (is_non_magnetic_region(materials[1])) {
+                throw InvalidInputException(ErrorCode::INVALID_CORE_DATA,
+                    "drumSemishielded shell (material[1]) is the reserved non-magnetic region \"air\"; the "
+                    "shell is the magnetic-epoxy return path and must name a magneticEpoxy core material");
+            }
+            auto shell = resolve_material(material_element_to_union(materials[1]));
+            if (shell.get_material() != MaterialType::MAGNETIC_EPOXY) {
+                throw InvalidInputException(ErrorCode::INVALID_CORE_DATA,
+                    "drumSemishielded shell (material[1]) '" + shell.get_name() + "' is not a magneticEpoxy "
+                    "material; the second entry of a semi-shielded drum's material list is its magnetic-epoxy shell");
+            }
+            shellFromList = shell;
+        }
+    }
+
+    // Deprecated form: the shell carried as a magneticEpoxy coating.
+    std::optional<std::string> shellNameFromCoating;
+    const auto& coatingUnion = get_functional_description().get_coating();
+    if (coatingUnion) {
+        if (std::holds_alternative<CoreCoating>(coatingUnion.value())) {
+            const auto& coating = std::get<CoreCoating>(coatingUnion.value());
+            if (coating.get_type() && coating.get_type().value() == CoatingType::MAGNETIC_EPOXY) {
+                if (!coating.get_material() || !std::holds_alternative<std::string>(coating.get_material().value())) {
+                    throw InvalidInputException(ErrorCode::INVALID_CORE_DATA,
+                        "Semi-shielded drum magneticEpoxy coating must reference the shell CORE material by name");
+                }
+                shellNameFromCoating = std::get<std::string>(coating.get_material().value());
+            }
+        }
+        else if (std::get<std::string>(coatingUnion.value()) == "magneticEpoxy") {
+            throw InvalidInputException(ErrorCode::INVALID_CORE_DATA,
+                "Semi-shielded drum coating 'magneticEpoxy' given by name carries no shell material; declare the "
+                "shell as the second entry of functionalDescription.material");
+        }
+    }
+
+    if (shellFromList && shellNameFromCoating) {
+        if (shellFromList->get_name() != shellNameFromCoating.value()) {
+            throw InvalidInputException(ErrorCode::INVALID_CORE_DATA,
+                "Semi-shielded drum states its shell twice and the two disagree: material[1] is '" +
+                shellFromList->get_name() + "' but the deprecated magneticEpoxy coating names '" +
+                shellNameFromCoating.value() + "'");
+        }
+        return shellFromList.value();
+    }
+    if (shellFromList) {
+        return shellFromList.value();
+    }
+    if (shellNameFromCoating) {
+        return find_core_material_by_name(shellNameFromCoating.value());
+    }
+    throw InvalidInputException(ErrorCode::INVALID_CORE_DATA,
+        "Semi-shielded drum has no shell material: declare it as the second entry of "
+        "functionalDescription.material (a magneticEpoxy core material). None is present.");
+}
+
 bool Core::is_non_magnetic_region(const MaterialElement& materialElement) {
     if (!std::holds_alternative<std::string>(materialElement)) {
         return false;
@@ -1976,6 +2055,24 @@ double Core::get_toroid_edge_radius() const {
     return std::min(sourced, geometricLimit);
 }
 
+// The deprecated magneticEpoxy coating is the MAGNETIC shell of a semi-shielded drum (its material
+// is a core material, see resolve_semishielded_shell_material), not an insulating jacket on the
+// ferrite. Asking it for a jacket thickness or a dielectric permittivity would feed a magnetic
+// material into the insulation models (it used to surface as "Insulation material not found:
+// Kool Mu 26"), so the insulation readers refuse it. Callers that may meet one skip it first, as
+// StrayCapacitance does.
+static void throw_if_magnetic_shell_coating(const CoreCoatingDataOrNameUnion& coating, const std::string& question) {
+    bool magneticShell = std::holds_alternative<CoreCoating>(coating)
+        ? (std::get<CoreCoating>(coating).get_type() &&
+           std::get<CoreCoating>(coating).get_type().value() == CoatingType::MAGNETIC_EPOXY)
+        : std::get<std::string>(coating) == "magneticEpoxy";
+    if (magneticShell) {
+        throw InvalidInputException(ErrorCode::INVALID_CORE_DATA,
+            "Core coating of type magneticEpoxy is the magnetic shell of a semi-shielded drum, not an insulating "
+            "coating; it has no " + question);
+    }
+}
+
 double Core::get_coating_thickness(DimensionalValues preferredValue) const {
     if (!get_functional_description().get_coating()) {
         // A core that declares no coating is bare: 0. The coating is a property of the part,
@@ -1987,6 +2084,7 @@ double Core::get_coating_thickness(DimensionalValues preferredValue) const {
         return 0;
     }
     auto coating = get_functional_description().get_coating().value();
+    throw_if_magnetic_shell_coating(coating, "an insulating coating thickness");
     // Explicit coating data (CoreCoating object). Its thickness is a dimensionWithTolerance:
     // sources bound the coating rather than state a nominal (ACME epoxy "0.6 mm max", the
     // Easy Magnet LoPs' per-ring minima), so collapse it with the shared resolver -- it throws
@@ -2024,6 +2122,7 @@ double Core::get_coating_relative_permittivity() const {
             "Core has no coating; cannot resolve coating relative permittivity");
     }
     auto coating = get_functional_description().get_coating().value();
+    throw_if_magnetic_shell_coating(coating, "an insulating coating permittivity");
     auto defaults = Defaults();
 
     // The coating type as a lowercase name, used to pick the default insulation

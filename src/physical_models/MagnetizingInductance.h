@@ -182,8 +182,9 @@ class MagnetizingInductance {
     // Semi-shielded drum (ABT #362): ferrite drum closed by a magnetic-epoxy shell — mixed-
     // material sectioned reluctance (drum mu + glue mu applied per section via the piece's c1
     // split); routed automatically for CoreShapeFamily::DRUM_SEMISHIELDED. The shell material
-    // comes from the core coating {type: magneticEpoxy, material: <core material name>};
-    // throws when the coating, its type, its material, or the material record is missing.
+    // is functionalDescription.material[1], a magneticEpoxy grade (Core::resolve_semishielded_
+    // shell_material; the deprecated magneticEpoxy coating is still read); throws when the shell
+    // is missing, contradictory, or its material record is not found.
     static double calculate_semishielded_drum_magnetizing_inductance(Core core, double numberTurns, double temperature);
 
     // Shielded drum whose ring is a DIFFERENT grade from the drum (ABT #576): the drum sections

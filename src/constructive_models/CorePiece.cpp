@@ -3189,9 +3189,11 @@ std::pair<double, double> drum_ring_seat_plate(std::map<std::string, double> dim
 // get_shape_constants returns the GEOMETRIC single-material constants (vendor Ae/le/Ve
 // convention: geometry alone). Because the circuit crosses two materials, the piece also
 // exposes get_mixed_material_c1() — {c1 through the FERRITE drum, c1 through the SHELL} —
-// which MagnetizingInductance uses with the drum material's mu and the magneticEpoxy
-// coating material's mu (per-section reluctance). The shell material rides
-// functionalDescription.coating {type: magneticEpoxy, material: <core material name>}.
+// which MagnetizingInductance uses with the drum material's mu and the shell material's mu
+// (per-section reluctance). The shell material is the second entry of
+// functionalDescription.material ([drum material, shell material]), a core material of type
+// magneticEpoxy; Core::resolve_semishielded_shell_material reads it (and still accepts the
+// deprecated functionalDescription.coating {type: magneticEpoxy, material: <name>} form).
 class CorePieceDrumSemishielded : public CorePieceDrum {
   public:
     void process_extra_data() {

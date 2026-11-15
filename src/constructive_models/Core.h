@@ -161,6 +161,14 @@ class Core : public MAS::MagneticCore {
     // a list longer than the body has regions. Families other than molded get one entry per
     // listed piece, exactly as resolve_materials().
     std::vector<std::optional<CoreMaterial>> resolve_region_materials();
+
+    // ABT #2410/#2413: the magnetic-epoxy shell of a semi-shielded drum (drumSemishielded). Its
+    // grade is the SECOND entry of functionalDescription.material ([drum ferrite, shell grade], the
+    // list two-grade drumRing uses), and that entry must be a core material of type magneticEpoxy.
+    // The deprecated form, a coating {type: magneticEpoxy, material: <core material name>}, is still
+    // read. When both are present they must name the same material; when neither is, or the core is
+    // not a drumSemishielded, this throws. Read-only: nothing is stored into the core.
+    CoreMaterial resolve_semishielded_shell_material() const;
     CoreShape resolve_shape();
     CoreShape resolve_shape() const;
     static CoreShape resolve_shape(CoreShapeDataOrNameUnion coreShape);

@@ -229,9 +229,10 @@ double MagnetizingInductance::calculate_rod_magnetizing_inductance(Core core, do
 
 // ABT #362: semi-shielded drum — a ferrite drum closed by a MAGNETIC-EPOXY shell. The circuit
 // crosses TWO materials, so neither the closed-circuit path (one mu over le/Ae) nor a gap
-// model fits: reluctance is applied PER SECTION using the piece's c1 split. The shell material
-// rides the core coating {type: magneticEpoxy, material: <core material NAME>}; per the
-// no-fallbacks rule every missing link throws — the model never assumes air or guesses a mu.
+// model fits: reluctance is applied PER SECTION using the piece's c1 split. The shell material is
+// the second entry of functionalDescription.material, a magneticEpoxy grade (ABT #2410/#2413; the
+// older magneticEpoxy coating form is still read); per the no-fallbacks rule every missing link
+// throws — the model never assumes air or guesses a mu.
 double MagnetizingInductance::calculate_semishielded_drum_magnetizing_inductance(Core core, double numberTurns, double temperature) {
     auto corePiece = CorePiece::factory(core.resolve_shape());
     auto mixedConstants = corePiece->get_mixed_material_constants();
@@ -243,26 +244,9 @@ double MagnetizingInductance::calculate_semishielded_drum_magnetizing_inductance
     double shellMaterialC1 = (*mixedConstants)[2];
     double drumPermeability = InitialPermeability::get_initial_permeability(core.resolve_material(), temperature);
 
-    auto coatingUnion = core.get_functional_description().get_coating();
-    if (!coatingUnion) {
-        throw InvalidInputException(ErrorCode::INVALID_CORE_DATA,
-            "Semi-shielded drum requires a magneticEpoxy coating carrying the shell material — none present");
-    }
-    if (!std::holds_alternative<CoreCoating>(coatingUnion.value())) {
-        throw InvalidInputException(ErrorCode::INVALID_CORE_DATA,
-            "Semi-shielded drum coating must be an explicit CoreCoating object (type magneticEpoxy + "
-            "shell material name), not a name-only coating");
-    }
-    auto coating = std::get<CoreCoating>(coatingUnion.value());
-    if (!coating.get_type() || coating.get_type().value() != CoatingType::MAGNETIC_EPOXY) {
-        throw InvalidInputException(ErrorCode::INVALID_CORE_DATA,
-            "Semi-shielded drum requires coating type 'magneticEpoxy' (the glue shell IS the return path)");
-    }
-    if (!coating.get_material() || !std::holds_alternative<std::string>(coating.get_material().value())) {
-        throw InvalidInputException(ErrorCode::INVALID_CORE_DATA,
-            "Semi-shielded drum magneticEpoxy coating must reference the shell CORE material by name");
-    }
-    auto shellMaterial = find_core_material_by_name(std::get<std::string>(coating.get_material().value()));
+    // The shell grade is material[1] (or the deprecated magneticEpoxy coating); see
+    // Core::resolve_semishielded_shell_material, which throws when it is missing or contradictory.
+    auto shellMaterial = core.resolve_semishielded_shell_material();
     double shellPermeability = InitialPermeability::get_initial_permeability(shellMaterial, temperature);
 
     double vacuumPermeability = Constants().vacuumPermeability;

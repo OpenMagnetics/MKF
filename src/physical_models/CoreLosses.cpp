@@ -413,19 +413,14 @@ CoreLossesOutput CoreLosses::calculate_semishielded_core_losses(Core core, Opera
     double totalLosses = drumVolumetricLosses * coreMaterialVolume;
 
     bool shellLossesPriced = false;
-    auto coatingUnion = core.get_functional_description().get_coating();
-    if (coatingUnion && std::holds_alternative<CoreCoating>(coatingUnion.value())) {
-        auto coating = std::get<CoreCoating>(coatingUnion.value());
-        if (coating.get_type() && coating.get_type().value() == CoatingType::MAGNETIC_EPOXY &&
-            coating.get_material() && std::holds_alternative<std::string>(coating.get_material().value())) {
-            auto shellMaterial = find_core_material_by_name(std::get<std::string>(coating.get_material().value()));
-            if (shellMaterial.get_volumetric_losses().size() > 0) {
-                double shellVolumetricLosses = get_periodic_core_volumetric_losses(
-                    shellMaterial, excitationForArea(shellMaterialEffectiveArea), temperature);
-                totalLosses += shellVolumetricLosses * shellMaterialVolume;
-                shellLossesPriced = true;
-            }
-        }
+    // The shell grade: material[1], or the deprecated magneticEpoxy coating (ABT #2410/#2413). A
+    // core with neither, or with both naming different materials, throws there.
+    auto shellMaterial = core.resolve_semishielded_shell_material();
+    if (shellMaterial.get_volumetric_losses().size() > 0) {
+        double shellVolumetricLosses = get_periodic_core_volumetric_losses(
+            shellMaterial, excitationForArea(shellMaterialEffectiveArea), temperature);
+        totalLosses += shellVolumetricLosses * shellMaterialVolume;
+        shellLossesPriced = true;
     }
 
     CoreLossesOutput coreLossesOutput;
