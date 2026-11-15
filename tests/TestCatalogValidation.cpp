@@ -268,7 +268,7 @@ TEST_CASE("Test_Catalog_Shielded_Drum_Cores_Are_Available", "[catalog][drum-ring
         }
     }
     CHECK(drumRingCoresInDatabase >= 2);
-    auto shieldedCore = find_core_by_name(std::string("DR 2.3 + SRI 3.0 - B45 - Shielded"));
+    auto shieldedCore = find_core_by_name(std::string("DR 2.3x1x1.1x0.58 + SRI 3x1.05x2.4 - B45 - Shielded"));
     CHECK(shieldedCore.get_functional_description().get_type() == CoreType::PIECE_AND_PLATE);
 
     // Stock-only (the default): the pairs are absent, and that is the honest answer.
