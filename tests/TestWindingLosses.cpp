@@ -4636,7 +4636,30 @@ TEST_CASE("Test_Winding_Losses_Foil_Width_Cells_E42_Second_Foil_Vs_OMFEM", "[win
     }
 }
 
-TEST_CASE("Test_Winding_Losses_Flat_Cells_Frequency_Interpolation_Matches_Direct_Solves", "[winding-losses][martinez-flat][parallel-split][physical-model]") {
+TEST_CASE("Test_Winding_Losses_Foil_Width_Cells_E42_Ungapped_Every_Foil_Vs_OMFEM", "[winding-losses][martinez-flat][foil][physical-model]") {
+    // On the residual gaps only, the window walls return the winding's MMF mostly through the ferrite, and where along
+    // the walls that MMF sits sets the window field's zero inside the stack. The four window corners are right-angle bends
+    // of the ferrite whose excess (0.559 squares for equal limbs, CoilMesher corner_excess_squares) the walls used to leave
+    // out: the post wall then carried 75 A/m against OMFEM's 64 A/m, the whole stack's field sat 5-10 A/m high and the
+    // foils around the field's zero read down to 0.71x OMFEM (0.80x at 200 kHz). With the corners the field between the
+    // foils matches OMFEM's to 0.5 A/m. Same fixture and OMFEM runs as Test_Winding_Losses_Foil_Width_Cells_E42_Foil_Stacks_Vs_OMFEM
+    // (OMFEM 2D on the Debug_Martinez_Flat_Scorecard exports, /home/alf/OpenMagnetics/.mkf-triage-runs/wl/foil/field_<f>):
+    // each foil's P_cu_per_group over its P_cu_dc_per_group.
+    const std::vector<std::pair<double, std::vector<double>>> omfem = {
+        {50000, {22.512, 5.292, 2.921, 2.586, 2.721, 3.146, 3.935, 5.351}},
+        {200000, {93.529, 7.686, 4.205, 4.215, 5.548, 8.234, 12.986, 22.943}},
+        {500000, {225.809, 11.532, 5.948, 6.273, 11.535, 21.739, 37.327, 67.558}}};
+    for (const auto& [frequency, omfemFactors] : omfem) {
+        const auto [factors, ratio] = e42_foil_stack_default_resistance_factors(false, frequency);
+        REQUIRE(factors.size() == omfemFactors.size());
+        for (size_t foil = 0; foil < factors.size(); ++foil) {
+            INFO(frequency << " Hz, foil " << foil << " from the column: MKF " << factors[foil] << " vs OMFEM " << omfemFactors[foil]);
+            CHECK_THAT(factors[foil], Catch::Matchers::WithinRel(omfemFactors[foil], WindingLossesTestHelpers::maximumError));
+        }
+    }
+}
+
+TEST_CASE("Test_Winding_Losses_Flat_Cells_Frequency_Interpolation_Matches_Direct_Solves","[winding-losses][martinez-flat][parallel-split][physical-model]") {
     // FlatTurnCells::frequencyInterpolationSamples (Alf 2026-11-07): with more harmonics than samples per winding, the split
     // solves each winding's unit current at the samples and splines every harmonic's solution in log f. The E 42 foil stack
     // beside a 1 mm gap carries a flyback primary current (many harmonics): every turn's loss must be the one of

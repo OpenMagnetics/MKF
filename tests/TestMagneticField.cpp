@@ -894,7 +894,9 @@ namespace {
                     if (key[0] == nx0 && key[1] == ny0 && key[3] == ny1) {
                         columnSheet = current;
                     }
-                    else if (key[0] == nx0) {
+                    else if (key[0] == nx0 && key[1] >= std::lround((gapY - gapLength / 2) * 1e9) - 1 && key[3] <= std::lround((gapY + gapLength / 2) * 1e9) + 1) {
+                        // The gap's slot-mouth pieces; the column wall also carries the window corners' bend excess
+                        // (CoilMesher corner_excess_squares), which lies outside the gap's span.
                         mouthSheet += current;
                     }
                 }

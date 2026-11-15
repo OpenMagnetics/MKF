@@ -1341,6 +1341,46 @@ std::vector<FieldPoint> CoilMesherWangModel::generate_mesh_inducing_turn(const T
 namespace {
 void append_gap_mouth(std::vector<WindowWallSheet>& sheets, double wallX, double yStart, double yEnd, double wallStart, double wallEnd, double current,
                       std::optional<size_t> winding, size_t window);
+
+// A window corner is the inner corner of a right-angle bend of the ferrite: the limb behind one wall (width w_i) turns
+// into the limb behind the other (width w_j). Measured from the corner, each limb's straight part has the limb's
+// uniform H; the bend adds an excess, crowded towards the inner corner. From the Schwarz-Christoffel map of the bend
+// (dz/dt = K sqrt(t - 1) / (t sqrt(t + c)), c = (w_i / w_j)^2, the inner corner at t = 1, the limb behind wall i at
+// t -> infinity, its end with u = sqrt((t - 1) / (t + c)):
+//     distance along wall i  d(u) / w_i = [2 artanh u - (2 / sqrt c) arctan(sqrt c u)] / pi,
+//     excess MMF up to there X(u) = ln t / pi - d(u) / w_i   (per unit flux over mu x depth),
+// and as u -> 1 the whole excess on wall i is
+//     E_i = [(2 w_j / w_i) arctan(w_i / w_j) - ln(4 w_j^2 / (w_i^2 + w_j^2))] / pi,
+// 0.2794 on each wall of an equal-width bend (the 0.559 squares of a right-angle corner).
+double corner_excess_squares(double wallLimbWidth, double otherLimbWidth) {
+    if (!(wallLimbWidth > 0) || !(otherLimbWidth > 0)) {
+        throw InvalidInputException(ErrorCode::INVALID_CORE_DATA, "Neutral window field: a window corner's limb has no positive width");
+    }
+    const double ratio = otherLimbWidth / wallLimbWidth;
+    return (2 * ratio * std::atan(1 / ratio) - std::log(4 * ratio * ratio / (1 + ratio * ratio))) / std::numbers::pi;
+}
+
+// Distances from the corner along wall i (in metres) that split the corner's excess on that wall into `pieces` parts of
+// equal MMF; the last part runs out to where 99.5 % of it is placed.
+std::vector<double> corner_excess_boundaries(double wallLimbWidth, double otherLimbWidth, size_t pieces) {
+    const double total = corner_excess_squares(wallLimbWidth, otherLimbWidth);
+    const double c = (wallLimbWidth / otherLimbWidth) * (wallLimbWidth / otherLimbWidth);
+    const double rootC = std::sqrt(c);
+    auto distance = [&](double u) { return (2 * std::atanh(u) - 2 / rootC * std::atan(rootC * u)) / std::numbers::pi; };
+    auto excess = [&](double u) { return std::log((1 + c * u * u) / (1 - u * u)) / std::numbers::pi - distance(u); };
+    std::vector<double> boundaries(pieces + 1, 0.0);
+    for (size_t k = 1; k <= pieces; ++k) {
+        const double target = (k == pieces ? 0.995 : static_cast<double>(k) / static_cast<double>(pieces)) * total;
+        double low = 0;
+        double high = 1 - 1e-15;
+        for (int iteration = 0; iteration < 200; ++iteration) {
+            const double middle = 0.5 * (low + high);
+            (excess(middle) < target ? low : high) = middle;
+        }
+        boundaries[k] = distance(0.5 * (low + high)) * wallLimbWidth;
+    }
+    return boundaries;
+}
 }  // namespace
 
 std::vector<WindowWallSheet> CoilMesher::generate_window_wall_sheet_sources(Magnetic magnetic, std::optional<OperatingPoint> operatingPoint) {
@@ -1500,12 +1540,66 @@ std::vector<WindowWallSheet> CoilMesher::generate_window_wall_sheet_sources(Magn
         const double weightMain = B / mainArea;
         const double weightLateral = B * sideFluxShare / lateralAreaThisSide;
         const double weightPlate = A * sideFluxShare / plateArea;
-        const double weightTotal = weightMain + weightLateral + 2 * weightPlate;
+
+        // The four corners of the window are right-angle bends of the ferrite (corner_excess_squares): each adds to
+        // the two walls that meet there an excess equivalent to E_i w_i more of that limb, crowded at the corner. The
+        // limbs behind the walls: half the main column (its axis is a flux line of the section), the lateral limb
+        // this window faces, the plate.
+        double lateralLimbWidth = 0;
+        for (size_t columnIndex = 0; columnIndex < columns.size(); ++columnIndex) {
+            if (columnIndex != mainColumnIndex && facesThisWindow(columns[columnIndex].get_coordinates()[0])) {
+                lateralLimbWidth = std::max(lateralLimbWidth, columns[columnIndex].get_width());
+            }
+        }
+        const double mainLimbWidth = x0;
+        const double weightMainCorner = corner_excess_squares(mainLimbWidth, plateThickness) * mainLimbWidth / mainArea;
+        const double weightPlateAtMainCorner = corner_excess_squares(plateThickness, mainLimbWidth) * plateThickness * sideFluxShare / plateArea;
+        const double weightLateralCorner = corner_excess_squares(lateralLimbWidth, plateThickness) * lateralLimbWidth * sideFluxShare / lateralAreaThisSide;
+        const double weightPlateAtLateralCorner = corner_excess_squares(plateThickness, lateralLimbWidth) * plateThickness * sideFluxShare / plateArea;
+        const double weightTotal = weightMain + weightLateral + 2 * weightPlate +
+                                   2 * (weightMainCorner + weightPlateAtMainCorner + weightLateralCorner + weightPlateAtLateralCorner);
         // The whole wall carries the sheet; where a gap sits on it, the gap's own sheet adds the gap's drop.
         originals.push_back({{x0, y0}, {x0, y1}, -ferriteMmfFraction * weightMain / weightTotal});
         originals.push_back({{x1, y0}, {x1, y1}, -ferriteMmfFraction * weightLateral / weightTotal});
         originals.push_back({{x0, y0}, {x1, y0}, -ferriteMmfFraction * weightPlate / weightTotal});
         originals.push_back({{x0, y1}, {x1, y1}, -ferriteMmfFraction * weightPlate / weightTotal});
+
+        // Each corner's excess on a wall: equal-MMF pieces at the bend's own distribution, from the corner along it.
+        constexpr size_t cornerPieces = 8;
+        auto cornerSheets = [&](double cornerX, double cornerY, bool alongY, double direction, double wallLength, double wallLimbWidth, double otherLimbWidth,
+                                double weight) {
+            auto boundaries = corner_excess_boundaries(wallLimbWidth, otherLimbWidth, cornerPieces);
+            const double pieceCurrent = -ferriteMmfFraction * weight / weightTotal / static_cast<double>(cornerPieces);
+            // A wall shorter than the bend's spread (a wide limb on a short window side) ends it at the far corner: the
+            // pieces beyond the wall join the last one that starts on it, so the corner's whole excess stays on the wall.
+            size_t piecesOnWall = 0;
+            while (piecesOnWall < cornerPieces && boundaries[piecesOnWall] < wallLength) {
+                ++piecesOnWall;
+            }
+            for (size_t piece = 0; piece < piecesOnWall; ++piece) {
+                const bool last = piece + 1 == piecesOnWall;
+                const double near = boundaries[piece];
+                const double far = last ? std::min(boundaries[cornerPieces], wallLength) : boundaries[piece + 1];
+                const double current = last ? pieceCurrent * static_cast<double>(cornerPieces - piece) : pieceCurrent;
+                const double first = alongY ? cornerY + direction * near : cornerX + direction * near;
+                const double second = alongY ? cornerY + direction * far : cornerX + direction * far;
+                const double low = std::min(first, second);
+                const double high = std::max(first, second);
+                if (alongY) {
+                    originals.push_back({{cornerX, low}, {cornerX, high}, current});
+                }
+                else {
+                    originals.push_back({{low, cornerY}, {high, cornerY}, current});
+                }
+            }
+        };
+        for (double cornerY : {y0, y1}) {
+            const double inward = cornerY == y0 ? 1.0 : -1.0;
+            cornerSheets(x0, cornerY, true, inward, B, mainLimbWidth, plateThickness, weightMainCorner);
+            cornerSheets(x0, cornerY, false, 1.0, A, plateThickness, mainLimbWidth, weightPlateAtMainCorner);
+            cornerSheets(x1, cornerY, true, inward, B, lateralLimbWidth, plateThickness, weightLateralCorner);
+            cornerSheets(x1, cornerY, false, -1.0, A, plateThickness, lateralLimbWidth, weightPlateAtLateralCorner);
+        }
     }
 
     double sum = 0;
