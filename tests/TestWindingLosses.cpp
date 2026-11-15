@@ -2977,6 +2977,55 @@ TEST_CASE("Test_Winding_Losses_Drum_Two_Layers_Vs_OMFEM", "[physical-model][wind
     settings.reset();
 }
 
+// Alf 2026-11-15: a rod's winding against 2D OMFEM. The rod's flux leaves through its end faces; the field step adds it
+// as +-Q on the two end annuli, Q = Phi / mu_0, Phi = L I / N (rod_end_field_per_charge in MagneticField.cpp), on top of
+// the image lattice. OMFEM: a9e87fc omfem_mas with MVB++ 863ce69's rod shape, axisymmetric, air box x8; inputs and
+// logs in /home/alf/OpenMagnetics/.mkf-triage-runs/wl/open (rod_sin*, rod_*_air8*): R_ac/R_dc 2.022 at 200 kHz,
+// 14.445 at 1 MHz. KNOWN LOW, by Alf's choice of the end-face model over a solved surface-charge model (estimated
+// 1.00x / 1.02x, prototype rodbem.py there): 0.78x at 200 kHz and 0.58x at 1 MHz, the radial field near the winding
+// short. So this test holds a band, not a pin: above what the image lattice alone gave (0.62x, 0.32x), below 1.25x.
+TEST_CASE("Test_Winding_Losses_Rod_One_Layer_Vs_OMFEM_Band", "[physical-model][winding-losses][rod]") {
+    settings.reset();
+    clear_databases();
+    auto coreJson = json::parse(R"({"functionalDescription": {"type": "openShape", "material": "N87", "gapping": [], "numberStacks": 1,
+        "shape": {"family": "rod", "type": "custom", "name": "Rod 4x12", "magneticCircuit": "open", "aliases": [],
+                  "dimensions": {"A": {"nominal": 0.004}, "B": {"nominal": 0.012}}}}})");
+    OpenMagnetics::Core rod(coreJson);
+    json coilJson;
+    coilJson["bobbin"] = "Dummy";
+    coilJson["functionalDescription"] = json::array({{
+        {"name", "Primary"}, {"numberTurns", 30}, {"numberParallels", 1},
+        {"isolationSide", "primary"}, {"wire", "Round 0.25 - Grade 1"}}});
+    OpenMagnetics::Magnetic magnetic;
+    magnetic.set_core(rod);
+    magnetic.set_coil(OpenMagnetics::Coil(coilJson, false));
+    magnetic = OpenMagnetics::magnetic_autocomplete(magnetic);
+    // The layout OMFEM solved: one layer of 30, the first turn at (2.137, -3.973) mm.
+    const auto turns = magnetic.get_coil().get_turns_description().value();
+    REQUIRE(turns.size() == 30);
+    CHECK_THAT(turns[0].get_coordinates()[0], Catch::Matchers::WithinAbs(2.137e-3, 1e-6));
+    CHECK_THAT(turns[0].get_coordinates()[1], Catch::Matchers::WithinAbs(-3.973e-3, 1e-6));
+
+    for (auto [frequency, omfem, imagesOnly] : std::vector<std::tuple<double, double, double>>{{200000, 2.022, 0.62}, {1000000, 14.445, 0.32}}) {
+        auto inputs = OpenMagnetics::Inputs::create_quick_operating_point_only_current(frequency, 11e-6, 25, WaveformLabel::SINUSOIDAL, 2, 0.5, 0);
+        auto output = WindingLosses().calculate_losses(magnetic, inputs.get_operating_point(0), 25);
+        const auto winding = output.get_winding_losses_per_winding().value()[0];
+        double ohmic = winding.get_ohmic_losses()->get_losses();
+        double total = ohmic;
+        for (auto loss : winding.get_skin_effect_losses()->get_losses_per_harmonic()) {
+            total += loss;
+        }
+        for (auto loss : winding.get_proximity_effect_losses()->get_losses_per_harmonic()) {
+            total += loss;
+        }
+        const double ratio = total / ohmic / omfem;
+        INFO(frequency << " Hz: R_ac/R_dc MKF " << total / ohmic << " vs OMFEM " << omfem << " (" << ratio << "x; image lattice alone " << imagesOnly << "x)");
+        CHECK(ratio > imagesOnly + 0.1);
+        CHECK(ratio < 1.25);
+    }
+    settings.reset();
+}
+
 // ABT #368: what does the drumRing's gap-fringing omission actually cost?
 //
 // MKF's width-resolved fringing kernel (the widthsamples path in MagneticField.cpp) is gated on

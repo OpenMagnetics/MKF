@@ -9,6 +9,7 @@
 #include "physical_models/Reluctance.h"
 #include "processors/MagneticSimulator.h"
 #include "physical_models/InitialPermeability.h"
+#include "physical_models/MagnetizingInductance.h"
 #include <map>
 #include <limits>
 #include <tuple>
@@ -615,6 +616,57 @@ bool is_inside_core(const FieldPoint& inducedFieldPoint, double coreColumnWidth,
     return true;
 }
 
+// A rod's flux leaves it through its end faces (Alf 2026-11-15): the rod is modelled as carrying the magnetic charge
+// +Q on its top end face and -Q on its bottom one, uniform over each annulus (bore to diameter), with Q = Phi / mu_0 and
+// Phi = L I / N the flux of the magnetizing ampere-turns through MKF's rod inductance. This is the field of those two
+// charges, per unit Q, at (x, y) of the turn plane: y along the rod axis, |x| the distance from it (a solid of
+// revolution, so the point's own sign of x carries the radial component's).
+namespace {
+// A ring of unit magnetic charge (H = q / (4 pi d^2)) of radius R at axial z0, at (r, z): closed form in the complete
+// elliptic integrals of modulus k = sqrt(4 R r / ((R + r)^2 + dz^2)).
+std::pair<double, double> ring_charge_field(double ringRadius, double ringZ, double r, double z) {
+    const double dz = z - ringZ;
+    const double sumSquared = (ringRadius + r) * (ringRadius + r) + dz * dz;
+    const double differenceSquared = (ringRadius - r) * (ringRadius - r) + dz * dz;
+    if (!(differenceSquared > 0)) {
+        throw CalculationException(ErrorCode::CALCULATION_INVALID_RESULT, "Rod end field: the point lies on a charge ring");
+    }
+    const double root = std::sqrt(sumSquared);
+    const double k = std::sqrt(4 * ringRadius * r / sumSquared);
+    const double ellipticK = std::comp_ellint_1(k);
+    const double ellipticE = std::comp_ellint_2(k);
+    const double piSquared = std::numbers::pi * std::numbers::pi;
+    const double fieldZ = dz * ellipticE / (2 * piSquared * differenceSquared * root);
+    const double fieldR = r > 0 ? (ellipticK - (ringRadius * ringRadius - r * r + dz * dz) / differenceSquared * ellipticE) / (4 * piSquared * r * root) : 0.0;
+    return {fieldR, fieldZ};
+}
+
+struct RodGeometry {
+    double radius;
+    double boreRadius;
+    double halfLength;
+};
+
+std::pair<double, double> rod_end_field_per_charge(const RodGeometry& rod, double x, double y) {
+    // Each end annulus as rings at the midpoints of equal radial steps, every ring carrying its area's share.
+    constexpr int ringsPerFace = 32;
+    const double step = (rod.radius - rod.boreRadius) / ringsPerFace;
+    const double faceArea = rod.radius * rod.radius - rod.boreRadius * rod.boreRadius;
+    const double r = std::abs(x);
+    double fieldR = 0;
+    double fieldZ = 0;
+    for (int ringIndex = 0; ringIndex < ringsPerFace; ++ringIndex) {
+        const double ringRadius = rod.boreRadius + (ringIndex + 0.5) * step;
+        const double share = 2 * ringRadius * step / faceArea;
+        auto [topR, topZ] = ring_charge_field(ringRadius, rod.halfLength, r, y);
+        auto [bottomR, bottomZ] = ring_charge_field(ringRadius, -rod.halfLength, r, y);
+        fieldR += share * (topR - bottomR);
+        fieldZ += share * (topZ - bottomZ);
+    }
+    return {x < 0 ? -fieldR : fieldR, fieldZ};
+}
+} // namespace
+
 // Field strength in the gap per ampere-turn of MMF at this frequency: B = MMF / (R_core A_e),
 // H_gap = B / mu_0, with the core reluctance at the material's initial permeability at that
 // frequency. Used for a single winding, whose current IS the magnetizing current (ABT #1463).
@@ -1084,6 +1136,32 @@ WindingWindowMagneticStrengthFieldPhasorOutput MagneticField::calculate_magnetic
     auto processedDescription = core.get_processed_description().value();
     double coreWidth = processedDescription.get_width();
     auto coreShapeFamily = core.get_shape_family();
+
+    // A rod's end-face charges (rod_end_field_per_charge): its geometry, and its inductance for the flux per ampere-turn.
+    std::optional<RodGeometry> rodGeometry;
+    double rodFluxPerAmpereTurnOverTurns = 0;
+    if (coreShapeFamily == CoreShapeFamily::ROD) {
+        if (_magneticFieldStrengthModel == MagneticFieldStrengthModels::ALBACH ||
+            _magneticFieldStrengthModel == MagneticFieldStrengthModels::IMAGED_MMF_SHEETS) {
+            throw NotImplementedException("Magnetic field on a rod core: the rod's end-face flux is added in the per-point field of the image "
+                                          "lattice models, not in " + std::string(magic_enum::enum_name(_magneticFieldStrengthModel)));
+        }
+        auto rodDimensions = flatten_dimensions(core.resolve_shape().get_dimensions().value());
+        if (!rodDimensions.count("A") || !(rodDimensions.at("A") > 0) || !rodDimensions.count("B") || !(rodDimensions.at("B") > 0)) {
+            throw InvalidInputException(ErrorCode::INVALID_CORE_DATA, "Magnetic field on a rod core: the rod needs its diameter A and length B");
+        }
+        const double bore = rodDimensions.count("H") ? rodDimensions.at("H") : 0.0;
+        rodGeometry = RodGeometry{rodDimensions.at("A") / 2, bore / 2, rodDimensions.at("B") / 2};
+        const double numberTurns = static_cast<double>(magnetic.get_coil().get_functional_description()[0].get_number_turns());
+        MagnetizingInductance magnetizingInductanceModel;
+        const double inductance = resolve_dimensional_values(
+            magnetizingInductanceModel.calculate_inductance_from_number_turns_and_gapping(magnetic.get_core(), magnetic.get_coil()).get_magnetizing_inductance());
+        if (!(inductance > 0) || !(numberTurns > 0)) {
+            throw CalculationException(ErrorCode::CALCULATION_INVALID_RESULT, "Magnetic field on a rod core: non-positive inductance or turns");
+        }
+        // Phi = L / N0^2 x (net ampere-turns, in winding 0's turns).
+        rodFluxPerAmpereTurnOverTurns = inductance / (numberTurns * numberTurns);
+    }
 
     // ALBACH model uses axisymmetric Biot-Savart (circular current loops), which produces
     // radially symmetric fields. This is incorrect for toroidal cores where turns are placed
@@ -2334,6 +2412,27 @@ WindingWindowMagneticStrengthFieldPhasorOutput MagneticField::calculate_magnetic
             return gapSource.value();
         };
 
+        // The rod's end-face charge at this harmonic: Q = Phi / mu_0, Phi = L / N0^2 x the net ampere-turns, each winding's
+        // turns x its current x its direction, at its phase (the turns' frame: cos in phase, sin in quadrature).
+        std::optional<std::complex<double>> rodEndCharge;
+        auto get_rod_end_charge = [&]() -> std::complex<double> {
+            if (rodEndCharge) {
+                return rodEndCharge.value();
+            }
+            std::complex<double> ampereTurns = 0;
+            const auto& functionalDescription = magnetic.get_coil().get_functional_description();
+            for (size_t windingIndex = 0; windingIndex < functionalDescription.size(); ++windingIndex) {
+                const double amplitude = currentAmplitudePerHarmonicPerWinding.at(harmonicIndex).at(windingIndex);
+                if (amplitude == 0) {
+                    continue;
+                }
+                ampereTurns += std::polar(currentDirectionPerWinding.at(windingIndex) * static_cast<double>(functionalDescription[windingIndex].get_number_turns()) * amplitude,
+                                          currentPhasePerHarmonicPerWinding.at(harmonicIndex).at(windingIndex));
+            }
+            rodEndCharge = rodFluxPerAmpereTurnOverTurns * ampereTurns / Constants().vacuumPermeability;
+            return rodEndCharge.value();
+        };
+
         // IMAGED_MMF_SHEETS: the whole window field (turns and gap sheets) at every induced point,
         // width samples included -- the sheets only balance the turns when both are present.
         if (_magneticFieldStrengthModel == MagneticFieldStrengthModels::IMAGED_MMF_SHEETS) {
@@ -2890,6 +2989,18 @@ WindingWindowMagneticStrengthFieldPhasorOutput MagneticField::calculate_magnetic
                             }
                         }
                     }
+                }
+            }
+
+            // The rod's end-face flux (rod_end_field_per_charge), at every point, width samples included.
+            if (rodGeometry) {
+                const auto charge = get_rod_end_charge();
+                if (std::abs(charge) > 0) {
+                    auto [rodFieldX, rodFieldY] = rod_end_field_per_charge(rodGeometry.value(), inducedFieldPoint.get_point()[0], inducedFieldPoint.get_point()[1]);
+                    totalInducedFieldX += rodFieldX * charge.real();
+                    totalInducedFieldY += rodFieldY * charge.real();
+                    totalQuadratureInducedFieldX += rodFieldX * charge.imag();
+                    totalQuadratureInducedFieldY += rodFieldY * charge.imag();
                 }
             }
 
