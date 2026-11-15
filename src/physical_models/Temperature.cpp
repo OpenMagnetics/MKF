@@ -6341,6 +6341,17 @@ Temperature::CoreExteriorAreas Temperature::calculateConcentricCoreExteriorAreas
         areas.secondPlateSideBand = pi * secondFlange * required("F");
         return areas;
     }
+    // A rod is one cylinder wound over its whole length B (its winding window is B high): the two
+    // end discs face the room, the side faces the winding. A bore H is taken off the end faces.
+    if (family == CoreShapeFamily::ROD) {
+        double diameter = required("A");
+        double bore = optionalLetter("H");
+        areas.plateFace = pi / 4 * (diameter * diameter - bore * bore);
+        areas.secondPlateFace = areas.plateFace;
+        areas.plateSideBand = 0;
+        areas.secondPlateSideBand = 0;
+        return areas;
+    }
     // A shielded drum (drum + ring, ABT #1658): the drum's two flanges and the ring around them,
     // all on one axis. The flange outer faces and the ring's end annuli and outer cylinder face
     // the room; the ring's bore and the flange rims face each other across the two annular

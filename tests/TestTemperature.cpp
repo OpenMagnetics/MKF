@@ -3,6 +3,7 @@
 #include "physical_models/WindingLosses.h"
 #include "constructive_models/Bobbin.h"
 #include "support/Settings.h"
+#include "support/Utils.h"
 #include "support/Exceptions.h"
 #include "support/Painter.h"
 #include "processors/MagneticSimulator.h"
@@ -5855,4 +5856,31 @@ TEST_CASE("Temperature: the bobbin conductivity is the resolver's, and a materia
         CHECK(e.code() == ErrorCode::MATERIAL_NOT_FOUND);
         CHECK(std::string(e.what()).find("Valox 420-SE0") != std::string::npos);
     }
+}
+
+TEST_CASE("Temperature: a rod core's room-facing surface is its two end discs", "[temperature][rod]") {
+    // A rod is wound over its whole length, so its winding window is as tall as the core and the
+    // concentric yoke formula found no yoke ("non-positive width, depth or yoke thickness") and threw,
+    // which made every rod magnetic fail to autocomplete (2026-11-15).
+    auto coreJson = json::parse(R"({"functionalDescription": {"type": "openShape", "material": "N87", "gapping": [], "numberStacks": 1,
+        "shape": {"family": "rod", "type": "custom", "name": "Rod 4x12", "magneticCircuit": "open", "aliases": [],
+                  "dimensions": {"A": {"nominal": 0.004}, "B": {"nominal": 0.012}}}}})");
+    OpenMagnetics::Core rod(coreJson);
+    json coilJson;
+    coilJson["bobbin"] = "Dummy";
+    coilJson["functionalDescription"] = json::array({{
+        {"name", "Primary"}, {"numberTurns", 30}, {"numberParallels", 1},
+        {"isolationSide", "primary"}, {"wire", "Round 0.25 - Grade 1"}}});
+    OpenMagnetics::Magnetic magnetic;
+    magnetic.set_core(rod);
+    magnetic.set_coil(OpenMagnetics::Coil(coilJson, false));
+    // mas_autocomplete simulates the design, and the simulation's temperature is what read the exterior areas.
+    auto inputs = OpenMagnetics::Inputs::create_quick_operating_point_only_current(200000, 10e-6, 25, WaveformLabel::SINUSOIDAL, 2, 0.5, 0);
+    OpenMagnetics::Mas mas;
+    mas.set_magnetic(magnetic);
+    mas.set_inputs(inputs);
+    mas.set_outputs({});
+    auto completed = OpenMagnetics::mas_autocomplete(mas);
+    REQUIRE(completed.get_magnetic().get_coil().get_turns_description());
+    CHECK(completed.get_magnetic().get_coil().get_turns_description()->size() == 30);
 }
