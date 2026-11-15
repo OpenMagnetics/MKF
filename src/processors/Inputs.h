@@ -414,6 +414,12 @@ class Inputs : public MAS::Inputs {
     // The valleys that bound a record's switching cycles, or nothing when the record is not a record
     // of repeated switching cycles by the definition above.
     static std::optional<std::vector<size_t>> find_switching_cycle_valleys(const std::vector<double>& time, const std::vector<double>& data);
+    // The envelope a record of switching cycles rides on, one value per cycle (valleys from
+    // find_switching_cycle_valleys): the record's time average over the cycles centred on each one. The core
+    // losses price it as the line-frequency loop (ABT #1636) and the magnetizing inductance reads its peak as
+    // the record's DC-bias point (ABT #2394).
+    static std::vector<double> calculate_switching_cycles_envelope(const std::vector<double>& time, const std::vector<double>& data,
+                                                                   const std::vector<size_t>& valleys);
     static double get_switching_frequency(const OperatingPointExcitation& excitation);
     static double get_magnetic_flux_density_peak(const OperatingPointExcitation& excitation, double switchingFrequency);
     static double get_magnetic_flux_density_peak_to_peak(const OperatingPointExcitation& excitation, double switchingFrequency);

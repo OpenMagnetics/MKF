@@ -3398,3 +3398,143 @@ TEST_CASE("Test_Sizing_Saturation_Checks_Every_Operating_Point", "[physical-mode
     auto lightFirst = buck_like_inputs({1.0, 60.0}, requirement);
     CHECK(model.check_sizing_saturation(magnetic.get_core(), magnetic.get_coil(), numberTurns, &lightFirst).first);
 }
+
+// ABT #2394: one DC-bias point for a line-cycle record (one line period holding many switching cycles: a PFC or
+// active-front-end choke), shared by the inductance model and the gap solve: the peak magnitude of the record's
+// low-frequency envelope, the largest |cycle-averaged B|. The model took max(DC component, largest harmonic below the
+// switching frequency), which is the envelope's peak for a sine (AFE) and 2/pi of it for a rectified sine (CCM PFC);
+// the gap solve took the waveform's midpoint, ~0 for the sine and half the peak for the rectified one.
+namespace {
+// One 50 Hz line period, 16384 samples, of a choke current: the line current (a sine of linePeak, or its absolute
+// value) with a triangular switching ripple of zero mean in each of its 256 cycles (12.8 kHz). The rectified
+// record's ripple follows a boost PFC's, v_in (1 - v_in / V_o) with V_o = 400 V on a 325 V line peak, and reaches
+// ripplePeakToPeak at its widest; it vanishes at the line's zero crossing, so the current stays positive (CCM).
+// The sine's ripple is ripplePeakToPeak throughout.
+OpenMagnetics::Inputs line_cycle_inputs_abt2394(bool rectified, double linePeak, double ripplePeakToPeak, json magnetizingInductance) {
+    const double lineFrequency = 50;
+    const size_t samples = 16384;
+    const size_t samplesPerCycle = 64;
+    const double boostRatio = 325.0 / 400.0;
+    json time = json::array(), data = json::array();
+    for (size_t k = 0; k < samples; ++k) {
+        double instant = static_cast<double>(k) / (static_cast<double>(samples) * lineFrequency);
+        double line = sin(2 * M_PI * lineFrequency * instant);
+        double phase = static_cast<double>(k % samplesPerCycle) / static_cast<double>(samplesPerCycle);
+        double triangle = phase < 0.5 ? -0.5 + 2 * phase : 1.5 - 2 * phase;
+        double rippleScale = rectified ? 4 * boostRatio * fabs(line) * (1 - boostRatio * fabs(line)) : 1.0;
+        time.push_back(instant);
+        data.push_back(linePeak * (rectified ? fabs(line) : line) + ripplePeakToPeak * rippleScale * triangle);
+    }
+    OpenMagnetics::Inputs inputs(json{
+        {"designRequirements", {{"magnetizingInductance", magnetizingInductance}, {"turnsRatios", json::array()}, {"isolationSides", {"primary"}}}},
+        {"operatingPoints", {{{"name", rectified ? "rectified line" : "sine line"}, {"conditions", {{"ambientTemperature", 25}}},
+                              {"excitationsPerWinding", {{{"name", "Primary"}, {"frequency", lineFrequency},
+                                                          {"current", {{"waveform", {{"time", time}, {"data", data}}}}}}}}}}}});
+    return inputs;
+}
+
+// A DC operating point at the line frequency: dcCurrent with a 0.2 A peak-to-peak triangle (one period, not a record).
+OpenMagnetics::Inputs dc_inputs_abt2394(double dcCurrent, json magnetizingInductance) {
+    const double frequency = 50;
+    const size_t samples = 256;
+    json time = json::array(), data = json::array();
+    for (size_t k = 0; k <= samples; ++k) {
+        double phase = static_cast<double>(k) / static_cast<double>(samples);
+        time.push_back(phase / frequency);
+        data.push_back(dcCurrent + 0.2 * (phase < 0.5 ? -0.5 + 2 * phase : 1.5 - 2 * phase));
+    }
+    OpenMagnetics::Inputs inputs(json{
+        {"designRequirements", {{"magnetizingInductance", magnetizingInductance}, {"turnsRatios", json::array()}, {"isolationSides", {"primary"}}}},
+        {"operatingPoints", {{{"name", "dc"}, {"conditions", {{"ambientTemperature", 25}}},
+                              {"excitationsPerWinding", {{{"name", "Primary"}, {"frequency", frequency},
+                                                          {"current", {{"waveform", {{"time", time}, {"data", data}}}}}}}}}}}});
+    return inputs;
+}
+
+OpenMagnetics::Coil single_winding_coil_abt2394(int64_t numberTurns) {
+    return OpenMagnetics::Coil(json{{"bobbin", "Dummy"},
+                                    {"functionalDescription", {{{"name", "primary"}, {"numberTurns", numberTurns}, {"numberParallels", 1},
+                                                                {"isolationSide", "primary"}, {"wire", "Dummy"}}}}});
+}
+}  // namespace
+
+TEST_CASE("Test_Line_Cycle_Record_Inductance_Is_At_The_Envelope_Peak_Rectified_Line", "[physical-model][magnetizing-inductance][dc-bias][line-cycle][abt-2394]") {
+    // A 3.6 kW 230 V boost PFC choke's line-cycle record (line-current peak 22.5 A, 0 -> 22.5 A at 100 Hz, mean
+    // 2/pi * 22.5 = 14.3 A) on an ungapped High Flux 60 toroid, T 25.9/12.8/21.3 with 24 turns: the inductance the
+    // circuit can count on is the one at the envelope's peak, as a DC point at 22.5 A gives it, not the one at the mean.
+    settings.reset();
+    const double linePeak = 22.5;
+    const double meanCurrent = 2 / M_PI * linePeak;
+    const int numberTurns = 24;
+    const json requirement = {{"minimum", 50e-6}};
+    auto magnetic = powder_toroid("T 25.9/12.8/21.3", "High Flux 60");
+    MagnetizingInductance model(ReluctanceModels::ZHANG);
+    auto record = line_cycle_inputs_abt2394(true, linePeak, 8.0, requirement);
+    auto atPeak = dc_inputs_abt2394(linePeak, requirement);
+    auto atMean = dc_inputs_abt2394(meanCurrent, requirement);
+    double recordInductance = inductance_at(model, magnetic, numberTurns, record, 0);
+    double inductanceAtPeak = inductance_at(model, magnetic, numberTurns, atPeak, 0);
+    double inductanceAtMean = inductance_at(model, magnetic, numberTurns, atMean, 0);
+    INFO("rectified-line record " << recordInductance * 1e6 << " uH; DC point at the envelope peak (" << linePeak << " A) "
+         << inductanceAtPeak * 1e6 << " uH, at the mean (" << meanCurrent << " A) " << inductanceAtMean * 1e6 << " uH");
+    // The premise: the material rolls off clearly between the mean and the peak.
+    REQUIRE(inductanceAtMean > 1.1 * inductanceAtPeak);
+    CHECK_THAT(recordInductance, Catch::Matchers::WithinRel(inductanceAtPeak, 0.03));
+    CHECK(recordInductance < 0.95 * inductanceAtMean);
+    settings.reset();
+}
+
+TEST_CASE("Test_Line_Cycle_Record_Inductance_Is_At_The_Envelope_Peak_Sine_Line", "[physical-model][magnetizing-inductance][dc-bias][line-cycle][abt-2394]") {
+    // An active-front-end choke's record (a 22.5 A line sine with a 4 A switching ripple) on the same toroid: its
+    // envelope's peak is the line fundamental's amplitude, the bias the model already took, so the inductance is the
+    // one of a DC point at 22.5 A, before and after ABT #2394.
+    settings.reset();
+    const double linePeak = 22.5;
+    const int numberTurns = 24;
+    const json requirement = {{"minimum", 50e-6}};
+    auto magnetic = powder_toroid("T 25.9/12.8/21.3", "High Flux 60");
+    MagnetizingInductance model(ReluctanceModels::ZHANG);
+    auto record = line_cycle_inputs_abt2394(false, linePeak, 4.0, requirement);
+    auto atPeak = dc_inputs_abt2394(linePeak, requirement);
+    auto atZero = dc_inputs_abt2394(0.1, requirement);
+    double recordInductance = inductance_at(model, magnetic, numberTurns, record, 0);
+    double inductanceAtPeak = inductance_at(model, magnetic, numberTurns, atPeak, 0);
+    double inductanceAtZero = inductance_at(model, magnetic, numberTurns, atZero, 0);
+    INFO("sine-line record " << recordInductance * 1e6 << " uH; DC point at the envelope peak (" << linePeak << " A) "
+         << inductanceAtPeak * 1e6 << " uH, unbiased " << inductanceAtZero * 1e6 << " uH");
+    REQUIRE(inductanceAtZero > 1.1 * inductanceAtPeak);
+    CHECK_THAT(recordInductance, Catch::Matchers::WithinRel(inductanceAtPeak, 0.03));
+    settings.reset();
+}
+
+TEST_CASE("Test_Gapping_Of_A_Line_Cycle_Record_Meets_Its_Target_Under_The_Inductance_Model", "[physical-model][magnetizing-inductance][gapping][dc-bias][line-cycle][abt-2394]") {
+    // The gap solve sizes the gap at the DC-bias point the inductance model evaluates the gapped core at: the gap it
+    // returns for a line-cycle record, fed back to the model with the same operating point, gives the target.
+    settings.reset();
+    const double linePeak = 22.5;
+    const int64_t numberTurns = 40;
+    const double target = 200e-6;
+    const double tolerance = 0.02;
+    auto core = OpenMagneticsTesting::get_quick_core("E 65/32/27", json::array(), 1, "Kool Mµ 60");
+    auto coil = single_winding_coil_abt2394(numberTurns);
+    for (bool rectified : {true, false}) {
+        MagnetizingInductance model(ReluctanceModels::ZHANG);
+        auto inputs = line_cycle_inputs_abt2394(rectified, linePeak, rectified ? 8.0 : 4.0, json{{"nominal", target}});
+        auto operatingPoint = inputs.get_operating_point(0);
+        auto ungappedOperatingPoint = operatingPoint;
+        double ungappedInductance = resolve_dimensional_values(model.calculate_inductance_from_number_turns_and_gapping(core, coil, &ungappedOperatingPoint).get_magnetizing_inductance());
+        auto gapping = model.calculate_gapping_from_number_turns_and_inductance(core, coil, &inputs, GappingType::GROUND, 6);
+        Core gappedCore(core);
+        gappedCore.get_mutable_functional_description().set_gapping(gapping);
+        gappedCore.set_processed_description(std::nullopt);
+        gappedCore.process_data();
+        gappedCore.process_gap();
+        double inductance = resolve_dimensional_values(model.calculate_inductance_from_number_turns_and_gapping(gappedCore, coil, &operatingPoint).get_magnetizing_inductance());
+        INFO((rectified ? "rectified line" : "sine line") << ": ungapped " << ungappedInductance * 1e6 << " uH at the record; ground gap "
+             << gapping[0].get_length() * 1e3 << " mm gives " << inductance * 1e6 << " uH for a target of " << target * 1e6 << " uH");
+        // The premise: the target is reachable (below the ungapped core's inductance at this record) and needs a real gap.
+        REQUIRE(ungappedInductance > 1.2 * target);
+        CHECK_THAT(inductance, Catch::Matchers::WithinRel(target, tolerance));
+    }
+    settings.reset();
+}

@@ -1454,35 +1454,6 @@ double loop_signal_offset(const std::vector<double>& time, const std::vector<dou
     return (summary.maximum + summary.minimum) / 2;
 }
 
-// The envelope at each switching cycle: the record's time average over the cycles centred on it,
-// 2h + 1 of them with h = (number of cycles) / 128 (fewer at the record's edges, keeping the window
-// centred). The record's valleys are samples, not the flux's true valleys, so one cycle's span differs
-// from its period by up to a sample and its own average keeps a residue of its ripple (a few percent
-// of the ripple at ~15 samples per cycle). That residue changes from cycle to cycle, and the dB/dt
-// models would price it as a switching-rate jitter on the envelope (twice the envelope's iGSE loss on
-// a 16384-sample record). Averaging over 2h + 1 cycles divides it by about 2h + 1. The window, 1/64 of
-// the record, rounds the envelope's own extremes: a rectified line's zero-crossing cusp rises by
-// about 2.5 % of its peak (pi / 128), a smooth extreme moves by less than 0.1 %.
-std::vector<double> average_over_neighbouring_cycles(const std::vector<double>& time, const std::vector<double>& data,
-                                                     const std::vector<size_t>& valleys) {
-    // Running integral of the piecewise-linear record.
-    std::vector<double> integral(data.size(), 0.0);
-    for (size_t i = 1; i < data.size(); ++i) {
-        integral[i] = integral[i - 1] + (data[i - 1] + data[i]) / 2 * (time[i] - time[i - 1]);
-    }
-    size_t numberCycles = valleys.size() - 1;
-    size_t halfWindow = static_cast<size_t>(std::floor(static_cast<double>(numberCycles) / 128.0));
-    std::vector<double> averages;
-    for (size_t cycleIndex = 0; cycleIndex < numberCycles; ++cycleIndex) {
-        size_t cyclesAfter = numberCycles - 1 - cycleIndex;
-        size_t h = std::min({halfWindow, cycleIndex, cyclesAfter});
-        size_t start = valleys[cycleIndex - h];
-        size_t end = valleys[cycleIndex + h + 1];
-        averages.push_back((integral[end] - integral[start]) / (time[end] - time[start]));
-    }
-    return averages;
-}
-
 // A periodic record read at `time` by linear interpolation, wrapping from its last sample to its first
 // one period later. Both records must lie inside one period. The period is the line record's duration,
 // not 1 / the excitation's frequency: a line-cycle excitation may carry the switching frequency.
@@ -1770,9 +1741,9 @@ std::optional<SwitchingCyclesRecord> split_into_switching_cycles_uncached(const 
         record.durations.push_back(duration);
     }
 
-    envelopeFluxDensity = average_over_neighbouring_cycles(fluxDensityTime, fluxDensityData, valleys);
+    envelopeFluxDensity = Inputs::calculate_switching_cycles_envelope(fluxDensityTime, fluxDensityData, valleys);
     if (magnetizingCurrentData) {
-        envelopeMagnetizingCurrent = average_over_neighbouring_cycles(fluxDensityTime, magnetizingCurrentData.value(), valleys);
+        envelopeMagnetizingCurrent = Inputs::calculate_switching_cycles_envelope(fluxDensityTime, magnetizingCurrentData.value(), valleys);
     }
 
     // The envelope repeats once per record: the record spans one period of the excitation's frequency

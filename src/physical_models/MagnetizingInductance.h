@@ -80,6 +80,19 @@ class MagnetizingInductance {
     std::map<std::string, std::string> get_models() const { return _models; }
     // The DC point of the last calculate_inductance_and_magnetic_flux_density (see _lastDcBiasPoint).
     std::optional<DcBiasPoint> get_last_dc_bias_point() const { return _lastDcBiasPoint; }
+    // The DC-bias flux density of a flux density signal: the one definition the inductance model and the gap solve
+    // read the material's biased permeability at (ABT #2394).
+    //  - A line-cycle record (switching cycles riding on a slower swing: the signal's fundamental lies below
+    //    switchingFrequency and its waveform is a record of repeated switching cycles,
+    //    Inputs::find_switching_cycle_valleys): the peak magnitude of its low-frequency envelope, the largest
+    //    |cycle-averaged B| over the record (Inputs::calculate_switching_cycles_envelope, the envelope the core
+    //    losses price). The amplitude of a sine line swing (an active front end), the peak of a rectified one (a
+    //    PFC choke), whose time average is only 2/pi of it.
+    //  - Any other signal: the magnitude of its time average, its zero-frequency harmonic.
+    // switchingFrequency is Inputs::get_switching_frequency of the excitation the flux density belongs to. Throws
+    // when the signal has no harmonics, or when a line-cycle record has no waveform with a time axis.
+    static double calculate_bias_flux_density(const SignalDescriptor& magneticFluxDensity, double switchingFrequency);
+
     MagnetizingInductanceOutput calculate_inductance_from_number_turns_and_gapping(Core core,
                                                                                    Coil coil,
                                                                                    OperatingPoint* operatingPoint = nullptr);
