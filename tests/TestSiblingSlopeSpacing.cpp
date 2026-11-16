@@ -504,7 +504,9 @@ TEST_CASE("Real winding: no Primary entrance of PSPS E16 is crossed by its sibli
     }
     REQUIRE(p0Lane.has_value());
     REQUIRE(p1Lane.has_value());
-    CHECK_THAT(p0Lane.value(), Catch::Matchers::WithinAbs(-2.219e-3, 0.5e-6));
+    // ABT #2274 (Alf, 2026-11-15): p0 stood one lane plus p1's ramp out (-2.219 mm). An entrance whose level row
+    // clashes now starts on its row (a row start) and lays no ramp, so p0 stands exactly one lane out.
+    CHECK_THAT(p0Lane.value(), Catch::Matchers::WithinAbs(-0.534e-3, 0.5e-6));
     CHECK_THAT(p1Lane.value(), Catch::Matchers::WithinAbs(0.0, 1e-9));
     size_t flagged = 0;
     for (const auto& overlap : coil.judge_copper_overlaps()) {

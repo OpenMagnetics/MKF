@@ -14,6 +14,7 @@
 #include <limits> // B18 FIX: for numeric_limits
 #include "support/Exceptions.h"
 #include "support/Utils.h"
+#include "support/RideOverCoreRefusal.h"
 #include "support/NumberFormat.h"
 #include "support/Logger.h"
 
@@ -1832,6 +1833,12 @@ namespace OpenMagnetics {
                                                                     : candidateCoil.get_last_fit_failure());
             }
             if (auto refusal = woundCoilRefusal(candidate)) {
+                return "with its connection leads planned, " + refusal.value();
+            }
+            // ABT #2274 (Alf, 2026-11-05: "move it there"): the turns lifted over the Z returns are judged
+            // against the core here, on the wind that planned the leads, before its losses are evaluated:
+            // the same judgement real_winding_refusal makes on the stored form, refused as a planned wind.
+            if (auto refusal = ride_over_core_refusal(candidate.get_mutable_magnetic().get_mutable_coil())) {
                 return "with its connection leads planned, " + refusal.value();
             }
             if (lossesRankAcceptedCoils) {

@@ -23,6 +23,7 @@
 #include <vector>
 #include "support/Utils.h"
 #include "constructive_models/Coil.h"
+#include "constructive_models/CoilLanePlanJudge.h"
 #include "json.hpp"
 #include "constructive_models/InsulationMaterial.h"
 #include "physical_models/WindingOhmicLosses.h"
@@ -34,6 +35,444 @@
 using json = nlohmann::json;
 
 namespace OpenMagnetics {
+
+namespace {
+// ABT #2274 (Alf, after agent 24: the row-end lead's judge made exact): centrelines in the face frame (along-face x,
+// turn axis y, layer axis r). The exact closest distance between two straight centrelines, and a rigorous bound to
+// within `tolerance` between a circular arc (a bend) and a straight one, by branch and bound: every point of a sub-arc
+// lies within its sagitta of its chord, so the chord's distance less the sagitta bounds the sub-arc from below.
+using RowEndPoint = std::array<double, 3>;
+
+double row_end_segment_distance(const RowEndPoint& p1, const RowEndPoint& q1, const RowEndPoint& p2, const RowEndPoint& q2) {
+    auto sub = [](const RowEndPoint& u, const RowEndPoint& v) { return RowEndPoint{u[0] - v[0], u[1] - v[1], u[2] - v[2]}; };
+    auto dot = [](const RowEndPoint& u, const RowEndPoint& v) { return u[0] * v[0] + u[1] * v[1] + u[2] * v[2]; };
+    const RowEndPoint d1 = sub(q1, p1);
+    const RowEndPoint d2 = sub(q2, p2);
+    const RowEndPoint r = sub(p1, p2);
+    const double a = dot(d1, d1);
+    const double e = dot(d2, d2);
+    const double f = dot(d2, r);
+    double s = 0;
+    double t = 0;
+    if (a <= 1e-30 && e <= 1e-30) {
+        return std::sqrt(dot(r, r));
+    }
+    if (a <= 1e-30) {
+        t = std::clamp(f / e, 0.0, 1.0);
+    }
+    else {
+        const double c = dot(d1, r);
+        if (e <= 1e-30) {
+            s = std::clamp(-c / a, 0.0, 1.0);
+        }
+        else {
+            const double b = dot(d1, d2);
+            const double denominator = a * e - b * b;
+            s = denominator > 1e-30 ? std::clamp((b * f - c * e) / denominator, 0.0, 1.0) : 0.0;
+            t = (b * s + f) / e;
+            if (t < 0) {
+                t = 0;
+                s = std::clamp(-c / a, 0.0, 1.0);
+            }
+            else if (t > 1) {
+                t = 1;
+                s = std::clamp((b - c) / a, 0.0, 1.0);
+            }
+        }
+    }
+    const RowEndPoint w{p1[0] + d1[0] * s - p2[0] - d2[0] * t, p1[1] + d1[1] * s - p2[1] - d2[1] * t,
+                        p1[2] + d1[2] * s - p2[2] - d2[2] * t};
+    return std::sqrt(dot(w, w));
+}
+
+// A bend: centre, radius, the unit vector from the centre to its start, the unit tangent at its start, its sweep.
+struct RowEndArc {
+    RowEndPoint centre;
+    double radius;
+    RowEndPoint fromCentre;
+    RowEndPoint tangent;
+    double sweep;
+    RowEndPoint at(double phi) const {
+        return RowEndPoint{centre[0] + radius * (std::cos(phi) * fromCentre[0] + std::sin(phi) * tangent[0]),
+                           centre[1] + radius * (std::cos(phi) * fromCentre[1] + std::sin(phi) * tangent[1]),
+                           centre[2] + radius * (std::cos(phi) * fromCentre[2] + std::sin(phi) * tangent[2])};
+    }
+};
+
+// `chord(a, b)`: the (signed) distance from the straight piece a -> b to the other copper, 1-Lipschitz in the points.
+template <typename Chord>
+double row_end_arc_distance(const RowEndArc& arc, const Chord& chord, double tolerance) {
+    double best = std::min(chord(arc.at(0), arc.at(0)), chord(arc.at(arc.sweep), arc.at(arc.sweep)));
+    std::vector<std::pair<double, double>> open{{0.0, arc.sweep}};
+    size_t steps = 0;
+    while (!open.empty()) {
+        if (++steps > 1000000) {
+            throw std::logic_error("row_end_arc_segment_distance did not converge");
+        }
+        const auto [phi0, phi1] = open.back();
+        open.pop_back();
+        const double sagitta = arc.radius * (1 - std::cos((phi1 - phi0) / 2));
+        const double lower = chord(arc.at(phi0), arc.at(phi1)) - sagitta;
+        if (lower >= best - tolerance) {
+            continue;
+        }
+        const double middle = (phi0 + phi1) / 2;
+        const auto point = arc.at(middle);
+        best = std::min(best, chord(point, point));
+        open.push_back({phi0, middle});
+        open.push_back({middle, phi1});
+    }
+    return best;
+}
+
+double row_end_arc_segment_distance(const RowEndArc& arc, const RowEndPoint& p, const RowEndPoint& q, double tolerance) {
+    return row_end_arc_distance(arc, [&](const RowEndPoint& a, const RowEndPoint& b) { return row_end_segment_distance(a, b, p, q); }, tolerance);
+}
+
+// ABT #2274 (Alf, 2026-11-09, decision 2): a ROUND column's copper in the same frame (x along the connection face, y the
+// turn axis, d the depth from the column axis towards the connection face). A turn's centreline is a helix piece about
+// the column axis: at path angle phi (from the crossing, positive upstream, x = R sin phi, d = R cos phi) its height is
+// yA + k (phi - phiA), phiA <= phi <= phiB. A dragback's tail along a layer is the same with k = 0.
+struct RowEndHelix {
+    double radius;
+    double phiA, phiB;
+    double yA, k;
+    // ABT #2274 (agent 43, the face-normal ride convention of ConnectionRideLevel::rise): a piece on the connection
+    // face's half of its turn is translated `centreD` along the face normal (d); MVB++ draws the ridden half that way.
+    double centreD = 0;
+    RowEndPoint at(double phi) const {
+        return RowEndPoint{radius * std::sin(phi), yA + k * (phi - phiA), centreD + radius * std::cos(phi)};
+    }
+    double speed() const { return std::sqrt(radius * radius + k * k); }
+};
+
+RowEndHelix row_end_helix(double radius, double phi0, double y0, double phi1, double y1) {
+    if (!(radius > 0) || !(std::abs(phi1 - phi0) > 0)) {
+        throw std::logic_error("A round-column helix piece needs a positive radius and a non-zero sweep");
+    }
+    if (phi0 > phi1) {
+        std::swap(phi0, phi1);
+        std::swap(y0, y1);
+    }
+    return RowEndHelix{radius, phi0, phi1, y0, (y1 - y0) / (phi1 - phi0)};
+}
+
+// ABT #2274 (agent 43): a round turn's helix piece as MVB++ draws it under a ride `rise` (ConnectionRideLevel::rise): the
+// part of it on the connection face's half (cos(phi) > 0) translated `rise` along the face normal, the rest on its own
+// circle, and at each crossing of the half's border (cos(phi) = 0) the riser that bridges them, a straight piece along d
+// from (x, y, 0) to (x, y, rise). The helices are returned in order, the risers separately.
+struct RowEndRiddenHelix {
+    std::vector<RowEndHelix> helices;
+    std::vector<std::pair<RowEndPoint, RowEndPoint>> risers;
+};
+RowEndRiddenHelix row_end_ridden_helix(const RowEndHelix& helix, double rise) {
+    RowEndRiddenHelix out;
+    if (!(rise > 0)) {
+        out.helices.push_back(helix);
+        return out;
+    }
+    const double halfPi = std::numbers::pi / 2;
+    std::vector<double> cuts{helix.phiA};
+    for (double c = std::ceil((helix.phiA - halfPi) / std::numbers::pi) * std::numbers::pi + halfPi; c < helix.phiB; c += std::numbers::pi) {
+        if (c > helix.phiA) {
+            cuts.push_back(c);
+        }
+    }
+    cuts.push_back(helix.phiB);
+    for (size_t i = 0; i + 1 < cuts.size(); ++i) {
+        RowEndHelix piece = helix;
+        piece.phiA = cuts[i];
+        piece.phiB = cuts[i + 1];
+        piece.yA = helix.yA + helix.k * (cuts[i] - helix.phiA);
+        piece.centreD = std::cos((cuts[i] + cuts[i + 1]) / 2) > 0 ? helix.centreD + rise : helix.centreD;
+        out.helices.push_back(piece);
+        if (i + 1 < cuts.size() - 1) {
+            const auto p = helix.at(cuts[i + 1]);
+            out.risers.push_back({RowEndPoint{p[0], p[1], helix.centreD}, RowEndPoint{p[0], p[1], helix.centreD + rise}});
+        }
+    }
+    return out;
+}
+
+// A rigorous bound to within `tolerance` of the least distance from a helix piece to other copper, by branch and bound.
+// Over a sub-piece of sweep D <= pi, every point lies within sqrt(s^2 + e^2) of its chord, s = R (1 - cos(D/2)) (the
+// plan-view sagitta) and e = |k| (c - 1) D / 2, c = (D/2) / sin(D/2) (the most its height leaves the chord's linear
+// height at the plan-view nearest chord point).
+template <typename Chord>
+double row_end_helix_distance(const RowEndHelix& helix, const Chord& chord, double tolerance) {
+    double best = std::min(chord(helix.at(helix.phiA), helix.at(helix.phiA)), chord(helix.at(helix.phiB), helix.at(helix.phiB)));
+    std::vector<std::pair<double, double>> open;
+    const double sweep = helix.phiB - helix.phiA;
+    const size_t pieces = static_cast<size_t>(std::ceil(sweep / (std::numbers::pi / 2)));
+    for (size_t piece = 0; piece < pieces; ++piece) {
+        open.push_back({helix.phiA + sweep * piece / pieces, helix.phiA + sweep * (piece + 1) / pieces});
+    }
+    size_t steps = 0;
+    while (!open.empty()) {
+        if (++steps > 10000000) {
+            throw std::logic_error("row_end_helix_distance did not converge");
+        }
+        const auto [phi0, phi1] = open.back();
+        open.pop_back();
+        const double half = (phi1 - phi0) / 2;
+        const double sagitta = helix.radius * (1 - std::cos(half));
+        const double c = half > 1e-4 ? half / std::sin(half) : 1 + half * half / 6 + 7 * std::pow(half, 4) / 360 + 1e-16;
+        const double lift = std::abs(helix.k) * (c - 1) * half;
+        const double lower = chord(helix.at(phi0), helix.at(phi1)) - std::sqrt(sagitta * sagitta + lift * lift);
+        if (lower >= best - tolerance) {
+            continue;
+        }
+        const double middle = phi0 + half;
+        const auto point = helix.at(middle);
+        best = std::min(best, chord(point, point));
+        open.push_back({phi0, middle});
+        open.push_back({middle, phi1});
+    }
+    return best;
+}
+
+// Two coaxial helix pieces: with u = phi1 - phi2 fixed the plan-view distance is fixed and the height difference is
+// linear in phi2, so g(u) = min over the feasible phi2 of the 3-D distance is exact; g is (2 v1 + 2 v2)-Lipschitz in u
+// (v the pieces' speeds), and a branch and bound over u bounds its least value to within `tolerance`.
+double row_end_helix_helix_distance(const RowEndHelix& h1, const RowEndHelix& h2, double tolerance) {
+    if (h1.centreD != h2.centreD) {
+        // ABT #2274 (agent 43): pieces translated differently along d (ridden and level halves) are no longer coaxial: the
+        // least distance from each chord of h1 to h2 (itself a rigorous branch and bound, to half the tolerance) is the
+        // chord function of h1's branch and bound.
+        return row_end_helix_distance(h1, [&](const RowEndPoint& a, const RowEndPoint& b) {
+            return row_end_helix_distance(h2, [&](const RowEndPoint& p, const RowEndPoint& q) { return row_end_segment_distance(p, q, a, b); },
+                                          tolerance / 2);
+        }, tolerance / 2);
+    }
+    auto g = [&](double u) -> std::optional<double> {
+        const double lo = std::max(h2.phiA, h1.phiA - u);
+        const double hi = std::min(h2.phiB, h1.phiB - u);
+        if (lo > hi) {
+            return std::nullopt;
+        }
+        // dy(phi2) = y1(phi2 + u) - y2(phi2) = alpha + beta phi2
+        const double beta = h1.k - h2.k;
+        const double alpha = h1.yA + h1.k * (u - h1.phiA) - h2.yA + h2.k * h2.phiA;
+        const double dLo = alpha + beta * lo;
+        const double dHi = alpha + beta * hi;
+        const double m = dLo * dHi <= 0 ? 0.0 : std::min(std::abs(dLo), std::abs(dHi));
+        const double plan = h1.radius * h1.radius + h2.radius * h2.radius - 2 * h1.radius * h2.radius * std::cos(u);
+        return std::sqrt(std::max(0.0, plan) + m * m);
+    };
+    const double lipschitz = 2 * (h1.speed() + h2.speed());
+    const double u0 = h1.phiA - h2.phiB;
+    const double u1 = h1.phiB - h2.phiA;
+    double best = std::numeric_limits<double>::max();
+    for (double u : {u0, u1}) {
+        if (const auto value = g(u)) {
+            best = std::min(best, value.value());
+        }
+    }
+    std::vector<std::pair<double, double>> open{{u0, u1}};
+    size_t steps = 0;
+    while (!open.empty()) {
+        if (++steps > 10000000) {
+            throw std::logic_error("row_end_helix_helix_distance did not converge");
+        }
+        const auto [a, b] = open.back();
+        open.pop_back();
+        const double middle = (a + b) / 2;
+        const auto value = g(middle);
+        if (value) {
+            best = std::min(best, value.value());
+            if (value.value() - lipschitz * (b - a) / 2 >= best - tolerance) {
+                continue;
+            }
+        }
+        else if (b - a < 1e-15) {
+            continue;   // u outside the pieces' common range (the feasible set of u is the whole interval [u0, u1])
+        }
+        open.push_back({a, middle});
+        open.push_back({middle, b});
+    }
+    return best;
+}
+
+// ABT #2274 (agent 26): a non-round turn's copper is its true section, a rectangle (half its radial extent across the
+// layer axis, half its axial extent across the turn axis) swept straight along its centreline on the face: a
+// parallelepiped. The signed distance from a straight centreline to it: the exact Euclidean distance when they are
+// apart (the least distance between two affine images of boxes is a convex quadratic over the 4-box of their
+// parameters; its minimum lies in the relative interior of one face of that box, where it is the face's unconstrained
+// stationary point, so every face is solved and the feasible ones compared), and minus the deepest reach inside it
+// when the centreline enters it (inside a convex body the distance to its boundary is the least distance to its face
+// planes, the largest signed plane distance; along a segment that is a convex piecewise-linear function, least at an
+// end or where two planes cross).
+struct RowEndBox {
+    RowEndPoint origin;                  // one corner
+    std::array<RowEndPoint, 3> edges;    // the three edges from it: the box is origin + edges . t, t in [0, 1]^3
+};
+
+// A rectangular copper swept straight along its centreline a -> b on the face: half its section across the turn axis
+// (halfAxial) and across the layer axis (halfLayer).
+RowEndBox row_end_swept_rectangle(const RowEndPoint& a, const RowEndPoint& b, double halfAxial, double halfLayer) {
+    return RowEndBox{RowEndPoint{a[0], a[1] - halfAxial, a[2] - halfLayer},
+                     {RowEndPoint{b[0] - a[0], b[1] - a[1], b[2] - a[2]}, RowEndPoint{0, 2 * halfAxial, 0}, RowEndPoint{0, 0, 2 * halfLayer}}};
+}
+
+double row_end_segment_box_distance(const RowEndPoint& p, const RowEndPoint& q, const RowEndBox& box) {
+    auto dot = [](const RowEndPoint& u, const RowEndPoint& v) { return u[0] * v[0] + u[1] * v[1] + u[2] * v[2]; };
+    auto cross = [](const RowEndPoint& u, const RowEndPoint& v) {
+        return RowEndPoint{u[1] * v[2] - u[2] * v[1], u[2] * v[0] - u[0] * v[2], u[0] * v[1] - u[1] * v[0]};
+    };
+    // The box: origin + E t, t in [0, 1]^3; the segment: p + (q - p) s, s in [0, 1].
+    const RowEndPoint& origin = box.origin;
+    const auto& edges = box.edges;
+    {
+        const RowEndPoint volume = cross(edges[0], edges[1]);
+        if (!(std::abs(dot(volume, edges[2])) > 0)) {
+            throw std::logic_error("row_end_segment_box_distance: a degenerate box");
+        }
+    }
+    // Columns of the residual r(s, t) = p - origin + d s - E t, variables v = (s, t0, t1, t2).
+    const RowEndPoint d{q[0] - p[0], q[1] - p[1], q[2] - p[2]};
+    const std::array<RowEndPoint, 4> columns{d, RowEndPoint{-edges[0][0], -edges[0][1], -edges[0][2]},
+                                             RowEndPoint{-edges[1][0], -edges[1][1], -edges[1][2]},
+                                             RowEndPoint{-edges[2][0], -edges[2][1], -edges[2][2]}};
+    const RowEndPoint base{p[0] - origin[0], p[1] - origin[1], p[2] - origin[2]};
+    const bool pointLike = !(dot(d, d) > 0);
+    double best = std::numeric_limits<double>::max();
+    bool found = false;
+    // Every face of the parameter box: each variable free (2), at 0 (0) or at 1 (1).
+    for (int code = 0; code < 81; ++code) {
+        std::array<int, 4> state{};
+        int c = code;
+        for (auto& v : state) {
+            v = c % 3;
+            c /= 3;
+        }
+        if (pointLike && state[0] == 2) {
+            continue;
+        }
+        RowEndPoint fixed = base;
+        std::vector<int> free;
+        std::array<double, 4> value{};
+        for (int k = 0; k < 4; ++k) {
+            if (state[k] == 2) {
+                free.push_back(k);
+            }
+            else {
+                value[k] = state[k];
+                for (int i = 0; i < 3; ++i) {
+                    fixed[i] += columns[k][i] * value[k];
+                }
+            }
+        }
+        const size_t n = free.size();
+        if (n > 3) {
+            continue;   // four free variables over three dimensions: never a strict minimum; its faces hold it
+        }
+        if (n > 0) {
+            // Normal equations G x = -C^T fixed, solved by Gaussian elimination with partial pivoting.
+            std::array<std::array<double, 4>, 3> m{};
+            for (size_t i = 0; i < n; ++i) {
+                for (size_t j = 0; j < n; ++j) {
+                    m[i][j] = dot(columns[free[i]], columns[free[j]]);
+                }
+                m[i][n] = -dot(columns[free[i]], fixed);
+            }
+            double scale = 0;
+            for (size_t i = 0; i < n; ++i) {
+                scale = std::max(scale, m[i][i]);
+            }
+            bool singular = false;
+            for (size_t col = 0; col < n && !singular; ++col) {
+                size_t pivot = col;
+                for (size_t row = col + 1; row < n; ++row) {
+                    if (std::abs(m[row][col]) > std::abs(m[pivot][col])) {
+                        pivot = row;
+                    }
+                }
+                if (!(std::abs(m[pivot][col]) > 1e-12 * scale)) {
+                    singular = true;   // its minimisers reach the face's boundary, where a lower face holds them
+                    break;
+                }
+                std::swap(m[pivot], m[col]);
+                for (size_t row = 0; row < n; ++row) {
+                    if (row != col) {
+                        const double factor = m[row][col] / m[col][col];
+                        for (size_t k = col; k <= n; ++k) {
+                            m[row][k] -= factor * m[col][k];
+                        }
+                    }
+                }
+            }
+            if (singular) {
+                continue;
+            }
+            bool inside = true;
+            for (size_t i = 0; i < n; ++i) {
+                value[free[i]] = m[i][n] / m[i][i];
+                if (value[free[i]] < 0 || value[free[i]] > 1) {
+                    inside = false;
+                }
+            }
+            if (!inside) {
+                continue;
+            }
+        }
+        RowEndPoint r = base;
+        for (int k = 0; k < 4; ++k) {
+            for (int i = 0; i < 3; ++i) {
+                r[i] += columns[k][i] * value[k];
+            }
+        }
+        best = std::min(best, std::sqrt(dot(r, r)));
+        found = true;
+    }
+    if (!found) {
+        throw std::logic_error("row_end_segment_box_distance found no closest point");
+    }
+    if (best > 0) {
+        return best;
+    }
+    // Inside: the six face planes, outward unit normals, signed distance n . (x - x0); the deepest reach is the least,
+    // over the segment, of the largest of them.
+    std::vector<std::pair<RowEndPoint, double>> planes;   // (n, n . x0)
+    for (int i = 0; i < 3; ++i) {
+        const int j = (i + 1) % 3;
+        const int k = (i + 2) % 3;
+        RowEndPoint n = cross(edges[j], edges[k]);
+        const double length = std::sqrt(dot(n, n));
+        for (auto& v : n) {
+            v /= length;
+        }
+        if (dot(n, edges[i]) < 0) {
+            for (auto& v : n) {
+                v = -v;
+            }
+        }
+        const RowEndPoint far{origin[0] + edges[i][0], origin[1] + edges[i][1], origin[2] + edges[i][2]};
+        planes.push_back({n, dot(n, far)});
+        planes.push_back({RowEndPoint{-n[0], -n[1], -n[2]}, -dot(n, origin)});
+    }
+    auto worst = [&](double s) {
+        const RowEndPoint x{p[0] + d[0] * s, p[1] + d[1] * s, p[2] + d[2] * s};
+        double w = std::numeric_limits<double>::lowest();
+        for (const auto& [n, offset] : planes) {
+            w = std::max(w, dot(n, x) - offset);
+        }
+        return w;
+    };
+    double deepest = std::min(worst(0), worst(1));
+    for (size_t i = 0; i < planes.size(); ++i) {
+        for (size_t j = i + 1; j < planes.size(); ++j) {
+            const double slope = dot(planes[i].first, d) - dot(planes[j].first, d);
+            if (std::abs(slope) > 0) {
+                const double s = -((dot(planes[i].first, p) - planes[i].second) - (dot(planes[j].first, p) - planes[j].second)) / slope;
+                if (s > 0 && s < 1) {
+                    deepest = std::min(deepest, worst(s));
+                }
+            }
+        }
+    }
+    return std::min(deepest, 0.0);
+}
+}  // namespace
 // FIX H-COIL-2: Helper to safely compute equal proportion per winding
 static inline std::vector<double> make_equal_proportion_per_winding(size_t numWindings) {
     if (numWindings == 0) {
@@ -55,21 +494,28 @@ static inline size_t factorial(size_t n) {
 // on the layer — parallels whose proportion is zero are not wound here and must not be counted,
 // or the bundle would be padded with turns that never get placed. Every other winding style
 // advances one parallel at a time, so each turn is its own bundle.
+// The parallels actually wound on this layer: those with a non-zero proportion in its partial
+// winding. A parallel wound alone in its own section (a whole parallel per section) puts ONE
+// parallel on each of that section's layers, however many the winding has.
+static int64_t get_layer_parallels_present(const Layer& layer) {
+    int64_t present = 0;
+    auto parallelsProportion = layer.get_partial_windings()[0].get_parallels_proportion();
+    for (auto proportion : parallelsProportion) {
+        if (roundFloat(proportion, 10) > 0) {
+            present++;
+        }
+    }
+    return present;
+}
+
 static int64_t get_layer_bundle_size(const Layer& layer) {
     if (!layer.get_winding_style() ||
         layer.get_winding_style().value() != WindingStyle::WIND_BY_CONSECUTIVE_PARALLELS) {
         return 1;
     }
-    int64_t bundleSize = 0;
-    auto parallelsProportion = layer.get_partial_windings()[0].get_parallels_proportion();
-    for (auto proportion : parallelsProportion) {
-        if (roundFloat(proportion, 10) > 0) {
-            bundleSize++;
-        }
-    }
     // A layer with no wound parallel places no turns at all, so the bundle size is moot; 1 keeps
     // the station arithmetic below total instead of dividing by zero.
-    return bundleSize > 0 ? bundleSize : 1;
+    return std::max<int64_t>(1, get_layer_parallels_present(layer));
 }
 
 // The CONDUCTOR CHAIN a layer belongs to, for the real-winding direction chain and its
@@ -702,6 +1148,27 @@ struct OutsideLinkRoomGeometry {
     bool pqLegs = false;                    // PQ-type legs: |x| >= G/2, |z| <= C/2, outside the E/2 bore
     double pqHalfOpening = 0;               // G/2
     double pqBoreRadius = 0;                // E/2
+    bool roundPostLegs = false;             // ETD/ER/EQ/EER: pqLegs with MKF's round-post aperture as G/2
+    // ABT #2274 (Alf, 2026-11-05: "add their leg geometry"): RM legs, as MKF's own RM model has them
+    // (CorePieceRm::get_lateral_leg_area, IEC 60205 A1): the square J across its flats, turned 45 deg,
+    // cut by the faces A apart, outside the E bore, and within the angle beta = pi/2 - asin(G/E) of the
+    // legs' axis (x): the wire slots' walls are radial, through the points where the bore is G wide.
+    bool rmLegs = false;
+    double rmBoreRadius = 0;                // E/2
+    double rmHalfWidth = 0;                 // A/2
+    double rmFlatReach = 0;                 // J/sqrt(2): the 45 deg flats are |x| + |z| = J/sqrt(2)
+    double rmLegHalfAngle = 0;              // beta, from the x axis
+    // EP legs, as MKF's own EP model has them (CorePieceEp::get_lateral_leg_area and process_columns): the
+    // block A wide and C deep, the post centred K from its open (front) face, so the back face is C - K
+    // behind the post's centre, at -z (where CorePieceEp places the back's lateral column); the window is
+    // the E bore plus the E wide channel from the post to the front face; a G slot, when the shape has
+    // one, opens the back from the bore to the back face.
+    bool epLegs = false;
+    double epBoreRadius = 0;                // E/2
+    double epHalfWidth = 0;                 // A/2
+    double epBackFace = 0;                  // C - K, the back face at z = -(C - K)
+    double epFrontFace = 0;                 // K, the front face at z = +K
+    double epHalfSlot = 0;                  // G/2; 0 when the shape has no G slot
 
     // Distance from the column's outer face (0 on or inside it).
     double distance_from_column(double x, double z) const {
@@ -775,7 +1242,70 @@ struct OutsideLinkRoomGeometry {
             std::hypot(x, z) > pqBoreRadius) {
             return true;
         }
+        if (rmLegs) {
+            const double ax = std::abs(x);
+            const double az = std::abs(z);
+            if (std::hypot(ax, az) > rmBoreRadius && ax < rmHalfWidth && ax + az < rmFlatReach && std::atan2(az, ax) < rmLegHalfAngle) {
+                return true;
+            }
+        }
+        if (epLegs) {
+            const double ax = std::abs(x);
+            const bool inBlock = ax < epHalfWidth && z > -epBackFace && z < epFrontFace;
+            const bool inBore = std::hypot(x, z) <= epBoreRadius;
+            const bool inFrontChannel = z >= 0 && ax < epBoreRadius;
+            const bool inBackSlot = z <= 0 && ax < epHalfSlot;
+            if (inBlock && !inBore && !inFrontChannel && !inBackSlot) {
+                return true;
+            }
+        }
         return false;
+    }
+    // ABT #2274: how deep the point (x, z) lies inside the core's legs -- its distance to the nearest
+    // point that is not leg material (0 outside every leg). Each leg is the intersection of half-planes
+    // and discs' outsides, so the depth is the smallest distance to any of the boundaries it is
+    // bounded by, measured as point_in_core_leg defines the leg.
+    double depth_in_core_leg(double x, double z) const {
+        double deepest = 0;
+        for (const auto& leg : boxLegs) {
+            const auto c = leg.get_coordinates();
+            const double cz = c.size() > 2 ? c[2] : 0.0;
+            const double dx = leg.get_width() / 2 - std::abs(x - c[0]);
+            const double dz = leg.get_depth() / 2 - std::abs(z - cz);
+            if (dx > 0 && dz > 0) {
+                deepest = std::max(deepest, std::min(dx, dz));
+            }
+        }
+        for (const auto& leg : roundLegs) {
+            const auto c = leg.get_coordinates();
+            const double cz = c.size() > 2 ? c[2] : 0.0;
+            deepest = std::max(deepest, leg.get_width() / 2 - std::hypot(x - c[0], z - cz));
+        }
+        const double ax = std::abs(x);
+        const double az = std::abs(z);
+        const double h = std::hypot(x, z);
+        if (pqLegs && ax > pqHalfOpening && ax < outlineHalfWidth && az < outlineHalfDepth && h > pqBoreRadius) {
+            deepest = std::max(deepest, std::min({ax - pqHalfOpening, outlineHalfWidth - ax, outlineHalfDepth - az, h - pqBoreRadius}));
+        }
+        if (rmLegs && h > rmBoreRadius && ax < rmHalfWidth && ax + az < rmFlatReach && std::atan2(az, ax) < rmLegHalfAngle) {
+            // The slot wall is the ray at rmLegHalfAngle from the x axis: the distance to it is the
+            // point's offset across that line.
+            const double toWall = ax * std::sin(rmLegHalfAngle) - az * std::cos(rmLegHalfAngle);
+            deepest = std::max(deepest, std::min({h - rmBoreRadius, rmHalfWidth - ax, (rmFlatReach - ax - az) / std::sqrt(2.0), toWall}));
+        }
+        if (epLegs && point_in_core_leg(x, z)) {
+            // The block's faces, and the three openings cut from it: the bore, the front channel
+            // (z >= 0, |x| < E/2) and the back slot (z <= 0, |x| < G/2).
+            const double toBlock = std::min({epHalfWidth - ax, z + epBackFace, epFrontFace - z});
+            const double toBore = h - epBoreRadius;
+            const double toChannel = z >= 0 ? ax - epBoreRadius : std::hypot(std::max(ax - epBoreRadius, 0.0), z);
+            double depth = std::min({toBlock, toBore, toChannel});
+            if (epHalfSlot > 0) {
+                depth = std::min(depth, z <= 0 ? ax - epHalfSlot : std::hypot(std::max(ax - epHalfSlot, 0.0), z));
+            }
+            deepest = std::max(deepest, depth);
+        }
+        return std::max(deepest, 0.0);
     }
     // A disc of `radius` at (x, z) meets core material: its centre or any point of its rim (sampled
     // every degree, which misses at most radius * (1 - cos 0.5 deg), 4e-5 of the radius; the legs
@@ -813,8 +1343,9 @@ struct OutsideLinkRoomGeometry {
 // ABT #1487 (R3): OutsideLinkRoomGeometry for `coil`, from its bobbin and from the core set with
 // Coil::set_core_geometry. The outer legs come from the core's processed columns where their shape
 // says where they are (RECTANGULAR, ROUND); PQ-type legs, whose processed column is IRREGULAR, from
-// the shape's own E, G (and C, A: the outline). Any other family's open sides are not known to MKF
-// and it throws -- there is no default.
+// the shape's own E, G (and C, A: the outline); RM and EP legs (ABT #2274) from their shapes' own
+// dimensions, as MKF's RM and EP core models have them. Any other family's open sides are not known
+// to MKF and it throws -- there is no default.
 // requireCore = false (ABT #1705, Alf 2026-10-24: "add the core-leg check only when a core exists"):
 // a coil given no core returns the bobbin's room alone, hasCore false, instead of throwing.
 static OutsideLinkRoomGeometry outside_link_room_geometry(Coil& coil, bool requireCore = true) {
@@ -863,6 +1394,19 @@ static OutsideLinkRoomGeometry outside_link_room_geometry(Coil& coil, bool requi
         else if (family == CoreShapeFamily::PQ || family == CoreShapeFamily::PQI) {
             geometry.pqLegs = true;
         }
+        else if (family == CoreShapeFamily::ETD || family == CoreShapeFamily::ER || family == CoreShapeFamily::PLANAR_ER ||
+                 family == CoreShapeFamily::EQ || family == CoreShapeFamily::EER) {
+            // Round-post E cores (CorePieceEtd): the same leg as a PQ's -- outside the E / 2 bore, within the
+            // depth -- cut flat at the aperture MKF's own core model uses (round_post_lateral_leg_aperture).
+            geometry.pqLegs = true;
+            geometry.roundPostLegs = true;
+        }
+        else if (family == CoreShapeFamily::RM) {
+            geometry.rmLegs = true;
+        }
+        else if (family == CoreShapeFamily::EP) {
+            geometry.epLegs = true;
+        }
         else {
             throw CoilException(ErrorCode::COIL_WINDING_ERROR,
                                 "Real winding: an outside series link runs where the core has no outer leg, but where a " +
@@ -870,7 +1414,12 @@ static OutsideLinkRoomGeometry outside_link_room_geometry(Coil& coil, bool requi
                                     std::string(magic_enum::enum_name(column.get_shape())) + ") is not known to MKF");
         }
     }
-    if (geometry.pqLegs) {
+    if (geometry.roundPostLegs) {
+        const auto dimensions = flatten_dimensions(core->resolve_shape().get_dimensions().value());
+        geometry.pqHalfOpening = round_post_lateral_leg_aperture(dimensions);
+        geometry.pqBoreRadius = dimensions.at("E") / 2;
+    }
+    else if (geometry.pqLegs) {
         auto dimensions = flatten_dimensions(core->resolve_shape().get_dimensions().value());
         for (const std::string key : {"E", "G"}) {
             if (!dimensions.contains(key) || dimensions.at(key) <= 0) {
@@ -881,6 +1430,48 @@ static OutsideLinkRoomGeometry outside_link_room_geometry(Coil& coil, bool requi
         }
         geometry.pqHalfOpening = dimensions.at("G") / 2;
         geometry.pqBoreRadius = dimensions.at("E") / 2;
+    }
+    // ABT #2274: the RM and EP legs, from the shape's own dimensions; a dimension the leg needs and the
+    // shape does not state is an error naming it, never a default.
+    auto require_leg_dimensions = [&](const std::vector<std::string>& keys) {
+        auto dimensions = flatten_dimensions(core->resolve_shape().get_dimensions().value());
+        for (const auto& key : keys) {
+            if (!dimensions.contains(key) || !(dimensions.at(key) > 0)) {
+                throw CoilException(ErrorCode::COIL_WINDING_ERROR,
+                                    "Real winding: the " + geometry.coreFamily + " shape '" + core->get_shape_name() +
+                                        "' states no positive dimension " + key + ", so where its outer legs stand is unknown");
+            }
+        }
+        return dimensions;
+    };
+    if (geometry.rmLegs) {
+        const auto dimensions = require_leg_dimensions({"A", "E", "G", "J"});
+        if (!(dimensions.at("G") < dimensions.at("E"))) {
+            throw CoilException(ErrorCode::COIL_WINDING_ERROR,
+                                "Real winding: the RM shape '" + core->get_shape_name() + "' states a wire slot G = " +
+                                    std::to_string(dimensions.at("G")) + " m no narrower than its bore E = " +
+                                    std::to_string(dimensions.at("E")) + " m, so it has no outer legs");
+        }
+        geometry.rmBoreRadius = dimensions.at("E") / 2;
+        geometry.rmHalfWidth = dimensions.at("A") / 2;
+        geometry.rmFlatReach = dimensions.at("J") / std::numbers::sqrt2;
+        geometry.rmLegHalfAngle = std::numbers::pi / 2 - std::asin(dimensions.at("G") / dimensions.at("E"));
+    }
+    if (geometry.epLegs) {
+        const auto dimensions = require_leg_dimensions({"A", "C", "E", "K"});
+        if (!(dimensions.at("K") < dimensions.at("C"))) {
+            throw CoilException(ErrorCode::COIL_WINDING_ERROR,
+                                "Real winding: the EP shape '" + core->get_shape_name() + "' states K = " +
+                                    std::to_string(dimensions.at("K")) + " m, not less than its depth C = " +
+                                    std::to_string(dimensions.at("C")) + " m, so it has no back behind its post");
+        }
+        geometry.epBoreRadius = dimensions.at("E") / 2;
+        geometry.epHalfWidth = dimensions.at("A") / 2;
+        geometry.epBackFace = dimensions.at("C") - dimensions.at("K");
+        geometry.epFrontFace = dimensions.at("K");
+        // A G slot through the back only when the shape states one: CorePieceEp's own test (no G, or G = 0:
+        // a closed back).
+        geometry.epHalfSlot = dimensions.contains("G") ? dimensions.at("G") / 2 : 0;
     }
     return geometry;
 }
@@ -1164,6 +1755,10 @@ static std::vector<ConnectionReservedSpace> toroidal_connection_reserved_spaces(
                 route.waypoints = isEntrance ? std::vector<std::vector<double>>{atBorder, atTurn}
                                              : std::vector<std::vector<double>>{atTurn, atBorder};
                 route.routedLength = roundFloat(radialBorder - radiusNear, 9);
+                // ABT #2274: the bend its lead corners take, by the one rule every terminal lead bends at
+                // (terminal_lead_bend_radius, as tagBendRadius plans it for the concentric leads). Without it MVB++
+                // has no radius for the toroid's lead corners and refuses the build (05_pfc).
+                route.plannedBendRadius = coil.terminal_lead_bend_radius(windingName, isEntrance ? End::START : End::FINISH, parallel);
                 routesOut->push_back(std::move(route));
             }
 
@@ -2240,6 +2835,21 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces(
         std::function<std::optional<double>(double, double)> rampFor;
     };
     std::map<std::tuple<std::string, int64_t, ConnectionKind>, StubRampPlan> stubRampPlans;
+    // ABT #2274 (slot-step ramp): the stubs that are NOT drawable, whose route starts at the row. Their
+    // step from the turn to the row is only known at the settled slot, so they are solved once, after
+    // the lanes have settled (ConnectionRoute::slotRampLength), and never move a lane.
+    std::map<std::tuple<std::string, int64_t, ConnectionKind>, StubRampPlan> slotStepRampPlans;
+    // ABT #2274 (Alf, 2026-11-08 TRY, level leads): a slot-step lead's row is its turn's height at its lane, and the
+    // shift of its 2-D route from the crossing's row, per route index (plan_slot_step_ramps).
+    const bool levelLeadRows = true;
+    std::map<size_t, double> levelRowShift;
+    // ABT #2274 (Alf, 2026-11-08, after agent 24): the exit leads whose level row clashed. Each keeps its crossing row and
+    // its turn ends ON that row at its lane (ConnectionRoute::rowEndX), instead of a lane move.
+    std::set<std::tuple<std::string, int64_t, ConnectionKind>> rowEndLeads;
+    // ABT #2274 (agent 22, "move the lane"): per route index, the least |x| the lane plan may stand that terminal lead at
+    // (CoilLanePlanJudge.h LaneFloor), set by the settle when the lead's level row clashes, and the moves made (witness).
+    std::map<size_t, double> laneFloorU;
+    std::vector<std::string> laneMoves;
     auto addTerminalLead = [&](const std::string& windingName, double wireOuterWidth,
                            double wireOuterHeight, const Turn& connectingTurn, int64_t parallel,
                            bool atTopEdge, bool isEntrance,
@@ -2377,7 +2987,7 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces(
         auto planStubRamp = [&](size_t routesBefore, bool stubIsDrawable, double stationY, double rowY) {
             // ABT #1336: a drawable stub too short for its two bends becomes a ramp (see
             // ConnectionRoute::rampLength). Real winding only, like the bend it is planned for.
-            if (!(stubIsDrawable && routes.size() > routesBefore && is_real_winding_blocking_applied() && !layersAreContiguous)) {
+            if (!(routes.size() > routesBefore && is_real_winding_blocking_applied() && !layersAreContiguous)) {
                 return;
             }
             const double bendRadius = routes.back().plannedBendRadius;
@@ -2434,9 +3044,17 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces(
                 // the cosine S's extent in lead_ramp_length.
                 return lead_ramp_length(stubHeight, lead_ramp_governing_radius(leadWire, isotropicRadius, surfaceCurvature));
             };
+            const auto key = std::make_tuple(routes.back().winding, routes.back().parallel, routes.back().kind);
+            if (!stubIsDrawable) {
+                // ABT #2274: solved at the settled slot only (slotStepRampPlans).
+                if (!slotStepRampPlans.emplace(key, std::move(plan)).second) {
+                    throw std::logic_error("Winding '" + routes.back().winding + "' parallel " + std::to_string(routes.back().parallel) +
+                                           " plans two terminal stubs at one end");
+                }
+                return;
+            }
             // The first iterate: the lead leaves its turn at the crossing, where its 2-D station stands.
             routes.back().rampLength = plan.rampFor(std::abs(rowY - stationY), 0.0);
-            const auto key = std::make_tuple(routes.back().winding, routes.back().parallel, routes.back().kind);
             if (!stubRampPlans.emplace(key, std::move(plan)).second) {
                 throw std::logic_error("Winding '" + routes.back().winding + "' parallel " + std::to_string(routes.back().parallel) +
                                        " plans two terminal stubs at one end");
@@ -2505,8 +3123,27 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces(
                 }
                 record.windowEdge = edgeY;
                 record.flangeOuterFace = edgeY + outward * wallThickness;
-                record.end = record.flangeOuterFace + outward * leadOuter;
+                // ABT #2291 (Alf, 2026-11-06: "the turn towards Z axis should be at the designated terminal height",
+                // the foil terminal must not cross the bobbin flange): the lead rises along its own column only to
+                // the window edge's row -- tangent to the flange's inner face, where every edge-routed terminal run
+                // of the window lies (its reserved space ends at the window edge) -- and turns out of the face there.
+                record.end = roundFloat(edgeY - outward * leadOuter / 2, 12);
+                if (outward * (record.end - record.attachTo) < leadOuter / 2 - 1e-12) {
+                    throw CoilException(ErrorCode::COIL_WINDING_ERROR,
+                        "The " + who + " leaves axially, but the window edge lies " + std::to_string(outward * (edgeY - record.attachTo) * 1e3) +
+                        " mm past its sheet's edge, where its run out of the face needs " + std::to_string(leadOuter * 1e3) +
+                        " mm (one lead outer diameter) to clear the sheet edges it crosses");
+                }
                 record.length = std::abs(record.end - record.attachFrom);
+                // ABT #2291: at the window edge's row the lead turns out of the connection face (AxialLead::radialEnd).
+                record.radialEnd = roundFloat(windowOuterX + leadOuter / 2, 12);
+                record.radialLength = record.radialEnd - record.layerAxis;
+                if (!(record.radialLength > 0)) {
+                    throw CoilException(ErrorCode::COIL_WINDING_ERROR,
+                        "The " + who + " leaves axially, but its lead stands at " + std::to_string(record.layerAxis * 1e3) +
+                        " mm on the layer axis, at or past the window border's " + std::to_string(record.radialEnd * 1e3) +
+                        " mm, so it has no run out of the face");
+                }
                 // The weld strip (AxialLead::WeldStrip): sheet centre to lead centreline, the lead
                 // copper's chord at half a radius from the sheet, along the whole attach.
                 record.weld.layerFrom = roundFloat(turnX, 12);
@@ -2559,7 +3196,7 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces(
             // axial lead, ABT #1907) or the end's centre to the window edge.
             lead.coordinates = {columnX, roundFloat((runLow + runHigh) / 2, 9)};
             lead.dimensions = {wireOuterWidth, roundFloat(runHigh - runLow, 9)};
-            lead.routedLength = axialLead ? roundFloat(axialLead->length, 9) : roundFloat(runHigh - runLow, 9);
+            lead.routedLength = axialLead ? roundFloat(axialLead->length + axialLead->radialLength, 9) : roundFloat(runHigh - runLow, 9);
             lead.kind = terminalKind;
             (isEntrance ? lead.toTurn : lead.fromTurn) = connectingTurn.get_name();
             lead.sleeveOuterDiameter = sleeveOuterDiameter;
@@ -2567,11 +3204,15 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces(
             const size_t axialLeadSpaceIndex = spaces.size() - 1;
             size_t routesBefore = routes.size();
             const double routeStartY = axialLead ? axialLead->attachFrom : turnY;
+            // ABT #2291: an axial lead's route runs up its column to the window edge's row and turns out of the face there.
             addTerminalRoute(windingName, parallel, connectingTurn, isEntrance, terminalKind,
-                             {{columnX, routeStartY}, {columnX, edgeY}});
+                             axialLead ? std::vector<std::vector<double>>{{columnX, routeStartY},
+                                                                          {columnX, axialLead->end},
+                                                                          {axialLead->radialEnd, axialLead->end}}
+                                       : std::vector<std::vector<double>>{{columnX, routeStartY}, {columnX, edgeY}});
             if (axialLead && routes.size() > routesBefore) {
                 routes.back().axialLead = axialLead;
-                routes.back().routedLength = roundFloat(axialLead->length, 9);
+                routes.back().routedLength = roundFloat(axialLead->length + axialLead->radialLength, 9);
             }
             tagSleevedRoute(routesBefore);
             tagBendRadius(routesBefore, std::max({wireOuterWidth, wireOuterHeight, sleeveOuterDiameter.value_or(0.0)}));
@@ -2664,6 +3305,9 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces(
                              {{turnX, turnY}, {windowOuterX + wireOuterWidth / 2, turnY}});
             tagSleevedRoute(routesBefore);
             tagBendRadius(routesBefore, std::max({wireOuterWidth, wireOuterHeight, sleeveOuterDiameter.value_or(0.0)}));
+            // ABT #2274: the run leaves at the turn's station height, which the turn holds only at the
+            // crossing; at its settled slot the turn has climbed off it (slotStepRampPlans).
+            planStubRamp(routesBefore, false, turnY, turnY);
             deferPinLeg(routesBefore, spaces.size() - 1, windingName, parallel, isEntrance,
                         windowOuterX + wireOuterWidth / 2, turnY,
                         std::max({wireOuterWidth, wireOuterHeight, sleeveOuterDiameter.value_or(0.0)}));
@@ -2854,8 +3498,11 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces(
         const bool stubNeeded = std::abs(edgeY - attachY) > wireOuterHeight / 2;
         const double stubFarEnd = edgeY + stubDirection * wireOuterHeight / 2;
         // The exit leaves its face one coated width outward (MVB++ #849), whether or not it has a stub.
+        // ABT #2274 (Alf, 2026-11-15, PSPS E16: "why does exit lead seg 0 exist, instead of the terminal exit connected at
+        // the same radius as the turn's last face piece"): under real winding the exit leaves at its turn's own radius,
+        // like the entrance. An ideal winding keeps the off-face exit it always had.
         bool offFaceExit = false;
-        if (!isEntrance && !sleevedRow) {
+        if (!isEntrance && !sleevedRow && !is_real_winding_blocking_applied()) {
             const auto columnShape =
                 std::get<Bobbin>(get_bobbin()).get_processed_description().value().get_column_shape();
             const auto wireType = leadWireOf().get_type();
@@ -3740,8 +4387,30 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces(
                     diagonal.fromTurn = exitTurn.get_name();
                     diagonal.toTurn = entryTurn.get_name();
                     spaces.push_back(diagonal);
+                    const size_t routesBeforeDragback = routes.size();
                     addRoute(windingName, parallel, exitTurn.get_name(), entryTurn.get_name(),
                              ConnectionKind::Z_DRAGBACK, {{x1, y1}, {x2, y2}});
+                    // ABT #2274 (Alf, 2026-11-07): the dragback's bends are MKF's decision. Each bend is
+                    // drawn at the radius a lead of this wire bends at (lead_bend_radius, swept at its
+                    // coated half size), and its radial step-out stops exactly at the return's radius:
+                    // two bends of acos(1 - |dx| / 2R) when the step cannot hold two quarter bends, so the
+                    // bump the dragback adds is the layer step and nothing more (ConnectionRoute::dragbackBendRadius).
+                    if (is_real_winding_blocking_applied() && routes.size() > routesBeforeDragback) {
+                        const double sweptRadius = std::max(wires[windingIndex].get_maximum_outer_width(),
+                                                            wires[windingIndex].get_maximum_outer_height()) / 2;
+                        const double bendRadius = lead_bend_radius(wires[windingIndex], std::nullopt, sweptRadius, true);
+                        const double step = std::abs(x2 - x1);
+                        if (!(bendRadius > 0) || !(step > 0)) {
+                            throw CoilException(ErrorCode::COIL_WINDING_ERROR,
+                                "Real winding: the dragback of winding '" + windingName + "' parallel " + std::to_string(parallel) +
+                                " from turn '" + exitTurn.get_name() + "' to '" + entryTurn.get_name() + "' steps " +
+                                std::to_string(step * 1e3) + " mm out at a bend radius of " + std::to_string(bendRadius * 1e3) +
+                                " mm -- both must be positive to plan its bends");
+                        }
+                        routes.back().dragbackBendRadius = bendRadius;
+                        routes.back().dragbackBendAngle = step >= 2 * bendRadius ? std::numbers::pi / 2
+                                                                                 : std::acos(1 - step / (2 * bendRadius));
+                    }
                 }
                 else if (crossesIntervening) {
                     // U interleaved continuation: route along the window edge it reserves — a vertical
@@ -4061,6 +4730,1451 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces(
             rampRouteIndex.push_back(found.value());
             rampPlans.push_back(&plan);
         }
+        // ABT #2274 (Alf, 2026-11-07, "slot-step ramp"): a NON-drawable stub's route starts at its row, so
+        // the step from its turn up (or down) to that row is left at the slot the lanes settled on. There
+        // the turn stands at station - advance * along / L (the uniform climb every 3D builder draws on a
+        // flat face, as lane_height_findings judges it), and the lead climbs the step as a cosine S on the
+        // turn's surface by its own ramp rule (StubRampPlan::rampFor). Solved once, at the final slots,
+        // and published apart from rampLength (ConnectionRoute::slotRampLength): it moves no lane and
+        // takes no room the lanes did not already hold. A step that rounds to zero on the 1 nm grid MKF
+        // emits its coordinates on (roundFloat) is exact touch at the data's resolution -- the consumer's
+        // enamel gate certifies a pair at half a grid cell -- so it gets no ramp. A slot ramp whose
+        // footprint along the face meets another lead is drawn as planned and reported (LANES_COLLIDE).
+        // ABT #2274 (agent 23, two_switch; Alf 2026-11-08: inputs on -x, outputs on +x, windings outward from x = 0 in
+        // winding order, x moves allowed, no face move for fit): a foil end's axial leads take no radial lane, so the lane
+        // plan stands the radial leads of that end without them. Where a radial terminal lead on the same face and half
+        // runs out at a row closer to the axial leads' radial run (AxialLead::end) than their two coated half sizes, the
+        // bundle starts past that lead's copper (|exitSlot| + its half size) instead of at the crossing: its sheets end (or
+        // start) that much further from the crossing. The radial lead then stands nearer x = 0, the bundle outward of it.
+        auto axial_bundle_start = [&](const std::vector<ConnectionRoute>& trial, const std::vector<size_t>& members) {
+            const auto& first = trial[members.front()];
+            const double sign = first.kind == ConnectionKind::TERMINAL_ENTRANCE ? -1.0 : 1.0;
+            double axialSize = 0;
+            for (size_t index : members) {
+                axialSize = std::max(axialSize, trial[index].axialLead->outerDiameter);
+            }
+            double start = 0;
+            for (size_t index = 0; index < trial.size(); ++index) {
+                const auto& other = trial[index];
+                if ((other.kind != ConnectionKind::TERMINAL_ENTRANCE && other.kind != ConnectionKind::TERMINAL_EXIT) || other.axialLead ||
+                    other.side != first.side || !exitSlots[index] || other.waypoints.empty()) {
+                    continue;
+                }
+                const double row = (other.kind == ConnectionKind::TERMINAL_ENTRANCE ? other.waypoints.front() : other.waypoints.back()).at(1);
+                if (!(std::abs(row - first.axialLead->end) < (routeDiameters[index] + axialSize) / 2)) {
+                    continue;
+                }
+                start = std::max(start, sign * exitSlots[index].value() + routeDiameters[index] / 2);
+            }
+            return start;
+        };
+        // ABT #1907 / #2274 (agent 26): each foil end's axial leads stand side by side along the face in parallel order
+        // from their bundle's start (axial_bundle_start): the k-th at the sum of the earlier ones' outer diameters plus half
+        // its own (AxialLead::alongFace). One rule, read where the leads are placed (after the settle) and by the row-end
+        // judge, which runs inside the settle before they are.
+        auto axial_lead_along_faces = [&](const std::vector<ConnectionRoute>& trial) {
+            std::map<std::pair<std::string, ConnectionKind>, std::vector<size_t>> bundles;
+            for (size_t index = 0; index < trial.size(); ++index) {
+                if (trial[index].axialLead) {
+                    bundles[{trial[index].winding, trial[index].kind}].push_back(index);
+                }
+            }
+            std::map<size_t, double> alongFace;
+            for (auto& [bundleKey, members] : bundles) {
+                std::stable_sort(members.begin(), members.end(),
+                                 [&](size_t a, size_t b) { return trial[a].parallel < trial[b].parallel; });
+                double before = axial_bundle_start(trial, members);
+                for (size_t position = 0; position < members.size(); ++position) {
+                    const auto& route = trial[members[position]];
+                    if (position > 0 && route.parallel == trial[members[position - 1]].parallel) {
+                        throw std::logic_error("Winding '" + route.winding + "' parallel " + std::to_string(route.parallel) +
+                                               " carries two axial leads at one end");
+                    }
+                    const double diameter = route.axialLead->outerDiameter;
+                    alongFace[members[position]] = roundFloat(before + diameter / 2, 12);
+                    before += diameter;
+                }
+            }
+            return alongFace;
+        };
+        auto plan_slot_step_ramps = [&]() {
+            if (!is_real_winding_blocking_applied() || layersAreContiguous || slotStepRampPlans.empty()) {
+                return;
+            }
+            std::set<std::string> landedTurns;
+            for (const auto& link : routes) {
+                if (link.kind == ConnectionKind::FINAL_LANDING) {
+                    landedTurns.insert(link.toTurn);
+                    landedTurns.insert(link.fromTurn);
+                }
+            }
+            std::vector<size_t> rampedRoutes;
+            std::map<size_t, SlotRampCentreline> rampCurves;
+            // ABT #2274 (Alf, 2026-11-08 TRY, level leads): a levelled lead's 2-D route (its stub and its radial run, each
+            // piece swept by the lead's coated half size) is judged at its new row against (a) the other terminal leads on
+            // its face whose lane footprints overlap its own along x, and (b) the copper of every other turn its run
+            // passes, standing at this lane where the uniform climb puts it (station - advance * along / L, its own
+            // signed advance, the lead's along and L). Only what the move ADDS over the 2-D plan at the crossing (the
+            // lead at its row, the turns at their stations) is judged. A run that comes into copper is drawn as planned
+            // and reported with the numbers (LANES_COLLIDE / TURN_COLLISION findings); the 3-D gate refuses that copper.
+            auto judge_level_rows = [&]() {
+                // Copper touching is not copper inside copper: both boxes come from coordinates and sizes MKF emits on
+                // its 1 nm grid (roundFloat), so a pair at exact touch can overlap by one cell per box.
+                const double contact = 2e-9;
+                auto boxes_of = [&](size_t index, double shift) {
+                    std::vector<std::array<double, 4>> boxes;   // r0, r1, y0, y1
+                    const double half = routeDiameters[index] / 2;
+                    const auto& points = routes[index].waypoints;
+                    for (size_t w = 0; w + 1 < points.size(); ++w) {
+                        const auto& p = points[w];
+                        const auto& q = points[w + 1];
+                        boxes.push_back({std::min(p.at(0), q.at(0)) - half, std::max(p.at(0), q.at(0)) + half,
+                                         std::min(p.at(1), q.at(1)) - half - shift, std::max(p.at(1), q.at(1)) + half - shift});
+                    }
+                    return boxes;
+                };
+                auto penetration = [](const std::vector<std::array<double, 4>>& boxes, const std::array<double, 4>& other) {
+                    double deepest = 0;
+                    for (const auto& box : boxes) {
+                        deepest = std::max(deepest, std::min(std::min(box[1], other[1]) - std::max(box[0], other[0]),
+                                                             std::min(box[3], other[3]) - std::max(box[2], other[2])));
+                    }
+                    return deepest;
+                };
+                auto shift_of = [&](size_t index) {
+                    auto found = levelRowShift.find(index);
+                    return found == levelRowShift.end() ? 0.0 : found->second;
+                };
+                auto leaves_layer = [&](const std::string& turnName) {
+                    for (const auto& other : routes) {
+                        if ((other.kind == ConnectionKind::Z_DRAGBACK || other.kind == ConnectionKind::EDGE_CONTINUATION) &&
+                            (other.fromTurn == turnName || other.fromTurn == turnName + "_ending")) {
+                            return true;
+                        }
+                    }
+                    return false;
+                };
+                if (levelRowShift.empty()) {
+                    return;
+                }
+                const auto ridePlacement = compute_ride_placement(routes);
+                for (const auto& [index, shift] : levelRowShift) {
+                    const auto& route = routes[index];
+                    const bool entrance = route.kind == ConnectionKind::TERMINAL_ENTRANCE;
+                    const std::string& ownTurn = entrance ? route.toTurn : route.fromTurn;
+                    const auto& path = turnPaths[index].value();
+                    const double slot = exitSlots[index].value();
+                    const double along = terminal_lead_along(route, path, slot);
+                    const auto moved = boxes_of(index, 0.0);
+                    const auto before = boxes_of(index, shift);
+                    std::ostringstream label;
+                    label << std::setprecision(6) << "Real winding: the level terminal lead of winding '" << route.winding << "' parallel "
+                          << route.parallel << (entrance ? " entrance" : " exit") << " (lane x = " << slot * 1e3 << " mm, row moved by "
+                          << shift * 1e3 << " mm to its turn's height at the lane)";
+                    // (a) the other terminal leads on this face whose footprints along x meet this one's.
+                    for (size_t other = 0; other < routes.size(); ++other) {
+                        const auto& otherRoute = routes[other];
+                        const bool otherTerminal = otherRoute.kind == ConnectionKind::TERMINAL_ENTRANCE ||
+                                                   otherRoute.kind == ConnectionKind::TERMINAL_EXIT;
+                        if (other == index || !otherTerminal || !exitSlots[other] || otherRoute.side != route.side ||
+                            otherRoute.waypoints.size() < 2 ||
+                            !(std::abs(exitSlots[other].value() - slot) < (routeDiameters[index] + routeDiameters[other]) / 2)) {
+                            continue;
+                        }
+                        // In 3-D the two runs meet only where their lanes overlap along x as well.
+                        const double xOverlap = (routeDiameters[index] + routeDiameters[other]) / 2 - std::abs(exitSlots[other].value() - slot);
+                        double added = 0;
+                        for (const auto& box : boxes_of(other, 0.0)) {
+                            added = std::max(added, std::min(xOverlap, penetration(moved, box)));
+                        }
+                        double was = 0;
+                        for (const auto& box : boxes_of(other, shift_of(other))) {
+                            was = std::max(was, std::min(xOverlap, penetration(before, box)));
+                        }
+                        if (added - was > contact) {
+                            std::ostringstream out;
+                            out << std::setprecision(6) << label.str() << " comes " << (added - was) * 1e3 << " mm into the lead of winding '"
+                                << otherRoute.winding << "' parallel " << otherRoute.parallel
+                                << (otherRoute.kind == ConnectionKind::TERMINAL_ENTRANCE ? " entrance" : " exit") << " (lane x = "
+                                << exitSlots[other].value() * 1e3 << " mm, row moved by " << shift_of(other) * 1e3 << " mm; lead sizes "
+                                << routeDiameters[index] * 1e3 << " / " << routeDiameters[other] * 1e3 << " mm, rows now "
+                                << route.waypoints.back().at(1) * 1e3 << " / " << otherRoute.waypoints.back().at(1) * 1e3 << " mm)";
+                            LeadFinding finding;   // the consumer refuses the part with this witness (ABT #2274: never findings-only)
+                            finding.kind = LeadFindingKind::LEVEL_ROW_CLASH;
+                            finding.witness = out.str();
+                            routes[index].findings.push_back(finding);
+                        }
+                    }
+                    // (b) the copper of every other turn, at its station within its own climb to this lane.
+                    // ABT #2274 (agent 27): a FOIL sheet (a conductor whose ends leave by axial leads, AxialLead) is judged as
+                    // drawn: its copper spans the turn axis from its attach edge to its other edge (AxialLead::attachFrom ..
+                    // attachTo, the sheet's conducting height), not its stated outer section; and on this face its first turn
+                    // stands only where it runs from its start (x <= the sheet's end at the entrance lead, the way it leaves the
+                    // crossing towards -x) and its last turn only where it arrives into its finish (x >= the sheet's end at the
+                    // exit lead), the same model as the row-end judge (axial_lead_along_faces, sheet end = alongFace - D/2).
+                    struct SheetOfConductor {
+                        double y0 = 0, y1 = 0;
+                        std::string firstTurn, lastTurn;
+                        std::optional<double> startX, endX;   // the sheet's ends on the face (CW frame)
+                    };
+                    std::map<std::pair<std::string, int64_t>, SheetOfConductor> sheets;
+                    {
+                        const auto axialAlong = axial_lead_along_faces(routes);
+                        for (size_t k = 0; k < routes.size(); ++k) {
+                            const auto& r = routes[k];
+                            if (!r.axialLead) {
+                                continue;
+                            }
+                            if (!r.wrapDirection || r.wrapDirection.value() != -1) {
+                                throw std::logic_error("The level-row judge of " + label.str() + " models a foil's sheet only in the frame its "
+                                                       "turns travel towards -x (wrapDirection -1); winding '" + r.winding + "' states another");
+                            }
+                            const auto& lead = r.axialLead.value();
+                            auto& sheet = sheets[{r.winding, r.parallel}];
+                            const double lo = std::min(lead.attachFrom, lead.attachTo), hi = std::max(lead.attachFrom, lead.attachTo);
+                            if (!sheet.firstTurn.empty() || !sheet.lastTurn.empty()) {
+                                if (std::abs(sheet.y0 - lo) > 1e-12 || std::abs(sheet.y1 - hi) > 1e-12) {
+                                    throw std::logic_error("The two axial leads of winding '" + r.winding + "' parallel " + std::to_string(r.parallel) +
+                                                           " attach along different sheet edges, judging " + label.str());
+                                }
+                            }
+                            sheet.y0 = lo;
+                            sheet.y1 = hi;
+                            const double x = r.kind == ConnectionKind::TERMINAL_EXIT ? axialAlong.at(k) : -axialAlong.at(k);
+                            const double sheetEnd = x - std::copysign(lead.outerDiameter / 2, x);
+                            if (r.kind == ConnectionKind::TERMINAL_ENTRANCE) {
+                                sheet.firstTurn = r.toTurn;
+                                sheet.startX = sheetEnd;
+                            }
+                            else {
+                                sheet.lastTurn = r.fromTurn;
+                                sheet.endX = sheetEnd;
+                            }
+                        }
+                    }
+                    const double leadFrom = slot - routeDiameters[index] / 2;
+                    const double leadTo = slot + routeDiameters[index] / 2;
+                    for (size_t t = 0; t < turnsForSlots.size(); ++t) {
+                        const auto& turn = turnsForSlots[t];
+                        if (turn.get_name() == ownTurn) {
+                            continue;
+                        }
+                        if (!turn.get_dimensions()) {
+                            throw InvalidInputException(ErrorCode::INVALID_INPUT, "Turn '" + turn.get_name() +
+                                "' has no dimensions, so the level lead row passing it cannot be judged");
+                        }
+                        const auto c = turn.get_coordinates();
+                        auto d = turn.get_dimensions().value();
+                        std::optional<double> sheetCentre;
+                        if (const auto sheet = sheets.find({turn.get_winding(), turn.get_parallel()}); sheet != sheets.end()) {
+                            const auto& s = sheet->second;
+                            if (!s.startX || !s.endX) {
+                                throw std::logic_error("The foil winding '" + turn.get_winding() + "' parallel " + std::to_string(turn.get_parallel()) +
+                                                       " has an axial lead at one end only, judging " + label.str());
+                            }
+                            // its copper on this face along x: a first turn from the face's far end up to its start, a last
+                            // turn from its finish on, a one-turn sheet both, any other turn the whole face
+                            const bool first = turn.get_name() == s.firstTurn, last = turn.get_name() == s.lastTurn;
+                            const double infinity = std::numeric_limits<double>::infinity();
+                            bool meets = !first && !last;
+                            if (first && std::min(s.startX.value(), leadTo) - std::max(-infinity, leadFrom) > contact) {
+                                meets = true;
+                            }
+                            if (last && std::min(infinity, leadTo) - std::max(s.endX.value(), leadFrom) > contact) {
+                                meets = true;
+                            }
+                            if (!meets) {
+                                continue;
+                            }
+                            d.at(1) = s.y1 - s.y0;
+                            sheetCentre = 0.5 * (s.y0 + s.y1);
+                        }
+                        // The turn's own signed advance in its electrical direction (as attachAdvance): to its next turn,
+                        // the last turn of a conductor from its previous one, a one-turn conductor none. At the lane it
+                        // stands at station - advance * along / L, the same uniform climb as the lead's own turn.
+                        std::optional<double> advance;
+                        // ABT #2274 (17_cllc): a turn that leaves its layer by a dragback or an edge continuation
+                        // (the last turn of a layer, drawn to its '_ending' and then returned) climbs on its face at
+                        // its in-layer pitch, from its previous turn; its next turn stands on another layer.
+                        if (leaves_layer(turn.get_name())) {
+                            for (size_t n = t; n-- > 0 && !advance;) {
+                                if (turnsForSlots[n].get_winding() == turn.get_winding() && turnsForSlots[n].get_parallel() == turn.get_parallel()) {
+                                    advance = c.at(1) - turnsForSlots[n].get_coordinates().at(1);
+                                }
+                            }
+                        }
+                        for (size_t n = t + 1; n < turnsForSlots.size() && !advance; ++n) {
+                            if (turnsForSlots[n].get_winding() == turn.get_winding() && turnsForSlots[n].get_parallel() == turn.get_parallel()) {
+                                advance = turnsForSlots[n].get_coordinates().at(1) - c.at(1);
+                            }
+                        }
+                        for (size_t n = t; n-- > 0 && !advance;) {
+                            if (turnsForSlots[n].get_winding() == turn.get_winding() && turnsForSlots[n].get_parallel() == turn.get_parallel()) {
+                                advance = c.at(1) - turnsForSlots[n].get_coordinates().at(1);
+                            }
+                        }
+                        const double drift = -advance.value_or(0.0) * along / path.length;
+                        const double cy = sheetCentre ? sheetCentre.value() : c.at(1);   // a sheet: the centre of its copper (agent 27)
+                        const std::array<double, 4> copper{c.at(0) - d.at(0) / 2, c.at(0) + d.at(0) / 2,
+                                                           cy - d.at(1) / 2 + drift, cy + d.at(1) / 2 + drift};
+                        const std::array<double, 4> copperAtStation{c.at(0) - d.at(0) / 2, c.at(0) + d.at(0) / 2,
+                                                                    cy - d.at(1) / 2, cy + d.at(1) / 2};
+                        const double added = penetration(moved, copper) - penetration(before, copperAtStation);
+                        if (added > contact) {
+                            std::ostringstream out;
+                            out << std::setprecision(6) << label.str() << " comes " << added * 1e3 << " mm into the copper of turn '"
+                                << turn.get_name() << "' (station (" << c.at(0) * 1e3 << ", " << c.at(1) * 1e3 << ") mm, at " << (c.at(1) + drift) * 1e3
+                                << " mm at this lane; the lead's row now " << route.waypoints.back().at(1) * 1e3 << " mm)";
+                            LeadFinding finding;   // the consumer refuses the part with this witness (ABT #2274: never findings-only)
+                            finding.kind = LeadFindingKind::LEVEL_ROW_CLASH;
+                            finding.witness = out.str();
+                            routes[index].findings.push_back(finding);
+                        }
+                    }
+                    // (c) ABT #2274 (17_cllc, agent 20): the dragbacks. A dragback leaves its layer's last turn where
+                    // that turn's wrap ends ('_ending') and steps out to its return's radius (dragbackBendRadius /
+                    // dragbackBendAngle keep the step's centreline inside its waypoints' radii), then runs back along
+                    // the axis. Its x along the face is not published, so it is judged wherever its copper stands in
+                    // this lead's section, at its source turn's height at this lead's lane (the same uniform climb).
+                    for (size_t other = 0; other < routes.size(); ++other) {
+                        const auto& dragback = routes[other];
+                        if (dragback.kind != ConnectionKind::Z_DRAGBACK || dragback.side != route.side || dragback.waypoints.size() < 2) {
+                            continue;
+                        }
+                        // ABT #2274 (agent 22): the dragback's copper takes [from, to] along the face (compute_ride_placement,
+                        // published as ConnectionRoute::dragbackAlongFace); the lead's run takes its lane +- half its size.
+                        // They meet only where those overlap along x.
+                        double dragFrom = 0, dragTo = 0, leadFrom = 0, leadTo = 0;
+                        if (path.shape == ColumnShape::ROUND) {
+                            // ABT #2274 (Alf, 2026-11-09: level rows on round columns): a round column's dragback runs at its
+                            // lane azimuth a (ConnectionRoute::laneAzimuth: centre x = -r sin(a) at its lane radius r), and the
+                            // lead leaves its turn at the point of the circle at x = lane and runs out parallel to Z at x = lane
+                            // (Alf, 2026-11-09, decision 2: every run stands on MKF's lane). They meet where their x overlap at
+                            // the dragback's lane radius.
+                            if (!ridePlacement.laneAzimuth[other]) {
+                                throw InvalidInputException(ErrorCode::INVALID_INPUT, "The dragback '" + dragback.fromTurn + "' -> '" +
+                                    dragback.toTurn + "' on a round column has no lane azimuth (compute_ride_placement), so the "
+                                    "level lead row of " + label.str() + " cannot be judged against it");
+                            }
+                            if (path.faceHalfStraight != 0 || !(path.cornerRadius > 0) || !(std::abs(slot) <= path.cornerRadius)) {
+                                throw std::logic_error("The round turn path of " + label.str() + " is not a circle holding its lane");
+                            }
+                            const double laneRadius = dragback.waypoints.back().at(0);
+                            const double dragX = -laneRadius * std::sin(ridePlacement.laneAzimuth[other].value());
+                            const double leadX = slot;
+                            dragFrom = dragX - routeDiameters[other] / 2;
+                            dragTo = dragX + routeDiameters[other] / 2;
+                            leadFrom = leadX - routeDiameters[index] / 2;
+                            leadTo = leadX + routeDiameters[index] / 2;
+                        }
+                        else {
+                            if (!ridePlacement.alongFace[other]) {
+                                throw InvalidInputException(ErrorCode::INVALID_INPUT, "The dragback '" + dragback.fromTurn + "' -> '" +
+                                    dragback.toTurn + "' on a flat face has no interval along the face (compute_ride_placement), so the "
+                                    "level lead row of " + label.str() + " cannot be judged against it");
+                            }
+                            std::tie(dragFrom, dragTo) = ridePlacement.alongFace[other].value();
+                            leadFrom = slot - routeDiameters[index] / 2;
+                            leadTo = slot + routeDiameters[index] / 2;
+                        }
+                        if (std::min(dragTo, leadTo) - std::max(dragFrom, leadFrom) <= contact) {
+                            continue;
+                        }
+                        std::string source = dragback.fromTurn;
+                        if (source.size() > 7 && source.compare(source.size() - 7, 7, "_ending") == 0) {
+                            source.resize(source.size() - 7);
+                        }
+                        std::optional<size_t> sourceIndex;
+                        for (size_t t = 0; t < turnsForSlots.size() && !sourceIndex; ++t) {
+                            if (turnsForSlots[t].get_name() == source) {
+                                sourceIndex = t;
+                            }
+                        }
+                        if (!sourceIndex) {
+                            throw InvalidInputException(ErrorCode::INVALID_INPUT, "The dragback from '" + dragback.fromTurn +
+                                "' leaves no turn of the turns description, so the level lead row passing it cannot be judged");
+                        }
+                        const auto& sourceTurn = turnsForSlots[sourceIndex.value()];
+                        std::optional<double> advance;
+                        for (size_t n = sourceIndex.value(); n-- > 0 && !advance;) {
+                            if (turnsForSlots[n].get_winding() == sourceTurn.get_winding() && turnsForSlots[n].get_parallel() == sourceTurn.get_parallel()) {
+                                advance = sourceTurn.get_coordinates().at(1) - turnsForSlots[n].get_coordinates().at(1);
+                            }
+                        }
+                        const double drift = -advance.value_or(0.0) * along / path.length;
+                        double added = 0;
+                        for (auto box : boxes_of(other, 0.0)) {
+                            const auto atStation = box;
+                            box[2] += drift;
+                            box[3] += drift;
+                            added = std::max(added, penetration(moved, box) - penetration(before, atStation));
+                        }
+                        if (added > contact) {
+                            std::ostringstream out;
+                            out << std::setprecision(6) << label.str() << " comes " << added * 1e3 << " mm into the dragback '"
+                                << dragback.fromTurn << "' -> '" << dragback.toTurn << "' (its source turn '" << source << "' stands "
+                                << drift * 1e3 << " mm off its station at this lane; the lead's row now " << route.waypoints.back().at(1) * 1e3
+                                << " mm, lead / dragback sizes " << routeDiameters[index] * 1e3 << " / " << routeDiameters[other] * 1e3 << " mm)";
+                            LeadFinding finding;   // the consumer refuses the part with this witness (ABT #2274: never findings-only)
+                            finding.kind = LeadFindingKind::LEVEL_ROW_CLASH;
+                            finding.witness = out.str();
+                            routes[index].findings.push_back(finding);
+                        }
+                    }
+                    // ABT #2274 (agent 22): a clash is acted on by the settle, which moves the lane (laneFloorU).
+                }
+            };
+            for (const auto& [key, plan] : slotStepRampPlans) {
+                const auto& [planWinding, planParallel, planKind] = key;
+                std::optional<size_t> found;
+                for (size_t index = 0; index < routes.size(); ++index) {
+                    if (routes[index].winding == planWinding && routes[index].parallel == planParallel && routes[index].kind == planKind) {
+                        if (found) {
+                            throw std::logic_error("Winding '" + planWinding + "' parallel " + std::to_string(planParallel) +
+                                                   " has two terminal routes of one kind");
+                        }
+                        found = index;
+                    }
+                }
+                if (!found) {
+                    throw std::logic_error("The slot-step ramp planned for winding '" + planWinding + "' parallel " +
+                                           std::to_string(planParallel) + " belongs to no terminal route");
+                }
+                const size_t index = found.value();
+                auto& route = routes[index];
+                route.slotRampLength = std::nullopt;
+                route.slotRampHeight = std::nullopt;
+                route.slotRampEndX = std::nullopt;
+                route.slotRampEndHeight = std::nullopt;
+                route.levelRowShift = std::nullopt;
+                route.rowEndX = std::nullopt;
+                route.rowEndHeight = std::nullopt;
+                route.rowEndFromX = std::nullopt;
+                route.rowEndFromHeight = std::nullopt;
+                const bool entrance = route.kind == ConnectionKind::TERMINAL_ENTRANCE;
+                const std::string& turnName = entrance ? route.toTurn : route.fromTurn;
+                // Same scope as lane_height_findings: a lane on a flat face, a turn with its own climb.
+                if (!exitSlots[index] || !turnPaths[index] || route.waypoints.empty() || route.liftLength || route.axialLead ||
+                    route.laneTangential.value_or(false) || landedTurns.count(turnName) ||
+                    std::isnan(attachAxial[index]) || std::isnan(attachAdvance[index])) {
+                    continue;
+                }
+                // ABT #2274 (Alf, 2026-11-09: "MVB++ draws MKF's lanes + level rows" on round columns): a round turn's lane
+                // is the point of its circle at x = lane (terminal_lane_along: along = R asin(x / R)), so its level row
+                // (the turn's height there) is the same rule as on a flat face.
+                const auto& path = turnPaths[index].value();
+                const double along = terminal_lead_along(route, path, exitSlots[index].value());
+                const double turnY = attachAxial[index] - attachAdvance[index] * along / path.length;
+                const double height = plan.rowY - turnY;
+                if (roundFloat(height) == 0) {
+                    continue;
+                }
+                // ABT #2274 (Alf, 2026-11-08, after agent 19: "ideally the spiral ends on the connection, so all wires
+                // are equally large. If a ramp is needed it is better to have something that is horizontal"): the
+                // lead's row is its turn's own height AT ITS LANE (station - advance * along / L, the uniform climb
+                // every 3D builder draws on a flat face), not the turn's height at the crossing. The spiral then ends
+                // on the connection and the lead leaves it level: no S in the wrap, no step. The whole 2-D route (the
+                // stub and the radial run) moves by the step, and its clearance at the new row is judged below
+                // (judge_level_rows); a pin leg starts at the moved row (levelRowShift, read where pins are routed).
+                // ABT #2274 (Alf, 2026-11-08, after agent 24): this exit lead's level row clashed, so it keeps its crossing
+                // row and its turn ends ON the row at its lane: the turn's last piece on the face, from the end of the face
+                // straight (where the turn stands at its uniform climb) to the lane, climbs straight to the row. The lead
+                // leaves the turn level with one bend into its run at the lane (no step, no row shift). Judged exactly
+                // after judge_level_rows.
+                if (levelLeadRows && rowEndLeads.count(key)) {
+                    const auto& attach = entrance ? route.waypoints.back() : route.waypoints.front();
+                    const double lane = exitSlots[index].value();
+                    const double fromX = path.faceHalfStraight;
+                    // ABT #2274 (agent 27): the row end (and its judge) is laid in the clockwise frame, where the last turn
+                    // arrives from +x; a counter-clockwise turn (a mirrored window) arrives from -x and is not planned yet.
+                    if (path.wrapDirection != -1) {
+                        throw CoilException(ErrorCode::COIL_WINDING_ERROR,
+                            "Real winding: the exit of winding '" + route.winding + "' parallel " + std::to_string(route.parallel) +
+                            " needs a row end on its counter-clockwise turn '" + turnName + "' (a mirrored window), which MKF "
+                            "plans only for clockwise turns");
+                    }
+                    if (std::abs(attach.at(1) - plan.rowY) > 1e-12) {
+                        std::ostringstream out;
+                        out << std::setprecision(9) << "The " << (entrance ? "entrance" : "exit") << " of winding '" << route.winding
+                            << "' parallel " << route.parallel << " attaches at " << attach.at(1) * 1e3 << " mm, off its crossing row "
+                            << plan.rowY * 1e3 << " mm";
+                        throw std::logic_error(out.str());
+                    }
+                    // ABT #2274 (Alf, 2026-11-09, decision 2): a ROUND turn has no face straight. An exit's last wrap leaves its
+                    // helix at the previous crossing (x = 0, one revolution before the exit's station: along = L) and climbs
+                    // uniformly to (lane, crossing row): the ROW END. An entrance's first wrap is its mirror, the ROW START: it
+                    // starts at (lane, crossing row) and climbs uniformly onto its helix, which it joins at the next crossing
+                    // (x = 0, its next turn's station: along = -L). rowEndFrom* is where the re-sloped wrap meets its helix.
+                    if (path.shape == ColumnShape::ROUND) {
+                        route.rowEndX = lane;
+                        route.rowEndHeight = plan.rowY;
+                        route.rowEndFromX = 0.0;
+                        route.rowEndFromHeight = entrance ? attachAxial[index] + attachAdvance[index] : attachAxial[index] - attachAdvance[index];
+                        continue;
+                    }
+                    // ABT #2274 (Alf, 2026-11-15, PSPS E16: "Fix p0 entrance height"): a flat-faced turn's ROW START, the
+                    // mirror of the row end. The entrance's first turn starts ON its crossing row at its lane and its first
+                    // piece climbs straight to where the turn stands at its uniform climb: the end of the face straight on
+                    // the side it leaves towards (x = -faceHalfStraight in this frame), or, for a lane on the first corner,
+                    // that corner's end (x = -(faceHalfStraight + cornerRadius)). The lead then joins it level on the row
+                    // every sibling's lead runs on.
+                    if (entrance) {
+                        double pieceEndX = std::numeric_limits<double>::quiet_NaN();
+                        if (lane <= 0 && lane > -fromX) {
+                            pieceEndX = -fromX;
+                        }
+                        else if (lane <= -fromX && lane > -(fromX + path.cornerRadius)) {
+                            pieceEndX = -(fromX + path.cornerRadius);
+                        }
+                        else {
+                            std::ostringstream out;
+                            out << std::setprecision(6) << "Real winding: the entrance of winding '" << route.winding << "' parallel " << route.parallel
+                                << " would start its turn '" << turnName << "' on its row " << plan.rowY * 1e3 << " mm at its lane x = " << lane * 1e3
+                                << " mm, which is neither on the face straight its turn leaves along nor on the turn's first corner (-"
+                                << (fromX + path.cornerRadius) * 1e3 << " mm < x <= 0)";
+                            throw CoilException(ErrorCode::COIL_WINDING_ERROR, out.str());
+                        }
+                        route.rowEndX = lane;
+                        route.rowEndHeight = plan.rowY;
+                        route.rowEndFromX = pieceEndX;
+                        route.rowEndFromHeight = attachAxial[index] - attachAdvance[index] * terminal_lane_along(path, pieceEndX) / path.length;
+                        continue;
+                    }
+                    // ABT #2274 (Alf, 2026-11-15, PSPS E16: "leave from the arc"): a lane past the face straight stands on
+                    // the turn's last corner (terminal_lane_along). The row end is then that corner's piece, from its start
+                    // (the end of the lateral face, x = faceHalfStraight + cornerRadius) to the lane.
+                    if (lane >= fromX && lane < fromX + path.cornerRadius) {
+                        const double arcStartX = fromX + path.cornerRadius;
+                        route.rowEndX = lane;
+                        route.rowEndHeight = plan.rowY;
+                        route.rowEndFromX = arcStartX;
+                        route.rowEndFromHeight = attachAxial[index] - attachAdvance[index] * terminal_lane_along(path, arcStartX) / path.length;
+                        continue;
+                    }
+                    if (!(lane < fromX) || !(lane > -fromX)) {
+                        std::ostringstream out;
+                        out << std::setprecision(6) << "Real winding: the exit of winding '" << route.winding << "' parallel " << route.parallel
+                            << " would end its turn '" << turnName << "' on its row " << plan.rowY * 1e3 << " mm at its lane x = " << lane * 1e3
+                            << " mm, which is neither on the face straight nor on the turn's last corner (x < "
+                            << (fromX + path.cornerRadius) * 1e3 << " mm)";
+                        throw CoilException(ErrorCode::COIL_WINDING_ERROR, out.str());
+                    }
+                    route.rowEndX = lane;
+                    route.rowEndHeight = plan.rowY;
+                    route.rowEndFromX = fromX;
+                    route.rowEndFromHeight = attachAxial[index] - attachAdvance[index] * terminal_lane_along(path, fromX) / path.length;
+                    continue;
+                }
+                if (levelLeadRows) {
+                    const double shift = turnY - plan.rowY;
+                    for (auto& point : route.waypoints) {
+                        point.at(1) += shift;
+                    }
+                    // ABT #2274 (after agent 20): the row is a LANE quantity. The reserved rectangles (the 2-D section at
+                    // the crossing, judged against the siblings at their crossing stations) stay where they are; the
+                    // consumer reads the lane row from the waypoints and levelRowShift.
+                    route.levelRowShift = shift;
+                    levelRowShift[index] = shift;
+                    continue;
+                }
+                const auto length = plan.rampFor(std::abs(height), along);
+                if (!length) {
+                    std::ostringstream out;
+                    out << std::setprecision(6) << "Real winding: the terminal lead of winding '" << route.winding << "' parallel "
+                        << route.parallel << (entrance ? " entrance" : " exit") << " has no drawable stub at the crossing, yet at its lane x = "
+                        << exitSlots[index].value() * 1e3 << " mm its turn '" << turnName << "' stands " << std::abs(height) * 1e3
+                        << " mm off its row (" << plan.rowY * 1e3 << " mm), which holds both bends of "
+                        << route.plannedBendRadius * 1e3 << " mm: the stub is drawable there but its route starts at the row";
+                    throw CoilException(ErrorCode::COIL_WINDING_ERROR, out.str());
+                }
+                route.slotRampLength = length;
+                route.slotRampHeight = height;
+                // The copper MVB++ draws for it (SlotRampCentreline): the bend onto the turn at the row, then the
+                // cosine S down to the turn, into the side the turn covers (spec section 21: an entrance's turn runs
+                // on in its wrap direction, an exit's arrives from the other side), meeting the turn where it stands
+                // there. All of it on the face straight: past it the turn bends round its corner.
+                if (!route.wrapDirection) {
+                    throw std::logic_error("The terminal lead of winding '" + route.winding + "' parallel " + std::to_string(route.parallel) +
+                                           " has a slot-step ramp but no wrap direction, so the side its turn covers is unknown");
+                }
+                const double direction = entrance ? route.wrapDirection.value() : -route.wrapDirection.value();
+                const double farX = exitSlots[index].value() + direction * (length.value() + route.plannedBendRadius);
+                if (!(std::abs(farX) <= path.faceHalfStraight) && !planLeadExit) {
+                    // ABT #2274 (Alf, 2026-11-07): the check judges the plan MKF hands out (get_connection_layout,
+                    // planLeadExit), not a pass inside wind()'s fixpoint whose turns have not settled (04: this pass saw
+                    // a 0.316 mm step, the coil handed to MVB++ a -38 um one that fits). Here no ramp is planned.
+                    route.slotRampLength = std::nullopt;
+                    route.slotRampHeight = std::nullopt;
+                    continue;
+                }
+                if (!(std::abs(farX) <= path.faceHalfStraight)) {
+                    std::ostringstream out;
+                    out << std::setprecision(6) << "Real winding: the slot-step ramp of the terminal lead of winding '" << route.winding
+                        << "' parallel " << route.parallel << (entrance ? " entrance" : " exit") << " (a " << std::abs(height) * 1e3
+                        << " mm step at its lane x = " << exitSlots[index].value() * 1e3 << " mm: its bend of " << route.plannedBendRadius * 1e3
+                        << " mm and a " << length.value() * 1e3 << " mm S) reaches x = " << farX * 1e3 << " mm, past its turn's face straight ("
+                        << path.faceHalfStraight * 1e3 << " mm from the crossing)";
+                    throw CoilException(ErrorCode::COIL_WINDING_ERROR, out.str());
+                }
+                const auto& attachPoint = entrance ? route.waypoints.back() : route.waypoints.front();
+                const double farY = attachAxial[index] - attachAdvance[index] * terminal_lane_along(path, farX) / path.length;
+                route.slotRampEndX = farX;
+                route.slotRampEndHeight = plan.rowY - farY;
+                rampCurves[index] = SlotRampCentreline{exitSlots[index].value(), direction, attachPoint.at(0), attachPoint.at(1),
+                                                       attachPoint.at(1) - farY, length.value(), route.plannedBendRadius};
+                if (route.rampLength || route.laneStandoff) {
+                    throw std::logic_error("The terminal lead of winding '" + route.winding + "' parallel " + std::to_string(route.parallel) +
+                                           " has a slot-step ramp and a ramp or lane standoff of its own");
+                }
+                rampedRoutes.push_back(index);
+            }
+            judge_level_rows();
+            // ABT #2274 (Alf, 2026-11-08, after agent 24: "make the clash judge exact"): a row-end exit lead's copper, judged
+            // on its real centrelines against every other copper on its face. Its pieces: the re-sloped last piece of its turn
+            // (rowEndFromX -> rowEndX), the bend of its plannedBendRadius onto its run (tangent to both), and its run at the
+            // lane (its waypoints). The other copper: each other turn's pieces on the face straight, at their own uniform
+            // climb (station - advance * along / L of their own path), each CUT where that turn really ends (its dragback's or
+            // exit's slot) or starts (its entrance lane); each dragback's section polyline at its published slot along the
+            // face plus its tail along the face to the crossing at the destination row; each other terminal lead's run at its
+            // lane. Clearance = centreline distance less both coated radii; copper into copper is a LEVEL_ROW_CLASH finding.
+            if (!rowEndLeads.empty()) {
+                const double contact = 2e-9;
+                const double tolerance = 1e-10;
+                const auto ridePlacement = compute_ride_placement(routes);
+                // The rides (ABT #685): on this face every turn at or outside a return's level is drawn that level's rise
+                // further out, a terminal lead with its turn (the whole lead translated by its attach turn's ride), and a
+                // dragback over every level but its own (it lies AT its own level). The judge works in that drawn frame.
+                ConnectionLayout rides;
+                rides.rideLevels = ridePlacement.levels;
+                using P3 = RowEndPoint;
+                // half: a round copper's coated radius around its centreline a -> b. box (when set): a rectangular copper,
+                // its true section swept (ABT #2274 agent 26: a foil or rect turn and a foil lead's weld strip are judged as
+                // what they are, never as round copper; half unused). arc (when set): a bend of round copper, a and b its ends.
+                struct Line {
+                    std::string name;
+                    P3 a, b;
+                    double half;
+                    std::optional<RowEndBox> box = std::nullopt;
+                    std::optional<RowEndArc> arc = std::nullopt;
+                };
+                auto label_route = [](const ConnectionRoute& r) {
+                    return "winding '" + r.winding + "' parallel " + std::to_string(r.parallel) +
+                           (r.kind == ConnectionKind::TERMINAL_ENTRANCE ? " entrance" : r.kind == ConnectionKind::TERMINAL_EXIT ? " exit" : "");
+                };
+                for (size_t index = 0; index < routes.size(); ++index) {
+                    auto& route = routes[index];
+                    if (!route.rowEndX) {
+                        continue;
+                    }
+                    if (!route.rowEndHeight || !route.rowEndFromX || !route.rowEndFromHeight || !turnPaths[index] || route.waypoints.size() < 2) {
+                        throw std::logic_error("The row end of " + label_route(route) + " is incomplete");
+                    }
+                    const auto& path = turnPaths[index].value();
+                    if (path.shape == ColumnShape::ROUND) {
+                        // ABT #2274 (Alf, 2026-11-09, decision 2): the exact judge of a ROUND row end (exit) or row start
+                        // (entrance), in the frame (x along the face, y the turn axis, d the depth from the column axis):
+                        // its re-sloped wrap is a helix piece over a whole revolution (between its lane on its row and the
+                        // crossing where it meets its helix), its run the plane x = lane through its waypoints (MVB++ draws
+                        // every run on MKF's lane); the corner between them is judged as their meeting point (the bend MVB++
+                        // rounds there is not modelled here; the gate measures it). The other copper: every other wrap of every
+                        // conductor on the column as a helix piece from one station to the next at its uniform climb, cut at
+                        // its own entrance / exit lane or dragback lane (re-sloped where that lead has a row end or start), a
+                        // layer change at the crossing as the radial step MVB++ draws, each dragback's polyline at its lane
+                        // azimuth plus its tail along its layer to the crossing, and each other terminal run on its lane.
+                        const bool ownEntrance = route.kind == ConnectionKind::TERMINAL_ENTRANCE;
+                        const std::string& ownTurnName = ownEntrance ? route.toTurn : route.fromTurn;
+                        const double lane = route.rowEndX.value();
+                        const double row = route.rowEndHeight.value();
+                        const auto& attachPoint = ownEntrance ? route.waypoints.back() : route.waypoints.front();
+                        auto ride_of = [&](double radius) { return rides.ride_at(radius, route.side); };
+                        // ABT #2274 (agent 43): the ride is a translation along the face normal (ConnectionRideLevel::rise), as
+                        // MVB++ draws it and as on_lane places the runs: a wrap keeps its own radius, the half of it on the
+                        // connection face is translated by its ride (row_end_ridden_helix), never its radius grown.
+                        const double ownRadius = attachPoint.at(0);
+                        const double ownRide = ride_of(attachPoint.at(0));
+                        if (!(std::abs(lane) < ownRadius)) {
+                            throw std::logic_error("The round row end of " + label_route(route) + " stands its lane past its turn's radius");
+                        }
+                        const double phiLane = std::asin(lane / ownRadius);
+                        const double twoPi = 2 * std::numbers::pi;
+                        const RowEndRiddenHelix ownWrap = row_end_ridden_helix(
+                            ownEntrance ? row_end_helix(ownRadius, phiLane, row, -twoPi, route.rowEndFromHeight.value())
+                                        : row_end_helix(ownRadius, phiLane, row, twoPi, route.rowEndFromHeight.value()), ownRide);
+                        const double ownTurnHalf = path.turnWireDiameter / 2;
+                        const double ownRunHalf = routeDiameters[index] / 2;
+                        auto on_lane = [&](double x, const std::vector<double>& waypoint, const std::string& who) {
+                            const double radius = waypoint.at(0);
+                            if (!(std::abs(x) < radius)) {
+                                throw std::logic_error("A waypoint of " + who + " (radius " + std::to_string(radius * 1e3) + " mm) does not reach its lane x = " +
+                                                       std::to_string(x * 1e3) + " mm");
+                            }
+                            return P3{x, waypoint.at(1), ride_of(radius) + std::sqrt(radius * radius - x * x)};
+                        };
+                        std::vector<std::pair<P3, P3>> ownRun;
+                        for (size_t w = 0; w + 1 < route.waypoints.size(); ++w) {
+                            ownRun.push_back({on_lane(lane, route.waypoints[w], label_route(route)), on_lane(lane, route.waypoints[w + 1], label_route(route))});
+                        }
+                        // The other copper.
+                        struct RoundPiece {
+                            std::string name;
+                            std::optional<RowEndHelix> helix;
+                            P3 a{}, b{};
+                            double half;
+                        };
+                        std::vector<RoundPiece> pieces;
+                        auto add_ridden = [&](const std::string& pieceName, const RowEndHelix& helix, double rise, double pieceHalf) {
+                            const auto ridden = row_end_ridden_helix(helix, rise);
+                            for (const auto& h : ridden.helices) {
+                                pieces.push_back({pieceName, h, {}, {}, pieceHalf});
+                            }
+                            for (const auto& [a, b] : ridden.risers) {
+                                pieces.push_back({pieceName + " (riser)", std::nullopt, a, b, pieceHalf});
+                            }
+                        };
+                        // The turn at the re-sloped wrap's far end: an exit's previous turn, an entrance's next one.
+                        std::string ownNeighbourTurn;
+                        for (size_t t = 0; t < turnsForSlots.size(); ++t) {
+                            if (turnsForSlots[t].get_name() != ownTurnName) {
+                                continue;
+                            }
+                            if (ownEntrance) {
+                                for (size_t n = t + 1; n < turnsForSlots.size() && ownNeighbourTurn.empty(); ++n) {
+                                    if (turnsForSlots[n].get_winding() == route.winding && turnsForSlots[n].get_parallel() == route.parallel) {
+                                        ownNeighbourTurn = turnsForSlots[n].get_name();
+                                    }
+                                }
+                            }
+                            else {
+                                for (size_t n = t; n-- > 0 && ownNeighbourTurn.empty();) {
+                                    if (turnsForSlots[n].get_winding() == route.winding && turnsForSlots[n].get_parallel() == route.parallel) {
+                                        ownNeighbourTurn = turnsForSlots[n].get_name();
+                                    }
+                                }
+                            }
+                        }
+                        if (ownNeighbourTurn.empty()) {
+                            throw std::logic_error("The round row end of " + label_route(route) + " has no turn at its re-sloped wrap's far end");
+                        }
+                        // The lanes and row ends of the other terminal leads, by the turn each attaches to.
+                        auto lead_of_turn = [&](const std::string& turnName, ConnectionKind kind) -> std::optional<size_t> {
+                            for (size_t k = 0; k < routes.size(); ++k) {
+                                const auto& r = routes[k];
+                                if (r.kind == kind && (kind == ConnectionKind::TERMINAL_ENTRANCE ? r.toTurn : r.fromTurn) == turnName) {
+                                    return k;
+                                }
+                            }
+                            return std::nullopt;
+                        };
+                        auto dragback_from = [&](const std::string& turnName) -> std::optional<size_t> {
+                            for (size_t k = 0; k < routes.size(); ++k) {
+                                if (routes[k].kind == ConnectionKind::Z_DRAGBACK && routes[k].fromTurn == turnName) {
+                                    return k;
+                                }
+                            }
+                            return std::nullopt;
+                        };
+                        // A sibling lead that is axial, tangential, on a pin or has no lane on its turn ends / starts its wrap where
+                        // this judge does not model: that wrap is not judged, and the judged lead gets a ROUTE_NOT_MODELLED finding
+                        // naming it (Alf, 2026-11-13: production refuses, the adviser drops the candidate with the reason, debug
+                        // draws it as planned).
+                        std::optional<std::string> notModelled;
+                        auto lane_phi = [&](size_t k, double radius) -> std::optional<double> {
+                            const auto& r = routes[k];
+                            if (r.axialLead || r.laneTangential.value_or(false) || r.tangentDeparture || !r.pinWaypoints.empty() || !exitSlots[k] ||
+                                !(std::abs(exitSlots[k].value()) < radius)) {
+                                if (!notModelled) {
+                                    notModelled = "the lead of " + label_route(r) + " is axial, tangential, on a pin or has no lane on its turn, so where "
+                                                  "its wrap meets the round row end of " + label_route(route) + " is not modelled";
+                                }
+                                return std::nullopt;
+                            }
+                            return std::asin(exitSlots[k].value() / radius);
+                        };
+                        auto dragback_phi = [&](size_t k) {
+                            if (!ridePlacement.laneAzimuth[k]) {
+                                throw InvalidInputException(ErrorCode::INVALID_INPUT, "The dragback '" + routes[k].fromTurn + "' -> '" + routes[k].toTurn +
+                                    "' on a round column has no lane azimuth, so the row end of " + label_route(route) + " cannot be judged against it");
+                            }
+                            return -ridePlacement.laneAzimuth[k].value();   // x = -r sin(a)
+                        };
+                        for (size_t t = 0; t < turnsForSlots.size(); ++t) {
+                            const auto& from = turnsForSlots[t];
+                            std::optional<size_t> next;
+                            for (size_t n = t + 1; n < turnsForSlots.size() && !next; ++n) {
+                                if (turnsForSlots[n].get_winding() == from.get_winding() && turnsForSlots[n].get_parallel() == from.get_parallel()) {
+                                    next = n;
+                                }
+                            }
+                            if (!next) {
+                                continue;
+                            }
+                            const auto& to = turnsForSlots[next.value()];
+                            // A wrap of copper that is not round (a rectangular or foil winding beside the judged round one --
+                            // abt1487_pq65_sp_contiguous: a litz Primary over a rectangular Secondary) is one this judge does
+                            // not model: it is not judged, and the judged lead says so (ROUTE_NOT_MODELLED, as for a sibling
+                            // lead it does not model). A round turn that states no dimensions is malformed and throws.
+                            bool roundWrap = true;
+                            for (const auto* turn : {&from, &to}) {
+                                if (!turn->get_cross_sectional_shape() ||
+                                    turn->get_cross_sectional_shape().value() != TurnCrossSectionalShape::ROUND) {
+                                    roundWrap = false;
+                                }
+                                else if (!turn->get_dimensions()) {
+                                    throw std::logic_error("The round row-end judge of " + label_route(route) + " models round copper; the turn '" +
+                                                           turn->get_name() + "' states no dimensions");
+                                }
+                            }
+                            if (!roundWrap) {
+                                if (!notModelled) {
+                                    notModelled = "the wrap '" + from.get_name() + "' -> '" + to.get_name() + "' is not round copper, so where it "
+                                                  "meets the round row end of " + label_route(route) + " is not modelled";
+                                }
+                                continue;
+                            }
+                            // ABT #2274 (Alf, 2026-11-13, decision 2): the other turn's half is its coated WIRE diameter / 2,
+                            // the size the own half takes (path.turnWireDiameter). A round turn's stored axial dimension is
+                            // helix-stretched (OD / cos(helix angle)), and the helix distance this half is subtracted from is
+                            // perpendicular to the wire, so the stretched dimension made touching turns read as sub-um overlaps.
+                            const auto toWire = resolve_wire(get_winding_index_by_name(to.get_winding()));
+                            const double half = std::max(toWire.get_maximum_outer_width(), toWire.get_maximum_outer_height()) / 2;
+                            const std::string name = "the wrap '" + from.get_name() + "' -> '" + to.get_name() + "'";
+                            const double rFrom = from.get_coordinates().at(0) + ride_of(from.get_coordinates().at(0));
+                            const double rTo = to.get_coordinates().at(0) + ride_of(to.get_coordinates().at(0));
+                            const double rToCircle = to.get_coordinates().at(0);   // the wrap's own circle (face-normal ride)
+                            const double yFrom = from.get_coordinates().at(1);
+                            const double yTo = to.get_coordinates().at(1);
+                            // The own re-sloped wrap (an exit's last: -> its turn; an entrance's first: its turn ->), and the own
+                            // wrap that meets it at its far end (it ends / starts at the same station), are not judged against it.
+                            const bool ownConductor = from.get_winding() == route.winding && from.get_parallel() == route.parallel;
+                            if (ownConductor && (to.get_name() == ownTurnName || from.get_name() == ownTurnName ||
+                                                 (!ownEntrance && to.get_name() == ownNeighbourTurn) ||
+                                                 (ownEntrance && from.get_name() == ownNeighbourTurn))) {
+                                continue;
+                            }
+                            if (const auto drag = dragback_from(from.get_name()); drag && routes[drag.value()].toTurn == to.get_name()) {
+                                // The dragback: its polyline at its lane azimuth, then its tail along its layer to the crossing.
+                                const auto& o = routes[drag.value()];
+                                const double phi = dragback_phi(drag.value());
+                                const double oHalf = routeDiameters[drag.value()] / 2;
+                                auto point = [&](const std::vector<double>& w) {
+                                    const double radius = w.at(0);
+                                    return P3{radius * std::sin(phi), w.at(1), radius * std::cos(phi) + ride_of(w.at(0))};
+                                };
+                                for (size_t w = 0; w + 1 < o.waypoints.size(); ++w) {
+                                    pieces.push_back({"the dragback '" + o.fromTurn + "' -> '" + o.toTurn + "'", std::nullopt, point(o.waypoints[w]),
+                                                      point(o.waypoints[w + 1]), oHalf});
+                                }
+                                const auto& tail = o.waypoints.back();
+                                if (std::abs(phi) > 0) {
+                                    add_ridden("the dragback '" + o.fromTurn + "' -> '" + o.toTurn + "' tail",
+                                               row_end_helix(tail.at(0), phi, tail.at(1), 0.0, tail.at(1)), ride_of(tail.at(0)), oHalf);
+                                }
+                                continue;
+                            }
+                            if (std::abs(rTo - rFrom) > half) {
+                                // A layer change at the crossing: MVB++'s radial step from one station to the next.
+                                pieces.push_back({name + " (layer step)", std::nullopt, P3{0.0, yFrom, rFrom}, P3{0.0, yTo, rTo}, half});
+                                continue;
+                            }
+                            // One revolution from the station of `from` (phi = 2 pi) to the station of `to` (phi = 0), cut at
+                            // the lanes / dragback lane of the leads that start or end it.
+                            double phiStart = twoPi, yStart = yFrom;
+                            double phiEnd = 0.0, yEnd = yTo;
+                            const double slope = (yFrom - yTo) / twoPi;
+                            const auto in = lead_of_turn(from.get_name(), ConnectionKind::TERMINAL_ENTRANCE);
+                            if (in) {
+                                const auto& r = routes[in.value()];
+                                if (r.rowEndX) {
+                                    phiStart = twoPi + std::asin(r.rowEndX.value() / rToCircle);
+                                    yStart = r.rowEndHeight.value();
+                                }
+                                else {
+                                    const auto phiIn = lane_phi(in.value(), rToCircle);
+                                    if (!phiIn) {
+                                        continue;
+                                    }
+                                    phiStart = twoPi + phiIn.value();
+                                    yStart = yTo + slope * phiStart;
+                                }
+                            }
+                            const auto out = lead_of_turn(to.get_name(), ConnectionKind::TERMINAL_EXIT);
+                            if (out) {
+                                const auto& r = routes[out.value()];
+                                if (r.rowEndX) {
+                                    phiEnd = std::asin(r.rowEndX.value() / rToCircle);
+                                    yEnd = r.rowEndHeight.value();
+                                    if (!in) {
+                                        phiStart = twoPi;
+                                        yStart = r.rowEndFromHeight.value();
+                                    }
+                                }
+                                else {
+                                    const auto phiOut = lane_phi(out.value(), rToCircle);
+                                    if (!phiOut) {
+                                        continue;
+                                    }
+                                    phiEnd = phiOut.value();
+                                    yEnd = yTo + slope * phiEnd;
+                                }
+                            }
+                            else if (const auto drag = dragback_from(to.get_name())) {
+                                phiEnd = dragback_phi(drag.value());
+                                yEnd = yTo + slope * phiEnd;
+                            }
+                            if (!(phiStart > phiEnd)) {
+                                throw std::logic_error("The " + name + " has no length between its lanes on the round column");
+                            }
+                            add_ridden(name, row_end_helix(rToCircle, phiEnd, yEnd, phiStart, yStart), ride_of(rToCircle), half);
+                        }
+                        for (size_t other = 0; other < routes.size(); ++other) {
+                            const auto& o = routes[other];
+                            if (other == index || (o.kind != ConnectionKind::TERMINAL_ENTRANCE && o.kind != ConnectionKind::TERMINAL_EXIT) ||
+                                o.waypoints.size() < 2) {
+                                continue;
+                            }
+                            const double oHalf = routeDiameters[other] / 2;
+                            const double oLane = (o.rowEndX ? o.rowEndX : exitSlots[other]).value_or(std::numeric_limits<double>::quiet_NaN());
+                            if (std::isnan(oLane) || o.axialLead || o.tangentDeparture || !o.pinWaypoints.empty()) {
+                                if (!notModelled) {
+                                    notModelled = "the run of " + label_route(o) + " is not at a lane on the face (axial, tangential, on a pin or "
+                                                  "without a lane), so where it meets the round row end of " + label_route(route) + " is not modelled";
+                                }
+                                continue;
+                            }
+                            bool reachesLane = true;
+                            for (const auto& w : o.waypoints) {
+                                reachesLane = reachesLane && std::abs(oLane) < w.at(0);
+                            }
+                            if (!reachesLane) {
+                                if (!notModelled) {
+                                    notModelled = "the lane of " + label_route(o) + " lies past the radius of its run's waypoints (it has no lane on "
+                                                  "its turn), so where it meets the round row end of " + label_route(route) + " is not modelled";
+                                }
+                                continue;
+                            }
+                            for (size_t w = 0; w + 1 < o.waypoints.size(); ++w) {
+                                pieces.push_back({"the run of " + label_route(o), std::nullopt, on_lane(oLane, o.waypoints[w], label_route(o)),
+                                                  on_lane(oLane, o.waypoints[w + 1], label_route(o)), oHalf});
+                            }
+                        }
+                        std::map<std::pair<std::string, std::string>, double> worstRound;
+                        auto recordRound = [&](const std::string& mine, const std::string& theirs, double clearance) {
+                            const auto k = std::make_pair(mine, theirs);
+                            const auto found = worstRound.find(k);
+                            if (found == worstRound.end() || clearance < found->second) {
+                                worstRound[k] = clearance;
+                            }
+                        };
+                        const std::string wrapName = ownEntrance ? "re-sloped first wrap (row start)" : "re-sloped last wrap (row end)";
+                        auto own_wrap_to_segment = [&](const P3& a, const P3& b) {
+                            double best = std::numeric_limits<double>::max();
+                            for (const auto& h : ownWrap.helices) {
+                                best = std::min(best, row_end_helix_distance(h, [&](const P3& p, const P3& q) { return row_end_segment_distance(p, q, a, b); },
+                                                                             tolerance));
+                            }
+                            for (const auto& [p, q] : ownWrap.risers) {
+                                best = std::min(best, row_end_segment_distance(p, q, a, b));
+                            }
+                            return best;
+                        };
+                        for (const auto& piece : pieces) {
+                            if (piece.helix) {
+                                double toOwnWrap = std::numeric_limits<double>::max();
+                                for (const auto& h : ownWrap.helices) {
+                                    toOwnWrap = std::min(toOwnWrap, row_end_helix_helix_distance(h, piece.helix.value(), tolerance));
+                                }
+                                for (const auto& [p, q] : ownWrap.risers) {
+                                    toOwnWrap = std::min(toOwnWrap, row_end_helix_distance(piece.helix.value(), [&](const P3& a, const P3& b) {
+                                        return row_end_segment_distance(a, b, p, q); }, tolerance));
+                                }
+                                recordRound(wrapName, piece.name, toOwnWrap - ownTurnHalf - piece.half);
+                                for (const auto& [a, b] : ownRun) {
+                                    recordRound("run at the lane", piece.name,
+                                                row_end_helix_distance(piece.helix.value(), [&](const P3& p, const P3& q) {
+                                                    return row_end_segment_distance(p, q, a, b); }, tolerance) - ownRunHalf - piece.half);
+                                }
+                                continue;
+                            }
+                            recordRound(wrapName, piece.name, own_wrap_to_segment(piece.a, piece.b) - ownTurnHalf - piece.half);
+                            for (const auto& [a, b] : ownRun) {
+                                recordRound("run at the lane", piece.name, row_end_segment_distance(a, b, piece.a, piece.b) - ownRunHalf - piece.half);
+                            }
+                        }
+                        std::ostringstream report;
+                        report << std::setprecision(6) << "[row-end] " << label_route(route) << ": round " << (ownEntrance ? "row start" : "row end")
+                               << " at lane x = " << lane * 1e3 << " mm on row " << row * 1e3 << " mm, wrap radius " << ownRadius * 1e3
+                               << " mm, meets its helix at " << route.rowEndFromHeight.value() * 1e3 << " mm; " << pieces.size() << " pieces judged";
+                        for (const auto& [k, clearance] : worstRound) {
+                            if (clearance < 0.5e-3) {
+                                report << "\n    " << k.first << " vs " << k.second << ": " << (clearance < -contact ? "INTO by " : "clear by ")
+                                       << std::abs(clearance) * 1e3 << " mm";
+                            }
+                            if (clearance < -contact) {
+                                LeadFinding finding;
+                                finding.kind = LeadFindingKind::LEVEL_ROW_CLASH;
+                                std::ostringstream out;
+                                out << std::setprecision(6) << "Real winding: the " << k.first << " of " << label_route(route) << " (its turn "
+                                    << (ownEntrance ? "starts" : "ends") << " on its row " << row * 1e3 << " mm at its lane x = " << lane * 1e3
+                                    << " mm) comes " << -clearance * 1e3 << " mm into " << k.second;
+                                finding.witness = out.str();
+                                route.findings.push_back(finding);
+                            }
+                        }
+                        if (notModelled) {
+                            LeadFinding finding;
+                            finding.kind = LeadFindingKind::ROUTE_NOT_MODELLED;
+                            finding.witness = "Real winding: the round row-end judge of " + label_route(route) + ": " + notModelled.value() +
+                                              "; drawn as planned";
+                            route.findings.push_back(std::move(finding));
+                        }
+                        if (std::getenv("MKF_LANE_MOVE_DIAG")) {
+                            std::cerr << report.str() << std::endl;
+                        }
+                        continue;
+                    }
+                    // A row start (an entrance) is judged as a row end is: its re-sloped first piece, the bend, its run.
+                    const bool rowStart = route.kind == ConnectionKind::TERMINAL_ENTRANCE;
+                    const std::string& ownTurn = rowStart ? route.toTurn : route.fromTurn;
+                    const double lane = route.rowEndX.value();
+                    const double row = route.rowEndHeight.value();
+                    const auto& ownAttach = rowStart ? route.waypoints.back() : route.waypoints.front();
+                    const double rideOwn = rides.ride_at(ownAttach.at(0), route.side);
+                    const double layer = ownAttach.at(0) + rideOwn;
+                    const double turnHalf = path.turnWireDiameter / 2;
+                    const double runHalf = routeDiameters[index] / 2;
+                    // Its own copper.
+                    const P3 wrapStart{route.rowEndFromX.value(), route.rowEndFromHeight.value(), layer};
+                    const P3 vertex{lane, row, layer};
+                    std::vector<P3> run;   // from the turn outwards (an entrance's route is stated border first)
+                    for (const auto& point : route.waypoints) {
+                        run.push_back(P3{lane, point.at(1), point.at(0) + rideOwn});
+                    }
+                    if (rowStart) {
+                        std::reverse(run.begin(), run.end());
+                    }
+                    auto unit = [](const P3& from, const P3& to) {
+                        const P3 d{to[0] - from[0], to[1] - from[1], to[2] - from[2]};
+                        const double n = std::sqrt(d[0] * d[0] + d[1] * d[1] + d[2] * d[2]);
+                        return std::make_pair(P3{d[0] / n, d[1] / n, d[2] / n}, n);
+                    };
+                    const auto [da, lenA] = unit(wrapStart, vertex);
+                    const auto [db, lenB] = unit(run.at(0), run.at(1));
+                    const double cosTheta = std::clamp(da[0] * db[0] + da[1] * db[1] + da[2] * db[2], -1.0, 1.0);
+                    const double theta = std::acos(cosTheta);
+                    const double bend = route.plannedBendRadius;
+                    const double tangentLength = bend * std::tan(theta / 2);
+                    if (!(bend > 0) || tangentLength > std::min(lenA, lenB)) {
+                        std::ostringstream out;
+                        out << std::setprecision(6) << "Real winding: the bend of " << label_route(route) << " from its turn's row end onto its run ("
+                            << bend * 1e3 << " mm, " << theta * 180 / std::numbers::pi << " deg) does not fit its legs (" << lenA * 1e3 << " / "
+                            << lenB * 1e3 << " mm)";
+                        throw CoilException(ErrorCode::COIL_WINDING_ERROR, out.str());
+                    }
+                    const P3 tA{vertex[0] - da[0] * tangentLength, vertex[1] - da[1] * tangentLength, vertex[2] - da[2] * tangentLength};
+                    const P3 tB{vertex[0] + db[0] * tangentLength, vertex[1] + db[1] * tangentLength, vertex[2] + db[2] * tangentLength};
+                    P3 normal{db[0] - da[0] * cosTheta, db[1] - da[1] * cosTheta, db[2] - da[2] * cosTheta};
+                    const double normalLength = std::sqrt(normal[0] * normal[0] + normal[1] * normal[1] + normal[2] * normal[2]);
+                    for (auto& c : normal) {
+                        c /= normalLength;
+                    }
+                    const RowEndArc arc{P3{tA[0] + normal[0] * bend, tA[1] + normal[1] * bend, tA[2] + normal[2] * bend}, bend,
+                                        P3{-normal[0], -normal[1], -normal[2]}, da, theta};
+                    std::vector<Line> own{{"re-sloped turn end", wrapStart, tA, turnHalf}, {"run at the lane", tB, run.at(1), runHalf}};
+                    for (size_t w = 1; w + 1 < run.size(); ++w) {
+                        own.push_back({"run at the lane", run[w], run[w + 1], runHalf});
+                    }
+                    const double arcHalf = std::max(turnHalf, path.stubDiameter / 2);
+                    // The other copper on the face.
+                    std::vector<Line> others;
+                    // ABT #2274 (agent 26): a foil's axial lead (AxialLead) stands alongFace from the crossing, the way its sheet
+                    // runs away from it: in this judge's frame a turn arrives at the crossing from +x and leaves towards -x
+                    // (MKF's wrapDirection -1), so an exit's lead stands at +alongFace and an entrance's at -alongFace, and the
+                    // sheet's end at the crossing is half the lead's outer diameter nearer the crossing (AxialLead::alongFace).
+                    // The leads are placed after the settle; the judge stands them by the same rule (axial_lead_along_faces).
+                    const auto axialAlongFace = axial_lead_along_faces(routes);
+                    auto axial_x_of = [&](size_t k) {
+                        const auto& r = routes[k];
+                        if (!r.axialLead || !r.wrapDirection || r.wrapDirection.value() != -1) {
+                            throw std::logic_error("The row-end judge of " + label_route(route) + " models a foil's axial lead only in the frame its "
+                                                   "turns travel towards -x (wrapDirection -1); the lead of " + label_route(r) + " states another");
+                        }
+                        const double along = axialAlongFace.at(k);
+                        return r.kind == ConnectionKind::TERMINAL_EXIT ? along : -along;
+                    };
+                    auto sheet_end_of = [&](size_t k) {
+                        const double x = axial_x_of(k);
+                        return x - std::copysign(routes[k].axialLead->outerDiameter / 2, x);
+                    };
+                    for (size_t t = 0; t < turnsForSlots.size(); ++t) {
+                        const auto& turn = turnsForSlots[t];
+                        if (turn.get_name() == ownTurn) {
+                            continue;
+                        }
+                        if (!turn.get_dimensions()) {
+                            throw std::logic_error("The turn '" + turn.get_name() + "' has no dimensions to judge the row end of " + label_route(route));
+                        }
+                        const auto c = turn.get_coordinates();
+                        const auto d = turn.get_dimensions().value();
+                        if (!turn.get_cross_sectional_shape()) {
+                            throw std::logic_error("The turn '" + turn.get_name() + "' states no cross-sectional shape to judge the row end of " +
+                                                   label_route(route));
+                        }
+                        const auto shape = turn.get_cross_sectional_shape().value();
+                        if (shape != TurnCrossSectionalShape::ROUND && shape != TurnCrossSectionalShape::RECTANGULAR) {
+                            std::ostringstream out;
+                            out << std::setprecision(6) << "The row-end judge of " << label_route(route) << " models round and rectangular copper; the turn '"
+                                << turn.get_name() << "' is " << magic_enum::enum_name(shape) << " (" << d.at(0) * 1e3 << " x " << d.at(1) * 1e3 << " mm)";
+                            throw std::logic_error(out.str());
+                        }
+                        // a round turn's coated radius: its winding's coated WIRE diameter / 2 (ABT #2274, Alf 2026-11-13,
+                        // decision 2: its stored axial extent is helix-stretched, OD / cos(helix angle)); a rectangular
+                        // turn's section: its stated extents, d[0] across the layer axis and d[1] across the turn axis
+                        double turnHalfOf = std::max(d.at(0), d.at(1)) / 2;
+                        if (shape == TurnCrossSectionalShape::ROUND) {
+                            const auto turnWireOf = resolve_wire(get_winding_index_by_name(turn.get_winding()));
+                            turnHalfOf = std::max(turnWireOf.get_maximum_outer_width(), turnWireOf.get_maximum_outer_height()) / 2;
+                        }
+                        auto piece_of = [&](const std::string& pieceName, const P3& a, const P3& b) {
+                            Line line{pieceName, a, b, turnHalfOf};
+                            if (shape == TurnCrossSectionalShape::RECTANGULAR) {
+                                line.box = row_end_swept_rectangle(a, b, d.at(1) / 2, d.at(0) / 2);
+                            }
+                            return line;
+                        };
+                        // The advance it climbs coming in (from the conductor's previous turn) and going out (to its next).
+                        std::optional<double> advanceIn;
+                        std::optional<double> advanceOut;
+                        for (size_t n = t + 1; n < turnsForSlots.size() && !advanceOut; ++n) {
+                            if (turnsForSlots[n].get_winding() == turn.get_winding() && turnsForSlots[n].get_parallel() == turn.get_parallel()) {
+                                advanceOut = turnsForSlots[n].get_coordinates().at(1) - c.at(1);
+                            }
+                        }
+                        for (size_t n = t; n-- > 0 && !advanceIn;) {
+                            if (turnsForSlots[n].get_winding() == turn.get_winding() && turnsForSlots[n].get_parallel() == turn.get_parallel()) {
+                                advanceIn = c.at(1) - turnsForSlots[n].get_coordinates().at(1);
+                            }
+                        }
+                        ConnectionRoute probe = route;
+                        probe.winding = turn.get_winding();
+                        probe.parallel = turn.get_parallel();
+                        probe.kind = ConnectionKind::TERMINAL_EXIT;
+                        probe.waypoints = {{c.at(0), c.at(1)}, {c.at(0) + d.at(0), c.at(1)}};
+                        const auto turnPath = terminal_turn_path(probe, turn, routes);
+                        const double straight = turnPath.faceHalfStraight;
+                        // How the turn meets the crossing: it arrives from its previous revolution unless it is the first
+                        // of its conductor or of a layer a dragback lands on, and it ends there at a dragback's or an
+                        // exit's slot; it leaves on its next revolution unless a dragback or an exit takes it, from an
+                        // entrance's lane when it is the first.
+                        bool arrives = true;
+                        bool leaves = true;
+                        double end = 0;
+                        double start = 0;
+                        std::optional<size_t> rowEndOf;
+                        for (size_t k = 0; k < routes.size(); ++k) {
+                            const auto& r = routes[k];
+                            const bool dragback = r.kind == ConnectionKind::Z_DRAGBACK;
+                            if (r.fromTurn == turn.get_name() && (dragback || r.kind == ConnectionKind::TERMINAL_EXIT)) {
+                                leaves = false;
+                                if (dragback && !ridePlacement.alongFace[k]) {
+                                    throw std::logic_error("The dragback '" + r.fromTurn + "' -> '" + r.toTurn + "' publishes no place along the face, "
+                                                           "so the row end of " + label_route(route) + " cannot be judged against its turn");
+                                }
+                                if (!dragback && !r.axialLead && !exitSlots[k]) {
+                                    throw std::logic_error("The exit of " + label_route(r) + " has no lane to judge the row end of " + label_route(route) + " against");
+                                }
+                                end = dragback ? 0.5 * (ridePlacement.alongFace[k]->first + ridePlacement.alongFace[k]->second)
+                                               : (r.axialLead ? sheet_end_of(k) : exitSlots[k].value());
+                                if (r.rowEndX) {
+                                    rowEndOf = k;
+                                }
+                            }
+                            if (r.toTurn == turn.get_name() && (dragback || r.kind == ConnectionKind::TERMINAL_ENTRANCE)) {
+                                arrives = false;
+                                if (!dragback) {
+                                    if (!r.axialLead && !exitSlots[k]) {
+                                        throw std::logic_error("The entrance of " + label_route(r) + " has no lane to judge the row end of " + label_route(route) + " against");
+                                    }
+                                    start = r.axialLead ? sheet_end_of(k) : exitSlots[k].value();
+                                }
+                            }
+                        }
+                        auto y_at = [&](double x, const std::optional<double>& advance) {
+                            if (!advance) {
+                                throw std::logic_error("The turn '" + turn.get_name() + "' has no neighbouring turn to give its climb, judging the row end of " +
+                                                       label_route(route));
+                            }
+                            return c.at(1) - advance.value() * terminal_lane_along(turnPath, x) / turnPath.length;
+                        };
+                        const double turnLayer = c.at(0) + rides.ride_at(c.at(0), route.side);
+                        const std::string name = "turn '" + turn.get_name() + "'";
+                        if (rowEndOf && arrives) {
+                            const auto& r = routes[rowEndOf.value()];
+                            others.push_back(piece_of(name + " (row end)", P3{r.rowEndFromX.value(), r.rowEndFromHeight.value(), turnLayer},
+                                                      P3{r.rowEndX.value(), r.rowEndHeight.value(), turnLayer}));
+                        }
+                        else if (arrives && end < straight) {
+                            others.push_back(piece_of(name + " arriving", P3{end, y_at(end, advanceIn), turnLayer}, P3{straight, y_at(straight, advanceIn), turnLayer}));
+                        }
+                        if (leaves && start > -straight) {
+                            others.push_back(piece_of(name + " leaving", P3{-straight, y_at(-straight, advanceOut), turnLayer},
+                                                      P3{start, y_at(start, advanceOut), turnLayer}));
+                        }
+                    }
+                    for (size_t other = 0; other < routes.size(); ++other) {
+                        const auto& o = routes[other];
+                        if (other == index || o.side != route.side || o.waypoints.size() < 2) {
+                            continue;
+                        }
+                        const double oHalf = routeDiameters[other] / 2;
+                        if (o.kind == ConnectionKind::Z_DRAGBACK) {
+                            if (!ridePlacement.alongFace[other]) {
+                                throw std::logic_error("The dragback '" + o.fromTurn + "' -> '" + o.toTurn + "' publishes no place along the face, so the "
+                                                       "row end of " + label_route(route) + " cannot be judged against it");
+                            }
+                            const double slot = 0.5 * (ridePlacement.alongFace[other]->first + ridePlacement.alongFace[other]->second);
+                            const std::string name = "the dragback '" + o.fromTurn + "' -> '" + o.toTurn + "'";
+                            const double ownLevel = o.waypoints.back().at(0);
+                            auto drawn = [&](double r) {
+                                double ride = 0;
+                                for (const auto& level : rides.rideLevels) {
+                                    if (level.side == route.side && level.radius <= r + 0.5 * level.height &&
+                                        std::abs(level.radius - ownLevel) > 0.5 * level.height) {
+                                        ride += level.rise;
+                                    }
+                                }
+                                return r + ride;
+                            };
+                            for (size_t w = 0; w + 1 < o.waypoints.size(); ++w) {
+                                others.push_back({name, P3{slot, o.waypoints[w].at(1), drawn(o.waypoints[w].at(0))},
+                                                  P3{slot, o.waypoints[w + 1].at(1), drawn(o.waypoints[w + 1].at(0))}, oHalf});
+                            }
+                            const auto& tail = o.waypoints.back();
+                            others.push_back({name + " tail", P3{slot, tail.at(1), drawn(tail.at(0))}, P3{0.0, tail.at(1), drawn(tail.at(0))}, oHalf});
+                            continue;
+                        }
+                        const bool terminal = o.kind == ConnectionKind::TERMINAL_ENTRANCE || o.kind == ConnectionKind::TERMINAL_EXIT;
+                        if (!terminal) {
+                            continue;
+                        }
+                        if (o.axialLead) {
+                            // ABT #2274 (agent 26): a foil's axial lead (AxialLead): round copper of its outer diameter at its
+                            // x along the face, through its waypoints (the attach's far end, the corner (layerAxis, end),
+                            // (radialEnd, end)), the corner bent at the route's plannedBendRadius; and its weld strip, a
+                            // rectangular bar (layerFrom .. layerTo, width wide about the lead, from .. to along the turn
+                            // axis). Both ride with the sheet they are attached to.
+                            const auto& lead = o.axialLead.value();
+                            const double ox = axial_x_of(other);
+                            const double oRide = rides.ride_at(lead.weld.layerFrom, route.side);
+                            const double leadHalf = lead.outerDiameter / 2;
+                            if (o.waypoints.size() != 3 || !(o.plannedBendRadius > 0) || !(leadHalf > 0)) {
+                                std::ostringstream out;
+                                out << std::setprecision(6) << "The row-end judge of " << label_route(route) << " models an axial lead as two runs and one bend; "
+                                    << "the lead of " << label_route(o) << " has " << o.waypoints.size() << " waypoints, bend radius "
+                                    << o.plannedBendRadius * 1e3 << " mm and outer diameter " << lead.outerDiameter * 1e3 << " mm";
+                                throw std::logic_error(out.str());
+                            }
+                            std::vector<P3> leg;
+                            for (const auto& point : o.waypoints) {
+                                leg.push_back(P3{ox, point.at(1), point.at(0) + oRide});
+                            }
+                            const auto [ua, la] = unit(leg[0], leg[1]);
+                            const auto [ub, lb] = unit(leg[1], leg[2]);
+                            const double cosBend = std::clamp(ua[0] * ub[0] + ua[1] * ub[1] + ua[2] * ub[2], -1.0, 1.0);
+                            const double sweep = std::acos(cosBend);
+                            const double reach = o.plannedBendRadius * std::tan(sweep / 2);
+                            if (!(sweep > 0) || reach > std::min(la, lb)) {
+                                std::ostringstream out;
+                                out << std::setprecision(6) << "Real winding: the corner of the axial lead of " << label_route(o) << " (bend "
+                                    << o.plannedBendRadius * 1e3 << " mm over " << sweep * 180 / std::numbers::pi << " deg) does not fit its runs ("
+                                    << la * 1e3 << " / " << lb * 1e3 << " mm), judging the row end of " << label_route(route);
+                                throw CoilException(ErrorCode::COIL_WINDING_ERROR, out.str());
+                            }
+                            const P3 inA{leg[1][0] - ua[0] * reach, leg[1][1] - ua[1] * reach, leg[1][2] - ua[2] * reach};
+                            const P3 outB{leg[1][0] + ub[0] * reach, leg[1][1] + ub[1] * reach, leg[1][2] + ub[2] * reach};
+                            P3 inward{ub[0] - ua[0] * cosBend, ub[1] - ua[1] * cosBend, ub[2] - ua[2] * cosBend};
+                            const double inwardLength = std::sqrt(inward[0] * inward[0] + inward[1] * inward[1] + inward[2] * inward[2]);
+                            for (auto& v : inward) {
+                                v /= inwardLength;
+                            }
+                            const std::string name = "the axial lead of " + label_route(o);
+                            others.push_back({name, leg[0], inA, leadHalf});
+                            Line bendLine{name + " bend", inA, outB, leadHalf};
+                            bendLine.arc = RowEndArc{P3{inA[0] + inward[0] * o.plannedBendRadius, inA[1] + inward[1] * o.plannedBendRadius,
+                                                        inA[2] + inward[2] * o.plannedBendRadius},
+                                                     o.plannedBendRadius, P3{-inward[0], -inward[1], -inward[2]}, ua, sweep};
+                            others.push_back(bendLine);
+                            others.push_back({name, outB, leg[2], leadHalf});
+                            const auto& weld = lead.weld;
+                            if (!(weld.width > 0) || !(weld.layerTo != weld.layerFrom) || !(weld.to != weld.from)) {
+                                throw std::logic_error("The weld strip of the axial lead of " + label_route(o) + " states no extent, judging the row end of " +
+                                                       label_route(route));
+                            }
+                            Line strip{name + " weld strip", P3{ox, weld.from, weld.layerFrom + oRide}, P3{ox, weld.to, weld.layerTo + oRide}, 0.0};
+                            strip.box = RowEndBox{P3{ox - weld.width / 2, std::min(weld.from, weld.to), std::min(weld.layerFrom, weld.layerTo) + oRide},
+                                                  {P3{weld.width, 0, 0}, P3{0, std::abs(weld.to - weld.from), 0}, P3{0, 0, std::abs(weld.layerTo - weld.layerFrom)}}};
+                            others.push_back(strip);
+                            continue;
+                        }
+                        if (!exitSlots[other] || o.liftLength || o.laneTangential.value_or(false) || o.slotRampLength) {
+                            throw std::logic_error("The row-end judge of " + label_route(route) + " does not model the lead of " + label_route(o) +
+                                                   " (no lane, a lift, an axial or tangential lead, or a slot ramp)");
+                        }
+                        const double ox = exitSlots[other].value();
+                        const auto& oAttach = o.kind == ConnectionKind::TERMINAL_ENTRANCE ? o.waypoints.back() : o.waypoints.front();
+                        const double oRide = rides.ride_at(oAttach.at(0), route.side);
+                        for (size_t w = 0; w + 1 < o.waypoints.size(); ++w) {
+                            others.push_back({"the lead of " + label_route(o), P3{ox, o.waypoints[w].at(1), o.waypoints[w].at(0) + oRide},
+                                              P3{ox, o.waypoints[w + 1].at(1), o.waypoints[w + 1].at(0) + oRide}, oHalf});
+                        }
+                    }
+                    // The worst clearance of each named neighbour against each own piece.
+                    std::map<std::pair<std::string, std::string>, double> worst;
+                    std::map<std::string, std::string> where;   // each neighbour's centreline, for the witness
+                    for (const auto& line : others) {
+                        std::ostringstream at;
+                        at << std::setprecision(6) << "(" << line.a[0] * 1e3 << ", " << line.a[1] * 1e3 << ", " << line.a[2] * 1e3 << ") -> (" << line.b[0] * 1e3
+                           << ", " << line.b[1] * 1e3 << ", " << line.b[2] * 1e3 << ") mm, ";
+                        if (line.box) {
+                            at << "box from (" << line.box->origin[0] * 1e3 << ", " << line.box->origin[1] * 1e3 << ", " << line.box->origin[2] * 1e3
+                               << ") mm, edges";
+                            for (const auto& edge : line.box->edges) {
+                                at << " (" << edge[0] * 1e3 << ", " << edge[1] * 1e3 << ", " << edge[2] * 1e3 << ")";
+                            }
+                            at << " mm";
+                        }
+                        else if (line.arc) {
+                            at << "bend of " << line.arc->radius * 1e3 << " mm over " << line.arc->sweep * 180 / std::numbers::pi << " deg, radius "
+                               << line.half * 1e3 << " mm";
+                        }
+                        else {
+                            at << "radius " << line.half * 1e3 << " mm";
+                        }
+                        where[line.name] += (where[line.name].empty() ? "" : "; ") + at.str();
+                    }
+                    auto record = [&](const std::string& mine, const std::string& theirs, double clearance) {
+                        const auto k = std::make_pair(mine, theirs);
+                        const auto found = worst.find(k);
+                        if (found == worst.end() || clearance < found->second) {
+                            worst[k] = clearance;
+                        }
+                    };
+                    for (const auto& line : others) {
+                        if (line.arc) {
+                            const RowEndArc& bend = line.arc.value();
+                            for (const auto& piece : own) {
+                                record(piece.name, line.name, row_end_arc_segment_distance(bend, piece.a, piece.b, tolerance) - piece.half - line.half);
+                            }
+                            record("bend onto the run", line.name,
+                                   row_end_arc_distance(arc, [&](const P3& a, const P3& b) { return row_end_arc_segment_distance(bend, a, b, tolerance); },
+                                                        tolerance) - arcHalf - line.half);
+                            continue;
+                        }
+                        if (line.box) {
+                            const RowEndBox& box = line.box.value();
+                            for (const auto& piece : own) {
+                                record(piece.name, line.name, row_end_segment_box_distance(piece.a, piece.b, box) - piece.half);
+                            }
+                            record("bend onto the run", line.name,
+                                   row_end_arc_distance(arc, [&](const P3& a, const P3& b) { return row_end_segment_box_distance(a, b, box); }, tolerance) -
+                                       arcHalf);
+                            continue;
+                        }
+                        for (const auto& piece : own) {
+                            record(piece.name, line.name, row_end_segment_distance(piece.a, piece.b, line.a, line.b) - piece.half - line.half);
+                        }
+                        record("bend onto the run", line.name, row_end_arc_segment_distance(arc, line.a, line.b, tolerance) - arcHalf - line.half);
+                    }
+                    std::ostringstream report;
+                    report << std::setprecision(6) << "[row-end] own: turn end (" << wrapStart[0] * 1e3 << ", " << wrapStart[1] * 1e3 << ", " << wrapStart[2] * 1e3
+                           << ") -> (" << tA[0] * 1e3 << ", " << tA[1] * 1e3 << ", " << tA[2] * 1e3 << ") mm radius " << turnHalf * 1e3 << ", bend centre ("
+                           << arc.centre[0] * 1e3 << ", " << arc.centre[1] * 1e3 << ", " << arc.centre[2] * 1e3 << ") mm, run from (" << tB[0] * 1e3 << ", "
+                           << tB[1] * 1e3 << ", " << tB[2] * 1e3 << ") mm radius " << runHalf * 1e3 << "\n";
+                    report << std::setprecision(6) << "[row-end] " << label_route(route) << ": turn '" << ownTurn << "' ends on the row " << row * 1e3
+                           << " mm at its lane x = " << lane * 1e3 << " mm, its last piece from x = " << wrapStart[0] * 1e3 << " mm (height "
+                           << wrapStart[1] * 1e3 << " mm, the uniform climb would reach " << (attachAxial[index] - attachAdvance[index] *
+                           terminal_lane_along(path, lane) / path.length) * 1e3 << " mm at the lane); bend " << bend * 1e3 << " mm over "
+                           << theta * 180 / std::numbers::pi << " deg";
+                    for (const auto& [k, clearance] : worst) {
+                        if (clearance < 0.5e-3) {
+                            report << "\n    " << k.first << " vs " << k.second << ": " << (clearance < -contact ? "INTO by " : "clear by ")
+                                   << std::abs(clearance) * 1e3 << " mm [" << where[k.second] << "]";
+                        }
+                        if (clearance < -contact) {
+                            LeadFinding finding;
+                            finding.kind = LeadFindingKind::LEVEL_ROW_CLASH;
+                            std::ostringstream out;
+                            out << std::setprecision(6) << "Real winding: the " << k.first << " of " << label_route(route) << " (its turn ends on its row "
+                                << row * 1e3 << " mm at its lane x = " << lane * 1e3 << " mm) comes " << -clearance * 1e3 << " mm into " << k.second;
+                            finding.witness = out.str();
+                            route.findings.push_back(finding);
+                        }
+                    }
+                    if (std::getenv("MKF_LANE_MOVE_DIAG")) {
+                        std::cerr << report.str() << std::endl;
+                    }
+                }
+            }
+            if (rampedRoutes.empty()) {
+                return;
+            }
+            // The fit: a slot ramp is copper on its turn's surface, at the turn's radius, between the turn's
+            // height at the lane and the row, over its footprint along the face (lane_footprint's convention:
+            // the S plus the plannedBendRadius of its bend onto the run). Another terminal lead on the face
+            // meets it when both their footprints along the face and their sections in the winding window
+            // come closer than their two coated radii.
+            auto mm = [](double metres) {
+                std::ostringstream text;
+                text << std::setprecision(6) << metres * 1e3 << " mm";
+                return text.str();
+            };
+            auto label_of = [](const ConnectionRoute& route) {
+                return "winding '" + route.winding + "' parallel " + std::to_string(route.parallel) +
+                       (route.kind == ConnectionKind::TERMINAL_ENTRANCE ? " entrance" : " exit");
+            };
+            // The ramp's copper, exactly (SlotRampCentreline, rampCurves). The other lead's centreline is its
+            // route at its lane x and, if it has one, its own slot ramp. slot_ramp_closest_approach bounds the
+            // distance rigorously (Lipschitz branch and bound, no sample count); a collision is reported only on
+            // the EXHIBITED pair of points it returns, closer than their two coated radii.
+            auto centreline_of = [&](size_t index) { return rampCurves.at(index); };
+            for (size_t ramped : rampedRoutes) {
+                const auto& route = routes[ramped];
+                const auto ramp = centreline_of(ramped);
+                for (size_t other = 0; other < routes.size(); ++other) {
+                    const auto& otherRoute = routes[other];
+                    const bool otherTerminal = otherRoute.kind == ConnectionKind::TERMINAL_ENTRANCE || otherRoute.kind == ConnectionKind::TERMINAL_EXIT;
+                    if (other == ramped || !otherTerminal || !exitSlots[other] || otherRoute.side != route.side || otherRoute.waypoints.size() < 2) {
+                        continue;
+                    }
+                    const bool otherRamped = std::find(rampedRoutes.begin(), rampedRoutes.end(), other) != rampedRoutes.end();
+                    if (otherRamped && other < ramped) {
+                        continue;   // that pair, both ramps included, was judged from the other side
+                    }
+                    const double radii = (routeDiameters[ramped] + routeDiameters[other]) / 2;
+                    const double S = route.slotRampLength.value();
+                    const std::optional<SlotRampCentreline> otherRamp =
+                        otherRamped ? std::optional<SlotRampCentreline>(centreline_of(other)) : std::nullopt;
+                    const auto approach = slot_ramp_closest_approach(ramp, exitSlots[other].value(), otherRoute.waypoints, otherRamp, radii);
+                    const double achieved = approach.distance;
+                    const double atS = approach.along;
+                    if (!(achieved < radii)) {
+                        continue;
+                    }
+                    const auto witness = slot_ramp_point(ramp, atS);
+                    std::ostringstream out;
+                    out << "Real winding, slot-step ramp (drawn as planned, no lane moved): " << label_of(route) << " climbs "
+                        << mm(route.slotRampHeight.value()) << " over a " << mm(S) << " ramp from its lane x = " << mm(exitSlots[ramped].value())
+                        << "; at x = " << mm(witness[0]) << ", y = " << mm(witness[2]) << " its centreline comes " << mm(achieved) << " from "
+                        << label_of(otherRoute) << (approach.otherAlong >= 0 ? " (its own slot ramp, " + mm(approach.otherAlong) + " from its lane)" : std::string())
+                        << " at its lane x = " << mm(exitSlots[other].value()) << ", under the " << mm(radii)
+                        << " their coated radii need.";
+                    LeadFinding collide;
+                    collide.kind = LeadFindingKind::LANES_COLLIDE;
+                    collide.witness = out.str();
+                    routes[ramped].findings.push_back(collide);
+                    routes[other].findings.push_back(std::move(collide));
+                }
+            }
+        };
         struct LanePass {
             TerminalLanePlan plan;
             std::vector<size_t> slotRouteIndex;
@@ -4115,6 +6229,380 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces(
             }
             return halves;
         };
+        // ABT #2274 (Alf, 2026-11-07: "MKF checks height at the lane"). A terminal lead on the FAR half of
+        // its turn's crossing -- an entrance whose lane lies upstream (along > 0), an exit whose lane lies
+        // past the crossing (along < 0) -- puts that turn's copper where the blocking never put it: by the
+        // height model every 3D builder draws (terminal_turn_height_along: station - advance * along / L),
+        // the first turn stands below its station from the crossing up to its lane, the last turn climbs
+        // above it from the crossing on to its lane. Two things can then not fit, and the plan is judged on
+        // both at every lane it lays:
+        //   (1) the turn's copper at its lane leaves the winding window -- the bobbin flange (02_flyback_efd25
+        //       Primary exit at x = -0.43 mm: 18 um into the flange; 17_cllc Primary exit at -1.9645 mm);
+        //   (2) on its way to its lane the turn passes another terminal lead's in-window run closer than the
+        //       two coated sections (04_forward_xfmr_e3216: the 3.3V p0 entrance at +1.876 mm dips 42 um
+        //       under its station where it crosses the 12V entrance's run at +0.534 mm: 18.6 um of enamel).
+        // A lead that does not fit is reported LANES_DO_NOT_FIT with the numbers, which the settle acts on as
+        // on every misfit: it overflows onto its face's spare x half (spec section 22; Alf, 2026-11-07: an x
+        // move to avoid other terminals is fine) where allowed; anything else is drawn and reported (section 17; no face
+        // moves for fit, Alf 2026-11-08). No lane is
+        // widened or moved beyond the face for it: the lanes
+        // the plan offers are the only ones tried. Only the EXTRA excursion is judged: a turn whose station
+        // already lies past the window (an over-full design) is measured from its station, not refused for it.
+        // Not judged on contiguous layers, whose frame transposes the window (as planStubRamp, no ramps there).
+        // Check (1) below on its own, for one lead at one lane: whether the attach turn of the terminal lead of
+        // trialRoutes[index], with its lane at `slot`, leaves the winding window -- only the EXTRA excursion of a
+        // far-half lane beyond max(window, the turn's copper at its station). It is also the judge
+        // terminal_lane_plan's bundle-order choice asks (CoilLanePlanJudge.h, ABT #2274 rule 3: a lane on the
+        // lead's own half is tried before the lead is reported). Same scope as lane_height_findings.
+        auto lane_window_misfit = [&](const std::vector<ConnectionRoute>& trialRoutes, size_t index, double slot) -> std::optional<std::string> {
+            if (!is_real_winding_blocking_applied() || layersAreContiguous) {
+                return std::nullopt;
+            }
+            const auto& route = trialRoutes[index];
+            const bool entrance = route.kind == ConnectionKind::TERMINAL_ENTRANCE;
+            if ((!entrance && route.kind != ConnectionKind::TERMINAL_EXIT) || !turnPaths[index] || route.waypoints.empty()) {
+                return std::nullopt;
+            }
+            const auto& path = turnPaths[index].value();
+            const std::string& turnName = entrance ? route.toTurn : route.fromTurn;
+            if (path.shape == ColumnShape::ROUND) {
+                return std::nullopt;
+            }
+            for (const auto& link : trialRoutes) {
+                if (link.kind == ConnectionKind::FINAL_LANDING && (link.toTurn == turnName || link.fromTurn == turnName)) {
+                    return std::nullopt;
+                }
+            }
+            const double along = terminal_lead_along(route, path, slot);
+            if (!(entrance ? along > 0 : along < 0)) {
+                return std::nullopt;   // on the near half its turn never leaves its station's height
+            }
+            const double windowLow = windowCenterTurnAxis - windowSizeTurnAxis / 2;
+            const double windowHigh = windowCenterTurnAxis + windowSizeTurnAxis / 2;
+            const double contact = 1e-9;   // copper touching is not copper inside copper
+            const double turnAxialHalf = (path.turnRectangular ? path.turnAxialExtent : path.turnWireDiameter) / 2;
+            if (!(turnAxialHalf > 0)) {
+                throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA,
+                    "The attach turn of the terminal lead of winding '" + route.winding + "' parallel " + std::to_string(route.parallel) +
+                    (entrance ? " entrance" : " exit") + " carries no coated size in its turn path, so its height at its lane cannot be "
+                    "judged against the window.");
+            }
+            auto mm = [](double metres) {
+                std::ostringstream text;
+                text << std::setprecision(6) << metres * 1e3 << " mm";
+                return text.str();
+            };
+            const double station = attachAxial[index];
+            const double advance = attachAdvance[index];
+            const double height = station - advance * along / path.length;
+            const double high = std::max(windowHigh, station + turnAxialHalf);
+            const double low = std::min(windowLow, station - turnAxialHalf);
+            const double above = height + turnAxialHalf - high;
+            const double below = low - (height - turnAxialHalf);
+            if (!(above > contact || below > contact)) {
+                return std::nullopt;
+            }
+            std::ostringstream text;
+            text << "its " << (entrance ? "first" : "last") << " turn '" << turnName << "' reaches its lane x = " << mm(slot) << " "
+                 << mm(std::abs(along)) << " along the turn " << (along > 0 ? "upstream of" : "past") << " the crossing, where it stands at y = "
+                 << mm(height) << " (station " << mm(station) << ", advance " << mm(advance) << " over a turn of " << mm(path.length)
+                 << "): its copper reaches " << mm(above > contact ? height + turnAxialHalf : height - turnAxialHalf) << ", "
+                 << mm(above > contact ? above : below) << (above > contact ? " above" : " below") << " the winding window ("
+                 << mm(windowLow) << " .. " << mm(windowHigh) << ")";
+            return text.str();
+        };
+        auto lane_height_findings = [&](const std::vector<ConnectionRoute>& trialRoutes, const std::vector<size_t>& slotRouteIndex,
+                                        TerminalLanePlan& plan) {
+            if (!is_real_winding_blocking_applied() || layersAreContiguous) {
+                return;
+            }
+            const double contact = 1e-9;   // copper touching is not copper inside copper
+            auto is_terminal_kind = [](const ConnectionRoute& route) {
+                return route.kind == ConnectionKind::TERMINAL_ENTRANCE || route.kind == ConnectionKind::TERMINAL_EXIT;
+            };
+            auto label_of = [](const ConnectionRoute& route) {
+                return "winding '" + route.winding + "' parallel " + std::to_string(route.parallel) +
+                       (route.kind == ConnectionKind::TERMINAL_ENTRANCE ? " entrance" : " exit");
+            };
+            auto mm = [](double metres) {
+                std::ostringstream text;
+                text << std::setprecision(6) << metres * 1e3 << " mm";
+                return text.str();
+            };
+            // A turn reached over a FINAL_LANDING carries the landing's full-height pitch in its advance
+            // (attachAdvance), not a climb of its own along the face: the uniform-climb model does not say
+            // where that turn stands at a lane, so it is not judged here.
+            std::set<std::string> landedTurns;
+            for (const auto& link : trialRoutes) {
+                if (link.kind == ConnectionKind::FINAL_LANDING) {
+                    landedTurns.insert(link.toTurn);
+                    landedTurns.insert(link.fromTurn);
+                }
+            }
+            for (size_t k = 0; k < plan.slots.size(); ++k) {
+                const size_t index = slotRouteIndex[k];
+                const auto& route = trialRoutes[index];
+                if (!is_terminal_kind(route) || !plan.slots[k] || !turnPaths[index] || route.waypoints.empty()) {
+                    continue;
+                }
+                const auto& path = turnPaths[index].value();
+                // Judged where a flat face carries the lane (the rect family: 3D builders draw the turn's uniform
+                // climb there, MVB++ appendRectWrap); a round column's lanes are judged by its azimuth model elsewhere.
+                if (path.shape == ColumnShape::ROUND ||
+                    landedTurns.count(route.kind == ConnectionKind::TERMINAL_ENTRANCE ? route.toTurn : route.fromTurn)) {
+                    continue;
+                }
+                const double slot = plan.slots[k].value();
+                const double along = terminal_lead_along(route, path, slot);
+                // The turn's copper on this face, in along: an entrance's first turn from its lane on through the
+                // crossing, an exit's last turn up to its lane. Off the crossing it stands off its station
+                // (below upstream, above downstream), where another lead holds its row.
+                const double faceAlong = std::abs(terminal_lane_along(path, path.faceHalfStraight + path.cornerRadius));   // agent 27: a length
+                const std::pair<double, double> copperStretch = route.kind == ConnectionKind::TERMINAL_ENTRANCE
+                                                                    ? std::pair<double, double>{-faceAlong, along}
+                                                                    : std::pair<double, double>{along, faceAlong};
+                const auto* stretch = &copperStretch;
+                const double station = attachAxial[index];
+                const double advance = attachAdvance[index];
+                auto height_along = [&](double a) { return station - advance * a / path.length; };
+                const double turnRadialHalf = (path.turnRectangular ? path.turnRadialExtent : path.turnWireDiameter) / 2;
+                const double turnAxialHalf = (path.turnRectangular ? path.turnAxialExtent : path.turnWireDiameter) / 2;
+                if (!(turnAxialHalf > 0) || !(turnRadialHalf > 0)) {
+                    throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA,
+                        "The attach turn of the terminal lead of " + label_of(route) + " carries no coated size in its turn path, so its "
+                        "height at its lane cannot be judged against the window.");
+                }
+                const auto& attach = route.kind == ConnectionKind::TERMINAL_ENTRANCE ? route.waypoints.back() : route.waypoints.front();
+                const double turnRadius = attach.at(0);
+                std::vector<std::string> witnesses;
+                // (1) the window, at a far-half lane (lane_window_misfit).
+                if (auto misfit = lane_window_misfit(trialRoutes, index, slot)) {
+                    witnesses.push_back(misfit.value());
+                }
+                // (2) the in-window runs of the other terminal leads on this face that the stretch passes over.
+                for (size_t other = 0; other < plan.slots.size(); ++other) {
+                    const size_t otherIndex = slotRouteIndex[other];
+                    const auto& otherRoute = trialRoutes[otherIndex];
+                    if (other == k || !is_terminal_kind(otherRoute) || !plan.slots[other] || !turnPaths[otherIndex] ||
+                        otherRoute.side != route.side || otherRoute.waypoints.size() < 2) {
+                        continue;
+                    }
+                    const auto& otherPath = turnPaths[otherIndex].value();
+                    const double otherSlot = plan.slots[other].value();
+                    const double otherAlongLane = std::max(otherPath.stubRectangular ? otherPath.stubAxialExtent : otherPath.stubDiameter,
+                                                           otherPath.stubRectangular ? otherPath.stubRadialExtent : otherPath.stubDiameter);
+                    // The stretch of x the other lead's copper covers on the face, clipped to this turn's stretch.
+                    const double reachLimit = path.faceHalfStraight + path.cornerRadius;
+                    const double xFrom = std::clamp(otherSlot - otherAlongLane / 2, -reachLimit, reachLimit);
+                    const double xTo = std::clamp(otherSlot + otherAlongLane / 2, -reachLimit, reachLimit);
+                    // ABT #2274 (agent 32): this turn's copper on the face spans |x| <= reachLimit (its straight and the corner
+                    // arc); a lead whose footprint lies wholly beyond that (a tangential lead, or a lead of a wider turn) is
+                    // never passed by it. Both ends then clamp to the same face end, which is no overlap -- judging it there
+                    // measured a turn that is not there, and the round branch below asked terminal_lane_along for a lane
+                    // past the face (bug G: "The lane x = ... lies beyond its turn's face").
+                    if (!(xFrom < xTo)) {
+                        continue;
+                    }
+                    // `along` grows with x on the face, so the overlap is [max of the lows, min of the highs].
+                    // A lead whose lane covers the crossing is met by the blocking there (its row, the rides over it),
+                    // where the turn stands at its station; the stretch off the crossing is what is judged.
+                    if (std::abs(otherSlot) < otherAlongLane / 2) {
+                        continue;
+                    }
+                    // ABT #2274 (agent 27): along the face grows with x for a clockwise turn and falls for a counter-clockwise
+                    // one (terminal_lane_along), so the footprint's along interval is ordered here.
+                    const double alongFromX = terminal_lane_along(path, xFrom), alongToX = terminal_lane_along(path, xTo);
+                    const double aFrom = std::max(std::min(alongFromX, alongToX), stretch->first);
+                    const double aTo = std::min(std::max(alongFromX, alongToX), stretch->second);
+                    if (aFrom > aTo) {
+                        continue;   // the other lead lies outside the stretch
+                    }
+                    const double otherRadialHalf = (otherPath.stubRectangular ? otherPath.stubRadialExtent : otherPath.stubDiameter) / 2;
+                    const double otherAxialHalf = (otherPath.stubRectangular ? otherPath.stubAxialExtent : otherPath.stubDiameter) / 2;
+                    // ABT #2274 (agent 30): the other lead is judged where it is DRAWN -- at its level row (its turn's height at
+                    // its lane, plan_slot_step_ramps: its whole 2-D route moved by turnY - rowY) when it takes one, at its
+                    // crossing row when it takes a row end or no slot-step plan. The scope is plan_slot_step_ramps' own: its
+                    // predicate on the lane's tangential flag is ConnectionRoute::laneTangential, which the settle copies from
+                    // this plan's TerminalLanePlan::tangential (an optional<bool>: an engaged `false` is a lane on the face, so
+                    // the flag is read by value -- testing the optional itself skipped every planned lead, agent 27's 0.1139 mm).
+                    double otherShift = 0;
+                    if (levelLeadRows) {
+                        const auto planned = slotStepRampPlans.find(std::make_tuple(otherRoute.winding, otherRoute.parallel, otherRoute.kind));
+                        const std::string& otherTurn = otherRoute.kind == ConnectionKind::TERMINAL_ENTRANCE ? otherRoute.toTurn : otherRoute.fromTurn;
+                        const bool otherTangential = plan.tangential[other].has_value() && plan.tangential[other].value();
+                        if (planned != slotStepRampPlans.end() && !otherRoute.liftLength && !otherRoute.axialLead && !otherTangential &&
+                            !landedTurns.count(otherTurn) && otherPath.shape != ColumnShape::ROUND && !std::isnan(attachAxial[otherIndex]) &&
+                            !std::isnan(attachAdvance[otherIndex])) {
+                            const double otherAlong = terminal_lead_along(otherRoute, otherPath, otherSlot);
+                            const double turnY = attachAxial[otherIndex] - attachAdvance[otherIndex] * otherAlong / otherPath.length;
+                            if (roundFloat(planned->second.rowY - turnY) != 0 &&
+                                !rowEndLeads.count(std::make_tuple(otherRoute.winding, otherRoute.parallel, otherRoute.kind))) {
+                                otherShift = turnY - planned->second.rowY;
+                            }
+                        }
+                    }
+                    double worst = 0;
+                    double worstHeight = 0;
+                    if (!path.turnRectangular && !otherPath.stubRectangular) {
+                        // ABT #2274 (agent 22, coordinator: "make the box judge exact for the sloped first and last turn"):
+                        // round copper is judged on its real centrelines. The turn runs on the face straight at its own
+                        // radius, sloped by its uniform climb (height_along); the other lead's run stands at its lane at
+                        // the row it is DRAWN at -- its level row (its turn's height at its lane, plan_slot_step_ramps) when it
+                        // takes one. Their closest approach against the two coated radii is the overlap; only what the
+                        // turn's departure from its station adds over the flat turn at its station is judged.
+                        // The turn's piece under the other lead: x over the lead's footprint and one lead width each side,
+                        // clipped to the turn's stretch (along is linear in x on the straight).
+                        double x0 = std::max(-reachLimit, otherSlot - 1.5 * otherAlongLane);
+                        double x1 = std::min(reachLimit, otherSlot + 1.5 * otherAlongLane);
+                        const double a0 = terminal_lane_along(path, x0);
+                        const double a1 = terminal_lane_along(path, x1);
+                        const double c0 = std::max(std::min(a0, a1), stretch->first);
+                        const double c1 = std::min(std::max(a0, a1), stretch->second);
+                        if (c0 >= c1 || a1 == a0) {
+                            continue;
+                        }
+                        auto x_at = [&](double a) { return x0 + (a - a0) * (x1 - x0) / (a1 - a0); };
+                        using P3 = std::array<double, 3>;
+                        auto segment_distance = [](const P3& p1, const P3& q1, const P3& p2, const P3& q2) {
+                            auto sub = [](const P3& u, const P3& v) { return P3{u[0] - v[0], u[1] - v[1], u[2] - v[2]}; };
+                            auto dot = [](const P3& u, const P3& v) { return u[0] * v[0] + u[1] * v[1] + u[2] * v[2]; };
+                            const P3 d1 = sub(q1, p1);
+                            const P3 d2 = sub(q2, p2);
+                            const P3 r = sub(p1, p2);
+                            const double a = dot(d1, d1);
+                            const double e = dot(d2, d2);
+                            const double f = dot(d2, r);
+                            double sP = 0;
+                            double tP = 0;
+                            if (a <= 1e-30 && e <= 1e-30) {
+                                return std::sqrt(dot(r, r));
+                            }
+                            if (a <= 1e-30) {
+                                tP = std::clamp(f / e, 0.0, 1.0);
+                            }
+                            else {
+                                const double c = dot(d1, r);
+                                if (e <= 1e-30) {
+                                    sP = std::clamp(-c / a, 0.0, 1.0);
+                                }
+                                else {
+                                    const double bb = dot(d1, d2);
+                                    const double denom = a * e - bb * bb;
+                                    sP = denom > 1e-30 ? std::clamp((bb * f - c * e) / denom, 0.0, 1.0) : 0.0;
+                                    tP = (bb * sP + f) / e;
+                                    if (tP < 0) {
+                                        tP = 0;
+                                        sP = std::clamp(-c / a, 0.0, 1.0);
+                                    }
+                                    else if (tP > 1) {
+                                        tP = 1;
+                                        sP = std::clamp((bb - c) / a, 0.0, 1.0);
+                                    }
+                                }
+                            }
+                            const P3 c1p{p1[0] + d1[0] * sP, p1[1] + d1[1] * sP, p1[2] + d1[2] * sP};
+                            const P3 c2p{p2[0] + d2[0] * tP, p2[1] + d2[1] * tP, p2[2] + d2[2] * tP};
+                            const P3 w = sub(c1p, c2p);
+                            return std::sqrt(dot(w, w));
+                        };
+                        const double reach = turnAxialHalf + otherAxialHalf;
+                        auto overlap = [&](bool sloped, double shift, double& atHeight) {
+                            const P3 t0{x_at(c0), sloped ? height_along(c0) : station, turnRadius};
+                            const P3 t1{x_at(c1), sloped ? height_along(c1) : station, turnRadius};
+                            double deepest = 0;
+                            for (size_t w = 0; w + 1 < otherRoute.waypoints.size(); ++w) {
+                                const auto& p = otherRoute.waypoints[w];
+                                const auto& q = otherRoute.waypoints[w + 1];
+                                const double distance = segment_distance(t0, t1, P3{otherSlot, p.at(1) + shift, p.at(0)},
+                                                                         P3{otherSlot, q.at(1) + shift, q.at(0)});
+                                if (reach - distance > deepest) {
+                                    deepest = reach - distance;
+                                    // agent 32: the turn's height at the lane when its face reaches the lane, else at the end of
+                                    // the judged piece on the lane's side (the turn leaves the face there; a lane past it is not on
+                                    // this turn's path, terminal_lane_along refuses it).
+                                    if (std::abs(otherSlot) <= reachLimit) {
+                                        atHeight = height_along(terminal_lane_along(path, otherSlot));
+                                    }
+                                    else {
+                                        const double faceEnd = terminal_lane_along(path, otherSlot < 0 ? -reachLimit : reachLimit);
+                                        atHeight = height_along(std::abs(faceEnd - c0) < std::abs(faceEnd - c1) ? c0 : c1);
+                                    }
+                                }
+                            }
+                            return deepest;
+                        };
+                        double ignored = 0;
+                        const double flat = overlap(false, 0.0, ignored);
+                        double sloped = overlap(true, otherShift, worstHeight);
+                        worst = sloped - flat;
+                        if (std::getenv("MKF_LANE_HEIGHT_DIAG")) {   // ABT #2274 agent-22 diagnostics, remove before commit
+                            std::cerr << std::setprecision(6) << "[lane-height-exact] " << label_of(route) << " lane " << slot * 1e3 << " vs "
+                                      << label_of(otherRoute) << " lane " << otherSlot * 1e3 << " (row shift " << otherShift * 1e3
+                                      << " mm): overlap sloped " << sloped * 1e3 << " mm, flat " << flat * 1e3 << " mm" << std::endl;
+                        }
+                    }
+                    else {
+                    std::optional<double> atStation;   // the pair's overlap with the turn at its station: the blocking's
+                    for (const double a : {0.0, aFrom, aTo}) {
+                        const double height = a == 0.0 ? station : height_along(a);
+                        double deepest = 0;
+                        // agent 30: at the station the 2-D plan (the other lead at its stated row); off it the drawn lead.
+                        const double shift = a == 0.0 ? 0.0 : otherShift;
+                        if (std::getenv("MKF_LANE_HEIGHT_DIAG")) {   // ABT #2274 agent-30 diagnostics, remove before commit
+                            std::cerr << std::setprecision(6) << "[lane-height-box] " << label_of(route) << " vs " << label_of(otherRoute)
+                                      << " (turn rect " << path.turnRectangular << ", stub rect " << otherPath.stubRectangular << ", row shift "
+                                      << shift * 1e3 << " mm) at along " << a * 1e3 << " mm" << std::endl;
+                        }
+                        for (size_t w = 0; w + 1 < otherRoute.waypoints.size(); ++w) {
+                            const auto& p = otherRoute.waypoints[w];
+                            const auto& q = otherRoute.waypoints[w + 1];
+                            // The piece's box in the section: its segment swept by its own coated half section.
+                            const double r0 = std::min(p.at(0), q.at(0)) - otherRadialHalf;
+                            const double r1 = std::max(p.at(0), q.at(0)) + otherRadialHalf;
+                            const double y0 = std::min(p.at(1), q.at(1)) + shift - otherAxialHalf;
+                            const double y1 = std::max(p.at(1), q.at(1)) + shift + otherAxialHalf;
+                            double penetration = 0;
+                            if (path.turnRectangular) {
+                                penetration = std::min(std::min(turnRadius + turnRadialHalf, r1) - std::max(turnRadius - turnRadialHalf, r0),
+                                                       std::min(height + turnAxialHalf, y1) - std::max(height - turnAxialHalf, y0));
+                            }
+                            else {
+                                const double dr = std::max({r0 - turnRadius, 0.0, turnRadius - r1});
+                                const double dy = std::max({y0 - height, 0.0, height - y1});
+                                penetration = turnAxialHalf - std::hypot(dr, dy);
+                            }
+                            deepest = std::max(deepest, penetration);
+                        }
+                        if (!atStation) {
+                            atStation = deepest;   // only what the turn's departure from its station adds is judged
+                            continue;
+                        }
+                        if (deepest - atStation.value() > worst) {
+                            worst = deepest - atStation.value();
+                            worstHeight = height;
+                        }
+                    }
+                    }
+                    if (worst > contact) {
+                        std::ostringstream text;
+                        text << "with its lane at x = " << mm(slot) << " its "
+                             << (route.kind == ConnectionKind::TERMINAL_ENTRANCE ? "first" : "last") << " turn passes the lead of "
+                             << label_of(otherRoute) << " (lane x = " << mm(otherSlot) << ") at y = " << mm(worstHeight) << " (station "
+                             << mm(station) << "), " << mm(worst) << " into its copper";
+                        witnesses.push_back(text.str());
+                    }
+                }
+                for (const auto& witness : witnesses) {
+                    LeadFinding finding;
+                    finding.kind = LeadFindingKind::LANES_DO_NOT_FIT;
+                    finding.witness = "The terminal lead of " + label_of(route) + " does not fit its lane: " + witness + ".";
+                    if (std::getenv("MKF_LANE_HEIGHT_DIAG")) {   // ABT #2274 agent-10 diagnostics, remove before commit
+                        std::cerr << "[lane-height] " << finding.witness << std::endl;
+                    }
+                    plan.findings[k].push_back(finding);
+                }
+            }
+        };
         auto plan_lanes = [&](const std::vector<ConnectionRoute>& trialRoutes) {
             LanePass result;
             std::vector<ConnectionRoute> slotRoutes;
@@ -4123,7 +6611,10 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces(
             std::vector<double> slotAttachAdvance;
             std::vector<std::optional<TerminalTurnPath>> slotTurnPaths;
             for (size_t index = 0; index < trialRoutes.size(); ++index) {
-                if (isOutsideLink[index]) {
+                // ABT #2274: a foil end's axial lead (ConnectionRoute::axialLead, ABT #1907) takes no lane on the
+                // connection plane: it stands on its own sheet at AxialLead::alongFace, which the sheet's own end
+                // fixes. It is judged by axial_lead_findings below, at that real extent, not as a radial lane.
+                if (isOutsideLink[index] || trialRoutes[index].axialLead) {
                     continue;
                 }
                 slotRoutes.push_back(trialRoutes[index]);
@@ -4133,6 +6624,134 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces(
                 result.slotRouteIndex.push_back(index);
                 slotTurnPaths.push_back(turnPaths[index]);
             }
+            // ABT #2274 (rule 3): the plan's bundle-order choice asks the window check (1) of lane_height_findings.
+            const lane_plan_detail::LaneWindowJudge windowJudge = [&](size_t k, double lane) {
+                return lane_window_misfit(trialRoutes, result.slotRouteIndex.at(k), lane).has_value();
+            };
+            const lane_plan_detail::ScopedLaneWindowJudge scopedWindowJudge(windowJudge);
+            // ABT #2274 (Alf, 2026-11-08 TRY: "ideally the spiral ends on the connection"): the lane at which a
+            // slot-step lead's turn reaches its row, so the plan can stand it there (step zero). Same scope as
+            // plan_slot_step_ramps: a flat face, a turn with its own climb; only on the face straight, where the
+            // path length from the crossing is x itself.
+            const lane_plan_detail::LaneStepZero stepZero = [&](size_t k) -> std::optional<double> {
+                const size_t index = result.slotRouteIndex.at(k);
+                const auto& route = trialRoutes[index];
+                const auto found = slotStepRampPlans.find(std::make_tuple(route.winding, route.parallel, route.kind));
+                if (found == slotStepRampPlans.end() || !turnPaths[index] || route.liftLength || route.axialLead ||
+                    turnPaths[index]->shape == ColumnShape::ROUND || std::isnan(attachAxial[index]) || std::isnan(attachAdvance[index]) ||
+                    attachAdvance[index] == 0) {
+                    return std::nullopt;
+                }
+                const auto& path = turnPaths[index].value();
+                const double along = (attachAxial[index] - found->second.rowY) * path.length / attachAdvance[index];
+                if (!(std::abs(along) <= path.faceHalfStraight)) {
+                    return std::nullopt;
+                }
+                return along;
+            };
+            const lane_plan_detail::ScopedLaneStepZero scopedStepZero(stepZero);
+            // ABT #2274 (Alf, 2026-11-15, realwinding_interleaved_full_section_e16: "Leads move out"). A terminal lead
+            // stands BEYOND every edge return it would cross. An inter-section return that lays a lane (an
+            // EDGE_CONTINUATION, compute_ride_placement) runs along the window edge at its lane's x on the connection
+            // face; a lead whose stub or row meets that return in the window section meets it in copper wherever the two
+            // overlap along x. Spec S0 puts the returns of every non-primary group on +x, and the in/out order puts every
+            // output there too: on that fixture the Primary's exits stood at +0.339 / +0.650 mm with the Secondary's
+            // returns at +0.367 / +0.734 mm, and each exit stub rose 311 um through a return. The lead gives way: on a
+            // flat face its lane is at least the return's far edge plus half the lead, for every such return on the
+            // half it is placed on (the crossing lane, x = 0, counts on both halves). A Z dragback is not in this
+            // floor: a lead is judged against it where it stands (judge_level_rows) and takes a row end there.
+            std::optional<RidePlacement> edgeReturnLanes;
+            const auto crossedEdgeReturnFloor = [&](size_t index, int half) -> std::optional<double> {
+                const auto& lead = trialRoutes[index];
+                if (!settings.get_coil_use_real_winding_geometry() || (lead.kind != ConnectionKind::TERMINAL_ENTRANCE && lead.kind != ConnectionKind::TERMINAL_EXIT) || !turnPaths[index] ||
+                    turnPaths[index]->shape == ColumnShape::ROUND || lead.waypoints.size() < 2) {
+                    return std::nullopt;
+                }
+                if (!edgeReturnLanes) {
+                    edgeReturnLanes = compute_ride_placement(trialRoutes);
+                }
+                const double touching = 1e-9;   // copper touching is not copper inside copper
+                const auto boxesOf = [&](size_t routeIndex) {
+                    std::vector<std::array<double, 4>> boxes;   // r0, r1, y0, y1
+                    const double halfSize = routeDiameters[routeIndex] / 2;
+                    const auto& points = trialRoutes[routeIndex].waypoints;
+                    for (size_t w = 0; w + 1 < points.size(); ++w) {
+                        boxes.push_back({std::min(points[w].at(0), points[w + 1].at(0)) - halfSize,
+                                         std::max(points[w].at(0), points[w + 1].at(0)) + halfSize,
+                                         std::min(points[w].at(1), points[w + 1].at(1)) - halfSize,
+                                         std::max(points[w].at(1), points[w + 1].at(1)) + halfSize});
+                    }
+                    return boxes;
+                };
+                const auto own = boxesOf(index);
+                std::optional<double> floor;
+                for (size_t other = 0; other < trialRoutes.size(); ++other) {
+                    const auto& edgeReturn = trialRoutes[other];
+                    if (other == index || edgeReturn.kind != ConnectionKind::EDGE_CONTINUATION || edgeReturn.side != lead.side ||
+                        edgeReturn.waypoints.size() < 2 || !edgeReturnLanes->laneOffset[other]) {
+                        continue;
+                    }
+                    const double x = edgeReturnLanes->laneOffset[other].value();
+                    if (double(half) * x < 0) {
+                        continue;   // the return runs on the other half
+                    }
+                    bool crosses = false;
+                    for (const auto& a : own) {
+                        for (const auto& b : boxesOf(other)) {
+                            crosses = crosses || (std::min(a[1], b[1]) - std::max(a[0], b[0]) > touching &&
+                                                  std::min(a[3], b[3]) - std::max(a[2], b[2]) > touching);
+                        }
+                    }
+                    if (!crosses) {
+                        continue;
+                    }
+                    floor = std::max(floor.value_or(0.0), std::abs(x) + routeDiameters[other] / 2 + routeDiameters[index] / 2);
+                }
+                return floor;
+            };
+            const lane_plan_detail::LaneFloor laneFloor = [&](size_t k, int half) -> std::optional<double> {
+                const size_t index = result.slotRouteIndex.at(k);
+                std::optional<double> floor = crossedEdgeReturnFloor(index, half);
+                const auto found = laneFloorU.find(index);
+                if (found != laneFloorU.end()) {
+                    floor = std::max(floor.value_or(0.0), found->second);
+                }
+                return floor;
+            };
+            const lane_plan_detail::ScopedLaneFloor scopedLaneFloor(laneFloor);
+            // ABT #2274 (agent 27): how each lead is drawn where it leaves its turn, for the tie judge -- plan_slot_step_ramps'
+            // scope (a slot-step plan, a lane on the flat face straight, a turn with its own climb, not landed, not lifted, not
+            // axial): a row end when the settle gave it one, else a level row.
+            std::set<std::string> landedForLevel;
+            for (const auto& link : trialRoutes) {
+                if (link.kind == ConnectionKind::FINAL_LANDING) {
+                    landedForLevel.insert(link.toTurn);
+                    landedForLevel.insert(link.fromTurn);
+                }
+            }
+            const lane_plan_detail::LaneLevelLeads levelLeads = [&](size_t k, double lane) -> std::optional<lane_plan_detail::LaneLevelLead> {
+                const size_t index = result.slotRouteIndex.at(k);
+                const auto& route = trialRoutes[index];
+                const auto key = std::make_tuple(route.winding, route.parallel, route.kind);
+                const auto found = slotStepRampPlans.find(key);
+                const std::string& turnName = route.kind == ConnectionKind::TERMINAL_ENTRANCE ? route.toTurn : route.fromTurn;
+                if (!levelLeadRows || found == slotStepRampPlans.end() || !turnPaths[index] || route.waypoints.empty() || route.liftLength ||
+                    route.axialLead || landedForLevel.count(turnName) ||
+                    std::isnan(attachAxial[index]) || std::isnan(attachAdvance[index]) || !(std::abs(lane) < turnPaths[index]->laneBound - 1e-12)) {
+                    return std::nullopt;
+                }
+                lane_plan_detail::LaneLevelLead lead;
+                lead.rowY = found->second.rowY;
+                lead.rowEnd = rowEndLeads.count(key) > 0;
+                lead.fromX = turnPaths[index]->faceHalfStraight;
+                if (lead.rowEnd && turnPaths[index]->shape == ColumnShape::ROUND) {
+                    const bool entranceLead = route.kind == ConnectionKind::TERMINAL_ENTRANCE;
+                    lead.fromAlong = entranceLead ? -turnPaths[index]->length : turnPaths[index]->length;
+                    lead.fromY = entranceLead ? attachAxial[index] + attachAdvance[index] : attachAxial[index] - attachAdvance[index];
+                }
+                return lead;
+            };
+            const lane_plan_detail::ScopedLaneLevelLeads scopedLevelLeads(levelLeads);
             result.plan = terminal_lane_plan(slotRoutes, slotDiameters, slotAttachAxial, is_real_winding_blocking_applied(),
                                              slotAttachAdvance,
                                              is_real_winding_blocking_applied() ? slotTurnPaths
@@ -4142,6 +6761,7 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces(
             for (size_t k = 0; k < result.plan.slots.size(); ++k) {
                 result.slots[result.slotRouteIndex[k]] = result.plan.slots[k];
             }
+            lane_height_findings(trialRoutes, result.slotRouteIndex, result.plan);
             for (size_t k = 0; k < rampPlans.size(); ++k) {
                 const size_t index = rampRouteIndex[k];
                 const auto& route = trialRoutes[index];
@@ -4162,6 +6782,10 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces(
         struct LeadState {
             std::optional<double> ramp;
             std::optional<double> standoff;
+            // ABT #2274 (Alf, 2026-11-09, G2): set when no ramp is consistent with the lead's lane and no standoff up to
+            // the face end gives it a slot that needs none. The lead is drawn as the pass planned it and the witness is
+            // published as a NO_CONSISTENT_RAMP finding (spec section 17: drawn and reported; advisers and MVB++ refuse).
+            std::optional<std::string> refusal;
         };
         auto span_of = [](const ConnectionRoute& route) {
             if (route.rampLength && route.laneStandoff) {
@@ -4199,40 +6823,111 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces(
             const auto perturbed = plan_lanes(trialRoutes);
             const double measured = (perturbed.slots[index].value() - s0) / rampStep;
             const double d = std::round(measured);
+            if (std::getenv("MKF_RAMP_SETTLE_DIAG")) {   // ABT #2274 agent-33 diagnostics (G2), remove before commit
+                std::cerr << std::setprecision(9) << "[ramp-decide] " << label << " span0 " << span0 * 1e3 << " slot " << s0 * 1e3
+                          << " perturbed " << (route.rampLength ? "ramp" : "standoff") << " d " << measured << " need "
+                          << (need ? std::to_string(need.value() * 1e3) : std::string("-")) << std::endl;
+            }
             if (std::abs(measured - d) > 1e-3 || std::abs(d) > 1) {
                 throw std::logic_error("The exit slot of the terminal lead of " + label + " moves by " + std::to_string(measured) +
                                        " times a nanometre's change of its own span, not by 0 or 1: its lane plan changes there, so its ramp cannot be solved");
             }
-            if (d == 0) {
-                return {need, std::nullopt};   // its slot does not move with its span: the pass's value
-            }
             const double bend = route.plannedBendRadius;
+            // Section 18: the first span from the packed slot outwards where no ramp is needed, the ramp needed at a span
+            // given by needOf.
+            // ABT #2274 (Alf, 2026-11-09, G2: "bound the search"): a standoff is the stretch of the face from the packed slot
+            // outwards (lane_footprint: an exit's towards +x, an entrance's towards -x); it ends at the face end, the turn's
+            // half extent along the face (TerminalTurnPath::laneBound). That is the search's geometric limit.
+            if (!turnPaths[index]) {
+                throw std::logic_error("The terminal lead of " + label + " has a stub to settle but no turn path, so its face end is unknown");
+            }
+            const double outward = route.kind == ConnectionKind::TERMINAL_EXIT ? 1.0 : -1.0;
+            auto face_end_standoff = [&](double packedSlot) { return turnPaths[index]->laneBound - outward * packedSlot; };
+            auto first_unramped_of = [&](const std::function<std::optional<double>(double)>& needOf, double packed,
+                                         double faceEnd) -> LeadState {
+                if (!(faceEnd > 0)) {
+                    std::ostringstream out;
+                    out << std::setprecision(6) << "The terminal lead of " << label << " needs a " << packed * 1e3 << " mm ramp at its "
+                        << "packed slot, which lies " << -faceEnd * 1e3 << " mm past its face end, so no standoff can follow it";
+                    return {std::nullopt, std::nullopt, out.str()};
+                }
+                double defined = 0.0;
+                double undefined = std::min(packed + bend, faceEnd);   // where the ramp it needs packed would put it
+                while (needOf(undefined)) {
+                    defined = undefined;
+                    if (undefined >= faceEnd) {
+                        std::ostringstream out;
+                        out << std::setprecision(6) << "The terminal lead of " << label << " finds no ramp consistent with its lane and no "
+                            << "standoff up to its face end (" << faceEnd * 1e3 << " mm beyond its packed slot) where its stub holds both "
+                            << "bends without one: at that standoff it still needs a " << needOf(faceEnd).value() * 1e3 << " mm ramp";
+                        return {std::nullopt, std::nullopt, out.str()};
+                    }
+                    undefined = std::min(2 * undefined, faceEnd);
+                }
+                while (undefined - defined > 1e-14) {
+                    const double mid = (defined + undefined) / 2;
+                    (needOf(mid) ? defined : undefined) = mid;
+                }
+                return {std::nullopt, undefined};
+            };
+            if (d == 0) {
+                // ABT #2274 (Alf, 2026-11-09, G2: "judge at the proposed span"): a nanometre does not move its slot, but the
+                // slot is not a smooth function of the span (PQ2715: span 0 -> slot 0, span 0.9498 mm -> slot -1.48 mm). The
+                // state the pass proposes (the ramp its slot needs, or none) is planned at the span it really occupies; where
+                // that moves the slot, the proposal is not consistent with its lane and the lead takes section 18's first
+                // unramped standoff, found by planning the lanes at each trial standoff (no linear model of the slot).
+                const double proposedSpan = need ? need.value() + bend : 0.0;
+                auto planned_slot = [&](std::optional<double> ramp, std::optional<double> standoff) {
+                    auto trial = routes;
+                    trial[index].rampLength = ramp;
+                    trial[index].laneStandoff = standoff;
+                    const auto planned = plan_lanes(trial);
+                    if (!planned.slots[index]) {
+                        throw std::logic_error("The lane plan gives the terminal lead of " + label + " no exit slot at a trial span");
+                    }
+                    return planned.slots[index].value();
+                };
+                if (std::abs(proposedSpan - span0) <= 1e-12 ||
+                    std::abs(planned_slot(need, std::nullopt) - s0) <= 1e-12) {
+                    return {need, std::nullopt};   // its slot stays where the pass put it at the span it would occupy
+                }
+                auto need_planned = [&](double span) {
+                    const double slot = planned_slot(std::nullopt, span > 0 ? std::optional<double>(span) : std::nullopt);
+                    const auto planned = ramp_at(k, route, slot);
+                    if (std::getenv("MKF_RAMP_SETTLE_DIAG")) {   // ABT #2274 agent-36 diagnostics (G2), remove before commit
+                        std::cerr << std::setprecision(9) << "[a36-need-planned] " << label << " span " << span * 1e3 << " mm -> slot "
+                                  << slot * 1e3 << " mm, need " << (planned ? std::to_string(planned.value() * 1e3) : std::string("-")) << std::endl;
+                    }
+                    return planned;
+                };
+                const double packedSlot = planned_slot(std::nullopt, std::nullopt);
+                const auto packedPlanned = need_planned(0.0);
+                if (!packedPlanned) {
+                    return {};   // its packed slot holds both bends
+                }
+                // ABT #2274 (Alf, 2026-11-09, G2: "refuse with a finding"): the ramp it needs moves its slot, and when no
+                // standoff -- not even the whole stretch to its face end -- moves its slot, section 18's first unramped
+                // standoff does not exist (PQ2715 Secondary p0 exit: a 0.9796 mm ramp at slot 0.965 mm, slot 1.4145 mm with
+                // the ramp). The lead is reported with the two slots and the ramp, and the adviser drops the candidate.
+                const double faceEnd = face_end_standoff(packedSlot);
+                if (faceEnd > 0 && std::abs(planned_slot(std::nullopt, faceEnd) - packedSlot) <= 1e-12) {
+                    std::ostringstream out;
+                    out << std::setprecision(6) << "The terminal lead of " << label << " has no ramp consistent with its lane and no "
+                        << "standoff moves it: at its slot " << s0 * 1e3 << " mm it needs a " << need.value() * 1e3 << " mm ramp, which "
+                        << "moves its slot to " << planned_slot(need, std::nullopt) * 1e3 << " mm; unramped, every standoff up to its "
+                        << "face end (" << faceEnd * 1e3 << " mm) leaves it at " << packedSlot * 1e3 << " mm, where it needs a "
+                        << packedPlanned.value() * 1e3 << " mm ramp";
+                    return {std::nullopt, std::nullopt, out.str()};
+                }
+                return first_unramped_of(need_planned, packedPlanned.value(), faceEnd);
+            }
             // The ramp the lead needs when it occupies the span `span`, the others held.
             auto need_at = [&](double span) { return ramp_at(k, route, s0 + d * (span - span0)); };
             const auto packedNeed = need_at(0.0);
             if (!packedNeed) {
                 return {};   // its packed slot holds both bends
             }
-            // Section 18: the first span from the packed slot outwards where no ramp is needed.
-            auto first_unramped = [&]() -> LeadState {
-                double defined = 0.0;
-                double undefined = packedNeed.value() + bend;   // where the ramp it needs packed would put it
-                int step = 0;
-                while (need_at(undefined)) {
-                    defined = undefined;
-                    undefined *= 2;
-                    if (++step >= 64) {
-                        throw InvalidInputException(ErrorCode::INVALID_INPUT,
-                            "The terminal lead of " + label + " finds no ramp consistent with its lane and no lane up to " +
-                            millimetres(undefined) + " beyond its packed slot where its stub holds both bends without one.");
-                    }
-                }
-                while (undefined - defined > 1e-14) {
-                    const double mid = (defined + undefined) / 2;
-                    (need_at(mid) ? defined : undefined) = mid;
-                }
-                return {std::nullopt, undefined};
-            };
+            auto first_unramped = [&]() -> LeadState { return first_unramped_of(need_at, packedNeed.value(), face_end_standoff(s0 - d * span0)); };
             auto residual = [&](double r) -> std::optional<double> {
                 const auto ramp = need_at(r + bend);
                 if (!ramp) {
@@ -4320,77 +7015,79 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces(
             }
             return {root, std::nullopt};
         };
-        // Spec section 22: which leads overflow onto the spare half is decided ONCE, on the first pass
-        // (no ramps yet), and kept by every later pass and every ramp trial (ConnectionRoute::laneOverflow,
-        // read back by terminal_lane_plan): the half a lead packs on is then no step function of the
-        // ramps, so the ramp solve sees each slot move continuously with its span and the passes settle.
-        // Spec section 23 (Alf, 2026-10-27, "Second face when full"): S0 packs every isolation group on one
-        // face and section 22 lets a group overflow into the spare half. Only when BOTH halves of that face
-        // are full -- a lead allowed to overflow still finds no lane there (LANES_DO_NOT_FIT) -- does the next
-        // isolation group, and every group after it in S0 order, move to the other face, with all its routes.
-        // The face's first group keeps it. Pinned windings keep the face their pins decide (section 12). A
-        // group moves once: when the other face is full too, the plan is drawn and reported (section 17).
-        // Decided on the first pass, before any ramp is solved, like section 22's overflow; a move changes the
-        // dragback rides each turn path is charged, so the turn paths are taken again on the new faces.
-        std::vector<IsolationSide> groupOrder{IsolationSide::PRIMARY};
-        for (const auto& lane : laneWindings) {
-            if (std::find(groupOrder.begin(), groupOrder.end(), lane.second) == groupOrder.end()) {
-                groupOrder.push_back(lane.second);
+        // Spec section 22 (Alf, 2026-10-27, "Overflow to spare half"; confirmed 2026-11-07: "a terminal MAY move
+        // to the other x half to avoid other terminals"): which leads overflow onto the spare half is decided
+        // ONCE, on the first pass (no ramps yet), and kept by every later pass and every ramp trial
+        // (ConnectionRoute::laneOverflow, read back by terminal_lane_plan): the half a lead packs on is then no
+        // step function of the ramps, so the ramp solve sees each slot move continuously with its span and the
+        // passes settle.
+        // ABT #2274 (Alf's lead rule, 2026-11-08: "Z-face moves only for isolation side / inductor in-out / user -- never for
+        // fit"): spec section 23 (a group that does not fit its face moved to the other face) is removed. A lead that does
+        // not fit stays on the face S0 or its pins give it, drawn and reported (section 17).
+        // ABT #2274 (Alf, 2026-11-06, two_switch_forward_transformer_complete): a foil end's axial leads
+        // (AxialLead, ABT #1907) are judged at their REAL extent. The leads of one winding end stand side by
+        // side along the face from the crossing, one outer diameter each (AxialLead::alongFace), on the side
+        // the sheet's own end fixes: an entrance's where its first turn leaves the crossing (x <= 0, the way
+        // every turn leaves), an exit's back along the way its last turn arrives (x >= 0). MKF cannot move
+        // them to another lane, so a bundle that leaves its room is reported as LANES_DO_NOT_FIT, which
+        // which is drawn and reported on its face (section 17; no face move for fit):
+        //   - past the face's straight (TerminalTurnPath::laneBound), on any face;
+        //   - spec S0, on a face shared by more than one isolation group: on the half that is not its
+        //     group's (the primary's group packs on x <= 0, every other group on x >= 0).
+        auto axial_lead_findings = [&](const std::vector<ConnectionRoute>& trial) {
+            std::map<size_t, std::vector<LeadFinding>> found;
+            if (!is_real_winding_blocking_applied()) {
+                return found;
             }
-        }
-        auto group_rank = [&](const std::string& winding) {
-            const auto side = get_functional_description()[get_winding_index_by_name(winding)].get_isolation_side();
-            return static_cast<size_t>(std::find(groupOrder.begin(), groupOrder.end(), side) - groupOrder.begin());
-        };
-        std::set<size_t> movedGroups;
-        auto move_full_face_groups = [&](const LanePass& evaluated) {
-            if (!is_real_winding_blocking_applied() || laneWindings.size() < 2) {
-                return false;
-            }
-            std::set<int> faces;
-            for (const auto& route : routes) {
-                faces.insert(route.side);
-            }
-            for (const int face : faces) {
-                std::optional<size_t> unfitRank;
-                std::optional<size_t> firstRank;
-                for (size_t k = 0; k < evaluated.slotRouteIndex.size(); ++k) {
-                    const auto& route = routes[evaluated.slotRouteIndex[k]];
-                    if (route.side != face) {
-                        continue;
-                    }
-                    const size_t rank = group_rank(route.winding);
-                    firstRank = firstRank ? std::min(firstRank.value(), rank) : rank;
-                    if (pinSides.faceByWinding.count(route.winding)) {
-                        continue;
-                    }
-                    for (const auto& finding : evaluated.plan.findings[k]) {
-                        if (finding.kind == LeadFindingKind::LANES_DO_NOT_FIT) {
-                            unfitRank = unfitRank ? std::min(unfitRank.value(), rank) : rank;
-                        }
-                    }
-                }
-                if (!unfitRank) {
+            std::map<int, std::set<IsolationSide>> groupsOnFace;
+            std::map<std::tuple<int, std::string, ConnectionKind>, std::vector<size_t>> bundles;
+            for (size_t index = 0; index < trial.size(); ++index) {
+                const auto& route = trial[index];
+                if (route.kind != ConnectionKind::TERMINAL_ENTRANCE && route.kind != ConnectionKind::TERMINAL_EXIT) {
                     continue;
                 }
-                const size_t fromRank = std::max(unfitRank.value(), firstRank.value() + 1);
-                bool moved = false;
-                for (auto& route : routes) {
-                    const size_t rank = group_rank(route.winding);
-                    if (route.side == face && rank >= fromRank && !movedGroups.count(rank) &&
-                        !pinSides.faceByWinding.count(route.winding)) {
-                        route.side = 1 - face;
-                        moved = true;
-                    }
-                }
-                if (moved) {
-                    for (size_t rank = fromRank; rank < groupOrder.size(); ++rank) {
-                        movedGroups.insert(rank);
-                    }
-                    return true;
+                groupsOnFace[route.side].insert(get_functional_description()[get_winding_index_by_name(route.winding)].get_isolation_side());
+                if (route.axialLead) {
+                    bundles[{route.side, route.winding, route.kind}].push_back(index);
                 }
             }
-            return false;
+            for (const auto& [key, members] : bundles) {
+                const auto& [face, winding, kind] = key;
+                const bool entrance = kind == ConnectionKind::TERMINAL_ENTRANCE;
+                double width = 0;
+                for (size_t index : members) {
+                    width += routeDiameters[index];
+                }
+                if (!turnPaths[members.front()]) {
+                    throw std::logic_error("The axial lead of winding '" + winding + "' parallel " +
+                                           std::to_string(trial[members.front()].parallel) +
+                                           " has no turn path, so the straight of the face its sheet ends on is unknown");
+                }
+                const double bound = turnPaths[members.front()]->laneBound;
+                // ABT #2274 (agent 23): the spec-S0 group half is superseded by Alf's rule (2026-11-08: every winding's
+                // inputs on -x, outputs on +x), which a foil end meets by construction (an entrance stands on x <= 0, an
+                // exit on x >= 0). What is left to judge is the straight: the bundle from its start (axial_bundle_start).
+                const double start = axial_bundle_start(trial, members);
+                std::ostringstream witness;
+                witness << std::setprecision(6) << "the " << members.size() << " " << (entrance ? "start" : "finish") << " leads of winding '" << winding
+                        << "' leave axially side by side over x = " << (entrance ? -(start + width) : start) * 1e3 << " .. "
+                        << (entrance ? -start : start + width) * 1e3 << " mm of face " << face << " (" << members.size() << " x "
+                        << routeDiameters[members.front()] * 1e3 << " mm, from where the sheets "
+                        << (entrance ? "start" : "end") << ")";
+                if (start + width > bound + 1e-12) {
+                    witness << ", past the face's straight of " << bound * 1e3 << " mm";
+                }
+                else {
+                    continue;
+                }
+                for (size_t index : members) {
+                    LeadFinding finding;
+                    finding.kind = LeadFindingKind::LANES_DO_NOT_FIT;
+                    finding.witness = witness.str();
+                    found[index].push_back(finding);
+                }
+            }
+            return found;
         };
         // Section 22's overflow is decided on the first plan; the ramps are then solved on a plan made
         // under that decision, never on the plan it was taken from: a ramp's trial (decide) re-plans
@@ -4410,27 +7107,317 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces(
             }
             return plan_lanes(routes);
         };
-        auto retake_turn_paths = [&]() {
-            for (size_t index = 0; index < routes.size(); ++index) {
-                if (!turnPaths[index]) {
-                    continue;
-                }
-                const auto& route = routes[index];
-                const std::string& turnName = route.kind == ConnectionKind::TERMINAL_ENTRANCE ? route.toTurn : route.fromTurn;
-                const auto turn = std::find_if(turnsForSlots.begin(), turnsForSlots.end(),
-                                               [&](const Turn& candidate) { return candidate.get_name() == turnName; });
-                if (turn == turnsForSlots.end()) {
-                    throw std::logic_error("The attach turn '" + turnName + "' of a terminal route moved to the other face is gone");
-                }
-                turnPaths[index] = terminal_turn_path(route, *turn, routes);
-            }
-        };
         // Whether a face is full is judged on the SETTLED plan (its ramps take lanes too); a move starts the
         // ramps over from the stubs' first plans on the new faces.
         std::vector<std::pair<std::optional<double>, std::optional<double>>> initialSpans;
         for (const auto& route : routes) {
             initialSpans.emplace_back(route.rampLength, route.laneStandoff);
         }
+        // ABT #2274 (Alf, 2026-11-13, replacing the low row of 2026-11-09 and the duck route of agents 39-40): on a ROUND turn
+        // a terminal lead whose stub (its rise from where its turn stands at its lane to its row) is crossed by another
+        // conductor's wrap on the same layer is reported, not re-routed. The end-turn height order of the lanes (CoilPins.cpp,
+        // place_bundle) is what keeps siblings' turns off the leads; a lead still crossed after it keeps its planned route and
+        // carries a LEVEL_ROW_CLASH finding with the crossing wrap and the numbers. Runs after the lanes have settled.
+        auto report_crossed_leads = [&]() {
+            if (!levelLeadRows) {
+                return;
+            }
+            // The rides are placed only once a lead is a candidate: a settle with no crossed round stub asks nothing of them,
+            // and placing them here on every settle put their refusals ahead of the layout's own (agent 38: the sibling-link
+            // refusal of [abt1424-dragback] became a ride-level throw).
+            std::optional<RidePlacement> placedRides;
+            ConnectionLayout rides;
+            const double twoPi = 2 * std::numbers::pi;
+            auto label_of = [](const ConnectionRoute& r) {
+                return "winding '" + r.winding + "' parallel " + std::to_string(r.parallel) +
+                       (r.kind == ConnectionKind::TERMINAL_ENTRANCE ? " entrance" : " exit");
+            };
+            auto key_of = [](const ConnectionRoute& r) { return std::make_tuple(r.winding, r.parallel, r.kind); };
+            auto from_height = [&](size_t k) {
+                return routes[k].kind == ConnectionKind::TERMINAL_ENTRANCE ? attachAxial[k] + attachAdvance[k] : attachAxial[k] - attachAdvance[k];
+            };
+            struct Candidate {
+                size_t index;
+                double lane, radius, attachY, border, half;
+                double depth;   // where its stub stands at its lane: sqrt(r^2 - lane^2) + its ride (face-normal convention)
+                int s;   // the stub's direction along the turn axis, attach -> row
+            };
+            std::vector<Candidate> candidates;
+            std::set<std::string> landedTurns;
+            for (const auto& link : routes) {
+                if (link.kind == ConnectionKind::FINAL_LANDING) {
+                    landedTurns.insert(link.toTurn);
+                    landedTurns.insert(link.fromTurn);
+                }
+            }
+            for (size_t index : rampRouteIndex) {
+                const auto& route = routes[index];
+                const auto plan = stubRampPlans.find(key_of(route));
+                const bool entrance = route.kind == ConnectionKind::TERMINAL_ENTRANCE;
+                const std::string& turnName = entrance ? route.toTurn : route.fromTurn;
+                if (plan == stubRampPlans.end() || !exitSlots[index] || !turnPaths[index] || turnPaths[index]->shape != ColumnShape::ROUND ||
+                    route.waypoints.size() < 2 || route.liftLength || route.axialLead || route.laneTangential.value_or(false) ||
+                    route.tangentDeparture || landedTurns.count(turnName) || std::isnan(attachAxial[index]) || std::isnan(attachAdvance[index])) {
+                    continue;
+                }
+                const auto& path = turnPaths[index].value();
+                const double lane = exitSlots[index].value();
+                const double attachY = attachAxial[index] - attachAdvance[index] * terminal_lead_along(route, path, lane) / path.length;
+                const double border = plan->second.rowY;
+                if (roundFloat(border - attachY) == 0) {
+                    continue;
+                }
+                const auto& attach = entrance ? route.waypoints.back() : route.waypoints.front();
+                if (!placedRides) {
+                    placedRides = compute_ride_placement(routes);
+                    rides.rideLevels = placedRides->levels;
+                }
+                // ABT #2274 (agent 43): the ride is a translation along the face normal (ConnectionRideLevel::rise), as MVB++
+                // draws it: the turn keeps its circle, its face half moves out by its ride.
+                const double radius = attach.at(0);
+                if (!(std::abs(lane) < radius)) {
+                    throw std::logic_error("The lane of " + label_of(route) + " lies past its round turn's radius");
+                }
+                const double depth = std::sqrt(radius * radius - lane * lane) + rides.ride_at(attach.at(0), route.side);
+                candidates.push_back({index, lane, radius, attachY, border, routeDiameters[index] / 2, depth, border > attachY ? 1 : -1});
+            }
+            if (candidates.empty()) {
+                return;
+            }
+            const RidePlacement& ridePlacement = placedRides.value();
+            auto row_end_of = [&](size_t k) -> std::optional<std::pair<double, double>> {   // (row, height where it meets its helix)
+                const auto key = key_of(routes[k]);
+                const auto planned = slotStepRampPlans.find(key);
+                if (rowEndLeads.count(key) && planned != slotStepRampPlans.end() && turnPaths[k] && turnPaths[k]->shape == ColumnShape::ROUND) {
+                    return std::make_pair(planned->second.rowY, from_height(k));
+                }
+                return std::nullopt;
+            };
+            auto lead_of_turn = [&](const std::string& turnName, ConnectionKind kind) -> std::optional<size_t> {
+                for (size_t k = 0; k < routes.size(); ++k) {
+                    if (routes[k].kind == kind && (kind == ConnectionKind::TERMINAL_ENTRANCE ? routes[k].toTurn : routes[k].fromTurn) == turnName) {
+                        return k;
+                    }
+                }
+                return std::nullopt;
+            };
+            // The azimuth where a sibling's wrap ends / starts at its lane on the face. A sibling that is axial, tangential, on a
+            // pin or has no lane on its turn ends its wrap somewhere this detector does not model: no azimuth, and the candidate
+            // whose stub that wrap may cross gets a ROUTE_NOT_MODELLED finding naming it (Alf, 2026-11-13: production refuses,
+            // the adviser drops that candidate with the reason, debug draws it as planned).
+            auto lane_phi = [&](size_t k, double radius) -> std::optional<double> {
+                const auto& r = routes[k];
+                if (r.axialLead || r.laneTangential.value_or(false) || r.tangentDeparture || !r.pinWaypoints.empty() || !exitSlots[k] ||
+                    !(std::abs(exitSlots[k].value()) < radius)) {
+                    return std::nullopt;
+                }
+                return std::asin(exitSlots[k].value() / radius);
+            };
+            struct Crossing {
+                std::string name;
+                double y, needed;
+            };
+            // ABT #2274 (Alf, 2026-11-13, "duck, run along the layer, leave at the border row"): every wrap of every OTHER
+            // conductor where it crosses the candidate's lane plane: its centre (radius, height) there, its coated half and
+            // its climb per length. The wraps are the round row-end judge's: a helix from one station to the next at its
+            // uniform climb, cut at the lanes of the leads that start or end it, re-sloped where that lead has a row end or
+            // start. A wrap that changes layer at the crossing, and a dragback's wrap, are left to the round judge.
+            struct LaneWrap {
+                std::string name;
+                double depth, y, half, k;   // depth: its centre's depth where it crosses the lane plane (face-normal ride)
+            };
+            // sameLayer: only the wraps on the candidate's own layer (the stub's crossings). Otherwise every wrap on the column,
+            // the candidate's own conductor's too but for the wraps of the turn its lead leaves (the channel's walls).
+            auto lane_wraps_of = [&](const Candidate& c, bool sameLayer, std::optional<std::string>& unmodelled) {
+                const auto& own = routes[c.index];
+                const std::string& ownTurn = own.kind == ConnectionKind::TERMINAL_ENTRANCE ? own.toTurn : own.fromTurn;
+                std::vector<LaneWrap> found;
+                for (size_t t = 0; t < turnsForSlots.size(); ++t) {
+                    const auto& from = turnsForSlots[t];
+                    if (from.get_winding() == own.winding && from.get_parallel() == own.parallel && sameLayer) {
+                        continue;
+                    }
+                    std::optional<size_t> next;
+                    for (size_t n = t + 1; n < turnsForSlots.size() && !next; ++n) {
+                        if (turnsForSlots[n].get_winding() == from.get_winding() && turnsForSlots[n].get_parallel() == from.get_parallel()) {
+                            next = n;
+                        }
+                    }
+                    if (!next) {
+                        continue;
+                    }
+                    const auto& to = turnsForSlots[next.value()];
+                    if (!sameLayer && (from.get_name() == ownTurn || to.get_name() == ownTurn)) {
+                        continue;   // the lead's own turn: it ends / starts at the lane, where the lead leaves it
+                    }
+                    if (!to.get_dimensions()) {
+                        throw std::logic_error("The turn '" + to.get_name() + "' states no dimensions, so the crossing check of " + label_of(own) +
+                                               " cannot judge the lead against it");
+                    }
+                    // the coated wire's half (Alf, 2026-11-13, decision 2: a round turn's stored axial extent is helix-stretched)
+                    const auto toWire = resolve_wire(get_winding_index_by_name(to.get_winding()));
+                    const double half = std::max(toWire.get_maximum_outer_width(), toWire.get_maximum_outer_height()) / 2;
+                    const double rideFrom = rides.ride_at(from.get_coordinates().at(0), own.side);
+                    const double rideTo = rides.ride_at(to.get_coordinates().at(0), own.side);
+                    const double rFrom = from.get_coordinates().at(0);
+                    const double rTo = to.get_coordinates().at(0);   // the wrap's own circle; its face half rides rideTo out
+                    if (std::abs(rTo + rideTo - rFrom - rideFrom) > half) {
+                        continue;   // a layer step at the crossing
+                    }
+                    if (!(std::abs(c.lane) < rTo)) {
+                        continue;   // a wrap inside the lane's reach never crosses the lane plane
+                    }
+                    const double depthTo = std::sqrt(rTo * rTo - c.lane * c.lane) + rideTo;
+                    if (sameLayer && !(std::abs(depthTo - c.depth) < half + c.half)) {
+                        continue;   // (for the stub's crossings) a wrap on another layer
+                    }
+                    bool dragged = false;
+                    for (const auto& r : routes) {
+                        dragged = dragged || (r.kind == ConnectionKind::Z_DRAGBACK && r.fromTurn == from.get_name() && r.toTurn == to.get_name());
+                    }
+                    if (dragged) {
+                        continue;   // the dragback leaves the layer at the crossing; the round row-end judge judges it
+                    }
+                    const double yFrom = from.get_coordinates().at(1);
+                    const double yTo = to.get_coordinates().at(1);
+                    const double slope = (yFrom - yTo) / twoPi;
+                    double phiStart = twoPi, yStart = yFrom, phiEnd = 0.0, yEnd = yTo;
+                    const std::string who = label_of(own);
+                    auto sibling_phi = [&](size_t k) -> std::optional<double> {
+                        const auto phi = lane_phi(k, rTo);
+                        if (!phi && !unmodelled) {
+                            unmodelled = "the wrap '" + from.get_name() + "' -> '" + to.get_name() + "' ends / starts at the lead of " +
+                                         label_of(routes[k]) + ", which is axial, tangential, on a pin or has no lane on its turn, so where "
+                                         "it meets the terminal lead of " + who + " is not modelled";
+                        }
+                        return phi;
+                    };
+                    if (const auto in = lead_of_turn(from.get_name(), ConnectionKind::TERMINAL_ENTRANCE)) {
+                        const auto phiIn = sibling_phi(in.value());
+                        if (!phiIn) {
+                            continue;
+                        }
+                        phiStart = twoPi + phiIn.value();
+                        yStart = yTo + slope * phiStart;
+                        if (const auto end = row_end_of(in.value())) {
+                            yStart = end->first;
+                        }
+                    }
+                    if (const auto out = lead_of_turn(to.get_name(), ConnectionKind::TERMINAL_EXIT)) {
+                        const auto phiOut = sibling_phi(out.value());
+                        if (!phiOut) {
+                            continue;
+                        }
+                        phiEnd = phiOut.value();
+                        yEnd = yTo + slope * phiEnd;
+                        if (const auto end = row_end_of(out.value())) {
+                            yEnd = end->first;
+                            if (!lead_of_turn(from.get_name(), ConnectionKind::TERMINAL_ENTRANCE)) {
+                                phiStart = twoPi;
+                                yStart = end->second;
+                            }
+                        }
+                    }
+                    else {
+                        for (size_t k = 0; k < routes.size(); ++k) {
+                            if (routes[k].kind == ConnectionKind::Z_DRAGBACK && routes[k].fromTurn == to.get_name()) {
+                                if (!ridePlacement.laneAzimuth[k]) {
+                                    throw InvalidInputException(ErrorCode::INVALID_INPUT, "The dragback '" + routes[k].fromTurn + "' -> '" + routes[k].toTurn +
+                                        "' on a round column has no lane azimuth, so the crossing check of " + who + " cannot judge the lead against its wrap");
+                                }
+                                phiEnd = -ridePlacement.laneAzimuth[k].value();
+                                yEnd = yTo + slope * phiEnd;
+                            }
+                        }
+                    }
+                    if (!(phiStart > phiEnd)) {
+                        throw std::logic_error("The wrap '" + from.get_name() + "' -> '" + to.get_name() + "' has no length between its lanes on the round column");
+                    }
+                    const double k = (yStart - yEnd) / ((phiStart - phiEnd) * rTo);   // its climb per length along it
+                    const double phiLane = std::asin(c.lane / rTo);
+                    for (double phi : {phiLane, phiLane + twoPi}) {
+                        if (phi >= phiEnd && phi <= phiStart) {
+                            const double y = yEnd + (yStart - yEnd) * (phi - phiEnd) / (phiStart - phiEnd);
+                            found.push_back({"the wrap '" + from.get_name() + "' -> '" + to.get_name() + "'", depthTo, y, half, k});
+                        }
+                    }
+                }
+                return found;
+            };
+            // The wraps on the candidate's layer that cross its stub: the height separation their coated section and the lead's
+            // need (measured across the wrap's own climb; exact for the radial run against the helix tangent; no margin).
+            auto crossings_of = [&](const Candidate& c, std::optional<std::string>& unmodelled) {
+                std::vector<Crossing> found;
+                for (const auto& w : lane_wraps_of(c, true, unmodelled)) {
+                    const double dr = std::abs(w.depth - c.depth);
+                    // ABT #2274 (Alf, 2026-11-15, realwinding_round_2p: "find out why that happens"): a wrap of the NEXT layer
+                    // stands exactly one wire from this lead's depth, and "closer than one wire" read true on rounding
+                    // (dr 0.00095899999999999978 against 0.000959), so layer 1's bottom wrap, 0.35 um below the attach of
+                    // layer 0's lead, was judged a wrap of the lead's own layer lying across its stub. The depths are on the
+                    // nm grid: within half a grid step of one wire apart is one wire apart.
+                    if (!(dr < w.half + c.half - 0.5e-9)) {
+                        continue;   // a wrap on another layer
+                    }
+                    // The lead's radial run starts at its own depth: a wrap inside it is met across the radial offset.
+                    const double radial = w.depth < c.depth ? dr : 0.0;
+                    const double sum = w.half + c.half;
+                    const double needed = std::sqrt(std::max(0.0, sum * sum - radial * radial)) * std::sqrt(1 + w.k * w.k);
+                    // It crosses the stub: on the row side of the attach, and short of clearing the row.
+                    if (c.s * (w.y - c.attachY) > 0 && c.s * (w.y - c.border) < needed) {
+                        found.push_back({w.name, w.y, needed});
+                    }
+                }
+                return found;
+            };
+            std::vector<Candidate> crossed;
+            for (const auto& c : candidates) {
+                std::optional<std::string> unmodelled;
+                const bool isCrossed = !crossings_of(c, unmodelled).empty();
+                if (unmodelled) {
+                    LeadFinding finding;
+                    finding.kind = LeadFindingKind::ROUTE_NOT_MODELLED;
+                    finding.witness = "Real winding: the crossing check of the terminal lead of " + label_of(routes[c.index]) + ": " +
+                                      unmodelled.value() + "; drawn as planned";
+                    routes[c.index].findings.push_back(std::move(finding));
+                }
+                if (isCrossed) {
+                    crossed.push_back(c);
+                }
+            }
+            if (crossed.empty()) {
+                return;
+            }
+            // ABT #2274 (Alf, 2026-11-13): the parallels take their lanes in the order of their end turns' heights (CoilPins.cpp,
+            // place_bundle), so no sibling's turn crosses a lead. A lead whose stub a wrap still crosses gets NO low row and NO
+            // duck route (agents 37-40, removed): it keeps its planned lead, is drawn as planned, and carries a LEVEL_ROW_CLASH
+            // finding naming the crossing wrap and the numbers, for Alf to decide.
+            for (const auto& c : crossed) {
+                auto& route = routes[c.index];
+                std::optional<std::string> unmodelledAgain;   // already recorded above
+                const auto crossings = crossings_of(c, unmodelledAgain);
+                const Crossing* first = &crossings.front();
+                for (const auto& x : crossings) {
+                    if (c.s * (x.y - c.attachY) - x.needed < c.s * (first->y - c.attachY) - first->needed) {
+                        first = &x;
+                    }
+                }
+                std::ostringstream out;
+                out << std::setprecision(6) << "Real winding: after the end-turn height order the terminal lead of " << label_of(route)
+                    << " (lane x = " << c.lane * 1e3 << " mm, its turn at " << c.attachY * 1e3 << " mm there, its stub's row " << c.border * 1e3
+                    << " mm) is still crossed by " << first->name << " at " << first->y * 1e3 << " mm, which needs " << first->needed * 1e3
+                    << " mm of height to the lead (" << crossings.size() << " crossing wrap(s)); drawn as planned, with no low row or duck route";
+                LeadFinding finding;
+                finding.kind = LeadFindingKind::LEVEL_ROW_CLASH;
+                finding.witness = out.str();
+                route.findings.push_back(std::move(finding));
+                if (std::getenv("MKF_LANE_MOVE_DIAG")) {   // ABT #2274 agent-41 diagnostics, remove before commit
+                    std::cerr << "[a41-crossed] " << route.findings.back().witness << std::endl;
+                }
+            }
+        };
+        // ABT #2274 (agent 22, "move the lane"): the routes as the settle starts, restored when a lane move restarts it.
+        const auto routesBeforeSettle = routes;
+        const auto exitSlotsBeforeSettle = exitSlots;
         std::optional<LanePass> firstPass = plan_with_overflow_decided();
         for (size_t pass = 0;; ++pass) {
             const auto evaluated = firstPass ? std::move(firstPass.value()) : plan_lanes(routes);
@@ -4442,15 +7429,25 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces(
                 const auto& route = routes[rampRouteIndex[k]];
                 // A movement below a picometre settles the iteration (the slots move with the spans by
                 // no more), but the stale iterate is never what is published.
+                // A refused lead (G2) keeps the state it was refused in; the ramp its slot needs is not consistent, so
+                // it is not compared with it.
                 if (!same_length(next.back().ramp, route.rampLength) || !same_length(next.back().standoff, route.laneStandoff) ||
-                    !same_length(next.back().ramp, evaluated.ramps[k])) {
+                    (!next.back().refusal && !same_length(next.back().ramp, evaluated.ramps[k]))) {
                     moved = true;
+                }
+                if (std::getenv("MKF_RAMP_SETTLE_DIAG")) {   // ABT #2274 agent-32 diagnostics (G2), remove before commit
+                    auto text = [](const std::optional<double>& v) { return v ? std::to_string(v.value() * 1e3) : std::string("-"); };
+                    std::cerr << "[ramp-settle] pass " << pass << " winding '" << route.winding << "' p" << route.parallel
+                              << (route.kind == ConnectionKind::TERMINAL_EXIT ? " exit" : " entrance") << " slot "
+                              << text(evaluated.slots[rampRouteIndex[k]]) << " ramp " << text(route.rampLength) << " standoff "
+                              << text(route.laneStandoff) << " need " << text(evaluated.ramps[k]) << " -> ramp " << text(next.back().ramp)
+                              << " standoff " << text(next.back().standoff) << std::endl;
                 }
             }
             // Section 22 on the settled plan: a lead decided to stay on its own half (on the first plan,
             // before its neighbours' ramps took lanes) that now fits nowhere there overflows after all, and
             // the face settles again; the decisions only ever turn towards overflow, so this ends. Only a
-            // face whose every unfit lead already overflowed is full (section 23).
+            // face whose every unfit lead already overflowed is full; its misfits are drawn and reported (section 17).
             if (!moved) {
                 bool turnedToOverflow = false;
                 for (size_t k = 0; k < evaluated.slotRouteIndex.size(); ++k) {
@@ -4474,16 +7471,6 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces(
                     pass = 0;
                     continue;
                 }
-            }
-            if (!moved && move_full_face_groups(evaluated)) {
-                for (size_t index = 0; index < routes.size(); ++index) {
-                    routes[index].rampLength = initialSpans[index].first;
-                    routes[index].laneStandoff = initialSpans[index].second;
-                }
-                retake_turn_paths();
-                firstPass = plan_with_overflow_decided();
-                pass = 0;   // a new face assignment settles from its own first plan
-                continue;
             }
             if (!moved) {
                 for (size_t index = 0; index < routes.size(); ++index) {
@@ -4511,8 +7498,81 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces(
                     planned.findings.insert(planned.findings.end(), evaluated.plan.findings[k].begin(),
                                             evaluated.plan.findings[k].end());
                 }
+                // ABT #2274: and the axial leads' misfits that no move could cure (a first group's, a group
+                // already moved once), drawn and reported (spec section 17).
+                for (const auto& [index, findings] : axial_lead_findings(routes)) {
+                    routes[index].findings.insert(routes[index].findings.end(), findings.begin(), findings.end());
+                }
                 for (size_t k = 0; k < rampPlans.size(); ++k) {
                     routes[rampRouteIndex[k]].rampLength = evaluated.ramps[k];
+                    // ABT #2274 (Alf, 2026-11-09, G2): a lead no ramp and no standoff settles is drawn as planned (the ramp
+                    // its packed slot needs) and reported.
+                    if (next[k].refusal) {
+                        LeadFinding finding;
+                        finding.kind = LeadFindingKind::NO_CONSISTENT_RAMP;
+                        finding.witness = next[k].refusal.value();
+                        routes[rampRouteIndex[k]].findings.push_back(std::move(finding));
+                    }
+                }
+                report_crossed_leads();
+                plan_slot_step_ramps();
+                // ABT #2274 (Alf, 2026-11-08, after agent 24: "option one"; it replaces agent 22's lane move): an exit lead
+                // whose level row clashes (judge_level_rows) keeps its crossing row, and its turn ends on that row at its lane
+                // (rowEndLeads, plan_slot_step_ramps). The settle then starts again from the routes it started with and the
+                // rows are judged again; the row end itself is judged exactly after judge_level_rows.
+                if (levelLeadRows) {
+                    bool laneMoved = false;
+                    for (size_t index = 0; index < routes.size(); ++index) {
+                        const auto& route = routes[index];
+                        const bool clashed = std::any_of(route.findings.begin(), route.findings.end(), [](const LeadFinding& finding) {
+                            return finding.kind == LeadFindingKind::LEVEL_ROW_CLASH;
+                        });
+                        if (!clashed) {
+                            continue;
+                        }
+                        if (std::getenv("MKF_LANE_MOVE_DIAG")) {   // ABT #2274 agent-30 diagnostics, remove before commit
+                            for (const auto& finding : route.findings) {
+                                if (finding.kind == LeadFindingKind::LEVEL_ROW_CLASH) {
+                                    std::cerr << "[level-row-clash] " << finding.witness << std::endl;
+                                }
+                            }
+                        }
+                        if (!exitSlots[index] || !turnPaths[index]) {
+                            throw std::logic_error("The level row of winding '" + route.winding + "' parallel " + std::to_string(route.parallel) +
+                                                   " clashes, but its lead has no lane or turn path to move");
+                        }
+                        // ABT #2274 (Alf, 2026-11-08, after agent 24: "option one"): an exit whose level row clashes keeps its
+                        // crossing row and its turn ends on that row at its lane (plan_slot_step_ramps, ConnectionRoute::rowEndX);
+                        // no lane moves. A row-end lead that still clashes, and an entrance (whose turn has no row end), keep
+                        // their LEVEL_ROW_CLASH findings with the numbers, which the consumer refuses.
+                        // ABT #2274 (Alf, 2026-11-09, decision 2): on a ROUND turn an entrance whose level row clashes takes the
+                        // mirror, a row start (its first wrap starts on its crossing row at its lane).
+                        const bool roundTurn = turnPaths[index]->shape == ColumnShape::ROUND;
+                        // ABT #2274 (Alf, 2026-11-15): and on a flat-faced turn too (plan_slot_step_ramps' row start).
+                        (void) roundTurn;
+                        if (route.levelRowShift && (route.kind == ConnectionKind::TERMINAL_EXIT ||
+                                                    route.kind == ConnectionKind::TERMINAL_ENTRANCE)) {
+                            const bool entranceRow = route.kind == ConnectionKind::TERMINAL_ENTRANCE;
+                            rowEndLeads.insert(std::make_tuple(route.winding, route.parallel, route.kind));
+                            laneMoves.push_back(std::string(entranceRow ? "row start" : "row end") + " for winding '" + route.winding +
+                                                "' parallel " + std::to_string(route.parallel) + (entranceRow ? " entrance" : " exit"));
+                            laneMoved = true;
+                        }
+                        continue;
+                    }
+                    if (laneMoved) {
+                        routes = routesBeforeSettle;
+                        exitSlots = exitSlotsBeforeSettle;
+                        levelRowShift.clear();
+                        firstPass = plan_with_overflow_decided();
+                        pass = 0;
+                        continue;
+                    }
+                    if (!laneMoves.empty() && std::getenv("MKF_LANE_MOVE_DIAG")) {   // ABT #2274 agent-22 diagnostics, remove before commit
+                        for (const auto& move : laneMoves) {
+                            std::cerr << "[lane-move] " << move << std::endl;
+                        }
+                    }
                 }
                 break;
             }
@@ -4587,11 +7647,19 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces(
                 }
                 if (terminal && exitSlots[index]) {
                     // The stretch the lead occupies along the face (lane_footprint): a ramped entrance's
-                    // reaches towards lower x, a ramped exit's towards higher x.
-                    const double span = route.rampLength ? route.rampLength.value() + route.plannedBendRadius : 0.0;
+                    // reaches towards lower x, a ramped exit's towards higher x. ABT #2274 item E (agent 48): on a
+                    // round column that is its BUILT climb (terminal_climb_span), not the S-ramp nobody draws.
                     const double slot = exitSlots[index].value();
-                    const double low = route.kind == ConnectionKind::TERMINAL_ENTRANCE ? slot - span : slot;
-                    const double high = route.kind == ConnectionKind::TERMINAL_ENTRANCE ? slot : slot + span;
+                    std::optional<TerminalTurnPath> path = turnPaths[index];
+                    if (path) {
+                        path->attachStation = attachAxial[index];
+                        path->attachAdvance = attachAdvance[index];
+                    }
+                    // (an unramped lead keeps its slot alone here, as before: its standoff is not this change)
+                    const auto footprint = route.rampLength ? terminal_lane_footprint(route, path ? &path.value() : nullptr, slot)
+                                                            : std::pair<double, double>{slot, slot};
+                    const double low = footprint.first;
+                    const double high = footprint.second;
                     furthestTerminal = std::max({furthestTerminal, half * low, half * high});
                 }
                 if (isOutsideLink[index] && outside_link_half(index) == half) {
@@ -4686,39 +7754,76 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces(
         // instead of re-deriving it (the contract at the head of get_connection_layout).
         for (size_t index = 0; index < routes.size(); ++index) {
             routes[index].exitSlot = exitSlots[index];
+            // ABT #2274 item E (agent 48, Alf: "MKF plans what is built"): a ramped round-column terminal lead carries
+            // the climb MKF planned at its final lane, so the consumer draws exactly it and validates it.
+            if (exitSlots[index] && turnPaths[index]) {
+                auto path = turnPaths[index].value();
+                path.attachStation = attachAxial[index];
+                path.attachAdvance = attachAdvance[index];
+                publish_terminal_climb(routes[index], path, exitSlots[index].value());
+            }
+            else {
+                routes[index].terminalClimbTangentLength.reset();
+                routes[index].terminalClimbPhiDegrees.reset();
+            }
         }
         // ABT #1907: a foil's axial leads take no slot on the connection plane's radial lanes; each
         // winding end's leads stand side by side along the face in parallel order (AxialLead::alongFace).
         {
+            // ABT #2274: the half each axial lead stands on is stated like a lane's (spec S0/S1, section 24:
+            // terminal_lane_halves), with laneOverflow true where the sheet's end puts it on the other half --
+            // a misfit axial_lead_findings reported as LANES_DO_NOT_FIT. An entrance stands on x <= 0, an
+            // exit on x >= 0 (AxialLead::alongFace).
+            std::vector<std::pair<std::string, IsolationSide>> halfWindings;
+            for (const auto& winding : get_functional_description()) {
+                halfWindings.emplace_back(winding.get_name(), winding.get_isolation_side());
+            }
+            const auto axialHalves = is_real_winding_blocking_applied()
+                                         ? terminal_lane_halves(routes, halfWindings, true, {})
+                                         : std::vector<int>(routes.size(), 0);
+            // ABT #2274 ("Mirror the rule on CCW legs", terminal_lane_plan): a counter-clockwise turn's input stands on
+            // x >= 0. The axial bundle's halves and along-face placement are stated in the clockwise hand only.
+            for (const auto& route : routes) {
+                if (route.axialLead && route.wrapDirection && route.wrapDirection.value() == 1) {
+                    throw std::logic_error("The axial lead of winding '" + route.winding + "' parallel " + std::to_string(route.parallel) +
+                                           (route.kind == ConnectionKind::TERMINAL_ENTRANCE ? " entrance" : " exit") +
+                                           " leaves a counter-clockwise turn; "
+                                           "axial leads are placed for clockwise turns only (inputs x <= 0, outputs x >= 0)");
+                }
+            }
             std::map<std::pair<std::string, ConnectionKind>, std::vector<size_t>> axialBundles;
             for (size_t index = 0; index < routes.size(); ++index) {
                 if (routes[index].axialLead) {
                     axialBundles[{routes[index].winding, routes[index].kind}].push_back(index);
                 }
             }
+            const auto placedAlongFace = axial_lead_along_faces(routes);   // past the radial leads of its rows (axial_bundle_start)
             for (auto& [bundleKey, members] : axialBundles) {
                 std::stable_sort(members.begin(), members.end(),
                                  [&](size_t a, size_t b) { return routes[a].parallel < routes[b].parallel; });
-                double before = 0;
                 for (size_t position = 0; position < members.size(); ++position) {
                     auto& route = routes[members[position]];
-                    if (position > 0 && route.parallel == routes[members[position - 1]].parallel) {
-                        throw std::logic_error("Winding '" + route.winding + "' parallel " + std::to_string(route.parallel) +
-                                               " carries two axial leads at one end");
-                    }
                     const double diameter = route.axialLead->outerDiameter;
-                    route.axialLead->alongFace = roundFloat(before + diameter / 2, 12);
-                    // The weld strip lies on this parallel's own sheet, which begins at `before`.
+                    route.axialLead->alongFace = placedAlongFace.at(members[position]);
+                    // The weld strip lies on this parallel's own sheet, which begins half the lead's outer diameter before it.
+                    const double before = route.axialLead->alongFace - diameter / 2;
                     if (route.axialLead->alongFace - route.axialLead->weld.width / 2 < before - 1e-12) {
                         throw CoilException(ErrorCode::COIL_WINDING_ERROR,
                             "Winding '" + route.winding + "' parallel " + std::to_string(route.parallel) +
                             ": the axial lead's weld strip would reach past its own sheet's end on the connection face");
                     }
-                    before += diameter;
                     route.exitSlot = std::nullopt;
-                    route.laneHalf = std::nullopt;
                     route.laneBundleRank = std::nullopt;
-                    route.laneOverflow = std::nullopt;
+                    if (axialHalves[members[position]] != 0) {
+                        const int standsOn = route.kind == ConnectionKind::TERMINAL_ENTRANCE ? -1 : 1;
+                        route.laneHalf = axialHalves[members[position]];
+                        route.laneOverflow = halfWindings.size() > 1 ? std::optional<bool>(standsOn != route.laneHalf.value())
+                                                                     : std::nullopt;
+                    }
+                    else {
+                        route.laneHalf = std::nullopt;
+                        route.laneOverflow = std::nullopt;
+                    }
                     exitSlots[members[position]] = std::nullopt;
                 }
             }
@@ -4819,6 +7924,9 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces(
             request.label = pending.label;
             request.pin = pending.pin;
             request.windowExit = pending.windowExit;
+            if (auto shifted = levelRowShift.find(pending.routeIndex); shifted != levelRowShift.end()) {
+                request.windowExit.at(1) += shifted->second;   // ABT #2274 TRY: the pin leg starts at the level row
+            }
             request.diameter = pending.diameter;
             request.bendRadius = pending.bendRadius;
             request.lift = rides.ride_at(pending.windowExit[0], routes[pending.routeIndex].side);
@@ -4935,56 +8043,524 @@ ConnectionLayout Coil::get_connection_layout() {
     // pitch, filar-count and sign-of-advance thresholds), the YZ painter's own copy of it, and the
     // ride accumulation each of them then ran. None of them could be right for a design whose
     // geometry happened to fall between the thresholds; the kind always is, because wind() set it.
-    layout.rideLevels = compute_ride_levels(layout.routes);
+    auto placement = compute_ride_placement(layout.routes);
+    for (size_t routeIndex = 0; routeIndex < layout.routes.size(); ++routeIndex) {
+        layout.routes[routeIndex].laneAzimuth = placement.laneAzimuth[routeIndex];
+        layout.routes[routeIndex].laneOffset = placement.laneOffset[routeIndex];
+        layout.routes[routeIndex].dragbackAlongFace = placement.alongFace[routeIndex];
+    }
+    layout.rideLevels = std::move(placement.levels);
+    // ABT #2274 (Alf, 2026-11-13: "use round corners everywhere!"): the bend radius of each winding's own wire, by the
+    // rule a dragback of that wire bends at (lead_bend_radius swept at the coated half size), for the corners no route
+    // carries a radius for (ConnectionLayout::wireBendRadius).
+    const auto layoutWires = get_wires();
+    const auto layoutWindings = get_functional_description();
+    for (size_t windingIndex = 0; windingIndex < layoutWindings.size(); ++windingIndex) {
+        const Wire& wire = layoutWires.at(windingIndex);
+        const double sweptRadius = std::max(wire.get_maximum_outer_width(), wire.get_maximum_outer_height()) / 2;
+        if (!(sweptRadius > 0)) {
+            throw CoilException(ErrorCode::COIL_WINDING_ERROR,
+                "The wire of winding '" + layoutWindings[windingIndex].get_name() +
+                "' has no outer dimension, so the radius its bends are drawn at cannot be planned");
+        }
+        layout.wireBendRadius[layoutWindings[windingIndex].get_name()] =
+            lead_bend_radius(wire, std::nullopt, sweptRadius, is_real_winding_blocking_applied());
+    }
     return layout;
 }
 
 std::vector<ConnectionRideLevel> Coil::compute_ride_levels(const std::vector<ConnectionRoute>& routes) {
-    std::vector<ConnectionRideLevel> rideLevels;
+    return compute_ride_placement(routes).levels;
+}
+
+namespace {
+// The cross-section a turn is drawn with: its shape and its width and height [m].
+struct TurnSection {
+    TurnCrossSectionalShape shape = TurnCrossSectionalShape::ROUND;
+    double width = 0;
+    double height = 0;
+};
+std::variant<TurnSection, std::string> resolve_turn_section(const Turn& turn, const std::vector<Winding>& windings,
+                                                            const std::vector<Wire>& wires);
+}  // namespace
+
+// ABT #2274 (Alf, 2026-11-05: "MKF owns the placement"). Which returns lay a lane, where each lies,
+// and the ride every turn outside it takes over it.
+//
+// WHICH: a route's KIND (ABT #685). A Z dragback and an inside edge continuation lay a lane; nothing
+// else does (see get_connection_layout).
+//
+// THE STEP (Alf, 2026-11-05: "Use radial depth"): a turn riding over a return is lifted by the
+// return's wire as it lies in the lane -- a round (or litz) section's outer diameter, a non-round
+// section's RADIAL depth, the width of the turn the return lands on (resolve_turn_section).
+//
+// WHERE, on a round column. A return lies at its destination radius on the face of its route
+// (`side`), and the returns of one level share that radius. Two pieces of copper at one azimuth whose
+// (radius, axial) footprints come within their summed coated radii collide, so a return takes an
+// azimuth off the connection plane exactly when it would otherwise meet something there:
+//   * the returns of ONE conductor (winding, parallel) share one column: they lie in different
+//     layers' space, one beyond the other (the layer-reuse rule), and need no angle between them;
+//   * returns of DIFFERENT conductors on one face need distinct columns unless their axial bands
+//     (the span of their drawn chains) are at least their summed coated radii apart -- then no
+//     azimuth makes them meet;
+//   * a U layer link stays at the plane (it is drawn at its crossing); a return of another conductor
+//     whose chain comes within the summed coated radii of the link's in the (radius, axial) plane
+//     has to leave the plane.
+// Two columns need the angle whose perpendicular reach at the innermost radius they share is their
+// summed coated radii, asin(dSep / r) -- a return is a line parallel to the column axis, so two of
+// them dAz apart are r sin(dAz) apart. Conductors are placed in winding order, parallels in order,
+// each at the smallest azimuth >= 0 that clears every column placed before it and every link.
+//
+// THE RIDE. A turn rides over a level with the half on that face translated along the face normal.
+// The translation that clears a lane of wire d at radius r and phi off the plane is the exact circle
+// reach r cos(phi) - sqrt((r - d)^2 - r^2 sin^2(phi)) (the lane's centre r u(phi) must lie d outside
+// the translated circle), with phi the level's largest azimuth -- d itself on the plane, and on a
+// flat (non-round) face, where the translation is the same at every point of the face.
+Coil::RidePlacement Coil::compute_ride_placement(const std::vector<ConnectionRoute>& routes) {
+    RidePlacement placement;
+    placement.laneAzimuth.assign(routes.size(), std::nullopt);
+    placement.laneOffset.assign(routes.size(), std::nullopt);
+    placement.alongFace.assign(routes.size(), std::nullopt);
     auto wires = get_wires();
+    auto windings = get_functional_description();
     std::map<std::string, double> odByWinding;
-    for (size_t windingIndex = 0; windingIndex < get_functional_description().size(); ++windingIndex) {
-        odByWinding[get_functional_description()[windingIndex].get_name()] =
-            wires[windingIndex].get_maximum_outer_width();
+    std::map<std::string, size_t> windingIndexByName;
+    for (size_t windingIndex = 0; windingIndex < windings.size(); ++windingIndex) {
+        odByWinding[windings[windingIndex].get_name()] = wires[windingIndex].get_maximum_outer_width();
+        windingIndexByName[windings[windingIndex].get_name()] = windingIndex;
     }
-    for (const auto& route : routes) {
-        if (route.kind != ConnectionKind::Z_DRAGBACK &&
-            route.kind != ConnectionKind::EDGE_CONTINUATION) {
-            continue;
+    std::map<std::string, size_t> turnIndexByName;
+    std::vector<Turn> turns;
+    if (get_turns_description()) {
+        turns = get_turns_description().value();
+        for (size_t turnIndex = 0; turnIndex < turns.size(); ++turnIndex) {
+            turnIndexByName[turns[turnIndex].get_name()] = turnIndex;
+        }
+    }
+    auto outerHeightOfWinding = [&](const std::string& windingName) {
+        auto windingIt = windingIndexByName.find(windingName);
+        if (windingIt == windingIndexByName.end()) {
+            throw std::runtime_error("Coil::get_connection_layout: route of unknown winding '" + windingName + "'");
+        }
+        return wires[windingIt->second].get_maximum_outer_height();
+    };
+    const std::vector<Layer> layoutLayers = get_layers_description() ? get_layers_description().value() : std::vector<Layer>{};
+    auto laysLane = [&](const ConnectionRoute& route) {
+        if (route.kind != ConnectionKind::Z_DRAGBACK && route.kind != ConnectionKind::EDGE_CONTINUATION) {
+            return false;
+        }
+        // ABT #2274 (Alf, 2026-11-15, "MKF: level step, no lane"): a link over other layers whose two stations share a
+        // free row, and whose band row is that row (no vertical stub at either end: the three-piece route is its run
+        // alone), is ONE RADIAL STEP at the crossing (Coil::is_one_radial_step). Nothing climbs or drops at any azimuth,
+        // so it lays no lane and no turn rides over one.
+        if (route.kind == ConnectionKind::EDGE_CONTINUATION && !route.exitSlot && route.waypoints.size() == 4) {
+            auto fromIt = turnIndexByName.find(route.fromTurn);
+            auto toIt = turnIndexByName.find(route.toTurn);
+            if (fromIt != turnIndexByName.end() && toIt != turnIndexByName.end()) {
+                const double half = 0.5 * outerHeightOfWinding(route.winding);
+                if (std::abs(route.waypoints[1][1] - route.waypoints[0][1]) <= half &&
+                    std::abs(route.waypoints[3][1] - route.waypoints[2][1]) <= half &&
+                    is_one_radial_step(turns, layoutLayers, fromIt->second, toIt->second)) {
+                    return false;
+                }
+            }
         }
         // ABT #1487: an OUTSIDE inter-section link (the one link kind that carries a lane,
         // ConnectionRoute::exitSlot) runs past the build's outer face at its own angle and enters
         // its section through that section's blocked edge slots: it lays no lane any turn rides.
-        if (route.kind == ConnectionKind::EDGE_CONTINUATION && route.exitSlot) {
-            continue;
-        }
+        return !(route.kind == ConnectionKind::EDGE_CONTINUATION && route.exitSlot);
+    };
+    auto outerWidthOf = [&](const ConnectionRoute& route) {
         auto odIt = odByWinding.find(route.winding);
         if (odIt == odByWinding.end() || odIt->second <= 0) {
             throw std::runtime_error(
                 "Coil::get_connection_layout: winding '" + route.winding +
                 "' has no outer width, so the ride its return imposes cannot be sized");
         }
+        return odIt->second;
+    };
+    // The lane's wire as it lies (THE STEP above).
+    auto stepOf = [&](const ConnectionRoute& route) {
+        auto turnIt = turnIndexByName.find(route.toTurn);
+        if (turnIt == turnIndexByName.end()) {
+            throw std::runtime_error(
+                "Coil::get_connection_layout: the return '" + route.fromTurn + "' -> '" + route.toTurn + "' of winding '" +
+                route.winding + "' lands on a turn the coil does not describe, so the ride it imposes cannot be sized");
+        }
+        // A solid ROUND wire lies round whatever the turn stores: its step is its outer width, sized from
+        // the wire alone, so a turn with no stored outline (TURN_OUTLINES_NOT_EVALUABLE) still has a ride.
+        // Litz and the non-round wires are sized from the turn as it lies (a compressed litz is not round).
+        auto windingIt = windingIndexByName.find(route.winding);
+        if (windingIt == windingIndexByName.end()) {
+            throw std::runtime_error("Coil::get_connection_layout: route of unknown winding '" + route.winding + "'");
+        }
+        if (wires[windingIt->second].get_type() == WireType::ROUND) {
+            return outerWidthOf(route);
+        }
+        auto section = resolve_turn_section(turns[turnIt->second], windings, wires);
+        if (std::holds_alternative<std::string>(section)) {
+            throw std::runtime_error("Coil::get_connection_layout: the ride over the return '" + route.fromTurn + "' -> '" +
+                                     route.toTurn + "' cannot be sized: " + std::get<std::string>(section));
+        }
+        const auto& turnSection = std::get<TurnSection>(section);
+        if (turnSection.shape == TurnCrossSectionalShape::ROUND) {
+            return outerWidthOf(route);
+        }
+        if (!(turnSection.width > 0)) {
+            throw std::runtime_error("Coil::get_connection_layout: the return '" + route.fromTurn + "' -> '" + route.toTurn +
+                                     "' lands on a turn of radial depth " + std::to_string(turnSection.width) +
+                                     " m, so the ride it imposes cannot be sized");
+        }
+        return turnSection.width;
+    };
+
+    bool roundColumn = false;
+    bool stadiumColumn = false;
+    bool rectangularColumn = false;
+    if (std::holds_alternative<Bobbin>(get_bobbin())) {
+        const Bobbin bobbin = std::get<Bobbin>(get_bobbin());
+        if (bobbin.get_processed_description()) {
+            const auto processed = bobbin.get_processed_description().value();
+            const auto shape = processed.get_column_shape();
+            // An oblong column with no straight is a round one (MVB++ and the winder alike).
+            roundColumn = shape == ColumnShape::ROUND ||
+                          (shape == ColumnShape::OBLONG && processed.get_column_width() &&
+                           processed.get_column_depth() <= processed.get_column_width().value());
+            stadiumColumn = shape == ColumnShape::OBLONG && !roundColumn;
+            // An IRREGULAR column (EFD) is wound and framed as its bounding rectangle (CoilPins' lead frame,
+            // the bobbin's column, MVB++'s racetrack): its returns lie on flat faces and take lanes there.
+            rectangularColumn = shape == ColumnShape::RECTANGULAR || shape == ColumnShape::IRREGULAR;
+        }
+    }
+
+    // WHERE (round column only).
+    if (roundColumn) {
+        struct Piece {
+            size_t routeIndex;
+            int side;
+            double radius;       // the lane's radius (a link: its innermost radius)
+            double coatedRadius;
+            double yLo, yHi;     // the axial band its chain spans
+        };
+        auto bandOf = [](const ConnectionRoute& route) {
+            double lo = std::numeric_limits<double>::max();
+            double hi = std::numeric_limits<double>::lowest();
+            for (const auto& waypoint : route.waypoints) {
+                lo = std::min(lo, waypoint[1]);
+                hi = std::max(hi, waypoint[1]);
+            }
+            return std::pair<double, double>{lo, hi};
+        };
+        auto segmentDistance = [](const std::vector<double>& a0, const std::vector<double>& a1,
+                                  const std::vector<double>& b0, const std::vector<double>& b1) {
+            auto pointToSegment = [](const std::vector<double>& p, const std::vector<double>& s0,
+                                     const std::vector<double>& s1) {
+                const double sx = s1[0] - s0[0], sy = s1[1] - s0[1];
+                const double length2 = sx * sx + sy * sy;
+                double t = length2 > 0 ? ((p[0] - s0[0]) * sx + (p[1] - s0[1]) * sy) / length2 : 0.0;
+                t = std::clamp(t, 0.0, 1.0);
+                return std::hypot(p[0] - (s0[0] + t * sx), p[1] - (s0[1] + t * sy));
+            };
+            auto cross = [](double ux, double uy, double vx, double vy) { return ux * vy - uy * vx; };
+            const double ax = a1[0] - a0[0], ay = a1[1] - a0[1];
+            const double bx = b1[0] - b0[0], by = b1[1] - b0[1];
+            const double d1 = cross(ax, ay, b0[0] - a0[0], b0[1] - a0[1]);
+            const double d2 = cross(ax, ay, b1[0] - a0[0], b1[1] - a0[1]);
+            const double d3 = cross(bx, by, a0[0] - b0[0], a0[1] - b0[1]);
+            const double d4 = cross(bx, by, a1[0] - b0[0], a1[1] - b0[1]);
+            if (d1 * d2 < 0 && d3 * d4 < 0) {
+                return 0.0;
+            }
+            return std::min({pointToSegment(a0, b0, b1), pointToSegment(a1, b0, b1), pointToSegment(b0, a0, a1),
+                             pointToSegment(b1, a0, a1)});
+        };
+        auto routeDistance = [&](const ConnectionRoute& a, const ConnectionRoute& b) {
+            double best = std::numeric_limits<double>::max();
+            for (size_t i = 0; i + 1 < a.waypoints.size(); ++i) {
+                for (size_t j = 0; j + 1 < b.waypoints.size(); ++j) {
+                    best = std::min(best, segmentDistance(a.waypoints[i], a.waypoints[i + 1], b.waypoints[j],
+                                                          b.waypoints[j + 1]));
+                }
+            }
+            return best;
+        };
+        // The angle two pieces need between them to be dSep apart at the innermost radius they share.
+        auto angleFor = [](double dSep, double radiusA, double radiusB) {
+            const double radius = std::max(std::min(radiusA, radiusB), dSep);
+            return std::asin(std::min(1.0, dSep / radius));
+        };
+        // A route's chain is accepted as touching (not meeting) another within the coordinate noise of
+        // MKF's own station arithmetic, the same micrometre the 3D builder's fan uses for its links.
+        const double kTouchNoise = 1e-6;
+
+        std::map<std::pair<size_t, int64_t>, std::vector<Piece>> returnsByConductor;   // ordered: winding, parallel
+        std::vector<Piece> links;
+        for (size_t routeIndex = 0; routeIndex < routes.size(); ++routeIndex) {
+            const auto& route = routes[routeIndex];
+            if (route.toroidal || route.waypoints.size() < 2) {
+                continue;
+            }
+            auto windingIt = windingIndexByName.find(route.winding);
+            if (windingIt == windingIndexByName.end()) {
+                throw std::runtime_error("Coil::get_connection_layout: route of unknown winding '" + route.winding + "'");
+            }
+            const auto [yLo, yHi] = bandOf(route);
+            if (laysLane(route)) {
+                returnsByConductor[{windingIt->second, route.parallel}].push_back(
+                    {routeIndex, route.side, route.waypoints.back()[0], 0.5 * outerWidthOf(route), yLo, yHi});
+            }
+            else if (route.kind == ConnectionKind::U_ADJACENT) {
+                double inner = std::numeric_limits<double>::max();
+                for (const auto& waypoint : route.waypoints) {
+                    inner = std::min(inner, waypoint[0]);
+                }
+                links.push_back({routeIndex, route.side, inner, 0.5 * outerWidthOf(route), yLo, yHi});
+            }
+        }
+        struct Column {
+            std::pair<size_t, int64_t> conductor;
+            double azimuth;
+        };
+        std::vector<Column> placed;
+        for (const auto& [conductor, members] : returnsByConductor) {
+            // Every constraint this column must satisfy: |azimuth - centre| >= angle.
+            std::vector<std::pair<double, double>> constraints;
+            for (const auto& member : members) {
+                for (const auto& link : links) {
+                    if (link.side != member.side) {
+                        continue;
+                    }
+                    const auto& linkRoute = routes[link.routeIndex];
+                    if (windingIndexByName.at(linkRoute.winding) == conductor.first && linkRoute.parallel == conductor.second) {
+                        continue;   // its own conductor's link joins its pieces
+                    }
+                    const double dSep = member.coatedRadius + link.coatedRadius;
+                    if (routeDistance(routes[member.routeIndex], linkRoute) >= dSep - kTouchNoise) {
+                        continue;
+                    }
+                    constraints.push_back({0.0, angleFor(dSep, member.radius, link.radius)});
+                }
+                for (const auto& column : placed) {
+                    for (const auto& other : returnsByConductor.at(column.conductor)) {
+                        if (other.side != member.side) {
+                            continue;
+                        }
+                        const double dSep = member.coatedRadius + other.coatedRadius;
+                        if (std::max(other.yLo - member.yHi, member.yLo - other.yHi) >= dSep) {
+                            continue;   // their bands cannot meet at any azimuth
+                        }
+                        constraints.push_back({column.azimuth, angleFor(dSep, member.radius, other.radius)});
+                    }
+                }
+            }
+            std::vector<double> candidates{0.0};
+            for (const auto& [centre, angle] : constraints) {
+                candidates.push_back(centre + angle);
+                if (centre - angle >= 0) {
+                    candidates.push_back(centre - angle);
+                }
+            }
+            std::sort(candidates.begin(), candidates.end());
+            std::optional<double> chosen;
+            for (double candidate : candidates) {
+                bool clear = true;
+                for (const auto& [centre, angle] : constraints) {
+                    if (std::abs(candidate - centre) < angle - 1e-12) {
+                        clear = false;
+                        break;
+                    }
+                }
+                if (clear) {
+                    chosen = candidate;
+                    break;
+                }
+            }
+            if (!chosen) {
+                // The largest candidate clears every constraint by construction; reaching here is a bug.
+                throw std::runtime_error("Coil::get_connection_layout: no azimuth clears the returns of winding '" +
+                                         windings[conductor.first].get_name() + "' parallel " +
+                                         std::to_string(conductor.second));
+            }
+            if (chosen.value() >= std::numbers::pi / 2) {
+                throw std::runtime_error(
+                    "Coil::get_connection_layout: the returns of winding '" + windings[conductor.first].get_name() +
+                    "' parallel " + std::to_string(conductor.second) + " need " +
+                    std::to_string(chosen.value() * 180 / std::numbers::pi) +
+                    " degrees off the connection plane to clear the returns and links before them, beyond the face "
+                    "their ride lifts");
+            }
+            placed.push_back({conductor, chosen.value()});
+            for (const auto& member : members) {
+                placement.laneAzimuth[member.routeIndex] = roundFloat(chosen.value(), 12);
+            }
+        }
+    }
+
+    // WHERE, on a flat-faced column (rectangular, or a stadium's straight) -- ABT #2274 (Alf, 2026-11-06:
+    // "MKF owns each return lane's x along the face"; it was MVB++'s laneOfFace). A return runs along
+    // the column axis at its lane's x on its route's face, x = 0 at the connection crossing and a wrap
+    // departing the crossing towards -x (ConnectionRoute::laneOffset).
+    //   * ONE LANE PER CONDUCTOR (winding, parallel): its returns lie in different layers' space, one
+    //     beyond the other, and share it (the layer-reuse rule, as on a round column).
+    //   * Spec S0: the windings are separated ALONG X on one face. The PRIMARY isolation group's lanes
+    //     take x = 0, -w, -2w, ... and every other group's +w, +2w, ..., in winding order, parallels in
+    //     order, w the widest lane on the column (insulation touching). A U turnaround on the face
+    //     (ConnectionKind::U_ADJACENT) steps out AT the crossing, so there the primary group starts at -w.
+    //   * A STADIUM column has no -x side to its crossing: the crossing sits at the cap apex and a lane
+    //     behind it overruns the apex into the next wrap. Every group lies on +x there, the primary
+    //     group first, starting at 0 (w where a U turnaround takes the crossing).
+    // A lane's width along the face is a round wire's outer diameter, a non-round wire's narrower
+    // outer dimension (it runs on its flat).
+    else if (rectangularColumn || stadiumColumn) {
+        auto laneWidthOf = [&](const ConnectionRoute& route) {
+            auto windingIt = windingIndexByName.find(route.winding);
+            if (windingIt == windingIndexByName.end()) {
+                throw std::runtime_error("Coil::get_connection_layout: route of unknown winding '" + route.winding + "'");
+            }
+            const auto& wire = wires[windingIt->second];
+            if (wire.get_type() == WireType::ROUND || wire.get_type() == WireType::LITZ) {
+                return outerWidthOf(route);
+            }
+            const double width = std::min(wire.get_maximum_outer_width(), wire.get_maximum_outer_height());
+            if (!(width > 0)) {
+                throw std::runtime_error("Coil::get_connection_layout: winding '" + route.winding +
+                                         "' has a wire of no outer dimension, so its return lane cannot be placed on the face");
+            }
+            return width;
+        };
+        double laneWidth = 0;
+        std::map<std::pair<size_t, int64_t>, std::vector<size_t>> lanesByConductor;   // ordered: winding, parallel
+        std::map<int, bool> crossingTaken;
+        for (size_t routeIndex = 0; routeIndex < routes.size(); ++routeIndex) {
+            const auto& route = routes[routeIndex];
+            if (route.toroidal) {
+                continue;
+            }
+            if (route.kind == ConnectionKind::U_ADJACENT) {
+                crossingTaken[route.side] = true;
+            }
+            if (!laysLane(route)) {
+                continue;
+            }
+            auto windingIt = windingIndexByName.find(route.winding);
+            if (windingIt == windingIndexByName.end()) {
+                throw std::runtime_error("Coil::get_connection_layout: route of unknown winding '" + route.winding + "'");
+            }
+            lanesByConductor[{windingIt->second, route.parallel}].push_back(routeIndex);
+            laneWidth = std::max(laneWidth, laneWidthOf(route));
+        }
+        std::map<int, int64_t> nextPrimaryLane;
+        std::map<int, int64_t> nextOtherLane;
+        // Primary group first, so on a stadium column it takes the lanes nearest the crossing.
+        for (const bool primaryPass : {true, false}) {
+            for (const auto& [conductor, routeIndices] : lanesByConductor) {
+                const bool primary = windings[conductor.first].get_isolation_side() == IsolationSide::PRIMARY;
+                if (primary != primaryPass) {
+                    continue;
+                }
+                const int side = routes[routeIndices.front()].side;
+                for (size_t routeIndex : routeIndices) {
+                    if (routes[routeIndex].side != side) {
+                        throw std::runtime_error("Coil::get_connection_layout: winding '" + windings[conductor.first].get_name() +
+                                                 "' parallel " + std::to_string(conductor.second) +
+                                                 " lays returns on both connection faces of a flat-faced column");
+                    }
+                }
+                const int64_t taken = crossingTaken[side] ? 1 : 0;
+                double x;
+                if (stadiumColumn) {
+                    // One run of lanes from the crossing, shared by every group.
+                    if (!nextOtherLane.count(side)) {
+                        nextOtherLane[side] = taken;
+                    }
+                    x = static_cast<double>(nextOtherLane[side]++) * laneWidth;
+                }
+                else if (primary) {
+                    if (!nextPrimaryLane.count(side)) {
+                        nextPrimaryLane[side] = taken;
+                    }
+                    x = -static_cast<double>(nextPrimaryLane[side]++) * laneWidth;
+                }
+                else {
+                    if (!nextOtherLane.count(side)) {
+                        nextOtherLane[side] = 1;
+                    }
+                    x = static_cast<double>(nextOtherLane[side]++) * laneWidth;
+                }
+                for (size_t routeIndex : routeIndices) {
+                    placement.laneOffset[routeIndex] = roundFloat(x, 12);
+                    if (routes[routeIndex].kind == ConnectionKind::Z_DRAGBACK) {
+                        const double halfWidth = laneWidthOf(routes[routeIndex]) / 2;
+                        placement.alongFace[routeIndex] = std::make_pair(roundFloat(x - halfWidth, 12), roundFloat(x + halfWidth, 12));
+                    }
+                }
+            }
+        }
+    }
+
+    // THE LEVELS and THE RIDE.
+    auto& rideLevels = placement.levels;
+    for (size_t routeIndex = 0; routeIndex < routes.size(); ++routeIndex) {
+        const auto& route = routes[routeIndex];
+        if (!laysLane(route)) {
+            continue;
+        }
+        const double step = stepOf(route);
+        const double offPlane = placement.laneAzimuth[routeIndex].value_or(0.0);
+        if (roundColumn && !placement.laneAzimuth[routeIndex]) {
+            throw std::runtime_error("Coil::get_connection_layout: the return '" + route.fromTurn + "' -> '" + route.toTurn +
+                                     "' of winding '" + route.winding + "' was given no azimuth on a round column");
+        }
         // The lane sits at the DESTINATION radius: that is where the wire ends up and where the
         // run stands for the rest of the wind.
         const double laneRadius = route.waypoints.back()[0];
         bool merged = false;
         for (auto& level : rideLevels) {
-            if (level.side == route.side &&
-                std::abs(level.radius - laneRadius) <= 0.5 * odIt->second) {
-                level.height = std::max(level.height, odIt->second);
+            if (level.side == route.side && std::abs(level.radius - laneRadius) <= 0.5 * step) {
+                level.height = std::max(level.height, step);
+                level.offPlane = std::max(level.offPlane, offPlane);
                 merged = true;
                 break;
             }
         }
         if (!merged) {
-            rideLevels.push_back({route.side, laneRadius, odIt->second});
+            rideLevels.push_back({route.side, laneRadius, step, offPlane, 0.0});
         }
+    }
+    for (auto& level : rideLevels) {
+        if (level.offPlane == 0) {
+            level.rise = level.height;
+            continue;
+        }
+        const double sinPhi = std::sin(level.offPlane);
+        const double inner = level.radius - level.height;
+        const double discriminant = inner * inner - level.radius * level.radius * sinPhi * sinPhi;
+        if (!(discriminant > 0) || !(inner > 0)) {
+            // The returns that make up the level, named, so the refusal says whose lane it is.
+            std::string whose;
+            for (size_t routeIndex = 0; routeIndex < routes.size(); ++routeIndex) {
+                const auto& route = routes[routeIndex];
+                if (!laysLane(route) || route.side != level.side || std::abs(route.waypoints.back()[0] - level.radius) > 0.5 * stepOf(route)) {
+                    continue;
+                }
+                whose += (whose.empty() ? " (" : "; ") + std::string("'") + route.fromTurn + "' -> '" + route.toTurn + "' at " +
+                         std::to_string(placement.laneAzimuth[routeIndex].value_or(0.0) * 180 / std::numbers::pi) + " degrees";
+            }
+            if (!whose.empty()) {
+                whose += ")";
+            }
+            throw std::runtime_error(
+                "Coil::get_connection_layout: a return lane at radius " + std::to_string(level.radius * 1e3) + " mm" + whose + " lies " +
+                std::to_string(level.offPlane * 180 / std::numbers::pi) + " degrees off the connection plane, a ride of " +
+                std::to_string(level.height * 1e3) + " mm, where no translation of the face's half can lift a turn clear of it");
+        }
+        level.rise = level.radius * std::cos(level.offPlane) - std::sqrt(discriminant);
     }
     std::sort(rideLevels.begin(), rideLevels.end(),
               [](const ConnectionRideLevel& a, const ConnectionRideLevel& b) {
                   return a.side != b.side ? a.side < b.side : a.radius < b.radius;
               });
-    return rideLevels;
+    return placement;
 }
 
 std::map<std::string, std::pair<uint64_t, uint64_t>> Coil::compute_connection_blocked_slots_per_layer(
@@ -6029,6 +9605,207 @@ static double radial_step_to_wrap_distance(double ca, double ya, double cb, doub
     }
     return std::sqrt(std::min({best, fc, fd}));
 }
+// ABT #2274 (Alf, 2026-11-15, PSPS E16: "I want the 3D to have 0 overlapping"; "MKF leaves the room"). THE STEP AS IT IS
+// DRAWN. The measure above takes the step as a straight segment that meets its own wrap in a sharp corner. The wire is
+// drawn round that corner, in the plane of the step and the wrap, at the radius every bend of this wire is drawn at
+// (ConnectionLayout::wireBendRadius). Half way round, the wire climbs with BOTH legs' inclinations at once
+// (sqrt(tau^2 + m^2) against the wrap's m), so a sibling one touching spacing away -- which is what the measure above
+// funds: the envelope itself -- is reached. Measured on the PSPS E16 flyback (Secondary 4 p): the stations were funded
+// to 0.45 nm of margin on the straight step, and the bend of parallel 0's step onto turn 3 stood 19.7 nm inside the
+// bend of parallel 1's. So the corner is measured as well, where it is drawn as one bend: the step's own wrap runs
+// straight from the crossing for at least the bend's tangent length (a rectangular or irregular column), and the step
+// is at least that long.
+using StepPoint = std::array<double, 3>;
+struct DrawnStepCorner {
+    bool drawn = false;
+    double tangent = 0;           // from the crossing to each tangent point
+    StepPoint centre{}, u{}, v{}; // the bend: centre + radius (cos(t) u + sin(t) v), t in [0, sweep], from the step to the wrap
+    double radius = 0, sweep = 0;
+    StepPoint onStep{};           // the tangent point on the step
+};
+
+// The bend between a step that ends at the crossing point `crossing` (its other end at `other`) and the step's own wrap,
+// which runs from the crossing along the unit vector `alongWrap` for `wrapStraight` before its first corner.
+static DrawnStepCorner drawn_step_corner(const StepPoint& crossing, const StepPoint& other, const StepPoint& alongWrap,
+                                         double radius, double wrapStraight) {
+    DrawnStepCorner corner;
+    StepPoint alongStep = {other[0] - crossing[0], other[1] - crossing[1], other[2] - crossing[2]};
+    const double stepLength = std::sqrt(alongStep[0] * alongStep[0] + alongStep[1] * alongStep[1] + alongStep[2] * alongStep[2]);
+    if (!(stepLength > 0) || !(radius > 0)) {
+        return corner;
+    }
+    for (auto& value : alongStep) value /= stepLength;
+    const double cosine = alongStep[0] * alongWrap[0] + alongStep[1] * alongWrap[1] + alongStep[2] * alongWrap[2];
+    if (cosine <= -1 + 1e-12 || cosine >= 1 - 1e-12) {
+        return corner;   // the step carries straight on into its wrap, or folds back on it: no bend to measure
+    }
+    const double half = std::acos(cosine) / 2;
+    const double tangent = radius / std::tan(half);
+    if (tangent > wrapStraight || tangent > stepLength) {
+        return corner;
+    }
+    StepPoint bisector = {alongStep[0] + alongWrap[0], alongStep[1] + alongWrap[1], alongStep[2] + alongWrap[2]};
+    const double bisectorLength = std::sqrt(bisector[0] * bisector[0] + bisector[1] * bisector[1] + bisector[2] * bisector[2]);
+    StepPoint onWrap{};
+    for (size_t k = 0; k < 3; ++k) {
+        corner.centre[k] = crossing[k] + bisector[k] / bisectorLength * radius / std::sin(half);
+        corner.onStep[k] = crossing[k] + tangent * alongStep[k];
+        onWrap[k] = crossing[k] + tangent * alongWrap[k];
+        corner.u[k] = (corner.onStep[k] - corner.centre[k]) / radius;
+    }
+    StepPoint w{};
+    double dotUW = 0;
+    for (size_t k = 0; k < 3; ++k) {
+        w[k] = (onWrap[k] - corner.centre[k]) / radius;
+        dotUW += corner.u[k] * w[k];
+    }
+    double vLength = 0;
+    for (size_t k = 0; k < 3; ++k) {
+        corner.v[k] = w[k] - dotUW * corner.u[k];
+        vLength += corner.v[k] * corner.v[k];
+    }
+    vLength = std::sqrt(vLength);
+    for (auto& value : corner.v) value /= vLength;
+    corner.sweep = std::acos(std::clamp(dotUW, -1.0, 1.0));
+    corner.radius = radius;
+    corner.tangent = tangent;
+    corner.drawn = true;
+    return corner;
+}
+
+// A drawn centreline piece: its point at w in [0, 1], and its length.
+struct DrawnStepPiece {
+    std::function<StepPoint(double)> at;
+    double length = 0;
+};
+
+static DrawnStepPiece drawn_step_segment(const StepPoint& from, const StepPoint& to) {
+    return {[from, to](double w) { return StepPoint{from[0] + w * (to[0] - from[0]), from[1] + w * (to[1] - from[1]),
+                                                     from[2] + w * (to[2] - from[2])}; },
+            std::sqrt((to[0] - from[0]) * (to[0] - from[0]) + (to[1] - from[1]) * (to[1] - from[1]) +
+                      (to[2] - from[2]) * (to[2] - from[2]))};
+}
+
+static DrawnStepPiece drawn_step_bend(const DrawnStepCorner& corner) {
+    return {[corner](double w) {
+                const double angle = w * corner.sweep;
+                StepPoint point{};
+                for (size_t k = 0; k < 3; ++k) {
+                    point[k] = corner.centre[k] + corner.radius * (std::cos(angle) * corner.u[k] + std::sin(angle) * corner.v[k]);
+                }
+                return point;
+            },
+            corner.radius * corner.sweep};
+}
+
+// The wrap through a station from arc length `sFrom` to `sTo` of radial_step_to_wrap_distance's own parametrisation
+// (leaving: s >= 0; reaching: s <= 0).
+static DrawnStepPiece drawn_step_wrap(const WrapPath& wrap, double station, double slope, double sFrom, double sTo) {
+    const double perimeter = racetrack_perimeter(wrap);
+    return {[wrap, station, slope, sFrom, sTo, perimeter](double w) {
+                const double s = sFrom + w * (sTo - sFrom);
+                const auto xz = racetrack_point(wrap, s < 0 ? perimeter + s : s);
+                return StepPoint{xz[0], station + slope * s, xz[1]};
+            },
+            std::abs(sTo - sFrom)};
+}
+
+// The minimum distance between two drawn pieces. For a point of the first piece, its nearest point of the second is
+// bracketed by a scan of the second finer than an eighth of the wire and closed by a golden-section search. That nearest
+// distance is then scanned along the first piece, finer than a sixty-fourth of the wire, and closed by a golden-section
+// search round the best sample. The scan along the first piece is of the CLOSED nearest distance, never of the raw grid:
+// two pieces that run side by side one touching spacing apart differ by nanometres along their length, while a grid
+// point of the second piece an eighth of a wire off the nearest one reads micrometres more, so the best raw grid pair
+// says nothing about where along the first piece the minimum is (realwinding_round_2p: the raw grid put it at a quarter
+// of the terminal bend, the search bracketed there stopped at its edge on 8.1 nm, and the minimum was 13.3 nm at a tenth).
+static double drawn_step_pieces_distance(const DrawnStepPiece& a, const DrawnStepPiece& b, double od) {
+    const auto squared = [&](double wa, double wb) {
+        const auto p = a.at(wa), q = b.at(wb);
+        return (p[0] - q[0]) * (p[0] - q[0]) + (p[1] - q[1]) * (p[1] - q[1]) + (p[2] - q[2]) * (p[2] - q[2]);
+    };
+    const size_t na = std::max<size_t>(9, size_t(std::ceil(a.length / (od / 64))) + 1);
+    const size_t nb = std::max<size_t>(9, size_t(std::ceil(b.length / (od / 8))) + 1);
+    const double golden = (std::sqrt(5.0) - 1) / 2;
+    const auto minimise = [&](const std::function<double(double)>& f, double low, double high) {
+        double c = high - golden * (high - low), d = low + golden * (high - low);
+        double fc = f(c), fd = f(d);
+        for (int it = 0; it < 200 && high - low > 1e-13; ++it) {
+            if (fc < fd) {
+                high = d; d = c; fd = fc; c = high - golden * (high - low); fc = f(c);
+            }
+            else {
+                low = c; c = d; fc = fd; d = low + golden * (high - low); fd = f(d);
+            }
+        }
+        return std::min(fc, fd);
+    };
+    const double ha = 1.0 / double(na - 1), hb = 1.0 / double(nb - 1);
+    const auto nearest = [&](double wa) {
+        double best = std::numeric_limits<double>::max(), bestB = 0;
+        for (size_t j = 0; j < nb; ++j) {
+            const double wb = double(j) / double(nb - 1);
+            const double value = squared(wa, wb);
+            if (value < best) {
+                best = value;
+                bestB = wb;
+            }
+        }
+        return std::min(best, minimise([&](double wb) { return squared(wa, wb); }, std::max(0.0, bestB - hb),
+                                       std::min(1.0, bestB + hb)));
+    };
+    double best = std::numeric_limits<double>::max(), bestA = 0;
+    for (size_t i = 0; i < na; ++i) {
+        const double wa = double(i) / double(na - 1);
+        const double value = nearest(wa);
+        if (value < best) {
+            best = value;
+            bestA = wa;
+        }
+    }
+    const double refined = minimise(nearest, std::max(0.0, bestA - ha), std::min(1.0, bestA + ha));
+    return std::sqrt(std::min(best, refined));
+}
+
+bool Coil::is_one_radial_step(const std::vector<Turn>& turns, const std::vector<Layer>& layers, size_t from, size_t to) {
+    const auto conductionLayerOf = [&](const Turn& turn) -> const Layer* {
+        if (!turn.get_layer()) return nullptr;
+        for (const auto& layer : layers) {
+            if (layer.get_name() == turn.get_layer().value()) {
+                return layer.get_type() == ElectricalType::CONDUCTION ? &layer : nullptr;
+            }
+        }
+        return nullptr;
+    };
+    const Layer* layerFrom = conductionLayerOf(turns[from]);
+    const Layer* layerTo = conductionLayerOf(turns[to]);
+    if (!layerFrom || !layerTo || layerFrom == layerTo ||
+        layerFrom->get_orientation() != WindingOrientation::OVERLAPPING ||
+        layerTo->get_orientation() != WindingOrientation::OVERLAPPING) {
+        return false;
+    }
+    auto wires = get_wires();
+    const double od = wires[get_winding_index_by_name(turns[from].get_winding())].get_maximum_outer_height();
+    const double ra = turns[from].get_coordinates()[0], ya = turns[from].get_coordinates()[1];
+    const double rb = turns[to].get_coordinates()[0], yb = turns[to].get_coordinates()[1];
+    // Anything taller than half a wire is an L route, a dragback or a final landing, drawn differently.
+    if (std::abs(rb - ra) <= 1e-12 || std::abs(yb - ya) > 0.5 * od) {
+        return false;
+    }
+    // A turn of a layer in between that sits in the step's row: the link is routed round it (a band route).
+    for (const auto& turn : turns) {
+        const double x = turn.get_coordinates()[0];
+        if (!(x > std::min(ra, rb) + 1e-12 && x < std::max(ra, rb) - 1e-12) || !conductionLayerOf(turn)) {
+            continue;
+        }
+        const double row = ya + (yb - ya) * (x - ra) / (rb - ra);
+        const double otherOd = wires[get_winding_index_by_name(turn.get_winding())].get_maximum_outer_height();
+        if (std::abs(turn.get_coordinates()[1] - row) < 0.5 * std::max(od, otherOd)) {
+            return false;
+        }
+    }
+    return true;
+}
+
 // ABT #1422: every radial step of the layout against the sibling wraps beside its two ends.
 std::vector<Coil::RadialStepClearance> Coil::measure_radial_step_clearances(const std::vector<Turn>& turns,
                                                                             const std::vector<Layer>& layers) {
@@ -6042,12 +9819,8 @@ std::vector<Coil::RadialStepClearance> Coil::measure_radial_step_clearances(cons
         return found->second;
     };
     std::map<std::string, const Layer*> layerByName;
-    std::vector<double> conductionLayerX;
     for (const auto& layer : layers) {
         layerByName[layer.get_name()] = &layer;
-        if (layer.get_type() == ElectricalType::CONDUCTION) {
-            conductionLayerX.push_back(layer.get_coordinates()[0]);
-        }
     }
     auto wires = get_wires();
     std::map<std::pair<std::string, int64_t>, std::vector<size_t>> turnsByConductor;
@@ -6072,12 +9845,6 @@ std::vector<Coil::RadialStepClearance> Coil::measure_radial_step_clearances(cons
             return turns[a].get_coordinates()[1] < turns[b].get_coordinates()[1];
         });
     }
-    const auto overlappingLayer = [&](const Turn& turn) {
-        if (!turn.get_layer()) return false;
-        auto found = layerByName.find(turn.get_layer().value());
-        return found != layerByName.end() && found->second->get_type() == ElectricalType::CONDUCTION &&
-               found->second->get_orientation() == WindingOrientation::OVERLAPPING;
-    };
     for (const auto& [conductor, sequence] : turnsByConductor) {
         const size_t windingIndex = get_winding_index_by_name(conductor.first);
         if (wires[windingIndex].get_type() != WireType::ROUND && wires[windingIndex].get_type() != WireType::LITZ) {
@@ -6088,29 +9855,18 @@ std::vector<Coil::RadialStepClearance> Coil::measure_radial_step_clearances(cons
             continue;   // no sibling to clear
         }
         const double od = wires[windingIndex].get_maximum_outer_height();
+        // The radius the step's bends are drawn at: ConnectionLayout::wireBendRadius's own rule.
+        const double bendRadius = lead_bend_radius(
+            wires[windingIndex], std::nullopt,
+            std::max(wires[windingIndex].get_maximum_outer_width(), wires[windingIndex].get_maximum_outer_height()) / 2, true);
+        const auto isRadialStep = [&](size_t from, size_t to) { return is_one_radial_step(turns, layers, from, to); };
         for (size_t k = 0; k + 1 < sequence.size(); ++k) {
             const size_t from = sequence[k], to = sequence[k + 1];
-            if (!overlappingLayer(turns[from]) || !overlappingLayer(turns[to]) ||
-                turns[from].get_layer().value() == turns[to].get_layer().value()) {
+            if (!isRadialStep(from, to)) {
                 continue;
             }
-            const double ra = turns[from].get_coordinates()[0], ya = turns[from].get_coordinates()[1];
-            const double rb = turns[to].get_coordinates()[0], yb = turns[to].get_coordinates()[1];
-            // ONE radial step: the connection MKF lays with no vertical stub (the U turnaround's
-            // `needVertical` test in the connection layout, |dy| <= half a wire). Anything taller
-            // is an L route, a dragback or a final landing, drawn differently.
-            if (std::abs(rb - ra) <= 1e-12 || std::abs(yb - ya) > 0.5 * od) {
-                continue;
-            }
-            bool oneStep = true;
-            for (double x : conductionLayerX) {
-                if (x > std::min(ra, rb) + 1e-12 && x < std::max(ra, rb) - 1e-12) {
-                    oneStep = false;   // routed over another layer: a band route, not one step
-                }
-            }
-            if (!oneStep) {
-                continue;
-            }
+            const double ya = turns[from].get_coordinates()[1];
+            const double yb = turns[to].get_coordinates()[1];
             for (size_t end : {from, to}) {
                 const auto& stations = stationsOfLayer.at(turns[end].get_layer().value());
                 const size_t at = size_t(std::find(stations.begin(), stations.end(), end) - stations.begin());
@@ -6195,6 +9951,78 @@ std::vector<Coil::RadialStepClearance> Coil::measure_radial_step_clearances(cons
                         clearance.leaving = leaving;
                         clearance.od = od;
                         clearance.distance = radial_step_to_wrap_distance(ca, ya, cb, yb, wrap, station, slope, leaving, od);
+                        // The step as it is drawn (drawn_step_corner): its bend onto its own wrap at this end, and the
+                        // rest of the step, against the sibling as IT is drawn here -- its wrap, begun (or ended) by
+                        // the bend of its own step where it has one at this crossing.
+                        {
+                            const StepPoint crossing = {0, end == from ? ya : yb, -(end == from ? ca : cb)};
+                            const StepPoint other = {0, end == from ? yb : ya, -(end == from ? cb : ca)};
+                            // The step's own wrap at this end: the revolution leaving its arrival station, or the
+                            // one reaching its departure station. Away from the crossing it runs towards -X when
+                            // leaving and from +X when reaching.
+                            std::optional<DrawnStepCorner> ownCorner;
+                            const std::optional<size_t> ownBeyond = end == to ? nextOf[to] : previousOf[from];
+                            if (sameLayer(ownBeyond)) {
+                                const size_t charged = end == to ? *ownBeyond : from;
+                                const double length = turns[charged].get_length();
+                                if (!(length > 0)) {
+                                    throw CoilException(ErrorCode::COIL_WINDING_ERROR,
+                                                        "Real winding: turn " + turns[charged].get_name() +
+                                                            " carries no length, so the slope of the wrap the radial step of " +
+                                                            turns[from].get_name() + " bends onto is unknown");
+                                }
+                                const double ownSlope = end == to ? (turns[*ownBeyond].get_coordinates()[1] - yb) / length
+                                                                  : (ya - turns[*ownBeyond].get_coordinates()[1]) / length;
+                                const WrapPath ownPath = pathOf(turns[end], turns[charged].get_name());
+                                const double norm = std::sqrt(1 + ownSlope * ownSlope);
+                                const StepPoint alongWrap = end == to ? StepPoint{-1 / norm, ownSlope / norm, 0}
+                                                                      : StepPoint{1 / norm, -ownSlope / norm, 0};
+                                const auto corner = drawn_step_corner(crossing, other, alongWrap, bendRadius,
+                                                                      ownPath.a - ownPath.b);
+                                if (corner.drawn) {
+                                    ownCorner = corner;
+                                }
+                            }
+                            if (ownCorner) {
+                                const std::vector<DrawnStepPiece> own = {drawn_step_bend(*ownCorner),
+                                                                         drawn_step_segment(ownCorner->onStep, other)};
+                                // The sibling here: its wrap from the crossing, or -- where its own radial step ends
+                                // at this crossing on that wrap -- that step, its bend, and the wrap from the bend on.
+                                const double perimeter = racetrack_perimeter(wrap);
+                                const double reach = od + std::hypot(yb - ya, cb - ca) + std::abs(ya - station) + std::abs(yb - station) +
+                                                     std::abs(ca - wrap.c) + std::abs(cb - wrap.c);
+                                const double span = std::min(perimeter / 2, 4 * reach);
+                                const double norm = std::sqrt(1 + slope * slope);
+                                std::vector<DrawnStepPiece> sibling;
+                                double wrapFrom = 0;
+                                const std::optional<size_t> siblingStepOther = leaving ? previousOf[neighbour] : nextOf[neighbour];
+                                if (siblingStepOther && (leaving ? isRadialStep(*siblingStepOther, neighbour)
+                                                                 : isRadialStep(neighbour, *siblingStepOther))) {
+                                    const StepPoint siblingCrossing = {0, station, -wrap.c};
+                                    const StepPoint siblingOther = {0, turns[*siblingStepOther].get_coordinates()[1],
+                                                                    -pathOf(turns[*siblingStepOther], turns[*siblingStepOther].get_name()).c};
+                                    const StepPoint alongWrap = leaving ? StepPoint{-1 / norm, slope / norm, 0}
+                                                                        : StepPoint{1 / norm, -slope / norm, 0};
+                                    const auto corner = drawn_step_corner(siblingCrossing, siblingOther, alongWrap, bendRadius,
+                                                                          wrap.a - wrap.b);
+                                    if (corner.drawn) {
+                                        sibling.push_back(drawn_step_bend(corner));
+                                        sibling.push_back(drawn_step_segment(corner.onStep, siblingOther));
+                                        wrapFrom = corner.tangent / norm;   // arc length is measured along the turn's path
+                                    }
+                                }
+                                if (span > wrapFrom) {
+                                    sibling.push_back(drawn_step_wrap(wrap, station, slope, leaving ? wrapFrom : -wrapFrom,
+                                                                      leaving ? span : -span));
+                                }
+                                for (const auto& ownPiece : own) {
+                                    for (const auto& siblingPiece : sibling) {
+                                        clearance.distance = std::min(clearance.distance,
+                                                                      drawn_step_pieces_distance(ownPiece, siblingPiece, od));
+                                    }
+                                }
+                            }
+                        }
                         clearance.sameBundle = (at / size_t(numberParallels)) ==
                                                ((side < 0 ? at - 1 : at + 1) / size_t(numberParallels)) &&
                                                stations.size() % size_t(numberParallels) == 0;
@@ -6205,6 +10033,444 @@ std::vector<Coil::RadialStepClearance> Coil::measure_radial_step_clearances(cons
         }
     }
     return clearances;
+}
+
+// ABT #2274 (Alf, 2026-11-15, realwinding_round_2p, 8 turns x 2 parallels: "MKF leaves the room"). THE TERMINAL BEND AS
+// IT IS DRAWN, on a round column. A lead that leaves its turn level at its lane takes ONE planar bend at its planned
+// radius from the turn onto its radial run: the turn is cut back by the bend's tangent length, and the bend lies in the
+// plane of the turn's tangent there and the run. The turn climbs and the run is level, so the bend leaves the helix
+// towards the sibling stacked on the side the turn comes from, while that sibling's wrap, one touching pitch away, goes
+// on round the column: measured on that fixture, parallel 1's exit bend stood 13.3 nm inside parallel 0's last wrap
+// (pitch 0.959893 mm, both helices exactly one coated diameter apart). The bend is built here by the construction the
+// 3-D builder draws it with (MVB++ TerminalFillet, the skew-lines case: the vertex on the turn's tangent line, the run
+// re-aimed from that vertex to its far end, equal tangent lengths), and measured against the sibling wraps beside the
+// attach station -- each as far as its own terminal bend cuts it. Scope: a round or litz wire in parallels, a round
+// column, a lead with no ramp, row end, tangential departure, lift or axial run, whose lane lies on its own turn's side
+// of the crossing; a sibling whose own terminal is not of that kind is not measured against.
+std::vector<Coil::RadialStepClearance> Coil::measure_terminal_bend_clearances(const std::vector<Turn>& turns,
+                                                                              const std::vector<Layer>& layers,
+                                                                              const std::vector<ConnectionRoute>& routes) {
+    std::vector<RadialStepClearance> clearances;
+    // The model below stations a layer's turns along the column axis, each sibling beside the attach turn at its own
+    // height: an OVERLAPPING conduction layer, the layers is_one_radial_step measures. A CONTIGUOUS layer's turns run
+    // radially at one height (Test_Real_Geometry_Rectangular_Contiguous), which is not this model.
+    std::set<std::string> axiallyStationedLayers;
+    for (const auto& layer : layers) {
+        if (layer.get_type() == ElectricalType::CONDUCTION && layer.get_orientation() == WindingOrientation::OVERLAPPING) {
+            axiallyStationedLayers.insert(layer.get_name());
+        }
+    }
+    std::map<std::string, WoundColumnFrame> frameBySection;
+    const auto frameOfTurn = [&](size_t t) -> const WoundColumnFrame& {
+        if (!turns[t].get_section()) {
+            throw CoilException(ErrorCode::COIL_WINDING_ERROR, "Real winding: turn " + turns[t].get_name() +
+                                                                   " has no section, so the column its wrap goes round is unknown");
+        }
+        const std::string sectionName = turns[t].get_section().value();
+        auto found = frameBySection.find(sectionName);
+        if (found == frameBySection.end()) {
+            found = frameBySection.emplace(sectionName, get_wound_column_frame_for_section(sectionName)).first;
+        }
+        return found->second;
+    };
+    std::map<std::string, size_t> turnByName;
+    std::map<std::pair<std::string, int64_t>, std::vector<size_t>> turnsByConductor;
+    for (size_t t = 0; t < turns.size(); ++t) {
+        turnByName[turns[t].get_name()] = t;
+        turnsByConductor[{turns[t].get_winding(), turns[t].get_parallel()}].push_back(t);
+    }
+    std::vector<std::optional<size_t>> previousOf(turns.size()), nextOf(turns.size());
+    for (const auto& [conductor, sequence] : turnsByConductor) {
+        for (size_t k = 0; k < sequence.size(); ++k) {
+            if (k > 0) previousOf[sequence[k]] = sequence[k - 1];
+            if (k + 1 < sequence.size()) nextOf[sequence[k]] = sequence[k + 1];
+        }
+    }
+    std::map<std::string, std::vector<size_t>> stationsOfLayer;   // sorted along the turn axis
+    for (size_t t = 0; t < turns.size(); ++t) {
+        if (turns[t].get_layer()) {
+            stationsOfLayer[turns[t].get_layer().value()].push_back(t);
+        }
+    }
+    for (auto& [name, stations] : stationsOfLayer) {
+        std::sort(stations.begin(), stations.end(), [&](size_t a, size_t b) {
+            return turns[a].get_coordinates()[1] < turns[b].get_coordinates()[1];
+        });
+    }
+    auto wires = get_wires();
+    const auto sameLayer = [&](std::optional<size_t> other, size_t t) {
+        return other && turns[*other].get_layer() && turns[t].get_layer() &&
+               turns[*other].get_layer().value() == turns[t].get_layer().value();
+    };
+    const auto radiusIn = [&](const WoundColumnFrame& frame, double x) {
+        return frame.axisX == 0 ? std::abs(x) : std::abs(std::abs(x) - frame.axisX);
+    };
+
+    // A lead's bend, in the frame of racetrack_point (x along the connection face, 0 at the crossing; z = -radius at
+    // the crossing; a clockwise wrap leaves the crossing towards -x). `side` is +1 for an exit, whose last wrap arrives
+    // from +x, and -1 for an entrance, whose first wrap leaves towards -x; both are travelled here from the wrap onto
+    // the run. `along` is arc length round the column from the crossing on the wrap's side.
+    struct Bend {
+        size_t turn = 0;           // the attach turn
+        bool exit = true;
+        double radius = 0;         // the wrap's
+        double cutAlong = 0;       // where the wrap's own helix ends: where the bend leaves it, or the attach of a sharp corner
+        bool drawn = false;        // the bend below is drawn (its tangents fit); otherwise the corner is sharp at the attach
+        DrawnStepCorner corner;
+        StepPoint onRun{}, farEnd{};
+    };
+    const auto notMeasured = [&](const ConnectionRoute& route, int why) -> std::optional<Bend> {
+        if (std::getenv("MKF_STEP_DIAG")) {
+            std::cerr << "[terminal-bend-model] the " << (route.kind == ConnectionKind::TERMINAL_EXIT ? "exit" : "entrance") << " of '"
+                      << route.winding << "' parallel " << route.parallel << " is not modelled (reason " << why << ")" << std::endl;
+        }
+        return std::nullopt;
+    };
+    const auto bendOf = [&](const ConnectionRoute& route) -> std::optional<Bend> {
+        const bool exit = route.kind == ConnectionKind::TERMINAL_EXIT;
+        if ((!exit && route.kind != ConnectionKind::TERMINAL_ENTRANCE) || route.toroidal || route.waypoints.size() < 2 ||
+            !route.exitSlot || !route.wrapDirection || route.rampLength || route.slotRampLength || route.rowEndX ||
+            route.laneTangential.value_or(false) || route.liftLength || route.axialLead || !(route.plannedBendRadius > 0)) {
+            return notMeasured(route, 1);
+        }
+        const auto found = turnByName.find(exit ? route.fromTurn : route.toTurn);
+        if (found == turnByName.end()) {
+            throw CoilException(ErrorCode::COIL_WINDING_ERROR, "Real winding: the terminal lead of winding '" + route.winding +
+                                                                   "' attaches to the turn '" + (exit ? route.fromTurn : route.toTurn) +
+                                                                   "', which the layout does not hold");
+        }
+        const size_t turn = found->second;
+        const auto& frame = frameOfTurn(turn);
+        if (frame.shape != ColumnShape::ROUND) {
+            return notMeasured(route, 2);
+        }
+        const auto& attach = exit ? route.waypoints.front() : route.waypoints.back();
+        const auto& beyond = exit ? route.waypoints[1] : route.waypoints[route.waypoints.size() - 2];
+        const double radius = radiusIn(frame, turns[turn].get_coordinates()[0]);
+        const double farRadius = radiusIn(frame, beyond.at(0));
+        if (std::abs(radiusIn(frame, attach.at(0)) - radius) > 1e-12) {
+            return notMeasured(route, 3);   // the lead does not start on the turn
+        }
+        // The leg the lead leaves its turn with: a level radial run (the wire goes out along its lane), or an axial stub
+        // at the turn's radius (it goes along the column at its lane, to its row). Anything else is not modelled.
+        const bool radialLeg = std::abs(beyond.at(1) - attach.at(1)) <= 1e-12 && farRadius > radius;
+        const bool axialLeg = std::abs(farRadius - radius) <= 1e-12 && std::abs(beyond.at(1) - attach.at(1)) > 1e-12;
+        const double side = exit ? 1.0 : -1.0;
+        const double lane = route.wrapDirection.value() == -1 ? route.exitSlot.value() : -route.exitSlot.value();
+        if (side * lane < 0 || !(std::abs(lane) < radius)) {
+            return notMeasured(route, 4);   // the lane lies past the crossing, off the turn's own helix
+        }
+        // The wrap's height against `along`: an exit's last wrap climbs to its station at the crossing, an entrance's
+        // first wrap climbs from it.
+        const std::optional<size_t> other = exit ? previousOf[turn] : nextOf[turn];
+        if (!sameLayer(other, turn)) {
+            return notMeasured(route, 5);
+        }
+        const size_t charged = exit ? turn : *other;
+        const double length = turns[charged].get_length();
+        if (!(length > 0)) {
+            throw CoilException(ErrorCode::COIL_WINDING_ERROR, "Real winding: turn " + turns[charged].get_name() +
+                                                                   " carries no length, so the slope of the wrap its terminal lead "
+                                                                   "bends off is unknown");
+        }
+        const double station = turns[turn].get_coordinates()[1];
+        const double slope = (turns[*other].get_coordinates()[1] - station) / length;   // height per `along`
+        const double attachAlong = radius * std::asin(std::abs(lane) / radius);
+        // A level radial run leaves the helix at the helix's own height at the lane (its row is that height); one whose
+        // row stands elsewhere is drawn with a step this does not model. An axial stub starts on the helix whatever
+        // height the window section states for its turn (the turn's station at the crossing).
+        if (radialLeg && std::abs(station + slope * attachAlong - attach.at(1)) > 1e-9) {
+            return notMeasured(route, 6);
+        }
+        const double norm = std::sqrt(1 + slope * slope);
+        const auto pointAt = [&](double along) {
+            return StepPoint{side * radius * std::sin(along / radius), station + slope * along, -radius * std::cos(along / radius)};
+        };
+        const auto tangentAt = [&](double along) {   // towards the crossing
+            return StepPoint{-side * std::cos(along / radius) / norm, -slope / norm, -std::sin(along / radius) / norm};
+        };
+        const auto dot = [](const StepPoint& a, const StepPoint& b) { return a[0] * b[0] + a[1] * b[1] + a[2] * b[2]; };
+        Bend bend;
+        bend.turn = turn;
+        bend.exit = exit;
+        bend.radius = radius;
+        bend.cutAlong = attachAlong;   // a sharp corner: the helix runs to the attach
+        if (!radialLeg && !axialLeg) {
+            return bend;
+        }
+        const StepPoint attachPoint = pointAt(attachAlong);
+        const StepPoint farEnd = radialLeg ? StepPoint{attachPoint[0], attachPoint[1], -farRadius}
+                                           : StepPoint{attachPoint[0], beyond.at(1), attachPoint[2]};
+        // The corner at the leg's far end, where the route goes on: it takes its own tangent length of the leg. Its
+        // other straight is the route's next leg, radial after an axial stub and axial after a radial run.
+        std::optional<StepPoint> afterLeg;
+        if (route.waypoints.size() > 2) {
+            const auto& next = exit ? route.waypoints[2] : route.waypoints[route.waypoints.size() - 3];
+            const double nextRadius = radiusIn(frame, next.at(0));
+            if (std::abs(nextRadius - farRadius) > 1e-12 && std::abs(next.at(1) - beyond.at(1)) <= 1e-12) {
+                afterLeg = StepPoint{0, 0, nextRadius > farRadius ? -1.0 : 1.0};
+            }
+            else if (std::abs(nextRadius - farRadius) <= 1e-12 && std::abs(next.at(1) - beyond.at(1)) > 1e-12) {
+                afterLeg = StepPoint{0, next.at(1) > beyond.at(1) ? 1.0 : -1.0, 0};
+            }
+            else {
+                return bend;   // a slanted next leg: the far corner is not modelled, so neither is what it leaves the bend
+            }
+        }
+        const double bendRadius = route.plannedBendRadius;
+        StepPoint legDirection{};
+        double legLength = 0;
+        for (size_t k = 0; k < 3; ++k) {
+            legDirection[k] = farEnd[k] - attachPoint[k];
+            legLength += legDirection[k] * legDirection[k];
+        }
+        legLength = std::sqrt(legLength);
+        if (!(legLength > 0)) {
+            return bend;
+        }
+        for (auto& value : legDirection) value /= legLength;
+        double tangentLength = bendRadius * std::tan(std::acos(std::clamp(dot(tangentAt(attachAlong), legDirection), -1.0, 1.0)) / 2);
+        bend.farEnd = farEnd;
+        StepPoint cut{}, cutTangent{}, vertex{}, run{};
+        double placed = tangentLength, angle = 0, cutAlong = attachAlong;
+        bool closed = false;
+        for (int pass = 0; pass < 4 && !closed; ++pass) {
+            // The cut is where the bend's vertex -- the cut point carried one tangent length along the turn's tangent --
+            // stands in the lead's lane plane (x = the attach's): the lead then stays in that plane all the way (Alf,
+            // 2026-11-09: "every run stands on MKF's lane"), as the 3-D builder draws it. One tangent length back from
+            // the attach is where that search starts; the two differ by micrometres.
+            cutAlong = attachAlong + tangentLength / norm;
+            for (int iteration = 0; iteration < 40; ++iteration) {
+                const double off = side * (radius * std::sin(cutAlong / radius) - std::cos(cutAlong / radius) * tangentLength / norm) -
+                                   attachPoint[0];
+                if (std::abs(off) < 1e-16) {
+                    break;
+                }
+                cutAlong -= off / (side * (std::cos(cutAlong / radius) + std::sin(cutAlong / radius) * tangentLength / (norm * radius)));
+            }
+            if (!(cutAlong > attachAlong) || cutAlong >= length / 4) {
+                return bend;
+            }
+            cut = pointAt(cutAlong);
+            cutTangent = tangentAt(cutAlong);
+            placed = tangentLength;
+            double runLength = 0;
+            for (size_t k = 0; k < 3; ++k) {
+                vertex[k] = cut[k] + cutTangent[k] * tangentLength;
+                run[k] = farEnd[k] - vertex[k];
+                runLength += run[k] * run[k];
+            }
+            runLength = std::sqrt(runLength);
+            if (!(runLength > 0)) {
+                return bend;
+            }
+            for (auto& value : run) value /= runLength;
+            angle = std::acos(std::clamp(dot(cutTangent, run), -1.0, 1.0));
+            if (angle < 1e-9 || angle > 170.0 * std::numbers::pi / 180) {
+                return bend;
+            }
+            const double next = bendRadius * std::tan(angle / 2);
+            double farTangent = 0;
+            if (afterLeg) {
+                farTangent = bendRadius * std::tan(std::acos(std::clamp(dot(run, *afterLeg), -1.0, 1.0)) / 2);
+            }
+            if (next + farTangent >= runLength) {
+                return bend;   // the leg does not hold the bend: the corner is drawn sharp, and reported where it is drawn
+            }
+            closed = std::abs(next - tangentLength) < 1e-12;
+            tangentLength = next;
+        }
+        bend.cutAlong = cutAlong;
+        bend.drawn = true;
+        // Equal tangent lengths `placed` from the vertex on both lines: the circle tangent to the turn at the cut and
+        // to the run at vertex + run * placed.
+        const double drawnRadius = placed / std::tan(angle / 2);
+        StepPoint inward{};
+        double inwardLength = 0;
+        const double cosine = dot(cutTangent, run);
+        for (size_t k = 0; k < 3; ++k) {
+            inward[k] = run[k] - cosine * cutTangent[k];
+            inwardLength += inward[k] * inward[k];
+        }
+        inwardLength = std::sqrt(inwardLength);
+        for (size_t k = 0; k < 3; ++k) {
+            inward[k] /= inwardLength;
+            bend.corner.centre[k] = cut[k] + drawnRadius * inward[k];
+            bend.corner.u[k] = -inward[k];
+            bend.corner.v[k] = cutTangent[k];
+            bend.onRun[k] = vertex[k] + run[k] * placed;
+        }
+        bend.corner.radius = drawnRadius;
+        bend.corner.sweep = angle;
+        bend.corner.tangent = placed;
+        bend.corner.onStep = cut;
+        bend.corner.drawn = true;
+        if (std::getenv("MKF_STEP_DIAG")) {
+            std::cerr.precision(12);
+            std::cerr << "[terminal-bend-model] '" << turns[turn].get_name() << "' station " << station << " other "
+                      << turns[*other].get_coordinates()[1] << " length " << length << " slope " << slope << " radius " << radius
+                      << " lane " << lane << " attachAlong " << attachAlong << " cutAlong " << bend.cutAlong << " placed " << placed
+                      << " angle " << angle * 180 / std::numbers::pi << " drawnRadius " << drawnRadius << " far " << farRadius
+                      << " cut (" << cut[0] << "," << cut[1] << "," << cut[2] << ") onRun (" << bend.onRun[0] << "," << bend.onRun[1]
+                      << "," << bend.onRun[2] << ")" << std::endl;
+        }
+        return bend;
+    };
+
+    std::map<size_t, std::optional<Bend>> bendOfTurn;        // by attach turn
+    std::set<size_t> terminalTurns;
+    for (const auto& route : routes) {
+        const bool exit = route.kind == ConnectionKind::TERMINAL_EXIT;
+        if ((!exit && route.kind != ConnectionKind::TERMINAL_ENTRANCE) || route.toroidal) {
+            continue;
+        }
+        const auto found = turnByName.find(exit ? route.fromTurn : route.toTurn);
+        if (found == turnByName.end()) {
+            continue;
+        }
+        const size_t windingIndex = get_winding_index_by_name(route.winding);
+        if ((wires[windingIndex].get_type() != WireType::ROUND && wires[windingIndex].get_type() != WireType::LITZ) ||
+            get_number_parallels(windingIndex) < 2) {
+            continue;
+        }
+        // A turn that is both its conductor's first and last carries two leads: neither is measured.
+        if (terminalTurns.count(found->second)) {
+            bendOfTurn[found->second] = std::nullopt;
+            continue;
+        }
+        terminalTurns.insert(found->second);
+        bendOfTurn[found->second] = bendOf(route);
+    }
+
+    for (const auto& [turn, bend] : bendOfTurn) {
+        if (!bend || !bend->drawn || !turns[turn].get_layer() || !axiallyStationedLayers.count(turns[turn].get_layer().value())) {
+            continue;
+        }
+        const size_t windingIndex = get_winding_index_by_name(turns[turn].get_winding());
+        const int64_t numberParallels = get_number_parallels(windingIndex);
+        const double od = wires[windingIndex].get_maximum_outer_height();
+        const auto& frame = frameOfTurn(turn);
+        const auto& stations = stationsOfLayer.at(turns[turn].get_layer().value());
+        const size_t at = size_t(std::find(stations.begin(), stations.end(), turn) - stations.begin());
+        const std::vector<DrawnStepPiece> own = {drawn_step_bend(bend->corner), drawn_step_segment(bend->onRun, bend->farEnd)};
+        for (int side : {-1, 1}) {
+            if ((side < 0 && at == 0) || (side > 0 && at + 1 >= stations.size())) {
+                continue;
+            }
+            const size_t neighbour = stations[side < 0 ? at - 1 : at + 1];
+            if (turns[neighbour].get_winding() != turns[turn].get_winding() ||
+                turns[neighbour].get_parallel() == turns[turn].get_parallel()) {
+                continue;   // not a sibling
+            }
+            const auto& neighbourFrame = frameOfTurn(neighbour);
+            if (neighbourFrame.axisX != frame.axisX || neighbourFrame.shape != frame.shape ||
+                neighbourFrame.columnWidth != frame.columnWidth || neighbourFrame.columnDepth != frame.columnDepth) {
+                continue;
+            }
+            const double station = turns[neighbour].get_coordinates()[1];
+            const auto pathOf = [&](const std::string& chargedTurn) {
+                return wrap_path_in_frame(frame, radiusIn(frame, turns[neighbour].get_coordinates()[0]),
+                                          get_turn_bend_radius_in_frame(frame, std::abs(turns[neighbour].get_coordinates()[0]),
+                                                                        get_turn_bend_radius(chargedTurn)));
+            };
+            // The sibling's wraps through its station on the bend's side of the crossing and beyond it: the one
+            // reaching the station (from +x) and the one leaving it (towards -x). A wrap that the sibling's own
+            // terminal lead leaves is cut where that lead's bend cuts it; one whose terminal is not measured here is
+            // not measured against.
+            const auto ownBend = bendOfTurn.find(neighbour);
+            if (ownBend != bendOfTurn.end() && !ownBend->second) {
+                continue;
+            }
+            const double reach = bend->cutAlong + 4 * bend->corner.radius + 4 * od;
+            std::vector<std::pair<bool, DrawnStepPiece>> pieces;
+            for (const bool leaving : {false, true}) {
+                const std::optional<size_t> other = leaving ? nextOf[neighbour] : previousOf[neighbour];
+                if (!sameLayer(other, neighbour)) {
+                    continue;
+                }
+                const size_t charged = leaving ? *other : neighbour;
+                const double length = turns[charged].get_length();
+                if (!(length > 0)) {
+                    throw CoilException(ErrorCode::COIL_WINDING_ERROR, "Real winding: turn " + turns[charged].get_name() +
+                                                                           " carries no length, so the slope of the wrap beside the "
+                                                                           "terminal bend of " + turns[turn].get_name() + " is unknown");
+                }
+                const double slope = leaving ? (turns[*other].get_coordinates()[1] - station) / length
+                                             : (station - turns[*other].get_coordinates()[1]) / length;
+                const WrapPath wrap = pathOf(turns[charged].get_name());
+                const double span = std::min(racetrack_perimeter(wrap) / 2, reach);
+                double from = 0;
+                if (ownBend != bendOfTurn.end() && ownBend->second && ownBend->second->exit != leaving) {
+                    from = ownBend->second->cutAlong;   // an exit cuts the reaching wrap, an entrance the leaving one
+                }
+                if (span > from) {
+                    pieces.push_back({leaving, drawn_step_wrap(wrap, station, slope, leaving ? from : -from, leaving ? span : -span)});
+                }
+            }
+            for (const auto& [leaving, piece] : pieces) {
+                RadialStepClearance clearance;
+                clearance.stepFrom = turn;
+                clearance.stepTo = turn;
+                clearance.stepEnd = turn;
+                clearance.neighbour = neighbour;
+                clearance.leaving = leaving;
+                clearance.od = od;
+                clearance.distance = std::numeric_limits<double>::max();
+                for (const auto& ownPiece : own) {
+                    clearance.distance = std::min(clearance.distance, drawn_step_pieces_distance(ownPiece, piece, od));
+                }
+                clearance.sameBundle = (at / size_t(numberParallels)) == ((side < 0 ? at - 1 : at + 1) / size_t(numberParallels)) &&
+                                       stations.size() % size_t(numberParallels) == 0;
+                clearances.push_back(clearance);
+            }
+        }
+    }
+    return clearances;
+}
+
+// ABT #2274: the terminal bends are measured on the FINISHED layout -- the leads, their lanes and their rows exist only
+// once every turn is laid -- and funded by the same widening as the radial steps: the bundles of the attach turn's
+// layer, each on its anchor, to the nm-grid fixpoint. Each pass lays the leads again on the turns as widened.
+void Coil::fund_terminal_bends_against_sibling_wraps() {
+    // A terminal bend is a connection lead's: a coil wound without lead planning has none to fund (as
+    // charge_tangent_departures charges none).
+    if (!settings.get_coil_use_real_winding_geometry() || !_connectionLeadPlanning || !get_turns_description() ||
+        !get_layers_description()) {
+        return;
+    }
+    if (resolve_bobbin().get_winding_window_shape() != WindingWindowShape::RECTANGULAR) {
+        return;
+    }
+    if (_coreLeadExitRefusal) {
+        return;   // the core has no lead exit: no terminal lead is laid out (get_connection_layout says why)
+    }
+    auto turns = get_turns_description().value();
+    auto layers = get_layers_description().value();
+    fund_bundles_against_sibling_wraps(
+        turns, layers,
+        [&]() {
+            set_turns_description(turns);
+            // The routes as get_connection_layout hands them out, lead exit planned, without the ride placement it
+            // adds: the bend is read off the route's own waypoints and slot, and a wind is not judged here by a
+            // placement its consumers ask for later.
+            std::vector<ConnectionRoute> routes;
+            std::vector<LeadExitSolid> leadExitSolids;
+            std::vector<LeadExitClash> leadExitClashes;
+            get_connection_reserved_spaces(&routes, &leadExitSolids, true, &leadExitClashes);
+            const auto measured = measure_terminal_bend_clearances(turns, layers, routes);
+            if (std::getenv("MKF_STEP_DIAG")) {
+                std::cerr.precision(10);
+                for (const auto& clearance : measured) {
+                    std::cerr << "[terminal-bend] '" << turns[clearance.stepEnd].get_name() << "' vs "
+                              << (clearance.leaving ? "leaving" : "reaching") << " '" << turns[clearance.neighbour].get_name()
+                              << "' margin " << (clearance.distance - clearance.od) * 1e9 << " nm sameBundle "
+                              << clearance.sameBundle << std::endl;
+                }
+            }
+            return measured;
+        },
+        "the terminal bends'");
+    set_turns_description(turns);
 }
 
 // ABT #1422: widen the bundles of every layer where a radial step's end sits closer than one coated
@@ -6218,9 +10484,16 @@ std::vector<Coil::RadialStepClearance> Coil::measure_radial_step_clearances(cons
 // second laid anyway, and both are reported as warnings (ABT #2289), the first by
 // warn_about_radial_steps_closer_than_the_wire_to_sibling_wraps on the finished layout.
 void Coil::fund_radial_steps_against_sibling_wraps(std::vector<Turn>& turns, std::vector<Layer>& layers) {
+    fund_bundles_against_sibling_wraps(turns, layers, [&]() { return measure_radial_step_clearances(turns, layers); },
+                                       "the radial steps'");
+}
+
+void Coil::fund_bundles_against_sibling_wraps(std::vector<Turn>& turns, std::vector<Layer>& layers,
+                                              const std::function<std::vector<RadialStepClearance>()>& measure,
+                                              const std::string& what) {
     for (int pass = 0; pass < 64; ++pass) {
         std::map<std::string, double> spacingNeeded;   // per layer
-        for (const auto& clearance : measure_radial_step_clearances(turns, layers)) {
+        for (const auto& clearance : measure()) {
             // Funded to the envelope itself, not to the half-nanometre the refusal allows: the
             // widened stations are re-emitted on the nm grid, which takes back up to half of one.
             if (!(clearance.distance < clearance.od) || !clearance.sameBundle) {
@@ -6295,7 +10568,7 @@ void Coil::fund_radial_steps_against_sibling_wraps(std::vector<Turn>& turns, std
                     std::ostringstream message;
                     message.precision(9);
                     message << "Real winding: layer " << layerName << " needs its bundles' stations " << needed
-                            << " m apart for a radial step to clear a sibling's wrap, which closes the gap "
+                            << " m apart for " << what << " clearance of a sibling's wrap, which closes the gap "
                                "between two of its bundles to "
                             << laid[k] - laid[k - 1] << " m; the bundles are laid that close anyway";
                     logEntry(message.str(), "Coil", 1);
@@ -6316,7 +10589,7 @@ void Coil::fund_radial_steps_against_sibling_wraps(std::vector<Turn>& turns, std
         }
     }
     throw CoilException(ErrorCode::COIL_WINDING_ERROR,
-                        "Real winding: widening the bundles for the radial steps' clearance did not reach a "
+                        "Real winding: widening the bundles for " + what + " clearance did not reach a "
                         "fixpoint in 64 passes");
 }
 
@@ -6332,6 +10605,14 @@ void Coil::warn_about_radial_steps_closer_than_the_wire_to_sibling_wraps() {
     const auto turns = get_turns_description().value();
     const auto layers = get_layers_description().value();
     for (const auto& clearance : measure_radial_step_clearances(turns, layers)) {
+        if (std::getenv("MKF_STEP_DIAG")) {
+            std::cerr.precision(10);
+            std::cerr << "[step-clear] '" << turns[clearance.stepFrom].get_name() << "' -> '" << turns[clearance.stepTo].get_name()
+                      << "' end '" << turns[clearance.stepEnd].get_name() << "' vs " << (clearance.leaving ? "leaving" : "reaching")
+                      << " '" << turns[clearance.neighbour].get_name() << "' margin " << (clearance.distance - clearance.od) * 1e9
+                      << " nm sameBundle " << clearance.sameBundle << " yEnd " << turns[clearance.stepEnd].get_coordinates()[1]
+                      << " yNb " << turns[clearance.neighbour].get_coordinates()[1] << std::endl;
+        }
         if (clearance.distance < clearance.od - 0.5e-9) {
             std::ostringstream message;
             message.precision(9);
@@ -9581,8 +13862,9 @@ std::optional<double> Coil::get_litz_flattening(size_t windingIndex) const {
 }
 
 bool Coil::wind(std::vector<double> proportionPerWinding, std::vector<size_t> pattern, size_t repetitions) {
+    lane_plan_detail::section25_printed().clear();   // ABT #2274: [section25-order] once per pair per wind
     // ABT #1531: A LITZ BUNDLE FLATTENS IN A WOUND LAYER. Wound round first, as every wind always
-    // has; only a wind that does not fit, with coilLitzDeformation on, tries the bundle as an oval
+    // has; only a fresh wind that does not fit, with coilLitzDeformation on, tries the bundle as an oval
     // of its own area (Wire::flattened_litz_sides) with its short side k x OD, k stepped down from
     // 1 to the bundle's floor (Wire::minimum_litz_flattening: 0.72, served or bare). Each k is
     // tried squeezed ALONG the layer (more turns per layer, thicker layers) and then ACROSS it
@@ -9593,6 +13875,7 @@ bool Coil::wind(std::vector<double> proportionPerWinding, std::vector<size_t> pa
     // verdict and layout, as before.
     _litzWoundFootprintPerWinding.clear();
     _litzFlatteningPerWinding.clear();
+    _storedSectionNeeds.clear();   // measured afresh by this wind's own round attempt
     // Every attempt starts from the coil the caller handed in: a wind leaves its sections, layers
     // and turns behind, and the next one would otherwise lay its turns in sections sized for the
     // previous bundle.
@@ -9634,7 +13917,10 @@ bool Coil::wind(std::vector<double> proportionPerWinding, std::vector<size_t> pa
         std::cerr << "[litz] round wind " << (ok ? "fits" : "does not fit") << ", deformation "
                   << (settings.get_coil_litz_deformation() ? "on" : "off") << "\n";
     }
-    if (ok || !settings.get_coil_litz_deformation()) {
+    // A STORED layout (the round wind measured its sections' needs) is the design as it was built, so
+    // its litz is compressed whenever the round bundle does not fit it (Alf, 2026-11-04: MKF decides,
+    // no switch). A fresh wind flattens litz only with coilLitzDeformation on (ABT #1531).
+    if (ok || (_storedSectionNeeds.empty() && !settings.get_coil_litz_deformation())) {
         return overflowAsLastResort(ok);
     }
     std::vector<std::pair<size_t, double>> litzFloors;
@@ -9653,6 +13939,204 @@ bool Coil::wind(std::vector<double> proportionPerWinding, std::vector<size_t> pa
     }
     const std::string roundFailure = _lastFitFailure;
     const bool turnsRunAlongHeight = get_layers_orientation() == WindingOrientation::OVERLAPPING;
+    // STORED LAYOUT: COMPUTED COMPRESSION (Alf, 2026-11-03: "calculate the space it has available and
+    // calculate the litz compression in height for that, and use it to redefine the shape of the
+    // wire, and use the normal wind method"; "if it is inside the limits, apply it, and retry the
+    // wind"; the shape, 2026-11-04: "stadium keep area of litz", "a round radius quarter of the height"). The
+    // round wind just measured, for every stored section, its height and what its need is made of: the
+    // width its layers share, its turns and the parallels it carries (keep_stored_section_heights). A
+    // litz winding's bundle is compressed in height into a rectangle with rounded corners (radius h / 4) of its own area
+    // (Wire::compressed_litz_sides), k x OD along the layer. The flatter it is, the wider: its sections
+    // take fewer layers and each layer more turns, so a section's need at k is
+    //     rows x k x OD, the fewest rows whose L layers, less the slots its leads block in each, hold
+    //     its T turns and P x L crossing stations, L = L(k) = floor(section width / width(k)) layers,
+    // which is not monotonic in k. The largest k that every section of the winding holds is one at
+    // which a section is exactly full, k = height / (rows x OD) for a whole number of rows, so those
+    // are the only candidates: each is checked against every section, and
+    // the largest that fits all of them is taken. Inside the limits -- k no lower than the bundle's
+    // floor (Wire::minimum_litz_flattening), and its strands no tighter than hexagonal close packing
+    // inside the serving (Wire::litz_strands_fit_compressed) -- the shape is applied and the coil wound
+    // once more, normally; that wind is the judge of whether it fits. Outside them, the round wind
+    // stands and the failure says by how much.
+    if (!_storedSectionNeeds.empty()) {
+        const auto needs = _storedSectionNeeds;
+        _litzWoundFootprintPerWinding.clear();
+        _litzFlatteningPerWinding.clear();
+        std::string beyondLimit;
+        for (const auto& [windingIndex, floor] : litzFloors) {
+            std::vector<std::pair<std::string, StoredSectionNeed>> sections;
+            for (const auto& [name, sectionNeed] : needs) {
+                if (sectionNeed.windingIndex == windingIndex && sectionNeed.need > 0) {
+                    sections.emplace_back(name, sectionNeed);
+                }
+            }
+            if (sections.empty()) {
+                continue;
+            }
+            auto wire = resolve_wire(windingIndex);
+            const double od = resolve_dimensional_values(wire.get_maximum_outer_width());
+            // THE SLOTS THE LEADS TAKE. Under real winding a terminal lead that leaves an inner layer runs out
+            // across the layers outside it, and the wind takes those slots from each of them
+            // (_connectionBlockedSlotsPerLayer, which the round wind just measured, by layer). A layer of the
+            // section then holds its rows less its blocked slots, and the section holds its turns and one
+            // crossing station per parallel it carries per layer when
+            //     T + P x L <= sum over its L layers of (rows - blocked),
+            // L the layers its width takes of the compressed bundle. Unblocked, that is ceil(T / L) + P rows.
+            auto blockedIn = [&](const std::string& section, uint64_t layer) -> uint64_t {
+                const auto found = _connectionBlockedSlotsPerLayer.find(section + " layer " + std::to_string(layer));
+                return found == _connectionBlockedSlotsPerLayer.end() ? 0 : found->second.first + found->second.second;
+            };
+            auto holdsInRows = [&](const std::string& name, const StoredSectionNeed& section, uint64_t layers, uint64_t rows) {
+                uint64_t capacity = 0;
+                for (uint64_t layer = 0; layer < layers; ++layer) {
+                    const uint64_t blocked = blockedIn(name, layer);
+                    capacity += rows > blocked ? rows - blocked : 0;
+                }
+                return section.turnsHere + section.parallelsCarried * layers <= capacity;
+            };
+            // The section's need for the bundle compressed to k -- the fewest rows its layers hold it in, each
+            // k x OD tall -- or nullopt when its width takes no layer of it.
+            auto needAt = [&](double k, const std::string& name, const StoredSectionNeed& section) -> std::optional<double> {
+                const auto [cellWidth, cellHeight] = Wire::compressed_litz_sides(od, k);
+                const auto layers = static_cast<uint64_t>(std::floor(section.width / cellWidth + 1e-9));
+                if (layers == 0) {
+                    return std::nullopt;
+                }
+                uint64_t rows = 1;
+                while (!holdsInRows(name, section, layers, rows)) {
+                    ++rows;
+                }
+                return static_cast<double>(rows) * cellHeight;
+            };
+            auto holdsAll = [&](double k) {
+                for (const auto& [name, section] : sections) {
+                    const auto need = needAt(k, name, section);
+                    if (!need || need.value() > section.height * (1 + 1e-9)) {
+                        return false;
+                    }
+                }
+                return true;
+            };
+            // k = 1 is the round bundle itself, whose need the round wind measured.
+            if (std::all_of(sections.begin(), sections.end(), [](const auto& entry) { return entry.second.need <= entry.second.height; })) {
+                continue;   // its own sections hold the round bundle; the wind failed elsewhere
+            }
+            // The largest k that holds is one at which some section's layers are exactly full: its height
+            // over a whole number of rows of the bundle, k = height / (rows x OD). Those are the candidates,
+            // from the round bundle's rows down to a flattening no bundle reaches (its floor is checked below).
+            std::vector<double> candidates;
+            for (const auto& [name, section] : sections) {
+                for (auto rows = static_cast<uint64_t>(std::ceil(section.height / od - 1e-9)); ; ++rows) {
+                    const double k = section.height / (static_cast<double>(rows) * od);
+                    if (k < floor / 2) {
+                        break;
+                    }
+                    if (k > 0 && k < 1) {
+                        candidates.push_back(k);
+                    }
+                }
+            }
+            std::sort(candidates.begin(), candidates.end(), std::greater<double>());
+            std::optional<double> best;
+            for (double k : candidates) {
+                if (holdsAll(k)) {
+                    best = k;
+                    break;
+                }
+            }
+            if (!best) {
+                beyondLimit += (beyondLimit.empty() ? "" : "; ") + std::string("no flattening of '") + get_name(windingIndex) +
+                               "' fits its sections: the flatter it is, the wider, and the fewer layers they take";
+                continue;
+            }
+            const double k = best.value();
+            // The section it fills: the one whose need at k is closest to its height.
+            std::string tightest;
+            double fullest = 0;
+            for (const auto& [name, section] : sections) {
+                const double fill = needAt(k, name, section).value() / section.height;
+                if (fill > fullest) {
+                    fullest = fill;
+                    tightest = name;
+                }
+            }
+            if (k < floor) {
+                std::ostringstream why;
+                why << std::fixed << std::setprecision(3) << "'" << get_name(windingIndex) << "' would have to compress to k = " << k
+                    << " for section '" << tightest << "', below its floor of k = " << floor;
+                beyondLimit += (beyondLimit.empty() ? "" : "; ") + why.str();
+                continue;
+            }
+            const auto [cellWidth, cellHeight] = Wire::compressed_litz_sides(od, k);
+            if (!Wire::litz_strands_fit_compressed(wire, cellWidth, cellHeight)) {
+                std::ostringstream why;
+                why << std::fixed << std::setprecision(3) << "'" << get_name(windingIndex) << "' would have to compress to k = " << k
+                    << " (" << cellWidth * 1e3 << " x " << cellHeight * 1e3 << " mm) for section '" << tightest
+                    << "', past where its strands reach hexagonal close packing";
+                beyondLimit += (beyondLimit.empty() ? "" : "; ") + why.str();
+                continue;
+            }
+            // (width, height): compressed along the column, the axis the stored sections share.
+            _litzWoundFootprintPerWinding[windingIndex] = std::make_pair(cellWidth, cellHeight);
+            _litzFlatteningPerWinding[windingIndex] = k;
+        }
+        // Nothing to compress (its sections hold the round bundle; the wind failed elsewhere), or a
+        // compression past the limit: the round wind just made stands, as it is.
+        if (_litzWoundFootprintPerWinding.empty() || !beyondLimit.empty()) {
+            _litzWoundFootprintPerWinding.clear();
+            _litzFlatteningPerWinding.clear();
+            if (!beyondLimit.empty()) {
+                _lastFitFailure = roundFailure + " (litz compression not applied: " + beyondLimit + ")";
+            }
+            return overflowAsLastResort(ok);
+        }
+        restoreAsGiven();
+        ok = wind_at_current_footprints(proportionPerWinding, pattern, repetitions);
+        // Alf, 2026-11-04: "calculate the proportion and the radius for the litz to actually fit in the
+        // height and width the rest of the winding leaves for it". The wind just laid each section's
+        // layers; each layer's share of the section's width is the cell the bundle has across it, and k x
+        // OD the cell along it. The bundle takes that cell keeping its area (Wire::compressed_litz_filling:
+        // its corner radius follows) and the coil is wound once more; that wind is the judge.
+        // Measured whether or not that wind fits: a failure elsewhere (another winding's crossings) does not
+        // change the layers it laid for the litz.
+        if (const auto layers = get_layers_description()) {
+            for (auto& [windingIndex, footprint] : _litzWoundFootprintPerWinding) {
+                double cellWidth = std::numeric_limits<double>::max();
+                for (const auto& [name, section] : needs) {
+                    if (section.windingIndex != windingIndex || !(section.need > 0)) {
+                        continue;
+                    }
+                    const auto wound = std::count_if(layers->begin(), layers->end(), [&](const Layer& layer) {
+                        return layer.get_section() == name && layer.get_type() == ElectricalType::CONDUCTION;
+                    });
+                    if (wound == 0) {
+                        throw CoilException(ErrorCode::COIL_WINDING_ERROR, "The compressed litz wind laid no layer in section '" + name + "'");
+                    }
+                    cellWidth = std::min(cellWidth, section.width / static_cast<double>(wound));
+                }
+                const double od = Wire::round_litz_outer_diameter(resolve_wire(windingIndex));
+                const double width = Wire::compressed_litz_filling(od, cellWidth, footprint.second).first;
+                footprint.first = width;
+                if (!Wire::litz_strands_fit_compressed(resolve_wire(windingIndex), width, footprint.second)) {
+                    throw CoilException(ErrorCode::COIL_WINDING_ERROR,
+                        "The strands of '" + get_name(windingIndex) + "' pack tighter than hexagonal close packing in its filled cell");
+                }
+            }
+            restoreAsGiven();
+            ok = wind_at_current_footprints(proportionPerWinding, pattern, repetitions);
+        }
+        if (auto turns = get_turns_description()) {
+            for (auto& turn : turns.value()) {
+                auto footprint = _litzWoundFootprintPerWinding.find(get_winding_index_by_name(turn.get_winding()));
+                if (footprint != _litzWoundFootprintPerWinding.end()) {
+                    turn.set_cross_sectional_shape(TurnCrossSectionalShape::RECTANGULAR);
+                    turn.set_dimensions(std::vector<double>{footprint->second.first, footprint->second.second});
+                }
+            }
+            set_turns_description(turns.value());
+        }
+        return overflowAsLastResort(ok);
+    }
     double lowestTried = 1;
     for (int step = 1; step <= 100; ++step) {
         const double k = 1.0 - 0.01 * step;
@@ -9697,6 +14181,7 @@ bool Coil::wind(std::vector<double> proportionPerWinding, std::vector<size_t> pa
             }
         }
     }
+    // (a stored layout's compression is computed before this search, see above)
     _litzWoundFootprintPerWinding.clear();
     _litzFlatteningPerWinding.clear();
     restoreAsGiven();
@@ -9779,6 +14264,7 @@ bool Coil::wind_at_current_footprints(std::vector<double> proportionPerWinding, 
     // Only on a wind that would otherwise be handed back as good: a wind that already failed is
     // already refused, and a second fault reported on top of the first only buries it.
     if (ok) {
+        fund_terminal_bends_against_sibling_wraps();
         refuse_turns_bent_tighter_than_the_wire_allows();
         refuse_sibling_layer_links_closer_than_the_wire();
         warn_about_radial_steps_closer_than_the_wire_to_sibling_wraps();
@@ -15836,12 +20322,7 @@ std::vector<std::vector<double>> overlap_region(const ConvexOutline& a, const Co
     return region;
 }
 
-// The cross-section a turn is drawn with: its shape and its width and height [m].
-struct TurnSection {
-    TurnCrossSectionalShape shape = TurnCrossSectionalShape::ROUND;
-    double width = 0;
-    double height = 0;
-};
+// TurnSection: declared before Coil::compute_ride_placement, which sizes a ride by it.
 
 // Alf, 2026-10-27 (ABT #2109): a turn's cross-section is the one it stores (shape and dimensions); a
 // turn that stores no shape or no dimensions takes it from its winding's wire -- a round or litz wire a
@@ -16158,12 +20639,18 @@ std::vector<CopperOverlap> Coil::judge_copper_overlaps(const std::vector<Connect
             return route.tangentDeparture->point[0];
         }
         if (route.axialLead) {
-            return route.axialLead->alongFace;
+            // ABT #2274: alongFace is a distance from the crossing; an entrance's lead stands where its first
+            // turn leaves the crossing (x <= 0), an exit's back along the way its last turn arrives (x >= 0).
+            return route.kind == ConnectionKind::TERMINAL_ENTRANCE ? -route.axialLead->alongFace : route.axialLead->alongFace;
         }
         return route.exitSlot;
     };
     const auto laneWires = get_wires();
     auto laneWidthOf = [&](const ConnectionRoute& route) {
+        // ABT #2274: an axial lead is its stated lead conductor, not the sheet.
+        if (route.axialLead) {
+            return route.axialLead->outerDiameter;
+        }
         return laneWires[get_winding_index_by_name(route.winding)].get_maximum_outer_width();
     };
     // The terminal route a turn is the attach turn of: its first turn (entrance) or last (exit). None for
@@ -16276,8 +20763,8 @@ std::vector<CopperOverlap> Coil::judge_copper_overlaps(const std::vector<Connect
                 if (!aAlong || !bAlong) {
                     throw std::logic_error("Terminal leads '" + leadName(a) + "' and '" + leadName(b) + "' carry no place along the connection face");
                 }
-                const double aWidth = wires[get_winding_index_by_name(a.winding)].get_maximum_outer_width();
-                const double bWidth = wires[get_winding_index_by_name(b.winding)].get_maximum_outer_width();
+                const double aWidth = laneWidthOf(a);
+                const double bWidth = laneWidthOf(b);
                 if (std::abs(aAlong.value() - bAlong.value()) >= (aWidth + bWidth) / 2 - kStoredCoordinateResolution) {
                     continue;
                 }
@@ -16392,6 +20879,233 @@ std::vector<TurnOutsideWindow> Coil::judge_turns_outside_window() {
         }
     }
     return outside;
+}
+
+std::vector<RideOverCoreContact> Coil::judge_ride_over_core_contacts() {
+    std::vector<RideOverCoreContact> contacts;
+    if (!get_turns_description() || !is_real_winding_blocking_applied()) {
+        return contacts;
+    }
+    const auto layout = get_connection_layout();
+    if (layout.rideLevels.empty()) {
+        return contacts;
+    }
+    if (resolve_bobbin().get_winding_window_shape() != WindingWindowShape::RECTANGULAR) {
+        throw CoilException(ErrorCode::COIL_WINDING_ERROR,
+                            "Real winding: the layout lays returns that turns ride over, but on a toroid the turns have no "
+                            "connection face to be lifted off, so the ride-over is not modelled and cannot be shown to fit the core");
+    }
+    OutsideLinkRoomGeometry room;
+    try {
+        room = outside_link_room_geometry(*this, false);
+    }
+    catch (const CoilException& e) {
+        throw CoilException(e.code(), std::string("Real winding: the ride-over of the returns cannot be checked against the core: ") +
+                                          e.what());
+    }
+    if (!room.hasCore) {
+        return contacts;   // no core, no legs (Alf, 2026-10-24: the core-leg check only when a core exists)
+    }
+    // The lifted outline, as MVB++ draws it: the turn's outline about the column, its half on the face
+    // translated `ride` along the face normal, joined to the other half by lateral straights `ride`
+    // long. Written as straights {sx, sz} and corner arcs of radius R about (+-sx, +-sz): a round
+    // column's turn is a circle (sx = sz = 0), a rectangular one has corners of radius equal to its
+    // build (the outline z_against_build rests a lane on), an oblong one is a stadium.
+    double straightX = 0, straightZ = 0, cornerOffset = 0;
+    switch (room.columnShape) {
+        case ColumnShape::ROUND:
+            cornerOffset = room.columnHalfWidth;
+            break;
+        case ColumnShape::RECTANGULAR:
+            straightX = room.columnHalfWidth;
+            straightZ = room.columnHalfDepth;
+            break;
+        case ColumnShape::OBLONG: {
+            const double radius = std::min(room.columnHalfWidth, room.columnHalfDepth);
+            straightX = room.columnHalfWidth - radius;
+            straightZ = room.columnHalfDepth - radius;
+            cornerOffset = radius;
+            break;
+        }
+        default:
+            throw CoilException(ErrorCode::COIL_WINDING_ERROR,
+                                "Real winding: the ride-over of the returns cannot be checked against the core: the outline of a turn "
+                                "about a bobbin column of shape '" + std::string(magic_enum::enum_name(room.columnShape)) +
+                                    "' is not known to MKF");
+    }
+    const auto turns = get_turns_description().value();   // bound: never range over a temporary
+    const auto sections = require_turn_sections(turns, get_functional_description(), get_wires());
+    for (size_t t = 0; t < turns.size(); ++t) {
+        const auto& turn = turns[t];
+        const double x = turn.get_coordinates()[0];
+        // The copper's extent across the turn's own path, radially: its section's width (the coated
+        // diameter of a round wire), centred on the path. Sweeping a disc of half that width along the
+        // path draws exactly that band.
+        const double copperRadius = sections[t].width / 2;
+        const double build = room.distance_from_column(x, 0);
+        const double radius = cornerOffset + build;
+        for (int side : {0, 1}) {
+            const double ride = layout.ride_at(x, side);
+            if (!(ride > 0)) {
+                continue;
+            }
+            const double normal = side == 0 ? -1.0 : 1.0;
+            // The lifted half as pieces, each a function of u in [0, 1]: the two lateral straights (the
+            // risers), the two quarter arcs of radius `radius` and the straight across the face.
+            struct Piece {
+                bool arc;
+                double x0, z0, x1, z1;      // straight: from (x0, z0) to (x1, z1); arc: centre (x0, z0), sign x1
+                double length;
+            };
+            std::vector<Piece> pieces;
+            const double lifted = normal * (straightZ + ride);
+            for (double sign : {1.0, -1.0}) {
+                pieces.push_back({false, sign * (straightX + radius), 0, sign * (straightX + radius), lifted, ride + straightZ});
+                pieces.push_back({true, sign * straightX, lifted, sign, 0, radius * std::numbers::pi / 2});
+            }
+            pieces.push_back({false, -straightX, lifted + normal * radius, straightX, lifted + normal * radius, 2 * straightX});
+            auto at = [&](const Piece& piece, double u) -> std::pair<double, double> {
+                if (!piece.arc) {
+                    return {piece.x0 + (piece.x1 - piece.x0) * u, piece.z0 + (piece.z1 - piece.z0) * u};
+                }
+                const double angle = std::numbers::pi / 2 * u;
+                return {piece.x0 + piece.x1 * radius * std::cos(angle), piece.z0 + normal * radius * std::sin(angle)};
+            };
+            // The copper of the disc about (px, pz), its centre and `rimCount` rim points: the deepest of
+            // them inside a leg (0 when none is), and whether a disc `inflate` larger meets a leg.
+            auto discDepth = [&](double px, double pz, size_t rimCount, double& atX, double& atZ) {
+                double deepest = room.depth_in_core_leg(px, pz);
+                atX = px;
+                atZ = pz;
+                for (size_t k = 0; k < rimCount; ++k) {
+                    const double angle = 2 * std::numbers::pi * double(k) / double(rimCount);
+                    const double qx = px + copperRadius * std::cos(angle), qz = pz + copperRadius * std::sin(angle);
+                    const double depth = room.depth_in_core_leg(qx, qz);
+                    if (depth > deepest) {
+                        deepest = depth;
+                        atX = qx;
+                        atZ = qz;
+                    }
+                }
+                return deepest;
+            };
+            auto discMeets = [&](double px, double pz, double discRadius, size_t rimCount) {
+                if (room.point_in_core_leg(px, pz)) {
+                    return true;
+                }
+                for (size_t k = 0; k < rimCount; ++k) {
+                    const double angle = 2 * std::numbers::pi * double(k) / double(rimCount);
+                    if (room.point_in_core_leg(px + discRadius * std::cos(angle), pz + discRadius * std::sin(angle))) {
+                        return true;
+                    }
+                }
+                return false;
+            };
+            // ANY copper of the swept band inside a leg is a contact -- no tolerance (Alf, 2026-11-05:
+            // "refuse any contact"). The band is sampled, so what sampling can miss is bounded and then
+            // looked at closer, never waved through:
+            //   * between two centreline samples `step` apart the band's edge dips at most
+            //     step^2 / (8 copperRadius) inside the true one;
+            //   * between two of `rim` rim points the circle bulges at most copperRadius (1 - cos(pi / rim))
+            //     past their chord, and a leg corner can poke between them no deeper than about the chord
+            //     2 copperRadius sin(pi / rim).
+            // A coarse sample (step copperRadius / 8, 360 rim points) whose disc, grown by those bounds,
+            // meets no leg is proven clear. One that does is re-sampled over its two neighbouring
+            // intervals at copperRadius / 1024 with 7200 rim points (dip 0.12 nm, chord 0.9 um on a 1 mm
+            // wire); a band that still reaches no leg there is clear.
+            const size_t coarseRim = 360, fineRim = 7200;
+            const double coarseStep = copperRadius / 8, fineStep = copperRadius / 1024;
+            auto margin = [&](double step, size_t rim) {
+                return step * step / (8 * copperRadius) + 2 * copperRadius * std::sin(std::numbers::pi / double(rim));
+            };
+            double deepest = 0, deepestX = 0, deepestZ = 0;
+            std::vector<double> firstPoint;
+            for (const auto& piece : pieces) {
+                if (!(piece.length > 0)) {
+                    continue;
+                }
+                const size_t count = std::max<size_t>(1, size_t(std::ceil(piece.length / coarseStep)));
+                for (size_t k = 0; k <= count; ++k) {
+                    const double u = double(k) / double(count);
+                    const auto [px, pz] = at(piece, u);
+                    if (!discMeets(px, pz, copperRadius + margin(piece.length / double(count), coarseRim), coarseRim)) {
+                        continue;
+                    }
+                    // Close to a leg: the two intervals either side of this sample, finely.
+                    const double u0 = double(k == 0 ? 0 : k - 1) / double(count);
+                    const double u1 = double(std::min(k + 1, count)) / double(count);
+                    const size_t fineCount = std::max<size_t>(1, size_t(std::ceil((u1 - u0) * piece.length / fineStep)));
+                    for (size_t j = 0; j <= fineCount; ++j) {
+                        const auto [fx, fz] = at(piece, u0 + (u1 - u0) * double(j) / double(fineCount));
+                        double qx = 0, qz = 0;
+                        double depth = discDepth(fx, fz, coarseRim, qx, qz);
+                        if (!(depth > 0) && discMeets(fx, fz, copperRadius, fineRim)) {
+                            depth = discDepth(fx, fz, fineRim, qx, qz);
+                            if (!(depth > 0)) {
+                                // A rim point exactly on a leg's boundary: the copper touches the core.
+                                depth = std::numeric_limits<double>::min();
+                            }
+                        }
+                        if (depth > 0 && firstPoint.empty()) {
+                            firstPoint = {fx, fz};
+                        }
+                        if (depth > deepest) {
+                            deepest = depth;
+                            deepestX = qx;
+                            deepestZ = qz;
+                        }
+                    }
+                }
+            }
+            if (!firstPoint.empty()) {
+                RideOverCoreContact contact;
+                contact.turn = turn.get_name();
+                contact.winding = turn.get_winding();
+                contact.side = side;
+                contact.turnRadius = x;
+                contact.ride = ride;
+                for (const auto& level : layout.rideLevels) {
+                    if (level.side == side && level.radius <= x + 0.5 * level.height) {
+                        ++contact.rideLevels;
+                    }
+                }
+                contact.copperRadius = copperRadius;
+                contact.point = firstPoint;
+                const auto& point = firstPoint;
+                std::ostringstream out;
+                out << std::fixed << std::setprecision(4) << "the ride over the returns lifts turn '" << turn.get_name() << "' (winding '"
+                    << turn.get_winding() << "', at x = " << x * 1e3 << " mm) " << ride * 1e3 << " mm off the "
+                    << (side == 0 ? "-z" : "+z") << " face (" << contact.rideLevels << " return level"
+                    << (contact.rideLevels == 1 ? "" : "s") << " at or inside it), and its " << 2 * copperRadius * 1e3
+                    << " mm copper then meets the " << room.coreFamily << " core's outer leg at (x " << point[0] * 1e3 << ", z "
+                    << point[1] * 1e3 << ") mm, " << (std::hypot(point[0], point[1]) + copperRadius) * 1e3
+                    << " mm out from the column axis";
+                if (room.pqLegs) {
+                    out << ", where the legs' bore (E/2) is " << room.pqBoreRadius * 1e3 << " mm beyond the opening between them (|x| > "
+                        << room.pqHalfOpening * 1e3 << " mm)";
+                }
+                if (room.rmLegs) {
+                    out << ", where the legs' bore (E/2) is " << room.rmBoreRadius * 1e3 << " mm, beyond "
+                        << (std::numbers::pi / 2 - room.rmLegHalfAngle) * 180 / std::numbers::pi
+                        << " deg either side of the wire slots' axis (asin(G/E))";
+                }
+                if (room.epLegs) {
+                    out << ", where the bore (E/2) is " << room.epBoreRadius * 1e3 << " mm, the window opens to the front face (z = "
+                        << room.epFrontFace * 1e3 << " mm) only " << 2 * room.epBoreRadius * 1e3 << " mm wide and the back face is at z = "
+                        << -room.epBackFace * 1e3 << " mm";
+                    if (room.epHalfSlot > 0) {
+                        out << ", its G slot " << 2 * room.epHalfSlot * 1e3 << " mm wide";
+                    }
+                }
+                out << "; its copper lies up to " << std::setprecision(4) << deepest * 1e3 << " mm inside the core (at x "
+                    << deepestX * 1e3 << ", z " << deepestZ * 1e3 << " mm, " << std::hypot(deepestX, deepestZ) * 1e3
+                    << " mm from the column axis)";
+                contact.witness = out.str();
+                contacts.push_back(contact);
+            }
+        }
+    }
+    return contacts;
 }
 
 std::vector<WindingLeadsBelowFlexibility> Coil::judge_leads_against_wire_flexibility() {
@@ -17740,6 +22454,7 @@ std::map<size_t, double> Coil::keep_stored_section_heights(
         double need;
     };
     _storedHeightOverflows.clear();   // each wind decides afresh (ABT #1487)
+    _storedSectionNeeds.clear();
     std::vector<Kept> kept;
     auto remaining = remainingParallelsProportion;
     std::vector<size_t> currentSection(get_functional_description().size(), 0);
@@ -17779,6 +22494,9 @@ std::map<size_t, double> Coil::keep_stored_section_heights(
         // produce. A foil has no crossing station (ABT #881) and its sheet is cut to the section:
         // nothing to grow for.
         double need = 0;
+        double sectionWidth = 0;
+        uint64_t turnsInSection = 0;
+        uint64_t parallelsInSection = 0;
         auto wire = wirePerWinding[windingIndex];
         if (wire.get_type() != WireType::FOIL && wire.get_type() != WireType::PLANAR) {
             if (marginIndex >= _marginsPerSection.size()) {
@@ -17802,11 +22520,20 @@ std::map<size_t, double> Coil::keep_stored_section_heights(
                     }
                 }
                 const auto turnsHere = static_cast<uint64_t>(std::ceil(turns - 1e-9));
-                need = static_cast<double>((turnsHere + across - 1) / across + parallelsCarried) * wireHeight;
+                // A ONE-TURN WINDING IS AN OMEGA (Alf, 2026-09-07; 2026-11-04: "one turn in general ... they
+                // must be treated as a U, with the two terminals tangent to the curve"): each of its
+                // parallels shows one cross-section and closes no layer, so it is charged no crossing
+                // station -- the same rule that adds none to its turns (the stations of the enclosing wind).
+                const uint64_t closingStations = declaredTurns == 1 ? 0 : parallelsCarried;
+                need = static_cast<double>((turnsHere + across - 1) / across + closingStations) * wireHeight;
+                sectionWidth = width;
+                turnsInSection = turnsHere;
+                parallelsInSection = closingStations;
             }
             // A section too narrow for one wire is the wind's to refuse below (it returns false).
         }
         kept.push_back({position, name, stored->second, need});
+        _storedSectionNeeds[name] = {windingIndex, stored->second, need, sectionWidth, turnsInSection, parallelsInSection};
     }
 
     // Grow each section that needs more, by exactly its need, from its neighbours in the stack
@@ -20949,7 +25676,14 @@ bool Coil::wind_by_rectangular_turns() {
             //
             // A layer with one turn per parallel holds TWO stations per parallel: the turn's
             // beginning and its ending (ABT #685's one crossing per layer).
-            const int64_t parallelsHere = std::max<int64_t>(1, winding.get_number_parallels());
+            //
+            // The parallels are those wound ON THIS LAYER, as the connection classifier counts
+            // them (realTurnsInLayer, per parallel). Counting the winding's parallels instead made
+            // a section holding one whole parallel of a 4-parallel winding -- four turns per
+            // layer, five stations -- read as single-turn (5 <= 2 x 4): its layers were laid as
+            // U turnarounds while the classifier, counting four turns of that parallel, called the
+            // same links Z dragbacks, and the 3D drew a dragback and its bump over a U.
+            const int64_t parallelsHere = std::max<int64_t>(1, get_layer_parallels_present(layer));
             const bool singleTurnLayer =
                 int64_t(physicalTurnsInLayer) <= 2 * parallelsHere;
             const bool joinedByTurnaround =

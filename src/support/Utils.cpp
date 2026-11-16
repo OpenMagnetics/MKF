@@ -4,6 +4,7 @@
 #include "physical_models/MagnetizingInductance.h"
 #include "processors/MagneticSimulator.h"
 #include "support/Utils.h"
+#include "support/RideOverCoreRefusal.h"
 #include "constructive_models/CorePiece.h"
 #include "support/Logger.h"
 #include "json.hpp"
@@ -1991,6 +1992,20 @@ CoreShape flatten_dimensions(CoreShape shape) {
     return flattenedShape;
 }
 
+double round_post_lateral_leg_aperture(const std::map<std::string, double>& dimensions) {
+    for (const std::string key : {"C", "E"}) {
+        if (!dimensions.contains(key) || !(dimensions.at(key) > 0)) {
+            throw InvalidInputException(ErrorCode::INVALID_CORE_DATA,
+                                        "round_post_lateral_leg_aperture: the shape states no positive dimension " + key);
+        }
+    }
+    const auto g = dimensions.find("G");
+    if (g != dimensions.end() && g->second > 0) {
+        return g->second / 2;
+    }
+    return dimensions.at("E") / 2 * cos(asin(dimensions.at("C") / dimensions.at("E")));
+}
+
 std::map<std::string, double> flatten_dimensions(std::map<std::string, Dimension> dimensions) {
     std::map<std::string, double> flattenedDimensions;
     for (auto& dimension : dimensions) {
@@ -3487,6 +3502,7 @@ std::optional<std::string> real_winding_refusal(const Magnetic& woundMagnetic, s
                 case LeadFindingKind::LANES_COLLIDE: kind = "its lane collides with another lead"; break;
                 case LeadFindingKind::PIN_RUN_COLLIDES: kind = "its run to the pin collides"; break;
                 case LeadFindingKind::LIFT_TOO_SHORT: kind = "its lift off the face has no room for its bend"; break;
+                case LeadFindingKind::NO_CONSISTENT_RAMP: kind = "no ramp is consistent with its lane and no standoff moves it"; break;
             }
             return "real winding: the terminal lead of winding '" + route.winding + "' parallel " + std::to_string(route.parallel) +
                    " does not fit (" + kind + "): " + finding.witness;
@@ -3498,7 +3514,30 @@ std::optional<std::string> real_winding_refusal(const Magnetic& woundMagnetic, s
             << overlap.second << " (winding '" << overlap.secondWinding << "') by " << overlap.overlap * 1e3 << " mm";
         return out.str();
     }
-    return std::nullopt;
+    // ABT #2274 (Alf, 2026-11-05: "MKF counts the bump"): the turns lifted over the returns must fit the
+    // core too. An adviser accepts only what it can show fits.
+    return ride_over_core_refusal(coil);
+}
+
+std::optional<std::string> ride_over_core_refusal(Coil& coil) {
+    std::vector<RideOverCoreContact> contacts;
+    try {
+        contacts = coil.judge_ride_over_core_contacts();
+    }
+    catch (const CoilException& e) {
+        if (e.code() != ErrorCode::COIL_WINDING_ERROR) {
+            throw;
+        }
+        return std::string(e.what());
+    }
+    if (contacts.empty()) {
+        return std::nullopt;
+    }
+    // The contact of the turn lifted furthest: the one the bump drives deepest into the leg.
+    const auto worst = std::max_element(contacts.begin(), contacts.end(),
+                                        [](const RideOverCoreContact& a, const RideOverCoreContact& b) { return a.ride < b.ride; });
+    return "real winding: the turns lifted over the returns do not fit the core: " + worst->witness + " (" +
+           std::to_string(contacts.size()) + " turn" + (contacts.size() == 1 ? "" : "s") + " meet the core this way)";
 }
 
 Magnetic magnetic_autocomplete(Magnetic magnetic, json configuration, std::optional<Inputs> inputs) {

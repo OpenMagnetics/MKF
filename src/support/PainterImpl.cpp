@@ -11,6 +11,7 @@
 #include <iomanip>
 #include <iostream>
 #include "support/Exceptions.h"
+#include <magic_enum.hpp>
 
 namespace OpenMagnetics {
 
@@ -119,6 +120,76 @@ void Painter::paint_round_wire(double xCoordinate, double yCoordinate, Wire wire
             currentLineDiameter += lineRadiusIncrease;
         }
     }
+}
+
+void Painter::paint_rounded_rectangle(double xCoordinate, double yCoordinate, double width, double height, double cornerRadius,
+                                      std::string cssClassName, SVG::Group* group, std::optional<std::string> label) {
+    if (!(width > 0) || !(height > 0) || !(cornerRadius >= 0) || 2 * cornerRadius > std::min(width, height) * (1 + 1e-9)) {
+        throw InvalidInputException(ErrorCode::INVALID_INPUT,
+            "Painter: a rounded rectangle needs positive sides and a corner radius of at most half its short side (" +
+            std::to_string(width * 1e3) + " x " + std::to_string(height * 1e3) + " mm, radius " + std::to_string(cornerRadius * 1e3) + " mm)");
+    }
+    const double radius = std::min(cornerRadius, std::min(width, height) / 2);
+    const size_t samplesPerCorner = 16;
+    const double halfWidth = width / 2 - radius;
+    const double halfHeight = height / 2 - radius;
+    // Corner centres counter-clockwise from the top right, each arc a quarter turn on from the last.
+    const double centres[4][2] = {{halfWidth, halfHeight}, {-halfWidth, halfHeight}, {-halfWidth, -halfHeight}, {halfWidth, -halfHeight}};
+    std::vector<SVG::Point> points;
+    for (size_t corner = 0; corner < 4; ++corner) {
+        for (size_t k = 0; k <= samplesPerCorner; ++k) {
+            const double angle = std::numbers::pi / 2 * (double(corner) + double(k) / double(samplesPerCorner));
+            points.push_back(SVG::Point(xCoordinate + centres[corner][0] + radius * std::cos(angle),
+                                        yCoordinate + centres[corner][1] + radius * std::sin(angle)));
+        }
+    }
+    if (group == nullptr) {
+        group = _root.add_child<SVG::Group>();
+    }
+    auto shape = group->add_child<SVG::Polygon>(scale_points(points, 0, _scale));
+    shape->set_attr("class", cssClassName);
+    if (label) {
+        shape->add_child<SVG::Title>(escape_xml(label.value()));
+    }
+}
+
+void Painter::paint_compressed_litz_wire(double xCoordinate, double yCoordinate, Wire wire, double width, double height,
+                                         double cornerRadius, std::optional<std::string> label) {
+    const double serving = Wire::litz_serving_thickness(wire);
+    if (!(width - 2 * serving > 0) || !(height - 2 * serving > 0) || cornerRadius < serving) {
+        throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA,
+            "Painter: litz turn '" + label.value_or("unnamed") + "' is compressed into a " + std::to_string(width * 1e3) + " x " +
+            std::to_string(height * 1e3) + " mm shape with corner radius " + std::to_string(cornerRadius * 1e3) +
+            " mm, which does not hold its serving of " + std::to_string(serving * 1e3) + " mm a side");
+    }
+    auto coating = wire.resolve_coating();
+    std::string coatingColor = settings.get_painter_color_insulation();
+    if (serving > 0) {
+        coatingColor = process_coating(serving, coating.value()).coatingColor;
+    }
+    coatingColor = std::regex_replace(std::string(coatingColor), std::regex("0x"), "#");
+    auto shapes = _root.add_child<SVG::Group>();
+    std::string cssClassName = generate_random_string();
+    _root.style("." + cssClassName).set_attr("opacity", _opacity).set_attr("fill", coatingColor);
+    paint_rounded_rectangle(xCoordinate, yCoordinate, width, height, cornerRadius, cssClassName, shapes, label);
+    paint_rounded_rectangle(xCoordinate, yCoordinate, width - 2 * serving, height - 2 * serving, cornerRadius - serving, "copper", shapes, label);
+}
+
+void Painter::paint_litz_turn(double xCoordinate, double yCoordinate, const Wire& wire, const Turn& turn, const std::string& label) {
+    const auto shape = turn.get_cross_sectional_shape();
+    if (shape && (shape.value() == TurnCrossSectionalShape::RECTANGULAR || shape.value() == TurnCrossSectionalShape::OVAL)) {
+        if (!turn.get_dimensions() || turn.get_dimensions()->size() < 2) {
+            throw InvalidInputException(ErrorCode::INVALID_INPUT,
+                "Painter: litz turn '" + turn.get_name() + "' is compressed but states no dimensions");
+        }
+        const double width = turn.get_dimensions().value()[0];
+        const double height = turn.get_dimensions().value()[1];
+        const double cornerRadius = shape.value() == TurnCrossSectionalShape::OVAL ? std::min(width, height) / 2
+                                                                                  : Wire::compressed_litz_corner_radius(Wire::round_litz_outer_diameter(wire), width, height);
+        paint_compressed_litz_wire(xCoordinate, yCoordinate, wire, width, height, cornerRadius, label);
+        return;
+    }
+    paint_litz_wire(xCoordinate, yCoordinate, wire, label);
 }
 
 void Painter::paint_litz_wire(double xCoordinate, double yCoordinate, Wire wire, std::optional<std::string> label) {
@@ -326,9 +397,7 @@ void Painter::paint_circle(double xCoordinate, double yCoordinate, double radius
     if (group == nullptr) {
         group = _root.add_child<SVG::Group>();
     }
-    *group << SVG::Circle(xCoordinate * _scale, -yCoordinate * _scale, radius * _scale);
-    auto turnSvg = _root.get_children<SVG::Circle>().back();
-    turnSvg = _root.get_children<SVG::Circle>().back();
+    auto turnSvg = group->add_child<SVG::Circle>(xCoordinate * _scale, -yCoordinate * _scale, radius * _scale);
     turnSvg->set_attr("class", cssClassName);
 
     // auto group = _root.add_child<SVG::Group>();
@@ -542,8 +611,28 @@ void Painter::paint_coil_connections(Magnetic magnetic) {
     // DASHED OUTLINES so the declined state is unmistakable at a glance.
     const bool blockingDeclined = settings.get_coil_use_real_winding_geometry() &&
                                   !coil.is_real_winding_blocking_applied();
+    // Spec section 17 (Alf, 2026-11-04, "Draw them in red"): a terminal lead whose route carries
+    // findings (it meets a core leg, another lead, does not fit its lanes, ...) is painted RED, with
+    // every finding's witness as its title, so the picture shows which leads a real part cannot have.
+    _root.style(".connection_terminal_finding").set_attr("opacity", "0.6").set_attr("fill", "#E53935");   // red
+    std::map<std::tuple<std::string, int64_t, ConnectionKind, std::string, std::string>, std::string> findingsOfLead;
+    if (!terminalLeadsHaveNoRoute &&
+        std::any_of(reservedSpaces.begin(), reservedSpaces.end(), [](const auto& space) { return space.isTerminal; })) {
+        for (const auto& route : coil.get_connection_layout().routes) {
+            if (route.findings.empty() ||
+                (route.kind != ConnectionKind::TERMINAL_ENTRANCE && route.kind != ConnectionKind::TERMINAL_EXIT)) {
+                continue;
+            }
+            std::string witness = route.winding + " parallel " + std::to_string(route.parallel) +
+                                  (route.kind == ConnectionKind::TERMINAL_ENTRANCE ? " entrance" : " exit") + " lead:";
+            for (const auto& finding : route.findings) {
+                witness += "\n" + std::string(magic_enum::enum_name(finding.kind)) + ": " + finding.witness;
+            }
+            findingsOfLead[{route.winding, route.parallel, route.kind, route.fromTurn, route.toTurn}] = witness;
+        }
+    }
     if (blockingDeclined) {
-        for (const char* cls : {".connection_transition", ".connection_terminal"}) {
+        for (const char* cls : {".connection_transition", ".connection_terminal", ".connection_terminal_finding"}) {
             _root.style(cls)
                 .set_attr("opacity", "0.85")
                 .set_attr("fill", "none")
@@ -568,9 +657,17 @@ void Painter::paint_coil_connections(Magnetic magnetic) {
             continue;
         }
         std::string cssClassName = space.isTerminal ? "connection_terminal" : "connection_transition";
+        std::optional<std::string> label;
+        if (space.isTerminal) {
+            const auto found = findingsOfLead.find({space.winding, space.parallel, space.kind, space.fromTurn, space.toTurn});
+            if (found != findingsOfLead.end()) {
+                cssClassName = "connection_terminal_finding";
+                label = found->second;
+            }
+        }
         // paint_rectangle rotates around center*_scale while scale_points flips y (y -> -y*_scale), so
         // the rotation pivot's y must be negated to match the drawn polygon's centre.
-        paint_rectangle(space.coordinates[0], space.coordinates[1], space.dimensions[0], space.dimensions[1], cssClassName, shapes, space.rotation, {space.coordinates[0], -space.coordinates[1]});
+        paint_rectangle(space.coordinates[0], space.coordinates[1], space.dimensions[0], space.dimensions[1], cssClassName, shapes, space.rotation, {space.coordinates[0], -space.coordinates[1]}, label);
     }
     // Spec section 15 (Alf, 2026-10-26: "The sleeve goes only until the winding layers start"): a
     // sleeved terminal lead's sleeve is drawn, as an outline of its outer diameter, only over the
@@ -858,7 +955,7 @@ void Painter::paint_two_piece_set_coil_turns(Magnetic magnetic, bool skipMarginA
                 paint_round_wire(turnX, turnY, wirePerWinding[windingIndex], label);
             }
             else if (wirePerWinding[windingIndex].get_type() == WireType::LITZ) {
-                paint_litz_wire(turnX, turnY, wirePerWinding[windingIndex], label);
+                paint_litz_turn(turnX, turnY, wirePerWinding[windingIndex], turns[i], label);
             }
             else {
                 {
@@ -928,7 +1025,7 @@ void Painter::paint_two_piece_set_coil_turns(Magnetic magnetic, bool skipMarginA
                     paint_round_wire(additionalCoordinates[0], additionalCoordinates[1], wirePerWinding[windingIndex], turns[i].get_name());
                 }
                 else if (wirePerWinding[windingIndex].get_type() == WireType::LITZ) {
-                    paint_litz_wire(additionalCoordinates[0], additionalCoordinates[1], wirePerWinding[windingIndex], turns[i].get_name());
+                    paint_litz_turn(additionalCoordinates[0], additionalCoordinates[1], wirePerWinding[windingIndex], turns[i], turns[i].get_name());
                 }
                 else if (wire.get_outer_width() && wire.get_outer_height()) {
                     paint_rectangle(additionalCoordinates[0], additionalCoordinates[1],
@@ -1270,8 +1367,7 @@ void Painter::paint_two_piece_set_bobbin(Magnetic magnetic) {
                                       bobbinCoordinates[1] - bobbinOuterHeight / 2));
 
     auto addBobbinPolygon = [&](const std::vector<SVG::Point>& points) {
-        *shapes << SVG::Polygon(scale_points(points, 0, _scale));
-        auto polygon = _root.get_children<SVG::Polygon>().back();
+        auto polygon = shapes->add_child<SVG::Polygon>(scale_points(points, 0, _scale));
         polygon->set_attr("class", _fieldPainted ? "bobbin_translucent" : "bobbin");
     };
     auto reflectAcross = [](const std::vector<SVG::Point>& points, double axisX) {
@@ -1497,8 +1593,7 @@ void Painter::paint_two_piece_set_core(Core core) {
 
     auto shapes = _root.add_child<SVG::Group>();
     auto addFerritePolygon = [&](const std::vector<SVG::Point>& points) {
-        *shapes << SVG::Polygon(scale_points(points, 0, _scale));
-        auto polygon = _root.get_children<SVG::Polygon>().back();
+        auto polygon = shapes->add_child<SVG::Polygon>(scale_points(points, 0, _scale));
         polygon->set_attr("class", "ferrite");
     };
     addFerritePolygon(topPiecePoints);
@@ -1945,14 +2040,12 @@ void Painter::paint_drum_family_core(Core core) {
     auto addRectangle = [&](double innerRadius, double outerRadius, double bottom, double top) {
         std::vector<SVG::Point> points = {
             {innerRadius, bottom}, {outerRadius, bottom}, {outerRadius, top}, {innerRadius, top}};
-        *shapes << SVG::Polygon(scale_points(points, 0, _scale));
-        auto polygon = _root.get_children<SVG::Polygon>().back();
+        auto polygon = shapes->add_child<SVG::Polygon>(scale_points(points, 0, _scale));
         polygon->set_attr("class", "ferrite");
         if (wholeBodyDrawn) {
             std::vector<SVG::Point> farSide = {
                 {-innerRadius, bottom}, {-outerRadius, bottom}, {-outerRadius, top}, {-innerRadius, top}};
-            *shapes << SVG::Polygon(scale_points(farSide, 0, _scale));
-            _root.get_children<SVG::Polygon>().back()->set_attr("class", "ferrite");
+            shapes->add_child<SVG::Polygon>(scale_points(farSide, 0, _scale))->set_attr("class", "ferrite");
         }
     };
 
@@ -5054,8 +5147,7 @@ void Painter::paint_copper_overlaps(Magnetic magnetic) {
         for (const auto& point : overlap.region) {
             points.push_back(SVG::Point(point[0], point[1]));
         }
-        *shapes << SVG::Polygon(scale_points(points, 0, _scale));
-        auto polygon = _root.get_children<SVG::Polygon>().back();
+        auto polygon = shapes->add_child<SVG::Polygon>(scale_points(points, 0, _scale));
         polygon->set_attr("class", "copper_overlap");
         std::ostringstream label;
         // A turn is named in quotes; a lead's name already quotes its turn ("exit lead of '<turn>'").
@@ -5085,8 +5177,7 @@ void Painter::paint_copper_outside_window(Magnetic magnetic) {
             for (const auto& point : region) {
                 points.push_back(SVG::Point(point[0], point[1]));
             }
-            *shapes << SVG::Polygon(scale_points(points, 0, _scale));
-            auto polygon = _root.get_children<SVG::Polygon>().back();
+            auto polygon = shapes->add_child<SVG::Polygon>(scale_points(points, 0, _scale));
             polygon->set_attr("class", "copper_outside_window");
             std::ostringstream label;
             label << "'" << turn.turn << "' lies outside the winding window by " << std::setprecision(3) << turn.overrun * 1000 << " mm";

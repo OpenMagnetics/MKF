@@ -3660,12 +3660,18 @@ TEST_CASE("Test_MagneticFilterAreaWithParallels_Reserves_Crossing_Stations_Only_
 
 TEST_CASE("Test_CoilAdviser_Real_Winding_Selection_Drops_What_The_Real_Winder_Refuses", "[adviser][coil-adviser][bug][abt-1699]") {
     // ABT #1699 (b): with real winding geometry on, the coils the adviser returns are vetted by the
-    // real winder on their stored form. A web-flyback candidate the real winder refuses when it is
-    // rebuilt from its stored form ('Secondary 0 section 0' cannot hold its turns once the
-    // connection corridors are blocked) is not returned; with the setting off the selection is the
-    // first maximumNumberResults, as before.
+    // real winder on their stored form. A wound coil the real winder refuses when it is rebuilt from
+    // its stored form (a section that cannot hold its turns once the connection corridors are
+    // blocked) is not returned; with the setting off the selection is the first
+    // maximumNumberResults, as before.
+    // The refused coil is the PQ 40/40 contiguous leakage reference (20 x 1 + 2 x 3, stored layout);
+    // the real winder says "section 'winding 1 section 0' cannot hold its 12 turns". It has no
+    // inputs of its own, so it runs at the web flyback's engine settings and operating point.
+    // It replaced the web flyback interleaved candidate (Alf, 2026-11-05) once ABT #2258 counted the
+    // parallels actually on a single-turn layer: that candidate is still refused, but now because
+    // Primary section 1 runs out of the window, no longer because a section cannot hold its turns.
     auto mas = load_web_flyback_advise_all(true);
-    auto path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "web_adviser_flows/flyback_interleaved_candidate_stored.json");
+    auto path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "leakage_omfem_reference_pq40_20_2_contiguous.json");
     std::ifstream file(path);
     REQUIRE(file.good());
     auto stored = json::parse(file).at("magnetic");

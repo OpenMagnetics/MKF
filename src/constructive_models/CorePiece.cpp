@@ -243,22 +243,10 @@ class CorePieceEtd : public CorePieceE {
 
     double get_lateral_leg_area() {
         auto dimensions = flatten_dimensions(get_shape().get_dimensions().value());
-        double tetha;
-        double aperture;
-        if ((dimensions.find("G") == dimensions.end()) || (dimensions["G"] == 0)) {
-            tetha = asin(dimensions["C"] / dimensions["E"]);
-            aperture = dimensions["E"] / 2 * cos(tetha);
-        }
-        else {
-            if (dimensions["G"] > 0) {
-                aperture = dimensions["G"] / 2;
-                tetha = acos(aperture / (dimensions["E"] / 2));
-            }
-            else {
-                tetha = asin(dimensions["C"] / dimensions["E"]);
-                aperture = dimensions["E"] / 2 * cos(tetha);
-            }
-        }
+        // The aperture rule is shared with the real winding's outside-link room (Coil.cpp).
+        const double aperture = round_post_lateral_leg_aperture(dimensions);
+        const bool flatAtG = dimensions.find("G") != dimensions.end() && dimensions["G"] > 0;
+        const double tetha = flatAtG ? acos(aperture / (dimensions["E"] / 2)) : asin(dimensions["C"] / dimensions["E"]);
         double segmentArea = pow(dimensions["E"] / 2, 2) / 2 * (2 * tetha - sin(2 * tetha));
         double area =
             dimensions["C"] * (dimensions["A"] / 2 - aperture) - segmentArea;

@@ -795,6 +795,9 @@ TEST_CASE("terminal_exit_slots: bundles on consecutive lanes, anchored clear of 
     }
 }
 
+// Real winding (ABT #2274, Alf 2026-11-13/14): every lead corner is a 90-degree bend round its own coating, so the
+// real-winding lead is planned on its swept radius whatever the IEC minimum, the drawer or the sleeve rating says.
+// The ideal-winding sections keep the pre-#1296 radius.
 TEST_CASE("A lead is planned for the largest of its wire's, its sleeve's and the drawer's bend radius (ABT #1296)",
           "[constructive-model][coil][pins][abt1296]") {
     auto& settings = OpenMagnetics::Settings::GetInstance();
@@ -812,16 +815,14 @@ TEST_CASE("A lead is planned for the largest of its wire's, its sleeve's and the
         settings.reset();
     }
 
-    SECTION("nothing declared: the wire's own IEC 60317-0-1 minimum, not a sharp corner") {
-        CHECK_THAT(OpenMagnetics::Coil::lead_bend_radius(round, std::nullopt, coatedRadius, true),
-                   Catch::Matchers::WithinRel(flexibility, 1e-12));
+    SECTION("real winding, nothing declared: the coated radius, below the wire's IEC 60317-0-1 minimum") {
+        CHECK(OpenMagnetics::Coil::lead_bend_radius(round, std::nullopt, coatedRadius, true) == coatedRadius);
     }
 
-    SECTION("a drawer needing more than the wire gets what it declared") {
+    SECTION("real winding: a drawer's declared factor does not move the 90-degree bend") {
         const double factor = 1.5 * flexibility / coatedRadius;
         settings.set_coil_lead_bend_radius_factor(factor);
-        CHECK_THAT(OpenMagnetics::Coil::lead_bend_radius(round, std::nullopt, coatedRadius, true),
-                   Catch::Matchers::WithinRel(factor * coatedRadius, 1e-12));
+        CHECK(OpenMagnetics::Coil::lead_bend_radius(round, std::nullopt, coatedRadius, true) == coatedRadius);
         settings.reset();
     }
 
@@ -835,7 +836,7 @@ TEST_CASE("A lead is planned for the largest of its wire's, its sleeve's and the
         CHECK(OpenMagnetics::Coil::lead_bend_radius(thick, std::nullopt, thickRadius, true) == thickRadius);
     }
 
-    SECTION("a sleeve whose material rates its bend takes the smallest rated size that holds it") {
+    SECTION("real winding: a sleeve's rated bend does not move the 90-degree bend either") {
         auto material = find_insulation_material_by_name("PTFE extruded tubing");
         auto point = [](double innerDiameter, double wall, double value) {
             MAS::MinimumBendRadiusElement element;
@@ -854,20 +855,11 @@ TEST_CASE("A lead is planned for the largest of its wire's, its sleeve's and the
         sleeve.set_inner_diameter(0.0011);
         sleeve.set_wall_thickness(0.0004);
         const double sleeveRadius = 0.0011 / 2 + 0.0004;
-        CHECK_THAT(OpenMagnetics::Coil::lead_bend_radius(round, sleeve, sleeveRadius, true),
-                   Catch::Matchers::WithinRel(0.012, 1e-12));
-
-        sleeve.set_inner_diameter(0.0025);   // wider than any rated size: refused, never extrapolated
-        CHECK_THROWS_WITH(OpenMagnetics::Coil::lead_bend_radius(round, sleeve, 0.0025 / 2 + 0.0004, true),
-                          Catch::Matchers::ContainsSubstring("for no tubing"));
-
-        // No rating on the material: the sleeve adds nothing, and the wire rules.
-        auto unrated = find_insulation_material_by_name("PTFE extruded tubing");
-        REQUIRE_FALSE(unrated.get_minimum_bend_radius());
-        sleeve.set_material(InsulationMaterialDataOrNameUnion(static_cast<MAS::InsulationMaterial>(unrated)));
-        sleeve.set_inner_diameter(0.0011);
-        CHECK_THAT(OpenMagnetics::Coil::lead_bend_radius(round, sleeve, coatedRadius, true),
-                   Catch::Matchers::WithinRel(flexibility, 1e-12));
+        // The rating is 12 mm; the lead still bends round the sleeve's own outer radius.
+        CHECK(OpenMagnetics::Coil::lead_bend_radius(round, sleeve, sleeveRadius, true) == sleeveRadius);
+        // A sleeve wider than any rated size is not refused: no rating is consulted.
+        sleeve.set_inner_diameter(0.0025);
+        CHECK(OpenMagnetics::Coil::lead_bend_radius(round, sleeve, 0.0025 / 2 + 0.0004, true) == 0.0025 / 2 + 0.0004);
     }
 }
 
@@ -877,7 +869,7 @@ TEST_CASE("Every terminal route publishes the bend it was planned for, pin or no
     settings.reset();
     settings.set_coil_use_real_winding_geometry(true);
     auto round = find_wire_by_name("Round 0.2 - Grade 1");
-    const double flexibility = WireBend::get_minimum_bend_radius(round, BendCriterion::FLEXIBILITY, BendAxis::ROUND);
+    const double coatedRadius = resolve_dimensional_values(round.get_outer_diameter().value()) / 2;
     const std::vector<Winding_> windings = {{"Primary", 40, 1, "primary", "Round 0.2 - Grade 1"},
                                             {"Secondary", 6, 1, "secondary", "Round 0.2 - Grade 1"}};
 
@@ -897,11 +889,10 @@ TEST_CASE("Every terminal route publishes the bend it was planned for, pin or no
             continue;
         }
         INFO("route " << route.winding << " parallel " << route.parallel << " pin '" << route.pinName << "'");
-        // Nothing declared by a drawer and no sleeve rating: the wire's own minimum, unless the
-        // corner sweeps a sleeve wider than that -- nothing bends tighter than its own radius.
-        // A sharp-corner radius on a bare lead is the pre-#1296 behaviour.
-        const double swept = route.sleeveOuterDiameter ? route.sleeveOuterDiameter.value() / 2 : 0.0;
-        CHECK_THAT(route.plannedBendRadius, Catch::Matchers::WithinRel(std::max(flexibility, swept), 1e-9));
+        // Real winding (ABT #2274): the 90-degree bend round its own coating -- the radius the corner sweeps,
+        // the sleeve's outer radius when sleeved, else the coated wire's.
+        const double swept = route.sleeveOuterDiameter ? route.sleeveOuterDiameter.value() / 2 : coatedRadius;
+        CHECK_THAT(route.plannedBendRadius, Catch::Matchers::WithinRel(swept, 1e-9));
         ++terminals;
         sleeved += route.sleeveOuterDiameter ? 1 : 0;
     }
@@ -1225,6 +1216,9 @@ TEST_CASE("A stub too short for its two bends is published as a ramp, only under
         return std::max(radial, axial);
     };
 
+    // Real winding (ABT #2274, Alf 2026-11-14): R is the coated radius, so 2R is one OD and the second parallel's
+    // one-OD stub to the shared row holds both its 90-degree bends -- it is drawn straight. The ramp checks stay in
+    // the loop for any stub that does fall below 2R.
     SECTION("real winding: every short stub is a cosine-S ramp whose curvature stays within the bend, every long one is not") {
         settings.reset();
         settings.set_coil_use_real_winding_geometry(true);
@@ -1259,7 +1253,8 @@ TEST_CASE("A stub too short for its two bends is published as a ramp, only under
             }
         }
         UNSCOPED_INFO(ramps << " ramps, " << straight << " straight stubs");
-        REQUIRE(ramps > 0);   // the second parallel's stub to the shared row is one OD, below 2R
+        CHECK(ramps == 0);      // the second parallel's stub to the shared row is one OD: exactly 2R, straight
+        REQUIRE(straight > 0);  // and the straight-stub check above really ran
         settings.reset();
     }
 
@@ -1551,20 +1546,23 @@ TEST_CASE("Every terminal lead has MKF's planned bend radius, routed or not (ABT
         REQUIRE(terminals == 16);
         settings.reset();
     }
-    SECTION("a toroid, whose terminal routes carry no planned bend: the rule still plans each lead's bend") {
+    SECTION("a toroid: every terminal route carries exactly the rule's radius too") {
         settings.reset();
         clear_databases();
         settings.set_coil_use_real_winding_geometry(true);
         auto mas = OpenMagneticsTesting::mas_loader(here + "/testData/toroidal_inductor_round_wire_multilayer.json");
         auto magnetic = OpenMagnetics::magnetic_autocomplete(mas.get_magnetic());
         auto& coil = magnetic.get_mutable_coil();
-        // The premise (Alf, 2026-10-30, since toroid routes exist): the toroid's terminal routes carry no
-        // plannedBendRadius, so the bend comes from the rule alone.
+        // ABT #2274 (Alf, 2026-11-14): the toroid's terminal routes publish the rule's radius like the concentric
+        // ones (until then they carried none and the bend came from the rule alone), so MVB++ reads one field for
+        // every lead corner.
         size_t terminalRoutes = 0;
         for (const auto& route : coil.get_connection_layout().routes) {
             if (route.kind != ConnectionKind::TERMINAL_ENTRANCE && route.kind != ConnectionKind::TERMINAL_EXIT) continue;
             CHECK(route.toroidal);
-            CHECK(route.plannedBendRadius == 0);
+            const auto end = route.kind == ConnectionKind::TERMINAL_ENTRANCE ? End::START : End::FINISH;
+            CHECK(route.plannedBendRadius > 0);
+            CHECK(route.plannedBendRadius == coil.terminal_lead_bend_radius(route.winding, end, route.parallel));
             ++terminalRoutes;
         }
         CHECK(terminalRoutes == 2);

@@ -1,0 +1,399 @@
+{
+  "magnetic": {
+    "coil": {
+      "bobbin": {
+        "distributorsInfo": null,
+        "functionalDescription": null,
+        "manufacturerInfo": null,
+        "name": null,
+        "processedDescription": {
+          "columnCornerRadius": null,
+          "columnDepth": 0.007049308102124126,
+          "columnShape": "round",
+          "columnThickness": 0.0013993081021241261,
+          "columnWidth": 0.007049308102124126,
+          "coordinates": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "dividers": null,
+          "pins": null,
+          "wallThickness": 0.001500000000000003,
+          "windingWindows": [
+            {
+              "angle": null,
+              "area": 0.000158418266103923,
+              "column": null,
+              "coordinates": [
+                0.010049654051062062,
+                0.0,
+                0.0
+              ],
+              "height": 0.026399999999999993,
+              "radialHeight": null,
+              "sectionsAlignment": "innerOrTop",
+              "sectionsOrientation": "contiguous",
+              "shape": "rectangular",
+              "width": 0.006000691897875873,
+              "windingOrder": null
+            }
+          ]
+        }
+      },
+      "functionalDescription": [
+        {
+          "isolationSide": "primary",
+          "name": "Primary",
+          "numberParallels": 3,
+          "numberTurns": 17,
+          "wire": "Litz 180x0.071 - Grade 1 - Single Served"
+        },
+        {
+          "isolationSide": "secondary",
+          "name": "Secondary",
+          "numberParallels": 2,
+          "numberTurns": 1,
+          "wire": "Rectangular 3x0.80 - Grade 1"
+        },
+        {
+          "isolationSide": "tertiary",
+          "name": "Tertiary",
+          "numberParallels": 2,
+          "numberTurns": 1,
+          "wire": "Rectangular 2.80x0.80 - Grade 1"
+        }
+      ],
+      "groupsDescription": [
+        {
+          "coordinateSystem": "cartesian",
+          "coordinates": [
+            0.010049654051062062,
+            0.0
+          ],
+          "dimensions": [
+            0.006000691897875873,
+            0.026399999999999993
+          ],
+          "name": "Default group",
+          "partialWindings": [
+            {
+              "connections": null,
+              "parallelsProportion": [
+                1.0,
+                1.0,
+                1.0
+              ],
+              "winding": "Primary"
+            },
+            {
+              "connections": null,
+              "parallelsProportion": [
+                1.0,
+                1.0
+              ],
+              "winding": "Secondary"
+            },
+            {
+              "connections": null,
+              "parallelsProportion": [
+                1.0,
+                1.0
+              ],
+              "winding": "Tertiary"
+            }
+          ],
+          "pcb": null,
+          "sectionsOrientation": "contiguous",
+          "type": "wound",
+          "windingWindow": null
+        }
+      ],
+      "sectionsDescription": [
+        {
+          "coordinateSystem": "cartesian",
+          "coordinates": [
+            0.008302558102124125,
+            0.009373333
+          ],
+          "dimensions": [
+            0.002506499999999999,
+            0.007553333
+          ],
+          "group": "Default group",
+          "layersAlignment": null,
+          "layersOrientation": "overlapping",
+          "margin": [
+            0.0,
+            0.0
+          ],
+          "name": "Primary section 0",
+          "numberLayers": null,
+          "partialWindings": [
+            {
+              "connections": null,
+              "parallelsProportion": [
+                1.0,
+                0.0,
+                0.0
+              ],
+              "winding": "Primary"
+            }
+          ],
+          "type": "conduction",
+          "windingOrder": null,
+          "windingStyle": "windByConsecutiveTurns",
+          "windingWindow": null
+        },
+        {
+          "coordinateSystem": "cartesian",
+          "coordinates": [
+            0.010049654051062062,
+            0.0055841665
+          ],
+          "dimensions": [
+            0.006000691897875873,
+            2.5e-05
+          ],
+          "group": "Default group",
+          "layersAlignment": null,
+          "layersOrientation": "contiguous",
+          "margin": null,
+          "name": "Insulation between Primary and Secondary section 1",
+          "numberLayers": null,
+          "partialWindings": [],
+          "type": "insulation",
+          "windingOrder": null,
+          "windingStyle": null,
+          "windingWindow": null
+        },
+        {
+          "coordinateSystem": "cartesian",
+          "coordinates": [
+            0.008591808102124126,
+            0.0046866665
+          ],
+          "dimensions": [
+            0.003085,
+            0.0017700000000000005
+          ],
+          "group": "Default group",
+          "layersAlignment": null,
+          "layersOrientation": "overlapping",
+          "margin": [
+            0.0,
+            0.0
+          ],
+          "name": "Secondary section 0",
+          "numberLayers": null,
+          "partialWindings": [
+            {
+              "connections": null,
+              "parallelsProportion": [
+                1.0,
+                1.0
+              ],
+              "winding": "Secondary"
+            }
+          ],
+          "type": "conduction",
+          "windingOrder": null,
+          "windingStyle": "windByConsecutiveParallels",
+          "windingWindow": null
+        },
+        {
+          "coordinateSystem": "cartesian",
+          "coordinates": [
+            0.010049654051062062,
+            0.0037891665
+          ],
+          "dimensions": [
+            0.006000691897875873,
+            2.5e-05
+          ],
+          "group": "Default group",
+          "layersAlignment": null,
+          "layersOrientation": "contiguous",
+          "margin": null,
+          "name": "Insulation between Secondary and Primary section 3",
+          "numberLayers": null,
+          "partialWindings": [],
+          "type": "insulation",
+          "windingOrder": null,
+          "windingStyle": null,
+          "windingWindow": null
+        },
+        {
+          "coordinateSystem": "cartesian",
+          "coordinates": [
+            0.008302558102124125,
+            0.0
+          ],
+          "dimensions": [
+            0.002506499999999999,
+            0.007553333
+          ],
+          "group": "Default group",
+          "layersAlignment": null,
+          "layersOrientation": "overlapping",
+          "margin": [
+            0.0,
+            0.0
+          ],
+          "name": "Primary section 1",
+          "numberLayers": null,
+          "partialWindings": [
+            {
+              "connections": null,
+              "parallelsProportion": [
+                0.0,
+                1.0,
+                0.0
+              ],
+              "winding": "Primary"
+            }
+          ],
+          "type": "conduction",
+          "windingOrder": null,
+          "windingStyle": "windByConsecutiveTurns",
+          "windingWindow": null
+        },
+        {
+          "coordinateSystem": "cartesian",
+          "coordinates": [
+            0.010049654051062062,
+            -0.0037891665
+          ],
+          "dimensions": [
+            0.006000691897875873,
+            2.5e-05
+          ],
+          "group": "Default group",
+          "layersAlignment": null,
+          "layersOrientation": "contiguous",
+          "margin": null,
+          "name": "Insulation between Primary and Tertiary section 5",
+          "numberLayers": null,
+          "partialWindings": [],
+          "type": "insulation",
+          "windingOrder": null,
+          "windingStyle": null,
+          "windingWindow": null
+        },
+        {
+          "coordinateSystem": "cartesian",
+          "coordinates": [
+            0.008491808102124125,
+            -0.0046866665
+          ],
+          "dimensions": [
+            0.0028850000000000004,
+            0.0017700000000000005
+          ],
+          "group": "Default group",
+          "layersAlignment": null,
+          "layersOrientation": "overlapping",
+          "margin": [
+            0.0,
+            0.0
+          ],
+          "name": "Tertiary section 0",
+          "numberLayers": null,
+          "partialWindings": [
+            {
+              "connections": null,
+              "parallelsProportion": [
+                1.0,
+                1.0
+              ],
+              "winding": "Tertiary"
+            }
+          ],
+          "type": "conduction",
+          "windingOrder": null,
+          "windingStyle": "windByConsecutiveParallels",
+          "windingWindow": null
+        },
+        {
+          "coordinateSystem": "cartesian",
+          "coordinates": [
+            0.010049654051062062,
+            -0.0055841665
+          ],
+          "dimensions": [
+            0.006000691897875873,
+            2.5e-05
+          ],
+          "group": "Default group",
+          "layersAlignment": null,
+          "layersOrientation": "contiguous",
+          "margin": null,
+          "name": "Insulation between Tertiary and Primary section 7",
+          "numberLayers": null,
+          "partialWindings": [],
+          "type": "insulation",
+          "windingOrder": null,
+          "windingStyle": null,
+          "windingWindow": null
+        },
+        {
+          "coordinateSystem": "cartesian",
+          "coordinates": [
+            0.008302558102124125,
+            -0.009373333
+          ],
+          "dimensions": [
+            0.002506499999999999,
+            0.007553333
+          ],
+          "group": "Default group",
+          "layersAlignment": null,
+          "layersOrientation": "overlapping",
+          "margin": [
+            0.0,
+            0.0
+          ],
+          "name": "Primary section 2",
+          "numberLayers": null,
+          "partialWindings": [
+            {
+              "connections": null,
+              "parallelsProportion": [
+                0.0,
+                0.0,
+                1.0
+              ],
+              "winding": "Primary"
+            }
+          ],
+          "type": "conduction",
+          "windingOrder": null,
+          "windingStyle": "windByConsecutiveTurns",
+          "windingWindow": null
+        }
+      ]
+    },
+    "core": {
+      "functionalDescription": {
+        "gapping": [
+          {
+            "length": 0.0004,
+            "type": "subtractive"
+          },
+          {
+            "length": 1e-05,
+            "type": "residual"
+          },
+          {
+            "length": 1e-05,
+            "type": "residual"
+          }
+        ],
+        "material": "N87",
+        "numberStacks": 1,
+        "shape": "ER 35/20/11",
+        "type": "twoPieceSet"
+      }
+    }
+  }
+}

@@ -1,5 +1,6 @@
 #pragma once
 
+#include <limits>
 #include <memory>
 #include "constructive_models/MasMigration.h"
 #include "constructive_models/Insulation.h"
@@ -15,6 +16,7 @@
 #include <map>
 #include <vector>
 #include <set>
+#include <functional>
 #include <optional>
 #include "support/Exceptions.h"
 
@@ -227,10 +229,21 @@ struct ConnectionReservedSpace {
 // ABT #685: one BUMP. A return laid at `radius` makes every turn at or outside that radius on the
 // same face ride `height` further out — the local radial displacement the RoutePlane comment above
 // describes, made explicit so consumers stop re-deriving it. Levels within half a wire merge.
+//
+// ABT #2274 (Alf, 2026-11-05: "MKF owns the placement"): MKF also decides WHERE each return lies --
+// its face (`side`) and, on a round column, the azimuth off the connection plane its lane takes
+// (ConnectionRoute::laneAzimuth) -- and the ride is computed from that placement. A turn riding over
+// a lane `offPlane` off the plane has its half on that face translated along the face normal, and the
+// translation that just clears a lane of wire `height` at radius r, phi off the plane, is the exact
+// circle reach  r cos(phi) - sqrt((r - height)^2 - r^2 sin^2(phi))  -- `height` itself on the plane.
+// That translation is `rise`, and it is what ride_at sums. A consumer draws `rise`; it never
+// re-derives it.
 struct ConnectionRideLevel {
     int side = 0;        // 0 = the PRIMARY isolation side's face, 1 = every other side's face
     double radius = 0;   // the lane's destination radius, in the layer-axis coordinate
-    double height = 0;   // how much a wire riding over it is displaced (one wire OD)
+    double height = 0;   // the lane's wire: a round section's outer diameter, a non-round one's radial depth
+    double offPlane = 0; // the largest ConnectionRoute::laneAzimuth among the level's returns [rad] (round column)
+    double rise = 0;     // how far a turn riding over the level is displaced along the face normal [m]
 };
 
 // ABT #1423: a terminal lead that leaves the winding TANGENTIALLY, straight off the end of a lateral
@@ -382,6 +395,10 @@ enum class LeadFindingKind {
     PIN_RUN_COLLIDES,     // every candidate run to the pin shares copper; the most direct one is drawn
     LIFT_TOO_SHORT,       // an off-face exit's lift (liftLength) and its bend onto the run need more axial room than the stub has
     LANES_DO_NOT_FIT,     // spec section 22: a lead fits neither its group's half of the face nor the spare half's unused lanes
+    LEVEL_ROW_CLASH,      // ABT #2274: a lead's level row at its lane meets other copper (a lead, a turn, a dragback); the
+                          // consumer refuses the part (throws with this witness) and may draw it only as a diagnostic
+    NO_CONSISTENT_RAMP,   // ABT #2274 (Alf, 2026-11-09, G2): the ramp a lead needs moves its slot to where it needs another,
+                          // and no standoff up to the face end moves its slot to where it needs none; drawn as planned, refused
 };
 
 struct LeadFinding {
@@ -440,6 +457,27 @@ struct TurnOutsideWindow {
     std::vector<std::vector<std::vector<double>>> regions;
 };
 
+// ABT #2274 (Alf, 2026-11-05: "MKF counts the bump"): a turn whose ride over the Z returns pushes its
+// copper into the core. A return laid at a radius lifts every turn at or outside it on that face by
+// the return's wire (ConnectionLayout::ride_at, the bump of ABT #685). Seen across the column, the
+// lifted turn is its own outline with its half on that face translated `ride` further out along the
+// face normal, the two halves joined by straights of length `ride` on the lateral faces -- what
+// MVB++ draws ("the bump affects the -Z half only"). Where that copper meets an outer leg of the
+// core (the core room of ABT #1487, OutsideLinkRoomGeometry: a PQ's legs outside its E/2 bore beyond
+// G/2), the turn does not fit the core: an E core's straight legs leave the lifted turn room, a PQ's
+// round bore does not.
+struct RideOverCoreContact {
+    std::string turn;
+    std::string winding;
+    int side = 0;                        // the face whose half is lifted (0: -z, 1: +z)
+    double turnRadius = 0;               // the turn's layer-axis coordinate [m]
+    double ride = 0;                     // ConnectionLayout::ride_at(turnRadius, side) [m]
+    size_t rideLevels = 0;               // how many return levels at or inside the turn make that ride
+    double copperRadius = 0;             // half the turn's radial copper extent (coating included) [m]
+    std::vector<double> point;           // {x, z}: the centre of the copper that meets the leg, across the column [m]
+    std::string witness;                 // the contact, with numbers
+};
+
 // ABT #1907 (Alf, 2026-10-18): a FOIL end that leaves through the END FACE (connections[].exit:
 // axial) on its stated lead conductor (connections[].leadConductor, a round wire). The lead lies
 // on the sheet's OUTER face, tangent to it -- copper on copper, no gap and no overlap ("the lead
@@ -463,8 +501,9 @@ struct AxialLead {
     // sheet edge the lead leaves by (attachTo). The lead touches the sheet along all of it.
     double attachFrom = 0;
     double attachTo = 0;
-    // The window edge the lead crosses, the outer face of the flange there (= windowEdge when the
-    // bobbin has no wall) and where the lead ends: one outer diameter past that face.
+    // The window edge (the flange's inner face), the outer face of the flange there (= windowEdge when
+    // the bobbin has no wall) and where the lead's rise along its column ends: on the window edge's row,
+    // half an outer diameter inside the edge, tangent to the flange (ABT #2291: it never crosses the flange).
     double windowEdge = 0;
     double flangeOuterFace = 0;
     double end = 0;
@@ -478,6 +517,14 @@ struct AxialLead {
     double alongFace = 0;
     // The lead's copper length: from attachFrom to end.
     double length = 0;
+    // ABT #2291 (Alf, 2026-11-06): at `end` the lead turns 90 degrees and runs along the layer axis
+    // -- out of the connection face, along Z in 3D -- at `end` on the turn axis, from layerAxis to
+    // radialEnd: the window border plus half the lead's outer diameter, where every radial terminal run
+    // of the window ends. The corner is bent at the route's plannedBendRadius. radialLength =
+    // radialEnd - layerAxis; the route's routedLength is length + radialLength, and its waypoints are
+    // the attach's far end, the corner (layerAxis, end) and (radialEnd, end), in electrical order.
+    double radialEnd = 0;
+    double radialLength = 0;
     // ABT #1907 (Alf, 2026-10-19): the WELD STRIP that joins lead and sheet, like the solder/weld
     // seam along a real foil tab. Tangent copper touches along a line only, which carries no
     // current, so the strip is the copper that makes lead and sheet ONE conductor. A consumer
@@ -563,6 +610,16 @@ struct TerminalTurnPath {
     bool stubRectangular = false;
     double stubRadialExtent = 0;
     double stubAxialExtent = 0;
+    // ABT #2274 (agent 27): the way the attach turn travels along the face (ConnectionRoute::wrapDirection): -1, the
+    // clockwise frame every length above is stated in (the turn leaves the crossing towards -x), +1 a counter-clockwise
+    // turn (a mirrored window), which is that frame mirrored in x. Coil::terminal_turn_path sets it from the route and
+    // the attach turn's orientation; Coil::terminal_lane_along reads a lane x through it.
+    int wrapDirection = -1;
+    // ABT #2274 item E (agent 47): the attach turn's height at the crossing (its station) and its signed axial advance
+    // in the wire's direction, as terminal_lane_plan is given them (attachAxial / attachAdvance), so a ramped lead's
+    // BUILT climb (CoilTerminalClimb.h) can be planned where its footprint is asked for. NaN: not known.
+    double attachStation = std::numeric_limits<double>::quiet_NaN();
+    double attachAdvance = std::numeric_limits<double>::quiet_NaN();
 };
 
 // Alf, 2026-10-25 (spec S0/S1): Coil::terminal_lane_plan's answer, one entry per route. `slots` is
@@ -628,6 +685,32 @@ struct ConnectionRoute {
     std::string toTurn;
     ConnectionKind kind = ConnectionKind::U_ADJACENT;
     int side = 0;                                  // which face the out-of-plane part routes on
+    // ABT #2274 (Alf, 2026-11-05: "MKF owns the placement"): on a ROUND column, the azimuth off the
+    // connection plane at which a route that lays a lane (Coil::compute_ride_placement: a Z dragback,
+    // an inside edge continuation) lies, radians, >= 0. Frame: the bobbin frame of pinWaypoints with
+    // the connection face of `side` at -Z (a face-1 route's frame is turned 180 degrees about the
+    // column); the lane's centre is at x = -r sin(a), z = -r cos(a) for lane radius r. Returns of
+    // one conductor share one column; columns whose copper can meet sit side by side, one coated
+    // envelope apart. Empty on every other route, and on every route of a non-round column, where
+    // the face is flat and the ride does not depend on where along it the lane lies.
+    std::optional<double> laneAzimuth;
+    // ABT #2274 (Alf, 2026-11-06: "MKF owns each return lane's x along the face"): on a FLAT-faced
+    // column (rectangular, or a stadium's straight), the position along the connection face at which a
+    // route that lays a lane (Coil::compute_ride_placement) runs, metres. Frame: the face of `side` in
+    // its own frame (a face-1 route's frame is turned 180 degrees about the column), x = 0 at the
+    // connection crossing, a wrap departing the crossing towards -x. Spec S0: the PRIMARY isolation
+    // group's lanes lie on the -x half and every other group's on the +x half (a stadium column, whose
+    // cap apex leaves no -x side to the crossing, lays every group on +x). One lane per conductor, the
+    // returns of one conductor sharing it (the layer-reuse rule), lanes one lane width apart. Empty on
+    // every other route, and on every route of a round column (see laneAzimuth).
+    std::optional<double> laneOffset;
+    // ABT #2274 (agent 22, after agent 21: "MKF publishes each dragback's x"), on a Z_DRAGBACK of a FLAT-faced column:
+    // the interval along the connection face its copper takes, [from, to] in metres in the frame of laneOffset --
+    // laneOffset -/+ half the lane's width (a round or litz wire's outer diameter, a flat wire's narrower outer
+    // dimension: it runs on its flat). Coil's level-row judge meets a lead with a dragback only where their
+    // intervals along the face overlap; a consumer draws the dragback there and refuses one drawn elsewhere.
+    // Empty on every other route and on a round column (laneAzimuth).
+    std::optional<std::pair<double, double>> dragbackAlongFace;
     std::vector<std::vector<double>> waypoints;    // {layerAxis, turnAxis} centres, in path order
     double routedLength = 0;                       // summed copper of the route's segments
     // A TOROIDAL terminal lead (Alf, 2026-10-30, "Build toroid routes"): its waypoints are cartesian
@@ -699,12 +782,72 @@ struct ConnectionRoute {
     // stub itself, so waypoints, reservations and blocking are unchanged. Empty: a straight stub, no
     // stub, contiguous layers, or not a real winding.
     std::optional<double> rampLength;
+    // ABT #2274 item E (agent 48, Alf: "MKF plans what is built"): on a RAMPED terminal lead of a ROUND column, the
+    // terminal corner MKF planned for it at its lane (CoilTerminalClimb.h, Coil::publish_terminal_climb): the tangent
+    // length the corner takes from its lead leg and, as arc length, from its turn, and the helix-side bend angle of its
+    // triarc, in degrees, at the natural-plane roll. A consumer draws exactly this corner and only VALIDATES it: one
+    // that does not clear the other copper is a finding, never another corner chosen downstream. Empty on every
+    // other route.
+    std::optional<double> terminalClimbTangentLength;
+    std::optional<double> terminalClimbPhiDegrees;
     // Spec section 18 (Alf, 2026-10-27): on a TERMINAL route whose lane moves out one for one with its
     // own span and that no ramp is consistent with, the stretch of the face from its packed slot out to
     // the FIRST slot where its stub holds both bends without a ramp. The lead runs unramped at that slot
     // and the stretch is planned as its own (lane_footprint), so its lane stays there. Never set
     // together with rampLength. Empty: no such stretch.
     std::optional<double> laneStandoff;
+    // ABT #2274 (Alf, 2026-11-07, "slot-step ramp"; real winding, flat-face lanes). A terminal lead
+    // whose stub is NOT drawable (|row - turn| <= half a wire at the crossing, so its route starts at
+    // the row) still leaves its turn at its settled SLOT (exitSlot), where the turn stands off its
+    // station by its uniform climb (station - advance * along / L). slotRampHeight is that step,
+    // signed, from the turn's height at the lane to the row: row - turnY [m]. slotRampLength is the
+    // cosine S that climbs it on the turn's surface, by the same rule and governing radius as
+    // rampLength (lead_ramp_length), measured along the turn, ending at the lane; the lead then bends
+    // onto its run at plannedBendRadius. These are NEW fields, kept apart from rampLength because the
+    // stub's lane is already settled: the slot ramp moves no lane and takes no extra space (a misfit
+    // is drawn as planned and reported, LANES_COLLIDE). Both empty: no such step, or a step that rounds
+    // to zero on the 1 nm coordinate grid MKF emits (roundFloat), which the consumer's enamel gate
+    // certifies as exact touch (half a grid cell), so no ramp is planned for it.
+    std::optional<double> slotRampLength;
+    std::optional<double> slotRampHeight;
+    // ABT #2274 (Alf, 2026-11-07: "MVB++ must always obey MKF"): where that S ends, as MKF judged it on the
+    // face straight -- slotRampEndX, the along-face lane coordinate of its far end (exitSlot + direction *
+    // (slotRampLength + plannedBendRadius), the frame of exitSlot), and slotRampEndHeight, how far the turn
+    // there stands below the row the lead leaves at (row - the turn's height at slotRampEndX) [m]. The
+    // consumer draws the S onto exactly that point and refuses a drawing that does not end there. Set
+    // together with slotRampLength.
+    std::optional<double> slotRampEndX;
+    std::optional<double> slotRampEndHeight;
+    // ABT #2274 (Alf, 2026-11-08, after agent 20: "level row at the lane only"), on a terminal route under real
+    // winding: the row the lead's radial run takes AT ITS LANE, its turn's own height there (station - advance *
+    // along / L, the uniform climb on a flat face), so the spiral ends on the connection and the lead leaves it level.
+    // The route's waypoints carry that row; the reserved section (ConnectionReservedSpace, the 2-D crossing) keeps
+    // the lead at the crossing row. levelRowShift is what the waypoints were moved by from that section [m]
+    // (waypoints = section + levelRowShift along the axis); the consumer draws the run at the waypoints' row. Empty:
+    // no level row (the lead runs at its section row).
+    std::optional<double> levelRowShift;
+    // ABT #2274 (Alf, 2026-11-08, after agent 24: "option one", the horizontal step, "and make turn 19 -> turn 19_ending
+    // face -Z in shorter" so its junction fillet meets the run directly): a terminal EXIT lead whose level row clashes keeps
+    // its CROSSING row (the row its 2-D section was planned at), and its turn ends ON that row at its lane. The turn's last
+    // piece on the connection face, from the end of the face straight (rowEndFromX, where the turn stands at its uniform
+    // climb, rowEndFromHeight) to the lane (rowEndX == exitSlot), climbs straight to the row (rowEndHeight) instead of
+    // following the uniform climb; the lead then leaves the turn level, one bend into its run at the lane, with no step
+    // and no level-row shift. All in the frame of exitSlot (along-face x) and the turn axis. Empty on every other route.
+    std::optional<double> rowEndX;
+    std::optional<double> rowEndHeight;
+    std::optional<double> rowEndFromX;
+    std::optional<double> rowEndFromHeight;
+    // ABT #2274 (Alf, 2026-11-07, "the bump it adds is just outer diameter"), on a Z_DRAGBACK route
+    // under real winding: the centreline radius each bend of the dragback is drawn at -- the same
+    // rule as a lead of that wire (lead_bend_radius, swept at the wire's coated half size) -- and the
+    // angle of each of the two bends of its radial step-out from the source layer (waypoint 0's
+    // radius) to the return's radius (waypoint 1's), so that the step's centreline reaches exactly
+    // that radius and never past it: the step's outward excursion stays the layer step |dx|. When
+    // the step holds two quarter bends (|dx| >= 2 R) the angle is pi/2; otherwise the two bends are
+    // acos(1 - |dx| / (2 R)) each and meet tangentially, the step slanted along the return's run by
+    // 2 R sin(angle). Empty on every other route.
+    std::optional<double> dragbackBendRadius;
+    std::optional<double> dragbackBendAngle;
     // ABT #1354: on a TERMINAL route, the SLOT along the flange this lead's in-window run leaves
     // the window at -- the x Coil::terminal_exit_slots decided for it, in the same frame and units
     // as `pinWaypoints`' x (metres, 0 = the crossing lane). It is MKF's own answer to "where, side
@@ -815,6 +958,39 @@ struct ConnectionRoute {
 
 // Smallest distance between two 3D polylines (CoilPins.cpp's segment distance).
 double lead_polyline_distance(const std::vector<std::vector<double>>& a, const std::vector<std::vector<double>>& b);
+
+// ABT #2274: the centreline of a slot-step ramp (ConnectionRoute::slotRampLength) on a flat face, as MVB++
+// draws it: from the lead at its lane, the bend onto the turn (bendRadius along the face, at the row), then
+// the cosine S down (or up) to the turn over rampLength. At along-face distance s in
+// [0, bendRadius + rampLength] from the lane, into the side the turn's copper covers (direction), it stands
+// at x = laneX + direction * s, at `radial` (the turn's radius coordinate), at the row for s <= bendRadius and
+// at row - height * (1 - cos(pi (s - bendRadius) / rampLength)) / 2 beyond, `height` being row - the turn's
+// height where the ramp meets it.
+struct SlotRampCentreline {
+    double laneX;
+    double direction;   // +1 or -1
+    double radial;
+    double row;
+    double height;      // row - the turn's height at the ramp's far end
+    double rampLength;
+    double bendRadius;
+};
+// The closest approach found between a slot ramp's centreline and another terminal lead's: its route
+// (`otherWaypoints`, radial/axial) at its lane x, and its own slot ramp if it has one. Rigorous against
+// `clearance`: the search is a Lipschitz branch and bound on the ramp's along-face parameter(s) (the
+// centreline's speed is at most hypot(1, pi |height| / (2 rampLength))), so whenever the true minimum
+// lies under `clearance` by more than half of MKF's coordinate grid (roundFloat), the returned distance
+// is under `clearance` and `along`/`otherAlong` exhibit the pair (otherAlong < 0: a point of the route);
+// it stops at the first such pair, so the distance returned is that pair's, not necessarily the minimum.
+struct SlotRampApproach {
+    double distance;
+    double along;
+    double otherAlong;
+};
+std::array<double, 3> slot_ramp_point(const SlotRampCentreline& ramp, double s);   // {x, radial, axial}
+SlotRampApproach slot_ramp_closest_approach(const SlotRampCentreline& ramp, double otherLaneX,
+                                            const std::vector<std::vector<double>>& otherWaypoints,
+                                            const std::optional<SlotRampCentreline>& otherRamp, double clearance);
 
 // A prism -- the polygon `xz` (in the pinWaypoints frame's x and z, counter-clockwise
 // or clockwise, not self-intersecting) extruded along Y from y0 to y1 (y0 < y1).
@@ -980,12 +1156,19 @@ struct ConnectionLayout {
     std::vector<LeadExitSolid> leadExitSolids;
     // Where that plan lays copper that collides (LeadExitClash). Empty for every other core.
     std::vector<LeadExitClash> leadExitClashes;
+    // ABT #2274 (Alf, 2026-11-13: "use round corners everywhere!"): the centreline radius a bend of each winding's OWN
+    // wire is drawn at, by winding name -- Coil::lead_bend_radius for that wire swept at its coated half size, the rule
+    // ConnectionRoute::dragbackBendRadius carries for a dragback. It is the radius of every corner MKF does not plan
+    // on a route of its own: a U layer link's two bends, a toroidal turn's corners and its ring transitions. A consumer
+    // draws a corner at exactly this radius where its tangent fits the space the corner has, and otherwise sharp; it
+    // never picks a radius of its own. Filled by get_connection_layout for every winding.
+    std::map<std::string, double> wireBendRadius;
     // Total displacement a turn at `radius` on `side` rides over.
     double ride_at(double radius, int side) const {
         double ride = 0;
         for (const auto& level : rideLevels) {
             if (level.side == side && level.radius <= radius + 0.5 * level.height) {
-                ride += level.height;
+                ride += level.rise;
             }
         }
         return ride;
@@ -1520,6 +1703,12 @@ class Coil : public MAS::Coil {
         // are judged by the toroidal fill, as in are_turns_inside_winding_window. Turns are drawn as in
         // judge_copper_overlaps; throws when a turn's outline is unknown, or the bobbin lacks its windows.
         std::vector<TurnOutsideWindow> judge_turns_outside_window();
+        // ABT #2274: every turn of a real-winding layout whose ride over the Z returns (the ride levels of
+        // get_connection_layout) puts its copper into an outer leg of the core given with set_core_geometry
+        // (RideOverCoreContact), one per turn and face. Empty when the layout lays no return a turn rides
+        // over, or the coil was given no core. Throws COIL_WINDING_ERROR when the core's legs are not known
+        // to MKF's core room, or the coil is toroidal (no face to lift).
+        std::vector<RideOverCoreContact> judge_ride_over_core_contacts();
         // ABT #1290 (Alf, 2026-09-20): under REAL WINDING, refuse a layout that draws a corner
         // tighter than the wire itself can be bent. ABT #2004 (Alf, 2026-10-22): an EDGEWISE bend
         // of rectangular wire is not refused -- IEC 60317-0-2 Table 6 qualifies the coating, it is
@@ -1953,6 +2142,16 @@ class Coil : public MAS::Coil {
         ConnectionLayout get_connection_layout();
         // ABT #685/#1237: the ride levels the laned routes impose (see get_connection_layout).
         std::vector<ConnectionRideLevel> compute_ride_levels(const std::vector<ConnectionRoute>& routes);
+        // ABT #2274: the placement of every lane-laying return (its ConnectionRoute::laneAzimuth, one
+        // entry per route, empty where the route lays no lane or the column is not round) and the
+        // ride levels computed from it. compute_ride_levels returns its `levels`.
+        struct RidePlacement {
+            std::vector<ConnectionRideLevel> levels;
+            std::vector<std::optional<double>> laneAzimuth;
+            std::vector<std::optional<double>> laneOffset;   // ConnectionRoute::laneOffset, flat-faced columns
+            std::vector<std::optional<std::pair<double, double>>> alongFace;   // ConnectionRoute::dragbackAlongFace
+        };
+        RidePlacement compute_ride_placement(const std::vector<ConnectionRoute>& routes);
         // ABT #685: name every station for the turn that BEGINS there, and the station closing a
         // layer "<last turn>_ending". Real winding only; ideal winding has no closing stations.
         void name_turns_by_beginning();
@@ -2009,6 +2208,12 @@ class Coil : public MAS::Coil {
         // ABT #1422: a radial step (U layer link, or an inter-section return laid as one step) and a
         // sibling's wrap beside one of its ends: the minimum centreline distance, as drawn -- against
         // the wrap's true path round the column (ABT #969), not its tangent at the crossing.
+        // ONE RADIAL STEP: the link between two consecutive stations of a conductor in different layers that is laid as a
+        // single step at the crossing, with no vertical stub and no lane. The two stations are within half a wire of one
+        // row (the connection layout's own `needVertical` test), and no turn of a layer between them sits in that row.
+        // ABT #2274 (Alf, 2026-11-15, PSPS E16 Primary 7_ending -> 8, "MKF: level step, no lane"): a link over other
+        // layers was always a band route with a lane here, while it is drawn as this one step when the row is free.
+        bool is_one_radial_step(const std::vector<Turn>& turns, const std::vector<Layer>& layers, size_t from, size_t to);
         struct RadialStepClearance {
             size_t stepFrom = 0, stepTo = 0;   // the step's two stations (turn indices)
             size_t stepEnd = 0;                // the end whose layer holds the sibling
@@ -2022,6 +2227,18 @@ class Coil : public MAS::Coil {
                                                                         const std::vector<Layer>& layers);
         // ABT #1422: widen the bundles of each layer whose stations a radial step's clearance needs.
         void fund_radial_steps_against_sibling_wraps(std::vector<Turn>& turns, std::vector<Layer>& layers);
+        // The widening itself, to the nm-grid fixpoint of whatever `measure` reads off the turns as they stand.
+        void fund_bundles_against_sibling_wraps(std::vector<Turn>& turns, std::vector<Layer>& layers,
+                                                const std::function<std::vector<RadialStepClearance>()>& measure,
+                                                const std::string& what);
+        // ABT #2274 (Alf, 2026-11-15, realwinding_round_2p: "MKF leaves the room"): a terminal lead that leaves its turn
+        // level at its lane on a ROUND column, with the one bend it is drawn with, against the sibling wraps beside its
+        // attach station. Reported as a RadialStepClearance whose step is the attach turn (stepFrom == stepTo == stepEnd).
+        std::vector<RadialStepClearance> measure_terminal_bend_clearances(const std::vector<Turn>& turns,
+                                                                          const std::vector<Layer>& layers,
+                                                                          const std::vector<ConnectionRoute>& routes);
+        // Widens the bundles for those bends on the finished layout (the leads exist only once the turns are laid).
+        void fund_terminal_bends_against_sibling_wraps();
         // ABT #1422: logs a warning when a finished layout still has a radial step inside a sibling's
         // envelope (ABT #2289: it used to throw).
         void warn_about_radial_steps_closer_than_the_wire_to_sibling_wraps();
@@ -2260,6 +2477,12 @@ class Coil : public MAS::Coil {
         /// connection face (positive towards +x, upstream of the crossing: every turn leaves the crossing
         /// towards -x). Throws when |x| lies beyond the face straight plus its arc.
         static double terminal_lane_along(const TerminalTurnPath& path, double x);
+        // ABT #2274 item E (agent 48): sets route.terminalClimbTangentLength / terminalClimbPhiDegrees to the climb
+        // MKF plans for a ramped round-column terminal lead at lane x (CoilTerminalClimb.h); clears them otherwise.
+        static void publish_terminal_climb(ConnectionRoute& route, const TerminalTurnPath& path, double x);
+        // ABT #2274 item E (agent 48): what a terminal lead at lane x occupies along its face (CoilPins.cpp lane_footprint:
+        // a ramped round-column lead's BUILT climb, terminal_climb_span), for Coil.cpp's own lane decisions.
+        static std::pair<double, double> terminal_lane_footprint(const ConnectionRoute& route, const TerminalTurnPath* path, double x);
         /// ABT #1705: the height of a terminal route's attach turn at signed path length `along` from the
         /// crossing (station - advance * along / path.length), on the face or off it.
         static double terminal_turn_height_along(const ConnectionRoute& route, double advance, const TerminalTurnPath& path,
@@ -2699,6 +2922,20 @@ class Coil : public MAS::Coil {
         // get_last_fit_failure() naming them.
         std::map<std::string, std::string> _outsideLinkOverflows;
         std::map<std::string, std::string> _storedHeightOverflows;
+        // Litz deformation for a stored layout: each conduction section's stored height and the height
+        // its turns and crossing stations need at the wire size of the wind that measured it, with the
+        // winding it belongs to, and what that need is made of -- the width its layers share, the
+        // turns it holds and the parallels it carries -- so the need can be recomputed for any other
+        // bundle shape (filled by keep_stored_section_heights).
+        struct StoredSectionNeed {
+            size_t windingIndex;
+            double height;
+            double need;
+            double width;
+            uint64_t turnsHere;
+            uint64_t parallelsCarried;
+        };
+        std::map<std::string, StoredSectionNeed> _storedSectionNeeds;
         // ABT #930: fills _lastFitFailure when a wind produced no turns at all.
         void diagnose_empty_wind();
         std::vector<Turn> get_turns_touching_bobbin_column();

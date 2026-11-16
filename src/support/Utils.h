@@ -299,6 +299,10 @@ double floorFloat(double value, size_t decimals);
 
 CoreShape flatten_dimensions(CoreShape shape);
 std::map<std::string, double> flatten_dimensions(std::map<std::string, Dimension> dimensions);
+// Round-post E-type cores (ETD, ER, planar ER, EQ, EER; CorePieceEtd): the outer legs' inner face is
+// the bore of diameter E, cut flat at |x| = this aperture -- G / 2 when the shape states a positive G,
+// else where the bore meets the core's depth faces, E / 2 cos(asin(C / E)). Throws when E or C is missing.
+double round_post_lateral_leg_aperture(const std::map<std::string, double>& dimensions);
 
 double try_get_duty_cycle(Waveform waveform, double frequency);
 std::complex<double> modified_bessel_first_kind(double order, std::complex<double> x);

@@ -23,6 +23,8 @@
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
 #include <catch2/matchers/catch_matchers_string.hpp>
 
+#include <array>
+#include <algorithm>
 #include <cmath>
 #include <functional>
 #include <iostream>
@@ -1360,6 +1362,36 @@ TEST_CASE("A bifilar drum-ring's Z dragbacks are laid side by side along their l
         }
     }
     CHECK(levelsAtLane == 1);
+
+    // ABT #2274 (Alf, 2026-11-05: "MKF owns the placement"): MKF lays the two parallels' returns side
+    // by side itself -- parallel 0 on the connection plane, parallel 1 the one coated envelope off it
+    // that two lines parallel to the axis need at the lane radius, asin(od / r) -- and the ride over
+    // the level is the exact circle reach at that azimuth, not one OD.
+    std::vector<double> azimuths;
+    for (const auto& r : returns) {
+        for (const auto& route : layout.routes) {
+            if (route.fromTurn == r.from && route.toTurn == r.to) {
+                REQUIRE(route.laneAzimuth.has_value());
+                azimuths.push_back(route.laneAzimuth.value());
+            }
+        }
+    }
+    REQUIRE(azimuths.size() == 2);
+    const double lane = p.xb;
+    const double expectedAzimuth = std::asin(width / std::max(lane, width));
+    CHECK_THAT(std::min(azimuths[0], azimuths[1]), WithinAbs(0.0, 1e-12));
+    CHECK_THAT(std::max(azimuths[0], azimuths[1]), WithinAbs(expectedAzimuth, 1e-11));
+    for (const auto& level : layout.rideLevels) {
+        if (std::abs(level.radius - lane) <= 0.5 * width) {
+            CHECK_THAT(level.offPlane, WithinAbs(expectedAzimuth, 1e-11));
+            const double s = std::sin(level.offPlane);
+            const double reach = level.radius * std::cos(level.offPlane) -
+                                 std::sqrt((level.radius - width) * (level.radius - width) - level.radius * level.radius * s * s);
+            CHECK_THAT(level.rise, WithinAbs(reach, 1e-15));
+            CHECK(level.rise > width);
+            CHECK_THAT(layout.ride_at(level.radius, level.side), WithinAbs(level.rise, 1e-15));
+        }
+    }
     settings.reset();
 }
 
@@ -1370,6 +1402,355 @@ TEST_CASE("A bifilar drum-ring's Z dragbacks are laid side by side along their l
 // further in: the terminal lead leaving that layer must still ramp off its turn, which needs the
 // turn's radius above the lead's planned bend radius, ABT #1336 -- and that refusal would come
 // first.)
+TEST_CASE("17_cllc: on a rectangular column MKF lays each conductor's return lane along the face, the primary group on -x and the other groups on +x (spec S0)",
+          "[constructive-model][coil][real-winding][abt2274-lane-x]") {
+    // ABT #2274 (Alf, 2026-11-06: "MKF owns each return lane's x along the face"): the x of a Z
+    // dragback's lane on a flat face is MKF's (ConnectionRoute::laneOffset), not the 3D builder's. The
+    // design: MAS example 17_cllc_xfmr_e5528_3c92a, E55/28 (rectangular column), Primary and Secondary
+    // each wound in two layers with one Z dragback, no bobbin pins -- one face under S0.
+    std::ifstream file(std::filesystem::path{std::source_location::current().file_name()}
+                           .parent_path()
+                           .append("..")
+                           .append("MAS")
+                           .append("examples")
+                           .append("17_cllc_xfmr_e5528_3c92a.json"));
+    REQUIRE(file.good());
+    const auto masJson = json::parse(file);
+    const auto& magneticJson = masJson.at("magnetic");
+    auto& settings = Settings::GetInstance();
+    settings.set_coil_use_real_winding_geometry(true);
+    settings.set_coil_lead_bend_radius_factor(1.05);
+    settings.set_coil_lead_minimum_bend_radius(std::nullopt);
+    OpenMagnetics::Core core(magneticJson.at("core"));
+    OpenMagnetics::Coil coilIn(magneticJson.at("coil"), false);
+    OpenMagnetics::Magnetic magnetic;
+    magnetic.set_core(core);
+    magnetic.set_coil(coilIn);
+    auto coil = OpenMagnetics::magnetic_autocomplete(magnetic, json{}).get_coil();
+    const auto bobbin = coil.resolve_bobbin();
+    REQUIRE(bobbin.get_processed_description());
+    REQUIRE(bobbin.get_processed_description()->get_column_shape() == MAS::ColumnShape::RECTANGULAR);
+    const auto layout = coil.get_connection_layout();
+    std::map<std::string, std::set<double>> lanesByWinding;
+    double widest = 0;
+    for (const auto& route : layout.routes) {
+        INFO(label(route));
+        CHECK(!route.laneAzimuth.has_value());   // a flat face has no azimuth
+        if (route.kind != ConnectionKind::Z_DRAGBACK) {
+            CHECK(!route.laneOffset.has_value());
+            continue;
+        }
+        CHECK(route.side == 0);   // S0: one face
+        REQUIRE(route.laneOffset.has_value());
+        lanesByWinding[route.winding].insert(route.laneOffset.value());
+        const auto wire = coil.resolve_wire(coil.get_winding_index_by_name(route.winding));
+        widest = std::max(widest, wire.get_maximum_outer_width());
+    }
+    REQUIRE(lanesByWinding.size() == 2);
+    REQUIRE(lanesByWinding.at("Primary").size() == 1);     // one lane per conductor
+    REQUIRE(lanesByWinding.at("Secondary").size() == 1);
+    const double primaryX = *lanesByWinding.at("Primary").begin();
+    const double secondaryX = *lanesByWinding.at("Secondary").begin();
+    CHECK(primaryX <= 0);      // the primary group on the -x half (lane 0 at the crossing)
+    CHECK(secondaryX > 0);     // the other group on the +x half
+    CHECK_THAT(secondaryX - primaryX, WithinAbs(widest, 1e-12));   // insulation touching
+    settings.reset();
+}
+
+TEST_CASE("13_current_sense: the primary group's leads are laid first, so a Secondary listed before it keeps the face (spec S0, ABT #2274)",
+          "[constructive-model][coil][real-winding][abt2274-s0-order]") {
+    // ABT #2274 (Alf, 2026-11-06: "Primary first, move only misfits"). The design: MAS example
+    // 13_current_sense_er95_n87, ER 9.5/5, no bobbin pins; the MAS lists the Secondary (80 turns,
+    // 0.1 mm) BEFORE the one-turn Primary (0.5 mm). Laid in MAS order, the Secondary's entrance took
+    // the crossing (x = 0), the Primary's one-turn legs, centred on the crossing, met it, and the
+    // section-23 move put the Secondary -- whose leads fitted -- on the other face.
+    std::ifstream file(std::filesystem::path{std::source_location::current().file_name()}
+                           .parent_path()
+                           .append("..")
+                           .append("MAS")
+                           .append("examples")
+                           .append("13_current_sense_er95_n87.json"));
+    REQUIRE(file.good());
+    const auto masJson = json::parse(file);
+    const auto& magneticJson = masJson.at("magnetic");
+    auto& settings = Settings::GetInstance();
+    settings.set_coil_use_real_winding_geometry(true);
+    settings.set_coil_lead_bend_radius_factor(1.05);
+    settings.set_coil_lead_minimum_bend_radius(std::nullopt);
+    OpenMagnetics::Core core(magneticJson.at("core"));
+    OpenMagnetics::Coil coilIn(magneticJson.at("coil"), false);
+    REQUIRE(coilIn.get_functional_description().front().get_isolation_side() != MAS::IsolationSide::PRIMARY);   // the premise
+    OpenMagnetics::Magnetic magnetic;
+    magnetic.set_core(core);
+    magnetic.set_coil(coilIn);
+    auto coil = OpenMagnetics::magnetic_autocomplete(magnetic, json{}).get_coil();
+    REQUIRE(coil.is_real_winding_blocking_applied());
+    const auto bobbin = coil.resolve_bobbin();
+    REQUIRE(bobbin.get_processed_description());
+    REQUIRE((!bobbin.get_processed_description()->get_pins() || bobbin.get_processed_description()->get_pins()->empty()));
+    const auto layout = coil.get_connection_layout();
+    size_t terminals = 0;
+    for (const auto& route : layout.routes) {
+        INFO(label(route));
+        CHECK(route.side == 0);   // S0: ONE FACE, the Secondary included
+        if (!is_terminal(route)) {
+            continue;
+        }
+        ++terminals;
+        const auto& winding = coil.get_functional_description()[coil.get_winding_index_by_name(route.winding)];
+        REQUIRE(route.laneHalf.has_value());
+        CHECK(route.laneHalf.value() == (winding.get_isolation_side() == MAS::IsolationSide::PRIMARY ? -1 : 1));
+        for (const auto& finding : route.findings) {
+            CHECK(finding.kind != LeadFindingKind::LANES_DO_NOT_FIT);   // the face is not full
+        }
+    }
+    CHECK(terminals == 4);
+    settings.reset();
+}
+
+// ABT #2274 (Alf, 2026-11-07: "MKF checks height at the lane"). Under real winding a terminal lead on the
+// FAR half of its turn's crossing -- an entrance upstream (x > 0), an exit past the crossing (x < 0) --
+// puts its attach turn where the blocking never put it: by the height model every 3D builder draws
+// (station - advance * along / L) the first turn stands below its station up to its lane, the last turn
+// climbs above it to its lane. Measured here from the turns, the bobbin window and the routes alone: every
+// such turn keeps its copper inside the winding window at its lane, and passes no other terminal lead's
+// in-window run closer than the two coated sections -- or its lead carries LANES_DO_NOT_FIT. The designs
+// are the UNMODIFIED MAS examples where the gaps were found (MVB++ drawing MKF's exitSlot, agent 9):
+// 02_flyback_efd25_3c95 and 17_cllc_xfmr_e5528_3c92a (Primary exit past the crossing climbed 18 um /
+// 46.6 um into the bobbin flange), 04_forward_xfmr_e3216_n87 (the 3.3V p0 entrance at +1.876 mm crossed
+// the 12V entrance's run 18.6 um into it).
+TEST_CASE("Real winding: a far-half terminal turn keeps its copper inside the window and off the leads it crosses, or its lead is reported (ABT #2274)",
+          "[constructive-model][coil][real-winding][abt2274-lane-height]") {
+    const std::string design = GENERATE(std::string("02_flyback_efd25_3c95"), std::string("17_cllc_xfmr_e5528_3c92a"),
+                                        std::string("04_forward_xfmr_e3216_n87"));
+    INFO(design);
+    std::ifstream file(std::filesystem::path{std::source_location::current().file_name()}
+                           .parent_path()
+                           .append("..")
+                           .append("MAS")
+                           .append("examples")
+                           .append(design + ".json"));
+    REQUIRE(file.good());
+    const auto masJson = json::parse(file);
+    const auto& magneticJson = masJson.at("magnetic");
+    auto& settings = Settings::GetInstance();
+    settings.set_coil_use_real_winding_geometry(true);
+    settings.set_coil_lead_bend_radius_factor(1.05);
+    settings.set_coil_lead_minimum_bend_radius(std::nullopt);
+    OpenMagnetics::Core core(magneticJson.at("core"));
+    OpenMagnetics::Coil coilIn(magneticJson.at("coil"), false);
+    OpenMagnetics::Magnetic magnetic;
+    magnetic.set_core(core);
+    magnetic.set_coil(coilIn);
+    auto coil = OpenMagnetics::magnetic_autocomplete(magnetic, json{}).get_coil();
+    REQUIRE(coil.is_real_winding_blocking_applied());
+    const auto bobbin = coil.resolve_bobbin();
+    REQUIRE(bobbin.get_processed_description());
+    const auto window = bobbin.get_processed_description()->get_winding_windows().at(0);
+    const double windowLow = window.get_coordinates().value().at(1) - window.get_height().value() / 2;
+    const double windowHigh = window.get_coordinates().value().at(1) + window.get_height().value() / 2;
+    const auto turns = coil.get_turns_description().value();
+    const auto layout = coil.get_connection_layout();
+    auto turn_index = [&](const std::string& name) {
+        for (size_t t = 0; t < turns.size(); ++t) {
+            if (turns[t].get_name() == name) {
+                return t;
+            }
+        }
+        FAIL("turn '" << name << "' not found");
+        return size_t{0};
+    };
+    struct Lead {
+        const OpenMagnetics::ConnectionRoute* route;
+        OpenMagnetics::TerminalTurnPath path;
+        double slot;
+        double along;
+        double station;
+        double advance;
+        double radius;
+        bool reported;
+    };
+    std::vector<Lead> leads;
+    for (const auto& route : layout.routes) {
+        if (!is_terminal(route) || !route.exitSlot || route.axialLead) {
+            continue;
+        }
+        const bool entrance = route.kind == ConnectionKind::TERMINAL_ENTRANCE;
+        const size_t t = turn_index(entrance ? route.toTurn : route.fromTurn);
+        Lead lead{&route, coil.terminal_turn_path(route, turns[t], layout.routes), route.exitSlot.value(), 0, turns[t].get_coordinates().at(1),
+                  0, (entrance ? route.waypoints.back() : route.waypoints.front()).at(0), false};
+        // The advance in the wire's own direction (to the next turn of the conductor; from the previous one for an exit).
+        auto same_conductor = [&](size_t n) {
+            return turns[n].get_winding() == turns[t].get_winding() && turns[n].get_parallel() == turns[t].get_parallel();
+        };
+        if (entrance) {
+            for (size_t n = t + 1; n < turns.size(); ++n) {
+                if (same_conductor(n)) {
+                    lead.advance = turns[n].get_coordinates().at(1) - lead.station;
+                    break;
+                }
+            }
+        }
+        else {
+            for (size_t n = t; n-- > 0;) {
+                if (same_conductor(n)) {
+                    lead.advance = lead.station - turns[n].get_coordinates().at(1);
+                    break;
+                }
+            }
+        }
+        lead.along = OpenMagnetics::Coil::terminal_lead_along(route, lead.path, lead.slot);
+        for (const auto& finding : route.findings) {
+            lead.reported = lead.reported || finding.kind == LeadFindingKind::LANES_DO_NOT_FIT;
+        }
+        leads.push_back(lead);
+    }
+    REQUIRE(leads.size() >= 4);
+    size_t farHalf = 0;
+    for (const auto& lead : leads) {
+        const bool entrance = lead.route->kind == ConnectionKind::TERMINAL_ENTRANCE;
+        const bool far = entrance ? lead.along > 0 : lead.along < 0;
+        farHalf += far ? 1 : 0;
+        INFO(label(*lead.route) << " lane x = " << lead.slot * 1e3 << " mm, station " << lead.station * 1e3 << " mm");
+        const double half = (lead.path.turnRectangular ? lead.path.turnAxialExtent : lead.path.turnWireDiameter) / 2;
+        const double radialHalf = (lead.path.turnRectangular ? lead.path.turnRadialExtent : lead.path.turnWireDiameter) / 2;
+        auto height = [&](double a) { return lead.station - lead.advance * a / lead.path.length; };
+        const double atLane = height(lead.along);
+        const bool inWindow = !far || atLane + half <= std::max(windowHigh, lead.station + half) + 1e-9 &&
+                              atLane - half >= std::min(windowLow, lead.station - half) - 1e-9;
+        bool offLeads = true;
+        // The turn's copper on the face: an entrance's first turn from its lane on, an exit's last turn up to it.
+        const double faceAlong = OpenMagnetics::Coil::terminal_lane_along(lead.path, lead.path.faceHalfStraight + lead.path.cornerRadius);
+        const double lo = entrance ? -faceAlong : lead.along;
+        const double hi = entrance ? lead.along : faceAlong;
+        for (const auto& other : leads) {
+            if (other.route == lead.route || other.route->side != lead.route->side) {
+                continue;
+            }
+            const double ext = other.path.stubRectangular ? std::max(other.path.stubAxialExtent, other.path.stubRadialExtent) : other.path.stubDiameter;
+            const double aFrom = std::max(OpenMagnetics::Coil::terminal_lane_along(lead.path, other.slot - ext / 2), lo);
+            const double aTo = std::min(OpenMagnetics::Coil::terminal_lane_along(lead.path, other.slot + ext / 2), hi);
+            if (aFrom > aTo || std::abs(other.slot) < ext / 2) {
+                continue;   // outside the turn's copper, or met by the blocking at the crossing
+            }
+            const double rHalf = (other.path.stubRectangular ? other.path.stubRadialExtent : other.path.stubDiameter) / 2;
+            const double yHalf = (other.path.stubRectangular ? other.path.stubAxialExtent : other.path.stubDiameter) / 2;
+            std::optional<double> atStation;
+            for (const double a : {0.0, aFrom, aTo}) {
+                const double y = height(a);
+                double deepest = 0;
+                for (size_t w = 0; w + 1 < other.route->waypoints.size(); ++w) {
+                    const auto& p = other.route->waypoints[w];
+                    const auto& q = other.route->waypoints[w + 1];
+                    const double radialOverlap = std::min(lead.radius + radialHalf, std::max(p.at(0), q.at(0)) + rHalf) -
+                                                 std::max(lead.radius - radialHalf, std::min(p.at(0), q.at(0)) - rHalf);
+                    const double axialOverlap = std::min(y + half, std::max(p.at(1), q.at(1)) + yHalf) -
+                                                std::max(y - half, std::min(p.at(1), q.at(1)) - yHalf);
+                    if (radialOverlap > 0 && axialOverlap > 0) {
+                        deepest = std::max(deepest, std::min(radialOverlap, axialOverlap));
+                    }
+                }
+                if (!atStation) {
+                    atStation = deepest;   // what the blocking holds at the crossing
+                    continue;
+                }
+                if (deepest - atStation.value() > 1e-9) {
+                    UNSCOPED_INFO("crosses " << label(*other.route) << " at y = " << y * 1e3 << " mm by " << (deepest - atStation.value()) * 1e6 << " um");
+                    offLeads = false;
+                }
+            }
+        }
+        CHECK(((inWindow && offLeads) || lead.reported));
+    }
+    WARN(design << ": " << leads.size() << " terminal leads judged, " << farHalf << " on the far half of their crossing");
+    // Every lane stays on its face (no lane beyond the face's straight).
+    for (const auto& lead : leads) {
+        INFO(label(*lead.route));
+        CHECK(std::abs(lead.slot) <= lead.path.faceHalfStraight + lead.path.cornerRadius + 1e-12);
+    }
+    settings.reset();
+}
+
+TEST_CASE("two_switch_forward: the foil Secondary's axial leads, judged at their real extent, do not fit the primary's face, so the Secondary moves (spec S0, ABT #2274 / #2291)",
+          "[constructive-model][coil][real-winding][abt2274-foil-half]") {
+    // ABT #2274 / #2291 (Alf, 2026-11-06). The design: MAS example two_switch_forward_transformer_complete,
+    // E 42/21/15 (rectangular column), Primary 80 turns of litz, Secondary 2 turns x 8 parallels of Foil 0.2
+    // whose ends leave AXIALLY on a stated Round 0.5 lead (ABT #1907). Each end's 8 leads stand side by side
+    // from the crossing, one 0.534 mm lead each: the starts over x = -4.272 .. 0 mm, the finishes over
+    // 0 .. +4.272 mm, both halves of a face whose straight is 5.975 mm. The axial leads were left out of the
+    // S0 judgement: they got no half, no LANES_DO_NOT_FIT, and stayed on the Primary's face, their starts on
+    // the primary group's half.
+    std::ifstream file(std::filesystem::path{std::source_location::current().file_name()}
+                           .parent_path()
+                           .append("..")
+                           .append("MAS")
+                           .append("examples")
+                           .append("complete")
+                           .append("two_switch_forward_transformer_complete.json"));
+    REQUIRE(file.good());
+    const auto masJson = json::parse(file);
+    const auto& magneticJson = masJson.at("magnetic");
+    auto& settings = Settings::GetInstance();
+    settings.set_coil_use_real_winding_geometry(true);
+    OpenMagnetics::Core core(magneticJson.at("core"));
+    OpenMagnetics::Coil coilIn(magneticJson.at("coil"), false);
+    OpenMagnetics::Magnetic magnetic;
+    magnetic.set_core(core);
+    magnetic.set_coil(coilIn);
+    auto coil = OpenMagnetics::magnetic_autocomplete(magnetic, json{}).get_coil();
+    REQUIRE(coil.is_real_winding_blocking_applied());
+    const auto layout = coil.get_connection_layout();
+    std::set<int> primaryFaces, secondaryFaces;
+    size_t axialLeads = 0;
+    for (const auto& route : layout.routes) {
+        INFO(label(route));
+        if (!is_terminal(route)) {
+            continue;
+        }
+        const auto& winding = coil.get_functional_description()[coil.get_winding_index_by_name(route.winding)];
+        const bool primary = winding.get_isolation_side() == MAS::IsolationSide::PRIMARY;
+        (primary ? primaryFaces : secondaryFaces).insert(route.side);
+        for (const auto& finding : route.findings) {
+            CHECK(finding.kind != LeadFindingKind::LANES_DO_NOT_FIT);   // settled: every group fits its face
+        }
+        if (primary) {
+            REQUIRE_FALSE(route.axialLead);
+            continue;
+        }
+        REQUIRE(route.axialLead);   // the premise: the foil's ends leave axially (ABT #1907)
+        ++axialLeads;
+        const bool entrance = route.kind == ConnectionKind::TERMINAL_ENTRANCE;
+        // Alone on its face (spec section 24): starts on x <= 0, finishes on x >= 0, where the sheets put them.
+        REQUIRE(route.laneHalf.has_value());
+        CHECK(route.laneHalf.value() == (entrance ? -1 : 1));
+        CHECK(route.laneOverflow == std::optional<bool>(false));
+        // ABT #2291: on the window edge's row the lead turns 90 degrees out of the face, at the route's planned
+        // bend; its copper stays inside the window -- it never crosses the flange (Alf, 2026-11-06).
+        const auto& axial = route.axialLead.value();
+        const double outwardEdge = axial.windowEdge > axial.attachTo ? 1.0 : -1.0;
+        CHECK(outwardEdge * (axial.windowEdge - axial.end) >= axial.outerDiameter / 2 - 1e-12);
+        REQUIRE(route.waypoints.size() == 3);
+        const auto& corner = route.waypoints[1];
+        const auto& out = entrance ? route.waypoints.front() : route.waypoints.back();
+        const auto& attach = entrance ? route.waypoints.back() : route.waypoints.front();
+        CHECK_THAT(attach[0], Catch::Matchers::WithinAbs(axial.layerAxis, 1e-12));
+        CHECK_THAT(attach[1], Catch::Matchers::WithinAbs(axial.attachFrom, 1e-12));
+        CHECK_THAT(corner[0], Catch::Matchers::WithinAbs(axial.layerAxis, 1e-12));
+        CHECK_THAT(corner[1], Catch::Matchers::WithinAbs(axial.end, 1e-12));
+        CHECK_THAT(out[0], Catch::Matchers::WithinAbs(axial.radialEnd, 1e-12));
+        CHECK_THAT(out[1], Catch::Matchers::WithinAbs(axial.end, 1e-12));
+        CHECK(axial.radialEnd > axial.layerAxis + route.plannedBendRadius);
+        CHECK(route.plannedBendRadius > 0);
+        CHECK_THAT(route.routedLength, Catch::Matchers::WithinAbs(axial.length + axial.radialLength, 1e-9));
+    }
+    CHECK(axialLeads == 16);
+    REQUIRE(primaryFaces.size() == 1);
+    REQUIRE(secondaryFaces.size() == 1);
+    CHECK(*primaryFaces.begin() == 0);   // the face's first group keeps it
+    CHECK(*secondaryFaces.begin() == 1);  // the Secondary, whose leads do not fit its half there, moves
+    settings.reset();
+}
+
 TEST_CASE("Sibling Z dragbacks whose lane cannot hold them side by side are refused",
           "[constructive-model][coil][abt1424-dragback][abt-1424]") {
     auto& settings = Settings::GetInstance();
@@ -1923,5 +2304,508 @@ TEST_CASE("terminal_exit_slots: siblings that cannot meet share the crossing, si
         const auto routes = bundle(rows);
         const auto slots = OpenMagnetics::Coil::terminal_exit_slots(routes, {od, od}, rows, false, {0.9e-3, 0.9e-3}, {}, secondaryOnly);
         CHECK(std::abs(std::abs(slots[0].value() - slots[1].value()) - od) < 1e-12);
+    }
+}
+
+TEST_CASE("Real winding: a terminal lead may take the other x half to fit, but a Z face changes only for a different isolation group and only inside the core's exit window (ABT #2274)",
+          "[constructive-model][coil][real-winding][abt2274-no-fit-half]") {
+    // ABT #2274 (Alf, 2026-11-07, confirmed rule): (1) X: a terminal MAY move to the other x half (-x <-> +x) to
+    // avoid other terminals (spec section 22, overflow onto the spare half). (2) Z face: never because of fit
+    // alone; a face move only for a group on a DIFFERENT isolation side from the face's other groups (a), an
+    // inductor's entrance/exit (b) or the user's pins/sides (c), and only inside the core's exit window. Designs:
+    // unmodified MAS examples. 02_flyback_efd25_3c95 and 17_cllc_xfmr_e5528_3c92a: the Primary exit's lane on the
+    // primary's half (x <= 0) puts its last turn above the winding window (lane-height check), so it overflows
+    // onto the Secondary's half (x >= 0) of the same face. 04_forward_xfmr_e3216_n87: a 3.3V (Tertiary) entrance
+    // overflows onto the primary's half of the same face, so no face move. two_switch_forward_transformer_complete:
+    // the foil Secondary's axial leads cannot take another lane, do not fit the Primary's face, and that group --
+    // a different isolation side -- moves to the other face (section 23), inside the core's exit window. Expected values are derived here from the routes, the windings'
+    // isolation sides and the core's columns.
+    const std::string design = GENERATE(std::string("02_flyback_efd25_3c95"), std::string("17_cllc_xfmr_e5528_3c92a"),
+                                        std::string("04_forward_xfmr_e3216_n87"),
+                                        std::string("complete/two_switch_forward_transformer_complete"));
+    INFO(design);
+    std::ifstream file(std::filesystem::path{std::source_location::current().file_name()}
+                           .parent_path()
+                           .append("..")
+                           .append("MAS")
+                           .append("examples")
+                           .append(design + ".json"));
+    REQUIRE(file.good());
+    const auto masJson = json::parse(file);
+    const auto& magneticJson = masJson.at("magnetic");
+    auto& settings = Settings::GetInstance();
+    settings.set_coil_use_real_winding_geometry(true);
+    settings.set_coil_lead_bend_radius_factor(1.05);
+    settings.set_coil_lead_minimum_bend_radius(std::nullopt);
+    OpenMagnetics::Core core(magneticJson.at("core"));
+    OpenMagnetics::Coil coilIn(magneticJson.at("coil"), false);
+    OpenMagnetics::Magnetic magnetic;
+    magnetic.set_core(core);
+    magnetic.set_coil(coilIn);
+    auto coil = OpenMagnetics::magnetic_autocomplete(magnetic, json{}).get_coil();
+    REQUIRE(coil.is_real_winding_blocking_applied());
+    const auto layout = coil.get_connection_layout();
+    auto group_of = [&](const OpenMagnetics::ConnectionRoute& route) {
+        return coil.get_functional_description()[coil.get_winding_index_by_name(route.winding)].get_isolation_side();
+    };
+    std::set<MAS::IsolationSide> groups;
+    std::map<int, std::set<MAS::IsolationSide>> groupsOnFace;
+    std::optional<int> primaryFace;
+    for (const auto& route : layout.routes) {
+        if (!is_terminal(route)) {
+            continue;
+        }
+        INFO(label(route));
+        REQUIRE(route.pinName.empty());   // the premise: no pin decides a half, so S0/S1 alone do
+        groups.insert(group_of(route));
+        groupsOnFace[route.side].insert(group_of(route));
+        if (group_of(route) == MAS::IsolationSide::PRIMARY) {
+            REQUIRE((!primaryFace || primaryFace.value() == route.side));
+            primaryFace = route.side;
+        }
+    }
+    REQUIRE(groups.size() > 1);
+    REQUIRE(primaryFace.has_value());
+    // Rule 2a: one isolation side never parts faces for fit, and the Primary's group (S0's first) keeps S0's face.
+    for (const auto& side : groups) {
+        size_t faces = 0;
+        for (const auto& [face, onFace] : groupsOnFace) {
+            faces += onFace.count(side);
+        }
+        INFO("isolation side " << magic_enum::enum_name(side));
+        CHECK(faces == 1);
+    }
+    CHECK(primaryFace.value() == 0);
+    // Rule 1: the half is S0's (the group's) on a face shared by groups, S1's (entrance x <= 0, exit x >= 0) on a
+    // face one group has to itself (spec section 24). A lead that overflowed (spec section 22) stands on the OTHER
+    // half of the SAME face (an x move, never a face move); every other lead stands on its own half.
+    size_t judged = 0;
+    size_t overflowed = 0;
+    for (const auto& route : layout.routes) {
+        if (!is_terminal(route)) {
+            continue;
+        }
+        INFO(label(route) << " face " << route.side);
+        const bool entrance = route.kind == ConnectionKind::TERMINAL_ENTRANCE;
+        const int expected = groupsOnFace.at(route.side).size() == 1 ? (entrance ? -1 : 1)
+                                                                      : (group_of(route) == MAS::IsolationSide::PRIMARY ? -1 : 1);
+        REQUIRE(route.laneHalf.has_value());
+        CHECK(route.laneHalf.value() == expected);
+        REQUIRE(route.laneOverflow.has_value());
+        if (route.exitSlot && !route.axialLead) {
+            INFO("lane x = " << route.exitSlot.value() * 1e3 << " mm, overflow " << route.laneOverflow.value());
+            if (route.laneOverflow.value()) {
+                CHECK(expected * route.exitSlot.value() < -1e-9);
+                ++overflowed;
+            }
+            else {
+                CHECK(expected * route.exitSlot.value() >= -1e-9);
+            }
+            ++judged;
+        }
+        else {
+            CHECK_FALSE(route.laneOverflow.value());
+        }
+    }
+    CHECK(judged >= 2);
+    if (design.starts_with("02_") || design.starts_with("17_")) {
+        // The Primary exit does not fit the primary's half (its Z dragback holds the crossing, and every lane
+        // further out lifts its last turn above the window): it overflows onto the Secondary's half of the SAME
+        // face and fits there. Nothing moved face: every group stays on S0's face.
+        CHECK(groupsOnFace.size() == 1);
+        CHECK(overflowed >= 1);
+        bool found = false;
+        for (const auto& route : layout.routes) {
+            if (is_terminal(route) && route.winding == "Primary" && route.kind == ConnectionKind::TERMINAL_EXIT) {
+                found = true;
+                INFO(label(route));
+                REQUIRE(route.exitSlot.has_value());
+                CHECK(route.laneOverflow == std::optional<bool>(true));
+                CHECK(route.exitSlot.value() > 1e-9);
+                CHECK(route.side == primaryFace.value());
+                CHECK_FALSE(std::any_of(route.findings.begin(), route.findings.end(),
+                                        [](const auto& finding) { return finding.kind == LeadFindingKind::LANES_DO_NOT_FIT; }));
+            }
+        }
+        CHECK(found);
+    }
+    else if (design.starts_with("04_")) {
+        // The 3.3V (Tertiary) leads do not all fit the non-primary half of the shared face: the one that does not
+        // overflows onto the primary's half of the SAME face (rule 1, an x move) and fits there, so no group
+        // changes face for it (rule 2: the x move is tried first; a face move is not taken for fit alone).
+        CHECK(groupsOnFace.size() == 1);
+        CHECK(overflowed >= 1);
+        for (const auto& route : layout.routes) {
+            if (!is_terminal(route)) {
+                continue;
+            }
+            INFO(label(route));
+            if (route.laneOverflow == std::optional<bool>(true)) {
+                CHECK(group_of(route) == MAS::IsolationSide::TERTIARY);
+            }
+            for (const auto& finding : route.findings) {
+                CHECK(finding.kind != LeadFindingKind::LANES_DO_NOT_FIT);
+            }
+        }
+    }
+    else {
+        // two_switch: the foil Secondary's axial leads (which no x lane can move) do not fit the Primary's face.
+        // Rule 2: the group that did not fit the Primary's face is a DIFFERENT isolation side from it (a); it moved
+        // to the other face, and it fits there: no misfit is left, and every moved lead's radial run, from the
+        // bobbin column's face outwards, stays clear of the core's outer legs (E cores: the lateral columns, which
+        // span the core's depth) -- the core's exit window.
+        const auto moved = MAS::IsolationSide::SECONDARY;
+        const auto bobbin = coil.resolve_bobbin();
+        REQUIRE(bobbin.get_processed_description());
+        const double columnHalfDepth = bobbin.get_processed_description()->get_column_depth();
+        const auto columns = core.get_columns();
+        size_t movedLeads = 0;
+        for (const auto& route : layout.routes) {
+            if (!is_terminal(route)) {
+                continue;
+            }
+            INFO(label(route) << " face " << route.side);
+            for (const auto& finding : route.findings) {
+                CHECK(finding.kind != LeadFindingKind::LANES_DO_NOT_FIT);
+            }
+            if (group_of(route) != moved) {
+                continue;
+            }
+            CHECK(route.side != primaryFace.value());
+            CHECK(group_of(route) != MAS::IsolationSide::PRIMARY);
+            CHECK(groupsOnFace.at(route.side).count(MAS::IsolationSide::PRIMARY) == 0);
+            ++movedLeads;
+            const bool entrance = route.kind == ConnectionKind::TERMINAL_ENTRANCE;
+            const double lane = route.axialLead ? (entrance ? -1.0 : 1.0) * route.axialLead->alongFace : route.exitSlot.value();
+            double radius = 0;
+            if (route.axialLead) {
+                radius = route.axialLead->outerDiameter / 2;
+            }
+            else {
+                const auto turns = coil.get_turns_description().value();
+                const auto turn = std::find_if(turns.begin(), turns.end(), [&](const auto& candidate) {
+                    return candidate.get_name() == (entrance ? route.toTurn : route.fromTurn);
+                });
+                REQUIRE(turn != turns.end());
+                radius = coil.terminal_turn_path(route, *turn, layout.routes).stubDiameter / 2;
+                REQUIRE(radius > 0);
+            }
+            for (size_t c = 1; c < columns.size(); ++c) {
+                REQUIRE(columns[c].get_shape() == MAS::ColumnShape::RECTANGULAR);   // E-type legs: boxes
+                const auto at = columns[c].get_coordinates();
+                const double cz = at.size() > 2 ? at[2] : 0.0;
+                const bool overlapsX = std::abs(lane - at[0]) < columns[c].get_width() / 2 + radius;
+                const bool reachesRun = std::abs(cz) + columns[c].get_depth() / 2 > columnHalfDepth + 1e-12;
+                CHECK_FALSE((overlapsX && reachesRun));
+            }
+        }
+        CHECK(movedLeads >= 2);
+    }
+    settings.reset();
+}
+
+// AGENT11-SCAN (temporary, remove before commit): faces/halves/findings of every MAS example's terminal leads.
+TEST_CASE("agent11 scan of terminal faces", "[.][agent11-scan]") {
+    namespace fs = std::filesystem;
+    const auto root = fs::path{std::source_location::current().file_name()}.parent_path().append("..").append("MAS").append("examples");
+    std::vector<fs::path> files;
+    for (const auto& dir : {root, fs::path(root).append("complete")}) {
+        for (const auto& entry : fs::directory_iterator(dir)) {
+            if (entry.path().extension() == ".json") {
+                files.push_back(entry.path());
+            }
+        }
+    }
+    std::sort(files.begin(), files.end());
+    const char* only = std::getenv("AGENT11_SCAN_ONLY");
+    for (const auto& path : files) {
+        if (only && path.stem().string().find(only) == std::string::npos) {
+            continue;
+        }
+        std::cout << "=== " << path.stem().string() << std::endl;
+        try {
+            std::ifstream file(path);
+            const auto masJson = json::parse(file);
+            const auto& magneticJson = masJson.at("magnetic");
+            auto& settings = Settings::GetInstance();
+            settings.reset();
+            settings.set_coil_use_real_winding_geometry(true);
+            settings.set_coil_lead_bend_radius_factor(1.05);
+            settings.set_coil_lead_minimum_bend_radius(std::nullopt);
+            OpenMagnetics::Core core(magneticJson.at("core"));
+            OpenMagnetics::Coil coilIn(magneticJson.at("coil"), false);
+            OpenMagnetics::Magnetic magnetic;
+            magnetic.set_core(core);
+            magnetic.set_coil(coilIn);
+            auto coil = OpenMagnetics::magnetic_autocomplete(magnetic, json{}).get_coil();
+            std::cout << "  family " << magic_enum::enum_name(core.get_shape_family()) << " blocking " << coil.is_real_winding_blocking_applied() << std::endl;
+            for (const auto& route : coil.get_connection_layout().routes) {
+                if (!is_terminal(route)) {
+                    continue;
+                }
+                const auto side = coil.get_functional_description()[coil.get_winding_index_by_name(route.winding)].get_isolation_side();
+                std::cout << "  " << label(route) << " iso " << magic_enum::enum_name(side) << " face " << route.side << " slot "
+                          << (route.exitSlot ? std::to_string(route.exitSlot.value() * 1e3) : std::string("none")) << " half "
+                          << (route.laneHalf ? std::to_string(route.laneHalf.value()) : std::string("none")) << " overflow "
+                          << (route.laneOverflow ? std::to_string(route.laneOverflow.value()) : std::string("none"))
+                          << (route.axialLead ? " axial" : "") << std::endl;
+                for (const auto& finding : route.findings) {
+                    std::cout << "    " << magic_enum::enum_name(finding.kind) << ": " << finding.witness << std::endl;
+                }
+            }
+        }
+        catch (const std::exception& error) {
+            std::cout << "  THROWS: " << error.what() << std::endl;
+        }
+    }
+    Settings::GetInstance().reset();
+}
+
+// ABT #2274 (Alf, 2026-11-07, "slot-step ramp"): a terminal lead whose stub is not drawable (its route
+// starts at the row) still leaves its turn at its settled slot, where the turn stands off the row by its
+// uniform climb. MKF plans that step as a cosine S on the turn (ConnectionRoute::slotRampLength /
+// slotRampHeight) without moving a lane. Design: the UNMODIFIED MAS example 02_flyback_efd25_3c95; the
+// steps are the ones MVB++ drew as a slanted elbow leg at the agent-12 state (agent 13's measurements):
+// Primary exit 117 um, Secondary p2 exit 35 um, Secondary p1 entrance and exit 17.7 um, Primary entrance
+// 4.66 um. Its dragbacks: each bend at the lead bend radius of the wire, the step-out never past one OD.
+TEST_CASE("Real winding: a non-drawable terminal stub climbs its slot step as a ramp, and a dragback's bump is one OD (ABT #2274)",
+          "[constructive-model][coil][real-winding][abt2274-slot-ramp]") {
+    std::ifstream file(std::filesystem::path{std::source_location::current().file_name()}
+                           .parent_path()
+                           .append("..")
+                           .append("MAS")
+                           .append("examples")
+                           .append("02_flyback_efd25_3c95.json"));
+    REQUIRE(file.good());
+    const auto masJson = json::parse(file);
+    const auto& magneticJson = masJson.at("magnetic");
+    auto& settings = Settings::GetInstance();
+    settings.set_coil_use_real_winding_geometry(true);
+    settings.set_coil_lead_bend_radius_factor(1.05);
+    settings.set_coil_lead_minimum_bend_radius(std::nullopt);
+    OpenMagnetics::Core core(magneticJson.at("core"));
+    OpenMagnetics::Coil coilIn(magneticJson.at("coil"), false);
+    OpenMagnetics::Magnetic magnetic;
+    magnetic.set_core(core);
+    magnetic.set_coil(coilIn);
+    auto coil = OpenMagnetics::magnetic_autocomplete(magnetic, json{}).get_coil();
+    REQUIRE(coil.is_real_winding_blocking_applied());
+    const auto layout = coil.get_connection_layout();
+    const auto windings = coil.get_functional_description();
+    const auto turnsAll = coil.get_turns_description().value();
+    auto find_route = [&](size_t windingIndex, int64_t parallel, OpenMagnetics::ConnectionKind kind) -> const OpenMagnetics::ConnectionRoute* {
+        for (const auto& route : layout.routes) {
+            if (route.winding == windings.at(windingIndex).get_name() && route.parallel == parallel && route.kind == kind) {
+                return &route;
+            }
+        }
+        return nullptr;
+    };
+    for (const auto& route : layout.routes) {
+        if (route.kind == OpenMagnetics::ConnectionKind::TERMINAL_ENTRANCE || route.kind == OpenMagnetics::ConnectionKind::TERMINAL_EXIT) {
+            std::cout << "[abt2274-slot-ramp] " << route.winding << " p" << route.parallel
+                      << (route.kind == OpenMagnetics::ConnectionKind::TERMINAL_ENTRANCE ? " IN" : " OUT") << " waypoints "
+                      << route.waypoints.size() << " slot " << route.exitSlot.value_or(std::nan("")) * 1e3 << " mm height "
+                      << route.slotRampHeight.value_or(std::nan("")) * 1e6 << " um length "
+                      << route.slotRampLength.value_or(std::nan("")) * 1e3 << " mm lift " << route.liftLength.has_value()
+                      << " axial " << route.axialLead.has_value() << " tangential " << route.laneTangential.value_or(false)
+                      << " side " << route.side << " bend " << route.plannedBendRadius * 1e3 << " row "
+                      << route.waypoints.front().at(1) * 1e3 << " turn " << (route.kind == OpenMagnetics::ConnectionKind::TERMINAL_ENTRANCE ? route.toTurn : route.fromTurn)
+                      << " findings " << route.findings.size() << std::endl;
+            for (const auto& finding : route.findings) {
+                std::cout << "    finding " << static_cast<int>(finding.kind) << ": " << finding.witness.substr(0, 400) << std::endl;
+            }
+        }
+    }
+    struct Expected {
+        size_t winding;
+        int64_t parallel;
+        OpenMagnetics::ConnectionKind kind;
+        double step;   // [m], magnitude
+    };
+    const std::vector<Expected> expected{
+        // The leads agent 13 found stepping at their slots (MVB++ drew 117 / 35 / 17.7 / 17.7 / 4.66 um of
+        // slant in its 1-OD elbow leg, a part of the step); the steps themselves, row - turn height at
+        // the slot, are pinned here and re-derived independently below from the turns description.
+        {0, 0, OpenMagnetics::ConnectionKind::TERMINAL_EXIT, 144.552e-6},
+        {1, 2, OpenMagnetics::ConnectionKind::TERMINAL_EXIT, 47.5283e-6},
+        {1, 1, OpenMagnetics::ConnectionKind::TERMINAL_ENTRANCE, 23.7641e-6},
+        {1, 1, OpenMagnetics::ConnectionKind::TERMINAL_EXIT, 23.7641e-6},
+        {0, 0, OpenMagnetics::ConnectionKind::TERMINAL_ENTRANCE, 5.29802e-6},
+    };
+    for (const auto& lead : expected) {
+        const auto* route = find_route(lead.winding, lead.parallel, lead.kind);
+        REQUIRE(route != nullptr);
+        INFO(route->winding << " p" << route->parallel << (lead.kind == OpenMagnetics::ConnectionKind::TERMINAL_EXIT ? " exit" : " entrance"));
+        // The premise: a stub that is not drawable, so its route starts at the row.
+        REQUIRE(route->waypoints.size() == 2);
+        REQUIRE(route->exitSlot);
+        REQUIRE(!route->rampLength);
+        REQUIRE(route->slotRampHeight);
+        REQUIRE(route->slotRampLength);
+        CHECK(std::abs(route->slotRampHeight.value()) == Catch::Approx(lead.step).epsilon(1e-4));
+        // Independently from the turns description: the attach turn's station and its advance to the
+        // conductor's neighbouring turn, climbed uniformly over the turn's length; on the flat face the
+        // lane x is the distance along the turn from the crossing (upstream for an entrance).
+        {
+            const bool entrance = lead.kind == OpenMagnetics::ConnectionKind::TERMINAL_ENTRANCE;
+            const std::string turnName = entrance ? route->toTurn : route->fromTurn;
+            std::optional<size_t> at;
+            for (size_t t = 0; t < turnsAll.size(); ++t) {
+                if (turnsAll[t].get_name() == turnName) {
+                    at = t;
+                }
+            }
+            REQUIRE(at);
+            std::optional<double> neighbourY;
+            if (entrance) {
+                for (size_t t = at.value() + 1; t < turnsAll.size() && !neighbourY; ++t) {
+                    if (turnsAll[t].get_winding() == turnsAll[at.value()].get_winding() && turnsAll[t].get_parallel() == turnsAll[at.value()].get_parallel()) {
+                        neighbourY = turnsAll[t].get_coordinates().at(1);
+                    }
+                }
+            }
+            else {
+                for (size_t t = at.value(); t-- > 0 && !neighbourY;) {
+                    if (turnsAll[t].get_winding() == turnsAll[at.value()].get_winding() && turnsAll[t].get_parallel() == turnsAll[at.value()].get_parallel()) {
+                        neighbourY = turnsAll[t].get_coordinates().at(1);
+                    }
+                }
+            }
+            REQUIRE(neighbourY);
+            const double station = turnsAll[at.value()].get_coordinates().at(1);
+            const double advance = entrance ? neighbourY.value() - station : station - neighbourY.value();
+            // A conductor's first turn may state no length of its own; its neighbour's is the same turn length.
+            double turnLength = turnsAll[at.value()].get_length();
+            for (size_t t = 0; t < turnsAll.size() && !(turnLength > 0); ++t) {
+                if (turnsAll[t].get_winding() == turnsAll[at.value()].get_winding() && turnsAll[t].get_parallel() == turnsAll[at.value()].get_parallel() &&
+                    turnsAll[t].get_coordinates().at(1) == neighbourY.value()) {
+                    turnLength = turnsAll[t].get_length();
+                }
+            }
+            REQUIRE(turnLength > 0);
+            const double along = route->exitSlot.value();
+            const double independent = route->waypoints.front().at(1) - (station - advance * along / turnLength);
+            std::cout << "[abt2274-slot-ramp] independent step " << independent * 1e6 << " um vs MKF " << route->slotRampHeight.value() * 1e6
+                      << " um (advance " << advance * 1e6 << " um over " << turnLength * 1e3 << " mm)" << std::endl;
+            // The turn length here is the wound turn's own; MKF's face path adds the ride over the other face
+            // (TerminalTurnPath::rideLength), ~2 % on 02, so the two agree to that.
+            CHECK(route->slotRampHeight.value() == Catch::Approx(independent).epsilon(0.03));
+        }
+        // The S is the ramp rule's own: S = pi sqrt(h Rg / 2), Rg the plannedBendRadius on a flat face
+        // (lead_ramp_length), so its curvature peaks at exactly 1 / Rg.
+        const double h = std::abs(route->slotRampHeight.value());
+        const double S = route->slotRampLength.value();
+        CHECK(h * std::numbers::pi * std::numbers::pi / (2 * S * S) == Catch::Approx(1.0 / route->plannedBendRadius).epsilon(1e-9));
+        // ABT #2274 (agent 17): MKF publishes where the S ends (the consumer draws onto it): bend + S from the lane,
+        // on the side the turn covers.
+        REQUIRE(route->slotRampEndX);
+        REQUIRE(route->slotRampEndHeight);
+        CHECK(std::abs(route->slotRampEndX.value() - route->exitSlot.value()) == Catch::Approx(S + route->plannedBendRadius).epsilon(1e-12));
+    }
+    // Dragbacks: bent at the wire's lead bend radius, the step-out stopping exactly at the return's radius.
+    size_t dragbacks = 0;
+    for (const auto& route : layout.routes) {
+        if (route.kind != OpenMagnetics::ConnectionKind::Z_DRAGBACK) {
+            continue;
+        }
+        ++dragbacks;
+        INFO(route.winding << " p" << route.parallel << " dragback " << route.fromTurn << " -> " << route.toTurn);
+        REQUIRE(route.dragbackBendRadius);
+        REQUIRE(route.dragbackBendAngle);
+        const size_t windingIndex = coil.get_winding_index_by_name(route.winding);
+        const auto wire = coil.resolve_wire(windingIndex);
+        const double od = std::max(wire.get_maximum_outer_width(), wire.get_maximum_outer_height());
+        const double R = route.dragbackBendRadius.value();
+        const double theta = route.dragbackBendAngle.value();
+        const double step = std::abs(route.waypoints.back().at(0) - route.waypoints.front().at(0));
+        // 02's dragbacks step one OD out (adjacent layers), and bend at the radius a lead of the same
+        // wire bends at (its unsleeved terminal lead's plannedBendRadius), never below the declared 1.05 x.
+        CHECK(step == Catch::Approx(od).epsilon(1e-6));
+        CHECK(R >= 1.05 * od / 2);
+        const auto* lead = find_route(windingIndex, route.parallel, OpenMagnetics::ConnectionKind::TERMINAL_EXIT);
+        REQUIRE(lead != nullptr);
+        REQUIRE(!lead->sleeveOuterDiameter);
+        CHECK(R == Catch::Approx(lead->plannedBendRadius).epsilon(1e-12));
+        // The bump: two bends of theta reach exactly the step, never past it.
+        const double reach = theta < std::numbers::pi / 2 ? 2 * R * (1 - std::cos(theta)) : step;
+        CHECK(reach == Catch::Approx(step).epsilon(1e-9));
+        CHECK(theta <= std::numbers::pi / 2);
+    }
+    CHECK(dragbacks > 0);
+    Settings::GetInstance().reset();
+}
+
+// ABT #2274 (Alf, 2026-11-07: "replace the 65-point sampling with a RIGOROUS bound"): the slot-ramp fit
+// check's distance, slot_ramp_closest_approach, against a dense brute force, and on a thin-wire pair whose
+// closest approach falls between the 65 stations the earlier check sampled (that sampling reported it clear).
+TEST_CASE("Real winding: a slot ramp's closest approach to another lead is bounded rigorously (ABT #2274)",
+          "[constructive-model][coil][real-winding][abt2274-slot-ramp]") {
+    using OpenMagnetics::SlotRampCentreline;
+    const SlotRampCentreline ramp{0.0, 1.0, 5e-3, 1e-3, 144.552e-6, 0.544e-3, 0.415e-3};
+    auto point_on = [](const SlotRampCentreline& c, double s) { return OpenMagnetics::slot_ramp_point(c, s); };
+    auto point_segment = [](double r, double y, const std::vector<double>& a, const std::vector<double>& b) {
+        const double ur = b[0] - a[0], uy = b[1] - a[1];
+        const double t = std::clamp(((r - a[0]) * ur + (y - a[1]) * uy) / (ur * ur + uy * uy), 0.0, 1.0);
+        return std::hypot(r - a[0] - t * ur, y - a[1] - t * uy);
+    };
+    auto brute_route = [&](double otherLaneX, const std::vector<std::vector<double>>& route, int stations) {
+        double best = std::numeric_limits<double>::max();
+        const double end = ramp.rampLength + ramp.bendRadius;
+        for (int k = 0; k <= stations; ++k) {
+            const auto p = point_on(ramp, end * k / stations);
+            double section = std::numeric_limits<double>::max();
+            for (size_t w = 0; w + 1 < route.size(); ++w) {
+                section = std::min(section, point_segment(p[1], p[2], route[w], route[w + 1]));
+            }
+            best = std::min(best, std::hypot(p[0] - otherLaneX, section));
+        }
+        return best;
+    };
+    SECTION("against a route: matches a dense brute force, fires just under it, not just over it") {
+        const std::vector<std::vector<double>> route{{5.3e-3, 0.95e-3}, {5.3e-3, 2e-3}, {7e-3, 2e-3}};
+        const double otherLaneX = 0.3e-3;
+        const double dense = brute_route(otherLaneX, route, 400000);
+        const auto found = OpenMagnetics::slot_ramp_closest_approach(ramp, otherLaneX, route, std::nullopt, dense + 1e-6);
+        CHECK(found.distance < dense + 1e-6);
+        CHECK(found.distance >= dense - 3e-9);   // never under the true minimum (the brute force overestimates by <= 1.5 nm)
+        CHECK(found.otherAlong < 0);
+        const auto clear = OpenMagnetics::slot_ramp_closest_approach(ramp, otherLaneX, route, std::nullopt, dense - 1e-6);
+        CHECK_FALSE(clear.distance < dense - 1e-6);
+    }
+    SECTION("a thin-wire touch between two of the 65 stations is found") {
+        const double sStar = ramp.bendRadius + ramp.rampLength * 0.5 / 64;   // halfway between the S's stations 0 and 1
+        const auto p = point_on(ramp, sStar);
+        const double gap = 18e-6, clearance = 18.4e-6;   // two 0.0184 mm coated wires, 0.4 um overlap at s*
+        const std::vector<std::vector<double>> route{{p[1] + gap, p[2] - 1e-9}, {p[1] + gap, p[2] + 1e-9}};
+        double sampled = std::numeric_limits<double>::max();
+        for (int k = 0; k <= 64; ++k) {
+            const auto q = point_on(ramp, ramp.bendRadius + ramp.rampLength * k / 64.0);
+            sampled = std::min(sampled, std::hypot(q[0] - p[0], point_segment(q[1], q[2], route[0], route[1])));
+        }
+        INFO("65-station sampling: " << sampled * 1e6 << " um");
+        CHECK_FALSE(sampled < clearance);
+        const auto found = OpenMagnetics::slot_ramp_closest_approach(ramp, p[0], route, std::nullopt, clearance);
+        CHECK(found.distance < clearance);
+        CHECK(found.distance >= gap - 1e-12);
+        // the exhibited point is within the overlap's reach of s*: |s - s*| < sqrt(clearance^2 - gap^2)
+        CHECK(std::abs(found.along - sStar) < std::sqrt(clearance * clearance - gap * gap));
+    }
+    SECTION("against the other lead's own slot ramp: matches a dense 2-D brute force") {
+        const SlotRampCentreline other{1.2e-3, -1.0, 5.25e-3, 1.1e-3, -60e-6, 0.4e-3, 0.3e-3};
+        const std::vector<std::vector<double>> route{{5.25e-3, 1.1e-3}, {5.25e-3, 3e-3}};
+        const int n = 1500;
+        double dense = brute_route(other.laneX, route, 20000);
+        for (int i = 0; i <= n; ++i) {
+            const auto a = point_on(ramp, (ramp.rampLength + ramp.bendRadius) * i / n);
+            for (int j = 0; j <= n; ++j) {
+                const auto b = point_on(other, (other.rampLength + other.bendRadius) * j / n);
+                dense = std::min(dense, std::hypot(a[0] - b[0], std::hypot(a[1] - b[1], a[2] - b[2])));
+            }
+        }
+        const auto found = OpenMagnetics::slot_ramp_closest_approach(ramp, other.laneX, route, other, dense + 1e-6);
+        CHECK(found.distance < dense + 1e-6);
+        CHECK(found.distance > dense - 2e-6);   // the grid brute force overestimates by at most its station spacing
+        CHECK(found.otherAlong >= 0);
     }
 }

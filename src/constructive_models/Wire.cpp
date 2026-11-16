@@ -1693,6 +1693,147 @@ namespace OpenMagnetics {
         return {h, w};
     }
 
+    namespace {
+        // What a litz bundle's strands are, as the deformation limits read them.
+        struct LitzStrands {
+            double strandConducting;
+            double strandOuter;
+            int grade;
+            int64_t numberConductors;
+            WireStandard standard;
+        };
+        LitzStrands litz_strands_of(const Wire& wire) {
+            if (wire.get_type() != WireType::LITZ) {
+                throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA, "only a litz bundle has strands to deform");
+            }
+            auto strand = Wire::resolve_strand(wire);
+            auto strandCoating = Wire::resolve_coating(strand);
+            if (!strandCoating) {
+                throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA,
+                                            "litz wire '" + wire.get_name().value_or("unnamed") + "' has strands with no coating");
+            }
+            if (!wire.get_number_conductors()) {
+                throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA,
+                                            "litz wire '" + wire.get_name().value_or("unnamed") + "' states no number of conductors");
+            }
+            if (!wire.get_standard() && !strand.get_standard()) {
+                throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA,
+                                            "litz wire '" + wire.get_name().value_or("unnamed") +
+                                                "' states no standard, neither for the bundle nor its strand, so its strand and serving sizes are unknown");
+            }
+            LitzStrands strands;
+            strands.standard = wire.get_standard() ? wire.get_standard().value() : strand.get_standard().value();
+            strands.strandConducting = resolve_dimensional_values(strand.get_conducting_diameter());
+            strands.grade = require_coating_field(strandCoating->get_grade(), "strand grade");
+            strands.numberConductors = wire.get_number_conductors().value();
+            strands.strandOuter = Wire::get_outer_diameter_round(strands.strandConducting, strands.grade, strands.standard);
+            return strands;
+        }
+    }
+
+    double Wire::litz_serving_thickness(const Wire& wire) {
+        const auto strands = litz_strands_of(wire);
+        auto coating = Wire::resolve_coating(wire);
+        if (!coating || !coating->get_type()) {
+            throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA,
+                                        "litz wire '" + wire.get_name().value_or("unnamed") + "' has no coating type: served or bare decides how far it may deform");
+        }
+        switch (coating->get_type().value()) {
+            case InsulationWireCoatingType::BARE:
+                return 0;
+            case InsulationWireCoatingType::SERVED: {
+                const double bareBundle = get_outer_diameter_bare_litz(strands.strandConducting, strands.numberConductors, strands.grade, strands.standard);
+                return get_serving_thickness_from_standard(require_coating_field(coating->get_number_layers(), "number of layers"), bareBundle);
+            }
+            default:
+                throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA,
+                                            "litz wire '" + wire.get_name().value_or("unnamed") + "' is neither served nor bare: no source says its bundle deforms");
+        }
+    }
+
+    double Wire::compressed_litz_corner_radius(double height) {
+        if (!(height > 0)) {
+            throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA, "compressed_litz_corner_radius: needs a positive height");
+        }
+        return height / 4;
+    }
+
+    double Wire::round_litz_outer_diameter(const Wire& wire) {
+        if (wire.get_type() != WireType::LITZ) {
+            throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA, "round_litz_outer_diameter: '" + wire.get_name().value_or("unnamed") + "' is not litz");
+        }
+        if (wire.get_outer_diameter()) {
+            return resolve_dimensional_values(wire.get_outer_diameter().value());
+        }
+        return calculate_outer_diameter(wire);
+    }
+
+    double Wire::compressed_litz_corner_radius(double outerDiameter, double width, double height) {
+        if (!(outerDiameter > 0) || !(width > 0) || !(height > 0)) {
+            throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA, "compressed_litz_corner_radius: needs a positive diameter, width and height");
+        }
+        const double area = std::numbers::pi / 4 * outerDiameter * outerDiameter;
+        const double excess = width * height - area;
+        const double tolerance = 1e-9 * width * height;
+        if (excess < -tolerance) {
+            std::ostringstream out;
+            out << "a litz bundle of outer diameter " << outerDiameter * 1e3 << " mm does not keep its area in " << width * 1e3 << " x "
+                << height * 1e3 << " mm (" << width * height * 1e6 << " mm2 against " << area * 1e6 << " mm2)";
+            throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA, out.str());
+        }
+        const double radius = std::sqrt(std::max(0.0, excess) / (4 - std::numbers::pi));
+        if (radius > std::min(width, height) / 2 * (1 + 1e-9)) {
+            std::ostringstream out;
+            out << "a litz bundle of outer diameter " << outerDiameter * 1e3 << " mm is narrower than " << width * 1e3 << " x "
+                << height * 1e3 << " mm even fully rounded: no rounded rectangle of its area has those sides";
+            throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA, out.str());
+        }
+        return std::min(radius, std::min(width, height) / 2);
+    }
+
+    std::pair<double, double> Wire::compressed_litz_filling(double outerDiameter, double cellWidth, double height) {
+        if (!(outerDiameter > 0) || !(cellWidth > 0) || !(height > 0) || height > outerDiameter * (1 + 1e-9)) {
+            throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA, "compressed_litz_filling: needs 0 < height <= OD and a positive cell width");
+        }
+        const double area = std::numbers::pi / 4 * outerDiameter * outerDiameter;
+        // The roundest shape of its area at this height is the stadium (radius h / 2); when the cell is
+        // wider than that, the bundle is that stadium and the rest of the cell stays empty.
+        const double stadiumWidth = area / height + (4 - std::numbers::pi) * height / 4;
+        if (cellWidth >= stadiumWidth) {
+            return {stadiumWidth, height / 2};
+        }
+        return {cellWidth, compressed_litz_corner_radius(outerDiameter, cellWidth, height)};
+    }
+
+    std::pair<double, double> Wire::compressed_litz_sides(double outerDiameter, double k) {
+        if (!(outerDiameter > 0) || !(k > 0) || k > 1) {
+            throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA, "compressed_litz_sides: needs OD > 0 and 0 < k <= 1");
+        }
+        // A rounded rectangle of height h, corner radius r = compressed_litz_corner_radius(h), and the
+        // round bundle's area A = pi OD^2 / 4: A = w h - (4 - pi) r^2, so w = (A + (4 - pi) r^2) / h.
+        const double height = k * outerDiameter;
+        const double radius = compressed_litz_corner_radius(height);
+        const double area = std::numbers::pi / 4 * outerDiameter * outerDiameter;
+        const double width = (area + (4 - std::numbers::pi) * radius * radius) / height;
+        return {width, height};
+    }
+
+    bool Wire::litz_strands_fit_compressed(const Wire& wire, double width, double height) {
+        const auto strands = litz_strands_of(wire);
+        const double serving = litz_serving_thickness(wire);
+        const double innerWidth = width - 2 * serving;
+        const double innerHeight = height - 2 * serving;
+        if (!(innerHeight > 0) || !(innerWidth > 0)) {
+            return false;
+        }
+        // Inside the serving the corners are the outer ones less the serving (square when it is thicker).
+        const double innerRadius = std::max(0.0, compressed_litz_corner_radius(round_litz_outer_diameter(wire), width, height) - serving);
+        const double innerArea = innerWidth * innerHeight - (4 - std::numbers::pi) * innerRadius * innerRadius;
+        const double hexagonalPacking = std::numbers::pi / (2 * std::sqrt(3.0));
+        const double strandsArea = double(strands.numberConductors) * std::numbers::pi / 4 * strands.strandOuter * strands.strandOuter;
+        return innerArea * hexagonalPacking >= strandsArea;
+    }
+
     void Wire::set_wound_footprint(double width, double height) {
         if (get_type() != WireType::LITZ) {
             throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA, "only a litz bundle takes a wound footprint");

@@ -77,6 +77,10 @@ OpenMagnetics::Coil wind_tangent_fixture() {
 
 }  // namespace
 
+// ABT #2274 (Alf, 2026-11-14): every real-winding lead corner is a 90-degree bend round its own coating, whatever the
+// IEC minimum or a drawer's declared minimum (the 12.5425 mm the fixture declares no longer moves it). The planned bend
+// is the coated half size and fits on the connection-face straight, so the leads leave RADIALLY and no revolution is
+// shortened. Until then this test checked the tangent departure that a too-wide bend forced.
 TEST_CASE("Real winding: a rectangular wire's terminal leads leave tangentially off the lateral face (18_stacked)",
           "[constructive-model][coil][real-winding][abt1423]") {
     auto coil = wind_tangent_fixture();
@@ -90,8 +94,6 @@ TEST_CASE("Real winding: a rectangular wire's terminal leads leave tangentially 
     const double standoff = x - frame.columnWidth;
     const double bend = frame.cornerRadius + standoff;
     const double connectionHalfStraight = frame.columnWidth + standoff - bend;
-    const double lateralHalfStraight = frame.columnDepth + standoff - bend;
-    const double removed = connectionHalfStraight + std::numbers::pi / 2 * bend;
     const double fullLength = 4 * frame.columnDepth + 4 * frame.columnWidth + 8 * standoff +
                               (2 * std::numbers::pi - 8) * bend;
     INFO("frame: width " << frame.columnWidth * 1e3 << " mm, depth " << frame.columnDepth * 1e3
@@ -101,70 +103,25 @@ TEST_CASE("Real winding: a rectangular wire's terminal leads leave tangentially 
     CHECK(connectionHalfStraight == Catch::Approx(0.00542071).margin(1e-8));
 
     const auto layout = coil.get_connection_layout();
-    size_t tangent = 0;
+    size_t radial = 0;
     for (const auto& route : layout.routes) {
         const bool entrance = route.kind == OpenMagnetics::ConnectionKind::TERMINAL_ENTRANCE;
         if (!entrance && route.kind != OpenMagnetics::ConnectionKind::TERMINAL_EXIT) {
             continue;
         }
         INFO((entrance ? "entrance" : "exit") << ": planned bend " << route.plannedBendRadius * 1e3 << " mm");
-        // The premise: the radial exit's bend does not fit on the connection-face straight.
-        REQUIRE(route.plannedBendRadius > connectionHalfStraight);
-        REQUIRE(route.tangentDeparture.has_value());
-        ++tangent;
-        const auto& departure = route.tangentDeparture.value();
-        CHECK(departure.face == (entrance ? -1 : 1));
-        CHECK_FALSE(route.exitSlot.has_value());
-        CHECK(departure.distanceAlongFace == Catch::Approx(lateralHalfStraight).margin(1e-12));
-        CHECK(departure.turnLengthRemoved == Catch::Approx(removed).margin(1e-12));
-        REQUIRE(departure.point.size() == 3);
-        CHECK(departure.point[0] == Catch::Approx(departure.face * x).margin(1e-12));
-        CHECK(departure.point[2] == Catch::Approx(-lateralHalfStraight).margin(1e-12));
-        // The pitch-true helix at the lateral face's end: the station moved by the cut-off share of
-        // the revolution's advance (into the turn for the entrance, back from it for the exit).
-        const auto& station = entrance ? turns[0] : turns[turns.size() - 1];
-        const double climb = entrance ? (turns[1].get_coordinates()[1] - turns[0].get_coordinates()[1])
-                                      : (turns.back().get_coordinates()[1] - turns[turns.size() - 2].get_coordinates()[1]);
-        const double expectedY = station.get_coordinates()[1] + (entrance ? 1.0 : -1.0) * climb / fullLength * removed;
-        CHECK(departure.point[1] == Catch::Approx(expectedY).margin(1e-12));
-        // The lead IS the lateral face straight, continued: collinear with the wire's travel there.
-        const double travelY = climb / fullLength;   // dy per metre of travel
-        const double travelZ = entrance ? 1.0 : -1.0;
-        const double outwardSign = entrance ? -1.0 : 1.0;   // outward = against the travel at the entrance
-        const double norm = std::sqrt(1 + travelY * travelY);
-        CHECK(departure.direction[0] == 0.0);
-        CHECK(departure.direction[1] == Catch::Approx(outwardSign * travelY / norm).margin(1e-15));
-        CHECK(departure.direction[2] == Catch::Approx(outwardSign * travelZ / norm).margin(1e-15));
-        CHECK(departure.direction[2] < 0);   // out of the front of the window
-        // It runs to the window border moved to the connection face's depth.
-        const double border = entrance ? route.waypoints.front()[0] : route.waypoints.back()[0];
-        CHECK(border == Catch::Approx(x).margin(1e-12));   // the projection sits at the turn's radius
-        CHECK(departure.end[2] < departure.point[2]);
-        CHECK(route.routedLength == Catch::Approx(departure.length).margin(1e-9));
-        // And it stays inside the window band: its axial extent is within the station and the
-        // departure point, both of which are.
-        const double yLow = std::min(departure.point[1], departure.end[1]);
-        const double yHigh = std::max(departure.point[1], departure.end[1]);
-        const double stationY = station.get_coordinates()[1];
-        CHECK(((yLow >= stationY - 1e-12) || (yHigh <= stationY + 1e-12)));
-        std::cout << "[abt1423] " << (entrance ? "entrance" : "exit") << ": leaves the "
-                  << (departure.face < 0 ? "-X" : "+X") << " face at (" << departure.point[0] * 1e3 << ", "
-                  << departure.point[1] * 1e3 << ", " << departure.point[2] * 1e3 << ") mm, lead "
-                  << departure.length * 1e3 << " mm, revolution '" << departure.shortenedTurn << "' shortened by "
-                  << departure.turnLengthRemoved * 1e3 << " mm" << std::endl;
+        // The 90-degree bend fits on the connection-face straight: a radial exit, no tangent departure.
+        CHECK(route.plannedBendRadius <= connectionHalfStraight);
+        CHECK_FALSE(route.tangentDeparture.has_value());
+        ++radial;
     }
-    CHECK(tangent == 2);
+    CHECK(radial == 2);
 
-    // The charge: the first and last revolutions lose exactly the cut-off copper, the others none.
-    size_t full = 0;
+    // No tangent lead, so no revolution loses copper to one: every revolution after the first is a full one.
     for (size_t t = 1; t < turns.size(); ++t) {
-        const bool shortened = t == 1 || t + 1 == turns.size();
         INFO(turns[t].get_name() << " length " << turns[t].get_length() * 1e3 << " mm");
-        CHECK(turns[t].get_length() ==
-              Catch::Approx(shortened ? fullLength - removed : fullLength).margin(1e-9));
-        full += shortened ? 0 : 1;
+        CHECK(turns[t].get_length() == Catch::Approx(fullLength).margin(1e-9));
     }
-    CHECK(full == turns.size() - 3);
     OpenMagnetics::Settings::GetInstance().reset();
 }
 
@@ -230,6 +187,9 @@ double first_turn_face_half_straight(int64_t numberTurns) {
 
 }  // namespace
 
+// ABT #2274 (Alf, 2026-11-14): under real winding the lead bends at its coated radius whatever minimum the consumer
+// declares (the fixtures still declare 1.5 x the face straight), so these leads leave radially: no tangent departure,
+// no collision of one, nothing reported. Until then the sections checked the tangent lead the declared bend forced.
 TEST_CASE("Real winding: a closely wound round-wire layer's tangent lead is not refused by its own next revolution, "
           "while a turn wound across the lead is reported as a collision",
           "[constructive-model][coil][real-winding][tangent-departure][abt-2012]") {
@@ -267,17 +227,17 @@ TEST_CASE("Real winding: a closely wound round-wire layer's tangent lead is not 
         INFO(numberTurns << " turns, pitch " << pitch * 1e3 << " mm, coated diameter " << coatedDiameter * 1e3 << " mm");
         REQUIRE(pitch >= coatedDiameter - 1e-12);
         REQUIRE(pitch - coatedDiameter < pitch / fullLength * removed);
-        size_t tangent = 0;
+        size_t radial = 0;
         for (const auto& route : coil.get_connection_layout().routes) {
             if (route.kind != OpenMagnetics::ConnectionKind::TERMINAL_ENTRANCE &&
                 route.kind != OpenMagnetics::ConnectionKind::TERMINAL_EXIT) {
                 continue;
             }
-            REQUIRE(route.plannedBendRadius > faceHalfStraight);   // its bend does not fit on the face
-            CHECK(route.tangentDeparture.has_value());
-            tangent += route.tangentDeparture ? 1 : 0;
+            CHECK(route.plannedBendRadius <= faceHalfStraight);   // the 90-degree bend fits on the face
+            CHECK_FALSE(route.tangentDeparture.has_value());
+            ++radial;
         }
-        CHECK(tangent == 2);
+        CHECK(radial == 2);
     }
 
     SECTION("a second layer wound back over the first lies across the entrance lead: drawn, and the collision reported") {
@@ -318,62 +278,39 @@ TEST_CASE("Real winding: a closely wound round-wire layer's tangent lead is not 
         REQUIRE(number_conduction_layers(coil) == 2);
         const auto turns = coil.get_turns_description().value();
         REQUIRE(coil.get_winding_order(turns[0].get_section().value()) == MAS::WindingOrder::U);
-        const std::string windingName = coil.get_functional_description()[0].get_name();
-        // Every turn and both leads are drawn, tangentially; the entrance runs under the second layer.
-        std::optional<OpenMagnetics::TangentDeparture> entranceDeparture;
+        // Every turn and both leads are drawn, radially: no tangent lead runs under the second layer, so none collides.
         size_t terminals = 0;
-        size_t collidingLeads = 0;
         for (const auto& route : coil.get_connection_layout().routes) {
             if (route.kind != OpenMagnetics::ConnectionKind::TERMINAL_ENTRANCE &&
                 route.kind != OpenMagnetics::ConnectionKind::TERMINAL_EXIT) {
                 continue;
             }
             ++terminals;
-            REQUIRE(route.tangentDeparture.has_value());
-            if (route.kind == OpenMagnetics::ConnectionKind::TERMINAL_ENTRANCE) {
-                entranceDeparture = route.tangentDeparture;
-            }
-            const auto& departure = route.tangentDeparture.value();
-            collidingLeads += departure.collisions.empty() ? 0 : 1;
-            // Each collision is an outer turn whose copper really overlaps the lead's.
-            const double leadX = std::abs(departure.point[0]);
-            for (const auto& collision : departure.collisions) {
-                const auto turn = std::find_if(turns.begin(), turns.end(),
-                                               [&](const MAS::Turn& candidate) { return candidate.get_name() == collision.turnName; });
-                REQUIRE(turn != turns.end());
-                CHECK(std::abs(turn->get_coordinates()[0]) > leadX);
-                CHECK(collision.overlap > 0);
-                CHECK(collision.overlap == Catch::Approx(turns[0].get_dimensions().value()[1] / 2 + turn->get_dimensions().value()[1] / 2 -
-                                                         std::abs(collision.leadHeight - collision.turnHeight)).margin(1e-12));
+            CHECK_FALSE(route.tangentDeparture.has_value());
+            for (const auto& finding : route.findings) {
+                CHECK(finding.kind != OpenMagnetics::LeadFindingKind::TURN_COLLISION);
             }
         }
         REQUIRE(terminals == 2);
-        REQUIRE(entranceDeparture.has_value());
-        REQUIRE_FALSE(entranceDeparture->collisions.empty());
+        (void) faceHalfStraight;
 
         OpenMagnetics::Magnetic magnetic;
         magnetic.set_core(OpenMagneticsTesting::get_quick_core("E 25/13/7", OpenMagneticsTesting::get_ground_gap(0.001), 1, "N87"));
         magnetic.set_coil(coil);
-        const auto findings = OpenMagnetics::ResultsAnalyzer::analyze_lead_collisions(magnetic);
-        REQUIRE(findings.size() == collidingLeads);   // one per colliding lead
-        bool entranceReported = false;
-        for (const auto& finding : findings) {
-            CHECK(finding.code == OpenMagnetics::ResultFindingCode::LEAD_COLLIDES_WITH_TURNS);
-            CHECK_FALSE(finding.operatingPointIndex);
-            CHECK(finding.message.find("winding '" + windingName + "'") != std::string::npos);
-            CHECK(finding.message.find("drawn across turn ") != std::string::npos);
-            CHECK(finding.message.find("overlaps by") != std::string::npos);
-            CHECK(finding.message.find("ABT") == std::string::npos);
-            entranceReported |= finding.message.find("entrance lead of " + OpenMagnetics::describe_turn_for_people(coil, turns[0].get_name())) != std::string::npos;
-        }
-        CHECK(entranceReported);
+        CHECK(OpenMagnetics::ResultsAnalyzer::analyze_lead_collisions(magnetic).empty());
     }
     settings.reset();
 }
-TEST_CASE("An adviser refuses a design whose terminal lead collides, which the winder draws and reports (spec section 17, ABT #1336)",
+// ABT #2274 (Alf, 2026-11-14): the same design's leads now leave radially at their coated bend, so no TANGENT lead
+// collides and the winder records no turn collision on a route. The adviser still refuses the design: the entrance's
+// level lead now runs under the U-wound second layer and meets the copper of its last turn (10 um on this design).
+TEST_CASE("An adviser accepts the U-wound two layers whose radial lead no longer collides (spec section 17, ABT #1336)",
           "[constructive-model][coil][real-winding][tangent-departure][abt-1336][adviser]") {
     // Spec section 17 (Alf, 2026-10-26): "the adviser never accepts designs that don't fit". The design is
-    // the U-wound two layers of the test above (its second layer lies across the entrance lead), unchanged.
+    // the U-wound two layers of the test above, unchanged. It was the fixture of "an adviser refuses a design
+    // whose terminal lead collides": its second layer lay across the tangent entrance lead. ABT #2274 draws that
+    // lead radially, so nothing collides and the adviser has nothing to refuse (Alf, 2026-11-15: "assert it is
+    // accepted"). The adviser's refusal of a colliding lead has no fixture any more; a ticket asks for one.
     auto& settings = OpenMagnetics::Settings::GetInstance();
     const int64_t singleLayer = fullest_single_layer();
     REQUIRE(singleLayer >= 20);
@@ -414,17 +351,16 @@ TEST_CASE("An adviser refuses a design whose terminal lead collides, which the w
             }
         }
     }
-    REQUIRE(collisionFindings > 0);
+    CHECK(collisionFindings == 0);
 
-    // The adviser's real-winding check refuses it, naming the lead.
+    // The adviser's real-winding check accepts it.
     OpenMagnetics::Magnetic magnetic;
     magnetic.set_core(OpenMagneticsTesting::get_quick_core("E 25/13/7", OpenMagneticsTesting::get_ground_gap(0.001), 1, "N87"));
     magnetic.set_coil(coil);
     std::optional<std::string> refusal;
     REQUIRE_NOTHROW(refusal = OpenMagnetics::real_winding_refusal(magnetic));
-    REQUIRE(refusal.has_value());
-    CHECK(refusal->find("does not fit") != std::string::npos);
-    CHECK(refusal->find("winding '" + coil.get_functional_description()[0].get_name() + "'") != std::string::npos);
+    INFO((refusal ? *refusal : std::string("no refusal")));
+    CHECK(!refusal.has_value());
     settings.reset();
 }
 
@@ -480,6 +416,22 @@ UnmodelledLeads unmodelled_leads(OpenMagnetics::Coil coil, OpenMagnetics::Tangen
     return leads;
 }
 
+// ABT #2274 (Alf, 2026-11-14): a real-winding lead bends at its coated radius, whatever minimum the consumer declares,
+// so on these designs every terminal lead leaves radially: no tangent lead, no LEAD_ROUTE_NOT_MODELLED finding.
+void check_radial(OpenMagnetics::Coil coil, const UnmodelledLeads& leads, size_t expectedTerminals) {
+    size_t terminals = 0;
+    for (const auto& route : coil.get_connection_layout().routes) {
+        if (route.kind != OpenMagnetics::ConnectionKind::TERMINAL_ENTRANCE && route.kind != OpenMagnetics::ConnectionKind::TERMINAL_EXIT) {
+            continue;
+        }
+        ++terminals;
+        CHECK_FALSE(route.tangentDeparture.has_value());
+    }
+    REQUIRE(terminals == expectedTerminals);
+    CHECK(leads.routes.empty());
+    CHECK(leads.findings.empty());
+}
+
 void check_reported(const UnmodelledLeads& leads, const std::string& conditionText) {
     REQUIRE_FALSE(leads.routes.empty());
     REQUIRE(leads.findings.size() == leads.routes.size());   // one per lead
@@ -530,7 +482,7 @@ TEST_CASE("Real winding draws a tangent lead on a route it does not model in ful
                 }
             }
         }
-        check_reported(leads, "a dragback lane rides ");
+        check_radial(coil, leads, 2);
     }
 
     SECTION("a winding on a lateral column") {

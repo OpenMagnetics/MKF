@@ -381,6 +381,32 @@ class Wire : public MAS::Wire {
         static double minimum_litz_flattening(const Wire& wire);
         // The oval of the bundle's area whose short side is k x OD: {short side, long side}.
         static std::pair<double, double> flattened_litz_sides(double outerDiameter, double k);
+        // The serving round a litz bundle, per side: none when bare, the standard's for its number of
+        // layers when served. Throws for any other coating (no source says such a bundle deforms) and
+        // for a bundle that does not state what it needs (coating, strand, conductors, standard).
+        static double litz_serving_thickness(const Wire& wire);
+        // COMPRESSED LITZ (Alf, 2026-11-04: "stadium keep area of litz", then "a round radius quarter of
+        // the height"). Compressed in a stored layout, the bundle is a rectangle with rounded corners:
+        // height h = k x OD, corner radius h / 4 (compressed_litz_corner_radius), and the round bundle's
+        // area, w = (pi OD^2 / 4 + (4 - pi) r^2) / h. {width, height}.
+        static double compressed_litz_corner_radius(double height);
+        // The round bundle's outer diameter, whatever footprint it was wound at (get_maximum_outer_width
+        // returns the footprint once one is set). Throws for a wire that is not litz.
+        static double round_litz_outer_diameter(const Wire& wire);
+        // Alf, 2026-11-04: "calculate the proportion and the radius for the litz to actually fit in the
+        // height and width the rest of the winding leaves for it". The corner radius of the rounded
+        // rectangle of `width` x `height` that keeps the round bundle's area: r = sqrt((w h - A) / (4 - pi)).
+        // Throws when the rectangle is smaller than the area, or when even its stadium is larger.
+        static double compressed_litz_corner_radius(double outerDiameter, double width, double height);
+        // The bundle filling a cell `cellWidth` wide at `height`, keeping its area: {width, corner radius}.
+        // The cell's own width, unless the stadium of that height (the roundest) is narrower: then the
+        // stadium. Throws when the cell cannot hold the area.
+        static std::pair<double, double> compressed_litz_filling(double outerDiameter, double cellWidth, double height);
+        static std::pair<double, double> compressed_litz_sides(double outerDiameter, double k);
+        // Whether the bundle's coated strands fit inside the serving of that rounded rectangle (its corners
+        // less the serving) at no more than hexagonal close packing, pi / (2 sqrt 3), the densest packing
+        // of equal circles.
+        static bool litz_strands_fit_compressed(const Wire& wire, double width, double height);
         void set_wound_footprint(double width, double height);
         std::optional<std::pair<double, double>> get_wound_footprint() const { return _woundFootprint; }
 
