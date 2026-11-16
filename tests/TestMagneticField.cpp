@@ -10,6 +10,8 @@
 #include "json.hpp"
 #include "TestingUtils.h"
 #include "Models.h"
+#include "support/HierarchicalMatrix.h"
+#include "support/Exceptions.h"
 
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
@@ -1394,6 +1396,23 @@ TEST_CASE("Test_Axisymmetric_Window_Gap_Mouth_Is_Met_On_The_Post_Face", "[physic
     CHECK_THAT(window.correction_field(correction, nearPost, 0.41e-3).second, Catch::Matchers::WithinRel(1000.0, 0.03));
     CHECK(std::abs(window.correction_field(correction, nearPost, 5e-3).second) < 0.01 * 1000.0);
     CHECK_THAT(window.correction_field(correction, 11.35e-3 - 2e-6, 5e-3).second, Catch::Matchers::WithinRel(1000.0 * 0.82e-3 / 22e-3, 0.05));
+}
+
+TEST_CASE("Test_Gmres_Batch_Throws_When_The_Operator_Returns_NaN", "[magnetic-field][gmres]") {
+    // ABT #2384: an operator product that is NaN passed "nextNorm != 0" but not "nextNorm > 0", so the next Arnoldi step
+    // read a basis vector that was never stored (an out-of-bounds read, seen as a crash in the WASM engine). It must throw.
+    using Complex = std::complex<double>;
+    OpenMagnetics::GmresBatchApply apply = [](const std::vector<size_t>& systems, const std::vector<const std::vector<Complex>*>& inputs,
+                                              const std::vector<std::vector<Complex>*>& outputs) {
+        for (size_t index = 0; index < systems.size(); ++index) {
+            for (auto& value : *outputs[index]) {
+                value = Complex(std::numeric_limits<double>::quiet_NaN(), 0);
+            }
+        }
+    };
+    std::vector<OpenMagnetics::GmresPrecondition> identity = {[](const std::vector<Complex>& residual, std::vector<Complex>& result) { result = residual; }};
+    std::vector<std::vector<Complex>> rightHandSides = {{Complex(1, 0), Complex(2, 0)}};
+    CHECK_THROWS_AS(OpenMagnetics::solve_gmres_batch(apply, identity, rightHandSides, 1e-10, 10, 100), OpenMagnetics::NaNResultException);
 }
 
 }  // namespace

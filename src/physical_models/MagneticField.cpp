@@ -2760,8 +2760,10 @@ WindingWindowMagneticStrengthFieldPhasorOutput MagneticField::calculate_magnetic
                 }
                 double numberTurns = static_cast<double>(functionalDescription[0].get_number_turns());
                 double magnetomotiveForce = currentDirectionPerWinding.at(0) * numberTurns * amplitude;
-                fieldPhasor = std::polar(magnetomotiveForce * get_magnetic_field_strength_gap_per_ampere_turn(magnetic, harmonicFrequency),
-                                         currentPhasePerHarmonicPerWinding[harmonicIndex].at(0));
+                // The signed MMF is a factor: std::polar's magnitude must not be negative (libc++, the WASM engine's library,
+                // returns NaN for it).
+                fieldPhasor = magnetomotiveForce * get_magnetic_field_strength_gap_per_ampere_turn(magnetic, harmonicFrequency) *
+                              std::polar(1.0, currentPhasePerHarmonicPerWinding[harmonicIndex].at(0));
             }
             else {
                 auto voltage = excitations[0].get_voltage();
@@ -2803,8 +2805,9 @@ WindingWindowMagneticStrengthFieldPhasorOutput MagneticField::calculate_magnetic
                 if (amplitude == 0) {
                     continue;
                 }
-                ampereTurns += std::polar(currentDirectionPerWinding.at(windingIndex) * static_cast<double>(functionalDescription[windingIndex].get_number_turns()) * amplitude,
-                                          currentPhasePerHarmonicPerWinding.at(harmonicIndex).at(windingIndex));
+                // The direction (+-1) is a factor: std::polar's magnitude must not be negative (libc++ returns NaN for it).
+                ampereTurns += currentDirectionPerWinding.at(windingIndex) * static_cast<double>(functionalDescription[windingIndex].get_number_turns()) * amplitude *
+                               std::polar(1.0, currentPhasePerHarmonicPerWinding.at(harmonicIndex).at(windingIndex));
             }
             rodEndCharge = rodFluxPerAmpereTurnOverTurns * ampereTurns / Constants().vacuumPermeability;
             return rodEndCharge.value();
@@ -6619,7 +6622,9 @@ std::optional<ParallelCurrentSplit> MagneticField::calculate_parallel_current_sp
                 // ln |zeta_k - z| = Re ln(D + delta_k), D = image centre - element centre, expanded in the piece's moments
                 // <delta^n> = (sigma j)^n <y^n>, plus the element's own second moment, -<(z - c)^2> / (2 D^2).
                 const std::complex<double> centre(section.x, section.y);
-                const std::complex<double> secondMoment = std::polar(section.moment2(), 2 * section.angle);
+                // moment2() is negative for a section taller than wide: turned as a factor, never as std::polar's magnitude
+                // (a negative magnitude is undefined; libc++, the WASM engine's library, returns NaN for it).
+                const std::complex<double> secondMoment = section.moment2() * std::polar(1.0, 2 * section.angle);
                 for (const auto& multipole : slotCorrection->multipoles) {
                     for (size_t image = 0; image < multipole.imageCentres.size(); ++image) {
                         const std::complex<double> distance = multipole.imageCentres[image] - centre;

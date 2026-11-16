@@ -683,6 +683,11 @@ std::vector<std::vector<std::complex<double>>> solve_gmres_batch(const GmresBatc
                 }
             }
             const double nextNorm = norm(work);
+            if (!std::isfinite(nextNorm)) {
+                // A NaN would pass "nextNorm != 0" but not "nextNorm > 0" below: the next step would read a basis vector
+                // that was never stored.
+                throw NaNResultException("GMRES: the product with the operator is not finite");
+            }
             column[k + 1] = nextNorm;
             // Apply the previous rotations, then make this one.
             for (size_t i = 0; i < k; ++i) {
