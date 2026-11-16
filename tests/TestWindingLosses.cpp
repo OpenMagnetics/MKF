@@ -1177,7 +1177,7 @@ namespace TestWindingLossesPlanar {
         settings.set_magnetic_field_include_fringing(true);
         const auto fieldModel = MagneticFieldStrengthModels::BINNS_LAWRENSON;
         const auto fringingModel = MagneticFieldStrengthFringingEffectModels::MMF_BOUNDARY;
-        auto flatCells = resolve_flat_cell_windings(magnetic, fieldModel, fringingModel, &get_winding_losses_model_set(WindingLossesModelSets::NEUTRAL_WINDOW), std::nullopt);
+        auto flatCells = resolve_flat_cell_windings(magnetic, fieldModel, fringingModel, &get_winding_losses_model_set(WindingLossesModelSets::MARTINEZ), std::nullopt);
         auto split = MagneticField::calculate_parallel_current_split(magnetic, operatingPoint, 22, std::nullopt, flatCells);
         REQUIRE(split);
 
@@ -1214,7 +1214,7 @@ namespace TestWindingLossesPlanar {
     }
 
     TEST_CASE("Test_Winding_Losses_Sixteen_Turns_Planar_Sinusoidal_No_Fringing","[physical-model][winding-losses][planar]") {
-        // ABT #1759 (Alf 2026-10-11): MKF's DEFAULT model for the core (field/fringing nullopt; NEUTRAL_WINDOW on this
+        // ABT #1759 (Alf 2026-10-11): MKF's DEFAULT model for the core (field/fringing nullopt; MARTINEZ on this
         // single-window planar core) against 2D OMFEM, not an MKF snapshot. The previous pins were MKF snapshots under an
         // explicitly pinned ALBACH field/fringing model, 10-40x above FEM (the 16 paralleled traces screen each other,
         // which per-trace superposition could not see; ABT #139). References: OMFEM P_cu (omfem_mas, full geometry),
@@ -1243,7 +1243,7 @@ namespace TestWindingLossesPlanar {
     }
 
     TEST_CASE("Test_Winding_Losses_Sixteen_Turns_Planar_Sinusoidal_Fringing_Close", "[physical-model][winding-losses][planar]") {
-        // ABT #1759 (Alf 2026-10-11): MKF's DEFAULT model for the core (field/fringing nullopt; NEUTRAL_WINDOW on this
+        // ABT #1759 (Alf 2026-10-11): MKF's DEFAULT model for the core (field/fringing nullopt; MARTINEZ on this
         // single-window planar core) against 2D OMFEM, not an MKF snapshot. The previous pins were MKF snapshots under an
         // explicitly pinned ALBACH field/fringing model, 10-40x above FEM (the 16 paralleled traces screen each other,
         // which per-trace superposition could not see; ABT #139). References: OMFEM P_cu (omfem_mas, full geometry),
@@ -1262,7 +1262,7 @@ namespace TestWindingLossesPlanar {
     }
 
     TEST_CASE("Test_Winding_Losses_Sixteen_Turns_Planar_Sinusoidal_Fringing_Far", "[physical-model][winding-losses][planar]") {
-        // ABT #1759 (Alf 2026-10-11): MKF's DEFAULT model for the core (field/fringing nullopt; NEUTRAL_WINDOW on this
+        // ABT #1759 (Alf 2026-10-11): MKF's DEFAULT model for the core (field/fringing nullopt; MARTINEZ on this
         // single-window planar core) against 2D OMFEM, not an MKF snapshot. The previous pins were MKF snapshots under an
         // explicitly pinned ALBACH field/fringing model, 10-40x above FEM (the 16 paralleled traces screen each other,
         // which per-trace superposition could not see; ABT #139). References: OMFEM P_cu (omfem_mas, full geometry),
@@ -1422,7 +1422,7 @@ namespace TestWindingLossesResistanceMatrix {
 
     TEST_CASE("Test_Resistance_Matrix_Resolves_The_Winding_Loss_Model_Set", "[physical-model][winding-losses][model-sets]") {
         // ABT #1759 (Alf, 2026-10-11): R_ii of the resistance matrix is the loss the winding-loss model books for 1 A rms
-        // in winding i alone, through the same model-set resolver, with fringing on (default set: NEUTRAL_WINDOW on this
+        // in winding i alone, through the same model-set resolver, with fringing on (default set: MARTINEZ on this
         // single-window gapped ETD) and off (CUSTOM). Counter-check: force fringing off inside calculate_resistance_matrix
         // again and the fringing-on case fails (the matrix falls back to the legacy models).
         for (bool fringing : {true, false}) {
@@ -1435,7 +1435,7 @@ namespace TestWindingLossesResistanceMatrix {
             const double frequency = 250000;
             INFO("fringing " << fringing << ", resolved set " << magic_enum::enum_name(resolve_winding_losses_model_set_from_settings(magnetic, fringing)));
             if (fringing) {
-                REQUIRE(resolve_winding_losses_model_set_from_settings(magnetic, fringing) == WindingLossesModelSets::NEUTRAL_WINDOW);
+                REQUIRE(resolve_winding_losses_model_set_from_settings(magnetic, fringing) == WindingLossesModelSets::MARTINEZ);
             }
             auto resistanceMatrix = WindingLosses().calculate_resistance_matrix(magnetic, temperature, frequency);
             const auto windingName = magnetic.get_coil().get_functional_description()[0].get_name();
@@ -3330,7 +3330,7 @@ TEST_CASE("Test_Winding_Losses_Model_Set_Legacy_Default_Is_Todays_Behaviour", "[
 }
 
 // ABT #1759 (Alf 2026-10-11, "keep the best model"): with no model chosen anywhere, WindingLosses solves with the set
-// Defaults.h names for the core type -- NEUTRAL_WINDOW on single-window and multi-window cores (every wire type), TOROID
+// Defaults.h names for the core type -- MARTINEZ on single-window and multi-window cores (every wire type), TOROID
 // on toroids (ABT #2267) -- bit for bit, per turn. Fringing switched off (as calculate_resistance_matrix does)
 // keeps the individually configured models (CUSTOM): MMF_BOUNDARY refuses fringing off.
 // Counter-check: set windingLossesModelSetDefaultSingleWindow to LEGACY_DEFAULT and the single-window rows fail.
@@ -3341,11 +3341,11 @@ TEST_CASE("Test_Winding_Losses_Default_Is_The_Best_Set_Per_Core", "[physical-mod
         return models;
     };
     std::vector<std::tuple<std::string, WindingLossesTestData::TestConfig, WindingLossesModelSets>> fixtures = {
-        {"round E", WindingLossesTestData::createOneTurnRoundStackedConfig(), WindingLossesModelSets::NEUTRAL_WINDOW},
-        {"litz ETD", WindingLossesTestData::createTenTurnsLitzSinusoidalConfig(), WindingLossesModelSets::NEUTRAL_WINDOW},
-        {"rectangular PQ", WindingLossesTestData::createFiveTurnsRectangularUngappedConfig(), WindingLossesModelSets::NEUTRAL_WINDOW},
-        {"foil ETD", WindingLossesTestData::createTenTurnsFoilSinusoidalConfig(), WindingLossesModelSets::NEUTRAL_WINDOW},
-        {"planar", WindingLossesTestData::createOneTurnPlanarFringingConfig(), WindingLossesModelSets::NEUTRAL_WINDOW},
+        {"round E", WindingLossesTestData::createOneTurnRoundStackedConfig(), WindingLossesModelSets::MARTINEZ},
+        {"litz ETD", WindingLossesTestData::createTenTurnsLitzSinusoidalConfig(), WindingLossesModelSets::MARTINEZ},
+        {"rectangular PQ", WindingLossesTestData::createFiveTurnsRectangularUngappedConfig(), WindingLossesModelSets::MARTINEZ},
+        {"foil ETD", WindingLossesTestData::createTenTurnsFoilSinusoidalConfig(), WindingLossesModelSets::MARTINEZ},
+        {"planar", WindingLossesTestData::createOneTurnPlanarFringingConfig(), WindingLossesModelSets::MARTINEZ},
         // ABT #2267 (Alf 2026-11-13): toroids default to the TOROID set (it was LEGACY_DEFAULT).
         {"round toroid", WindingLossesTestData::createTenTurnsRoundToroidalConfig(), WindingLossesModelSets::TOROID},
     };
@@ -3381,12 +3381,12 @@ TEST_CASE("Test_Winding_Losses_Default_Is_The_Best_Set_Per_Core", "[physical-mod
         OpenMagnetics::Magnetic magnetic;
         magnetic.set_core(core);
         magnetic.set_coil(coil);
-        CHECK(get_default_winding_losses_model_set(magnetic) == WindingLossesModelSets::NEUTRAL_WINDOW);
+        CHECK(get_default_winding_losses_model_set(magnetic) == WindingLossesModelSets::MARTINEZ);
         settings.reset();
     }
     // ABT #1783 (Alf 2026-10-12): drum and rod families have no window frame for the neutral window. They keep the
     // legacy set by default (the drum ring used to throw GAP_INVALID_DIMENSIONS from the wall sheets: its annular
-    // clearance opens nowhere onto the window), and NEUTRAL_WINDOW asked for by name refuses them by family.
+    // clearance opens nowhere onto the window), and MARTINEZ asked for by name refuses them by family.
     // Counter-check: drop the family test from scope_of and the drum-ring losses throw / the refusal disappears.
     SECTION("Drum and rod families keep the legacy set; the neutral window refuses them") {
         auto buildMagnetic = [](const std::string& shapeName) {
@@ -3408,8 +3408,8 @@ TEST_CASE("Test_Winding_Losses_Default_Is_The_Best_Set_Per_Core", "[physical-mod
             auto magnetic = buildMagnetic(shapeName);
             CHECK(get_default_winding_losses_model_set(magnetic) == WindingLossesModelSets::LEGACY_DEFAULT);
             try {
-                check_winding_losses_model_set_applies(get_winding_losses_model_set(WindingLossesModelSets::NEUTRAL_WINDOW), magnetic);
-                FAIL("NEUTRAL_WINDOW accepted a drum-family core");
+                check_winding_losses_model_set_applies(get_winding_losses_model_set(WindingLossesModelSets::MARTINEZ), magnetic);
+                FAIL("MARTINEZ accepted a drum-family core");
             }
             catch (const ModelNotAvailableException& error) {
                 CHECK_THAT(std::string(error.what()), Catch::Matchers::ContainsSubstring("not available for this core family"));
@@ -3445,14 +3445,14 @@ TEST_CASE("Test_Winding_Losses_Default_Is_The_Best_Set_Per_Core", "[physical-mod
             magnetic.set_coil(OpenMagnetics::Coil(coilJson, false));
             CHECK(get_default_winding_losses_model_set(magnetic) == WindingLossesModelSets::LEGACY_DEFAULT);
             try {
-                check_winding_losses_model_set_applies(get_winding_losses_model_set(WindingLossesModelSets::NEUTRAL_WINDOW), magnetic);
-                FAIL("NEUTRAL_WINDOW accepted a molded core");
+                check_winding_losses_model_set_applies(get_winding_losses_model_set(WindingLossesModelSets::MARTINEZ), magnetic);
+                FAIL("MARTINEZ accepted a molded core");
             }
             catch (const ModelNotAvailableException& error) {
                 CHECK_THAT(std::string(error.what()), Catch::Matchers::ContainsSubstring("not available for this core family (MOLDED"));
             }
         }
-        // End to end on the drum ring: the default solves, equals LEGACY_DEFAULT bit for bit, and a named NEUTRAL_WINDOW
+        // End to end on the drum ring: the default solves, equals LEGACY_DEFAULT bit for bit, and a named MARTINEZ
         // is refused before any field is built.
         settings.reset();
         clear_databases();
@@ -3465,14 +3465,14 @@ TEST_CASE("Test_Winding_Losses_Default_Is_The_Best_Set_Per_Core", "[physical-mod
         double legacy = WindingLosses(setOf(WindingLossesModelSets::LEGACY_DEFAULT)).calculate_losses(magnetic, operatingPoint, 25).get_winding_losses();
         CHECK(byDefault > 0);
         CHECK(byDefault == legacy);
-        CHECK_THROWS_AS(WindingLosses(setOf(WindingLossesModelSets::NEUTRAL_WINDOW)).calculate_losses(magnetic, operatingPoint, 25),
+        CHECK_THROWS_AS(WindingLosses(setOf(WindingLossesModelSets::MARTINEZ)).calculate_losses(magnetic, operatingPoint, 25),
                         ModelNotAvailableException);
         settings.reset();
     }
 }
 
 // A named set is exactly its registry row: the same numbers as selecting those models by hand.
-TEST_CASE("Test_Winding_Losses_Model_Set_Neutral_Window_Is_Its_Models", "[physical-model][winding-losses][model-sets]") {
+TEST_CASE("Test_Winding_Losses_Model_Set_Martinez_Method_Is_Its_Models", "[physical-model][winding-losses][model-sets]") {
     std::vector<std::pair<std::string, WindingLossesTestData::TestConfig>> fixtures = {
         {"rectangular", WindingLossesTestData::createFiveTurnsRectangularUngappedConfig()},
         {"round", WindingLossesTestData::createOneTurnRoundStackedConfig()},
@@ -3480,9 +3480,9 @@ TEST_CASE("Test_Winding_Losses_Model_Set_Neutral_Window_Is_Its_Models", "[physic
     for (auto& [name, config] : fixtures) {
         INFO(name);
         WindingLossesModels named;
-        named.modelSet = WindingLossesModelSets::NEUTRAL_WINDOW;
+        named.modelSet = WindingLossesModelSets::MARTINEZ;
         auto withSet = model_set_turn_losses(config, named);
-        const auto& set = get_winding_losses_model_set(WindingLossesModelSets::NEUTRAL_WINDOW);
+        const auto& set = get_winding_losses_model_set(WindingLossesModelSets::MARTINEZ);
         settings.reset();
         auto magnetic = config.createMagnetic();
         auto wireType = magnetic.get_mutable_coil().get_wire_type(0);
@@ -3500,14 +3500,26 @@ TEST_CASE("Test_Winding_Losses_Model_Set_Neutral_Window_Is_Its_Models", "[physic
     // The set in Settings is honoured the same way as the one in WindingLossesModels.
     auto config = WindingLossesTestData::createFiveTurnsRectangularUngappedConfig();
     WindingLossesModels named;
-    named.modelSet = WindingLossesModelSets::NEUTRAL_WINDOW;
-    CHECK(model_set_turn_losses(config, WindingLossesModels(), WindingLossesModelSets::NEUTRAL_WINDOW) == model_set_turn_losses(config, named));
+    named.modelSet = WindingLossesModelSets::MARTINEZ;
+    CHECK(model_set_turn_losses(config, WindingLossesModels(), WindingLossesModelSets::MARTINEZ) == model_set_turn_losses(config, named));
+}
+
+TEST_CASE("Test_Winding_Losses_Model_Set_Martinez_Method_Reads_Its_Old_Name", "[physical-model][winding-losses][model-sets]") {
+    // The Martinez method was the NEUTRAL_WINDOW set ("NeutralWindow") until 2026-11-16 (Alf): it writes "Martinez" and
+    // still reads a stored old name, keeping its ordinal so stored indices do not move.
+    CHECK(json(WindingLossesModelSets::MARTINEZ) == "Martinez");
+    CHECK(json("Martinez").get<WindingLossesModelSets>() == WindingLossesModelSets::MARTINEZ);
+    CHECK(json("MARTINEZ").get<WindingLossesModelSets>() == WindingLossesModelSets::MARTINEZ);
+    CHECK(json("NeutralWindow").get<WindingLossesModelSets>() == WindingLossesModelSets::MARTINEZ);
+    CHECK(json("NEUTRAL_WINDOW").get<WindingLossesModelSets>() == WindingLossesModelSets::MARTINEZ);
+    CHECK(static_cast<int>(WindingLossesModelSets::MARTINEZ) == 2);
+    CHECK(get_winding_losses_model_set(WindingLossesModelSets::MARTINEZ).name == "Martinez method");
 }
 
 // A set refuses what it was not built for, and never mixes with individually chosen models.
 TEST_CASE("Test_Winding_Losses_Model_Set_Refuses_What_It_Does_Not_Model", "[physical-model][winding-losses][model-sets]") {
     WindingLossesModels neutral;
-    neutral.modelSet = WindingLossesModelSets::NEUTRAL_WINDOW;
+    neutral.modelSet = WindingLossesModelSets::MARTINEZ;
     CHECK_THROWS_AS(model_set_turn_losses(WindingLossesTestData::createTenTurnsRoundToroidalConfig(), neutral), ModelNotAvailableException);
 
     WindingLossesModels toroid;
@@ -3515,7 +3527,7 @@ TEST_CASE("Test_Winding_Losses_Model_Set_Refuses_What_It_Does_Not_Model", "[phys
     CHECK_THROWS_AS(model_set_turn_losses(WindingLossesTestData::createFiveTurnsRectangularUngappedConfig(), toroid), ModelNotAvailableException);
 
     WindingLossesModels mixed;
-    mixed.modelSet = WindingLossesModelSets::NEUTRAL_WINDOW;
+    mixed.modelSet = WindingLossesModelSets::MARTINEZ;
     mixed.proximityEffectModel = WindingProximityEffectLossesModels::WANG;
     CHECK_THROWS_AS(model_set_turn_losses(WindingLossesTestData::createFiveTurnsRectangularUngappedConfig(), mixed), InvalidInputException);
 }
@@ -4396,7 +4408,7 @@ TEST_CASE("Debug_Abt1759_Resistance_Matrix_Consistency", "[debug][abt1759-rmatri
                           << " default_off=" << lossesWith(std::nullopt, false)
                           << " legacy_on=" << lossesWith(WindingLossesModelSets::LEGACY_DEFAULT, true)
                           << " legacy_off=" << lossesWith(WindingLossesModelSets::LEGACY_DEFAULT, false)
-                          << " neutral_on=" << lossesWith(WindingLossesModelSets::NEUTRAL_WINDOW, true) << std::endl;
+                          << " neutral_on=" << lossesWith(WindingLossesModelSets::MARTINEZ, true) << std::endl;
             }
             catch (const std::exception& e) {
                 std::cout << "RMATRIX " << name << " ERROR " << e.what() << std::endl;

@@ -246,11 +246,11 @@ class WindingProximityEffectLossesEwaldModel : public WindingProximityEffectLoss
 // (median 0.99) at 10 kHz, 100 kHz and 1 MHz. The Ewald model above reads 0.17-1.15 (median
 // 0.44) over the same six points.
 //
-// WHAT IT DOES NOT YET DO, stated so nobody assumes otherwise: the MUTUAL reaction. Each
-// conductor excludes the field from its own volume, but the field its induced currents throw
-// back at its neighbours is not fed round a second time. That is a coupled solve over the
-// induced dipole moments, and it is the natural next step; without it, closely packed turns are
-// still charged more field than they really see.
+// The MUTUAL reaction (the field each conductor's induced currents throw back at its neighbours) is not in this kernel
+// alone: under the Martinez method (WindingLossesModelSets::MARTINEZ, the whole winding-loss approach this kernel is the
+// flat-conductor part of) each flat turn is resolved into width cells whose currents are solved together with every other
+// cell, the walls and the parallel split (calculate_flat_cell_losses books them), and round turns react as induced dipoles.
+// Used on its own, outside that frame, closely packed flat turns are still charged more field than they really see.
 class WindingProximityEffectLossesMartinezModel : public WindingProximityEffectLossesModel {
   public:
     // Sets the INHERITED methodName: a redeclared member shadowed the base one, which is what

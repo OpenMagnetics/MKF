@@ -3963,7 +3963,7 @@ TEST_CASE("Test_Settings_Fingerprint_Covers_Neutral_Cells_And_Winding_Losses_Mod
     REQUIRE(settings.fingerprint() == defaults);
 
     REQUIRE(settings.get_winding_losses_model_set() == WindingLossesModelSets::CUSTOM);
-    settings.set_winding_losses_model_set(WindingLossesModelSets::NEUTRAL_WINDOW);
+    settings.set_winding_losses_model_set(WindingLossesModelSets::MARTINEZ);
     CHECK(settings.fingerprint() != defaults);
     settings.reset();
     CHECK(settings.fingerprint() == defaults);

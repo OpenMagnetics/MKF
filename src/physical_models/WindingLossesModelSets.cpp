@@ -34,21 +34,22 @@ std::map<WindingLossesModelSets, WindingLossesModelSet> build_registry() {
           {WireType::RECTANGULAR, Proximity::WANG}, {WireType::FOIL, Proximity::WANG}},
          {Scope::ANY}, true});
 
-    add({WindingLossesModelSets::NEUTRAL_WINDOW, "Neutral window (MMF boundary + Martinez)",
-         "Charge-neutral window field (MMF_BOUNDARY on BINNS_LAWRENSON): the core's gap and ferrite MMF drops on the "
-         "window boundary, every conductor imaged with its own images. MARTINEZ field-exclusion proximity for flat wire, "
-         "FERREIRA (exact Bessel) for round and litz.",
-         "Flat wire, per-turn R_ac/R_dc vs 2D OMFEM: E 42/21/20 0.75-1.73 per turn, 0.92-0.98 in total; PQ 27/17 "
-         "0.67-1.29 / 0.79-0.82. Round and litz: not yet validated per turn. Multi-window E 42/21/20 (per-column windows, "
-         "1 mm gap, primary on the centre leg, secondary on a lateral leg), per winding: round 1.23-1.37 beside the gap, "
-         "0.90-1.03 on the lateral leg at 100-300 kHz; rectangular 0.89-0.92 / 1.0-1.12 at 1-100 kHz.",
+    add({WindingLossesModelSets::MARTINEZ, "Martinez method",
+         "The Martinez method for winding losses. Field: the charge-neutral window (MMF_BOUNDARY on BINNS_LAWRENSON), the "
+         "core's gap and ferrite MMF drops on the window boundary with the ferrite corners' bend excess, every conductor "
+         "imaged with its own images and reaching into the gap slots it faces; round turns react as induced dipoles. "
+         "Loss: MARTINEZ field-exclusion proximity for flat wire, each flat turn resolved into width cells solved together "
+         "with the parallel split; FERREIRA (exact Bessel) for round and litz; every turn and cell booked over its own length.",
+         "Per-turn / per-winding R_ac/R_dc vs 2D OMFEM on the test fixtures (2026-11-15, 213 values): round wire 5 % mean "
+         "error, foil 5 %, planar traces and strips 9 %; 73 % within 10 %, 91 % within 20 %. Known open: PQ 27/17 centre "
+         "turns up to 2x high at 0.2-1 MHz, multi-window E 42 primary 0.75x, litz + strips on a round post 0.7x AC excess.",
          Field::BINNS_LAWRENSON, Fringing::MMF_BOUNDARY, historicalSkin,
          {{WireType::ROUND, Proximity::FERREIRA}, {WireType::LITZ, Proximity::FERREIRA}, {WireType::PLANAR, Proximity::MARTINEZ},
           {WireType::RECTANGULAR, Proximity::MARTINEZ}, {WireType::FOIL, Proximity::MARTINEZ}},
          {Scope::SINGLE_RECTANGULAR_WINDOW, Scope::MULTI_WINDOW}, true});
 
     add({WindingLossesModelSets::NEUTRAL_WINDOW_WANG, "Neutral window with Wang proximity",
-         "The neutral-window field with WANG slab proximity for flat wire, for comparison with NEUTRAL_WINDOW.",
+         "The Martinez method's field with WANG slab proximity for flat wire, for comparison with the Martinez method (MARTINEZ).",
          "Flat wire vs 2D OMFEM: E 42/21/20 totals 0.78-0.89. Round and litz: not validated per turn.",
          Field::BINNS_LAWRENSON, Fringing::MMF_BOUNDARY, historicalSkin,
          {{WireType::ROUND, Proximity::FERREIRA}, {WireType::LITZ, Proximity::FERREIRA}, {WireType::PLANAR, Proximity::WANG},
@@ -85,7 +86,7 @@ std::map<WindingLossesModelSets, WindingLossesModelSet> build_registry() {
          "BINNS_LAWRENSON conductor field with a mirror lattice per winding window, ROSHEN fringing; FERREIRA proximity "
          "for round and litz, MARTINEZ for flat wire.",
          "Legacy: ROSHEN reads 0.44x 2D OMFEM beside a centre-leg gap on a multi-window E 42 (round), and 30-1800x with flat "
-         "wire; NEUTRAL_WINDOW (MMF_BOUNDARY per window) is the default there.",
+         "wire; MARTINEZ (MMF_BOUNDARY per window) is the default there.",
          Field::BINNS_LAWRENSON, Fringing::ROSHEN, historicalSkin,
          {{WireType::ROUND, Proximity::FERREIRA}, {WireType::LITZ, Proximity::FERREIRA}, {WireType::PLANAR, Proximity::MARTINEZ},
           {WireType::RECTANGULAR, Proximity::MARTINEZ}, {WireType::FOIL, Proximity::MARTINEZ}},

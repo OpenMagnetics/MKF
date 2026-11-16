@@ -32,7 +32,7 @@ enum class MagneticFieldStrengthFringingEffectModels : int {
 enum class WindingLossesModelSets : int {
     CUSTOM,
     LEGACY_DEFAULT,
-    NEUTRAL_WINDOW,
+    MARTINEZ,
     NEUTRAL_WINDOW_WANG,
     WANG_PLANAR,  // retired 2026-11-09 with the WANG field: not registered, asking for it throws (kept for the ordinals)
     SULLIVAN_GAP,

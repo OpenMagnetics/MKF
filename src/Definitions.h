@@ -247,7 +247,7 @@ inline void to_json(json & j, const WindingLossesModelSets & x) {
     switch (x) {
         case WindingLossesModelSets::CUSTOM: j = "Custom"; break;
         case WindingLossesModelSets::LEGACY_DEFAULT: j = "LegacyDefault"; break;
-        case WindingLossesModelSets::NEUTRAL_WINDOW: j = "NeutralWindow"; break;
+        case WindingLossesModelSets::MARTINEZ: j = "Martinez"; break;
         case WindingLossesModelSets::NEUTRAL_WINDOW_WANG: j = "NeutralWindowWang"; break;
         case WindingLossesModelSets::WANG_PLANAR: j = "WangPlanar"; break;
         case WindingLossesModelSets::SULLIVAN_GAP: j = "SullivanGap"; break;
@@ -261,6 +261,11 @@ inline void to_json(json & j, const WindingLossesModelSets & x) {
 }
 
 inline void from_json(const json & j, WindingLossesModelSets & x) {
+    // The Martinez method was named NeutralWindow (NEUTRAL_WINDOW) until 2026-11-16 (Alf): a stored old name reads as it.
+    if (j == "NeutralWindow" || j == "NEUTRAL_WINDOW") {
+        x = WindingLossesModelSets::MARTINEZ;
+        return;
+    }
     for (auto value : magic_enum::enum_values<WindingLossesModelSets>()) {
         json name = value;
         if (j == name || j == std::string(magic_enum::enum_name(value))) {
