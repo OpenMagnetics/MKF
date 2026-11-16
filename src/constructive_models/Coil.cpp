@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <array>
 #include <map>
+#include <tuple>
 #include <unordered_map>
 #include <set>
 #include <filesystem>
@@ -20935,6 +20936,14 @@ std::vector<RideOverCoreContact> Coil::judge_ride_over_core_contacts() {
     }
     const auto turns = get_turns_description().value();   // bound: never range over a temporary
     const auto sections = require_turn_sections(turns, get_functional_description(), get_wires());
+    // The band a turn sweeps depends only on its radius, its copper, its ride and the face: the turns of a layer
+    // share all four, so each such band is judged once and every turn that sweeps it reads the result (ABT #2437:
+    // the sampling below, repeated per turn, took the PQ 27/15 adviser test from 6 s to 35 min).
+    struct JudgedBand {
+        double deepest = 0, deepestX = 0, deepestZ = 0;
+        std::vector<double> firstPoint;
+    };
+    std::map<std::tuple<double, double, double, int>, JudgedBand> judgedBands;
     for (size_t t = 0; t < turns.size(); ++t) {
         const auto& turn = turns[t];
         const double x = turn.get_coordinates()[0];
@@ -21020,7 +21029,18 @@ std::vector<RideOverCoreContact> Coil::judge_ride_over_core_contacts() {
             };
             double deepest = 0, deepestX = 0, deepestZ = 0;
             std::vector<double> firstPoint;
+            const auto bandKey = std::make_tuple(x, copperRadius, ride, side);
+            const auto knownBand = judgedBands.find(bandKey);
+            if (knownBand != judgedBands.end()) {
+                deepest = knownBand->second.deepest;
+                deepestX = knownBand->second.deepestX;
+                deepestZ = knownBand->second.deepestZ;
+                firstPoint = knownBand->second.firstPoint;
+            }
             for (const auto& piece : pieces) {
+                if (knownBand != judgedBands.end()) {
+                    break;
+                }
                 if (!(piece.length > 0)) {
                     continue;
                 }
@@ -21056,6 +21076,9 @@ std::vector<RideOverCoreContact> Coil::judge_ride_over_core_contacts() {
                         }
                     }
                 }
+            }
+            if (knownBand == judgedBands.end()) {
+                judgedBands[bandKey] = JudgedBand{deepest, deepestX, deepestZ, firstPoint};
             }
             if (!firstPoint.empty()) {
                 RideOverCoreContact contact;
