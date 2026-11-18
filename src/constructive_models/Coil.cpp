@@ -4994,6 +4994,8 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces(
                         // the last turn of a conductor from its previous one, a one-turn conductor none. At the lane it
                         // stands at station - advance * along / L, the same uniform climb as the lead's own turn.
                         std::optional<double> advance;
+                        // The wrap that advance is climbed over: the one arriving at `arrival` (its length is that turn's).
+                        std::optional<size_t> arrival;
                         // ABT #2274 (17_cllc): a turn that leaves its layer by a dragback or an edge continuation
                         // (the last turn of a layer, drawn to its '_ending' and then returned) climbs on its face at
                         // its in-layer pitch, from its previous turn; its next turn stands on another layer.
@@ -5001,20 +5003,49 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces(
                             for (size_t n = t; n-- > 0 && !advance;) {
                                 if (turnsForSlots[n].get_winding() == turn.get_winding() && turnsForSlots[n].get_parallel() == turn.get_parallel()) {
                                     advance = c.at(1) - turnsForSlots[n].get_coordinates().at(1);
+                                    arrival = t;
                                 }
                             }
                         }
                         for (size_t n = t + 1; n < turnsForSlots.size() && !advance; ++n) {
                             if (turnsForSlots[n].get_winding() == turn.get_winding() && turnsForSlots[n].get_parallel() == turn.get_parallel()) {
                                 advance = turnsForSlots[n].get_coordinates().at(1) - c.at(1);
+                                arrival = n;
                             }
                         }
                         for (size_t n = t; n-- > 0 && !advance;) {
                             if (turnsForSlots[n].get_winding() == turn.get_winding() && turnsForSlots[n].get_parallel() == turn.get_parallel()) {
                                 advance = c.at(1) - turnsForSlots[n].get_coordinates().at(1);
+                                arrival = t;
                             }
                         }
-                        const double drift = -advance.value_or(0.0) * along / path.length;
+                        // The turn climbs over ITS OWN wrap, not the lead's (boost_inductor_complete: the lead's turn at
+                        // 7.5715 mm, the next layer's first wrap at 8.5145 mm; the lane x = -1.886 mm is 14.4 deg of the
+                        // one and 12.8 deg of the other, and the lead's ratio put that wrap 9.5 um higher than it stands,
+                        // so a 1.6 um clash read as 7.8 um of room). On a round column the lane is at r asin(x / r) of the
+                        // turn's own circle, of its 2 pi r; on a flat face it is the same distance from the crossing for
+                        // every layer, of the wrap's own stored length.
+                        double climbed = along / path.length;
+                        if (advance && std::abs(c.at(0) - route.waypoints.at(entrance ? route.waypoints.size() - 1 : 0).at(0)) > 1e-12) {
+                            if (path.shape == ColumnShape::ROUND) {
+                                const double radius = c.at(0);
+                                if (!(std::abs(slot) < radius)) {
+                                    throw std::logic_error("The level-row judge of " + label.str() + ": the lane x = " + std::to_string(slot * 1e3) +
+                                                           " mm lies beyond the circle of turn '" + turn.get_name() + "'");
+                                }
+                                climbed = std::copysign(std::asin(std::abs(slot) / radius), along) / (2 * std::numbers::pi);
+                            }
+                            else {
+                                const double wrapLength = turnsForSlots[arrival.value()].get_length();
+                                if (!(wrapLength > 0)) {
+                                    throw std::logic_error("The level-row judge of " + label.str() + ": turn '" +
+                                                           turnsForSlots[arrival.value()].get_name() + "' states no length, so how far the wrap "
+                                                           "arriving at it has climbed at the lane is unknown");
+                                }
+                                climbed = along / wrapLength;
+                            }
+                        }
+                        const double drift = -advance.value_or(0.0) * climbed;
                         const double cy = sheetCentre ? sheetCentre.value() : c.at(1);   // a sheet: the centre of its copper (agent 27)
                         const std::array<double, 4> copper{c.at(0) - d.at(0) / 2, c.at(0) + d.at(0) / 2,
                                                            cy - d.at(1) / 2 + drift, cy + d.at(1) / 2 + drift};
