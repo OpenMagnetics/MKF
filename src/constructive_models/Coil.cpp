@@ -2847,6 +2847,13 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces(
     // ABT #2274 (Alf, 2026-11-08, after agent 24): the exit leads whose level row clashed. Each keeps its crossing row and
     // its turn ends ON that row at its lane (ConnectionRoute::rowEndX), instead of a lane move.
     std::set<std::tuple<std::string, int64_t, ConnectionKind>> rowEndLeads;
+    // ABT #2274 (single_switch_forward_transformer_complete): the leads on their LEVEL row whose run a round row end or
+    // row start of ANOTHER lead comes into. A lead's crossing rows are stacked one wire apart; one that takes its level
+    // row moves towards the next lead's crossing row by its turn's climb to its lane, and where that next lead keeps its
+    // crossing row (a row start or end) its re-sloped wrap then stands inside the moved run by the difference of the two
+    // climbs (Reset Winding against Primary: 29 nm and 573 nm). The lead that moved takes its crossing row back, as a
+    // row start or end of its own.
+    std::set<std::tuple<std::string, int64_t, ConnectionKind>> rowEndsOwedToOtherLeads;
     // ABT #2274 (agent 22, "move the lane"): per route index, the least |x| the lane plan may stand that terminal lead at
     // (CoilLanePlanJudge.h LaneFloor), set by the settle when the lead's level row clashes, and the moves made (witness).
     std::map<size_t, double> laneFloorU;
@@ -5036,13 +5043,15 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces(
                                 climbed = std::copysign(std::asin(std::abs(slot) / radius), along) / (2 * std::numbers::pi);
                             }
                             else {
+                                // A station no wrap arrives at carries no length (a layer's first station: a link or a
+                                // dragback reaches it). The advance above is then taken across that link, not along a
+                                // wrap, and the turn keeps the climb this judge gave it before each turn climbed over its
+                                // own wrap (the lead's own ratio); throwing here refused every design with such a station
+                                // beside a level lead (PSPS E16, the E16 N-filar fixtures).
                                 const double wrapLength = turnsForSlots[arrival.value()].get_length();
-                                if (!(wrapLength > 0)) {
-                                    throw std::logic_error("The level-row judge of " + label.str() + ": turn '" +
-                                                           turnsForSlots[arrival.value()].get_name() + "' states no length, so how far the wrap "
-                                                           "arriving at it has climbed at the lane is unknown");
+                                if (wrapLength > 0) {
+                                    climbed = along / wrapLength;
                                 }
-                                climbed = along / wrapLength;
                             }
                         }
                         const double drift = -advance.value_or(0.0) * climbed;
@@ -5658,12 +5667,14 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces(
                             }
                             add_ridden(name, row_end_helix(rToCircle, phiEnd, yEnd, phiStart, yStart), ride_of(rToCircle), half);
                         }
+                        std::map<std::string, size_t> routeOfRunPiece;
                         for (size_t other = 0; other < routes.size(); ++other) {
                             const auto& o = routes[other];
                             if (other == index || (o.kind != ConnectionKind::TERMINAL_ENTRANCE && o.kind != ConnectionKind::TERMINAL_EXIT) ||
                                 o.waypoints.size() < 2) {
                                 continue;
                             }
+                            routeOfRunPiece["the run of " + label_route(o)] = other;
                             const double oHalf = routeDiameters[other] / 2;
                             const double oLane = (o.rowEndX ? o.rowEndX : exitSlots[other]).value_or(std::numeric_limits<double>::quiet_NaN());
                             if (std::isnan(oLane) || o.axialLead || o.tangentDeparture || !o.pinWaypoints.empty()) {
@@ -5742,6 +5753,11 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces(
                                        << std::abs(clearance) * 1e3 << " mm";
                             }
                             if (clearance < -contact) {
+                                const auto metRun = routeOfRunPiece.find(k.second);
+                                if (metRun != routeOfRunPiece.end() && routes[metRun->second].levelRowShift) {
+                                    const auto& met = routes[metRun->second];
+                                    rowEndsOwedToOtherLeads.insert(std::make_tuple(met.winding, met.parallel, met.kind));
+                                }
                                 LeadFinding finding;
                                 finding.kind = LeadFindingKind::LEVEL_ROW_CLASH;
                                 std::ostringstream out;
@@ -7592,6 +7608,15 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces(
                         }
                         continue;
                     }
+                    for (const auto& owed : rowEndsOwedToOtherLeads) {
+                        if (rowEndLeads.insert(owed).second) {
+                            const bool entranceRow = std::get<2>(owed) == ConnectionKind::TERMINAL_ENTRANCE;
+                            laneMoves.push_back(std::string(entranceRow ? "row start" : "row end") + " for winding '" + std::get<0>(owed) +
+                                                "' parallel " + std::to_string(std::get<1>(owed)) + (entranceRow ? " entrance" : " exit") +
+                                                " (another lead's row " + (entranceRow ? "start" : "end") + " comes into its level run)");
+                            laneMoved = true;
+                        }
+                    }
                     if (laneMoved) {
                         routes = routesBeforeSettle;
                         exitSlots = exitSlotsBeforeSettle;
@@ -8354,7 +8379,77 @@ Coil::RidePlacement Coil::compute_ride_placement(const std::vector<ConnectionRou
             double azimuth;
         };
         std::vector<Column> placed;
+        // THE ORDER THE COLUMNS ARE PLACED IN, and so which sibling takes the connection plane (ABT #2274: it was
+        // MVB++'s "climb-aware slot order", a permutation of these azimuths made after MKF had judged the layout on
+        // them). A return's landing turn starts its first wrap at its lane, so a column further round starts later
+        // and stands lower, at any azimuth, by the layer's advance over that angle. Among the parallels of one
+        // winding the column whose return lands furthest ALONG the landing layer's climb therefore takes the plane and
+        // the others follow against the climb: the shift then adds to the siblings' spacing instead of eating it
+        // (boost_inductor_complete in parallel order: the landing wraps of parallels 0 and 1 stood 10 um inside each
+        // other). A winding with a return that is not a dragback, or whose landing layer does not climb, keeps its
+        // parallels' order.
+        struct Landing {
+            bool known = false;
+            double height = 0;   // the landing turn's station
+            double climb = 0;    // its layer's signed advance from it to that conductor's next turn
+        };
+        auto landingOf = [&](const std::vector<Piece>& members) {
+            Landing landing;
+            const Piece* innermost = nullptr;
+            for (const auto& member : members) {
+                if (innermost == nullptr || member.radius < innermost->radius) {
+                    innermost = &member;
+                }
+            }
+            if (innermost == nullptr || routes[innermost->routeIndex].kind != ConnectionKind::Z_DRAGBACK) {
+                return landing;
+            }
+            const auto toIt = turnIndexByName.find(routes[innermost->routeIndex].toTurn);
+            if (toIt == turnIndexByName.end()) {
+                return landing;
+            }
+            const auto& landingTurn = turns[toIt->second];
+            landing.known = true;
+            landing.height = landingTurn.get_coordinates()[1];
+            for (size_t next = toIt->second + 1; next < turns.size(); ++next) {
+                if (turns[next].get_winding() != landingTurn.get_winding() || turns[next].get_parallel() != landingTurn.get_parallel()) {
+                    continue;
+                }
+                if (turns[next].get_layer() && landingTurn.get_layer() &&
+                    turns[next].get_layer().value() == landingTurn.get_layer().value()) {
+                    landing.climb = turns[next].get_coordinates()[1] - landing.height;
+                }
+                break;
+            }
+            return landing;
+        };
+        std::vector<std::pair<size_t, int64_t>> placementOrder;
         for (const auto& [conductor, members] : returnsByConductor) {
+            placementOrder.push_back(conductor);
+        }
+        for (auto first = placementOrder.begin(); first != placementOrder.end();) {
+            const auto last = std::find_if(first, placementOrder.end(),
+                                           [&](const std::pair<size_t, int64_t>& conductor) { return conductor.first != first->first; });
+            std::map<std::pair<size_t, int64_t>, double> heightOf;
+            bool everyLandingKnown = true;
+            double climb = 0;
+            for (auto conductor = first; conductor != last; ++conductor) {
+                const Landing landing = landingOf(returnsByConductor.at(*conductor));
+                everyLandingKnown = everyLandingKnown && landing.known;
+                heightOf[*conductor] = landing.height;
+                if (std::abs(landing.climb) > std::abs(climb)) {
+                    climb = landing.climb;
+                }
+            }
+            if (everyLandingKnown && climb != 0) {
+                std::stable_sort(first, last, [&](const std::pair<size_t, int64_t>& a, const std::pair<size_t, int64_t>& b) {
+                    return climb > 0 ? heightOf.at(a) > heightOf.at(b) : heightOf.at(a) < heightOf.at(b);
+                });
+            }
+            first = last;
+        }
+        for (const auto& conductor : placementOrder) {
+            const auto& members = returnsByConductor.at(conductor);
             // Every constraint this column must satisfy: |azimuth - centre| >= angle.
             std::vector<std::pair<double, double>> constraints;
             for (const auto& member : members) {
@@ -10153,16 +10248,27 @@ std::vector<Coil::RadialStepClearance> Coil::measure_terminal_bend_clearances(co
     };
     const auto notMeasured = [&](const ConnectionRoute& route, int why) -> std::optional<Bend> {
         if (std::getenv("MKF_STEP_DIAG")) {
-            std::cerr << "[terminal-bend-model] the " << (route.kind == ConnectionKind::TERMINAL_EXIT ? "exit" : "entrance") << " of '"
+            std::cerr << "[terminal-bend-model] the "
+                      << (route.kind == ConnectionKind::Z_DRAGBACK ? "dragback" : route.kind == ConnectionKind::TERMINAL_EXIT ? "exit" : "entrance") << " of '"
                       << route.winding << "' parallel " << route.parallel << " is not modelled (reason " << why << ")" << std::endl;
         }
         return std::nullopt;
     };
     const auto bendOf = [&](const ConnectionRoute& route) -> std::optional<Bend> {
-        const bool exit = route.kind == ConnectionKind::TERMINAL_EXIT;
-        if ((!exit && route.kind != ConnectionKind::TERMINAL_ENTRANCE) || route.toroidal || route.waypoints.size() < 2 ||
-            !route.exitSlot || !route.wrapDirection || route.rampLength || route.slotRampLength || route.rowEndX ||
-            route.laneTangential.value_or(false) || route.liftLength || route.axialLead || !(route.plannedBendRadius > 0)) {
+        // A Z dragback leaves its layer's last wrap as an exit leaves its turn: one planar bend from the wrap onto the
+        // radial step out to the radius it returns at (MVB++ filletDragbackEnds, the construction of a terminal's bend).
+        // Its two waypoints are the station it leaves and the one it lands on; the step is level at the first.
+        const bool dragback = route.kind == ConnectionKind::Z_DRAGBACK;
+        const bool exit = dragback || route.kind == ConnectionKind::TERMINAL_EXIT;
+        if (dragback) {
+            if (route.toroidal || route.waypoints.size() != 2 || !route.laneAzimuth || !route.dragbackBendRadius ||
+                !(route.dragbackBendRadius.value() > 0)) {
+                return notMeasured(route, 1);
+            }
+        }
+        else if ((!exit && route.kind != ConnectionKind::TERMINAL_ENTRANCE) || route.toroidal || route.waypoints.size() < 2 ||
+                 !route.exitSlot || !route.wrapDirection || route.rampLength || route.slotRampLength || route.rowEndX ||
+                 route.laneTangential.value_or(false) || route.liftLength || route.axialLead || !(route.plannedBendRadius > 0)) {
             return notMeasured(route, 1);
         }
         const auto found = turnByName.find(exit ? route.fromTurn : route.toTurn);
@@ -10185,10 +10291,42 @@ std::vector<Coil::RadialStepClearance> Coil::measure_terminal_bend_clearances(co
         }
         // The leg the lead leaves its turn with: a level radial run (the wire goes out along its lane), or an axial stub
         // at the turn's radius (it goes along the column at its lane, to its row). Anything else is not modelled.
-        const bool radialLeg = std::abs(beyond.at(1) - attach.at(1)) <= 1e-12 && farRadius > radius;
-        const bool axialLeg = std::abs(farRadius - radius) <= 1e-12 && std::abs(beyond.at(1) - attach.at(1)) > 1e-12;
+        // A dragback's step is radial and level at the station it leaves, whatever height it lands at.
+        const bool radialLeg = dragback ? farRadius > radius
+                                        : std::abs(beyond.at(1) - attach.at(1)) <= 1e-12 && farRadius > radius;
+        const bool axialLeg = !dragback && std::abs(farRadius - radius) <= 1e-12 && std::abs(beyond.at(1) - attach.at(1)) > 1e-12;
         const double side = exit ? 1.0 : -1.0;
-        const double lane = route.wrapDirection.value() == -1 ? route.exitSlot.value() : -route.exitSlot.value();
+        double lane = 0;
+        if (dragback) {
+            if (!radialLeg) {
+                return notMeasured(route, 7);   // a return that does not step outwards
+            }
+            // ConnectionRoute::laneAzimuth a: the lane's centre at x = -r sin(a) in the clockwise frame.
+            const double laneX = -radius * std::sin(route.laneAzimuth.value());
+            lane = terminal_wrap_direction(turns[turn]) == -1 ? laneX : -laneX;
+            if (std::getenv("MKF_STEP_DIAG")) {
+                std::cerr << "[terminal-bend-model] the dragback '" << route.fromTurn << "' -> '" << route.toTurn << "' lane azimuth "
+                          << route.laneAzimuth.value() << " wrap direction " << terminal_wrap_direction(turns[turn]) << " lane x " << lane
+                          << std::endl;
+            }
+            if (side * lane < -1e-12) {
+                // The lane lies past the crossing: the wrap climbs to its station at the crossing and goes on LEVEL to
+                // the lane, where the step leaves it in the wrap's own plane. Its helix runs whole to the crossing.
+                Bend level;
+                level.turn = turn;
+                level.exit = true;
+                level.radius = radius;
+                level.cutAlong = 0;
+                return level;
+            }
+            if (side * lane > 1e-12) {
+                return notMeasured(route, 8);   // a lane short of the crossing: the wrap's end there is not modelled
+            }
+            lane = 0;
+        }
+        else {
+            lane = route.wrapDirection.value() == -1 ? route.exitSlot.value() : -route.exitSlot.value();
+        }
         if (side * lane < 0 || !(std::abs(lane) < radius)) {
             return notMeasured(route, 4);   // the lane lies past the crossing, off the turn's own helix
         }
@@ -10249,7 +10387,7 @@ std::vector<Coil::RadialStepClearance> Coil::measure_terminal_bend_clearances(co
                 return bend;   // a slanted next leg: the far corner is not modelled, so neither is what it leaves the bend
             }
         }
-        const double bendRadius = route.plannedBendRadius;
+        const double bendRadius = dragback ? route.dragbackBendRadius.value() : route.plannedBendRadius;
         StepPoint legDirection{};
         double legLength = 0;
         for (size_t k = 0; k < 3; ++k) {
@@ -10352,12 +10490,26 @@ std::vector<Coil::RadialStepClearance> Coil::measure_terminal_bend_clearances(co
     std::map<size_t, std::optional<Bend>> bendOfTurn;        // by attach turn
     std::set<size_t> terminalTurns;
     for (const auto& route : routes) {
-        const bool exit = route.kind == ConnectionKind::TERMINAL_EXIT;
+        const bool dragback = route.kind == ConnectionKind::Z_DRAGBACK;
+        const bool exit = dragback || route.kind == ConnectionKind::TERMINAL_EXIT;
         if ((!exit && route.kind != ConnectionKind::TERMINAL_ENTRANCE) || route.toroidal) {
             continue;
         }
         const auto found = turnByName.find(exit ? route.fromTurn : route.toTurn);
         if (found == turnByName.end()) {
+            continue;
+        }
+        if (dragback) {
+            // The bend a dragback leaves its layer with. One this does not model leaves its turn as it was before
+            // dragbacks were measured: a sibling's bend is measured against its whole wrap.
+            const size_t dragbackWinding = get_winding_index_by_name(route.winding);
+            if ((wires[dragbackWinding].get_type() != WireType::ROUND && wires[dragbackWinding].get_type() != WireType::LITZ) ||
+                get_number_parallels(dragbackWinding) < 2 || terminalTurns.count(found->second) || bendOfTurn.count(found->second)) {
+                continue;
+            }
+            if (const auto bend = bendOf(route)) {
+                bendOfTurn[found->second] = bend;
+            }
             continue;
         }
         const size_t windingIndex = get_winding_index_by_name(route.winding);
@@ -10489,6 +10641,14 @@ void Coil::fund_terminal_bends_against_sibling_wraps() {
             std::vector<LeadExitSolid> leadExitSolids;
             std::vector<LeadExitClash> leadExitClashes;
             get_connection_reserved_spaces(&routes, &leadExitSolids, true, &leadExitClashes);
+            // A dragback's bend stands at the lane MKF places it on (ConnectionRoute::laneAzimuth, as
+            // get_connection_layout publishes it).
+            if (std::any_of(routes.begin(), routes.end(), [](const ConnectionRoute& route) { return route.kind == ConnectionKind::Z_DRAGBACK; })) {
+                const auto placement = compute_ride_placement(routes);
+                for (size_t routeIndex = 0; routeIndex < routes.size(); ++routeIndex) {
+                    routes[routeIndex].laneAzimuth = placement.laneAzimuth[routeIndex];
+                }
+            }
             const auto measured = measure_terminal_bend_clearances(turns, layers, routes);
             if (std::getenv("MKF_STEP_DIAG")) {
                 std::cerr.precision(10);
