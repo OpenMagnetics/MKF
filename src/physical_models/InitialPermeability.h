@@ -145,11 +145,12 @@ class InitialPermeability {
                                         double effectiveArea,
                                         double gapReluctance);
         // The inverse of the crossing above, on the same curve (ABT #1942): the {H, N*I} at which the load line
-        // N*I = H*l_e + B(H)*A_e*R_gap carries the flux density B. Throws for a negative B, and for a B past the
-        // curve's last point (1000 Hsat): no extrapolation, except on a paramagnetic curve, whose B(H) is mu0*H at
-        // every H: there H = B/mu0 for any B. Above the material's B_sat that is a SaturationException
-        // (the core is driven past the end of its curve); at or below it the curve contradicts the saturation data
-        // and the throw (MagnetisationCurveExhaustedException) says so.
+        // N*I = H*l_e + B(H)*A_e*R_gap carries the flux density B. Throws for a negative B. Past the curve's last
+        // point (1000 Hsat), with Settings::allowCorePastMagnetisationCurve (never under an adviser), the core is fully
+        // saturated and B grows on the vacuum's slope, mu0*H, as the forward crossing continues it, with a WARNING
+        // (Alf, 2026-11-20); without it that is refused: a SaturationException above the material's B_sat, and a
+        // MagnetisationCurveExhaustedException at or below it (the curve contradicts the saturation data). On a
+        // paramagnetic curve H = B/mu0 at every B.
         static std::pair<double, double> get_magnetomotive_force_for_flux_density(const MagnetisationCurve& curve,
                                         double fluxDensity,
                                         double effectiveLength,

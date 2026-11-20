@@ -198,6 +198,7 @@ namespace {
         add_to_fingerprint(text, _coreAdviserSaturationDeratingTemperature);
         add_to_fingerprint(text, _thermalNetworkStrictGeometry);
         add_to_fingerprint(text, _allowMaterialDataExtrapolation);
+        add_to_fingerprint(text, _allowCorePastMagnetisationCurve);
         add_to_fingerprint(text, _simulatorLossTemperatureLoop);
         add_to_fingerprint(text, _simulatorSkipLeakageInductance);
         add_to_fingerprint(text, _gappingStrategy);
@@ -362,6 +363,8 @@ namespace {
         _thermalNetworkStrictGeometry = true;
         // Alf, 2026-10-25: user/MAS data extrapolates with a WARNING; advisers never (barrier).
         _allowMaterialDataExtrapolation = true;
+        // Alf, 2026-11-20: a user/MAS design driven past its magnetisation curve is calculated with a WARNING.
+        _allowCorePastMagnetisationCurve = true;
         _simulatorLossTemperatureLoop = true;
         _simulatorSkipLeakageInductance = false;
 
@@ -1222,6 +1225,13 @@ namespace {
     }
     void Settings::set_allow_material_data_extrapolation(bool value) {
         _allowMaterialDataExtrapolation = value;
+    }
+
+    bool Settings::get_allow_core_past_magnetisation_curve() const {
+        return _allowCorePastMagnetisationCurve && materialDataExtrapolationBarriers.load() == 0;
+    }
+    void Settings::set_allow_core_past_magnetisation_curve(bool value) {
+        _allowCorePastMagnetisationCurve = value;
     }
 
     // Depth of CatalogueSearchOnePassScope on this thread (ABT #2124, Alf 2026-10-28).

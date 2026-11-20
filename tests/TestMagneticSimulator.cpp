@@ -3450,7 +3450,9 @@ TEST_CASE("Loss loop whose heated core cannot carry the voltage's flux on its cu
     // design as stored no longer reaches either refusal (at 85 C its loop converges, ~216.5 C). Each refusal now has its
     // own primary turn count, the coil rewound from it: 36 turns (more flux per volt) at 85 C ambient reaches past the
     // curve's end above B_sat; 140 turns at 185 C ambient, near Curie, reaches past its end under B_sat.
+    // Since Alf, 2026-11-20 this refusal holds without Settings::allowCorePastMagnetisationCurve (advisers, Henry); with it the saturated core is computed (the test after this one).
     settings.reset();
+    settings.set_allow_core_past_magnetisation_curve(false);
     std::ifstream file(OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "slow_simulation.json"));
     REQUIRE(file.good());
     json masJson = json::parse(file);
@@ -3504,6 +3506,92 @@ TEST_CASE("Loss loop whose heated core cannot carry the voltage's flux on its cu
                 }
             }
             CHECK(noThermal == 1);
+        }
+    }
+    settings.reset();
+}
+
+
+// ABT #2001: the winding-temperature finding is one plain sentence with rounded numbers. It read "the design's
+// hottest point is 2474.39 C, above winding 0 ('Primary')'s the thermal class of its coating material
+// Polyurethane 155 of 155 C".
+TEST_CASE("Loss loop whose heated core is driven past its magnetisation curve settles on the saturated core",
+          "[processor][magnetic-simulator][abt-1942]") {
+    // Alf, 2026-11-20 ("I want core losses shown even if they saturate"): past the curve's end the core is fully
+    // saturated and its B(H) continues on the vacuum's slope, so the heated iterates below are computed, not refused.
+    // The design and its two refusals as they were (ABT #1942, kept for the record):
+    // ABT #1942 (Alf, 2026-10-19): a voltage-driven DCM point has its flux from Faraday and its magnetizing current read
+    // back from the material's magnetisation curve at the core's temperature. slow_simulation's second operating point
+    // (flyback, material 95, Curie 220 C) has a thermal operating point at 25 C ambient (its loop settles, hot spot ~148 C,
+    // though its core saturates there), but from a hotter ambient its losses
+    // drive the core to where 95's curve cannot carry that flux: past its end above B_sat(T) (the readback's
+    // SaturationException) or, closer to Curie where H_sat(T) goes to zero and the curve ends at 1000 H_sat(T), past
+    // its end while still under B_sat(T) (MagnetisationCurveExhaustedException). Either refusal escaped the loss solve
+    // and took the MagneticAdviser's whole call with it (error_paint_field, catalogue_missing_turns,
+    // slow_simulation). At a heated iterate it is that point's NoThermalOperatingPointException (ABT #1876, #1960):
+    // losses at ambient, no temperature, and analyze_results' NO_THERMAL_OPERATING_POINT.
+    // ABT #2060 (Alf approved, 2026-10-31): with 95's corrected remanence (MAS b21f3cc, 0.08 T at 100 C, was 0.8 T) the
+    // design as stored no longer reaches either refusal (at 85 C its loop converges, ~216.5 C). Each refusal now has its
+    // own primary turn count, the coil rewound from it: 36 turns (more flux per volt) at 85 C ambient reaches past the
+    // curve's end above B_sat; 140 turns at 185 C ambient, near Curie, reaches past its end under B_sat.
+    settings.reset();
+    settings.set_allow_core_past_magnetisation_curve(true);
+    std::ifstream file(OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "slow_simulation.json"));
+    REQUIRE(file.good());
+    json masJson = json::parse(file);
+    strip_nulls_abt1942_simulator(masJson);
+    OpenMagnetics::Inputs allInputs(masJson["inputs"]);
+    REQUIRE(allInputs.get_operating_points().size() > 1);
+
+    // 85 C, 36 primary turns: past the curve's end above B_sat; 185 C, 140 primary turns: past its end under B_sat
+    // (near Curie).
+    for (const auto& [ambientTemperature, primaryTurns] : std::vector<std::pair<double, int64_t>>{{85.0, 36}, {185.0, 140}}) {
+        DYNAMIC_SECTION("ambient " << ambientTemperature << " C, " << primaryTurns << " primary turns") {
+            json magneticJson = masJson["magnetic"];
+            magneticJson["coil"]["functionalDescription"][0]["numberTurns"] = primaryTurns;
+            for (auto key : {"sectionsDescription", "layersDescription", "turnsDescription"}) {
+                magneticJson["coil"].erase(key);
+            }
+            OpenMagnetics::Magnetic magnetic(magneticJson);
+            magnetic.get_mutable_coil().wind();
+            REQUIRE(magnetic.get_coil().get_turns_description());
+            REQUIRE(magnetic.get_mutable_coil().are_sections_and_layers_fitting());
+            OperatingPoint operatingPoint = allInputs.get_operating_points()[1];
+            operatingPoint.get_mutable_conditions().set_ambient_temperature(ambientTemperature);
+            // A heated iterate whose flux lies past the curve's end is the fully saturated core's (B on the vacuum's
+            // slope past the curve, Alf 2026-11-20): the loop settles, the point gets its temperature, and
+            // analyze_results says what the core does there (it saturates, or it is held at Curie).
+            {
+                OperatingPoint settled = operatingPoint;
+                std::optional<WindingLossesOutput> windingLossesOutput;
+                std::optional<TemperatureOutput> temperatureOutput;
+                CHECK_NOTHROW(MagneticSimulator().calculate_core_losses(settled, magnetic, &windingLossesOutput, &temperatureOutput,
+                                                                        WindingLossesScope::OHMIC, NoThermalOperatingPointPolicy::THROW));
+            }
+            OpenMagnetics::Inputs inputs = allInputs;
+            inputs.set_operating_points({operatingPoint});
+            MagneticSimulator simulator;
+            OpenMagnetics::Mas simulated;
+            REQUIRE_NOTHROW(simulated = simulator.simulate(inputs, magnetic));
+            REQUIRE(simulated.get_outputs().size() == 1);
+            const auto& output = simulated.get_outputs()[0];
+            CHECK(output.get_temperature());
+            REQUIRE(output.get_core_losses());
+            CHECK(output.get_core_losses()->get_core_losses() > 0);
+            CHECK(output.get_core_losses()->get_temperature() > ambientTemperature);
+            auto findings = ResultsAnalyzer::analyze_results(simulated);
+            INFO("findings:" << describe_findings(findings));
+            size_t noThermal = 0, coreVerdict = 0;
+            for (const auto& finding : findings) {
+                if (finding.code == ResultFindingCode::NO_THERMAL_OPERATING_POINT) {
+                    ++noThermal;
+                }
+                if (finding.code == ResultFindingCode::CORE_SATURATES || finding.code == ResultFindingCode::CORE_ABOVE_MATERIAL_DATA_LIMIT) {
+                    ++coreVerdict;
+                }
+            }
+            CHECK(noThermal == 0);
+            CHECK(coreVerdict >= 1);
         }
     }
     settings.reset();
@@ -3656,7 +3744,9 @@ TEST_CASE("A point whose flux density lies past the end of the magnetisation cur
     // ambient it propagated and failed the whole simulation. It is that point's finding: simulate leaves its
     // flux-dependent outputs (inductance, core losses, temperature) unset, gives it its winding losses at ambient,
     // simulates every other point, and analyze_results reports CORE_SATURATES for it.
+    // Since Alf, 2026-11-20 this refusal holds without Settings::allowCorePastMagnetisationCurve (advisers, Henry); with it the saturated core is computed (the test after this one).
     settings.reset();
+    settings.set_allow_core_past_magnetisation_curve(false);
     for (const auto& [hotAmbientTemperature, refusal] : pastCurveAtAmbientCases) {
         DYNAMIC_SECTION("ambient " << hotAmbientTemperature << " C") {
             auto design = past_curve_at_ambient_design(hotAmbientTemperature);
@@ -3730,11 +3820,75 @@ TEST_CASE("A point whose flux density lies past the end of the magnetisation cur
     settings.reset();
 }
 
+TEST_CASE("A point whose flux density lies past the end of the magnetisation curve at ambient is simulated on the saturated core",
+          "[processor][magnetic-simulator][abt-2052]") {
+    // Alf, 2026-11-20 ("I want core losses shown even if they saturate!! don't hide it", with the inductance "after
+    // saturation"): past the end of the material's curve the core is fully saturated and B(H) continues on the
+    // vacuum's slope. A point driven there at ambient (ABT #2052's case, formerly left without inductance, flux
+    // density, core losses and temperature) gets them all, computed on the saturated core, and analyze_results
+    // reports CORE_SATURATES for it.
+    settings.reset();
+    settings.set_allow_core_past_magnetisation_curve(true);
+    for (const auto& [hotAmbientTemperature, refusal] : pastCurveAtAmbientCases) {
+        DYNAMIC_SECTION("ambient " << hotAmbientTemperature << " C") {
+            auto design = past_curve_at_ambient_design(hotAmbientTemperature);
+            MagneticSimulator simulator;
+            OpenMagnetics::Mas simulated;
+            REQUIRE_NOTHROW(simulated = simulator.simulate(design.inputs, design.magnetic));
+            REQUIRE(simulated.get_outputs().size() == 2);
+            for (const auto& output : simulated.get_outputs()) {
+                REQUIRE(output.get_inductance());
+                double inductance = output.get_inductance()->get_magnetizing_inductance().get_magnetizing_inductance().get_nominal().value();
+                CHECK(std::isfinite(inductance));
+                CHECK(inductance > 0);
+                REQUIRE(output.get_core_losses());
+                CHECK(output.get_core_losses()->get_magnetic_flux_density());
+                CHECK(output.get_core_losses()->get_core_losses() > 0);
+                CHECK(output.get_temperature());
+                REQUIRE(output.get_winding_losses());
+                CHECK(output.get_winding_losses()->get_winding_losses() > 0);
+            }
+            // The hot point's flux density is past the end of the curve it was refused on.
+            auto material = design.magnetic.get_core().resolve_material();
+            auto curve = InitialPermeability::get_magnetisation_curve(material, hotAmbientTemperature, std::nullopt);
+            double peakFluxDensity = ResultsAnalyzer::get_peak_flux_density(
+                simulated.get_outputs()[1].get_core_losses()->get_magnetic_flux_density().value());
+            INFO("peak B " << peakFluxDensity << " T, curve end " << curve->fluxDensity.back() << " T");
+            CHECK(peakFluxDensity > curve->fluxDensity.back());
+
+            auto findings = ResultsAnalyzer::analyze_results(simulated);
+            INFO("findings:" << describe_findings(findings));
+            size_t coreSaturates = 0;
+            for (const auto& finding : findings) {
+                CHECK_THAT(finding.message, !Catch::Matchers::ContainsSubstring("ABT #"));
+                if (finding.operatingPointIndex && finding.operatingPointIndex.value() == 1) {
+                    CHECK(finding.code != ResultFindingCode::NO_THERMAL_OPERATING_POINT);
+                }
+                if (finding.code == ResultFindingCode::CORE_SATURATES && finding.operatingPointIndex && finding.operatingPointIndex.value() == 1) {
+                    ++coreSaturates;
+                    CHECK_THAT(finding.message, Catch::Matchers::ContainsSubstring("The core saturates"));
+                }
+            }
+            CHECK(coreSaturates == 1);
+
+            // An output without core losses at a point the model reads is an edited output: analyze_results throws.
+            auto edited = simulated;
+            auto outputs = edited.get_outputs();
+            outputs[0].set_core_losses(std::nullopt);
+            edited.set_outputs(outputs);
+            CHECK_THROWS_AS(ResultsAnalyzer::analyze_results(edited), InvalidInputException);
+        }
+    }
+    settings.reset();
+}
+
 TEST_CASE("mas_autocomplete completes a design with a point past the end of the magnetisation curve at ambient",
           "[processor][magnetic-simulator][autocomplete][abt-2052]") {
     // ABT #2052: autocomplete never refuses a design for a saturating point. It fills the design, derives no magnetizing
     // current for that point, and its simulation leaves that point's flux-dependent outputs unset.
+    // Since Alf, 2026-11-20 this refusal holds without Settings::allowCorePastMagnetisationCurve (advisers, Henry); with it the saturated core is computed (the test after this one).
     settings.reset();
+    settings.set_allow_core_past_magnetisation_curve(false);
     for (const auto& [hotAmbientTemperature, refusal] : pastCurveAtAmbientCases) {
         DYNAMIC_SECTION("ambient " << hotAmbientTemperature << " C") {
             auto design = past_curve_at_ambient_design(hotAmbientTemperature);
@@ -3761,6 +3915,47 @@ TEST_CASE("mas_autocomplete completes a design with a point past the end of the 
             REQUIRE(completedOperatingPoints.size() == 2);
             CHECK(completedOperatingPoints[0].get_excitations_per_winding()[0].get_magnetizing_current());
             CHECK_FALSE(completedOperatingPoints[1].get_excitations_per_winding()[0].get_magnetizing_current());
+
+            // Without simulating as well.
+            REQUIRE_NOTHROW(OpenMagnetics::mas_autocomplete(mas, false));
+        }
+    }
+    settings.reset();
+}
+
+TEST_CASE("mas_autocomplete completes a design with a point past the end of the magnetisation curve at ambient, saturated core included",
+          "[processor][magnetic-simulator][autocomplete][abt-2052]") {
+    // ABT #2052: autocomplete never refuses a design for a saturating point. Since Alf, 2026-11-20 it completes that
+    // point as every other: past the curve the core is fully saturated (B on the vacuum's slope), so its magnetizing
+    // current is derived and its simulation gives its core losses and temperature.
+    settings.reset();
+    settings.set_allow_core_past_magnetisation_curve(true);
+    for (const auto& [hotAmbientTemperature, refusal] : pastCurveAtAmbientCases) {
+        DYNAMIC_SECTION("ambient " << hotAmbientTemperature << " C") {
+            auto design = past_curve_at_ambient_design(hotAmbientTemperature);
+            // As the web hands it over: the operating points without the magnetizing currents autocomplete derives.
+            auto operatingPoints = design.inputs.get_operating_points();
+            for (auto& operatingPoint : operatingPoints) {
+                for (auto& excitation : operatingPoint.get_mutable_excitations_per_winding()) {
+                    excitation.set_magnetizing_current(std::nullopt);
+                }
+            }
+            design.inputs.set_operating_points(operatingPoints);
+            OpenMagnetics::Mas mas;
+            mas.set_inputs(design.inputs);
+            mas.set_magnetic(design.magnetic);
+            OpenMagnetics::Mas completed;
+            REQUIRE_NOTHROW(completed = OpenMagnetics::mas_autocomplete(mas));
+            REQUIRE(completed.get_outputs().size() == 2);
+            CHECK(completed.get_outputs()[0].get_core_losses());
+            CHECK(completed.get_outputs()[0].get_temperature());
+            CHECK(completed.get_outputs()[1].get_core_losses());
+            CHECK(completed.get_outputs()[1].get_temperature());
+            CHECK(completed.get_outputs()[1].get_winding_losses());
+            const auto& completedOperatingPoints = completed.get_inputs().get_operating_points();
+            REQUIRE(completedOperatingPoints.size() == 2);
+            CHECK(completedOperatingPoints[0].get_excitations_per_winding()[0].get_magnetizing_current());
+            CHECK(completedOperatingPoints[1].get_excitations_per_winding()[0].get_magnetizing_current());
 
             // Without simulating as well.
             REQUIRE_NOTHROW(OpenMagnetics::mas_autocomplete(mas, false));

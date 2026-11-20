@@ -3072,8 +3072,10 @@ TEST_CASE("Test_Magnetomotive_Force_For_Flux_Density_Throws_Past_The_Curve", "[p
     // ABT #1942 (Alf, 2026-10-18, no silent extrapolation): the inverse load line reads the magnetisation curve and
     // nothing beyond it. On the table it inverts the forward crossing; past the table's last point (1000 Hsat) it
     // throws instead of going on along the vacuum slope: a SaturationException above the material's B_sat, and a
-    // data error when the curve ends below B_sat.
+    // data error when the curve ends below B_sat. Since Alf, 2026-11-20 that refusal holds without
+    // Settings::allowCorePastMagnetisationCurve (advisers, Henry); with it the curve continues on mu0 (next test).
     settings.reset();
+    settings.set_allow_core_past_magnetisation_curve(false);
     auto material = Core::resolve_material(std::string("3C95"));
     auto curve = InitialPermeability::get_magnetisation_curve(material, 25, std::nullopt);
     const double effectiveLength = 0.05, effectiveArea = 1e-4, gapReluctance = 1e6;
@@ -3104,6 +3106,42 @@ TEST_CASE("Test_Magnetomotive_Force_For_Flux_Density_Throws_Past_The_Curve", "[p
     }
     CHECK_FALSE(saturationThrown);
     CHECK(otherThrown);
+    settings.reset();
+}
+
+TEST_CASE("Test_Magnetomotive_Force_For_Flux_Density_Continues_Past_The_Curve_On_Mu0", "[physical-model][permeability][dc-bias][abt-1942]") {
+    // The inverse load line inverts the forward crossing on the table (ABT #1942). Past the table's last point
+    // (1000 Hsat) the core is fully saturated: B continues on the vacuum's slope, as the forward crossing continues it,
+    // and the inverse is still its exact inverse (Alf, 2026-11-20, replacing the 2026-10-18 refusal), also on a
+    // curve that ends below its material's B_sat.
+    settings.reset();
+    settings.set_allow_core_past_magnetisation_curve(true);
+    auto material = Core::resolve_material(std::string("3C95"));
+    auto curve = InitialPermeability::get_magnetisation_curve(material, 25, std::nullopt);
+    const double effectiveLength = 0.05, effectiveArea = 1e-4, gapReluctance = 1e6;
+    double lastFluxDensity = curve->fluxDensity.back();
+    double lastFieldStrength = curve->fieldStrength.back();
+    INFO("3C95 at 25 C: curve ends at " << lastFluxDensity << " T, H " << lastFieldStrength << " A/m; B_sat " << curve->saturationFluxDensity << " T");
+    REQUIRE(lastFluxDensity > curve->saturationFluxDensity);
+    for (double fraction : {0.3, 0.999, 1.001, 1.5}) {
+        auto [fieldStrength, magnetomotiveForce] = InitialPermeability::get_magnetomotive_force_for_flux_density(
+            *curve, fraction * lastFluxDensity, effectiveLength, effectiveArea, gapReluctance);
+        auto forward = InitialPermeability::get_dc_operating_point_for_magnetomotive_force(*curve, magnetomotiveForce, effectiveLength, effectiveArea, gapReluctance);
+        CHECK_THAT(forward.second, Catch::Matchers::WithinRel(fraction * lastFluxDensity, 1e-9));
+        CHECK_THAT(forward.first, Catch::Matchers::WithinRel(fieldStrength, 1e-9));
+        if (fraction > 1) {
+            // On the vacuum's slope from the curve's last point.
+            double expectedFieldStrength = lastFieldStrength + (fraction - 1) * lastFluxDensity / constants.vacuumPermeability;
+            CHECK_THAT(fieldStrength, Catch::Matchers::WithinRel(expectedFieldStrength, 1e-9));
+        }
+    }
+
+    // A curve that ends below its material's B_sat continues the same way.
+    InitialPermeability::MagnetisationCurve shortCurve{{0, 10, 20}, {0, 0.1, 0.2}, "short", 0.5, false};
+    auto [fieldStrength, magnetomotiveForce] = InitialPermeability::get_magnetomotive_force_for_flux_density(shortCurve, 0.3, effectiveLength, effectiveArea, gapReluctance);
+    CHECK_THAT(fieldStrength, Catch::Matchers::WithinRel(20 + 0.1 / constants.vacuumPermeability, 1e-9));
+    auto forward = InitialPermeability::get_dc_operating_point_for_magnetomotive_force(shortCurve, magnetomotiveForce, effectiveLength, effectiveArea, gapReluctance);
+    CHECK_THAT(forward.second, Catch::Matchers::WithinRel(0.3, 1e-9));
     settings.reset();
 }
 
@@ -3274,14 +3312,41 @@ TEST_CASE("Test_Line_Cycle_Swing_Follows_The_Load_Line_On_The_Magnetisation_Curv
 TEST_CASE("Test_Line_Cycle_Swing_Past_The_Curve_End_Throws", "[physical-model][magnetizing-inductance][dc-bias][line-cycle][abt-1786]") {
     // ABT #1786: a line MMF past the load line at the end of the magnetisation curve (1000 times H_sat) has no flux
     // density on it; the line swing throws there rather than extrapolate (as the inverse does, ABT #1942). The DMC
-    // fixture's currents scaled 10^5 drive the MPP 300 toroid's line peak to ~2.4e8 A/m.
+    // fixture's currents scaled 10^5 drive the MPP 300 toroid's line peak to ~2.4e8 A/m. Since Alf, 2026-11-20 it throws
+    // without Settings::allowCorePastMagnetisationCurve (advisers, Henry); with it the swing continues on mu0 (next test).
     settings.reset();
+    settings.set_allow_core_past_magnetisation_curve(false);
     auto [inputs, operatingPoint] = load_dmc_line_cycle_abt1786(1e5);
     auto magnetic = OpenMagneticsTesting::get_quick_magnetic("T 48/23/19", json::array(), {30, 30}, 1, "MPP 300");
     MagnetizingInductance magnetizingInductance;
     magnetizingInductance.set_topology(inputs.get_design_requirements().get_topology());
     CHECK_THROWS_AS(magnetizingInductance.calculate_inductance_and_magnetic_flux_density(magnetic.get_core(), magnetic.get_coil(), &operatingPoint),
                     SaturationException);
+    settings.reset();
+}
+
+TEST_CASE("Test_Line_Cycle_Swing_Past_The_Curve_End_Continues_On_Mu0", "[physical-model][magnetizing-inductance][dc-bias][line-cycle][abt-1786]") {
+    // ABT #1786: a line MMF past the load line at the end of the magnetisation curve (1000 times H_sat). Since Alf,
+    // 2026-11-20 the line swing reads it on the fully saturated core (B on the vacuum's slope past the curve), as the
+    // forward crossing does, instead of throwing. The DMC fixture's currents scaled 10^5 drive the MPP 300 toroid's
+    // line peak to ~2.4e8 A/m.
+    settings.reset();
+    settings.set_allow_core_past_magnetisation_curve(true);
+    auto [inputs, operatingPoint] = load_dmc_line_cycle_abt1786(1e5);
+    auto magnetic = OpenMagneticsTesting::get_quick_magnetic("T 48/23/19", json::array(), {30, 30}, 1, "MPP 300");
+    MagnetizingInductance magnetizingInductance;
+    magnetizingInductance.set_topology(inputs.get_design_requirements().get_topology());
+    std::pair<MagnetizingInductanceOutput, SignalDescriptor> result;
+    REQUIRE_NOTHROW(result = magnetizingInductance.calculate_inductance_and_magnetic_flux_density(magnetic.get_core(), magnetic.get_coil(), &operatingPoint));
+    double inductance = result.first.get_magnetizing_inductance().get_nominal().value();
+    CHECK(std::isfinite(inductance));
+    CHECK(inductance > 0);
+    double peakFluxDensity = ResultsAnalyzer::get_peak_flux_density(result.second);
+    auto material = magnetic.get_core().resolve_material();
+    double saturationFluxDensity = Core::get_magnetic_flux_density_saturation(material, operatingPoint.get_conditions().get_ambient_temperature(), false);
+    INFO("peak B " << peakFluxDensity << " T, B_sat " << saturationFluxDensity << " T");
+    CHECK(std::isfinite(peakFluxDensity));
+    CHECK(peakFluxDensity > saturationFluxDensity);
     settings.reset();
 }
 

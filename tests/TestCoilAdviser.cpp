@@ -3988,6 +3988,9 @@ TEST_CASE("Test_CoilAdviser_Rejects_A_Coil_Whose_Core_Saturates_Past_Its_Curve_I
     }
     {
         // The premise: the magnetizing model refuses the flux density of that voltage as past the curve, above B_sat.
+        // It refuses so under the adviser, whose barrier turns Settings::allowCorePastMagnetisationCurve off; this
+        // direct call, outside any adviser, turns it off itself (with it on, the core is taken as fully saturated).
+        settings.set_allow_core_past_magnetisation_curve(false);
         auto operatingPoint = mas.get_inputs().get_operating_points()[0];
         auto magnetic = mas.get_magnetic();
         MagnetizingInductance magnetizingInductanceModel;
@@ -3996,6 +3999,7 @@ TEST_CASE("Test_CoilAdviser_Rejects_A_Coil_Whose_Core_Saturates_Past_Its_Curve_I
                              SaturationException,
                              Catch::Matchers::MessageMatches(Catch::Matchers::ContainsSubstring("beyond the end of the magnetisation curve") &&
                                                              Catch::Matchers::ContainsSubstring("magnetisation curve of 97")));
+        settings.set_allow_core_past_magnetisation_curve(true);
     }
 
     // A coil rejected for saturation is a DEBUG trace, so the run is collected at DEBUG; read_log() only hands

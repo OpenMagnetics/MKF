@@ -175,6 +175,9 @@ struct MaterialDataAsked {
     std::string where;
 };
 bool material_data_extrapolation_allowed(const std::string& summary, const MaterialDataAsked& asked);
+// The same, gated on Settings::allowCorePastMagnetisationCurve: true (after logging the summary as a WARNING) when a
+// core driven past the end of its magnetisation curve may be taken as fully saturated; false when that point must throw.
+bool core_past_magnetisation_curve_allowed(const std::string& summary, const MaterialDataAsked& asked);
 // ABT #2235: material properties tabulated in temperature (saturation flux density; remanence, coercive
 // force and saturation field below their data; resistivity) and the initial permeability tabulated in
 // frequency are extrapolated outside their data exactly as they always were, whatever

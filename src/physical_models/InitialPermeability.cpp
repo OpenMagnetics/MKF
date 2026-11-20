@@ -487,12 +487,26 @@ std::pair<double, double> InitialPermeability::get_magnetomotive_force_for_flux_
     const auto& fieldStrengths = curve.fieldStrength;
     const auto& fluxDensities = curve.fluxDensity;
     if (fluxDensity > fluxDensities.back()) {
-        // No extrapolation past the table (1000 Hsat, Alf 2026-10-18): the curve says nothing there.
-        // The numbers as ResultsAnalyzer's findings print them (ABT #2001): these messages are the CORE_SATURATES
-        // finding's reason for a point past the curve at ambient (ABT #2052).
+        // Past the table's last point (1000 Hsat) the curve says nothing (Alf, 2026-10-18). With
+        // Settings::allowCorePastMagnetisationCurve (a design the user or a MAS file supplies, the web; never an
+        // adviser, whose MaterialDataExtrapolationBarrier reads it false, nor Henry, which turns it off) the core is
+        // taken as fully saturated: B continues on the vacuum's slope, as get_dc_operating_point_for_magnetomotive_force
+        // continues it, of which this is then the exact inverse; a WARNING names the material, and analyze_results
+        // reports CORE_SATURATES for the point (Alf, 2026-11-20: "it should be calculated and allowed with a
+        // warning when the user or a MAS file request it ... not allowed in advisers and automatic design").
+        // Otherwise it is refused, as below. The numbers as ResultsAnalyzer's findings print them (ABT #2001): these
+        // messages are the CORE_SATURATES finding's reason for a point past the curve at ambient (ABT #2052).
         auto number = [](double value) {
             return format_significant(value);
         };
+        if (core_past_magnetisation_curve_allowed(
+                "Material " + curve.materialName + ": its magnetisation curve ends at " + number(fluxDensities.back()) + " T, at " +
+                    format_quantity(fieldStrengths.back(), "A/m") + " (1000 times its saturation field strength); past it the core "
+                    "is taken as fully saturated, its flux density growing as in vacuum",
+                {MaterialDataAskedQuantity::MAGNETIC_FLUX_DENSITY_AMPLITUDE, fluxDensity, ""})) {
+            double fieldStrength = fieldStrengths.back() + (fluxDensity - fluxDensities.back()) / constants.vacuumPermeability;
+            return {fieldStrength, fieldStrength * effectiveLength + fluxDensity * effectiveArea * gapReluctance};
+        }
         if (fluxDensity > curve.saturationFluxDensity) {
             throw SaturationException(
                 "It would need a flux density of " + number(fluxDensity) + " T, beyond the end of the magnetisation curve of " +

@@ -248,6 +248,16 @@ class Settings
         // getter reads false whatever this holds (see MaterialDataExtrapolationBarrier below), so every
         // adviser path still throws. Keep in sync with reset().
         bool   _allowMaterialDataExtrapolation = true;
+        // A core driven past the end of its material's magnetisation curve (B beyond the curve's last point, at
+        // 1000 times its saturation field strength). TRUE (default, Alf 2026-11-20: a design the user or a MAS
+        // file supplies, the web, is calculated there with a WARNING): the core is taken as fully saturated, its
+        // flux density growing past that point as in vacuum (mu0), so its inductance, losses and temperature
+        // are still given. FALSE: the same point throws (SaturationException /
+        // MagnetisationCurveExhaustedException). Advisers and automatic design never do it: while any
+        // MaterialDataExtrapolationBarrier exists the getter reads false, and Henry turns it off. Separate from
+        // _allowMaterialDataExtrapolation so a design may use the one without the other. Keep in sync with
+        // reset().
+        bool   _allowCorePastMagnetisationCurve = true;
         // What MagneticSimulator does with the loss <-> temperature coupling. TRUE (default): the losses
         // are evaluated at the temperatures their own dissipation produces, by the fixed-point loop of
         // MagneticSimulator::solve_losses_at_operating_temperature. FALSE (a user choice for simulate and
@@ -656,6 +666,11 @@ class Settings
         // untouched: it reads back again once the advisers are gone.
         bool   get_allow_material_data_extrapolation() const;
         void   set_allow_material_data_extrapolation(bool value);
+
+        // The EFFECTIVE value: what the caller set, AND no adviser alive anywhere in the process
+        // (MaterialDataExtrapolationBarrier), as for get_allow_material_data_extrapolation().
+        bool   get_allow_core_past_magnetisation_curve() const;
+        void   set_allow_core_past_magnetisation_curve(bool value);
 
         // The EFFECTIVE value: false on a thread inside a CatalogueSearchOnePassScope (the catalogue
         // search, Alf 2026-10-28); otherwise what the caller set, OR an adviser alive anywhere in

@@ -350,6 +350,18 @@ bool material_data_extrapolation_allowed(const std::string& summary, const Mater
     return true;
 }
 
+bool core_past_magnetisation_curve_allowed(const std::string& summary, const MaterialDataAsked& asked) {
+    if (!settings.get_allow_core_past_magnetisation_curve()) {
+        return false;
+    }
+    if (summary.empty()) {
+        throw std::invalid_argument("core_past_magnetisation_curve_allowed needs a summary (material and where its "
+                                    "magnetisation curve ends)");
+    }
+    report_material_data_notice(LogLevel::WARNING, summary, asked);
+    return true;
+}
+
 // Alf, 2026-11-03: an adviser tries hundreds of materials the user never chose, so what it reads outside a material's
 // tables is a trace of the search, not a warning about the user's design: while an adviser runs (a
 // MaterialDataExtrapolationBarrier exists) these records are DEBUG. The design the user then adopts is evaluated

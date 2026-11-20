@@ -11,6 +11,7 @@
 #include "constructive_models/CorePiece.h"
 #include "support/Settings.h"
 #include "support/Utils.h"
+#include "support/NumberFormat.h"
 #include <sstream>
 
 #include <cmath>
@@ -1409,12 +1410,21 @@ std::pair<MagnetizingInductanceOutput, SignalDescriptor> MagnetizingInductance::
             std::vector<size_t> bounds = valleys.value();
             bounds.front() = 0;
             bounds.back() = current.size();
-            // The line load line, read on the curve; past the curve's end it throws.
+            // The line load line, read on the curve. Past the curve's end it throws, unless
+            // Settings::allowCorePastMagnetisationCurve lets the core be taken as fully saturated there (never under an
+            // adviser; Alf, 2026-11-20): the crossing then continues on the vacuum's slope, with a WARNING.
             double curveEndFieldStrength = magnetisationCurve->fieldStrength.back();
             double curveEndFluxDensity = magnetisationCurve->fluxDensity.back();
             double curveEndMagnetomotiveForce = curveEndFieldStrength * effectiveLength + curveEndFluxDensity * effectiveArea * gapReluctance;
             auto lineLoadLine = [&](double magnetomotiveForce) {
-                if (fabs(magnetomotiveForce) > curveEndMagnetomotiveForce) {
+                if (fabs(magnetomotiveForce) > curveEndMagnetomotiveForce &&
+                    !core_past_magnetisation_curve_allowed(
+                        "Material " + magnetisationCurve->materialName + ": its magnetisation curve ends at " +
+                            format_significant(curveEndFluxDensity) + " T, at " + format_quantity(curveEndFieldStrength, "A/m") +
+                            " (1000 times its saturation field strength); past it the core is taken as fully saturated, its flux "
+                            "density growing as in vacuum",
+                        {MaterialDataAskedQuantity::MAGNETIC_FLUX_DENSITY_AMPLITUDE, curveEndFluxDensity, "the line-cycle MMF of " +
+                            format_significant(fabs(magnetomotiveForce)) + " A-turns lies past the load line at the curve's end"})) {
                     throw SaturationException(
                         "The line-cycle MMF " + std::to_string(fabs(magnetomotiveForce)) + " A-turns on material " + magnetisationCurve->materialName +
                         " lies past the load line at the end of its magnetisation curve, " + std::to_string(curveEndMagnetomotiveForce) +
