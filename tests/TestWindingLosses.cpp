@@ -6171,6 +6171,9 @@ TEST_CASE("Test_Winding_Losses_Multi_Window_E42_Rectangular_Vs_OMFEM", "[winding
     // 2026-11-13: ask OMFEM for per-winding DC). Before, the per-winding watts were divided by DC losses estimated outside
     // OMFEM (0.743 / 1.472 mW): 1.8185 / 1.0126 at 1 kHz, 55.256 / 5.758 at 100 kHz. Inputs and logs:
     // /home/alf/OpenMagnetics/.mkf-triage-runs/gap/fem/mwr_<f>.json, mwr_<f>.g.omfem.*.
+    // ABT #2384 (Alf 2026-11-20, "find a converging kernel"): green since the width cells resolve half a skin depth at the
+    // conductor ends and book only the face-wrapping part of a cell's current as face-crowded; per turn at 100 kHz the
+    // primary reads 0.92-1.07x OMFEM, the secondary 0.87-0.96x. Before that:
     // Known red, landed so by Alf (2026-11-13): the primary beside the gap reads 0.73x OMFEM at 100 kHz (0.91x at 1 kHz;
     // the secondary 1.00x at 1 kHz, 0.93x at 100 kHz). It is the width-cell model on 0.8 mm bars beside a gap (the multi-window frame matches
     // the single-window one there, Test_Winding_Losses_Multi_Window_Cells_Match_Single_Window), the same family as the E 42
@@ -6191,6 +6194,33 @@ TEST_CASE("Test_Winding_Losses_Multi_Window_E42_Rectangular_Vs_OMFEM", "[winding
         INFO(frequency << " Hz: primary MKF " << ratios[0] << " vs OMFEM " << primary << ", secondary MKF " << ratios[1] << " vs OMFEM " << secondary);
         CHECK_THAT(ratios[0], Catch::Matchers::WithinRel(primary, WindingLossesTestHelpers::maximumError));
         CHECK_THAT(ratios[1], Catch::Matchers::WithinRel(secondary, WindingLossesTestHelpers::maximumError));
+    }
+    // ABT #2384 (2026-11-20): the primary turn just above the gap (y = +0.44 mm), per turn, against OMFEM's own R_ac/R_dc of
+    // that turn at 100 kHz from the same dump, booked over its own length as above: 123.02. The winding total alone does not
+    // guard the cell kernel: with the cells' whole current booked face-crowded this turn reads 1.28x (0.71x with
+    // one-thickness cells) while the winding stays inside 25 %. The converged kernel reads 1.06x.
+    {
+        auto inputs = OpenMagnetics::Inputs::create_quick_operating_point_only_current(100000, 100e-6, 20, WaveformLabel::SINUSOIDAL, 2, 0.5, 0, {2});
+        auto output = WindingLosses().calculate_losses(magnetic, inputs.get_operating_point(0), 20);
+        const auto perTurn = output.get_winding_losses_per_turn().value();
+        const auto turns = magnetic.get_coil().get_turns_description().value();
+        REQUIRE(perTurn.size() == turns.size());
+        std::optional<size_t> gapSideTurn;
+        for (size_t turnIndex = 0; turnIndex < turns.size(); ++turnIndex) {
+            if (turns[turnIndex].get_winding() == "Primary" && std::abs(turns[turnIndex].get_coordinates()[1] - 0.4425e-3) < 1e-6) {
+                gapSideTurn = turnIndex;
+            }
+        }
+        REQUIRE(gapSideTurn);
+        const auto& turn = perTurn[gapSideTurn.value()];
+        double loss = turn.get_ohmic_losses()->get_losses();
+        const auto skinLosses = turn.get_skin_effect_losses().value();
+        const auto proximityLosses = turn.get_proximity_effect_losses().value();
+        for (auto harmonicLoss : skinLosses.get_losses_per_harmonic()) loss += harmonicLoss;
+        for (auto harmonicLoss : proximityLosses.get_losses_per_harmonic()) loss += harmonicLoss;
+        const double factor = loss / turn.get_ohmic_losses()->get_losses();
+        INFO("gap-side primary turn R_ac/R_dc MKF " << factor << " vs OMFEM 123.02");
+        CHECK_THAT(factor, Catch::Matchers::WithinRel(123.02, 0.15));
     }
     settings.reset();
 }
@@ -6266,6 +6296,11 @@ TEST_CASE("Test_Winding_Losses_Abt2384_Isolated_Strip_Keeps_Its_Edge_Loss", "[wi
     // from the width cells' currents; together they must still give the isolated strip's classical R_ac/R_dc, which
     // KUTKUT's 2D fit (1.80 here) states. MKF reads 1.93 (the closed window's images add a little field a free strip
     // does not see; 15 % allows for that and for the fit); before ABT #2384 it read 2.56, KUTKUT plus the cells' edge loss.
+    // Moved to the window centre (Alf 2026-11-20): wound, the strip's end touched the centre leg at the mouth of the core's
+    // 5 um residual gap, whose near field the cells resolve once they are half a skin depth wide at the ends (2.19 there; an
+    // exact 2-D filament solve of the strip in the window gives 2.08-2.42 for 0.10-0.15 A across that gap, 2.00 without
+    // it). At the centre its ends are 2.9 mm from the walls and the gap mouths, and only its own images act on it: MKF
+    // 1.93, the exact 2-D solve 1.78, KUTKUT 1.80.
     settings.reset();
     clear_databases();
     OpenMagnetics::Wire wire;
@@ -6280,6 +6315,13 @@ TEST_CASE("Test_Winding_Losses_Abt2384_Isolated_Strip_Keeps_Its_Edge_Loss", "[wi
     auto coil = OpenMagneticsTesting::get_quick_coil({1}, {1}, shapeName, 1, WindingOrientation::OVERLAPPING, WindingOrientation::OVERLAPPING,
                                                     CoilAlignment::CENTERED, CoilAlignment::CENTERED, {wire}, false);
     auto core = OpenMagneticsTesting::get_quick_core(shapeName, OpenMagneticsTesting::get_residual_gap(), 1, "3C97");
+    {
+        // The window of E 65/32/27 spans x = 9.825 .. 22.475 mm: its centre, 2.9 mm from either wall at the strip's ends.
+        auto turns = coil.get_turns_description().value();
+        REQUIRE(turns.size() == 1);
+        turns[0].set_coordinates({0.01615, 0.0});
+        coil.set_turns_description(turns);
+    }
     OpenMagnetics::Magnetic magnetic;
     magnetic.set_core(core);
     magnetic.set_coil(coil);
@@ -6324,7 +6366,8 @@ TEST_CASE("Test_Winding_Losses_Abt2384_Interleaved_Litz_And_Strips_Vs_OMFEM", "[
              << ", total MKF " << mkfTotal << " vs OMFEM " << total);
         // Tolerances: the AC excess is a small difference of two large numbers on the FEM side (its DC part moves
         // 0.158 -> 0.163 W between the equal and the solved split, 8 % of the DAB excess), so 25 %; the strip and winding
-        // totals 10 %. With the fix: excess -10 % / -14 %, strips -1.5 % / -1.3 %, total -2.3 % / +1.2 %. Before it
+        // totals 10 %. ABT #2384 (2026-11-20, converging width-cell kernel): the DAB strip excess reads 0.227 W (-23 %; -29 %
+        // with one-thickness cells, the test red since 2026-11-15). With the fix: excess -10 % / -14 %, strips -1.5 % / -1.3 %, total -2.3 % / +1.2 %. Before it
         // (KUTKUT): excess +147 % / +216 %, strips +45 % / +36 %, total +33 % / +32 %.
         CHECK_THAT(strips.skin + strips.proximity, Catch::Matchers::WithinRel(stripAcExcess, 0.25));
         CHECK_THAT(strips.total(), Catch::Matchers::WithinRel(stripTotal, 0.1));

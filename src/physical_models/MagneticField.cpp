@@ -5641,7 +5641,7 @@ std::pair<double, double> FlatTurnCells::position(double alongCoordinate) const 
                       : std::pair<double, double>{centreX - offset * sine, centreY + offset * cosine};
 }
 
-std::vector<double> FlatTurnCells::calculate_cell_widths(double width, double thickness) {
+std::vector<double> FlatTurnCells::calculate_cell_widths(double width, double thickness, double edgeCellWidth) {
     if (!(width > 0) || !(thickness > 0)) {
         throw InvalidInputException(ErrorCode::INVALID_WIRE_DATA, "Width cells: a flat conductor needs a positive width and thickness");
     }
@@ -5649,11 +5649,15 @@ std::vector<double> FlatTurnCells::calculate_cell_widths(double width, double th
         throw InvalidInputException(ErrorCode::INVALID_INPUT, "Width cells: a conductor " + std::to_string(width) + " m wide and " + std::to_string(thickness) +
                                     " m thick is not flat (its width is under " + std::to_string(minimumAspectRatio) + " thicknesses)");
     }
+    if (!(edgeCellWidth > 0) || edgeCellWidth > thickness) {
+        throw InvalidInputException(ErrorCode::INVALID_INPUT, "Width cells: the edge cell width " + std::to_string(edgeCellWidth) +
+                                    " m is not between 0 and the conductor's thickness " + std::to_string(thickness) + " m");
+    }
     const double halfWidth = width / 2;
     const double maximumCellWidth = maximumCellWidthInThicknesses * thickness;
     std::vector<double> half;
     double accumulated = 0;
-    double cellWidth = thickness;
+    double cellWidth = edgeCellWidth;
     while (accumulated + cellWidth < halfWidth) {
         half.push_back(cellWidth);
         accumulated += cellWidth;
@@ -5914,6 +5918,14 @@ std::optional<ParallelCurrentSplit> MagneticField::calculate_parallel_current_sp
         }
     }
     if (impedanceModel && resolveFlatTurnsPerWinding) {
+        // The highest fundamental of the windings: the edge cells' skin depth (calculate_cell_widths).
+        double fundamentalFrequency = 0;
+        for (const auto& excitation : operatingPoint.get_excitations_per_winding()) {
+            fundamentalFrequency = std::max(fundamentalFrequency, excitation.get_frequency());
+        }
+        if (!(fundamentalFrequency > 0)) {
+            throw InvalidInputException(ErrorCode::MISSING_DATA, "Width cells: the operating point has no positive excitation frequency");
+        }
         const bool toroidalCoil = magnetic.get_mutable_coil().resolve_bobbin().get_winding_window_shape() == WindingWindowShape::ROUND;
         std::map<std::string, double> columnAxisPerSection;
         for (size_t turnIndex = 0; turnIndex < turns.size(); ++turnIndex) {
@@ -5957,7 +5969,9 @@ std::optional<ParallelCurrentSplit> MagneticField::calculate_parallel_current_sp
             flat.width = wide;
             flat.centreX = turns[turnIndex].get_coordinates()[0];
             flat.centreY = turns[turnIndex].get_coordinates()[1];
-            flat.cellWidths = FlatTurnCells::calculate_cell_widths(wide, thin);
+            // The edge cells resolve half a skin depth at the fundamental when that is under a thickness (calculate_cell_widths).
+            const double edgeCellWidth = std::min(thin, WindingSkinEffectLosses::calculate_skin_depth(wire, fundamentalFrequency, temperature) / 2);
+            flat.cellWidths = FlatTurnCells::calculate_cell_widths(wide, thin, edgeCellWidth);
             const double alongCentre = flat.along(flat.centreX, flat.centreY);
             if (!ringModel) {
                 flat.cellWidths = FlatTurnCells::refine_cell_widths_near_gaps(flat.cellWidths, alongCentre - wide / 2,

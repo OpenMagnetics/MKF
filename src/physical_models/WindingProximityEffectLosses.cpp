@@ -1719,7 +1719,19 @@ double WindingProximityEffectLossesMartinezModel::calculate_flat_cell_end_term(d
 // K = J / w its own cell current gives it. The faces then carry H + K/2 and H - K/2, and the exact slab solution books
 //     w [2 |H|^2 (F - 2G) + |K|^2 (F/2 + G)] / (2 sigma delta)
 //     F = (sinh 2nu + sin 2nu) / (cosh 2nu - cos 2nu),  G = (sinh nu cos nu + cosh nu sin nu) / (cosh 2nu - cos 2nu)
-// with no cross term, so the phase convention of K against H does not enter. Each end cell adds the end face and its
+// with no cross term, so the phase convention of K against H does not enter.
+// ABT #2384 (Alf 2026-11-20, "find a converging kernel"): the faces carry +-K/2 only where the current is uniform across the
+// width, so that its field wraps from one face to the other. A sheet current K(x) makes the face-field jump
+// Kj(x) = (K * P)(x), P(u) = (h / pi) / (u^2 + h^2), h = t / 2 (each line current's tangential field at the faces): K for a
+// uniform sheet, far less for the peak a perpendicular field drives within a skin depth of the conductor's end, whose field
+// closes round the end and which flows through the whole thickness. So the cell books its jump Kj as the slab's net current
+// and the rest of its current uniform through the thickness (the cross term vanishes: the slab profile's mean is 1 / t):
+//     w [2 |H|^2 (F - 2G) + |Kj|^2 (F/2 + G) + (|K|^2 - |Kj|^2) / nu] / (2 sigma delta),
+// Kj the cell's mean of K * P over this conductor's cells, its weights normalised to 1 (a uniform K gives Kj = K and the
+// expression above). With |K|^2 (F/2 + G) instead, cells narrower than the thickness booked the end peak as face-crowded:
+// on the multi-window E 42 primary (0.8 mm bars, 100 kHz) the loss grew without bound as the cells shrank (0.71x 2-D OMFEM
+// at one-thickness cells, 1.72x at an eighth); with Kj it converges, 0.93-1.11x per turn, and OMFEM's own current per cell
+// matches the cells' within 5-10 %. Each end cell adds the end face and its
 // corners, E(nu) t 2|H|^2 / (2 sigma delta). The skin model books the turn's current spread uniformly over its width,
 // W |I / W|^2 (F/2 + G) / (2 sigma delta), so that is taken off: what remains is the proximity loss -- the field terms
 // and the redistribution of the current across the width. A uniform sheet minimises the K term at a given current, so
@@ -1802,11 +1814,34 @@ double WindingProximityEffectLossesMartinezModel::calculate_flat_cell_losses(dou
     }
     double losses = 0;
     std::complex<double> turnCurrent = 0;
+    // The face-field jump the cells' currents make at each cell (see the comment above the function): K smoothed by the
+    // Poisson kernel of half-width t / 2 over this conductor, averaged over the cell, its weights normalised to 1.
+    std::vector<std::complex<double>> smoothedSheet(numberCells);
+    {
+        const double h = flat.thickness / 2;
+        auto phi = [h](double u) { return u * std::atan(u / h) - h / 2 * std::log(u * u + h * h); };
+        for (size_t c = 0; c < numberCells; ++c) {
+            const double ac = flat.cellCentres[c] - flat.cellWidths[c] / 2;
+            const double bc = flat.cellCentres[c] + flat.cellWidths[c] / 2;
+            double weightSum = 0;
+            std::complex<double> sum = 0;
+            for (size_t e = 0; e < numberCells; ++e) {
+                const double ae = flat.cellCentres[e] - flat.cellWidths[e] / 2;
+                const double be = flat.cellCentres[e] + flat.cellWidths[e] / 2;
+                const double weight = (phi(bc - ae) - phi(ac - ae) - phi(bc - be) + phi(ac - be)) / std::numbers::pi;
+                weightSum += weight;
+                sum += weight * (cellCurrents[e] / flat.cellWidths[e]);
+            }
+            smoothedSheet[c] = sum / weightSum;
+        }
+    }
     for (size_t cellIndex = 0; cellIndex < numberCells; ++cellIndex) {
         const double cellWidth = flat.cellWidths[cellIndex];
         const double sheetCurrentSquared = std::norm(cellCurrents[cellIndex] / cellWidth);
+        const double currentTerm = std::norm(smoothedSheet[cellIndex]) * (functionF / 2 + functionG) +
+                                   (sheetCurrentSquared - std::norm(smoothedSheet[cellIndex])) / nu;
         losses += flat.cellLengthRatios[cellIndex] * cellWidth *
-                  (2 * parallelFieldSquared[cellIndex] * (functionF - 2 * functionG) + sheetCurrentSquared * (functionF / 2 + functionG));
+                  (2 * parallelFieldSquared[cellIndex] * (functionF - 2 * functionG) + currentTerm);
         turnCurrent += cellCurrents[cellIndex];
     }
     losses += endTerm * flat.thickness * 2 * (flat.cellLengthRatios.front() * parallelFieldSquared.front() + flat.cellLengthRatios.back() * parallelFieldSquared.back());

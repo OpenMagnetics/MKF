@@ -200,9 +200,13 @@ struct FlatTurnCells {
     // The conductor's own length over the turn's (WindingOhmicLosses::calculate_turn_conductor_length): the length its DC
     // and skin losses are booked over. The cells' lengths combine to it as their conductances do.
     double conductorLengthRatio = 0;
-    // The cuts: the end cells and every cell from the ends inwards are one thickness wide for endCellCount cells, then
+    // The cuts: the end cells and every cell from the ends inwards are edgeCellWidth wide for endCellCount cells, then
     // each grows by cellGrowth up to maximumCellWidthInThicknesses thicknesses. The innermost remainder joins the last cell
-    // when it is under half of it. Fixed geometry, the same at every harmonic.
+    // when it is under half of it. Fixed geometry, the same at every harmonic. edgeCellWidth is one thickness, or half a
+    // skin depth at the operating point's fundamental when that is less (ABT #2384, Alf 2026-11-20, "find a converging
+    // kernel"): the current a field perpendicular to the conductor drives peaks within a skin depth of its ends, and the
+    // cells must resolve it. On the multi-window E 42 primary (0.8 mm bars, 3.9 skin depths at 100 kHz) the loss stops
+    // moving at a quarter skin depth; half a skin depth is within 3 % of that at about 2.5x the cost of one thickness.
     static constexpr size_t endCellCount = 3;
     // x2 (Alf 2026-11-06, within 3 % of the full model): against x1.4 the planar OMFEM fixtures move at most 0.63 % and the
     // planar adviser candidates 0.08 %. The end cells are the physics (one end cell, or end cells 2t wide, move Sixteen by
@@ -222,7 +226,7 @@ struct FlatTurnCells {
     // The face sheets' own thickness, in conductor thicknesses (a sheet is a thin uniform rectangle inside the face).
     static constexpr double faceSheetThicknessInThicknesses = 1.0 / 20;
     // The cell cuts of a conductor of this width and thickness: cell widths in order along the wide axis.
-    static std::vector<double> calculate_cell_widths(double width, double thickness);
+    static std::vector<double> calculate_cell_widths(double width, double thickness, double edgeCellWidth);
     // A gap mouth on its column face, in the window frame: the face's x and the gap's extent y0..y1.
     struct GapMouth {
         double x = 0;
