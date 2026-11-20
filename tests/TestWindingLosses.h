@@ -607,30 +607,30 @@ namespace WindingLossesTestData {
         config.includeFringing = true;
         config.mirroringDimension = 2;
         
-        // Pinned to 2D OMFEM WITHOUT the 5 um residual gaps (ABT #1425, 2026-09-27), like the
-        // five-turn PQ 20/16: each AC value is OMFEM's OWN R_ac/R_dc (its own DC) times MKF's DC for
-        // this fixture (1.15494 mW), so the +-25% check compares the two solvers' R_ac/R_dc, never
-        // watts across different turn lengths. The residual gaps are left out because MKF excludes
-        // residual (mating-surface) gaps from every field source (ABT #832); with them OMFEM reads
-        // R_ac/R_dc 22.96 at 500 kHz, without them 14.98 (the near field of the residual gap on the
-        // turns next to it, ABT #1441). OMFEM R_ac/R_dc without residual gaps: 6.704 / 9.421 /
-        // 11.55 / 13.36 / 14.98 / 16.40 / 17.74 / 18.97 / 20.08 / 21.27 at 100 k .. 1 MHz (planar
-        // solve, automatic conductor mesh = skin depth / 3). Mesh check at 500 kHz: 14.98 / 14.99 /
-        // 15.30 at conductor targets 30.7 / 10 / 7 um. Caveat: PQ windows are only partly enclosed
-        // by the core, so OMFEM's fully imaged planar frame may overstate field confinement; OMFEM
-        // is nevertheless the reference.
+        // Re-pinned 2026-11-20 (approved by Alf, ABT #2384) to 2D OMFEM WITH the 5 um residual gaps, the design as
+        // given: MKF's neutral window now carries a residual gap's MMF as a source (ABT #1304), so the 2026-09-27 pins
+        // without them (ABT #1425) no longer compared like with like, and they were made on a faulty section: MVB++
+        // cut the PQ window as a 16-gon circumscribed about E/2, putting the lateral wall at 11.47 mm instead of
+        // 11.25 mm beside the residual gap, and OMFEM left the yoke plates at the post depth (L 299 uH against MKF's
+        // 325). OMFEM 0cc37a5 (plates at their measured real reluctance) on MVB++ 9047041 (exact circles): L 322.7 uH.
+        // Each AC value is OMFEM's OWN R_ac/R_dc (its own DC) times MKF's DC for this fixture (1.15494 mW), so the
+        // +-25% check compares the two solvers' R_ac/R_dc, never watts across different turn lengths. OMFEM R_ac/R_dc:
+        // 7.613 / 11.11 / 13.84 / 16.14 / 18.15 / 19.94 / 21.68 / 23.23 / 24.62 / 26.05 at 100 k .. 1 MHz (planar
+        // solve, conductor mesh = skin depth / 3; inputs and logs in /home/alf/OpenMagnetics/.mkf-triage-runs/wl/pq/repin).
+        // Per turn MKF reads 0.95-1.07x at 10-50 kHz and 1.02-1.24x at 200 kHz-1 MHz (the centre turn beside the
+        // residual gaps 1.12x; it read 2x against the old section).
         config.expectedValues = {
             {0.01, 0.0011519},
-            {100000, 0.0077427},
-            {200000, 0.010881},
-            {300000, 0.013344},
-            {400000, 0.015431},
-            {500000, 0.017295},
-            {600000, 0.018942},
-            {700000, 0.02049},
-            {800000, 0.021905},
-            {900000, 0.023196},
-            {1000000, 0.02456}
+            {100000, 0.0087927},
+            {200000, 0.012836},
+            {300000, 0.015988},
+            {400000, 0.018637},
+            {500000, 0.020964},
+            {600000, 0.023034},
+            {700000, 0.025036},
+            {800000, 0.026824},
+            {900000, 0.028436},
+            {1000000, 0.030084}
         };
         
         config.createMagnetic = []() {
