@@ -5036,11 +5036,17 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces(
                         if (advance && std::abs(c.at(0) - route.waypoints.at(entrance ? route.waypoints.size() - 1 : 0).at(0)) > 1e-12) {
                             if (path.shape == ColumnShape::ROUND) {
                                 const double radius = c.at(0);
-                                if (!(std::abs(slot) < radius)) {
-                                    throw std::logic_error("The level-row judge of " + label.str() + ": the lane x = " + std::to_string(slot * 1e3) +
-                                                           " mm lies beyond the circle of turn '" + turn.get_name() + "'");
+                                // A turn whose circle the lane does not reach has no copper at the lane: the lead's run
+                                // stands at x = lane and the turn never comes further out along x than its own radius
+                                // plus half its section. Past that plus half the lead's size the two cannot meet, and the
+                                // turn is not judged (the web's PQ 65/60 with an edge-wound 10 mm strip secondary, whose
+                                // third parallel's lane at x = -15.93 mm lies outside the Primary's inner turns: this
+                                // used to throw). Nearer, the turn is judged where it comes closest, a quarter revolution
+                                // from the crossing.
+                                if (std::abs(slot) - radius >= d.at(0) / 2 + routeDiameters[index] / 2) {
+                                    continue;
                                 }
-                                climbed = std::copysign(std::asin(std::abs(slot) / radius), along) / (2 * std::numbers::pi);
+                                climbed = std::copysign(std::asin(std::min(1.0, std::abs(slot) / radius)), along) / (2 * std::numbers::pi);
                             }
                             else {
                                 // A station no wrap arrives at carries no length (a layer's first station: a link or a
@@ -5809,14 +5815,23 @@ std::vector<ConnectionReservedSpace> Coil::get_connection_reserved_spaces(
                     const auto [db, lenB] = unit(run.at(0), run.at(1));
                     const double cosTheta = std::clamp(da[0] * db[0] + da[1] * db[1] + da[2] * db[2], -1.0, 1.0);
                     const double theta = std::acos(cosTheta);
-                    const double bend = route.plannedBendRadius;
+                    if (!(route.plannedBendRadius > 0)) {
+                        throw CoilException(ErrorCode::COIL_WINDING_ERROR, "Real winding: " + label_route(route) + " has no planned bend radius for "
+                                            "the bend from its turn's row end onto its run");
+                    }
+                    // A corner whose bend does not fit its legs is drawn SHARP at the vertex and reported where it is drawn
+                    // (Alf, 2026-10-30 and 2026-11-07: "use sharp when rounding corner cannot be used"; a build is never
+                    // refused for a corner, the rule measure_terminal_bend_clearances follows too). It is judged as drawn:
+                    // the two pieces meet at the vertex. bug_nan_losses_per_turn, 'Secondary 1 Half 1' entrance: a 1.100 mm
+                    // bend on a 0.551 mm re-sloped piece used to throw here and autocomplete handed back nothing.
+                    const bool sharp = route.plannedBendRadius * std::tan(theta / 2) > std::min(lenA, lenB);
+                    const double bend = sharp ? 0.0 : route.plannedBendRadius;
                     const double tangentLength = bend * std::tan(theta / 2);
-                    if (!(bend > 0) || tangentLength > std::min(lenA, lenB)) {
-                        std::ostringstream out;
-                        out << std::setprecision(6) << "Real winding: the bend of " << label_route(route) << " from its turn's row end onto its run ("
-                            << bend * 1e3 << " mm, " << theta * 180 / std::numbers::pi << " deg) does not fit its legs (" << lenA * 1e3 << " / "
-                            << lenB * 1e3 << " mm)";
-                        throw CoilException(ErrorCode::COIL_WINDING_ERROR, out.str());
+                    if (sharp && std::getenv("MKF_LANE_MOVE_DIAG")) {
+                        std::cerr << std::setprecision(6) << "[row-end] " << label_route(route) << ": the bend from its turn's row "
+                                  << (rowStart ? "start" : "end") << " onto its run (" << route.plannedBendRadius * 1e3 << " mm, "
+                                  << theta * 180 / std::numbers::pi << " deg) does not fit its legs (" << lenA * 1e3 << " / " << lenB * 1e3
+                                  << " mm): judged as the sharp corner it is drawn as" << std::endl;
                     }
                     const P3 tA{vertex[0] - da[0] * tangentLength, vertex[1] - da[1] * tangentLength, vertex[2] - da[2] * tangentLength};
                     const P3 tB{vertex[0] + db[0] * tangentLength, vertex[1] + db[1] * tangentLength, vertex[2] + db[2] * tangentLength};

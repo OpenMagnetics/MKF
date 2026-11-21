@@ -1340,9 +1340,11 @@ TEST_CASE("An edge-wound rectangular secondary held whole by its section leaves 
         CHECK(turn->get_winding() == secondaryName);
         CHECK(turn->get_parallel() == route.parallel);
         CHECK(turn->get_section().value() == *sectionsByParallel.at(route.parallel).begin());
-        // The lead leaves at its own turn's height, straight outward.
+        // The lead leaves at its own turn's height, straight outward. Alf, 2026-11-08 (ABT #2274: a level row at the
+        // lane), which replaced the turn's station height checked here before: the height is the turn's AT ITS LANE,
+        // its station moved by MKF's levelRowShift (none on a lead at the crossing).
         CHECK(turnEnd[0] == turn->get_coordinates()[0]);
-        CHECK(turnEnd[1] == turn->get_coordinates()[1]);
+        CHECK_THAT(turnEnd[1], Catch::Matchers::WithinAbs(turn->get_coordinates()[1] + route.levelRowShift.value_or(0.0), 1e-12));
         CHECK(windowEnd[1] == turnEnd[1]);
         CHECK(windowEnd[0] > turnEnd[0]);
         // Its corners are planned for its FLATWISE limit and its coated radius only, below the
@@ -1427,7 +1429,10 @@ TEST_CASE("Pinned sibling leads stand far enough apart for the ramps between the
         if (group.size() <= size_t(route.parallel)) group.resize(route.parallel + 1);
         group[route.parallel] = {exitX, span};
     }
-    REQUIRE(ramped > 0);   // otherwise this checks the plain lane grid only
+    // Alf, 2026-11-08 (ABT #2274: a lead leaves level at its turn's height at its lane, no slot ramp), which
+    // replaced the ramps this case required before (REQUIRE(ramped > 0)): no lead of this design ramps now, so
+    // what is checked below is that pinned siblings still stand at least a coated wire's pitch apart.
+    CHECK(ramped == 0);
     size_t pairs = 0;
     for (const auto& [key, leads] : groups) {
         for (size_t k = 1; k < leads.size(); ++k) {
@@ -1496,25 +1501,27 @@ TEST_CASE("A terminal stub ramps or not by its height at its exit slot, not at i
             CHECK(stub->pitchTrue >= 2 * R);
             ++straight;
         }
-        // Spec S0/S1 (Alf, 2026-10-25): the Primary, the primary isolation group, packs on the x <= 0
-        // half, so its p1 exit leaves at -7.635 mm, where its last turn stands 1.550 mm off its row
-        // (b95d64cf: on the x >= 0 half, 3.77 mm). That is under the 2R = 1.655 mm its two bends need,
-        // so it ramps: the stub ramps when it is shorter than 2R at its slot.
+        // Alf, 2026-11-08 and 2026-11-13 (ABT #2274), which replaced what was checked on these two leads before (both
+        // ramped: on the lanes of the S0 halves their stubs stood 1.550 and 0.752 mm off their rows, under the
+        // 2R = 1.655 mm of the 1.05 bend): the finishes stand on +x one coated OD apart, and a lead bends at its
+        // coated radius, so 2R is one coated OD (0.855 mm). The Primary's p1 finish stands 1.482 mm off its row at
+        // its slot and its p2 finish 2.126 mm: both hold their two bends and neither ramps.
         if (route.winding == "Primary" && route.parallel == 1 && route.kind == ConnectionKind::TERMINAL_EXIT) {
-            CHECK(stub->pitchTrue < 2 * R);
-            CHECK(route.rampLength);
+            CHECK(stub->pitchTrue >= 2 * R);
+            CHECK_FALSE(route.rampLength);
         }
-        // And the other way round: the Primary's p2 exit stands 1.846 mm off its row at its station, 2R
-        // clear, but 0.752 mm at its slot (-3.436 mm), so it ramps although the station rule would not.
         if (route.winding == "Primary" && route.parallel == 2 && route.kind == ConnectionKind::TERMINAL_EXIT) {
             CHECK(stub->station >= 2 * R);
-            CHECK(stub->pitchTrue < 2 * R);
-            CHECK(route.rampLength);
+            CHECK(stub->pitchTrue >= 2 * R);
+            CHECK_FALSE(route.rampLength);
         }
     }
     UNSCOPED_INFO(ramps << " ramps, " << straight << " straight stubs, " << stationWouldRamp << " on which the station rule decides otherwise");
-    REQUIRE(stationWouldRamp > 0);   // the premise: the two rules disagree on this design
-    REQUIRE(ramps > 0);
+    // On the current lanes no stub of this design is shorter than 2R at its slot or at its station: none ramps, and
+    // the slot rule and the station rule agree on every lead (before: they disagreed, and stubs ramped).
+    CHECK(stationWouldRamp == 0);
+    CHECK(ramps == 0);
+    REQUIRE(straight > 0);
     settings.reset();
 }
 

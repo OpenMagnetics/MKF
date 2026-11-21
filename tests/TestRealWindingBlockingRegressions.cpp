@@ -1717,12 +1717,48 @@ TEST_CASE("Real winding: a foil end's axial lead lies on the sheet and leaves pa
         CHECK(reserved == 1);
     }
     CHECK(axialRoutes == 8);
+    // Alf, 2026-11-08 (ABT #2274: starts on -x, finishes on +x, the windings outward from the crossing in winding
+    // order), which replaced the bundles both starting at the crossing checked here before: an end's leads still
+    // stand side by side in parallel order, one outer diameter each, but from where the radial leads of that end
+    // leave them room. Where another winding's radial lead on the same face and end runs out on a row closer to the
+    // axial leads' own radial run (AxialLead::end) than their two coated half sizes, the bundle starts at that lead's
+    // outer edge (|exit slot| + half its size); otherwise at the crossing. Derived here from the routes.
+    size_t bundlesMoved = 0;
     for (const auto& [kind, byParallel] : alongFaceByEnd) {
         REQUIRE(byParallel.size() == 4);
+        const double sign = kind == OpenMagnetics::ConnectionKind::TERMINAL_ENTRANCE ? -1.0 : 1.0;
+        std::optional<double> runRow;
+        int face = -1;
+        for (const auto& route : routes) {
+            if (route.winding == foilName && route.kind == kind) {
+                runRow = route.axialLead->end;
+                face = route.side;
+            }
+        }
+        REQUIRE(runRow);
+        double bundleStart = 0;
+        for (const auto& other : routes) {
+            if ((other.kind != OpenMagnetics::ConnectionKind::TERMINAL_ENTRANCE && other.kind != OpenMagnetics::ConnectionKind::TERMINAL_EXIT) ||
+                other.axialLead || other.side != face || !other.exitSlot || other.waypoints.empty()) {
+                continue;
+            }
+            const bool otherEntrance = other.kind == OpenMagnetics::ConnectionKind::TERMINAL_ENTRANCE;
+            const std::string otherTurn = otherEntrance ? other.toTurn : other.fromTurn;
+            const auto turn = std::find_if(turns.begin(), turns.end(), [&](const auto& t) { return t.get_name() == otherTurn; });
+            REQUIRE(turn != turns.end());
+            const double otherSize = coil.terminal_turn_path(other, *turn, routes).stubDiameter;
+            const double row = (otherEntrance ? other.waypoints.front() : other.waypoints.back()).at(1);
+            if (std::abs(row - runRow.value()) < (otherSize + leadOuter) / 2) {
+                bundleStart = std::max(bundleStart, sign * other.exitSlot.value() + otherSize / 2);
+            }
+        }
+        bundlesMoved += bundleStart > 0 ? 1 : 0;
         for (const auto& [parallel, alongFace] : byParallel) {
-            CHECK_THAT(alongFace, Catch::Matchers::WithinAbs((double(parallel) + 0.5) * leadOuter, 1e-9));
+            INFO((sign < 0 ? "start" : "finish") << " bundle from " << bundleStart * 1e3 << " mm, parallel " << parallel);
+            CHECK_THAT(alongFace, Catch::Matchers::WithinAbs(bundleStart + (double(parallel) + 0.5) * leadOuter, 1e-9));
         }
     }
+    CHECK(bundlesMoved == 1);   // this design: one end's bundle stands past a radial lead, the other starts at the crossing
     settings.reset();
 }
 

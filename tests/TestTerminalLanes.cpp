@@ -302,7 +302,7 @@ TEST_CASE("14_dab: every terminal lead has its own lane, clear of every other bu
     REQUIRE(stubs > 0);
 }
 
-TEST_CASE("Pins decide the side: with no pins the S0/S1 default stands, one face, halves by isolation side (spec section 12, ABT #1336)",
+TEST_CASE("Pins decide the side: with no pins the default stands, one face, starts on -x and finishes on +x (spec section 12, ABT #1336)",
           "[constructive-model][coil][real-winding][abt-1705][abt1336]") {
     auto coil = wind_dab_fixture();
     // (iii) no pins: the premise of this case.
@@ -318,14 +318,15 @@ TEST_CASE("Pins decide the side: with no pins the S0/S1 default stands, one face
         if (!is_terminal(route)) {
             continue;
         }
-        const auto& winding = coil.get_functional_description()[coil.get_winding_index_by_name(route.winding)];
         REQUIRE(route.laneHalf.has_value());
-        CHECK(route.laneHalf.value() == (winding.get_isolation_side() == MAS::IsolationSide::PRIMARY ? -1 : 1));   // S0 halves
+        // Alf, 2026-11-08 (ABT #2274), which replaced S0's halves by isolation side: every winding starts on the
+        // -x half and finishes on the +x half.
+        CHECK(route.laneHalf.value() == (route.kind == ConnectionKind::TERMINAL_ENTRANCE ? -1 : 1));
         halves.insert(route.laneHalf.value());
         ++terminals;
     }
     REQUIRE(terminals == 16);
-    REQUIRE(halves.size() == 2);   // both isolation groups present
+    REQUIRE(halves.size() == 2);   // starts and finishes present
 }
 
 TEST_CASE("check_terminal_lanes refuses lanes that put two bundles' bent leads together (ABT #1705)",
@@ -434,16 +435,16 @@ TEST_CASE("terminal_exit_slots: two bundles that touch in the section take disjo
     }
     SECTION("real winding: the exit bundle starts exactly d + R past the entrance bundle") {
         auto slots = OpenMagnetics::Coil::terminal_exit_slots(routes, diameters, attach, true, advance, round_paths(routes, diameters), primaryOnly);
-        // Spec section 25 (Alf, approved 2026-10-28): the entrance order comes from the wrap directions.
-        // Parallel 1's stub climbs past parallel 0's first turn, which leaves its lane towards -x, so
-        // parallel 1 stands at the crossing and parallel 0 one OD out (was p0 0, p1 -od by stub span).
-        CHECK(slots[1].value() == 0.0);
-        // Alf 2026-10-25 (C3): no blanket bend-radius gap between bundles; S1 puts the entrance on -x.
-        CHECK(slots[0].value() == -od);
-        // The exits start one coated OD past the crossing (0.855 mm), then one OD apart (1.710 mm).
-        const double firstExit = od;
-        CHECK(std::abs(slots[3].value() - firstExit) < 1e-12);
-        CHECK(std::abs(slots[2].value() - (firstExit + od)) < 1e-12);
+        // Alf, 2026-11-08 and 2026-11-13 (ABT #2274), which replaced the section-25 order and the bundle gap checked
+        // here before: starts stand on -x and finishes on +x, one coated OD apart with no gap, and along each end the
+        // parallel whose turn stands farthest from the border row is nearest the crossing, so no sibling turn crosses
+        // a lead. The finishes take the crossing itself: parallel 1 (attach -17.8086 mm, the farther from the row
+        // -20.5673 mm) at 0, parallel 0 one OD out. The starts stand beside them on -x: parallel 1 (attach
+        // -19.6957 mm; parallel 0 attaches on the row itself) at -OD, parallel 0 at -2 OD.
+        CHECK(slots[3].value() == 0.0);
+        CHECK(std::abs(slots[2].value() - od) < 1e-12);
+        CHECK(std::abs(slots[1].value() + od) < 1e-12);
+        CHECK(std::abs(slots[0].value() + 2 * od) < 1e-12);
     }
     SECTION("real winding without a planned bend throws") {
         routes[2].plannedBendRadius = 0;
@@ -1497,9 +1498,9 @@ TEST_CASE("13_current_sense: the primary group's leads are laid first, so a Seco
             continue;
         }
         ++terminals;
-        const auto& winding = coil.get_functional_description()[coil.get_winding_index_by_name(route.winding)];
         REQUIRE(route.laneHalf.has_value());
-        CHECK(route.laneHalf.value() == (winding.get_isolation_side() == MAS::IsolationSide::PRIMARY ? -1 : 1));
+        // Alf, 2026-11-08 (ABT #2274), which replaced S0's halves by isolation side: starts on -x, finishes on +x.
+        CHECK(route.laneHalf.value() == (route.kind == ConnectionKind::TERMINAL_ENTRANCE ? -1 : 1));
         for (const auto& finding : route.findings) {
             CHECK(finding.kind != LeadFindingKind::LANES_DO_NOT_FIT);   // the face is not full
         }
@@ -1671,7 +1672,7 @@ TEST_CASE("Real winding: a far-half terminal turn keeps its copper inside the wi
     settings.reset();
 }
 
-TEST_CASE("two_switch_forward: the foil Secondary's axial leads, judged at their real extent, do not fit the primary's face, so the Secondary moves (spec S0, ABT #2274 / #2291)",
+TEST_CASE("two_switch_forward: the foil Secondary's axial leads stand on the Primary's face, the finishes outward of the Primary's finish (ABT #2274 / #2291)",
           "[constructive-model][coil][real-winding][abt2274-foil-half]") {
     // ABT #2274 / #2291 (Alf, 2026-11-06). The design: MAS example two_switch_forward_transformer_complete,
     // E 42/21/15 (rectangular column), Primary 80 turns of litz, Secondary 2 turns x 8 parallels of Foil 0.2
@@ -1680,6 +1681,11 @@ TEST_CASE("two_switch_forward: the foil Secondary's axial leads, judged at their
     // 0 .. +4.272 mm, both halves of a face whose straight is 5.975 mm. The axial leads were left out of the
     // S0 judgement: they got no half, no LANES_DO_NOT_FIT, and stayed on the Primary's face, their starts on
     // the primary group's half.
+    // Alf, 2026-11-08 (ABT #2274), which replaced the S0 halves and the face move this case checked before (the
+    // Secondary on face 1): every winding's starts stand on -x and its finishes on +x, the windings outward from
+    // the crossing in winding order, and a group never changes face for fit. So the Secondary keeps the Primary's
+    // face, and where the Primary's finish runs out on a row its axial leads' radial run would meet, the finish
+    // bundle starts past that lead's copper instead of at the crossing.
     std::ifstream file(std::filesystem::path{std::source_location::current().file_name()}
                            .parent_path()
                            .append("..")
@@ -1702,6 +1708,8 @@ TEST_CASE("two_switch_forward: the foil Secondary's axial leads, judged at their
     const auto layout = coil.get_connection_layout();
     std::set<int> primaryFaces, secondaryFaces;
     size_t axialLeads = 0;
+    std::optional<double> primaryFinishOuterEdge, primaryFinishHalf, primaryFinishRow, finishRunRow, finishHalf;
+    std::vector<double> finishInnerEdges;
     for (const auto& route : layout.routes) {
         INFO(label(route));
         if (!is_terminal(route)) {
@@ -1715,12 +1723,26 @@ TEST_CASE("two_switch_forward: the foil Secondary's axial leads, judged at their
         }
         if (primary) {
             REQUIRE_FALSE(route.axialLead);
+            if (route.kind == ConnectionKind::TERMINAL_EXIT) {
+                REQUIRE(route.exitSlot);
+                const auto turns = coil.get_turns_description().value();
+                const auto turn = std::find_if(turns.begin(), turns.end(), [&](const auto& candidate) { return candidate.get_name() == route.fromTurn; });
+                REQUIRE(turn != turns.end());
+                primaryFinishHalf = coil.terminal_turn_path(route, *turn, layout.routes).stubDiameter / 2;
+                primaryFinishOuterEdge = route.exitSlot.value() + primaryFinishHalf.value();
+                primaryFinishRow = route.waypoints.back().at(1);
+            }
             continue;
         }
         REQUIRE(route.axialLead);   // the premise: the foil's ends leave axially (ABT #1907)
         ++axialLeads;
         const bool entrance = route.kind == ConnectionKind::TERMINAL_ENTRANCE;
-        // Alone on its face (spec section 24): starts on x <= 0, finishes on x >= 0, where the sheets put them.
+        if (!entrance) {
+            finishInnerEdges.push_back(route.axialLead->alongFace - route.axialLead->outerDiameter / 2);
+            finishRunRow = route.axialLead->end;
+            finishHalf = route.axialLead->outerDiameter / 2;
+        }
+        // Starts on x <= 0, finishes on x >= 0, where the sheets put them.
         REQUIRE(route.laneHalf.has_value());
         CHECK(route.laneHalf.value() == (entrance ? -1 : 1));
         CHECK(route.laneOverflow == std::optional<bool>(false));
@@ -1746,8 +1768,18 @@ TEST_CASE("two_switch_forward: the foil Secondary's axial leads, judged at their
     CHECK(axialLeads == 16);
     REQUIRE(primaryFaces.size() == 1);
     REQUIRE(secondaryFaces.size() == 1);
-    CHECK(*primaryFaces.begin() == 0);   // the face's first group keeps it
-    CHECK(*secondaryFaces.begin() == 1);  // the Secondary, whose leads do not fit its half there, moves
+    CHECK(*primaryFaces.begin() == 0);
+    CHECK(*secondaryFaces.begin() == 0);   // no face move for fit (Alf, 2026-11-08): the Secondary shares the Primary's face
+    // The finish bundle stands outward of the Primary's finish: that lead runs out on a row the axial leads' radial
+    // run would meet (closer than their two coated half sizes), so the innermost axial finish starts at its outer edge.
+    REQUIRE(primaryFinishOuterEdge);
+    REQUIRE(primaryFinishRow);
+    REQUIRE(finishRunRow);
+    REQUIRE(finishInnerEdges.size() == 8);
+    INFO("the Primary's finish: outer edge at x = " << primaryFinishOuterEdge.value() * 1e3 << " mm, row " << primaryFinishRow.value() * 1e3
+         << " mm; the axial finishes' radial run on row " << finishRunRow.value() * 1e3 << " mm");
+    REQUIRE(std::abs(primaryFinishRow.value() - finishRunRow.value()) < primaryFinishHalf.value() + finishHalf.value());   // the premise: the rows are near
+    CHECK_THAT(*std::min_element(finishInnerEdges.begin(), finishInnerEdges.end()), Catch::Matchers::WithinAbs(primaryFinishOuterEdge.value(), 1e-9));
     settings.reset();
 }
 
@@ -1840,7 +1872,11 @@ TEST_CASE("A closed core's tangential terminal lead starts its exit run from its
         CHECK_THAT(route.exitRun.front()[0], WithinAbs(route.exitSlot.value(), 1e-12));
         CHECK(-route.exitRun.front()[2] > -route.tangentDeparture->cornerEnd[2]);
     }
-    CHECK(tangential > 0);
+    // Alf, 2026-11-13 and 2026-11-14 (ABT #2274), which replaced the tangential lead this case required before
+    // (CHECK(tangential > 0)): a winding's parallel lanes stand one coated OD apart from the crossing and a lead bends
+    // at its coated radius, so on this part no lane lies at or beyond its turn's radius and no lead leaves tangentially.
+    // The checks above stand for any part on which one does.
+    CHECK(tangential == 0);
     settings.reset();
 }
 
@@ -2176,41 +2212,44 @@ TEST_CASE("a tie no order clears is drawn and reported and the plan returned (sp
     }
 }
 
-TEST_CASE("14_dab: the Secondary's descending landings take their exit lanes highest row first (ABT #1336)",
+TEST_CASE("14_dab: the Secondary's finishes stand one OD apart past the Primary's, lowest end turn first (ABT #1336, #2274)",
           "[constructive-model][coil][real-winding][abt-1336]") {
     // Each Secondary parallel ends on a FINAL_LANDING that descends a whole window per revolution, so at
-    // the lanes beyond its own a last turn stands well above its row. Ascending order put parallel 0's
-    // landing 28 um inside parallel 1's coated envelope under MVB++'s certified gate; the order that
-    // clears stands parallel 3 first. The order is the one MVB++ built and certified the part with;
-    // the lanes stand 3.225 mm further out than that build's (6.977 mm for parallel 3): planned
-    // pitch-true, the Secondary's parallel 2 ENTRANCE stands 1.624 mm off its row at that build's slot
-    // (4.439 mm), short of the 1.655 mm its two bends need, so it ramps, and its ramp's span moves the
-    // entrance bundle and the exit bundle after it out along the face.
+    // the lanes beyond its own a last turn stands well above its row, and the order of the four lanes decides
+    // whether a landing meets a sibling's lead.
+    // Alf, 2026-11-08 and 2026-11-13 (ABT #2274), which replaced the lanes pinned here before (0.855 / 1.710 /
+    // 10.190 / 11.045 mm, parallel 3 first, the spec S0 / P5 / ramp-span plan): every winding's finishes stand on
+    // +x, the windings outward from the crossing in winding order, a winding's parallels one coated OD apart
+    // with no gap, and along the finishes the lowest-ending parallel nearest the crossing, so no sibling turn
+    // crosses a lead. The expected lanes are derived here from the routes: the Primary's outermost finish, the
+    // coated OD, and each Secondary parallel's own end-turn height.
     auto coil = wind_dab_fixture();
     const auto layout = coil.get_connection_layout();
+    const double od = 0.855e-3;   // both windings' coated OD (the fixture's Round 0.8 - Grade 1)
     std::map<int64_t, double> exitSlot;
+    std::map<int64_t, double> endHeight;
+    double primaryOutermost = -1;
     for (const auto& route : layout.routes) {
-        if (route.winding == "Secondary" && route.kind == ConnectionKind::TERMINAL_EXIT) {
-            REQUIRE(route.exitSlot.has_value());
+        if (route.kind != ConnectionKind::TERMINAL_EXIT) {
+            continue;
+        }
+        REQUIRE(route.exitSlot.has_value());
+        if (route.winding == "Primary") {
+            primaryOutermost = std::max(primaryOutermost, route.exitSlot.value());
+        }
+        if (route.winding == "Secondary") {
             exitSlot[route.parallel] = route.exitSlot.value();
+            endHeight[route.parallel] = route.waypoints.front().at(1);   // a finish's route starts at its turn
         }
     }
     REQUIRE(exitSlot.size() == 4);
-    // Spec S0 (Alf, 2026-10-25, ONE FACE; this bobbin has no pins, so section 12 does not apply): the
-    // Secondary no longer has a face of its own. It shares face 0 with the Primary on the x >= 0 half,
-    // so its entrance bundle starts one od (0.855 mm, C3: the coated radii) past the Primary's p3 exit
-    // at the crossing instead of at 0.
-    // Spec P5 (lanes only where leads can meet; Alf, 2026-10-28, "they look fine"): the planner's 3D envelopes
-    // judge Secondary exit p3 unable to meet entrance p0 (its turns stand 2.3 mm higher on the face), so it
-    // shares p0's lane at 0.855 mm and p2 stands one od beyond it; p1 and p0 stay past the entrance bundle
-    // (entrances at 0.855 / 4.30861 / 8.47408 / 9.32908 mm). The order (p3 first) is unchanged.
-    // ABT #2117 (32e9130b) anchors the helical end bundles at their outer turn's edge, a few um off
-    // the centre they were laid at, so p1 and p0 stand 5.53 um further out than the 10.18408 /
-    // 11.03908 mm planned before it (Alf, 2026-10-31).
-    CHECK_THAT(exitSlot[3], Catch::Matchers::WithinAbs(0.855e-3, 0.5e-6));
-    CHECK_THAT(exitSlot[2], Catch::Matchers::WithinAbs(1.71e-3, 0.5e-6));
-    CHECK_THAT(exitSlot[1], Catch::Matchers::WithinAbs(10.18961e-3, 0.5e-6));
-    CHECK_THAT(exitSlot[0], Catch::Matchers::WithinAbs(11.04461e-3, 0.5e-6));
+    REQUIRE(primaryOutermost >= 0);
+    std::vector<int64_t> byHeight{0, 1, 2, 3};
+    std::sort(byHeight.begin(), byHeight.end(), [&](int64_t a, int64_t b) { return endHeight[a] < endHeight[b]; });
+    for (size_t rank = 0; rank < byHeight.size(); ++rank) {
+        INFO("Secondary parallel " << byHeight[rank] << ", end turn at " << endHeight[byHeight[rank]] * 1e3 << " mm, rank " << rank);
+        CHECK_THAT(exitSlot[byHeight[rank]], Catch::Matchers::WithinAbs(primaryOutermost + (double(rank) + 1) * od, 0.5e-6));
+    }
     Settings::GetInstance().reset();
 }
 
@@ -2307,19 +2346,18 @@ TEST_CASE("terminal_exit_slots: siblings that cannot meet share the crossing, si
     }
 }
 
-TEST_CASE("Real winding: a terminal lead may take the other x half to fit, but a Z face changes only for a different isolation group and only inside the core's exit window (ABT #2274)",
+TEST_CASE("Real winding: every winding's starts stand on -x and its finishes on +x of one face; no lead overflows and no group changes face for fit (ABT #2274)",
           "[constructive-model][coil][real-winding][abt2274-no-fit-half]") {
-    // ABT #2274 (Alf, 2026-11-07, confirmed rule): (1) X: a terminal MAY move to the other x half (-x <-> +x) to
-    // avoid other terminals (spec section 22, overflow onto the spare half). (2) Z face: never because of fit
-    // alone; a face move only for a group on a DIFFERENT isolation side from the face's other groups (a), an
-    // inductor's entrance/exit (b) or the user's pins/sides (c), and only inside the core's exit window. Designs:
-    // unmodified MAS examples. 02_flyback_efd25_3c95 and 17_cllc_xfmr_e5528_3c92a: the Primary exit's lane on the
-    // primary's half (x <= 0) puts its last turn above the winding window (lane-height check), so it overflows
-    // onto the Secondary's half (x >= 0) of the same face. 04_forward_xfmr_e3216_n87: a 3.3V (Tertiary) entrance
-    // overflows onto the primary's half of the same face, so no face move. two_switch_forward_transformer_complete:
-    // the foil Secondary's axial leads cannot take another lane, do not fit the Primary's face, and that group --
-    // a different isolation side -- moves to the other face (section 23), inside the core's exit window. Expected values are derived here from the routes, the windings'
-    // isolation sides and the core's columns.
+    // Alf, 2026-11-08 (ABT #2274), which replaced what this case checked before (the S0 half of each isolation group,
+    // a lead overflowing onto the other group's half on 02 / 17 / 04, and two_switch's Secondary moving to the other
+    // face): every winding's starts stand on the -x half and its finishes on the +x half, the windings outward from
+    // the crossing in winding order; a lead may still move along x to avoid another, and a Z face changes only for a
+    // different isolation side, an inductor's start / finish or the user's pins, never for fit alone. On these four
+    // unmodified MAS examples that plan needs no overflow and no face move: 02_flyback_efd25_3c95 and
+    // 17_cllc_xfmr_e5528_3c92a (the Primary's finish, which overflowed off the primary group's half, now stands on +x
+    // by the rule), 04_forward_xfmr_e3216_n87 (the 3.3V start that overflowed) and
+    // two_switch_forward_transformer_complete (the foil Secondary's axial leads stand outward of the Primary's
+    // on the Primary's face). Expected values are derived here from the routes, the windings and the core's columns.
     const std::string design = GENERATE(std::string("02_flyback_efd25_3c95"), std::string("17_cllc_xfmr_e5528_3c92a"),
                                         std::string("04_forward_xfmr_e3216_n87"),
                                         std::string("complete/two_switch_forward_transformer_complete"));
@@ -2376,9 +2414,7 @@ TEST_CASE("Real winding: a terminal lead may take the other x half to fit, but a
         CHECK(faces == 1);
     }
     CHECK(primaryFace.value() == 0);
-    // Rule 1: the half is S0's (the group's) on a face shared by groups, S1's (entrance x <= 0, exit x >= 0) on a
-    // face one group has to itself (spec section 24). A lead that overflowed (spec section 22) stands on the OTHER
-    // half of the SAME face (an x move, never a face move); every other lead stands on its own half.
+    // Rule 1: a start's half is -x and a finish's +x, whatever its isolation group, and each lead stands on its half.
     size_t judged = 0;
     size_t overflowed = 0;
     for (const auto& route : layout.routes) {
@@ -2387,8 +2423,7 @@ TEST_CASE("Real winding: a terminal lead may take the other x half to fit, but a
         }
         INFO(label(route) << " face " << route.side);
         const bool entrance = route.kind == ConnectionKind::TERMINAL_ENTRANCE;
-        const int expected = groupsOnFace.at(route.side).size() == 1 ? (entrance ? -1 : 1)
-                                                                      : (group_of(route) == MAS::IsolationSide::PRIMARY ? -1 : 1);
+        const int expected = entrance ? -1 : 1;
         REQUIRE(route.laneHalf.has_value());
         CHECK(route.laneHalf.value() == expected);
         REQUIRE(route.laneOverflow.has_value());
@@ -2408,52 +2443,37 @@ TEST_CASE("Real winding: a terminal lead may take the other x half to fit, but a
         }
     }
     CHECK(judged >= 2);
+    CHECK(overflowed == 0);          // the plan needs no overflow on any of the four
+    CHECK(groupsOnFace.size() == 1);   // and no group changed face: every lead stands on S0's face
+    for (const auto& route : layout.routes) {
+        if (!is_terminal(route)) {
+            continue;
+        }
+        INFO(label(route));
+        for (const auto& finding : route.findings) {
+            CHECK(finding.kind != LeadFindingKind::LANES_DO_NOT_FIT);
+        }
+    }
     if (design.starts_with("02_") || design.starts_with("17_")) {
-        // The Primary exit does not fit the primary's half (its Z dragback holds the crossing, and every lane
-        // further out lifts its last turn above the window): it overflows onto the Secondary's half of the SAME
-        // face and fits there. Nothing moved face: every group stays on S0's face.
-        CHECK(groupsOnFace.size() == 1);
-        CHECK(overflowed >= 1);
+        // The Primary's finish, which its Z dragback and the window kept off the primary group's old half, stands on
+        // +x by the rule, on the Primary's face, and fits.
         bool found = false;
         for (const auto& route : layout.routes) {
             if (is_terminal(route) && route.winding == "Primary" && route.kind == ConnectionKind::TERMINAL_EXIT) {
                 found = true;
                 INFO(label(route));
                 REQUIRE(route.exitSlot.has_value());
-                CHECK(route.laneOverflow == std::optional<bool>(true));
-                CHECK(route.exitSlot.value() > 1e-9);
+                CHECK(route.laneOverflow == std::optional<bool>(false));
+                CHECK(route.exitSlot.value() >= -1e-9);
                 CHECK(route.side == primaryFace.value());
-                CHECK_FALSE(std::any_of(route.findings.begin(), route.findings.end(),
-                                        [](const auto& finding) { return finding.kind == LeadFindingKind::LANES_DO_NOT_FIT; }));
             }
         }
         CHECK(found);
     }
-    else if (design.starts_with("04_")) {
-        // The 3.3V (Tertiary) leads do not all fit the non-primary half of the shared face: the one that does not
-        // overflows onto the primary's half of the SAME face (rule 1, an x move) and fits there, so no group
-        // changes face for it (rule 2: the x move is tried first; a face move is not taken for fit alone).
-        CHECK(groupsOnFace.size() == 1);
-        CHECK(overflowed >= 1);
-        for (const auto& route : layout.routes) {
-            if (!is_terminal(route)) {
-                continue;
-            }
-            INFO(label(route));
-            if (route.laneOverflow == std::optional<bool>(true)) {
-                CHECK(group_of(route) == MAS::IsolationSide::TERTIARY);
-            }
-            for (const auto& finding : route.findings) {
-                CHECK(finding.kind != LeadFindingKind::LANES_DO_NOT_FIT);
-            }
-        }
-    }
-    else {
-        // two_switch: the foil Secondary's axial leads (which no x lane can move) do not fit the Primary's face.
-        // Rule 2: the group that did not fit the Primary's face is a DIFFERENT isolation side from it (a); it moved
-        // to the other face, and it fits there: no misfit is left, and every moved lead's radial run, from the
-        // bobbin column's face outwards, stays clear of the core's outer legs (E cores: the lateral columns, which
-        // span the core's depth) -- the core's exit window.
+    else if (design.starts_with("complete/two_switch")) {
+        // two_switch: the foil Secondary's axial leads (which no x lane can move) stand on the Primary's face, outward
+        // of the Primary's leads. Every lead of that group, from the bobbin column's face outwards, stays clear of the
+        // core's outer legs (E cores: the lateral columns, which span the core's depth) -- the core's exit window.
         const auto moved = MAS::IsolationSide::SECONDARY;
         const auto bobbin = coil.resolve_bobbin();
         REQUIRE(bobbin.get_processed_description());
@@ -2471,9 +2491,7 @@ TEST_CASE("Real winding: a terminal lead may take the other x half to fit, but a
             if (group_of(route) != moved) {
                 continue;
             }
-            CHECK(route.side != primaryFace.value());
-            CHECK(group_of(route) != MAS::IsolationSide::PRIMARY);
-            CHECK(groupsOnFace.at(route.side).count(MAS::IsolationSide::PRIMARY) == 0);
+            CHECK(route.side == primaryFace.value());   // no face move for fit
             ++movedLeads;
             const bool entrance = route.kind == ConnectionKind::TERMINAL_ENTRANCE;
             const double lane = route.axialLead ? (entrance ? -1.0 : 1.0) * route.axialLead->alongFace : route.exitSlot.value();
@@ -2568,7 +2586,7 @@ TEST_CASE("agent11 scan of terminal faces", "[.][agent11-scan]") {
 // steps are the ones MVB++ drew as a slanted elbow leg at the agent-12 state (agent 13's measurements):
 // Primary exit 117 um, Secondary p2 exit 35 um, Secondary p1 entrance and exit 17.7 um, Primary entrance
 // 4.66 um. Its dragbacks: each bend at the lead bend radius of the wire, the step-out never past one OD.
-TEST_CASE("Real winding: a non-drawable terminal stub climbs its slot step as a ramp, and a dragback's bump is one OD (ABT #2274)",
+TEST_CASE("Real winding: a terminal lead leaves level at its turn's height at its lane, and a dragback's bump is one OD (ABT #2274)",
           "[constructive-model][coil][real-winding][abt2274-slot-ramp]") {
     std::ifstream file(std::filesystem::path{std::source_location::current().file_name()}
                            .parent_path()
@@ -2621,17 +2639,18 @@ TEST_CASE("Real winding: a non-drawable terminal stub climbs its slot step as a 
         size_t winding;
         int64_t parallel;
         OpenMagnetics::ConnectionKind kind;
-        double step;   // [m], magnitude
     };
+    // Alf, 2026-11-08 (ABT #2274: "ideally the spiral ends on the connection", a level row at the lane, no slot
+    // S-ramp), which replaced the slot ramps checked on these five leads before (steps of 144.6 / 47.5 / 23.8 / 23.8 /
+    // 5.3 um, each climbed as an S of pi sqrt(h Rg / 2)): the lead's row IS its turn's height at its lane, so there
+    // is no step and no ramp. The leads are the same five; the turn's height at the lane is derived independently
+    // below from the turns description, as the step was.
     const std::vector<Expected> expected{
-        // The leads agent 13 found stepping at their slots (MVB++ drew 117 / 35 / 17.7 / 17.7 / 4.66 um of
-        // slant in its 1-OD elbow leg, a part of the step); the steps themselves, row - turn height at
-        // the slot, are pinned here and re-derived independently below from the turns description.
-        {0, 0, OpenMagnetics::ConnectionKind::TERMINAL_EXIT, 144.552e-6},
-        {1, 2, OpenMagnetics::ConnectionKind::TERMINAL_EXIT, 47.5283e-6},
-        {1, 1, OpenMagnetics::ConnectionKind::TERMINAL_ENTRANCE, 23.7641e-6},
-        {1, 1, OpenMagnetics::ConnectionKind::TERMINAL_EXIT, 23.7641e-6},
-        {0, 0, OpenMagnetics::ConnectionKind::TERMINAL_ENTRANCE, 5.29802e-6},
+        {0, 0, OpenMagnetics::ConnectionKind::TERMINAL_EXIT},
+        {1, 2, OpenMagnetics::ConnectionKind::TERMINAL_EXIT},
+        {1, 1, OpenMagnetics::ConnectionKind::TERMINAL_ENTRANCE},
+        {1, 1, OpenMagnetics::ConnectionKind::TERMINAL_EXIT},
+        {0, 0, OpenMagnetics::ConnectionKind::TERMINAL_ENTRANCE},
     };
     for (const auto& lead : expected) {
         const auto* route = find_route(lead.winding, lead.parallel, lead.kind);
@@ -2641,12 +2660,13 @@ TEST_CASE("Real winding: a non-drawable terminal stub climbs its slot step as a 
         REQUIRE(route->waypoints.size() == 2);
         REQUIRE(route->exitSlot);
         REQUIRE(!route->rampLength);
-        REQUIRE(route->slotRampHeight);
-        REQUIRE(route->slotRampLength);
-        CHECK(std::abs(route->slotRampHeight.value()) == Catch::Approx(lead.step).epsilon(1e-4));
+        // No slot ramp is planned.
+        CHECK_FALSE(route->slotRampHeight);
+        CHECK_FALSE(route->slotRampLength);
+        CHECK_FALSE(route->slotRampEndX);
         // Independently from the turns description: the attach turn's station and its advance to the
         // conductor's neighbouring turn, climbed uniformly over the turn's length; on the flat face the
-        // lane x is the distance along the turn from the crossing (upstream for an entrance).
+        // lane x is the signed distance along the turn from the crossing (the turn travels towards -x).
         {
             const bool entrance = lead.kind == OpenMagnetics::ConnectionKind::TERMINAL_ENTRANCE;
             const std::string turnName = entrance ? route->toTurn : route->fromTurn;
@@ -2685,23 +2705,17 @@ TEST_CASE("Real winding: a non-drawable terminal stub climbs its slot step as a 
             }
             REQUIRE(turnLength > 0);
             const double along = route->exitSlot.value();
-            const double independent = route->waypoints.front().at(1) - (station - advance * along / turnLength);
-            std::cout << "[abt2274-slot-ramp] independent step " << independent * 1e6 << " um vs MKF " << route->slotRampHeight.value() * 1e6
-                      << " um (advance " << advance * 1e6 << " um over " << turnLength * 1e3 << " mm)" << std::endl;
+            const double climbToLane = -advance * along / turnLength;   // the turn's height at the lane, less its station
+            const double row = route->waypoints.front().at(1);
+            REQUIRE(route->waypoints.back().at(1) == row);   // the run is level
+            std::cout << "[abt2274-level-row] row " << row * 1e3 << " mm vs the turn at its lane " << (station + climbToLane) * 1e3
+                      << " mm (station " << station * 1e3 << " mm, climb to the lane " << climbToLane * 1e6 << " um, advance "
+                      << advance * 1e6 << " um over " << turnLength * 1e3 << " mm)" << std::endl;
             // The turn length here is the wound turn's own; MKF's face path adds the ride over the other face
-            // (TerminalTurnPath::rideLength), ~2 % on 02, so the two agree to that.
-            CHECK(route->slotRampHeight.value() == Catch::Approx(independent).epsilon(0.03));
+            // (TerminalTurnPath::rideLength), ~2 % on 02, so the climb to the lane agrees to that; MKF emits its
+            // coordinates on a 1 nm grid.
+            CHECK_THAT(row, Catch::Matchers::WithinAbs(station + climbToLane, 0.03 * std::abs(climbToLane) + 2e-9));
         }
-        // The S is the ramp rule's own: S = pi sqrt(h Rg / 2), Rg the plannedBendRadius on a flat face
-        // (lead_ramp_length), so its curvature peaks at exactly 1 / Rg.
-        const double h = std::abs(route->slotRampHeight.value());
-        const double S = route->slotRampLength.value();
-        CHECK(h * std::numbers::pi * std::numbers::pi / (2 * S * S) == Catch::Approx(1.0 / route->plannedBendRadius).epsilon(1e-9));
-        // ABT #2274 (agent 17): MKF publishes where the S ends (the consumer draws onto it): bend + S from the lane,
-        // on the side the turn covers.
-        REQUIRE(route->slotRampEndX);
-        REQUIRE(route->slotRampEndHeight);
-        CHECK(std::abs(route->slotRampEndX.value() - route->exitSlot.value()) == Catch::Approx(S + route->plannedBendRadius).epsilon(1e-12));
     }
     // Dragbacks: bent at the wire's lead bend radius, the step-out stopping exactly at the return's radius.
     size_t dragbacks = 0;
@@ -2720,9 +2734,11 @@ TEST_CASE("Real winding: a non-drawable terminal stub climbs its slot step as a 
         const double theta = route.dragbackBendAngle.value();
         const double step = std::abs(route.waypoints.back().at(0) - route.waypoints.front().at(0));
         // 02's dragbacks step one OD out (adjacent layers), and bend at the radius a lead of the same
-        // wire bends at (its unsleeved terminal lead's plannedBendRadius), never below the declared 1.05 x.
+        // wire bends at (its unsleeved terminal lead's plannedBendRadius), never below the wire's own coated
+        // radius (Alf, 2026-11-07 and 2026-11-13: the 1.05 factor checked here before is gone; a bend's inner
+        // radius is the coating).
         CHECK(step == Catch::Approx(od).epsilon(1e-6));
-        CHECK(R >= 1.05 * od / 2);
+        CHECK(R >= od / 2 * (1 - 1e-12));
         const auto* lead = find_route(windingIndex, route.parallel, OpenMagnetics::ConnectionKind::TERMINAL_EXIT);
         REQUIRE(lead != nullptr);
         REQUIRE(!lead->sleeveOuterDiameter);

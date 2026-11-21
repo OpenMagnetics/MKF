@@ -509,16 +509,10 @@ TEST_CASE("Real winding draws a tangent lead on a route it does not model in ful
         REQUIRE_NOTHROW(coil.wind());
         REQUIRE(coil.is_real_winding_blocking_applied());
         const auto leads = unmodelled_leads(coil, OpenMagnetics::TangentLeadCondition::LATERAL_COLUMN, "E 42/21/20");
-        REQUIRE(leads.routes.size() == 2);   // the Secondary's entrance and exit
-        for (const auto& route : leads.routes) {
-            CHECK(route.winding == "Secondary");
-            for (const auto& condition : route.tangentDeparture->unmodelled) {
-                if (condition.condition == OpenMagnetics::TangentLeadCondition::LATERAL_COLUMN) {
-                    CHECK(condition.columnAxisX != 0);
-                }
-            }
-        }
-        check_reported(leads, "it is wound on a lateral column, ");
+        // Alf, 2026-11-14 (ABT #2274), which replaced the two tangent leads of the Secondary checked here before: a
+        // real-winding lead bends at its coated radius, whatever minimum is declared, so here too every terminal lead
+        // leaves radially (check_radial, as the sections above): the Primary's two and the Secondary's two.
+        check_radial(coil, leads, 4);
     }
 
     settings.reset();

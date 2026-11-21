@@ -149,13 +149,33 @@ TEST_CASE("A stored layout whose sections cannot hold the round litz bundle comp
     OpenMagnetics::Settings::GetInstance().reset();
 }
 
-TEST_CASE("A one-turn winding's two legs stand centred across its crossing, the entrance on the side its turn runs to",
+TEST_CASE("A one-turn winding's two legs stand mirrored across its crossing, outward of the windings before it, the entrance on the side its turn runs to",
           "[constructive-model][coil][real-winding][omega]") {
     auto magnetic = wound_with_real_winding(fixture()["magnetic"]);
     auto& coil = magnetic.get_mutable_coil();
     REQUIRE(coil.is_real_winding_blocking_applied());
     const auto wires = coil.get_wires();
     size_t legsChecked = 0;
+    // Alf, 2026-11-08 and 2026-11-13 (ABT #2274), which replaced the two touching legs at +-extent/2 checked here
+    // before: the windings stand outward from the crossing in winding order with no gap, on both ends. So a winding's
+    // legs start where the winding before it ends: the Primary's outermost lead edge for the Secondary, the
+    // Secondary's legs' outer edge for the Tertiary. Derived here from the routes.
+    double edgeBefore = 0;
+    {
+        const size_t primaryIndex = coil.get_winding_index_by_name("Primary");
+        const auto turns = coil.get_turns_description().value();
+        for (size_t parallel = 0; parallel < size_t(coil.get_functional_description()[primaryIndex].get_number_parallels()); ++parallel) {
+            for (const auto kind : {ConnectionKind::TERMINAL_ENTRANCE, ConnectionKind::TERMINAL_EXIT}) {
+                const auto lead = terminal_of(coil, "Primary", parallel, kind);
+                REQUIRE(lead.exitSlot);
+                const std::string turnName = kind == ConnectionKind::TERMINAL_ENTRANCE ? lead.toTurn : lead.fromTurn;
+                const auto turn = std::find_if(turns.begin(), turns.end(), [&](const auto& candidate) { return candidate.get_name() == turnName; });
+                REQUIRE(turn != turns.end());
+                const double half = coil.terminal_turn_path(lead, *turn, coil.get_connection_layout().routes).stubDiameter / 2;
+                edgeBefore = std::max(edgeBefore, std::abs(lead.exitSlot.value()) + half);
+            }
+        }
+    }
     for (const std::string winding : {"Secondary", "Tertiary"}) {
         const size_t windingIndex = coil.get_winding_index_by_name(winding);
         REQUIRE(coil.get_functional_description()[windingIndex].get_number_turns() == 1);   // the premise
@@ -180,9 +200,10 @@ TEST_CASE("A one-turn winding's two legs stand centred across its crossing, the 
             const double towardsTheTurn = entrance.wrapDirection.value() > 0 ? 1.0 : -1.0;
             INFO("entrance lane " << entrance.exitSlot.value() * 1e3 << " mm, exit lane " << exit.exitSlot.value() * 1e3
                                   << " mm, wrap " << entrance.wrapDirection.value() << ", extent " << extent * 1e3 << " mm");
-            // Centred across the crossing, each half its extent off it: the two legs touch.
-            CHECK_THAT(entrance.exitSlot.value(), Catch::Matchers::WithinAbs(towardsTheTurn * extent / 2, 1e-12));
-            CHECK_THAT(exit.exitSlot.value(), Catch::Matchers::WithinAbs(-towardsTheTurn * extent / 2, 1e-12));
+            // Mirrored across the crossing, each leg's inner edge on the outer edge of the winding before it.
+            INFO("the windings before it end " << edgeBefore * 1e3 << " mm from the crossing");
+            CHECK_THAT(entrance.exitSlot.value(), Catch::Matchers::WithinAbs(towardsTheTurn * (edgeBefore + extent / 2), 1e-9));
+            CHECK_THAT(exit.exitSlot.value(), Catch::Matchers::WithinAbs(-towardsTheTurn * (edgeBefore + extent / 2), 1e-9));
             // Its parallels stand on the same two lanes, at their own heights.
             if (entranceLane) {
                 CHECK(entrance.exitSlot.value() == entranceLane.value());
@@ -199,6 +220,8 @@ TEST_CASE("A one-turn winding's two legs stand centred across its crossing, the 
                 ++legsChecked;
             }
         }
+        REQUIRE(entranceLane);
+        edgeBefore = std::abs(entranceLane.value()) + extent / 2;   // the next winding starts where this one ends
     }
     CHECK(legsChecked == 8);
     OpenMagnetics::Settings::GetInstance().reset();
