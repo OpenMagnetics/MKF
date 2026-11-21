@@ -18,6 +18,7 @@
 #include "physical_models/WindingProximityEffectLosses.h"
 #include "physical_models/Resistivity.h"
 #include "physical_models/WindingLossesPeec2D.h"
+#include "processors/CircuitSimulatorInterface.h"
 #include <numbers>
 
 #include <catch2/catch_test_macros.hpp>
@@ -4741,6 +4742,22 @@ TEST_CASE("Test_Winding_Losses_Foil_Width_Cells_E42_Ungapped_Every_Foil_Vs_OMFEM
             CHECK_THAT(factors[foil], Catch::Matchers::WithinRel(omfemFactors[foil], WindingLossesTestHelpers::maximumError));
         }
     }
+}
+
+// The MagneticBuilder's own test coil (MagneticBuilder/src/public/test_wound_coil.json, 2026-05-05): ER 25/6/15 3C94,
+// 15 turns of a 1.04 x 0.313 mm planar trace and 4 x 3 of 1.30 x 0.278 mm. Its SPICE subcircuit export fits the winding
+// resistance up to several MHz, where the end cells of a trace carry the crowded current; at 6.24 MHz (nu = 10.6) the
+// Poisson-smoothed face sheet integrated to 1.739 A of the trace's 1.774 A, the cell loss fell below the uniform sheet the
+// skin step books, and the export threw "Width cells: negative proximity loss -0.000325 W/m" (MKF d67c9c1c, 2026-11-20).
+TEST_CASE("Test_Winding_Losses_Flat_Cells_Planar_Trace_Export_Has_No_Negative_Proximity", "[winding-losses][martinez-flat][physical-model]") {
+    auto path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "Test_Winding_Losses_Planar_ER25_Web_Test_Coil.json");
+    std::ifstream in(path);
+    json masJson = json::parse(in);
+    OpenMagnetics::Magnetic magnetic(masJson["magnetic"]);
+    std::string subcircuit;
+    REQUIRE_NOTHROW(subcircuit = OpenMagnetics::CircuitSimulatorExporter(OpenMagnetics::CircuitSimulatorExporterModels::NGSPICE)
+                                     .export_magnetic_as_subcircuit(magnetic, OpenMagnetics::Defaults().measurementFrequency, 25));
+    CHECK_THAT(subcircuit, Catch::Matchers::ContainsSubstring(".subckt"));
 }
 
 TEST_CASE("Test_Winding_Losses_Flat_Cells_Frequency_Interpolation_Matches_Direct_Solves","[winding-losses][martinez-flat][parallel-split][physical-model]") {

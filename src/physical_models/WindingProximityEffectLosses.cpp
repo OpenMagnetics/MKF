@@ -1834,6 +1834,20 @@ double WindingProximityEffectLossesMartinezModel::calculate_flat_cell_losses(dou
             }
             smoothedSheet[c] = sum / weightSum;
         }
+        // Ampere: the face-field jumps across the width add up to the conductor's net current. Normalising each cell's
+        // weights keeps a uniform current exact but drops the kernel's tails past the conductor's ends, so the sheet
+        // integrated a few percent short of the current where the current crowds to the ends (an ER 25 planar trace at
+        // 6 MHz, nu = 10.6: 1.739 A of 1.774 A), and the loss below then fell under the uniform sheet the skin step books,
+        // to a negative proximity loss. A constant shift restores the net current; it is zero for a uniform current.
+        std::complex<double> sheetCurrent = 0;
+        for (size_t c = 0; c < numberCells; ++c) {
+            sheetCurrent += flat.cellWidths[c] * smoothedSheet[c];
+            turnCurrent += cellCurrents[c];
+        }
+        const std::complex<double> shift = (turnCurrent - sheetCurrent) / flat.width;
+        for (auto& sheet : smoothedSheet) {
+            sheet += shift;
+        }
     }
     for (size_t cellIndex = 0; cellIndex < numberCells; ++cellIndex) {
         const double cellWidth = flat.cellWidths[cellIndex];
@@ -1842,7 +1856,6 @@ double WindingProximityEffectLossesMartinezModel::calculate_flat_cell_losses(dou
                                    (sheetCurrentSquared - std::norm(smoothedSheet[cellIndex])) / nu;
         losses += flat.cellLengthRatios[cellIndex] * cellWidth *
                   (2 * parallelFieldSquared[cellIndex] * (functionF - 2 * functionG) + currentTerm);
-        turnCurrent += cellCurrents[cellIndex];
     }
     losses += endTerm * flat.thickness * 2 * (flat.cellLengthRatios.front() * parallelFieldSquared.front() + flat.cellLengthRatios.back() * parallelFieldSquared.back());
     const double uniformSheet = flat.conductorLengthRatio * flat.width * std::norm(turnCurrent / flat.width);
