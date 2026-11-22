@@ -2308,6 +2308,11 @@ TEST_CASE("Test_Gap_From_Inductance_Refuses_A_Bias_That_Collapses_The_Permeabili
     OpenMagnetics::Inputs inputs;
     prepare_test_parameters(0, ambientTemperature, frequency, numberTurns, desiredMagnetizingInductance, {}, "E 42/21/20",
                             coreMaterial, core, coil, inputs);
+    // Without its B-H loop (Alf, 2026-11-22, ABT #2470): the collapse below B_sat is the integrated magnetisation
+    // curve's, which every material without a loop uses. On 3C95's datasheet loop it lies above B_sat.
+    auto materialWithoutLoop = core.resolve_material();
+    materialWithoutLoop.set_bh_cycle(std::nullopt);
+    core.get_mutable_functional_description().set_material(materialWithoutLoop);
     const auto material = core.resolve_material();
     std::optional<double> collapseField;
     for (double field = 10; field < 1e6; field *= 1.05) {

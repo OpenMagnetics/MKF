@@ -4671,7 +4671,8 @@ TEST_CASE("Test_Core_Losses_Dc_Bias_Factor_N87_Reversible_Curve", "[physical-mod
     clear_databases();
     double temperature = 25;
     double frequency = 100000;
-    double magneticFluxDensityDcBias = 0.1;
+    // 0.2 T (Alf, 2026-11-22, ABT #2470; was 0.1 T): on the datasheet loop 0.1 T sits at 15 A/m, where the factor is 1.0004.
+    double magneticFluxDensityDcBias = 0.2;
     auto material = Core::resolve_material("N87");
     auto excitation = build_biased_sinusoidal_flux_excitation(frequency, 0.05, magneticFluxDensityDcBias);
 
@@ -4780,7 +4781,8 @@ TEST_CASE("Test_Core_Losses_Dc_Bias_Factor_Throws_On_Missing_Data", "[physical-m
         settings.set_allow_material_data_extrapolation(false);
         auto material = Core::resolve_material("77");
         double frequency = 100000;
-        double magneticFluxDensityDcBias = 0.4;
+        // 0.49 T (Alf, 2026-11-22, ABT #2470; was 0.4 T): on 77's datasheet loop 0.4 T sits at 71 A/m, 0.49 T at 219 A/m.
+        double magneticFluxDensityDcBias = 0.49;
         auto points = dc_bias_curve_points(material.get_permeability().get_incremental());
         REQUIRE(dc_bias_field_strength(material, magneticFluxDensityDcBias, temperature, frequency) > points.back().first);
         auto biased = build_biased_sinusoidal_flux_excitation(frequency, 0.05, magneticFluxDensityDcBias);
@@ -4798,7 +4800,8 @@ TEST_CASE("Test_Core_Losses_Dc_Bias_Factor_Extrapolates_Past_The_Curve_When_Allo
     REQUIRE(settings.get_allow_material_data_extrapolation());
     double temperature = 25;
     double frequency = 100000;
-    double magneticFluxDensityDcBias = 0.4;
+    // 0.49 T (Alf, 2026-11-22, ABT #2470; was 0.4 T): on 77's datasheet loop 0.4 T sits at 71 A/m, 0.49 T at 219 A/m.
+    double magneticFluxDensityDcBias = 0.49;
     auto material = Core::resolve_material("77");
     auto points = dc_bias_curve_points(material.get_permeability().get_incremental());
     double fieldStrength = dc_bias_field_strength(material, magneticFluxDensityDcBias, temperature, frequency);
