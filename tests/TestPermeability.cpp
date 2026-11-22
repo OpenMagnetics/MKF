@@ -2048,6 +2048,7 @@ TEST_CASE("Test_Magnetisation_Curve_Of_Every_Material_With_A_Loop_Rises", "[phys
                 continue;
             }
             auto curve = OpenMagnetics::InitialPermeability::get_magnetisation_curve(material, temperature, 100e3);
+            CHECK_THAT(curve->method, Catch::Matchers::ContainsSubstring("B-H loop"));
             CHECK(std::adjacent_find(curve->fluxDensity.begin(), curve->fluxDensity.end(), std::greater_equal<double>()) == curve->fluxDensity.end());
         }
     }
