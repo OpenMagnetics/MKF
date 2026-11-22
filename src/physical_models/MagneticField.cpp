@@ -5321,6 +5321,12 @@ struct ToroidRegions {
     bool reaches(const Source& source, double x, double y) const {
         return reaches(source.region, x, y) && (windows.empty() || source.window == window_at(x, y));
     }
+    // The form a kernel gated by `reaches` takes at a point (HierarchicalMatrix::PointForm): all that `reaches` reads of it.
+    size_t form_at(const std::array<double, 2>& point) const {
+        constexpr size_t numberRegions = static_cast<size_t>(ToroidRegion::FERRITE) + 1;
+        const auto window = windows.empty() ? std::nullopt : window_at(point[0], point[1]);
+        return static_cast<size_t>(at(point[0], point[1])) + numberRegions * (window ? window.value() + 1 : 0);
+    }
 };
 
 // A source of the screened width-cell model (FlatTurnCells): a cell of a flat turn, or one of its two face sheets, with
@@ -5589,7 +5595,7 @@ std::shared_ptr<const FlatCellFieldOperator> build_flat_cell_field_operator(cons
             const auto [fieldX, fieldY] = column_field(row, column, every_image, true);
             values[0] = fieldX;
             values[1] = fieldY;
-        }, 2, tolerance);
+        }, 2, tolerance, [&](const std::array<double, 2>& point) { return toroidRegions.form_at(point); });
         result->fieldX = std::move(components[0]);
         result->fieldY = std::move(components[1]);
     }
@@ -6909,11 +6915,14 @@ std::optional<ParallelCurrentSplit> MagneticField::calculate_parallel_current_sp
             for (size_t cell = 0; cell < numberCells; ++cell) {
                 cellPoints[cell] = {cellX[cell], cellY[cell]};
             }
-            freshOperators.elementPotential = HierarchicalMatrix(elementPoints, elementPoints, potential_entry, splitOperatorTolerance);
-            freshOperators.elementReactionPotential = HierarchicalMatrix(elementPoints, cellPoints, reaction_potential_entry, splitOperatorTolerance);
-            freshOperators.cellFieldPerElement = HierarchicalMatrix(cellPoints, elementPoints, field_per_element_entry, splitOperatorTolerance);
+            // Every kernel below is gated by toroidRegions.reaches, so it changes form with the point's region or window.
+            const HierarchicalMatrix::PointForm form = [&](const std::array<double, 2>& point) { return toroidRegions.form_at(point); };
+            freshOperators.elementPotential = HierarchicalMatrix(elementPoints, elementPoints, potential_entry, splitOperatorTolerance, form);
+            freshOperators.elementReactionPotential =
+                HierarchicalMatrix(elementPoints, cellPoints, reaction_potential_entry, splitOperatorTolerance, form);
+            freshOperators.cellFieldPerElement = HierarchicalMatrix(cellPoints, elementPoints, field_per_element_entry, splitOperatorTolerance, form);
             freshOperators.cellFieldPerReaction = HierarchicalMatrix(cellPoints, cellPoints, [&](size_t cell, size_t other) { return face_field(cell, other, false); },
-                                                                     splitOperatorTolerance);
+                                                                     splitOperatorTolerance, form);
             for (size_t turnIndex = 0; turnIndex < turns.size(); ++turnIndex) {
                 for (size_t cell : cellsPerTurn[turnIndex]) {
                     for (size_t other : cellsPerTurn[turnIndex]) {

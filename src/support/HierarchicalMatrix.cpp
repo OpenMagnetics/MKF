@@ -20,12 +20,18 @@ constexpr double admissibility = 2.0;
 constexpr size_t checkedEntries = 12;
 } // namespace
 
-std::vector<HierarchicalMatrix::Cluster> HierarchicalMatrix::build_clusters(const std::vector<std::array<double, 2>>& points, std::vector<size_t>& order) {
+std::vector<HierarchicalMatrix::Cluster> HierarchicalMatrix::build_clusters(const std::vector<std::array<double, 2>>& points, std::vector<size_t>& order, const PointForm& form) {
     order.resize(points.size());
     std::iota(order.begin(), order.end(), 0);
     std::vector<Cluster> clusters;
     if (points.empty()) {
         return clusters;
+    }
+    std::vector<size_t> formPerPoint(points.size(), 0);
+    if (form) {
+        for (size_t point = 0; point < points.size(); ++point) {
+            formPerPoint[point] = form(points[point]);
+        }
     }
     std::function<int(size_t, size_t)> build = [&](size_t begin, size_t end) -> int {
         Cluster cluster;
@@ -43,8 +49,24 @@ std::vector<HierarchicalMatrix::Cluster> HierarchicalMatrix::build_clusters(cons
             cluster.minimumY = std::min(cluster.minimumY, point[1]);
             cluster.maximumY = std::max(cluster.maximumY, point[1]);
         }
+        const auto first = order.begin() + static_cast<std::ptrdiff_t>(begin);
+        const auto last = order.begin() + static_cast<std::ptrdiff_t>(end);
+        const auto [lowestForm, highestForm] =
+            std::minmax_element(first, last, [&](size_t a, size_t b) { return formPerPoint[a] < formPerPoint[b]; });
+        const size_t splitForm = formPerPoint[*lowestForm];
+        cluster.mixedForms = splitForm != formPerPoint[*highestForm];
         const int index = static_cast<int>(clusters.size());
         clusters.push_back(cluster);
+        if (cluster.mixedForms) {
+            // Cut by form before by position, down to clusters of one form.
+            const auto cut = std::stable_partition(first, last, [&](size_t point) { return formPerPoint[point] == splitForm; });
+            const size_t middle = static_cast<size_t>(cut - order.begin());
+            const int firstChild = build(begin, middle);
+            const int secondChild = build(middle, end);
+            clusters[static_cast<size_t>(index)].first = firstChild;
+            clusters[static_cast<size_t>(index)].second = secondChild;
+            return index;
+        }
         const double extentX = cluster.maximumX - cluster.minimumX;
         const double extentY = cluster.maximumY - cluster.minimumY;
         if (end - begin > leafSize && (extentX > 0 || extentY > 0)) {
@@ -111,13 +133,13 @@ class BlockEntries {
 };
 
 HierarchicalMatrix::HierarchicalMatrix(const std::vector<std::array<double, 2>>& rowPoints, const std::vector<std::array<double, 2>>& columnPoints,
-                                       const Entry& entry, double tolerance)
+                                       const Entry& entry, double tolerance, const PointForm& form)
     : _rows(rowPoints.size()), _columns(columnPoints.size()), _tolerance(tolerance) {
     if (!(tolerance > 0) || !(tolerance < 1)) {
         throw InvalidInputException(ErrorCode::INVALID_INPUT, "Hierarchical matrix: the tolerance must lie between 0 and 1");
     }
-    _rowClusters = build_clusters(rowPoints, _rowOrder);
-    _columnClusters = build_clusters(columnPoints, _columnOrder);
+    _rowClusters = build_clusters(rowPoints, _rowOrder, form);
+    _columnClusters = build_clusters(columnPoints, _columnOrder, form);
     if (_rows > 0 && _columns > 0) {
         build_blocks(0, 0, entry);
     }
@@ -126,6 +148,9 @@ HierarchicalMatrix::HierarchicalMatrix(const std::vector<std::array<double, 2>>&
 bool HierarchicalMatrix::admissible(size_t rowCluster, size_t columnCluster) const {
     const Cluster& rows = _rowClusters[rowCluster];
     const Cluster& columns = _columnClusters[columnCluster];
+    if (rows.mixedForms || columns.mixedForms) {
+        return false;
+    }
     const double rowDiagonal = std::hypot(rows.maximumX - rows.minimumX, rows.maximumY - rows.minimumY);
     const double columnDiagonal = std::hypot(columns.maximumX - columns.minimumX, columns.maximumY - columns.minimumY);
     const double gapX = std::max({0.0, rows.minimumX - columns.maximumX, columns.minimumX - rows.maximumX});
@@ -191,7 +216,7 @@ void HierarchicalMatrix::build_blocks(size_t rowCluster, size_t columnCluster, c
 }
 
 std::vector<HierarchicalMatrix> HierarchicalMatrix::build_set(const std::vector<std::array<double, 2>>& rowPoints, const std::vector<std::array<double, 2>>& columnPoints,
-                                                              const MultiEntry& entry, size_t count, double tolerance) {
+                                                              const MultiEntry& entry, size_t count, double tolerance, const PointForm& form) {
     if (count == 0) {
         throw InvalidInputException(ErrorCode::INVALID_INPUT, "Hierarchical matrix: a set needs at least one matrix");
     }
@@ -202,8 +227,8 @@ std::vector<HierarchicalMatrix> HierarchicalMatrix::build_set(const std::vector<
     shape._rows = rowPoints.size();
     shape._columns = columnPoints.size();
     shape._tolerance = tolerance;
-    shape._rowClusters = build_clusters(rowPoints, shape._rowOrder);
-    shape._columnClusters = build_clusters(columnPoints, shape._columnOrder);
+    shape._rowClusters = build_clusters(rowPoints, shape._rowOrder, form);
+    shape._columnClusters = build_clusters(columnPoints, shape._columnOrder, form);
     std::vector<HierarchicalMatrix> matrices(count, shape);
     if (shape._rows > 0 && shape._columns > 0) {
         build_set_blocks(matrices, 0, 0, entry);

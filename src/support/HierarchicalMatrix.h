@@ -12,7 +12,11 @@ namespace OpenMagnetics {
 // smooth and stored in low rank (adaptive cross approximation, to `tolerance` relative to the block), and every other
 // pair is stored dense. A low-rank block is checked against the kernel on sampled entries and kept dense when it misses
 // them. Entries the kernel cannot express smoothly (a kernel that changes form between some row and column pairs) are
-// added as sparse corrections, applied with the product.
+// added as sparse corrections, applied with the product. A kernel that changes form with where a point lies (a toroid's
+// bore and the outside of its ring, a multi-window core's windows) names that form per point (PointForm): a cluster that
+// holds several forms is approximated with no other, only split. The cross approximation follows its pivots and never
+// sees a part of a block they cannot reach, and the sampled entries need not land in it: two forms in one block were
+// accepted up to 95 % wrong (ABT #2498).
 class HierarchicalMatrix {
   public:
     using Entry = std::function<double(size_t row, size_t column)>;
@@ -20,14 +24,17 @@ class HierarchicalMatrix {
     // Several entries per (row, column) at once, written to values[0..count).
     using MultiEntry = std::function<void(size_t row, size_t column, double* values)>;
 
+    // The kernel's form at a point; none: one form everywhere.
+    using PointForm = std::function<size_t(const std::array<double, 2>& point)>;
+
     HierarchicalMatrix() = default;
     HierarchicalMatrix(const std::vector<std::array<double, 2>>& rowPoints, const std::vector<std::array<double, 2>>& columnPoints, const Entry& entry,
-                       double tolerance);
+                       double tolerance, const PointForm& form = {});
 
     // `count` matrices over the same points from a kernel that gives all their entries at once (the two components of a
     // field): they share the clustering and the block partition, and a dense block evaluates the kernel once for all.
     static std::vector<HierarchicalMatrix> build_set(const std::vector<std::array<double, 2>>& rowPoints, const std::vector<std::array<double, 2>>& columnPoints,
-                                                     const MultiEntry& entry, size_t count, double tolerance);
+                                                     const MultiEntry& entry, size_t count, double tolerance, const PointForm& form = {});
 
     size_t rows() const { return _rows; }
     size_t columns() const { return _columns; }
@@ -49,6 +56,7 @@ class HierarchicalMatrix {
         double maximumY = 0;
         int first = -1;
         int second = -1;
+        bool mixedForms = false;  // holds points of several forms of the kernel (PointForm): never a leaf
     };
     struct Block {
         size_t rowCluster = 0;
@@ -59,7 +67,7 @@ class HierarchicalMatrix {
         std::vector<double> v;      // column-major, columns x rank
         std::vector<double> dense;  // row-major, rows x columns
     };
-    static std::vector<Cluster> build_clusters(const std::vector<std::array<double, 2>>& points, std::vector<size_t>& order);
+    static std::vector<Cluster> build_clusters(const std::vector<std::array<double, 2>>& points, std::vector<size_t>& order, const PointForm& form);
     void build_blocks(size_t rowCluster, size_t columnCluster, const Entry& entry);
     static void build_set_blocks(std::vector<HierarchicalMatrix>& matrices, size_t rowCluster, size_t columnCluster, const MultiEntry& entry);
     bool admissible(size_t rowCluster, size_t columnCluster) const;

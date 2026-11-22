@@ -6393,3 +6393,35 @@ TEST_CASE("Test_Winding_Losses_Abt2384_Interleaved_Litz_And_Strips_Vs_OMFEM", "[
     }
     settings.reset();
 }
+
+TEST_CASE("Width cells: a flat-wire arc on a toroid loses the same at mirrored turns", "[physical-model][winding-losses][toroid][abt-2498]") {
+    // ABT #2498, the reported design: T 85.7/55.5/19.05, one evenly spaced arc of 67 turns of 4 x 0.9 mm wire. The arc is its
+    // own mirror image, so turn i and turn N-1-i lose the same, whatever the model. A compressed block of the cells' matrices
+    // that held both the bore's and the exterior's crossings was accepted up to 95 % wrong, and turn 62 booked 4.43 W where
+    // its mirror, turn 4, booked 0.24 W (the whole coil 2.1x the exact matrices' proximity loss).
+    settings.reset();
+    auto path = OpenMagneticsTesting::get_test_data_path(std::source_location::current(), "abt2498_toroid_67_flat_turns.json");
+    auto mas = OpenMagneticsTesting::mas_loader(path);
+    auto magnetic = mas.get_magnetic();
+    auto inputs = mas.get_inputs();
+    auto output = WindingLosses().calculate_losses(magnetic, inputs.get_operating_point(0), 25);
+    json outputJson;
+    to_json(outputJson, output);
+    const json& perTurn = outputJson.at("windingLossesPerTurn");
+    const size_t numberTurns = perTurn.size();
+    REQUIRE(numberTurns == 67);
+    std::vector<double> proximity;
+    for (const auto& turn : perTurn) {
+        double total = 0;
+        for (const auto& loss : turn.at("proximityEffectLosses").at("lossesPerHarmonic")) {
+            total += loss.get<double>();
+        }
+        REQUIRE(total > 0);
+        proximity.push_back(total);
+    }
+    for (size_t turn = 0; turn < numberTurns / 2; ++turn) {
+        INFO("turn " << turn << " against its mirror " << numberTurns - 1 - turn);
+        CHECK_THAT(proximity[turn], Catch::Matchers::WithinRel(proximity[numberTurns - 1 - turn], 0.01));
+    }
+    settings.reset();
+}
