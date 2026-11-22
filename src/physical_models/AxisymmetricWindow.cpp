@@ -241,17 +241,21 @@ std::pair<double, double> AxisymmetricWindow::ring_field_with_plate_images(doubl
 std::pair<double, double> AxisymmetricWindow::ring_minus_line_field(double current, double rs, double zs, double r, double z, double minimumDistance) {
     double dr = r - rs;
     double dz = z - zs;
-    const double distance = std::hypot(dr, dz);
-    if (distance < minimumDistance) {
-        // Read the (smooth) difference on the circle of that radius, in the same direction.
-        const double scale = minimumDistance / std::max(distance, 1e-300);
-        if (distance > 0) {
-            dr *= scale;
-            dz *= scale;
-        }
-        else {
-            dr = minimumDistance;
-            dz = 0;
+    // A point clearly beyond minimumDistance (the squares carry a few ulps, far inside the margin) needs no exact distance.
+    const bool clearlyBeyond = minimumDistance > 1e-100 && dr * dr + dz * dz > minimumDistance * minimumDistance * (1 + 1e-6);
+    if (!clearlyBeyond) {
+        const double distance = std::hypot(dr, dz);
+        if (distance < minimumDistance) {
+            // Read the (smooth) difference on the circle of that radius, in the same direction.
+            const double scale = minimumDistance / std::max(distance, 1e-300);
+            if (distance > 0) {
+                dr *= scale;
+                dz *= scale;
+            }
+            else {
+                dr = minimumDistance;
+                dz = 0;
+            }
         }
     }
     auto [ringR, ringZ] = ring_field(current, rs, zs, rs + dr, zs + dz);

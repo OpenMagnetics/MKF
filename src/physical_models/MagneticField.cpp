@@ -6728,11 +6728,24 @@ std::optional<ParallelCurrentSplit> MagneticField::calculate_parallel_current_sp
             auto [correctionR, correctionZ] = AxisymmetricWindow::correction_field(correction, basisPerCell[cell].value());
             return along_faces(cell, {cellX[cell] < 0 ? -correctionR : correctionR, correctionZ});
         };
-        // Flux linked per unit length of the target's turn: Lambda / (2 pi r_t).
-        auto ring_potential = [&](size_t target, const SplitSection& image, double weight, bool self) {
+        // Flux linked per unit length of the target's turn: Lambda / (2 pi r_t). The image's flux through the reference circle
+        // depends on the image alone: read once per image (referenceFlux), on its first use.
+        auto ring_potential = [&](size_t target, const SplitSection& image, double weight, bool self, std::optional<double>& referenceFlux) {
             const auto& section = elements[target].section;
-            return weight * (ring_flux_of_section(section, image, self) - AxisymmetricWindow::ring_flux(image.x, image.y, referenceRadius, referenceHeight));
+            const double linked = ring_flux_of_section(section, image, self);
+            if (!referenceFlux) {
+                referenceFlux = AxisymmetricWindow::ring_flux(image.x, image.y, referenceRadius, referenceHeight);
+            }
+            return weight * (linked - referenceFlux.value());
         };
+        std::vector<std::vector<std::optional<double>>> referenceFluxPerElementImage(elementWindow ? numberElements : 0);
+        for (size_t elementIndex = 0; elementIndex < referenceFluxPerElementImage.size(); ++elementIndex) {
+            referenceFluxPerElementImage[elementIndex].assign(elements[elementIndex].images.size(), std::nullopt);
+        }
+        std::vector<std::vector<std::optional<double>>> referenceFluxPerSourceImage(elementWindow ? cellSources.size() : 0);
+        for (size_t sourceIndex = 0; sourceIndex < referenceFluxPerSourceImage.size(); ++sourceIndex) {
+            referenceFluxPerSourceImage[sourceIndex].assign(cellSources[sourceIndex].images.size(), std::nullopt);
+        }
         // Per target element, its correction flux basis (read against the reference circle), built once.
         std::vector<std::optional<AxisymmetricWindow::FluxBasis>> fluxBasisPerElement(elementWindow ? elements.size() : 0);
         auto correction_potential = [&](size_t target, const AxisymmetricWindow::Correction& correction) {
@@ -6750,7 +6763,7 @@ std::optional<ParallelCurrentSplit> MagneticField::calculate_parallel_current_sp
                     const auto& [image, weight] = images[imageIndex];
                     const bool conductor = elements[source].isImage.empty() ? imageIndex == static_cast<size_t>(AxisymmetricWindow::planeImages)
                                                                             : !elements[source].isImage[imageIndex];
-                    linkage += ring_potential(target, image, weight, target == source && conductor);
+                    linkage += ring_potential(target, image, weight, target == source && conductor, referenceFluxPerElementImage[source][imageIndex]);
                 }
                 linkage += correction_potential(target, correctionPerElement[source]);
                 return linkage / (2 * std::numbers::pi * turnRadiusPerElement[target]);
@@ -6769,11 +6782,12 @@ std::optional<ParallelCurrentSplit> MagneticField::calculate_parallel_current_sp
                 double linkage = 0;
                 for (size_t face : faceSourcesPerCell[cell]) {
                     const auto& source = cellSources[face];
-                    for (const auto& image : source.images) {
+                    for (size_t imageIndex = 0; imageIndex < source.images.size(); ++imageIndex) {
+                        const auto& image = source.images[imageIndex];
                         SplitSection imaged = source.section;
                         imaged.x = image.x;
                         imaged.y = image.y;
-                        linkage += source.sign * ring_potential(target, imaged, image.weight, false);
+                        linkage += source.sign * ring_potential(target, imaged, image.weight, false, referenceFluxPerSourceImage[face][imageIndex]);
                     }
                 }
                 linkage += correction_potential(target, correctionPerFacePair[cell]);
