@@ -2029,20 +2029,6 @@ double InitialPermeability::get_initial_permeability_model_value(const CoreMater
                                                      std::optional<CoreShapeFamily> shapeFamily) {
     const auto& initialPermeabilityData = coreMaterial.get_permeability().get_initial();
 
-    // ABT #2470 (Alf, 2026-11-22): past the end of a loop-based magnetisation curve the incremental permeability is
-    // that curve's slope there, the vacuum's. The datasheet fits are still above 1 at such fields (3C95: 6x the air
-    // core's inductance where B was already past B_sat). A paramagnetic material has no loop-based curve, and its
-    // integrated curve is built on this function, so it is not asked for one.
-    if (magneticFieldDcBias && magneticFieldDcBias.value() != 0 && has_bh_cycle(coreMaterial)) {
-        const double curveTemperature = temperature.value_or(defaults.ambientTemperature);
-        if (!is_paramagnetic(coreMaterial, curveTemperature)) {
-            const auto curve = get_magnetisation_curve(coreMaterial, curveTemperature, frequency);
-            if (std::fabs(magneticFieldDcBias.value()) > curve->vacuumSlopeFieldStrength.value()) {
-                return 1;
-            }
-        }
-    }
-
     double initialPermeabilityValue = 1;
 
     if (std::holds_alternative<PermeabilityPoint>(initialPermeabilityData)) {
@@ -2189,6 +2175,22 @@ double InitialPermeability::get_initial_permeability_model_value(const CoreMater
 
     if (std::isnan(initialPermeabilityValue)) {
         throw NaNResultException("get_initial_permeability, Initial Permeability must be a number, not NaN");
+    }
+
+    // ABT #2470 (Alf, 2026-11-22): past the end of a loop-based magnetisation curve the incremental permeability is
+    // that curve's slope there, the vacuum's. The datasheet fits are still above 1 at such fields (3C95: 6x the air
+    // core's inductance where B was already past B_sat). This is a ceiling on the model's value, applied after it:
+    // what the model refuses stays refused, and a value below 1 stays the formula's, which get_initial_permeability
+    // reads to tell saturation from a model outside its frequency or temperature range (ABT #1740). A paramagnetic
+    // material has no loop-based curve, and its integrated curve is built on this function, so it is not asked for one.
+    if (initialPermeabilityValue > 1 && magneticFieldDcBias && magneticFieldDcBias.value() != 0 && has_bh_cycle(coreMaterial)) {
+        const double curveTemperature = temperature.value_or(defaults.ambientTemperature);
+        if (!is_paramagnetic(coreMaterial, curveTemperature)) {
+            const auto curve = get_magnetisation_curve(coreMaterial, curveTemperature, frequency);
+            if (std::fabs(magneticFieldDcBias.value()) > curve->vacuumSlopeFieldStrength.value()) {
+                return 1;
+            }
+        }
     }
 
     return initialPermeabilityValue;

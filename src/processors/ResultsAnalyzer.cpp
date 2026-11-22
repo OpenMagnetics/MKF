@@ -154,9 +154,10 @@ SaturationVerdict ResultsAnalyzer::check_saturation(const CoreMaterial& coreMate
     // above it: the bias has driven the material past its knee and the magnetizing model took mu_r = 1
     // (MagnetizingInductance, InitialPermeability::get_initial_permeability). Until ABT #1855 this was the
     // throw condition (SaturationException). It is needed beside criterion 1 because a material's B_sat,
-    // its magnetisation curve and its permeability model need not agree: 3C95 under DC bias goes air-core
-    // from 44.6 A while its curve's B stays at 0.49 T against B_sat 0.53 T. The margin scales B and does
-    // not apply here; the permeability is read at the bias point's own temperature and frequency.
+    // its magnetisation curve and its permeability model need not agree: 3C95 without its B-H loop (ABT #2470)
+    // goes air-core under DC bias from 44.6 A while its integrated curve's B stays at 0.49 T against B_sat
+    // 0.53 T. The margin scales B and does not apply here; the permeability is read at the bias point's own
+    // temperature and frequency.
     std::optional<double> unbiasedPermeability;
     if (dcBiasPoint && dcBiasPoint->magneticFieldDcBias > 0) {
         verdict.biasedPermeability = InitialPermeability::get_initial_permeability_model_value(

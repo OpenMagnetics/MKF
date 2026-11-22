@@ -1953,6 +1953,29 @@ TEST_CASE("Test_Incremental_Permeability_Past_The_Loop_Curve_Is_The_Vacuums", "[
     settings.reset();
 }
 
+TEST_CASE("Test_Incremental_Permeability_Past_The_Loop_Curve_Keeps_The_Models_Refusal", "[physical-model][permeability][magnetisation-curve][bh-cycle]") {
+    settings.reset();
+    clear_databases();
+    // Kool Mu 60 with a single magnetisation curve: at 30 MHz its frequency quartic is negative, so the model has no
+    // value there (ABT #1740). A bias past the curve's end must not turn that into a saturated material's 1.
+    auto material = OpenMagnetics::Core::resolve_material("Kool Mµ 60");
+    std::vector<MAS::BhCycleElement> cycle;
+    for (int step = 1; step <= 10; ++step) {
+        MAS::BhCycleElement element;
+        element.set_magnetic_flux_density(0.05 * step);
+        element.set_magnetic_field(1000. * step);
+        element.set_temperature(25);
+        cycle.push_back(element);
+    }
+    material.set_bh_cycle(cycle);
+    const double pastTheEnd = 1.01 * OpenMagnetics::InitialPermeability::get_magnetisation_curve(material, 25, 100e3)->vacuumSlopeFieldStrength.value();
+    CHECK(OpenMagnetics::InitialPermeability::get_initial_permeability(material, 25, pastTheEnd, 100e3) == 1);
+    CHECK(OpenMagnetics::InitialPermeability::get_initial_permeability_model_value(material, 25, pastTheEnd, 30e6) < 1);
+    CHECK_THROWS_WITH(OpenMagnetics::InitialPermeability::get_initial_permeability(material, 25, pastTheEnd, 30e6),
+                      Catch::Matchers::ContainsSubstring("outside its valid range"));
+    settings.reset();
+}
+
 TEST_CASE("Test_Magnetisation_Curve_Of_3C90_Follows_Its_Datasheet_Loop", "[physical-model][permeability][magnetisation-curve][bh-cycle]") {
     settings.reset();
     clear_databases();
