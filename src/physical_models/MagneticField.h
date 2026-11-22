@@ -221,8 +221,15 @@ struct FlatTurnCells {
     // allowed against the full model): on the planar adviser candidates and the planar OMFEM fixtures the total loss moves
     // under 0.03 % from 1e-10 and the solve is ~1.4x faster (sweep in .mkf-triage-runs/wlfem/speed).
     static constexpr double operatorTolerance = 1e-4;
-    // A flat turn is resolved when its wide side is at least this many thicknesses.
-    static constexpr double minimumAspectRatio = 4;
+    // A flat turn is resolved when its wide side is at least this many thicknesses: every rectangular, foil and planar
+    // turn (Alf 2026-11-21). The threshold was 4, which left every catalogue rectangular wire (2-3.5:1) on the closed-form
+    // MARTINEZ path. That path misreads a column of bars stacked along the field: at a few skin depths the bars expel the
+    // field normal to their wide faces and its flux crosses between them along those faces, which only the cells
+    // resolve. On the catalogue FEM sweep (40 random catalogue designs against 2-D OMFEM, 2026-11-21) the winding
+    // R_ac/R_dc mean error fell from 13.4 % to 7.1 % and 93 % of windings now land within 20 % (rectangular wire 21.9 %
+    // to 10.7 %, 0.4-0.85x low before); the cost is about 10x on coils of 30-50 rectangular turns (0.1 s to 0.8-1.7 s per
+    // evaluation).
+    static constexpr double minimumAspectRatio = 1;
     // The face sheets' own thickness, in conductor thicknesses (a sheet is a thin uniform rectangle inside the face).
     static constexpr double faceSheetThicknessInThicknesses = 1.0 / 20;
     // The cell cuts of a conductor of this width and thickness: cell widths in order along the wide axis.

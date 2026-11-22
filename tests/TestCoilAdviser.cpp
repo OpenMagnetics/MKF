@@ -916,7 +916,12 @@ TEST_CASE("Test_CoilAdviser_Planar", "[adviser][coil-adviser][planar]") {
     // Re-pinned 2026-11-20 (approved by Alf): the width cells resolve half a skin depth at the conductor ends and book only
     // the face-wrapping part of a cell's current as face-crowded (ABT #2384), about 1 % less loss on the same candidate;
     // it was "hot spot reaches 231 C with 17.4 W of losses".
-    CHECK_THAT(*noResultsReason, Catch::Matchers::ContainsSubstring("hot spot reaches 230 C with 17.2 W of losses"));
+    // Re-pinned 2026-11-22 (approved by Alf): every flat turn is resolved into width cells (FlatTurnCells::
+    // minimumAspectRatio 4 -> 1), so the 0.38 x 0.14 mm primary trace is too; the first rejected coil is now the 112-turn
+    // stack-up 0-0-1-1-1-1-0-0-1-1-1-1, about 3 % more loss; it was "hot spot reaches 230 C with 17.2 W of losses".
+    // Open: 2-D OMFEM reads this coil's R_ac/R_dc far lower (primary 1.05 vs MKF 1.65, secondary 1.69 vs 21.3, hot spot
+    // 53 C), possibly without the flyback's secondary current imposed (ABT #2472).
+    CHECK_THAT(*noResultsReason, Catch::Matchers::ContainsSubstring("hot spot reaches 234 C with 17.7 W of losses"));
     settings.reset();
 }
 
@@ -2540,13 +2545,39 @@ TEST_CASE("Test_CoilAdviser_Web_2_Bug_NoCoilFound", "[adviser][coil-adviser][bug
     mas.set_inputs(inputs);
     mas.set_magnetic(magnetic);
 
+    // What this test guards is the section bug: the adviser must find planar wires for the conduction sections and wind
+    // the coils. Alf 2026-11-21: whether a wound coil then survives the 130 C limit is not its subject. Since every flat
+    // turn is resolved into width cells (FlatTurnCells::minimumAspectRatio 1), none does: the coil main returned (17 turns
+    // in 2 layers of a 0.73 x 0.35 mm trace) reads R_ac/R_dc 6.33 against 6.96 in 2-D OMFEM (0.91x), and OMFEM's own
+    // thermal solve puts its hot spot at 223 C. It was returned only because the closed form under-read the trace.
+    // So the check is that coils are wound and that, when none is returned, the reason is the temperature limit.
+    Logger::getInstance().disableCollector();
+    Logger::getInstance().enableCollector(LogLevel::DEBUG);
+    Logger::getInstance().drainCollected();
     CoilAdviser coilAdviser;
     auto masMagneticsWithCoil = coilAdviser.get_advised_coil(mas, 1);
-    
-    // FIXED: The fallback mechanism in CoilAdviser::get_advised_coil() now ensures
-    // that even when all designs are filtered out by criteria (e.g., current density),
-    // we still return the best available winding(s) rather than nothing.
-    REQUIRE(masMagneticsWithCoil.size() > 0);
+    size_t woundCoils = 0;
+    size_t temperatureRejections = 0;
+    std::string noCandidatesMessage;
+    for (const auto& record : Logger::getInstance().drainCollected()) {
+        if (record.message.rfind("Managed to wind ", 0) == 0) {
+            woundCoils += std::stoul(record.message.substr(std::string("Managed to wind ").size()));
+        }
+        if (record.message.find("rejected: its hot spot reaches") != std::string::npos) {
+            temperatureRejections += record.count;
+        }
+        if (record.message.find("CoilAdviser found no candidates") != std::string::npos) {
+            noCandidatesMessage = record.message;
+        }
+    }
+    Logger::getInstance().disableCollector();
+
+    CHECK(woundCoils > 0);
+    if (masMagneticsWithCoil.empty()) {
+        INFO(noCandidatesMessage);
+        CHECK(temperatureRejections > 0);
+        CHECK(noCandidatesMessage.find("rejected by the temperature limit") != std::string::npos);
+    }
     settings.reset();
 }
 
@@ -2592,14 +2623,38 @@ TEST_CASE("Test_CoilAdviser_Web_3_Planar_17_Turns", "[adviser][coil-adviser][bug
     mas.set_inputs(inputs);
     mas.set_magnetic(magnetic);
 
+    // Repro point: planar coils with 17 turns must be advisable ("No coil found" bug from too many sections).
+    // Alf 2026-11-22, as for Test_CoilAdviser_Web_2_Bug_NoCoilFound (same design): the adviser must wind the coils;
+    // whether one survives the 130 C limit is not this test's subject. Since every flat turn is resolved into width cells
+    // none does (the coil main returned reads 0.91x 2-D OMFEM's R_ac/R_dc, and OMFEM puts its hot spot at 223 C), so the
+    // check is that coils are wound and that, when none is returned, the reason is the temperature limit.
+    Logger::getInstance().disableCollector();
+    Logger::getInstance().enableCollector(LogLevel::DEBUG);
+    Logger::getInstance().drainCollected();
     CoilAdviser coilAdviser;
     auto masMagneticsWithCoil = coilAdviser.get_advised_coil(mas, 1);
-    
-    // Repro point: planar coils with 17 turns must be advisable ("No coil found" bug).
-    // This REQUIRE was left commented out with a TODO ("currently fails because the planar
-    // coil adviser creates too many sections"); it is now enabled so the 0-result failure
-    // mode is visible instead of silently passing.
-    REQUIRE(masMagneticsWithCoil.size() > 0);
+    size_t woundCoils = 0;
+    size_t temperatureRejections = 0;
+    std::string noCandidatesMessage;
+    for (const auto& record : Logger::getInstance().drainCollected()) {
+        if (record.message.rfind("Managed to wind ", 0) == 0) {
+            woundCoils += std::stoul(record.message.substr(std::string("Managed to wind ").size()));
+        }
+        if (record.message.find("rejected: its hot spot reaches") != std::string::npos) {
+            temperatureRejections += record.count;
+        }
+        if (record.message.find("CoilAdviser found no candidates") != std::string::npos) {
+            noCandidatesMessage = record.message;
+        }
+    }
+    Logger::getInstance().disableCollector();
+
+    CHECK(woundCoils > 0);
+    if (masMagneticsWithCoil.empty()) {
+        INFO(noCandidatesMessage);
+        CHECK(temperatureRejections > 0);
+        CHECK(noCandidatesMessage.find("rejected by the temperature limit") != std::string::npos);
+    }
     settings.reset();
 }
 

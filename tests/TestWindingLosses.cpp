@@ -1081,8 +1081,9 @@ namespace TestWindingLossesToroidalCores {
         // Alf 2026-11-09: run under MKF's TOROID model set (BINNS_LAWRENSON field with the ring's Kelvin images, MARTINEZ
         // for flat wire), the set meant for toroids, and no longer [!mayfail]. Before, the test asked for the ALBACH field
         // with fringing off, which left the bars on the default WANG proximity: 0.77-0.65x OMFEM. MARTINEZ reads
-        // 0.90-0.83x (the 5.8 x 2 mm bars are under FlatTurnCells::minimumAspectRatio, so each is one MARTINEZ turn; as
-        // width cells in the ring frame they read 0.92-0.86x). Design and OMFEM numbers unchanged.
+        // 0.90-0.83x with each 5.8 x 2 mm bar one MARTINEZ turn (they were under the old 4:1 FlatTurnCells threshold); as
+        // width cells in the ring frame, every flat turn's default since 2026-11-21, they read 0.92-0.86x. Design and OMFEM
+        // numbers unchanged.
         // Alf 2026-11-04: R_ac/R_dc against 2D OMFEM of the same design, not watts. OMFEM: OMFEM-1588 build-efa5113
         // omfem_mas, 2D (ring in the XY plane), on the MAS exported by Debug_Martinez_Flat_Scorecard at the config's
         // 20 C; inputs and logs in /home/alf/OpenMagnetics/.mkf-triage-runs/green/wl2/fem
