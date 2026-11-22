@@ -291,8 +291,12 @@ MaterialException malformed_bh_cycle(const CoreMaterial& coreMaterial, double te
         ": no magnetisation curve can be built from it", coreMaterial.get_name());
 }
 
-// A single magnetisation curve: every H above the last, from H >= 0.
-bool is_single_curve(const LoopSamples& samples) {
+// A single magnetisation curve: every H above the last, from H >= 0. Only a material that is not a ferrite has one
+// (powders): of a ferrite's loop, a lone branch is half the data, off by the coercive field.
+bool is_single_curve(const CoreMaterial& coreMaterial, const LoopSamples& samples) {
+    if (coreMaterial.get_material() == MaterialType::FERRITE) {
+        return false;
+    }
     for (size_t index = 1; index < samples.size(); ++index) {
         if (!(samples[index].first > samples[index - 1].first)) {
             return false;
@@ -312,7 +316,7 @@ LoopSamples normalise_loop(const CoreMaterial& coreMaterial, double temperature,
             throw malformed_bh_cycle(coreMaterial, temperature, "has a point that is not a finite number");
         }
     }
-    if (is_single_curve(samples)) {
+    if (is_single_curve(coreMaterial, samples)) {
         return samples;
     }
     auto byFluxDensity = [](const auto& left, const auto& right) { return left.second < right.second; };
@@ -420,7 +424,7 @@ void join_saturation_point(const CoreMaterial& coreMaterial, LoopCurve& curve) {
 // the tip (the largest H) then the falling branch back down.
 LoopCurve build_loop_curve(const CoreMaterial& coreMaterial, double temperature, const LoopSamples& traversal) {
     auto malformed = [&](const std::string& what) { return malformed_bh_cycle(coreMaterial, temperature, what); };
-    if (is_single_curve(traversal)) {
+    if (is_single_curve(coreMaterial, traversal)) {
         LoopCurve curve{temperature, {0}, {0}};
         for (const auto& [fieldStrength, fluxDensity] : traversal) {
             if (fieldStrength == 0 && fluxDensity == 0) {
@@ -483,7 +487,8 @@ LoopCurve build_loop_curve(const CoreMaterial& coreMaterial, double temperature,
         std::copy_if(branch->begin(), branch->end(), std::back_inserter(levels), [&](double level) { return level > lowest; });
     }
     std::sort(levels.begin(), levels.end());
-    levels.erase(std::unique(levels.begin(), levels.end()), levels.end());
+    // One flux level read on both branches can differ in its last bits: below 1e-9 T apart is one level.
+    levels.erase(std::unique(levels.begin(), levels.end(), [](double left, double right) { return right - left < 1e-9; }), levels.end());
 
     LoopCurve curve{temperature, {0}, {0}};
     for (double level : levels) {
@@ -542,7 +547,7 @@ void fill_magnetisation_curve_from_loops(const CoreMaterial& coreMaterial, doubl
     if (upper != lower) {
         loopTemperatures += " and " + format_significant(upper->temperature);
     }
-    const bool singleCurve = is_single_curve(traversals.at(lower->temperature));
+    const bool singleCurve = is_single_curve(coreMaterial, traversals.at(lower->temperature));
     curve.method = std::string(singleCurve ? "single B-H magnetisation curve" : "centred midline of the B-H loop") + " at " + loopTemperatures + " C";
     if (!has_recorded_bh_cycle_source(coreMaterial)) {
         curve.method += ", source not recorded";
