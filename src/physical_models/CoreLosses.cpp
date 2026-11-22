@@ -410,17 +410,34 @@ std::vector<DcBiasPermeabilityCurve> get_dc_bias_permeability_curves(const CoreM
 }
 
 // mu on one curve at H: log-linear in H between its points; its lowest point's value below it (that is the curve's
-// mu(0) reference); above its last point it THROWS: a DC-bias curve is not extrapolated.
+// mu(0) reference). Above its last point (Alf, 2026-11-22): with Settings allowMaterialDataExtrapolation on, the last
+// segment continued as a power law, log(mu) linear in log(H), and `extrapolated` set; with it off, it THROWS.
 double read_dc_bias_permeability_curve(const CoreMaterial& material, const DcBiasPermeabilityCurve& curve, double fieldStrength,
-                                      const std::string& field) {
+                                      const std::string& field, bool& extrapolated) {
     const auto& points = curve.points;
+    if (fieldStrength > points.back().first && Settings::GetInstance().get_allow_material_data_extrapolation()) {
+        const auto& last = points[points.size() - 1];
+        const auto& previous = points[points.size() - 2];
+        if (!(previous.first > 0)) {
+            throw MaterialException(ErrorCode::MATERIAL_DATA_MISSING,
+                "Material " + material.get_name() + ": its " + field + " permeability versus DC field strength has only the "
+                "points at 0 and " + format_significant(last.first) + " A/m" +
+                (curve.temperature ? " at " + format_significant(curve.temperature.value()) + " C" : std::string()) +
+                ", so it cannot be extrapolated in log(H) to the DC field strength of this excitation, " +
+                format_significant(fieldStrength) + " A/m", material.get_name());
+        }
+        extrapolated = true;
+        double slope = std::log(last.second / previous.second) / std::log(last.first / previous.first);
+        return last.second * std::pow(fieldStrength / last.first, slope);
+    }
     if (fieldStrength > points.back().first) {
         throw MaterialException(ErrorCode::MATERIAL_DATA_MISSING,
             "Material " + material.get_name() + ": its " + field + " permeability versus DC field strength ends at " +
             format_significant(points.back().first) + " A/m" +
             (curve.temperature ? " at " + format_significant(curve.temperature.value()) + " C" : std::string()) +
             ", below the DC field strength of this excitation, " + format_significant(fieldStrength) +
-            " A/m; the DC-bias factor of its core losses is not extrapolated past its data", material.get_name());
+            " A/m; the DC-bias factor of its core losses is not extrapolated past its data (Settings "
+            "allowMaterialDataExtrapolation is off)", material.get_name());
     }
     if (fieldStrength <= points.front().first) {
         return points.front().second;
@@ -517,10 +534,15 @@ CoreLossesDcBiasFactor CoreLosses::calculate_dc_bias_factor(const CoreMaterial& 
             return lowerValue + fraction * (upperValue - lowerValue);
         };
         double permeabilityUnbiased = atTemperature(lowerCurve->points.front().second, upperCurve->points.front().second);
-        double permeabilityBiased = atTemperature(read_dc_bias_permeability_curve(material, *lowerCurve, magneticFieldDcBias, field),
-                                                  read_dc_bias_permeability_curve(material, *upperCurve, magneticFieldDcBias, field));
+        bool extrapolated = false;
+        double permeabilityBiased = atTemperature(read_dc_bias_permeability_curve(material, *lowerCurve, magneticFieldDcBias, field, extrapolated),
+                                                  read_dc_bias_permeability_curve(material, *upperCurve, magneticFieldDcBias, field, extrapolated));
         std::ostringstream method;
         method << "mu(0)/mu(H_dc) from its " << field << " permeability curve at H_dc " << format_significant(magneticFieldDcBias) << " A/m";
+        if (extrapolated) {
+            method << " (EXTRAPOLATED past the curve's last point at " << format_significant(lowerCurve->points.back().first)
+                   << " A/m, its last segment continued as a power law; Settings allowMaterialDataExtrapolation)";
+        }
         if (curves.size() > 1) {
             method << " (curves at " << curves.size() << " temperatures, read at " << format_significant(temperature) << " C)";
         }

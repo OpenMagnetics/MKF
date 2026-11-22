@@ -4776,7 +4776,8 @@ TEST_CASE("Test_Core_Losses_Dc_Bias_Factor_Throws_On_Missing_Data", "[physical-m
         material.set_material_composition(std::nullopt);
         CHECK_THROWS_AS(CoreLosses::calculate_dc_bias_factor(material, excitation, temperature), MaterialException);
     }
-    SECTION("A DC field strength past the curve's last point") {
+    SECTION("A DC field strength past the curve's last point, with material data extrapolation off") {
+        settings.set_allow_material_data_extrapolation(false);
         auto material = Core::resolve_material("77");
         double frequency = 100000;
         double magneticFluxDensityDcBias = 0.4;
@@ -4785,6 +4786,33 @@ TEST_CASE("Test_Core_Losses_Dc_Bias_Factor_Throws_On_Missing_Data", "[physical-m
         auto biased = build_biased_sinusoidal_flux_excitation(frequency, 0.05, magneticFluxDensityDcBias);
         CHECK_THROWS_AS(CoreLosses::calculate_dc_bias_factor(material, biased, temperature), MaterialException);
     }
+    settings.reset();
+}
+
+// Past a curve's last point, with allowMaterialDataExtrapolation on (the default), the last segment continues as a power
+// law, mu = mu_last (H / H_last)^s, s its log-log slope, and the method says it is extrapolated (Alf, 2026-11-22: a real
+// 77 boost inductor, Example_12, sits at 216 A/m on a curve that ends at 180 A/m).
+TEST_CASE("Test_Core_Losses_Dc_Bias_Factor_Extrapolates_Past_The_Curve_When_Allowed", "[physical-model][core-losses][dc-bias]") {
+    settings.reset();
+    clear_databases();
+    REQUIRE(settings.get_allow_material_data_extrapolation());
+    double temperature = 25;
+    double frequency = 100000;
+    double magneticFluxDensityDcBias = 0.4;
+    auto material = Core::resolve_material("77");
+    auto points = dc_bias_curve_points(material.get_permeability().get_incremental());
+    double fieldStrength = dc_bias_field_strength(material, magneticFluxDensityDcBias, temperature, frequency);
+    REQUIRE(fieldStrength > points.back().first);
+    const auto& last = points[points.size() - 1];
+    const auto& previous = points[points.size() - 2];
+    double slope = std::log(last.second / previous.second) / std::log(last.first / previous.first);
+    double expected = points.front().second / (last.second * std::pow(fieldStrength / last.first, slope));
+
+    auto factor = CoreLosses::calculate_dc_bias_factor(material, build_biased_sinusoidal_flux_excitation(frequency, 0.05, magneticFluxDensityDcBias), temperature);
+    CHECK(factor.source == CoreLossesDcBiasFactorSource::INCREMENTAL);
+    CHECK_THAT(factor.unboundedValue, Catch::Matchers::WithinRel(expected, 1e-9));
+    CHECK_THAT(factor.method, Catch::Matchers::ContainsSubstring("EXTRAPOLATED"));
+    settings.reset();
 }
 
 // User report 2026-10-09: PC95 (Roshen-only in MAS), sinusoid, 100 kHz, 25 C lost its
