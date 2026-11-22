@@ -2506,6 +2506,12 @@ TEST_CASE("A DC bias that collapses the permeability to mu_r = 1 is a saturation
     OpenMagnetics::Magnetic magnetic;
     magnetic.set_core(core);
     magnetic.set_coil(coil);
+    // Without its B-H loop (Alf, 2026-11-22, ABT #2470): the collapse under B_sat is the integrated magnetisation
+    // curve's, which every material without a loop uses. On 3C95's datasheet loop B is already above B_sat there.
+    auto materialWithoutLoop = core.resolve_material();
+    materialWithoutLoop.set_bh_cycle(std::nullopt);
+    core.get_mutable_functional_description().set_material(materialWithoutLoop);
+    magnetic.set_core(core);
     auto coreMaterial = core.resolve_material();
     const double temperature = 25;
     const double frequency = 100000;
