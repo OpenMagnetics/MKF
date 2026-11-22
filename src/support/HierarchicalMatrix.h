@@ -7,6 +7,8 @@
 
 namespace OpenMagnetics {
 
+class BlockEntries;  // the kernel entries a block evaluated (HierarchicalMatrix.cpp)
+
 // A real matrix whose entries come from a kernel between two point sets (rows and columns), stored as a hierarchical
 // matrix: the rows and the columns are clustered by position, a pair of clusters far apart against their sizes is
 // smooth and stored in low rank (adaptive cross approximation, to `tolerance` relative to the block), and every other
@@ -68,8 +70,9 @@ class HierarchicalMatrix {
         std::vector<double> dense;  // row-major, rows x columns
     };
     static std::vector<Cluster> build_clusters(const std::vector<std::array<double, 2>>& points, std::vector<size_t>& order, const PointForm& form);
-    void build_blocks(size_t rowCluster, size_t columnCluster, const Entry& entry);
-    static void build_set_blocks(std::vector<HierarchicalMatrix>& matrices, size_t rowCluster, size_t columnCluster, const MultiEntry& entry);
+    void build_blocks(size_t rowCluster, size_t columnCluster, const Entry& entry, const BlockEntries* enclosing);
+    static void build_set_blocks(std::vector<HierarchicalMatrix>& matrices, size_t rowCluster, size_t columnCluster, const MultiEntry& entry,
+                                 const BlockEntries* enclosing);
     bool admissible(size_t rowCluster, size_t columnCluster) const;
     bool split_rows(size_t rowCluster, size_t columnCluster) const;
     // The block's entry at (i, j), in block coordinates (i-th row and j-th column of the block in cluster order).
