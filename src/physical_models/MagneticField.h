@@ -227,8 +227,10 @@ struct FlatTurnCells {
     // field normal to their wide faces and its flux crosses between them along those faces, which only the cells
     // resolve. On the catalogue FEM sweep (40 random catalogue designs against 2-D OMFEM, 2026-11-21) the winding
     // R_ac/R_dc mean error fell from 13.4 % to 7.1 % and 93 % of windings now land within 20 % (rectangular wire 21.9 %
-    // to 10.7 %, 0.4-0.85x low before); the cost is about 10x on coils of 30-50 rectangular turns (0.1 s to 0.8-1.7 s per
-    // evaluation).
+    // to 10.7 %, 0.4-0.85x low before). Its runtime, timed in-process on the same designs (200 kHz, 2026-11-22): 23x the
+    // 4:1 threshold's per evaluation on the coils with rectangular wire, up to 47x (0.02 s to 1.0 s on 28 + 19 bars of an
+    // ETD 49). In the adviser cases timed, 1.0x with the default settings (they evaluate no such wire) and up to 6.1x
+    // restricted to rectangular wire.
     static constexpr double minimumAspectRatio = 1;
     // The face sheets' own thickness, in conductor thicknesses (a sheet is a thin uniform rectangle inside the face).
     static constexpr double faceSheetThicknessInThicknesses = 1.0 / 20;

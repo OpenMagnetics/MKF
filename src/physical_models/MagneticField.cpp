@@ -6488,8 +6488,9 @@ std::optional<ParallelCurrentSplit> MagneticField::calculate_parallel_current_sp
         std::optional<AxisymmetricWindow::WallSources> elementWallSources;
         const double referenceRadius = elementWindow ? elementWindow->post_radius() : 0.0;
         const double referenceHeight = elementWindow ? elementWindow->bottom() : 0.0;
+        // Read once: this lambda runs per operator entry and image, and a Constants holds the painter's colour strings.
+        const double mu0 = Constants().vacuumPermeability;
         auto ring_flux_of_section = [&](const SplitSection& target, const SplitSection& source, bool self) {
-            const double mu0 = Constants().vacuumPermeability;
             if (self) {
                 return mu0 * target.x * (std::log(8 * target.x) - 2 - split_mean_log(target, target));
             }
