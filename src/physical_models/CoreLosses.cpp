@@ -17,7 +17,13 @@
 #include "support/Exceptions.h"
 #include "support/Logger.h"
 
+#include <algorithm>
+#include <array>
 #include <cmath>
+#include <limits>
+#include <map>
+#include <mutex>
+#include <set>
 #include <cfloat>
 #include <complex>
 #include <cstdlib>
@@ -289,50 +295,300 @@ static void throw_if_above_curie_temperature(const CoreMaterial& coreMaterial, d
     }
 }
 
-// DC Permeability Loss Estimator (DPLE) — Mühlethaler et al. (APEC 2025)
-// Corrects Steinmetz-family core losses for DC bias by scaling with the
-// permeability ratio: P_v(H_DC) = P_v(0) × [μ'(0) / μ'(H_DC)]
-// Applied when the material has DC bias permeability data and the excitation has
-// a nonzero DC flux offset. ABT #118: the former Roshen exemption ("handles DC
-// bias natively") was wrong — nothing in the Roshen path consumes the DC offset
-// (get_bh_loop is peak-based, the minor loop is symmetric), so Roshen produced
-// bias-INDEPENDENT losses while every other model got the multiplier.
-static double calculate_dple_factor(const CoreMaterial& material, const OperatingPointExcitation& excitation, double temperature) {
-    if (!excitation.get_magnetic_flux_density() ||
-        !excitation.get_magnetic_flux_density()->get_processed()) {
-        return 1.0;
+// The DC-bias core-loss factor (Alf, 2026-11-21, ABT #2208/#2467): F = mu(0)/mu(H_dc) multiplying the WHOLE loss
+// of every model, the exponent n = 1 (MagNet scoring, notes/abt-2208: n = 1 on the whole loss 0.163 median
+// |ln(model/measured)| against 0.171 for n = 3 on hysteresis and 0.210 for F = 1). It replaces the DPLE of
+// Muehlethaler et al. (APEC 2025), which read mu(H_dc) from permeability.initial with H_dc = B_dc/(mu0 mu_i), and
+// Roshen's former exemption from it (ABT #118: nothing in the Roshen path consumes the DC offset).
+namespace {
+
+// The law mu/mu(0) = 1 / (1 + (b/b0)^c)^k, b = |B_dc| / B_sat(T), for a MnZn ferrite that has no DC-bias curve.
+struct DcBiasPermeabilityLaw {
+    const char* maker;
+    double b0;
+    double c;
+    double k;
+};
+
+// Fitted on the MnZn mu(H_dc) curves the makers publish in their own datasheets (manufacturer datasheet curves
+// only; nothing fitted to measurements), 25 C, least squares in mu/mu0 with every grade weighted equally, points
+// with mu/mu0 >= 0.3, bounds b0 [1e-3, 10], c [0.5, 40], k [0.05, 20]. B is the datasheet's own B-H loop midline
+// at each H (TDK N48/N49/N51/N87: the multi-curve Ampere solve of TDK's gapped-core figures), B_sat the MAS value
+// at 25 C. Source: notes/abt-2208/universal/REPORT.md section 7 (per_maker.py, per_maker.json), ABT #2208.
+// A per-maker law needs curves of at least two grades of that maker. Fair-Rite and Magnetics end on the k bound:
+// widening it moves the optimum to b0 ~ 5, k ~ 1e3 (the stretched-exponential limit of the same form) for at most
+// 2 % lower rms, so the bounded constants are kept, as for the universal fit.
+constexpr std::array<DcBiasPermeabilityLaw, 5> dcBiasPermeabilityMakerLaws{{
+    {"DMEGC", 0.4392, 7.681, 0.1776},       // DMR44, DMR95
+    {"Fair-Rite", 1.778, 4.417, 20.0},      // 77, 78, 79, 98
+    {"Ferroxcube", 0.6183, 4.629, 0.6249},  // 3C90, 3C91, 3C94, 3C96, 3C98, 3E6, 3F3
+    {"Magnetics", 1.627, 4.165, 20.0},      // F, P, R
+    {"TDK", 0.2188, 4.582, 0.1634},         // N30, N48, N49, N51, N87, T35, T37, T38
+}};
+// All 25 MnZn grades of those makers and TDG TD3 together: REPORT.md "Bottom line" (fit.py).
+constexpr DcBiasPermeabilityLaw dcBiasPermeabilityUniversalLaw{"", 0.670, 2.32, 0.831};
+
+// Below this |B_dc| an excitation is unbiased (the threshold the Roshen loop shares, get_dynamic_bh_loop).
+constexpr double unbiasedMagneticFluxDensityLimit = 1e-6;
+// The factor is held to [1, 10]: a bias does not lower the losses, and 10 bounds a curve read near its end.
+constexpr double minimumDcBiasFactor = 1.0;
+constexpr double maximumDcBiasFactor = 10.0;
+
+// One mu(H_dc) curve of a material at one temperature (none when its points state none): (H, mu), H ascending.
+struct DcBiasPermeabilityCurve {
+    std::optional<double> temperature;
+    std::vector<std::pair<double, double>> points;
+};
+
+// The curves of one permeability field (reversible or incremental) of `material`: its points that carry
+// magneticFieldDcBias, one curve per temperature. Empty when the field has none. Throws for malformed data.
+std::vector<DcBiasPermeabilityCurve> get_dc_bias_permeability_curves(const CoreMaterial& material, const std::optional<Permeability>& data,
+                                                                     const std::string& field) {
+    std::vector<DcBiasPermeabilityCurve> curves;
+    if (!data) {
+        return curves;
+    }
+    std::vector<PermeabilityPoint> points;
+    if (std::holds_alternative<PermeabilityPoint>(data.value())) {
+        points.push_back(std::get<PermeabilityPoint>(data.value()));
+    }
+    else {
+        points = std::get<std::vector<PermeabilityPoint>>(data.value());
+    }
+    auto malformed = [&](const std::string& what) {
+        return MaterialException(ErrorCode::MATERIAL_INVALID_PROPERTY,
+            "Material " + material.get_name() + ": its " + field + " permeability versus DC field strength " + what +
+            ", so the DC-bias factor of its core losses cannot be read from it", material.get_name());
+    };
+    std::map<double, std::vector<std::pair<double, double>>> byTemperature;
+    std::vector<std::pair<double, double>> withoutTemperature;
+    std::set<std::string> frequencies;
+    for (const auto& point : points) {
+        if (!point.get_magnetic_field_dc_bias()) {
+            continue;
+        }
+        double fieldStrength = point.get_magnetic_field_dc_bias().value();
+        double permeability = point.get_value();
+        if (!std::isfinite(fieldStrength) || fieldStrength < 0 || !std::isfinite(permeability) || !(permeability > 0)) {
+            throw malformed("has a point of " + format_significant(permeability) + " at " + format_significant(fieldStrength) + " A/m");
+        }
+        frequencies.insert(point.get_frequency() ? format_significant(point.get_frequency().value()) : std::string("none"));
+        if (point.get_temperature()) {
+            byTemperature[point.get_temperature().value()].emplace_back(fieldStrength, permeability);
+        }
+        else {
+            withoutTemperature.emplace_back(fieldStrength, permeability);
+        }
+    }
+    if (!byTemperature.empty() && !withoutTemperature.empty()) {
+        throw malformed("states a temperature on some points and none on others");
+    }
+    if (frequencies.size() > 1) {
+        throw malformed("mixes points measured at " + std::to_string(frequencies.size()) + " frequencies");
+    }
+    auto addCurve = [&](std::optional<double> temperature, std::vector<std::pair<double, double>> curvePoints) {
+        if (curvePoints.empty()) {
+            return;
+        }
+        std::sort(curvePoints.begin(), curvePoints.end());
+        std::string where = temperature ? " at " + format_significant(temperature.value()) + " C" : "";
+        if (curvePoints.size() < 2) {
+            throw malformed("has a single point" + where);
+        }
+        for (size_t index = 1; index < curvePoints.size(); ++index) {
+            if (curvePoints[index].first == curvePoints[index - 1].first) {
+                throw malformed("gives two values at " + format_significant(curvePoints[index].first) + " A/m" + where);
+            }
+        }
+        curves.push_back({temperature, std::move(curvePoints)});
+    };
+    for (auto& [temperature, curvePoints] : byTemperature) {
+        addCurve(temperature, std::move(curvePoints));
+    }
+    addCurve(std::nullopt, std::move(withoutTemperature));
+    return curves;
+}
+
+// mu on one curve at H: log-linear in H between its points; its lowest point's value below it (that is the curve's
+// mu(0) reference); above its last point it THROWS: a DC-bias curve is not extrapolated.
+double read_dc_bias_permeability_curve(const CoreMaterial& material, const DcBiasPermeabilityCurve& curve, double fieldStrength,
+                                      const std::string& field) {
+    const auto& points = curve.points;
+    if (fieldStrength > points.back().first) {
+        throw MaterialException(ErrorCode::MATERIAL_DATA_MISSING,
+            "Material " + material.get_name() + ": its " + field + " permeability versus DC field strength ends at " +
+            format_significant(points.back().first) + " A/m" +
+            (curve.temperature ? " at " + format_significant(curve.temperature.value()) + " C" : std::string()) +
+            ", below the DC field strength of this excitation, " + format_significant(fieldStrength) +
+            " A/m; the DC-bias factor of its core losses is not extrapolated past its data", material.get_name());
+    }
+    if (fieldStrength <= points.front().first) {
+        return points.front().second;
+    }
+    auto upper = std::lower_bound(points.begin(), points.end(), std::make_pair(fieldStrength, -std::numeric_limits<double>::infinity()));
+    auto lower = upper - 1;
+    double fraction = (fieldStrength - lower->first) / (upper->first - lower->first);
+    return std::exp(std::log(lower->second) + fraction * (std::log(upper->second) - std::log(lower->second)));
+}
+
+// The WARNING an estimated or ignored bias logs, once per material (manufacturer + name), as the heat-conductivity
+// and loop-property estimates do (ABT #1752/#1753, #1951). The message is composed only when it is emitted.
+template <typename MessageBuilder>
+void warn_dc_bias_factor_once(const CoreMaterial& material, const MessageBuilder& message) {
+    static std::mutex warnedMutex;
+    static std::set<std::string> warned;
+    std::lock_guard<std::mutex> lock(warnedMutex);
+    if (warned.insert(material.get_manufacturer_info().get_name() + "/" + material.get_name()).second) {
+        OM_WARNING_M("Material data", message());
+    }
+}
+
+} // namespace
+
+CoreLossesDcBiasFactor CoreLosses::calculate_dc_bias_factor(const CoreMaterial& material, const OperatingPointExcitation& excitation, double temperature) {
+    CoreLossesDcBiasFactor factor{1.0, 1.0, CoreLossesDcBiasFactorSource::DISABLED};
+    if (!Settings::GetInstance().get_core_losses_dc_bias_enabled()) {
+        factor.method = "DC-bias core-loss factor disabled (Settings coreLossesDcBiasEnabled)";
+        return factor;
+    }
+    factor.source = CoreLossesDcBiasFactorSource::UNBIASED;
+    if (!excitation.get_magnetic_flux_density() || !excitation.get_magnetic_flux_density()->get_processed()) {
+        factor.method = "no flux density offset in the excitation";
+        return factor;
+    }
+    double magneticFluxDensityDcBias = std::abs(excitation.get_magnetic_flux_density()->get_processed()->get_offset());
+    if (!std::isfinite(magneticFluxDensityDcBias)) {
+        throw InvalidInputException(ErrorCode::INVALID_INPUT,
+            "The DC-bias factor of the core losses of " + material.get_name() + ": the flux density offset is " +
+            std::to_string(magneticFluxDensityDcBias) + " T");
+    }
+    if (magneticFluxDensityDcBias < unbiasedMagneticFluxDensityLimit) {
+        factor.method = "unbiased";
+        return factor;
+    }
+    factor.magneticFluxDensityDcBias = magneticFluxDensityDcBias;
+    auto bound = [&](double unboundedValue) {
+        factor.unboundedValue = unboundedValue;
+        factor.value = std::clamp(unboundedValue, minimumDcBiasFactor, maximumDcBiasFactor);
+        return factor;
+    };
+
+    // 1-2: the material's own curve, reversible first, then incremental.
+    const auto& permeability = material.get_permeability();
+    std::string field = "reversible";
+    auto curves = get_dc_bias_permeability_curves(material, permeability.get_reversible(), field);
+    factor.source = CoreLossesDcBiasFactorSource::REVERSIBLE;
+    if (curves.empty()) {
+        field = "incremental";
+        curves = get_dc_bias_permeability_curves(material, permeability.get_incremental(), field);
+        factor.source = CoreLossesDcBiasFactorSource::INCREMENTAL;
+    }
+    if (!curves.empty()) {
+        // H_dc: the field strength of |B_dc| on the material's magnetisation curve at this temperature and
+        // frequency, the curve MagnetizingInductance solves the DC load line sum N I_dc = H l_e + B(H) A_e R_gap on
+        // (ABT #2227). The flux density it hands to the core losses is that load line's B, so this is its H.
+        // Known mismatch (ABT #2470): that curve integrates permeability.initial, so on an ungapped core its B at a
+        // given H is about 4x below the datasheet loop's, and H_dc here is lower than the datasheet curve assumes.
+        auto magnetisationCurve = InitialPermeability::get_magnetisation_curve(material, temperature, excitation.get_frequency());
+        double magneticFieldDcBias = InitialPermeability::get_magnetomotive_force_for_flux_density(
+            *magnetisationCurve, magneticFluxDensityDcBias, 1.0, 1.0, 0.0).first;
+        factor.magneticFieldDcBias = magneticFieldDcBias;
+        // Curves at several temperatures: linear in T between the two around it. Outside their span the nearest
+        // curve is used as it is (a design choice, Alf 2026-11-21: the datasheets give no reason to extrapolate,
+        // and the bias effect at fixed H_dc is nearly T-flat, notes/abt-2208/verify_magnet/README.md).
+        const DcBiasPermeabilityCurve* lowerCurve = &curves.front();
+        const DcBiasPermeabilityCurve* upperCurve = &curves.front();
+        double fraction = 0;
+        if (curves.size() > 1) {
+            if (temperature >= curves.back().temperature.value()) {
+                lowerCurve = upperCurve = &curves.back();
+            }
+            else if (temperature > curves.front().temperature.value()) {
+                size_t upperIndex = 1;
+                while (curves[upperIndex].temperature.value() < temperature) {
+                    ++upperIndex;
+                }
+                lowerCurve = &curves[upperIndex - 1];
+                upperCurve = &curves[upperIndex];
+                fraction = (temperature - lowerCurve->temperature.value()) / (upperCurve->temperature.value() - lowerCurve->temperature.value());
+            }
+        }
+        auto atTemperature = [&](double lowerValue, double upperValue) {
+            return lowerValue + fraction * (upperValue - lowerValue);
+        };
+        double permeabilityUnbiased = atTemperature(lowerCurve->points.front().second, upperCurve->points.front().second);
+        double permeabilityBiased = atTemperature(read_dc_bias_permeability_curve(material, *lowerCurve, magneticFieldDcBias, field),
+                                                  read_dc_bias_permeability_curve(material, *upperCurve, magneticFieldDcBias, field));
+        std::ostringstream method;
+        method << "mu(0)/mu(H_dc) from its " << field << " permeability curve at H_dc " << format_significant(magneticFieldDcBias) << " A/m";
+        if (curves.size() > 1) {
+            method << " (curves at " << curves.size() << " temperatures, read at " << format_significant(temperature) << " C)";
+        }
+        factor.method = method.str();
+        return bound(permeabilityUnbiased / permeabilityBiased);
     }
 
-    double B_dc = excitation.get_magnetic_flux_density()->get_processed()->get_offset();
-    if (std::abs(B_dc) < 1e-6) {
-        return 1.0;
+    // 3-4: no curve.
+    if (material.get_material() != MaterialType::FERRITE) {
+        factor.source = CoreLossesDcBiasFactorSource::NOT_COVERED;
+        factor.method = "no DC-bias permeability curve and not a ferrite: the bias is ignored";
+        return factor;
     }
-
-    if (!InitialPermeability::has_magnetic_field_dc_bias_dependency(material)) {
-        return 1.0;
+    if (!material.get_material_composition()) {
+        throw MaterialException(ErrorCode::MATERIAL_DATA_MISSING,
+            "Ferrite " + material.get_name() + " has no DC-bias permeability curve and no materialComposition: MKF cannot tell "
+            "whether it is a MnZn ferrite, whose DC-bias core-loss factor it estimates, or another ferrite, whose bias it ignores",
+            material.get_name());
     }
-
-    // Convert B_DC to H_DC using initial permeability at zero bias
-    double mu_0 = Constants().vacuumPermeability;
-    double mu_r_zero = InitialPermeability::get_initial_permeability(material, temperature, 0.0);
-    if (mu_r_zero <= 0) {
-        return 1.0;
+    auto composition = material.get_material_composition().value();
+    if (composition == MaterialComposition::NI_ZN || composition == MaterialComposition::MG_ZN) {
+        factor.source = CoreLossesDcBiasFactorSource::NOT_COVERED;
+        factor.method = "no DC-bias permeability curve, " + std::string(magic_enum::enum_name(composition)) + " ferrite: the bias is ignored";
+        warn_dc_bias_factor_once(material, [&]() {
+            return "Core material '" + material.get_name() + "' (" + std::string(magic_enum::enum_name(composition)) +
+                   " ferrite) has no DC-bias permeability curve in MAS: its core losses ignore the DC bias (factor 1; "
+                   "the MnZn estimate does not apply to it).";
+        });
+        return factor;
     }
-    double H_dc = std::abs(B_dc) / (mu_0 * mu_r_zero);
-
-    // Get permeability at the DC bias point
-    double mu_r_dc = InitialPermeability::get_initial_permeability(material, temperature, H_dc);
-    if (mu_r_dc <= 0 || std::isnan(mu_r_dc)) {
-        return 1.0;
+    if (composition != MaterialComposition::MN_ZN) {
+        throw MaterialException(ErrorCode::MATERIAL_INVALID_PROPERTY,
+            "Ferrite " + material.get_name() + " has the composition " + std::string(magic_enum::enum_name(composition)) +
+            ", which is not a ferrite's: the DC-bias factor of its core losses cannot be chosen", material.get_name());
     }
-
-    double dple_factor = mu_r_zero / mu_r_dc;
-
-    // Sanity: factor should be >= 1 (DC bias increases losses) and bounded
-    if (dple_factor < 1.0) dple_factor = 1.0;
-    if (dple_factor > 10.0) dple_factor = 10.0;  // Physical upper bound
-
-    return dple_factor;
+    if (material.get_saturation().empty()) {
+        throw MaterialException(ErrorCode::MATERIAL_DATA_MISSING,
+            "Ferrite " + material.get_name() + " has no DC-bias permeability curve and no saturation flux density: the estimate "
+            "of its DC-bias core-loss factor reads B_dc / B_sat, so it cannot be made", material.get_name());
+    }
+    double saturationFluxDensity = Core::get_magnetic_flux_density_saturation(material, temperature, false);
+    double saturationRatio = magneticFluxDensityDcBias / saturationFluxDensity;
+    const DcBiasPermeabilityLaw* law = &dcBiasPermeabilityUniversalLaw;
+    factor.source = CoreLossesDcBiasFactorSource::UNIVERSAL_ESTIMATE;
+    const std::string maker = material.get_manufacturer_info().get_name();
+    for (const auto& makerLaw : dcBiasPermeabilityMakerLaws) {
+        if (maker == makerLaw.maker) {
+            law = &makerLaw;
+            factor.source = CoreLossesDcBiasFactorSource::MAKER_ESTIMATE;
+            break;
+        }
+    }
+    factor.saturationFluxDensityRatio = saturationRatio;
+    double unboundedValue = std::pow(1 + std::pow(saturationRatio / law->b0, law->c), law->k);
+    std::ostringstream method;
+    method << "mu(0)/mu = (1 + (b/" << law->b0 << ")^" << law->c << ")^" << law->k << ", b = B_dc/B_sat = "
+           << format_significant(saturationRatio) << ", the "
+           << (factor.source == CoreLossesDcBiasFactorSource::MAKER_ESTIMATE ? maker + " law fitted on " + maker + "'s"
+                                                                             : std::string("universal MnZn law fitted on the makers'"))
+           << " own DC-bias curves";
+    factor.method = "ESTIMATED " + method.str();
+    bound(unboundedValue);
+    warn_dc_bias_factor_once(material, [&]() {
+        return "Core material '" + material.get_name() + "' has no DC-bias permeability curve in MAS: the DC-bias factor of its core "
+               "losses is ESTIMATED, " + format_significant(factor.value) + " at B_dc " + format_significant(magneticFluxDensityDcBias) +
+               " T and " + format_significant(temperature) + " C, from " + method.str() + ".";
+    });
+    return factor;
 }
 
 // ABT #362: a semi-shielded drum's magnetic circuit runs through a ferrite drum AND a
@@ -644,18 +900,17 @@ CoreLossesOutput CoreLosses::calculate_periodic_core_losses(const Core& core, co
 
     CoreLossesOutput coreLossesOutput = coreLossesModelForMaterial->compute_core_losses(pricedCore, excitation, temperature);
 
-    // Apply the DPLE DC-bias correction to EVERY model (ABT #118: Roshen was exempted
-    // as "handles DC bias natively", but its path never consumes the DC offset, so
-    // biased Roshen results were inconsistent with every other model's).
+    // The DC-bias factor multiplies the whole loss of EVERY model (calculate_dc_bias_factor; ABT #118: Roshen was
+    // exempted as "handles DC bias natively", but its path never consumes the DC offset).
     {
-        double dpleFactor = calculate_dple_factor(material, excitation, temperature);
-        if (dpleFactor > 1.0) {
-            coreLossesOutput.set_core_losses(coreLossesOutput.get_core_losses() * dpleFactor);
+        double dcBiasFactor = calculate_dc_bias_factor(material, excitation, temperature).value;
+        if (dcBiasFactor > 1.0) {
+            coreLossesOutput.set_core_losses(coreLossesOutput.get_core_losses() * dcBiasFactor);
             if (coreLossesOutput.get_volumetric_losses()) {
-                coreLossesOutput.set_volumetric_losses(coreLossesOutput.get_volumetric_losses().value() * dpleFactor);
+                coreLossesOutput.set_volumetric_losses(coreLossesOutput.get_volumetric_losses().value() * dcBiasFactor);
             }
             if (coreLossesOutput.get_mass_losses()) {
-                coreLossesOutput.set_mass_losses(coreLossesOutput.get_mass_losses().value() * dpleFactor);
+                coreLossesOutput.set_mass_losses(coreLossesOutput.get_mass_losses().value() * dcBiasFactor);
             }
         }
     }
@@ -692,10 +947,8 @@ double CoreLosses::get_periodic_core_volumetric_losses(const CoreMaterial& coreM
 
     double coreVolumetricLosses = coreLossesModelForMaterial->compute_core_volumetric_losses(coreMaterial, excitation, temperature);
 
-    // The DPLE DC-bias correction applies to EVERY model, as in calculate_periodic_core_losses
-    // (ABT #118: the Roshen path never consumes the DC offset, so exempting it left biased Roshen
-    // results uncorrected here while the same material on an ordinary core was corrected).
-    coreVolumetricLosses *= calculate_dple_factor(coreMaterial, excitation, temperature);
+    // The DC-bias factor applies to EVERY model, as in calculate_periodic_core_losses (ABT #118).
+    coreVolumetricLosses *= calculate_dc_bias_factor(coreMaterial, excitation, temperature).value;
 
     return coreVolumetricLosses;
 }
@@ -3440,7 +3693,7 @@ RoshenDynamicBhLoop CoreLossesRoshenModel::get_dynamic_bh_loop(const Core& core,
         maximumMagneticFluxDensity = std::max(maximumMagneticFluxDensity, value);
     }
     // A DC bias (ABT #1737): the threshold is the one below which MKF treats a flux density as unbiased
-    // (calculate_dple_factor). An unbiased excitation takes exactly the path it always took.
+    // (calculate_dc_bias_factor). An unbiased excitation takes exactly the path it always took.
     const double unbiasedMagneticFluxDensityLimit = 1e-6;
     double processedOffset = magneticFluxDensity.get_processed()->get_offset();
     double waveformCentre = (maximumMagneticFluxDensity + minimumMagneticFluxDensity) / 2;

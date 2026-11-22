@@ -520,7 +520,7 @@ class CoreLossesRoshenModel : public CoreLossesModel {
     // is F times the unbiased one (get_dc_bias_point): H = H_dc + F * H_static(B - B_dc) + H_eddy + H_excess, and the
     // loop reports its own hysteresis F * P_h(AC peak), so f * oint H dB is its totalVolumetricLosses.
     // PLOTTING MODEL: under a bias that area is NOT what compute_core_losses returns (Roshen there ignores the bias
-    // and the DPLE factor scales it instead); ABT #1737 tracks bringing the law into the loss and inductance paths.
+    // and the DC-bias factor, CoreLosses::calculate_dc_bias_factor, scales it instead); ABT #1737 tracks bringing the law into the loss and inductance paths.
     // Unbiased, the loop and its losses are exactly the Roshen model's.
     // Throws when the excitation has no flux density, spans more than one period, or has more than one maximum and
     // one minimum per period (the Roshen hysteresis term prices one loop, no minor loops), when a bias reaches
@@ -754,6 +754,33 @@ class CoreLossesLossFactorHysteresisModel : public CoreLossesModel {
     }
 };
 
+// Where a DC-bias core-loss factor came from (CoreLosses::calculate_dc_bias_factor; ABT #2208/#2467).
+enum class CoreLossesDcBiasFactorSource {
+    DISABLED,            // Settings::coreLossesDcBiasEnabled is off: 1 for every material
+    UNBIASED,            // the excitation carries no DC flux density: 1
+    REVERSIBLE,          // the material's MAS permeability.reversible mu(H_dc) curve
+    INCREMENTAL,         // the material's MAS permeability.incremental mu(H_dc) curve
+    MAKER_ESTIMATE,      // a MnZn ferrite without a curve, made by a maker with curves: that maker's law (ESTIMATE)
+    UNIVERSAL_ESTIMATE,  // a MnZn ferrite without a curve, from any other maker: the universal law (ESTIMATE)
+    NOT_COVERED          // a NiZn or MgZn ferrite without a curve, or a material that is not a ferrite: 1 (bias ignored)
+};
+
+// The DC-bias core-loss factor F = mu(0)/mu(H_dc) multiplying the whole core loss, and its provenance.
+struct CoreLossesDcBiasFactor {
+    double value;                        // the factor applied: unboundedValue held to [1, 10]
+    double unboundedValue;               // mu(0)/mu(H_dc) before that bound
+    CoreLossesDcBiasFactorSource source;
+    double magneticFluxDensityDcBias = 0;              // |B_dc| of the excitation, T
+    std::optional<double> magneticFieldDcBias;         // H_dc the curve was read at, A/m (curve sources only)
+    std::optional<double> saturationFluxDensityRatio;  // b = |B_dc| / B_sat(T) (estimate sources only)
+    // Human-readable: the curve and how it was read, the law and its constants, or why the bias is ignored.
+    std::string method;
+    bool is_estimated() const {
+        return source == CoreLossesDcBiasFactorSource::MAKER_ESTIMATE || source == CoreLossesDcBiasFactorSource::UNIVERSAL_ESTIMATE;
+    }
+    bool is_bounded() const { return value != unboundedValue; }
+};
+
 class CoreLosses {
     private:
         // The default preference cascade: the first of these the material supports is run.
@@ -848,6 +875,24 @@ class CoreLosses {
     std::shared_ptr<CoreLossesModel> get_core_losses_model(const CoreMaterial& material, const OperatingPointExcitation& excitation);
     double get_core_volumetric_losses(const CoreMaterial& coreMaterial, const OperatingPointExcitation& excitation, double temperature);
     double get_core_losses_series_resistance(Core core, double frequency, double temperature, double magnetizingInductance);
+
+    // The DC-bias core-loss factor F = mu(0)/mu(H_dc) (n = 1) that calculate_core_losses and
+    // get_core_volumetric_losses multiply the WHOLE loss of every model by (Alf, 2026-11-21, ABT #2208/#2467).
+    // 1 when Settings::coreLossesDcBiasEnabled is off or the excitation is unbiased. Otherwise, first that applies:
+    //  1. the material's MAS permeability.reversible points that carry magneticFieldDcBias;
+    //  2. else its permeability.incremental ones;
+    //     read at H_dc, the field strength of |B_dc| on the material's magnetisation curve: the point of the DC
+    //     load line MagnetizingInductance solves (ABT #2227) for the flux density it hands to the core losses.
+    //     mu(H) is interpolated log-linearly in H; mu(0) is the curve's value at its lowest tabulated H (0 where
+    //     tabulated), held below it; an H_dc above the curve's last point THROWS (no extrapolation). Curves at
+    //     several temperatures are interpolated linearly in T; outside their span the nearest one is used.
+    //  3. else, a MnZn ferrite: an ESTIMATE mu/mu(0) = 1/(1 + (b/b0)^c)^k with b = |B_dc|/B_sat(T), fitted on the
+    //     manufacturers' own curves: its maker's law (TDK, Ferroxcube, Magnetics, DMEGC, Fair-Rite) or the
+    //     universal one; logged once per material as a WARNING. B_sat(T) missing throws;
+    //  4. else (a NiZn or MgZn ferrite without a curve, or not a ferrite): 1, the bias ignored.
+    // A ferrite without materialComposition throws. The factor is held to [1, 10] (value; unboundedValue keeps
+    // the ratio).
+    static CoreLossesDcBiasFactor calculate_dc_bias_factor(const CoreMaterial& material, const OperatingPointExcitation& excitation, double temperature);
 
   private:
     // The first model of the cascade (or the requested one) among `availableMethodsForMaterial`;

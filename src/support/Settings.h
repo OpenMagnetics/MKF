@@ -307,6 +307,12 @@ class Settings
         // it cannot evaluate, instead of walking _coreLossesModelNames to another model. Unset (the
         // default) keeps that cascade.
         std::optional<CoreLossesModels> _coreLossesRequestedModel;
+        // Whether the core losses of a DC-biased excitation carry the DC-bias loss factor F = mu(0)/mu(H_dc)
+        // (CoreLosses::calculate_dc_bias_factor, Alf 2026-11-21). TRUE (default): F from the material's MAS
+        // reversible, else incremental, permeability curve; for a MnZn ferrite without either, a flagged estimate
+        // from its B_dc/B_sat(T); 1 for other ferrites without a curve and for non-ferrites. FALSE: F = 1 for
+        // every material (the DC bias does not change the core losses). Keep in sync with reset().
+        bool _coreLossesDcBiasEnabled = true;
 
         // Centralized model configuration
         MagneticFieldStrengthModels _magneticFieldStrengthModel;
@@ -682,6 +688,10 @@ class Settings
         // See _simulatorSkipLeakageInductance.
         bool   get_simulator_skip_leakage_inductance() const;
         void   set_simulator_skip_leakage_inductance(bool value);
+
+        // See _coreLossesDcBiasEnabled.
+        bool   get_core_losses_dc_bias_enabled() const;
+        void   set_core_losses_dc_bias_enabled(bool value);
 
         GappingOptimizationStrategy get_gapping_strategy() const;
         void set_gapping_strategy(GappingOptimizationStrategy value);

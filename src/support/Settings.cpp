@@ -214,6 +214,7 @@ namespace {
         add_to_fingerprint(text, _magneticFieldTurnSumsCacheBytes);
         add_to_fingerprint(text, _coreLossesModelNames);
         add_to_fingerprint(text, _coreLossesRequestedModel);
+        add_to_fingerprint(text, _coreLossesDcBiasEnabled);
         add_to_fingerprint(text, _magneticFieldStrengthModel);
         add_to_fingerprint(text, _magneticFieldStrengthFringingEffectModel);
         add_to_fingerprint(text, _leakageInductanceMagneticFieldStrengthModel);
@@ -405,6 +406,7 @@ namespace {
         // tests/sessions (one cause of order-dependent adviser test results)
         _coreLossesModelNames = {Defaults().coreLossesModelDefault, CoreLossesModels::PROPRIETARY, CoreLossesModels::LOSS_FACTOR, CoreLossesModels::LOSS_FACTOR_HYSTERESIS, CoreLossesModels::STEINMETZ, CoreLossesModels::ROSHEN};
         _coreLossesRequestedModel = std::nullopt;
+        _coreLossesDcBiasEnabled = true;
         _circuitSimulatorCurveFittingMode = 0;
         _circuitSimulatorFracpoleOptions = std::nullopt;
         _circuitSimulatorIncludeSaturation = false;
@@ -1266,6 +1268,13 @@ namespace {
     }
     void Settings::set_simulator_skip_leakage_inductance(bool value) {
         _simulatorSkipLeakageInductance = value;
+    }
+
+    bool Settings::get_core_losses_dc_bias_enabled() const {
+        return _coreLossesDcBiasEnabled;
+    }
+    void Settings::set_core_losses_dc_bias_enabled(bool value) {
+        _coreLossesDcBiasEnabled = value;
     }
 
     GappingOptimizationStrategy Settings::get_gapping_strategy() const {
