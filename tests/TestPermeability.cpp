@@ -1942,6 +1942,9 @@ TEST_CASE("Test_Magnetisation_Curve_Of_3C90_Follows_Its_Datasheet_Loop", "[physi
     REQUIRE(material.get_bh_cycle());
     // Ferroxcube 3C90 Fig.3, 25 C: the branches' midline at 15 A/m, centred, is 0.161 T (integrating mu_rev: 0.042 T).
     CHECK_THAT(abt2470_flux_density(material, 15, 25), Catch::Matchers::WithinAbs(0.161, 0.002));
+    // Fair-Rite 77's figure, 25 C, at 2 Oe (159 A/m): 4780 G falling, 4650 G rising. A digitising fault once stored a
+    // plateau at 0.360 T from 71 to 335 A/m here.
+    CHECK_THAT(abt2470_flux_density(OpenMagnetics::Core::resolve_material("77"), 159.15, 25), Catch::Matchers::WithinAbs(0.4715, 0.006));
     settings.reset();
 }
 
@@ -1961,13 +1964,55 @@ TEST_CASE("Test_Magnetisation_Curve_Refuses_A_Malformed_Loop", "[physical-model]
     settings.reset();
 }
 
-TEST_CASE("Test_Magnetisation_Curve_Uses_Only_A_Sourced_Loop", "[physical-model][permeability][magnetisation-curve][bh-cycle]") {
+TEST_CASE("Test_Magnetisation_Curve_Data_From_The_Advanced_File", "[physical-model][permeability][magnetisation-curve][bh-cycle]") {
     settings.reset();
     clear_databases();
-    SECTION("a loop without provenance is not used") {
+    auto loadAdvanced = [](const std::string& name, const std::vector<std::pair<double, double>>& samples) {
+        json record;
+        record["name"] = name;
+        record["bhCycle"] = json::array();
+        for (const auto& [fieldStrength, fluxDensity] : samples) {
+            record["bhCycle"].push_back({{"magneticField", fieldStrength}, {"magneticFluxDensity", fluxDensity}, {"temperature", 25}});
+        }
+        OpenMagnetics::load_advanced_core_materials(record.dump() + "\n");
+    };
+    SECTION("a loop without provenance is used, and says so") {
         auto material = abt2470_straight_material();
         material.set_provenance(std::nullopt);
-        CHECK(abt2470_flux_density(material, 30, 25) < 0.8 * 30 / 200.);
+        CHECK_THAT(abt2470_flux_density(material, 30, 25), Catch::Matchers::WithinRel(30 / 200., 1e-6));
+        auto curve = OpenMagnetics::InitialPermeability::get_magnetisation_curve(material, 25, 100e3);
+        CHECK_THAT(curve->method, Catch::Matchers::ContainsSubstring("source not recorded"));
+    }
+    SECTION("a whole sampled cycle is cut into its branches and thinned") {
+        OpenMagnetics::load_core_materials();
+        REQUIRE_FALSE(OpenMagnetics::Core::resolve_material("PC95").get_bh_cycle());
+        // B a triangle of +-0.3 T starting at 0, the branches H = -1.2 + 200 B +- 15 (1 - |B| / 0.3).
+        std::vector<std::pair<double, double>> cycle;
+        for (int step = 0; step < 4000; ++step) {
+            const double phase = step / 1000.;
+            const double fluxDensity = 0.3 * (step < 1000 ? phase : step < 3000 ? 2 - phase : phase - 4);
+            const double side = step >= 1000 && step < 3000 ? -1 : 1;
+            cycle.emplace_back(-1.2 + 200 * fluxDensity + side * 15 * (1 - std::abs(fluxDensity) / 0.3), fluxDensity);
+        }
+        loadAdvanced("PC95", cycle);
+        auto material = OpenMagnetics::Core::resolve_material("PC95");
+        const auto stored = material.get_bh_cycle();
+        REQUIRE(stored);
+        CHECK(stored->size() < 420);
+        CHECK_THAT(abt2470_flux_density(material, 30, 25), Catch::Matchers::WithinRel(30 / 200., 1e-5));
+    }
+    SECTION("a powder's single curve is read from the origin") {
+        OpenMagnetics::load_core_materials();
+        loadAdvanced("Kool Mµ 75", {{80, 0.008}, {400, 0.06}, {4000, 0.5}});
+        auto material = OpenMagnetics::Core::resolve_material("Kool Mµ 75");
+        REQUIRE(material.get_bh_cycle());
+        CHECK_THAT(abt2470_flux_density(material, 40, 25), Catch::Matchers::WithinRel(0.004, 1e-6));
+        CHECK_THAT(abt2470_flux_density(material, 240, 25), Catch::Matchers::WithinRel(0.034, 1e-6));
+    }
+    SECTION("data that cannot be parsed is left out") {
+        OpenMagnetics::load_core_materials();
+        loadAdvanced("PC95", {{-2100, -0.0275}, {-1050, -0.0255}, {-249.8, -0.0129}, {510.6, -0.0002}});
+        CHECK_FALSE(OpenMagnetics::Core::resolve_material("PC95").get_bh_cycle());
     }
     SECTION("the advanced file does not replace a record's own loop") {
         OpenMagnetics::load_core_materials();
