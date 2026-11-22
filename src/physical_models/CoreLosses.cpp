@@ -504,8 +504,10 @@ CoreLossesDcBiasFactor CoreLosses::calculate_dc_bias_factor(const CoreMaterial& 
         // H_dc: the field strength of |B_dc| on the material's magnetisation curve at this temperature and
         // frequency, the curve MagnetizingInductance solves the DC load line sum N I_dc = H l_e + B(H) A_e R_gap on
         // (ABT #2227). The flux density it hands to the core losses is that load line's B, so this is its H.
-        // Known mismatch (ABT #2470): that curve integrates permeability.initial, so on an ungapped core its B at a
-        // given H is about 4x below the datasheet loop's, and H_dc here is lower than the datasheet curve assumes.
+        // ABT #2470: where the material has a datasheet B-H loop that curve is the loop's midline. Without one it
+        // integrates permeability.initial, which puts B on an ungapped core about 4x below a loop's at the same H:
+        // B_dc comes out low, while H_dc, read back on the same curve, stays the load line's (about N I_dc / l_e
+        // ungapped). The B_dc / B_sat estimate below then sees too small a ratio.
         auto magnetisationCurve = InitialPermeability::get_magnetisation_curve(material, temperature, excitation.get_frequency());
         double magneticFieldDcBias = InitialPermeability::get_magnetomotive_force_for_flux_density(
             *magnetisationCurve, magneticFluxDensityDcBias, 1.0, 1.0, 0.0).first;

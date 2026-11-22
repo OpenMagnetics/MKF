@@ -545,7 +545,9 @@ void load_advanced_core_materials(std::string fileToLoad, bool onlyDataFromManuf
         // mutated the copy, and assigned it back, costing two whole-object
         // copies per advanced-material record.
         auto& material = it->second;
-        if (jf.contains("bhCycle")) {
+        // A record's own loop is the sourced datasheet one the magnetisation curve is built from (ABT #2470): the
+        // advanced file's, of other layouts and without provenance, does not replace it.
+        if (jf.contains("bhCycle") && !material.get_bh_cycle()) {
             std::vector<BhCycleElement> bhCycle;
             from_json(jf["bhCycle"], bhCycle);
             material.set_bh_cycle(bhCycle);

@@ -107,7 +107,8 @@ class InitialPermeability {
                                         double magneticFieldDcBias,
                                         double temperature,
                                         std::optional<double> frequency = std::nullopt);
-        // The material's magnetisation curve B(H) = mu0 * integral of mu_rev, tabulated and cached per material,
+        // The material's magnetisation curve B(H): the midline of its datasheet B-H loop where MAS has one
+        // (bhCycle, ABT #2470), else mu0 * integral of mu_rev; tabulated and cached per material,
         // temperature and frequency (ABT #1223). The cache keeps the most recently used curves only (ABT #838: the
         // loss-temperature loop asks for a new temperature on every pass, and an unbounded cache grew without end);
         // the caller shares ownership of the curve it gets, so an eviction never pulls it from under the caller.
@@ -122,6 +123,8 @@ class InitialPermeability {
             // InitialPermeability::is_paramagnetic at the curve's temperature: B = mu0*H everywhere, so a reading
             // past the table is mu0's, not past the curve's end (ABT #1942, Alf 2026-10-19).
             bool paramagnetic;
+            // What the curve was built from, and any approximation in it (a loop scaled to another temperature).
+            std::string method;
         };
         static constexpr size_t magnetisationCurveCacheCapacity = 256;
         static std::shared_ptr<const MagnetisationCurve> get_magnetisation_curve(const CoreMaterial& coreMaterial, double temperature, std::optional<double> frequency);

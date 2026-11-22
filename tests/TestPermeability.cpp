@@ -1855,3 +1855,157 @@ namespace {
     }
 
 }  // namespace
+
+namespace {
+// A loop whose centred midline is the straight line H = k B up to its tip, drawn `centre` A/m off centre with a width
+// that closes at the tip.
+std::vector<MAS::BhCycleElement> abt2470_straight_loop(double temperature, double k, double tipFluxDensity, double centre, double halfWidth) {
+    std::vector<MAS::BhCycleElement> cycle;
+    auto add = [&](double fluxDensity, double side) {
+        MAS::BhCycleElement element;
+        element.set_magnetic_flux_density(fluxDensity);
+        element.set_magnetic_field(centre + k * fluxDensity + side * halfWidth * (1 - fluxDensity / tipFluxDensity));
+        element.set_temperature(temperature);
+        cycle.push_back(element);
+    };
+    for (int step = 1; step <= 10; ++step) {
+        add(tipFluxDensity * step / 10., 1);
+    }
+    for (int step = 9; step >= 1; --step) {
+        add(tipFluxDensity * step / 10., -1);
+    }
+    return cycle;
+}
+
+double abt2470_flux_density(const MAS::CoreMaterial& material, double fieldStrength, double temperature) {
+    return OpenMagnetics::InitialPermeability::get_flux_density_for_magnetic_field_dc_bias(material, fieldStrength, temperature, 100e3);
+}
+
+// 3C90 with two straight loops, k = 200 at 25 C up to 0.30 T and k = 250 at 100 C up to 0.25 T.
+MAS::CoreMaterial abt2470_straight_material() {
+    auto material = OpenMagnetics::Core::resolve_material("3C90");
+    auto cycle = abt2470_straight_loop(25, 200, 0.30, -1.2, 15);
+    auto hot = abt2470_straight_loop(100, 250, 0.25, 0.8, 12);
+    cycle.insert(cycle.end(), hot.begin(), hot.end());
+    material.set_bh_cycle(cycle);
+    return material;
+}
+}  // namespace
+
+TEST_CASE("Test_Magnetisation_Curve_Is_The_Centred_Midline_Of_The_Loop", "[physical-model][permeability][magnetisation-curve][bh-cycle]") {
+    settings.reset();
+    clear_databases();
+    auto material = abt2470_straight_material();
+    // The offsets and the widths drop out: B = H / k on each loop, linear in T between them.
+    CHECK_THAT(abt2470_flux_density(material, 1, 25), Catch::Matchers::WithinRel(1 / 200., 1e-6));
+    CHECK_THAT(abt2470_flux_density(material, 30, 25), Catch::Matchers::WithinRel(30 / 200., 1e-6));
+    CHECK_THAT(abt2470_flux_density(material, 30, 100), Catch::Matchers::WithinRel(30 / 250., 1e-6));
+    CHECK_THAT(abt2470_flux_density(material, 30, 62.5), Catch::Matchers::WithinRel(0.5 * (30 / 200. + 30 / 250.), 1e-6));
+    settings.reset();
+}
+
+TEST_CASE("Test_Magnetisation_Curve_Past_The_Loop_Tip", "[physical-model][permeability][magnetisation-curve][bh-cycle]") {
+    settings.reset();
+    clear_databases();
+    const double vacuumPermeability = OpenMagnetics::Constants().vacuumPermeability;
+    auto material = abt2470_straight_material();
+    // 3C90 tabulates 0.47 T at 1200 A/m, 25 C: straight to it from the tip (60 A/m, 0.30 T), then the vacuum's slope.
+    CHECK_THAT(abt2470_flux_density(material, 630, 25), Catch::Matchers::WithinRel(0.5 * (0.30 + 0.47), 1e-6));
+    CHECK_THAT(abt2470_flux_density(material, 2200, 25), Catch::Matchers::WithinRel(0.47 + vacuumPermeability * 1000, 1e-6));
+
+    // No saturation point at the 100 C loop's temperature: the vacuum's slope from its tip, not the 25 C B_sat.
+    auto saturation = material.get_saturation();
+    std::erase_if(saturation, [](const auto& element) { return element.get_temperature() > 50; });
+    material.set_saturation(saturation);
+    CHECK_THAT(abt2470_flux_density(material, 1000, 100), Catch::Matchers::WithinRel(0.25 + vacuumPermeability * (1000 - 62.5), 1e-6));
+    settings.reset();
+}
+
+TEST_CASE("Test_Magnetisation_Curve_Outside_The_Loop_Temperatures_Scales_With_Bsat", "[physical-model][permeability][magnetisation-curve][bh-cycle]") {
+    settings.reset();
+    clear_databases();
+    auto material = abt2470_straight_material();
+    auto saturationAt = [&](double temperature) {
+        return OpenMagnetics::Core::get_magnetic_flux_density_saturation(material, temperature, false);
+    };
+    CHECK_THAT(abt2470_flux_density(material, 30, 120), Catch::Matchers::WithinRel(30 / 250. * saturationAt(120) / saturationAt(100), 1e-6));
+    CHECK_THAT(abt2470_flux_density(material, 30, 0), Catch::Matchers::WithinRel(30 / 200. * saturationAt(0) / saturationAt(25), 1e-6));
+    auto curve = OpenMagnetics::InitialPermeability::get_magnetisation_curve(material, 120, 100e3);
+    CHECK_THAT(curve->method, Catch::Matchers::ContainsSubstring("EXTRAPOLATED"));
+    settings.reset();
+}
+
+TEST_CASE("Test_Magnetisation_Curve_Of_3C90_Follows_Its_Datasheet_Loop", "[physical-model][permeability][magnetisation-curve][bh-cycle]") {
+    settings.reset();
+    clear_databases();
+    auto material = OpenMagnetics::Core::resolve_material("3C90");
+    REQUIRE(material.get_bh_cycle());
+    // Ferroxcube 3C90 Fig.3, 25 C: the branches' midline at 15 A/m, centred, is 0.161 T (integrating mu_rev: 0.042 T).
+    CHECK_THAT(abt2470_flux_density(material, 15, 25), Catch::Matchers::WithinAbs(0.161, 0.002));
+    settings.reset();
+}
+
+TEST_CASE("Test_Magnetisation_Curve_Refuses_A_Malformed_Loop", "[physical-model][permeability][magnetisation-curve][bh-cycle]") {
+    settings.reset();
+    clear_databases();
+    auto material = OpenMagnetics::Core::resolve_material("3C90");
+    auto cycle = abt2470_straight_loop(25, 200, 0.30, 0, 15);
+    SECTION("a single branch") {
+        cycle.resize(10);
+    }
+    SECTION("a branch that folds back in B") {
+        cycle[4].set_magnetic_flux_density(0.01);
+    }
+    material.set_bh_cycle(cycle);
+    CHECK_THROWS_AS(OpenMagnetics::InitialPermeability::get_magnetisation_curve(material, 25, 100e3), OpenMagnetics::MaterialException);
+    settings.reset();
+}
+
+TEST_CASE("Test_Magnetisation_Curve_Uses_Only_A_Sourced_Loop", "[physical-model][permeability][magnetisation-curve][bh-cycle]") {
+    settings.reset();
+    clear_databases();
+    SECTION("a loop without provenance is not used") {
+        auto material = abt2470_straight_material();
+        material.set_provenance(std::nullopt);
+        CHECK(abt2470_flux_density(material, 30, 25) < 0.8 * 30 / 200.);
+    }
+    SECTION("the advanced file does not replace a record's own loop") {
+        OpenMagnetics::load_core_materials();
+        const double before = abt2470_flux_density(OpenMagnetics::Core::resolve_material("3C90"), 15, 25);
+        json advanced;
+        advanced["name"] = "3C90";
+        advanced["bhCycle"] = json::array();
+        for (const auto& element : abt2470_straight_loop(25, 200, 0.30, 0, 15)) {
+            advanced["bhCycle"].push_back({{"magneticField", element.get_magnetic_field()},
+                                           {"magneticFluxDensity", element.get_magnetic_flux_density()},
+                                           {"temperature", element.get_temperature()}});
+        }
+        OpenMagnetics::load_advanced_core_materials(advanced.dump() + "\n");
+        CHECK_THAT(abt2470_flux_density(OpenMagnetics::Core::resolve_material("3C90"), 15, 25), Catch::Matchers::WithinRel(before, 1e-12));
+    }
+    clear_databases();
+    settings.reset();
+}
+
+TEST_CASE("Test_Magnetisation_Curve_Of_Every_Material_With_A_Loop_Rises", "[physical-model][permeability][magnetisation-curve][bh-cycle]") {
+    settings.reset();
+    clear_databases();
+    OpenMagnetics::load_core_materials();
+    size_t checked = 0;
+    for (const auto& [name, material] : OpenMagnetics::coreMaterialDatabase) {
+        if (!material.get_bh_cycle()) {
+            continue;
+        }
+        ++checked;
+        for (double temperature : {-20., 25., 60., 100., 115.}) {
+            INFO(name << " at " << temperature << " C");
+            if (OpenMagnetics::InitialPermeability::is_paramagnetic(material, temperature)) {
+                continue;
+            }
+            auto curve = OpenMagnetics::InitialPermeability::get_magnetisation_curve(material, temperature, 100e3);
+            CHECK(std::adjacent_find(curve->fluxDensity.begin(), curve->fluxDensity.end(), std::greater_equal<double>()) == curve->fluxDensity.end());
+        }
+    }
+    CHECK(checked == 35);
+    settings.reset();
+}
