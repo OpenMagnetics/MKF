@@ -1935,6 +1935,24 @@ TEST_CASE("Test_Magnetisation_Curve_Outside_The_Loop_Temperatures_Scales_With_Bs
     settings.reset();
 }
 
+TEST_CASE("Test_Incremental_Permeability_Past_The_Loop_Curve_Is_The_Vacuums", "[physical-model][permeability][magnetisation-curve][bh-cycle]") {
+    settings.reset();
+    clear_databases();
+    auto material = abt2470_straight_material();
+    auto withoutLoop = material;
+    withoutLoop.set_bh_cycle(std::nullopt);
+    auto modelAt = [](const MAS::CoreMaterial& ofMaterial, double fieldStrength) {
+        return OpenMagnetics::InitialPermeability::get_initial_permeability_model_value(ofMaterial, 25, fieldStrength, 100e3);
+    };
+    // 3C90's 25 C loop ends on its saturation point, 1200 A/m: up to it the material's own permeability model.
+    CHECK(modelAt(material, 1100) == modelAt(withoutLoop, 1100));
+    REQUIRE(modelAt(withoutLoop, 1300) > 1);
+    CHECK(modelAt(material, 1300) == 1);
+    CHECK(modelAt(material, -1300) == 1);
+    CHECK(OpenMagnetics::InitialPermeability::get_initial_permeability(material, 25, 1300, 100e3) == 1);
+    settings.reset();
+}
+
 TEST_CASE("Test_Magnetisation_Curve_Of_3C90_Follows_Its_Datasheet_Loop", "[physical-model][permeability][magnetisation-curve][bh-cycle]") {
     settings.reset();
     clear_databases();

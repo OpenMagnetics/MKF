@@ -2249,10 +2249,12 @@ TEST_CASE("Only_Current_With_Dc", "[physical-model][core-losses][smoke-test]") {
     auto coreLossesModel = CoreLossesModel::factory(models);
     auto coreLosses = coreLossesModel->get_core_losses(core, excitation, temperature);
 
-    // 165 A of DC MMF through a 0.2 mm gap drives 3C97 (Bsat about 0.52 T at 37 C) into saturation: the
-    // DC point is the load line on the magnetisation curve, 0.492 T (ABT #1223). The 1.0 T pinned before
-    // was N*I/(R*Ae) with the unbiased permeability, which no 3C97 core can carry.
-    REQUIRE_THAT(magneticFluxDensity.get_processed().value().get_offset(), Catch::Matchers::WithinAbs(0.49, 0.01));
+    // 165 A of DC MMF through a 0.2 mm gap drives 3C97 into saturation: the DC point is the load line on the
+    // magnetisation curve (ABT #1223). The 1.0 T pinned before that was N*I/(R*Ae) with the unbiased permeability,
+    // which no 3C97 core can carry. The expectation is the material table's B at 1200 A/m interpolated to 37 C,
+    // 0.53 T at 25 C and 0.41 T at 100 C: 0.5108 T (Alf, 2026-11-22, ABT #2470; was 0.49 T, read on the integrated
+    // permeability curve, which the datasheet loop replaced).
+    REQUIRE_THAT(magneticFluxDensity.get_processed().value().get_offset(), Catch::Matchers::WithinAbs(0.5108, 0.01));
 }
 
 TEST_CASE("Crash_Voltage_Sin", "[physical-model][core-losses][bug][smoke-test]") {

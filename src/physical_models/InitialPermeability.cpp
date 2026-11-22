@@ -560,6 +560,7 @@ void fill_magnetisation_curve_from_loops(const CoreMaterial& coreMaterial, doubl
     }
 
     const double vacuumPermeability = Constants().vacuumPermeability;
+    curve.vacuumSlopeFieldStrength = std::max(lower->fieldStrength.back(), upper->fieldStrength.back());
     auto read = [&](const LoopCurve& loop, double fieldStrength) {
         if (fieldStrength >= loop.fieldStrength.back()) {
             return scale * loop.fluxDensity.back() + vacuumPermeability * (fieldStrength - loop.fieldStrength.back());
@@ -2027,6 +2028,20 @@ double InitialPermeability::get_initial_permeability_model_value(const CoreMater
                                                      std::optional<double> magneticFluxDensity,
                                                      std::optional<CoreShapeFamily> shapeFamily) {
     const auto& initialPermeabilityData = coreMaterial.get_permeability().get_initial();
+
+    // ABT #2470 (Alf, 2026-11-22): past the end of a loop-based magnetisation curve the incremental permeability is
+    // that curve's slope there, the vacuum's. The datasheet fits are still above 1 at such fields (3C95: 6x the air
+    // core's inductance where B was already past B_sat). A paramagnetic material has no loop-based curve, and its
+    // integrated curve is built on this function, so it is not asked for one.
+    if (magneticFieldDcBias && magneticFieldDcBias.value() != 0 && has_bh_cycle(coreMaterial)) {
+        const double curveTemperature = temperature.value_or(defaults.ambientTemperature);
+        if (!is_paramagnetic(coreMaterial, curveTemperature)) {
+            const auto curve = get_magnetisation_curve(coreMaterial, curveTemperature, frequency);
+            if (std::fabs(magneticFieldDcBias.value()) > curve->vacuumSlopeFieldStrength.value()) {
+                return 1;
+            }
+        }
+    }
 
     double initialPermeabilityValue = 1;
 

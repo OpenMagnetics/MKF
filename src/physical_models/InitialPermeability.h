@@ -125,6 +125,9 @@ class InitialPermeability {
             bool paramagnetic;
             // What the curve was built from, and any approximation in it (a loop scaled to another temperature).
             std::string method;
+            // A curve built from B-H loops only: past this field strength (the loops' saturation point, or tip) it rises
+            // on the vacuum's slope, so the incremental permeability there is 1 (ABT #2470).
+            std::optional<double> vacuumSlopeFieldStrength;
         };
         static constexpr size_t magnetisationCurveCacheCapacity = 256;
         static std::shared_ptr<const MagnetisationCurve> get_magnetisation_curve(const CoreMaterial& coreMaterial, double temperature, std::optional<double> frequency);

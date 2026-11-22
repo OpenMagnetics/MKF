@@ -580,6 +580,11 @@ namespace {
         std::string coreMaterial = "3C95";
         auto gapping = OpenMagneticsTesting::get_ground_gap(0.001);
         auto core = OpenMagneticsTesting::get_quick_core(shapeName, gapping, numberStacks, coreMaterial);
+        // Without its B-H loop (Alf, 2026-11-22, ABT #2470): the collapse below B_sat this sweep guards is the integrated
+        // magnetisation curve's, which every material without a loop uses. On the datasheet loop B passes B_sat first.
+        auto materialWithoutLoop = core.resolve_material();
+        materialWithoutLoop.set_bh_cycle(std::nullopt);
+        core.get_mutable_functional_description().set_material(materialWithoutLoop);
         OpenMagnetics::Magnetic magnetic;
         magnetic.set_core(core);
         magnetic.set_coil(coil);
