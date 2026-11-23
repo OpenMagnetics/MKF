@@ -5084,7 +5084,7 @@ std::array<double, splitSeriesMoments> split_even_moments(const SplitSection& se
 // moments vanish, to k = 16. The remainder is below (rho / |D|)^18 / (18 (1 - (rho / |D|)^2)) <= 2.8e-7 of ln (the 4th-order
 // series it replaces beyond 8 rho stops at 6.5e-7); against the exact 16-corner form, 4e-9 at worst on 2e5 random pairs
 // at 2 to 8 rho, the exact form's own rounding.
-double split_mean_log_series(double dx, double dy, double d2, const SplitSection& target, const SplitSection& source) {
+double split_log_series_sum(double dx, double dy, const SplitSection& target, const SplitSection& source) {
     const auto targetMoments = split_even_moments(target);
     const auto sourceMoments = split_even_moments(source);
     // 1 / D^2, D = dx + j dy.
@@ -5100,7 +5100,10 @@ double split_mean_log_series(double dx, double dy, double d2, const SplitSection
         sum += moment * power.real() * splitSeriesHalfReciprocals[index];
         power *= inverseSquared;
     }
-    return 0.5 * std::log(d2) - sum;
+    return sum;
+}
+double split_mean_log_series(double dx, double dy, double d2, const SplitSection& target, const SplitSection& source) {
+    return 0.5 * std::log(d2) - split_log_series_sum(dx, dy, target, source);
 }
 
 // The four corner differences of the ranges [p0, p1] and [q0, q1], with their signs in the double integral.
@@ -5244,6 +5247,27 @@ double split_mean_log_aligned(const SplitSection& target, const SplitSection& so
         }
     }
     return sum / ((sx1 - sx0) * (sy1 - sy0) * area);
+}
+
+// ln |D| less the mean of ln |p - q| over two axis-aligned sections (D the difference of their centres), where
+// split_mean_log_aligned takes a far series (it is that series without its ln |D|); nullopt where it takes an exact form.
+std::optional<double> split_log_excess_far(const SplitSection& target, const SplitSection& source) {
+    const double dx = target.x - source.x;
+    const double dy = target.y - source.y;
+    const double d2 = dx * dx + dy * dy;
+    const double reach = target.reach() + source.reach();
+    if (d2 > 64 * reach * reach) {
+        const double inverse4 = 1.0 / (d2 * d2);
+        const double real2 = (dx * dx - dy * dy) * inverse4;
+        const double real4 = (dx * dx * dx * dx - 6 * dx * dx * dy * dy + dy * dy * dy * dy) * inverse4 * inverse4;
+        const double m2 = target.moment2() + source.moment2();
+        const double m4 = target.moment4() + 6 * target.moment2() * source.moment2() + source.moment4();
+        return m2 * real2 / 2 + m4 * real4 / 4;
+    }
+    if (d2 > 4 * reach * reach && !(target.round && source.round)) {
+        return split_log_series_sum(dx, dy, target, source);
+    }
+    return std::nullopt;
 }
 
 // The section seen in a frame turned by `angle`: its centre's coordinates there, and its own angle less `angle`.
@@ -6591,6 +6615,12 @@ std::optional<ParallelCurrentSplit> MagneticField::calculate_parallel_current_sp
                 return mu0 * target.x * (std::log(8 * target.x) - 2 - split_mean_log(target, target));
             }
             double flux = AxisymmetricWindow::ring_flux(source.x, source.y, target.x, target.y);
+            // Far apart, ln d - <ln> is the far series alone: no square root or logarithm of d to cancel.
+            if (target.angle == 0 && source.angle == 0) {
+                if (const auto excess = split_log_excess_far(target, source)) {
+                    return flux + mu0 * std::sqrt(target.x * source.x) * excess.value();
+                }
+            }
             const double centreDistance = std::hypot(target.x - source.x, target.y - source.y);
             if (centreDistance > 0) {
                 flux += mu0 * std::sqrt(target.x * source.x) * (std::log(centreDistance) - split_mean_log(target, source));
